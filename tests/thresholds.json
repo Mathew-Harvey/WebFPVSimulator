@@ -1,0 +1,106 @@
+{
+  "_about": [
+    "Single source of every numeric band and method constant used by npm run verify.",
+    "Each value carries a source. 'STAGE1.md check N' means the number is copied from the",
+    "Verification checks table or its method column. 'Loop A harness choice' means STAGE1.md",
+    "left the number unspecified and Loop A fixed it; the reasoning is in PROGRESS.md.",
+    "This file is owned by Loop A. Loop B must not edit it. Argue in PROGRESS.md instead."
+  ],
+  "physics": {
+    "step_hz": { "value": 1000, "source": "CLAUDE.md, fixed timestep 1000 Hz" },
+    "cells": { "value": 6, "source": "STAGE1.md reference airframe, 6S battery" }
+  },
+  "replay": {
+    "canonical_render_hz": { "value": 60, "source": "Loop A harness choice, canonical sim_step batching rate for the trace hash in checks 2 and 3" },
+    "trace_stride_ms": { "value": 10, "source": "Loop A harness choice, state block sampled into the trace every 10 ms" },
+    "input_sample_hz": { "value": 250, "source": "Loop A harness choice, inside the 125 to 1000 Hz HID report range in STAGE1.md input section" }
+  },
+  "checks": {
+    "build-clean": {
+      "num": 1,
+      "build_exit_code": { "value": 0, "source": "STAGE1.md check 1, npm run build:wasm exits 0" },
+      "vendor_diff_chars": { "value": 0, "source": "STAGE1.md check 1, git diff --stat vendor/betaflight empty" },
+      "abi_version": { "value": 1, "source": "src/native/sim_abi.h, host and module must agree" }
+    },
+    "determinism-repeat": {
+      "num": 2,
+      "hash_mismatches": { "value": 0, "source": "STAGE1.md check 2, two replays in one process hash identical" }
+    },
+    "determinism-cross-host": {
+      "num": 3,
+      "hash_mismatches": { "value": 0, "source": "STAGE1.md check 3, Node and headless Chrome hashes identical" }
+    },
+    "frame-independence": {
+      "num": 4,
+      "render_rates_hz": { "value": [30, 60, 144, 240], "source": "STAGE1.md check 4" },
+      "distinct_hashes": { "value": 1, "source": "STAGE1.md check 4, all four traces identical" }
+    },
+    "hover-throttle": {
+      "num": 5,
+      "cell_voltage": { "value": 4.0, "source": "STAGE1.md check 5 method, trim at 4.0 V per cell" },
+      "band": { "min": 0.2, "max": 0.3, "source": "STAGE1.md check 5, pass band 0.20 to 0.30" },
+      "settle_s": { "value": 2.0, "source": "Loop A harness choice, sim time per trim candidate before judging climb" },
+      "vz_tolerance_m_s": { "value": 0.05, "source": "Loop A harness choice, |vertical velocity| below this at settle counts as hover" },
+      "max_bisection_steps": { "value": 24, "source": "Loop A harness choice, trim search iteration cap" }
+    },
+    "punch-out": {
+      "num": 6,
+      "cell_voltage": { "value": 4.2, "source": "Loop A harness choice, full charge, STAGE1.md quotes thrust to weight at full charge" },
+      "hover_settle_s": { "value": 2.0, "source": "Loop A harness choice, steady hover time before the punch" },
+      "full_throttle_s": { "value": 3.0, "source": "STAGE1.md check 6 method, full throttle 3.0 s" },
+      "band_m": { "min": 55, "max": 85, "source": "STAGE1.md check 6, altitude gained 55 to 85 m" }
+    },
+    "terminal-velocity": {
+      "num": 7,
+      "cell_voltage": { "value": 4.2, "source": "Loop A harness choice, full charge" },
+      "duration_s": { "value": 20.0, "source": "STAGE1.md check 7 method, full throttle 20 s" },
+      "plateau_window_s": { "value": 2.0, "source": "Loop A harness choice, speed averaged over the final window" },
+      "band_m_s": { "min": 30, "max": 40, "source": "STAGE1.md check 7, plateau 30 to 40 m/s" }
+    },
+    "motor-step-response": {
+      "num": 8,
+      "cell_voltage": { "value": 4.2, "source": "Loop A harness choice, full charge" },
+      "pre_hold_s": { "value": 0.2, "source": "Loop A harness choice, all motors held at zero before the step" },
+      "settle_s": { "value": 1.0, "source": "Loop A harness choice, RPM at this time after the step treated as final" },
+      "target_fraction": { "value": 0.63, "source": "STAGE1.md check 8 method, time to 63 percent of final RPM" },
+      "band_s": { "min": 0.01, "max": 0.03, "source": "STAGE1.md check 8, 10 to 30 ms" }
+    },
+    "rate-tracking": {
+      "num": 9,
+      "cell_voltage": { "value": 4.2, "source": "Loop A harness choice, full charge" },
+      "throttle": { "value": 0.35, "source": "Loop A harness choice, fixed mid throttle so the check does not depend on hover trim" },
+      "hold_s": { "value": 1.5, "source": "Loop A harness choice, full roll stick hold" },
+      "steady_window_s": { "value": 0.3, "source": "Loop A harness choice, steady state window at the end of the hold" },
+      "tolerance_fraction": { "value": 0.03, "source": "STAGE1.md check 9, within 3 percent of configured max rate" },
+      "actual_srate_to_deg_s": { "value": 10, "source": "Betaflight ACTUAL rates definition, srate stores tens of deg/s; configured max roll rate is parsed from tests/fixtures/config-baseline.diff" }
+    },
+    "yaw-coupling": {
+      "num": 10,
+      "cell_voltage": { "value": 4.2, "source": "Loop A harness choice, full charge" },
+      "throttle": { "value": 0.5, "source": "Loop A harness choice, constant throttle during the roll, STAGE1.md check 10 method says constant throttle" },
+      "roll_hold_s": { "value": 1.0, "source": "Loop A harness choice, duration of the hard roll" },
+      "min_abs_body_yaw_deg": { "value": 2.0, "source": "Loop A harness choice, floor that makes 'non-zero' in STAGE1.md check 10 measurable; integrated body yaw rate over the hold" },
+      "expected_sign": { "value": -1, "source": "Loop A provisional choice for a positive (right) roll input with Betaflight props-in rotation. Sign convention: positive r yaws nose left. See PROGRESS.md OPEN QUESTIONS" }
+    },
+    "battery-sag": {
+      "num": 11,
+      "cell_voltages": { "value": [4.2, 3.6], "source": "STAGE1.md check 11 method, identical punch-out at 4.20 and 3.60 V per cell" },
+      "hover_settle_s": { "value": 2.0, "source": "Loop A harness choice, same punch procedure as check 6" },
+      "full_throttle_s": { "value": 3.0, "source": "STAGE1.md check 6 method, reused so the two runs are the check 6 punch-out" },
+      "band_percent": { "min": 4, "max": 15, "source": "STAGE1.md check 11, low voltage peak RPM lower by 4 to 15 percent" }
+    },
+    "diff-passthrough": {
+      "num": 12,
+      "cell_voltage": { "value": 4.2, "source": "Loop A harness choice, full charge" },
+      "throttle": { "value": 0.35, "source": "Loop A harness choice, same procedure as check 9" },
+      "hold_s": { "value": 1.5, "source": "Loop A harness choice, same procedure as check 9" },
+      "steady_window_s": { "value": 0.3, "source": "Loop A harness choice, same procedure as check 9" },
+      "tolerance_fraction": { "value": 0.02, "source": "STAGE1.md check 12, measured max roll rate ratio within 2 percent of the ratio in the diffs; expected ratio is parsed from the two fixture diffs, never hardcoded" }
+    },
+    "console-clean": {
+      "num": 13,
+      "max_errors": { "value": 0, "source": "STAGE1.md check 13, zero errors" },
+      "max_warnings": { "value": 0, "source": "STAGE1.md check 13, zero warnings" }
+    }
+  }
+}

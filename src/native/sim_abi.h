@@ -1,0 +1,132 @@
+/*
+ * sim_abi.h: the ABI between the compiled physics module and every host,
+ * meaning the verification harness (Node and browser) and later the render
+ * shell. This header is the contract. The harness in tests/ is written
+ * against it and tests/ is read-only to the simulator implementer, so any
+ * change here is an ABI change and must be argued in PROGRESS.md first.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#ifndef SIM_ABI_H
+#define SIM_ABI_H
+
+/*
+ * Conventions, fixed by CLAUDE.md and this header:
+ *
+ * World frame: right-handed, z up, metres, SI throughout.
+ * Body frame: right-handed, x forward, y left, z up.
+ *   Positive p (about body x) rolls the quad to the right.
+ *   Positive q (about body y) pitches the nose down.
+ *   Positive r (about body z) yaws the nose to the left, counter-clockwise
+ *   seen from above.
+ *
+ * Stick channels, as stored in .rec files and passed to sim_input:
+ *   roll     -1..+1, +1 commands a roll to the right
+ *   pitch    -1..+1, +1 commands nose up
+ *   yaw      -1..+1, +1 commands nose right
+ *   throttle  0..+1
+ * Mapping these RC-convention channels onto Betaflight's internal signs is
+ * the bridge's job, not the host's.
+ *
+ * Time: the module steps at a fixed 1000 Hz. One step is exactly 1 ms of
+ * simulated time. sim_step(n) advances n steps. How the host batches calls
+ * to sim_step must not affect the trajectory. Input samples carry their own
+ * timestamps and the module consumes them by that timestamp, never by
+ * arrival order relative to real time.
+ */
+
+#define SIM_ABI_VERSION 1
+
+/* Physics step rate, Hz. Fixed. */
+#define SIM_STEP_HZ 1000
+
+/* Return codes. Every entry point returning int uses these. */
+#define SIM_OK 0
+#define SIM_ERR_NOT_IMPLEMENTED -1
+#define SIM_ERR_BAD_ARG -2
+#define SIM_ERR_BAD_STATE -3
+#define SIM_ERR_CONFIG_PARSE -4
+
+/*
+ * State block layout, doubles, written by sim_state:
+ *   [0]      t, simulated time, seconds
+ *   [1..3]   position x y z, metres, world frame
+ *   [4..6]   velocity x y z, m/s, world frame
+ *   [7..10]  attitude quaternion w x y z, body to world
+ *   [11..13] angular rate p q r, rad/s, body frame
+ *   [14..17] motor RPM, motors 0..3 in Betaflight order
+ *            (0 rear right, 1 front right, 2 rear left, 3 front left)
+ *   [18]     pack voltage under load, volts
+ *   [19]     pack current draw, amps
+ */
+#define SIM_STATE_DOUBLES 20
+
+/*
+ * Entry points. All are exported from the WASM module under these exact
+ * names. The stub implementation returns SIM_ERR_NOT_IMPLEMENTED from every
+ * entry point except sim_abi_version, which must always report the version
+ * so a host can tell "module loaded, not implemented yet" from "wrong
+ * module".
+ */
+
+/* Returns SIM_ABI_VERSION compiled into the module. */
+int sim_abi_version(void);
+
+/*
+ * Initialise from a Betaflight CLI diff, UTF-8 text of the given length.
+ * Full reset: config parsed and applied, dynamic state zeroed as in
+ * sim_reset. Returns SIM_OK or an error code.
+ */
+int sim_init(const unsigned char *diff_utf8, int len);
+
+/*
+ * Reset dynamic state, keeping the parsed config. After reset: t = 0, quad
+ * level and at rest at the world origin, free in the air (no ground contact
+ * in the reset pose), motors stopped, armed, airmode on, battery at the
+ * currently configured open-circuit cell voltage.
+ */
+int sim_reset(void);
+
+/* Set open-circuit per-cell voltage, volts. Takes effect immediately. */
+int sim_set_cell_voltage(double volts);
+
+/*
+ * Deliver one input sample. t_seconds is the sample's own timestamp on the
+ * simulated clock. Samples arrive in non-decreasing timestamp order, always
+ * before the 1 ms step in which their timestamp falls is executed.
+ */
+int sim_input(double t_seconds, double roll, double pitch, double yaw,
+              double throttle);
+
+/* Advance n fixed 1 ms steps. n >= 0. */
+int sim_step(int n);
+
+/*
+ * Bench override for check 8, motor-step-response. While a motor is
+ * overridden the flight controller output for that motor is replaced by
+ * the given duty, 0..1. motor is 0..3, or -1 for all motors. A negative
+ * duty clears the override for the addressed motor or motors.
+ */
+int sim_motor_override(int motor, double duty);
+
+/* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
+int sim_state_size(void);
+
+/* Write the state block described above into out. */
+int sim_state(double *out);
+
+#endif /* SIM_ABI_H */

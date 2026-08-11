@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+  harness.html: browser side of the verification harness. Loaded in
+  headless Chrome by tests/lib/browser.js for checks 3 and 13. The page
+  runs the same canonical replay as the Node side, from the same shared
+  modules, and resolves window.__simHarnessResult with the trace hash or
+  the sim error. It must never write to the console: check 13 requires a
+  clean console, so the only outputs are the result promise and genuine
+  page errors.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WebFPVSimulator verification harness</title>
+    <!-- Suppress the implicit favicon request; a 404 for it would count
+         as a console error in check 13. -->
+    <link rel="icon" href="data:," />
+    <script>
+      window.__simHarnessResult = new Promise((resolve) => {
+        window.__simHarnessResolve = resolve;
+      });
+    </script>
+    <script type="module" src="/tests/browser/harness.js"></script>
+  </head>
+  <body>
+    <p>WebFPVSimulator headless verification harness.</p>
+  </body>
+</html>

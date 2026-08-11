@@ -32,6 +32,7 @@
 
 import * as THREE from 'three';
 import { buildScene } from './render/scene.js';
+import { buildComposer } from './render/post.js';
 import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
@@ -63,6 +64,11 @@ async function boot() {
   const view = buildScene(canvas);
   const input = new InputManager();
 
+  const post = buildComposer(view.renderer, view.scene, view.camera);
+  window.addEventListener('resize', () => {
+    const d = view.resize();
+    post.setSize(d.w, d.h);
+  });
   const audio = new MotorAudio();
   const sim = await loadSim(await fetchBytes('/dist/sim.wasm'));
   let configName = 'freestyle.diff';
@@ -267,7 +273,9 @@ async function boot() {
       view.camera.lookAt(pCurr);
     }
 
-    view.renderer.render(view.scene, view.camera);
+    view.updateShadowFocus(pCurr);
+    view.updateWind(nowWall * 0.001);
+    post.render();
 
     const cal = input.calibrationPrompt();
     if (cal) {

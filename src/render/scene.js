@@ -42,7 +42,7 @@
 import * as THREE from 'three';
 import { celMaterial, outlineHull, updateCelTime } from './celmat.js';
 
-const SUN_DIR = new THREE.Vector3(0.42, 0.78, 0.32).normalize();
+const SUN_DIR = new THREE.Vector3(0.60, 0.50, 0.62).normalize();
 const HORIZON = 0xcfe0ea;
 const SKY_HIGH = 0x2f6fc4;
 const FOG_NEAR = 130;
@@ -673,7 +673,7 @@ export function buildScene(canvas) {
 
   const rng = makeRng(20260811);
 
-  const sun = new THREE.DirectionalLight(0xfff0d4, 2.6);
+  const sun = new THREE.DirectionalLight(0xffe6bd, 2.9);
   sun.position.copy(SUN_DIR).multiplyScalar(120);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -681,7 +681,7 @@ export function buildScene(canvas) {
   sun.shadow.camera.far = 320;
   sun.shadow.bias = -0.0012;
   sun.shadow.normalBias = 0.03;
-  const shadowExtent = 58;
+  const shadowExtent = 72;
   sun.shadow.camera.left = -shadowExtent;
   sun.shadow.camera.right = shadowExtent;
   sun.shadow.camera.top = shadowExtent;
@@ -690,7 +690,7 @@ export function buildScene(canvas) {
   scene.add(sun.target);
   /* Sky above, warm grass bounce below: this is what keeps shadowed faces
    * from going dead grey. */
-  scene.add(new THREE.HemisphereLight(0xa8ccf0, 0x5f7a3a, 1.25));
+  scene.add(new THREE.HemisphereLight(0x9dc4ee, 0x6b7f42, 1.05));
 
   const curve = trackCurve();
   const samples = curve.getPoints(180);

@@ -52,6 +52,8 @@
 #include "rx/rx.h"
 #include "sensors/gyro.h"
 
+extern uint32_t sim_bf_now_ms;
+
 #include "../sim_abi.h"
 #include "../sim_internal.h"
 
@@ -103,12 +105,13 @@ void bf_config_begin(void) {
   currentPidProfile = pidProfilesMutable(0);
   currentControlRateProfile = controlRateProfilesMutable(0);
 
-  /* Simulator posture: quad X, airmode always on, rc smoothing off so the
-   * setpoint path has no rx rate detection in it, no dynamic idle. */
+  /* Simulator posture: quad X, airmode always on. RC smoothing is left at
+   * the Betaflight default and must stay on: getFeedforward returns the
+   * smoothed value, so disabling it silently zeroes feedforward on every
+   * axis. That bug cost a tuning session; see PROGRESS.md. */
   mixerConfigMutable()->mixerMode = MIXER_QUADX;
   mixerConfigMutable()->yaw_motors_reversed = false;
   featureConfigMutable()->enabledFeatures = FEATURE_AIRMODE;
-  rxConfigMutable()->rc_smoothing_mode = 0;
 }
 
 int bf_config_apply_setting(const char *key, const char *value, double num,
@@ -210,6 +213,19 @@ double sim_bf_debug(int what) {
   }
 }
 
+/*
+ * Betaflight initialises its rc smoothing filters only after 1 s of
+ * powered on time with a valid rx link (fc/rc.c: ready = millis() > 1000).
+ * Until then getFeedforward returns zero, so a freshly reset craft would
+ * fly its first second with no feedforward at all and a different feel.
+ * A pilot's quad has been powered for minutes before they take off, so
+ * reset runs the receiver path forward on the simulated clock with
+ * centred sticks until those filters are live, then flight time continues
+ * from the same offset. Deterministic: every reset does exactly this.
+ */
+#define BF_WARMUP_MS 2600
+#define BF_WARMUP_FRAME_MS 4
+
 void bridge_reset(void) {
   /* Fresh controller state for a fresh trajectory: re run the init chain
    * so PID integrators, filters and rc state start identically. */
@@ -219,12 +235,19 @@ void bridge_reset(void) {
     rcData[i] = (i == THROTTLE) ? 1000.0f : 1500.0f;
   }
   bf_runtime_init();
+
+  for (uint32_t ms = BF_WARMUP_FRAME_MS; ms <= BF_WARMUP_MS; ms += BF_WARMUP_FRAME_MS) {
+    sim_bf_now_ms = ms;
+    updateRcRefreshRate((timeUs_t)ms * 1000);
+    updateRcCommands();
+    processRcCommand();
+  }
   pidResetIterm();
 }
 
 #define SIM_RAD_TO_DEG 57.29577951308232
 
-void bridge_run(const SimState *s, const double rc[4],
+void bridge_run(const SimState *s, const double rc[4], int rx_new,
                 double duty[SIM_MOTOR_COUNT]) {
   /* Simulated gyro in Betaflight's internal axis polarity, derived from
    * the quad X mixer table and the firmware's own channel handling, and
@@ -255,15 +278,25 @@ void bridge_run(const SimState *s, const double rc[4],
   }
   rcData[THROTTLE] = (float)(1000.0 + 1000.0 * thr);
 
-  extern uint32_t sim_bf_now_ms;
-  sim_bf_now_ms = (uint32_t)s->step_index;
-  const timeUs_t now_us = (timeUs_t)(s->step_index * 1000);
+  /* Flight time continues from the warm up offset so the receiver clock
+   * stays monotonic across reset. */
+  sim_bf_now_ms = (uint32_t)(BF_WARMUP_MS + s->step_index);
+  const timeUs_t now_us = (timeUs_t)((BF_WARMUP_MS + s->step_index) * 1000);
 
-  /* Betaflight's own rx frame timing: a fresh frame every 1 ms step, on
-   * the simulated clock. Without this the feedforward path divides by a
-   * zero rx interval and poisons the state with NaN. */
-  updateRcRefreshRate(now_us);
-  updateRcCommands();
+  /* Faithful flight controller wiring: the receiver path runs at the RC
+   * frame rate, the PID loop at 1 kHz. updateRcCommands is what raises
+   * isRxDataNew, so calling it only on frames is what makes Betaflight's
+   * rc smoothing interpolate and its feedforward see real packet
+   * intervals. processRcCommand runs every step so the smoothing filter
+   * advances at loop rate, exactly as on hardware.
+   *
+   * updateRcRefreshRate must be called on frames too: without it the
+   * feedforward path divides by a zero rx interval and poisons the whole
+   * state with NaN. */
+  if (rx_new) {
+    updateRcRefreshRate(now_us);
+    updateRcCommands();
+  }
   processRcCommand();
   pidUpdateTpaFactor((float)thr);
   pidController(currentPidProfile, now_us);

@@ -158,17 +158,20 @@ SIM_EXPORT int sim_step(int n) {
     return SIM_ERR_BAD_ARG;
   }
   for (int k = 0; k < n; k += 1) {
-    /* Consume every sample whose timestamp falls inside this step. */
+    /* Consume every sample whose timestamp falls inside this step. Each
+     * consumed sample is an RC frame for the controller. */
     const long long step_end_us = (S.step_index + 1) * 1000;
+    int rx_new = 0;
     while (g_q_head != g_q_tail && g_queue[g_q_head].t_us < step_end_us) {
       g_current_rc[0] = g_queue[g_q_head].ch[0];
       g_current_rc[1] = g_queue[g_q_head].ch[1];
       g_current_rc[2] = g_queue[g_q_head].ch[2];
       g_current_rc[3] = g_queue[g_q_head].ch[3];
       g_q_head = (g_q_head + 1) % INPUT_QUEUE_CAP;
+      rx_new = 1;
     }
     double duty[SIM_MOTOR_COUNT];
-    bridge_run(&S, g_current_rc, duty);
+    bridge_run(&S, g_current_rc, rx_new, duty);
     for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
       if (g_override[m] >= 0.0) {
         duty[m] = g_override[m];

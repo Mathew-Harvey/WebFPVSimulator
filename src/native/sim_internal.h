@@ -50,6 +50,9 @@ typedef struct {
   double cda_front;  /* drag area front, m^2, along body x */
   double cda_side;   /* drag area side, m^2, along body y */
   double rho;        /* air density */
+  double k_inflow;   /* thrust loss per unit axial inflow per unit prop speed,
+                      * N s / (m rad). Applied to the rotational part of the
+                      * inflow only; see plant.c. */
 } PlantParams;
 
 typedef struct {
@@ -99,8 +102,14 @@ void bridge_reset(void);
 /*
  * One 1 kHz controller iteration: body rates and normalised stick
  * channels in, four motor duties in 0..1 out.
+ *
+ * rx_new is 1 on the steps where a fresh input sample arrived, which the
+ * bridge treats as an RC frame exactly as a flight controller treats a
+ * packet from the receiver. Betaflight recomputes setpoints and
+ * feedforward only on those steps and interpolates in between, so the
+ * input sample rate is a real part of the feel, not a detail.
  */
-void bridge_run(const SimState *s, const double rc[4],
+void bridge_run(const SimState *s, const double rc[4], int rx_new,
                 double duty[SIM_MOTOR_COUNT]);
 
 /*

@@ -33,11 +33,19 @@
 import * as THREE from 'three';
 import { buildScene } from './render/scene.js';
 import { simPosToThree, simQuatToThree } from './render/frame.js';
+import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
 const SPAWN_ALT = 1.5; /* metres between sim z = 0 and the ground plane */
 const CELL_VOLTAGES = [4.2, 3.8, 3.5];
+/* Camera uptilt. 30 degrees is a freestyle angle: it puts the horizon low
+ * in frame so the ground rushes past and forward flight sits level. */
+const CAM_TILT_DEG = 30;
+/* The controller consumes each input sample as one RC frame, so the shell
+ * must feed it at a radio's rate rather than the display's. 250 Hz is a
+ * typical ELRS link and matches the harness recording rate. */
+const RC_HZ = 250;
 
 const hud = document.getElementById('hud');
 const msg = document.getElementById('msg');
@@ -55,19 +63,25 @@ async function boot() {
   const view = buildScene(canvas);
   const input = new InputManager();
 
+  const audio = new MotorAudio();
   const sim = await loadSim(await fetchBytes('/dist/sim.wasm'));
-  let configName = 'config-baseline.diff';
-  let configText = new TextDecoder().decode(
-    await fetchBytes('/tests/fixtures/config-baseline.diff'),
-  );
+  let configName = 'freestyle.diff';
+  let configText = new TextDecoder().decode(await fetchBytes('/configs/freestyle.diff'));
   if (sim.init(configText) !== SIM_OK) {
     throw new Error('sim_init failed on the default config');
   }
+
+  /* Spawn on the start gate, facing down the circuit. */
+  const start = view.gates[0];
+  const startYaw = start.heading;
+  const startX = start.position.x;
+  const startZ = start.position.z;
 
   let cellIdx = 0;
   let simTimeMs = 0;
   let acc = 0;
   let lastTs = 0;
+  let rcNextMs = 0;
   let crashed = false;
   let crashedAtWall = 0;
   let camMode = 'fpv';
@@ -89,6 +103,7 @@ async function boot() {
     simTimeMs = 0;
     acc = 0;
     lastTs = 0;
+    rcNextMs = 0;
     crashed = false;
     input.drain();
     input.kb.throttle = 0;
@@ -97,7 +112,12 @@ async function boot() {
   }
   reset();
 
+  let audioOn = false;
   input.onKey = (code) => {
+    /* Any key counts as the user gesture browsers require for audio. */
+    if (audioOn && !audio.ctx) {
+      audio.start();
+    }
     if (code === 'KeyR') {
       reset();
     } else if (code === 'KeyC') {
@@ -107,8 +127,15 @@ async function boot() {
     } else if (code === 'KeyV') {
       cellIdx = (cellIdx + 1) % CELL_VOLTAGES.length;
       sim.setCellVoltage(CELL_VOLTAGES[cellIdx]);
+    } else if (code === 'KeyN') {
+      audioOn = audio.toggle();
     }
   };
+  window.addEventListener('pointerdown', () => {
+    if (audioOn && !audio.ctx) {
+      audio.start();
+    }
+  });
 
   /* Fly your own Betaflight diff: drop the file anywhere on the page. */
   window.addEventListener('dragover', (e) => e.preventDefault());
@@ -136,8 +163,9 @@ async function boot() {
   const qPrev = new THREE.Quaternion();
   const qCurr = new THREE.Quaternion();
   const qTilt = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(1, 0, 0), (20 * Math.PI) / 180,
+    new THREE.Vector3(1, 0, 0), (CAM_TILT_DEG * Math.PI) / 180,
   );
+  const qSpawn = new THREE.Quaternion();
   const camPos = new THREE.Vector3();
   const fwd = new THREE.Vector3();
 
@@ -161,20 +189,20 @@ async function boot() {
       if (steps > 100) {
         steps = 100;
       }
-      for (const s of samples) {
-        let off = s.wallT - frameStart;
-        if (!(off >= 0)) {
-          off = 0;
-        }
-        if (off > steps) {
-          off = steps;
-        }
-        let ts = (simTimeMs + off) / 1000;
+      /* Resample the polled stick values onto a fixed RC frame grid. The
+       * display runs at whatever rate it runs at; the radio does not, and
+       * the controller's feedforward and smoothing read the frame
+       * interval directly. */
+      const latest = samples.length ? samples[samples.length - 1] : input.channels;
+      const framePeriod = 1000 / RC_HZ;
+      while (rcNextMs < simTimeMs + steps) {
+        let ts = rcNextMs / 1000;
         if (ts < lastTs) {
           ts = lastTs;
         }
         lastTs = ts;
-        sim.input(ts, s.roll, s.pitch, s.yaw, s.throttle);
+        sim.input(ts, latest.roll, latest.pitch, latest.yaw, latest.throttle);
+        rcNextMs += framePeriod;
       }
       if (steps >= 1) {
         if (steps > 1) {
@@ -195,7 +223,9 @@ async function boot() {
       reset();
     }
 
-    /* Render: interpolate the two most recent physics states. */
+    /* Render: interpolate the two most recent physics states. The sim
+     * flies about its own origin; the start gate placement is a render
+     * side offset and rotation, so nothing about the trajectory changes. */
     const a = Math.max(0, Math.min(1, acc));
     simPosToThree(statePrev[1], statePrev[2], statePrev[3] + SPAWN_ALT, pPrev);
     simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT, pCurr);
@@ -203,13 +233,28 @@ async function boot() {
     simQuatToThree(statePrev[7], statePrev[8], statePrev[9], statePrev[10], qPrev);
     simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCurr);
     qPrev.slerp(qCurr, a);
+    qSpawn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), startYaw);
+    pCurr.applyQuaternion(qSpawn);
+    pCurr.x += startX;
+    pCurr.z += startZ;
+    qPrev.premultiply(qSpawn);
     view.quad.position.copy(pCurr);
     view.quad.quaternion.copy(qPrev);
 
+    /* Prop discs spin at a visibly aliased fraction of true RPM, the way
+     * they read on a real FPV feed. */
+    for (let m = 0; m < 4; m += 1) {
+      view.discs[m].rotation.y += stateCurr[14 + m] * 1e-4;
+    }
+
     if (camMode === 'fpv') {
+      /* The camera sits inside the airframe, so the quad must be hidden or
+       * you fly looking at the inside of its own outline hull. */
+      view.quad.visible = false;
       view.camera.position.copy(pCurr);
       view.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
+      view.quad.visible = true;
       fwd.set(0, 0, -1).applyQuaternion(qPrev);
       fwd.y = 0;
       if (fwd.lengthSq() < 1e-6) {
@@ -234,13 +279,15 @@ async function boot() {
     }
     const st = stateCurr;
     const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
+    audio.update([st[14], st[15], st[16], st[17]], speed);
     const ch = input.channels;
     hud.textContent =
       `input  ${input.source}\n` +
       `config ${configName}  cell ${CELL_VOLTAGES[cellIdx].toFixed(2)} V (V cycles)\n` +
       `roll ${ch.roll.toFixed(2)}  pitch ${ch.pitch.toFixed(2)}  yaw ${ch.yaw.toFixed(2)}  thr ${ch.throttle.toFixed(2)}\n` +
       `alt ${(st[3] + SPAWN_ALT).toFixed(1)} m  speed ${speed.toFixed(1)} m/s  vbat ${st[18].toFixed(1)} V  ${st[19].toFixed(0)} A\n` +
-      `cam ${camMode} (C)  reset R  calibrate M  fps ${fps.toFixed(0)}`;
+      `rpm ${st[14].toFixed(0)} ${st[15].toFixed(0)} ${st[16].toFixed(0)} ${st[17].toFixed(0)}\n` +
+      `cam ${camMode} (C)  reset R  calibrate M  sound ${audioOn ? 'on' : 'off'} (N)  fps ${fps.toFixed(0)}`;
 
     window.__shellReady = true;
   }

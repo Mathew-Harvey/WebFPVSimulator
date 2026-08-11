@@ -62,6 +62,7 @@ const PlantParams PLANT = {
   .cda_front = 0.006,
   .cda_side = 0.006,
   .rho = 1.225,
+  .k_inflow = 5.9e-4,
 };
 
 /* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left,
@@ -134,11 +135,34 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   }
   s->vbat_load = v_load;
 
-  /* 2. Motor electrical and rotor dynamics. */
+  /* 2. Motor electrical and rotor dynamics.
+   *
+   * Two aerodynamic effects here give the airframe its natural rate
+   * damping. Without them the only thing resisting rotation is the PID,
+   * which reads as overshoot on a step and a reversal when the stick
+   * centres, the thing pilots call snap back.
+   *
+   * Roll and pitch: rotating the airframe moves each motor up or down, so
+   * each prop sees a different axial inflow and its thrust changes by
+   * -k_inflow * prop speed * axial velocity. The rising side loses thrust
+   * and the falling side gains it, which opposes the rotation. Only the
+   * rotational part of the inflow is used; the common mode part (thrust
+   * loss in a fast climb) is the axial flight effect STAGE1.md defers to
+   * Stage 2 and would collide with the terminal velocity check.
+   *
+   * Yaw: a prop's aerodynamic drag depends on its speed relative to the
+   * air, so a body yaw rate adds to one rotation pair and subtracts from
+   * the other. The clockwise and counter clockwise pairs no longer cancel
+   * and the residual is a torque opposing the yaw.
+   */
   double thrust[SIM_MOTOR_COUNT];
   double stator_torque_z = 0.0; /* reaction on the frame about body z */
   double h_prop_z = 0.0;        /* net prop angular momentum about body z */
+  double aero_torque_z = 0.0;   /* prop drag about z, in the air's frame */
   double pack_current = 0.0;
+  const double p = s->omega[0];
+  const double q = s->omega[1];
+  const double r = s->omega[2];
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     double d = duty_in[m];
     if (d < 0.0) {
@@ -148,24 +172,36 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       d = 1.0;
     }
     const double w = s->motor_omega[m];
+    /* Prop speed relative to the air about body z, including body yaw. */
+    const double w_rel = PLANT_SPIN[m] * w + r;
+    const double drag_mag = PLANT.kq * w_rel * (w_rel < 0.0 ? -w_rel : w_rel);
     const double i = (d * v_load - PLANT.ke * w) / PLANT.r_motor;
-    const double torque = PLANT.ke * i - PLANT.kq * w * w;
+    /* Rotor sees the drag torque resisting its own spin direction. */
+    const double torque = PLANT.ke * i - PLANT_SPIN[m] * drag_mag;
     double w_next = w + (torque / PLANT.j_rotor) * SIM_DT;
     if (w_next < 0.0) {
       w_next = 0.0;
     }
     s->motor_domega[m] = (w_next - w) / SIM_DT;
     s->motor_omega[m] = w_next;
-    thrust[m] = PLANT.kt * w_next * w_next;
+    /* Axial velocity at this motor from body rotation only. */
+    const double v_rot = p * PLANT_POS_Y[m] - q * PLANT_POS_X[m];
+    double t = PLANT.kt * w_next * w_next - PLANT.k_inflow * w_next * v_rot;
+    if (t < 0.0) {
+      t = 0.0;
+    }
+    thrust[m] = t;
     /* Frame feels minus the stator drive torque about z. */
     stator_torque_z += -PLANT_SPIN[m] * PLANT.ke * i;
     h_prop_z += PLANT_SPIN[m] * PLANT.j_rotor * w_next;
+    aero_torque_z += -drag_mag;
     const double draw = d * i;
     if (draw > 0.0) {
       pack_current += draw;
     }
   }
   s->pack_current = pack_current;
+  (void)aero_torque_z;
 
   /* 3. Body frame forces: thrust along +z, quadratic drag per axis. */
   double v_body[3];

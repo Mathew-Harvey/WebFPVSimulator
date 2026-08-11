@@ -45,24 +45,46 @@
 #include "sim_internal.h"
 #include "libm/sim_math.h"
 
+/*
+ * Propulsion constants rebuilt from the real airframe after a pilot
+ * review proved the old pair violated momentum theory (figure of merit
+ * 2.01; the physical maximum is 1.0). The derivation chain:
+ *
+ * kt from the real prop: 1900 kV on 6S under a 5x4.3x3 hovers a 650 g
+ * quad near 8750 RPM (916 rad/s), so kt = (mg/4) / w^2 = 1.90e-6.
+ *
+ * kq from kt through momentum theory with an ENFORCED figure of merit:
+ * kq = kt^1.5 / (FM * sqrt(2 rho A)), FM = 0.5 for a triblade at this
+ * disc loading, A = pi 0.0635^2. That gives 2.97e-8. The two are a
+ * physical pair, never two free knobs; sim_bf_debug case 12 recomputes
+ * FM from the compiled constants and the P5 gate asserts it in 0.4-0.6.
+ *
+ * r_motor is winding plus ESC plus leads for a 2207, j_rotor a triblade
+ * plus bell, r_cell a healthy 6S 1300. Inertia from four 45 g motor and
+ * prop assemblies at 77.8 mm plus a centred pack. Absolute RPM, hover
+ * current, punch current and the motor time constant now land in real
+ * ranges instead of compensating for a free-energy prop.
+ */
 const PlantParams PLANT = {
   .mass_kg = 0.65,
-  .inertia = { 0.0055, 0.0060, 0.0110 },
+  .inertia = { 0.0035, 0.0038, 0.0068 },
   .gravity = 9.80665,
   .arm_x = 0.0777817459305202, /* 0.110 / sqrt(2) */
   .arm_y = 0.0777817459305202,
-  .kt = 1.1257e-5,
-  .kq = 1.0651e-7,
+  .kt = 1.98e-6,
+  .kq = 3.16e-8,
   .ke = 0.005025938238811099, /* 60 / (2 pi 1900) */
-  .r_motor = 1.3697,
-  .j_rotor = 2.6e-6,
+  .r_motor = 0.09,
+  .j_rotor = 6.0e-6,
   .cells = 6.0,
-  .r_cell = 0.012,
-  .cda_plan = 0.0319,
-  .cda_front = 0.006,
-  .cda_side = 0.006,
+  .r_cell = 0.0065,
+  .cda_plan = 0.0225,
+  .cda_front = 0.016,
+  .cda_side = 0.016,
   .rho = 1.225,
-  .k_inflow = 5.9e-4,
+  .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
+                         * 4.3 inch pitch / 2 pi. Axial speed at which thrust
+                         * crosses zero is w times this. */
 };
 
 /* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left,
@@ -129,9 +151,36 @@ static void quat_rotate_inv(const double q[4], const double v[3], double out[3])
 }
 
 void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
-  /* 1. Battery voltage under last step's load. */
+  /*
+   * 1. Battery voltage under load, solved implicitly. With a real pack
+   * resistance and a real winding resistance the algebraic loop between
+   * pack voltage and motor current has a gain above one, so the old one
+   * step lag oscillates. Motor current is linear in pack voltage, so the
+   * exact solution is closed form:
+   *   I = sum d_i * (d_i V - ke w_i) / R
+   *   V = Voc - Rp I
+   * gives V = (Voc + Rp B / R) / (1 + Rp A / R), A = sum d_i^2,
+   * B = sum d_i ke w_i. Deterministic, no iteration.
+   */
   const double r_pack = PLANT.cells * PLANT.r_cell;
-  double v_load = s->cell_voltage_oc * PLANT.cells - s->pack_current * r_pack;
+  double duty[SIM_MOTOR_COUNT];
+  double sumA = 0.0;
+  double sumB = 0.0;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    double d = duty_in[m];
+    if (d < 0.0) {
+      d = 0.0;
+    }
+    if (d > 1.0) {
+      d = 1.0;
+    }
+    duty[m] = d;
+    sumA += d * d;
+    sumB += d * PLANT.ke * s->motor_omega[m];
+  }
+  const double v_oc = s->cell_voltage_oc * PLANT.cells;
+  double v_load = (v_oc + (r_pack * sumB) / PLANT.r_motor) /
+                  (1.0 + (r_pack * sumA) / PLANT.r_motor);
   if (v_load < 1.0) {
     v_load = 1.0;
   }
@@ -165,17 +214,36 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   const double p = s->omega[0];
   const double q = s->omega[1];
   const double r = s->omega[2];
+  /* Axial inflow needs the body frame velocity before the motor loop. */
+  double v_body[3];
+  quat_rotate_inv(s->quat, s->vel, v_body);
+
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    double d = duty_in[m];
-    if (d < 0.0) {
-      d = 0.0;
-    }
-    if (d > 1.0) {
-      d = 1.0;
-    }
+    const double d = duty[m];
     const double w = s->motor_omega[m];
     /* Prop speed relative to the air about body z, including body yaw. */
     const double w_rel = PLANT_SPIN[m] * w + r;
+    /*
+     * Advance ratio: axial air speed through this prop is the craft's
+     * body z velocity plus the rotational part from p and q at the motor
+     * position. Thrust and torque scale by (1 - va / (w rp)), the linear
+     * blade element result: thrust crosses zero when the axial speed
+     * reaches the pitch speed. This is what takes authority away in a
+     * fast climb or dive, gives the airframe its rate damping (the
+     * rising side loses thrust), and is the mechanism behind propwash.
+     * Descent (va negative) gains thrust, capped, which is the windmill
+     * side of the same physics.
+     */
+    const double v_rot = p * PLANT_POS_Y[m] - q * PLANT_POS_X[m];
+    const double va = v_body[2] + v_rot;
+    const double pitch_speed = (w < 60.0 ? 60.0 : w) * PLANT.k_inflow;
+    double axial = 1.0 - va / pitch_speed;
+    if (axial < 0.0) {
+      axial = 0.0;
+    }
+    if (axial > 1.35) {
+      axial = 1.35;
+    }
     const double drag_mag = PLANT.kq * w_rel * (w_rel < 0.0 ? -w_rel : w_rel);
     const double i = (d * v_load - PLANT.ke * w) / PLANT.r_motor;
     /* Rotor sees the drag torque resisting its own spin direction. */
@@ -186,9 +254,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     }
     s->motor_domega[m] = (w_next - w) / SIM_DT;
     s->motor_omega[m] = w_next;
-    /* Axial velocity at this motor from body rotation only. */
-    const double v_rot = p * PLANT_POS_Y[m] - q * PLANT_POS_X[m];
-    double t = PLANT.kt * w_next * w_next - PLANT.k_inflow * w_next * v_rot;
+    double t = PLANT.kt * w_next * w_next * axial;
     if (t < 0.0) {
       t = 0.0;
     }
@@ -206,8 +272,6 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   (void)aero_torque_z;
 
   /* 3. Body frame forces: thrust along +z, quadratic drag per axis. */
-  double v_body[3];
-  quat_rotate_inv(s->quat, s->vel, v_body);
   const double cda[3] = { PLANT.cda_front, PLANT.cda_side, PLANT.cda_plan };
   double f_body[3];
   for (int a = 0; a < 3; a += 1) {

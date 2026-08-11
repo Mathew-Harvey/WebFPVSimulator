@@ -246,13 +246,22 @@ async function main() {
       const ok = trim >= cfg.P4.hover_throttle[0] && trim <= cfg.P4.hover_throttle[1];
       sub.push({ ok, text: `hover ${(trim * 100).toFixed(1)}% (band ${cfg.P4.hover_throttle})` });
     }
-    /* static TWR from steady full throttle thrust */
+    /* Static thrust to weight, bench definition: thrust at zero airspeed
+     * with the pack under load. Shaft torque carries no advance ratio
+     * term in this plant, so steady RPM depends only on pack voltage and
+     * kt w^2 IS the bench thrust; motors driven directly through the
+     * override so the controller is out of the loop, exactly like a
+     * thrust stand. Two earlier methods were rejected and are recorded in
+     * tried_and_rejected: RPM thrust sampled while climbing under-reads
+     * through the advance factor, and peak punch acceleration measures
+     * effective punch TWR net of sag and advance loss, a different
+     * quantity from the one this gate names. */
     {
       const sim = await fresh(flightCfg, wasm);
-      const dbg = sim.e.sim_bf_debug;
+      const kt = sim.e.sim_bf_debug(10);
+      sim.motorOverride(-1, 1);
       let st = null;
-      fly(sim, [{ ms: 2500, thr: 1 }], (t, s) => { st = s; });
-      const kt = dbg(10);
+      fly(sim, [{ ms: 400, thr: 0 }], (t, s2) => { st = s2; });
       let thrust = 0;
       for (let m = 14; m <= 17; m += 1) {
         const w = (st[m] / 60) * 2 * Math.PI;
@@ -260,7 +269,7 @@ async function main() {
       }
       const twr = thrust / (MASS * G);
       const ok = twr >= cfg.P4.static_twr[0] && twr <= cfg.P4.static_twr[1];
-      sub.push({ ok, text: `TWR ${twr.toFixed(1)} (band ${cfg.P4.static_twr})` });
+      sub.push({ ok, text: `TWR ${twr.toFixed(1)} bench (band ${cfg.P4.static_twr})` });
     }
     /* punch: time from hover to 80 percent of peak climb rate */
     {

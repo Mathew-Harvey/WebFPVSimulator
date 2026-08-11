@@ -6,20 +6,14 @@
 # must not change. This file is the one a pilot actually flies, and it is
 # meant to be edited, or replaced by dropping your own diff on the page.
 #
-# Rates: ACTUAL, 500 deg/s max on roll and pitch, 450 on yaw, with 120
-# deg/s of centre sensitivity and 0.55 expo. That is a controllable
-# freestyle rate rather than the 670 deg/s race rate in the fixture, and
-# the expo puts real resolution around centre stick where small corrections
-# live.
+# Rates: ACTUAL, 700 deg/s max on roll and pitch, 650 on yaw, 140 deg/s
+# centre sensitivity, 0.30 expo. Real freestyle rates.
 #
-# Tune: measured against this plant rather than copied from a real quad.
-# Step response at 500 deg/s roll: 1.5 percent overshoot, 115 ms to 90
-# percent, settles inside 135 ms, and 16 deg/s of reverse rate on stick
-# release. The stock fixture tune on the same plant overshoots 17 percent
-# and reverses 72 deg/s, which is the wallow and snap back a pilot feels.
-# I is deliberately below a real world value because this airframe flies in
-# still air with no prop imbalance, so a large integral term buys nothing
-# and costs stick release behaviour. See PROGRESS.md.
+# Tune: stock Betaflight 4.5.1 defaults. The previous file carried a
+# custom tune that a grid search fitted to a plant later shown to violate
+# momentum theory; a pilot review read that as the diagnostic it was. On
+# the rebuilt plant the stock tune flies clean, which is the test that the
+# plant is right. Rates raised to a real freestyle 700 deg/s.
 
 batch start
 
@@ -41,16 +35,16 @@ set small_angle = 180
 # profile 0
 profile 0
 
-set p_roll = 60
-set i_roll = 40
-set d_roll = 38
+set p_roll = 45
+set i_roll = 80
+set d_roll = 40
 set f_roll = 120
-set p_pitch = 62
-set i_pitch = 42
-set d_pitch = 40
+set p_pitch = 47
+set i_pitch = 84
+set d_pitch = 46
 set f_pitch = 125
-set p_yaw = 55
-set i_yaw = 40
+set p_yaw = 45
+set i_yaw = 80
 set d_yaw = 0
 set f_yaw = 120
 
@@ -58,14 +52,14 @@ set f_yaw = 120
 rateprofile 0
 
 set rates_type = ACTUAL
-set roll_rc_rate = 12
-set pitch_rc_rate = 12
-set yaw_rc_rate = 12
-set roll_expo = 55
-set pitch_expo = 55
-set yaw_expo = 50
-set roll_srate = 50
-set pitch_srate = 50
-set yaw_srate = 45
+set roll_rc_rate = 14
+set pitch_rc_rate = 14
+set yaw_rc_rate = 14
+set roll_expo = 30
+set pitch_expo = 30
+set yaw_expo = 30
+set roll_srate = 70
+set pitch_srate = 70
+set yaw_srate = 65
 
 batch end

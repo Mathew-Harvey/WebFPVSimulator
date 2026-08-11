@@ -85,6 +85,9 @@ extern const double PLANT_POS_Y[SIM_MOTOR_COUNT];
 
 void plant_reset(SimState *s);
 
+/* sqrt for the debug exports, backed by libm/sim_math.h. */
+double sim_sqrt_pub(double x);
+
 /*
  * Advance motors, battery and rigid body by one 1 ms step given the four
  * commanded duties in 0..1. Deterministic: fixed operation order, no

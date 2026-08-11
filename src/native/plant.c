@@ -82,6 +82,8 @@ const double PLANT_POS_X[SIM_MOTOR_COUNT] = { -0.0777817459305202, 0.07778174593
 const double PLANT_POS_Y[SIM_MOTOR_COUNT] = { -0.0777817459305202, -0.0777817459305202,
                                               0.0777817459305202, 0.0777817459305202 };
 
+double sim_sqrt_pub(double x) { return sim_sqrt(x); }
+
 void plant_reset(SimState *s) {
   for (int i = 0; i < 3; i += 1) {
     s->pos[i] = 0.0;

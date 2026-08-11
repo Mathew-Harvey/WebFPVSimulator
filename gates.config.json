@@ -1,0 +1,41 @@
+{
+  "_authored": [
+    "Written once at loop iteration 0 from the gate document. Protected by the Prime Directive:",
+    "no value here may change to make a gate pass. Disputes go to .loop/threshold-disputes.md.",
+    "Bands the document delegated to this file were authored here at creation time and are",
+    "annotated with their reasoning. The build container cannot drive the named target GPU;",
+    "gates that require it fail honestly with an environment reason rather than passing vacuously."
+  ],
+  "max_iterations": 80,
+  "max_wall_clock_hours": 10,
+  "target_gpu": "desktop discrete GPU of RTX 3060 class, 2560x1440",
+  "P1": { "determinism_runs": 100, "render_rates_hz": [30, 60, 144, 240], "physics_hz": 1000 },
+  "P2": { "sweep_step": 0.01, "max_abs_error_deg_s": 0.1, "rate_types": ["BETAFLIGHT", "RACEFLIGHT", "KISS", "ACTUAL"] },
+  "P3": {
+    "gyro_xcorr_min": 0.9,
+    "rise_time_within_pct": 15,
+    "overshoot_within_pp": 5,
+    "settling_within_pct": 20,
+    "motor_xcorr_min": 0.85,
+    "required_coverage": ["hard cornering", "full throttle straight", "dive into propwash", "Split-S", "low proximity pass", "tumble or stall recovery"]
+  },
+  "P4": {
+    "motor_tau_ms": [15, 30],
+    "hover_throttle": [0.17, 0.22],
+    "static_twr": [8, 12],
+    "punch_to_80pct_climb_ms": [150, 400]
+  },
+  "P5": {
+    "prop_figure_of_merit": [0.4, 0.6],
+    "max_level_speed_kmh": [120, 165],
+    "zero_to_100_kmh_s": [1.3, 1.9],
+    "descent_terminal_m_s": [15, 30],
+    "_descent_terminal_note": "Authored at creation. Props level, idle throttle. Real props off freefall runs faster; with idle props windmilling and the plan drag this airframe carries, 15 to 30 is the defensible band. Tension with tests/thresholds.json check 7 is recorded in .loop/threshold-disputes.md."
+  },
+  "P6": { "trials": 200, "max_speed_m_s": 50, "tunnelling_events_allowed": 0 },
+  "P7": { "input_to_photon_ms_max": 16, "input_poll_hz_min": 250 },
+  "F1": { "lap_time_margin_pct": 10 },
+  "F2": { "min_score": 4, "max_score": 5 },
+  "T3": { "position_tolerance_m": 0.05, "rotation_tolerance_deg": 1 },
+  "G2": { "fps": 144, "p99_frame_ms": 8.3, "zero_frames_over_ms": 16, "benchmark_s": 60, "max_draw_calls": 400 }
+}

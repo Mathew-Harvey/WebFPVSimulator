@@ -1,0 +1,107 @@
+{
+  "iteration": 0,
+  "gates": {
+    "P1": "pass",
+    "P2": "pass",
+    "P3": "fail",
+    "P4": "fail",
+    "P5": "fail",
+    "P6": "fail",
+    "P7": "fail",
+    "F1": "fail",
+    "F2": "fail",
+    "F3": "fail",
+    "T1": "fail",
+    "T2": "fail",
+    "T3": "fail",
+    "T4": "fail",
+    "T5": "fail",
+    "G1": "fail",
+    "G2": "fail",
+    "G3": "fail",
+    "G4": "fail",
+    "G5": "fail"
+  },
+  "consecutive_all_green": 0,
+  "open_findings": [
+    "P3 blocker: physics/reference-logs/ is empty. Real Betaflight blackbox logs from a 6S 5 inch race build are required, covering hard cornering, a full throttle straight, a dive into propwash, a Split-S, a low proximity pass, and a tumble recovery. They cannot be fabricated. Until a human supplies them, P3 cannot pass and the merge condition is unreachable."
+  ],
+  "tried_and_rejected": [],
+  "conflicts": [],
+  "last_run": {
+    "failing": [
+      {
+        "id": "P3",
+        "reason": "BLOCKER: no real blackbox logs. Required coverage: hard cornering, full throttle straight, dive into propwash, Split-S, low proximity pass, tumble or stall recovery. Cannot be fabricated."
+      },
+      {
+        "id": "P4",
+        "reason": "hover 25.5% (band 0.17,0.22); TWR 4.3 (band 8,12); 80% climb in 1100 ms (band 150,400)"
+      },
+      {
+        "id": "P5",
+        "reason": "prop FM 2.01 (band 0.4,0.6)"
+      },
+      {
+        "id": "P6",
+        "reason": "not built: swept volume collision, prop strike, mesh versus pole"
+      },
+      {
+        "id": "P7",
+        "reason": "fails by design today: gamepad sampled per frame in src/main.js, not on an independent 250 Hz path; photon latency unmeasurable headless"
+      },
+      {
+        "id": "F1",
+        "reason": "not built: scripted frozen controller and reference track"
+      },
+      {
+        "id": "F2",
+        "reason": "not built: 144 fps clip capture and fresh instance grading"
+      },
+      {
+        "id": "F3",
+        "reason": "not built: propwash, sag on lap 4, AoA drag delta, gyro coupling sign, link latency, wind asserts"
+      },
+      {
+        "id": "T1",
+        "reason": "not built"
+      },
+      {
+        "id": "T2",
+        "reason": "not built: UTT-5, UTT-3, UTT-6 from official PDFs"
+      },
+      {
+        "id": "T3",
+        "reason": "not built"
+      },
+      {
+        "id": "T4",
+        "reason": "not built"
+      },
+      {
+        "id": "T5",
+        "reason": "not built: lap timing, gate pass by swept volume"
+      },
+      {
+        "id": "G1",
+        "reason": "not built: docs/render-spec.md and enforcement tests"
+      },
+      {
+        "id": "G2",
+        "reason": "environment: cannot measure desktop discrete GPU of RTX 3060 class, 2560x1440; needs a human run of the benchmark"
+      },
+      {
+        "id": "G3",
+        "reason": "not built: barrel distortion, jello, exposure adaptation, motion blur, CA, feed degradation"
+      },
+      {
+        "id": "G4",
+        "reason": "partial: physics has no wind, so the field cannot be shared"
+      },
+      {
+        "id": "G5",
+        "reason": "not built"
+      }
+    ]
+  }
+}

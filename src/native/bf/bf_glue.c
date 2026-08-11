@@ -153,6 +153,7 @@ int bf_config_apply_setting(const char *key, const char *value, double num,
   if (str_eq2(key, "yaw_srate")) { rates->rates[FD_YAW] = n; return SIM_OK; }
   if (str_eq2(key, "thr_mid")) { rates->thrMid8 = n; return SIM_OK; }
   if (str_eq2(key, "thr_expo")) { rates->thrExpo8 = n; return SIM_OK; }
+  if (str_eq2(key, "rc_smoothing_mode")) { rxConfigMutable()->rc_smoothing_mode = n; return SIM_OK; }
 
   if (str_eq2(key, "p_roll")) { pid->pid[PID_ROLL].P = n; return SIM_OK; }
   if (str_eq2(key, "i_roll")) { pid->pid[PID_ROLL].I = n; return SIM_OK; }
@@ -209,6 +210,17 @@ double sim_bf_debug(int what) {
   case 5: return getSetpointRate(FD_ROLL);
   case 6: return motor[0];
   case 7: return motor[1];
+  case 8: return getSetpointRate(FD_PITCH);
+  case 9: return gyro.gyroADCf[FD_ROLL];
+  /* Plant constants for the gate runner, so figure of merit and thrust
+   * arithmetic are checked against what is actually compiled in. */
+  case 10: return PLANT.kt;
+  case 11: return PLANT.kq;
+  case 12: {
+    const double area = 3.14159265358979 * 0.0635 * 0.0635;
+    const double ideal = sim_sqrt_pub(PLANT.kt * PLANT.kt * PLANT.kt) / sim_sqrt_pub(2.0 * PLANT.rho * area);
+    return ideal / PLANT.kq;
+  }
   default: return 0.0;
   }
 }

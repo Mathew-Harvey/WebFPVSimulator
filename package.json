@@ -12,6 +12,7 @@
     "verify": "node tests/verify.js",
     "build:wasm": "bash scripts/build-wasm.sh",
     "gen:baseline": "node tests/gen/gen-baseline.js",
-    "serve": "node scripts/serve.js"
+    "serve": "node scripts/serve.js",
+    "gates": "node scripts/gates.js"
   }
 }

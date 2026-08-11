@@ -43,8 +43,8 @@ import * as THREE from 'three';
 import { celMaterial, outlineHull, updateCelTime } from './celmat.js';
 
 const SUN_DIR = new THREE.Vector3(0.60, 0.50, 0.62).normalize();
-const HORIZON = 0xcfe0ea;
-const SKY_HIGH = 0x2f6fc4;
+const HORIZON = 0xf2e3cb;
+const SKY_HIGH = 0x2e6bb8;
 const FOG_NEAR = 130;
 const FOG_FAR = 780;
 
@@ -168,7 +168,7 @@ function terrain(height, samples) {
     c.lerp(new THREE.Color(0x7fa84a), Math.max(0, (patch - 0.5) * 1.5));
     c.lerp(new THREE.Color(0x3f7a3a), Math.max(0, (0.5 - patch) * 1.1));
     const speck = fbm(x * 0.06, z * 0.06);
-    c.multiplyScalar(0.92 + speck * 0.16);
+    c.multiplyScalar(0.94 + speck * 0.12);
     c.lerp(rockCol, Math.min(0.5, Math.max(0, (y - 14) / 22)) * (0.5 + speck * 0.5));
     /* Beaten earth along the racing line, and sand at the waterline. */
     let dTrack = 1e9;
@@ -327,8 +327,8 @@ function grassField(height, samples, rng) {
   const colors = new Float32Array(BLADES * 5 * 3);
   const bend = new Float32Array(BLADES * 5);
   const indices = new Uint32Array(BLADES * 9);
-  const base = new THREE.Color(0x62914a);
-  const tip = new THREE.Color(0x9cbe6c);
+  const base = new THREE.Color(0x33602f);
+  const tip = new THREE.Color(0x9ecf5e);
   const c = new THREE.Color();
   let vi = 0;
   let ii = 0;
@@ -432,7 +432,7 @@ function grassField(height, samples, rng) {
         // so an unlit field reads as a dark rash on top of bright ground.
         // Bake the same gain in here, and keep the root to tip ramp
         // shallow so the field stays a single mass at distance.
-        vec3 col = vColor * mix(1.0, 1.22, vBend);
+        vec3 col = vColor;
         float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
         gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
       }
@@ -673,7 +673,7 @@ export function buildScene(canvas) {
 
   const rng = makeRng(20260811);
 
-  const sun = new THREE.DirectionalLight(0xffe6bd, 2.9);
+  const sun = new THREE.DirectionalLight(0xffe9c4, 1.45);
   sun.position.copy(SUN_DIR).multiplyScalar(120);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -690,7 +690,7 @@ export function buildScene(canvas) {
   scene.add(sun.target);
   /* Sky above, warm grass bounce below: this is what keeps shadowed faces
    * from going dead grey. */
-  scene.add(new THREE.HemisphereLight(0x9dc4ee, 0x6b7f42, 1.05));
+  scene.add(new THREE.HemisphereLight(0x8fb8e8, 0x4a6b34, 0.42));
 
   const curve = trackCurve();
   const samples = curve.getPoints(180);

@@ -82,6 +82,10 @@ async function boot() {
   const startYaw = start.heading;
   const startX = start.position.x;
   const startZ = start.position.z;
+  /* The start gate sits on terrain that is not at y = 0. Spawning at the
+   * gate's xz without its height puts the craft underground, looking up
+   * at the lit underside of the terrain plane. */
+  const startY = start.position.y;
 
   let cellIdx = 0;
   let simTimeMs = 0;
@@ -221,7 +225,7 @@ async function boot() {
         stateCurr = readState();
         simTimeMs += steps;
       }
-      if (stateCurr[3] + SPAWN_ALT <= 0.03 && simTimeMs > 50) {
+      if (stateCurr[3] + SPAWN_ALT + startY <= view.height(pCurr.x, pCurr.z) + 0.03 && simTimeMs > 50) {
         crashed = true;
         crashedAtWall = nowWall;
       }
@@ -233,8 +237,8 @@ async function boot() {
      * flies about its own origin; the start gate placement is a render
      * side offset and rotation, so nothing about the trajectory changes. */
     const a = Math.max(0, Math.min(1, acc));
-    simPosToThree(statePrev[1], statePrev[2], statePrev[3] + SPAWN_ALT, pPrev);
-    simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT, pCurr);
+    simPosToThree(statePrev[1], statePrev[2], statePrev[3] + SPAWN_ALT + startY, pPrev);
+    simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT + startY, pCurr);
     pCurr.lerpVectors(pPrev, pCurr, a);
     simQuatToThree(statePrev[7], statePrev[8], statePrev[9], statePrev[10], qPrev);
     simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCurr);

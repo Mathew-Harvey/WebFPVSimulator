@@ -37,6 +37,36 @@
 import * as THREE from 'three';
 
 /*
+ * Three.js samples the toon gradient map as
+ *   return vec3( texture2D( gradientMap, coord ).r );
+ * that is, it takes the red channel and splats it to grey. The whole
+ * point of the ramp below is that shadow and light are different HUES,
+ * and that is thrown away before it reaches a single pixel: every
+ * shadowed surface comes out as a grey copy of the lit one, which is
+ * exactly what a flat, cheap looking stylised render is.
+ *
+ * Patch the chunk once, at import, so the ramp is sampled in colour. This
+ * keeps all of Three's shadow, fog and light plumbing intact. The guard
+ * matters: a Three version bump that rewords this line would otherwise
+ * silently drop the renderer back to greyscale with nothing to show for
+ * it, and that is a bug nobody would find by looking at the code.
+ */
+{
+  const before = THREE.ShaderChunk.gradientmap_pars_fragment;
+  const after = before.replace(
+    'vec3( texture2D( gradientMap, coord ).r )',
+    'texture2D( gradientMap, coord ).rgb',
+  );
+  if (after === before) {
+    throw new Error(
+      'celmat: could not patch gradientmap_pars_fragment for RGB toon ramps. ' +
+        'Three.js changed the chunk; the cel shading would silently render grey.',
+    );
+  }
+  THREE.ShaderChunk.gradientmap_pars_fragment = after;
+}
+
+/*
  * Four band ramp, cool shadow to warm light. The steps are deliberately
  * uneven: a wide lit band, a narrow terminator, then two shadow bands, so
  * most of a curved surface reads as one flat shape with a crisp edge,
@@ -44,10 +74,10 @@ import * as THREE from 'three';
  */
 function celRamp() {
   const stops = [
-    [0.40, 0.47, 0.66], /* deep shadow, sky blue bounce */
-    [0.55, 0.60, 0.74], /* shadow */
-    [0.86, 0.86, 0.86], /* terminator */
-    [1.00, 0.99, 0.94], /* sunlit, warm */
+    [0.30, 0.38, 0.62], /* deep shadow, sky blue bounce */
+    [0.42, 0.51, 0.72], /* shadow */
+    [0.94, 0.80, 0.62], /* terminator, warm sliver where light wraps */
+    [1.00, 0.97, 0.88], /* sunlit */
   ];
   const width = 64;
   const data = new Uint8Array(width * 4);
@@ -55,9 +85,9 @@ function celRamp() {
     const t = i / (width - 1);
     /* Hard steps with a one texel soft edge so it does not alias. */
     let band = 0;
-    if (t > 0.30) band = 1;
-    if (t > 0.48) band = 2;
-    if (t > 0.56) band = 3;
+    if (t > 0.36) band = 1;
+    if (t > 0.46) band = 2;
+    if (t > 0.53) band = 3;
     const c = stops[band];
     data[i * 4 + 0] = Math.round(c[0] * 255);
     data[i * 4 + 1] = Math.round(c[1] * 255);

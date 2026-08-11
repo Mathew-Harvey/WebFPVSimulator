@@ -200,7 +200,7 @@ function terrain(height, samples) {
     }
   }
   geo.attributes.color.needsUpdate = true;
-  const mat = celMaterial({ color: 0xffffff, rim: 0.0, cloudShadow: 0.5 });
+  const mat = celMaterial({ color: 0xffffff, rim: 0.0, cloudShadow: 0.34 });
   mat.vertexColors = true;
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
@@ -292,7 +292,7 @@ function cliff(rng, height, x, z) {
     const h = 9 + rng() * 15;
     const m = new THREE.Mesh(
       new THREE.CylinderGeometry(r * 0.72, r, h, 6 + Math.floor(rng() * 3), 1),
-      celMaterial({ color: i % 2 ? 0x8f8a7c : 0x9a9487, rim: 0.24, cloudShadow: 0.45 }),
+      celMaterial({ color: i % 2 ? 0x8f8a7c : 0x9a9487, rim: 0.24, cloudShadow: 0.3 }),
     );
     m.position.y = y + h / 2;
     m.rotation.y = rng() * 3;
@@ -306,7 +306,7 @@ function cliff(rng, height, x, z) {
   /* Grass cap so it does not look like bare geology dropped in a field. */
   const cap = new THREE.Mesh(
     new THREE.CylinderGeometry(r * 0.78, r * 0.95, 1.6, 7),
-    celMaterial({ color: 0x5fa348, rim: 0.3, cloudShadow: 0.45 }),
+    celMaterial({ color: 0x5fa348, rim: 0.3, cloudShadow: 0.3 }),
   );
   cap.position.y = y + 0.8;
   cap.castShadow = true;
@@ -629,8 +629,32 @@ function skyDome() {
  * stay bright and flat like painted shapes. */
 function clouds(rng) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, fog: false });
-  const shade = new THREE.MeshBasicMaterial({ color: 0xc3d4e6, fog: false });
+  /* One mesh per puff with a hard painted terminator keyed to world up,
+   * plus a warm sun side rim. The previous build overlaid a second,
+   * slightly smaller offset sphere for the underside, and the two
+   * surfaces intersected and stippled: that speckling was a z fighting
+   * artefact, not shading. */
+  const mat = new THREE.ShaderMaterial({
+    fog: false,
+    uniforms: { uSun: { value: SUN_DIR.clone() } },
+    vertexShader: `
+      varying vec3 vN;
+      void main() {
+        vN = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vN;
+      uniform vec3 uSun;
+      void main() {
+        vec3 n = normalize(vN);
+        vec3 col = mix(vec3(0.70, 0.77, 0.91), vec3(1.0, 0.98, 0.94), step(0.12, n.y));
+        col += vec3(1.0, 0.86, 0.60) * pow(max(dot(n, normalize(uSun)), 0.0), 3.0) * 0.28;
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+  });
   for (let i = 0; i < 26; i += 1) {
     const cluster = new THREE.Group();
     const puffs = 4 + Math.floor(rng() * 5);
@@ -640,10 +664,6 @@ function clouds(rng) {
       puff.position.set((rng() - 0.5) * 70, (rng() - 0.5) * 12, (rng() - 0.5) * 40);
       puff.scale.y = 0.52;
       cluster.add(puff);
-      const under = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 0.92, 1), shade);
-      under.position.copy(puff.position).add(new THREE.Vector3(0, -r * 0.13, 0));
-      under.scale.y = 0.42;
-      cluster.add(under);
     }
     const a = rng() * Math.PI * 2;
     const rad = 260 + rng() * 780;
@@ -696,7 +716,9 @@ export function buildScene(canvas) {
   const samples = curve.getPoints(180);
   const height = makeHeightField(samples);
 
-  scene.add(terrain(height, samples));
+  const ground = terrain(height, samples);
+  scene.add(ground);
+  const occluders = [];
   const water0 = water();
   scene.add(water0.mesh);
   const grass = grassField(height, samples, rng);
@@ -736,7 +758,9 @@ export function buildScene(canvas) {
     if (d < 15) {
       continue;
     }
-    scene.add(rng() < 0.74 ? tree(rng, height, x, z) : rock(rng, height, x, z));
+    const isTree = rng() < 0.74;
+    scene.add(isTree ? tree(rng, height, x, z) : rock(rng, height, x, z));
+    occluders.push({ x, z, r: isTree ? 2.2 : 1.4 });
   }
 
   /* Cliff landmarks, kept off the racing line but inside the valley so
@@ -746,6 +770,7 @@ export function buildScene(canvas) {
   ];
   for (const [cx, cz] of cliffSpots) {
     scene.add(cliff(rng, height, cx, cz));
+    occluders.push({ x: cx, z: cz, r: 13 });
   }
 
   /* Flowers: a few thousand tiny saturated quads. They cost almost
@@ -794,6 +819,69 @@ export function buildScene(canvas) {
     scene.add(flowers);
   }
 
+  /*
+   * Baked ambient occlusion into the terrain vertex colours. Contact
+   * shading is the cheapest and highest yield spatial cue there is, and a
+   * stylised render needs it MORE than a photoreal one, because there is
+   * no texture detail or specular variation to fall back on: without it
+   * every tree, rock and gate foot floats on the grass instead of sitting
+   * in it. The scatter is deterministic so this can be done once at load
+   * and costs nothing at runtime, and unlike the shadow map it reaches
+   * the full draw distance.
+   *
+   * Occlusion tints toward the shadow blue rather than multiplying toward
+   * black, so it stays inside the same warm light, cool shadow logic as
+   * the ramp and the cloud shadows.
+   */
+  {
+    const CELL = 8;
+    const grid = new Map();
+    for (const o of occluders) {
+      const key = `${Math.floor(o.x / CELL)},${Math.floor(o.z / CELL)}`;
+      let bucket = grid.get(key);
+      if (!bucket) {
+        bucket = [];
+        grid.set(key, bucket);
+      }
+      bucket.push(o);
+    }
+    const gpos = ground.geometry.attributes.position;
+    const gcol = ground.geometry.attributes.color;
+    const aoTint = new THREE.Color(0x707fb8);
+    for (let i = 0; i < gpos.count; i += 1) {
+      const x = gpos.getX(i);
+      const z = gpos.getZ(i);
+      let occ = 0;
+      const cx = Math.floor(x / CELL);
+      const cz = Math.floor(z / CELL);
+      for (let ax = cx - 2; ax <= cx + 2; ax += 1) {
+        for (let az = cz - 2; az <= cz + 2; az += 1) {
+          const bucket = grid.get(`${ax},${az}`);
+          if (!bucket) {
+            continue;
+          }
+          for (const o of bucket) {
+            const d = Math.hypot(x - o.x, z - o.z);
+            const k = 1 - Math.min(1, d / (2.6 * o.r));
+            if (k > 0) {
+              occ += Math.pow(k, 1.7);
+            }
+          }
+        }
+      }
+      occ = Math.min(0.75, occ);
+      if (occ > 0.001) {
+        gcol.setXYZ(
+          i,
+          gcol.getX(i) * (1 - occ) + gcol.getX(i) * aoTint.r * occ,
+          gcol.getY(i) * (1 - occ) + gcol.getY(i) * aoTint.g * occ,
+          gcol.getZ(i) * (1 - occ) + gcol.getZ(i) * aoTint.b * occ,
+        );
+      }
+    }
+    gcol.needsUpdate = true;
+  }
+
   /* Course markers along the circuit: close range speed reference. */
   const flags = [];
   const flagColors = [0xe8503a, 0xffd257, 0x46b0e0, 0xffffff];
@@ -812,9 +900,11 @@ export function buildScene(canvas) {
   /* Mountain rings. Cones are centred on their origin, so the base must
    * sit at y = h/2 or the range floats. Far ring lighter for aerial
    * perspective, and both sit outside the fog so they stay as flat shapes. */
-  for (let ring = 0; ring < 3; ring += 1) {
-    const dist = 780 + ring * 260;
-    const col = [0x7f9cbe, 0x93aecb, 0xacc2d9][ring];
+  const ridgeDist = [560, 830, 1080, 1330];
+  const ridgeCol = [0x51796a, 0x5d7fa8, 0x8aa6c6, 0xb4c8dc];
+  for (let ring = 0; ring < 4; ring += 1) {
+    const dist = ridgeDist[ring];
+    const col = ridgeCol[ring];
     for (let i = 0; i < 34; i += 1) {
       const a = (i / 34) * Math.PI * 2 + ring * 0.09 + rng() * 0.05;
       const h = 110 + rng() * 210;

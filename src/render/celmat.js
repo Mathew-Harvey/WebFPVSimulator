@@ -186,7 +186,7 @@ export function celMaterial(opts = {}) {
     shader.uniforms.uSpecDir = { value: new THREE.Vector3(0.45, 0.8, 0.4) };
     shader.uniforms.uCloudShadow = { value: cloud };
     shader.uniforms.uCelTime = { value: 0 };
-    shader.uniforms.uCloudTint = { value: new THREE.Color(0x5c7ba8) };
+    shader.uniforms.uCloudTint = { value: new THREE.Color(0x8397be) };
     registered.push(shader.uniforms.uCelTime);
 
     shader.vertexShader = shader.vertexShader

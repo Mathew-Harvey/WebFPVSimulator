@@ -103,14 +103,19 @@ void bridge_reset(void);
 void bridge_run(const SimState *s, const double rc[4],
                 double duty[SIM_MOTOR_COUNT]);
 
-/* Parsed rate profile access for the bridge implementation. */
-typedef struct {
-  int rates_type; /* 0 betaflight, 1 kiss?, 2 actual; matches Betaflight enum at apply time */
-  double rc_rate[3];
-  double expo[3];
-  double srate[3];
-} SimRates;
-
-const SimRates *bridge_rates(void);
+/*
+ * Betaflight glue, implemented in bf/bf_glue.c which is compiled against
+ * the vendored Betaflight headers. bridge.c stays free of Betaflight
+ * includes so the tokenizer compiles standalone.
+ *
+ * bf_config_begin resets the Betaflight parameter groups to their real
+ * defaults. bf_config_apply_setting applies one "set key = value" line;
+ * unknown keys return SIM_OK and are ignored. bf_config_finish runs the
+ * Betaflight init chain (pid, rc processing, mixer endpoints).
+ */
+void bf_config_begin(void);
+int bf_config_apply_setting(const char *key, const char *value, double num,
+                            int have_num);
+int bf_config_finish(void);
 
 #endif /* SIM_INTERNAL_H */

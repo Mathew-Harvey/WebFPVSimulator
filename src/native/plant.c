@@ -64,9 +64,17 @@ const PlantParams PLANT = {
   .rho = 1.225,
 };
 
-/* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left.
- * Props-in (normal) rotation: RR and FL clockwise seen from above (spin -1
- * about z up), FR and RL counter clockwise (+1). */
+/* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left,
+ * spin +1 is counter clockwise seen from above. Betaflight props-in
+ * (normal) rotation: RR and FL clockwise (-1), FR and RL counter
+ * clockwise (+1). Consistency check for the whole yaw sign chain: the
+ * firmware's internal positive yaw is nose left (+r, z up), mixer.c
+ * negates the yaw pid sum when yaw_motors_reversed is false, and the
+ * mixer yaw column is RR -1, FR +1, RL +1, FL -1; a negative yaw pid sum
+ * therefore raises the counter clockwise pair FR and RL, whose stator
+ * reaction is nose right, matching the negative setpoint. Getting any
+ * single link of that chain backwards turns the yaw loop into positive
+ * feedback; the diagnosis is recorded in PROGRESS.md. */
 const double PLANT_SPIN[SIM_MOTOR_COUNT] = { -1.0, 1.0, 1.0, -1.0 };
 const double PLANT_POS_X[SIM_MOTOR_COUNT] = { -0.0777817459305202, 0.0777817459305202,
                                               -0.0777817459305202, 0.0777817459305202 };

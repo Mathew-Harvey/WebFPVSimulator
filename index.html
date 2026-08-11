@@ -1,0 +1,51 @@
+<!doctype html>
+<!--
+  WebFPVSimulator Stage 1 shell: grey ground plane, horizon, a quad and a
+  stick input. Serve the repo root (npm run serve) and open this page.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebFPVSimulator</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #202428; }
+      #view { display: block; width: 100%; height: 100%; }
+      #hud {
+        position: fixed; left: 10px; top: 10px; color: #d8dce0;
+        font: 12px/1.5 monospace; white-space: pre; user-select: none;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none;
+      }
+      #msg {
+        position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%);
+        color: #ffd257; font: bold 22px monospace; text-align: center;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.9); pointer-events: none; white-space: pre;
+      }
+    </style>
+    <script type="importmap">
+      { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+    </script>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="hud"></div>
+    <div id="msg"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

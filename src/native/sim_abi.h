@@ -107,7 +107,8 @@ int sim_set_cell_voltage(double volts);
 /*
  * Deliver one input sample. t_seconds is the sample's own timestamp on the
  * simulated clock. Samples arrive in non-decreasing timestamp order, always
- * before the 1 ms step in which their timestamp falls is executed.
+ * before the 1 ms step in which their timestamp falls is executed. The
+ * stream restarts at t = 0 after sim_init or sim_reset.
  */
 int sim_input(double t_seconds, double roll, double pitch, double yaw,
               double throttle);

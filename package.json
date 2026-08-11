@@ -5,6 +5,9 @@
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "verify": "node tests/verify.js",
     "build:wasm": "bash scripts/build-wasm.sh",

@@ -92,17 +92,26 @@ function punchOut(sim, cellVoltage, hoverThrottle, settleS, punchS) {
   let z0 = NaN;
   let z1 = NaN;
   let peakRpm = 0;
-  runScript(sim, [{ durMs: settleMs, throttle: hoverThrottle }], (tMs, state) => {
-    z0 = state[ST.PZ];
-  });
-  runScript(sim, [{ durMs: punchMs, throttle: 1 }], (tMs, state) => {
-    z1 = state[ST.PZ];
-    for (const i of [ST.RPM0, ST.RPM1, ST.RPM2, ST.RPM3]) {
-      if (state[i] > peakRpm) {
-        peakRpm = state[i];
+  const tSettled = runScript(
+    sim,
+    [{ durMs: settleMs, throttle: hoverThrottle }],
+    (tMs, state) => {
+      z0 = state[ST.PZ];
+    },
+  );
+  runScript(
+    sim,
+    [{ durMs: punchMs, throttle: 1 }],
+    (tMs, state) => {
+      z1 = state[ST.PZ];
+      for (const i of [ST.RPM0, ST.RPM1, ST.RPM2, ST.RPM3]) {
+        if (state[i] > peakRpm) {
+          peakRpm = state[i];
+        }
       }
-    }
-  });
+    },
+    tSettled,
+  );
   return { gain: z1 - z0, peakRpm };
 }
 
@@ -312,12 +321,17 @@ export function buildChecks() {
         must(sim.motorOverride(-1, 0), 'sim_motor_override');
         const preMs = Math.round(th.pre_hold_s.value * 1000);
         const settleMs = Math.round(th.settle_s.value * 1000);
-        runScript(sim, [{ durMs: preMs, throttle: 0 }], null);
+        const tPre = runScript(sim, [{ durMs: preMs, throttle: 0 }], null);
         must(sim.motorOverride(0, 1), 'sim_motor_override');
         const rpmByMs = [];
-        runScript(sim, [{ durMs: settleMs, throttle: 0 }], (tMs, state) => {
-          rpmByMs.push(state[ST.RPM0]);
-        });
+        runScript(
+          sim,
+          [{ durMs: settleMs, throttle: 0 }],
+          (tMs, state) => {
+            rpmByMs.push(state[ST.RPM0]);
+          },
+          tPre,
+        );
         const finalRpm = rpmByMs[rpmByMs.length - 1];
         if (!(finalRpm > 0)) {
           return { measured: 'no RPM response', pass: false, reason: 'motor never spun up' };
@@ -372,12 +386,13 @@ export function buildChecks() {
         must(sim.reset(), 'sim_reset');
         must(sim.setCellVoltage(th.cell_voltage.value), 'sim_set_cell_voltage');
         const holdMs = Math.round(th.roll_hold_s.value * 1000);
+        const dt = 1 / ctx.th.physics.step_hz.value;
         let yawRad = 0;
         runScript(
           sim,
           [{ durMs: holdMs, throttle: th.throttle.value, roll: 1 }],
           (tMs, state) => {
-            yawRad += state[ST.R] * 0.001;
+            yawRad += state[ST.R] * dt;
           },
         );
         const yawDeg = yawRad * DEG;

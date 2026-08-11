@@ -1,14 +1,14 @@
 {
   "_about": [
-    "Single source of every numeric band and method constant used by npm run verify.",
-    "Each value carries a source. 'STAGE1.md check N' means the number is copied from the",
-    "Verification checks table or its method column. 'Loop A harness choice' means STAGE1.md",
-    "left the number unspecified and Loop A fixed it; the reasoning is in PROGRESS.md.",
+    "Single source of every numeric band and method constant used by the harness,",
+    "meaning npm run verify and npm run gen:baseline. Each value carries a source.",
+    "'STAGE1.md check N' means the number is copied from the Verification checks table",
+    "or its method column. 'Loop A harness choice' means STAGE1.md left the number",
+    "unspecified and Loop A fixed it; the reasoning is in PROGRESS.md.",
     "This file is owned by Loop A. Loop B must not edit it. Argue in PROGRESS.md instead."
   ],
   "physics": {
-    "step_hz": { "value": 1000, "source": "CLAUDE.md, fixed timestep 1000 Hz" },
-    "cells": { "value": 6, "source": "STAGE1.md reference airframe, 6S battery" }
+    "step_hz": { "value": 1000, "source": "CLAUDE.md fixed timestep, mirrored by SIM_STEP_HZ in sim_abi.h" }
   },
   "replay": {
     "canonical_render_hz": { "value": 60, "source": "Loop A harness choice, canonical sim_step batching rate for the trace hash in checks 2 and 3" },

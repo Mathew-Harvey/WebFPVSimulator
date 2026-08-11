@@ -9,10 +9,10 @@
  * the environment.
  *
  * The file is committed and byte-stable. Regenerating it is a Loop A
- * action only; the runner never calls this, and Loop B must not run it
- * (see tests/README in SKILL.md terms: editing or regenerating baseline.rec
- * invalidates a run). The script therefore refuses to overwrite an
- * existing file unless given --force.
+ * action only; the runner never calls this, and Loop B must not run it.
+ * Per .claude/skills/verify-flight-model/SKILL.md, editing or regenerating
+ * baseline.rec invalidates a run. The script therefore refuses to
+ * overwrite an existing file unless given --force.
  *
  * Profile, 30 s at 250 Hz:
  *   0.0  -  4.0  hover with small stick jiggle
@@ -44,7 +44,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,9 +52,7 @@ import { fileURLToPath } from 'node:url';
 import { encodeRec } from '../lib/recfile.js';
 import { sha256Hex } from '../lib/replay.js';
 
-const RATE_HZ = 250;
 const DURATION_S = 30;
-const COUNT = RATE_HZ * DURATION_S;
 
 // Breakpoint tables, [time s, value]. Linear interpolation between points,
 // held flat before the first and after the last.
@@ -173,9 +171,18 @@ async function main() {
   checkTable('pitch', PITCH);
   checkTable('yaw', YAW);
 
-  const samples = new Array(COUNT);
-  for (let i = 0; i < COUNT; i += 1) {
-    const tUs = i * 4000;
+  const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+  const th = JSON.parse(await readFile(join(root, 'tests/thresholds.json'), 'utf8'));
+  const rateHz = th.replay.input_sample_hz.value;
+  const usPerSample = 1e6 / rateHz;
+  if (!Number.isInteger(usPerSample)) {
+    throw new Error(`input_sample_hz ${rateHz} does not divide one second into whole microseconds`);
+  }
+  const count = rateHz * DURATION_S;
+
+  const samples = new Array(count);
+  for (let i = 0; i < count; i += 1) {
+    const tUs = i * usPerSample;
     const t = tUs / 1e6;
     samples[i] = {
       tUs,
@@ -185,8 +192,7 @@ async function main() {
       throttle: sample(THROTTLE, t),
     };
   }
-  const bytes = encodeRec(RATE_HZ, samples);
-  const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+  const bytes = encodeRec(rateHz, samples);
   const out = join(root, 'tests/inputs/baseline.rec');
   if (existsSync(out) && !process.argv.includes('--force')) {
     console.error(
@@ -196,7 +202,7 @@ async function main() {
   }
   await writeFile(out, bytes);
   console.log(`gen:baseline: wrote ${out}`);
-  console.log(`gen:baseline: ${COUNT} samples at ${RATE_HZ} Hz, ${bytes.length} bytes`);
+  console.log(`gen:baseline: ${count} samples at ${rateHz} Hz, ${bytes.length} bytes`);
   console.log(`gen:baseline: sha256 ${await sha256Hex([bytes])}`);
 }
 

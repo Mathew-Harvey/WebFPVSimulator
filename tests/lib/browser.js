@@ -51,6 +51,19 @@ class Cdp {
     this.nextId = 1;
     this.pending = new Map();
     this.listeners = [];
+    this.closedErr = null;
+    const fail = (err) => {
+      if (this.closedErr) {
+        return;
+      }
+      this.closedErr = err;
+      for (const { reject } of this.pending.values()) {
+        reject(err);
+      }
+      this.pending.clear();
+    };
+    ws.addEventListener('close', () => fail(new Error('CDP connection closed, Chrome died mid-run')));
+    ws.addEventListener('error', () => fail(new Error('CDP connection errored')));
     ws.addEventListener('message', (ev) => {
       const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data));
       if (msg.id && this.pending.has(msg.id)) {
@@ -70,6 +83,9 @@ class Cdp {
   }
 
   send(method, params = {}, sessionId = undefined) {
+    if (this.closedErr) {
+      return Promise.reject(this.closedErr);
+    }
     const id = this.nextId;
     this.nextId += 1;
     const payload = { id, method, params };
@@ -114,38 +130,45 @@ export async function runBrowserHarness(pageUrl, { timeoutMs = 120000 } = {}) {
     );
   }
   const userDataDir = await mkdtemp(join(tmpdir(), 'sim-chrome-'));
-  const proc = spawn(chrome, [
-    '--headless=new',
-    '--no-sandbox',
-    '--disable-gpu',
-    '--disable-dev-shm-usage',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--remote-debugging-port=0',
-    `--user-data-dir=${userDataDir}`,
-    'about:blank',
-  ]);
-  let stderrBuf = '';
-  const wsUrl = await new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`Chrome did not report a DevTools endpoint. stderr: ${stderrBuf.slice(-2000)}`)),
-      30000,
-    );
-    proc.stderr.on('data', (d) => {
-      stderrBuf += d.toString();
-      const m = stderrBuf.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (m) {
-        clearTimeout(timer);
-        resolve(m[1]);
-      }
-    });
-    proc.on('exit', (code) => {
-      clearTimeout(timer);
-      reject(new Error(`Chrome exited early with code ${code}. stderr: ${stderrBuf.slice(-2000)}`));
-    });
-  });
-
+  let proc;
   try {
+    proc = spawn(chrome, [
+      '--headless=new',
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--remote-debugging-port=0',
+      `--user-data-dir=${userDataDir}`,
+      'about:blank',
+    ]);
+    let stderrBuf = '';
+    const wsUrl = await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Chrome did not report a DevTools endpoint. stderr: ${stderrBuf.slice(-2000)}`)),
+        30000,
+      );
+      // Without an error listener a failed spawn raises an uncaught
+      // exception and kills the runner instead of failing the check.
+      proc.on('error', (err) => {
+        clearTimeout(timer);
+        reject(new Error(`Chrome failed to start: ${err.message}`));
+      });
+      proc.stderr.on('data', (d) => {
+        stderrBuf += d.toString();
+        const m = stderrBuf.match(/DevTools listening on (ws:\/\/\S+)/);
+        if (m) {
+          clearTimeout(timer);
+          resolve(m[1]);
+        }
+      });
+      proc.on('exit', (code) => {
+        clearTimeout(timer);
+        reject(new Error(`Chrome exited early with code ${code}. stderr: ${stderrBuf.slice(-2000)}`));
+      });
+    });
+
     const ws = new WebSocket(wsUrl);
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve, { once: true });
@@ -195,15 +218,26 @@ export async function runBrowserHarness(pageUrl, { timeoutMs = 120000 } = {}) {
     // promise to exist before awaiting it.
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const probe = await cdp.send(
-        'Runtime.evaluate',
-        {
-          expression: 'typeof window.__simHarnessResult',
-          returnByValue: true,
-        },
-        sessionId,
-      );
-      if (probe.result?.value === 'object') {
+      let ready = false;
+      try {
+        const probe = await cdp.send(
+          'Runtime.evaluate',
+          {
+            expression: 'typeof window.__simHarnessResult',
+            returnByValue: true,
+          },
+          sessionId,
+        );
+        ready = probe.result?.value === 'object';
+      } catch (e) {
+        // A probe can land in the gap between the about:blank context
+        // being destroyed and the harness page context existing; that
+        // rejection means retry, not failure. A dead connection does not.
+        if (cdp.closedErr) {
+          throw e;
+        }
+      }
+      if (ready) {
         break;
       }
       if (Date.now() > deadline) {
@@ -212,6 +246,7 @@ export async function runBrowserHarness(pageUrl, { timeoutMs = 120000 } = {}) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
+    let raceTimer;
     const evalResult = await Promise.race([
       cdp.send(
         'Runtime.evaluate',
@@ -223,10 +258,10 @@ export async function runBrowserHarness(pageUrl, { timeoutMs = 120000 } = {}) {
         },
         sessionId,
       ),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('browser harness timed out')), timeoutMs),
-      ),
-    ]);
+      new Promise((_, reject) => {
+        raceTimer = setTimeout(() => reject(new Error('browser harness timed out')), timeoutMs);
+      }),
+    ]).finally(() => clearTimeout(raceTimer));
     if (evalResult.exceptionDetails) {
       throw new Error(
         `browser harness evaluation failed: ${JSON.stringify(evalResult.exceptionDetails)}`,
@@ -235,7 +270,9 @@ export async function runBrowserHarness(pageUrl, { timeoutMs = 120000 } = {}) {
     ws.close();
     return { result: evalResult.result.value, errors, warnings };
   } finally {
-    proc.kill('SIGKILL');
+    if (proc) {
+      proc.kill('SIGKILL');
+    }
     await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
   }
 }

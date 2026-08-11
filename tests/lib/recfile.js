@@ -86,6 +86,9 @@ export function decodeRec(bytes) {
     throw new Error(`rec: expected ${REC_CHANNELS} channels, got ${channels}`);
   }
   const rateHz = view.getUint32(16, true);
+  if (rateHz < 1 || rateHz > 1000000) {
+    throw new Error(`rec: implausible sample rate ${rateHz} Hz`);
+  }
   const count = view.getUint32(20, true);
   const expected = REC_HEADER_BYTES + count * REC_SAMPLE_BYTES;
   if (bytes.length !== expected) {

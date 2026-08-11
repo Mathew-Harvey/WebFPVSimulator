@@ -141,9 +141,14 @@ export async function replayTrace(sim, rec, opts) {
  * Run a scripted stick program: segments of constant stick values, stepping
  * 1 ms at a time. onStep(tMs, state) is called after every step with the
  * decoded state block. Assumes the sim is already initialised and reset.
+ *
+ * startMs is the sim's current time in ms. It must be threaded through
+ * consecutive runScript calls on the same sim without a reset in between,
+ * so input timestamps stay non-decreasing as sim_abi.h requires. The
+ * function returns the end time for exactly that purpose.
  */
-export function runScript(sim, segments, onStep) {
-  let tMs = 0;
+export function runScript(sim, segments, onStep, startMs = 0) {
+  let tMs = startMs;
   for (const seg of segments) {
     must(
       sim.input(tMs / 1000, seg.roll ?? 0, seg.pitch ?? 0, seg.yaw ?? 0, seg.throttle ?? 0),

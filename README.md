@@ -8,17 +8,27 @@ for the state of play.
 
 ## Requirements
 
-Node 22 or newer, Emscripten (emsdk on PATH, or in `$EMSDK`, `~/emsdk` or
-`/opt/emsdk`), and a Chrome or Chromium install for the browser checks
-(`SIM_CHROME_BIN` overrides the location). No npm install; there are no
-dependencies.
+To fly it: Node 22 or newer, nothing else. `dist/sim.wasm` is committed so
+the toolchain is optional, and there are no npm dependencies to install.
 
-## Build and fly
+To rebuild the physics module or run the full verification: Emscripten
+(emsdk on PATH, or in `$EMSDK`, `~/emsdk` or `/opt/emsdk`), a shell that
+can run `scripts/build-wasm.sh` (Git Bash or WSL on Windows), and a Chrome
+or Chromium install for the browser checks (`SIM_CHROME_BIN` overrides the
+location).
+
+## Fly
 
 ```bash
 git clone --recurse-submodules <this repo>
-npm run build:wasm
 npm run serve        # then open http://127.0.0.1:8000/
+```
+
+Rebuild the module after changing anything under `src/native` or
+`patches/`:
+
+```bash
+npm run build:wasm
 ```
 
 Sticks: plug in your radio in joystick mode (it enumerates as a gamepad)

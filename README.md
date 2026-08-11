@@ -24,6 +24,11 @@ git clone --recurse-submodules <this repo>
 npm run serve        # then open http://127.0.0.1:8000/
 ```
 
+On Windows, PowerShell may refuse to run npm with "running scripts is
+disabled on this system". Either start the server directly with
+`node scripts/serve.js`, or allow local scripts once with
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
 Rebuild the module after changing anything under `src/native` or
 `patches/`:
 

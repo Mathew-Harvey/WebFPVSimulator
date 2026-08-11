@@ -95,7 +95,45 @@ const RIM_CHUNK = /* glsl */ `
 `;
 
 /*
- * opts: color, rim (0..1), rimColor, spec (0..1), specWidth
+ * Cloud shadows. Slow, soft shapes crawling across the landscape are the
+ * single strongest signal that a stylised world is alive rather than a
+ * diorama: they break up large flat areas, they give the terrain a sense
+ * of scale, and they make the light feel like it comes from a sky rather
+ * than from a lamp. Sampled from procedural noise at world position, so
+ * there is no texture to load and it costs a handful of instructions.
+ */
+const CLOUD_SHADOW_GLSL = /* glsl */ `
+  float celHash(vec2 p) {
+    p = fract(p * vec2(233.34, 851.73));
+    p += dot(p, p + 23.45);
+    return fract(p.x * p.y);
+  }
+  float celNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(celHash(i), celHash(i + vec2(1.0, 0.0)), f.x),
+               mix(celHash(i + vec2(0.0, 1.0)), celHash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float celCloudShadow(vec2 world, float t) {
+    vec2 p = world * 0.0032 + vec2(t * 0.010, t * 0.006);
+    float n = celNoise(p) * 0.6 + celNoise(p * 2.3) * 0.3 + celNoise(p * 4.7) * 0.1;
+    // wide soft edge: hard edged cloud shadows read as texture, not shadow
+    return smoothstep(0.46, 0.66, n);
+  }
+`;
+
+const registered = [];
+
+/* Called once per frame by the scene: advances every cel material's clock. */
+export function updateCelTime(t) {
+  for (const u of registered) {
+    u.value = t;
+  }
+}
+
+/*
+ * opts: color, rim (0..1), rimColor, spec (0..1), specWidth, cloudShadow
  */
 export function celMaterial(opts = {}) {
   const mat = new THREE.MeshToonMaterial({
@@ -107,6 +145,7 @@ export function celMaterial(opts = {}) {
   });
   const rimColor = new THREE.Color(opts.rimColor ?? 0x9ec8ff);
   const specColor = new THREE.Color(opts.specColor ?? 0xffffff);
+  const cloud = opts.cloudShadow ?? 0;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uRimColor = { value: rimColor };
     shader.uniforms.uRimStrength = { value: opts.rim ?? 0.32 };
@@ -115,19 +154,46 @@ export function celMaterial(opts = {}) {
     shader.uniforms.uSpecStrength = { value: opts.spec ?? 0.0 };
     shader.uniforms.uSpecWidth = { value: opts.specWidth ?? 0.01 };
     shader.uniforms.uSpecDir = { value: new THREE.Vector3(0.45, 0.8, 0.4) };
+    shader.uniforms.uCloudShadow = { value: cloud };
+    shader.uniforms.uCelTime = { value: 0 };
+    shader.uniforms.uCloudTint = { value: new THREE.Color(0x5c7ba8) };
+    registered.push(shader.uniforms.uCelTime);
+
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCelWorld;')
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvCelWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+      );
+
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
+         varying vec3 vCelWorld;
          uniform vec3 uRimColor;
          uniform float uRimStrength;
          uniform float uRimStart;
          uniform vec3 uSpecColor;
          uniform float uSpecStrength;
          uniform float uSpecWidth;
-         uniform vec3 uSpecDir;`,
+         uniform vec3 uSpecDir;
+         uniform float uCloudShadow;
+         uniform float uCelTime;
+         uniform vec3 uCloudTint;
+         ${CLOUD_SHADOW_GLSL}`,
       )
-      .replace('#include <dithering_fragment>', `#include <dithering_fragment>\n${RIM_CHUNK}`);
+      .replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+${RIM_CHUNK}
+         if (uCloudShadow > 0.0) {
+           float cs = celCloudShadow(vCelWorld.xz, uCelTime) * uCloudShadow;
+           // tint toward sky blue as well as darkening, so shaded ground
+           // stays in the same warm/cool logic as everything else
+           gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * uCloudTint * 1.35, cs);
+         }`,
+      );
   };
   mat.userData.cel = true;
   return mat;

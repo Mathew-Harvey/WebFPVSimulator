@@ -40,7 +40,7 @@
  */
 
 import * as THREE from 'three';
-import { celMaterial, outlineHull } from './celmat.js';
+import { celMaterial, outlineHull, updateCelTime } from './celmat.js';
 
 const SUN_DIR = new THREE.Vector3(0.42, 0.78, 0.32).normalize();
 const HORIZON = 0xcfe0ea;
@@ -103,6 +103,11 @@ function trackCurve() {
   return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.4);
 }
 
+/* A lake gives the eye somewhere to rest, a hard value contrast against
+ * all the green, and a reflection cue for altitude. Basin is carved into
+ * the height field so the shoreline is a real intersection, not a decal. */
+export const LAKE = { x: 250, z: -205, r: 96, level: -7.5 };
+
 /* Terrain height, shared by the mesh and by anything placed on it. */
 function makeHeightField(samples) {
   return (x, z) => {
@@ -122,13 +127,22 @@ function makeHeightField(samples) {
      * soft shoulder so it does not look stamped. */
     const flat = Math.min(1, Math.max(0, (d - 30) / 70));
     const s2 = flat * flat * (3 - 2 * flat);
-    return (base + detail) * s2;
+    let h = (base + detail) * s2;
+
+    /* Carve the lake basin: a smooth bowl, deepest at the centre. */
+    const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
+    if (ld < LAKE.r * 1.35) {
+      const k = 1 - Math.min(1, ld / (LAKE.r * 1.35));
+      const bowl = k * k * (3 - 2 * k);
+      h = h * (1 - bowl) + (LAKE.level - 5.5) * bowl;
+    }
+    return h;
   };
 }
 
-function terrain(height) {
+function terrain(height, samples) {
   const size = 1700;
-  const seg = 190;
+  const seg = 230;
   const geo = new THREE.PlaneGeometry(size, size, seg, seg);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
@@ -146,8 +160,28 @@ function terrain(height) {
      * after normals exist, below. */
     const t = Math.min(1, Math.max(0, (y + 12) / 34));
     c.copy(grassLow).lerp(grassHigh, t);
+    /* Two scales of variation. Large patches read as different ground
+     * cover from the air; fine speckle keeps it from banding. A single
+     * flat green over a whole valley is what makes terrain look untextured
+     * no matter how good the shading is. */
+    const patch = fbm(x * 0.0065, z * 0.0065);
+    c.lerp(new THREE.Color(0x7fa84a), Math.max(0, (patch - 0.5) * 1.5));
+    c.lerp(new THREE.Color(0x3f7a3a), Math.max(0, (0.5 - patch) * 1.1));
     const speck = fbm(x * 0.06, z * 0.06);
+    c.multiplyScalar(0.92 + speck * 0.16);
     c.lerp(rockCol, Math.min(0.5, Math.max(0, (y - 14) / 22)) * (0.5 + speck * 0.5));
+    /* Beaten earth along the racing line, and sand at the waterline. */
+    let dTrack = 1e9;
+    for (const s of samples) {
+      dTrack = Math.min(dTrack, Math.hypot(x - s.x, z - s.z));
+    }
+    const onPath = 1 - Math.min(1, Math.max(0, (dTrack - 2.5) / 5));
+    c.lerp(new THREE.Color(0x9c8f6e), onPath * 0.42 * (0.7 + speck * 0.6));
+    const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
+    const shore = 1 - Math.min(1, Math.abs(y - LAKE.level) / 3.5);
+    if (ld < LAKE.r * 1.5 && shore > 0) {
+      c.lerp(new THREE.Color(0xd8cfa8), shore * 0.8);
+    }
     colors[i * 3 + 0] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -166,11 +200,120 @@ function terrain(height) {
     }
   }
   geo.attributes.color.needsUpdate = true;
-  const mat = celMaterial({ color: 0xffffff, rim: 0.0 });
+  const mat = celMaterial({ color: 0xffffff, rim: 0.0, cloudShadow: 0.5 });
   mat.vertexColors = true;
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
+}
+
+/*
+ * Stylised water. Flat banded colour rather than a reflection: shallow
+ * water near the shore reads light and warm, deep water dark and cool,
+ * with a hard band between them, and animated crests that catch the light.
+ * The shoreline foam line is what sells it, because that is where the eye
+ * checks whether water is water.
+ */
+function water() {
+  const geo = new THREE.CircleGeometry(LAKE.r * 1.24, 72);
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    uniforms: {
+      uTime: { value: 0 },
+      uShallow: { value: new THREE.Color(0x63c6c9) },
+      uDeep: { value: new THREE.Color(0x1d5f8c) },
+      uFoam: { value: new THREE.Color(0xeaf7ff) },
+      uFogColor: { value: new THREE.Color(HORIZON) },
+      uFogNear: { value: FOG_NEAR },
+      uFogFar: { value: FOG_FAR },
+      uRadius: { value: LAKE.r * 1.24 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vLocal;
+      varying float vFog;
+      uniform float uTime;
+      void main() {
+        vLocal = position.xz;
+        vec3 p = position;
+        p.y += sin(p.x * 0.12 + uTime * 1.3) * 0.09 + sin(p.z * 0.17 - uTime * 0.9) * 0.07;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        vFog = -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      varying vec2 vLocal;
+      varying float vFog;
+      uniform float uTime;
+      uniform vec3 uShallow;
+      uniform vec3 uDeep;
+      uniform vec3 uFoam;
+      uniform vec3 uFogColor;
+      uniform float uFogNear;
+      uniform float uFogFar;
+      uniform float uRadius;
+      void main() {
+        float r = length(vLocal) / uRadius;
+        // banded depth ramp, quantised so it reads painted
+        float depth = 1.0 - r;
+        float band = floor(depth * 4.0) / 4.0;
+        vec3 col = mix(uShallow, uDeep, band);
+        // moving crest lines
+        float crest = sin(vLocal.x * 0.33 + uTime * 1.1) * sin(vLocal.y * 0.27 - uTime * 0.8);
+        col += uFoam * step(0.82, crest) * 0.35;
+        // shoreline foam
+        float foam = smoothstep(0.9, 1.0, r);
+        col = mix(col, uFoam, foam * 0.85);
+        float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
+        gl_FragColor = vec4(mix(col, uFogColor, f), 0.93);
+      }
+    `,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(LAKE.x, LAKE.level, LAKE.z);
+  /* No ink outline on water: an edge pass on a flat plane draws a hard
+   * line round the whole lake and it stops reading as a surface. */
+  mesh.layers.set(1);
+  return { mesh, mat };
+}
+
+/*
+ * Cliff spires. The valley needs vertical landmarks: something to judge
+ * altitude and distance against, and something to break the horizon so
+ * the eye has a focal point other than the gates.
+ */
+function cliff(rng, height, x, z) {
+  const g = new THREE.Group();
+  const tiers = 2 + Math.floor(rng() * 3);
+  let y = 0;
+  let r = 7 + rng() * 9;
+  for (let i = 0; i < tiers; i += 1) {
+    const h = 9 + rng() * 15;
+    const m = new THREE.Mesh(
+      new THREE.CylinderGeometry(r * 0.72, r, h, 6 + Math.floor(rng() * 3), 1),
+      celMaterial({ color: i % 2 ? 0x8f8a7c : 0x9a9487, rim: 0.24, cloudShadow: 0.45 }),
+    );
+    m.position.y = y + h / 2;
+    m.rotation.y = rng() * 3;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    outlineHull(m, 1.03);
+    g.add(m);
+    y += h * 0.92;
+    r *= 0.74;
+  }
+  /* Grass cap so it does not look like bare geology dropped in a field. */
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(r * 0.78, r * 0.95, 1.6, 7),
+    celMaterial({ color: 0x5fa348, rim: 0.3, cloudShadow: 0.45 }),
+  );
+  cap.position.y = y + 0.8;
+  cap.castShadow = true;
+  outlineHull(cap, 1.04);
+  g.add(cap);
+  g.position.set(x, height(x, z) - 1, z);
+  return g;
 }
 
 /*
@@ -184,8 +327,8 @@ function grassField(height, samples, rng) {
   const colors = new Float32Array(BLADES * 5 * 3);
   const bend = new Float32Array(BLADES * 5);
   const indices = new Uint32Array(BLADES * 9);
-  const base = new THREE.Color(0x74ad4e);
-  const tip = new THREE.Color(0xbfe07a);
+  const base = new THREE.Color(0x62914a);
+  const tip = new THREE.Color(0x9cbe6c);
   const c = new THREE.Color();
   let vi = 0;
   let ii = 0;
@@ -223,7 +366,10 @@ function grassField(height, samples, rng) {
       positions[vi + 0] = vx;
       positions[vi + 1] = vy;
       positions[vi + 2] = vz;
-      c.copy(base).lerp(tip, b * (0.6 + rng() * 0.4));
+      /* Per blade hue and value jitter: a field of identical blades reads
+       * as one plastic sheet no matter how it is lit. */
+      c.copy(base).lerp(tip, b * (0.55 + rng() * 0.45));
+      c.offsetHSL((rng() - 0.5) * 0.05, (rng() - 0.5) * 0.12, (rng() - 0.5) * 0.11);
       colors[vi + 0] = c.r;
       colors[vi + 1] = c.g;
       colors[vi + 2] = c.b;
@@ -286,7 +432,7 @@ function grassField(height, samples, rng) {
         // so an unlit field reads as a dark rash on top of bright ground.
         // Bake the same gain in here, and keep the root to tip ramp
         // shallow so the field stays a single mass at distance.
-        vec3 col = vColor * mix(1.05, 1.35, vBend);
+        vec3 col = vColor * mix(1.0, 1.22, vBend);
         float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
         gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
       }
@@ -550,7 +696,9 @@ export function buildScene(canvas) {
   const samples = curve.getPoints(180);
   const height = makeHeightField(samples);
 
-  scene.add(terrain(height));
+  scene.add(terrain(height, samples));
+  const water0 = water();
+  scene.add(water0.mesh);
   const grass = grassField(height, samples, rng);
   /* Layer 1 is the no ink layer, excluded from the outline prepass.
    * Grass belongs here: a per blade outline turns a field into a pile of
@@ -591,6 +739,61 @@ export function buildScene(canvas) {
     scene.add(rng() < 0.74 ? tree(rng, height, x, z) : rock(rng, height, x, z));
   }
 
+  /* Cliff landmarks, kept off the racing line but inside the valley so
+   * they read as part of the course rather than set dressing. */
+  const cliffSpots = [
+    [-215, 95], [190, 155], [-95, -240], [305, 40], [-320, -80], [60, 280],
+  ];
+  for (const [cx, cz] of cliffSpots) {
+    scene.add(cliff(rng, height, cx, cz));
+  }
+
+  /* Flowers: a few thousand tiny saturated quads. They cost almost
+   * nothing and they are the difference between a green field and a
+   * meadow, because they give the ground a second colour at a second
+   * scale. */
+  {
+    const N = 2600;
+    const pos = new Float32Array(N * 4 * 3);
+    const col = new Float32Array(N * 4 * 3);
+    const idx = new Uint32Array(N * 6);
+    const petals = [0xffd94a, 0xff7fb0, 0xf2f2f2, 0xb98cff];
+    const cc = new THREE.Color();
+    let v = 0;
+    let ii = 0;
+    let n = 0;
+    for (let i = 0; i < N; i += 1) {
+      const s0 = samples[Math.floor(rng() * samples.length)];
+      const a = rng() * Math.PI * 2;
+      const r = 6 + rng() * 40;
+      const x = s0.x + Math.cos(a) * r;
+      const z = s0.z + Math.sin(a) * r;
+      if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.3) {
+        continue;
+      }
+      const y = height(x, z) + 0.16 + rng() * 0.3;
+      const w = 0.075 + rng() * 0.06;
+      cc.set(petals[Math.floor(rng() * petals.length)]);
+      const base = v / 3;
+      for (const [ox, oz] of [[-w, -w], [w, -w], [w, w], [-w, w]]) {
+        pos[v] = x + ox; pos[v + 1] = y; pos[v + 2] = z + oz;
+        col[v] = cc.r; col[v + 1] = cc.g; col[v + 2] = cc.b;
+        v += 3;
+      }
+      idx[ii++] = base; idx[ii++] = base + 1; idx[ii++] = base + 2;
+      idx[ii++] = base; idx[ii++] = base + 2; idx[ii++] = base + 3;
+      n += 1;
+    }
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, n * 12), 3));
+    fg.setAttribute('color', new THREE.BufferAttribute(col.subarray(0, n * 12), 3));
+    fg.setIndex(new THREE.BufferAttribute(idx.subarray(0, n * 6), 1));
+    const fm = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: true });
+    const flowers = new THREE.Mesh(fg, fm);
+    flowers.layers.set(1);
+    scene.add(flowers);
+  }
+
   /* Course markers along the circuit: close range speed reference. */
   const flags = [];
   const flagColors = [0xe8503a, 0xffd257, 0x46b0e0, 0xffffff];
@@ -617,7 +820,7 @@ export function buildScene(canvas) {
       const h = 110 + rng() * 210;
       const m = new THREE.Mesh(
         new THREE.ConeGeometry(95 + rng() * 90, h, 5),
-        new THREE.MeshBasicMaterial({ color: col, fog: false }),
+        celMaterial({ color: col, rim: 0.16, rimColor: 0xdcecff }),
       );
       m.position.set(Math.cos(a) * dist, h / 2 - 10, Math.sin(a) * dist);
       m.rotation.y = rng() * 3;
@@ -704,6 +907,8 @@ export function buildScene(canvas) {
 
   function updateWind(t) {
     grass.mat.uniforms.uTime.value = t;
+    water0.mat.uniforms.uTime.value = t;
+    updateCelTime(t);
     for (let i = 0; i < flags.length; i += 1) {
       flags[i].cloth.rotation.y = Math.sin(t * 2.2 + i * 0.7) * 0.32;
       flags[i].cloth.rotation.z = Math.sin(t * 3.1 + i) * 0.1;

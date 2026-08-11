@@ -151,7 +151,7 @@ export function buildComposer(renderer, scene, camera) {
   outline.uniforms.uCameraFar.value = camera.far;
   composer.addPass(outline);
 
-  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.7, 0.62);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.92);
   composer.addPass(bloom);
   /* Colour space and tone mapping conversion. Without this the composer
    * writes linear values straight to the screen and every colour reads

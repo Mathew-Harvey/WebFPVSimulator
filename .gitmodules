@@ -1,0 +1,3 @@
+[submodule "vendor/betaflight"]
+	path = vendor/betaflight
+	url = https://github.com/betaflight/betaflight.git

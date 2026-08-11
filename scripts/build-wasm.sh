@@ -46,7 +46,11 @@ fi
 
 mkdir -p dist
 
-emcc src/native/sim.c \
+emcc \
+  src/native/sim.c \
+  src/native/plant.c \
+  src/native/bridge.c \
+  src/native/libm/sim_math.c \
   -I src/native \
   -std=c11 \
   -Wall \

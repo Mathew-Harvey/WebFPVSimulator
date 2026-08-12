@@ -57,6 +57,21 @@ const PACK_FULL_V = 6 * 4.2;
 
 const uiRoot = document.getElementById('ui');
 
+/*
+ * Why a dropped tune was refused, in words. The module answers with a
+ * code, and a code on screen is developer output: the player wants to
+ * know whether to blame the file or the game.
+ */
+function configFault(code) {
+  if (code === -4) {
+    return 'It does not look like a Betaflight diff.';
+  }
+  if (code === -2) {
+    return 'The file was empty or too large.';
+  }
+  return 'The simulator refused it and kept your previous tune.';
+}
+
 async function fetchBytes(url) {
   const res = await fetch(url);
   if (!res.ok) {
@@ -108,7 +123,7 @@ async function boot() {
     for (let i = 0; i < configText.length; i += 1) {
       h = ((h * 33) ^ configText.charCodeAt(i)) >>> 0;
     }
-    return `webfpv.best.${h.toString(16)}.${ui.settings.packVoltage.toFixed(2)}`;
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -125,6 +140,7 @@ async function boot() {
   let stateCurr = null;
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
+  let runVoltage = ui.settings.packVoltage;
   let notice = null; /* { text, untilMs } for one off shell messages */
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs);
@@ -137,9 +153,39 @@ async function boot() {
     return state;
   }
 
-  function reset() {
+  /*
+   * Put the craft back on the start line without ending the run. A crash
+   * costs the lap it happens on, not the laps already flown: erasing three
+   * clean laps because of one clipped tree is not how a race works.
+   */
+  function resetCraft() {
     sim.reset();
-    sim.setCellVoltage(ui.settings.packVoltage);
+    sim.setCellVoltage(runVoltage);
+    simTimeMs = 0;
+    acc = 0;
+    lastTs = 0;
+    rcNextMs = 0;
+    crashed = false;
+    launched = false;
+    input.keys.clear();
+    input.drain();
+    input.kb.throttle = 0;
+    input.kb.roll = 0;
+    input.kb.pitch = 0;
+    input.kb.yaw = 0;
+    raceHasPrev = false;
+    statePrev = readState();
+    stateCurr = statePrev;
+  }
+
+  function reset() {
+    /* The pack charge a run flies on is fixed when the run starts. It is
+     * a setting, and settings are reachable from the pause menu, so
+     * without this a player could change packs mid run and have the lap
+     * compared against another pack's record. */
+    runVoltage = ui.settings.packVoltage;
+    sim.reset();
+    sim.setCellVoltage(runVoltage);
     simTimeMs = 0;
     acc = 0;
     lastTs = 0;
@@ -163,7 +209,13 @@ async function boot() {
   function applySettings(s) {
     camTilt = s.cameraAngle;
     qTilt.setFromAxisAngle(new THREE.Vector3(1, 0, 0), (camTilt * Math.PI) / 180);
-    sim.setCellVoltage(s.packVoltage);
+    if (mode === 'title') {
+      /* Between runs the choice takes effect at once. During a run it
+       * waits for the next one, so the record it is measured against is
+       * the pack it was flown on. */
+      runVoltage = s.packVoltage;
+      sim.setCellVoltage(runVoltage);
+    }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs);
     audio.setLevel(s.volume / 10);
@@ -196,6 +248,30 @@ async function boot() {
       applySettings(s);
     }
   };
+
+  /*
+   * Menu intent from a radio. When the sticks have been calibrated the
+   * mapped channels drive the cursor, which lets roll adjust a value. When
+   * they have not, any axis at all moves the cursor, because the way to
+   * calibrate is a menu item and a wrong axis guess would otherwise lock
+   * the player out of it.
+   */
+  function padNav() {
+    const btn = input.padMenuButtons();
+    if (input.map.stored) {
+      const c = input.channels;
+      return {
+        up: c.pitch > 0.55,
+        down: c.pitch < -0.55,
+        right: c.roll > 0.55,
+        left: c.roll < -0.55,
+        select: btn.select,
+        back: btn.back,
+      };
+    }
+    const raw = input.navRaw();
+    return { up: raw.up, down: raw.down, right: false, left: false, select: btn.select, back: btn.back };
+  }
 
   /* Any real key or pointer press is the user gesture browsers require
    * before audio can start. */
@@ -237,7 +313,7 @@ async function boot() {
       notice = { text: `Flying ${configName}`, untilMs: performance.now() + 2400 };
       reset();
     } else {
-      notice = { text: `That tune was rejected: ${simErrorName(code)}`, untilMs: performance.now() + 3200 };
+      notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
       sim.init(configText);
       reset();
     }
@@ -249,9 +325,15 @@ async function boot() {
   const qCurr = new THREE.Quaternion();
   const qTilt = new THREE.Quaternion();
   const qSpawn = new THREE.Quaternion();
+  const pProbe = new THREE.Vector3();
   const camPos = new THREE.Vector3();
   const orbitTarget = new THREE.Vector3();
   applySettings(ui.settings);
+
+  /* Fixed for the whole session: the start gate's placement in the world.
+   * Set once here because the crash check needs it before the render
+   * block runs. */
+  qSpawn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), startYaw);
 
   let prevWall = performance.now();
 
@@ -264,7 +346,7 @@ async function boot() {
     input.poll(nowWall);
     const samples = input.drain();
     if (ui.isModal()) {
-      ui.pollPad(input.channels, input.padButtons());
+      ui.pollPad(padNav());
     }
 
     if (mode === 'flight' && !crashed && !launched) {
@@ -307,14 +389,24 @@ async function boot() {
         stateCurr = readState();
         simTimeMs += steps;
       }
-      if (stateCurr[3] + SPAWN_ALT + startY <= view.height(pCurr.x, pCurr.z) + 0.03 && simTimeMs > 50) {
+      /* Ground contact. The height is sampled at the position the craft
+       * has just been integrated to, not at the previous frame's, because
+       * at a low frame rate the two are metres apart and the check would
+       * read the wrong hillside. */
+      simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT + startY, pProbe);
+      pProbe.applyQuaternion(qSpawn);
+      pProbe.x += startX;
+      pProbe.z += startZ;
+      if (pProbe.y <= view.height(pProbe.x, pProbe.z) + 0.03 && simTimeMs > 50) {
         crashed = true;
         crashedAtWall = nowWall;
+        race.voidLap('Crashed\nLap void', nowWall);
+        view.setNextGate(race.nextSceneIndex());
       }
-    } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1200) {
-      /* Short lockout: a crash costs the lap already, staring at a
-       * notice for seconds on top of that is just dead time. */
-      reset();
+    } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1400) {
+      /* Short lockout, then back on the line. The lap is gone, the run is
+       * not. */
+      resetCraft();
     }
 
     /* Render: interpolate the two most recent physics states. The sim
@@ -327,7 +419,6 @@ async function boot() {
     simQuatToThree(statePrev[7], statePrev[8], statePrev[9], statePrev[10], qPrev);
     simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCurr);
     qPrev.slerp(qCurr, a);
-    qSpawn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), startYaw);
     pCurr.applyQuaternion(qSpawn);
     pCurr.x += startX;
     pCurr.z += startZ;
@@ -349,7 +440,7 @@ async function boot() {
         if (race.lap >= ui.settings.laps) {
           mode = 'results';
           ui.setBest(race.bestMs);
-          ui.showResults(race.laps, race.bestMs, race.voided);
+          ui.showResults(race.log, race.bestMs);
         }
       }
       racePrev.copy(pCurr);
@@ -406,7 +497,7 @@ async function boot() {
         gate: race.next + 1,
         gateCount: race.gates.length,
         volts: st[18],
-        amps: st[19],
+        lastLapMs: race.lastLapMs,
         packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
         altitude: st[3] + SPAWN_ALT,
         speedKph: speed * 3.6,
@@ -417,10 +508,13 @@ async function boot() {
     const cal = input.calibrationPrompt();
     const lapFlash = race.flashText(nowWall);
     if (cal) {
-      ui.setBanner(cal);
+      ui.setBanner(cal, true);
     } else if (notice && nowWall < notice.untilMs) {
       ui.setBanner(notice.text);
-    } else if (mode !== 'flight') {
+    } else if (ui.isModal()) {
+      /* A banner is a flight message. Any screen that is up owns the
+       * frame, and a launch prompt printed across a results table is how
+       * you find that out. */
       ui.setBanner('');
     } else if (crashed) {
       ui.setBanner('Crashed');
@@ -433,13 +527,13 @@ async function boot() {
     }
 
     if (ui.settings.readout) {
+      /* Performance only. The setting promises frame rate and draw
+       * counts, so anything else here is developer output that the
+       * player did not ask for. */
       ui.setReadout(
         `${fps.toFixed(0)} frames per second\n` +
         `${renderStats.calls} draw calls\n` +
-        `${(renderStats.triangles / 1000).toFixed(0)}k triangles\n` +
-        `${configName}, ${ui.settings.packVoltage.toFixed(2)} volts per cell\n` +
-        `input from ${input.source}\n` +
-        `rotor speeds ${st[14].toFixed(0)} ${st[15].toFixed(0)} ${st[16].toFixed(0)} ${st[17].toFixed(0)}`,
+        `${(renderStats.triangles / 1000).toFixed(0)}k triangles`,
       );
     } else {
       ui.setReadout('');
@@ -447,6 +541,7 @@ async function boot() {
 
     window.__shellReady = true;
     window.__mode = mode;
+    window.__screen = ui.screen;
   }
   /* Render statistics for the harness and the frame budget gate. */
   const renderStats = { calls: 0, triangles: 0 };

@@ -51,6 +51,7 @@
       /* Flight display. Thin warm type over a dark edge, the way an OSD
          reads over any background. */
       .osd { position: absolute; inset: 0; }
+      .osd.dim { opacity: 0.4; }
       .osd-top {
         position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
         text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.85);
@@ -80,6 +81,11 @@
       .bar-fill { height: 100%; width: 0%; background: var(--mint); transition: width 0.12s linear; }
       .bar-fill.warm { background: var(--amber); }
 
+      .banner.panel {
+        background: rgba(9, 15, 23, 0.9); border-radius: 10px;
+        padding: 20px 30px; box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.3);
+        font-size: 24px; color: var(--cream); line-height: 1.45;
+      }
       .banner {
         position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
         text-align: center; white-space: pre-line; font-size: 30px; font-weight: 600;
@@ -99,8 +105,10 @@
         position: absolute; inset: 0; pointer-events: none;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         padding: 4vh 6vw; box-sizing: border-box;
+        /* Enough scrim to read type over a bright valley, not enough to
+           turn a warm afternoon into night. */
         background:
-          radial-gradient(120% 90% at 50% 40%, rgba(16, 26, 38, 0.62), rgba(8, 13, 20, 0.93));
+          radial-gradient(120% 90% at 50% 42%, rgba(14, 23, 34, 0.58), rgba(9, 15, 23, 0.76));
       }
       /* The title keeps the world readable behind it; the reading screens
          sit on a heavier scrim because they are text. */
@@ -116,7 +124,7 @@
       .screen-page { justify-content: center; }
       .screen h1 {
         margin: 0; font-size: clamp(44px, 8vw, 104px); font-weight: 800;
-        letter-spacing: 0.14em; color: var(--cream);
+        letter-spacing: 0.14em; padding-left: 0.14em; color: var(--cream);
         text-shadow: 0 6px 26px rgba(0, 0, 0, 0.75);
       }
       .screen h2 {
@@ -132,21 +140,29 @@
         margin-top: 10px; font-size: clamp(14px, 1.5vw, 19px); color: var(--slate);
         letter-spacing: 0.22em; text-transform: uppercase;
       }
-      .brand-best { margin-top: 16px; font-size: 15px; color: var(--mint); letter-spacing: 0.08em; }
+      .brand-best {
+        display: inline-block; margin-top: 18px; padding: 5px 14px; border-radius: 999px;
+        font-size: 14px; color: var(--mint); letter-spacing: 0.08em;
+        background: rgba(9, 15, 23, 0.55); box-shadow: inset 0 0 0 1px rgba(125, 255, 180, 0.22);
+      }
 
-      .menu { min-width: min(520px, 80vw); }
+      .menu { min-width: min(520px, 80vw); margin-top: 26px; pointer-events: auto; }
       .row {
         display: flex; justify-content: space-between; align-items: baseline; gap: 24px;
         padding: 9px 18px; border-left: 3px solid transparent; color: var(--slate);
-        font-size: clamp(17px, 2vw, 22px);
+        font-size: clamp(17px, 2vw, 22px); cursor: pointer;
       }
+      /* The cursor is a bar and a colour, not a slab: a wide amber block
+         behind a three letter label reads as an unfinished progress bar. */
       .row.on {
         color: var(--cream); border-left-color: var(--amber);
-        background: linear-gradient(90deg, rgba(255, 212, 92, 0.16), rgba(255, 212, 92, 0));
+        background: linear-gradient(90deg, rgba(255, 212, 92, 0.13), rgba(255, 212, 92, 0) 42%);
       }
+      .row:hover .row-label { color: var(--cream); }
       .row-value { color: var(--amber); font-size: 0.86em; }
       .row-note {
-        padding: 2px 21px 10px; color: #7f95ab; font-size: 14px; max-width: 46em;
+        padding: 8px 21px 0; color: #90a6bb; font-size: 14px; max-width: 46em;
+        min-height: 2.6em; box-sizing: border-box;
       }
       .hint { margin-top: 26px; font-size: 13px; color: #7f95ab; letter-spacing: 0.05em; text-align: center; }
 
@@ -170,6 +186,8 @@
       .result-label { color: var(--slate); min-width: 5em; }
       .result-time { color: var(--cream); font-weight: 600; margin-left: auto; }
       .result-tag { color: var(--mint); font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+      .result-row.void .result-time { color: #93a7ba; font-weight: 400; }
+      .result-why { color: #7f95ab; font-size: 12px; letter-spacing: 0.06em; }
       .result-row.total { border-bottom: none; margin-top: 6px; }
       .result-row.total .result-time { color: var(--amber); }
     </style>

@@ -112,10 +112,10 @@ export class InputManager {
   }
 
   /*
-   * Menu buttons on the first gamepad: index 0 selects, index 1 goes
-   * back. Only those two, because a radio in joystick mode reports its
-   * switches as buttons, and a latched arming switch reads as pressed
-   * forever: treating any button as select made a latched switch fire the
+   * Menu buttons on the first gamepad: index 1 goes back, indices 0, 2
+   * and 3 select. Not every button, because a radio in joystick mode
+   * reports its switches as buttons and a latched arming switch reads as
+   * pressed forever: counting every button made a latched switch fire the
    * first menu item before the player saw the title.
    *
    * Nothing counts until the pad has been seen with both buttons
@@ -126,15 +126,18 @@ export class InputManager {
     if (!gp || !gp.buttons) {
       return { select: false, back: false };
     }
-    const b0 = Boolean(gp.buttons[0] && gp.buttons[0].pressed);
-    const b1 = Boolean(gp.buttons[1] && gp.buttons[1].pressed);
+    const at = (i) => Boolean(gp.buttons[i] && gp.buttons[i].pressed);
+    const b = [at(0), at(1), at(2), at(3)];
     if (!this.padArmed) {
-      if (!b0 && !b1) {
+      if (!b.some(Boolean)) {
         this.padArmed = true;
       }
       return { select: false, back: false };
     }
-    return { select: b0, back: b1 };
+    /* Button 1 goes back, the rest select. A radio's switches land
+     * anywhere in this range, so more than one selects; the release guard
+     * above is what makes that safe. */
+    return { select: b[0] || b[2] || b[3], back: b[1] };
   }
 
   /*

@@ -261,3 +261,117 @@ scripted key presses at the five frames per second this software
 rasteriser manages is not something I can do. The screenshot is
 evidence for the layout and the wording of the results screen and for
 nothing else.
+
+## Polish loop round 2: what two hostile reviewers found, fixed
+
+Two reviewers, a cold player judging the first ninety seconds and a QA
+tester hunting defects. Both returned REJECT. Their verdicts are binding,
+so this round is their list, not mine.
+
+Reviewer one: A1, A2, A3 PASS. A4 FAIL, A5 FAIL, plus fifteen defects.
+Reviewer two: B1, B2, B4, B5, B6 all FAIL, with measured pixel evidence
+and a named mechanism for each. Round 3 onward is that list.
+
+### The finding that matters most: my evidence was wrong
+
+Two of the seven round 1 screenshots did not show what their filenames
+claimed. 05-flight.png was the How to fly screen and 06-paused.png was
+the title. Cause: on this software rasteriser a frame takes about 120 ms,
+so a keypress followed by wait:400 can capture the state the player was
+in BEFORE the key. Both reviewers caught it independently. I did not,
+because I looked at the images and read what I expected to read.
+
+scripts/shots.js now has until:EXPR, which polls the page for up to 20 s,
+and expect:EXPR, which fails on the spot. A failed assertion counts as a
+console error, so the run exits non zero and a mislabelled pack cannot be
+published quietly. Every capture of a named state now asserts that state,
+and the round 2 run shows five such assertions passing.
+
+That is a lesson about method, not about CSS: a screenshot is only
+evidence of what you can prove was on screen.
+
+### A4, developer output
+
+The performance readout printed the config file name, the input source
+string, and the four rotor speeds straight out of the state vector. The
+setting promises frame rate and draw counts. It now prints exactly that
+and nothing else.
+
+### A5, prose
+
+- The calibration wizard shouted identifiers at the player, CALIBRATE
+  3/5: hold ROLL full RIGHT, and it is the first thing every radio owner
+  meets. Now five sentences.
+- gamepad (uncalibrated, press M) named a key bound to nothing since the
+  settings screen replaced it.
+- A rejected tune printed the module's error name, CONFIG_PARSE. It now
+  says whether to blame the file.
+- The flight display's amps line went. A charge bar and a voltage are
+  what a pilot reads; the current draw was a number for its own sake.
+
+### Defects from the player review, fixed
+
+- Nothing in the interface was clickable. #ui and every .screen set
+  pointer-events: none, so a player who reached for the mouse got a live
+  cursor over a dead menu. Rows now hover and click.
+- A crash erased the run. race.reset() clears the lap list, so three clean
+  laps vanished behind a 1.2 s Crashed banner with no result screen.
+  A crash now voids the lap it happened on and puts the craft back on the
+  line, and the run continues.
+- The results screen renumbered laps after filtering voided ones, so a run
+  whose second lap was voided reported the third as lap two. Race keeps a
+  log of every attempt with its real number, and voided laps appear as
+  rows reading void, with the reason.
+- Changing pack charge from the pause menu swapped the record key mid run,
+  so a lap flown on a full pack could be compared against a tired pack's
+  record. The charge a run flies on is now fixed when the run starts.
+- The crash test sampled terrain height at the previous frame's position.
+  At eight frames per second that is metres away, on possibly another
+  hillside. It now samples at the position just integrated to.
+- The flight display vanished when paused. It stays, dimmed.
+- Menu rows shifted vertically as the cursor moved, because the
+  explanation row only existed for the selected item. One note element
+  with a reserved height now.
+- The How to fly text never said the quad does not self level, the single
+  fact that kills every newcomer. It says it first now.
+- The selected row was a 520 px amber slab behind a three letter word. It
+  is a bar and a colour change now.
+- The wordmark sat 8 px left of centre because its trailing letter space
+  was not trimmed. The record line sat directly on the mint gate ring
+  behind it, so it has a chip now.
+- The reading screens were still on the up to 0.93 radial scrim. Only the
+  title had been lightened in round 1, which is not what round 1's entry
+  implied, and a reviewer called that out. All screens are lighter now.
+- Calibration prompts drew over the settings rows they were launched from
+  with no panel behind them. They have one.
+
+### Input hazards from the player review, fixed
+
+- Any pressed gamepad button counted as select, so a radio with a latched
+  arming switch fired the first menu item before the player saw the title.
+  Buttons 1 goes back, 0, 2 and 3 select, and nothing counts until the pad
+  has been seen with all of them released.
+- Menu navigation read the mapped pitch axis, so a radio whose axis order
+  does not match the AETR guess could not move the cursor, and the way to
+  fix that is a menu item five rows into Settings. While uncalibrated, any
+  axis pushed away from its rest position moves the cursor.
+
+### What went wrong during the round
+
+Hover on menu rows was wired to mouseenter. The menu is rebuilt on every
+cursor change, and Chromium fires enter when a fresh element appears under
+a stationary pointer, so the cursor snapped back to wherever the mouse was
+resting and the arrow keys looked broken. The capture run caught it,
+because the assertion that the cursor was on Settings failed and the shot
+labelled settings was a flight frame. mousemove instead of mouseenter.
+
+Then the launch banner drew across the results table, because the banner
+was suppressed on mode rather than on whether a screen was up. Caught in a
+screenshot, again, not in the code.
+
+### Evidence
+
+npm run verify in the same turn as this entry: 12 of 13, yaw-coupling the
+only red, threshold untouched, git diff of tests/ empty. Capture run: five
+state assertions passing, console errors 0, warnings 0. Frames in
+.loop/evidence/r2.

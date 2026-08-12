@@ -128,15 +128,15 @@ export class Ui {
     this.osdTimer = el('div', 'osd-timer', '--.--');
     this.osdGate = el('div', 'osd-gate', '');
     this.osdBest = el('div', 'osd-best', '');
+    this.osdLast = el('div', 'osd-best', '');
     const top = el('div', 'osd-top');
-    top.append(this.osdTimer, this.osdGate, this.osdBest);
+    top.append(this.osdTimer, this.osdGate, this.osdLast, this.osdBest);
     this.osdPack = el('div', 'osd-value', '');
     this.osdPackBar = el('div', 'bar-fill');
     const packBar = el('div', 'bar');
     packBar.append(this.osdPackBar);
     const packBlock = el('div', 'osd-corner osd-left');
-    this.osdAmps = el('div', 'osd-sub', '');
-    packBlock.append(el('div', 'osd-label', 'Pack'), this.osdPack, this.osdAmps, packBar);
+    packBlock.append(el('div', 'osd-label', 'Pack'), this.osdPack, packBar);
     this.osdSpeed = el('div', 'osd-value', '');
     this.osdAlt = el('div', 'osd-sub', '');
     this.osdThrBar = el('div', 'bar-fill warm');
@@ -198,7 +198,7 @@ export class Ui {
     pad.append(padList);
     cols.append(kb, pad);
     howto.append(cols);
-    howto.append(el('p', 'lede', 'A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the mint ring to start the clock, then chase the amber rings in order. Touching a gate frame voids the lap.'));
+    howto.append(el('p', 'lede', 'This quad does not hold itself level. Let go of the sticks and it keeps whatever attitude you left it in, so every turn has to be flown back out again. A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the mint ring to start the clock, then chase the amber rings in order. Touching a gate frame voids the lap.'));
     this.howtoMenu = el('div', 'menu');
     howto.append(this.howtoMenu);
     this.screens.howto = howto;
@@ -324,11 +324,28 @@ export class Ui {
       if (it.value != null) {
         row.append(el('span', 'row-value', it.value));
       }
+      /* A browser player reaches for the mouse. A menu that only answers
+       * to arrow keys reads as broken, not as keyboard first. */
+      /* mousemove, not mouseenter: the menu is rebuilt on every cursor
+       * change, and a fresh element appearing under a stationary pointer
+       * fires enter, which dragged the cursor back to wherever the mouse
+       * happened to be resting and made the arrow keys look broken. */
+      row.addEventListener('mousemove', () => {
+        if (this.cursor !== i) {
+          this.cursor = i;
+          this.renderMenu();
+        }
+      });
+      row.addEventListener('click', () => {
+        this.cursor = i;
+        this.select();
+      });
       host.append(row);
-      if (it.note && i === this.cursor) {
-        host.append(el('div', 'row-note', it.note));
-      }
     });
+    /* The note lives in one element outside the list, so the rows do not
+     * shift under the cursor as it moves. */
+    const note = el('div', 'row-note', items[this.cursor]?.note || '');
+    host.append(note);
   }
 
   show(screen) {
@@ -337,7 +354,10 @@ export class Ui {
     for (const [name, node] of Object.entries(this.screens)) {
       node.style.display = name === screen ? '' : 'none';
     }
-    this.osd.style.display = screen === 'flight' ? '' : 'none';
+    /* Paused keeps the flight display up, dimmed: the lap clock and the
+     * pack are what the player paused to look at. */
+    this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
+    this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
   }
 
@@ -350,31 +370,40 @@ export class Ui {
     this.osdBest.textContent = ms != null ? `Record ${formatTime(ms)}` : 'No record yet';
   }
 
-  showResults(laps, best, voided) {
+  /*
+   * log is the race's record of every lap attempted, in order, clean or
+   * thrown away. Voided attempts keep their lap number and appear as
+   * rows: renumbering the survivors tells the player they flew a
+   * different race from the one they remember.
+   */
+  showResults(log, best) {
     this.resultsBody.textContent = '';
-    const clean = laps.filter((l) => Number.isFinite(l));
+    const clean = log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
+    const fastest = clean.length ? Math.min(...clean) : null;
     this.resultsHead.textContent = clean.length ? 'Run complete' : 'Run ended';
     if (!clean.length) {
-      this.resultsBody.append(el('p', 'lede', 'No clean lap this run. A gate tap voids the lap it happens on, so the clock starts again at the mint ring.'));
+      this.resultsBody.append(el('p', 'lede', 'No clean lap this run. Touching a gate or hitting the ground voids the lap it happens on, and the clock starts again at the mint ring.'));
     }
-    clean.forEach((ms, i) => {
-      const row = el('div', 'result-row');
-      row.append(el('span', 'result-label', `Lap ${i + 1}`));
-      row.append(el('span', 'result-time', formatTime(ms)));
-      if (ms === Math.min(...clean)) {
-        row.append(el('span', 'result-tag', 'fastest'));
+    log.forEach((entry) => {
+      const row = el('div', `result-row${entry.ms == null ? ' void' : ''}`);
+      row.append(el('span', 'result-label', `Lap ${entry.n}`));
+      if (entry.ms == null) {
+        row.append(el('span', 'result-time', 'void'));
+        row.append(el('span', 'result-why', (entry.reason || '').replace(/\n/g, ' ').toLowerCase()));
+      } else {
+        row.append(el('span', 'result-time', formatTime(entry.ms)));
+        if (entry.ms === fastest) {
+          row.append(el('span', 'result-tag', 'fastest'));
+        }
       }
       this.resultsBody.append(row);
     });
     if (clean.length) {
       const total = clean.reduce((a, b) => a + b, 0);
       const row = el('div', 'result-row total');
-      row.append(el('span', 'result-label', 'Total'));
+      row.append(el('span', 'result-label', clean.length === log.length ? 'Total' : 'Clean laps total'));
       row.append(el('span', 'result-time', formatTime(total)));
       this.resultsBody.append(row);
-    }
-    if (voided > 0) {
-      this.resultsBody.append(el('p', 'lede', voided === 1 ? 'One lap was voided by a gate touch.' : `${voided} laps were voided by a gate touch.`));
     }
     if (best != null) {
       this.resultsBody.append(el('p', 'lede', `Track record ${formatTime(best)}.`));
@@ -382,16 +411,17 @@ export class Ui {
     this.show('results');
   }
 
-  setBanner(text) {
+  setBanner(text, panelled = false) {
     this.banner.textContent = text || '';
     this.banner.style.opacity = text ? '1' : '0';
+    this.banner.className = panelled ? 'banner panel' : 'banner';
   }
 
   /*
    * Flight overlay values. Prose and units a pilot reads: seconds, volts,
    * metres, kilometres per hour. No identifiers, no raw state.
    */
-  setOsd({ lapMs, gate, gateCount, volts, amps, packFrac, altitude, speedKph, throttle }) {
+  setOsd({ lapMs, lastLapMs, gate, gateCount, volts, packFrac, altitude, speedKph, throttle }) {
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
     const running = lapMs != null && Number.isFinite(lapMs);
@@ -399,7 +429,7 @@ export class Ui {
     this.osdTimer.className = running ? 'osd-timer' : 'osd-timer waiting';
     this.osdGate.textContent = `Gate ${gate} of ${gateCount}`;
     this.osdPack.textContent = `${volts.toFixed(1)} volts`;
-    this.osdAmps.textContent = `${amps.toFixed(0)} amps drawn`;
+    this.osdLast.textContent = lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
     this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
     this.osdAlt.textContent = `${altitude.toFixed(0)} m above the valley`;
@@ -524,22 +554,23 @@ export class Ui {
   }
 
   /*
-   * Stick navigation. channels are the normalised sticks, buttons the
-   * gamepad button states. Edge triggered so a held stick moves one row.
+   * Stick navigation. nav is { up, down, left, right, select, back },
+   * already resolved by the shell from either the calibrated channels or,
+   * when the radio has never been calibrated, from any axis at all. Edge
+   * triggered, so a held stick moves one row.
    */
-  pollPad(channels, buttons) {
+  pollPad(nav) {
     if (this.screen === 'flight') {
       this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
       return;
     }
-    const anyButton = buttons.some(Boolean);
     const now = {
-      up: channels.pitch > 0.55,
-      down: channels.pitch < -0.55,
-      right: channels.roll > 0.55,
-      left: channels.roll < -0.55,
-      select: anyButton,
-      back: false,
+      up: Boolean(nav.up),
+      down: Boolean(nav.down),
+      right: Boolean(nav.right),
+      left: Boolean(nav.left),
+      select: Boolean(nav.select),
+      back: Boolean(nav.back),
     };
     const it = this.items()[this.cursor];
     const rollAdjusts = Boolean(it && it.adjust);
@@ -565,6 +596,9 @@ export class Ui {
     }
     if (now.select && !this.padPrev.select) {
       this.select();
+    }
+    if (now.back && !this.padPrev.back) {
+      this.back();
     }
     this.padPrev = now;
   }

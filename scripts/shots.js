@@ -311,6 +311,15 @@ async function main() {
       } else {
         console.log(`eval ${arg} = ${JSON.stringify(r.result.value)}`);
       }
+    } else if (op === 'click' || op === 'move') {
+      const [x, y] = arg.split(',').map(Number);
+      const common = { x, y, button: 'left', clickCount: 1 };
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...common }, sessionId);
+      if (op === 'click') {
+        await sleep(60);
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...common }, sessionId);
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...common }, sessionId);
+      }
     } else if (op === 'until' || op === 'expect') {
       const deadline = Date.now() + (op === 'until' ? 20000 : 0);
       let value;

@@ -111,8 +111,33 @@ export class Race {
     this.lastLapMs = null;
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
+    /* Every attempt at a lap, in order: { n, ms } for a clean lap and
+     * { n, ms: null, reason } for one thrown away. The results screen
+     * needs the thrown away ones too, or a run whose second lap was
+     * voided reports its third lap as lap two, which is a lie about what
+     * the player just did. */
+    this.log = [];
     this.laps = [];         /* completed clean lap times, in order */
-    this.voided = 0;        /* laps thrown away by a gate touch */
+    this.voided = 0;        /* laps thrown away by a gate touch or a crash */
+  }
+
+  /* Number of the lap now being flown, counting voided attempts. */
+  lapNumber() {
+    return this.log.length + 1;
+  }
+
+  /*
+   * Throw the running lap away without ending the run. Used by a gate
+   * touch and by a crash: neither should cost the laps already flown.
+   */
+  voidLap(reason, wallMs) {
+    if (this.lapStartMs != null) {
+      this.log.push({ n: this.lapNumber(), ms: null, reason });
+      this.voided += 1;
+    }
+    this.lapStartMs = null;
+    this.next = 0;
+    this.flash = { text: reason, untilMs: wallMs + 1800 };
   }
 
   /* World point into gate g's local frame: x across the opening, y up
@@ -152,7 +177,8 @@ export class Race {
         this.lastLapMs = crossMs - this.lapStartMs;
         this.lap += 1;
         this.laps.push(this.lastLapMs);
-        let msgText = `Lap ${this.lap}   ${fmt(this.lastLapMs)}`;
+        this.log.push({ n: this.lapNumber(), ms: this.lastLapMs });
+        let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
         if (this.bestMs == null || this.lastLapMs < this.bestMs) {
           this.bestMs = this.lastLapMs;
           msgText += '\nNew track record';
@@ -227,12 +253,7 @@ export class Race {
     const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
     const hitFrame = this.sweepHitsFrame(prev, curr);
     if (hitFrame && (this.lapStartMs != null || this.next !== 0)) {
-      if (this.lapStartMs != null) {
-        this.voided += 1;
-      }
-      this.lapStartMs = null;
-      this.next = 0;
-      this.flash = { text: 'Gate touched\nLap void', untilMs: wallMs + 1800 };
+      this.voidLap('Gate touched\nLap void', wallMs);
     }
     return { passed, hitFrame };
   }

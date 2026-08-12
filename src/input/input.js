@@ -3,9 +3,11 @@
  *
  * Sources, in priority order:
  *   1. A radio or controller in joystick mode via the Gamepad API. Axis
- *      order and polarity differ per radio, so a calibration wizard (M
- *      key) learns the mapping by watching the sticks and stores it in
- *      localStorage. Until calibrated a common AETR guess is used.
+ *      order and polarity differ per radio, so a calibration wizard
+ *      (Settings, Calibrate sticks) learns the mapping by watching the
+ *      sticks and stores it in localStorage. Until calibrated a common
+ *      AETR guess is used for flight, and menu navigation falls back to
+ *      any axis at all, so the wizard is always reachable.
  *   2. Keyboard: WASD plus arrows mimic a Mode 2 radio. W/S move the
  *      throttle and hold it (no spring). A/D are yaw, arrows are the
  *      right stick: up arrow pushes the stick forward (nose down), left
@@ -57,12 +59,14 @@ export class InputManager {
   constructor() {
     this.channels = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     this.queue = [];
-    this.source = 'keyboard';
+    this.source = 'the keyboard';
     this.keys = new Set();
     this.kb = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     this.map = this.loadMap();
     this.calibration = null;
     this.lastWall = performance.now();
+    this.padArmed = false; /* set once the pad's menu buttons are seen released */
+    this.navRest = null;   /* axis rest values, for uncalibrated menu nav */
     this.onKey = null; /* main.js hooks non stick keys here */
 
     window.addEventListener('keydown', (e) => {
@@ -107,15 +111,61 @@ export class InputManager {
     return null;
   }
 
-  /* Pressed states of the first gamepad's buttons, for menu navigation.
-   * Radios in joystick mode expose their switches here, and a game
-   * controller its face buttons; either can confirm a menu choice. */
-  padButtons() {
+  /*
+   * Menu buttons on the first gamepad: index 0 selects, index 1 goes
+   * back. Only those two, because a radio in joystick mode reports its
+   * switches as buttons, and a latched arming switch reads as pressed
+   * forever: treating any button as select made a latched switch fire the
+   * first menu item before the player saw the title.
+   *
+   * Nothing counts until the pad has been seen with both buttons
+   * released, for the same reason.
+   */
+  padMenuButtons() {
     const gp = this.firstGamepad();
     if (!gp || !gp.buttons) {
-      return [];
+      return { select: false, back: false };
     }
-    return Array.from(gp.buttons, (b) => Boolean(b && b.pressed));
+    const b0 = Boolean(gp.buttons[0] && gp.buttons[0].pressed);
+    const b1 = Boolean(gp.buttons[1] && gp.buttons[1].pressed);
+    if (!this.padArmed) {
+      if (!b0 && !b1) {
+        this.padArmed = true;
+      }
+      return { select: false, back: false };
+    }
+    return { select: b0, back: b1 };
+  }
+
+  /*
+   * Cursor movement for a radio whose axis order is not known yet.
+   *
+   * Menu navigation cannot depend on calibration, because the way to
+   * calibrate is a menu item: if the AETR guess is wrong the cursor will
+   * not move and the fix is unreachable by the only device that needs
+   * it. So while uncalibrated, ANY axis pushed away from where it rested
+   * at page load moves the cursor, and the sign of that excursion is the
+   * direction. It cannot tell pitch from roll without calibration, and it
+   * does not need to.
+   */
+  navRaw() {
+    const gp = this.firstGamepad();
+    if (!gp) {
+      return { up: false, down: false };
+    }
+    const axes = gp.axes;
+    if (!this.navRest || this.navRest.length !== axes.length) {
+      this.navRest = Array.from(axes);
+      return { up: false, down: false };
+    }
+    let worst = 0;
+    for (let i = 0; i < axes.length; i += 1) {
+      const d = axes[i] - this.navRest[i];
+      if (Math.abs(d) > Math.abs(worst)) {
+        worst = d;
+      }
+    }
+    return { up: worst > 0.55, down: worst < -0.55 };
   }
 
   /* Calibration wizard state machine, driven from poll(). */
@@ -128,11 +178,11 @@ export class InputManager {
       return null;
     }
     const prompts = [
-      'CALIBRATE 1/5: throttle DOWN, sticks centred, hands off',
-      'CALIBRATE 2/5: hold THROTTLE full UP',
-      'CALIBRATE 3/5: hold ROLL full RIGHT',
-      'CALIBRATE 4/5: hold PITCH full BACK (nose up)',
-      'CALIBRATE 5/5: hold YAW full RIGHT',
+      'Step 1 of 5\nHands off the sticks, throttle right down.',
+      'Step 2 of 5\nHold the throttle all the way up.',
+      'Step 3 of 5\nHold the right stick fully to the right.',
+      'Step 4 of 5\nPull the right stick fully back.',
+      'Step 5 of 5\nHold the left stick fully to the right.',
     ];
     return prompts[this.calibration.stage] ?? null;
   }
@@ -229,10 +279,10 @@ export class InputManager {
     if (this.calibration && gp) {
       this.runCalibration(gp, dtMs);
       next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
-      this.source = 'calibrating';
+      this.source = 'the calibration wizard';
     } else if (gp) {
       next = this.readGamepad(gp);
-      this.source = this.map.stored ? 'gamepad' : 'gamepad (uncalibrated, press M)';
+      this.source = this.map.stored ? 'a radio' : 'a radio that is not calibrated yet';
       /* Keyboard still works while a pad is plugged in: any held stick
        * key overrides that channel. */
       const kb = this.readKeyboard(dtMs);
@@ -248,7 +298,7 @@ export class InputManager {
       }
     } else {
       next = this.readKeyboard(dtMs);
-      this.source = 'keyboard (WASD + arrows)';
+      this.source = 'the keyboard';
     }
 
     const changed =

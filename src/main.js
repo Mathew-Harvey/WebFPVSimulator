@@ -78,20 +78,32 @@ async function boot() {
     throw new Error('sim_init failed on the default config');
   }
 
-  /* Spawn on the start gate, facing down the circuit. */
+  /* Spawn a few metres BEHIND the start line, facing down the circuit:
+   * parked exactly on the timing plane, the first millimetre of drift
+   * would arm the lap clock at zero airspeed. The craft faces opposite
+   * the course tangent, so behind the line is along +tangent. */
   const start = view.gates[0];
   const startYaw = start.heading;
-  const startX = start.position.x;
-  const startZ = start.position.z;
-  /* The start gate sits on terrain that is not at y = 0. Spawning at the
-   * gate's xz without its height puts the craft underground, looking up
-   * at the lit underside of the terrain plane. */
-  const startY = start.position.y;
+  const SPAWN_BACK = 7;
+  const startX = start.position.x + Math.sin(startYaw) * SPAWN_BACK;
+  const startZ = start.position.z + Math.cos(startYaw) * SPAWN_BACK;
+  /* Terrain here is not at y = 0. Spawning without its height puts the
+   * craft underground, looking up at the lit underside of the terrain. */
+  const startY = view.height(startX, startZ);
 
-  /* The race: gate order, lap clock, best lap, gate frame collision. */
+  /* The race: gate order, lap clock, best lap, gate frame contact. */
   const race = new Race(view.gates);
   const racePrev = new THREE.Vector3();
   let raceHasPrev = false;
+
+  /* Best laps are only comparable on the same config and pack voltage. */
+  function recordKey() {
+    let h = 5381;
+    for (let i = 0; i < configText.length; i += 1) {
+      h = ((h * 33) ^ configText.charCodeAt(i)) >>> 0;
+    }
+    return `webfpv.best.${h.toString(16)}.${CELL_VOLTAGES[cellIdx].toFixed(2)}`;
+  }
 
   let cellIdx = 0;
   let simTimeMs = 0;
@@ -100,10 +112,14 @@ async function boot() {
   let rcNextMs = 0;
   let crashed = false;
   let crashedAtWall = 0;
+  /* Physics holds until the pilot first raises throttle: a run should
+   * start when the pilot says so, not with a falling catch at spawn. */
+  let launched = false;
   let camMode = 'fpv';
   let statePrev = null;
   let stateCurr = null;
   let fps = 0;
+  race.setRecordKey(recordKey());
 
   function readState() {
     const { code, state } = sim.readState();
@@ -121,6 +137,7 @@ async function boot() {
     lastTs = 0;
     rcNextMs = 0;
     crashed = false;
+    launched = false;
     input.drain();
     input.kb.throttle = 0;
     race.reset();
@@ -146,6 +163,7 @@ async function boot() {
     } else if (code === 'KeyV') {
       cellIdx = (cellIdx + 1) % CELL_VOLTAGES.length;
       sim.setCellVoltage(CELL_VOLTAGES[cellIdx]);
+      race.setRecordKey(recordKey());
     } else if (code === 'KeyN') {
       audioOn = audio.toggle();
     }
@@ -169,6 +187,7 @@ async function boot() {
     if (code === SIM_OK) {
       configText = text;
       configName = file.name;
+      race.setRecordKey(recordKey());
       reset();
     } else {
       msg.textContent = `diff rejected: ${simErrorName(code)}`;
@@ -200,7 +219,13 @@ async function boot() {
     input.poll(nowWall);
     const samples = input.drain();
 
-    if (!crashed) {
+    if (!crashed && !launched) {
+      const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
+      if (thr > 0.05) {
+        launched = true;
+      }
+    }
+    if (!crashed && launched) {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
@@ -238,7 +263,9 @@ async function boot() {
         crashed = true;
         crashedAtWall = nowWall;
       }
-    } else if (nowWall - crashedAtWall > 2500) {
+    } else if (crashed && nowWall - crashedAtWall > 1200) {
+      /* Short lockout: a crash costs the lap already, staring at a
+       * CRASHED card for seconds on top of that is just dead time. */
       reset();
     }
 
@@ -260,18 +287,16 @@ async function boot() {
     view.quad.position.copy(pCurr);
     view.quad.quaternion.copy(qPrev);
 
-    /* Race logic runs on the rendered world position: gate crossings are
-     * swept over the frame's travel, so speed cannot tunnel a gate, and
-     * clipping a gate frame is a crash like any other. */
-    if (!crashed) {
+    /* Race logic runs on the rendered world position, timed on the sim
+     * clock at that state: gate crossings are swept over the frame's
+     * travel, so speed cannot tunnel a gate, and a gate frame tap voids
+     * the lap rather than destroying the craft. */
+    const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
+    if (!crashed && launched) {
       if (raceHasPrev) {
-        const res = race.update(racePrev, pCurr, nowWall);
-        if (res.passed != null) {
+        const res = race.update(racePrev, pCurr, simNow, nowWall);
+        if (res.passed != null || res.hitFrame) {
           view.setNextGate(race.nextSceneIndex());
-        }
-        if (res.crashed) {
-          crashed = true;
-          crashedAtWall = nowWall;
         }
       }
       racePrev.copy(pCurr);
@@ -320,7 +345,9 @@ async function boot() {
     if (cal) {
       msg.textContent = cal;
     } else if (crashed) {
-      msg.textContent = 'CRASHED\npress R (auto reset shortly)';
+      msg.textContent = 'CRASHED';
+    } else if (!launched) {
+      msg.textContent = 'THROTTLE TO LAUNCH';
     } else if (lapFlash) {
       msg.textContent = lapFlash;
     } else {
@@ -331,7 +358,7 @@ async function boot() {
     audio.update([st[14], st[15], st[16], st[17]], speed);
     const ch = input.channels;
     hud.textContent =
-      `${race.hudLine(nowWall)}\n` +
+      `${race.hudLine(simNow)}\n` +
       `input  ${input.source}\n` +
       `config ${configName}  cell ${CELL_VOLTAGES[cellIdx].toFixed(2)} V (V cycles)\n` +
       `roll ${ch.roll.toFixed(2)}  pitch ${ch.pitch.toFixed(2)}  yaw ${ch.yaw.toFixed(2)}  thr ${ch.throttle.toFixed(2)}\n` +

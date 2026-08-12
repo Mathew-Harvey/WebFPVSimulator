@@ -197,6 +197,52 @@ function makeHeightField(samples) {
   };
 }
 
+/*
+ * Ground albedo at a point, shared by the terrain mesh and the grass
+ * roots. The single strongest tell that grass and terrain are two
+ * disjoint systems is a blade whose root is a different green from the
+ * ground it grows out of; sampling one function for both makes the
+ * meadow read as one surface with lighter tips.
+ */
+const GROUND = {
+  grassLow: new THREE.Color(0x4f8c3c),
+  grassHigh: new THREE.Color(0x86b95a),
+  rock: new THREE.Color(0x8b8578),
+  patchWarm: new THREE.Color(0x7fa84a),
+  patchDark: new THREE.Color(0x3f7a3a),
+  earth: new THREE.Color(0x9c8f6e),
+  sand: new THREE.Color(0xd8cfa8),
+};
+function groundAlbedo(x, z, y, samples, c) {
+  /* Colour by altitude, then three scales of variation: large patches
+   * read as different ground cover from the air, a mid scale macro
+   * (period about 33 m) breaks the monotone at racing height, and fine
+   * speckle keeps it from banding. */
+  const t = Math.min(1, Math.max(0, (y + 12) / 34));
+  c.copy(GROUND.grassLow).lerp(GROUND.grassHigh, t);
+  const patch = fbm(x * 0.0065, z * 0.0065);
+  c.lerp(GROUND.patchWarm, Math.max(0, (patch - 0.5) * 1.5));
+  c.lerp(GROUND.patchDark, Math.max(0, (0.5 - patch) * 1.1));
+  const macro = fbm(x * 0.03, z * 0.03);
+  c.multiplyScalar(0.97 + (macro - 0.5) * 0.13);
+  const speck = fbm(x * 0.06, z * 0.06);
+  c.multiplyScalar(0.94 + speck * 0.12);
+  c.lerp(GROUND.rock, Math.min(0.5, Math.max(0, (y - 14) / 22)) * (0.5 + speck * 0.5));
+  /* Beaten earth along the racing line, and sand at the waterline. */
+  let dTrack = 1e9;
+  for (const s of samples) {
+    dTrack = Math.min(dTrack, Math.hypot(x - s.x, z - s.z));
+  }
+  const onPath = 1 - Math.min(1, Math.max(0, (dTrack - 2.5) / 5));
+  c.lerp(GROUND.earth, onPath * 0.42 * (0.7 + speck * 0.6));
+  const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
+  const shore = 1 - Math.min(1, Math.abs(y - LAKE.level) / 3.5);
+  if (ld < LAKE.r * 1.5 && shore > 0) {
+    c.lerp(GROUND.sand, shore * 0.8);
+  }
+  return c;
+}
+
 function terrain(height, samples) {
   const size = 1700;
   const seg = 230;
@@ -204,41 +250,15 @@ function terrain(height, samples) {
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const grassLow = new THREE.Color(0x4f8c3c);
-  const grassHigh = new THREE.Color(0x86b95a);
-  const rockCol = new THREE.Color(0x8b8578);
+  const rockCol = GROUND.rock;
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i += 1) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
     const y = height(x, z);
     pos.setY(i, y);
-    /* Colour by altitude with a little noise break up; slope is applied
-     * after normals exist, below. */
-    const t = Math.min(1, Math.max(0, (y + 12) / 34));
-    c.copy(grassLow).lerp(grassHigh, t);
-    /* Two scales of variation. Large patches read as different ground
-     * cover from the air; fine speckle keeps it from banding. A single
-     * flat green over a whole valley is what makes terrain look untextured
-     * no matter how good the shading is. */
-    const patch = fbm(x * 0.0065, z * 0.0065);
-    c.lerp(new THREE.Color(0x7fa84a), Math.max(0, (patch - 0.5) * 1.5));
-    c.lerp(new THREE.Color(0x3f7a3a), Math.max(0, (0.5 - patch) * 1.1));
-    const speck = fbm(x * 0.06, z * 0.06);
-    c.multiplyScalar(0.94 + speck * 0.12);
-    c.lerp(rockCol, Math.min(0.5, Math.max(0, (y - 14) / 22)) * (0.5 + speck * 0.5));
-    /* Beaten earth along the racing line, and sand at the waterline. */
-    let dTrack = 1e9;
-    for (const s of samples) {
-      dTrack = Math.min(dTrack, Math.hypot(x - s.x, z - s.z));
-    }
-    const onPath = 1 - Math.min(1, Math.max(0, (dTrack - 2.5) / 5));
-    c.lerp(new THREE.Color(0x9c8f6e), onPath * 0.42 * (0.7 + speck * 0.6));
-    const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
-    const shore = 1 - Math.min(1, Math.abs(y - LAKE.level) / 3.5);
-    if (ld < LAKE.r * 1.5 && shore > 0) {
-      c.lerp(new THREE.Color(0xd8cfa8), shore * 0.8);
-    }
+    /* Slope rock is applied after normals exist, below. */
+    groundAlbedo(x, z, y, samples, c);
     colors[i * 3 + 0] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -384,8 +404,8 @@ function grassField(height, samples, rng) {
   const colors = new Float32Array(BLADES * 5 * 3);
   const bend = new Float32Array(BLADES * 5);
   const indices = new Uint32Array(BLADES * 9);
-  const base = new THREE.Color(0x33602f);
-  const tip = new THREE.Color(0x9ecf5e);
+  const rootC = new THREE.Color();
+  const tipC = new THREE.Color();
   const c = new THREE.Color();
   let vi = 0;
   let ii = 0;
@@ -410,6 +430,10 @@ function grassField(height, samples, rng) {
     const a = rng() * Math.PI;
     const dx = Math.cos(a) * w;
     const dz = Math.sin(a) * w;
+    /* Root exactly the ground colour, tip lifted about 13 percent in
+     * value and nudged warm. One meadow, lighter at the tips. */
+    groundAlbedo(x, z, y, samples, rootC);
+    tipC.copy(rootC).offsetHSL(0.012, 0.06, 0.13);
     /* Five vertices: a tapered blade, base pair, mid pair, single tip. */
     const vs = [
       [x - dx, y, z - dz, 0],
@@ -424,9 +448,10 @@ function grassField(height, samples, rng) {
       positions[vi + 1] = vy;
       positions[vi + 2] = vz;
       /* Per blade hue and value jitter: a field of identical blades reads
-       * as one plastic sheet no matter how it is lit. */
-      c.copy(base).lerp(tip, b * (0.55 + rng() * 0.45));
-      c.offsetHSL((rng() - 0.5) * 0.05, (rng() - 0.5) * 0.12, (rng() - 0.5) * 0.11);
+       * as one plastic sheet no matter how it is lit. Jitter stays small
+       * so the roots keep matching the ground. */
+      c.copy(rootC).lerp(tipC, b * (0.55 + rng() * 0.45));
+      c.offsetHSL((rng() - 0.5) * 0.025, (rng() - 0.5) * 0.08, (rng() - 0.5) * 0.05);
       colors[vi + 0] = c.r;
       colors[vi + 1] = c.g;
       colors[vi + 2] = c.b;
@@ -590,7 +615,9 @@ function gate(index, isStart) {
   const g = new THREE.Group();
   const w = 6.0;
   const h = 5.0;
-  const frameMat = celMaterial({ color: 0x2b3240, rim: 0.3 });
+  /* Navy the ramp can actually band: near black frames read as untextured
+   * masses because lit and shadow faces cannot separate. */
+  const frameMat = celMaterial({ color: 0x2a3352, rim: 0.3 });
   const accent = celMaterial({ color: isStart ? 0x2f9e56 : 0xd8452f, rim: 0.34 });
 
   for (const sx of [-1, 1]) {
@@ -624,12 +651,17 @@ function gate(index, isStart) {
     new THREE.MeshBasicMaterial({ color: ringColor, fog: true }),
   );
   ring.position.y = h * 0.5;
+  /* No ink on the emissive ring: the depth edge pass draws a ghost
+   * ellipse inside the torus, which reads as a rendering defect on the
+   * one prop the pilot stares at all lap. Layer 1 skips the prepass. */
+  ring.layers.set(1);
   g.add(ring);
   const halo = new THREE.Mesh(
     new THREE.TorusGeometry(2.15, 0.06, 6, 32),
     new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.5, fog: true }),
   );
   halo.position.y = h * 0.5;
+  halo.layers.set(1);
   g.add(halo);
 
   const plate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 0.12), accent);
@@ -900,7 +932,9 @@ export function buildScene(canvas) {
     const pos = new Float32Array(N * 4 * 3);
     const col = new Float32Array(N * 4 * 3);
     const idx = new Uint32Array(N * 6);
-    const petals = [0xffd94a, 0xff7fb0, 0xf2f2f2, 0xb98cff];
+    /* No white: at distance a white quad on grass reads as debris, not a
+     * flower. Warm saturated petals stay in the meadow's colour family. */
+    const petals = [0xffd94a, 0xff7fb0, 0xffb347, 0xb98cff];
     const cc = new THREE.Color();
     let v = 0;
     let ii = 0;
@@ -914,8 +948,10 @@ export function buildScene(canvas) {
       if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.3) {
         continue;
       }
-      const y = height(x, z) + 0.16 + rng() * 0.3;
-      const w = 0.075 + rng() * 0.06;
+      /* Hug the ground: floating half a metre up they read as z fighting
+       * rectangles, not flowers in the grass. */
+      const y = height(x, z) + 0.06 + rng() * 0.1;
+      const w = 0.045 + rng() * 0.035;
       cc.set(petals[Math.floor(rng() * petals.length)]);
       const base = v / 3;
       for (const [ox, oz] of [[-w, -w], [w, -w], [w, w], [-w, w]]) {
@@ -1028,7 +1064,7 @@ export function buildScene(canvas) {
       const h = 110 + rng() * 210;
       const m = new THREE.Mesh(
         new THREE.ConeGeometry(95 + rng() * 90, h, 5),
-        celMaterial({ color: col, rim: 0.16, rimColor: 0xdcecff }),
+        celMaterial({ color: col, rim: 0.16, rimColor: 0xdcecff, fog: false }),
       );
       m.position.set(Math.cos(a) * dist, h / 2 - 10, Math.sin(a) * dist);
       m.rotation.y = rng() * 3;

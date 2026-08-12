@@ -172,6 +172,10 @@ export function celMaterial(opts = {}) {
     transparent: opts.transparent ?? false,
     opacity: opts.opacity ?? 1,
     side: opts.side ?? THREE.FrontSide,
+    /* fog false is for the mountain rings: their baked colours ARE the
+     * aerial perspective, in deliberate steps; scene fog would wash all
+     * of them to one wall. */
+    fog: opts.fog ?? true,
   });
   const rimColor = new THREE.Color(opts.rimColor ?? 0x9ec8ff);
   const specColor = new THREE.Color(opts.specColor ?? 0xffffff);

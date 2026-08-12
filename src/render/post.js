@@ -162,7 +162,9 @@ const GradeShader = {
 
       // Cool lift in the blacks, warm gain in the lights: the same warm
       // light cool shadow logic as the ramp, applied to the whole frame.
-      vec3 lift = vec3(0.012, 0.018, 0.042);
+      // Kept shallow: lifting further milks the ink lines and flattens
+      // the value structure the cel look depends on.
+      vec3 lift = vec3(0.006, 0.009, 0.021);
       c = c * (1.0 - lift) + lift;
       c *= vec3(1.045, 1.010, 0.965);
 

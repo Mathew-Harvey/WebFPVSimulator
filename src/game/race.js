@@ -1,18 +1,24 @@
 /*
- * race.js: the race. Gate sequencing, lap timing, best lap, and collision
- * with the gate frames.
+ * race.js: the race. Gate sequencing, lap timing, best lap, and gate
+ * frame contact.
  *
- * Detection is a plane crossing test in each gate's local frame: the
- * segment the craft travelled this frame is intersected with the gate
- * plane, and the crossing point must fall inside the aperture. That is a
- * swept test of the craft centre, so a gate cannot be skipped through at
- * speed no matter how few frames the crossing spans. The craft's own
- * radius is folded into the aperture margin.
+ * Scoring aperture is the glowing RING, not the outer frame: the ring is
+ * what a pilot aims at, and at 3.3 m effective diameter it demands a
+ * line, where the full 6 by 5 frame was a barn door. Detection is a
+ * plane crossing test in the gate's local frame, swept over the segment
+ * the craft travelled this frame, so speed cannot tunnel a gate.
+ *
+ * Lap times run on the SIMULATION clock, interpolated to the crossing
+ * point, not on the wall clock: a frame hitch freezes the quad, and a
+ * scoreboard that keeps counting while the physics stands still would
+ * punish slow machines. The whole project is built on deterministic
+ * physics; the timing is only honest if it reads the same clock.
+ *
+ * Touching a gate frame voids the lap rather than destroying the craft:
+ * no real race kills you for a gate tap, the penalty is your lap.
  *
  * All of this runs in Three.js world space (y up), downstream of the
- * physics. Nothing here feeds back into the simulation; the only outputs
- * are HUD state and a crash flag the shell treats exactly like a ground
- * strike.
+ * physics. Nothing here feeds back into the simulation.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -30,15 +36,18 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Gate geometry, matching gate() in scene.js. Aperture is the full frame
- * opening, tightened by the craft radius so clipping a post with an arm
- * counts as hitting it, not passing it. */
+/* Gate geometry, matching gate() in scene.js. */
 const GATE_HALF_W = 3.0;
 const GATE_H = 5.0;
+const RING_Y = 2.5; /* ring centre height above the gate base */
+const RING_R = 1.9; /* ring centreline radius */
 const CRAFT_R = 0.25;
 const POST_R = 0.28;
+/* Swept collision sampling: finer than the post reach so a fast crossing
+ * cannot phase through a post between two frames. */
+const SWEEP_STEP = 0.2;
 
-const BEST_KEY = 'webfpv.bestLapMs';
+const DEFAULT_KEY = 'webfpv.bestLapMs';
 
 function fmt(ms) {
   if (ms == null || !Number.isFinite(ms)) {
@@ -74,27 +83,38 @@ export class Race {
         sin: -Math.sin(g.heading),
       };
     });
-    let best = null;
-    try {
-      const v = Number(localStorage.getItem(BEST_KEY));
-      best = Number.isFinite(v) && v > 0 ? v : null;
-    } catch (e) {
-      best = null;
-    }
-    this.bestMs = best;
+    this.key = DEFAULT_KEY;
+    this.bestMs = this.loadBest();
     this.reset();
+  }
+
+  loadBest() {
+    try {
+      const v = Number(localStorage.getItem(this.key));
+      return Number.isFinite(v) && v > 0 ? v : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* Best laps are only comparable on the same config and pack voltage;
+   * the shell keys the record accordingly and swaps it here. */
+  setRecordKey(key) {
+    this.key = key;
+    this.bestMs = this.loadBest();
   }
 
   reset() {
     this.next = 0;
     this.lap = 0;
-    this.lapStartMs = null;
+    this.lapStartMs = null; /* sim clock */
     this.lastLapMs = null;
-    this.flash = null; /* { text, untilMs } for the centre message */
+    this.prevSimMs = null;
+    this.flash = null; /* { text, untilMs } on the wall clock */
   }
 
   /* World point into gate g's local frame: x across the opening, y up
-   * from the base, z along the course tangent. */
+   * from the base, z along the direction of travel. */
   local(g, px, py, pz) {
     const dx = px - g.x;
     const dz = pz - g.z;
@@ -105,48 +125,49 @@ export class Race {
     };
   }
 
-  /* Segment prev to curr against the next gate's plane. Returns true and
-   * advances the sequence when the crossing point is inside the aperture,
-   * travelling in the course direction. */
-  tryPass(prev, curr, nowMs) {
+  /* Segment prev to curr against the next gate's plane. A pass is a
+   * crossing in the direction of travel whose interpolated crossing
+   * point lies inside the ring, craft radius folded in. Returns the sim
+   * time of the crossing, or null. */
+  tryPass(prev, curr, prevSimMs, simMs, wallMs) {
     const g = this.gates[this.next];
     const a = this.local(g, prev.x, prev.y, prev.z);
     const b = this.local(g, curr.x, curr.y, curr.z);
     if (!(a.z <= 0 && b.z > 0)) {
-      return false;
+      return null;
     }
     const t = a.z / (a.z - b.z);
     const cx = a.x + (b.x - a.x) * t;
-    const cy = a.y + (b.y - a.y) * t;
-    if (Math.abs(cx) > GATE_HALF_W - CRAFT_R || cy < 0 || cy > GATE_H - CRAFT_R) {
-      return false;
+    const cy = a.y + (b.y - a.y) * t - RING_Y;
+    if (cx * cx + cy * cy > (RING_R - CRAFT_R) * (RING_R - CRAFT_R)) {
+      return null;
     }
+    const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
     if (passed === 0) {
       if (this.lapStartMs != null) {
-        this.lastLapMs = nowMs - this.lapStartMs;
+        this.lastLapMs = crossMs - this.lapStartMs;
         this.lap += 1;
         let msgText = `LAP ${this.lap}  ${fmt(this.lastLapMs)}`;
         if (this.bestMs == null || this.lastLapMs < this.bestMs) {
           this.bestMs = this.lastLapMs;
           msgText += '\nNEW BEST';
           try {
-            localStorage.setItem(BEST_KEY, String(Math.round(this.bestMs)));
+            localStorage.setItem(this.key, String(Math.round(this.bestMs)));
           } catch (e) {
             /* private mode: best lap simply does not persist */
           }
         }
-        this.flash = { text: msgText, untilMs: nowMs + 2600 };
+        this.flash = { text: msgText, untilMs: wallMs + 2600 };
       }
-      this.lapStartMs = nowMs;
+      this.lapStartMs = crossMs;
     }
-    return true;
+    return passed;
   }
 
-  /* Collision with the frame of any nearby gate: the two posts as
-   * vertical cylinders, and the top bar as a box. Distances are against
-   * the craft centre with the craft radius added on. */
+  /* Point test against the frame of any nearby gate: the two posts as
+   * vertical capsules, the top bar as a box, craft radius added on. */
   hitsFrame(px, py, pz) {
     for (const g of this.gates) {
       const dx = px - g.x;
@@ -176,13 +197,38 @@ export class Race {
     return false;
   }
 
-  /* Per frame: swept gate test then frame collision. Returns
-   * { passed: gateIndex|null, crashed: bool }. */
-  update(prev, curr, nowMs) {
-    const before = this.next;
-    const passed = this.tryPass(prev, curr, nowMs) ? before : null;
-    const crashed = this.hitsFrame(curr.x, curr.y, curr.z);
-    return { passed, crashed };
+  /* The frame test swept along the travelled segment, sampled finer than
+   * the post reach, so a post cannot be phased through between frames. */
+  sweepHitsFrame(prev, curr) {
+    const dx = curr.x - prev.x;
+    const dy = curr.y - prev.y;
+    const dz = curr.z - prev.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const n = Math.max(1, Math.ceil(dist / SWEEP_STEP));
+    for (let i = 1; i <= n; i += 1) {
+      const t = i / n;
+      if (this.hitsFrame(prev.x + dx * t, prev.y + dy * t, prev.z + dz * t)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* Per frame. simMs is the simulation clock at the rendered state,
+   * wallMs the wall clock (flash expiry only). Returns
+   * { passed: gateIndex|null, hitFrame: bool }; a frame hit voids the
+   * running lap, it does not crash the craft. */
+  update(prev, curr, simMs, wallMs) {
+    const prevSimMs = this.prevSimMs ?? simMs;
+    this.prevSimMs = simMs;
+    const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
+    const hitFrame = this.sweepHitsFrame(prev, curr);
+    if (hitFrame && (this.lapStartMs != null || this.next !== 0)) {
+      this.lapStartMs = null;
+      this.next = 0;
+      this.flash = { text: 'GATE HIT\nLAP VOID', untilMs: wallMs + 1800 };
+    }
+    return { passed, hitFrame };
   }
 
   /* Scene index of the gate the race wants next, for highlighting. */
@@ -190,15 +236,15 @@ export class Race {
     return this.gates[this.next].idx;
   }
 
-  flashText(nowMs) {
-    if (this.flash && nowMs < this.flash.untilMs) {
+  flashText(wallMs) {
+    if (this.flash && wallMs < this.flash.untilMs) {
       return this.flash.text;
     }
     return null;
   }
 
-  hudLine(nowMs) {
-    const cur = this.lapStartMs != null ? nowMs - this.lapStartMs : null;
+  hudLine(simMs) {
+    const cur = this.lapStartMs != null ? simMs - this.lapStartMs : null;
     return (
       `gate ${this.next + 1}/${this.gates.length}  lap ${fmt(cur)}  ` +
       `last ${fmt(this.lastLapMs)}  best ${fmt(this.bestMs)}`

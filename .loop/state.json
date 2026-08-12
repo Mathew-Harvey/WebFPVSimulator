@@ -1,11 +1,12 @@
 {
   "note": "Rubric is the A, B, C, D list in the polish loop prompt. The older P/F/T/G gate names from the first loop live in PROGRESS.md history and in threshold-disputes.md; they are a different rubric and are not tracked here.",
-  "round": 4,
+  "round": 5,
   "attempted": {
     "1": "A1, the product shell: title, how to fly, settings, pause, results, and a flight display replacing the developer HUD",
     "2": "A4 and A5, plus every defect the two round 1 reviewers raised",
     "3": "B5 focal hierarchy and B1 value bands, plus B4 for the grass and the two artefacts with a named mechanism",
-    "4": "Both round 3 reviewers' lists: the shadow map rendered twice, ridge value collapse, gate glow ladder, cloud clipping, unlit flowers, the meadow's straight edge, two ink mechanisms, camera near and prepass depth precision"
+    "4": "Both round 3 reviewers' lists: the shadow map rendered twice, ridge value collapse, gate glow ladder, cloud clipping, unlit flowers, the meadow's straight edge, two ink mechanisms, camera near and prepass depth precision",
+    "5": "The round 4 review's list: the composer had no antialiasing at all, ring 0 sat inside the tree canopy band, clouds still clipped at 1.000 and held 63 percent of the frame's bright area, and the title scrim crushed the lower two thirds"
   },
   "verify": "12 of 13 in every round, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched: git diff HEAD -- tests/ is empty across the whole loop.",
   "rubric": {
@@ -14,12 +15,12 @@
     "A3": "pass, reviewer 1 round 1",
     "A4": "fixed round 2, not yet re-reviewed",
     "A5": "fixed round 2, not yet re-reviewed",
-    "B1": "fixed round 4, review running",
-    "B2": "two mechanisms fixed round 4, others open, review running",
+    "B1": "FAIL at round 4 review. Round 5 lifted mountain ring 0 to 0.198 against canopies at 0.129, and gave the frame antialiasing. Unreviewed since.",
+    "B2": "FAIL at round 4 review. Round 5 added the antialiasing the frame never had. Still open: no ink on mountain silhouettes past 320 m, the grass suppression eats the gate plinth's ground contact line into dashes, a flag cloth passes through a tree canopy, canopy rim reads as a dark light dark fringe.",
     "B3": "not reviewed, no frame captured at racing speed yet",
-    "B4": "grass round 3, flowers round 4, water still has no light model and no warm band",
-    "B5": "glow ladder round 4, review running",
-    "B6": "ridge values and meadow taper round 4, the flat corridor is untouched",
+    "B4": "FAIL at round 4 review. The mountains are unlit flat colour, which is what makes their values reliable and also means the largest mass in the frame has no warm light and no cool shadow. Water still has no light model. The gate frame navy does not band.",
+    "B5": "FAIL at round 4 review because a cloud was the brightest pixel at 1.000 against the gate's 0.927. Round 5: cloud peak 0.697 under a gate ring at 0.826. Still open: gate 2 can sit behind a tree canopy, and no tier reads as the track.",
+    "B6": "FAIL at round 4 review. Rings 2 and 3 never appear because the near rings occlude them, the mountains carry no haze because they are fog exempt, and the corridor is flat. Untouched.",
     "C1": "not built. Input is sampled per animation frame and the internal latency has never been measured",
     "C2": "partial. Propwash comes out of the blade flapping model. Ground effect is absent: the plant has no notion of altitude, so adding it needs a new ABI call",
     "C3": "not built. A crash has no sound, no camera response and no visual consequence",
@@ -33,24 +34,29 @@
     "D6": "pass"
   },
   "open_from_reviewers_not_yet_fixed": [
-    "B6 root cause: makeHeightField forces height to zero within 30 m of every point on the circuit, so the whole flight area is a plane and there is nothing between a 250 mm quad and a 200 m mountain",
-    "B2: shadow acne on the tree canopies, and each canopy blob carries its own inverted hull so one tree reads as four outlined balloons",
-    "B2: the lake plane cuts trees and rocks with no waterline treatment, and a flag pole with its cloth passes through a tree canopy",
-    "B4: water is a constant band ramp with no light model and every band is cool, including the lit crests; its depth bands are keyed to radius from the lake centre rather than to depth, so from altitude it will read as a bullseye",
-    "B4 and B1: the rim term in celmat.js is step(0.5, rim) with no sun term, so it floods whole grazing angle faces with a cool grey wash and is brightest on the shadow side",
-    "B1: the lake's shoreline foam is a 12 m band pinned to the disc radius rather than to the waterline, and it is the second brightest thing in the world",
-    "B4: SUN_DIR is close to co-axial with the start line view, so the four band ramp delivers only a 1.38 to 1 spread across a whole tree canopy and there is no terminator to judge",
-    "B5: the amber accent is used for the gate rings, the OSD gate counter, the banner, every settings heading and the throttle bar, so the colour that means gate does not only mean gate",
+    "B2: mountain silhouettes carry no ink at all. post.js OutlineShader fades edges from d0 0.16 to 0.42, about 320 m to 840 m, and cone on cone depth deltas never reach the threshold",
+    "B2: the grass ink suppression eats the gate plinth's contact line with the meadow into dashes, exactly where a pilot judges ground clearance",
+    "B2: a flag cloth passes through a tree canopy while its own pole passes in front of the same canopy",
+    "B2: canopy edges carry a 2 to 3 px pale rim inside the dark ink line, a dark light dark fringe that reads as a compositing error",
+    "B4 and B6: mountain rings 2 and 3 never appear in any rendered frame because rings 0 and 1 occlude them, so half the aerial perspective palette is dead code",
+    "B4: the mountains are unlit flat colour. Values are reliable, but the largest mass in the frame has no warm light and no cool shadow",
+    "B4: water has no light model and every band is cool including the lit crests; its bands key off radius from the lake centre rather than depth, so from altitude it reads as a bullseye",
+    "B4: the gate frame navy 0x2a3352 shows a 3 percent luminance difference between its sunlit top face and its vertical face, so the structure is a flat cutout",
+    "B4: the rim term in celmat.js is step(0.5, rim) with no sun term, so it floods whole grazing angle faces and is brightest on the shadow side",
+    "B5: gate 2 can be occluded by a tree canopy, and nothing in the frame reads as the track tier between the next gate and the landmarks",
+    "B5: the amber accent means gate ring, OSD gate counter, banner, settings heading and throttle bar all at once",
+    "B6 root cause: makeHeightField forces height to zero within 30 m of every point on the circuit, so the flight area is a plane and there is nothing between a 250 mm quad and a 200 m mountain",
+    "B6: the lake has no shoreline. A dead straight far edge butts into the mountain silhouette, grass stands inside the water, a rock floats half submerged",
     "B1 and B6: the 70 m cream sand shore, one flat value with no detail",
-    "B6: mountain ring 3 reaches 1515 m while the sky dome is a 1500 m sphere, so its outer slivers are overpainted",
-    "gates 2 to 8 use red orange bands while the tutorial text says to chase the amber rings",
-    "performance: 204 static gate meshes and 72 flag cloths are 77 percent of the draw calls, and the merger is already in the same file",
+    "B3: never reviewed. No frame has been captured at racing speed, and the reviewer could not fly through gate 1 to judge mid course hierarchy",
+    "performance: 204 static gate meshes and 72 flag cloths are 77 percent of the draw calls, and the merger is already in scene.js",
     "performance: the grass fragment shader spends 16 shadow map compares and 12 noise hashes per fragment on two values that cannot vary across a 3 cm blade",
-    "performance: antialias true costs about 118 MB at 1440p and delivers nothing, because EffectComposer allocates its own non multisampled targets, so the frame has no antialiasing at all",
     "performance: grass.frustumCulled false submits 552000 triangles and 32 MB of vertex buffer every frame regardless of view",
     "performance: load is a 2195 ms synchronous stall, dominated by 67 million distance to track evaluations",
-    "performance: the attract view is 701 draw calls against 237 in flight, and the round 4 increase of 9 percent is unaccounted for",
-    "C1 to C5 untouched: no latency measurement, no ground effect, no impact feedback, audio is still a sawtooth per motor"
+    "performance: the attract view is 701 draw calls against 237 in flight, and round 4's 9 percent increase there is still unaccounted for",
+    "OSD: the pack falls 25.2 V to 18.1 V in about 3.2 s of full throttle, which makes the pack gauge close to useless as a readout",
+    "C1 to C5 untouched: no latency measurement, no ground effect, no impact feedback, no particles anywhere in the render, audio is still a sawtooth per motor"
   ],
-  "consecutive_all_green": 0
+  "consecutive_all_green": 0,
+  "done_condition": "Not met. Definition of done is two consecutive rounds with every rubric item PASS by adversarial review. The best any round has managed is A1, A2 and A3 PASS with B1, B2, B4, B5 and B6 FAIL. main has NOT been fast forwarded."
 }

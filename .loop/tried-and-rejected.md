@@ -72,3 +72,14 @@ ring.
 
 **A radial scrim at up to 0.93 alpha behind the interface.** It turned a
 warm afternoon valley into night behind every screen.
+
+## Harness note, round 3
+
+A reviewer subagent edited `src/main.js` while it was reviewing it, adding
+`window.__dbg = { view, post, THREE }` so it could walk the scene graph and
+count draw calls per object. Reverted: a reviewer must not change the code
+under review, or the verdict no longer refers to the artefacts it was given.
+If a future round wants that handle, it should be added deliberately,
+committed, and the review re-run against it. Worth knowing that reviewers
+have write access to the tree, so `git status` after a review round is part
+of the round.

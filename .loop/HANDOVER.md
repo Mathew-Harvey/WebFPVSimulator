@@ -20,8 +20,33 @@ the rubric is not green, so the merge condition is not met.
 - Round 4: the top of both those lists. Shadow map rendered twice, ridge
   value collapse, gate glow ladder, cloud clipping, unlit flowers, the
   meadow's straight edge, two ink mechanisms, camera near plane and prepass
-  depth precision. One art and QA reviewer was running when this session
-  ended; ITS VERDICT IS NOT IN. Read it as unreviewed.
+  depth precision. Reviewed by an art director with a QA eye: REJECT, all
+  five B items still FAIL.
+- Round 5: that review's list, as far as this session's room allowed. The
+  frame had NO ANTIALIASING at all, which two reviewers found independently.
+  Mountain ring 0 was sitting inside the tree canopy band. Clouds were still
+  clipping at 1.000 and holding 63 percent of the frame's bright area. The
+  title scrim was crushing the lower two thirds to 0.011. All four fixed and
+  measured. UNREVIEWED: no reviewer has seen round 5.
+
+### Round 5 measured value ladder, the current reference
+
+    gate ring        0.826      (the pilot's target, top of the ladder)
+    cloud, peak      0.697
+    cloud, body      0.525
+    sky              0.375
+    grass, ground    0.277
+    mountain ring 0  0.198
+    tree canopy      0.129
+    gate posts       0.086
+
+Reproduce with:
+    node scripts/pixels.js .loop/evidence/r5/02-flight.png ring=770,495,6,6 \
+      sky=200,60,20,20 grass=300,760,20,20
+
+Antialiasing evidence, same frame, walking a gate crossbar edge at x=700:
+0.505, 0.307, 0.075. Before round 5 the same edge was 0.509, 0.108, 0.028,
+where the single transition pixel was bloom bleed, not coverage.
 
 ### Round 4 numbers, for comparison against whatever you change next
 
@@ -178,18 +203,36 @@ resolve those.
 
 ## The immediate next step
 
-1. Read the round 4 reviewer's verdict if it landed after this session
-   ended. Its findings are binding. Look in the task output or re-run the
-   same review brief; the brief is in the git history of this session's
-   commits and in the shape of the ones in PROGRESS.md.
-2. Then the two cheapest large wins are both in the open list: bake the 204
-   static gate meshes and merge the 72 flag cloths (77 percent of the draw
-   calls, with the merger already in scene.js), and give the water a light
-   model and a warm band (the last named B4 failure).
-3. B6's root cause, the flat 30 m corridor in makeHeightField, is the
-   single biggest remaining art item and the most invasive: gate base
-   heights, the spawn height and the crash check all read that field, so
-   change it with a capture of the start line before and after.
+Round 5 is unreviewed. Start by reviewing it, with two lenses, against the
+same rubric items, using .loop/evidence/r5 plus fresh frames of your own.
+
+Then, in this order, from `.loop/state.json`'s open list:
+
+1. **Ink on the mountains.** They carry none, because post.js fades edges
+   out from d0 0.16 to 0.42 and cone on cone depth deltas never reach the
+   threshold. This is the cue B1 leans on once two ridges are at similar
+   values, so it matters more than it looks.
+2. **The gate plinth's ground contact line is dashed** by the grass ink
+   suppression added in round 4. That is where a pilot judges clearance, so
+   the suppression needs to be a real occlusion test rather than a blanket
+   veto within one texel of grass.
+3. **Rings 2 and 3 never appear.** Half the aerial perspective palette is
+   dead code because rings 0 and 1 occlude them: vary the per ring height
+   range, or push the near rings' cone count down.
+4. **Water.** No light model, every band cool including the lit crests,
+   bands keyed to radius rather than depth so it will read as a bullseye
+   from altitude, and no shoreline at all. The last big named B4 failure.
+5. **Bake the 204 static gate meshes and merge the 72 flag cloths.** 77
+   percent of the draw calls, with the merger already in scene.js.
+6. **B6's root cause**, the flat 30 m corridor in makeHeightField, is the
+   biggest remaining art item and the most invasive: gate base heights, the
+   spawn height and the crash check all read that field, so change it with a
+   capture of the start line before and after.
+
+And one honesty note to carry forward, because it happened three times in
+five rounds: every number that went into a comment or a commit message
+without a measurement behind it turned out to be wrong, and a reviewer
+found each one. Measure it or do not write it down.
 
 ## Sharp edges
 

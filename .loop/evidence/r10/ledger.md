@@ -263,3 +263,374 @@ figure without a hidden factor.
   this round are deliberately NOT vendored, see utt3-layout.md.
 - D7: `git diff HEAD -- tests/` empty.
 - D8: every number above came out of a run in this round.
+
+---
+
+# Corrections after adversarial review
+
+Two hostile reviewers, a mastering engineer judging the mix from the rendered
+spectra and a QA tester paid per defect judging the instruments, were given
+the artefacts above and the file paths, told not to edit anything, and told
+their default verdict was REJECT. Neither was given any description of what
+was built. Both returned REJECT. `git status` after both runs shows no tracked
+file modified by either.
+
+Their verdicts are binding, and they found two numbers in the ledger above
+that no artefact backs. Both are D8 breaches. Everything struck here stays
+visible rather than being quietly edited, because a corrections list a reader
+can check is worth more than a clean file they cannot.
+
+## Struck: `glow 0.99` for the mid course forward view
+
+The line above reporting the target gate's glow gain as 0.99 came from the
+terminal output of the FIRST 1080p run of the round, which was discarded and
+re-run once the audio wake step was added, and the committed sidecar comes
+from the second run. The sidecar says 1.0657 at 1080p and 1.2196 at 900p. The
+number was stale, from a superseded run, and there was no reason to quote a
+per frame sample of a quantity that pulses on the wall clock as though it
+were a property of the gate.
+
+Fixed at the source as well as in the text: the handle now names the field
+`glowGainSampled`, because that is what it is.
+
+## Struck: `53.6 ms over 50 frames`
+
+Real when it was measured, and measured in that same discarded first run, so
+there is no log, no sidecar and no JSON behind it anywhere in this evidence
+directory. A number a reader cannot check is not evidence, whatever its
+provenance. It is withdrawn.
+
+P7's verdict does not depend on it and does not change. The reproducible
+spread is in the two runs that DO have artefacts, 16.8 ms over 152 frames at
+1080p and 23.8 ms over 173 at 900p, and in the reviewer's independent reruns
+of the same command on the same build. P7 stays CANNOT VERIFY.
+
+## Corrected: P13 is a range, not a figure
+
+The reviewer's reruns of the published command measured 0.20 ms at 1080p and
+0.80 ms at 900p against this round's 0.40 and 0.20, a factor of 4 spread on
+one build. The ceiling is 2 ms and every sample is inside it, so P13's verdict
+stands, but it is a range over samples of 150 to 175 frames and is written
+that way now.
+
+The reviewer also found that P13 and P7 both time only the requestAnimationFrame
+callback, so the one genuinely expensive piece of audio work in a session,
+building a 44,100 sample noise buffer inside `attach()` from a `pointerdown`
+handler, is invisible to both. That is a real gap in both instruments and it
+is recorded in the handover as the next thing to instrument, not fixed here.
+
+## Corrected: the quad's bounding box is a per frame sample
+
+`0.309 by 0.110 by 0.308 m` was quoted as a fact. It is an axis aligned box
+over a group containing four spinning prop discs, so it breathes with prop
+angle: the reviewer measured 0.2819, 0.3088 and 0.3199 m across the sidecars
+of this one round, a 13 percent spread. It is also not the motor to motor
+diagonal that a 250 mm class quad is named for, so it must not be read as
+"the quad is 309 mm". The field is now `worldSizeSampled` and carries a note
+saying so, and T6 still has no instrument.
+
+## Corrected: P5 at 900p
+
+The text said P5 was not re-derived at 1600 by 900. It was: the 900p run
+prints `p5_target_MB_at_1080p: 115.1` on every view, which is the same figure
+by the same derivation.
+
+## Corrected: A3 was published from the wrong trace at the wrong level
+
+Two errors compounding in the flattering direction, both found and both
+larger than the original claim.
+
+A3 names "a normal flight render". The figure above came from the `full`
+trace, a full throttle pass, which is the trace A1 names and not this one.
+
+And the probe defaulted to `--level=0.5` while the shell runs at 0.6:
+`ui.js` defaults the volume setting to 6 and `main.js` divides it by 10.
+Every published loudness figure was therefore 1.58 dB below what a player
+hears. The probe's default is now 0.6 and cites where that comes from.
+
+Re-measured at the shell's own level, all four figures, both traces:
+
+| trace | RMS dBFS | true peak dBTP | peak sample | at or over full scale |
+|---|---|---|---|---|
+| flight, which is what A3 names | **-30.38** | -13.21 | 0.2177 | 0 |
+| full, which is what A1 names | -22.28 | -10.22 | 0.3083 | 0 |
+
+A3's band is -20 to -14 dBFS. On the render A3 names the mix is **10.38 dB
+too quiet**, not the 3.9 dB the text above claimed. No weighting is stated by
+the bar, so none is applied, and that is worth a human's attention because
+"-20 to -14 dBFS" is only fully meaningful with one.
+
+## Corrected: A1's margin, with the bandwidth asymmetry published beside it
+
+A1 as worded compares the band containing the blade pass fundamental, 92 Hz
+wide, against 2 kHz to 8 kHz, 6000 Hz wide. That is the comparison the bar
+asks for and the probe makes it: **-22.01 dB**, unchanged, and level
+independent. But 18 dB of that margin is bandwidth rather than loudness, so
+the headline "34.0 dB the wrong way" overstates what a listener hears.
+
+The probe now also publishes the same comparison on equal bandwidth, loudest
+third octave overall against loudest third octave inside the scream band:
+
+    full trace:   -23.41 dB minus -31.43 dB  =  8.02 dB
+    flight trace: -36.13 dB minus -43.31 dB  =  7.18 dB
+
+Both are short of 12 and A1 remains FAIL. The reviewer computed 8.02 dB
+independently from the original evidence file and the probe now agrees to two
+decimal places, which is a cross check on the new code as well as on the
+claim. The honest statement is: the mix fails A1 by 4.0 dB on equal
+bandwidth, and by 34.0 dB as the bar is worded.
+
+## Retracted as false: the binaural discriminator
+
+The round 10 text above says "a monaural beat shows in the mono sum, a
+binaural one does not". **That is wrong.** Two carriers a few Hz apart summed
+to mono ARE an amplitude modulation at their difference frequency; that is
+what a beat is. A reviewer proved it on a synthesised 200 Hz and 206 Hz pair:
+each channel alone reads -63.7 dB at 6 Hz, correctly absent, and the mono sum
+reads -3.63 dB at a depth of 0.659.
+
+An implementer building to that sentence would have built something that is
+not a binaural tone. The derivation, the measurement and what the correct
+discriminator is are in `.loop/threshold-disputes.md` entry 5, and A4 is
+recorded there as BLOCKED WITH ARGUMENT because the rubric's own last clause
+carries the same error. No other part of A4 is affected.
+
+## A9 fails, and it is not fixable here
+
+Two `OfflineAudioContext` renders of the identical graph inside one page
+differ in 293,580 of 576,000 samples by one float32 ULP. Recorded in
+`.loop/blocked.md` entry 7. The probe now prints a truncated SHA-256 of every
+rendered channel so this is visible in every report; nobody noticed it for a
+whole round because there was no digest and every published figure was a
+reduction printed to fifteen digits.
+
+## Instrument defects found and fixed this round
+
+All of these were live in the numbers published above.
+
+- **True peak skipped the first and last 16 samples.** A 0.99 sample at index
+  5 of a 4096 sample buffer reported -19.740 dBTP against a -0.087 dBFS
+  sample peak: a 19.65 dB under-report, and a true peak below the sample
+  peak, which is impossible. The r10 renders happened to be unaffected
+  because the master gain ramps up from silence. The first crash or drum
+  transient near a boundary would have inverted the headroom claim silently.
+  The filter now treats the signal as zero outside its own extent.
+- **The one third octave table double counted 13 bins** and dropped every bin
+  above 22387 Hz, under-reading white noise by 0.30 dB. It cancelled on the
+  motor only render, which is the signal the normalisation was validated on.
+  Bands are half open now, the top band runs to Nyquist, and every band
+  publishes its bin count so a band narrower than the analysis resolution
+  cannot be quoted as measured. At 8192 points the 20 Hz band is empty and
+  the 25 and 40 Hz bands are one bin wide, which matters for a sub bass line.
+- **The tempo function had no null hypothesis.** It returned 137.20 BPM at
+  r = 0.823 on white noise and 187.50 BPM at r = 0.984 on a single steady
+  sine, while a real synthetic 173 BPM breakbeat scored only r = 0.349,
+  behind its own half tempo. It also could not distinguish a true 177 BPM
+  from 175.78, which is inside A5's window: at hop 256 the only reachable BPM
+  values between 170 and 176 were 170.455, 173.077 and 175.781, so a track
+  that fails A5 would have passed it. The hop is 128 now, the peak lag is
+  parabolically refined so the reported BPM is continuous, the flux is band
+  limited to 60 Hz to 10 kHz so the motors cannot drive the estimate, and a
+  shuffled flux null distribution is measured and published: 24 trials, fixed
+  seed, 95th percentile. On the `full` trace the null floor is r = 0.0385 and
+  the top peak is r = 0.5640 at 128.16 BPM, which is the 1 second noise loop
+  and its harmonics, not music. No tempo from the old function is quotable.
+- **The amplitude modulation detector was a knife edge with no floor.** With
+  50 percent true modulation at 6.00 Hz it read -6.11 dB at 6.00 Hz, -12.07
+  at 6.05 and -24.15 at 6.20, because the bin was 0.083 Hz wide with no
+  window, and the round 10 evidence probed a hand calculated 8.48 Hz. It is
+  now Hann windowed, scanned over plus and minus 0.5 Hz, and every result
+  carries a floor measured on the same envelope at an unrelated frequency.
+  Re-measured on `steady:9000`: left -20.85 dB against a floor of -57.57,
+  right -8.33 against -60.58, mono sum -13.37 against -56.79. The left
+  channel is 36.7 dB above its own floor, so "absent" was never the right
+  word for it.
+- **`aperturePx` had no validity gate.** It published 17988.1 px at 1080p and
+  14990.1 at 900p for gates 0.45 m BEHIND a zenith pointing camera, and the
+  run log printed both. A gate 126 m behind read 14.900 px against 14.910 for
+  the same gate in front, because the sign flip cancels under an absolute
+  value. It returns null now unless both projected points are in front of the
+  camera, and it says in the sidecar that it is a vertical chord and not the
+  width of a yawed gate.
+- **Screen positions behind the camera were mirrored and published as
+  positions.** `project` divides by a negative w behind the camera, so the
+  old mid course sidecar reported `671, 553`, comfortably inside the frame,
+  for a gate 126 m behind it, and the ledger printed that pair. The sidecar
+  now carries `inFront` and `mirrored` beside every screen coordinate.
+- **`onScreen` was a single point test with no clipping and no occlusion,**
+  and the reviewer produced a capture where it returns false while the target
+  gate's ring fills the left third of the frame. It is renamed
+  `centreInFrame`, which is what it measures, and the sidecar says in words
+  that it cannot settle G3 on its own.
+- **`span250mmPx` emitted `Infinity`,** which `JSON.stringify` launders into
+  `null` so a reader cannot tell it from "not applicable", and `boxPx`
+  bracketed a reflection because four of the eight box corners were behind
+  the near plane. Both are refused now, with the reason in the payload, when
+  the camera is inside the near plane.
+- **Camera space depth was missing.** A projected size scales with depth, not
+  with Euclidean distance, and at 55 degrees off axis the two differ enough
+  to overstate a size by 74 percent. The cross check above divided by 44.4 m
+  where the depth is 44.20 m and landed at 35.7 against 35.9 by luck. Both
+  are published now: with depth it is 35.88 against 35.90.
+- **`__setRaceNext` left the race inconsistent.** It set `race.next` and
+  nothing else, so `lapStartMs` stayed null, no lap clock could start, and
+  `race.update` would treat a gate frame tap as a lap to void and flash
+  "Gate touched, lap void" across a capture. It resets the race now and
+  returns the previous value so a run can restore it.
+- **Both harness scripts pasted an absolute output path onto the repository
+  root,** which is how four scratch screenshots from an earlier session and a
+  bisect frame came to be committed under `tmp/`. Fixed with `isAbsolute`,
+  and the five stray files are deleted in this round's commit.
+- **Sidecar failures were counted in the same total as console errors,** so
+  `errors 0` was two gates wearing one number. They are counted and printed
+  separately now, and both still fail the run.
+- **The probe asserted nothing and exited 0 whatever it measured.** Still
+  true, and recorded in the handover: it belongs in `npm run verify` or in
+  `scripts/gates.js` so that a rubric comparison is not a human reading a
+  JSON file, which is the fabrication surface this round exists to close.
+
+## Reviewer findings accepted and NOT fixed this round, with reasons
+
+- **The gate opening is 2.30 times the MultiGP standard**, and three parts of
+  the codebase disagree about it: `scene.js` builds a 3.500 m clear span,
+  `race.js` scores on an effective 3.30 m computed from the centreline radius
+  while ignoring the 0.15 m tube, so a craft can be credited with a clean
+  pass while its body overlaps the ring, and `src/game/track.js` says the
+  standard gate is 1.524 m. The reviewer ranked this first by cost to the
+  player and it is already the next round's first item. Fixing it in the same
+  round as the instruments would have meant re-running every measurement
+  against a moving target.
+- **The rendered torus is a 32-gon,** so its true minimum clear span is
+  2 x 1.75 x cos(pi / 32) = 3.483 m and not 3.500. Correct, and it stops
+  mattering the moment the torus is replaced by a square regulation frame.
+- **Reading `ring.geometry.parameters` is reading back the same authored
+  constants through another door,** not measuring geometry. Also correct. The
+  regulation gate's assertion has to come from the vertex positions or from a
+  test, and `src/game/track.js` has to be imported by something for T1 to
+  mean anything. Next round.
+- **The sidecar is sampled at least one frame after the PNG,** because
+  `captureScreenshot` returns after a frame is committed and the sidecar is a
+  separate evaluate. Harmless for a parked camera and wrong for the first
+  capture that actually flies.
+- **P8's remaining allocations**: `ui.setOsd` allocates a nine key object
+  literal every flight frame, `race.update` returns an object, `race.local`
+  returns one per call, and `race.js:223` allocates an array per gate per
+  sweep sample. P8 is FAIL and stays FAIL; "one array literal removed" was
+  not worth a ledger line and is not claimed as progress.
+- **The trace is analytic, not a recording from `sim.wasm`.** A2 asks for the
+  fundamental to be asserted against the RPM the module reports, and until
+  the probe can be driven from a recorded trace that assertion cannot be
+  made at all. This is the second half of A2 and it needs a recorder.
+- **`peakFreq().db` is an unnormalised log magnitude with no reference,**
+  published in the same file as dBFS figures. Not fixed, not quoted anywhere
+  in this ledger, and flagged in the handover.
+- **`p5_targets` cannot attribute 50 MB of the 115.1 MB it totals**, naming
+  two full resolution targets only as "Scene" and one as "unspecified". P5
+  passes on a breakdown the instrument cannot fully explain.
+
+## Re-measured after the fixes, both resolutions, this turn
+
+Every capture in `.loop/evidence/r10/1080p` and `900p` was deleted and
+re-taken with the corrected handles, and every audio JSON was re-rendered at
+the shell's own mix level. These are the numbers that stand.
+
+P1 and P2 per view, from two separate runs of the same command block:
+
+| view | P1 1080p | P1 900p | P2 1080p | P2 900p |
+|---|---|---|---|---|
+| title attract | 700 | 701 | 1,916,491 | 1,916,451 |
+| title worst azimuth | 692 | 692 | 1,916,379 | 1,916,379 |
+| start line | 236 | 236 | 1,904,447 | 1,904,447 |
+| mid course | 288 | 288 | 1,905,119 | 1,905,119 |
+| mid course forward | 484 | 484 | 1,910,349 | 1,910,349 |
+| empty sky | 156 | 156 | 1,901,683 | 1,901,683 |
+
+**The title attract view is not reproducible and must stop being the
+headline.** Its camera orbits on the wall clock, so it samples a different
+azimuth every run: 705, 700 and 701 draw calls across three runs of this
+build, and a reviewer independently measured 701. The reproducible worst view
+is `title worst azimuth`, which parks the camera at 60 degrees and returns
+**692 calls and 1,916,379 triangles** in every run by every party. P1 is FAIL
+at 1.73x and P2 at 1.60x on that view, and those are the figures to carry
+forward.
+
+Every other cell above is identical across both runs and both resolutions,
+which is what a parked camera should give.
+
+Run scoped, this turn:
+
+| # | 1080p | 900p |
+|---|---|---|
+| P6 first interactive frame | 2712 ms | 2528 ms |
+| P7 worst sync block | 38.3 ms over 157 frames | 17.9 ms over 174 frames |
+| P13 worst audio ms | 0.20 ms over 157 frames | 0.50 ms over 174 frames |
+| P12 audio nodes | 28, context running | 28, context running |
+| console | errors 0, warnings 0, harness faults 0 | errors 0, warnings 0, harness faults 0 |
+
+P6 is now 2712 ms against the 3337 ms published above and 5122 ms in round 9,
+on a build whose boot path nobody has touched. It is a wall clock measurement
+in a shared container and it should be read as a range of roughly 2500 to
+5100 ms, all of it over the 1800 ms ceiling. FAIL, and the multiple is not
+worth quoting to two figures.
+
+P7 across five runs of this build now reads 16.8, 17.9, 23.8, 38.3 and 53.6
+ms, over 50 to 174 frames. The last has no artefact and is withdrawn above;
+the other four have one. A budget whose measurements span a factor of 2.3 on
+one machine is not measured. CANNOT VERIFY stands.
+
+## The instrument fixes, confirmed on the captures they were meant to fix
+
+    04-midcourse   depth -106.5 m, MIRRORED behind the camera,
+                   centre NOT in frame, aperturePx refused
+    06-empty-sky   depth   -0.4 m, MIRRORED behind the camera,
+                   centre NOT in frame, aperturePx refused
+
+Both at both resolutions. The 17988.1 px and 14990.1 px figures the old
+handle published for those two views are gone, replaced by an explicit
+refusal and the camera space depth that explains it. The three views whose
+target really is in front of the camera are unchanged to eleven significant
+figures at 1080p, 79.06866721593508 against 79.06866721593519 between two
+runs, so the gate cost no precision where the measurement is valid.
+
+`07-inflight` is still the start line, at both resolutions, for the reason
+already given: the throttle key cannot be held long enough at this frame
+rate. It is still not a flight measurement.
+
+## Audio, re-rendered at the shell's own level 0.6
+
+| | full trace | flight trace |
+|---|---|---|
+| RMS dBFS | -22.28 | **-30.38** |
+| true peak dBTP | -10.22 | -13.21 |
+| peak sample | 0.3083 | 0.2177 |
+| samples at or over full scale | 0 | 0 |
+| A1 margin as worded | -22.01 dB | -25.03 dB |
+| A1 margin, equal bandwidth | 8.02 dB | 7.18 dB |
+| channel digests, sha256 truncated | be68688a468e85e0 5d277181e379e01f | 2cd8082a636c087a 065cb9e2e7dbd37f |
+
+A2 at three throttle settings, measured tone in the left channel against the
+blade pass frequency at 3 blades. The left channel is dominated by motor 2,
+whose trace factor is 1.0082, so the expected ratio is 2.9 x 1.0082 = 2.9238:
+
+| commanded RPM | blade pass Hz | measured Hz | ratio |
+|---|---|---|---|
+| 2999 | 150.0 | 438.568 | 2.924 |
+| 5998 | 299.9 | 877.133 | 2.925 |
+| 8997 | 449.9 | 1315.701 | 2.925 |
+
+The bar is 1 percent. The error is 192.4 percent and it is the same at every
+throttle setting, which is what "by construction" means: `RPM_TO_HZ_SCALE` is
+2.9. A2 FAIL, and A2's second half cannot be answered at all until the probe
+can be driven from a trace recorded out of `sim.wasm` rather than from the
+analytic function in `scripts/audio-probe.js`.
+
+A4, on `steady:9000`, with the floors the corrected detector now publishes:
+
+    carriers        1315.701 Hz left, 1305.001 Hz right, difference 10.700 Hz
+    AM at 8.48 Hz   left  -20.85 dB against a floor of -57.57
+                    right  -8.33 dB against a floor of -60.58
+                    mono   -13.37 dB against a floor of -56.79
+
+Those are two motor tones, not carriers, and there is no focus tone. Published
+because it is the calibration that shows the detector has a floor and reports
+against it.

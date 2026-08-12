@@ -1246,3 +1246,80 @@ box is 0.309 by 0.110 by 0.308 m.
 
 12 of 13. yaw-coupling is the known red and its threshold has not been
 touched.
+
+### Round 10, phase 3: two reviewers, both REJECT, and what they found
+
+A mastering engineer judging the mix from the rendered spectra and a QA
+tester paid per defect judging the instruments. Neither was given any
+description of what was built, both were told not to edit anything, and
+`git status` after both confirms neither did. Both returned REJECT.
+
+They found **two numbers in the round 10 ledger that no artefact backs**, and
+both are D8 breaches by this round's own author:
+
+- `glow 0.99` for the mid course forward view came from the terminal output of
+  a discarded first run, while the committed sidecar says 1.0657. Withdrawn,
+  and the field is renamed `glowGainSampled` because a quantity that pulses on
+  the wall clock is not a property of a gate.
+- `53.6 ms over 50 frames` for P7 was really measured, in that same discarded
+  run, so there is no log or JSON behind it anywhere. Withdrawn. P7's verdict
+  does not depend on it and does not change.
+
+They also found that **A3 was published from the wrong trace at the wrong
+level**, twice flattering. A3 names a normal flight render; the figure came
+from the full throttle trace. And the probe defaulted to a mix level of 0.5
+while the shell runs at 0.6, so every loudness figure was 1.58 dB below what a
+player hears. Re-measured at the shell's own level on the trace A3 names: RMS
+**-30.38 dBFS**, which is 10.38 dB below the band, not the 3.9 dB claimed.
+
+And they found that **the ledger asserted something physically false**: "a
+monaural beat shows in the mono sum, a binaural one does not". Two carriers a
+few Hz apart summed to mono ARE an amplitude modulation at their difference
+frequency. A reviewer proved it on a synthesised 200 and 206 Hz pair: each
+channel alone reads -63.7 dB at 6 Hz, the mono sum reads -3.63 dB at a depth
+of 0.659. A4's own last clause carries the same error, so A4 is recorded as
+BLOCKED WITH ARGUMENT in `.loop/threshold-disputes.md` entry 5 with the
+derivation, and every other clause of A4 stands.
+
+Eleven instrument defects were found and fixed this round, all of them live in
+the numbers first published. The full list with the measurements behind each
+one is in `.loop/evidence/r10/ledger.md` under Corrections. The three that
+would have done the most damage:
+
+- **True peak skipped the first and last 16 samples**, so a 0.99 sample near a
+  buffer edge reported -19.740 dBTP against a -0.087 dBFS sample peak, a true
+  peak below the sample peak, which is impossible. The round 10 renders
+  escaped only because the master gain ramps up from silence.
+- **The tempo function had no null hypothesis**, returning r = 0.984 on a
+  single steady sine and r = 0.823 on white noise while a real 173 BPM
+  breakbeat scored 0.349. It also could not tell a true 177 BPM from 175.78,
+  which is inside A5's window, so a bed that fails A5 would have passed. It
+  now band limits the flux, refines the lag parabolically, and publishes a
+  measured shuffled flux null: r = 0.0385 at the 95th percentile over 24
+  trials.
+- **`aperturePx` had no validity gate** and published 17,988 px for gates
+  behind a zenith pointing camera, while a gate 126 m behind read 14.900 px
+  against 14.910 for the same gate in front. It refuses now, and the sidecar
+  carries camera space depth, `inFront` and `mirrored`.
+
+Two things that were never fixable here and are now written down as blockers:
+**A9's byte for byte offline render** does not hold in Chromium, and it is not
+this project's code. Two renders of the identical graph inside one page differ
+in 293,580 of 576,000 samples by one float32 ULP. Nobody noticed for a whole
+round because the probe printed no digest; it prints one now. And **the title
+attract view is not reproducible**, because its camera orbits on the wall
+clock: 705, 700 and 701 draw calls across three runs. The headline for P1 and
+P2 moves to `title worst azimuth`, which is parked and returns 692 and
+1,916,379 for every party in every run.
+
+Five files were deleted from the repository that should never have been in it:
+four scratch screenshots and a bisect frame under `tmp/`, committed by an
+earlier session because both harness scripts pasted an absolute output path
+onto the repository root. Fixed with `isAbsolute` in both.
+
+The reviewer ranked the gate opening first by cost to the player: `scene.js`
+builds a 3.500 m clear span, `race.js` scores on an effective 3.30 m computed
+from the centreline radius while ignoring the tube, so a craft can be credited
+with a clean pass while its body overlaps the ring, and `src/game/track.js`
+says the MultiGP standard gate is 1.524 m. That is next round's first item and
+it was already first in the handover.

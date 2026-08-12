@@ -15,7 +15,10 @@
  *   spectral centroid
  *   per channel peak frequencies, for the binaural carriers
  *   amplitude modulation at a named frequency in each channel and in the
- *     mono sum, which is what separates a binaural beat from a monaural one
+ *     mono sum, each against a measured floor. A binaural pair beats in the
+ *     mono sum: two carriers a few Hz apart summed ARE an amplitude
+ *     modulation, so the discriminator is per channel absence, not mono sum
+ *     absence. See .loop/threshold-disputes.md entry 5.
  *   tempo by autocorrelation of spectral flux
  *   the sample delta at a named loop seam against the distribution inside
  *     the loop
@@ -27,7 +30,7 @@
  *
  * Usage:
  *   node scripts/audio-probe.js [--trace=NAME] [--seconds=20] [--rate=48000]
- *        [--level=0.5] [--blades=3] [--f0=HZ] [--scream=2000,8000]
+ *        [--level=0.6] [--blades=3] [--f0=HZ] [--scream=2000,8000]
  *        [--carrier=80,600] [--beat=6] [--seam=SEC] [--json=PATH]
  *
  * Traces: hover, full, flight, steady:RPM, idle.
@@ -51,8 +54,9 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { startServer } from '../tests/lib/server.js';
 import { findChrome } from '../tests/lib/browser.js';
 
@@ -219,26 +223,46 @@ function spectrum(x, rate, frame) {
   return { power: acc, rate, frame, frames, binHz: rate / frame };
 }
 
-function bandRmsDb(spec, lo, hi) {
+/*
+ * Band energy over a half open bin range, [lo, hi). Half open deliberately:
+ * with an inclusive upper bin, two adjacent one third octave bands share the
+ * bin on their common edge, which double counts it. A reviewer measured 13
+ * bins counted twice across the table and the whole table under-reading
+ * white noise by 0.30 dB, and the error hid because it cancels on a signal
+ * with no energy at the band edges. `bins` is returned so a band narrower
+ * than the analysis resolution cannot be quoted as though it were measured.
+ */
+function bandRms(spec, lo, hi) {
   let sum = 0;
   const k0 = Math.max(0, Math.ceil(lo / spec.binHz));
-  const k1 = Math.min(spec.power.length - 1, Math.floor(hi / spec.binHz));
-  for (let k = k0; k <= k1; k += 1) {
+  const k1 = Math.min(spec.power.length, Math.ceil(hi / spec.binHz));
+  for (let k = k0; k < k1; k += 1) {
     sum += spec.power[k];
   }
-  return sum > 0 ? 10 * Math.log10(sum) : -Infinity;
+  return { db: sum > 0 ? 10 * Math.log10(sum) : -Infinity, bins: Math.max(0, k1 - k0), k0, k1 };
+}
+
+function bandRmsDb(spec, lo, hi) {
+  return bandRms(spec, lo, hi).db;
 }
 
 function thirdOctaves(spec) {
   const rows = [];
+  const nyq = spec.rate / 2;
   for (let n = 13; n <= 43; n += 1) {
     const fc = 10 ** (n / 10);
     const lo = fc / 2 ** (1 / 6);
-    const hi = fc * 2 ** (1 / 6);
-    if (lo >= spec.rate / 2) {
+    let hi = fc * 2 ** (1 / 6);
+    if (lo >= nyq) {
       break;
     }
-    rows.push({ fc, lo, hi, db: bandRmsDb(spec, lo, Math.min(hi, spec.rate / 2)) });
+    /* The top band runs to Nyquist. Without this, every bin above 22387 Hz
+     * is in no band at all and the table's total is short of the signal. */
+    if (n === 43 || fc * 2 ** (1 / 6) * 2 ** (1 / 6) >= nyq) {
+      hi = nyq;
+    }
+    const b = bandRms(spec, lo, hi);
+    rows.push({ fc, lo, hi, db: b.db, bins: b.bins });
   }
   return rows;
 }
@@ -317,13 +341,26 @@ function truePeakDb(x) {
     }
     h.push(row);
   }
+  /* Every sample, with the signal treated as zero outside its own extent
+   * rather than skipped. The first version of this ran from `half` to
+   * `length - half` and a reviewer put a 0.99 sample at index 5 of a 4096
+   * sample buffer: it reported -19.740 dBTP against a -0.087 dBFS sample
+   * peak, a 19.65 dB under-report, and a true peak below the sample peak,
+   * which is impossible for a true peak meter. Nothing in the r10 renders
+   * was affected because the master gain ramps up from silence, and the
+   * first crash or drum transient near a boundary would have inverted the
+   * headroom claim silently. */
   let peak = 0;
-  for (let i = half; i < x.length - half; i += 1) {
+  const n = x.length;
+  for (let i = 0; i < n; i += 1) {
     for (let p = 0; p < phases; p += 1) {
       const row = h[p];
       let y = 0;
       for (let m = 0; m < taps; m += 1) {
-        y += row[m] * x[i - half + 1 + m];
+        const j = i - half + 1 + m;
+        if (j >= 0 && j < n) {
+          y += row[m] * x[j];
+        }
       }
       const a = Math.abs(y);
       if (a > peak) {
@@ -392,25 +429,103 @@ function amAtDb(x, rate, f) {
   if (mean <= 0) {
     return { db: -Infinity, mean };
   }
-  /* Goertzel style single bin over the whole envelope. */
-  let sr = 0;
-  let si = 0;
+  /*
+   * Windowed single bin over the whole envelope, scanned over a small range
+   * around f, with a noise floor measured away from f.
+   *
+   * The first version was a bare rectangular window Goertzel at exactly f,
+   * and a reviewer showed it is a knife edge: with 50 percent true
+   * modulation at 6.00 Hz it read -6.11 dB at 6.00 Hz, -12.07 dB at 6.05 Hz
+   * and -24.15 dB at 6.20 Hz. Over a 12 second envelope the bin is 0.083 Hz
+   * wide, so a 0.05 Hz slip in an operator's hand calculation halved the
+   * answer. A Hann window widens the mainlobe and kills the leakage, and
+   * scanning takes the hand calculation out of the result.
+   *
+   * The floor matters as much as the peak. A4 asks for a beat to be shown
+   * ABSENT in a channel, and absent has no meaning without a floor: this
+   * function's floor is about -64 dB on a clean tone and about -50 dB on
+   * broadband noise, so a -21 dB reading is not absence. `floorDb` is now
+   * measured on the same envelope at an unrelated frequency and published
+   * with every result.
+   */
+  const w = hann(env.length);
+  let wsum = 0;
   for (let i = 0; i < env.length; i += 1) {
-    const a = (2 * Math.PI * f * i) / rate;
-    sr += (env[i] - mean) * Math.cos(a);
-    si += (env[i] - mean) * Math.sin(a);
+    wsum += w[i];
   }
-  const amp = (2 * Math.sqrt(sr * sr + si * si)) / env.length;
-  return { db: 20 * Math.log10(amp / mean), mean, depth: amp / mean };
+  const at = (hz) => {
+    let sr = 0;
+    let si = 0;
+    for (let i = 0; i < env.length; i += 1) {
+      const a = (2 * Math.PI * hz * i) / rate;
+      const v = (env[i] - mean) * w[i];
+      sr += v * Math.cos(a);
+      si += v * Math.sin(a);
+    }
+    return (2 * Math.sqrt(sr * sr + si * si)) / wsum;
+  };
+  const span = 0.5;
+  const steps = 21;
+  let amp = 0;
+  let atHz = f;
+  for (let s = 0; s < steps; s += 1) {
+    const hz = f - span + (2 * span * s) / (steps - 1);
+    const a = at(hz);
+    if (a > amp) {
+      amp = a;
+      atHz = hz;
+    }
+  }
+  /* Floor: the same measurement at a frequency with no arithmetic relation
+   * to f, so a real modulation cannot land on it. */
+  const floor = at(f * 1.7 + 3.3);
+  return {
+    db: 20 * Math.log10(amp / mean),
+    floorDb: floor > 0 ? 20 * Math.log10(floor / mean) : -Infinity,
+    mean,
+    depth: amp / mean,
+    peakAtHz: atHz,
+    scanned: [f - span, f + span],
+  };
 }
 
-/* Tempo from the autocorrelation of spectral flux. Reports the top peaks
- * so a reviewer can see whether the strongest one is a half or double of
- * whatever is claimed. */
+/*
+ * Tempo from the autocorrelation of spectral flux.
+ *
+ * Three things a reviewer proved wrong about the first version of this, all
+ * fixed here, because between them they made the function more confident
+ * about music that does not exist than about music that does.
+ *
+ * It had no null hypothesis. Fed pure white noise it returned 137.20 BPM at
+ * r = 0.823, and fed one steady 400 Hz sine it returned 187.50 BPM at
+ * r = 0.984, which is a hop artefact and not a tempo. Meanwhile a real
+ * synthetic 173 BPM breakbeat reported 173.08 at only r = 0.349, behind its
+ * own half tempo. So `nullP95` is now measured, not assumed: the flux
+ * sequence is shuffled with a fixed seed and the whole lag search rerun, and
+ * the 95th percentile of the shuffled peaks is published beside the real
+ * one. An r below that floor means the function found nothing.
+ *
+ * The lag axis was too coarse to answer the question A5 asks. At hop 256 and
+ * 48 kHz the only BPM values reachable inside the 170 to 176 window were
+ * 170.455, 173.077 and 175.781, so a genuine 177.0 BPM reported as 175.78
+ * and would have PASSED a bar it fails. The hop is now 128 and the peak lag
+ * is refined by parabolic interpolation, which makes the reported figure
+ * continuous.
+ *
+ * And the flux was computed over the whole spectrum including the motor's
+ * own band, so the motors drove the tempo estimate. It is now band limited
+ * to 60 Hz to 10 kHz, which is where a kick, a snare and a hat live.
+ */
+const FLUX_LO = 60;
+const FLUX_HI = 10000;
+const NULL_TRIALS = 24;
+
 function tempo(x, rate) {
   const frame = 1024;
-  const hop = 256;
+  const hop = 128;
   const fps = rate / hop;
+  const kLo = Math.max(1, Math.round((FLUX_LO * frame) / rate));
+  const kHi = Math.min(frame / 2 - 1, Math.round((FLUX_HI * frame) / rate));
   const w = hann(frame);
   const fft = makeFft(frame);
   const re = new Float64Array(frame);
@@ -429,7 +544,7 @@ function tempo(x, rate) {
     }
     if (prev) {
       let f = 0;
-      for (let k = 0; k < frame / 2; k += 1) {
+      for (let k = kLo; k <= kHi; k += 1) {
         const d = mag[k] - prev[k];
         if (d > 0) {
           f += d;
@@ -440,33 +555,86 @@ function tempo(x, rate) {
     prev = mag;
   }
   if (flux.length < 32) {
-    return { fps, peaks: [] };
+    return { fps, fluxBandHz: [FLUX_LO, FLUX_HI], peaks: [], nullP95: null };
   }
-  let mean = 0;
-  for (const f of flux) {
-    mean += f;
-  }
-  mean /= flux.length;
-  const s = flux.map((f) => f - mean);
-  const lagMin = Math.max(2, Math.floor((60 * fps) / 220));
-  const lagMax = Math.min(s.length - 2, Math.ceil((60 * fps) / 60));
-  const ac = [];
-  let ac0 = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    ac0 += s[i] * s[i];
-  }
-  for (let lag = lagMin; lag <= lagMax; lag += 1) {
-    let v = 0;
-    for (let i = 0; i + lag < s.length; i += 1) {
-      v += s[i] * s[i + lag];
+
+  /* The lag search, factored out so the shuffled null can reuse it. */
+  const search = (seq) => {
+    let mean = 0;
+    for (const f of seq) {
+      mean += f;
     }
-    ac.push({ lag, r: ac0 > 0 ? v / ac0 : 0, bpm: (60 * fps) / lag });
+    mean /= seq.length;
+    const s = seq.map((f) => f - mean);
+    let ac0 = 0;
+    for (let i = 0; i < s.length; i += 1) {
+      ac0 += s[i] * s[i];
+    }
+    const lagMin = Math.max(2, Math.floor((60 * fps) / 220));
+    const lagMax = Math.min(s.length - 2, Math.ceil((60 * fps) / 60));
+    const ac = [];
+    for (let lag = lagMin; lag <= lagMax; lag += 1) {
+      let v = 0;
+      for (let i = 0; i + lag < s.length; i += 1) {
+        v += s[i] * s[i + lag];
+      }
+      ac.push({ lag, r: ac0 > 0 ? v / ac0 : 0 });
+    }
+    return ac;
+  };
+
+  const ac = search(flux);
+  const peaks = [];
+  for (let i = 1; i < ac.length - 1; i += 1) {
+    if (ac[i - 1].r < ac[i].r && ac[i + 1].r < ac[i].r) {
+      /* Parabolic refinement on the lag axis. The integer lag grid is what
+       * made a true 177 BPM report as 175.78. */
+      const a = ac[i - 1].r;
+      const b = ac[i].r;
+      const c = ac[i + 1].r;
+      const d = a - 2 * b + c;
+      const delta = d !== 0 ? (0.5 * (a - c)) / d : 0;
+      const lag = ac[i].lag + delta;
+      peaks.push({ lag, r: b, bpm: (60 * fps) / lag });
+    }
   }
-  const peaks = ac.filter((pk, i) => (
-    i > 0 && i < ac.length - 1 && ac[i - 1].r < pk.r && ac[i + 1].r < pk.r
-  ));
-  peaks.sort((a, b) => b.r - a.r);
-  return { fps, peaks: peaks.slice(0, 6) };
+  peaks.sort((p, q) => q.r - p.r);
+
+  /* The null. Shuffle the flux with a fixed seed, rerun the search, take the
+   * best r, repeat, and publish the 95th percentile. Deterministic: the seed
+   * is a constant and the generator is the same LCG the noise buffer uses,
+   * so two runs of the probe give the same floor. */
+  const bests = [];
+  let seed = 20260812;
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  for (let trial = 0; trial < NULL_TRIALS; trial += 1) {
+    const sh = Array.from(flux);
+    for (let i = sh.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = sh[i];
+      sh[i] = sh[j];
+      sh[j] = t;
+    }
+    let best = -Infinity;
+    for (const p of search(sh)) {
+      if (p.r > best) {
+        best = p.r;
+      }
+    }
+    bests.push(best);
+  }
+  bests.sort((p, q) => p - q);
+  const nullP95 = bests[Math.min(bests.length - 1, Math.floor(0.95 * bests.length))];
+  return {
+    fps,
+    fluxBandHz: [FLUX_LO, FLUX_HI],
+    nullP95,
+    nullTrials: NULL_TRIALS,
+    peaks: peaks.slice(0, 6),
+  };
 }
 
 /* The seam test. index is where one loop period ends and the next begins;
@@ -684,7 +852,10 @@ function d2(v) {
 
 async function main() {
   const opts = {
-    trace: 'flight', seconds: 20, rate: 48000, level: 0.5, blades: 3,
+    /* 0.6 is what the shell actually runs at: ui.js defaults volume to 6 and
+     * main.js divides by 10. Rendering at 0.5 put every published loudness
+     * figure 1.58 dB below what a player hears. */
+    trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 3,
     scream: '2000,8000', carrier: '', beat: 0, seam: 0, f0: 0, json: '',
   };
   for (const a of process.argv.slice(2)) {
@@ -721,6 +892,16 @@ async function main() {
   const p = peakOf(mono);
   const tp = truePeakDb(mono);
 
+  /* A digest of the rendered samples. Without one, a render that is not
+   * reproducible looks exactly like one that is, because every figure in the
+   * report is a reduction printed to fifteen digits. Two OfflineAudioContext
+   * renders of this identical graph inside one page differ in about half
+   * their samples by one float32 ULP, so A9's byte for byte bar is not
+   * reachable in Chromium and the digest is what makes that visible rather
+   * than a matter of opinion. */
+  const digests = channels.map((c) => createHash('sha256')
+    .update(Buffer.from(c.buffer, c.byteOffset, c.byteLength)).digest('hex').slice(0, 16));
+
   const report = {
     trace: String(opts.trace),
     seconds,
@@ -745,6 +926,29 @@ async function main() {
     perChannelRmsDbfs: channels.map((c) => rmsDb(c)),
   };
   report.screamMarginDb = report.fundamentalBand.db - report.screamBand.db;
+  report.channelDigests = digests;
+  /* A1 as the rubric words it compares a 92 Hz band against a 6000 Hz band,
+   * so 18 dB of the published margin is bandwidth and not loudness. The bar
+   * is the bar and it is measured above; this is the same comparison on
+   * equal bandwidth, loudest third octave overall against loudest third
+   * octave inside the scream band, published beside it so nobody has to
+   * argue about which one they meant. */
+  const rows = thirdOctaves(spec8);
+  let loudest = -Infinity;
+  let loudestScream = -Infinity;
+  for (const r of rows) {
+    if (r.db > loudest) {
+      loudest = r.db;
+    }
+    if (r.fc >= screamLo && r.fc <= screamHi && r.db > loudestScream) {
+      loudestScream = r.db;
+    }
+  }
+  report.equalBandwidth = {
+    loudestThirdOctaveDb: loudest,
+    loudestThirdOctaveInScreamBandDb: loudestScream,
+    marginDb: loudest - loudestScream,
+  };
 
   if (opts.carrier) {
     const [lo, hi] = String(opts.carrier).split(',').map(Number);
@@ -774,6 +978,8 @@ async function main() {
   console.log(`fundamental band ${report.fundamentalBand.lo.toFixed(0)} to ${report.fundamentalBand.hi.toFixed(0)} Hz: ${d2(report.fundamentalBand.db)} dB`);
   console.log(`scream band ${screamLo} to ${screamHi} Hz: ${d2(report.screamBand.db)} dB`);
   console.log(`A1 margin, fundamental minus scream: ${d2(report.screamMarginDb)} dB  (needs at least 12)`);
+  console.log(`equal bandwidth, loudest third octave ${d2(report.equalBandwidth.loudestThirdOctaveDb)} dB minus loudest inside the scream band ${d2(report.equalBandwidth.loudestThirdOctaveInScreamBandDb)} dB: ${d2(report.equalBandwidth.marginDb)} dB`);
+  console.log(`channel digests, sha256 truncated: ${report.channelDigests.join(' ')}`);
   console.log('one third octave, dB re full scale:');
   for (const r of report.thirds) {
     console.log(`  ${String(r.fc).padStart(6)} Hz  ${d2(r.db).padStart(8)}`);
@@ -788,9 +994,9 @@ async function main() {
   }
   if (report.amAtBeat) {
     const a = report.amAtBeat;
-    console.log(`AM at ${report.beatHz} Hz: left ${d2(a.left.db)} dB, right ${d2(a.right.db)} dB, mono sum ${d2(a.monoSum.db)} dB (relative to envelope mean)`);
+    console.log(`AM at ${report.beatHz} Hz: left ${d2(a.left.db)} dB (floor ${d2(a.left.floorDb)}), right ${d2(a.right.db)} dB (floor ${d2(a.right.floorDb)}), mono sum ${d2(a.monoSum.db)} dB (floor ${d2(a.monoSum.floorDb)})`);
   }
-  console.log(`tempo, flux frames at ${report.tempo.fps.toFixed(1)} per second:`);
+  console.log(`tempo, flux ${report.tempo.fluxBandHz[0]} to ${report.tempo.fluxBandHz[1]} Hz, frames at ${report.tempo.fps.toFixed(1)} per second, shuffled null p95 r=${report.tempo.nullP95 == null ? 'n/a' : report.tempo.nullP95.toFixed(4)} over ${report.tempo.nullTrials} trials:`);
   for (const pk of report.tempo.peaks) {
     console.log(`  ${pk.bpm.toFixed(2)} BPM  r=${pk.r.toFixed(4)}  lag=${pk.lag}`);
   }
@@ -800,7 +1006,8 @@ async function main() {
   }
 
   if (opts.json) {
-    const path = join(root, String(opts.json));
+    const rel = String(opts.json);
+    const path = isAbsolute(rel) ? rel : join(root, rel);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${JSON.stringify(report, null, 2)}\n`);
     console.log(`wrote ${path}`);

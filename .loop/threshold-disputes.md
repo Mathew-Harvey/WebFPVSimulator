@@ -89,3 +89,61 @@ Until a human rules, the build takes the reading above, and both the
 interface and PROGRESS.md say plainly that the timed course is UTT 3 Bessel
 Run and that the additional obstacles are site equipment and not part of it.
 T3 stays recorded as BLOCKED WITH ARGUMENT rather than as PASS.
+
+## 5. A4's mono sum criterion is physically unsatisfiable. BLOCKED WITH ARGUMENT.
+
+A4 says: "Two carriers, one per ear, differing by the target beat frequency.
+Prove it: FFT the left and right channels separately and show the two carrier
+peaks and their difference, within 0.2 Hz of target. Then sum to mono and show
+the beat is **not** present as an amplitude modulation, which is what
+separates a binaural beat from a monaural one."
+
+The last clause cannot be satisfied by a real binaural pair, and the reason is
+trigonometry rather than engineering:
+
+    sin(2 pi f1 t) + sin(2 pi f2 t)
+      = 2 sin(2 pi ((f1 + f2) / 2) t) cos(2 pi ((f1 - f2) / 2) t)
+
+which is a carrier at the mean frequency multiplied by an envelope whose
+rectified period is 1 / (f1 - f2). Summing two carriers a few Hz apart
+produces an amplitude modulation at exactly the difference frequency. That is
+not a defect in the signal, it is the definition of a beat.
+
+Measured, not argued. A reviewer synthesised a genuine binaural pair, 200 Hz
+in the left ear and 206 Hz in the right, and ran it through this project's own
+amplitude modulation detector:
+
+    left channel alone   -63.7 dB at 6 Hz      correctly absent
+    right channel alone  -63.7 dB at 6 Hz      correctly absent
+    mono sum             -3.63 dB, depth 0.659 a full beat
+
+So a build that satisfied A4's last clause would be a build whose two carriers
+are NOT a few Hz apart, which is to say not a binaural tone at all.
+
+What actually separates a binaural beat from a monaural one is where the
+carriers are, not what the sum does. A monaural beat puts both carriers in
+both ears, so each ear receives the modulation and the percept survives
+listening on one speaker. A binaural beat puts one carrier in each ear, so
+neither ear receives any modulation and the percept is produced centrally,
+which is why it needs headphones. The correct discriminator is therefore:
+**both channels individually at their measured noise floor at the beat
+frequency, and the mono sum well above that floor.** The first half is
+already what A4 asks for.
+
+No threshold has been changed and A4's other clauses are untouched: two
+carriers, one per ear, difference within 0.2 Hz of target, off by default,
+selectable in settings, a plain headphone notice and no health or performance
+claim. All of those will be built and measured.
+
+`.loop/evidence/r10/ledger.md` asserted the opposite of the truth in its round
+10 text, "a monaural beat shows in the mono sum, a binaural one does not". That
+sentence was wrong when it was written and is corrected in the same file's
+corrections section. An implementer building to it would have built something
+that is not a binaural beat, which is exactly the kind of error a rubric is
+supposed to prevent rather than cause.
+
+A human rules on the last clause. Until then A4 is BLOCKED WITH ARGUMENT and
+the build will publish, for every render: the two carrier frequencies and
+their difference, each channel's modulation depth at the beat frequency
+against that channel's measured floor, and the mono sum's. A reader can then
+apply either reading.

@@ -53,7 +53,7 @@ sum, tempo by autocorrelation of spectral flux, and the sample delta at a
 named loop seam against the distribution inside the loop.
 
     node scripts/audio-probe.js [--trace=NAME] [--seconds=20] [--rate=48000]
-      [--level=0.5] [--blades=3] [--f0=HZ] [--scream=2000,8000]
+      [--level=0.6] [--blades=3] [--f0=HZ] [--scream=2000,8000]
       [--carrier=80,600] [--beat=6] [--seam=SEC] [--json=PATH]
     traces: hover, full, flight, idle, steady:RPM
 
@@ -64,8 +64,10 @@ counted where the nodes are made. The live path is unchanged in behaviour.
 
 **The aim sidecar.** `scripts/shots.js` writes `NAME.json` beside every
 `NAME.png` recording which gate the race actually wants, its scene index and
-number plate, its distance, its screen position in CSS pixels, the pixel
-height its aperture subtends, its glow gain, and whether it is on screen. New
+number plate, its distance, its camera space depth, its screen position in
+device pixels with `inFront` and `mirrored` flags, the pixel height its
+aperture subtends or an explicit refusal, its sampled glow gain, and whether
+the aperture centre is in frame. New
 page handles in `main.js`: `window.__nextGate()`, `window.__quadScreen()`,
 `window.__setRaceNext(raceIndex)` and `window.__audio`. `__boot()` now also
 returns `worstAudioMs`.
@@ -76,22 +78,28 @@ Full table and the reproduction command in `.loop/evidence/r10/ledger.md`.
 
 | # | budget | ceiling | measured | verdict |
 |---|--------|---------|----------|---------|
-| P1 | draw calls | 400 | **705** title attract, 691 title worst az, 484 mid course fwd, 288 mid course, 236 start line, 156 empty sky | FAIL 1.76x |
-| P2 | triangles | 1,200,000 | **1,916,515** worst, **1,901,683 with nothing in frame** | FAIL 1.60x |
+| P1 | draw calls | 400 | **692** title worst azimuth, the reproducible worst view. 484 mid course fwd, 288 mid course, 236 start line, 156 empty sky | FAIL 1.73x |
+| P2 | triangles | 1,200,000 | **1,916,379** title worst azimuth, **1,901,683 with nothing in frame** | FAIL 1.60x |
 | P3 | full res passes | 4 | 3 | PASS |
 | P4 | taps per pixel | 14 | 10 | PASS |
 | P5 | render target bytes | 120 MB | 115.1 MB decimal, 109.8 MiB, default framebuffer included | PASS |
-| P6 | first interactive frame | 1800 ms | **3337 ms** at 1080p, 2677 at 900p | FAIL 1.85x |
-| P7 | worst sync block | 50 ms | 16.8 over 152 frames, 53.6 over 50 in another run | CANNOT VERIFY |
+| P6 | first interactive frame | 1800 ms | 2500 to 5100 ms across runs of one build | FAIL |
+| P7 | worst sync block | 50 ms | 16.8, 17.9, 23.8 and 38.3 ms over 152 to 174 frames | CANNOT VERIFY |
 | P8 | allocations per frame | zero | round 9's list stands less one array literal | FAIL |
 | P9 | shadow maps | 1 at 2048 | 1 at 2048 | PASS |
 | P10 | attribute bytes | 48 MB | **51.2 MB** plus 7.4 MB of indices | FAIL 1.07x |
 | P11 | settings ladder | 3 levels | nothing exists | FAIL |
 | P12 | audio nodes | 64 | 28, context live at 44100 Hz | PASS |
-| P13 | audio ms per frame | 2 ms | 0.40 ms over 152 frames, context live | PASS |
+| P13 | audio ms per frame | 2 ms | 0.20 to 0.80 ms over 150 to 175 frames, context live | PASS on the number |
 
-At 1600 by 900: P1 703 title attract, P2 1,916,483, P6 2677 ms, everything
-else identical. Console clean at both, errors 0 warnings 0.
+At 1600 by 900 every parked view is identical to 1080p. Console clean at both,
+errors 0, warnings 0, harness faults 0.
+
+**Do not quote the title attract view.** Its camera orbits on the wall clock,
+so it samples a different azimuth every run: 705, 700 and 701 draw calls
+across three runs of one build, and a reviewer measured 701 independently.
+`title worst azimuth` parks the camera and returns 692 and 1,916,379 for
+everyone, every time.
 
 **P2 has no triangle culling and the proof is one line.** Camera parked on
 the racing line pointed at the zenith, nothing in frame: 1,901,683
@@ -102,10 +110,11 @@ triangles, 99.2 percent of the worst view. Repeat that test every round.
 Measured on the `full` trace, 20 s, 48 kHz, in
 `.loop/evidence/r10/audio-full.json`:
 
-- **A1 margin is -22.01 dB against a bar of +12**, so 34.0 dB the wrong way.
-  Scream band 2000 to 8000 Hz at -30.75 dB, blade pass band 355 to 447 Hz at
-  -52.76 dB. The spectrum's peak is the 1259 Hz third octave band at
-  -24.99 dB, which is exactly where `RPM_TO_HZ_SCALE = 2.9` puts the
+- **A1 margin is -22.01 dB against a bar of +12** as the bar is worded, and
+  **8.02 dB against 12 on equal bandwidth**. Publish both: the worded
+  comparison puts a 92 Hz band against a 6000 Hz one, so 18 dB of the headline
+  is bandwidth rather than loudness. The spectrum's peak is the 1259 Hz third
+  octave band, which is exactly where `RPM_TO_HZ_SCALE = 2.9` puts the
   oscillator: 8589 / 60 x 3 x 2.9 = 1245 Hz. Spectral centroid 1909 Hz.
 - **A2 fails by construction.** The tone is 2.9 times the blade pass
   frequency because a constant in the file says so. A2 wants the fundamental
@@ -115,15 +124,52 @@ Measured on the `full` trace, 20 s, 48 kHz, in
   RPM for reasons argued in PROGRESS.md. **The fix is a real motor model
   with harmonics of the true blade pass frequency, not a different
   constant**, and that is the next A item.
-- **A3**: no sample at or over full scale, true peak -11.80 dBTP which
-  passes, RMS -23.86 dBFS which is 3.9 dB below the -20 to -14 band.
+- **A3**, on the `flight` trace, which is the normal flight render A3 names,
+  at the shell's own mix level of 0.6: no sample at or over full scale, true
+  peak -13.21 dBTP which passes, RMS **-30.38 dBFS** which is 10.38 dB below
+  the -20 to -14 band. The `full` trace gives -22.28 dBFS. Render at 0.6:
+  `ui.js` defaults the volume to 6 and `main.js` divides by 10, and the probe
+  spent a round at 0.5, which flattered every loudness figure by 1.58 dB.
 - A4 to A8 and A11 all FAIL because none of it exists yet.
 
-The probe is calibrated. Predicted carriers from the file's own constants
-were 1315.701 and 1305.000 Hz; measured 1315.701 and 1305.001 Hz on a
-524288 point window at 0.0916 Hz per bin. A4 needs 0.2 Hz. The band sum
-normalisation was checked against the time domain: bands total -23.9 dB,
-direct RMS -23.86 dBFS, same quantity in the same unit.
+The probe is calibrated where it counts and its limits are written down.
+Predicted carriers from the file's own constants were 1315.701 and 1305.000
+Hz; measured 1315.701 and 1305.001 Hz on a 524288 point window at 0.0916 Hz
+per bin. The band sum normalisation was checked against the time domain and a
+reviewer independently confirmed it to 0.0000 dB on tones and 0.0025 dB on
+noise.
+
+**Eleven instrument defects were found by review and fixed in the same round.**
+The list with the measurement behind each is in the Corrections section of
+`.loop/evidence/r10/ledger.md`. Read it before trusting any figure the probe
+prints, and read these three at least:
+
+- True peak used to skip the first and last 16 samples, so a transient near a
+  buffer edge could report a true peak BELOW the sample peak.
+- The tempo function had no null hypothesis and scored a steady sine at
+  r = 0.984. It now publishes a measured shuffled flux null, and a tempo below
+  that floor means nothing was found. Do not quote a BPM without the null
+  beside it.
+- `aperturePx` had no validity gate and published 17,988 px for a gate behind
+  the camera. It refuses now, and the sidecar carries depth, `inFront` and
+  `mirrored`.
+
+Still not fixed, and each will corrupt a claim if forgotten:
+`peakFreq().db` is an unnormalised log magnitude published beside dBFS
+figures. The probe asserts nothing and exits 0 whatever it measures, so it
+belongs in `npm run verify` or `scripts/gates.js`. The sidecar is sampled at
+least one frame after the PNG. `worstBlockMs` and `worstAudioMs` both time
+only the animation frame callback, so building the 44,100 sample noise buffer
+inside `attach()` from a `pointerdown` handler is invisible to P7 and P13.
+Every band figure is a whole render average, so A7's "at the moment they play"
+and A11's per stem differences are not yet measurable at all. And the RPM
+trace is an analytic function in the probe, not a recording from `sim.wasm`,
+so A2's second half cannot be answered until a recorder exists.
+
+**A4's last clause is physically unsatisfiable and A9's is unsatisfiable in a
+browser.** Both are recorded, A4 in `.loop/threshold-disputes.md` entry 5 with
+the trigonometry and a measurement, A9 in `.loop/blocked.md` entry 7. Do not
+try to build to either as written.
 
 ## The track. UTT 3 Bessel Run is buildable and the layout is recovered
 

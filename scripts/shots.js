@@ -51,7 +51,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { startServer } from '../tests/lib/server.js';
@@ -179,7 +179,11 @@ async function main() {
       steps.push(a);
     }
   }
-  const outDir = join(root, opts.out);
+  /* An absolute --out used to be pasted onto the repository root, which is
+   * how four scratch screenshots from an earlier session ended up committed
+   * under tmp/. A harness must not be able to write into the tree by
+   * accident. */
+  const outDir = isAbsolute(String(opts.out)) ? String(opts.out) : join(root, opts.out);
   await mkdir(outDir, { recursive: true });
 
   const chrome = findChrome();
@@ -228,6 +232,10 @@ async function main() {
 
   const errors = [];
   const warnings = [];
+  /* Kept apart from console errors. Counting a sidecar failure in the same
+   * total made "errors 0" two gates wearing one number, and D3 is about the
+   * console. */
+  const harnessFaults = [];
   cdp.onEvent(async (msg) => {
     if (msg.sessionId !== sessionId) {
       return;
@@ -314,14 +322,17 @@ async function main() {
         if (g) {
           console.log(
             `  target: race gate ${s.nextGate.raceNext} (scene ${g.sceneIndex}, plate ${g.flyOrder}) ` +
-            `at ${g.distance.toFixed(1)} m, screen ${g.screen.x.toFixed(0)},${g.screen.y.toFixed(0)} ` +
-            `${g.onScreen ? 'on screen' : 'OFF SCREEN'}, aperture ${g.aperturePx.toFixed(1)} px, glow ${g.glowGain.toFixed(2)}`,
+            `at ${g.distance.toFixed(1)} m depth ${g.depth.toFixed(1)} m, ` +
+            `screen ${g.screen.x.toFixed(0)},${g.screen.y.toFixed(0)}${g.screen.mirrored ? ' MIRRORED, behind the camera' : ''}, ` +
+            `${g.centreInFrame ? 'centre in frame' : 'centre NOT in frame'}, ` +
+            `aperture ${g.aperturePx == null ? 'refused' : `${g.aperturePx.toFixed(1)} px`}, ` +
+            `glow sampled ${g.glowGainSampled.toFixed(2)}`,
           );
         } else {
-          errors.push(`shot ${arg}: window.__nextGate returned nothing, so the capture cannot support a G3 claim`);
+          harnessFaults.push(`shot ${arg}: window.__nextGate returned nothing, so the capture cannot support a G3 claim`);
         }
       } else {
-        errors.push(`shot ${arg}: the aim sidecar could not be evaluated`);
+        harnessFaults.push(`shot ${arg}: the aim sidecar could not be evaluated`);
       }
     } else if (op === 'tap' || op === 'down' || op === 'up') {
       const info = keyInfo(arg);
@@ -378,7 +389,10 @@ async function main() {
     }
   }
 
-  console.log(`console errors=${errors.length} warnings=${warnings.length}`);
+  console.log(`console errors=${errors.length} warnings=${warnings.length} harness faults=${harnessFaults.length}`);
+  for (const f of harnessFaults) {
+    console.log(`  FAULT ${f}`);
+  }
   for (const e of errors) {
     console.log(`  ERR ${e}`);
   }
@@ -390,7 +404,7 @@ async function main() {
   proc.kill('SIGKILL');
   await server.close();
   await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
-  process.exit(errors.length ? 1 : 0);
+  process.exit(errors.length || harnessFaults.length ? 1 : 0);
 }
 
 main().catch((e) => {

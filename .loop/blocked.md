@@ -89,3 +89,33 @@ PDF's own image XObjects, and it can be extracted and measured with the
 PNG decoder this repository already has. UTT 3 Bessel Run's full layout is
 in .loop/evidence/r10/utt3-layout.md with its provenance. The track does not
 need to be labelled an original layout under T4's second branch.
+
+## 7. A9's byte for byte offline render, in Chromium
+
+A9 says "The same input trace produces the same offline render, byte for
+byte, in two runs." It does not, and no change to this repository can make it.
+
+Measured: two `OfflineAudioContext` renders of the identical graph, driven by
+the identical scheduled automation, **inside a single page**, differ in
+293,580 of 576,000 samples. The maximum absolute difference is 2.98e-8, which
+is one float32 unit in the last place, and the first differing sample is index
+1. Across two processes the SHA-256 of channel 0 differs. The graph sums five
+outputs into one gain node and Blink's mixing bus does not guarantee a stable
+summation order between renders.
+
+This is a property of the browser's audio engine, not of
+`src/render/audio.js`. The parts of A9 that are in this project's hands do
+hold and are checked: nothing in the audio path reads or writes simulator
+state other than the values already exposed, `npm run verify` is unaffected,
+and the analysis code is deterministic given a buffer.
+
+`scripts/audio-probe.js` now prints a truncated SHA-256 of every rendered
+channel, so the non-reproducibility is visible in every report rather than
+hidden behind reductions printed to fifteen digits. Nobody noticed this for a
+whole round because there was no digest.
+
+What a human has to decide: whether A9 means bit identical, in which case it
+is unsatisfiable in a browser and the item is blocked, or whether it means
+reproducible to a stated tolerance, in which case the tolerance is one
+float32 ULP per sample and the probe can gate on it. No threshold has been
+changed either way.

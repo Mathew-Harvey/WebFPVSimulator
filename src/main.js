@@ -632,12 +632,24 @@ async function boot() {
    * point has a real next gate, which is not gate 0 just because the run
    * has not started. Without this the glow ladder in a parked capture
    * belongs to a different position on the course than the camera does.
-   * Harness only. */
+   * Harness only.
+   *
+   * Setting `race.next` alone leaves the rest of the race inconsistent:
+   * `lapStartMs` is only ever set by passing gate 0, so the lap clock never
+   * starts, and `race.update` treats a gate frame tap with `next !== 0` and
+   * no lap start as a lap to void, which flashes "Gate touched, lap void"
+   * across whatever is being captured. So this resets the race first and
+   * hands back the previous value for a run to restore.
+   */
   window.__setRaceNext = (raceIndex) => {
     const n = race.gates.length;
+    const was = race.next;
+    race.reset();
     race.next = (((raceIndex | 0) % n) + n) % n;
     view.setNextGate(race.nextSceneIndex());
-    return { raceNext: race.next, sceneIndex: race.nextSceneIndex() };
+    racePrev.copy(view.quad.position);
+    raceHasPrev = true;
+    return { raceNext: race.next, sceneIndex: race.nextSceneIndex(), previous: was };
   };
   window.__trackPoint = (u) => {
     const p = view.curve.getPointAt(u);
@@ -665,15 +677,27 @@ async function boot() {
    * demand, never per frame.
    */
   window.__nextGate = () => {
+    /* Device pixels, not CSS pixels. The PNG a capture writes is the drawing
+     * buffer, which is clientWidth times the pixel ratio, so a handle that
+     * promises PNG coordinates and returns CSS ones is silently half scale
+     * on any HiDPI display. `el.width` IS the drawing buffer. */
     const el = view.renderer.domElement;
-    const vw = el.clientWidth || el.width;
-    const vh = el.clientHeight || el.height;
+    const vw = el.width;
+    const vh = el.height;
     const project = (v) => {
       const p = v.clone().project(view.camera);
+      /* Behind the camera, project divides by a negative w, so x and y
+       * reflect through the principal point and land somewhere plausible
+       * inside the frame. Publishing that as a position is how a consumer
+       * that does not also read ndcZ gets a confident wrong answer, so the
+       * flag travels with the numbers. */
+      const inFront = p.z > -1 && p.z < 1;
       return {
         x: (p.x * 0.5 + 0.5) * vw,
         y: (1 - (p.y * 0.5 + 0.5)) * vh,
         ndcZ: p.z,
+        inFront,
+        mirrored: !inFront,
       };
     };
     const seq = [];
@@ -686,20 +710,43 @@ async function boot() {
       const top = new THREE.Vector3(centre.x, centre.y + ap.clearH * 0.5, centre.z);
       const bottom = new THREE.Vector3(centre.x, centre.y - ap.clearH * 0.5, centre.z);
       const distance = view.camera.position.distanceTo(centre);
+      /* Camera space depth, which is what a projected size scales with. The
+       * Euclidean distance is not: at 55 degrees off axis the two differ
+       * enough to overstate a projected size by 74 percent, and any check of
+       * aperturePx against the geometry has to divide by this one. */
+      const depth = -centre.clone().applyMatrix4(view.camera.matrixWorldInverse).z;
       const sc = project(centre);
       const st = project(top);
       const sb = project(bottom);
+      /* aperturePx is the pixel distance between two projected points, and
+       * that is only the aperture when both points are actually in front of
+       * the camera. Without this gate the handle published 17988.1 px for
+       * gates 0.45 m BEHIND a zenith pointing camera, and a gate 126 m
+       * behind read 14.900 px against 14.910 for the same gate in front,
+       * because the sign flip cancels under an absolute value. It is also
+       * only ever the VERTICAL chord: a yawed gate is an ellipse on screen
+       * and its width is not this number. */
+      const apertureValid = st.inFront && sb.inFront;
       seq.push({
         step,
         sceneIndex,
         flyOrder: gt.flyOrder,
-        glowGain: gt.glowMat.uniforms.uGain.value,
+        /* A per frame sample of a quantity that pulses on the wall clock,
+         * not a property of the gate. */
+        glowGainSampled: gt.glowMat.uniforms.uGain.value,
         aperture: ap,
         world: { x: centre.x, y: centre.y, z: centre.z },
         distance,
+        depth,
         screen: sc,
-        aperturePx: Math.abs(sb.y - st.y),
-        onScreen: sc.ndcZ > -1 && sc.ndcZ < 1 && sc.x >= 0 && sc.x < vw && sc.y >= 0 && sc.y < vh,
+        aperturePx: apertureValid ? Math.abs(sb.y - st.y) : null,
+        aperturePxAxis: 'vertical chord only, not the width of a yawed gate',
+        /* A single point test with no clipping and no occlusion. It answers
+         * "is the aperture centre inside the frame", which is NOT "can the
+         * pilot see the target": a gate whose ring fills a third of the
+         * frame from the side reports false here. Do not use it alone to
+         * settle G3. */
+        centreInFrame: sc.inFront && sc.x >= 0 && sc.x < vw && sc.y >= 0 && sc.y < vh,
       });
     }
     return {
@@ -719,8 +766,26 @@ async function boot() {
    */
   window.__quadScreen = () => {
     const el = view.renderer.domElement;
-    const vw = el.clientWidth || el.width;
-    const vh = el.clientHeight || el.height;
+    const vw = el.width;
+    const vh = el.height;
+    /* With the camera inside the airframe the 0.25 m span sits at zero
+     * camera space depth, the projection divides by zero, and the result is
+     * Infinity, which JSON.stringify launders into null so a reader cannot
+     * tell it from "not applicable". Four of the bounding box's eight
+     * corners are behind the near plane in the same state, so the projected
+     * box brackets a reflection rather than a box. Both are refused here
+     * instead of being published and explained. */
+    const dist = view.camera.position.distanceTo(view.quad.position);
+    if (dist < view.camera.near) {
+      return {
+        viewport: { w: vw, h: vh },
+        visible: view.quad.visible,
+        distance: dist,
+        boxPx: null,
+        span250mmPx: null,
+        refused: `camera is ${dist.toFixed(3)} m from the craft, inside the ${view.camera.near} m near plane, so nothing projects`,
+      };
+    }
     const box = new THREE.Box3().setFromObject(view.quad);
     const size = new THREE.Vector3();
     box.getSize(size);
@@ -745,13 +810,20 @@ async function boot() {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(view.camera.quaternion);
     const a = view.quad.position.clone().addScaledVector(right, -0.125).project(view.camera);
     const b = view.quad.position.clone().addScaledVector(right, 0.125).project(view.camera);
+    const span = Math.abs((b.x - a.x) * 0.5 * vw);
     return {
       viewport: { w: vw, h: vh },
       visible: view.quad.visible,
-      distance: view.camera.position.distanceTo(view.quad.position),
-      worldSize: { x: size.x, y: size.y, z: size.z },
-      boxPx: { w: maxX - minX, h: maxY - minY, x: minX, y: minY },
-      span250mmPx: Math.abs((b.x - a.x) * 0.5 * vw),
+      distance: dist,
+      /* An axis aligned bounding box over the whole group INCLUDING the
+       * spinning prop discs, so it breathes with prop angle: sampled between
+       * 0.282 and 0.320 m across this build's captures. It is not the motor
+       * to motor diagonal that a 250 mm class quad is named for, and it must
+       * not be quoted as the size of the quad. */
+      worldSizeSampled: { x: size.x, y: size.y, z: size.z },
+      worldSizeNote: 'AABB of the whole group including spinning props, varies with prop angle, not the motor to motor diagonal',
+      boxPx: Number.isFinite(maxX - minX) ? { w: maxX - minX, h: maxY - minY, x: minX, y: minY } : null,
+      span250mmPx: Number.isFinite(span) ? span : null,
     };
   };
   window.__budget = (name) => measureBudget(view, post, { view: name });

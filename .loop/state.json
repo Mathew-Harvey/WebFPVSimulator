@@ -1,6 +1,6 @@
 {
   "note": "Rubric is the A, B, C, D list in the polish loop prompt. The older P/F/T/G gate names from the first loop live in PROGRESS.md history and in threshold-disputes.md; they are a different rubric and are not tracked here.",
-  "round": 7,
+  "round": 8,
   "attempted": {
     "1": "A1, the product shell: title, how to fly, settings, pause, results, and a flight display replacing the developer HUD",
     "2": "A4 and A5, plus every defect the two round 1 reviewers raised",
@@ -8,7 +8,8 @@
     "4": "Both round 3 reviewers' lists: the shadow map rendered twice, ridge value collapse, gate glow ladder, cloud clipping, unlit flowers, the meadow's straight edge, two ink mechanisms, camera near and prepass depth precision",
     "5": "The round 4 review's list: the composer had no antialiasing at all, ring 0 sat inside the tree canopy band, clouds still clipped at 1.000 and held 63 percent of the frame's bright area, and the title scrim crushed the lower two thirds",
     "6": "Low spec loop round 1: build the instrument and publish the cost ledger for P1 to P10 across three views at two resolutions. No renderer behaviour changed.",
-    "7": "Low spec loop round 2: P5, the furthest over budget at 2.43x. Packed the prepass to one RGBA8 target, moved antialiasing into the edge pass, folded the OutputPass into the grade, dropped depth buffers from bloom targets."
+    "7": "Low spec loop round 2: P5, the furthest over budget at 2.43x. Packed the prepass to one RGBA8 target, moved antialiasing into the edge pass, folded the OutputPass into the grade, dropped depth buffers from bloom targets.",
+    "8": "Both round 7 reviewers' lists: the default framebuffer missing from the P5 ledger, mebibytes printed as megabytes, the 1080p derivation scaling a resolution independent shadow map, antialiasing that blurred across the edge instead of filtering along it, and five stale numbers in comments."
   },
   "verify": "12 of 13 in every round including 6 and 7, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched: git diff HEAD -- tests/ is empty across the whole loop.",
   "rubric": {
@@ -60,10 +61,10 @@
     "C1 to C5 untouched: no latency measurement, no ground effect, no impact feedback, no particles anywhere in the render, audio is still a sawtooth per motor"
   ],
   "consecutive_all_green": 0,
-  "done_condition": "Not met. Definition of done is two consecutive rounds with every rubric item PASS by adversarial review. The best any round has managed is A1, A2 and A3 PASS with B1, B2, B4, B5 and B6 FAIL. main has NOT been fast forwarded.",
+  "done_condition": "Not met. Round 8 closed P5 and the antialiasing regression and the D8 integrity items. P1, P2, P6, P8, P10 and P11 still fail, P7 is unverifiable in this container, and every G item is still open.",
   "loop": "lowspec-aaa-loop, prompts/lowspec-aaa-loop.md. The polish loop A/B/C rubric is superseded by the G/P/D rubric; A/B items are kept below for history.",
   "ledger_1080p": {
-    "measured": "round 7, src/render/budget.js, one instrumented frame per view",
+    "measured": "round 8, src/render/budget.js, one instrumented frame per view",
     "P1_draw_calls": {
       "ceiling": 400,
       "title_attract": 705,
@@ -78,7 +79,7 @@
       "title_worst_azimuth": 1916379,
       "start_line": 1904447,
       "mid_course": 1905119,
-      "verdict": "FAIL 1.60x, and moves 0.6 percent across a title orbit that moves draw calls 2.9x, which is the proof that nothing culls triangles"
+      "verdict": "FAIL 1.60x. A reviewer pointed the camera at empty sky and still measured 1902533 triangles, 99.3 percent of the worst case."
     },
     "P3_fullres_passes": {
       "ceiling": 4,
@@ -92,24 +93,27 @@
     },
     "P5_render_target_MB": {
       "ceiling": 120,
-      "measured": 109.8,
-      "at_1600x900": 86.0,
-      "verdict": "PASS"
+      "measured_decimal_MB": 115.1,
+      "measured_MiB": 109.8,
+      "at_1600x900": 90.2,
+      "derived_1080p_from_900p": 115.1,
+      "verdict": "PASS. Round 7 published 109.8 and was actually 131.7: the ledger could not see the default framebuffer."
     },
     "P6_first_frame_ms": {
       "ceiling": 1800,
-      "measured": 4574,
+      "measured": 5122,
       "verdict": "FAIL 2.5x, container inflated by the CDN proxy, mechanism is 67 million distance to track evaluations at load"
     },
     "P7_worst_block_ms": {
       "ceiling": 50,
-      "measured": 29.4,
-      "shell_only": 1.3,
-      "verdict": "PASS on the measurable part, render side unmeasurable on a software rasteriser"
+      "measured": 23,
+      "shell_only": 4,
+      "frames_sampled": 37,
+      "verdict": "CANNOT VERIFY. Every figure so far was sampled over about ten frames, which is not a worst case statistic, and the render side is CPU rasterisation here."
     },
     "P8_allocations_per_frame": {
       "ceiling": 0,
-      "measured": "at least three: input.drain() array, race.update() result object, ui.setOsd() argument literal",
+      "measured": "about 20 per frame at rest and over 100 in flight, enumerated with file and line by a reviewer. The dominant one is race.js:223, an array literal per gate per sweep sample inside the collision loop.",
       "verdict": "FAIL"
     },
     "P9_shadow_maps": {
@@ -119,8 +123,10 @@
     },
     "P10_attribute_MB": {
       "ceiling": 48,
-      "measured": 48.8,
-      "verdict": "FAIL 1.6 percent over. 25.8 MB of it is the grass field."
+      "measured_decimal_MB": 51.2,
+      "measured_MiB": 48.8,
+      "index_bytes_excluded_by_the_budget": 7395504,
+      "verdict": "FAIL 1.07x. 25.8 MB of it is the grass field."
     },
     "P11_settings_ladder": {
       "measured": "not built",
@@ -128,15 +134,19 @@
     }
   },
   "rubric_G": {
-    "G1": "not yet reviewed under this loop",
-    "G2": "not yet reviewed under this loop",
-    "G3": "not yet reviewed under this loop",
-    "G4": "not yet reviewed under this loop",
-    "G5": "not yet reviewed under this loop",
-    "G6": "not yet reviewed under this loop",
-    "G7": "not yet reviewed under this loop",
-    "G8": "not yet reviewed under this loop",
-    "G9": "not yet reviewed under this loop",
-    "G10": "not yet reviewed under this loop"
+    "G1": "FAIL. 21.4 percent of sampled columns have the ridge base within 0.06 of the ground in front of it with no ink. Worst delta 0.003.",
+    "G2": "FAIL and inverted: ridge ring 0 at 560 m is 0.195 against fogged ground at 400 m at 0.352.",
+    "G3": "FAIL. Mid course next gate 0.711, cloud 0.745, gate after next 0.722. One of six views passes.",
+    "G4": "FAIL. Six artefacts named by a reviewer. The antialiasing half of it was fixed in round 8 and measured; the grass half is only partly fixed.",
+    "G5": "FAIL. One exact colour over 14.8 percent of the frame with no light model, against a 2 percent threshold.",
+    "G6": "FAIL. makeHeightField forces height to exactly zero within 30 m of the racing line, confirmed live at three track positions.",
+    "G7": "CANNOT VERIFY from stills. Settled from code: no particle system exists anywhere in src/.",
+    "G8": "FAIL. 136 instances of one ConeGeometry family on the horizon, two unique instances in the world.",
+    "G9": "FAIL. Water depth is literally distance from the disc centre, which G9 forbids by name.",
+    "G10": "FAIL. Every failure reproduces at 1600x900, and the horizon dissolve is worse there, 24.2 percent."
+  },
+  "reviewers": {
+    "round_7": "Two, both REJECT. A graphics engineer on integrated GPUs: 6 of 11 P budgets FAIL plus D8, and it found the missing framebuffer, the blur, and the five stale numbers. An art director: all ten G items FAIL or CANNOT VERIFY.",
+    "round_8": "Not yet reviewed."
   }
 }

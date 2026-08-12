@@ -628,3 +628,80 @@ only red, threshold untouched, git diff of tests/ empty. Console clean on
 every capture. Frames in .loop/evidence/r4. Measured in 03-flight.png:
 sky 0.379, grass 0.277, near ridge 0.108, second ridge where visible 0.192,
 trees 0.102, gate posts 0.086, cloud 0.787.
+
+## Polish loop round 5: the thing both reviewers found, and three numbers I got wrong
+
+The round 4 review returned REJECT with all five B items still failing.
+Its most valuable findings were the ones two independent reviewers reached
+separately, and the ones that disproved numbers I had written down.
+
+### There was no antialiasing anywhere in the frame
+
+The renderer is constructed with antialias true, and it was inert:
+EffectComposer allocates its own render targets, so the scene was rendered
+aliased into those and the multisampled default framebuffer was written
+only by the final fullscreen quad, where multisampling does nothing. The
+performance reviewer found it by reading the pinned EffectComposer source;
+the art reviewer found it by walking a gate crossbar edge and measuring
+0.509, 0.108, 0.028 in three pixels, with the single transition pixel being
+bloom bleed rather than coverage.
+
+Fixed by giving the composer a target with samples 4 and turning the
+renderer's own flag off. Measured on the same edge after: 0.505, 0.307,
+0.075. There is now a real coverage pixel where there was none. On a frame
+containing 184000 sub pixel grass blades this was the single worst thing in
+the renderer, and it had been there since the composer was added.
+
+### Three numbers of mine were wrong, and the code said so
+
+- The comment in the mountain ring loop claimed the four rings landed at
+  measured luminances of 0.15, 0.25, 0.35 and 0.45. Nobody had measured
+  them. Ring 0 was at 0.108 and ring 1 at 0.162, which put ring 0 INSIDE
+  the tree canopy band of 0.094 to 0.107: a canopy in front of a mountain
+  was a 2.8 percent luminance step, which is no step at all. The comment
+  has been corrected to say the numbers are measured, and the colours were
+  re-picked and then measured: ring 0 is 0.198 against canopies at 0.129.
+- Round 4 claimed the cloud sun term reduction had stopped clouds clipping.
+  It had not: a cloud top still measured rgb 255 255 255, luminance 1.000,
+  and clouds carried 63 percent of the frame's bright area against the gate
+  ring's 32 percent. Two attempts at this were both too small. The cloud
+  colour is now scaled to 0.68 and the peak measures 0.697 against a gate
+  ring at 0.826.
+- The title scrim was crushing the lower two thirds of the frame to
+  luminance 0.010 to 0.013, a fourteen times crush that turned the start
+  gate's mint ring olive. Halved.
+
+### The value ladder, measured in .loop/evidence/r5/02-flight.png
+
+    gate ring        0.826
+    cloud, peak      0.697
+    cloud, body      0.525
+    sky              0.375
+    grass, ground    0.277
+    mountain ring 0  0.198
+    tree canopy      0.129
+    gate posts       0.086
+
+Seven separated bands with the pilot's target at the top and the objects a
+pilot can hit at the bottom, and the two bands that were colliding, ring 0
+against canopies, now sit 53 percent apart.
+
+### Evidence
+
+npm run verify in the same turn as this entry: 12 of 13, yaw-coupling the
+only red, threshold untouched, git diff of tests/ empty. Console clean on
+the capture run. Draw calls unchanged at 237 in the flight view.
+
+### What the round 4 review left open, unfixed
+
+Recorded in .loop/state.json and .loop/HANDOVER.md rather than fixed,
+because this session is out of room. The ranked remainder: mountain
+silhouettes carry no ink at all because the outline pass fades edges out
+from 320 m; the grass ink suppression eats the gate plinth's ground contact
+line into dashes, exactly where a pilot judges clearance; a flag cloth
+still passes through a tree canopy; rings 2 and 3 never appear in any frame
+because the near rings occlude them, so half the aerial perspective palette
+is dead code; the mountains are unlit flat colour, which is what makes
+their values reliable and also means the largest mass in the frame has no
+warm light and no cool shadow; and the gate frame's navy does not band, so
+the structure reads as a cutout.

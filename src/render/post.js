@@ -236,7 +236,22 @@ export function buildComposer(renderer, scene, camera) {
    * floating in the meadow with nothing inside them. */
   const grassMaskMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
 
-  const composer = new EffectComposer(renderer);
+  /*
+   * The composer's own target carries the multisampling, because the
+   * renderer's antialias flag does not reach it: EffectComposer allocates
+   * its own targets, so with antialias true on the renderer the scene was
+   * rendered aliased and the 4x default framebuffer was written by one
+   * fullscreen quad, where MSAA does nothing. Two reviewers found the same
+   * thing independently by walking edges: a gate crossbar went 0.509 to
+   * 0.108 to 0.028 in three pixels, one transition pixel, and that one was
+   * bloom bleed. On 184000 sub pixel grass blades an aliased frame is the
+   * worst possible content.
+   */
+  const composerTarget = new THREE.WebGLRenderTarget(w, h, {
+    type: THREE.HalfFloatType,
+    samples: 4,
+  });
+  const composer = new EffectComposer(renderer, composerTarget);
   composer.addPass(new RenderPass(scene, camera));
 
   const outline = new ShaderPass(OutlineShader);

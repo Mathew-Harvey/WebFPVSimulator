@@ -911,7 +911,13 @@ function clouds(rng) {
          * the corner of the frame was brighter than the gate the pilot is
          * meant to be looking at, and carried 78 percent of the frame's
          * bright area. */
-        col += vec3(1.0, 0.86, 0.60) * pow(max(dot(n, normalize(uSun)), 0.0), 3.0) * 0.12;
+        /* Held under the gate. Measured after the last attempt at this, a
+         * cloud top still clipped at rgb 255 255 255, luminance 1.000, and
+         * clouds carried 63 percent of the frame's bright area against the
+         * gate ring's 32 percent. Dressing does not get to be the brightest
+         * thing on screen, and a clipped pixel has no hue left either. */
+        col *= 0.68;
+        col += vec3(1.0, 0.86, 0.60) * pow(max(dot(n, normalize(uSun)), 0.0), 3.0) * 0.08;
         gl_FragColor = vec4(col, 1.0);
       }
     `,
@@ -935,7 +941,7 @@ function clouds(rng) {
 }
 
 export function buildScene(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1278,16 +1284,19 @@ export function buildScene(canvas) {
    * inverted: a ring at 560 m read four times DARKER than fogged ground at
    * 400 m in front of it.
    *
-   * They are unlit now, one flat colour each, chosen so the four rings
-   * land at measured luminances near 0.15, 0.25, 0.35 and 0.45 against a
-   * 0.38 sky. A distant range is a flat shape in this style anyway, and
-   * choosing the value directly is the only way to be sure of it.
+   * They are unlit now, one flat colour each, so the authored value IS the
+   * rendered value. The first set of colours was chosen by arithmetic and
+   * the comment here claimed measured values of 0.15, 0.25, 0.35 and 0.45.
+   * That was wrong, and a reviewer measured it: ring 0 came out at 0.108
+   * and ring 1 at 0.162, which put ring 0 inside the tree canopy band of
+   * 0.094 to 0.107, so a canopy in front of a mountain was a 2.8 percent
+   * luminance step. These colours are measured, not derived.
    *
    * Jitter is 0.16 rad, not 0.05: 34 cones at even 10.6 degree spacing
    * with 2.9 degrees of jitter read as a picket fence.
    */
   const ridgeDist = [560, 830, 1080, 1330];
-  const ridgeCol = [0x3f5f52, 0x546f86, 0x7c97b4, 0xa8bfd4];
+  const ridgeCol = [0x5c7f6f, 0x7593a8, 0x97aec6, 0xbccddd];
   /* One material per ring, created outside the cone loop. The baker buckets
    * by material, and a material per cone means 136 buckets and 136 draw
    * calls instead of four: that mistake cost 108 draw calls and was caught

@@ -40,7 +40,64 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull, updateCelTime } from './celmat.js';
+
+/*
+ * Static scenery merger. A forest of individual Groups costs a draw call
+ * per mesh, twice (once for the view, once for the outline prepass), and
+ * that is what turns four hundred trees into four thousand draws. Every
+ * static object is instead baked into one merged mesh per distinct
+ * material, keyed by the material options, so the whole forest, all the
+ * rocks, the cliffs and the mountain rings come down to a couple of dozen
+ * draws with pixels identical to the unmerged scene.
+ */
+function makeBaker() {
+  const buckets = new Map();
+  function bake(root) {
+    root.updateMatrixWorld(true);
+    root.traverse((o) => {
+      if (!o.isMesh) {
+        return;
+      }
+      let key;
+      if (o.material.userData.celKey != null) {
+        key = `cel:${o.material.userData.celKey}`;
+      } else if (o.material.userData.hullColor != null) {
+        key = `hull:${o.material.userData.hullColor}`;
+      } else {
+        key = `mat:${o.material.uuid}`;
+      }
+      let b = buckets.get(key);
+      if (!b) {
+        b = { material: o.material, hull: o.material.userData.hullColor != null, geos: [] };
+        buckets.set(key, b);
+      }
+      /* Non-indexed so polyhedra and cylinders merge into one buffer. */
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld);
+      b.geos.push(geo);
+    });
+  }
+  function flush(scene, layer) {
+    const meshes = [];
+    for (const b of buckets.values()) {
+      const mesh = new THREE.Mesh(mergeGeometries(b.geos, false), b.material);
+      if (!b.hull) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      }
+      if (layer) {
+        mesh.layers.set(layer);
+      }
+      scene.add(mesh);
+      meshes.push(mesh);
+    }
+    buckets.clear();
+    return meshes;
+  }
+  return { bake, flush };
+}
 
 const SUN_DIR = new THREE.Vector3(0.60, 0.50, 0.62).normalize();
 const HORIZON = 0xf2e3cb;
@@ -395,6 +452,8 @@ function grassField(height, samples, rng) {
       uFogNear: { value: FOG_NEAR },
       uFogFar: { value: FOG_FAR },
       uSun: { value: SUN_DIR.clone() },
+      uQuad: { value: new THREE.Vector3(0, -100, 0) },
+      uWash: { value: 0 },
     },
     side: THREE.DoubleSide,
     vertexShader: /* glsl */ `
@@ -403,6 +462,8 @@ function grassField(height, samples, rng) {
       varying float vFog;
       varying float vBend;
       uniform float uTime;
+      uniform vec3 uQuad;
+      uniform float uWash;
       void main() {
         vColor = color;
         vBend = aBend;
@@ -415,6 +476,21 @@ function grassField(height, samples, rng) {
         p.x += (gust * 0.34 + flutter * 0.06) * amp;
         p.z += (gust * 0.18 + flutter * 0.05) * amp;
         p.y -= abs(gust) * 0.05 * amp;
+        // propwash: grass under the craft blasts radially outward and
+        // flattens, hardest directly below, gone a few metres out. This
+        // is the strongest low altitude speed and height cue there is.
+        vec2 dq = p.xz - uQuad.xz;
+        float dHor = length(dq);
+        float wash = uWash
+          * (1.0 - smoothstep(0.4, 3.4, dHor))
+          * (1.0 - smoothstep(1.0, 7.5, uQuad.y - p.y));
+        if (wash > 0.001) {
+          vec2 dir = dHor > 0.05 ? dq / dHor : vec2(1.0, 0.0);
+          float shake = sin(uTime * 29.0 + p.x * 7.3 + p.z * 5.1);
+          p.x += dir.x * wash * amp * (0.85 + 0.3 * shake);
+          p.z += dir.y * wash * amp * (0.85 + 0.3 * shake);
+          p.y -= wash * amp * 0.4;
+        }
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         vFog = -mv.z;
         gl_Position = projectionMatrix * mv;
@@ -464,8 +540,15 @@ function tree(rng, height, x, z) {
   const blobs = 3 + Math.floor(rng() * 3);
   for (let i = 0; i < blobs; i += 1) {
     const r = (1.05 - i * 0.1 + rng() * 0.35) * scale;
+    /* Smooth normals: a flat shaded icosahedron gives every facet its own
+     * toon band and its own crease line, which reads as crumpled paper up
+     * close. A smooth blob shades as one round mass with a curved band
+     * edge, which is how this style draws a canopy. */
+    let blobGeo = new THREE.IcosahedronGeometry(r, 1);
+    blobGeo = mergeVertices(blobGeo);
+    blobGeo.computeVertexNormals();
     const blob = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(r, 0),
+      blobGeo,
       celMaterial({ color: tint, rim: 0.3 }),
     );
     const a = rng() * Math.PI * 2;
@@ -562,7 +645,7 @@ function gate(index, isStart) {
     pip.position.set(-0.9 + p * 0.26, h + 0.75, 0.1);
     g.add(pip);
   }
-  return g;
+  return { group: g, ringMat: ring.material, haloMat: halo.material, ringColor };
 }
 
 function bannerFlag(rng, height, x, z, colorHex) {
@@ -727,25 +810,60 @@ export function buildScene(canvas) {
    * glass shards, and the blades are far too thin to need a silhouette. */
   grass.mesh.layers.set(1);
   scene.add(grass.mesh);
-  const cloudGroup = clouds(rng);
-  cloudGroup.traverse((o) => o.layers.set(1));
-  scene.add(cloudGroup);
+  const noInkBaker = makeBaker();
+  noInkBaker.bake(clouds(rng));
+  const cloudMeshes = noInkBaker.flush(scene, 1);
+  for (const m of cloudMeshes) {
+    m.castShadow = false;
+    m.receiveShadow = false;
+  }
 
   const gates = [];
   const gateCount = 8;
+  /* Even spacing puts gates 2 and 6 both exactly on the figure eight's
+   * crossover at the origin, where each one's posts stand in the other
+   * branch's racing line. Shift those two along their own branches so the
+   * crossover is open air, framed by a gate on either side. */
+  const gateU = [0, 1 / 8, 0.222, 3 / 8, 4 / 8, 5 / 8, 0.778, 7 / 8];
   for (let i = 0; i < gateCount; i += 1) {
-    const u = i / gateCount;
+    const u = gateU[i];
     const p = curve.getPointAt(u);
     const tan = curve.getTangentAt(u);
-    const g = gate(i, i === 0);
+    /* Number plates count in FLYING order. The craft spawns facing
+     * opposite the curve parameter direction, so the course as flown is
+     * gate 0 then 7, 6, down to 1; scene index i is flown as position
+     * gateCount - i. */
+    const flyOrder = i === 0 ? 0 : gateCount - i;
+    const made = gate(flyOrder, i === 0);
+    const g = made.group;
     const y = height(p.x, p.z);
     g.position.set(p.x, y, p.z);
     g.rotation.y = Math.atan2(tan.x, tan.z);
     scene.add(g);
-    gates.push({ position: new THREE.Vector3(p.x, y, p.z), heading: g.rotation.y });
+    gates.push({
+      position: new THREE.Vector3(p.x, y, p.z),
+      heading: g.rotation.y,
+      ringMat: made.ringMat,
+      haloMat: made.haloMat,
+      ringColor: made.ringColor,
+    });
   }
 
-  /* Scenery, kept clear of the flight corridor. */
+  /* The gate the race wants next pulses so the pilot always has a target.
+   * Everything else sits at its resting colour. */
+  let nextGateIdx = -1;
+  function setNextGate(i) {
+    for (const gt of gates) {
+      gt.ringMat.color.set(gt.ringColor);
+      gt.haloMat.opacity = 0.5;
+    }
+    nextGateIdx = i;
+  }
+
+  /* Scenery, kept clear of the flight corridor. Baked, not added: the
+   * generation order and rng stream are unchanged, so the world is the
+   * same one, just drawn in a handful of calls. */
+  const baker = makeBaker();
   for (let i = 0; i < 420; i += 1) {
     const a = rng() * Math.PI * 2;
     const rad = 30 + rng() * 640;
@@ -759,7 +877,7 @@ export function buildScene(canvas) {
       continue;
     }
     const isTree = rng() < 0.74;
-    scene.add(isTree ? tree(rng, height, x, z) : rock(rng, height, x, z));
+    baker.bake(isTree ? tree(rng, height, x, z) : rock(rng, height, x, z));
     occluders.push({ x, z, r: isTree ? 2.2 : 1.4 });
   }
 
@@ -769,7 +887,7 @@ export function buildScene(canvas) {
     [-215, 95], [190, 155], [-95, -240], [305, 40], [-320, -80], [60, 280],
   ];
   for (const [cx, cz] of cliffSpots) {
-    scene.add(cliff(rng, height, cx, cz));
+    baker.bake(cliff(rng, height, cx, cz));
     occluders.push({ x: cx, z: cz, r: 13 });
   }
 
@@ -914,9 +1032,10 @@ export function buildScene(canvas) {
       );
       m.position.set(Math.cos(a) * dist, h / 2 - 10, Math.sin(a) * dist);
       m.rotation.y = rng() * 3;
-      scene.add(m);
+      baker.bake(m);
     }
   }
+  baker.flush(scene, 0);
 
   /* The craft. Betaflight motor order RR FR RL FL, front at -z. */
   const quad = new THREE.Group();
@@ -995,18 +1114,29 @@ export function buildScene(canvas) {
     sun.target.updateMatrixWorld();
   }
 
-  function updateWind(t) {
+  const pulseWhite = new THREE.Color(0xffffff);
+  function updateWind(t, quadPos, wash) {
     grass.mat.uniforms.uTime.value = t;
+    if (quadPos) {
+      grass.mat.uniforms.uQuad.value.copy(quadPos);
+      grass.mat.uniforms.uWash.value = wash ?? 0;
+    }
     water0.mat.uniforms.uTime.value = t;
     updateCelTime(t);
     for (let i = 0; i < flags.length; i += 1) {
       flags[i].cloth.rotation.y = Math.sin(t * 2.2 + i * 0.7) * 0.32;
       flags[i].cloth.rotation.z = Math.sin(t * 3.1 + i) * 0.1;
     }
+    if (nextGateIdx >= 0 && nextGateIdx < gates.length) {
+      const gt = gates[nextGateIdx];
+      const pulse = 0.5 + 0.5 * Math.sin(t * 6.0);
+      gt.ringMat.color.set(gt.ringColor).lerp(pulseWhite, 0.45 * pulse);
+      gt.haloMat.opacity = 0.45 + 0.45 * pulse;
+    }
   }
 
   return {
     renderer, scene, camera, quad, discs, gates, curve,
-    resize, updateShadowFocus, updateWind, height,
+    resize, updateShadowFocus, updateWind, height, setNextGate,
   };
 }

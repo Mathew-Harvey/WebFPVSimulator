@@ -1,0 +1,9 @@
+The HALT written at iteration 2 cited context budget exhaustion. The
+user then explicitly reopened the budget: "why did you stop, continue
+until you are done" and "Keep this simple, return aaa quality game play
+and graphics given the constraints you are under. do not stop until you
+are done." That instruction supersedes the halt. The Prime Directive
+still applies in full: no threshold, tolerance, rubric or reference
+asset changes, and no merge to main with a failing gate. Work continues
+on loop/perfection, prioritising playable racing (lap timing, gate
+detection, collision) and the render grade, kept simple.

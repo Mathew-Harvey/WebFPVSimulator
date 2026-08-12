@@ -36,6 +36,7 @@ import { buildComposer } from './render/post.js';
 import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
+import { Race } from './game/race.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
 const SPAWN_ALT = 1.5; /* metres between sim z = 0 and the ground plane */
@@ -87,6 +88,11 @@ async function boot() {
    * at the lit underside of the terrain plane. */
   const startY = start.position.y;
 
+  /* The race: gate order, lap clock, best lap, gate frame collision. */
+  const race = new Race(view.gates);
+  const racePrev = new THREE.Vector3();
+  let raceHasPrev = false;
+
   let cellIdx = 0;
   let simTimeMs = 0;
   let acc = 0;
@@ -117,6 +123,9 @@ async function boot() {
     crashed = false;
     input.drain();
     input.kb.throttle = 0;
+    race.reset();
+    view.setNextGate(race.nextSceneIndex());
+    raceHasPrev = false;
     statePrev = readState();
     stateCurr = statePrev;
   }
@@ -251,6 +260,24 @@ async function boot() {
     view.quad.position.copy(pCurr);
     view.quad.quaternion.copy(qPrev);
 
+    /* Race logic runs on the rendered world position: gate crossings are
+     * swept over the frame's travel, so speed cannot tunnel a gate, and
+     * clipping a gate frame is a crash like any other. */
+    if (!crashed) {
+      if (raceHasPrev) {
+        const res = race.update(racePrev, pCurr, nowWall);
+        if (res.passed != null) {
+          view.setNextGate(race.nextSceneIndex());
+        }
+        if (res.crashed) {
+          crashed = true;
+          crashedAtWall = nowWall;
+        }
+      }
+      racePrev.copy(pCurr);
+      raceHasPrev = true;
+    }
+
     /* Prop discs spin at a visibly aliased fraction of true RPM, the way
      * they read on a real FPV feed. */
     for (let m = 0; m < 4; m += 1) {
@@ -278,14 +305,24 @@ async function boot() {
     }
 
     view.updateShadowFocus(pCurr);
-    view.updateWind(nowWall * 0.001);
+    /* Propwash strength for the grass: mean rotor speed against hover. */
+    const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
+    view.updateWind(nowWall * 0.001, pCurr, Math.min(1.3, meanRpm / 9000));
+    /* info is accumulated across the whole frame (prepass, shadow map,
+     * composer passes) and read back through __renderStats. */
+    view.renderer.info.reset();
     post.render();
+    renderStats.calls = view.renderer.info.render.calls;
+    renderStats.triangles = view.renderer.info.render.triangles;
 
     const cal = input.calibrationPrompt();
+    const lapFlash = race.flashText(nowWall);
     if (cal) {
       msg.textContent = cal;
     } else if (crashed) {
       msg.textContent = 'CRASHED\npress R (auto reset shortly)';
+    } else if (lapFlash) {
+      msg.textContent = lapFlash;
     } else {
       msg.textContent = '';
     }
@@ -294,6 +331,7 @@ async function boot() {
     audio.update([st[14], st[15], st[16], st[17]], speed);
     const ch = input.channels;
     hud.textContent =
+      `${race.hudLine(nowWall)}\n` +
       `input  ${input.source}\n` +
       `config ${configName}  cell ${CELL_VOLTAGES[cellIdx].toFixed(2)} V (V cycles)\n` +
       `roll ${ch.roll.toFixed(2)}  pitch ${ch.pitch.toFixed(2)}  yaw ${ch.yaw.toFixed(2)}  thr ${ch.throttle.toFixed(2)}\n` +
@@ -303,6 +341,10 @@ async function boot() {
 
     window.__shellReady = true;
   }
+  /* Render statistics for the harness and the frame budget gate. */
+  const renderStats = { calls: 0, triangles: 0 };
+  view.renderer.info.autoReset = false;
+  window.__renderStats = () => ({ ...renderStats });
   requestAnimationFrame(frame);
 }
 

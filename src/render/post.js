@@ -14,6 +14,11 @@
  *    fight each other; this is here only to make the gate rings and the
  *    sun glow, which is what pulls the eye to the next gate.
  *
+ * 3. A grade: mild FPV barrel distortion, a highlight shoulder, a cool
+ *    lift in the blacks against a warm gain in the lights, vibrance, and
+ *    a vignette. Individually invisible; together they are the difference
+ *    between raw renderer output and a finished frame.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -47,7 +52,11 @@ const OutlineShader = {
     uCameraFar: { value: 2000 },
     uLineColor: { value: new THREE.Color(0x1a2230) },
     uDepthBias: { value: 0.0016 },
-    uNormalBias: { value: 0.42 },
+    /* High enough that the roughly 42 degree facet dihedral of the low
+     * poly canopies and rocks stays clean (normal delta about 0.7 per
+     * sample pair) while true corners near 90 degrees (delta 1.4) still
+     * ink. Facet creases were turning every near tree into a wire mesh. */
+    uNormalBias: { value: 1.05 },
     uStrength: { value: 0.85 },
   },
   vertexShader: /* glsl */ `
@@ -117,6 +126,63 @@ const OutlineShader = {
   `,
 };
 
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uDistort: { value: 0.055 },
+    uVignette: { value: 0.16 },
+    uVibrance: { value: 0.22 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    varying vec2 vUv;
+    uniform sampler2D tDiffuse;
+    uniform float uDistort;
+    uniform float uVignette;
+    uniform float uVibrance;
+
+    void main() {
+      // FPV lens: mild barrel distortion, zoom compensated so the
+      // corners never sample outside the frame.
+      vec2 uv = vUv - 0.5;
+      float r2 = dot(uv, uv);
+      vec2 duv = 0.5 + uv * (1.0 + uDistort * r2) / (1.0 + uDistort * 0.5);
+      vec3 c = texture2D(tDiffuse, duv).rgb;
+
+      // Highlight shoulder: everything above the knee rolls off smoothly
+      // instead of clipping, so the sky and bloom keep their hue.
+      vec3 h = max(c - 0.8, vec3(0.0));
+      c = min(c, vec3(0.8)) + h / (1.0 + h);
+
+      // Cool lift in the blacks, warm gain in the lights: the same warm
+      // light cool shadow logic as the ramp, applied to the whole frame.
+      vec3 lift = vec3(0.012, 0.018, 0.042);
+      c = c * (1.0 - lift) + lift;
+      c *= vec3(1.045, 1.010, 0.965);
+
+      // Vibrance: push saturation hardest where there is least of it, so
+      // flat mid tones enrich without neon-ing what is already saturated.
+      float mx = max(c.r, max(c.g, c.b));
+      float mn = min(c.r, min(c.g, c.b));
+      float sat = mx > 0.001 ? (mx - mn) / mx : 0.0;
+      float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(luma), c, 1.0 + uVibrance * (1.0 - sat));
+
+      // Vignette, wide and shallow: frames the view without reading as a
+      // dirty lens.
+      c *= 1.0 - uVignette * smoothstep(0.18, 0.52, r2);
+
+      gl_FragColor = vec4(c, 1.0);
+    }
+  `,
+};
+
 export function buildComposer(renderer, scene, camera) {
   const size = new THREE.Vector2();
   renderer.getSize(size);
@@ -153,6 +219,8 @@ export function buildComposer(renderer, scene, camera) {
 
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.92);
   composer.addPass(bloom);
+  const grade = new ShaderPass(GradeShader);
+  composer.addPass(grade);
   /* Colour space and tone mapping conversion. Without this the composer
    * writes linear values straight to the screen and every colour reads
    * wrong. */
@@ -198,5 +266,6 @@ export function buildComposer(renderer, scene, camera) {
     setSize,
     outline,
     bloom,
+    grade,
   };
 }

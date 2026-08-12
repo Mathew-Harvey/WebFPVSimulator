@@ -226,6 +226,9 @@ ${RIM_CHUNK}
       );
   };
   mat.userData.cel = true;
+  /* Stable identity for the scenery merger: two materials built from the
+   * same options are interchangeable, so their meshes can share one draw. */
+  mat.userData.celKey = JSON.stringify(opts);
   return mat;
 }
 
@@ -240,6 +243,7 @@ export function outlineHull(mesh, thickness = 1.05, color = 0x141a24) {
     mesh.geometry,
     new THREE.MeshBasicMaterial({ color, side: THREE.BackSide, fog: true }),
   );
+  hull.material.userData.hullColor = color;
   hull.scale.multiplyScalar(thickness);
   hull.castShadow = false;
   hull.receiveShadow = false;

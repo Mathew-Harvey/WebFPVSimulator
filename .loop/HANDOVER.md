@@ -44,6 +44,69 @@ spend a round trying to install one. `scripts/pixels.js` decodes PNGs and a
 20 line Node script can decode, crop and cluster one; that is how the
 MultiGP diagram below was measured.
 
+## Round 11: the world is solid and the mix stopped screaming
+
+Full evidence in `.loop/evidence/r11/ledger.md` and `ledger-numbers.md`. What a
+next round has to know:
+
+**Collisions are real and exact.** `src/game/collide.js`, one primitive (a
+capsule), and the swept test is the closed form segment to segment distance, so
+there is no sampling and no tunnelling at any frame rate. 1777 colliders. The
+query allocates nothing. `window.__colliders()` reports counts by kind and the
+grid statistics. Colliders are recorded WHERE THE GEOMETRY IS BUILT, because the
+baker merges instances into anonymous buffers, and no new `rng()` draw may ever
+be added inside the scenery loop.
+
+**Landing is a shell state, not a physics clamp, and it cannot be otherwise.**
+The ABI has no call that writes a position or a velocity. Thresholds: descent at
+or below 2.0 m/s, horizontal at or below 3.0 m/s, tilt at or below 25 degrees.
+Anything else is a crash, as is touching any collider. Verified in page at
+1.2730 m/s (lands) and 13.9154 m/s (crashes). KNOWN LIMITATION: the frozen state
+keeps its touchdown descent rate, so a takeoff dips before thrust wins.
+
+**Every obstacle is at its published MultiGP dimension** and no dimension is
+typed twice: `scene.js` imports `OBSTACLES` and `FRAME_TUBE_OD` from
+`src/game/track.js`. The opening measures 1.524 by 1.524 m and a load time
+assertion throws if any obstacle drifts more than 10 mm. Six types on the
+course, including two ladders (the triple stacks) and a dive gate at a 4.572 m
+sill. The course is an ORIGINAL CHAPTER STYLE LAYOUT from regulation obstacles,
+T4's second branch, and it says so.
+
+**P1 PASSES for the first time: 321 draw calls against a 400 ceiling**, down
+from 692, because obstacle materials are shared and their static parts bake.
+Meshes 317 to 141. **P2 did not move and is the next item**: `grassField` sets
+`frustumCulled = false` on one 900 m mesh, 552,000 triangles unconditionally,
+and empty sky is still 99.8 percent of the worst view.
+
+**The mix.** A1 margin +21.09 dB against a bar of +12, from -22.01 dB.
+Centroid 1909 to 606 Hz. `RPM_TO_HZ_SCALE` is deleted; the fundamental IS the
+blade pass frequency. A3 flight render -18.48 dBFS, true peak -5.84 dBTP, worst
+case -1.39 dBTP with zero clipped samples. `MASTER_CEILING` is 0.85 and that is
+load bearing: with the soft clip saturating, the true peak in dBTP equals the
+master gain in dB, so a master of 1.0 measures +0.01 dBTP and a player on
+volume ten clips. A5 tempo 173.73 BPM, r 0.3641 against a shuffled null p95 of
+0.0241. A6 seam delta at the 5th percentile of the interior distribution. A4
+carriers 220.000 and 226.000 Hz, 6.000 Hz apart, per channel AM 122 dB down and
+the mono sum 123 dB above it. 52 audio nodes of 64.
+
+**Two owed measurements, do these first:** the A2 three throttle sweep against
+the new graph (the identity is in the code but the sweep was not re-run), and
+the A7 cue level advantage in its own band now that the probe's analysis frame
+is adaptive. Both are one probe run each.
+
+**New probe flags:** `--motors=N --wind=N --musiclevel=N --music=0|1
+--focus=0|1 --cue=kind@seconds --window=t0,t1`. A1 is measured with the bed
+muted, because A1 is a property of the motor model and A8 requires the bed to
+occupy other bands; the full mix figure is published beside it. A tempo whose r
+is not well above `nullP95` means nothing was found.
+
+**Sharp edge added this round:** the regulation gate exposed a scale error that
+no number caught. Grass at 0.26 to 0.68 m is knee deep beside a 1.524 m
+opening, and the gates vanished from the title frame while every ledger figure
+stayed correct. Grass is 0.09 to 0.24 m now and the attract camera is 9 m out.
+Any future change to obstacle size has to be checked against grass height,
+camera framing and the lit aperture bar width together.
+
 ## What round 10 built, and why nothing else
 
 Two rubric sections had no instrument at all, and an unmeasurable rubric

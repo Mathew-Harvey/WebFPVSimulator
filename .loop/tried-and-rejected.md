@@ -155,3 +155,42 @@ Building that string a byte at a time over a 20 second stereo render is
 7.7 MB of single character concatenation, and applying `fromCharCode` to the
 whole buffer at once blows the argument limit. It is chunked at 8192 bytes
 inside the page and at 1 MiB across the CDP boundary.
+
+## World, sound and track loop, round 11 (round 11 overall)
+
+**Sampling the collision sweep at fixed 0.1 m steps.** The obvious design, and
+it needs a cap on the sample count or a stall turns into an unbounded loop.
+Any cap is a tunnelling bug on any machine slower than the cap assumed, and
+this container moves the craft fifteen metres between frames, so it would have
+been wrong here before it was ever wrong on target hardware. Replaced by the
+closed form segment to segment distance, which is exact, cheaper, and has no
+parameter to get wrong. Verified with a 60 m single frame sweep through a tree.
+
+**Hats on the offbeats only, with beat three of the bar empty.** Musically
+defensible drum and bass, and it fails A5's tempo bar: the onset
+autocorrelation locked onto the kick's own six and ten step intervals and
+reported 117.61 BPM, two thirds of the real 174, with the true tempo only the
+third strongest peak. A ghost kick on beat three plus hat accents on every beat
+gave the autocorrelation a beat grid and moved 173.73 BPM to the top with r
+fifteen times the shuffled null. A generated bed has to be measurable, and a
+pattern whose strongest period is a dotted figure is not at the tempo it claims.
+
+**A 9 ms timing wow.** Enough lofi character to hear, and it smeared onsets
+over three and a half flux frames at 375 frames per second, broadening the
+autocorrelation peak enough to hide the tempo underneath it. 5 ms still
+breathes and still measures.
+
+**Trusting the default mix level when testing headroom.** Every A3 figure
+passed at the shell's default of 0.6 while a player on volume ten clipped at
++0.01 dBTP. With a saturating soft clip the render's true peak in dBTP equals
+the master gain in dB, so the worst case the INTERFACE allows is the only one
+worth measuring. A ceiling of 0.85 with 1.5 dB more on the stems holds both
+ends.
+
+**Assuming a regulation gate would just be a smaller gate.** It is a scale
+change, and it broke three other things that had been tuned against the old
+5 m gate: grass at 0.26 to 0.68 m became knee deep, the attract camera at 19 m
+out aimed 2.5 m above a base whose aperture centre is now 0.762 m, and a
+0.045 m lit bar became sub pixel at the distance a pilot first sees a gate.
+Every ledger number stayed correct and the gates were invisible. Only the frame
+said so.

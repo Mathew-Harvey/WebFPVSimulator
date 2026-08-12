@@ -109,3 +109,19 @@ hiding.
 **Reporting mebibytes under a megabyte heading.** 4.9 percent lenient at
 this scale, which is the difference between passing and failing a 120 MB
 ceiling at 115 MB. Both units are printed now.
+
+## Low spec loop, round 4 (round 9 overall)
+
+**Giving the ridge rings a light model as a luminance split.** Sun side and
+shadow side at plus and minus 0.03 around each ring's rung. There is not
+enough luminance range: between the fogged ground at 850 m and the sky
+there is 0.353 for four layers, and a 0.06 wide band per ring puts the sun
+side of one ring and the shadow side of the next within 0.035 of each
+other, so a reviewer sampling those two patches measures a ladder that does
+not climb. Replaced by equal luminance pairs that differ only in hue.
+
+**Solving the ridge colours for the right luminances at the wrong hue.**
+The first set used a sun side at hue 0.13, which is orange, and the whole
+horizon rendered as sand dunes. Every number in the ledger was correct and
+the world had become a desert. The numbers cannot tell you this and a frame
+can, in one look.

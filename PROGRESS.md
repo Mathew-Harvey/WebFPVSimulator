@@ -1021,3 +1021,106 @@ CANNOT VERIFY rather than carried as a PASS.
 `npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
 turn. `git diff --stat vendor/betaflight` empty, `git diff HEAD -- tests/`
 empty, console clean at both resolutions.
+
+## Low spec loop, round 4 (round 9 overall): the value ladder
+
+G1, G2 and G3 are one mechanism and they constrain each other, so they went
+together. The art director's measurements were the starting point and were
+not re-derived: ridge ring 0 at 560 m measuring 0.195 against fogged ground
+at 400 m measuring 0.352, so the further layer was 0.157 DARKER; 21.4
+percent of sampled columns with the ridge base within 0.06 of the ground in
+front of it and no ink in the gap; one exact colour, rgb(93,130,114), over
+14.8 percent of the frame with no light model at all; and the next gate at
+0.711 against a cloud at 0.745.
+
+### The arithmetic, which is what decided the design
+
+The constraint chain, all Rec. 709 linear:
+
+- `HORIZON` is 0.781 and it is both the fog colour and the sky's horizon
+  band, so any fully fogged terrain reads 0.781.
+- `FOG_FAR` was 780, and the terrain is 1700 m across, so every piece of
+  ground past 780 m rendered as exactly 0.781. There was no room above it
+  for a mountain ladder that also has to stay below the sky.
+- The amber gate ring's own colour is 0.691 and the renderer runs with
+  `NoToneMapping`.
+
+`FOG_FAR` is now 2200, which puts the terrain's far edge at 850 m at 0.428
+and leaves 0.353 of luminance between it and the sky for four ridge rings.
+
+**The first attempt at the light model did not fit, and the failure is
+worth recording.** Splitting each ring's value by even 0.03 for a sun side
+and a shadow side makes the sun side of one ring and the shadow side of the
+next land within 0.035 of each other, and then a reviewer sampling those
+two patches measures a ladder that does not climb. There is not enough
+luminance range for four lit layers.
+
+So the light model is carried entirely in **hue at equal luminance**: warm
+pale green grey facing the sun, cool blue away from it, the same pair
+measuring within 0.003 of each other. Value carries distance, hue carries
+light, and neither borrows from the other. That is also exactly what this
+project's own colour rule already said.
+
+    layer                 target   measured in 04-midcourse
+    far ground             0.428   0.272 at the visible strip
+    ridge ring 0            0.49   0.492 to 0.502
+    ridge ring 1            0.56
+    ridge ring 2            0.63   0.548 at the sampled patch
+    ridge ring 3            0.70
+    sky                    0.781   0.529 at the sampled patch
+    cloud peak                     0.642
+
+### The first hue choice was wrong and a frame said so
+
+The first set solved for the target luminances with a sun side at hue 0.13,
+which is orange. Rendered, the whole horizon read as **sand dunes**: the
+ladder was measurably correct and the world had become a desert. Re-solved
+at hue 0.19 to 0.22, a pale green grey, against a blue shadow side, for the
+same luminances. Nothing about the numbers changed and everything about the
+frame did. Both frames are in `.loop/evidence/r9`.
+
+### The gate glow
+
+`GLOW_LADDER` goes from [0.52, 0.34, 0.20] to [0.95, 0.42, 0.24] and the
+next gate's pulse from 0.52 + 0.26 to 0.95 + 0.30. The glow is unfogged,
+which is what makes it work at distance: it is the one thing in the frame
+whose value does not fall off. It is a tight annulus at the torus radius,
+so the band can push into clipping while the ring keeps the hue that says
+which gate this is. Round 3 of the previous loop rejected scaling the ring
+COLOUR past 1.0 for exactly that reason; this is not that.
+
+Measured, `03-startline.png`, walking down through the mint start ring at
+x = 960, which is the next gate in that view and is unambiguous:
+
+    round 7   0.833 0.883 0.834 0.790 ... 0.782 0.757 0.592 0.570 0.552
+    round 9   0.893 0.911 0.856 0.811 ... 0.799 0.821 0.904 0.903 0.903
+
+Peak 0.883 to 0.911, and the glow annulus below the ring goes from 0.59 to
+0.90. Brightest non gate in that frame: cloud 0.489, sky 0.443. Headroom
+0.422 against the required 0.08.
+
+### What I could NOT verify, and am not claiming
+
+**G3 in the mid course view is not settled.** I measured a gate ring there
+at 0.696 against a cloud at 0.642, which is 0.054 of headroom against a
+required 0.08, and then realised I could not prove the gate I measured was
+the NEXT gate. The camera is parked at u = 0.30 while the race's next gate
+is still gate 1, so the amber ring in frame is some later gate glowing at
+0.42 or 0.24 of the ladder, not the target. The art director's 0.711 may
+have made the same conflation. Settling G3 properly needs the harness to
+report `window.__race.next` and its screen position with the capture, which
+is a harness change and not this round's item. Recorded as still FAIL.
+
+My first patch for the gate ring in that frame measured 0.505 and was
+sitting on a mountain, which is the frame specific coordinate trap the
+handover warns about. Caught by the rgb triple not being amber.
+
+### What did not move
+
+P1 705, P2 1,916,515, P6, P8, P10 51.2 MB, P11. P3 3, P4 10, P5 115.1 MB,
+P9 all still pass. The ridge cones now carry a colour attribute, which adds
+to P10, and the measured figure did not change to one decimal place because
+136 cones of 10 triangles is small against 184,000 blades.
+
+`npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
+turn. Console clean at both resolutions, 0 errors and 0 warnings.

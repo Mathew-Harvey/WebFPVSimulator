@@ -107,7 +107,12 @@ const HORIZON = 0xf2e3cb;
  * fix is a paler zenith rather than a bluer one. */
 const SKY_HIGH = 0x6ea3d8;
 const FOG_NEAR = 130;
-const FOG_FAR = 780;
+/* 2200, not 780. At 780 every piece of terrain past that distance renders
+ * as exactly the horizon colour, 0.781 linear, which leaves no room above
+ * it for a mountain ladder that also has to stay below the sky. At 2200
+ * the terrain's far edge at 850 m lands at 0.428 and the four ridge rings
+ * fit above it at 0.49, 0.56, 0.63 and 0.70 with the sky at 0.781. */
+const FOG_FAR = 2200;
 
 /* Deterministic hash based noise: the world must be identical every load,
  * so two people comparing notes are describing the same place. */
@@ -1080,7 +1085,24 @@ export function buildScene(canvas) {
    * backwards from the start line, so the gate after scene index i is
    * i - 1, wrapping.
    */
-  const GLOW_LADDER = [0.52, 0.34, 0.20];
+  /*
+   * The next gate has to be the brightest thing in the frame with 0.08 of
+   * headroom over everything that is not a gate, and the brightest thing
+   * that is not a gate is the horizon haze at 0.781, so the target is
+   * 0.861. The amber ring's own colour is 0.691 and the renderer runs with
+   * NoToneMapping, so the ring cannot get there by itself: the additive
+   * glow has to carry it. Measured before this changed, a reviewer found
+   * the next gate at 0.711 against a cloud at 0.745, and the gate AFTER
+   * next at 0.722, louder than the one the pilot was flying at.
+   *
+   * The glow is unfogged, which is what makes this work at distance: it is
+   * the one thing in the frame whose value does not fall off. It is also a
+   * tight annulus at the torus radius, so the band can push into clipping
+   * while the ring itself keeps the hue that says which gate this is.
+   * Round 3 of the previous loop rejected scaling the ring COLOUR past 1.0
+   * for exactly that reason, and this is not that.
+   */
+  const GLOW_LADDER = [0.95, 0.42, 0.24];
   function setNextGate(i) {
     for (const gt of gates) {
       gt.ringMat.color.set(gt.ringColor);
@@ -1318,23 +1340,75 @@ export function buildScene(canvas) {
    * with 2.9 degrees of jitter read as a picket fence.
    */
   const ridgeDist = [560, 830, 1080, 1330];
-  const ridgeCol = [0x5c7f6f, 0x7593a8, 0x97aec6, 0xbccddd];
+  /*
+   * The aerial perspective ladder, and the one place in the frame where it
+   * is authored rather than computed. Each pair is a sun side and a shadow
+   * side of the SAME luminance, so the ring's rendered value is exactly its
+   * rung and the light model lives entirely in hue: warm sand facing the
+   * sun, cool blue away from it, which is the same warm light cool shadow
+   * rule the ramp follows.
+   *
+   * That equal luminance is not a shortcut, it is the only thing that fits.
+   * The rungs have to clear the fogged ground in front of the nearest ring
+   * and stay clear of the sky behind the furthest one, and between those
+   * two there is 0.353 of luminance for four layers. Splitting each ring's
+   * value by even 0.03 for its light model makes the sun side of one ring
+   * and the shadow side of the next land within 0.035 of each other, and
+   * then a reviewer sampling those two patches measures a ladder that does
+   * not climb. Hue carries the light, value carries the distance, and
+   * neither has to borrow from the other.
+   *
+   * Measured targets, Rec. 709 linear: 0.49, 0.56, 0.63, 0.70, against
+   * ground at 850 m at 0.428 and sky at 0.781. Steps 0.062, 0.07, 0.07,
+   * 0.07, 0.081.
+   *
+   * The previous set was one flat unlit colour per ring at 0.186, 0.275,
+   * 0.409 and 0.596. A reviewer measured ring 0 at 0.195 against fogged
+   * ground at 400 m at 0.352: the layer 160 m further away was 0.157
+   * DARKER, so the aerial perspective ran backwards. It also put one exact
+   * colour across 14.8 percent of the frame with no light model at all.
+   */
+  const RIDGE_SUN = [0xb0c08e, 0xbfcaa2, 0xcdd3b4, 0xd8dcc6];
+  const RIDGE_SHADE = [0x99bfda, 0xabc9e2, 0xbcd2e8, 0xcddbeb];
   /* One material per ring, created outside the cone loop. The baker buckets
    * by material, and a material per cone means 136 buckets and 136 draw
    * calls instead of four: that mistake cost 108 draw calls and was caught
    * by measuring the count, not by reading the diff. */
-  const ridgeMats = ridgeCol.map((c) => new THREE.MeshBasicMaterial({ color: c, fog: false }));
+  const ridgeMats = RIDGE_SUN.map(() => {
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+    m.vertexColors = true;
+    return m;
+  });
+  const sunC = new THREE.Color();
+  const shadeC = new THREE.Color();
+  const nrmMat = new THREE.Matrix3();
+  const nrmVec = new THREE.Vector3();
   for (let ring = 0; ring < 4; ring += 1) {
     const dist = ridgeDist[ring];
+    sunC.setHex(RIDGE_SUN[ring]);
+    shadeC.setHex(RIDGE_SHADE[ring]);
     for (let i = 0; i < 34; i += 1) {
       const a = (i / 34) * Math.PI * 2 + ring * 0.09 + (rng() - 0.5) * 0.16;
       const h = 110 + rng() * 210;
-      const m = new THREE.Mesh(
-        new THREE.ConeGeometry(95 + rng() * 90, h, 5),
-        ridgeMats[ring],
-      );
+      /* Non indexed before colouring: a cone's five side faces share
+       * vertices with the cap in the indexed form, so a per face colour
+       * written into a shared vertex bleeds onto the face next to it. */
+      const geo = new THREE.ConeGeometry(95 + rng() * 90, h, 5).toNonIndexed();
+      const m = new THREE.Mesh(geo, ridgeMats[ring]);
       m.position.set(Math.cos(a) * dist, h / 2 - 10, Math.sin(a) * dist);
       m.rotation.y = rng() * 3;
+      m.updateMatrixWorld(true);
+      const nrm = geo.attributes.normal;
+      const col = new Float32Array(nrm.count * 3);
+      nrmMat.getNormalMatrix(m.matrixWorld);
+      for (let v = 0; v < nrm.count; v += 1) {
+        nrmVec.fromBufferAttribute(nrm, v).applyMatrix3(nrmMat).normalize();
+        const c = nrmVec.dot(SUN_DIR) > 0.02 ? sunC : shadeC;
+        col[v * 3 + 0] = c.r;
+        col[v * 3 + 1] = c.g;
+        col[v * 3 + 2] = c.b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
       baker.bake(m);
     }
   }
@@ -1447,7 +1521,7 @@ export function buildScene(canvas) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 4.4);
       /* Pulse the glow, not the ring's hue. Lerping the ring toward white
        * made the target lose the one colour that identifies it. */
-      gt.glowMat.uniforms.uGain.value = 0.52 + 0.26 * pulse;
+      gt.glowMat.uniforms.uGain.value = 0.95 + 0.30 * pulse;
       gt.haloMat.opacity = 0.55 + 0.35 * pulse;
     }
   }

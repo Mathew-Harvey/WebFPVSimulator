@@ -44,10 +44,30 @@ import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
+import { CRAFT_R, isLanding, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
 import { Ui } from './ui/ui.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
-const SPAWN_ALT = 1.5; /* metres between sim z = 0 and the ground plane */
+/*
+ * Metres between sim z = 0 and the ground plane, which is where the craft
+ * spawns. It used to be 1.5 m, chosen when the gate's aperture centre was
+ * 2.5 m up. A regulation 5 ft gate standing on grass has its aperture centre
+ * at 0.762 m and its top edge at 1.524 m, so a craft spawned at 1.5 m sits
+ * level with the top of the opening and has to descend to fly through the
+ * start gate. 0.9 m puts it just below the aperture centre, which is where a
+ * pilot actually sets a quad down before a run, and it is still 0.71 m of
+ * clearance under the collision sphere.
+ */
+const SPAWN_ALT = 0.9;
+/* The craft rests with its underside on the ground, not its centre. The
+ * model's bounding box is 0.11 m tall, so its belly is 0.055 m below centre;
+ * a couple of centimetres of skid keeps it from strobing in and out of
+ * contact on a slope. */
+const REST_HEIGHT = 0.075;
+/* Raising the throttle this far off the ground is a deliberate takeoff. The
+ * launch latch uses 0.05, which is right for arming a run from rest but
+ * would lift the craft off the instant it landed with any throttle held. */
+const TAKEOFF_THROTTLE = 0.25;
 /* The controller consumes each input sample as one RC frame, so the shell
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
@@ -142,14 +162,45 @@ async function boot() {
   /* Physics holds until the pilot first raises throttle: a run should
    * start when the pilot says so, not with a falling catch at spawn. */
   let launched = false;
+  /* On the ground, upright, intact, physics frozen. A landing cannot be a
+   * physics clamp: the module's ABI has no call that writes a position or a
+   * velocity, so the only way to hold a craft on the ground is to stop
+   * stepping it, which is exactly what the pre launch hold already does. */
+  let landed = false;
   let statePrev = null;
   let stateCurr = null;
+  /* Ground sweep state. groundPrev is where the craft was last frame, so the
+   * terrain test can be a segment rather than a point. */
+  const groundPrev = new THREE.Vector3();
+  let groundHasPrev = false;
+  let groundY = 0;
+  /* Published through __craftState so a capture can ASSERT a landing rather
+   * than describe one. */
+  let lastDescent = 0;
+  let lastTiltDeg = 0;
+  let lastHitKind = 'none';
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
   let notice = null; /* { text, untilMs } for one off shell messages */
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs);
+
+  /*
+   * One way into the crash path, because there are now three things that can
+   * cause one: arriving at the ground too fast, arriving at it too far from
+   * upright, and touching anything solid. The lap dies, the run does not.
+   */
+  function crashInto(reason, nowWall) {
+    crashed = true;
+    landed = false;
+    crashedAtWall = nowWall;
+    race.voidLap(reason, nowWall);
+    view.setNextGate(race.nextSceneIndex());
+    if (typeof audio.event === 'function') {
+      audio.event('crash');
+    }
+  }
 
   function readState() {
     const { code, state } = sim.readState();
@@ -173,6 +224,7 @@ async function boot() {
     rcNextMs = 0;
     crashed = false;
     launched = false;
+    landed = false;
     input.keys.clear();
     input.drain();
     input.kb.throttle = 0;
@@ -180,6 +232,7 @@ async function boot() {
     input.kb.pitch = 0;
     input.kb.yaw = 0;
     raceHasPrev = false;
+    groundHasPrev = false;
     statePrev = readState();
     stateCurr = statePrev;
   }
@@ -198,6 +251,7 @@ async function boot() {
     rcNextMs = 0;
     crashed = false;
     launched = false;
+    landed = false;
     input.keys.clear();
     input.drain();
     input.kb.throttle = 0;
@@ -207,6 +261,7 @@ async function boot() {
     race.reset();
     view.setNextGate(race.nextSceneIndex());
     raceHasPrev = false;
+    groundHasPrev = false;
     statePrev = readState();
     stateCurr = statePrev;
   }
@@ -226,6 +281,7 @@ async function boot() {
     ui.setBest(race.bestMs);
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
+    applyMix(s);
     ui.setReadout('');
   }
 
@@ -281,12 +337,34 @@ async function boot() {
 
   /* Any real key or pointer press is the user gesture browsers require
    * before audio can start. */
+  /*
+   * Per stem levels. Guarded on typeof because the audio module and this file
+   * are changed independently and a missing method must not take the whole
+   * page down: a silent bed is a defect, a blank screen is a disaster.
+   */
+  function applyMix(s) {
+    if (typeof audio.setMix === 'function') {
+      mixArg.motors = s.motorLevel / 10;
+      mixArg.wind = s.windLevel / 10;
+      mixArg.music = s.musicLevel / 10;
+      mixArg.focus = 1;
+      audio.setMix(mixArg);
+    }
+    if (typeof audio.setMusicEnabled === 'function') {
+      audio.setMusicEnabled(s.musicLevel > 0);
+    }
+    if (typeof audio.setFocusEnabled === 'function') {
+      audio.setFocusEnabled(Boolean(s.focusTone));
+    }
+  }
+
   function wakeAudio() {
     if (ui.settings.sound && !audio.ctx) {
       audio.start();
       audio.setLevel(ui.settings.volume / 10);
     }
     audio.setEnabled(ui.settings.sound);
+    applyMix(ui.settings);
   }
 
   input.onKey = (code) => {
@@ -325,6 +403,9 @@ async function boot() {
     }
   });
 
+  /* Reused, not rebuilt: applySettings runs off a menu keypress, but the
+   * same object also keeps the shape of the call obvious in one place. */
+  const mixArg = { motors: 1, wind: 1, music: 1, focus: 1 };
   const pPrev = new THREE.Vector3();
   const pCurr = new THREE.Vector3();
   const qPrev = new THREE.Quaternion();
@@ -359,13 +440,24 @@ async function boot() {
       ui.pollPad(padNav());
     }
 
-    if (mode === 'flight' && !crashed && !launched) {
+    if (mode === 'flight' && !crashed && (!launched || landed)) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
-      if (thr > 0.05) {
+      if (!launched && thr > 0.05) {
         launched = true;
+      } else if (landed && thr > TAKEOFF_THROTTLE) {
+        /* Off again. The RC frame grid is pulled up to the clock first: the
+         * lap clock kept running while the craft sat there, and without this
+         * the resample loop would fire a burst of stick samples to catch up
+         * and the controller would see a spike of stale input. */
+        landed = false;
+        rcNextMs = simTimeMs;
+        lastTs = simTimeMs / 1000;
+        if (typeof audio.event === 'function') {
+          audio.event('takeoff');
+        }
       }
     }
-    if (mode === 'flight' && !crashed && launched) {
+    if (mode === 'flight' && !crashed && launched && !landed) {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
@@ -399,20 +491,115 @@ async function boot() {
         stateCurr = readState();
         simTimeMs += steps;
       }
-      /* Ground contact. The height is sampled at the position the craft
-       * has just been integrated to, not at the previous frame's, because
-       * at a low frame rate the two are metres apart and the check would
-       * read the wrong hillside. */
+      /*
+       * Ground contact, and whether it is a landing or a crash. This is the
+       * owner's headline request: "i should be able to land on the ground
+       * safetly but crashing will result in a crash".
+       *
+       * The test is the craft's SPHERE against the terrain, not its centre
+       * point, and it is swept along the frame's travel rather than sampled
+       * once at the end of it. A point test with no radius let the craft
+       * bury a prop before anything noticed, and at this container's frame
+       * rate the craft moves metres per frame, so a single sample can step
+       * clean over a ridge.
+       */
       simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT + startY, pProbe);
       pProbe.applyQuaternion(qSpawn);
       pProbe.x += startX;
       pProbe.z += startZ;
-      if (pProbe.y <= view.height(pProbe.x, pProbe.z) + 0.03 && simTimeMs > 50) {
-        crashed = true;
-        crashedAtWall = nowWall;
-        race.voidLap('Crashed\nLap void', nowWall);
-        view.setNextGate(race.nextSceneIndex());
+      let touched = false;
+      let touchX = pProbe.x;
+      let touchZ = pProbe.z;
+      if (simTimeMs > 50) {
+        if (groundHasPrev) {
+          /* Sixteen samples over the travel. At 30 m/s and 60 frames per
+           * second that is one sample every 3 cm, and even at this
+           * container's two frames per second it is one per metre, which no
+           * ridge in this terrain can hide inside. */
+          const gsteps = 16;
+          for (let gi = 1; gi <= gsteps; gi += 1) {
+            const gt = gi / gsteps;
+            const sx = groundPrev.x + (pProbe.x - groundPrev.x) * gt;
+            const sy = groundPrev.y + (pProbe.y - groundPrev.y) * gt;
+            const sz = groundPrev.z + (pProbe.z - groundPrev.z) * gt;
+            if (sy - CRAFT_R <= view.height(sx, sz)) {
+              touched = true;
+              touchX = sx;
+              touchZ = sz;
+              break;
+            }
+          }
+        } else if (pProbe.y - CRAFT_R <= view.height(pProbe.x, pProbe.z)) {
+          touched = true;
+        }
       }
+      groundPrev.copy(pProbe);
+      groundHasPrev = true;
+      if (touched) {
+        /* Descent rate and horizontal speed come straight out of the state
+         * block. frame.js maps sim z to world up, so state[6] IS the
+         * vertical velocity and the other two are the horizontal pair; a
+         * yaw about the vertical cannot change either magnitude, so the
+         * spawn rotation does not enter into it. */
+        const descent = -stateCurr[6];
+        const horiz = Math.hypot(stateCurr[4], stateCurr[5]);
+        /* Tilt from vertical, from the quaternion directly: rotating world
+         * up by q gives a y component of 1 - 2(x^2 + z^2), and the angle to
+         * vertical is its arc cosine. */
+        const qx = view.quad.quaternion.x;
+        const qz = view.quad.quaternion.z;
+        let upY = 1 - 2 * (qx * qx + qz * qz);
+        if (upY > 1) {
+          upY = 1;
+        }
+        if (upY < -1) {
+          upY = -1;
+        }
+        const tiltDeg = (Math.acos(upY) * 180) / Math.PI;
+        lastDescent = descent;
+        lastTiltDeg = tiltDeg;
+        if (isLanding(descent, horiz, tiltDeg)) {
+          landed = true;
+          groundY = view.height(touchX, touchZ);
+          /* The two states are made identical so the render interpolation
+           * has nothing to interpolate: with the integrator frozen, an
+           * accumulator left mid step would otherwise slide the craft
+           * between two stale poses forever. */
+          statePrev = stateCurr;
+          acc = 0;
+          if (typeof audio.event === 'function') {
+            audio.event('land');
+          }
+        } else {
+          crashInto('Crashed\nLap void', nowWall);
+        }
+      }
+    } else if (mode === 'flight' && !crashed && launched && landed) {
+      /*
+       * Sitting on the ground. The integrator does NOT step, because the
+       * ABI has no call that writes a position or a velocity, so the only
+       * way to hold a craft on the ground is to stop advancing it.
+       *
+       * KNOWN LIMITATION, and it is visible: the frozen state keeps whatever
+       * descent rate it had at touchdown, up to the 2.0 m/s landing gate, so
+       * the first few milliseconds of a takeoff still carry that downward
+       * velocity and the craft dips before thrust wins. Holding it properly
+       * needs an ABI that can write a velocity, which is a deliberate change
+       * with its own argument in PROGRESS.md.
+       *
+       * The lap clock DOES keep running. Landing in the middle of a lap
+       * costs you the time it costs you, and a course where you can park for
+       * free is not a race.
+       */
+      acc += dt;
+      let steps = Math.floor(acc);
+      acc -= steps;
+      if (steps > 100) {
+        steps = 100;
+      }
+      simTimeMs += steps;
+      rcNextMs = simTimeMs;
+      statePrev = stateCurr;
     } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1400) {
       /* Short lockout, then back on the line. The lap is gone, the run is
        * not. */
@@ -433,19 +620,48 @@ async function boot() {
     pCurr.x += startX;
     pCurr.z += startZ;
     qPrev.premultiply(qSpawn);
+    if (landed) {
+      /* The frozen state is a few centimetres inside the ground, because
+       * that is what tripped the contact test. Sit the craft ON the terrain
+       * instead, so a landing looks like a landing rather than a quad half
+       * buried in a field. Render only: the physics state is untouched. */
+      pCurr.y = groundY + REST_HEIGHT;
+    }
     view.quad.position.copy(pCurr);
     view.quad.quaternion.copy(qPrev);
 
+    /*
+     * The solid world. Every gate frame member, panel and foot, every tree
+     * trunk and canopy, every rock, cliff tier and flag pole is a capsule in
+     * view.colliders, and the query is the exact closest distance between
+     * the segment the craft travelled and the capsule's axis, so nothing can
+     * tunnel through at any frame rate. Touching any of it is a crash: the
+     * owner asked for the gates to be solid, and a gate you can fly through
+     * the middle of the frame of is not solid.
+     */
+    if (mode === 'flight' && !crashed && !landed && launched && raceHasPrev) {
+      const k = view.colliders.hit(
+        racePrev.x, racePrev.y, racePrev.z,
+        pCurr.x, pCurr.y, pCurr.z,
+      );
+      if (k >= 0) {
+        lastHitKind = view.colliders.kindName(k);
+        crashInto(`Hit the ${lastHitKind}\nLap void`, nowWall);
+      }
+    }
+
     /* Race logic runs on the rendered world position, timed on the sim
      * clock at that state: gate crossings are swept over the frame's
-     * travel, so speed cannot tunnel a gate, and a gate frame tap voids
-     * the lap rather than destroying the craft. */
+     * travel, so speed cannot tunnel a gate. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
     if (mode === 'flight' && !crashed && launched) {
       if (raceHasPrev) {
         const res = race.update(racePrev, pCurr, simNow, nowWall);
-        if (res.passed != null || res.hitFrame) {
+        if (res.passed != null) {
           view.setNextGate(race.nextSceneIndex());
+          if (typeof audio.event === 'function') {
+            audio.event('gate');
+          }
         }
         if (race.lap >= ui.settings.laps) {
           mode = 'results';
@@ -475,13 +691,18 @@ async function boot() {
        * near grass does not fill the frame. */
       view.quad.visible = true;
       const ang = nowWall * 0.00011;
-      const r = 19;
+      /* Framed for a REGULATION gate. 19 m out and 7 m up, aimed 2.5 m above
+       * the base, was framed for a 5 m tall gate with its aperture centre at
+       * 2.5 m. The opening is now 1.524 m square with its centre at 0.762 m,
+       * so the old attract view pointed at empty air above a gate too small
+       * to see. 9 m out, 2.4 m up, aimed at the aperture centre. */
+      const r = 9;
       camPos.set(
         start.position.x + Math.sin(ang) * r,
-        start.position.y + 7,
+        start.position.y + 2.4,
         start.position.z + Math.cos(ang) * r,
       );
-      orbitTarget.set(start.position.x, start.position.y + 2.5, start.position.z);
+      orbitTarget.set(start.position.x, start.position.y + 0.85, start.position.z);
       view.camera.position.copy(camPos);
       view.camera.lookAt(orbitTarget);
     }
@@ -656,6 +877,33 @@ async function boot() {
     const t = view.curve.getTangentAt(u);
     return { x: p.x, y: p.y, z: p.z, tx: t.x, tz: t.z, ground: view.height(p.x, p.z) };
   };
+  /* What is solid, and how well the broadphase is doing. */
+  window.__colliders = () => view.colliders.stats();
+  /*
+   * The craft's contact state, so a capture can ASSERT a landing instead of
+   * describing one. descentRate and tiltDeg are the values the last ground
+   * contact was judged on, and the thresholds are published beside them so a
+   * reviewer does not have to go and find them.
+   */
+  window.__craftState = () => ({
+    mode,
+    launched,
+    landed,
+    crashed,
+    descentRate: lastDescent,
+    tiltDeg: lastTiltDeg,
+    lastHitKind,
+    groundClearance: view.quad.position.y - view.height(view.quad.position.x, view.quad.position.z),
+    thresholds: {
+      descentMax: LAND_DESCENT_MAX,
+      horizontalMax: LAND_HORIZONTAL_MAX,
+      tiltMaxDeg: LAND_TILT_MAX_DEG,
+      craftRadius: CRAFT_R,
+    },
+    lap: race.lap,
+    bestLapMs: race.bestLapMs ? race.bestLapMs() : null,
+    bestThreeMs: race.bestThreeMs ? race.bestThreeMs() : null,
+  });
   window.__boot = () => ({
     firstFrameMs,
     worstBlockMs,

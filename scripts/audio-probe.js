@@ -726,11 +726,35 @@ const DRIVER = `async (spec) => {
   const a = new mod.MotorAudio();
   a.attach(ctx);
   a.setLevel(spec.level);
+  if (spec.mix && typeof a.setMix === 'function') {
+    a.setMix(spec.mix);
+  }
+  if (typeof a.setMusicEnabled === 'function') {
+    a.setMusicEnabled(spec.music !== 0);
+  }
+  if (typeof a.setFocusEnabled === 'function') {
+    a.setFocusEnabled(spec.focus === 1);
+  }
   a.setEnabled(true);
   const rpm = [0, 0, 0, 0];
+  /* Cues are scheduled through the real event() at the real time, from inside
+   * the same loop that drives update(), so what the probe measures is what a
+   * gate pass or a crash actually does to the mix. */
+  let cueAt = -1;
+  let cueKind = '';
+  if (spec.cue) {
+    const bits = String(spec.cue).split('@');
+    cueKind = bits[0];
+    cueAt = Number(bits[1]);
+  }
+  let cueFired = false;
   for (const row of spec.trace) {
     rpm[0] = row[1]; rpm[1] = row[2]; rpm[2] = row[3]; rpm[3] = row[4];
     a.update(rpm, row[5], row[0]);
+    if (!cueFired && cueAt >= 0 && row[0] >= cueAt && typeof a.event === 'function') {
+      a.event(cueKind, cueAt);
+      cueFired = true;
+    }
   }
   const buf = await ctx.startRendering();
   const chans = [];
@@ -857,6 +881,24 @@ async function main() {
      * figure 1.58 dB below what a player hears. */
     trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 3,
     scream: '2000,8000', carrier: '', beat: 0, seam: 0, f0: 0, json: '',
+    /*
+     * Which stems to render. A1 is a property of the MOTOR model, and A8
+     * explicitly requires the bed to occupy bands the motors do not, so the
+     * scream test is measured on the motors and wind with the bed muted, and
+     * the full mix is measured separately. A4 needs the carriers findable, so
+     * it renders the focus tone alone. A11 needs a level to make a measured
+     * difference, which means rendering one stem at a time. None of that is
+     * possible with a fixed mix, so the mix is an argument.
+     */
+    motors: -1, wind: -1, musiclevel: -1, music: 0, focus: 0,
+    /*
+     * A7 asks for a cue's level advantage "at the moment it plays" and for a
+     * measurable duck. Every other figure this probe reports is a Welch
+     * average over the whole render, which cannot answer either question, so
+     * --cue fires a real event through the real event() and --window
+     * restricts the spectrum and the RMS to a slice of the render.
+     */
+    cue: '', window: '',
   };
   for (const a of process.argv.slice(2)) {
     const m = a.match(/^--([a-z0-9]+)=(.*)$/);
@@ -868,8 +910,21 @@ async function main() {
   const seconds = Number(opts.seconds);
   const rate = Number(opts.rate);
   const trace = buildTrace(String(opts.trace), seconds);
+  const mix = {};
+  if (Number(opts.motors) >= 0) {
+    mix.motors = Number(opts.motors);
+  }
+  if (Number(opts.wind) >= 0) {
+    mix.wind = Number(opts.wind);
+  }
+  if (Number(opts.musiclevel) >= 0) {
+    mix.music = Number(opts.musiclevel);
+  }
   const spec = {
-    seconds, rate, level: Number(opts.level), trace,
+    seconds, rate, level: Number(opts.level), trace, cue: String(opts.cue),
+    mix: Object.keys(mix).length ? mix : null,
+    music: Number(opts.music),
+    focus: Number(opts.focus),
   };
   const { meta, channels } = await renderGraph(spec);
 
@@ -884,13 +939,37 @@ async function main() {
     mono[i] = s / channels.length;
   }
 
+  /* The analysis slice. Everything downstream of this sees only the window,
+   * so a band figure inside it is a band figure at that moment. */
+  let anaMono = mono;
+  let winFrom = 0;
+  let winTo = meta.length;
+  if (opts.window) {
+    const wb = String(opts.window).split(',').map(Number);
+    winFrom = Math.max(0, Math.round(wb[0] * rate));
+    winTo = Math.min(meta.length, Math.round(wb[1] * rate));
+    anaMono = mono.subarray(winFrom, winTo);
+  }
+
   const meanRpm = trace.reduce((s, r) => s + (r[1] + r[2] + r[3] + r[4]) / 4, 0) / (trace.length || 1);
   const f0 = Number(opts.f0) || (meanRpm / 60) * Number(opts.blades);
-  const spec8 = spectrum(mono, rate, 8192);
+  /*
+   * The analysis frame has to fit inside the window. A 0.16 s window at
+   * 48 kHz is 7680 samples, so a fixed 8192 point frame fits zero frames and
+   * every band came back as -Infinity with a centroid of 0, which looks like
+   * silence and is really an instrument that could not see. The frame is the
+   * largest power of two that fits, floored at 256 so a band figure still
+   * means something.
+   */
+  let frame8 = 8192;
+  while (frame8 > 256 && frame8 > anaMono.length) {
+    frame8 /= 2;
+  }
+  const spec8 = spectrum(anaMono, rate, frame8);
   const [screamLo, screamHi] = String(opts.scream).split(',').map(Number);
   const fundBand = bandAt(spec8, f0);
-  const p = peakOf(mono);
-  const tp = truePeakDb(mono);
+  const p = peakOf(anaMono);
+  const tp = truePeakDb(anaMono);
 
   /* A digest of the rendered samples. Without one, a render that is not
    * reproducible looks exactly like one that is, because every figure in the
@@ -910,6 +989,7 @@ async function main() {
     samples: meta.length,
     nodes: meta.nodes,
     level: Number(opts.level),
+    stems: { mix: spec.mix, music: spec.music, focus: spec.focus },
     motorSpread: MOTOR_SPREAD,
     traceHz: TRACE_HZ,
     meanRpm,
@@ -917,9 +997,12 @@ async function main() {
     bladePassHz: f0,
     peakSample: p.peak,
     samplesAtOrOverFullScale: p.clipped,
-    rmsDbfs: rmsDb(mono),
+    rmsDbfs: rmsDb(anaMono),
+    window: opts.window ? { from: winFrom / rate, to: winTo / rate, samples: anaMono.length } : null,
+    cue: spec.cue || null,
     truePeakDbtp: tp,
     centroidHz: centroid(spec8),
+    analysisFrame: frame8,
     fundamentalBand: { fc: fundBand.fc, lo: fundBand.lo, hi: fundBand.hi, db: fundBand.db },
     screamBand: { lo: screamLo, hi: screamHi, db: bandRmsDb(spec8, screamLo, screamHi) },
     thirds: thirdOctaves(spec8).map((r) => ({ fc: Math.round(r.fc), db: Number(d2(r.db)) })),
@@ -972,9 +1055,13 @@ async function main() {
   }
 
   console.log(`trace=${report.trace} ${seconds}s @ ${report.rate} Hz  ${report.channels} ch  nodes=${report.nodes}  level=${report.level}`);
+  console.log(`stems: mix=${JSON.stringify(spec.mix)} music=${spec.music} focus=${spec.focus}`);
+  if (report.window) {
+    console.log(`window ${report.window.from.toFixed(3)} to ${report.window.to.toFixed(3)} s, ${report.window.samples} samples, cue=${report.cue ?? 'none'}`);
+  }
   console.log(`mean commanded RPM ${report.meanRpm.toFixed(0)}  blade pass ${report.bladePassHz.toFixed(1)} Hz at ${report.blades} blades`);
   console.log(`peak sample ${report.peakSample.toFixed(4)}  at or over full scale: ${report.samplesAtOrOverFullScale} samples`);
-  console.log(`RMS ${d2(report.rmsDbfs)} dBFS   true peak ${d2(report.truePeakDbtp)} dBTP   centroid ${report.centroidHz.toFixed(0)} Hz`);
+  console.log(`RMS ${d2(report.rmsDbfs)} dBFS   true peak ${d2(report.truePeakDbtp)} dBTP   centroid ${report.centroidHz.toFixed(0)} Hz   frame ${report.analysisFrame}`);
   console.log(`fundamental band ${report.fundamentalBand.lo.toFixed(0)} to ${report.fundamentalBand.hi.toFixed(0)} Hz: ${d2(report.fundamentalBand.db)} dB`);
   console.log(`scream band ${screamLo} to ${screamHi} Hz: ${d2(report.screamBand.db)} dB`);
   console.log(`A1 margin, fundamental minus scream: ${d2(report.screamMarginDb)} dB  (needs at least 12)`);

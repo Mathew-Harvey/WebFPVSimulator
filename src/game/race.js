@@ -36,16 +36,23 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Gate geometry, matching gate() in scene.js. */
-const GATE_HALF_W = 3.0;
-const GATE_H = 5.0;
-const RING_Y = 2.5; /* ring centre height above the gate base */
-const RING_R = 1.9; /* ring centreline radius */
-const CRAFT_R = 0.25;
-const POST_R = 0.28;
-/* Swept collision sampling: finer than the post reach so a fast crossing
- * cannot phase through a post between two frames. */
-const SWEEP_STEP = 0.2;
+/*
+ * The scoring aperture is the aperture the pilot can SEE, taken from the
+ * scene's own measured openings rather than restated here.
+ *
+ * This file used to carry its own copy of the gate's geometry: GATE_HALF_W
+ * 3.0, GATE_H 5.0, RING_R 1.9, CRAFT_R 0.25. Three of those four disagreed
+ * with what scene.js drew, and the scoring test subtracted the craft radius
+ * from the torus CENTRELINE while ignoring the tube, so a craft could be
+ * credited with a clean pass while its body passed through the ring. A gate
+ * that scores differently from how it looks is a gate the pilot cannot learn.
+ *
+ * Frame contact used to live here too and it voided the lap. It does not any
+ * more: the frame is solid, collision is src/game/collide.js, and hitting
+ * one is a crash. The owner's words were that the gates need to be solid.
+ */
+import { CRAFT_R } from './collide.js';
+import { fastestLap, fastestThreeConsecutive } from './track.js';
 
 const DEFAULT_KEY = 'webfpv.bestLapMs';
 
@@ -81,6 +88,11 @@ export class Race {
         z: g.position.z,
         cos: -Math.cos(g.heading),
         sin: -Math.sin(g.heading),
+        /* Every opening of this obstacle. A standard gate has one; a ladder
+         * has three, and MultiGP scores a ladder as one gate however high
+         * you take it, so all three count and the one used is recorded. */
+        apertures: g.apertures ?? [g.aperture],
+        kindName: g.kindName ?? 'standardGate',
       };
     });
     this.key = DEFAULT_KEY;
@@ -118,7 +130,8 @@ export class Race {
      * the player just did. */
     this.log = [];
     this.laps = [];         /* completed clean lap times, in order */
-    this.voided = 0;        /* laps thrown away by a gate touch or a crash */
+    this.voided = 0;        /* laps thrown away by a crash */
+    this.lastOpening = -1;  /* which opening of a stacked obstacle was used */
   }
 
   /* Number of the lap now being flown, counting voided attempts. */
@@ -165,10 +178,25 @@ export class Race {
     }
     const t = a.z / (a.z - b.z);
     const cx = a.x + (b.x - a.x) * t;
-    const cy = a.y + (b.y - a.y) * t - RING_Y;
-    if (cx * cx + cy * cy > (RING_R - CRAFT_R) * (RING_R - CRAFT_R)) {
+    const cyAbs = a.y + (b.y - a.y) * t;
+    /* A square opening scores as a square, with the craft's own radius
+     * folded in on both axes, so a pass the game credits is a pass the
+     * craft's body actually fits through. */
+    let used = -1;
+    for (let k = 0; k < g.apertures.length; k += 1) {
+      const ap = g.apertures[k];
+      const halfW = ap.clearW * 0.5 - CRAFT_R;
+      const halfH = ap.clearH * 0.5 - CRAFT_R;
+      const dy = cyAbs - ap.centreY;
+      if (Math.abs(cx) <= halfW && Math.abs(dy) <= halfH) {
+        used = k;
+        break;
+      }
+    }
+    if (used < 0) {
       return null;
     }
+    this.lastOpening = used;
     const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
@@ -206,54 +234,6 @@ export class Race {
     return passed;
   }
 
-  /* Point test against the frame of any nearby gate: the two posts as
-   * vertical capsules, the top bar as a box, craft radius added on. */
-  hitsFrame(px, py, pz) {
-    for (const g of this.gates) {
-      const dx = px - g.x;
-      const dz = pz - g.z;
-      if (dx * dx + dz * dz > 8 * 8) {
-        continue;
-      }
-      const l = this.local(g, px, py, pz);
-      if (l.y < -0.5 || l.y > GATE_H + 1.0) {
-        continue;
-      }
-      const reach = POST_R + CRAFT_R;
-      for (const sx of [-GATE_HALF_W, GATE_HALF_W]) {
-        const ax = l.x - sx;
-        if (l.y >= 0 && l.y <= GATE_H && ax * ax + l.z * l.z < reach * reach) {
-          return true;
-        }
-      }
-      if (
-        Math.abs(l.x) <= GATE_HALF_W + 0.2 &&
-        Math.abs(l.y - GATE_H) < 0.25 + CRAFT_R &&
-        Math.abs(l.z) < 0.21 + CRAFT_R
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /* The frame test swept along the travelled segment, sampled finer than
-   * the post reach, so a post cannot be phased through between frames. */
-  sweepHitsFrame(prev, curr) {
-    const dx = curr.x - prev.x;
-    const dy = curr.y - prev.y;
-    const dz = curr.z - prev.z;
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const n = Math.max(1, Math.ceil(dist / SWEEP_STEP));
-    for (let i = 1; i <= n; i += 1) {
-      const t = i / n;
-      if (this.hitsFrame(prev.x + dx * t, prev.y + dy * t, prev.z + dz * t)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   /* Per frame. simMs is the simulation clock at the rendered state,
    * wallMs the wall clock (flash expiry only). Returns
    * { passed: gateIndex|null, hitFrame: bool }; a frame hit voids the
@@ -262,11 +242,23 @@ export class Race {
     const prevSimMs = this.prevSimMs ?? simMs;
     this.prevSimMs = simMs;
     const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
-    const hitFrame = this.sweepHitsFrame(prev, curr);
-    if (hitFrame && (this.lapStartMs != null || this.next !== 0)) {
-      this.voidLap('Gate touched\nLap void', wallMs);
-    }
-    return { passed, hitFrame };
+    /* hitFrame is gone. The frame is solid geometry now and touching it is a
+     * crash, decided by src/game/collide.js in the shell, not a lap penalty
+     * decided here. The return shape keeps its second field so the shell's
+     * call site does not have to care which round it is. */
+    return { passed, hitFrame: false, opening: this.lastOpening };
+  }
+
+  /* UTT is scored on one lap and chapter racing on three consecutive, so
+   * both are reported. A voided lap breaks a run of three, which is what
+   * the word consecutive means, and fastestThreeConsecutive enforces it by
+   * reading the log rather than the clean list. */
+  bestLapMs() {
+    return fastestLap(this.laps);
+  }
+
+  bestThreeMs() {
+    return fastestThreeConsecutive(this.log);
   }
 
   /* Scene index of the gate the race wants next, for highlighting. */

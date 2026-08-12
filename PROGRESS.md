@@ -1323,3 +1323,124 @@ from the centreline radius while ignoring the tube, so a craft can be credited
 with a clean pass while its body overlaps the ring, and `src/game/track.js`
 says the MultiGP standard gate is 1.524 m. That is next round's first item and
 it was already first in the handover.
+
+## Round 11: a solid world, regulation obstacles, and a mix that stopped screaming
+
+Driven by a direct request from the owner: fix the collisions on gates, ground
+and trees, make a safe landing possible while a crash stays a crash, mute the
+motor noise, add the missing lofi drum and bass bed, and add triple stack gate
+towers and dive towers. Full evidence in `.loop/evidence/r11/ledger.md`.
+
+### What was built
+
+`src/game/collide.js`, new. One primitive, a capsule, and an EXACT swept test:
+a sphere swept along the frame's travel intersects a capsule exactly when the
+two segments' closest distance is at most the sum of the radii, which is closed
+form. The first design sampled the travel at 0.1 m steps and needed a cap on
+the sample count; that cap would have been a tunnelling bug on any machine
+slower than the cap assumed, and this container moves the craft metres per
+frame, so it would have been wrong here first. A uniform 8 m grid broadphases
+it and the query allocates nothing.
+
+1777 colliders, recorded where the geometry is built because the baker merges
+every instance into one anonymous buffer: 30 gate frame members, 40 obstacle
+panels and feet, 305 tree trunks, 1220 canopy blobs, 95 rocks, 15 cliff tiers,
+72 flag poles. Nothing in the scenery loop consumes an extra `rng()` value,
+because one extra draw would have regenerated the whole valley.
+
+`gate()` is gone and `obstacle()` replaces it, importing `OBSTACLES` and
+`FRAME_TUBE_OD` from `src/game/track.js` so no dimension is typed twice. Square
+regulation opening, PVC tube frame, mesh side panels, a top panel carrying the
+gate number as a 3 by 5 dot matrix numeral. Five obstacle types on the course:
+the timing gate, standard gates, a 5x5 tower, two LADDERS which are the triple
+stacks the owner asked for, a DIVE GATE at a 4.572 m sill which is the dive
+tower, and a championship 7x6.
+
+The aperture is measured out of the built geometry at runtime and a load time
+assertion throws if any opening differs from its published figure by more than
+10 mm. It measures 1.524 by 1.524 m, which is the MultiGP standard gate exactly.
+
+`src/render/music.js`, new: a generated lofi drum and bass bed at 174 BPM,
+pooled voices, a lookahead scheduler ticked from `update()` so the probe
+exercises it, and a pattern, wow period and noise buffer all cut to exactly
+one four bar loop so the bed is sample periodic.
+
+`src/render/audio.js` rebuilt around the TRUE blade pass frequency.
+`RPM_TO_HZ_SCALE = 2.9` is deleted, the square partial is gone, and two
+cascaded lowpasses cap the motor at 1150 Hz.
+
+### The numbers that matter
+
+    A1 scream margin      -22.01 dB  ->  +21.09 dB     bar is +12
+    spectral centroid       1909 Hz  ->     606 Hz
+    A3 flight RMS         -30.38 dBFS -> -18.48 dBFS   band is -20 to -14
+    A3 true peak                        -5.84 dBTP     needs below -1
+    A5 tempo                            173.73 BPM     band is 170 to 176
+                                        r 0.3641 against a null p95 of 0.0241
+    A6 seam delta                       5.537e-7 at the 5.03rd percentile
+                                        of the interior deltas, median 1.355e-5
+    A7 duck                             6.65 dB gate, 6.78 dB crash
+    A4 carriers                         220.000 and 226.000 Hz, difference 6.000
+    A11 motor stem 0.2 vs 1.0           10.88 dB measured difference
+    P1 draw calls              692  ->  321            ceiling 400, PASS
+    P12 audio nodes                     52             ceiling 64
+    meshes                     317  ->  141
+
+Landing and crashing, both verified in the real page by reading
+`window.__craftState()`:
+
+    1.2730 m/s arrival, 0 deg tilt   ->  landed, resting at 0.075 m
+    13.9154 m/s arrival              ->  crashed, then reset to the line
+
+### What went wrong
+
+**The regulation gate exposed a scale error nothing else had.** The first
+capture after the rebuild showed the gates had vanished: the grass was 0.26 to
+0.68 m tall, chosen when a gate was 5 m with its aperture centre 2.5 m up, and
+against a 1.524 m opening that is knee deep. Grass is now 0.09 to 0.24 m, the
+attract camera came in from 19 m to 9 m, and the lit aperture bar went from
+0.045 m to 0.075 m because 0.045 m is 2.4 percent of a regulation opening,
+which at 20 m on a 900 px frame is under a pixel. Only a frame said any of
+this; every number in the ledger was already correct.
+
+**The bed failed its own tempo bar twice before it passed.** With hats only on
+the offbeats and beat three of the bar empty, the onset autocorrelation put its
+strongest peak at 117.61 BPM, two thirds of 174, because it had locked onto the
+kick's own six and ten step intervals. The 9 ms timing wow also smeared onsets
+over three and a half flux frames. A ghost kick on beat three, hat accents on
+every beat and 5 ms of wow put a real beat grid in the signal.
+
+**A player on volume ten clipped.** With the soft clip saturating, the render's
+true peak in dBTP comes out equal to the master gain in dB, so a master of 1.0
+measured +0.01 dBTP. Found by measuring the worst case the interface allows
+rather than only the default. `MASTER_CEILING` is 0.85 and the stems carry
+1.5 dB more, which puts the worst case at -1.39 dBTP and keeps a normal flight
+render inside the band.
+
+**The probe could not see a short window.** The first A7 attempt used a 0.16 s
+window, which is 7680 samples, and the fixed 8192 point analysis frame fits
+zero frames inside it, so every band came back as -Infinity and the centroid as
+0. That looks like silence and is really an instrument that could not see. The
+frame is the largest power of two that fits now.
+
+**The three implementation subagents did nothing.** Every tool call they made
+was rejected by the harness permission layer with the required parameter
+stripped, so `echo hi` failed for them. They reported the blocker and refused
+to fabricate results, which is the correct behaviour, and the work was done
+inline instead.
+
+### npm run verify, this turn
+
+12 of 13. yaw-coupling is the known red, threshold untouched, and
+`git diff HEAD -- tests/` and `git diff --stat vendor/betaflight` are both
+empty.
+
+### What is owed
+
+The A2 three throttle sweep against the new graph, and the A7 cue level
+advantage in its own band with the adaptive frame. P2, P6, P8, P10 and P11 are
+untouched by this round and still fail; P2 is the next item and its cause is
+unchanged, one unculled 552,000 triangle grass mesh. And a human still has to
+listen: the probe can prove the mix does not scream, does not clip, sits at the
+right loudness, runs at 173.73 BPM and is genuinely binaural. It cannot prove
+it is pleasant.

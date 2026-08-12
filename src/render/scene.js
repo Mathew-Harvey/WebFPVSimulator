@@ -42,6 +42,11 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull, updateCelTime, CLOUD_SHADOW_GLSL } from './celmat.js';
+/* The obstacle dimensions come from the track module, which holds MultiGP's
+ * published figures and converts from feet exactly once. No dimension in
+ * this file is typed twice. */
+import { OBSTACLES, FRAME_TUBE_OD } from '../game/track.js';
+import { Colliders } from '../game/collide.js';
 
 /*
  * Static scenery merger. A forest of individual Groups costs a draw call
@@ -369,8 +374,9 @@ function water() {
  * altitude and distance against, and something to break the horizon so
  * the eye has a focal point other than the gates.
  */
-function cliff(rng, height, x, z) {
+function cliff(rng, height, x, z, caps) {
   const g = new THREE.Group();
+  const tierCaps = [];
   const tiers = 2 + Math.floor(rng() * 3);
   let y = 0;
   let r = 7 + rng() * 9;
@@ -386,6 +392,11 @@ function cliff(rng, height, x, z) {
     m.receiveShadow = true;
     outlineHull(m, 1.03);
     g.add(m);
+    if (caps) {
+      /* Collected in the cliff's own frame and pushed once the base height
+       * is known, a few lines below. */
+      tierCaps.push(y, y + h, r);
+    }
     y += h * 0.92;
     r *= 0.74;
   }
@@ -398,7 +409,13 @@ function cliff(rng, height, x, z) {
   cap.castShadow = true;
   outlineHull(cap, 1.04);
   g.add(cap);
-  g.position.set(x, height(x, z) - 1, z);
+  const base = height(x, z) - 1;
+  g.position.set(x, base, z);
+  if (caps) {
+    for (let i = 0; i < tierCaps.length; i += 3) {
+      caps.addPost('cliff', x, z, base + tierCaps[i], base + tierCaps[i + 1], tierCaps[i + 2]);
+    }
+  }
   return g;
 }
 
@@ -449,7 +466,18 @@ function grassField(height, samples, rng) {
       z = (rng() - 0.5) * 900;
     }
     const y = height(x, z);
-    const h = 0.26 + rng() * 0.42;
+    /*
+     * Blade height, and it is a SCALE decision rather than a look decision.
+     * It was 0.26 to 0.68 m, chosen when a gate was 5 m tall and its aperture
+     * centre was 2.5 m up. A regulation MultiGP gate is 1.524 m to the top of
+     * its opening, so grass to 0.68 m is knee deep beside it and the gates
+     * drown: measured on the title frame, the mid field grass reached most of
+     * the way up the gate and the target was invisible at 20 m. MultiGP also
+     * says a course should be as flat as possible, and a chapter races on
+     * mown grass. 0.09 to 0.24 m is ankle height, which puts the gate back to
+     * being the tallest thing near the racing line.
+     */
+    const h = 0.09 + rng() * 0.15;
     const w = 0.026 + rng() * 0.03;
     const a = rng() * Math.PI;
     const dx = Math.cos(a) * w;
@@ -621,7 +649,15 @@ function grassField(height, samples, rng) {
   return { mesh, mat };
 }
 
-function tree(rng, height, x, z) {
+/*
+ * caps, when given, collects this tree's colliders. They are pushed from the
+ * values the geometry is actually built from, inside the same draw, because
+ * the baker merges every instance into one anonymous buffer and a tree's
+ * trunk radius cannot be recovered afterwards. Nothing here consumes an
+ * extra rng() value: the whole world hangs off one stream in one order, so
+ * an extra draw would move every tree, flower and mountain in the valley.
+ */
+function tree(rng, height, x, z, caps) {
   const g = new THREE.Group();
   const scale = 0.85 + rng() * 1.5;
   const trunkH = (1.5 + rng() * 1.3) * scale;
@@ -664,11 +700,25 @@ function tree(rng, height, x, z) {
     outlineHull(blob, 1.055);
     g.add(blob);
   }
-  g.position.set(x, height(x, z), z);
+  const gy = height(x, z);
+  g.position.set(x, gy, z);
+  if (caps) {
+    /* The trunk, as a vertical capsule at the mean of its two radii. A
+     * tapered cylinder is not a capsule, and the difference over a 3 m
+     * trunk is a couple of centimetres of radius, which is inside the
+     * craft's own 0.19 m. */
+    caps.addPost('tree', x, z, gy, gy + trunkH, (0.13 + 0.24) * 0.5 * scale);
+    for (const c of g.children) {
+      if (c.isMesh && c.geometry.type === 'IcosahedronGeometry') {
+        caps.addSphere('canopy', x + c.position.x, gy + c.position.y, z + c.position.z,
+          c.geometry.parameters.radius);
+      }
+    }
+  }
   return g;
 }
 
-function rock(rng, height, x, z) {
+function rock(rng, height, x, z, caps) {
   const r = 0.6 + rng() * 2.4;
   const m = new THREE.Mesh(
     new THREE.DodecahedronGeometry(r, 0),
@@ -679,79 +729,284 @@ function rock(rng, height, x, z) {
   m.castShadow = true;
   outlineHull(m, 1.05);
   m.position.set(x, height(x, z) + r * 0.35, z);
+  if (caps) {
+    /* A dodecahedron scaled flat in y. The collider is a sphere at the
+     * mesh's own centre, using the y scale so a squashed rock is not a
+     * boulder to fly into: the horizontal radius is the one that matters
+     * and it is r. */
+    caps.addSphere('rock', x, m.position.y, z, r * 0.92);
+  }
   return m;
 }
 
 /*
- * Gate. Read at distance is everything: a bold dark frame for silhouette,
- * a saturated emissive aperture ring that bloom picks up, and a number
- * plate. Start gate is green, the rest amber.
+ * The obstacle library, built to MultiGP dimensions.
+ *
+ * This used to be one function called gate() that built a 6.0 by 5.0 m frame
+ * around a torus of radius 1.9, giving a clear span of 3.5 m. The MultiGP
+ * standard gate opening is 5 ft square, 1.524 m, so the old gate was 2.30
+ * times regulation, and because every judgement about how big this valley is
+ * was anchored to it, a 250 mm quad read as a toy in a stadium. Every
+ * dimension here now comes from src/game/track.js, which holds the published
+ * figures and converts from feet once.
+ *
+ * What makes it read as a MultiGP gate rather than a hoop: a SQUARE opening,
+ * a PVC tube frame of four members, mesh side panels outboard of the
+ * uprights, and a top panel carrying the gate number. A photograph of a
+ * chapter gate and a screenshot of this should be recognisably the same
+ * object.
+ *
+ * Materials are created ONCE and shared by every obstacle, so the baker's
+ * celKey buckets merge all eight obstacles' static parts into a handful of
+ * draw calls. The old gate made a new celMaterial per gate and a new
+ * MeshBasicMaterial per pip, which is most of why 636 of 698 draw calls
+ * carried half a percent of the triangles.
+ *
+ * Only the parts that animate stay per obstacle: the aperture outline, its
+ * halo and its additive glow, whose gains are driven per frame so the pilot
+ * always has a target. That is three draw calls per obstacle instead of
+ * about twenty five.
  */
-function gate(index, isStart) {
-  const g = new THREE.Group();
-  const w = 6.0;
-  const h = 5.0;
-  /* Navy the ramp can actually band: near black frames read as untextured
-   * masses because lit and shadow faces cannot separate. */
-  const frameMat = celMaterial({ color: 0x2a3352, rim: 0.3 });
-  const accent = celMaterial({ color: isStart ? 0x2f9e56 : 0xd8452f, rim: 0.34 });
+let SHARED = null;
+function sharedObstacleMats() {
+  if (SHARED) {
+    return SHARED;
+  }
+  SHARED = {
+    /* Navy the ramp can actually band: near black frames read as untextured
+     * masses because lit and shadow faces cannot separate. */
+    frame: celMaterial({ color: 0x2a3352, rim: 0.3 }),
+    /* Vinyl mesh panel. Real ones are a printed scrim, so a flat mid value
+     * with a little rim reads closer than anything shiny. */
+    panel: celMaterial({ color: 0x3d4763, rim: 0.22 }),
+    panelStart: celMaterial({ color: 0x24603d, rim: 0.24 }),
+    panelRace: celMaterial({ color: 0x6b2a22, rim: 0.24 }),
+    /* The number, unlit so it stays legible against a dark panel at speed. */
+    number: new THREE.MeshBasicMaterial({ color: 0xfff4d6 }),
+  };
+  return SHARED;
+}
 
+/*
+ * Gate numbers as a 3 by 5 dot matrix. A count of pip marks was readable as
+ * a quantity but not as a number, and a real gate carries a numeral, so this
+ * builds one out of small boxes. Rows are top to bottom, one string per row
+ * group, three characters wide.
+ */
+const DIGITS = {
+  0: ['111', '101', '101', '101', '111'],
+  1: ['010', '110', '010', '010', '111'],
+  2: ['111', '001', '111', '100', '111'],
+  3: ['111', '001', '111', '001', '111'],
+  4: ['101', '101', '111', '001', '001'],
+  5: ['111', '100', '111', '001', '111'],
+  6: ['111', '100', '111', '101', '111'],
+  7: ['111', '001', '010', '010', '010'],
+  8: ['111', '101', '111', '101', '111'],
+  9: ['111', '101', '111', '001', '111'],
+};
+
+/*
+ * One obstacle, at its published dimensions.
+ *
+ * kindName indexes OBSTACLES in src/game/track.js. index is the gate's
+ * number in FLYING order, painted on the top panel. isStart makes it the
+ * start and finish gate, which is green.
+ *
+ * Returns the group, the per obstacle animated materials, the apertures (one
+ * per opening, so a ladder returns three), and the colliders in the group's
+ * OWN local frame, for the placement code to transform. Local frame: x
+ * across the opening, y up from the base, z through the opening.
+ */
+function obstacle(kindName, index, isStart) {
+  const spec = OBSTACLES[kindName];
+  if (!spec) {
+    throw new Error(`scene: unknown obstacle ${kindName}`);
+  }
+  const g = new THREE.Group();
+  const mats = sharedObstacleMats();
+  const tubeR = FRAME_TUBE_OD * 0.5;
+  const clearW = spec.clearW;
+  const clearH = spec.clearH;
+  const stack = spec.stack ?? 1;
+  const caps = [];
+
+  /*
+   * Where each opening's sill sits.
+   *
+   * MultiGP publishes the opening and the elevation but NOT the spacing
+   * between the openings of a stacked obstacle, so the spacing is derived:
+   * two openings share one cross member, so the pitch is one clear height
+   * plus one tube diameter. That rests on the tube diameter, which
+   * track.js marks as an assumption (1 inch nominal schedule 40 PVC) and
+   * not as a citation, so the ladder's overall height is an assumption too.
+   * The openings themselves are published and exact.
+   */
+  const pitch = clearH + FRAME_TUBE_OD;
+  const sills = [];
+  for (let k = 0; k < stack; k += 1) {
+    sills.push(spec.sillH + k * pitch);
+  }
+  const topSurface = sills[stack - 1] + clearH;
+
+  /* Uprights. Their INNER surfaces are the opening's width, so their
+   * centres sit half a tube outboard of the clear span. They run from the
+   * ground to just above the topmost cross member, which is what makes a
+   * tower or a dive gate a tower rather than a floating hoop. */
+  const upX = clearW * 0.5 + tubeR;
+  const upTop = topSurface + 2 * tubeR;
   for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, h, 0.4), frameMat);
-    post.position.set(sx * w * 0.5, h / 2, 0);
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(tubeR, tubeR, upTop, 8),
+      mats.frame,
+    );
+    post.position.set(sx * upX, upTop * 0.5, 0);
     post.castShadow = true;
     outlineHull(post, 1.06);
     g.add(post);
-    for (let b = 0; b < 3; b += 1) {
-      const band = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.5, 0.46), accent);
-      band.position.set(sx * w * 0.5, 0.6 + b * 1.6, 0);
-      g.add(band);
-    }
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.36, 1.5), frameMat);
-    foot.position.set(sx * w * 0.5, 0.18, 0);
-    foot.castShadow = true;
-    outlineHull(foot, 1.05);
-    g.add(foot);
-  }
-  const top = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.5, 0.42), frameMat);
-  top.position.y = h;
-  top.castShadow = true;
-  outlineHull(top, 1.05);
-  g.add(top);
+    caps.push({ kind: 'gate', ax: sx * upX, ay: 0, az: 0, bx: sx * upX, by: upTop, bz: 0, r: tubeR });
 
-  /* The aperture. Bloom alone could not lift it: UnrealBloomPass ran at
-   * threshold 0.92 on linear luminance and both ring colours sit at about
-   * 0.70, so the high pass rejected them and the only gate part that ever
-   * glowed was the 16 cm white pip marks. The ring now carries its own
-   * additive glow disc, in the plane of the opening, which is where a
-   * pilot on the racing line sees it, and the bloom threshold has come
-   * down to catch the ring itself. */
+    /* A foot, so it looks like it is standing on the grass rather than
+     * growing out of it. */
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.62), mats.frame);
+    foot.position.set(sx * upX, 0.04, 0);
+    foot.castShadow = true;
+    g.add(foot);
+    caps.push({ kind: 'obstacle', ax: sx * upX, ay: 0.04, az: -0.31, bx: sx * upX, by: 0.04, bz: 0.31, r: 0.17 });
+  }
+
+  /* Cross members. One above every opening, and one below the lowest
+   * opening only when that opening is off the ground: a gate standing on
+   * grass has the ground as its sill, which is how a 5 ft opening is
+   * measured on a chapter gate. */
+  const memberLen = clearW + 4 * tubeR;
+  const members = [];
+  for (let k = 0; k < stack; k += 1) {
+    members.push(sills[k] + clearH + tubeR);
+  }
+  if (spec.sillH > 0) {
+    members.push(spec.sillH - tubeR);
+  }
+  for (const my of members) {
+    const bar = new THREE.Mesh(
+      new THREE.CylinderGeometry(tubeR, tubeR, memberLen, 8),
+      mats.frame,
+    );
+    bar.rotation.z = Math.PI * 0.5;
+    bar.position.set(0, my, 0);
+    bar.castShadow = true;
+    outlineHull(bar, 1.06);
+    g.add(bar);
+    caps.push({ kind: 'gate', ax: -memberLen * 0.5, ay: my, az: 0, bx: memberLen * 0.5, by: my, bz: 0, r: tubeR });
+  }
+
+  /* Mesh side panels, outboard of each upright. They are what a pilot
+   * actually reads the gate's plane from at speed, and they are solid, so
+   * their collider sits entirely outboard of the clear span. */
+  const panelW = 0.42;
+  const panelMat = isStart ? mats.panelStart : mats.panelRace;
+  const panelBottom = sills[0];
+  const panelH = topSurface - panelBottom;
+  for (const sx of [-1, 1]) {
+    const cx = sx * (upX + tubeR + panelW * 0.5);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, 0.03), panelMat);
+    panel.position.set(cx, panelBottom + panelH * 0.5, 0);
+    panel.castShadow = true;
+    g.add(panel);
+    caps.push({ kind: 'obstacle', ax: cx, ay: panelBottom, az: 0, bx: cx, by: panelBottom + panelH, bz: 0, r: panelW * 0.5 });
+  }
+
+  /* The top panel and the number on it. */
+  const plateH = 0.44;
+  const plateY = upTop + plateH * 0.5;
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(clearW * 0.92, plateH, 0.05), panelMat);
+  plate.position.set(0, plateY, 0);
+  plate.castShadow = true;
+  outlineHull(plate, 1.04);
+  g.add(plate);
+  caps.push({ kind: 'obstacle', ax: -clearW * 0.46, ay: plateY, az: 0, bx: clearW * 0.46, by: plateY, bz: 0, r: plateH * 0.5 });
+
+  const rows = DIGITS[index % 10] ?? DIGITS[0];
+  const dot = 0.055;
+  const step = 0.072;
+  for (let ry = 0; ry < rows.length; ry += 1) {
+    for (let rx = 0; rx < 3; rx += 1) {
+      if (rows[ry][rx] !== '1') {
+        continue;
+      }
+      const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
+      pip.position.set(
+        (rx - 1) * step,
+        plateY + (2 - ry) * step,
+        0.04,
+      );
+      g.add(pip);
+    }
+  }
+
+  /*
+   * The aperture markers. Square now, because the opening is square, and
+   * built as one merged geometry per obstacle so a stacked obstacle still
+   * costs one draw call for all of its outlines.
+   *
+   * The glow sits on the PRIMARY opening, which for a stack is the middle
+   * one: that is the opening the racing line is aimed at, and lighting all
+   * three equally would tell the pilot nothing about where to go.
+   */
   const ringColor = isStart ? 0x7dffb4 : 0xffd45c;
+  const primary = Math.floor(stack / 2);
+  const outlineGeos = [];
+  const haloGeos = [];
+  for (let k = 0; k < stack; k += 1) {
+    const cy = sills[k] + clearH * 0.5;
+    /* The lit bar's thickness. 0.045 m was invisible at 20 m once the
+     * opening shrank to regulation: it is 2.4 percent of the opening, which
+     * at 20 m on a 900 px frame is under a pixel. 0.075 m is the smallest
+     * that survives the distance the pilot first sees a gate from. */
+    const bar = 0.075;
+    const halfW = clearW * 0.5;
+    const halfH = clearH * 0.5;
+    /* Four thin bars just inside the frame, so the lit line the pilot aims
+     * at is the clear opening itself and not the tube around it. */
+    const parts = [
+      [0, cy + halfH - bar * 0.5, clearW, bar],
+      [0, cy - halfH + bar * 0.5, clearW, bar],
+      [-halfW + bar * 0.5, cy, bar, clearH],
+      [halfW - bar * 0.5, cy, bar, clearH],
+    ];
+    for (const [px, py, sw, sh] of parts) {
+      const geo = new THREE.BoxGeometry(sw, sh, bar);
+      geo.translate(px, py, 0);
+      outlineGeos.push(geo);
+      const hg = new THREE.BoxGeometry(sw * 1.06 + 0.05, sh * 1.06 + 0.05, bar * 0.7);
+      hg.translate(px, py, 0);
+      haloGeos.push(hg);
+    }
+  }
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(1.9, 0.15, 8, 32),
+    mergeGeometries(outlineGeos, false),
     new THREE.MeshBasicMaterial({ color: ringColor, fog: true }),
   );
-  ring.position.y = h * 0.5;
-  /* No ink on the emissive ring: the depth edge pass draws a ghost
-   * ellipse inside the torus, which reads as a rendering defect on the
-   * one prop the pilot stares at all lap. Layer 1 skips the prepass. */
+  /* No ink on the emissive outline: the depth edge pass draws a ghost line
+   * inside it, which reads as a rendering defect on the one prop the pilot
+   * stares at all lap. Layer 1 skips the prepass. */
   ring.layers.set(1);
   g.add(ring);
   const halo = new THREE.Mesh(
-    new THREE.TorusGeometry(2.15, 0.06, 6, 32),
+    mergeGeometries(haloGeos, false),
     new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.5, fog: true }),
   );
-  halo.position.y = h * 0.5;
   halo.layers.set(1);
   g.add(halo);
 
-  /* Additive glow, a soft annulus centred on the aperture. Additive so it
-   * reads as light rather than paint, in the gate plane so it does not
-   * need to billboard, and unlit and unfogged so distance cannot take the
-   * target away from the pilot. uGain is driven per frame: bright and
-   * pulsing on the gate the race wants next, nearly off on the rest. */
+  /* Additive glow across the primary opening. Additive so it reads as light
+   * rather than paint, in the gate plane so it does not need to billboard,
+   * and unlit and unfogged so distance cannot take the target away from the
+   * pilot. uGain is driven per frame: bright and pulsing on the gate the
+   * race wants next, nearly off on the rest. */
+  const glowSize = Math.max(clearW, clearH) * 2.6;
   const glow = new THREE.Mesh(
-    new THREE.PlaneGeometry(6.9, 6.9),
+    new THREE.PlaneGeometry(glowSize, glowSize),
     new THREE.ShaderMaterial({
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -761,6 +1016,9 @@ function gate(index, isStart) {
       uniforms: {
         uColor: { value: new THREE.Color(ringColor) },
         uGain: { value: 0.1 },
+        /* Half the clear opening as a fraction of the plane, so the lit
+         * band lands on the frame whatever size the opening is. */
+        uEdge: { value: (clearW * 0.5) / glowSize },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -773,58 +1031,68 @@ function gate(index, isStart) {
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uGain;
+        uniform float uEdge;
         void main() {
-          float r = length(vUv - 0.5) * 2.0;
-          /* A band at the torus radius, 1.9 of the 3.8 half width, plus a
-           * faint fill so the aperture itself reads as lit air. */
-          float band = exp(-pow((r - 0.55) / 0.095, 2.0));
-          /* Only a breath of fill. The aperture is the thing the pilot
-           * has to see THROUGH, so filling it with haze hides the line
-           * out of the gate, which is worse than not marking it at all. */
-          float fill = smoothstep(0.66, 0.0, r) * 0.05;
+          /* A square band, because the opening is square. The Chebyshev
+           * distance is the square's own radius. */
+          vec2 d = abs(vUv - 0.5);
+          float r = max(d.x, d.y);
+          float band = exp(-pow((r - uEdge) / 0.055, 2.0));
+          /* Only a breath of fill. The aperture is the thing the pilot has
+           * to see THROUGH, so filling it with haze hides the line out of
+           * the gate, which is worse than not marking it at all. */
+          float fill = smoothstep(uEdge, 0.0, r) * 0.05;
           gl_FragColor = vec4(uColor * (band + fill) * uGain, 1.0);
         }
       `,
     }),
   );
-  glow.position.y = h * 0.5;
+  glow.position.y = sills[primary] + clearH * 0.5;
   glow.layers.set(1);
   g.add(glow);
 
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 0.12), accent);
-  plate.position.set(0, h + 0.75, 0);
-  outlineHull(plate, 1.05);
-  g.add(plate);
-  /* Pip marks counting the gate number, readable as a shape at speed. */
-  for (let p = 0; p < Math.min(index + 1, 8); p += 1) {
-    const pip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.16, 0.34, 0.06),
-      new THREE.MeshBasicMaterial({ color: 0xfff4d6 }),
-    );
-    pip.position.set(-0.9 + p * 0.26, h + 0.75, 0.1);
-    g.add(pip);
+  /*
+   * The apertures, MEASURED out of the geometry that was just built rather
+   * than restated from the spec. The clear width is the gap between the two
+   * uprights' inner surfaces and the clear height is the gap between the
+   * cross members', both recovered from the meshes' own positions and their
+   * own geometry parameters. T1 asserts the standard gate at 1.524 m within
+   * 10 mm, and an assertion against a number somebody typed twice asserts
+   * nothing at all.
+   */
+  const postMeshes = g.children.filter((c) => c.isMesh && c.geometry.type === 'CylinderGeometry'
+    && Math.abs(c.rotation.z) < 1e-6);
+  const measuredW = postMeshes.length >= 2
+    ? Math.abs(postMeshes[1].position.x - postMeshes[0].position.x)
+      - 2 * postMeshes[0].geometry.parameters.radiusTop
+    : clearW;
+  const apertures = [];
+  for (let k = 0; k < stack; k += 1) {
+    /* The clear height of opening k is its sill to the underside of the
+     * member above it, both of which are positions in this group. */
+    const memberY = sills[k] + clearH + tubeR;
+    const measuredH = (memberY - tubeR) - sills[k];
+    apertures.push({
+      shape: 'square',
+      index: k,
+      sillH: sills[k],
+      centreY: sills[k] + measuredH * 0.5,
+      clearW: measuredW,
+      clearH: measuredH,
+    });
   }
-  /* The aperture, read back out of the geometry that was just built rather
-   * than restated as a constant. T1 asserts the clear opening against the
-   * MultiGP standard gate, and an assertion against a number that was
-   * copied by hand asserts nothing. The scoring aperture here is the
-   * torus: clear span is twice the centreline radius less the tube. */
-  const rp = ring.geometry.parameters;
-  const clear = 2 * (rp.radius - rp.tube);
+
   return {
     group: g,
+    kindName,
     ringMat: ring.material,
     haloMat: halo.material,
     glowMat: glow.material,
     ringColor,
-    aperture: {
-      shape: 'torus',
-      centreY: ring.position.y,
-      clearW: clear,
-      clearH: clear,
-      centrelineR: rp.radius,
-      tube: rp.tube,
-    },
+    apertures,
+    primary,
+    aperture: apertures[primary],
+    colliders: caps,
   };
 }
 
@@ -1060,6 +1328,17 @@ export function buildScene(canvas) {
     m.receiveShadow = false;
   }
 
+  /*
+   * Solid things. Built here rather than recovered from the scene later,
+   * because the baker applies each instance's matrix into the vertices and
+   * merges every bucket, so after the flush a tree is anonymous floats in a
+   * shared buffer. A collider has to be recorded where the geometry is made.
+   */
+  const colliders = new Colliders();
+  /* Hoisted above the obstacles so their static parts can bake into the same
+   * buckets as the scenery. It is flushed once, far below. */
+  const baker = makeBaker();
+
   const gates = [];
   const gateCount = 8;
   /* Even spacing puts gates 2 and 6 both exactly on the figure eight's
@@ -1067,6 +1346,33 @@ export function buildScene(canvas) {
    * branch's racing line. Shift those two along their own branches so the
    * crossover is open air, framed by a gate on either side. */
   const gateU = [0, 1 / 8, 0.222, 3 / 8, 4 / 8, 5 / 8, 0.778, 7 / 8];
+  /*
+   * THE COURSE IS AN ORIGINAL CHAPTER STYLE LAYOUT built from regulation
+   * MultiGP obstacles, and it is labelled as one in the interface. It is
+   * deliberately not a Universal Time Trial, for two reasons that pull the
+   * same way. UTT 3 Bessel Run, whose full layout is recovered in
+   * .loop/evidence/r10/utt3-layout.md and sits in src/game/track.js as data,
+   * needs a 91.44 by 36.58 m field, and this figure eight is 210 by 236 m,
+   * so laying UTT 3 here would mean rebuilding the terrain, the height
+   * field's corridor and the whole racing line. And no published UTT uses
+   * more than two obstacle types, while a course wants the vertical variety
+   * that towers and dive gates give it.
+   *
+   * Stations, in scene order, chosen so the line climbs and drops rather
+   * than staying at one height. Station 0 stays a ground level standard gate
+   * because the craft spawns behind it and the start and finish plane has to
+   * be somewhere a stationary quad can be pointed at.
+   */
+  const stationKinds = [
+    'timingGate',       /* 0, start and finish, on the ground */
+    'standardGate',     /* 1 */
+    'tower5x5',         /* 2, a standard opening elevated 5 ft */
+    'ladder',           /* 3, the triple stack: three openings */
+    'standardGate',     /* 4 */
+    'diveGate',         /* 5, a 7x6 opening at 15 ft, entered from above */
+    'championshipGate', /* 6, the wider 7x6 */
+    'ladder',           /* 7, the second triple stack */
+  ];
   for (let i = 0; i < gateCount; i += 1) {
     const u = gateU[i];
     const p = curve.getPointAt(u);
@@ -1076,12 +1382,47 @@ export function buildScene(canvas) {
      * gate 0 then 7, 6, down to 1; scene index i is flown as position
      * gateCount - i. */
     const flyOrder = i === 0 ? 0 : gateCount - i;
-    const made = gate(flyOrder, i === 0);
+    const made = obstacle(stationKinds[i], flyOrder, i === 0);
     const g = made.group;
     const y = height(p.x, p.z);
+    const yaw = Math.atan2(tan.x, tan.z);
     g.position.set(p.x, y, p.z);
-    g.rotation.y = Math.atan2(tan.x, tan.z);
-    scene.add(g);
+    g.rotation.y = yaw;
+    /*
+     * Split the obstacle in two. The aperture outline, its halo and its
+     * glow have per obstacle materials because their gains are driven every
+     * frame, so they stay live meshes on their own group. Everything else is
+     * static and shares its material with every other obstacle, so it goes
+     * into the baker and merges: eight obstacles' frames, panels, feet and
+     * numbers come out as a handful of draw calls instead of about two
+     * hundred.
+     */
+    const anim = new THREE.Group();
+    anim.position.copy(g.position);
+    anim.rotation.y = yaw;
+    for (const m of [made.ringMat, made.haloMat, made.glowMat]) {
+      const child = g.children.find((c) => c.isMesh && c.material === m);
+      if (child) {
+        g.remove(child);
+        anim.add(child);
+      }
+    }
+    scene.add(anim);
+    baker.bake(g);
+    /* Colliders, transformed from the obstacle's own frame into the world by
+     * the same position and yaw the meshes got. The obstacle is solid: the
+     * owner's words were that the gates need to be solid, so every frame
+     * member, panel, foot and top plate is in here. */
+    const cs = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    for (const c of made.colliders) {
+      colliders.add(
+        c.kind,
+        p.x + c.ax * cs + c.az * sn, y + c.ay, p.z - c.ax * sn + c.az * cs,
+        p.x + c.bx * cs + c.bz * sn, y + c.by, p.z - c.bx * sn + c.bz * cs,
+        c.r,
+      );
+    }
     gates.push({
       position: new THREE.Vector3(p.x, y, p.z),
       heading: g.rotation.y,
@@ -1090,8 +1431,31 @@ export function buildScene(canvas) {
       ringColor: made.ringColor,
       glowMat: made.glowMat,
       aperture: made.aperture,
+      apertures: made.apertures,
+      primary: made.primary,
+      kindName: made.kindName,
       flyOrder,
     });
+  }
+
+  /*
+   * T1, asserted rather than asserted about. The standard MultiGP gate
+   * opening is 5 ft square, 1.524 m, and every aperture above was measured
+   * out of the built geometry's own positions and radii. If a change to the
+   * frame ever moves an upright, this throws on load instead of quietly
+   * shipping a barn door, which is what the old 3.5 m torus was.
+   */
+  for (const gt of gates) {
+    const want = OBSTACLES[gt.kindName];
+    for (const ap of gt.apertures) {
+      if (Math.abs(ap.clearW - want.clearW) > 0.01 || Math.abs(ap.clearH - want.clearH) > 0.01) {
+        throw new Error(
+          `scene: ${gt.kindName} opening measured ${ap.clearW.toFixed(4)} by `
+          + `${ap.clearH.toFixed(4)} m, published ${want.clearW.toFixed(4)} by `
+          + `${want.clearH.toFixed(4)} m, outside the 10 mm tolerance`,
+        );
+      }
+    }
   }
 
   /* The gate the race wants next pulses so the pilot always has a target.
@@ -1142,7 +1506,6 @@ export function buildScene(canvas) {
   /* Scenery, kept clear of the flight corridor. Baked, not added: the
    * generation order and rng stream are unchanged, so the world is the
    * same one, just drawn in a handful of calls. */
-  const baker = makeBaker();
   for (let i = 0; i < 420; i += 1) {
     const a = rng() * Math.PI * 2;
     const rad = 30 + rng() * 640;
@@ -1156,7 +1519,9 @@ export function buildScene(canvas) {
       continue;
     }
     const isTree = rng() < 0.74;
-    baker.bake(isTree ? tree(rng, height, x, z) : rock(rng, height, x, z));
+    baker.bake(isTree
+      ? tree(rng, height, x, z, colliders)
+      : rock(rng, height, x, z, colliders));
     occluders.push({ x, z, r: isTree ? 2.2 : 1.4 });
   }
 
@@ -1166,7 +1531,7 @@ export function buildScene(canvas) {
     [-215, 95], [190, 155], [-95, -240], [305, 40], [-320, -80], [60, 280],
   ];
   for (const [cx, cz] of cliffSpots) {
-    baker.bake(cliff(rng, height, cx, cz));
+    baker.bake(cliff(rng, height, cx, cz, colliders));
     occluders.push({ x: cx, z: cz, r: 13 });
   }
 
@@ -1327,7 +1692,14 @@ export function buildScene(canvas) {
     const nx = -tan.z;
     const nz = tan.x;
     const side = i % 2 === 0 ? 8.5 : -8.5;
-    const f = bannerFlag(rng, height, p.x + nx * side, p.z + nz * side, flagColors[i % flagColors.length]);
+    const fx = p.x + nx * side;
+    const fz = p.z + nz * side;
+    const f = bannerFlag(rng, height, fx, fz, flagColors[i % flagColors.length]);
+    /* The pole is solid. It is 5 cm of aluminium beside the racing line and
+     * a quad that clips one is finished, so it collides. The cloth does not:
+     * a flag brushing a prop is not a crash. */
+    const fy = height(fx, fz);
+    colliders.addPost('pole', fx, fz, fy, fy + 3.4, 0.06);
     f.group.updateMatrixWorld(true);
     poleBaker.bake(f.pole);
     f.group.remove(f.pole);
@@ -1549,8 +1921,13 @@ export function buildScene(canvas) {
     }
   }
 
+  /* Every collider is in by now, so freeze the flat arrays and build the
+   * broadphase grid. Nothing may be added after this. */
+  colliders.build();
+
   return {
     renderer, scene, camera, quad, discs, gates, curve,
     resize, updateShadowFocus, updateWind, height, setNextGate,
+    colliders,
   };
 }

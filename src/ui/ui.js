@@ -48,6 +48,14 @@ const DEFAULTS = {
   laps: 3,
   sound: true,
   volume: 6,
+  /* Per stem, zero to ten, each dividing by 10 to reach the audio API. The
+   * types matter: loadSettings only accepts a stored key whose typeof matches
+   * the default, so a level has to stay a number and the focus tone a
+   * boolean, or an old localStorage value silently wins. */
+  motorLevel: 6,
+  windLevel: 5,
+  musicLevel: 5,
+  focusTone: false,
   readout: false,
 };
 
@@ -265,14 +273,38 @@ export class Ui {
         {
           label: 'Sound',
           value: s.sound ? 'On' : 'Off',
-          note: 'Motors, wind and gate tones.',
+          note: 'All sound: motors, wind, music and cues.',
           adjust: () => { s.sound = !s.sound; },
         },
         {
           label: 'Volume',
           value: `${s.volume}`,
-          note: 'Zero to ten.',
+          note: 'Overall level. Zero to ten.',
           adjust: (d) => { s.volume = Math.max(0, Math.min(10, s.volume + d)); },
+        },
+        {
+          label: 'Motors',
+          value: `${s.motorLevel}`,
+          note: 'The blade pass tone. You fly on its pitch, so keep some of it.',
+          adjust: (d) => { s.motorLevel = Math.max(0, Math.min(10, s.motorLevel + d)); },
+        },
+        {
+          label: 'Wind',
+          value: `${s.windLevel}`,
+          note: 'Air over the airframe. Rises with speed.',
+          adjust: (d) => { s.windLevel = Math.max(0, Math.min(10, s.windLevel + d)); },
+        },
+        {
+          label: 'Music',
+          value: s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
+          note: 'A drum and bass bed at 174 beats per minute, generated as you fly.',
+          adjust: (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
+        },
+        {
+          label: 'Focus tone',
+          value: s.focusTone ? 'On' : 'Off',
+          note: 'A quiet 220 Hz tone, 6 Hz apart between the ears. Needs headphones to do anything at all.',
+          adjust: () => { s.focusTone = !s.focusTone; },
         },
         {
           label: 'Performance readout',

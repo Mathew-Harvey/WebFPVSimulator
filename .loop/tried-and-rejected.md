@@ -83,3 +83,29 @@ If a future round wants that handle, it should be added deliberately,
 committed, and the review re-run against it. Worth knowing that reviewers
 have write access to the tree, so `git status` after a review round is part
 of the round.
+
+## Low spec loop, round 2 (round 7 overall)
+
+**Antialiasing by blending two colour taps ACROSS the silhouette, along
+the depth gradient.** The reasoning was that mixing the two sides of an
+edge softens the step. It does, and softening a step is not removing a
+staircase: measured with `scripts/pixels.js stair:`, the sub pixel crossing
+of a near vertical edge held still for three rows and then jumped 1.87 px,
+against 4x multisampling's 1.17 px, and the second difference RMS went from
+0.289 to 0.478. It also softened the whole frame for nothing. Replaced in
+round 8 by two taps ALONG the edge, `vec2(-dir.y, dir.x)`, which measures
+0.288 and 0.83 px. A staircase is a discontinuity along the edge, so that
+is where it has to be filtered.
+
+**Trusting the render target walker's own total.** It deduplicated on
+`rt.uuid` and `WebGLRenderTarget` has no `uuid`, so it reported one target
+where there were fifteen. Then, once that was fixed, it still missed the
+default framebuffer, 16.6 MB, because the canvas is bound by passing `null`
+and the walker only recorded non null binds. Any instrument that collects
+by watching an API has to be asked what the API does when the answer is
+"nothing": that is where the largest single object in the ledger was
+hiding.
+
+**Reporting mebibytes under a megabyte heading.** 4.9 percent lenient at
+this scale, which is the difference between passing and failing a 120 MB
+ceiling at 115 MB. Both units are printed now.

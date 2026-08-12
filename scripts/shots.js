@@ -19,6 +19,14 @@
  *   down:CODE        key down, held
  *   up:CODE          key up
  *   eval:EXPR        evaluate in the page and print the value
+ *   until:EXPR       poll until EXPR is truthy, fail the run after 20 s
+ *   expect:EXPR      fail the run unless EXPR is truthy right now
+ *
+ * until: and expect: exist because a wait in milliseconds is not evidence
+ * of anything. On this container's software rasteriser a frame takes
+ * about 120 ms, so a keypress followed by wait:400 can screenshot the
+ * screen the player was on BEFORE the key, and the file gets a name that
+ * lies. A capture of a named state must assert that state.
  *
  * Console errors and warnings are collected and printed at the end, so the
  * same run that produces the screenshots also answers the console gate.
@@ -302,6 +310,27 @@ async function main() {
         console.log(`eval ${arg} threw: ${JSON.stringify(r.exceptionDetails.exception ?? r.exceptionDetails.text)}`);
       } else {
         console.log(`eval ${arg} = ${JSON.stringify(r.result.value)}`);
+      }
+    } else if (op === 'until' || op === 'expect') {
+      const deadline = Date.now() + (op === 'until' ? 20000 : 0);
+      let value;
+      for (;;) {
+        const r = await cdp.send('Runtime.evaluate', {
+          expression: arg, returnByValue: true,
+        }, sessionId).catch(() => null);
+        value = r && !r.exceptionDetails ? r.result.value : undefined;
+        if (value) {
+          break;
+        }
+        if (Date.now() >= deadline) {
+          errors.push(`${op} failed: ${arg} was ${JSON.stringify(value)}`);
+          console.log(`  FAIL ${op} ${arg} = ${JSON.stringify(value)}`);
+          break;
+        }
+        await sleep(120);
+      }
+      if (value) {
+        console.log(`${op} ${arg} ok`);
       }
     } else {
       throw new Error(`unknown step ${step}`);

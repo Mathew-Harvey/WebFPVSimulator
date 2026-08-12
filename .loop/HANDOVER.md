@@ -13,8 +13,17 @@ for, and a real MultiGP course at real MultiGP dimensions under MultiGP
 rules. The G and P items carry over from the low spec loop unchanged. The A
 sound items and the T track items are new.
 
-Branch: `claude/webfpv-world-sound-track-kdx9vo`, cut from `main`. `main` has
-NOT been fast forwarded; the rubric is not green.
+Branch: `claude/webfpv-world-sound-track-kdx9vo`, cut from `main`.
+
+`main` was fast forwarded to round 10 **on the human owner's explicit
+instruction**, not because the rubric went green. It did not: G, A and T are
+largely FAIL and the definition of done, two consecutive rounds with every
+item PASS by adversarial review, has not been met. Round 10 contains
+instruments, evidence, a data module nothing imports yet, and an audio
+refactor with no audible change, so merging it costs nothing and loses no
+work. Do not read the merge as a completion signal, and do not stop looping
+because of it. The next round's first item is unchanged: the regulation gate
+and UTT 3.
 
 Round numbering: `PROGRESS.md` rounds 1 to 5 are the old polish loop, 6 to 9
 are the low spec loop, and this loop continues the overall count from 10.

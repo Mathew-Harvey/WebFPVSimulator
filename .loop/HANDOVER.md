@@ -201,9 +201,24 @@ CLAUDE.md says to think about before doing.
 a discrete GPU, stick to photon latency, and a real radio. A human has to
 resolve those.
 
+## The loop to run next
+
+**`prompts/potato-aaa-loop.md` supersedes the polish loop.** It keeps the
+Prime Directive and the evidence discipline and changes the target: the
+graphics and the game world, on a machine with no discrete GPU, 1080p at 60
+and 720p at 60 on the low setting. Absolute frame rate stays unmeasurable
+here, so the contract is ten proxy budgets that ARE measurable in this
+container, published as a ledger for three camera views every round.
+
+Where the code sits against those budgets as that loop opens: draw calls
+237 in the flight view but **701 in the title view against a ceiling of
+150**, triangles **1.90M against 450,000**. Both are technique problems, not
+ambition problems, and the merger that fixes most of the draw calls is
+already sitting in scene.js unused by 276 of the scene's 317 meshes.
+
 ## The immediate next step
 
-Round 5 is unreviewed. Start by reviewing it, with two lenses, against the
+Round 5 of the previous loop is unreviewed. Start by reviewing it, with two lenses, against the
 same rubric items, using .loop/evidence/r5 plus fresh frames of your own.
 
 Then, in this order, from `.loop/state.json`'s open list:

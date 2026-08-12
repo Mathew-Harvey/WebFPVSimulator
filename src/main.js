@@ -1,16 +1,22 @@
 /*
- * main.js: the Stage 1 shell. Loads dist/sim.wasm, feeds it timestamped
- * stick samples, steps it on a fixed 1 kHz accumulator driven by
- * requestAnimationFrame, and renders an interpolated view. The frame
- * delta clocks the accumulator and never reaches the integrator; a
- * dropped frame changes nothing about the trajectory.
+ * main.js: the shell. Loads dist/sim.wasm, feeds it timestamped stick
+ * samples, steps it on a fixed 1 kHz accumulator driven by
+ * requestAnimationFrame, renders an interpolated view, and drives the
+ * product shell in src/ui/ui.js. The frame delta clocks the accumulator
+ * and never reaches the integrator; a dropped frame changes nothing about
+ * the trajectory.
+ *
+ * The page opens on a title, with the world alive behind it and the camera
+ * circling the start gate. Physics steps only while a run is in progress,
+ * so a paused game or a results screen costs the trajectory nothing.
  *
  * Ground handling is deliberately shell side: the physics module has no
  * ground plane (the verification harness measures free air behaviour), so
  * the shell spawns the quad at altitude and declares a crash when it
  * reaches the ground, then resets. See PROGRESS.md.
  *
- * Keys: R reset, C camera, M stick calibration, V battery voltage.
+ * Keys in flight: Escape pauses, R returns to the start line, F3 toggles
+ * the performance readout. Everything else is a menu choice.
  * Sticks: radio in joystick mode (Gamepad API) or WASD plus arrows.
  * Drop a Betaflight diff file onto the page to fly your own config.
  *
@@ -37,20 +43,19 @@ import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
+import { Ui } from './ui/ui.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
 const SPAWN_ALT = 1.5; /* metres between sim z = 0 and the ground plane */
-const CELL_VOLTAGES = [4.2, 3.8, 3.5];
-/* Camera uptilt. 30 degrees is a freestyle angle: it puts the horizon low
- * in frame so the ground rushes past and forward flight sits level. */
-const CAM_TILT_DEG = 30;
 /* The controller consumes each input sample as one RC frame, so the shell
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
 const RC_HZ = 250;
+/* Pack nominal, for the charge bar: 6S between empty and full. */
+const PACK_EMPTY_V = 6 * 3.3;
+const PACK_FULL_V = 6 * 4.2;
 
-const hud = document.getElementById('hud');
-const msg = document.getElementById('msg');
+const uiRoot = document.getElementById('ui');
 
 async function fetchBytes(url) {
   const res = await fetch(url);
@@ -64,6 +69,7 @@ async function boot() {
   const canvas = document.getElementById('view');
   const view = buildScene(canvas);
   const input = new InputManager();
+  const ui = new Ui(uiRoot);
 
   const post = buildComposer(view.renderer, view.scene, view.camera);
   window.addEventListener('resize', () => {
@@ -102,10 +108,10 @@ async function boot() {
     for (let i = 0; i < configText.length; i += 1) {
       h = ((h * 33) ^ configText.charCodeAt(i)) >>> 0;
     }
-    return `webfpv.best.${h.toString(16)}.${CELL_VOLTAGES[cellIdx].toFixed(2)}`;
+    return `webfpv.best.${h.toString(16)}.${ui.settings.packVoltage.toFixed(2)}`;
   }
 
-  let cellIdx = 0;
+  let mode = 'title'; /* title, flight, paused, results */
   let simTimeMs = 0;
   let acc = 0;
   let lastTs = 0;
@@ -115,11 +121,13 @@ async function boot() {
   /* Physics holds until the pilot first raises throttle: a run should
    * start when the pilot says so, not with a falling catch at spawn. */
   let launched = false;
-  let camMode = 'fpv';
   let statePrev = null;
   let stateCurr = null;
   let fps = 0;
+  let camTilt = ui.settings.cameraAngle;
+  let notice = null; /* { text, untilMs } for one off shell messages */
   race.setRecordKey(recordKey());
+  ui.setBest(race.bestMs);
 
   function readState() {
     const { code, state } = sim.readState();
@@ -131,15 +139,19 @@ async function boot() {
 
   function reset() {
     sim.reset();
-    sim.setCellVoltage(CELL_VOLTAGES[cellIdx]);
+    sim.setCellVoltage(ui.settings.packVoltage);
     simTimeMs = 0;
     acc = 0;
     lastTs = 0;
     rcNextMs = 0;
     crashed = false;
     launched = false;
+    input.keys.clear();
     input.drain();
     input.kb.throttle = 0;
+    input.kb.roll = 0;
+    input.kb.pitch = 0;
+    input.kb.yaw = 0;
     race.reset();
     view.setNextGate(race.nextSceneIndex());
     raceHasPrev = false;
@@ -148,31 +160,64 @@ async function boot() {
   }
   reset();
 
-  let audioOn = false;
-  input.onKey = (code) => {
-    /* Any key counts as the user gesture browsers require for audio. */
-    if (audioOn && !audio.ctx) {
-      audio.start();
-    }
-    if (code === 'KeyR') {
+  function applySettings(s) {
+    camTilt = s.cameraAngle;
+    qTilt.setFromAxisAngle(new THREE.Vector3(1, 0, 0), (camTilt * Math.PI) / 180);
+    sim.setCellVoltage(s.packVoltage);
+    race.setRecordKey(recordKey());
+    ui.setBest(race.bestMs);
+    audio.setLevel(s.volume / 10);
+    audio.setEnabled(s.sound);
+    ui.setReadout('');
+  }
+
+  ui.onSettings = applySettings;
+  ui.onAction = (action, s) => {
+    if (action === 'fly' || action === 'restart') {
       reset();
-    } else if (code === 'KeyC') {
-      camMode = camMode === 'fpv' ? 'chase' : 'fpv';
-    } else if (code === 'KeyM') {
-      input.startCalibration();
-    } else if (code === 'KeyV') {
-      cellIdx = (cellIdx + 1) % CELL_VOLTAGES.length;
-      sim.setCellVoltage(CELL_VOLTAGES[cellIdx]);
-      race.setRecordKey(recordKey());
-    } else if (code === 'KeyN') {
-      audioOn = audio.toggle();
+      mode = 'flight';
+      ui.show('flight');
+    } else if (action === 'resume') {
+      mode = 'flight';
+      ui.show('flight');
+    } else if (action === 'pause') {
+      mode = 'paused';
+    } else if (action === 'title') {
+      mode = 'title';
+      reset();
+    } else if (action === 'calibrate') {
+      if (input.firstGamepad()) {
+        input.startCalibration();
+      } else {
+        notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
+      }
+    }
+    if (s) {
+      applySettings(s);
     }
   };
-  window.addEventListener('pointerdown', () => {
-    if (audioOn && !audio.ctx) {
+
+  /* Any real key or pointer press is the user gesture browsers require
+   * before audio can start. */
+  function wakeAudio() {
+    if (ui.settings.sound && !audio.ctx) {
       audio.start();
+      audio.setLevel(ui.settings.volume / 10);
     }
-  });
+    audio.setEnabled(ui.settings.sound);
+  }
+
+  input.onKey = (code) => {
+    wakeAudio();
+    if (ui.handleKey(code)) {
+      return;
+    }
+    /* Flight only keys. */
+    if (code === 'KeyR') {
+      reset();
+    }
+  };
+  window.addEventListener('pointerdown', wakeAudio);
 
   /* Fly your own Betaflight diff: drop the file anywhere on the page. */
   window.addEventListener('dragover', (e) => e.preventDefault());
@@ -188,9 +233,11 @@ async function boot() {
       configText = text;
       configName = file.name;
       race.setRecordKey(recordKey());
+      ui.setBest(race.bestMs);
+      notice = { text: `Flying ${configName}`, untilMs: performance.now() + 2400 };
       reset();
     } else {
-      msg.textContent = `diff rejected: ${simErrorName(code)}`;
+      notice = { text: `That tune was rejected: ${simErrorName(code)}`, untilMs: performance.now() + 3200 };
       sim.init(configText);
       reset();
     }
@@ -200,32 +247,33 @@ async function boot() {
   const pCurr = new THREE.Vector3();
   const qPrev = new THREE.Quaternion();
   const qCurr = new THREE.Quaternion();
-  const qTilt = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(1, 0, 0), (CAM_TILT_DEG * Math.PI) / 180,
-  );
+  const qTilt = new THREE.Quaternion();
   const qSpawn = new THREE.Quaternion();
   const camPos = new THREE.Vector3();
-  const fwd = new THREE.Vector3();
+  const orbitTarget = new THREE.Vector3();
+  applySettings(ui.settings);
 
   let prevWall = performance.now();
 
   function frame(nowWall) {
     requestAnimationFrame(frame);
     const dt = Math.min(nowWall - prevWall, 100);
-    const frameStart = prevWall;
     prevWall = nowWall;
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
 
     input.poll(nowWall);
     const samples = input.drain();
+    if (ui.isModal()) {
+      ui.pollPad(input.channels, input.padButtons());
+    }
 
-    if (!crashed && !launched) {
+    if (mode === 'flight' && !crashed && !launched) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
       if (thr > 0.05) {
         launched = true;
       }
     }
-    if (!crashed && launched) {
+    if (mode === 'flight' && !crashed && launched) {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
@@ -263,9 +311,9 @@ async function boot() {
         crashed = true;
         crashedAtWall = nowWall;
       }
-    } else if (crashed && nowWall - crashedAtWall > 1200) {
+    } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1200) {
       /* Short lockout: a crash costs the lap already, staring at a
-       * CRASHED card for seconds on top of that is just dead time. */
+       * notice for seconds on top of that is just dead time. */
       reset();
     }
 
@@ -292,11 +340,16 @@ async function boot() {
      * travel, so speed cannot tunnel a gate, and a gate frame tap voids
      * the lap rather than destroying the craft. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
-    if (!crashed && launched) {
+    if (mode === 'flight' && !crashed && launched) {
       if (raceHasPrev) {
         const res = race.update(racePrev, pCurr, simNow, nowWall);
         if (res.passed != null || res.hitFrame) {
           view.setNextGate(race.nextSceneIndex());
+        }
+        if (race.lap >= ui.settings.laps) {
+          mode = 'results';
+          ui.setBest(race.bestMs);
+          ui.showResults(race.laps, race.bestMs, race.voided);
         }
       }
       racePrev.copy(pCurr);
@@ -309,24 +362,27 @@ async function boot() {
       view.discs[m].rotation.y += stateCurr[14 + m] * 1e-4;
     }
 
-    if (camMode === 'fpv') {
+    if (mode !== 'title') {
       /* The camera sits inside the airframe, so the quad must be hidden or
        * you fly looking at the inside of its own outline hull. */
       view.quad.visible = false;
       view.camera.position.copy(pCurr);
       view.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
+      /* Attract view: the craft parked on the line, camera circling wide
+       * and high enough that the valley and the gate both read, and that
+       * near grass does not fill the frame. */
       view.quad.visible = true;
-      fwd.set(0, 0, -1).applyQuaternion(qPrev);
-      fwd.y = 0;
-      if (fwd.lengthSq() < 1e-6) {
-        fwd.set(0, 0, -1);
-      }
-      fwd.normalize();
-      camPos.copy(pCurr).addScaledVector(fwd, -3.5);
-      camPos.y = Math.max(pCurr.y + 1.2, 0.3);
+      const ang = nowWall * 0.00011;
+      const r = 19;
+      camPos.set(
+        start.position.x + Math.sin(ang) * r,
+        start.position.y + 7,
+        start.position.z + Math.cos(ang) * r,
+      );
+      orbitTarget.set(start.position.x, start.position.y + 2.5, start.position.z);
       view.camera.position.copy(camPos);
-      view.camera.lookAt(pCurr);
+      view.camera.lookAt(orbitTarget);
     }
 
     view.updateShadowFocus(pCurr);
@@ -340,41 +396,73 @@ async function boot() {
     renderStats.calls = view.renderer.info.render.calls;
     renderStats.triangles = view.renderer.info.render.triangles;
 
+    /* Overlay. */
+    const st = stateCurr;
+    const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
+    audio.update([st[14], st[15], st[16], st[17]], mode === 'flight' ? speed : 0);
+    if (mode === 'flight') {
+      ui.setOsd({
+        lapMs: race.currentLapMs(simNow),
+        gate: race.next + 1,
+        gateCount: race.gates.length,
+        volts: st[18],
+        amps: st[19],
+        packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
+        altitude: st[3] + SPAWN_ALT,
+        speedKph: speed * 3.6,
+        throttle: input.channels.throttle,
+      });
+    }
+
     const cal = input.calibrationPrompt();
     const lapFlash = race.flashText(nowWall);
     if (cal) {
-      msg.textContent = cal;
+      ui.setBanner(cal);
+    } else if (notice && nowWall < notice.untilMs) {
+      ui.setBanner(notice.text);
+    } else if (mode !== 'flight') {
+      ui.setBanner('');
     } else if (crashed) {
-      msg.textContent = 'CRASHED';
+      ui.setBanner('Crashed');
     } else if (!launched) {
-      msg.textContent = 'THROTTLE TO LAUNCH';
+      ui.setBanner('Throttle up to launch\nThe mint ring starts your lap');
     } else if (lapFlash) {
-      msg.textContent = lapFlash;
+      ui.setBanner(lapFlash);
     } else {
-      msg.textContent = '';
+      ui.setBanner('');
     }
-    const st = stateCurr;
-    const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
-    audio.update([st[14], st[15], st[16], st[17]], speed);
-    const ch = input.channels;
-    hud.textContent =
-      `${race.hudLine(simNow)}\n` +
-      `input  ${input.source}\n` +
-      `config ${configName}  cell ${CELL_VOLTAGES[cellIdx].toFixed(2)} V (V cycles)\n` +
-      `roll ${ch.roll.toFixed(2)}  pitch ${ch.pitch.toFixed(2)}  yaw ${ch.yaw.toFixed(2)}  thr ${ch.throttle.toFixed(2)}\n` +
-      `alt ${(st[3] + SPAWN_ALT).toFixed(1)} m  speed ${speed.toFixed(1)} m/s  vbat ${st[18].toFixed(1)} V  ${st[19].toFixed(0)} A\n` +
-      `rpm ${st[14].toFixed(0)} ${st[15].toFixed(0)} ${st[16].toFixed(0)} ${st[17].toFixed(0)}\n` +
-      `cam ${camMode} (C)  reset R  calibrate M  sound ${audioOn ? 'on' : 'off'} (N)  fps ${fps.toFixed(0)}`;
+
+    if (ui.settings.readout) {
+      ui.setReadout(
+        `${fps.toFixed(0)} frames per second\n` +
+        `${renderStats.calls} draw calls\n` +
+        `${(renderStats.triangles / 1000).toFixed(0)}k triangles\n` +
+        `${configName}, ${ui.settings.packVoltage.toFixed(2)} volts per cell\n` +
+        `input from ${input.source}\n` +
+        `rotor speeds ${st[14].toFixed(0)} ${st[15].toFixed(0)} ${st[16].toFixed(0)} ${st[17].toFixed(0)}`,
+      );
+    } else {
+      ui.setReadout('');
+    }
 
     window.__shellReady = true;
+    window.__mode = mode;
   }
   /* Render statistics for the harness and the frame budget gate. */
   const renderStats = { calls: 0, triangles: 0 };
   view.renderer.info.autoReset = false;
   window.__renderStats = () => ({ ...renderStats });
+  /* Handles the screenshot harness uses to reach a screen that would
+   * otherwise need a flown lap. Nothing in the shell reads them. */
+  window.__ui = ui;
+  window.__race = race;
   requestAnimationFrame(frame);
 }
 
 boot().catch((e) => {
-  msg.textContent = `failed to start:\n${e.message}`;
+  const p = document.createElement('div');
+  p.className = 'banner';
+  p.style.opacity = '1';
+  p.textContent = `The simulator could not start.\n${e.message}`;
+  uiRoot.append(p);
 });

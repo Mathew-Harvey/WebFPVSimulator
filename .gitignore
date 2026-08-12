@@ -4,3 +4,4 @@ dist/*
 build/
 *.log
 .DS_Store
+.loop/shots/

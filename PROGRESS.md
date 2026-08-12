@@ -147,3 +147,117 @@ FPV pilot (race wiring): 1. A gate tap was a death sentence, full reset plus loc
 Race unit tests: eleven assertions green, including a tunnelling segment caught by the sweep, a frame corner crossing outside the ring correctly not counting, and the interpolated lap time (63984 ms where the frame quantised clock said 64000).
 Verify: 12 of 13 passing this turn, unchanged. Browser smoke: zero console errors, launch hold confirmed live.
 Wrong: the record key helper initially sat above the cellIdx declaration it reads, a temporal dead zone error that would have thrown at boot; caught by re-reading the diff before the smoke run, moved below the declarations.
+
+## Polish loop round 1: the product shell
+
+Rubric item attempted: A1, with A2 to A5 in its wake, because a title
+screen with no way to learn the sticks and a debug dump still on screen
+is not a product. Priority order in the loop prompt is A first, and A was
+the whole of what a stranger meets in the first ninety seconds.
+
+### Container repair before any of it
+
+The container started with `vendor/betaflight` unchecked out and no
+`emcc`, so `npm run verify` reported 11 of 13 with check 1 failing for
+want of a compiler rather than for a code reason. Fixed by cloning the
+submodule at the pinned commit and installing emsdk 3.1.61 to
+/opt/emsdk. Recorded in .loop/blocked.md so the next container does the
+same two steps first.
+
+Worth writing down: the module rebuilt under emsdk 3.1.61 produces the
+same replay hash, 000931016224, as the module built by whatever
+Emscripten the previous container had. Determinism was asserted across
+hosts and render rates; it now also holds across toolchain versions,
+which is a stronger claim than the harness makes.
+
+### What was built
+
+- src/ui/ui.js, new. Title, How to fly, Settings, pause, results, the
+  flight display, and the centre banner. Every screen is navigable from
+  the keyboard alone and from sticks alone: pitch moves the cursor, roll
+  right selects, roll left goes back, and any gamepad button selects.
+  Radios in joystick mode have no dependable menu buttons, so the sticks
+  had to be the primary path rather than the fallback.
+- index.html, rewritten. All interface styling, on the same colour rule
+  the renderer follows: warm cream and amber for lit type, slate blue for
+  recessed type, mint for a record. Nothing in the interface is a grey
+  copy of itself.
+- src/main.js. A four state machine, title, flight, paused, results.
+  Physics steps only in flight, so a pause or a results screen costs the
+  trajectory nothing. The title runs an attract camera circling the start
+  gate at 19 m and 7 m up.
+- Settings that matter and nothing else: camera angle, pack charge, laps
+  per run, sound, volume, performance readout, calibrate sticks. The
+  camera angle and voltage keys that used to be undocumented single
+  letters are now settings with an explanation each.
+- The monospace developer HUD is gone. What replaces it is a flight
+  display: lap clock, gate count, record, pack volts and amps with a
+  charge bar, speed, altitude, throttle bar. Frame rate and draw counts
+  moved behind the performance readout setting, off by default, F3 to
+  toggle.
+- src/game/race.js records each clean lap and counts voided ones, so a
+  run ends on a results screen with lap times, a total, and the record,
+  instead of a two second flash over the flight view.
+- scripts/shots.js, new. Drives the real page in headless Chromium over
+  the DevTools protocol, presses keys, and writes PNGs. Chromium here
+  does not inherit the outbound proxy, so requests to the Three.js CDN
+  are paused with the Fetch domain and fulfilled from Node, cached on
+  disk. Console errors and warnings are collected in the same run, so the
+  screenshots and the console gate come from one command.
+
+### What went wrong on the way
+
+- The first attract camera sat 4 m above the gate base and 13 m out. The
+  frame was two thirds near grass. Looking at the screenshot is the only
+  reason that was caught; it reads fine in the source.
+- The first title scrim was a radial gradient at up to 0.93 alpha, which
+  turned a warm afternoon valley into night. Replaced with a vertical
+  gradient that leaves the sky and mountains lit and darkens only the
+  band the menu sits in.
+- The flight display first showed a row of dashes for the lap clock
+  before the first gate, which reads as a broken glyph, not as prose.
+  Now it reads 0.00, dimmed, and the banner says the mint ring starts
+  the lap.
+- The pack readout wrapped onto two lines at 1600 by 900 because volts
+  and amps were on one line in a 190 px block. Split.
+- Escape from the pause screen quit to the title, because back() fell
+  through to its default. Escape now closes the pause screen it opened.
+
+### Defects found by looking at frames, not yet fixed
+
+Recorded here and in .loop/state.json so a later round picks them up
+rather than rediscovering them.
+
+1. The sky dome posterises its gradient into five bands. The band edge
+   is a large pale arc that crosses the sky in every single frame and
+   reads as an artefact rather than a style. src/render/scene.js
+   skyDome.
+2. The sand shore around the lake is roughly seventy metres wide. The
+   shore test is |y minus lake level| < 3.5 m, and the lake bowl slope is
+   about 0.1, so 3.5 m of height buys 35 m of beach on each side. A low
+   pass fills two thirds of the frame with one flat cream value and no
+   detail at all. src/render/scene.js groundAlbedo and makeHeightField.
+3. 46000 grass blades spread over 900 by 900 m means the near field at
+   eye height is a handful of very large isolated blades over bare
+   ground. It reads as scattered shards, not a meadow.
+   src/render/scene.js grassField.
+4. A crash resets the run silently after 1.2 s behind a Crashed banner.
+   No sound, no camera response, no consequence.
+5. Nothing collides except gate frames and the ground height field.
+   Trees, rocks, cliffs and water are all passable.
+
+### Evidence
+
+npm run verify, run in the same turn as this entry: 12 of 13, the single
+red being yaw-coupling, which is structurally 0.00 for a symmetric X
+quad and whose threshold has never been touched. Table pasted in the
+commit message. Screenshots in .loop/evidence/r1. Console errors 0 and
+warnings 0 on every capture run.
+
+One honesty note about the results screenshot: those three lap times
+were injected through window.__ui.showResults from the screenshot
+harness, not flown. Flying three clean laps of a figure eight by
+scripted key presses at the five frames per second this software
+rasteriser manages is not something I can do. The screenshot is
+evidence for the layout and the wording of the results screen and for
+nothing else.

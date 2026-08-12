@@ -1,7 +1,13 @@
 <!doctype html>
 <!--
-  WebFPVSimulator Stage 1 shell: grey ground plane, horizon, a quad and a
-  stick input. Serve the repo root (npm run serve) and open this page.
+  WebFPVSimulator: the page. A canvas for the world, an overlay for the
+  product shell (title, how to fly, settings, pause, results, and the
+  flight display). The overlay's structure is built in src/ui/ui.js; its
+  styling lives here with the rest of the page's CSS.
+
+  Colour rule, the same one the renderer follows: light is warm, shadow is
+  cool. Cream and amber for lit type, slate blue for recessed type, mint
+  for a record. Nothing in the interface is a grey copy of itself.
 
   This file is part of WebFPVSimulator.
 
@@ -22,21 +28,150 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WebFPVSimulator</title>
+    <title>WebFPV, a browser FPV racing simulator</title>
     <link rel="icon" href="data:," />
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #202428; }
+      :root {
+        --cream: #f7e8cd;
+        --amber: #ffd45c;
+        --mint: #7dffb4;
+        --slate: #9db3c8;
+        --deep: #101a26;
+        --ink: rgba(8, 12, 18, 0.85);
+        --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #101a26; }
       #view { display: block; width: 100%; height: 100%; }
-      #hud {
-        position: fixed; left: 10px; top: 10px; color: #d8dce0;
-        font: 12px/1.5 monospace; white-space: pre; user-select: none;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none;
+      #ui {
+        position: fixed; inset: 0; pointer-events: none; user-select: none;
+        font-family: var(--ui-font); color: var(--cream);
+        font-variant-numeric: tabular-nums;
       }
-      #msg {
-        position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%);
-        color: #ffd257; font: bold 22px monospace; text-align: center;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.9); pointer-events: none; white-space: pre;
+
+      /* Flight display. Thin warm type over a dark edge, the way an OSD
+         reads over any background. */
+      .osd { position: absolute; inset: 0; }
+      .osd-top {
+        position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+        text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,0.85);
       }
+      .osd-timer { font-size: 46px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; }
+      .osd-timer.waiting { color: #b9c9d8; }
+      .osd-label {
+        font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--slate); margin-bottom: 2px;
+      }
+      .osd-value { font-size: 20px; font-weight: 600; }
+      .osd-sub { font-size: 13px; color: var(--slate); margin-top: 1px; margin-bottom: 8px; }
+      .osd-gate { font-size: 15px; color: var(--amber); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+      .osd-best { font-size: 14px; color: var(--slate); margin-top: 3px; }
+      .osd-corner {
+        position: absolute; bottom: 20px; width: 190px;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.85); font-size: 15px;
+      }
+      .osd-left { left: 22px; }
+      .osd-right { right: 22px; text-align: right; }
+      .bar {
+        height: 5px; margin-top: 7px; border-radius: 3px;
+        background: rgba(12, 22, 34, 0.65);
+        box-shadow: inset 0 0 0 1px rgba(157, 179, 200, 0.35);
+        overflow: hidden;
+      }
+      .bar-fill { height: 100%; width: 0%; background: var(--mint); transition: width 0.12s linear; }
+      .bar-fill.warm { background: var(--amber); }
+
+      .banner {
+        position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+        text-align: center; white-space: pre-line; font-size: 30px; font-weight: 600;
+        letter-spacing: 0.04em; color: var(--amber); opacity: 0;
+        transition: opacity 0.18s ease; text-shadow: 0 3px 10px rgba(0,0,0,0.9);
+      }
+
+      .readout {
+        position: absolute; right: 16px; top: 14px; display: none;
+        font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--slate); white-space: pre; text-align: right;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+      }
+
+      /* Screens. */
+      .screen {
+        position: absolute; inset: 0; pointer-events: none;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 4vh 6vw; box-sizing: border-box;
+        background:
+          radial-gradient(120% 90% at 50% 40%, rgba(16, 26, 38, 0.62), rgba(8, 13, 20, 0.93));
+      }
+      /* The title keeps the world readable behind it; the reading screens
+         sit on a heavier scrim because they are text. */
+      .screen-title {
+        background: linear-gradient(
+          to bottom,
+          rgba(8, 13, 20, 0.10) 0%,
+          rgba(8, 13, 20, 0.28) 32%,
+          rgba(10, 16, 24, 0.70) 62%,
+          rgba(10, 16, 24, 0.88) 100%
+        );
+      }
+      .screen-page { justify-content: center; }
+      .screen h1 {
+        margin: 0; font-size: clamp(44px, 8vw, 104px); font-weight: 800;
+        letter-spacing: 0.14em; color: var(--cream);
+        text-shadow: 0 6px 26px rgba(0, 0, 0, 0.75);
+      }
+      .screen h2 {
+        margin: 0 0 18px; font-size: clamp(24px, 3.4vw, 40px); font-weight: 700;
+        letter-spacing: 0.06em; color: var(--cream);
+      }
+      .screen h3 {
+        margin: 0 0 10px; font-size: 15px; font-weight: 700; color: var(--amber);
+        letter-spacing: 0.12em; text-transform: uppercase;
+      }
+      .brand { text-align: center; margin-bottom: 34px; }
+      .brand-sub {
+        margin-top: 10px; font-size: clamp(14px, 1.5vw, 19px); color: var(--slate);
+        letter-spacing: 0.22em; text-transform: uppercase;
+      }
+      .brand-best { margin-top: 16px; font-size: 15px; color: var(--mint); letter-spacing: 0.08em; }
+
+      .menu { min-width: min(520px, 80vw); }
+      .row {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 24px;
+        padding: 9px 18px; border-left: 3px solid transparent; color: var(--slate);
+        font-size: clamp(17px, 2vw, 22px);
+      }
+      .row.on {
+        color: var(--cream); border-left-color: var(--amber);
+        background: linear-gradient(90deg, rgba(255, 212, 92, 0.16), rgba(255, 212, 92, 0));
+      }
+      .row-value { color: var(--amber); font-size: 0.86em; }
+      .row-note {
+        padding: 2px 21px 10px; color: #7f95ab; font-size: 14px; max-width: 46em;
+      }
+      .hint { margin-top: 26px; font-size: 13px; color: #7f95ab; letter-spacing: 0.05em; text-align: center; }
+
+      .cols { display: flex; gap: 6vw; flex-wrap: wrap; justify-content: center; }
+      .col { max-width: 30em; }
+      .col dl { margin: 0; }
+      .col dt { color: var(--cream); font-size: 15px; font-weight: 600; margin-top: 12px; }
+      .col dd { margin: 2px 0 0; color: var(--slate); font-size: 14px; line-height: 1.5; }
+      .lede {
+        max-width: 58em; margin: 24px auto 0; color: var(--slate);
+        font-size: 15px; line-height: 1.65; text-align: center;
+      }
+
+      .screen-modal { background: rgba(8, 13, 20, 0.72); }
+
+      .results { min-width: min(420px, 80vw); margin-bottom: 22px; }
+      .result-row {
+        display: flex; align-items: baseline; gap: 16px; padding: 7px 0;
+        border-bottom: 1px solid rgba(157, 179, 200, 0.18); font-size: 20px;
+      }
+      .result-label { color: var(--slate); min-width: 5em; }
+      .result-time { color: var(--cream); font-weight: 600; margin-left: auto; }
+      .result-tag { color: var(--mint); font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+      .result-row.total { border-bottom: none; margin-top: 6px; }
+      .result-row.total .result-time { color: var(--amber); }
     </style>
     <!-- Three.js only, pinned. The addons path is the same package, used
          for the post processing chain; nothing else is on the render
@@ -52,8 +187,7 @@
   </head>
   <body>
     <canvas id="view"></canvas>
-    <div id="hud"></div>
-    <div id="msg"></div>
+    <div id="ui"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

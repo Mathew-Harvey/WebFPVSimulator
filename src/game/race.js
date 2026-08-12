@@ -111,6 +111,8 @@ export class Race {
     this.lastLapMs = null;
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
+    this.laps = [];         /* completed clean lap times, in order */
+    this.voided = 0;        /* laps thrown away by a gate touch */
   }
 
   /* World point into gate g's local frame: x across the opening, y up
@@ -149,10 +151,11 @@ export class Race {
       if (this.lapStartMs != null) {
         this.lastLapMs = crossMs - this.lapStartMs;
         this.lap += 1;
-        let msgText = `LAP ${this.lap}  ${fmt(this.lastLapMs)}`;
+        this.laps.push(this.lastLapMs);
+        let msgText = `Lap ${this.lap}   ${fmt(this.lastLapMs)}`;
         if (this.bestMs == null || this.lastLapMs < this.bestMs) {
           this.bestMs = this.lastLapMs;
-          msgText += '\nNEW BEST';
+          msgText += '\nNew track record';
           try {
             localStorage.setItem(this.key, String(Math.round(this.bestMs)));
           } catch (e) {
@@ -224,9 +227,12 @@ export class Race {
     const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
     const hitFrame = this.sweepHitsFrame(prev, curr);
     if (hitFrame && (this.lapStartMs != null || this.next !== 0)) {
+      if (this.lapStartMs != null) {
+        this.voided += 1;
+      }
       this.lapStartMs = null;
       this.next = 0;
-      this.flash = { text: 'GATE HIT\nLAP VOID', untilMs: wallMs + 1800 };
+      this.flash = { text: 'Gate touched\nLap void', untilMs: wallMs + 1800 };
     }
     return { passed, hitFrame };
   }
@@ -243,11 +249,8 @@ export class Race {
     return null;
   }
 
-  hudLine(simMs) {
-    const cur = this.lapStartMs != null ? simMs - this.lapStartMs : null;
-    return (
-      `gate ${this.next + 1}/${this.gates.length}  lap ${fmt(cur)}  ` +
-      `last ${fmt(this.lastLapMs)}  best ${fmt(this.bestMs)}`
-    );
+  /* Running lap time on the sim clock, or null before the first gate. */
+  currentLapMs(simMs) {
+    return this.lapStartMs != null ? simMs - this.lapStartMs : null;
   }
 }

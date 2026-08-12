@@ -107,6 +107,17 @@ export class InputManager {
     return null;
   }
 
+  /* Pressed states of the first gamepad's buttons, for menu navigation.
+   * Radios in joystick mode expose their switches here, and a game
+   * controller its face buttons; either can confirm a menu choice. */
+  padButtons() {
+    const gp = this.firstGamepad();
+    if (!gp || !gp.buttons) {
+      return [];
+    }
+    return Array.from(gp.buttons, (b) => Boolean(b && b.pressed));
+  }
+
   /* Calibration wizard state machine, driven from poll(). */
   startCalibration() {
     this.calibration = { stage: 0, holdMs: 0, rest: null };

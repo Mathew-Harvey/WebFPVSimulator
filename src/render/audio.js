@@ -44,6 +44,16 @@ export class MotorAudio {
     this.enabled = false;
     this.master = null;
     this.noiseGain = null;
+    this.level = 0.5; /* mix level, driven by the volume setting */
+  }
+
+  /* Volume from the settings screen, zero to one. */
+  setLevel(v) {
+    this.level = Math.max(0, Math.min(1, v));
+  }
+
+  setEnabled(on) {
+    this.enabled = Boolean(on) && Boolean(this.ctx);
   }
 
   /* Browsers require a user gesture before audio starts. */
@@ -144,7 +154,7 @@ export class MotorAudio {
       return;
     }
     const t = this.ctx.currentTime;
-    const target = this.enabled ? 0.5 : 0.0;
+    const target = this.enabled ? this.level : 0.0;
     this.master.gain.setTargetAtTime(target, t, 0.05);
     if (!this.enabled) {
       return;

@@ -761,3 +761,101 @@ anything.
 `npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
 turn. `git diff --stat vendor/betaflight` empty. `git diff HEAD -- tests/`
 empty.
+
+## Low spec loop, round 2 (round 7 overall): P5, 291.0 MB to 109.8 MB
+
+P5 was the furthest over of the ten budgets, 2.43x, so it went first. The
+fix is not one line, because 232.2 MB of the 291.0 MB was `samples: 4` on
+the composer target and taking that away leaves the frame with no
+antialiasing at all, which is the defect round 5 of the previous loop
+existed to fix. So the pass architecture changed with it.
+
+**The prepass now packs normals and depth into one RGBA8 target.** rg is
+the view space normal's xy, ba is a linear view depth packed to 16 bits. It
+replaces a 32 bit `DepthTexture` plus an RGB normal buffer. Same bytes,
+completely different tap count: the edge pass used to make 11 texture
+fetches per output pixel, 5 of them through a `readDepth` helper, and it
+now makes 6. z is reconstructed as positive from xy, which is what a front
+facing surface has in view space, and the two places the shader reads it
+both want a magnitude.
+
+That 16 bit linear depth is worth stating on its own terms. It is 4 cm per
+code over the whole 0.2 to 2600 m range, uniformly. A 24 bit perspective
+buffer has far more precision than that near the camera and far less past a
+few hundred metres, which is the wrong way round for the open finding about
+mountain silhouettes carrying no ink. Not fixed this round, but the depth
+precision that blocked it is gone.
+
+**Antialiasing now comes out of the edge pass, from fetches it already
+made.** The depth gradient across a silhouette gives the direction; two
+colour taps along it and a 1 2 1 tent resolve it. The ink threshold is
+deliberately high, so the coverage threshold is its own and about a
+twentieth of it: a silhouette too subtle to ink still gets resolved. Both
+ink terms also went from `step` to `smoothstep`, because a binary edge test
+draws a binary line and an aliased ink line on an antialiased silhouette is
+worse than neither.
+
+**The grade pass absorbed the OutputPass.** It applies the sRGB transfer
+itself. The renderer runs with `NoToneMapping`, so the tone mapping half of
+an OutputPass was a no operation, and the pass was costing a fourth full
+resolution pass and a fourteenth texture tap to apply one curve.
+
+**Bloom's thirteen render targets no longer carry depth buffers.** Every
+one is written by a fullscreen quad and none is depth tested; three.js
+gives a render target a depth renderbuffer by default. 7.6 MB.
+
+### Measured, 1920 by 1080, four views
+
+    budget                 before      after     ceiling
+    P3 full res passes          4          3           4
+    P4 taps per pixel          14         10          14
+    P5 render target bytes  291.0 MB  109.8 MB     120 MB
+
+P1, P2, P6, P9 and P10 are unchanged, which is expected: nothing about the
+scene changed. P1 moved by one call in three views, from removing a pass.
+
+At 1600 by 900 the same build measures 86.0 MB.
+
+### Evidence that the colour did not move
+
+The sRGB transfer being folded into the grade pass is the kind of change
+that silently regrades a whole game. Measured on the same patches of the
+same view before and after, `.loop/evidence/r6` against `.loop/evidence/r7`,
+`1080p/04-midcourse.png`:
+
+    patch      before rgb        after rgb
+    sky        183 193 207       183 193 207
+    mountain    93 130 114        93 130 114
+    cloud      192 196 207       191 196 207
+
+Identical on flat areas to within one code on one channel of one patch.
+The grass patches move by one code, which is the antialiasing doing its job
+on the noisiest content in the frame.
+
+### Evidence that the antialiasing is real
+
+`scripts/pixels.js` gained a `walk:` mode, which prints single pixel
+luminances along a line, because G4 is settled by walking an edge and the
+old rectangle mode averages exactly the thing being asked about.
+
+Walking down through the gate crossbar's top edge at x = 1100 in
+`1080p/03-startline.png`, sky 0.519 against gate frame 0.024:
+
+    4x multisampling, round 6   0.519  0.422  0.106  0.024
+    edge pass resolve, round 7  0.519  0.422  0.202  0.056  0.024
+
+Three intermediate values instead of two. The resolve is slightly softer
+than 4x multisampling and it costs 181.2 MB less.
+
+### What went wrong
+
+`renderNormals` has to save and restore the clear colour now, because the
+prepass clears to rgba(0, 0, 1, 0), which unpacks to a normal of zero and a
+depth of exactly 1. The first version wrote
+`renderer.getClearColor(scratch).clone()`, which allocates a `Color` every
+frame and is a P8 violation in the same round that P8 was recorded as
+failing. Caught by reading the diff before committing rather than by any
+check, which is not a system that will keep working.
+
+`npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
+turn. Console clean, 0 errors and 0 warnings, at both resolutions.

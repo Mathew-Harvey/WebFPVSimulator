@@ -116,12 +116,43 @@ function toLinear(u) {
 const args = process.argv.slice(2);
 if (args.length < 2) {
   console.error('usage: node scripts/pixels.js FRAME.png name=x,y,w,h [...]');
+  console.error('       node scripts/pixels.js FRAME.png name=walk:x,y,dx,dy,n');
   process.exit(2);
 }
 const img = decodePng(readFileSync(args[0]));
 console.log(`${args[0]} ${img.width} by ${img.height}`);
+
+function lumAt(x, y) {
+  const i = y * img.width * img.channels + x * img.channels;
+  return 0.2126 * toLinear(img.data[i])
+    + 0.7152 * toLinear(img.data[i + 1])
+    + 0.0722 * toLinear(img.data[i + 2]);
+}
+
+/*
+ * walk: single pixel luminances along a line, which is how G4's "a
+ * reviewer walking any edge must find a real coverage pixel" is settled.
+ * An aliased edge steps from one value to the other in one pixel. An
+ * antialiased one puts at least one intermediate value between them, and
+ * the intermediate has to be a real blend rather than bloom bleed, so the
+ * run is printed rather than summarised.
+ */
 for (const spec of args.slice(1)) {
   const [name, rect] = spec.split('=');
+  if (rect.startsWith('walk:')) {
+    const [x, y, dx, dy, n] = rect.slice(5).split(',').map(Number);
+    const vals = [];
+    for (let i = 0; i < n; i += 1) {
+      const xx = x + dx * i;
+      const yy = y + dy * i;
+      if (xx < 0 || yy < 0 || xx >= img.width || yy >= img.height) {
+        break;
+      }
+      vals.push(lumAt(xx, yy).toFixed(3));
+    }
+    console.log(`${name.padEnd(16)} walk ${x},${y} step ${dx},${dy}: ${vals.join(' ')}`);
+    continue;
+  }
   const [x, y, w, h] = rect.split(',').map(Number);
   let r = 0;
   let g = 0;

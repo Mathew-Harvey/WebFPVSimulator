@@ -1,21 +1,24 @@
 # Handover
 
 Read `CLAUDE.md` first, then this, then `.loop/state.json`, then
-`.loop/tried-and-rejected.md`, then `.loop/blocked.md`.
+`.loop/tried-and-rejected.md`, then `.loop/blocked.md`, then
+`.loop/threshold-disputes.md`.
 
 ## Which loop is running
 
-`prompts/lowspec-aaa-loop.md`. It supersedes the polish loop. The target is
-the graphics and the game world on a **mid range laptop from five years ago
-at 1920 by 1080 and 60 frames per second**, which is an Iris Xe or Vega 8
-integrated part, or an MX450 or GTX 1650 Mobile, on a quad core mobile CPU.
+The world, sound and track loop. Three things have to hold at once: a world
+that makes a stranger believe this is a commercial product and runs on a
+machine with no discrete GPU, a mix somebody would choose to wear headphones
+for, and a real MultiGP course at real MultiGP dimensions under MultiGP
+rules. The G and P items carry over from the low spec loop unchanged. The A
+sound items and the T track items are new.
 
-Rounds are numbered twice in the files, unavoidably: rounds 1 to 5 in
-`PROGRESS.md` are the old polish loop, and the low spec loop's round 1 is
-round 6 overall. `.loop/state.json` carries the overall number.
+Branch: `claude/webfpv-world-sound-track-kdx9vo`, cut from `main`. `main` has
+NOT been fast forwarded; the rubric is not green.
 
-Branch: `claude/webfpv-graphics-low-end-9o165o`. `main` has NOT been fast
-forwarded; the rubric is not green.
+Round numbering: `PROGRESS.md` rounds 1 to 5 are the old polish loop, 6 to 9
+are the low spec loop, and this loop continues the overall count from 10.
+`.loop/state.json` carries the overall number.
 
 ## Container setup, do this first, neither step is optional
 
@@ -27,132 +30,164 @@ forwarded; the rubric is not green.
 Without them check 1 fails for want of a compiler and `npm run verify`
 reports 11 of 13, which looks like a regression and is not one.
 
-## The cost ledger, measured, 1920 by 1080, end of round 8
+There is no PIL and no working numpy or pdfminer in this container. Do not
+spend a round trying to install one. `scripts/pixels.js` decodes PNGs and a
+20 line Node script can decode, crop and cluster one; that is how the
+MultiGP diagram below was measured.
+
+## What round 10 built, and why nothing else
+
+Two rubric sections had no instrument at all, and an unmeasurable rubric
+section is where fabricated numbers come from. Round 10 is instruments only.
+
+**`scripts/audio-probe.js`** launches headless Chromium, imports
+`src/render/audio.js` into `scripts/audio-probe.html` (a blank same origin
+page), builds that exact graph on an `OfflineAudioContext`, drives it through
+the real `update()` from a scripted RPM and airspeed trace, renders it, pulls
+the samples back into Node in 1 MiB base64 chunks, and reports peak sample,
+count of samples at or over full scale, RMS in dBFS, true peak in dBTP at
+four times oversampling, one third octave bands, arbitrary band energies,
+spectral centroid, per channel peak frequencies to sub bin precision,
+amplitude modulation depth at a named frequency per channel and in the mono
+sum, tempo by autocorrelation of spectral flux, and the sample delta at a
+named loop seam against the distribution inside the loop.
+
+    node scripts/audio-probe.js [--trace=NAME] [--seconds=20] [--rate=48000]
+      [--level=0.5] [--blades=3] [--f0=HZ] [--scream=2000,8000]
+      [--carrier=80,600] [--beat=6] [--seam=SEC] [--json=PATH]
+    traces: hover, full, flight, idle, steady:RPM
+
+`src/render/audio.js` grew the seam that makes that work: `attach(ctx)` builds
+the graph on any `BaseAudioContext`, `update(rpm, speed, atTime)` takes the
+time to schedule at, and every node is pushed onto a list so `nodeCount()` is
+counted where the nodes are made. The live path is unchanged in behaviour.
+
+**The aim sidecar.** `scripts/shots.js` writes `NAME.json` beside every
+`NAME.png` recording which gate the race actually wants, its scene index and
+number plate, its distance, its screen position in CSS pixels, the pixel
+height its aperture subtends, its glow gain, and whether it is on screen. New
+page handles in `main.js`: `window.__nextGate()`, `window.__quadScreen()`,
+`window.__setRaceNext(raceIndex)` and `window.__audio`. `__boot()` now also
+returns `worstAudioMs`.
+
+## The cost ledger, measured, 1920 by 1080, round 10
+
+Full table and the reproduction command in `.loop/evidence/r10/ledger.md`.
 
 | # | budget | ceiling | measured | verdict |
 |---|--------|---------|----------|---------|
-| P1 | draw calls | 400 | **705** title attract, 692 title worst azimuth, 236 start line, 288 mid course | FAIL 1.76x |
-| P2 | triangles | 1,200,000 | **1,916,515** title attract, 1,904,447 start line | FAIL 1.60x |
+| P1 | draw calls | 400 | **705** title attract, 691 title worst az, 484 mid course fwd, 288 mid course, 236 start line, 156 empty sky | FAIL 1.76x |
+| P2 | triangles | 1,200,000 | **1,916,515** worst, **1,901,683 with nothing in frame** | FAIL 1.60x |
 | P3 | full res passes | 4 | 3 | PASS |
 | P4 | taps per pixel | 14 | 10 | PASS |
-| P5 | render target bytes | 120 MB | 115.1 MB decimal, 109.8 MiB | PASS |
-| P6 | first interactive frame | 1800 ms | **5122 ms** | FAIL 2.8x |
-| P7 | worst sync block | 50 ms | 23 ms whole frame, 4 ms shell only | CANNOT VERIFY, see below |
-| P8 | allocations per frame | zero | **about 20 at rest, over 100 in flight** | FAIL |
-| P9 | shadow maps | 1 at 2048 or under | 1 at 2048 | PASS |
-| P10 | attribute bytes | 48 MB | **51.2 MB** decimal, plus 7.4 MB of indices | FAIL 1.07x |
-| P11 | settings ladder | 3 levels, measured | **nothing exists** | FAIL |
+| P5 | render target bytes | 120 MB | 115.1 MB decimal, 109.8 MiB, default framebuffer included | PASS |
+| P6 | first interactive frame | 1800 ms | **3337 ms** at 1080p, 2677 at 900p | FAIL 1.85x |
+| P7 | worst sync block | 50 ms | 16.8 over 152 frames, 53.6 over 50 in another run | CANNOT VERIFY |
+| P8 | allocations per frame | zero | round 9's list stands less one array literal | FAIL |
+| P9 | shadow maps | 1 at 2048 | 1 at 2048 | PASS |
+| P10 | attribute bytes | 48 MB | **51.2 MB** plus 7.4 MB of indices | FAIL 1.07x |
+| P11 | settings ladder | 3 levels | nothing exists | FAIL |
+| P12 | audio nodes | 64 | 28, context live at 44100 Hz | PASS |
+| P13 | audio ms per frame | 2 ms | 0.40 ms over 152 frames, context live | PASS |
 
-At 1600 by 900: P5 90.2 MB, which derives 115.1 MB for 1080p, exactly the
-direct figure. Everything else is resolution independent and matches.
+At 1600 by 900: P1 703 title attract, P2 1,916,483, P6 2677 ms, everything
+else identical. Console clean at both, errors 0 warnings 0.
 
-**P7 is CANNOT VERIFY, not PASS.** Every figure published for it, including
-round 7's 29.4 ms, was sampled over about ten frames. Round 8's runs are 37
-and 38 frames. Ten or forty frames is not a worst case statistic on any
-hardware, and the render side is CPU rasterisation in this container and
-says nothing about a real GPU. To close it honestly a human has to run
-`window.__boot().worstBlockMs` on a real Iris Xe or Vega 8 at 1920 by 1080
-over at least 600 frames of actual flight.
+**P2 has no triangle culling and the proof is one line.** Camera parked on
+the racing line pointed at the zenith, nothing in frame: 1,901,683
+triangles, 99.2 percent of the worst view. Repeat that test every round.
 
-## The G items, all FAIL or CANNOT VERIFY at round 8
+## The audio baseline, and the numbers behind the word screaming
 
-An art director reviewed `.loop/evidence/r7` against G1 to G10 and returned
-REJECT on every item. Its measurements, which are the starting point and
-should not be re-derived:
+Measured on the `full` trace, 20 s, 48 kHz, in
+`.loop/evidence/r10/audio-full.json`:
 
-- **G3, ranked the most expensive to the player.** In the mid course view
-  the next gate peaks **0.711** and a cloud peaks **0.745**: the target is
-  not the brightest thing in the frame, and the required headroom is +0.08.
-  The gate after next peaks 0.722, louder than the gate the pilot is
-  actually flying at. Only the start line view passes, one of six.
-- **G2 is inverted at the far end.** Ridge ring 0 at 560 m measures 0.195
-  against fogged ground at 400 m measuring 0.352: the further layer is
-  0.157 **darker**. `ridgeMats` in `scene.js` is
-  `MeshBasicMaterial({fog: false})` while the terrain fogs to `HORIZON`
-  with `FOG_FAR` 780, so a 560 m ridge is exempt from a fog that fully
-  applies to ground at 400 m. The authored ring ladder itself is fine and
-  all four rings do appear in a frame; it is anchored about 0.2 too low.
-- **G1.** 21.4 percent of sampled columns have the ridge base within 0.06
-  of the ground in front of it with no ink in the gap. Worst measured
-  Delta 0.003. At 900p it is 24.2 percent.
-- **G5.** One exact colour, rgb(93,130,114), covers 14.8 percent of the mid
-  course frame with no light model at all. The threshold is 2 percent.
-- **G6.** `makeHeightField` multiplies all relief by
-  `clamp((d - 30) / 70)`, so height is exactly zero everywhere within 30 m
-  of the racing line. Confirmed live: `__trackPoint(u).ground` returns 0 at
-  u = 0.30, 0.60 and 0.80. The corridor is a mathematical plane and the
-  terrain never occludes any part of the course.
-- **G9.** `water()` computes depth as `1.0 - length(vLocal) / uRadius`,
-  literally distance from the disc centre, which is the thing G9 forbids by
-  name, and foam is a concentric ring at 90 percent of that radius rather
-  than the land intersection. From above it reads as a target logo.
-- **G4.** Six artefacts, the two most visible being ink crossing the middle
-  of an unbroken tree canopy with a 0.26 bright rim beside a 0.019 ink
-  stroke, and a flat blue slab, rgb(46,97,111), floating above the horizon
-  at frame right with straight top and left edges.
-- **G8.** The horizon is 136 instances of one `ConeGeometry` family. Seven
-  silhouette classes exist but only two unique instances in the world.
-- **G7 CANNOT VERIFY** from stills. What is settled from the code: there is
-  no particle system anywhere in `src/`, so the dust G7 requires does not
-  exist.
+- **A1 margin is -22.01 dB against a bar of +12**, so 34.0 dB the wrong way.
+  Scream band 2000 to 8000 Hz at -30.75 dB, blade pass band 355 to 447 Hz at
+  -52.76 dB. The spectrum's peak is the 1259 Hz third octave band at
+  -24.99 dB, which is exactly where `RPM_TO_HZ_SCALE = 2.9` puts the
+  oscillator: 8589 / 60 x 3 x 2.9 = 1245 Hz. Spectral centroid 1909 Hz.
+- **A2 fails by construction.** The tone is 2.9 times the blade pass
+  frequency because a constant in the file says so. A2 wants the fundamental
+  to BE the blade pass frequency within 1 percent at three throttle
+  settings. Deleting the constant makes the quad sound an octave and a half
+  too low, because the plant runs at about a third of a real 5 inch quad's
+  RPM for reasons argued in PROGRESS.md. **The fix is a real motor model
+  with harmonics of the true blade pass frequency, not a different
+  constant**, and that is the next A item.
+- **A3**: no sample at or over full scale, true peak -11.80 dBTP which
+  passes, RMS -23.86 dBFS which is 3.9 dB below the -20 to -14 band.
+- A4 to A8 and A11 all FAIL because none of it exists yet.
 
-## Round 9 did the value ladder. What it left open.
+The probe is calibrated. Predicted carriers from the file's own constants
+were 1315.701 and 1305.000 Hz; measured 1315.701 and 1305.001 Hz on a
+524288 point window at 0.0916 Hz per bin. A4 needs 0.2 Hz. The band sum
+normalisation was checked against the time domain: bands total -23.9 dB,
+direct RMS -23.86 dBFS, same quantity in the same unit.
 
-`FOG_FAR` is 2200, the four ridge rings are re-anchored to 0.49, 0.56, 0.63
-and 0.70 with a light model carried in hue at equal luminance, and
-`GLOW_LADDER` is [0.95, 0.42, 0.24]. Details and the two dead ends are in
-`PROGRESS.md` and `.loop/tried-and-rejected.md`. Read the second one before
-touching the ridge colours again: a luminance split for the light model
-does not fit in the available range, and solving the right luminances at an
-orange hue turns the whole horizon into sand dunes.
+## The track. UTT 3 Bessel Run is buildable and the layout is recovered
 
-**G3 is still FAIL and the reason is a harness gap, not an art gap.** The
-mid course capture parks the camera at u = 0.30 while the race's next gate
-is still gate 1, so the bright ring in that frame is some later gate on the
-glow ladder and not the target. Any G3 measurement taken from a parked
-camera is measuring the wrong object. The fix is to have `shots.js` record
-`window.__race.next` and the screen position of that gate alongside each
-capture, or to add a handle that sets the next gate to whichever gate the
-parked camera is looking at. Do that before claiming G3 either way.
+This was expected to be blocked and it is not. `curl` downloads a MultiGP
+guide PDF, and the layout page is a raster inside the PDF's own image
+XObjects which this repository's PNG decoder can measure. Full derivation,
+provenance, pixel measurements and the scale checked three independent ways
+are in **`.loop/evidence/r10/utt3-layout.md`**. Summary:
 
-## The next round
+UTT 3 Bessel Run needs "4 standard MultiGP gates and 1 standard MultiGP
+start/finish timing gate", allows no flags, is traversed in the sequence 1 to
+5, and fits in 100 by 40 yards. Origin at gate 3, x along the long axis,
+z across the short axis:
 
-1. **P1 and P2**, which are the only budgets over that a player feels every
-   frame, and whose mechanisms are all known:
-   - `grassField` in `scene.js` sets `frustumCulled = false` on one mesh
-     spanning 900 m: 552,000 triangles submitted unconditionally, twice,
-     which is 57.6 percent of the triangle budget. Chunk it spatially with
-     real bounding spheres. A reviewer pointed the camera at empty sky and
-     still measured 1,902,533 triangles, 99.3 percent of the worst case.
-   - `makeBaker().flush()` merges all static scenery into one mesh per
-     material, and the merged bounding spheres span the 1700 m world, so
-     the frustum test is always true. Bucket by spatial cell as well.
-   - The eight gates are about 224 meshes and 636 of 698 draws carry 0.5
-     percent of the triangles. Bake the static parts, but hoist `frameMat`,
-     `accent` and the pip material out of `gate()` first: they are created
-     per gate, and the pips use a fresh `MeshBasicMaterial` each, so the
-     baker would bucket one per pip.
-   - Merge the 72 flag cloths; their animation is closed form in index and
-     time so it belongs in a vertex shader.
-2. **P10**, 51.2 MB against 48. 25.8 MB is the grass, whose colour
-   attribute is three 32 bit floats per vertex where a normalised byte
-   triple would do.
-3. **P8**, about 20 allocations per frame at rest and over 100 in flight.
-   The reviewer gave every line; the dominant one is `src/game/race.js:223`,
-   an array literal per gate per sweep sample inside the collision loop.
-4. **P6**, 5122 ms. `grassField` and `terrain` evaluate distance to all 181
-   curve samples per blade and per vertex.
-5. **P11**, which does not exist at all. `DEFAULTS` in `src/ui/ui.js` has no
-   quality key and nothing in `scene.js` or `post.js` reads one.
-6. **G6**, the flat corridor, which is the largest remaining art item and
-   the most invasive: `makeHeightField` multiplies all relief by
-   `clamp((d - 30) / 70)` and the gate base heights, the spawn height and
-   the crash check all read that field.
-7. **G9**, the water, whose depth is literally distance from the disc
-   centre.
-8. **G4's remaining five artefacts** and the grass half of the
-   antialiasing, which is measurably better than round 7 and still
-   measurably worse than multisampling.
+    gate 1, timing      x =   0, z = -14, opening faces along x
+    gate 2              x = +28, z =   0, opening faces along z
+    gate 3              x =   0, z =   0, opening faces along z
+    gate 4              x = -21, z =   0, opening faces along z
+    gate 5              x = -28, z =   0, opening faces along z
+
+The standard gate opening is **1.524 m square**. The current `gate()` builds
+a clear span of 3.50 m, read out of the torus at runtime, which is 2.30 times
+regulation. That single error is most of why the world has never read at the
+right scale.
+
+The direction arrows on the diagram are below the resolution of the extracted
+raster. The sequence is stated in words and the topology is fixed by
+MultiGP's own racing line render, which together determine the direction
+through every gate up to one global choice of which way round the loop runs.
+**Do not write a direction into the build as though it were read off an
+arrow.** Say where it came from.
+
+## The next round, in priority order
+
+1. **The gate, rebuilt to regulation, and the track rebuilt as UTT 3.** This
+   is one item, not two, because the gate rebuild is also the moment to bake
+   the gates and kill most of P1. It changes T1, T2, T3, T4, T6, G3 and G6
+   at once, and it is the single change that most changes what a player
+   experiences. What it touches: `gate()` in `scene.js`, the gate placement
+   loop, `GATE_HALF_W`, `GATE_H`, `RING_Y` and `RING_R` in
+   `src/game/race.js` which currently restate the old geometry as constants,
+   and the curve that `view.curve` builds. Hoist `frameMat`, `accent` and the
+   pip material out of `gate()` before baking: they are created per gate and
+   the pips use a fresh `MeshBasicMaterial` each, so the baker would bucket
+   one per pip. Assert the aperture at runtime and publish the measured
+   number, which is what `gate()`'s returned `aperture` is now for.
+2. **P2, the triangle budget.** `grassField` sets `frustumCulled = false` on
+   one mesh spanning 900 m: 552,000 triangles submitted unconditionally and
+   again for the geometry prepass. `makeBaker().flush()` merges all static
+   scenery into one mesh per material whose bounding spheres span the 1700 m
+   world, so the frustum test is always true. Chunk both spatially with real
+   bounding spheres.
+3. **The motor model, for A1, A2, A7 and A8.** Harmonics of the true blade
+   pass frequency, a stated blade count, and a spectrum whose energy sits
+   where a quad's does rather than in the 1259 Hz band. Everything needed to
+   prove it exists now.
+4. **A5, the lofi drum and bass bed**, then A4 the binaural tone, then A7
+   ducking and A11 the per stem levels. All measurable with the probe.
+5. **P10**, 51.2 MB against 48. 25.8 MB is the grass, whose colour attribute
+   is three 32 bit floats per vertex where a normalised byte triple would do.
+6. **P8**, then **P6**, then **P11** which does not exist at all.
+7. **G6 and T7 together**, which are one decided design and not a conflict:
+   flat inside the course footprint, relief and occlusion outside it.
+8. **G9**, the water, whose depth is literally distance from the disc centre.
 
 ## The instruments
 
@@ -161,59 +196,84 @@ parked camera is looking at. Do that before claiming G3 either way.
              move:X,Y eval:EXPR until:EXPR expect:EXPR
 
 `until:` and `expect:` exist because a fixed wait is not evidence: a frame
-takes about 120 ms on this software rasteriser, so `tap:Enter wait:400` can
-capture the state the player was in BEFORE the key.
+takes about 120 ms here at 900p and about 520 ms at 1080p in flight, so
+`tap:Enter wait:400` can capture the state the player was in BEFORE the key.
+Every `shot:` now also writes `NAME.json` with the aim sidecar.
 
     node scripts/pixels.js FRAME.png name=x,y,w,h ...
     node scripts/pixels.js FRAME.png name=walk:x,y,dx,dy,n
     node scripts/pixels.js FRAME.png name=stair:x0,y0,w,rows,level
 
-`walk:` prints single pixel luminances along a line. `stair:` prints the
-sub pixel position at which a near vertical edge crosses a level, row by
-row, and the RMS of the second difference of that sequence. Use `stair:`
-for any claim about antialiasing: the first difference is the edge's slope,
-which is whatever the geometry is, and the second difference is the
-staircase. Walking ACROSS an edge cannot tell a blur from a resolve, and
-that mistake has already been made once here.
+Use `stair:` for any claim about antialiasing. Walking ACROSS an edge cannot
+tell a blur from a resolve, and that mistake has already been made once here.
+
+    node scripts/audio-probe.js ...   see above
 
 Page handles, all harness only, nothing in the shell reads them:
-`window.__budget(name)` returns the whole ledger for one instrumented
-frame. `window.__boot()` returns first frame time and worst block.
-`window.__setCam(px,py,pz,tx,ty,tz)` parks the camera, `__setCam(null)`
-gives it back. `window.__trackPoint(u)` returns a point on the racing line.
-Also `__renderStats`, `__ui`, `__race`, `__mode`, `__screen`.
+`__budget(name)`, `__boot()`, `__setCam(px,py,pz,tx,ty,tz)` and
+`__setCam(null)`, `__trackPoint(u)`, `__nextGate()`, `__quadScreen()`,
+`__setRaceNext(raceIndex)`, `__audio`, `__renderStats`, `__ui`, `__race`,
+`__mode`, `__screen`.
 
 **`__setCam` only takes effect on the NEXT animation frame.** A sweep that
 sets the camera and reads `__budget` synchronously measures the same view
 every time. Always await two animation frames.
 
-The full ledger command block is at the top of `.loop/evidence/r6/ledger.md`.
+**A capture run must click the page before it can measure P12 or P13.**
+Browsers need a user gesture before audio starts, and `update()` returns
+immediately on a null context, so without a click the instrument reports the
+cost of an early return. Assert
+`__audio.ctx.state === 'running'` before any audio claim.
+
+The full ledger command block is at the top of
+`.loop/evidence/r10/ledger.md`.
 
 ## Sharp edges
 
-- Reviewer subagents have write access to the tree. One edited
-  `src/main.js` while reviewing it in an earlier loop, and one deleted and
-  restored tracked files under `tmp/` in round 8. Run `git status` after
-  every review round.
-- A lit material on geometry with no normal attribute washes the whole
-  world to flat cream with a completely clean console. Check for normals
-  before putting a lit material on anything.
-- The renderer runs with `NoToneMapping`, so no colour can exceed 1.0.
+- Reviewer subagents have write access to the tree. One edited `src/main.js`
+  while reviewing it, and one deleted and restored tracked files under
+  `tmp/` in round 8. Run `git status` after every review round.
+- **The old `mid course` capture view looks the wrong way down the course.**
+  It aims along `+tangent`; the craft flies along `-tangent`. The target gate
+  is 126.3 m behind that camera and off screen. It is kept in the ledger for
+  comparability with rounds 6 to 9 only. Use `mid course forward` for
+  anything about the target.
+- `down:KeyW wait:900 up:KeyW` does not launch the craft at this container's
+  frame rate. Only about two frames of key handling happen in 900 ms and W
+  ramps the throttle while held. The `07-inflight` capture in
+  `.loop/evidence/r10` is really the start line and is labelled as such in
+  the ledger. Hold the key much longer, or drive the throttle through a
+  handle.
+- `__quadScreen()` is meaningless with the camera inside the airframe: the
+  0.25 m span sits inside the 0.2 m near plane and returns NaN, which
+  `JSON.stringify` turns into null. T6 needs a parked external camera with
+  `visible: true`.
+- A lit material on geometry with no normal attribute washes the whole world
+  to flat cream with a completely clean console. Check for normals before
+  putting a lit material on anything.
+- The renderer runs with `NoToneMapping`, so no colour can exceed 1.0. Any
+  plan that wants a real highlight either works below that ceiling or
+  changes tone mapping deliberately, in its own round, with its own review.
 - `grass.receiveShadow` is a no operation: the grass is a `ShaderMaterial`
-  computing its own sun term, so three.js sets the flag and nothing reads
-  it. Measured, blades inside a cast shadow are 0.125 against 0.132
-  outside it while the ground under the same shadow is 0.012.
+  computing its own sun term, so three.js sets the flag and nothing reads it.
 - `getShadowMask()` is in `shadowmask_pars_fragment`, not
-  `shadowmap_pars_fragment`, and reads a bool named `receiveShadow` that
-  the renderer only declares for its own materials.
+  `shadowmap_pars_fragment`, and reads a bool named `receiveShadow` that the
+  renderer only declares for its own materials.
 - `celMaterial` has no `customProgramCacheKey` while doing per material
   string surgery in `onBeforeCompile`. Unproven hazard, still sitting there.
-- `EffectComposer.setSize` takes CSS pixels and multiplies by the pixel
-  ratio it captured at construction. A reviewer called this a HiDPI bug; it
-  is not. Read the r160 source in the container's CDN cache before
-  believing otherwise.
+- `EffectComposer.setSize` takes CSS pixels and multiplies by the pixel ratio
+  it captured at construction. A reviewer called this a HiDPI bug; it is not.
+  Read the r160 source in the container's CDN cache before believing
+  otherwise.
 - The composer's read buffer is `renderTarget2`, not 1: `RenderPass` draws
   the scene there. `post.js` disables the depth buffer on the other one,
   guarded by counting the parity of the passes that swap.
 - Bulk `str.replace` edits hit every occurrence. One replace of a vertex
   shader tail hit the water shader as well as the grass one.
+- `src/game/race.js` restates the gate geometry as its own constants,
+  `GATE_HALF_W`, `GATE_H`, `RING_Y`, `RING_R`. Change the gate without
+  changing those and the scoring aperture silently stops matching the thing
+  on screen.
+- MultiGP artwork is deliberately not vendored. It is under an unstated
+  licence and D5 forbids adding an external asset without a justification.
+  The build needs the dimensions, and those are written down.

@@ -125,3 +125,33 @@ The first set used a sun side at hue 0.13, which is orange, and the whole
 horizon rendered as sand dunes. Every number in the ledger was correct and
 the world had become a desert. The numbers cannot tell you this and a frame
 can, in one look.
+
+## World, sound and track loop, round 10 (round 10 overall)
+
+**Measuring P13 without waking the audio context.** The first version of the
+ledger run reported `worstAudioMs` at 0.40 ms with `audio.ctx` still null.
+`update()` returns on the first line when the context is null, so the number
+was the cost of an early return, not the cost of scheduling. A headless run
+supplies no user gesture, so the browser never starts audio and nothing in
+the output says so. The run now clicks the page and asserts
+`__audio.ctx.state === 'running'` before any capture. The number came out the
+same, which is luck and not vindication: any instrument that can return a
+plausible value for a subsystem that is switched off will eventually be
+believed.
+
+**Assuming the UTT diagram PDFs could not be read in this container.** The
+previous loop recorded this as a likely blocker and the prompt for this loop
+carried it forward. It is wrong. `WebFetch` cannot render a PDF, but `curl`
+downloads one, and the layout page is a raster image sitting in the PDF's own
+image XObjects behind a `FlateDecode` or `DCTDecode` filter. Twenty lines of
+Node, reusing the PNG decoder already in `scripts/pixels.js`, extracts and
+measures it. The whole of UTT 3 Bessel Run came out this way. Do not install
+poppler or PIL or pdfminer to do this: none of the three works in this
+container and the extraction does not need them.
+
+**Trusting `String.fromCharCode.apply` over a whole channel.** The probe
+transfers rendered samples from the page as base64 of the raw Float32 bytes.
+Building that string a byte at a time over a 20 second stereo render is
+7.7 MB of single character concatenation, and applying `fromCharCode` to the
+whole buffer at once blows the argument limit. It is chunked at 8192 bytes
+inside the page and at 1 MiB across the CDP boundary.

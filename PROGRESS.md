@@ -705,3 +705,59 @@ is dead code; the mountains are unlit flat colour, which is what makes
 their values reliable and also means the largest mass in the frame has no
 warm light and no cool shadow; and the gate frame's navy does not band, so
 the structure reads as a cutout.
+
+## Low spec loop, round 1 (round 6 overall): measure the hardware contract
+
+The new loop's ten proxy budgets were all unmeasured except draw calls and
+triangles, and one of those two was being quoted for the wrong view. This
+round built the instrument and published the ledger. No renderer behaviour
+was changed.
+
+New: `src/render/budget.js`, reachable as `window.__budget()`. It
+instruments one real frame by patching `renderer.setRenderTarget` and
+`renderer.render` for its duration, so the pass list, the resolution each
+pass ran at, the fragment shader that was bound, and every render target
+the frame touched all come from the frame that ran rather than from a
+reading of the source. `window.__boot()` reports first frame time and the
+worst synchronous frame block; `window.__setCam` parks the camera for a
+named view, because the ledger has to be published for a mid course view
+and flying there at four frames per second is not a capture.
+
+The full ledger is in `.loop/evidence/r6/ledger.md`. Headline, 1920 by
+1080: P1 693 in the worst view against 400, P2 1.92M against 1.20M, P3 4
+against 4, P4 14 against 14, P5 291.0 MB against 120 MB, P6 4977 ms
+against 1800, P7 21.6 ms against 50, P8 at least three allocations per
+frame against zero, P9 one 2048 map, P10 48.8 MB against 48 MB. Six of ten
+fail.
+
+### What went wrong, twice, in my own instrument
+
+**The render target walker reported 116 MB when the real figure was 291
+MB.** It deduplicated targets on `rt.uuid`, and `WebGLRenderTarget` has no
+`uuid`, so every target after the first was skipped as a duplicate of
+`undefined`. Rewritten to collect the targets from the binds themselves,
+which also catches targets this file has never heard of: the shadow map and
+the eleven bloom mips were both being missed by the hand written list.
+
+**The tap counter reported 7 for the outline pass where the true cost is
+11.** It counted `texture2D` in the source. Five of the outline's eleven
+fetches are one line inside `readDepth`, which `main` calls five times. P4
+is a bandwidth budget and bandwidth is paid per fetch, so the counter now
+resolves helper functions before counting.
+
+**The twelve azimuth title sweep first reported an identical 306 draw calls
+at every azimuth**, which would have been a spectacular finding about
+culling if it had been true. `__setCam` is applied by the frame loop, and
+the sweep read the budget synchronously without letting a frame run, so all
+twelve reads used one camera. With two animation frames between each move
+and its read, the true range is 237 to 693. The real no culling finding is
+in P2 instead, where the triangle count moves 0.6 percent across the same
+orbit that moves draw calls by 2.9x.
+
+All three were caught by the numbers disagreeing with something already
+known, which is the argument for publishing the ledger before changing
+anything.
+
+`npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
+turn. `git diff --stat vendor/betaflight` empty. `git diff HEAD -- tests/`
+empty.

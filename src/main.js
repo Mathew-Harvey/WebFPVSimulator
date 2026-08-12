@@ -39,6 +39,7 @@
 import * as THREE from 'three';
 import { buildScene } from './render/scene.js';
 import { buildComposer } from './render/post.js';
+import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
@@ -79,6 +80,11 @@ async function fetchBytes(url) {
   }
   return new Uint8Array(await res.arrayBuffer());
 }
+
+/* P6: navigation to the first interactive frame. Stamped here rather than
+ * inside boot so it covers module evaluation as well as boot's own work,
+ * and read back through window.__boot. */
+const BOOT_START = performance.now();
 
 async function boot() {
   const canvas = document.getElementById('view');
@@ -336,9 +342,13 @@ async function boot() {
   qSpawn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), startYaw);
 
   let prevWall = performance.now();
+  /* Harness camera override, six numbers: position then look at target. */
+  let camOverride = null;
+  const camLookAt = new THREE.Vector3();
 
   function frame(nowWall) {
     requestAnimationFrame(frame);
+    const blockStart = performance.now();
     const dt = Math.min(nowWall - prevWall, 100);
     prevWall = nowWall;
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
@@ -476,14 +486,28 @@ async function boot() {
       view.camera.lookAt(orbitTarget);
     }
 
-    view.updateShadowFocus(pCurr);
+    /* Harness camera. The cost ledger has to be published for three views,
+     * and two of them are not views the shell puts the camera in: the
+     * ledger's mid course view is a point on the racing line, and flying
+     * there at this container's frame rate is not a capture. Nothing in
+     * the shell writes camOverride, and the check is a property read on a
+     * scalar, so it allocates nothing. */
+    if (camOverride) {
+      view.camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
+      view.camera.up.set(0, 1, 0);
+      view.camera.lookAt(camLookAt.set(camOverride[3], camOverride[4], camOverride[5]));
+    }
+
+    view.updateShadowFocus(camOverride ? view.camera.position : pCurr);
     /* Propwash strength for the grass: mean rotor speed against hover. */
     const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
     view.updateWind(nowWall * 0.001, pCurr, Math.min(1.3, meanRpm / 9000));
     /* info is accumulated across the whole frame (prepass, shadow map,
      * composer passes) and read back through __renderStats. */
     view.renderer.info.reset();
+    const renderStart = performance.now();
     post.render();
+    const renderMs = performance.now() - renderStart;
     renderStats.calls = view.renderer.info.render.calls;
     renderStats.triangles = view.renderer.info.render.triangles;
 
@@ -542,7 +566,32 @@ async function boot() {
     window.__shellReady = true;
     window.__mode = mode;
     window.__screen = ui.screen;
+
+    /* P7. The whole frame callback is one synchronous block on the main
+     * thread, and blockMs is its length. renderMs is the part of it inside
+     * post.render, split out because in a software rasterised container
+     * that part is rasterisation on the CPU and says nothing about a real
+     * GPU, while blockMs minus renderMs is the shell's own work and is
+     * hardware independent. Two scalars, written not allocated: P8 forbids
+     * a new object here. */
+    const blockMs = performance.now() - blockStart;
+    if (frames > 2) {
+      if (blockMs > worstBlockMs) {
+        worstBlockMs = blockMs;
+      }
+      if (blockMs - renderMs > worstShellMs) {
+        worstShellMs = blockMs - renderMs;
+      }
+    }
+    frames += 1;
+    if (firstFrameMs < 0) {
+      firstFrameMs = performance.now() - BOOT_START;
+    }
   }
+  let worstBlockMs = 0;
+  let worstShellMs = 0;
+  let firstFrameMs = -1;
+  let frames = 0;
   /* Render statistics for the harness and the frame budget gate. */
   const renderStats = { calls: 0, triangles: 0 };
   view.renderer.info.autoReset = false;
@@ -551,6 +600,24 @@ async function boot() {
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;
   window.__race = race;
+  /* The cost ledger. Measured on demand from the harness, never per
+   * frame. __setCam parks the camera for a named view; __setCam(null)
+   * gives it back to the shell. */
+  window.__setCam = (a, b, c, d, e, f) => {
+    camOverride = a == null ? null : [a, b, c, d, e, f];
+  };
+  window.__trackPoint = (u) => {
+    const p = view.curve.getPointAt(u);
+    const t = view.curve.getTangentAt(u);
+    return { x: p.x, y: p.y, z: p.z, tx: t.x, tz: t.z, ground: view.height(p.x, p.z) };
+  };
+  window.__boot = () => ({
+    firstFrameMs,
+    worstBlockMs,
+    worstShellMs,
+    frames,
+  });
+  window.__budget = (name) => measureBudget(view, post, { view: name });
   requestAnimationFrame(frame);
 }
 

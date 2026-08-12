@@ -344,6 +344,9 @@ export function buildComposer(renderer, scene, camera) {
     outline.uniforms.uResolution.value.set(bw, bh);
   }
 
+  /* composer and normalTarget are exposed for the cost ledger in
+   * budget.js, which has to read the real targets to answer P5. Nothing in
+   * the shell touches them. */
   return {
     render() {
       renderNormals();
@@ -353,5 +356,7 @@ export function buildComposer(renderer, scene, camera) {
     outline,
     bloom,
     grade,
+    composer,
+    normalTarget,
   };
 }

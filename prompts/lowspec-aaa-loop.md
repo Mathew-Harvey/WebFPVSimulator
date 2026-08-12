@@ -1,4 +1,4 @@
-# Adversarial loop: a AAA looking world that runs on a potato
+# Adversarial loop: a AAA looking world on a five year old laptop
 
 You are running unattended on the repository at
 github.com/Mathew-Harvey/WebFPVSimulator, branch
@@ -47,17 +47,31 @@ every one. Measure it or do not write it down.
 
 ---
 
-## THE POTATO CONTRACT
+## THE HARDWARE CONTRACT
 
-Target machine, worst case, and it is not negotiable:
+Minimum target machine, and it is not negotiable:
 
-- Integrated graphics of the Intel UHD 620 or AMD Vega 3 class. No discrete
-  GPU. Shared memory bandwidth in the region of 15 to 25 GB/s, shared with
-  the CPU.
-- A low power laptop CPU, one usable core for the main thread.
-- **1920 by 1080 at 60 frames per second**, and **1280 by 720 at 60** on the
-  weakest setting, with `devicePixelRatio` clamped to 1.
-- A browser tab, not a kiosk. Other tabs exist.
+**A mid range laptop from five years ago**, which in 2026 means roughly:
+
+- Graphics: Intel Iris Xe or AMD Vega 8 integrated, or an entry discrete
+  part of the GeForce MX450 or GTX 1650 Mobile class. Take the integrated
+  case as the floor: about 1.5 to 2 teraflops, and 50 to 60 GB/s of memory
+  bandwidth shared with the CPU.
+- CPU: a quad core mobile part of the i5-10300H or Ryzen 5 4600H class.
+- Panel: **1920 by 1080 at 60 frames per second**, `devicePixelRatio`
+  clamped to 1. That resolution is the minimum spec, not the stretch goal.
+- A browser tab, not a kiosk. Other tabs exist, and the GPU is shared with
+  the compositor.
+
+A note on where these numbers came from, because it matters for the Prime
+Directive: an earlier draft of this loop targeted an Intel UHD 620 class
+machine with 15 to 25 GB/s of bandwidth, and the budgets below were about
+three times tighter. **The human owning this project corrected the target to
+a mid range five year old laptop**, and the budgets were re-derived from that
+hardware. That is a specification change made by the human, and it is the
+only way a budget in this document may ever move. You do not get to relax
+one because your build does not fit. If you think a budget is wrong, it goes
+in `.loop/threshold-disputes.md` and a human rules on it.
 
 You cannot measure frames per second honestly in this container: it has
 software rasterisation only. Saying otherwise is fabricating evidence, and
@@ -66,39 +80,43 @@ software rasterisation only. Saying otherwise is fabricating evidence, and
 
 ### Hard budgets, per rendered frame, measured in this container
 
-| # | Budget | Ceiling | How to measure |
-|---|---|---|---|
-| P1 | Draw calls, **worst view, not best** | **150** | `window.__renderStats().calls` in the title view, the start line view, and a mid course view |
-| P2 | Triangles submitted, summed over every pass | **450,000** | `window.__renderStats().triangles`, same three views |
-| P3 | Full resolution post passes | **2** | count passes in `src/render/post.js` that run at full width and height |
-| P4 | Post chain texture taps per output pixel, summed | **8** | read the shaders and count `texture2D` calls on full res passes |
-| P5 | Render target bytes at 1920 by 1080 | **48 MB** | sum width x height x bytes per pixel x samples over every target, including the composer's, the prepass, the bloom mips and the shadow map |
-| P6 | Time from navigation to the first interactive frame | **1200 ms** | `performance.timing`, or `Date.now()` around `boot()`, measured in the harness |
-| P7 | Longest synchronous main thread block after load | **50 ms** | instrument the frame loop and log the worst gap, or reason from the code and prove it |
-| P8 | Steady state allocation per frame | **zero new objects in the render loop** | read the loop; every `new`, every object literal, every array literal, every spread in a per frame path is a finding |
-| P9 | Shadow map resolution and count | **one map, 1024 or smaller** | `src/render/scene.js` |
-| P10 | Vertex attribute bytes resident | **24 MB** | sum every geometry's attribute buffers |
+| # | Budget | Ceiling | Derivation | How to measure |
+|---|---|---|---|---|
+| P1 | Draw calls, **worst view, not best** | **400** | Draw calls are CPU bound through three.js. A 2020 quad core in Chrome holds a few thousand, but the frame also runs physics at 1 kHz on the same thread, so a third of the practical ceiling | `window.__renderStats().calls` in the title view, the start line view, and a mid course view |
+| P2 | Triangles submitted, summed over every pass | **1,200,000** | Iris Xe pushes a few million simple triangles per frame at 60. This leaves room for the cel shader and the shadow pass while forcing real culling | `window.__renderStats().triangles`, same three views |
+| P3 | Full resolution post passes at 1080p | **4** | One RGBA16F full res read plus write at 1080p is 33 MB, so 2 GB/s at 60 Hz. Four passes is 8 GB/s, about a sixth of the integrated floor's bandwidth | count passes in `src/render/post.js` that run at full width and height |
+| P4 | Post chain texture taps per output pixel, summed over full res passes | **14** | The outline pass alone is 10, and it earns them; this leaves headroom for a grade and an antialiasing resolve and nothing else | read the shaders and count `texture2D` calls |
+| P5 | Render target bytes at 1920 by 1080 | **120 MB** | Enough for two RGBA16F composer targets, the prepass with depth, a half res bloom chain and one shadow map. NOT enough for 4x multisampling on an RGBA16F target at 1080p, which alone is 132 MB, so that choice has to be argued against a post resolve | sum width x height x bytes per pixel x samples over every target |
+| P6 | Time from navigation to the first interactive frame | **1800 ms** | A cold tab on a mechanical era laptop; anything past two seconds reads as broken | `performance.timing`, or `Date.now()` around `boot()`, in the harness |
+| P7 | Longest synchronous main thread block after load | **50 ms** | Three dropped frames is the most a pilot will not feel. This one is hardware independent and does not move | instrument the frame loop and log the worst gap, or prove it from the code |
+| P8 | Steady state allocation per frame | **zero new objects in the render loop** | Free to achieve, and garbage collection pauses are exactly what P7 forbids | read the loop; every `new`, object literal, array literal or spread in a per frame path is a finding |
+| P9 | Shadow map resolution and count | **one map, 2048 or smaller** | 2048 costs 8.4 MB as depth and is affordable on this class. Two maps are not | `src/render/scene.js` |
+| P10 | Vertex attribute bytes resident | **48 MB** | At 50 GB/s a fully resubmitted 48 MB of attributes is 2.9 GB/s at 60 Hz, which is the ceiling for something that should mostly be culled anyway | sum every geometry's attribute buffers |
 
 Where the code stands as this loop opens: P1 is at 237 in the flight view
-and **701 in the title view**, P2 is at **1.90M**, P5 and P6 are unmeasured,
-P7 was measured once at **2195 ms of synchronous load**. So P1 is 4.7x over
-in the worst view and P2 is 4.2x over. Closing those without losing the
-frame is the work.
+and **701 in the title view**, so 1.75x over in the worst view. P2 is at
+**1.90M**, 1.6x over. P5 is unmeasured and probably over, because the
+composer target currently carries `samples: 4` on an RGBA16F target. P6 was
+measured once at **2195 ms**, over. P7 was **2195 ms of synchronous load**,
+44x over, though that is load rather than steady state. The rest are
+unmeasured. Measuring all ten and publishing the ledger is round one.
 
 **Culling and level of detail must be proven, not asserted.** A build where
 draw calls and triangles do not change when the camera turns has no culling.
 Publish the three view numbers every round; that is the proof.
 
-**The frame must be judged at 1280 by 720 as well as 1600 by 900.** A world
-that only reads at high resolution fails: capture both, look at both.
+**The frame must be judged at 1920 by 1080, because that is the minimum
+spec's panel**, and at 1600 by 900 for the faster capture loop. A world that
+only reads at one resolution fails: capture both, look at both.
 
 ### The budgets are not permission to build a smaller world
 
 Breath of the Wild renders a continent on a Nintendo Switch: roughly one
 teraflop, 25 GB/s of shared bandwidth, 900p at 30 frames per second. The
-target here is a single valley at 60, on about half that compute. If that
-console can hold a world together on that hardware, so can this, and the
-reason it can is technique, not headroom:
+minimum machine here has more compute than that and about twice the
+bandwidth, and it has to draw one valley. If that console can hold a
+continent together on that hardware, there is no excuse for this looking
+thin, and the reason it can is technique, not headroom:
 
 - One shading model for everything, so the whole world is a handful of
   materials and a handful of programs. Not a bespoke shader per prop.
@@ -169,9 +187,10 @@ passes, from artefacts.
   real shoreline where it meets land, and depth cued by depth rather than by
   distance from its own centre. The sky has structure that does not read as
   a rendering artefact from any camera angle.
-- G10. **It looks like this at 720p on the low setting.** Every item above,
-  judged again on a 1280 by 720 capture with the cheapest settings the
-  product offers.
+- G10. **It looks like this at 1080p on the lowest setting.** Every item
+  above, judged again on a 1920 by 1080 capture with the cheapest settings
+  the product offers, because 1080p is the minimum spec's panel and the
+  lowest setting is what that machine will run.
 
 ### P. The potato contract
 
@@ -218,7 +237,7 @@ Artefacts, not claims.
   Chromium. **Assert the state every capture claims** with `until:` and
   `expect:`; a fixed wait is not evidence, because a frame takes about
   120 ms here and a keypress followed by `wait:400` can capture the state
-  before the key. Capture at 1600x900 **and** 1280x720.
+  before the key. Capture at 1600x900 **and** 1920x1080.
 - **Look at the screenshots.** Every real rendering bug in this project's
   history was found by looking at a frame and not one by reading the code.
   A washed out world, a flat cream plane, ink drawn across a cloud, a dusty
@@ -289,8 +308,9 @@ Already argued in `.loop/blocked.md`:
 
 - Absolute frame rate on the target hardware. This container is a software
   rasteriser. The proxy budgets P1 to P10 are the contract precisely
-  because the real number is unmeasurable here. A human must confirm 60
-  frames per second on an actual integrated GPU. Never claim it yourself.
+  because the real number is unmeasurable here. A human must confirm 1080p
+  at 60 frames per second on an actual five year old mid range laptop.
+  Never claim it yourself.
 - Real Betaflight blackbox logs from a physical 6S five inch quad.
 - Stick to photon latency.
 - Real radio hardware for the Gamepad path.
@@ -324,7 +344,8 @@ worth knowing immediately:
 **Two consecutive rounds in which every G item, every P budget and every D
 item is PASS by adversarial review, no reviewer raises a new FAIL,
 `npm run verify` reports 12 of 13, and the console is clean at both
-resolutions.**
+resolutions.** The minimum spec is a mid range five year old laptop at 1080p
+and 60 frames per second, and P1 to P11 are how that is held to account here.
 
 Blocked items with a written argument do not prevent done, but they must be
 listed at the top of the final handover, in plain language, as the things a

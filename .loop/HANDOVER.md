@@ -203,18 +203,33 @@ resolve those.
 
 ## The loop to run next
 
-**`prompts/potato-aaa-loop.md` supersedes the polish loop.** It keeps the
+**`prompts/lowspec-aaa-loop.md` supersedes the polish loop.** It keeps the
 Prime Directive and the evidence discipline and changes the target: the
-graphics and the game world, on a machine with no discrete GPU, 1080p at 60
-and 720p at 60 on the low setting. Absolute frame rate stays unmeasurable
-here, so the contract is ten proxy budgets that ARE measurable in this
-container, published as a ledger for three camera views every round.
+graphics and the game world, on a **mid range laptop from five years ago at
+1920 by 1080 and 60 frames per second** as the minimum spec. That is an
+Iris Xe or Vega 8 integrated part, or an MX450 or GTX 1650 Mobile, on a
+quad core mobile CPU.
 
-Where the code sits against those budgets as that loop opens: draw calls
-237 in the flight view but **701 in the title view against a ceiling of
-150**, triangles **1.90M against 450,000**. Both are technique problems, not
-ambition problems, and the merger that fixes most of the draw calls is
-already sitting in scene.js unused by 276 of the scene's 317 meshes.
+Absolute frame rate stays unmeasurable in this container, which is a
+software rasteriser, so the contract is ten proxy budgets that ARE
+measurable here, each with its derivation written down, published as a
+ledger for three camera views every round.
+
+Where the code sits against them as that loop opens: draw calls 237 in the
+flight view but **701 in the title view against a ceiling of 400**,
+triangles **1.90M against 1.20M**, load **2195 ms against 1800 ms**, and
+render target bytes unmeasured and probably over because the composer target
+carries `samples: 4` on an RGBA16F target, which at 1080p is 132 MB on its
+own against a 120 MB ceiling for everything. All technique problems, and the
+merger that fixes most of the draw calls is already in scene.js, unused by
+276 of the scene's 317 meshes.
+
+One earlier version of that file targeted a much weaker machine, an Intel
+UHD 620 class laptop, with budgets about three times tighter. The human
+owning the project corrected the hardware target, and the budgets were
+re-derived from the new floor. That is the only way a budget in that
+document moves: a human changing the spec, never an instance finding its
+build does not fit.
 
 ## The immediate next step
 

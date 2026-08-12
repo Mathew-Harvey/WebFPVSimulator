@@ -1,14 +1,16 @@
 {
   "note": "Rubric is the A, B, C, D list in the polish loop prompt. The older P/F/T/G gate names from the first loop live in PROGRESS.md history and in threshold-disputes.md; they are a different rubric and are not tracked here.",
-  "round": 5,
+  "round": 7,
   "attempted": {
     "1": "A1, the product shell: title, how to fly, settings, pause, results, and a flight display replacing the developer HUD",
     "2": "A4 and A5, plus every defect the two round 1 reviewers raised",
     "3": "B5 focal hierarchy and B1 value bands, plus B4 for the grass and the two artefacts with a named mechanism",
     "4": "Both round 3 reviewers' lists: the shadow map rendered twice, ridge value collapse, gate glow ladder, cloud clipping, unlit flowers, the meadow's straight edge, two ink mechanisms, camera near and prepass depth precision",
-    "5": "The round 4 review's list: the composer had no antialiasing at all, ring 0 sat inside the tree canopy band, clouds still clipped at 1.000 and held 63 percent of the frame's bright area, and the title scrim crushed the lower two thirds"
+    "5": "The round 4 review's list: the composer had no antialiasing at all, ring 0 sat inside the tree canopy band, clouds still clipped at 1.000 and held 63 percent of the frame's bright area, and the title scrim crushed the lower two thirds",
+    "6": "Low spec loop round 1: build the instrument and publish the cost ledger for P1 to P10 across three views at two resolutions. No renderer behaviour changed.",
+    "7": "Low spec loop round 2: P5, the furthest over budget at 2.43x. Packed the prepass to one RGBA8 target, moved antialiasing into the edge pass, folded the OutputPass into the grade, dropped depth buffers from bloom targets."
   },
-  "verify": "12 of 13 in every round, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched: git diff HEAD -- tests/ is empty across the whole loop.",
+  "verify": "12 of 13 in every round including 6 and 7, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched: git diff HEAD -- tests/ is empty across the whole loop.",
   "rubric": {
     "A1": "pass, reviewer 1 round 1",
     "A2": "pass, reviewer 1 round 1",
@@ -58,5 +60,83 @@
     "C1 to C5 untouched: no latency measurement, no ground effect, no impact feedback, no particles anywhere in the render, audio is still a sawtooth per motor"
   ],
   "consecutive_all_green": 0,
-  "done_condition": "Not met. Definition of done is two consecutive rounds with every rubric item PASS by adversarial review. The best any round has managed is A1, A2 and A3 PASS with B1, B2, B4, B5 and B6 FAIL. main has NOT been fast forwarded."
+  "done_condition": "Not met. Definition of done is two consecutive rounds with every rubric item PASS by adversarial review. The best any round has managed is A1, A2 and A3 PASS with B1, B2, B4, B5 and B6 FAIL. main has NOT been fast forwarded.",
+  "loop": "lowspec-aaa-loop, prompts/lowspec-aaa-loop.md. The polish loop A/B/C rubric is superseded by the G/P/D rubric; A/B items are kept below for history.",
+  "ledger_1080p": {
+    "measured": "round 7, src/render/budget.js, one instrumented frame per view",
+    "P1_draw_calls": {
+      "ceiling": 400,
+      "title_attract": 705,
+      "title_worst_azimuth": 692,
+      "start_line": 236,
+      "mid_course": 288,
+      "verdict": "FAIL 1.76x"
+    },
+    "P2_triangles": {
+      "ceiling": 1200000,
+      "title_attract": 1916515,
+      "title_worst_azimuth": 1916379,
+      "start_line": 1904447,
+      "mid_course": 1905119,
+      "verdict": "FAIL 1.60x, and moves 0.6 percent across a title orbit that moves draw calls 2.9x, which is the proof that nothing culls triangles"
+    },
+    "P3_fullres_passes": {
+      "ceiling": 4,
+      "measured": 3,
+      "verdict": "PASS"
+    },
+    "P4_fullres_taps": {
+      "ceiling": 14,
+      "measured": 10,
+      "verdict": "PASS"
+    },
+    "P5_render_target_MB": {
+      "ceiling": 120,
+      "measured": 109.8,
+      "at_1600x900": 86.0,
+      "verdict": "PASS"
+    },
+    "P6_first_frame_ms": {
+      "ceiling": 1800,
+      "measured": 4574,
+      "verdict": "FAIL 2.5x, container inflated by the CDN proxy, mechanism is 67 million distance to track evaluations at load"
+    },
+    "P7_worst_block_ms": {
+      "ceiling": 50,
+      "measured": 29.4,
+      "shell_only": 1.3,
+      "verdict": "PASS on the measurable part, render side unmeasurable on a software rasteriser"
+    },
+    "P8_allocations_per_frame": {
+      "ceiling": 0,
+      "measured": "at least three: input.drain() array, race.update() result object, ui.setOsd() argument literal",
+      "verdict": "FAIL"
+    },
+    "P9_shadow_maps": {
+      "ceiling": "one, 2048 or under",
+      "measured": "one DirectionalLight at 2048x2048",
+      "verdict": "PASS"
+    },
+    "P10_attribute_MB": {
+      "ceiling": 48,
+      "measured": 48.8,
+      "verdict": "FAIL 1.6 percent over. 25.8 MB of it is the grass field."
+    },
+    "P11_settings_ladder": {
+      "measured": "not built",
+      "verdict": "FAIL"
+    }
+  },
+  "rubric_G": {
+    "G1": "not yet reviewed under this loop",
+    "G2": "not yet reviewed under this loop",
+    "G3": "not yet reviewed under this loop",
+    "G4": "not yet reviewed under this loop",
+    "G5": "not yet reviewed under this loop",
+    "G6": "not yet reviewed under this loop",
+    "G7": "not yet reviewed under this loop",
+    "G8": "not yet reviewed under this loop",
+    "G9": "not yet reviewed under this loop",
+    "G10": "not yet reviewed under this loop"
+  }
 }

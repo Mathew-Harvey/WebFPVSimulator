@@ -1,7 +1,7 @@
 # Handover
 
-Written during round 4 so the baton exists before it is needed. Update it
-at the end of every round. If you are picking this up cold, read CLAUDE.md
+Written during round 4 and updated at the end of it. Update it at the end
+of every round. If you are picking this up cold, read CLAUDE.md
 first, then this, then .loop/state.json, then .loop/tried-and-rejected.md.
 
 ## Where the loop is
@@ -15,8 +15,45 @@ the rubric is not green, so the merge condition is not met.
 - Round 2: their entire list. A4 and A5 fixed plus fifteen defects.
 - Round 3: the frame. B5 focal hierarchy, B1 value bands, B4 for the grass,
   and the two artefacts whose mechanism was named. Reviewed by an art
-  director (verdict pending at the time of writing) and a performance
-  engineer (REJECT, findings below).
+  director and a performance engineer, both REJECT, all five B items FAIL
+  with measured evidence.
+- Round 4: the top of both those lists. Shadow map rendered twice, ridge
+  value collapse, gate glow ladder, cloud clipping, unlit flowers, the
+  meadow's straight edge, two ink mechanisms, camera near plane and prepass
+  depth precision. One art and QA reviewer was running when this session
+  ended; ITS VERDICT IS NOT IN. Read it as unreviewed.
+
+### Round 4 numbers, for comparison against whatever you change next
+
+    view                              calls   triangles
+    flight, parked on the start line    237       1.90M
+    title, attract camera               701       1.92M
+
+Round 3 was 310 and 642. Always state the view with the number: the
+reviewer caught me reporting 310 as though it were a property of the
+renderer when it was a property of one camera azimuth.
+
+Measured in .loop/evidence/r4/03-flight.png with scripts/pixels.js:
+sky 0.379, grass 0.277, near ridge 0.108, second ridge 0.192, trees 0.102,
+gate posts 0.086, cloud 0.787. The gate ring core measured 0.912 in round 3
+and the ring is unchanged since.
+
+### The round 4 bug worth knowing about
+
+Putting a lit material on the flowers washed the entire world to flat fog
+cream at 0.811 luminance, with ZERO console errors, no shader compile
+failure, and normal draw counts. Cause: the flower geometry had no normal
+attribute, which was harmless while the material was unlit; a lit material
+reads the missing attribute as (0,0,0), normalize of that is NaN, and on
+this software rasteriser the NaN spread out of 2600 quads across the frame.
+
+Five bisection steps, four wrong hypotheses along the way (the prepass
+layer mask, the shadow autoUpdate change, the 24 bit depth texture, a
+program cache collision between two cel materials). If you put a lit
+material on any geometry in this project, check it has normals first. And
+note that celMaterial has no customProgramCacheKey while it does per
+material string surgery in onBeforeCompile; that did not cause this bug but
+it is a real hazard sitting there unproven.
 
 `npm run verify` has reported 12 of 13 in every round, run in the same turn
 as the claim. The single red is `yaw-coupling`, structurally 0.00 for a
@@ -63,10 +100,10 @@ Its correction of my own claim first, because it matters for honesty:
 account for were not unaccounted: the shadow map is rendered TWICE per
 frame, so each new shadow caster costs two draws, not one.
 
-Ranked, with its estimated savings. Nothing here is done yet except the
-localStorage defer:
+Ranked, with its estimated savings. Items 1 and 10 and the localStorage
+defer are DONE in round 4; the rest are not:
 
-1. **Duplicate shadow map render.** `renderNormals()` in `src/render/post.js`
+1. **DONE in round 4. Duplicate shadow map render.** `renderNormals()` in `src/render/post.js`
    calls `renderer.render` and `shadowMap.autoUpdate` defaults true, so the
    shadow map is rebuilt for a prepass that overrides every material with
    `MeshNormalMaterial` and samples no shadow map. Bracket the prepass with
@@ -106,7 +143,7 @@ localStorage defer:
    all 181 track samples with a `Math.hypot` each: about 67 million
    distance evaluations. Build a coarse distance to track field once and
    sample it.
-10. **16 bit depth in the outline prepass against a 0.04 to 2600 m range**
+10. **DONE in round 4. 16 bit depth in the outline prepass against a 0.04 to 2600 m range**
     is why the ink has to fade out by 50 m. Raise `camera.near` to 0.2, the
     camera sits inside a 15 cm airframe so it buys nothing, and use 24 bit
     depth. This is a B2 fix as much as a performance one.
@@ -117,8 +154,8 @@ localStorage defer:
 
 ## What the art reviewers have already told us and is still open
 
-See `.loop/state.json` under `open_from_reviewers_not_yet_fixed`. The
-biggest is B6: `makeHeightField` forces the terrain flat within 30 m of
+See `.loop/state.json` under `open_from_reviewers_not_yet_fixed`, which is
+current as of the end of round 4. The biggest is B6: `makeHeightField` forces the terrain flat within 30 m of
 every point on the circuit, so the whole flight area is a plane and there
 is nothing between a 250 mm quad and a 200 m mountain. Then the unlit
 water and flowers, the rim term with no sun term, the tree canopy hulls,
@@ -138,6 +175,21 @@ CLAUDE.md says to think about before doing.
 `.loop/blocked.md` has the four: real blackbox logs, absolute frame rate on
 a discrete GPU, stick to photon latency, and a real radio. A human has to
 resolve those.
+
+## The immediate next step
+
+1. Read the round 4 reviewer's verdict if it landed after this session
+   ended. Its findings are binding. Look in the task output or re-run the
+   same review brief; the brief is in the git history of this session's
+   commits and in the shape of the ones in PROGRESS.md.
+2. Then the two cheapest large wins are both in the open list: bake the 204
+   static gate meshes and merge the 72 flag cloths (77 percent of the draw
+   calls, with the merger already in scene.js), and give the water a light
+   model and a warm band (the last named B4 failure).
+3. B6's root cause, the flat 30 m corridor in makeHeightField, is the
+   single biggest remaining art item and the most invasive: gate base
+   heights, the spawn height and the crash check all read that field, so
+   change it with a capture of the start line before and after.
 
 ## Sharp edges
 

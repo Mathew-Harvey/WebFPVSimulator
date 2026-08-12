@@ -515,3 +515,116 @@ threshold untouched, git diff of tests/ empty. Capture run with two state
 assertions passing, console errors 0, warnings 0. Frames in
 .loop/evidence/r3, luminance table above reproducible with
   node scripts/pixels.js .loop/evidence/r3/02-gate.png sky=200,60,40,40
+
+## Polish loop round 4: the reviewers' frame list, and a NaN with no error
+
+Two round 3 reviewers, an art director and a performance engineer, both
+REJECT. B1, B2, B4, B5 and B6 all FAIL with measured evidence. This round
+is the top of that list.
+
+### The performance reviewer corrected my own numbers
+
+Two corrections worth more than the fixes:
+
+- "310 draw calls" is one camera azimuth, the spawn frame. The attract
+  camera, which is a shipped view, measures 642. A draw call figure without
+  the view stated is not a measurement.
+- The 40 calls round 3 could not account for were fully accounted for: the
+  shadow map is rendered TWICE per frame, because renderNormals calls
+  renderer.render and shadowMap.autoUpdate defaults true, so every new
+  shadow caster costs two draws. The prepass overrides every material with
+  one that samples no shadow map, so the first render is pure waste.
+
+Fixed: the prepass brackets itself with shadowMap.autoUpdate false. Flight
+view 310 to 237 draw calls, a 24 percent cut, output bit identical.
+
+### What else changed
+
+- Ridge rings. Measured, all four rings, the far valley floor and the trees
+  on them came out at 0.079 linear luminance, 34.6 percent of the whole
+  mountain band at ONE value, because a cel shaded cone's facets mostly
+  face away from the sun and land in the ramp's shadow band. Aerial
+  perspective was inverted: a 560 m ridge read four times darker than
+  fogged ground at 400 m in front of it. The rings are unlit flat colours
+  now, authored at 0.10, 0.14, 0.29 and 0.50 against a 0.38 sky, and jitter
+  went from 2.9 to 9.2 degrees because 34 evenly spaced cones read as a
+  picket fence.
+- The gate ladder. With every gate but the target at 0.12 glow, the gate
+  after next measured 0.064 against grass at 0.077: darker than the ground
+  it stands in. The pilot had one target and no forward line. The next
+  three gates now step 0.52, 0.34, 0.20 with everything else at 0.08.
+- Clouds. Measured 255 255 253, luminance 0.999, clipped white, and one
+  cloud carried 78 percent of the frame's bright area against the gate's
+  24155 pixels. Their sun side term is down from 0.28 to 0.12.
+- Flowers. Unlit MeshBasicMaterial, so byte identical in sun and shadow,
+  and the palette held pink and violet in a meadow the code comment calls
+  warm. Cel shaded now, warm petals only.
+- The meadow ended on a ruler straight line across the frame, because 84
+  percent of blades sat inside a hard 22 m radius of the circuit. Radius is
+  now a cubed uniform out to 42 m, dense at the track and thinning.
+- Ink. Two artefacts with named mechanisms. The meadow carried a three
+  pixel ink line across the full width of the frame with the same colour on
+  both sides: a surface seen edge on has a huge depth gradient of its own
+  and a flat threshold inks it, so the threshold is now divided by how
+  square on the surface is, using the view space normal the prepass already
+  writes. And rectangles of ink floated in the grass with nothing inside
+  them, because grass was excluded from the prepass so the ink pass drew
+  the silhouettes of gate legs the grass stood in front of: grass is on its
+  own layer now and is stamped into the prepass depth as pure black, a
+  value no encoded normal can take, so the outline pass recognises a grass
+  pixel and refuses to ink it or anything within one texel of it.
+- Camera near 0.04 to 0.2 and the prepass depth texture from 16 to 24 bit.
+  The camera sits inside a 150 mm airframe so 4 cm bought nothing, and at
+  16 bits over a 0.04 to 2600 m range the mid ground quantised to metres,
+  which is why the ink had to be faded out by 50 m.
+- The best lap write to localStorage moved off the flight frame.
+
+### What went wrong: a NaN with a clean console
+
+Putting a lit material on the flowers turned the entire world into flat fog
+cream. Every cel surface, the terrain included, came out at 0.811 linear
+luminance. Zero console errors, zero warnings, no shader compile failure,
+draw calls and triangles all normal.
+
+It took five bisection steps to find, and the intermediate hypotheses were
+all wrong: the layer mask bookkeeping in the prepass, the shadow map
+autoUpdate change, the 24 bit depth texture, a program cache collision
+between two cel materials. The layer mask rewrite survives anyway because
+saving and restoring the raw mask is simply better than rebuilding it with
+enable and disable calls.
+
+The cause: the flower geometry has no normal attribute. That was harmless
+while the material was unlit. A lit material reads the missing attribute as
+(0,0,0), normalize of that is NaN, and on this software rasteriser the NaN
+spread out of 2600 quads across the whole frame. Fixed by giving the
+petals real normals, all straight up, which is what a horizontal quad has.
+
+The lesson is about the harness, not the shader: a clean console proves
+nothing about a frame. Only the frame does. The bisection only worked
+because scripts/pixels.js could put a number on "the ground is the wrong
+colour", and because scripts/shots.js could hide one object at a time and
+re-measure.
+
+### Cost, with the view stated
+
+    flight, parked on the start line   237 calls   1.90M triangles
+    title, attract camera              701 calls   1.92M triangles
+
+Round 3 was 310 and 642 respectively. The flight view is down 24 percent
+from the shadow map fix. The attract view is up 9 percent and I have not
+accounted for it, which by this round's own standard means it is not
+finished. The triangles are up because the grass now also draws in the
+prepass, 552000 of them, and it is not frustum culled.
+
+One mistake worth recording: the ridge cones were first given a
+MeshBasicMaterial per cone, and the scenery merger buckets by material, so
+136 cones became 136 draw calls instead of four. Caught by measuring the
+count, not by reading the diff. Four shared materials now.
+
+### Evidence
+
+npm run verify in the same turn as this entry: 12 of 13, yaw-coupling the
+only red, threshold untouched, git diff of tests/ empty. Console clean on
+every capture. Frames in .loop/evidence/r4. Measured in 03-flight.png:
+sky 0.379, grass 0.277, near ridge 0.108, second ridge where visible 0.192,
+trees 0.102, gate posts 0.086, cloud 0.787.

@@ -93,6 +93,13 @@ const OutlineShader = {
       vec2 texel = 1.0 / uResolution;
       vec4 base = texture2D(tDiffuse, vUv);
 
+      /* Grass pixels: stamped black in the prepass, a value no encoded
+       * normal can take. Ink is suppressed on them and within one texel of
+       * them, so blades are not outlined and nothing is outlined through
+       * them. */
+      vec3 n0raw = texture2D(tNormal, vUv).xyz;
+      float grass = step(length(n0raw), 0.06);
+
       float d0 = readDepth(vUv);
       // Roberts cross over depth, and a normal difference for creases the
       // depth pass cannot see (a fold where both faces are equidistant).
@@ -110,14 +117,25 @@ const OutlineShader = {
 
       // Scale the depth threshold with distance or the whole horizon
       // turns into outline. Skip the sky entirely.
-      float distScale = 1.0 + d0 * 260.0;
+      /* A surface seen edge on has a huge depth gradient of its own, and a
+       * flat threshold inks it: the meadow carried a three pixel ink line
+       * across the full width of the frame, with the same colour on both
+       * sides of it. Divide the threshold by how square on the surface is,
+       * using the view space normal the prepass already wrote. */
+      vec3 nCentre = normalize(n0raw * 2.0 - 1.0);
+      float facing = max(abs(nCentre.z), 0.12);
+      float distScale = (1.0 + d0 * 260.0) / facing;
       float de = step(uDepthBias * distScale, depthEdge);
       // Crease lines are a near field effect. Past a short distance they
       // turn low poly scenery into a wire mesh, so fade them out early
       // and leave silhouettes to the depth term alone.
       float nearness = 1.0 - smoothstep(0.010, 0.055, d0);
       float ne = step(uNormalBias, normalEdge) * nearness;
-      float edge = clamp(max(de, ne), 0.0, 1.0) * uStrength;
+      float grassNear = max(
+        max(step(length(n1 * 0.5 + 0.5), 0.06), step(length(n2 * 0.5 + 0.5), 0.06)),
+        max(step(length(n3 * 0.5 + 0.5), 0.06), step(length(n4 * 0.5 + 0.5), 0.06))
+      );
+      float edge = clamp(max(de, ne), 0.0, 1.0) * uStrength * (1.0 - max(grass, grassNear));
       // never draw on the sky, and let very distant geometry go clean
       edge *= step(d0, 0.999) * (1.0 - smoothstep(0.16, 0.42, d0));
 
@@ -205,8 +223,18 @@ export function buildComposer(renderer, scene, camera) {
     magFilter: THREE.NearestFilter,
   });
   normalTarget.depthTexture = new THREE.DepthTexture(w, h);
-  normalTarget.depthTexture.type = THREE.UnsignedShortType;
+  /* 24 bit, not 16. At 16 bits over a 0.2 to 2600 m range the mid ground
+   * quantises to metres and the outline cannot resolve a silhouette past
+   * about 500 m. */
+  normalTarget.depthTexture.type = THREE.UnsignedIntType;
   const normalMaterial = new THREE.MeshNormalMaterial();
+  /* Grass is stamped into the prepass with this: pure black, which is not a
+   * value any encoded normal can take, so the outline pass can recognise a
+   * grass pixel and refuse to ink it while still using the depth the grass
+   * wrote. Without the depth, the ink pass drew the silhouettes of gate legs
+   * and tree trunks that the grass was standing in front of, as rectangles
+   * floating in the meadow with nothing inside them. */
+  const grassMaskMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -253,15 +281,40 @@ export function buildComposer(renderer, scene, camera) {
     const prevBg = scene.background;
     const prevOverride = scene.overrideMaterial;
     const prevFog = scene.fog;
+    const prevAutoClear = renderer.autoClear;
     scene.background = null;
     scene.fog = null;
-    scene.overrideMaterial = normalMaterial;
-    camera.layers.disable(1);
+    /* The prepass overrides every material with one that samples no shadow
+     * map, so rebuilding the shadow map for it is pure waste: measured, 74
+     * of 310 draw calls and 113260 of 1465708 triangles per frame, because
+     * the map was being rendered twice. Output is bit identical. */
+    const prevShadowAuto = renderer.shadowMap.autoUpdate;
+    renderer.shadowMap.autoUpdate = false;
     renderer.setRenderTarget(normalTarget);
+
+    /* The layer mask is saved and restored as a raw value rather than
+     * rebuilt with enable and disable calls. Rebuilding it is how the whole
+     * world vanished from the colour pass once already: the prepass left the
+     * camera looking at nothing but the inside of the sky dome, and the
+     * frame came out as flat cream below the horizon. */
+    const prevMask = camera.layers.mask;
+
+    /* Pass one: everything that inks, as view space normals. Layer 0 only. */
+    scene.overrideMaterial = normalMaterial;
+    camera.layers.mask = 1 << 0;
     renderer.clear();
     renderer.render(scene, camera);
+
+    /* Pass two: the grass, black, into the same depth buffer. Layer 2. */
+    scene.overrideMaterial = grassMaskMaterial;
+    camera.layers.mask = 1 << 2;
+    renderer.autoClear = false;
+    renderer.render(scene, camera);
+
+    renderer.autoClear = prevAutoClear;
     renderer.setRenderTarget(null);
-    camera.layers.enable(1);
+    camera.layers.mask = prevMask;
+    renderer.shadowMap.autoUpdate = prevShadowAuto;
     scene.overrideMaterial = prevOverride;
     scene.background = prevBg;
     scene.fog = prevFog;

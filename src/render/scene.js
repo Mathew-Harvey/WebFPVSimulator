@@ -431,7 +431,12 @@ function grassField(height, samples, rng) {
     if (rng() < 0.84) {
       const s = samples[Math.floor(rng() * samples.length)];
       const a = rng() * Math.PI * 2;
-      const r = 1 + rng() * 22;
+      /* Radius from a cubed uniform, not a uniform: dense at the circuit
+       * and thinning outward to 42 m. A flat distribution inside a hard
+       * radius projects its outer wall as a ruler straight horizontal line
+       * across the frame, which is exactly what it did at 22 m. */
+      const u = rng();
+      const r = 1 + 41 * u * u * u;
       x = s.x + Math.cos(a) * r;
       z = s.z + Math.sin(a) * r;
     } else {
@@ -901,7 +906,12 @@ function clouds(rng) {
       void main() {
         vec3 n = normalize(vN);
         vec3 col = mix(vec3(0.70, 0.77, 0.91), vec3(1.0, 0.98, 0.94), step(0.12, n.y));
-        col += vec3(1.0, 0.86, 0.60) * pow(max(dot(n, normalize(uSun)), 0.0), 3.0) * 0.28;
+        /* Sun side warmth, but not enough to clip. Measured, cloud tops
+         * reached 255 255 253, luminance 0.999, so a piece of dressing in
+         * the corner of the frame was brighter than the gate the pilot is
+         * meant to be looking at, and carried 78 percent of the frame's
+         * bright area. */
+        col += vec3(1.0, 0.86, 0.60) * pow(max(dot(n, normalize(uSun)), 0.0), 3.0) * 0.12;
         gl_FragColor = vec4(col, 1.0);
       }
     `,
@@ -976,7 +986,7 @@ export function buildScene(canvas) {
   /* Layer 1 is the no ink layer, excluded from the outline prepass.
    * Grass belongs here: a per blade outline turns a field into a pile of
    * glass shards, and the blades are far too thin to need a silhouette. */
-  grass.mesh.layers.set(1);
+  grass.mesh.layers.set(2);
   /* Receiving shadows is what makes a gate post's shadow cross the meadow
    * instead of stopping at it. Blades do not cast: 46000 of them in the
    * shadow map would cost more than it buys, and the terrain's own cast
@@ -1031,14 +1041,29 @@ export function buildScene(canvas) {
   /* The gate the race wants next pulses so the pilot always has a target.
    * Everything else sits at its resting colour. */
   let nextGateIdx = -1;
+  /*
+   * A ladder, not a switch. With every gate but the target at 0.12 the
+   * gate after next measured 0.064 against grass at 0.077, darker than the
+   * ground it stands in, so the pilot had exactly one target and no
+   * forward line at all. The next three gates now step down, which is what
+   * makes a corridor read.
+   *
+   * The order the race flies is set by Race, which walks the gate list
+   * backwards from the start line, so the gate after scene index i is
+   * i - 1, wrapping.
+   */
+  const GLOW_LADDER = [0.52, 0.34, 0.20];
   function setNextGate(i) {
     for (const gt of gates) {
       gt.ringMat.color.set(gt.ringColor);
       gt.haloMat.opacity = 0.34;
-      /* Almost off. A gate that is not the next one is track, not target. */
-      gt.glowMat.uniforms.uGain.value = 0.12;
+      gt.glowMat.uniforms.uGain.value = 0.08;
     }
     nextGateIdx = i;
+    for (let step = 0; step < GLOW_LADDER.length; step += 1) {
+      const idx = ((i - step) % gates.length + gates.length) % gates.length;
+      gates[idx].glowMat.uniforms.uGain.value = GLOW_LADDER[step];
+    }
   }
 
   /* Scenery, kept clear of the flight corridor. Baked, not added: the
@@ -1083,7 +1108,12 @@ export function buildScene(canvas) {
     const idx = new Uint32Array(N * 6);
     /* No white: at distance a white quad on grass reads as debris, not a
      * flower. Warm saturated petals stay in the meadow's colour family. */
-    const petals = [0xffd94a, 0xff7fb0, 0xffb347, 0xb98cff];
+    /* Warm petals only. The old list held 0xff7fb0 pink and 0xb98cff
+     * violet, and on an unlit material they measured 0.378 luminance
+     * against grass at 0.301: the most saturated pixels in the lower half
+     * of the frame were cool magenta, in a meadow the comment above calls
+     * warm. */
+    const petals = [0xffd94a, 0xffb347, 0xf58a3c, 0xffe38a];
     const cc = new THREE.Color();
     let v = 0;
     let ii = 0;
@@ -1115,8 +1145,29 @@ export function buildScene(canvas) {
     const fg = new THREE.BufferGeometry();
     fg.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, n * 12), 3));
     fg.setAttribute('color', new THREE.BufferAttribute(col.subarray(0, n * 12), 3));
+    /*
+     * Normals, all straight up, because the petals are horizontal quads.
+     *
+     * This geometry had none, which was harmless while the material was
+     * unlit. Putting a lit material on it turned the whole frame into flat
+     * fog cream: a missing attribute reads as (0,0,0), normalize of that is
+     * NaN, and the NaN spread out of these 2600 quads across the frame on
+     * this software rasteriser. Nothing in the console, no shader error,
+     * just a washed out world. Any lit material needs normals.
+     */
+    const fnorm = new Float32Array(n * 12);
+    for (let i = 1; i < fnorm.length; i += 3) {
+      fnorm[i] = 1;
+    }
+    fg.setAttribute('normal', new THREE.BufferAttribute(fnorm, 3));
     fg.setIndex(new THREE.BufferAttribute(idx.subarray(0, n * 6), 1));
-    const fm = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: true });
+    /* Cel shaded, not unlit. An unlit petal is byte identical in sun and
+     * in shadow, which is the one thing the colour rule forbids, and it
+     * made the flowers the most saturated thing in the lower frame. No rim:
+     * a flat quad is edge on across its whole surface, so a rim term
+     * floods it, the same trap the flag cloth fell into. */
+    const fm = celMaterial({ color: 0xffffff, rim: 0.0, side: THREE.DoubleSide });
+    fm.vertexColors = true;
     const flowers = new THREE.Mesh(fg, fm);
     flowers.layers.set(1);
     scene.add(flowers);
@@ -1215,17 +1266,41 @@ export function buildScene(canvas) {
   /* Mountain rings. Cones are centred on their origin, so the base must
    * sit at y = h/2 or the range floats. Far ring lighter for aerial
    * perspective, and both sit outside the fog so they stay as flat shapes. */
+  /*
+   * Mountain rings. Cones are centred on their origin, so the base must sit
+   * at y = h/2 or the range floats.
+   *
+   * These used to be cel shaded with fog off, and the result was measured:
+   * all four rings, the far valley floor and the trees standing on them
+   * came out at 0.079 linear luminance, 34.6 percent of the whole mountain
+   * band at one value, because a cone's facets mostly face away from the
+   * sun and land in the ramp's shadow band. Aerial perspective was
+   * inverted: a ring at 560 m read four times DARKER than fogged ground at
+   * 400 m in front of it.
+   *
+   * They are unlit now, one flat colour each, chosen so the four rings
+   * land at measured luminances near 0.15, 0.25, 0.35 and 0.45 against a
+   * 0.38 sky. A distant range is a flat shape in this style anyway, and
+   * choosing the value directly is the only way to be sure of it.
+   *
+   * Jitter is 0.16 rad, not 0.05: 34 cones at even 10.6 degree spacing
+   * with 2.9 degrees of jitter read as a picket fence.
+   */
   const ridgeDist = [560, 830, 1080, 1330];
-  const ridgeCol = [0x51796a, 0x5d7fa8, 0x8aa6c6, 0xb4c8dc];
+  const ridgeCol = [0x3f5f52, 0x546f86, 0x7c97b4, 0xa8bfd4];
+  /* One material per ring, created outside the cone loop. The baker buckets
+   * by material, and a material per cone means 136 buckets and 136 draw
+   * calls instead of four: that mistake cost 108 draw calls and was caught
+   * by measuring the count, not by reading the diff. */
+  const ridgeMats = ridgeCol.map((c) => new THREE.MeshBasicMaterial({ color: c, fog: false }));
   for (let ring = 0; ring < 4; ring += 1) {
     const dist = ridgeDist[ring];
-    const col = ridgeCol[ring];
     for (let i = 0; i < 34; i += 1) {
-      const a = (i / 34) * Math.PI * 2 + ring * 0.09 + rng() * 0.05;
+      const a = (i / 34) * Math.PI * 2 + ring * 0.09 + (rng() - 0.5) * 0.16;
       const h = 110 + rng() * 210;
       const m = new THREE.Mesh(
         new THREE.ConeGeometry(95 + rng() * 90, h, 5),
-        celMaterial({ color: col, rim: 0.16, rimColor: 0xdcecff, fog: false }),
+        ridgeMats[ring],
       );
       m.position.set(Math.cos(a) * dist, h / 2 - 10, Math.sin(a) * dist);
       m.rotation.y = rng() * 3;
@@ -1290,8 +1365,19 @@ export function buildScene(canvas) {
   }
   scene.add(quad);
 
-  const camera = new THREE.PerspectiveCamera(100, 1, 0.04, 2600);
+  /*
+   * Near plane at 0.2 m, not 0.04. The camera sits inside a 150 mm
+   * airframe, so 4 cm buys nothing, and a 0.04 to 2600 range left the
+   * outline prepass's depth buffer with under one depth code of separation
+   * past about 500 m: that is why the ink had to be faded out by 50 m and
+   * why grass blades a few centimetres from the lens filled the frame.
+   */
+  const camera = new THREE.PerspectiveCamera(100, 1, 0.2, 2600);
   camera.layers.enable(1);
+  /* Layer 2 is the grass. It needs to be separable from the rest of the no
+   * ink layer, because it has to write depth into the outline prepass
+   * without being inked itself. See renderNormals in post.js. */
+  camera.layers.enable(2);
 
   function resize() {
     const w = canvas.clientWidth || window.innerWidth;

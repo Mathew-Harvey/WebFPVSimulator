@@ -182,10 +182,21 @@ export class Race {
         if (this.bestMs == null || this.lastLapMs < this.bestMs) {
           this.bestMs = this.lastLapMs;
           msgText += '\nNew track record';
-          try {
-            localStorage.setItem(this.key, String(Math.round(this.bestMs)));
-          } catch (e) {
-            /* private mode: best lap simply does not persist */
+          /* Off the flight frame. This runs from the render loop, and a
+           * synchronous localStorage write lands on exactly the frame the
+           * pilot is watching their personal best appear. */
+          const record = String(Math.round(this.bestMs));
+          const store = () => {
+            try {
+              localStorage.setItem(this.key, record);
+            } catch (e) {
+              /* private mode: best lap simply does not persist */
+            }
+          };
+          if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(store, { timeout: 2000 });
+          } else {
+            setTimeout(store, 0);
           }
         }
         this.flash = { text: msgText, untilMs: wallMs + 2600 };

@@ -514,7 +514,19 @@ async function boot() {
     /* Overlay. */
     const st = stateCurr;
     const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
-    audio.update([st[14], st[15], st[16], st[17]], mode === 'flight' ? speed : 0);
+    /* P13: audio scheduling work on the main thread, worst case, and it has
+     * to allocate nothing. Two scalars written in place, and the rpm array
+     * is hoisted out of the loop for the same reason. */
+    const audioStart = performance.now();
+    audioRpm[0] = st[14];
+    audioRpm[1] = st[15];
+    audioRpm[2] = st[16];
+    audioRpm[3] = st[17];
+    audio.update(audioRpm, mode === 'flight' ? speed : 0);
+    const audioMs = performance.now() - audioStart;
+    if (frames > 2 && audioMs > worstAudioMs) {
+      worstAudioMs = audioMs;
+    }
     if (mode === 'flight') {
       ui.setOsd({
         lapMs: race.currentLapMs(simNow),
@@ -590,6 +602,10 @@ async function boot() {
   }
   let worstBlockMs = 0;
   let worstShellMs = 0;
+  let worstAudioMs = 0;
+  /* Hoisted: P8 forbids a new array per frame, and this one used to be a
+   * literal in the audio.update call. */
+  const audioRpm = [0, 0, 0, 0];
   let firstFrameMs = -1;
   let frames = 0;
   /* Render statistics for the harness and the frame budget gate. */
@@ -600,11 +616,28 @@ async function boot() {
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;
   window.__race = race;
+  /* P12 and P13 are audio budgets, and neither can be read while the audio
+   * context is null: update() returns immediately and reports a cost of
+   * nothing. A capture run has to click the page to satisfy the browser's
+   * gesture requirement and then check that the context is real. */
+  window.__audio = audio;
   /* The cost ledger. Measured on demand from the harness, never per
    * frame. __setCam parks the camera for a named view; __setCam(null)
    * gives it back to the shell. */
   window.__setCam = (a, b, c, d, e, f) => {
     camOverride = a == null ? null : [a, b, c, d, e, f];
+  };
+  /* Put the race on a given gate. The ledger and the value measurements
+   * park the camera at a point on the racing line, and a pilot at that
+   * point has a real next gate, which is not gate 0 just because the run
+   * has not started. Without this the glow ladder in a parked capture
+   * belongs to a different position on the course than the camera does.
+   * Harness only. */
+  window.__setRaceNext = (raceIndex) => {
+    const n = race.gates.length;
+    race.next = (((raceIndex | 0) % n) + n) % n;
+    view.setNextGate(race.nextSceneIndex());
+    return { raceNext: race.next, sceneIndex: race.nextSceneIndex() };
   };
   window.__trackPoint = (u) => {
     const p = view.curve.getPointAt(u);
@@ -615,8 +648,112 @@ async function boot() {
     firstFrameMs,
     worstBlockMs,
     worstShellMs,
+    worstAudioMs,
     frames,
   });
+  /*
+   * Which gate the race actually wants, and where it is on screen. G3 says
+   * the next gate must be the brightest thing in the frame, and every G3
+   * measurement taken so far measured the wrong object: a parked capture
+   * camera looks at one gate while the race's next gate is somewhere else
+   * entirely, so the bright ring in the frame was some later gate on the
+   * glow ladder. A capture that claims anything about the target has to
+   * record which gate that is and where it is, and this is that record.
+   *
+   * Screen coordinates are CSS pixels with the origin top left, matching
+   * what scripts/pixels.js reads out of a PNG. Harness only, called on
+   * demand, never per frame.
+   */
+  window.__nextGate = () => {
+    const el = view.renderer.domElement;
+    const vw = el.clientWidth || el.width;
+    const vh = el.clientHeight || el.height;
+    const project = (v) => {
+      const p = v.clone().project(view.camera);
+      return {
+        x: (p.x * 0.5 + 0.5) * vw,
+        y: (1 - (p.y * 0.5 + 0.5)) * vh,
+        ndcZ: p.z,
+      };
+    };
+    const seq = [];
+    for (let step = 0; step < 3; step += 1) {
+      const raceIdx = (race.next + step) % race.gates.length;
+      const sceneIndex = race.gates[raceIdx].idx;
+      const gt = view.gates[sceneIndex];
+      const ap = gt.aperture;
+      const centre = new THREE.Vector3(gt.position.x, gt.position.y + ap.centreY, gt.position.z);
+      const top = new THREE.Vector3(centre.x, centre.y + ap.clearH * 0.5, centre.z);
+      const bottom = new THREE.Vector3(centre.x, centre.y - ap.clearH * 0.5, centre.z);
+      const distance = view.camera.position.distanceTo(centre);
+      const sc = project(centre);
+      const st = project(top);
+      const sb = project(bottom);
+      seq.push({
+        step,
+        sceneIndex,
+        flyOrder: gt.flyOrder,
+        glowGain: gt.glowMat.uniforms.uGain.value,
+        aperture: ap,
+        world: { x: centre.x, y: centre.y, z: centre.z },
+        distance,
+        screen: sc,
+        aperturePx: Math.abs(sb.y - st.y),
+        onScreen: sc.ndcZ > -1 && sc.ndcZ < 1 && sc.x >= 0 && sc.x < vw && sc.y >= 0 && sc.y < vh,
+      });
+    }
+    return {
+      viewport: { w: vw, h: vh },
+      raceNext: race.next,
+      nextSceneIndex: race.nextSceneIndex(),
+      lap: race.lap,
+      gates: seq,
+    };
+  };
+  /*
+   * The quad on screen, for T6. Reports the projected pixel box of the
+   * craft's own world bounding box and, separately, the pixel span a
+   * 0.25 m segment subtends at the craft's distance, because a 250 mm quad
+   * is quoted on its motor to motor diagonal and the model's box is not
+   * the same measurement. Both are published so a reviewer can choose.
+   */
+  window.__quadScreen = () => {
+    const el = view.renderer.domElement;
+    const vw = el.clientWidth || el.width;
+    const vh = el.clientHeight || el.height;
+    const box = new THREE.Box3().setFromObject(view.quad);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    const corner = new THREE.Vector3();
+    for (let i = 0; i < 8; i += 1) {
+      corner.set(
+        i & 1 ? box.max.x : box.min.x,
+        i & 2 ? box.max.y : box.min.y,
+        i & 4 ? box.max.z : box.min.z,
+      ).project(view.camera);
+      const px = (corner.x * 0.5 + 0.5) * vw;
+      const py = (1 - (corner.y * 0.5 + 0.5)) * vh;
+      minX = Math.min(minX, px);
+      maxX = Math.max(maxX, px);
+      minY = Math.min(minY, py);
+      maxY = Math.max(maxY, py);
+    }
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(view.camera.quaternion);
+    const a = view.quad.position.clone().addScaledVector(right, -0.125).project(view.camera);
+    const b = view.quad.position.clone().addScaledVector(right, 0.125).project(view.camera);
+    return {
+      viewport: { w: vw, h: vh },
+      visible: view.quad.visible,
+      distance: view.camera.position.distanceTo(view.quad.position),
+      worldSize: { x: size.x, y: size.y, z: size.z },
+      boxPx: { w: maxX - minX, h: maxY - minY, x: minX, y: minY },
+      span250mmPx: Math.abs((b.x - a.x) * 0.5 * vw),
+    };
+  };
   window.__budget = (name) => measureBudget(view, post, { view: name });
   requestAnimationFrame(frame);
 }

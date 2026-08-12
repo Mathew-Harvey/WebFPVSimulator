@@ -1,0 +1,32 @@
+<!doctype html>
+<!--
+  audio-probe.html: a blank same origin document for scripts/audio-probe.js.
+
+  The probe needs a page it can dynamically import src/render/audio.js from,
+  and nothing else: no renderer, no WASM, no CDN. index.html would boot the
+  whole simulator to render four oscillators.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify it
+  under the terms of the GNU General Public License as published by the Free
+  Software Foundation, either version 3 of the License, or (at your option)
+  any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+  Public License for more details.
+
+  You should have received a copy of the GNU General Public License along
+  with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WebFPVSimulator audio probe</title>
+  </head>
+  <body>
+    <p>Offline audio probe target. Driven by scripts/audio-probe.js.</p>
+  </body>
+</html>

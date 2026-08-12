@@ -291,6 +291,38 @@ async function main() {
       const path = join(outDir, `${arg}.png`);
       await writeFile(path, Buffer.from(data, 'base64'));
       console.log(`shot ${path}`);
+      /* Every capture records which gate the race actually wants and where
+       * that gate is on screen. Without it a G3 measurement is taken
+       * against whichever ring happens to be bright in the frame, which is
+       * not the same object as the target and is how G3 stayed unsettled
+       * for a whole loop. Written beside the PNG so the two cannot drift
+       * apart, and printed so a run's log carries it too. */
+      const side = await cdp.send('Runtime.evaluate', {
+        expression: `JSON.stringify({
+          mode: window.__mode ?? null,
+          screen: window.__screen ?? null,
+          viewport: { w: innerWidth, h: innerHeight },
+          nextGate: typeof window.__nextGate === 'function' ? window.__nextGate() : null,
+          quad: typeof window.__quadScreen === 'function' ? window.__quadScreen() : null,
+        })`,
+        returnByValue: true,
+      }, sessionId).catch(() => null);
+      if (side && !side.exceptionDetails && typeof side.result.value === 'string') {
+        await writeFile(join(outDir, `${arg}.json`), `${side.result.value}\n`);
+        const s = JSON.parse(side.result.value);
+        const g = s.nextGate && s.nextGate.gates ? s.nextGate.gates[0] : null;
+        if (g) {
+          console.log(
+            `  target: race gate ${s.nextGate.raceNext} (scene ${g.sceneIndex}, plate ${g.flyOrder}) ` +
+            `at ${g.distance.toFixed(1)} m, screen ${g.screen.x.toFixed(0)},${g.screen.y.toFixed(0)} ` +
+            `${g.onScreen ? 'on screen' : 'OFF SCREEN'}, aperture ${g.aperturePx.toFixed(1)} px, glow ${g.glowGain.toFixed(2)}`,
+          );
+        } else {
+          errors.push(`shot ${arg}: window.__nextGate returned nothing, so the capture cannot support a G3 claim`);
+        }
+      } else {
+        errors.push(`shot ${arg}: the aim sidecar could not be evaluated`);
+      }
     } else if (op === 'tap' || op === 'down' || op === 'up') {
       const info = keyInfo(arg);
       if (op !== 'up') {

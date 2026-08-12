@@ -804,7 +804,28 @@ function gate(index, isStart) {
     pip.position.set(-0.9 + p * 0.26, h + 0.75, 0.1);
     g.add(pip);
   }
-  return { group: g, ringMat: ring.material, haloMat: halo.material, glowMat: glow.material, ringColor };
+  /* The aperture, read back out of the geometry that was just built rather
+   * than restated as a constant. T1 asserts the clear opening against the
+   * MultiGP standard gate, and an assertion against a number that was
+   * copied by hand asserts nothing. The scoring aperture here is the
+   * torus: clear span is twice the centreline radius less the tube. */
+  const rp = ring.geometry.parameters;
+  const clear = 2 * (rp.radius - rp.tube);
+  return {
+    group: g,
+    ringMat: ring.material,
+    haloMat: halo.material,
+    glowMat: glow.material,
+    ringColor,
+    aperture: {
+      shape: 'torus',
+      centreY: ring.position.y,
+      clearW: clear,
+      clearH: clear,
+      centrelineR: rp.radius,
+      tube: rp.tube,
+    },
+  };
 }
 
 function bannerFlag(rng, height, x, z, colorHex) {
@@ -1068,6 +1089,8 @@ export function buildScene(canvas) {
       haloMat: made.haloMat,
       ringColor: made.ringColor,
       glowMat: made.glowMat,
+      aperture: made.aperture,
+      flyOrder,
     });
   }
 

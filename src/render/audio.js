@@ -18,6 +18,15 @@
  * conversion, exactly like the rad/s to RPM in the state block, and it
  * touches nothing in the physics path.
  *
+ * The graph is built by attach(ctx), which takes any BaseAudioContext, and
+ * update() takes the time to schedule at. Both exist so that
+ * scripts/audio-probe.js can build this exact graph on an
+ * OfflineAudioContext, drive it from a scripted RPM trace, and render it to
+ * a buffer an FFT can read. A claim about the mix with no rendered buffer
+ * behind it is a claim about nothing, and there is no way to hear this
+ * container. The live path passes no time and reads ctx.currentTime, which
+ * is what it did before.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -45,6 +54,16 @@ export class MotorAudio {
     this.master = null;
     this.noiseGain = null;
     this.level = 0.5; /* mix level, driven by the volume setting */
+    /* Every AudioNode this instance owns, for P12. A node created and
+     * dropped without being counted is exactly the leak P12 forbids, so
+     * the count is kept where the nodes are made rather than derived by
+     * reading the file later. */
+    this.nodes = [];
+  }
+
+  /* P12: steady state AudioNode count. */
+  nodeCount() {
+    return this.nodes.length;
   }
 
   /* Volume from the settings screen, zero to one. */
@@ -69,32 +88,49 @@ export class MotorAudio {
     if (!Ctx) {
       return;
     }
-    const ctx = new Ctx();
-    this.ctx = ctx;
+    this.attach(new Ctx());
+    this.enabled = true;
+  }
 
-    const master = ctx.createGain();
+  /*
+   * Build the graph on any BaseAudioContext. Called by start() with a live
+   * AudioContext and by the probe with an OfflineAudioContext. Does not
+   * set enabled: the caller decides, because the probe wants the mix up
+   * from sample zero and the shell wants it to follow a setting.
+   */
+  attach(ctx, destination) {
+    this.ctx = ctx;
+    const out = destination || ctx.destination;
+    /* One place where nodes come into existence, so the P12 count cannot
+     * drift from the graph. */
+    const keep = (n) => {
+      this.nodes.push(n);
+      return n;
+    };
+
+    const master = keep(ctx.createGain());
     master.gain.value = 0.0;
-    master.connect(ctx.destination);
+    master.connect(out);
     this.master = master;
 
     for (let m = 0; m < 4; m += 1) {
-      const osc = ctx.createOscillator();
+      const osc = keep(ctx.createOscillator());
       osc.type = 'sawtooth';
       osc.frequency.value = 120;
-      const partial = ctx.createOscillator();
+      const partial = keep(ctx.createOscillator());
       partial.type = 'square';
       partial.frequency.value = 240;
-      const partialGain = ctx.createGain();
+      const partialGain = keep(ctx.createGain());
       partialGain.gain.value = 0.18;
-      const lp = ctx.createBiquadFilter();
+      const lp = keep(ctx.createBiquadFilter());
       lp.type = 'lowpass';
       lp.frequency.value = 900;
       lp.Q.value = 0.9;
-      const gain = ctx.createGain();
+      const gain = keep(ctx.createGain());
       gain.gain.value = 0.0;
       /* Spread the four motors across the stereo field so the beating
        * between them is audible, the way it is behind real goggles. */
-      const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      const pan = ctx.createStereoPanner ? keep(ctx.createStereoPanner()) : null;
       if (pan) {
         pan.pan.value = [0.45, 0.32, -0.45, -0.32][m];
       }
@@ -122,21 +158,20 @@ export class MotorAudio {
       s = (s * 1103515245 + 12345) & 0x7fffffff;
       ch[i] = (s / 0x3fffffff) - 1.0;
     }
-    const noise = ctx.createBufferSource();
+    const noise = keep(ctx.createBufferSource());
     noise.buffer = buf;
     noise.loop = true;
-    const nf = ctx.createBiquadFilter();
+    const nf = keep(ctx.createBiquadFilter());
     nf.type = 'bandpass';
     nf.frequency.value = 700;
     nf.Q.value = 0.5;
-    const ng = ctx.createGain();
+    const ng = keep(ctx.createGain());
     ng.gain.value = 0.0;
     noise.connect(nf);
     nf.connect(ng);
     ng.connect(master);
     noise.start();
     this.noiseGain = ng;
-    this.enabled = true;
   }
 
   toggle() {
@@ -148,12 +183,14 @@ export class MotorAudio {
     return this.enabled;
   }
 
-  /* rpm is the four motor RPM values, speed is airspeed in m/s. */
-  update(rpm, speed) {
+  /* rpm is the four motor RPM values, speed is airspeed in m/s. atTime is
+   * the context time to schedule at, for offline rendering; the live path
+   * omits it and gets ctx.currentTime. */
+  update(rpm, speed, atTime) {
     if (!this.ctx || !this.master) {
       return;
     }
-    const t = this.ctx.currentTime;
+    const t = atTime == null ? this.ctx.currentTime : atTime;
     const target = this.enabled ? this.level : 0.0;
     this.master.gain.setTargetAtTime(target, t, 0.05);
     if (!this.enabled) {

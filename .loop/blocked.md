@@ -58,3 +58,34 @@ end.
 - The rebuilt module under emsdk 3.1.61 produces the same replay hash as
   the committed one, 000931016224, which is evidence for the determinism
   claim across toolchain versions as well as across hosts.
+
+## 5. Whether the mix actually sounds good
+
+`scripts/audio-probe.js` renders the real audio graph offline and measures
+it, so this container can prove that the mix does not scream, does not clip,
+sits at a stated loudness, runs at a stated tempo, and is genuinely binaural
+rather than monaural. It cannot prove the mix is pleasant. Nothing an FFT
+reports distinguishes a good drum and bass bed from a competent one, and
+there are no speakers here. **A human has to listen**, on headphones, to a
+full throttle pass, a hover, and one lap with the bed and the focus tone
+both up, and say whether they would choose to wear headphones for it.
+
+## 6. Absolute frame rate, and P7 over a real sample, restated with this round's numbers
+
+Unchanged as a blocker, with sharper evidence. The same build measured
+worstBlockMs 53.6 over 50 frames and 16.8 over 152 frames at 1920 by 1080 in
+two runs an hour apart. Six hundred frames of flight in this container is
+about five minutes of wall clock per run at 1.9 frames per second at 1080p.
+A human with an Iris Xe or a Vega 8 laptop settles both P7 and the 60 frames
+per second contract in under a minute, and no absolute frame rate claim for
+real hardware appears anywhere in this repository.
+
+## Resolved, and recorded so a later round does not re-block it
+
+The UTT layout coordinates were expected to be a blocker, on the grounds
+that the diagram PDFs would not render in this container. They are not.
+`curl` downloads the guide, the layout page is a raster image inside the
+PDF's own image XObjects, and it can be extracted and measured with the
+PNG decoder this repository already has. UTT 3 Bessel Run's full layout is
+in .loop/evidence/r10/utt3-layout.md with its provenance. The track does not
+need to be labelled an original layout under T4's second branch.

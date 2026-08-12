@@ -1124,3 +1124,125 @@ to P10, and the measured figure did not change to one decimal place because
 
 `npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
 turn. Console clean at both resolutions, 0 errors and 0 warnings.
+
+## Round 10 (low spec loop round 5): the two missing instruments
+
+The loop that starts here wants three things at once: a world that reads as
+a commercial product on an integrated GPU, a mix somebody would choose to
+wear headphones for, and a real MultiGP course at real MultiGP dimensions.
+Two of those three had no instrument at all, so round one is not a feature.
+
+### What was built
+
+`scripts/audio-probe.js` and `scripts/audio-probe.html`. The probe launches
+headless Chromium, imports `src/render/audio.js` into a blank same origin
+page, builds that exact graph on an `OfflineAudioContext`, drives it through
+the real `update()` from a scripted RPM and airspeed trace, renders it to
+samples, pulls them back into Node in 1 MiB chunks, and reports peak sample,
+count of samples at or over full scale, RMS in dBFS, true peak in dBTP at
+four times oversampling, one third octave band energies, arbitrary band
+energies, spectral centroid, per channel peak frequencies to sub bin
+precision, amplitude modulation depth at a named frequency in each channel
+and in the mono sum, tempo by autocorrelation of spectral flux, and the
+sample delta at a named loop seam against the distribution inside the loop.
+
+`src/render/audio.js` grew the seam that makes that possible: `attach(ctx)`
+builds the graph on any `BaseAudioContext`, `update(rpm, speed, atTime)`
+takes the time to schedule at, and every node created is pushed onto a list
+so `nodeCount()` is counted where the nodes are made rather than derived by
+reading the file later, which is what P12 asks for.
+
+`scripts/shots.js` now writes a JSON sidecar beside every PNG recording
+which gate the race actually wants, its scene index and number plate, its
+distance, its screen position in CSS pixels, how many pixels its aperture
+subtends, and whether it is on screen at all. `main.js` gained
+`window.__nextGate()`, `window.__quadScreen()`, `window.__setRaceNext()` and
+`window.__audio`, and `__boot()` gained `worstAudioMs` for P13.
+
+`gate()` in `scene.js` now returns its aperture read back out of the torus
+geometry's own parameters instead of restating it as a constant, so T1's
+assertion later will be an assertion about geometry rather than about a
+number somebody typed twice.
+
+### What the instruments found
+
+The full ledger, the audio spectra and the calibration of both instruments
+are in `.loop/evidence/r10/ledger.md`. The three findings that change what
+the next rounds do:
+
+**The G3 harness gap was real and it was worse than suspected.** The mid
+course capture pointed the camera along `+tangent`, which is the opposite of
+the direction the craft flies, so the race's next gate was 126.3 m BEHIND
+the camera and off screen. Every G3 measurement ever taken in that view was
+measuring some other gate that the glow ladder happened to light. The run
+now has a `mid course forward` view that looks the way the pilot flies and
+sets the race's next gate to the gate genuinely ahead.
+
+**The mix is 34.0 dB the wrong way on A1.** Over a 20 second full throttle
+render the 2 kHz to 8 kHz band measures -30.75 dB and the band containing
+the blade pass fundamental, 355 to 447 Hz, measures -52.76 dB. A1 wants the
+scream band at least 12 dB BELOW the fundamental's. The peak of the whole
+spectrum is the 1259 Hz third octave band at -24.99 dB, which is exactly
+where `RPM_TO_HZ_SCALE = 2.9` puts the oscillator: 8589 / 60 x 3 x 2.9 =
+1245 Hz. A2 asks for the fundamental to be the blade pass frequency, and it
+is 2.9 times it by construction. The defect statement of record, "loud
+screaming", is confirmed with a spectrum.
+
+**The UTT layout is not blocked.** The previous loop expected the diagram
+PDFs to be unreadable here and expected T4 to be satisfied by labelling the
+course an original layout. `curl` downloads the guide, and the layout page is
+a raster image inside the PDF's own image XObjects, which this repository's
+own PNG decoder can measure. UTT 3 Bessel Run's complete layout, its five
+gate positions in metres, its gate orientations, its field size, its
+traversal sequence and its "no flags allowed" rule are in
+`.loop/evidence/r10/utt3-layout.md` with every figure's provenance. The PDF
+is deliberately not vendored: it is MultiGP artwork under an unstated
+licence and D5 forbids adding an external asset without a justification, and
+the build needs the dimensions rather than the file.
+
+### What went wrong
+
+Three things, all worth writing down.
+
+The first version of the ledger run measured P13 at 0.40 ms with the audio
+context still null, because nothing in a headless run supplies the user
+gesture browsers require before audio starts. `update()` returns immediately
+on a null context, so the instrument was reporting the cost of an early
+return as though it were the cost of scheduling. The run now clicks the page
+and asserts `__audio.ctx.state === 'running'` before any capture, and the
+number happens to be the same, which is luck and not vindication.
+
+The `07-inflight` capture is mislabelled and has been left in the evidence
+with an explanation rather than deleted. `down:KeyW wait:900 up:KeyW` raises
+the throttle only while the key is held, and at 1.9 frames per second about
+two frames of key handling happen in 900 ms, so the craft never launched and
+the frame is the start line again. Deleting a capture that did not do what
+its name says is how a capture set starts lying.
+
+`window.__quadScreen()` returns a null 250 mm span and a 1541 px box in
+flight, and both are correct: the camera sits inside the airframe at 0 m,
+in front of the 0.2 m near plane. T6 has to be measured from a parked
+external camera. What the handle did establish is the first measured figure
+this project has for the size of its own quad: the model's world bounding
+box is 0.309 by 0.110 by 0.308 m.
+
+### npm run verify, this turn
+
+| #  | check                  | measured                                           | result |
+|----|------------------------|----------------------------------------------------|--------|
+| 1  | build-clean            | build exit 0, vendor diff empty, abi 1, init OK    | PASS   |
+| 2  | determinism-repeat     | a=000931016224 b=000931016224                      | PASS   |
+| 3  | determinism-cross-host | node=000931016224 chrome=000931016224              | PASS   |
+| 4  | frame-independence     | 1 distinct hash across 4 rates                     | PASS   |
+| 5  | hover-throttle         | 0.2051                                             | PASS   |
+| 6  | punch-out              | 82.3 m                                             | PASS   |
+| 7  | terminal-velocity      | 31.4 m/s                                           | PASS   |
+| 8  | motor-step-response    | 18 ms                                              | PASS   |
+| 9  | rate-tracking          | 669.7 deg/s vs 670 configured                      | PASS   |
+| 10 | yaw-coupling           | 0.00 deg                                           | FAIL   |
+| 11 | battery-sag            | 10.13 percent lower                                | PASS   |
+| 12 | diff-passthrough       | ratio 1.2544 vs 1.2537 expected                    | PASS   |
+| 13 | console-clean          | errors=0 warnings=0 run=ok                         | PASS   |
+
+12 of 13. yaw-coupling is the known red and its threshold has not been
+touched.

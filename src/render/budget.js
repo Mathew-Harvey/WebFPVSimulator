@@ -319,6 +319,18 @@ export function measureBudget(view, post, extra) {
   let attrBytes = 0;
   let indexBytes = 0;
   let meshes = 0;
+  /*
+   * Where the triangles ARE, not just how many there are.
+   *
+   * P2 has failed at about 1.6x for five rounds and the ledger could not say
+   * which meshes carried it, which is the same defect a reviewer found in the
+   * P5 breakdown: an instrument that reports a total it cannot attribute
+   * cannot tell anyone what to fix. Each row is a mesh's triangle count, its
+   * material type, whether the renderer is allowed to frustum cull it, and
+   * its bounding sphere radius, because a merged mesh whose bounds span the
+   * world is culled by nothing even when the flag is on.
+   */
+  const heavy = [];
   view.scene.traverse((o) => {
     if (!o.isMesh && !o.isPoints && !o.isLine) {
       return;
@@ -329,6 +341,17 @@ export function measureBudget(view, post, extra) {
       return;
     }
     geos.add(g.uuid);
+    if (g.attributes.position) {
+      if (!g.boundingSphere) {
+        g.computeBoundingSphere();
+      }
+      heavy.push({
+        material: o.material && o.material.type ? o.material.type : 'unknown',
+        triangles: Math.round(g.index ? g.index.count / 3 : g.attributes.position.count / 3),
+        frustumCulled: Boolean(o.frustumCulled),
+        boundsRadius: g.boundingSphere ? Math.round(g.boundingSphere.radius * 10) / 10 : -1,
+      });
+    }
     for (const name of Object.keys(g.attributes)) {
       attrBytes += g.attributes[name].array.byteLength;
     }
@@ -373,6 +396,7 @@ export function measureBudget(view, post, extra) {
     p10_index_bytes: indexBytes,
     meshes,
     geometries: geos.size,
+    p2_top_meshes: heavy.sort((a, b) => b.triangles - a.triangles).slice(0, 10),
     passes: traced.passes.map((p) => `${p.name} ${p.w}x${p.h}${p.quad ? ` taps=${p.taps}${p.loops ? ` loops=${p.loops}` : ''}` : ''}`),
   };
 }

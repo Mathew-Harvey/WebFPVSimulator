@@ -72,6 +72,23 @@ course, including two ladders (the triple stacks) and a dive gate at a 4.572 m
 sill. The course is an ORIGINAL CHAPTER STYLE LAYOUT from regulation obstacles,
 T4's second branch, and it says so.
 
+**P2 is now attributed, and the answer is not only the grass.** `__budget()`
+reports `p2_top_meshes`. Measured at 1280 by 720:
+
+    552,000 tris  ShaderMaterial   frustumCulled FALSE  bounds 634 m   grass
+    109,972 tris  MeshBasicMaterial      culled true    bounds 672 m   mountains
+    105,800 tris  MeshToonMaterial       culled true    bounds 1202 m  terrain
+     27,760 / 24,800 / 23,120 / 21,920   culled true    bounds ~670 m  baked scenery
+     11,360 tris  ShaderMaterial         culled true    bounds 1025 m  clouds
+
+Top ten total about 889,000 of 1,915,103. Two things follow. The grass is the
+single biggest item AND the only one with culling switched off, so it is the
+first fix. But every other heavy mesh has a bounding sphere spanning most or
+all of the 1700 m world, so `frustumCulled: true` on them buys nothing: the
+frustum test always passes. Fixing P2 means SPATIAL CHUNKING of the grass and
+of the baked scenery buckets, not just setting a flag. Chunk count trades
+against P1, which now has only 79 draw calls of headroom.
+
 **P1 PASSES for the first time: 321 draw calls against a 400 ceiling**, down
 from 692, because obstacle materials are shared and their static parts bake.
 Meshes 317 to 141. **P2 did not move and is the next item**: `grassField` sets

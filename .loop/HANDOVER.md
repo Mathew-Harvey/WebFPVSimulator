@@ -96,71 +96,63 @@ should not be re-derived:
   no particle system anywhere in `src/`, so the dust G7 requires does not
   exist.
 
-## The next round, designed, with the arithmetic already done
+## Round 9 did the value ladder. What it left open.
 
-**The value ladder, G1 plus G2 plus G3 together.** They are one mechanism
-and they constrain each other, so do not fix them one at a time.
+`FOG_FAR` is 2200, the four ridge rings are re-anchored to 0.49, 0.56, 0.63
+and 0.70 with a light model carried in hue at equal luminance, and
+`GLOW_LADDER` is [0.95, 0.42, 0.24]. Details and the two dead ends are in
+`PROGRESS.md` and `.loop/tried-and-rejected.md`. Read the second one before
+touching the ridge colours again: a luminance split for the light model
+does not fit in the available range, and solving the right luminances at an
+orange hue turns the whole horizon into sand dunes.
 
-The constraint chain, all in Rec. 709 linear luminance:
+**G3 is still FAIL and the reason is a harness gap, not an art gap.** The
+mid course capture parks the camera at u = 0.30 while the race's next gate
+is still gate 1, so the bright ring in that frame is some later gate on the
+glow ladder and not the target. Any G3 measurement taken from a parked
+camera is measuring the wrong object. The fix is to have `shots.js` record
+`window.__race.next` and the screen position of that gate alongside each
+capture, or to add a handle that sets the next gate to whichever gate the
+parked camera is looking at. Do that before claiming G3 either way.
 
-- The amber gate ring, `0xffd45c`, has an intrinsic luminance of **0.691**,
-  and the mint start ring `0x7dffb4` has **0.790**. The renderer runs with
-  `NoToneMapping`, so nothing can exceed 1.0.
-- G3 requires the next gate to beat the brightest non gate pixel by 0.08.
-- `HORIZON`, `0xf2e3cb`, is **0.787**, and it is both the fog colour and
-  the sky's horizon band, so any fully fogged terrain reads 0.787.
+## The next round
 
-So with the gate at its intrinsic 0.691, **every background pixel in the
-game would have to sit below 0.611**, including the horizon haze, and
-fitting a monotonic ground plus four ridge rings into 0.243 to 0.611 at
-0.05 per step forces the ground's fog to be switched off in all but name.
-That is the tension. It is not a threshold dispute, because there is a
-third way out, and it is the better design:
-
-**Make the gate brighter rather than the world darker.** The additive glow
-in `gate()` is unfogged, so it is the one thing in the frame whose value
-does not fall with distance. Raise its gain until the next gate's peak
-reaches at least **0.867**, which is 0.787 plus the required 0.08. Then:
-
-    layer                       target   mechanism
-    near meadow                  0.243   unchanged
-    fogged ground at 850 m      <=0.50   FOG_FAR from 780 to about 1650
-    ridge ring 0                  0.55   re-anchor ridgeCol, keep unlit
-    ridge ring 1                  0.605
-    ridge ring 2                  0.66
-    ridge ring 3                  0.72    0.067 under the sky, so G1 holds
-    sky and horizon haze         0.787   unchanged
-    clouds                       0.745   unchanged, already under the gate
-    next gate peak              >=0.867   glow gain
-
-Note what this buys: `HORIZON` does not move, so the warm afternoon grade
-survives, and the clouds do not have to be dimmed again. Only two constants
-and one gain change. Verify by re-running the art director's own
-measurements, and beware that raising the glow gain is what round 3 of the
-old loop rejected in a different form: scaling the ring colour past 1.0
-clamps it to white and takes away the hue that identifies the target. The
-glow is a tight annulus, so the band can clip while the torus keeps its
-hue, but that has to be looked at in a frame, not assumed.
-
-**Then G5 on the ridges.** They must stop being one flat colour over 14.8
-percent of the frame. Bake a two band sun split into the cone vertex
-colours before `baker.bake`, so it stays one draw call per ring and the
-authored ladder value becomes the mean of the two bands.
-
-**Then P1 and P2**, whose mechanisms are unchanged from the round 7 handover
-and are listed there: chunk the grass, bake the gates after hoisting
-`frameMat`, `accent` and the pip material to be shared, merge the 72 flag
-cloths. The graphics reviewer nailed P2 down: pointing the camera at empty
-sky still submits **1,902,533 triangles**, 99.3 percent of the worst case.
-Its per draw histogram is grass 552,000 twice, baked scenery 108,916 twice,
-terrain 105,800 twice, and 636 of 698 draws carrying 0.5 percent of the
-triangles between them.
-
-**P8** is a list of exact lines and the reviewer gave all of them; the
-dominant one is `src/game/race.js:223`, `for (const sx of [-GATE_HALF_W,
-GATE_HALF_W])`, which allocates an array per gate per sweep sample inside
-the collision loop, so tens to hundreds per frame at speed.
-
+1. **P1 and P2**, which are the only budgets over that a player feels every
+   frame, and whose mechanisms are all known:
+   - `grassField` in `scene.js` sets `frustumCulled = false` on one mesh
+     spanning 900 m: 552,000 triangles submitted unconditionally, twice,
+     which is 57.6 percent of the triangle budget. Chunk it spatially with
+     real bounding spheres. A reviewer pointed the camera at empty sky and
+     still measured 1,902,533 triangles, 99.3 percent of the worst case.
+   - `makeBaker().flush()` merges all static scenery into one mesh per
+     material, and the merged bounding spheres span the 1700 m world, so
+     the frustum test is always true. Bucket by spatial cell as well.
+   - The eight gates are about 224 meshes and 636 of 698 draws carry 0.5
+     percent of the triangles. Bake the static parts, but hoist `frameMat`,
+     `accent` and the pip material out of `gate()` first: they are created
+     per gate, and the pips use a fresh `MeshBasicMaterial` each, so the
+     baker would bucket one per pip.
+   - Merge the 72 flag cloths; their animation is closed form in index and
+     time so it belongs in a vertex shader.
+2. **P10**, 51.2 MB against 48. 25.8 MB is the grass, whose colour
+   attribute is three 32 bit floats per vertex where a normalised byte
+   triple would do.
+3. **P8**, about 20 allocations per frame at rest and over 100 in flight.
+   The reviewer gave every line; the dominant one is `src/game/race.js:223`,
+   an array literal per gate per sweep sample inside the collision loop.
+4. **P6**, 5122 ms. `grassField` and `terrain` evaluate distance to all 181
+   curve samples per blade and per vertex.
+5. **P11**, which does not exist at all. `DEFAULTS` in `src/ui/ui.js` has no
+   quality key and nothing in `scene.js` or `post.js` reads one.
+6. **G6**, the flat corridor, which is the largest remaining art item and
+   the most invasive: `makeHeightField` multiplies all relief by
+   `clamp((d - 30) / 70)` and the gate base heights, the spawn height and
+   the crash check all read that field.
+7. **G9**, the water, whose depth is literally distance from the disc
+   centre.
+8. **G4's remaining five artefacts** and the grass half of the
+   antialiasing, which is measurably better than round 7 and still
+   measurably worse than multisampling.
 
 ## The instruments
 

@@ -859,3 +859,165 @@ check, which is not a system that will keep working.
 
 `npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
 turn. Console clean, 0 errors and 0 warnings, at both resolutions.
+
+## Low spec loop, round 3 (round 8 overall): the reviewers' list
+
+Two hostile reviewers, a graphics engineer on integrated GPUs and an art
+director, both returned REJECT on round 7. Both were right about things
+this round fixes, and one was wrong about one thing, recorded below with
+the evidence.
+
+### D8, five numbers written down that no measurement supported
+
+The graphics reviewer was asked to look for these and found five. All were
+in comments, which is where they do the most damage, because the next
+person reads them as fact:
+
+- `post.js` said bloom keeps **thirteen** targets. It keeps **eleven**:
+  three at 960x540 and a pair each at 480x270, 240x135, 120x68 and 60x34.
+  The 7.6 MB saving quoted beside it was right, because that was measured.
+- `scene.js` said the shadow box is **58 m**. `shadowExtent` is 72 and it
+  is a half width, so the box is **144 m**, and the texel is 7.0 cm rather
+  than the 2.8 cm the comment implied.
+- `scene.js` said **46000** blades. There are **184000**; 46000 was the
+  count before round 3 of the previous loop quadrupled it.
+- `scene.js` said the OutputPass does the colour space conversion. Round 7
+  deleted the OutputPass.
+- `budget.js` documented itself against a `readDepth` helper and an 11 tap
+  outline pass, neither of which survived round 7. The measuring
+  instrument's own specification no longer described the thing it measured.
+
+The reviewer also found a sixth thing, which is not a stale comment but a
+real defect, so it is now written down where it is: `grass.receiveShadow`
+is a no operation. The grass is a `ShaderMaterial` computing its own sun
+term, so three.js sets the flag and nothing reads it. Measured: blades
+inside a tree's cast shadow are 0.125 against 0.132 outside it, while the
+ground under the same shadow is 0.012.
+
+### P5 was not passing. The instrument could not see 16.6 MB of it.
+
+`budget.js` collected render targets from `setRenderTarget` binds, and the
+canvas is bound by passing `null`, so **the default framebuffer was never
+counted**. Read from the live context rather than assumed, because a
+browser hands out buffers nobody asked for: this one was
+`{alpha, depth, stencil}` all true, which is 4 bytes of colour plus 4 of
+D24S8 over 2,073,600 pixels, **16.6 MB**. Round 7's real P5 was 131.7 MB
+against a 120 MB ceiling, not the 109.8 MB it published.
+
+Two more accounting defects in the same file:
+
+- It computed mebibytes and printed them under a megabyte heading, which
+  is 4.9 percent lenient at this scale. It now reports bytes and both
+  units, so neither reading can be the flattering one by accident.
+- `p5_target_bytes_at_1080p` scaled the whole total by pixel area, but the
+  shadow map's size is authored and does not scale. A 900p capture
+  therefore over reported its 1080p equivalent by 12.8 percent, in the one
+  field documented as the way to answer P5 from a 900p capture.
+
+Two structural savings put it back under, and neither removes anything
+from the frame:
+
+- The default framebuffer gets `depth: false, stencil: false`. The only
+  thing ever drawn into it is the grade pass's fullscreen quad, which is
+  neither depth tested nor stencilled. 8.3 MB.
+- The composer keeps two full size targets and swaps them, but only one
+  ever holds the scene: `RenderPass` draws into the read buffer, and the
+  other only ever receives fullscreen quads, which need no depth. 8.3 MB.
+  Which target is which depends on the parity of the passes that swap, so
+  the parity is counted at build time and the saving is only taken when it
+  is even. Getting it wrong would render the world with no depth test every
+  other frame.
+
+Measured, 1920 by 1080, all four views: **115.1 MB** decimal, 109.8 MiB,
+against 120 MB. The 1600 by 900 capture measures 90.2 MB and derives
+115.1 MB for 1080p, which is exactly the direct 1080p figure: the scaling
+fix validates itself.
+
+### The antialiasing added in round 7 was a blur. The reviewer was right.
+
+It sampled two colour taps **across** the silhouette, on the reasoning that
+mixing the two sides of an edge softens the step. Softening the step is not
+removing the staircase. The reviewer measured the sub pixel position at
+which a near vertical edge crosses a luminance level, row by row, and
+showed round 7 holding still for three rows and then jumping a pixel and a
+half, a period four staircase that 4x multisampling did not have.
+
+That measurement is now an instrument rather than a claim:
+`scripts/pixels.js` gained a `stair:` mode which reports the sub pixel
+crossing per row and the RMS of its second difference. The first difference
+is the edge's slope, which is whatever the geometry is; the second
+difference is the staircase.
+
+Left gate post silhouette, `1080p/03-startline.png`, 48 rows from y=600,
+crossing level 0.35:
+
+    build                              secondDiffRMS   worst
+    round 6, 4x multisampling                  0.289   1.17 px
+    round 7, two taps across the edge          0.478   1.87 px
+    round 8, two taps along the edge           0.288   0.83 px
+
+The taps now go along the silhouette, `vec2(-dir.y, dir.x)`, because a
+staircase is a discontinuity along the edge and that is where it has to be
+filtered. Round 8 matches multisampling on RMS and beats it on the worst
+single step, for 181 MB less. A one sample depth buffer carries no sub
+pixel coverage to recover, so this is not equivalent to multisampling in
+general; on this metric, on this content, it measures the same.
+
+**The grass half of that finding is only partly fixed, and it is reported
+as partly fixed.** Grass writes a sentinel normal, so its reconstructed z
+is zero, `facing` clamps to its 0.12 floor and the coverage threshold was
+inflated about eightfold on exactly the 184000 sub pixel blades that need
+resolving most. The ink term still wants the grazing angle division; the
+coverage term no longer gets it. Mean adjacent pixel luminance gradient
+over three 400 pixel runs through the near meadow:
+
+    round 6, 4x multisampling   0.04149
+    round 7                     0.04608   (+11.1 percent)
+    round 8                     0.04519   (+8.9 percent)
+
+Better than round 7, still measurably worse than multisampling. Sub pixel
+blades against other sub pixel blades produce depth deltas below any
+threshold that does not also blur the whole meadow. This is open, not
+closed, and it is the strongest argument still standing for spending bytes
+on multisampling instead.
+
+### Where a reviewer was wrong
+
+The graphics reviewer said `setSize` in `post.js` desyncs on a HiDPI
+machine, because it passes CSS pixels to `composer.setSize` and device
+pixels to `normalTarget.setSize`, and predicted every P5 figure multiplies
+by four after the first resize. Read from the Three.js r160 source in the
+container's CDN cache: `EffectComposer.setSize(width, height)` stores its
+arguments and then multiplies by `this._pixelRatio`, captured from the
+renderer at construction, before sizing its targets. It takes CSS pixels by
+contract. Both calls are correct and consistent. No change made.
+
+### What did not move, and is next
+
+P1 705 worst view against 400, P2 1,916,515 against 1,200,000, P6 5122 ms
+against 1800, P8 unchanged, P10 51.2 MB against 48, P11 still nothing. The
+graphics reviewer nailed P2 to the wall with a measurement worth repeating:
+pointing the camera at empty sky still submits **1,902,533 triangles**,
+99.3 percent of the worst case, for a frame containing sky and two clouds.
+Its per draw histogram: grass 552,000 twice, baked scenery 108,916 twice,
+terrain 105,800 twice, and 636 of the 698 draws carrying 0.5 percent of the
+triangles between them.
+
+All ten G items came back FAIL or CANNOT VERIFY from the art director. The
+value ladder analysis for the next round, including a tension between G2
+and G3 that may turn out to be a threshold dispute, is in
+`.loop/HANDOVER.md`.
+
+### P7 is downgraded from PASS to CANNOT VERIFY
+
+Not because the number moved, but because the reviewer pointed out that
+every P7 figure published so far, including round 7's 29.4 ms, was sampled
+over about ten frames, and ten frames is not a worst case statistic on any
+hardware. This round's captures run 37 and 38 frames and report a shell
+side worst of 4 ms and 2 ms. That is still not a worst case statistic, and
+the render side remains unmeasurable on a software rasteriser. Recorded as
+CANNOT VERIFY rather than carried as a PASS.
+
+`npm run verify`: 12 of 13, `yaw-coupling` the known red, run in the same
+turn. `git diff --stat vendor/betaflight` empty, `git diff HEAD -- tests/`
+empty, console clean at both resolutions.

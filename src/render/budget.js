@@ -103,10 +103,10 @@ function countIn(code, re) {
 
 /*
  * Taps per output pixel, which is not the same as the number of times
- * texture2D appears in the file. The outline pass writes its depth fetch
- * once, in a helper called readDepth, and calls it five times: a static
- * count reports 7 where the shader actually costs 11 fetches per pixel.
- * P4 is a bandwidth budget, so it has to be the dynamic figure.
+ * texture2D appears in the file. A shader that writes one fetch inside a
+ * helper and calls the helper five times costs five fetches per pixel and
+ * reads as one in the source. P4 is a bandwidth budget, so it has to be
+ * the dynamic figure.
  *
  * So: pull out every user defined function with a brace matched body,
  * count each one's direct taps and its calls to the others, and resolve
@@ -255,6 +255,18 @@ export function measureBudget(view, post, extra) {
     rts.add(post.composer.renderTarget1);
     rts.add(post.composer.renderTarget2);
   }
+  /* A shadow map's size is authored, not derived from the panel, so it is
+   * the one target that does not scale with resolution. Collected here so
+   * that the figure derived for 1080p from a 900p capture is right: an
+   * earlier version scaled the whole total by pixel area and over
+   * reported by 12.8 percent. */
+  const shadowRts = new Set();
+  view.scene.traverse((o) => {
+    if (o.isLight && o.castShadow && o.shadow && o.shadow.map) {
+      shadowRts.add(o.shadow.map);
+    }
+  });
+
   const targets = [];
   for (const rt of rts) {
     if (!rt) {
@@ -262,9 +274,31 @@ export function measureBudget(view, post, extra) {
     }
     const t = targetBytes(rt, `${rt.width}x${rt.height} <- ${named.get(rt) || 'allocated, not bound this frame'}`);
     if (t) {
+      t.scales = !shadowRts.has(rt);
       targets.push(t);
     }
   }
+
+  /*
+   * The default framebuffer. It is a render target the frame writes into
+   * every single frame, it is the size of the panel, and an earlier
+   * version of this file could not see it because it only counted objects
+   * passed to setRenderTarget and the canvas is passed as null. That is
+   * 16.6 MB at 1080p missing from a 120 MB budget. Read from the context's
+   * actual attributes rather than assumed: a browser is free to give the
+   * canvas a stencil buffer nobody asked for, and this one does.
+   */
+  const gl = renderer.getContext();
+  const attrs = gl.getContextAttributes ? gl.getContextAttributes() : {};
+  const fbDepthBytes = (attrs.stencil ? 4 : (attrs.depth ? 4 : 0));
+  targets.push({
+    label: `${canvasW}x${canvasH} <- the default framebuffer, rgba${attrs.depth ? ' + depth' : ''}${attrs.stencil ? ' + stencil' : ''}`,
+    w: canvasW,
+    h: canvasH,
+    samples: 1,
+    bytes: canvasW * canvasH * (4 + fbDepthBytes),
+    scales: true,
+  });
   targets.sort((a, b) => b.bytes - a.bytes);
 
   /* P9: shadow maps, from the lights themselves. */
@@ -304,9 +338,16 @@ export function measureBudget(view, post, extra) {
   });
 
   /* Scale the resolution dependent lines to the 1080p the contract is
-   * written against, so a capture at 1600 by 900 still answers P5. The
-   * scaled figure is derived, and it is labelled as derived. */
+   * written against, so a capture at 1600 by 900 still answers P5. Only
+   * the lines that actually scale: the shadow map's size is authored, and
+   * scaling the whole total by pixel area over reported a 900p capture's
+   * 1080p equivalent by 12.8 percent. The scaled figure is derived, and it
+   * is labelled as derived. */
   const scale = (1920 * 1080) / (canvasW * canvasH);
+  const scaledBytes = targets.reduce(
+    (a, t) => a + (t.scales === false ? t.bytes : t.bytes * scale),
+    0,
+  );
 
   return {
     view: extra && extra.view ? extra.view : 'unnamed',
@@ -316,11 +357,19 @@ export function measureBudget(view, post, extra) {
     p3_fullres_passes: fullResPasses,
     p4_fullres_taps: fullResTaps,
     p4_fullres_loops: fullResLoops,
+    /* Bytes, and then the same bytes in both units, because the ceiling is
+     * written as "120 MB" and a ledger that quietly reports mebibytes
+     * under a megabyte heading is 4.9 percent lenient at this scale. Both
+     * are printed so neither reading can be the flattering one by
+     * accident. */
     p5_target_bytes: targetBytesTotal,
-    p5_target_bytes_at_1080p: Math.round(targetBytesTotal * scale),
+    p5_target_MB: +(targetBytesTotal / 1e6).toFixed(1),
+    p5_target_MiB: +(targetBytesTotal / 1048576).toFixed(1),
+    p5_target_MB_at_1080p: +(scaledBytes / 1e6).toFixed(1),
     p5_targets: targets,
     p9_shadow_maps: shadows,
     p10_attribute_bytes: attrBytes,
+    p10_attribute_MB: +(attrBytes / 1e6).toFixed(1),
     p10_index_bytes: indexBytes,
     meshes,
     geometries: geos.size,

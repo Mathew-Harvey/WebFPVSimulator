@@ -201,19 +201,40 @@ const OutlineShader = {
 
       /*
        * Antialiasing, paid for entirely by fetches the ink already made.
-       * The gradient of the packed depth gives the direction across the
-       * silhouette; two colour taps along it and a 1 2 1 tent resolve it.
        * This is the frame's only antialiasing: the composer target carries
        * no multisampling, because 4x on RGBA16F at 1080p is 116 MB against
        * a 120 MB budget for every render target in the renderer.
+       *
+       * The two taps go ALONG the silhouette, not across it. The first
+       * version of this shader sampled across, on the reasoning that
+       * mixing the two sides of an edge softens the step, and a reviewer
+       * measured what that actually does: the sub pixel crossing of a near
+       * vertical edge held still for three rows and then jumped a pixel
+       * and a half, a period four staircase that 4x multisampling did not
+       * have, while the frame got softer everywhere. Second difference RMS
+       * of the crossing was 0.452 against multisampling's 0.304.
+       *
+       * A staircase is a discontinuity ALONG the edge, so that is where it
+       * has to be filtered. grad is the depth gradient, which points
+       * across; its perpendicular runs along. A one sample depth buffer
+       * carries no sub pixel coverage to recover, so this cannot equal
+       * multisampling, but filtering along the edge attacks the staircase
+       * itself rather than its contrast.
        */
       vec2 grad = vec2((d1 + d3) - (d2 + d4), (d1 + d4) - (d2 + d3));
       float glen = length(grad);
       vec2 dir = glen > 1e-8 ? grad / glen : vec2(0.0, 0.0);
-      float aaT = uAaBias * distScale;
+      vec2 along = vec2(-dir.y, dir.x);
+      /* Grass writes a sentinel normal, so its reconstructed z is 0 and
+       * facing clamps to its 0.12 floor, which inflated the coverage
+       * threshold about eightfold on exactly the 184000 sub pixel blades
+       * that need resolving most. The ink term still wants the grazing
+       * angle division; the coverage term does not. */
+      float aaScale = mix(distScale, 1.0 + d0 * 260.0, grass);
+      float aaT = uAaBias * aaScale;
       float aa = smoothstep(aaT, aaT * 5.0, depthEdge) * uAaAmount;
-      vec3 c1 = texture2D(tDiffuse, clamp(vUv + dir * texel, vec2(0.0), vec2(1.0))).rgb;
-      vec3 c2 = texture2D(tDiffuse, clamp(vUv - dir * texel, vec2(0.0), vec2(1.0))).rgb;
+      vec3 c1 = texture2D(tDiffuse, clamp(vUv + along * texel, vec2(0.0), vec2(1.0))).rgb;
+      vec3 c2 = texture2D(tDiffuse, clamp(vUv - along * texel, vec2(0.0), vec2(1.0))).rgb;
       vec3 resolved = mix(base.rgb, (base.rgb * 2.0 + c1 + c2) * 0.25, aa);
 
       /* Ink. smoothstep rather than step on both terms: a binary edge test
@@ -382,16 +403,40 @@ export function buildComposer(renderer, scene, camera) {
    * clamp it to white and take away the hue that identifies the target.
    */
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.78);
-  /* Every one of bloom's thirteen targets is written by a fullscreen quad
+  /* Every one of bloom's eleven targets is written by a fullscreen quad
    * and none of them is depth tested, but three.js gives a render target a
    * depth renderbuffer by default. Measured, that was 7.6 MB of the frame's
-   * render target budget spent on depth buffers nothing reads. */
+   * render target budget spent on depth buffers nothing reads. Eleven, not
+   * thirteen, which is what this comment said until a reviewer counted
+   * them: three at 960x540 and a pair each at 480x270, 240x135, 120x68 and
+   * 60x34. The 7.6 MB was right because it was measured; the count beside
+   * it was not, because it was not. */
   for (const rt of bloomTargets(bloom)) {
     rt.depthBuffer = false;
   }
   composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
+
+  /*
+   * The composer keeps two full size targets and swaps them, but only one
+   * of them ever holds the scene: RenderPass draws into the read buffer,
+   * which three.js initialises to renderTarget2, and the other only ever
+   * receives fullscreen quads. A quad needs no depth buffer, so that is
+   * 8.3 MB at 1080p for nothing.
+   *
+   * Which target is which depends on the number of passes that swap. An
+   * even number returns the pair to where it started every frame and the
+   * scene stays in one of them forever; an odd number alternates, and
+   * then both targets need depth. So the parity is counted rather than
+   * assumed, and the saving is only taken when it is safe. Getting this
+   * wrong renders the world with no depth test every other frame, which
+   * is not a subtle failure, but it is not one to leave to a comment.
+   */
+  const swaps = composer.passes.filter((p) => p.needsSwap).length;
+  if (swaps % 2 === 0) {
+    composer.writeBuffer.depthBuffer = false;
+  }
 
   /* Layer 1 is the no ink layer: sky dome, water, flowers and the gate
    * rings and glows. The sky must be excluded because the override

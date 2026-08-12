@@ -941,14 +941,27 @@ function clouds(rng) {
 }
 
 export function buildScene(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  /* No depth and no stencil on the default framebuffer. The only thing
+   * ever drawn into it is the grade pass's fullscreen quad, which is
+   * neither depth tested nor stencilled, and a browser hands out a
+   * D24S8 buffer by default: measured, 8.3 MB of the frame's 120 MB
+   * render target budget for a buffer nothing reads. antialias stays off
+   * because EffectComposer allocates its own targets, so the flag would
+   * multisample that same one quad. */
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    depth: false,
+    stencil: false,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   /* No filmic tone curve: it desaturates exactly the flat saturated
-   * colour this style is built on. The OutputPass still does the colour
-   * space conversion. */
+   * colour this style is built on. The grade pass in post.js does the
+   * colour space conversion, at the end of its own shader; there is no
+   * OutputPass any more, and this comment said there was. */
   renderer.toneMapping = THREE.NoToneMapping;
 
   const scene = new THREE.Scene();
@@ -993,10 +1006,19 @@ export function buildScene(canvas) {
    * Grass belongs here: a per blade outline turns a field into a pile of
    * glass shards, and the blades are far too thin to need a silhouette. */
   grass.mesh.layers.set(2);
-  /* Receiving shadows is what makes a gate post's shadow cross the meadow
-   * instead of stopping at it. Blades do not cast: 46000 of them in the
-   * shadow map would cost more than it buys, and the terrain's own cast
-   * shadow already grounds the field. */
+  /* Blades do not cast: 184000 of them in the shadow map would cost more
+   * than it buys, and the terrain's own cast shadow already grounds the
+   * field. The count in this comment said 46000, which was the blade count
+   * before round 3 of the previous loop quadrupled it.
+   *
+   * receiveShadow is set below and it is a no operation, which is a real
+   * defect and not a stale comment: the grass material is a ShaderMaterial
+   * computing its own sun term, so three.js sets the flag and nothing
+   * reads it. Measured by a reviewer, blades standing inside a tree's cast
+   * shadow are 0.125 against 0.132 for blades outside it, while the ground
+   * under the same shadow is 0.012. The flag is left set because it is
+   * what the fix will need; the fix is a shadow map lookup in the grass
+   * fragment shader and it is not this round's item. */
   grass.mesh.receiveShadow = true;
   scene.add(grass.mesh);
   const noInkBaker = makeBaker();
@@ -1398,8 +1420,10 @@ export function buildScene(canvas) {
   }
   resize();
 
-  /* Shadows follow the craft: a 58 m box at 2048 gives crisp contact
-   * shadows where the pilot is looking instead of mush over 1.7 km. */
+  /* Shadows follow the craft. shadowExtent is a half width, so the box is
+   * 144 m across at 2048, which is 7.0 cm per texel: crisp enough for
+   * contact shadows where the pilot is looking, instead of mush over
+   * 1.7 km. This comment said 58 m until a reviewer read the constant. */
   function updateShadowFocus(target) {
     sun.position.copy(target).addScaledVector(SUN_DIR, 130);
     sun.target.position.copy(target);

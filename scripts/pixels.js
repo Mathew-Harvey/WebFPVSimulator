@@ -153,6 +153,59 @@ for (const spec of args.slice(1)) {
     console.log(`${name.padEnd(16)} walk ${x},${y} step ${dx},${dy}: ${vals.join(' ')}`);
     continue;
   }
+  /*
+   * stair: the sub pixel position, row by row, at which a near vertical
+   * edge crosses a luminance level, and the RMS of the second difference
+   * of that sequence.
+   *
+   * This is the measurement that distinguishes antialiasing from blur, and
+   * walking across an edge does not make it. A blur spreads the step over
+   * more pixels and leaves the edge sitting at the same integer column for
+   * several rows before jumping; coverage moves the crossing a fraction of
+   * a pixel per row. So the first difference is the edge's slope, which is
+   * whatever the geometry is, and the SECOND difference is the staircase.
+   * Low is smooth, high is stepped.
+   */
+  if (rect.startsWith('stair:')) {
+    const [x0, y0, w0, rows, level] = rect.slice(6).split(',').map(Number);
+    const at = [];
+    for (let ry = 0; ry < rows; ry += 1) {
+      const yy = y0 + ry;
+      if (yy >= img.height) {
+        break;
+      }
+      let found = null;
+      let prev = lumAt(x0, yy);
+      for (let i = 1; i < w0 && x0 + i < img.width; i += 1) {
+        const cur = lumAt(x0 + i, yy);
+        if ((prev - level) * (cur - level) <= 0 && prev !== cur) {
+          found = x0 + i - 1 + (level - prev) / (cur - prev);
+          break;
+        }
+        prev = cur;
+      }
+      at.push(found);
+    }
+    const good = at.filter((v) => v != null);
+    let sum = 0;
+    let n = 0;
+    let worst = 0;
+    for (let i = 1; i + 1 < at.length; i += 1) {
+      if (at[i - 1] == null || at[i] == null || at[i + 1] == null) {
+        continue;
+      }
+      const d2 = at[i + 1] - 2 * at[i] + at[i - 1];
+      sum += d2 * d2;
+      n += 1;
+      worst = Math.max(worst, Math.abs(d2));
+    }
+    console.log(
+      `${name.padEnd(16)} stair rows=${good.length}/${at.length} ` +
+      `secondDiffRMS ${n ? Math.sqrt(sum / n).toFixed(3) : 'n/a'} worst ${worst.toFixed(2)} px`,
+    );
+    console.log(`                 crossings: ${at.map((v) => (v == null ? '-' : v.toFixed(2))).join(' ')}`);
+    continue;
+  }
   const [x, y, w, h] = rect.split(',').map(Number);
   let r = 0;
   let g = 0;

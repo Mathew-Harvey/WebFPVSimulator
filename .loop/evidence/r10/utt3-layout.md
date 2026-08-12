@@ -162,3 +162,36 @@ allows no flags. T3 wants five distinct obstacle types on the track, and UTT 3
 has two. Those two bars point in opposite directions and the conflict is
 recorded in `.loop/threshold-disputes.md` rather than resolved by softening
 either one.
+
+## Addendum: the other UTT guides, and why T3 cannot be met by picking a different track
+
+Downloaded and read this round, same method. Five of the ten, chosen as the
+ones whose layout pages are extractable rasters plus UTT 9 which was the
+obvious candidate for a many obstacle layout:
+
+    UTT 3 Bessel Run   "4 standard MultiGP gates and 1 standard MultiGP
+                        start/finish timing gate", "No flags allowed."
+    UTT 4 High Voltage  same requirement text, "No flags allowed."
+    UTT 5 Nautilus      same requirement text, "No flags allowed."
+    UTT 7 Tiny Whutt    "5 Tiny Whoop size gates: 361 sq in (19"x19" or
+                        483mm x 483mm)"
+    UTT 9 MegaUTT       "2 Mega Gates, 4 Flags", and "Gates must have a
+                        12'x12' opening."
+
+One or two obstacle types each. UTT 9, the one named Mega, is the sparsest of
+all: two gates and four flags across a course whose longest dimension the
+diagram marks at 161 ft. UTT 7 additionally instructs the organiser to "place
+a chair at a 45 degree angle", which is a good reminder of what these
+documents actually are.
+
+UTT 1, 2, 6, 8 and 10 have JPEG layout pages rather than FlateDecode rasters,
+so reading them needs the whole page image rather than a crop. A later round
+can do it; the argument in `.loop/threshold-disputes.md` entry 4 does not
+depend on them, because the reason UTTs use so few obstacle types is the
+format's whole purpose.
+
+UTT 9's own instruction text is worth carrying into T5, because it is
+stricter than the T5 wording and it is MultiGP's: "Obstacles must be
+traversed in the direction indicated by arrows. Obstacles must be traversed
+in this numerical sequence: 1-6. If any obstacle is entered out of sequence
+or direction at any time the run is invalid."

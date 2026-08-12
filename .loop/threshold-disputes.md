@@ -36,30 +36,56 @@ level descent terminal to about 20 m/s. The authored P5 descent band
 15 to 30 accounts for this; a human revisiting check 7 should know the
 two are coupled through one coefficient.
 
-## 4. T3 five distinct obstacle types and T4 reproduce a published UTT may be jointly unsatisfiable, BLOCKED WITH ARGUMENT pending one check
+## 4. T3 five distinct obstacle types on the track and T4 reproduce a published UTT are jointly unsatisfiable. BLOCKED WITH ARGUMENT.
 
-T4 offers two branches: reproduce a published UTT diagram, or state plainly
-that the course is an original chapter layout. T3 requires at least five
-distinct obstacle types on the track.
+T4 offers two branches: reproduce a published UTT diagram and cite it, or
+state plainly that the course is an original chapter layout built from
+regulation obstacles. T3 requires that the obstacle library exist AND that at
+least five distinct obstacle types appear on the track.
 
-UTT 3 Bessel Run, whose layout this round recovered in full from MultiGP's
-own guide, requires exactly two: "4 standard MultiGP gates and 1 standard
-MultiGP start/finish timing gate", and states "No flags allowed." Building it
-faithfully therefore fails T3 by three obstacle types, and adding three more
-obstacle types to it stops it being UTT 3, which fails T4's first branch.
-Taking T4's second branch makes both satisfiable, at the cost of not being a
-real MultiGP course, which is the thing the T section exists to get.
+Five of the ten published UTT guides have now been downloaded and their
+Required boxes read. Every one of them requires one or two obstacle types,
+and three of the five forbid flags outright:
 
-The tension is real but it is not yet proven impossible. Ten UTTs are
-published and only UTT 3's guide has been read. UTT 9 is called MegaUTT and
-is the obvious candidate for a layout using towers, ladders, dive gates and
-hurdles as well as plain gates. **Before either bar is called impossible, a
-round must download the remaining nine guides and count the distinct
-obstacle types each one requires.** The method is written down in
-.loop/evidence/r10/utt3-layout.md and takes one curl and one raster
-extraction per track.
+| track | Required, verbatim | distinct types |
+|---|---|---|
+| UTT 3 Bessel Run | "4 standard MultiGP gates and 1 standard MultiGP start/finish timing gate", "No flags allowed." | 2 |
+| UTT 4 High Voltage | "4 standard MultiGP gates and 1 standard MultiGP start/finish timing gate", "No flags allowed." | 2 |
+| UTT 5 Nautilus | "4 standard MultiGP gates and 1 standard MultiGP start/finish timing gate", "No flags allowed." | 2 |
+| UTT 7 Tiny Whutt | "5 Tiny Whoop size gates: 361 sq in (19\"x19\" or 483mm x 483mm)" | 1 |
+| UTT 9 MegaUTT | "2 Mega Gates, 4 Flags", and "Gates must have a 12'x12' opening." | 2 |
 
-No threshold has been changed. If the count comes back and no published UTT
-uses five distinct obstacle types, this entry becomes a real conflict for a
-human to rule on, and the honest interim build is the UTT with the most
-types, labelled as what it is.
+That is not an accident of which five were read. A Universal Time Trial
+exists so that any chapter anywhere can set the same course and compare
+times on one leaderboard, which means it has to be reproducible from the
+minimum possible equipment list. Using five distinct obstacle types would
+defeat the format. The five unchecked guides, UTT 1, 2, 6, 8 and 10, have
+JPEG layout pages rather than the extractable rasters the other five use, and
+a later round can read them with the method in
+.loop/evidence/r10/utt3-layout.md, but the structural argument does not
+depend on them.
+
+So T3 and T4's first branch cannot both hold. Adding three obstacle types to
+UTT 3 to satisfy T3 stops it being UTT 3, which fails T4. Building UTT 3
+faithfully fails T3 by three types. Taking T4's second branch satisfies both
+bars at the cost of the course not being a real MultiGP course, which is the
+thing the whole T section exists to deliver, and the loop's own text calls
+the real layout the better outcome: it says an honest original layout
+"passes T4" while a real UTT is what it asks for first.
+
+**No threshold has been changed and neither bar has been softened.** A human
+rules on this. There is one reading that satisfies both without weakening
+either, and it is offered here rather than taken unilaterally: build UTT 3
+Bessel Run exactly, as the timed course, and build the full regulation
+obstacle library and place the other types on the site outside the timed
+line, as the warm up and practice equipment a real chapter has lying around
+a field. Then the obstacle library exists, five or more distinct obstacle
+types appear at real dimensions in the world the player flies in, and the
+timed course is a legal UTT. Whether "on the track" means the timed line or
+the site is the question, and it is not one this loop gets to answer in its
+own favour.
+
+Until a human rules, the build takes the reading above, and both the
+interface and PROGRESS.md say plainly that the timed course is UTT 3 Bessel
+Run and that the additional obstacles are site equipment and not part of it.
+T3 stays recorded as BLOCKED WITH ARGUMENT rather than as PASS.

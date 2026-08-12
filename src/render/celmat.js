@@ -132,7 +132,7 @@ const RIM_CHUNK = /* glsl */ `
  * than from a lamp. Sampled from procedural noise at world position, so
  * there is no texture to load and it costs a handful of instructions.
  */
-const CLOUD_SHADOW_GLSL = /* glsl */ `
+export const CLOUD_SHADOW_GLSL = /* glsl */ `
   float celHash(vec2 p) {
     p = fract(p * vec2(233.34, 851.73));
     p += dot(p, p + 23.45);

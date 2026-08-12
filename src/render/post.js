@@ -219,7 +219,16 @@ export function buildComposer(renderer, scene, camera) {
   outline.uniforms.uCameraFar.value = camera.far;
   composer.addPass(outline);
 
-  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.92);
+  /*
+   * Bloom threshold. At 0.92 on linear luminance nothing in the world
+   * passed the high pass except the sun disc and a few white pips: both
+   * gate ring colours sit at about 0.70, so the one thing bloom exists for
+   * was the one thing it could not see. 0.78 catches the rings and the
+   * warm horizon and leaves the mid greens alone. The renderer runs with
+   * no tone mapping, so raising the ring colour past one instead would
+   * clamp it to white and take away the hue that identifies the target.
+   */
+  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.78);
   composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
@@ -228,11 +237,18 @@ export function buildComposer(renderer, scene, camera) {
    * wrong. */
   composer.addPass(new OutputPass());
 
-  /* Layer 1 is the no ink layer: sky dome, clouds and grass. The sky must
-   * be excluded because the override material ignores its
-   * depthWrite:false and would stamp depth at the far plane, leaving every
-   * outline computed against the sky instead of the world. Grass is
-   * excluded because outlining individual blades reads as broken glass. */
+  /* Layer 1 is the no ink layer: sky dome, grass, flowers, water and the
+   * gate rings and glows. The sky must be excluded because the override
+   * material ignores its depthWrite:false and would stamp depth at the far
+   * plane, leaving every outline computed against the sky instead of the
+   * world. Grass and flowers are excluded because outlining individual
+   * blades reads as broken glass. The emissive rings are excluded because
+   * the depth pass draws a ghost ellipse inside the torus.
+   *
+   * Clouds are NOT on this layer any more. They used to be, and because
+   * the prepass skips the whole layer they wrote no depth, so the ink pass
+   * drew the silhouettes of mountains standing behind them straight across
+   * the cloud. */
   function renderNormals() {
     const prevBg = scene.background;
     const prevOverride = scene.overrideMaterial;

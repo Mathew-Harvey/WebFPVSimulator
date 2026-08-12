@@ -41,7 +41,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { celMaterial, outlineHull, updateCelTime } from './celmat.js';
+import { celMaterial, outlineHull, updateCelTime, CLOUD_SHADOW_GLSL } from './celmat.js';
 
 /*
  * Static scenery merger. A forest of individual Groups costs a draw call
@@ -101,7 +101,11 @@ function makeBaker() {
 
 const SUN_DIR = new THREE.Vector3(0.60, 0.50, 0.62).normalize();
 const HORIZON = 0xf2e3cb;
-const SKY_HIGH = 0x2e6bb8;
+/* Zenith blue. Measured at 0x2e6bb8 the sky's linear luminance was 0.248
+ * and the lit meadow's was 0.257, so sky and ground occupied ONE value
+ * band and separated by hue alone. Blue carries little luminance, so the
+ * fix is a paler zenith rather than a bluer one. */
+const SKY_HIGH = 0x6ea3d8;
 const FOG_NEAR = 130;
 const FOG_FAR = 780;
 
@@ -399,7 +403,17 @@ function cliff(rng, height, x, z) {
  * blades move together in gusts instead of each doing its own thing.
  */
 function grassField(height, samples, rng) {
-  const BLADES = 46000;
+  /*
+   * Blade count and blade size, both measured against a frame rather than
+   * guessed. 46000 blades of 7.5 to 13 cm width spread over 900 by 900 m
+   * put roughly one blade per two square metres, so at eye height the near
+   * field was a handful of very large isolated fins over bare ground: it
+   * read as scattered debris, not as a meadow, and a blade as wide as a
+   * hand also reads as the wrong plant. Four times as many blades, half as
+   * wide, concentrated in a tighter band along the circuit where the eye
+   * actually is.
+   */
+  const BLADES = 184000;
   const positions = new Float32Array(BLADES * 5 * 3);
   const colors = new Float32Array(BLADES * 5 * 3);
   const bend = new Float32Array(BLADES * 5);
@@ -414,10 +428,10 @@ function grassField(height, samples, rng) {
     /* Bias placement toward the circuit: that is where the eye is. */
     let x;
     let z;
-    if (rng() < 0.72) {
+    if (rng() < 0.84) {
       const s = samples[Math.floor(rng() * samples.length)];
       const a = rng() * Math.PI * 2;
-      const r = 3 + rng() * 40;
+      const r = 1 + rng() * 22;
       x = s.x + Math.cos(a) * r;
       z = s.z + Math.sin(a) * r;
     } else {
@@ -425,8 +439,8 @@ function grassField(height, samples, rng) {
       z = (rng() - 0.5) * 900;
     }
     const y = height(x, z);
-    const h = 0.32 + rng() * 0.5;
-    const w = 0.075 + rng() * 0.055;
+    const h = 0.26 + rng() * 0.42;
+    const w = 0.026 + rng() * 0.03;
     const a = rng() * Math.PI;
     const dx = Math.cos(a) * w;
     const dz = Math.sin(a) * w;
@@ -470,22 +484,49 @@ function grassField(height, samples, rng) {
   geo.setIndex(new THREE.BufferAttribute(indices.subarray(0, made * 9), 1));
   geo.computeBoundingSphere();
 
+  /*
+   * Light for the blades, derived from the scene's own lights rather than
+   * guessed, so a blade matches the ground it grows out of.
+   *
+   * A toon surface facing up receives sunColour x sunIntensity x the
+   * ramp's lit band, plus the hemisphere light's sky colour x its
+   * intensity. In shadow it receives the ramp's cool band instead. Those
+   * two products are GRASS_LIT and GRASS_SHADE, in linear working space,
+   * and the numbers come from SUN_COLOUR 0xffe9c4 at 1.45, the hemisphere
+   * 0x8fb8e8 at 0.42, and the ramp stops in celmat.js. Measured against a
+   * frame afterwards, not asserted: see PROGRESS.md.
+   *
+   * Before this the fragment shader was one line, vec3 col = vColor, with
+   * a comment claiming the sun gain was baked in. It was not, and a
+   * reviewer measured the meadow at 27 percent darker than the terrain
+   * underneath it.
+   */
   const mat = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uFogColor: { value: new THREE.Color(HORIZON) },
-      uFogNear: { value: FOG_NEAR },
-      uFogFar: { value: FOG_FAR },
-      uSun: { value: SUN_DIR.clone() },
-      uQuad: { value: new THREE.Vector3(0, -100, 0) },
-      uWash: { value: 0 },
-    },
+    lights: true,
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.lights,
+      {
+        uTime: { value: 0 },
+        uFogColor: { value: new THREE.Color(HORIZON) },
+        uFogNear: { value: FOG_NEAR },
+        uFogFar: { value: FOG_FAR },
+        uSun: { value: SUN_DIR.clone() },
+        uQuad: { value: new THREE.Vector3(0, -100, 0) },
+        uWash: { value: 0 },
+        uLit: { value: new THREE.Vector3(1.568, 1.300, 0.938) },
+        uShade: { value: new THREE.Vector3(0.331, 0.463, 0.719) },
+        uCloud: { value: 0.34 },
+      },
+    ]),
     side: THREE.DoubleSide,
     vertexShader: /* glsl */ `
+      #include <common>
+      #include <shadowmap_pars_vertex>
       attribute float aBend;
       varying vec3 vColor;
       varying float vFog;
       varying float vBend;
+      varying vec3 vWorld;
       uniform float uTime;
       uniform vec3 uQuad;
       uniform float uWash;
@@ -516,24 +557,49 @@ function grassField(height, samples, rng) {
           p.z += dir.y * wash * amp * (0.85 + 0.3 * shake);
           p.y -= wash * amp * 0.4;
         }
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        /* The shadow chunks want a world position and a normal to offset
+         * along. Blades stand on the ground, so up is the right normal for
+         * the bias, and it is only used for the bias. */
+        vec4 worldPosition = modelMatrix * vec4(p, 1.0);
+        vWorld = worldPosition.xyz;
+        vec3 transformedNormal = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));
+        #include <shadowmap_vertex>
+        vec4 mv = viewMatrix * worldPosition;
         vFog = -mv.z;
         gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: /* glsl */ `
+      #include <common>
+      #include <packing>
+      #include <shadowmap_pars_fragment>
+      /* getShadowMask reads a bool called receiveShadow, which the
+       * renderer declares for its own materials and not for a raw
+       * ShaderMaterial. This grass always receives shadows, so define it
+       * rather than plumb a uniform nothing would ever set to false. */
+      #define receiveShadow true
+      #include <shadowmask_pars_fragment>
+      ${CLOUD_SHADOW_GLSL}
       varying vec3 vColor;
       varying float vFog;
       varying float vBend;
+      varying vec3 vWorld;
       uniform vec3 uFogColor;
       uniform float uFogNear;
       uniform float uFogFar;
+      uniform vec3 uLit;
+      uniform vec3 uShade;
+      uniform float uCloud;
+      uniform float uTime;
       void main() {
-        // The terrain around it is lit by a 2.6 sun plus hemisphere fill,
-        // so an unlit field reads as a dark rash on top of bright ground.
-        // Bake the same gain in here, and keep the root to tip ramp
-        // shallow so the field stays a single mass at distance.
-        vec3 col = vColor;
+        /* The same two light products the terrain gets, so a blade is the
+         * value of the ground plus a little, never a darker rash on it. */
+        float lit = getShadowMask();
+        lit *= 1.0 - uCloud * celCloudShadow(vWorld.xz, uTime);
+        /* Roots sit in the field's own occlusion, tips catch the sun. A
+         * shallow ramp: a steep one turns a meadow into stripes. */
+        lit *= 0.74 + 0.26 * vBend;
+        vec3 col = vColor * mix(uShade, uLit, lit);
         float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
         gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
       }
@@ -643,8 +709,13 @@ function gate(index, isStart) {
   outlineHull(top, 1.05);
   g.add(top);
 
-  /* The aperture: emissive so bloom lifts it, and doubled with a fainter
-   * larger ring so it stays visible against bright sky. */
+  /* The aperture. Bloom alone could not lift it: UnrealBloomPass ran at
+   * threshold 0.92 on linear luminance and both ring colours sit at about
+   * 0.70, so the high pass rejected them and the only gate part that ever
+   * glowed was the 16 cm white pip marks. The ring now carries its own
+   * additive glow disc, in the plane of the opening, which is where a
+   * pilot on the racing line sees it, and the bloom threshold has come
+   * down to catch the ring itself. */
   const ringColor = isStart ? 0x7dffb4 : 0xffd45c;
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(1.9, 0.15, 8, 32),
@@ -664,6 +735,52 @@ function gate(index, isStart) {
   halo.layers.set(1);
   g.add(halo);
 
+  /* Additive glow, a soft annulus centred on the aperture. Additive so it
+   * reads as light rather than paint, in the gate plane so it does not
+   * need to billboard, and unlit and unfogged so distance cannot take the
+   * target away from the pilot. uGain is driven per frame: bright and
+   * pulsing on the gate the race wants next, nearly off on the rest. */
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.9, 6.9),
+    new THREE.ShaderMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(ringColor) },
+        uGain: { value: 0.1 },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec2 vUv;
+        uniform vec3 uColor;
+        uniform float uGain;
+        void main() {
+          float r = length(vUv - 0.5) * 2.0;
+          /* A band at the torus radius, 1.9 of the 3.8 half width, plus a
+           * faint fill so the aperture itself reads as lit air. */
+          float band = exp(-pow((r - 0.55) / 0.095, 2.0));
+          /* Only a breath of fill. The aperture is the thing the pilot
+           * has to see THROUGH, so filling it with haze hides the line
+           * out of the gate, which is worse than not marking it at all. */
+          float fill = smoothstep(0.66, 0.0, r) * 0.05;
+          gl_FragColor = vec4(uColor * (band + fill) * uGain, 1.0);
+        }
+      `,
+    }),
+  );
+  glow.position.y = h * 0.5;
+  glow.layers.set(1);
+  g.add(glow);
+
   const plate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 0.12), accent);
   plate.position.set(0, h + 0.75, 0);
   outlineHull(plate, 1.05);
@@ -677,7 +794,7 @@ function gate(index, isStart) {
     pip.position.set(-0.9 + p * 0.26, h + 0.75, 0.1);
     g.add(pip);
   }
-  return { group: g, ringMat: ring.material, haloMat: halo.material, ringColor };
+  return { group: g, ringMat: ring.material, haloMat: halo.material, glowMat: glow.material, ringColor };
 }
 
 function bannerFlag(rng, height, x, z, colorHex) {
@@ -688,15 +805,29 @@ function bannerFlag(rng, height, x, z, colorHex) {
   );
   pole.position.y = 1.7;
   g.add(pole);
+  /* Cel shaded, not unlit: an unlit cloth holds full saturation inside a
+   * cast shadow, which is the one thing the colour rule forbids. */
   const cloth = new THREE.Mesh(
     new THREE.PlaneGeometry(1.15, 0.68, 4, 2),
-    new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, fog: true }),
+    /* No rim on the cloth. The rim term is 1 minus dot(normal, view), and
+     * a flat plane seen at any angle is edge on across its whole surface,
+     * so the cool rim colour covered the entire flag: a dark red cloth
+     * measured rgb 151 93 113, a dusty pink nothing in the palette
+     * contains. */
+    celMaterial({ color: colorHex, rim: 0.0, side: THREE.DoubleSide }),
   );
-  cloth.position.set(0.58, 2.85, 0);
-  g.add(cloth);
+  cloth.castShadow = true;
+  /* The cloth hangs off the pole, so it has to swing about the pole. A
+   * mesh rotated about its own centre 0.58 m away swings off the pole and
+   * back through it. */
+  cloth.position.set(0.58, 0, 0);
+  const clothPivot = new THREE.Group();
+  clothPivot.position.set(0, 2.85, 0);
+  clothPivot.add(cloth);
+  g.add(clothPivot);
   g.position.set(x, height(x, z), z);
   g.rotation.y = rng() * Math.PI;
-  return { group: g, cloth };
+  return { group: g, cloth: clothPivot, pole };
 }
 
 function skyDome() {
@@ -724,10 +855,15 @@ function skyDome() {
       uniform vec3 uSun;
       void main() {
         float h = clamp(vDir.y * 1.25 + 0.06, 0.0, 1.0);
-        // banded, but with a narrow smooth edge on each band so the sky
-        // does not shimmer as the camera rolls
-        float b = h * 5.0;
-        float band = (floor(b) + smoothstep(0.72, 0.98, fract(b))) / 5.0;
+        // Posterised, but only part way. At five bands with a hard step the
+        // band edge is a single enormous pale arc sweeping across the sky,
+        // and in a still that reads as a rendering fault rather than as a
+        // style: it was the most visible artefact in every frame. Nine
+        // bands, a wider smooth edge, and a mix back toward the smooth
+        // gradient keep the poster feel without the arc.
+        float b = h * 9.0;
+        float stepped = (floor(b) + smoothstep(0.35, 0.95, fract(b))) / 9.0;
+        float band = mix(h, stepped, 0.5);
         vec3 col = mix(uHorizon, uHigh, band);
         // warm glow around the sun, and a hard disc
         float sd = max(dot(vDir, normalize(uSun)), 0.0);
@@ -841,10 +977,20 @@ export function buildScene(canvas) {
    * Grass belongs here: a per blade outline turns a field into a pile of
    * glass shards, and the blades are far too thin to need a silhouette. */
   grass.mesh.layers.set(1);
+  /* Receiving shadows is what makes a gate post's shadow cross the meadow
+   * instead of stopping at it. Blades do not cast: 46000 of them in the
+   * shadow map would cost more than it buys, and the terrain's own cast
+   * shadow already grounds the field. */
+  grass.mesh.receiveShadow = true;
   scene.add(grass.mesh);
   const noInkBaker = makeBaker();
   noInkBaker.bake(clouds(rng));
-  const cloudMeshes = noInkBaker.flush(scene, 1);
+  /* Layer 0, not the no ink layer. Clouds used to write no depth into the
+   * outline prepass, so the ink pass drew mountain silhouettes ACROSS the
+   * cloud that the colour pass had correctly hidden: a two pixel ink line
+   * lying on a continuous cloud surface. They occlude now, and their own
+   * silhouette inks, which suits the painted shapes. */
+  const cloudMeshes = noInkBaker.flush(scene);
   for (const m of cloudMeshes) {
     m.castShadow = false;
     m.receiveShadow = false;
@@ -878,6 +1024,7 @@ export function buildScene(canvas) {
       ringMat: made.ringMat,
       haloMat: made.haloMat,
       ringColor: made.ringColor,
+      glowMat: made.glowMat,
     });
   }
 
@@ -887,7 +1034,9 @@ export function buildScene(canvas) {
   function setNextGate(i) {
     for (const gt of gates) {
       gt.ringMat.color.set(gt.ringColor);
-      gt.haloMat.opacity = 0.5;
+      gt.haloMat.opacity = 0.34;
+      /* Almost off. A gate that is not the next one is track, not target. */
+      gt.glowMat.uniforms.uGain.value = 0.12;
     }
     nextGateIdx = i;
   }
@@ -1038,7 +1187,15 @@ export function buildScene(canvas) {
 
   /* Course markers along the circuit: close range speed reference. */
   const flags = [];
-  const flagColors = [0xe8503a, 0xffd257, 0x46b0e0, 0xffffff];
+  /* No white. A white flag measured brighter than the sky, which inverts
+   * the value hierarchy this file claims to enforce and made 72 pieces of
+   * dressing louder than the gate. */
+  const flagColors = [0xc4452f, 0xcf8a2a, 0x3f8fbf, 0x3f6fa8];
+  /* The 72 poles are static, so they merge into one draw call. Only the
+   * cloths stay as separate objects, because they swing, and only the
+   * cloths cast: a flag that casts no shadow floats, and 72 poles in the
+   * shadow map cost more than a pole's thin shadow line is worth. */
+  const poleBaker = makeBaker();
   for (let i = 0; i < 72; i += 1) {
     const u = i / 72;
     const p = curve.getPointAt(u);
@@ -1047,9 +1204,13 @@ export function buildScene(canvas) {
     const nz = tan.x;
     const side = i % 2 === 0 ? 8.5 : -8.5;
     const f = bannerFlag(rng, height, p.x + nx * side, p.z + nz * side, flagColors[i % flagColors.length]);
+    f.group.updateMatrixWorld(true);
+    poleBaker.bake(f.pole);
+    f.group.remove(f.pole);
     scene.add(f.group);
     flags.push(f);
   }
+  poleBaker.flush(scene);
 
   /* Mountain rings. Cones are centred on their origin, so the base must
    * sit at y = h/2 or the range floats. Far ring lighter for aerial
@@ -1150,7 +1311,6 @@ export function buildScene(canvas) {
     sun.target.updateMatrixWorld();
   }
 
-  const pulseWhite = new THREE.Color(0xffffff);
   function updateWind(t, quadPos, wash) {
     grass.mat.uniforms.uTime.value = t;
     if (quadPos) {
@@ -1165,9 +1325,11 @@ export function buildScene(canvas) {
     }
     if (nextGateIdx >= 0 && nextGateIdx < gates.length) {
       const gt = gates[nextGateIdx];
-      const pulse = 0.5 + 0.5 * Math.sin(t * 6.0);
-      gt.ringMat.color.set(gt.ringColor).lerp(pulseWhite, 0.45 * pulse);
-      gt.haloMat.opacity = 0.45 + 0.45 * pulse;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4.4);
+      /* Pulse the glow, not the ring's hue. Lerping the ring toward white
+       * made the target lose the one colour that identifies it. */
+      gt.glowMat.uniforms.uGain.value = 0.52 + 0.26 * pulse;
+      gt.haloMat.opacity = 0.55 + 0.35 * pulse;
     }
   }
 

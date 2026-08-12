@@ -375,3 +375,143 @@ npm run verify in the same turn as this entry: 12 of 13, yaw-coupling the
 only red, threshold untouched, git diff of tests/ empty. Capture run: five
 state assertions passing, console errors 0, warnings 0. Frames in
 .loop/evidence/r2.
+
+## Polish loop round 3: the frame
+
+Rubric items attempted: B5 focal hierarchy and B1 value bands, plus the
+two artefacts whose mechanism was already named. All of it came from
+reviewer two's list, and all of it is measured rather than judged, using a
+new tool.
+
+### A new instrument: scripts/pixels.js
+
+Reviewer two settled arguments with numbers ("the gate aperture has the
+same luminance as the grass behind it", "the white flag is brighter than
+the sky") and this project had no way to answer in kind. scripts/pixels.js
+decodes a captured PNG with zlib and prints the mean colour and Rec. 709
+linear luminance of named rectangles. Luminance is the same quantity a
+bloom high pass thresholds on, so a claim about the frame and a number in
+post.js are now directly comparable.
+
+### B5, the gate could not glow
+
+Measured: UnrealBloomPass ran with threshold 0.92 on linear luminance.
+The two ring colours, 0x7dffb4 and 0xffd45c, sit at about 0.70 and 0.70.
+The high pass rejected both, so the only part of a gate that ever bloomed
+was the 16 cm white pip marks, and the comment in post.js claiming bloom
+existed to make the rings glow was false.
+
+Raising the ring past 1.0 was the obvious fix and it is wrong here: the
+renderer runs with NoToneMapping, so anything over 1.0 clamps to white and
+the ring loses the hue that identifies it. Instead:
+
+- Each gate carries an additive glow annulus in the plane of its opening,
+  which is where a pilot on the racing line sees it. Unlit, unfogged, and
+  with almost no fill, because the aperture is the thing you have to see
+  THROUGH: the first version filled the gate with green haze and hid the
+  exit line.
+- The glow is driven per frame. The next gate sits at 0.52 to 0.78 and
+  pulses; every other gate sits at 0.12. A gate that is not next is track,
+  not target.
+- The pulse drives the glow, not the ring's hue. The old pulse lerped the
+  ring toward white, which took away the one colour that says which gate
+  is next.
+- The bloom threshold came down to 0.78, which catches the ring and the
+  warm horizon and leaves the mid greens alone.
+
+Measured after: gate ring core 0.912 linear, the brightest object in the
+frame, against grass at 0.236 and sky at 0.379.
+
+### B1, sky and ground were one value band
+
+Measured before, at the same three points: sky 0.248, grass 0.257, bare
+ground 0.255. Sky and ground were the same value and separated by hue
+alone, which is exactly what the bar forbids.
+
+Blue carries little luminance, so a bluer sky cannot fix this; a paler one
+can. SKY_HIGH went from 0x2e6bb8 to 0x6ea3d8. Measured after:
+
+  objects   trees 0.079, gate posts 0.097, flag cloth 0.080
+  ground    grass 0.236 to 0.277 depending on cloud shadow
+  sky       zenith 0.379
+  above     far mountains 0.506, clouds 0.713, gate ring 0.912
+
+Four separated bands with the target at the top.
+
+The white course flags went too. A white cloth measured brighter than the
+sky, so seventy two pieces of dressing outranked the gate. The palette is
+now four muted colours and the cloth is cel shaded rather than unlit, so a
+flag in shadow is in shadow.
+
+### B4 in part: the grass had no light model at all
+
+The grass fragment shader was one line, vec3 col = vColor, under a comment
+claiming the terrain's sun gain was baked in. It was not. Reviewer two
+measured the meadow 27 percent darker than the terrain it grows out of.
+
+The blades now receive the same light the ground does, derived from the
+scene's own lights rather than guessed: a toon surface facing up receives
+sun colour times intensity times the ramp's lit band, plus the hemisphere
+light, and in shadow it receives the ramp's cool band instead. Those two
+products are uLit and uShade. The blades also read the real shadow map
+through Three's shadow chunks, so a gate post's shadow crosses the meadow
+instead of stopping at it, and they sample the same cloud shadow function
+the terrain uses, from one exported snippet in celmat.js.
+
+Measured after: grass 0.257 against bare ground 0.255 in the same frame.
+
+Two things went wrong getting there. The first: a python replace hit the
+same vertex shader tail in the WATER shader as well as the grass one, so
+the lake started declaring a varying it did not have; the shader compile
+error showed up as ten WebGL warnings and two console errors in the very
+next capture. The second: getShadowMask lives in shadowmask_pars_fragment,
+not shadowmap_pars_fragment, and it reads a bool named receiveShadow that
+the renderer declares for its own materials and not for a raw
+ShaderMaterial. Defined it rather than plumbing a uniform nothing would
+ever set to false.
+
+### The meadow itself
+
+46000 blades over 900 by 900 m is one blade per two square metres, and
+each was 7.5 to 13 cm wide. At eye height that reads as scattered debris,
+and a blade as wide as a hand is the wrong plant. Now 184000 blades of 2.6
+to 5.6 cm, with 84 percent of them inside 23 m of the circuit rather than
+43 m.
+
+### Artefacts with a named mechanism, fixed
+
+- Clouds were on the no ink layer, and the outline prepass skips that
+  layer wholesale, so clouds wrote no depth and the ink pass drew the
+  silhouettes of mountains standing BEHIND them straight across the cloud.
+  Reviewer two measured the cloud fill either side of one such line as
+  identical within 1/255. Clouds are on layer 0 now: they occlude, and
+  their own silhouette inks, which suits the painted shapes.
+- The sky posterised into five bands with a hard step, and the band edge
+  was a single enormous pale arc sweeping across every frame. Nine bands,
+  a wider soft edge, and a half mix back toward the smooth gradient.
+- A flag cloth measured rgb 151 93 113, a dusty pink that appears nowhere
+  in the palette. Cause: the rim term is one minus dot(normal, view), and a
+  flat plane is edge on across its whole surface at almost any angle, so
+  the cool rim colour covered the entire cloth rather than its edge. Rim
+  off for cloth: it now measures 137 50 48.
+
+### Cost
+
+Draw calls 255 to 310, triangles 1.01M to 1.47M, measured through
+window.__renderStats on the same rasteriser. The triangles are the denser
+meadow. Of the 55 extra calls, 72 are the flag cloths now casting shadows
+so the flags stop floating, offset by merging the 72 static poles into one
+mesh, plus 8 gate glows and the clouds entering the prepass; about 40 of
+the 55 are unaccounted for and worth a look in a later round.
+
+No absolute frame rate is claimed. This container has software
+rasterisation only, and .loop/blocked.md says why that number would be
+meaningless.
+
+### Evidence
+
+npm run verify in the same turn: 12 of 13, yaw-coupling the only red,
+threshold untouched, git diff of tests/ empty. Capture run with two state
+assertions passing, console errors 0, warnings 0. Frames in
+.loop/evidence/r3, luminance table above reproducible with
+  node scripts/pixels.js .loop/evidence/r3/02-gate.png sky=200,60,40,40

@@ -1204,7 +1204,18 @@ function skyDome() {
       uniform vec3 uHorizon;
       uniform vec3 uSun;
       void main() {
-        float h = clamp(vDir.y * 1.25 + 0.06, 0.0, 1.0);
+        /*
+         * Re-normalise. vDir is a unit vector at each vertex, but a
+         * varying interpolates linearly through the triangle, so inside a
+         * face it is short: on this dome, 40 by 24 segments, by up to half
+         * a percent. That was invisible in the sky gradient and fatal to
+         * the sun, whose disc is a threshold on dot(vDir, sun). The old
+         * step(0.9975, sd) could only fire where the interpolated length
+         * happened to survive, so the disc was not a circle at all but a
+         * patchwork following the tessellation.
+         */
+        vec3 vd = normalize(vDir);
+        float h = clamp(vd.y * 1.25 + 0.06, 0.0, 1.0);
         // Posterised, but only part way. At five bands with a hard step the
         // band edge is a single enormous pale arc sweeping across the sky,
         // and in a still that reads as a rendering fault rather than as a
@@ -1215,10 +1226,29 @@ function skyDome() {
         float stepped = (floor(b) + smoothstep(0.35, 0.95, fract(b))) / 9.0;
         float band = mix(h, stepped, 0.5);
         vec3 col = mix(uHorizon, uHigh, band);
-        // warm glow around the sun, and a hard disc
-        float sd = max(dot(vDir, normalize(uSun)), 0.0);
-        col += vec3(1.0, 0.86, 0.62) * pow(sd, 22.0) * 0.5;
-        col += vec3(1.0, 0.95, 0.8) * step(0.9975, sd);
+        /*
+         * Sun: a warm glow, then a disc.
+         *
+         * Both terms used to be added on top of a sky that was already at
+         * 0.59, 0.72, 0.83 at the sun's altitude. The glow alone
+         * (pow(sd, 22) * 0.5) reached 1.0 in every channel by 7.8 degrees
+         * off axis, and the disc (step(0.9975, sd), a 4 degree half angle,
+         * thirty times the real sun) then added a further 1.0 on top of
+         * that. The result was 1.9 percent of the frame pinned at 254 or
+         * higher: not a sun but a clipped hole with an aliased edge, and
+         * the brightest thing on screen by a wide margin whatever the
+         * pilot was actually looking at.
+         *
+         * So: a tighter glow in a colour that lifts red and green without
+         * pushing the already high blue, scaled so sky plus glow stays
+         * under 1.0 everywhere the glow is visible, and a disc composed by
+         * mix() to a ceiling below full white with a soft outer ramp so it
+         * resolves instead of stairing. Core 1.0 degree half angle, ramp
+         * out to 1.6, which is about 46 px across at 1600 wide.
+         */
+        float sd = max(dot(vd, normalize(uSun)), 0.0);
+        col += vec3(1.0, 0.80, 0.42) * pow(sd, 40.0) * 0.30;
+        col = mix(col, vec3(0.985, 0.965, 0.905), smoothstep(0.99961, 0.99985, sd));
         gl_FragColor = vec4(col, 1.0);
       }
     `,

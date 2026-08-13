@@ -1601,3 +1601,54 @@ arms 0.35 to 0.26, motor bells 0.4 to 0.28.
 drift, needs the 1 to 2 degree motor thrust axis tilt in plant.c, not a
 lowered threshold). Console errors 0, warnings 0 across every capture in
 this round.
+
+## Round 13b: the sun was not a disc, and my own measuring script was wrong
+
+The art director reported the sun disc clipping over about 1.9 percent of
+a frame. Aiming a camera straight at it from gate 0 in flight and counting
+pixels where all three channels sit at 254 or higher: 10,393 px, 0.72
+percent of a 1600 by 900 frame, a flat plateau of pure 1.000 across 130 px
+of a horizontal walk.
+
+Two causes, and the second was not the one I expected.
+
+**Both sun terms were added on top of a sky already at 0.59, 0.72, 0.83 at
+the sun's altitude.** `pow(sd, 22) * 0.5` reaches 1.0 in every channel by
+7.8 degrees off axis on its own, before the disc term adds a further 1.0.
+Replaced with a tighter `pow(sd, 40) * 0.30` in a colour that lifts red
+and green without pushing the already high blue, and a disc composed by
+`mix()` to a 0.985 ceiling with a soft outer ramp. Sky plus glow now stays
+under 1.0 everywhere the glow is visible.
+
+**The disc was not a circle.** `vDir` is set to `normalize(position)` in
+the vertex shader and never re-normalised in the fragment shader. A
+varying interpolates linearly, so inside a triangle of a 40 by 24 dome the
+vector is short by up to half a percent, which caps `dot(vDir, sun)` below
+the old `step(0.9975, sd)` threshold except where the interpolated length
+happens to survive. The disc was a patchwork following the tessellation,
+which is why its edge read as an artefact. One `normalize()` in the
+fragment shader fixes it, and it is why the first fix attempt produced no
+disc at all: the new tighter threshold could never be reached.
+
+Measured, same camera, nothing else changed:
+
+    all channels >= 254      before 10393 px (0.7217 pct)   after 0 px
+    horizontal walk peak     before 1.000 flat over 130 px  after 0.889
+    disc profile             before plateau                 after symmetric peak
+
+**And a defect in my own instrument.** The first version of the clip
+counting script hardcoded a 4 byte stride. These captures are PNG colour
+type 2, three bytes per pixel, and `decodePng` in `scripts/pixels.js`
+returns `channels` for exactly this reason. The wrong stride shears each
+row across 1.33 rows of source, which showed up as a bright region
+repeated four times across the frame at a suspiciously clean 400 px pitch.
+It reported 7774 clipped px where the truth was 10393. I had already
+quoted the wrong number once before catching it. Reading `img.channels`
+instead of assuming, as the real tool does, fixes it.
+
+The 3.36 percent of the frame remaining above 250 in any single channel is
+the HUD, rgb 120, 250, 174, which is DOM and meant to be legible, plus
+cloud tops at about 200. Not the sun.
+
+`npm run verify` 12 of 13, yaw-coupling the known red. Console errors 0,
+warnings 0.

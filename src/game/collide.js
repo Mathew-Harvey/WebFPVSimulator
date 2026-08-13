@@ -340,7 +340,7 @@ export class Colliders {
    * The alternative that suggests itself, testing the segment against the box
    * grown by CRAFT_R, is WRONG at a corner: the Minkowski sum of a box and a
    * sphere has rounded edges, so the grown box overstates the reach by up to
-   * (sqrt(3) - 1) * CRAFT_R, which is 0.138 m on a 0.1885 m craft. That is a
+   * (sqrt(3) - 1) * CRAFT_R, which is 0.127 m on a 0.1735 m craft. That is a
    * crash reported for a corner the pilot can see they missed. It is used
    * here only as a rejection test, where overstating is safe.
    */

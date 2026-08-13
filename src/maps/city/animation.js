@@ -165,7 +165,7 @@ export function crossingState(step) {
  *     hanging lamps  box at y -0.14, 0.11 tall  = -0.195 m at the lowest
  *
  * so the assembly occupies 1.045 to 1.325 m and the road under it is open by
- * a metre. A quad is 0.1885 m of collision radius, so the gap is real.
+ * a metre. A quad sweeps 0.1735 m of collision radius, so the gap is real.
  */
 const BOOM_Y0 = 1.045;
 const BOOM_Y1 = 1.325;

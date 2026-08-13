@@ -2902,3 +2902,129 @@ radius 0.1736 m against a true 0.1735 m, collision radius 0.1388 m against a
 swept 0.1389 m, gate opening 1.5240 m square, city kerb 0.1350 m, doorway
 2.0500 m, handrail 1.0600 m, crossing boom 1.2400 m, collider fit 613 fitted
 of 2731 with 275 side trims to 1.12 m and 15 top trims to 0.67 m.
+
+## Round 16d: 15 percent on the gates, and the things in the town that were pictures
+
+The owner, after flying round 16c: "the town feels much better, although the
+train and lamp posts and many other graphic elements have no collision, can
+you fix?" and "the gates need to be 15 percent larger in the track".
+
+### The gates, without deleting the rulebook
+
+GATE_SCALE = 1.15 in src/game/track.js. The published figures do not move: a
+5x5 gate is still 1.524 m in the file because MultiGP publishes 5 ft, and the
+departure is a separate named constant that every consumer reads the library
+through. `builtObstacle(kind)` returns the published spec with every length
+scaled, `BUILT_FRAME_TUBE_OD` is the tube as built, and src/render/scene.js
+now draws and asserts against those instead of reading OBSTACLES directly.
+Reading OBSTACLES is reading the rulebook; reading builtObstacle is reading
+the course, and the two are deliberately different now.
+
+Every length scales together, so an obstacle grows as one object: the opening,
+a tower's sill, the hurdle bar, the flag offset and the frame tube. A gate
+with a 15 percent bigger hole on the same pipe would read as a different
+product.
+
+Measured: gate opening 1.5240 to 1.7526 m. Against a craft that is 0.2776 m
+across after round 16c, that is 6.31 gate widths to the quad, where MultiGP
+against a real 5 inch is 4.39.
+
+`courseGates`, `racingLine`, `UTT3` and `aperture` turn out to have no
+consumers outside track.js; the live path is OBSTACLES into scene.js. They are
+routed through builtObstacle anyway so they cannot become a second opinion.
+
+### The town's pictures
+
+Two separate defects, and the survey is worth keeping because the second one
+was much larger than the report suggested.
+
+**The train had no collision of any kind.** 59.6 m of solid crossing the town
+at 23.5 m/s, and a quad flew straight through it. It cannot be a static box:
+the broadphase grid is indexed on x and z, which is exactly why a level
+crossing boom is only allowed to move in y. So src/game/collide.js gains a
+MOVING box path, outside the grid entirely, tested after the scan and folded
+into the same earliest contact comparison. Three boxes, one per car, because
+the gap between cars is a real gap and one 59.6 m box would be a wall across
+the coupling.
+
+The query is solved in each box's own frame: the box's previous centre comes
+off the start of the craft's travel and its current centre off the end, which
+turns "a box moving past a moving craft" into "a static box at the origin and
+a craft on the relative path". That is not a nicety. At 60 fps the train
+covers 0.39 m a frame and on this container twelve metres a frame, so a test
+against the box at rest would let the train pass clean through a hovering quad
+between two frames. `train` is its own hard kind, because there is no speed at
+which meeting it is a graze.
+
+Verified by driving the town's clock to the step where the train is at the
+crossing, step 18100 with the offset at 0.35 m, and probing across the rail:
+`train` at all three heights through it, clear six metres above it.
+
+**403 objects standing on the ground had no collider, measured at the
+granularity the town adds things at.** A 2.4 m lamp post 0.1 m square is the
+typical one. The town collides what a walker can walk into, and a walker does
+not walk into a lamp post in the middle of a footway, so a great deal of
+street furniture was scenery.
+
+Filling that in is the inverse of round 16c's trim and it is the more
+dangerous direction, because a box added where nothing should be solid is a
+wall the pilot cannot see. Two rules keep it honest.
+
+  1. **Compact and standing on the ground only.** Nothing wider than 6 m,
+     nothing with a footprint over 12 m squared, nothing whose base floats
+     more than 1 m above the surface under it. That excludes buildings,
+     tunnels, hills, roads and the lake by construction, and it excludes them
+     for a reason rather than by luck: probing the objects showed a tunnel
+     bore reading as uncovered at its own centre, which is correct, it is a
+     hole, and a bounding box would have plugged the route.
+  2. **Solid, not see through.** The sum of an object's own mesh boxes over
+     its union box has to reach 0.25. Without this the pass turns a torii into
+     a block: two posts and a lintel inside a 3 by 3 m box that is 90 percent
+     air. 205 objects failed this and were left exactly as they were, which is
+     the right outcome: no collision is better than a wall across a gap the
+     pilot can see through.
+
+Foliage is excluded by name and that is a judgement, not a measurement. 46000
+canopy blobs are drawn and none of them is solid, the town deliberately
+collides a tree as its trunk, and real canopies are porous. **If the owner
+wants to crash into cherry blossom, it is one regexp.**
+
+Result: 1077 objects gained a collider, 205 declined as see through, the city
+goes from 2731 authored rectangles to 4048 static boxes plus 3 moving ones,
+and the whole contact build costs 285 ms.
+
+### Owed
+
+- The see through rejects are still fly through. A torii, an archway and a
+  bike rack are drawn and not solid. Doing them properly means a box per mesh
+  rather than per object, which is a different pass.
+- Furniture is added as kind `obstacle`, which the shell treats as grazeable
+  below 4 m/s, while the town's own rectangles are all `wall` and crash at any
+  speed. Brushing a bin at walking pace should not end a run, but the town is
+  now inconsistent with itself about that and it should be settled deliberately.
+- `window.__animTo` is new, harness only. It exists because the train circles
+  in about 43 s of simulated time and this container renders two frames a
+  second, so waiting for it is ninety seconds of wall clock no check can
+  afford.
+
+### Verify
+
+npm run verify: **14 of 16**, the same two reds as round 16c and for the same
+reasons. Check 10 yaw-coupling at -0.09 deg is the known one. Check 1
+build-clean fails because this container has no Emscripten, `emcc not found`
+and `EMSDK` unset; nothing in this round touches sim.c, patches/,
+vendor/betaflight or the build, and `git diff --stat vendor/betaflight` is
+empty.
+
+Determinism hash **3fdde8bd11da**, unchanged again across Node, headless
+Chrome and four frame rates. Check 13 console clean on both maps. Check 16
+reports the field's budget identical after a city round trip at P1 214, P2
+1931413, P5 69.8 MB, P10 42.8 MB, so a 15 percent gate costs the frame
+nothing.
+
+Check 15 now reads: world scale 1.2500, craft body 0.1552 m, craft sweep
+radius 0.1736 m against a true 0.1735 m, collision radius 0.1388 m against a
+swept 0.1389 m, gate scale 1.1500, gate opening 1.7526 m square, grass 0.0300
+to 0.0900 m, city kerb 0.1350 m, doorway 2.0500 m, handrail 1.0600 m, crossing
+boom 1.2400 m, collider fit 613 fitted of 2731 with 275 side trims to 1.12 m
+and 15 top trims to 0.67 m.

@@ -224,6 +224,7 @@ async function main() {
           'tag: "field",' +
           'map: window.__map().id,' +
           'references: window.__map().references,' +
+          'gateScale: window.__gateScale(),' +
           /*
            * MEASURED IN WORLD SPACE, from bounding boxes, not from the
            * BufferGeometry constructor parameters. Reading `parameters.depth`
@@ -332,6 +333,7 @@ async function main() {
         field: {
           gateOpeningW: fr.gateOpeningW.measured,
           gateOpeningH: fr.gateOpeningH.measured,
+          gateScale: fieldData.gateScale ?? null,
           grassMin: fr.grassBladeHeight.measured[0],
           grassMax: fr.grassBladeHeight.measured[1],
         },

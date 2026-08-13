@@ -300,9 +300,9 @@
         "source": "CRAFT_R must BE the swept disc, not approximate it: both are now derived from the same two numbers, so any gap at all is a regression. Half a millimetre is floating point slack."
       },
       "gate_opening_m": {
-        "min": 1.519,
-        "max": 1.529,
-        "source": "MultiGP standard gate opening 1.524 m square (5 ft), plus and minus 5 mm. scene.js already throws on a 10 mm drift at load; this is the independent check."
+        "min": 1.7476,
+        "max": 1.7576,
+        "source": "MultiGP's published standard gate opening is 1.524 m square (5 ft) and src/game/track.js still says so. The course is BUILT at GATE_SCALE 1.15 times that, 1.7526 m, at the owner's explicit instruction that the gates be 15 percent larger; the band is that figure plus and minus 5 mm. scene.js already throws on a 10 mm drift at load; this is the independent check."
       },
       "grass_blade_m": {
         "min": 0.02,
@@ -336,6 +336,10 @@
       "collider_fit_max_trim_m": {
         "value": 2.0,
         "source": "src/maps/city/index.js trims the town's walker keep-out rectangles onto the geometry they stand for, and no face may move further than the largest standoff the town authors, the 1.8 m flank in district.js. An earlier version without this cap chopped a 78.9 m lineside railing to 0.18 m, so the cap is the guard against the fit failing to understand a collider rather than a tuning knob."
+      },
+      "gate_scale": {
+        "value": 1.15,
+        "source": "The declared departure from the rulebook, src/game/track.js GATE_SCALE. Here so that changing how big a gate is has to be done in two places on purpose, rather than in one place by accident."
       }
     },
     "map-isolation": {

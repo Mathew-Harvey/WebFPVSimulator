@@ -65,6 +65,47 @@ const IN = FT / 12;
 export const FRAME_TUBE_OD = 1.315 * IN;
 export const FRAME_TUBE_OD_SOURCE = 'assumed 1 inch nominal schedule 40 PVC, not published by MultiGP';
 
+/*
+ * How much larger than published every obstacle is BUILT, as a pure number.
+ *
+ * THE PUBLISHED DIMENSIONS ABOVE DO NOT MOVE. They are quoted from MultiGP
+ * and the whole value of this file is that they are quoted rather than
+ * chosen; a 5x5 gate is 1.524 m because MultiGP says 5 ft, and editing that
+ * number to taste would leave the file looking like a citation while being an
+ * opinion. So the departure is a separate, named, single number, and every
+ * consumer reads the published value through it.
+ *
+ * The owner asked for it twice and then exactly: "the gates need to be
+ * bigger", and then "the gates need to be 15 percent larger in the track".
+ * That is a deliberate playability choice against the real rulebook, made
+ * with the rulebook still on the page, and it is recorded as one because a
+ * future round is going to ask why a gate here is not 5 ft.
+ *
+ * It stacks with WORLD_SCALE in src/render/frame.js and the two are NOT the
+ * same lever. WORLD_SCALE makes the aircraft smaller against everything in
+ * both maps; this makes the race field's obstacles larger against the rest of
+ * the race field as well. Together a standard gate's opening reads 1.7526 m
+ * against a craft that is 0.2776 m across, which is 6.31 gate widths to the
+ * quad where MultiGP against a real 5 inch is 4.39.
+ *
+ * Everything with a length scales, so an obstacle grows as one object: the
+ * opening, the sill a tower stands its opening on, the hurdle bar, the flag
+ * offset and the frame tube itself. A gate with a 15 percent bigger hole and
+ * the same pipe would read as a different product.
+ */
+export const GATE_SCALE = 1.15;
+
+/* The frame tube as BUILT, which is the one the scene draws and the one a
+ * collider follows. */
+export const BUILT_FRAME_TUBE_OD = FRAME_TUBE_OD * GATE_SCALE;
+
+/* Every length in an obstacle spec, so scaling one cannot miss a field that
+ * a later obstacle adds. Anything not named here is not a length: a stack
+ * count, a label, a published string. */
+const OBSTACLE_LENGTHS = [
+  'clearW', 'clearH', 'sillH', 'barH', 'poleExtra', 'sidePanelH', 'sidePanelW', 'flagOffset',
+];
+
 export const OBSTACLES = {
   /* "5x5 Gate: Opening 5 feet x 5 feet. Vinyl mesh panels with PVC pipe
    * frame." The standard chapter gate, and the unit the whole world is
@@ -225,6 +266,34 @@ export const OBSTACLES = {
 };
 
 /*
+ * One obstacle at BUILT dimensions: the published spec with every length
+ * through GATE_SCALE.
+ *
+ * Everything that draws, measures or scores an obstacle reads it through
+ * here, so the drawn frame, the load time assertion in src/render/scene.js
+ * and the scoring aperture cannot disagree about how big a gate is. Reading
+ * OBSTACLES directly is now reading the rulebook rather than the course, and
+ * the two are deliberately different.
+ *
+ * The returned object is a fresh copy each call. This is build time only, so
+ * one small allocation per obstacle is not on any budget, and handing back a
+ * cached object would let a caller scale the library in place.
+ */
+export function builtObstacle(kind) {
+  const o = OBSTACLES[kind];
+  if (!o) {
+    throw new Error(`unknown obstacle ${kind}`);
+  }
+  const out = { ...o };
+  for (const key of OBSTACLE_LENGTHS) {
+    if (typeof out[key] === 'number') {
+      out[key] = out[key] * GATE_SCALE;
+    }
+  }
+  return out;
+}
+
+/*
  * UTT 3 Bessel Run.
  *
  * "4 standard MultiGP gates and 1 standard MultiGP start/finish timing
@@ -289,10 +358,7 @@ export const UTT3 = {
  * it asserts against, computed from feet rather than typed.
  */
 export function aperture(kind) {
-  const o = OBSTACLES[kind];
-  if (!o) {
-    throw new Error(`unknown obstacle ${kind}`);
-  }
+  const o = builtObstacle(kind);
   return { clearW: o.clearW, clearH: o.clearH, sillH: o.sillH };
 }
 
@@ -304,7 +370,7 @@ export function aperture(kind) {
  */
 export function courseGates(track = UTT3) {
   return track.gates.map((g) => {
-    const o = OBSTACLES[g.kind];
+    const o = builtObstacle(g.kind);
     return {
       n: g.n,
       kind: g.kind,

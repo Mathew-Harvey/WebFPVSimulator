@@ -47,7 +47,7 @@ import { SESSION_TEXTURES } from './session-textures.js';
 /* The obstacle dimensions come from the track module, which holds MultiGP's
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
-import { OBSTACLES, FRAME_TUBE_OD } from '../game/track.js';
+import { builtObstacle, BUILT_FRAME_TUBE_OD, GATE_SCALE } from '../game/track.js';
 import { Colliders } from '../game/collide.js';
 
 /*
@@ -1356,13 +1356,17 @@ const DIGITS = {
  * across the opening, y up from the base, z through the opening.
  */
 function obstacle(kindName, index, isStart) {
-  const spec = OBSTACLES[kindName];
+  /* BUILT, not published: src/game/track.js keeps MultiGP's figures as
+   * citations and GATE_SCALE is the declared departure from them. Reading
+   * OBSTACLES directly here would draw the rulebook and score the course,
+   * which is exactly the disagreement the assertion below exists to catch. */
+  const spec = builtObstacle(kindName);
   if (!spec) {
     throw new Error(`scene: unknown obstacle ${kindName}`);
   }
   const g = new THREE.Group();
   const mats = sharedObstacleMats();
-  const tubeR = FRAME_TUBE_OD * 0.5;
+  const tubeR = BUILT_FRAME_TUBE_OD * 0.5;
   const clearW = spec.clearW;
   const clearH = spec.clearH;
   const stack = spec.stack ?? 1;
@@ -1379,7 +1383,7 @@ function obstacle(kindName, index, isStart) {
    * not as a citation, so the ladder's overall height is an assumption too.
    * The openings themselves are published and exact.
    */
-  const pitch = clearH + FRAME_TUBE_OD;
+  const pitch = clearH + BUILT_FRAME_TUBE_OD;
   const sills = [];
   for (let k = 0; k < stack; k += 1) {
     sills.push(spec.sillH + k * pitch);
@@ -2039,13 +2043,14 @@ export function buildFieldScene(shell, onProgress) {
    * shipping a barn door, which is what the old 3.5 m torus was.
    */
   for (const gt of gates) {
-    const want = OBSTACLES[gt.kindName];
+    const want = builtObstacle(gt.kindName);
     for (const ap of gt.apertures) {
       if (Math.abs(ap.clearW - want.clearW) > 0.01 || Math.abs(ap.clearH - want.clearH) > 0.01) {
         throw new Error(
           `scene: ${gt.kindName} opening measured ${ap.clearW.toFixed(4)} by `
-          + `${ap.clearH.toFixed(4)} m, published ${want.clearW.toFixed(4)} by `
-          + `${want.clearH.toFixed(4)} m, outside the 10 mm tolerance`,
+          + `${ap.clearH.toFixed(4)} m, wanted ${want.clearW.toFixed(4)} by `
+          + `${want.clearH.toFixed(4)} m at gate scale ${GATE_SCALE}, `
+          + 'outside the 10 mm tolerance',
         );
       }
     }
@@ -2547,8 +2552,12 @@ export function buildFieldScene(shell, onProgress) {
      * once. tests/lib/checks.js check 15 asserts them.
      */
     references: {
-      gateOpeningW: { measured: gates[0].aperture.clearW, unit: 'm', real: '1.524, MultiGP standard gate' },
-      gateOpeningH: { measured: gates[0].aperture.clearH, unit: 'm', real: '1.524, MultiGP standard gate' },
+      /* 1.524 is MultiGP's published 5 ft opening; the course is BUILT at
+       * GATE_SCALE times that, which src/game/track.js declares and explains.
+       * The reference states the built figure because that is the hole the
+       * pilot flies and the one a scale check has to band. */
+      gateOpeningW: { measured: gates[0].aperture.clearW, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
+      gateOpeningH: { measured: gates[0].aperture.clearH, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
       gateApertureCentreY: { measured: gates[0].aperture.centreY, unit: 'm', real: '0.762, half the opening' },
       grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
     },

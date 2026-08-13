@@ -141,7 +141,10 @@ export function craftVerticalHalf(sinTilt) {
  * circumscribe them, putting an invisible cylinder around every wall. So the
  * box is a second primitive, and it earns its place: see addBox.
  */
-const KINDS = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole', 'wall', 'boom'];
+/* `train` is the only MOVING solid in either world and it is a hard kind on
+ * purpose: the city's three car set crosses the town at 23.5 m/s, and there
+ * is no speed at which meeting it is a graze. */
+const KINDS = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole', 'wall', 'boom', 'train'];
 
 /*
  * The broadphase cell, in metres. The world is about 1700 m across and the
@@ -210,6 +213,85 @@ export class Colliders {
     this.nx = 0;
     this.ny = 0;
     this.nz = 0;
+    /*
+     * MOVING boxes, outside the broadphase entirely.
+     *
+     * The grid is indexed on x and z, which is exactly why setBoxExtentY can
+     * raise a level crossing boom and nothing can slide a box sideways: a
+     * footprint that moves invalidates the grid. The city's train moves 59 m
+     * of solid at 23.5 m/s and had no collision at all, so it needs a path
+     * that never touches the grid. There are three of them, one per car, and
+     * a handful of extra box tests per query costs less than one bucket of a
+     * cell, so they are simply tested after the scan and folded into the same
+     * earliest contact comparison. Same primitive, same solver, same answer.
+     */
+    this.movingHx = [];
+    this.movingHy = [];
+    this.movingHz = [];
+    this.movingKind = [];
+    this.movingCx = [];
+    this.movingCy = [];
+    this.movingCz = [];
+    this.movingPx = [];
+    this.movingPy = [];
+    this.movingPz = [];
+    this.movingCount = 0;
+  }
+
+  /*
+   * Add a moving box by its half extents. Returns its index, for
+   * setMovingCentre. Unlike a static box this may be added after build(),
+   * because it is not in the grid and nothing about it is frozen.
+   */
+  addMoving(kindName, hx, hy, hz) {
+    const k = KINDS.indexOf(kindName);
+    if (k < 0) {
+      throw new Error(`collide: unknown kind ${kindName}`);
+    }
+    const i = this.movingCount;
+    this.movingHx.push(hx);
+    this.movingHy.push(hy);
+    this.movingHz.push(hz);
+    this.movingKind.push(k);
+    this.movingCx.push(0);
+    this.movingCy.push(0);
+    this.movingCz.push(0);
+    this.movingPx.push(0);
+    this.movingPy.push(0);
+    this.movingPz.push(0);
+    this.movingCount = i + 1;
+    return i;
+  }
+
+  /*
+   * Where a moving box is NOW. The previous centre is kept because the query
+   * is solved in the box's own frame: a train crossing the town at 23.5 m/s
+   * covers 0.39 m per frame at 60 Hz and twelve metres per frame on this
+   * container, so a test against the box at rest would let the train pass
+   * clean through a hovering quad between two frames. Differencing the two
+   * centres against the two ends of the craft's travel makes the sweep exact
+   * for the relative motion, which is the only motion that can touch.
+   */
+  setMovingCentre(i, x, y, z) {
+    this.movingPx[i] = this.movingCx[i];
+    this.movingPy[i] = this.movingCy[i];
+    this.movingPz[i] = this.movingCz[i];
+    this.movingCx[i] = x;
+    this.movingCy[i] = y;
+    this.movingCz[i] = z;
+    return this;
+  }
+
+  /* Seat a moving box with no motion, so its first query cannot see a jump
+   * from the origin as a frame of travel. */
+  seatMoving(i, x, y, z) {
+    this.movingCx[i] = x;
+    this.movingCy[i] = y;
+    this.movingCz[i] = z;
+    this.movingPx[i] = x;
+    this.movingPy[i] = y;
+    this.movingPz[i] = z;
+    return this;
   }
 
   /*
@@ -440,16 +522,20 @@ export class Colliders {
    * safe.
    */
   boxEarliestT(i, px, py, pz, dx, dy, dz, rx, ry) {
+    return this.boxSlabWalk(
+      this.fax[i], this.fay[i], this.faz[i],
+      this.fbx[i], this.fby[i], this.fbz[i],
+      px, py, pz, dx, dy, dz, rx, ry,
+    );
+  }
+
+  /* The same walk against extents passed in, so a MOVING box can use it
+   * without living in the static arrays the broadphase grid indexes. */
+  boxSlabWalk(lo0, lo1, lo2, hi0, hi1, hi2, px, py, pz, dx, dy, dz, rx, ry) {
     const t = this.tBreaks;
     let n = 0;
     t[n] = 0; n += 1;
     t[n] = 1; n += 1;
-    const lo0 = this.fax[i];
-    const lo1 = this.fay[i];
-    const lo2 = this.faz[i];
-    const hi0 = this.fbx[i];
-    const hi1 = this.fby[i];
-    const hi2 = this.fbz[i];
     for (let axis = 0; axis < 3; axis += 1) {
       const d = axis === 0 ? dx : axis === 1 ? dy : dz;
       if (d === 0) {
@@ -742,6 +828,7 @@ export class Colliders {
    */
   hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R) {
     this.hitIndex = -1;
+    this.hitMoving = -1;
     this.hitKind = -1;
     this.hitNormalDot = 0;
     this.hitT = -1;
@@ -846,9 +933,73 @@ export class Colliders {
       }
     }
 
+    /*
+     * The moving boxes, in each one's OWN frame. Subtracting the box's
+     * previous centre from the start of the travel and its current centre
+     * from the end turns "a box moving past a moving craft" into "a static
+     * box at the origin and a craft travelling the relative path", which the
+     * same slab walk answers exactly. bestMoving is kept separate from bestI
+     * so the static branch below can stay exactly as it was.
+     */
+    let bestMoving = -1;
+    for (let i = 0; i < this.movingCount; i += 1) {
+      const hx = this.movingHx[i];
+      const hy = this.movingHy[i];
+      const hz = this.movingHz[i];
+      const rpx = px - this.movingPx[i];
+      const rpy = py - this.movingPy[i];
+      const rpz = pz - this.movingPz[i];
+      const rqx = qx - this.movingCx[i];
+      const rqy = qy - this.movingCy[i];
+      const rqz = qz - this.movingCz[i];
+      const t = this.boxSlabWalk(
+        -hx, -hy, -hz, hx, hy, hz,
+        rpx, rpy, rpz,
+        rqx - rpx, rqy - rpy, rqz - rpz,
+        CRAFT_WORLD_R, vh,
+      );
+      if (t >= 0 && t < bestT) {
+        bestT = t;
+        bestMoving = i;
+        bestI = -1;
+      }
+    }
+
     this.lastCandidates = candidates;
     this.queries += 1;
     this.candidateTotal += candidates;
+    if (bestMoving >= 0) {
+      /* Contact normal in the box's frame, which is the same direction in
+       * world space because a moving box is axis aligned and never rotates. */
+      const hx = this.movingHx[bestMoving];
+      const hy = this.movingHy[bestMoving];
+      const hz = this.movingHz[bestMoving];
+      const rpx = px - this.movingPx[bestMoving];
+      const rpy = py - this.movingPy[bestMoving];
+      const rpz = pz - this.movingPz[bestMoving];
+      const rdx = (qx - this.movingCx[bestMoving]) - rpx;
+      const rdy = (qy - this.movingCy[bestMoving]) - rpy;
+      const rdz = (qz - this.movingCz[bestMoving]) - rpz;
+      const cxp = rpx + rdx * bestT;
+      const cyp = rpy + rdy * bestT;
+      const czp = rpz + rdz * bestT;
+      const nx = cxp < -hx ? cxp + hx : cxp > hx ? cxp - hx : 0;
+      const ny = cyp < -hy ? cyp + hy : cyp > hy ? cyp - hy : 0;
+      const nz = czp < -hz ? czp + hz : czp > hz ? czp - hz : 0;
+      const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const tl = Math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz);
+      this.hitIndex = -1;
+      this.hitMoving = bestMoving;
+      this.hitKind = this.movingKind[bestMoving];
+      this.hitT = bestT;
+      if (nl > 1e-9 && tl > 1e-9) {
+        const dot = (rdx * nx + rdy * ny + rdz * nz) / (nl * tl);
+        this.hitNormalDot = dot < 0 ? -dot : dot;
+      } else {
+        this.hitNormalDot = 1;
+      }
+      return this.hitKind;
+    }
     if (bestI < 0) {
       return -1;
     }
@@ -917,6 +1068,7 @@ export class Colliders {
       cells: this.grid ? this.grid.size : 0,
       maxRadius: this.maxR,
       craftRadius: CRAFT_WORLD_R,
+      moving: this.movingCount,
       queries: this.queries,
       meanCandidatesPerQuery: this.queries ? this.candidateTotal / this.queries : 0,
       lastCandidates: this.lastCandidates,

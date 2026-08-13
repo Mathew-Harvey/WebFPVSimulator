@@ -47,6 +47,7 @@ import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, 
 import { Ui } from './ui/ui.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
+import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
@@ -1607,6 +1608,25 @@ export async function boot({ loading, bootStart, mapId }) {
     ...(view.stats ? view.stats() : {}),
   });
   window.__maps = () => MAPS.map((m) => ({ id: m.id, name: m.name, mode: m.mode }));
+  /* The declared departure from MultiGP's published obstacle dimensions, so
+   * check 15 can assert the threshold file and the course agree about how big
+   * a gate is rather than each believing its own copy. Harness only. */
+  window.__gateScale = () => GATE_SCALE;
+  /*
+   * Drive the active map's animation clock to an arbitrary step, so a capture
+   * can put a moving part where it needs it instead of waiting for it.
+   *
+   * The city's train circles the planet in about 43 s of simulated time and
+   * this container renders two frames a second, so waiting for it to reach
+   * the crossing is a minute and a half of wall clock that no check can
+   * afford. It takes the same step count the frame loop passes, so a capture
+   * driving it sees exactly the town a pilot would at that instant. Harness
+   * only; nothing in the shell reads it.
+   */
+  window.__animTo = (step) => {
+    view.updateAnim(step);
+    return view.stats ? (view.stats().trainOffset ?? null) : null;
+  };
   /* The active map's scene graph, for measurement. tests/lib/checks.js walks
    * it to assert that reference objects measure what this project claims they
    * measure, which is the only way a scale error gets caught by a check

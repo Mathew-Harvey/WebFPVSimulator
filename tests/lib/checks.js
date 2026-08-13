@@ -633,7 +633,22 @@ export function buildChecks() {
           fails.push(`collision radius is ${(sweepErr * 1000).toFixed(1)} mm from the swept disc`);
         }
 
-        /* The race field. */
+        /*
+         * The race field. The gate band is MultiGP's published 1.524 m square
+         * times the DECLARED gate scale, not the published figure: the course
+         * is deliberately built 15 percent over the rulebook and track.js
+         * says so in one named constant. Banding the published number would
+         * fail a change that is working as intended, and banding nothing
+         * would let the opening drift to any size at all, so the check reads
+         * the page's own declared scale and asserts the threshold file agrees
+         * with it first.
+         */
+        if (typeof r.field.gateScale !== 'number') {
+          fails.push('the page did not publish a gate scale');
+        } else if (Math.abs(r.field.gateScale - th.gate_scale.value) > 1e-9) {
+          fails.push(`the page declares a gate scale of ${r.field.gateScale}, the threshold file ${th.gate_scale.value}`);
+        }
+        rows.push(`gate scale ${(r.field.gateScale ?? 0).toFixed(4)}`);
         band('gate opening W', r.field.gateOpeningW, th.gate_opening_m.min, th.gate_opening_m.max, ' m');
         band('gate opening H', r.field.gateOpeningH, th.gate_opening_m.min, th.gate_opening_m.max, ' m');
         band('grass blade min', r.field.grassMin, th.grass_blade_m.min, th.grass_blade_m.max, ' m');

@@ -238,6 +238,114 @@ const FIT_MIN_EXTENT = 0.02;
 const FIT_COVER = 0.6;
 const FIT_MAX_PAD = 2.0;
 
+/*
+ * Bounds on the pass that gives a collider to drawn objects that had none.
+ * Every one of them is there to keep the pass away from something whose
+ * bounding box is not a fair contact volume, and the numbers come from the
+ * survey of the town rather than from taste: the widest thing the pass should
+ * catch is a bus shelter or a vending bank at about 4 m, the tallest lamp
+ * post measured 8.4 m, and the shortest thing worth being solid is a bollard.
+ */
+const COVER_MIN_HEIGHT = 0.4;
+const COVER_MIN_THICK = 0.03;
+const COVER_MAX_FOOTPRINT = 12;
+const COVER_MAX_SPAN = 6;
+/* How far an object's underside may sit above the surface under it and still
+ * be treated as standing on the ground. A canopy sits 20 m up; an awning or a
+ * sign on a post sits under a metre. */
+const COVER_MAX_LIFT = 1.0;
+/*
+ * How much of its own bounding box an object has to actually fill before a
+ * single box is a fair contact volume for it.
+ *
+ * Without this the pass makes every SEE THROUGH object solid, and a town like
+ * this is full of them: a torii is two posts and a lintel inside a 3 by 3 m
+ * box that is 90 percent air, and turning that into a block is the exact
+ * complaint being fixed here, pointing the other way. Estimated as the sum of
+ * the object's own mesh boxes over its union box, which over counts where
+ * meshes overlap and therefore only ever errs toward calling something solid
+ * that is; a frame or an archway still lands far below the threshold. An
+ * object that fails is left exactly as it was, with no collider, because the
+ * status quo is better than a wall across a gap the pilot can see through.
+ */
+const COVER_MIN_FILL = 0.25;
+/* Foliage and ground decoration, excluded by name. See the note at the pass
+ * itself: this is a judgement about how the town should fly, not a claim that
+ * a cherry blossom is not drawn. */
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower/i;
+
+/*
+ * One object's world extent, skipping foliage, or null if it draws nothing.
+ * `child` is a direct child of the town root, which is the granularity the
+ * town adds things at: one prop, one house, one pole per ctx.add.
+ */
+const extentBox = new THREE.Box3();
+const extentInst = new THREE.Matrix4();
+const extentWorld = new THREE.Matrix4();
+function objectExtent(child) {
+  let x0 = Infinity; let y0 = Infinity; let z0 = Infinity;
+  let x1 = -Infinity; let y1 = -Infinity; let z1 = -Infinity;
+  let vol = 0;
+  let any = false;
+  child.traverse((o) => {
+    if (!o.isMesh || !o.geometry) {
+      return;
+    }
+    for (let p = o; p && p !== child.parent; p = p.parent) {
+      if (COVER_SOFT.test(p.name || '')) {
+        return;
+      }
+    }
+    const g = o.geometry;
+    if (!g.boundingBox) {
+      g.computeBoundingBox();
+    }
+    if (!g.boundingBox) {
+      return;
+    }
+    const take = (m) => {
+      extentBox.copy(g.boundingBox).applyMatrix4(m);
+      if (extentBox.min.x < x0) { x0 = extentBox.min.x; }
+      if (extentBox.min.y < y0) { y0 = extentBox.min.y; }
+      if (extentBox.min.z < z0) { z0 = extentBox.min.z; }
+      if (extentBox.max.x > x1) { x1 = extentBox.max.x; }
+      if (extentBox.max.y > y1) { y1 = extentBox.max.y; }
+      if (extentBox.max.z > z1) { z1 = extentBox.max.z; }
+      vol += (extentBox.max.x - extentBox.min.x)
+        * (extentBox.max.y - extentBox.min.y)
+        * (extentBox.max.z - extentBox.min.z);
+      any = true;
+    };
+    if (o.isInstancedMesh) {
+      for (let i = 0; i < o.count; i += 1) {
+        o.getMatrixAt(i, extentInst);
+        extentWorld.multiplyMatrices(o.matrixWorld, extentInst);
+        take(extentWorld);
+      }
+      return;
+    }
+    take(o.matrixWorld);
+  });
+  return any ? { x0, y0, z0, x1, y1, z1, vol } : null;
+}
+
+/* Is any authored rectangle already solid at this point? Linear over the
+ * town's 2731 rectangles, run once per root child at build time. */
+function coveredAlready(list, x, z, y) {
+  for (let i = 0; i < list.length; i += 1) {
+    const c = list[i];
+    if (x < c.x0 || x > c.x1 || z < c.z0 || z > c.z1) {
+      continue;
+    }
+    const top = c.top === undefined ? BOX_CEIL : c.top;
+    const bottom = c.bottom === undefined ? BOX_FLOOR : c.bottom;
+    if (y >= bottom && y <= top) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function drawnBoxes(root) {
   const out = [];
   const box = new THREE.Box3();
@@ -388,7 +496,7 @@ function buildColliders(world) {
     }
   }
   const fit = { x0: 0, x1: 0, z0: 0, z1: 0, y1: 0, seen: new Int32Array(boxes.length), mark: 0 };
-  const fitStats = { fitted: 0, unmatched: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, worst: [] };
+  const fitStats = { fitted: 0, unmatched: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, worst: [] };
 
   for (const c of world.colliders) {
     const y1 = c.top === undefined ? BOX_CEIL : c.top;
@@ -472,6 +580,65 @@ function buildColliders(world) {
   fitStats.meanTopTrim = fitStats.topTrims ? fitStats.totalTopTrim / fitStats.topTrims : 0;
   fitStats.worst.sort((a, b) => Math.max(b.side, b.topTrim) - Math.max(a.side, a.topTrim));
   fitStats.worst = fitStats.worst.slice(0, 14);
+  /*
+   * The other half of hugging the graphics: things that are DRAWN and were
+   * never solid at all.
+   *
+   * The town collides what a walker can walk into, and a walker never walks
+   * into a lamp post standing in the middle of a footway, so a great deal of
+   * street furniture is scenery. The owner flew it and said so: "the train
+   * and lamp posts and many other graphic elements have no collision".
+   * Measured at object granularity, which is what ctx.add puts in the root,
+   * 403 objects stand on the ground, are at least 0.4 m tall and have no
+   * collider over them at all. A 2.4 m lamp post 0.1 m square is the typical
+   * one.
+   *
+   * WHY A FLAT BOX PER OBJECT IS SAFE HERE AND WOULD NOT BE IN GENERAL.
+   * Adding the bounding box of every uncovered mesh in the town would make
+   * the tunnel bore solid, put a lid on the lake and turn 46000 canopy blobs
+   * into walls. So the pass is bounded to COMPACT objects standing on the
+   * ground: nothing wider than COVER_MAX_SPAN, nothing with a footprint over
+   * COVER_MAX_FOOTPRINT, nothing whose base floats more than COVER_MAX_LIFT
+   * above the surface under it. Those bounds exclude buildings, tunnels,
+   * hills, roads and the lake by construction, and what is left is furniture,
+   * for which its own bounding box IS a fair contact volume.
+   *
+   * Foliage is excluded by name, and that is a judgement rather than a
+   * measurement: the town deliberately collides a tree as its trunk, real
+   * canopies are porous, and making every blossom a crash would change how
+   * this town flies far more than it would make it honest. Recorded in
+   * PROGRESS.md as a decision the owner may want reversed.
+   */
+  for (const child of world.root.children) {
+    const b = objectExtent(child);
+    if (b === null) {
+      continue;
+    }
+    const sx = b.x1 - b.x0;
+    const sy = b.y1 - b.y0;
+    const sz = b.z1 - b.z0;
+    if (sy < COVER_MIN_HEIGHT || Math.min(sx, sz) < COVER_MIN_THICK) {
+      continue;
+    }
+    if (sx * sz > COVER_MAX_FOOTPRINT || Math.max(sx, sz) > COVER_MAX_SPAN) {
+      continue;
+    }
+    const cx = (b.x0 + b.x1) * 0.5;
+    const cz = (b.z0 + b.z1) * 0.5;
+    if (b.y0 - world.heightAt(cx, cz, -1000) > COVER_MAX_LIFT) {
+      continue;
+    }
+    if (b.vol / Math.max(1e-6, sx * sy * sz) < COVER_MIN_FILL) {
+      fitStats.seeThrough += 1;
+      continue;
+    }
+    if (coveredAlready(world.colliders, cx, cz, b.y0 + sy * 0.5)) {
+      continue;
+    }
+    colliders.addBox('obstacle', b.x0, b.y0, b.z0, b.x1, b.y1, b.z1);
+    fitStats.covered += 1;
+  }
+
   let slabs = 0;
   for (const p of world.platforms) {
     /* fromY far below excludes every platform from the query, so this is the
@@ -585,6 +752,43 @@ export async function buildMap(shell, onProgress) {
    * irrelevant instead of lucky.
    */
   const boomIndices = findBoomBlocks(world.colliders);
+
+  /*
+   * The train, as three moving boxes.
+   *
+   * It is 59.6 m of solid steel crossing the town at 23.5 m/s and it had no
+   * collision of any kind: the owner flew through it. It cannot be a static
+   * box because the broadphase grid is indexed on x and z, which is the same
+   * reason a level crossing boom may only move in y, so it uses the moving
+   * box path in src/game/collide.js instead.
+   *
+   * One box per car rather than one for the whole set, because the gap
+   * between cars is a real gap and a single 59.6 m box would be a wall across
+   * the coupling. Each car's extent is measured off its own drawn meshes here
+   * and then only translated, which is exactly what animation.js does to the
+   * group: it sets `train.group.position` along x and never rotates it, so
+   * the boxes stay axis aligned and a half extent measured once stays true.
+   */
+  const trainCars = [];
+  for (const car of world.train.cars) {
+    const b = objectExtent(car);
+    if (b === null) {
+      continue;
+    }
+    const i = colliders.addMoving(
+      'train',
+      (b.x1 - b.x0) * 0.5, (b.y1 - b.y0) * 0.5, (b.z1 - b.z0) * 0.5,
+    );
+    trainCars.push({
+      index: i,
+      /* The car's centre in the group's own frame, so animation.js only has
+       * to add the group's offset. */
+      x: (b.x0 + b.x1) * 0.5,
+      y: (b.y0 + b.y1) * 0.5,
+      z: (b.z0 + b.z1) * 0.5,
+    });
+  }
+
   colliders.build();
   progress(0.9);
 
@@ -604,7 +808,7 @@ export async function buildMap(shell, onProgress) {
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
-  const anim = cityAnimation(world, colliders, boomIndices);
+  const anim = cityAnimation(world, colliders, boomIndices, trainCars);
   /* Measured AFTER cityAnimation has seated the booms at step zero, so it is
    * the extent a quad would actually meet. */
   references.crossingBoomCollider = {
@@ -728,6 +932,7 @@ export async function buildMap(shell, onProgress) {
        * claim that the solid world hugs the drawn one is a measurement
        * rather than a comment. */
       colliderFit: fit,
+      trainCarColliders: trainCars.length,
       cullCells: cull.cells.length,
       cullAlways: cull.always.length,
       cullRadius,

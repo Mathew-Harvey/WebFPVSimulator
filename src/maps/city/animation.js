@@ -221,7 +221,7 @@ export function findBoomBlocks(cityColliders) {
  * index only because src/maps/city/index.js adds the town's colliders in
  * order and before anything else; that is asserted rather than assumed.
  */
-export function cityAnimation(world, colliders, boomIndices) {
+export function cityAnimation(world, colliders, boomIndices, trainCars) {
   /* Identified by the caller, before anything ran the town forward. See the
    * note at the call site in index.js. */
   const booms = boomIndices ?? findBoomBlocks(world.colliders);
@@ -234,6 +234,7 @@ export function cityAnimation(world, colliders, boomIndices) {
   const crossing = world.crossing;
   train.group.visible = true;
 
+  const cars = trainCars ?? null;
   let lastStep = 0;
   let armDown = null;
   let state = crossingState(0);
@@ -261,6 +262,21 @@ export function cityAnimation(world, colliders, boomIndices) {
     train.group.position.set(state.offset, 0, 0);
     train.group.visible = Math.abs(state.offset) < CITY_ANIM.VISIBLE_RANGE;
 
+    /*
+     * The solid train follows the drawn one, in the same statement's worth of
+     * arithmetic, so the two cannot drift. Parked far outside the authored
+     * rail when the set is not visible: `state.offset` is the group's own
+     * translation and the boxes were measured in the group's frame, so a car
+     * that is not on screen is not in the town either, and nothing can crash
+     * into a train that is nowhere near.
+     */
+    if (cars) {
+      for (let i = 0; i < cars.length; i += 1) {
+        const c = cars[i];
+        colliders.setMovingCentre(c.index, c.x + state.offset, c.y, c.z);
+      }
+    }
+
     crossing.setArms(state.armT);
     crossing.setLamps(state.closing || state.armT > 0.02, state.blink);
 
@@ -281,6 +297,15 @@ export function cityAnimation(world, colliders, boomIndices) {
   /* Seat everything at step zero so the first frame is already correct rather
    * than showing one frame of the town's own defaults. */
   update(0);
+  /* And seat the train's boxes with NO motion, so the first query does not
+   * read the jump from the origin to the rail as one frame of travel and
+   * sweep a 400 m box through the town. */
+  if (cars) {
+    for (let i = 0; i < cars.length; i += 1) {
+      const c = cars[i];
+      colliders.seatMoving(c.index, c.x + state.offset, c.y, c.z);
+    }
+  }
 
   /*
    * The boom collider's extent with the arms DOWN.
@@ -317,6 +342,7 @@ export function cityAnimation(world, colliders, boomIndices) {
     boomExtentDown,
     stats: () => ({
       trainOffset: state.offset,
+      trainSolidCars: cars ? cars.length : 0,
       armT: state.armT,
       boomsDown: state.down,
       boomIndices: booms,

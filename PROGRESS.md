@@ -4221,3 +4221,85 @@ check 1 build-clean on `emcc not found` and check 10 yaw-coupling at
 world-scale and check 16 map-isolation both pass**, which is what says the
 built in race field is the world it was: same reference gate opening, same
 module count, same budget after a city round trip.
+
+## Round 23: the sound, built out: a record crate, an outdoors, and a click worth flying through
+
+The owner asked for the full audio build: many tracks of drum and bass and
+lofi, motors that stay low, softened, quiet and unobtrusive the way the
+shipping simulators mix them, an ambience, a satisfying click through a gate,
+and clicks on the menu. All of it lands inside a constraint that shaped every
+decision here: verify check 14 caps the live graph at 64 AudioNodes and the
+graph already built 59.
+
+**Twelve tracks for four nodes.** More tracks cannot mean more voices, so the
+music was split into material and performance. `src/render/tracks.js` is new:
+twelve tracks as pattern strings and numbers, six drum and bass at 170 to 176
+BPM and six lofi at 72 to 88, each with its own patterns, key, bass phrase,
+chords, shelf, wow and swing, validated at import so a wrong pattern length
+throws in the stack trace that names the track. `src/render/music.js` is now
+the one instrument set that performs whichever track is selected: the same
+pooled kick, snare, hat, sub and pad, plus one new baked vinyl crackle loop
+for the lofi tracks. The whole crate cost two nodes (crackle source and gain).
+The scheduler's `step` stays monotonic for check 14; a track anchors
+`stepBase` and `startTime` instead, and the rotation advances at the exact
+loop boundary so the grid never tears. Track one is the shipped 174 BPM bed
+verbatim: measured after the rewrite at 173.67 BPM (r=0.4300 against a
+shuffled null p95 of about 0.04) with the seam delta at the 64.85th
+percentile, both indistinguishable from before. The new tracks measure what
+they claim: Porch Light authored at 80 BPM reads 79.97 (r=0.4916), Skyline
+authored at 176 reads 175.75 (r=0.5026). Lofi hits are hotter per hit than
+the dnb numbers on purpose: at half the tempo there are half the onsets, and
+equal peaks measured the lofi bed 7 dB under the dnb bed, which read as the
+music leaving the room at every genre change. Raised, Porch Light sits at
+-33.4 dBFS and Amber Dusk at -29.5 against the dnb bed's -28.1. The settings
+gained a Music track row: Rotation walks the crate in genre alternating
+order, or pin any record.
+
+**The motors, softer still, measured.** The lowpass cap came down from 1150
+to 1000 Hz and the default motor stem from 6 to 5, taking edge off the timbre
+without touching the pitch the pilot flies on. The flight render moved from
+-16.92 to -18.27 dBFS, inside A3's -20 to -14 band, true peak -6.9 dBTP, no
+sample at full scale, and the A1 scream margin held at 20.5 dB on the flight
+trace and 23.1 at full throttle against the 12 dB bar. This matches how the
+shipping sims and the community that complains about them settle it: motors
+just audible under the wind, never the loudest thing in the mix.
+
+**An outdoors, two nodes.** A new ambience stem: one looped stereo buffer
+baked at attach from the deterministic LCG, low air through two one pole
+lowpasses baked in, a breathing envelope that completes whole cycles over the
+loop, and fourteen bird calls written directly into the samples at LCG times.
+The air is rendered with a crossfade tail blended over the head, so the loop
+seam measured at the 0.21st percentile of the internal delta distribution:
+no click, by construction and then by measurement. Parked it reads -35.7
+dBFS, the loudest quiet thing in the render; it fades with airspeed in
+update() because six metres a second of wash is already louder than a meadow.
+Its own settings row, default 4.
+
+**The clicks.** A gate pass is no longer a synth blip. It is a click: a
+resonant knuckle of filtered noise a few tens of milliseconds long over a
+falling tick, on the two pooled cue voices that already existed, zero new
+nodes. Its energy sits between 2 and 5 kHz where the capped motors and the
+900 Hz lowpassed wind have nothing, which is why it measured 11.2 dB of band
+advantage at the moment it plays (A7 wants 6) with a LIGHTER duck than the
+blip needed. The frame graze that voids a lap used to play the same sound as
+the reward; it is now 'clip', the same gesture an octave and a half down
+through a dull filter, so the ear cannot learn the wrong lesson. The menu
+makes small taps of the same family through a new ui() entry: move, adjust,
+select and back each sound, made in the one place each gesture funnels
+through so keyboard, sticks, pointer hover and click all sound the same, and
+they never duck anything because a menu is not a race.
+
+**The count and the checks.** The graph builds 63 nodes of the 64 budget:
+59 before, plus ambience source and bus, plus crackle source and gain.
+`npm run verify` in this turn: 14 of 16, against 13 of 16 measured on the
+same container before any change. The two reds are the container's missing
+emsdk (check 1 cannot build the wasm here) and the standing yaw-coupling red,
+both untouched by this round. Check 14 passes: context running, music gain
+0.200, 46 steps in 4 s, 63 nodes. The probe gained `--track` and
+`--ambience` so every claim above is reproducible per track and per stem.
+
+What went wrong along the way: the first ambience bake had two seam defects
+of exactly the class this project measures for, a one pole filter state step
+at the loop point and bird syllables truncated by the buffer edge, caught by
+reading the bake as a reviewer before rendering it. The crossfade and an
+edge clamp fixed both, and the seam measurement above is from after the fix.

@@ -37,6 +37,7 @@
  */
 
 import { MAPS } from '../maps/registry.js';
+import { TRACKS, trackById } from '../render/tracks.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
 import {
   RATE_DEFAULTS,
@@ -83,9 +84,17 @@ const DEFAULTS = {
    * types matter: loadSettings only accepts a stored key whose typeof matches
    * the default, so a level has to stay a number and the focus tone a
    * boolean, or an old localStorage value silently wins. */
-  motorLevel: 6,
+  /* 5, down from 6: the owner asked for the motors low, softened and
+   * unobtrusive, and the default is where most players leave them. */
+  motorLevel: 5,
   windLevel: 5,
   musicLevel: 5,
+  /* Which record: 'rotation' walks the whole crate, a track id pins one.
+   * A string so the typeof gate accepts it, and an unknown id falls back
+   * to the first track in src/render/tracks.js. */
+  musicTrack: 'rotation',
+  /* The outdoors between runs: low air and birdsong that fade with speed. */
+  ambienceLevel: 4,
   focusTone: false,
   readout: false,
 };
@@ -153,6 +162,7 @@ export class Ui {
     this.cursor = 0;
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
+    this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
     this.build();
     this.show('title');
@@ -395,8 +405,27 @@ export class Ui {
         {
           label: 'Music',
           value: s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
-          note: 'A drum and bass bed at 174 beats per minute, generated as you fly.',
+          note: 'Generated drum and bass and lofi beds. Choose the record below.',
           adjust: (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
+        },
+        {
+          label: 'Music track',
+          value: s.musicTrack === 'rotation' ? 'Rotation' : trackById(s.musicTrack).name,
+          note: s.musicTrack === 'rotation'
+            ? 'Every track in turn, drum and bass and lofi alternating.'
+            : `${trackById(s.musicTrack).genre === 'dnb' ? 'Drum and bass' : 'Lofi'}, ${trackById(s.musicTrack).bpm} beats per minute.`,
+          adjust: (d) => {
+            const ids = ['rotation', ...TRACKS.map((t) => t.id)];
+            const i = ids.indexOf(s.musicTrack);
+            const n = ids.length;
+            s.musicTrack = ids[(((i < 0 ? 0 : i) + d) % n + n) % n];
+          },
+        },
+        {
+          label: 'Ambience',
+          value: s.ambienceLevel > 0 ? `${s.ambienceLevel}` : 'Off',
+          note: 'The outdoors: low air and birdsong. It fades away as speed builds.',
+          adjust: (d) => { s.ambienceLevel = Math.max(0, Math.min(10, s.ambienceLevel + d)); },
         },
         {
           label: 'Binaural tone',
@@ -477,6 +506,11 @@ export class Ui {
         if (this.cursor !== i) {
           this.cursor = i;
           this.renderMenu();
+          /* The same tick the arrow keys make: the pointer sliding down a
+           * menu should feel like a finger running along a fence. */
+          if (this.onUiSound) {
+            this.onUiSound('move');
+          }
         }
       });
       row.addEventListener('click', () => {
@@ -632,7 +666,10 @@ export class Ui {
     this.readout.textContent = this.settings.readout ? lines : '';
   }
 
-  /* Cursor movement and selection, shared by keyboard and sticks. */
+  /* Cursor movement and selection, shared by keyboard and sticks. Each
+   * lands a small click through onUiSound, and the sound is made HERE, in
+   * the one place each gesture funnels through, so the keyboard, the
+   * sticks and the mouse all sound the same. */
   move(dir) {
     const n = this.items().length;
     if (!n) {
@@ -640,6 +677,9 @@ export class Ui {
     }
     this.cursor = (this.cursor + dir + n) % n;
     this.renderMenu();
+    if (this.onUiSound) {
+      this.onUiSound('move');
+    }
   }
 
   adjust(dir) {
@@ -648,6 +688,9 @@ export class Ui {
       it.adjust(dir);
       saveSettings(this.settings);
       this.renderMenu();
+      if (this.onUiSound) {
+        this.onUiSound('adjust');
+      }
       if (this.onSettings) {
         this.onSettings(this.settings);
       }
@@ -663,12 +706,18 @@ export class Ui {
       this.adjust(1);
       return;
     }
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
     this.act(it.action);
   }
 
   back() {
     if (this.screen === 'title' || this.screen === 'flight') {
       return;
+    }
+    if (this.onUiSound) {
+      this.onUiSound('back');
     }
     if (this.screen === 'results') {
       this.act('title');

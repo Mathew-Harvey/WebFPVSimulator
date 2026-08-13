@@ -7,27 +7,38 @@
  * quad instead of a drone. So this is per motor, driven by that motor's own
  * RPM, not a single throttle-scaled loop.
  *
- * WHAT THIS ROUND CHANGED, AND WHY. The owner's words were "the motor noise
- * needs to be more muted and lower so not to kill my ears". The defect
- * statement of record was "loud screaming", and it was measurable: the old
- * graph multiplied the blade pass frequency by a constant of 2.9, so at 8589
- * RPM the oscillator sat at 1245 Hz, in the ear's most sensitive octave, with
- * a SQUARE partial an octave above it running to 8 kHz and a lowpass that
- * opened to 4776 Hz and let all of it through. Measured with
- * scripts/audio-probe.js, the 2 to 8 kHz band was 22 dB LOUDER than the band
- * containing the blade pass fundamental.
+ * THE MOTOR REGISTER, and why it is low. An earlier round's graph put the
+ * oscillators in the kilohertz range with square partials to 8 kHz, and the
+ * owner called it loud screaming. The fundamental IS the blade pass
+ * frequency now, motor RPM over 60 times the blade count, which on this
+ * plant is 130 to 430 Hz in flight: a hum with body rather than a saw in
+ * the presence band. A chosen periodic wave through a lowpass whose corner
+ * tracks the fundamental but is CAPPED gives the harmonics that make it
+ * read as a motor and nothing above them. This round lowered the cap from
+ * 1150 to 1000 Hz and the default motor stem from 0.6 to 0.5, in the
+ * owner's words "low softened quiet, not obtrusive", which is also how the
+ * shipping simulators mix it: motors just audible under the wind, never
+ * the loudest thing in the render. Measured before and after in
+ * PROGRESS.md; the flight instrument survives because the information is
+ * in the PITCH, which is untouched.
  *
- * So the register correction is gone. The fundamental IS the blade pass
- * frequency now, motor RPM over 60 times the blade count, which on this plant
- * is 130 to 430 Hz in flight. That is a hum with body rather than a saw in
- * the presence band, and it is what the owner asked for. A single sawtooth
- * through two cascaded lowpasses whose corner tracks the fundamental but is
- * CAPPED gives the harmonics that make it read as a motor and nothing above
- * them. There is no square wave anywhere in this file any more.
+ * THE AMBIENCE. A new stem: a baked outdoor bed, low air and a few
+ * birds, that carries the world while the craft is parked or slow and
+ * fades away as airspeed builds, the way the real outdoors disappears
+ * under a real quad. One looped stereo buffer this file bakes from a
+ * deterministic LCG, two nodes, its own settings row.
  *
- * The rest of the mix is built around that band: src/render/music.js puts its
- * sub bass and kick below 120 Hz and its snare and hats above 1.5 kHz, so the
- * bed never sings in the octaves the pilot is listening to.
+ * THE CUES. A gate pass is a satisfying CLICK now, a knuckle of filtered
+ * noise over a falling tick, not a synth blip; a frame graze is the same
+ * family an octave and a half down, so the reward and the penalty cannot
+ * be confused. The menu makes small clicks of the same family through
+ * ui(). All of it runs on the two pooled cue voices that already existed:
+ * no event creates a node.
+ *
+ * The rest of the mix is built around the motor band: src/render/music.js
+ * and its record crate in tracks.js keep every track's sub bass and kick
+ * below 120 Hz and its snare and hats above 1.5 kHz, so the bed never
+ * sings in the octaves the pilot is listening to.
  *
  * The graph is built by attach(ctx), which takes any BaseAudioContext, and
  * update() takes the time to schedule at. Both exist so that
@@ -67,12 +78,14 @@ const BLADES = 3;
 /*
  * The motor lowpass tracks the fundamental so the timbre holds across the
  * throttle range, but it is capped, and the cap is the single number that
- * decides whether this mix hurts. 1150 Hz keeps at most the first seven
+ * decides whether this mix hurts. 1000 Hz keeps at most the first six
  * harmonics of a 165 Hz hover tone and nothing at all in the 2 to 8 kHz band
- * the ear complains about first.
+ * the ear complains about first. It was 1150; the owner asked for softer
+ * still, and dropping the cap is the honest way to do it because it takes
+ * edge off the timbre without touching the pitch the pilot flies on.
  */
 const MOTOR_LP_TRACK = 3.4;
-const MOTOR_LP_CAP = 1150;
+const MOTOR_LP_CAP = 1000;
 const MOTOR_LP_FLOOR = 220;
 /*
  * Below this the motor stem is silent. A stationary quad was not quiet: with
@@ -129,6 +142,21 @@ const MASTER_CEILING = 0.85;
 const FOCUS_CARRIER_HZ = 1000;
 const FOCUS_BEAT_HZ = 6;
 
+/*
+ * The ambience bed. Length chosen NOT commensurate with any music loop so
+ * the birds never phase lock to the bars, and long enough that the chirp
+ * pattern does not read as a loop inside one lap. AMB_LEVEL is the bus
+ * gain at full setting with the craft parked; the bed then fades with
+ * airspeed in update(), because six metres per second of wash is already
+ * louder than a meadow. The bird syllables live around 3 to 4.5 kHz,
+ * which is fine HERE and forbidden to the motors: A1 protects that band
+ * from the flight stems, and the ambience is neither of them and twenty
+ * odd dB quieter.
+ */
+const AMB_SECONDS = 22.5;
+const AMB_LEVEL = 0.5;
+const AMB_SPEED_FADE = 0.8;
+
 export class MotorAudio {
   constructor() {
     this.ctx = null;
@@ -137,8 +165,10 @@ export class MotorAudio {
     this.master = null;
     this.noiseGain = null;
     this.level = 0.5; /* mix level, driven by the volume setting */
-    /* Per stem, each 0 to 1, driven by their own settings rows. */
-    this.mix = { motors: 0.6, wind: 0.5, music: 0.5, focus: 1 };
+    /* Per stem, each 0 to 1, driven by their own settings rows. These
+     * mirror the DEFAULTS in src/ui/ui.js divided by ten, and the probe
+     * measures at exactly these values when no mix argument is given. */
+    this.mix = { motors: 0.5, wind: 0.5, music: 0.5, focus: 1, ambience: 0.4 };
     this.focusOn = false;
     this.music = new Music();
     /* Every AudioNode this instance owns, for P12. A node created and
@@ -184,11 +214,20 @@ export class MotorAudio {
     if (typeof m.focus === 'number') {
       this.mix.focus = Math.max(0, Math.min(1, m.focus));
     }
+    if (typeof m.ambience === 'number') {
+      this.mix.ambience = Math.max(0, Math.min(1, m.ambience));
+    }
     this.applyBuses();
   }
 
   setMusicEnabled(on) {
     this.music.setEnabled(on);
+  }
+
+  /* Which music track, or 'rotation' for the whole crate in order. A
+   * setting, safe before attach: the player object holds it as data. */
+  setMusicTrack(sel) {
+    this.music.setTrack(sel);
   }
 
   setFocusEnabled(on) {
@@ -396,6 +435,108 @@ export class MotorAudio {
     this.noiseGain = ng;
 
     /*
+     * The ambience: one looped stereo buffer, baked here, two nodes.
+     *
+     * The air is LCG noise through two one pole lowpasses IN THE BAKE, so
+     * no filter node is spent on it, breathing on a slow sinusoid whose
+     * period divides the loop exactly (three cycles in 22.5 s) so the seam
+     * cannot step the envelope. The birds are sine syllables written
+     * directly into the samples: a handful of two to four note calls at
+     * LCG times, each panned by writing more of it into one channel.
+     * Everything is deterministic, so two renders agree and the probe can
+     * measure this stem like any other.
+     *
+     * It hangs off the flight duck: a cue or a crash pulls the world down
+     * with the motors, which is what attention does.
+     */
+    const ambBus = keep(ctx.createGain());
+    ambBus.gain.value = 0;
+    ambBus.connect(flightDuck);
+    this.ambBus = ambBus;
+    const aLen = Math.floor(ctx.sampleRate * AMB_SECONDS);
+    const aBuf = ctx.createBuffer(2, aLen, ctx.sampleRate);
+    let as = 424242;
+    const arnd = () => {
+      as = (as * 1103515245 + 12345) & 0x7fffffff;
+      return as / 0x7fffffff;
+    };
+    /* The loop seam is handled the way every seam in this project is:
+     * removed by construction and then measurable. The air is rendered
+     * with an extra crossfade tail, and the head is blended from the tail
+     * so the last sample flows into the first with no filter state step.
+     * The breathing sinusoid completes whole cycles over the loop, so it
+     * needs no help. */
+    const aFade = Math.floor(ctx.sampleRate * 0.1);
+    for (let c = 0; c < 2; c += 1) {
+      const ac = aBuf.getChannelData(c);
+      /* Decorrelated air per channel: separate stretches of the stream. */
+      let lp1 = 0;
+      let lp2 = 0;
+      const k = 1 - Math.exp((-2 * Math.PI * 320) / ctx.sampleRate);
+      const breathePhase = c === 0 ? 0 : Math.PI / 3;
+      const air = new Float32Array(aLen + aFade);
+      for (let i = 0; i < aLen + aFade; i += 1) {
+        const w = arnd() * 2 - 1;
+        lp1 += k * (w - lp1);
+        lp2 += k * (lp1 - lp2);
+        air[i] = lp2 * 2.2;
+      }
+      for (let i = 0; i < aLen; i += 1) {
+        let v = air[i];
+        if (i < aFade) {
+          const u = i / aFade;
+          v = air[aLen + i] * (1 - u) + v * u;
+        }
+        const breathe = 1 + 0.35 * Math.sin((2 * Math.PI * 3 * i) / aLen + breathePhase);
+        ac[i] = v * breathe;
+      }
+    }
+    /* The birds. Fourteen calls over the loop, written into both channels
+     * with a per call pan weight. Syllables sweep down a few semitones
+     * with a light vibrato, which is enough birdsong for a bed that sits
+     * 20 dB under the music. */
+    for (let call = 0; call < 14; call += 1) {
+      const t0 = (0.5 + arnd() * (AMB_SECONDS - 1.5)) * ctx.sampleRate;
+      const syllables = 2 + Math.floor(arnd() * 3);
+      const f0 = 3100 + arnd() * 1400;
+      const wL = 0.15 + 0.7 * arnd();
+      const wR = 1 - wL;
+      let at = t0;
+      for (let syl = 0; syl < syllables; syl += 1) {
+        const dur = Math.floor((0.04 + arnd() * 0.07) * ctx.sampleRate);
+        /* A syllable cut by the loop edge would be a step at the seam, so
+         * a call that runs out of room simply ends early. */
+        if (at + dur >= aLen - 2400) {
+          break;
+        }
+        const drop = 0.85 + arnd() * 0.12;
+        const vibHz = 30 + arnd() * 30;
+        const amp = 0.05 + arnd() * 0.05;
+        const chL = aBuf.getChannelData(0);
+        const chR = aBuf.getChannelData(1);
+        for (let i = 0; i < dur; i += 1) {
+          const idx = Math.floor(at) + i;
+          if (idx >= aLen) {
+            break;
+          }
+          const u = i / dur;
+          const hz = f0 * (1 - (1 - drop) * u);
+          const vib = 1 + 0.04 * Math.sin((2 * Math.PI * vibHz * i) / ctx.sampleRate);
+          const env = Math.sin(Math.PI * u) ** 2;
+          const v = Math.sin((2 * Math.PI * hz * vib * i) / ctx.sampleRate) * env * amp;
+          chL[idx] += v * wL;
+          chR[idx] += v * wR;
+        }
+        at += dur + (0.03 + arnd() * 0.10) * ctx.sampleRate;
+      }
+    }
+    const ambSrc = keep(ctx.createBufferSource());
+    ambSrc.buffer = aBuf;
+    ambSrc.loop = true;
+    ambSrc.connect(ambBus);
+    ambSrc.start();
+
+    /*
      * The binaural focus tone: one carrier per ear, differing by the beat
      * frequency, merged so the left oscillator reaches only the left channel
      * and the right only the right. That separation is the whole thing: a
@@ -425,9 +566,10 @@ export class MotorAudio {
     merger.connect(focusBus);
 
     /*
-     * One shot cues, pooled: a persistent oscillator for the gate, landing
-     * and takeoff blips, and a persistent noise chain for the crash. Nothing
-     * is created per event, which is what A10 asks for by name.
+     * One shot cues, pooled: a persistent oscillator and a persistent noise
+     * chain, shared by the gate and graze clicks, the landing and takeoff
+     * blips, the crash, and the menu's ui() taps. Nothing is created per
+     * event, which is what A10 asks for by name.
      *
      * They go in AHEAD of the soft clip but not through a stem bus, because
      * a cue the player has turned down is a cue that costs them a race.
@@ -475,9 +617,9 @@ export class MotorAudio {
   }
 
   /*
-   * A one shot cue. kind is 'crash', 'gate', 'land' or 'takeoff'. Safe to
-   * call before attach, and it creates no nodes: every cue is an envelope on
-   * a voice that already exists.
+   * A one shot cue. kind is 'crash', 'gate', 'clip', 'land' or 'takeoff'.
+   * Safe to call before attach, and it creates no nodes: every cue is an
+   * envelope on a voice that already exists.
    *
    * A cue also ducks the bed, which is what keeps it audible with everything
    * else at maximum.
@@ -506,22 +648,61 @@ export class MotorAudio {
       f.cancelScheduledValues(t);
       f.setValueAtTime(1800, t);
       f.exponentialRampToValueAtTime(220, t + 0.4);
+      /* The click cues lean on this filter's Q, so a crash states its own
+       * rather than inheriting whatever the last click left. */
+      this.crashLp.Q.cancelScheduledValues(t);
+      this.crashLp.Q.setValueAtTime(1.1, t);
       /* Duck the MOTORS and the WIND, which are what mask a crash, and duck
        * them hard: a crash is the one moment the player must not miss. */
       this.duckFlight(t, 0.28, 0.5);
       this.music.duckNow(t, 0.25, 0.55);
       return;
     }
-    /* The blips. A gate is a bright confirmation, a landing is the same
-     * shape two octaves down, and a takeoff is a rising pair. */
-    let hz = 1180;
-    let dur = 0.11;
+    if (kind === 'gate' || kind === 'clip') {
+      /*
+       * The gate click, which the owner asked for by feel: a satisfying
+       * click, not a beep. Two layers on the two pooled voices. The crash
+       * chain plays a resonant knuckle of noise a few tens of milliseconds
+       * long, and the cue oscillator drops through it like a tongue click.
+       * 'clip', the frame graze penalty, is the same gesture an octave and
+       * a half down with a duller filter: unmistakably the same family,
+       * unmistakably not the reward.
+       *
+       * The click's energy sits between 2 and 5 kHz where the motors (capped
+       * at 1 kHz) and the wind (lowpassed at 900 Hz) have nothing, which is
+       * why it reads through a full throttle mix with a LIGHTER duck than
+       * the old blip needed.
+       */
+      const gate = kind === 'gate';
+      const nf = this.crashLp.frequency;
+      nf.cancelScheduledValues(t);
+      nf.setValueAtTime(gate ? 4200 : 900, t);
+      this.crashLp.Q.cancelScheduledValues(t);
+      this.crashLp.Q.setValueAtTime(gate ? 1.6 : 0.8, t);
+      const ng = this.crashGain.gain;
+      ng.cancelScheduledValues(t);
+      ng.setValueAtTime(0.0001, t);
+      ng.exponentialRampToValueAtTime(gate ? 1.35 : 1.1, t + 0.002);
+      ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.045 : 0.11));
+      const f = this.cueOsc.frequency;
+      f.cancelScheduledValues(t);
+      f.setValueAtTime(gate ? 1500 : 300, t);
+      f.exponentialRampToValueAtTime(gate ? 720 : 170, t + (gate ? 0.03 : 0.06));
+      const g = this.cueGain.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(0.0001, t);
+      g.exponentialRampToValueAtTime(gate ? 0.75 : 0.6, t + 0.003);
+      g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.075 : 0.12));
+      this.duckFlight(t, gate ? 0.55 : 0.5, gate ? 0.22 : 0.3);
+      this.music.duckNow(t, gate ? 0.5 : 0.45, gate ? 0.25 : 0.3);
+      return;
+    }
+    /* The blips. A landing is a low settle, a takeoff is a rising pair. */
+    let hz = 620;
+    let dur = 0.14;
     if (kind === 'land') {
       hz = 400;
       dur = 0.16;
-    } else if (kind === 'takeoff') {
-      hz = 620;
-      dur = 0.14;
     }
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
@@ -532,13 +713,74 @@ export class MotorAudio {
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    /* Four times the old level. A gate cue measured 0.13 dB BELOW its own
-     * masking content at maximum stems, which is inaudible exactly when it
-     * matters, and the soft clip was eating another 2.2 dB of it. */
-    g.exponentialRampToValueAtTime(kind === 'gate' ? 0.95 : 0.62, t + 0.004);
+    g.exponentialRampToValueAtTime(0.62, t + 0.004);
     g.exponentialRampToValueAtTime(0.0001, t + dur);
-    this.duckFlight(t, kind === 'gate' ? 0.5 : 0.66, 0.26);
-    this.music.duckNow(t, kind === 'gate' ? 0.42 : 0.6, 0.3);
+    this.duckFlight(t, 0.66, 0.26);
+    this.music.duckNow(t, 0.6, 0.3);
+  }
+
+  /*
+   * Menu sounds: the same click family as the gate, small and dry. kind is
+   * 'move', 'adjust', 'select' or 'back'. Runs on the same two pooled cue
+   * voices, so it creates nothing; it never ducks anything, because a menu
+   * is not a race. Quiet by design: these are fingernail taps, and the row
+   * under the pointer is the loudest thing a menu should ever say.
+   */
+  ui(kind) {
+    if (!this.ctx || !this.cueGain || !this.enabled) {
+      return;
+    }
+    const t = this.ctx.currentTime;
+    let oscHz = 1900;
+    let oscTo = 0;
+    let oscPeak = 0.085;
+    let oscDur = 0.030;
+    let nHz = 5200;
+    let nPeak = 0.10;
+    let nDur = 0.016;
+    if (kind === 'select') {
+      oscHz = 1350;
+      oscTo = 850;
+      oscPeak = 0.16;
+      oscDur = 0.055;
+      nHz = 4400;
+      nPeak = 0.18;
+      nDur = 0.028;
+    } else if (kind === 'adjust') {
+      oscHz = 2100;
+      oscPeak = 0.10;
+      oscDur = 0.035;
+      nPeak = 0.12;
+      nDur = 0.018;
+    } else if (kind === 'back') {
+      oscHz = 950;
+      oscTo = 700;
+      oscPeak = 0.12;
+      oscDur = 0.05;
+      nHz = 3400;
+      nDur = 0.022;
+    }
+    const nf = this.crashLp.frequency;
+    nf.cancelScheduledValues(t);
+    nf.setValueAtTime(nHz, t);
+    this.crashLp.Q.cancelScheduledValues(t);
+    this.crashLp.Q.setValueAtTime(1.3, t);
+    const ng = this.crashGain.gain;
+    ng.cancelScheduledValues(t);
+    ng.setValueAtTime(0.0001, t);
+    ng.exponentialRampToValueAtTime(nPeak, t + 0.0015);
+    ng.exponentialRampToValueAtTime(0.0001, t + nDur);
+    const f = this.cueOsc.frequency;
+    f.cancelScheduledValues(t);
+    f.setValueAtTime(oscHz, t);
+    if (oscTo > 0) {
+      f.exponentialRampToValueAtTime(oscTo, t + oscDur * 0.6);
+    }
+    const g = this.cueGain.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(0.0001, t);
+    g.exponentialRampToValueAtTime(oscPeak, t + 0.002);
+    g.exponentialRampToValueAtTime(0.0001, t + oscDur);
   }
 
   /*
@@ -622,6 +864,18 @@ export class MotorAudio {
     }
     const rush = Math.min(1, speed / 32);
     this.noiseGain.gain.setTargetAtTime(0.06 + 0.50 * rush * rush + 0.12 * loudest, t, 0.06);
+    /*
+     * The world recedes as the air arrives. Parked, the ambience is the
+     * loudest quiet thing in the render; at race speed it is nearly gone,
+     * which is both what a real meadow does under a quad and what keeps
+     * the bed out of the wind's way. The slow time constant makes slowing
+     * down a swell rather than a switch.
+     */
+    this.ambBus.gain.setTargetAtTime(
+      this.mix.ambience * AMB_LEVEL * (1 - AMB_SPEED_FADE * rush),
+      t,
+      0.25,
+    );
     /* The bed's own clock. Ticked from here so the probe, which drives this
      * exact update, exercises the scheduler too: an instrument that cannot
      * see the music cannot measure it. */

@@ -732,6 +732,9 @@ const DRIVER = `async (spec) => {
   if (typeof a.setMusicEnabled === 'function') {
     a.setMusicEnabled(spec.music !== 0);
   }
+  if (spec.track && typeof a.setMusicTrack === 'function') {
+    a.setMusicTrack(spec.track);
+  }
   if (typeof a.setFocusEnabled === 'function') {
     a.setFocusEnabled(spec.focus === 1);
   }
@@ -890,7 +893,10 @@ async function main() {
      * difference, which means rendering one stem at a time. None of that is
      * possible with a fixed mix, so the mix is an argument.
      */
-    motors: -1, wind: -1, musiclevel: -1, music: 0, focus: 0,
+    motors: -1, wind: -1, musiclevel: -1, ambience: -1, music: 0, focus: 0,
+    /* Which music track the render plays, by id from src/render/tracks.js.
+     * Empty keeps the player's default, which is the first track. */
+    track: '',
     /*
      * A7 asks for a cue's level advantage "at the moment it plays" and for a
      * measurable duck. Every other figure this probe reports is a Welch
@@ -920,11 +926,15 @@ async function main() {
   if (Number(opts.musiclevel) >= 0) {
     mix.music = Number(opts.musiclevel);
   }
+  if (Number(opts.ambience) >= 0) {
+    mix.ambience = Number(opts.ambience);
+  }
   const spec = {
     seconds, rate, level: Number(opts.level), trace, cue: String(opts.cue),
     mix: Object.keys(mix).length ? mix : null,
     music: Number(opts.music),
     focus: Number(opts.focus),
+    track: String(opts.track),
   };
   const { meta, channels } = await renderGraph(spec);
 
@@ -989,7 +999,7 @@ async function main() {
     samples: meta.length,
     nodes: meta.nodes,
     level: Number(opts.level),
-    stems: { mix: spec.mix, music: spec.music, focus: spec.focus },
+    stems: { mix: spec.mix, music: spec.music, focus: spec.focus, track: spec.track || null },
     motorSpread: MOTOR_SPREAD,
     traceHz: TRACE_HZ,
     meanRpm,

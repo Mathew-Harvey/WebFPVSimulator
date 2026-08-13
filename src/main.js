@@ -670,6 +670,13 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   ui.onSettings = applySettings;
+  /* Menu clicks. The key handler has already woken the audio context by
+   * the time the menu moves, so the first keypress is audible too. */
+  ui.onUiSound = (kind) => {
+    if (typeof audio.ui === 'function') {
+      audio.ui(kind);
+    }
+  };
   ui.onAction = (action, s) => {
     if (action === 'fly' || action === 'restart') {
       reset();
@@ -732,10 +739,14 @@ export async function boot({ loading, bootStart, mapId }) {
       mixArg.wind = s.windLevel / 10;
       mixArg.music = s.musicLevel / 10;
       mixArg.focus = 1;
+      mixArg.ambience = s.ambienceLevel / 10;
       audio.setMix(mixArg);
     }
     if (typeof audio.setMusicEnabled === 'function') {
       audio.setMusicEnabled(s.musicLevel > 0);
+    }
+    if (typeof audio.setMusicTrack === 'function') {
+      audio.setMusicTrack(s.musicTrack);
     }
     if (typeof audio.setFocusEnabled === 'function') {
       audio.setFocusEnabled(Boolean(s.focusTone));
@@ -795,7 +806,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /* Reused, not rebuilt: applySettings runs off a menu keypress, but the
    * same object also keeps the shape of the call obvious in one place. */
-  const mixArg = { motors: 1, wind: 1, music: 1, focus: 1 };
+  const mixArg = { motors: 1, wind: 1, music: 1, focus: 1, ambience: 1 };
   const pPrev = new THREE.Vector3();
   const pCurr = new THREE.Vector3();
   const qPrev = new THREE.Quaternion();
@@ -1230,8 +1241,10 @@ export async function boot({ loading, bootStart, mapId }) {
         if (soft && closing < GRAZE_SPEED_MAX) {
           race.voidLap(`Clipped the ${lastHitKind}\nLap void`, nowWall);
           view.setNextGate(race.nextSceneIndex());
+          /* 'clip', not 'gate': the graze penalty must not sound like the
+           * pass reward, or the ear learns the wrong lesson at speed. */
           if (typeof audio.event === 'function') {
-            audio.event('gate');
+            audio.event('clip');
           }
         } else {
           crashInto(`Hit the ${lastHitKind}\nLap void`, nowWall);

@@ -155,10 +155,241 @@ const BOX_FLOOR = -60;
 /* Above anything in this town, for the rare box with no `top` at all. */
 const BOX_CEIL = 400;
 
+/*
+ * Trimming the town's keep-out volumes down to the things they stand for.
+ *
+ * THE TOWN'S RECTANGLES ARE NOT THE TOWN'S SURFACES. They were authored for a
+ * walker, and a walker's collider is a keep-out volume with the walker's own
+ * body allowed for: `plotCollide` pads every building plot by 0.1 m a side,
+ * `district.js` pads one frontage by 1.0 m and one flank by 1.8 m, a 1.3 by
+ * 0.7 m shed gets a 1.4 by 1.4 m box, and a tree trunk gets 1.15 times its
+ * own radius. None of that is visible to a person on foot, who cannot put
+ * their shoulder in the 10 cm anyway. All of it is visible to a quad, which
+ * is flown at the gaps on purpose and reads a barrier standing off the wall
+ * it belongs to as an invisible wall. The owner's report was exactly that:
+ * "the collisions need to HUG the graphics, i want to hit gaps but in many
+ * places they are actually invisible walls".
+ *
+ * MEASURED FIRST, BECAUSE THE PADDING IS NOT THE WHOLE STORY. Scanned against
+ * the drawn triangles before this existed, the town's 2731 rectangles fit
+ * better than the call sites suggest: the mean overhang above the geometry
+ * standing in them is 0.04 m. What there is, is a TAIL, and the tail is what
+ * gets flown into: 54 boxes reach more than 0.5 m above anything drawn, the
+ * worst by 9.07 m, and 106 overhang the drawn footprint by more than 0.35 m,
+ * the worst by 2.91 m. Those are the invisible walls, and they are worth
+ * removing without touching the 2500 boxes that were already right.
+ *
+ * THE FIT ONLY EVER SHRINKS, AND ONLY ONTO GEOMETRY IT CAN PROVE BELONGS.
+ * Each drawn mesh contributes its world bounding box, which OVER states a
+ * sloped roof or a rotated shed, so a box fitted to it is conservative in the
+ * one direction that matters: the solid volume can never end up inside the
+ * picture. A mesh counts toward a collider only if most of its own footprint
+ * lies within that collider, so a wall shared between two plots, or the
+ * terrain running underneath everything, cannot vote. A collider with nothing
+ * that qualifies is left exactly as the town authored it, because a barrier
+ * with no geometry in it is usually load bearing (the lake edge, a parked
+ * level crossing boom) and guessing it away would put a quad inside the
+ * scenery, which is worse than the wall it removes.
+ *
+ * It runs before src/maps/city/bake.js for the same reason references.js
+ * does: after the merge a wall is anonymous floats in a shared buffer.
+ */
+/* A mesh this much of whose own footprint lies inside a collider is standing
+ * in that collider rather than passing through it. Two thirds, so a wall
+ * shared down the middle of a party boundary votes for neither. */
+const FIT_OWNERSHIP = 0.67;
+/* Footprint above which a mesh is a SURFACE, not an object: the terrain, the
+ * road, the canal, the lake. Nothing that large is what a 7 m plot rectangle
+ * stands for, and letting one vote would hold every collider it underlies at
+ * full size. The largest thing in this town that a collider does stand for is
+ * the school block at about 40 by 25 m. */
+const FIT_MAX_FOOTPRINT = 1400;
+/* Broadphase for the fit itself. Build time only, so a plain Map of arrays is
+ * the right shape here where the per frame path would not tolerate it. */
+const FIT_CELL = 4;
+/* A fitted box may not be thinner than this on any axis. Below it the box is
+ * unreachable anyway and the distance solver is being asked to answer about a
+ * plane, so the authored extent is kept instead. */
+const FIT_MIN_EXTENT = 0.02;
+/*
+ * The two rules that keep the fit from opening holes, and they were both
+ * written against a measured failure rather than imagined.
+ *
+ * COVERAGE. The first version of this trimmed on the mere presence of owned
+ * geometry, and it destroyed every long thin barrier in the town: a 78.9 m
+ * lineside railing 0.24 m thick, drawn as a run of separate balusters, kept
+ * whichever single post happened to qualify and collapsed to 0.18 m. Measured
+ * across the town it made 675 side trims with a worst case of 74.99 m and a
+ * worst top trim of 16.80 m, which is not a fit, it is a hole a quad flies
+ * through the scenery. The distinction it was missing: PADDING leaves the
+ * object filling its own rectangle and merely standing off the edges, while a
+ * sparse barrier does not fill anything. So the drawn geometry has to cover
+ * most of the rectangle before any trim is believed.
+ *
+ * CAP. And no single face moves further than the largest standoff the town
+ * actually authors, which is the 1.8 m flank in district.js. Two metres
+ * covers every authored pad with margin, and a trim larger than that is not a
+ * pad being removed, it is the fit failing to understand the collider. What
+ * it costs is the over tall outliers on long barriers, 54 boxes reaching over
+ * half a metre above anything drawn: coverage already declines those, and
+ * they are recorded in PROGRESS.md as known and unfixed rather than quietly
+ * left out.
+ */
+const FIT_COVER = 0.6;
+const FIT_MAX_PAD = 2.0;
+
+function drawnBoxes(root) {
+  const out = [];
+  const box = new THREE.Box3();
+  const inst = new THREE.Matrix4();
+  const world = new THREE.Matrix4();
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    if (!o.isMesh || !o.geometry) {
+      return;
+    }
+    const g = o.geometry;
+    if (!g.boundingBox) {
+      g.computeBoundingBox();
+    }
+    if (!g.boundingBox) {
+      return;
+    }
+    const push = (m) => {
+      box.copy(g.boundingBox).applyMatrix4(m);
+      const fx = box.max.x - box.min.x;
+      const fz = box.max.z - box.min.z;
+      if (fx * fz > FIT_MAX_FOOTPRINT) {
+        return;
+      }
+      out.push({
+        x0: box.min.x, x1: box.max.x, y1: box.max.y, z0: box.min.z, z1: box.max.z, area: fx * fz,
+      });
+    };
+    if (o.isInstancedMesh) {
+      for (let i = 0; i < o.count; i += 1) {
+        o.getMatrixAt(i, inst);
+        world.multiplyMatrices(o.matrixWorld, inst);
+        push(world);
+      }
+      return;
+    }
+    push(o.matrixWorld);
+  });
+  return out;
+}
+
+/*
+ * The drawn extent standing inside one authored rectangle. Writes into `out`
+ * rather than allocating, because this runs 2731 times during a load that
+ * already costs seconds.
+ *
+ * TWO ANSWERS, BECAUSE THE TOP AND THE SIDES ARE DIFFERENT QUESTIONS.
+ *
+ * The sides ask "where does the object in this rectangle actually stand", and
+ * that needs the ownership filter: a neighbour's wall clipping the corner of
+ * this plot must not vote on where this plot's collider ends.
+ *
+ * The top asks something much simpler, "is anything at all drawn up there",
+ * and ownership is wrong for it. A tree is the case that proved it. The town
+ * collides a tree as its trunk, a 1.1 m square box up to the trunk's height,
+ * and the canopy that sits on top is several metres across, so ownership
+ * rejects the canopy and the owned union tops out at the trunk. Trimming to
+ * that ate 2 m off nine tree colliders and opened the only twelve holes the
+ * safety scan has ever found: the box stopped reaching into a canopy that is
+ * drawn, dense and right there on screen. So the top is capped by the tallest
+ * drawn thing anywhere over the footprint, owned or not, which is exactly the
+ * question "would the pilot see anything where this box still reaches".
+ */
+function fitOne(c, boxes, grid, out) {
+  let found = false;
+  out.x0 = Infinity; out.x1 = -Infinity;
+  out.z0 = Infinity; out.z1 = -Infinity;
+  out.y1 = -Infinity;
+  out.anyTop = -Infinity;
+  out.covered = 0;
+  const ca0 = Math.floor(c.x0 / FIT_CELL);
+  const ca1 = Math.floor(c.x1 / FIT_CELL);
+  const cb0 = Math.floor(c.z0 / FIT_CELL);
+  const cb1 = Math.floor(c.z1 / FIT_CELL);
+  const seen = out.seen;
+  out.mark += 1;
+  const mark = out.mark;
+  for (let a = ca0; a <= ca1; a += 1) {
+    for (let b = cb0; b <= cb1; b += 1) {
+      const bucket = grid.get(`${a},${b}`);
+      if (bucket === undefined) {
+        continue;
+      }
+      for (let bi = 0; bi < bucket.length; bi += 1) {
+        const i = bucket[bi];
+        if (seen[i] === mark) {
+          continue;
+        }
+        seen[i] = mark;
+        const g = boxes[i];
+        /* How much of the MESH's own footprint is inside this rectangle. */
+        const ox = Math.min(g.x1, c.x1) - Math.max(g.x0, c.x0);
+        const oz = Math.min(g.z1, c.z1) - Math.max(g.z0, c.z0);
+        if (ox <= 0 || oz <= 0) {
+          continue;
+        }
+        /* Overlapping at all is enough to answer the top question. */
+        if (g.y1 > out.anyTop) {
+          out.anyTop = g.y1;
+        }
+        if (g.area > 0 && (ox * oz) / g.area < FIT_OWNERSHIP) {
+          continue;
+        }
+        found = true;
+        /* Sum of the owned footprints clipped to the rectangle. Overlapping
+         * meshes double count, which can only ever make the coverage look
+         * BETTER than it is, so it is bounded against the rectangle's own
+         * area by the caller and the error is in the direction of trimming
+         * more. That is the wrong direction, so the caller also requires the
+         * union's own footprint to cover, which cannot double count. */
+        out.covered += ox * oz;
+        if (g.x0 < out.x0) { out.x0 = g.x0; }
+        if (g.x1 > out.x1) { out.x1 = g.x1; }
+        if (g.z0 < out.z0) { out.z0 = g.z0; }
+        if (g.z1 > out.z1) { out.z1 = g.z1; }
+        if (g.y1 > out.y1) { out.y1 = g.y1; }
+      }
+    }
+  }
+  return found;
+}
+
 function buildColliders(world) {
   const colliders = new Colliders();
   let noTop = 0;
   let noBottom = 0;
+
+  /* The fit's own index over the drawn meshes. */
+  const fitStart = (typeof performance !== 'undefined' ? performance.now() : 0);
+  const boxes = drawnBoxes(world.root);
+  const grid = new Map();
+  for (let i = 0; i < boxes.length; i += 1) {
+    const g = boxes[i];
+    const a0 = Math.floor(g.x0 / FIT_CELL);
+    const a1 = Math.floor(g.x1 / FIT_CELL);
+    const b0 = Math.floor(g.z0 / FIT_CELL);
+    const b1 = Math.floor(g.z1 / FIT_CELL);
+    for (let a = a0; a <= a1; a += 1) {
+      for (let b = b0; b <= b1; b += 1) {
+        const k = `${a},${b}`;
+        const bucket = grid.get(k);
+        if (bucket === undefined) {
+          grid.set(k, [i]);
+        } else {
+          bucket.push(i);
+        }
+      }
+    }
+  }
+  const fit = { x0: 0, x1: 0, z0: 0, z1: 0, y1: 0, seen: new Int32Array(boxes.length), mark: 0 };
+  const fitStats = { fitted: 0, unmatched: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, worst: [] };
+
   for (const c of world.colliders) {
     const y1 = c.top === undefined ? BOX_CEIL : c.top;
     const y0 = c.bottom === undefined ? BOX_FLOOR : c.bottom;
@@ -169,6 +400,63 @@ function buildColliders(world) {
       noBottom += 1;
     }
     /*
+     * The fit. Shrink only, onto geometry that qualifies, and never past the
+     * point where the box stops being a box.
+     */
+    let fx0 = c.x0;
+    let fx1 = c.x1;
+    let fz0 = c.z0;
+    let fz1 = c.z1;
+    let fy1 = y1;
+    if (fitOne(c, boxes, grid, fit)) {
+      /* Clamp each face to the drawn extent, then no further than one pad. */
+      const nx0 = Math.min(Math.max(fx0, fit.x0), fx0 + FIT_MAX_PAD);
+      const nx1 = Math.max(Math.min(fx1, fit.x1), fx1 - FIT_MAX_PAD);
+      const nz0 = Math.min(Math.max(fz0, fit.z0), fz0 + FIT_MAX_PAD);
+      const nz1 = Math.max(Math.min(fz1, fit.z1), fz1 - FIT_MAX_PAD);
+      const ny1 = Math.max(Math.min(fy1, fit.anyTop), fy1 - FIT_MAX_PAD);
+      /* Does the drawn geometry actually fill this rectangle? Both the union
+       * of the owned boxes and the sum of their clipped footprints have to
+       * say yes: the union alone would be fooled by two posts at opposite
+       * corners, and the sum alone by a stack of coincident meshes. */
+      const area = Math.max(1e-6, (c.x1 - c.x0) * (c.z1 - c.z0));
+      const unionArea = Math.max(0, Math.min(fit.x1, c.x1) - Math.max(fit.x0, c.x0))
+        * Math.max(0, Math.min(fit.z1, c.z1) - Math.max(fit.z0, c.z0));
+      const covers = unionArea / area >= FIT_COVER && fit.covered / area >= FIT_COVER;
+      if (covers && nx1 - nx0 >= FIT_MIN_EXTENT && nz1 - nz0 >= FIT_MIN_EXTENT && ny1 > y0) {
+        const side = Math.max(nx0 - fx0, fx1 - nx1, nz0 - fz0, fz1 - nz1);
+        const topTrim = fy1 - ny1;
+        if (topTrim > 1e-6) {
+          fitStats.topTrims += 1;
+          fitStats.totalTopTrim += topTrim;
+          if (topTrim > fitStats.maxTopTrim) {
+            fitStats.maxTopTrim = topTrim;
+          }
+        }
+        if (side > 1e-6) {
+          fitStats.sideTrims += 1;
+          if (side > fitStats.maxSideTrim) {
+            fitStats.maxSideTrim = side;
+          }
+        }
+        if (side > 0.05 || topTrim > 0.05) {
+          fitStats.worst.push({
+            side: +side.toFixed(2),
+            topTrim: +topTrim.toFixed(2),
+            was: { x: +(c.x1 - c.x0).toFixed(2), z: +(c.z1 - c.z0).toFixed(2), top: +y1.toFixed(2) },
+            now: { x: +(nx1 - nx0).toFixed(2), z: +(nz1 - nz0).toFixed(2), top: +ny1.toFixed(2) },
+            at: [+((c.x0 + c.x1) / 2).toFixed(1), +((c.z0 + c.z1) / 2).toFixed(1)],
+          });
+        }
+        fx0 = nx0; fx1 = nx1; fz0 = nz0; fz1 = nz1; fy1 = ny1;
+        fitStats.fitted += 1;
+      } else {
+        fitStats.unmatched += 1;
+      }
+    } else {
+      fitStats.unmatched += 1;
+    }
+    /*
      * EVERY town collider gets a box, in order, with no gaps. Index alignment
      * with world.colliders is what lets animation.js raise and lower the two
      * level crossing booms by index, and a `continue` here for a degenerate
@@ -177,8 +465,13 @@ function buildColliders(world) {
      * the distance solver can answer, where an inverted lo > hi pair would be
      * a quiet wrong answer.
      */
-    colliders.addBox('wall', c.x0, y0, c.z0, c.x1, y1 > y0 ? y1 : y0 + 0.001, c.z1);
+    colliders.addBox('wall', fx0, y0, fz0, fx1, fy1 > y0 ? fy1 : y0 + 0.001, fz1);
   }
+  fitStats.ms = (typeof performance !== 'undefined' ? performance.now() : 0) - fitStart;
+  fitStats.drawnBoxes = boxes.length;
+  fitStats.meanTopTrim = fitStats.topTrims ? fitStats.totalTopTrim / fitStats.topTrims : 0;
+  fitStats.worst.sort((a, b) => Math.max(b.side, b.topTrim) - Math.max(a.side, a.topTrim));
+  fitStats.worst = fitStats.worst.slice(0, 14);
   let slabs = 0;
   for (const p of world.platforms) {
     /* fromY far below excludes every platform from the query, so this is the
@@ -197,7 +490,7 @@ function buildColliders(world) {
     );
     slabs += 1;
   }
-  return { colliders, noTop, noBottom, slabs };
+  return { colliders, noTop, noBottom, slabs, fit: fitStats };
 }
 
 export async function buildMap(shell, onProgress) {
@@ -279,7 +572,7 @@ export async function buildMap(shell, onProgress) {
   progress(0.86);
   await yieldToPaint();
 
-  const { colliders, noTop, noBottom, slabs } = buildColliders(world);
+  const { colliders, noTop, noBottom, slabs, fit } = buildColliders(world);
   /*
    * Find the level crossing booms NOW, before anything runs the town forward.
    *
@@ -431,6 +724,10 @@ export async function buildMap(shell, onProgress) {
       platformSlabs: slabs,
       collidersWithNoTop: noTop,
       collidersWithNoBottom: noBottom,
+      /* What the geometry fit did to the town's walker rectangles, so the
+       * claim that the solid world hugs the drawn one is a measurement
+       * rather than a comment. */
+      colliderFit: fit,
       cullCells: cull.cells.length,
       cullAlways: cull.always.length,
       cullRadius,

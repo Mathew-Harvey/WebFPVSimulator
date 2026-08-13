@@ -585,13 +585,48 @@ export function buildChecks() {
         };
         const th = ctx.th.checks['world-scale'];
 
-        /* The craft, measured off the drawn geometry rather than off the
-         * constants that drew it. */
-        band('craft body', r.craft.bodyLength, th.craft_body_m.min, th.craft_body_m.max, ' m');
-        band('craft sweep radius', r.craft.sweepMeasured, th.craft_sweep_m.min, th.craft_sweep_m.max, ' m');
+        /*
+         * The craft, measured off the drawn geometry rather than off the
+         * constants that drew it, and then divided back through the DECLARED
+         * world scale.
+         *
+         * The world is built at WORLD_SCALE times the aircraft's own scale
+         * (src/render/frame.js), so the drawn craft's world bounding box is
+         * deliberately 1/WORLD_SCALE of a real 5 inch machine and banding it
+         * raw would fail on a change that is working as intended. Dividing it
+         * out keeps the band asserting exactly what it always asserted, that
+         * the airframe IS a real 5 inch machine, and the assertion below that
+         * the scale is actually applied is what stops this becoming a licence
+         * to draw any size at all: an undeclared group scale still fails the
+         * band, and a declared scale that never reached the model fails the
+         * ratio.
+         */
+        const scale = r.craft.worldScale;
+        if (!(typeof scale === 'number' && scale > 0)) {
+          fails.push('the page did not publish a world scale');
+        }
+        const s = typeof scale === 'number' && scale > 0 ? scale : 1;
+        rows.push(`world scale ${s.toFixed(4)}`);
+        if (Math.abs(s - th.world_scale.value) > 1e-9) {
+          fails.push(`the page declares a world scale of ${s}, the threshold file ${th.world_scale.value}`);
+        }
+        band('craft body', r.craft.bodyLength * s, th.craft_body_m.min, th.craft_body_m.max, ' m');
+        band('craft sweep radius', r.craft.sweepMeasured * s, th.craft_sweep_m.min, th.craft_sweep_m.max, ' m');
+        /* The declared scale against the one the renderer actually applied.
+         * Measured over the airframe's true sweep radius, which collide.js
+         * owns and publishes beside the scaled one. */
+        const scaleErr = Math.abs(r.craft.sweepMeasured * s - r.craft.craftRTrue);
+        rows.push(`declared scale applied to ${(r.craft.sweepMeasured * s).toFixed(4)} m against a true ${r.craft.craftRTrue.toFixed(4)} m`);
+        if (scaleErr > th.craft_radius_tolerance_m.value) {
+          fails.push(
+            `the drawn craft is ${(r.craft.sweepMeasured).toFixed(4)} m, which is not the true `
+            + `${r.craft.craftRTrue.toFixed(4)} m at the declared scale ${s.toFixed(4)}`,
+          );
+        }
         /* And the collision sphere against that same geometry. A gate scored
          * against a quad bigger than the one on screen is a scale error the
-         * player feels and no budget can see. */
+         * player feels and no budget can see. Both sides are world metres, so
+         * this comparison is the same one it has always been. */
         const sweepErr = Math.abs(r.craft.craftR - r.craft.sweepMeasured);
         rows.push(`collision radius ${r.craft.craftR.toFixed(4)} m vs swept ${r.craft.sweepMeasured.toFixed(4)} m`);
         if (sweepErr > th.craft_radius_tolerance_m.value) {
@@ -614,6 +649,39 @@ export function buildChecks() {
          * hinge would let the collider be moved to 3 m without the check
          * noticing, which is the difference between a reference object and a
          * cross check. */
+        /*
+         * The city's collider fit, asserted rather than described.
+         *
+         * src/maps/city/index.js trims the town's walker keep-out rectangles
+         * onto the geometry they stand for, and the failure mode is not
+         * subtle: an earlier version without a coverage rule chopped a 78.9 m
+         * lineside railing down to a single 0.18 m post, which is a hole a
+         * quad flies through the scenery. So the caps are checked here, where
+         * a regression that starts chopping shows up as a number instead of
+         * as a report from the pilot. The fit only ever shrinks, so a trim
+         * cannot be negative either.
+         */
+        const cf = r.city.colliderFit;
+        if (!cf) {
+          fails.push('the city published no collider fit');
+        } else {
+          const cap = th.collider_fit_max_trim_m.value;
+          rows.push(
+            `collider fit ${cf.fitted} fitted of ${cf.fitted + cf.unmatched}, `
+            + `${cf.sideTrims} side trims to ${cf.maxSideTrim.toFixed(2)} m, `
+            + `${cf.topTrims} top trims to ${cf.maxTopTrim.toFixed(2)} m`,
+          );
+          if (!(cf.maxSideTrim >= 0 && cf.maxSideTrim <= cap)) {
+            fails.push(`the collider fit moved a face ${cf.maxSideTrim.toFixed(2)} m, past the ${cap} m cap`);
+          }
+          if (!(cf.maxTopTrim >= 0 && cf.maxTopTrim <= cap)) {
+            fails.push(`the collider fit dropped a top ${cf.maxTopTrim.toFixed(2)} m, past the ${cap} m cap`);
+          }
+          if (!(cf.fitted > 0)) {
+            fails.push('the collider fit trimmed nothing at all, so it is not running');
+          }
+        }
+
         const bc = r.city.boomCollider;
         rows.push(`crossing boom collider ${bc && bc.y0 != null ? `${bc.y0.toFixed(3)} to ${bc.y1.toFixed(3)}` : 'none'} m`);
         if (!bc || bc.y0 == null || !(bc.y0 < r.city.boom && bc.y1 > r.city.boom)) {

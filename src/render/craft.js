@@ -33,6 +33,7 @@
 import * as THREE from 'three';
 import { celMaterial, outlineHull } from './celmat.js';
 import { CRAFT_ARM, CRAFT_PROP_R } from '../game/collide.js';
+import { WORLD_SCALE } from './frame.js';
 
 /*
  * The published dimensions of the airframe, in metres. Exported so a scale
@@ -55,6 +56,21 @@ export const CRAFT_DIMS = {
 export function buildCraft() {
   const group = new THREE.Group();
   group.name = 'craft';
+  /*
+   * The airframe is MODELLED at its true size below and DRAWN a quarter
+   * smaller, because the world it flies in is WORLD_SCALE times its own scale
+   * (src/render/frame.js). Every dimension in CRAFT_DIMS stays a real 5 inch
+   * machine's, which is what plant.c flies and what check 15 bands, and the
+   * single group scale is the one place the world's ratio touches the model.
+   *
+   * It has to be a group scale rather than smaller numbers in the geometry:
+   * the numbers ARE the airframe, they are shared with the collision radius
+   * and the plant, and a model quietly built at 0.8 of a 5 inch quad is the
+   * undeclared scale error this project has already shipped once. The scale
+   * sits on the transform where it is visible, measurable through the world
+   * matrix, and reversible by one constant.
+   */
+  group.scale.setScalar(1 / WORLD_SCALE);
 
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(CRAFT_DIMS.bodyWidth, CRAFT_DIMS.bodyHeight, CRAFT_DIMS.bodyLength),

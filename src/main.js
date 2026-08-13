@@ -39,11 +39,11 @@
 import * as THREE from 'three';
 import { buildShell } from './render/shell.js';
 import { measureBudget } from './render/budget.js';
-import { simPosToThree, simQuatToThree } from './render/frame.js';
+import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
-import { CRAFT_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
 import { Ui } from './ui/ui.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
@@ -794,10 +794,16 @@ export async function boot({ loading, bootStart, mapId }) {
        * rate the craft moves metres per frame, so a single sample can step
        * clean over a ridge.
        */
-      simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT + startY, pProbe);
+      simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT, pProbe);
       pProbe.applyQuaternion(qSpawn);
       pProbe.x += startX;
       pProbe.z += startZ;
+      /* startY is a WORLD height read off the terrain, so it is added after
+       * the conversion. Folding it into the sim z, which is what this used to
+       * do, would divide the ground itself by WORLD_SCALE and sink the whole
+       * course. Only the craft's own displacement about the sim origin is
+       * the aircraft's, and only that is scaled. */
+      pProbe.y += startY;
       /*
        * The craft's vertical half extent at its current tilt. A quad is a
        * DISC: 0.347 m across the props, 0.080 m through the body, so the
@@ -991,8 +997,8 @@ export async function boot({ loading, bootStart, mapId }) {
      * flies about its own origin; the start gate placement is a render
      * side offset and rotation, so nothing about the trajectory changes. */
     const a = Math.max(0, Math.min(1, acc));
-    simPosToThree(statePrev[1], statePrev[2], statePrev[3] + SPAWN_ALT + startY, pPrev);
-    simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT + startY, pCurr);
+    simPosToThree(statePrev[1], statePrev[2], statePrev[3] + SPAWN_ALT, pPrev);
+    simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT, pCurr);
     pCurr.lerpVectors(pPrev, pCurr, a);
     simQuatToThree(statePrev[7], statePrev[8], statePrev[9], statePrev[10], qPrev);
     simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCurr);
@@ -1000,6 +1006,9 @@ export async function boot({ loading, bootStart, mapId }) {
     pCurr.applyQuaternion(qSpawn);
     pCurr.x += startX;
     pCurr.z += startZ;
+    /* The world ground under the spawn, added after the conversion for the
+     * same reason as the probe above. */
+    pCurr.y += startY;
     qPrev.premultiply(qSpawn);
     if (landed) {
       /* The frozen state's centre is at the surface plus the craft's tilt
@@ -1007,7 +1016,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * the terrain under it may differ from where contact tripped. Seat
        * the render on the resolved ground so a landing looks like a
        * landing. Render only: the physics state is untouched. */
-      pCurr.y = groundY + REST_HEIGHT;
+      pCurr.y = groundY + simLenToWorld(REST_HEIGHT);
     }
     shell.quad.position.copy(pCurr);
     shell.quad.quaternion.copy(qPrev);
@@ -1107,9 +1116,14 @@ export async function boot({ loading, bootStart, mapId }) {
        * 9.6 cm ahead of the lens, the same order a real 5 inch puts it.
        * The offset is along the airframe's own forward axis, untilted: the
        * camera TILTS on its mount, it does not slide along its view ray.
+       *
+       * It is an AIRFRAME length, so it goes into the scene through
+       * simLenToWorld like the model and the collision ellipsoid: 0.062 m of
+       * world at WORLD_SCALE 1.25. A camera mount left at its unscaled value
+       * would sit outside its own airframe.
        */
       camFwd.set(0, 0, -1).applyQuaternion(qPrev);
-      shell.camera.position.copy(pCurr).addScaledVector(camFwd, 0.0775);
+      shell.camera.position.copy(pCurr).addScaledVector(camFwd, simLenToWorld(0.0775));
       shell.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
       /* Attract view: the craft parked, camera circling wide and high enough
@@ -1364,7 +1378,13 @@ export async function boot({ loading, bootStart, mapId }) {
       descentMax: LAND_DESCENT_MAX,
       horizontalMax: LAND_HORIZONTAL_MAX,
       tiltMaxDeg: LAND_TILT_MAX_DEG,
-      craftRadius: CRAFT_R,
+      /* The radius the QUERY sweeps, in world metres, because that is what
+       * check 15 compares against the drawn craft's world bounding box. The
+       * airframe's true radius and the ratio between them are published
+       * beside it so neither can be mistaken for the other. */
+      craftRadius: CRAFT_WORLD_R,
+      craftRadiusTrue: CRAFT_R,
+      worldScale: WORLD_SCALE,
     },
     lap: race.lap,
     bestLapMs: race.bestLapMs ? race.bestLapMs() : null,

@@ -328,6 +328,14 @@
         "min": 0.9,
         "max": 1.5,
         "source": "A Japanese level crossing boom sits 1.00 to 1.40 m above the road. Measured from the arm pivot's world position, and it is what src/maps/city/animation.js gives the boom collider."
+      },
+      "world_scale": {
+        "value": 1.25,
+        "source": "The world is modelled at 1.25 times the aircraft's own scale (src/render/frame.js WORLD_SCALE), after the owner flew both maps and reported the drone reading too large against an honestly sized gate and town. The check divides it back out before banding the airframe, so this is the declared ratio the page has to agree with, not a tolerance."
+      },
+      "collider_fit_max_trim_m": {
+        "value": 2.0,
+        "source": "src/maps/city/index.js trims the town's walker keep-out rectangles onto the geometry they stand for, and no face may move further than the largest standoff the town authors, the 1.8 m flank in district.js. An earlier version without this cap chopped a 78.9 m lineside railing to 0.18 m, so the cap is the guard against the fit failing to understand a collider rather than a tuning knob."
       }
     },
     "map-isolation": {

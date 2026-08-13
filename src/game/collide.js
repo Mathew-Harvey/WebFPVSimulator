@@ -14,7 +14,7 @@
  * one test, and one test that is correct is worth more than four that are
  * nearly correct.
  *
- * THE TEST IS EXACT, NOT SAMPLED. A sphere of radius CRAFT_R swept along
+ * THE TEST IS EXACT, NOT SAMPLED. A sphere of radius CRAFT_WORLD_R swept along
  * the segment the craft travelled this frame intersects a capsule exactly
  * when the distance between the two segments is at most the sum of the two
  * radii. So the query is a segment to segment closest distance, which is
@@ -51,6 +51,13 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+/* The only import, and it is a number rather than a renderer: the world is
+ * built at WORLD_SCALE times the aircraft's own scale, and every query below
+ * is against the world, so the craft has to be converted into the world's
+ * metres exactly once. frame.js owns that conversion and has no dependencies
+ * of its own. */
+import { simLenToWorld } from '../render/frame.js';
+
 /*
  * The craft's size, in metres, and the ONE place any of it is written down.
  *
@@ -75,6 +82,24 @@ export const CRAFT_PROP_R = 0.0635;  /* half of five inches */
 export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
 
 /*
+ * The same airframe, in the world's metres rather than its own.
+ *
+ * Everything in this file is a query against the world: a collider box came
+ * from a town whose doorways are 2 m, a gate capsule came from a 1.524 m
+ * MultiGP opening, and the travel segment is a world space segment. So the
+ * craft that sweeps through them has to be measured in the same metres, and
+ * the world is WORLD_SCALE times the aircraft's own scale
+ * (src/render/frame.js). Getting this wrong in either direction is the exact
+ * class of bug the 0.1885 comment above records: a gate scored against a quad
+ * that is not the one on screen.
+ *
+ * CRAFT_R and CRAFT_V_HALF above stay the airframe's TRUE dimensions, because
+ * src/render/craft.js draws a real 5 inch machine from them and plant.c flies
+ * one. Only the query is scaled.
+ */
+export const CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
+
+/*
  * The craft's vertical semi-extent in level flight, about its own origin.
  *
  * A quad is a DISC, not a ball: 0.347 m across the props and about 0.07 m
@@ -84,13 +109,15 @@ export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
  * the full 0.1735 m sphere instead stole 26.7 cm of every vertical window:
  * a 1.524 m gate offered 1.177 m, a low pass met the ground 13 cm before
  * the airframe did, and the pilot read all of it as "the drone is huge".
- * The ellipsoid the queries sweep is (CRAFT_R, vHalf, CRAFT_R), where
- * vHalf grows from this floor to CRAFT_R as the craft tilts, because a
- * banked disc presents its diameter to the vertical.
+ * The ellipsoid the queries sweep is the WORLD scaled form of (CRAFT_R,
+ * vHalf, CRAFT_R), where vHalf grows from this floor to CRAFT_R as the craft
+ * tilts, because a banked disc presents its diameter to the vertical.
  */
 export const CRAFT_V_HALF = 0.040;
+export const CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
 
-/* The vertical semi-axis at a given tilt of the prop plane from level.
+/* The vertical semi-axis at a given tilt of the prop plane from level, in
+ * WORLD metres, because that is the space every caller sweeps it through.
  * sinTilt is sqrt(1 - upY^2), symmetric in upY so an inverted craft is as
  * thin as an upright one. */
 export function craftVerticalHalf(sinTilt) {
@@ -101,7 +128,7 @@ export function craftVerticalHalf(sinTilt) {
   if (s > 1) {
     s = 1;
   }
-  return CRAFT_V_HALF + (CRAFT_R - CRAFT_V_HALF) * s;
+  return CRAFT_WORLD_V_HALF + (CRAFT_WORLD_R - CRAFT_WORLD_V_HALF) * s;
 }
 
 /*
@@ -224,10 +251,10 @@ export class Colliders {
    * because the level crossing needs to raise and lower two of them.
    *
    * A BOX CONTRIBUTES NOTHING TO maxR, and that is load bearing rather than
-   * incidental. hit() pads every broadphase query by CRAFT_R + maxR so that a
+   * incidental. hit() pads every broadphase query by CRAFT_WORLD_R + maxR so that a
    * fat capsule whose centre is outside the scanned cells is still found. A
    * box is registered in the grid over its OWN footprint, every cell of it,
-   * so a query padded by CRAFT_R alone already finds any box within reach.
+   * so a query padded by CRAFT_WORLD_R alone already finds any box within reach.
    * Giving a box a radius equal to its half diagonal would be the natural
    * looking thing to do and would push maxR from the race field's 16 m cliff
    * tier to whatever the city's longest wall is, which would make every
@@ -407,7 +434,7 @@ export class Colliders {
    * The alternative that suggests itself, testing the segment against the box
    * grown by the craft radius, is WRONG at a corner: the Minkowski sum of a
    * box and a sphere has rounded edges, so the grown box overstates the
-   * reach by up to (sqrt(3) - 1) * CRAFT_R, which is 0.127 m on a 0.1735 m
+   * reach by up to (sqrt(3) - 1) * CRAFT_WORLD_R, which is 0.102 m on a 0.1388 m
    * craft. That is a crash reported for a corner the pilot can see they
    * missed. It is used here only as a rejection test, where overstating is
    * safe.
@@ -691,14 +718,14 @@ export class Colliders {
 
   /*
    * Did the craft, travelling from p to q, touch anything? The craft is an
-   * ELLIPSOID: CRAFT_R across the props, vh through the body, because a
+   * ELLIPSOID: CRAFT_WORLD_R across the props, vh through the body, because a
    * quad is a disc and sweeping a 0.1735 m ball stole 26.7 cm of every
    * vertical window. Callers that think in spheres omit vh and get the old
    * sphere exactly. Returns the kind index of the FIRST CONTACT ALONG THE
    * TRAVEL, or -1. Also writes hitIndex, hitKind, hitT and hitNormalDot.
    *
    * Exact for boxes (the slab walk is weighted per axis). For capsules the
-   * first pass sweeps the conservative CRAFT_R sphere, then the reach is
+   * first pass sweeps the conservative CRAFT_WORLD_R sphere, then the reach is
    * re-solved once with the craft's support radius along the contact
    * direction, which is exact when the contact direction at the refined
    * parameter matches the first pass and a few millimetres conservative
@@ -713,7 +740,7 @@ export class Colliders {
    * decided from the reported collider's kind and normal, the craft flew on
    * through the tree.
    */
-  hit(px, py, pz, qx, qy, qz, vh = CRAFT_R) {
+  hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R) {
     this.hitIndex = -1;
     this.hitKind = -1;
     this.hitNormalDot = 0;
@@ -723,7 +750,7 @@ export class Colliders {
     }
     this.queryId += 1;
     const id = this.queryId;
-    const pad = CRAFT_R + this.maxR;
+    const pad = CRAFT_WORLD_R + this.maxR;
     const cx0 = Math.floor((Math.min(px, qx) - pad) / CELL);
     const cx1 = Math.floor((Math.max(px, qx) + pad) / CELL);
     const cz0 = Math.floor((Math.min(pz, qz) - pad) / CELL);
@@ -755,16 +782,16 @@ export class Colliders {
 
           if (this.fbox[i]) {
             /* Cheap rejection first: the segment against the box grown by
-             * CRAFT_R. The grown box contains the true Minkowski sum of the
-             * box and the ellipsoid (vh <= CRAFT_R), so a miss here is a
+             * CRAFT_WORLD_R. The grown box contains the true Minkowski sum of
+             * the box and the ellipsoid (vh <= CRAFT_WORLD_R), so a miss here is a
              * real miss and the exact test never runs for the thousands of
              * walls a city query sweeps past. */
-            const gx0 = this.fax[i] - CRAFT_R;
-            const gy0 = this.fay[i] - CRAFT_R;
-            const gz0 = this.faz[i] - CRAFT_R;
-            const gx1 = this.fbx[i] + CRAFT_R;
-            const gy1 = this.fby[i] + CRAFT_R;
-            const gz1 = this.fbz[i] + CRAFT_R;
+            const gx0 = this.fax[i] - CRAFT_WORLD_R;
+            const gy0 = this.fay[i] - CRAFT_WORLD_R;
+            const gz0 = this.faz[i] - CRAFT_WORLD_R;
+            const gx1 = this.fbx[i] + CRAFT_WORLD_R;
+            const gy1 = this.fby[i] + CRAFT_WORLD_R;
+            const gz1 = this.fbz[i] + CRAFT_WORLD_R;
             if (
               (px < gx0 && qx < gx0) || (px > gx1 && qx > gx1) ||
               (py < gy0 && qy < gy0) || (py > gy1 && qy > gy1) ||
@@ -772,15 +799,15 @@ export class Colliders {
             ) {
               continue;
             }
-            const t = this.boxEarliestT(i, px, py, pz, d1x, d1y, d1z, CRAFT_R, vh);
+            const t = this.boxEarliestT(i, px, py, pz, d1x, d1y, d1z, CRAFT_WORLD_R, vh);
             if (t >= 0 && t < bestT) {
               bestT = t;
               bestI = i;
             }
           } else {
-            const reach = this.fr[i] + CRAFT_R;
+            const reach = this.fr[i] + CRAFT_WORLD_R;
             let t = this.capsuleEarliestT(i, px, py, pz, d1x, d1y, d1z, a, reach * reach);
-            if (t >= 0 && vh < CRAFT_R - 1e-9) {
+            if (t >= 0 && vh < CRAFT_WORLD_R - 1e-9) {
               /*
                * Support refinement: the conservative sphere touched; ask
                * whether the thinner craft does. The direction that predicts
@@ -788,11 +815,11 @@ export class Colliders {
                * the travel and the capsule's axis, not at the sphere's
                * first contact: passing level under a tube, the sphere first
                * touches while the approach is still mostly horizontal, and
-               * a support radius taken there reads CRAFT_R and never
+               * a support radius taken there reads CRAFT_WORLD_R and never
                * shrinks. At the closest pair the direction is vertical for
                * exactly the passes this refinement exists for. The support
                * radius of the ellipsoid along that direction replaces
-               * CRAFT_R and the earliest contact is re-solved once.
+               * CRAFT_WORLD_R and the earliest contact is re-solved once.
                */
               const sCA = this.closestApproachS(i, px, py, pz, d1x, d1y, d1z, a);
               this.axisToPoint(i, px + d1x * sCA, py + d1y * sCA, pz + d1z * sCA);
@@ -802,7 +829,7 @@ export class Colliders {
               const nl2 = nx * nx + ny * ny + nz * nz;
               if (nl2 > 1e-18) {
                 const cr = Math.sqrt(
-                  (CRAFT_R * CRAFT_R * (nx * nx + nz * nz) + vh * vh * ny * ny) / nl2,
+                  (CRAFT_WORLD_R * CRAFT_WORLD_R * (nx * nx + nz * nz) + vh * vh * ny * ny) / nl2,
                 );
                 const reach2 = this.fr[i] + cr;
                 if (reach2 < reach - 1e-9) {
@@ -889,7 +916,7 @@ export class Colliders {
       cellSize: CELL,
       cells: this.grid ? this.grid.size : 0,
       maxRadius: this.maxR,
-      craftRadius: CRAFT_R,
+      craftRadius: CRAFT_WORLD_R,
       queries: this.queries,
       meanCandidatesPerQuery: this.queries ? this.candidateTotal / this.queries : 0,
       lastCandidates: this.lastCandidates,

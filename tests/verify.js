@@ -263,12 +263,13 @@ async function main() {
               'const d = Math.hypot(at.x, at.z) + Math.max(ps.x, ps.z) * 0.5;' +
               'if (d > maxR) { maxR = d; }' +
             '}' +
-            'return { bodyLength: Math.max(bs.x, bs.z), bodyWidth: Math.min(bs.x, bs.z), bodyHeight: bs.y, sweepMeasured: maxR, craftR: window.__craftState().thresholds.craftRadius };' +
+            'const th = window.__craftState().thresholds;' +
+            'return { bodyLength: Math.max(bs.x, bs.z), bodyWidth: Math.min(bs.x, bs.z), bodyHeight: bs.y, sweepMeasured: maxR, craftR: th.craftRadius, craftRTrue: th.craftRadiusTrue, worldScale: th.worldScale };' +
           '})()' +
         '})',
         'eval:JSON.stringify({ tag: "swap", started: (window.__setMap("city"), true) })',
         'until:window.__map().id === "city" && window.__map().ready',
-        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading, expectedModules: window.__map().expectedModules })',
+        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading, expectedModules: window.__map().expectedModules, colliderFit: window.__map().colliderFit })',
         `eval:${collect}`,
         /*
          * BACK TO THE FIELD, AND MEASURE IT AGAIN. The budget taken at boot
@@ -343,6 +344,7 @@ async function main() {
           boomCollider: cr.crossingBoomCollider ? cr.crossingBoomCollider.measured : null,
           doorCount: cr.doorwayHeight.count,
           railCount: cr.handrailHeight.count,
+          colliderFit: cityData.colliderFit ?? null,
         },
         loading: cityData.loading,
         cityExpectedModules: cityData.expectedModules ?? null,

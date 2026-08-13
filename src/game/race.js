@@ -50,8 +50,14 @@
  * Frame contact used to live here too and it voided the lap. It does not any
  * more: the frame is solid, collision is src/game/collide.js, and hitting
  * one is a crash. The owner's words were that the gates need to be solid.
+ *
+ * CRAFT_WORLD_R, not CRAFT_R: the aperture is a world length, measured off
+ * the gate the scene drew, so the craft folded into it has to be the craft in
+ * the world's metres. Mixing the airframe's own 0.1735 m into a world test
+ * would score every gate against a quad a quarter larger than the one flying
+ * through it, which is the same class of error as the 0.1885 radius.
  */
-import { CRAFT_R } from './collide.js';
+import { CRAFT_WORLD_R } from './collide.js';
 import { fastestLap, fastestThreeConsecutive } from './track.js';
 
 const DEFAULT_KEY = 'webfpv.bestLapMs';
@@ -214,8 +220,8 @@ export class Race {
     let used = -1;
     for (let k = 0; k < g.apertures.length; k += 1) {
       const ap = g.apertures[k];
-      const halfW = ap.clearW * 0.5 - CRAFT_R;
-      const halfH = ap.clearH * 0.5 - CRAFT_R;
+      const halfW = ap.clearW * 0.5 - CRAFT_WORLD_R;
+      const halfH = ap.clearH * 0.5 - CRAFT_WORLD_R;
       const dy = cyAbs - ap.centreY;
       if (Math.abs(cx) <= halfW && Math.abs(dy) <= halfH) {
         used = k;
@@ -279,8 +285,8 @@ export class Race {
     const cyAbs = a.y + (b.y - a.y) * t;
     for (let k = 0; k < g.apertures.length; k += 1) {
       const ap = g.apertures[k];
-      if (Math.abs(cx) <= ap.clearW * 0.5 - CRAFT_R
-        && Math.abs(cyAbs - ap.centreY) <= ap.clearH * 0.5 - CRAFT_R) {
+      if (Math.abs(cx) <= ap.clearW * 0.5 - CRAFT_WORLD_R
+        && Math.abs(cyAbs - ap.centreY) <= ap.clearH * 0.5 - CRAFT_WORLD_R) {
         return true;
       }
     }

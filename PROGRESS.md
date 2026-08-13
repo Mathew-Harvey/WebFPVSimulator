@@ -2736,3 +2736,169 @@ after the change: 15 of 16, yaw-coupling the one red, determinism hash
 touches the shell's clocks, which is why no check could ever have caught
 this. A check that could is worth designing: drive the real page, park,
 then measure stick-to-response in sim time.
+
+## Round 16c: the world was the right size, the aircraft was the wrong size against it
+
+The owner's report, two complaints in one message: "the gates and the town are
+too small compared to the drone, the scale doesn't feel right, the gates need
+to be bigger", and "in the freestyle map the collisions need to HUG the
+graphics, i want to hit gaps but in many places they are actually invisible
+walls". Then, when asked which build the gates had felt right in: "just make
+everything 1/4 larger relative to the drone camera".
+
+### There was nothing in either world to correct, which is why the fix is not in either world
+
+Both maps measure right and the harness already proves it. A MultiGP standard
+gate is 1.524 m because MultiGP publishes 5 ft, src/render/scene.js throws at
+load on a 10 mm drift, and check 15 bands it independently. The town's kerbs
+are 0.135 m, its doorways 2.05 m and its handrails 1.06 m, each measured by a
+different route through the built world in src/maps/city/references.js. So
+"the gates need to be bigger" could not be answered by making a gate bigger
+without deleting the one citation this project has, and round 12 already
+settled the same argument once: the dressing was wrong, not the gate.
+
+What is adjustable is how big the AIRCRAFT is against all of it, and that is
+the thing nobody had ever written down. **WORLD_SCALE = 1.25** in
+src/render/frame.js: the world is modelled at 1.25 times the aircraft's own
+scale, applied in the file that is already the one and only conversion between
+the physics frame and the world frame.
+
+    world metres = sim metres / WORLD_SCALE
+
+Downstream of that line the aircraft is 1/1.25 of its true size and travels
+1/1.25 as far per second. Upstream of it nothing changed at all: the physics
+module, the ABI, the determinism trace and every published dimension in both
+maps are untouched, which is the property that made this the right seam.
+
+Measured in the page after the change: collision radius 0.1735 to 0.1388 m,
+drawn craft AABB 0.2255 by 0.088 by 0.2265 m, parked camera height above the
+grass 0.045 to 0.036 m, gate opening still exactly 1.5240 m. Gate width
+against craft width goes 4.39 to 5.49.
+
+**Why a bigger gate would not have worked anyway, and this does.** Angular
+size is scale invariant: a gate 1.25 times larger, approached from 1.25 times
+the distance, subtends exactly the same angle and looks identical. What the
+eye actually reads as scale is the size and speed of the aircraft moving
+through the thing, and both of those are what this changes. The camera flies a
+quarter lower over the same ground and the world goes past a quarter slower
+for its size.
+
+Five call sites carry it and no others: the sim to world position conversion,
+the drawn model's group scale in craft.js, the collision ellipsoid in
+collide.js, the FPV camera mount, and the resting height.
+
+**Two mistakes on the way, both caught by grep rather than by flying.**
+`startY` was being folded into the sim z before the conversion, so the first
+version divided the terrain height by 1.25 and sank the whole course; it is
+added after the conversion now, with the reason written at both call sites.
+And src/game/race.js was still folding the airframe's own 0.1735 m into a gate
+aperture measured in world metres, which would have scored every gate against
+a quad a quarter larger than the one flying through it. That is the same class
+of error as the 0.1885 collision radius round 15 found.
+
+**What check 15 had to become, and why it is stronger and not weaker.** The
+check measures the craft off its world bounding box, and its own comment says
+it was written so that `group.scale.setScalar(2)` could not hide: "A world
+Box3 sees the scale". It sees this one too, by design. So it now divides the
+DECLARED scale back out before banding, which keeps the band asserting exactly
+what it always asserted, that the airframe is a real 5 inch machine, and it
+adds two assertions that did not exist: the page's declared scale against
+tests/thresholds.json, and the drawn craft against the airframe's true sweep
+radius at that scale. An undeclared group scale still fails the band, and a
+declared scale that never reached the model now fails the ratio.
+
+### The invisible walls: the measurement said something different from what I expected
+
+The first three hypotheses were all wrong and the record is worth keeping.
+Colliders with no `top` become 400 m tall via BOX_CEIL: there are zero of them
+in this town. The call sites looked damning, `plotCollide` padding every
+building plot by 0.1 m a side and district.js padding one frontage by 1.0 m
+and one flank by 1.8 m: measured against the drawn triangles, the mean
+overhang of a town rectangle above the geometry standing in it is 0.04 m. And
+a scan that found 20 percent of the town's solid volume with nothing drawn in
+it was measuring building interiors, which are correctly solid; a flood fill
+from the sky brought it down but leaked through the shells, so that metric
+never became trustworthy.
+
+What is real is the TAIL, and the tail is what gets flown into: **54 boxes
+reach more than 0.5 m above anything drawn, the worst by 9.07 m, and 106
+overhang the drawn footprint by more than 0.35 m, the worst by 2.91 m.**
+
+So src/maps/city/index.js now fits each rectangle onto the geometry it stands
+for, before the bake, in 325 ms over 119,160 drawn boxes. It only ever
+shrinks. A mesh votes on a collider's sides only if two thirds of its own
+footprint lies inside it, so a shared wall or the terrain running underneath
+cannot vote, and a collider with nothing that qualifies is left exactly as
+authored, because a barrier with no geometry in it is usually load bearing.
+
+**The first version opened holes and the numbers said so immediately.**
+Trimming on the mere presence of owned geometry destroyed every long thin
+barrier in the town: a 78.9 m lineside railing 0.24 m thick, drawn as a run of
+separate balusters, kept whichever single post qualified and collapsed to
+0.18 m. 675 side trims, worst 74.99 m, worst top trim 16.80 m. The
+distinction it was missing is that padding leaves the object filling its own
+rectangle while a sparse barrier fills nothing, so the drawn geometry now has
+to COVER 60 percent of the rectangle, by both the union of the owned boxes and
+the sum of their clipped footprints, before any trim is believed. And no face
+moves further than FIT_MAX_PAD, 2.0 m, which is the town's largest authored
+standoff with margin.
+
+**The second version opened twelve more, and they were all trees.** A tree is
+collided as its trunk, a 1.1 m square box, and the canopy on top is metres
+across, so ownership rejected the canopy and the owned union topped out at the
+trunk: nine tree colliders lost 2 m each and a safety scan found the box no
+longer reaching into a canopy that is drawn, dense and on screen. The top and
+the sides turned out to be different questions. The sides ask where the object
+stands and need ownership; the top only asks whether anything at all is drawn
+up there, and is now capped by the tallest drawn thing anywhere over the
+footprint, owned or not.
+
+**Final fit: 613 of 2731 rectangles trimmed, 275 side trims to a worst of
+1.12 m, 15 top trims averaging 0.227 m to a worst of 0.67 m.** Verified by a
+scan that takes the tallest drawn point inside every rectangle with a real
+footprint, 1087 of them, and drives a segment through it half a metre below
+that point: **zero holes**, against 12 for the previous version. The caps are
+asserted in check 15 now, because the failure mode is a 78.9 m railing turning
+into a post and that should show up as a number rather than as a report from
+the pilot.
+
+### Owed, and honest about it
+
+- **The 54 over tall boxes are still over tall.** Coverage declines them
+  because they are long thin barriers with sparse geometry, and the 2.0 m cap
+  would decline them anyway. The worst is 9.07 m of invisible wall above a
+  30.8 m by 0.8 m barrier at x = 123, well outside the town core. Fixing them
+  needs the fit to be able to split one rectangle into several boxes, which is
+  a bigger change than this round should carry.
+- **The HUD's two numbers are now in different frames.** Altitude reads world
+  metres, which is the world's own truth and what a pilot wants over a roof;
+  speed reads the airframe's true metres per second, because the quad really
+  does do 130 km/h. They differ by WORLD_SCALE and neither is wrong, but if
+  the owner reads them together they will not agree.
+- **Lap times on the race field get about 25 percent longer** for the same
+  flying, because the craft covers 1/1.25 of the world per second. Stored
+  records are keyed on config and pack voltage, not on the scale, so an old
+  record is no longer comparable with a new one.
+
+### Verify
+
+npm run verify in this container: **14 of 16**.
+
+Check 10 yaw-coupling is the one known red, unchanged at -0.09 deg. Check 1
+build-clean fails for an environment reason and not a code one: this container
+has no Emscripten, `emcc not found` and `EMSDK` unset, and nothing in this
+round touches sim.c, patches/, vendor/betaflight or the build. `git diff
+--stat vendor/betaflight` is empty.
+
+The evidence that the physics is untouched is the determinism hash:
+**3fdde8bd11da**, identical to the round 15b baseline, across Node, headless
+Chrome and all four frame rates. Checks 5 through 12 are byte identical to the
+previous table. Check 13 console-clean is green on both maps, and check 16
+reports the field's budget unchanged at P1 214, P2 1931413, P5 69.8 MB, P10
+42.8 MB after a city round trip.
+
+Check 15 now reads: world scale 1.2500, craft body 0.1552 m, craft sweep
+radius 0.1736 m against a true 0.1735 m, collision radius 0.1388 m against a
+swept 0.1389 m, gate opening 1.5240 m square, city kerb 0.1350 m, doorway
+2.0500 m, handrail 1.0600 m, crossing boom 1.2400 m, collider fit 613 fitted
+of 2731 with 275 side trims to 1.12 m and 15 top trims to 0.67 m.

@@ -69,12 +69,17 @@ function markSubtree(o, set) {
 }
 
 /*
- * Every object the town moves. Returns a Set containing them and all their
- * descendants.
+ * Every object the town moves.
+ *
+ * Returns `moving`, a Set of them and all their descendants, and `stillRigs`,
+ * the marked rigs that did not move so much as a matrix during the probe. The
+ * second is not a list of things that are safe to merge into the town, it is a
+ * list of things that are safe to merge into THEMSELVES: see mergeRigs.
  */
 export function findAnimated(world) {
   const moving = new Set();
   const roots = [];
+  const marked = [];
 
   /* The town's own marker for a rig driven at runtime: gate booms, the shop
    * shutter, the cat, the vending machines. Some of those only move on an
@@ -82,6 +87,7 @@ export function findAnimated(world) {
   world.root.traverse((o) => {
     if (o.userData && o.userData.planetRigid) {
       roots.push(o);
+      marked.push(o);
     }
   });
   /* The train is driven by src/maps/city/animation.js rather than by the
@@ -105,25 +111,160 @@ export function findAnimated(world) {
     world.update(PROBE_DT);
   }
   world.root.updateMatrixWorld(true);
+  const stirred = new Set();
   world.root.traverse((o) => {
     const was = before.get(o);
     if (!was) {
       roots.push(o);
+      stirred.add(o);
       return;
     }
     const now = o.matrixWorld.elements;
     for (let k = 0; k < 16; k += 1) {
       if (was[k] !== now[k]) {
         roots.push(o);
+        stirred.add(o);
         return;
       }
     }
   });
 
+  /* A marked rig is still if NOTHING in it stirred, the root included. One
+   * moving part anywhere in the subtree disqualifies the whole rig, because
+   * the thing mergeRigs is allowed to assume is that the rig is rigid. */
+  const stillRigs = [];
+  for (const r of marked) {
+    let quiet = true;
+    r.traverse((c) => {
+      if (stirred.has(c)) {
+        quiet = false;
+      }
+    });
+    if (quiet) {
+      stillRigs.push(r);
+    }
+  }
+
   for (const r of roots) {
     markSubtree(r, moving);
   }
-  return moving;
+  return { moving, stillRigs };
+}
+
+/*
+ * Merge each still rig into itself.
+ *
+ * THE MEASUREMENT. 1,934 of the town's meshes are held out of the merge as
+ * animated and only 468 of them ever move: 1,466 are there because they carry
+ * `userData.planetRigid`, and did not stir once in a 48 s probe. That is
+ * roughly a third of the frame's draw calls sitting in the one bucket the bake
+ * refuses to touch.
+ *
+ * WHY THEY ARE HELD OUT, AND WHY THAT IS RIGHT. Upstream's own note in
+ * ./vendored/world/planet.js reads "userData.planetRigid -> left in flat
+ * space; used for animated rigs", and the eleven call sites bear it out: the
+ * shop shutter, the crossing booms, the cat, the vending machines, the train,
+ * the lake and onsen rigs, and a banner cloth on a pivot. Some of those move
+ * only when something interacts with them, so no probe of any length would
+ * catch them, which is exactly why the marker is honoured on top of the
+ * measurement. Merging them into the town would bake their world matrices into
+ * anonymous floats and freeze whichever of them the probe was too short to see.
+ *
+ * WHAT IS SAFE IS SOMETHING ELSE. A rig is a group with an animated TRANSFORM;
+ * the meshes inside it are almost always rigid with respect to it. So rather
+ * than merge a rig into the town, merge it into ITSELF: every mesh in the rig
+ * becomes one mesh per material, expressed in the RIG'S OWN local space and
+ * parented to the rig. The rig keeps its transform, whatever drives it goes on
+ * driving it, and a banner that swings still swings, because the swing is the
+ * group's rotation and the group is untouched.
+ *
+ * The one thing this cannot survive is a rig that articulates INTERNALLY, one
+ * part moving against another, since those parts are now one mesh. That is
+ * what `stillRigs` is for: a rig qualifies only if nothing anywhere in it,
+ * root included, moved by a single matrix element across the whole probe. A
+ * rig whose cloth swings on an inner pivot moves during the probe and is never
+ * offered here.
+ */
+export function mergeRigs(rigs) {
+  const made = [];
+  let from = 0;
+  const local = new THREE.Matrix4();
+  const inv = new THREE.Matrix4();
+
+  for (const rig of rigs) {
+    const parts = [];
+    rig.traverse((o) => {
+      if (o.isMesh && !o.isInstancedMesh && o.visible
+        && o.geometry && o.geometry.attributes.position) {
+        parts.push(o);
+      }
+    });
+    if (parts.length < 2) {
+      continue;
+    }
+    rig.updateMatrixWorld(true);
+    inv.copy(rig.matrixWorld).invert();
+
+    /* Same bucket key the town merge uses, minus the spatial cell: a rig is
+     * one place by definition. */
+    const buckets = new Map();
+    for (const o of parts) {
+      const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+      if (!mat) {
+        continue;
+      }
+      const attrs = Object.keys(o.geometry.attributes).sort().join(',');
+      const key = `${mat.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}`
+        + `|${attrs}|${o.geometry.index ? 1 : 0}|${o.renderOrder}`;
+      let b = buckets.get(key);
+      if (!b) {
+        b = {
+          material: mat,
+          castShadow: o.castShadow,
+          receiveShadow: o.receiveShadow,
+          renderOrder: o.renderOrder,
+          geos: [],
+          meshes: [],
+        };
+        buckets.set(key, b);
+      }
+      const g = o.geometry.clone();
+      local.multiplyMatrices(inv, o.matrixWorld);
+      g.applyMatrix4(local);
+      b.geos.push(g);
+      b.meshes.push(o);
+    }
+
+    for (const b of buckets.values()) {
+      if (b.geos.length < 2) {
+        for (const g of b.geos) {
+          g.dispose();
+        }
+        continue;
+      }
+      const geo = mergeGeometries(b.geos, false);
+      for (const g of b.geos) {
+        g.dispose();
+      }
+      if (!geo) {
+        continue;
+      }
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, b.material);
+      mesh.castShadow = b.castShadow;
+      mesh.receiveShadow = b.receiveShadow;
+      mesh.renderOrder = b.renderOrder;
+      /* Into the rig, not into the root. This is the whole point. */
+      rig.add(mesh);
+      made.push(mesh);
+      from += b.meshes.length;
+      for (const m of b.meshes) {
+        m.removeFromParent();
+      }
+    }
+  }
+
+  return { made, rigsMerged: rigs.length, mergedFrom: from, mergedTo: made.length };
 }
 
 /*
@@ -337,7 +478,16 @@ export function shareMaterials(root, animated) {
  */
 export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell } = {}) {
   const root = world.root;
-  const animated = findAnimated(world);
+  const { moving: animated, stillRigs } = findAnimated(world);
+  /* Rigs first, and their output joins the animated set before anything else
+   * looks at it. mergeRigs parents its meshes INSIDE the rig, so the town
+   * merge below must not then take them: it would bake the rig's transform
+   * into their vertices and reparent them to the root, which is exactly the
+   * freeze the animated set exists to prevent. */
+  const rigs = mergeRigs(stillRigs);
+  for (const m of rigs.made) {
+    animated.add(m);
+  }
   /* Before anything is bucketed by material identity, make identical
    * materials BE identical, or the bucketing below splits on a distinction
    * that is not one. See shareMaterials above. It needs the animated set, so
@@ -480,6 +630,9 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
       buckets: buckets.size,
       skippedAnimated,
       skippedInstanced,
+      rigsMerged: rigs.rigsMerged,
+      rigMeshesFrom: rigs.mergedFrom,
+      rigMeshesTo: rigs.mergedTo,
       /* JSON has no Infinity, and a stat that reads as null in the harness is
        * worse than no stat, so the town wide case is named. */
       mergeCell: Number.isFinite(cell) ? cell : 'town',

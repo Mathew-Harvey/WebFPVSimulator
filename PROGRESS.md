@@ -4592,3 +4592,168 @@ of exactly the class this project measures for, a one pole filter state step
 at the loop point and bird syllables truncated by the buffer edge, caught by
 reading the bake as a reviewer before rendering it. The crossfade and an
 edge clamp fixed both, and the seam measurement above is from after the fix.
+
+## Round 26: cutting the render distance, and the clutter cull that measured negative
+
+The owner asked to cut the clutter and the render distance to make the town
+work. Both were built and measured. One of them paid, one of them did not, and
+the thing that paid most was neither.
+
+Five viewpoints now, not three. Round 24 measured spawn, street and rooftop,
+and spawn and street are both close in views that were never the problem. A
+pilot spends the flight above the roofs, so `flying` at 25 m and `high` at 70 m
+were added, and the numbers below are all five.
+
+### The render distance, and why it did less than expected
+
+`CULL_RADIUS` 145 to 100, and the fog with it: 45 to 135 became 30 to 95.
+
+THE FOG IS WHAT MAKES THE CULL INVISIBLE, so it is set from the radius rather
+than chosen for itself. Anything switched off at the radius has to already be
+the fog's colour when it goes. Cutting the radius to 100 and leaving the fog at
+135 would have left a 35 m band where the town winks out in clear air.
+
+It bought less than it looks like it should, and the reason is round 24's own
+change: with the merge given the whole town, every static mesh has a town sized
+bounding sphere, so `buildCullGrid` routes it into `always` and the distance
+cull never sees it. The radius now only reaches the instanced foliage and the
+meshes held out as animated. Street went 4041 to 3831 draw calls, triangles
+3.41 M to 3.05 M. Real, and mostly in triangles.
+
+While in there, a correctness fix. The cull tested the distance to a cell's
+CENTRE, which makes the radius a lie by up to a cell half diagonal, 28 m: a
+cell at the radius holds things from 28 m nearer to 28 m further, and switching
+it off takes the near ones. At 145 m against a fog ending at 135 that error
+could only reach things already fog coloured. At 100 m against a fog ending at
+95 it reaches 72 m, where the fog is two thirds in and a building winking out
+is something you would see. It now clamps to the cell's bounds first, so
+nothing inside the radius is ever switched off.
+
+### The clutter cull, built and measured and taken back out
+
+Props are decided by size rather than by a name list: `CLUTTER_SIZE` as a
+bounding sphere radius, 1.6 m, which takes bollards, pots, bins, signs, meters
+and fence panels and leaves houses, roofs, roads and the platform. They were
+merged and culled separately at 45 m instead of 100 m.
+
+It cost draw calls at four viewpoints of five.
+
+| view    | clutter off | clutter on |
+|---------|------------:|-----------:|
+| spawn   |        2854 |       3250 |
+| street  |        3831 |       4163 |
+| rooftop |        3909 |       3151 |
+| flying  |        3486 |       3628 |
+| high    |        2299 |       2339 |
+
+The reason is structural and it is worth writing down, because the idea will
+come back. To cull something you have to keep it separable, and separability is
+exactly what the town wide merge gave up to get its draw calls down. Splitting
+clutter back out of that merge costs a mesh per cell per material, everywhere,
+including the near cells that are all switched on anyway. It only wins where
+enough of the town is far away and not yet frustum culled, which turns out to
+be one band around the rooftop view. Triangles did fall 10 to 15 percent
+everywhere, but the frame is short of draw calls, not triangles, and the worst
+case across the five views is better without it: 3909 against 4163.
+
+Removed rather than left switched off. The measurement is here instead.
+
+A second thing it taught, before it went: the rule was applied to the instanced
+sets too, on the size of one instance, and a size test cannot see that
+something is a PART. A tree here is a static trunk plus a few dozen instanced
+canopy blobs, none of them 1.6 m across, so the canopies culled at the clutter
+radius and left the trunks, and the hills behind the town came out as bare
+sticks. Listed by measured instance radius, every instanced set under the
+threshold is a part of something: groveCanopy, sakuraCanopy and cedarCanopy on
+their trunks, hillTuft and hillMoss and hillRock on the hills, lakeReed and
+lakePetals in the water. There is no instanced prop in this town that clutter
+culling would have helped.
+
+Two other configurations were swept and both lost. `MERGE_CELL` at 80, 120, 160
+and 240, to buy back the frustum culling the town wide merge gives up: street
+4145 to 4162 against 3831, worse at every value, because the town is 280 m
+across and the fog and the cull already handle distance. And `CULL_CELL` at 60
+and 80, to make clutter merge into fewer meshes: 4286 and 4135 against 4163,
+with triangles up 23 percent from coarser foliage chunks.
+
+### What actually paid: merging each still rig into itself
+
+Round 24 measured 1,934 meshes held out of the merge as animated, of which only
+468 ever move. 1,466 are there because they carry `userData.planetRigid` and
+did not stir once in a 48 s probe. That round wrote the lever down and declined
+to pull it, because upstream's note in planet.js reads "used for animated rigs"
+and the eleven call sites bear it out: the shutter, the booms, the cat, the
+vending machines, the train, the lake and onsen rigs, a banner cloth on a
+pivot. Some move only on an interaction, which no probe would catch. Merging
+them into the town would bake their world matrices into anonymous floats and
+freeze whichever of them the probe was too short to see. That reasoning was
+right and it still is.
+
+What it missed is that there is a safe merge here, and it is a different one. A
+rig is a group with an animated TRANSFORM, and the meshes inside it are rigid
+with respect to it. So merge a rig into ITSELF: every mesh in it becomes one
+mesh per material, expressed in the RIG'S OWN local space, parented to the rig.
+The rig keeps its transform, whatever drives it goes on driving it, and a
+banner that swings still swings, because the swing is the group's rotation and
+the group is untouched. Nothing is baked into world space and nothing is
+reparented to the root.
+
+The one thing that cannot survive is a rig that articulates internally, one
+part moving against another, since those parts become one mesh. So a rig
+qualifies only if NOTHING anywhere in it, root included, moved by a single
+matrix element across the whole probe. A rig whose cloth swings on an inner
+pivot moves during the probe and is never offered.
+
+26 rigs qualified, 936 meshes became 154. Triangles are unchanged to within a
+rounding error, because nothing moved and nothing was added.
+
+### Where it landed
+
+Against round 24, and against the town as it was before round 24:
+
+| view    | before r24 | after r24 | now  | change |
+|---------|-----------:|----------:|-----:|-------:|
+| spawn   |       3826 |      2854 | 2363 | -38.2% |
+| street  |       5981 |      4041 | 3031 | -49.3% |
+| rooftop |       6417 |      3924 | 3252 | -49.3% |
+| flying  |          - |         - | 2795 |      - |
+| high    |          - |         - | 2127 |      - |
+
+Triangles at street 3,107,836 before round 24, 3,412,140 after it, 3,049,668
+now: round 24 traded triangles for draw calls and this round has given the
+triangles back through the shorter radius while taking more draw calls off.
+
+### The check that mattered most
+
+`alive.mjs` samples every mesh's world matrix, runs the sim 6 s and counts what
+changed. 451 meshes move, which is the SAME COUNT as before the rig merge.
+Nothing froze. That is the one number this round turned on, and it is a
+measurement rather than a look at a screenshot, because a boom that stopped
+lifting would not show in a still.
+
+Pixel diffed against five viewpoints: street 0.005 percent of pixels differing
+by more than 24 of 255, spawn 0.13, crossing 0.83, onsen 0.89, rooftop 15.3.
+The rooftop figure is the fog, which is the change that was asked for, and the
+other four say the town at flying distance is the town it was.
+
+### Still not done
+
+The town is 3031 draw calls at street against a budget of 400. This round and
+the last together are half off, not the order of magnitude the budget wants.
+What is left is roughly 1,774 unmerged singleton buckets, each a material no
+other mesh in the town shares, 1,565 instanced foliage chunks that are already
+one call each, and 1,087 meshes still held out as animated. The singletons are
+the biggest block and nothing short of a texture atlas touches them, since two
+different materials cannot merge whatever the geometry does.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at -0.08 deg.
+**Check 13 console-clean passes with zero errors and zero warnings**, which is
+what says mergeRigs never handed `mergeGeometries` a set it refused. **Check 15
+world-scale passes with every city reference unchanged**: kerb 0.1350, doorway
+2.0500, handrail 1.0600, crossing boom 1.2400, collider fit 613 of 2731,
+crossing boom collider 1.045 to 1.325 m. The boom figure is the one to watch,
+because it is measured after the animation has seated the arms, and it would
+move if the rig merge had disturbed them. **Check 16 map-isolation passes.**

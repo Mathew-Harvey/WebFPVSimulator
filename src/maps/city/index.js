@@ -73,13 +73,22 @@ const SPAWN = { x: 0, z: 24, yaw: Math.PI };
  * for a walker with a 1.7 m eye whose sight lines are down streets. A quad
  * climbs, and from 60 m up the whole district is inside one frustum, so the
  * far plane has to hold the far side of the town and the fog has to not eat
- * it. 320 m of fog end and a 900 m far plane is what the measurements in
- * PROGRESS.md settled on: it keeps the hills behind the town readable from
- * altitude without turning the street level view into a clear day, which
- * would cost both the look and the draw call count.
+ * it.
+ *
+ * THE FOG IS WHAT MAKES THE CULL INVISIBLE, so it is set from CULL_RADIUS
+ * rather than chosen for itself. Anything switched off at the radius has to
+ * already be the fog's colour when it goes, or the cull is a pop instead of a
+ * cull, and that means FOG_FAR at or inside the radius rather than past it.
+ * It was 135 against a radius of 145, which held; cutting the radius to 100
+ * without moving the fog would have left a 35 m band where the town winks out
+ * in clear air.
+ *
+ * The far plane stays long. It costs nothing, it is depth precision rather
+ * than draw calls, and the sky dome and the hills behind the town live out
+ * there.
  */
-const FOG_NEAR = 45;
-const FOG_FAR = 135;
+const FOG_NEAR = 30;
+const FOG_FAR = 95;
 const CAMERA_FAR = 900;
 
 /*
@@ -93,7 +102,7 @@ const CAMERA_FAR = 900;
  * is dropped past this radius, measured from the camera, on a grid of cells
  * whose contents are grouped at build time. Numbers in PROGRESS.md.
  */
-const CULL_RADIUS = 145;
+const CULL_RADIUS = 100;
 const CULL_CELL = 40;
 const SHADOW_HALF = 22;
 
@@ -935,12 +944,33 @@ export async function buildMap(shell, onProgress) {
     cullRadius = r == null ? CULL_RADIUS : r;
     cullR2 = cullRadius * cullRadius;
   }
+  /*
+   * Half a cell, because the test below measures to the NEAREST POINT of a
+   * cell and not to its centre.
+   *
+   * Measuring to the centre makes the radius a lie by up to a cell half
+   * diagonal, 28 m here: a cell whose centre is at the radius holds things
+   * from 28 m nearer than that to 28 m further, and switching the cell off
+   * takes the near ones with it. At the old 145 m radius against a fog that
+   * ended at 135 the error was invisible, because everything it could reach
+   * was already fog coloured. At 100 m against a fog ending at 95 it reaches
+   * 72 m, where the fog is only two thirds of the way in and a building
+   * winking out is something you would see.
+   *
+   * Clamping to the cell's bounds costs two max calls a cell and makes the
+   * radius mean the distance it is written as: nothing inside it is ever
+   * switched off. The cost is that a cell is only dropped once ALL of it is
+   * beyond the radius, which is why the radius could not simply be shortened
+   * to 72 instead.
+   */
+  const cullHalf = cull.cell * 0.5;
   function cullTo(eye) {
     for (let i = 0; i < cull.cells.length; i += 1) {
       const c = cull.cells[i];
-      const dx = c.x - eye.x;
-      const dz = c.z - eye.z;
-      const on = dx * dx + dz * dz <= cullR2;
+      const dx = Math.max(0, Math.abs(eye.x - c.x) - cullHalf);
+      const dz = Math.max(0, Math.abs(eye.z - c.z) - cullHalf);
+      const d2 = dx * dx + dz * dz;
+      const on = d2 <= cullR2;
       if (c.on === on) {
         continue;
       }

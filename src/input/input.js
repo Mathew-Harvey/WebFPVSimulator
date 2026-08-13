@@ -69,6 +69,40 @@ export class InputManager {
     this.navRest = null;   /* axis rest values, for uncalibrated menu nav */
     this.onKey = null; /* main.js hooks non stick keys here */
 
+    /*
+     * STICK RATE, AND WHY IT IS NOT THE FRAME RATE ANY MORE.
+     *
+     * poll() used to be called once per rendered frame and main.js used the
+     * newest sample for every RC frame in that render frame. At 60 fps the
+     * flight controller therefore saw the same stick value four times and
+     * then a jump, while updateRcRefreshRate told it the link was 250 Hz.
+     * Two things follow, and the second is the one a pilot feels.
+     *
+     * Betaflight auto-tunes its rc smoothing cutoffs from the interval it
+     * measures, so it filtered for a 250 Hz link and the 60 Hz staircase
+     * walked through it. And feedforward is the DERIVATIVE of the setpoint
+     * between rc frames, so it saw zero, zero, zero, spike: an impulse train
+     * at frame rate instead of a signal. Feedforward is most of what makes a
+     * quad feel connected to your thumb.
+     *
+     * So the pad is polled on its own timer now, independent of
+     * requestAnimationFrame, and every sample carries the wall clock time it
+     * was taken at. main.js maps those onto the RC grid by timestamp.
+     *
+     * Whether that actually yields fresher data is a property of the browser
+     * and the device, not something this file can assert, so it is MEASURED:
+     * padHz counts how often the Gamepad object's own timestamp changes, and
+     * sampleHz counts what reaches the queue. If padHz sits at the frame rate
+     * the browser is rAF-locked and only WebHID will fix it.
+     */
+    this.timer = null;
+    this.padStamp = -1;
+    this.padUpdates = 0;
+    this.samplesTaken = 0;
+    this.rateWindowMs = 0;
+    this.padHz = 0;
+    this.sampleHz = 0;
+
     window.addEventListener('keydown', (e) => {
       if (e.repeat) {
         return;
@@ -296,6 +330,21 @@ export class InputManager {
     this.lastWall = nowWall;
 
     const gp = this.firstGamepad();
+    /* The Gamepad object's own timestamp is the only honest statement of when
+     * the browser last refreshed it. Counting its changes is how we find out
+     * whether polling faster than the frame rate buys anything at all. */
+    if (gp && gp.timestamp !== this.padStamp) {
+      this.padStamp = gp.timestamp;
+      this.padUpdates += 1;
+    }
+    this.rateWindowMs += dtMs;
+    if (this.rateWindowMs >= 500) {
+      this.padHz = Math.round((this.padUpdates * 1000) / this.rateWindowMs);
+      this.sampleHz = Math.round((this.samplesTaken * 1000) / this.rateWindowMs);
+      this.padUpdates = 0;
+      this.samplesTaken = 0;
+      this.rateWindowMs = 0;
+    }
     let next;
     if (this.calibration && gp) {
       this.runCalibration(gp, dtMs);
@@ -332,7 +381,44 @@ export class InputManager {
       this.heartbeatMs = 0;
       this.channels = next;
       this.queue.push({ wallT: nowWall, ...next });
+      this.samplesTaken += 1;
+      /* The integrator is frozen while the craft sits landed, so nothing
+       * drains then. Bound it: the newest samples are the ones worth keeping. */
+      if (this.queue.length > 2048) {
+        this.queue.splice(0, this.queue.length - 512);
+      }
     }
+  }
+
+  /*
+   * Poll independently of the render loop. 2 ms is asked for; browsers clamp
+   * setInterval and a busy frame delays it, which is exactly why every sample
+   * is timestamped rather than assumed to be on a grid. Calling poll() from
+   * the frame as well is harmless: dtMs is measured off lastWall, so the
+   * keyboard integration cannot be double counted.
+   */
+  startPolling(periodMs = 2) {
+    if (this.timer !== null) {
+      return;
+    }
+    this.timer = setInterval(() => this.poll(performance.now()), periodMs);
+  }
+
+  stopPolling() {
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  /* Measured, not claimed: what the pad and the queue are actually doing. */
+  stats() {
+    return {
+      padHz: this.padHz,
+      sampleHz: this.sampleHz,
+      queued: this.queue.length,
+      source: this.source,
+    };
   }
 
   drain() {

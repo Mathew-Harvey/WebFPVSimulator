@@ -3697,3 +3697,152 @@ on a clean tree and passed with the change applied, which was recorded here as
 something that moves between runs. On the rebased base it passes both with and
 without, so that reading was a flake and is now accounted for rather than left
 hanging.
+
+## Round 19: the sticks were sampled at the frame rate and told the controller they were a 250 Hz link
+
+The owner, asked what to work on next: "all i care about is feel, not a
+simulated version of betaflight necessarily, we don't need wind nor accurate
+hover, just feel on the sticks when ripping". That reframing sent the review
+somewhere it had never looked, because every round so far had treated this as
+a physics problem and the worst defect in the project was in the shell.
+
+### What was wrong
+
+`src/main.js` called `input.poll(nowWall)` once per rendered frame, took
+`samples[samples.length - 1]`, and used that one value for every RC frame in
+the block:
+
+```
+const latest = samples.length ? samples[samples.length - 1] : input.channels;
+while (rcNextMs < simStepMs + steps) {
+  sim.input(ts, latest.roll, latest.pitch, latest.yaw, latest.throttle);
+```
+
+So the stick information rate WAS the display frame rate. At 60 fps the
+flight controller saw the same value four times and then a jump, while
+`updateRcRefreshRate` was being handed 4 ms intervals and told it the link
+ran at 250 Hz. Two consequences, and the second is the one a pilot feels.
+
+Betaflight auto-tunes its rc smoothing cutoffs from the interval it measures,
+so it filtered for a 250 Hz link and the 60 Hz staircase walked straight
+through it. And **feedforward is the derivative of the setpoint between rc
+frames**, so it saw zero, zero, zero, spike: an impulse train at frame rate
+instead of a signal. Feedforward is most of what makes a quad feel connected
+to a thumb.
+
+It also explains a number this project had already measured and explained
+away. Round 17c recorded the Karate tune overshooting 14.5 percent with a
+-77 deg/s bounce on "an INSTANT full stick step, which no radio can produce".
+The shell was producing one every frame.
+
+Gate P7 has said "gamepad sampled per frame in src/main.js, not on an
+independent 250 Hz path" since it was written. It was filed as a latency
+gate. Nobody had connected it to feedforward.
+
+### What it is now
+
+**The pad is polled on its own timer**, `input.startPolling(2)`, independent
+of requestAnimationFrame, and every sample carries the wall clock time it was
+taken at.
+
+**Samples are placed on the RC grid by timestamp**, not collapsed to the
+newest. The wall to sim mapping is re-derived every frame rather than
+carried: a sample taken `nowWall - wallT` ms ago belongs that many ms before
+the end of the block this frame is about to step. The two clocks advance
+together while flying and the mapping self corrects across the freezes where
+they do not, which is the lesson round 16b paid for.
+
+**The achieved rate is measured, not claimed.** Whether polling faster than
+the frame rate actually yields fresher data is a property of the browser and
+the device and this code cannot assert it, so `input.stats()` counts how
+often the Gamepad object's own `timestamp` changes (`padHz`) and how often a
+changed value reaches the queue (`sampleHz`), and the performance readout
+shows both next to the link rate. If padHz tracks the frame rate then the
+browser is rAF-locked on gamepad input and only WebHID will move it.
+
+### Measured, against a perfect stick path
+
+The shell's frame loop replicated against the real sim.wasm, both consumers
+driven with the same pilot, a 1.5 Hz full travel roll sweep. The reference is
+every RC slot getting the pilot's true value at that slot's own moment, which
+nothing real can beat. Deviation is RMS setpoint error against it, in deg/s.
+
+| | setpoint roughness | deviation from perfect |
+|---|---|---|
+| perfect stick path | 0.0033 | 0.0 |
+| 30 fps, old | 0.0131 | 83.1 deg/s |
+| 30 fps, new | 0.0033 | **0.0 deg/s** |
+| 60 fps, old | 0.0093 | 43.4 deg/s |
+| 60 fps, new | 0.0033 | **0.0 deg/s** |
+| 144 fps, old | 0.0055 | 20.4 deg/s |
+| 144 fps, new | 0.0033 | **0.0 deg/s** |
+| 240 fps, old | 0.0034 | 14.1 deg/s |
+| 240 fps, new | 0.0033 | **0.0 deg/s** |
+
+The new consumer is indistinguishable from a perfect stick path at every
+frame rate tested, and it is FRAME RATE INDEPENDENT. The old one's stick feel
+was a function of the graphics card: 83 deg/s of setpoint error at 30 fps,
+14 at 240.
+
+The caveat that matters: the replica's poll produces a genuinely new pilot
+value every 2 ms. In a browser the consumer side is now perfect, and the
+achieved sample rate is whatever the Gamepad API gives, which is why it is on
+screen.
+
+### What was measured on the way and rejected
+
+Two candidates for "the standard tune feels mushy" were tested and killed,
+which is worth as much as the fix:
+
+- **Motor lag.** Rebuilt with `r_motor` 0.09 to 0.045 and `j_rotor` 6e-6 to
+  8e-6: roll rise to 90 percent moved 57 ms to 56, overshoot 3.1 to 2.8,
+  stop 80 to 81. The closed loop is not motor limited, so the coupled motor
+  and ESC re-derivation buys nothing a pilot would feel and stays deferred.
+- **Gyro filter phase lag.** Stock tune with the Karate gyro filters bolted
+  on and nothing else: 58 ms against 57, overshoot identical. The D term
+  filter owns the phase budget; the gyro pair is not in it.
+
+What DOES separate the two tunes, isolated the same way: `iterm_relax_cutoff`
+15 to 45 and `pidsum_limit_yaw` 400 to 1000 together give 49 ms rise, 57 ms
+stop and 70 ms yaw, against Karate's own 48, 55 and 70. The whole difference
+is two limits. The simulator is reproducing real tuning correctly and stock
+Betaflight is simply conservative.
+
+**The gyro noise recommendation from the round 17 review is withdrawn.** It
+was argued on the grounds that filters are otherwise pure lag, which is true
+and is an argument about Betaflight fidelity rather than about stick feel.
+Gyro noise is felt as motor heat and seen as jello, not felt through the
+sticks.
+
+### A defect this round introduced and caught
+
+`rcPending` grew for as long as the page was open. Samples taken while the
+integrator is not running, the title screen, a crash lockout, every second
+parked on the ground, have no slot to land in, and nothing was dropping them:
+measured 29 pending after six frames and 160 after twenty, at the 100 ms
+heartbeat alone. The newest is kept so the first flying frame starts from
+where the sticks really are, the rest are dropped, and there is a hard bound
+underneath. Now steady at 1.
+
+`window.__stick` was also already taken, by a harness stick INJECTOR at line
+1848, so the new readback silently shadowed it and returned `{}`. Renamed to
+`window.__stickPath`; the injector is untouched.
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 the same disputed red. Determinism
+hash **ff32caab7fbd** unchanged across Node, headless Chrome and four render
+rates, which is the expected result: the harness drives the module directly
+and never touches the shell's input path, so no check in tests/ could have
+caught any of this. Console clean on both maps. npm run lint:presets 2 of 2.
+
+### Owed
+
+- **WebHID**, which STAGE1.md names as the primary input path and which has
+  never been built. If the readout shows padHz tracking the frame rate on
+  real hardware, this is the only remaining fix and the consumer side is
+  already ready for it.
+- Propwash, still exactly zero, and now the top physics item.
+- Rotor drag applied at the rotor plane rather than at CG height, for the
+  nose up push as speed builds. Cheap.
+- Everything else from the round 17 review, unchanged.

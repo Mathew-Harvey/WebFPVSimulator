@@ -175,6 +175,11 @@ export async function boot({ loading, bootStart, mapId }) {
   const canvas = document.getElementById('view');
   const shell = buildShell(canvas);
   const input = new InputManager();
+  /*
+   * Sample the sticks on their own timer rather than once per rendered frame.
+   * See src/input/input.js for what that was costing feedforward.
+   */
+  input.startPolling(2);
   const ui = new Ui(uiRoot);
   /* boot.js read the stored map before any module loaded, so it could weight
    * the loading screen. ui.js is the owner of the setting; if the two ever
@@ -297,6 +302,33 @@ export async function boot({ loading, bootStart, mapId }) {
   let acc = 0;
   let lastTs = 0;
   let rcNextMs = 0;
+  /*
+   * Stick samples waiting for an RC slot, and the value currently held.
+   *
+   * The old code took `samples[samples.length - 1]` and used it for every RC
+   * frame in the render frame, which threw away every other sample and turned
+   * the stick into a staircase at frame rate. Now the pad is polled on its
+   * own timer (src/input/input.js) and each sample carries the wall clock time
+   * it was taken at, so a slot gets the sample that was actually current when
+   * that slot happened. Held between slots, which is what a receiver does.
+   */
+  const rcPending = [];
+  let rcHeld = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
+  /*
+   * Re-seat the RC grid on the sim clock and throw away stick samples that
+   * belong to a stretch of time the integrator never ran. Called wherever the
+   * grid is pinned: reset, and the moment a parked craft takes off again.
+   * Without the second half, a craft that sat landed for six seconds would
+   * hand six seconds of queued samples to the first six milliseconds of
+   * flight.
+   */
+  function pinRcGrid() {
+    rcNextMs = simStepMs;
+    lastTs = simStepMs / 1000;
+    if (rcPending.length > 1) {
+      rcPending.splice(0, rcPending.length - 1);
+    }
+  }
   let crashed = false;
   let crashedAtWall = 0;
   /*
@@ -401,6 +433,7 @@ export async function boot({ loading, bootStart, mapId }) {
     acc = 0;
     lastTs = 0;
     rcNextMs = 0;
+    rcPending.length = 0;
     crashed = false;
     /* Back on the ground, landed, exactly as at boot. Setting launched false
      * here is what made every respawn repeat the takeoff trap. */
@@ -440,6 +473,7 @@ export async function boot({ loading, bootStart, mapId }) {
     acc = 0;
     lastTs = 0;
     rcNextMs = 0;
+    rcPending.length = 0;
     crashed = false;
     /* Back on the ground, landed, exactly as at boot. Setting launched false
      * here is what made every respawn repeat the takeoff trap. */
@@ -803,6 +837,24 @@ export async function boot({ loading, bootStart, mapId }) {
 
     input.poll(nowWall);
     const samples = input.drain();
+    for (const smp of samples) {
+      rcPending.push(smp);
+    }
+    /*
+     * A sample taken while the integrator is not running has no RC slot to
+     * land in: the title screen, a crash lockout, and every second the craft
+     * sits landed. Keep the newest, so the first flying frame starts from
+     * where the sticks actually are, and drop the rest. Without this the
+     * queue grew for as long as the page was open, at the 100 ms heartbeat
+     * alone, and the first frame of flight had to walk all of it.
+     */
+    if (!(mode === 'flight' && !crashed && launched && !landed) && rcPending.length > 1) {
+      rcPending.splice(0, rcPending.length - 1);
+    }
+    /* Hard bound, whatever else happens. */
+    if (rcPending.length > 1024) {
+      rcPending.splice(0, rcPending.length - 256);
+    }
     if (ui.isModal()) {
       ui.pollPad(padNav());
     }
@@ -820,8 +872,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * second of stick lag. */
         landed = false;
         takingOff = true;
-        rcNextMs = simStepMs;
-        lastTs = simStepMs / 1000;
+        pinRcGrid();
         if (typeof audio.event === 'function') {
           audio.event('takeoff');
         }
@@ -839,15 +890,27 @@ export async function boot({ loading, bootStart, mapId }) {
        * display runs at whatever rate it runs at; the radio does not, and
        * the controller's feedforward and smoothing read the frame
        * interval directly. */
-      const latest = samples.length ? samples[samples.length - 1] : input.channels;
+      const blockEndSim = simStepMs + steps;
+      /*
+       * Wall clock to sim clock, re-derived every frame rather than carried:
+       * a sample taken (nowWall - wallT) ms ago belongs that many ms before
+       * the end of the block this frame is about to step. The sim clock and
+       * the wall clock advance together while flying, and this mapping
+       * self corrects across the freezes where they do not.
+       */
+      const wallToSim = blockEndSim - nowWall;
       const framePeriod = 1000 / RC_HZ;
-      while (rcNextMs < simStepMs + steps) {
+      while (rcNextMs < blockEndSim) {
+        /* Take every sample whose moment has arrived; hold the last one. */
+        while (rcPending.length > 0 && rcPending[0].wallT + wallToSim <= rcNextMs) {
+          rcHeld = rcPending.shift();
+        }
         let ts = rcNextMs / 1000;
         if (ts < lastTs) {
           ts = lastTs;
         }
         lastTs = ts;
-        sim.input(ts, latest.roll, latest.pitch, latest.yaw, latest.throttle);
+        sim.input(ts, rcHeld.roll, rcHeld.pitch, rcHeld.yaw, rcHeld.throttle);
         rcNextMs += framePeriod;
       }
       if (steps >= 1) {
@@ -1080,7 +1143,7 @@ export async function boot({ loading, bootStart, mapId }) {
         steps = 100;
       }
       simTimeMs += steps;
-      rcNextMs = simStepMs;
+      pinRcGrid();
       statePrev = stateCurr;
     } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1400) {
       /* Short lockout, then back on the line. The lap is gone, the run is
@@ -1341,10 +1404,17 @@ export async function boot({ loading, bootStart, mapId }) {
       /* Performance only. The setting promises frame rate and draw
        * counts, so anything else here is developer output that the
        * player did not ask for. */
+      /* Performance, plus the stick rate, because the stick rate is a
+       * performance number the pilot can feel and the frame rate is not the
+       * same thing any more. padHz is how often the browser refreshes the
+       * pad; if it tracks the frame rate this browser is rAF-locked on
+       * gamepad input whatever we ask of it. */
+      const stick = input.stats();
       ui.setReadout(
         `${fps.toFixed(0)} frames per second\n` +
         `${renderStats.calls} draw calls\n` +
-        `${(renderStats.triangles / 1000).toFixed(0)}k triangles`,
+        `${(renderStats.triangles / 1000).toFixed(0)}k triangles\n` +
+        `stick ${stick.padHz} Hz pad, ${stick.sampleHz} Hz sampled, ${RC_HZ} Hz link`,
       );
     } else {
       ui.setReadout('');
@@ -1511,6 +1581,20 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.settings.tune = id;
     applySettings(ui.settings);
   };
+  /*
+   * What the stick path is ACTUALLY doing, measured rather than assumed.
+   * padHz is how often the browser refreshes the Gamepad object, sampleHz how
+   * often a changed value reaches the queue, rcHz the fixed grid handed to
+   * Betaflight. If padHz sits at the frame rate the browser is rAF-locked on
+   * gamepad input and only WebHID will move it. Harness only.
+   */
+  window.__stickPath = () => ({
+    ...input.stats(),
+    rcHz: RC_HZ,
+    fps: Math.round(fps),
+    pending: rcPending.length,
+    held: { ...rcHeld },
+  });
   window.__boot = () => ({
     firstFrameMs,
     worstBlockMs,

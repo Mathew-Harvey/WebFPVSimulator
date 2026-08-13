@@ -83,6 +83,21 @@ clock. Park it with `__setCam` and wait on `__boot().frames`, not on a timer:
 `__setCam` only lands on the next animation frame and `__budget` renders
 directly.
 
+**Round 15b ran adversarial review and fixed most of what it found**, including
+a claim round 15 published that was wrong: you could NOT fly under the
+overbridge, because the surface query was made from the craft's centre and the
+deck became eligible half a metre before the craft reached it. PROGRESS.md
+round 15b has the table. Three findings are recorded and not fixed: `hit()`
+returns the first collider in grid scan order rather than the first along the
+travel, the field's dispose leaks pass materials, and `setBoxTop` has no
+lo <= hi guard.
+
+**The review harness itself was defective and reported nothing.** It passed
+promises to `parallel()` where thunks were wanted, so every verdict threw and
+the run returned an empty finding list, which looks exactly like a clean bill
+of health. The verdicts were in the journal. Check that a review ran before
+believing it found nothing.
+
 ### Owed, in priority order
 
 1. **Gyro noise. The D term chain is still decorative.** This is the one plant

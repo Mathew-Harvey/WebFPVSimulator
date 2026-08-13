@@ -75,7 +75,20 @@ export const CITY_ANIM = {
   CLEAR: 62,
   ARM_DOWN_S: 3.4,
   ARM_UP_S: 3.0,
-  ARM_THRESHOLD: 0.55,
+  /*
+   * OURS, not the town's, and it is 0.90 rather than 0.55 on purpose.
+   *
+   * The town toggles its own boom collider at armT 0.55, which is fine for a
+   * walker who is stopped by the machine housing anyway. For a quad the box is
+   * the only thing there, and at 0.55 the drawn arm is still 36 degrees above
+   * horizontal with the road visibly open under it: measured on the town's own
+   * easing, `e = 1 - (2 - 2t)^2 / 2` and `angle = (1 - e) * (pi/2) * 0.99`.
+   * That put an invisible full width slab across an open looking road for
+   * 1.53 s of every lowering and 1.35 s of every raising, 2.88 s of a 42.78 s
+   * cycle, which is a crash into nothing. At 0.90 the arm is within 1.8
+   * degrees of horizontal, so the barrier appears when it looks closed.
+   */
+  ARM_THRESHOLD: 0.90,
   /*
    * Where the train starts, in metres of track before the crossing. 425 puts
    * it 260 m short of the point that trips the bells, so a pilot who spawns
@@ -208,8 +221,10 @@ export function findBoomBlocks(cityColliders) {
  * index only because src/maps/city/index.js adds the town's colliders in
  * order and before anything else; that is asserted rather than assumed.
  */
-export function cityAnimation(world, colliders) {
-  const booms = findBoomBlocks(world.colliders);
+export function cityAnimation(world, colliders, boomIndices) {
+  /* Identified by the caller, before anything ran the town forward. See the
+   * note at the call site in index.js. */
+  const booms = boomIndices ?? findBoomBlocks(world.colliders);
   for (const i of booms) {
     if (!colliders.fbox[i]) {
       throw new Error(`city: collider ${i} should be a box`);
@@ -264,8 +279,39 @@ export function cityAnimation(world, colliders) {
    * than showing one frame of the town's own defaults. */
   update(0);
 
+  /*
+   * The boom collider's extent with the arms DOWN.
+   *
+   * At step zero the booms are parked, so a reference measured then reads the
+   * paper thin box under the road and tells a check nothing about the barrier
+   * a quad meets. This seats the crossing at the first step where the arms are
+   * down, reads the box, and puts the state back. Scanned rather than
+   * computed, so it stays right if the phase arithmetic changes.
+   */
+  function boomExtentDown() {
+    const period = Math.round((CIRCUMFERENCE / CITY_ANIM.SPEED) * 1000);
+    let found = -1;
+    for (let s = 0; s < period; s += 25) {
+      if (crossingState(s).down) {
+        found = s;
+        break;
+      }
+    }
+    if (found < 0) {
+      return { y0: null, y1: null };
+    }
+    const was = lastStep;
+    update(found);
+    const i = booms[0];
+    const out = { y0: colliders.fay[i], y1: colliders.fby[i], step: found };
+    lastStep = was;
+    update(0);
+    return out;
+  }
+
   return {
     update,
+    boomExtentDown,
     stats: () => ({
       trainOffset: state.offset,
       armT: state.armT,

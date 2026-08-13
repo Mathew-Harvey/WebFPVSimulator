@@ -129,15 +129,32 @@ const double PLANT_SPIN[SIM_MOTOR_COUNT] = { -1.0, 1.0, 1.0, -1.0 };
  * in degrees, and the yaw torque from motor m becomes T[m] * eps[m] * |r|
  * where eps is the TANGENTIAL part of that misalignment.
  *
- *   radial   +1.0 deg on all four, outward. Real arm splay. It produces no
- *            yaw at all: a force along r has zero moment about z. It is here
- *            because it is true, not because it does anything.
  *   tangent  -0.9, +1.4, +0.6, -1.2 deg. Build tolerance, inside what a real
- *            frame holds. The sum is -0.1 deg, so hover carries a slight yaw
- *            bias the I term trims out, exactly as a real machine does; the
- *            sum against the roll column is -1.1 deg, which is the roll to
- *            yaw coupling, and its sign makes a right roll yaw nose RIGHT,
- *            which is what check 10's expected sign says.
+ *            frame holds. The scalar sum is -0.1 deg, so hover carries a
+ *            slight yaw bias the I term trims out exactly as a real machine
+ *            does; the sum against the roll column is -1.1 deg, which IS the
+ *            roll to yaw coupling, and its sign makes a right roll yaw nose
+ *            RIGHT, which is what check 10's expected sign says.
+ *   radial   1.4, 0.85, 1.15, 0.6 deg outward, mean 1.0. Real arm splay, and
+ *            it produces no yaw at all: a force along r has zero moment about
+ *            z, whatever the four values are. It is NOT uniform, and that is
+ *            a fix for something a review caught. The tangential set above has
+ *            a non zero VECTOR sum even though its scalar sum is nearly zero:
+ *            the four tangential directions differ, and summing the axes gives
+ *            a net in plane force of (1.1, 0.5) in units of degrees over
+ *            sqrt(2). Left alone that is a lateral acceleration in a level
+ *            hover with the sticks centred, which is a defect in flight feel
+ *            that this round introduced.
+ *
+ *            It cannot be fixed inside the tangential set. Requiring a zero
+ *            tangential vector sum forces eps = (p, q, q, p), and the sum of
+ *            THAT against the roll column (-1, -1, +1, +1) is identically
+ *            zero, so the roll coupling would go with it. The radial set has
+ *            the freedom instead, precisely because it cannot affect yaw:
+ *            solving -d0 + d1 - d2 + d3 = -1.1 and -d0 - d1 + d2 + d3 = -0.5
+ *            cancels the lateral force exactly at hover, where the four
+ *            thrusts are equal, and approximately elsewhere, which is what a
+ *            real machine's trim does too.
  *
  * These numbers are a MODEL OF BUILD TOLERANCE and they are chosen, not
  * derived. What is not chosen is the mechanism: a symmetric frame yaws
@@ -145,7 +162,7 @@ const double PLANT_SPIN[SIM_MOTOR_COUNT] = { -1.0, 1.0, 1.0, -1.0 };
  * The threshold is not touched; see PROGRESS.md for what the measured
  * coupling is and why it is smaller than the floor.
  */
-#define PLANT_CANT_RADIAL_DEG 1.0
+static const double PLANT_CANT_RADIAL_DEG[SIM_MOTOR_COUNT] = { 1.4, 0.85, 1.15, 0.6 };
 static const double PLANT_CANT_TANGENT_DEG[SIM_MOTOR_COUNT] = { -0.9, 1.4, 0.6, -1.2 };
 
 /*
@@ -167,7 +184,7 @@ static void plant_build_axes(void) {
     /* Counter clockwise tangential direction, spin independent. */
     const double tx = -ry;
     const double ty = rx;
-    const double er = PLANT_CANT_RADIAL_DEG * deg;
+    const double er = PLANT_CANT_RADIAL_DEG[m] * deg;
     const double et = PLANT_CANT_TANGENT_DEG[m] * deg;
     double vx = er * rx + et * tx;
     double vy = er * ry + et * ty;
@@ -194,9 +211,14 @@ const double PLANT_POS_Y[SIM_MOTOR_COUNT] = { -0.0777817459305202, -0.0777817459
 #define PLANT_VRS_FULL 1.20
 #define PLANT_VRS_FLOOR 0.75
 
-/* Per motor share of the ring state loss, summing to zero so the mean thrust
- * loss is unchanged and only the disturbance is added. Roughly three percent,
- * which is the order of the rotor to rotor variation on a real airframe. */
+/* Per motor share of the ring state loss. The four values sum to zero, but
+ * note what that does and does not buy: the correction is gated on each
+ * rotor's OWN axial, so when only some of the four are in the loss the applied
+ * corrections do not cancel, and that asymmetry is the point rather than an
+ * oversight. The mean thrust loss is unchanged only when all four are equally
+ * deep, which is the symmetric case where there is nothing to disturb.
+ * Roughly three percent, the order of the rotor to rotor variation on a real
+ * airframe. */
 static const double PLANT_INFLOW_ASYM[SIM_MOTOR_COUNT] = { 0.031, -0.017, -0.028, 0.014 };
 
 /*

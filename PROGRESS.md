@@ -2357,3 +2357,121 @@ frame rates; it moved from 000931016224 because the plant changed, which is
 expected and is what checks 2, 3 and 4 exist to police. Two new checks: 15
 `world-scale` and 16 `map-isolation`. Console 0 errors and 0 warnings across
 every capture in this round.
+
+## Round 15b: what adversarial review found, including a claim of mine that was wrong
+
+Four reviewers over separate dimensions produced 24 claims, each then put to two
+independent verifiers asked to refute it. **The review harness itself was
+defective and that has to be said first**: the verify stage passed promises to
+`parallel()` where it wanted thunks, so every verdict pair threw and the run
+reported `confirmed: []`. An empty finding list from a broken harness looks
+exactly like a clean bill of health. The journal held the real verdicts and
+they were read out of it by hand. Do not trust a review that reports nothing
+without checking that it ran.
+
+### The one that invalidated a published claim
+
+**Round 15 said you can fly under the overbridge. You could not.**
+`height(x, z, fromY)` offers a platform when its top is within a walker's step,
+0.55 m, of `fromY`, and the ground sweep passed the craft's CENTRE. So the
+7.20 m deck became eligible from a centre height of 6.65 m, which is a quad
+under the bridge with its sphere top still 5 cm clear of the underside, and
+`sy - CRAFT_R <= 7.20` is then trivially true. The pilot got a crash into
+nothing, or a landing that teleported them onto the deck above.
+
+Measured at x 41.0, z -0.5, deck top 7.20, underside slab 6.95 to 7.18:
+
+    craft y   surface from centre   from bottom   ground contact   collider
+      6.30           0.000             0.000          no             none
+      6.65           7.200             0.000          no             none
+      6.70           7.200             0.000          no             none
+      6.78           7.200             0.000          no             wall
+      6.83           7.200             7.200          yes            wall
+      7.38           7.200             7.200          no             none
+
+The middle column is the old behaviour and the third is the new one. Querying
+from `sy - CRAFT_R`, the craft's lowest point, the road stays the surface all
+the way up to 6.78 m, where the deck's own underside slab correctly calls it a
+crash. Landing on top is unchanged: the ground test still fires at
+deck + CRAFT_R, 2 cm before the slab, so the landing judgement wins.
+`groundY` is now resolved at the height that TRIPPED contact rather than at the
+end of the frame's travel, which at this container's frame rate is a metre
+lower and would have resolved a deck landing onto the ballast below it.
+
+### The rest, fixed
+
+- **Every map swap leaked a 2048 by 2048 shadow map.** `disposeSceneGraph`
+  walked geometry and materials; a light's `shadow.map` is reachable from
+  neither. 33.5 MB per swap, invisible to `__budget` because it belongs to a
+  scene nothing traverses any more.
+- **And it disposed a texture the session still owns.** Every cel material
+  shares one gradient ramp singleton, including the four on the airframe.
+  `src/render/session-textures.js` names what a map must not free.
+- **A failed map load left the shell frozen forever.** The old world is
+  disposed before the new one is built, deliberately, so a rejection had
+  nothing to fall back to and `mapReady` stayed false with no message. It now
+  fails onto the loading screen with the reason.
+- **A map change requested DURING a swap was dropped**, while ui.js had already
+  saved it, so the title screen named a map that was not loaded. Honoured when
+  the swap completes.
+- **The boom colliders were identified after the crossing had been run
+  forward.** `top` is runtime state, not a build marker, and `bake.js` runs the
+  town for 48 simulated seconds before the identification. Measured, probe
+  lengths 95 to 117 and 202 to 213 leave both booms down and the assertion
+  throws; 120 happens to work. They are identified before anything runs now, so
+  the ordering is irrelevant rather than lucky.
+- **The barrier did not match the picture for 2.88 s of every 42.78 s cycle.**
+  The town toggles its boom collider at armT 0.55, where the drawn arm is still
+  36 degrees above horizontal and the road looks open. Our threshold is 0.90,
+  where the arm is within 1.8 degrees of horizontal.
+- **The craft drifted sideways in a level hover, 1.5 m/s.** The tangential cant
+  table's scalar sum is nearly zero but its VECTOR sum is not, and the four
+  tangential directions differ. It cannot be fixed inside the tangential set:
+  requiring a zero vector sum forces eps = (p, q, q, p), whose sum against the
+  roll column is identically zero, so the roll to yaw coupling would go with
+  it. The radial set has the freedom instead, because radial cant cannot affect
+  yaw at all. Solved to cancel it, and measured through the real controller
+  with the sticks centred for 20 s:
+
+      lateral speed 1.5041 m/s, offset 16.386 m   uniform 1.0 deg radial
+      lateral speed 0.3468 m/s, offset  3.633 m   radial solved per motor
+
+- **`window.__race` was a snapshot** taken at boot and never re-adopted, so
+  after a swap it answered with the previous map's race. A function now.
+- **Check 15 could not see a scale on the craft.** It read BufferGeometry
+  constructor parameters and local positions, so `group.scale.setScalar(2)`
+  would have left it reporting 0.1550 m for a 310 mm machine. It measures world
+  bounding boxes now. The first attempt over-corrected and reported 0.1754 m,
+  which is the outline hull at 1.13 times the body: it transforms the body's
+  OWN geometry box by its world matrix, which keeps the scale and leaves the
+  hull out. 0.1552 m.
+- **Check 15's doorway selector matched timber fence frames**, which share the
+  door material, so a 27 percent scale error on a door could be outvoted by
+  fences. A door is taller than it is wide; a fence frame is not.
+- **Check 15's boom reference measured the arm's hinge, not the collider it
+  claimed to cross check.** It now reads the built collider with the arms DOWN,
+  found by scanning for the first step where they are, and asserts the box
+  brackets the hinge: 1.045 to 1.325 m around 1.240 m.
+- **Check 16's field budget was taken before the city had ever loaded**, so it
+  could not see a leak. It is taken again after a field to city to field round
+  trip, which is the measurement that can:
+
+      boot              P1 214   P2 1,931,413   P5 69.8 MB   P10 42.8 MB
+      after round trip  P1 214   P2 1,931,413   P5 69.8 MB   P10 42.8 MB
+
+### Recorded, not fixed
+
+- **`hit()` returns the first collider in grid scan order, not the first along
+  the travel.** Two solid things in one frame's travel, and the one that gets
+  reported is whichever the broadphase happened to reach first, which decides
+  graze against crash. Pre-existing, not introduced this round, and fixing it
+  means tracking the earliest contact parameter through the whole query.
+- **The field's dispose frees the composer's render targets but not its pass
+  materials**, so a handful of shader programs leak per swap. Invisible to
+  every budget, which counts targets and triangles.
+- **`setBoxTop` has no lo <= hi guard** and `animation.js` writes `fay`
+  directly, so the invariant the box solver depends on is maintained by
+  convention across two files.
+
+`npm run verify` 15 of 16, `yaw-coupling` the one red at -0.09 deg. Determinism
+hash 3fdde8bd11da across Node and headless Chrome and four frame rates.

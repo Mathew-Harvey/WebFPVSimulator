@@ -51,9 +51,10 @@ import { setOutlineResolution } from './vendored/core/outline.js';
 import { buildWorld } from './vendored/world/index.js';
 import { Colliders } from '../../game/collide.js';
 import { disposeSceneGraph } from '../../render/shell.js';
-import { cityAnimation } from './animation.js';
+import { SESSION_TEXTURES } from '../../render/session-textures.js';
+import { cityAnimation, findBoomBlocks } from './animation.js';
 import { bakeCity, buildCullGrid, chunkInstanced } from './bake.js';
-import { cityReferences } from './references.js';
+import { cityReferences, boomColliderExtent } from './references.js';
 import { yieldToPaint } from '../../ui/loading.js';
 
 /*
@@ -279,6 +280,18 @@ export async function buildMap(shell, onProgress) {
   await yieldToPaint();
 
   const { colliders, noTop, noBottom, slabs } = buildColliders(world);
+  /*
+   * Find the level crossing booms NOW, before anything runs the town forward.
+   *
+   * They are identified by being parked below ground, and `top` is RUNTIME
+   * state: the town rewrites it on every `world.update`. bake.js then runs the
+   * town for 48 simulated seconds to measure what moves, which leaves the
+   * crossing in whatever phase that lands on. Measured, PROBE_STEPS in 95 to
+   * 117 and 202 to 213 leaves both booms DOWN, and the identification would
+   * throw. It happens to work at 120. Doing it here makes the ordering
+   * irrelevant instead of lucky.
+   */
+  const boomIndices = findBoomBlocks(world.colliders);
   colliders.build();
   progress(0.9);
 
@@ -298,7 +311,14 @@ export async function buildMap(shell, onProgress) {
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
-  const anim = cityAnimation(world, colliders);
+  const anim = cityAnimation(world, colliders, boomIndices);
+  /* Measured AFTER cityAnimation has seated the booms at step zero, so it is
+   * the extent a quad would actually meet. */
+  references.crossingBoomCollider = {
+    measured: boomColliderExtent(anim.boomExtentDown(), references.crossingBoomGround),
+    unit: 'm',
+    real: 'must bracket the drawn arm hinge, with the arms DOWN',
+  };
   progress(0.94);
 
   const pipeline = new CityPipeline(renderer, scene, camera, {
@@ -424,7 +444,7 @@ export async function buildMap(shell, onProgress) {
     dispose() {
       scene.remove(shell.quad);
       pipeline.dispose();
-      disposeSceneGraph(scene);
+      disposeSceneGraph(scene, SESSION_TEXTURES);
     },
   };
 }

@@ -113,8 +113,18 @@ export function cityReferences(world) {
       return;
     }
     box.getSize(size);
-    /* A door mesh is taller than it is thick and taller than it is wide. */
-    if (size.y < 1.0 || size.y > 3.5) {
+    /*
+     * A door is TALLER THAN IT IS WIDE, and that is the discriminator, not the
+     * colour. `cel()` caches on its parameter signature, so the door material
+     * is one shared instance and three call sites reach it: the house front
+     * door, and the frame of every timber fence, which is drawn with the same
+     * material and is long and low. Without this the median ran over two
+     * object classes and a 27 percent scale error on the door could be hidden
+     * by the fences outnumbering it, which is exactly the failure this check
+     * exists to catch.
+     */
+    const wide = Math.max(size.x, size.z);
+    if (size.y < 1.0 || size.y > 3.5 || size.y <= wide) {
       return;
     }
     doorHeights.push(size.y);
@@ -177,12 +187,36 @@ export function cityReferences(world) {
    * A real Japanese crossing boom sits 1.00 to 1.40 m above the road.
    */
   let boom = null;
+  let boomGround = 0;
   if (world.crossing && world.crossing.arms && world.crossing.arms.length) {
     const p = new THREE.Vector3();
     world.crossing.arms[0].pivot.getWorldPosition(p);
-    boom = p.y - world.heightAt(p.x, p.z, -1000);
+    boomGround = world.heightAt(p.x, p.z, -1000);
+    boom = p.y - boomGround;
   }
   out.crossingBoomHeight = { measured: boom, unit: 'm', real: '1.00 to 1.40' };
+  out.crossingBoomGround = boomGround;
 
   return out;
+}
+
+/*
+ * The boom COLLIDER's height above the road, measured after the colliders are
+ * built.
+ *
+ * Separate from the rest because it needs the built collider set, and it is
+ * here because the drawn arm and the solid barrier are two different objects
+ * and a reference that measures only one of them cannot notice them drifting
+ * apart. `crossingBoomHeight` reads the hinge on the post; this reads the box
+ * a quad hits. Check 15 asserts that the box brackets the arm.
+ */
+export function boomColliderExtent(extent, groundY) {
+  if (!extent || extent.y0 == null) {
+    return { y0: null, y1: null };
+  }
+  return {
+    y0: extent.y0 - groundY,
+    y1: extent.y1 - groundY,
+    atStep: extent.step,
+  };
 }

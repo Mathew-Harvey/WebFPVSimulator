@@ -610,6 +610,15 @@ export function buildChecks() {
         band('city doorway', r.city.doorway, th.doorway_m.min, th.doorway_m.max, ' m');
         band('city handrail', r.city.handrail, th.handrail_m.min, th.handrail_m.max, ' m');
         band('city crossing boom', r.city.boom, th.boom_m.min, th.boom_m.max, ' m');
+        /* And the SOLID barrier against the DRAWN arm. Measuring only the
+         * hinge would let the collider be moved to 3 m without the check
+         * noticing, which is the difference between a reference object and a
+         * cross check. */
+        const bc = r.city.boomCollider;
+        rows.push(`crossing boom collider ${bc && bc.y0 != null ? `${bc.y0.toFixed(3)} to ${bc.y1.toFixed(3)}` : 'none'} m`);
+        if (!bc || bc.y0 == null || !(bc.y0 < r.city.boom && bc.y1 > r.city.boom)) {
+          fails.push('the boom collider does not bracket the drawn arm hinge');
+        }
 
         return {
           measured: rows.join(', '),
@@ -660,6 +669,7 @@ export function buildChecks() {
             fails.push(`${label} ${got} against ${want} at c3c6e44`);
           }
         };
+        const b2 = r.fieldBudgetAfterRoundTrip;
         if (!b) {
           fails.push('the field budget was not measured');
         } else {
@@ -669,10 +679,23 @@ export function buildChecks() {
           same('P10 attribute MB', b.p10, base.p10_MB.value, 0.05);
           same('meshes', b.meshes, base.meshes.value, 0);
         }
+        /* And again after field to city to field. This is the measurement that
+         * can see a leak: anything the city fails to free is invisible until
+         * the field is measured on the far side of a round trip. */
+        if (!b2) {
+          fails.push('the field budget after a round trip was not measured');
+        } else {
+          same('P1 after round trip', b2.p1, base.p1.value, 0);
+          same('P2 after round trip', b2.p2, base.p2.value, 0);
+          same('P5 after round trip', b2.p5, base.p5_MB.value, 0.05);
+          same('P10 after round trip', b2.p10, base.p10_MB.value, 0.05);
+          same('meshes after round trip', b2.meshes, base.meshes.value, 0);
+        }
         return {
           measured:
             `city modules: ${before} with the field selected, ${after} after choosing it; ` +
-            (b ? `field P1 ${b.p1}, P2 ${b.p2}, P5 ${b.p5} MB, P10 ${b.p10} MB, ${b.meshes} meshes` : 'no budget'),
+            (b ? `field P1 ${b.p1}, P2 ${b.p2}, P5 ${b.p5} MB, P10 ${b.p10} MB, ${b.meshes} meshes` : 'no budget') +
+            (b2 ? `; after a city round trip P1 ${b2.p1}, P2 ${b2.p2}, P5 ${b2.p5} MB, P10 ${b2.p10} MB` : ''),
           pass: fails.length === 0,
           reason: fails.join('; '),
         };

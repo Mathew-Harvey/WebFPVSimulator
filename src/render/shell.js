@@ -54,11 +54,24 @@ import { buildCraft } from './craft.js';
  * The craft is re-parented out before this runs, so it is never reachable
  * from here. Anything else in the graph is the map's and dies with it.
  */
-export function disposeSceneGraph(root) {
+export function disposeSceneGraph(root, keepTextures) {
   const textures = new Set();
   const materials = new Set();
   const geometries = new Set();
+  const shadows = new Set();
   root.traverse((obj) => {
+    /*
+     * A light owns a render target and nothing else here would have found it.
+     * `light.shadow.map` is a 2048 by 2048 target the renderer allocates
+     * lazily and frees only on an explicit dispose, and it is reachable from
+     * neither `geometry` nor `material`. Missing it leaked one shadow map per
+     * map swap, 33.5 MB each against a 120 MB budget, invisible to
+     * `__budget` because the leaked targets belong to a scene nothing
+     * traverses any more.
+     */
+    if (obj.isLight && obj.shadow && obj.shadow.map) {
+      shadows.add(obj.shadow.map);
+    }
     if (obj.geometry) {
       geometries.add(obj.geometry);
     }
@@ -92,14 +105,31 @@ export function disposeSceneGraph(root) {
   for (const m of materials) {
     m.dispose();
   }
+  let kept = 0;
   for (const t of textures) {
+    /*
+     * Some textures are the SESSION's, not the map's. Every cel material
+     * shares one gradient ramp singleton from celmat.js, and the airframe's
+     * four cel materials are session lived and still hold it, so disposing it
+     * with the map would free a texture that live materials point at. The
+     * caller names what to keep.
+     */
+    if (keepTextures && keepTextures.has(t)) {
+      kept += 1;
+      continue;
+    }
     t.dispose();
+  }
+  for (const m of shadows) {
+    m.dispose();
   }
   root.clear();
   return {
     geometries: geometries.size,
     materials: materials.size,
-    textures: textures.size,
+    textures: textures.size - kept,
+    keptTextures: kept,
+    shadowMaps: shadows.size,
   };
 }
 

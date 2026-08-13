@@ -43,6 +43,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull, updateCelTime, CLOUD_SHADOW_GLSL } from './celmat.js';
 import { disposeSceneGraph } from './shell.js';
+import { SESSION_TEXTURES } from './session-textures.js';
 /* The obstacle dimensions come from the track module, which holds MultiGP's
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
@@ -2566,7 +2567,7 @@ export function buildFieldScene(shell, onProgress) {
     updateAnim: () => {},
     dispose() {
       scene.remove(quad);
-      disposeSceneGraph(scene);
+      disposeSceneGraph(scene, SESSION_TEXTURES);
     },
   };
 }

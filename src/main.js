@@ -405,8 +405,24 @@ export async function boot({ loading, bootStart, mapId }) {
      * because both of those block the main thread and a screen nobody
      * composited is not a screen. */
     await yieldToPaint();
+    const previous = view.id;
     view.dispose();
-    view = await loadMap(shell, id, loading);
+    try {
+      view = await loadMap(shell, id, loading);
+    } catch (e) {
+      /*
+       * The old world is already gone by here, deliberately: disposing before
+       * building is what keeps two maps' render targets from ever coexisting.
+       * That means a failed load leaves nothing to fall back to, so it has to
+       * be SAID rather than swallowed. Without this the shell sat on
+       * mapReady false forever with a frozen frame and no message, which is
+       * the worst of the three possible outcomes.
+       */
+      loading.fail(`${entry.name} could not be loaded. ${e.message ?? e}`);
+      ui.settings.map = previous;
+      console.error(e);
+      return;
+    }
     loading.start('frame');
     race = new Race(view.gates);
     race.setRecordKey(recordKey());
@@ -415,6 +431,13 @@ export async function boot({ loading, bootStart, mapId }) {
     reset();
     finishLoadingOnFrame = true;
     mapReady = true;
+    /* A change requested DURING the swap was refused by the guard at the top,
+     * and ui.js has already saved it, so the setting and the loaded map would
+     * otherwise stay diverged with the title screen naming a map that is not
+     * there. Honour it now. */
+    if (ui.settings.map !== view.id) {
+      await swapMap(ui.settings.map);
+    }
   }
 
   function applySettings(s) {
@@ -675,7 +698,22 @@ export async function boot({ loading, bootStart, mapId }) {
        *
        * The test is the craft's SPHERE against the terrain, not its centre
        * point, and it is swept along the frame's travel rather than sampled
-       * once at the end of it. A point test with no radius let the craft
+       * once at the end of it.
+       *
+       * THE SURFACE QUERY IS MADE FROM THE CRAFT'S LOWEST POINT, not from its
+       * centre, and the difference is a real defect that a review caught.
+       * `height(x, z, fromY)` offers a platform when its top is within a
+       * walker's step, 0.55 m, of fromY. Querying from the CENTRE made the
+       * overbridge deck at 7.20 m eligible from a centre height of 6.65 m,
+       * which is a craft flying UNDER the bridge with its sphere top still
+       * 5 cm clear of the deck's underside. `sy - CRAFT_R <= 7.20` is then
+       * trivially true, so a quad taking the line under the bridge either
+       * crashed into nothing or was declared landed and teleported onto the
+       * deck above it. Querying from `sy - CRAFT_R` makes the deck eligible
+       * only from a centre of 6.82 m, by which point the deck's own underside
+       * slab collider has already fired at 6.78 m and correctly called it a
+       * crash. Landing on top is unaffected: the ground test still fires at
+       * deck + CRAFT_R, 2 cm before the slab, so the landing judgement wins. A point test with no radius let the craft
        * bury a prop before anything noticed, and at this container's frame
        * rate the craft moves metres per frame, so a single sample can step
        * clean over a ridge.
@@ -687,6 +725,13 @@ export async function boot({ loading, bootStart, mapId }) {
       let touched = false;
       let touchX = pProbe.x;
       let touchZ = pProbe.z;
+      /* The height the contact was judged AT, not where the frame ended.
+       * Resolving the resting height from the end of the travel let a landing
+       * on a deck fall through to the ground under it: at this container's
+       * frame rate the craft descends about a metre a frame, so by the end of
+       * the frame the deck is more than a step above the query and heightAt
+       * drops it. */
+      let touchY = pProbe.y;
       if (simTimeMs > 50) {
         if (groundHasPrev) {
           /* Sixteen samples over the travel. At 30 m/s and 60 frames per
@@ -699,14 +744,15 @@ export async function boot({ loading, bootStart, mapId }) {
             const sx = groundPrev.x + (pProbe.x - groundPrev.x) * gt;
             const sy = groundPrev.y + (pProbe.y - groundPrev.y) * gt;
             const sz = groundPrev.z + (pProbe.z - groundPrev.z) * gt;
-            if (sy - CRAFT_R <= view.height(sx, sz, sy)) {
+            if (sy - CRAFT_R <= view.height(sx, sz, sy - CRAFT_R)) {
               touched = true;
               touchX = sx;
               touchZ = sz;
+              touchY = sy;
               break;
             }
           }
-        } else if (pProbe.y - CRAFT_R <= view.height(pProbe.x, pProbe.z, pProbe.y)) {
+        } else if (pProbe.y - CRAFT_R <= view.height(pProbe.x, pProbe.z, pProbe.y - CRAFT_R)) {
           touched = true;
         }
       }
@@ -737,7 +783,7 @@ export async function boot({ loading, bootStart, mapId }) {
         lastTiltDeg = tiltDeg;
         if (isLanding(descent, horiz, tiltDeg)) {
           landed = true;
-          groundY = view.height(touchX, touchZ, pProbe.y);
+          groundY = view.height(touchX, touchZ, touchY - CRAFT_R);
           /* The two states are made identical so the render interpolation
            * has nothing to interpolate: with the integrator frozen, an
            * accumulator left mid step would otherwise slide the craft
@@ -1070,7 +1116,10 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;
-  window.__race = race;
+  /* A function, not a snapshot. Every other handle here reads `view` or
+   * `race` at call time; this one captured the object identity at boot, so
+   * after a map swap it answered with the previous map's race. */
+  window.__race = () => race;
   /* P12 and P13 are audio budgets, and neither can be read while the audio
    * context is null: update() returns immediately and reports a cost of
    * nothing. A capture run has to click the page to satisfy the browser's
@@ -1362,6 +1411,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * measure, which is the only way a scale error gets caught by a check
    * rather than by a reviewer's eye. Harness only. */
   window.__mapScene = () => view.scene;
+  /* The three.js namespace, so a measurement in the page can build a Box3
+   * without importing a second copy of the library. Harness only. */
+  window.__three = THREE;
   /* The city's own world object, for measurements that need its platform and
    * collider lists. Null on a map that has no town. Harness only. */
   window.__cityWorld = () => view.world ?? null;

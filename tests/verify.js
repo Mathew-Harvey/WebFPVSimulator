@@ -224,27 +224,72 @@ async function main() {
           'tag: "field",' +
           'map: window.__map().id,' +
           'references: window.__map().references,' +
+          /*
+           * MEASURED IN WORLD SPACE, from bounding boxes, not from the
+           * BufferGeometry constructor parameters. Reading `parameters.depth`
+           * and `position.x` was the first version and it is blind to exactly
+           * the error this check exists for: a `group.scale.setScalar(2)` on
+           * the craft doubles the rendered quad and leaves every parameter
+           * untouched, so the check would have reported 0.1550 m for a 310 mm
+           * machine. A world Box3 sees the scale.
+           */
           'craft: (() => {' +
             'const s = window.__mapScene();' +
             'let g = null;' +
             's.traverse((o) => { if (o.name === "craft") { g = o; } });' +
+            'g.updateMatrixWorld(true);' +
+            'const THREE = window.__three;' +
             'const body = g.children.find((c) => c.geometry && c.geometry.type === "BoxGeometry" && c.geometry.parameters.depth > 0.14);' +
-            'const p = body.geometry.parameters;' +
+            /* The body's OWN geometry through its own world matrix. Box3
+             * setFromObject descends into children, and every body panel
+             * carries an outlineHull, a back sided shell scaled 1.13, so the
+             * first version measured 0.1754 m for a 0.155 m body: the hull,
+             * not the airframe. Transforming the geometry's box keeps the
+             * world scale and leaves the hull out. */
+            'body.geometry.computeBoundingBox();' +
+            'const bb = body.geometry.boundingBox.clone().applyMatrix4(body.matrixWorld);' +
+            'const bs = new THREE.Vector3(); bb.getSize(bs);' +
+            'const origin = new THREE.Vector3().setFromMatrixPosition(g.matrixWorld);' +
+            'const at = new THREE.Vector3();' +
             'let maxR = 0;' +
             'for (const c of g.children) {' +
               'if (!c.geometry || c.geometry.type !== "CylinderGeometry") { continue; }' +
               'const rr = c.geometry.parameters.radiusTop;' +
               'if (rr < 0.05) { continue; }' +
-              'const d = Math.hypot(c.position.x, c.position.z) + rr;' +
+              'c.geometry.computeBoundingBox();' +
+              'const pb = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);' +
+              'const ps = new THREE.Vector3(); pb.getSize(ps);' +
+              'at.setFromMatrixPosition(c.matrixWorld).sub(origin);' +
+              'const d = Math.hypot(at.x, at.z) + Math.max(ps.x, ps.z) * 0.5;' +
               'if (d > maxR) { maxR = d; }' +
             '}' +
-            'return { bodyLength: p.depth, bodyWidth: p.width, bodyHeight: p.height, sweepMeasured: maxR, craftR: window.__craftState().thresholds.craftRadius };' +
+            'return { bodyLength: Math.max(bs.x, bs.z), bodyWidth: Math.min(bs.x, bs.z), bodyHeight: bs.y, sweepMeasured: maxR, craftR: window.__craftState().thresholds.craftRadius };' +
           '})()' +
         '})',
         'eval:JSON.stringify({ tag: "swap", started: (window.__setMap("city"), true) })',
         'until:window.__map().id === "city" && window.__map().ready',
         'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading })',
         `eval:${collect}`,
+        /*
+         * BACK TO THE FIELD, AND MEASURE IT AGAIN. The budget taken at boot
+         * cannot see a leak, because at that point the city has never existed:
+         * anything the city fails to free on its way out is invisible until
+         * the field is measured on the far side of a round trip. A review
+         * pointed this out and it was right.
+         */
+        'eval:JSON.stringify({ tag: "back", started: (window.__setMap("field"), true) })',
+        'until:window.__map().id === "field" && window.__map().ready',
+        'eval:JSON.stringify((() => {' +
+          'window.__setCam(104.99, 1.6, 14.0, 104.99, 1.2, -30);' +
+          'window.__camFrame2 = window.__boot().frames;' +
+          'return { tag: "budget2-pending" };' +
+        '})())',
+        'until:window.__boot().frames > window.__camFrame2 + 3',
+        'eval:JSON.stringify((() => {' +
+          'const b = window.__budget("field spawn after round trip");' +
+          'window.__setCam(null);' +
+          'return { tag: "budget2", p1: b.p1_calls, p2: b.p2_triangles, p5: b.p5_target_MB, p10: b.p10_attribute_MB, meshes: b.meshes };' +
+        '})())',
       ];
       const run = spawnSync('node', [join(root, 'scripts/shots.js'), ...steps], {
         cwd: root,
@@ -269,6 +314,7 @@ async function main() {
        * report a confident wrong number. */
       const urls = values.filter((v) => v.tag === 'urls');
       const budget = values.find((v) => v.tag === 'budget');
+      const budgetAfter = values.find((v) => v.tag === 'budget2');
       const fieldData = values.find((v) => v.tag === 'field');
       const cityData = values.find((v) => v.tag === 'city');
       if (urls.length < 2 || !fieldData || !cityData) {
@@ -294,11 +340,13 @@ async function main() {
           doorwayWidth: cr.doorwayWidth.measured,
           handrail: cr.handrailHeight.measured,
           boom: cr.crossingBoomHeight.measured,
+          boomCollider: cr.crossingBoomCollider ? cr.crossingBoomCollider.measured : null,
           doorCount: cr.doorwayHeight.count,
           railCount: cr.handrailHeight.count,
         },
         loading: cityData.loading,
         fieldBudget: budget,
+        fieldBudgetAfterRoundTrip: budgetAfter,
         cityUrlsWhileFieldSelected: fieldUrls.urls.filter((u) => u.includes('/src/maps/city')),
         cityUrlsAfterChoosingCity: cityUrls.urls.filter((u) => u.includes('/src/maps/city')),
       };

@@ -621,7 +621,14 @@ export class Ui {
   }
 
   setReadout(lines) {
-    this.readout.style.display = this.settings.readout ? '' : 'none';
+    /*
+     * 'block', not ''. The stylesheet's own rule for .readout is
+     * `display: none`, so clearing the inline style hands the element back
+     * to that rule and it stays hidden. The setting has therefore never
+     * shown anything since the rule was written: the text was being
+     * computed and written every frame into an element nobody could see.
+     */
+    this.readout.style.display = this.settings.readout ? 'block' : 'none';
     this.readout.textContent = this.settings.readout ? lines : '';
   }
 

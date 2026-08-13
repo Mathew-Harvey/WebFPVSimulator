@@ -50,6 +50,8 @@ typedef struct {
   double cda_front;  /* drag area front, m^2, along body x */
   double cda_side;   /* drag area side, m^2, along body y */
   double rho;        /* air density */
+  double k_propwash; /* unsteady inflow amplitude, fraction of thrust at full
+                      * recirculation depth. See plant.c. */
   double prop_r;     /* prop radius, metres. Sets the disc area the induced
                       * velocity is computed over. */
   double k_rotor_drag; /* rotor drag (H force) scale, dimensionless O(1).
@@ -71,6 +73,12 @@ typedef struct {
   /* motors, Betaflight order: 0 RR, 1 FR, 2 RL, 3 FL */
   double motor_omega[SIM_MOTOR_COUNT]; /* rad/s */
   double motor_domega[SIM_MOTOR_COUNT]; /* last step's d omega / dt */
+  /* Propwash: a band limited turbulence field, one channel per rotor, run
+   * every step whether the craft is in the wash or not so that flying into
+   * it does not restart it. Deterministic; see plant.c. */
+  unsigned int wash_seed;
+  double wash_fast[SIM_MOTOR_COUNT];
+  double wash_slow[SIM_MOTOR_COUNT];
   /* battery */
   double cell_voltage_oc; /* open circuit per cell, volts */
   double pack_current;    /* total draw last step, amps */

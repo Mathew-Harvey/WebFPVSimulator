@@ -68,6 +68,10 @@ extern uint16_t sim_bf_sag_cell_cv;
 
 #include "../sim_abi.h"
 #include "../sim_internal.h"
+
+extern double PLANT_DBG_WASH_DEPTH;
+extern double PLANT_DBG_WASH_RATIO;
+extern double PLANT_DBG_VA;
 #include "bf_settings.h"
 
 /* Externs Betaflight expects from files we do not compile. gyro itself is
@@ -292,6 +296,10 @@ double sim_bf_debug(int what) {
   case 43: return currentPidProfile->vbat_sag_compensation;
   case 44: return currentPidProfile->simplified_pids_mode;
   case 45: return currentPidProfile->dterm_lpf1_dyn_expo;
+  /* Propwash diagnostics from plant.c, motor 0. */
+  case 46: return PLANT_DBG_WASH_DEPTH;
+  case 47: return PLANT_DBG_WASH_RATIO;
+  case 48: return PLANT_DBG_VA;
   default: return 0.0;
   }
 }

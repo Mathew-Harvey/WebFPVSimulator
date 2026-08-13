@@ -93,6 +93,7 @@ const PlantParams PLANT = {
   .cda_front = 0.0130,
   .cda_side = 0.0130,
   .rho = 1.225,
+  .k_propwash = 0.60,
   .prop_r = 0.0635,
   .k_rotor_drag = 0.4386,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
@@ -270,6 +271,60 @@ static const double PLANT_INFLOW_ASYM[SIM_MOTOR_COUNT] = { 0.031, -0.017, -0.028
 
 double sim_sqrt_pub(double x) { return sim_sqrt(x); }
 
+/* Diagnostic taps for the wash, read through sim_bf_debug. Not part of the
+ * ABI, and written every step so a probe can see where the wash actually
+ * fires rather than where it was assumed to. */
+double PLANT_DBG_WASH_DEPTH;
+double PLANT_DBG_WASH_RATIO;
+double PLANT_DBG_VA;
+
+/*
+ * PROPWASH, WHICH DID NOT EXIST AND IS MOST OF WHAT RIPPING FEELS LIKE.
+ *
+ * Diving into your own wake, hauling out of a dive, chopping throttle over
+ * the top of a flip: a real quad shakes, and you feel it through the sticks
+ * as the tune fighting air that is not going where the model says it is. This
+ * plant had a vortex ring model that removed thrust correctly and a per motor
+ * asymmetry, PLANT_INFLOW_ASYM, that was FIXED. A constant disturbance is
+ * exactly what an I term is for, so it was trimmed out inside a second and
+ * measured, in a 12.7 m/s descent, at 0.04 deg/s of gyro. Silent.
+ *
+ * What was missing is that recirculating flow is UNSTEADY. So there is a
+ * turbulence field now: one band limited channel per rotor, 3 to 30 Hz, which
+ * is where a five inch quad's propwash actually lives. It runs every step
+ * whether the craft is in the wash or not, so flying into it does not restart
+ * it, and it is applied scaled by how deep that rotor is into the
+ * recirculation. The four channels are independent, so the disturbance is a
+ * torque as well as a thrust wobble, which is why it reads as shake rather
+ * than as sink.
+ *
+ * GATED ON DESCENT, and that is physics rather than convenience. A rotor
+ * climbing out of its wake meets clean air; only a rotor descending into it
+ * meets its own. The gate is the depth into the vortex ring branch that the
+ * thrust model already computes, so hover, climb and punch cannot see it at
+ * all, and checks 5, 6, 7 and 11 are untouched by construction.
+ *
+ * DETERMINISM. xorshift32 on a seed carried in SimState and reset with
+ * everything else, so integer operations only, the same sequence on every
+ * host, and a replay reproduces bit for bit. No host RNG, no float hashing.
+ */
+static double plant_wash_noise(SimState *s) {
+  unsigned int x = s->wash_seed;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  s->wash_seed = x;
+  /* 24 bits to a double in -1..1, exactly representable. */
+  return ((double)(x >> 8)) * (1.0 / 8388608.0) - 1.0;
+}
+
+/* One pole coefficients at the 1 kHz step: 1 - exp(-2 pi f dt). */
+#define PLANT_WASH_A_FAST 0.171876
+#define PLANT_WASH_A_SLOW 0.018665
+/* RMS of the band passed signal, so k_propwash is a thrust fraction and not
+ * an arbitrary gain. Measured off the filter pair, not guessed. */
+#define PLANT_WASH_RMS 0.173
+
 void plant_reset(SimState *s) {
   for (int i = 0; i < 3; i += 1) {
     s->pos[i] = 0.0;
@@ -283,7 +338,12 @@ void plant_reset(SimState *s) {
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     s->motor_omega[m] = 0.0;
     s->motor_domega[m] = 0.0;
+    s->wash_fast[m] = 0.0;
+    s->wash_slow[m] = 0.0;
   }
+  /* Any non zero constant seeds xorshift32; this one is arbitrary and fixed,
+   * which is the whole point. */
+  s->wash_seed = 0x9E3779B9u;
   s->pack_current = 0.0;
   s->vbat_load = s->cell_voltage_oc * PLANT.cells;
   s->step_index = 0;
@@ -410,6 +470,53 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     const double pitch_speed = (w < 60.0 ? 60.0 : w) * PLANT.k_inflow;
     const double mu = va / pitch_speed;
     double axial;
+    /*
+     * HOW DEEP THIS ROTOR IS IN ITS OWN WAKE, and the ratio it is measured
+     * against is the correction that made propwash reach the cases a pilot
+     * actually meets.
+     *
+     * The first version keyed it on the same mu the thrust loss uses, which
+     * is the axial speed over the PITCH speed. Pitch speed is 15 to 47 m/s
+     * depending on throttle, so at race throttle the wash needed 14 m/s of
+     * sink before it started and a dive pull out or a hard descending turn
+     * produced nothing at all. Measured: 0.3 deg/s of gyro in a 60 degree
+     * banked descent, which is silence.
+     *
+     * The textbook criterion is the descent rate against the rotor's own
+     * INDUCED velocity, v_h = sqrt(T / 2 rho A). Recirculation begins around
+     * a quarter of it, is worst where the descent rate matches it, and is
+     * gone past about twice it, where the windmill brake state is properly
+     * established. That ratio scales with thrust, which is exactly why it
+     * finds the felt cases: pulling out of a dive on the throttle, the sink
+     * is high AND v_h is high, and the two meet.
+     *
+     * The thrust LOSS above still keys on mu. The two criteria disagree and
+     * that is a known seam: the loss model is what checks 5 through 12 were
+     * measured against and is not being disturbed to improve the shake.
+     */
+    double wash_depth = 0.0;
+    {
+      const double t_ideal = PLANT.kt * w * w;
+      if (t_ideal > 1e-6 && va < 0.0) {
+        const double vh = sim_sqrt(t_ideal / (2.0 * PLANT.rho * 3.14159265358979323846 * PLANT.prop_r * PLANT.prop_r));
+        const double rw = -va / vh;
+        double d = 1.0 - sim_fabs(rw - 1.0);
+        if (d < 0.0) {
+          d = 0.0;
+        }
+        if (d > 1.0) {
+          d = 1.0;
+        }
+        wash_depth = d;
+        if (m == 0) {
+          PLANT_DBG_WASH_RATIO = rw;
+        }
+      }
+      if (m == 0) {
+        PLANT_DBG_WASH_DEPTH = wash_depth;
+        PLANT_DBG_VA = va;
+      }
+    }
     if (mu >= 0.0) {
       /* Climb and hover. Thrust falls as the craft chases its own wake, and
        * crosses zero when the axial speed reaches the pitch speed. */
@@ -459,6 +566,22 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     if (axial < 1.0) {
       const double depth = 1.0 - axial;
       axial += depth * PLANT_INFLOW_ASYM[m];
+    }
+    /*
+     * The unsteady half. The field runs every step regardless of where the
+     * craft is, so flying into the wash does not restart the turbulence, and
+     * it is APPLIED only in proportion to how deep this rotor is in it. Band
+     * passed 3 to 30 Hz: below that an I term simply trims it, above it the
+     * D term filter would eat it, and neither is what propwash feels like.
+     */
+    s->wash_fast[m] += PLANT_WASH_A_FAST * (plant_wash_noise(s) - s->wash_fast[m]);
+    s->wash_slow[m] += PLANT_WASH_A_SLOW * (s->wash_fast[m] - s->wash_slow[m]);
+    if (wash_depth > 0.0) {
+      const double wash = (s->wash_fast[m] - s->wash_slow[m]) / PLANT_WASH_RMS;
+      axial += axial * PLANT.k_propwash * wash_depth * wash;
+      if (axial < 0.0) {
+        axial = 0.0;
+      }
     }
     const double drag_mag = PLANT.kq * w_rel * (w_rel < 0.0 ? -w_rel : w_rel);
     const double i = (d * v_load - PLANT.ke * w) / PLANT.r_motor;

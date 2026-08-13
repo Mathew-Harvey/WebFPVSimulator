@@ -3846,3 +3846,121 @@ caught any of this. Console clean on both maps. npm run lint:presets 2 of 2.
 - Rotor drag applied at the rotor plane rather than at CG height, for the
   nose up push as speed builds. Cheap.
 - Everything else from the round 17 review, unchanged.
+
+## Round 20: propwash, and a dead performance readout that had never worked
+
+The owner: "the performance read out isn't working, whats the next thing we
+can do to make it feel more real".
+
+### The readout had never worked, and the bug is one word
+
+`index.html` styles `.readout` with `display: none`. `setReadout` did
+
+    this.readout.style.display = this.settings.readout ? '' : 'none';
+
+and `''` REMOVES the inline declaration, which hands the element back to the
+stylesheet rule, which is `display: none`. So the setting toggled, the text
+was computed and written into the element every frame, and nothing was ever
+visible. `'block'` instead of `''`. Confirmed in the page: display block, and
+the frame rate, draw calls, triangle count and the new stick rate line all
+render.
+
+This is why the stick rate measurement from round 19 could not be read. It
+can now.
+
+### Propwash
+
+The plant had a vortex ring model that removed thrust correctly and a per
+motor asymmetry, `PLANT_INFLOW_ASYM`, that was FIXED. A constant disturbance
+is exactly what an I term is for, so it was trimmed out inside a second:
+measured in a 12.7 m/s descent at 0.04 deg/s of gyro. Recirculating flow is
+unsteady and none of that was modelled.
+
+There is a turbulence field now: one band limited channel per rotor, 3 to
+30 Hz, which is where a five inch quad's propwash lives. Below that band an I
+term simply trims it and above it the D term filter eats it, so neither end
+is what a pilot feels. It runs every step whether the craft is in the wash or
+not, so flying into it does not restart it, and it is applied scaled by how
+deep each rotor is in its own wake. The four channels are independent, so the
+disturbance is a torque as well as a thrust wobble, which is why it reads as
+shake rather than as sink.
+
+Deterministic by construction: xorshift32 on a seed carried in `SimState` and
+reset with everything else. Integer operations only, no host RNG, no float
+hashing. The hash moved to **da9f48460f62** and is identical in Node, headless
+Chrome and all four render rates.
+
+### The gate was wrong first, and the fix is the textbook criterion
+
+The first version keyed the wash on the same `mu` the thrust loss uses, the
+axial speed over the PITCH speed. Pitch speed is 15 to 47 m/s depending on
+throttle, so at race throttle the wash needed 14 m/s of sink before it
+started, and a dive pull out or a hard descending turn produced nothing.
+
+The right ratio is the descent rate against the rotor's own INDUCED velocity,
+`v_h = sqrt(T / 2 rho A)`: recirculation begins near a quarter of it, is worst
+where the descent rate matches it, and is gone past about twice it, where the
+windmill brake state is established. That ratio scales with thrust, which is
+why it finds the cases a pilot meets.
+
+The thrust LOSS still keys on mu. The two criteria disagree, which is a known
+seam recorded at the code: the loss model is what checks 5 through 12 were
+measured against and it is not being disturbed to improve the shake.
+
+### Measured, and the shape is the point
+
+Settled descents, tracking error being gyro against what the sticks asked
+for, so a commanded rate is not counted as a disturbance:
+
+| descent | ratio to induced velocity | wash depth | tracking error, before -> after |
+|---|---|---|---|
+| -0.9 m/s | 0.13 | 0.13 | 0.0 -> 4.5 deg/s |
+| -3.8 m/s | 0.63 | 0.63 | 0.0 -> **20.7 deg/s** |
+| -11.6 m/s | 2.50 | 0.04 | 0.1 -> 2.2 deg/s |
+| -15.6 m/s | 4.83 | 0.00 | 0.0 -> 0.0 deg/s |
+
+That bell is the whole point and it is what pilots report: the shake is worst
+in a moderate descent and a fast vertical drop is smooth again, because by
+then the rotor is in a clean windmill brake rather than eating its own wake.
+A throttle chop from cruise touches depth 1.00 transiently.
+
+Hover, climb and punch cannot see it by construction, because the gate needs
+a descent: hover throttle 0.2051, punch 82.1 m, terminal 31.3 m/s and motor
+step 18 ms are all unchanged to the digit.
+
+### Three wrong measurements before a right one, and the fix for that
+
+- The first dive pull out probe measured total gyro, which is 193 deg/s of
+  COMMANDED pitch rate, and read identical on a build with no propwash at
+  all. Measuring the manoeuvre, not the disturbance.
+- The second measured tracking error but averaged over a window that began
+  with its own setup's climb out, so the mean axial velocity came out
+  POSITIVE, meaning climbing, in every case labelled a descent.
+- The third assumed a 60 degree banked turn descends through its own wake. It
+  does not: a banked craft translating fast has its disc tilted into clean
+  air, which is translational lift, and the model was right to stay quiet.
+
+Having guessed three times, `PLANT_DBG_WASH_DEPTH`, `_RATIO` and `_VA` were
+added and exported through `sim_bf_debug` 46 to 48. The table above came from
+those taps and the gate bug was visible in one run. They stay.
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 the same disputed red at -0.09 deg.
+Checks 5, 6, 7, 8, 11 identical. Check 9 rate tracking 669.6 to 670.5 deg/s
+and check 12 ratio 1.2546 to 1.2534, both moved by the wash a rolling craft
+now picks up, both well inside tolerance and check 12 closer to target than
+before. Determinism hash **da9f48460f62**, identical across Node, headless
+Chrome and four render rates. Console clean.
+
+### Owed
+
+- The two wash criteria, mu for the thrust loss and v_h for the shake, should
+  become one. That means re-deriving the loss model on v_h and re-measuring
+  checks 5 through 12 against it.
+- `k_propwash` 0.60 is a thrust fraction at full depth, set so the worst case
+  lands at 20.7 deg/s of tracking error, which is inside the 10 to 40 deg/s a
+  well tuned race quad shows. It is the one number here chosen by outcome
+  rather than derived.
+- WebHID, unchanged from round 19, and now readable: the stick rate is on
+  screen.

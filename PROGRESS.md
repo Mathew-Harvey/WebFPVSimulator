@@ -2694,3 +2694,45 @@ match the fetched count.
 5. The landing gates: the owner's descent crash at 3.83 m/s was judged
    correctly under the 2.0 m/s rule, but round 12's argument that 2.0 is 30
    to 50 percent strict for grass now has a user report behind it.
+
+## Round 16b: every second spent parked became a second of stick lag
+
+The owner's next report, straight after the takeoff fix shipped: one to two
+seconds of lag on ALL stick input, unflyable. It is a clock skew, it was
+sitting under the takeoff bug the whole time, and the takeoff fix is what
+made it reachable.
+
+**The mechanism.** simTimeMs is the LAP clock and deliberately keeps running
+while the craft sits landed with the integrator frozen; the sim's own
+step_index does not. The RC resample grid stamped every stick sample with
+the lap clock, and sim_step consumes a sample only when step_index reaches
+its timestamp, so samples queued after any parked period sat that far in the
+sim's future. The lag equals the total time between entering flight and
+pushing the throttle up, plus every later perch. Nobody could feel it before
+this round because at 60 fps every takeoff crashed and the crash reset
+re-zeroed both clocks; the moment takeoffs worked, the skew became the
+flight experience.
+
+**Measured, frame loop replica against the real sim.wasm at 60 fps.** Park
+3.0 s then ramp the throttle: the controller sees the throttle 3,150 ms of
+sim time after the stick moved. Park 6.0 s: 6,150 ms. The lag IS the parked
+time. Two proxy mistakes on the way are part of the record: a motor
+response threshold of 300, and then 1200, both fired at 17 ms in BOTH
+wirings, because the state block publishes RPM, not rad/s, and airmode
+idles the motors at about 2,435 RPM the moment the integrator runs. The
+threshold that separates idle from a throttle response is 6,000 RPM.
+
+**The fix.** A new simStepMs counter mirrors step_index: it advances only
+when the integrator steps, and it is the only timebase the RC grid touches:
+the fill loop, the takeoff re-pin and the landed-branch pin all ride it.
+simTimeMs keeps every other job it had: the lap clock, airtime, and the
+city's crossing, which must keep moving while the craft sits parked.
+
+**Verified.** Replica: throttle seen 17 ms after the stick at both parked
+durations. In page: 15 parked frames, then the craft responds within 4
+frames of the stick and climbs to 0.65 m, console clean. npm run verify
+after the change: 15 of 16, yaw-coupling the one red, determinism hash
+3fdde8bd11da unchanged; the harness drives the sim directly and never
+touches the shell's clocks, which is why no check could ever have caught
+this. A check that could is worth designing: drive the real page, park,
+then measure stick-to-response in sim time.

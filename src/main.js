@@ -255,6 +255,21 @@ export async function boot({ loading, bootStart, mapId }) {
 
   let mode = 'title'; /* title, flight, paused, results */
   let simTimeMs = 0;
+  /*
+   * Milliseconds the INTEGRATOR has actually stepped since reset: a mirror
+   * of the module's own step_index, and the only valid timebase for input
+   * timestamps. simTimeMs is the LAP clock and keeps running while the
+   * craft sits landed with the integrator frozen, so the two diverge by
+   * exactly the time spent parked. Stamping stick samples with the lap
+   * clock put them that far into the sim's future, and sim_step consumes a
+   * sample only when step_index reaches its timestamp, so every second on
+   * the pad became a second of stick lag for the whole rest of the run.
+   * The owner reported it as 1 to 2 seconds of input lag, unflyable, and
+   * it was: the lag equalled the time between entering flight and pushing
+   * the throttle up. Invisible before the takeoff fix, because at 60 fps
+   * every takeoff crashed and the crash reset re-zeroed both clocks.
+   */
+  let simStepMs = 0;
   let acc = 0;
   let lastTs = 0;
   let rcNextMs = 0;
@@ -358,6 +373,7 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.reset();
     sim.setCellVoltage(runVoltage);
     simTimeMs = 0;
+    simStepMs = 0;
     acc = 0;
     lastTs = 0;
     rcNextMs = 0;
@@ -396,6 +412,7 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.reset();
     sim.setCellVoltage(runVoltage);
     simTimeMs = 0;
+    simStepMs = 0;
     acc = 0;
     lastTs = 0;
     rcNextMs = 0;
@@ -700,14 +717,16 @@ export async function boot({ loading, bootStart, mapId }) {
       if (!launched && thr > 0.05) {
         launched = true;
       } else if (landed && thr > TAKEOFF_THROTTLE) {
-        /* Off again. The RC frame grid is pulled up to the clock first: the
-         * lap clock kept running while the craft sat there, and without this
-         * the resample loop would fire a burst of stick samples to catch up
-         * and the controller would see a spike of stale input. */
+        /* Off again. The RC frame grid rides the SIM's own clock, which
+         * froze with the integrator, so it is already seated; this re-pin
+         * is belt and braces against any future path that moves rcNextMs
+         * while the craft is down. Stamping the grid from the lap clock
+         * here is the bug that made every second spent parked into a
+         * second of stick lag. */
         landed = false;
         takingOff = true;
-        rcNextMs = simTimeMs;
-        lastTs = simTimeMs / 1000;
+        rcNextMs = simStepMs;
+        lastTs = simStepMs / 1000;
         if (typeof audio.event === 'function') {
           audio.event('takeoff');
         }
@@ -727,7 +746,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * interval directly. */
       const latest = samples.length ? samples[samples.length - 1] : input.channels;
       const framePeriod = 1000 / RC_HZ;
-      while (rcNextMs < simTimeMs + steps) {
+      while (rcNextMs < simStepMs + steps) {
         let ts = rcNextMs / 1000;
         if (ts < lastTs) {
           ts = lastTs;
@@ -746,6 +765,7 @@ export async function boot({ loading, bootStart, mapId }) {
         sim.step(1);
         stateCurr = readState();
         simTimeMs += steps;
+        simStepMs += steps;
       }
       /*
        * Ground contact, and whether it is a landing or a crash. This is the
@@ -959,7 +979,7 @@ export async function boot({ loading, bootStart, mapId }) {
         steps = 100;
       }
       simTimeMs += steps;
-      rcNextMs = simTimeMs;
+      rcNextMs = simStepMs;
       statePrev = stateCurr;
     } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1400) {
       /* Short lockout, then back on the line. The lap is gone, the run is

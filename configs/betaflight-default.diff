@@ -1,0 +1,161 @@
+# diff
+# Betaflight / SITL (SITL) 4.5.1
+#
+# THE DEFAULT BETAFLIGHT TUNE.
+#
+# Every PID, filter and rate value below is Betaflight 4.5.1's own factory
+# default, which is what a freshly flashed 5 inch quad flies before anyone
+# touches it. It is here as the reference point: fly this, then fly
+# karate-race.diff, and the difference between them is entirely the tune.
+#
+# Provenance: the values are the ones in
+# betaflight/firmware-presets presets/4.5/tune/defaults.txt and
+# presets/4.5/filters/defaults.txt, which are the official statements of
+# what 4.5 defaults are. They are written out in full rather than left
+# implicit so this file can be diffed against the vendored firmware.
+#
+# Rates are Betaflight's own defaults too: ACTUAL, centre sensitivity 70
+# deg/s, 670 deg/s maximum, no expo. Slower and more linear than either
+# race or freestyle rates, and deliberately so.
+#
+# Airframe: the reference 5 inch of STAGE1.md, 6S, 1900 kV, 0.65 kg. The
+# airframe keys are read by the plant, not by Betaflight.
+
+batch start
+
+board_name SITL
+
+# ---- master ----
+
+set motor_kv = 1900
+set motor_poles = 14
+set vbat_max_cell_voltage = 420
+set vbat_min_cell_voltage = 350
+set vbat_warning_cell_voltage = 350
+set battery_capacity = 1300
+set small_angle = 180
+
+# Filters, 4.5 defaults
+set gyro_hardware_lpf = NORMAL
+set gyro_lpf1_type = PT1
+set gyro_lpf1_static_hz = 250
+set gyro_lpf2_type = PT1
+set gyro_lpf2_static_hz = 500
+set gyro_notch1_hz = 0
+set gyro_notch1_cutoff = 0
+set gyro_notch2_hz = 0
+set gyro_notch2_cutoff = 0
+set gyro_lpf1_dyn_min_hz = 250
+set gyro_lpf1_dyn_max_hz = 500
+set gyro_lpf1_dyn_expo = 5
+set simplified_gyro_filter = ON
+set simplified_gyro_filter_multiplier = 100
+
+set dyn_notch_count = 3
+set dyn_notch_q = 300
+set dyn_notch_min_hz = 100
+set dyn_notch_max_hz = 600
+
+set yaw_spin_recovery = AUTO
+set dshot_idle_value = 550
+set mixer_type = LEGACY
+set yaw_motors_reversed = OFF
+
+# ---- profile 0 ----
+profile 0
+
+set pid_at_min_throttle = ON
+set anti_gravity_gain = 80
+set anti_gravity_cutoff_hz = 5
+set anti_gravity_p_gain = 100
+set acc_limit_yaw = 0
+set acc_limit = 0
+
+set iterm_rotation = OFF
+set iterm_relax = RP
+set iterm_relax_type = SETPOINT
+set iterm_relax_cutoff = 15
+set iterm_windup = 85
+set iterm_limit = 400
+set pidsum_limit = 500
+set pidsum_limit_yaw = 400
+
+set throttle_boost = 5
+set throttle_boost_cutoff = 15
+
+set p_roll = 45
+set i_roll = 80
+set d_roll = 40
+set f_roll = 120
+set p_pitch = 47
+set i_pitch = 84
+set d_pitch = 46
+set f_pitch = 125
+set p_yaw = 45
+set i_yaw = 80
+set d_yaw = 0
+set f_yaw = 120
+
+set d_min_roll = 30
+set d_min_pitch = 34
+set d_min_yaw = 0
+set d_max_gain = 37
+set d_max_advance = 20
+
+set abs_control_gain = 0
+set use_integrated_yaw = OFF
+
+set thrust_linear = 0
+set transient_throttle_limit = 0
+set feedforward_transition = 0
+set feedforward_max_rate_limit = 90
+
+set dyn_idle_min_rpm = 0
+
+set simplified_pids_mode = RPY
+set simplified_master_multiplier = 100
+set simplified_i_gain = 100
+set simplified_d_gain = 100
+set simplified_pi_gain = 100
+set simplified_dmax_gain = 100
+set simplified_feedforward_gain = 100
+set simplified_pitch_d_gain = 100
+set simplified_pitch_pi_gain = 100
+
+set tpa_mode = D
+set tpa_rate = 65
+set tpa_breakpoint = 1350
+set tpa_low_rate = 20
+set tpa_low_breakpoint = 1050
+set tpa_low_always = OFF
+
+set dterm_lpf1_dyn_min_hz = 75
+set dterm_lpf1_dyn_max_hz = 150
+set dterm_lpf1_dyn_expo = 5
+set dterm_lpf1_type = PT1
+set dterm_lpf1_static_hz = 75
+set dterm_lpf2_type = PT1
+set dterm_lpf2_static_hz = 150
+set dterm_notch_hz = 0
+set dterm_notch_cutoff = 0
+set yaw_lowpass_hz = 100
+set simplified_dterm_filter = ON
+set simplified_dterm_filter_multiplier = 100
+
+# ---- rateprofile 0 ----
+rateprofile 0
+
+set rates_type = ACTUAL
+set roll_rc_rate = 7
+set pitch_rc_rate = 7
+set yaw_rc_rate = 7
+set roll_expo = 0
+set pitch_expo = 0
+set yaw_expo = 0
+set roll_srate = 67
+set pitch_srate = 67
+set yaw_srate = 67
+set thr_mid = 50
+set thr_expo = 0
+
+batch end

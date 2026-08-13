@@ -20,6 +20,15 @@ batch start
 board_name SITL
 
 # master
+#
+# These three lines did nothing at all until the config shim was rebuilt:
+# the old shim recognised 25 keys and returned success for every other
+# line. Two of them are live now. gyro_lpf1_static_hz is still inert, and
+# for a Betaflight reason rather than a simulator one: gyro_lpf1_dyn_min_hz
+# defaults to 250, and gyroInitFilters prefers the dynamic minimum whenever
+# it is non zero, so lpf1 runs as a 250 to 500 Hz dynamic filter and the
+# static value is never read. dyn_notch_count is inert here because
+# Betaflight itself undefines USE_DYN_NOTCH_FILTER on a SIMULATOR_BUILD.
 set gyro_lpf1_static_hz = 250
 set gyro_lpf2_static_hz = 500
 set dyn_notch_count = 0

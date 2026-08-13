@@ -68,7 +68,12 @@ SIM_SRC="src/native/sim.c src/native/plant.c src/native/bridge.c src/native/libm
 BF_INC="-I vendor/betaflight/src/main/target/SITL -I vendor/betaflight/src/main -DSIMULATOR_BUILD"
 BF_SRC="
   src/native/bf/bf_glue.c
+  src/native/bf/bf_settings.c
   src/native/bf/bf_stubs.c
+  vendor/betaflight/src/main/sensors/gyro.c
+  vendor/betaflight/src/main/sensors/gyro_init.c
+  vendor/betaflight/src/main/sensors/boardalignment.c
+  vendor/betaflight/src/main/config/simplified_tuning.c
   vendor/betaflight/src/main/fc/rc.c
   vendor/betaflight/src/main/fc/rc_controls.c
   vendor/betaflight/src/main/fc/rc_modes.c

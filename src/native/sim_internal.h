@@ -50,9 +50,12 @@ typedef struct {
   double cda_front;  /* drag area front, m^2, along body x */
   double cda_side;   /* drag area side, m^2, along body y */
   double rho;        /* air density */
-  double k_inflow;   /* thrust loss per unit axial inflow per unit prop speed,
-                      * N s / (m rad). Applied to the rotational part of the
-                      * inflow only; see plant.c. */
+  double k_inflow;   /* prop pitch radius, metres per radian: the prop's
+                      * geometric pitch over 2 pi. A rotor at omega has a
+                      * pitch speed of omega times this, and thrust scales
+                      * with (1 - axial speed / pitch speed). The name is
+                      * historical, from when this was a thrust loss
+                      * coefficient; plant.c says so at the constant. */
 } PlantParams;
 
 typedef struct {
@@ -128,6 +131,9 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
 void bf_config_begin(void);
 int bf_config_apply_setting(const char *key, const char *value, double num,
                             int have_num);
+/* One non-"set" CLI line, tokenised to its first two words. This is how
+ * `simplified_tuning apply` reaches Betaflight's own slider tuning. */
+int bf_config_apply_command(const char *word0, const char *word1);
 int bf_config_finish(void);
 
 #endif /* SIM_INTERNAL_H */

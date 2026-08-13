@@ -101,6 +101,43 @@ int bridge_parse_config(const unsigned char *diff_utf8, int len) {
           return rc;
         }
       }
+    } else if (j - k > 0) {
+      /*
+       * A CLI line that is not "set". Published Betaflight presets end
+       * their PID section with `simplified_tuning apply`, which is a
+       * command rather than a setting, and a diff also carries batch,
+       * board_name, feature, profile and rateprofile lines. Both words
+       * are tokenised and handed to the glue, which decides. Ignoring
+       * this line class is what made the Karate presets silently flat:
+       * every slider was stored and nothing ever applied them.
+       */
+      char w0[64];
+      char w1[64];
+      int wi = 0;
+      while (k < j && diff_utf8[k] != ' ' && diff_utf8[k] != '\t' &&
+             diff_utf8[k] != '\r' && wi < 63) {
+        w0[wi] = (char)diff_utf8[k];
+        wi += 1;
+        k += 1;
+      }
+      w0[wi] = 0;
+      while (k < j && (diff_utf8[k] == ' ' || diff_utf8[k] == '\t')) {
+        k += 1;
+      }
+      wi = 0;
+      while (k < j && diff_utf8[k] != ' ' && diff_utf8[k] != '\t' &&
+             diff_utf8[k] != '\r' && wi < 63) {
+        w1[wi] = (char)diff_utf8[k];
+        wi += 1;
+        k += 1;
+      }
+      w1[wi] = 0;
+      if (w0[0] != 0 && w0[0] != '#') {
+        const int rc = bf_config_apply_command(w0, w1);
+        if (rc != SIM_OK) {
+          return rc;
+        }
+      }
     }
     i = j + 1;
   }

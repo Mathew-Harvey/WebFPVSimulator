@@ -47,6 +47,7 @@ import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, 
 import { Ui } from './ui/ui.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
+import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -191,10 +192,20 @@ export async function boot({ loading, bootStart, mapId }) {
   const sim = await loadSim(await fetchBytes('/dist/sim.wasm', (f, got, total) => {
     loading.progress('sim', f, `${(got / 1024).toFixed(0)} of ${(total / 1024).toFixed(0)} kB`);
   }));
-  let configName = 'freestyle.diff';
-  let configText = new TextDecoder().decode(await fetchBytes('/configs/freestyle.diff'));
+  /*
+   * The flight controller comes entirely from a Betaflight diff, so which
+   * diff is chosen IS the tune. The choice is a setting; the boot path and
+   * the menu path load it the same way, and a stored id that no longer
+   * exists falls back to the first tune rather than failing to boot.
+   */
+  let configId = tuneById(ui.settings.tune).id;
+  /* What the Tune menu item last asked for, which is not the same question
+   * as what is loaded: a dropped file changes the second and not the first. */
+  let menuTune = ui.settings.tune;
+  let configName = `${configId}.diff`;
+  let configText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
   if (sim.init(configText) !== SIM_OK) {
-    throw new Error('sim_init failed on the default config');
+    throw new Error(`sim_init failed on ${configName}`);
   }
   loading.done('sim');
   loading.detail = '';
@@ -527,10 +538,57 @@ export async function boot({ loading, bootStart, mapId }) {
     if (s.map !== view.id) {
       swapMap(s.map);
     }
+    /*
+     * Only a MOVE of the Tune item swaps the tune. Comparing against what
+     * is loaded instead would undo a dropped diff the next time the pilot
+     * changed the volume, because a dropped file is not a registry tune.
+     */
+    if (s.tune !== menuTune) {
+      menuTune = s.tune;
+      swapTune(s.tune);
+    }
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
     ui.setReadout('');
+  }
+
+  /*
+   * Load a different tune. Same path a dropped file takes: fetch the diff,
+   * hand the text to sim_init, and reset. A failed fetch or a diff the
+   * module rejects puts the old tune back rather than leaving the shell
+   * flying something nobody chose, and says so.
+   */
+  async function swapTune(id) {
+    const entry = tuneById(id);
+    if (entry.id === configId) {
+      return;
+    }
+    let text;
+    try {
+      text = new TextDecoder().decode(await fetchBytes(tunePath(entry.id)));
+    } catch (e) {
+      ui.settings.tune = configId;
+      notice = { text: `${entry.name} could not be loaded.`, untilMs: performance.now() + 3200 };
+      console.error(e);
+      return;
+    }
+    const code = sim.init(text);
+    if (code !== SIM_OK) {
+      ui.settings.tune = configId;
+      sim.init(configText);
+      reset();
+      notice = { text: `${entry.name} could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
+      return;
+    }
+    configId = entry.id;
+    configText = text;
+    configName = `${entry.id}.diff`;
+    sim.setCellVoltage(runVoltage);
+    race.setRecordKey(recordKey());
+    ui.setBest(race.bestMs, view.mode);
+    notice = { text: `Flying ${entry.name}`, untilMs: performance.now() + 2400 };
+    reset();
   }
 
   ui.onSettings = applySettings;
@@ -640,6 +698,8 @@ export async function boot({ loading, bootStart, mapId }) {
     if (code === SIM_OK) {
       configText = text;
       configName = file.name;
+      /* A dropped diff is not one of the registry tunes any more. */
+      configId = '';
       race.setRecordKey(recordKey());
       ui.setBest(race.bestMs, view.mode);
       notice = { text: `Flying ${configName}`, untilMs: performance.now() + 2400 };
@@ -1391,6 +1451,30 @@ export async function boot({ loading, bootStart, mapId }) {
     bestLapMs: race.bestLapMs ? race.bestLapMs() : null,
     bestThreeMs: race.bestThreeMs ? race.bestThreeMs() : null,
   });
+  /*
+   * Which tune the module is actually running, read back from the module
+   * rather than from the menu, plus the config coverage counters from
+   * sim_bf_debug. A tune that is selected and not loaded, or loaded and
+   * silently ignored, is the failure this exposes; scripts/preset-lint.js
+   * asserts the same numbers headless. Harness only.
+   */
+  window.__tune = () => ({
+    id: configId,
+    name: configName,
+    menu: ui.settings.tune,
+    offered: TUNES.map((t) => t.id),
+    applied: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(13) : null,
+    inert: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(14) : null,
+    unknown: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(15) : null,
+    pRoll: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(17) : null,
+    dMaxRoll: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(21) : null,
+    tpaRate: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(22) : null,
+    rollSrate: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(42) : null,
+  });
+  window.__setTune = (id) => {
+    ui.settings.tune = id;
+    applySettings(ui.settings);
+  };
   window.__boot = () => ({
     firstFrameMs,
     worstBlockMs,

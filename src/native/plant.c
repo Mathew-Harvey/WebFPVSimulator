@@ -345,12 +345,16 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * centres, the thing pilots call snap back.
    *
    * Roll and pitch: rotating the airframe moves each motor up or down, so
-   * each prop sees a different axial inflow and its thrust changes by
-   * -k_inflow * prop speed * axial velocity. The rising side loses thrust
-   * and the falling side gains it, which opposes the rotation. Only the
-   * rotational part of the inflow is used; the common mode part (thrust
-   * loss in a fast climb) is the axial flight effect STAGE1.md defers to
-   * Stage 2 and would collide with the terminal velocity check.
+   * each prop sees a different axial inflow and loses or gains thrust with
+   * it. The rising side loses and the falling side gains, which opposes
+   * the rotation. This paragraph used to claim only the ROTATIONAL part of
+   * the inflow was used and that the common mode part was deferred; the
+   * code below has not worked that way since the advance ratio model
+   * landed. The axial speed each rotor sees is the craft's own body z
+   * velocity PLUS the rotational part, so a fast climb loses thrust and a
+   * descent gains it, which is where the vortex ring branch comes from.
+   * The stale comment is recorded rather than deleted because a reader who
+   * believed it would misread the whole block.
    *
    * Yaw: a prop's aerodynamic drag depends on its speed relative to the
    * air, so a body yaw rate adds to one rotation pair and subtracts from

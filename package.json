@@ -13,6 +13,7 @@
     "build:wasm": "bash scripts/build-wasm.sh",
     "gen:baseline": "node tests/gen/gen-baseline.js",
     "serve": "node scripts/serve.js",
-    "gates": "node scripts/gates.js"
+    "gates": "node scripts/gates.js",
+    "lint:presets": "node scripts/preset-lint.js"
   }
 }

@@ -37,6 +37,7 @@
  */
 
 import { MAPS } from '../maps/registry.js';
+import { TUNES, tuneById } from '../../configs/registry.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -55,6 +56,11 @@ const DEFAULTS = {
    * throwing, because a stale localStorage entry must not be able to stop the
    * page booting. */
   map: 'field',
+  /* Which Betaflight diff the module is initialised from. A string for the
+   * same reason map is: loadSettings only accepts a stored key whose typeof
+   * matches the default, and an unknown id falls back to the first tune in
+   * configs/registry.js rather than throwing. */
+  tune: 'freestyle',
   cameraAngle: 30,
   cameraFov: 100,
   packVoltage: 4.2,
@@ -275,6 +281,19 @@ export class Ui {
             s.map = MAPS[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
           },
         },
+        {
+          label: 'Tune',
+          value: tuneById(s.tune).name,
+          note: tuneById(s.tune).note,
+          /* The whole flight controller comes from this file, so changing
+           * it re-inits the module and resets the craft. Next to Map
+           * because after the world it is the biggest choice there is. */
+          adjust: (d) => {
+            const i = TUNES.findIndex((x) => x.id === s.tune);
+            const n = TUNES.length;
+            s.tune = TUNES[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
+          },
+        },
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
       ];
@@ -358,6 +377,19 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume' },
         { label: 'Restart run', action: 'restart' },
+        {
+          label: 'Tune',
+          value: tuneById(s.tune).name,
+          note: tuneById(s.tune).note,
+          /* The whole flight controller comes from this file, so changing
+           * it re-inits the module and resets the craft. Next to Map
+           * because after the world it is the biggest choice there is. */
+          adjust: (d) => {
+            const i = TUNES.findIndex((x) => x.id === s.tune);
+            const n = TUNES.length;
+            s.tune = TUNES[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
+          },
+        },
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
         { label: 'Quit to title', action: 'title' },

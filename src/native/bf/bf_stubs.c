@@ -31,6 +31,8 @@
 #include "fc/core.h"
 #include "flight/failsafe.h"
 #include "flight/imu.h"
+#include "io/beeper.h"
+#include "scheduler/scheduler.h"
 #include "rx/rx.h"
 #include "sensors/acceleration.h"
 #include "sensors/battery.h"
@@ -49,11 +51,7 @@ const lowVoltageCutoff_t *getLowVoltageCutoff(void) {
   return &cutoff;
 }
 
-bool gyroYawSpinDetected(void) { return false; }
-
 void imuQuaternionHeadfreeTransformVectorEarthToBody(t_fp_vector_def *v) { (void)v; }
-
-void initYawSpinRecovery(int maxYawRate) { (void)maxYawRate; }
 
 bool isLaunchControlActive(void) { return false; }
 
@@ -78,13 +76,20 @@ batteryConfig_t batteryConfig_System;
 uint16_t sim_bf_sag_cell_cv = 420;
 uint16_t getBatterySagCellVoltage(void) { return sim_bf_sag_cell_cv; }
 
-/* Dynamic gyro lpf and dshot command plumbing, absent in the sim. */
-float dynThrottle(float throttle) { return throttle; }
-void dynLpfGyroUpdate(float throttle) { (void)throttle; }
+/* DShot command plumbing. The motor endpoints in bf_glue.c model a DShot
+ * ESC, so this agrees with them; every caller of it in the compiled set is
+ * a crashflip or failsafe path that never runs here.
+ * dynThrottle, dynLpfGyroUpdate, gyroOverflowDetected, gyroYawSpinDetected
+ * and initYawSpinRecovery used to be stubbed here and are now the real
+ * functions in sensors/gyro.c, which this build compiles. */
 void dshotSetPidLoopTime(uint32_t pidLoopTime) { (void)pidLoopTime; }
-bool isMotorProtocolDshot(void) { return false; }
+bool isMotorProtocolDshot(void) { return true; }
 
-bool gyroOverflowDetected(void) { return false; }
+/* Referenced by sensors/gyro.c's calibration and overflow paths, which
+ * this build compiles for its filter chain. The simulated gyro is never
+ * calibrated and never overflows, so neither ever sounds or reschedules. */
+void beeper(beeperMode_e mode) { (void)mode; }
+void schedulerResetTaskStatistics(taskId_e taskId) { (void)taskId; }
 
 /* Core state: always armed, airmode on, never crashed or disarming. */
 void disarm(flightLogDisarmReason_e reason) { (void)reason; }

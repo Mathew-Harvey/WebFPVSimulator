@@ -3028,3 +3028,230 @@ swept 0.1389 m, gate scale 1.1500, gate opening 1.7526 m square, grass 0.0300
 to 0.0900 m, city kerb 0.1350 m, doorway 2.0500 m, handrail 1.0600 m, crossing
 boom 1.2400 m, collider fit 613 fitted of 2731 with 275 side trims to 1.12 m
 and 15 top trims to 0.67 m.
+
+## Round 17: the flight controller was three quarters wired, and nobody could tell
+
+The owner's ask: a full review and tightening of the flying model, every
+Betaflight element present and operating correctly against the physics, then
+a default Betaflight tune and a Karate race tune for a 5 inch. Mid round:
+"it does feel pretty good now, be sure not to destroy that inadvertently."
+That second sentence set the acceptance test for everything below. The
+determinism hash moved, because the gyro filter chain is new; **every single
+flight number in checks 5 through 12 is byte identical to the round 16d
+table**, and the feel rig agrees.
+
+### The finding: a 25 key whitelist that reported success for everything else
+
+`bf_config_apply_setting` was a chain of 25 `strcmp`s ending in
+`return SIM_OK`. Every other `set` line in every diff was accepted and
+discarded. `configs/freestyle.diff` has been shipping
+`set gyro_lpf1_static_hz = 250`, `set dyn_notch_count = 0` and
+`set motor_kv = 1900` for the whole life of this project and none of them
+reached anything. Check 12 is the check that exists to catch a bad port, and
+it only ever varies `roll_srate`, so it passed throughout.
+
+This is not a small gap. It means **no tune preset could ever have worked**.
+`d_min_roll`, `d_max_gain`, `tpa_rate`, `tpa_breakpoint`, `iterm_relax_cutoff`,
+`iterm_limit`, `pidsum_limit_yaw`, `throttle_boost`, `thrust_linear`,
+`feedforward_*`, `anti_gravity_*`, every `dterm_lpf*`, every `gyro_lpf*`,
+`motor_output_limit`, `dshot_idle_value` and the whole `simplified_*` slider
+family were all silently inert.
+
+`src/native/bf/bf_settings.c` replaces it with a table of 163 keys built
+against the live parameter group structs. Every key is named by Betaflight's
+own `fc/parameter_names.h` macro where one exists, so an upstream rename is a
+compile error rather than a silent miss, and each key writes the field
+`cli/settings.c` writes for it. Three outcomes, and the difference is the
+point: APPLIED, INERT (real Betaflight, addresses a subsystem this build does
+not compile, listed by prefix with its reason) and UNKNOWN, which is counted
+and reported through `sim_bf_debug` rather than swallowed. Unknown is not a
+runtime error, because a pilot may drop a dump from a flight controller this
+simulator has never heard of and it must still fly.
+
+`npm run lint:presets` (`scripts/preset-lint.js`) drives every shipped diff
+through the real module and fails on any unrecognised key, on a preset that
+applies nothing, or on a count that does not add up to the file's own `set`
+lines. Today: freestyle 27 applied 6 inert 0 unknown, betaflight-default 99/9/0,
+karate-race 119/13/0.
+
+### Betaflight elements that were missing, now compiled in
+
+- **The entire gyro filter chain.** `gyro.gyroADCf` was written directly by
+  the glue, so lpf1, lpf2, the static notches and the dynamic lowpass did not
+  exist. `sensors/gyro.c`, `sensors/gyro_init.c` and
+  `sensors/boardalignment.c` are compiled now and the seam moved down to
+  where it belongs: a `readFn` that hands the firmware int16 counts at
+  `GYRO_SCALE_2000DPS`, which is exactly what Betaflight's own SITL target
+  does in `virtualGyroSet`. Everything above that, alignment, the downsample
+  into `sampleSum`, `filterGyro` and `dynLpfGyroUpdate`, is Betaflight's
+  compiled code. Five stubs (`gyroYawSpinDetected`, `gyroOverflowDetected`,
+  `initYawSpinRecovery`, `dynThrottle`, `dynLpfGyroUpdate`) were deleted
+  because the real functions now link.
+- **`config/simplified_tuning.c`**, and with it the `simplified_tuning apply`
+  CLI line. The published Karate presets are written entirely in sliders, so
+  without this they are a file of stored numbers that change nothing. The
+  diff parser now tokenises non-`set` lines and hands the first two words to
+  the glue, which is how the command reaches Betaflight's own code at the
+  point in the file where it appears, so lines below it still override.
+
+### Betaflight elements that were wired wrong
+
+- **TPA was driven twice, from the wrong throttle, at the wrong time.** The
+  glue called `pidUpdateTpaFactor(raw_stick)` immediately before
+  `pidController`. `mixTable` calls it too, from Betaflight's own scaled
+  throttle. On hardware `fc/core.c` runs rc, then PID, then mixer, so the TPA
+  factor the PID uses is one loop old and comes from the throttle AFTER
+  mid/expo and the throttle limit. The glue's call removed that lag and used
+  a different definition of throttle. Deleted; `mixTable` owns it, as
+  upstream does.
+- **`motorInitEndpoints` hardcoded a 5.5 percent idle** and ignored both
+  `dshot_idle_value` and `motor_output_limit`. It mirrors `drivers/dshot.c`
+  `dshotInitEndpoints` and `drivers/motor.c` `getDigitalIdleOffset` now, and
+  the duty handed to the plant is the DShot throttle fraction. Modelling
+  DShot rather than analogue PWM is deliberate: it is what a 5 inch race quad
+  runs and it is the only way the idle setting can mean anything.
+- **`vbat_sag_compensation` read a frozen 4.20 V.** `sim_bf_sag_cell_cv` was
+  declared and never written, so the compensation was a no-op whatever the
+  pack was doing. The glue feeds it the plant's pack voltage under load each
+  step now.
+- **`mixerConfig` and `pidConfig` were never reset to Betaflight defaults**,
+  they sat at their C zero initialisers. `mixer_type` came out LEGACY and
+  `yaw_motors_reversed` false by luck; `pid_process_denom` came out 0.
+  Both are reset properly now, and `bf_config_finish` forces
+  `pid_process_denom` back to 1 with the reason written down, because
+  CLAUDE.md fixes the loop at 1 kHz.
+
+### Betaflight elements that are absent, and why, stated rather than implied
+
+- **RPM filtering and dynamic idle.** `USE_RPM_FILTER` is not defined for any
+  target that does not set it, and `common_post.h` takes `USE_DYN_IDLE` with
+  it. Both would need real motor RPM fed back, which the plant has. They are
+  worth building the day gyro noise exists; today there is no resonance to
+  notch, so they would be ceremony.
+- **Dynamic notches.** Betaflight itself does `#undef USE_DYN_NOTCH_FILTER`
+  on any `SIMULATOR_BUILD` because the FFT wants CMSIS `arm_math.h`. Not our
+  choice and not fixable without vendoring an FFT.
+- **Gyro noise.** This is the real gap behind the two above, and it is the
+  honest limit on what a filter tune can mean here: the simulated gyro is
+  perfectly smooth, so the difference between the stock filter tune and the
+  Karate array is phase lag alone. Measured cost of adding the whole chain to
+  the default tune: roll rise to 63 percent 34 ms to 33, overshoot 3.1 percent
+  unchanged, settle 158 ms to 157. That is because the D term lowpass at 75 to
+  150 Hz owns the phase budget and a 250/500 Hz gyro pair adds little on top.
+
+### The two presets
+
+`configs/betaflight-default.diff` and `configs/karate-race.diff`, selectable
+from a Tune item on the title screen next to Map (`configs/registry.js`,
+mirroring `src/maps/registry.js`). `configs/freestyle.diff` stays the default
+so nothing the owner already likes changed by choosing not to choose.
+
+Karate Race 6S 5 inch is sugarK's, flattened in the order Betaflight's own
+preset system flattens it, from `betaflight/firmware-presets` at 4.5:
+`tune/defaults.txt`, `filters/defaults.txt`, `tune/karate/karate_race.txt`
+with only its CHECKED option taken, `rates/SugarK.txt` because a race tune on
+670 deg/s default rates is not a race setup, and
+`rc_link/generic/250hz_race.txt` because 250 Hz is the rate the shell samples
+sticks at. The sliders land through Betaflight's own code as roll P38 I81 D35
+Dmax21 F125 and pitch P41 I89 D40 Dmax23 F137, then the lines below the apply
+override TPA to 70/1250, iterm relax to 45, iterm limit to 500 and yaw pidsum
+to 1000. Read back live from the page after switching tunes through the menu.
+
+What the tune buys, measured on the same rig, against the Betaflight default:
+
+| | default | karate race |
+|---|---|---|
+| roll rise to 90 pct | 57 ms | **44 ms** |
+| roll stop to zero rate | 80 ms | **51 ms** |
+| yaw rise to 63 pct | 89 ms | **41 ms** |
+| roll overshoot | 3.1 pct | 14.1 pct |
+| max roll rate | 670 deg/s | 420 deg/s |
+
+That is a race tune doing what a race tune does, and it is the right lever for
+"locked in": real Betaflight tuning, not a fudged plant. The 14 percent
+overshoot is on an instantaneous full stick step, which no radio can produce,
+against a tune with feedforward boost 18 and D dropped from 30 to 21.
+
+### The plant: what the review measured, and the one thing NOT changed
+
+Every headline number lands where a real 6S 5 inch does. Static thrust to
+weight 9.24 to 1 computed from the compiled kt at full throttle RPM (the rig's
+6.19 reads lower because by then it is climbing at 13.6 m/s and paying the
+advance ratio). Punch 7.10 g peak, 82.1 m in 3 s, 31.3 m/s peak climb. Hover
+19.5 percent at 4.20 V rising to 23.6 at 3.50. Top speed 140 to 157 km/h.
+Hard brake from 30 m/s at a 45 degree flare: 1.07 s and 15.3 m. Motor tau 18
+to 27 ms depending on the step size.
+
+**The one soft spot is coasting.** Levelled at 30 m/s on hover throttle, speed
+halves in 2.24 s; from 20 m/s, 3.23 s. All of the model's drag is quadratic
+(`cda_front` 0.016 m squared), which is calibrated at the top end and
+therefore too slippery in the middle, where racing actually happens. The
+missing term is rotor drag, the H force a spinning disc produces moving
+edgewise, which is linear in speed and proportional to rotor speed and is the
+term the quadrotor literature adds to get accurate tracking.
+
+It is NOT added this round, deliberately. The coefficient cannot be closed
+honestly yet: the identified value from the literature (d approximately 0.30
+per second at hover RPM for a 0.6 kg quad) extrapolates to 23 N at 39 m/s,
+more than the entire quadratic term, and blade element theory says the induced
+part FALLS with speed rather than growing, so a pure linear term is wrong at
+race speed and any fade between them is a free knob. Adding it would also
+change every speed in the table, against an owner who has just said the feel
+is good. It is the top owed item with a derivation round of its own, and
+CLAUDE.md wants the advisor on it.
+
+**Propwash does not exist.** Descending at 12.7 m/s on 10 percent throttle the
+gyro reads 0.04 deg/s RMS. The vortex ring model takes thrust away correctly
+but `PLANT_INFLOW_ASYM` is a FIXED per motor offset, so the I term trims it
+out in under a second and there is no disturbance left. Real propwash is
+unsteady. STAGE1.md defers it to Stage 2 and it stays deferred, but it should
+be recorded as absent rather than as modelled.
+
+### Smaller things the review turned up
+
+- Two comments in `plant_step` contradicted each other about whether the
+  common mode axial inflow is used. It is, and has been since the advance
+  ratio model landed. The stale claim is corrected in place with a note
+  saying so, because a reader who believed it would misread the block.
+- `PlantParams.k_inflow` was still documented as a thrust loss coefficient in
+  `sim_internal.h`. It is the prop pitch radius, metres per radian.
+
+### Verify
+
+`npm run verify`: **15 of 16**, and check 10 yaw-coupling at -0.08 deg is the
+same known red as round 16d, unchanged in kind. Checks 5, 6, 7, 8, 9, 11 and
+12 read 0.2051, 82.1 m, 31.3 m/s, 18 ms, 669.4 deg/s, 10.15 percent and ratio
+1.2551, every one identical to the round 16d table. Determinism hash
+**92db7a6f2b15**, identical across Node, headless Chrome and all four render
+rates; it moved from 3fdde8bd11da because the gyro filter chain is genuinely
+in the loop now. Console clean. `npm run lint:presets`: 3 of 3.
+
+Tune switching driven through the real page: boot on freestyle (P45, Dmax30,
+TPA 65, srate 70), to Karate (P38, Dmax21, TPA 70, srate 42), to Betaflight
+default (P45, Dmax30, TPA 65, srate 67), zero console errors.
+
+### What went wrong on the way
+
+- The first link of `sensors/gyro.c` failed on six duplicate symbols, which
+  was the good news: every one was a stub this project had written for a
+  function Betaflight was willing to compile all along.
+- `GYRO_FILTER_DEBUG_SET` expands to `UNUSED(gyro.rawSensorDev->...)`, which
+  formally evaluates a dereference. `gyro.rawSensorDev` is set to
+  `&gyro.gyroSensor1.gyroDev` rather than left null, because relying on the
+  optimiser to drop a load through a null pointer is not a plan.
+- Fourteen `PARAM_NAME_*` macros do not exist upstream (`p_roll` and friends
+  are literal strings in `settings.c`). Caught at compile time, which is the
+  argument for using the macros where they do exist.
+- The first tune swap fired on any settings change, because it compared the
+  menu against what was loaded, and a dropped diff is not a registry tune: a
+  pilot who dropped their own file and then changed the volume would have had
+  it replaced. It compares against the last value the menu asked for now.
+
+### Owed next
+
+1. Rotor drag, with the derivation closed and the advisor run. Coasting is
+   the one measurement that does not read like a real quad.
+2. Gyro noise, which is what would make the filter half of a race preset mean
+   anything, and which unlocks RPM filtering and dynamic idle behind it.
+3. Unsteady propwash, once gyro noise exists to carry it.
+4. Check 10 yaw coupling, still below its floor at -0.08 deg.

@@ -4,15 +4,20 @@
  * target configuration.
  *
  * Everything with control feel in it is Betaflight's own compiled code:
- * updateRcCommands and processRcCommand (rc command handling and the
- * rates curves), pidController (PID, D term filtering, feedforward,
- * iterm relax, anti gravity, TPA), and mixTable (mixer and airmode).
- * This file only feeds the simulated gyro in, pushes stick samples into
- * rcData, applies parsed CLI diff values onto the real parameter group
- * structs, and reads the motor outputs back out. The few driver layer
- * symbols Betaflight expects (motor endpoint conversion, a handful of
- * externs that normally live in files we do not compile) are provided
- * here; that is the hardware abstraction seam STAGE1.md says to stub.
+ * gyroUpdate and gyroFiltering (the gyro filter chain, lpf1, lpf2, the
+ * static notches and the dynamic lpf), updateRcCommands and
+ * processRcCommand (rc command handling, the rates curves and rc
+ * smoothing), pidController (PID, D term filtering, feedforward, iterm
+ * relax, anti gravity, TPA, D max), mixTable (mixer, airmode, throttle
+ * boost, thrust linearisation) and applySimplifiedTuning (the slider
+ * tuning the published race presets are written in).
+ *
+ * This file only provides the hardware abstraction layer STAGE1.md says
+ * to stub: a gyro device read that returns the simulated body rates as
+ * 16 bit counts exactly as Betaflight's own SITL target does, the motor
+ * endpoint arithmetic that normally lives in drivers/dshot.c, and the
+ * battery sag reading. Config keys are applied by bf_settings.c against
+ * the real parameter group structs.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -32,12 +37,17 @@
 
 #include "platform.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "common/axis.h"
 #include "common/maths.h"
 #include "config/config.h"
 #include "config/feature.h"
+#include "drivers/accgyro/accgyro.h"
+#include "build/debug.h"
+#include "drivers/dshot.h"
+#include "drivers/dshot_command.h"
 #include "fc/controlrate_profile.h"
 #include "fc/rc.h"
 #include "fc/rc_controls.h"
@@ -51,14 +61,19 @@
 #include "pg/rx.h"
 #include "rx/rx.h"
 #include "sensors/gyro.h"
+#include "sensors/gyro_init.h"
 
 extern uint32_t sim_bf_now_ms;
+extern uint16_t sim_bf_sag_cell_cv;
 
 #include "../sim_abi.h"
 #include "../sim_internal.h"
+#include "bf_settings.h"
 
-/* Externs Betaflight expects from files we do not compile. */
-gyro_t gyro;
+/* Externs Betaflight expects from files we do not compile. gyro itself is
+ * no longer here: sensors/gyro.c defines it now, and defines it because
+ * this build compiles the real filter chain rather than writing filtered
+ * rates straight into gyroADCf. */
 float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 struct pidProfile_s *currentPidProfile;
 
@@ -67,20 +82,60 @@ struct pidProfile_s *currentPidProfile;
 extern void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig);
 extern void pgResetFn_rxConfig(rxConfig_t *rxConfig);
 extern void pgResetFn_motorConfig(motorConfig_t *motorConfig);
+extern void pgResetFn_mixerConfig(mixerConfig_t *mixerConfig);
+extern void pgResetFn_gyroConfig(gyroConfig_t *gyroConfig);
+extern const pidConfig_t pgResetTemplate_pidConfig;
 
-static int str_eq2(const char *a, const char *b) { return strcmp(a, b) == 0; }
+/*
+ * ---- The gyro device ----
+ *
+ * Betaflight's own SITL target hands its flight controller int16 counts at
+ * the 2000 deg/s full scale (target/SITL/sitl.c, virtualGyroSet), so the
+ * firmware sees the same quantisation a real 16 bit gyro gives it. This
+ * read function is that driver. Everything above it, the alignment, the
+ * downsample into gyro.sampleSum and the whole filter chain, is
+ * Betaflight's compiled code.
+ */
+static float g_gyro_dps[XYZ_AXIS_COUNT];
 
-/* Driver layer stubs: linear 1000 to 2000 endpoints, no dshot device. */
+static bool sim_gyro_read(gyroDev_t *dev) {
+  for (int a = 0; a < XYZ_AXIS_COUNT; a += 1) {
+    float counts = g_gyro_dps[a] / GYRO_SCALE_2000DPS;
+    if (counts > 32767.0f) {
+      counts = 32767.0f;
+    }
+    if (counts < -32768.0f) {
+      counts = -32768.0f;
+    }
+    dev->gyroADCRaw[a] = (int16_t)lrintf(counts);
+  }
+  return true;
+}
+
+/*
+ * ---- The motor driver ----
+ *
+ * Mirrors drivers/dshot.c dshotInitEndpoints and drivers/motor.c
+ * getDigitalIdleOffset, which is what a DShot ESC does with
+ * motor_output_limit and dshot_idle_value. Modelling DShot rather than
+ * analogue PWM is deliberate: it is what a 5 inch race quad runs, and it
+ * is the only way `set dshot_idle_value` in a preset can mean anything.
+ * The previous version hardcoded a 5.5 percent idle and ignored both
+ * settings.
+ */
+float getDigitalIdleOffset(const motorConfig_t *motorConfig) {
+  return CONVERT_PARAMETER_TO_PERCENT(motorConfig->digitalIdleOffsetValue * 0.01f);
+}
+
 void motorInitEndpoints(const motorConfig_t *motorConfig, float outputLimit,
                         float *outputLow, float *outputHigh, float *disarm,
                         float *deadbandMotor3DHigh, float *deadbandMotor3DLow) {
-  (void)motorConfig;
-  const float low = 1000.0f + 1000.0f * 0.055f * 0.0f; /* idle handled by dynIdle off */
-  *outputLow = low + (2000.0f - low) * 0.055f;
-  *outputHigh = 2000.0f * outputLimit;
-  *disarm = 1000.0f;
-  *deadbandMotor3DHigh = 1500.0f;
-  *deadbandMotor3DLow = 1500.0f;
+  const float outputLimitOffset = DSHOT_RANGE * (1.0f - outputLimit);
+  *disarm = DSHOT_CMD_MOTOR_STOP;
+  *outputLow = DSHOT_MIN_THROTTLE + getDigitalIdleOffset(motorConfig) * DSHOT_RANGE;
+  *outputHigh = DSHOT_MAX_THROTTLE - outputLimitOffset;
+  *deadbandMotor3DHigh = DSHOT_3D_FORWARD_MIN_THROTTLE;
+  *deadbandMotor3DLow = DSHOT_3D_FORWARD_MIN_THROTTLE - 1;
 }
 
 float motorConvertFromExternal(uint16_t externalValue) { return externalValue; }
@@ -100,6 +155,9 @@ void bf_config_begin(void) {
   pgResetFn_controlRateProfiles(controlRateProfilesMutable(0));
   pgResetFn_rxConfig(rxConfigMutable());
   pgResetFn_motorConfig(motorConfigMutable());
+  pgResetFn_mixerConfig(mixerConfigMutable());
+  pgResetFn_gyroConfig(gyroConfigMutable());
+  *pidConfigMutable() = pgResetTemplate_pidConfig;
   resetPidProfile(pidProfilesMutable(0));
 
   currentPidProfile = pidProfilesMutable(0);
@@ -110,73 +168,50 @@ void bf_config_begin(void) {
    * smoothed value, so disabling it silently zeroes feedforward on every
    * axis. That bug cost a tuning session; see PROGRESS.md. */
   mixerConfigMutable()->mixerMode = MIXER_QUADX;
-  mixerConfigMutable()->yaw_motors_reversed = false;
   featureConfigMutable()->enabledFeatures = FEATURE_AIRMODE;
+
+  bf_settings_build();
 }
 
 int bf_config_apply_setting(const char *key, const char *value, double num,
                             int have_num) {
-  controlRateConfig_t *rates = controlRateProfilesMutable(0);
-  pidProfile_t *pid = pidProfilesMutable(0);
+  return bf_settings_apply(key, value, num, have_num);
+}
 
-  if (str_eq2(key, "rates_type")) {
-    if (str_eq2(value, "BETAFLIGHT")) {
-      rates->rates_type = RATES_TYPE_BETAFLIGHT;
-    } else if (str_eq2(value, "RACEFLIGHT")) {
-      rates->rates_type = RATES_TYPE_RACEFLIGHT;
-    } else if (str_eq2(value, "KISS")) {
-      rates->rates_type = RATES_TYPE_KISS;
-    } else if (str_eq2(value, "ACTUAL")) {
-      rates->rates_type = RATES_TYPE_ACTUAL;
-    } else if (str_eq2(value, "QUICK")) {
-      rates->rates_type = RATES_TYPE_QUICK;
-    } else {
-      return SIM_ERR_CONFIG_PARSE;
-    }
+int bf_config_apply_command(const char *word0, const char *word1) {
+  /* `simplified_tuning apply` is a CLI command, not a setting, and the
+   * published Karate presets end their PID section with it. Betaflight
+   * runs it where it appears, so lines below it still override. */
+  if (strcmp(word0, "simplified_tuning") == 0 && strcmp(word1, "apply") == 0) {
+    bf_settings_apply_simplified();
     return SIM_OK;
   }
-
-  if (!have_num) {
-    /* Word valued keys we do not map are accepted and ignored. */
-    return SIM_OK;
-  }
-  const int n = (int)num;
-
-  if (str_eq2(key, "roll_rc_rate")) { rates->rcRates[FD_ROLL] = n; return SIM_OK; }
-  if (str_eq2(key, "pitch_rc_rate")) { rates->rcRates[FD_PITCH] = n; return SIM_OK; }
-  if (str_eq2(key, "yaw_rc_rate")) { rates->rcRates[FD_YAW] = n; return SIM_OK; }
-  if (str_eq2(key, "roll_expo")) { rates->rcExpo[FD_ROLL] = n; return SIM_OK; }
-  if (str_eq2(key, "pitch_expo")) { rates->rcExpo[FD_PITCH] = n; return SIM_OK; }
-  if (str_eq2(key, "yaw_expo")) { rates->rcExpo[FD_YAW] = n; return SIM_OK; }
-  if (str_eq2(key, "roll_srate")) { rates->rates[FD_ROLL] = n; return SIM_OK; }
-  if (str_eq2(key, "pitch_srate")) { rates->rates[FD_PITCH] = n; return SIM_OK; }
-  if (str_eq2(key, "yaw_srate")) { rates->rates[FD_YAW] = n; return SIM_OK; }
-  if (str_eq2(key, "thr_mid")) { rates->thrMid8 = n; return SIM_OK; }
-  if (str_eq2(key, "thr_expo")) { rates->thrExpo8 = n; return SIM_OK; }
-  if (str_eq2(key, "rc_smoothing_mode")) { rxConfigMutable()->rc_smoothing_mode = n; return SIM_OK; }
-
-  if (str_eq2(key, "p_roll")) { pid->pid[PID_ROLL].P = n; return SIM_OK; }
-  if (str_eq2(key, "i_roll")) { pid->pid[PID_ROLL].I = n; return SIM_OK; }
-  if (str_eq2(key, "d_roll")) { pid->pid[PID_ROLL].D = n; return SIM_OK; }
-  if (str_eq2(key, "f_roll")) { pid->pid[PID_ROLL].F = n; return SIM_OK; }
-  if (str_eq2(key, "p_pitch")) { pid->pid[PID_PITCH].P = n; return SIM_OK; }
-  if (str_eq2(key, "i_pitch")) { pid->pid[PID_PITCH].I = n; return SIM_OK; }
-  if (str_eq2(key, "d_pitch")) { pid->pid[PID_PITCH].D = n; return SIM_OK; }
-  if (str_eq2(key, "f_pitch")) { pid->pid[PID_PITCH].F = n; return SIM_OK; }
-  if (str_eq2(key, "p_yaw")) { pid->pid[PID_YAW].P = n; return SIM_OK; }
-  if (str_eq2(key, "i_yaw")) { pid->pid[PID_YAW].I = n; return SIM_OK; }
-  if (str_eq2(key, "d_yaw")) { pid->pid[PID_YAW].D = n; return SIM_OK; }
-  if (str_eq2(key, "f_yaw")) { pid->pid[PID_YAW].F = n; return SIM_OK; }
-
-  /* Anything else is accepted so a full diff loads; the plant consumes
-   * battery keys on its own side and the rest are irrelevant to Stage 1. */
+  /* Everything else a diff can carry (batch, board_name, feature, profile,
+   * rateprofile, defaults, resource, aux) addresses machinery this module
+   * does not have. One profile and one rate profile exist here and both
+   * are profile 0. */
   return SIM_OK;
 }
 
 static void bf_runtime_init(void) {
+  /* CLAUDE.md fixes the loop at 1 kHz. A diff may carry any
+   * pid_process_denom; it is stored so it is visible, and forced here so
+   * the physics step and the control loop cannot drift apart. */
+  pidConfigMutable()->pid_process_denom = 1;
   targetPidLooptime = 1000; /* microseconds, matches the 1 kHz plant step */
+
   gyro.targetLooptime = targetPidLooptime;
+  gyro.sampleLooptime = targetPidLooptime;
   gyro.sampleRateHz = 1000;
+  gyro.accSampleRateHz = 1000;
+  gyro.gyroToUse = GYRO_CONFIG_USE_GYRO_1;
+  gyro.gyroDebugMode = DEBUG_NONE;
+  gyro.rawSensorDev = &gyro.gyroSensor1.gyroDev;
+  gyro.gyroSensor1.gyroDev.gyroAlign = CW0_DEG;
+  gyro.gyroSensor1.gyroDev.scale = GYRO_SCALE_2000DPS;
+  gyro.gyroSensor1.gyroDev.readFn = sim_gyro_read;
+  gyro.gyroSensor1.calibration.cyclesRemaining = 0;
+  gyroInitFilters();
 
   pidInit(currentPidProfile);
   initRcProcessing();
@@ -221,6 +256,42 @@ double sim_bf_debug(int what) {
     const double ideal = sim_sqrt_pub(PLANT.kt * PLANT.kt * PLANT.kt) / sim_sqrt_pub(2.0 * PLANT.rho * area);
     return ideal / PLANT.kq;
   }
+  /* Config coverage, so scripts/preset-lint.js can fail a shipped preset
+   * whose keys stopped reaching Betaflight. */
+  case 13: return bf_settings_count(0); /* applied */
+  case 14: return bf_settings_count(1); /* inert by design */
+  case 15: return bf_settings_count(2); /* unrecognised */
+  case 16: return bf_settings_count(3); /* table size */
+  /* Live tune readback, so a preset can be proved to have landed. */
+  case 17: return currentPidProfile->pid[PID_ROLL].P;
+  case 18: return currentPidProfile->pid[PID_ROLL].I;
+  case 19: return currentPidProfile->pid[PID_ROLL].D;
+  case 20: return currentPidProfile->pid[PID_ROLL].F;
+  case 21: return currentPidProfile->d_min[FD_ROLL];
+  case 22: return currentPidProfile->tpa_rate;
+  case 23: return currentPidProfile->tpa_breakpoint;
+  case 24: return currentPidProfile->iterm_relax_cutoff;
+  case 25: return gyroConfig()->gyro_lpf1_static_hz;
+  case 26: return gyroConfig()->gyro_lpf1_dyn_min_hz;
+  case 27: return gyroConfig()->gyro_lpf1_dyn_max_hz;
+  case 28: return gyroConfig()->gyro_lpf2_static_hz;
+  case 29: return currentPidProfile->dterm_lpf1_dyn_min_hz;
+  case 30: return currentPidProfile->dterm_lpf1_dyn_max_hz;
+  case 31: return currentPidProfile->throttle_boost;
+  case 32: return currentPidProfile->thrustLinearization;
+  case 33: return currentPidProfile->pidSumLimitYaw;
+  case 34: return currentPidProfile->itermLimit;
+  case 35: return currentPidProfile->feedforward_max_rate_limit;
+  case 36: return currentPidProfile->motor_output_limit;
+  case 37: return motorConfig()->digitalIdleOffsetValue;
+  case 38: return currentPidProfile->pid[PID_PITCH].P;
+  case 39: return currentPidProfile->pid[PID_PITCH].D;
+  case 40: return currentPidProfile->d_min[FD_PITCH];
+  case 41: return currentControlRateProfile->rates_type;
+  case 42: return currentControlRateProfile->rates[FD_ROLL];
+  case 43: return currentPidProfile->vbat_sag_compensation;
+  case 44: return currentPidProfile->simplified_pids_mode;
+  case 45: return currentPidProfile->dterm_lpf1_dyn_expo;
   default: return 0.0;
   }
 }
@@ -243,6 +314,9 @@ void bridge_reset(void) {
    * so PID integrators, filters and rc state start identically. */
   memset(&gyro, 0, sizeof(gyro));
   memset(rcData, 0, sizeof(rcData));
+  for (int a = 0; a < XYZ_AXIS_COUNT; a += 1) {
+    g_gyro_dps[a] = 0.0f;
+  }
   for (int i = 0; i < 4; i += 1) {
     rcData[i] = (i == THROTTLE) ? 1000.0f : 1500.0f;
   }
@@ -268,9 +342,9 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
    * internal positive yaw is nose LEFT (+r here). Values in deg/s.
    * Getting pitch or yaw backwards turns that loop into positive
    * feedback; both failures are recorded in PROGRESS.md. */
-  gyro.gyroADCf[FD_ROLL] = (float)(s->omega[0] * SIM_RAD_TO_DEG);
-  gyro.gyroADCf[FD_PITCH] = (float)(s->omega[1] * SIM_RAD_TO_DEG);
-  gyro.gyroADCf[FD_YAW] = (float)(s->omega[2] * SIM_RAD_TO_DEG);
+  g_gyro_dps[FD_ROLL] = (float)(s->omega[0] * SIM_RAD_TO_DEG);
+  g_gyro_dps[FD_PITCH] = (float)(s->omega[1] * SIM_RAD_TO_DEG);
+  g_gyro_dps[FD_YAW] = (float)(s->omega[2] * SIM_RAD_TO_DEG);
 
   /* Stick channels from sim_abi.h: +roll right, +pitch nose up, +yaw nose
    * right. Betaflight internal pitch is nose down positive, so the pitch
@@ -290,32 +364,63 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
   }
   rcData[THROTTLE] = (float)(1000.0 + 1000.0 * thr);
 
+  /* Pack voltage under load, in hundredths of a volt, which is what
+   * Betaflight's battery monitor publishes and what vbat_sag_compensation
+   * reads. It was a frozen 4.20 V before, so the compensation was a
+   * no-op no matter what the pack was doing. */
+  {
+    double cv = (s->vbat_load / PLANT.cells) * 100.0;
+    if (cv < 0.0) {
+      cv = 0.0;
+    }
+    if (cv > 65535.0) {
+      cv = 65535.0;
+    }
+    sim_bf_sag_cell_cv = (uint16_t)(cv + 0.5);
+  }
+
   /* Flight time continues from the warm up offset so the receiver clock
    * stays monotonic across reset. */
   sim_bf_now_ms = (uint32_t)(BF_WARMUP_MS + s->step_index);
   const timeUs_t now_us = (timeUs_t)((BF_WARMUP_MS + s->step_index) * 1000);
 
-  /* Faithful flight controller wiring: the receiver path runs at the RC
-   * frame rate, the PID loop at 1 kHz. updateRcCommands is what raises
-   * isRxDataNew, so calling it only on frames is what makes Betaflight's
-   * rc smoothing interpolate and its feedforward see real packet
-   * intervals. processRcCommand runs every step so the smoothing filter
-   * advances at loop rate, exactly as on hardware.
+  /* Faithful flight controller wiring, in fc/core.c's own order:
+   * gyro sample, gyro filter, rc command, PID, mixer.
+   *
+   * The receiver path runs at the RC frame rate and the PID loop at
+   * 1 kHz. updateRcCommands is what raises isRxDataNew, so calling it
+   * only on frames is what makes Betaflight's rc smoothing interpolate
+   * and its feedforward see real packet intervals. processRcCommand runs
+   * every step so the smoothing filter advances at loop rate, exactly as
+   * on hardware.
    *
    * updateRcRefreshRate must be called on frames too: without it the
    * feedforward path divides by a zero rx interval and poisons the whole
    * state with NaN. */
+  gyroUpdate();
+  gyroFiltering(now_us);
+
   if (rx_new) {
     updateRcRefreshRate(now_us);
     updateRcCommands();
   }
   processRcCommand();
-  pidUpdateTpaFactor((float)thr);
+
+  /* TPA and the anti gravity throttle filter are driven by mixTable, from
+   * Betaflight's own scaled throttle and one loop behind the PID that
+   * uses them, which is what fc/core.c's task order produces on hardware.
+   * This file used to call pidUpdateTpaFactor with the raw stick value
+   * just before pidController, which both used the wrong throttle
+   * definition (no throttle limit, no mid/expo curve) and removed the
+   * one loop lag. */
   pidController(currentPidProfile, now_us);
   mixTable(now_us);
 
+  /* Betaflight motor output is in DShot units. The ESC's duty is the
+   * fraction of the DShot throttle range, which is what the plant's
+   * average applied voltage model wants. */
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    double d = ((double)motor[m] - 1000.0) / 1000.0;
+    double d = ((double)motor[m] - (double)DSHOT_MIN_THROTTLE) / (double)DSHOT_RANGE;
     if (d < 0.0) {
       d = 0.0;
     }

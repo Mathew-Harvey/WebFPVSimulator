@@ -3511,3 +3511,189 @@ unrecognised, karate-race 107 applied 13 inert 0 unrecognised.
   round 17.
 - P4's 80 percent climb and P5's 0 to 100, both already disputed as entries 1
   and 2, both untouched by this round.
+## Round 18: a track builder, in its own directory, sharing one JSON schema and nothing else
+
+A self contained course authoring tool: drop elements on a scaled grid, set
+which way each one is flown, switch between a top down authoring view and a 3D
+preview, and press Create Path to derive the racing line. It does not fly,
+score or simulate. It produces a track document as JSON.
+
+### The isolation rule, and what it cost
+
+The brief was blunt: the flight sim is under development in parallel and this
+must not touch it. Everything new is under `src/trackbuilder/`. The only edit
+to existing code is fourteen lines in `src/ui/ui.js`: a **Track builder** entry
+on the title menu and the `act()` branch that routes to it.
+
+The builder is a **separate page**, not a screen inside the shell, and that is
+what made the fourteen lines enough. Navigating to it tears the simulator down
+completely: no shared canvas, no shared module, no shared state, no chance of a
+half torn down physics loop still holding a WebGL context. `git diff --stat`
+outside `src/trackbuilder/` is one file and fourteen insertions.
+
+Nothing under `src/trackbuilder/` imports anything above it. `grep "from '\.\./"`
+over the directory returns nothing, which is the mechanical form of the rule.
+
+### Three bugs the tool found in itself
+
+**The tangent scale was a factor of three short.** The racing line is a cubic
+Hermite with tangents scaled by the distance to the next knot. The number
+everyone knows for fitting a circle with a cubic is `(4/3)tan(theta/4)R`, which
+is `0.5523R` for a quarter circle, and it went straight into the constant. It
+is wrong: that figure is the offset of a **Bezier control point**, and a
+Hermite tangent is three times a Bezier control point offset. A cubic whose
+tangents are too short does not gently straighten, it puts a **near cusp at
+every knot** whose tangent is not already along the chord. Measured on a 120 m
+demo lap it gave a radius of curvature of **0.2 m at almost every gate**.
+
+The correct ratio is `2 tan(theta/4) / sin(theta/2)`: 1.000 for a straight,
+1.072 at 60 degrees, 1.172 at 90, 1.333 at 120. No single constant is right
+everywhere, so 1.1 is the middle of the range a racing line turns through.
+`selftest.js` now lays five gates on a 12 m circle and asserts the line comes
+back with a 12 m radius, within 3 percent. That is the check that catches it,
+and it is the one the first version did not have.
+
+**It was the curvature warning that found it.** The warning the brief asked for
+as a nicety turned out to be the only instrument in the tool, and it was
+reading 0.2 m on a track that looked fine drawn small.
+
+**A tilted dive gate came out a launch gate.** The obvious auto face rule is:
+point the element along the course, then take the entry sign from the dot
+product with the normal. For a **vertical** gate that is right. For a **tilted**
+one it is exactly backwards: the heading lines up with the travel, the dot
+product comes out positive because of it, and the quad is sent UP through a gate
+that leans down the hill. The tilt fixes the vertical part of the normal and
+nothing can change it, so the sign has to be decided FIRST, from whether the
+line is descending here, and the heading SECOND, to make the horizontal part
+agree. The fix rotates the structure a half turn instead.
+
+The vertical sense is read from the **departure**, not from the chord across
+the element. A dive gate sits 3 m above the gate before it and 3 m above the
+gate after it, so that chord is level and says nothing, while the obvious truth
+is that you leave the thing going down. Reading the chord left a 1.8 m radius
+hook immediately after every dive gate.
+
+**A gate turned to face due west flipped sign on every save.** The document
+rounds every number to six decimal places, and pi rounded to six places is
+3.141593, which is 3.5e-7 LARGER than pi. `wrapAngle` sent it to -3.141593,
+which rounds to itself, which is smaller than -pi, which wrapped back. Export,
+import, export was not idempotent for exactly one heading. `wrapAngle` now
+carries a microradian of slack at both ends.
+
+### What the warnings decided, deliberately
+
+**The reversal test is horizontal.** A flat dive gate is flown straight down,
+its tangent has no horizontal part, and the previous element is almost always
+lower than it: the quad climbs past the gate and drops back through it, which
+is what the obstacle is for. Testing that in three dimensions fired on every
+correctly built dive gate on every track, and a warning that is always wrong is
+a warning nobody reads. What catches a vertical approach nothing could fly is
+the curvature check.
+
+**Markers are exempt from it.** A flag has no aperture and no plane, so its
+tangent is not a property of the marker at all, it is the chord between its
+neighbours. Testing that against one of those same chords tests the shape of
+the course rather than anything the author set, and it fires whenever a marker
+sits at a turn apex, which is the one place a turn marker is ever put. Telling
+somebody to flip the face of a cone, which has no face, is worse than silence.
+
+### The demo track, and what laying it out taught
+
+The worked example in `schema.md` is emitted by `selftest.js --emit` and the
+same file asserts it round trips byte for byte, so the document and the
+implementation cannot drift. Getting it to derive itself cleanly took longer
+than writing the deriver, and the reason is worth recording:
+
+**The auto face rule takes an element's heading from the straight line between
+its neighbours, so an element at a hairpin apex, with both neighbours off to
+one side, is the one case it cannot get right.** Every layout with a hairpin
+put a gate at the apex and produced either a reversal or a cusp. The answer is
+that a hairpin apex is a place for a MARKER or for a manual override, never for
+a gate, and that a course laid on a smooth closed curve derives itself.
+
+So the demo is a **figure of eight** read off a lemniscate centred on the
+ladder, which is also the only closed curve that flies one structure twice in
+opposite directions without a hairpin. Ten entries, a ladder at positions 4 and
+9 on two levels with opposite faces, an angled dive gate, a flag turn, a
+barrier the line misses, and a lap that closes: 138.9 m, tightest radius
+2.73 m, no warnings. Exactly one manual override in the whole document, on the
+ladder's heading, because the rule refuses to rotate a structure flown twice
+and the heading it inherited from the first pass left the second 67 degrees off
+square.
+
+### Two things measured in a browser, not assumed
+
+**Three.js was on the critical path of the whole tool.** A static
+`import * as THREE from 'three'` in `view3d.js` means the browser fetches the
+entire static module graph before a line of `app.js` runs. On a network that
+could not reach jsdelivr, that is a blank page: no palette, no canvas, no 2D
+view, for a preview the author had not asked for. It is a dynamic import now,
+taken on the first press of the 3D button, and a failure falls back to 2D with
+a message. Same reasoning as `src/boot.js`, same fix.
+
+**The dev server has no MIME type for `.css`**, so it served the stylesheet as
+`application/octet-stream` and Chrome refused to apply it. `scripts/serve.js` is
+not this module's to edit, so the styles are inline in the page, which is what
+the repository's own `index.html` does anyway.
+
+**1 inch PVC is sub-pixel.** MultiGP gates are built from 1 inch schedule 40
+pipe, 33 mm, and at any camera distance that shows a whole 60 m course that is
+under a pixel: the 3D preview was a field of floating translucent panes with no
+gates in them. Each aperture now carries a line loop around its **true clear
+opening**, because a line is one pixel wide however far away it is. No
+dimension was fattened to make the picture work.
+
+### Owed
+
+- **The MultiGP dimensions in `elements.js` are approximations, not citations.**
+  They were transcribed from memory of the obstacles page rather than read off
+  it, and every one carries a VERIFY comment naming what has to be checked. The
+  existing `src/game/track.js` has properly sourced figures for the same
+  obstacles; the two libraries are deliberately not shared, because the builder
+  may not import from the game, and they should be reconciled when the game
+  learns to read a track document.
+- The auto rule will not rotate a structure flown more than once, so a ladder
+  crossed at an angle inherits the first pass's heading and the second pass can
+  be well off square. Bisecting the two would be better and is a change to the
+  rule the brief specifies, so it was left alone and the demo overrides by hand.
+- The 3D view is read only apart from the height drag, as specified. Rotation,
+  move and delete are 2D only.
+- Nothing consumes the track document yet. `schema.md` is the contract and the
+  game has not been taught to read it; that integration was explicitly not part
+  of this task.
+
+### Verify
+
+`node src/trackbuilder/selftest.js`: **74 of 74**, covering the round trip,
+the repair path against hostile input, the face and pass side rules, the
+racing line including the circle check that pins the tangent scale, every
+warning code, undo and redo, and `schema.md`'s worked example.
+
+A headless Chrome harness in the scratch directory drove the real page: build a
+ten element track from the palette keys and the mouse in **0.7 s** of wall
+clock, ladder at two levels, Create Path, box select, drag, rotate, flip,
+reorder, save, autosave across a refresh, export and import round trip, the
+3D scene with the height drag, and the games menu entry navigating to the
+builder. 30 of 30, plus 9 of 10 on the 3D suite, the one failure being the
+harness reading back a WebGL canvas without `preserveDrawingBuffer`, which the
+screenshots disprove.
+
+`npm run verify`: **14 of 16**, and the two reds are the ones this container
+has always had. Measured both ways on the SAME base rather than argued:
+checking out `origin/main` with the track builder absent gives the identical
+table, check 1 build-clean failing on `emcc not found` with `EMSDK` unset, and
+check 10 yaw-coupling at -0.08 deg against a 2 deg floor. Nothing in this round
+touches `src/native/`, `patches/`, `vendor/betaflight`, `src/input/` or the
+build. Determinism hash **ff32caab7fbd**, matching the base exactly.
+
+This round was rebased onto rounds 17, 17b and 17c after they landed. Round 17c
+put a **Tune** entry on the same title menu this one adds to, and the two edits
+merged without a conflict; the menu now reads Fly, Map, Tune, How to fly,
+Settings, Track builder, and the harness above drives the real title screen
+down to the last of those and through to the builder.
+
+An earlier run of check 16 map-isolation, against the pre-rebase base, failed
+on a clean tree and passed with the change applied, which was recorded here as
+something that moves between runs. On the rebased base it passes both with and
+without, so that reading was a flake and is now accounted for rather than left
+hanging.

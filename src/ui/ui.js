@@ -308,6 +308,11 @@ export class Ui {
         },
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
+        {
+          label: 'Track builder',
+          action: 'trackbuilder',
+          note: 'Design a course. Place gates, set which way each one is flown, and derive the racing line.',
+        },
       ];
     }
     if (this.screen === 'howto') {
@@ -671,6 +676,15 @@ export class Ui {
   }
 
   act(action) {
+    /* The track builder is a separate page, so this is a navigation rather
+     * than a screen. It has to be here and not in main.js's action handler
+     * because leaving the page tears the simulator down, which is the whole
+     * point: the builder shares no module, no canvas and no state with the
+     * flight model, only the track document its schema.md describes. */
+    if (action === 'trackbuilder') {
+      window.location.href = 'src/trackbuilder/index.html';
+      return;
+    }
     if (action === 'howto' || action === 'settings') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);

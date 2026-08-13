@@ -1,0 +1,586 @@
+/*
+ * selftest.js: the track builder's own checks, runnable without a browser.
+ *
+ *   node src/trackbuilder/selftest.js          run every check
+ *   node src/trackbuilder/selftest.js --emit   print the worked example JSON
+ *
+ * WHY THIS EXISTS. The interesting half of this tool is the document, the
+ * face rule and the racing line, and all three are pure functions of pure
+ * data. They can therefore be checked in Node, in a second, with no DOM, no
+ * canvas and no WebGL, and a check that runs in a second gets run. The DOM
+ * half is left to the eye, which is the right split.
+ *
+ * This is NOT part of `npm run verify`. That harness belongs to the flight
+ * model and the task's isolation rule forbids touching it, so this file
+ * stands alone and is run by hand.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import {
+  createTrack, createElement, deserialize, elementById, normalize,
+  roundTripsCleanly, serialize, aperturesOf,
+} from './model.js';
+import { applyAutoFaces, flipFace } from './faces.js';
+import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
+import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
+import { collectWarnings } from './warnings.js';
+import { History } from './history.js';
+import { RAD, DEG } from './geometry.js';
+
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+let passed = 0;
+let failed = 0;
+
+function check(name, condition, detail) {
+  if (condition) {
+    passed += 1;
+    console.log(`  PASS  ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+function place(doc, type, x, y, opts = {}) {
+  const el = createElement(doc, type, { x, y, z: opts.z ?? 0 }, opts.yaw ?? 0);
+  if (opts.pitch != null) {
+    el.pitch = opts.pitch;
+  }
+  if (opts.dims) {
+    Object.assign(el.dims, opts.dims);
+  }
+  if (opts.name) {
+    el.name = opts.name;
+  }
+  if (opts.text) {
+    el.text = opts.text;
+  }
+  doc.elements.push(el);
+  return el;
+}
+
+/*
+ * The worked example, and the track schema.md documents field by field.
+ *
+ * It is deliberately the awkward case the task names: ten sequenced entries
+ * including a ladder flown at two different levels with two different faces,
+ * a dive gate flown downward, and a flag turn, plus a barrier the line has to
+ * miss, a label, and start pads that close the lap.
+ */
+export function demoTrack() {
+  const doc = createTrack('Ladder Loop, demo');
+  doc.id = 'trk-demo0001';
+  doc.createdUtc = '2026-01-01T00:00:00Z';
+  doc.modifiedUtc = '2026-01-01T00:00:00Z';
+
+  /*
+   * THE SHAPE IS A FIGURE OF EIGHT AND THAT IS NOT DECORATION.
+   *
+   * A ladder flown twice IN OPPOSITE DIRECTIONS means the lap has to come
+   * back through the same point heading roughly the other way, and the only
+   * closed curve that does that without a hairpin is a figure of eight whose
+   * crossing is the ladder. The ten positions below are read off a
+   * lemniscate centred on the ladder, which is what puts every element on a
+   * smooth curve with its neighbours either side of it: the auto face rule
+   * takes each element's heading from the straight line between its
+   * neighbours, so an element sitting at a hairpin apex, with both
+   * neighbours off to one side, is the one case that rule cannot get right.
+   * Laying the course on a smooth loop is what makes the whole track derive
+   * itself with one manual override.
+   *
+   * That override is the ladder's own heading. Every other element is
+   * derived; the ladder cannot be, because the auto rule refuses to rotate a
+   * structure that is flown more than once, and the heading it inherited
+   * from the first pass left the second pass 67 degrees off square. Setting
+   * it to the bisector of the two passes is a course designer's judgement
+   * and the document records it as one.
+   */
+  const pads = place(doc, 'startPads', 16.5, 13.5, { yaw: Math.PI, name: 'Grid' });
+
+  const cone = place(doc, 'cone', 7.5, 14, { name: 'West marker' });
+  const g1 = place(doc, 'gate', 7.5, 26);
+  const g2 = place(doc, 'gate', 21.5, 26.5);
+  const ladder = place(doc, 'ladder', 31, 20, { name: 'The ladder' });
+  const g3 = place(doc, 'gate', 40.5, 13.5);
+  const flag = place(doc, 'flag', 54.5, 14, { name: 'Turn flag' });
+  const tower = place(doc, 'tower', 54.5, 26);
+  /* Tilted rather than flat. MultiGP describes the dive gate as having a
+   * "slight angle for entry facilitation" without dimensioning it, and a
+   * fully horizontal aperture between two knots at the same height gives the
+   * line a vertical tangent and a hook the curvature warning rightly
+   * complains about. 55 degrees is a dive gate you can actually fly. */
+  const dive = place(doc, 'diveGate', 40.5, 26.5, { pitch: 55 * RAD });
+  const g4 = place(doc, 'gate', 21.5, 13.5, { name: 'Finish approach' });
+
+  place(doc, 'barrier', 31, 33, { yaw: 0, dims: { width: 8, depth: 1, height: 2 }, name: 'Pit fence' });
+  place(doc, 'label', 31, 30, { text: 'Ladder low, then high' });
+
+  /*
+   * The flying order. The ladder's SECOND pass is inserted at position 8,
+   * after the dive gate, so the lap crosses the ladder eastbound on its
+   * bottom level early and westbound on a higher level late. That is the
+   * case the aperture model exists for: one structure on the field, two
+   * entries in the flying order, two levels, two opposite faces.
+   */
+  for (const el of [cone, g1, g2, ladder, g3, flag, tower, dive]) {
+    addToSequence(doc, el.id, 0);
+  }
+  addNextLevel(doc, ladder.id);
+  addToSequence(doc, g4.id, 0);
+
+  applyAutoFaces(doc);
+  /* The one manual decision, explained above. */
+  ladder.yaw = 0;
+  ladder.yawOverridden = true;
+  applyAutoFaces(doc);
+  return doc;
+}
+
+function suiteRoundTrip() {
+  console.log('\nround trip');
+  const empty = createTrack();
+  check('an empty track round trips byte for byte', roundTripsCleanly(empty));
+
+  const doc = demoTrack();
+  check('the demo track round trips byte for byte', roundTripsCleanly(doc));
+
+  const text = serialize(doc);
+  const back = deserialize(text);
+  check('reload preserves the element count', back.doc.elements.length === doc.elements.length,
+    `${back.doc.elements.length} vs ${doc.elements.length}`);
+  check('reload preserves the sequence length', back.doc.sequence.length === doc.sequence.length);
+  check('reload reports no repairs', back.repairs.length === 0, back.repairs.join('; '));
+  check('reload produces identical JSON', serialize(back.doc) === text);
+
+  const junk = deserialize('{ not json');
+  check('junk yields an error and a usable empty track', Boolean(junk.error) && junk.doc.elements.length === 0);
+
+  const hostile = normalize({
+    schemaVersion: 1,
+    elements: [
+      { id: 'a', type: 'gate', position: { x: 1, y: 2 } },
+      { id: 'a', type: 'gate', position: { x: 3, y: 4 } },
+      { id: 'b', type: 'nonsense' },
+      { id: 'c', type: 'startPads', position: { x: 0, y: 0 } },
+      { id: 'd', type: 'startPads', position: { x: 5, y: 5 } },
+    ],
+    sequence: [
+      { id: 's1', elementId: 'a', apertureIndex: 9, entry: 7 },
+      { id: 's2', elementId: 'ghost' },
+    ],
+  });
+  check('a duplicate element id is renamed rather than dropped', hostile.doc.elements.length === 3,
+    `${hostile.doc.elements.length} elements`);
+  check('an unknown element type is dropped', !hostile.doc.elements.some((e) => e.type === 'nonsense'));
+  check('a second set of start pads is dropped', hostile.doc.elements.filter((e) => e.type === 'startPads').length === 1);
+  check('an out of range aperture index is clamped', hostile.doc.sequence[0].apertureIndex === 0);
+  check('an entry sign is normalised to +1 or -1', hostile.doc.sequence[0].entry === 1);
+  check('a sequence entry pointing at nothing is dropped', hostile.doc.sequence.length === 1);
+  check('the repairs are reported', hostile.repairs.length >= 4, `${hostile.repairs.length} repairs`);
+}
+
+function suiteFaces() {
+  console.log('\nfaces and pass sides');
+
+  /* Three gates in a line heading east. The middle one should end up facing
+   * east with entry +1, without anybody touching it. */
+  const doc = createTrack();
+  const a = place(doc, 'gate', 0, 0);
+  const b = place(doc, 'gate', 10, 0);
+  const c = place(doc, 'gate', 20, 0);
+  for (const el of [a, b, c]) {
+    addToSequence(doc, el.id, 0);
+  }
+  check('a gate auto orients along the course', Math.abs(elementById(doc, b.id).yaw) < 1e-9,
+    `yaw ${(elementById(doc, b.id).yaw * DEG).toFixed(1)} deg`);
+  check('its entry sign is forward', doc.sequence[1].entry === 1);
+
+  /* Move the far gate north. The middle gate should follow the new line. */
+  elementById(doc, c.id).position.y = 10;
+  applyAutoFaces(doc);
+  const expected = Math.atan2(10 - 0, 20 - 0);
+  check('it re-derives when a neighbour moves', Math.abs(elementById(doc, b.id).yaw - expected) < 1e-9,
+    `${(elementById(doc, b.id).yaw * DEG).toFixed(2)} vs ${(expected * DEG).toFixed(2)} deg`);
+
+  /* Flip it by hand, then move the neighbour again: the override must hold. */
+  flipFace(doc, doc.sequence[1].id);
+  const held = doc.sequence[1].entry;
+  elementById(doc, c.id).position.y = -10;
+  applyAutoFaces(doc);
+  check('a hand set face survives a neighbour moving', doc.sequence[1].entry === held,
+    `entry ${doc.sequence[1].entry}, expected ${held}`);
+  check('the override is marked', doc.sequence[1].overridden === true);
+
+  /* A ladder flown twice must not be rotated by the auto rule, because the
+   * two passes want different headings and only one of them could win. */
+  const two = createTrack();
+  const g0 = place(two, 'gate', 0, 0);
+  const lad = place(two, 'ladder', 10, 0, { yaw: 0.4 });
+  const g9 = place(two, 'gate', 20, 0);
+  addToSequence(two, g0.id, 0);
+  addToSequence(two, lad.id, 0);
+  addToSequence(two, g9.id, 0);
+  addNextLevel(two, lad.id);
+  /* While it was referenced once the auto rule was entitled to point it
+   * along the course, and did. From the moment it is referenced twice it
+   * must stop, because rotating it for one pass would break the other. */
+  const yawAfter = elementById(two, lad.id).yaw;
+  elementById(two, g9.id).position.y = 30;
+  applyAutoFaces(two);
+  check('a structure flown twice stops being rotated by the auto rule',
+    Math.abs(elementById(two, lad.id).yaw - yawAfter) < 1e-12,
+    `${(elementById(two, lad.id).yaw * DEG).toFixed(2)} vs ${(yawAfter * DEG).toFixed(2)} deg`);
+  const refs = two.sequence.filter((s) => s.elementId === lad.id);
+  check('it holds two sequence entries', refs.length === 2);
+  check('on two different levels', refs[0].apertureIndex !== refs[1].apertureIndex,
+    `${refs[0].apertureIndex} and ${refs[1].apertureIndex}`);
+  check('and each entry carries its own face', refs.every((r) => r.entry === 1 || r.entry === -1));
+
+  /* A left turn round a flag puts the quad on the flag's right. */
+  const turn = createTrack();
+  const t0 = place(turn, 'gate', 0, 0);
+  const fl = place(turn, 'flag', 10, 0);
+  const t1 = place(turn, 'gate', 10, 10);
+  addToSequence(turn, t0.id, 0);
+  addToSequence(turn, fl.id, 0);
+  addToSequence(turn, t1.id, 0);
+  check('a left turn passes the flag on its right', turn.sequence[1].passSide === 'right',
+    turn.sequence[1].passSide);
+
+  const turnR = createTrack();
+  const r0 = place(turnR, 'gate', 0, 0);
+  const fr = place(turnR, 'flag', 10, 0);
+  const r1 = place(turnR, 'gate', 10, -10);
+  addToSequence(turnR, r0.id, 0);
+  addToSequence(turnR, fr.id, 0);
+  addToSequence(turnR, r1.id, 0);
+  check('a right turn passes the flag on its left', turnR.sequence[1].passSide === 'left',
+    turnR.sequence[1].passSide);
+
+  /* A dive gate between a high gate and a low one is flown downward. */
+  const dv = createTrack();
+  const high = place(dv, 'tower', 0, 0);
+  const gate = place(dv, 'diveGate', 10, 0);
+  const low = place(dv, 'gate', 20, 0);
+  addToSequence(dv, high.id, 0);
+  addToSequence(dv, gate.id, 0);
+  addToSequence(dv, low.id, 0);
+  const diveSeq = dv.sequence[1];
+  /* 1e-5, not 1e-9: the document rounds every number to six decimal places
+   * on the way in, which is a third of a microradian on the tilt and a
+   * micrometre on a length, and is what makes the JSON round trip exact. */
+  check('a dive gate defaults to a horizontal aperture',
+    Math.abs(elementById(dv, gate.id).pitch - Math.PI / 2) < 1e-5,
+    `${(elementById(dv, gate.id).pitch * DEG).toFixed(4)} deg`);
+  check('and is flown downward through', diveSeq.entry === -1, `entry ${diveSeq.entry}`);
+  check('which the inspector calls entering from above', faceLabel(dv, diveSeq) === 'enter from above',
+    faceLabel(dv, diveSeq));
+}
+
+function suitePath() {
+  console.log('\nracing line');
+  const doc = demoTrack();
+  const path = buildPath(doc);
+
+  check('every sequence entry produced a knot, plus start and finish',
+    path.knots.length === doc.sequence.length + 2,
+    `${path.knots.length} knots for ${doc.sequence.length} entries`);
+  check('the lap closes at the start pads', path.closed === true);
+  check('the line has a sensible length', path.length > 80 && path.length < 400,
+    `${path.length.toFixed(1)} m`);
+  check('every sample carries an arc length that only grows',
+    path.samples.every((s, i) => i === 0 || s.s >= path.samples[i - 1].s));
+  check('no sample is NaN',
+    path.samples.every((s) => Number.isFinite(s.pos.x) && Number.isFinite(s.pos.y) && Number.isFinite(s.pos.z)));
+  check('curvature is finite or a straight',
+    path.samples.every((s) => s.radius > 0));
+
+  /* Every aperture tangent points the way the quad is going, which is the
+   * property the whole face model exists to guarantee. */
+  const forward = path.knots.filter((k) => k.role === 'aperture').every((k, i, arr) => {
+    const at = path.knots.indexOf(k);
+    const next = path.knots[at + 1];
+    if (!next) {
+      return true;
+    }
+    const dx = next.pos.x - k.pos.x;
+    const dy = next.pos.y - k.pos.y;
+    const dz = next.pos.z - k.pos.z;
+    return (k.tangent.x * dx + k.tangent.y * dy + k.tangent.z * dz) > 0;
+  });
+  check('every aperture is flown towards the next knot, not away from it', forward);
+
+  const startKnot = path.knots[0];
+  const endKnot = path.knots[path.knots.length - 1];
+  check('the line ends where it started', Math.hypot(endKnot.pos.x - startKnot.pos.x, endKnot.pos.y - startKnot.pos.y) < 1e-9);
+
+  const profile = elevationProfile(path);
+  check('the elevation profile spans the whole lap',
+    Math.abs(profile.points[profile.points.length - 1].s - path.length) < 1e-6,
+    `${profile.points[profile.points.length - 1].s.toFixed(2)} vs ${path.length.toFixed(2)}`);
+  check('the profile climbs to the dive gate', profile.maxZ > 3, `${profile.maxZ.toFixed(2)} m`);
+  check('the sequenced element count is under the entry count, because of the ladder',
+    sequencedElementCount(doc) === doc.sequence.length - 1,
+    `${sequencedElementCount(doc)} elements for ${doc.sequence.length} entries`);
+
+  /* The tangent scale is one constant and it has to actually do something. */
+  const tight = { ...doc, settings: { ...doc.settings, tangentScale: 0.05 } };
+  const loose = { ...doc, settings: { ...doc.settings, tangentScale: 0.9 } };
+  const a = buildPath(tight).length;
+  const b = buildPath(loose).length;
+  check('a bigger tangent scale makes a longer line', b > a, `${a.toFixed(1)} m vs ${b.toFixed(1)} m`);
+
+  const none = buildPath(createTrack());
+  check('an empty track produces an empty line without throwing', none.samples.length === 0 && none.length === 0);
+
+  /*
+   * THE CHECK THAT PINS DOWN settings.tangentScale.
+   *
+   * Gates spaced evenly round a circle have chord-derived headings that are
+   * exactly tangent to that circle, so the line through them IS that circle
+   * and every sample's radius of curvature has to be the circle's radius. If
+   * the tangent length is wrong the curve still passes through every gate
+   * and still looks plausible drawn small, and the radius collapses. That is
+   * how the first version of this tool shipped a tangent scale a factor of
+   * three short, with a Bezier control point offset used as a Hermite
+   * tangent, and this number is what gave it away.
+   *
+   * FIVE gates, not eight, because the exact tangent length that draws a
+   * circle depends on how far the line turns between knots:
+   *
+   *     m / chord = 2 tan(theta/4) / sin(theta/2)
+   *
+   * That is 1.0 for a straight and 1.333 at 120 degrees, so no single
+   * constant is right everywhere and 1.1 is the middle of the range a racing
+   * line turns through. Five gates put 72 degrees between knots, where the
+   * exact answer is 1.1056, so the drawn circle should come back within a
+   * couple of percent. The two INTERIOR segments are measured: the knots at
+   * each end of an open line take their heading from one neighbour instead
+   * of two, so they are not on the circle's tangent and never were.
+   */
+  const R = 12;
+  const ring = createTrack();
+  const onCircle = [];
+  for (let i = 0; i < 5; i += 1) {
+    const a = (i / 5) * Math.PI * 2;
+    onCircle.push(place(ring, 'gate', 30 + R * Math.cos(a), 20 + R * Math.sin(a)));
+  }
+  for (const el of onCircle) {
+    addToSequence(ring, el.id, 0);
+  }
+  const ringPath = buildPath(ring);
+  const interior = ringPath.samples.filter((smp) => smp.segment === 1 || smp.segment === 2);
+  const radii = interior.map((smp) => smp.radius).filter((r) => Number.isFinite(r));
+  const mean = radii.reduce((a, b) => a + b, 0) / radii.length;
+  check('five gates on a 12 m circle draw a 12 m radius line',
+    Math.abs(mean - R) / R < 0.03, `mean radius ${mean.toFixed(2)} m, wanted ${R}`);
+  check('and every sample on it stays near that radius',
+    Math.min(...radii) > R * 0.95 && Math.max(...radii) < R * 1.05,
+    `${Math.min(...radii).toFixed(2)} to ${Math.max(...radii).toFixed(2)} m`);
+  const arc = (interior[interior.length - 1].s - interior[0].s);
+  const wanted = 2 * (2 * Math.PI * R) / 5;
+  check('and its arc length is two fifths of the circumference',
+    Math.abs(arc - wanted) / wanted < 0.02, `${arc.toFixed(2)} m, wanted ${wanted.toFixed(2)} m`);
+}
+
+function suiteWarnings() {
+  console.log('\nwarnings');
+
+  const doc = demoTrack();
+  const clean = collectWarnings(doc, buildPath(doc));
+  const codes = (list) => new Set(list.map((w) => w.code));
+  check('the demo track has no reversal', !codes(clean).has('reversal'),
+    clean.filter((w) => w.code === 'reversal').map((w) => w.message).join(' | '));
+  check('the demo track stays inside the field', !codes(clean).has('out-of-field'));
+  check('the demo track misses its barrier', !codes(clean).has('barrier'),
+    clean.filter((w) => w.code === 'barrier').map((w) => w.message).join(' | '));
+  /* The worked example in schema.md is the tool's own claim that a course
+   * can be built and come out clean, so it has to actually be clean. */
+  check('the demo track raises no warnings at all',
+    clean.filter((w) => w.level === 'warn').length === 0,
+    clean.filter((w) => w.level === 'warn').map((w) => `${w.code}: ${w.message}`).join(' | '));
+
+  /* Force each of the five the task asks for. */
+  const noFace = demoTrack();
+  noFace.sequence[2].entry = 0;
+  noFace.sequence[2].overridden = true;
+  check('an unset face warns', codes(collectWarnings(noFace, buildPath(noFace))).has('no-face'));
+
+  const rev = demoTrack();
+  const revGate = rev.sequence.find((s) => elementById(rev, s.elementId).type === 'gate');
+  flipFace(rev, revGate.id);
+  check('a reversed face warns', codes(collectWarnings(rev, buildPath(rev))).has('reversal'));
+
+  /*
+   * The other half of that decision, stated as a check so nobody quietly
+   * makes the reversal test three dimensional again. A FLAT dive gate is
+   * flown straight up or straight down, its tangent has no horizontal part
+   * at all, and which way up it is flown is a different course rather than a
+   * broken one. The demo track's dive gate is tilted, so this needs its own
+   * fixture with the aperture left horizontal.
+   */
+  const flat = createTrack();
+  const high = place(flat, 'tower', 0, 0);
+  const flatDive = place(flat, 'diveGate', 12, 0);
+  const low = place(flat, 'gate', 24, 0);
+  for (const el of [high, flatDive, low]) {
+    addToSequence(flat, el.id, 0);
+  }
+  const flatSeq = flat.sequence[1];
+  check('a flat dive gate keeps a horizontal aperture', Math.abs(flatDive.pitch - Math.PI / 2) < 1e-5);
+  flipFace(flat, flatSeq.id);
+  check('flipping a flat dive gate is not called a reversal',
+    !codes(collectWarnings(flat, buildPath(flat))).has('reversal'),
+    collectWarnings(flat, buildPath(flat)).filter((w) => w.code === 'reversal').map((w) => w.message).join(' | '));
+
+  const tightDoc = demoTrack();
+  tightDoc.settings.minCurveRadius = 500;
+  check('a tight corner warns', codes(collectWarnings(tightDoc, buildPath(tightDoc))).has('tight-corner'));
+
+  const bar = demoTrack();
+  const fence = bar.elements.find((e) => e.type === 'barrier');
+  const firstGate = bar.elements.find((e) => e.type === 'gate');
+  fence.position.x = firstGate.position.x;
+  fence.position.y = firstGate.position.y;
+  fence.dims.height = 6;
+  check('a barrier on the line warns', codes(collectWarnings(bar, buildPath(bar))).has('barrier'));
+
+  const out = demoTrack();
+  out.field.width = 20;
+  out.field.depth = 20;
+  check('a line leaving the field warns', codes(collectWarnings(out, buildPath(out))).has('out-of-field'));
+
+  const orphan = demoTrack();
+  place(orphan, 'gate', 5, 5);
+  check('an element left out of the order warns', codes(collectWarnings(orphan, buildPath(orphan))).has('unsequenced'));
+
+  const noStart = createTrack();
+  const g = place(noStart, 'gate', 5, 5);
+  addToSequence(noStart, g.id, 0);
+  check('a track with no start pads says the lap does not close',
+    codes(collectWarnings(noStart, buildPath(noStart))).has('no-start'));
+  check('warnings never throw on an empty track', collectWarnings(createTrack(), null).length >= 1);
+}
+
+function suiteHistory() {
+  console.log('\nundo and redo');
+  const h = new History();
+  let doc = createTrack();
+  const before = JSON.stringify(doc);
+
+  h.begin(doc, 'place');
+  place(doc, 'gate', 1, 1);
+  check('a real change records a step', h.commit(doc) === true);
+  check('undo restores the earlier document', JSON.stringify(h.undo(doc)) === before);
+
+  doc = createTrack();
+  h.reset();
+  h.begin(doc, 'nothing');
+  check('a gesture that changed nothing records nothing', h.commit(doc) === false);
+  check('and leaves nothing to undo', h.canUndo() === false);
+
+  const h2 = new History();
+  let d2 = createTrack();
+  h2.begin(d2, 'one');
+  place(d2, 'gate', 2, 2);
+  h2.commit(d2);
+  const withGate = JSON.stringify(d2);
+  d2 = h2.undo(d2);
+  check('undo removes the gate', d2.elements.length === 0);
+  d2 = h2.redo(d2);
+  check('redo puts it back exactly', JSON.stringify(d2) === withGate);
+}
+
+function suiteSequenceNaming() {
+  console.log('\nnaming');
+  const doc = demoTrack();
+  const ladderSeqs = doc.sequence.filter((s) => {
+    const el = elementById(doc, s.elementId);
+    return el && el.type === 'ladder';
+  });
+  check('a ladder entry names its level', /level \d of 3/.test(sequenceLabel(doc, ladderSeqs[0])),
+    sequenceLabel(doc, ladderSeqs[0]));
+  check('a ladder has three openings', aperturesOf(elementById(doc, ladderSeqs[0].elementId)).length === 3);
+  const flagSeq = doc.sequence.find((s) => elementById(doc, s.elementId).type === 'flag');
+  check('a marker names its pass side in prose', /pass on the (left|right)/.test(faceLabel(doc, flagSeq)),
+    faceLabel(doc, flagSeq));
+}
+
+/*
+ * schema.md's worked example is copied out of this file's --emit output. A
+ * schema document whose example does not parse, or does not describe the
+ * track it claims to, is worse than no example at all, so the two are checked
+ * against each other rather than trusted to stay in step.
+ */
+function suiteSchemaDoc() {
+  console.log('\nschema.md');
+  const here = dirname(fileURLToPath(import.meta.url));
+  let md = '';
+  try {
+    md = readFileSync(join(here, 'schema.md'), 'utf8');
+  } catch (e) {
+    check('schema.md is readable', false, e.message);
+    return;
+  }
+  const blocks = [...md.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]);
+  check('schema.md carries exactly one worked example', blocks.length === 1, `${blocks.length} json blocks`);
+  if (blocks.length !== 1) {
+    return;
+  }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(blocks[0]);
+  } catch (e) {
+    check('the worked example is valid JSON', false, e.message);
+    return;
+  }
+  check('the worked example is valid JSON', true);
+  const { doc, repairs } = normalize(parsed);
+  check('the worked example needs no repairs', repairs.length === 0, repairs.join('; '));
+  check('the worked example is the track this file emits',
+    serialize(doc) === serialize(demoTrack()));
+
+  /* The numbers schema.md quotes in prose. */
+  const path = buildPath(doc);
+  check('schema.md quotes the right lap length', Math.abs(path.length - 138.9) < 0.05, `${path.length.toFixed(2)} m`);
+  check('schema.md quotes the right tightest radius',
+    Math.abs(path.tightest.radius - 2.73) < 0.005, `${path.tightest.radius.toFixed(3)} m`);
+  check('and the worked example really does raise no warnings',
+    collectWarnings(doc, path).filter((w) => w.level === 'warn').length === 0);
+}
+
+function main() {
+  if (process.argv.includes('--emit')) {
+    process.stdout.write(serialize(demoTrack()));
+    return;
+  }
+  console.log('track builder self test');
+  suiteRoundTrip();
+  suiteFaces();
+  suitePath();
+  suiteWarnings();
+  suiteHistory();
+  suiteSequenceNaming();
+  suiteSchemaDoc();
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exitCode = failed ? 1 : 0;
+}
+
+main();

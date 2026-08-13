@@ -1,0 +1,482 @@
+<!doctype html>
+<!--
+  index.html: the track builder's page.
+
+  A SEPARATE PAGE, ON PURPOSE. The simulator's own page boots a WASM physics
+  module, a Three.js world and a 1000 Hz fixed step loop; the builder needs
+  none of that and must not be able to disturb any of it. Navigating here
+  tears the simulator down completely, which is the strongest isolation
+  available without a build step, and it means the only edit the builder
+  needed anywhere else in the repository is the menu entry that links here.
+
+  The import map is a copy of the one in the repository's index.html, pinned
+  to the same Three.js version, because the builder must not reach into the
+  game's page for anything, not even a URL.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Track Builder, WebFPV</title>
+    <link rel="icon" href="data:," />
+    <!--
+      THE STYLES ARE INLINE, like the simulator's own index.html, and for one
+      more reason than convention: the repository's dev server, which this
+      module is not allowed to modify, has no MIME type for .css and serves a
+      stylesheet as application/octet-stream, which Chrome then refuses to
+      apply. A page whose layout depends on a server's MIME table is a page
+      that breaks somewhere else. Nothing here is shared with the game's page
+      and the game's page does not load it.
+
+      Colour rule, borrowed from the simulator so the builder looks like part
+      of the same product: light is warm, shadow is cool. Cream and amber for
+      lit type, slate blue for recessed type, mint for something good, a warm
+      red for something wrong.
+    -->
+    <style>
+      :root {
+        --cream: #f7e8cd;
+        --amber: #ffd45c;
+        --mint: #7dffb4;
+        --slate: #9db3c8;
+        --dim: #7f95ab;
+        --deep: #101a26;
+        --panel: #142230;
+        --panel-2: #0d151e;
+        --line: rgba(157, 179, 200, 0.18);
+        --bad: #ff8f8f;
+        --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--deep);
+        color: var(--cream);
+        font-family: var(--ui-font);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #tb-app { display: flex; flex-direction: column; height: 100%; }
+
+      /* ---------------- top bar ---------------- */
+
+      #tb-topbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: var(--panel-2);
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+
+      .tb-title {
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-size: 12px;
+        color: var(--amber);
+        padding-right: 4px;
+      }
+
+      .tb-name {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        color: var(--cream);
+        font: inherit;
+        padding: 5px 9px;
+        min-width: 180px;
+      }
+
+      .tb-bargroup { display: flex; gap: 4px; }
+
+      .tb-btn {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        color: var(--slate);
+        font: inherit;
+        padding: 5px 10px;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .tb-btn:hover:not(:disabled) { color: var(--cream); border-color: rgba(255, 212, 92, 0.5); }
+      .tb-btn:disabled { opacity: 0.38; cursor: default; }
+      .tb-btn.on { color: var(--deep); background: var(--amber); border-color: var(--amber); font-weight: 600; }
+      .tb-btn.tb-primary { color: var(--deep); background: var(--mint); border-color: var(--mint); font-weight: 600; }
+      .tb-btn.tb-primary.on { background: var(--amber); border-color: var(--amber); }
+      .tb-btn.tb-danger { color: var(--bad); }
+      .tb-btn.tb-danger:hover { border-color: var(--bad); }
+      .tb-btn.tb-quiet { margin-left: auto; color: var(--dim); }
+
+      /* ---------------- layout ---------------- */
+
+      #tb-main { flex: 1; display: flex; min-height: 0; }
+
+      .tb-panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        overflow-y: auto;
+      }
+
+      #tb-palette { width: 152px; margin: 8px 0 8px 8px; flex: none; }
+
+      #tb-stage { flex: 1; position: relative; min-width: 0; margin: 8px; }
+      #tb-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 6px; }
+      #tb-stage canvas[hidden] { display: none; }
+
+      #tb-status {
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        display: flex;
+        gap: 14px;
+        align-items: baseline;
+        padding: 5px 9px;
+        background: rgba(8, 13, 20, 0.82);
+        border-radius: 0 0 6px 6px;
+        font-size: 11px;
+        color: var(--dim);
+        pointer-events: none;
+      }
+      #tb-readout { font-family: var(--mono); color: var(--amber); flex: none; }
+      .tb-keys { line-height: 1.4; }
+
+      #tb-side {
+        width: 320px;
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 8px 8px 8px 0;
+        min-height: 0;
+      }
+      #tb-inspector { flex: 1 1 40%; }
+      #tb-sequence { flex: 1 1 30%; }
+      #tb-results { flex: 1 1 30%; }
+
+      /* ---------------- palette ---------------- */
+
+      .tb-group { margin-bottom: 12px; }
+
+      h3 {
+        margin: 10px 0 6px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      h3:first-child { margin-top: 0; }
+
+      .tb-tool {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        color: var(--slate);
+        font: inherit;
+        padding: 5px 6px;
+        cursor: pointer;
+        text-align: left;
+      }
+      .tb-tool:hover { color: var(--cream); background: rgba(157, 179, 200, 0.08); }
+      .tb-tool.on { color: var(--deep); background: var(--amber); font-weight: 600; }
+
+      .tb-tool-key {
+        flex: none;
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        text-align: center;
+        border-radius: 3px;
+        background: rgba(157, 179, 200, 0.18);
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--cream);
+      }
+      .tb-tool.on .tb-tool-key { background: rgba(16, 26, 38, 0.25); color: var(--deep); }
+
+      /* ---------------- panels ---------------- */
+
+      .tb-help { margin: 6px 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
+      .tb-kind { margin: 2px 0 8px; color: var(--slate); font-size: 11px; line-height: 1.45; }
+
+      .tb-field { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+      .tb-field-label { flex: 1; color: var(--slate); font-size: 11px; }
+      .tb-field input, .tb-field select {
+        width: 78px;
+        flex: none;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--cream);
+        font: inherit;
+        font-size: 12px;
+        padding: 3px 5px;
+      }
+      .tb-field select { width: auto; max-width: 150px; }
+      .tb-field-suffix { flex: none; width: 22px; color: var(--dim); font-size: 10px; }
+
+      .tb-grid2, .tb-grid3 { display: grid; gap: 2px 8px; }
+      .tb-grid2 { grid-template-columns: 1fr 1fr; }
+      .tb-grid3 { grid-template-columns: 1fr 1fr 1fr; }
+      .tb-grid2 .tb-field input, .tb-grid3 .tb-field input { width: 100%; min-width: 0; }
+      .tb-grid2 .tb-field-suffix, .tb-grid3 .tb-field-suffix { display: none; }
+      .tb-grid3 .tb-field { flex-direction: column; align-items: stretch; gap: 1px; }
+
+      .tb-card {
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 7px;
+        margin: 6px 0;
+        background: var(--panel-2);
+      }
+      .tb-card-head { display: flex; align-items: center; gap: 7px; }
+      .tb-card-title { flex: 1; font-size: 12px; color: var(--cream); }
+      .tb-face { margin: 5px 0; color: var(--mint); font-size: 11px; }
+
+      .tb-num {
+        flex: none;
+        min-width: 18px;
+        height: 18px;
+        line-height: 18px;
+        border-radius: 9px;
+        text-align: center;
+        background: var(--cream);
+        color: var(--deep);
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0 4px;
+      }
+
+      .tb-badge {
+        flex: none;
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--amber);
+        border: 1px solid rgba(255, 212, 92, 0.45);
+        border-radius: 3px;
+        padding: 1px 4px;
+      }
+
+      .tb-row-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+
+      .tb-mini {
+        flex: none;
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--slate);
+        font: inherit;
+        font-size: 10px;
+        line-height: 1;
+        padding: 4px 6px;
+        cursor: pointer;
+      }
+      .tb-mini:hover { color: var(--cream); border-color: rgba(255, 212, 92, 0.5); }
+      .tb-mini.tb-danger { color: var(--bad); }
+
+      /* ---------------- sequence ---------------- */
+
+      .tb-seq { list-style: none; margin: 0; padding: 0; }
+
+      .tb-seq-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 4px;
+        border-bottom: 1px solid var(--line);
+        cursor: grab;
+      }
+      .tb-seq-row:hover { background: rgba(157, 179, 200, 0.07); }
+      .tb-seq-row.sel { background: rgba(255, 212, 92, 0.12); }
+      .tb-seq-row.dragging { opacity: 0.4; }
+      .tb-seq-row.over { box-shadow: inset 0 2px 0 var(--amber); }
+      .tb-seq-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .tb-seq-name { color: var(--cream); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tb-seq-face { color: var(--dim); font-size: 10px; }
+      .tb-seq-face.bad { color: var(--bad); }
+
+      .tb-spare-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: var(--slate); font-size: 11px; }
+      .tb-spare-row span { flex: 1; }
+
+      /* ---------------- results ---------------- */
+
+      .tb-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-bottom: 6px; }
+      .tb-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+      .tb-stat-label { color: var(--slate); font-size: 11px; }
+      .tb-stat-value { color: var(--amber); font-size: 12px; font-weight: 600; }
+
+      .tb-warn { list-style: none; margin: 0; padding: 0; }
+      .tb-warn li {
+        padding: 5px 6px;
+        margin: 3px 0;
+        border-left: 2px solid var(--line);
+        font-size: 11px;
+        line-height: 1.45;
+        color: var(--slate);
+      }
+      .tb-warn li.warn { border-left-color: var(--bad); color: var(--cream); }
+      .tb-warn li.info { border-left-color: var(--line); }
+      .tb-warn li.clickable { cursor: pointer; }
+      .tb-warn li.clickable:hover { background: rgba(157, 179, 200, 0.08); }
+
+      /* Pinned to the foot of the results panel, heading and chart together
+         as one block. A track with a dozen warnings scrolls, and the profile
+         is the thing an author glances at WHILE reading them, so it must not
+         be the thing that scrolls away. */
+      .tb-profile-foot {
+        position: sticky;
+        bottom: -10px;
+        background: var(--panel);
+        padding: 6px 0 10px;
+        margin: 6px 0 -10px;
+        border-top: 1px solid var(--line);
+      }
+      .tb-profile-foot h3 { margin-top: 4px; }
+      #tb-profile { display: block; width: 100%; height: 92px; border-radius: 4px; }
+
+      /* ---------------- load dialog ---------------- */
+
+      .tb-load-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+      .tb-load-name { flex: 1; color: var(--cream); }
+      .tb-load-meta { color: var(--dim); font-size: 10px; }
+
+      /* ---------------- toast and modal ---------------- */
+
+      #tb-toast {
+        position: fixed;
+        left: 50%;
+        bottom: 26px;
+        transform: translateX(-50%) translateY(14px);
+        background: rgba(9, 15, 23, 0.94);
+        border: 1px solid rgba(255, 212, 92, 0.4);
+        border-radius: 6px;
+        padding: 9px 16px;
+        color: var(--cream);
+        font-size: 12px;
+        max-width: 62vw;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+      }
+      #tb-toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+      #tb-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(8, 13, 20, 0.72);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+      }
+      #tb-modal[hidden] { display: none; }
+
+      .tb-modal {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px 20px;
+        min-width: min(460px, 86vw);
+        max-height: 76vh;
+        overflow-y: auto;
+      }
+      .tb-modal h2 { margin: 0 0 10px; font-size: 18px; color: var(--cream); }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="tb-app">
+      <header id="tb-topbar"></header>
+      <main id="tb-main">
+        <aside id="tb-palette" class="tb-panel"></aside>
+        <div id="tb-stage">
+          <canvas id="tb-2d"></canvas>
+          <canvas id="tb-3d" hidden></canvas>
+          <div id="tb-status">
+            <span id="tb-readout">0.00, 0.00 m</span>
+            <span class="tb-keys">
+              Wheel zooms, middle drag pans. Click to select, shift to add, drag on empty ground to box select.
+              Drag the amber dot to rotate, or Q and E. Alt places off grid. X flips a face. V swaps 2D and 3D.
+              Delete removes. Control Z undoes.
+            </span>
+          </div>
+        </div>
+        <aside id="tb-side">
+          <section id="tb-inspector" class="tb-panel"></section>
+          <section id="tb-sequence" class="tb-panel"></section>
+          <section id="tb-results" class="tb-panel"></section>
+        </aside>
+      </main>
+    </div>
+    <div id="tb-toast"></div>
+    <div id="tb-modal" hidden></div>
+    <script type="module">
+      import { App, docFromLocation } from './app.js';
+
+      /* One canvas for the elevation chart, created once and re-appended by
+         the results panel on every render. */
+      const profile = document.createElement('canvas');
+      profile.id = 'tb-profile';
+
+      const app = new App({
+        topbar: document.getElementById('tb-topbar'),
+        palette: document.getElementById('tb-palette'),
+        canvas2d: document.getElementById('tb-2d'),
+        canvas3d: document.getElementById('tb-3d'),
+        inspector: document.getElementById('tb-inspector'),
+        sequence: document.getElementById('tb-sequence'),
+        results: document.getElementById('tb-results'),
+        profile,
+        readout: document.getElementById('tb-readout'),
+        toast: document.getElementById('tb-toast'),
+        modal: document.getElementById('tb-modal'),
+      });
+
+      /* A track passed in the URL wins over the autosave, so a link to a
+         track opens that track. */
+      const linked = docFromLocation();
+      if (linked) {
+        app.loadDocument(linked, `Opened "${linked.name}" from the link.`);
+      }
+
+      window.trackBuilder = app;
+    </script>
+  </body>
+</html>

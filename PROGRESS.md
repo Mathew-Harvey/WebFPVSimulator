@@ -1768,3 +1768,72 @@ next round does not spend the same argument twice.
 
 `npm run verify` 12 of 13, yaw-coupling the known red. Console errors 0,
 warnings 0.
+
+## Round 13e: the first audio assertion in tests/
+
+The audio reviewer's standing finding was that `tests/` contains zero audio
+assertions. Chasing it produced a scare and then a real gap.
+
+**The scare.** Driving the shell into flight with
+`__ui.onAction('fly', ...)` and reading the live graph reported
+`ctx: "none"`, the music graph unattached, and the scheduler at step 0.
+Read literally that is the user's complaint exactly, no audio at all. It is
+not: the shell wakes audio from `input.onKey` and from a window
+`pointerdown` listener, and a programmatic call goes through neither. Tapped
+with a real key over the DevTools protocol instead: context running, music
+attached, gain 0.200, scheduler at step 38 by t=3.57 s. The bed works, and
+`window.addEventListener('pointerdown', wakeAudio)` at main.js:418 means a
+player who clicks FLY with a mouse gets it too.
+
+**The real gap.** Everything above was found by hand, and so was every
+spectral claim in this project: `scripts/audio-probe.js` calls
+`MotorAudio.attach` on its OWN OfflineAudioContext. That is what makes the
+numbers reproducible, and it also means the shell could stop building a
+graph entirely and all thirteen checks would still pass. So check 14,
+`audio-bed`, drives the real page with a real gesture and asserts the
+context is running, the four motor voices and the music graph are attached,
+the music bus is above zero at DEFAULT settings, the scheduler advances, and
+the node count is inside the 64 budget. Measured: ctx running, music gain
+0.200, 49 steps in 4.01 s, 59 nodes.
+
+**Two false readings caught on the way, both mine.** First window: 23 steps
+in 1500 ms, which I nearly wrote down as a tempo. It implies 230 BPM on a
+174 BPM bed, because the scheduler runs a lookahead and the first window
+counts the lookahead filling as well as playback. Settled, a 4 s window gave
+46 steps, 11.49 per second, 172.4 BPM implied. So the check now settles
+1.5 s before taking its baseline. Second: even settled, consecutive 4 s
+windows gave 46 and 49 steps, 172 and 183 BPM implied, because the scheduler
+advances in chunks. The row therefore publishes steps per second and NOT a
+BPM figure. This counter cannot resolve tempo, and the threshold note says
+so; tempo stays with the probe.
+
+**Re-measured against the current graph**, which was the reviewer's other
+owed item, since the earlier numbers predate the 16 bar loop:
+
+    flight bed, level 0.6      RMS -17.01 dBFS   true peak -6.33 dBTP
+    peak sample 0.4827, samples at or over full scale: 0
+    A1 fundamental 178-224 Hz  -28.06 dB
+    A1 scream 2000-8000 Hz     -49.69 dB
+    A1 margin                  21.62 dB   (needs at least 12)
+    equal bandwidth margin     31.23 dB
+    music alone, level 5       RMS -22.56 dBFS
+    music tempo                173.64 BPM  r=0.4480  null p95 r=0.0378
+    metre alias at 2/3         116.26 BPM  r=0.3823
+    loop seam at 22.06897 s    delta 9.145e-4, percentile 14.36 of the
+                               signal's own frame to frame deltas
+
+The metre ambiguity the reviewer flagged has widened in the right
+direction: 174 now beats its 2/3 alias by r=0.066 where it previously beat
+it by 0.010. The seam sits at the 14th percentile of ordinary frame to frame
+change, so the loop point is quieter than 86 percent of the music around it.
+
+The music stem is 5.55 dB below the flight bed, which is what a bed under an
+instrument should be, and the full mix with music in is bit identical to the
+mix without it at every aggregate the probe prints to four decimals. That is
+worth stating plainly rather than hiding: at the default levels the music is
+present and measurable on its own, and it does not move the mix's RMS, peak
+or third octave profile. Whether that is subordinate enough or too
+subordinate is a judgement the next round should make with ears, not with
+this table.
+
+`npm run verify` 13 of 14, yaw-coupling the known red.

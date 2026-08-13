@@ -501,6 +501,57 @@ export function buildChecks() {
         };
       },
     },
+    {
+      num: 14,
+      id: 'audio-bed',
+      thresholdText: 'context running, bed audible, scheduler advancing',
+      async run(ctx) {
+        const th = ctx.th.checks['audio-bed'];
+        const a = await ctx.audioBedRun();
+        const gainOk = a.musicGain >= th.min_music_gain.value;
+        const stepsOk = a.steps >= th.min_music_steps.value;
+        const nodesOk = a.nodes > 0 && a.nodes <= th.max_nodes.value;
+        const liveOk = a.state === 'running' && a.motorsAttached && a.musicAttached;
+        const pass = gainOk && stepsOk && nodesOk && liveOk;
+        const reasons = [];
+        if (a.state !== 'running') {
+          reasons.push(`context ${a.state}`);
+        }
+        if (!a.motorsAttached) {
+          reasons.push('motor graph not attached');
+        }
+        if (!a.musicAttached) {
+          reasons.push('music graph not attached');
+        }
+        if (!gainOk) {
+          reasons.push(`music gain ${a.musicGain.toFixed(4)}`);
+        }
+        if (!stepsOk) {
+          reasons.push(`scheduler advanced ${a.steps} steps`);
+        }
+        if (!nodesOk) {
+          reasons.push(`${a.nodes} nodes`);
+        }
+        /*
+         * A rate, not a tempo. The count alone cannot tell a stalled
+         * scheduler from a half rate one, so the per second figure earns its
+         * place, but it is NOT published as BPM: the scheduler advances in
+         * lookahead chunks and consecutive 4 s windows measured 46 and 49
+         * steps, which would read as 172 and 183 BPM on a 174 BPM bed. The
+         * tempo is measured properly off the rendered audio by
+         * scripts/audio-probe.js, against a shuffled null hypothesis.
+         */
+        const rate = a.elapsed > 0 ? a.steps / a.elapsed : 0;
+        return {
+          measured:
+            `ctx ${a.state}, music gain ${a.musicGain.toFixed(3)}, ` +
+            `${a.steps} steps in ${a.elapsed.toFixed(2)} s (${rate.toFixed(2)}/s), ` +
+            `${a.nodes} nodes`,
+          pass,
+          reason: reasons.join('; '),
+        };
+      },
+    },
   ];
 }
 

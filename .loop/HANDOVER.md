@@ -44,6 +44,69 @@ spend a round trying to install one. `scripts/pixels.js` decodes PNGs and a
 20 line Node script can decode, crop and cluster one; that is how the
 MultiGP diagram below was measured.
 
+## Round 15 built the second map. Read this before anything below it.
+
+Branch `claude/freestyle-city-map-x22okv`, cut from `main` at `e57cba1`.
+`npm run verify` is **15 of 16**, `yaw-coupling` the one red. Determinism hash
+is now **5d51dbbe08eb**, not `000931016224`: the plant changed, which is what
+checks 2, 3 and 4 exist to police, and all three agree.
+
+Full account in PROGRESS.md round 15. The short version of what a next round
+has to know:
+
+**There are two maps now and the shell is split.** `src/render/shell.js` owns
+the renderer, camera and airframe for the session; a MapInstance owns its
+scene, post chain, colliders and contact data and disposes all of it on a
+swap. The contract is written down in `src/maps/README.md`. Read it before
+touching `main.js`.
+
+**The city is 59 vendored MIT files under `src/maps/city/vendored/`.** Two
+patches, both recorded as `.diff` files beside the tree: the planet bake is
+optional, and a dead `flatShading` parameter is removed. `NOTICE` carries the
+provenance. Do not edit anything else in there; wrap it in our own GPLv3 code
+under `src/maps/city/` instead.
+
+**Two of the survey's blockers were measured and are WRONG.** Every city
+collider has a `top`, so a quad flies over a signpost the way a walker steps
+over a kerb; and the unculled 900 k triangle floor is a property of the planet
+bake, which we do not run. The design's determinism and licence findings held.
+
+**P1 fails on the city by 12.3x and the reason is structural.** 4,935 draw
+calls at street level after a spatial material merge, instanced chunking and
+distance culling, down from 16,647. The floor under that is 3,545 distinct
+materials, 3,048 of them used by exactly one mesh, because every sign and
+fascia carries its own Canvas2D texture. Getting past it means atlasing three
+thousand generated textures. **No threshold was moved and none should be.**
+
+**Do not quote the attract view on either map.** Its camera orbits on the wall
+clock. Park it with `__setCam` and wait on `__boot().frames`, not on a timer:
+`__setCam` only lands on the next animation frame and `__budget` renders
+directly.
+
+### Owed, in priority order
+
+1. **Gyro noise. The D term chain is still decorative.** This is the one plant
+   item of the four that did not get done, and it is the one that makes the
+   quad tunable. Deterministic shaped noise into `s->omega` as read by the
+   bridge only, seeded from `step_index`, in `src/native/bf/bf_glue.c` around
+   line 271 where `gyro.gyroADCf` is written.
+2. **The motor constants, as one derivation.** `plant.c` carries the ESC
+   current ceiling as a comment with its numbers because applying it takes
+   check 8 from 18 ms to 51 ms. The band and a 48 A limit cannot both be met
+   by this kt, kq, ke, r_motor and j_rotor. Re-derive all five against a real
+   2207, and re-specify check 8, which reads a small signal time constant with
+   a zero to full step from rest. Peak pack current today is 409.8 A and
+   1.54 V a cell.
+3. **yaw-coupling's floor.** It measures -0.06 deg against 2.0, with a real
+   mechanism and the right sign for the first time. Reaching 2.0 needs about
+   44 degrees of motor misalignment. The floor is a "Loop A harness choice" in
+   `thresholds.json`, not a measurement. Argue it with the algebra in
+   PROGRESS.md round 15, do not lower it quietly.
+4. **The city's draw calls**, if a texture atlas is ever worth a round.
+5. **Betaflight's dropped diff settings**, 96 percent silently discarded, and
+   the 250 Hz RC claim against sticks sampled at the frame rate. Both untouched
+   and both still in the round 12 list below.
+
 ## Round 13 CLOSED five of the owed findings. Read this before the list below.
 
 The art director review did return. Five items are fixed and measured, and
@@ -107,6 +170,11 @@ director's items are now recorded above, fixed or refused.
 
 ### The plant, from the pilot review. None of this is addressed.
 
+- **CLOSED in round 15, the descent sign.** Thrust to weight at a fixed duty
+  now FALLS with descent rate (0.468, 0.509, 0.474, 0.439, 0.403, 0.368, 0.332
+  at 1.8 to 10.2 m/s) where it used to rise and plateau on the 1.35 clamp. A
+  deterministic per motor share of the ring state loss means the four rotors no
+  longer stall together. The original finding follows, for the record:
 - **No propwash, and the descent aerodynamics have the WRONG SIGN.** Measured:
   hover, chop to idle, catch, and the peak body rate disturbance is 0.00 deg/s.
   Roll rate is 170.6 deg/s at every descent rate to a tenth. Worse, at hover
@@ -123,10 +191,18 @@ director's items are now recorded above, fixed or refused.
   `dterm_lpf*` do nothing measurable, so the quad cannot be tuned because the
   thing tuning fights is not simulated. Fix: deterministic shaped noise into
   `s->omega` as read by the bridge only, seeded from `step_index`.
+- **REFUSED in round 15 with a measurement, still open.** The 48 A ceiling
+  works (409.8 A to 192.0 A, 1.54 to 2.95 V a cell) and takes check 8 from
+  18 ms to 51 ms. See item 2 above. The original finding follows:
 - **300 A and 13.5 V five milliseconds into a punch** on a full pack, from
   `plant.c:248` having no winding inductance and no ESC limit. 2.25 V per cell
   is a destroyed pack. Fix: a first order current lag at L/R about 200 us and a
   per motor ceiling near 45 to 50 A.
+- **PARTLY CLOSED in round 15.** The mechanism is real now and the sign is
+  right: -0.06 deg against 0.00. Still below the 2.0 deg floor, and the fix the
+  finding proposes, an OUTWARD tilt, cannot work: a force along r has zero
+  moment about z. The tilt that does work is tangential build tolerance. See
+  PROGRESS.md round 15. The original finding follows:
 - **yaw-coupling can never pass.** The QUADX roll and yaw mixer columns are
   orthogonal and each roll pair holds one CW and one CCW motor, so the yaw
   torque sum is exactly zero independent of any nonlinearity. Fix: tilt each
@@ -193,8 +269,10 @@ STILL OWED:
   zeroed within 30 m of the line, so there is no relief at any wavelength a
   pilot at 0.762 m can perceive. MultiGP asks for flat, not for a plane.
 - Tree trunks are about 3x too thick for their height.
-- `main.js` altitude readout measures from the SPAWN ground height, not the
-  ground under the craft. Identical on a flat corridor, wrong the day it is not.
+- **CLOSED in round 15.** `main.js` altitude reads the surface under the craft
+  through the same query the collision test uses, on both maps. It was measuring
+  from the SPAWN ground height, which is wrong by seven metres over the city's
+  overbridge.
 
 ### Audio, from the mastering and composition review. Fixed and owed.
 

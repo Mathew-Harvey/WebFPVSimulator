@@ -43,6 +43,14 @@ export const MAPS = [
     load: () => import('./field.js'),
   },
   {
+    id: 'custom',
+    name: 'Your track',
+    mode: 'race',
+    note: 'The course open in the track builder, built on the race field and timed like any other lap.',
+    buildMs: MAP_BUILD_MS.custom,
+    load: () => import('./custom.js'),
+  },
+  {
     id: 'city',
     name: 'Freestyle city',
     mode: 'freestyle',

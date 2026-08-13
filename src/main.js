@@ -145,13 +145,17 @@ const AXIS_Y = new THREE.Vector3(0, 1, 0);
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
  * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 3, city: 63 };
+const MAP_MODULE_COUNT = { field: 3, city: 63, custom: 9 };
+/* Where a map's modules live, so the loading bar can count them. Data, not a
+ * ternary: the ternary read "field or else city", so a third map counted its
+ * modules under the city's prefix and the bar sat at zero. */
+const MAP_MODULE_PREFIX = { field: '/src/maps/field', city: '/src/maps/city/', custom: '/src/maps/custom' };
 
 async function loadMap(shell, id, loading) {
   const entry = mapById(id);
   loading.start('module');
   const counter = moduleCounter(
-    `/src/maps/${id === 'field' ? 'field' : 'city/'}`,
+    MAP_MODULE_PREFIX[id] ?? `/src/maps/${id}`,
     MAP_MODULE_COUNT[id] ?? 4,
     (f, got, total) => loading.progress('module', f, `${got} of ${total} modules`),
   );
@@ -181,11 +185,21 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   input.startPolling(2);
   const ui = new Ui(uiRoot);
-  /* boot.js read the stored map before any module loaded, so it could weight
+  /*
+   * boot.js read the stored map before any module loaded, so it could weight
    * the loading screen. ui.js is the owner of the setting; if the two ever
-   * disagree the ui wins, because it is what the player sees. */
+   * disagree the ui wins, because it is what the player sees.
+   *
+   * The menu is rebuilt after the change, not just the value. The Ui builds
+   * its rows in its constructor, which has already run by this line, so a
+   * map named in the URL used to land in the settings and leave the Map row
+   * still reading the map it was not showing. That only became reachable
+   * when the track builder started linking to ?map=custom; before it, the
+   * two could never disagree at this point.
+   */
   if (mapId && ui.settings.map !== mapId) {
     ui.settings.map = mapId;
+    ui.renderMenu();
   }
 
   window.addEventListener('resize', () => {

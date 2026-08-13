@@ -1,9 +1,20 @@
 # The track document
 
 This is the track builder's output and the only thing it shares with the rest
-of WebFPVSimulator. The builder does not import a line of the simulator and
-the simulator does not import a line of the builder; when the game learns to
-fly a designed track, this file is the contract it reads.
+of WebFPVSimulator. The builder does not import a line of the simulator.
+
+**The game now reads it.** `src/game/trackdoc.js` turns a document into a
+course, `src/render/scene.js` builds the race field around that course instead
+of around its own figure eight, and `src/maps/custom.js` offers it as the
+**Your track** map. The loop is: build a course, press **Fly this track**, and
+the world you get is this one with your gates in it.
+
+That reading goes **through this module's own code**. `trackdoc.js` imports
+`model.js`, `elements.js`, `geometry.js` and `path.js`, which are pure data and
+pure functions with no DOM and no Three.js, so the game and the builder cannot
+disagree about what a document means. The dependency is one way and stays one
+way: the game may read the builder's data modules, the builder may not import
+anything from the game.
 
 Everything below describes `schemaVersion: 1`.
 

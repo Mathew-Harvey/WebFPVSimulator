@@ -33,5 +33,12 @@
 
 export const MAP_BUILD_MS = {
   field: 2964,
+  /* The same world as the field, with a designed course in place of the
+   * built in one. A ten gate track builds a little faster than fourteen
+   * stations, and the terrain, grass and scenery, which are most of the
+   * cost, are identical. Close enough to the field's figure that giving it
+   * its own would be pretending to a precision the loading bar does not
+   * have. */
+  custom: 2964,
   city: 7994,
 };

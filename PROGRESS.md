@@ -4062,3 +4062,162 @@ failure in the measurement rig. The rule that would have caught all of them
 is cheap: any constant that is not copied from a source file gets computed in
 a scratch script whose output goes in the commit, and no comment claims a
 number was measured unless the measurement is in the record.
+## Round 22: the track builder's output, flown, on a pitch that is mown for it
+
+Round 18 produced a track document and nothing that could read one. This round
+makes the race field build itself around a designed course, so a track goes
+from the drawing board into the air in one press.
+
+### The seam, and only one seam
+
+`src/game/trackdoc.js` reads a document and returns a **course**: obstacle
+placements in scene coordinates, a spawn, and the racing line. It is pure. It
+converts frames, applies the game's obstacle scale, and touches no Three.js.
+
+`buildFieldScene(shell, onProgress, course)` gains one optional argument.
+Without it the built in figure eight is built exactly as it always was, same
+curve, same fourteen stations, same rng stream, and `npm run verify` checks 15
+and 16 say so. With it, the same valley is built around the designed course:
+same sky, same ridges, same lake, same grass, same light, same post chain.
+
+`src/maps/custom.js` is a third map, **Your track**, that fetches the document
+the builder is working on and hands it over. That is the whole of the wiring.
+
+**The direction of the dependency is one way and it is deliberate.**
+`trackdoc.js` imports the builder's `model.js`, `elements.js`, `geometry.js`
+and `path.js`, which are pure data and pure functions. The alternative, a
+second implementation of `normalize()` and of the aperture maths living in the
+game, is exactly the drift `schema.md` exists to prevent: two readers of one
+format disagreeing about what a tilted gate means is a bug nobody would find
+until a course flew wrong. The builder still imports nothing from the game.
+
+### Three assumptions the integration turned into data
+
+Each of these was correct for the built in circuit and correct for nothing
+else, and each is now read off something the code already had.
+
+**Flying order.** `Race` derived it as `[0, n-1, n-2, ... 1]`. That is right
+for the figure eight for one reason: its stations are laid along a curve and
+flown in reverse, so array order IS reverse flying order there. The scene has
+always stamped `flyOrder` on every gate; sorting by it produces the identical
+sequence for the field, asserted over the real fourteen, and the right one for
+a designed course.
+
+**The glow corridor.** `setNextGate` lit `i - step` through the array, for the
+same reason and with the same blind spot: on a course whose gates are in
+flying order it lit the three gates BEHIND the pilot. It walks `flyOrder` now.
+
+**`obstacle()` took a library key** and looked the dimensions up itself, so it
+could only ever build one of MultiGP's fifteen. It takes a spec. The race field
+passes `builtObstacle('standardGate')`; a course passes what its document
+carries. The T1 assertion still fires, against the source of truth each one
+actually has.
+
+### The tilt, and why it is not obstacle() with an angle
+
+A dive gate's aperture is horizontal. `obstacle()` builds a structure that
+stands on the ground: two uprights from the grass to the top rail, feet, mesh
+panels. Rotating all of that about the opening lays the uprights over and puts
+the feet in the air, and a gate whose legs point sideways is not a gate
+somebody built, it is a gate somebody knocked over. A real dive gate is a frame
+on a mast, so `tiltedGate()` makes that, sharing the lit target and the number
+plate with `obstacle()` through two extractions rather than a hand copy.
+
+`Race`'s crossing test generalised with it, from a yaw only frame to the
+opening's full basis, with the origin moved from the gate's base to the
+opening's own centre because a tilted plane pivots about the hole rather than
+about the ground under it. **At pitch zero the new arithmetic is the old
+arithmetic**: measured over twenty thousand random gates and points, the worst
+disagreement is 3.6e-15, which is double precision noise. That was worth
+measuring rather than arguing, because it is the scoring path for a track
+somebody already has a record on.
+
+### The spawn faced the wrong way, and the harness caught it
+
+A gate's document yaw points its plane NORMAL, so its scene yaw is that angle
+plus a quarter turn. The start pads' document yaw points **the way the quad
+sets off**. Reusing the gate formula for the pads sent the craft out backwards
+with the first gate behind its right shoulder. It was not visible in a
+screenshot, because a quad parked on grass looks the same either way; it came
+out of `__nextGate`, which reports whether the next gate is in front of the
+camera, and said `inFront: false`.
+
+The fix runs the pads' heading through `headingForTravel`, which is the one
+place the game's travel convention is written down and the reason that
+function exists.
+
+### The football pitch
+
+The first build put the course in the meadow and it was wrong in a way that
+took a screenshot to see: **trees standing between the gates**. The scenery
+keeps 15 m off the racing line, which on a 210 by 236 m circuit is a clearing
+and on a 60 by 40 m field is a tree beside a gate. Pushing the scenery further
+out would have fixed the collisions and left the course sitting in an arbitrary
+bald patch.
+
+So a designed course gets a real arena, which is the owner's call and a better
+one: a rectangle the size of the field its author drew plus 8 m of run off,
+**levelled flat**, mown, striped the way a groundsman stripes a pitch, and
+marked with a white line on the author's own boundary. The rule that keeps the
+scenery off the course is now the same rectangle the player can see.
+
+Levelling is not cosmetic. An author draws a plan on flat paper and sets base
+heights against it, so a rolling metre under a gate puts their dive gate
+through the ground.
+
+**The markings are a texture, not terrain vertex colours**, and that was the
+second thing a screenshot decided. The terrain is a 1700 m plane at 230
+segments, so its vertices are 7.4 m apart: a 0.3 m touchline painted into a
+vertex colour is a line 25 times finer than the mesh carrying it. It vanished
+completely and the stripes came out as one smear. The pitch has its own plane
+and its own painted texture, transparent at its edge so the mown rectangle
+fades into the meadow rather than ending on a cut line.
+
+### Two smaller things the same work exposed
+
+**A map named in the URL left the Map row stale.** `main.js` wrote the setting
+after the `Ui` had already built its rows, so `?map=custom` landed in the
+settings and the menu still read the map it was not showing. Only reachable
+once the builder started linking to `?map=custom`; before that the two could
+never disagree at that line.
+
+**The module counter's path was a ternary**, `field or else city`, so a third
+map counted its modules under the city's prefix and the loading bar sat at
+zero. It is a table now.
+
+### Owed
+
+- **Flags and cones are placed and solid but not scored.** The builder gives a
+  marker a pass side and the racing line honours it; the race times apertures
+  and ignores which side of a cone you went. Scoring a pass side is a different
+  test from a plane crossing and it is not written.
+- A structure flown twice shares one lit target and one number plate. There is
+  one ladder standing on the field and lighting it twice is what a marshal
+  does, but the pilot is told which level by the flight display rather than by
+  the gate.
+- The pitch is levelled but the terrain outside it is not aware of it beyond
+  the fade, so a course laid over the lake would be a course laid over the
+  lake. The builder warns about its own field boundary and knows nothing about
+  the valley.
+- `MAP_BUILD_MS.custom` is the field's figure rather than a measured one.
+
+### Verify
+
+`node src/trackbuilder/selftest.js`: **74 of 74**, unchanged, which is the
+point: the builder was not touched except for one button.
+
+A headless Chrome harness built the demo track in the builder, let it
+autosave, opened `?map=custom` and checked the world that came out: **13 of
+13**. The map is the custom one, named after the track, with one gate per
+sequenced aperture, in flying order, the flight display counting them, the
+start pads setting the spawn, the first gate in front of the quad, and the
+glow corridor lighting the course ahead. The builder's own 30 check smoke suite
+still passes.
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at
+-0.08 deg. Checks 2, 3 and 4 pass: nothing in this round touches `src/native/`,
+`patches/`, `vendor/betaflight`, `src/input/` or the build. **Check 15
+world-scale and check 16 map-isolation both pass**, which is what says the
+built in race field is the world it was: same reference gate opening, same
+module count, same budget after a city round trip.

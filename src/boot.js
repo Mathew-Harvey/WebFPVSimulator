@@ -65,6 +65,22 @@ async function start() {
   } catch (e) {
     mapId = 'field';
   }
+  /*
+   * A map named in the URL wins over the stored setting, and this is the one
+   * thing the track builder asks of the game: its Fly this track button links
+   * to ?map=custom, so a course goes from the drawing board to the air in one
+   * press instead of a press and then a hunt through a menu. main.js already
+   * takes a mapId and writes it into the settings, so the Map row agrees with
+   * the world the moment the title screen appears.
+   */
+  try {
+    const wanted = new URLSearchParams(window.location.search).get('map');
+    if (wanted) {
+      mapId = wanted;
+    }
+  } catch (e) {
+    /* No URL to read. Keep the stored setting. */
+  }
   const worldMs = MAP_BUILD_MS[mapId] ?? MAP_BUILD_MS.field;
 
   loading.run(planStages(['three', 'sim', 'module', 'world', 'frame'], worldMs));

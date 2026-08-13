@@ -238,8 +238,151 @@ function trackCurve() {
  * the height field so the shoreline is a real intersection, not a decal. */
 export const LAKE = { x: 250, z: -205, r: 96, level: -7.5 };
 
+/*
+ * THE PITCH: the mown, marked, level ground a designed course stands on.
+ *
+ * A track somebody drew is 60 by 40 m. The valley the race field lives in is
+ * 1700 m across, its terrain rolls, and its scenery stands 15 m off the
+ * racing line, which on a circuit 210 m wide is a clearing and on a 60 m
+ * field is a tree beside a gate. Pushing the scenery further out would fix
+ * the collisions and leave the course sitting in an arbitrary bald patch of
+ * meadow.
+ *
+ * So a designed course gets a real arena: a rectangle the size of the field
+ * its author drew plus a run off margin, levelled flat, mown, striped the way
+ * a groundsman stripes a pitch, and marked with a white line on the field
+ * boundary itself. Everything else in the world stays exactly where it was.
+ * The course now stands somewhere rather than nowhere, and the reason no tree
+ * is on it is a reason you can see.
+ *
+ * Nothing here touches the rng. The stripes and the line are functions of
+ * position, the levelling is a function of position, and the grass, the
+ * trees and the mountains draw from the world's one random stream in the one
+ * order they always did.
+ */
+const PITCH = {
+  /* Mown run off outside the author's boundary, in metres. */
+  margin: 8,
+  /* How far the mown edge fades into the meadow. */
+  fade: 5,
+  /* Stripe period, in metres. A groundsman's mower is about 1.5 m wide and
+   * stripes are usually cut in pairs, so 5 m reads right from the air. */
+  stripe: 5,
+  /* The marking, in metres. Regulation football touchlines are 12 cm; this
+   * is wider because it has to survive being seen from 40 m up at speed. */
+  lineW: 0.3,
+  light: new THREE.Color(0x63a949),
+  dark: new THREE.Color(0x4c8b38),
+  line: new THREE.Color(0xe6efe2),
+};
+
+export function makePitch(course) {
+  if (!course) {
+    return null;
+  }
+  return {
+    halfW: course.field.width * 0.5,
+    halfD: course.field.depth * 0.5,
+    mownW: course.field.width * 0.5 + PITCH.margin,
+    mownD: course.field.depth * 0.5 + PITCH.margin,
+  };
+}
+
+/* Signed distance to the mown rectangle: negative inside, metres outside. */
+function pitchEdge(pitch, x, z) {
+  return Math.max(Math.abs(x) - pitch.mownW, Math.abs(z) - pitch.mownD);
+}
+
+/* 1 on the pitch, falling to 0 over the fade. */
+function pitchCover(pitch, x, z) {
+  if (!pitch) {
+    return 0;
+  }
+  const d = pitchEdge(pitch, x, z);
+  return Math.min(1, Math.max(0, 1 - d / PITCH.fade));
+}
+
+/*
+ * The pitch's surface: mown stripes and a marked boundary, as a texture.
+ *
+ * NOT as terrain vertex colours, which is where this started. The terrain is
+ * a 1700 m plane at 230 segments, so its vertices are 7.4 m apart, and a
+ * 0.3 m touchline painted into a vertex colour is a line 25 times finer than
+ * the mesh that carries it: it vanished completely and the stripes came out
+ * as one smear. Fine markings need their own surface, so the pitch gets a
+ * plane of its own with a painted texture, laid on the levelled ground.
+ *
+ * It is transparent at its own edge, so the mown rectangle fades into the
+ * meadow instead of ending on a cut line, and the terrain underneath is
+ * tinted the same green so the fade has somewhere to go.
+ */
+function pitchSurface(pitch) {
+  const w = pitch.mownW * 2;
+  const d = pitch.mownD * 2;
+  /* Pixels per metre, so a 0.3 m marking is four pixels wide whatever size
+   * of field somebody drew. Capped, because a 400 m field would otherwise
+   * ask for a texture no browser will allocate. */
+  const ppm = Math.min(16, Math.max(4, 2048 / Math.max(w, d)));
+  const cw = Math.round(w * ppm);
+  const ch = Math.round(d * ppm);
+  const cv = document.createElement('canvas');
+  cv.width = cw;
+  cv.height = ch;
+  const ctx = cv.getContext('2d');
+
+  /* Stripes down the long axis, the way a mower drives it. */
+  const stripePx = PITCH.stripe * ppm;
+  const alongX = w >= d;
+  const span = alongX ? ch : cw;
+  for (let i = 0; i * stripePx < span; i += 1) {
+    ctx.fillStyle = i % 2 === 0 ? `#${PITCH.light.getHexString()}` : `#${PITCH.dark.getHexString()}`;
+    if (alongX) {
+      ctx.fillRect(0, i * stripePx, cw, stripePx);
+    } else {
+      ctx.fillRect(i * stripePx, 0, stripePx, ch);
+    }
+  }
+
+  /* The marking, on the boundary the author drew rather than on the mown
+   * edge: the mown ground outside it is run off. */
+  const inset = PITCH.margin * ppm;
+  const lw = Math.max(2, PITCH.lineW * ppm);
+  ctx.strokeStyle = `#${PITCH.line.getHexString()}`;
+  ctx.lineWidth = lw;
+  ctx.strokeRect(inset, inset, cw - inset * 2, ch - inset * 2);
+
+  /* Fade the outer edge to nothing so the pitch joins the meadow. */
+  const fadePx = Math.max(2, PITCH.fade * ppm);
+  const img = ctx.getImageData(0, 0, cw, ch);
+  for (let y = 0; y < ch; y += 1) {
+    for (let x = 0; x < cw; x += 1) {
+      const e = Math.min(x, y, cw - 1 - x, ch - 1 - y);
+      const a = Math.min(1, e / fadePx);
+      img.data[(y * cw + x) * 4 + 3] = Math.round(255 * a * a * (3 - 2 * a));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const geo = new THREE.PlaneGeometry(w, d);
+  geo.rotateX(-Math.PI / 2);
+  /* Same material family as the terrain, so the pitch takes the same cel
+   * ramp and the same cloud shadows and does not read as a decal. */
+  const mat = celMaterial({ color: 0xffffff, rim: 0.0, cloudShadow: 0.34, transparent: true });
+  mat.map = tex;
+  const mesh = new THREE.Mesh(geo, mat);
+  /* Two centimetres up. The ground under the pitch is levelled to exactly
+   * zero, so this is clear of it without being a step anybody can see, and
+   * it is under the 7.5 cm the quad parks at. */
+  mesh.position.y = 0.02;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 /* Terrain height, shared by the mesh and by anything placed on it. */
-function makeHeightField(samples) {
+function makeHeightField(samples, pitch) {
   return (x, z) => {
     const base = (fbm(x * 0.0022, z * 0.0022) - 0.5) * 34;
     const detail = (fbm(x * 0.011, z * 0.011) - 0.5) * 4.5;
@@ -258,6 +401,15 @@ function makeHeightField(samples) {
     const flat = Math.min(1, Math.max(0, (d - 30) / 70));
     const s2 = flat * flat * (3 - 2 * flat);
     let h = (base + detail) * s2;
+
+    /* The pitch is level. Not nearly level: a course author drew a plan on
+     * flat paper and set base heights against it, so a rolling metre under a
+     * gate would put their dive gate through the ground. */
+    if (pitch) {
+      const cover = pitchCover(pitch, x, z);
+      const smooth = cover * cover * (3 - 2 * cover);
+      h *= (1 - smooth);
+    }
 
     /*
      * Carve the lake basin: a smooth bowl, deepest at the centre, with a
@@ -336,7 +488,7 @@ const GROUND = {
   earth: new THREE.Color(0x9c8f6e),
   sand: new THREE.Color(0xd8cfa8),
 };
-function groundAlbedo(x, z, y, samples, c) {
+function groundAlbedo(x, z, y, samples, c, pitch) {
   /* Colour by altitude, then three scales of variation: large patches
    * read as different ground cover from the air, a mid scale macro
    * (period about 33 m) breaks the monotone at racing height, and fine
@@ -357,7 +509,32 @@ function groundAlbedo(x, z, y, samples, c) {
     dTrack = Math.min(dTrack, Math.hypot(x - s.x, z - s.z));
   }
   const onPath = 1 - Math.min(1, Math.max(0, (dTrack - 2.5) / 5));
-  c.lerp(GROUND.earth, onPath * 0.42 * (0.7 + speck * 0.6));
+  /* No beaten earth on a mown pitch. A groundsman would have something to
+   * say about a dirt track worn across their stripes, and the racing line on
+   * a designed course is a line somebody drew this morning rather than one a
+   * season of laps wore in. */
+  const mown = pitchCover(pitch, x, z);
+  c.lerp(GROUND.earth, onPath * 0.42 * (0.7 + speck * 0.6) * (1 - mown));
+
+  if (mown > 0) {
+    /*
+     * Stripes across the short axis, so they run the length of the pitch the
+     * way a mower drives it. The speckle still modulates them, so the pitch
+     * is mown rather than painted.
+     */
+    const band = Math.floor((z + 1e4) / PITCH.stripe) % 2 === 0;
+    const turf = band ? PITCH.light : PITCH.dark;
+    c.lerp(turf, mown * 0.85);
+    c.multiplyScalar(0.985 + speck * 0.03);
+    /* The marking sits on the author's own boundary, not on the mown edge:
+     * it is the line their plan drew, and the mown ground outside it is run
+     * off. */
+    const onLine = Math.abs(Math.max(Math.abs(x) - pitch.halfW, Math.abs(z) - pitch.halfD));
+    const inside = Math.abs(x) <= pitch.halfW + PITCH.lineW && Math.abs(z) <= pitch.halfD + PITCH.lineW;
+    if (inside && onLine <= PITCH.lineW) {
+      c.lerp(PITCH.line, 0.9 * mown);
+    }
+  }
   const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
   const shore = 1 - Math.min(1, Math.abs(y - LAKE.level) / 3.5);
   if (ld < LAKE.r * 1.5 && shore > 0) {
@@ -366,7 +543,7 @@ function groundAlbedo(x, z, y, samples, c) {
   return c;
 }
 
-function terrain(height, samples) {
+function terrain(height, samples, pitch) {
   const size = 1700;
   const seg = 230;
   const geo = new THREE.PlaneGeometry(size, size, seg, seg);
@@ -381,7 +558,7 @@ function terrain(height, samples) {
     const y = height(x, z);
     pos.setY(i, y);
     /* Slope rock is applied after normals exist, below. */
-    groundAlbedo(x, z, y, samples, c);
+    groundAlbedo(x, z, y, samples, c, pitch);
     colors[i * 3 + 0] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -782,7 +959,7 @@ function cliff(rng, height, x, z, caps) {
  * the wind is a vertex shader function of world position so neighbouring
  * blades move together in gusts instead of each doing its own thing.
  */
-function grassField(height, samples, rng) {
+function grassField(height, samples, rng, pitch) {
   /* Measured as the blades are made rather than restated from the formula
    * above, so a scale check reads what was BUILT. See references in
    * buildFieldScene. */
@@ -979,7 +1156,7 @@ function grassField(height, samples, rng) {
      * field look littered: that number has to be read beside the frame and
      * not instead of it.
      */
-    groundAlbedo(x, z, y, samples, rootC);
+    groundAlbedo(x, z, y, samples, rootC, pitch);
     tipC.copy(rootC).offsetHSL(0.012, 0.05, 0.08);
     /*
      * FOUR vertices, base pair and a blunt top pair, two triangles. It was
@@ -1344,26 +1521,554 @@ const DIGITS = {
 };
 
 /*
- * One obstacle, at its published dimensions.
+ * The lit markers on an obstacle's openings: the outline the pilot aims at,
+ * its halo, and the additive glow that says which gate the race wants next.
  *
- * kindName indexes OBSTACLES in src/game/track.js. index is the gate's
- * number in FLYING order, painted on the top panel. isStart makes it the
- * start and finish gate, which is green.
+ * Extracted from obstacle() so the TILTED gate below can carry exactly the
+ * same target. A dive gate whose ring were a hand copy of this one would
+ * drift the first time the legibility numbers below were retuned, and the
+ * whole point of those numbers is that they were measured once.
+ *
+ * Adds the three meshes to `group` in the obstacle's own local frame and
+ * returns them, along with which opening ended up carrying the glow.
+ */
+function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWanted) {
+  /*
+   * The aperture markers. Square now, because the opening is square, and
+   * built as one merged geometry per obstacle so a stacked obstacle still
+   * costs one draw call for all of its outlines.
+   *
+   * The glow sits on the PRIMARY opening, which for a stack is the middle
+   * one: that is the opening the racing line is aimed at, and lighting all
+   * three equally would tell the pilot nothing about where to go.
+   */
+  const ringColor = isStart ? 0x7dffb4 : 0xffd45c;
+  /* The middle opening by default; a course document may name a different
+   * one, because a ladder flown at its top level wants the top level lit. */
+  const primary = primaryWanted == null
+    ? Math.floor(stack / 2)
+    : Math.max(0, Math.min(stack - 1, Math.round(primaryWanted)));
+  const outlineGeos = [];
+  const haloGeos = [];
+  for (let k = 0; k < stack; k += 1) {
+    const cy = sills[k] + clearH * 0.5;
+    /*
+     * The lit bar's thickness, and it is a LEGIBILITY number.
+     *
+     * 0.045 m was invisible at 20 m once the opening shrank to regulation.
+     * 0.075 m was measured by a pilot at 1.4 px at 20 m and 0.9 px at 30 m,
+     * still sub pixel at the distance a racer has to commit to a line: at 25 m
+     * the target read as a 23 px green tick dimmer than the banner flags and
+     * the trees beside it. 0.16 m is 3 px at 20 m and 2 px at 30 m, the
+     * smallest that survives commit range on a 900 px frame.
+     *
+     * The cost, stated: at 7 m the bar covers about 10 percent of the opening
+     * instead of 5, so a gate right in front of the camera reads chunkier. A
+     * target you cannot see until 7 m is not a target, so that is the trade.
+     */
+    const bar = 0.16;
+    const halfW = clearW * 0.5;
+    const halfH = clearH * 0.5;
+    /* Four thin bars just inside the frame, so the lit line the pilot aims
+     * at is the clear opening itself and not the tube around it. */
+    const parts = [
+      [0, cy + halfH - bar * 0.5, clearW, bar],
+      [0, cy - halfH + bar * 0.5, clearW, bar],
+      [-halfW + bar * 0.5, cy, bar, clearH],
+      [halfW - bar * 0.5, cy, bar, clearH],
+    ];
+    for (const [px, py, sw, sh] of parts) {
+      const geo = new THREE.BoxGeometry(sw, sh, bar);
+      geo.translate(px, py, 0);
+      outlineGeos.push(geo);
+      const hg = new THREE.BoxGeometry(sw * 1.06 + 0.05, sh * 1.06 + 0.05, bar * 0.7);
+      hg.translate(px, py, 0);
+      haloGeos.push(hg);
+    }
+  }
+  const ring = new THREE.Mesh(
+    mergeGeometries(outlineGeos, false),
+    new THREE.MeshBasicMaterial({ color: ringColor, fog: true }),
+  );
+  /* No ink on the emissive outline: the depth edge pass draws a ghost line
+   * inside it, which reads as a rendering defect on the one prop the pilot
+   * stares at all lap. Layer 1 skips the prepass. */
+  ring.layers.set(1);
+  group.add(ring);
+  const halo = new THREE.Mesh(
+    mergeGeometries(haloGeos, false),
+    new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.5, fog: true }),
+  );
+  halo.layers.set(1);
+  group.add(halo);
+
+  /* Additive glow across the primary opening. Additive so it reads as light
+   * rather than paint, in the gate plane so it does not need to billboard,
+   * and unlit and unfogged so distance cannot take the target away from the
+   * pilot. uGain is driven per frame: bright and pulsing on the gate the
+   * race wants next, nearly off on the rest. */
+  const glowSize = Math.max(clearW, clearH) * 2.6;
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(glowSize, glowSize),
+    new THREE.ShaderMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(ringColor) },
+        uGain: { value: 0.1 },
+        /* Half the clear opening as a fraction of the plane, so the lit
+         * band lands on the frame whatever size the opening is. */
+        uEdge: { value: (clearW * 0.5) / glowSize },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec2 vUv;
+        uniform vec3 uColor;
+        uniform float uGain;
+        uniform float uEdge;
+        void main() {
+          /* A square band, because the opening is square. The Chebyshev
+           * distance is the square's own radius. */
+          vec2 d = abs(vUv - 0.5);
+          float r = max(d.x, d.y);
+          float band = exp(-pow((r - uEdge) / 0.055, 2.0));
+          /* Only a breath of fill. The aperture is the thing the pilot has
+           * to see THROUGH, so filling it with haze hides the line out of
+           * the gate, which is worse than not marking it at all. */
+          float fill = smoothstep(uEdge, 0.0, r) * 0.05;
+          gl_FragColor = vec4(uColor * (band + fill) * uGain, 1.0);
+        }
+      `,
+    }),
+  );
+  glow.position.y = sills[primary] + clearH * 0.5;
+  glow.layers.set(1);
+  group.add(glow);
+  return { ring, halo, glow, ringColor, primary };
+}
+
+/*
+ * A library obstacle's BUILT dimensions, named.
+ *
+ * src/game/track.js keeps MultiGP's figures as citations and GATE_SCALE is
+ * the declared departure from them. Reading OBSTACLES directly anywhere in
+ * this file would draw the rulebook and score the course, which is exactly
+ * the disagreement the T1 assertion exists to catch.
+ */
+function specFor(kindName) {
+  const spec = builtObstacle(kindName);
+  if (!spec) {
+    throw new Error(`scene: unknown obstacle ${kindName}`);
+  }
+  spec.kindName = kindName;
+  return spec;
+}
+
+/*
+ * The top panel and the gate number on it, as a group centred on the panel.
+ *
+ * Extracted from obstacle() so a tilted gate can carry the same plate. The
+ * caller positions the group and pushes the collider it hands back, because
+ * a dive gate's plate rides on the leaning frame while a standing gate's sits
+ * on top of the uprights, and those are two different heights in two
+ * different frames.
+ */
+function numberPlate(index, clearW, panelMat) {
+  const mats = sharedObstacleMats();
+  const group = new THREE.Group();
+  const plateH = 0.44;
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(clearW * 0.92, plateH, 0.05), panelMat);
+  plate.castShadow = true;
+  outlineHull(plate, 1.04);
+  group.add(plate);
+
+  /*
+   * The number, as many digits as it takes. This used to be
+   * DIGITS[index % 10], which is correct for one digit and paints a lie for
+   * two: gate 13 came out as a 3 and gate 10 as a 0, so with more than ten
+   * stations two different gates would carry the same plate and a pilot
+   * counting them down would be reading fiction.
+   */
+  const dot = 0.055;
+  const step = 0.072;
+  const glyphs = String(Math.max(0, Math.round(index))).split('').map((d) => DIGITS[Number(d)]);
+  /* 3 columns per glyph plus a one column gap, centred on the plate. */
+  const glyphW = 4;
+  const originX = -((glyphs.length * glyphW - 1) - 1) * 0.5;
+  for (let gi = 0; gi < glyphs.length; gi += 1) {
+    const rows = glyphs[gi];
+    for (let ry = 0; ry < rows.length; ry += 1) {
+      for (let rx = 0; rx < 3; rx += 1) {
+        if (rows[ry][rx] !== '1') {
+          continue;
+        }
+        const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
+        pip.position.set(
+          (originX + gi * glyphW + rx) * step,
+          (2 - ry) * step,
+          0.04,
+        );
+        group.add(pip);
+      }
+    }
+  }
+  group.userData.halfW = clearW * 0.46;
+  group.userData.r = plateH * 0.5;
+  return group;
+}
+
+/*
+ * A designed course's racing line as a curve, for the things that want one:
+ * the terrain's flat corridor, the scenery's exclusion test, and the title
+ * screen's orbiting camera.
+ *
+ * Thinned before it is fitted. The line arrives as thousands of samples and
+ * a CatmullRom through all of them is both slow to evaluate and wobbly,
+ * because the control points are closer together than the spline's own
+ * tension wants.
+ */
+function courseCurve(course) {
+  const pts = [];
+  let last = null;
+  for (const p of course.line) {
+    if (!last || Math.hypot(p.x - last.x, p.z - last.z) >= 6) {
+      pts.push(new THREE.Vector3(p.x, p.y, p.z));
+      last = p;
+    }
+  }
+  if (pts.length < 3) {
+    /* Not enough of a course to fit anything to. A tiny loop round the
+     * spawn keeps every consumer working rather than making each one test
+     * for a curve that is not there. */
+    const cx = course.spawn ? course.spawn.x : 0;
+    const cz = course.spawn ? course.spawn.z : 0;
+    for (let i = 0; i < 4; i += 1) {
+      const a = (i / 4) * Math.PI * 2;
+      pts.push(new THREE.Vector3(cx + Math.cos(a) * 12, 0, cz + Math.sin(a) * 12));
+    }
+    return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.4);
+  }
+  return new THREE.CatmullRomCurve3(pts, Boolean(course.closed), 'catmullrom', 0.4);
+}
+
+/*
+ * Everything on a designed course that is NOT flown through: barriers, turn
+ * flags and cones.
+ *
+ * They are solid. A barrier the racing line has to go round is worth nothing
+ * if a quad can fly through it, and the track builder's own warning pass
+ * already tells the author when their line clips one, so the two halves
+ * agree about what a barrier is.
+ */
+function courseProps(course, height, scene, colliders, baker) {
+  const mats = sharedObstacleMats();
+  for (const s of course.structures) {
+    const y = height(s.x, s.z) + s.baseY;
+    if (s.kind === 'obstacle') {
+      const w = s.dims.width;
+      const d = s.dims.depth;
+      const h = s.dims.height;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats.panel);
+      box.position.set(s.x, y + h * 0.5, s.z);
+      box.rotation.y = s.yaw;
+      box.castShadow = true;
+      box.receiveShadow = true;
+      outlineHull(box, 1.02);
+      baker.bake(box);
+      /*
+       * A capsule along the barrier's long axis, its radius half the short
+       * one. A box collider would be exact and the collision system speaks
+       * capsules, so this is the inscribed one: it under covers the two ends
+       * by the corner radius, which is the safe direction to be wrong in for
+       * a thing you are trying not to hit.
+       */
+      const half = Math.max(0, w * 0.5 - d * 0.5);
+      const cs = Math.cos(s.yaw);
+      const sn = Math.sin(s.yaw);
+      colliders.add(
+        'wall',
+        s.x - half * cs, y + h * 0.5, s.z + half * sn,
+        s.x + half * cs, y + h * 0.5, s.z - half * sn,
+        Math.max(d * 0.5, h * 0.5),
+      );
+      continue;
+    }
+    if (s.type === 'cone') {
+      const r = s.dims.baseRadius;
+      const h = s.dims.height;
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(r, h, 10),
+        celMaterial({ color: 0xd2601f, rim: 0.24 }),
+      );
+      cone.position.set(s.x, y + h * 0.5, s.z);
+      cone.castShadow = true;
+      baker.bake(cone);
+      colliders.add('obstacle', s.x, y, s.z, s.x, y + h, s.z, r);
+      continue;
+    }
+    if (s.type === 'flag') {
+      /* The course marker flag the field already draws, at the author's
+       * position and pointing the way they pointed it. */
+      const made = bannerFlag(() => 0.5, height, s.x, s.z, 0xd8443a);
+      made.group.rotation.y = s.yaw;
+      scene.add(made.group);
+      colliders.add('obstacle', s.x, y, s.z, s.x, y + s.dims.height, s.z, Math.max(0.05, s.dims.poleRadius));
+      continue;
+    }
+    if (s.type === 'startPads') {
+      const n = Math.max(1, Math.round(s.dims.pads));
+      const pad = s.dims.padSize;
+      const mat = celMaterial({ color: 0x2f4f3a, rim: 0.2 });
+      for (let i = 0; i < n; i += 1) {
+        const off = (i - (n - 1) / 2) * s.dims.spacing;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(pad, 0.04, pad), mat);
+        /* Across the pads' own heading, which is the start line. */
+        m.position.set(s.x + Math.cos(s.yaw) * off, y + 0.02, s.z - Math.sin(s.yaw) * off);
+        m.rotation.y = s.yaw;
+        m.receiveShadow = true;
+        baker.bake(m);
+      }
+    }
+  }
+}
+
+/*
+ * A designed course's stations, in the shape the placement loop wants.
+ *
+ * src/game/trackdoc.js has already done the hard half: it converted the
+ * document's frame into the scene's, folded the entry sign into a direction
+ * of travel, and applied the game's obstacle scale. What is left is naming
+ * the dimensions the way obstacle() names them and picking which station is
+ * the start and finish line.
+ *
+ * THE FIRST SEQUENCED APERTURE IS THE START LINE. A track document's start
+ * pads are a place to park and a heading, not a hole, so the lap is timed
+ * across the first gate in the flying order, exactly as the built in circuit
+ * times it across station zero. The pads are where the quad begins, which is
+ * the other half of the same arrangement.
+ */
+function coursePlacements(course) {
+  const byElement = new Map();
+  const out = [];
+  course.stations.forEach((st, i) => {
+    let pl = byElement.get(st.elementId);
+    if (!pl) {
+      const structure = st.structure;
+      pl = {
+        spec: {
+          kindName: st.type,
+          clearW: st.clearW,
+          clearH: st.clearH,
+          sillH: structure.dims.sillH ?? 0,
+          stack: structure.dims.stack ?? 1,
+          levelPitch: structure.dims.levelPitch,
+        },
+        x: st.x,
+        z: st.z,
+        baseY: st.baseY,
+        /* The MESH takes the first station's heading and the SCORING takes
+         * each station's own. A vertical frame drawn at a heading and at
+         * that heading plus half a turn is the same object, so a ladder
+         * flown north early and south late is one structure with two gate
+         * planes, which is what it is on a real field. */
+        yaw: st.yaw,
+        pitch: st.pitch,
+        isStart: i === 0,
+        plateIndex: i,
+        primary: st.apertureIndex,
+        stations: [],
+      };
+      byElement.set(st.elementId, pl);
+      out.push(pl);
+    }
+    pl.stations.push({ flyOrder: i, apertureIndex: st.apertureIndex, yaw: st.yaw });
+  });
+  return out;
+}
+
+/*
+ * A TILTED aperture: a dive gate.
+ *
+ * WHY THIS IS NOT obstacle() WITH AN ANGLE. obstacle() builds a structure
+ * that stands on the ground: two uprights from the grass to the top rail,
+ * feet, mesh panels, a number plate. Rotating all of that about the opening
+ * lays the uprights over and puts the feet in the air, and a gate whose legs
+ * point sideways is not a gate somebody built, it is a gate somebody
+ * knocked over. A real dive gate is a frame carried on a mast, so that is
+ * what this makes: four tubes round the opening, tilted, on one vertical
+ * post, with the same lit target obstacle() uses so the pilot reads it the
+ * same way.
+ *
+ * The tilt is `pitch`, the angle the DIRECTION OF TRAVEL through the opening
+ * dips below the horizontal, which is the same number src/game/trackdoc.js
+ * hands the placement code and the same one src/game/race.js scores against.
+ * At zero this degenerates to an ordinary elevated gate, which is a legal
+ * thing to build and is exactly what a launch gate is.
+ *
+ * Local frame, and colliders, match obstacle(): x across the opening, y up
+ * from the base, z through the opening.
+ */
+function tiltedGate(spec, index, isStart, pitch) {
+  const g = new THREE.Group();
+  const mats = sharedObstacleMats();
+  const tubeR = BUILT_FRAME_TUBE_OD * 0.5;
+  const clearW = spec.clearW;
+  const clearH = spec.clearH;
+  const centreY = spec.sillH + clearH * 0.5;
+  const caps = [];
+
+  /* The mast, from the grass to the middle of the opening, offset to the
+   * back of the frame so it never stands in the hole. */
+  const mastOff = clearH * 0.5 + tubeR * 3;
+  const mastR = tubeR * 1.6;
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(mastR, mastR, centreY, 8),
+    mats.frame,
+  );
+  mast.position.set(0, centreY * 0.5, mastOff);
+  mast.castShadow = true;
+  outlineHull(mast, 1.06);
+  g.add(mast);
+  caps.push({ kind: 'gate', ax: 0, ay: 0, az: mastOff, bx: 0, by: centreY, bz: mastOff, r: mastR });
+
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.09, 0.7), mats.frame);
+  foot.position.set(0, 0.045, mastOff);
+  foot.castShadow = true;
+  g.add(foot);
+  caps.push({ kind: 'obstacle', ax: -0.3, ay: 0.045, az: mastOff, bx: 0.3, by: 0.045, bz: mastOff, r: 0.2 });
+
+  /*
+   * The frame and its target, built flat in a pivot and then tilted about
+   * the opening's own centre. The pivot is what keeps the aperture centre
+   * where the document put it however far the frame leans: rotating about
+   * the base instead would swing the hole across the field.
+   */
+  const pivot = new THREE.Group();
+  pivot.position.set(0, centreY, 0);
+  /*
+   * Sign. The station's pitch is the dip of the direction of travel, and
+   * travel is minus the frame's own normal, so a frame that is dived
+   * through leans its normal UP by the same angle. Rotating the pivot about
+   * its local x by -pitch takes local +z to (0, sin pitch, cos pitch)
+   * reflected through the travel convention; the one line that has to agree
+   * with race.js is this one, and the check in tests asserts it.
+   */
+  pivot.rotation.x = -pitch;
+  g.add(pivot);
+
+  const halfW = clearW * 0.5;
+  const halfH = clearH * 0.5;
+  /* Two rails across and two up, their INNER surfaces the clear opening. */
+  for (const sy of [-1, 1]) {
+    const rail = new THREE.Mesh(
+      new THREE.CylinderGeometry(tubeR, tubeR, clearW + 4 * tubeR, 8),
+      mats.frame,
+    );
+    rail.rotation.z = Math.PI * 0.5;
+    rail.position.set(0, sy * (halfH + tubeR), 0);
+    rail.castShadow = true;
+    outlineHull(rail, 1.06);
+    pivot.add(rail);
+  }
+  for (const sx of [-1, 1]) {
+    const stile = new THREE.Mesh(
+      new THREE.CylinderGeometry(tubeR, tubeR, clearH + 4 * tubeR, 8),
+      mats.frame,
+    );
+    stile.position.set(sx * (halfW + tubeR), 0, 0);
+    stile.castShadow = true;
+    outlineHull(stile, 1.06);
+    pivot.add(stile);
+  }
+
+  /*
+   * Colliders for the tilted frame, in the OBSTACLE's frame rather than the
+   * pivot's, because the placement code transforms one frame and knows
+   * nothing about pivots. Rotating a point (0, y, z) about x by -pitch gives
+   * (0, y cos p + z sin p, -y sin p + z cos p); z is zero for every one of
+   * these, so it is one cosine and one sine each.
+   */
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  const at = (x, y) => ({ x, y: centreY + y * cp, z: -y * sp });
+  for (const sy of [-1, 1]) {
+    const a = at(-(halfW + tubeR), sy * (halfH + tubeR));
+    const b = at(halfW + tubeR, sy * (halfH + tubeR));
+    caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
+  }
+  for (const sx of [-1, 1]) {
+    const a = at(sx * (halfW + tubeR), -(halfH + tubeR));
+    const b = at(sx * (halfW + tubeR), halfH + tubeR);
+    caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
+  }
+
+  /* The lit target, in the pivot so it leans with the frame. Built at a sill
+   * of zero because the pivot already sits at the opening's centre. */
+  const marks = apertureMarkers(pivot, [-clearH * 0.5], clearW, clearH, 1, isStart, 0);
+
+  /* The plate rides on the leaning frame, above the opening in the frame's
+   * own plane, so a pilot approaching from above reads it square on. */
+  if (index > 0) {
+    const plate = numberPlate(index, clearW, isStart ? mats.panelStart : mats.panelRace);
+    plate.position.set(0, halfH + tubeR * 3 + 0.22, 0);
+    pivot.add(plate);
+  }
+
+  return {
+    group: g,
+    kindName: spec.kindName ?? 'diveGate',
+    /* The whole leaning frame stays live rather than baking, because its
+     * parts sit inside a pivot whose rotation the baker would have to flatten
+     * and the lit target has to keep its per obstacle materials anyway. A
+     * course has a handful of dive gates, not a hundred, so the draw calls
+     * are affordable and the alternative is a baked gate that cannot pulse. */
+    animate: [pivot],
+    ringMat: marks.ring.material,
+    haloMat: marks.halo.material,
+    glowMat: marks.glow.material,
+    ringColor: marks.ringColor,
+    apertures: [{
+      shape: 'square', index: 0, sillH: spec.sillH, centreY, clearW, clearH,
+    }],
+    primary: 0,
+    aperture: { shape: 'square', index: 0, sillH: spec.sillH, centreY, clearW, clearH },
+    colliders: caps,
+  };
+}
+
+/*
+ * One obstacle, at its BUILT dimensions.
+ *
+ * `spec` is a set of built dimensions: clearW, clearH, sillH, an optional
+ * stack, and a kindName for the assertion and the scoring to name it by. The
+ * race field passes builtObstacle('standardGate') and friends; a custom
+ * course passes the dimensions its own document carries. Taking a spec
+ * rather than a library key is what lets one builder serve both, and it is
+ * the only reason this signature changed.
+ *
+ * index is the gate's number in FLYING order, painted on the top panel.
+ * isStart makes it the start and finish gate, which is green. opts.primary
+ * names which opening carries the glow, for a stack flown at a stated level.
  *
  * Returns the group, the per obstacle animated materials, the apertures (one
  * per opening, so a ladder returns three), and the colliders in the group's
  * OWN local frame, for the placement code to transform. Local frame: x
  * across the opening, y up from the base, z through the opening.
  */
-function obstacle(kindName, index, isStart) {
-  /* BUILT, not published: src/game/track.js keeps MultiGP's figures as
-   * citations and GATE_SCALE is the declared departure from them. Reading
-   * OBSTACLES directly here would draw the rulebook and score the course,
-   * which is exactly the disagreement the assertion below exists to catch. */
-  const spec = builtObstacle(kindName);
+function obstacle(spec, index, isStart, opts = {}) {
   if (!spec) {
-    throw new Error(`scene: unknown obstacle ${kindName}`);
+    throw new Error('scene: obstacle called without a spec');
   }
+  const kindName = spec.kindName ?? 'standardGate';
   const g = new THREE.Group();
   const mats = sharedObstacleMats();
   const tubeR = BUILT_FRAME_TUBE_OD * 0.5;
@@ -1383,7 +2088,10 @@ function obstacle(kindName, index, isStart) {
    * not as a citation, so the ladder's overall height is an assumption too.
    * The openings themselves are published and exact.
    */
-  const pitch = clearH + BUILT_FRAME_TUBE_OD;
+  /* A caller with its own figure wins. A track document carries the level
+   * spacing it was authored with, and defaulting over the top of it would
+   * quietly rebuild somebody's ladder at a spacing they did not choose. */
+  const pitch = spec.levelPitch ?? (clearH + BUILT_FRAME_TUBE_OD);
   const sills = [];
   for (let k = 0; k < stack; k += 1) {
     sills.push(spec.sillH + k * pitch);
@@ -1458,162 +2166,20 @@ function obstacle(kindName, index, isStart) {
   }
 
   /* The top panel and the number on it. */
-  const plateH = 0.44;
-  const plateY = upTop + plateH * 0.5;
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(clearW * 0.92, plateH, 0.05), panelMat);
-  plate.position.set(0, plateY, 0);
-  plate.castShadow = true;
-  outlineHull(plate, 1.04);
-  g.add(plate);
-  caps.push({ kind: 'obstacle', ax: -clearW * 0.46, ay: plateY, az: 0, bx: clearW * 0.46, by: plateY, bz: 0, r: plateH * 0.5 });
+  const plateGroup = numberPlate(index, clearW, panelMat);
+  const plateY = upTop + 0.22;
+  plateGroup.position.set(0, plateY, 0);
+  g.add(plateGroup);
+  caps.push({
+    kind: 'obstacle',
+    ax: -plateGroup.userData.halfW, ay: plateY, az: 0,
+    bx: plateGroup.userData.halfW, by: plateY, bz: 0,
+    r: plateGroup.userData.r,
+  });
 
-  /*
-   * The number, as many digits as it takes. This used to be
-   * DIGITS[index % 10], which is correct for one digit and paints a lie for
-   * two: gate 13 came out as a 3 and gate 10 as a 0, so with more than ten
-   * stations two different gates would carry the same plate and a pilot
-   * counting them down would be reading fiction.
-   */
-  const dot = 0.055;
-  const step = 0.072;
-  const glyphs = String(Math.max(0, Math.round(index))).split('').map((d) => DIGITS[Number(d)]);
-  /* 3 columns per glyph plus a one column gap, centred on the plate. */
-  const glyphW = 4;
-  const originX = -((glyphs.length * glyphW - 1) - 1) * 0.5;
-  for (let gi = 0; gi < glyphs.length; gi += 1) {
-    const rows = glyphs[gi];
-    for (let ry = 0; ry < rows.length; ry += 1) {
-      for (let rx = 0; rx < 3; rx += 1) {
-        if (rows[ry][rx] !== '1') {
-          continue;
-        }
-        const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
-        pip.position.set(
-          (originX + gi * glyphW + rx) * step,
-          plateY + (2 - ry) * step,
-          0.04,
-        );
-        g.add(pip);
-      }
-    }
-  }
-
-  /*
-   * The aperture markers. Square now, because the opening is square, and
-   * built as one merged geometry per obstacle so a stacked obstacle still
-   * costs one draw call for all of its outlines.
-   *
-   * The glow sits on the PRIMARY opening, which for a stack is the middle
-   * one: that is the opening the racing line is aimed at, and lighting all
-   * three equally would tell the pilot nothing about where to go.
-   */
-  const ringColor = isStart ? 0x7dffb4 : 0xffd45c;
-  const primary = Math.floor(stack / 2);
-  const outlineGeos = [];
-  const haloGeos = [];
-  for (let k = 0; k < stack; k += 1) {
-    const cy = sills[k] + clearH * 0.5;
-    /*
-     * The lit bar's thickness, and it is a LEGIBILITY number.
-     *
-     * 0.045 m was invisible at 20 m once the opening shrank to regulation.
-     * 0.075 m was measured by a pilot at 1.4 px at 20 m and 0.9 px at 30 m,
-     * still sub pixel at the distance a racer has to commit to a line: at 25 m
-     * the target read as a 23 px green tick dimmer than the banner flags and
-     * the trees beside it. 0.16 m is 3 px at 20 m and 2 px at 30 m, the
-     * smallest that survives commit range on a 900 px frame.
-     *
-     * The cost, stated: at 7 m the bar covers about 10 percent of the opening
-     * instead of 5, so a gate right in front of the camera reads chunkier. A
-     * target you cannot see until 7 m is not a target, so that is the trade.
-     */
-    const bar = 0.16;
-    const halfW = clearW * 0.5;
-    const halfH = clearH * 0.5;
-    /* Four thin bars just inside the frame, so the lit line the pilot aims
-     * at is the clear opening itself and not the tube around it. */
-    const parts = [
-      [0, cy + halfH - bar * 0.5, clearW, bar],
-      [0, cy - halfH + bar * 0.5, clearW, bar],
-      [-halfW + bar * 0.5, cy, bar, clearH],
-      [halfW - bar * 0.5, cy, bar, clearH],
-    ];
-    for (const [px, py, sw, sh] of parts) {
-      const geo = new THREE.BoxGeometry(sw, sh, bar);
-      geo.translate(px, py, 0);
-      outlineGeos.push(geo);
-      const hg = new THREE.BoxGeometry(sw * 1.06 + 0.05, sh * 1.06 + 0.05, bar * 0.7);
-      hg.translate(px, py, 0);
-      haloGeos.push(hg);
-    }
-  }
-  const ring = new THREE.Mesh(
-    mergeGeometries(outlineGeos, false),
-    new THREE.MeshBasicMaterial({ color: ringColor, fog: true }),
-  );
-  /* No ink on the emissive outline: the depth edge pass draws a ghost line
-   * inside it, which reads as a rendering defect on the one prop the pilot
-   * stares at all lap. Layer 1 skips the prepass. */
-  ring.layers.set(1);
-  g.add(ring);
-  const halo = new THREE.Mesh(
-    mergeGeometries(haloGeos, false),
-    new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.5, fog: true }),
-  );
-  halo.layers.set(1);
-  g.add(halo);
-
-  /* Additive glow across the primary opening. Additive so it reads as light
-   * rather than paint, in the gate plane so it does not need to billboard,
-   * and unlit and unfogged so distance cannot take the target away from the
-   * pilot. uGain is driven per frame: bright and pulsing on the gate the
-   * race wants next, nearly off on the rest. */
-  const glowSize = Math.max(clearW, clearH) * 2.6;
-  const glow = new THREE.Mesh(
-    new THREE.PlaneGeometry(glowSize, glowSize),
-    new THREE.ShaderMaterial({
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      fog: false,
-      side: THREE.DoubleSide,
-      uniforms: {
-        uColor: { value: new THREE.Color(ringColor) },
-        uGain: { value: 0.1 },
-        /* Half the clear opening as a fraction of the plane, so the lit
-         * band lands on the frame whatever size the opening is. */
-        uEdge: { value: (clearW * 0.5) / glowSize },
-      },
-      vertexShader: /* glsl */ `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        varying vec2 vUv;
-        uniform vec3 uColor;
-        uniform float uGain;
-        uniform float uEdge;
-        void main() {
-          /* A square band, because the opening is square. The Chebyshev
-           * distance is the square's own radius. */
-          vec2 d = abs(vUv - 0.5);
-          float r = max(d.x, d.y);
-          float band = exp(-pow((r - uEdge) / 0.055, 2.0));
-          /* Only a breath of fill. The aperture is the thing the pilot has
-           * to see THROUGH, so filling it with haze hides the line out of
-           * the gate, which is worse than not marking it at all. */
-          float fill = smoothstep(uEdge, 0.0, r) * 0.05;
-          gl_FragColor = vec4(uColor * (band + fill) * uGain, 1.0);
-        }
-      `,
-    }),
-  );
-  glow.position.y = sills[primary] + clearH * 0.5;
-  glow.layers.set(1);
-  g.add(glow);
+  /* The lit target, shared with the tilted gate builder. */
+  const marks = apertureMarkers(g, sills, clearW, clearH, stack, isStart, opts.primary);
+  const { ring, halo, glow, ringColor, primary } = marks;
 
   /*
    * The apertures, MEASURED out of the geometry that was just built rather
@@ -1649,6 +2215,9 @@ function obstacle(kindName, index, isStart) {
   return {
     group: g,
     kindName,
+    /* The lit parts have per obstacle materials driven every frame, so they
+     * stay live; everything else bakes. */
+    animate: [ring, halo, glow],
     ringMat: ring.material,
     haloMat: halo.material,
     glowMat: glow.material,
@@ -1804,7 +2373,19 @@ function clouds(rng) {
  * screen reports work that actually happened rather than a timer. It is
  * optional and the map builds identically without it.
  */
-export function buildFieldScene(shell, onProgress) {
+/*
+ * The race field.
+ *
+ * `course` is optional. Without it this builds the built in figure eight
+ * exactly as it always has: same curve, same fourteen stations, same terrain,
+ * same rng stream. With it, the same world is built around a DESIGNED course
+ * instead, from a track document that src/game/trackdoc.js has already turned
+ * into scene coordinates. Everything that is not the course, the sky, the
+ * ridges, the lake, the grass, the light, the post chain, is shared, because
+ * the point of flying your own track is to fly it in this world rather than
+ * in a grey box.
+ */
+export function buildFieldScene(shell, onProgress, course = null) {
   const renderer = shell.renderer;
   const camera = shell.camera;
   const progress = onProgress ?? (() => {});
@@ -1841,16 +2422,34 @@ export function buildFieldScene(shell, onProgress) {
    * from going dead grey. */
   scene.add(new THREE.HemisphereLight(0x8fb8e8, 0x4a6b34, 0.42));
 
-  const curve = trackCurve();
-  const samples = curve.getPoints(180);
-  const height = makeHeightField(samples);
+  /*
+   * The curve is the spine of the world: the terrain flattens a corridor
+   * along it, the scenery keeps clear of it, and the title screen's camera
+   * flies around it. A designed course has one too, its own racing line, so
+   * the same three things happen for it and a custom track lands on flat
+   * mown ground with the trees kept off it rather than in a forest.
+   */
+  /* A designed course stands on a marked pitch; the built in circuit is a
+   * cross country loop through a valley and has never had one. */
+  const pitch = makePitch(course);
+  const curve = course ? courseCurve(course) : trackCurve();
+  /* A course brings its own corridor samples. Computing them here would mean
+   * importing the track document reader, and the reader pulls in the
+   * builder's data modules, which the plain race field must not pay for:
+   * check 16 measures exactly that. The course object is plain data and this
+   * file knows nothing about where it came from. */
+  const samples = course ? course.samples : curve.getPoints(180);
+  const height = makeHeightField(samples, pitch);
 
-  const ground = terrain(height, samples);
+  const ground = terrain(height, samples, pitch);
   scene.add(ground);
+  if (pitch) {
+    scene.add(pitchSurface(pitch));
+  }
   const occluders = [];
   const water0 = water(height);
   scene.add(water0.mesh);
-  const grass = grassField(height, samples, rng);
+  const grass = grassField(height, samples, rng, pitch);
   /* Layer 1 is the no ink layer, excluded from the outline prepass.
    * Grass belongs here: a per blade outline turns a field into a pile of
    * glass shards, and the blades are far too thin to need a silhouette. */
@@ -1970,20 +2569,50 @@ export function buildFieldScene(shell, onProgress) {
     'standardGate',     /* 12, flown 3rd */
     'standardGate',     /* 13, flown 2nd */
   ];
-  for (let i = 0; i < gateCount; i += 1) {
-    const u = gateU[i];
+  /*
+   * WHERE THE STATIONS ARE, as data, before anything is built.
+   *
+   * This list used to be computed inside the placement loop off the figure
+   * eight's own parameter, which meant the loop could only ever place a
+   * figure eight. Separating the two is the whole of what let a designed
+   * course be flown: the list below is the built in circuit, a custom course
+   * builds the same list out of a track document, and the loop underneath
+   * does not know or care which it was handed.
+   */
+  const placements = course ? coursePlacements(course, height) : gateU.map((u, i) => {
     const p = curve.getPointAt(u);
     const tan = curve.getTangentAt(u);
-    /* Number plates count in FLYING order. The craft spawns facing
-     * opposite the curve parameter direction, so the course as flown is
-     * gate 0 then 7, 6, down to 1; scene index i is flown as position
-     * gateCount - i. */
-    const flyOrder = i === 0 ? 0 : gateCount - i;
-    const made = obstacle(stationKinds[i], flyOrder, i === 0);
+    return {
+      spec: specFor(stationKinds[i]),
+      x: p.x,
+      z: p.z,
+      baseY: 0,
+      yaw: Math.atan2(tan.x, tan.z),
+      pitch: 0,
+      /* Number plates count in FLYING order. The craft spawns facing
+       * opposite the curve parameter direction, so the course as flown is
+       * gate 0 then 13, 12, down to 1; scene index i is flown as position
+       * gateCount - i. */
+      isStart: i === 0,
+      plateIndex: i === 0 ? 0 : gateCount - i,
+      primary: null,
+      /* One station per structure, scoring every opening: MultiGP counts a
+       * ladder as one gate however high you take it. */
+      stations: [{ flyOrder: i === 0 ? 0 : gateCount - i, apertureIndex: null, yaw: Math.atan2(tan.x, tan.z) }],
+    };
+  });
+
+  for (let i = 0; i < placements.length; i += 1) {
+    const st = placements[i];
+    const flyOrder = st.plateIndex;
+    const made = Math.abs(st.pitch) > 1e-6
+      ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch)
+      : obstacle(st.spec, flyOrder, st.isStart, { primary: st.primary });
     const g = made.group;
-    const y = height(p.x, p.z);
-    const yaw = Math.atan2(tan.x, tan.z);
-    g.position.set(p.x, y, p.z);
+    const y = height(st.x, st.z) + st.baseY;
+    const yaw = st.yaw;
+    const p = { x: st.x, z: st.z };
+    g.position.set(st.x, y, st.z);
     g.rotation.y = yaw;
     /*
      * Split the obstacle in two. The aperture outline, its halo and its
@@ -1997,12 +2626,13 @@ export function buildFieldScene(shell, onProgress) {
     const anim = new THREE.Group();
     anim.position.copy(g.position);
     anim.rotation.y = yaw;
-    for (const m of [made.ringMat, made.haloMat, made.glowMat]) {
-      const child = g.children.find((c) => c.isMesh && c.material === m);
-      if (child) {
-        g.remove(child);
-        anim.add(child);
-      }
+    /* The builder says which of its parts have to stay live. It used to be
+     * found by matching materials against g's DIRECT children, which a
+     * tilted gate breaks: its lit parts hang off a pivot, so the search
+     * missed them and the baker swallowed a ShaderMaterial. */
+    for (const part of made.animate) {
+      part.removeFromParent();
+      anim.add(part);
     }
     scene.add(anim);
     baker.bake(g);
@@ -2020,19 +2650,55 @@ export function buildFieldScene(shell, onProgress) {
         c.r,
       );
     }
-    gates.push({
-      position: new THREE.Vector3(p.x, y, p.z),
-      heading: g.rotation.y,
-      ringMat: made.ringMat,
-      haloMat: made.haloMat,
-      ringColor: made.ringColor,
-      glowMat: made.glowMat,
-      aperture: made.aperture,
-      apertures: made.apertures,
-      primary: made.primary,
-      kindName: made.kindName,
-      flyOrder,
-    });
+    /*
+     * ONE STRUCTURE, ONE GATE PER STATION.
+     *
+     * WHICH OPENINGS SCORE. MultiGP counts a ladder as one gate however high
+     * you take it, so the built in circuit offers all of a stack's openings
+     * and records which one was used: its station carries apertureIndex
+     * null. A designed course is different, because its document names the
+     * level, and a ladder flown low early and high late is two gates.
+     * Crediting either opening for both would let a pilot fly the same hole
+     * twice and call it a lap.
+     *
+     * Both gates on such a structure share its lit target and its number
+     * plate, which is not a compromise: there is one ladder standing on the
+     * field and lighting it twice is what a marshal does.
+     */
+    for (const station of st.stations) {
+      const scoring = station.apertureIndex == null
+        ? made.apertures
+        : [made.apertures[Math.min(made.apertures.length - 1, Math.max(0, station.apertureIndex))]];
+      gates.push({
+        position: new THREE.Vector3(p.x, y, p.z),
+        heading: station.yaw,
+        /* The tilt of the direction of travel. Zero everywhere on the built
+         * in circuit, which is why race.js's frame reduces to the old one
+         * there exactly. */
+        pitch: st.pitch,
+        ringMat: made.ringMat,
+        haloMat: made.haloMat,
+        ringColor: made.ringColor,
+        glowMat: made.glowMat,
+        aperture: scoring[0],
+        apertures: scoring,
+        primary: made.primary,
+        kindName: made.kindName,
+        /* What the T1 assertion below checks this gate's measured opening
+         * against. A library obstacle is checked against the library; a
+         * designed one against the dimensions its own document carried,
+         * which is the same discipline applied to a different source of
+         * truth. */
+        wantW: st.spec.clearW,
+        wantH: st.spec.clearH,
+        flyOrder: station.flyOrder,
+      });
+    }
+  }
+
+  /* Barriers, flags, cones and the start pads a designed course carries. */
+  if (course) {
+    courseProps(course, height, scene, colliders, baker);
   }
 
   /*
@@ -2043,13 +2709,12 @@ export function buildFieldScene(shell, onProgress) {
    * shipping a barn door, which is what the old 3.5 m torus was.
    */
   for (const gt of gates) {
-    const want = builtObstacle(gt.kindName);
     for (const ap of gt.apertures) {
-      if (Math.abs(ap.clearW - want.clearW) > 0.01 || Math.abs(ap.clearH - want.clearH) > 0.01) {
+      if (Math.abs(ap.clearW - gt.wantW) > 0.01 || Math.abs(ap.clearH - gt.wantH) > 0.01) {
         throw new Error(
           `scene: ${gt.kindName} opening measured ${ap.clearW.toFixed(4)} by `
-          + `${ap.clearH.toFixed(4)} m, wanted ${want.clearW.toFixed(4)} by `
-          + `${want.clearH.toFixed(4)} m at gate scale ${GATE_SCALE}, `
+          + `${ap.clearH.toFixed(4)} m, wanted ${gt.wantW.toFixed(4)} by `
+          + `${gt.wantH.toFixed(4)} m at gate scale ${GATE_SCALE}, `
           + 'outside the 10 mm tolerance',
         );
       }
@@ -2088,6 +2753,18 @@ export function buildFieldScene(shell, onProgress) {
    * for exactly that reason, and this is not that.
    */
   const GLOW_LADDER = [0.95, 0.42, 0.24];
+  /*
+   * The corridor is walked in FLYING order, which is the order the pilot
+   * flies and not the order the gates happen to sit in the array.
+   *
+   * This used to step backwards through the array, `i - step`, which is
+   * correct for the built in circuit for one reason only: its stations are
+   * laid along the curve and flown in reverse, so array order IS reverse
+   * flying order there. A designed course's gates are in flying order, so
+   * the same arithmetic lit the three gates BEHIND the pilot. Ordering by
+   * the flyOrder every gate already carries is right on both.
+   */
+  const byFlyOrder = [...gates].sort((a, b) => a.flyOrder - b.flyOrder);
   function setNextGate(i) {
     for (const gt of gates) {
       gt.ringMat.color.set(gt.ringColor);
@@ -2095,10 +2772,43 @@ export function buildFieldScene(shell, onProgress) {
       gt.glowMat.uniforms.uGain.value = 0.08;
     }
     nextGateIdx = i;
-    for (let step = 0; step < GLOW_LADDER.length; step += 1) {
-      const idx = ((i - step) % gates.length + gates.length) % gates.length;
-      gates[idx].glowMat.uniforms.uGain.value = GLOW_LADDER[step];
+    const at = byFlyOrder.findIndex((gt) => gt === gates[i]);
+    if (at < 0 || !byFlyOrder.length) {
+      return;
     }
+    for (let step = 0; step < GLOW_LADDER.length; step += 1) {
+      const gt = byFlyOrder[(at + step) % byFlyOrder.length];
+      /* max, not assignment: a structure flown twice shares one glow, and
+       * the nearer of its two turns is the one the pilot is flying at. */
+      gt.glowMat.uniforms.uGain.value = Math.max(
+        gt.glowMat.uniforms.uGain.value, GLOW_LADDER[step],
+      );
+    }
+  }
+
+  /*
+   * How far scenery has to stand off the course.
+   *
+   * Fifteen metres from the racing line, which is right for a 570 m circuit
+   * that sprawls over 210 by 236 m of valley. It is WRONG for a designed
+   * course: a 60 by 40 m field is smaller than the built in circuit's
+   * clearance, so the same rule stood trees inside the arena, one of them a
+   * few metres off a gate. An author's field is an arena, and the rule that
+   * says so is the rectangle they drew rather than a distance from a line
+   * that happens to wander near its edge.
+   */
+  function onTheCourse(x, z) {
+    /* Nothing stands on the pitch or in its fade, which is the whole point
+     * of having one: the rule that keeps the arena clear is now the same
+     * rectangle the player can see mown into the ground. */
+    if (pitch && pitchEdge(pitch, x, z) < PITCH.fade) {
+      return true;
+    }
+    let d = 1e9;
+    for (const smp of samples) {
+      d = Math.min(d, Math.hypot(x - smp.x, z - smp.z));
+    }
+    return d < 15;
   }
 
   /* Scenery, kept clear of the flight corridor. Baked, not added: the
@@ -2109,11 +2819,7 @@ export function buildFieldScene(shell, onProgress) {
     const rad = 30 + rng() * 640;
     const x = Math.cos(a) * rad;
     const z = Math.sin(a) * rad;
-    let d = 1e9;
-    for (const s of samples) {
-      d = Math.min(d, Math.hypot(x - s.x, z - s.z));
-    }
-    if (d < 15) {
+    if (onTheCourse(x, z)) {
       continue;
     }
     const isTree = rng() < 0.74;
@@ -2309,8 +3015,26 @@ export function buildFieldScene(shell, onProgress) {
    * cloths cast: a flag that casts no shadow floats, and 72 poles in the
    * shadow map cost more than a pole's thin shadow line is worth. */
   const poleBaker = makeBaker();
-  for (let i = 0; i < 72; i += 1) {
-    const u = i / 72;
+  /*
+   * 72 on the built in circuit, and one every 8 m on a designed one.
+   *
+   * 72 flags round 570 m is one every 8 m, alternating sides, which is what
+   * a taped course looks like. The same 72 round a 140 m designed lap is one
+   * every two metres: a picket fence down both sides of the track, dense
+   * enough to read as a wall. So a course gets the same SPACING rather than
+   * the same count.
+   *
+   * The built in figure is left as the literal 72 rather than recovered from
+   * the length, and that is deliberate. Every flag draws from the shared rng
+   * stream, so changing how many there are shifts every random number after
+   * them and rebuilds the whole valley. A world that is bit identical to the
+   * one that shipped is worth more than one fewer magic number.
+   */
+  const flagCount = course
+    ? Math.max(8, Math.min(72, Math.round(curve.getLength() / 8)))
+    : 72;
+  for (let i = 0; i < flagCount; i += 1) {
+    const u = i / flagCount;
     const p = curve.getPointAt(u);
     const tan = curve.getTangentAt(u);
     const nx = -tan.z;
@@ -2519,31 +3243,38 @@ export function buildFieldScene(shell, onProgress) {
    * lap clock at zero airspeed. The craft faces opposite the course tangent,
    * so behind the line is along +tangent.
    */
-  const start = gates[0];
+  const start = gates.length ? gates[0] : null;
   const SPAWN_BACK = 7;
-  const spawn = {
-    x: start.position.x + Math.sin(start.heading) * SPAWN_BACK,
-    z: start.position.z + Math.cos(start.heading) * SPAWN_BACK,
-    yaw: start.heading,
-  };
+  /* A designed course parks the quad on its own start pads, which is where
+   * its author put the line. The built in circuit has no pads, so it stands
+   * the quad back from its timing gate. */
+  const spawn = course
+    ? { x: course.spawn.x, z: course.spawn.z, yaw: course.spawn.yaw }
+    : {
+      x: start.position.x + Math.sin(start.heading) * SPAWN_BACK,
+      z: start.position.z + Math.cos(start.heading) * SPAWN_BACK,
+      yaw: start.heading,
+    };
   /* Framed for a REGULATION gate: the opening is 1.524 m square with its
    * centre at 0.762 m, so 9 m out and 2.4 m up, aimed at the aperture
    * centre. 19 m out aimed 2.5 m up was framed for a 5 m gate and pointed at
    * empty air above one too small to see. */
   const attract = {
-    x: start.position.x,
-    y: start.position.y,
-    z: start.position.z,
+    x: start ? start.position.x : spawn.x,
+    y: start ? start.position.y : height(spawn.x, spawn.z),
+    z: start ? start.position.z : spawn.z,
     radius: 9,
     eye: 2.4,
     aim: 0.85,
   };
 
   return {
-    id: 'field',
-    name: 'Race field',
+    id: course ? 'custom' : 'field',
+    name: course ? course.name : 'Race field',
     mode: 'race',
     scene, gates, curve, colliders, spawn, attract,
+    /* Anything the reader could not honour, for the shell to show once. */
+    notes: course ? course.warnings : [],
     /*
      * Reference objects, measured off the built world rather than restated.
      * The gate aperture is read out of the torus the scene actually drew, and
@@ -2556,9 +3287,9 @@ export function buildFieldScene(shell, onProgress) {
        * GATE_SCALE times that, which src/game/track.js declares and explains.
        * The reference states the built figure because that is the hole the
        * pilot flies and the one a scale check has to band. */
-      gateOpeningW: { measured: gates[0].aperture.clearW, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
-      gateOpeningH: { measured: gates[0].aperture.clearH, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
-      gateApertureCentreY: { measured: gates[0].aperture.centreY, unit: 'm', real: '0.762, half the opening' },
+      gateOpeningW: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.clearW, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
+      gateOpeningH: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.clearH, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
+      gateApertureCentreY: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.centreY, unit: 'm', real: '0.762, half the opening' },
       grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
     },
     updateShadowFocus, updateWind, setNextGate,

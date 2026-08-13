@@ -667,7 +667,11 @@ export class App {
     this.redoBtn = btn('Redo', () => this.redo(), 'Control Shift Z');
     this.mode2d = btn('2D', () => this.setMode('2d'), 'Top down authoring view');
     this.mode3d = btn('3D', () => this.setMode('3d'), 'Preview. Drag an element to change its height.');
-    this.pathBtn = btn('Create Path', () => this.createPath(), 'Derive the racing line and draw it', 'tb-btn tb-primary');
+    /* Plain, not primary. There is one green button on this bar and it is
+     * the one that leaves for the air; a second would make neither read as
+     * the thing to press. Create Path goes amber while a line is showing,
+     * which is the state that matters. */
+    this.pathBtn = btn('Create Path', () => this.createPath(), 'Derive the racing line and draw it');
 
     const file = document.createElement('input');
     file.type = 'file';
@@ -678,6 +682,19 @@ export class App {
       file.value = '';
     });
     this.fileInput = file;
+
+    /*
+     * The whole point of the tool, in one button. It flushes the autosave
+     * first and then links to the game with the map named in the URL, so the
+     * course on this canvas is the course in the air a moment later. The
+     * autosave is what the game reads, not a saved track, because asking
+     * somebody to remember to press Save before they fly is asking them to
+     * fly the wrong track once.
+     */
+    this.flyBtn = btn('Fly this track', () => {
+      this.autosaver.flush();
+      window.location.href = '../../index.html?map=custom';
+    }, 'Build the world around this course and fly it', 'tb-btn tb-primary');
 
     const back = document.createElement('a');
     back.className = 'tb-btn tb-quiet';
@@ -702,6 +719,7 @@ export class App {
       group(this.mode2d, this.mode3d),
       group(btn('Fit', () => this.frameAll(), 'Frame the whole field')),
       this.pathBtn,
+      this.flyBtn,
       back,
       file,
     );

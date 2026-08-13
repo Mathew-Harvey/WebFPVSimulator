@@ -100,19 +100,63 @@ export class Race {
       this.reset();
       return;
     }
-    const order = [0];
-    for (let i = gates.length - 1; i >= 1; i -= 1) {
-      order.push(i);
-    }
+    /*
+     * FLYING ORDER COMES FROM THE GATES, NOT FROM AN ASSUMPTION.
+     *
+     * This used to be `[0, n-1, n-2, ... 1]`, which is right for the built in
+     * circuit and right for nothing else. It is right there because that
+     * circuit lays its stations along a curve and the craft spawns facing
+     * against the curve's parameter, so array order happens to BE reverse
+     * flying order. A course somebody designed has its own order, written
+     * down in the document, and inferring one from an array index would fly
+     * it backwards.
+     *
+     * The scene has always stamped `flyOrder` on every gate. Sorting by it
+     * produces exactly the old sequence for the built in field, which
+     * tests/lib/checks.js asserts rather than takes on trust, and the right
+     * one everywhere else.
+     */
+    const order = gates
+      .map((g, idx) => ({ idx, flyOrder: g.flyOrder ?? (idx === 0 ? 0 : gates.length - idx) }))
+      .sort((a, b) => a.flyOrder - b.flyOrder)
+      .map((e) => e.idx);
     this.gates = order.map((idx) => {
       const g = gates[idx];
+      /*
+       * THE APERTURE FRAME.
+       *
+       * A gate's plane is fixed by a heading and, on a dive gate, a tilt.
+       * The frame below is the gate's own axes in world space, with the
+       * direction of travel as local +z, which is MINUS the plane normal:
+       * that convention is the field's, set by stations whose heading is the
+       * curve tangent, and every consumer of it is here.
+       *
+       *   yaw h alone gives normal (sin h, 0, cos h).
+       *   tilting by p about the gate's own x takes it to
+       *   (cos p sin h, -sin p, cos p cos h).
+       *
+       * At p = 0 every term below collapses to the two cosines and sines
+       * this used to carry, so the built in circuit is scored by identical
+       * arithmetic and the same lap times come out.
+       */
+      const h = g.heading;
+      const p = g.pitch ?? 0;
+      const cp = Math.cos(p);
+      const sp = Math.sin(p);
+      /* Across the opening. Unaffected by the tilt, which is about this axis. */
+      const ax = { x: -Math.cos(h), y: 0, z: Math.sin(h) };
+      /* Up the opening, in its own plane. */
+      const ay = { x: sp * Math.sin(h), y: cp, z: sp * Math.cos(h) };
+      /* Along the direction of travel. */
+      const az = { x: -cp * Math.sin(h), y: sp, z: -cp * Math.cos(h) };
       return {
         idx,
         x: g.position.x,
         y: g.position.y,
         z: g.position.z,
-        cos: -Math.cos(g.heading),
-        sin: -Math.sin(g.heading),
+        ax,
+        ay,
+        az,
         /* Every opening of this obstacle. A standard gate has one; a ladder
          * has three, and MultiGP scores a ladder as one gate however high
          * you take it, so all three count and the one used is recorded. */
@@ -188,15 +232,25 @@ export class Race {
     this.flash = { text: reason, untilMs: wallMs + 1800 };
   }
 
-  /* World point into gate g's local frame: x across the opening, y up
-   * from the base, z along the direction of travel. */
-  local(g, px, py, pz) {
+  /*
+   * World point into an OPENING's local frame: x across it, y up it in its
+   * own plane, z along the direction of travel, with the origin at the
+   * opening's centre.
+   *
+   * The origin moved from the gate's base to the opening's centre when the
+   * tilt arrived, because a tilted plane pivots about the hole rather than
+   * about the ground under it. For an upright gate the two frames differ by
+   * a shift along y that the caller used to make itself, so the test is the
+   * same one.
+   */
+  local(g, centreY, px, py, pz) {
     const dx = px - g.x;
+    const dy = py - (g.y + centreY);
     const dz = pz - g.z;
     return {
-      x: dx * g.cos - dz * g.sin,
-      y: py - g.y,
-      z: dx * g.sin + dz * g.cos,
+      x: dx * g.ax.x + dy * g.ax.y + dz * g.ax.z,
+      y: dx * g.ay.x + dy * g.ay.y + dz * g.ay.z,
+      z: dx * g.az.x + dy * g.az.y + dz * g.az.z,
     };
   }
 
@@ -206,25 +260,35 @@ export class Race {
    * time of the crossing, or null. */
   tryPass(prev, curr, prevSimMs, simMs, wallMs) {
     const g = this.gates[this.next];
-    const a = this.local(g, prev.x, prev.y, prev.z);
-    const b = this.local(g, curr.x, curr.y, curr.z);
-    if (!(a.z <= 0 && b.z > 0)) {
-      return null;
-    }
-    const t = a.z / (a.z - b.z);
-    const cx = a.x + (b.x - a.x) * t;
-    const cyAbs = a.y + (b.y - a.y) * t;
-    /* A square opening scores as a square, with the craft's own radius
+    /*
+     * Every opening is tested in ITS OWN frame. On an upright stack all of
+     * them share one plane, so this is the single crossing test it always
+     * was, run once per opening against identical arithmetic. On a tilted
+     * one the planes are parallel but offset, because each hole leans about
+     * its own centre, and testing them against a plane through the base
+     * would score a dive gate against a hole that is not where it is.
+     *
+     * A square opening scores as a square, with the craft's own radius
      * folded in on both axes, so a pass the game credits is a pass the
-     * craft's body actually fits through. */
+     * craft's body actually fits through.
+     */
     let used = -1;
+    let t = 0;
     for (let k = 0; k < g.apertures.length; k += 1) {
       const ap = g.apertures[k];
+      const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
+      const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
+      if (!(a.z <= 0 && b.z > 0)) {
+        continue;
+      }
+      const tk = a.z / (a.z - b.z);
+      const cx = a.x + (b.x - a.x) * tk;
+      const cy = a.y + (b.y - a.y) * tk;
       const halfW = ap.clearW * 0.5 - CRAFT_WORLD_R;
       const halfH = ap.clearH * 0.5 - CRAFT_WORLD_R;
-      const dy = cyAbs - ap.centreY;
-      if (Math.abs(cx) <= halfW && Math.abs(dy) <= halfH) {
+      if (Math.abs(cx) <= halfW && Math.abs(cy) <= halfH) {
         used = k;
+        t = tk;
         break;
       }
     }
@@ -275,18 +339,19 @@ export class Race {
    * rule and the scoring cannot disagree about what a crossing is.
    */
   crossesGate(g, prev, curr) {
-    const a = this.local(g, prev.x, prev.y, prev.z);
-    const b = this.local(g, curr.x, curr.y, curr.z);
-    if (!(a.z <= 0 && b.z > 0)) {
-      return false;
-    }
-    const t = a.z / (a.z - b.z);
-    const cx = a.x + (b.x - a.x) * t;
-    const cyAbs = a.y + (b.y - a.y) * t;
+    /* Opening by opening in its own frame, the same walk tryPass makes. */
     for (let k = 0; k < g.apertures.length; k += 1) {
       const ap = g.apertures[k];
+      const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
+      const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
+      if (!(a.z <= 0 && b.z > 0)) {
+        continue;
+      }
+      const t = a.z / (a.z - b.z);
+      const cx = a.x + (b.x - a.x) * t;
+      const cy = a.y + (b.y - a.y) * t;
       if (Math.abs(cx) <= ap.clearW * 0.5 - CRAFT_WORLD_R
-        && Math.abs(cyAbs - ap.centreY) <= ap.clearH * 0.5 - CRAFT_WORLD_R) {
+        && Math.abs(cy) <= ap.clearH * 0.5 - CRAFT_WORLD_R) {
         return true;
       }
     }

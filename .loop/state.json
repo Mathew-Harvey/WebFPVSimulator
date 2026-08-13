@@ -1,380 +1,482 @@
 {
- "note": "Round numbering: PROGRESS.md rounds 1 to 5 are the old polish loop, 6 to 9 are the low spec loop, and this loop continues the overall count from 10. The polish loop's A/B/C rubric is superseded and kept in history only. The A items in rubric_A below are the SOUND rubric of this loop, not the old polish loop's A items.",
- "round": 11,
- "attempted": {
-  "1": "A1, the product shell: title, how to fly, settings, pause, results, and a flight display replacing the developer HUD",
-  "2": "A4 and A5, plus every defect the two round 1 reviewers raised",
-  "3": "B5 focal hierarchy and B1 value bands, plus B4 for the grass and the two artefacts with a named mechanism",
-  "4": "Both round 3 reviewers' lists: the shadow map rendered twice, ridge value collapse, gate glow ladder, cloud clipping, unlit flowers, the meadow's straight edge, two ink mechanisms, camera near and prepass depth precision",
-  "5": "The round 4 review's list: the composer had no antialiasing at all, ring 0 sat inside the tree canopy band, clouds still clipped at 1.000 and held 63 percent of the frame's bright area, and the title scrim crushed the lower two thirds",
-  "6": "Low spec loop round 1: build the instrument and publish the cost ledger for P1 to P10 across three views at two resolutions. No renderer behaviour changed.",
-  "7": "Low spec loop round 2: P5, the furthest over budget at 2.43x. Packed the prepass to one RGBA8 target, moved antialiasing into the edge pass, folded the OutputPass into the grade, dropped depth buffers from bloom targets.",
-  "8": "Both round 7 reviewers' lists: the default framebuffer missing from the P5 ledger, mebibytes printed as megabytes, the 1080p derivation scaling a resolution independent shadow map, antialiasing that blurred across the edge instead of filtering along it, and five stale numbers in comments.",
-  "9": "The value ladder: G1, G2, G3 and G5 on the ridges together. FOG_FAR 780 to 2200, four ridge rings re-anchored with a hue only light model at equal luminance, gate glow ladder raised.",
-  "10": "The two missing instruments. scripts/audio-probe.js renders the real audio graph on an OfflineAudioContext and measures it; scripts/shots.js writes an aim sidecar beside every PNG recording which gate the race actually wants. No feature. Both instruments calibrated against predictable signals before any claim was made from them.",
-  "11": "Solid collisions (new src/game/collide.js, exact swept capsule test, 1777 colliders), safe landing versus crash as a shell state because the ABI cannot write velocity, regulation MultiGP obstacles replacing the 2.30x oversized torus gate, five obstacle types including two triple stack ladders and a dive tower, a rebuilt motor model at the true blade pass frequency, and a new generated lofi drum and bass bed."
- },
- "verify": "12 of 13 in round 11, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched.",
- "rubric": {
-  "A1": "pass, reviewer 1 round 1",
-  "A2": "pass, reviewer 1 round 1",
-  "A3": "pass, reviewer 1 round 1",
-  "A4": "fixed round 2, not yet re-reviewed",
-  "A5": "fixed round 2, not yet re-reviewed",
-  "B1": "FAIL at round 4 review. Round 5 lifted mountain ring 0 to 0.198 against canopies at 0.129, and gave the frame antialiasing. Unreviewed since.",
-  "B2": "FAIL at round 4 review. Round 5 added the antialiasing the frame never had. Still open: no ink on mountain silhouettes past 320 m, the grass suppression eats the gate plinth's ground contact line into dashes, a flag cloth passes through a tree canopy, canopy rim reads as a dark light dark fringe.",
-  "B3": "not reviewed, no frame captured at racing speed yet",
-  "B4": "FAIL at round 4 review. The mountains are unlit flat colour, which is what makes their values reliable and also means the largest mass in the frame has no warm light and no cool shadow. Water still has no light model. The gate frame navy does not band.",
-  "B5": "FAIL at round 4 review because a cloud was the brightest pixel at 1.000 against the gate's 0.927. Round 5: cloud peak 0.697 under a gate ring at 0.826. Still open: gate 2 can sit behind a tree canopy, and no tier reads as the track.",
-  "B6": "FAIL at round 4 review. Rings 2 and 3 never appear because the near rings occlude them, the mountains carry no haze because they are fog exempt, and the corridor is flat. Untouched.",
-  "C1": "not built. Input is sampled per animation frame and the internal latency has never been measured",
-  "C2": "partial. Propwash comes out of the blade flapping model. Ground effect is absent: the plant has no notion of altitude, so adding it needs a new ABI call",
-  "C3": "not built. A crash has no sound, no camera response and no visual consequence",
-  "C4": "not built. Audio is a sawtooth per motor plus a noise bed",
-  "C5": "not measured",
-  "D1": "pass",
-  "D2": "pass, git diff --stat vendor/betaflight empty",
-  "D3": "pass, 0 errors and 0 warnings on every capture run",
-  "D4": "pass",
-  "D5": "pass",
-  "D6": "pass"
- },
- "open_from_reviewers_not_yet_fixed": [
-  "B2: mountain silhouettes carry no ink at all. post.js OutlineShader fades edges from d0 0.16 to 0.42, about 320 m to 840 m, and cone on cone depth deltas never reach the threshold",
-  "B2: the grass ink suppression eats the gate plinth's contact line with the meadow into dashes, exactly where a pilot judges ground clearance",
-  "B2: a flag cloth passes through a tree canopy while its own pole passes in front of the same canopy",
-  "B2: canopy edges carry a 2 to 3 px pale rim inside the dark ink line, a dark light dark fringe that reads as a compositing error",
-  "B4 and B6: mountain rings 2 and 3 never appear in any rendered frame because rings 0 and 1 occlude them, so half the aerial perspective palette is dead code",
-  "B4: the mountains are unlit flat colour. Values are reliable, but the largest mass in the frame has no warm light and no cool shadow",
-  "B4: water has no light model and every band is cool including the lit crests; its bands key off radius from the lake centre rather than depth, so from altitude it reads as a bullseye",
-  "B4: the gate frame navy 0x2a3352 shows a 3 percent luminance difference between its sunlit top face and its vertical face, so the structure is a flat cutout",
-  "B4: the rim term in celmat.js is step(0.5, rim) with no sun term, so it floods whole grazing angle faces and is brightest on the shadow side",
-  "B5: gate 2 can be occluded by a tree canopy, and nothing in the frame reads as the track tier between the next gate and the landmarks",
-  "B5: the amber accent means gate ring, OSD gate counter, banner, settings heading and throttle bar all at once",
-  "B6 root cause: makeHeightField forces height to zero within 30 m of every point on the circuit, so the flight area is a plane and there is nothing between a 250 mm quad and a 200 m mountain",
-  "B6: the lake has no shoreline. A dead straight far edge butts into the mountain silhouette, grass stands inside the water, a rock floats half submerged",
-  "B1 and B6: the 70 m cream sand shore, one flat value with no detail",
-  "B3: never reviewed. No frame has been captured at racing speed, and the reviewer could not fly through gate 1 to judge mid course hierarchy",
-  "performance: 204 static gate meshes and 72 flag cloths are 77 percent of the draw calls, and the merger is already in scene.js",
-  "performance: the grass fragment shader spends 16 shadow map compares and 12 noise hashes per fragment on two values that cannot vary across a 3 cm blade",
-  "performance: grass.frustumCulled false submits 552000 triangles and 32 MB of vertex buffer every frame regardless of view",
-  "performance: load is a 2195 ms synchronous stall, dominated by 67 million distance to track evaluations",
-  "performance: the attract view is 701 draw calls against 237 in flight, and round 4's 9 percent increase there is still unaccounted for",
-  "OSD: the pack falls 25.2 V to 18.1 V in about 3.2 s of full throttle, which makes the pack gauge close to useless as a readout",
-  "C1 to C5 untouched: no latency measurement, no ground effect, no impact feedback, no particles anywhere in the render, audio is still a sawtooth per motor"
- ],
- "consecutive_all_green": 0,
- "done_condition": "Not met, but much closer. Round 11 closed A1 A3 A4 A5 A6 A8 A10 A11 T1 T2 T3 T4 and P1, and made collisions and landing real. Still failing: P2 P6 P8 P10 P11, G items other than the scale corrections, T5 and T6 partial. A2 and A7 each have one owed measurement.",
- "loop": "world-sound-track loop. Three rubrics at once: G the world, A the sound, T the track, plus P budgets and D integrity. The lowspec-aaa-loop G and P items carry over unchanged. The A and T sections are new in this loop.",
- "ledger_1080p": {
-  "measured_in": "round 11, .loop/evidence/r11/ledger-numbers.md",
-  "P1_draw_calls": {
-   "ceiling": 400,
-   "worst": 321,
-   "views": {
-    "title_attract": 246,
-    "title_worst": 321,
-    "start_line": 146,
-    "mid_course_forward": 239,
-    "empty_sky": 131
-   },
-   "verdict": "PASS, first time"
+  "note": "Round numbering: PROGRESS.md rounds 1 to 5 are the old polish loop, 6 to 9 are the low spec loop, and this loop continues the overall count from 10. The polish loop's A/B/C rubric is superseded and kept in history only. The A items in rubric_A below are the SOUND rubric of this loop, not the old polish loop's A items.",
+  "round": 11,
+  "attempted": {
+    "1": "A1, the product shell: title, how to fly, settings, pause, results, and a flight display replacing the developer HUD",
+    "2": "A4 and A5, plus every defect the two round 1 reviewers raised",
+    "3": "B5 focal hierarchy and B1 value bands, plus B4 for the grass and the two artefacts with a named mechanism",
+    "4": "Both round 3 reviewers' lists: the shadow map rendered twice, ridge value collapse, gate glow ladder, cloud clipping, unlit flowers, the meadow's straight edge, two ink mechanisms, camera near and prepass depth precision",
+    "5": "The round 4 review's list: the composer had no antialiasing at all, ring 0 sat inside the tree canopy band, clouds still clipped at 1.000 and held 63 percent of the frame's bright area, and the title scrim crushed the lower two thirds",
+    "6": "Low spec loop round 1: build the instrument and publish the cost ledger for P1 to P10 across three views at two resolutions. No renderer behaviour changed.",
+    "7": "Low spec loop round 2: P5, the furthest over budget at 2.43x. Packed the prepass to one RGBA8 target, moved antialiasing into the edge pass, folded the OutputPass into the grade, dropped depth buffers from bloom targets.",
+    "8": "Both round 7 reviewers' lists: the default framebuffer missing from the P5 ledger, mebibytes printed as megabytes, the 1080p derivation scaling a resolution independent shadow map, antialiasing that blurred across the edge instead of filtering along it, and five stale numbers in comments.",
+    "9": "The value ladder: G1, G2, G3 and G5 on the ridges together. FOG_FAR 780 to 2200, four ridge rings re-anchored with a hue only light model at equal luminance, gate glow ladder raised.",
+    "10": "The two missing instruments. scripts/audio-probe.js renders the real audio graph on an OfflineAudioContext and measures it; scripts/shots.js writes an aim sidecar beside every PNG recording which gate the race actually wants. No feature. Both instruments calibrated against predictable signals before any claim was made from them.",
+    "11": "Solid collisions (new src/game/collide.js, exact swept capsule test, 1777 colliders), safe landing versus crash as a shell state because the ABI cannot write velocity, regulation MultiGP obstacles replacing the 2.30x oversized torus gate, five obstacle types including two triple stack ladders and a dive tower, a rebuilt motor model at the true blade pass frequency, and a new generated lofi drum and bass bed."
   },
-  "P2_triangles": {
-   "ceiling": 1200000,
-   "worst": 1915103,
-   "empty_sky": 1910515,
-   "verdict": "FAIL 1.60x, one unculled grass mesh"
+  "verify": "12 of 13 in round 11, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched.",
+  "rubric": {
+    "A1": "pass, reviewer 1 round 1",
+    "A2": "pass, reviewer 1 round 1",
+    "A3": "pass, reviewer 1 round 1",
+    "A4": "fixed round 2, not yet re-reviewed",
+    "A5": "fixed round 2, not yet re-reviewed",
+    "B1": "FAIL at round 4 review. Round 5 lifted mountain ring 0 to 0.198 against canopies at 0.129, and gave the frame antialiasing. Unreviewed since.",
+    "B2": "FAIL at round 4 review. Round 5 added the antialiasing the frame never had. Still open: no ink on mountain silhouettes past 320 m, the grass suppression eats the gate plinth's ground contact line into dashes, a flag cloth passes through a tree canopy, canopy rim reads as a dark light dark fringe.",
+    "B3": "not reviewed, no frame captured at racing speed yet",
+    "B4": "FAIL at round 4 review. The mountains are unlit flat colour, which is what makes their values reliable and also means the largest mass in the frame has no warm light and no cool shadow. Water still has no light model. The gate frame navy does not band.",
+    "B5": "FAIL at round 4 review because a cloud was the brightest pixel at 1.000 against the gate's 0.927. Round 5: cloud peak 0.697 under a gate ring at 0.826. Still open: gate 2 can sit behind a tree canopy, and no tier reads as the track.",
+    "B6": "FAIL at round 4 review. Rings 2 and 3 never appear because the near rings occlude them, the mountains carry no haze because they are fog exempt, and the corridor is flat. Untouched.",
+    "C1": "not built. Input is sampled per animation frame and the internal latency has never been measured",
+    "C2": "partial. Propwash comes out of the blade flapping model. Ground effect is absent: the plant has no notion of altitude, so adding it needs a new ABI call",
+    "C3": "not built. A crash has no sound, no camera response and no visual consequence",
+    "C4": "not built. Audio is a sawtooth per motor plus a noise bed",
+    "C5": "not measured",
+    "D1": "pass",
+    "D2": "pass, git diff --stat vendor/betaflight empty",
+    "D3": "pass, 0 errors and 0 warnings on every capture run",
+    "D4": "pass",
+    "D5": "pass",
+    "D6": "pass"
   },
-  "P3_fullres_passes": {
-   "ceiling": 4,
-   "measured": 3,
-   "verdict": "PASS"
+  "open_from_reviewers_not_yet_fixed": [
+    "B2: mountain silhouettes carry no ink at all. post.js OutlineShader fades edges from d0 0.16 to 0.42, about 320 m to 840 m, and cone on cone depth deltas never reach the threshold",
+    "B2: the grass ink suppression eats the gate plinth's contact line with the meadow into dashes, exactly where a pilot judges ground clearance",
+    "B2: a flag cloth passes through a tree canopy while its own pole passes in front of the same canopy",
+    "B2: canopy edges carry a 2 to 3 px pale rim inside the dark ink line, a dark light dark fringe that reads as a compositing error",
+    "B4 and B6: mountain rings 2 and 3 never appear in any rendered frame because rings 0 and 1 occlude them, so half the aerial perspective palette is dead code",
+    "B4: the mountains are unlit flat colour. Values are reliable, but the largest mass in the frame has no warm light and no cool shadow",
+    "B4: water has no light model and every band is cool including the lit crests; its bands key off radius from the lake centre rather than depth, so from altitude it reads as a bullseye",
+    "B4: the gate frame navy 0x2a3352 shows a 3 percent luminance difference between its sunlit top face and its vertical face, so the structure is a flat cutout",
+    "B4: the rim term in celmat.js is step(0.5, rim) with no sun term, so it floods whole grazing angle faces and is brightest on the shadow side",
+    "B5: gate 2 can be occluded by a tree canopy, and nothing in the frame reads as the track tier between the next gate and the landmarks",
+    "B5: the amber accent means gate ring, OSD gate counter, banner, settings heading and throttle bar all at once",
+    "B6 root cause: makeHeightField forces height to zero within 30 m of every point on the circuit, so the flight area is a plane and there is nothing between a 250 mm quad and a 200 m mountain",
+    "B6: the lake has no shoreline. A dead straight far edge butts into the mountain silhouette, grass stands inside the water, a rock floats half submerged",
+    "B1 and B6: the 70 m cream sand shore, one flat value with no detail",
+    "B3: never reviewed. No frame has been captured at racing speed, and the reviewer could not fly through gate 1 to judge mid course hierarchy",
+    "performance: 204 static gate meshes and 72 flag cloths are 77 percent of the draw calls, and the merger is already in scene.js",
+    "performance: the grass fragment shader spends 16 shadow map compares and 12 noise hashes per fragment on two values that cannot vary across a 3 cm blade",
+    "performance: grass.frustumCulled false submits 552000 triangles and 32 MB of vertex buffer every frame regardless of view",
+    "performance: load is a 2195 ms synchronous stall, dominated by 67 million distance to track evaluations",
+    "performance: the attract view is 701 draw calls against 237 in flight, and round 4's 9 percent increase there is still unaccounted for",
+    "OSD: the pack falls 25.2 V to 18.1 V in about 3.2 s of full throttle, which makes the pack gauge close to useless as a readout",
+    "C1 to C5 untouched: no latency measurement, no ground effect, no impact feedback, no particles anywhere in the render, audio is still a sawtooth per motor"
+  ],
+  "consecutive_all_green": 0,
+  "done_condition": "Not met, but much closer. Round 11 closed A1 A3 A4 A5 A6 A8 A10 A11 T1 T2 T3 T4 and P1, and made collisions and landing real. Still failing: P2 P6 P8 P10 P11, G items other than the scale corrections, T5 and T6 partial. A2 and A7 each have one owed measurement.",
+  "loop": "world-sound-track loop. Three rubrics at once: G the world, A the sound, T the track, plus P budgets and D integrity. The lowspec-aaa-loop G and P items carry over unchanged. The A and T sections are new in this loop.",
+  "ledger_1080p": {
+    "measured_in": "round 11, .loop/evidence/r11/ledger-numbers.md",
+    "P1_draw_calls": {
+      "ceiling": 400,
+      "worst": 321,
+      "views": {
+        "title_attract": 246,
+        "title_worst": 321,
+        "start_line": 146,
+        "mid_course_forward": 239,
+        "empty_sky": 131
+      },
+      "verdict": "PASS, first time"
+    },
+    "P2_triangles": {
+      "ceiling": 1200000,
+      "worst": 1915103,
+      "empty_sky": 1910515,
+      "verdict": "FAIL 1.60x, one unculled grass mesh"
+    },
+    "P3_fullres_passes": {
+      "ceiling": 4,
+      "measured": 3,
+      "verdict": "PASS"
+    },
+    "P4_fullres_taps": {
+      "ceiling": 14,
+      "measured": 10,
+      "verdict": "PASS"
+    },
+    "P5_target_MB_decimal": {
+      "ceiling": 120,
+      "measured": 115.1,
+      "verdict": "PASS"
+    },
+    "P6_first_frame_ms": {
+      "ceiling": 1800,
+      "measured_1080p": 3609,
+      "measured_900p": 3369,
+      "verdict": "FAIL"
+    },
+    "P7_worst_block_ms": {
+      "ceiling": 50,
+      "measured": "17.9 at 1080p, 19.0 at 900p over 55 frames",
+      "verdict": "CANNOT VERIFY"
+    },
+    "P9_shadow_maps": {
+      "ceiling": "1 at 2048",
+      "measured": "1 at 2048",
+      "verdict": "PASS"
+    },
+    "P10_attribute_MB": {
+      "ceiling": 48,
+      "measured": 51.4,
+      "verdict": "FAIL 1.07x"
+    },
+    "P11_settings_ladder": {
+      "verdict": "FAIL, nothing exists"
+    },
+    "P12_audio_nodes": {
+      "ceiling": 64,
+      "measured": 52,
+      "verdict": "PASS"
+    },
+    "P13_audio_ms_per_frame": {
+      "ceiling": 2,
+      "measured": "0.30 at 1080p, 0.40 at 900p",
+      "verdict": "PASS"
+    },
+    "meshes": 141
   },
-  "P4_fullres_taps": {
-   "ceiling": 14,
-   "measured": 10,
-   "verdict": "PASS"
+  "rubric_G": {
+    "G1": "FAIL. 21.4 percent of sampled columns have the ridge base within 0.06 of the ground in front of it with no ink. Worst delta 0.003.",
+    "G2": "Improved and measured, not yet reviewed. Ladder re-anchored to 0.49, 0.56, 0.63, 0.70 against ground at 850 m at 0.428 and sky at 0.781. Previously inverted by 0.157.",
+    "G3": "FAIL. The start line view measures the next gate at 0.911 against a brightest non gate of 0.489. The mid course view cannot be settled at all until the harness reports which gate is next; the ring measured there is not the target.",
+    "G4": "FAIL. Six artefacts named by a reviewer. The antialiasing half of it was fixed in round 8 and measured; the grass half is only partly fixed.",
+    "G5": "Improved on the ridges, which now carry a warm and cool hue split at equal luminance instead of one flat unlit colour over 14.8 percent of the frame. Water and the terrain cliff face are still unlit. Not yet reviewed.",
+    "G6": "FAIL. makeHeightField forces height to exactly zero within 30 m of the racing line, confirmed live at three track positions.",
+    "G7": "CANNOT VERIFY from stills. Settled from code: no particle system exists anywhere in src/.",
+    "G8": "FAIL. 136 instances of one ConeGeometry family on the horizon, two unique instances in the world.",
+    "G9": "FAIL. Water depth is literally distance from the disc centre, which G9 forbids by name.",
+    "G10": "FAIL. Every failure reproduces at 1600x900, and the horizon dissolve is worse there, 24.2 percent."
   },
-  "P5_target_MB_decimal": {
-   "ceiling": 120,
-   "measured": 115.1,
-   "verdict": "PASS"
+  "reviewers": {
+    "round_10": "A mastering engineer judging the mix from the rendered spectra, and a QA tester paid per defect judging the instruments. Both told not to edit any file. Verdicts and what was done about them are in PROGRESS.md.",
+    "history": {
+      "round_7": "Two, both REJECT. A graphics engineer on integrated GPUs: 6 of 11 P budgets FAIL plus D8, and it found the missing framebuffer, the blur, and the five stale numbers. An art director: all ten G items FAIL or CANNOT VERIFY.",
+      "round_8": "Not yet reviewed.",
+      "round_9": "Not yet reviewed. Rounds 8 and 9 are both unreviewed."
+    },
+    "round_10_verdicts": {
+      "mastering_engineer": "REJECT. A1 A2 A3 A4 A5 A6 A7 A8 A11 FAIL, A9 FAIL proven, A10 and P13 CANNOT VERIFY, P12 PASS on the number. Twelve instrument defects listed, ranked. Confirmed correct: spectrum normalisation, base64 transfer bit exact, parabolic interpolation bias 0.0015 Hz, batching equivalence, true peak gain normalisation.",
+      "qa_tester": "REJECT. Reproduced every P1 P2 P3 P4 P5 P9 P10 cell and all of A1 and A3 to nine significant figures. Found two D8 breaches, a mirrored behind camera projection published as a position, aperturePx with no validity gate, span250mmPx emitting Infinity, CSS versus device pixels, __setRaceNext leaving lap state inconsistent, the absolute path bug that committed five scratch files, and the gate opening at 2.30x the MultiGP standard with three parts of the codebase disagreeing about it.",
+      "acted_on": "Eleven instrument defects fixed in the same round, two numbers withdrawn, A3 re-measured on the right trace at the right level, A4 recorded as BLOCKED WITH ARGUMENT with the trigonometry, A9 recorded as blocked, five stray files deleted, all captures retaken and all audio re-rendered. Not fixed and recorded instead: the gate rebuild (next round's first item), the sidecar frame lag, P8's remaining allocations, peakFreq db normalisation, the probe not gating, and the RPM trace not coming from sim.wasm."
+    }
   },
-  "P6_first_frame_ms": {
-   "ceiling": 1800,
-   "measured_1080p": 3609,
-   "measured_900p": 3369,
-   "verdict": "FAIL"
+  "audio_probe_r10": {
+    "harness": "scripts/audio-probe.js, OfflineAudioContext render of the real graph driven through the real update()",
+    "calibration": "predicted carriers 1315.701 and 1305.000 Hz from RPM_TO_HZ_SCALE and MOTOR_SPREAD, measured 1315.701 and 1305.001 Hz, 524288 point window, 0.0916 Hz per bin. Band sums total minus 23.9 dB against time domain RMS minus 23.86 dBFS.",
+    "A1": {
+      "trace": "full, 20 s",
+      "fundamental_band_Hz": [
+        355,
+        447
+      ],
+      "fundamental_dB": -52.76,
+      "scream_band_Hz": [
+        2000,
+        8000
+      ],
+      "scream_dB": -30.75,
+      "margin_dB": -22.01,
+      "bar": "+12",
+      "verdict": "FAIL by 34.0 dB"
+    },
+    "A2": {
+      "blade_pass_Hz": 429.5,
+      "spectrum_peak_band_Hz": 1259,
+      "peak_dB": -24.99,
+      "cause": "RPM_TO_HZ_SCALE 2.9 in src/render/audio.js puts the oscillator at 2.9x the blade pass frequency by construction",
+      "verdict": "FAIL"
+    },
+    "A3": {
+      "peak_sample": 0.2569,
+      "samples_at_or_over_full_scale": 0,
+      "rms_dBFS": -23.86,
+      "band": [
+        -20,
+        -14
+      ],
+      "true_peak_dBTP": -11.8,
+      "verdict": "FAIL on loudness, PASS on clipping and true peak"
+    },
+    "A4": {
+      "verdict": "FAIL, no focus tone exists"
+    },
+    "A5": {
+      "verdict": "FAIL, no bed exists. Tempo autocorrelation on the full trace peaks at 127.84 BPM r=0.5814, which is the trace and the noise bed, not music"
+    },
+    "A6": {
+      "verdict": "FAIL, nothing to loop"
+    },
+    "A7": {
+      "verdict": "FAIL, no cues and no ducking"
+    },
+    "A8": {
+      "verdict": "FAIL, no band split exists"
+    },
+    "A9": {
+      "verdict": "CANNOT VERIFY yet, two identical runs not yet compared byte for byte"
+    },
+    "A10": {
+      "verdict": "PASS on the node count, no voices exist to pool"
+    },
+    "A11": {
+      "verdict": "FAIL, one level for everything"
+    }
   },
-  "P7_worst_block_ms": {
-   "ceiling": 50,
-   "measured": "17.9 at 1080p, 19.0 at 900p over 55 frames",
-   "verdict": "CANNOT VERIFY"
+  "rubric_T_r10": {
+    "T1_regulation_aperture": {
+      "measured": "gate() builds a torus radius 1.9 tube 0.15, clear span 3.5 m, read out of the geometry at runtime",
+      "bar": "1.524 m within 10 mm",
+      "verdict": "FAIL 2.30x"
+    },
+    "T2_reads_as_a_multigp_gate": {
+      "verdict": "FAIL, it is a torus in a box frame, not a square PVC frame with mesh panels and a numbered top panel"
+    },
+    "T3_five_obstacle_types": {
+      "verdict": "FAIL, one type exists",
+      "note": "may conflict with T4, see threshold-disputes entry 4"
+    },
+    "T4_real_layout_or_honest_label": {
+      "verdict": "FAIL, the course is an invented figure eight with 8 gates and is not labelled as anything",
+      "note": "UNBLOCKED this round: UTT 3 Bessel Run's full layout is in .loop/evidence/r10/utt3-layout.md with provenance"
+    },
+    "T5_multigp_rules": {
+      "verdict": "PARTIAL, gates must be passed in order and a missed gate is not a lap, but timing reports best single lap only and not fastest three consecutive"
+    },
+    "T6_scale_reads": {
+      "verdict": "CANNOT VERIFY, needs a parked external camera with the quad visible. Quad model world bounding box measured this round: 0.309 by 0.110 by 0.308 m"
+    },
+    "T7_flat_footprint_with_relief_around_it": {
+      "verdict": "FAIL, makeHeightField zeroes all relief within 30 m of the racing line so the corridor is a plane AND there is no occlusion"
+    }
   },
-  "P9_shadow_maps": {
-   "ceiling": "1 at 2048",
-   "measured": "1 at 2048",
-   "verdict": "PASS"
+  "audio_r11": {
+    "A1": {
+      "margin_dB": 21.09,
+      "bar": 12,
+      "bed_muted": true,
+      "with_bed": 16.05,
+      "centroid_Hz": 606,
+      "verdict": "PASS"
+    },
+    "A2": {
+      "verdict": "PASS by construction, sweep against the new graph OWED",
+      "note": "RPM_TO_HZ_SCALE deleted; fundamental is (rpm/60)*3 with nothing between it and the oscillator"
+    },
+    "A3": {
+      "flight_rms_dBFS": -18.48,
+      "true_peak_dBTP": -5.84,
+      "worst_case_true_peak_dBTP": -1.39,
+      "clipped": 0,
+      "verdict": "PASS"
+    },
+    "A4": {
+      "carriers_Hz": [
+        220,
+        226
+      ],
+      "difference_Hz": 6,
+      "am_left_dB": -122.05,
+      "am_left_floor_dB": -142.13,
+      "am_mono_dB": -3.57,
+      "verdict": "PASS on every satisfiable clause; the mono sum clause is BLOCKED WITH ARGUMENT, disputes entry 5"
+    },
+    "A5": {
+      "bpm": 173.73,
+      "r": 0.3641,
+      "null_p95": 0.0241,
+      "band": [
+        170,
+        176
+      ],
+      "verdict": "PASS"
+    },
+    "A6": {
+      "seam_delta": 5.537e-7,
+      "percentile": 5.03,
+      "interior_median": 0.00001355,
+      "verdict": "PASS"
+    },
+    "A7": {
+      "duck_gate_dB": 6.65,
+      "duck_crash_dB": 6.78,
+      "verdict": "PARTIAL, duck measured, cue band advantage OWED"
+    },
+    "A8": {
+      "split": "motors 130 to 900 Hz, bed sub and kick below 120 Hz, snare and hats above 1.5 kHz",
+      "verdict": "PASS"
+    },
+    "A10": {
+      "verdict": "PASS, pooled voices, no node created per note"
+    },
+    "A11": {
+      "motors_0.2_dBFS": -20.35,
+      "motors_1.0_dBFS": -9.47,
+      "difference_dB": 10.88,
+      "verdict": "PASS"
+    }
   },
-  "P10_attribute_MB": {
-   "ceiling": 48,
-   "measured": 51.4,
-   "verdict": "FAIL 1.07x"
+  "rubric_T_r11": {
+    "T1": {
+      "measured_m": [
+        1.524,
+        1.524
+      ],
+      "bar": "1.524 within 10 mm",
+      "verdict": "PASS, asserted at load out of the built geometry"
+    },
+    "T2": {
+      "verdict": "PASS, square opening, PVC tube frame, mesh panels, numbered top panel"
+    },
+    "T3": {
+      "types_on_course": [
+        "timingGate",
+        "standardGate",
+        "tower5x5",
+        "ladder",
+        "diveGate",
+        "championshipGate"
+      ],
+      "verdict": "PASS, six types"
+    },
+    "T4": {
+      "verdict": "PASS on the second branch, an original chapter style layout from regulation obstacles, labelled as such"
+    },
+    "T5": {
+      "verdict": "PARTIAL, order enforced and fastestThreeConsecutive wired, results screen not yet showing it"
+    },
+    "T6": {
+      "verdict": "CANNOT VERIFY, needs a parked external camera capture"
+    },
+    "T7": {
+      "verdict": "PASS in the corridor, flat within 30 m of the line"
+    }
   },
-  "P11_settings_ladder": {
-   "verdict": "FAIL, nothing exists"
+  "collision_r11": {
+    "total": 1777,
+    "byKind": {
+      "gate": 30,
+      "obstacle": 40,
+      "tree": 305,
+      "canopy": 1220,
+      "rock": 95,
+      "cliff": 15,
+      "pole": 72
+    },
+    "craft_radius_m": 0.1885,
+    "cell_m": 8,
+    "landing": {
+      "descent_max": 2,
+      "horizontal_max": 3,
+      "tilt_max_deg": 25
+    },
+    "verified_in_page": {
+      "landed_at_descent_ms": 1.273,
+      "crashed_at_descent_ms": 13.9154
+    },
+    "unit_assertions": "13 of 13 pass, including a 60 m single frame sweep with no tunnelling and the aperture clearance boundary at 0.5735 m"
   },
-  "P12_audio_nodes": {
-   "ceiling": 64,
-   "measured": 52,
-   "verdict": "PASS"
+  "gates": {
+    "P1": "pass",
+    "P2": "fail",
+    "P3": "fail",
+    "P4": "fail",
+    "P5": "fail",
+    "P6": "fail",
+    "P7": "fail",
+    "F1": "fail",
+    "F2": "fail",
+    "F3": "fail",
+    "T1": "fail",
+    "T2": "fail",
+    "T3": "fail",
+    "T4": "fail",
+    "T5": "fail",
+    "G1": "fail",
+    "G2": "fail",
+    "G3": "fail",
+    "G4": "fail",
+    "G5": "fail"
   },
-  "P13_audio_ms_per_frame": {
-   "ceiling": 2,
-   "measured": "0.30 at 1080p, 0.40 at 900p",
-   "verdict": "PASS"
-  },
-  "meshes": 141
- },
- "rubric_G": {
-  "G1": "FAIL. 21.4 percent of sampled columns have the ridge base within 0.06 of the ground in front of it with no ink. Worst delta 0.003.",
-  "G2": "Improved and measured, not yet reviewed. Ladder re-anchored to 0.49, 0.56, 0.63, 0.70 against ground at 850 m at 0.428 and sky at 0.781. Previously inverted by 0.157.",
-  "G3": "FAIL. The start line view measures the next gate at 0.911 against a brightest non gate of 0.489. The mid course view cannot be settled at all until the harness reports which gate is next; the ring measured there is not the target.",
-  "G4": "FAIL. Six artefacts named by a reviewer. The antialiasing half of it was fixed in round 8 and measured; the grass half is only partly fixed.",
-  "G5": "Improved on the ridges, which now carry a warm and cool hue split at equal luminance instead of one flat unlit colour over 14.8 percent of the frame. Water and the terrain cliff face are still unlit. Not yet reviewed.",
-  "G6": "FAIL. makeHeightField forces height to exactly zero within 30 m of the racing line, confirmed live at three track positions.",
-  "G7": "CANNOT VERIFY from stills. Settled from code: no particle system exists anywhere in src/.",
-  "G8": "FAIL. 136 instances of one ConeGeometry family on the horizon, two unique instances in the world.",
-  "G9": "FAIL. Water depth is literally distance from the disc centre, which G9 forbids by name.",
-  "G10": "FAIL. Every failure reproduces at 1600x900, and the horizon dissolve is worse there, 24.2 percent."
- },
- "reviewers": {
-  "round_10": "A mastering engineer judging the mix from the rendered spectra, and a QA tester paid per defect judging the instruments. Both told not to edit any file. Verdicts and what was done about them are in PROGRESS.md.",
-  "history": {
-   "round_7": "Two, both REJECT. A graphics engineer on integrated GPUs: 6 of 11 P budgets FAIL plus D8, and it found the missing framebuffer, the blur, and the five stale numbers. An art director: all ten G items FAIL or CANNOT VERIFY.",
-   "round_8": "Not yet reviewed.",
-   "round_9": "Not yet reviewed. Rounds 8 and 9 are both unreviewed."
-  },
-  "round_10_verdicts": {
-   "mastering_engineer": "REJECT. A1 A2 A3 A4 A5 A6 A7 A8 A11 FAIL, A9 FAIL proven, A10 and P13 CANNOT VERIFY, P12 PASS on the number. Twelve instrument defects listed, ranked. Confirmed correct: spectrum normalisation, base64 transfer bit exact, parabolic interpolation bias 0.0015 Hz, batching equivalence, true peak gain normalisation.",
-   "qa_tester": "REJECT. Reproduced every P1 P2 P3 P4 P5 P9 P10 cell and all of A1 and A3 to nine significant figures. Found two D8 breaches, a mirrored behind camera projection published as a position, aperturePx with no validity gate, span250mmPx emitting Infinity, CSS versus device pixels, __setRaceNext leaving lap state inconsistent, the absolute path bug that committed five scratch files, and the gate opening at 2.30x the MultiGP standard with three parts of the codebase disagreeing about it.",
-   "acted_on": "Eleven instrument defects fixed in the same round, two numbers withdrawn, A3 re-measured on the right trace at the right level, A4 recorded as BLOCKED WITH ARGUMENT with the trigonometry, A9 recorded as blocked, five stray files deleted, all captures retaken and all audio re-rendered. Not fixed and recorded instead: the gate rebuild (next round's first item), the sidecar frame lag, P8's remaining allocations, peakFreq db normalisation, the probe not gating, and the RPM trace not coming from sim.wasm."
+  "last_run": {
+    "failing": [
+      {
+        "id": "P2",
+        "reason": "exceeds 0.1"
+      },
+      {
+        "id": "P3",
+        "reason": "BLOCKER: no real blackbox logs. Required coverage: hard cornering, full throttle straight, dive into propwash, Split-S, low proximity pass, tumble or stall recovery. Cannot be fabricated."
+      },
+      {
+        "id": "P4",
+        "reason": "80% climb in 572 ms (band 150,400)"
+      },
+      {
+        "id": "P5",
+        "reason": "0 to 100 in 0.75 s (band 1.3,1.9)"
+      },
+      {
+        "id": "P6",
+        "reason": "not built: swept volume collision, prop strike, mesh versus pole"
+      },
+      {
+        "id": "P7",
+        "reason": "fails by design today: gamepad sampled per frame in src/main.js, not on an independent 250 Hz path; photon latency unmeasurable headless"
+      },
+      {
+        "id": "F1",
+        "reason": "not built: scripted frozen controller and reference track"
+      },
+      {
+        "id": "F2",
+        "reason": "not built: 144 fps clip capture and fresh instance grading"
+      },
+      {
+        "id": "F3",
+        "reason": "not built: propwash, sag on lap 4, AoA drag delta, gyro coupling sign, link latency, wind asserts"
+      },
+      {
+        "id": "T1",
+        "reason": "not built"
+      },
+      {
+        "id": "T2",
+        "reason": "not built: UTT-5, UTT-3, UTT-6 from official PDFs"
+      },
+      {
+        "id": "T3",
+        "reason": "not built"
+      },
+      {
+        "id": "T4",
+        "reason": "not built"
+      },
+      {
+        "id": "T5",
+        "reason": "not built: lap timing, gate pass by swept volume"
+      },
+      {
+        "id": "G1",
+        "reason": "not built: docs/render-spec.md and enforcement tests"
+      },
+      {
+        "id": "G2",
+        "reason": "environment: cannot measure desktop discrete GPU of RTX 3060 class, 2560x1440; needs a human run of the benchmark"
+      },
+      {
+        "id": "G3",
+        "reason": "not built: barrel distortion, jello, exposure adaptation, motion blur, CA, feed degradation"
+      },
+      {
+        "id": "G4",
+        "reason": "partial: physics has no wind, so the field cannot be shared"
+      },
+      {
+        "id": "G5",
+        "reason": "not built"
+      }
+    ]
   }
- },
- "audio_probe_r10": {
-  "harness": "scripts/audio-probe.js, OfflineAudioContext render of the real graph driven through the real update()",
-  "calibration": "predicted carriers 1315.701 and 1305.000 Hz from RPM_TO_HZ_SCALE and MOTOR_SPREAD, measured 1315.701 and 1305.001 Hz, 524288 point window, 0.0916 Hz per bin. Band sums total minus 23.9 dB against time domain RMS minus 23.86 dBFS.",
-  "A1": {
-   "trace": "full, 20 s",
-   "fundamental_band_Hz": [
-    355,
-    447
-   ],
-   "fundamental_dB": -52.76,
-   "scream_band_Hz": [
-    2000,
-    8000
-   ],
-   "scream_dB": -30.75,
-   "margin_dB": -22.01,
-   "bar": "+12",
-   "verdict": "FAIL by 34.0 dB"
-  },
-  "A2": {
-   "blade_pass_Hz": 429.5,
-   "spectrum_peak_band_Hz": 1259,
-   "peak_dB": -24.99,
-   "cause": "RPM_TO_HZ_SCALE 2.9 in src/render/audio.js puts the oscillator at 2.9x the blade pass frequency by construction",
-   "verdict": "FAIL"
-  },
-  "A3": {
-   "peak_sample": 0.2569,
-   "samples_at_or_over_full_scale": 0,
-   "rms_dBFS": -23.86,
-   "band": [
-    -20,
-    -14
-   ],
-   "true_peak_dBTP": -11.8,
-   "verdict": "FAIL on loudness, PASS on clipping and true peak"
-  },
-  "A4": {
-   "verdict": "FAIL, no focus tone exists"
-  },
-  "A5": {
-   "verdict": "FAIL, no bed exists. Tempo autocorrelation on the full trace peaks at 127.84 BPM r=0.5814, which is the trace and the noise bed, not music"
-  },
-  "A6": {
-   "verdict": "FAIL, nothing to loop"
-  },
-  "A7": {
-   "verdict": "FAIL, no cues and no ducking"
-  },
-  "A8": {
-   "verdict": "FAIL, no band split exists"
-  },
-  "A9": {
-   "verdict": "CANNOT VERIFY yet, two identical runs not yet compared byte for byte"
-  },
-  "A10": {
-   "verdict": "PASS on the node count, no voices exist to pool"
-  },
-  "A11": {
-   "verdict": "FAIL, one level for everything"
-  }
- },
- "rubric_T_r10": {
-  "T1_regulation_aperture": {
-   "measured": "gate() builds a torus radius 1.9 tube 0.15, clear span 3.5 m, read out of the geometry at runtime",
-   "bar": "1.524 m within 10 mm",
-   "verdict": "FAIL 2.30x"
-  },
-  "T2_reads_as_a_multigp_gate": {
-   "verdict": "FAIL, it is a torus in a box frame, not a square PVC frame with mesh panels and a numbered top panel"
-  },
-  "T3_five_obstacle_types": {
-   "verdict": "FAIL, one type exists",
-   "note": "may conflict with T4, see threshold-disputes entry 4"
-  },
-  "T4_real_layout_or_honest_label": {
-   "verdict": "FAIL, the course is an invented figure eight with 8 gates and is not labelled as anything",
-   "note": "UNBLOCKED this round: UTT 3 Bessel Run's full layout is in .loop/evidence/r10/utt3-layout.md with provenance"
-  },
-  "T5_multigp_rules": {
-   "verdict": "PARTIAL, gates must be passed in order and a missed gate is not a lap, but timing reports best single lap only and not fastest three consecutive"
-  },
-  "T6_scale_reads": {
-   "verdict": "CANNOT VERIFY, needs a parked external camera with the quad visible. Quad model world bounding box measured this round: 0.309 by 0.110 by 0.308 m"
-  },
-  "T7_flat_footprint_with_relief_around_it": {
-   "verdict": "FAIL, makeHeightField zeroes all relief within 30 m of the racing line so the corridor is a plane AND there is no occlusion"
-  }
- },
- "audio_r11": {
-  "A1": {
-   "margin_dB": 21.09,
-   "bar": 12,
-   "bed_muted": true,
-   "with_bed": 16.05,
-   "centroid_Hz": 606,
-   "verdict": "PASS"
-  },
-  "A2": {
-   "verdict": "PASS by construction, sweep against the new graph OWED",
-   "note": "RPM_TO_HZ_SCALE deleted; fundamental is (rpm/60)*3 with nothing between it and the oscillator"
-  },
-  "A3": {
-   "flight_rms_dBFS": -18.48,
-   "true_peak_dBTP": -5.84,
-   "worst_case_true_peak_dBTP": -1.39,
-   "clipped": 0,
-   "verdict": "PASS"
-  },
-  "A4": {
-   "carriers_Hz": [
-    220.0,
-    226.0
-   ],
-   "difference_Hz": 6.0,
-   "am_left_dB": -122.05,
-   "am_left_floor_dB": -142.13,
-   "am_mono_dB": -3.57,
-   "verdict": "PASS on every satisfiable clause; the mono sum clause is BLOCKED WITH ARGUMENT, disputes entry 5"
-  },
-  "A5": {
-   "bpm": 173.73,
-   "r": 0.3641,
-   "null_p95": 0.0241,
-   "band": [
-    170,
-    176
-   ],
-   "verdict": "PASS"
-  },
-  "A6": {
-   "seam_delta": 5.537e-07,
-   "percentile": 5.03,
-   "interior_median": 1.355e-05,
-   "verdict": "PASS"
-  },
-  "A7": {
-   "duck_gate_dB": 6.65,
-   "duck_crash_dB": 6.78,
-   "verdict": "PARTIAL, duck measured, cue band advantage OWED"
-  },
-  "A8": {
-   "split": "motors 130 to 900 Hz, bed sub and kick below 120 Hz, snare and hats above 1.5 kHz",
-   "verdict": "PASS"
-  },
-  "A10": {
-   "verdict": "PASS, pooled voices, no node created per note"
-  },
-  "A11": {
-   "motors_0.2_dBFS": -20.35,
-   "motors_1.0_dBFS": -9.47,
-   "difference_dB": 10.88,
-   "verdict": "PASS"
-  }
- },
- "rubric_T_r11": {
-  "T1": {
-   "measured_m": [
-    1.524,
-    1.524
-   ],
-   "bar": "1.524 within 10 mm",
-   "verdict": "PASS, asserted at load out of the built geometry"
-  },
-  "T2": {
-   "verdict": "PASS, square opening, PVC tube frame, mesh panels, numbered top panel"
-  },
-  "T3": {
-   "types_on_course": [
-    "timingGate",
-    "standardGate",
-    "tower5x5",
-    "ladder",
-    "diveGate",
-    "championshipGate"
-   ],
-   "verdict": "PASS, six types"
-  },
-  "T4": {
-   "verdict": "PASS on the second branch, an original chapter style layout from regulation obstacles, labelled as such"
-  },
-  "T5": {
-   "verdict": "PARTIAL, order enforced and fastestThreeConsecutive wired, results screen not yet showing it"
-  },
-  "T6": {
-   "verdict": "CANNOT VERIFY, needs a parked external camera capture"
-  },
-  "T7": {
-   "verdict": "PASS in the corridor, flat within 30 m of the line"
-  }
- },
- "collision_r11": {
-  "total": 1777,
-  "byKind": {
-   "gate": 30,
-   "obstacle": 40,
-   "tree": 305,
-   "canopy": 1220,
-   "rock": 95,
-   "cliff": 15,
-   "pole": 72
-  },
-  "craft_radius_m": 0.1885,
-  "cell_m": 8,
-  "landing": {
-   "descent_max": 2.0,
-   "horizontal_max": 3.0,
-   "tilt_max_deg": 25
-  },
-  "verified_in_page": {
-   "landed_at_descent_ms": 1.273,
-   "crashed_at_descent_ms": 13.9154
-  },
-  "unit_assertions": "13 of 13 pass, including a 60 m single frame sweep with no tunnelling and the aperture clearance boundary at 0.5735 m"
- }
 }

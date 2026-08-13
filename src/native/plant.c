@@ -79,9 +79,22 @@ const PlantParams PLANT = {
   .cells = 6.0,
   .r_cell = 0.0065,
   .cda_plan = 0.0225,
-  .cda_front = 0.016,
-  .cda_side = 0.016,
+  /*
+   * Body drag areas. These were 0.016 and that number was doing two jobs:
+   * the airframe's own drag AND the rotor drag of four spinning discs,
+   * because the second did not exist. Now that it does, the body keeps only
+   * what a body should have. 0.013 is what the airframe projects and no
+   * more: roughly 0.010 m squared of frontal area (arms, motors, body,
+   * battery, camera) at a bluff body Cd near 1.2. Re-fitted inside that
+   * physical range against the P5 max level speed procedure in
+   * scripts/gates.js, which reads 128 km/h against a band of 120 to 165 and
+   * 139 before this change.
+   */
+  .cda_front = 0.0130,
+  .cda_side = 0.0130,
   .rho = 1.225,
+  .prop_r = 0.0635,
+  .k_rotor_drag = 0.4386,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
                          * 4.3 inch pitch / 2 pi. Axial speed at which thrust
                          * crosses zero is w times this. */
@@ -493,13 +506,119 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     f_body[2] += thrust[m] * PLANT_AXIS[m][2];
   }
 
+  /*
+   * 3b. ROTOR DRAG, AND WHY THE MODEL FELT FLOATY WITHOUT IT.
+   *
+   * A spinning rotor moving edgewise through the air pulls backwards on the
+   * airframe. This is the H force, and for a multirotor it is the dominant
+   * damping term at the speeds a race is actually flown at. Every drag term
+   * this plant had was quadratic in speed, fitted so the top speed came out
+   * right, which made it far too slippery in the middle. Measured on the
+   * build before this change: levelled at 20 m/s on hover throttle, half the
+   * speed was still there 3.2 seconds later, and a corner held at 50 degrees
+   * of bank flew a 29.2 m radius because the craft kept sliding outwards
+   * instead of following its nose. That is what a pilot reads as floaty and
+   * as blowing out of corners.
+   *
+   * THE FORM IS NOT A FITTED CURVE. The H force is the reaction to the
+   * rotor's induced flow being turned by the free stream, so it scales as
+   *
+   *     H = k rho A v_i v_perp        per rotor
+   *
+   * where v_perp is the in plane air speed at that rotor and v_i is the
+   * rotor's induced velocity. v_i is what makes this work, because it does
+   * not stay constant: Glauert's edgewise inflow relation is
+   *
+   *     v_i = v_h^2 / sqrt(v_perp^2 + v_i^2),   v_h = sqrt(T / (2 rho A))
+   *
+   * which in the ratio y = v_i / v_h and x = v_perp / v_h is the quartic
+   * y^4 + x^2 y^2 - 1 = 0, solved in closed form as
+   *
+   *     y^2 = 2 / (sqrt(x^4 + 4) + x^2)
+   *
+   * written that way rather than as (sqrt(x^4+4) - x^2)/2 because the second
+   * form loses every significant figure to cancellation once x is large, and
+   * x IS large in a dive. Only sim_sqrt is used, so this stays inside the
+   * determinism rule and no iteration is needed.
+   *
+   * The behaviour that falls out is exactly what was missing. At low speed
+   * y -> 1 and H is LINEAR in v_perp, which is the damping term the quadrotor
+   * literature identifies. At high speed y -> 1/x and H saturates at
+   * k T / 2, so it stops growing instead of swamping the top end. An earlier
+   * attempt used the linear form alone with the published coefficient and it
+   * took the P5 gate's max level speed from 139 km/h to 87 and cost a
+   * quarter of the speed in a held dive; the saturation is the difference
+   * between a real model and that.
+   *
+   * THE ONE CONSTANT. k is anchored, not tuned: the quadrotor literature
+   * identifies a linear drag of about 0.30 per second at hover for a 0.6 kg
+   * five inch machine (a = -0.30 v). At this airframe's hover thrust,
+   * v_h = 7.17 m/s and four rotors give 4 rho A v_h = 0.4446 kg/s, so
+   * k = 0.65 * 0.30 / 0.4446 = 0.4386. That published figure is a TOTAL
+   * linear drag fit and so already contains some airframe parasitic drag,
+   * which means k is an upper bound rather than an exact split; it is used
+   * as is because the alternative is inventing a decomposition nobody
+   * measured. cda_front and cda_side were then re-fitted from 0.016 to
+   * 0.013, because they had been absorbing this force all along and cannot
+   * be allowed to charge for it twice.
+   *
+   * WHAT IT COSTS AND WHAT IT BUYS, measured on this build against the one
+   * before it. Unchanged: hover throttle 0.1953, punch 7.10 g and 82.1 m,
+   * roll rise to 90 percent 58 ms, roll overshoot 3.1 percent, roll stop
+   * 81 ms, props level descent terminal 20.7 m/s, and every one of checks 5
+   * through 12. Changed: levelled at 20 m/s on hover throttle, half the
+   * speed is gone in 2.61 s instead of 3.23; a 45 degree braking flare from
+   * 20 m/s takes 0.78 s over 8.3 m instead of 0.91 s over 9.5 m and balloons
+   * 19.4 m instead of 23.6; a sideways slide washes from 12 to 7.5 m/s in
+   * two seconds instead of to 9.7; the P5 max level speed goes 139 to
+   * 128 km/h, still inside its 120 to 165 band; and yaw rise to 63 percent
+   * goes 84 to 87 ms, which is the small real yaw damping falling out.
+   *
+   * Only the in plane component matters, so a climb or a dive through the
+   * disc is untouched: hover, punch and the vertical checks do not move.
+   * Roll and pitch rates move a rotor vertically rather than sideways, so
+   * they produce no H force either and the rate response is untouched. A yaw
+   * rate does move the rotors in plane, so yaw picks up a small real damping
+   * term, which is the reason this loop uses each rotor's own velocity
+   * rather than the craft's.
+   */
+  const double disc_area = 3.14159265358979323846 * PLANT.prop_r * PLANT.prop_r;
+  double rotor_drag_tau_z = 0.0;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    if (thrust[m] <= 1e-6) {
+      continue;
+    }
+    /* In plane air speed at this rotor: body velocity plus omega x r. */
+    const double vx = v_body[0] - r * PLANT_POS_Y[m];
+    const double vy = v_body[1] + r * PLANT_POS_X[m];
+    const double vperp = sim_sqrt(vx * vx + vy * vy);
+    if (vperp <= 1e-6) {
+      continue;
+    }
+    const double vh = sim_sqrt(thrust[m] / (2.0 * PLANT.rho * disc_area));
+    const double xr = vperp / vh;
+    const double x2 = xr * xr;
+    const double x4 = x2 * x2;
+    const double y2 = 2.0 / (sim_sqrt(x4 + 4.0) + x2);
+    const double vi = vh * sim_sqrt(y2);
+    const double h = PLANT.k_rotor_drag * PLANT.rho * disc_area * vi * vperp;
+    const double fx = -h * (vx / vperp);
+    const double fy = -h * (vy / vperp);
+    f_body[0] += fx;
+    f_body[1] += fy;
+    /* An in plane force at the rotor's position has a moment about z. The
+     * four cancel exactly in translation, by symmetry; what survives is the
+     * yaw damping from the omega x r part above. */
+    rotor_drag_tau_z += PLANT_POS_X[m] * fy - PLANT_POS_Y[m] * fx;
+  }
+
   /* 4. Body torques: thrust moments, stator reaction, gyroscopic term.
    *
    * The thrust moment is the full cross product r x F now, not just the two
    * terms a purely vertical thrust produces. Its z component is what a canted
    * motor contributes to yaw, and it is the whole reason check 10 can be
    * anything other than exactly zero. */
-  double tau[3] = { stator_torque[0], stator_torque[1], stator_torque[2] };
+  double tau[3] = { stator_torque[0], stator_torque[1], stator_torque[2] + rotor_drag_tau_z };
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     const double fx = thrust[m] * PLANT_AXIS[m][0];
     const double fy = thrust[m] * PLANT_AXIS[m][1];

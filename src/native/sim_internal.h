@@ -50,6 +50,10 @@ typedef struct {
   double cda_front;  /* drag area front, m^2, along body x */
   double cda_side;   /* drag area side, m^2, along body y */
   double rho;        /* air density */
+  double prop_r;     /* prop radius, metres. Sets the disc area the induced
+                      * velocity is computed over. */
+  double k_rotor_drag; /* rotor drag (H force) scale, dimensionless O(1).
+                      * See plant.c: H = k rho A v_i v_perp per rotor. */
   double k_inflow;   /* prop pitch radius, metres per radian: the prop's
                       * geometric pitch over 2 pi. A rotor at omega has a
                       * pitch speed of omega times this, and thrust scales

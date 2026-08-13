@@ -3255,3 +3255,135 @@ default (P45, Dmax30, TPA 65, srate 67), zero console errors.
    anything, and which unlocks RPM filtering and dynamic idle behind it.
 3. Unsteady propwash, once gyro noise exists to carry it.
 4. Check 10 yaw coupling, still below its floor at -0.08 deg.
+
+## Round 17b: rotor drag, and the measurement that nearly sent it the wrong way
+
+The owner, after reading round 17's owed list: "would the thing you didn't
+fix make it feel a bit floating and blow out corners?" Then, once it was
+measured: "ignore the advisor requirement, we can always roll back, lets go,
+fix it so this works and it feels right." So it is built, and the advisor
+step is explicitly waived by the owner rather than skipped.
+
+### What was missing
+
+Every drag term in the plant was quadratic in speed and fitted so the top
+speed came out right, which made it far too slippery everywhere below the
+top. The missing physics is the H force: a spinning rotor moving edgewise
+pulls backwards on the airframe, and for a multirotor it is the dominant
+translational damping at the speeds a race is flown at.
+
+### The form is derived, not fitted
+
+    H = k rho A v_i v_perp        per rotor
+
+with v_i the rotor's induced velocity from Glauert's edgewise relation
+v_i = v_h^2 / sqrt(v_perp^2 + v_i^2), v_h = sqrt(T / 2 rho A). In the
+ratios y = v_i/v_h and x = v_perp/v_h that is the quartic
+y^4 + x^2 y^2 - 1 = 0, which has the closed form
+
+    y^2 = 2 / (sqrt(x^4 + 4) + x^2)
+
+written that way and not as (sqrt(x^4+4) - x^2)/2, which loses every
+significant figure to cancellation once x is large, and x IS large in a
+dive. Only sim_sqrt is used, there is no iteration, and determinism is
+intact: hash ff32caab7fbd, identical in Node, headless Chrome and all four
+render rates.
+
+The behaviour that falls out is the point. At low speed y goes to 1 and H is
+linear in v_perp, which is the damping term the quadrotor literature
+identifies. At high speed y goes to 1/x and H saturates at k T / 2 instead
+of growing without limit.
+
+k = 0.4386 is anchored, not tuned: the literature identifies a linear drag
+near 0.30 per second at hover for a 0.6 kg five inch machine, and at this
+airframe's hover thrust four rotors give 4 rho A v_h = 0.4446 kg/s, so
+k = 0.65 * 0.30 / 0.4446. Recorded honestly: that published figure is a
+TOTAL linear fit and already contains some parasitic drag, so k is an upper
+bound rather than an exact split. cda_front and cda_side went 0.016 to
+0.013, which is what the airframe actually projects (about 0.010 m squared
+at a bluff body Cd near 1.2), because they had been absorbing this force all
+along and must not charge for it twice.
+
+### Two wrong measurements on the way, and they nearly decided it
+
+**The corner rig was over throttled.** It held throttle at hover/cos(bank).
+Thrust goes as duty squared, so a 50 degree turn got 2.4 times hover thrust
+and the craft climbed 21 m through the corner: most of the disc was holding
+a balloon up rather than turning, and every radius it reported was fiction.
+Rebuilt as a vertical speed loop, which is what a pilot's thumb is.
+
+**And then the rebuilt rig showed the craft turning 4 degrees in 1.8 s,
+which is correct and was the most useful thing measured all round.** A quad
+banked with its nose level does not fly a circle, it translates sideways.
+Cornering is bank PLUS yaw, and what "blowing out" actually is, is sideslip:
+the outward slide that rotor drag damps. So the discriminating measurement is
+slip washout, not turn radius, and that is what was tuned against.
+
+**The first calibration was wrong and the improvised top speed test hid it.**
+Holding a 30 degree nose down attitude at full throttle, top speed went 113
+to 84 km/h, which read as unaffordable and produced an argument that rotor
+drag could not buy mid speed damping without wrecking the top end. It is the
+wrong test. The P5 gate sweeps pitch stick 0.25 to 0.55 at full power and
+takes the best run that does not lose 20 m, which is how a speed run is
+actually flown, and by that measure the cost is 139 to 128 km/h, comfortably
+inside the 120 to 165 band. Tuning against a non canonical rig nearly
+cancelled a correct change.
+
+### Measured, before against after
+
+Unchanged, and this is the acceptance test the owner set:
+
+| | before | after |
+|---|---|---|
+| hover throttle at 4.20 V | 0.1953 | 0.1953 |
+| punch peak / 3 s gain | 7.10 g / 82.1 m | 7.10 g / 82.1 m |
+| roll rise to 90 pct | 58 ms | 58 ms |
+| roll overshoot | 3.1 pct | 3.1 pct |
+| roll stop to zero / bounce | 81 ms / -16.1 deg/s | 81 ms / -16.1 deg/s |
+| props level descent terminal | 20.7 m/s | 20.7 m/s |
+
+Changed, deliberately:
+
+| | before | after |
+|---|---|---|
+| coast from 20 m/s, half speed | 3.23 s | **2.61 s** |
+| left after 5 s of that coast | 8.0 m/s | **4.8 m/s** |
+| brake from 20 m/s at 45 deg | 0.91 s, 9.5 m, +23.6 m | **0.78 s, 8.3 m, +19.4 m** |
+| sideways slip washout over 2 s | 12.9 to 9.7 m/s | **12.0 to 7.5 m/s** |
+| P5 max level speed | 139 km/h | 128 km/h |
+| yaw rise to 63 pct | 84 ms | 87 ms |
+
+Vertical and rotational are untouched by construction: the force acts only
+in the rotor plane, so a climb or dive through the disc never sees it, and
+roll and pitch rates move a rotor vertically rather than sideways so they
+produce no H force. A yaw rate does move the rotors in plane, which is where
+the 3 ms of extra yaw rise comes from, and that damping is real.
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 yaw-coupling the same known red at
+-0.08 deg. Checks 5, 6, 7, 8, 11 identical to round 17; check 9 rate
+tracking 669.4 to 669.6 deg/s and check 12 ratio 1.2551 to 1.2546, both
+marginally closer to target. Determinism hash **ff32caab7fbd** across Node,
+headless Chrome and four render rates. npm run lint:presets 3 of 3.
+
+npm run gates: P5 max level 128 km/h in band, prop FM 0.50 in band, descent
+terminal 20.7 m/s in band; P5 still fails on 0 to 100 in 0.75 s against a
+1.3 to 1.9 band, and P4 still fails on 80 percent climb in 572 ms against
+150 to 400. Both were failing before this change and neither is touched by
+it: both are vertical axis measurements and the vertical axis is bit
+identical. They stay on the owed list.
+
+### Owed
+
+- **Lap records are no longer comparable across this change.** Times on the
+  race field get slower for the same flying, and the record key hashes the
+  config and the pack voltage, not the plant. Same class of break as round
+  16c's WORLD_SCALE.
+- P4's 80 percent climb and P5's 0 to 100 are both far faster than their
+  bands and always have been. They are the same finding twice: this airframe
+  accelerates vertically harder than the gate document expects, which is a
+  thrust to weight and motor constant argument, not a drag one.
+- Gyro noise, and behind it RPM filtering and dynamic idle, unchanged from
+  round 17.
+- Unsteady propwash, unchanged from round 17.

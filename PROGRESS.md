@@ -1707,3 +1707,64 @@ worse.
 
 `npm run verify` 12 of 13, yaw-coupling the known red. Console errors 0,
 warnings 0 across all six captures in this round.
+
+## Round 13d: the mountain ladder was measured against anchors that do not exist
+
+The art director asked for RIDGE_SUN and RIDGE_SHADE re-authored upward
+and FOG_FAR shortened. Measuring the frame first turned the first half of
+that on its head and killed the second half outright.
+
+Sampled off a capture at gate station 1, 1600 by 900:
+
+    sky behind the ridge band     0.487   (comment claimed 0.781)
+    ridge ring 0, sun side        0.488
+    ridge ring 0, shade side      0.500
+    two other ridge samples       0.500, 0.533
+    terrain far edge              0.192   (comment claimed 0.428)
+
+The authored ladder was 0.483, 0.561, 0.628, 0.698, and those numbers are
+correct as authored: an unlit MeshBasicMaterial round trips its hex, and
+ring 0 authored at 0.483 sampled at 0.488. The problem is both ANCHORS the
+ladder was built against were derived rather than measured. The sky's
+0.781 comes from the authored HORIZON colour and the ground's 0.428 from
+the fog equation, and neither value reaches the screen: measured they are
+0.487 and 0.192. So the ladder climbed straight past its own ceiling.
+Rings 1, 2 and 3 rendered BRIGHTER than the sky behind them, which is why
+a range 1330 m out stood out harder than one at 560 m, and ring 0 matched
+the sky to one thousandth, which is why the nearest range was invisible.
+Re-authoring UPWARD would have made it worse.
+
+Solved against the anchors as measured, with a small search over 8 bit
+triples for an exact luminance at a given tint:
+
+    terrain far edge  0.192  measured
+    ring 0 at  560 m  0.250  0x878d63 sun  0x788aa6 shade
+    ring 1 at  830 m  0.310  0x959a76 sun  0x8998b0 shade
+    ring 2 at 1080 m  0.370  0xa2a689 sun  0x99a5b8 shade
+    ring 3 at 1330 m  0.430  0xaeb19a sun  0xa6b0bf shade
+    sky at the band   0.554 to 0.627  measured
+
+Steps of 0.058, 0.060, 0.060, 0.060, then 0.124 of headroom to the sky.
+Sun and shade stay within 0.004 of each other inside a ring, so the light
+model still lives entirely in hue and the value still carries only
+distance. Tints narrow as the rungs climb because haze desaturates what it
+covers, so the far range is nearly neutral while the near one still reads
+sand against slate.
+
+Re-measured after: every ridge sample now falls between 0.255 and 0.348,
+below the sky at 0.554 and above the terrain at 0.188. The range recedes
+INTO the sky instead of out of it.
+
+**And FOG_FAR stays at 2200, against the review, on the ladder's own
+arithmetic.** Shortening it raises the terrain's far edge, and the ladder
+now pins the ceiling on that: with ring 0 at 0.250 the terrain has to stay
+below about 0.22 or the nearest range loses its separation from the ground
+in front of it. The terrain currently runs 0.115 near to 0.188 far, which
+is a 1.63 times ratio across 850 m, so there IS aerial perspective on the
+ground, just less than the reviewer wanted. Buying more of it costs the
+mountain ladder, and the mountain ladder was the louder defect. No
+threshold moved either way; this is a design constraint, recorded so the
+next round does not spend the same argument twice.
+
+`npm run verify` 12 of 13, yaw-coupling the known red. Console errors 0,
+warnings 0.

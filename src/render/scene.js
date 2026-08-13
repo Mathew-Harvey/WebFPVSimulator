@@ -1889,18 +1889,38 @@ export function buildScene(canvas) {
    * not climb. Hue carries the light, value carries the distance, and
    * neither has to borrow from the other.
    *
-   * Measured targets, Rec. 709 linear: 0.49, 0.56, 0.63, 0.70, against
-   * ground at 850 m at 0.428 and sky at 0.781. Steps 0.062, 0.07, 0.07,
-   * 0.07, 0.081.
+   * The set before this one laddered 0.483, 0.561, 0.628, 0.698 against a
+   * sky the comment here claimed was 0.781 and fogged ground at 0.428.
+   * Those two anchors were derived from the authored HORIZON colour and the
+   * fog equation. Neither survives to the screen. Sampled off an actual
+   * capture, the sky immediately behind the ridge band is 0.487 and the
+   * terrain's far edge is 0.192, so the ladder was climbing straight past
+   * its own ceiling: rings 2, 3 and 4 rendered BRIGHTER than the sky behind
+   * them, which is why distance made a mountain stand out more instead of
+   * less and the whole range read as cut paper laid on top of the sky. Ring
+   * 1's sun side measured 0.488 against sky at 0.487, a one thousandth
+   * step, so the nearest range was simply invisible.
    *
-   * The previous set was one flat unlit colour per ring at 0.186, 0.275,
-   * 0.409 and 0.596. A reviewer measured ring 0 at 0.195 against fogged
-   * ground at 400 m at 0.352: the layer 160 m further away was 0.157
-   * DARKER, so the aerial perspective ran backwards. It also put one exact
-   * colour across 14.8 percent of the frame with no light model at all.
+   * These rungs are solved against the two anchors as MEASURED. An unlit
+   * MeshBasicMaterial round trips its hex exactly, verified: the old ring 1
+   * was authored 0.483 and sampled 0.488, so a displayed target can be
+   * authored directly.
+   *
+   *   terrain far edge  0.192   measured
+   *   ring 0 at  560 m  0.250
+   *   ring 1 at  830 m  0.310
+   *   ring 2 at 1080 m  0.370
+   *   ring 3 at 1330 m  0.430
+   *   sky behind them   0.487   measured
+   *
+   * Steps of 0.058, 0.060, 0.060, 0.060, 0.057: an even ladder with the
+   * ground below it and the sky above it, both cleared, and the range now
+   * recedes INTO the sky instead of out of it. The tints also narrow as the
+   * rungs climb, because haze desaturates whatever it covers, so the far
+   * range is nearly neutral while the near one still shows sand and slate.
    */
-  const RIDGE_SUN = [0xb0c08e, 0xbfcaa2, 0xcdd3b4, 0xd8dcc6];
-  const RIDGE_SHADE = [0x99bfda, 0xabc9e2, 0xbcd2e8, 0xcddbeb];
+  const RIDGE_SUN = [0x878d63, 0x959a76, 0xa2a689, 0xaeb19a];
+  const RIDGE_SHADE = [0x788aa6, 0x8998b0, 0x99a5b8, 0xa6b0bf];
   /* One material per ring, created outside the cone loop. The baker buckets
    * by material, and a material per cone means 136 buckets and 136 draw
    * calls instead of four: that mistake cost 108 draw calls and was caught

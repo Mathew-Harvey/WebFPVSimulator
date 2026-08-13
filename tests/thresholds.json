@@ -282,6 +282,82 @@
         "value": 64,
         "_about": "Web Audio nodes in the live graph. The budget is 64 and the graph builds 59, so this catches an unbounded voice pool without arguing about the exact count."
       }
+    },
+    "world-scale": {
+      "num": 15,
+      "craft_body_m": {
+        "min": 0.15,
+        "max": 0.16,
+        "source": "The airframe's own published body length, 0.155 m front to back, measured off the drawn BoxGeometry. A 5 mm band because the number is authored, not sampled."
+      },
+      "craft_sweep_m": {
+        "min": 0.15,
+        "max": 0.2,
+        "source": "Motor at 0.110 m from centre plus 0.0635 m of blade is 0.1735 m. The band spans a 200 to 250 mm class machine, which is what a 5 inch quad is."
+      },
+      "craft_radius_tolerance_m": {
+        "value": 0.0005,
+        "source": "CRAFT_R must BE the swept disc, not approximate it: both are now derived from the same two numbers, so any gap at all is a regression. Half a millimetre is floating point slack."
+      },
+      "gate_opening_m": {
+        "min": 1.519,
+        "max": 1.529,
+        "source": "MultiGP standard gate opening 1.524 m square (5 ft), plus and minus 5 mm. scene.js already throws on a 10 mm drift at load; this is the independent check."
+      },
+      "grass_blade_m": {
+        "min": 0.02,
+        "max": 0.12,
+        "source": "Mown chapter grass is 3 to 5 cm and MultiGP asks for a course as flat as possible; the build authors 0.03 to 0.09 m. The band is deliberately wide enough to accept a re-authoring and narrow enough that the 0.26 to 0.68 m error this project shipped would fail it."
+      },
+      "kerb_m": {
+        "min": 0.08,
+        "max": 0.2,
+        "source": "A real Japanese residential kerb face is 0.10 to 0.20 m. Measured as the step the town's own height query returns between carriageway and footway, which is the surface the craft lands on."
+      },
+      "doorway_m": {
+        "min": 1.8,
+        "max": 2.3,
+        "source": "A Japanese residential entrance door is 1.90 to 2.10 m. Measured as the median world bounding box height of every mesh drawn with the front door material."
+      },
+      "handrail_m": {
+        "min": 0.8,
+        "max": 1.25,
+        "source": "A handrail is 0.85 to 1.20 m above the walking surface. Measured off the collider list, so it is the height of the thing a quad actually hits."
+      },
+      "boom_m": {
+        "min": 0.9,
+        "max": 1.5,
+        "source": "A Japanese level crossing boom sits 1.00 to 1.40 m above the road. Measured from the arm pivot's world position, and it is what src/maps/city/animation.js gives the boom collider."
+      }
+    },
+    "map-isolation": {
+      "num": 16,
+      "city_modules_min": {
+        "value": 55,
+        "source": "The city's import closure is 59 vendored files plus index.js, animation.js, bake.js and references.js. A floor rather than an equality because the browser may serve some from cache within one page life; anything near this number means the graph really arrived."
+      },
+      "field_budget_at_c3c6e44": {
+        "p1": {
+          "value": 214,
+          "source": "Measured at c3c6e44 in a git worktree, camera parked at the spawn, 1280 by 720. Identical after this round's work."
+        },
+        "p2": {
+          "value": 1931413,
+          "source": "Same run, same camera."
+        },
+        "p5_MB": {
+          "value": 69.8,
+          "source": "Same run, same camera."
+        },
+        "p10_MB": {
+          "value": 42.8,
+          "source": "Same run, and the same 42.8 MB round 14 recorded when P10 first passed."
+        },
+        "meshes": {
+          "value": 159,
+          "source": "Same run."
+        }
+      }
     }
   }
 }

@@ -179,6 +179,130 @@ async function main() {
       const parsed = JSON.parse(JSON.parse(quoted));
       return { ...parsed, windowMs };
     }),
+    /*
+     * One page run that loads both maps and reports what each one measures.
+     *
+     * It doubles as the isolation evidence for the lazy load: it records every
+     * URL the page requests while the RACE FIELD is selected, so the city's
+     * modules being absent is a measurement rather than a claim. The city is
+     * then chosen and the same list is read again, which is what proves the
+     * modules arrive only when they are asked for.
+     */
+    scaleRun: memo(async () => {
+      const out = join(root, 'dist/world-scale');
+      const collect = "JSON.stringify({ tag: 'urls', urls: performance.getEntriesByType('resource').map((e) => e.name) })";
+      const steps = [
+        `--out=${out}`,
+        /* 1280 by 720, matching the run that measured the c3c6e44 baseline
+         * this check compares against. P5 is render target bytes and scales
+         * with the panel, so comparing two resolutions would report a
+         * regression that is only a window size. */
+        '--w=1280',
+        '--h=720',
+        'until:!!window.__boot && window.__boot().frames > 2',
+        `eval:${collect}`,
+        /* The race field's cost, at two parked cameras so the numbers are
+         * reproducible. Measured with the field selected, which is the whole
+         * point: the city must cost nothing at all until it is chosen. */
+        'eval:JSON.stringify((() => {' +
+          'window.__setCam(104.99, 1.6, 14.0, 104.99, 1.2, -30);' +
+          'window.__camFrame = window.__boot().frames;' +
+          'return { tag: "budget-pending" };' +
+        '})())',
+        /* __setCam only takes effect on the NEXT animation frame, and
+         * measureBudget renders directly rather than through the frame loop,
+         * so a fixed wait would measure whatever camera the last real frame
+         * left. Waiting on the frame counter is the only honest way to know
+         * the override has landed. */
+        'until:window.__boot().frames > window.__camFrame + 3',
+        'eval:JSON.stringify((() => {' +
+          'const b = window.__budget("field spawn");' +
+          'window.__setCam(null);' +
+          'return { tag: "budget", p1: b.p1_calls, p2: b.p2_triangles, p5: b.p5_target_MB, p10: b.p10_attribute_MB, meshes: b.meshes };' +
+        '})())',
+        'eval:JSON.stringify({' +
+          'tag: "field",' +
+          'map: window.__map().id,' +
+          'references: window.__map().references,' +
+          'craft: (() => {' +
+            'const s = window.__mapScene();' +
+            'let g = null;' +
+            's.traverse((o) => { if (o.name === "craft") { g = o; } });' +
+            'const body = g.children.find((c) => c.geometry && c.geometry.type === "BoxGeometry" && c.geometry.parameters.depth > 0.14);' +
+            'const p = body.geometry.parameters;' +
+            'let maxR = 0;' +
+            'for (const c of g.children) {' +
+              'if (!c.geometry || c.geometry.type !== "CylinderGeometry") { continue; }' +
+              'const rr = c.geometry.parameters.radiusTop;' +
+              'if (rr < 0.05) { continue; }' +
+              'const d = Math.hypot(c.position.x, c.position.z) + rr;' +
+              'if (d > maxR) { maxR = d; }' +
+            '}' +
+            'return { bodyLength: p.depth, bodyWidth: p.width, bodyHeight: p.height, sweepMeasured: maxR, craftR: window.__craftState().thresholds.craftRadius };' +
+          '})()' +
+        '})',
+        'eval:JSON.stringify({ tag: "swap", started: (window.__setMap("city"), true) })',
+        'until:window.__map().id === "city" && window.__map().ready',
+        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading })',
+        `eval:${collect}`,
+      ];
+      const run = spawnSync('node', [join(root, 'scripts/shots.js'), ...steps], {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 600000,
+      });
+      const text = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+      /*
+       * The echoed expression is on the same line as its result, and these
+       * expressions contain their own " = " (a `let g = null` inside the
+       * scene walk), so slicing at the FIRST one cuts the line in the middle
+       * of the JavaScript and hands JSON.parse a fragment. Anchored at the
+       * end of the line instead.
+       */
+      const values = text
+        .split('\n')
+        .map((l) => (l.startsWith('eval ') ? l.match(/ = ("(?:[^"\\]|\\.)*")\s*$/) : null))
+        .filter(Boolean)
+        .map((m) => JSON.parse(JSON.parse(m[1])));
+      /* Tagged rather than positional, because a step that fails silently
+       * would otherwise shift every later result by one and the check would
+       * report a confident wrong number. */
+      const urls = values.filter((v) => v.tag === 'urls');
+      const budget = values.find((v) => v.tag === 'budget');
+      const fieldData = values.find((v) => v.tag === 'field');
+      const cityData = values.find((v) => v.tag === 'city');
+      if (urls.length < 2 || !fieldData || !cityData) {
+        throw new Error(
+          `world-scale run produced tags [${values.map((v) => v.tag).join(', ')}]: ` +
+          `${text.trim().split('\n').slice(-3).join(' | ')}`,
+        );
+      }
+      const [fieldUrls, cityUrls] = urls;
+      const cr = cityData.references;
+      const fr = fieldData.references;
+      return {
+        craft: fieldData.craft,
+        field: {
+          gateOpeningW: fr.gateOpeningW.measured,
+          gateOpeningH: fr.gateOpeningH.measured,
+          grassMin: fr.grassBladeHeight.measured[0],
+          grassMax: fr.grassBladeHeight.measured[1],
+        },
+        city: {
+          kerb: cr.kerbHeight.measured,
+          doorway: cr.doorwayHeight.measured,
+          doorwayWidth: cr.doorwayWidth.measured,
+          handrail: cr.handrailHeight.measured,
+          boom: cr.crossingBoomHeight.measured,
+          doorCount: cr.doorwayHeight.count,
+          railCount: cr.handrailHeight.count,
+        },
+        loading: cityData.loading,
+        fieldBudget: budget,
+        cityUrlsWhileFieldSelected: fieldUrls.urls.filter((u) => u.includes('/src/maps/city')),
+        cityUrlsAfterChoosingCity: cityUrls.urls.filter((u) => u.includes('/src/maps/city')),
+      };
+    }),
     browserRun: memo(async () => {
       const server = await startServer(root);
       try {

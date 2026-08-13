@@ -1,0 +1,54 @@
+# NOTICE
+
+WebFPVSimulator as a whole is distributed under the GNU General Public
+License version 3 or later. See LICENSE.
+
+This file records third party material incorporated into the combined work,
+the licence it arrived under, and where it came from. MIT into GPLv3 is a one
+way fit: the MIT material may be incorporated, the combined work ships under
+GPLv3, and the MIT copyright notice and permission notice travel with the
+copied files. Nothing here is relicensed, and no MIT file has had a GPLv3
+header pasted onto it.
+
+## sakura-crossing
+
+    Upstream    https://github.com/kenton-gmi/sakura-crossing
+    Commit      de01898e89c7f6ab3fad93fa802f0f5ac66fbd81
+    Licence     MIT, Copyright (c) 2026 Kenton Wang
+    Vendored at src/maps/city/vendored/
+    Files       59 JavaScript source files, byte identical to upstream
+    Licence text travels with them at src/maps/city/vendored/LICENSE
+
+The 59 files are exactly the transitive import closure of the three entry
+points the freestyle city map uses: `src/world/index.js` (57 files),
+`src/core/post.js` and `src/core/sky.js`. Neither `src/core/audio.js`,
+`src/core/player.js`, `src/core/hud.js`, `src/main.js` nor `src/world/ebike.js`
+is on that path, so no upstream music, walker, interface or entry point is
+incorporated, and the 3.9 MB music mp3 in the upstream repository is not
+vendored.
+
+Fifty eight of the 59 files are byte identical to upstream. The exception is
+`world/index.js`, which carries a four line change recorded in full at
+`src/maps/city/vendored/PATCH-world-index.diff`: it makes the planet bake
+optional so the city can be taken in its flat authoring. The change adds a
+parameter with the upstream behaviour as its default, so calling
+`buildWorld(scene)` still does exactly what it does upstream.
+
+Everywhere else our shell needs different behaviour from a vendored class, it
+subclasses or wraps it in our own GPLv3 code under `src/maps/city/` rather
+than editing the vendored copy, so an upstream update is a re-copy plus one
+patch rather than a merge.
+
+## three.js
+
+    Upstream    https://github.com/mrdoob/three.js
+    Version     r160, loaded from a CDN by the import map in index.html
+    Licence     MIT, Copyright (c) 2010-2024 three.js authors
+    Not vendored; fetched at runtime.
+
+## Betaflight
+
+    Upstream    https://github.com/betaflight/betaflight
+    Licence     GPLv3
+    Vendored as a git submodule at vendor/betaflight, unmodified; every
+    change is a patch file in patches/ applied at build time.

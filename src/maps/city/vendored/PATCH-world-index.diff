@@ -1,0 +1,22 @@
+--- /workspace/kenton-gmi/sakura-crossing/src/world/index.js	2026-08-13 04:33:07.952491935 +0000
++++ src/maps/city/vendored/world/index.js	2026-08-13 04:45:28.488620593 +0000
+@@ -72,7 +72,7 @@
+  * left of centre with the shop stacked against it.
+  * ------------------------------------------------------------------ */
+ 
+-export function buildWorld(scene) {
++export function buildWorld(scene, { bake = true } = {}) {
+   const root = new THREE.Group();
+   root.name = 'world';
+   scene.add(root);
+@@ -734,8 +734,8 @@
+   /* ------------------------- project onto the planet -------------------------
+    * Runs last, once every builder has finished. Everything above this line is
+    * still authored on a flat plane and has no idea the planet exists.       */
+-  const bakeStats = bakeToPlanet(root, { maxEdge: 4.0 });
+-  train.planetize();
++  const bakeStats = bake ? bakeToPlanet(root, { maxEdge: 4.0 }) : null;
++  if (bake) train.planetize();
+ 
+   /* ------------------------------- world api ------------------------------- */
+   const world = {

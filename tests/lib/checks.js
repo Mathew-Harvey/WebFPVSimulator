@@ -552,6 +552,132 @@ export function buildChecks() {
         };
       },
     },
+    {
+      num: 15,
+      id: 'world-scale',
+      thresholdText: 'reference objects inside their real world bands',
+      /*
+       * THE CHECK THAT WOULD HAVE CAUGHT THE GRASS.
+       *
+       * Every budget in this project stayed correct while grass blades were
+       * 0.26 to 0.68 m and a 1.524 m regulation gate vanished from frame. A
+       * draw call count cannot see a scale error; only an object whose real
+       * size is known can. So this asserts that things whose size a tape
+       * measure would settle measure what they claim, in BOTH maps, and it
+       * prints every number it measured so a reviewer reads the value rather
+       * than the verdict.
+       *
+       * The trap it is written around: the city is authored for a walker with
+       * a 1.7 m eye, so a doorway is correctly four times the craft's width
+       * and that is right. Every band below is a real world size, not a
+       * comparison against the quad.
+       */
+      async run(ctx) {
+        const r = await ctx.scaleRun();
+        const rows = [];
+        const fails = [];
+        const band = (label, value, min, max, unit) => {
+          const ok = typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+          rows.push(`${label} ${typeof value === 'number' ? value.toFixed(4) : String(value)}${unit}`);
+          if (!ok) {
+            fails.push(`${label} ${typeof value === 'number' ? value.toFixed(4) : String(value)}${unit} outside ${min} to ${max}`);
+          }
+        };
+        const th = ctx.th.checks['world-scale'];
+
+        /* The craft, measured off the drawn geometry rather than off the
+         * constants that drew it. */
+        band('craft body', r.craft.bodyLength, th.craft_body_m.min, th.craft_body_m.max, ' m');
+        band('craft sweep radius', r.craft.sweepMeasured, th.craft_sweep_m.min, th.craft_sweep_m.max, ' m');
+        /* And the collision sphere against that same geometry. A gate scored
+         * against a quad bigger than the one on screen is a scale error the
+         * player feels and no budget can see. */
+        const sweepErr = Math.abs(r.craft.craftR - r.craft.sweepMeasured);
+        rows.push(`collision radius ${r.craft.craftR.toFixed(4)} m vs swept ${r.craft.sweepMeasured.toFixed(4)} m`);
+        if (sweepErr > th.craft_radius_tolerance_m.value) {
+          fails.push(`collision radius is ${(sweepErr * 1000).toFixed(1)} mm from the swept disc`);
+        }
+
+        /* The race field. */
+        band('gate opening W', r.field.gateOpeningW, th.gate_opening_m.min, th.gate_opening_m.max, ' m');
+        band('gate opening H', r.field.gateOpeningH, th.gate_opening_m.min, th.gate_opening_m.max, ' m');
+        band('grass blade min', r.field.grassMin, th.grass_blade_m.min, th.grass_blade_m.max, ' m');
+        band('grass blade max', r.field.grassMax, th.grass_blade_m.min, th.grass_blade_m.max, ' m');
+
+        /* The city, all three measured off the built world by three different
+         * routes: the height query, the geometry and the collider list. */
+        band('city kerb', r.city.kerb, th.kerb_m.min, th.kerb_m.max, ' m');
+        band('city doorway', r.city.doorway, th.doorway_m.min, th.doorway_m.max, ' m');
+        band('city handrail', r.city.handrail, th.handrail_m.min, th.handrail_m.max, ' m');
+        band('city crossing boom', r.city.boom, th.boom_m.min, th.boom_m.max, ' m');
+
+        return {
+          measured: rows.join(', '),
+          pass: fails.length === 0,
+          reason: fails.join('; '),
+        };
+      },
+    },
+    {
+      num: 16,
+      id: 'map-isolation',
+      thresholdText: 'no city module requested with the field selected, field cost unchanged',
+      /*
+       * THE LAZY LOAD, MEASURED RATHER THAN ASSERTED.
+       *
+       * "The city loads only when chosen" is exactly the kind of claim that
+       * stays true right up until somebody adds a convenience import at the
+       * top of a shared file and the whole 59 file graph comes back at boot
+       * with nothing to show for it. So this reads the browser's own resource
+       * timing: every URL the page requested while the race field was
+       * selected, and every URL after the city was chosen. Zero city modules
+       * in the first list is the isolation; a full graph in the second is the
+       * proof that the first list is not empty because the loader is broken.
+       *
+       * The second half is the cost. The field's frame must be untouched by
+       * the city existing at all, so its draw calls, triangles, render target
+       * bytes and attribute bytes are asserted against the values measured at
+       * c3c6e44, the commit before this work started. They are not "close to"
+       * those values: they are identical, and the bands below are tight
+       * enough to say so.
+       */
+      async run(ctx) {
+        const r = await ctx.scaleRun();
+        const th = ctx.th.checks['map-isolation'];
+        const fails = [];
+        const before = r.cityUrlsWhileFieldSelected.length;
+        const after = r.cityUrlsAfterChoosingCity.length;
+        if (before !== 0) {
+          fails.push(`${before} city module(s) fetched with the field selected, first ${r.cityUrlsWhileFieldSelected[0]}`);
+        }
+        if (after < th.city_modules_min.value) {
+          fails.push(`only ${after} city modules fetched after choosing the city`);
+        }
+        const b = r.fieldBudget;
+        const base = th.field_budget_at_c3c6e44;
+        const same = (label, got, want, tol) => {
+          if (!(Math.abs(got - want) <= tol)) {
+            fails.push(`${label} ${got} against ${want} at c3c6e44`);
+          }
+        };
+        if (!b) {
+          fails.push('the field budget was not measured');
+        } else {
+          same('P1 draw calls', b.p1, base.p1.value, 0);
+          same('P2 triangles', b.p2, base.p2.value, 0);
+          same('P5 target MB', b.p5, base.p5_MB.value, 0.05);
+          same('P10 attribute MB', b.p10, base.p10_MB.value, 0.05);
+          same('meshes', b.meshes, base.meshes.value, 0);
+        }
+        return {
+          measured:
+            `city modules: ${before} with the field selected, ${after} after choosing it; ` +
+            (b ? `field P1 ${b.p1}, P2 ${b.p2}, P5 ${b.p5} MB, P10 ${b.p10} MB, ${b.meshes} meshes` : 'no budget'),
+          pass: fails.length === 0,
+          reason: fails.join('; '),
+        };
+      },
+    },
   ];
 }
 

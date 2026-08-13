@@ -1,0 +1,10 @@
+--- /workspace/kenton-gmi/sakura-crossing/src/core/toon.js	2026-08-13 04:33:07.944754490 +0000
++++ src/maps/city/vendored/core/toon.js	2026-08-13 05:01:53.476286006 +0000
+@@ -114,7 +114,6 @@
+   const mat = new THREE.MeshToonMaterial({
+     color,
+     gradientMap: gradientMap(bands),
+-    flatShading: flat,
+     map,
+     alphaMap,
+     transparent,

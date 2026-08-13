@@ -1958,3 +1958,387 @@ work is possible; it simply has not been done.
 `npm run verify` 13 of 14. Determinism checks 2, 3 and 4 all still identical
 at 000931016224, which matters because this round touched the height field and
 nothing in the physics.
+
+## Round 15: a second map, a scale check, an honest loading screen, and a plant that was handing out thrust in a dive
+
+Four deliverables and the owed plant findings. Everything below is measured;
+where a number came out different from the design that predicted it, the
+measurement wins and the design is corrected in place.
+
+### The city map, and what the survey got wrong
+
+sakura-crossing is vendored at `src/maps/city/vendored/`, MIT, commit
+de01898e89c7f6ab3fad93fa802f0f5ac66fbd81, provenance in `NOTICE`. The file
+count is 59 and the design's two figures reconcile: 57 from
+`src/world/index.js`, plus `core/post.js` and `core/sky.js` for the ink
+pipeline and the sky.
+
+**Two of the design's blockers are wrong, and one of them would have shaped
+the whole contact model.**
+
+- **"2,708 colliders are effectively infinitely tall walls with no ceiling
+  data, so a quad can be stopped by a 0.2 m signpost at 40 m altitude."**
+  Measured: 2,731 colliders, of which **2,708 have no `bottom` and ZERO have
+  no `top`**. `top` IS the ceiling. The town's own walker skips any collider
+  whose top is at or below its feet, which is how it steps over a kerb, so a
+  rectangle with a top and no bottom is a solid box from the ground up to
+  `top`. A quad at 40 m flies over a 0.2 m signpost for exactly the same
+  reason a walker steps over it. Read the walker's `_resolve` before designing
+  around its data.
+- **"An unculled floor of about 900 k triangles from meshes whose bounding
+  sphere is the planet."** That is a property of the BAKE, which bends every
+  mesh onto a 160 m sphere. Skipping the bake, which we do anyway for the
+  coordinate reason, gives every mesh a local bounding sphere and frustum
+  culling works. The 900 k floor does not exist on the flat path.
+
+The design's determinism findings, its licence reading and its "do not run
+bakeToPlanet" graft all held up.
+
+### What it cost, before and after, at 1280 by 720 with a parked camera
+
+    view                          P1 draw calls      P2 triangles
+    as built                          16,647           9,957,538
+    after merge, chunk and cull        4,935           2,771,739   street
+                                       4,080           2,678,471   crossing
+                                       6,969           3,336,720   from 70 m up
+
+**P1 still FAILS by 12.3x and P2 by 2.3x, and no threshold was moved.** The
+reason P1 cannot be fixed by more of the same is measured: the town has
+**3,545 distinct materials, 3,048 of which are used by exactly one mesh**,
+because every sign, fascia and price strip carries its own Canvas2D texture.
+Merging by material has already taken 18,466 meshes down to 2,180; the floor
+under that is the material count, and getting past it means atlasing three
+thousand generated textures, which is a rewrite of vendored texture generation
+and its own round. Recorded rather than papered over.
+
+What did work, each measured on its own:
+
+- **Spatial material merge**, `src/maps/city/bake.js`. 18,466 static meshes to
+  2,180 merged ones. The animated set is MEASURED, not listed by name: the
+  town's own update is run across a whole 42.8 s crossing cycle and anything
+  whose world matrix moved is excluded with its subtree, plus the town's
+  `planetRigid` marker for rigs that only move on an interaction.
+- **Do not convert to non indexed in order to merge.** The first version did,
+  and P10 went from 69.0 to 103.3 MB, because `toNonIndexed` writes every
+  shared vertex once per triangle: a box goes from 8 vertices to 36. Bucketing
+  by indexedness instead brought it back to 72.2 MB.
+- **Instanced chunking.** The triangle mass is the forest, not the buildings:
+  `groveCanopy0/1/2` carry 15,616, 10,090 and 7,909 instances of an 80
+  triangle blob, which is 2,689,200 triangles in three draw calls. One draw
+  call is cheap and one bounding sphere over a whole grove is not: it passes
+  every frustum test and submits all 15,616 instances to the colour pass and
+  again to the shadow pass. Split per cell above 200 instances, triangles fell
+  from 10.06 M to 2.42 M at the same camera.
+- **Shadow camera 34 m half width to 22 m.** Measured split at the street
+  view: 4,935 calls with shadows, 3,587 without, so the shadow pass is 27
+  percent of the frame rather than the half it was.
+- **Distance culling** at 145 m, with the fog shortened from the town's own 44
+  to 205 m to 45 to 135 m so the cull edge sits inside full fog and nothing
+  pops. The town's fog was set for a walker with a 23 m ground horizon.
+
+**Do not quote the attract view for either map.** Its camera orbits on the
+wall clock. The first cull radius sweep taken through it produced a curve that
+was not monotonic, because every sample was a different azimuth. Park the
+camera with `__setCam` and wait on the frame counter, not on a timer:
+`__setCam` only takes effect on the next animation frame, and `__budget`
+renders directly rather than through the frame loop.
+
+### The shell now has a session and a map, and a gateless map boots
+
+`buildScene` is split. `src/render/shell.js` owns the renderer, the camera and
+the airframe for the whole session; a MapInstance owns its scene, post chain,
+colliders and contact data and disposes all of it on a swap, so only one map's
+render targets exist at a time. `src/render/craft.js` is the airframe, built
+once and re-parented.
+
+- `main.js` no longer dereferences `gates[0]`: the spawn and the attract
+  framing are the MAP's, because a map knows where its start line is and a
+  shell does not.
+- `new Race([])` is a real state rather than a crash. One run object for both
+  maps, with a `freestyle` flag and guards, rather than a race and a null
+  object that have to be kept in step.
+- **The shots.js sidecar opt out is a property of the PAGE, not a flag.**
+  `__nextGate()` reports `gateless: true` only when the map's gate list is
+  empty, and the sidecar accepts that and nothing else. A `--nogate` flag could
+  have been passed on the race field by habit or by a copied command line;
+  this cannot, so the gate stays exactly as strong there as it was.
+
+### Freestyle HUD, and an altitude that was lying on both maps
+
+No gates, no lap clock, no record, so the display shows what a freestyle pilot
+reads: AIRTIME instead of a lap, because freestyle is flown in packs and how
+long you have been up is the decision the pack bar is the other half of; and
+**altitude above the surface UNDER the craft**, measured through the same
+query the collision test uses. The old readout was `st[3] + SPAWN_ALT`, the
+height above wherever the run started, which is identical on a flat corridor
+and wrong by seven metres the moment you cross the overbridge. That was an
+owed finding from round 12 and it is closed for both maps.
+
+### Landing and crashing on roofs and the overbridge deck
+
+Thresholds unchanged: 2.0 m/s descent, 3.0 m/s horizontal, 25 degrees of tilt,
+4.0 m/s graze. Measured through `__surface` and `__hit`:
+
+    overbridge deck   x 41.00   z -0.50     deck 7.200    ground 0.000
+      surface asked from above   7.200      you land on the deck
+      surface asked from below   0.000      you fly under it, on the road
+      road up to the deck                   hits 'wall'
+    roof              x 34.50   z -128.20   deck 17.307   ground 14.462
+      same three, 17.307 / 14.462 / 'wall'
+
+That last row is what `heightAt` cannot express on its own, so every platform
+more than 0.6 m above the bare ground gets a thin slab collider whose top sits
+2 cm under the deck. Two centimetres, not zero: a craft descending onto a deck
+meets the landing judgement at deck + 0.1735 and the slab at deck + 0.1535, so
+the judgement wins and the slab only ever catches something arriving from
+below.
+
+Colliders: 2,731 town boxes plus 240 platform slabs. **Boxes carry r = 0 and
+contribute nothing to `maxR`**, which is load bearing: `hit()` pads every query
+by `CRAFT_R + maxR`, and giving a box its half diagonal would have pushed maxR
+to the length of the longest wall and made every frame's query scan tens of
+metres for nothing. The swept sphere against a box is exact and closed form,
+not sampled: the squared distance is piecewise quadratic in the travel
+parameter with at most six breakpoints, so it is minimised piece by piece. The
+obvious shortcut, testing against the box grown by CRAFT_R, is wrong at a
+corner by up to `(sqrt(3) - 1) * 0.1735 = 0.127 m`, and is used only as a
+rejection test, where overstating is safe.
+
+### The crossing is a closed form now
+
+The town's level crossing booms are colliders whose top toggles when an arm
+sequence integrating raw `dt` crosses 0.55, driven by a train position that is
+itself `x = wrap(x + speed * dt)`. `src/maps/city/animation.js` replaces both
+with pure functions of the integer fixed step count the shell already keeps:
+the train's position, the arm ramp, the lamp blink and the boom collider
+extents. During a run that count IS `simTimeMs`, so a collision with a boom is
+reproducible from a recorded input stream at any frame rate. The town's own
+`update(dt)` still runs, for the traffic, the vending machines, the cat and the
+petals, none of which is solid, and everything it computes about the train and
+the arms is then overwritten so that what is drawn and what is solid agree.
+
+The two booms are found by assertion, not by index: they are the only two
+colliders the town parks below ground AND the last two it pushes, and both
+facts are checked, because a barrier a quad flies through is worse than one
+that is never there. The boom box is given the ARM's real extent, 1.045 to
+1.325 m, read off `railway.js` (pivot at 0.2 + 0.92 + 0.12, section 0.17 tall,
+lamps hanging 0.195 below), rather than the walker's ground to 1.25
+abstraction. So a quad can take the line under a lowered boom, which is one of
+the things this town is worth flying for.
+
+### Two patches to the vendored tree, both recorded
+
+`PATCH-world-index.diff` makes the planet bake optional, with the upstream
+behaviour as the default. `PATCH-core-toon.diff` removes `flatShading` from the
+`MeshToonMaterial` constructor: measured, `MeshToonMaterial` has no such
+property in r160, `Material.setValues` warns and skips, and the town produced
+**643 console warnings per build** for a value that has never had any effect in
+any version of three. Removing a dead parameter is behaviour preserving;
+silencing the warning would not have been. Console is back to 0 errors and 0
+warnings.
+
+### Scale, as check 15, and it caught something on its first run
+
+    craft body            0.1550 m
+    craft sweep radius    0.1735 m
+    collision radius      0.1735 m   against a swept disc of 0.1735 m
+    gate opening          1.5240 by 1.5240 m
+    grass blade           0.0300 to 0.0900 m
+    city kerb             0.1350 m   real 0.10 to 0.20
+    city doorway          2.0500 m   real 1.90 to 2.10
+    city handrail         1.0600 m   real 0.85 to 1.20
+    city crossing boom    1.2400 m   real 1.00 to 1.40
+
+**CRAFT_R was wrong by 8.6 percent.** It was typed as 0.1885, derived in its
+own comment from a 250 mm class quad with a motor 0.125 m from the centre. This
+airframe is not 250 mm: `plant.c` puts the motors at 0.110 / sqrt(2) per axis,
+which is 0.110 m out and a 220 mm machine, and the renderer draws them there.
+So every gate on the course was scored against a quad 8.6 percent bigger than
+the one on screen, and every collision fired about 15 mm early. It is derived
+from the arm and the prop radius now, in one place, and the check asserts it
+against the drawn geometry to half a millimetre.
+
+The three city references are measured by three different routes on purpose,
+so they cannot agree merely by sharing a constant: the kerb through the town's
+own height query, which is the surface the craft lands on; the doorway from the
+geometry, which is what is drawn; the handrail from the collider list, which is
+what the craft hits.
+
+**The trap the brief names is real and the bands are written around it.** The
+town is authored for a 1.7 m eye, so a 1.05 m doorway is four times the craft's
+width and that is correct. Every band is a real world size, not a comparison
+against the quad.
+
+### The loading screen, and two defects found by capturing it
+
+Stages are named and weighted by measured duration. Field boot, 1280 by 720:
+
+    run 1        three 56.6   sim 24.5   module 24.3    world 2885.8   frame 437.8
+    run 2        three 89.4   sim 19.5   module 34.2    world 3042.4   frame 424.9
+    city swap                            module 830.4   world 7554.0   frame 2358.7
+
+Under a 1500 kbps throttle with 40 ms of latency, the same boot measured three
+90.3, sim 362.3, module 895.3, world 2965.9, frame 391.5, and the city swap
+measured module 14,642.3, world 7,646.2, frame 2,186.2. The two fetch stages
+grow by an order of magnitude and the two main thread stages do not move, which
+is the whole reason they are named separately. Captured on the throttled run,
+the screen reads **"MAP, 11 of 61 modules, 1.0 s"**.
+
+**Defect one, found by looking at a capture: the screen was never painted.**
+The first screenshot two seconds into a city swap showed the race field with
+the title menu over it and no loading screen at all. Building the town is about
+eight seconds of synchronous main thread work, and one `requestAnimationFrame`
+before it is not enough, because a rAF callback runs BEFORE the paint of the
+frame it is scheduled in. Two frames and then a task is the shortest sequence
+that gets pixels on screen, and it is `yieldToPaint`.
+
+**Defect two, in the same capture: the screen hid itself.** `finish()` fades out
+and then hides the element 320 ms later to match the CSS transition. Choosing a
+map from the title screen starts a new load well inside that window, so `run()`
+made the screen visible and the stale timeout hid it again. The timer is
+cancelled in `run()` now.
+
+**Byte progress on the three.js fetch was built and withdrawn.** Streaming the
+module so the bar could report kilobytes assumed the dynamic import a moment
+later would be a cache hit. Measured,
+`performance.getEntriesByType('resource')` returned TWO entries for
+three.module.js. After removing the prefetch it returns one. Paying up to
+1.2 MB of a player's connection to animate a progress bar is the wrong trade,
+so that stage keeps its name and its elapsed readout and does not pretend to
+know how far through it is. `dist/sim.wasm` still streams its bytes because the
+shell needs them anyway, and the map graph counts modules off resource timing.
+
+### The city loads only when chosen, and it is measured, as check 16
+
+    city modules requested with the race field selected      0
+    city modules requested after choosing the city          63
+
+And the race field's frame is untouched. Measured in a git worktree at c3c6e44
+and in this tree, same camera, same resolution:
+
+    c3c6e44   P1 214   P2 1,931,413   P5 69.8 MB   P10 42.8 MB   159 meshes
+    now       P1 214   P2 1,931,413   P5 69.8 MB   P10 42.8 MB   159 meshes
+
+Identical, not close. Both maps load through dynamic `import()`; the field is
+imported at boot because the title screen has a world behind it.
+
+### The plant. Two findings closed, one refused with its measurement
+
+**Descent thrust had the wrong sign and now does not.** The old branch was
+`axial = 1 - va / pitch_speed` clamped at 1.35 for every descent rate, so it
+handed the craft more thrust the faster it fell. Measured at a fixed duty of
+0.12, thrust to weight against descent rate, before and after:
+
+    descent m/s    1.8     3.2     4.5     6.0     7.5     8.8    10.2
+    before        0.468   0.526   0.535   0.534   0.534   0.529   0.525
+    after         0.468   0.509   0.474   0.439   0.403   0.368   0.332
+
+Before, thrust rises and then plateaus on the clamp. After, it falls
+monotonically past a third of the pitch speed, which is where a real rotor
+starts recirculating its own downwash. A deterministic per motor share of that
+loss, summing to zero, means the four rotors no longer stall together: the
+craft's levelness over the same 2.6 s run went from 0.9933 to 0.9890, so there
+is a disturbance where there was none.
+
+**yaw-coupling has a real mechanism for the first time, and it is still red at
+-0.06 deg against a 2.0 deg floor. The threshold is not lowered.**
+
+The reason it read exactly 0.00 for this project's whole life is structural,
+and the algebra is three lines. In the QUADX mixer the roll column is
+(-1, -1, +1, +1), each roll pair holds one clockwise and one counter clockwise
+motor, and during a pure roll every quantity a motor experiences depends on m
+only through its roll column membership. So the frame's yaw torque is
+
+    sum over m of SPIN[m] * f(roll[m])
+      = f(-1) * (SPIN_RR + SPIN_FR) + f(+1) * (SPIN_RL + SPIN_FL)
+      = f(-1) * (-1 + 1)            + f(+1) * (1 - 1)             = 0
+
+for ANY f. Not approximately zero. No nonlinearity in thrust, prop drag, the
+advance ratio or the battery can produce a yaw from a roll on a symmetric
+QUADX, so propwash and inflow asymmetry would not have moved it by a
+thousandth of a degree. Neither would the fix the handover proposed: a purely
+OUTWARD cant produces a force along r, whose moment about z is identically
+zero.
+
+What makes a real quad yaw when you roll it is that it is not symmetric. Each
+motor's thrust axis now carries a fixed misalignment: 1.0 deg outward on all
+four, which is real arm splay and produces no yaw at all, plus tangential build
+tolerance of -0.9, +1.4, +0.6, -1.2 deg. Their sum is -0.1 deg, so hover
+carries a slight yaw bias the I term trims out exactly as a real machine does;
+their sum against the roll column is -1.1 deg, which is the coupling, and its
+sign makes a right roll yaw nose right, matching the check's expected sign.
+
+Measured: -0.06 deg, against 0.00 before. **Reaching the 2.0 deg floor would
+need about 44 degrees of column asymmetry**, by direct scaling from 1.1 deg
+giving 0.06 deg, and no build tolerance model reaches that. The yaw PID is
+doing its job: a well tuned quad does not yaw two degrees during a one second
+roll. The floor is recorded in `thresholds.json` as a "Loop A harness choice,
+floor that makes 'non-zero' in STAGE1.md check 10 measurable", so it is a
+chosen number rather than a measured one, and the argument for revisiting it
+belongs here rather than in a diff.
+
+**The 300 A punch transient is REFUSED with a measurement, and the ESC ceiling
+the handover prescribed is written into `plant.c` as a comment with its
+numbers.** It works: peak pack current 409.8 A to 192.0 A, minimum pack voltage
+9.22 V to 17.71 V, which is 2.95 V a cell instead of 1.54. It also takes check
+8, the motor step response, from 18 ms to 51 ms, straight out of its 10 to
+30 ms band. That is not a tuning problem. The unlimited model's mechanical time
+constant is `j R / ke^2 = 6.0e-6 * 0.09 / 0.005026^2 = 21.4 ms`, which is how it
+lands in band, and it gets there only by drawing 184 to 280 A per motor for the
+whole of the rise. Holding 63 percent of 2736 rad/s inside 30 ms at 48 A would
+need `j_rotor` near 2.4e-6 against a real 5 inch triblade plus 2207 bell of
+about 9e-6. The band and the current limit cannot both be met by this set of
+constants. The honest fix is to re-derive kt, kq, ke, r_motor and j_rotor
+together against a real motor, and to re-specify check 8, which reads a small
+signal time constant with a zero to full step from rest. That is its own round
+with its own review. No threshold moved, and the limit is not quietly dropped.
+
+**Gyro noise, the fourth plant item, is NOT DONE.** The D term chain is still
+decorative. It was the fourth of four and the round ran out before it.
+
+### What went wrong on the way
+
+- **`git checkout src/native/plant.c`, to undo a two line measurement hack,
+  reverted the whole file** and lost an hour of plant work. Every edit had to
+  be re-applied from the scratch scripts that made them. Use a copy or a
+  `#define`, and never `git checkout` a file carrying uncommitted work.
+- **A one line `eval:` step with a `//` comment in it silently truncated
+  everything after the comment**, because shots.js strips newlines. The error
+  was "SyntaxError: Unexpected end of input" and it cost two runs.
+- **Parsing an eval result by slicing at the first ` = `** cut lines in half
+  whenever the expression contained its own assignment. Anchor the match at the
+  end of the line.
+- **The cull grid's first version walked only `root.children`**, and every one
+  of the town's top level groups has a bounding sphere far bigger than a cell,
+  so all 151 of them landed in the always drawn list and nothing was ever
+  culled. The measurement said so immediately, which is the only reason it did
+  not ship.
+- **A shell heredoc used to append this section to PROGRESS.md was itself
+  mangled**, and left a stray `build/` directory in the repository root. Caught
+  by `git status`, which the sharp edges list already says to run after every
+  review round; it applies to my own commands too.
+
+### New page handles, all harness only
+
+`__map()`, `__maps()`, `__setMap(id)`, `__mapScene()`, `__cityWorld()`,
+`__surface(x, z, fromY)`, `__hit(px, py, pz, qx, qy, qz)`, `__cullRadius(r)`,
+`__shadows(on)`, `__stick(roll, pitch, yaw, throttle)` and `__loading`.
+`__stick` earns its place: holding W ramps the throttle while held, and a city
+frame takes about half a second here, so five seconds of held key is ten frames
+of ramp and the craft never reaches the 0.25 takeoff threshold. A capture that
+cannot take off cannot assert anything about flight, which is how round 10's
+`07-inflight` capture turned out to be a picture of the start line.
+
+`scripts/shots.js` gains `throttle:KBPS`. It reaches everything the local
+server answers, which is the map graph, `dist/sim.wasm` and the page, and it
+does NOT reach three.js, because the harness fulfils the jsdelivr requests from
+a local cache and a fulfilled request never touches the network stack.
+
+### Verify
+
+`npm run verify` 15 of 16, `yaw-coupling` the one red at -0.06 deg. Determinism
+hash 5d51dbbe08eb, identical across Node and headless Chrome and across four
+frame rates; it moved from 000931016224 because the plant changed, which is
+expected and is what checks 2, 3 and 4 exist to police. Two new checks: 15
+`world-scale` and 16 `map-isolation`. Console 0 errors and 0 warnings across
+every capture in this round.

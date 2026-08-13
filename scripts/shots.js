@@ -294,6 +294,28 @@ async function main() {
     const arg = rest.join(':');
     if (op === 'wait') {
       await sleep(Number(arg));
+    } else if (op === 'throttle') {
+      /*
+       * Network throttling, so a loading screen can be checked against the
+       * case it exists for: the network being the bottleneck rather than the
+       * CPU. `throttle:0` restores full speed.
+       *
+       * KNOWN LIMIT, and it matters when reading a result. This harness
+       * serves cdn.jsdelivr.net through Fetch.fulfillRequest from a local
+       * cache, and a fulfilled request never touches the network stack, so
+       * throttling does NOT reach the three.js module. It reaches everything
+       * the local server answers, which is the map module graph, dist/sim.wasm
+       * and the page itself, and for the city that is 61 files.
+       */
+      const kbps = Number(arg);
+      await cdp.send('Network.enable', {}, sessionId);
+      await cdp.send('Network.emulateNetworkConditions', {
+        offline: false,
+        latency: kbps > 0 ? 40 : 0,
+        downloadThroughput: kbps > 0 ? (kbps * 1024) / 8 : -1,
+        uploadThroughput: kbps > 0 ? (kbps * 1024) / 8 : -1,
+      }, sessionId);
+      console.log(`throttle ${kbps > 0 ? `${kbps} kbps, 40 ms latency` : 'off'}`);
     } else if (op === 'shot') {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
       const path = join(outDir, `${arg}.png`);
@@ -328,6 +350,25 @@ async function main() {
             `aperture ${g.aperturePx == null ? 'refused' : `${g.aperturePx.toFixed(1)} px`}, ` +
             `glow sampled ${g.glowGainSampled.toFixed(2)}`,
           );
+        } else if (s.nextGate && s.nextGate.gateless === true) {
+          /*
+           * A FREESTYLE MAP HAS NO GATES, AND THAT IS AN ANSWER.
+           *
+           * The fault below is right for the race field: a capture that
+           * claims anything about the target has to record which gate the
+           * race wanted, because every G3 measurement taken without it
+           * measured whichever ring happened to be bright rather than the
+           * one the race was aiming at. On a map with no gates the same rule
+           * fails every capture even when the frame is perfect.
+           *
+           * The opt out is deliberately NOT a command line flag. A flag can
+           * be passed on the race field, by habit or by a copied command
+           * line, and then the gate that matters is gone. This reads the
+           * PAGE's own answer: the shell reports `gateless: true` only for a
+           * map whose gate list is empty, so the race field can never produce
+           * it, and the check stays exactly as strong there as it was.
+           */
+          console.log(`  target: none, ${s.nextGate.mapId} is a ${s.nextGate.mapMode} map with no gates`);
         } else {
           harnessFaults.push(`shot ${arg}: window.__nextGate returned nothing, so the capture cannot support a G3 claim`);
         }

@@ -42,6 +42,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull, updateCelTime, CLOUD_SHADOW_GLSL } from './celmat.js';
+import { disposeSceneGraph } from './shell.js';
 /* The obstacle dimensions come from the track module, which holds MultiGP's
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
@@ -781,6 +782,11 @@ function cliff(rng, height, x, z, caps) {
  * blades move together in gusts instead of each doing its own thing.
  */
 function grassField(height, samples, rng) {
+  /* Measured as the blades are made rather than restated from the formula
+   * above, so a scale check reads what was BUILT. See references in
+   * buildFieldScene. */
+  let bladeMin = Infinity;
+  let bladeMax = -Infinity;
   /*
    * Blade count and blade size, both measured against a frame rather than
    * guessed. 46000 blades of 7.5 to 13 cm width spread over 900 by 900 m
@@ -932,6 +938,12 @@ function grassField(height, samples, rng) {
      * what leaves a parked quad able to see.
      */
     const h = 0.03 + r() * 0.06;
+    if (h < bladeMin) {
+      bladeMin = h;
+    }
+    if (h > bladeMax) {
+      bladeMax = h;
+    }
     /*
      * Blade WIDTH, and it was the worst scale error in the project.
      *
@@ -1170,7 +1182,7 @@ function grassField(height, samples, rng) {
   mat.vertexColors = true;
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
-  return { mesh, mat };
+  return { mesh, mat, bladeHeightRange: [bladeMin, bladeMax] };
 }
 
 /*
@@ -1777,29 +1789,24 @@ function clouds(rng) {
   return g;
 }
 
-export function buildScene(canvas) {
-  /* No depth and no stencil on the default framebuffer. The only thing
-   * ever drawn into it is the grade pass's fullscreen quad, which is
-   * neither depth tested nor stencilled, and a browser hands out a
-   * D24S8 buffer by default: measured, 8.3 MB of the frame's 120 MB
-   * render target budget for a buffer nothing reads. antialias stays off
-   * because EffectComposer allocates its own targets, so the flag would
-   * multisample that same one quad. */
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: false,
-    depth: false,
-    stencil: false,
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
+/*
+ * The race field's world. The renderer, the camera and the airframe are the
+ * session's, not this map's, and arrive in `shell`; everything built here
+ * belongs to this map and dies with it. See src/maps/README.md for the
+ * contract and src/render/shell.js for what the session keeps.
+ *
+ * `onProgress(fraction)` is called as construction advances, so the loading
+ * screen reports work that actually happened rather than a timer. It is
+ * optional and the map builds identically without it.
+ */
+export function buildFieldScene(shell, onProgress) {
+  const renderer = shell.renderer;
+  const camera = shell.camera;
+  const progress = onProgress ?? (() => {});
+  /* PCF soft, not PCF. The field's shadow map covers 144 m at 2048, so the
+   * softer filter is what keeps a tree's cast edge from reading as a
+   * staircase. The city sets its own. */
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  /* No filmic tone curve: it desaturates exactly the flat saturated
-   * colour this style is built on. The grade pass in post.js does the
-   * colour space conversion, at the end of its own shader; there is no
-   * OutputPass any more, and this comment said there was. */
-  renderer.toneMapping = THREE.NoToneMapping;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(HORIZON);
@@ -2440,85 +2447,22 @@ export function buildScene(canvas) {
   }
   baker.flush(scene, 0);
 
-  /* The craft. Betaflight motor order RR FR RL FL, front at -z. */
-  const quad = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.088, 0.034, 0.155),
-    celMaterial({ color: 0x272d38, rim: 0.28, spec: 0.35, specWidth: 0.02 }),
-  );
-  body.castShadow = true;
-  outlineHull(body, 1.13);
-  quad.add(body);
-  const canopy = new THREE.Mesh(
-    new THREE.ConeGeometry(0.05, 0.08, 4),
-    celMaterial({ color: 0xe8503a, rim: 0.28, spec: 0.4 }),
-  );
-  canopy.rotation.set(-Math.PI / 2, 0, Math.PI / 4);
-  canopy.position.set(0, 0.03, -0.048);
-  canopy.castShadow = true;
-  outlineHull(canopy, 1.1);
-  quad.add(canopy);
-
-  const motorXZ = [
-    [0.0778, 0.0778],
-    [0.0778, -0.0778],
-    [-0.0778, 0.0778],
-    [-0.0778, -0.0778],
-  ];
-  const armMat = celMaterial({ color: 0x333b47, rim: 0.26 });
-  const bellMat = celMaterial({ color: 0xa6aeb8, rim: 0.28, spec: 0.5 });
-  const discs = [];
-  for (let m = 0; m < 4; m += 1) {
-    const [mx, mz] = motorXZ[m];
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.015, 0.115), armMat);
-    arm.position.set(mx / 2, 0, mz / 2);
-    arm.lookAt(new THREE.Vector3(mx, 0, mz));
-    arm.castShadow = true;
-    outlineHull(arm, 1.1);
-    quad.add(arm);
-    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.024, 8), bellMat);
-    bell.position.set(mx, 0.018, mz);
-    bell.castShadow = true;
-    quad.add(bell);
-    const disc = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.0635, 0.0635, 0.004, 22),
-      new THREE.MeshBasicMaterial({
-        color: mz < 0 ? 0xff8a63 : 0x39404a,
-        transparent: true,
-        opacity: 0.38,
-        depthWrite: false,
-        fog: true,
-      }),
-    );
-    disc.position.set(mx, 0.032, mz);
-    quad.add(disc);
-    discs.push(disc);
-  }
+  /* The craft is the session's, built once in src/render/shell.js and
+   * re-parented into whichever map is active. */
+  const quad = shell.quad;
+  const discs = shell.discs;
   scene.add(quad);
+  progress(1);
 
   /*
-   * Near plane at 0.2 m, not 0.04. The camera sits inside a 150 mm
-   * airframe, so 4 cm buys nothing, and a 0.04 to 2600 range left the
-   * outline prepass's depth buffer with under one depth code of separation
-   * past about 500 m: that is why the ink had to be faded out by 50 m and
-   * why grass blades a few centimetres from the lens filled the frame.
+   * The field's far plane. 2600 m covers the valley and its ridge ladder out
+   * to 1330 m. The near plane is the session's and is 0.2 m: the camera sits
+   * inside a 150 mm airframe, so 4 cm buys nothing, and a 0.04 to 2600 range
+   * left the outline prepass's depth buffer with under one depth code of
+   * separation past about 500 m.
    */
-  const camera = new THREE.PerspectiveCamera(100, 1, 0.2, 2600);
-  camera.layers.enable(1);
-  /* Layer 2 is the grass. It needs to be separable from the rest of the no
-   * ink layer, because it has to write depth into the outline prepass
-   * without being inked itself. See renderNormals in post.js. */
-  camera.layers.enable(2);
-
-  function resize() {
-    const w = canvas.clientWidth || window.innerWidth;
-    const h = canvas.clientHeight || window.innerHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    return { w, h };
-  }
-  resize();
+  camera.far = 2600;
+  camera.updateProjectionMatrix();
 
   /* Shadows follow the craft. shadowExtent is a half width, so the box is
    * 144 m across at 2048, which is 7.0 cm per texel: crisp enough for
@@ -2556,9 +2500,73 @@ export function buildScene(canvas) {
    * broadphase grid. Nothing may be added after this. */
   colliders.build();
 
+  progress(1);
+
+  /*
+   * Where a run starts, and what the title screen looks at. Both used to be
+   * computed in main.js out of gates[0], which is exactly why a map with no
+   * gates crashed the shell before its first frame. They belong to the map:
+   * a map knows where its start line is and a shell does not.
+   *
+   * A few metres BEHIND the start line, facing down the circuit. Parked
+   * exactly on the timing plane, the first millimetre of drift would arm the
+   * lap clock at zero airspeed. The craft faces opposite the course tangent,
+   * so behind the line is along +tangent.
+   */
+  const start = gates[0];
+  const SPAWN_BACK = 7;
+  const spawn = {
+    x: start.position.x + Math.sin(start.heading) * SPAWN_BACK,
+    z: start.position.z + Math.cos(start.heading) * SPAWN_BACK,
+    yaw: start.heading,
+  };
+  /* Framed for a REGULATION gate: the opening is 1.524 m square with its
+   * centre at 0.762 m, so 9 m out and 2.4 m up, aimed at the aperture
+   * centre. 19 m out aimed 2.5 m up was framed for a 5 m gate and pointed at
+   * empty air above one too small to see. */
+  const attract = {
+    x: start.position.x,
+    y: start.position.y,
+    z: start.position.z,
+    radius: 9,
+    eye: 2.4,
+    aim: 0.85,
+  };
+
   return {
-    renderer, scene, camera, quad, discs, gates, curve,
-    resize, updateShadowFocus, updateWind, height, setNextGate,
-    colliders,
+    id: 'field',
+    name: 'Race field',
+    mode: 'race',
+    scene, gates, curve, colliders, spawn, attract,
+    /*
+     * Reference objects, measured off the built world rather than restated.
+     * The gate aperture is read out of the torus the scene actually drew, and
+     * the grass is measured because a 0.26 to 0.68 m blade beside a 1.524 m
+     * opening is exactly the scale error this project has already shipped
+     * once. tests/lib/checks.js check 15 asserts them.
+     */
+    references: {
+      gateOpeningW: { measured: gates[0].aperture.clearW, unit: 'm', real: '1.524, MultiGP standard gate' },
+      gateOpeningH: { measured: gates[0].aperture.clearH, unit: 'm', real: '1.524, MultiGP standard gate' },
+      gateApertureCentreY: { measured: gates[0].aperture.centreY, unit: 'm', real: '0.762, half the opening' },
+      grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
+    },
+    updateShadowFocus, updateWind, setNextGate,
+    /*
+     * The contact surface. The third argument is the height the query is made
+     * FROM, which the city needs so a quad can fly under the overbridge and
+     * land on its deck. The field has one ground surface and no decks, so it
+     * ignores it, and the argument is accepted rather than dropped so main.js
+     * has one call shape for both maps.
+     */
+    height: (x, z) => height(x, z),
+    /* No animation on the field depends on the physics clock: the flags and
+     * the glow pulse are wall clock decoration and updateWind already drives
+     * them. Present so the shell has one call shape. */
+    updateAnim: () => {},
+    dispose() {
+      scene.remove(quad);
+      disposeSceneGraph(scene);
+    },
   };
 }

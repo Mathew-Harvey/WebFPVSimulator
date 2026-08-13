@@ -37,8 +37,7 @@
  */
 
 import * as THREE from 'three';
-import { buildScene } from './render/scene.js';
-import { buildComposer } from './render/post.js';
+import { buildShell } from './render/shell.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
@@ -46,6 +45,8 @@ import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
 import { Ui } from './ui/ui.js';
+import { MAPS, mapById } from './maps/registry.js';
+import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
 /*
@@ -93,53 +94,127 @@ function configFault(code) {
   return 'The simulator refused it and kept your previous tune.';
 }
 
-async function fetchBytes(url) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`fetch ${url}: ${res.status}`);
-  }
-  return new Uint8Array(await res.arrayBuffer());
+/* Streamed, so the loading screen can report bytes rather than a spinner. */
+async function fetchBytes(url, onProgress) {
+  const { fetchWithProgress } = await import('./ui/loading.js');
+  return fetchWithProgress(url, onProgress);
 }
 
-/* P6: navigation to the first interactive frame. Stamped here rather than
- * inside boot so it covers module evaluation as well as boot's own work,
- * and read back through window.__boot. */
-const BOOT_START = performance.now();
+/* Reused rather than allocated at every spawn. */
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
-async function boot() {
+/*
+ * Bring one map in and make it the world.
+ *
+ * The module fetch and the world build are separate stages of the loading
+ * screen because they fail and stall for entirely different reasons: the
+ * first is the network, the second is the main thread. The module counter
+ * reports the fetch honestly by watching the browser's own resource timing as
+ * it walks the import graph, which needs no cooperation from the map.
+ *
+ * EXPECTED MODULE COUNTS are a bar weight, nothing more. Getting one wrong
+ * makes that stage's bar move at the wrong rate; it cannot break the load,
+ * and the stage still ends when the import resolves.
+ */
+const MAP_MODULE_COUNT = { field: 3, city: 61 };
+
+async function loadMap(shell, id, loading) {
+  const entry = mapById(id);
+  loading.start('module');
+  const counter = moduleCounter(
+    `/src/maps/${id === 'field' ? 'field' : 'city/'}`,
+    MAP_MODULE_COUNT[id] ?? 4,
+    (f, got, total) => loading.progress('module', f, `${got} of ${total} modules`),
+  );
+  let mod;
+  try {
+    mod = await entry.load();
+  } finally {
+    counter.stop();
+  }
+  loading.done('module');
+  loading.detail = '';
+  loading.start('world');
+  await yieldToPaint();
+  const map = await mod.buildMap(shell, (f) => loading.progress('world', f));
+  loading.done('world');
+  return map;
+}
+
+export async function boot({ loading, bootStart, mapId }) {
+  const BOOT_START = bootStart ?? performance.now();
   const canvas = document.getElementById('view');
-  const view = buildScene(canvas);
+  const shell = buildShell(canvas);
   const input = new InputManager();
   const ui = new Ui(uiRoot);
+  /* boot.js read the stored map before any module loaded, so it could weight
+   * the loading screen. ui.js is the owner of the setting; if the two ever
+   * disagree the ui wins, because it is what the player sees. */
+  if (mapId && ui.settings.map !== mapId) {
+    ui.settings.map = mapId;
+  }
 
-  const post = buildComposer(view.renderer, view.scene, view.camera);
   window.addEventListener('resize', () => {
-    const d = view.resize();
-    post.setSize(d.w, d.h);
+    const d = shell.resize();
+    view.post.setSize(d.w, d.h);
   });
   const audio = new MotorAudio();
-  const sim = await loadSim(await fetchBytes('/dist/sim.wasm'));
+
+  loading.start('sim');
+  const sim = await loadSim(await fetchBytes('/dist/sim.wasm', (f, got, total) => {
+    loading.progress('sim', f, `${(got / 1024).toFixed(0)} of ${(total / 1024).toFixed(0)} kB`);
+  }));
   let configName = 'freestyle.diff';
   let configText = new TextDecoder().decode(await fetchBytes('/configs/freestyle.diff'));
   if (sim.init(configText) !== SIM_OK) {
     throw new Error('sim_init failed on the default config');
   }
+  loading.done('sim');
+  loading.detail = '';
 
-  /* Spawn a few metres BEHIND the start line, facing down the circuit:
-   * parked exactly on the timing plane, the first millimetre of drift
-   * would arm the lap clock at zero airspeed. The craft faces opposite
-   * the course tangent, so behind the line is along +tangent. */
-  const start = view.gates[0];
-  const startYaw = start.heading;
-  const SPAWN_BACK = 7;
-  const startX = start.position.x + Math.sin(startYaw) * SPAWN_BACK;
-  const startZ = start.position.z + Math.cos(startYaw) * SPAWN_BACK;
-  /* Terrain here is not at y = 0. Spawning without its height puts the
-   * craft underground, looking up at the lit underside of the terrain. */
-  const startY = view.height(startX, startZ);
+  let view = await loadMap(shell, ui.settings.map, loading);
+  loading.start('frame');
 
-  /* The race: gate order, lap clock, best lap, gate frame contact. */
-  const race = new Race(view.gates);
+  /*
+   * Where the run starts, in world space. The map owns this now. It used to be
+   * three module scope consts computed from view.gates[0], which is exactly
+   * why a gateless map could not boot: the shell dereferenced a gate before
+   * the first frame and a freestyle map has none. They are `let` because a map
+   * swap changes all three.
+   */
+  let startX = 0;
+  let startZ = 0;
+  let startY = 0;
+  let startYaw = 0;
+  /*
+   * The height of the surface a craft standing at (x, z) rests on.
+   *
+   * Two calls, not one, and the reason is the city. `height(x, z, fromY)`
+   * only offers a platform that is within a step of the height the query is
+   * made from, which is what lets a quad fly UNDER the overbridge and land ON
+   * its deck. Asking from far below gives the bare ground; asking again from
+   * there picks up the footway, the kerb or the forecourt slab actually laid
+   * on it. Asking from far above would seat a craft parked in the street on
+   * the roof seven metres over it.
+   */
+  function groundAt(x, z) {
+    const bare = view.height(x, z, -1000);
+    return view.height(x, z, bare);
+  }
+
+  function adoptSpawn() {
+    startX = view.spawn.x;
+    startZ = view.spawn.z;
+    startYaw = view.spawn.yaw;
+    /* Terrain here is not at y = 0. Spawning without its height puts the
+     * craft underground, looking up at the lit underside of the terrain. */
+    startY = groundAt(startX, startZ);
+    qSpawn.setFromAxisAngle(AXIS_Y, startYaw);
+  }
+
+  /* The race: gate order, lap clock, best lap. On a freestyle map it is a
+   * real object with no gates in it and it scores nothing. */
+  let race = new Race(view.gates);
   const racePrev = new THREE.Vector3();
   let raceHasPrev = false;
 
@@ -197,12 +272,13 @@ async function boot() {
   let lastHitKind = 'none';
   let lastClosing = 0;
   let speedNow = 0;
+  let airtimeMs = 0;
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
   let notice = null; /* { text, untilMs } for one off shell messages */
   race.setRecordKey(recordKey());
-  ui.setBest(race.bestMs);
+  ui.setBest(race.bestMs, view.mode);
 
   /*
    * One way into the crash path, because there are now three things that can
@@ -245,7 +321,7 @@ async function boot() {
      * here is what made every respawn repeat the takeoff trap. */
     launched = true;
     landed = true;
-    groundY = view.height(startX, startZ);
+    groundY = groundAt(startX, startZ);
     /* Clear the judgement that produced the last crash. Leaving it behind is
      * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
      * the start line, which reads as a landing gate that does not work. */
@@ -282,7 +358,7 @@ async function boot() {
      * here is what made every respawn repeat the takeoff trap. */
     launched = true;
     landed = true;
-    groundY = view.height(startX, startZ);
+    groundY = groundAt(startX, startZ);
     /* Clear the judgement that produced the last crash. Leaving it behind is
      * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
      * the start line, which reads as a landing gate that does not work. */
@@ -303,7 +379,43 @@ async function boot() {
     statePrev = readState();
     stateCurr = statePrev;
   }
-  reset();
+
+  /*
+   * Swap the world.
+   *
+   * `mapReady` is what keeps the frame loop out of a half built world: the
+   * loop keeps running through the swap because stopping and restarting it
+   * would lose the accumulator, so it has to be told to skip a frame instead.
+   * Disposing BEFORE building is deliberate and it is the whole point of the
+   * split: the city's render targets and the field's must never both exist,
+   * or P5's 120 MB budget is measured against two worlds.
+   */
+  let mapReady = true;
+  let finishLoadingOnFrame = true;
+  async function swapMap(id) {
+    if (!mapReady || id === view.id) {
+      return;
+    }
+    mapReady = false;
+    mode = 'title';
+    ui.show('title');
+    const entry = mapById(id);
+    loading.run(planStages(['module', 'world', 'frame'], entry.buildMs));
+    /* Paint the loading screen BEFORE disposing a world and building another,
+     * because both of those block the main thread and a screen nobody
+     * composited is not a screen. */
+    await yieldToPaint();
+    view.dispose();
+    view = await loadMap(shell, id, loading);
+    loading.start('frame');
+    race = new Race(view.gates);
+    race.setRecordKey(recordKey());
+    ui.setBest(race.bestMs, view.mode);
+    adoptSpawn();
+    reset();
+    finishLoadingOnFrame = true;
+    mapReady = true;
+  }
 
   function applySettings(s) {
     camTilt = s.cameraAngle;
@@ -316,7 +428,10 @@ async function boot() {
       sim.setCellVoltage(runVoltage);
     }
     race.setRecordKey(recordKey());
-    ui.setBest(race.bestMs);
+    ui.setBest(race.bestMs, view.mode);
+    if (s.map !== view.id) {
+      swapMap(s.map);
+    }
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
@@ -431,7 +546,7 @@ async function boot() {
       configText = text;
       configName = file.name;
       race.setRecordKey(recordKey());
-      ui.setBest(race.bestMs);
+      ui.setBest(race.bestMs, view.mode);
       notice = { text: `Flying ${configName}`, untilMs: performance.now() + 2400 };
       reset();
     } else {
@@ -455,18 +570,42 @@ async function boot() {
   const orbitTarget = new THREE.Vector3();
   applySettings(ui.settings);
 
-  /* Fixed for the whole session: the start gate's placement in the world.
-   * Set once here because the crash check needs it before the render
-   * block runs. */
-  qSpawn.setFromAxisAngle(new THREE.Vector3(0, 1, 0), startYaw);
+  /* The spawn's placement in the world. Not fixed for the session any more:
+   * the two maps start in different places, so this is re-adopted on every
+   * map swap and the crash check reads whatever the current map says. It has
+   * to run before the first reset, because reset seats the craft on the
+   * ground at the spawn. */
+  adoptSpawn();
+  reset();
 
   let prevWall = performance.now();
   /* Harness camera override, six numbers: position then look at target. */
   let camOverride = null;
   const camLookAt = new THREE.Vector3();
 
+  /*
+   * The city's clock. Everything in the town that a quad can hit is a closed
+   * form of an integer fixed step count, so the town has to be handed one.
+   *
+   * During a run that count IS simTimeMs, the physics clock, which is what
+   * makes a collision with a level crossing boom reproducible from a recorded
+   * input stream at any frame rate. On the title screen the physics does not
+   * step at all, and a frozen town behind an attract camera reads as broken,
+   * so the title gets its own counter off the same 1 ms accumulator. Nothing
+   * collides on the title screen, so nothing is at stake there.
+   */
+  let titleAcc = 0;
+  let titleStepMs = 0;
+
   function frame(nowWall) {
     requestAnimationFrame(frame);
+    if (!mapReady) {
+      /* Mid swap. Swallow the elapsed time rather than handing it to the
+       * accumulator on the far side, or the first frame of the new map steps
+       * the physics by however long the world took to build. */
+      prevWall = nowWall;
+      return;
+    }
     const blockStart = performance.now();
     const dt = Math.min(nowWall - prevWall, 100);
     prevWall = nowWall;
@@ -560,14 +699,14 @@ async function boot() {
             const sx = groundPrev.x + (pProbe.x - groundPrev.x) * gt;
             const sy = groundPrev.y + (pProbe.y - groundPrev.y) * gt;
             const sz = groundPrev.z + (pProbe.z - groundPrev.z) * gt;
-            if (sy - CRAFT_R <= view.height(sx, sz)) {
+            if (sy - CRAFT_R <= view.height(sx, sz, sy)) {
               touched = true;
               touchX = sx;
               touchZ = sz;
               break;
             }
           }
-        } else if (pProbe.y - CRAFT_R <= view.height(pProbe.x, pProbe.z)) {
+        } else if (pProbe.y - CRAFT_R <= view.height(pProbe.x, pProbe.z, pProbe.y)) {
           touched = true;
         }
       }
@@ -584,8 +723,8 @@ async function boot() {
         /* Tilt from vertical, from the quaternion directly: rotating world
          * up by q gives a y component of 1 - 2(x^2 + z^2), and the angle to
          * vertical is its arc cosine. */
-        const qx = view.quad.quaternion.x;
-        const qz = view.quad.quaternion.z;
+        const qx = shell.quad.quaternion.x;
+        const qz = shell.quad.quaternion.z;
         let upY = 1 - 2 * (qx * qx + qz * qz);
         if (upY > 1) {
           upY = 1;
@@ -598,7 +737,7 @@ async function boot() {
         lastTiltDeg = tiltDeg;
         if (isLanding(descent, horiz, tiltDeg)) {
           landed = true;
-          groundY = view.height(touchX, touchZ);
+          groundY = view.height(touchX, touchZ, pProbe.y);
           /* The two states are made identical so the render interpolation
            * has nothing to interpolate: with the integrator frozen, an
            * accumulator left mid step would otherwise slide the craft
@@ -665,8 +804,8 @@ async function boot() {
        * buried in a field. Render only: the physics state is untouched. */
       pCurr.y = groundY + REST_HEIGHT;
     }
-    view.quad.position.copy(pCurr);
-    view.quad.quaternion.copy(qPrev);
+    shell.quad.position.copy(pCurr);
+    shell.quad.quaternion.copy(qPrev);
 
     /*
      * The solid world. Every gate frame member, panel and foot, every tree
@@ -724,9 +863,9 @@ async function boot() {
             audio.event('gate');
           }
         }
-        if (race.lap >= ui.settings.laps) {
+        if (!race.freestyle && race.lap >= ui.settings.laps) {
           mode = 'results';
-          ui.setBest(race.bestMs);
+          ui.setBest(race.bestMs, view.mode);
           ui.showResults(race.log, race.bestMs);
         }
       }
@@ -734,38 +873,42 @@ async function boot() {
       raceHasPrev = true;
     }
 
+    /* Airtime, for the freestyle display: the simulation clock since this
+     * run began, which is what a pilot flying a pack wants beside the pack
+     * bar. It reads on the sim clock for the same reason a lap does, so a
+     * frame hitch cannot spend a pilot's battery for them. */
+    airtimeMs = launched ? simTimeMs : 0;
+
     /* Prop discs spin at a visibly aliased fraction of true RPM, the way
      * they read on a real FPV feed. */
     for (let m = 0; m < 4; m += 1) {
-      view.discs[m].rotation.y += stateCurr[14 + m] * 1e-4;
+      shell.discs[m].rotation.y += stateCurr[14 + m] * 1e-4;
     }
 
     if (mode !== 'title') {
       /* The camera sits inside the airframe, so the quad must be hidden or
        * you fly looking at the inside of its own outline hull. */
-      view.quad.visible = false;
-      view.camera.position.copy(pCurr);
-      view.camera.quaternion.copy(qPrev).multiply(qTilt);
+      shell.quad.visible = false;
+      shell.camera.position.copy(pCurr);
+      shell.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
-      /* Attract view: the craft parked on the line, camera circling wide
-       * and high enough that the valley and the gate both read, and that
-       * near grass does not fill the frame. */
-      view.quad.visible = true;
+      /* Attract view: the craft parked, camera circling wide and high enough
+       * that the world and the subject both read, and that near ground cover
+       * does not fill the frame. The framing is the MAP's, because the two
+       * maps are looking at different things: the field frames a regulation
+       * 1.524 m gate whose aperture centre is 0.762 m up, and the city frames
+       * a street. */
+      shell.quad.visible = true;
       const ang = nowWall * 0.00011;
-      /* Framed for a REGULATION gate. 19 m out and 7 m up, aimed 2.5 m above
-       * the base, was framed for a 5 m tall gate with its aperture centre at
-       * 2.5 m. The opening is now 1.524 m square with its centre at 0.762 m,
-       * so the old attract view pointed at empty air above a gate too small
-       * to see. 9 m out, 2.4 m up, aimed at the aperture centre. */
-      const r = 9;
+      const at = view.attract;
       camPos.set(
-        start.position.x + Math.sin(ang) * r,
-        start.position.y + 2.4,
-        start.position.z + Math.cos(ang) * r,
+        at.x + Math.sin(ang) * at.radius,
+        at.y + at.eye,
+        at.z + Math.cos(ang) * at.radius,
       );
-      orbitTarget.set(start.position.x, start.position.y + 0.85, start.position.z);
-      view.camera.position.copy(camPos);
-      view.camera.lookAt(orbitTarget);
+      orbitTarget.set(at.x, at.y + at.aim, at.z);
+      shell.camera.position.copy(camPos);
+      shell.camera.lookAt(orbitTarget);
     }
 
     /* Harness camera. The cost ledger has to be published for three views,
@@ -775,23 +918,31 @@ async function boot() {
      * the shell writes camOverride, and the check is a property read on a
      * scalar, so it allocates nothing. */
     if (camOverride) {
-      view.camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
-      view.camera.up.set(0, 1, 0);
-      view.camera.lookAt(camLookAt.set(camOverride[3], camOverride[4], camOverride[5]));
+      shell.camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
+      shell.camera.up.set(0, 1, 0);
+      shell.camera.lookAt(camLookAt.set(camOverride[3], camOverride[4], camOverride[5]));
     }
 
-    view.updateShadowFocus(camOverride ? view.camera.position : pCurr);
+    if (mode === 'title') {
+      titleAcc += dt;
+      const ts = Math.floor(titleAcc);
+      titleAcc -= ts;
+      titleStepMs += ts > 100 ? 100 : ts;
+    }
+    view.updateAnim(mode === 'title' ? titleStepMs : simTimeMs);
+
+    view.updateShadowFocus(camOverride ? shell.camera.position : pCurr);
     /* Propwash strength for the grass: mean rotor speed against hover. */
     const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
     view.updateWind(nowWall * 0.001, pCurr, Math.min(1.3, meanRpm / 9000));
     /* info is accumulated across the whole frame (prepass, shadow map,
      * composer passes) and read back through __renderStats. */
-    view.renderer.info.reset();
+    shell.renderer.info.reset();
     const renderStart = performance.now();
-    post.render();
+    view.post.render();
     const renderMs = performance.now() - renderStart;
-    renderStats.calls = view.renderer.info.render.calls;
-    renderStats.triangles = view.renderer.info.render.triangles;
+    renderStats.calls = shell.renderer.info.render.calls;
+    renderStats.triangles = shell.renderer.info.render.triangles;
 
     /* Overlay. */
     const st = stateCurr;
@@ -810,14 +961,25 @@ async function boot() {
       worstAudioMs = audioMs;
     }
     if (mode === 'flight') {
+      /*
+       * Altitude is measured against the surface UNDER THE CRAFT, through the
+       * same query the collision test uses, not against the height of the
+       * ground at the spawn. The old readout was `st[3] + SPAWN_ALT`, which
+       * is the craft's height above wherever it started: identical on a flat
+       * corridor, and wrong by seven metres the moment you cross the
+       * overbridge. A pilot reading "3 m" over a roof they are about to land
+       * on needs it to mean three metres over that roof.
+       */
+      const p = shell.quad.position;
       ui.setOsd({
-        lapMs: race.currentLapMs(simNow),
+        mode: view.mode,
+        lapMs: race.freestyle ? airtimeMs : race.currentLapMs(simNow),
         gate: race.next + 1,
         gateCount: race.gates.length,
         volts: st[18],
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
-        altitude: st[3] + SPAWN_ALT,
+        altitude: p.y - view.height(p.x, p.z, p.y),
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
       });
@@ -837,7 +999,9 @@ async function boot() {
     } else if (crashed) {
       ui.setBanner('Crashed');
     } else if (!launched) {
-      ui.setBanner('Throttle up to take off\nThe green gate starts your lap');
+      ui.setBanner(race.freestyle
+        ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
+        : 'Throttle up to take off\nThe green gate starts your lap');
     } else if (lapFlash) {
       ui.setBanner(lapFlash);
     } else {
@@ -863,7 +1027,7 @@ async function boot() {
 
     /* P7. The whole frame callback is one synchronous block on the main
      * thread, and blockMs is its length. renderMs is the part of it inside
-     * post.render, split out because in a software rasterised container
+     * view.post.render, split out because in a software rasterised container
      * that part is rasterisation on the CPU and says nothing about a real
      * GPU, while blockMs minus renderMs is the shell's own work and is
      * hardware independent. Two scalars, written not allocated: P8 forbids
@@ -881,6 +1045,15 @@ async function boot() {
     if (firstFrameMs < 0) {
       firstFrameMs = performance.now() - BOOT_START;
     }
+    if (finishLoadingOnFrame) {
+      /* The last stage is the first frame, and this IS the first frame: the
+       * world is on screen behind the loading screen at the moment it goes.
+       * Marking it done anywhere earlier would be a bar that reaches the end
+       * before the thing it measures has happened. */
+      finishLoadingOnFrame = false;
+      loading.done('frame');
+      loading.finish();
+    }
   }
   let worstBlockMs = 0;
   let worstShellMs = 0;
@@ -892,7 +1065,7 @@ async function boot() {
   let frames = 0;
   /* Render statistics for the harness and the frame budget gate. */
   const renderStats = { calls: 0, triangles: 0 };
-  view.renderer.info.autoReset = false;
+  shell.renderer.info.autoReset = false;
   window.__renderStats = () => ({ ...renderStats });
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
@@ -929,11 +1102,14 @@ async function boot() {
     race.reset();
     race.next = (((raceIndex | 0) % n) + n) % n;
     view.setNextGate(race.nextSceneIndex());
-    racePrev.copy(view.quad.position);
+    racePrev.copy(shell.quad.position);
     raceHasPrev = true;
     return { raceNext: race.next, sceneIndex: race.nextSceneIndex(), previous: was };
   };
   window.__trackPoint = (u) => {
+    if (!view.curve) {
+      return null;
+    }
     const p = view.curve.getPointAt(u);
     const t = view.curve.getTangentAt(u);
     return { x: p.x, y: p.y, z: p.z, tx: t.x, tz: t.z, ground: view.height(p.x, p.z) };
@@ -956,7 +1132,7 @@ async function boot() {
     lastHitKind,
     lastClosingSpeed: lastClosing,
     grazeSpeedMax: GRAZE_SPEED_MAX,
-    groundClearance: view.quad.position.y - view.height(view.quad.position.x, view.quad.position.z),
+    groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y),
     thresholds: {
       descentMax: LAND_DESCENT_MAX,
       horizontalMax: LAND_HORIZONTAL_MAX,
@@ -988,15 +1164,42 @@ async function boot() {
    * demand, never per frame.
    */
   window.__nextGate = () => {
+    /*
+     * A FREESTYLE MAP HAS NO GATES, AND THAT IS AN ANSWER, NOT A FAILURE.
+     *
+     * scripts/shots.js records a harness fault and exits non zero when this
+     * handle does not return a gate, which is correct on the race field: a
+     * capture that claims anything about the target has to know which gate
+     * the race actually wants, and silently capturing without one is how
+     * every G3 measurement before it measured the wrong object. On a map with
+     * no gates the same rule makes every capture fail even when the frame is
+     * perfect.
+     *
+     * So the opt out is a property of the PAGE, not a flag on the command
+     * line. The handle says which map it is and that the map is gateless, and
+     * the sidecar accepts that and nothing else. A careless `--nogate` on the
+     * race field would have weakened the gate for the map that needs it; this
+     * cannot, because the race field can never report gateless true.
+     */
+    if (view.gates.length === 0) {
+      const el0 = shell.renderer.domElement;
+      return {
+        viewport: { w: el0.width, h: el0.height },
+        mapId: view.id,
+        mapMode: view.mode,
+        gateless: true,
+        gates: [],
+      };
+    }
     /* Device pixels, not CSS pixels. The PNG a capture writes is the drawing
      * buffer, which is clientWidth times the pixel ratio, so a handle that
      * promises PNG coordinates and returns CSS ones is silently half scale
      * on any HiDPI display. `el.width` IS the drawing buffer. */
-    const el = view.renderer.domElement;
+    const el = shell.renderer.domElement;
     const vw = el.width;
     const vh = el.height;
     const project = (v) => {
-      const p = v.clone().project(view.camera);
+      const p = v.clone().project(shell.camera);
       /* Behind the camera, project divides by a negative w, so x and y
        * reflect through the principal point and land somewhere plausible
        * inside the frame. Publishing that as a position is how a consumer
@@ -1020,12 +1223,12 @@ async function boot() {
       const centre = new THREE.Vector3(gt.position.x, gt.position.y + ap.centreY, gt.position.z);
       const top = new THREE.Vector3(centre.x, centre.y + ap.clearH * 0.5, centre.z);
       const bottom = new THREE.Vector3(centre.x, centre.y - ap.clearH * 0.5, centre.z);
-      const distance = view.camera.position.distanceTo(centre);
+      const distance = shell.camera.position.distanceTo(centre);
       /* Camera space depth, which is what a projected size scales with. The
        * Euclidean distance is not: at 55 degrees off axis the two differ
        * enough to overstate a projected size by 74 percent, and any check of
        * aperturePx against the geometry has to divide by this one. */
-      const depth = -centre.clone().applyMatrix4(view.camera.matrixWorldInverse).z;
+      const depth = -centre.clone().applyMatrix4(shell.camera.matrixWorldInverse).z;
       const sc = project(centre);
       const st = project(top);
       const sb = project(bottom);
@@ -1062,6 +1265,9 @@ async function boot() {
     }
     return {
       viewport: { w: vw, h: vh },
+      mapId: view.id,
+      mapMode: view.mode,
+      gateless: false,
       raceNext: race.next,
       nextSceneIndex: race.nextSceneIndex(),
       lap: race.lap,
@@ -1076,7 +1282,7 @@ async function boot() {
    * the same measurement. Both are published so a reviewer can choose.
    */
   window.__quadScreen = () => {
-    const el = view.renderer.domElement;
+    const el = shell.renderer.domElement;
     const vw = el.width;
     const vh = el.height;
     /* With the camera inside the airframe the 0.25 m span sits at zero
@@ -1086,18 +1292,18 @@ async function boot() {
      * corners are behind the near plane in the same state, so the projected
      * box brackets a reflection rather than a box. Both are refused here
      * instead of being published and explained. */
-    const dist = view.camera.position.distanceTo(view.quad.position);
-    if (dist < view.camera.near) {
+    const dist = shell.camera.position.distanceTo(shell.quad.position);
+    if (dist < shell.camera.near) {
       return {
         viewport: { w: vw, h: vh },
-        visible: view.quad.visible,
+        visible: shell.quad.visible,
         distance: dist,
         boxPx: null,
         span250mmPx: null,
-        refused: `camera is ${dist.toFixed(3)} m from the craft, inside the ${view.camera.near} m near plane, so nothing projects`,
+        refused: `camera is ${dist.toFixed(3)} m from the craft, inside the ${shell.camera.near} m near plane, so nothing projects`,
       };
     }
-    const box = new THREE.Box3().setFromObject(view.quad);
+    const box = new THREE.Box3().setFromObject(shell.quad);
     const size = new THREE.Vector3();
     box.getSize(size);
     let minX = Infinity;
@@ -1110,7 +1316,7 @@ async function boot() {
         i & 1 ? box.max.x : box.min.x,
         i & 2 ? box.max.y : box.min.y,
         i & 4 ? box.max.z : box.min.z,
-      ).project(view.camera);
+      ).project(shell.camera);
       const px = (corner.x * 0.5 + 0.5) * vw;
       const py = (1 - (corner.y * 0.5 + 0.5)) * vh;
       minX = Math.min(minX, px);
@@ -1118,13 +1324,13 @@ async function boot() {
       minY = Math.min(minY, py);
       maxY = Math.max(maxY, py);
     }
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(view.camera.quaternion);
-    const a = view.quad.position.clone().addScaledVector(right, -0.125).project(view.camera);
-    const b = view.quad.position.clone().addScaledVector(right, 0.125).project(view.camera);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(shell.camera.quaternion);
+    const a = shell.quad.position.clone().addScaledVector(right, -0.125).project(shell.camera);
+    const b = shell.quad.position.clone().addScaledVector(right, 0.125).project(shell.camera);
     const span = Math.abs((b.x - a.x) * 0.5 * vw);
     return {
       viewport: { w: vw, h: vh },
-      visible: view.quad.visible,
+      visible: shell.quad.visible,
       distance: dist,
       /* An axis aligned bounding box over the whole group INCLUDING the
        * spinning prop discs, so it breathes with prop angle: sampled between
@@ -1137,7 +1343,72 @@ async function boot() {
       span250mmPx: Number.isFinite(span) ? span : null,
     };
   };
-  window.__budget = (name) => measureBudget(view, post, { view: name });
+  /* Which world is loaded, what it cost, and what is solid in it. Harness
+   * only; nothing in the shell reads these. */
+  window.__map = () => ({
+    id: view.id,
+    name: view.name,
+    mode: view.mode,
+    gates: view.gates.length,
+    spawn: { x: startX, y: startY, z: startZ, yaw: startYaw },
+    ready: mapReady,
+    references: view.references ?? null,
+    loading: window.__loading ? window.__loading.timings : null,
+    ...(view.stats ? view.stats() : {}),
+  });
+  window.__maps = () => MAPS.map((m) => ({ id: m.id, name: m.name, mode: m.mode }));
+  /* The active map's scene graph, for measurement. tests/lib/checks.js walks
+   * it to assert that reference objects measure what this project claims they
+   * measure, which is the only way a scale error gets caught by a check
+   * rather than by a reviewer's eye. Harness only. */
+  window.__mapScene = () => view.scene;
+  /* The city's own world object, for measurements that need its platform and
+   * collider lists. Null on a map that has no town. Harness only. */
+  window.__cityWorld = () => view.world ?? null;
+  /* Set the active map's distance cull radius, for the sweep that chooses it.
+   * Null restores the map's own value. Harness only. */
+  window.__cullRadius = (r) => (view.setCullRadius ? view.setCullRadius(r) : null);
+  /* The active map's contact surface, exactly as the ground sweep queries it.
+   * `fromY` is what makes a deck climbable from above and transparent from
+   * below, so a capture can assert that rather than describe it. */
+  window.__surface = (x, z, fromY) => view.height(x, z, fromY);
+  /*
+   * Set the sticks directly, bypassing the keyboard ramp.
+   *
+   * Holding W is how a player takes off and it is NOT how a capture can. W
+   * ramps the throttle while held, and this container renders a city frame in
+   * about half a second, so five seconds of held key is ten frames of ramp and
+   * the craft never reaches the 0.25 takeoff threshold. A capture that cannot
+   * take off cannot assert anything about flight, which is how the 07-inflight
+   * capture in round 10's evidence turned out to be a picture of the start
+   * line. Harness only; nothing in the shell reads it.
+   */
+  window.__stick = (roll, pitch, yaw, throttle) => {
+    input.kb.roll = roll;
+    input.kb.pitch = pitch;
+    input.kb.yaw = yaw;
+    input.kb.throttle = throttle;
+    return { roll, pitch, yaw, throttle };
+  };
+  /* Is anything solid on the segment from p to q? Same call the frame loop
+   * makes, so a capture can assert what a quad would hit. */
+  window.__hit = (px, py, pz, qx, qy, qz) => {
+    const k = view.colliders.hit(px, py, pz, qx, qy, qz);
+    return { kind: k < 0 ? null : view.colliders.kindName(k), index: view.colliders.hitIndex };
+  };
+  /* Shadow pass on or off, so the ledger can attribute draw calls between the
+   * colour pass and the shadow pass rather than guessing at the split.
+   * Harness only. */
+  window.__shadows = (on) => {
+    shell.renderer.shadowMap.enabled = !!on;
+    shell.renderer.shadowMap.needsUpdate = true;
+    return shell.renderer.shadowMap.enabled;
+  };
+  window.__setMap = (id) => {
+    ui.settings.map = id;
+    return swapMap(id);
+  };
+  window.__budget = (name) => measureBudget(shell, view, { view: name });
   requestAnimationFrame(frame);
 }
 

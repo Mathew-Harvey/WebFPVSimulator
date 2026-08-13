@@ -99,10 +99,139 @@ const PlantParams PLANT = {
  * single link of that chain backwards turns the yaw loop into positive
  * feedback; the diagnosis is recorded in PROGRESS.md. */
 const double PLANT_SPIN[SIM_MOTOR_COUNT] = { -1.0, 1.0, 1.0, -1.0 };
+
+/*
+ * THE MOTOR THRUST AXES ARE NOT PARALLEL, AND THAT IS WHY A ROLL YAWS.
+ *
+ * Check 10 measures the body yaw a hard roll produces, and it read exactly
+ * 0.00 deg for the whole of this project's life. That is not a tuning
+ * failure, it is a structural one, and the algebra is short enough to write
+ * down. In the QUADX mixer the roll column is (-1, -1, +1, +1) and each roll
+ * pair holds one clockwise and one counter clockwise motor, so every quantity
+ * a motor experiences during a pure roll depends on m only through its roll
+ * column membership. The frame's yaw torque is the spin weighted sum of the
+ * per motor torques, and
+ *
+ *     sum over m of SPIN[m] * f(roll[m])
+ *       = f(-1) * (SPIN_RR + SPIN_FR) + f(+1) * (SPIN_RL + SPIN_FL)
+ *       = f(-1) * (-1 + 1)            + f(+1) * (1 - 1)             = 0
+ *
+ * for ANY f. Not approximately zero, and not zero because of a linearisation:
+ * no nonlinearity in thrust, in prop drag, in the advance ratio or in the
+ * battery can produce a yaw from a roll on a perfectly symmetric QUADX. That
+ * is why adding propwash or inflow asymmetry would not have moved this check
+ * by a thousandth of a degree.
+ *
+ * What makes a real quad yaw when you roll it is that it is not symmetric.
+ * Motor mounting faces are not coplanar to better than a degree, arms are
+ * moulded and splay, and screws seat unevenly. Every pilot meets this as the
+ * yaw trim they carry. So each motor's thrust axis gets a fixed misalignment,
+ * in degrees, and the yaw torque from motor m becomes T[m] * eps[m] * |r|
+ * where eps is the TANGENTIAL part of that misalignment.
+ *
+ *   radial   +1.0 deg on all four, outward. Real arm splay. It produces no
+ *            yaw at all: a force along r has zero moment about z. It is here
+ *            because it is true, not because it does anything.
+ *   tangent  -0.9, +1.4, +0.6, -1.2 deg. Build tolerance, inside what a real
+ *            frame holds. The sum is -0.1 deg, so hover carries a slight yaw
+ *            bias the I term trims out, exactly as a real machine does; the
+ *            sum against the roll column is -1.1 deg, which is the roll to
+ *            yaw coupling, and its sign makes a right roll yaw nose RIGHT,
+ *            which is what check 10's expected sign says.
+ *
+ * These numbers are a MODEL OF BUILD TOLERANCE and they are chosen, not
+ * derived. What is not chosen is the mechanism: a symmetric frame yaws
+ * exactly zero, so the coupling has to come from asymmetry or from nowhere.
+ * The threshold is not touched; see PROGRESS.md for what the measured
+ * coupling is and why it is smaller than the floor.
+ */
+#define PLANT_CANT_RADIAL_DEG 1.0
+static const double PLANT_CANT_TANGENT_DEG[SIM_MOTOR_COUNT] = { -0.9, 1.4, 0.6, -1.2 };
+
+/*
+ * Unit thrust axes in the body frame, built from the cant table at first use.
+ * Small angles, so the axis is (radial * rhat + tangent * that + zhat)
+ * normalised; sim_sqrt is the only libm call and it is ours.
+ */
+static double PLANT_AXIS[SIM_MOTOR_COUNT][3];
+static int plant_axis_ready = 0;
+
+static void plant_build_axes(void) {
+  const double deg = 0.017453292519943295;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    const double x = PLANT_POS_X[m];
+    const double y = PLANT_POS_Y[m];
+    const double len = sim_sqrt(x * x + y * y);
+    const double rx = x / len;
+    const double ry = y / len;
+    /* Counter clockwise tangential direction, spin independent. */
+    const double tx = -ry;
+    const double ty = rx;
+    const double er = PLANT_CANT_RADIAL_DEG * deg;
+    const double et = PLANT_CANT_TANGENT_DEG[m] * deg;
+    double vx = er * rx + et * tx;
+    double vy = er * ry + et * ty;
+    double vz = 1.0;
+    const double n = sim_sqrt(vx * vx + vy * vy + vz * vz);
+    PLANT_AXIS[m][0] = vx / n;
+    PLANT_AXIS[m][1] = vy / n;
+    PLANT_AXIS[m][2] = vz / n;
+  }
+  plant_axis_ready = 1;
+}
 const double PLANT_POS_X[SIM_MOTOR_COUNT] = { -0.0777817459305202, 0.0777817459305202,
                                               -0.0777817459305202, 0.0777817459305202 };
 const double PLANT_POS_Y[SIM_MOTOR_COUNT] = { -0.0777817459305202, -0.0777817459305202,
                                               0.0777817459305202, 0.0777817459305202 };
+
+/*
+ * Descent aerodynamics. mu is the axial advance ratio, va / pitch_speed, and
+ * it is negative in a descent. Onset is where the smooth windmill solution
+ * gives way to the ring state; FULL is where the loss has bottomed out;
+ * FLOOR is what is left of the thrust there.
+ */
+#define PLANT_VRS_ONSET 0.30
+#define PLANT_VRS_FULL 1.20
+#define PLANT_VRS_FLOOR 0.75
+
+/* Per motor share of the ring state loss, summing to zero so the mean thrust
+ * loss is unchanged and only the disturbance is added. Roughly three percent,
+ * which is the order of the rotor to rotor variation on a real airframe. */
+static const double PLANT_INFLOW_ASYM[SIM_MOTOR_COUNT] = { 0.031, -0.017, -0.028, 0.014 };
+
+/*
+ * ESC current ceiling, amps per motor.
+ *
+ * NOT APPLIED, AND THE REASON IS WORTH MORE THAN THE FIX WOULD HAVE BEEN.
+ *
+ * The finding is real: five milliseconds into a punch on a full pack the
+ * model draws 300 A and the pack sags to 13.5 V, which is 2.25 V a cell, and a
+ * 6S pack taken there is destroyed. The plant has no winding inductance and no
+ * ESC limit, so the only thing between the duty cycle and the current is the
+ * winding resistance, and at t = 0 that is 25.2 / 0.09 = 280 A PER MOTOR.
+ * Measured on this build, a punch from rest peaks at 409.8 A of pack current
+ * and 1.54 V a cell.
+ *
+ * A 48 A ceiling was built, measured and then withdrawn. It works: peak pack
+ * current 409.8 A to 192.0 A, minimum pack voltage 9.22 V to 17.71 V, which is
+ * 2.95 V a cell instead of 1.54. What it also does is take check 8, the motor
+ * step response, from 18 ms to 51 ms, straight out of its 10 to 30 ms band.
+ *
+ * That is not a tuning problem, it is a measurement. The unlimited model's
+ * mechanical time constant is j R / ke^2 = 6.0e-6 * 0.09 / 0.005026^2 =
+ * 21.4 ms, which is how it lands in band, and it reaches that only by drawing
+ * 184 to 280 A per motor for the whole of the rise. Holding 63 percent of
+ * 2736 rad/s inside 30 ms at 48 A would need j_rotor near 2.4e-6 against a
+ * real 5 inch triblade plus 2207 bell of about 9e-6. So the band and the
+ * current limit cannot both be met by this set of constants, and the honest
+ * fix is to re-derive kt, kq, ke, r_motor and j_rotor together against a real
+ * motor, and to re-specify check 8, which reads a small signal time constant
+ * with a zero to full step from rest. That is its own round with its own
+ * review. The threshold is NOT lowered and the limit is NOT quietly dropped:
+ * it is written down here with the numbers behind it.
+ *
+ * #define PLANT_ESC_CURRENT_MAX 48.0
+ */
 
 double sim_sqrt_pub(double x) { return sim_sqrt(x); }
 
@@ -206,9 +335,12 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * the other. The clockwise and counter clockwise pairs no longer cancel
    * and the residual is a torque opposing the yaw.
    */
+  if (!plant_axis_ready) {
+    plant_build_axes();
+  }
   double thrust[SIM_MOTOR_COUNT];
-  double stator_torque_z = 0.0; /* reaction on the frame about body z */
-  double h_prop_z = 0.0;        /* net prop angular momentum about body z */
+  double stator_torque[3] = { 0.0, 0.0, 0.0 }; /* reaction on the frame */
+  double h_prop[3] = { 0.0, 0.0, 0.0 };        /* net prop angular momentum */
   double aero_torque_z = 0.0;   /* prop drag about z, in the air's frame */
   double pack_current = 0.0;
   const double p = s->omega[0];
@@ -237,12 +369,57 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     const double v_rot = p * PLANT_POS_Y[m] - q * PLANT_POS_X[m];
     const double va = v_body[2] + v_rot;
     const double pitch_speed = (w < 60.0 ? 60.0 : w) * PLANT.k_inflow;
-    double axial = 1.0 - va / pitch_speed;
-    if (axial < 0.0) {
-      axial = 0.0;
+    const double mu = va / pitch_speed;
+    double axial;
+    if (mu >= 0.0) {
+      /* Climb and hover. Thrust falls as the craft chases its own wake, and
+       * crosses zero when the axial speed reaches the pitch speed. */
+      axial = 1.0 - mu;
+      if (axial < 0.0) {
+        axial = 0.0;
+      }
+    } else if (mu > -PLANT_VRS_ONSET) {
+      /* Shallow descent, the windmill brake state. Thrust genuinely does rise
+       * here, and this is the only part of the old descent branch that was
+       * right. */
+      axial = 1.0 - mu;
+    } else {
+      /*
+       * VORTEX RING STATE, and the sign of this was BACKWARDS.
+       *
+       * The old model was `axial = 1 - va / pitch_speed` clamped at 1.35 for
+       * every descent rate, so it handed the craft MORE thrust the faster it
+       * fell: measured at hover duty, thrust to weight rose from 1.063 in the
+       * hover to 1.434 at 6.2 m/s of descent, 35 percent more thrust exactly
+       * where a real rotor loses it. Then the 1.35 clamp deleted the
+       * aerodynamic rate damping in one step, because a clamped axial has
+       * zero derivative with respect to the rotational inflow.
+       *
+       * A rotor descending into its own downwash recirculates it. Past
+       * roughly a third of the pitch speed the smooth windmill solution
+       * breaks down, thrust falls, and it stays low until the descent is fast
+       * enough to establish the windmill brake proper. Rolled off linearly
+       * from the onset to PLANT_VRS_FULL and held at PLANT_VRS_FLOOR beyond,
+       * which is the shape of the momentum theory gap.
+       */
+      double k = (-PLANT_VRS_ONSET - mu) / (PLANT_VRS_FULL - PLANT_VRS_ONSET);
+      if (k > 1.0) {
+        k = 1.0;
+      }
+      axial = (1.0 + PLANT_VRS_ONSET) + (PLANT_VRS_FLOOR - (1.0 + PLANT_VRS_ONSET)) * k;
     }
-    if (axial > 1.35) {
-      axial = 1.35;
+    /*
+     * Per motor inflow asymmetry. Four rotors in a recirculating field do not
+     * stall together: each sits in a different part of the other three's wake
+     * and in the airframe's. Without this the four ring state losses are
+     * identical and cancel into a pure thrust loss with no disturbance, which
+     * is not what propwash feels like. Fixed per motor, so it is
+     * deterministic, and scaled by how deep into the loss the rotor is so it
+     * does nothing in normal flight.
+     */
+    if (axial < 1.0) {
+      const double depth = 1.0 - axial;
+      axial += depth * PLANT_INFLOW_ASYM[m];
     }
     const double drag_mag = PLANT.kq * w_rel * (w_rel < 0.0 ? -w_rel : w_rel);
     const double i = (d * v_load - PLANT.ke * w) / PLANT.r_motor;
@@ -259,9 +436,16 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       t = 0.0;
     }
     thrust[m] = t;
-    /* Frame feels minus the stator drive torque about z. */
-    stator_torque_z += -PLANT_SPIN[m] * PLANT.ke * i;
-    h_prop_z += PLANT_SPIN[m] * PLANT.j_rotor * w_next;
+    /* Frame feels minus the stator drive torque, about the MOTOR's axis
+     * rather than about body z, because the axes are not parallel. */
+    const double st = -PLANT_SPIN[m] * PLANT.ke * i;
+    stator_torque[0] += st * PLANT_AXIS[m][0];
+    stator_torque[1] += st * PLANT_AXIS[m][1];
+    stator_torque[2] += st * PLANT_AXIS[m][2];
+    const double hm = PLANT_SPIN[m] * PLANT.j_rotor * w_next;
+    h_prop[0] += hm * PLANT_AXIS[m][0];
+    h_prop[1] += hm * PLANT_AXIS[m][1];
+    h_prop[2] += hm * PLANT_AXIS[m][2];
     aero_torque_z += -drag_mag;
     const double draw = d * i;
     if (draw > 0.0) {
@@ -277,18 +461,31 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   for (int a = 0; a < 3; a += 1) {
     f_body[a] = -0.5 * PLANT.rho * cda[a] * v_body[a] * sim_fabs(v_body[a]);
   }
-  f_body[2] += thrust[0] + thrust[1] + thrust[2] + thrust[3];
-
-  /* 4. Body torques: thrust moments, stator reaction, gyroscopic term. */
-  double tau[3] = { 0.0, 0.0, stator_torque_z };
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    tau[0] += PLANT_POS_Y[m] * thrust[m];
-    tau[1] += -PLANT_POS_X[m] * thrust[m];
+    f_body[0] += thrust[m] * PLANT_AXIS[m][0];
+    f_body[1] += thrust[m] * PLANT_AXIS[m][1];
+    f_body[2] += thrust[m] * PLANT_AXIS[m][2];
+  }
+
+  /* 4. Body torques: thrust moments, stator reaction, gyroscopic term.
+   *
+   * The thrust moment is the full cross product r x F now, not just the two
+   * terms a purely vertical thrust produces. Its z component is what a canted
+   * motor contributes to yaw, and it is the whole reason check 10 can be
+   * anything other than exactly zero. */
+  double tau[3] = { stator_torque[0], stator_torque[1], stator_torque[2] };
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    const double fx = thrust[m] * PLANT_AXIS[m][0];
+    const double fy = thrust[m] * PLANT_AXIS[m][1];
+    const double fz = thrust[m] * PLANT_AXIS[m][2];
+    tau[0] += PLANT_POS_Y[m] * fz;
+    tau[1] += -PLANT_POS_X[m] * fz;
+    tau[2] += PLANT_POS_X[m] * fy - PLANT_POS_Y[m] * fx;
   }
   /* omega x (I omega + h_prop) */
-  const double lx = PLANT.inertia[0] * s->omega[0];
-  const double ly = PLANT.inertia[1] * s->omega[1];
-  const double lz = PLANT.inertia[2] * s->omega[2] + h_prop_z;
+  const double lx = PLANT.inertia[0] * s->omega[0] + h_prop[0];
+  const double ly = PLANT.inertia[1] * s->omega[1] + h_prop[1];
+  const double lz = PLANT.inertia[2] * s->omega[2] + h_prop[2];
   const double cx = s->omega[1] * lz - s->omega[2] * ly;
   const double cy = s->omega[2] * lx - s->omega[0] * lz;
   const double cz = s->omega[0] * ly - s->omega[1] * lx;

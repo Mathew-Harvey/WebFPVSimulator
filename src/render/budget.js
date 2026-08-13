@@ -224,8 +224,16 @@ function traceFrame(renderer, renderFrame) {
   return { passes, targets };
 }
 
-export function measureBudget(view, post, extra) {
-  const renderer = view.renderer;
+/*
+ * `shell` is the session (renderer, camera) and `view` is the active map
+ * (scene, post chain). They used to be one object; they are two because the
+ * two maps share a renderer and own separate scenes and post chains, and a
+ * ledger that read the renderer off the map would report the wrong map's
+ * frame the moment one was swapped out.
+ */
+export function measureBudget(shell, view, extra) {
+  const renderer = shell.renderer;
+  const post = view.post;
   const canvasW = renderer.domElement.width;
   const canvasH = renderer.domElement.height;
 
@@ -375,8 +383,8 @@ export function measureBudget(view, post, extra) {
   return {
     view: extra && extra.view ? extra.view : 'unnamed',
     canvas: { w: canvasW, h: canvasH, dpr: renderer.getPixelRatio() },
-    p1_calls: view.renderer.info.render.calls,
-    p2_triangles: view.renderer.info.render.triangles,
+    p1_calls: renderer.info.render.calls,
+    p2_triangles: renderer.info.render.triangles,
     p3_fullres_passes: fullResPasses,
     p4_fullres_taps: fullResTaps,
     p4_fullres_loops: fullResLoops,

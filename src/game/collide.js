@@ -52,22 +52,39 @@
  */
 
 /*
- * The craft's collision radius, in metres.
+ * The craft's size, in metres, and the ONE place any of it is written down.
  *
- * A 250 mm class quad is named for its motor to motor diagonal, so a motor
- * sits 0.125 m from the centre. A 5 inch prop adds half of five inches of
- * blade beyond that, 0.0635 m, so the disc a tumbling quad sweeps reaches
- * 0.1885 m. That is the number, and it is a sphere because a quad arrives
- * at a tree in whatever attitude it likes.
+ * A quad is named for its motor to motor diagonal, so a motor sits half of
+ * that from the centre, and a 5 inch prop adds half of five inches of blade
+ * beyond it. The disc a tumbling quad sweeps is the sum, and it is a sphere
+ * because a quad arrives at a tree in whatever attitude it likes.
  *
- * src/game/race.js used 0.25 for the same job, which is the whole diagonal
- * rather than a radius, and it used it to shrink the scoring aperture. Two
- * different wrong numbers for one quantity is why this is exported.
+ * THE OLD NUMBER WAS WRONG BY 8.6 PERCENT AND A SCALE CHECK IS WHAT CAUGHT IT.
+ * CRAFT_R was typed as 0.1885, derived in its own comment from a 250 mm class
+ * quad with a motor 0.125 m out. This airframe is not 250 mm: plant.c puts
+ * the motors at arm_x = arm_y = 0.110 / sqrt(2), which is 0.110 m from the
+ * centre and a 220 mm machine, and src/render/craft.js draws them there. So
+ * the collision sphere was 0.1885 m around a craft that sweeps 0.1735 m, and
+ * every gate in the course was scored against a quad 8.6 percent bigger than
+ * the one on screen. It is derived here now, from the same two numbers the
+ * model and the renderer use, so the three cannot disagree again.
+ * tests/lib/checks.js check 15 asserts it against the drawn geometry.
  */
-export const CRAFT_R = 0.1885;
+export const CRAFT_ARM = 0.110;      /* motor centre to airframe centre */
+export const CRAFT_PROP_R = 0.0635;  /* half of five inches */
+export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
 
-/* Names, in the order kind indices are assigned. Reported by counts(). */
-const KINDS = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole'];
+/*
+ * Names, in the order kind indices are assigned. Reported by counts().
+ *
+ * `wall` and `boom` are the city's, and they are boxes rather than capsules.
+ * A city is authored as axis aligned rectangles because a walker only ever
+ * meets their sides, and turning 2731 of them into capsules would either
+ * inscribe them, letting a quad through the corners of every building, or
+ * circumscribe them, putting an invisible cylinder around every wall. So the
+ * box is a second primitive, and it earns its place: see addBox.
+ */
+const KINDS = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole', 'wall', 'boom'];
 
 /*
  * The broadphase cell, in metres. The world is about 1700 m across and the
@@ -105,6 +122,9 @@ export class Colliders {
     this.bz = [];
     this.r = [];
     this.kind = [];
+    /* 0 for a capsule, 1 for a box. A box stores its minimum corner in a and
+     * its maximum corner in b, with r = 0. */
+    this.box = [];
     this.built = false;
     this.grid = null;
     this.stamp = null;
@@ -146,6 +166,7 @@ export class Colliders {
     this.bz.push(bz);
     this.r.push(r);
     this.kind.push(k);
+    this.box.push(0);
     if (r > this.maxR) {
       this.maxR = r;
     }
@@ -160,6 +181,57 @@ export class Colliders {
   /* A sphere: a canopy blob, a rock. */
   addSphere(kindName, x, y, z, r) {
     return this.add(kindName, x, y, z, x, y, z, r);
+  }
+
+  /*
+   * One axis aligned box, given as two opposite corners. Returns its index,
+   * because the level crossing needs to raise and lower two of them.
+   *
+   * A BOX CONTRIBUTES NOTHING TO maxR, and that is load bearing rather than
+   * incidental. hit() pads every broadphase query by CRAFT_R + maxR so that a
+   * fat capsule whose centre is outside the scanned cells is still found. A
+   * box is registered in the grid over its OWN footprint, every cell of it,
+   * so a query padded by CRAFT_R alone already finds any box within reach.
+   * Giving a box a radius equal to its half diagonal would be the natural
+   * looking thing to do and would push maxR from the race field's 16 m cliff
+   * tier to whatever the city's longest wall is, which would make every
+   * frame's query scan a neighbourhood tens of metres across for nothing. So
+   * a box carries r = 0 and the padding stays honest.
+   */
+  addBox(kindName, x0, y0, z0, x1, y1, z1) {
+    const k = KINDS.indexOf(kindName);
+    if (k < 0) {
+      throw new Error(`collide: unknown kind ${kindName}`);
+    }
+    const i = this.ax.length;
+    this.ax.push(Math.min(x0, x1));
+    this.ay.push(Math.min(y0, y1));
+    this.az.push(Math.min(z0, z1));
+    this.bx.push(Math.max(x0, x1));
+    this.by.push(Math.max(y0, y1));
+    this.bz.push(Math.max(z0, z1));
+    this.r.push(0);
+    this.kind.push(k);
+    this.box.push(1);
+    return i;
+  }
+
+  /*
+   * Move one box's top after build(). The broadphase grid is indexed on x and
+   * z only, so changing a y extent cannot invalidate it, which is exactly why
+   * the level crossing's booms can be a static collider that raises and
+   * lowers rather than a second dynamic collision path. Anything that changed
+   * a footprint would have to rebuild, and nothing does.
+   */
+  setBoxTop(index, top) {
+    if (!this.built) {
+      throw new Error('collide: setBoxTop before build');
+    }
+    if (!this.fbox[index]) {
+      throw new Error(`collide: collider ${index} is not a box`);
+    }
+    this.fby[index] = top;
+    return this;
   }
 
   /*
@@ -183,9 +255,15 @@ export class Colliders {
     this.fbz = f(this.bz);
     this.fr = f(this.r);
     this.fkind = new Int32Array(n);
+    this.fbox = new Uint8Array(n);
     for (let i = 0; i < n; i += 1) {
       this.fkind[i] = this.kind[i];
+      this.fbox[i] = this.box[i];
     }
+    /* Breakpoint scratch for the exact segment to box distance. Six axis
+     * crossings plus the two segment ends, allocated once because hit() runs
+     * every frame and P8 forbids an allocation there. */
+    this.tBreaks = new Float64Array(8);
 
     /* Two passes so each cell's Int32Array is exactly the right length: a
      * per cell push array would be thousands of small allocations and would
@@ -238,7 +316,128 @@ export class Colliders {
     this.by = null;
     this.bz = null;
     this.r = null;
+    this.box = null;
     return this;
+  }
+
+  /*
+   * Exact squared distance from the travel segment p + t*d, t in [0, 1], to
+   * box i, and the parameter t where it is attained. Writes t into
+   * this.boxT and returns the squared distance.
+   *
+   * NOT SAMPLED, for the same reason the capsule test is not. Per axis the
+   * distance outside the slab is
+   *
+   *     g(t) = max( lo - p(t), 0, p(t) - hi )
+   *
+   * which is piecewise linear with at most two breakpoints, where the segment
+   * enters and leaves that axis's slab. The squared distance is the sum of
+   * three such squares, so it is piecewise quadratic with at most six interior
+   * breakpoints, and on each piece it is a plain quadratic whose minimum is
+   * either an endpoint or the vertex. Collect the breakpoints, sort them, and
+   * minimise each piece: seven pieces at the very worst, closed form on each.
+   *
+   * The alternative that suggests itself, testing the segment against the box
+   * grown by CRAFT_R, is WRONG at a corner: the Minkowski sum of a box and a
+   * sphere has rounded edges, so the grown box overstates the reach by up to
+   * (sqrt(3) - 1) * CRAFT_R, which is 0.138 m on a 0.1885 m craft. That is a
+   * crash reported for a corner the pilot can see they missed. It is used
+   * here only as a rejection test, where overstating is safe.
+   */
+  boxDistanceSq(i, px, py, pz, dx, dy, dz) {
+    const t = this.tBreaks;
+    let n = 0;
+    t[n] = 0; n += 1;
+    t[n] = 1; n += 1;
+    const lo0 = this.fax[i];
+    const lo1 = this.fay[i];
+    const lo2 = this.faz[i];
+    const hi0 = this.fbx[i];
+    const hi1 = this.fby[i];
+    const hi2 = this.fbz[i];
+    for (let axis = 0; axis < 3; axis += 1) {
+      const d = axis === 0 ? dx : axis === 1 ? dy : dz;
+      if (d === 0) {
+        continue;
+      }
+      const p = axis === 0 ? px : axis === 1 ? py : pz;
+      const lo = axis === 0 ? lo0 : axis === 1 ? lo1 : lo2;
+      const hi = axis === 0 ? hi0 : axis === 1 ? hi1 : hi2;
+      const ta = (lo - p) / d;
+      if (ta > 0 && ta < 1) {
+        t[n] = ta; n += 1;
+      }
+      const tb = (hi - p) / d;
+      if (tb > 0 && tb < 1) {
+        t[n] = tb; n += 1;
+      }
+    }
+    /* Insertion sort over at most eight values, in place, no allocation. */
+    for (let a = 1; a < n; a += 1) {
+      const v = t[a];
+      let b = a - 1;
+      while (b >= 0 && t[b] > v) {
+        t[b + 1] = t[b];
+        b -= 1;
+      }
+      t[b + 1] = v;
+    }
+
+    let best = Infinity;
+    let bestT = 0;
+    for (let piece = 0; piece + 1 < n; piece += 1) {
+      const t0 = t[piece];
+      const t1 = t[piece + 1];
+      if (t1 <= t0) {
+        continue;
+      }
+      /* Which side of each slab this piece is on is constant across it, so
+       * one probe at the midpoint settles all three branches. */
+      const tm = (t0 + t1) * 0.5;
+      let qa = 0;
+      let qb = 0;
+      let qc = 0;
+      for (let axis = 0; axis < 3; axis += 1) {
+        const p = axis === 0 ? px : axis === 1 ? py : pz;
+        const d = axis === 0 ? dx : axis === 1 ? dy : dz;
+        const lo = axis === 0 ? lo0 : axis === 1 ? lo1 : lo2;
+        const hi = axis === 0 ? hi0 : axis === 1 ? hi1 : hi2;
+        const m = p + d * tm;
+        let A = 0;
+        let B = 0;
+        if (m < lo) {
+          A = lo - p;
+          B = -d;
+        } else if (m > hi) {
+          A = p - hi;
+          B = d;
+        } else {
+          continue;
+        }
+        qa += B * B;
+        qb += 2 * A * B;
+        qc += A * A;
+      }
+      /* Minimise qa*t^2 + qb*t + qc over [t0, t1]. */
+      let tc;
+      if (qa <= 0) {
+        tc = t0;
+      } else {
+        tc = -qb / (2 * qa);
+        if (tc < t0) {
+          tc = t0;
+        } else if (tc > t1) {
+          tc = t1;
+        }
+      }
+      const v = qa * tc * tc + qb * tc + qc;
+      if (v < best) {
+        best = v;
+        bestT = tc;
+      }
+    }
+    this.boxT = bestT;
+    return best;
   }
 
   /*
@@ -285,6 +484,56 @@ export class Colliders {
           }
           this.stamp[i] = id;
           candidates += 1;
+
+          if (this.fbox[i]) {
+            /* Cheap rejection first: the segment against the box grown by
+             * CRAFT_R. The grown box contains the true Minkowski sum, so a
+             * miss here is a real miss and the exact test never runs for the
+             * thousands of walls a city query sweeps past. */
+            const gx0 = this.fax[i] - CRAFT_R;
+            const gy0 = this.fay[i] - CRAFT_R;
+            const gz0 = this.faz[i] - CRAFT_R;
+            const gx1 = this.fbx[i] + CRAFT_R;
+            const gy1 = this.fby[i] + CRAFT_R;
+            const gz1 = this.fbz[i] + CRAFT_R;
+            if (
+              (px < gx0 && qx < gx0) || (px > gx1 && qx > gx1) ||
+              (py < gy0 && qy < gy0) || (py > gy1 && qy > gy1) ||
+              (pz < gz0 && qz < gz0) || (pz > gz1 && qz > gz1)
+            ) {
+              continue;
+            }
+            const dsq = this.boxDistanceSq(i, px, py, pz, d1x, d1y, d1z);
+            if (dsq > CRAFT_R * CRAFT_R) {
+              continue;
+            }
+            this.lastCandidates = candidates;
+            this.queries += 1;
+            this.candidateTotal += candidates;
+            this.hitIndex = i;
+            this.hitKind = this.fkind[i];
+            /* The contact normal is the vector from the box's surface to the
+             * closest point on the travel path, which is the per axis
+             * overhang at the closest parameter. A contact exactly on a face
+             * has zero length and counts as head on, so it can never soften
+             * a real crash. */
+            const bt = this.boxT;
+            const cx = px + d1x * bt;
+            const cy = py + d1y * bt;
+            const cz = pz + d1z * bt;
+            const nx = cx < this.fax[i] ? cx - this.fax[i] : cx > this.fbx[i] ? cx - this.fbx[i] : 0;
+            const ny = cy < this.fay[i] ? cy - this.fay[i] : cy > this.fby[i] ? cy - this.fby[i] : 0;
+            const nz = cz < this.faz[i] ? cz - this.faz[i] : cz > this.fbz[i] ? cz - this.fbz[i] : 0;
+            const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+            const tl = Math.sqrt(a);
+            if (nl > 1e-9 && tl > 1e-9) {
+              const dot = (d1x * nx + d1y * ny + d1z * nz) / (nl * tl);
+              this.hitNormalDot = dot < 0 ? -dot : dot;
+            } else {
+              this.hitNormalDot = 1;
+            }
+            return this.hitKind;
+          }
 
           /* Capsule axis, as d2 = b - a, and r = p - a. */
           const d2x = this.fbx[i] - this.fax[i];
@@ -368,9 +617,17 @@ export class Colliders {
         byKind[KINDS[this.fkind[i]]] += 1;
       }
     }
+    let boxes = 0;
+    if (this.fbox) {
+      for (let i = 0; i < this.fbox.length; i += 1) {
+        boxes += this.fbox[i];
+      }
+    }
     return {
       count: this.count ?? 0,
       byKind,
+      boxes,
+      capsules: (this.count ?? 0) - boxes,
       cellSize: CELL,
       cells: this.grid ? this.grid.size : 0,
       maxRadius: this.maxR,

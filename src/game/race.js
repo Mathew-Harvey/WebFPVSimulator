@@ -75,6 +75,25 @@ export class Race {
    * order, and each heading is flipped so local +z is the direction of
    * travel. */
   constructor(gates) {
+    /*
+     * A map with no gates is a freestyle map, and it is not an error.
+     *
+     * This constructor used to dereference gates[0] unconditionally, which is
+     * why the shell could not boot a gateless map: `new Race([])` threw before
+     * the first frame. Every method below already reads this.gates, so making
+     * an empty course a real state costs one flag and a handful of guards, and
+     * it means the shell has ONE run object rather than a race and a null
+     * object that have to be kept in step. Nothing in a freestyle run is
+     * scored: there is no next gate, no lap, no clock and no record.
+     */
+    this.freestyle = gates.length === 0;
+    if (this.freestyle) {
+      this.gates = [];
+      this.key = DEFAULT_KEY;
+      this.bestMs = null;
+      this.reset();
+      return;
+    }
     const order = [0];
     for (let i = gates.length - 1; i >= 1; i -= 1) {
       order.push(i);
@@ -112,6 +131,9 @@ export class Race {
   /* Best laps are only comparable on the same config and pack voltage;
    * the shell keys the record accordingly and swaps it here. */
   setRecordKey(key) {
+    if (this.freestyle) {
+      return;
+    }
     this.key = key;
     this.bestMs = this.loadBest();
   }
@@ -144,6 +166,13 @@ export class Race {
    * touch and by a crash: neither should cost the laps already flown.
    */
   voidLap(reason, wallMs) {
+    if (this.freestyle) {
+      /* Nothing to void, but a crash still says so. The shell calls this from
+       * one place for both maps on purpose: two crash paths is how the two
+       * drift apart. */
+      this.flash = { text: reason, untilMs: wallMs + 1800 };
+      return;
+    }
     if (this.lapStartMs != null) {
       this.log.push({ n: this.lapNumber(), ms: null, reason });
       this.voided += 1;
@@ -263,6 +292,9 @@ export class Race {
    * { passed: gateIndex|null, hitFrame: bool }; a frame hit voids the
    * running lap, it does not crash the craft. */
   update(prev, curr, simMs, wallMs) {
+    if (this.freestyle) {
+      return { passed: null, hitFrame: false, opening: -1 };
+    }
     const prevSimMs = this.prevSimMs ?? simMs;
     this.prevSimMs = simMs;
     const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
@@ -305,7 +337,7 @@ export class Race {
 
   /* Scene index of the gate the race wants next, for highlighting. */
   nextSceneIndex() {
-    return this.gates[this.next].idx;
+    return this.freestyle ? -1 : this.gates[this.next].idx;
   }
 
   flashText(wallMs) {
@@ -317,6 +349,9 @@ export class Race {
 
   /* Running lap time on the sim clock, or null before the first gate. */
   currentLapMs(simMs) {
+    if (this.freestyle) {
+      return null;
+    }
     return this.lapStartMs != null ? simMs - this.lapStartMs : null;
   }
 }

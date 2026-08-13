@@ -36,6 +36,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { MAPS } from '../maps/registry.js';
+
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
 export const CAMERA_ANGLES = [15, 20, 25, 30, 35, 40];
@@ -43,6 +45,12 @@ export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
 export const LAP_COUNTS = [1, 3, 5];
 
 const DEFAULTS = {
+  /* Which world. 'field' is the MultiGP circuit and 'city' is the freestyle
+   * town. It is a string so loadSettings' typeof gate accepts it, and an
+   * unknown value falls back to the field in src/maps/registry.js rather than
+   * throwing, because a stale localStorage entry must not be able to stop the
+   * page booting. */
+  map: 'field',
   cameraAngle: 30,
   packVoltage: 4.2,
   laps: 3,
@@ -133,12 +141,16 @@ export class Ui {
 
     /* Flight overlay: the on screen display a pilot actually reads. */
     this.osd = el('div', 'osd');
+    /* The clock is a lap on the race field and an airtime in freestyle, and
+     * an unlabelled number that means two different things is how a pilot
+     * learns to distrust an instrument. */
+    this.osdClockLabel = el('div', 'osd-label', 'Lap');
     this.osdTimer = el('div', 'osd-timer', '--.--');
     this.osdGate = el('div', 'osd-gate', '');
     this.osdBest = el('div', 'osd-best', '');
     this.osdLast = el('div', 'osd-best', '');
     const top = el('div', 'osd-top');
-    top.append(this.osdTimer, this.osdGate, this.osdLast, this.osdBest);
+    top.append(this.osdClockLabel, this.osdTimer, this.osdGate, this.osdLast, this.osdBest);
     this.osdPack = el('div', 'osd-value', '');
     this.osdPackBar = el('div', 'bar-fill');
     const packBar = el('div', 'bar');
@@ -167,7 +179,8 @@ export class Ui {
 
     const title = el('div', 'screen screen-title');
     const brand = el('div', 'brand');
-    brand.append(el('h1', null, 'WEBFPV'), el('div', 'brand-sub', 'Valley Circuit time trial'));
+    this.brandSub = el('div', 'brand-sub', '');
+    brand.append(el('h1', null, 'WEBFPV'), this.brandSub);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     this.titleMenu = el('div', 'menu');
@@ -241,8 +254,22 @@ export class Ui {
   items() {
     const s = this.settings;
     if (this.screen === 'title') {
+      const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       return [
         { label: 'Fly', action: 'fly' },
+        {
+          label: 'Map',
+          value: m.name,
+          note: m.note,
+          /* Changing this loads a world, which takes seconds and shows the
+           * loading screen. It is on the title rather than buried in settings
+           * because it is the biggest choice the player makes. */
+          adjust: (d) => {
+            const i = MAPS.findIndex((x) => x.id === s.map);
+            const n = MAPS.length;
+            s.map = MAPS[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
+          },
+        },
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
       ];
@@ -397,7 +424,25 @@ export class Ui {
     return this.screen !== 'flight';
   }
 
-  setBest(ms) {
+  /*
+   * The track record, and which world we are in. One call because they change
+   * together: a freestyle map has no record to show and the title's subtitle
+   * has to stop claiming a time trial.
+   */
+  setBest(ms, mode) {
+    if (mode) {
+      this.osdMode = mode;
+    }
+    const freestyle = this.osdMode === 'freestyle';
+    const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
+    if (this.brandSub) {
+      this.brandSub.textContent = freestyle ? `${m.name}, free flight` : `${m.name}, time trial`;
+    }
+    if (freestyle) {
+      this.titleBest.textContent = 'No gates, no clock, no lap';
+      this.osdBest.textContent = '';
+      return;
+    }
     this.titleBest.textContent = ms != null ? `Track record ${formatTime(ms)}` : 'No lap recorded yet';
     this.osdBest.textContent = ms != null ? `Record ${formatTime(ms)}` : 'No record yet';
   }
@@ -453,18 +498,41 @@ export class Ui {
    * Flight overlay values. Prose and units a pilot reads: seconds, volts,
    * metres, kilometres per hour. No identifiers, no raw state.
    */
-  setOsd({ lapMs, lastLapMs, gate, gateCount, volts, packFrac, altitude, speedKph, throttle }) {
+  /*
+   * The flight display.
+   *
+   * `mode` is 'race' or 'freestyle', and it is not a cosmetic switch: a
+   * freestyle map has no gates, no lap and no record, so a HUD that showed
+   * "Gate 1 of 0" and a lap clock counting from a line that does not exist
+   * would be reporting three things that are not true. What it shows instead
+   * is what a freestyle pilot actually reads.
+   *
+   *   AIRTIME, not a lap. Freestyle is flown in packs, and how long you have
+   *   been up is the number that decides when to come home. It is paired with
+   *   the pack bar, which is the other half of the same decision.
+   *   ALTITUDE ABOVE THE GROUND UNDER THE CRAFT. This one is not optional in
+   *   a city. Cross one street and the surface under you moves seven metres,
+   *   from the road to the overbridge deck; a height measured from the spawn,
+   *   which is what this used to show, is a number that means nothing over a
+   *   roof. The shell measures it against the surface query the collision
+   *   test uses, so the readout and the thing that kills you agree.
+   *   Speed, pack and throttle are the same in both, because they are
+   *   properties of the machine and not of the game around it.
+   */
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, volts, packFrac, altitude, speedKph, throttle }) {
+    const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
     const running = lapMs != null && Number.isFinite(lapMs);
+    this.osdClockLabel.textContent = freestyle ? 'Airtime' : 'Lap';
     this.osdTimer.textContent = running ? formatTime(lapMs) : '0.00';
     this.osdTimer.className = running ? 'osd-timer' : 'osd-timer waiting';
-    this.osdGate.textContent = `Gate ${gate} of ${gateCount}`;
+    this.osdGate.textContent = freestyle ? '' : `Gate ${gate} of ${gateCount}`;
     this.osdPack.textContent = `${volts.toFixed(1)} volts`;
-    this.osdLast.textContent = lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
+    this.osdLast.textContent = !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
     this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
-    this.osdAlt.textContent = `${altitude.toFixed(0)} m above the valley`;
+    this.osdAlt.textContent = `${altitude.toFixed(1)} m above the ground`;
     this.osdThrBar.style.width = `${Math.max(0, Math.min(1, throttle)) * 100}%`;
   }
 

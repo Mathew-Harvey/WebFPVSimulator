@@ -81,6 +81,22 @@ set iterm_relax_cutoff = 15
 set iterm_windup = 85
 set iterm_limit = 400
 set pidsum_limit = 500
+
+# 400 is 40 percent of the mixer's yaw range, and it is why this tune's yaw
+# feels loose next to its own roll and pitch. Betaflight's anti windup is
+# driven only by getMotorMixRange against iterm_windup, so a yaw axis clipped
+# at 40 percent can never on its own reach the 85 percent windup point: the
+# I term keeps integrating for the whole time the axis is saturated. Measured
+# here on a full stick yaw step, yaw I pins at its 400 cap for 225 ms, the
+# rate overshoots 10.1 percent and the nose bounces back 75 deg/s. Raise the
+# limit past about 480 and the discontinuity disappears (overshoot 8.4
+# percent, bounce 60, I never caps), which is exactly the report in
+# betaflight/betaflight issue 13486, open since March 2024 and unfixed.
+#
+# NOT CHANGED HERE ON PURPOSE. This file's whole job is to be what a freshly
+# flashed quad flies, including the parts of that which are wrong. Round 23
+# in PROGRESS.md has the sweep. karate-race.diff sets 1000 and lands on the
+# good side of it.
 set pidsum_limit_yaw = 400
 
 set throttle_boost = 5

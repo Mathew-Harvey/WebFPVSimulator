@@ -4062,6 +4062,7 @@ failure in the measurement rig. The rule that would have caught all of them
 is cheap: any constant that is not copied from a source file gets computed in
 a scratch script whose output goes in the commit, and no comment claims a
 number was measured unless the measurement is in the record.
+
 ## Round 22: the track builder's output, flown, on a pitch that is mown for it
 
 Round 18 produced a track document and nothing that could read one. This round
@@ -4221,3 +4222,117 @@ check 1 build-clean on `emcc not found` and check 10 yaw-coupling at
 world-scale and check 16 map-isolation both pass**, which is what says the
 built in race field is the world it was: same reference gate opening, same
 module count, same budget after a city round trip.
+
+## Round 23: the default tune's yaw, and an upstream bug we reproduce faithfully
+
+The owner flew both tunes and reported that the Betaflight default "has way
+too much yaw" next to Karate, and that this "must be an error". It is an
+error. It is not ours.
+
+### What the complaint is not
+
+Every measurement of yaw authority says the opposite of "too much". Both
+tunes on the same menu rates, 70 centre and 670 max, full yaw stick:
+
+| | default | karate |
+|---|---|---|
+| rise to 63 percent | 71 ms | 57 ms |
+| overshoot of commanded rate | 10.1 percent | 8.4 percent |
+| bounce back after release | 75 deg/s | 60 deg/s |
+| heading achieved for 335 deg commanded | 329 deg | 331 deg |
+
+Karate yaws harder and faster on every one. Uncommanded yaw is not it either:
+rolls, flips, banked turns and weaves at 0.5 and 0.75 throttle all drift under
+0.6 deg over three seconds, identical between the tunes to the tenth of a
+degree. And the rates are not it: rates.js appends the same rateprofile to
+whichever tune loads, and Betaflight's own default rateprofile really is
+7/67/0 on all three axes including yaw, from pgResetFn_controlRateProfiles.
+
+### What the complaint is
+
+Yaw is the default tune's loosest axis by an order of magnitude, and it is the
+only tune where the axes disagree. Same step, all three axes:
+
+| stick | axis | default overshoot | karate overshoot |
+|---|---|---|---|
+| 0.3 | roll | 3.5 percent | 11.9 percent |
+| 0.3 | pitch | 1.0 percent | 12.3 percent |
+| 0.3 | yaw | **11.3 percent** | 12.1 percent |
+| 1.0 | roll | 1.1 percent | 9.1 percent |
+| 1.0 | pitch | 1.5 percent | 10.1 percent |
+| 1.0 | yaw | **10.1 percent** | 8.4 percent |
+
+On Karate all three axes sit near 10 and nothing stands out. On the default,
+roll and pitch are pinned at 1 to 3 percent and yaw is at 10, so yaw is the
+one axis that does not go where it is put. That is what reads in the goggles
+as too much yaw: not more yaw, less control of it.
+
+### The mechanism, and it is a known open Betaflight bug
+
+Sweeping pidsum_limit_yaw on the default tune, everything else untouched:
+
+| pidsum_limit_yaw | overshoot | peak abs I | ms with I at its cap | bounce |
+|---|---|---|---|---|
+| 400 (default) | 10.07 percent | 400 | 225 | 75 deg/s |
+| 450 | 9.75 percent | 400 | 177 | 72 deg/s |
+| 480 | 9.00 percent | 374 | 0 | 62 deg/s |
+| 500 | 8.37 percent | 349 | 0 | 60 deg/s |
+| 600, 800, 1000 | 8.37 percent | 349 | 0 | 60 deg/s |
+
+There is a discontinuity between 450 and 480 and then nothing changes at all,
+because past that point the limit stops binding. That is precisely
+betaflight/betaflight issue 13486, filed 29 March 2024 and still open:
+Betaflight's anti windup is driven only by getMotorMixRange against
+itermWindupPointPercent, so an axis clipped below 50 percent of the mixer
+range can never on its own reach the 85 percent windup point. The I term
+integrates for the entire time the axis is saturated. Default yaw is clipped
+at 40 percent, which is on the wrong side. Karate's 1000 is on the right side,
+and its I peaks at 349 and never caps.
+
+The rest is Betaflight doing what it says it does. d_yaw is 0 by default
+because, in Betaflight's own words, yaw D is mostly a noise amplifier on an
+axis with high rotational inertia and little authority. Our airframe agrees:
+Izz 0.0068 against Ixx 0.0035, and sustained yaw torque 0.464 N m against
+roughly 2.8 N m of roll torque at full thrust differential. Sweeping d_yaw
+from 0 to 250 moves the full stick overshoot from 10.07 to 9.92 percent, which
+is nothing; at small stick, where the axis never clips, adding D makes it
+worse (11.2 percent at 0, 14.8 at 30, 20.7 at 80) because D slows the rise and
+the I term then integrates a larger error for longer. The same sweep on roll
+behaves the way a damping term is supposed to: 22.7 percent at d_roll 0, 3.3
+at 20, 1.0 at 40. Yaw is I dominated and roll is not, which is the whole
+difference between the two axes and is why real quads have loose yaw.
+
+### What was changed
+
+Nothing in the physics, nothing in the tunes. betaflight-default.diff exists
+to be what a freshly flashed quad flies, and that includes flying an upstream
+bug; patching it would make the file a lie and would remove the reference
+point Karate is measured against. Both presets got a comment at their
+pidsum_limit_yaw line recording the measurement and pointing at issue 13486,
+so the next person to wonder about yaw finds the answer where they are
+looking rather than here.
+
+The pilot's lever, if the default's yaw is not wanted, is the yaw rate item
+in Settings, which is where a real pilot would reach too. Most race pilots run
+yaw below roll and pitch for exactly this reason.
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 the same disputed red, unchanged from
+round 21 because no code that runs changed. Determinism hash **ce9826fc2ce5**
+across Node, headless Chrome and four render rates. npm run lint:presets 2 of
+2 with the new comments in place.
+
+### Rigs
+
+tests/ is the harness's. The scratch rigs behind the tables above were
+yawtrace.js (term by term through a stop), yawheading.js (commanded against
+achieved heading), yawcouple.js (uncommanded yaw over four manoeuvres at two
+throttles), axiscompare.js (the three axis table), dyaw.js and dyaw2.js and
+dyaw3.js (the d_yaw sweeps and the term traces that explained them) and
+bf13486.js (the pidsum_limit_yaw sweep). Two of them were wrong first: the
+first axis comparison read state[10..12] for the body rates when the ABI puts
+them at [11..13], which reported every axis as 100 percent tracking error, and
+the first yaw report divided by a sign it had not taken, which reported every
+stop as instant. Both were caught by the numbers being absurd rather than by
+the rig, which is the same lesson round 21 ended on.

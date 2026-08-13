@@ -1864,14 +1864,14 @@ export function buildScene(canvas) {
   const quad = new THREE.Group();
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(0.088, 0.034, 0.155),
-    celMaterial({ color: 0x272d38, rim: 0.42, spec: 0.35, specWidth: 0.02 }),
+    celMaterial({ color: 0x272d38, rim: 0.28, spec: 0.35, specWidth: 0.02 }),
   );
   body.castShadow = true;
   outlineHull(body, 1.13);
   quad.add(body);
   const canopy = new THREE.Mesh(
     new THREE.ConeGeometry(0.05, 0.08, 4),
-    celMaterial({ color: 0xe8503a, rim: 0.4, spec: 0.4 }),
+    celMaterial({ color: 0xe8503a, rim: 0.28, spec: 0.4 }),
   );
   canopy.rotation.set(-Math.PI / 2, 0, Math.PI / 4);
   canopy.position.set(0, 0.03, -0.048);
@@ -1885,8 +1885,8 @@ export function buildScene(canvas) {
     [-0.0778, 0.0778],
     [-0.0778, -0.0778],
   ];
-  const armMat = celMaterial({ color: 0x333b47, rim: 0.35 });
-  const bellMat = celMaterial({ color: 0xa6aeb8, rim: 0.4, spec: 0.5 });
+  const armMat = celMaterial({ color: 0x333b47, rim: 0.26 });
+  const bellMat = celMaterial({ color: 0xa6aeb8, rim: 0.28, spec: 0.5 });
   const discs = [];
   for (let m = 0; m < 4; m += 1) {
     const [mx, mz] = motorXZ[m];

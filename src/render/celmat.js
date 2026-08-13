@@ -114,10 +114,29 @@ const RIM_CHUNK = /* glsl */ `
   vec3 celV = normalize(vViewPosition);
   float celRim = 1.0 - max(dot(celN, celV), 0.0);
   celRim = smoothstep(uRimStart, 1.0, celRim);
-  // quantise the rim too, otherwise it reads as a soft 3D gloss and
-  // fights everything else on screen
-  celRim = step(0.5, celRim);
-  gl_FragColor.rgb += uRimColor * celRim * uRimStrength;
+  /*
+   * Falloff, not a step. This used to be step(0.5, celRim), on the theory
+   * that a quantised rim matches the quantised diffuse ramp. It does not:
+   * the diffuse ramp is quantised across a whole surface, where the bands
+   * read as light. A quantised rim is only ever a few pixels wide, so it
+   * lands as a flat slab of constant colour hugging the silhouette, with
+   * the ink outline on one side and the surface on the other. Measured on
+   * a canopy edge that was a five pixel plateau at 0.296 between
+   * neighbours at 0.139 and 0.121. Cubing the smoothstep keeps the rim
+   * tight against the edge while giving it a gradient, so it reads as
+   * light wrapping round the form.
+   */
+  celRim = celRim * celRim * celRim;
+  /*
+   * Couple the rim to the surface under it. A fixed pale colour added at
+   * a fixed strength is the same absolute lift on a near black craft body
+   * as on a white gate panel, which makes the rim the brightest thing in
+   * frame on every dark asset. Scaling by the surface's own luminance
+   * keeps the rim subordinate to what it is rimming.
+   */
+  float celRimLum = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+  float celRimFit = mix(0.30, 1.0, clamp(celRimLum * 1.7, 0.0, 1.0));
+  gl_FragColor.rgb += uRimColor * (celRim * uRimStrength * celRimFit);
 
   float celSpec = max(dot(reflect(-celV, celN), normalize(uSpecDir)), 0.0);
   celSpec = step(0.985 - uSpecWidth, celSpec);

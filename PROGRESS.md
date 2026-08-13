@@ -1555,3 +1555,49 @@ mixer cancels exactly. Also: **a dropped Betaflight diff is 96 percent silently
 discarded**, twenty five keys mapped and everything else returning OK, which
 contradicts this project's own premise. All in the handover with file and line.
 The art director and scale reviews had not reported when this was written.
+
+## Round 13: the rim halo, and what a quantised rim does to a thin object
+
+The art director review ranked a pale blue band bracketing every ink line
+as the single loudest amateur signal in the build, and traced it to
+`celmat.js` RIM_CHUNK: `celRim = step(0.5, celRim)` followed by a fixed
+`uRimColor 0x9ec8ff` added at strength 0.3 to 0.42.
+
+Measuring it turned out worse than the review said. Camera 1.2 m from
+gate 0's near upright, walking across the tube at y=556, before and after
+with nothing else changed:
+
+    screen x        794    796..802 (tube face)    803
+    before         0.050   0.209 flat over 7 px   0.112
+    after          0.037   0.140 flat over 7 px   0.076
+
+The upright is 7 px wide at that range. `step(0.5, celRim)` was true
+across its whole visible width, so the rim was not edging the tube, it was
+flooding it: every PVC tube in the course rendered as one flat pale value
+at 0.209 instead of its own material at 0.140, 49 percent overbright, with
+no shading information left in it at all. The mesh panel immediately to
+the left reads 0.223 in both frames, which is the control: the change only
+reaches fragments near a silhouette.
+
+Two changes, both in RIM_CHUNK:
+
+1. `celRim = celRim * celRim * celRim` instead of `step(0.5, celRim)`. The
+   original comment argued that a quantised rim matches the quantised
+   diffuse ramp. It does not. The diffuse ramp is quantised across a whole
+   surface, where the bands read as light. A rim is a few pixels wide, so
+   quantising it produces a flat slab of constant colour with the ink
+   outline on one side and the surface on the other, and on anything
+   thinner than twice the band there is no surface left.
+2. Scale the rim by the luminance of the fragment under it,
+   `mix(0.30, 1.0, clamp(lum * 1.7, 0, 1))`. A fixed pale colour at a
+   fixed strength is the same absolute lift on a near black craft body as
+   on a white gate panel, which is exactly why the craft read worst.
+
+Craft rim strengths also came down, since they were the highest in the
+scene and on the darkest materials: body 0.42 to 0.28, canopy 0.4 to 0.28,
+arms 0.35 to 0.26, motor bells 0.4 to 0.28.
+
+`npm run verify` 12 of 13, yaw-coupling still the known red (0.00 deg
+drift, needs the 1 to 2 degree motor thrust axis tilt in plant.c, not a
+lowered threshold). Console errors 0, warnings 0 across every capture in
+this round.

@@ -16,11 +16,21 @@
  * carries a rateprofile, and this module owns the rate profile for every
  * tune including a diff the pilot drops on the page.
  *
- * ACTUAL rates only, because they are the only Betaflight curve whose
- * numbers mean what they say: centre sensitivity is the deg/s you get at
- * half stick deflection, max rate is the deg/s you get at full stick, and
- * expo bends the line between them without moving either end. The other four
- * curve types reach the same shapes through numbers that need a calculator.
+ * ACTUAL rates only, because it is the Betaflight curve whose ends mean what
+ * they say. From fc/rc.c applyActualRates:
+ *
+ *     centreSensitivity = rc_rate * 10
+ *     stickMovement     = max(0, srate * 10 - centreSensitivity)
+ *     angleRate         = stick * centreSensitivity + stickMovement * expof
+ *
+ * At full stick expof is 1, so the rate is exactly srate * 10: MAX RATE IS
+ * WHAT IT SAYS. Centre sensitivity is NOT the rate at half stick, which is
+ * what an earlier version of this comment and of the menu note both claimed.
+ * It is the SLOPE of the curve at centre, the coefficient on the linear term,
+ * so near the middle the rate is about stick times it and further out the
+ * expo term takes over. With the Betaflight defaults, 70 and 670 and no
+ * expo, the real curve is 13 deg/s at a tenth of stick, 55 at a quarter,
+ * 185 at half, 390 at three quarters and 670 at the stop.
  *
  * Betaflight stores rc_rate and srate in TENS of deg/s in a uint8, so every
  * value offered here is a multiple of 10 and at most 2550, and expo is

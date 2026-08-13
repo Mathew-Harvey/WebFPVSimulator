@@ -323,7 +323,7 @@ export class Ui {
         {
           label: 'Rate, roll and pitch',
           value: `${s.rateMax} deg/s at full stick`,
-          note: 'ACTUAL rates. How fast the quad spins with the stick against the stop. Betaflight ships 670.',
+          note: 'ACTUAL rates. How fast the quad spins with the stick against the stop, exactly. Betaflight ships 670.',
           adjust: (d) => { s.rateMax = cycle(RATE_MAX_CHOICES, s.rateMax, d); },
         },
         {
@@ -334,8 +334,8 @@ export class Ui {
         },
         {
           label: 'Centre sensitivity',
-          value: `${s.rateCentre} deg/s at half stick`,
-          note: 'How lively the middle of the stick is, where you fly most of a lap. Betaflight ships 70.',
+          value: `${s.rateCentre} deg/s per stick at centre`,
+          note: 'How lively the middle of the stick is, where you fly most of a lap. It is the slope of the curve at centre, not the rate at half stick: 70 with a 670 max gives 185 deg/s at half. Betaflight ships 70.',
           adjust: (d) => { s.rateCentre = cycle(RATE_CENTRE_CHOICES, s.rateCentre, d); },
         },
         {

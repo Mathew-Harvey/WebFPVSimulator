@@ -3964,3 +3964,101 @@ Chrome and four render rates. Console clean.
   rather than derived.
 - WebHID, unchanged from round 19, and now readable: the stick rate is on
   screen.
+
+## Round 21: the audit the owner asked for, and five constants that were wrong
+
+The owner: "prop wash is way too much, check all your maths also, it does
+feel good, but you've made a lot of errors". Both halves are correct. The
+propwash gain was set by outcome rather than derived and it was four to five
+times too large, and re-deriving every constant this session added found four
+more errors, one of which is in text the pilot reads.
+
+### The errors, each re-derived rather than re-asserted
+
+**1. The propwash gain.** `k_propwash` 0.60 means 60 percent RMS thrust
+modulation per rotor at full recirculation depth. The band passed signal's
+tail reaches 4.0 sigma, so single rotor excursions hit 240 percent. Published
+measurements of rotors in the vortex ring state put thrust unsteadiness
+nearer 5 to 20 percent. It is 0.12 now, and the applied wash is bounded at
+3 sigma so the tail cannot slam a rotor. Round 20 recorded this constant as
+"the one number here chosen by outcome rather than derived", which was honest
+about the method and wrong about the value.
+
+**2. `PLANT_WASH_RMS` was 0.173 and carried a comment saying "measured off the
+filter pair, not guessed".** It had been estimated, not measured. Run over
+four million samples of the actual filter pair it is **0.16730**. The comment
+was the worse error of the two: a number being wrong is ordinary, a comment
+asserting provenance it does not have is how a wrong number survives review.
+
+**3 and 4. Both filter coefficients were wrong.** `1 - exp(-2 pi f dt)` at the
+1 kHz step is 0.171796 at 30 Hz and 0.018673 at 3 Hz. The file said 0.171876
+and 0.018665: digits transposed in the first, a rounding error in the second.
+
+**5. `k_rotor_drag` was 0.4386 against a derivation of 0.43842.** 0.04 percent,
+which changes nothing measurable, but the derivation is written out three
+lines above the constant and the two should agree.
+
+**6. The wash onset contradicted its own comment.** The comment said
+recirculation "begins around a quarter" of the induced velocity; the code was
+`d = 1 - |rw - 1|`, which ramps from rw = 0, so the gentlest sink already
+carried wash. It is zero below 0.25, peaks at 1.0 and is gone by 2.0 now, and
+a 0.9 m/s descent that used to shake reads exactly zero.
+
+**7. "Centre sensitivity is the deg/s you get at half stick" is wrong, and it
+was wrong in the menu note as well as in the code.** From fc/rc.c
+applyActualRates, `angleRate = stick * rc_rate * 10 + stickMovement * expof`.
+At full stick expof is 1 and the rate is exactly `srate * 10`, so max rate
+does mean what it says. Centre sensitivity is the SLOPE at centre, the
+coefficient on the linear term. With the Betaflight defaults, 70 and 670 and
+no expo, the curve is 13 deg/s at a tenth of stick, 55 at a quarter, **185 at
+half**, 390 at three quarters, 670 at the stop. Both the module comment and
+the text in Settings said 70. Corrected in both.
+
+### What was re-derived and found correct
+
+- The Glauert closed form `y^2 = 2 / (sqrt(x^4 + 4) + x^2)`, checked against
+  an iterative solve of `v_i = v_h^2 / sqrt(v_perp^2 + v_i^2)` over x in
+  0 to 40: max error 4.5e-5. The cancellation argument also holds, the
+  algebraically equal `(sqrt(x^4+4) - x^2)/2` returns 8.63e-5 at x = 1e4
+  against a true 1e-4, which is 14 percent out.
+- Disc area, hover induced velocity 7.1656 m/s, the rotor drag hover
+  calibration, the xorshift32 output mapping to -1..1, the omega cross r
+  in plane velocity and the yaw moment of the rotor drag force.
+- `getDigitalIdleOffset` against Betaflight's own: 550 gives 0.055.
+- The stick path's wall to sim mapping, already proven by the round 19
+  replica returning 0.0 deviation from a perfect stick path.
+
+### Propwash after the correction
+
+Same probe, same manoeuvres, tracking error being gyro against what the
+sticks asked for:
+
+| descent | ratio to induced velocity | before | after |
+|---|---|---|---|
+| -0.9 m/s | 0.13 | 4.5 deg/s | **0.0** (below onset) |
+| -3.7 m/s | 0.62 | 20.7 deg/s | **3.4 deg/s** |
+| -11.6 m/s | 2.50 | 2.2 deg/s | 0.5 deg/s |
+
+The shape is unchanged and still the textbook one. The amplitude is six times
+smaller and now follows from a stated thrust fluctuation rather than from a
+gyro number someone liked. It may well be too subtle at 0.12; that is one
+constant in plant.c and the honest place to be after "way too much".
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 the same disputed red. Hover 0.2051,
+punch 82.1 m, terminal 31.3 m/s, motor step 18 ms and sag 10.15 percent all
+unchanged. Check 9 669.8 deg/s and check 12 ratio 1.2542, both closer to
+target than last round now that the wash a rolling craft picks up is smaller.
+Determinism hash **ce9826fc2ce5** across Node, headless Chrome and four
+render rates. npm run lint:presets 2 of 2.
+
+### The process lesson, since it is the one that keeps recurring
+
+Every error above is the same shape: a number written from a calculation that
+was reasoned rather than run, then given a comment that sounded derived.
+Round 20's own "three wrong measurements before a right one" was the same
+failure in the measurement rig. The rule that would have caught all of them
+is cheap: any constant that is not copied from a source file gets computed in
+a scratch script whose output goes in the commit, and no comment claims a
+number was measured unless the measurement is in the record.

@@ -84,18 +84,18 @@ const PlantParams PLANT = {
    * the airframe's own drag AND the rotor drag of four spinning discs,
    * because the second did not exist. Now that it does, the body keeps only
    * what a body should have. 0.013 is what the airframe projects and no
-   * more: roughly 0.010 m squared of frontal area (arms, motors, body,
-   * battery, camera) at a bluff body Cd near 1.2. Re-fitted inside that
-   * physical range against the P5 max level speed procedure in
+   * more: roughly 0.011 m squared of frontal area (arms, motors, body,
+   * battery, camera) at a bluff body Cd near 1.2, which is 0.0132. Re-fitted
+   * inside that physical range against the P5 max level speed procedure in
    * scripts/gates.js, which reads 128 km/h against a band of 120 to 165 and
    * 139 before this change.
    */
   .cda_front = 0.0130,
   .cda_side = 0.0130,
   .rho = 1.225,
-  .k_propwash = 0.60,
+  .k_propwash = 0.12,
   .prop_r = 0.0635,
-  .k_rotor_drag = 0.4386,
+  .k_rotor_drag = 0.43842,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
                          * 4.3 inch pitch / 2 pi. Axial speed at which thrust
                          * crosses zero is w times this. */
@@ -318,12 +318,23 @@ static double plant_wash_noise(SimState *s) {
   return ((double)(x >> 8)) * (1.0 / 8388608.0) - 1.0;
 }
 
-/* One pole coefficients at the 1 kHz step: 1 - exp(-2 pi f dt). */
-#define PLANT_WASH_A_FAST 0.171876
-#define PLANT_WASH_A_SLOW 0.018665
-/* RMS of the band passed signal, so k_propwash is a thrust fraction and not
- * an arbitrary gain. Measured off the filter pair, not guessed. */
-#define PLANT_WASH_RMS 0.173
+/*
+ * One pole coefficients at the 1 kHz step: 1 - exp(-2 pi f dt) for 30 Hz and
+ * 3 Hz. Both were wrong on the first pass, 0.171876 and 0.018665, which is
+ * what happens when a constant is typed from a half remembered calculation
+ * rather than one that was run.
+ */
+#define PLANT_WASH_A_FAST 0.171796
+#define PLANT_WASH_A_SLOW 0.018673
+/*
+ * RMS of the band passed signal, so k_propwash is a thrust fraction rather
+ * than an arbitrary gain. This said 0.173 and carried a comment claiming it
+ * had been measured. It had not, it had been estimated. Run over four million
+ * samples of the actual filter pair it is 0.16730, and the tail reaches
+ * 4.0 sigma, which is why the applied wash is bounded below.
+ */
+#define PLANT_WASH_RMS 0.16730
+#define PLANT_WASH_CLAMP 3.0
 
 void plant_reset(SimState *s) {
   for (int i = 0; i < 3; i += 1) {
@@ -500,12 +511,16 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       if (t_ideal > 1e-6 && va < 0.0) {
         const double vh = sim_sqrt(t_ideal / (2.0 * PLANT.rho * 3.14159265358979323846 * PLANT.prop_r * PLANT.prop_r));
         const double rw = -va / vh;
-        double d = 1.0 - sim_fabs(rw - 1.0);
-        if (d < 0.0) {
-          d = 0.0;
-        }
-        if (d > 1.0) {
-          d = 1.0;
+        /*
+         * Zero below a quarter of the induced velocity, worst where the
+         * descent matches it, gone by twice it. The first version ramped
+         * from rw = 0, so the gentlest sink already carried wash. That
+         * contradicted the comment directly above it and is not what the
+         * onset of recirculation looks like.
+         */
+        double d = 0.0;
+        if (rw > 0.25 && rw < 2.0) {
+          d = (rw <= 1.0) ? (rw - 0.25) / 0.75 : (2.0 - rw);
         }
         wash_depth = d;
         if (m == 0) {
@@ -577,7 +592,16 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     s->wash_fast[m] += PLANT_WASH_A_FAST * (plant_wash_noise(s) - s->wash_fast[m]);
     s->wash_slow[m] += PLANT_WASH_A_SLOW * (s->wash_fast[m] - s->wash_slow[m]);
     if (wash_depth > 0.0) {
-      const double wash = (s->wash_fast[m] - s->wash_slow[m]) / PLANT_WASH_RMS;
+      double wash = (s->wash_fast[m] - s->wash_slow[m]) / PLANT_WASH_RMS;
+      /* Bounded at 3 sigma. The band passed signal reaches 4.0 sigma, and at
+       * the old gain of 0.60 that was a 240 percent thrust excursion on one
+       * rotor: the report of "way too much" was the tail, not the mean. */
+      if (wash > PLANT_WASH_CLAMP) {
+        wash = PLANT_WASH_CLAMP;
+      }
+      if (wash < -PLANT_WASH_CLAMP) {
+        wash = -PLANT_WASH_CLAMP;
+      }
       axial += axial * PLANT.k_propwash * wash_depth * wash;
       if (axial < 0.0) {
         axial = 0.0;
@@ -676,8 +700,8 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * THE ONE CONSTANT. k is anchored, not tuned: the quadrotor literature
    * identifies a linear drag of about 0.30 per second at hover for a 0.6 kg
    * five inch machine (a = -0.30 v). At this airframe's hover thrust,
-   * v_h = 7.17 m/s and four rotors give 4 rho A v_h = 0.4446 kg/s, so
-   * k = 0.65 * 0.30 / 0.4446 = 0.4386. That published figure is a TOTAL
+   * v_h = 7.1656 m/s and four rotors give 4 rho A v_h = 0.444787 kg/s, so
+   * k = 0.65 * 0.30 / 0.444787 = 0.43842. That published figure is a TOTAL
    * linear drag fit and so already contains some airframe parasitic drag,
    * which means k is an upper bound rather than an exact split; it is used
    * as is because the alternative is inventing a decomposition nobody

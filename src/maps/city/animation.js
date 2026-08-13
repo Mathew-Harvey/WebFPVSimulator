@@ -7,18 +7,29 @@
  * and that sequence integrates the raw frame delta, and it is driven by the
  * train's position, which is itself `x = wrap(x + speed * dt)`. So the
  * geometry a quad can hit is a function of how many frames the browser
- * happened to deliver. Measured on the source rule, ten seconds of simulated
- * time puts the train at
+ * happened to deliver.
  *
- *     dt 1/50    235.00000000001353
- *     dt 1/60    234.9999999999908
- *     dt 1/120   234.99999999985437
+ * RE MEASURED, because the design that raised this quoted numbers this
+ * project could not reproduce. Running the town's own rule for ten seconds of
+ * simulated time puts the train at
  *
- * which is small until it is not: the arm threshold is a step function, so
- * three machines can disagree about whether a boom is down at the moment a
- * quad passes through it. This project's first rule is that a dropped frame
+ *     dt 1/50    234.999999999999488
+ *     dt 1/60    235.000000000003382
+ *     dt 1/120   234.999999999997897
+ *     dt 1/144   235.000000000007219
+ *     dt 1/240   234.999999999994401
+ *     exact      235.000000000000000
+ *
+ * a spread of 1.3e-11 m, where the design reported 1.5e-10. Either way the
+ * NUMBER is not the argument, and it would be dishonest to pretend it is:
+ * a hundredth of a nanometre never moved a boom. The argument is that the
+ * quantity is frame rate dependent AT ALL, and that the arm threshold is a
+ * STEP function sitting on top of it, so a difference that is invisible in
+ * the position is a binary difference in whether a barrier is solid at the
+ * moment a quad reaches it. This project's first rule is that a dropped frame
  * changes nothing about the trajectory, and a collider that moves with frame
- * time breaks that rule from the scenery side.
+ * time breaks that rule from the scenery side. A closed form has no
+ * accumulator, so there is nothing to compare.
  *
  * THE FIX IS A CLOSED FORM, NOT A SMALLER STEP. Everything that touches
  * collision here is a pure function of the integer fixed step count the shell

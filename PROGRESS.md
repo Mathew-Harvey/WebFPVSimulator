@@ -2108,7 +2108,22 @@ rejection test, where overstating is safe.
 
 The town's level crossing booms are colliders whose top toggles when an arm
 sequence integrating raw `dt` crosses 0.55, driven by a train position that is
-itself `x = wrap(x + speed * dt)`. `src/maps/city/animation.js` replaces both
+itself `x = wrap(x + speed * dt)`.
+
+The design quoted a drift for that accumulation and warned that it contained
+fabricated numbers, so it was re-measured. Ten seconds of simulated time on the
+town's own rule:
+
+    dt 1/50    234.999999999999488       dt 1/144   235.000000000007219
+    dt 1/60    235.000000000003382       dt 1/240   234.999999999994401
+    dt 1/120   234.999999999997897       exact      235.000000000000000
+
+A spread of 1.3e-11 m, where the design reported 1.5e-10. **Neither number is
+the argument, and it would be dishonest to pretend otherwise: a hundredth of a
+nanometre never moved a boom.** The argument is that the quantity is frame rate
+dependent at all, and that the arm threshold is a STEP function sitting on top
+of it, so a difference invisible in the position is a binary difference in
+whether a barrier is solid at the moment a quad reaches it. `src/maps/city/animation.js` replaces both
 with pure functions of the integer fixed step count the shell already keeps:
 the train's position, the arm ramp, the lamp blink and the boom collider
 extents. During a run that count IS `simTimeMs`, so a collision with a boom is

@@ -181,6 +181,17 @@ set throttle_boost = 2
 set iterm_relax_cutoff = 45
 
 # ---- karate_race.txt, PID sum limits ----
+#
+# This pair is the entire reason this tune's yaw stops better than the
+# default's, and neither of them is a yaw PID gain: p_yaw, i_yaw, d_yaw and
+# f_yaw are identical in both files, and simplified_pids_mode = RP below
+# leaves yaw alone. At 1000 the yaw axis can saturate the motor mix on its
+# own, so Betaflight's anti windup actually engages and the I term freezes
+# instead of winding. Measured on a full stick yaw step: yaw I peaks at 349
+# and never reaches its cap, overshoot 8.4 percent, bounce 60 deg/s, against
+# the default's capped 400 for 225 ms, 10.1 percent and 75 deg/s. See the
+# note at pidsum_limit_yaw in betaflight-default.diff and round 23 in
+# PROGRESS.md.
 set iterm_limit = 500
 set pidsum_limit_yaw = 1000
 

@@ -127,6 +127,176 @@ export function findAnimated(world) {
 }
 
 /*
+ * Share materials that are the same material.
+ *
+ * MEASURED, and it is the town's single biggest draw call cost. The vendored
+ * factories in ./vendored/core/toon.js cache aggressively, but their cache
+ * key is null whenever a texture is set:
+ *
+ *     const key = cache && !map && !alphaMap ? [...] : null;
+ *
+ * so every TEXTURED material is a fresh object, and so is every caller that
+ * passes cache: false. Counted on the built town, the static set holds 20,876
+ * material references that resolve to just 1,108 distinct APPEARANCES, and
+ * 1,497 of those references were pointing at a duplicate of one they could
+ * have shared.
+ *
+ * That matters far more than the wasted objects, because bakeCity buckets by
+ * material identity. Two meshes that look identical but hold different
+ * material objects can never merge, so every duplicate is a bucket that could
+ * not form and a draw call that did not go away. Pointing them at one shared
+ * material first took the street viewpoint from 5981 draw calls to 5504 on its
+ * own, at the 40 m merge cell this had before, and it costs nothing: no
+ * geometry moves, no culling changes, no shader compiles differently.
+ *
+ * The vendored files are Kenton Wang's and stay byte identical, per /NOTICE,
+ * so the fix is here rather than in the factory that caused it.
+ *
+ * WHAT IS SAFE TO SHARE. Only materials whose whole appearance can be read
+ * off them. Three.js already has the exact contract for "these two need
+ * different shader programs", customProgramCacheKey, and the town's cel
+ * factory sets it for the shadow tint, so it goes in the key. Anything with
+ * its OWN onBeforeCompile and no cache key is left alone: its differences
+ * live in a closure this cannot see.
+ *
+ * SHADER MATERIALS ARE LEFT ALONE, AND THAT IS A DECISION, NOT AN OMISSION. A
+ * shader material's appearance is its source and its uniforms, both of which
+ * can be read, and doing so collapses the town's 1039 of them to 7: they are
+ * the ink shells `hullOutline` mints one per mesh in
+ * ./vendored/core/outline.js. It was tried, and it is not worth having.
+ *
+ * It bought 1.5 percent of the frame's draw calls, because the shells are
+ * small. What it cost was correctness. A shell is an inverted hull that reads
+ * as an outline ONLY while the mesh it inks is drawn on top of it, and being
+ * unique per mesh is what has been keeping every shell a bucket of one, so
+ * that it stays a child of that mesh and shares its fate. Share the materials
+ * and the shells merge with each other instead, into an object with its own
+ * bounds, its own cull cell and no relationship to the geometry it belongs to.
+ * The far side of the town came back as solid black hulls standing where the
+ * meshes they ink had been culled away, worst on the tunnel portal. The
+ * screenshots are in PROGRESS.md.
+ *
+ * A shell could be made to follow its mesh through the merge. That is a real
+ * change to what the bake is, for 1.5 percent, so it is written down here and
+ * not done.
+ *
+ * AND ONLY THE STATIC SET. A material that a mesh writes to every frame is
+ * not a look, it is a channel, and pointing a second mesh at it hands that
+ * mesh someone else's animation. The town does exactly this: onsen.js drives
+ * `p.material.opacity` per frame on both steam vents. So this runs over the
+ * meshes the bake is about to merge and no others, and any material an
+ * animated object holds is untouchable, neither adopted as a canonical nor
+ * replaced. That is not a heuristic, it is the same measured animated set the
+ * merge itself uses, which is why findAnimated runs first.
+ */
+
+function materialLook(m) {
+  const ownCompile = Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile');
+  if (m.isShaderMaterial || m.isRawShaderMaterial) {
+    return null;
+  }
+  if (ownCompile && typeof m.customProgramCacheKey !== 'function') {
+    return null;
+  }
+  const tex = (t) => (t ? t.uuid : '-');
+  return [
+    m.type,
+    m.color ? m.color.getHexString() : '-',
+    m.emissive ? m.emissive.getHexString() : '-',
+    m.emissiveIntensity ?? '-',
+    tex(m.map), tex(m.alphaMap), tex(m.gradientMap), tex(m.emissiveMap),
+    tex(m.normalMap), tex(m.aoMap), tex(m.lightMap), tex(m.specularMap),
+    m.transparent ? 1 : 0, m.opacity, m.side, m.alphaTest,
+    m.depthWrite ? 1 : 0, m.depthTest ? 1 : 0, m.fog ? 1 : 0,
+    m.vertexColors ? 1 : 0, m.toneMapped ? 1 : 0, m.blending,
+    m.wireframe ? 1 : 0, m.flatShading ? 1 : 0, m.dithering ? 1 : 0,
+    m.premultipliedAlpha ? 1 : 0, m.polygonOffset ? 1 : 0,
+    m.polygonOffsetFactor ?? 0, m.polygonOffsetUnits ?? 0,
+    m.visible ? 1 : 0, m.colorWrite ? 1 : 0, m.shadowSide ?? '-',
+    /* Three's own answer to "do these need separate programs". */
+    typeof m.customProgramCacheKey === 'function' ? m.customProgramCacheKey() : '-',
+  ].join('|');
+}
+
+export function shareMaterials(root, animated) {
+  const moving = animated ?? new Set();
+
+  /*
+   * Every material any animated object holds, collected before a single
+   * reference is rewritten. A material is off limits if it appears here at
+   * all, even once, and even if a hundred static meshes also use it: the
+   * question is not how it is mostly used, it is whether anything writes to
+   * it, and one animated holder is enough to mean yes.
+   */
+  const taboo = new Set();
+  root.traverse((o) => {
+    if (!moving.has(o) || !o.material) {
+      return;
+    }
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (m) {
+        taboo.add(m);
+      }
+    }
+  });
+
+  const canonical = new Map();
+  let seen = 0;
+  let replaced = 0;
+  let skipped = 0;
+
+  root.traverse((o) => {
+    if (moving.has(o)) {
+      return;
+    }
+    if (!o.isMesh && !o.isLine && !o.isPoints && !o.isSprite) {
+      return;
+    }
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    const out = [];
+    for (const m of list) {
+      if (!m) {
+        out.push(m);
+        continue;
+      }
+      seen += 1;
+      if (taboo.has(m)) {
+        skipped += 1;
+        out.push(m);
+        continue;
+      }
+      const look = materialLook(m);
+      if (look == null) {
+        skipped += 1;
+        out.push(m);
+        continue;
+      }
+      const first = canonical.get(look);
+      if (!first) {
+        canonical.set(look, m);
+        out.push(m);
+        continue;
+      }
+      if (first !== m) {
+        replaced += 1;
+      }
+      out.push(first);
+    }
+    o.material = Array.isArray(o.material) ? out : out[0];
+  });
+
+  /*
+   * Nothing is disposed here. The materials this orphans have never been
+   * rendered, so they hold no GPU resource for dispose to release, and the
+   * vendored toon factory keeps a module level cache that outlives this
+   * scene: disposing something it still hands out would break the next build
+   * for no gain. Dropping the last reference is enough, the collector does
+   * the rest.
+   */
+  return { seen, looks: canonical.size, replaced, skipped, taboo: taboo.size };
+}
+
+/*
  * Merge every static mesh, bucketed by material, spatial cell, shadow flags
  * and attribute signature.
  *
@@ -138,10 +308,41 @@ export function findAnimated(world) {
  * because a merged mesh has one castShadow for all of it, and merging a
  * shadow caster with something that deliberately does not cast would quietly
  * change the lighting.
+ *
+ * HOW COARSELY TO MERGE IS NOT ONE ANSWER, BECAUSE MERGING IS GIVING UP
+ * CULLING. The caller wants the merge as coarse as possible, ideally the whole
+ * town, since separate objects are what the town is short of. A mesh spanning
+ * the town can never be culled out of anything, so it may only be merged that
+ * coarsely when nothing but the frustum was ever going to hide it. Two kinds
+ * of geometry fail that test and each gets its own cell.
+ *
+ *   A SHADOW CASTER is culled by a SECOND camera. The shadow camera is a
+ *   SHADOW_HALF box that follows the craft, 44 m a side, and a 40 m mesh is
+ *   outside it almost always where a town wide one never is. Merging casters
+ *   town wide measured as +0.57 M triangles a frame, all of it in the shadow
+ *   pass, on a change whose whole purpose was a cheaper frame. They merge at
+ *   `shadowCell`.
+ *
+ *   GEOMETRY THAT IGNORES FOG is hidden by the distance cull and by nothing
+ *   else. Everything else in the town fades into FOG_FAR long before the cull
+ *   radius, so whether it is culled is invisible. The ink shells do not: their
+ *   material is `fog: false`, upstream's choice in ./vendored/core/outline.js
+ *   and correct for a walker who never sees that far. Merged town wide they
+ *   stopped being distance culled and the far side of the town came back as
+ *   solid unfogged black silhouettes hanging above the fog, which the
+ *   screenshots in PROGRESS.md show. They merge at `cullCell`, small enough
+ *   that buildCullGrid still takes them into a cell rather than into `always`.
+ *
+ * Everything else merges at `cell`, which the caller sets to Infinity.
  */
-export function bakeCity(world, { cell = 40 } = {}) {
+export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell } = {}) {
   const root = world.root;
   const animated = findAnimated(world);
+  /* Before anything is bucketed by material identity, make identical
+   * materials BE identical, or the bucketing below splits on a distinction
+   * that is not one. See shareMaterials above. It needs the animated set, so
+   * it cannot run before findAnimated. */
+  const shared = shareMaterials(root, animated);
   root.updateMatrixWorld(true);
 
   const buckets = new Map();
@@ -174,12 +375,25 @@ export function bakeCity(world, { cell = 40 } = {}) {
       return;
     }
     box.getBoundingSphere(sphere);
-    const cx = Math.floor(sphere.center.x / cell);
-    const cz = Math.floor(sphere.center.z / cell);
     const mat = Array.isArray(o.material) ? o.material[0] : o.material;
     if (!mat) {
       return;
     }
+    /* Both reasons an object still needs to be cullable, smallest wins. See
+     * the note above: a shadow caster is culled by the shadow camera, and
+     * anything the fog does not reach is culled by distance or not at all. */
+    let span = cell;
+    if (o.castShadow) {
+      span = Math.min(span, shadowCell);
+    }
+    if (mat.fog === false) {
+      span = Math.min(span, cullCell);
+    }
+    /* Infinity divides to a signed zero, and -0 floors to -0, which is why
+     * the cell index is normalised rather than used raw: `${-0}` is "0" today
+     * but the key should not rest on that. */
+    const cx = Number.isFinite(span) ? Math.floor(sphere.center.x / span) : 0;
+    const cz = Number.isFinite(span) ? Math.floor(sphere.center.z / span) : 0;
     const attrs = Object.keys(geo.attributes).sort().join(',');
     /*
      * Indexed and non indexed geometry cannot merge together, and which one a
@@ -266,7 +480,12 @@ export function bakeCity(world, { cell = 40 } = {}) {
       buckets: buckets.size,
       skippedAnimated,
       skippedInstanced,
-      cell,
+      /* JSON has no Infinity, and a stat that reads as null in the harness is
+       * worse than no stat, so the town wide case is named. */
+      mergeCell: Number.isFinite(cell) ? cell : 'town',
+      mergeShadowCell: shadowCell,
+      mergeCullCell: cullCell,
+      sharedMaterials: shared,
     },
   };
 }

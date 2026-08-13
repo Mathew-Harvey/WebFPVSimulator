@@ -56,7 +56,7 @@
 
 import { ELEMENTS, KIND } from '../trackbuilder/elements.js';
 import {
-  normalize, elementById, kindOf, aperturesOf, startPadsOf,
+  normalize, elementById, aperturesOf, startPadsOf,
 } from '../trackbuilder/model.js';
 import { buildPath } from '../trackbuilder/path.js';
 import { GATE_SCALE } from './track.js';

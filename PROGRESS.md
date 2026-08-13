@@ -4062,6 +4062,7 @@ failure in the measurement rig. The rule that would have caught all of them
 is cheap: any constant that is not copied from a source file gets computed in
 a scratch script whose output goes in the commit, and no comment claims a
 number was measured unless the measurement is in the record.
+
 ## Round 22: the track builder's output, flown, on a pitch that is mown for it
 
 Round 18 produced a track document and nothing that could read one. This round
@@ -4222,7 +4223,295 @@ world-scale and check 16 map-isolation both pass**, which is what says the
 built in race field is the world it was: same reference gate opening, same
 module count, same budget after a city round trip.
 
-## Round 23: the sound, built out: a record crate, an outdoors, and a click worth flying through
+## Round 23: the default tune's yaw, and an upstream bug we reproduce faithfully
+
+The owner flew both tunes and reported that the Betaflight default "has way
+too much yaw" next to Karate, and that this "must be an error". It is an
+error. It is not ours.
+
+### What the complaint is not
+
+Every measurement of yaw authority says the opposite of "too much". Both
+tunes on the same menu rates, 70 centre and 670 max, full yaw stick:
+
+| | default | karate |
+|---|---|---|
+| rise to 63 percent | 71 ms | 57 ms |
+| overshoot of commanded rate | 10.1 percent | 8.4 percent |
+| bounce back after release | 75 deg/s | 60 deg/s |
+| heading achieved for 335 deg commanded | 329 deg | 331 deg |
+
+Karate yaws harder and faster on every one. Uncommanded yaw is not it either:
+rolls, flips, banked turns and weaves at 0.5 and 0.75 throttle all drift under
+0.6 deg over three seconds, identical between the tunes to the tenth of a
+degree. And the rates are not it: rates.js appends the same rateprofile to
+whichever tune loads, and Betaflight's own default rateprofile really is
+7/67/0 on all three axes including yaw, from pgResetFn_controlRateProfiles.
+
+### What the complaint is
+
+Yaw is the default tune's loosest axis by an order of magnitude, and it is the
+only tune where the axes disagree. Same step, all three axes:
+
+| stick | axis | default overshoot | karate overshoot |
+|---|---|---|---|
+| 0.3 | roll | 3.5 percent | 11.9 percent |
+| 0.3 | pitch | 1.0 percent | 12.3 percent |
+| 0.3 | yaw | **11.3 percent** | 12.1 percent |
+| 1.0 | roll | 1.1 percent | 9.1 percent |
+| 1.0 | pitch | 1.5 percent | 10.1 percent |
+| 1.0 | yaw | **10.1 percent** | 8.4 percent |
+
+On Karate all three axes sit near 10 and nothing stands out. On the default,
+roll and pitch are pinned at 1 to 3 percent and yaw is at 10, so yaw is the
+one axis that does not go where it is put. That is what reads in the goggles
+as too much yaw: not more yaw, less control of it.
+
+### The mechanism, and it is a known open Betaflight bug
+
+Sweeping pidsum_limit_yaw on the default tune, everything else untouched:
+
+| pidsum_limit_yaw | overshoot | peak abs I | ms with I at its cap | bounce |
+|---|---|---|---|---|
+| 400 (default) | 10.07 percent | 400 | 225 | 75 deg/s |
+| 450 | 9.75 percent | 400 | 177 | 72 deg/s |
+| 480 | 9.00 percent | 374 | 0 | 62 deg/s |
+| 500 | 8.37 percent | 349 | 0 | 60 deg/s |
+| 600, 800, 1000 | 8.37 percent | 349 | 0 | 60 deg/s |
+
+There is a discontinuity between 450 and 480 and then nothing changes at all,
+because past that point the limit stops binding. That is precisely
+betaflight/betaflight issue 13486, filed 29 March 2024 and still open:
+Betaflight's anti windup is driven only by getMotorMixRange against
+itermWindupPointPercent, so an axis clipped below 50 percent of the mixer
+range can never on its own reach the 85 percent windup point. The I term
+integrates for the entire time the axis is saturated. Default yaw is clipped
+at 40 percent, which is on the wrong side. Karate's 1000 is on the right side,
+and its I peaks at 349 and never caps.
+
+The rest is Betaflight doing what it says it does. d_yaw is 0 by default
+because, in Betaflight's own words, yaw D is mostly a noise amplifier on an
+axis with high rotational inertia and little authority. Our airframe agrees:
+Izz 0.0068 against Ixx 0.0035, and sustained yaw torque 0.464 N m against
+roughly 2.8 N m of roll torque at full thrust differential. Sweeping d_yaw
+from 0 to 250 moves the full stick overshoot from 10.07 to 9.92 percent, which
+is nothing; at small stick, where the axis never clips, adding D makes it
+worse (11.2 percent at 0, 14.8 at 30, 20.7 at 80) because D slows the rise and
+the I term then integrates a larger error for longer. The same sweep on roll
+behaves the way a damping term is supposed to: 22.7 percent at d_roll 0, 3.3
+at 20, 1.0 at 40. Yaw is I dominated and roll is not, which is the whole
+difference between the two axes and is why real quads have loose yaw.
+
+### What was changed
+
+Nothing in the physics, nothing in the tunes. betaflight-default.diff exists
+to be what a freshly flashed quad flies, and that includes flying an upstream
+bug; patching it would make the file a lie and would remove the reference
+point Karate is measured against. Both presets got a comment at their
+pidsum_limit_yaw line recording the measurement and pointing at issue 13486,
+so the next person to wonder about yaw finds the answer where they are
+looking rather than here.
+
+The pilot's lever, if the default's yaw is not wanted, is the yaw rate item
+in Settings, which is where a real pilot would reach too. Most race pilots run
+yaw below roll and pitch for exactly this reason.
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 the same disputed red, unchanged from
+round 21 because no code that runs changed. Determinism hash **ce9826fc2ce5**
+across Node, headless Chrome and four render rates. npm run lint:presets 2 of
+2 with the new comments in place.
+
+### Rigs
+
+tests/ is the harness's. The scratch rigs behind the tables above were
+yawtrace.js (term by term through a stop), yawheading.js (commanded against
+achieved heading), yawcouple.js (uncommanded yaw over four manoeuvres at two
+throttles), axiscompare.js (the three axis table), dyaw.js and dyaw2.js and
+dyaw3.js (the d_yaw sweeps and the term traces that explained them) and
+bf13486.js (the pidsum_limit_yaw sweep). Two of them were wrong first: the
+first axis comparison read state[10..12] for the body rates when the ABI puts
+them at [11..13], which reported every axis as 100 percent tracking error, and
+the first yaw report divided by a sign it had not taken, which reported every
+stop as instant. Both were caught by the numbers being absurd rather than by
+the rig, which is the same lesson round 21 ended on.
+
+## Round 24: the town was 30 Hz on a fast machine, and one constant was doing three jobs
+
+The owner's report was that the town drops to 30 Hz on a powerful PC, and asked
+for it to run on modest hardware. That a fast machine does not help is the
+diagnosis: a frame that is short of GPU gets better with a better GPU, and a
+frame that is short of draw call submission does not.
+
+### What the frame actually was
+
+Traced by wrapping the renderer for one frame, the town's frame is ONE scene
+render plus three fullscreen quads. There is no depth prepass here: that is
+`src/render/post.js`, which the field and the custom map use. The city runs the
+vendored `Pipeline`, which renders the scene once into a target and inks it in
+screen space from depth. So the scene render's draw calls ARE the frame's draw
+calls, and there is no multiplier to remove.
+
+At three fixed viewpoints, before anything in this round:
+
+| view    | draw calls | triangles |
+|---------|-----------:|----------:|
+| spawn   |       3826 | 2,405,050 |
+| street  |       5981 | 3,107,836 |
+| rooftop |       6417 | 2,977,428 |
+
+Against budgets of 400 and 1,200,000. One draw call per object, and about 5400
+objects in frustum, so the object count IS the draw call count.
+
+### The mistake that hid the fix for two rounds
+
+`CULL_CELL = 40` was passed to three different things: the static merge, the
+instanced chunking and the cull grid. Round 21 swept it, found that 120 bought
+30 percent of the calls for 50 percent more triangles, called it a weak trade
+and stopped. 300 was tried and broke the town outright.
+
+That conclusion was an artefact of the sweep. The three consumers want opposite
+things, because the town's draw calls and the town's triangles live in
+different objects:
+
+    static, merged      7229 meshes    1,338,381 triangles
+    instanced foliage   1565 meshes    4,540,348 triangles
+
+The static half is almost all draw call and almost no triangle. At the street
+viewpoint 1,229,557 of its 1,338,381 triangles were being drawn anyway, so
+culling it at 40 m was buying 8 percent of its triangles in exchange for
+thousands of separate objects. The instanced half is the mirror image: 4.5 M
+triangles already sitting in one draw call each, where a bounding sphere
+spanning a grove submits every tree in it whether or not one is in frame.
+Moving one constant moved both, so the instanced half's triangle blow up
+always swamped the static half's draw call win, and every value looked bad.
+
+Separated, `MERGE_CELL` is now Infinity and `CULL_CELL` stays 40. `buildCullGrid`
+needed no change: it already routes anything whose bounding sphere exceeds a
+cell into `always`, so a town wide merge is frustum culled and never distance
+culled, which is the correct handling of it and not a special case.
+
+### Two kinds of geometry may not be merged that coarsely, and both were found by being wrong
+
+**Shadow casters are culled by a second camera.** The shadow camera is a 44 m
+box that follows the craft. A 40 m mesh is outside it almost always and a town
+wide one never is, so merging casters town wide put every static triangle into
+the shadow pass every frame: +0.57 M triangles, on a change whose whole purpose
+was a cheaper frame. Swept at the street viewpoint:
+
+| shadowCell | draw calls | triangles |
+|------------|-----------:|----------:|
+| 40         |       4686 |     3.20 M |
+| 80         |       4041 |     3.41 M |
+| 120        |       3986 |     3.47 M |
+| inf        |       3476 |     3.76 M |
+
+80 is the knee. 40 to 80 buys 645 calls for 0.21 M triangles; 80 to 120 buys 55
+for another 0.06 M, the same trade four times worse. It is also about twice the
+shadow box, which is the relationship that makes it the right shape of number
+rather than a lucky one. `MERGE_SHADOW_CELL = 80`.
+
+**Geometry that ignores fog is hidden by the distance cull and by nothing
+else.** Everything else in the town fades into `FOG_FAR` at 135 m, well inside
+the 145 m cull radius, so whether it is culled is invisible. The ink shells do
+not: `hullOutline` builds them with `fog: false`. Merged town wide they stopped
+being distance culled and the far side of the town came back as solid unfogged
+black silhouettes hanging above the fog. Caught by a screenshot, not by a
+number. They merge at `cullCell`, small enough that `buildCullGrid` still takes
+them into a cell.
+
+### Material sharing, and the half of it that was reverted
+
+The vendored toon factory caches on its parameter signature but sets that
+signature to null whenever a texture is present, so every textured material is
+a fresh object. The static set holds 20,876 material references resolving to
+1,108 distinct appearances, and 1,497 of them were duplicates. Since the merge
+buckets by material identity, every duplicate is a bucket that could not form.
+Sharing them took the street viewpoint from 5981 to 5504 draw calls on its own.
+
+Two things had to be got right and one was got wrong first.
+
+**Only the static set.** The first version walked the whole scene. `onsen.js`
+drives `p.material.opacity` per frame on both steam vents, so a material there
+is not a look, it is a channel, and pointing a second mesh at it hands that
+mesh someone else's animation. Now it runs over the meshes the merge is about
+to touch and no others, and any material an animated object holds is
+untouchable, neither adopted as a canonical nor replaced. Same measured
+animated set the merge uses, which is why `findAnimated` had to move above it.
+
+**Shader materials are refused, and that is a decision.** A shader material's
+appearance is its source and its uniforms, both readable, and keying on them
+collapses the town's 1039 of them to 7: they are the ink shells, one material
+per inked mesh. It was implemented and measured and then taken back out. It
+bought 1.5 percent of the frame's draw calls. What it cost was correctness: a
+shell is an inverted hull that reads as an outline only while the mesh it inks
+is drawn on top of it, and being unique per mesh is exactly what keeps every
+shell a bucket of one, so that it stays a child of that mesh and shares its
+fate. Shared, the shells merge with each other instead, into an object with its
+own bounds and no relationship to the geometry it belongs to. The tunnel portal
+came back as a solid black hull standing where the mesh it inks had been culled
+away. Reverted, and written down in `bake.js` so it is not rediscovered.
+
+The first version also disposed the materials it orphaned. That is removed:
+they have never been rendered so there is no GPU resource to release, and the
+vendored factory keeps a module level cache that outlives the scene, so
+disposing something it still hands out would break the next build for no gain.
+
+### Where it landed
+
+| view    | calls before | calls after | change | triangles before | triangles after |
+|---------|-------------:|------------:|-------:|-----------------:|----------------:|
+| spawn   |         3826 |        2854 |  -25.4% |        2,405,050 |       2,784,294 |
+| street  |         5981 |        4041 |  -32.4% |        3,107,836 |       3,412,140 |
+| rooftop |         6417 |        3924 |  -38.8% |        2,977,428 |       3,206,226 |
+
+The bake now takes 18,466 static meshes to 2,924 buckets and 1,150 merged
+meshes. Triangles are up 8 to 16 percent, which is the deliberate trade: the
+frame was short of draw calls, not of triangles, and a modest GPU minds 3.4 M
+triangles far less than a modest CPU minds 5981 submissions.
+
+Pixel diffed against the same five viewpoints, worst case 0.32 percent of
+pixels differing by more than 24 of 255, and that is the tunnel portal at the
+far edge of the fog on the rooftop view. Street, spawn and onsen are 0.02
+percent or below. 451 meshes still move over 6 seconds, so the train, the
+booms, the petals and the steam are all still driven.
+
+### Not done, and why
+
+**1,466 meshes are excluded from the merge for a marker that means something
+else.** `findAnimated` treats `userData.planetRigid` as "this is a runtime rig".
+Measured, 1,934 meshes are in the animated set, only 468 of them actually moved
+in a 48 s probe, and 1,466 are there on the marker alone. Upstream uses that
+marker to mean "do not bend me onto the planet sphere" during `bakeToPlanet`,
+which this port declines entirely, so for us it carries no information about
+motion. Merging them is worth roughly another 1000 draw calls.
+
+It is not taken because the marker's second reading is also true: `bake.js`
+already records that some rigs only move on an interaction and would not move
+during the probe. Distinguishing the two needs the town's whole interaction
+surface established, and the failure mode of getting it wrong is a frozen cat
+or a boom that never lifts, which is the kind of thing that survives a review.
+Measured and written down, not shipped on a guess.
+
+**The town is still far over budget.** 4041 draw calls against 400. This round
+is a third off, not an order of magnitude, and the remaining calls are roughly
+1,774 unmerged singleton buckets, 1,565 instanced foliage chunks and 1,892
+meshes held out as animated. Nothing here makes the town meet G2 and this entry
+should not be read as saying it does.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at -0.08 deg.
+**Check 13 console-clean passes with zero errors and zero warnings**, which is
+what says the coarser merge never handed `mergeGeometries` a set it refused.
+**Check 15 world-scale passes**, including every city reference: kerb, doorway,
+handrail and crossing boom unchanged, because `cityReferences` runs before the
+bake and reads the town as authored. **Check 16 map-isolation passes**: no city
+module is fetched with the field selected, and the field's cost is identical
+after a city round trip.
+## Round 25: the sound, built out: a record crate, an outdoors, and a click worth flying through
 
 The owner asked for the full audio build: many tracks of drum and bass and
 lofi, motors that stay low, softened, quiet and unobtrusive the way the

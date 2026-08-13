@@ -438,18 +438,122 @@ export function buildComposer(renderer, scene, camera) {
     composer.writeBuffer.depthBuffer = false;
   }
 
-  /* Layer 1 is the no ink layer: sky dome, water, flowers and the gate
-   * rings and glows. The sky must be excluded because the override
-   * material ignores its depthWrite:false and would stamp depth at the far
-   * plane, leaving every outline computed against the sky instead of the
-   * world. Flowers are excluded because outlining individual petals reads
-   * as broken glass. The emissive rings are excluded because the depth
-   * pass draws a ghost ellipse inside the torus.
+  /*
+   * Layer 1 is the no ink layer: sky dome, water, flowers, and the gate
+   * ring, halo and glow. One bit was answering two different questions,
+   * and that is the defect. "Do not draw an ink line on this" and "the ink
+   * and coverage passes must not know this object exists" are not the same
+   * decision, and layer 1 was taking the second whenever it wanted the
+   * first.
    *
-   * Clouds are NOT on this layer any more. They used to be, and because
-   * the prepass skips the whole layer they wrote no depth, so the ink pass
+   * What that cost, measured with stair: on the inner edge of a gate ring
+   * upright, 90 rows at 0.147 px of slope per row, from a camera pitched 30
+   * degrees up and yawed 20 degrees off the gate so that the upright leans
+   * and a staircase has somewhere to show. A ring pixel read the depth of
+   * whatever stood behind the ring, so the second difference across the
+   * ring's own silhouette was zero and the one prop a racer stares at all
+   * lap got no coverage at all. Two runs before, two after:
+   *
+   *   before   0.383 and 0.363 RMS, worst 1.57 and 1.57 px
+   *   after    0.192 and 0.217 RMS, worst 0.52 and 0.77 px
+   *
+   * The crossings say it more plainly than the RMS does. Before, they held
+   * at 679.51 for six rows and then jumped a whole pixel, six more, jump,
+   * which is what a staircase is. After, they walk: 679.65, 679.52,
+   * 679.51, 679.39, 678.85, 678.68, 678.54. The run to run spread is real
+   * and it is the wind: the grass and the tree seen through the aperture
+   * move between runs, which moves the depth on the far side of the edge,
+   * so one capture of this number is not evidence and two are the minimum.
+   * The mountain skyline in the same frames sat at 0.215 RMS and 0.46 px in
+   * every run, so the ring, not the mountains, was the most aliased
+   * silhouette in the frame, and it was aliased because of this mask.
+   *
+   * The lake pays too, and that one is visible rather than statistical.
+   * Trees standing in the water were inked and resolved from their own
+   * depth while the water was drawn over them, so a submerged trunk
+   * arrived as a dark line lying on the surface. Measured down a column
+   * through one, 0.346, 0.459, 0.302, 0.214, 0.353, 0.454 became 0.346,
+   * 0.459, 0.454, 0.454, 0.454, 0.454: the ink under the water is gone,
+   * because the water now occludes it, which is what the colour buffer was
+   * saying all along.
+   *
+   * The fix is the mechanism the grass already uses. Write depth with a
+   * sentinel normal of zero, which the ink pass recognises and refuses to
+   * ink, on itself or within one texel of itself, while the coverage term
+   * still sees the depth step. So layer 1 objects that qualify are
+   * promoted onto PREPASS_DEPTH_LAYER and drawn in the SAME pass as the
+   * grass: no new pass, no new render target, no change to P3 or P4.
+   *
+   * Which ones qualify is the object's own declaration, not a list here.
+   * If a material writes depth in the colour pass and blends normally it
+   * is an occluder, and an occluder the prepass cannot see makes the ink
+   * and the coverage disagree with the frame. If it does not write depth
+   * it is not an occluder, and stamping a depth for it is a lie the second
+   * difference will believe. That rule takes the water, the flowers, the
+   * gate ring and its halo, and it leaves out the sky dome and the gate's
+   * additive glow. Both exclusions are refusals of part of the review
+   * finding that asked for them, and both were measured rather than
+   * assumed:
+   *
+   * - THE SKY STAYS OUT, and the finding that the skyline receives no
+   *   coverage is wrong on the coverage half. The skyline gets coverage
+   *   precisely BECAUSE the sky is absent: the target clears to depth 1.0,
+   *   so a ridge at depth 0.3 sits against a 0.7 depth step and the
+   *   coverage term saturates. Measured above: 0.215 px second difference
+   *   RMS over 118 consecutive rows of a ridge with a 0.657 px per row
+   *   slope, which is better than the 0.288 to 0.304 this project has
+   *   measured for 4x multisampling. Putting the dome in instead replaces
+   *   that 0.7 step with 0.577 minus the ridge depth, and worse, hands the
+   *   dome's own 40 by 24 tessellation to a second difference that has no
+   *   business reading it. Measured, with the dome rendered into the
+   *   prepass through a back sided copy of the normal material so it is
+   *   not culled: the same 118 rows went from 0.215 to 0.567 RMS and from
+   *   0.46 to 1.45 px worst, and the crossing picked up a period two
+   *   zigzag it did not have (1175.56, 1175.64, 1174.58, 1174.67 against a
+   *   monotone 1176.23, 1175.80, 1175.26, 1174.81). It is a 2.6x
+   *   regression on the exact quantity the finding wanted improved, so it
+   *   is refused. The ink half of the finding is right and is NOT fixed
+   *   here: a sky pixel's cleared rg is (0,0), which is
+   *   the same sentinel the grass writes, so grassNear suppresses ink for
+   *   one texel around every skyline in the frame. Removing that costs the
+   *   grass its exemption and belongs to whoever changes the sentinel
+   *   encoding, not to a layer mask.
+   * - THE GATE GLOW STAYS OUT. It is a 2.6 x aperture plane, doubled
+   *   sided, additive, depthWrite false, coplanar with the gate frame, and
+   *   its fragment shader is a Gaussian band that is zero at the plane's
+   *   own border. There is no silhouette in the colour buffer for coverage
+   *   to resolve, and stamping one would lay a flat 3.96 m square of depth
+   *   over the gate, the ring included, at the gate's own depth. Measured
+   *   on all 14 glows, forced in through a double sided sentinel so the
+   *   plane could not be culled: the ring's inner edge came back to 0.311
+   *   RMS and 0.84 px worst, above both of the runs this round's fix
+   *   measures at, so it undoes most of the fix it was meant to extend. It
+   *   also costs the gate frame a coverage step of its own against the far
+   *   ridge, where 0.261, 0.206, 0.052, 0.024 became 0.261, 0.261, 0.201,
+   *   0.024. Refused.
+   *
+   * The cost of what IS in. Measured back to back on the gate camera at
+   * 1600 by 900, because scene.js is being edited beside this file and the
+   * first attempt at this pair read 149 against 174 with scene.js changing
+   * between the two captures, which is not a delta of anything. Back to
+   * back on one scene.js: 30 meshes promoted, being 14 rings, 14 halos, the
+   * lake and the flower field, and nothing else. P1 draw calls 166 to 174,
+   * P2 triangles
+   * 1,919,169 to 1,924,729, P3 full resolution passes 3 and 3, P4 taps per
+   * pixel 10 and 10, P5 render target bytes 90.2 MB either way, and no
+   * target is created, resized or bound that was not bound before. P3 and
+   * P4 do not move because they count fullscreen quads and this is
+   * geometry, but the frame does rasterise 5,560 more triangles into the
+   * prepass target, and that is a real cost stated here rather than hidden
+   * behind a budget whose definition happens not to see it.
+   *
+   * Clouds are NOT on layer 1 any more. They used to be, and because the
+   * prepass skipped the whole layer they wrote no depth, so the ink pass
    * drew the silhouettes of mountains standing behind them straight across
-   * the cloud. */
+   * the cloud.
+   */
+  const PREPASS_DEPTH_LAYER = 3;
+  promoteToPrepass(scene, PREPASS_DEPTH_LAYER);
   /* Reused rather than allocated: P8 forbids a new object anywhere in the
    * per frame path, and renderNormals runs every frame. */
   const prevClear = new THREE.Color();
@@ -487,9 +591,12 @@ export function buildComposer(renderer, scene, camera) {
     renderer.clear();
     renderer.render(scene, camera);
 
-    /* Pass two: the grass, sentinel normal, into the same target. Layer 2. */
+    /* Pass two: depth without ink, sentinel normal, into the same target.
+     * Layer 2 is the grass and PREPASS_DEPTH_LAYER is what promoteToPrepass
+     * picked out of layer 1. One render call for both, so the frame still
+     * makes exactly three scene draws and P3 and P4 do not move. */
     scene.overrideMaterial = grassMaskMaterial;
-    camera.layers.mask = 1 << 2;
+    camera.layers.mask = (1 << 2) | (1 << PREPASS_DEPTH_LAYER);
     renderer.autoClear = false;
     renderer.render(scene, camera);
 
@@ -530,6 +637,50 @@ export function buildComposer(renderer, scene, camera) {
     composer,
     normalTarget,
   };
+}
+
+/*
+ * Put the layer 1 objects that are real occluders onto a layer of their
+ * own, so the depth half of the prepass can have them while the ink half
+ * still cannot.
+ *
+ * Done once, here, and not per frame: P8 forbids an allocation in the frame
+ * path and a traverse is not free either. It is safe to do once because
+ * buildScene finishes the whole world, craft included, before buildComposer
+ * is called, and nothing is added to the scene afterwards. Anything added
+ * later would silently miss the prepass, so if that changes, this has to be
+ * called again.
+ *
+ * The test is on the material's own promises. depthWrite false says "I am
+ * not an occluder", which is exactly the sky dome and the additive gate
+ * glow, and a non normal blend says the same thing a second time. Reading
+ * the declaration rather than naming the objects means this keeps agreeing
+ * with scene.js when scene.js changes, which a list of names would not.
+ *
+ * The bit is added, not set: these objects have to stay on layer 1 so the
+ * colour pass still draws them.
+ */
+function promoteToPrepass(scene, layer) {
+  const ONLY_LAYER_1 = 1 << 1;
+  scene.traverse((obj) => {
+    if (!obj.isMesh || (obj.layers.mask & ONLY_LAYER_1) === 0) {
+      return;
+    }
+    /* Layer 0 as well as layer 1 would mean the object is already in the
+     * inking pass, and promoting it would stamp a sentinel over its own
+     * normals. Nothing does that today; it would be a silent disaster if
+     * something did. */
+    if ((obj.layers.mask & 1) !== 0) {
+      return;
+    }
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    const occludes = mats.every((m) => m
+      && m.depthWrite !== false
+      && (m.blending === undefined || m.blending === THREE.NormalBlending));
+    if (occludes) {
+      obj.layers.enable(layer);
+    }
+  });
 }
 
 function bloomTargets(bloom) {

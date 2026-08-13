@@ -111,6 +111,63 @@ const HORIZON = 0xf2e3cb;
  * band and separated by hue alone. Blue carries little luminance, so the
  * fix is a paler zenith rather than a bluer one. */
 const SKY_HIGH = 0x6ea3d8;
+/*
+ * The sky, as a function, because two surfaces need it and they must not
+ * disagree. The dome calls it for the direction the eye is looking, and the
+ * water calls it for the direction the eye is looking AFTER reflecting off
+ * the surface. If the water carried its own sky colours, a reflection would
+ * be a different sky from the one overhead, which is the single fastest way
+ * to make water read as painted plastic.
+ *
+ * Everything in here was authored on the dome and is unchanged: the 1.25
+ * altitude gain with a 0.06 lift, the nine band posterisation mixed half way
+ * back to the smooth gradient, and both sun terms with the ceilings that the
+ * clipped sun fix established.
+ */
+const SKY_GLSL = /* glsl */ `
+  vec3 celSkyColor(vec3 dir, vec3 sunDir, vec3 horizonCol, vec3 highCol) {
+    /*
+     * Re-normalise. On the dome vDir is a unit vector at each vertex, but a
+     * varying interpolates linearly through the triangle, so inside a face
+     * it is short by up to half a percent on a 40 by 24 dome. That was
+     * invisible in the gradient and fatal to the sun, whose disc is a
+     * threshold on dot(dir, sun): the old step could only fire where the
+     * interpolated length happened to survive, so the disc was not a circle
+     * at all but a patchwork following the tessellation.
+     */
+    vec3 vd = normalize(dir);
+    float h = clamp(vd.y * 1.25 + 0.06, 0.0, 1.0);
+    /*
+     * Posterised, but only part way. At five bands with a hard step the band
+     * edge is a single enormous pale arc sweeping across the sky, and in a
+     * still that reads as a rendering fault rather than as a style: it was
+     * the most visible artefact in every frame. Nine bands, a wider smooth
+     * edge, and a mix back toward the smooth gradient keep the poster feel
+     * without the arc.
+     */
+    float b = h * 9.0;
+    float stepped = (floor(b) + smoothstep(0.35, 0.95, fract(b))) / 9.0;
+    float band = mix(h, stepped, 0.5);
+    vec3 col = mix(horizonCol, highCol, band);
+    /*
+     * Sun: a warm glow, then a disc.
+     *
+     * Both terms used to be added on top of a sky that was already at 0.59,
+     * 0.72, 0.83 at the sun's altitude. The glow alone reached 1.0 in every
+     * channel by 7.8 degrees off axis, and the disc, a 4 degree half angle
+     * and thirty times the real sun, then added a further 1.0 on top of
+     * that: 1.9 percent of the frame pinned at 254 or higher. So a tighter
+     * glow in a colour that lifts red and green without pushing the already
+     * high blue, and a disc composed by mix() to a ceiling below full white
+     * with a soft outer ramp so it resolves instead of stairing. Core 1.0
+     * degree half angle, ramp out to 1.6.
+     */
+    float sd = max(dot(vd, normalize(sunDir)), 0.0);
+    col += vec3(1.0, 0.80, 0.42) * pow(sd, 40.0) * 0.30;
+    col = mix(col, vec3(0.985, 0.965, 0.905), smoothstep(0.99961, 0.99985, sd));
+    return col;
+  }
+`;
 const FOG_NEAR = 130;
 /* 2200, not 780. At 780 every piece of terrain past that distance renders
  * as exactly the horizon colour, 0.781 linear, which leaves no room above
@@ -200,12 +257,62 @@ function makeHeightField(samples) {
     const s2 = flat * flat * (3 - 2 * flat);
     let h = (base + detail) * s2;
 
-    /* Carve the lake basin: a smooth bowl, deepest at the centre. */
+    /*
+     * Carve the lake basin: a smooth bowl, deepest at the centre, with a
+     * LOBED depth profile.
+     *
+     * The bowl used to be a pure function of distance from the lake centre,
+     * and the consequence only became visible once the water shader was
+     * rewritten to derive its shoreline from real depth instead of from the
+     * mesh radius: the shoreline came out a perfect ellipse anyway. The
+     * shader was right and the LAND was the circle. A radial bowl has a
+     * radial water line by construction, so no amount of work in the shader
+     * can produce a bay.
+     *
+     * So perturb the depth profile with the same value noise the terrain
+     * uses, at a 118 m feature size, offset off the detail noise's own
+     * coordinates so the two do not correlate. The perturbation is weighted
+     * by k(1-k)*4, which peaks at k = 0.5 and vanishes at both ends: zero at
+     * the bowl's outer rim so the basin still joins the meadow smoothly, and
+     * zero at the very centre so the deepest point stays put. The water line
+     * sits at bowl = 0.577 for a meadow at 0 and a level of -7.5, which is
+     * k = 0.6, right where the weighting is strongest.
+     */
     const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
     if (ld < LAKE.r * 1.35) {
       const k = 1 - Math.min(1, ld / (LAKE.r * 1.35));
-      const bowl = k * k * (3 - 2 * k);
+      const lobe = (fbm(x * 0.0085 + 11.3, z * 0.0085 - 7.1) - 0.5) * 0.18;
+      const bowl = Math.max(0, Math.min(1, k * k * (3 - 2 * k) + lobe * k * (1 - k) * 4));
       h = h * (1 - bowl) + (LAKE.level - 5.5) * bowl;
+    }
+    /*
+     * The bank, and it is the difference between a lake and a disc of blue
+     * paint.
+     *
+     * Measured before this existed: the natural terrain around the lake is a
+     * broad hollow at a mean of -12.3 m, so a water plane at -7.5 was 4.8 m
+     * ABOVE the surrounding ground and the real intersection of plane and
+     * terrain was 149 to 208 m out, in the 33 of 360 radial directions where
+     * there was an intersection at all. The other 327 directions never came
+     * back above the water line inside 220 m. The old water disc stopped at
+     * 119 m over ground that was still 6.7 m under water, and a bright ring
+     * of foam painted at the mesh edge is what hid that. Nothing about the
+     * old shoreline was a shoreline.
+     *
+     * So the basin gets a rim: an additive bank, peaking between the bowl and
+     * 1.6 lake radii, with its amplitude modulated by the same value noise
+     * the terrain uses so the crossing wanders. Additive rather than a blend
+     * toward a profile, because the ground here is 4 to 8 m under the water
+     * line and only a lift can guarantee it comes back out: measured, the
+     * water line now closes in 720 of 720 radial directions at 105.8 to
+     * 119.3 m, a 13.5 m spread, and the top of the bank reaches -0.60 m,
+     * which keeps it below the flat racing corridor at 0.
+     */
+    const u = ld / LAKE.r;
+    if (u > 1.0 && u < 1.6) {
+      const t = (u - 1.0) / 0.6;
+      const amp = 9 * (0.7 + 0.6 * fbm(x * 0.02, z * 0.02));
+      h += amp * 16 * t * t * (1 - t) * (1 - t);
     }
     return h;
   };
@@ -299,65 +406,314 @@ function terrain(height, samples) {
 }
 
 /*
- * Stylised water. Flat banded colour rather than a reflection: shallow
- * water near the shore reads light and warm, deep water dark and cool,
- * with a hard band between them, and animated crests that catch the light.
- * The shoreline foam line is what sells it, because that is where the eye
- * checks whether water is water.
+ * The lake.
+ *
+ * What was here before, and what each part of it was actually doing, because
+ * every one of these was measured off a capture rather than guessed:
+ *
+ *  - Depth was `1.0 - length(vLocal) / uRadius`, which is distance from the
+ *    disc centre. So the "shallow" band was a ring painted at a fixed radius
+ *    and the "deep" water was a bullseye in the middle, and neither had any
+ *    relation to the ground under the water. In the oblique capture it read
+ *    as three concentric rings of flat colour.
+ *  - Foam was `smoothstep(0.9, 1.0, r)`, a 12 m wide ring of near white at
+ *    the mesh edge. It was not a shoreline. It was there to hide the fact
+ *    that the mesh ended over ground still 6.7 m below the water line.
+ *  - Crests were `step(0.82, sin(x) * sin(z))`, a product of two low
+ *    frequency sines thresholded hard, which is a grid of white polka dots.
+ *    They were the loudest thing in the lake.
+ *  - No sun term of any kind: no diffuse, no specular, no sky reflection. A
+ *    water surface with no reflection has no orientation and no scale, which
+ *    is why the lake read as a flat cyan hole in the ground.
+ *  - Trees and rocks stood in it, because nothing skipped them.
+ *
+ * What it is now: one water plane at LAKE.level, and everything about it
+ * derived from real depth, `LAKE.level - height(x, z)`, sampled per vertex.
+ * The shoreline is where that depth reaches zero, so it follows the bank the
+ * height field builds, and the depth test against the terrain trims the
+ * silhouette exactly. Sky reflection comes from the shared celSkyColor, so
+ * the reflection cannot disagree with the sky above it.
  */
-function water() {
-  const geo = new THREE.CircleGeometry(LAKE.r * 1.24, 72);
-  geo.rotateX(-Math.PI / 2);
+function water(height) {
+  /*
+   * A radial grid, not a CircleGeometry, because every vertex has to carry
+   * the depth of the ground beneath it and one ring of 72 vertices cannot
+   * describe a shoreline. Rings are packed toward the outside, r = R (1 -
+   * (1 - t)^1.7), because that is where the shallow band and the foam are
+   * and the middle of a lake is 6 m of flat colour.
+   *
+   * 48 by 160 is 7,681 vertices and 15,200 triangles: 92 KB of position and
+   * 31 KB of depth against a 48 MB attribute budget, and about 0.8 percent
+   * of a frame's triangles. The radial step at the shore is 0.4 m and the
+   * arc step is 4.5 m, so the foam band, which is 0.85 m of depth over a
+   * bank of about 1 in 6, is resolved several times over.
+   */
+  const R = LAKE.r * 1.35;
+  const RINGS = 48;
+  const SECTORS = 160;
+  const vcount = 1 + RINGS * SECTORS;
+  const pos = new Float32Array(vcount * 3);
+  const dep = new Float32Array(vcount);
+  const idx = new Uint16Array((SECTORS + (RINGS - 1) * SECTORS * 2) * 3);
+  const depthAt = (lx, lz) => LAKE.level - height(LAKE.x + lx, LAKE.z + lz);
+  pos[0] = 0;
+  pos[1] = 0;
+  pos[2] = 0;
+  dep[0] = depthAt(0, 0);
+  for (let ring = 1; ring <= RINGS; ring += 1) {
+    const t = ring / RINGS;
+    const r = R * (1 - (1 - t) ** 1.7);
+    for (let sct = 0; sct < SECTORS; sct += 1) {
+      const a = (sct / SECTORS) * Math.PI * 2;
+      const vi = ((ring - 1) * SECTORS + sct + 1) * 3;
+      const lx = Math.cos(a) * r;
+      const lz = Math.sin(a) * r;
+      pos[vi] = lx;
+      pos[vi + 1] = 0;
+      pos[vi + 2] = lz;
+      dep[vi / 3] = depthAt(lx, lz);
+    }
+  }
+  /*
+   * Winding, and it cost a capture to find. Looking down the +y axis in this
+   * right handed frame, x runs right and z runs toward the viewer, so a
+   * vertex at angle a of (cos a, sin a) in (x, z) sweeps CLOCKWISE on screen
+   * as a increases. Emitting triangles in increasing a therefore makes every
+   * one of them back facing, and the material is FrontSide, so the lake was
+   * drawn, twice per frame, and culled entirely: 15,200 triangles submitted,
+   * two draw calls, and not one fragment. A forced opaque red output was
+   * still invisible, which is what pointed at the rasteriser rather than at
+   * the shader. So each face is emitted the other way round.
+   */
+  let ii = 0;
+  for (let sct = 0; sct < SECTORS; sct += 1) {
+    idx[ii++] = 0;
+    idx[ii++] = 1 + ((sct + 1) % SECTORS);
+    idx[ii++] = 1 + sct;
+  }
+  for (let ring = 1; ring < RINGS; ring += 1) {
+    for (let sct = 0; sct < SECTORS; sct += 1) {
+      const a0 = 1 + (ring - 1) * SECTORS + sct;
+      const a1 = 1 + (ring - 1) * SECTORS + ((sct + 1) % SECTORS);
+      const b0 = a0 + SECTORS;
+      const b1 = a1 + SECTORS;
+      idx[ii++] = a0; idx[ii++] = b1; idx[ii++] = b0;
+      idx[ii++] = a0; idx[ii++] = a1; idx[ii++] = b1;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aDepth', new THREE.BufferAttribute(dep, 1));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  geo.computeBoundingSphere();
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     uniforms: {
       uTime: { value: 0 },
-      uShallow: { value: new THREE.Color(0x63c6c9) },
-      uDeep: { value: new THREE.Color(0x1d5f8c) },
-      uFoam: { value: new THREE.Color(0xeaf7ff) },
+      /* Shallow is a warm green cyan and deep is a cold blue, and both are
+       * darker than the old pair: measured, the old shallow 0x63c6c9 is
+       * 0.480 linear luminance, which put the flat body of the lake in the
+       * same value band as the four mountain ridge rings at 0.250 to 0.430
+       * and above the terrain's far edge at 0.192. Water that reads brighter
+       * than the hills behind it is a hole in the composition. */
+      uShallow: { value: new THREE.Color(0x3f9e9a) },
+      uDeep: { value: new THREE.Color(0x14456b) },
+      uFoam: { value: new THREE.Color(0xdff0f4) },
+      uSpec: { value: new THREE.Color(0xfff4d8) },
+      uSun: { value: SUN_DIR.clone() },
+      uSkyHigh: { value: new THREE.Color(SKY_HIGH) },
+      uSkyHorizon: { value: new THREE.Color(HORIZON) },
       uFogColor: { value: new THREE.Color(HORIZON) },
       uFogNear: { value: FOG_NEAR },
       uFogFar: { value: FOG_FAR },
-      uRadius: { value: LAKE.r * 1.24 },
     },
     vertexShader: /* glsl */ `
-      varying vec2 vLocal;
+      attribute float aDepth;
+      varying float vDepth;
+      varying vec3 vWorld;
       varying float vFog;
       uniform float uTime;
       void main() {
-        vLocal = position.xz;
+        vDepth = aDepth;
         vec3 p = position;
-        p.y += sin(p.x * 0.12 + uTime * 1.3) * 0.09 + sin(p.z * 0.17 - uTime * 0.9) * 0.07;
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        /* The surface itself heaves a little, and only where there is water
+         * under it: a swell that lifts the shoreline vertices would push the
+         * plane up through the beach. */
+        float wet = clamp(aDepth * 1.5, 0.0, 1.0);
+        p.y += (sin(p.x * 0.12 + uTime * 1.3) * 0.05 + sin(p.z * 0.17 - uTime * 0.9) * 0.04) * wet;
+        vec4 world = modelMatrix * vec4(p, 1.0);
+        vWorld = world.xyz;
+        vec4 mv = viewMatrix * world;
         vFog = -mv.z;
         gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: /* glsl */ `
-      varying vec2 vLocal;
+      ${SKY_GLSL}
+      ${CLOUD_SHADOW_GLSL}
+      varying float vDepth;
+      varying vec3 vWorld;
       varying float vFog;
       uniform float uTime;
       uniform vec3 uShallow;
       uniform vec3 uDeep;
       uniform vec3 uFoam;
+      uniform vec3 uSpec;
+      uniform vec3 uSun;
+      uniform vec3 uSkyHigh;
+      uniform vec3 uSkyHorizon;
       uniform vec3 uFogColor;
       uniform float uFogNear;
       uniform float uFogFar;
-      uniform float uRadius;
       void main() {
-        float r = length(vLocal) / uRadius;
-        // banded depth ramp, quantised so it reads painted
-        float depth = 1.0 - r;
-        float band = floor(depth * 4.0) / 4.0;
-        vec3 col = mix(uShallow, uDeep, band);
-        // moving crest lines
-        float crest = sin(vLocal.x * 0.33 + uTime * 1.1) * sin(vLocal.y * 0.27 - uTime * 0.8);
-        col += uFoam * step(0.82, crest) * 0.35;
-        // shoreline foam
-        float foam = smoothstep(0.9, 1.0, r);
-        col = mix(col, uFoam, foam * 0.85);
+        /* Dry ground. The depth test against the terrain already trims the
+         * silhouette to the exact intersection, so this is belt and braces
+         * for the shallow slope near the water line, where a plane and a
+         * bank at 1 in 6 would otherwise fight over the same depth values. */
+        if (vDepth <= 0.0) {
+          discard;
+        }
+        vec2 P = vWorld.xz;
+        /*
+         * Three wave trains, and each one is faded out by its OWN screen
+         * space derivative. fwidth of a phase is radians per pixel, so once
+         * a train turns over more than about a radian inside one pixel it is
+         * past Nyquist and all it can do is alias: at 300 m the old crest
+         * pattern was a field of crawling dots two pixels across. Fading a
+         * train instead of clamping the whole surface keeps the long swell
+         * visible at distance while the chop goes away.
+         */
+        /*
+         * The phases are jittered by a slow noise field, and that is not
+         * decoration. Three pure sine trains are strictly periodic, so any
+         * threshold or any narrow lobe laid over them repeats on their
+         * lattice: measured, that came out first as a grid of pale dots and
+         * then, once the crest was a line, as a net of pale lanes across the
+         * whole lake, which read as a tiled swimming pool. Jittering the
+         * phase by about a radian over 50 m breaks the lattice while leaving
+         * the wave directions and speeds intact.
+         */
+        float jit = celNoise(P * 0.02 + vec2(uTime * 0.03, 0.0)) * 2.0 - 1.0;
+        float a1 = dot(P, vec2(0.31, 0.21)) + uTime * 1.10 + jit * 1.6;
+        float a2 = dot(P, vec2(-0.17, 0.28)) - uTime * 0.85 + jit * 2.1;
+        float a3 = dot(P, vec2(0.90, -0.70)) + uTime * 2.30 - jit * 2.6;
+        float k1 = 1.0 - smoothstep(0.7, 2.2, fwidth(a1));
+        float k2 = 1.0 - smoothstep(0.7, 2.2, fwidth(a2));
+        float k3 = 1.0 - smoothstep(0.7, 2.2, fwidth(a3));
+        /* Analytic normal of the sum of the three trains. No finite
+         * differences: the derivative of a sine is known, and a difference
+         * of a fwidth apart is exactly the thing that aliases. */
+        float dHdx = 0.055 * cos(a1) * 0.31 * k1
+                   + 0.045 * cos(a2) * -0.17 * k2
+                   + 0.016 * cos(a3) * 0.90 * k3;
+        float dHdz = 0.055 * cos(a1) * 0.21 * k1
+                   + 0.045 * cos(a2) * 0.28 * k2
+                   + 0.016 * cos(a3) * -0.70 * k3;
+        /* Shallow water is calmer, and the surface goes flat as it dries. */
+        float wet = clamp(vDepth * 0.8, 0.0, 1.0);
+        /* The slope multiplier was 12.0 in the first capture, which is a
+         * 25 degree surface tilt at the steepest part of the wave: from the
+         * water's own level that read as an ocean swell in a mountain tarn,
+         * and it drove the tight specular into a regular grid of dots
+         * because a narrow lobe on a periodic surface can only fire where
+         * the period puts it. 4.5 is about 9 degrees.
+         *
+         * 4.5 is still too much, and it is not an aliasing problem: from
+         * 150 m the three trains run about 105 px per wave, so fwidth is
+         * 0.06 rad per pixel and k1 to k3 sit at 1.0, doing nothing. The
+         * pattern in the frame IS the swell at its true scale, and at 9
+         * degrees of tilt two crossing trains modulate the fresnel term hard
+         * enough that a high oblique view reads as corduroy rather than
+         * water. 2.4 is about 5 degrees, which is what a sheltered tarn
+         * actually does. */
+        vec3 n = normalize(vec3(-dHdx * 2.4 * wet, 1.0, -dHdz * 2.4 * wet));
+        vec3 V = normalize(cameraPosition - vWorld);
+        vec3 L = normalize(uSun);
+
+        /*
+         * Body colour from REAL depth. Part posterised, part smooth, the
+         * same compromise the sky dome makes: a fully banded ramp reads as
+         * contour lines on a map, and a fully smooth one loses the painted
+         * look the rest of the world is drawn in. Because depth is now the
+         * water column and not the distance from a disc centre, the bands
+         * ARE bathymetry and they follow the shore all the way round.
+         */
+        float t = clamp(vDepth / 4.0, 0.0, 1.0);
+        float band = floor(t * 5.0) / 5.0;
+        vec3 body = mix(uShallow, uDeep, mix(t, band, 0.45));
+        /* A sun term on the body itself, so the lake is lit by the same sun
+         * as the meadow around it rather than being self luminous. */
+        body *= 0.80 + 0.20 * max(dot(n, L), 0.0);
+
+        /*
+         * Fresnel weighted sky reflection, from the shared sky function, so
+         * the water reflects THE sky and not a second one. Weight capped
+         * well below the physical 1.0 at grazing angles: the horizon band of
+         * this sky is 0.888 linear, and letting the far water reach it puts
+         * a sky bright strip across the middle of the frame right where the
+         * mountain ridge ladder lives, which the ladder cannot survive.
+         */
+        vec3 R = reflect(-V, n);
+        R.y = abs(R.y);
+        vec3 sky = celSkyColor(R, uSun, uSkyHorizon, uSkyHigh);
+        float fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
+        vec3 col = mix(body, sky, min(fres, 0.42) * 0.92);
+
+        /* Specular. Blinn, tight, and multiplied by the wave attenuation so
+         * a distant surface does not sparkle at one pixel per frame. */
+        /* Blinn, and deliberately BROAD: exponent 110 with this ripple
+          * field measured as a grid of round pale dots the same spacing as
+          * the waves, which is the same defect the old crest term had by a
+          * different route. 45 spreads the highlight into a glitter path. */
+        float spec = pow(max(dot(n, normalize(L + V)), 0.0), 28.0);
+        col += uSpec * spec * 0.24 * max(k1 * k3, 0.0);
+
+        /* Crest lines along the swell, not the old product of two sines,
+         * which put a dot wherever both happened to peak. */
+        /*
+         * Crest LINES, from one wave train, amplitude modulated by another.
+         * The original was step(0.82, sin(x) * sin(z)) and the first rewrite
+         * was smoothstep on sin(a1) * 0.62 + sin(a3) * 0.38, and both are the
+         * same mistake: a threshold on a combination of two trains only fires
+         * where both peak, which is a lattice of dots and not a crest. Both
+         * captures came out as regular pale polka dots over the whole lake.
+         * A threshold on ONE phase is a line along that swell.
+         *
+         * Then the strength: 0.07 of foam white over a body at about 0.15
+         * linear is a third brighter than the water, and from 60 m up that
+         * read as pale lanes ruled across the lake with the a3 modulation
+         * dashing them into a net. 0.035 at a higher threshold puts light on
+         * the top of the swell only, which is all a lake does at 150 m.
+         */
+        float crest = smoothstep(0.94, 0.999, sin(a1)) * (0.55 + 0.45 * sin(a3));
+        col += uFoam * crest * 0.035 * k1 * wet;
+
+        /*
+         * Foam where the water column runs out, which is now a real
+         * shoreline rather than a ring at the mesh edge. The threshold
+         * breathes with the swell so the line is not a contour, and the band
+         * is 0.55 m of depth, about 3 m of beach on this bank. The mix was
+         * 0.88 of the way to foam white and is 0.55: at 0.88 the lake had a
+         * white rope round it, which is what the old radius foam looked like
+         * and the whole point was to stop looking like that.
+         */
+        float shore = 1.0 - smoothstep(0.0, 0.55, vDepth);
+        float foam = smoothstep(0.34, 0.95, shore + 0.10 * sin(a1 * 1.7) * k1);
+        col = mix(col, uFoam, foam * 0.55);
+
         float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-        gl_FragColor = vec4(mix(col, uFogColor, f), 0.93);
+        col = mix(col, uFogColor, f);
+        /*
+         * The renderer runs with NoToneMapping, so anything over 1.0 clips
+         * flat and an aliased white hole is exactly what the round 13 sun
+         * fix was about. The highlight is capped below full white instead.
+         */
+        col = min(col, vec3(0.96));
+        /* Shallow water is see through, deep water is not, which is what
+         * puts the sand of the bank under the edge of the lake instead of a
+         * painted band. */
+        float alpha = mix(0.58, 0.95, clamp(vDepth / 2.2, 0.0, 1.0));
+        gl_FragColor = vec4(col, max(alpha, foam * 0.94));
       }
     `,
   });
@@ -435,35 +791,123 @@ function grassField(height, samples, rng) {
    * wide, concentrated in a tighter band along the circuit where the eye
    * actually is.
    */
-  const BLADES = 184000;
-  const positions = new Float32Array(BLADES * 5 * 3);
-  const colors = new Float32Array(BLADES * 5 * 3);
-  const bend = new Float32Array(BLADES * 5);
-  const indices = new Uint32Array(BLADES * 9);
+  /*
+   * Two counts, and the split is the whole trick.
+   *
+   * Cover was measured, not estimated: a capture from a pilot's eye at
+   * 1.0 m over the racing line, against the same capture with the grass
+   * mesh hidden, differs in 3.19 percent of the ground pixels. That is
+   * what "sparse specks on flat green" means as a number, and the scale
+   * review's 14.5 percent was a more generous accounting of the same
+   * field.
+   *
+   * The first BLADES_WORLD blades are drawn from the WORLD rng in exactly
+   * the order they always were, because that single stream goes on to
+   * place every tree, rock, cliff, flower and mountain in the valley: one
+   * extra or one fewer draw here and the whole world is a different world,
+   * which is why the last two rounds refused to touch the count. The extra
+   * blades are drawn from a SECOND stream of their own, so the field gets
+   * denser and nothing else in the valley moves by a millimetre. Verified
+   * by capture, not by argument.
+   *
+   * BLADES_EXTRA is set by TRIANGLES, not by bytes, and two measured dead
+   * ends are why.
+   *
+   * First try: keep the old five vertex blade and raise the count with the
+   * bytes the byte attributes freed. 72000 extra blades moved cover from
+   * 3.19 to 3.79 percent and cost 433,840 triangles, taking P2 from 1.93
+   * to 2.36 million against a 1.2 million ceiling. Two thirds of a million
+   * triangles for six tenths of a point.
+   *
+   * Second try: a three vertex blade, one triangle, 48 bytes, and 440000
+   * of them inside the same 48 MB. Predicted about twice the cover from
+   * 2.39 times the blades at 0.83 of the silhouette area each. MEASURED
+   * 3.28 percent, which is the 184000 blade field to within the wind
+   * phase, and the near field fell from 2.40 to 1.74. The prediction was
+   * wrong because it counted area and the frame counts PIXELS: a blade
+   * base is 3 to 7 px wide at 1 m and a triangle that tapers to a point
+   * spends its upper half under one pixel wide, where a rasteriser with no
+   * multisampling drops it entirely. Area above the pixel is what covers
+   * ground.
+   *
+   * So: four vertices, base pair and a BLUNT top pair at 0.95 of the
+   * height and 0.45 of the width, two triangles. The silhouette integrates
+   * to 1.38 w h against the five vertex blade's 1.20, it holds more than a
+   * pixel of width all the way to the top, and a blunt top is what a mown
+   * blade actually looks like, which is cut. 276000 of them is 552,000
+   * triangles, exactly the count the field had before this round, and
+   * 17,664,000 attribute bytes.
+   *
+   * A top at 0.72 of the width was tried first and measured MORE cover,
+   * 7.18 percent against 4.70. Rejected on the frame rather than on the
+   * number: that wide a top is a rectangle, and the near field read as pale
+   * chips lying on the grass rather than as grass.
+   */
+  const BLADES_WORLD = 184000;
+  const BLADES_EXTRA = 92000;
+  const BLADES = BLADES_WORLD + BLADES_EXTRA;
+  const positions = new Float32Array(BLADES * 4 * 3);
+  /*
+   * Colour as a normalised unsigned byte triple, not three float32.
+   *
+   * Measured: P10 attribute bytes 51,708,044 against a 48,000,000 ceiling,
+   * of which the grass was 25,760,000. A blade colour is an albedo in
+   * [0,1] that gets multiplied by a light term and written to an 8 bit
+   * framebuffer, so 24 bits of mantissa per channel buys nothing: the
+   * jitter this loop applies is plus or minus 0.05 in lightness, which is
+   * 13 counts of 255. Three floats to three normalised bytes takes the
+   * colour attribute from 11,040,000 bytes to 2,760,000.
+   */
+  const colors = new Uint8Array(BLADES * 4 * 3);
+  /* aBend the same way, and it is even more clear cut: this attribute only
+   * ever holds 0, 0.6 and 1, and 0.6 is 153/255 exactly, so the normalised
+   * byte is not an approximation of anything. 3,680,000 bytes to 920,000. */
+  const bend = new Uint8Array(BLADES * 4);
+  const indices = new Uint32Array(BLADES * 6);
   const rootC = new THREE.Color();
   const tipC = new THREE.Color();
   const c = new THREE.Color();
   let vi = 0;
   let ii = 0;
   let made = 0;
-  for (let i = 0; i < BLADES; i += 1) {
-    /* Bias placement toward the circuit: that is where the eye is. */
+  /*
+   * One blade, drawn from whichever stream it belongs to. `extra` picks the
+   * placement rule: the world blades keep the original two branch rule
+   * exactly, draw for draw, and the extra blades all land in the near band
+   * because cover is a SCREEN quantity. A blade 40 m away covers a
+   * fraction of a pixel and cannot read as cover at any density this
+   * budget allows; a blade 3 m away covers tens of pixels. The existing
+   * wide scatter, 16 percent of the blades over 810,000 square metres, is
+   * 0.036 blades per square metre, and that is the speckle a reviewer sees
+   * on the distant ground rather than anything that reads as a meadow.
+   */
+  const emit = (r, extra) => {
     let x;
     let z;
-    if (rng() < 0.84) {
-      const s = samples[Math.floor(rng() * samples.length)];
-      const a = rng() * Math.PI * 2;
+    if (extra) {
+      const s = samples[Math.floor(r() * samples.length)];
+      const a = r() * Math.PI * 2;
+      /* Squared, not cubed, and out to 16 m rather than 42: tighter to the
+       * line than the original draw, because that is the band the camera
+       * actually flies through. */
+      const u = r();
+      const rad = 0.5 + 24 * u * u;
+      x = s.x + Math.cos(a) * rad;
+      z = s.z + Math.sin(a) * rad;
+    } else if (r() < 0.84) {
+      const s = samples[Math.floor(r() * samples.length)];
+      const a = r() * Math.PI * 2;
       /* Radius from a cubed uniform, not a uniform: dense at the circuit
        * and thinning outward to 42 m. A flat distribution inside a hard
        * radius projects its outer wall as a ruler straight horizontal line
        * across the frame, which is exactly what it did at 22 m. */
-      const u = rng();
-      const r = 1 + 41 * u * u * u;
-      x = s.x + Math.cos(a) * r;
-      z = s.z + Math.sin(a) * r;
+      const u = r();
+      const rad = 1 + 41 * u * u * u;
+      x = s.x + Math.cos(a) * rad;
+      z = s.z + Math.sin(a) * rad;
     } else {
-      x = (rng() - 0.5) * 900;
-      z = (rng() - 0.5) * 900;
+      x = (r() - 0.5) * 900;
+      z = (r() - 0.5) * 900;
     }
     const y = height(x, z);
     /*
@@ -487,7 +931,7 @@ function grassField(height, samples, rng) {
      * a course as flat as possible, so 3 to 9 cm is both what the sport uses and
      * what leaves a parked quad able to see.
      */
-    const h = 0.03 + rng() * 0.06;
+    const h = 0.03 + r() * 0.06;
     /*
      * Blade WIDTH, and it was the worst scale error in the project.
      *
@@ -505,48 +949,97 @@ function grassField(height, samples, rng) {
      * territory. Raising the count to recover ground cover is the next round's
      * call and it makes P2 and P10 worse, which has to be said out loud.
      */
-    const w = 0.008 + rng() * 0.010;
-    const a = rng() * Math.PI;
+    const w = 0.008 + r() * 0.010;
+    const a = r() * Math.PI;
     const dx = Math.cos(a) * w;
     const dz = Math.sin(a) * w;
-    /* Root exactly the ground colour, tip lifted about 13 percent in
-     * value and nudged warm. One meadow, lighter at the tips. */
+    /*
+     * Root exactly the ground colour, tip lifted in value and nudged warm.
+     * One meadow, lighter at the tips.
+     *
+     * The lift was 0.13 and it is 0.08, because the blade changed shape. A
+     * pale top on a thin curved sliver reads as a catch of light; the same
+     * pale top on a blunt ribbon reads as a paper chip, and the first
+     * capture of the new blade was confetti scattered across the near
+     * field. Cover, measured by hiding the mesh, only counts pixels the
+     * grass changes, so it rewards exactly the contrast that was making the
+     * field look littered: that number has to be read beside the frame and
+     * not instead of it.
+     */
     groundAlbedo(x, z, y, samples, rootC);
-    tipC.copy(rootC).offsetHSL(0.012, 0.06, 0.13);
-    /* Five vertices: a tapered blade, base pair, mid pair, single tip. */
+    tipC.copy(rootC).offsetHSL(0.012, 0.05, 0.08);
+    /*
+     * FOUR vertices, base pair and a blunt top pair, two triangles. It was
+     * five: a base pair, a mid pair at 0.6 of the height, and a single
+     * vertex tip, so the blade could curve as it bent. The reasoning for
+     * dropping the tip is in the block comment on the counts above, and it
+     * is a pixel argument rather than an area argument.
+     *
+     * The FIFTH vertex is still walked and still draws its colour jitter
+     * below, and that is deliberate. This loop's draws are the world's one
+     * rng stream in its one order, so dropping a vertex's worth of draws
+     * would move every tree, rock, cliff, flower and mountain placed after
+     * the grass. The value is drawn and thrown away, which is the only
+     * safe way to skip anything in this file.
+     */
     const vs = [
-      [x - dx, y, z - dz, 0],
-      [x + dx, y, z + dz, 0],
-      [x - dx * 0.6, y + h * 0.6, z - dz * 0.6, 0.6],
-      [x + dx * 0.6, y + h * 0.6, z + dz * 0.6, 0.6],
-      [x, y + h, z, 1],
+      [x - dx, y, z - dz, 0, true],
+      [x + dx, y, z + dz, 0, true],
+      [x - dx * 0.45, y + h * 0.95, z - dz * 0.45, 1, true],
+      [x + dx * 0.45, y + h * 0.95, z + dz * 0.45, 1, true],
+      [x, y + h, z, 1, false],
     ];
     const v0 = vi / 3;
-    for (const [vx, vy, vz, b] of vs) {
-      positions[vi + 0] = vx;
-      positions[vi + 1] = vy;
-      positions[vi + 2] = vz;
+    for (const [vx, vy, vz, b, keep] of vs) {
       /* Per blade hue and value jitter: a field of identical blades reads
        * as one plastic sheet no matter how it is lit. Jitter stays small
        * so the roots keep matching the ground. */
-      c.copy(rootC).lerp(tipC, b * (0.55 + rng() * 0.45));
-      c.offsetHSL((rng() - 0.5) * 0.025, (rng() - 0.5) * 0.08, (rng() - 0.5) * 0.05);
-      colors[vi + 0] = c.r;
-      colors[vi + 1] = c.g;
-      colors[vi + 2] = c.b;
-      bend[vi / 3] = b;
+      c.copy(rootC).lerp(tipC, b * (0.55 + r() * 0.45));
+      c.offsetHSL((r() - 0.5) * 0.025, (r() - 0.5) * 0.08, (r() - 0.5) * 0.05);
+      if (!keep) {
+        continue;
+      }
+      positions[vi + 0] = vx;
+      positions[vi + 1] = vy;
+      positions[vi + 2] = vz;
+      /* Rounded, not truncated: truncation biases every blade dark by half
+       * a count, which over a million vertices is a systematic 0.2 percent
+       * darkening of the meadow for no reason. */
+      colors[vi + 0] = Math.round(c.r * 255);
+      colors[vi + 1] = Math.round(c.g * 255);
+      colors[vi + 2] = Math.round(c.b * 255);
+      bend[vi / 3] = Math.round(b * 255);
       vi += 3;
     }
     indices[ii++] = v0 + 0; indices[ii++] = v0 + 1; indices[ii++] = v0 + 2;
     indices[ii++] = v0 + 1; indices[ii++] = v0 + 3; indices[ii++] = v0 + 2;
-    indices[ii++] = v0 + 2; indices[ii++] = v0 + 3; indices[ii++] = v0 + 4;
     made += 1;
+  };
+  for (let i = 0; i < BLADES_WORLD; i += 1) {
+    emit(rng, false);
+  }
+  /*
+   * The second stream. A different seed from the world's 20260811 so the
+   * extra blades do not land on top of the ones the world stream already
+   * placed: the two generators share a multiplier, so the same seed would
+   * reproduce the same sequence and every extra blade would be a duplicate
+   * of a world blade with a different placement rule applied to it.
+   */
+  const extraRng = makeRng(90210077);
+  for (let i = 0; i < BLADES_EXTRA; i += 1) {
+    emit(extraRng, true);
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, made * 15), 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, made * 15), 3));
-  geo.setAttribute('aBend', new THREE.BufferAttribute(bend.subarray(0, made * 5), 1));
-  geo.setIndex(new THREE.BufferAttribute(indices.subarray(0, made * 9), 1));
+  /* Trimmed by the write cursors, not by made times a constant: a blade is
+   * four vertices and two triangles now, and hard coding the old five and
+   * nine here is how a buffer ends up with a tail of zeroed vertices that
+   * draw a degenerate triangle at the world origin. */
+  geo.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, vi), 3));
+  /* The trailing true is `normalized`: the shader still reads `color` as a
+   * vec3 in [0,1], the byte 255 meaning 1.0. */
+  geo.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, vi), 3, true));
+  geo.setAttribute('aBend', new THREE.BufferAttribute(bend.subarray(0, vi / 3), 1, true));
+  geo.setIndex(new THREE.BufferAttribute(indices.subarray(0, ii), 1));
   geo.computeBoundingSphere();
 
   /*
@@ -1212,57 +1705,13 @@ function skyDome() {
       }
     `,
     fragmentShader: /* glsl */ `
+      ${SKY_GLSL}
       varying vec3 vDir;
       uniform vec3 uHigh;
       uniform vec3 uHorizon;
       uniform vec3 uSun;
       void main() {
-        /*
-         * Re-normalise. vDir is a unit vector at each vertex, but a
-         * varying interpolates linearly through the triangle, so inside a
-         * face it is short: on this dome, 40 by 24 segments, by up to half
-         * a percent. That was invisible in the sky gradient and fatal to
-         * the sun, whose disc is a threshold on dot(vDir, sun). The old
-         * step(0.9975, sd) could only fire where the interpolated length
-         * happened to survive, so the disc was not a circle at all but a
-         * patchwork following the tessellation.
-         */
-        vec3 vd = normalize(vDir);
-        float h = clamp(vd.y * 1.25 + 0.06, 0.0, 1.0);
-        // Posterised, but only part way. At five bands with a hard step the
-        // band edge is a single enormous pale arc sweeping across the sky,
-        // and in a still that reads as a rendering fault rather than as a
-        // style: it was the most visible artefact in every frame. Nine
-        // bands, a wider smooth edge, and a mix back toward the smooth
-        // gradient keep the poster feel without the arc.
-        float b = h * 9.0;
-        float stepped = (floor(b) + smoothstep(0.35, 0.95, fract(b))) / 9.0;
-        float band = mix(h, stepped, 0.5);
-        vec3 col = mix(uHorizon, uHigh, band);
-        /*
-         * Sun: a warm glow, then a disc.
-         *
-         * Both terms used to be added on top of a sky that was already at
-         * 0.59, 0.72, 0.83 at the sun's altitude. The glow alone
-         * (pow(sd, 22) * 0.5) reached 1.0 in every channel by 7.8 degrees
-         * off axis, and the disc (step(0.9975, sd), a 4 degree half angle,
-         * thirty times the real sun) then added a further 1.0 on top of
-         * that. The result was 1.9 percent of the frame pinned at 254 or
-         * higher: not a sun but a clipped hole with an aliased edge, and
-         * the brightest thing on screen by a wide margin whatever the
-         * pilot was actually looking at.
-         *
-         * So: a tighter glow in a colour that lifts red and green without
-         * pushing the already high blue, scaled so sky plus glow stays
-         * under 1.0 everywhere the glow is visible, and a disc composed by
-         * mix() to a ceiling below full white with a soft outer ramp so it
-         * resolves instead of stairing. Core 1.0 degree half angle, ramp
-         * out to 1.6, which is about 46 px across at 1600 wide.
-         */
-        float sd = max(dot(vd, normalize(uSun)), 0.0);
-        col += vec3(1.0, 0.80, 0.42) * pow(sd, 40.0) * 0.30;
-        col = mix(col, vec3(0.985, 0.965, 0.905), smoothstep(0.99961, 0.99985, sd));
-        gl_FragColor = vec4(col, 1.0);
+        gl_FragColor = vec4(celSkyColor(vDir, uSun, uHorizon, uHigh), 1.0);
       }
     `,
   });
@@ -1387,7 +1836,7 @@ export function buildScene(canvas) {
   const ground = terrain(height, samples);
   scene.add(ground);
   const occluders = [];
-  const water0 = water();
+  const water0 = water(height);
   scene.add(water0.mesh);
   const grass = grassField(height, samples, rng);
   /* Layer 1 is the no ink layer, excluded from the outline prepass.
@@ -1655,9 +2104,35 @@ export function buildScene(canvas) {
       continue;
     }
     const isTree = rng() < 0.74;
-    baker.bake(isTree
-      ? tree(rng, height, x, z, colliders)
-      : rock(rng, height, x, z, colliders));
+    /*
+     * Nothing grows under water. The test is the water column at this point,
+     * height() against LAKE.level, INSIDE the lake basin: the shoreline the
+     * bank builds runs from 105.8 to 119.3 m, so a circle at LAKE.r, 96 m,
+     * would leave a rank of trees standing in 4 m of lake, and the depth test
+     * on its own is far too greedy. Measured with a probe on the height
+     * field, 77.9 percent of the valley between 30 and 670 m of the origin
+     * sits below LAKE.level, because the racing corridor is flattened to 0
+     * and the land around it is a broad hollow. The first version of this
+     * test used depth alone and deleted 78 percent of the trees, rocks and
+     * cliffs in the world: P10 fell to 26.2 MB and the draw count to 64,
+     * which is how it was caught. The 0.4 m margin keeps them off the wet
+     * sand as well.
+     *
+     * It is a DISCARD, not a skip. The object is built first, from the same
+     * draws in the same order, and then thrown away, because this loop and
+     * everything after it hangs off one rng stream: skipping the draws would
+     * move every remaining tree, rock, cliff, flower and mountain in the
+     * valley. Same reason the grass keeps building a vertex it does not use.
+     */
+    const drowned = Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.6
+      && height(x, z) < LAKE.level + 0.4;
+    const obj = isTree
+      ? tree(rng, height, x, z, drowned ? null : colliders)
+      : rock(rng, height, x, z, drowned ? null : colliders);
+    if (drowned) {
+      continue;
+    }
+    baker.bake(obj);
     occluders.push({ x, z, r: isTree ? 2.2 : 1.4 });
   }
 

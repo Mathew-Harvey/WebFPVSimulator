@@ -1837,3 +1837,124 @@ subordinate is a judgement the next round should make with ears, not with
 this table.
 
 `npm run verify` 13 of 14, yaw-coupling the known red.
+
+## Round 14: P10 passes for the first time, and a lake whose shoreline was the land's fault
+
+Three of the owed findings closed, one partly, two not started. A session
+limit killed five of six agents mid run, so what follows is split between
+work that landed with its own measurements and work I had to verify myself
+because every reviewer died.
+
+### P10, the attribute byte budget, PASSES
+
+    p10_attribute_MB   51.7 before, 42.8 after, against a 48 MB budget
+
+The grass colour attribute was three 32 bit floats per vertex for values that
+only ever span a byte's worth of range. Normalised unsigned bytes give the
+same colours for a quarter of the bytes. This is the first time P10 has
+passed.
+
+And the point of doing it first was to buy room for the thing it gated:
+
+### Grass ground cover
+
+Raised, and P10 went DOWN while cover went UP, which is the whole reason the
+attribute fix had to come first. The near field now reads as a grass field
+rather than the scattered specks the scale reviewer measured at 14.5 percent.
+Triangles 1,921,441 to 1,929,853, so the density cost 8,412 triangles, not a
+new order of magnitude.
+
+### The geometry prepass mask, with two refusals I am keeping
+
+30 meshes now write sentinel depth into the prepass: 14 gate rings, 14 halos,
+the lake and the flower field. Measured on the ring's inner edge with
+pixels.js stair, which is the only measurement that can tell a resolve from a
+blur:
+
+    second difference RMS   0.383 px before, 0.192 / 0.217 / 0.189 after
+    worst step              1.57 px before,  0.52 / 0.77 / 0.52 after
+
+For scale, this project has previously measured 4x multisampling at 0.288 to
+0.304, so the gate target now resolves better than 4x MSAA did. Cost is 8 draw
+calls and 5,560 triangles; P3, P4 and P5 do not move.
+
+Two parts of that finding were REFUSED on measurement, and both refusals are
+better than the finding:
+
+- **The sky stays OUT of the prepass.** The skyline already gets coverage, and
+  it gets it BECAUSE the sky is absent: the prepass clears to depth 1.0, so a
+  ridge at 0.3 sits against a 0.7 step and coverage saturates. Measured on 118
+  consecutive rows of a ridge at 0.657 px of slope per row, the skyline is at
+  0.215 RMS and 0.46 px worst. Forcing the dome in anyway, through a back
+  sided sentinel because the override material is FrontSide and the dome is
+  BackSide, took those same rows to 0.567 RMS and 1.45 px worst, a 2.6 times
+  regression, and introduced a period two zigzag in the crossing. The dome's
+  depth at 1500 m in a 0.2 to 2600 m range is 0.577, which SHRINKS the ridge
+  step it was supposed to help.
+- **The gate glow stays out too.** It is a 3.96 m square, DoubleSide,
+  additive, depthWrite false, coplanar with the frame, and its shader is zero
+  at its own border, so it has no silhouette for coverage to resolve. Forced
+  in on all 14, the ring's inner edge went back to 0.311 RMS, undoing most of
+  the fix it was meant to extend.
+
+Ink on the skyline is still NOT fixed, and it is not a mask problem: the
+prepass clears to rg (0,0), which is the exact code the grass sentinel writes,
+so the ink pass's grass test suppresses ink for one texel around every
+skyline. Fixing it means re-encoding the geo target and changing the grass
+test, which is its own review.
+
+### The lake: the shader was right and the LAND was the circle
+
+`water()` is rewritten. Depth is now `LAKE.level - height(x, z)` sampled per
+vertex on a 48 by 160 disc, so the shoreline is where the water column reaches
+zero and the foam follows it; there is a sun term, a Blinn specular, and a
+fresnel weighted sky reflection that calls the SAME `celSkyColor` the dome
+calls, refactored into a shared `SKY_GLSL` so a reflection cannot be a
+different sky from the one overhead. Trees and rocks inside the basin are
+skipped by testing `height(x, z) < LAKE.level + 0.4` rather than by radius,
+and without adding or removing a single `rng()` call.
+
+Then I captured it, and it was still a perfect ellipse. Two of my own findings
+on top of the agent's work:
+
+**The basin was radially symmetric.** `makeHeightField` carved the bowl as a
+pure function of distance from the lake centre, so its water line is a circle
+BY CONSTRUCTION and no amount of correctness in the shader can produce a bay.
+The bowl's depth profile is now perturbed by value noise at a 118 m feature
+size, weighted by k(1-k)*4 so it vanishes at the rim (the basin still joins
+the meadow smoothly) and at the centre (the deepest point stays put) and peaks
+at k = 0.5, which is where the water line sits for a meadow at 0 and a level
+of -7.5. From plan view the beach band now varies in width right round the
+perimeter, which is the actual proof that the shore follows the land.
+
+**The swell was too strong, and it was not aliasing.** The frame read as
+corduroy from a high oblique. The `fwidth` attenuation is real and correctly
+written, and that is exactly why it was doing nothing: from 150 m the three
+trains run about 105 px per wave, so fwidth is 0.06 rad per pixel and k1 to k3
+all sit at 1.0. The pattern was the swell at its true scale, with a 9 degree
+surface tilt modulating the fresnel term hard. Slope multiplier 4.5 to 2.4,
+about 5 degrees. Measured on the same 22 sample walk across the lake:
+
+    swell contrast span   0.120 before, 0.062 after
+
+### Not started
+
+The plant findings, all of them, and they are the ones that matter most for
+flight feel: propwash, the descent thrust that has the wrong sign, the absent
+gyro disturbance that leaves the whole D term chain decorative, the 300 A
+punch transient, and yaw-coupling, which is still the one red check at 0.00
+deg. The agent that owned `src/native/plant.c` died at the session limit
+before making a single edit; the file is untouched.
+
+Worth recording because it cost me a wrong conclusion first: I tested whether
+the WASM toolchain was even live by appending an unexported function to
+plant.c and rebuilding, got a byte identical binary, and wrote down that the
+compiler was dead. It is not. An uncalled, unexported function is exactly what
+dead code elimination strips. Changing `.mass_kg` from 0.65 to 0.66 changed the
+binary and changing it back restored the identical sha256, so emcc 3.1.61 is
+live via /opt/emsdk/emsdk_env.sh and the build is bit reproducible. The plant
+work is possible; it simply has not been done.
+
+`npm run verify` 13 of 14. Determinism checks 2, 3 and 4 all still identical
+at 000931016224, which matters because this round touched the height field and
+nothing in the physics.

@@ -124,6 +124,22 @@ int sim_step(int n);
  */
 int sim_motor_override(int motor, double duty);
 
+/*
+ * The ground holds the craft: zero the linear velocity and the body rates,
+ * keeping position, attitude, motor speeds and battery state. The shell
+ * calls this once at the moment a touchdown is judged a landing, because a
+ * craft resting on the ground is held by a normal force this free-air model
+ * does not have. Without it the frozen landed state kept its touchdown
+ * descent rate, every freeze/unfreeze cycle of a slow takeoff resumed and
+ * grew it, and at 60 fps a gentle throttle ramp accumulated 2.1 m/s of
+ * phantom descent and was judged a crash the pilot never flew. Additive ABI
+ * change, version unchanged: no existing entry point moved or changed
+ * meaning. A replay that reproduces a flown session must issue the same
+ * call at the same step, which the shell guarantees by deriving it from the
+ * deterministic landing judgement.
+ */
+int sim_rest(void);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

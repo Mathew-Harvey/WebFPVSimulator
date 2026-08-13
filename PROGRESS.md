@@ -2475,3 +2475,222 @@ lower and would have resolved a deck landing onto the ballast below it.
 
 `npm run verify` 15 of 16, `yaw-coupling` the one red at -0.09 deg. Determinism
 hash 3fdde8bd11da across Node and headless Chrome and four frame rates.
+
+## Round 16: the owner's bug list, and a takeoff that was never flyable at 60 fps
+
+The owner interrupted the polish loop with four bugs: takeoff climbs a little
+and crashes unless you wiggle and punch, the scale feels like a 7 inch on both
+maps, and input goes laggy after playing the freestyle map. All four trace to
+two defects this round closes, plus a cluster of review debt that was already
+in flight. Everything below is measured; the container hid the worst of it,
+and why it hid it is part of the record.
+
+### The takeoff bug, which was two bugs wearing one symptom
+
+**The physics spawned 0.9 m above the parked render.** SPAWN_ALT was 0.9, a
+leftover from when the craft spawned in mid air, while the landed render sat
+the craft on the grass at REST_HEIGHT. Every takeoff unfroze 82 cm up with
+motors at zero RPM: the craft popped up visually, fell 0.7 m while the motors
+spooled, arrived at about 3.4 m/s against a 2.0 m/s landing gate, and was
+judged a crash the pilot never flew. A throttle punch out-spooled the fall,
+which is exactly the owner's "wiggle the roll axis and give throttle punch"
+workaround.
+
+**And the frozen landed state was a falling state.** The ABI could not write
+a velocity, so freezing the craft stored its touchdown descent rate and every
+freeze/unfreeze cycle of a slow takeoff resumed and grew it. Replicating the
+shell's frame loop against the real sim.wasm at a simulated 60 fps: a gentle
+human throttle ramp accumulated 2.13 m/s of phantom descent across 14 freeze
+cycles and crashed 0.9 s after crossing the takeoff gate. A punch takeoff
+peaked at 0.55 m/s and flew. At 144 fps it crashed too, in 37 cycles.
+
+**Why no capture ever caught it: the container's frames are about 100 ms, and
+the ground judgement runs on FRAME endpoints.** The whole spool dip fits
+inside one frame whose endpoints both climb, so the sweep never sees it. The
+judgement is frame rate dependent even though the trajectory is not, and that
+seam is now written down here rather than waiting to be rediscovered.
+
+The fix, in three parts, all measured:
+
+- **sim_rest(), a new ABI entry point**: zero the velocity and body rates,
+  keep position, attitude, motors and battery. Called once at each judged
+  touchdown, because a craft resting on the ground is held by a normal force
+  a free-air model does not have. Additive change, ABI version stays 1, no
+  existing entry point moved. The determinism hash did not move either:
+  3fdde8bd11da before and after, Node and Chrome, four frame rates.
+- **The ground holds the craft while the motors spool.** A takeoff sets a
+  takingOff hold. While held and still in contact, any frame that ends
+  descending is rested where it stands, exactly as a pad holds a real quad
+  through the spool; the first frame that ends ascending flies off. Without
+  the hold the craft free-falls through its own takeoff: measured, a throttle
+  crossing the gate at 0.26 spends about 150 ms spooling from rest and
+  plunges 20 cm. The hold releases when the craft climbs 5 cm clear, or rests
+  the craft where it is when the pilot chops below the gate.
+- **SPAWN_ALT = REST_HEIGHT = 0.045.** The physics now spawns exactly where
+  the parked render has always shown the craft.
+
+Validated in the frame loop replica at 60, 144 and 241 Hz frames, gentle,
+marginal, punch and abort ramps, 4.2 and 3.6 V: exactly one takeoff event per
+takeoff, zero landed/flying chatter, zero crashes, worst spool dip 7.5 cm.
+In page, both maps take off at a gentle 0.32 throttle from a parked clearance
+of 0.045 m with a clean console.
+
+### The scale bug: the craft was a ball and the camera was in its stomach
+
+Check 15 proves every drawn dimension exact, so the "feels like a 7 inch"
+complaint had to be in what the pilot cannot see: the collision volume and
+the camera.
+
+**The collision craft is now a disc, which is what a quad is.** The swept
+sphere was CRAFT_R = 0.1735 m in every direction; the drawn airframe runs
+from -0.017 m to +0.034 m about its origin. The queries now sweep an
+ellipsoid: CRAFT_R across the props, CRAFT_V_HALF = 0.040 m through the body,
+growing toward CRAFT_R with the sine of the tilt because a banked disc
+presents its diameter to the vertical. Measured on a regulation gate with
+1.315 inch tube: the usable vertical window goes from 1.142 m to 1.410 m of
+the 1.524 m opening. The sphere was stealing 26.8 cm, a fifth of every gate.
+
+- Boxes are EXACT: the piecewise slab walk divides each axis's contribution
+  by its semi-axis, which is the ellipsoid contact condition with no extra
+  cost. Fuzzed against a dense reference, worst contact parameter error
+  4.9e-5.
+- Capsules use one support refinement: sweep the conservative sphere, take
+  the contact direction AT THE CLOSEST APPROACH between travel and axis,
+  re-solve once with the ellipsoid's support radius along it. Boundary cases
+  are exact (overhead tube flips at r + 0.040 within 4 mm, side post at
+  r + 0.1735, sphere overhead at r + 0.040, diagonal within its documented
+  conservatism, bounded under 15 mm).
+- The ground judgement queries from the craft's real underside with the same
+  tilt aware extent, so a low pass meets the ground where the airframe does,
+  13 cm later than before.
+
+**The walker's step rule nearly resurrected the overbridge bug.** The city's
+height query offers a platform within a 0.55 m step of fromY. With the true
+0.040 m extent, the deck at 7.20 m became an eligible floor for a craft at a
+centre height of 6.69 m, under the deck's own underside, which is round 15b's
+bug back again. SURFACE_BIAS = 0.40 shifts every contact query's fromY down,
+turning the walker's step into a 0.15 m landable depth: a kerb still judges,
+a deck can never be your floor from underneath. Re-derived: under-deck flight
+is clean below 6.91 m, the bridge's own structure crashes 6.91 to 7.22 m, and
+a deck landing wins at 7.24 m, 2 cm before the underside slab, same margin as
+before.
+
+**The camera now sits where a real FPV camera bolts on.** It sat at the
+centre of mass, so every forward contact happened 17.35 cm in front of the
+lens and the pilot watched gates they had visibly not reached take the lap.
+It is now 0.0775 m forward, the body's front edge, leaving the prop arc
+9.6 cm ahead of the lens, the same order as a real 5 inch. And field of view
+is a setting (90 to 120 vertical, default 100 unchanged so every measured
+budget stays comparable; real FPV cameras sit around 110).
+
+### The lag bug: three accumulators and a poisoned freeze
+
+"After playing the freestyle map the input becomes very laggy" is what the
+landed-state chatter feels like from the sticks: freestyle means perching,
+every landing stored a descent, and the craft then spent alternate frames
+frozen. That is fixed above. Two real per-session accumulators are also
+closed, found by the review that was already in flight when the owner wrote:
+
+- **celmat.js registered every compiled cel material's clock uniform forever**
+  in a push-only array that updateCelTime walked every frame, so every map
+  swap left the walk longer and full of dead uniforms. It is a Map pruned on
+  the material's own dispose event now, and check 16 asserts the walk does
+  not grow across a field, city, field round trip.
+- **The field's dispose freed the composer's targets but none of its pass
+  materials**, and three.js releases a cached WebGLProgram only when its
+  material is disposed: the copy, outline and grade passes plus the prepass
+  normal and grass mask materials leaked compiled programs on every swap,
+  invisible to budgets that count targets and triangles. buildComposer owns
+  a dispose() now and field.js calls it.
+
+### The rest of the review debt, closed
+
+- **hit() returns the first contact ALONG THE TRAVEL.** It returned the first
+  collider in grid scan order, so two solid things in one frame's travel
+  reported whichever cell the broadphase reached first, and that decided
+  graze against crash: a gate upright clipped at t 0.85 could swallow a tree
+  at t 0.15. Every candidate is tested now and the smallest contact parameter
+  wins; capsules by cap-sphere and cylinder roots, boxes by the ascending
+  piece walk. Fuzzed: 3000 random cases against a dense reference, zero
+  mismatches, worst error 4.3e-6; the two-collider scenario reports the tree
+  at t 0.118.
+- **setBoxExtentY.** The box solver's lo <= hi invariant was maintained by
+  convention across two files, with animation.js writing fay directly; an
+  inverted box rejects every query silently, which makes the crossing
+  permeable rather than loud. One guarded call owns both ends now and throws
+  on inversion.
+- **MAP_MODULE_COUNT said 61; the truth is 63**, and check 16 now asserts the
+  typed weight against what the browser fetched on the cold load, so it
+  cannot silently drift again.
+
+### The advisor ran, mostly
+
+CLAUDE.md requires the advisor before changes to the model's shape. The gyro
+noise and motor constant re-derivation designs went to a three lens
+adversarial panel; two reviewers completed with 20 findings before the
+session's subagent budget died and the verification stage returned an empty
+confirmed list, WHICH IS NOT A CLEAN BILL: round 15b's lesson applied, the
+journal held the findings and they are recorded raw. The load bearing ones,
+for whoever lands those designs: the mixed sign 48 A clamp set is NOT
+monotone and wants a fixed count bisection on pack voltage, not active set
+refinement; the narrowband vibration line should scale nearer w than w^2 in
+the rate domain; the 1x line crosses the 1 kHz seam's Nyquist in sustained
+light-load states unless the current clamp lands FIRST, so the two changes
+are order coupled; j_rotor's stated derivation does not reproduce its own
+total (honest range 7.0 to 9.9e-6, in band either way); r_motor = 0.09 as a
+DC equivalent buys the right full-throttle current at the cost of hover
+response 1.7x slower than the physical motor, and should be recorded as that
+trade; and the re-specified check 8 step of +0.1 duty stays clear of the
+clamp (31.6 A peak) but reads 1 to 2 ms below the hover point formula because
+the damping grows along the step. The gyro noise seam choice, magnitudes and
+the parabolic sine survived attack. The plant work itself is deferred behind
+the owner's bug list.
+
+### What went wrong on the way
+
+- **The first abort threshold measured sink from the collision sphere's
+  bottom**, which reads 9.85 cm of sink in the parked pose, so every takeoff
+  force-landed instantly: 56 to 231 takeoff events per run. The depth of the
+  CENTRE below the surface is the meaningful quantity.
+- **The first support refinement took the contact direction at the sphere's
+  first contact**, which for a level pass under a tube is still mostly
+  horizontal, so the reach never shrank and the boundary case failed by
+  exactly the amount the refinement existed to remove. The direction at the
+  closest approach is the one that predicts the contact.
+- **The first cel walk assertion demanded equality across the round trip**
+  and failed against 54 to 39: a material registers when it first COMPILES,
+  so the rebuilt field legitimately reports fewer until every view has
+  rendered. Growth is the leak signal, not difference.
+- **Two harness runs printed console errors that were my own until timeouts**,
+  not page errors: at 0.195 throttle the container descends too slowly for
+  the step's patience. Read the ERR lines before blaming the page.
+- **The advisor workflow reported confirmed: [] because its verify agents hit
+  a session limit**, which looks exactly like a clean review. The journal had
+  everything. Check that a review ran before believing it found nothing,
+  again.
+
+### Verify
+
+npm run verify after the final change set: see the table in the session log,
+15 of 16 expected with yaw-coupling the one red at -0.09 deg unchanged.
+Determinism hash 3fdde8bd11da, identical to the round 15b baseline, across
+Node, headless Chrome and four frame rates: the takeoff fix, the ellipsoid
+and the ABI addition cost the trace nothing. Checks 5 through 12 byte
+identical to the baseline table. Check 16 carries two new assertions: the
+cel clock walk must not grow across a round trip, and the module weight must
+match the fetched count.
+
+### Owed next, in the order the evidence suggests
+
+1. The World stage sub-progress needs the vendored builder chunked with
+   yields, a recorded patch that makes it async with an optional pause hook;
+   a progress callback alone cannot paint during a synchronous 7 second call.
+2. City P6, P7, P8 at 1920 by 1080, and the P6 argument that the budget as
+   written is a field budget.
+3. The judge loop over the city's authored choices: fog, spawn, shadow half
+   width, HUD set.
+4. Gyro noise and the motor constant re-derivation, advisor findings above,
+   clamp before noise.
+5. The landing gates: the owner's descent crash at 3.83 m/s was judged
+   correctly under the 2.0 m/s rule, but round 12's argument that 2.0 is 30
+   to 50 percent strict for grass now has a user report behind it.

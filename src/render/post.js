@@ -631,6 +631,30 @@ export function buildComposer(renderer, scene, camera) {
       composer.render();
     },
     setSize,
+    /*
+     * Everything this composer owns, freed in one place. The render targets
+     * are what the budget counts, but the PASS MATERIALS are what the
+     * renderer's program cache keys on: three.js releases a cached
+     * WebGLProgram only when the material owning it is disposed, so leaving
+     * these out leaked a handful of compiled shader programs on every map
+     * swap, invisible to every budget because budgets count targets and
+     * triangles. The bloom pass frees its own ladder of targets and
+     * materials. ShaderPass.dispose is deliberately not used for outline
+     * and grade: it also disposes FullScreenQuad's module level SHARED
+     * triangle geometry, which the next composer re-uploads; bloom already
+     * does that once and once is enough.
+     */
+    dispose() {
+      for (const rt of [composer.renderTarget1, composer.renderTarget2, normalTarget]) {
+        rt.dispose();
+      }
+      bloom.dispose();
+      outline.material.dispose();
+      grade.material.dispose();
+      composer.copyPass.material.dispose();
+      normalMaterial.dispose();
+      grassMaskMaterial.dispose();
+    },
     outline,
     bloom,
     grade,

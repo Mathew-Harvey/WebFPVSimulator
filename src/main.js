@@ -43,32 +43,54 @@ import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
-import { CRAFT_R, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
+import { CRAFT_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
 import { Ui } from './ui/ui.js';
+import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
 /*
  * Metres between sim z = 0 and the ground plane, which is where the craft
- * spawns. It used to be 1.5 m, chosen when the gate's aperture centre was
- * 2.5 m up. A regulation 5 ft gate standing on grass has its aperture centre
- * at 0.762 m and its top edge at 1.524 m, so a craft spawned at 1.5 m sits
- * level with the top of the opening and has to descend to fly through the
- * start gate. 0.9 m puts it just below the aperture centre, which is where a
- * pilot actually sets a quad down before a run, and it is still 0.71 m of
- * clearance under the collision sphere.
+ * spawns, and it is the PARKED height, not a hover.
+ *
+ * It was 0.9 m, a leftover from when the craft spawned hanging in mid air,
+ * and it is the number behind the takeoff bug the owner reported: the
+ * landed render sat the craft on the grass while the physics state waited
+ * 0.9 m up, so every takeoff unfroze 82 cm in the air with dead motors,
+ * popped up visually, fell 0.7 m while the motors spooled from zero,
+ * arrived at about 3.4 m/s and was judged a crash the pilot never flew. A
+ * throttle punch out-spooled the fall, which is why "wiggle and punch"
+ * worked and a gentle takeoff did not. The physics now spawns exactly
+ * where the parked render has always shown the craft: resting on the
+ * ground.
  */
-const SPAWN_ALT = 0.9;
-/* The craft rests with its underside on the ground, not its centre. The
- * model's bounding box is 0.11 m tall, so its belly is 0.055 m below centre;
- * a couple of centimetres of skid keeps it from strobing in and out of
- * contact on a slope. */
-const REST_HEIGHT = 0.075;
+const SPAWN_ALT = 0.045;
+/* The craft rests with its underside on the ground, not its centre: body
+ * underside is 0.017 m below centre and grass carries the frame a little
+ * above the soil. Identical to SPAWN_ALT so the parked pose, the spawn
+ * state and a landing all agree about where the ground holds the craft. */
+const REST_HEIGHT = 0.045;
 /* Raising the throttle this far off the ground is a deliberate takeoff. The
  * launch latch uses 0.05, which is right for arming a run from rest but
  * would lift the craft off the instant it landed with any throttle held. */
 const TAKEOFF_THROTTLE = 0.25;
+/*
+ * Bias subtracted from the height query's fromY, metres.
+ *
+ * The city's multi level height query answers "what is my floor" with a
+ * WALKER'S rule: a platform is eligible when its top is within a 0.55 m
+ * step of fromY. A quad is not a walker: with the craft's true 0.040 m
+ * vertical half extent, the overbridge deck at 7.20 m became an eligible
+ * floor for a craft flying UNDER it at 6.69 m, below the deck's own
+ * underside, and the round 15b bug came back. Shifting fromY down by this
+ * bias turns the walker's 0.55 m step into a 0.15 m landable depth: deep
+ * enough that a kerb or a low step still judges contact, shallow enough
+ * that a deck can never be your floor from underneath it. The remaining
+ * gap under the deck, centre heights 6.91 m and up, is inside the bridge's
+ * own structure and the underside slab collider crashes it.
+ */
+const SURFACE_BIAS = 0.40;
 /* The controller consumes each input sample as one RC frame, so the shell
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
@@ -116,7 +138,11 @@ const AXIS_Y = new THREE.Vector3(0, 1, 0);
  * makes that stage's bar move at the wrong rate; it cannot break the load,
  * and the stage still ends when the import resolves.
  */
-const MAP_MODULE_COUNT = { field: 3, city: 61 };
+/* field: field.js, scene.js, post.js. city: 59 vendored files plus
+ * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
+ * asserts the city count against what the browser actually fetched on a
+ * cold load, because 61 sat here for a round and nothing could notice. */
+const MAP_MODULE_COUNT = { field: 3, city: 63 };
 
 async function loadMap(shell, id, loading) {
   const entry = mapById(id);
@@ -253,11 +279,25 @@ export async function boot({ loading, bootStart, mapId }) {
    * liftoff on TAKEOFF_THROTTLE. A real quad sits on the ground before a run.
    */
   let launched = true;
-  /* On the ground, upright, intact, physics frozen. A landing cannot be a
-   * physics clamp: the module's ABI has no call that writes a position or a
-   * velocity, so the only way to hold a craft on the ground is to stop
-   * stepping it, which is exactly what the pre launch hold already does. */
+  /* On the ground, upright, intact, physics frozen. Position is not
+   * writable through the ABI, so the craft is held by not stepping it;
+   * sim_rest zeroes the velocity at each judged touchdown so the frozen
+   * state is a true rest state rather than a falling one. */
   let landed = true;
+  /*
+   * Between committing to a takeoff and getting the collision sphere clear
+   * of the surface. While this is set, ground contact does not re-land the
+   * craft: the parked pose already sits inside contact (the sphere reaches
+   * 17 cm below a centre parked 7.5 cm up), so during the motor spool the
+   * contact test fires on EVERY frame, and judging each one flipped the
+   * craft landed and flying at frame rate: measured at a simulated 60 fps,
+   * 96 to 346 freeze cycles per gentle takeoff, each one a land sound, a
+   * takeoff sound and a render pose flick. A takeoff ends the hold by
+   * climbing clear; an abort (throttle back below the gate, or sinking
+   * 5 cm into the surface because the pack cannot hover this throttle)
+   * ends it by resting the craft where it is.
+   */
+  let takingOff = false;
   let statePrev = null;
   let stateCurr = null;
   /* Ground sweep state. groundPrev is where the craft was last frame, so the
@@ -272,6 +312,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastHitKind = 'none';
   let lastClosing = 0;
   let speedNow = 0;
+  /* The craft's tilt-aware vertical half extent, written by the physics
+   * branch each frame and read by the obstacle query later in the same
+   * frame. Starts level. */
+  let vHalfFrame = craftVerticalHalf(0);
   let airtimeMs = 0;
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
@@ -288,6 +332,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function crashInto(reason, nowWall) {
     crashed = true;
     landed = false;
+    takingOff = false;
     crashedAtWall = nowWall;
     race.voidLap(reason, nowWall);
     view.setNextGate(race.nextSceneIndex());
@@ -321,6 +366,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * here is what made every respawn repeat the takeoff trap. */
     launched = true;
     landed = true;
+    takingOff = false;
     groundY = groundAt(startX, startZ);
     /* Clear the judgement that produced the last crash. Leaving it behind is
      * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
@@ -358,6 +404,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * here is what made every respawn repeat the takeoff trap. */
     launched = true;
     landed = true;
+    takingOff = false;
     groundY = groundAt(startX, startZ);
     /* Clear the judgement that produced the last crash. Leaving it behind is
      * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
@@ -443,6 +490,13 @@ export async function boot({ loading, bootStart, mapId }) {
   function applySettings(s) {
     camTilt = s.cameraAngle;
     qTilt.setFromAxisAngle(new THREE.Vector3(1, 0, 0), (camTilt * Math.PI) / 180);
+    /* Vertical field of view. The default 100 keeps every measured budget
+     * comparable; the setting exists because how roomy a course feels is a
+     * pilot preference on real quads too, set by lens choice. */
+    if (shell.camera.fov !== s.cameraFov) {
+      shell.camera.fov = s.cameraFov;
+      shell.camera.updateProjectionMatrix();
+    }
     if (mode === 'title') {
       /* Between runs the choice takes effect at once. During a run it
        * waits for the next one, so the record it is measured against is
@@ -591,6 +645,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const pProbe = new THREE.Vector3();
   const camPos = new THREE.Vector3();
   const orbitTarget = new THREE.Vector3();
+  const camFwd = new THREE.Vector3();
   applySettings(ui.settings);
 
   /* The spawn's placement in the world. Not fixed for the session any more:
@@ -650,6 +705,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * the resample loop would fire a burst of stick samples to catch up
          * and the controller would see a spike of stale input. */
         landed = false;
+        takingOff = true;
         rcNextMs = simTimeMs;
         lastTs = simTimeMs / 1000;
         if (typeof audio.event === 'function') {
@@ -722,6 +778,26 @@ export async function boot({ loading, bootStart, mapId }) {
       pProbe.applyQuaternion(qSpawn);
       pProbe.x += startX;
       pProbe.z += startZ;
+      /*
+       * The craft's vertical half extent at its current tilt. A quad is a
+       * DISC: 0.347 m across the props, 0.080 m through the body, so the
+       * old CRAFT_R sphere met the ground 13 cm before the airframe did
+       * and stole 26.7 cm of every gate window. Level it is 0.040 m; banked
+       * it grows toward CRAFT_R because a banked disc presents its
+       * diameter to the vertical. Computed from last frame's rendered
+       * quaternion, one frame of tilt lag on a 1 ms physics grid.
+       */
+      const cqx = shell.quad.quaternion.x;
+      const cqz = shell.quad.quaternion.z;
+      let upNow = 1 - 2 * (cqx * cqx + cqz * cqz);
+      if (upNow > 1) {
+        upNow = 1;
+      }
+      if (upNow < -1) {
+        upNow = -1;
+      }
+      vHalfFrame = craftVerticalHalf(Math.sqrt(1 - upNow * upNow));
+      const vHalf = vHalfFrame;
       let touched = false;
       let touchX = pProbe.x;
       let touchZ = pProbe.z;
@@ -744,7 +820,7 @@ export async function boot({ loading, bootStart, mapId }) {
             const sx = groundPrev.x + (pProbe.x - groundPrev.x) * gt;
             const sy = groundPrev.y + (pProbe.y - groundPrev.y) * gt;
             const sz = groundPrev.z + (pProbe.z - groundPrev.z) * gt;
-            if (sy - CRAFT_R <= view.height(sx, sz, sy - CRAFT_R)) {
+            if (sy - vHalf <= view.height(sx, sz, sy - vHalf - SURFACE_BIAS)) {
               touched = true;
               touchX = sx;
               touchZ = sz;
@@ -752,13 +828,62 @@ export async function boot({ loading, bootStart, mapId }) {
               break;
             }
           }
-        } else if (pProbe.y - CRAFT_R <= view.height(pProbe.x, pProbe.z, pProbe.y - CRAFT_R)) {
+        } else if (pProbe.y - vHalf <= view.height(pProbe.x, pProbe.z, pProbe.y - vHalf - SURFACE_BIAS)) {
           touched = true;
         }
       }
       groundPrev.copy(pProbe);
       groundHasPrev = true;
-      if (touched) {
+      if (takingOff) {
+        if (
+          !touched &&
+          pProbe.y - vHalf > view.height(pProbe.x, pProbe.z, pProbe.y - vHalf - SURFACE_BIAS) + 0.05
+        ) {
+          /* Clear of the surface by a real margin, not just by the parked
+           * pose's few millimetres: the takeoff is real and normal contact
+           * judging owns the craft again. Without the margin the hold
+           * released on the first frame and the spool dip handed the craft
+           * straight back to the landing judgement, which is the chatter
+           * this flag exists to prevent. */
+          takingOff = false;
+        } else if (touched) {
+          const thrNow = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
+          /* Depth of the craft's CENTRE below the surface. With the per
+           * frame rest below, this is a backstop that only an upstream
+           * regression can reach. */
+          const sunk = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS) - touchY;
+          if (thrNow <= TAKEOFF_THROTTLE || sunk > 0.10) {
+            /* Aborted. Rest it where it is: arriving at the ground from
+             * resting on it is not a crash at any spool speed. */
+            takingOff = false;
+            landed = true;
+            sim.rest();
+            stateCurr = readState();
+            statePrev = stateCurr;
+            acc = 0;
+            groundY = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS);
+            if (typeof audio.event === 'function') {
+              audio.event('land');
+            }
+          } else if (stateCurr[6] <= 0) {
+            /*
+             * Still spooling off the pad and the frame ended descending:
+             * THE GROUND HOLDS THE CRAFT WHILE THE MOTORS SPOOL, exactly
+             * as a launch pad holds a real quad, by zeroing the sink each
+             * frame while gravity still beats thrust. Without this the
+             * craft free-falls through its own takeoff: measured at
+             * 60 fps, a throttle crossing the gate at 0.26 spends about
+             * 150 ms spooling from rest and the craft plunges 20 cm into
+             * the ground in that time, because it spawns only 7.5 cm up.
+             * The first frame that ends ascending is the spool won;
+             * from there it climbs out of contact and takingOff clears.
+             */
+            sim.rest();
+            stateCurr = readState();
+            statePrev = stateCurr;
+          }
+        }
+      } else if (touched) {
         /* Descent rate and horizontal speed come straight out of the state
          * block. frame.js maps sim z to world up, so state[6] IS the
          * vertical velocity and the other two are the horizontal pair; a
@@ -783,7 +908,24 @@ export async function boot({ loading, bootStart, mapId }) {
         lastTiltDeg = tiltDeg;
         if (isLanding(descent, horiz, tiltDeg)) {
           landed = true;
-          groundY = view.height(touchX, touchZ, touchY - CRAFT_R);
+          /*
+           * THE GROUND HOLDS THE CRAFT. sim_rest zeroes the velocity and
+           * body rates at the judged touchdown, which is what a normal
+           * force does and what this free-air model cannot do on its own.
+           * Without it the frozen state kept its touchdown descent rate,
+           * and a slow takeoff at 60 fps chattered between landed and
+           * flying while the motors spooled from zero, RESUMING and
+           * GROWING that stored descent on every cycle: measured, a
+           * gentle throttle ramp accumulated 2.13 m/s of phantom descent
+           * in fourteen freeze cycles and was judged a crash the pilot
+           * never flew. A punch spooled fast enough to win the race,
+           * which is why "wiggle and punch" worked and a normal takeoff
+           * did not. Invisible in this container, whose 100 ms frames
+           * hide the whole dip inside one frame's endpoints.
+           */
+          sim.rest();
+          stateCurr = readState();
+          groundY = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS);
           /* The two states are made identical so the render interpolation
            * has nothing to interpolate: with the integrator frozen, an
            * accumulator left mid step would otherwise slide the craft
@@ -799,16 +941,12 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     } else if (mode === 'flight' && !crashed && launched && landed) {
       /*
-       * Sitting on the ground. The integrator does NOT step, because the
-       * ABI has no call that writes a position or a velocity, so the only
-       * way to hold a craft on the ground is to stop advancing it.
-       *
-       * KNOWN LIMITATION, and it is visible: the frozen state keeps whatever
-       * descent rate it had at touchdown, up to the 2.0 m/s landing gate, so
-       * the first few milliseconds of a takeoff still carry that downward
-       * velocity and the craft dips before thrust wins. Holding it properly
-       * needs an ABI that can write a velocity, which is a deliberate change
-       * with its own argument in PROGRESS.md.
+       * Sitting on the ground. The integrator does NOT step: position is
+       * still not writable through the ABI, so the craft is held by not
+       * advancing it. The touchdown descent rate is no longer stored with
+       * it: sim_rest zeroed the velocity at the landing judgement, so a
+       * takeoff resumes from a true rest state and the only dip left is
+       * the real one, the motors spooling up from wherever they idled.
        *
        * The lap clock DOES keep running. Landing in the middle of a lap
        * costs you the time it costs you, and a course where you can park for
@@ -844,10 +982,11 @@ export async function boot({ loading, bootStart, mapId }) {
     pCurr.z += startZ;
     qPrev.premultiply(qSpawn);
     if (landed) {
-      /* The frozen state is a few centimetres inside the ground, because
-       * that is what tripped the contact test. Sit the craft ON the terrain
-       * instead, so a landing looks like a landing rather than a quad half
-       * buried in a field. Render only: the physics state is untouched. */
+      /* The frozen state's centre is at the surface plus the craft's tilt
+       * aware vertical half extent, within millimetres of REST_HEIGHT, but
+       * the terrain under it may differ from where contact tripped. Seat
+       * the render on the resolved ground so a landing looks like a
+       * landing. Render only: the physics state is untouched. */
       pCurr.y = groundY + REST_HEIGHT;
     }
     shell.quad.position.copy(pCurr);
@@ -868,9 +1007,12 @@ export async function boot({ loading, bootStart, mapId }) {
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
     if (mode === 'flight' && !crashed && !landed && launched && raceHasPrev) {
+      /* The craft the query sweeps is the ellipsoid: CRAFT_R across the
+       * props, vHalfFrame through the body at its current tilt. */
       const k = view.colliders.hit(
         racePrev.x, racePrev.y, racePrev.z,
         pCurr.x, pCurr.y, pCurr.z,
+        vHalfFrame,
       );
       if (k >= 0) {
         lastHitKind = view.colliders.kindName(k);
@@ -935,7 +1077,19 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The camera sits inside the airframe, so the quad must be hidden or
        * you fly looking at the inside of its own outline hull. */
       shell.quad.visible = false;
-      shell.camera.position.copy(pCurr);
+      /*
+       * AT THE FRONT OF THE FRAME, where a real FPV camera bolts on, not at
+       * the centre of mass. With the camera at the centre, every forward
+       * contact happened 17.35 cm in front of the lens: the pilot watched a
+       * gate upright they had visibly not reached take the lap away, and
+       * read it as "the drone is huge". 0.0775 m is the body's front edge
+       * (bodyLength / 2 in src/render/craft.js), which leaves the prop arc
+       * 9.6 cm ahead of the lens, the same order a real 5 inch puts it.
+       * The offset is along the airframe's own forward axis, untilted: the
+       * camera TILTS on its mount, it does not slide along its view ray.
+       */
+      camFwd.set(0, 0, -1).applyQuaternion(qPrev);
+      shell.camera.position.copy(pCurr).addScaledVector(camFwd, 0.0775);
       shell.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
       /* Attract view: the craft parked, camera circling wide and high enough
@@ -1165,6 +1319,10 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /* What is solid, and how well the broadphase is doing. */
   window.__colliders = () => view.colliders.stats();
+  /* How many cel materials the per frame clock walk touches. Check 16
+   * asserts this returns to its boot value after a map round trip, which is
+   * the measurement that catches a dead uniform kept alive forever. */
+  window.__celCount = () => celTimeCount();
   /*
    * The craft's contact state, so a capture can ASSERT a landing instead of
    * describing one. descentRate and tiltDeg are the values the last ground
@@ -1403,6 +1561,9 @@ export async function boot({ loading, bootStart, mapId }) {
     ready: mapReady,
     references: view.references ?? null,
     loading: window.__loading ? window.__loading.timings : null,
+    /* The loading bar's module weight for this map, so check 16 can assert
+     * the typed number against what the browser actually fetched. */
+    expectedModules: MAP_MODULE_COUNT[view.id] ?? null,
     ...(view.stats ? view.stats() : {}),
   });
   window.__maps = () => MAPS.map((m) => ({ id: m.id, name: m.name, mode: m.mode }));

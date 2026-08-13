@@ -38,7 +38,7 @@
  *
  *   train x     x0 + SPEED * step * 0.001, wrapped
  *   arm state   a saturating ramp whose phase is read straight off x
- *   boom boxes  set from that arm state through Colliders.setBoxTop
+ *   boom boxes  set from that arm state through Colliders.setBoxExtentY
  *
  * The town's own `world.update(dt)` is still called, for the vending
  * machines, the traffic, the shutter, the cat and the petals. None of those
@@ -269,8 +269,11 @@ export function cityAnimation(world, colliders, boomIndices) {
       const y0 = state.down ? BOOM_Y0 : BOOM_PARKED_Y0;
       const y1 = state.down ? BOOM_Y1 : BOOM_PARKED_Y1;
       for (const i of booms) {
-        colliders.fay[i] = y0;
-        colliders.setBoxTop(i, y1);
+        /* One guarded call for both ends. Writing fay directly and then
+         * setBoxTop meant the lo <= hi invariant the box solver depends on
+         * was maintained by convention across two files, and an inverted
+         * box rejects every query silently. */
+        colliders.setBoxExtentY(i, y0, y1);
       }
     }
   }

@@ -218,7 +218,7 @@ async function main() {
         'eval:JSON.stringify((() => {' +
           'const b = window.__budget("field spawn");' +
           'window.__setCam(null);' +
-          'return { tag: "budget", p1: b.p1_calls, p2: b.p2_triangles, p5: b.p5_target_MB, p10: b.p10_attribute_MB, meshes: b.meshes };' +
+          'return { tag: "budget", p1: b.p1_calls, p2: b.p2_triangles, p5: b.p5_target_MB, p10: b.p10_attribute_MB, meshes: b.meshes, cel: window.__celCount() };' +
         '})())',
         'eval:JSON.stringify({' +
           'tag: "field",' +
@@ -268,7 +268,7 @@ async function main() {
         '})',
         'eval:JSON.stringify({ tag: "swap", started: (window.__setMap("city"), true) })',
         'until:window.__map().id === "city" && window.__map().ready',
-        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading })',
+        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading, expectedModules: window.__map().expectedModules })',
         `eval:${collect}`,
         /*
          * BACK TO THE FIELD, AND MEASURE IT AGAIN. The budget taken at boot
@@ -288,7 +288,7 @@ async function main() {
         'eval:JSON.stringify((() => {' +
           'const b = window.__budget("field spawn after round trip");' +
           'window.__setCam(null);' +
-          'return { tag: "budget2", p1: b.p1_calls, p2: b.p2_triangles, p5: b.p5_target_MB, p10: b.p10_attribute_MB, meshes: b.meshes };' +
+          'return { tag: "budget2", p1: b.p1_calls, p2: b.p2_triangles, p5: b.p5_target_MB, p10: b.p10_attribute_MB, meshes: b.meshes, cel: window.__celCount() };' +
         '})())',
       ];
       const run = spawnSync('node', [join(root, 'scripts/shots.js'), ...steps], {
@@ -345,6 +345,7 @@ async function main() {
           railCount: cr.handrailHeight.count,
         },
         loading: cityData.loading,
+        cityExpectedModules: cityData.expectedModules ?? null,
         fieldBudget: budget,
         fieldBudgetAfterRoundTrip: budgetAfter,
         cityUrlsWhileFieldSelected: fieldUrls.urls.filter((u) => u.includes('/src/maps/city')),

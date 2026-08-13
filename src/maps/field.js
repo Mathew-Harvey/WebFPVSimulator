@@ -36,16 +36,11 @@ export async function buildMap(shell, onProgress) {
   const sceneDispose = map.dispose;
   map.post = post;
   map.dispose = () => {
-    for (const rt of [post.composer.renderTarget1, post.composer.renderTarget2, post.normalTarget]) {
-      if (rt) {
-        rt.dispose();
-      }
-    }
-    /* The bloom pass owns its own ladder of targets and knows how to free
-     * them; the grade and outline passes own only materials. */
-    if (post.bloom && typeof post.bloom.dispose === 'function') {
-      post.bloom.dispose();
-    }
+    /* The composer knows what it owns: targets, the bloom ladder, and the
+     * pass materials whose compiled programs the renderer caches. Freeing
+     * only the targets here is how a handful of shader programs used to
+     * leak on every swap. */
+    post.dispose();
     sceneDispose();
   };
   return map;

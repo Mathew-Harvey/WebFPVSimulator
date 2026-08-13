@@ -172,13 +172,28 @@ export const CLOUD_SHADOW_GLSL = /* glsl */ `
   }
 `;
 
-const registered = [];
+/*
+ * Every live cel material's uCelTime uniform, keyed by the material so a
+ * shader recompile OVERWRITES the entry instead of adding one, and pruned on
+ * the material's own dispose event. This used to be a push-only array: every
+ * celMaterial pushed its uniform in onBeforeCompile and nothing ever removed
+ * it, so a field to city to field round trip left updateCelTime walking
+ * dozens of dead uniform objects belonging to disposed materials, every
+ * frame, growing for the life of the session.
+ */
+const registered = new Map();
 
 /* Called once per frame by the scene: advances every cel material's clock. */
 export function updateCelTime(t) {
-  for (const u of registered) {
+  for (const u of registered.values()) {
     u.value = t;
   }
+}
+
+/* How many materials the per frame walk touches. Harness only: check 16's
+ * round trip asserts this does not grow across a map swap. */
+export function celTimeCount() {
+  return registered.size;
 }
 
 /*
@@ -210,7 +225,12 @@ export function celMaterial(opts = {}) {
     shader.uniforms.uCloudShadow = { value: cloud };
     shader.uniforms.uCelTime = { value: 0 };
     shader.uniforms.uCloudTint = { value: new THREE.Color(0x8397be) };
-    registered.push(shader.uniforms.uCelTime);
+    if (!registered.has(mat)) {
+      mat.addEventListener('dispose', () => {
+        registered.delete(mat);
+      });
+    }
+    registered.set(mat, shader.uniforms.uCelTime);
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vCelWorld;')

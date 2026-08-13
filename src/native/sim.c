@@ -126,6 +126,17 @@ SIM_EXPORT int sim_input(double t_seconds, double roll, double pitch, double yaw
   return SIM_OK;
 }
 
+SIM_EXPORT int sim_rest(void) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  for (int i = 0; i < 3; i += 1) {
+    S.vel[i] = 0.0;
+    S.omega[i] = 0.0;
+  }
+  return SIM_OK;
+}
+
 SIM_EXPORT int sim_motor_override(int motor, double duty) {
   if (!g_initialised) {
     return SIM_ERR_BAD_STATE;

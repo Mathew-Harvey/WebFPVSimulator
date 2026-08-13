@@ -84,6 +84,7 @@ export async function loadSim(wasmBytes) {
     'sim_input',
     'sim_step',
     'sim_motor_override',
+    'sim_rest',
     'sim_state_size',
     'sim_state',
     'malloc',
@@ -141,6 +142,12 @@ export class Sim {
 
   motorOverride(motor, duty) {
     return this.e.sim_motor_override(motor, duty);
+  }
+
+  /* The ground holds the craft: zero velocity and body rates at a judged
+   * landing. See sim_abi.h for why this exists. */
+  rest() {
+    return this.e.sim_rest();
   }
 
   stateSize() {

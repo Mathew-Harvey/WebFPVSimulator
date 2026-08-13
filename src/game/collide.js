@@ -75,6 +75,36 @@ export const CRAFT_PROP_R = 0.0635;  /* half of five inches */
 export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
 
 /*
+ * The craft's vertical semi-extent in level flight, about its own origin.
+ *
+ * A quad is a DISC, not a ball: 0.347 m across the props and about 0.07 m
+ * through the body. The drawn stack in src/render/craft.js runs from the
+ * body's underside at -0.017 to the prop discs at +0.034, so 0.040 covers
+ * the whole airframe with half a centimetre over the prop plane. Sweeping
+ * the full 0.1735 m sphere instead stole 26.7 cm of every vertical window:
+ * a 1.524 m gate offered 1.177 m, a low pass met the ground 13 cm before
+ * the airframe did, and the pilot read all of it as "the drone is huge".
+ * The ellipsoid the queries sweep is (CRAFT_R, vHalf, CRAFT_R), where
+ * vHalf grows from this floor to CRAFT_R as the craft tilts, because a
+ * banked disc presents its diameter to the vertical.
+ */
+export const CRAFT_V_HALF = 0.040;
+
+/* The vertical semi-axis at a given tilt of the prop plane from level.
+ * sinTilt is sqrt(1 - upY^2), symmetric in upY so an inverted craft is as
+ * thin as an upright one. */
+export function craftVerticalHalf(sinTilt) {
+  let s = sinTilt;
+  if (s < 0) {
+    s = 0;
+  }
+  if (s > 1) {
+    s = 1;
+  }
+  return CRAFT_V_HALF + (CRAFT_R - CRAFT_V_HALF) * s;
+}
+
+/*
  * Names, in the order kind indices are assigned. Reported by counts().
  *
  * `wall` and `boom` are the city's, and they are boxes rather than capsules.
@@ -136,9 +166,11 @@ export class Colliders {
     this.queries = 0;
     this.candidateTotal = 0;
     /* The last hit, so the caller can say what it hit without a return
-     * object. hit() returns a kind index or -1 and writes these. */
+     * object. hit() returns a kind index or -1 and writes these. hitT is
+     * the contact parameter along the travel, 0 at p and 1 at q. */
     this.hitIndex = -1;
     this.hitKind = -1;
+    this.hitT = -1;
     /*
      * How square the contact was: the absolute cosine between the direction of
      * travel and the contact normal, 0 for a pure graze along a surface and 1
@@ -147,6 +179,10 @@ export class Colliders {
      * event as arriving at it at 30, and until now they were.
      */
     this.hitNormalDot = 0;
+    /* Scratch for axisToPoint, written per call, never allocated. */
+    this.nx = 0;
+    this.ny = 0;
+    this.nz = 0;
   }
 
   /*
@@ -217,18 +253,45 @@ export class Colliders {
   }
 
   /*
-   * Move one box's top after build(). The broadphase grid is indexed on x and
-   * z only, so changing a y extent cannot invalidate it, which is exactly why
-   * the level crossing's booms can be a static collider that raises and
-   * lowers rather than a second dynamic collision path. Anything that changed
-   * a footprint would have to rebuild, and nothing does.
+   * Move one box's vertical extent after build(). The broadphase grid is
+   * indexed on x and z only, so changing a y extent cannot invalidate it,
+   * which is exactly why the level crossing's booms can be a static collider
+   * that raises and lowers rather than a second dynamic collision path.
+   * Anything that changed a footprint would have to rebuild, and nothing
+   * does.
+   *
+   * Both ends move through this one method BECAUSE the box distance solver
+   * assumes lo <= hi on every axis and an inverted box is a silent wrong
+   * answer: every query against it just misses, which for a crossing boom
+   * means a barrier a quad flies through. The invariant used to be
+   * maintained by convention across two files, with animation.js writing
+   * fay directly; now the only path is guarded and a violation throws.
    */
+  setBoxExtentY(index, y0, y1) {
+    if (!this.built) {
+      throw new Error('collide: setBoxExtentY before build');
+    }
+    if (!this.fbox[index]) {
+      throw new Error(`collide: collider ${index} is not a box`);
+    }
+    if (!(y0 <= y1)) {
+      throw new Error(`collide: inverted box extent ${y0} > ${y1} on collider ${index}`);
+    }
+    this.fay[index] = y0;
+    this.fby[index] = y1;
+    return this;
+  }
+
+  /* Move only the top. Guarded by the same invariant. */
   setBoxTop(index, top) {
     if (!this.built) {
       throw new Error('collide: setBoxTop before build');
     }
     if (!this.fbox[index]) {
       throw new Error(`collide: collider ${index} is not a box`);
+    }
+    if (!(this.fay[index] <= top)) {
+      throw new Error(`collide: setBoxTop ${top} below bottom ${this.fay[index]} on collider ${index}`);
     }
     this.fby[index] = top;
     return this;
@@ -321,30 +384,35 @@ export class Colliders {
   }
 
   /*
-   * Exact squared distance from the travel segment p + t*d, t in [0, 1], to
-   * box i, and the parameter t where it is attained. Writes t into
-   * this.boxT and returns the squared distance.
+   * Earliest parameter t in [0, 1] at which the ELLIPSOID with horizontal
+   * semi-axis rx and vertical semi-axis ry, centred on the travel segment
+   * p + t*d, touches box i, or -1 if it never does. rx = ry is the swept
+   * sphere as a special case.
    *
-   * NOT SAMPLED, for the same reason the capsule test is not. Per axis the
-   * distance outside the slab is
+   * NOT SAMPLED, for the same reason the capsule test is not, and EXACT for
+   * the ellipsoid: per axis the distance outside the slab is
    *
    *     g(t) = max( lo - p(t), 0, p(t) - hi )
    *
-   * which is piecewise linear with at most two breakpoints, where the segment
-   * enters and leaves that axis's slab. The squared distance is the sum of
-   * three such squares, so it is piecewise quadratic with at most six interior
-   * breakpoints, and on each piece it is a plain quadratic whose minimum is
-   * either an endpoint or the vertex. Collect the breakpoints, sort them, and
-   * minimise each piece: seven pieces at the very worst, closed form on each.
+   * piecewise linear with at most two breakpoints, and the ellipsoid touches
+   * the box exactly when sum over axes of (g_axis / r_axis)^2 <= 1, which is
+   * the same piecewise quadratic walk with each axis's contribution divided
+   * by its semi-axis. Collect the breakpoints, sort them, and walk the
+   * pieces IN ASCENDING t: the first piece whose start is already inside
+   * gives its start, and the first piece whose quadratic dips inside gives
+   * the earlier of its two roots. Seven pieces at the very worst, closed
+   * form on each, and because the walk is in travel order the answer is the
+   * first contact along the travel, not the closest approach.
    *
    * The alternative that suggests itself, testing the segment against the box
-   * grown by CRAFT_R, is WRONG at a corner: the Minkowski sum of a box and a
-   * sphere has rounded edges, so the grown box overstates the reach by up to
-   * (sqrt(3) - 1) * CRAFT_R, which is 0.127 m on a 0.1735 m craft. That is a
-   * crash reported for a corner the pilot can see they missed. It is used
-   * here only as a rejection test, where overstating is safe.
+   * grown by the craft radius, is WRONG at a corner: the Minkowski sum of a
+   * box and a sphere has rounded edges, so the grown box overstates the
+   * reach by up to (sqrt(3) - 1) * CRAFT_R, which is 0.127 m on a 0.1735 m
+   * craft. That is a crash reported for a corner the pilot can see they
+   * missed. It is used here only as a rejection test, where overstating is
+   * safe.
    */
-  boxDistanceSq(i, px, py, pz, dx, dy, dz) {
+  boxEarliestT(i, px, py, pz, dx, dy, dz, rx, ry) {
     const t = this.tBreaks;
     let n = 0;
     t[n] = 0; n += 1;
@@ -383,8 +451,6 @@ export class Colliders {
       t[b + 1] = v;
     }
 
-    let best = Infinity;
-    let bestT = 0;
     for (let piece = 0; piece + 1 < n; piece += 1) {
       const t0 = t[piece];
       const t1 = t[piece + 1];
@@ -402,15 +468,16 @@ export class Colliders {
         const d = axis === 0 ? dx : axis === 1 ? dy : dz;
         const lo = axis === 0 ? lo0 : axis === 1 ? lo1 : lo2;
         const hi = axis === 0 ? hi0 : axis === 1 ? hi1 : hi2;
+        const r = axis === 1 ? ry : rx;
         const m = p + d * tm;
         let A = 0;
         let B = 0;
         if (m < lo) {
-          A = lo - p;
-          B = -d;
+          A = (lo - p) / r;
+          B = -d / r;
         } else if (m > hi) {
-          A = p - hi;
-          B = d;
+          A = (p - hi) / r;
+          B = d / r;
         } else {
           continue;
         }
@@ -418,41 +485,239 @@ export class Colliders {
         qb += 2 * A * B;
         qc += A * A;
       }
-      /* Minimise qa*t^2 + qb*t + qc over [t0, t1]. */
-      let tc;
-      if (qa <= 0) {
-        tc = t0;
-      } else {
-        tc = -qb / (2 * qa);
-        if (tc < t0) {
-          tc = t0;
-        } else if (tc > t1) {
-          tc = t1;
+      /* f(t) = qa*t^2 + qb*t + qc on [t0, t1], contact at f <= 1. Already
+       * inside at the piece start means contact at or before t0; the walk is
+       * ascending, so t0 is the earliest this query can resolve and it is
+       * exact at t0 = 0, the start-inside case. */
+      const f0 = qa * t0 * t0 + qb * t0 + qc;
+      if (f0 <= 1) {
+        return t0;
+      }
+      if (qa > 0) {
+        const disc = qb * qb - 4 * qa * (qc - 1);
+        if (disc >= 0) {
+          const root = (-qb - Math.sqrt(disc)) / (2 * qa);
+          if (root >= t0 && root <= t1) {
+            return root;
+          }
+        }
+      } else if (qb < 0) {
+        /* Linear decreasing piece: one crossing. */
+        const root = (1 - qc) / qb;
+        if (root >= t0 && root <= t1) {
+          return root;
         }
       }
-      const v = qa * tc * tc + qb * tc + qc;
-      if (v < best) {
-        best = v;
-        bestT = tc;
+    }
+    return -1;
+  }
+
+  /*
+   * Earliest parameter t in [0, 1] at which the travel segment p + t*d comes
+   * within reach of capsule i, or -1. Closed form: a capsule is exactly the
+   * union of two full cap spheres and a finite cylinder, and the first
+   * contact with a union is the earliest of the first contacts with its
+   * parts. Each part is a quadratic in t; the finite cylinder additionally
+   * intersects its radial-contact interval with the interval where the
+   * contact point's axial projection lies on the segment, both closed form.
+   * A contact that is already true at t = 0 returns 0.
+   */
+  capsuleEarliestT(i, px, py, pz, dx, dy, dz, a, reachSq) {
+    const ex = this.fbx[i] - this.fax[i];
+    const ey = this.fby[i] - this.fay[i];
+    const ez = this.fbz[i] - this.faz[i];
+    const mx = px - this.fax[i];
+    const my = py - this.fay[i];
+    const mz = pz - this.faz[i];
+    const ee = ex * ex + ey * ey + ez * ez;
+
+    /* Start-inside: distance from p to the axis segment at t = 0. */
+    {
+      let u = 0;
+      if (ee > 1e-12) {
+        u = (ex * mx + ey * my + ez * mz) / ee;
+        u = clamp01(u);
+      }
+      const gx = mx - ex * u;
+      const gy = my - ey * u;
+      const gz = mz - ez * u;
+      if (gx * gx + gy * gy + gz * gz <= reachSq) {
+        return 0;
       }
     }
-    this.boxT = bestT;
+    if (a <= 1e-12) {
+      return -1;
+    }
+
+    let best = -1;
+
+    /* Cap spheres at both ends: |m' + t d|^2 = reachSq, m' measured from the
+     * cap centre. end 0 is fa, end 1 is fb. */
+    for (let end = 0; end < 2; end += 1) {
+      const cx = end === 0 ? mx : px - this.fbx[i];
+      const cy = end === 0 ? my : py - this.fby[i];
+      const cz = end === 0 ? mz : pz - this.fbz[i];
+      const qb = 2 * (dx * cx + dy * cy + dz * cz);
+      const qc = cx * cx + cy * cy + cz * cz - reachSq;
+      const disc = qb * qb - 4 * a * qc;
+      if (disc >= 0) {
+        const sq = Math.sqrt(disc);
+        let tEnter = (-qb - sq) / (2 * a);
+        const tExit = (-qb + sq) / (2 * a);
+        if (tEnter < 0) {
+          tEnter = 0;
+        }
+        if (tEnter <= 1 && tEnter <= tExit && (best < 0 || tEnter < best)) {
+          best = tEnter;
+        }
+      }
+    }
+
+    /* Finite cylinder, only for a real segment. Radial contact:
+     * |(m + t d) x e|^2 = reachSq * ee, quadratic in t. Axial validity:
+     * u(t) = e . (m + t d) in [0, ee], linear in t. */
+    if (ee > 1e-12) {
+      const c0x = my * ez - mz * ey;
+      const c0y = mz * ex - mx * ez;
+      const c0z = mx * ey - my * ex;
+      const c1x = dy * ez - dz * ey;
+      const c1y = dz * ex - dx * ez;
+      const c1z = dx * ey - dy * ex;
+      const qa = c1x * c1x + c1y * c1y + c1z * c1z;
+      const qb = 2 * (c0x * c1x + c0y * c1y + c0z * c1z);
+      const qc = c0x * c0x + c0y * c0y + c0z * c0z - reachSq * ee;
+      const em = ex * mx + ey * my + ez * mz;
+      const ed = ex * dx + ey * dy + ez * dz;
+      let r0 = -Infinity;
+      let r1 = Infinity;
+      let radialOk = true;
+      if (qa > 1e-12) {
+        const disc = qb * qb - 4 * qa * qc;
+        if (disc < 0) {
+          radialOk = false;
+        } else {
+          const sq = Math.sqrt(disc);
+          r0 = (-qb - sq) / (2 * qa);
+          r1 = (-qb + sq) / (2 * qa);
+        }
+      } else if (qc > 0) {
+        /* Travel parallel to the axis and outside the radius: the side of
+         * the cylinder is never touched, only the caps can be. */
+        radialOk = false;
+      }
+      if (radialOk) {
+        let u0 = -Infinity;
+        let u1 = Infinity;
+        let axialOk = true;
+        if (ed > 1e-12 || ed < -1e-12) {
+          const ta = (0 - em) / ed;
+          const tb = (ee - em) / ed;
+          u0 = ta < tb ? ta : tb;
+          u1 = ta < tb ? tb : ta;
+        } else if (em < 0 || em > ee) {
+          axialOk = false;
+        }
+        if (axialOk) {
+          let tEnter = r0 > u0 ? r0 : u0;
+          const tExit = (r1 < u1 ? r1 : u1) < 1 ? (r1 < u1 ? r1 : u1) : 1;
+          if (tEnter < 0) {
+            tEnter = 0;
+          }
+          if (tEnter <= tExit && tEnter <= 1 && (best < 0 || tEnter < best)) {
+            best = tEnter;
+          }
+        }
+      }
+    }
     return best;
   }
 
   /*
-   * Did a sphere of radius CRAFT_R travelling from p to q touch anything?
-   * Returns the kind index of the first thing found, or -1. Also writes
-   * hitIndex and hitKind.
-   *
-   * Exact, closed form, and allocation free. The inner test is the squared
-   * distance between the travel segment and the capsule's axis segment,
-   * against the squared sum of the radii.
+   * The travel parameter s in [0, 1] at which the segment p + s*d comes
+   * closest to capsule i's axis segment. The classical closest pair of two
+   * segments, closed form. Used to pick the direction for the ellipsoid
+   * support refinement.
    */
-  hit(px, py, pz, qx, qy, qz) {
+  closestApproachS(i, px, py, pz, d1x, d1y, d1z, a) {
+    const d2x = this.fbx[i] - this.fax[i];
+    const d2y = this.fby[i] - this.fay[i];
+    const d2z = this.fbz[i] - this.faz[i];
+    const rx = px - this.fax[i];
+    const ry = py - this.fay[i];
+    const rz = pz - this.faz[i];
+    const e = d2x * d2x + d2y * d2y + d2z * d2z;
+    const fdot = d2x * rx + d2y * ry + d2z * rz;
+    const c = d1x * rx + d1y * ry + d1z * rz;
+    let s = 0;
+    if (a <= 1e-12) {
+      return 0;
+    }
+    if (e <= 1e-12) {
+      return clamp01(-c / a);
+    }
+    const b = d1x * d2x + d1y * d2y + d1z * d2z;
+    const denom = a * e - b * b;
+    s = denom !== 0 ? clamp01((b * fdot - c * e) / denom) : 0;
+    let t = (b * s + fdot) / e;
+    if (t < 0) {
+      s = clamp01(-c / a);
+    } else if (t > 1) {
+      s = clamp01((b - c) / a);
+    }
+    return s;
+  }
+
+  /*
+   * Compute the vector from capsule i's axis to the point (cx, cy, cz),
+   * into this.nx/ny/nz. This is the contact normal direction when the point
+   * is a contact. Allocation free; scalar fields, not an object.
+   */
+  axisToPoint(i, cx, cy, cz) {
+    const ex = this.fbx[i] - this.fax[i];
+    const ey = this.fby[i] - this.fay[i];
+    const ez = this.fbz[i] - this.faz[i];
+    const ee = ex * ex + ey * ey + ez * ez;
+    const mx = cx - this.fax[i];
+    const my = cy - this.fay[i];
+    const mz = cz - this.faz[i];
+    let u = 0;
+    if (ee > 1e-12) {
+      u = clamp01((ex * mx + ey * my + ez * mz) / ee);
+    }
+    this.nx = mx - ex * u;
+    this.ny = my - ey * u;
+    this.nz = mz - ez * u;
+  }
+
+  /*
+   * Did the craft, travelling from p to q, touch anything? The craft is an
+   * ELLIPSOID: CRAFT_R across the props, vh through the body, because a
+   * quad is a disc and sweeping a 0.1735 m ball stole 26.7 cm of every
+   * vertical window. Callers that think in spheres omit vh and get the old
+   * sphere exactly. Returns the kind index of the FIRST CONTACT ALONG THE
+   * TRAVEL, or -1. Also writes hitIndex, hitKind, hitT and hitNormalDot.
+   *
+   * Exact for boxes (the slab walk is weighted per axis). For capsules the
+   * first pass sweeps the conservative CRAFT_R sphere, then the reach is
+   * re-solved once with the craft's support radius along the contact
+   * direction, which is exact when the contact direction at the refined
+   * parameter matches the first pass and a few millimetres conservative
+   * when it rotates between the two, measured in the fuzz harness.
+   *
+   * Every candidate in the padded cell range is tested and the one with the
+   * smallest contact parameter wins. It used to return the first collider
+   * found in GRID SCAN ORDER, which meant that when two solid things sat in
+   * one frame's travel, the reported one was whichever cell the broadphase
+   * happened to reach first: a gate upright clipped at t = 0.85 could
+   * swallow a tree hit at t = 0.15, and since graze against crash is
+   * decided from the reported collider's kind and normal, the craft flew on
+   * through the tree.
+   */
+  hit(px, py, pz, qx, qy, qz, vh = CRAFT_R) {
     this.hitIndex = -1;
     this.hitKind = -1;
     this.hitNormalDot = 0;
+    this.hitT = -1;
     if (!this.built) {
       return -1;
     }
@@ -471,6 +736,9 @@ export class Colliders {
     const d1z = qz - pz;
     const a = d1x * d1x + d1y * d1y + d1z * d1z;
 
+    let bestT = Infinity;
+    let bestI = -1;
+
     for (let cx = cx0; cx <= cx1; cx += 1) {
       for (let cz = cz0; cz <= cz1; cz += 1) {
         const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
@@ -487,9 +755,10 @@ export class Colliders {
 
           if (this.fbox[i]) {
             /* Cheap rejection first: the segment against the box grown by
-             * CRAFT_R. The grown box contains the true Minkowski sum, so a
-             * miss here is a real miss and the exact test never runs for the
-             * thousands of walls a city query sweeps past. */
+             * CRAFT_R. The grown box contains the true Minkowski sum of the
+             * box and the ellipsoid (vh <= CRAFT_R), so a miss here is a
+             * real miss and the exact test never runs for the thousands of
+             * walls a city query sweeps past. */
             const gx0 = this.fax[i] - CRAFT_R;
             const gy0 = this.fay[i] - CRAFT_R;
             const gz0 = this.faz[i] - CRAFT_R;
@@ -503,103 +772,92 @@ export class Colliders {
             ) {
               continue;
             }
-            const dsq = this.boxDistanceSq(i, px, py, pz, d1x, d1y, d1z);
-            if (dsq > CRAFT_R * CRAFT_R) {
-              continue;
+            const t = this.boxEarliestT(i, px, py, pz, d1x, d1y, d1z, CRAFT_R, vh);
+            if (t >= 0 && t < bestT) {
+              bestT = t;
+              bestI = i;
             }
-            this.lastCandidates = candidates;
-            this.queries += 1;
-            this.candidateTotal += candidates;
-            this.hitIndex = i;
-            this.hitKind = this.fkind[i];
-            /* The contact normal is the vector from the box's surface to the
-             * closest point on the travel path, which is the per axis
-             * overhang at the closest parameter. A contact exactly on a face
-             * has zero length and counts as head on, so it can never soften
-             * a real crash. */
-            const bt = this.boxT;
-            const cx = px + d1x * bt;
-            const cy = py + d1y * bt;
-            const cz = pz + d1z * bt;
-            const nx = cx < this.fax[i] ? cx - this.fax[i] : cx > this.fbx[i] ? cx - this.fbx[i] : 0;
-            const ny = cy < this.fay[i] ? cy - this.fay[i] : cy > this.fby[i] ? cy - this.fby[i] : 0;
-            const nz = cz < this.faz[i] ? cz - this.faz[i] : cz > this.fbz[i] ? cz - this.fbz[i] : 0;
-            const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
-            const tl = Math.sqrt(a);
-            if (nl > 1e-9 && tl > 1e-9) {
-              const dot = (d1x * nx + d1y * ny + d1z * nz) / (nl * tl);
-              this.hitNormalDot = dot < 0 ? -dot : dot;
-            } else {
-              this.hitNormalDot = 1;
-            }
-            return this.hitKind;
-          }
-
-          /* Capsule axis, as d2 = b - a, and r = p - a. */
-          const d2x = this.fbx[i] - this.fax[i];
-          const d2y = this.fby[i] - this.fay[i];
-          const d2z = this.fbz[i] - this.faz[i];
-          const rx = px - this.fax[i];
-          const ry = py - this.fay[i];
-          const rz = pz - this.faz[i];
-          const e = d2x * d2x + d2y * d2y + d2z * d2z;
-          const fdot = d2x * rx + d2y * ry + d2z * rz;
-          const c = d1x * rx + d1y * ry + d1z * rz;
-          let s = 0;
-          let t = 0;
-          if (a <= 1e-12 && e <= 1e-12) {
-            s = 0;
-            t = 0;
-          } else if (a <= 1e-12) {
-            s = 0;
-            t = clamp01(fdot / e);
-          } else if (e <= 1e-12) {
-            t = 0;
-            s = clamp01(-c / a);
           } else {
-            const b = d1x * d2x + d1y * d2y + d1z * d2z;
-            const denom = a * e - b * b;
-            s = denom !== 0 ? clamp01((b * fdot - c * e) / denom) : 0;
-            t = (b * s + fdot) / e;
-            if (t < 0) {
-              t = 0;
-              s = clamp01(-c / a);
-            } else if (t > 1) {
-              t = 1;
-              s = clamp01((b - c) / a);
+            const reach = this.fr[i] + CRAFT_R;
+            let t = this.capsuleEarliestT(i, px, py, pz, d1x, d1y, d1z, a, reach * reach);
+            if (t >= 0 && vh < CRAFT_R - 1e-9) {
+              /*
+               * Support refinement: the conservative sphere touched; ask
+               * whether the thinner craft does. The direction that predicts
+               * the true contact is the one at the CLOSEST APPROACH between
+               * the travel and the capsule's axis, not at the sphere's
+               * first contact: passing level under a tube, the sphere first
+               * touches while the approach is still mostly horizontal, and
+               * a support radius taken there reads CRAFT_R and never
+               * shrinks. At the closest pair the direction is vertical for
+               * exactly the passes this refinement exists for. The support
+               * radius of the ellipsoid along that direction replaces
+               * CRAFT_R and the earliest contact is re-solved once.
+               */
+              const sCA = this.closestApproachS(i, px, py, pz, d1x, d1y, d1z, a);
+              this.axisToPoint(i, px + d1x * sCA, py + d1y * sCA, pz + d1z * sCA);
+              const nx = this.nx;
+              const ny = this.ny;
+              const nz = this.nz;
+              const nl2 = nx * nx + ny * ny + nz * nz;
+              if (nl2 > 1e-18) {
+                const cr = Math.sqrt(
+                  (CRAFT_R * CRAFT_R * (nx * nx + nz * nz) + vh * vh * ny * ny) / nl2,
+                );
+                const reach2 = this.fr[i] + cr;
+                if (reach2 < reach - 1e-9) {
+                  t = this.capsuleEarliestT(i, px, py, pz, d1x, d1y, d1z, a, reach2 * reach2);
+                }
+              }
             }
-          }
-          const gx = rx + d1x * s - d2x * t;
-          const gy = ry + d1y * s - d2y * t;
-          const gz = rz + d1z * s - d2z * t;
-          const reach = this.fr[i] + CRAFT_R;
-          if (gx * gx + gy * gy + gz * gz <= reach * reach) {
-            this.lastCandidates = candidates;
-            this.queries += 1;
-            this.candidateTotal += candidates;
-            this.hitIndex = i;
-            this.hitKind = this.fkind[i];
-            /* (gx, gy, gz) points from the capsule's axis to the travel path,
-             * so it IS the contact normal. Both are normalised here rather
-             * than in the caller, and a degenerate zero length contact counts
-             * as head on so it can never soften a real crash. */
-            const gl = Math.sqrt(gx * gx + gy * gy + gz * gz);
-            const tl = Math.sqrt(a);
-            if (gl > 1e-9 && tl > 1e-9) {
-              const dot = (d1x * gx + d1y * gy + d1z * gz) / (gl * tl);
-              this.hitNormalDot = dot < 0 ? -dot : dot;
-            } else {
-              this.hitNormalDot = 1;
+            if (t >= 0 && t < bestT) {
+              bestT = t;
+              bestI = i;
             }
-            return this.hitKind;
           }
         }
       }
     }
+
     this.lastCandidates = candidates;
     this.queries += 1;
     this.candidateTotal += candidates;
-    return -1;
+    if (bestI < 0) {
+      return -1;
+    }
+
+    this.hitIndex = bestI;
+    this.hitKind = this.fkind[bestI];
+    this.hitT = bestT;
+    /* Contact normal at the earliest contact point. For a box it is the per
+     * axis overhang; for a capsule it is the vector from the axis's closest
+     * point to the contact point. A degenerate zero length contact counts as
+     * head on, so it can never soften a real crash. */
+    const cxp = px + d1x * bestT;
+    const cyp = py + d1y * bestT;
+    const czp = pz + d1z * bestT;
+    let nx;
+    let ny;
+    let nz;
+    if (this.fbox[bestI]) {
+      nx = cxp < this.fax[bestI] ? cxp - this.fax[bestI] : cxp > this.fbx[bestI] ? cxp - this.fbx[bestI] : 0;
+      ny = cyp < this.fay[bestI] ? cyp - this.fay[bestI] : cyp > this.fby[bestI] ? cyp - this.fby[bestI] : 0;
+      nz = czp < this.faz[bestI] ? czp - this.faz[bestI] : czp > this.fbz[bestI] ? czp - this.fbz[bestI] : 0;
+    } else {
+      this.axisToPoint(bestI, cxp, cyp, czp);
+      nx = this.nx;
+      ny = this.ny;
+      nz = this.nz;
+    }
+    const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const tl = Math.sqrt(a);
+    if (nl > 1e-9 && tl > 1e-9) {
+      const dot = (d1x * nx + d1y * ny + d1z * nz) / (nl * tl);
+      this.hitNormalDot = dot < 0 ? -dot : dot;
+    } else {
+      this.hitNormalDot = 1;
+    }
+    return this.hitKind;
   }
 
   kindName(k) {

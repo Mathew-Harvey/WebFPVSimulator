@@ -662,6 +662,14 @@ export function buildChecks() {
         if (after < th.city_modules_min.value) {
           fails.push(`only ${after} city modules fetched after choosing the city`);
         }
+        /* The loading bar's typed module weight against what the browser
+         * actually fetched on this cold load. 61 sat in main.js for a round
+         * while the real count was 63, and nothing could notice: a bar
+         * weight cannot break a load, which is exactly why it needs a
+         * check rather than a comment. */
+        if (r.cityExpectedModules != null && after !== r.cityExpectedModules) {
+          fails.push(`MAP_MODULE_COUNT says ${r.cityExpectedModules} city modules, the browser fetched ${after}`);
+        }
         const b = r.fieldBudget;
         const base = th.field_budget_at_c3c6e44;
         const same = (label, got, want, tol) => {
@@ -690,6 +698,17 @@ export function buildChecks() {
           same('P5 after round trip', b2.p5, base.p5_MB.value, 0.05);
           same('P10 after round trip', b2.p10, base.p10_MB.value, 0.05);
           same('meshes after round trip', b2.meshes, base.meshes.value, 0);
+          /* The per frame cel clock walk must not GROW across a round trip.
+           * This is the measurement that catches a disposed material's
+           * uniform kept alive forever: every budget above counts targets
+           * and triangles, and a dead uniform object costs neither. Not an
+           * equality: a material only registers when it first compiles, so
+           * the rebuilt field legitimately reports fewer until every view
+           * has rendered once. With the old push-only array this read boot
+           * plus rebuild, 93 against 54. */
+          if (b && b2.cel > b.cel) {
+            fails.push(`cel material clock walk grew ${b.cel} to ${b2.cel} across a round trip`);
+          }
         }
         return {
           measured:

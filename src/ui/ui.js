@@ -41,6 +41,10 @@ import { MAPS } from '../maps/registry.js';
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
 export const CAMERA_ANGLES = [15, 20, 25, 30, 35, 40];
+/* Vertical field of view, degrees. 100 is the long-standing default; the
+ * list brackets real FPV cameras, whose diagonal runs about 135 to 160
+ * degrees depending on lens and sensor. */
+export const CAMERA_FOVS = [90, 100, 110, 120];
 export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
 export const LAP_COUNTS = [1, 3, 5];
 
@@ -52,6 +56,7 @@ const DEFAULTS = {
    * page booting. */
   map: 'field',
   cameraAngle: 30,
+  cameraFov: 100,
   packVoltage: 4.2,
   laps: 3,
   sound: true,
@@ -284,6 +289,12 @@ export class Ui {
           value: `${s.cameraAngle} degrees`,
           note: 'How far the camera tilts up. More angle suits more speed.',
           adjust: (d) => { s.cameraAngle = cycle(CAMERA_ANGLES, s.cameraAngle, d); },
+        },
+        {
+          label: 'Field of view',
+          value: `${s.cameraFov} degrees vertical`,
+          note: 'Wider sees more and feels roomier, narrower magnifies. Real FPV cameras sit around 110.',
+          adjust: (d) => { s.cameraFov = cycle(CAMERA_FOVS, s.cameraFov, d); },
         },
         {
           label: 'Pack charge',

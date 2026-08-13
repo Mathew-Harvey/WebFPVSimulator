@@ -3387,3 +3387,127 @@ identical. They stay on the owed list.
 - Gyro noise, and behind it RPM filtering and dynamic idle, unchanged from
   round 17.
 - Unsteady propwash, unchanged from round 17.
+
+## Round 17c: the tune was carrying the rates, so the tune could not be judged
+
+The owner, after flying round 17b: "feels better, the default tune feels
+better, the karate tune does not, the tune should not change the rates, the
+rates should be changeable in the menu and be actual rates, they should start
+at betaflight default". And: do the last thing that is failing.
+
+### The Karate preset was two changes wearing one label
+
+It shipped with sugarK's own racing rates, because the published preset offers
+them and a race tune on 670 deg/s defaults is not a race setup. That reasoning
+was right about racing and wrong about this shell: selecting Karate changed
+the tune AND took the sticks from 670 deg/s with no expo to 420 with 0.54, in
+one keypress. Nobody can judge a tune through that. The owner flew it and
+reported exactly what the arrangement guarantees: the default felt better and
+Karate did not.
+
+**No file in configs/ carries a rateprofile any more.** `configs/rates.js`
+owns the rate profile and the shell appends it to whichever tune is loaded,
+including a diff the pilot drops on the page. A flown config is now
+`tuneText + ratesText`, composed in one place in `src/main.js`, and the rate
+lines go last so a tune that still carried rates would be overridden rather
+than silently winning.
+
+Measured at IDENTICAL rates, which is the comparison that was impossible
+before:
+
+| | Betaflight default | Karate race |
+|---|---|---|
+| roll rise to 90 pct | 57 ms | **48 ms** |
+| roll stop to zero rate | 80 ms | **55 ms** |
+| yaw rise to 63 pct | 92 ms | **70 ms** |
+| roll overshoot | 3.1 pct | 14.5 pct |
+| roll stop reverse bounce | -14.6 deg/s | -76.9 deg/s |
+| roll settle to 2 pct | 156 ms | 184 ms |
+| max forward speed | 147 km/h | 147 km/h |
+
+That is the real character of an aggressive race tune: quicker to start,
+quicker to stop, and less damped, because D max drops 30 to 21 and the 250 Hz
+race link's feedforward boost of 18 sharpens the leading edge. The overshoot
+and the bounce are measured against an INSTANT full stick step, which no
+radio can produce, so they read worse here than a thumb would ever make them.
+Whether that trade is wanted is now a question the owner can answer by
+flying, which it was not before.
+
+### Rates, in the menu, and ACTUAL
+
+Four items at the top of Settings, starting at Betaflight 4.5.1's own
+defaults from `pgResetFn_controlRateProfiles`: 70 deg/s at centre, 670 at
+full stick, no expo.
+
+- **Rate, roll and pitch** and **Rate, yaw**, deg/s at full stick.
+- **Centre sensitivity**, deg/s at half stick.
+- **Expo**.
+
+ACTUAL only, and that is a decision rather than a shortcut: it is the one
+Betaflight curve whose numbers mean what they say, so the menu can show deg/s
+instead of a slider with invented units. Every offered value is a multiple of
+10 because the firmware stores rc_rate and srate in tens of deg/s in a uint8,
+and a stored value from an older build is snapped onto the offered list so it
+cannot put an out of range number into that field. 420 is in the list so
+sugarK's own rates remain one keypress away.
+
+Changing a rate re-inits the module and resets the craft, exactly as changing
+a tune does, and the comparison that decides it is the rate TEXT rather than
+the fields, so there is one definition of "the rates changed" and it is the
+one the firmware sees.
+
+`configs/freestyle.diff` is deleted. Once its rates moved out it was byte for
+byte the same tune as `betaflight-default.diff`, and two menu entries for one
+tune is a worse answer than one. `scripts/gates.js`, `scripts/flight-report.js`
+and the judge loop now read `betaflight-default.diff`.
+
+Verified in the live page: boot on Betaflight default at 70/670/0 with
+p_roll 45 and D max 30; switch to Karate and p_roll goes 38, D max 21, TPA 70,
+**and roll srate stays 67**; then set 1000 deg/s and 0.30 expo in the menu and
+srate goes 100 with the tune untouched. Zero console errors.
+
+### The last failing check cannot be fixed honestly, and is not faked
+
+Check 10 yaw-coupling wants |body yaw drift| >= 2.0 deg over a 1 s full stick
+roll. It measures -0.079 deg: right sign, 25 times short. It is filed as
+dispute 6 in `.loop/threshold-disputes.md` with the full argument, and no
+threshold was touched. The short version:
+
+- STAGE1.md's own wording is "non-zero, correct sign", which passes today.
+  The 2.0 deg floor is annotated in `tests/thresholds.json` as a Loop A
+  harness choice to make "non-zero" measurable.
+- A symmetric QUADX yaws EXACTLY zero in a roll, for any nonlinearity,
+  because each roll pair holds one clockwise and one counter clockwise motor
+  and the spin weighted sum cancels term by term. So the coupling can only be
+  build asymmetry.
+- The modelled asymmetry is tangential motor cant. Rebuilt and measured with
+  the whole set scaled: x1 gives -0.079 deg, x5 gives -0.600, x25 gives
+  -1609 because the craft has tumbled. Reaching -2.0 deg needs about x13,
+  which is 12 to 18 degrees of thrust axis cant per motor. That is visible to
+  the naked eye and costs 3.4 percent of a motor's vertical thrust.
+- A realistic 2 percent motor constant spread contributes about 0.003 N m
+  against the cant term's 0.008, so it moves the answer by tens of percent,
+  not by a factor of 25.
+- The quantity a pilot calls "the nose moved in that roll" is HEADING change,
+  not the body frame integral of r. Measuring that would test the thing the
+  check is named after, and it is a `tests/` change, which is not this side's
+  to make.
+
+### Verify
+
+npm run verify: **15 of 16**, check 10 the one red, at -0.08 deg and disputed
+rather than dressed up. Every other check identical to round 17b including the
+determinism hash **ff32caab7fbd** across Node, headless Chrome and four render
+rates. npm run lint:presets: 2 of 2, betaflight-default 87 applied 9 inert 0
+unrecognised, karate-race 107 applied 13 inert 0 unrecognised.
+
+### Owed
+
+- Lap records from before round 17b are not comparable, and now neither are
+  records from before this round, because the record key hashes the config
+  text and the rate lines are part of it. That is correct behaviour: a lap on
+  1200 deg/s rates is not a lap on 670.
+- Gyro noise, RPM filtering, dynamic idle, unsteady propwash: unchanged from
+  round 17.
+- P4's 80 percent climb and P5's 0 to 100, both already disputed as entries 1
+  and 2, both untouched by this round.

@@ -7,6 +7,11 @@
  * entry here has no privileges a pilot's own dump does not have. Adding a
  * tune is a file plus a row.
  *
+ * NO TUNE HERE SETS RATES. Rates are the pilot's, chosen in Settings and
+ * appended to whichever tune is loaded; see rates.js. A tune that carried a
+ * rateprofile would be overridden by that append rather than winning
+ * silently, but the right fix is not to carry one.
+ *
  * `id` is the file's basename. It is also the localStorage key's value, so
  * changing one orphans a stored choice; src/ui/ui.js falls back to the
  * first row rather than throwing, because a stale setting must never stop
@@ -30,19 +35,14 @@
 
 export const TUNES = [
   {
-    id: 'freestyle',
-    name: 'Freestyle 700',
-    note: 'Stock Betaflight 4.5 tune on real freestyle rates, 700 deg/s. The house default.',
-  },
-  {
     id: 'betaflight-default',
     name: 'Betaflight default',
-    note: 'Factory 4.5.1, untouched, on Betaflight’s own 670 deg/s rates. What a fresh flash flies.',
+    note: 'Factory 4.5.1, untouched. What a freshly flashed quad flies.',
   },
   {
     id: 'karate-race',
     name: 'Karate race 6S',
-    note: 'sugarK’s 6S 5 inch race tune with his rates. Sharper, lower D, faster stops.',
+    note: 'sugarK’s 6S 5 inch race tune. Lower D, sharper feedforward, faster stops.',
   },
 ];
 

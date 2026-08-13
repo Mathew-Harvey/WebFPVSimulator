@@ -147,3 +147,70 @@ the build will publish, for every render: the two carrier frequencies and
 their difference, each channel's modulation depth at the beat frequency
 against that channel's measured floor, and the mono sum's. A reader can then
 apply either reading.
+
+## 6. Harness check 10 min_abs_body_yaw_deg = 2.0 is unreachable on a QUADX with an active yaw PID. BLOCKED WITH ARGUMENT.
+
+The owner asked for this check to be fixed. It cannot be, honestly, and the
+threshold is NOT changed. Here is the whole argument with the measurements.
+
+**What the check measures.** `tests/lib/checks.js` holds full right roll stick
+for 1.0 s at throttle 0.5 from rest, integrates the BODY yaw rate over the
+hold, and requires |drift| >= 2.0 deg with a negative sign. Measured on this
+build: **-0.079 deg**. The sign is right. The magnitude is 25x short.
+
+**STAGE1.md asks for something this already satisfies.** Its check 10 row
+reads "non-zero, correct sign". The 2.0 deg figure is not from STAGE1.md: it
+is annotated in `tests/thresholds.json` as a Loop A harness choice, "floor
+that makes 'non-zero' in STAGE1.md check 10 measurable". Non-zero and
+correctly signed is what the specification asks for and what is delivered.
+
+**Structurally, a symmetric QUADX yaws exactly zero in a roll.** The mixer's
+roll column is (-1, -1, +1, +1) over (RR, FR, RL, FL) and the spin column is
+(-1, +1, +1, -1). Each roll pair therefore holds one clockwise and one
+counter clockwise motor, so for ANY per motor function f of the roll command,
+sum over m of SPIN[m] f(roll[m]) = f(-1)(-1+1) + f(+1)(+1-1) = 0. Not
+approximately zero and not zero by linearisation: no nonlinearity in thrust,
+prop drag, advance ratio, inflow asymmetry or battery can produce it. The
+same cancellation kills the prop angular momentum term, since the two pairs
+change speed by equal and opposite amounts. This is already written out in
+`src/native/plant.c`.
+
+**So the coupling can only come from build asymmetry, and the amount needed
+is not a real airframe.** The modelled mechanism is tangential motor cant,
+currently (-0.9, +1.4, +0.6, -1.2) deg, whose sum against the roll column is
+-1.1 deg. Measured by rebuilding with the whole set scaled:
+
+| cant | measured drift |
+|---|---|
+| x1 (as shipped) | -0.079 deg |
+| x5 | -0.600 deg |
+| x25 | -1609 deg, the craft has tumbled and the number is meaningless |
+
+Between x1 and x5 the response is close to linear, so reaching -2.0 deg needs
+roughly x13, which is a tangential cant of about (-12, +18, +8, -16) degrees.
+A motor mounting face is flat to a fraction of a degree; 15 degrees of thrust
+axis cant is visible to the naked eye, costs 3.4 percent of that motor's
+vertical thrust, and is not a quad anyone flew.
+
+**The yaw PID is the other half of the reason.** Its I term rejects any
+sustained disturbance, so even a large constant yaw bias produces no drift
+over a second. The disturbance from cant only exists during the roll
+acceleration transient, about 50 ms, and the loop absorbs most of it. That is
+also what a real machine does, which is why a real machine's body frame yaw
+integral over a roll is small.
+
+**The second candidate mechanism does not close the gap either.** A motor
+constant spread breaks the cancellation, because the sum becomes
+delta * (ke_RR - ke_FR + ke_RL - ke_FL). At a realistic 2 percent spread and
+a 30 A roll differential that is about 0.003 N m against the cant term's
+0.008 N m: it changes the answer by tens of percent, not by a factor of 25.
+
+**What a human should decide.** Either restate the band as STAGE1.md words
+it, non-zero with the correct sign, which passes today at -0.079 deg; or
+change what is measured. The quantity a pilot actually calls "the nose moved
+in that roll" is HEADING change, not the body frame integral of r, and the
+two are different things: a pure roll about a horizontal axis changes neither,
+while a roll combined with the gyroscopic pitch coupling the props really do
+produce changes heading with body r near zero. Measuring heading would test
+the thing the check is named after. Both options are changes to `tests/`,
+which is not the simulator implementer's to edit.

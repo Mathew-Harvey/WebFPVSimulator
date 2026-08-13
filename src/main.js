@@ -48,6 +48,7 @@ import { Ui } from './ui/ui.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
+import { ratesDiff, ratesSummary } from '../configs/rates.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -203,7 +204,18 @@ export async function boot({ loading, bootStart, mapId }) {
    * as what is loaded: a dropped file changes the second and not the first. */
   let menuTune = ui.settings.tune;
   let configName = `${configId}.diff`;
-  let configText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
+  /*
+   * A flown config is a TUNE plus the pilot's RATES, composed here and
+   * nowhere else. No file in configs/ carries a rateprofile any more, and the
+   * rate lines are appended last so that even a diff the pilot drops on the
+   * page flies on the rates in the menu. See configs/rates.js for why the
+   * two were separated: shipping rates inside the Karate preset meant
+   * choosing that tune also halved the stick authority, so the tune could
+   * never be judged on its own.
+   */
+  let tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
+  let ratesText = ratesDiff(ui.settings);
+  let configText = tuneText + ratesText;
   if (sim.init(configText) !== SIM_OK) {
     throw new Error(`sim_init failed on ${configName}`);
   }
@@ -547,6 +559,23 @@ export async function boot({ loading, bootStart, mapId }) {
       menuTune = s.tune;
       swapTune(s.tune);
     }
+    /*
+     * Rates are part of the config text, so changing one re-inits the module
+     * and resets the craft, exactly as changing the tune does. Compared as
+     * text rather than field by field so there is one definition of "the
+     * rates changed" and it is the one the firmware sees.
+     */
+    const nextRates = ratesDiff(s);
+    if (nextRates !== ratesText) {
+      ratesText = nextRates;
+      configText = tuneText + ratesText;
+      if (sim.init(configText) === SIM_OK) {
+        sim.setCellVoltage(runVoltage);
+        race.setRecordKey(recordKey());
+        ui.setBest(race.bestMs, view.mode);
+        reset();
+      }
+    }
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
@@ -573,7 +602,7 @@ export async function boot({ loading, bootStart, mapId }) {
       console.error(e);
       return;
     }
-    const code = sim.init(text);
+    const code = sim.init(text + ratesText);
     if (code !== SIM_OK) {
       ui.settings.tune = configId;
       sim.init(configText);
@@ -582,7 +611,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     configId = entry.id;
-    configText = text;
+    tuneText = text;
+    configText = tuneText + ratesText;
     configName = `${entry.id}.diff`;
     sim.setCellVoltage(runVoltage);
     race.setRecordKey(recordKey());
@@ -694,15 +724,19 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     const text = await file.text();
-    const code = sim.init(text);
+    /* A dropped diff is a TUNE. The rates still come from the menu, appended
+     * last, so a file that carries its own rateprofile is overridden rather
+     * than quietly taking the sticks over. The notice says so. */
+    const code = sim.init(text + ratesText);
     if (code === SIM_OK) {
-      configText = text;
+      tuneText = text;
+      configText = tuneText + ratesText;
       configName = file.name;
       /* A dropped diff is not one of the registry tunes any more. */
       configId = '';
       race.setRecordKey(recordKey());
       ui.setBest(race.bestMs, view.mode);
-      notice = { text: `Flying ${configName}`, untilMs: performance.now() + 2400 };
+      notice = { text: `Flying ${configName}\nRates from the menu: ${ratesSummary(ui.settings)}`, untilMs: performance.now() + 3200 };
       reset();
     } else {
       notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
@@ -1462,6 +1496,8 @@ export async function boot({ loading, bootStart, mapId }) {
     id: configId,
     name: configName,
     menu: ui.settings.tune,
+    rates: ratesSummary(ui.settings),
+    rollSrateSet: ui.settings.rateMax,
     offered: TUNES.map((t) => t.id),
     applied: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(13) : null,
     inert: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(14) : null,

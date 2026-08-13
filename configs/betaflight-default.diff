@@ -14,9 +14,12 @@
 # what 4.5 defaults are. They are written out in full rather than left
 # implicit so this file can be diffed against the vendored firmware.
 #
-# Rates are Betaflight's own defaults too: ACTUAL, centre sensitivity 70
-# deg/s, 670 deg/s maximum, no expo. Slower and more linear than either
-# race or freestyle rates, and deliberately so.
+# NO RATES. This file sets no rateprofile at all, and neither does any other
+# tune here. Rates belong to the pilot, not to a tune, and they are chosen in
+# Settings; the shell appends them to whichever tune is loaded. See
+# configs/rates.js. Shipping rates inside a tune is what made the Karate
+# preset impossible to judge, because choosing it changed the tune and the
+# stick authority in one keypress.
 #
 # Airframe: the reference 5 inch of STAGE1.md, 6S, 1900 kV, 0.65 kg. The
 # airframe keys are read by the plant, not by Betaflight.
@@ -141,21 +144,5 @@ set dterm_notch_cutoff = 0
 set yaw_lowpass_hz = 100
 set simplified_dterm_filter = ON
 set simplified_dterm_filter_multiplier = 100
-
-# ---- rateprofile 0 ----
-rateprofile 0
-
-set rates_type = ACTUAL
-set roll_rc_rate = 7
-set pitch_rc_rate = 7
-set yaw_rc_rate = 7
-set roll_expo = 0
-set pitch_expo = 0
-set yaw_expo = 0
-set roll_srate = 67
-set pitch_srate = 67
-set yaw_srate = 67
-set thr_mid = 50
-set thr_expo = 0
 
 batch end

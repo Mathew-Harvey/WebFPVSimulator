@@ -32,7 +32,7 @@ const DEG = 180 / Math.PI;
 const RC_HZ = 250;
 
 const wasm = new Uint8Array(await readFile(join(root, 'dist/sim.wasm')));
-const cfgPath = process.argv[2] ?? join(root, 'configs/freestyle.diff');
+const cfgPath = process.argv[2] ?? join(root, 'configs/betaflight-default.diff');
 const cfgText = await readFile(cfgPath, 'utf8');
 
 async function fresh(cell = 4.2) {

@@ -41,7 +41,7 @@ Repo: ${REPO}. STRICTLY READ ONLY: never edit files, never run npm/node, never w
 Evidence to read first:
 - ${SCRATCH}/flight-report.txt   measured manoeuvre numbers from the actual sim
 - ${REPO}/src/native/plant.c     the plant model (motors, props, battery, aero)
-- ${REPO}/configs/freestyle.diff the default flying tune and rates
+- ${REPO}/configs/betaflight-default.diff the default tune, and configs/rates.js the rates
 - ${REPO}/src/native/bf/bf_glue.c how Betaflight is wired in
 - ${REPO}/PROGRESS.md            known trade-offs and open questions
 

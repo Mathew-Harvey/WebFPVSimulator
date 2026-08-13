@@ -143,7 +143,7 @@ function refRates(type, x, cfg) {
 async function main() {
   const cfg = await checkHash();
   const wasm = new Uint8Array(await readFile(join(root, 'dist/sim.wasm')));
-  const flightCfg = await readFile(join(root, 'configs/freestyle.diff'), 'utf8');
+  const flightCfg = await readFile(join(root, 'configs/betaflight-default.diff'), 'utf8');
   const harnessCfg = await readFile(join(root, 'tests/fixtures/config-baseline.diff'), 'utf8');
   const rec = decodeRec(new Uint8Array(await readFile(join(root, 'tests/inputs/baseline.rec'))));
 

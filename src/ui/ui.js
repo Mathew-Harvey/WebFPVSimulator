@@ -38,6 +38,12 @@
 
 import { MAPS } from '../maps/registry.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
+import {
+  RATE_DEFAULTS,
+  RATE_MAX_CHOICES,
+  RATE_CENTRE_CHOICES,
+  RATE_EXPO_CHOICES,
+} from '../../configs/rates.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -60,7 +66,13 @@ const DEFAULTS = {
    * same reason map is: loadSettings only accepts a stored key whose typeof
    * matches the default, and an unknown id falls back to the first tune in
    * configs/registry.js rather than throwing. */
-  tune: 'freestyle',
+  tune: 'betaflight-default',
+  /* ACTUAL rates, owned by the pilot rather than by the tune. Betaflight
+   * 4.5.1's own defaults; see configs/rates.js for why they live here. */
+  rateMax: RATE_DEFAULTS.rateMax,
+  rateYawMax: RATE_DEFAULTS.rateYawMax,
+  rateCentre: RATE_DEFAULTS.rateCentre,
+  rateExpo: RATE_DEFAULTS.rateExpo,
   cameraAngle: 30,
   cameraFov: 100,
   packVoltage: 4.2,
@@ -303,6 +315,30 @@ export class Ui {
     }
     if (this.screen === 'settings') {
       return [
+        {
+          label: 'Rate, roll and pitch',
+          value: `${s.rateMax} deg/s at full stick`,
+          note: 'ACTUAL rates. How fast the quad spins with the stick against the stop. Betaflight ships 670.',
+          adjust: (d) => { s.rateMax = cycle(RATE_MAX_CHOICES, s.rateMax, d); },
+        },
+        {
+          label: 'Rate, yaw',
+          value: `${s.rateYawMax} deg/s at full stick`,
+          note: 'Yaw is usually set a little below roll and pitch, but that is taste.',
+          adjust: (d) => { s.rateYawMax = cycle(RATE_MAX_CHOICES, s.rateYawMax, d); },
+        },
+        {
+          label: 'Centre sensitivity',
+          value: `${s.rateCentre} deg/s at half stick`,
+          note: 'How lively the middle of the stick is, where you fly most of a lap. Betaflight ships 70.',
+          adjust: (d) => { s.rateCentre = cycle(RATE_CENTRE_CHOICES, s.rateCentre, d); },
+        },
+        {
+          label: 'Expo',
+          value: s.rateExpo === 0 ? 'None' : (s.rateExpo / 100).toFixed(2),
+          note: 'Bends the curve between centre and full stick. Softer middle, same ends.',
+          adjust: (d) => { s.rateExpo = cycle(RATE_EXPO_CHOICES, s.rateExpo, d); },
+        },
         {
           label: 'Camera angle',
           value: `${s.cameraAngle} degrees`,

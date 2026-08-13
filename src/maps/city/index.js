@@ -98,6 +98,63 @@ const CULL_CELL = 40;
 const SHADOW_HALF = 22;
 
 /*
+ * How coarsely the static merge groups geometry, and why it is NOT CULL_CELL.
+ *
+ * These were one constant, and making them one was a mistake that hid the
+ * town's real cost for two rounds. Sweeping it moved three things at once,
+ * the merge, the instanced chunking and the cull grid, so every value looked
+ * like a bad trade and the conclusion was that there was nothing to win.
+ *
+ * Measured separately they want opposite things, because the town's draw
+ * calls and the town's triangles live in different objects:
+ *
+ *   static, merged     7229 meshes    1,338,381 triangles
+ *   instanced foliage  1565 meshes    4,540,348 triangles
+ *
+ * The static half is almost all draw call and almost no triangle. At the
+ * street viewpoint 1,229,557 of those 1,338,381 triangles were being drawn
+ * anyway, so culling the static half at 40 m was buying 8 percent of its
+ * triangles at a cost of thousands of separate objects, in a frame of 5981
+ * draw calls. A draw call is what the town is actually short of. So the merge
+ * is given the whole town, geometry that shares a material becomes one mesh
+ * wherever it stands, and the 8 percent is paid gladly.
+ *
+ * The instanced half is the mirror image: 4.5 M triangles in objects that are
+ * already one draw call each, where a bounding sphere spanning a grove means
+ * every tree in it is submitted whether or not one is in frame. That half
+ * keeps CULL_CELL, and so does the cull grid.
+ *
+ * buildCullGrid needs no change to cope: it already routes anything whose
+ * bounding sphere exceeds a cell into `always`, so a town wide merge is
+ * frustum culled and never distance culled, which is the correct handling and
+ * not a special case written for this.
+ */
+const MERGE_CELL = Infinity;
+
+/*
+ * The same, for geometry that casts a shadow, and it is NOT Infinity.
+ *
+ * A caster is culled by a second camera: the shadow camera is a SHADOW_HALF
+ * box that follows the craft, 44 m a side, and a mesh spanning the town is
+ * never outside it. Merged town wide the casters put every static triangle
+ * into the shadow pass every frame, which measured at +0.57 M triangles on a
+ * change whose whole point was a cheaper frame.
+ *
+ * Swept at the street viewpoint, as draw calls against triangles:
+ *
+ *    40   4686 calls   3.20 M
+ *    80   4041 calls   3.41 M
+ *   120   3986 calls   3.47 M
+ *   inf   3476 calls   3.76 M
+ *
+ * 80 is the knee: 40 to 80 buys 645 calls for 0.21 M triangles, and 80 to 120
+ * buys 55 for another 0.06 M, which is the same trade four times worse. It is
+ * also about twice the shadow box, which is the relationship that makes it the
+ * right shape of number rather than a lucky one.
+ */
+const MERGE_SHADOW_CELL = 80;
+
+/*
  * The city's pipeline, with the two things it does to a shared renderer
  * undone.
  *
@@ -804,7 +861,11 @@ export async function buildMap(shell, onProgress) {
    * Merge, then group for culling, in that order: the cull grid has to see
    * the merged meshes, not the twenty thousand it replaced.
    */
-  const baked = bakeCity(world, { cell: CULL_CELL });
+  const baked = bakeCity(world, {
+    cell: MERGE_CELL,
+    shadowCell: MERGE_SHADOW_CELL,
+    cullCell: CULL_CELL,
+  });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });

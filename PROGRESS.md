@@ -1652,3 +1652,58 @@ cloud tops at about 200. Not the sun.
 
 `npm run verify` 12 of 13, yaw-coupling the known red. Console errors 0,
 warnings 0.
+
+## Round 13c: fourteen stations, and a number plate that told the truth
+
+The scale reviewer's finding was 71.2 m per gate against a readable limit
+of about 40 m. Two ways to close it, and the obvious one is wrong.
+
+Measured first. The circuit is 569.6 m of arc, walked with `__trackPoint`
+at 4000 samples. Its tightest radius of curvature is 11.16 m, at u=0 where
+the timing gate stands, which already costs 3.7 g of lateral acceleration
+at 20 m/s. Shrinking the curve to put eight gates 40 m apart means scaling
+that radius to 4.7 m, or 8.7 g at the same speed, and the course stops
+being flyable at racing pace. The user's first polish axis is flight feel,
+so a fix that makes the track unflyable is not a fix. More gates on the
+same geometry changes the spacing and touches nothing else.
+
+Eight to fourteen. Measured from the spawn frame with `__nextGate` at 1600
+by 900, before and after, nothing else changed:
+
+    next gate     before  67.7 m  15.4 px  screen x=364    (436 px off centre)
+                  after   46.3 m  17.8 px  screen x=605    (195 px off centre)
+    gate after    before  96.1 m           screen x=-1356  OFF FRAME
+                  after   74.0 m  16.6 px  screen x=243    in frame
+
+The aperture gain is modest. The real gain is the second row: at eight
+stations exactly one gate was ever on screen, near the edge, so the pilot
+could not see which way the course turned until committed. At fourteen,
+two are readable at once.
+
+Even spacing is now correct without hand tuning. At eight, stations 2 and 6
+landed exactly on the figure eight's crossover at the origin, where each
+one's posts stood in the other branch's racing line, so `gateU` carried two
+shifted values. Fourteen divides so the nearest stations to the crossover
+sit at u=0.2143 and u=0.2857, 20.3 m of clear air either side, so `gateU`
+is now just `i / gateCount`.
+
+Station kinds re-authored to fourteen: one timing gate, six standard, two
+championship, two triple stack ladders, two 5 ft towers, one dive gate.
+Flown, that is a ground level opening between each elevated one, and never
+two tall obstacles back to back except the dive into the championship gate,
+where the drop is the point.
+
+**A lie on the number plate, found by raising the count.** The numeral was
+`DIGITS[index % 10]`, which is right for one digit and paints fiction for
+two: gate 13 came out as a 3 and gate 10 as a 0, so two different gates
+would carry the same plate and a pilot counting down would be reading
+nonsense. The plate now renders as many glyphs as the number needs, three
+columns each with a one column gap, centred. Verified in frame: station 1
+reads 13.
+
+Costs: colliders 1777 to 1826, triangles 1,915,103 to 1,921,441, draw calls
+unchanged in the P1 view. P2 was already failing and is not materially
+worse.
+
+`npm run verify` 12 of 13, yaw-coupling the known red. Console errors 0,
+warnings 0 across all six captures in this round.

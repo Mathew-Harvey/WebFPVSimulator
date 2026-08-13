@@ -957,21 +957,34 @@ function obstacle(kindName, index, isStart) {
   g.add(plate);
   caps.push({ kind: 'obstacle', ax: -clearW * 0.46, ay: plateY, az: 0, bx: clearW * 0.46, by: plateY, bz: 0, r: plateH * 0.5 });
 
-  const rows = DIGITS[index % 10] ?? DIGITS[0];
+  /*
+   * The number, as many digits as it takes. This used to be
+   * DIGITS[index % 10], which is correct for one digit and paints a lie for
+   * two: gate 13 came out as a 3 and gate 10 as a 0, so with more than ten
+   * stations two different gates would carry the same plate and a pilot
+   * counting them down would be reading fiction.
+   */
   const dot = 0.055;
   const step = 0.072;
-  for (let ry = 0; ry < rows.length; ry += 1) {
-    for (let rx = 0; rx < 3; rx += 1) {
-      if (rows[ry][rx] !== '1') {
-        continue;
+  const glyphs = String(Math.max(0, Math.round(index))).split('').map((d) => DIGITS[Number(d)]);
+  /* 3 columns per glyph plus a one column gap, centred on the plate. */
+  const glyphW = 4;
+  const originX = -((glyphs.length * glyphW - 1) - 1) * 0.5;
+  for (let gi = 0; gi < glyphs.length; gi += 1) {
+    const rows = glyphs[gi];
+    for (let ry = 0; ry < rows.length; ry += 1) {
+      for (let rx = 0; rx < 3; rx += 1) {
+        if (rows[ry][rx] !== '1') {
+          continue;
+        }
+        const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
+        pip.position.set(
+          (originX + gi * glyphW + rx) * step,
+          plateY + (2 - ry) * step,
+          0.04,
+        );
+        g.add(pip);
       }
-      const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
-      pip.position.set(
-        (rx - 1) * step,
-        plateY + (2 - ry) * step,
-        0.04,
-      );
-      g.add(pip);
     }
   }
 
@@ -1421,12 +1434,40 @@ export function buildScene(canvas) {
   const baker = makeBaker();
 
   const gates = [];
-  const gateCount = 8;
-  /* Even spacing puts gates 2 and 6 both exactly on the figure eight's
-   * crossover at the origin, where each one's posts stand in the other
-   * branch's racing line. Shift those two along their own branches so the
-   * crossover is open air, framed by a gate on either side. */
-  const gateU = [0, 1 / 8, 0.222, 3 / 8, 4 / 8, 5 / 8, 0.778, 7 / 8];
+  /*
+   * FOURTEEN stations, not eight.
+   *
+   * The circuit is 569.6 m of arc, measured by walking __trackPoint at
+   * 4000 samples. At eight stations that is 71.2 m of empty air between
+   * gates. Measured from the spawn frame with __nextGate at 1600 by 900,
+   * eight stations put the next gate 67.7 m out at 15.4 px of aperture and
+   * 436 px left of centre, and the one after it 96.1 m out at screen
+   * x = -1356, entirely off the side of the frame. So the pilot could see
+   * exactly one gate, near the edge, and had to fly the rest from memory.
+   * Fourteen stations put the next gate 46.3 m out at 17.8 px and 195 px
+   * off centre, and the one after it 74.0 m out at 16.6 px and IN FRAME.
+   * Two gates readable at once is the whole point: that is what tells you
+   * which way the course turns before you commit to the one in front.
+   *
+   * The alternative was to shrink the circuit, which is what the spacing
+   * complaint superficially suggests. Rejected on measurement: the
+   * tightest radius of curvature on this figure eight is already 11.16 m,
+   * at u=0 where the timing gate stands, which costs 3.7 g of lateral
+   * acceleration at 20 m/s. Scaling the curve to put eight gates 40 m
+   * apart means scaling that radius to 4.7 m, or 8.7 g at the same speed,
+   * and the course stops being flyable at racing pace. More gates on the
+   * same geometry changes the spacing without touching the flight feel.
+   *
+   * Even spacing is also now correct on its own. At eight, stations 2 and
+   * 6 landed exactly on the figure eight's crossover at the origin, where
+   * each one's posts stood in the other branch's racing line, so those two
+   * were shifted by hand. Fourteen divides so that the nearest stations to
+   * the crossover sit at u=0.2143 and u=0.2857, which is 20.3 m of clear
+   * air either side of it: the crossing is open, framed by a gate on each
+   * approach, with no hand tuning.
+   */
+  const gateCount = 14;
+  const gateU = Array.from({ length: gateCount }, (_, i) => i / gateCount);
   /*
    * THE COURSE IS AN ORIGINAL CHAPTER STYLE LAYOUT built from regulation
    * MultiGP obstacles, and it is labelled as one in the interface. It is
@@ -1439,20 +1480,34 @@ export function buildScene(canvas) {
    * more than two obstacle types, while a course wants the vertical variety
    * that towers and dive gates give it.
    *
-   * Stations, in scene order, chosen so the line climbs and drops rather
-   * than staying at one height. Station 0 stays a ground level standard gate
+   * Stations, in scene order. Station 0 stays a ground level timing gate
    * because the craft spawns behind it and the start and finish plane has to
    * be somewhere a stationary quad can be pointed at.
+   *
+   * Scene index i is flown as position gateCount - i, so the list below
+   * reads BACKWARDS from the pilot's point of view. Flown, the order is
+   * timing, standard, standard, tower, standard, ladder, standard, dive,
+   * championship, standard, tower, ladder, championship, standard: a
+   * ground level opening between each elevated one, so the line climbs and
+   * drops rather than sitting at one height, and never two tall obstacles
+   * back to back except the dive into the championship gate, which is the
+   * one place the drop is the point.
    */
   const stationKinds = [
-    'timingGate',       /* 0, start and finish, on the ground */
-    'standardGate',     /* 1 */
-    'tower5x5',         /* 2, a standard opening elevated 5 ft */
-    'ladder',           /* 3, the triple stack: three openings */
-    'standardGate',     /* 4 */
-    'diveGate',         /* 5, a 7x6 opening at 15 ft, entered from above */
-    'championshipGate', /* 6, the wider 7x6 */
-    'ladder',           /* 7, the second triple stack */
+    'timingGate',       /* 0,  start and finish, on the ground, flown 1st */
+    'standardGate',     /* 1,  flown 14th */
+    'championshipGate', /* 2,  flown 13th */
+    'ladder',           /* 3,  flown 12th, the triple stack: three openings */
+    'tower5x5',         /* 4,  flown 11th, a standard opening elevated 5 ft */
+    'standardGate',     /* 5,  flown 10th */
+    'championshipGate', /* 6,  flown 9th, the wider 7x6 */
+    'diveGate',         /* 7,  flown 8th, a 7x6 at 15 ft, entered from above */
+    'standardGate',     /* 8,  flown 7th */
+    'ladder',           /* 9,  flown 6th, the second triple stack */
+    'standardGate',     /* 10, flown 5th */
+    'tower5x5',         /* 11, flown 4th, the second tower */
+    'standardGate',     /* 12, flown 3rd */
+    'standardGate',     /* 13, flown 2nd */
   ];
   for (let i = 0; i < gateCount; i += 1) {
     const u = gateU[i];

@@ -44,7 +44,7 @@ import { simPosToThree, simQuatToThree } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
-import { CRAFT_R, isLanding, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
+import { CRAFT_R, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
 import { Ui } from './ui/ui.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
 
@@ -159,14 +159,30 @@ async function boot() {
   let rcNextMs = 0;
   let crashed = false;
   let crashedAtWall = 0;
-  /* Physics holds until the pilot first raises throttle: a run should
-   * start when the pilot says so, not with a falling catch at spawn. */
-  let launched = false;
+  /*
+   * The craft starts ON THE GROUND, landed, not hanging in mid air.
+   *
+   * This was a game breaking bug and it deserves the space. The craft used to
+   * spawn at SPAWN_ALT with its motors at zero rpm and physics frozen until
+   * the throttle passed 0.05. The instant a pilot touched the throttle the
+   * integrator unfroze in free air with dead motors, and the quad fell the
+   * 0.71 m to the ground and arrived at 3.4 m/s, which is past the 2.0 m/s
+   * landing gate, so it crashed. Then resetCraft put it back at 0.9 m in mid
+   * air and the same thing happened again, forever. A reviewer measured the
+   * whole loop: "crash, 1.4 s lockout, back to 0.9 m in mid air, touch
+   * throttle, crash". Anywhere between the launch threshold and hover the
+   * quad fell out of the sky.
+   *
+   * Starting landed hands the craft to the on ground branch below, which
+   * already holds it, already keeps the lap clock honest and already gates
+   * liftoff on TAKEOFF_THROTTLE. A real quad sits on the ground before a run.
+   */
+  let launched = true;
   /* On the ground, upright, intact, physics frozen. A landing cannot be a
    * physics clamp: the module's ABI has no call that writes a position or a
    * velocity, so the only way to hold a craft on the ground is to stop
    * stepping it, which is exactly what the pre launch hold already does. */
-  let landed = false;
+  let landed = true;
   let statePrev = null;
   let stateCurr = null;
   /* Ground sweep state. groundPrev is where the craft was last frame, so the
@@ -179,6 +195,8 @@ async function boot() {
   let lastDescent = 0;
   let lastTiltDeg = 0;
   let lastHitKind = 'none';
+  let lastClosing = 0;
+  let speedNow = 0;
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
@@ -223,8 +241,18 @@ async function boot() {
     lastTs = 0;
     rcNextMs = 0;
     crashed = false;
-    launched = false;
-    landed = false;
+    /* Back on the ground, landed, exactly as at boot. Setting launched false
+     * here is what made every respawn repeat the takeoff trap. */
+    launched = true;
+    landed = true;
+    groundY = view.height(startX, startZ);
+    /* Clear the judgement that produced the last crash. Leaving it behind is
+     * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
+     * the start line, which reads as a landing gate that does not work. */
+    lastDescent = 0;
+    lastTiltDeg = 0;
+    lastClosing = 0;
+    lastHitKind = 'none';
     input.keys.clear();
     input.drain();
     input.kb.throttle = 0;
@@ -250,8 +278,18 @@ async function boot() {
     lastTs = 0;
     rcNextMs = 0;
     crashed = false;
-    launched = false;
-    landed = false;
+    /* Back on the ground, landed, exactly as at boot. Setting launched false
+     * here is what made every respawn repeat the takeoff trap. */
+    launched = true;
+    landed = true;
+    groundY = view.height(startX, startZ);
+    /* Clear the judgement that produced the last crash. Leaving it behind is
+     * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
+     * the start line, which reads as a landing gate that does not work. */
+    lastDescent = 0;
+    lastTiltDeg = 0;
+    lastClosing = 0;
+    lastHitKind = 'none';
     input.keys.clear();
     input.drain();
     input.kb.throttle = 0;
@@ -639,6 +677,11 @@ async function boot() {
      * owner asked for the gates to be solid, and a gate you can fly through
      * the middle of the frame of is not solid.
      */
+    /* The craft's speed at this state, needed by the collision test below and
+     * by the overlay further down. Read once, from the state block. */
+    speedNow = Math.sqrt(
+      stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
+    );
     if (mode === 'flight' && !crashed && !landed && launched && raceHasPrev) {
       const k = view.colliders.hit(
         racePrev.x, racePrev.y, racePrev.z,
@@ -646,7 +689,25 @@ async function boot() {
       );
       if (k >= 0) {
         lastHitKind = view.colliders.kindName(k);
-        crashInto(`Hit the ${lastHitKind}\nLap void`, nowWall);
+        /*
+         * A graze is not a crash. The closing speed is the craft's speed times
+         * how square the contact was, and below GRAZE_SPEED_MAX a touch on a
+         * gate frame, its furniture or a flag pole costs the lap and nothing
+         * else. Trees, rocks and cliffs are solid at any speed: they are trunks
+         * and boulders, not PVC tube.
+         */
+        const closing = speedNow * view.colliders.hitNormalDot;
+        lastClosing = closing;
+        const soft = lastHitKind === 'gate' || lastHitKind === 'obstacle' || lastHitKind === 'pole';
+        if (soft && closing < GRAZE_SPEED_MAX) {
+          race.voidLap(`Clipped the ${lastHitKind}\nLap void`, nowWall);
+          view.setNextGate(race.nextSceneIndex());
+          if (typeof audio.event === 'function') {
+            audio.event('gate');
+          }
+        } else {
+          crashInto(`Hit the ${lastHitKind}\nLap void`, nowWall);
+        }
       }
     }
 
@@ -776,7 +837,7 @@ async function boot() {
     } else if (crashed) {
       ui.setBanner('Crashed');
     } else if (!launched) {
-      ui.setBanner('Throttle up to launch\nThe mint ring starts your lap');
+      ui.setBanner('Throttle up to take off\nThe green gate starts your lap');
     } else if (lapFlash) {
       ui.setBanner(lapFlash);
     } else {
@@ -893,6 +954,8 @@ async function boot() {
     descentRate: lastDescent,
     tiltDeg: lastTiltDeg,
     lastHitKind,
+    lastClosingSpeed: lastClosing,
+    grazeSpeedMax: GRAZE_SPEED_MAX,
     groundClearance: view.quad.position.y - view.height(view.quad.position.x, view.quad.position.z),
     thresholds: {
       descentMax: LAND_DESCENT_MAX,

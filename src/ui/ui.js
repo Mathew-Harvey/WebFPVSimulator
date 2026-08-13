@@ -301,9 +301,9 @@ export class Ui {
           adjust: (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
         },
         {
-          label: 'Focus tone',
+          label: 'Binaural tone',
           value: s.focusTone ? 'On' : 'Off',
-          note: 'A quiet 220 Hz tone, 6 Hz apart between the ears. Needs headphones to do anything at all.',
+          note: 'A quiet 1000 Hz tone, 6 Hz apart between the ears. Needs headphones to do anything at all.',
           adjust: () => { s.focusTone = !s.focusTone; },
         },
         {

@@ -959,11 +959,21 @@ function obstacle(kindName, index, isStart) {
   const haloGeos = [];
   for (let k = 0; k < stack; k += 1) {
     const cy = sills[k] + clearH * 0.5;
-    /* The lit bar's thickness. 0.045 m was invisible at 20 m once the
-     * opening shrank to regulation: it is 2.4 percent of the opening, which
-     * at 20 m on a 900 px frame is under a pixel. 0.075 m is the smallest
-     * that survives the distance the pilot first sees a gate from. */
-    const bar = 0.075;
+    /*
+     * The lit bar's thickness, and it is a LEGIBILITY number.
+     *
+     * 0.045 m was invisible at 20 m once the opening shrank to regulation.
+     * 0.075 m was measured by a pilot at 1.4 px at 20 m and 0.9 px at 30 m,
+     * still sub pixel at the distance a racer has to commit to a line: at 25 m
+     * the target read as a 23 px green tick dimmer than the banner flags and
+     * the trees beside it. 0.16 m is 3 px at 20 m and 2 px at 30 m, the
+     * smallest that survives commit range on a 900 px frame.
+     *
+     * The cost, stated: at 7 m the bar covers about 10 percent of the opening
+     * instead of 5, so a gate right in front of the camera reads chunkier. A
+     * target you cannot see until 7 m is not a target, so that is the trade.
+     */
+    const bar = 0.16;
     const halfW = clearW * 0.5;
     const halfH = clearH * 0.5;
     /* Four thin bars just inside the frame, so the lit line the pilot aims

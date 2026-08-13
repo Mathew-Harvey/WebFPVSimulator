@@ -119,6 +119,14 @@ export class Colliders {
      * object. hit() returns a kind index or -1 and writes these. */
     this.hitIndex = -1;
     this.hitKind = -1;
+    /*
+     * How square the contact was: the absolute cosine between the direction of
+     * travel and the contact normal, 0 for a pure graze along a surface and 1
+     * for a head on hit. The shell multiplies it by the craft's speed to get a
+     * closing speed, because brushing a PVC upright at 3 m/s is not the same
+     * event as arriving at it at 30, and until now they were.
+     */
+    this.hitNormalDot = 0;
   }
 
   /*
@@ -245,6 +253,7 @@ export class Colliders {
   hit(px, py, pz, qx, qy, qz) {
     this.hitIndex = -1;
     this.hitKind = -1;
+    this.hitNormalDot = 0;
     if (!this.built) {
       return -1;
     }
@@ -321,6 +330,18 @@ export class Colliders {
             this.candidateTotal += candidates;
             this.hitIndex = i;
             this.hitKind = this.fkind[i];
+            /* (gx, gy, gz) points from the capsule's axis to the travel path,
+             * so it IS the contact normal. Both are normalised here rather
+             * than in the caller, and a degenerate zero length contact counts
+             * as head on so it can never soften a real crash. */
+            const gl = Math.sqrt(gx * gx + gy * gy + gz * gz);
+            const tl = Math.sqrt(a);
+            if (gl > 1e-9 && tl > 1e-9) {
+              const dot = (d1x * gx + d1y * gy + d1z * gz) / (gl * tl);
+              this.hitNormalDot = dot < 0 ? -dot : dot;
+            } else {
+              this.hitNormalDot = 1;
+            }
             return this.hitKind;
           }
         }
@@ -395,6 +416,20 @@ export const LAND_TILT_MAX_DEG = 25;
  * string because this is on the per frame path and a string comparison
  * chain is not free.
  */
+/*
+ * Closing speed, in metres per second, above which touching an obstacle is a
+ * crash rather than a graze.
+ *
+ * A MultiGP gate is 1.315 inch PVC with vinyl mesh panels. Brushing an upright
+ * bounces you and you carry on; arriving at it at race speed does not. Until
+ * this existed every contact at any speed was a full crash with a 1.4 s
+ * lockout and a void lap, which is harsher than the physics AND harsher than
+ * the MultiGP rulebook, which does not invalidate a lap for obstacle contact.
+ * Applies to gate frames, obstacle furniture and flag poles. A tree, a rock or
+ * a cliff is a crash at any speed.
+ */
+export const GRAZE_SPEED_MAX = 4.0;
+
 export function isLanding(descentRate, horizontal, tiltDeg) {
   if (descentRate > LAND_DESCENT_MAX) {
     return 0;

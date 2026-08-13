@@ -234,6 +234,30 @@ export class Race {
     return passed;
   }
 
+  /*
+   * Did the segment cross THIS gate's opening in the direction of travel? The
+   * same test tryPass makes, without the scoring side effects, so the sequence
+   * rule and the scoring cannot disagree about what a crossing is.
+   */
+  crossesGate(g, prev, curr) {
+    const a = this.local(g, prev.x, prev.y, prev.z);
+    const b = this.local(g, curr.x, curr.y, curr.z);
+    if (!(a.z <= 0 && b.z > 0)) {
+      return false;
+    }
+    const t = a.z / (a.z - b.z);
+    const cx = a.x + (b.x - a.x) * t;
+    const cyAbs = a.y + (b.y - a.y) * t;
+    for (let k = 0; k < g.apertures.length; k += 1) {
+      const ap = g.apertures[k];
+      if (Math.abs(cx) <= ap.clearW * 0.5 - CRAFT_R
+        && Math.abs(cyAbs - ap.centreY) <= ap.clearH * 0.5 - CRAFT_R) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /* Per frame. simMs is the simulation clock at the rendered state,
    * wallMs the wall clock (flash expiry only). Returns
    * { passed: gateIndex|null, hitFrame: bool }; a frame hit voids the
@@ -242,6 +266,24 @@ export class Race {
     const prevSimMs = this.prevSimMs ?? simMs;
     this.prevSimMs = simMs;
     const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
+    /*
+     * MultiGP's own rule, which track.js quotes verbatim and this file did not
+     * enforce: "If any obstacle is entered out of sequence or direction at any
+     * time the run is invalid." Crossing a gate that is not the one the race
+     * wants now voids the lap. It costs no time to do, so it was never an
+     * exploit, but a file that quotes a rule should obey it.
+     */
+    if (passed == null && this.lapStartMs != null) {
+      for (let gi = 0; gi < this.gates.length; gi += 1) {
+        if (gi === this.next) {
+          continue;
+        }
+        if (this.crossesGate(this.gates[gi], prev, curr)) {
+          this.voidLap('Out of sequence\nLap void', wallMs);
+          break;
+        }
+      }
+    }
     /* hitFrame is gone. The frame is solid geometry now and touching it is a
      * crash, decided by src/game/collide.js in the shell, not a lap penalty
      * decided here. The return shape keeps its second field so the shell's

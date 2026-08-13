@@ -87,7 +87,11 @@
         font-size: 24px; color: var(--cream); line-height: 1.45;
       }
       .banner {
-        position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+        /* 22 percent, not 38. A regulation gate's aperture centre sits at
+           0.762 m and the FPV camera is tilted up, so the target lands low in
+           the frame, and a pilot found the launch banner drawn directly over
+           the one thing they need to find. */
+        position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%);
         text-align: center; white-space: pre-line; font-size: 30px; font-weight: 600;
         letter-spacing: 0.04em; color: var(--amber); opacity: 0;
         transition: opacity 0.18s ease; text-shadow: 0 3px 10px rgba(0,0,0,0.9);

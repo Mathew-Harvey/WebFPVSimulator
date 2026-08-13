@@ -1444,3 +1444,114 @@ unchanged, one unculled 552,000 triangle grass mesh. And a human still has to
 listen: the probe can prove the mix does not scream, does not clip, sits at the
 right loudness, runs at 173.73 BPM and is genuinely binaural. It cannot prove
 it is pleasant.
+
+## Round 12: the polish round, and a game breaking defect the review found
+
+Four hostile reviewers on the four axes the owner named: flight feel, graphics
+and scene furniture, world scale, and sound for concentrating to. Two have
+reported so far, the pilot and the audio pair, and both were devastating and
+correct. Full findings in `.loop/evidence/r12/`.
+
+### The one that mattered most: YOU COULD NOT TAKE OFF
+
+Introduced by me in round 11 and missed by every measurement I took. The craft
+spawned at `SPAWN_ALT` 0.9 m with its motors at zero rpm and physics frozen
+until the throttle passed 0.05. The instant a pilot touched the throttle the
+integrator unfroze in free air with dead motors, the quad fell 0.71 m and
+arrived at **3.415 m/s**, past the 2.0 m/s landing gate, and crashed. Then
+`resetCraft` put it back at 0.9 m in mid air and it happened again, forever.
+A reviewer measured the whole loop and every throttle setting between the
+launch threshold and hover.
+
+The craft now starts landed, on the ground, and the on ground branch that
+already existed holds it and already gates liftoff on `TAKEOFF_THROTTLE`.
+Verified: `launched true, landed true, descentRate 0` at the line, then
+airborne with 0.196 m of clearance under throttle.
+
+Every ledger figure in round 11 was correct and the game was unplayable. That
+is the second time this loop that only a human sized test found the thing that
+mattered.
+
+### Acted on this round
+
+- **Takeoff trap**, above, plus both reset paths.
+- **Stale judgement state.** `__craftState()` reported a 2.8 m/s arrival on a
+  craft sitting calmly on the line, because `lastDescent` survived a reset.
+  Cleared with the rest of the run state.
+- **A graze is no longer a crash.** Every contact at any speed was a full crash
+  with a 1.4 s lockout and a void lap, which is harsher than the physics and
+  harsher than the MultiGP rulebook. `Colliders.hit` now reports the contact
+  normal, the shell multiplies it by the craft's speed, and below
+  `GRAZE_SPEED_MAX` of 4.0 m/s a touch on a gate frame, its furniture or a flag
+  pole costs the lap and nothing else. Trees, rocks and cliffs stay solid at
+  any speed.
+- **The gate was invisible at commit range.** A pilot measured the lit aperture
+  bar at 1.4 px at 20 m and 0.9 px at 30 m, and the target reading as a 23 px
+  tick dimmer than the flags and trees beside it. The bar went 0.075 to 0.16 m,
+  which is 3 px at 20 m. Stated cost: at 7 m it covers 10 percent of the
+  opening instead of 5.
+- **The keyboard was bang bang below 10 frames per second.** The stick rates
+  are per second and a frame is clamped to 100 ms, so the smallest possible
+  keypress moved the stick 0.9 of full deflection, worth more than a metre of
+  cross track against a 0.572 m budget. A per frame step cap of 0.18 changes
+  nothing at 60 fps and makes a slow machine merely coarse.
+- **The out of sequence rule is enforced.** `track.js` quoted MultiGP verbatim,
+  "If any obstacle is entered out of sequence or direction at any time the run
+  is invalid", and `race.js` did not implement it. It does now, sharing one
+  crossing test with the scoring path so the two cannot disagree.
+- **The launch banner was drawn over the target.** Moved from 38 to 22 percent
+  of frame height, and its wording no longer says "mint ring" for a square gate
+  or "launch" for a craft already on the ground.
+
+### The audio, rebuilt against measurement
+
+- **The bed was not music.** 97.5 percent of its energy was below 120 Hz, the
+  snare and hats measured 31 to 43 dB under the bass so there was no groove to
+  hear, there was no harmonic instrument at all, and the loop was 5.5172 s with
+  consecutive loops correlating at r = 0.958 to 0.989. Now: **16 bars, 22.069 s**,
+  four varied groups, an eight bar bass phrase of two to three notes a bar
+  instead of a one note pedal, **a pad** (three triangles through a lowpass,
+  placed 880 Hz to 2 kHz where the flight noise leaves 11 dB of room), the
+  break raised and its attacks slowed from 2 to 4 ms to 8 to 12 ms, and the
+  snare and hats panned because every bed only render came back mono.
+- **A cue was inaudible exactly when it mattered.** A gate cue had 0.13 dB of
+  level DISADVANTAGE against its own masking at maximum stems, and a crash
+  17.29 dB. The duck was pulling down the music, which was 26 dB below the
+  motors and never masked anything. A cue now ducks the **motors and wind**,
+  which are what mask it. Measured: gate advantage **+7.61 dB**, from -0.13.
+- **The motor was a synth buzz.** A sawtooth through two lowpasses gave
+  harmonics at exact integer multiples with the first three within 7.5 dB. Now
+  a `createPeriodicWave` with chosen amplitudes and scrambled phases, one
+  lowpass instead of two, and slow noise driven detune so the blade pass tone
+  wanders.
+- **A stationary quad was not quiet.** The oscillator floored at 20 Hz plus an
+  idle gain put -21.5 dBFS of subsonic drone under the title screen, louder
+  than the whole bed and directly on the bass line. The motor stem now mutes
+  below 600 rpm and the bus is highpassed at 60 Hz.
+- **The loudness law was squared**, swinging the stem 11.6 dB and delivering
+  the flight instrument as volume rather than pitch. Linear now, inside 6.0 dB.
+- **The soft clip was hard clipping at shipped defaults**, taking 0.934 dB and
+  putting 3.06 dB of distortion into the 2 to 2.5 kHz bands. The flattened
+  loudness law took the drive off the clamp: peak sample 0.4842 against a 0.51
+  ceiling, where it used to sit exactly on it.
+- **The focus tone injected the artefact it exists to avoid.** At a 220 Hz
+  carrier it sat inside the blade pass range, and switching it on raised the
+  left ear's own monaural modulation at 8.3 Hz by 17.66 dB while being 14.6 dB
+  below audibility as a tone. Carrier moved to 1000 Hz. Its UI label went from
+  "Focus tone", which names a cognitive effect and is a performance claim by
+  implication, to "Binaural tone".
+
+Re-measured after all of it: flight RMS **-16.81 dBFS** in band, true peak
+**-6.30 dBTP**, A1 margin **+20.19 dB**, worst case the interface allows
+**-1.39 dBTP with zero samples at or over full scale**, **59 audio nodes** of 64.
+
+### Not done, and owed
+
+The plant findings are real and none are addressed: no propwash and a descent
+branch that gives **+35 percent thrust** where vortex ring should cost you it,
+zero disturbance of any kind so the whole D term filter chain is decorative, a
+300 A and 13.5 V punch transient, and yaw-coupling unpassable because the
+mixer cancels exactly. Also: **a dropped Betaflight diff is 96 percent silently
+discarded**, twenty five keys mapped and everything else returning OK, which
+contradicts this project's own premise. All in the handover with file and line.
+The art director and scale reviews had not reported when this was written.

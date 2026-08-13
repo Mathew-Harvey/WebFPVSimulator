@@ -255,19 +255,37 @@ export class InputManager {
     const RATE_UP = 9.0;     /* stick deflection per second when held */
     const RATE_DOWN = 14.0;  /* return to centre per second */
     const THR_RATE = 0.9;    /* throttle travel per second */
+    /*
+     * A CAP ON WHAT ONE FRAME CAN DO, and it is what makes the keyboard
+     * playable on a slow machine.
+     *
+     * The rates above are per second, and poll() clamps a frame to 100 ms, so
+     * at 10 frames per second or worse the smallest possible keypress moved the
+     * stick 0.9 of full deflection. A pilot measured what that costs: 0.9 stick
+     * is worth about 74 ms of full stick, which throws the craft more than a
+     * metre off line, and a regulation gate's whole budget is 0.572 m either
+     * side. The keyboard was a coin flip on exactly the hardware this project
+     * is built for.
+     *
+     * 0.18 per frame is the resolution a 60 frames per second machine already
+     * gets, so this changes nothing there and turns a slow machine from
+     * bang bang into merely coarse.
+     */
+    const MAX_STEP = 0.18;
+    const step = (rate) => Math.min(rate * dt, MAX_STEP);
     for (const [ch, negKey, posKey] of KEY_AXES) {
       const want = (this.keys.has(posKey) ? 1 : 0) - (this.keys.has(negKey) ? 1 : 0);
       const cur = this.kb[ch];
       if (want !== 0) {
-        this.kb[ch] = Math.max(-1, Math.min(1, cur + want * RATE_UP * dt));
+        this.kb[ch] = Math.max(-1, Math.min(1, cur + want * step(RATE_UP)));
       } else if (cur > 0) {
-        this.kb[ch] = Math.max(0, cur - RATE_DOWN * dt);
+        this.kb[ch] = Math.max(0, cur - step(RATE_DOWN));
       } else if (cur < 0) {
-        this.kb[ch] = Math.min(0, cur + RATE_DOWN * dt);
+        this.kb[ch] = Math.min(0, cur + step(RATE_DOWN));
       }
     }
     const thrWant = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
-    this.kb.throttle = Math.max(0, Math.min(1, this.kb.throttle + thrWant * THR_RATE * dt));
+    this.kb.throttle = Math.max(0, Math.min(1, this.kb.throttle + thrWant * step(THR_RATE)));
     return { ...this.kb };
   }
 

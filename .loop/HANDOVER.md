@@ -44,6 +44,124 @@ spend a round trying to install one. `scripts/pixels.js` decodes PNGs and a
 20 line Node script can decode, crop and cluster one; that is how the
 MultiGP diagram below was measured.
 
+## Round 12 review findings still OWED. Read this first.
+
+Four reviewers ran on flight feel, graphics, scale and focus audio. Three
+reported. **The art director review had not returned when this was written; its
+transcript is in the session's task output and its findings are unrecorded
+here.** Everything below is a real, measured, unfixed defect with a file.
+
+### The plant, from the pilot review. None of this is addressed.
+
+- **No propwash, and the descent aerodynamics have the WRONG SIGN.** Measured:
+  hover, chop to idle, catch, and the peak body rate disturbance is 0.00 deg/s.
+  Roll rate is 170.6 deg/s at every descent rate to a tenth. Worse, at hover
+  duty the thrust/weight RISES from 1.063 still to 1.434 at 6.2 m/s of descent,
+  so the model hands you **35 percent MORE thrust** exactly where vortex ring
+  should cost you it. The `axial > 1.35` clamp at `plant.c:244` then deletes the
+  aerodynamic rate damping in one step. Fix: a descent branch past
+  `va/pitch_speed` about -0.3 rolling thrust off toward 0.75, with a
+  deterministic per motor inflow asymmetry so the four stop cancelling.
+- **Nothing disturbs the quad, ever.** Thirty seconds of hover: lateral drift
+  0.00e0 m, peak body rate 0.00e0, motor spread 0.00e0. Bit exact zero. No
+  wind, no gusts, no ground effect, and **zero gyro noise, which makes the
+  entire D term filter chain decorative**: `gyro_lpf1_static_hz` and
+  `dterm_lpf*` do nothing measurable, so the quad cannot be tuned because the
+  thing tuning fights is not simulated. Fix: deterministic shaped noise into
+  `s->omega` as read by the bridge only, seeded from `step_index`.
+- **300 A and 13.5 V five milliseconds into a punch** on a full pack, from
+  `plant.c:248` having no winding inductance and no ESC limit. 2.25 V per cell
+  is a destroyed pack. Fix: a first order current lag at L/R about 200 us and a
+  per motor ceiling near 45 to 50 A.
+- **yaw-coupling can never pass.** The QUADX roll and yaw mixer columns are
+  orthogonal and each roll pair holds one CW and one CCW motor, so the yaw
+  torque sum is exactly zero independent of any nonlinearity. Fix: tilt each
+  motor's thrust axis outward 1 to 2 degrees, which is real arm splay and earns
+  the check honestly. DO NOT lower the threshold.
+- **A dropped Betaflight diff is 96 percent silently discarded.**
+  `bf_config_apply_setting` maps 25 keys and everything else returns SIM_OK.
+  Not honoured: `d_min_*`, `dterm_lpf*`, `gyro_lpf*`, `iterm_relax*`,
+  `anti_gravity_gain`, `tpa_*`, `feedforward_*`, `thrust_linear`, `motor_idle`,
+  `vbat_sag_compensation` and more. **Zero of the twelve master section
+  settings in this repo's own `configs/freestyle.diff` are honoured.** That
+  contradicts the project's premise. Fix: return `SIM_ERR_CONFIG_PARSE` for
+  unmapped `set` keys so it fails loudly, then extend the table.
+- `sim_bf_sag_cell_cv` is initialised to 420 and never updated
+  (`bf_stubs.c:78`), so the modelled sag never reaches the flight controller.
+- **Betaflight is told 250 Hz while sticks arrive at the frame rate.** Sampled
+  once per frame and forward filled across the 4 ms grid, so rc smoothing is
+  tuned for 250 Hz on a 60 Hz staircase: measured 3x the setpoint jerk at
+  60 fps, 5x at 30. Fix: drive `RC_HZ` from the measured frame rate, or poll on
+  a 250 Hz interval independent of requestAnimationFrame.
+- **`scripts/flight-report.js` "forward flight" measures 6.7 backflips.** It
+  holds pitch -0.55 for 12 s in ACRO, which is a rate command: 2399 degrees of
+  integrated rotation, ending 87 m lower. Its "26.8 m/s" is a tumbling quad
+  falling. This instrument has been feeding the review loop.
+- Land thresholds to ARGUE, not silently change: 2.0 m/s is 30 to 50 percent
+  too strict for mown grass, and 3.0 m/s HORIZONTAL makes a 0.19 m low pass at
+  race speed an instant crash, which is not what the constant's name says.
+- The sphere collider throws away 21 percent of every gate's vertical window:
+  `CRAFT_R` 0.1885 is right for a tumbling quad and wrong for level flight,
+  where the craft is 0.06 m tall. Fix: a tilt aware vertical half extent,
+  `0.030 + 0.1885 sin(tilt)`, horizontal unchanged.
+
+### Scale, from the scale review. Gate and craft verified EXACT; the dressing is not.
+
+Verified PASS and not to be touched: all **12 openings across 8 obstacles are
+exact to four decimals** (1.5240, 2.1336 by 1.8288, sills 1.5240 and 4.5720,
+ladder pitch 1.5574). The ratio test passes at **0.002 percent**: gate 98.6493
+px against craft 16.1482 px at equal depth, ratio 6.1090 against a predicted
+6.1091. The 100 degree vertical field of view is 135.3 degrees diagonal, at the
+NARROW end of real FPV, and it is exonerated: the 30 degree uptilt MAGNIFIES a
+horizon height target by 1/cos30, measured 135.1 px tilted against 115.1 level.
+
+Fixed this round: grass width 0.0985 m measured to 8 to 18 mm, grass height to
+3 to 9 cm mown, wind tip travel 0.461 m to about a quarter of blade height,
+flag poles 3.4 m by 0.106 m to 1.6 m by 0.018 m with the collider following,
+and the parked craft now rests at 0.075 m instead of floating at 0.9 m.
+
+STILL OWED:
+- **Gate spacing is 71.2 m of line per gate and a gate stops being readable at
+  about 40 m.** Measured lap 569.6 m, legs 54 to 85 m, against UTT 3's 7, 21
+  and 28 m. The pilot flies the first 40 to 60 percent of every leg on the glow
+  alone. Fix: `scene.js:172` curve coefficients 105 and 118 to about 62 and 70,
+  or raise `gateCount` from 8 to 14 with matching `gateU` and `stationKinds`.
+- **Grass ground cover is 14.5 percent at about 10 blades per square metre**
+  against a real 10,000 to 30,000 shoots. Narrowing the blades made cover worse.
+  Raising `BLADES` is the fix and it makes P2 and P10 worse and changes the rng
+  stream, so it regenerates the world. Say so if you do it.
+- Clouds are 100 to 170 m across at 190 to 380 m altitude, sitting AT and BELOW
+  mountain summits of 100 to 310 m. Real cumulus is 0.5 to 2 km wide at 600 m
+  plus.
+- Mountain flanks average 56.9 degrees against a real 25 to 40.
+- The corridor is mathematically flat: `__trackPoint(u).ground` is 0.000 at all
+  24 sampled u. The height field's finest component has a 91 m wavelength and is
+  zeroed within 30 m of the line, so there is no relief at any wavelength a
+  pilot at 0.762 m can perceive. MultiGP asks for flat, not for a plane.
+- Tree trunks are about 3x too thick for their height.
+- `main.js` altitude readout measures from the SPAWN ground height, not the
+  ground under the craft. Identical on a flat corridor, wrong the day it is not.
+
+### Audio, from the mastering and composition review. Fixed and owed.
+
+Fixed this round: the 16 bar loop, the bass phrase, the pad, the break raised
+with slower attacks, stereo, the flight duck replacing the useless music duck,
+the periodic wave motor voice with noise detune, the 600 rpm mute and 60 Hz
+highpass, the linear loudness law, and the focus carrier moved to 1000 Hz.
+
+STILL OWED:
+- **`tests/` contains ZERO audio assertions.** `grep -riE "audio|music|dbfs|
+  dbtp|scream|bpm|binaural"` over `tests/` returns nothing. Every audio number
+  in this project is ungated: `npm run verify` would not notice the mix
+  regressing to the 22 dB scream it started at.
+- The metre is ambiguous: 173.74 BPM at r 0.3768 against a 2/3 tempo peak at
+  115.61 BPM at r 0.3665, a gap of 0.010. The ghost kick and the hat accent on
+  every beat exist partly to move the estimator, which is instrument driven
+  composition and costs the two step its character.
+- Re-measure the A2 three throttle sweep, the tempo, the seam at the NEW
+  22.06897 s loop period, and the band split, all against the rebuilt graph.
+  Only loudness, A1 and the cue advantage were re-measured after the rebuild.
+
 ## Round 11: the world is solid and the mix stopped screaming
 
 Full evidence in `.loop/evidence/r11/ledger.md` and `ledger-numbers.md`. What a

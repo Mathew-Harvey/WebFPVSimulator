@@ -477,8 +477,35 @@ function grassField(height, samples, rng) {
      * mown grass. 0.09 to 0.24 m is ankle height, which puts the gate back to
      * being the tallest thing near the racing line.
      */
-    const h = 0.09 + rng() * 0.15;
-    const w = 0.026 + rng() * 0.03;
+    /*
+     * Blade HEIGHT, and the resting camera is what settles it.
+     *
+     * 0.09 to 0.24 m was already a correction from 0.26 to 0.68, but a quad at
+     * rest has its camera 7.5 cm off the deck, so grass to 24 cm put the FPV
+     * camera INSIDE the canopy and the first frame of the game was half filled
+     * with slabs of leaf. A mown chapter field is 3 to 5 cm and MultiGP asks for
+     * a course as flat as possible, so 3 to 9 cm is both what the sport uses and
+     * what leaves a parked quad able to see.
+     */
+    const h = 0.03 + rng() * 0.06;
+    /*
+     * Blade WIDTH, and it was the worst scale error in the project.
+     *
+     * Measured in a frame rather than inferred: one blade's base came out
+     * 0.0985 m across, which is 39 percent of the 250 mm craft's span. Real
+     * grass is about 4 mm, 1.6 percent. The finest detail in every frame was
+     * half the aircraft, so the aircraft read as a toy no matter how correct
+     * its own dimensions were. Aspect ratio was 0.80 to 4.6 where real grass
+     * is 15 to 60.
+     *
+     * 8 to 18 mm is a compromise, not the real 4 mm: the blade count is left
+     * alone because it drives the rng stream for the whole world and because
+     * P2 and P10 are already over budget, and 4 mm blades at this density
+     * would be invisible. Aspect is now 5 to 30, which is in the right
+     * territory. Raising the count to recover ground cover is the next round's
+     * call and it makes P2 and P10 worse, which has to be said out loud.
+     */
+    const w = 0.008 + rng() * 0.010;
     const a = rng() * Math.PI;
     const dx = Math.cos(a) * w;
     const dz = Math.sin(a) * w;
@@ -577,8 +604,12 @@ function grassField(height, samples, rng) {
         float gust = sin(p.x * 0.045 + p.z * 0.03 + uTime * 1.1);
         float flutter = sin(p.x * 0.9 + p.z * 0.7 + uTime * 5.5);
         float amp = aBend * aBend;
-        p.x += (gust * 0.34 + flutter * 0.06) * amp;
-        p.z += (gust * 0.18 + flutter * 0.05) * amp;
+        /* Tip travel used to reach 0.461 m, which is 1.9 to 5.1 times the
+         * blade's OWN height: a blade cannot throw its tip twice its length,
+         * and the near field read as a floor of half metre ribbons rather than
+         * as grass. Capped at about a quarter of blade height. */
+        p.x += (gust * 0.050 + flutter * 0.012) * amp;
+        p.z += (gust * 0.030 + flutter * 0.010) * amp;
         p.y -= abs(gust) * 0.05 * amp;
         // propwash: grass under the craft blasts radially outward and
         // flattens, hardest directly below, gone a few metres out. This
@@ -1106,10 +1137,20 @@ function obstacle(kindName, index, isStart) {
   };
 }
 
+/*
+ * A course marker flag.
+ *
+ * It was 3.4 m tall on a 0.106 m pole, which is 2.23 times the gate's aperture
+ * and 3.2 times thicker than the gate's own structural tube: 72 pieces of
+ * dressing, each out measuring the thing the player is trying to find. At 30 m
+ * the target gate subtends 23 px while a nearby flag pole gave 435. The eye
+ * calibrates the gate against whatever is beside it, so the dressing has to be
+ * smaller than the structure.
+ */
 function bannerFlag(rng, height, x, z, colorHex) {
   const g = new THREE.Group();
   const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.05, 0.06, 3.4, 5),
+    new THREE.CylinderGeometry(0.014, 0.018, 1.6, 5),
     celMaterial({ color: 0xd7dbe0, rim: 0.2 }),
   );
   pole.position.y = 1.7;
@@ -1117,7 +1158,7 @@ function bannerFlag(rng, height, x, z, colorHex) {
   /* Cel shaded, not unlit: an unlit cloth holds full saturation inside a
    * cast shadow, which is the one thing the colour rule forbids. */
   const cloth = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.15, 0.68, 4, 2),
+    new THREE.PlaneGeometry(0.55, 0.35, 4, 2),
     /* No rim on the cloth. The rim term is 1 minus dot(normal, view), and
      * a flat plane seen at any angle is edge on across its whole surface,
      * so the cool rim colour covered the entire flag: a dark red cloth
@@ -1131,7 +1172,7 @@ function bannerFlag(rng, height, x, z, colorHex) {
    * back through it. */
   cloth.position.set(0.58, 0, 0);
   const clothPivot = new THREE.Group();
-  clothPivot.position.set(0, 2.85, 0);
+  clothPivot.position.set(0, 1.35, 0);
   clothPivot.add(cloth);
   g.add(clothPivot);
   g.position.set(x, height(x, z), z);
@@ -1709,7 +1750,7 @@ export function buildScene(canvas) {
      * a quad that clips one is finished, so it collides. The cloth does not:
      * a flag brushing a prop is not a crash. */
     const fy = height(fx, fz);
-    colliders.addPost('pole', fx, fz, fy, fy + 3.4, 0.06);
+    colliders.addPost('pole', fx, fz, fy, fy + 1.6, 0.018);
     f.group.updateMatrixWorld(true);
     poleBaker.bake(f.pole);
     f.group.remove(f.pole);

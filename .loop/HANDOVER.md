@@ -44,12 +44,66 @@ spend a round trying to install one. `scripts/pixels.js` decodes PNGs and a
 20 line Node script can decode, crop and cluster one; that is how the
 MultiGP diagram below was measured.
 
-## Round 12 review findings still OWED. Read this first.
+## Round 13 CLOSED five of the owed findings. Read this before the list below.
 
-Four reviewers ran on flight feel, graphics, scale and focus audio. Three
-reported. **The art director review had not returned when this was written; its
-transcript is in the session's task output and its findings are unrecorded
-here.** Everything below is a real, measured, unfixed defect with a file.
+The art director review did return. Five items are fixed and measured, and
+one of its recommendations is refused with an argument. Details and numbers
+in PROGRESS.md rounds 13, 13b, 13c, 13d, 13e. Summary:
+
+- **CLOSED, the rim halo.** `celmat.js` RIM_CHUNK quantised the rim with
+  `step(0.5, celRim)`. On a gate upright 7 px wide at 1.2 m the step was true
+  across the tube's whole visible width, so the rim REPLACED the material
+  rather than edging it: 0.209 flat where the material reads 0.140, 49
+  percent overbright with no shading left in it. Now a cubed smoothstep
+  scaled by the luminance of the fragment under it. Craft rim strengths, the
+  highest in the scene and on its darkest materials, cut to 0.26 to 0.28.
+- **CLOSED, the sun.** 10,393 px of a 1600 by 900 frame had all three
+  channels at 254 or higher. Both sun terms were added on top of a sky
+  already at 0.59, 0.72, 0.83 at the sun's altitude. AND `vDir` was
+  normalised per vertex but not per fragment, so `dot(vDir, sun)` was short
+  by up to half a percent inside each triangle of the 40 by 24 dome and the
+  disc threshold only fired in patches following the tessellation: it was
+  never a circle. Clipped pixels now 0, disc a symmetric 0.889 peak.
+- **CLOSED, the mountain ladder.** It was solved against a sky of 0.781 and
+  ground of 0.428, both DERIVED from authored colours. Measured off a capture
+  they are 0.487 and 0.192, so the ladder climbed past its own ceiling and
+  rings 1 to 3 rendered brighter than the sky behind them. Re-solved on the
+  measured anchors: 0.250, 0.310, 0.370, 0.430.
+- **CLOSED, gate spacing.** Eight stations to fourteen, 71.2 m to 40.7 m.
+  Measured from the spawn frame, eight put exactly one gate on screen and the
+  next at screen x=-1356, off frame; fourteen puts two in frame. Shrinking the
+  circuit was rejected on measurement, see the refusal below.
+- **CLOSED, no audio assertions in tests/.** New check 14, `audio-bed`,
+  drives the real page with a real key gesture. `npm run verify` is now 13
+  of 14.
+- **REFUSED with an argument, FOG_FAR to 600-900.** Shortening it raises the
+  terrain's far edge, and the rebuilt ridge ladder pins that below about 0.22
+  or ring 0 at 0.250 loses its separation from the ground in front of it.
+  Ground haze now costs the mountain ladder. No threshold moved either way.
+- **REFUSED with an argument, shrinking the circuit for gate spacing.** The
+  tightest radius of curvature is already 11.16 m, 3.7 g at 20 m/s. Scaling
+  it to give eight gates 40 m spacing means 4.7 m and 8.7 g, and the course
+  stops being flyable. Fourteen gates on the same geometry instead.
+
+**Also fixed as a side effect, and worth knowing about:** the gate number
+plate was `DIGITS[index % 10]`, which painted gate 13 as a 3 and gate 10 as a
+0. Raising the station count is what exposed it. It now renders as many
+glyphs as the number needs.
+
+**Two instrument defects of my own, both caught by measuring twice.** A
+scratch clip counting script hardcoded a 4 byte PNG stride where these
+captures are colour type 2 at three bytes, which shears each row across 1.33
+rows of source and reported 7774 clipped px where the truth was 10393;
+`decodePng` in `scripts/pixels.js` returns `channels` for exactly this reason,
+so read it. And the music scheduler's step counter advances in lookahead
+chunks, so a short window implies a wrong tempo: 23 steps in the first 1500 ms
+reads as 230 BPM on a 174 BPM bed. Do not publish a tempo from that counter.
+
+## Round 12 review findings still OWED.
+
+Four reviewers ran on flight feel, graphics, scale and focus audio.
+Everything below is a real, measured, unfixed defect with a file. The art
+director's items are now recorded above, fixed or refused.
 
 ### The plant, from the pilot review. None of this is addressed.
 
@@ -530,3 +584,30 @@ The full ledger command block is at the top of
 - MultiGP artwork is deliberately not vendored. It is under an unstated
   licence and D5 forbids adding an external asset without a justification.
   The build needs the dimensions, and those are written down.
+
+## Round 13's own leftovers, in priority order
+
+1. **The lake, `water()` in scene.js.** Still the art director's number one
+   and untouched. Foam and the shallow band come from mesh radius, not from
+   the terrain and water intersection, and depth is distance from the disc
+   centre rather than `LAKE.level - height(x,z)`. No sun term, no specular, no
+   fresnel sky reflection. Trees and rocks are not skipped inside `LAKE.r`.
+2. **Grass ground cover, 14.5 percent at about 10 blades per square metre.**
+   Visible in every frame as sparse specks on flat green, and it is the
+   loudest remaining art gap now the ridges read. COUPLED to P10: the grass is
+   25.8 MB of the 51.7 MB attribute total against a 48 MB budget, because its
+   colour attribute is three float32 where a normalised byte triple would do.
+   Fix P10 first, then raise density, or density makes P10 worse.
+3. **The stem balance question the audio table cannot answer.** Music alone at
+   the default level measures -22.56 dBFS against the flight bed's -17.01, and
+   the full mix with music in is bit identical to the mix without it at every
+   aggregate the probe prints to four decimals. The music is measurable on its
+   own and moves nothing in the mix. Whether that is correctly subordinate or
+   simply too quiet is an ears judgement, not a table judgement. Make it.
+4. **The prepass layer mask, `post.js` around line 486.** Sky, water and the
+   gate ring, halo and glow are still outside the geometry prepass layer mask,
+   so the skyline and the target receive neither ink nor coverage.
+5. **No place-making furniture and no motion vocabulary.** Both still true:
+   nothing in `src/` produces a particle, a blur or a shake.
+6. Everything in the plant list below, which needs a WASM rebuild and is
+   where yaw-coupling, the one red check, actually lives.

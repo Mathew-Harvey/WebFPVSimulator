@@ -85,12 +85,20 @@ const SPAWN = { x: 0, z: 24, yaw: Math.PI };
  * without moving the fog would have left a 35 m band where the town winks out
  * in clear air.
  *
+ * HOW SHORT IS SET BY THE FLYING, NOT BY THE FRAME. 65 m of fog at 100 km/h is
+ * 2.3 s of sight, which is enough to read a gap and commit to it. The sweep
+ * kept paying below that, 1153 draw calls at the worst view for a radius of 50
+ * against 1236 for 70, and 45 m of fog is 1.6 s, which is being asked to
+ * commit to a line before it exists. 83 draw calls is not worth flying blind,
+ * so this stops at the last value a pilot can use rather than at the last one
+ * the ledger likes.
+ *
  * The far plane stays long. It costs nothing, it is depth precision rather
  * than draw calls, and the sky dome and the hills behind the town live out
  * there.
  */
-const FOG_NEAR = 30;
-const FOG_FAR = 95;
+const FOG_NEAR = 22;
+const FOG_FAR = 65;
 const CAMERA_FAR = 900;
 
 /*
@@ -103,10 +111,35 @@ const CAMERA_FAR = 900;
  * with a view that genuinely contains everything. So the far half of the town
  * is dropped past this radius, measured from the camera, on a grid of cells
  * whose contents are grouped at build time. Numbers in PROGRESS.md.
+ *
+ * ROUND 29 CHANGED WHAT THIS LEVER IS WORTH, so the value moved with it. When
+ * almost everything cast a shadow, cutting the radius from 100 to 70 bought
+ * 174 draw calls at street and the conclusion was that the radius was a weak
+ * lever. With the casters restricted it buys 402 at the worst view, 1638 to
+ * 1236, because the work it removes is no longer being paid for a second time
+ * in a shadow pass that the radius cannot reach.
+ *
+ * THE CELL STAYS AT 40 AND THAT WAS SWEPT, NOT ASSUMED. Coarser cells make
+ * fewer instanced chunks, 1200 at 40 m against 458 at 80 m, and every one of
+ * the draw calls that saves is handed back in triangles: at 80 m and a 100 m
+ * radius the worst view is 3.43 M triangles against 2.51 M at 40 m, because a
+ * cell is only dropped once ALL of it is out of range and an 80 m cell rarely
+ * is. 40 m is better on both axes at every radius measured.
  */
-const CULL_RADIUS = 100;
+const CULL_RADIUS = 70;
 const CULL_CELL = 40;
 const SHADOW_HALF = 22;
+
+/*
+ * How finely the shadow proxies are cut. See buildShadowProxies in ./bake.js
+ * for what they are and why they exist.
+ *
+ * Small enough that the 44 m shadow box holds only a few of them, large enough
+ * that the handful inside the box are not a draw call each. A 24 m cell puts
+ * between four and nine inside the box depending on where the craft sits,
+ * against the 351 calls the shadow pass cost when the town cast for itself.
+ */
+const SHADOW_PROXY_CELL = 24;
 
 /*
  * How much of the town's planting survives.
@@ -156,6 +189,23 @@ const FOLIAGE_KEEP = 0.65;
  * frustum culled and never distance culled, which is the correct handling and
  * not a special case written for this.
  */
+/*
+ * ROUND 32 PUT THIS BACK TO Infinity, and the reason is a measurement rather
+ * than a preference. Splitting the static merge spatially makes it distance
+ * cullable, which costs draw calls and buys triangles, monotonically. Swept
+ * twice, before and after the texture atlas, worst of four viewpoints at a
+ * 70 m radius:
+ *
+ *   Infinity   1372 calls   2,426,187 triangles
+ *   120        1597 calls   2,367,100
+ *   80         1611 calls   2,329,544
+ *   60         1807 calls   2,069,086
+ *
+ * 225 draw calls for 59,000 triangles at 120. Draw calls are the binding
+ * budget by a wide margin, 3.5x over against 2.0x, so the trade is negative
+ * until that stops being true. It is a real lever and it is pointing the wrong
+ * way today.
+ */
 const MERGE_CELL = Infinity;
 
 /*
@@ -180,6 +230,27 @@ const MERGE_CELL = Infinity;
  * right shape of number rather than a lucky one.
  */
 const MERGE_SHADOW_CELL = 80;
+
+/*
+ * How big a thing has to be before it casts a shadow.
+ *
+ * The reasoning, the sweep and the reason a size test is allowed here when two
+ * previous ones were not are all at `restrictCasters` in ./bake.js. The short
+ * version: the shadow pass was 35 percent of this map's draw calls and 39
+ * percent of its triangles, most of it thousands of objects too small to cast
+ * a shadow anyone flying could see, and every one of those also held a
+ * MERGE_SHADOW_CELL bucket open in the colour pass.
+ *
+ * Two numbers rather than one, and the reason is the canopy: a single
+ * threshold anywhere above this town's 1.0 m canopy blob turns off every tree
+ * shadow in the town, and the 190 draw calls that buys are not worth the
+ * cherry trees. A mesh standing on its own has to be 1.4 m to cast. One member
+ * of an instanced crowd only has to be 0.8, because what the eye reads there
+ * is the cluster and never the blob. Hill tufts and lake reeds are 0.5 and
+ * stop casting either way.
+ */
+const CASTER_MIN_RADIUS = 1.4;
+const CASTER_MIN_RADIUS_INSTANCED = 0.8;
 
 /*
  * The city's pipeline, with the two things it does to a shared renderer
@@ -892,6 +963,12 @@ export async function buildMap(shell, onProgress) {
     cell: MERGE_CELL,
     shadowCell: MERGE_SHADOW_CELL,
     cullCell: CULL_CELL,
+    casterMinRadius: CASTER_MIN_RADIUS,
+    casterMinRadiusInstanced: CASTER_MIN_RADIUS_INSTANCED,
+    /* See findAnimated in ./bake.js. Turn this OFF the day anything in this
+     * shell can press one of the town's buttons. */
+    releaseStillRigs: true,
+    shadowProxyCell: SHADOW_PROXY_CELL,
   });
   const thinned = thinFoliage(world.root, { keep: FOLIAGE_KEEP });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
@@ -936,6 +1013,48 @@ export async function buildMap(shell, onProgress) {
     light.target.updateMatrixWorld();
   }
 
+  /*
+   * Which shadow proxies are inside the shadow box.
+   *
+   * The shadow camera is an orthographic box of SHADOW_HALF a side looking
+   * from the sun's offset at the shadow target, so the test is that box's own
+   * test done by hand: put the cell centre into the light's view space and
+   * compare against the half extents, widened by the cell's own radius so a
+   * cell straddling the edge is kept rather than clipped. Done here rather
+   * than from `sun.shadow.camera` because that camera's matrices are only
+   * brought up to date inside the shadow pass, which runs after this.
+   *
+   * Every vector and matrix here is allocated once at build time. This runs
+   * every frame and P8 forbids allocating in that path.
+   */
+  const proxyMeshes = baked.proxies ? baked.proxies.meshes : [];
+  const proxyReach = Math.hypot(SHADOW_PROXY_CELL, SHADOW_PROXY_CELL) * 0.5;
+  const proxyView = new THREE.Matrix4();
+  const proxyEye = new THREE.Vector3();
+  const proxyUp = new THREE.Vector3(0, 1, 0);
+  const proxyAt = new THREE.Vector3();
+  function gateProxies(target) {
+    if (!proxyMeshes.length) {
+      return;
+    }
+    proxyEye.copy(target).add(SUN_OFFSET);
+    proxyView.lookAt(proxyEye, target, proxyUp);
+    proxyView.setPosition(proxyEye);
+    proxyView.invert();
+    for (let i = 0; i < proxyMeshes.length; i += 1) {
+      const m = proxyMeshes[i];
+      proxyAt.set(m.userData.cellX, target.y, m.userData.cellZ).applyMatrix4(proxyView);
+      /* x and y are across the light's view, z is depth into it and negative
+       * in front of the camera. The depth range is the shadow camera's own
+       * near and far, widened the same way. */
+      const d = -proxyAt.z;
+      m.visible = Math.abs(proxyAt.x) <= SHADOW_HALF + proxyReach
+        && Math.abs(proxyAt.y) <= SHADOW_HALF + proxyReach
+        && d >= sun.shadow.camera.near - proxyReach
+        && d <= sun.shadow.camera.far + proxyReach;
+    }
+  }
+
   function updateShadowFocus(target) {
     /* Snapped to a 0.5 m grid. A shadow camera that follows a quad exactly
      * shimmers every texel boundary, and at 3.3 cm per texel that is a
@@ -953,6 +1072,10 @@ export async function buildMap(shell, onProgress) {
     sky.dome.position.copy(camera.position);
     sky.clouds.position.copy(camera.position);
     cullTo(camera.position);
+    /* Gated on the SHADOW target rather than the camera: a proxy matters
+     * because it is near the light's box, which follows the craft, and not
+     * because it is near the eye. */
+    gateProxies(shadowTarget);
   }
 
   /* Overridable so a sweep can measure the draw call count against the cull

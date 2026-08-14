@@ -4924,3 +4924,553 @@ the colour bake paints those materials white: it still reads 2.0500 because
 order were ever swapped. **Check 16 map-isolation passes.**
 
 451 meshes still move over 6 s, the same count as the last three rounds.
+
+## Round 28: measuring the city against the budget before changing anything else
+
+The owner asked for a strategy to bring the city inside the performance budget,
+and suggested closing the fog and cutting the clutter. Both were swept live
+before anything was written down. This round changed no source file. The output
+is `/CITY-PERF-PLAN.md`, and what follows is what the measurement found that
+the previous rounds did not.
+
+### Two budgets nobody had measured on this map
+
+**P5 is passing and the instrument says it is failing.** `src/render/budget.js`
+derives a 1080p figure by scaling every non shadow target by pixel area. The
+city's composer targets are capped by `pixelBudget: 2.6e6` and come out at 2149
+by 1209 whatever the canvas is, so scaling them is wrong. Measured at a real
+1920 by 1080 canvas: **104.2 MB against a 120 MB ceiling**. From a 1280 by 720
+capture the same code derives 153.8 MB from a true 87.0 MB, which is 47 percent
+high. The derivation needs the same fixed/scales split the shadow map already
+gets.
+
+**P10 has never been read on this map and it is 2.05x over.** 2,333,270
+resident vertices: position 28.0 MB, normal 28.0 MB, colour 26.3 MB, uv 16.0
+MB, plus 8.8 MB of indices, against a 48 MB ceiling. The colour attribute is
+round 27's bake, and it is written on every geometry the bake touched rather
+than only on the buckets that actually mix colours.
+
+### The shadow pass is 35 percent of the draw calls and it fragments the merge
+
+Measured two independent ways that agree exactly, `renderer.shadowMap.enabled`
+false and `castShadow` cleared on every mesh: street goes 1715 to **1107**
+calls, 2,765,233 to **1,675,689** triangles.
+
+It costs twice, and the second cost is the one that was not visible before.
+`bakeCity` buckets a caster on an 80 m grid and everything else town wide.
+2,511 of the town's 3,736 meshes cast, only 12 of them town wide merges, so the
+static town is drawn as 331 pieces where it could be about 70. The shadow pass
+therefore costs 608 calls of its own and forces roughly 265 more in the colour
+pass.
+
+Swept by source mesh size, the knee is between 0.6 and 1.2 m: casters 2511 to
+566 takes street 1715 to 1345 and 2.77 M to 2.44 M. This is a size test and
+PROGRESS records two rounds where a size test went wrong, and the objection
+does not transfer. A size test used for REMOVAL cannot see that a window frame
+is part of a building. A size test used for CASTING decides only whether a
+bollard puts a shadow on the pavement inside a 44 m box at 100 km/h. A wrong
+answer here is invisible rather than structural.
+
+The obvious alternative was checked and refused: a shadow only proxy on a
+hidden layer does not work in three 0.160, because
+`WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+against the VIEW camera rather than the shadow camera, so anything the main
+camera cannot see casts nothing.
+
+### The fog cannot reach the buildings, which is why closing it underperforms
+
+Swept through `window.__cullRadius`, at street: 100 gives 1715 calls and 2.77
+M, 70 gives 1541 and 2.46 M, 50 gives 1498 and 2.44 M, 35 gives 1164 and 2.11
+M. Round 26 already found this and the reason is round 24's own change: the
+town wide merge gives every static mesh a 249 m bounding sphere,
+`buildCullGrid` routes it into `always`, and 609,410 triangles in 66 calls are
+submitted from every camera position at any radius.
+
+35 m is where the lever finally bites and the fog would then have to end at
+about 33 m, which is 1.2 s of sight at 100 km/h. 70 m with the fog at 65 gives
+2.4 s and is the recommendation. The rest has to come from making the static
+merge cullable, which is step 3 of the plan.
+
+### Where the frame goes, at street, 1715 calls
+
+66 town wide merged static at 609,410 triangles and never culled by anything,
+331 caster merges on the 80 m grid at 375,600, 343 instanced foliage chunks at
+about 661,000, 92 vending machine rig meshes and 88 railway furniture meshes
+for 6,070 triangles between them at about 35 triangles a call, and 608 shadow
+submissions at 1,089,544. The build's own counters: 18,466 static meshes merged
+to 625 across 2015 buckets, of which **1,390 hold exactly one mesh** and 671 of
+those carry a texture, 1,087 meshes held out as animated, and 39 plant sets
+chunked into 1,200 InstancedMeshes.
+
+### Verify
+
+No source file changed this round, so no check was re run and none is claimed.
+The measurements above were taken through the real page in headless Chromium
+with zero console errors and zero warnings on every run.
+
+## Round 29: step 1 of the city plan, who casts a shadow
+
+`restrictCasters` in `src/maps/city/bake.js`, run after `mergeRigs` and before
+the bucketing, clears `castShadow` on anything too small for its shadow to be
+read. Two thresholds, both in `src/maps/city/index.js`.
+
+### What it bought
+
+| view | calls before | calls after | triangles before | triangles after |
+|---------|------:|------:|-----------:|-----------:|
+| spawn   | 2049 | **1501** | 2,759,143 | 2,500,849 |
+| street  | 1715 | **1267** | 2,765,233 | 2,576,604 |
+| rooftop | 1726 | **1288** | 2,914,891 | 2,645,920 |
+| flying  | 1996 | **1484** | 2,977,665 | 2,709,107 |
+| high    | 1853 | **1638** | 2,691,893 | 2,508,660 |
+
+The worst view is what P1 is written against: 2049 to 1638, 20 percent off.
+Triangles 2,977,665 to 2,709,107, 9 percent off. The shadow pass at street went
+from about 737 draw calls to about 351, and the colour pass from 974 objects to
+912 as caster geometry rejoined the town wide merge: 66 town wide meshes became
+95, and the 331 pieces on the 80 m caster grid became 237.
+
+6,888 of the town's 8,971 meshes stopped casting, measured before the merge.
+
+### Two thresholds, not one, and the canopy is why
+
+Swept by rebuilding the town at each value, street and then the worst of five:
+
+| static | instanced | street | flying | high |
+|-------|-----------|-------:|-------:|-----:|
+| off   | off       |   1715 |   1996 | 1853 |
+| 0.8   | 0.8       |   1363 |   1610 | 1716 |
+| 1.4   | 1.4       |   1173 |   1386 | 1588 |
+| 2.0   | 2.0       |   1149 |   1363 | 1565 |
+| 1.4   | 0.8       |   1267 |   1484 | 1638 |
+
+A SINGLE THRESHOLD ANYWHERE ABOVE 1.0 TURNS OFF EVERY TREE SHADOW IN THE TOWN,
+because this town's canopy blob has a geometry radius of exactly 1.0 and the
+cedar's is 1.16. That is what the 190 calls between 0.8 and 1.4 are mostly
+buying, and round 27 already decided this question in the other direction when
+it spent 0.26 M triangles keeping the cherry trees.
+
+So the bar for a mesh that stands on its own is 1.4 m, and the bar for one
+member of an instanced crowd is 0.8 m. That is a real distinction and not a way
+of keeping a favourite: a lone 1.0 m bin casts a shadow nobody reads, and a
+hundred and thirty 1.0 m blobs in one chunk cast a TREE. Hill tufts and lake
+reeds are 0.5 and stop casting either way. The chosen pair costs 94 draw calls
+at the worst view against 1.4 for everything, and keeps every tree shadow.
+
+### And this is a size test, which has gone wrong twice
+
+Round 26 and round 27 both removed props by size and both removed parts of
+buildings instead. The objection does not transfer and the difference is the
+whole reason this is allowed to exist. A size test used for REMOVAL cannot see
+that a window frame is PART of a building, so it deletes the shop's awnings. A
+size test used for CASTING decides only whether a bollard puts a shadow on the
+pavement inside a 44 m box at 100 km/h. A wrong answer here is invisible rather
+than structural, and moving one number puts it back.
+
+Pixel diffed against the unchanged town at all five viewpoints: street is the
+worst at 1.35 percent of pixels differing by more than 8 of 255 and 0.78
+percent by more than 24, mean 0.43. Then spawn 0.57 and 0.39, rooftop 0.22 and
+0.12, flying 0.20 and 0.10, high 0.05 and 0.02. The screenshots show the
+buildings, the trees, the poles and the crossing arms all still casting, and
+the bollards and the small furniture no longer doing so.
+
+### What was tried and is not here
+
+**Shrinking the shadow box does not reach the cost.** Swept live on the new
+build at street: half extent 22 gives 1363 calls, 16 gives 1288, 12 gives 1246,
+8 gives 1207, against 1073 with the pass off entirely. The reason is that a
+caster is merged on an 80 m grid and the shadow camera culls whole objects, so
+a 16 m box still pulls in an entire 80 m mesh.
+
+**Shrinking the caster grid costs more than it saves, still.** At
+`MERGE_SHADOW_CELL` 40 the worst view is 1745 against 1610, and at 24 it is
+2056. Round 24's choice of 80 survives its own assumptions being replaced.
+
+**The clean fix is a shadow only proxy set and it needs a trick.** Coarse box
+proxies merged at about 24 m and visible only inside the shadow box would take
+the pass to a handful of calls. A hidden layer does NOT work: three 0.160's
+`WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+against the VIEW camera. What does work is that the renderer builds its render
+list before running the shadow pass, and both skip `visible === false`, so
+proxies gated on the shadow box in `updateShadowFocus` are submitted to the
+shadow pass and cost only a handful of colour calls with `colorWrite` off.
+Written down rather than built, because it is a bigger piece of work than the
+rest of step 1 and the plan's step 2 is worth more per hour.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at -0.08 deg.
+**Check 13 console-clean passes with zero errors and zero warnings**, which is
+the one that matters here: `castShadow` is part of the merge bucket key, so
+moving it is exactly how `mergeGeometries` is handed a set it refuses and warns
+about. **Check 15 world-scale passes with every city reference unchanged**:
+kerb 0.1350, doorway 2.0500, handrail 1.0600, crossing boom 1.2400, collider
+fit 613 of 2731, crossing boom collider 1.045 to 1.325 m. **Check 16
+map-isolation passes** with the field's cost unchanged across a city round
+trip. P10 is untouched at 98.4 MB, as expected: this step moves no attribute.
+
+## Round 30: the render distance is worth four times what it was, and textures stop splitting the merge
+
+Two changes and one measurement that corrects a number published last round.
+
+### The radius, now that the shadow pass is not paying for the same work twice
+
+`CULL_RADIUS` 100 to 70, `FOG_FAR` 95 to 65, `FOG_NEAR` 30 to 22.
+
+Round 26 cut the radius and concluded it was a weak lever, 174 draw calls at
+street. With round 29's casters restricted it is worth 402 at the worst view,
+1638 to 1236, because the work the radius removes is no longer being paid for a
+second time in a shadow pass the radius cannot reach. The same lever, four
+times the value, from a change somewhere else entirely.
+
+65 m of fog is 2.3 s of sight at 100 km/h. The sweep kept paying below it, 1153
+draw calls at a radius of 50 against 1236 at 70, and 45 m of fog is 1.6 s,
+which is asking a pilot to commit to a line before it exists. It stops at the
+last value a pilot can use rather than the last one the ledger likes.
+
+`CULL_CELL` was swept alongside and stays at 40. Coarser cells make fewer
+instanced chunks, 1200 at 40 m against 458 at 80 m, and hand every draw call
+back in triangles: at 80 m and a 100 m radius the worst view is 3.43 M
+triangles against 2.51 M at 40 m, because a cell is only dropped once ALL of it
+is out of range.
+
+### The texture atlas
+
+`atlasTextures` in bake.js packs the town's small canvases onto sheets,
+rewrites each mesh's uvs into its tile, and hands the merge one material where
+it had one per sign. 153 textures packed onto 5 sheets across 5 material
+groups, 780 meshes moved onto them, 24.5 megapixels of sheet.
+
+Round 27 wrote that "a texture is the part of a material that cannot be folded
+into a vertex attribute" and that is still true. It does not have to be folded,
+it has to be MOVED, and then the meshes share a material, which is the only
+thing the merge ever needed.
+
+What it refuses, and each refusal is a measurement rather than a guess. 106 of
+the town's 311 textures REPEAT, and wrapping is a property of a whole texture:
+a tile inside a sheet has no edge of its own to wrap at, so uv 1.3 would land
+in its neighbour instead of back at 0.3. 6 more meshes have uvs outside the
+unit square, which is the same problem wearing different clothes, so the
+geometry is checked rather than the texture trusted.
+
+MIPMAPS ARE OFF ON THE SHEETS AND THAT IS A COST, not an oversight. A mip level
+averages across tile boundaries whatever the gutter is, because level n reaches
+2^n pixels, so a distant sign would pick up its neighbour. Without mips it
+aliases instead, which the fog at 65 m keeps short and which looks like the
+town rather than like a bug. The gutter stays at two pixels of replicated edge
+for the bilinear filter at level zero.
+
+The first version allocated a full 4096 square canvas per sheet whatever went
+on it: five sheets and 335 MB of texture, most of it blank. Sizing each sheet
+to its packed extent took that to 24.5 megapixels and 98 MB for identical draw
+calls. Nothing here needs a power of two, since the sheets clamp and carry no
+mipmaps.
+
+Colour is folded here rather than left to `bakeColourToVertices`, which refuses
+anything carrying a `map` and is right to. Once the meshes share a sheet they
+can share a material, so this pass does round 27's trick on its own way out and
+sets `vertexColors`, which is what makes the colour pass skip them. The
+onBeforeCompile, customProgramCacheKey and userData are carried by hand, for
+the reason round 27 recorded in blood.
+
+### Where it lands
+
+| view | round 29 | now | triangles now |
+|---------|-----:|-----:|-----------:|
+| spawn   | 1501 | **1597** | 2,343,158 |
+| street  | 1267 | **1198** | 2,121,196 |
+| rooftop | 1288 | **1254** | 2,266,364 |
+| flying  | 1484 | **1470** | 2,367,100 |
+| high    | 1638 | **1387** | 2,090,342 |
+
+Spawn goes UP and the reason is not either change above: `MERGE_CELL` is 120
+in this tree where round 29 measured it at Infinity. Isolated, the atlas is
+worth 92 draw calls at spawn and 83 at high, and the radius is worth 402 at
+high.
+
+### MERGE_CELL, swept twice, and the answer did not change
+
+Splitting the static merge spatially makes it distance cullable, which is the
+plan's step 3. It costs draw calls and buys triangles, monotonically, and it
+was swept again after the atlas on the theory that a smaller material count
+would make it affordable. Worst of four viewpoints at a 70 m radius:
+
+| MERGE_CELL | calls | triangles |
+|------------|------:|----------:|
+| Infinity   | **1372** | 2,426,187 |
+| 120        | 1597 | 2,367,100 |
+| 80         | 1611 | 2,329,544 |
+| 60 (before the atlas) | 1807 | 2,069,086 |
+
+225 draw calls for 59,000 triangles at 120. Draw calls are 3.4x over budget and
+triangles 2.0x, so the binding budget says Infinity and the plan's own protocol
+said to publish the measurement and revert if it did not pay. The tree ships
+120 because that value was set deliberately by the owner and reverting it is
+theirs to call, not this round's. The lever is worth having when triangles
+become the binding budget, and not before.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has.
+**Check 13 console-clean passes with zero errors and zero warnings**, which for
+a pass that rewrites uv buffers and swaps materials underneath the merge is the
+one that would have caught a refused `mergeGeometries` set. **Check 15
+world-scale passes with every city reference unchanged**, and the doorway at
+2.0500 is the one to watch for the same reason it was in round 27:
+`references.js` finds front doors BY THEIR MATERIAL COLOUR and this pass paints
+atlased materials white, so it reads 2.0500 only because `cityReferences` runs
+before the bake. **Check 16 map-isolation passes.**
+
+Pixel diffed against the same tree without the atlas at five viewpoints: spawn
+is the worst at 0.18 percent of pixels differing by more than 8 of 255 and 0.10
+percent by more than 24, then street 0.12 and 0.04, rooftop 0.04 and 0.01,
+flying 0.01 and 0.00, high 0.00 and 0.00. The shop signs, the road signs and
+the bus number plate all read correctly, which is what says the uv rewrite put
+each mesh on its own tile.
+
+## Round 31: the rigs were held out for a walker this shell does not have
+
+`mergeRigs` took the town's 26 marked rigs from 936 meshes to 154 and stopped
+there, because a rig merged into ITSELF can only share materials with its own
+parts. The vending machines were still 92 draw calls at street and the lineside
+furniture 88, for 6,070 triangles between them, about 35 triangles a call.
+
+WHY THEY WERE HELD OUT AT ALL. Upstream marks a rig `planetRigid` because ITS
+OWN WALKER can walk up to a vending machine and press a button. That walker
+does not exist here. Nothing in this shell reaches the town's interaction list:
+`animation.js`, the city's index.js and src/main.js mention no dispense, no
+action and no hitbox, and the only thing driving the town is `world.update` on
+the physics clock, which is exactly what `findAnimated`'s probe runs. A rig
+that neither moves nor changes across a whole 48 s crossing cycle cannot be
+moved by anything at all here.
+
+So `releaseStillRigs` drops the still ones out of the animated set entirely and
+lets the town merge take them in world space.
+
+### The probe could not see the thing that would have broken
+
+A transform is not the only thing a town animates. `onsen.js` drives
+`p.material.opacity` on both steam vents every frame and never moves them by a
+matrix element, so a probe watching only matrices calls them still. That was
+survivable while a still rig was merged into itself, keeping its own materials.
+It stops being survivable the moment one is merged into the town: the vent's
+per frame opacity would be written to a material shared with every other
+surface in its bucket, and half the town would breathe.
+
+`materialPulse` snapshots opacity, transparency, visibility, colour, emissive,
+emissive intensity and the map's uuid and version before and after the probe,
+and anything that changed joins the animated set. Deliberately wider than the
+one case known to move, because what this cannot see is what it cannot hold
+out.
+
+### The measurement that says nothing froze
+
+Sampled every mesh's world matrix and material, ran the sim 12 s, counted what
+changed. Committed tree: 3,834 meshes sampled, **496 moved and 19 changed their
+look**. This tree: 3,442 meshes sampled, **496 moved and 19 changed their
+look**, from lakeRipple, lakeWindLane, train and the world root, the same four
+names. 392 fewer meshes in the scene and not one fewer moving part. The 19 are
+the onsen vents the material probe caught, which is the pass proving itself.
+
+### Where it lands
+
+| view | before | after |
+|---------|-----:|-----:|
+| spawn   | 1597 | **1383** |
+| street  | 1198 | **1141** |
+| rooftop | 1254 | **1194** |
+| flying  | 1470 | **1315** |
+| high    | 1387 | **1198** |
+
+The worst view is 1597 to 1383. Pixel diffed at five viewpoints, worst 0.13
+percent of pixels differing by more than 24 of 255 at street.
+
+THE COST OF BEING WRONG is a rig frozen at its start position, so the three
+conditions are narrow and all have to hold: the subtree moved no matrix
+element, changed no material property, and this shell has no way to call the
+rig's action. The first two are measured every build. The third is a fact about
+this repository rather than a measurement, and it is the one that will go
+stale, so it is written at the option and again here: IF AN INTERACTION IS EVER
+WIRED UP, TURN `releaseStillRigs` OFF.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds. Check 13 console-clean passes
+with zero errors and zero warnings. Check 15 world-scale passes with every city
+reference unchanged, doorway 2.0500, crossing boom 1.2400, collider fit 613 of
+2731, crossing boom collider 1.045 to 1.325 m, and that last one is the one to
+watch this round because it is measured AFTER the animation has seated the
+booms: a rig wrongly released would have moved it. Check 16 map-isolation
+passes.
+
+## Round 32: the shadow pass gets its own copy of the town, and MERGE_CELL goes back
+
+### Shadow proxies
+
+The colour pass wants the static town merged as coarsely as possible. The
+shadow pass wants the opposite, because the shadow camera is a 44 m box that
+culls whole OBJECTS and a town wide mesh is never outside it. Round 29 measured
+the compromise at 351 draw calls and 800,941 triangles and no cell size makes
+both happy: 80 m costs the shadow pass, 24 m costs the colour pass more.
+
+THEY ONLY CONFLICT BECAUSE ONE SET OF MESHES SERVES BOTH. `buildShadowProxies`
+gives the shadow pass its own copy, cut at 24 m, and each side gets what it
+wants.
+
+The usual way to do this is a hidden layer and it does not work here: three
+0.160's `WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+against the VIEW camera, so an object the main camera cannot see casts nothing.
+Read in the vendored source rather than assumed.
+
+What works instead is that the renderer builds its render list and THEN runs
+the shadow pass, and both skip `visible === false`. So a proxy visible only
+while it is inside the shadow box is submitted to the shadow pass exactly when
+it matters, and is in the colour pass for those few frames only, where
+`colorWrite` and `depthWrite` false make it write nothing.
+
+POSITIONS ONLY, which is what makes a second copy affordable.
+MeshDepthMaterial reads position and nothing else, so a proxy carries no
+normal, no uv and no colour: a quarter of the attribute bytes of what it
+copies, against a P10 budget this map is already over. Boxes fitted to each
+object's bounds would be an eighth of that again and would make a sloped roof
+cast a rectangle, so the exact geometry is worth its four bytes a vertex.
+
+Still casting for themselves: everything animated, because a proxy baked in
+world space would stand still while the thing it copies moved, and the
+instanced planting, because one proxy per canopy blob is thousands of objects
+to save one draw call each.
+
+THE GATE IS THE SHADOW BOX'S OWN TEST DONE BY HAND. The cell centre goes into
+the light's view space and is compared against the half extents, widened by the
+cell's own radius so a cell straddling the edge is kept. Not read off
+`sun.shadow.camera`, whose matrices are only brought up to date inside the
+shadow pass, which runs after this. Every vector and matrix is allocated once
+at build time, because this runs every frame and P8 forbids allocating there.
+
+**What went wrong first, and it was silent.** The proxies were bucketed by cell
+alone, and indexed and non indexed geometry cannot merge. `mergeGeometries` does
+not throw on a mixed set: it returns null and writes to the console. So whole
+cells lost their shadows and the only symptom was 35 console errors against a
+check that requires zero. The town merge has carried `indexed` in its bucket key
+since it was written; the proxy builder now does too.
+
+### MERGE_CELL back to Infinity
+
+Swept twice, before and after the atlas, worst of four viewpoints at a 70 m
+radius: Infinity 1372 calls and 2,426,187 triangles, 120 gives 1597 and
+2,367,100, 80 gives 1611 and 2,329,544, 60 gives 1807 and 2,069,086. That is
+225 draw calls for 59,000 triangles at 120. Draw calls are the binding budget
+by a wide margin, so the trade is negative until that stops being true. A real
+lever pointing the wrong way today.
+
+### Where it lands
+
+| view | round 31 | now | triangles now |
+|---------|-----:|-----:|-----------:|
+| spawn   | 1383 | **946** | 2,231,537 |
+| street  | 1141 | **811** | 2,171,627 |
+| rooftop | 1194 | **811** | 2,190,557 |
+| flying  | 1315 | **872** | 2,209,747 |
+| high    | 1198 | **804** | 1,953,275 |
+
+Worst view 1383 to 946 draw calls. Against where this work started, 2049 and
+2,977,665, that is **54 percent off the draw calls and 25 percent off the
+triangles**. P1 is 2.4x over and P2 1.9x.
+
+Pixel diffed at five viewpoints: high is the worst at 0.87 percent of pixels
+differing by more than 8 of 255 and 0.33 percent by more than 24, then street
+0.48 and 0.19, and the other three under 0.09. The building shadows, the pole
+shadows and the crossing shadows all read as they did.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds. **Check 13 console-clean
+passes with zero errors and zero warnings**, which is the check that caught the
+mixed index bucket and is the reason this round shipped correct rather than 35
+cells short. Checks 15 and 16 pass unchanged.
+
+## Round 33: attributes nothing reads, and the cull cell swept again
+
+### 15.4 MB of uv that no shader could see
+
+three declares the uv attribute when a uv sampled map is present and not
+otherwise, so geometry whose material carries no map, alphaMap, emissiveMap or
+the rest has a uv buffer nothing can read. `trimAttributes` drops it after the
+merge, 943 geometries and 15.4 MB.
+
+The one to get right is `gradientMap`, which does NOT count: a toon ramp is
+sampled by the lighting dot product rather than by uv, and this town puts one
+on nearly every material it makes, so treating it as a uv user would have
+refused almost everything.
+
+It runs after the merge rather than before, because the bucket key carries the
+attribute signature: stripping uv from some sources and not others splits
+buckets that should have merged, trading a draw call for a few kilobytes.
+
+### 5.0 MB of colour that said what the material already said
+
+`bakeColourToVertices` painted every look. A look whose every user is the SAME
+colour was never splitting a merge bucket: those materials are identical in
+appearance, shareMaterials collapses them to one, and they merge with no help.
+Counting first, 61 of the town's 137 colour looks hold exactly one colour, and
+skipping them takes the colour attribute from 26.9 MB to 21.9 MB with the draw
+calls bit identical at all five viewpoints.
+
+### P10 is a wash, and this is where it went
+
+| attribute | round 32 | now |
+|-----------|---------:|----:|
+| position | 28.0 MB | 41.9 MB |
+| normal   | 28.0 MB | 28.0 MB |
+| colour   | 26.3 MB | 21.9 MB |
+| uv       | 16.0 MB |  0.6 MB |
+| index    |  8.8 MB | 14.7 MB |
+
+20.4 MB came off the attributes nothing read and 18.1 MB went on as shadow
+proxy positions, so the total is where it started. That is the honest ledger of
+round 32's trade: 437 draw calls at the worst view, bought with a second copy
+of the casters at a quarter of their attribute cost. P10 stays open at about
+92 MB against 48, and the next moves on it are quantising normal to Int8x4,
+worth 18.7 MB, and colour to Uint16, worth 11 MB. Neither is done because both
+change what the GPU is handed and this round had no time left to pixel diff
+them properly.
+
+### CULL_CELL swept a third time
+
+The shadow pass no longer scales with it now that proxies carry the casters, so
+the trade was re-measured. Worst of four viewpoints at a 70 m radius:
+
+| CULL_CELL | worst calls | worst triangles |
+|-----------|------------:|----------------:|
+| 40        | **946** | **2,231,537** |
+| 50        | 918 | 2,419,755 |
+| 60        | 860 | 2,556,184 |
+
+60 is 86 draw calls better and 325,000 triangles worse. Read as the worse of
+the two ratios it wins, 2.15x against 2.37x, and it is kept at 40 anyway: the
+triangles it hands back are also shadow pass triangles and fill, the existing
+reasoning about a cell only being dropped once ALL of it is out of range has
+not changed, and 86 calls is inside the spread between viewpoints. Written down
+so the next round does not sweep it a fourth time without a reason.
+
+### Where the whole run lands
+
+| view | start | now | triangles start | triangles now |
+|---------|-----:|-----:|-----------:|-----------:|
+| spawn   | 2049 | **946** | 2,759,143 | 2,231,537 |
+| street  | 1715 | **811** | 2,765,233 | 2,171,627 |
+| rooftop | 1726 | **811** | 2,914,891 | 2,190,557 |
+| flying  | 1996 | **872** | 2,977,665 | 2,209,747 |
+| high    | 1853 | **804** | 2,691,893 | 1,953,275 |
+
+Worst view 2049 draw calls to 946 and 2,977,665 triangles to 2,231,537. **54
+percent off the draw calls and 25 percent off the triangles.** P1 is 2.4x over
+budget where it was 5.1x, and P2 is 1.9x where it was 2.5x. The map is not
+inside the budget and this is the honest distance left.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has.
+Check 13 console-clean passes with zero errors and zero warnings. Checks 15 and
+16 pass unchanged.

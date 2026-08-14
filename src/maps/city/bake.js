@@ -69,6 +69,38 @@ function markSubtree(o, set) {
 }
 
 /*
+ * The parts of an object's look that a town animates without touching a
+ * matrix. Read before and after the probe and compared as a string, which is
+ * cheap and total: anything not listed here is something this cannot see, so
+ * the list is deliberately wider than the one case known to move.
+ */
+function materialPulse(o) {
+  if (!o.isMesh && !o.isLine && !o.isPoints && !o.isSprite) {
+    return '';
+  }
+  const list = Array.isArray(o.material) ? o.material : [o.material];
+  const out = [o.visible ? 1 : 0];
+  for (const m of list) {
+    if (!m) {
+      out.push('-');
+      continue;
+    }
+    out.push(
+      m.uuid,
+      m.opacity,
+      m.transparent ? 1 : 0,
+      m.visible ? 1 : 0,
+      m.color ? m.color.getHex() : '-',
+      m.emissive ? m.emissive.getHex() : '-',
+      m.emissiveIntensity ?? '-',
+      m.map ? m.map.uuid : '-',
+      m.map ? m.map.version : '-',
+    );
+  }
+  return out.join('|');
+}
+
+/*
  * Every object the town moves.
  *
  * Returns `moving`, a Set of them and all their descendants, and `stillRigs`,
@@ -76,7 +108,7 @@ function markSubtree(o, set) {
  * second is not a list of things that are safe to merge into the town, it is a
  * list of things that are safe to merge into THEMSELVES: see mergeRigs.
  */
-export function findAnimated(world) {
+export function findAnimated(world, { releaseStillRigs = false } = {}) {
   const moving = new Set();
   const roots = [];
   const marked = [];
@@ -104,8 +136,10 @@ export function findAnimated(world) {
    * cycle, snapshot again, and take anything that moved. */
   world.root.updateMatrixWorld(true);
   const before = new Map();
+  const beforeLook = new Map();
   world.root.traverse((o) => {
     before.set(o, o.matrixWorld.elements.slice());
+    beforeLook.set(o, materialPulse(o));
   });
   for (let i = 0; i < PROBE_STEPS; i += 1) {
     world.update(PROBE_DT);
@@ -114,7 +148,7 @@ export function findAnimated(world) {
   const stirred = new Set();
   world.root.traverse((o) => {
     const was = before.get(o);
-    if (!was) {
+    if (was === undefined) {
       roots.push(o);
       stirred.add(o);
       return;
@@ -126,6 +160,18 @@ export function findAnimated(world) {
         stirred.add(o);
         return;
       }
+    }
+    /* A TRANSFORM IS NOT THE ONLY THING A TOWN ANIMATES. onsen.js drives
+     * `p.material.opacity` on both steam vents every frame and never moves
+     * them by a matrix element, so a probe watching only matrices calls them
+     * still. That was survivable while a still rig was merged into ITSELF,
+     * keeping its own materials, and it stops being survivable the moment one
+     * is merged into the town: the vent's per frame opacity would then be
+     * written to a material shared with every other surface in its bucket,
+     * and half the town would breathe. */
+    if (beforeLook.get(o) !== materialPulse(o)) {
+      roots.push(o);
+      stirred.add(o);
     }
   });
 
@@ -145,10 +191,52 @@ export function findAnimated(world) {
     }
   }
 
+  /*
+   * WHETHER A STILL RIG IS HELD OUT AT ALL.
+   *
+   * Upstream marks a rig `planetRigid` because ITS OWN walker can walk up to a
+   * vending machine and press a button, and the note in planet.js says so.
+   * That walker does not exist here. Nothing in this shell reaches the town's
+   * interaction list: `animation.js`, this map's index.js and src/main.js
+   * mention no dispense, no action and no hitbox, and the only thing driving
+   * the town is `world.update` on the physics clock, which is exactly what the
+   * probe above runs. So a rig that neither moved nor changed its look across
+   * a whole 48 s crossing cycle cannot be moved by anything at all here.
+   *
+   * That makes the marker worth honouring in a weaker way than mergeRigs did.
+   * mergeRigs took a still rig and merged it into ITSELF, which turned 936
+   * meshes into 154 and stopped there, because a rig merged into itself can
+   * only share materials with its own parts. Released into the town merge it
+   * shares them with the whole district, and the vending machines and the
+   * lineside furniture stop being 180 draw calls carrying 6,000 triangles.
+   *
+   * The cost of being wrong is a rig frozen at its start position, so the
+   * conditions are narrow and all three have to hold: the marker's own
+   * subtree moved no matrix element, changed no material property, and this
+   * shell has no way to call the rig's action. The first two are measured
+   * above. The third is a fact about this repository, and it is the one that
+   * would go stale, so it is written down here rather than assumed: IF AN
+   * INTERACTION IS EVER WIRED UP, this option is what to turn off.
+   */
+  const released = releaseStillRigs ? new Set(stillRigs) : new Set();
   for (const r of roots) {
+    if (released.has(r)) {
+      continue;
+    }
     markSubtree(r, moving);
   }
-  return { moving, stillRigs };
+  /* A released rig that sits inside something that DOES move is still moving,
+   * and the loop above cannot see that because it walks roots rather than the
+   * tree. Cheaper to re-check than to order the loop. */
+  for (const r of released) {
+    for (let p = r.parent; p; p = p.parent) {
+      if (moving.has(p)) {
+        markSubtree(r, moving);
+        break;
+      }
+    }
+  }
+  return { moving, stillRigs: releaseStillRigs ? [] : stillRigs, released: released.size };
 }
 
 /*
@@ -505,6 +593,48 @@ export function bakeColourToVertices(root, animated) {
   const canonical = new Map();
   let painted = 0;
 
+  /*
+   * WHICH LOOKS ACTUALLY MIX COLOURS, counted before anything is painted.
+   *
+   * The point of this pass is to stop colour from splitting a merge bucket. A
+   * look whose every user is the SAME colour was never splitting anything:
+   * those materials are already identical in appearance, shareMaterials
+   * collapses them to one, and they merge with no help. Painting them anyway
+   * writes three floats a vertex to say what the material already said.
+   *
+   * Measured, that is most of it. P10 is 2x over on this map and the colour
+   * attribute is 26.9 MB of it, so a group of one colour is worth finding.
+   */
+  const coloursPerLook = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
+      return;
+    }
+    const m = o.material;
+    if (!m || !o.geometry || !o.geometry.attributes.position) {
+      return;
+    }
+    if (m.isShaderMaterial || m.isRawShaderMaterial || m.vertexColors || !m.color) {
+      return;
+    }
+    if (m.map || m.alphaMap) {
+      return;
+    }
+    const key = lookWithoutColour(m);
+    let set = coloursPerLook.get(key);
+    if (!set) {
+      set = new Set();
+      coloursPerLook.set(key, set);
+    }
+    set.add(m.color.getHex());
+  });
+  let singleColour = 0;
+  for (const set of coloursPerLook.values()) {
+    if (set.size < 2) {
+      singleColour += 1;
+    }
+  }
+
   root.traverse((o) => {
     if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
       return;
@@ -525,6 +655,10 @@ export function bakeColourToVertices(root, animated) {
       return;
     }
     const key = lookWithoutColour(m);
+    const mixes = coloursPerLook.get(key);
+    if (!mixes || mixes.size < 2) {
+      return;
+    }
     let white = canonical.get(key);
     if (!white) {
       white = m.clone();
@@ -566,7 +700,321 @@ export function bakeColourToVertices(root, animated) {
     painted += 1;
   });
 
-  return { painted, colourLooks: canonical.size };
+  return {
+    painted,
+    colourLooks: canonical.size,
+    looks: coloursPerLook.size,
+    singleColourLooks: singleColour,
+  };
+}
+
+/*
+ * Pack the town's small canvases into sheets, so that a texture stops being a
+ * reason two meshes cannot merge.
+ *
+ * WHAT THIS IS FOR. Round 27 folded material colour into vertex colours and
+ * took 1,103 one mesh merge buckets down to a couple of dozen looks. It could
+ * not touch the textured ones, and said so: "a texture is the part of a
+ * material that cannot be folded into a vertex attribute". That left the
+ * town's signs, posters, shop fronts, hoardings and vending fascias each
+ * holding a bucket of one. Measured at the worst viewpoint they are 244 draw
+ * calls carrying 5,212 triangles between them, which is 21 triangles a call.
+ *
+ * A texture cannot be folded into a vertex attribute. It CAN be moved: put
+ * every small canvas on one sheet, rewrite each mesh's uvs into its tile, and
+ * the meshes now share one material, which is the only thing the merge ever
+ * needed. The town generates these canvases itself at build time, so the
+ * packer runs over what buildWorld produced rather than over asset files.
+ *
+ * WHAT IS REFUSED, AND WHY EACH ONE IS REFUSED RATHER THAN FORCED:
+ *
+ *   A REPEATING TEXTURE cannot go on a sheet at all. Wrapping is a property
+ *   of the whole texture, and a tile inside a sheet has no edges of its own
+ *   to wrap at: uv 1.3 would land in the neighbouring tile instead of back at
+ *   0.3. 96 of the town's 311 textures repeat and every one of them stays
+ *   where it is.
+ *
+ *   UVS OUTSIDE 0 TO 1 are the same problem wearing different clothes, so the
+ *   geometry is checked rather than trusted. A mesh whose uvs leave the unit
+ *   square is skipped even if its texture claims to clamp.
+ *
+ *   A SECOND MAP on the same material, an alphaMap or an emissiveMap, would
+ *   have to be packed into a second sheet with an identical layout to stay
+ *   registered with the first. That is worth doing and it is not worth doing
+ *   first, so those materials are counted as misses and left alone.
+ *
+ * MIPMAPS ARE OFF ON THE SHEET AND THAT IS A REAL COST, not an oversight. A
+ * mip level averages across tile boundaries no matter how wide the gutter is,
+ * because level n reaches 2^n pixels, so a sign at distance would pick up its
+ * neighbour on the sheet. The alternatives are bleeding, or a gutter that
+ * wastes most of the sheet, or no mips. Without mips a distant sign aliases
+ * instead, which the fog at 65 m keeps short and which is the failure that
+ * looks like the town rather than like a bug. The gutter is still there, at
+ * two pixels of replicated edge, for the bilinear filter at level zero.
+ *
+ * COLOUR IS FOLDED HERE rather than left for bakeColourToVertices, because
+ * that pass refuses anything carrying a `map` and it is right to: two meshes
+ * with different maps cannot share a material however their colour is stored.
+ * Once they share a sheet they can, so this pass does the same trick on its
+ * own way out, and sets `vertexColors`, which is what makes the colour pass
+ * skip them afterwards. The onBeforeCompile, customProgramCacheKey and
+ * userData are carried across by hand for the reason round 27 recorded: clone
+ * does not take them and the town's whole shadow tint lives in them.
+ */
+function atlasGroupKey(m, tex) {
+  return [
+    lookWithoutColour(m),
+    tex.colorSpace,
+    tex.magFilter,
+    tex.anisotropy,
+  ].join('|');
+}
+
+/* Shelf packing, tallest first. A sheet here holds a few hundred small
+ * canvases whose sizes repeat heavily, 108 of the town's textures are
+ * 128 by 128, so the shelves come out nearly full and a better packer would
+ * buy very little. */
+function packShelves(items, maxSize, gutter) {
+  const sorted = [...items].sort((a, b) => b.h - a.h || b.w - a.w);
+  const sheets = [];
+  for (const it of sorted) {
+    const w = it.w + gutter * 2;
+    const h = it.h + gutter * 2;
+    if (w > maxSize || h > maxSize) {
+      it.sheet = -1;
+      continue;
+    }
+    let placed = false;
+    for (const sheet of sheets) {
+      for (const shelf of sheet.shelves) {
+        if (shelf.h >= h && shelf.x + w <= maxSize) {
+          it.x = shelf.x + gutter;
+          it.y = shelf.y + gutter;
+          it.sheet = sheet.index;
+          shelf.x += w;
+          placed = true;
+          break;
+        }
+      }
+      if (placed) {
+        break;
+      }
+      if (sheet.used + h <= maxSize) {
+        const shelf = { y: sheet.used, x: w, h };
+        sheet.shelves.push(shelf);
+        sheet.used += h;
+        it.x = gutter;
+        it.y = shelf.y + gutter;
+        it.sheet = sheet.index;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      const sheet = { index: sheets.length, shelves: [{ y: 0, x: w, h }], used: h };
+      sheets.push(sheet);
+      it.x = gutter;
+      it.y = gutter;
+      it.sheet = sheet.index;
+    }
+  }
+  /*
+   * Size each sheet to what it actually holds rather than to maxSize. The
+   * first version allocated a full 4096 square canvas per sheet whatever went
+   * on it, which for this town's 28.8 megapixels of packable texture was five
+   * sheets and 335 MB of it blank. Nothing here needs a power of two: the
+   * sheet clamps and carries no mipmaps.
+   */
+  for (const sheet of sheets) {
+    sheet.w = Math.max(1, ...sheet.shelves.map((sh) => sh.x));
+    sheet.h = Math.max(1, sheet.used);
+  }
+  return sheets;
+}
+
+/* Edge replicated padding, so the bilinear filter at level zero cannot reach
+ * off a tile and pick up the sheet's background. */
+function drawTile(ctx, image, x, y, w, h, gutter) {
+  ctx.drawImage(image, x, y, w, h);
+  for (let g = 1; g <= gutter; g += 1) {
+    ctx.drawImage(image, 0, 0, image.width, 1, x, y - g, w, 1);
+    ctx.drawImage(image, 0, image.height - 1, image.width, 1, x, y + h + g - 1, w, 1);
+    ctx.drawImage(image, 0, 0, 1, image.height, x - g, y, 1, h);
+    ctx.drawImage(image, image.width - 1, 0, 1, image.height, x + w + g - 1, y, 1, h);
+  }
+}
+
+export function atlasTextures(root, animated, { maxSize = 4096, gutter = 2 } = {}) {
+  const moving = animated ?? new Set();
+  const stats = {
+    sheets: 0, sheetPixels: 0, packed: 0, meshes: 0, groups: 0,
+    skippedRepeat: 0, skippedUv: 0, skippedSecondMap: 0, skippedNoCanvas: 0,
+  };
+  if (typeof document === 'undefined' || !document.createElement) {
+    stats.skippedNoCanvas = 1;
+    return stats;
+  }
+
+  /* Any material an animated object holds is off limits, the same rule and
+   * the same reason as shareMaterials: one animated holder means something
+   * may write to it. */
+  const taboo = new Set();
+  root.traverse((o) => {
+    if (!moving.has(o) || !o.material) {
+      return;
+    }
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (m) {
+        taboo.add(m);
+      }
+    }
+  });
+
+  const groups = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
+      return;
+    }
+    const m = o.material;
+    const geo = o.geometry;
+    if (!m || !geo || !geo.attributes.uv || !geo.attributes.position) {
+      return;
+    }
+    if (m.isShaderMaterial || m.isRawShaderMaterial || m.vertexColors || !m.color) {
+      return;
+    }
+    if (taboo.has(m)) {
+      return;
+    }
+    const t = m.map;
+    if (!t || !t.image || !t.image.width) {
+      return;
+    }
+    if (m.alphaMap || m.emissiveMap || m.normalMap || m.aoMap || m.lightMap) {
+      stats.skippedSecondMap += 1;
+      return;
+    }
+    if (t.wrapS !== THREE.ClampToEdgeWrapping || t.wrapT !== THREE.ClampToEdgeWrapping
+      || t.repeat.x !== 1 || t.repeat.y !== 1 || t.offset.x !== 0 || t.offset.y !== 0
+      || t.rotation !== 0 || t.flipY !== true) {
+      stats.skippedRepeat += 1;
+      return;
+    }
+    const uv = geo.attributes.uv;
+    let inside = true;
+    for (let i = 0; i < uv.count; i += 1) {
+      const u = uv.getX(i);
+      const v = uv.getY(i);
+      if (u < -1e-4 || u > 1 + 1e-4 || v < -1e-4 || v > 1 + 1e-4) {
+        inside = false;
+        break;
+      }
+    }
+    if (!inside) {
+      stats.skippedUv += 1;
+      return;
+    }
+    const key = atlasGroupKey(m, t);
+    let g = groups.get(key);
+    if (!g) {
+      g = { sample: m, textures: new Map(), meshes: [] };
+      groups.set(key, g);
+    }
+    if (!g.textures.has(t.uuid)) {
+      g.textures.set(t.uuid, { tex: t, w: t.image.width, h: t.image.height, x: 0, y: 0, sheet: -1 });
+    }
+    g.meshes.push(o);
+  });
+
+  for (const g of groups.values()) {
+    /* A group with one texture gains nothing: its meshes already share a
+     * material and already merge. */
+    if (g.textures.size < 2) {
+      continue;
+    }
+    const items = [...g.textures.values()];
+    const sheets = packShelves(items, maxSize, gutter);
+    if (!sheets.length) {
+      continue;
+    }
+    const made = [];
+    for (const sheet of sheets) {
+      const canvas = document.createElement('canvas');
+      canvas.width = sheet.w;
+      canvas.height = sheet.h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return stats;
+      }
+      for (const it of items) {
+        if (it.sheet !== sheet.index) {
+          continue;
+        }
+        drawTile(ctx, it.tex.image, it.x, it.y, it.w, it.h, gutter);
+      }
+      const atlas = new THREE.CanvasTexture(canvas);
+      atlas.colorSpace = g.sample.map.colorSpace;
+      atlas.magFilter = g.sample.map.magFilter;
+      atlas.minFilter = THREE.LinearFilter;
+      atlas.generateMipmaps = false;
+      atlas.wrapS = THREE.ClampToEdgeWrapping;
+      atlas.wrapT = THREE.ClampToEdgeWrapping;
+      atlas.anisotropy = g.sample.map.anisotropy;
+      atlas.needsUpdate = true;
+      const mat = g.sample.clone();
+      mat.map = atlas;
+      mat.color.setRGB(1, 1, 1);
+      mat.vertexColors = true;
+      /* Clone does not carry these three and this town's shadow tint is in
+       * them. Round 27's pixel diff is the record of what happens otherwise. */
+      mat.onBeforeCompile = g.sample.onBeforeCompile;
+      if (typeof g.sample.customProgramCacheKey === 'function') {
+        mat.customProgramCacheKey = g.sample.customProgramCacheKey;
+      }
+      mat.userData = g.sample.userData;
+      made.push({ mat, w: sheet.w, h: sheet.h });
+      stats.sheets += 1;
+      stats.sheetPixels += sheet.w * sheet.h;
+    }
+
+    for (const o of g.meshes) {
+      const it = g.textures.get(o.material.map.uuid);
+      if (!it || it.sheet < 0) {
+        continue;
+      }
+      const src = o.geometry;
+      /* Cloned per mesh: two meshes of different colours on one geometry is
+       * routine in this town, and both the uvs and the colour attribute below
+       * are per mesh answers. */
+      const geo = src.clone();
+      const uv = geo.attributes.uv;
+      const next = new Float32Array(uv.count * 2);
+      for (let i = 0; i < uv.count; i += 1) {
+        /* flipY is true on both the tiles and the sheet, so v counts up from
+         * the BOTTOM of the sheet while the canvas y counts down from the
+         * top. */
+        next[i * 2] = (it.x + uv.getX(i) * it.w) / made[it.sheet].w;
+        next[i * 2 + 1] = (made[it.sheet].h - it.y - it.h + uv.getY(i) * it.h) / made[it.sheet].h;
+      }
+      geo.setAttribute('uv', new THREE.BufferAttribute(next, 2));
+      const n = geo.attributes.position.count;
+      const col = new Float32Array(n * 3);
+      const { r, g: gg, b } = o.material.color;
+      for (let i = 0; i < n; i += 1) {
+        col[i * 3] = r;
+        col[i * 3 + 1] = gg;
+        col[i * 3 + 2] = b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      o.geometry = geo;
+      o.material = made[it.sheet].mat;
+      stats.meshes += 1;
+    }
+    stats.packed += items.filter((it) => it.sheet >= 0).length;
+    stats.groups += 1;
+  }
+
+  return stats;
 }
 
 /*
@@ -608,9 +1056,108 @@ export function bakeColourToVertices(root, animated) {
  *
  * Everything else merges at `cell`, which the caller sets to Infinity.
  */
-export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell } = {}) {
+/*
+ * Who casts a shadow.
+ *
+ * MEASURED FIRST. The shadow pass was 608 of the street viewpoint's 1715 draw
+ * calls and 1,089,544 of its 2,765,233 triangles, confirmed two independent
+ * ways that agree exactly: `renderer.shadowMap.enabled` false, and castShadow
+ * cleared on every mesh, both give 1107 and 1,675,689. 2,511 of the town's
+ * 3,736 meshes cast and only 12 of those are town wide merges, so the pass is
+ * mostly thousands of tiny objects: 258 of those 608 calls are non instanced
+ * meshes under 1.2 m, for about 6,000 triangles between them.
+ *
+ * IT COSTS TWICE, AND THE SECOND COST IS THE LARGER ONE. bakeCity buckets a
+ * caster on `shadowCell` so the shadow camera can cull it, and everything else
+ * town wide. With almost everything casting, the static town is drawn as 331
+ * separate pieces where it could be about 70. So a window frame that casts a
+ * shadow nobody will ever see also holds a merge bucket open.
+ *
+ * THIS IS A SIZE TEST AND TWO ROUNDS OF SIZE TESTS HAVE ALREADY GONE WRONG.
+ * The objection does not transfer, and the difference is the whole reason this
+ * is allowed to exist. A size test used for REMOVAL cannot see that a window
+ * frame is PART of a building, so it deletes the shop's signage and its
+ * awnings, which is what round 26 and round 27 both did. A size test used for
+ * CASTING decides only whether a bollard puts a shadow on the pavement inside
+ * a 44 m box at 100 km/h. A wrong answer here is invisible rather than
+ * structural, and it is reversible by moving one number.
+ *
+ * SIZE MEANS THE OBJECT'S OWN SIZE, scaled into the world. An InstancedMesh is
+ * therefore measured as ONE BLOB rather than as the 40 m chunk it will later
+ * be cut into, which is the question actually being asked: not how much
+ * planting is in this cell, but whether one leaf cluster's shadow reads.
+ *
+ * AND THAT IS WHY PLANTING GETS A LOWER BAR THAN PROPS, which is the one part
+ * of this that is not a single number. Swept at the street viewpoint against
+ * 1715 with everything casting, both thresholds moved together: 0.8 m gives
+ * 1363 draw calls, 1.4 m gives 1173, 2.0 m gives 1149. The 190 calls between
+ * 0.8 and 1.4 look free and are not, because the interval contains exactly one
+ * thing: this town's canopy blob is 1.0 and the cedar's is 1.16, so a single
+ * threshold anywhere above 1.0 turns off EVERY TREE SHADOW IN THE TOWN. Round
+ * 27 spent 0.26 M triangles keeping the cherry trees on the grounds that they
+ * are the reason anyone looks at this town, and their shadow on the road is
+ * the same argument.
+ *
+ * The distinction is real rather than a way of keeping a favourite. A lone
+ * 1.0 m bin casts a shadow nobody reads as anything. A hundred and thirty 1.0
+ * m blobs in one chunk cast a TREE, and the eye reads the cluster, never the
+ * blob. So the bar for a lone object is what it takes to be seen on its own,
+ * and the bar for one member of a crowd is only what it takes to be part of
+ * one: 1.4 m for a mesh that stands alone, 0.8 m for an instanced set, which
+ * puts the canopies clearly inside and the hill tufts and lake reeds at 0.5
+ * clearly outside.
+ */
+export function restrictCasters(root, { minRadius = 0, minRadiusInstanced = minRadius } = {}) {
+  if (!(minRadius > 0) && !(minRadiusInstanced > 0)) {
+    return { minRadius, minRadiusInstanced, casters: 0, cleared: 0 };
+  }
+  root.updateMatrixWorld(true);
+  let casters = 0;
+  let cleared = 0;
+  root.traverse((o) => {
+    if (!o.isMesh || !o.castShadow) {
+      return;
+    }
+    const g = o.geometry;
+    if (!g || !g.attributes || !g.attributes.position) {
+      return;
+    }
+    if (!g.boundingSphere) {
+      g.computeBoundingSphere();
+    }
+    if (!g.boundingSphere) {
+      return;
+    }
+    casterScale.setFromMatrixScale(o.matrixWorld);
+    const s = Math.max(
+      Math.abs(casterScale.x),
+      Math.abs(casterScale.y),
+      Math.abs(casterScale.z),
+    );
+    const bar = o.isInstancedMesh ? minRadiusInstanced : minRadius;
+    if (g.boundingSphere.radius * s >= bar) {
+      casters += 1;
+      return;
+    }
+    o.castShadow = false;
+    cleared += 1;
+  });
+  return { minRadius, minRadiusInstanced, casters, cleared };
+}
+const casterScale = new THREE.Vector3();
+
+export function bakeCity(world, {
+  cell = 40,
+  shadowCell = cell,
+  cullCell = cell,
+  casterMinRadius = 0,
+  casterMinRadiusInstanced = casterMinRadius,
+  atlasSize = 4096,
+  releaseStillRigs = false,
+  shadowProxyCell = 0,
+} = {}) {
   const root = world.root;
-  const { moving: animated, stillRigs } = findAnimated(world);
+  const { moving: animated, stillRigs, released } = findAnimated(world, { releaseStillRigs });
   /* Rigs first, and their output joins the animated set before anything else
    * looks at it. mergeRigs parents its meshes INSIDE the rig, so the town
    * merge below must not then take them: it would bake the rig's transform
@@ -627,9 +1174,30 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
   /* Colour first: it turns 1,103 one mesh buckets into a couple of dozen, and
    * it has to happen before shareMaterials so that the white copies it makes
    * are what gets deduplicated. */
+  /* Textures first, because it is the pass that turns a texture from a reason
+   * two meshes cannot merge into a tile they share, and both passes below key
+   * on the material it leaves behind. */
+  const atlas = atlasTextures(root, animated, { maxSize: atlasSize });
   const painted = bakeColourToVertices(root, animated);
   const shared = shareMaterials(root, animated);
   root.updateMatrixWorld(true);
+  /* AFTER mergeRigs and BEFORE the bucketing below, in that order for two
+   * reasons. A rig's parts are merged by then, so a vending machine is
+   * measured as a machine rather than as its door furniture and keeps its
+   * shadow. And the bucket key carries castShadow, so anything cleared here
+   * merges town wide instead of holding a `shadowCell` bucket open, which is
+   * the larger half of what this is for. */
+  const casters = restrictCasters(root, {
+    minRadius: casterMinRadius,
+    minRadiusInstanced: casterMinRadiusInstanced,
+  });
+  /* After restrictCasters, so a proxy is only ever made for something that
+   * survived the size test, and BEFORE the bucketing, because clearing
+   * castShadow on the source is what lets it merge at `cell` rather than at
+   * `shadowCell`. */
+  const proxies = shadowProxyCell > 0
+    ? buildShadowProxies(root, animated, { cell: shadowProxyCell })
+    : { group: null, meshes: [], stats: { cells: 0, from: 0, triangles: 0, bytes: 0 } };
 
   const buckets = new Map();
   const sources = [];
@@ -640,6 +1208,13 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
 
   root.traverse((o) => {
     if (!o.isMesh || !o.visible) {
+      return;
+    }
+    /* The proxies are already merged, already in world space, and switched off
+     * until the gate turns them on, which the `!o.visible` test above would
+     * have skipped them for anyway. Named here so that stops being a
+     * coincidence. */
+    if (o.userData && o.userData.shadowProxy) {
       return;
     }
     if (animated.has(o)) {
@@ -758,14 +1333,21 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
     }
   }
 
+  /* Last, because it asks each mesh about its own material and the merge is
+   * what decides which material a mesh ends up with. */
+  const trimmed = trimAttributes(root);
+
   return {
     merged,
+    proxies,
     stats: {
+      trimmed,
       bakedFrom: sources.length,
       bakedTo: merged.length,
       buckets: buckets.size,
       skippedAnimated,
       skippedInstanced,
+      rigsReleased: released,
       rigsMerged: rigs.rigsMerged,
       rigMeshesFrom: rigs.mergedFrom,
       rigMeshesTo: rigs.mergedTo,
@@ -774,6 +1356,12 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
       mergeCell: Number.isFinite(cell) ? cell : 'town',
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
+      atlas,
+      shadowProxies: proxies.stats,
+      casterMinRadius: casters.minRadius,
+      casterMinRadiusInstanced: casters.minRadiusInstanced,
+      castersKept: casters.casters,
+      castersCleared: casters.cleared,
       sharedMaterials: shared,
       colourBaked: painted,
     },
@@ -1021,6 +1609,12 @@ export function buildCullGrid(root, { cell = 40 } = {}) {
       if (!child.isObject3D) {
         continue;
       }
+      /* Shadow proxies own their own visibility, gated on the shadow box every
+       * frame. Letting the distance cull have them too would mean two writers
+       * of one flag and the looser one winning. */
+      if (child.userData && child.userData.shadowProxy) {
+        continue;
+      }
       if (child.isMesh || child.isInstancedMesh) {
         if (!consider(child)) {
           always.push(child);
@@ -1036,4 +1630,236 @@ export function buildCullGrid(root, { cell = 40 } = {}) {
   walk(root);
 
   return { cells: [...cells.values()], always, cell };
+}
+
+/*
+ * Shadow proxies: a second copy of the casters that only the shadow pass ever
+ * sees, so that the colour pass can merge the town as coarsely as it likes.
+ *
+ * THE CONFLICT THIS RESOLVES. The colour pass wants the static town merged as
+ * coarsely as possible, ideally into one mesh per material for the whole
+ * district, because separate objects are what the frame is short of. The
+ * shadow pass wants the opposite: the shadow camera is a box 44 m a side that
+ * follows the craft, it culls whole OBJECTS, and a mesh spanning the town is
+ * never outside it, so a town wide caster submits every triangle it owns on
+ * every frame. Round 29 measured the compromise between those two wants at 351
+ * draw calls and 800,941 triangles, and no cell size makes both happy: 80 m
+ * cells cost the shadow pass, 24 m cells cost the colour pass more.
+ *
+ * They only conflict because ONE SET OF MESHES IS SERVING BOTH. Give the
+ * shadow pass its own copy, cut small enough to cull well, and each side gets
+ * the granularity it wants.
+ *
+ * WHY NOT A HIDDEN LAYER, which is the usual way to do this. three 0.160's
+ * `WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+ * against the VIEW camera rather than the shadow camera, so an object the main
+ * camera cannot see casts nothing. Checked in the vendored source rather than
+ * assumed.
+ *
+ * WHAT MAKES IT NEARLY FREE INSTEAD. The renderer builds its render list and
+ * then runs the shadow pass, and BOTH skip `visible === false`. So a proxy
+ * that is only visible while it is inside the shadow box is submitted to the
+ * shadow pass exactly when it matters and is in the colour pass only for those
+ * few frames, where `colorWrite` and `depthWrite` false make it write nothing
+ * at all. At a 24 m cell against a 44 m box that is a handful of objects.
+ *
+ * POSITIONS ONLY, WHICH IS WHY THE COPY IS AFFORDABLE. MeshDepthMaterial reads
+ * position and nothing else, so a proxy carries no normal, no uv and no colour:
+ * a quarter of the attribute bytes of the geometry it copies, against a P10
+ * budget this map is already over. The alternative, boxes fitted to each
+ * object's bounds, is an eighth of that again and it makes a sloped roof cast
+ * a rectangle, so the exact geometry is worth its four bytes a vertex.
+ *
+ * WHAT KEEPS CASTING FOR ITSELF: anything animated, because a proxy baked in
+ * world space would stand still while the thing it copies moved, and the
+ * instanced planting, because one proxy per canopy blob is thousands of
+ * objects to save one draw call each and a tree's shadow is worth having
+ * exactly right.
+ */
+export function buildShadowProxies(root, animated, { cell = 24 } = {}) {
+  const moving = animated ?? new Set();
+  const cells = new Map();
+  const stats = { cells: 0, from: 0, triangles: 0, bytes: 0, cell };
+  root.updateMatrixWorld(true);
+
+  const sphere = new THREE.Sphere();
+  const box = new THREE.Box3();
+  root.traverse((o) => {
+    if (!o.isMesh || !o.castShadow || o.isInstancedMesh || moving.has(o)) {
+      return;
+    }
+    const geo = o.geometry;
+    if (!geo || !geo.attributes.position) {
+      return;
+    }
+    box.setFromObject(o);
+    if (box.isEmpty()) {
+      return;
+    }
+    box.getBoundingSphere(sphere);
+    const cx = Math.floor(sphere.center.x / cell);
+    const cz = Math.floor(sphere.center.z / cell);
+    /* Indexed and non indexed geometry cannot merge, and which one a bucket is
+     * has to be in the key rather than discovered: mergeGeometries does not
+     * throw on a mixed set, it returns null and writes to the console, so the
+     * first version of this lost the shadows of whole cells and reported it as
+     * 35 console errors against a check that requires none. The town merge
+     * above has carried this in its key since it was written. */
+    const indexed = geo.index ? 1 : 0;
+    const key = `${cx},${cz}|${indexed}`;
+    let c = cells.get(key);
+    if (!c) {
+      c = { cx, cz, geos: [] };
+      cells.set(key, c);
+    }
+    /* Position and index only. A new BufferGeometry rather than a clone,
+     * because clone copies every attribute and the whole point is not to. */
+    const src = geo.attributes.position;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(src.array.slice(), src.itemSize));
+    if (geo.index) {
+      g.setIndex(new THREE.BufferAttribute(geo.index.array.slice(), 1));
+    }
+    g.applyMatrix4(o.matrixWorld);
+    c.geos.push(g);
+    /* It has a proxy now, so it stops casting for itself. This is what lets
+     * the bucketing below merge it at `cell` instead of at `shadowCell`. */
+    o.castShadow = false;
+    stats.from += 1;
+  });
+
+  const group = new THREE.Group();
+  group.name = 'shadowProxies';
+  group.userData.shadowProxy = true;
+  group.matrixAutoUpdate = false;
+  /* One material for every proxy in the town. It is never seen: colorWrite and
+   * depthWrite off mean the colour pass writes neither pixel nor depth, and
+   * the shadow pass replaces it with a depth material anyway. `visible` stays
+   * true on the MATERIAL, because three's shadow pass checks it and a false
+   * one would cast nothing. */
+  const mat = new THREE.MeshBasicMaterial();
+  mat.colorWrite = false;
+  mat.depthWrite = false;
+  mat.name = 'shadowProxy';
+
+  const made = [];
+  for (const c of cells.values()) {
+    const geo = c.geos.length === 1 ? c.geos[0] : mergeGeometries(c.geos, false);
+    if (c.geos.length > 1) {
+      for (const g of c.geos) {
+        g.dispose();
+      }
+    }
+    if (!geo) {
+      continue;
+    }
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.updateMatrix();
+    /* Off until the gate says otherwise, so a frame that never calls the gate
+     * costs nothing rather than drawing the whole town twice. */
+    mesh.visible = false;
+    mesh.userData.shadowProxy = true;
+    mesh.userData.cellX = (c.cx + 0.5) * cell;
+    mesh.userData.cellZ = (c.cz + 0.5) * cell;
+    group.add(mesh);
+    made.push(mesh);
+    stats.triangles += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
+    stats.bytes += geo.attributes.position.array.byteLength
+      + (geo.index ? geo.index.array.byteLength : 0);
+  }
+  stats.cells = made.length;
+  stats.triangles = Math.round(stats.triangles);
+  root.add(group);
+  return { group, meshes: made, stats };
+}
+
+/*
+ * Drop attributes no shader will read.
+ *
+ * P10 is resident vertex attribute bytes and this map is at 98.4 MB against a
+ * 48 MB ceiling, which is the budget nothing in this file had ever looked at.
+ * Read by attribute: position 28.0 MB, normal 28.0 MB, colour 26.3 MB, uv
+ * 16.0 MB, over 2,333,270 vertices.
+ *
+ * Two of those are being paid for nothing at all.
+ *
+ * UV IS ONLY READ IF SOMETHING SAMPLES BY IT. three declares the attribute
+ * when a uv sampled map is present and not otherwise, so geometry whose
+ * material carries no map, alphaMap, emissiveMap, aoMap, lightMap, specularMap
+ * or normalMap has a uv buffer that no shader can see. A `gradientMap` does not
+ * count and that is the one to get right: a toon ramp is sampled by the
+ * lighting dot product rather than by uv, and this town puts one on nearly
+ * every material it makes, so treating it as a uv user would refuse almost
+ * everything.
+ *
+ * COLOUR IS ONLY READ IF `vertexColors` IS ON. Round 27 wrote the attribute
+ * from the material colour and round 30's atlas does the same, and both leave
+ * it on geometry that ends up in a bucket where the material kept its own
+ * colour instead.
+ *
+ * Run AFTER the merge rather than before, because the bucket key carries the
+ * attribute signature: stripping uv from some sources and not others would
+ * split buckets that should have merged, which trades a draw call for a few
+ * kilobytes. After the merge each mesh is asked about its own material and the
+ * answer cannot affect anyone else.
+ */
+export function trimAttributes(root) {
+  const seen = new Set();
+  const stats = { uvDropped: 0, colourDropped: 0, bytes: 0 };
+  const UV_USERS = ['map', 'alphaMap', 'emissiveMap', 'aoMap', 'lightMap', 'specularMap', 'normalMap', 'bumpMap', 'displacementMap', 'roughnessMap', 'metalnessMap'];
+  root.traverse((o) => {
+    if (!o.isMesh && !o.isPoints && !o.isLine) {
+      return;
+    }
+    const geo = o.geometry;
+    if (!geo || seen.has(geo.uuid)) {
+      return;
+    }
+    seen.add(geo.uuid);
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    let samplesUv = false;
+    let readsColour = false;
+    let unknown = false;
+    for (const m of list) {
+      if (!m) {
+        continue;
+      }
+      /* A shader material's needs are its source, which this cannot read. */
+      if (m.isShaderMaterial || m.isRawShaderMaterial) {
+        unknown = true;
+        break;
+      }
+      for (const key of UV_USERS) {
+        if (m[key]) {
+          samplesUv = true;
+        }
+      }
+      if (m.vertexColors) {
+        readsColour = true;
+      }
+    }
+    if (unknown) {
+      return;
+    }
+    if (!samplesUv && geo.attributes.uv) {
+      stats.bytes += geo.attributes.uv.array.byteLength;
+      geo.deleteAttribute('uv');
+      if (geo.attributes.uv1) {
+        stats.bytes += geo.attributes.uv1.array.byteLength;
+        geo.deleteAttribute('uv1');
+      }
+      stats.uvDropped += 1;
+    }
+    if (!readsColour && geo.attributes.color) {
+      stats.bytes += geo.attributes.color.array.byteLength;
+      geo.deleteAttribute('color');
+      stats.colourDropped += 1;
+    }
+  });
+  stats.MB = +(stats.bytes / 1e6).toFixed(1);
+  return stats;
 }

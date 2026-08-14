@@ -608,7 +608,103 @@ export function bakeColourToVertices(root, animated) {
  *
  * Everything else merges at `cell`, which the caller sets to Infinity.
  */
-export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell } = {}) {
+/*
+ * Who casts a shadow.
+ *
+ * MEASURED FIRST. The shadow pass was 608 of the street viewpoint's 1715 draw
+ * calls and 1,089,544 of its 2,765,233 triangles, confirmed two independent
+ * ways that agree exactly: `renderer.shadowMap.enabled` false, and castShadow
+ * cleared on every mesh, both give 1107 and 1,675,689. 2,511 of the town's
+ * 3,736 meshes cast and only 12 of those are town wide merges, so the pass is
+ * mostly thousands of tiny objects: 258 of those 608 calls are non instanced
+ * meshes under 1.2 m, for about 6,000 triangles between them.
+ *
+ * IT COSTS TWICE, AND THE SECOND COST IS THE LARGER ONE. bakeCity buckets a
+ * caster on `shadowCell` so the shadow camera can cull it, and everything else
+ * town wide. With almost everything casting, the static town is drawn as 331
+ * separate pieces where it could be about 70. So a window frame that casts a
+ * shadow nobody will ever see also holds a merge bucket open.
+ *
+ * THIS IS A SIZE TEST AND TWO ROUNDS OF SIZE TESTS HAVE ALREADY GONE WRONG.
+ * The objection does not transfer, and the difference is the whole reason this
+ * is allowed to exist. A size test used for REMOVAL cannot see that a window
+ * frame is PART of a building, so it deletes the shop's signage and its
+ * awnings, which is what round 26 and round 27 both did. A size test used for
+ * CASTING decides only whether a bollard puts a shadow on the pavement inside
+ * a 44 m box at 100 km/h. A wrong answer here is invisible rather than
+ * structural, and it is reversible by moving one number.
+ *
+ * SIZE MEANS THE OBJECT'S OWN SIZE, scaled into the world. An InstancedMesh is
+ * therefore measured as ONE BLOB rather than as the 40 m chunk it will later
+ * be cut into, which is the question actually being asked: not how much
+ * planting is in this cell, but whether one leaf cluster's shadow reads.
+ *
+ * AND THAT IS WHY PLANTING GETS A LOWER BAR THAN PROPS, which is the one part
+ * of this that is not a single number. Swept at the street viewpoint against
+ * 1715 with everything casting, both thresholds moved together: 0.8 m gives
+ * 1363 draw calls, 1.4 m gives 1173, 2.0 m gives 1149. The 190 calls between
+ * 0.8 and 1.4 look free and are not, because the interval contains exactly one
+ * thing: this town's canopy blob is 1.0 and the cedar's is 1.16, so a single
+ * threshold anywhere above 1.0 turns off EVERY TREE SHADOW IN THE TOWN. Round
+ * 27 spent 0.26 M triangles keeping the cherry trees on the grounds that they
+ * are the reason anyone looks at this town, and their shadow on the road is
+ * the same argument.
+ *
+ * The distinction is real rather than a way of keeping a favourite. A lone
+ * 1.0 m bin casts a shadow nobody reads as anything. A hundred and thirty 1.0
+ * m blobs in one chunk cast a TREE, and the eye reads the cluster, never the
+ * blob. So the bar for a lone object is what it takes to be seen on its own,
+ * and the bar for one member of a crowd is only what it takes to be part of
+ * one: 1.4 m for a mesh that stands alone, 0.8 m for an instanced set, which
+ * puts the canopies clearly inside and the hill tufts and lake reeds at 0.5
+ * clearly outside.
+ */
+export function restrictCasters(root, { minRadius = 0, minRadiusInstanced = minRadius } = {}) {
+  if (!(minRadius > 0) && !(minRadiusInstanced > 0)) {
+    return { minRadius, minRadiusInstanced, casters: 0, cleared: 0 };
+  }
+  root.updateMatrixWorld(true);
+  let casters = 0;
+  let cleared = 0;
+  root.traverse((o) => {
+    if (!o.isMesh || !o.castShadow) {
+      return;
+    }
+    const g = o.geometry;
+    if (!g || !g.attributes || !g.attributes.position) {
+      return;
+    }
+    if (!g.boundingSphere) {
+      g.computeBoundingSphere();
+    }
+    if (!g.boundingSphere) {
+      return;
+    }
+    casterScale.setFromMatrixScale(o.matrixWorld);
+    const s = Math.max(
+      Math.abs(casterScale.x),
+      Math.abs(casterScale.y),
+      Math.abs(casterScale.z),
+    );
+    const bar = o.isInstancedMesh ? minRadiusInstanced : minRadius;
+    if (g.boundingSphere.radius * s >= bar) {
+      casters += 1;
+      return;
+    }
+    o.castShadow = false;
+    cleared += 1;
+  });
+  return { minRadius, minRadiusInstanced, casters, cleared };
+}
+const casterScale = new THREE.Vector3();
+
+export function bakeCity(world, {
+  cell = 40,
+  shadowCell = cell,
+  cullCell = cell,
+  casterMinRadius = 0,
+  casterMinRadiusInstanced = casterMinRadius,
+} = {}) {
   const root = world.root;
   const { moving: animated, stillRigs } = findAnimated(world);
   /* Rigs first, and their output joins the animated set before anything else
@@ -630,6 +726,16 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
   const painted = bakeColourToVertices(root, animated);
   const shared = shareMaterials(root, animated);
   root.updateMatrixWorld(true);
+  /* AFTER mergeRigs and BEFORE the bucketing below, in that order for two
+   * reasons. A rig's parts are merged by then, so a vending machine is
+   * measured as a machine rather than as its door furniture and keeps its
+   * shadow. And the bucket key carries castShadow, so anything cleared here
+   * merges town wide instead of holding a `shadowCell` bucket open, which is
+   * the larger half of what this is for. */
+  const casters = restrictCasters(root, {
+    minRadius: casterMinRadius,
+    minRadiusInstanced: casterMinRadiusInstanced,
+  });
 
   const buckets = new Map();
   const sources = [];
@@ -774,6 +880,10 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
       mergeCell: Number.isFinite(cell) ? cell : 'town',
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
+      casterMinRadius: casters.minRadius,
+      casterMinRadiusInstanced: casters.minRadiusInstanced,
+      castersKept: casters.casters,
+      castersCleared: casters.cleared,
       sharedMaterials: shared,
       colourBaked: painted,
     },

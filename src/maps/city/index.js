@@ -182,6 +182,27 @@ const MERGE_CELL = Infinity;
 const MERGE_SHADOW_CELL = 80;
 
 /*
+ * How big a thing has to be before it casts a shadow.
+ *
+ * The reasoning, the sweep and the reason a size test is allowed here when two
+ * previous ones were not are all at `restrictCasters` in ./bake.js. The short
+ * version: the shadow pass was 35 percent of this map's draw calls and 39
+ * percent of its triangles, most of it thousands of objects too small to cast
+ * a shadow anyone flying could see, and every one of those also held a
+ * MERGE_SHADOW_CELL bucket open in the colour pass.
+ *
+ * Two numbers rather than one, and the reason is the canopy: a single
+ * threshold anywhere above this town's 1.0 m canopy blob turns off every tree
+ * shadow in the town, and the 190 draw calls that buys are not worth the
+ * cherry trees. A mesh standing on its own has to be 1.4 m to cast. One member
+ * of an instanced crowd only has to be 0.8, because what the eye reads there
+ * is the cluster and never the blob. Hill tufts and lake reeds are 0.5 and
+ * stop casting either way.
+ */
+const CASTER_MIN_RADIUS = 1.4;
+const CASTER_MIN_RADIUS_INSTANCED = 0.8;
+
+/*
  * The city's pipeline, with the two things it does to a shared renderer
  * undone.
  *
@@ -892,6 +913,8 @@ export async function buildMap(shell, onProgress) {
     cell: MERGE_CELL,
     shadowCell: MERGE_SHADOW_CELL,
     cullCell: CULL_CELL,
+    casterMinRadius: CASTER_MIN_RADIUS,
+    casterMinRadiusInstanced: CASTER_MIN_RADIUS_INSTANCED,
   });
   const thinned = thinFoliage(world.root, { keep: FOLIAGE_KEEP });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });

@@ -5007,3 +5007,105 @@ chunked into 1,200 InstancedMeshes.
 No source file changed this round, so no check was re run and none is claimed.
 The measurements above were taken through the real page in headless Chromium
 with zero console errors and zero warnings on every run.
+
+## Round 29: step 1 of the city plan, who casts a shadow
+
+`restrictCasters` in `src/maps/city/bake.js`, run after `mergeRigs` and before
+the bucketing, clears `castShadow` on anything too small for its shadow to be
+read. Two thresholds, both in `src/maps/city/index.js`.
+
+### What it bought
+
+| view | calls before | calls after | triangles before | triangles after |
+|---------|------:|------:|-----------:|-----------:|
+| spawn   | 2049 | **1501** | 2,759,143 | 2,500,849 |
+| street  | 1715 | **1267** | 2,765,233 | 2,576,604 |
+| rooftop | 1726 | **1288** | 2,914,891 | 2,645,920 |
+| flying  | 1996 | **1484** | 2,977,665 | 2,709,107 |
+| high    | 1853 | **1638** | 2,691,893 | 2,508,660 |
+
+The worst view is what P1 is written against: 2049 to 1638, 20 percent off.
+Triangles 2,977,665 to 2,709,107, 9 percent off. The shadow pass at street went
+from about 737 draw calls to about 351, and the colour pass from 974 objects to
+912 as caster geometry rejoined the town wide merge: 66 town wide meshes became
+95, and the 331 pieces on the 80 m caster grid became 237.
+
+6,888 of the town's 8,971 meshes stopped casting, measured before the merge.
+
+### Two thresholds, not one, and the canopy is why
+
+Swept by rebuilding the town at each value, street and then the worst of five:
+
+| static | instanced | street | flying | high |
+|-------|-----------|-------:|-------:|-----:|
+| off   | off       |   1715 |   1996 | 1853 |
+| 0.8   | 0.8       |   1363 |   1610 | 1716 |
+| 1.4   | 1.4       |   1173 |   1386 | 1588 |
+| 2.0   | 2.0       |   1149 |   1363 | 1565 |
+| 1.4   | 0.8       |   1267 |   1484 | 1638 |
+
+A SINGLE THRESHOLD ANYWHERE ABOVE 1.0 TURNS OFF EVERY TREE SHADOW IN THE TOWN,
+because this town's canopy blob has a geometry radius of exactly 1.0 and the
+cedar's is 1.16. That is what the 190 calls between 0.8 and 1.4 are mostly
+buying, and round 27 already decided this question in the other direction when
+it spent 0.26 M triangles keeping the cherry trees.
+
+So the bar for a mesh that stands on its own is 1.4 m, and the bar for one
+member of an instanced crowd is 0.8 m. That is a real distinction and not a way
+of keeping a favourite: a lone 1.0 m bin casts a shadow nobody reads, and a
+hundred and thirty 1.0 m blobs in one chunk cast a TREE. Hill tufts and lake
+reeds are 0.5 and stop casting either way. The chosen pair costs 94 draw calls
+at the worst view against 1.4 for everything, and keeps every tree shadow.
+
+### And this is a size test, which has gone wrong twice
+
+Round 26 and round 27 both removed props by size and both removed parts of
+buildings instead. The objection does not transfer and the difference is the
+whole reason this is allowed to exist. A size test used for REMOVAL cannot see
+that a window frame is PART of a building, so it deletes the shop's awnings. A
+size test used for CASTING decides only whether a bollard puts a shadow on the
+pavement inside a 44 m box at 100 km/h. A wrong answer here is invisible rather
+than structural, and moving one number puts it back.
+
+Pixel diffed against the unchanged town at all five viewpoints: street is the
+worst at 1.35 percent of pixels differing by more than 8 of 255 and 0.78
+percent by more than 24, mean 0.43. Then spawn 0.57 and 0.39, rooftop 0.22 and
+0.12, flying 0.20 and 0.10, high 0.05 and 0.02. The screenshots show the
+buildings, the trees, the poles and the crossing arms all still casting, and
+the bollards and the small furniture no longer doing so.
+
+### What was tried and is not here
+
+**Shrinking the shadow box does not reach the cost.** Swept live on the new
+build at street: half extent 22 gives 1363 calls, 16 gives 1288, 12 gives 1246,
+8 gives 1207, against 1073 with the pass off entirely. The reason is that a
+caster is merged on an 80 m grid and the shadow camera culls whole objects, so
+a 16 m box still pulls in an entire 80 m mesh.
+
+**Shrinking the caster grid costs more than it saves, still.** At
+`MERGE_SHADOW_CELL` 40 the worst view is 1745 against 1610, and at 24 it is
+2056. Round 24's choice of 80 survives its own assumptions being replaced.
+
+**The clean fix is a shadow only proxy set and it needs a trick.** Coarse box
+proxies merged at about 24 m and visible only inside the shadow box would take
+the pass to a handful of calls. A hidden layer does NOT work: three 0.160's
+`WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+against the VIEW camera. What does work is that the renderer builds its render
+list before running the shadow pass, and both skip `visible === false`, so
+proxies gated on the shadow box in `updateShadowFocus` are submitted to the
+shadow pass and cost only a handful of colour calls with `colorWrite` off.
+Written down rather than built, because it is a bigger piece of work than the
+rest of step 1 and the plan's step 2 is worth more per hour.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at -0.08 deg.
+**Check 13 console-clean passes with zero errors and zero warnings**, which is
+the one that matters here: `castShadow` is part of the merge bucket key, so
+moving it is exactly how `mergeGeometries` is handed a set it refuses and warns
+about. **Check 15 world-scale passes with every city reference unchanged**:
+kerb 0.1350, doorway 2.0500, handrail 1.0600, crossing boom 1.2400, collider
+fit 613 of 2731, crossing boom collider 1.045 to 1.325 m. **Check 16
+map-isolation passes** with the field's cost unchanged across a city round
+trip. P10 is untouched at 98.4 MB, as expected: this step moves no attribute.

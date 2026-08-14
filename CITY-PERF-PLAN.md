@@ -169,21 +169,37 @@ In order. Each step names what it changes, what it should be worth, and how it
 is checked. Steps 1 and 2 come first because step 3 is only affordable after
 them.
 
-### Step 1. Decide `castShadow` at bake time, by size
+### Step 1. Decide `castShadow` at bake time, by size. DONE, round 29
 
-`src/maps/city/bake.js`, before bucketing. A source mesh casts only if it is at
-least about 1.5 m in height or in horizontal extent. Written as an extent test
-rather than a bounding sphere radius, because a 4 m long thin handrail and a
-1.4 m cube have similar radii and only one of them makes a shadow anyone reads.
-Everything else gets `castShadow = false` and therefore merges town wide.
+`restrictCasters` in `src/maps/city/bake.js`, run after `mergeRigs` and before
+the bucketing. 1.4 m for a mesh that stands on its own, 0.8 m for one member of
+an instanced crowd, because a single threshold above this town's 1.0 m canopy
+blob turns off every tree shadow in it. 6,888 of 8,971 meshes stopped casting.
 
-Worth: the shadow pass falls from 608 calls and 1.09 M triangles to a few tens
-of each, and the 331 caster merges collapse into the town wide buckets, which
-is about 265 further calls. Estimated street 1715 to about **880**, triangles
-2.77 M to about **1.75 M**.
+Delivered, worst of the five viewpoints: **2049 calls to 1638** and 2,977,665
+triangles to 2,709,107. At street, 1715 to 1267 and 2.77 M to 2.58 M. The
+shadow pass went from about 737 calls to about 351.
 
-Risk: small props stop casting. Check by pixel diff at the five viewpoints,
-which is the same method round 27 used to catch the untinted shadow side.
+**The estimate above was 880 at street and it was wrong by 44 percent.** What
+it missed: the buildings themselves are large, so 2,083 meshes still cast, the
+shadow pass keeps about 351 calls rather than a few tens, and the caster grid
+still holds 237 pieces rather than collapsing entirely. The rest of this
+document's estimates should be read with that error bar.
+
+Two things were measured and refused. Shrinking the shadow box does not reach
+the residue, because the shadow camera culls whole objects and an 80 m caster
+mesh is pulled in entire by even a 16 m box: half extent 22, 16, 12 and 8 give
+1363, 1288, 1246 and 1207 at street against 1073 with the pass off. Shrinking
+the caster grid still costs more than it saves, at 1745 and 2056 for the worst
+view at 40 m and 24 m against 1610 at 80 m.
+
+**The residue needs a shadow only proxy set**, and the way to build one is
+recorded in PROGRESS.md round 29: not a hidden layer, which three 0.160 does not
+support because the shadow pass tests the VIEW camera's layers, but coarse box
+proxies gated on the shadow box in `updateShadowFocus`, since the renderer
+builds its render list before the shadow pass runs and both skip
+`visible === false`. Worth roughly 300 more calls at street. Left for after
+step 2, which is worth more per hour.
 
 ### Step 2. Atlas the textured one mesh buckets
 
@@ -294,21 +310,26 @@ the part of this document most likely to be wrong.
 
 | after | calls | triangles | basis |
 |-------|------:|----------:|-------|
-| today | 1715 | 2.77 M | measured |
-| step 1, casters by size | ~880 | ~1.75 M | 1107 and 1.68 M measured with the pass off, minus the re merge, plus a small pass |
-| step 2, atlas | ~720 | ~1.75 M | 164 textured singletons counted at street |
-| step 5, rig instancing | ~570 | ~1.74 M | 180 counted, 30 left |
-| step 3, spatial chunk at radius 70 | ~590 | ~1.05 M | calls plus 20, triangles from the cullable share |
-| step 4, clutter at 0.8 | ~470 | ~0.95 M | proportional, unswept |
+| before round 29 | 1715 | 2.77 M | measured |
+| step 1, casters by size | **1267** | **2.58 M** | measured, round 29 |
+| step 2, atlas | ~1110 | ~2.58 M | 164 textured singletons counted at street |
+| step 5, rig instancing | ~960 | ~2.57 M | 180 counted, 30 left |
+| step 1b, shadow proxies | ~660 | ~1.75 M | the 351 call residue measured in round 29 |
+| step 3, spatial chunk at radius 70 | ~680 | ~1.05 M | calls plus 20, triangles from the cullable share |
+| step 4, clutter at 0.8 | ~560 | ~0.95 M | proportional, unswept |
 | budget | 400 | 1.20 M | |
 
 Triangles get inside the ceiling at step 3 and stay there. Draw calls land
-close but not obviously under, and the honest reading is that steps 1, 2, 3 and
-5 take a 4.3x failure to about 1.2x, and the last stretch depends on how hard
+close but not obviously under, and the honest reading is that the whole list
+takes a 4.3x failure to about 1.4x, and the last stretch depends on how hard
 step 4 is pushed and on how many of the remaining 719 untextured singleton
 buckets can be folded in. That last item is not in this plan because it has not
 been measured yet, and it is the first thing to measure if the list above runs
 out before the budget is met.
+
+Round 29 already moved one estimate by 44 percent in the wrong direction. Every
+row below the measured one should be treated as a hypothesis with a
+measurement attached to it, not as a plan that is known to arrive.
 
 ## 7. What is deliberately not here
 

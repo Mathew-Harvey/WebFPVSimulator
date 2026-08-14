@@ -438,6 +438,138 @@ export function shareMaterials(root, animated) {
 }
 
 /*
+ * Bake a material's colour into its geometry, so that colour stops splitting
+ * the merge.
+ *
+ * THIS IS THE TOWN'S BIGGEST REMAINING DRAW CALL, AND IT IS NOT GEOMETRY. The
+ * merge buckets by material identity, and 1,774 of its buckets hold exactly
+ * one mesh: a mesh whose material nothing else in the town shares. Counted,
+ * 1,103 of those materials carry NO TEXTURE OF ANY KIND, and stripped of their
+ * colour they collapse to 24 distinct looks. They are the same handful of
+ * materials painted 1,103 different colours, and every colour is a bucket that
+ * cannot form and a draw call nothing can remove.
+ *
+ * Colour is the one property that does not have to live on the material.
+ * Three.js multiplies the material's colour by a per vertex colour attribute,
+ * so a white material with the colour written into the vertices draws exactly
+ * the same pixels. Do that and 1,103 materials become 24, the meshes land in
+ * the same buckets, and they merge.
+ *
+ * IT IS EXACT, NOT APPROXIMATE. The attribute is filled from `m.color.r/g/b`
+ * as three floats, which are already in the renderer's working colour space,
+ * against a material colour set to white. White times the original is the
+ * original, to the bit. Nothing is quantised and no conversion happens.
+ *
+ * WHAT IS REFUSED. Anything with a `map` or an `alphaMap`, because those
+ * multiply the diffuse and are the part of the look this cannot fold up. NOT
+ * a gradientMap or an emissiveMap: the first is the toon lighting ramp and the
+ * second is added rather than multiplied, so both ride along on the shared
+ * material with their uuid in its key. Refusing them, which the first version
+ * did, painted 1,711 meshes where 15,000 were available, because this town's
+ * cel factory puts a toon ramp on nearly everything. Anything that
+ * already uses vertex colours, because its geometry is already saying
+ * something with that attribute. Shader materials, whose colour may not be a
+ * uniform called `color` at all. And every material is left untouched: a
+ * canonical WHITE COPY is made per look, so a material an animated mesh holds
+ * is never modified out from under it.
+ *
+ * Geometry is cloned per mesh before the attribute is added, because two
+ * meshes of different colours routinely share one geometry in this town and
+ * writing the attribute into the shared one would paint both.
+ */
+function lookWithoutColour(m) {
+  const tex = (t) => (t ? t.uuid : '-');
+  return [
+    m.type,
+    m.emissive ? m.emissive.getHexString() : '-',
+    m.emissiveIntensity ?? '-',
+    tex(m.normalMap), tex(m.aoMap), tex(m.lightMap), tex(m.specularMap),
+    /* The toon ramp and the emissive map stay ON the shared material, so they
+     * belong in the key rather than in the refusal below: neither multiplies
+     * the diffuse the way `map` does, so folding colour into the vertices
+     * leaves both doing exactly what they did. */
+    tex(m.gradientMap), tex(m.emissiveMap),
+    m.transparent ? 1 : 0, m.opacity, m.side, m.alphaTest,
+    m.depthWrite ? 1 : 0, m.depthTest ? 1 : 0, m.fog ? 1 : 0,
+    m.toneMapped ? 1 : 0, m.blending,
+    m.wireframe ? 1 : 0, m.flatShading ? 1 : 0, m.dithering ? 1 : 0,
+    m.premultipliedAlpha ? 1 : 0, m.polygonOffset ? 1 : 0,
+    m.polygonOffsetFactor ?? 0, m.polygonOffsetUnits ?? 0,
+    m.colorWrite ? 1 : 0, m.shadowSide ?? '-',
+    typeof m.customProgramCacheKey === 'function' ? m.customProgramCacheKey() : '-',
+  ].join('|');
+}
+
+export function bakeColourToVertices(root, animated) {
+  const moving = animated ?? new Set();
+  const canonical = new Map();
+  let painted = 0;
+
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
+      return;
+    }
+    const m = o.material;
+    const geo = o.geometry;
+    if (!m || !geo || !geo.attributes.position) {
+      return;
+    }
+    if (m.isShaderMaterial || m.isRawShaderMaterial || m.vertexColors || !m.color) {
+      return;
+    }
+    /* Only the two that multiply the diffuse. A gradientMap is the toon
+     * lighting ramp and an emissiveMap is added on top, and this town puts a
+     * gradientMap on nearly every material it has: refusing them, which the
+     * first version did, left 1,711 meshes painted of a possible 15,000. */
+    if (m.map || m.alphaMap) {
+      return;
+    }
+    const key = lookWithoutColour(m);
+    let white = canonical.get(key);
+    if (!white) {
+      white = m.clone();
+      white.color.setRGB(1, 1, 1);
+      white.vertexColors = true;
+      /*
+       * Material.copy does NOT carry onBeforeCompile, customProgramCacheKey or
+       * a live userData reference, and this town's whole look is in them:
+       * ./vendored/core/toon.js injects the cool shadow tint through
+       * onBeforeCompile and keys the program on the tint's hex. The first
+       * version relied on clone() and every painted surface came back with an
+       * untinted shadow side, which a pixel diff caught as a 1.4 of 255 shift
+       * across the whole frame rather than as anything you could point at.
+       *
+       * Sharing the closure is correct rather than merely convenient: the
+       * cache key IS the tint, and the key above includes the cache key, so
+       * every material in this group already has the same tint uniform.
+       */
+      white.onBeforeCompile = m.onBeforeCompile;
+      if (typeof m.customProgramCacheKey === 'function') {
+        white.customProgramCacheKey = m.customProgramCacheKey;
+      }
+      white.userData = m.userData;
+      canonical.set(key, white);
+    }
+
+    const g = geo.clone();
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    const { r, gr, b } = { r: m.color.r, gr: m.color.g, b: m.color.b };
+    for (let i = 0; i < n; i += 1) {
+      col[i * 3] = r;
+      col[i * 3 + 1] = gr;
+      col[i * 3 + 2] = b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    o.geometry = g;
+    o.material = white;
+    painted += 1;
+  });
+
+  return { painted, colourLooks: canonical.size };
+}
+
+/*
  * Merge every static mesh, bucketed by material, spatial cell, shadow flags
  * and attribute signature.
  *
@@ -492,6 +624,10 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
    * materials BE identical, or the bucketing below splits on a distinction
    * that is not one. See shareMaterials above. It needs the animated set, so
    * it cannot run before findAnimated. */
+  /* Colour first: it turns 1,103 one mesh buckets into a couple of dozen, and
+   * it has to happen before shareMaterials so that the white copies it makes
+   * are what gets deduplicated. */
+  const painted = bakeColourToVertices(root, animated);
   const shared = shareMaterials(root, animated);
   root.updateMatrixWorld(true);
 
@@ -639,8 +775,119 @@ export function bakeCity(world, { cell = 40, shadowCell = cell, cullCell = cell 
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
       sharedMaterials: shared,
+      colourBaked: painted,
     },
   };
+}
+
+/*
+ * The town's plant and rock sets, by name, and why this is a name list.
+ *
+ * A NAME LIST IS THE WRONG SHAPE and it is the right answer here anyway. The
+ * rule that wants to be measured is "thin the things there are thousands of
+ * that nobody counts", and every measured proxy for it is wrong in a way that
+ * deletes structure. Per instance size says a fence post is a grass tuft. A
+ * high instance count says the same. Triangle share says the same. There is no
+ * property on an InstancedMesh that separates a canopy blob from a window
+ * mullion, because the difference is what the thing IS.
+ *
+ * So the sets are named, and the cost of the list going stale is that a future
+ * upstream plant does not get thinned, which is a missed optimisation and not
+ * a hole in the world. The cost of the measured version being wrong is a
+ * building with half its windows. Measured by triangle mass, these sets are
+ * 4.31 M of the town's 4.54 M instanced triangles, so the list being narrow
+ * costs almost nothing.
+ */
+const FOLIAGE = [
+  'groveCanopy', 'sakuraCanopy', 'cedarCanopy',
+  'hillTuft', 'hillMoss', 'hillRock',
+  'lakeReed', 'lakeReedHead', 'lakePetals',
+];
+
+function isFoliage(name) {
+  if (!name) {
+    return false;
+  }
+  for (const f of FOLIAGE) {
+    if (name.startsWith(f)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/*
+ * Keep a fraction of the instances in every plant and rock set.
+ *
+ * WHY THIN AT ALL, WHEN AN INSTANCED SET IS ALREADY ONE DRAW CALL. Because it
+ * is 4.5 M triangles, three quarters of everything the town draws, and the
+ * budget has two numbers in it. Round 24 bought draw calls by paying
+ * triangles; this is where the triangles come back from. A grove of 15,616
+ * eighty triangle blobs reads as a grove at 8,000 as well: the blobs are
+ * scattered through the canopy volume, so removing some of them makes the tree
+ * airier rather than smaller, and a quad passing at 20 m/s cannot count them.
+ *
+ * WHICH ONES GO IS A HASH, NOT A STRIDE. Keeping every other index would thin
+ * whatever spatial order the town happened to generate them in, which for the
+ * groves is tree by tree: one tree bald, the next untouched. Hashing the index
+ * scatters the removal evenly through every tree instead. The hash is the
+ * Knuth multiplicative constant on a 32 bit index, which is deterministic
+ * across engines because it is integer arithmetic all the way down, and this
+ * has to be the same town in Node and in the browser.
+ *
+ * The instance buffer is rewritten in place and `count` lowered rather than
+ * reallocated, because chunkInstanced runs next and builds correctly sized
+ * chunks from what is left, then disposes the source.
+ */
+export function thinFoliage(root, { keep = 1 } = {}) {
+  if (keep >= 1) {
+    return { thinnedSets: 0, instancesBefore: 0, instancesAfter: 0 };
+  }
+  const m = new THREE.Matrix4();
+  const c = new THREE.Color();
+  /* keep is compared against a 32 bit hash, so it becomes a 32 bit threshold
+   * once rather than a float divide per instance. */
+  const cut = Math.round(keep * 4294967295);
+  let sets = 0;
+  let before = 0;
+  let after = 0;
+
+  root.traverse((o) => {
+    if (!o.isInstancedMesh || !isFoliage(o.name)) {
+      return;
+    }
+    sets += 1;
+    before += o.count;
+    let k = 0;
+    for (let i = 0; i < o.count; i += 1) {
+      /* >>> 0 keeps it unsigned; Math.imul keeps the multiply in 32 bits
+       * instead of drifting into doubles. */
+      const h = (Math.imul(i + 1, 2654435761) ^ 0x9e3779b9) >>> 0;
+      if (h > cut) {
+        continue;
+      }
+      if (k !== i) {
+        o.getMatrixAt(i, m);
+        o.setMatrixAt(k, m);
+        if (o.instanceColor) {
+          o.getColorAt(i, c);
+          o.setColorAt(k, c);
+        }
+      }
+      k += 1;
+    }
+    /* A set thinned to nothing would be a grove that vanished, so one survives
+     * whatever the fraction says. */
+    o.count = k > 0 ? k : 1;
+    after += o.count;
+    o.instanceMatrix.needsUpdate = true;
+    if (o.instanceColor) {
+      o.instanceColor.needsUpdate = true;
+    }
+    o.computeBoundingSphere();
+  });
+
+  return { thinnedSets: sets, instancesBefore: before, instancesAfter: after };
 }
 
 /*

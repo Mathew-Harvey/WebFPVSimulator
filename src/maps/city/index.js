@@ -53,7 +53,9 @@ import { Colliders } from '../../game/collide.js';
 import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { cityAnimation, findBoomBlocks } from './animation.js';
-import { bakeCity, buildCullGrid, chunkInstanced } from './bake.js';
+import {
+  bakeCity, buildCullGrid, chunkInstanced, thinFoliage,
+} from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
 import { yieldToPaint } from '../../ui/loading.js';
 
@@ -105,6 +107,22 @@ const CAMERA_FAR = 900;
 const CULL_RADIUS = 100;
 const CULL_CELL = 40;
 const SHADOW_HALF = 22;
+
+/*
+ * How much of the town's planting survives.
+ *
+ * Set from the budget rather than from taste. The town draws 4.54 M triangles
+ * of instanced plants against a whole frame budget of 1.20 M, and no amount of
+ * merging or culling touches that: an instanced grove is already one draw call
+ * and the triangles are simply there. The only lever is fewer of them.
+ *
+ * It reads as thinning rather than deletion because a canopy here is a few
+ * dozen blobs scattered through the tree's volume, so removing some of them
+ * makes the tree airier and not smaller, and every trunk is untouched. Swept
+ * numbers are in PROGRESS.md.
+ */
+const FOLIAGE_KEEP = 0.65;
+
 
 /*
  * How coarsely the static merge groups geometry, and why it is NOT CULL_CELL.
@@ -875,6 +893,7 @@ export async function buildMap(shell, onProgress) {
     shadowCell: MERGE_SHADOW_CELL,
     cullCell: CULL_CELL,
   });
+  const thinned = thinFoliage(world.root, { keep: FOLIAGE_KEEP });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
@@ -1027,6 +1046,8 @@ export async function buildMap(shell, onProgress) {
       cullCells: cull.cells.length,
       cullAlways: cull.always.length,
       cullRadius,
+      foliageKeep: FOLIAGE_KEEP,
+      ...thinned,
       ...baked.stats,
       ...chunked,
       shadowExtent: SHADOW_HALF,

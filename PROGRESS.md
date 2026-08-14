@@ -4757,3 +4757,170 @@ world-scale passes with every city reference unchanged**: kerb 0.1350, doorway
 crossing boom collider 1.045 to 1.325 m. The boom figure is the one to watch,
 because it is measured after the animation has seated the arms, and it would
 move if the rig merge had disturbed them. **Check 16 map-isolation passes.**
+
+## Round 27: the thing splitting the merge was colour, and it did not need to be on the material
+
+The owner asked to thin the trees and the other clutter and to hit the budget.
+Three things were built. One is the largest single draw call win the town has
+had and it removes nothing at all; one thins the planting and is worth having;
+one removes the wrong objects and was reverted. The budget is still not met and
+the last section says by how much and why.
+
+### Colour was 1,103 draw calls, and colour does not belong on a material
+
+Round 24 left 1,774 merge buckets holding exactly one mesh. A bucket of one is
+a mesh whose material nothing else in the town shares, and no amount of merging
+removes it. That was written down as the wall: "nothing short of a texture
+atlas touches them, since two different materials cannot merge whatever the
+geometry does".
+
+That was half right. Counted, 1,103 of those 1,774 materials carry NO TEXTURE
+OF ANY KIND, and stripped of their colour they collapse to 24 distinct looks.
+They are the same handful of materials painted 1,103 different colours.
+
+Colour is the one property that does not have to live on the material. Three.js
+multiplies the material colour by a per vertex colour attribute, so a WHITE
+material with the colour written into the vertices draws the same pixels. The
+attribute is filled from `m.color.r/g/b` as floats, which are already in the
+renderer's working colour space, against a material colour of exactly white:
+white times the original is the original, to the bit, with no quantisation and
+no conversion.
+
+TWO THINGS HAD TO BE GOT RIGHT AND BOTH WERE GOT WRONG FIRST.
+
+The first version refused any material with a `gradientMap` along with `map`
+and `alphaMap`, on the reasoning that a texture is the part of a look this
+cannot fold up. That is true of `map`, which multiplies the diffuse. It is not
+true of a gradientMap, which in a toon material is the LIGHTING RAMP, nor of an
+emissiveMap, which is added rather than multiplied. Both can ride along on the
+shared material with their uuid in its key. Refusing them painted 1,711 meshes
+where about 15,000 were available, because this town's `cel()` puts a toon ramp
+on nearly everything it makes, and the whole change bought 50 draw calls.
+
+The second is subtler and only a pixel diff found it. `Material.copy` does not
+carry `onBeforeCompile`, `customProgramCacheKey`, or a live `userData`
+reference, and this town's entire look lives in them: `./vendored/core/toon.js`
+injects the cool shadow tint through `onBeforeCompile` and keys the shader
+program on the tint's hex. Relying on `clone()` gave every painted surface an
+UNTINTED SHADOW SIDE. It did not look broken, it looked slightly off, and the
+number that caught it was a mean absolute difference of 1.4 of 255 across the
+whole frame with almost nothing over the visible threshold. Re-attaching the
+three by hand took the same diff to 0.001 at the street viewpoint, 0.06 at the
+worst of five. Sharing the closure is correct rather than convenient: the cache
+key IS the tint and the group key includes the cache key, so every material in
+a group already has the same tint uniform.
+
+Street went from 3031 draw calls to 2245. Nothing was removed to get it.
+
+### Thinning the planting
+
+The town draws 4.54 M triangles of instanced plants. An instanced grove is
+already one draw call, so no merge or cull touches that mass: the only lever is
+fewer of them.
+
+`thinFoliage` keeps a fraction of the instances in every plant and rock set.
+WHICH ONES GO IS A HASH OF THE INDEX, NOT A STRIDE, because keeping every other
+index thins whatever order the town generated them in, which for the groves is
+tree by tree: one bald, the next untouched. Hashing scatters the removal evenly
+through every canopy instead, so a tree gets airier rather than balder, and
+every trunk is untouched. The hash is Knuth's multiplicative constant on a 32
+bit index, integer arithmetic throughout, because this has to be the same town
+in Node and in the browser.
+
+The sets are chosen BY NAME and that is deliberate. Every measured proxy for
+"the things there are thousands of that nobody counts" is wrong in a way that
+deletes structure: per instance size, instance count and triangle share all say
+that a fence post is a grass tuft. Round 26 already made this mistake once in
+the other direction and turned the hills into bare sticks. The named sets carry
+4.31 M of the 4.54 M, so the list being narrow costs almost nothing, and the
+cost of it going stale is a missed optimisation rather than a hole in the world.
+
+Swept, and the value chosen is NOT the cheapest one:
+
+| keep | street triangles | look                                   |
+|------|-----------------:|----------------------------------------|
+| 1.00 |          3.13 M | as authored                             |
+| 0.65 |          2.83 M | full canopies, slightly airier          |
+| 0.50 |          2.70 M | thinning visible                        |
+| 0.35 |          2.57 M | gaps through the blossom, too far       |
+
+0.65. Below it the return flattens hard while the damage does not: 0.35 buys
+0.26 M more triangles and costs the cherry trees, which are the reason anyone
+looks at this town. Since the triangle budget is out of reach either way (see
+below), spending 0.26 M on the trees is the easy call.
+
+### Dropping small props: built, measured, reverted
+
+The idea was to remove props under a size rather than cull them, since round 26
+established that culling them costs more than it saves. Two things killed it.
+
+IT REMOVES PARTS, NOT PROPS. At a 0.9 m bounding sphere it dropped 12,915 of
+the town's 18,466 static meshes, because a building in this town is dozens of
+small meshes: window frames, sills, awnings, door furniture, fence slats. The
+screenshots show the crossing losing its shop signage, its planters and its
+awnings while the walls stay. This is the third time the same lesson has landed
+this week: a size test cannot see that something is a PART, and it does not
+matter whether the parts are canopy blobs, ink shells or window frames.
+
+AND THE COLLIDERS DID NOT GO WITH THEM. The town's 2,731 rectangles are
+authored beside the geometry rather than derived from it, and 898 have a
+footprint under 0.6 m, so the props ARE solid. The matching pass, which was
+meant to drop a collider whose centre fell inside a removed prop and inside no
+surviving mesh, matched exactly ZERO of them. Whatever the reason, shipping a
+version that removes 12,915 drawn objects and no collision is shipping the
+invisible walls the owner has already reported once, so it went out rather than
+getting a second attempt.
+
+### Where it landed
+
+| view    | before r24 | after r26 | now  | triangles now |
+|---------|-----------:|----------:|-----:|--------------:|
+| spawn   |       3826 |      2363 | 1673 |       2.51 M |
+| street  |       5981 |      3031 | 2245 |       2.83 M |
+| rooftop |       6417 |      3252 | 2378 |       2.86 M |
+| flying  |          - |      2795 | 2058 |       2.81 M |
+| high    |          - |      2127 | 1515 |       2.84 M |
+
+62 percent off the draw calls at street since round 24 began, 9 percent off the
+triangles, and the colour bake accounts for most of the first with no geometry
+removed at all.
+
+### The budget is not met, and this is what stands between
+
+G2 asks for 400 draw calls and 1,200,000 triangles. The town is at 2245 and
+2.83 M. Being straight about the distance:
+
+DRAW CALLS. 671 of the surviving one mesh buckets have a TEXTURE, and a
+texture is the part of a material that cannot be folded into a vertex
+attribute. They are the town's signs, posters, shop fronts and hoardings, each
+with its own small canvas. Collapsing them needs a texture atlas: pack the
+canvases into one sheet, rewrite every uv, and they become one material and one
+bucket. That is the single remaining structural win and it is a real piece of
+work, not a constant.
+
+TRIANGLES. The floor is not the planting. The town's static geometry alone is
+1.34 M triangles and, since round 24 merges it town wide, all of it is drawn
+every frame; the shadow pass adds roughly 0.6 M more. So about 1.9 M is spent
+before a single leaf, which is already over the 1.2 M budget with the planting
+at zero. Getting under it needs level of detail on the buildings, which means
+authoring or generating simplified meshes, not tuning.
+
+Neither is a reason to stop, and neither is reachable by thinning. Written down
+here so the next round starts from the right end.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at -0.08 deg.
+**Check 13 console-clean passes with zero errors and zero warnings**, which
+matters here because adding a `color` attribute to some geometry and not other
+geometry is exactly how `mergeGeometries` is made to refuse a set and warn.
+**Check 15 world-scale passes with every city reference unchanged**: kerb
+0.1350, doorway 2.0500, handrail 1.0600, crossing boom 1.2400, 2,731 colliders,
+613 fitted, crossing boom collider 1.045 to 1.325 m. The doorway is the one to
+watch, because `references.js` finds front doors BY THEIR MATERIAL COLOUR and
+the colour bake paints those materials white: it still reads 2.0500 because
+`cityReferences` runs before the bake, and it would have read nothing if that
+order were ever swapped. **Check 16 map-isolation passes.**
+
+451 meshes still move over 6 s, the same count as the last three rounds.

@@ -178,6 +178,19 @@ export const ELEMENTS = {
     pitch: 0,
     dims: { levels: 2, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
   },
+  flaggedDoubleStack: {
+    id: 'flaggedDoubleStack',
+    label: 'Flagged double',
+    key: 'H',
+    group: 'track',
+    kind: KIND.APERTURE,
+    /* Same header pennant as `flaggedGate`, stood on the top board of a
+     * two hole stack. The flags are dress: the holes are still two gates. */
+    flagSide: 'left',
+    note: 'Two standard gates stacked, with a pennant on the top header. Pick left, right or both in the inspector.',
+    pitch: 0,
+    dims: { levels: 2, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
+  },
   ladder: {
     id: 'ladder',
     label: 'Triple stack',
@@ -296,7 +309,7 @@ export const ELEMENTS = {
  * draws. It is written out rather than derived from Object.keys so a future
  * reorder is one obvious edit. */
 export const PALETTE_ORDER = [
-  'gate', 'flaggedGate', 'doubleStack', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone',
+  'gate', 'flaggedGate', 'doubleStack', 'flaggedDoubleStack', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone',
 ];
 export const PALETTE_EXTRA = ['startPads', 'label'];
 

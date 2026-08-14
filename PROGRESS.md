@@ -6421,4 +6421,22 @@ Verify: not run. This turn does not touch src/native, the WASM build, the
 input path or the simulation trace. Track builder selftest: 127 passed, 0
 failed.
 
+### 2026-08-14 | track builder | flagged double stack
+
+Changed: new palette element `flaggedDoubleStack` (H), two stacked 5x5
+openings with a pennant on the top header. Inspector cards pick left,
+right or both, the same picker `flaggedGate` already uses. Default
+left. The holes stay two gates: placing one still writes a spiral up.
+Plan, preview and the race field reuse the existing header flag path,
+so a stacked flagged gate is not a second drawing of a pennant.
+
+What went wrong: nothing. The first thought was to hang `flagSide` on
+`doubleStack` itself, which would have put a pennant on every saved
+double stack the moment the file was reopened. A second type keeps
+the plain stack plain.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 145 passed, 0
+failed.
+
 

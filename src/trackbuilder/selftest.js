@@ -732,6 +732,59 @@ function suiteFlaggedGate() {
     st ? String(st.flagH) : 'missing');
 }
 
+function suiteFlaggedDoubleStack() {
+  console.log('\nflagged double stack');
+  const doc = createTrack();
+  const g = place(doc, 'flaggedDoubleStack', 10, 10);
+  check('a new flagged double defaults to left', g.flagSide === 'left');
+  check('left is the minus width-axis end', flagSideSigns(flagSideOf(g)).join(',') === '-1');
+  check('it has two openings, same as a double stack', aperturesOf(g).length === 2);
+  check('its dims match a double stack',
+    g.dims.clearW === ELEMENTS.doubleStack.dims.clearW
+    && g.dims.clearH === ELEMENTS.doubleStack.dims.clearH
+    && g.dims.levels === ELEMENTS.doubleStack.dims.levels);
+  const stackH = elementHeight(ELEMENTS.doubleStack, ELEMENTS.doubleStack.dims);
+  const flaggedH = elementHeight(ELEMENTS.flaggedDoubleStack, g.dims);
+  check('its height includes the header mast', Math.abs(flaggedH - (stackH + GATE_FLAG_H)) < 1e-9,
+    `${flaggedH} vs ${stackH} + ${GATE_FLAG_H}`);
+  check('H arms it', elementByKey('H')?.id === 'flaggedDoubleStack');
+  check('it sits next to Double stack in the palette',
+    PALETTE_ORDER[2] === 'doubleStack' && PALETTE_ORDER[3] === 'flaggedDoubleStack');
+  check('a new one wants a spiral up', defaultFigure(g) === 'spiralUp');
+
+  g.flagSide = 'right';
+  check('right is the plus width-axis end', flagSideSigns(flagSideOf(g)).join(',') === '1');
+  g.flagSide = 'both';
+  check('both is both ends', flagSideSigns(flagSideOf(g)).join(',') === '-1,1');
+  const back = deserialize(serialize(doc));
+  const g2 = back.doc.elements.find((e) => e.type === 'flaggedDoubleStack');
+  check('both round trips', g2?.flagSide === 'both');
+  check('the demo track is not carrying one', !serialize(demoTrack()).includes('flaggedDoubleStack'));
+
+  const plainDoc = createTrack();
+  place(plainDoc, 'doubleStack', 0, 0);
+  check('a plain double stack does not write flagSide', !serialize(plainDoc).includes('flagSide'));
+
+  const repaired = normalize({
+    schemaVersion: 1,
+    elements: [{ id: 'el-1', type: 'flaggedDoubleStack', position: { x: 0, y: 0 }, flagSide: 'up' }],
+  });
+  check('an unknown side becomes left', repaired.doc.elements[0].flagSide === 'left');
+
+  addToSequence(doc, g.id, 0);
+  applyFigure(doc, g.id, 'spiralUp');
+  const course = courseFromDocument(doc);
+  const st = course.structures.find((s) => s.type === 'flaggedDoubleStack');
+  check('the field gets both signs', st && st.flagSigns.join(',') === '-1,1',
+    st ? st.flagSigns.join(',') : 'missing');
+  check('and the mast height is scaled', st && Math.abs(st.flagH - GATE_FLAG_H * GATE_SCALE) < 1e-9,
+    st ? String(st.flagH) : 'missing');
+  check('the structure is built as two openings', st && st.dims.stack === 2,
+    st ? String(st.dims.stack) : 'missing');
+  const stacked = course.stations.filter((s) => s.type === 'flaggedDoubleStack');
+  check('the course scores two stacked stations', stacked.length === 2, `${stacked.length}`);
+}
+
 /*
  * schema.md's worked example is copied out of this file's --emit output. A
  * schema document whose example does not parse, or does not describe the
@@ -789,6 +842,7 @@ function main() {
   suiteSequenceNaming();
   suiteFigures();
   suiteFlaggedGate();
+  suiteFlaggedDoubleStack();
   suiteSchemaDoc();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;

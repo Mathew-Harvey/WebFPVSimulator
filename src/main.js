@@ -95,6 +95,28 @@ const TAKEOFF_THROTTLE = 0.25;
  * own structure and the underside slab collider crashes it.
  */
 const SURFACE_BIAS = 0.40;
+/*
+ * How far the CAMERA is lifted while the craft is sitting on the ground, in
+ * world metres. Render only: nothing about the physics, the collision test
+ * or the trajectory can see it.
+ *
+ * A parked quad's lens is 5.6 cm over the surface in this world, and the
+ * session's near plane is 0.2 m (src/render/shell.js, chosen for depth
+ * precision across a 2.6 km valley). Those two numbers cannot both be
+ * honoured: with the camera tilted up 30 degrees and a 100 degree vertical
+ * field, the ground in front of a parked craft is nearer than the near plane
+ * for most of the lower frame, so it is clipped away and the frame comes
+ * back as a flat band of background under a thin strip of grass. That is
+ * what the owner saw as clipping through the ground at the start and after a
+ * crash, and it is also true of any perch mid course.
+ *
+ * 0.30 m puts the surface back outside the near plane across the whole
+ * frame, and it is not an invention: a race quad starts from a launch pad,
+ * and a pad is about this high. It is eased in and out rather than snapped,
+ * because a landing that teleported the view up 30 cm would read as a bounce
+ * the pilot did not fly.
+ */
+const PARKED_LIFT = 0.30;
 /* The controller consumes each input sample as one RC frame, so the shell
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
@@ -819,6 +841,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const qSpawn = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
   const camFwd = new THREE.Vector3();
+  /* Eased toward PARKED_LIFT while the craft is down and toward zero once it
+   * is flying, so the view rises off the pad rather than jumping. */
+  let parkedLift = PARKED_LIFT;
   /*
    * The title screen's camera. It belongs to the MAP, because the shot that
    * shows a map off is the map's business: the race field flies its own
@@ -1209,6 +1234,20 @@ export async function boot({ loading, bootStart, mapId }) {
        * the render on the resolved ground so a landing looks like a
        * landing. Render only: the physics state is untouched. */
       pCurr.y = groundY + simLenToWorld(REST_HEIGHT);
+    } else if (crashed) {
+      /*
+       * A WRECK DOES NOT SINK. The integrator has no ground plane, so a
+       * crashed craft keeps whatever velocity it hit with for the whole
+       * lockout and drives itself under the surface, taking the camera with
+       * it: the frame fills with the inside of the terrain until the reset
+       * fires. Clamped on the render only, the same way a landing is, and
+       * against the same query the contact test uses so the two agree.
+       */
+      const floor = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS)
+        + simLenToWorld(REST_HEIGHT);
+      if (pCurr.y < floor) {
+        pCurr.y = floor;
+      }
     }
     shell.quad.position.copy(pCurr);
     shell.quad.quaternion.copy(qPrev);
@@ -1318,6 +1357,19 @@ export async function boot({ loading, bootStart, mapId }) {
        */
       camFwd.set(0, 0, -1).applyQuaternion(qPrev);
       shell.camera.position.copy(pCurr).addScaledVector(camFwd, simLenToWorld(0.0775));
+      /*
+       * The pad lift. On the ground, in the air, or wrecked, the camera is
+       * raised by however much of PARKED_LIFT is currently eased in, which
+       * is the whole of it while the craft is down and none of it once it is
+       * flying. Applied along WORLD up rather than the airframe's, because
+       * what it is compensating for is the ground being inside the near
+       * plane, and the ground is where world up says it is.
+       */
+      const wantLift = (landed || crashed || !launched) ? PARKED_LIFT : 0;
+      parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
+      if (parkedLift > 0.001) {
+        shell.camera.position.y += parkedLift;
+      }
       shell.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
       /*

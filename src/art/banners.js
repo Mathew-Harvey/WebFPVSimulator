@@ -158,9 +158,18 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
   ctx.fillRect(0, 0, w, h * 0.055);
   ctx.fillRect(0, h * 0.945, w, h * 0.055);
 
-  /* A chequer band along the foot, full width, which is the one motif that
-   * says racing from further away than any wordmark can be read. */
-  chequer(ctx, 0, h * 0.79, w, h * 0.155, Math.round(w / (h * 0.09)));
+  /*
+   * A chequer band along the foot, full width, which is the one motif that
+   * says racing from further away than any wordmark can be read. Thinner
+   * than it started: at 0.155 of the board it was a third of the header's
+   * visible depth and the navy field it is supposed to trim had nothing
+   * left to be. A racing chequer is a border, not a stripe.
+   */
+  chequer(ctx, 0, h * 0.845, w, h * 0.10, Math.round(w / (h * 0.06)));
+  /* A hairline of red over it, which is what separates the chequer from the
+   * navy instead of letting the two meet as two dark bands. */
+  ctx.fillStyle = BANNER.red;
+  ctx.fillRect(0, h * 0.822, w, h * 0.022);
 
   /* Red flashes at both ends, angled, the way a printed banner is cut. */
   ctx.fillStyle = BANNER.red;
@@ -170,9 +179,9 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
     ctx.scale(s === 0 ? 1 : -1, 1);
     ctx.beginPath();
     ctx.moveTo(0, h * 0.055);
-    ctx.lineTo(w * 0.055, h * 0.055);
-    ctx.lineTo(w * 0.028, h * 0.79);
-    ctx.lineTo(0, h * 0.79);
+    ctx.lineTo(w * 0.062, h * 0.055);
+    ctx.lineTo(w * 0.030, h * 0.822);
+    ctx.lineTo(0, h * 0.822);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -180,8 +189,11 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
 
   const left = w * numberZone;
   const right = w * (1 - numberZone);
-  const boxY = h * 0.13;
-  const boxH = h * 0.60;
+  /* The mark gets the navy field between the hems and the chequer, which is
+   * more of the board than it had: the taller box is most of what makes an
+   * uploaded logo readable at the distance a pilot commits to a gate. */
+  const boxY = h * 0.115;
+  const boxH = h * 0.685;
   if (opts.logo) {
     fit(ctx, opts.logo, left, boxY, right - left, boxH);
   } else {
@@ -199,6 +211,19 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
  */
 export function paintGateSleeve(ctx, w, h, opts = {}) {
   ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  /*
+   * `flip` paints the whole design mirrored, for the far leg of a gate, so
+   * the chequer column runs down the OUTSIDE on both sides. Done in the
+   * paint rather than with a negative scale on the mesh, because a negative
+   * scale inverts a mesh's winding and a single sided panel turned inside
+   * out is a black slab or nothing at all, depending on which pass is
+   * looking at it. Both have happened.
+   */
+  if (opts.flip) {
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+  }
   ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);
 
@@ -227,6 +252,7 @@ export function paintGateSleeve(ctx, w, h, opts = {}) {
     chequerDevice(ctx, -h * 0.14, -(w - colW) * 0.34, h * 0.28, (w - colW) * 0.68);
     ctx.restore();
   }
+  ctx.restore();
 }
 
 function chequerColumn(ctx, x, y, w, h, cells) {

@@ -1087,15 +1087,33 @@ export class Colliders {
  * the physics, so a craft resting on the ground can only be held by not
  * stepping the physics at all.
  *
- * The three thresholds. A real 5 inch quad on grass takes about 2 m/s of
- * vertical arrival without damage, which is a drop from roughly 0.2 m. Much
- * past 25 degrees of tilt a prop reaches the ground before the arms do, and
- * a prop strike at any descent rate is a crash. And arriving sideways at
- * more than about walking pace tips a quad onto its side, so the horizontal
- * gate is 3 m/s.
+ * THE RULE IS A PROP STRIKE, and the three thresholds are three ways of
+ * having one. The owner's words: a careful perch should be fine, and you
+ * should only lose the craft when the props hit the ground.
+ *
+ * TILT is the direct one, and it is DERIVED rather than chosen. The craft
+ * rests with its centre 0.045 m over the surface, a prop disc sits 0.032 m
+ * above that centre, and the swept radius is 0.1735 m (src/render/craft.js).
+ * Roll by theta and the low prop's tip is at 0.032 cos(theta) minus 0.1735
+ * sin(theta) above the centre; it reaches the ground when that equals
+ * -0.045, which solves to 24.9 degrees. So 25 is where a prop touches down
+ * before the arms do, and it is the one threshold that IS the rule rather
+ * than a proxy for it.
+ *
+ * DESCENT is the other way to strike: come down hard enough and the props
+ * are into the grass before the frame has finished absorbing it. A 5 inch
+ * quad on grass takes about 2.5 m/s of vertical arrival, a drop of roughly
+ * 0.32 m, which is more than any deliberate perch and less than any fall.
+ *
+ * HORIZONTAL was 3 m/s and that was the gate the owner was actually hitting.
+ * It is the weakest proxy of the three: a LEVEL quad arriving across the
+ * ground does not put a prop anywhere near it, it slides, and 3 m/s is a
+ * brisk walk. Landing with drift on is a normal thing to do and it was
+ * ending runs. 6 m/s is where a skid starts to become a tumble, and a
+ * tumble is caught by the tilt gate a frame later anyway.
  */
-export const LAND_DESCENT_MAX = 2.0;   /* m/s downward */
-export const LAND_HORIZONTAL_MAX = 3.0; /* m/s */
+export const LAND_DESCENT_MAX = 2.5;   /* m/s downward */
+export const LAND_HORIZONTAL_MAX = 6.0; /* m/s */
 export const LAND_TILT_MAX_DEG = 25;
 
 /*

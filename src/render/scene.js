@@ -1565,12 +1565,17 @@ function bannerKit(logoUrl, key) {
      * so any real strength washes the print out to one cool tint. */
     rim: 0.06,
     map: tex,
-    side: THREE.DoubleSide,
+    /* FrontSide. Each printed face is a separate plane facing outward with
+     * the substrate behind it, so a viewer never needs the reverse of one,
+     * and DoubleSide is what the outline prepass cannot see. */
+    side: THREE.FrontSide,
     key: `${id}:${key}`,
   });
   const kit = {
     header: printed(paint(BANNER_SIZE.header, paintGateHeader, {}), 'hdr'),
     sleeve: printed(paint(BANNER_SIZE.sleeve, paintGateSleeve, {}), 'slv'),
+    /* The far leg's, painted mirrored rather than scaled onto the mesh. */
+    sleeveFlipped: printed(paint(BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), 'slvf'),
     /* Two sails, so a run of flags down a course alternates rather than
      * repeating. Two materials is two draw calls for the whole set. */
     sails: [
@@ -1806,7 +1811,7 @@ function specFor(kindName) {
  * turned so the design reads the right way round from behind, the way a
  * double sided banner is actually printed.
  */
-function printedPanel(w, h, depth, mat, substrate, mirror = false) {
+function printedPanel(w, h, depth, mat, substrate) {
   const g = new THREE.Group();
   const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth), substrate);
   board.castShadow = true;
@@ -1816,15 +1821,6 @@ function printedPanel(w, h, depth, mat, substrate, mirror = false) {
     face.position.z = sz * (depth * 0.5 + 0.004);
     if (sz < 0) {
       face.rotation.y = Math.PI;
-    }
-    /*
-     * Mirrored on the PRINT ONLY, never on the group. Scaling the whole
-     * panel by minus one in x inverts the substrate's winding as well, and
-     * a single sided box turned inside out renders as a black slab: that is
-     * exactly what the far leg of every gate came out as.
-     */
-    if (mirror) {
-      face.scale.x = -1;
     }
     g.add(face);
   }
@@ -1895,6 +1891,16 @@ function gateBanner(index, outerW, headerMat, substrate) {
   roundel.rotation.x = Math.PI * 0.5;
   roundel.position.set(roundelX, 0, 0);
   group.add(roundel);
+  /* A navy ring just proud of the disc. A pale circle on a navy board reads
+   * as a hole punched in it at any distance; a circle with an edge reads as
+   * a number plate, which is what it is. */
+  const rim = new THREE.Mesh(
+    new THREE.CylinderGeometry(roundelR * 1.14, roundelR * 1.14, 0.05, 20),
+    mats.number,
+  );
+  rim.rotation.x = Math.PI * 0.5;
+  rim.position.set(roundelX, 0, 0);
+  group.add(rim);
 
   /* 3 columns per glyph plus a one column gap, centred on the roundel, on
    * BOTH faces: a gate is read from whichever side you arrive on. */
@@ -2430,8 +2436,10 @@ function obstacle(spec, index, isStart, opts = {}) {
     const cx = sx * (upX + tubeR + panelW * 0.5);
     /* Mirrored on the far leg, so the chequer column runs down the OUTSIDE
      * of the gate on both sides rather than down the outside of one and the
-     * inside of the other. */
-    const sleeve = printedPanel(panelW, panelH, 0.03, kit.sleeve, substrate, sx < 0);
+     * inside of the other. Mirrored in the PAINT, so nothing about the mesh
+     * or its winding changes. */
+    const sleeve = printedPanel(panelW, panelH, 0.03,
+      sx < 0 ? kit.sleeveFlipped : kit.sleeve, substrate);
     sleeve.position.set(cx, panelBottom + panelH * 0.5, 0);
     g.add(sleeve);
     caps.push({ kind: 'obstacle', ax: cx, ay: panelBottom, az: 0, bx: cx, by: panelBottom + panelH, bz: 0, r: panelW * 0.5 });
@@ -2568,10 +2576,37 @@ function flagSailGeometry(poleR, h) {
       cloth.push(s, t);
     }
   }
+  /*
+   * BOTH WINDINGS, and this is the fix for the flags reading as see through.
+   *
+   * A sail is one sheet, so it was drawn with side: DoubleSide. That is
+   * right for the colour pass and WRONG for everything else in this
+   * renderer, because the outline prepass in src/render/post.js overrides
+   * every material in the scene with one of its own, and that override is
+   * FrontSide. A flag turned so the camera sees its back therefore wrote no
+   * depth and no normal into the prepass at all, so the composite resolved
+   * that region against the background and blended the sail into whatever
+   * was behind it. Every flag is yawed at random, so about half of them were
+   * transparent and half were solid, which is exactly what it looked like.
+   *
+   * Emitting the reversed triangles here makes the sail an ordinary opaque
+   * two sided SURFACE that every pass agrees about: the prepass sees front
+   * faces from either side, the shadow map does too, and the material can go
+   * back to FrontSide.
+   *
+   * The normals are NOT flipped with the winding, deliberately. The cloth
+   * displacement in celmat.js moves each vertex along its own normal, so
+   * flipping them would drive the two sheets apart by twice the wave
+   * amplitude and split the flag down the middle. Sharing the normal costs
+   * the reverse face its own lighting, which on a flat cel shaded banner is
+   * a difference nobody can see.
+   */
+  const back = [];
   for (let r = 0; r < rows - 1; r += 1) {
     for (let c = 0; c < cols - 1; c += 1) {
       const a = r * cols + c;
       idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+      back.push(a + 1, a + cols, a, a + cols + 1, a + cols, a + 1);
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -2580,6 +2615,9 @@ function flagSailGeometry(poleR, h) {
   geo.setAttribute('aCloth', new THREE.Float32BufferAttribute(cloth, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  /* The reverse faces are appended AFTER the normals are computed, so they
+   * inherit the front sheet's normals rather than averaging to nothing. */
+  geo.setIndex(idx.concat(back));
   return geo;
 }
 
@@ -2603,7 +2641,10 @@ function sailMaterial(tex, key) {
      * pink nothing in the palette holds. */
     rim: 0.0,
     map: tex,
-    side: THREE.DoubleSide,
+    /* FrontSide, with the reverse faces in the geometry. See
+     * flagSailGeometry: DoubleSide is invisible to the outline prepass's
+     * override material and made half the flags transparent. */
+    side: THREE.FrontSide,
     cloth: 0.085,
     key,
   });

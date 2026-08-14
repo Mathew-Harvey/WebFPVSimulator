@@ -178,7 +178,7 @@ export class View3D {
       return this.kit;
     }
     if (this.kit) {
-      for (const m of [this.kit.header, this.kit.sleeve, ...this.kit.sails]) {
+      for (const m of [this.kit.header, this.kit.sleeve, this.kit.sleeveFlipped, ...this.kit.sails]) {
         m.map.dispose();
         m.dispose();
       }
@@ -202,6 +202,10 @@ export class View3D {
       logo,
       header: paint(BANNER_SIZE.header, paintGateHeader, {}),
       sleeve: paint(BANNER_SIZE.sleeve, paintGateSleeve, {}),
+      /* The far leg's sleeve, painted mirrored. A second canvas rather than
+       * a negative scale on the mesh, because a negative scale inverts the
+       * winding and a single sided plane turned inside out disappears. */
+      sleeveFlipped: paint(BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
       sails: [
         paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'navy' }),
         paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'red' }),
@@ -634,23 +638,39 @@ export class View3D {
       const sleeveW = 0.42;
       const sleeveBottom = bottom.sillH;
       const sleeveH = top.sillH + top.clearH + tube * 2 - sleeveBottom;
+      /*
+       * TWO PLANES PER BANNER, NOT ONE DOUBLE SIDED PLANE, and that is the
+       * fix for the logo reading backwards from behind. A single double
+       * sided plane shows the same texels from either face, so from the
+       * reverse the print is mirrored and the mark reads in a mirror. A real
+       * banner is printed on both sides, the reverse mirrored so it reads
+       * the right way round, and two planes back to back is that.
+       */
+      const facing = new THREE.Vector3(f.normal.x, f.normal.y, f.normal.z);
+      const bannerFace = (w, h, mat, at) => {
+        for (const sn of [-1, 1]) {
+          const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+          face.quaternion.copy(quat);
+          if (sn < 0) {
+            face.rotateY(Math.PI);
+          }
+          face.position.copy(at).addScaledVector(facing, sn * 0.012);
+          group.add(face);
+        }
+      };
+      const at = new THREE.Vector3();
       for (const sx of [-1, 1]) {
         const off = sx * (top.clearW / 2 + tube + sleeveW / 2);
-        const sleeve = new THREE.Mesh(new THREE.PlaneGeometry(sleeveW, sleeveH), kit.sleeve);
-        sleeve.quaternion.copy(quat);
-        /* Turned upright in the plane's own frame: the builder's world is Z
-         * up, and a PlaneGeometry is authored in XY. */
-        sleeve.position.set(
-          across.x * off, across.y * off, sleeveBottom + sleeveH / 2,
-        );
-        sleeve.scale.x = sx;
-        group.add(sleeve);
+        /* Mirrored on the far leg so the chequer column runs down the
+         * outside of the gate on both sides, the same way the world does it,
+         * and on the PRINT rather than on the mesh. */
+        const mat = sx < 0 ? kit.sleeveFlipped : kit.sleeve;
+        at.set(across.x * off, across.y * off, sleeveBottom + sleeveH / 2);
+        bannerFace(sleeveW, sleeveH, mat, at);
       }
       const headerW = 2 * (top.clearW / 2 + tube + sleeveW);
-      const header = new THREE.Mesh(new THREE.PlaneGeometry(headerW, BANNER_H), kit.header);
-      header.quaternion.copy(quat);
-      header.position.set(0, 0, top.sillH + top.clearH + tube * 2 + BANNER_H / 2 + 0.03);
-      group.add(header);
+      at.set(0, 0, top.sillH + top.clearH + tube * 2 + BANNER_H / 2 + 0.03);
+      bannerFace(headerW, BANNER_H, kit.header, at);
     }
 
     /*

@@ -5712,3 +5712,107 @@ the assertion that would have caught a banner that moved an upright.
 The track builder's own self test: 74 passed, 0 failed, including the round
 trip through the new `branding` block and schema.md's worked example
 regenerated from `--emit`.
+
+## Round 35: the six things the owner found by flying it
+
+### Half the flags were transparent, and the reason is the prepass
+
+Reported as "the flags are transparent", and about half of them were. The
+sail was one sheet drawn with `side: DoubleSide`, which is right for the
+colour pass and wrong for everything else in this renderer: the outline
+prepass in src/render/post.js sets `scene.overrideMaterial`, and that
+override is FrontSide. A flag turned so the camera saw its BACK therefore
+wrote no depth and no normal into the prepass at all, so the composite
+resolved that region against the background and blended the sail into
+whatever was behind it. Every flag is yawed at random, which is exactly why
+some were solid and some were ghosts.
+
+The fix is to stop pretending a one sided material can describe a two sided
+object: `flagSailGeometry` now emits the reversed triangles as well and the
+material is FrontSide, so the sail is an ordinary opaque surface that the
+colour pass, the prepass and the shadow map all agree about. The normals are
+NOT flipped with the winding, and that is load bearing: the cloth
+displacement moves each vertex along its own normal, so flipping them would
+drive the two sheets apart by twice the wave amplitude and split the flag
+down the middle. Sharing the normal costs the reverse face its own lighting,
+which on a flat cel shaded banner nobody can see.
+
+The gate's printed panels went FrontSide for the same reason, and they were
+already correct by construction: each print is a plane facing outward with
+the substrate box behind it, so nothing ever needs the reverse of one.
+
+### The logo read backwards from behind, in the builder
+
+The world was right and the builder was wrong. src/render/scene.js prints
+each banner as two planes back to back with the reverse turned a half turn,
+which is what a double sided banner is. The builder's preview used ONE
+double sided plane, and a double sided plane shows the same texels from
+either face, so from behind the mark was mirrored. Two planes there now too.
+
+The far leg's sleeve is mirrored in the PAINT rather than by a negative
+scale on the mesh. A negative scale inverts the winding, and a single sided
+panel turned inside out is either a black slab or nothing at all depending
+on which pass is looking at it. Both had already happened once each in this
+round.
+
+### A careful perch is a landing now
+
+The rule was three thresholds and the owner was hitting the weakest of them.
+Restated as what it is meant to be, a PROP STRIKE test:
+
+TILT is the direct one and it turns out to have been derived correctly all
+along: the craft rests with its centre 0.045 m up, a prop disc sits 0.032 m
+above the centre, the swept radius is 0.1735 m, and the low prop reaches the
+ground at 24.9 degrees. 25 stands.
+
+DESCENT is the other way to strike, 2.0 m/s to 2.5, a drop of 0.32 m, which
+is more than any deliberate perch and less than any fall.
+
+HORIZONTAL was the one ending runs, and it is the weakest proxy of the
+three: a LEVEL quad arriving across the ground does not put a prop anywhere
+near it, it slides. 3 m/s is a brisk walk. 6 m/s is where a skid becomes a
+tumble, and a tumble is caught by the tilt gate a frame later anyway.
+
+### Clipping through the ground, twice, for two different reasons
+
+ON THE PAD, it was the near plane. A parked quad's lens is 5.6 cm over the
+surface here and the session's near plane is 0.2 m, chosen for depth
+precision across a 2.6 km valley. Those two cannot both be honoured: with
+the camera tilted up 30 degrees and a 100 degree vertical field, the ground
+in front of a parked craft is nearer than the near plane across most of the
+lower frame, so it is clipped and the frame comes back as a flat band of
+background under a strip of grass. The camera is lifted 0.30 m while the
+craft is down, eased in and out so a landing does not read as a bounce, and
+that is not an invention: a race quad starts from a launch pad and a pad is
+about this high. Render only; nothing the physics or the collision test can
+see.
+
+AFTER A CRASH, it was the wreck. The integrator has no ground plane, so a
+crashed craft keeps whatever velocity it hit with for the whole 1.4 s
+lockout and drives itself under the surface, taking the camera with it. The
+render now clamps a wreck to the surface the same way it already clamped a
+landing, against the same height query the contact test uses.
+
+### Gate polish
+
+The chequer band on the header was 0.155 of the board, a third of its
+visible depth, and a racing chequer is a border rather than a stripe: 0.10,
+with a red hairline over it so the chequer and the navy do not meet as two
+dark bands. The mark's box grew from 0.60 to 0.685 of the board with it,
+which is most of what makes an uploaded logo readable at the range a pilot
+commits to a gate. The number roundel got a navy rim, because a pale circle
+on a navy board reads as a hole punched in it and a circle with an edge
+reads as a number plate.
+
+### Verify
+
+`npm run verify`: 14 of 16, the same two reds. Check 16's field snapshot was
+re-measured again rather than loosened, for the reversed sail winding: P1
+168 to 171, P2 1,967,133 to 1,989,501, P10 44.2 to 45.0 MB, meshes 95 to 96.
+The doubled winding is index only, so it costs triangles without costing an
+attribute byte; the 3 draw calls are the far leg's mirrored sleeve print,
+which is its own merge bucket. Against the pre-round-34 baseline the field
+is still 43 draw calls and 63 meshes cheaper than it was.
+
+Check 13 console-clean passes with zero errors and zero warnings. The track
+builder's self test: 74 passed, 0 failed.

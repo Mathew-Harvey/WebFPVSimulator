@@ -215,6 +215,33 @@ export class Race {
    * Throw the running lap away without ending the run. Used by a gate
    * touch and by a crash: neither should cost the laps already flown.
    */
+  /*
+   * A crash the pilot flies out of rather than a lap thrown away.
+   *
+   * WHAT CHANGED AND WHY. Hitting something used to void the lap AND send
+   * the craft to the start line with `next` reset to zero, so one clipped
+   * upright cost the whole lap and put you back at the timing gate to fly it
+   * again. The owner asked for the racing sim behaviour instead: you are put
+   * back on the course in front of the gate you were flying at, and you
+   * carry on. The clock never stops, so the crash costs exactly what it
+   * costs, which is the lockout plus the time to get moving again.
+   *
+   * The lap is NOT voided, and that is a rule changing rather than a rule
+   * bending: the note beside GRAZE_SPEED_MAX in src/game/collide.js already
+   * observed that voiding for obstacle contact is harsher than the physics
+   * and harsher than the MultiGP rulebook, which does not invalidate a lap
+   * for touching a gate. Time is the penalty now.
+   *
+   * `next` is untouched, which is what makes the respawn honest: you are put
+   * behind a gate you have NOT flown, so you still have to fly it. The
+   * distance the respawn skips is roughly what the lockout and the standing
+   * start cost you, so crashing on purpose to shortcut a long leg is
+   * break even at best.
+   */
+  recover(reason, wallMs) {
+    this.flash = { text: reason, untilMs: wallMs + 1800 };
+  }
+
   voidLap(reason, wallMs) {
     if (this.freestyle) {
       /* Nothing to void, but a crash still says so. The shell calls this from

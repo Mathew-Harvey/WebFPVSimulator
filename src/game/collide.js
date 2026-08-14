@@ -1087,70 +1087,92 @@ export class Colliders {
  * the physics, so a craft resting on the ground can only be held by not
  * stepping the physics at all.
  *
- * THE RULE IS A PROP STRIKE, and the three thresholds are three ways of
- * having one. The owner's words: a careful perch should be fine, and you
- * should only lose the craft when the props hit the ground.
+ * THE RULE IS A PROP STRIKE, and everything below is a way of asking
+ * whether one happened. The owner's words: a careful perch should be fine,
+ * and you should only lose the craft when the props hit the ground.
  *
- * TILT is the direct one, and it is DERIVED rather than chosen. The craft
- * rests with its centre 0.045 m over the surface, a prop disc sits 0.032 m
- * above that centre, and the swept radius is 0.1735 m (src/render/craft.js).
- * Roll by theta and the low prop's tip is at 0.032 cos(theta) minus 0.1735
+ * WHERE A PROP TOUCHES, derived rather than chosen. The craft rests with its
+ * centre 0.045 m over the surface, a prop disc sits 0.032 m above that
+ * centre, and the swept radius is 0.1735 m (src/render/craft.js). Roll by
+ * theta and the low prop's tip is at 0.032 cos(theta) minus 0.1735
  * sin(theta) above the centre; it reaches the ground when that equals
- * -0.045, which solves to 24.9 degrees. So 25 is where a prop touches down
- * before the arms do, and it is the one threshold that IS the rule rather
- * than a proxy for it.
+ * -0.045, which solves to 24.9 degrees. So LAND_TILT_MAX_DEG is where a
+ * blade first TOUCHES down.
  *
- * DESCENT is the other way to strike: come down hard enough and the props
- * are into the grass before the frame has finished absorbing it. A 5 inch
- * quad on grass takes about 2.5 m/s of vertical arrival, a drop of roughly
- * 0.32 m, which is more than any deliberate perch and less than any fall.
+ * A TOUCH IS NOT A STRIKE, and that distinction is the whole of what was
+ * wrong. A prop tip meeting grass at walking pace skips off it; every pilot
+ * has landed a little wing low and rolled level. Treating first contact as a
+ * destroyed aircraft is what made a deliberate landing feel like a coin
+ * toss. So past LAND_TILT_MAX_DEG the arrival is still a landing while the
+ * craft is barely moving, and only becomes a crash once there is speed
+ * behind the blade.
  *
- * HORIZONTAL was 3 m/s and that was the gate the owner was actually hitting.
- * It is the weakest proxy of the three: a LEVEL quad arriving across the
- * ground does not put a prop anywhere near it, it slides, and 3 m/s is a
- * brisk walk. Landing with drift on is a normal thing to do and it was
- * ending runs. 6 m/s is where a skid starts to become a tumble, and a
- * tumble is caught by the tilt gate a frame later anyway.
+ * PAST LAND_TILT_HARD_DEG there is no reading under which the props are up:
+ * the craft is arriving on its side, and that is a crash at any speed.
+ *
+ * WITH THE PROPS UP, the numbers are deliberately generous, because a level
+ * quad simply cannot put a blade into the ground. The frame and the arms
+ * take the arrival. 4 m/s of descent is a drop of 0.8 m, well past any
+ * perch and short of any fall, and 10 m/s across the ground is a skid rather
+ * than a tumble; a tumble raises the tilt and is caught a frame later by the
+ * gates above. The horizontal figure was 3 m/s to begin with, a brisk walk,
+ * and it was the gate that was actually ending the owner's runs: landing
+ * with drift on is a normal thing to do.
  */
-export const LAND_DESCENT_MAX = 2.5;   /* m/s downward */
-export const LAND_HORIZONTAL_MAX = 6.0; /* m/s */
-export const LAND_TILT_MAX_DEG = 25;
+export const LAND_DESCENT_MAX = 4.0;    /* m/s downward, props up */
+export const LAND_HORIZONTAL_MAX = 10.0; /* m/s, props up */
+export const LAND_TILT_MAX_DEG = 25;     /* where a blade first touches */
+export const LAND_TILT_HARD_DEG = 50;    /* arriving on its side */
+/* How fast a touching blade may be travelling and still skip rather than
+ * dig in. Walking pace: past it the tip has enough behind it to catch. */
+export const LAND_TIP_SPEED_MAX = 3.0;
 
 /*
- * Classify a ground arrival. Pure function, no allocation, so the frame
- * loop can call it every frame.
+ * Closing speed, in metres per second, above which touching an obstacle is a
+ * crash rather than a graze.
+ *
+ * A MultiGP gate is 1.315 inch PVC with vinyl mesh panels. Brushing an
+ * upright bounces you and you carry on; arriving at it at race speed does
+ * not. Until this existed every contact at any speed was a full crash with a
+ * 1.4 s lockout and a void lap, which is harsher than the physics AND
+ * harsher than the MultiGP rulebook, which does not invalidate a lap for
+ * obstacle contact. Applies to gate frames, obstacle furniture and flag
+ * poles. A tree, a rock or a cliff is a crash at any speed.
+ */
+export const GRAZE_SPEED_MAX = 4.0;
+
+/*
+ * Classify a ground arrival. Pure function, no allocation, so the frame loop
+ * can call it every frame.
  *
  *   descentRate  positive downward, m/s
  *   horizontal   horizontal speed, m/s
  *   tiltDeg      angle between the craft's own up axis and world up
  *
- * Returns 1 for a landing and 0 for a crash. An integer rather than a
- * string because this is on the per frame path and a string comparison
- * chain is not free.
+ * Returns 1 for a landing and 0 for a crash. An integer rather than a string
+ * because this is on the per frame path and a string comparison chain is not
+ * free.
  */
-/*
- * Closing speed, in metres per second, above which touching an obstacle is a
- * crash rather than a graze.
- *
- * A MultiGP gate is 1.315 inch PVC with vinyl mesh panels. Brushing an upright
- * bounces you and you carry on; arriving at it at race speed does not. Until
- * this existed every contact at any speed was a full crash with a 1.4 s
- * lockout and a void lap, which is harsher than the physics AND harsher than
- * the MultiGP rulebook, which does not invalidate a lap for obstacle contact.
- * Applies to gate frames, obstacle furniture and flag poles. A tree, a rock or
- * a cliff is a crash at any speed.
- */
-export const GRAZE_SPEED_MAX = 4.0;
-
 export function isLanding(descentRate, horizontal, tiltDeg) {
+  /* On its side. No reading of this has the props up. */
+  if (tiltDeg > LAND_TILT_HARD_DEG) {
+    return 0;
+  }
+  /* Props up, and arriving harder than the airframe absorbs. */
   if (descentRate > LAND_DESCENT_MAX) {
     return 0;
   }
   if (horizontal > LAND_HORIZONTAL_MAX) {
     return 0;
   }
+  /* Wing low enough that a blade is touching. A skip while crawling, a
+   * strike once there is speed behind it. Negative descent is a climb and
+   * must not subtract from the speed a blade would meet the ground with. */
   if (tiltDeg > LAND_TILT_MAX_DEG) {
-    return 0;
+    const up = descentRate > 0 ? descentRate : 0;
+    if (Math.sqrt(up * up + horizontal * horizontal) > LAND_TIP_SPEED_MAX) {
+      return 0;
+    }
   }
   return 1;
 }

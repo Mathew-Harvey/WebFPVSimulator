@@ -5816,3 +5816,107 @@ is still 43 draw calls and 63 meshes cheaper than it was.
 
 Check 13 console-clean passes with zero errors and zero warnings. The track
 builder's self test: 74 passed, 0 failed.
+
+## Round 36: a perch is a landing, and a crash is a time penalty
+
+### Nothing has happened to the flight feel, and here is the evidence
+
+Asked directly, so answered with the check rather than with an opinion. The
+canonical replay hash is **ce9826fc2ce5** and it is the same figure it was
+before any of rounds 34 to 36: identical between two in-process replays,
+identical between Node and headless Chrome, and identical across 30, 60, 144
+and 240 Hz render rates. Checks 5 to 12 are unmoved too: hover 0.2051, punch
+out 82.1 m, terminal 31.3 m/s, motor step 18 ms, rate tracking 0.02 percent
+off, sag 10.15 percent, diff passthrough 0.04 percent off.
+
+That is what it should be. Nothing in these three rounds touched
+src/native/, patches/, vendor/betaflight, src/input/ or configs/: the
+controller, the mixer, the motor model, the RC path and the tunes are the
+files they were. What changed is what the GAME does with the craft, which is
+the subject of the rest of this entry.
+
+### A perch is a landing
+
+The rule was three thresholds and the owner was hitting the weakest of them.
+Restated as what it is meant to ask, whether a prop hit the ground:
+
+**Where a blade touches is derived, not chosen**, and that part was already
+right: the craft rests with its centre 0.045 m up, the disc sits 0.032 m
+above the centre, the sweep is 0.1735 m, and the low blade reaches the
+ground at 24.9 degrees.
+
+**A touch is not a strike**, and that is what was wrong. A blade meeting
+grass at walking pace skips off it; every pilot has landed a little wing low
+and rolled level. Treating first contact as a destroyed aircraft made a
+deliberate landing a coin toss. Past 25 degrees it is now a landing while
+the craft is crawling, under 3 m/s, and a crash once there is speed behind
+the blade. Past 50 degrees it is arriving on its side and there is no
+reading under which the props are up.
+
+**With the props up the numbers are generous on purpose**, because a level
+quad cannot put a blade into the ground: the frame takes it. Descent 2.0 to
+4.0 m/s, a drop of 0.8 m. Horizontal 3.0 to 10.0 m/s, and 3 was the gate
+actually ending runs, a brisk walk, on a manoeuvre where carrying drift is
+normal.
+
+Checked against eight arrivals: level perches with and without drift, a firm
+one at 3.5 m/s and a 9 m/s skid all land; a slow wing-low touch lands, the
+same attitude at 6 m/s does not, a 7 m/s slam does not, and arriving on its
+side does not.
+
+### A crash is a time penalty now, not a lap
+
+It used to void the lap AND put the craft on the start line with the flying
+order reset to gate zero, so one clipped upright cost the lap and made you
+fly it again from the timing gate. It now works the way a racing sim works:
+the craft comes back on the ground 7 m behind the gate the race still wants,
+facing it, and the pilot flies on.
+
+Three parts of that are worth stating.
+
+**The offset formula is the field's own.** A gate's heading is the direction
+a craft at that yaw is flown THROUGH it, so stepping the other way along it
+is the approach side, for any gate on any course. It is the same arithmetic
+the race field already used to stand its quad back from the timing gate.
+
+**The clock does not stop.** simTimeMs and simStepMs being separate
+variables is what makes that possible and the distinction was already
+written down for another reason: simStepMs mirrors the module's step_index,
+which sim_reset has just zeroed, so it must follow or every queued stick
+sample lands in the integrator's future. simTimeMs is the LAP clock and
+belongs to the race. It now keeps advancing through the 1.4 s lockout as
+well, because if the lockout were free a crash would cost nothing at all.
+
+**The lap is not voided**, and that is a rule changing rather than bending.
+The note beside GRAZE_SPEED_MAX has said since it was written that voiding
+for obstacle contact is harsher than the physics and harsher than the
+MultiGP rulebook, which does not invalidate a lap for touching a gate. Time
+is the penalty.
+
+The obvious worry is a pilot crashing on purpose to skip a long leg. The
+respawn is behind a gate they have NOT flown, so nothing is skipped in the
+ORDER; what is skipped is the distance, and it is paid for with the lockout
+and a standing start. At 20 m/s a 40 m leg is two seconds, which is about
+what stopping and spooling up again costs. Break even at best, and stated
+here so the next round does not have to rediscover it.
+
+A graze moved to the same path for a second reason: voidLap resets the
+flying order to the start gate, so a gentle clip halfway round the course
+silently sent the pilot's next target back to the timing line without moving
+the craft.
+
+### One self inflicted break, found by the harness
+
+Rewriting the comment block above the landing constants deleted
+GRAZE_SPEED_MAX along with it, because the constant sat inside the range
+being replaced. The page then failed to import collide.js at all and checks
+14, 15 and 16 came back as harness errors rather than as failures. Restored
+with its own documentation. Worth recording because it is the argument for
+running the checks rather than reading the diff: three greens went red for a
+reason no amount of looking at the edit would have shown.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has.
+Checks 2, 3 and 4 hold the hash at ce9826fc2ce5. Check 13 console-clean
+passes with zero errors and zero warnings. Checks 15 and 16 pass unchanged.

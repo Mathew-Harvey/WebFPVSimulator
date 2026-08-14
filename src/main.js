@@ -44,7 +44,7 @@ import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './ren
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui } from './ui/ui.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
@@ -117,6 +117,14 @@ const SURFACE_BIAS = 0.40;
  * the pilot did not fly.
  */
 const PARKED_LIFT = 0.30;
+/*
+ * How far behind the next gate a crashed craft is put back on the ground, in
+ * metres along that gate's own approach. The same figure the race field
+ * stands its quad back from the timing gate with, so a respawn is framed
+ * exactly like a start: the gate ahead, square on, at a distance that gives
+ * the motors somewhere to spool before the opening arrives.
+ */
+const RECOVER_BACK = 7;
 /* The controller consumes each input sample as one RC frame, so the shell
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
@@ -442,7 +450,13 @@ export async function boot({ loading, bootStart, mapId }) {
     landed = false;
     takingOff = false;
     crashedAtWall = nowWall;
-    race.voidLap(reason, nowWall);
+    /*
+     * A crash is flown out of, not restarted from. The race keeps its place
+     * in the flying order and its lap clock; resetCraft puts the craft back
+     * on the ground in front of the gate it was heading for. On a freestyle
+     * map there is no order to keep, and Race.recover says so for both.
+     */
+    race.recover(reason, nowWall);
     view.setNextGate(race.nextSceneIndex());
     if (typeof audio.event === 'function') {
       audio.event('crash');
@@ -458,14 +472,60 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * Put the craft back on the start line without ending the run. A crash
-   * costs the lap it happens on, not the laps already flown: erasing three
-   * clean laps because of one clipped tree is not how a race works.
+   * Where a crashed craft comes back, in world space: on the ground, behind
+   * the gate the race still wants, facing it.
+   *
+   * The offset is along +(sin heading, cos heading) and the craft's own yaw
+   * is the heading, which is the SAME arrangement the race field uses to
+   * stand its quad back from the timing gate. It is not an accident that one
+   * formula serves both: a gate's heading is the direction a craft at that
+   * yaw is flown THROUGH it, so stepping the other way along it is always
+   * the approach side, for any gate on any course.
+   *
+   * Returns null when there is no gate to come back to, which is a freestyle
+   * map and an empty custom course. Those go back to the spawn, as before.
    */
-  function resetCraft() {
+  function recoverySpawn() {
+    const i = race.nextSceneIndex();
+    const gt = view.gates && view.gates[i];
+    if (!gt) {
+      return null;
+    }
+    return {
+      x: gt.position.x + Math.sin(gt.heading) * RECOVER_BACK,
+      z: gt.position.z + Math.cos(gt.heading) * RECOVER_BACK,
+      yaw: gt.heading,
+    };
+  }
+
+  /*
+   * Put the craft back into the run without ending it. A crash costs the
+   * lap it happens on, not the laps already flown: erasing three clean laps
+   * because of one clipped tree is not how a race works.
+   *
+   * `at` is where to come back, and the default is the start line. A crash
+   * passes the recovery point instead, which is what lets a pilot fly out of
+   * one rather than restart from the timing gate.
+   */
+  function resetCraft(at) {
+    if (at) {
+      startX = at.x;
+      startZ = at.z;
+      startYaw = at.yaw;
+      startY = groundAt(startX, startZ);
+      qSpawn.setFromAxisAngle(AXIS_Y, startYaw);
+    }
     sim.reset();
     sim.setCellVoltage(runVoltage);
-    simTimeMs = 0;
+    /*
+     * THE LAP CLOCK IS NOT TOUCHED, and the two clocks being separate
+     * variables is what makes that possible. simStepMs mirrors the module's
+     * own step_index, which sim_reset has just put back to zero, so it MUST
+     * follow or every queued stick sample lands in the integrator's future.
+     * simTimeMs is the LAP clock and belongs to the race, which is still
+     * running: zeroing it here is what used to hand a crashed pilot their
+     * lap time back.
+     */
     simStepMs = 0;
     acc = 0;
     lastTs = 0;
@@ -503,6 +563,10 @@ export async function boot({ loading, bootStart, mapId }) {
      * without this a player could change packs mid run and have the lap
      * compared against another pack's record. */
     runVoltage = ui.settings.packVoltage;
+    /* Back to the MAP's own spawn. A crash recovery moves the spawn offset
+     * to a point on the course, and a new run must not begin from wherever
+     * the last one happened to end. */
+    adoptSpawn();
     sim.reset();
     sim.setCellVoltage(runVoltage);
     simTimeMs = 0;
@@ -1179,7 +1243,7 @@ export async function boot({ loading, bootStart, mapId }) {
             audio.event('land');
           }
         } else {
-          crashInto('Crashed\nLap void', nowWall);
+          crashInto('Crashed', nowWall);
         }
       }
     } else if (mode === 'flight' && !crashed && launched && landed) {
@@ -1204,10 +1268,32 @@ export async function boot({ loading, bootStart, mapId }) {
       simTimeMs += steps;
       pinRcGrid();
       statePrev = stateCurr;
-    } else if (mode === 'flight' && crashed && nowWall - crashedAtWall > 1400) {
-      /* Short lockout, then back on the line. The lap is gone, the run is
-       * not. */
-      resetCraft();
+    } else if (mode === 'flight' && crashed) {
+      /*
+       * THE CLOCK DOES NOT STOP FOR A CRASH. That is the whole of what makes
+       * the new penalty a penalty: the lap is not thrown away, so the only
+       * thing a crash costs is the lockout and the standing start, and if
+       * neither of those were on the clock a crash would cost nothing at
+       * all. The integrator is NOT stepped, exactly as it is not while the
+       * craft sits landed; only the lap clock advances.
+       *
+       * The two states are made identical for the same reason the landing
+       * branch does it: with the integrator frozen, the render would
+       * otherwise slide the wreck between the last two stale poses forever.
+       */
+      acc += dt;
+      let steps = Math.floor(acc);
+      acc -= steps;
+      if (steps > 100) {
+        steps = 100;
+      }
+      simTimeMs += steps;
+      statePrev = stateCurr;
+      if (nowWall - crashedAtWall > 1400) {
+        /* Short lockout, then back on the COURSE: on the ground in front of
+         * the gate the race still wants, with the clock still running. */
+        resetCraft(recoverySpawn());
+      }
     }
 
     /* Render: interpolate the two most recent physics states. The sim
@@ -1287,7 +1373,19 @@ export async function boot({ loading, bootStart, mapId }) {
         lastClosing = closing;
         const soft = lastHitKind === 'gate' || lastHitKind === 'obstacle' || lastHitKind === 'pole';
         if (soft && closing < GRAZE_SPEED_MAX) {
-          race.voidLap(`Clipped the ${lastHitKind}\nLap void`, nowWall);
+          /*
+           * A graze costs nothing but the bounce. It used to void the lap,
+           * which under the new crash rule is backwards: a hard hit now
+           * costs only the time it takes to get going again, so punishing a
+           * touch harder than a wreck cannot be right. It is also what the
+           * MultiGP rulebook says, which the note above already observed.
+           *
+           * Using recover rather than voidLap matters for a second reason:
+           * voidLap resets the flying order to the start gate, so a gentle
+           * clip halfway round the course silently sent the pilot's next
+           * target back to the timing line without moving the craft.
+           */
+          race.recover(`Clipped the ${lastHitKind}`, nowWall);
           view.setNextGate(race.nextSceneIndex());
           /* 'clip', not 'gate': the graze penalty must not sound like the
            * pass reward, or the ear learns the wrong lesson at speed. */
@@ -1295,7 +1393,7 @@ export async function boot({ loading, bootStart, mapId }) {
             audio.event('clip');
           }
         } else {
-          crashInto(`Hit the ${lastHitKind}\nLap void`, nowWall);
+          crashInto(`Hit the ${lastHitKind}`, nowWall);
         }
       }
     }
@@ -1627,6 +1725,8 @@ export async function boot({ loading, bootStart, mapId }) {
       descentMax: LAND_DESCENT_MAX,
       horizontalMax: LAND_HORIZONTAL_MAX,
       tiltMaxDeg: LAND_TILT_MAX_DEG,
+      tiltHardDeg: LAND_TILT_HARD_DEG,
+      tipSpeedMax: LAND_TIP_SPEED_MAX,
       /* The radius the QUERY sweeps, in world metres, because that is what
        * check 15 compares against the drawn craft's world bounding box. The
        * airframe's true radius and the ratio between them are published

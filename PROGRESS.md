@@ -6421,4 +6421,38 @@ Verify: not run. This turn does not touch src/native, the WASM build, the
 input path or the simulation trace. Track builder selftest: 127 passed, 0
 failed.
 
+### 2026-08-14 | share | public board of published courses
+
+Changed: the simulator, the track builder and a new site,
+webfpvleaderboard, now share one contract. A published course is the
+track document from schema.md, logo included, so every gate and every
+flag on the board copy wears the same sponsor print. The board is a
+separate repo. Locally it serves at http://127.0.0.1:3100/ and stores
+in a JSON file. DATABASE_URL switches it to Postgres for Render.
+
+The link is a URL, not a file and not postMessage:
+
+  {sim}/?map=custom&share={id}&board={board}
+
+The simulator fetches the document, parks it in
+webfpv.share.import.v1, and builds Your track from that seat. The
+builder's autosave is a different key. Fly this track clears the
+import so the canvas wins. Publish from the builder sends the
+document and keeps an edit key in this browser. A layout change
+clears the old times.
+
+The title screen says tracks stay in this browser until they are
+published. Settings and the results screen ask for a name, two to
+twenty four characters, stored as webfpv.pilot.name. Post this time
+sends the fastest clean lap of the run.
+
+What went wrong: the board's file store captured BOARD_FILE at
+import time, so the selftest wrote into data/board.json and the
+second run treated a leftover course as already published. The path
+is read when the store opens.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace. Track builder selftest: 127
+passed, 0 failed. Leaderboard selftest: 25 passed, 0 failed, twice.
+
 

@@ -7,12 +7,14 @@
  * knows how to turn one into the other. All that is left is to fetch the
  * document and hand it over, which is what this file does and all it does.
  *
- * WHICH TRACK. The one open in the builder. The builder autosaves its working
- * document on every edit, so pressing Fly this track and then choosing Your
- * track flies exactly what is on the builder's canvas, with no save step to
- * forget. Reading the autosave through the builder's own storage module
- * rather than reaching for a local storage key means the key is written down
- * once, in the module that owns it.
+ * WHICH TRACK. A published course imported from the public board, if one is
+ * sitting in the share seat, otherwise the one open in the builder. The
+ * builder autosaves its working document on every edit, so pressing Fly this
+ * track and then choosing Your track flies exactly what is on the builder's
+ * canvas, with no save step to forget. A share import is a different key:
+ * the board opens the simulator with ?share=id, the document lands here, and
+ * the draft is left alone. Reading both through the modules that own those
+ * keys means neither key is written down twice.
  *
  * NO TRACK IS NOT AN ERROR. A player who picks this map having never opened
  * the builder gets the world with nothing in it and a note saying so, the
@@ -38,14 +40,20 @@ import { buildFieldScene } from '../render/scene.js';
 import { buildComposer } from '../render/post.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { readAutosave } from '../trackbuilder/storage.js';
+import { readShareImport } from '../share/session.js';
 
 /*
- * The document the builder is working on, or null. Never throws: a corrupt
- * entry yields null and the map says there is no track rather than refusing
- * to boot, which is the same rule the builder applies to its own reads.
+ * The document that will be built, or null. A share import wins, then the
+ * builder's autosave. Never throws: a corrupt entry yields null and the map
+ * says there is no track rather than refusing to boot, which is the same
+ * rule the builder applies to its own reads.
  */
 export function workingDocument() {
   try {
+    const share = readShareImport();
+    if (share && share.document) {
+      return share.document;
+    }
     const saved = readAutosave();
     return saved && saved.doc ? saved.doc : null;
   } catch (e) {
@@ -55,19 +63,31 @@ export function workingDocument() {
 
 /* Enough to put a name on the menu without building anything. */
 export function trackSummary() {
+  const share = readShareImport();
   const doc = workingDocument();
   if (!doc) {
     return null;
   }
   const gates = doc.sequence.length;
-  return { name: doc.name, gates, elements: doc.elements.length };
+  return {
+    name: doc.name,
+    gates,
+    elements: doc.elements.length,
+    shared: Boolean(share),
+    author: share ? share.author : '',
+    shareId: share ? share.id : null,
+  };
 }
 
 export async function buildMap(shell, onProgress) {
   const progress = onProgress ?? (() => {});
+  const share = readShareImport();
   const doc = workingDocument();
   const course = doc ? courseFromDocument(doc) : emptyCourse();
   const map = buildFieldScene(shell, progress, course);
+  map.share = share
+    ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
+    : null;
   const post = buildComposer(shell.renderer, map.scene, shell.camera);
   const d = shell.resize();
   post.setSize(d.w, d.h);

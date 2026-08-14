@@ -446,13 +446,15 @@ function cityReel() {
  * builder's pure data, the builder may not read the game.
  */
 async function customReel() {
-  const [{ readAutosave }, { buildPath }, { ELEMENTS, KIND, apertureLevels }] = await Promise.all([
+  const [{ readAutosave }, { readShareImport }, { buildPath }, { ELEMENTS, KIND, apertureLevels }] = await Promise.all([
     import('../trackbuilder/storage.js'),
+    import('../share/session.js'),
     import('../trackbuilder/path.js'),
     import('../trackbuilder/elements.js'),
   ]);
+  const share = readShareImport();
   const saved = readAutosave();
-  const doc = saved && saved.doc ? saved.doc : null;
+  const doc = (share && share.document) || (saved && saved.doc) || null;
   if (!doc || !doc.sequence.length) {
     return null;
   }

@@ -79,6 +79,16 @@
 
       #tb-app { display: flex; flex-direction: column; height: 100%; }
 
+      #tb-keep {
+        padding: 6px 12px;
+        background: rgba(8, 13, 20, 0.92);
+        border-bottom: 1px solid var(--line);
+        color: var(--dim);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      #tb-keep strong { color: var(--amber); font-weight: 650; }
+
       /* ---------------- top bar ---------------- */
 
       #tb-topbar {
@@ -481,6 +491,10 @@
   <body>
     <div id="tb-app">
       <header id="tb-topbar"></header>
+      <div id="tb-keep">
+        <strong>This browser only.</strong>
+        Tracks you build stay here. Clearing the browser, or opening another device, starts you from nothing. Publish a course to put it on the public board.
+      </div>
       <main id="tb-main">
         <aside id="tb-palette" class="tb-panel"></aside>
         <div id="tb-stage">

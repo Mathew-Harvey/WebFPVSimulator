@@ -47,6 +47,9 @@ import {
   RATE_CENTRE_CHOICES,
   RATE_EXPO_CHOICES,
 } from '../../configs/rates.js';
+import { boardPageUrl } from '../share/board.js';
+import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
+import { activeCourseSummary } from '../share/summary.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -197,6 +200,20 @@ function stepper(label, note, value, adjust) {
   return { label, note, value, adjust, step: true };
 }
 
+function customMapNote(map, seat) {
+  if (map.id !== 'custom') {
+    return map.note;
+  }
+  if (seat && seat.shared) {
+    const by = seat.author ? ` by ${seat.author}` : '';
+    return `${seat.name}${by}. A published course. Fly it and post a time under your name.`;
+  }
+  if (seat) {
+    return `${seat.name}, ${seat.gates} gate${seat.gates === 1 ? '' : 's'}. This copy lives in this browser until you publish it.`;
+  }
+  return map.note;
+}
+
 function tuneItem(s) {
   return choice(
     'Tune',
@@ -217,6 +234,8 @@ export class Ui {
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
+    this.share = null;       /* published course this run is flying, or null */
+    this.timePosted = null;  /* last successful post on the results screen */
     this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
     this.dropEl = null;
     this.dropIndex = null;
@@ -279,6 +298,8 @@ export class Ui {
     brand.append(el('h1', null, 'WEBFPV'), this.brandSub);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
+    this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a course to put it on the public board.');
+    brand.append(this.keepNote);
     const titleBlock = wrapMenu();
     this.titleMenu = titleBlock.menu;
     this.titleHelp = titleBlock.help;
@@ -385,11 +406,113 @@ export class Ui {
     results.append(this.resultsHead, this.resultsBody, resultsBlock.stage);
     this.screens.results = results;
 
+    this.nameDialog = el('div', 'name-dialog');
+    this.nameDialog.hidden = true;
+    this.nameDialog.setAttribute('aria-modal', 'true');
+    this.nameDialog.setAttribute('role', 'dialog');
+
     for (const s of Object.values(this.screens)) {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.banner, this.readout);
+    r.append(this.banner, this.readout, this.nameDialog);
+  }
+
+  setShare(share) {
+    this.share = share || null;
+    this.timePosted = null;
+    if (this.screen === 'title' || this.screen === 'maps' || this.screen === 'results') {
+      this.renderMenu();
+    }
+  }
+
+  markTimePosted(posted) {
+    this.timePosted = posted || { ok: true };
+    if (this.screen === 'results') {
+      this.renderMenu();
+    }
+  }
+
+  /*
+   * A name is typed, not flown. The stick menu cannot enter one, so this is
+   * a small overlay with a field. Resolves to the stored name, or null if
+   * they cancel.
+   */
+  askName({ title, detail } = {}) {
+    if (this.nameWait) {
+      this.closeNameDialog(null);
+    }
+    return new Promise((resolve) => {
+      this.nameWait = resolve;
+      const box = el('div', 'name-dialog-box');
+      box.append(el('h2', null, title || 'Your name'));
+      box.append(el('p', 'lede', detail || 'Posted times and published courses carry this name.'));
+      box.append(el('p', 'lede', nameRules()));
+      const field = document.createElement('input');
+      field.type = 'text';
+      field.className = 'name-dialog-input';
+      field.maxLength = 24;
+      field.autocomplete = 'nickname';
+      field.value = readPilotName() || '';
+      field.placeholder = 'Name';
+      const err = el('p', 'name-dialog-err', '');
+      const row = el('div', 'name-dialog-row');
+      const save = btn('name-dialog-btn on', 'Save');
+      const cancel = btn('name-dialog-btn', 'Cancel');
+      row.append(save, cancel);
+      box.append(field, err, row);
+      this.nameDialog.textContent = '';
+      this.nameDialog.append(box);
+      this.nameDialog.hidden = false;
+      const finish = (value) => {
+        field.removeEventListener('keydown', onKey);
+        this.closeNameDialog(value);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          const name = writePilotName(field.value);
+          if (!name) {
+            err.textContent = nameRules();
+            return;
+          }
+          finish(name);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(null);
+        }
+      };
+      field.addEventListener('keydown', onKey);
+      save.addEventListener('click', () => {
+        const name = writePilotName(field.value);
+        if (!name) {
+          err.textContent = nameRules();
+          return;
+        }
+        finish(name);
+      });
+      cancel.addEventListener('click', () => finish(null));
+      this.nameDialog.addEventListener('click', (e) => {
+        if (e.target === this.nameDialog) {
+          finish(null);
+        }
+      }, { once: true });
+      field.focus();
+      field.select();
+    });
+  }
+
+  closeNameDialog(value) {
+    this.nameDialog.hidden = true;
+    this.nameDialog.textContent = '';
+    const done = this.nameWait;
+    this.nameWait = null;
+    if (done) {
+      done(value);
+    }
+    this.renderMenu();
   }
 
   /* Menu definitions are rebuilt on show so values read correctly. */
@@ -397,17 +520,18 @@ export class Ui {
     const s = this.settings;
     if (this.screen === 'title') {
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
+      const seat = m.id === 'custom' ? activeCourseSummary() : null;
       return [
         { label: 'Fly', action: 'fly' },
         {
           label: 'Map',
-          value: m.name,
+          value: seat ? seat.name : m.name,
           /* An action, not a value to step through. Choosing the world loads
            * one, which takes seconds, so stepping past a world with the
            * arrow key used to start building it: the map screen makes the
            * choice deliberate and shows what each one is. */
           action: 'maps',
-          note: m.note,
+          note: customMapNote(m, seat),
         },
         tuneItem(s),
         { label: 'How to fly', action: 'howto' },
@@ -415,7 +539,12 @@ export class Ui {
         {
           label: 'Track builder',
           action: 'trackbuilder',
-          note: 'Design a course. Place gates, set which way each one is flown, and derive the racing line.',
+          note: 'Design a course. Place gates, set which way each one is flown, and derive the racing line. Tracks stay in this browser until you publish them.',
+        },
+        {
+          label: 'Leaderboard',
+          action: 'leaderboard',
+          note: 'Published courses and their times. Opens in a new tab.',
         },
       ];
     }
@@ -423,10 +552,11 @@ export class Ui {
       return [{ label: 'Back', action: 'back' }];
     }
     if (this.screen === 'maps') {
+      const seat = activeCourseSummary();
       return [
         ...MAPS.map((m) => ({
-          label: m.name,
-          note: m.note,
+          label: m.id === 'custom' && seat ? seat.name : m.name,
+          note: customMapNote(m, m.id === 'custom' ? seat : null),
           map: m,
           action: `map:${m.id}`,
         })),
@@ -435,7 +565,16 @@ export class Ui {
     }
     if (this.screen === 'settings') {
       const musicIds = ['rotation', ...TRACKS.map((t) => t.id)];
+      const name = readPilotName();
       return [
+        {
+          label: 'Your name',
+          value: name || 'Not set',
+          action: 'setname',
+          note: name
+            ? 'Posted times and published courses carry this name. It stays in this browser.'
+            : `Needed to publish a course or post a time. ${nameRules()}`,
+        },
         choice(
           'Rate, roll and pitch',
           'ACTUAL rates. How fast the quad spins with the stick against the stop, exactly. Betaflight ships 670.',
@@ -559,10 +698,25 @@ export class Ui {
       ];
     }
     if (this.screen === 'results') {
-      return [
+      const rows = [
         { label: 'Fly again', action: 'restart' },
-        { label: 'Back to title', action: 'title' },
       ];
+      if (this.share && this.share.id) {
+        rows.push({
+          label: this.timePosted ? 'Time posted' : 'Post this time',
+          action: 'posttime',
+          note: this.timePosted
+            ? 'That lap is on the public board.'
+            : 'Send your fastest clean lap to the public board. Needs a name.',
+        });
+        rows.push({
+          label: 'Open the board',
+          action: 'leaderboard',
+          note: `The public page for ${this.share.name || 'this course'}.`,
+        });
+      }
+      rows.push({ label: 'Back to title', action: 'title' });
+      return rows;
     }
     return [];
   }
@@ -854,7 +1008,7 @@ export class Ui {
         });
         host.append(card);
         return {
-          card, shot, tag, still, id: it.map.id,
+          card, shot, tag, still, name, id: it.map.id,
         };
       });
       this.startReels();
@@ -862,6 +1016,10 @@ export class Ui {
     this.mapCards.forEach((c, i) => {
       c.card.classList.toggle('on', i === this.cursor);
       c.tag.textContent = c.id === this.settings.map ? 'Flying now' : '';
+      if (c.id === 'custom' && c.name) {
+        const seat = activeCourseSummary();
+        c.name.textContent = seat ? seat.name : 'Your track';
+      }
     });
   }
 
@@ -1031,6 +1189,11 @@ export class Ui {
     if (best != null) {
       this.resultsBody.append(el('p', 'lede', `Track record ${formatTime(best)}.`));
     }
+    if (this.share && this.share.id) {
+      const by = this.share.author ? ` by ${this.share.author}` : '';
+      this.resultsBody.append(el('p', 'lede', `${this.share.name || 'This course'}${by} is on the public board. Post a time under your name to appear on it.`));
+    }
+    this.timePosted = null;
     this.show('results');
   }
 
@@ -1178,6 +1341,10 @@ export class Ui {
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
+    if (action === 'leaderboard') {
+      window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
+      return;
+    }
     if (action === 'howto' || action === 'settings' || action === 'maps') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
@@ -1212,6 +1379,9 @@ export class Ui {
   /* Returns true when the key was a menu key and the shell should not
    * treat it as a flight control. */
   handleKey(code) {
+    if (this.nameDialog && !this.nameDialog.hidden) {
+      return true;
+    }
     if (code === 'F3') {
       this.settings.readout = !this.settings.readout;
       saveSettings(this.settings);

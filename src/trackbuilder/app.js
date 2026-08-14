@@ -34,7 +34,7 @@ import { ELEMENTS, KIND, elementByKey } from './elements.js';
 import {
   createTrack, createElement, deepClone, deserialize, duplicateTrack,
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
-  aperturesOf,
+  aperturesOf, toPlain,
 } from './model.js';
 import { applyAutoFaces, clearOverride, defaultYawFor, flipFace } from './faces.js';
 import {
@@ -54,6 +54,9 @@ import { View2D } from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
 import { RAD } from './geometry.js';
+import { boardOrigin, boardPageUrl, publishTrack, setBoardOrigin } from '../share/board.js';
+import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
+import { clearShareImport, readEditKey, writeEditKey } from '../share/session.js';
 
 export class App {
   constructor(nodes) {
@@ -602,6 +605,101 @@ export class App {
     this.toast('Exported.');
   }
 
+  /*
+   * Put this course on the public board. The document goes as it is, logo
+   * included, so every gate and every flag on the board copy wears the
+   * same print the author sees here.
+   */
+  openPublish() {
+    if (!this.doc.sequence.length) {
+      this.toast('A published course needs at least one gate in the flying order.');
+      return;
+    }
+    this.autosaver.flush();
+    const body = document.createElement('div');
+    const help = document.createElement('p');
+    help.className = 'tb-help';
+    help.textContent = 'The public board keeps a copy of this course, including the logo on the gates and flags. Times people post are stored there. The copy in this browser is still only in this browser.';
+    body.append(help);
+
+    const nameField = document.createElement('div');
+    nameField.className = 'tb-field';
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'tb-field-label';
+    nameLabel.textContent = 'Your name';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.maxLength = 24;
+    nameInput.value = readPilotName() || '';
+    nameInput.style.width = '180px';
+    nameField.append(nameLabel, nameInput);
+    body.append(nameField);
+    const nameHelp = document.createElement('p');
+    nameHelp.className = 'tb-help';
+    nameHelp.textContent = nameRules();
+    body.append(nameHelp);
+
+    const boardField = document.createElement('div');
+    boardField.className = 'tb-field';
+    const boardLabel = document.createElement('label');
+    boardLabel.className = 'tb-field-label';
+    boardLabel.textContent = 'Board address';
+    const boardInput = document.createElement('input');
+    boardInput.type = 'url';
+    boardInput.value = boardOrigin();
+    boardInput.style.width = '220px';
+    boardField.append(boardLabel, boardInput);
+    body.append(boardField);
+
+    const status = document.createElement('p');
+    status.className = 'tb-help';
+    body.append(status);
+
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'tb-btn tb-primary';
+    send.textContent = 'Publish this course';
+    send.addEventListener('click', async () => {
+      const author = writePilotName(nameInput.value);
+      if (!author) {
+        status.textContent = nameRules();
+        return;
+      }
+      const origin = setBoardOrigin(boardInput.value) || boardOrigin();
+      send.disabled = true;
+      status.textContent = 'Sending the course, logo included.';
+      try {
+        const posted = await publishTrack({
+          author,
+          document: toPlain(this.doc),
+          editKey: readEditKey(this.doc.id),
+          origin,
+        });
+        if (posted.editKey) {
+          writeEditKey(posted.id || this.doc.id, posted.editKey);
+        }
+        const cleared = posted.timesCleared
+          ? ' The flying layout changed, so the old times were cleared.'
+          : '';
+        status.textContent = `Published as "${posted.name}".${cleared}`;
+        this.toast(`Published "${posted.name}" to the board.`);
+        const open = document.createElement('a');
+        open.className = 'tb-btn tb-primary';
+        open.href = boardPageUrl(origin);
+        open.target = '_blank';
+        open.rel = 'noopener';
+        open.textContent = 'Open the board';
+        send.replaceWith(open);
+      } catch (e) {
+        send.disabled = false;
+        status.textContent = e.message || 'The board could not take that course.';
+        this.toast(`Could not publish: ${e.message || e}`);
+      }
+    });
+    body.append(send);
+    this.modal('Publish this course', body);
+  }
+
   /* ---------------- the event logo ---------------- */
 
   /*
@@ -818,8 +916,13 @@ export class App {
      */
     this.flyBtn = btn('Fly this track', () => {
       this.autosaver.flush();
+      /* The share seat is a published course. Flying the canvas must not
+       * leave that import in place, or the simulator would build the board
+       * copy instead of this one. */
+      clearShareImport();
       window.location.href = '../../index.html?map=custom';
     }, 'Build the world around this course and fly it', 'tb-btn tb-primary');
+    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, logo and all');
 
     const back = document.createElement('a');
     back.className = 'tb-btn tb-quiet';
@@ -845,6 +948,7 @@ export class App {
       group(this.mode2d, this.mode3d),
       group(btn('Fit', () => this.frameAll(), 'Frame the whole field')),
       this.pathBtn,
+      this.publishBtn,
       this.flyBtn,
       back,
       file,

@@ -5389,3 +5389,88 @@ shadows and the crossing shadows all read as they did.
 passes with zero errors and zero warnings**, which is the check that caught the
 mixed index bucket and is the reason this round shipped correct rather than 35
 cells short. Checks 15 and 16 pass unchanged.
+
+## Round 33: attributes nothing reads, and the cull cell swept again
+
+### 15.4 MB of uv that no shader could see
+
+three declares the uv attribute when a uv sampled map is present and not
+otherwise, so geometry whose material carries no map, alphaMap, emissiveMap or
+the rest has a uv buffer nothing can read. `trimAttributes` drops it after the
+merge, 943 geometries and 15.4 MB.
+
+The one to get right is `gradientMap`, which does NOT count: a toon ramp is
+sampled by the lighting dot product rather than by uv, and this town puts one
+on nearly every material it makes, so treating it as a uv user would have
+refused almost everything.
+
+It runs after the merge rather than before, because the bucket key carries the
+attribute signature: stripping uv from some sources and not others splits
+buckets that should have merged, trading a draw call for a few kilobytes.
+
+### 5.0 MB of colour that said what the material already said
+
+`bakeColourToVertices` painted every look. A look whose every user is the SAME
+colour was never splitting a merge bucket: those materials are identical in
+appearance, shareMaterials collapses them to one, and they merge with no help.
+Counting first, 61 of the town's 137 colour looks hold exactly one colour, and
+skipping them takes the colour attribute from 26.9 MB to 21.9 MB with the draw
+calls bit identical at all five viewpoints.
+
+### P10 is a wash, and this is where it went
+
+| attribute | round 32 | now |
+|-----------|---------:|----:|
+| position | 28.0 MB | 41.9 MB |
+| normal   | 28.0 MB | 28.0 MB |
+| colour   | 26.3 MB | 21.9 MB |
+| uv       | 16.0 MB |  0.6 MB |
+| index    |  8.8 MB | 14.7 MB |
+
+20.4 MB came off the attributes nothing read and 18.1 MB went on as shadow
+proxy positions, so the total is where it started. That is the honest ledger of
+round 32's trade: 437 draw calls at the worst view, bought with a second copy
+of the casters at a quarter of their attribute cost. P10 stays open at about
+92 MB against 48, and the next moves on it are quantising normal to Int8x4,
+worth 18.7 MB, and colour to Uint16, worth 11 MB. Neither is done because both
+change what the GPU is handed and this round had no time left to pixel diff
+them properly.
+
+### CULL_CELL swept a third time
+
+The shadow pass no longer scales with it now that proxies carry the casters, so
+the trade was re-measured. Worst of four viewpoints at a 70 m radius:
+
+| CULL_CELL | worst calls | worst triangles |
+|-----------|------------:|----------------:|
+| 40        | **946** | **2,231,537** |
+| 50        | 918 | 2,419,755 |
+| 60        | 860 | 2,556,184 |
+
+60 is 86 draw calls better and 325,000 triangles worse. Read as the worse of
+the two ratios it wins, 2.15x against 2.37x, and it is kept at 40 anyway: the
+triangles it hands back are also shadow pass triangles and fill, the existing
+reasoning about a cell only being dropped once ALL of it is out of range has
+not changed, and 86 calls is inside the spread between viewpoints. Written down
+so the next round does not sweep it a fourth time without a reason.
+
+### Where the whole run lands
+
+| view | start | now | triangles start | triangles now |
+|---------|-----:|-----:|-----------:|-----------:|
+| spawn   | 2049 | **946** | 2,759,143 | 2,231,537 |
+| street  | 1715 | **811** | 2,765,233 | 2,171,627 |
+| rooftop | 1726 | **811** | 2,914,891 | 2,190,557 |
+| flying  | 1996 | **872** | 2,977,665 | 2,209,747 |
+| high    | 1853 | **804** | 2,691,893 | 1,953,275 |
+
+Worst view 2049 draw calls to 946 and 2,977,665 triangles to 2,231,537. **54
+percent off the draw calls and 25 percent off the triangles.** P1 is 2.4x over
+budget where it was 5.1x, and P2 is 1.9x where it was 2.5x. The map is not
+inside the budget and this is the honest distance left.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has.
+Check 13 console-clean passes with zero errors and zero warnings. Checks 15 and
+16 pass unchanged.

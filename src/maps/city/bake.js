@@ -593,6 +593,48 @@ export function bakeColourToVertices(root, animated) {
   const canonical = new Map();
   let painted = 0;
 
+  /*
+   * WHICH LOOKS ACTUALLY MIX COLOURS, counted before anything is painted.
+   *
+   * The point of this pass is to stop colour from splitting a merge bucket. A
+   * look whose every user is the SAME colour was never splitting anything:
+   * those materials are already identical in appearance, shareMaterials
+   * collapses them to one, and they merge with no help. Painting them anyway
+   * writes three floats a vertex to say what the material already said.
+   *
+   * Measured, that is most of it. P10 is 2x over on this map and the colour
+   * attribute is 26.9 MB of it, so a group of one colour is worth finding.
+   */
+  const coloursPerLook = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
+      return;
+    }
+    const m = o.material;
+    if (!m || !o.geometry || !o.geometry.attributes.position) {
+      return;
+    }
+    if (m.isShaderMaterial || m.isRawShaderMaterial || m.vertexColors || !m.color) {
+      return;
+    }
+    if (m.map || m.alphaMap) {
+      return;
+    }
+    const key = lookWithoutColour(m);
+    let set = coloursPerLook.get(key);
+    if (!set) {
+      set = new Set();
+      coloursPerLook.set(key, set);
+    }
+    set.add(m.color.getHex());
+  });
+  let singleColour = 0;
+  for (const set of coloursPerLook.values()) {
+    if (set.size < 2) {
+      singleColour += 1;
+    }
+  }
+
   root.traverse((o) => {
     if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
       return;
@@ -613,6 +655,10 @@ export function bakeColourToVertices(root, animated) {
       return;
     }
     const key = lookWithoutColour(m);
+    const mixes = coloursPerLook.get(key);
+    if (!mixes || mixes.size < 2) {
+      return;
+    }
     let white = canonical.get(key);
     if (!white) {
       white = m.clone();
@@ -654,7 +700,12 @@ export function bakeColourToVertices(root, animated) {
     painted += 1;
   });
 
-  return { painted, colourLooks: canonical.size };
+  return {
+    painted,
+    colourLooks: canonical.size,
+    looks: coloursPerLook.size,
+    singleColourLooks: singleColour,
+  };
 }
 
 /*
@@ -1282,10 +1333,15 @@ export function bakeCity(world, {
     }
   }
 
+  /* Last, because it asks each mesh about its own material and the merge is
+   * what decides which material a mesh ends up with. */
+  const trimmed = trimAttributes(root);
+
   return {
     merged,
     proxies,
     stats: {
+      trimmed,
       bakedFrom: sources.length,
       bakedTo: merged.length,
       buckets: buckets.size,
@@ -1719,4 +1775,91 @@ export function buildShadowProxies(root, animated, { cell = 24 } = {}) {
   stats.triangles = Math.round(stats.triangles);
   root.add(group);
   return { group, meshes: made, stats };
+}
+
+/*
+ * Drop attributes no shader will read.
+ *
+ * P10 is resident vertex attribute bytes and this map is at 98.4 MB against a
+ * 48 MB ceiling, which is the budget nothing in this file had ever looked at.
+ * Read by attribute: position 28.0 MB, normal 28.0 MB, colour 26.3 MB, uv
+ * 16.0 MB, over 2,333,270 vertices.
+ *
+ * Two of those are being paid for nothing at all.
+ *
+ * UV IS ONLY READ IF SOMETHING SAMPLES BY IT. three declares the attribute
+ * when a uv sampled map is present and not otherwise, so geometry whose
+ * material carries no map, alphaMap, emissiveMap, aoMap, lightMap, specularMap
+ * or normalMap has a uv buffer that no shader can see. A `gradientMap` does not
+ * count and that is the one to get right: a toon ramp is sampled by the
+ * lighting dot product rather than by uv, and this town puts one on nearly
+ * every material it makes, so treating it as a uv user would refuse almost
+ * everything.
+ *
+ * COLOUR IS ONLY READ IF `vertexColors` IS ON. Round 27 wrote the attribute
+ * from the material colour and round 30's atlas does the same, and both leave
+ * it on geometry that ends up in a bucket where the material kept its own
+ * colour instead.
+ *
+ * Run AFTER the merge rather than before, because the bucket key carries the
+ * attribute signature: stripping uv from some sources and not others would
+ * split buckets that should have merged, which trades a draw call for a few
+ * kilobytes. After the merge each mesh is asked about its own material and the
+ * answer cannot affect anyone else.
+ */
+export function trimAttributes(root) {
+  const seen = new Set();
+  const stats = { uvDropped: 0, colourDropped: 0, bytes: 0 };
+  const UV_USERS = ['map', 'alphaMap', 'emissiveMap', 'aoMap', 'lightMap', 'specularMap', 'normalMap', 'bumpMap', 'displacementMap', 'roughnessMap', 'metalnessMap'];
+  root.traverse((o) => {
+    if (!o.isMesh && !o.isPoints && !o.isLine) {
+      return;
+    }
+    const geo = o.geometry;
+    if (!geo || seen.has(geo.uuid)) {
+      return;
+    }
+    seen.add(geo.uuid);
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    let samplesUv = false;
+    let readsColour = false;
+    let unknown = false;
+    for (const m of list) {
+      if (!m) {
+        continue;
+      }
+      /* A shader material's needs are its source, which this cannot read. */
+      if (m.isShaderMaterial || m.isRawShaderMaterial) {
+        unknown = true;
+        break;
+      }
+      for (const key of UV_USERS) {
+        if (m[key]) {
+          samplesUv = true;
+        }
+      }
+      if (m.vertexColors) {
+        readsColour = true;
+      }
+    }
+    if (unknown) {
+      return;
+    }
+    if (!samplesUv && geo.attributes.uv) {
+      stats.bytes += geo.attributes.uv.array.byteLength;
+      geo.deleteAttribute('uv');
+      if (geo.attributes.uv1) {
+        stats.bytes += geo.attributes.uv1.array.byteLength;
+        geo.deleteAttribute('uv1');
+      }
+      stats.uvDropped += 1;
+    }
+    if (!readsColour && geo.attributes.color) {
+      stats.bytes += geo.attributes.color.array.byteLength;
+      geo.deleteAttribute('color');
+      stats.colourDropped += 1;
+    }
+  });
+  stats.MB = +(stats.bytes / 1e6).toFixed(1);
+  return stats;
 }

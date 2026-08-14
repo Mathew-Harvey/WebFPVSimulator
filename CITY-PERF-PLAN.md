@@ -310,41 +310,42 @@ Worst of five parked viewpoints, measured after each step.
 | after | worst calls | worst triangles |
 |-------|------:|----------:|
 | before this work | 2049 | 2,977,665 |
-| step 1, casters by size (round 29) | 1638 | 2,709,107 |
+| casters by size (round 29) | 1638 | 2,709,107 |
 | radius 70 and fog 65 (round 30) | 1470 | 2,426,187 |
-| step 2, texture atlas (round 30) | 1597\* | 2,367,100 |
-| step 5, still rigs released (round 31) | **1383** | **2,375,756** |
+| texture atlas (round 30) | 1597\* | 2,367,100 |
+| still rigs released (round 31) | 1383 | 2,375,756 |
+| shadow proxies, MERGE_CELL back (round 32) | **946** | **2,231,537** |
+| attribute trim (round 33) | 946 | 2,231,537 |
 | budget | 400 | 1,200,000 |
 
-\* The atlas row goes up rather than down because `MERGE_CELL` moved from
-`Infinity` to 120 between the two measurements. Isolated, the atlas is worth 92
-draw calls at spawn and 83 at high.
+\* that row rises because `MERGE_CELL` was 120 for it and `Infinity` either
+side. Isolated, the atlas is worth 92 draw calls at spawn.
 
-**33 percent off the draw calls and 20 percent off the triangles. The map is
-not inside the budget: 3.5x over on calls and 2.0x on triangles.**
+**54 percent off the draw calls and 25 percent off the triangles. The map is
+not inside the budget: 2.4x over on calls where it was 5.1x, and 1.9x on
+triangles where it was 2.5x.**
 
 What is left, in order of what it is worth at the worst view:
 
-1. **`MERGE_CELL` back to `Infinity`, about 200 calls.** Swept twice, before
-   and after the atlas, and `Infinity` won both times: 1372 against 1597 at the
-   worst view for 59,000 triangles. It is one constant and it is the owner's to
-   set, which is why the tree still carries 120.
-2. **Shadow proxies, about 130 to 230 calls and 500 to 800 k triangles.** The
-   residue round 29 could not reach, with the method recorded in PROGRESS.md
-   round 29. The largest remaining piece of real work.
-3. **The instanced foliage chunks, 282 calls at the worst view.** 39 plant sets
-   chunked at 40 m is 39 draw calls per cell in range before anything else is
-   drawn. Coarser cells were swept and cost more in triangles than they save in
-   calls, so this needs fewer SETS, not bigger cells, which is an authoring
-   question rather than a tuning one.
-4. **Step 4, the clutter cut**, still unbuilt, and still the one the owner
-   wants for the flying rather than for the frame.
-5. **P10 at 98.4 MB against 48**, untouched by any of this. Step 6 below.
+1. **The instanced planting, 282 of the 946 calls and another 96 in the shadow
+   pass.** 39 plant sets chunked at 40 m is 39 draw calls per cell in range
+   before anything else draws. The cell has now been swept three times and
+   coarser is a straight trade of triangles for calls. The only lever that is
+   not a trade is FEWER SETS, by giving a family's variants one geometry, and
+   that changes the planting's look, so it wants an eye on it rather than a
+   measurement alone.
+2. **The clutter cut**, still unbuilt, and still the one that is wanted for the
+   flying rather than for the frame. It needs the collider ownership map that
+   already exists, not a fresh point test, which is what killed round 27.
+3. **P10 at about 92 MB against 48.** Quantising normal to Int8x4 is 18.7 MB
+   and colour to Uint16 is 11 MB. Both change what the GPU is handed and both
+   want a pixel diff.
+4. **Tree shadows cost 96 calls and 288,000 triangles.** Kept deliberately.
+   That is the cheapest remaining 10 percent of the frame if the look ever
+   becomes negotiable.
 
-Honest reading: the three steps built here were the cheap structural ones and
-they took a 5.1x failure to 3.5x. Nothing left on the list is a constant except
-the first item. Getting to 400 needs the proxy set and a real answer on the
-foliage, and it is not certain the two together are enough.
+Getting to 400 needs item 1 and probably item 2 as well, and neither is a
+constant. Everything that was a constant has now been swept.
 
 ## 7. What is deliberately not here
 

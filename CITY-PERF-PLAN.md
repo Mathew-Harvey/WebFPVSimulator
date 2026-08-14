@@ -305,31 +305,46 @@ capture at a real 1920 by 1080 canvas.
 
 ## 6. Where this lands
 
-Street, cumulative. Measured rows are marked; the rest are estimates and are
-the part of this document most likely to be wrong.
+Worst of five parked viewpoints, measured after each step.
 
-| after | calls | triangles | basis |
-|-------|------:|----------:|-------|
-| before round 29 | 1715 | 2.77 M | measured |
-| step 1, casters by size | **1267** | **2.58 M** | measured, round 29 |
-| step 2, atlas | ~1110 | ~2.58 M | 164 textured singletons counted at street |
-| step 5, rig instancing | ~960 | ~2.57 M | 180 counted, 30 left |
-| step 1b, shadow proxies | ~660 | ~1.75 M | the 351 call residue measured in round 29 |
-| step 3, spatial chunk at radius 70 | ~680 | ~1.05 M | calls plus 20, triangles from the cullable share |
-| step 4, clutter at 0.8 | ~560 | ~0.95 M | proportional, unswept |
-| budget | 400 | 1.20 M | |
+| after | worst calls | worst triangles |
+|-------|------:|----------:|
+| before this work | 2049 | 2,977,665 |
+| step 1, casters by size (round 29) | 1638 | 2,709,107 |
+| radius 70 and fog 65 (round 30) | 1470 | 2,426,187 |
+| step 2, texture atlas (round 30) | 1597\* | 2,367,100 |
+| step 5, still rigs released (round 31) | **1383** | **2,375,756** |
+| budget | 400 | 1,200,000 |
 
-Triangles get inside the ceiling at step 3 and stay there. Draw calls land
-close but not obviously under, and the honest reading is that the whole list
-takes a 4.3x failure to about 1.4x, and the last stretch depends on how hard
-step 4 is pushed and on how many of the remaining 719 untextured singleton
-buckets can be folded in. That last item is not in this plan because it has not
-been measured yet, and it is the first thing to measure if the list above runs
-out before the budget is met.
+\* The atlas row goes up rather than down because `MERGE_CELL` moved from
+`Infinity` to 120 between the two measurements. Isolated, the atlas is worth 92
+draw calls at spawn and 83 at high.
 
-Round 29 already moved one estimate by 44 percent in the wrong direction. Every
-row below the measured one should be treated as a hypothesis with a
-measurement attached to it, not as a plan that is known to arrive.
+**33 percent off the draw calls and 20 percent off the triangles. The map is
+not inside the budget: 3.5x over on calls and 2.0x on triangles.**
+
+What is left, in order of what it is worth at the worst view:
+
+1. **`MERGE_CELL` back to `Infinity`, about 200 calls.** Swept twice, before
+   and after the atlas, and `Infinity` won both times: 1372 against 1597 at the
+   worst view for 59,000 triangles. It is one constant and it is the owner's to
+   set, which is why the tree still carries 120.
+2. **Shadow proxies, about 130 to 230 calls and 500 to 800 k triangles.** The
+   residue round 29 could not reach, with the method recorded in PROGRESS.md
+   round 29. The largest remaining piece of real work.
+3. **The instanced foliage chunks, 282 calls at the worst view.** 39 plant sets
+   chunked at 40 m is 39 draw calls per cell in range before anything else is
+   drawn. Coarser cells were swept and cost more in triangles than they save in
+   calls, so this needs fewer SETS, not bigger cells, which is an authoring
+   question rather than a tuning one.
+4. **Step 4, the clutter cut**, still unbuilt, and still the one the owner
+   wants for the flying rather than for the frame.
+5. **P10 at 98.4 MB against 48**, untouched by any of this. Step 6 below.
+
+Honest reading: the three steps built here were the cheap structural ones and
+they took a 5.1x failure to 3.5x. Nothing left on the list is a constant except
+the first item. Getting to 400 needs the proxy set and a real answer on the
+foliage, and it is not certain the two together are enough.
 
 ## 7. What is deliberately not here
 

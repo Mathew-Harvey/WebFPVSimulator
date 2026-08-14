@@ -6455,4 +6455,11 @@ Verify: not run. This turn does not touch src/native, the WASM build,
 the input path or the simulation trace. Track builder selftest: 127
 passed, 0 failed. Leaderboard selftest: 25 passed, 0 failed, twice.
 
+The GitHub token on this run cannot create
+Mathew-Harvey/webfpvleaderboard (createRepository is forbidden). The
+complete board project is in `leaderboard/` so it can be pushed the
+moment that empty repo exists. Seeded local board at :3100 showed two
+courses, kept the embedded logo, and Fly this course opened
+`/?map=custom&share=trk-5e1d0001&board=http://127.0.0.1:3100`.
+
 

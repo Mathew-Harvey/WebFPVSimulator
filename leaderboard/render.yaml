@@ -1,0 +1,23 @@
+# Render blueprint. Create a Web Service from this repo and a Postgres
+# instance, then set SIM_ORIGIN to wherever the simulator is hosted.
+
+services:
+  - type: web
+    name: webfpvleaderboard
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: webfpvleaderboard-db
+          property: connectionString
+      - key: SIM_ORIGIN
+        sync: false
+      - key: BOARD_PUBLIC_ORIGIN
+        sync: false
+
+databases:
+  - name: webfpvleaderboard-db
+    plan: free

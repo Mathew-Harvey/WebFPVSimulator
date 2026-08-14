@@ -5,3 +5,5 @@ build/
 *.log
 .DS_Store
 .loop/shots/
+
+leaderboard/data/*.json

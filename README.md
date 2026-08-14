@@ -49,7 +49,8 @@ Tracks you build stay in this browser. Clearing it, or another device,
 starts you from nothing. Publish a course from the track builder to put
 it on the public board, logo and all. The board is a separate site,
 [WebFPVSimulator-LeaderBoard](https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard).
-Locally it serves at `http://127.0.0.1:3100/`. Fly this course from the board opens this
+The project sits at repo root in `webfpvsimulator-leaderboard/` so it
+can be copied out. Locally it serves at `http://127.0.0.1:3100/`. Fly this course from the board opens this
 simulator in another tab with `?share=` and the course document,
 including the sponsor print on the gates and flags.
 

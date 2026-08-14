@@ -6469,6 +6469,13 @@ https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard.
 The owner created that repo. This turn pushes the board project there
 and points the simulator README at it.
 
+### 2026-08-14 | share | board folder at repo root
+
+Changed: the board project is at repo root as
+`webfpvsimulator-leaderboard/`, so it can be copied out into
+Mathew-Harvey/WebFPVSimulator-LeaderBoard. This agent still cannot
+push to that second repo.
+
 Verify: not run. This turn does not touch src/native, the WASM build,
 the input path or the simulation trace.
 

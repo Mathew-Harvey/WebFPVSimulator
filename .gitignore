@@ -6,4 +6,4 @@ build/
 .DS_Store
 .loop/shots/
 
-leaderboard/data/*.json
+webfpvsimulator-leaderboard/data/*.json

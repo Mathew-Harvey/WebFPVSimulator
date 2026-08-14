@@ -5109,3 +5109,122 @@ kerb 0.1350, doorway 2.0500, handrail 1.0600, crossing boom 1.2400, collider
 fit 613 of 2731, crossing boom collider 1.045 to 1.325 m. **Check 16
 map-isolation passes** with the field's cost unchanged across a city round
 trip. P10 is untouched at 98.4 MB, as expected: this step moves no attribute.
+
+## Round 30: the render distance is worth four times what it was, and textures stop splitting the merge
+
+Two changes and one measurement that corrects a number published last round.
+
+### The radius, now that the shadow pass is not paying for the same work twice
+
+`CULL_RADIUS` 100 to 70, `FOG_FAR` 95 to 65, `FOG_NEAR` 30 to 22.
+
+Round 26 cut the radius and concluded it was a weak lever, 174 draw calls at
+street. With round 29's casters restricted it is worth 402 at the worst view,
+1638 to 1236, because the work the radius removes is no longer being paid for a
+second time in a shadow pass the radius cannot reach. The same lever, four
+times the value, from a change somewhere else entirely.
+
+65 m of fog is 2.3 s of sight at 100 km/h. The sweep kept paying below it, 1153
+draw calls at a radius of 50 against 1236 at 70, and 45 m of fog is 1.6 s,
+which is asking a pilot to commit to a line before it exists. It stops at the
+last value a pilot can use rather than the last one the ledger likes.
+
+`CULL_CELL` was swept alongside and stays at 40. Coarser cells make fewer
+instanced chunks, 1200 at 40 m against 458 at 80 m, and hand every draw call
+back in triangles: at 80 m and a 100 m radius the worst view is 3.43 M
+triangles against 2.51 M at 40 m, because a cell is only dropped once ALL of it
+is out of range.
+
+### The texture atlas
+
+`atlasTextures` in bake.js packs the town's small canvases onto sheets,
+rewrites each mesh's uvs into its tile, and hands the merge one material where
+it had one per sign. 153 textures packed onto 5 sheets across 5 material
+groups, 780 meshes moved onto them, 24.5 megapixels of sheet.
+
+Round 27 wrote that "a texture is the part of a material that cannot be folded
+into a vertex attribute" and that is still true. It does not have to be folded,
+it has to be MOVED, and then the meshes share a material, which is the only
+thing the merge ever needed.
+
+What it refuses, and each refusal is a measurement rather than a guess. 106 of
+the town's 311 textures REPEAT, and wrapping is a property of a whole texture:
+a tile inside a sheet has no edge of its own to wrap at, so uv 1.3 would land
+in its neighbour instead of back at 0.3. 6 more meshes have uvs outside the
+unit square, which is the same problem wearing different clothes, so the
+geometry is checked rather than the texture trusted.
+
+MIPMAPS ARE OFF ON THE SHEETS AND THAT IS A COST, not an oversight. A mip level
+averages across tile boundaries whatever the gutter is, because level n reaches
+2^n pixels, so a distant sign would pick up its neighbour. Without mips it
+aliases instead, which the fog at 65 m keeps short and which looks like the
+town rather than like a bug. The gutter stays at two pixels of replicated edge
+for the bilinear filter at level zero.
+
+The first version allocated a full 4096 square canvas per sheet whatever went
+on it: five sheets and 335 MB of texture, most of it blank. Sizing each sheet
+to its packed extent took that to 24.5 megapixels and 98 MB for identical draw
+calls. Nothing here needs a power of two, since the sheets clamp and carry no
+mipmaps.
+
+Colour is folded here rather than left to `bakeColourToVertices`, which refuses
+anything carrying a `map` and is right to. Once the meshes share a sheet they
+can share a material, so this pass does round 27's trick on its own way out and
+sets `vertexColors`, which is what makes the colour pass skip them. The
+onBeforeCompile, customProgramCacheKey and userData are carried by hand, for
+the reason round 27 recorded in blood.
+
+### Where it lands
+
+| view | round 29 | now | triangles now |
+|---------|-----:|-----:|-----------:|
+| spawn   | 1501 | **1597** | 2,343,158 |
+| street  | 1267 | **1198** | 2,121,196 |
+| rooftop | 1288 | **1254** | 2,266,364 |
+| flying  | 1484 | **1470** | 2,367,100 |
+| high    | 1638 | **1387** | 2,090,342 |
+
+Spawn goes UP and the reason is not either change above: `MERGE_CELL` is 120
+in this tree where round 29 measured it at Infinity. Isolated, the atlas is
+worth 92 draw calls at spawn and 83 at high, and the radius is worth 402 at
+high.
+
+### MERGE_CELL, swept twice, and the answer did not change
+
+Splitting the static merge spatially makes it distance cullable, which is the
+plan's step 3. It costs draw calls and buys triangles, monotonically, and it
+was swept again after the atlas on the theory that a smaller material count
+would make it affordable. Worst of four viewpoints at a 70 m radius:
+
+| MERGE_CELL | calls | triangles |
+|------------|------:|----------:|
+| Infinity   | **1372** | 2,426,187 |
+| 120        | 1597 | 2,367,100 |
+| 80         | 1611 | 2,329,544 |
+| 60 (before the atlas) | 1807 | 2,069,086 |
+
+225 draw calls for 59,000 triangles at 120. Draw calls are 3.4x over budget and
+triangles 2.0x, so the binding budget says Infinity and the plan's own protocol
+said to publish the measurement and revert if it did not pay. The tree ships
+120 because that value was set deliberately by the owner and reverting it is
+theirs to call, not this round's. The lever is worth having when triangles
+become the binding budget, and not before.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has.
+**Check 13 console-clean passes with zero errors and zero warnings**, which for
+a pass that rewrites uv buffers and swaps materials underneath the merge is the
+one that would have caught a refused `mergeGeometries` set. **Check 15
+world-scale passes with every city reference unchanged**, and the doorway at
+2.0500 is the one to watch for the same reason it was in round 27:
+`references.js` finds front doors BY THEIR MATERIAL COLOUR and this pass paints
+atlased materials white, so it reads 2.0500 only because `cityReferences` runs
+before the bake. **Check 16 map-isolation passes.**
+
+Pixel diffed against the same tree without the atlas at five viewpoints: spawn
+is the worst at 0.18 percent of pixels differing by more than 8 of 255 and 0.10
+percent by more than 24, then street 0.12 and 0.04, rooftop 0.04 and 0.01,
+flying 0.01 and 0.00, high 0.00 and 0.00. The shop signs, the road signs and
+the bus number plate all read correctly, which is what says the uv rewrite put
+each mesh on its own tile.

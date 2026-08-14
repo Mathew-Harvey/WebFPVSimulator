@@ -570,6 +570,315 @@ export function bakeColourToVertices(root, animated) {
 }
 
 /*
+ * Pack the town's small canvases into sheets, so that a texture stops being a
+ * reason two meshes cannot merge.
+ *
+ * WHAT THIS IS FOR. Round 27 folded material colour into vertex colours and
+ * took 1,103 one mesh merge buckets down to a couple of dozen looks. It could
+ * not touch the textured ones, and said so: "a texture is the part of a
+ * material that cannot be folded into a vertex attribute". That left the
+ * town's signs, posters, shop fronts, hoardings and vending fascias each
+ * holding a bucket of one. Measured at the worst viewpoint they are 244 draw
+ * calls carrying 5,212 triangles between them, which is 21 triangles a call.
+ *
+ * A texture cannot be folded into a vertex attribute. It CAN be moved: put
+ * every small canvas on one sheet, rewrite each mesh's uvs into its tile, and
+ * the meshes now share one material, which is the only thing the merge ever
+ * needed. The town generates these canvases itself at build time, so the
+ * packer runs over what buildWorld produced rather than over asset files.
+ *
+ * WHAT IS REFUSED, AND WHY EACH ONE IS REFUSED RATHER THAN FORCED:
+ *
+ *   A REPEATING TEXTURE cannot go on a sheet at all. Wrapping is a property
+ *   of the whole texture, and a tile inside a sheet has no edges of its own
+ *   to wrap at: uv 1.3 would land in the neighbouring tile instead of back at
+ *   0.3. 96 of the town's 311 textures repeat and every one of them stays
+ *   where it is.
+ *
+ *   UVS OUTSIDE 0 TO 1 are the same problem wearing different clothes, so the
+ *   geometry is checked rather than trusted. A mesh whose uvs leave the unit
+ *   square is skipped even if its texture claims to clamp.
+ *
+ *   A SECOND MAP on the same material, an alphaMap or an emissiveMap, would
+ *   have to be packed into a second sheet with an identical layout to stay
+ *   registered with the first. That is worth doing and it is not worth doing
+ *   first, so those materials are counted as misses and left alone.
+ *
+ * MIPMAPS ARE OFF ON THE SHEET AND THAT IS A REAL COST, not an oversight. A
+ * mip level averages across tile boundaries no matter how wide the gutter is,
+ * because level n reaches 2^n pixels, so a sign at distance would pick up its
+ * neighbour on the sheet. The alternatives are bleeding, or a gutter that
+ * wastes most of the sheet, or no mips. Without mips a distant sign aliases
+ * instead, which the fog at 65 m keeps short and which is the failure that
+ * looks like the town rather than like a bug. The gutter is still there, at
+ * two pixels of replicated edge, for the bilinear filter at level zero.
+ *
+ * COLOUR IS FOLDED HERE rather than left for bakeColourToVertices, because
+ * that pass refuses anything carrying a `map` and it is right to: two meshes
+ * with different maps cannot share a material however their colour is stored.
+ * Once they share a sheet they can, so this pass does the same trick on its
+ * own way out, and sets `vertexColors`, which is what makes the colour pass
+ * skip them afterwards. The onBeforeCompile, customProgramCacheKey and
+ * userData are carried across by hand for the reason round 27 recorded: clone
+ * does not take them and the town's whole shadow tint lives in them.
+ */
+function atlasGroupKey(m, tex) {
+  return [
+    lookWithoutColour(m),
+    tex.colorSpace,
+    tex.magFilter,
+    tex.anisotropy,
+  ].join('|');
+}
+
+/* Shelf packing, tallest first. A sheet here holds a few hundred small
+ * canvases whose sizes repeat heavily, 108 of the town's textures are
+ * 128 by 128, so the shelves come out nearly full and a better packer would
+ * buy very little. */
+function packShelves(items, maxSize, gutter) {
+  const sorted = [...items].sort((a, b) => b.h - a.h || b.w - a.w);
+  const sheets = [];
+  for (const it of sorted) {
+    const w = it.w + gutter * 2;
+    const h = it.h + gutter * 2;
+    if (w > maxSize || h > maxSize) {
+      it.sheet = -1;
+      continue;
+    }
+    let placed = false;
+    for (const sheet of sheets) {
+      for (const shelf of sheet.shelves) {
+        if (shelf.h >= h && shelf.x + w <= maxSize) {
+          it.x = shelf.x + gutter;
+          it.y = shelf.y + gutter;
+          it.sheet = sheet.index;
+          shelf.x += w;
+          placed = true;
+          break;
+        }
+      }
+      if (placed) {
+        break;
+      }
+      if (sheet.used + h <= maxSize) {
+        const shelf = { y: sheet.used, x: w, h };
+        sheet.shelves.push(shelf);
+        sheet.used += h;
+        it.x = gutter;
+        it.y = shelf.y + gutter;
+        it.sheet = sheet.index;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      const sheet = { index: sheets.length, shelves: [{ y: 0, x: w, h }], used: h };
+      sheets.push(sheet);
+      it.x = gutter;
+      it.y = gutter;
+      it.sheet = sheet.index;
+    }
+  }
+  /*
+   * Size each sheet to what it actually holds rather than to maxSize. The
+   * first version allocated a full 4096 square canvas per sheet whatever went
+   * on it, which for this town's 28.8 megapixels of packable texture was five
+   * sheets and 335 MB of it blank. Nothing here needs a power of two: the
+   * sheet clamps and carries no mipmaps.
+   */
+  for (const sheet of sheets) {
+    sheet.w = Math.max(1, ...sheet.shelves.map((sh) => sh.x));
+    sheet.h = Math.max(1, sheet.used);
+  }
+  return sheets;
+}
+
+/* Edge replicated padding, so the bilinear filter at level zero cannot reach
+ * off a tile and pick up the sheet's background. */
+function drawTile(ctx, image, x, y, w, h, gutter) {
+  ctx.drawImage(image, x, y, w, h);
+  for (let g = 1; g <= gutter; g += 1) {
+    ctx.drawImage(image, 0, 0, image.width, 1, x, y - g, w, 1);
+    ctx.drawImage(image, 0, image.height - 1, image.width, 1, x, y + h + g - 1, w, 1);
+    ctx.drawImage(image, 0, 0, 1, image.height, x - g, y, 1, h);
+    ctx.drawImage(image, image.width - 1, 0, 1, image.height, x + w + g - 1, y, 1, h);
+  }
+}
+
+export function atlasTextures(root, animated, { maxSize = 4096, gutter = 2 } = {}) {
+  const moving = animated ?? new Set();
+  const stats = {
+    sheets: 0, sheetPixels: 0, packed: 0, meshes: 0, groups: 0,
+    skippedRepeat: 0, skippedUv: 0, skippedSecondMap: 0, skippedNoCanvas: 0,
+  };
+  if (typeof document === 'undefined' || !document.createElement) {
+    stats.skippedNoCanvas = 1;
+    return stats;
+  }
+
+  /* Any material an animated object holds is off limits, the same rule and
+   * the same reason as shareMaterials: one animated holder means something
+   * may write to it. */
+  const taboo = new Set();
+  root.traverse((o) => {
+    if (!moving.has(o) || !o.material) {
+      return;
+    }
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (m) {
+        taboo.add(m);
+      }
+    }
+  });
+
+  const groups = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || moving.has(o) || Array.isArray(o.material)) {
+      return;
+    }
+    const m = o.material;
+    const geo = o.geometry;
+    if (!m || !geo || !geo.attributes.uv || !geo.attributes.position) {
+      return;
+    }
+    if (m.isShaderMaterial || m.isRawShaderMaterial || m.vertexColors || !m.color) {
+      return;
+    }
+    if (taboo.has(m)) {
+      return;
+    }
+    const t = m.map;
+    if (!t || !t.image || !t.image.width) {
+      return;
+    }
+    if (m.alphaMap || m.emissiveMap || m.normalMap || m.aoMap || m.lightMap) {
+      stats.skippedSecondMap += 1;
+      return;
+    }
+    if (t.wrapS !== THREE.ClampToEdgeWrapping || t.wrapT !== THREE.ClampToEdgeWrapping
+      || t.repeat.x !== 1 || t.repeat.y !== 1 || t.offset.x !== 0 || t.offset.y !== 0
+      || t.rotation !== 0 || t.flipY !== true) {
+      stats.skippedRepeat += 1;
+      return;
+    }
+    const uv = geo.attributes.uv;
+    let inside = true;
+    for (let i = 0; i < uv.count; i += 1) {
+      const u = uv.getX(i);
+      const v = uv.getY(i);
+      if (u < -1e-4 || u > 1 + 1e-4 || v < -1e-4 || v > 1 + 1e-4) {
+        inside = false;
+        break;
+      }
+    }
+    if (!inside) {
+      stats.skippedUv += 1;
+      return;
+    }
+    const key = atlasGroupKey(m, t);
+    let g = groups.get(key);
+    if (!g) {
+      g = { sample: m, textures: new Map(), meshes: [] };
+      groups.set(key, g);
+    }
+    if (!g.textures.has(t.uuid)) {
+      g.textures.set(t.uuid, { tex: t, w: t.image.width, h: t.image.height, x: 0, y: 0, sheet: -1 });
+    }
+    g.meshes.push(o);
+  });
+
+  for (const g of groups.values()) {
+    /* A group with one texture gains nothing: its meshes already share a
+     * material and already merge. */
+    if (g.textures.size < 2) {
+      continue;
+    }
+    const items = [...g.textures.values()];
+    const sheets = packShelves(items, maxSize, gutter);
+    if (!sheets.length) {
+      continue;
+    }
+    const made = [];
+    for (const sheet of sheets) {
+      const canvas = document.createElement('canvas');
+      canvas.width = sheet.w;
+      canvas.height = sheet.h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return stats;
+      }
+      for (const it of items) {
+        if (it.sheet !== sheet.index) {
+          continue;
+        }
+        drawTile(ctx, it.tex.image, it.x, it.y, it.w, it.h, gutter);
+      }
+      const atlas = new THREE.CanvasTexture(canvas);
+      atlas.colorSpace = g.sample.map.colorSpace;
+      atlas.magFilter = g.sample.map.magFilter;
+      atlas.minFilter = THREE.LinearFilter;
+      atlas.generateMipmaps = false;
+      atlas.wrapS = THREE.ClampToEdgeWrapping;
+      atlas.wrapT = THREE.ClampToEdgeWrapping;
+      atlas.anisotropy = g.sample.map.anisotropy;
+      atlas.needsUpdate = true;
+      const mat = g.sample.clone();
+      mat.map = atlas;
+      mat.color.setRGB(1, 1, 1);
+      mat.vertexColors = true;
+      /* Clone does not carry these three and this town's shadow tint is in
+       * them. Round 27's pixel diff is the record of what happens otherwise. */
+      mat.onBeforeCompile = g.sample.onBeforeCompile;
+      if (typeof g.sample.customProgramCacheKey === 'function') {
+        mat.customProgramCacheKey = g.sample.customProgramCacheKey;
+      }
+      mat.userData = g.sample.userData;
+      made.push({ mat, w: sheet.w, h: sheet.h });
+      stats.sheets += 1;
+      stats.sheetPixels += sheet.w * sheet.h;
+    }
+
+    for (const o of g.meshes) {
+      const it = g.textures.get(o.material.map.uuid);
+      if (!it || it.sheet < 0) {
+        continue;
+      }
+      const src = o.geometry;
+      /* Cloned per mesh: two meshes of different colours on one geometry is
+       * routine in this town, and both the uvs and the colour attribute below
+       * are per mesh answers. */
+      const geo = src.clone();
+      const uv = geo.attributes.uv;
+      const next = new Float32Array(uv.count * 2);
+      for (let i = 0; i < uv.count; i += 1) {
+        /* flipY is true on both the tiles and the sheet, so v counts up from
+         * the BOTTOM of the sheet while the canvas y counts down from the
+         * top. */
+        next[i * 2] = (it.x + uv.getX(i) * it.w) / made[it.sheet].w;
+        next[i * 2 + 1] = (made[it.sheet].h - it.y - it.h + uv.getY(i) * it.h) / made[it.sheet].h;
+      }
+      geo.setAttribute('uv', new THREE.BufferAttribute(next, 2));
+      const n = geo.attributes.position.count;
+      const col = new Float32Array(n * 3);
+      const { r, g: gg, b } = o.material.color;
+      for (let i = 0; i < n; i += 1) {
+        col[i * 3] = r;
+        col[i * 3 + 1] = gg;
+        col[i * 3 + 2] = b;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      o.geometry = geo;
+      o.material = made[it.sheet].mat;
+      stats.meshes += 1;
+    }
+    stats.packed += items.filter((it) => it.sheet >= 0).length;
+    stats.groups += 1;
+  }
+
+  return stats;
+}
+
+/*
  * Merge every static mesh, bucketed by material, spatial cell, shadow flags
  * and attribute signature.
  *
@@ -704,6 +1013,7 @@ export function bakeCity(world, {
   cullCell = cell,
   casterMinRadius = 0,
   casterMinRadiusInstanced = casterMinRadius,
+  atlasSize = 4096,
 } = {}) {
   const root = world.root;
   const { moving: animated, stillRigs } = findAnimated(world);
@@ -723,6 +1033,10 @@ export function bakeCity(world, {
   /* Colour first: it turns 1,103 one mesh buckets into a couple of dozen, and
    * it has to happen before shareMaterials so that the white copies it makes
    * are what gets deduplicated. */
+  /* Textures first, because it is the pass that turns a texture from a reason
+   * two meshes cannot merge into a tile they share, and both passes below key
+   * on the material it leaves behind. */
+  const atlas = atlasTextures(root, animated, { maxSize: atlasSize });
   const painted = bakeColourToVertices(root, animated);
   const shared = shareMaterials(root, animated);
   root.updateMatrixWorld(true);
@@ -880,6 +1194,7 @@ export function bakeCity(world, {
       mergeCell: Number.isFinite(cell) ? cell : 'town',
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
+      atlas,
       casterMinRadius: casters.minRadius,
       casterMinRadiusInstanced: casters.minRadiusInstanced,
       castersKept: casters.casters,

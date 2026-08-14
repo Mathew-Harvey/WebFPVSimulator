@@ -85,12 +85,20 @@ const SPAWN = { x: 0, z: 24, yaw: Math.PI };
  * without moving the fog would have left a 35 m band where the town winks out
  * in clear air.
  *
+ * HOW SHORT IS SET BY THE FLYING, NOT BY THE FRAME. 65 m of fog at 100 km/h is
+ * 2.3 s of sight, which is enough to read a gap and commit to it. The sweep
+ * kept paying below that, 1153 draw calls at the worst view for a radius of 50
+ * against 1236 for 70, and 45 m of fog is 1.6 s, which is being asked to
+ * commit to a line before it exists. 83 draw calls is not worth flying blind,
+ * so this stops at the last value a pilot can use rather than at the last one
+ * the ledger likes.
+ *
  * The far plane stays long. It costs nothing, it is depth precision rather
  * than draw calls, and the sky dome and the hills behind the town live out
  * there.
  */
-const FOG_NEAR = 30;
-const FOG_FAR = 95;
+const FOG_NEAR = 22;
+const FOG_FAR = 65;
 const CAMERA_FAR = 900;
 
 /*
@@ -103,8 +111,22 @@ const CAMERA_FAR = 900;
  * with a view that genuinely contains everything. So the far half of the town
  * is dropped past this radius, measured from the camera, on a grid of cells
  * whose contents are grouped at build time. Numbers in PROGRESS.md.
+ *
+ * ROUND 29 CHANGED WHAT THIS LEVER IS WORTH, so the value moved with it. When
+ * almost everything cast a shadow, cutting the radius from 100 to 70 bought
+ * 174 draw calls at street and the conclusion was that the radius was a weak
+ * lever. With the casters restricted it buys 402 at the worst view, 1638 to
+ * 1236, because the work it removes is no longer being paid for a second time
+ * in a shadow pass that the radius cannot reach.
+ *
+ * THE CELL STAYS AT 40 AND THAT WAS SWEPT, NOT ASSUMED. Coarser cells make
+ * fewer instanced chunks, 1200 at 40 m against 458 at 80 m, and every one of
+ * the draw calls that saves is handed back in triangles: at 80 m and a 100 m
+ * radius the worst view is 3.43 M triangles against 2.51 M at 40 m, because a
+ * cell is only dropped once ALL of it is out of range and an 80 m cell rarely
+ * is. 40 m is better on both axes at every radius measured.
  */
-const CULL_RADIUS = 100;
+const CULL_RADIUS = 70;
 const CULL_CELL = 40;
 const SHADOW_HALF = 22;
 
@@ -156,7 +178,7 @@ const FOLIAGE_KEEP = 0.65;
  * frustum culled and never distance culled, which is the correct handling and
  * not a special case written for this.
  */
-const MERGE_CELL = Infinity;
+const MERGE_CELL = 120;
 
 /*
  * The same, for geometry that casts a shadow, and it is NOT Infinity.

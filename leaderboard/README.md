@@ -3,12 +3,7 @@
 The public board for [WebFPVSimulator](https://github.com/Mathew-Harvey/WebFPVSimulator).
 Every published course lives here, with the times flown on it.
 
-Create the empty GitHub repository `Mathew-Harvey/webfpvleaderboard`, then:
-
-```bash
-git remote add origin https://github.com/Mathew-Harvey/webfpvleaderboard.git
-git push -u origin main
-```
+Repository: [Mathew-Harvey/WebFPVSimulator-LeaderBoard](https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard).
 
 The simulator itself keeps nothing. Tracks you build stay in that browser
 until you publish them. This page is the copy that other people can fly.

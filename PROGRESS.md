@@ -6462,4 +6462,14 @@ moment that empty repo exists. Seeded local board at :3100 showed two
 courses, kept the embedded logo, and Fly this course opened
 `/?map=custom&share=trk-5e1d0001&board=http://127.0.0.1:3100`.
 
+### 2026-08-14 | share | push the board to WebFPVSimulator-LeaderBoard
+
+Changed: the public board now lives at
+https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard.
+The owner created that repo. This turn pushes the board project there
+and points the simulator README at it.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
 

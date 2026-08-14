@@ -69,6 +69,37 @@ const CRACKLE_LEVEL = 0.5;
  * locks to the bars. Chosen odd on purpose. */
 const CRACKLE_SECONDS = 9.7;
 
+/*
+ * The pad's register guard: every chord tone folded by octaves into the
+ * window -4 to +12 semitones around the track's pad base, which at the
+ * 660 Hz base is 524 Hz to 1320 Hz.
+ *
+ * The ceiling is the half that matters. Three tracks voice a chord tone at
+ * 14 or 15 semitones, which against the old 880 Hz base put a sustained pad
+ * voice at 1975 and 2093 Hz: the top of the band the ear complains about
+ * first, held for a whole chord span, which is exactly the overtone the
+ * owner reported. The floor keeps the pad off the blade pass fundamental,
+ * which tops out at 450 Hz at 9000 RPM; without it Undertow's last chord
+ * would put a pad voice at 440 Hz and beat against a wide open motor.
+ *
+ * Folding is a voicing change and not a harmony change: the tone keeps its
+ * pitch class, so the chord is the same chord played closer.
+ *
+ * It lives here rather than in tracks.js so that a new track cannot
+ * reintroduce the defect by writing a wide voicing, and so the crate stays
+ * readable as music rather than as a set of numbers respecting a ceiling.
+ */
+function padSemitone(n) {
+  let s = n;
+  while (s > 12) {
+    s -= 12;
+  }
+  while (s < -4) {
+    s += 12;
+  }
+  return s;
+}
+
 export class Music {
   constructor() {
     this.ctx = null;
@@ -157,25 +188,38 @@ export class Music {
     this.subOsc.start();
 
     /*
-     * The pad: three triangles a chord apart through one lowpass. On the
-     * drum and bass tracks it swells over the chord; on the lofi tracks the
-     * same three voices are struck with a fast attack and a long decay,
-     * which is what makes them read as keys. Same nodes either way.
+     * The pad: three SINES a chord apart through one lowpass. On the drum
+     * and bass tracks it swells over the chord; on the lofi tracks the same
+     * three voices are struck with a fast attack and a long decay, which is
+     * what makes them read as keys. Same nodes either way.
+     *
+     * They were triangles, and the triangle is what the owner heard as a
+     * high pitched annoying overtone. A triangle's third harmonic is 19 dB
+     * down, and the pad lowpass at 2500 Hz let it through almost untouched:
+     * a narrowband peak search over the rendered bed found the three chord
+     * fundamentals standing 27 to 34 dB above the local spectral floor AND
+     * their third harmonics at 2639 and 3140 Hz standing 9 to 11 dB above
+     * it, sustained for a whole four bar chord, in the octave the ear
+     * complains about first. A sine has no third harmonic, so those two
+     * peaks are gone by construction rather than filtered down. What the
+     * pad loses is a little bite, which it was spending in the worst
+     * possible band.
      */
     this.padOscs = [];
     this.padGain = keep(ctx.createGain());
     this.padGain.gain.value = 0;
     this.padLp = keep(ctx.createBiquadFilter());
     this.padLp.type = 'lowpass';
-    /* Above the chord fundamentals and below the band A1 protects, so the
-     * pad's own third harmonic cannot put energy into 2 to 8 kHz. */
+    /* Just above the highest chord tone the fold below can produce, so it
+     * rounds the strike transient and catches nothing else. With sines
+     * there is no harmonic left for it to remove. */
     this.padLp.frequency.value = this.track.pads.lp;
     this.padLp.Q.value = 0.6;
     this.padGain.connect(this.padLp);
     this.padLp.connect(this.gain);
     for (let i = 0; i < 3; i += 1) {
       const osc = keep(ctx.createOscillator());
-      osc.type = 'triangle';
+      osc.type = 'sine';
       osc.frequency.value = this.track.pads.baseHz;
       osc.connect(this.padGain);
       osc.start();
@@ -290,9 +334,22 @@ export class Music {
     if (!this.gain) {
       return;
     }
-    /* 0.40 at full setting. The bed is a bed: it sits under the flight
-     * instrument, and this is the number that keeps it there. */
-    this.gain.gain.value = this.enabled ? this.level * 0.40 : 0;
+    /*
+     * 0.85 at full setting, up from 0.40.
+     *
+     * The bed is still a bed, but it was a bed under a motor stem that
+     * measured -18.45 dBFS against the bed's -28.34 on the same flight
+     * render, and the owner's word for that was that the motors need to be
+     * about 70 percent quieter than the music. 70 percent quieter in
+     * amplitude is a factor of 0.3, which is 10.5 dB of RATIO, and the
+     * motors cannot simply absorb all of it: they were carrying the mix's
+     * loudness, and taking 10.5 dB off them alone drops a flight render to
+     * -24.7 dBFS, outside the -20 to -14 dBFS band A3 asks for. So the
+     * ratio is split, 4.0 dB off the motors in audio.js and 6.5 dB on to
+     * the bed here, which is the 10.5 dB the owner asked for with the
+     * render still at -18.9 dBFS. Measured either side in PROGRESS.md.
+     */
+    this.gain.gain.value = this.enabled ? this.level * 0.85 : 0;
   }
 
   /*
@@ -514,7 +571,7 @@ export class Music {
       for (let v = 0; v < this.padOscs.length; v += 1) {
         const f = this.padOscs[v].frequency;
         f.cancelScheduledValues(at);
-        f.setValueAtTime(tr.pads.baseHz * 2 ** (chord[v] / 12), at);
+        f.setValueAtTime(tr.pads.baseHz * 2 ** (padSemitone(chord[v]) / 12), at);
       }
     }
     if (tr.pads.mode === 'swell') {

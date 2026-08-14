@@ -13,6 +13,10 @@
  *   one third octave band energies
  *   the energy in any two named bands, which is what the scream test is
  *   spectral centroid
+ *   narrowband tonal peaks in a named range, ranked by how far each stands
+ *     above the median of its own neighbourhood. A band table says how much
+ *     energy is somewhere; this says whether it is a TONE, which is a
+ *     different complaint and the one the owner reported
  *   per channel peak frequencies, for the binaural carriers
  *   amplitude modulation at a named frequency in each channel and in the
  *     mono sum, each against a measured floor. A binaural pair beats in the
@@ -31,7 +35,8 @@
  * Usage:
  *   node scripts/audio-probe.js [--trace=NAME] [--seconds=20] [--rate=48000]
  *        [--level=0.6] [--blades=3] [--f0=HZ] [--scream=2000,8000]
- *        [--carrier=80,600] [--beat=6] [--seam=SEC] [--json=PATH]
+ *        [--carrier=80,600] [--beat=6] [--seam=SEC] [--tones=LO,HI]
+ *        [--json=PATH]
  *
  * Traces: hover, full, flight, steady:RPM, idle.
  *
@@ -264,6 +269,65 @@ function thirdOctaves(spec) {
     const b = bandRms(spec, lo, hi);
     rows.push({ fc, lo, hi, db: b.db, bins: b.bins });
   }
+  return rows;
+}
+
+/*
+ * Narrowband tonal peaks: every local maximum in [lo, hi) scored by how far
+ * it stands above the median of its own neighbourhood.
+ *
+ * A band table measures how much energy is somewhere. This measures whether
+ * that energy is a TONE, and the two answer different complaints. A pad
+ * triad that nothing else in the mix sits beside is inaudible in the one
+ * third octave table and unmissable in a room, because the ear picks a
+ * steady partial out of a broadband floor at a level far below where it
+ * would notice the same energy spread over the same band.
+ *
+ * The neighbourhood is +-NB bins with the peak's own +-SKIP bins excluded,
+ * so a wide resonance is not scored against its own skirts. The median
+ * rather than the mean, so one strong neighbour cannot hide a peak.
+ */
+const TONE_NB = 120;
+const TONE_SKIP = 6;
+
+function tonePeaks(spec, lo, hi) {
+  const pw = spec.power;
+  const k0 = Math.max(1, Math.ceil(lo / spec.binHz));
+  const k1 = Math.min(pw.length - 1, Math.floor(hi / spec.binHz));
+  const rows = [];
+  for (let k = k0; k <= k1; k += 1) {
+    let top = true;
+    for (let j = k - 3; j <= k + 3; j += 1) {
+      if (j >= 0 && j < pw.length && pw[j] > pw[k]) {
+        top = false;
+        break;
+      }
+    }
+    if (!top) {
+      continue;
+    }
+    const nb = [];
+    for (let j = k - TONE_NB; j <= k + TONE_NB; j += 1) {
+      if (j < 1 || j >= pw.length || Math.abs(j - k) <= TONE_SKIP) {
+        continue;
+      }
+      nb.push(pw[j]);
+    }
+    if (nb.length === 0) {
+      continue;
+    }
+    nb.sort((a, b) => a - b);
+    const med = nb[nb.length >> 1];
+    if (!(med > 0) || !(pw[k] > 0)) {
+      continue;
+    }
+    rows.push({
+      hz: k * spec.binHz,
+      promDb: 10 * Math.log10(pw[k] / med),
+      db: 10 * Math.log10(pw[k]),
+    });
+  }
+  rows.sort((a, b) => b.promDb - a.promDb);
   return rows;
 }
 
@@ -905,6 +969,20 @@ async function main() {
      * restricts the spectrum and the RMS to a slice of the render.
      */
     cue: '', window: '',
+    /*
+     * --tones=LO,HI lists the narrowband peaks in a range, loudest by
+     * PROMINENCE rather than by level, where prominence is a peak's power
+     * over the median of its own neighbourhood.
+     *
+     * The one third octave table cannot answer the question this exists for.
+     * The owner reported a high pitched annoying overtone and the table
+     * showed nothing unusual anywhere: a sustained pad triad was spread over
+     * three bands 15 dB under the loudest one and looked like a gentle hump.
+     * What made it audible was that it was a TONE with nothing beside it,
+     * which is a peak to neighbourhood ratio and not a band energy. Run with
+     * a stem muted to attribute a peak to a stem.
+     */
+    tones: '',
   };
   for (const a of process.argv.slice(2)) {
     const m = a.match(/^--([a-z0-9]+)=(.*)$/);
@@ -1059,6 +1137,27 @@ async function main() {
       monoSum: amAtDb(mono, rate, f),
     };
   }
+  if (opts.tones) {
+    const [tLo, tHi] = String(opts.tones).split(',').map(Number);
+    /*
+     * Its own spectrum at a finer frame than the band table's. A pad partial
+     * is a few Hz wide and the 8192 point frame the bands use puts it inside
+     * one 5.9 Hz bin along with whatever else is there; 16384 halves that and
+     * still averages enough frames over a 16 s render to be steady.
+     */
+    let frameT = 16384;
+    while (frameT > 1024 && frameT > anaMono.length) {
+      frameT /= 2;
+    }
+    const specT = spectrum(anaMono, rate, frameT);
+    report.tones = {
+      band: [tLo, tHi],
+      frame: frameT,
+      binHz: specT.binHz,
+      neighbourhoodBins: TONE_NB,
+      peaks: tonePeaks(specT, tLo, tHi).slice(0, 12),
+    };
+  }
   report.tempo = tempo(mono, rate);
   if (Number(opts.seam) > 0) {
     report.seam = seamTest(mono, Math.round(Number(opts.seam) * rate));
@@ -1080,6 +1179,13 @@ async function main() {
   console.log('one third octave, dB re full scale:');
   for (const r of report.thirds) {
     console.log(`  ${String(r.fc).padStart(6)} Hz  ${d2(r.db).padStart(8)}`);
+  }
+  if (report.tones) {
+    const t = report.tones;
+    console.log(`narrowband peaks ${t.band[0]} to ${t.band[1]} Hz, by prominence over a ${t.neighbourhoodBins} bin neighbourhood, frame ${t.frame}, bin ${t.binHz.toFixed(2)} Hz:`);
+    for (const pk of t.peaks) {
+      console.log(`  ${pk.hz.toFixed(1).padStart(9)} Hz  prominence ${d2(pk.promDb).padStart(7)} dB  bin ${d2(pk.db).padStart(8)} dB`);
+    }
   }
   if (report.carriers) {
     report.carriers.forEach((c, i) => {

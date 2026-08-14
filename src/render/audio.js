@@ -14,13 +14,25 @@
  * plant is 130 to 430 Hz in flight: a hum with body rather than a saw in
  * the presence band. A chosen periodic wave through a lowpass whose corner
  * tracks the fundamental but is CAPPED gives the harmonics that make it
- * read as a motor and nothing above them. This round lowered the cap from
- * 1150 to 1000 Hz and the default motor stem from 0.6 to 0.5, in the
+ * read as a motor and nothing above them. An earlier round lowered the cap
+ * from 1150 to 1000 Hz and the default motor stem from 0.6 to 0.5, in the
  * owner's words "low softened quiet, not obtrusive", which is also how the
  * shipping simulators mix it: motors just audible under the wind, never
- * the loudest thing in the render. Measured before and after in
- * PROGRESS.md; the flight instrument survives because the information is
- * in the PITCH, which is untouched.
+ * the loudest thing in the render.
+ *
+ * IT WAS STILL THE LOUDEST THING IN THE RENDER. On a flight trace the
+ * motor stem measured -18.45 dBFS against the music's -28.34 and the
+ * wind's -32.99, so every one of those claims was aspiration rather than
+ * measurement, and the owner came back with a number: the motors need to be
+ * about 70 percent quieter than the music. 70 percent quieter in amplitude
+ * is a factor of 0.3, so 10.5 dB of RATIO, and it is split rather than
+ * taken all from one side: 4.0 dB off the motor voice gains here, 6.5 dB on
+ * to the bed in music.js, 3.0 dB on to the wind and the ambience. The split
+ * is forced. The motors were carrying the mix's loudness, and taking the
+ * whole 10.5 dB off them alone measured a flight render at -24.7 dBFS,
+ * outside the -20 to -14 dBFS band the loudness bar asks for. Every figure
+ * is in PROGRESS.md either side of the change. The flight instrument
+ * survives because the information is in the PITCH, which is untouched.
  *
  * THE AMBIENCE. A new stem: a baked outdoor bed, low air and a few
  * birds, that carries the world while the craft is parked or slow and
@@ -37,8 +49,11 @@
  *
  * The rest of the mix is built around the motor band: src/render/music.js
  * and its record crate in tracks.js keep every track's sub bass and kick
- * below 120 Hz and its snare and hats above 1.5 kHz, so the bed never
- * sings in the octaves the pilot is listening to.
+ * below 120 Hz, its snare and hats above 1.5 kHz, and its keys between
+ * 524 and 1320 Hz, clear of the blade pass fundamental at every throttle
+ * setting. The keys used to run to 2 kHz and that is where the owner
+ * heard a high pitched annoying overtone; the argument for moving them is
+ * in tracks.js, at the band split itself.
  *
  * The graph is built by attach(ctx), which takes any BaseAudioContext, and
  * update() takes the time to schedule at. Both exist so that
@@ -154,7 +169,11 @@ const FOCUS_BEAT_HZ = 6;
  * odd dB quieter.
  */
 const AMB_SECONDS = 22.5;
-const AMB_LEVEL = 0.5;
+/* 0.71, up from 0.5, which is the same 3.0 dB the wind took. The ambience
+ * is one of the stems the owner meant by "the music etc": it has to move
+ * with the bed or the world drops out from under a mix that just got
+ * louder everywhere else. */
+const AMB_LEVEL = 0.71;
 const AMB_SPEED_FADE = 0.8;
 
 export class MotorAudio {
@@ -855,15 +874,33 @@ export class MotorAudio {
        * information instead. It also takes the peak drive well off the soft
        * clip's clamp, which was manufacturing distortion in the 2 to 2.5 kHz
        * bands at shipped defaults.
+       *
+       * SCALED BY 0.63 in this round, which is 4.0 dB off the stem and
+       * nothing off the law: both terms move together, so the span stays
+       * exactly 6.0 dB and the pitch, which is the information, is
+       * untouched. See the header for where the other 6.5 dB of the owner's
+       * 70 percent went and why it could not all come off here.
        */
       const loud = Math.min(1, r / 9000);
-      node.gain.gain.setTargetAtTime(0.22 + 0.22 * loud, t, 0.03);
+      node.gain.gain.setTargetAtTime(0.139 + 0.139 * loud, t, 0.03);
       if (loud > loudest) {
         loudest = loud;
       }
     }
+    /*
+     * The wind, scaled by 1.41, which is 3.0 dB up.
+     *
+     * This file has said since round 11 that the shipping sims put the
+     * motors just audible UNDER the wind. It has never been true here: on a
+     * flight render the motor stem measured -18.45 dBFS against the wind's
+     * -32.99, so the motors were fourteen and a half dB over the thing they
+     * were supposed to be under. Four dB off the motors and three on to the
+     * wind closes half of that. The rest is left for a round that can listen
+     * to it, because the wind is broadband and raising it further is how a
+     * mix gets hissy.
+     */
     const rush = Math.min(1, speed / 32);
-    this.noiseGain.gain.setTargetAtTime(0.06 + 0.50 * rush * rush + 0.12 * loudest, t, 0.06);
+    this.noiseGain.gain.setTargetAtTime(0.085 + 0.71 * rush * rush + 0.17 * loudest, t, 0.06);
     /*
      * The world recedes as the air arrives. Parked, the ambience is the
      * loudest quiet thing in the render; at race speed it is nearly gone,

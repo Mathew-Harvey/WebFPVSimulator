@@ -27,9 +27,24 @@
  *   the vinyl crackle bed on.
  *
  * Every track keeps the bed's band split: sub and kick below 120 Hz, snare
- * and hats above 1.5 kHz, keys around 660 Hz to 2 kHz, because the motor
- * tone between 130 and 900 Hz is a flight instrument and the music must
- * not sing over it.
+ * and hats above 1.5 kHz, keys from 524 Hz to 1320 Hz.
+ *
+ * THE KEYS MOVED DOWN, and the reason is a defect report. The split used to
+ * read "keys around 660 Hz to 2 kHz", which sounds like an empty lane and
+ * was one: nothing else in the mix lives between 1 and 2 kHz, so three
+ * sustained pad voices there stood 27 to 34 dB above the local spectral
+ * floor with nothing beside them, and the owner heard that for what it is,
+ * a high pitched annoying overtone. A tone with no neighbours is a whistle
+ * however quiet it is.
+ *
+ * What the split is actually protecting is the pitch the pilot flies on,
+ * and that is the blade pass FUNDAMENTAL, 130 Hz at 2600 RPM to 450 Hz wide
+ * open, not the whole span of the motor model's harmonics. So the base came
+ * down from 880 Hz to 660 Hz and the register guard in music.js holds every
+ * chord tone between 524 Hz and 1320 Hz: clear of the fundamental at every
+ * throttle setting, clear of the 2 to 5 kHz band the ear complains about
+ * first, and sitting where the motors and the wind have enough of their own
+ * energy that the keys are a chord in a mix rather than a tone over one.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -88,9 +103,18 @@ const DNB = {
   crackle: 0,
   kickTone: { start: 96, end: 44, drop: 0.09, peak: 0.5, ghost: 0.24, len: 0.16, ghostLen: 0.10 },
   snareTone: { bp: 2100, q: 0.9, peak: 1.9, ghost: 0.85, len: 0.11 },
-  hatTone: { hp: 6500, accent: 0.85, tick: 0.30, len: 0.06 },
+  /*
+   * THE HATS CAME DOWN 5 dB, in both genres, because the bed went up 6.5.
+   * A hat is highpassed noise at 6.5 kHz and it is the single highest thing
+   * in the mix; carrying it up with the rest of the bed would have answered
+   * a complaint about a high pitched overtone by adding 6.5 dB of hi hat.
+   * Down 5 leaves the hats 1.5 dB above where the owner last heard them,
+   * which is the smallest move that keeps the groove readable, and it is
+   * what holds the 2 to 8 kHz band inside A1's 12 dB bar with the bed up.
+   */
+  hatTone: { hp: 6500, accent: 0.48, tick: 0.17, len: 0.06 },
   bassTone: { peak: 0.75, noteSteps: 3.2 },
-  pads: { baseHz: 880, lp: 2500, barsPerChord: 4, mode: 'swell', level: 0.085, attack: 0.30 },
+  pads: { baseHz: 660, lp: 1500, barsPerChord: 4, mode: 'swell', level: 0.025, attack: 0.30 },
 };
 const LOFI_STYLE = {
   genre: 'lofi',
@@ -109,9 +133,9 @@ const LOFI_STYLE = {
    * within about 3 dB of the busy one. */
   kickTone: { start: 82, end: 48, drop: 0.11, peak: 0.72, ghost: 0.34, len: 0.22, ghostLen: 0.13 },
   snareTone: { bp: 1750, q: 0.8, peak: 2.1, ghost: 0.9, len: 0.14 },
-  hatTone: { hp: 6000, accent: 0.72, tick: 0.28, len: 0.05 },
+  hatTone: { hp: 6000, accent: 0.40, tick: 0.16, len: 0.05 },
   bassTone: { peak: 0.95, noteSteps: 6.0 },
-  pads: { baseHz: 880, lp: 2200, barsPerChord: 2, mode: 'pluck', level: 0.16, attack: 0.025, decay: 2.4, strikes: [0] },
+  pads: { baseHz: 660, lp: 1400, barsPerChord: 2, mode: 'pluck', level: 0.048, attack: 0.025, decay: 2.4, strikes: [0] },
 };
 
 /*
@@ -276,7 +300,7 @@ export const TRACKS = [
       [-4, 3, 8],
       [-2, 5, 10],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.15, decay: 3.0, strikes: [0, 16] },
+    pads: { ...LOFI_STYLE.pads, level: 0.045, decay: 3.0, strikes: [0, 16] },
   },
 
   {
@@ -322,7 +346,7 @@ export const TRACKS = [
       [-3, 4, 9],
       [-1, 2, 7],
     ],
-    pads: { ...DNB.pads, level: 0.095, barsPerChord: 4 },
+    pads: { ...DNB.pads, level: 0.029, barsPerChord: 4 },
   },
 
   {
@@ -363,7 +387,7 @@ export const TRACKS = [
       [-2, 2, 8],
       [-4, 0, 7],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.17, decay: 2.0, strikes: [0, 8, 20] },
+    pads: { ...LOFI_STYLE.pads, level: 0.051, decay: 2.0, strikes: [0, 8, 20] },
   },
 
   {
@@ -408,7 +432,7 @@ export const TRACKS = [
       [-2, 0, 3],
       [-7, -4, 0],
     ],
-    pads: { ...DNB.pads, level: 0.07 },
+    pads: { ...DNB.pads, level: 0.021 },
   },
 
   {
@@ -448,7 +472,7 @@ export const TRACKS = [
       [-1, 4, 7],
       [0, 5, 9],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.14, decay: 3.4, attack: 0.05 },
+    pads: { ...LOFI_STYLE.pads, level: 0.042, decay: 3.4, attack: 0.05 },
   },
 
   {
@@ -530,7 +554,7 @@ export const TRACKS = [
       [-2, 3, 7],
       [1, 5, 12],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.15, decay: 2.2, strikes: [0, 16] },
+    pads: { ...LOFI_STYLE.pads, level: 0.045, decay: 2.2, strikes: [0, 16] },
   },
 
   {
@@ -580,7 +604,7 @@ export const TRACKS = [
       [-3, 2, 5],
       [-1, 4, 7],
     ],
-    pads: { ...DNB.pads, barsPerChord: 2, level: 0.09, attack: 0.22 },
+    pads: { ...DNB.pads, barsPerChord: 2, level: 0.027, attack: 0.22 },
   },
 
   {
@@ -621,7 +645,7 @@ export const TRACKS = [
       [-5, 0, 7],
       [-4, 3, 10],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.16, decay: 2.8, strikes: [0, 20] },
+    pads: { ...LOFI_STYLE.pads, level: 0.048, decay: 2.8, strikes: [0, 20] },
   },
 ];
 

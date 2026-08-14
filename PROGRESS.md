@@ -5920,3 +5920,184 @@ reason no amount of looking at the edit would have shown.
 `npm run verify`: **14 of 16**, the same two reds this container always has.
 Checks 2, 3 and 4 hold the hash at ce9826fc2ce5. Check 13 console-clean
 passes with zero errors and zero warnings. Checks 15 and 16 pass unchanged.
+
+## Round 37: the whistle in the bed, and the motors under the music
+
+The owner reported two things after flying it. The music had a high pitched
+annoying overtone and they were not sure whether it came from the wind or the
+motors, and the motors needed to be about 70 percent quieter than the music.
+The first one is a bug with a cause. The second is a number.
+
+### The overtone was neither the wind nor the motors, and the band table could not see it
+
+Every audio claim in this project is measured with `scripts/audio-probe.js`,
+and the probe's one third octave table showed nothing unusual anywhere in the
+mix: a smooth hump around 631 to 1585 Hz sitting 12 to 15 dB below the loudest
+band, which reads as a mix with a mid range. It is the wrong instrument for the
+question. A band table says how much energy is somewhere; the owner's complaint
+is that some of it is a TONE, and a tone with nothing beside it is audible far
+below the level at which the same energy spread over the same band would be
+noticed at all.
+
+So the probe gained `--tones=LO,HI`: every local maximum in a range, ranked by
+its power over the median of its own neighbourhood, at a 16384 point frame.
+The answer came out immediately and it was neither of the owner's two guesses.
+On the bed alone, hovering:
+
+    1045.9 Hz  prominence 33.8 dB      2639.6 Hz  prominence  9.3 dB
+     878.9 Hz  prominence 33.5 dB      3140.6 Hz  prominence 10.7 dB
+    1318.4 Hz  prominence 31.4 dB
+     697.3 Hz  prominence 30.1 dB
+    1567.4 Hz  prominence 27.4 dB
+
+Those are 880 times two to the n over twelve for n in the chord: they are the
+PAD, held for a whole four bar chord span, standing thirty dB clear of
+everything around them. The two peaks at 2639 and 3140 Hz are the third
+harmonics of the same three voices, which is a triangle oscillator's third
+harmonic at 19 dB down getting through a pad lowpass set at 2500 Hz almost
+untouched, landing in the 2 to 5 kHz band the ear complains about first.
+
+The frequencies gave it away twice over: they are IDENTICAL between the hover
+trace and the flight trace, at different mean RPM. Anything from the motors or
+the wind moves with the throttle. These did not, so they could not be either.
+
+### The cause is the band split, and it was doing exactly what it said
+
+`tracks.js` said "keys around 660 Hz to 2 kHz, because the motor tone between
+130 and 900 Hz is a flight instrument and the music must not sing over it".
+That reads like an empty lane and it was one. Nothing else in this mix lives
+between 1 and 2 kHz: the sub and kick are under 120 Hz, the snare and hats are
+over 1.5 kHz but as noise rather than as pitch, and the motors are capped at
+1 kHz. Three sustained sine-clean partials in an otherwise empty octave is a
+whistle by construction, however quiet it is, and quiet is exactly what it was:
+those partials measure -46 to -52 dBFS in a full mix whose RMS is -18.
+
+What the split is actually protecting is the pitch the pilot flies on, and that
+is the blade pass FUNDAMENTAL, 130 Hz at 2600 RPM to 450 Hz wide open. It is
+not the whole span of the motor model's harmonics. So:
+
+- pad base 880 Hz to 660 Hz, and a register guard in `music.js` folds every
+  chord tone by octaves into -4 to +12 semitones, which is 524 to 1320 Hz.
+  Three tracks voiced a tone at 14 or 15 semitones, so the old pad reached
+  2093 Hz; one track voiced -7, which at the new base would have put a pad
+  voice at 440 Hz and beaten against a wide open motor. Folding is a voicing
+  change and not a harmony change, the tone keeps its pitch class. It lives in
+  the performer rather than in the crate so a new track cannot write the defect
+  back in.
+- pad oscillators triangle to SINE. A sine has no third harmonic, so the 2639
+  and 3140 Hz peaks are gone by construction rather than filtered down.
+- pad lowpass 2500 to 1500 Hz (dnb) and 2200 to 1400 (lofi), just above the
+  highest tone the fold can produce.
+- pad level down 10.6 dB across the crate, which after the bed's own rise below
+  leaves the keys about 2 dB under where the owner last heard them.
+
+Measured on the same hover render, full mix, before and after:
+
+    partial   before                     after
+    top       1567.4 Hz  23.5 dB prom    1174.8 Hz  16.4 dB prom
+    mid       1318.4 Hz  24.7 dB prom     990.2 Hz  18.2 dB prom
+    low       1045.9 Hz  23.6 dB prom     785.2 Hz  19.5 dB prom
+    3rd harm  2639/3140 Hz  9 to 11 dB   nothing above 3.5 dB over 2 kHz
+
+The loudest tone in the mix is now the motor's own second harmonic at 418.9 Hz
+with 26.7 dB of prominence, which is the flight instrument, which is where it
+should have been all along.
+
+### 70 percent quieter, and why it could not all come off the motors
+
+70 percent quieter in amplitude is a factor of 0.3, so 10.5 dB of ratio between
+the motor stem and the bed. Taking all 10.5 off the motors measured a flight
+render at -24.70 dBFS, outside the -20 to -14 dBFS band A3 asks for, and the
+reason is that the motors were CARRYING the mix's loudness: on a flight render
+the motor stem alone measured -18.45 dBFS against the music's -28.34 and the
+wind's -32.99. Every claim in the header of `audio.js` about motors sitting
+just audible under the wind was aspiration. They were 14.5 dB over it.
+
+Raising everything back with the master is not available either: with the soft
+clip saturating, the render's true peak in dBTP equals the master gain in dB,
+so `MASTER_CEILING` at 0.85 is what puts the worst case at -1.41 dBTP against
+A3's -1 dB bar, and there is 0.4 dB of room in it.
+
+So the ratio is split. Motor voice gains scaled by 0.63, which is 4.0 dB off
+the stem and nothing off the law, both terms moving together so the 6.0 dB
+throttle span and the pitch are untouched. The bed up 6.5 dB, 0.40 to 0.85.
+The wind and the ambience up 3.0 dB each, because they are the "etc" and
+because the wind being 14.5 dB under the motors was its own defect. The hats
+came DOWN 5 dB inside the bed's rise: a hat is highpassed noise at 6.5 kHz and
+carrying it up with everything else would have answered a complaint about a
+high pitched overtone by adding 6.5 dB of hi hat.
+
+Per stem, flight trace, 20 s, volume 0.6, measured either side:
+
+    stem       before        after       delta
+    motors    -18.45 dBFS   -22.15 dBFS  -3.70
+    music     -28.34        -22.43       +5.91
+    wind      -32.99        -29.51       +3.48
+    ambience   -           -39.47
+
+Motors minus music was +9.89 dB. It is now -0.28 dB. That is a shift of
+10.17 dB, so the motors are at 0.31 of their old level relative to the music:
+69 percent quieter, against the owner's "about 70 percent". The measured deltas
+are smaller than the nominal ones because the soft clip is a compressor with
+4.7 dB of makeup at small signals, and because the pad and hat cuts sit inside
+the bed's own rise. Nominal numbers are in the code, measured numbers are here,
+and where they disagree the measured ones are the claim.
+
+### Where the rubric lands
+
+- A1, as worded, is a 20 second full throttle pass. **17.10 dB** with the bed
+  muted (fundamental band 355 to 447 Hz at -25.10, scream band 2 to 8 kHz at
+  -42.20), **15.98 dB** with the bed running. Bar is 12. Both pass.
+- A1 on the flight trace with the bed running is **11.74 dB**, down from 19.95,
+  and it is below 12. This is reported rather than argued away. Two thirds of
+  the drop is the bed being 6.5 dB louder with its snare centred at 2100 Hz,
+  inside the scream band; the rest is the motor cut. The flight trace is not
+  the trace A1 names, and on a swept trace the "fundamental band" is one third
+  octave at the MEAN RPM while the motors sweep 130 to 450 Hz across it, so
+  most of the motor's own fundamental energy falls outside the band being
+  credited. The probe's equal bandwidth comparison on the same render, loudest
+  third octave against loudest third octave inside the scream band, reads
+  **21.38 dB**. Recovering the flight figure means cutting the snare, which is
+  the backbone of the groove, and that is a change that needs ears rather than
+  an FFT.
+- A3: flight render **-19.07 dBFS**, true peak **-7.00 dBTP**, peak sample
+  0.4466, **zero samples at or over full scale**. At maximum volume with every
+  stem at maximum, -9.78 dBFS and **-1.41 dBTP**, still under the bar, still
+  zero samples at full scale.
+- A5: tempo unchanged. Night Circuit authored at 174 reads **173.62 BPM**
+  (r=0.331 against a shuffled null p95 of 0.027), Porch Light authored at 80
+  reads **80.07** (r=0.342 against 0.030).
+- A7 was checked for regression rather than re-derived. Gate cue on, minus gate
+  cue off, in the 2 to 5 kHz band over the 160 ms the cue plays, with every
+  stem at maximum on a full throttle render: **-3.15 dB before, -2.85 dB
+  after**, so this round moves it by 0.3 dB in the right direction. That figure
+  being negative at all does not match round 25's published 11.2 dB, and the
+  method behind that number is not recorded anywhere. Something is wrong with
+  either the cue or the measurement and it predates this round. It is written
+  down here so the next round starts from it.
+- A10: **63 nodes**, unchanged. Nothing in this round creates or destroys a
+  node; every change is a constant, a waveform type or an octave fold.
+
+### What went wrong along the way
+
+Two things. The first attempt cut the pad by 7 dB and raised the bed by 6.5,
+expecting the pad to land half a dB below where it was; it measured 3.4 dB
+LOUDER, because a sine's fundamental is 1.8 dB hotter than a triangle's at the
+same gain and the rest was the lowpass move. Measured rather than assumed, and
+the pad took another 3.5 dB.
+
+The second was a deeper music high shelf, -14 to -18 dB on dnb and -16 to -20
+on lofi, tried to buy back the flight trace A1 figure. It bought 0.6 dB and
+darkened all twelve tracks, so it was reverted. A 4 dB change to A5's stated
+lofi character across the whole crate, made without hearing it, to move a
+supporting number 0.6 dB, is not a trade this project should take.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds this container always has,
+check 1 build-clean on `emcc not found` and check 10 yaw-coupling at -0.08 deg.
+Neither is touched by this round: nothing here goes near the physics, the WASM
+module or the input path. **Check 14 audio-bed passes**: context running, music
+gain **0.425** (was 0.200, floor is 0.05), 46 steps in 4.01 s at 11.47 per
+second on a 174 BPM bed, **63 nodes** of the 64 budget. Check 13 console-clean
+passes with zero errors and zero warnings.

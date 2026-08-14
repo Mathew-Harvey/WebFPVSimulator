@@ -131,6 +131,17 @@ const CULL_CELL = 40;
 const SHADOW_HALF = 22;
 
 /*
+ * How finely the shadow proxies are cut. See buildShadowProxies in ./bake.js
+ * for what they are and why they exist.
+ *
+ * Small enough that the 44 m shadow box holds only a few of them, large enough
+ * that the handful inside the box are not a draw call each. A 24 m cell puts
+ * between four and nine inside the box depending on where the craft sits,
+ * against the 351 calls the shadow pass cost when the town cast for itself.
+ */
+const SHADOW_PROXY_CELL = 24;
+
+/*
  * How much of the town's planting survives.
  *
  * Set from the budget rather than from taste. The town draws 4.54 M triangles
@@ -178,7 +189,24 @@ const FOLIAGE_KEEP = 0.65;
  * frustum culled and never distance culled, which is the correct handling and
  * not a special case written for this.
  */
-const MERGE_CELL = 120;
+/*
+ * ROUND 32 PUT THIS BACK TO Infinity, and the reason is a measurement rather
+ * than a preference. Splitting the static merge spatially makes it distance
+ * cullable, which costs draw calls and buys triangles, monotonically. Swept
+ * twice, before and after the texture atlas, worst of four viewpoints at a
+ * 70 m radius:
+ *
+ *   Infinity   1372 calls   2,426,187 triangles
+ *   120        1597 calls   2,367,100
+ *   80         1611 calls   2,329,544
+ *   60         1807 calls   2,069,086
+ *
+ * 225 draw calls for 59,000 triangles at 120. Draw calls are the binding
+ * budget by a wide margin, 3.5x over against 2.0x, so the trade is negative
+ * until that stops being true. It is a real lever and it is pointing the wrong
+ * way today.
+ */
+const MERGE_CELL = Infinity;
 
 /*
  * The same, for geometry that casts a shadow, and it is NOT Infinity.
@@ -940,6 +968,7 @@ export async function buildMap(shell, onProgress) {
     /* See findAnimated in ./bake.js. Turn this OFF the day anything in this
      * shell can press one of the town's buttons. */
     releaseStillRigs: true,
+    shadowProxyCell: SHADOW_PROXY_CELL,
   });
   const thinned = thinFoliage(world.root, { keep: FOLIAGE_KEEP });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
@@ -984,6 +1013,48 @@ export async function buildMap(shell, onProgress) {
     light.target.updateMatrixWorld();
   }
 
+  /*
+   * Which shadow proxies are inside the shadow box.
+   *
+   * The shadow camera is an orthographic box of SHADOW_HALF a side looking
+   * from the sun's offset at the shadow target, so the test is that box's own
+   * test done by hand: put the cell centre into the light's view space and
+   * compare against the half extents, widened by the cell's own radius so a
+   * cell straddling the edge is kept rather than clipped. Done here rather
+   * than from `sun.shadow.camera` because that camera's matrices are only
+   * brought up to date inside the shadow pass, which runs after this.
+   *
+   * Every vector and matrix here is allocated once at build time. This runs
+   * every frame and P8 forbids allocating in that path.
+   */
+  const proxyMeshes = baked.proxies ? baked.proxies.meshes : [];
+  const proxyReach = Math.hypot(SHADOW_PROXY_CELL, SHADOW_PROXY_CELL) * 0.5;
+  const proxyView = new THREE.Matrix4();
+  const proxyEye = new THREE.Vector3();
+  const proxyUp = new THREE.Vector3(0, 1, 0);
+  const proxyAt = new THREE.Vector3();
+  function gateProxies(target) {
+    if (!proxyMeshes.length) {
+      return;
+    }
+    proxyEye.copy(target).add(SUN_OFFSET);
+    proxyView.lookAt(proxyEye, target, proxyUp);
+    proxyView.setPosition(proxyEye);
+    proxyView.invert();
+    for (let i = 0; i < proxyMeshes.length; i += 1) {
+      const m = proxyMeshes[i];
+      proxyAt.set(m.userData.cellX, target.y, m.userData.cellZ).applyMatrix4(proxyView);
+      /* x and y are across the light's view, z is depth into it and negative
+       * in front of the camera. The depth range is the shadow camera's own
+       * near and far, widened the same way. */
+      const d = -proxyAt.z;
+      m.visible = Math.abs(proxyAt.x) <= SHADOW_HALF + proxyReach
+        && Math.abs(proxyAt.y) <= SHADOW_HALF + proxyReach
+        && d >= sun.shadow.camera.near - proxyReach
+        && d <= sun.shadow.camera.far + proxyReach;
+    }
+  }
+
   function updateShadowFocus(target) {
     /* Snapped to a 0.5 m grid. A shadow camera that follows a quad exactly
      * shimmers every texel boundary, and at 3.3 cm per texel that is a
@@ -1001,6 +1072,10 @@ export async function buildMap(shell, onProgress) {
     sky.dome.position.copy(camera.position);
     sky.clouds.position.copy(camera.position);
     cullTo(camera.position);
+    /* Gated on the SHADOW target rather than the camera: a proxy matters
+     * because it is near the light's box, which follows the craft, and not
+     * because it is near the eye. */
+    gateProxies(shadowTarget);
   }
 
   /* Overridable so a sweep can measure the draw call count against the cull

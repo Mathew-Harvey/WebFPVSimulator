@@ -1103,6 +1103,7 @@ export function bakeCity(world, {
   casterMinRadiusInstanced = casterMinRadius,
   atlasSize = 4096,
   releaseStillRigs = false,
+  shadowProxyCell = 0,
 } = {}) {
   const root = world.root;
   const { moving: animated, stillRigs, released } = findAnimated(world, { releaseStillRigs });
@@ -1139,6 +1140,13 @@ export function bakeCity(world, {
     minRadius: casterMinRadius,
     minRadiusInstanced: casterMinRadiusInstanced,
   });
+  /* After restrictCasters, so a proxy is only ever made for something that
+   * survived the size test, and BEFORE the bucketing, because clearing
+   * castShadow on the source is what lets it merge at `cell` rather than at
+   * `shadowCell`. */
+  const proxies = shadowProxyCell > 0
+    ? buildShadowProxies(root, animated, { cell: shadowProxyCell })
+    : { group: null, meshes: [], stats: { cells: 0, from: 0, triangles: 0, bytes: 0 } };
 
   const buckets = new Map();
   const sources = [];
@@ -1149,6 +1157,13 @@ export function bakeCity(world, {
 
   root.traverse((o) => {
     if (!o.isMesh || !o.visible) {
+      return;
+    }
+    /* The proxies are already merged, already in world space, and switched off
+     * until the gate turns them on, which the `!o.visible` test above would
+     * have skipped them for anyway. Named here so that stops being a
+     * coincidence. */
+    if (o.userData && o.userData.shadowProxy) {
       return;
     }
     if (animated.has(o)) {
@@ -1269,6 +1284,7 @@ export function bakeCity(world, {
 
   return {
     merged,
+    proxies,
     stats: {
       bakedFrom: sources.length,
       bakedTo: merged.length,
@@ -1285,6 +1301,7 @@ export function bakeCity(world, {
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
       atlas,
+      shadowProxies: proxies.stats,
       casterMinRadius: casters.minRadius,
       casterMinRadiusInstanced: casters.minRadiusInstanced,
       castersKept: casters.casters,
@@ -1536,6 +1553,12 @@ export function buildCullGrid(root, { cell = 40 } = {}) {
       if (!child.isObject3D) {
         continue;
       }
+      /* Shadow proxies own their own visibility, gated on the shadow box every
+       * frame. Letting the distance cull have them too would mean two writers
+       * of one flag and the looser one winning. */
+      if (child.userData && child.userData.shadowProxy) {
+        continue;
+      }
       if (child.isMesh || child.isInstancedMesh) {
         if (!consider(child)) {
           always.push(child);
@@ -1551,4 +1574,149 @@ export function buildCullGrid(root, { cell = 40 } = {}) {
   walk(root);
 
   return { cells: [...cells.values()], always, cell };
+}
+
+/*
+ * Shadow proxies: a second copy of the casters that only the shadow pass ever
+ * sees, so that the colour pass can merge the town as coarsely as it likes.
+ *
+ * THE CONFLICT THIS RESOLVES. The colour pass wants the static town merged as
+ * coarsely as possible, ideally into one mesh per material for the whole
+ * district, because separate objects are what the frame is short of. The
+ * shadow pass wants the opposite: the shadow camera is a box 44 m a side that
+ * follows the craft, it culls whole OBJECTS, and a mesh spanning the town is
+ * never outside it, so a town wide caster submits every triangle it owns on
+ * every frame. Round 29 measured the compromise between those two wants at 351
+ * draw calls and 800,941 triangles, and no cell size makes both happy: 80 m
+ * cells cost the shadow pass, 24 m cells cost the colour pass more.
+ *
+ * They only conflict because ONE SET OF MESHES IS SERVING BOTH. Give the
+ * shadow pass its own copy, cut small enough to cull well, and each side gets
+ * the granularity it wants.
+ *
+ * WHY NOT A HIDDEN LAYER, which is the usual way to do this. three 0.160's
+ * `WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+ * against the VIEW camera rather than the shadow camera, so an object the main
+ * camera cannot see casts nothing. Checked in the vendored source rather than
+ * assumed.
+ *
+ * WHAT MAKES IT NEARLY FREE INSTEAD. The renderer builds its render list and
+ * then runs the shadow pass, and BOTH skip `visible === false`. So a proxy
+ * that is only visible while it is inside the shadow box is submitted to the
+ * shadow pass exactly when it matters and is in the colour pass only for those
+ * few frames, where `colorWrite` and `depthWrite` false make it write nothing
+ * at all. At a 24 m cell against a 44 m box that is a handful of objects.
+ *
+ * POSITIONS ONLY, WHICH IS WHY THE COPY IS AFFORDABLE. MeshDepthMaterial reads
+ * position and nothing else, so a proxy carries no normal, no uv and no colour:
+ * a quarter of the attribute bytes of the geometry it copies, against a P10
+ * budget this map is already over. The alternative, boxes fitted to each
+ * object's bounds, is an eighth of that again and it makes a sloped roof cast
+ * a rectangle, so the exact geometry is worth its four bytes a vertex.
+ *
+ * WHAT KEEPS CASTING FOR ITSELF: anything animated, because a proxy baked in
+ * world space would stand still while the thing it copies moved, and the
+ * instanced planting, because one proxy per canopy blob is thousands of
+ * objects to save one draw call each and a tree's shadow is worth having
+ * exactly right.
+ */
+export function buildShadowProxies(root, animated, { cell = 24 } = {}) {
+  const moving = animated ?? new Set();
+  const cells = new Map();
+  const stats = { cells: 0, from: 0, triangles: 0, bytes: 0, cell };
+  root.updateMatrixWorld(true);
+
+  const sphere = new THREE.Sphere();
+  const box = new THREE.Box3();
+  root.traverse((o) => {
+    if (!o.isMesh || !o.castShadow || o.isInstancedMesh || moving.has(o)) {
+      return;
+    }
+    const geo = o.geometry;
+    if (!geo || !geo.attributes.position) {
+      return;
+    }
+    box.setFromObject(o);
+    if (box.isEmpty()) {
+      return;
+    }
+    box.getBoundingSphere(sphere);
+    const cx = Math.floor(sphere.center.x / cell);
+    const cz = Math.floor(sphere.center.z / cell);
+    /* Indexed and non indexed geometry cannot merge, and which one a bucket is
+     * has to be in the key rather than discovered: mergeGeometries does not
+     * throw on a mixed set, it returns null and writes to the console, so the
+     * first version of this lost the shadows of whole cells and reported it as
+     * 35 console errors against a check that requires none. The town merge
+     * above has carried this in its key since it was written. */
+    const indexed = geo.index ? 1 : 0;
+    const key = `${cx},${cz}|${indexed}`;
+    let c = cells.get(key);
+    if (!c) {
+      c = { cx, cz, geos: [] };
+      cells.set(key, c);
+    }
+    /* Position and index only. A new BufferGeometry rather than a clone,
+     * because clone copies every attribute and the whole point is not to. */
+    const src = geo.attributes.position;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(src.array.slice(), src.itemSize));
+    if (geo.index) {
+      g.setIndex(new THREE.BufferAttribute(geo.index.array.slice(), 1));
+    }
+    g.applyMatrix4(o.matrixWorld);
+    c.geos.push(g);
+    /* It has a proxy now, so it stops casting for itself. This is what lets
+     * the bucketing below merge it at `cell` instead of at `shadowCell`. */
+    o.castShadow = false;
+    stats.from += 1;
+  });
+
+  const group = new THREE.Group();
+  group.name = 'shadowProxies';
+  group.userData.shadowProxy = true;
+  group.matrixAutoUpdate = false;
+  /* One material for every proxy in the town. It is never seen: colorWrite and
+   * depthWrite off mean the colour pass writes neither pixel nor depth, and
+   * the shadow pass replaces it with a depth material anyway. `visible` stays
+   * true on the MATERIAL, because three's shadow pass checks it and a false
+   * one would cast nothing. */
+  const mat = new THREE.MeshBasicMaterial();
+  mat.colorWrite = false;
+  mat.depthWrite = false;
+  mat.name = 'shadowProxy';
+
+  const made = [];
+  for (const c of cells.values()) {
+    const geo = c.geos.length === 1 ? c.geos[0] : mergeGeometries(c.geos, false);
+    if (c.geos.length > 1) {
+      for (const g of c.geos) {
+        g.dispose();
+      }
+    }
+    if (!geo) {
+      continue;
+    }
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.updateMatrix();
+    /* Off until the gate says otherwise, so a frame that never calls the gate
+     * costs nothing rather than drawing the whole town twice. */
+    mesh.visible = false;
+    mesh.userData.shadowProxy = true;
+    mesh.userData.cellX = (c.cx + 0.5) * cell;
+    mesh.userData.cellZ = (c.cz + 0.5) * cell;
+    group.add(mesh);
+    made.push(mesh);
+    stats.triangles += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
+    stats.bytes += geo.attributes.position.array.byteLength
+      + (geo.index ? geo.index.array.byteLength : 0);
+  }
+  stats.cells = made.length;
+  stats.triangles = Math.round(stats.triangles);
+  root.add(group);
+  return { group, meshes: made, stats };
 }

@@ -5303,3 +5303,89 @@ reference unchanged, doorway 2.0500, crossing boom 1.2400, collider fit 613 of
 watch this round because it is measured AFTER the animation has seated the
 booms: a rig wrongly released would have moved it. Check 16 map-isolation
 passes.
+
+## Round 32: the shadow pass gets its own copy of the town, and MERGE_CELL goes back
+
+### Shadow proxies
+
+The colour pass wants the static town merged as coarsely as possible. The
+shadow pass wants the opposite, because the shadow camera is a 44 m box that
+culls whole OBJECTS and a town wide mesh is never outside it. Round 29 measured
+the compromise at 351 draw calls and 800,941 triangles and no cell size makes
+both happy: 80 m costs the shadow pass, 24 m costs the colour pass more.
+
+THEY ONLY CONFLICT BECAUSE ONE SET OF MESHES SERVES BOTH. `buildShadowProxies`
+gives the shadow pass its own copy, cut at 24 m, and each side gets what it
+wants.
+
+The usual way to do this is a hidden layer and it does not work here: three
+0.160's `WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+against the VIEW camera, so an object the main camera cannot see casts nothing.
+Read in the vendored source rather than assumed.
+
+What works instead is that the renderer builds its render list and THEN runs
+the shadow pass, and both skip `visible === false`. So a proxy visible only
+while it is inside the shadow box is submitted to the shadow pass exactly when
+it matters, and is in the colour pass for those few frames only, where
+`colorWrite` and `depthWrite` false make it write nothing.
+
+POSITIONS ONLY, which is what makes a second copy affordable.
+MeshDepthMaterial reads position and nothing else, so a proxy carries no
+normal, no uv and no colour: a quarter of the attribute bytes of what it
+copies, against a P10 budget this map is already over. Boxes fitted to each
+object's bounds would be an eighth of that again and would make a sloped roof
+cast a rectangle, so the exact geometry is worth its four bytes a vertex.
+
+Still casting for themselves: everything animated, because a proxy baked in
+world space would stand still while the thing it copies moved, and the
+instanced planting, because one proxy per canopy blob is thousands of objects
+to save one draw call each.
+
+THE GATE IS THE SHADOW BOX'S OWN TEST DONE BY HAND. The cell centre goes into
+the light's view space and is compared against the half extents, widened by the
+cell's own radius so a cell straddling the edge is kept. Not read off
+`sun.shadow.camera`, whose matrices are only brought up to date inside the
+shadow pass, which runs after this. Every vector and matrix is allocated once
+at build time, because this runs every frame and P8 forbids allocating there.
+
+**What went wrong first, and it was silent.** The proxies were bucketed by cell
+alone, and indexed and non indexed geometry cannot merge. `mergeGeometries` does
+not throw on a mixed set: it returns null and writes to the console. So whole
+cells lost their shadows and the only symptom was 35 console errors against a
+check that requires zero. The town merge has carried `indexed` in its bucket key
+since it was written; the proxy builder now does too.
+
+### MERGE_CELL back to Infinity
+
+Swept twice, before and after the atlas, worst of four viewpoints at a 70 m
+radius: Infinity 1372 calls and 2,426,187 triangles, 120 gives 1597 and
+2,367,100, 80 gives 1611 and 2,329,544, 60 gives 1807 and 2,069,086. That is
+225 draw calls for 59,000 triangles at 120. Draw calls are the binding budget
+by a wide margin, so the trade is negative until that stops being true. A real
+lever pointing the wrong way today.
+
+### Where it lands
+
+| view | round 31 | now | triangles now |
+|---------|-----:|-----:|-----------:|
+| spawn   | 1383 | **946** | 2,231,537 |
+| street  | 1141 | **811** | 2,171,627 |
+| rooftop | 1194 | **811** | 2,190,557 |
+| flying  | 1315 | **872** | 2,209,747 |
+| high    | 1198 | **804** | 1,953,275 |
+
+Worst view 1383 to 946 draw calls. Against where this work started, 2049 and
+2,977,665, that is **54 percent off the draw calls and 25 percent off the
+triangles**. P1 is 2.4x over and P2 1.9x.
+
+Pixel diffed at five viewpoints: high is the worst at 0.87 percent of pixels
+differing by more than 8 of 255 and 0.33 percent by more than 24, then street
+0.48 and 0.19, and the other three under 0.09. The building shadows, the pole
+shadows and the crossing shadows all read as they did.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds. **Check 13 console-clean
+passes with zero errors and zero warnings**, which is the check that caught the
+mixed index bucket and is the reason this round shipped correct rather than 35
+cells short. Checks 15 and 16 pass unchanged.

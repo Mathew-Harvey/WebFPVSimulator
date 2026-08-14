@@ -937,6 +937,9 @@ export async function buildMap(shell, onProgress) {
     cullCell: CULL_CELL,
     casterMinRadius: CASTER_MIN_RADIUS,
     casterMinRadiusInstanced: CASTER_MIN_RADIUS_INSTANCED,
+    /* See findAnimated in ./bake.js. Turn this OFF the day anything in this
+     * shell can press one of the town's buttons. */
+    releaseStillRigs: true,
   });
   const thinned = thinFoliage(world.root, { keep: FOLIAGE_KEEP });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });

@@ -69,6 +69,38 @@ function markSubtree(o, set) {
 }
 
 /*
+ * The parts of an object's look that a town animates without touching a
+ * matrix. Read before and after the probe and compared as a string, which is
+ * cheap and total: anything not listed here is something this cannot see, so
+ * the list is deliberately wider than the one case known to move.
+ */
+function materialPulse(o) {
+  if (!o.isMesh && !o.isLine && !o.isPoints && !o.isSprite) {
+    return '';
+  }
+  const list = Array.isArray(o.material) ? o.material : [o.material];
+  const out = [o.visible ? 1 : 0];
+  for (const m of list) {
+    if (!m) {
+      out.push('-');
+      continue;
+    }
+    out.push(
+      m.uuid,
+      m.opacity,
+      m.transparent ? 1 : 0,
+      m.visible ? 1 : 0,
+      m.color ? m.color.getHex() : '-',
+      m.emissive ? m.emissive.getHex() : '-',
+      m.emissiveIntensity ?? '-',
+      m.map ? m.map.uuid : '-',
+      m.map ? m.map.version : '-',
+    );
+  }
+  return out.join('|');
+}
+
+/*
  * Every object the town moves.
  *
  * Returns `moving`, a Set of them and all their descendants, and `stillRigs`,
@@ -76,7 +108,7 @@ function markSubtree(o, set) {
  * second is not a list of things that are safe to merge into the town, it is a
  * list of things that are safe to merge into THEMSELVES: see mergeRigs.
  */
-export function findAnimated(world) {
+export function findAnimated(world, { releaseStillRigs = false } = {}) {
   const moving = new Set();
   const roots = [];
   const marked = [];
@@ -104,8 +136,10 @@ export function findAnimated(world) {
    * cycle, snapshot again, and take anything that moved. */
   world.root.updateMatrixWorld(true);
   const before = new Map();
+  const beforeLook = new Map();
   world.root.traverse((o) => {
     before.set(o, o.matrixWorld.elements.slice());
+    beforeLook.set(o, materialPulse(o));
   });
   for (let i = 0; i < PROBE_STEPS; i += 1) {
     world.update(PROBE_DT);
@@ -114,7 +148,7 @@ export function findAnimated(world) {
   const stirred = new Set();
   world.root.traverse((o) => {
     const was = before.get(o);
-    if (!was) {
+    if (was === undefined) {
       roots.push(o);
       stirred.add(o);
       return;
@@ -126,6 +160,18 @@ export function findAnimated(world) {
         stirred.add(o);
         return;
       }
+    }
+    /* A TRANSFORM IS NOT THE ONLY THING A TOWN ANIMATES. onsen.js drives
+     * `p.material.opacity` on both steam vents every frame and never moves
+     * them by a matrix element, so a probe watching only matrices calls them
+     * still. That was survivable while a still rig was merged into ITSELF,
+     * keeping its own materials, and it stops being survivable the moment one
+     * is merged into the town: the vent's per frame opacity would then be
+     * written to a material shared with every other surface in its bucket,
+     * and half the town would breathe. */
+    if (beforeLook.get(o) !== materialPulse(o)) {
+      roots.push(o);
+      stirred.add(o);
     }
   });
 
@@ -145,10 +191,52 @@ export function findAnimated(world) {
     }
   }
 
+  /*
+   * WHETHER A STILL RIG IS HELD OUT AT ALL.
+   *
+   * Upstream marks a rig `planetRigid` because ITS OWN walker can walk up to a
+   * vending machine and press a button, and the note in planet.js says so.
+   * That walker does not exist here. Nothing in this shell reaches the town's
+   * interaction list: `animation.js`, this map's index.js and src/main.js
+   * mention no dispense, no action and no hitbox, and the only thing driving
+   * the town is `world.update` on the physics clock, which is exactly what the
+   * probe above runs. So a rig that neither moved nor changed its look across
+   * a whole 48 s crossing cycle cannot be moved by anything at all here.
+   *
+   * That makes the marker worth honouring in a weaker way than mergeRigs did.
+   * mergeRigs took a still rig and merged it into ITSELF, which turned 936
+   * meshes into 154 and stopped there, because a rig merged into itself can
+   * only share materials with its own parts. Released into the town merge it
+   * shares them with the whole district, and the vending machines and the
+   * lineside furniture stop being 180 draw calls carrying 6,000 triangles.
+   *
+   * The cost of being wrong is a rig frozen at its start position, so the
+   * conditions are narrow and all three have to hold: the marker's own
+   * subtree moved no matrix element, changed no material property, and this
+   * shell has no way to call the rig's action. The first two are measured
+   * above. The third is a fact about this repository, and it is the one that
+   * would go stale, so it is written down here rather than assumed: IF AN
+   * INTERACTION IS EVER WIRED UP, this option is what to turn off.
+   */
+  const released = releaseStillRigs ? new Set(stillRigs) : new Set();
   for (const r of roots) {
+    if (released.has(r)) {
+      continue;
+    }
     markSubtree(r, moving);
   }
-  return { moving, stillRigs };
+  /* A released rig that sits inside something that DOES move is still moving,
+   * and the loop above cannot see that because it walks roots rather than the
+   * tree. Cheaper to re-check than to order the loop. */
+  for (const r of released) {
+    for (let p = r.parent; p; p = p.parent) {
+      if (moving.has(p)) {
+        markSubtree(r, moving);
+        break;
+      }
+    }
+  }
+  return { moving, stillRigs: releaseStillRigs ? [] : stillRigs, released: released.size };
 }
 
 /*
@@ -1014,9 +1102,10 @@ export function bakeCity(world, {
   casterMinRadius = 0,
   casterMinRadiusInstanced = casterMinRadius,
   atlasSize = 4096,
+  releaseStillRigs = false,
 } = {}) {
   const root = world.root;
-  const { moving: animated, stillRigs } = findAnimated(world);
+  const { moving: animated, stillRigs, released } = findAnimated(world, { releaseStillRigs });
   /* Rigs first, and their output joins the animated set before anything else
    * looks at it. mergeRigs parents its meshes INSIDE the rig, so the town
    * merge below must not then take them: it would bake the rig's transform
@@ -1186,6 +1275,7 @@ export function bakeCity(world, {
       buckets: buckets.size,
       skippedAnimated,
       skippedInstanced,
+      rigsReleased: released,
       rigsMerged: rigs.rigsMerged,
       rigMeshesFrom: rigs.mergedFrom,
       rigMeshesTo: rigs.mergedTo,

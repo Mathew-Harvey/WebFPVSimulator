@@ -5228,3 +5228,78 @@ percent by more than 24, then street 0.12 and 0.04, rooftop 0.04 and 0.01,
 flying 0.01 and 0.00, high 0.00 and 0.00. The shop signs, the road signs and
 the bus number plate all read correctly, which is what says the uv rewrite put
 each mesh on its own tile.
+
+## Round 31: the rigs were held out for a walker this shell does not have
+
+`mergeRigs` took the town's 26 marked rigs from 936 meshes to 154 and stopped
+there, because a rig merged into ITSELF can only share materials with its own
+parts. The vending machines were still 92 draw calls at street and the lineside
+furniture 88, for 6,070 triangles between them, about 35 triangles a call.
+
+WHY THEY WERE HELD OUT AT ALL. Upstream marks a rig `planetRigid` because ITS
+OWN WALKER can walk up to a vending machine and press a button. That walker
+does not exist here. Nothing in this shell reaches the town's interaction list:
+`animation.js`, the city's index.js and src/main.js mention no dispense, no
+action and no hitbox, and the only thing driving the town is `world.update` on
+the physics clock, which is exactly what `findAnimated`'s probe runs. A rig
+that neither moves nor changes across a whole 48 s crossing cycle cannot be
+moved by anything at all here.
+
+So `releaseStillRigs` drops the still ones out of the animated set entirely and
+lets the town merge take them in world space.
+
+### The probe could not see the thing that would have broken
+
+A transform is not the only thing a town animates. `onsen.js` drives
+`p.material.opacity` on both steam vents every frame and never moves them by a
+matrix element, so a probe watching only matrices calls them still. That was
+survivable while a still rig was merged into itself, keeping its own materials.
+It stops being survivable the moment one is merged into the town: the vent's
+per frame opacity would be written to a material shared with every other
+surface in its bucket, and half the town would breathe.
+
+`materialPulse` snapshots opacity, transparency, visibility, colour, emissive,
+emissive intensity and the map's uuid and version before and after the probe,
+and anything that changed joins the animated set. Deliberately wider than the
+one case known to move, because what this cannot see is what it cannot hold
+out.
+
+### The measurement that says nothing froze
+
+Sampled every mesh's world matrix and material, ran the sim 12 s, counted what
+changed. Committed tree: 3,834 meshes sampled, **496 moved and 19 changed their
+look**. This tree: 3,442 meshes sampled, **496 moved and 19 changed their
+look**, from lakeRipple, lakeWindLane, train and the world root, the same four
+names. 392 fewer meshes in the scene and not one fewer moving part. The 19 are
+the onsen vents the material probe caught, which is the pass proving itself.
+
+### Where it lands
+
+| view | before | after |
+|---------|-----:|-----:|
+| spawn   | 1597 | **1383** |
+| street  | 1198 | **1141** |
+| rooftop | 1254 | **1194** |
+| flying  | 1470 | **1315** |
+| high    | 1387 | **1198** |
+
+The worst view is 1597 to 1383. Pixel diffed at five viewpoints, worst 0.13
+percent of pixels differing by more than 24 of 255 at street.
+
+THE COST OF BEING WRONG is a rig frozen at its start position, so the three
+conditions are narrow and all have to hold: the subtree moved no matrix
+element, changed no material property, and this shell has no way to call the
+rig's action. The first two are measured every build. The third is a fact about
+this repository rather than a measurement, and it is the one that will go
+stale, so it is written at the option and again here: IF AN INTERACTION IS EVER
+WIRED UP, TURN `releaseStillRigs` OFF.
+
+### Verify
+
+`npm run verify`: **14 of 16**, the same two reds. Check 13 console-clean passes
+with zero errors and zero warnings. Check 15 world-scale passes with every city
+reference unchanged, doorway 2.0500, crossing boom 1.2400, collider fit 613 of
+2731, crossing boom collider 1.045 to 1.325 m, and that last one is the one to
+watch this round because it is measured AFTER the animation has seated the
+booms: a rig wrongly released would have moved it. Check 16 map-isolation
+passes.

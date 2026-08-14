@@ -46,7 +46,7 @@ export const MAPS = [
     id: 'custom',
     name: 'Your track',
     mode: 'race',
-    note: 'The course open in the track builder, built on the race field and timed like any other lap.',
+    note: 'The course open in the track builder, or a published course opened from the public board.',
     buildMs: MAP_BUILD_MS.custom,
     load: () => import('./custom.js'),
   },

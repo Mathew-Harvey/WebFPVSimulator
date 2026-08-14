@@ -74,9 +74,16 @@ async function start() {
    * the world the moment the title screen appears.
    */
   try {
-    const wanted = new URLSearchParams(window.location.search).get('map');
+    const params = new URLSearchParams(window.location.search);
+    const wanted = params.get('map');
     if (wanted) {
       mapId = wanted;
+    }
+    /* A published course arrives as ?share=id. That is a custom map, even
+     * when the link omits map=, so the loading screen weights the right
+     * world and the title lands on the course the board sent. */
+    if (params.get('share')) {
+      mapId = 'custom';
     }
   } catch (e) {
     /* No URL to read. Keep the stored setting. */

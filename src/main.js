@@ -46,6 +46,8 @@ import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui } from './ui/ui.js';
+import { adoptShareFromLocation, boardPageUrl, postTime } from './share/board.js';
+import { readPilotName } from './share/pilot.js';
 import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
@@ -247,6 +249,20 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.settings.map = mapId;
     ui.renderMenu();
   }
+  /*
+   * A published course arrives as ?share=id. Fetch it before the world is
+   * built so the custom map reads the document the board sent, not the
+   * draft sitting in the builder's autosave.
+   */
+  try {
+    const adopted = await adoptShareFromLocation();
+    if (adopted) {
+      ui.settings.map = 'custom';
+      ui.renderMenu();
+    }
+  } catch (e) {
+    ui.setBanner(`Could not open that published course.\n${e.message ?? e}`, true);
+  }
 
   window.addEventListener('resize', () => {
     const d = shell.resize();
@@ -288,6 +304,7 @@ export async function boot({ loading, bootStart, mapId }) {
   loading.detail = '';
 
   let view = await loadMap(shell, ui.settings.map, loading);
+  ui.setShare(view.share || null);
   loading.start('frame');
 
   /*
@@ -667,6 +684,7 @@ export async function boot({ loading, bootStart, mapId }) {
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
     adoptSpawn();
+    ui.setShare(view.share || null);
     reset();
     finishLoadingOnFrame = true;
     mapReady = true;
@@ -772,6 +790,43 @@ export async function boot({ loading, bootStart, mapId }) {
     reset();
   }
 
+  async function submitBoardTime() {
+    const share = view.share;
+    if (!share || !share.id) {
+      notice = { text: 'This course is not on the public board.', untilMs: performance.now() + 2800 };
+      return;
+    }
+    const clean = race.log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
+    const fastest = clean.length ? Math.min(...clean) : null;
+    if (fastest == null) {
+      notice = { text: 'No clean lap to post.', untilMs: performance.now() + 2800 };
+      return;
+    }
+    let name = readPilotName();
+    if (!name) {
+      name = await ui.askName({
+        title: 'Your name',
+        detail: 'A time on the public board needs a name. It stays in this browser.',
+      });
+    }
+    if (!name) {
+      return;
+    }
+    try {
+      const posted = await postTime({
+        trackId: share.id,
+        name,
+        lapMs: Math.round(fastest),
+        origin: share.board,
+      });
+      const rank = posted.rank != null ? ` Rank ${posted.rank}.` : '';
+      notice = { text: `Posted ${name}, ${(fastest / 1000).toFixed(2)} s.${rank}`, untilMs: performance.now() + 3600 };
+      ui.markTimePosted(posted);
+    } catch (e) {
+      notice = { text: `Could not post that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+    }
+  }
+
   ui.onSettings = applySettings;
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */
@@ -800,6 +855,15 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
       }
+    } else if (action === 'leaderboard') {
+      window.open(boardPageUrl(), '_blank', 'noopener');
+    } else if (action === 'setname') {
+      ui.askName({
+        title: 'Your name',
+        detail: 'Posted times and published courses carry this name. It stays in this browser.',
+      });
+    } else if (action === 'posttime') {
+      submitBoardTime();
     }
     if (s) {
       applySettings(s);

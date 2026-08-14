@@ -45,6 +45,14 @@ Keys: R reset, C camera (FPV or chase), M stick calibration, V cycles the
 battery cell voltage between 4.20, 3.80 and 3.50 V. Drop a Betaflight CLI
 diff file anywhere on the page to fly your own rates and PIDs.
 
+Tracks you build stay in this browser. Clearing it, or another device,
+starts you from nothing. Publish a course from the track builder to put
+it on the public board, logo and all. The board is a separate site,
+[WebFPVSimulator-LeaderBoard](https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard).
+Locally it serves at `http://127.0.0.1:3100/`. Fly this course from the
+board opens this simulator in another tab with `?share=` and the course
+document, including the sponsor print on the gates and flags.
+
 ## Verify
 
 ```bash

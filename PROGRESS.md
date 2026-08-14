@@ -6439,4 +6439,14 @@ Verify: not run. This turn does not touch src/native, the WASM build, the
 input path or the simulation trace. Track builder selftest: 145 passed, 0
 failed.
 
+### 2026-08-14 | share | land simulator board connection on main
+
+Changed: the simulator side of the public board lands on main. Publish,
+pilot name, local-storage notice, ?share= import, and Post this time.
+The board site itself is not in this repo. It belongs in
+Mathew-Harvey/WebFPVSimulator-LeaderBoard.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
 

@@ -51,6 +51,20 @@ import { aperturesOf, elementById, kindOf, apertureCenter } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { apertureFrame, clamp } from './geometry.js';
 
+/*
+ * The printed vinyl the world dresses its gates and flags in, so what an
+ * author builds here looks like what they fly. src/art/ is neither the game
+ * nor the builder: it is the artwork both draw from, which is what lets the
+ * builder use it without importing a line of the simulator.
+ */
+import {
+  BANNER_SIZE, bannerCanvas, paintGateHeader, paintGateSleeve, paintFlagSail,
+} from '../art/banners.js';
+
+/* The header banner's height and the fraction of it left clear at each end
+ * for the gate number, matching src/render/scene.js. */
+const BANNER_H = 0.58;
+
 const COL = {
   ground: 0x16232f,
   grid: 0x2b3d4d,
@@ -85,6 +99,51 @@ async function loadThree() {
   return loading;
 }
 
+/*
+ * The teardrop outline, as a plane grid in XY: x out from the mast, y up.
+ *
+ * The same profile src/render/scene.js cuts, so a flag in the preview and a
+ * flag in the air are the same shape. The world's version carries a second
+ * attribute for the wave in its shader; the preview does not wave, so this
+ * is the outline and its uv and nothing else.
+ */
+function sailPlaneGeometry(poleR, h) {
+  const rows = 12;
+  const cols = 5;
+  const y0 = h * 0.16;
+  const y1 = h * 0.98;
+  const maxW = h * 0.30;
+  const pos = [];
+  const uvs = [];
+  const idx = [];
+  const smooth = (x) => {
+    const t = Math.max(0, Math.min(1, x));
+    return t * t * (3 - 2 * t);
+  };
+  for (let r = 0; r < rows; r += 1) {
+    const t = r / (rows - 1);
+    const w = maxW * (0.42 + 0.58 * smooth(t / 0.45)) * (1 - smooth((t - 0.70) / 0.30) * 0.94);
+    const y = y0 + (y1 - y0) * t;
+    for (let c = 0; c < cols; c += 1) {
+      const u = c / (cols - 1);
+      pos.push(poleR + w * u, y, 0);
+      uvs.push(u, t);
+    }
+  }
+  for (let r = 0; r < rows - 1; r += 1) {
+    for (let c = 0; c < cols - 1; c += 1) {
+      const a = r * cols + c;
+      idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export class View3D {
   constructor(canvas, host) {
     this.canvas = canvas;
@@ -103,6 +162,61 @@ export class View3D {
     this.drag = null;
     this.dirty = true;
     this.bind();
+  }
+
+  /*
+   * The course's printed dress, as materials, cached until the logo changes.
+   *
+   * Same artwork as the world's, painted by the same module, so an author
+   * looking at this preview is looking at the gates they will fly. Cached on
+   * the view because the content group is rebuilt on every edit and painting
+   * three canvases per keystroke is the one thing here that would be slow.
+   */
+  bannerKit() {
+    const logo = this.host.doc.branding?.logo ?? null;
+    if (this.kit && this.kit.logo === logo) {
+      return this.kit;
+    }
+    if (this.kit) {
+      for (const m of [this.kit.header, this.kit.sleeve, ...this.kit.sails]) {
+        m.map.dispose();
+        m.dispose();
+      }
+    }
+    const jobs = [];
+    const paint = (size, painter, opts) => {
+      const canvas = bannerCanvas(size[0], size[1]);
+      const ctx = canvas.getContext('2d');
+      painter(ctx, size[0], size[1], opts);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      jobs.push((img) => {
+        painter(ctx, size[0], size[1], { ...opts, logo: img });
+        tex.needsUpdate = true;
+        this.host.requestDraw();
+      });
+      return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
+    };
+    this.kit = {
+      logo,
+      header: paint(BANNER_SIZE.header, paintGateHeader, {}),
+      sleeve: paint(BANNER_SIZE.sleeve, paintGateSleeve, {}),
+      sails: [
+        paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'navy' }),
+        paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'red' }),
+      ],
+    };
+    if (typeof logo === 'string' && logo.startsWith('data:image/')) {
+      const img = new Image();
+      img.onload = () => {
+        for (const job of jobs) {
+          job(img);
+        }
+      };
+      img.src = logo;
+    }
+    return this.kit;
   }
 
   /* Created lazily so a session that never opens the 3D tab never pays for a
@@ -506,6 +620,40 @@ export class View3D {
     }
 
     /*
+     * The printed dress: a sleeve down each upright and a header banner over
+     * the top rail, the same artwork the world uses. Only on a VERTICAL
+     * aperture: a gate laid flat is carried on a mast and has no uprights to
+     * sleeve and no top rail to hang a header from, which is what
+     * src/render/scene.js builds too.
+     */
+    if (Math.abs(el.pitch) < Math.PI / 6) {
+      const kit = this.bannerKit();
+      const top = levels[levels.length - 1];
+      const bottom = levels[0];
+      const across = new THREE.Vector3(f.widthAxis.x, f.widthAxis.y, f.widthAxis.z);
+      const sleeveW = 0.42;
+      const sleeveBottom = bottom.sillH;
+      const sleeveH = top.sillH + top.clearH + tube * 2 - sleeveBottom;
+      for (const sx of [-1, 1]) {
+        const off = sx * (top.clearW / 2 + tube + sleeveW / 2);
+        const sleeve = new THREE.Mesh(new THREE.PlaneGeometry(sleeveW, sleeveH), kit.sleeve);
+        sleeve.quaternion.copy(quat);
+        /* Turned upright in the plane's own frame: the builder's world is Z
+         * up, and a PlaneGeometry is authored in XY. */
+        sleeve.position.set(
+          across.x * off, across.y * off, sleeveBottom + sleeveH / 2,
+        );
+        sleeve.scale.x = sx;
+        group.add(sleeve);
+      }
+      const headerW = 2 * (top.clearW / 2 + tube + sleeveW);
+      const header = new THREE.Mesh(new THREE.PlaneGeometry(headerW, BANNER_H), kit.header);
+      header.quaternion.copy(quat);
+      header.position.set(0, 0, top.sillH + top.clearH + tube * 2 + BANNER_H / 2 + 0.03);
+      group.add(header);
+    }
+
+    /*
      * Entry face green, exit face red. One translucent pane a hand's breadth
      * either side of the opening, so which way the gate is flown is legible
      * from any angle without reading a number.
@@ -585,18 +733,23 @@ export class View3D {
     pole.position.z = el.dims.height / 2;
     this.register(pole, el);
     group.add(pole);
-    const flag = new THREE.Mesh(
-      new THREE.PlaneGeometry(el.dims.height * 0.32, el.dims.height * 0.26),
-      new THREE.MeshLambertMaterial({ color: colour, side: THREE.DoubleSide }),
+    /*
+     * The teardrop sail, with its LEADING EDGE ON THE MAST, and the same
+     * print the world puts on it. The old preview drew a rectangle whose
+     * inner edge happened to touch the pole; this is the outline a race flag
+     * actually has, so an author placing markers sees what will stand there.
+     */
+    const h = el.dims.height;
+    const sail = new THREE.Mesh(
+      sailPlaneGeometry(el.dims.poleRadius, h),
+      selected ? new THREE.MeshLambertMaterial({ color: COL.frameSel, side: THREE.DoubleSide })
+        : this.bannerKit().sails[0],
     );
-    flag.rotation.x = Math.PI / 2;
-    flag.rotation.y = -el.yaw;
-    flag.position.set(
-      Math.cos(el.yaw) * el.dims.height * 0.16,
-      Math.sin(el.yaw) * el.dims.height * 0.16,
-      el.dims.height * 0.85,
-    );
-    group.add(flag);
+    /* Authored in XY with x out from the mast and y up, then stood upright
+     * and turned to the marker's own heading in this Z up world. */
+    sail.rotation.x = Math.PI / 2;
+    sail.rotation.y = -el.yaw;
+    group.add(sail);
   }
 
   buildStart(group, el, selected) {

@@ -97,6 +97,13 @@ const DEFAULTS = {
   ambienceLevel: 4,
   focusTone: false,
   readout: false,
+  /*
+   * The racing line guide. Off by default, because a clean frame is what a
+   * pilot who knows the course wants and this is a learning aid; the ones
+   * who need it will find it, and the ones who do not are not made to turn
+   * it off before their first lap.
+   */
+  racingLine: false,
 };
 
 export function loadSettings() {
@@ -257,6 +264,32 @@ export class Ui {
     howto.append(this.howtoMenu);
     this.screens.howto = howto;
 
+    /*
+     * The map screen. Cards rather than a row of text, and each card plays a
+     * short flight through the world it offers.
+     *
+     * WHY A SCREEN AND NOT A ROW. Choosing the world is the biggest choice a
+     * player makes and it takes seconds to honour, and until now it was a
+     * name on a menu row that you stepped through with the arrow keys: a
+     * player who had never flown either one was choosing between the strings
+     * "Race field" and "Freestyle city". What a world is like is not
+     * something a sentence gets across, so the cards show it.
+     *
+     * The thumbnails are built in src/ui/mapreel.js, which is imported
+     * lazily the first time this screen opens. That is not tidiness: the
+     * city's own modules must never be fetched until the city is chosen
+     * (check 16 asserts it), and the reel module reaches for the track
+     * builder's data to draw a designed course, so none of it belongs on the
+     * boot path.
+     */
+    const maps = el('div', 'screen screen-page');
+    maps.append(el('h2', null, 'Choose a world'));
+    this.mapCardHost = el('div', 'map-cards');
+    this.mapsMenu = el('div', 'menu');
+    maps.append(this.mapCardHost, this.mapsMenu,
+      el('div', 'hint', 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'));
+    this.screens.maps = maps;
+
     const settings = el('div', 'screen screen-page');
     settings.append(el('h2', null, 'Settings'));
     this.settingsMenu = el('div', 'menu');
@@ -293,15 +326,12 @@ export class Ui {
         {
           label: 'Map',
           value: m.name,
+          /* An action, not a value to step through. Choosing the world loads
+           * one, which takes seconds, so stepping past a world with the
+           * arrow key used to start building it: the map screen makes the
+           * choice deliberate and shows what each one is. */
+          action: 'maps',
           note: m.note,
-          /* Changing this loads a world, which takes seconds and shows the
-           * loading screen. It is on the title rather than buried in settings
-           * because it is the biggest choice the player makes. */
-          adjust: (d) => {
-            const i = MAPS.findIndex((x) => x.id === s.map);
-            const n = MAPS.length;
-            s.map = MAPS[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
-          },
         },
         {
           label: 'Tune',
@@ -327,6 +357,17 @@ export class Ui {
     }
     if (this.screen === 'howto') {
       return [{ label: 'Back', action: 'back' }];
+    }
+    if (this.screen === 'maps') {
+      return [
+        ...MAPS.map((m) => ({
+          label: m.name,
+          note: m.note,
+          map: m,
+          action: `map:${m.id}`,
+        })),
+        { label: 'Back', action: 'back' },
+      ];
     }
     if (this.screen === 'settings') {
       return [
@@ -434,6 +475,12 @@ export class Ui {
           adjust: () => { s.focusTone = !s.focusTone; },
         },
         {
+          label: 'Racing line',
+          value: s.racingLine ? 'On' : 'Off',
+          note: 'Draws the line the course is meant to be flown, threading every gate. It goes green while you are on it and amber while you are not. Nothing on a freestyle map to draw.',
+          adjust: () => { s.racingLine = !s.racingLine; },
+        },
+        {
           label: 'Performance readout',
           value: s.readout ? 'On' : 'Off',
           note: 'Frame rate and draw counts, for tuning your machine.',
@@ -475,9 +522,13 @@ export class Ui {
   }
 
   renderMenu() {
+    if (this.screen === 'maps') {
+      this.renderMapCards();
+    }
     const host = {
       title: this.titleMenu,
       howto: this.howtoMenu,
+      maps: this.mapsMenu,
       settings: this.settingsMenu,
       paused: this.pausedMenu,
       results: this.resultsMenu,
@@ -490,7 +541,12 @@ export class Ui {
       this.cursor = 0;
     }
     host.textContent = '';
-    items.forEach((it, i) => {
+    /* The map screen draws its worlds as cards above this menu, so the rows
+     * here are only what is left over, which is Back. */
+    const rows = this.screen === 'maps' ? items.filter((it) => !it.map) : items;
+    const offset = items.length - rows.length;
+    rows.forEach((it, k) => {
+      const i = k + offset;
       const row = el('div', `row${i === this.cursor ? ' on' : ''}`);
       row.append(el('span', 'row-label', it.label));
       if (it.value != null) {
@@ -525,7 +581,145 @@ export class Ui {
     host.append(note);
   }
 
+  /*
+   * The world cards, and the flight playing on each of them.
+   *
+   * BUILT ONCE, then only re-marked. The menu is rebuilt from scratch on
+   * every cursor move, which is what keeps it honest everywhere else, and
+   * doing that here would throw away three canvases and three reels twenty
+   * times a second as somebody arrowed along the row.
+   */
+  renderMapCards() {
+    const host = this.mapCardHost;
+    if (!host) {
+      return;
+    }
+    const items = this.items().filter((it) => it.map);
+    if (!this.mapCards || this.mapCards.length !== items.length) {
+      host.textContent = '';
+      this.mapCards = items.map((it, i) => {
+        const card = el('div', 'map-card');
+        const shot = el('canvas', 'map-reel');
+        const body = el('div', 'map-card-body');
+        const name = el('div', 'map-card-name', it.label);
+        const tag = el('div', 'map-card-tag', '');
+        const still = el('div', 'map-card-still', '');
+        body.append(name, tag);
+        card.append(shot, still, body);
+        card.addEventListener('mousemove', () => {
+          if (this.cursor !== i) {
+            this.cursor = i;
+            this.renderMenu();
+            if (this.onUiSound) {
+              this.onUiSound('move');
+            }
+          }
+        });
+        card.addEventListener('click', () => {
+          this.cursor = i;
+          this.select();
+        });
+        host.append(card);
+        return {
+          card, shot, tag, still, id: it.map.id,
+        };
+      });
+      this.startReels();
+    }
+    this.mapCards.forEach((c, i) => {
+      c.card.classList.toggle('on', i === this.cursor);
+      c.tag.textContent = c.id === this.settings.map ? 'Flying now' : '';
+    });
+  }
+
+  /*
+   * Start the thumbnails. The module arrives through a dynamic import, so a
+   * player who never opens this screen never fetches a line of it, and the
+   * whole thing is guarded: a thumbnail that cannot be built is a card with
+   * a sentence on it, never a screen that fails to open.
+   */
+  startReels() {
+    this.stopReels();
+    const cards = this.mapCards ?? [];
+    const session = {};
+    this.reelSession = session;
+    import('./mapreel.js').then(async ({ reelFor, makeReel }) => {
+      if (this.reelSession !== session) {
+        return;
+      }
+      const live = [];
+      for (const c of cards) {
+        let reel = null;
+        try {
+          reel = await reelFor(c.id);
+        } catch (e) {
+          reel = null;
+        }
+        if (this.reelSession !== session) {
+          return;
+        }
+        if (!reel) {
+          c.still.textContent = c.id === 'custom'
+            ? 'Nothing built yet. Open the track builder from the title screen.'
+            : 'No preview.';
+          continue;
+        }
+        c.still.textContent = '';
+        live.push({ card: c, reel: makeReel(c.shot, reel) });
+      }
+      if (!live.length || this.reelSession !== session) {
+        return;
+      }
+      /*
+       * One clock for every card, at 20 frames a second rather than the
+       * display's rate. These are 240 pixel canvases behind a menu, and the
+       * world is still being rendered behind them at the display's rate;
+       * spending a full frame budget on three thumbnails would make the
+       * menu the most expensive screen in the product.
+       */
+      const start = performance.now();
+      let lastDraw = 0;
+      const tick = (now) => {
+        if (this.reelSession !== session || this.screen !== 'maps') {
+          return;
+        }
+        this.reelRaf = requestAnimationFrame(tick);
+        if (now - lastDraw < 50) {
+          return;
+        }
+        lastDraw = now;
+        for (const l of live) {
+          const w = l.card.shot.clientWidth;
+          const h = l.card.shot.clientHeight;
+          if (w > 0 && h > 0 && (l.card.shot.width !== w || l.card.shot.height !== h)) {
+            l.card.shot.width = w;
+            l.card.shot.height = h;
+          }
+          l.reel.frame((now - start) * 0.001);
+        }
+      };
+      this.reelRaf = requestAnimationFrame(tick);
+    }).catch(() => {
+      for (const c of cards) {
+        c.still.textContent = 'No preview.';
+      }
+    });
+  }
+
+  stopReels() {
+    this.reelSession = null;
+    if (this.reelRaf != null) {
+      cancelAnimationFrame(this.reelRaf);
+      this.reelRaf = null;
+    }
+  }
+
   show(screen) {
+    if (this.screen === 'maps' && screen !== 'maps') {
+      /* Nothing draws a thumbnail for a screen nobody is looking at. */
+      this.stopReels();
+      this.mapCards = null;
+    }
     this.screen = screen;
     this.cursor = 0;
     for (const [name, node] of Object.entries(this.screens)) {
@@ -741,9 +935,23 @@ export class Ui {
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
-    if (action === 'howto' || action === 'settings') {
+    if (action === 'howto' || action === 'settings' || action === 'maps') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
+      return;
+    }
+    /*
+     * Choosing a world. It goes through onSettings rather than onAction
+     * because a map change IS a settings change, and the shell's
+     * applySettings is the one place that knows a changed map means a swap.
+     */
+    if (action.startsWith('map:')) {
+      this.settings.map = action.slice(4);
+      saveSettings(this.settings);
+      this.show(this.returnTo === 'paused' ? 'paused' : 'title');
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
       return;
     }
     if (action === 'back') {
@@ -784,11 +992,21 @@ export class Ui {
       return true;
     }
     if (code === 'ArrowLeft' || code === 'KeyA') {
-      this.adjust(-1);
+      /* The map screen lays its worlds out in a row, so left and right are
+       * what a player reaches for. Nothing on it has a value to adjust. */
+      if (this.screen === 'maps') {
+        this.move(-1);
+      } else {
+        this.adjust(-1);
+      }
       return true;
     }
     if (code === 'ArrowRight' || code === 'KeyD') {
-      this.adjust(1);
+      if (this.screen === 'maps') {
+        this.move(1);
+      } else {
+        this.adjust(1);
+      }
       return true;
     }
     if (code === 'Enter' || code === 'Space') {

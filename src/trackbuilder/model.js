@@ -49,6 +49,36 @@ import { apertureFrame, wrapAngle } from './geometry.js';
  */
 export const SCHEMA_VERSION = 1;
 
+/*
+ * The event logo, as a data URL, and the cap on it.
+ *
+ * WHY THE IMAGE ITSELF IS IN THE DOCUMENT. A track is one file that a person
+ * can send to another person, and a branding that lived in a second file
+ * beside it would arrive stripped every time. So the logo travels inside the
+ * track, which means it has to be small enough that a track is still a file
+ * rather than a payload.
+ *
+ * 256 kB of data URL is about 190 kB of image, which is a generous PNG at
+ * the 1024 by 512 the builder normalises an upload to, and local storage's
+ * usual quota is 5 MB for the whole origin. The builder resizes and
+ * re-encodes before it ever gets here, so this cap is the backstop against a
+ * hand edited file rather than the thing a user meets.
+ *
+ * Anything that is not a data URL of an image is dropped on read, and that
+ * is a security property as much as a validation one: a document is
+ * untrusted input, this string ends up in a texture loader, and an http URL
+ * in there would make opening somebody's track a network request to their
+ * server.
+ */
+export const LOGO_MAX_CHARS = 256 * 1024;
+const LOGO_PREFIX = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+
+export function isUsableLogo(value) {
+  return typeof value === 'string'
+    && value.length <= LOGO_MAX_CHARS
+    && LOGO_PREFIX.test(value);
+}
+
 /* Every number in the file is written to this many decimal places. Six is a
  * micrometre on a 60 m field, which is far past any dimension that matters
  * and short enough that a float never prints seventeen digits of noise. */
@@ -145,6 +175,12 @@ export function createTrack(name = 'Untitled track') {
       minCurveRadius: TUNING.minCurveRadius,
       samplesPerSegment: TUNING.samplesPerSegment,
     },
+    /*
+     * What the course is dressed in. Optional, and empty by default, so a
+     * track written before this existed reads identically and a track
+     * written after it costs nothing until somebody uploads something.
+     */
+    branding: { logo: null, logoName: '' },
     elements: [],
     sequence: [],
   };
@@ -323,9 +359,24 @@ export function normalize(raw) {
       minCurveRadius: Math.max(0.1, num(src.settings?.minCurveRadius, base.settings.minCurveRadius)),
       samplesPerSegment: int(src.settings?.samplesPerSegment, base.settings.samplesPerSegment, 4, 512),
     },
+    branding: { logo: null, logoName: '' },
     elements: [],
     sequence: [],
   };
+
+  /* The logo, or nothing, and a repair note when a file carried something
+   * this build will not put in a texture. */
+  const rawLogo = src.branding?.logo;
+  if (rawLogo != null && rawLogo !== '') {
+    if (isUsableLogo(rawLogo)) {
+      doc.branding.logo = rawLogo;
+      doc.branding.logoName = str(src.branding?.logoName, '');
+    } else if (typeof rawLogo === 'string' && rawLogo.length > LOGO_MAX_CHARS) {
+      repairs.push(`dropped a logo of ${Math.round(rawLogo.length / 1024)} kB. The cap is ${Math.round(LOGO_MAX_CHARS / 1024)} kB.`);
+    } else {
+      repairs.push('dropped a logo that was not an embedded image. A track carries its picture inside itself, never a link to one.');
+    }
+  }
 
   const seenIds = new Set();
   let startSeen = false;
@@ -460,6 +511,10 @@ export function toPlain(doc) {
       tangentScale: num(doc.settings.tangentScale),
       minCurveRadius: num(doc.settings.minCurveRadius),
       samplesPerSegment: int(doc.settings.samplesPerSegment, TUNING.samplesPerSegment, 4, 512),
+    },
+    branding: {
+      logo: isUsableLogo(doc.branding?.logo) ? doc.branding.logo : null,
+      logoName: str(doc.branding?.logoName, ''),
     },
     elements: doc.elements.map((el) => {
       const def = ELEMENTS[el.type];

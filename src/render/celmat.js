@@ -197,12 +197,61 @@ export function celTimeCount() {
 }
 
 /*
- * opts: color, rim (0..1), rimColor, spec (0..1), specWidth, cloudShadow
+ * The cloth wave, injected into the vertex shader.
+ *
+ * A banner flag has to move or it reads as a painted board on a stick, and
+ * moving 72 of them from JavaScript means 72 live meshes the scenery merger
+ * cannot touch. So the motion lives in the shader and the geometry stays
+ * static, which is what lets every sail on the field merge into ONE draw
+ * call and still fly.
+ *
+ * The weight comes from a per vertex attribute rather than from uv, because
+ * three only declares the uv attribute when a uv sampled map is present and
+ * a plain coloured sail has none. `aCloth.x` is the distance from the pole,
+ * 0 on the seam and 1 on the free edge; `aCloth.y` is the height up the
+ * sail. The seam therefore never moves, which is the whole point: a flag
+ * that leaves its pole is the defect this replaced.
+ *
+ * The phase is taken from the vertex's WORLD position, so flags a few metres
+ * apart are out of step with each other without carrying a per flag uniform,
+ * and the merge stays legal.
+ */
+const CLOTH_CHUNK = /* glsl */ `
+  {
+    vec3 clothWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+    float clothPh = uCelTime * 2.9 + clothWorld.x * 0.55 + clothWorld.z * 0.41;
+    /* Squared, so the seam is still and the free edge carries the travel. */
+    float clothAmt = aCloth.x * aCloth.x;
+    float clothFlap =
+      sin(clothPh + aCloth.y * 3.4) * 0.62 +
+      sin(clothPh * 1.73 + aCloth.x * 5.1) * 0.38;
+    transformed += normalize(normal) * (clothFlap * clothAmt * uCloth);
+    /* A little lift on the free edge as it snaps, so the cloth reads as
+     * light fabric rather than as a swinging plank. */
+    transformed.y += clothFlap * clothAmt * uCloth * 0.22;
+  }
+`;
+
+/*
+ * opts: color, rim (0..1), rimColor, spec (0..1), specWidth, cloudShadow,
+ * map, alphaTest, cloth, key
+ *
+ * `map` needs `key`, and that is enforced rather than documented. The
+ * scenery merger buckets geometry by celKey and celKey is the options
+ * object as JSON, in which two different textures are both the empty
+ * object: two logos would merge into one bucket and one of them would
+ * silently vanish. Naming the key is the caller saying which texture this
+ * is.
  */
 export function celMaterial(opts = {}) {
+  if (opts.map && !opts.key) {
+    throw new Error('celmat: a material with a map needs an explicit key');
+  }
   const mat = new THREE.MeshToonMaterial({
     color: opts.color ?? 0xffffff,
     gradientMap: celRampTexture(),
+    map: opts.map ?? null,
+    alphaTest: opts.alphaTest ?? 0,
     transparent: opts.transparent ?? false,
     opacity: opts.opacity ?? 1,
     side: opts.side ?? THREE.FrontSide,
@@ -214,7 +263,9 @@ export function celMaterial(opts = {}) {
   const rimColor = new THREE.Color(opts.rimColor ?? 0x9ec8ff);
   const specColor = new THREE.Color(opts.specColor ?? 0xffffff);
   const cloud = opts.cloudShadow ?? 0;
+  const cloth = opts.cloth ?? 0;
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uCloth = { value: cloth };
     shader.uniforms.uRimColor = { value: rimColor };
     shader.uniforms.uRimStrength = { value: opts.rim ?? 0.32 };
     shader.uniforms.uRimStart = { value: opts.rimStart ?? 0.55 };
@@ -233,10 +284,19 @@ export function celMaterial(opts = {}) {
     registered.set(mat, shader.uniforms.uCelTime);
 
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCelWorld;')
+      .replace(
+        '#include <common>',
+        `#include <common>
+         varying vec3 vCelWorld;
+         uniform float uCelTime;
+         uniform float uCloth;
+         ${cloth > 0 ? 'attribute vec2 aCloth;' : ''}`,
+      )
       .replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\nvCelWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+        `#include <begin_vertex>
+         ${cloth > 0 ? CLOTH_CHUNK : ''}
+         vCelWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
       );
 
     shader.fragmentShader = shader.fragmentShader
@@ -270,8 +330,10 @@ ${RIM_CHUNK}
   };
   mat.userData.cel = true;
   /* Stable identity for the scenery merger: two materials built from the
-   * same options are interchangeable, so their meshes can share one draw. */
-  mat.userData.celKey = JSON.stringify(opts);
+   * same options are interchangeable, so their meshes can share one draw.
+   * A texture is not JSON, so a keyed material states its own identity and
+   * the key is used verbatim. */
+  mat.userData.celKey = opts.key ?? JSON.stringify(opts);
   return mat;
 }
 

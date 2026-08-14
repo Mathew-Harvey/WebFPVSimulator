@@ -289,6 +289,13 @@ export function courseFromDocument(raw) {
     id: 'custom',
     name: doc.name,
     documentId: doc.id,
+    /*
+     * The event's logo, straight through. normalize() has already refused
+     * anything that is not an embedded image, so what reaches the renderer
+     * is a data URL or nothing, and the renderer never has to decide whether
+     * a string is safe to hand a texture loader.
+     */
+    logo: doc.branding?.logo ?? null,
     field: { width: field.width, depth: field.depth },
     structures,
     stations,

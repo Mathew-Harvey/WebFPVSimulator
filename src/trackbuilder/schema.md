@@ -85,6 +85,7 @@ the file.
   "modifiedUtc": "2026-01-01T00:00:00Z",
   "field":    { ... },
   "settings": { ... },
+  "branding": { ... },
   "elements": [ ... ],
   "sequence": [ ... ]
 }
@@ -99,6 +100,7 @@ the file.
 | `modifiedUtc` | string | Same format, last edit. The Load list sorts on this. |
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
+| `branding` | object | What the course is dressed in. Optional; see below. |
 | `elements` | array | Everything standing on the field, in no particular order. |
 | `sequence` | array | The flying order. THIS is the course. |
 
@@ -121,6 +123,35 @@ real thing to draw.
 | `tangentScale` | number | How long a Hermite tangent is as a fraction of the distance to the next knot. See **Deriving the racing line**. |
 | `minCurveRadius` | number, metres | Below this radius the results panel warns. Advisory only. |
 | `samplesPerSegment` | integer | How finely the spline is sampled between two knots, 4 to 512. Arc length, curvature, the barrier test and the elevation profile all read the same polyline. |
+
+### `branding`
+
+The event's mark, worn by every gate and every marker flag on the course.
+
+| field | type | meaning |
+| --- | --- | --- |
+| `logo` | string or null | A `data:` URL of an image, or `null`. Nothing else is accepted. |
+| `logoName` | string | The file the author chose it from. Display only. |
+
+**The image travels inside the track.** A track is one file a person sends to
+another person, and a branding that lived in a second file beside it would
+arrive stripped every time. So the picture is embedded, which means it has to
+be small enough that a track is still a file rather than a payload:
+`src/trackbuilder/logo.js` re-draws every upload onto a 1200 by 400 canvas, fits
+it without cropping, re-encodes it as a PNG, and steps down through smaller
+boards until the data URL is under **256 kB**. `model.normalize()` drops
+anything larger and says so.
+
+**Only a `data:` URL is accepted, and that is a security property rather than a
+validation one.** A document is untrusted input and this string ends up in a
+texture loader, so an `http:` URL in there would turn opening somebody's track
+into a request to their server. A logo that is not an embedded image is dropped
+on read with a repair note.
+
+This field is **optional**. A document written before it existed reads
+identically, and `normalize()` fills in `{ "logo": null, "logoName": "" }`.
+Adding an optional field with a documented default is not a version bump; see
+**Versioning**.
 
 ---
 
@@ -417,142 +448,342 @@ Create Path on this document reports a lap of **138.9 m**, a tightest radius of
   "name": "Ladder Loop, demo",
   "createdUtc": "2026-01-01T00:00:00Z",
   "modifiedUtc": "2026-01-01T00:00:00Z",
-  "field": { "width": 60, "depth": 40, "gridSize": 1 },
-  "settings": { "tangentScale": 1.1, "minCurveRadius": 2.5, "samplesPerSegment": 48 },
+  "field": {
+    "width": 60,
+    "depth": 40,
+    "gridSize": 1
+  },
+  "settings": {
+    "tangentScale": 1.1,
+    "minCurveRadius": 2.5,
+    "samplesPerSegment": 48
+  },
+  "branding": {
+    "logo": null,
+    "logoName": ""
+  },
   "elements": [
     {
       "id": "el-1",
       "type": "startPads",
       "name": "Grid",
-      "position": { "x": 16.5, "y": 13.5, "z": 0 },
+      "position": {
+        "x": 16.5,
+        "y": 13.5,
+        "z": 0
+      },
       "yaw": 3.141593,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "pads": 4, "spacing": 1.5, "padSize": 0.6 }
+      "dims": {
+        "pads": 4,
+        "spacing": 1.5,
+        "padSize": 0.6
+      }
     },
     {
       "id": "el-2",
       "type": "cone",
       "name": "West marker",
-      "position": { "x": 7.5, "y": 14, "z": 0 },
+      "position": {
+        "x": 7.5,
+        "y": 14,
+        "z": 0
+      },
       "yaw": 0,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "height": 0.7112, "baseRadius": 0.1778, "clearance": 1 }
+      "dims": {
+        "height": 0.7112,
+        "baseRadius": 0.1778,
+        "clearance": 1
+      }
     },
     {
       "id": "el-3",
       "type": "gate",
       "name": "",
-      "position": { "x": 7.5, "y": 26, "z": 0 },
+      "position": {
+        "x": 7.5,
+        "y": 26,
+        "z": 0
+      },
       "yaw": 0.728855,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "levels": 1, "sillH": 0, "clearW": 1.524, "clearH": 1.524, "levelPitch": 1.557401 }
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
     },
     {
       "id": "el-4",
       "type": "gate",
       "name": "",
-      "position": { "x": 21.5, "y": 26.5, "z": 0 },
+      "position": {
+        "x": 21.5,
+        "y": 26.5,
+        "z": 0
+      },
       "yaw": -0.249979,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "levels": 1, "sillH": 0, "clearW": 1.524, "clearH": 1.524, "levelPitch": 1.557401 }
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
     },
     {
       "id": "el-5",
       "type": "ladder",
       "name": "The ladder",
-      "position": { "x": 31, "y": 20, "z": 0 },
+      "position": {
+        "x": 31,
+        "y": 20,
+        "z": 0
+      },
       "yaw": 0,
       "pitch": 0,
       "yawOverridden": true,
-      "dims": { "levels": 3, "sillH": 0, "clearW": 1.524, "clearH": 1.524, "levelPitch": 1.557401 }
+      "dims": {
+        "levels": 3,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
     },
     {
       "id": "el-6",
       "type": "gate",
       "name": "",
-      "position": { "x": 40.5, "y": 13.5, "z": 0 },
+      "position": {
+        "x": 40.5,
+        "y": 13.5,
+        "z": 0
+      },
       "yaw": -0.249979,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "levels": 1, "sillH": 0, "clearW": 1.524, "clearH": 1.524, "levelPitch": 1.557401 }
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
     },
     {
       "id": "el-7",
       "type": "flag",
       "name": "Turn flag",
-      "position": { "x": 54.5, "y": 14, "z": 0 },
+      "position": {
+        "x": 54.5,
+        "y": 14,
+        "z": 0
+      },
       "yaw": 0,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "height": 2.5, "poleRadius": 0.025, "clearance": 1.5 }
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
     },
     {
       "id": "el-8",
       "type": "tower",
       "name": "",
-      "position": { "x": 54.5, "y": 26, "z": 0 },
+      "position": {
+        "x": 54.5,
+        "y": 26,
+        "z": 0
+      },
       "yaw": 2.412738,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "levels": 2, "sillH": 1.524, "clearW": 1.524, "clearH": 1.524, "levelPitch": 1.557401 }
+      "dims": {
+        "levels": 2,
+        "sillH": 1.524,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
     },
     {
       "id": "el-9",
       "type": "diveGate",
       "name": "",
-      "position": { "x": 40.5, "y": 26.5, "z": 0 },
+      "position": {
+        "x": 40.5,
+        "y": 26.5,
+        "z": 0
+      },
       "yaw": 0.249979,
       "pitch": 0.959931,
       "yawOverridden": false,
-      "dims": { "levels": 1, "sillH": 4.572, "clearW": 2.1336, "clearH": 1.8288, "levelPitch": 1.862201 }
+      "dims": {
+        "levels": 1,
+        "sillH": 4.572,
+        "clearW": 2.1336,
+        "clearH": 1.8288,
+        "levelPitch": 1.862201
+      }
     },
     {
       "id": "el-10",
       "type": "gate",
       "name": "Finish approach",
-      "position": { "x": 21.5, "y": 13.5, "z": 0 },
+      "position": {
+        "x": 21.5,
+        "y": 13.5,
+        "z": 0
+      },
       "yaw": -2.720173,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "levels": 1, "sillH": 0, "clearW": 1.524, "clearH": 1.524, "levelPitch": 1.557401 }
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
     },
     {
       "id": "el-11",
       "type": "barrier",
       "name": "Pit fence",
-      "position": { "x": 31, "y": 33, "z": 0 },
+      "position": {
+        "x": 31,
+        "y": 33,
+        "z": 0
+      },
       "yaw": 0,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "width": 8, "depth": 1, "height": 2 }
+      "dims": {
+        "width": 8,
+        "depth": 1,
+        "height": 2
+      }
     },
     {
       "id": "el-12",
       "type": "label",
       "name": "",
-      "position": { "x": 31, "y": 30, "z": 0 },
+      "position": {
+        "x": 31,
+        "y": 30,
+        "z": 0
+      },
       "yaw": 0,
       "pitch": 0,
       "yawOverridden": false,
-      "dims": { "textHeight": 0.9 },
+      "dims": {
+        "textHeight": 0.9
+      },
       "text": "Ladder low, then high"
     }
   ],
   "sequence": [
-    { "id": "sq-1",   "elementId": "el-2",   "apertureIndex": null, "entry": null, "passSide": "left",  "clearance": 1,    "overridden": false },
-    { "id": "sq-2",   "elementId": "el-3",   "apertureIndex": 0,    "entry": 1,    "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-3",   "elementId": "el-4",   "apertureIndex": 0,    "entry": 1,    "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-4",   "elementId": "el-5",   "apertureIndex": 0,    "entry": 1,    "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-5",   "elementId": "el-6",   "apertureIndex": 0,    "entry": 1,    "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-6",   "elementId": "el-7",   "apertureIndex": null, "entry": null, "passSide": "right", "clearance": 1.5,  "overridden": false },
-    { "id": "sq-7",   "elementId": "el-8",   "apertureIndex": 0,    "entry": 1,    "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-8",   "elementId": "el-9",   "apertureIndex": 0,    "entry": -1,   "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-9",   "elementId": "el-5",   "apertureIndex": 1,    "entry": -1,   "passSide": null,    "clearance": null, "overridden": false },
-    { "id": "sq-10",  "elementId": "el-10",  "apertureIndex": 0,    "entry": 1,    "passSide": null,    "clearance": null, "overridden": false }
+    {
+      "id": "sq-1",
+      "elementId": "el-2",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1,
+      "overridden": false
+    },
+    {
+      "id": "sq-2",
+      "elementId": "el-3",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-3",
+      "elementId": "el-4",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-4",
+      "elementId": "el-5",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-5",
+      "elementId": "el-6",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-6",
+      "elementId": "el-7",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-7",
+      "elementId": "el-8",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-8",
+      "elementId": "el-9",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-9",
+      "elementId": "el-5",
+      "apertureIndex": 1,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-10",
+      "elementId": "el-10",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    }
   ]
 }
 ```

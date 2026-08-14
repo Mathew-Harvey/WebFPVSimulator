@@ -48,6 +48,14 @@ import { SESSION_TEXTURES } from './session-textures.js';
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
 import { builtObstacle, BUILT_FRAME_TUBE_OD, GATE_SCALE } from '../game/track.js';
+/* The shape of the built in circuit, shared with the map screen's thumbnail
+ * so the picture of the course and the course cannot drift apart. */
+import { circuitPoint, CIRCUIT_POINTS, CIRCUIT_STATIONS } from '../game/circuit.js';
+/* The printed vinyl a course is dressed in, shared with the track builder's
+ * own preview so an author sees the gates they will fly. See src/art/. */
+import {
+  BANNER, BANNER_SIZE, bannerCanvas, paintGateHeader, paintGateSleeve, paintFlagSail,
+} from '../art/banners.js';
 import { Colliders } from '../game/collide.js';
 
 /*
@@ -224,11 +232,9 @@ function fbm(x, y) {
 /* Figure of eight circuit. */
 function trackCurve() {
   const pts = [];
-  const n = 16;
-  for (let i = 0; i < n; i += 1) {
-    const t = (i / n) * Math.PI * 2;
-    const d = 1 + Math.sin(t) * Math.sin(t);
-    pts.push(new THREE.Vector3((105 * Math.cos(t)) / d, 0, (118 * Math.sin(t) * Math.cos(t)) / d));
+  for (let i = 0; i < CIRCUIT_POINTS; i += 1) {
+    const p = circuitPoint(i / CIRCUIT_POINTS);
+    pts.push(new THREE.Vector3(p.x, p.y, p.z));
   }
   return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.4);
 }
@@ -1487,18 +1493,101 @@ function sharedObstacleMats() {
     return SHARED;
   }
   SHARED = {
-    /* Navy the ramp can actually band: near black frames read as untextured
-     * masses because lit and shadow faces cannot separate. */
-    frame: celMaterial({ color: 0x2a3352, rim: 0.3 }),
-    /* Vinyl mesh panel. Real ones are a printed scrim, so a flat mid value
-     * with a little rim reads closer than anything shiny. */
+    /*
+     * The frame. Aluminium rather than the navy this used to be: on a real
+     * course the tube is the least of the gate and the printed sleeves are
+     * the whole of it, and a dark bar between two pale banners reads as a
+     * hole in the middle of the structure. Light enough to be a tube in
+     * sunlight, well under the sky, which is the rule everything in this
+     * file obeys.
+     */
+    frame: celMaterial({ color: 0x9aa2b0, rim: 0.26 }),
+    /* The moulded corner at every junction of upright and cross member. A
+     * shade darker than the tube, because on a real gate it is a separate
+     * fitting and the joint is what says the thing was assembled. */
+    fitting: celMaterial({ color: 0x767f8f, rim: 0.26 }),
+    /* Plain vinyl, for anything with no print on it. */
     panel: celMaterial({ color: 0x3d4763, rim: 0.22 }),
+    /* The lower rail's flash, and the start gate's. A course is read at
+     * speed and the start and finish line has to be the one gate that is a
+     * different colour before anything is lit at all. */
     panelStart: celMaterial({ color: 0x24603d, rim: 0.24 }),
-    panelRace: celMaterial({ color: 0x6b2a22, rim: 0.24 }),
-    /* The number, unlit so it stays legible against a dark panel at speed. */
-    number: new THREE.MeshBasicMaterial({ color: 0xfff4d6 }),
+    panelRace: celMaterial({ color: 0x1e3566, rim: 0.24 }),
+    /* The bound edge of a printed banner, and the roundel the gate number
+     * is painted in. One material for both because they are the same
+     * webbing tape on a real gate. */
+    hem: celMaterial({ color: 0xe4d9bf, rim: 0.18 }),
+    /* The numeral, DARK on the pale roundel, unlit so distance and shadow
+     * cannot take the gate's number away from a pilot counting them down.
+     * It used to be cream pips straight onto the dark panel, which is the
+     * lower contrast pairing of the two and is not what a gate carries. */
+    number: new THREE.MeshBasicMaterial({ color: 0x18202f }),
   };
   return SHARED;
+}
+
+/*
+ * The course's printed dress: the gate header, the upright sleeves and the
+ * flag sails, as materials, with the author's logo composited into all of
+ * them.
+ *
+ * ONE KIT PER COURSE, made once. Every gate on a course wears the same
+ * print, so the scenery merger folds all fourteen headers into one draw call
+ * and all seventy two sails into two. Passing a texture round instead of a
+ * material would defeat that, which is why this returns materials.
+ *
+ * THE LOGO ARRIVES LATE AND THAT IS FINE. It is a data URL out of local
+ * storage, so there is no network fetch to fail, but the decode is still
+ * asynchronous. The canvases are painted at once WITHOUT it, so the world is
+ * complete and correct from the first frame, and repainted with it the
+ * moment it decodes. Nothing waits and nothing pops except the mark
+ * appearing on vinyl that was already there.
+ */
+function bannerKit(logoUrl, key) {
+  const jobs = [];
+  const paint = (size, painter, opts) => {
+    const canvas = bannerCanvas(size[0], size[1]);
+    const ctx = canvas.getContext('2d');
+    painter(ctx, size[0], size[1], opts);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    jobs.push((logo) => {
+      painter(ctx, size[0], size[1], { ...opts, logo });
+      tex.needsUpdate = true;
+    });
+    return tex;
+  };
+  const printed = (tex, id) => celMaterial({
+    color: 0xffffff,
+    /* Almost no rim on printed vinyl. The rim term is one minus the dot of
+     * normal and view, and a flat banner is edge on across its whole face,
+     * so any real strength washes the print out to one cool tint. */
+    rim: 0.06,
+    map: tex,
+    side: THREE.DoubleSide,
+    key: `${id}:${key}`,
+  });
+  const kit = {
+    header: printed(paint(BANNER_SIZE.header, paintGateHeader, {}), 'hdr'),
+    sleeve: printed(paint(BANNER_SIZE.sleeve, paintGateSleeve, {}), 'slv'),
+    /* Two sails, so a run of flags down a course alternates rather than
+     * repeating. Two materials is two draw calls for the whole set. */
+    sails: [
+      sailMaterial(paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'navy' }), `sailA:${key}`),
+      sailMaterial(paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'red' }), `sailB:${key}`),
+    ],
+  };
+  if (typeof logoUrl === 'string' && logoUrl.startsWith('data:image/')) {
+    const img = new Image();
+    img.onload = () => {
+      for (const job of jobs) {
+        job(img);
+      }
+    };
+    img.src = logoUrl;
+  }
+  return kit;
 }
 
 /*
@@ -1519,6 +1608,20 @@ const DIGITS = {
   8: ['111', '101', '111', '101', '111'],
   9: ['111', '101', '111', '001', '111'],
 };
+
+/*
+ * The three colours a gate's lit opening is ever painted.
+ *
+ * GATE_COLOUR is every gate at rest, START_COLOUR is the start and finish
+ * line so the timing plane is identifiable before anything is lit, and
+ * NEXT_COLOUR is THE ONE THE RACE WANTS NEXT. The last one is a hue nothing
+ * else in either world uses: grass is green, sky is blue, and the gates are
+ * navy, red and off white vinyl, so a magenta ring cannot be confused with
+ * any of them at any distance or against any background.
+ */
+const GATE_COLOUR = 0xffd45c;
+const START_COLOUR = 0x7dffb4;
+const NEXT_COLOUR = 0xff37c8;
 
 /*
  * The lit markers on an obstacle's openings: the outline the pilot aims at,
@@ -1542,7 +1645,7 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
    * one: that is the opening the racing line is aimed at, and lighting all
    * three equally would tell the pilot nothing about where to go.
    */
-  const ringColor = isStart ? 0x7dffb4 : 0xffd45c;
+  const ringColor = isStart ? START_COLOUR : GATE_COLOUR;
   /* The middle opening by default; a course document may name a different
    * one, because a ladder flown at its top level wants the top level lit. */
   const primary = primaryWanted == null
@@ -1674,22 +1777,95 @@ function specFor(kindName) {
 }
 
 /*
- * The top panel and the gate number on it, as a group centred on the panel.
+ * The gate's top banner: the printed header board a race gate wears, with
+ * the number in a roundel and the event's logo beside it.
  *
- * Extracted from obstacle() so a tilted gate can carry the same plate. The
+ * WHAT CHANGED AND WHY. This used to be a plate 0.92 of the CLEAR OPENING
+ * wide with cream pips straight onto it, which is narrower than the frame it
+ * sat on and reads as a sign screwed to a hoop. A race gate's header spans
+ * the whole structure, side banner to side banner, because it is one printed
+ * sheet sleeved over the top rail. So the width comes from the frame's outer
+ * edge and the board carries the three things a real one carries: a bound
+ * hem top and bottom, a pale roundel with the number in it, and the space to
+ * the right of the roundel where the logo goes.
+ *
+ * Extracted from obstacle() so a tilted gate wears the same banner. The
  * caller positions the group and pushes the collider it hands back, because
- * a dive gate's plate rides on the leaning frame while a standing gate's sits
- * on top of the uprights, and those are two different heights in two
+ * a dive gate's banner rides on the leaning frame while a standing gate's
+ * sits on top of the uprights, and those are two different heights in two
  * different frames.
  */
-function numberPlate(index, clearW, panelMat) {
+/*
+ * A printed panel: a vinyl substrate with the print on both faces.
+ *
+ * NOT A TEXTURED BOX, and the difference matters. A BoxGeometry maps the
+ * same [0,1] square onto all six of its faces, so a banner built as one
+ * textured box wears its whole design squashed across its 60 mm top edge as
+ * well, which is exactly the face a pilot looks down on from above. So the
+ * substrate is plain and the print is a plane on each side, the back one
+ * turned so the design reads the right way round from behind, the way a
+ * double sided banner is actually printed.
+ */
+function printedPanel(w, h, depth, mat, substrate, mirror = false) {
+  const g = new THREE.Group();
+  const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth), substrate);
+  board.castShadow = true;
+  g.add(board);
+  for (const sz of [-1, 1]) {
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    face.position.z = sz * (depth * 0.5 + 0.004);
+    if (sz < 0) {
+      face.rotation.y = Math.PI;
+    }
+    /*
+     * Mirrored on the PRINT ONLY, never on the group. Scaling the whole
+     * panel by minus one in x inverts the substrate's winding as well, and
+     * a single sided box turned inside out renders as a black slab: that is
+     * exactly what the far leg of every gate came out as.
+     */
+    if (mirror) {
+      face.scale.x = -1;
+    }
+    g.add(face);
+  }
+  return g;
+}
+
+/*
+ * The gate's header: the printed banner sleeved over the top rail, with the
+ * number in a roundel at one end of it.
+ *
+ * WHAT CHANGED AND WHY. This used to be a plate 0.92 of the CLEAR OPENING
+ * wide with cream pips straight onto it, which is narrower than the frame it
+ * sat on and reads as a sign screwed to a hoop. A race gate's header spans
+ * the whole structure, side banner to side banner, because it is one printed
+ * sheet sleeved over the top rail. So the width comes from the frame's outer
+ * edge, and what is printed on it comes from src/art/banners.js, which is
+ * also what the track builder's preview draws, so an author sees the gate
+ * they will fly.
+ *
+ * THE NUMBER IS GEOMETRY, NOT PRINT. A numeral in the texture would mean one
+ * texture per gate and fourteen gates would be fourteen draw calls where
+ * there is now one, so the print leaves both ends clear and a pale roundel
+ * with raised pips sits in one of them.
+ *
+ * Extracted from obstacle() so a tilted gate wears the same banner. The
+ * caller positions the group and pushes the collider it hands back, because
+ * a dive gate's banner rides on the leaning frame while a standing gate's
+ * sits on top of the uprights, and those are two different heights in two
+ * different frames.
+ */
+const GATE_BANNER_H = 0.58;
+/* Fraction of the header's width left clear at EACH end for the roundel.
+ * Shared with the painter so the two cannot disagree. */
+const HEADER_NUMBER_ZONE = 0.22;
+
+function gateBanner(index, outerW, headerMat, substrate) {
   const mats = sharedObstacleMats();
   const group = new THREE.Group();
-  const plateH = 0.44;
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(clearW * 0.92, plateH, 0.05), panelMat);
-  plate.castShadow = true;
-  outlineHull(plate, 1.04);
-  group.add(plate);
+  const boardH = GATE_BANNER_H;
+  const boardW = Math.max(0.9, outerW);
+  group.add(printedPanel(boardW, boardH, 0.05, headerMat, substrate));
 
   /*
    * The number, as many digits as it takes. This used to be
@@ -1698,10 +1874,30 @@ function numberPlate(index, clearW, panelMat) {
    * stations two different gates would carry the same plate and a pilot
    * counting them down would be reading fiction.
    */
-  const dot = 0.055;
-  const step = 0.072;
   const glyphs = String(Math.max(0, Math.round(index))).split('').map((d) => DIGITS[Number(d)]);
-  /* 3 columns per glyph plus a one column gap, centred on the plate. */
+  const dot = 0.048;
+  const step = 0.058;
+  /*
+   * The roundel has to HOLD the numeral, so it is sized from the numeral
+   * rather than picked: a 3 by 5 matrix at this step is 2 steps tall from
+   * the centre and 1.5 steps per glyph wide, and the circle that contains
+   * that has to reach its corner. Sized by eye instead, the second digit of
+   * gate 13 hung out over the edge of the disc.
+   */
+  const halfGlyphW = ((glyphs.length * 4 - 1) - 1) * 0.5 * step + dot * 0.5;
+  const roundelR = Math.min(
+    boardH * 0.40,
+    Math.hypot(halfGlyphW, 2 * step + dot * 0.5) + 0.03,
+  );
+  /* In the clear zone the print left at the end of the banner. */
+  const roundelX = -(boardW * (0.5 - HEADER_NUMBER_ZONE * 0.5));
+  const roundel = new THREE.Mesh(new THREE.CylinderGeometry(roundelR, roundelR, 0.062, 20), mats.hem);
+  roundel.rotation.x = Math.PI * 0.5;
+  roundel.position.set(roundelX, 0, 0);
+  group.add(roundel);
+
+  /* 3 columns per glyph plus a one column gap, centred on the roundel, on
+   * BOTH faces: a gate is read from whichever side you arrive on. */
   const glyphW = 4;
   const originX = -((glyphs.length * glyphW - 1) - 1) * 0.5;
   for (let gi = 0; gi < glyphs.length; gi += 1) {
@@ -1711,19 +1907,53 @@ function numberPlate(index, clearW, panelMat) {
         if (rows[ry][rx] !== '1') {
           continue;
         }
-        const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
-        pip.position.set(
-          (originX + gi * glyphW + rx) * step,
-          (2 - ry) * step,
-          0.04,
-        );
-        group.add(pip);
+        for (const sz of [-1, 1]) {
+          const pip = new THREE.Mesh(new THREE.BoxGeometry(dot, dot, 0.03), mats.number);
+          /*
+           * MIRRORED ON THE BACK FACE, which is what a printed banner does:
+           * the reverse is printed reversed so the number reads the right
+           * way round from whichever side the pilot arrives on. Drawn at the
+           * same offset on both faces, gate 12 reads as 21 from behind.
+           */
+          pip.position.set(
+            roundelX + sz * (originX + gi * glyphW + rx) * step,
+            (2 - ry) * step,
+            sz * 0.046,
+          );
+          group.add(pip);
+        }
       }
     }
   }
-  group.userData.halfW = clearW * 0.46;
-  group.userData.r = plateH * 0.5;
+
+  group.userData.halfW = boardW * 0.5;
+  group.userData.r = boardH * 0.5;
   return group;
+}
+
+/*
+ * The elbow fittings at the four corners of one opening.
+ *
+ * Cheap and worth every triangle: a square of four tubes butted together is
+ * an abstraction, and a square of four tubes with a moulded corner at each
+ * junction is a thing somebody assembled out of a parts list. Boxes rather
+ * than cylinders on purpose, because obstacle() recovers the clear opening
+ * by finding its own vertical cylinders and a fifth one would change what it
+ * measures.
+ */
+function cornerFittings(group, sills, clearW, clearH, tubeR) {
+  const mats = sharedObstacleMats();
+  const s = tubeR * 2.9;
+  for (const sillY of sills) {
+    for (const sy of [sillY - tubeR, sillY + clearH + tubeR]) {
+      for (const sx of [-1, 1]) {
+        const f = new THREE.Mesh(new THREE.BoxGeometry(s, s, s * 0.92), mats.fitting);
+        f.position.set(sx * (clearW * 0.5 + tubeR), sy, 0);
+        f.castShadow = true;
+        group.add(f);
+      }
+    }
+  }
 }
 
 /*
@@ -1769,8 +1999,11 @@ function courseCurve(course) {
  * already tells the author when their line clips one, so the two halves
  * agree about what a barrier is.
  */
-function courseProps(course, height, scene, colliders, baker) {
+function courseProps(course, height, scene, colliders, baker, kit) {
   const mats = sharedObstacleMats();
+  /* Which sail print each marker gets, so a course's flags alternate the
+   * way the field's do rather than all being the same one. */
+  let markerIndex = 0;
   for (const s of course.structures) {
     const y = height(s.x, s.z) + s.baseY;
     if (s.kind === 'obstacle') {
@@ -1816,12 +2049,29 @@ function courseProps(course, height, scene, colliders, baker) {
       continue;
     }
     if (s.type === 'flag') {
-      /* The course marker flag the field already draws, at the author's
-       * position and pointing the way they pointed it. */
-      const made = bannerFlag(() => 0.5, height, s.x, s.z, 0xd8443a);
+      /*
+       * The course marker flag the field already draws, at the author's
+       * position, pointing the way they pointed it, and at the HEIGHT AND
+       * MAST THICKNESS THEIR DOCUMENT CARRIES. It used to be drawn at the
+       * field's own dressing size whatever the document said, so an author
+       * who set a flag to 2.5 m got a 1.6 m one and the collider they were
+       * warned about was not the object they could see.
+       */
+      const made = bannerFlag(
+        kit, () => 0.5, height, s.x, s.z, markerIndex,
+        Math.max(0.5, s.dims.height), Math.max(0.008, s.dims.poleRadius),
+      );
+      markerIndex += 1;
       made.group.rotation.y = s.yaw;
+      made.group.updateMatrixWorld(true);
+      /* The mast and its spike are static and bake; only the sail is left
+       * live, and even that is only because it carries its own attribute. */
+      baker.bake(made.pole);
+      baker.bake(made.foot);
+      made.group.remove(made.pole);
+      made.group.remove(made.foot);
       scene.add(made.group);
-      colliders.add('obstacle', s.x, y, s.z, s.x, y + s.dims.height, s.z, Math.max(0.05, s.dims.poleRadius));
+      colliders.add('obstacle', s.x, y, s.z, s.x, y + made.height, s.z, Math.max(0.05, s.dims.poleRadius));
       continue;
     }
     if (s.type === 'startPads') {
@@ -1917,7 +2167,7 @@ function coursePlacements(course) {
  * Local frame, and colliders, match obstacle(): x across the opening, y up
  * from the base, z through the opening.
  */
-function tiltedGate(spec, index, isStart, pitch) {
+function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   const g = new THREE.Group();
   const mats = sharedObstacleMats();
   const tubeR = BUILT_FRAME_TUBE_OD * 0.5;
@@ -1989,6 +2239,10 @@ function tiltedGate(spec, index, isStart, pitch) {
     outlineHull(stile, 1.06);
     pivot.add(stile);
   }
+  /* The same moulded corners the standing gate has. The pivot's own origin
+   * is the opening's centre, so the sill this asks for is minus half the
+   * clear height rather than zero. */
+  cornerFittings(pivot, [-halfH], clearW, clearH, tubeR);
 
   /*
    * Colliders for the tilted frame, in the OBSTACLE's frame rather than the
@@ -2015,17 +2269,26 @@ function tiltedGate(spec, index, isStart, pitch) {
    * of zero because the pivot already sits at the opening's centre. */
   const marks = apertureMarkers(pivot, [-clearH * 0.5], clearW, clearH, 1, isStart, 0);
 
-  /* The plate rides on the leaning frame, above the opening in the frame's
+  /* The header rides on the leaning frame, above the opening in the frame's
    * own plane, so a pilot approaching from above reads it square on. */
   if (index > 0) {
-    const plate = numberPlate(index, clearW, isStart ? mats.panelStart : mats.panelRace);
-    plate.position.set(0, halfH + tubeR * 3 + 0.22, 0);
+    const plate = gateBanner(
+      index,
+      clearW + 4 * tubeR,
+      opts.kit.header,
+      isStart ? mats.panelStart : mats.panelRace,
+    );
+    plate.position.set(0, halfH + tubeR * 3 + GATE_BANNER_H * 0.5 + 0.03, 0);
     pivot.add(plate);
   }
 
   return {
     group: g,
     kindName: spec.kindName ?? 'diveGate',
+    /* The highest structure on this obstacle, in its own frame. The banner
+     * rides on the pivot, so its height above the opening's centre is
+     * foreshortened by the tilt. */
+    top: centreY + (halfH + tubeR * 3 + GATE_BANNER_H + 0.03) * Math.cos(pitch),
     /* The whole leaning frame stays live rather than baking, because its
      * parts sit inside a pivot whose rotation the baker would have to flatten
      * and the lit target has to keep its per obstacle materials anyway. A
@@ -2149,25 +2412,35 @@ function obstacle(spec, index, isStart, opts = {}) {
     caps.push({ kind: 'gate', ax: -memberLen * 0.5, ay: my, az: 0, bx: memberLen * 0.5, by: my, bz: 0, r: tubeR });
   }
 
-  /* Mesh side panels, outboard of each upright. They are what a pilot
+  /* The moulded corner at every junction of upright and cross member. */
+  cornerFittings(g, sills, clearW, clearH, tubeR);
+
+  /*
+   * The printed sleeves, outboard of each upright. They are what a pilot
    * actually reads the gate's plane from at speed, and they are solid, so
-   * their collider sits entirely outboard of the clear span. */
+   * their collider sits entirely outboard of the clear span. The print is
+   * the same one the track builder draws on its own preview.
+   */
   const panelW = 0.42;
-  const panelMat = isStart ? mats.panelStart : mats.panelRace;
+  const kit = opts.kit;
+  const substrate = isStart ? mats.panelStart : mats.panelRace;
   const panelBottom = sills[0];
   const panelH = topSurface - panelBottom;
   for (const sx of [-1, 1]) {
     const cx = sx * (upX + tubeR + panelW * 0.5);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, 0.03), panelMat);
-    panel.position.set(cx, panelBottom + panelH * 0.5, 0);
-    panel.castShadow = true;
-    g.add(panel);
+    /* Mirrored on the far leg, so the chequer column runs down the OUTSIDE
+     * of the gate on both sides rather than down the outside of one and the
+     * inside of the other. */
+    const sleeve = printedPanel(panelW, panelH, 0.03, kit.sleeve, substrate, sx < 0);
+    sleeve.position.set(cx, panelBottom + panelH * 0.5, 0);
+    g.add(sleeve);
     caps.push({ kind: 'obstacle', ax: cx, ay: panelBottom, az: 0, bx: cx, by: panelBottom + panelH, bz: 0, r: panelW * 0.5 });
   }
 
-  /* The top panel and the number on it. */
-  const plateGroup = numberPlate(index, clearW, panelMat);
-  const plateY = upTop + 0.22;
+  /* The header banner, spanning the whole structure. */
+  const outerW = 2 * (upX + tubeR + panelW);
+  const plateGroup = gateBanner(index, outerW, kit.header, substrate);
+  const plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
   plateGroup.position.set(0, plateY, 0);
   g.add(plateGroup);
   caps.push({
@@ -2215,6 +2488,8 @@ function obstacle(spec, index, isStart, opts = {}) {
   return {
     group: g,
     kindName,
+    /* The top of the header board, in this obstacle's own frame. */
+    top: plateY + plateGroup.userData.r,
     /* The lit parts have per obstacle materials driven every frame, so they
      * stay live; everything else bakes. */
     animate: [ring, halo, glow],
@@ -2230,46 +2505,285 @@ function obstacle(spec, index, isStart, opts = {}) {
 }
 
 /*
- * A course marker flag.
+ * A course marker flag: the teardrop banner that lines a race course.
  *
- * It was 3.4 m tall on a 0.106 m pole, which is 2.23 times the gate's aperture
- * and 3.2 times thicker than the gate's own structural tube: 72 pieces of
- * dressing, each out measuring the thing the player is trying to find. At 30 m
- * the target gate subtends 23 px while a nearby flag pole gave 435. The eye
- * calibrates the gate against whatever is beside it, so the dressing has to be
- * smaller than the structure.
+ * WHAT WAS WRONG WITH THE OLD ONE, in the order a pilot notices it. The
+ * cloth was a 0.55 m plane whose CENTRE sat 0.58 m out from the pole, so
+ * its near edge was 0.305 m clear of the mast: the flag was not attached to
+ * anything, it hovered beside its own pole. The pole itself was a 1.6 m
+ * cylinder whose centre was pushed to y = 1.7, so it spanned 0.9 to 2.5 m
+ * and floated 0.9 m off the grass, while the collider ran from the ground
+ * to 1.6 m and agreed with neither. And a rectangle on a stick is not what
+ * a race course is lined with.
+ *
+ * WHAT THIS IS. A ground spike, a straight mast, and a teardrop sail whose
+ * LEADING EDGE IS THE MAST: every vertex of the seam sits on the pole's own
+ * surface, which is what makes it a flag rather than a poster near a pole.
+ * The outline is the shape every event supplier sells: narrow at the foot,
+ * full through the middle, drawn to a point at the head.
+ *
+ * SIZE, and it is a compromise between two things that both matter. On a
+ * real course the flags stand over the gates, which is what the reference
+ * photographs show and what the owner asked for. But the note the previous
+ * build left is still binding: the flags were once 3.4 m on a 0.106 m pole,
+ * 2.23 times the gate's aperture and 3.2 times the thickness of the gate's
+ * own structural tube, and at 30 m the target gate subtended 23 px while a
+ * nearby flag pole gave 435. The mistake there was the POLE, not the
+ * height: an 18 mm mast carries a 2.9 m sail without ever being the widest
+ * thing beside the gate, so the flag can stand over a 2.4 m gate the way it
+ * does on a field and still not out measure it.
+ *
+ * The sail does not move from JavaScript. Its motion is in the cel
+ * material's cloth term, driven by the clock every cel material already
+ * carries, so all 72 sails merge into one draw call and still fly. See
+ * CLOTH_CHUNK in celmat.js.
  */
-function bannerFlag(rng, height, x, z, colorHex) {
+const FLAG_H = 2.9;
+
+function flagSailGeometry(poleR, h) {
+  /* Rows up the mast, columns out from it. 12 by 5 is 60 vertices: enough
+   * that the taper reads as a curve and the wave as a wave. */
+  const rows = 12;
+  const cols = 5;
+  const y0 = h * 0.16;
+  const y1 = h * 0.98;
+  const maxW = h * 0.30;
+  const pos = [];
+  const uvs = [];
+  const cloth = [];
+  const idx = [];
+  for (let r = 0; r < rows; r += 1) {
+    const t = r / (rows - 1);
+    /* The teardrop outline. The first factor fills the sail out from the
+     * foot, the second draws it to a point at the head. */
+    const fill = 0.42 + 0.58 * smoothstep01(t / 0.45);
+    const head = 1 - smoothstep01((t - 0.70) / 0.30) * 0.94;
+    const w = maxW * fill * head;
+    const y = y0 + (y1 - y0) * t;
+    for (let c = 0; c < cols; c += 1) {
+      const s = c / (cols - 1);
+      /* The seam is ON the mast, not near it. */
+      pos.push(poleR + w * s, y, 0);
+      uvs.push(s, t);
+      cloth.push(s, t);
+    }
+  }
+  for (let r = 0; r < rows - 1; r += 1) {
+    for (let c = 0; c < cols - 1; c += 1) {
+      const a = r * cols + c;
+      idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('aCloth', new THREE.Float32BufferAttribute(cloth, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function smoothstep01(x) {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+}
+
+/*
+ * A sail material. Takes the PAINTED TEXTURE rather than a colour, because a
+ * race flag is a printed thing and not a coloured one, and one material per
+ * print is what keeps the whole set of them inside two draw calls.
+ */
+function sailMaterial(tex, key) {
+  return celMaterial({
+    color: 0xffffff,
+    /* No rim on the cloth. The rim term is one minus dot(normal, view), and
+     * a near flat sail seen at any angle is edge on across its whole
+     * surface, so the cool rim colour covered the entire flag: measured on
+     * the old plain cloth, a dark red flag came out rgb 151 93 113, a dusty
+     * pink nothing in the palette holds. */
+    rim: 0.0,
+    map: tex,
+    side: THREE.DoubleSide,
+    cloth: 0.085,
+    key,
+  });
+}
+
+function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018) {
   const g = new THREE.Group();
+  const mast = Math.max(0.008, poleR);
   const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.014, 0.018, 1.6, 5),
+    /* Standing ON the ground, from the spike to the finial, so the mesh and
+     * the collider describe the same object. */
+    new THREE.CylinderGeometry(mast * 0.72, mast, h, 5),
     celMaterial({ color: 0xd7dbe0, rim: 0.2 }),
   );
-  pole.position.y = 1.7;
+  pole.position.y = h * 0.5;
   g.add(pole);
-  /* Cel shaded, not unlit: an unlit cloth holds full saturation inside a
-   * cast shadow, which is the one thing the colour rule forbids. */
-  const cloth = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.55, 0.35, 4, 2),
-    /* No rim on the cloth. The rim term is 1 minus dot(normal, view), and
-     * a flat plane seen at any angle is edge on across its whole surface,
-     * so the cool rim colour covered the entire flag: a dark red cloth
-     * measured rgb 151 93 113, a dusty pink nothing in the palette
-     * contains. */
-    celMaterial({ color: colorHex, rim: 0.0, side: THREE.DoubleSide }),
+  /* The spike plate. Without it a 36 mm mast reads as growing out of the
+   * grass rather than as driven into it. */
+  const foot = new THREE.Mesh(
+    new THREE.CylinderGeometry(mast * 3.4, mast * 4.2, 0.035, 6),
+    celMaterial({ color: 0x4a5364, rim: 0.2 }),
   );
-  cloth.castShadow = true;
-  /* The cloth hangs off the pole, so it has to swing about the pole. A
-   * mesh rotated about its own centre 0.58 m away swings off the pole and
-   * back through it. */
-  cloth.position.set(0.58, 0, 0);
-  const clothPivot = new THREE.Group();
-  clothPivot.position.set(0, 1.35, 0);
-  clothPivot.add(cloth);
-  g.add(clothPivot);
+  foot.position.y = 0.018;
+  g.add(foot);
+  const sail = new THREE.Mesh(
+    flagSailGeometry(mast, h),
+    kit.sails[Math.abs(Math.round(index)) % kit.sails.length],
+  );
+  sail.castShadow = true;
+  g.add(sail);
   g.position.set(x, height(x, z), z);
   g.rotation.y = rng() * Math.PI;
-  return { group: g, cloth: clothPivot, pole };
+  return {
+    group: g, sail, pole, foot, height: h,
+  };
+}
+
+/*
+ * The title screen's flythrough, as a closed line of points.
+ *
+ * THE ATTRACT CAMERA USED TO ORBIT A POINT, and on a map with a course that
+ * is the wrong shot: it framed the start gate and nothing else, so a player
+ * choosing between two tracks was shown the same nine metre circle whichever
+ * one they picked. What a course looks like IS the course, so the camera
+ * flies it.
+ *
+ * It flies ABOVE the racing line rather than along it, and the clearance is
+ * derived rather than picked. A fixed height cannot work on this field: a
+ * standard gate tops out about 2.4 m, a two level tower about 4.2 m and the
+ * dive gate's frame hangs at 15 ft, so any constant either buries the camera
+ * in a tower or leaves the course a distant smudge. So each sample takes the
+ * tallest structure within LOOKOUT metres of it and clears that, and the
+ * profile is then smoothed, because a camera that steps up at every gate
+ * reads as a lift rather than as a flight.
+ */
+const ATTRACT_LOOKOUT = 13;
+const ATTRACT_CLEAR = 2.6;
+const ATTRACT_FLOOR = 3.0;
+
+function attractPath(curve, tops, height) {
+  const len = Math.max(1, curve.getLength());
+  const n = Math.max(24, Math.min(180, Math.round(len / 6)));
+  const pts = [];
+  for (let i = 0; i < n; i += 1) {
+    const p = curve.getPointAt(i / n);
+    let y = height(p.x, p.z) + ATTRACT_FLOOR;
+    for (const t of tops) {
+      const dx = t.x - p.x;
+      const dz = t.z - p.z;
+      if (dx * dx + dz * dz < ATTRACT_LOOKOUT * ATTRACT_LOOKOUT) {
+        y = Math.max(y, t.top + ATTRACT_CLEAR);
+      }
+    }
+    pts.push({ x: p.x, y, z: p.z });
+  }
+  /* Three passes of a [1, 2, 1] kernel, wrapped because the line closes.
+   * Enough to turn the staircase into a swell without losing the clearance:
+   * the kernel never lowers a sample below the mean of its neighbours, and
+   * the neighbours are already clear of the same structure. */
+  for (let pass = 0; pass < 3; pass += 1) {
+    const src = pts.map((p) => p.y);
+    for (let i = 0; i < n; i += 1) {
+      const a = src[(i - 1 + n) % n];
+      const b = src[i];
+      const c = src[(i + 1) % n];
+      pts[i].y = (a + 2 * b + c) * 0.25;
+    }
+  }
+  return pts;
+}
+
+/*
+ * THE RACING LINE, drawn in the air.
+ *
+ * A ribbon along the line the course is meant to be flown, off by default
+ * for a pilot who wants a clean frame and on for one who is learning the
+ * course. Two things it has to do, and both are about being an instrument
+ * rather than decoration:
+ *
+ *   IT SAYS WHERE, so it threads the openings rather than lying on the
+ *   grass. On a designed course the line comes straight out of the track
+ *   builder's own derivation, which is the same line the author saw; on the
+ *   built in circuit it is fitted through the gates' aperture centres in
+ *   flying order, which is the same thing computed from the other end.
+ *
+ *   IT SAYS WHETHER, so it changes colour when the craft is ON it. Amber
+ *   when you are off the line and green when you are on it, which is the one
+ *   piece of feedback a course guide can give that a painted line cannot.
+ *   The switch is a distance, TOLERANCE metres from the ribbon's centre,
+ *   which is about a gate's half opening: inside that, a gate is a gate you
+ *   are going to make.
+ *
+ * Unlit and unfogged, on the no ink layer, because it is an overlay on the
+ * world rather than a thing standing in it.
+ */
+const LINE_TOLERANCE = 0.9;
+
+function racingLineRibbon(points) {
+  if (points.length < 4) {
+    return null;
+  }
+  const curve = new THREE.CatmullRomCurve3(
+    points.map((p) => new THREE.Vector3(p.x, p.y, p.z)),
+    true,
+    'centripetal',
+  );
+  const segments = Math.max(48, Math.min(600, Math.round(curve.getLength() / 1.2)));
+  const geo = new THREE.TubeGeometry(curve, segments, 0.045, 5, true);
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      uOff: { value: new THREE.Color(0xffb14a) },
+      uOn: { value: new THREE.Color(0x39ff8b) },
+      /* 0 when the craft is off the line, 1 when it is on it. Driven from
+       * the shell every frame off the same position the collision test
+       * uses, so the ribbon and the world agree about where the quad is. */
+      uHit: { value: 0 },
+      uCraft: { value: new THREE.Vector3() },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vWorld;
+      void main() {
+        vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      varying vec3 vWorld;
+      uniform vec3 uOff;
+      uniform vec3 uOn;
+      uniform float uHit;
+      uniform vec3 uCraft;
+      void main() {
+        /* Brightest near the craft and falling away down the course, so the
+         * ribbon reads as a lane you are in rather than as a wire draped
+         * over the whole valley. */
+        float d = distance(vWorld, uCraft);
+        float near = 1.0 - smoothstep(6.0, 55.0, d);
+        vec3 col = mix(uOff, uOn, uHit);
+        gl_FragColor = vec4(col, 0.20 + 0.62 * near);
+      }
+    `,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  /* Layer 1 is the no ink layer: an outline drawn round a guide ribbon
+   * reads as a rendering defect on the one thing that is not in the world. */
+  mesh.layers.set(1);
+  mesh.visible = false;
+  /* The polyline the shell measures against, thinned to the same spacing the
+   * ribbon is built at. Measuring against the spline itself would mean a
+   * projection per frame; against a polyline it is one pass of cheap
+   * squared distances over a few hundred points. */
+  const probe = [];
+  for (let i = 0; i < segments; i += 1) {
+    const p = curve.getPointAt(i / segments);
+    probe.push(p.clone());
+  }
+  return { mesh, mat, probe };
 }
 
 function skyDome() {
@@ -2526,7 +3040,7 @@ export function buildFieldScene(shell, onProgress, course = null) {
    * air either side of it: the crossing is open, framed by a gate on each
    * approach, with no hand tuning.
    */
-  const gateCount = 14;
+  const gateCount = CIRCUIT_STATIONS;
   const gateU = Array.from({ length: gateCount }, (_, i) => i / gateCount);
   /*
    * THE COURSE IS AN ORIGINAL CHAPTER STYLE LAYOUT built from regulation
@@ -2602,12 +3116,29 @@ export function buildFieldScene(shell, onProgress, course = null) {
     };
   });
 
+  /*
+   * The course's printed dress, made once and worn by every gate and every
+   * flag on it. The author's logo, if their document carries one, is
+   * composited into all of it.
+   */
+  const kit = bannerKit(
+    course ? course.logo : null,
+    course ? (course.documentId ?? course.id ?? 'course') : 'field',
+  );
+  /*
+   * How high a structure stands, at the point it stands, so the title
+   * screen's flythrough can clear it. Filled from each obstacle's own world
+   * bounding box rather than from its spec, because a tilted gate on a mast
+   * and a three level ladder do not report their height the same way.
+   */
+  const obstacleTops = [];
+
   for (let i = 0; i < placements.length; i += 1) {
     const st = placements[i];
     const flyOrder = st.plateIndex;
     const made = Math.abs(st.pitch) > 1e-6
-      ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch)
-      : obstacle(st.spec, flyOrder, st.isStart, { primary: st.primary });
+      ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit })
+      : obstacle(st.spec, flyOrder, st.isStart, { primary: st.primary, kit });
     const g = made.group;
     const y = height(st.x, st.z) + st.baseY;
     const yaw = st.yaw;
@@ -2635,6 +3166,14 @@ export function buildFieldScene(shell, onProgress, course = null) {
       anim.add(part);
     }
     scene.add(anim);
+    /*
+     * How high this one stands, from the builder rather than from a bounding
+     * box. A box would be measured after the lit parts have been moved out,
+     * so a dive gate's whole leaning frame would be missing from it, and it
+     * would include the additive glow quad, which is 2.6 openings across and
+     * is light rather than structure.
+     */
+    obstacleTops.push({ x: st.x, z: st.z, top: y + made.top });
     baker.bake(g);
     /* Colliders, transformed from the obstacle's own frame into the world by
      * the same position and yaw the meshes got. The obstacle is solid: the
@@ -2698,7 +3237,7 @@ export function buildFieldScene(shell, onProgress, course = null) {
 
   /* Barriers, flags, cones and the start pads a designed course carries. */
   if (course) {
-    courseProps(course, height, scene, colliders, baker);
+    courseProps(course, height, scene, colliders, baker, kit);
   }
 
   /*
@@ -2768,6 +3307,8 @@ export function buildFieldScene(shell, onProgress, course = null) {
   function setNextGate(i) {
     for (const gt of gates) {
       gt.ringMat.color.set(gt.ringColor);
+      gt.haloMat.color.set(gt.ringColor);
+      gt.glowMat.uniforms.uColor.value.set(gt.ringColor);
       gt.haloMat.opacity = 0.34;
       gt.glowMat.uniforms.uGain.value = 0.08;
     }
@@ -2783,6 +3324,26 @@ export function buildFieldScene(shell, onProgress, course = null) {
       gt.glowMat.uniforms.uGain.value = Math.max(
         gt.glowMat.uniforms.uGain.value, GLOW_LADDER[step],
       );
+    }
+    /*
+     * THE ONE YOU ARE FLYING AT IS A DIFFERENT COLOUR, not just a brighter
+     * one, and that is the whole of this change.
+     *
+     * The ladder above already made the next gate the brightest thing in
+     * frame, and brightness alone was not enough: at racing pace, with three
+     * gates lit amber at three levels of the same amber, a pilot reads a
+     * corridor but not a target, and the gate AFTER next at 0.42 gain is
+     * still an amber square. Hue is the channel that is left. NEXT_COLOUR is
+     * the one strong hue the world does not contain: the field is green
+     * grass under a blue sky and the gates are now navy, red and off white
+     * vinyl, so nothing else on screen is anywhere near it, and it survives
+     * being seen against grass, against sky and against a banner.
+     */
+    const target = gates[i];
+    if (target) {
+      target.ringMat.color.set(NEXT_COLOUR);
+      target.haloMat.color.set(NEXT_COLOUR);
+      target.glowMat.uniforms.uColor.value.set(NEXT_COLOUR);
     }
   }
 
@@ -3005,16 +3566,23 @@ export function buildFieldScene(shell, onProgress, course = null) {
   }
 
   /* Course markers along the circuit: close range speed reference. */
-  const flags = [];
-  /* No white. A white flag measured brighter than the sky, which inverts
-   * the value hierarchy this file claims to enforce and made 72 pieces of
-   * dressing louder than the gate. */
-  const flagColors = [0xc4452f, 0xcf8a2a, 0x3f8fbf, 0x3f6fa8];
-  /* The 72 poles are static, so they merge into one draw call. Only the
-   * cloths stay as separate objects, because they swing, and only the
-   * cloths cast: a flag that casts no shadow floats, and 72 poles in the
-   * shadow map cost more than a pole's thin shadow line is worth. */
+  /*
+   * The poles are static and merge into one draw call. So, now, do the
+   * SAILS: their wave lives in the cel material's cloth term rather than in
+   * a per frame rotation, so a merged sail still flies. That is worth
+   * stating as a cost as well as a saving: it took 72 live meshes with 72
+   * draw calls in the view pass and 72 more in the outline prepass down to
+   * one merge bucket per sail colour, and it is the reason the wave had to
+   * be moved into the shader at all.
+   *
+   * Only the sails cast: a flag that casts no shadow floats, and 72 masts in
+   * the shadow map cost more than a mast's thin shadow line is worth. The
+   * shadow is of the UNWAVED sail, because the depth material carries no
+   * cloth term; at 85 mm of travel that is under the shadow map's own texel
+   * on this field and nobody can see it.
+   */
   const poleBaker = makeBaker();
+  const sailBaker = makeBaker();
   /*
    * 72 on the built in circuit, and one every 8 m on a designed one.
    *
@@ -3042,19 +3610,20 @@ export function buildFieldScene(shell, onProgress, course = null) {
     const side = i % 2 === 0 ? 8.5 : -8.5;
     const fx = p.x + nx * side;
     const fz = p.z + nz * side;
-    const f = bannerFlag(rng, height, fx, fz, flagColors[i % flagColors.length]);
-    /* The pole is solid. It is 5 cm of aluminium beside the racing line and
-     * a quad that clips one is finished, so it collides. The cloth does not:
-     * a flag brushing a prop is not a crash. */
+    const f = bannerFlag(kit, rng, height, fx, fz, i);
+    /* The mast is solid. It is a metre and a bit of aluminium beside the
+     * racing line and a quad that clips one is finished, so it collides,
+     * over the WHOLE mast the pilot can see. The cloth does not: a flag
+     * brushing a prop is not a crash. */
     const fy = height(fx, fz);
-    colliders.addPost('pole', fx, fz, fy, fy + 1.6, 0.018);
+    colliders.addPost('pole', fx, fz, fy, fy + f.height, 0.018);
     f.group.updateMatrixWorld(true);
     poleBaker.bake(f.pole);
-    f.group.remove(f.pole);
-    scene.add(f.group);
-    flags.push(f);
+    poleBaker.bake(f.foot);
+    sailBaker.bake(f.sail);
   }
   poleBaker.flush(scene);
+  sailBaker.flush(scene);
 
   /* Mountain rings. Cones are centred on their origin, so the base must
    * sit at y = h/2 or the range floats. Far ring lighter for aerial
@@ -3211,11 +3780,10 @@ export function buildFieldScene(shell, onProgress, course = null) {
       grass.mat.uniforms.uWash.value = wash ?? 0;
     }
     water0.mat.uniforms.uTime.value = t;
+    /* This is what flies the flags now. Every sail's wave is a function of
+     * this clock and the vertex's own world position, computed in the cel
+     * material's vertex shader, so there is no per flag work here at all. */
     updateCelTime(t);
-    for (let i = 0; i < flags.length; i += 1) {
-      flags[i].cloth.rotation.y = Math.sin(t * 2.2 + i * 0.7) * 0.32;
-      flags[i].cloth.rotation.z = Math.sin(t * 3.1 + i) * 0.1;
-    }
     if (nextGateIdx >= 0 && nextGateIdx < gates.length) {
       const gt = gates[nextGateIdx];
       const pulse = 0.5 + 0.5 * Math.sin(t * 4.4);
@@ -3224,6 +3792,38 @@ export function buildFieldScene(shell, onProgress, course = null) {
       gt.glowMat.uniforms.uGain.value = 0.95 + 0.30 * pulse;
       gt.haloMat.opacity = 0.55 + 0.35 * pulse;
     }
+  }
+
+  /*
+   * The racing line, built AFTER the gates because on the built in circuit
+   * it is fitted through their aperture centres. A designed course brings
+   * its own line, which is the one its author derived, so the two ends of
+   * the project agree about what the racing line is rather than each
+   * deriving one.
+   */
+  const linePoints = [];
+  if (course && course.line.length >= 4) {
+    let last = null;
+    for (const p of course.line) {
+      if (!last || Math.hypot(p.x - last.x, p.y - last.y, p.z - last.z) >= 1.5) {
+        linePoints.push({ x: p.x, y: height(p.x, p.z) + p.y, z: p.z });
+        last = p;
+      }
+    }
+  } else if (gates.length >= 4) {
+    /* Flying order, not scene order: the line is the order it is flown. */
+    const flown = [...gates].sort((a, b) => a.flyOrder - b.flyOrder);
+    for (const gt of flown) {
+      linePoints.push({
+        x: gt.position.x,
+        y: gt.position.y + gt.aperture.centreY,
+        z: gt.position.z,
+      });
+    }
+  }
+  const racingLine = racingLineRibbon(linePoints);
+  if (racingLine) {
+    scene.add(racingLine.mesh);
   }
 
   /* Every collider is in by now, so freeze the flat arrays and build the
@@ -3255,10 +3855,19 @@ export function buildFieldScene(shell, onProgress, course = null) {
       z: start.position.z + Math.cos(start.heading) * SPAWN_BACK,
       yaw: start.heading,
     };
-  /* Framed for a REGULATION gate: the opening is 1.524 m square with its
-   * centre at 0.762 m, so 9 m out and 2.4 m up, aimed at the aperture
-   * centre. 19 m out aimed 2.5 m up was framed for a 5 m gate and pointed at
-   * empty air above one too small to see. */
+  /*
+   * What the title screen looks at. A LAP of the course, flown, with the
+   * orbit kept as the fallback for a map that has no course at all: a
+   * player who has never opened the track builder picks Your track and gets
+   * an empty pitch, and circling the spawn is a better shot of nothing than
+   * a flight round nothing.
+   *
+   * The orbit's framing is unchanged and still earns its comment: the
+   * opening is 1.524 m square with its centre at 0.762 m, so 9 m out and
+   * 2.4 m up, aimed at the aperture centre. 19 m out aimed 2.5 m up was
+   * framed for a 5 m gate and pointed at empty air above one too small to
+   * see.
+   */
   const attract = {
     x: start ? start.position.x : spawn.x,
     y: start ? start.position.y : height(spawn.x, spawn.z),
@@ -3266,6 +3875,15 @@ export function buildFieldScene(shell, onProgress, course = null) {
     radius: 9,
     eye: 2.4,
     aim: 0.85,
+    path: gates.length ? attractPath(curve, obstacleTops, height) : null,
+    /* Metres per second along the line, and metres of look ahead. 13 m/s is
+     * a cruising lap rather than a racing one, which is what a title screen
+     * wants: fast enough to read as flight, slow enough to read the course. */
+    speed: 13,
+    lookAhead: 17,
+    /* How far below the camera the aim point sits, so the shot looks along
+     * the course and slightly down at it rather than at the horizon. */
+    aimDrop: 2.6,
   };
 
   return {
@@ -3293,6 +3911,43 @@ export function buildFieldScene(shell, onProgress, course = null) {
       grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
     },
     updateShadowFocus, updateWind, setNextGate,
+    /*
+     * The racing line guide. Two calls because they answer to two different
+     * things: the pilot's setting, and the pilot's position.
+     */
+    setRacingLine(on) {
+      if (racingLine) {
+        racingLine.mesh.visible = Boolean(on) && linePoints.length >= 4;
+      }
+    },
+    hasRacingLine: Boolean(racingLine),
+    /*
+     * How far the craft is from the line, and the ribbon's colour with it.
+     * Returns the distance in metres so the shell can say something about
+     * it, and null when there is no line to be off.
+     */
+    updateRacingLine(pos) {
+      if (!racingLine || !racingLine.mesh.visible) {
+        return null;
+      }
+      let best = Infinity;
+      for (const p of racingLine.probe) {
+        const dx = p.x - pos.x;
+        const dy = p.y - pos.y;
+        const dz = p.z - pos.z;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < best) {
+          best = d2;
+        }
+      }
+      const d = Math.sqrt(best);
+      racingLine.mat.uniforms.uCraft.value.copy(pos);
+      /* A hard switch, softened over the last 40 cm so a craft sitting on
+       * the tolerance does not strobe between the two colours. */
+      racingLine.mat.uniforms.uHit.value = 1 - Math.max(0, Math.min(1,
+        (d - LINE_TOLERANCE) / 0.4));
+      return d;
+    },
     /*
      * The contact surface. The third argument is the height the query is made
      * FROM, which the city needs so a quad can fly under the overbridge and

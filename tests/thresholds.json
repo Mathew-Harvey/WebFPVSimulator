@@ -350,24 +350,24 @@
       },
       "field_budget_at_c3c6e44": {
         "p1": {
-          "value": 214,
-          "source": "Measured at c3c6e44 in a git worktree, camera parked at the spawn, 1280 by 720. Identical after this round's work."
+          "value": 168,
+          "source": "Re-measured after the course dressing was rebuilt (printed banner gates, teardrop flags, the racing line guide). The BEFORE figures, held since c3c6e44, were P1 214, P2 1931413, P5 69.8 MB, P10 42.8 MB, 159 meshes. What this check is for is unchanged and still holds: the city must cost the field nothing, and the two measurements either side of a round trip are still identical to each other, which is the half that can see a leak. Same run, same camera, 1280 by 720. See PROGRESS.md. 72 flag cloths were 72 live meshes drawn twice, in the view pass and the outline prepass; they now merge into two buckets, which is where the 46 draw calls went."
         },
         "p2": {
-          "value": 1931413,
-          "source": "Same run, same camera."
+          "value": 1967133,
+          "source": "Re-measured after the course dressing was rebuilt (printed banner gates, teardrop flags, the racing line guide). The BEFORE figures, held since c3c6e44, were P1 214, P2 1931413, P5 69.8 MB, P10 42.8 MB, 159 meshes. What this check is for is unchanged and still holds: the city must cost the field nothing, and the two measurements either side of a round trip are still identical to each other, which is the half that can see a leak. Same run, same camera, 1280 by 720. See PROGRESS.md. Up 35,720 triangles: a teardrop sail is a 12 by 5 grid where the old flag was a 4 by 2 plane."
         },
         "p5_MB": {
           "value": 69.8,
-          "source": "Same run, same camera."
+          "source": "Re-measured after the course dressing was rebuilt (printed banner gates, teardrop flags, the racing line guide). The BEFORE figures, held since c3c6e44, were P1 214, P2 1931413, P5 69.8 MB, P10 42.8 MB, 159 meshes. What this check is for is unchanged and still holds: the city must cost the field nothing, and the two measurements either side of a round trip are still identical to each other, which is the half that can see a leak. Same run, same camera, 1280 by 720. See PROGRESS.md. Unmoved: render target bytes are a property of the panel and the post chain, and neither changed."
         },
         "p10_MB": {
-          "value": 42.8,
-          "source": "Same run, and the same 42.8 MB round 14 recorded when P10 first passed."
+          "value": 44.2,
+          "source": "Re-measured after the course dressing was rebuilt (printed banner gates, teardrop flags, the racing line guide). The BEFORE figures, held since c3c6e44, were P1 214, P2 1931413, P5 69.8 MB, P10 42.8 MB, 159 meshes. What this check is for is unchanged and still holds: the city must cost the field nothing, and the two measurements either side of a round trip are still identical to each other, which is the half that can see a leak. Same run, same camera, 1280 by 720. See PROGRESS.md. Up 1.4 MB, the same sail geometry as P2, plus the per vertex cloth attribute the wave is driven from."
         },
         "meshes": {
-          "value": 159,
-          "source": "Same run."
+          "value": 95,
+          "source": "Re-measured after the course dressing was rebuilt (printed banner gates, teardrop flags, the racing line guide). The BEFORE figures, held since c3c6e44, were P1 214, P2 1931413, P5 69.8 MB, P10 42.8 MB, 159 meshes. What this check is for is unchanged and still holds: the city must cost the field nothing, and the two measurements either side of a round trip are still identical to each other, which is the half that can see a leak. Same run, same camera, 1280 by 720. See PROGRESS.md. Down 64: the flag cloths are merged rather than live."
         }
       }
     }

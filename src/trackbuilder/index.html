@@ -412,6 +412,18 @@
         overflow-y: auto;
       }
       .tb-modal h2 { margin: 0 0 10px; font-size: 18px; color: var(--cream); }
+
+      /* The gate's header board, drawn at the proportions the renderer
+         builds it at, so what an author sees here is where the picture
+         lands in the air. Transparent parts of a logo show the board's own
+         colour through, which is exactly what they do on the gate. */
+      .tb-logo-preview {
+        display: block;
+        width: 100%;
+        margin: 10px 0 6px;
+        border-radius: 4px;
+        background: var(--panel-2);
+      }
     </style>
     <script type="importmap">
       {

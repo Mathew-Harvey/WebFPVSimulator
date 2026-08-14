@@ -47,6 +47,7 @@ import {
   deleteTrack, downloadTrack, listTracks, loadTrack, makeAutosaver,
   readAutosave, readFileText, saveTrack, writeAutosave,
 } from './storage.js';
+import { normaliseLogo, drawBannerPreview } from './logo.js';
 import { View2D } from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
@@ -580,6 +581,109 @@ export class App {
     this.toast('Exported.');
   }
 
+  /* ---------------- the event logo ---------------- */
+
+  /*
+   * The picture every gate on this course wears.
+   *
+   * A dialog rather than a field in the inspector, and the reason is what it
+   * belongs to: a logo is a property of the TRACK, not of any element on it,
+   * so putting it beside a gate's dimensions would say the opposite. The
+   * inspector's Field section is the other candidate and it is where a field
+   * width lives, but that panel is only reachable with nothing selected,
+   * which is not where somebody who has just placed ten gates is.
+   *
+   * The preview is the point of the dialog. Uploading an image and then
+   * having to load a world to find out it came out square, or too small to
+   * read, or half off the board, is the version of this feature nobody
+   * would use twice.
+   */
+  openLogo() {
+    const body = document.createElement('div');
+    const help = document.createElement('p');
+    help.className = 'tb-help';
+    help.textContent = 'Every gate on this course carries a printed header board. The picture goes on it, beside the gate number, on both faces, and it travels inside the track file so a course you send somebody arrives with its branding on.';
+    body.append(help);
+
+    const preview = document.createElement('canvas');
+    preview.className = 'tb-logo-preview';
+    body.append(preview);
+
+    const caption = document.createElement('p');
+    caption.className = 'tb-help';
+    body.append(caption);
+
+    /* One image element, reused, so redrawing the preview after a change
+     * does not start a second decode of the same data URL. */
+    const img = new Image();
+    const redraw = () => {
+      const url = this.doc.branding?.logo ?? null;
+      caption.textContent = url
+        ? `${this.doc.branding.logoName || 'Logo'}, ${Math.round(url.length / 1024)} kB, stored in the track.`
+        : 'No logo yet. The gates carry their number and nothing else.';
+      if (!url) {
+        drawBannerPreview(preview, null, null);
+        return;
+      }
+      if (img.src !== url) {
+        img.onload = () => drawBannerPreview(preview, url, img);
+        img.src = url;
+      }
+      drawBannerPreview(preview, url, img);
+    };
+
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
+    file.style.display = 'none';
+    file.addEventListener('change', async () => {
+      const chosen = file.files[0];
+      file.value = '';
+      if (!chosen) {
+        return;
+      }
+      try {
+        const logo = await normaliseLogo(chosen);
+        this.edit('set logo', (d) => {
+          d.branding.logo = logo.dataUrl;
+          d.branding.logoName = logo.name;
+        });
+        redraw();
+        this.toast(`Logo set from ${logo.name}, fitted to ${logo.width} by ${logo.height}.`);
+      } catch (e) {
+        caption.textContent = `Could not use that image: ${e.message}`;
+        this.toast(`Could not use that image: ${e.message}`);
+      }
+    });
+    body.append(file);
+
+    const row = document.createElement('div');
+    row.className = 'tb-row-btns';
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.className = 'tb-btn';
+    choose.textContent = 'Choose an image';
+    choose.addEventListener('click', () => file.click());
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'tb-btn tb-danger';
+    clear.textContent = 'Remove';
+    clear.addEventListener('click', () => {
+      this.edit('clear logo', (d) => {
+        d.branding.logo = null;
+        d.branding.logoName = '';
+      });
+      img.removeAttribute('src');
+      redraw();
+      this.toast('Logo removed.');
+    });
+    row.append(choose, clear);
+    body.append(row);
+
+    this.modal('Gate logo', body);
+    redraw();
+  }
+
   async importFile(file) {
     if (!file) {
       return;
@@ -715,6 +819,7 @@ export class App {
         btn('Import', () => file.click(), 'Read a .json track file'),
         btn('Export', () => this.exportFile(), 'Write a .json track file'),
       ),
+      group(btn('Logo', () => this.openLogo(), 'Put a picture on every gate on this course')),
       group(this.undoBtn, this.redoBtn),
       group(this.mode2d, this.mode3d),
       group(btn('Fit', () => this.frameAll(), 'Frame the whole field')),

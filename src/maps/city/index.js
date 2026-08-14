@@ -49,6 +49,11 @@ import { Pipeline } from './vendored/core/post.js';
 import { buildSky } from './vendored/core/sky.js';
 import { setOutlineResolution } from './vendored/core/outline.js';
 import { buildWorld } from './vendored/world/index.js';
+/* The road's own centreline, so the title screen's camera flies the street
+ * the town was laid out along instead of a circle drawn over the top of it.
+ * Already in the import graph through world/index.js, so this costs no
+ * module fetch and check 16's module count is unmoved. */
+import { centerX, Z_MIN, Z_MAX } from './vendored/world/street.js';
 import { Colliders } from '../../game/collide.js';
 import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
@@ -67,6 +72,160 @@ import { yieldToPaint } from '../../ui/loading.js';
  * along +z, so facing -z (north up the street) is pi.
  */
 const SPAWN = { x: 0, z: 24, yaw: Math.PI };
+
+/*
+ * The title screen's flythrough.
+ *
+ * THE OLD SHOT FLEW THROUGH THE BUILDINGS. It was an 11 m circle round the
+ * spawn at 3.2 m, and the spawn is in the middle of a 6.3 m carriageway
+ * with shopfronts hard against both footways, so two thirds of every
+ * revolution was spent inside somebody's front room. A circle drawn on a
+ * street plan does not know there are buildings on it.
+ *
+ * So the camera flies the ROAD. `centerX(z)` is the same centreline every
+ * builder in the town placed itself against, which is what makes this
+ * clearance a property of the layout rather than a value somebody tuned by
+ * flying it: the carriageway is 6.3 m wide and empty by construction, and
+ * anything at street level that is not empty, the crossing, the traffic,
+ * the poles, stands off it.
+ *
+ * Up the street at 3.3 m, over the railway, then out and back over the
+ * roofs, which is a lap of the district rather than a lap of one junction
+ * and reads as a place rather than as a diorama.
+ *
+ * THE HOP OVER THE CROSSING IS NOT DECORATION. A train car's roof is at
+ * 3.96 m and its pantograph reaches higher, the contact wire is at 4.88 and
+ * the messenger at 5.95 (railway.js), so between the road and the wires
+ * there is NO height that clears a train. 6.9 m at the crossing is over the
+ * messenger with most of a metre to spare, and the district's tallest thing
+ * anywhere near the road is a 9.2 m utility pole standing beside it.
+ */
+const STREET_EYE = 3.3;
+const CROSSING_EYE = 6.9;
+const CROSSING_SPAN = 15;
+/*
+ * The return leg's height, and it is set by the TREES.
+ *
+ * Two forces pull against each other here. Low is better to look at, because
+ * the shot aims a fixed drop below a point a fixed distance ahead, so the
+ * higher the leg the more of the frame is sky: at 24 m the town was a strip
+ * along the bottom edge. But the height query answers with the walkable
+ * SURFACE, and a surface is not a canopy. A pass at 14 m read beautifully
+ * over the shotengai and put the camera inside a cedar at the school, and a
+ * sugi in this town is 10.6 m of trunk before its own scale factor, up to
+ * about 12.5 m.
+ *
+ * So 19 m: over the cedars with six metres to spare, over the 9.2 m utility
+ * poles, over the roofs and over the 7.2 m overbridge deck, and low enough
+ * that the district still fills the frame.
+ */
+const ROOF_EYE = 19;
+/*
+ * WHERE THE CLIMB HAPPENS, and it is the whole of what makes this loop
+ * flyable.
+ *
+ * The first version climbed on the turn, and the turn is the one part of
+ * the loop that leaves the road: it sweeps out into the school grounds at
+ * the north end, and the school has cedars in it. The height query answers
+ * with the walkable SURFACE, so a camera told to stay 8 m over the ground
+ * flew straight through a canopy, twice, at two different heights. There is
+ * no height between the road and the treetops that is safe out there.
+ *
+ * So the climb moves onto the LAST STRETCH OF ROAD instead. The carriageway
+ * is empty by construction, its poles stand beside it and its wires run
+ * along it, so a camera rising over the middle of it passes nothing. By the
+ * time the turn begins the shot is already at roof height and the turn is
+ * flat. The descent at the other end is the same thing mirrored.
+ */
+const CLIMB_RUN = 24;
+/* The lowest the shot ever gets, over any surface. Only the street legs go
+ * anywhere near it, and they are over a road. */
+const MIN_CLEAR = 2.6;
+/* Where the street leg starts and stops. Inside the carriageway's own ends,
+ * because the road stops at a dead end north of the school and simply runs
+ * out south of the canal. */
+const LEG_SOUTH = Z_MAX - 6;
+const LEG_NORTH = Z_MIN + 8;
+/* Plan offset of the return leg from the outbound one, and the radius of
+ * the two turns that join them. The return runs over the blocks east of the
+ * road rather than back along the road itself, so the two legs are two
+ * different shots rather than the same one at two heights. */
+const RETURN_OFFSET = 22;
+const TURN_R = RETURN_OFFSET * 0.5;
+
+function smoothstep01(x) {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+}
+
+function crossingEye(z) {
+  const k = Math.max(0, 1 - Math.abs(z) / CROSSING_SPAN);
+  return STREET_EYE + (CROSSING_EYE - STREET_EYE) * smoothstep01(k);
+}
+
+/*
+ * Height above the road at z on the street leg: street height, lifted over
+ * the crossing, and lifted again into the climb at each end.
+ */
+function streetEye(z) {
+  const base = crossingEye(z);
+  const up = Math.max(
+    smoothstep01((LEG_NORTH + CLIMB_RUN - z) / CLIMB_RUN),
+    smoothstep01((z - (LEG_SOUTH - CLIMB_RUN)) / CLIMB_RUN),
+  );
+  return base + (ROOF_EYE - base) * up;
+}
+
+function cityAttractPath(world) {
+  const ground = (x, z) => {
+    const bare = world.heightAt(x, z, -1000);
+    return Number.isFinite(bare) ? bare : 0;
+  };
+  const pts = [];
+  const push = (x, z, y) => {
+    pts.push({ x, y: Math.max(y, ground(x, z) + MIN_CLEAR), z });
+  };
+
+  /* Up the street, south to north: down at road height through the middle,
+   * over the railway, and climbing out at each end. */
+  const legSteps = Math.round((LEG_SOUTH - LEG_NORTH) / 5);
+  for (let i = 0; i <= legSteps; i += 1) {
+    const z = LEG_SOUTH + (LEG_NORTH - LEG_SOUTH) * (i / legSteps);
+    const x = centerX(z);
+    push(x, z, ground(x, z) + streetEye(z));
+  }
+
+  /*
+   * The two turns, as half circles in plan swept AWAY from the town, flat at
+   * roof height. Away rather than back over the district on purpose: a turn
+   * that cuts inward crosses the leg it just flew, and a closed spline
+   * through a self intersection is a knot.
+   */
+  const turn = (z0, cx, from, to) => {
+    const steps = 9;
+    for (let i = 1; i <= steps; i += 1) {
+      const a = from + (to - from) * (i / steps);
+      const x = cx + Math.cos(a) * TURN_R;
+      const z = z0 + Math.sin(a) * TURN_R;
+      push(x, z, ground(x, z) + ROOF_EYE);
+    }
+  };
+
+  const northX = centerX(LEG_NORTH);
+  const southX = centerX(LEG_SOUTH);
+  turn(LEG_NORTH, northX + TURN_R, Math.PI, Math.PI * 2);
+
+  /* Back over the roofs, north to south. */
+  for (let i = 1; i < legSteps; i += 1) {
+    const z = LEG_NORTH + (LEG_SOUTH - LEG_NORTH) * (i / legSteps);
+    const x = centerX(z) + RETURN_OFFSET;
+    push(x, z, ground(x, z) + ROOF_EYE);
+  }
+
+  turn(LEG_SOUTH, southX + TURN_R, 0, Math.PI);
+
+  return pts;
+}
 
 /*
  * Fog and far plane.
@@ -1139,7 +1298,23 @@ export async function buildMap(shell, onProgress) {
     gates: [],
     curve: null,
     spawn: SPAWN,
-    attract: { x: SPAWN.x, y: world.heightAt(SPAWN.x, SPAWN.z), z: SPAWN.z, radius: 11, eye: 3.2, aim: 1.2 },
+    attract: {
+      x: SPAWN.x,
+      y: world.heightAt(SPAWN.x, SPAWN.z),
+      z: SPAWN.z,
+      radius: 11,
+      eye: 3.2,
+      aim: 1.2,
+      path: cityAttractPath(world),
+      /* Slower than the field's 13 m/s. The field's shot is a lap of a
+       * course and wants to read as racing; this one is a street with things
+       * in it, and at 13 m/s a 6 m wide corridor is a blur. */
+      speed: 9,
+      lookAhead: 13,
+      /* Only a little down. The camera is IN the street rather than over the
+       * course, so the interest is at eye height and ahead, not below. */
+      aimDrop: 2.4,
+    },
     /*
      * The contact surface, and the third argument is what makes a city fly.
      * `fromY` is the height the query is made FROM: a platform is only
@@ -1148,6 +1323,11 @@ export async function buildMap(shell, onProgress) {
      */
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
     setNextGate() {},
+    /* No gates, so no line to be on or off. Present so the shell has one
+     * call shape for both maps. */
+    hasRacingLine: false,
+    setRacingLine() {},
+    updateRacingLine() { return null; },
     updateShadowFocus,
     updateWind,
     updateAnim: anim.update,

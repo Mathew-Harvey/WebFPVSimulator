@@ -38,6 +38,7 @@
 
 import * as THREE from 'three';
 import { buildShell } from './render/shell.js';
+import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
 import { MotorAudio } from './render/audio.js';
@@ -560,6 +561,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     loading.start('frame');
+    attractCam = makeAttractCamera(view);
+    view.setRacingLine(ui.settings.racingLine);
     race = new Race(view.gates);
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
@@ -624,6 +627,7 @@ export async function boot({ loading, bootStart, mapId }) {
         reset();
       }
     }
+    view.setRacingLine(s.racingLine);
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
@@ -814,9 +818,14 @@ export async function boot({ loading, bootStart, mapId }) {
   const qTilt = new THREE.Quaternion();
   const qSpawn = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
-  const camPos = new THREE.Vector3();
-  const orbitTarget = new THREE.Vector3();
   const camFwd = new THREE.Vector3();
+  /*
+   * The title screen's camera. It belongs to the MAP, because the shot that
+   * shows a map off is the map's business: the race field flies its own
+   * racing line, the city flies its own streets, and the shell only has to
+   * know which frame to ask for. Rebuilt on every swap, below.
+   */
+  let attractCam = makeAttractCamera(view);
   applySettings(ui.settings);
 
   /* The spawn's placement in the world. Not fixed for the session any more:
@@ -1311,23 +1320,15 @@ export async function boot({ loading, bootStart, mapId }) {
       shell.camera.position.copy(pCurr).addScaledVector(camFwd, simLenToWorld(0.0775));
       shell.camera.quaternion.copy(qPrev).multiply(qTilt);
     } else {
-      /* Attract view: the craft parked, camera circling wide and high enough
-       * that the world and the subject both read, and that near ground cover
-       * does not fill the frame. The framing is the MAP's, because the two
-       * maps are looking at different things: the field frames a regulation
-       * 1.524 m gate whose aperture centre is 0.762 m up, and the city frames
-       * a street. */
+      /*
+       * Attract view: the craft parked, and the camera FLYING THE MAP rather
+       * than circling one point of it. What the line is is the map's
+       * business and src/render/attract.js is the whole of the shell's half
+       * of it. The old orbit is still in there as the fallback for a map
+       * with no line, which is what an empty custom course is.
+       */
       shell.quad.visible = true;
-      const ang = nowWall * 0.00011;
-      const at = view.attract;
-      camPos.set(
-        at.x + Math.sin(ang) * at.radius,
-        at.y + at.eye,
-        at.z + Math.cos(ang) * at.radius,
-      );
-      orbitTarget.set(at.x, at.y + at.aim, at.z);
-      shell.camera.position.copy(camPos);
-      shell.camera.lookAt(orbitTarget);
+      attractCam.update(nowWall, shell.camera);
     }
 
     /* Harness camera. The cost ledger has to be published for three views,
@@ -1350,6 +1351,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     view.updateAnim(mode === 'title' ? titleStepMs : simTimeMs);
 
+    /* The racing line guide, driven off the same interpolated position the
+     * craft is drawn at, so what it says about being on the line is what the
+     * pilot can see. */
+    view.updateRacingLine(pCurr);
     view.updateShadowFocus(camOverride ? shell.camera.position : pCurr);
     /* Propwash strength for the grass: mean rotor speed against hover. */
     const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;

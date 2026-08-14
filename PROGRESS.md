@@ -4924,3 +4924,86 @@ the colour bake paints those materials white: it still reads 2.0500 because
 order were ever swapped. **Check 16 map-isolation passes.**
 
 451 meshes still move over 6 s, the same count as the last three rounds.
+
+## Round 28: measuring the city against the budget before changing anything else
+
+The owner asked for a strategy to bring the city inside the performance budget,
+and suggested closing the fog and cutting the clutter. Both were swept live
+before anything was written down. This round changed no source file. The output
+is `/CITY-PERF-PLAN.md`, and what follows is what the measurement found that
+the previous rounds did not.
+
+### Two budgets nobody had measured on this map
+
+**P5 is passing and the instrument says it is failing.** `src/render/budget.js`
+derives a 1080p figure by scaling every non shadow target by pixel area. The
+city's composer targets are capped by `pixelBudget: 2.6e6` and come out at 2149
+by 1209 whatever the canvas is, so scaling them is wrong. Measured at a real
+1920 by 1080 canvas: **104.2 MB against a 120 MB ceiling**. From a 1280 by 720
+capture the same code derives 153.8 MB from a true 87.0 MB, which is 47 percent
+high. The derivation needs the same fixed/scales split the shadow map already
+gets.
+
+**P10 has never been read on this map and it is 2.05x over.** 2,333,270
+resident vertices: position 28.0 MB, normal 28.0 MB, colour 26.3 MB, uv 16.0
+MB, plus 8.8 MB of indices, against a 48 MB ceiling. The colour attribute is
+round 27's bake, and it is written on every geometry the bake touched rather
+than only on the buckets that actually mix colours.
+
+### The shadow pass is 35 percent of the draw calls and it fragments the merge
+
+Measured two independent ways that agree exactly, `renderer.shadowMap.enabled`
+false and `castShadow` cleared on every mesh: street goes 1715 to **1107**
+calls, 2,765,233 to **1,675,689** triangles.
+
+It costs twice, and the second cost is the one that was not visible before.
+`bakeCity` buckets a caster on an 80 m grid and everything else town wide.
+2,511 of the town's 3,736 meshes cast, only 12 of them town wide merges, so the
+static town is drawn as 331 pieces where it could be about 70. The shadow pass
+therefore costs 608 calls of its own and forces roughly 265 more in the colour
+pass.
+
+Swept by source mesh size, the knee is between 0.6 and 1.2 m: casters 2511 to
+566 takes street 1715 to 1345 and 2.77 M to 2.44 M. This is a size test and
+PROGRESS records two rounds where a size test went wrong, and the objection
+does not transfer. A size test used for REMOVAL cannot see that a window frame
+is part of a building. A size test used for CASTING decides only whether a
+bollard puts a shadow on the pavement inside a 44 m box at 100 km/h. A wrong
+answer here is invisible rather than structural.
+
+The obvious alternative was checked and refused: a shadow only proxy on a
+hidden layer does not work in three 0.160, because
+`WebGLShadowMap.renderObject` tests `object.layers.test( camera.layers )`
+against the VIEW camera rather than the shadow camera, so anything the main
+camera cannot see casts nothing.
+
+### The fog cannot reach the buildings, which is why closing it underperforms
+
+Swept through `window.__cullRadius`, at street: 100 gives 1715 calls and 2.77
+M, 70 gives 1541 and 2.46 M, 50 gives 1498 and 2.44 M, 35 gives 1164 and 2.11
+M. Round 26 already found this and the reason is round 24's own change: the
+town wide merge gives every static mesh a 249 m bounding sphere,
+`buildCullGrid` routes it into `always`, and 609,410 triangles in 66 calls are
+submitted from every camera position at any radius.
+
+35 m is where the lever finally bites and the fog would then have to end at
+about 33 m, which is 1.2 s of sight at 100 km/h. 70 m with the fog at 65 gives
+2.4 s and is the recommendation. The rest has to come from making the static
+merge cullable, which is step 3 of the plan.
+
+### Where the frame goes, at street, 1715 calls
+
+66 town wide merged static at 609,410 triangles and never culled by anything,
+331 caster merges on the 80 m grid at 375,600, 343 instanced foliage chunks at
+about 661,000, 92 vending machine rig meshes and 88 railway furniture meshes
+for 6,070 triangles between them at about 35 triangles a call, and 608 shadow
+submissions at 1,089,544. The build's own counters: 18,466 static meshes merged
+to 625 across 2015 buckets, of which **1,390 hold exactly one mesh** and 671 of
+those carry a texture, 1,087 meshes held out as animated, and 39 plant sets
+chunked into 1,200 InstancedMeshes.
+
+### Verify
+
+No source file changed this round, so no check was re run and none is claimed.
+The measurements above were taken through the real page in headless Chromium
+with zero console errors and zero warnings on every run.

@@ -157,11 +157,17 @@ export class Race {
         ax,
         ay,
         az,
-        /* Every opening of this obstacle. A standard gate has one; a ladder
-         * has three, and MultiGP scores a ladder as one gate however high
-         * you take it, so all three count and the one used is recorded. */
+        /* Every opening this STATION scores. A standard gate has one. The
+         * built in circuit's ladders pass every opening and count the
+         * structure as one gate. A designed stack names the hole, so the
+         * scene hands one aperture per station and a double stack flown as
+         * a spiral is two gates, not one. */
         apertures: g.apertures ?? [g.aperture],
         kindName: g.kindName ?? 'standardGate',
+        /* Same structure id on every station of a stacked gate. Null on the
+         * built in circuit, which has one station per obstacle. */
+        elementId: g.elementId ?? null,
+        apertureIndex: g.apertureIndex ?? null,
       };
     });
     this.key = DEFAULT_KEY;
@@ -404,11 +410,20 @@ export class Race {
      * exploit, but a file that quotes a rule should obey it.
      */
     if (passed == null && this.lapStartMs != null) {
+      const want = this.gates[this.next];
       for (let gi = 0; gi < this.gates.length; gi += 1) {
         if (gi === this.next) {
           continue;
         }
-        if (this.crossesGate(this.gates[gi], prev, curr)) {
+        const other = this.gates[gi];
+        /* Other holes of the stack you are flying at. Going through the
+         * top while the bottom is next is a miss, not a lap void: they
+         * share a plane, and a void for the unused opening would make a
+         * double stack unflyable. A different structure still voids. */
+        if (want.elementId != null && other.elementId === want.elementId) {
+          continue;
+        }
+        if (this.crossesGate(other, prev, curr)) {
           this.voidLap('Out of sequence\nLap void', wallMs);
           break;
         }

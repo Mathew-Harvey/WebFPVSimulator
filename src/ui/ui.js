@@ -12,6 +12,8 @@
  * gamepad alone. On a radio there are no reliable menu buttons, so the
  * sticks drive the menu: pitch moves the cursor, roll right selects, roll
  * left goes back. Any gamepad button also selects. The screens say so.
+ * Rows that hold a value also have a mouse control: up and down arrows
+ * for a stepped number, a dropdown for a named list.
  *
  * The DOM is built here rather than in index.html so the markup and the
  * state machine that drives it sit in one file. Styling lives in
@@ -97,13 +99,6 @@ const DEFAULTS = {
   ambienceLevel: 4,
   focusTone: false,
   readout: false,
-  /*
-   * The racing line guide. Off by default, because a clean frame is what a
-   * pilot who knows the course wants and this is a learning aid; the ones
-   * who need it will find it, and the ones who do not are not made to turn
-   * it off before their first lap.
-   */
-  racingLine: false,
 };
 
 export function loadSettings() {
@@ -154,11 +149,63 @@ function el(tag, cls, text) {
   return n;
 }
 
+function btn(cls, text) {
+  const n = el('button', cls, text);
+  n.type = 'button';
+  return n;
+}
+
+/* A menu plus a side column for its note, so the note cannot resize the rows. */
+function wrapMenu() {
+  const stage = el('div', 'menu-stage');
+  const menu = el('div', 'menu');
+  const help = el('div', 'menu-help');
+  stage.append(menu, help);
+  return { stage, menu, help };
+}
+
 /* Step a value through a list, wrapping. */
 function cycle(list, value, dir) {
   const i = list.indexOf(value);
   const n = list.length;
   return list[((i < 0 ? 0 : i) + dir + n) % n];
+}
+
+function choice(label, note, choices, current, format, set) {
+  const fmt = format || ((v) => String(v));
+  return {
+    label,
+    note,
+    value: fmt(current),
+    current,
+    options: choices.map((c) => ({ value: c, label: fmt(c) })),
+    pick: (v) => {
+      const hit = choices.find((c) => String(c) === String(v));
+      if (hit !== undefined) {
+        set(hit);
+      }
+    },
+    adjust: (d) => set(cycle(choices, current, d)),
+  };
+}
+
+function toggle(label, note, on, set) {
+  return choice(label, note, [true, false], on, (v) => (v ? 'On' : 'Off'), set);
+}
+
+function stepper(label, note, value, adjust) {
+  return { label, note, value, adjust, step: true };
+}
+
+function tuneItem(s) {
+  return choice(
+    'Tune',
+    tuneById(s.tune).note,
+    TUNES.map((t) => t.id),
+    s.tune,
+    (id) => tuneById(id).name,
+    (id) => { s.tune = id; },
+  );
 }
 
 export class Ui {
@@ -171,7 +218,16 @@ export class Ui {
     this.onSettings = null;  /* (settings) => void */
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
+    this.dropEl = null;
+    this.dropIndex = null;
+    this.menuRows = [];
+    this.rowOffset = 0;
     this.build();
+    this.root.addEventListener('mousedown', (e) => {
+      if (this.dropEl && !this.dropEl.contains(e.target) && !e.target.closest('.drop-btn')) {
+        this.closeDrop();
+      }
+    });
     this.show('title');
   }
 
@@ -223,8 +279,10 @@ export class Ui {
     brand.append(el('h1', null, 'WEBFPV'), this.brandSub);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
-    this.titleMenu = el('div', 'menu');
-    title.append(brand, this.titleMenu, el('div', 'hint', 'Arrow keys move, Enter selects. On a radio: pitch to move, roll right to select.'));
+    const titleBlock = wrapMenu();
+    this.titleMenu = titleBlock.menu;
+    this.titleHelp = titleBlock.help;
+    title.append(brand, titleBlock.stage, el('div', 'hint', 'Arrow keys move, Enter selects. On a radio: pitch to move, roll right to select.'));
     this.screens.title = title;
 
     const howto = el('div', 'screen screen-page');
@@ -259,9 +317,11 @@ export class Ui {
     pad.append(padList);
     cols.append(kb, pad);
     howto.append(cols);
-    howto.append(el('p', 'lede', 'This quad does not hold itself level. Let go of the sticks and it keeps whatever attitude you left it in, so every turn has to be flown back out again. A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the mint ring to start the clock, then chase the amber rings in order. Touching a gate frame voids the lap.'));
-    this.howtoMenu = el('div', 'menu');
-    howto.append(this.howtoMenu);
+    howto.append(el('p', 'lede', 'This quad does not hold itself level. Let go of the sticks and it keeps whatever attitude you left it in, so every turn has to be flown back out again. A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the pulsing gate: green is the way through, red is the wrong face. The pane jumps to the next gate when you pass. Touching a gate frame is a crash.'));
+    const howtoBlock = wrapMenu();
+    this.howtoMenu = howtoBlock.menu;
+    this.howtoHelp = howtoBlock.help;
+    howto.append(howtoBlock.stage);
     this.screens.howto = howto;
 
     /*
@@ -285,28 +345,44 @@ export class Ui {
     const maps = el('div', 'screen screen-page');
     maps.append(el('h2', null, 'Choose a world'));
     this.mapCardHost = el('div', 'map-cards');
+    this.mapsHelp = el('div', 'menu-help menu-help-below');
     this.mapsMenu = el('div', 'menu');
-    maps.append(this.mapCardHost, this.mapsMenu,
+    maps.append(this.mapCardHost, this.mapsHelp, this.mapsMenu,
       el('div', 'hint', 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'));
     this.screens.maps = maps;
 
-    const settings = el('div', 'screen screen-page');
+    const settings = el('div', 'screen screen-page screen-settings');
     settings.append(el('h2', null, 'Settings'));
-    this.settingsMenu = el('div', 'menu');
-    settings.append(this.settingsMenu, el('div', 'hint', 'Left and right change a value. On a radio, roll changes it.'));
+    const settingsBlock = wrapMenu();
+    this.settingsMenu = settingsBlock.menu;
+    this.settingsMenu.classList.add('menu-scroll');
+    this.settingsHelp = settingsBlock.help;
+    this.craftCanvas = el('canvas', 'craft-view');
+    this.craftCanvas.setAttribute('aria-hidden', 'true');
+    this.craftCaption = el('div', 'craft-showcase-cap', 'Acro. Sticks are rates. Hands off holds.');
+    const showcase = el('div', 'craft-showcase');
+    const frame = el('div', 'craft-showcase-frame');
+    frame.append(this.craftCanvas);
+    showcase.append(frame, this.craftCaption);
+    settingsBlock.stage.prepend(showcase);
+    settings.append(settingsBlock.stage, el('div', 'hint', 'Arrows and dropdowns change a value. On a radio, roll changes it. The quad on the left follows the sticks.'));
     this.screens.settings = settings;
 
     const paused = el('div', 'screen screen-modal');
     paused.append(el('h2', null, 'Paused'));
-    this.pausedMenu = el('div', 'menu');
-    paused.append(this.pausedMenu);
+    const pausedBlock = wrapMenu();
+    this.pausedMenu = pausedBlock.menu;
+    this.pausedHelp = pausedBlock.help;
+    paused.append(pausedBlock.stage);
     this.screens.paused = paused;
 
     const results = el('div', 'screen screen-page');
     this.resultsHead = el('h2', null, 'Run complete');
     this.resultsBody = el('div', 'results');
-    this.resultsMenu = el('div', 'menu');
-    results.append(this.resultsHead, this.resultsBody, this.resultsMenu);
+    const resultsBlock = wrapMenu();
+    this.resultsMenu = resultsBlock.menu;
+    this.resultsHelp = resultsBlock.help;
+    results.append(this.resultsHead, this.resultsBody, resultsBlock.stage);
     this.screens.results = results;
 
     for (const s of Object.values(this.screens)) {
@@ -333,19 +409,7 @@ export class Ui {
           action: 'maps',
           note: m.note,
         },
-        {
-          label: 'Tune',
-          value: tuneById(s.tune).name,
-          note: tuneById(s.tune).note,
-          /* The whole flight controller comes from this file, so changing
-           * it re-inits the module and resets the craft. Next to Map
-           * because after the world it is the biggest choice there is. */
-          adjust: (d) => {
-            const i = TUNES.findIndex((x) => x.id === s.tune);
-            const n = TUNES.length;
-            s.tune = TUNES[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
-          },
-        },
+        tuneItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
         {
@@ -370,122 +434,116 @@ export class Ui {
       ];
     }
     if (this.screen === 'settings') {
+      const musicIds = ['rotation', ...TRACKS.map((t) => t.id)];
       return [
-        {
-          label: 'Rate, roll and pitch',
-          value: `${s.rateMax} deg/s at full stick`,
-          note: 'ACTUAL rates. How fast the quad spins with the stick against the stop, exactly. Betaflight ships 670.',
-          adjust: (d) => { s.rateMax = cycle(RATE_MAX_CHOICES, s.rateMax, d); },
-        },
-        {
-          label: 'Rate, yaw',
-          value: `${s.rateYawMax} deg/s at full stick`,
-          note: 'Yaw is usually set a little below roll and pitch, but that is taste.',
-          adjust: (d) => { s.rateYawMax = cycle(RATE_MAX_CHOICES, s.rateYawMax, d); },
-        },
-        {
-          label: 'Centre sensitivity',
-          value: `${s.rateCentre} deg/s per stick at centre`,
-          note: 'How lively the middle of the stick is, where you fly most of a lap. It is the slope of the curve at centre, not the rate at half stick: 70 with a 670 max gives 185 deg/s at half. Betaflight ships 70.',
-          adjust: (d) => { s.rateCentre = cycle(RATE_CENTRE_CHOICES, s.rateCentre, d); },
-        },
-        {
-          label: 'Expo',
-          value: s.rateExpo === 0 ? 'None' : (s.rateExpo / 100).toFixed(2),
-          note: 'Bends the curve between centre and full stick. Softer middle, same ends.',
-          adjust: (d) => { s.rateExpo = cycle(RATE_EXPO_CHOICES, s.rateExpo, d); },
-        },
-        {
-          label: 'Camera angle',
-          value: `${s.cameraAngle} degrees`,
-          note: 'How far the camera tilts up. More angle suits more speed.',
-          adjust: (d) => { s.cameraAngle = cycle(CAMERA_ANGLES, s.cameraAngle, d); },
-        },
-        {
-          label: 'Field of view',
-          value: `${s.cameraFov} degrees vertical`,
-          note: 'Wider sees more and feels roomier, narrower magnifies. Real FPV cameras sit around 110.',
-          adjust: (d) => { s.cameraFov = cycle(CAMERA_FOVS, s.cameraFov, d); },
-        },
-        {
-          label: 'Pack charge',
-          value: `${s.packVoltage.toFixed(2)} volts per cell`,
-          note: 'A tired pack sags harder and gives less punch. Best laps are kept per charge level.',
-          adjust: (d) => { s.packVoltage = cycle(PACK_VOLTAGES, s.packVoltage, d); },
-        },
-        {
-          label: 'Laps per run',
-          value: `${s.laps}`,
-          note: 'How many laps a run lasts before the result screen.',
-          adjust: (d) => { s.laps = cycle(LAP_COUNTS, s.laps, d); },
-        },
-        {
-          label: 'Sound',
-          value: s.sound ? 'On' : 'Off',
-          note: 'All sound: motors, wind, music and cues.',
-          adjust: () => { s.sound = !s.sound; },
-        },
-        {
-          label: 'Volume',
-          value: `${s.volume}`,
-          note: 'Overall level. Zero to ten.',
-          adjust: (d) => { s.volume = Math.max(0, Math.min(10, s.volume + d)); },
-        },
-        {
-          label: 'Motors',
-          value: `${s.motorLevel}`,
-          note: 'The blade pass tone. You fly on its pitch, so keep some of it.',
-          adjust: (d) => { s.motorLevel = Math.max(0, Math.min(10, s.motorLevel + d)); },
-        },
-        {
-          label: 'Wind',
-          value: `${s.windLevel}`,
-          note: 'Air over the airframe. Rises with speed.',
-          adjust: (d) => { s.windLevel = Math.max(0, Math.min(10, s.windLevel + d)); },
-        },
-        {
-          label: 'Music',
-          value: s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
-          note: 'Generated drum and bass and lofi beds. Choose the record below.',
-          adjust: (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
-        },
-        {
-          label: 'Music track',
-          value: s.musicTrack === 'rotation' ? 'Rotation' : trackById(s.musicTrack).name,
-          note: s.musicTrack === 'rotation'
+        choice(
+          'Rate, roll and pitch',
+          'ACTUAL rates. How fast the quad spins with the stick against the stop, exactly. Betaflight ships 670.',
+          RATE_MAX_CHOICES,
+          s.rateMax,
+          (n) => `${n} deg/s`,
+          (n) => { s.rateMax = n; },
+        ),
+        choice(
+          'Rate, yaw',
+          'Yaw is usually set a little below roll and pitch, but that is taste.',
+          RATE_MAX_CHOICES,
+          s.rateYawMax,
+          (n) => `${n} deg/s`,
+          (n) => { s.rateYawMax = n; },
+        ),
+        choice(
+          'Centre sensitivity',
+          'How lively the middle of the stick is, where you fly most of a lap. It is the slope of the curve at centre, not the rate at half stick: 70 with a 670 max gives 185 deg/s at half. Betaflight ships 70.',
+          RATE_CENTRE_CHOICES,
+          s.rateCentre,
+          (n) => `${n} deg/s per stick at centre`,
+          (n) => { s.rateCentre = n; },
+        ),
+        choice(
+          'Expo',
+          'Bends the curve between centre and full stick. Softer middle, same ends.',
+          RATE_EXPO_CHOICES,
+          s.rateExpo,
+          (n) => (n === 0 ? 'None' : (n / 100).toFixed(2)),
+          (n) => { s.rateExpo = n; },
+        ),
+        choice(
+          'Camera angle',
+          'How far the camera tilts up. More angle suits more speed. The quad beside the list shows it.',
+          CAMERA_ANGLES,
+          s.cameraAngle,
+          (n) => `${n} degrees`,
+          (n) => { s.cameraAngle = n; },
+        ),
+        choice(
+          'Field of view',
+          'Wider sees more and feels roomier, narrower magnifies. Real FPV cameras sit around 110.',
+          CAMERA_FOVS,
+          s.cameraFov,
+          (n) => `${n} degrees vertical`,
+          (n) => { s.cameraFov = n; },
+        ),
+        choice(
+          'Pack charge',
+          'A tired pack sags harder and gives less punch. Best laps are kept per charge level.',
+          PACK_VOLTAGES,
+          s.packVoltage,
+          (n) => `${n.toFixed(2)} volts per cell`,
+          (n) => { s.packVoltage = n; },
+        ),
+        choice(
+          'Laps per run',
+          'How many laps a run lasts before the result screen.',
+          LAP_COUNTS,
+          s.laps,
+          (n) => `${n}`,
+          (n) => { s.laps = n; },
+        ),
+        toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
+        stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
+          s.volume = Math.max(0, Math.min(10, s.volume + d));
+        }),
+        stepper('Motors', 'The blade pass tone. You fly on its pitch, so keep some of it.', `${s.motorLevel}`, (d) => {
+          s.motorLevel = Math.max(0, Math.min(10, s.motorLevel + d));
+        }),
+        stepper('Wind', 'Air over the airframe. Rises with speed.', `${s.windLevel}`, (d) => {
+          s.windLevel = Math.max(0, Math.min(10, s.windLevel + d));
+        }),
+        stepper(
+          'Music',
+          'Generated drum and bass and lofi beds. Choose the record below.',
+          s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
+          (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
+        ),
+        choice(
+          'Music track',
+          s.musicTrack === 'rotation'
             ? 'Every track in turn, drum and bass and lofi alternating.'
             : `${trackById(s.musicTrack).genre === 'dnb' ? 'Drum and bass' : 'Lofi'}, ${trackById(s.musicTrack).bpm} beats per minute.`,
-          adjust: (d) => {
-            const ids = ['rotation', ...TRACKS.map((t) => t.id)];
-            const i = ids.indexOf(s.musicTrack);
-            const n = ids.length;
-            s.musicTrack = ids[(((i < 0 ? 0 : i) + d) % n + n) % n];
-          },
-        },
-        {
-          label: 'Ambience',
-          value: s.ambienceLevel > 0 ? `${s.ambienceLevel}` : 'Off',
-          note: 'The outdoors: low air and birdsong. It fades away as speed builds.',
-          adjust: (d) => { s.ambienceLevel = Math.max(0, Math.min(10, s.ambienceLevel + d)); },
-        },
-        {
-          label: 'Binaural tone',
-          value: s.focusTone ? 'On' : 'Off',
-          note: 'A quiet 1000 Hz tone, 6 Hz apart between the ears. Needs headphones to do anything at all.',
-          adjust: () => { s.focusTone = !s.focusTone; },
-        },
-        {
-          label: 'Racing line',
-          value: s.racingLine ? 'On' : 'Off',
-          note: 'Draws the line the course is meant to be flown, threading every gate. It goes green while you are on it and amber while you are not. Nothing on a freestyle map to draw.',
-          adjust: () => { s.racingLine = !s.racingLine; },
-        },
-        {
-          label: 'Performance readout',
-          value: s.readout ? 'On' : 'Off',
-          note: 'Frame rate and draw counts, for tuning your machine.',
-          adjust: () => { s.readout = !s.readout; },
-        },
+          musicIds,
+          s.musicTrack,
+          (id) => (id === 'rotation' ? 'Rotation' : trackById(id).name),
+          (id) => { s.musicTrack = id; },
+        ),
+        stepper(
+          'Ambience',
+          'The outdoors: low air and birdsong. It fades away as speed builds.',
+          s.ambienceLevel > 0 ? `${s.ambienceLevel}` : 'Off',
+          (d) => { s.ambienceLevel = Math.max(0, Math.min(10, s.ambienceLevel + d)); },
+        ),
+        toggle(
+          'Binaural tone',
+          'A quiet 1000 Hz tone, 6 Hz apart between the ears. Needs headphones to do anything at all.',
+          s.focusTone,
+          (v) => { s.focusTone = v; },
+        ),
+        toggle(
+          'Performance readout',
+          'Frame rate and draw counts, for tuning your machine.',
+          s.readout,
+          (v) => { s.readout = v; },
+        ),
         { label: 'Calibrate sticks', action: 'calibrate', note: 'Teach the game your radio, one stick at a time.' },
         { label: 'Back', action: 'back' },
       ];
@@ -494,19 +552,7 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume' },
         { label: 'Restart run', action: 'restart' },
-        {
-          label: 'Tune',
-          value: tuneById(s.tune).name,
-          note: tuneById(s.tune).note,
-          /* The whole flight controller comes from this file, so changing
-           * it re-inits the module and resets the craft. Next to Map
-           * because after the world it is the biggest choice there is. */
-          adjust: (d) => {
-            const i = TUNES.findIndex((x) => x.id === s.tune);
-            const n = TUNES.length;
-            s.tune = TUNES[(((i < 0 ? 0 : i) + d) % n + n) % n].id;
-          },
-        },
+        tuneItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
         { label: 'Quit to title', action: 'title' },
@@ -522,6 +568,7 @@ export class Ui {
   }
 
   renderMenu() {
+    this.closeDrop();
     if (this.screen === 'maps') {
       this.renderMapCards();
     }
@@ -540,45 +587,235 @@ export class Ui {
     if (this.cursor >= items.length) {
       this.cursor = 0;
     }
+    const scroll = host.scrollTop;
     host.textContent = '';
     /* The map screen draws its worlds as cards above this menu, so the rows
      * here are only what is left over, which is Back. */
     const rows = this.screen === 'maps' ? items.filter((it) => !it.map) : items;
     const offset = items.length - rows.length;
+    this.rowOffset = offset;
+    this.menuRows = [];
     rows.forEach((it, k) => {
       const i = k + offset;
-      const row = el('div', `row${i === this.cursor ? ' on' : ''}`);
+      const row = el('div', 'row');
       row.append(el('span', 'row-label', it.label));
-      if (it.value != null) {
+      if (it.options) {
+        row.append(this.makeDrop(it, i));
+      } else if (it.step || it.adjust) {
+        row.append(this.makeStepper(it, i));
+      } else if (it.value != null) {
         row.append(el('span', 'row-value', it.value));
       }
       /* A browser player reaches for the mouse. A menu that only answers
        * to arrow keys reads as broken, not as keyboard first. */
-      /* mousemove, not mouseenter: the menu is rebuilt on every cursor
+      /* mousemove, not mouseenter: the menu is rebuilt on every value
        * change, and a fresh element appearing under a stationary pointer
        * fires enter, which dragged the cursor back to wherever the mouse
        * happened to be resting and made the arrow keys look broken. */
       row.addEventListener('mousemove', () => {
         if (this.cursor !== i) {
-          this.cursor = i;
-          this.renderMenu();
-          /* The same tick the arrow keys make: the pointer sliding down a
-           * menu should feel like a finger running along a fence. */
-          if (this.onUiSound) {
-            this.onUiSound('move');
-          }
+          this.setCursor(i);
         }
       });
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.row-control')) {
+          return;
+        }
+        this.closeDrop();
         this.cursor = i;
-        this.select();
+        this.syncCursor(false);
+        /* Value rows change through the arrows or the dropdown. Clicking
+         * the label only focuses them. Action rows still fire. */
+        if (!it.adjust && !it.options && !it.step) {
+          this.select();
+        }
       });
       host.append(row);
+      this.menuRows.push(row);
     });
-    /* The note lives in one element outside the list, so the rows do not
-     * shift under the cursor as it moves. */
-    const note = el('div', 'row-note', items[this.cursor]?.note || '');
-    host.append(note);
+    host.scrollTop = scroll;
+    this.syncCursor(false);
+  }
+
+  helpNode() {
+    return {
+      title: this.titleHelp,
+      howto: this.howtoHelp,
+      maps: this.mapsHelp,
+      settings: this.settingsHelp,
+      paused: this.pausedHelp,
+      results: this.resultsHelp,
+    }[this.screen];
+  }
+
+  syncCursor(scroll = true) {
+    const items = this.items();
+    this.menuRows.forEach((row, k) => {
+      const i = k + this.rowOffset;
+      row.classList.toggle('on', i === this.cursor);
+    });
+    const help = this.helpNode();
+    if (help) {
+      help.textContent = items[this.cursor]?.note || '';
+    }
+    const on = this.menuRows[this.cursor - this.rowOffset];
+    if (scroll && on && typeof on.scrollIntoView === 'function') {
+      on.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  setCursor(i) {
+    if (i === this.cursor) {
+      return;
+    }
+    this.closeDrop();
+    this.cursor = i;
+    if (this.screen === 'maps' && this.mapCards) {
+      this.mapCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    }
+    this.syncCursor();
+    if (this.onUiSound) {
+      this.onUiSound('move');
+    }
+  }
+
+  makeStepper(it, i) {
+    const wrap = el('div', 'row-control');
+    const val = el('span', 'row-value', it.value);
+    val.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.cursor = i;
+      this.adjust(1);
+    });
+    const col = el('span', 'step-col');
+    const up = btn('step', '▲');
+    const down = btn('step', '▼');
+    up.setAttribute('aria-label', `Increase ${it.label}`);
+    down.setAttribute('aria-label', `Decrease ${it.label}`);
+    up.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.cursor = i;
+      this.adjust(1);
+    });
+    down.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.cursor = i;
+      this.adjust(-1);
+    });
+    col.append(up, down);
+    wrap.append(val, col);
+    return wrap;
+  }
+
+  makeDrop(it, i) {
+    const wrap = el('div', 'row-control');
+    const b = btn('drop-btn', it.value);
+    b.setAttribute('aria-haspopup', 'listbox');
+    b.setAttribute('aria-label', it.label);
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.dropIndex === i) {
+        this.closeDrop();
+        return;
+      }
+      this.openDrop(i, b, it);
+    });
+    wrap.append(b);
+    return wrap;
+  }
+
+  openDrop(i, anchor, it) {
+    this.closeDrop();
+    this.cursor = i;
+    this.syncCursor();
+    const list = el('div', 'drop-list');
+    list.setAttribute('role', 'listbox');
+    for (const opt of it.options) {
+      const o = btn(`drop-opt${String(opt.value) === String(it.current) ? ' on' : ''}`, opt.label);
+      o.setAttribute('role', 'option');
+      o.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.closeDrop();
+        this.cursor = i;
+        this.pick(opt.value);
+      });
+      list.append(o);
+    }
+    this.root.append(list);
+    const r = anchor.getBoundingClientRect();
+    list.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 240))}px`;
+    list.style.minWidth = `${Math.max(r.width, 148)}px`;
+    list.style.top = `${r.bottom + 4}px`;
+    const lr = list.getBoundingClientRect();
+    if (lr.bottom > window.innerHeight - 8) {
+      list.style.top = `${Math.max(8, r.top - lr.height - 4)}px`;
+    }
+    this.dropEl = list;
+    this.dropIndex = i;
+    this.dropOpts = [...list.querySelectorAll('.drop-opt')];
+    this.dropHi = this.dropOpts.findIndex((o) => o.classList.contains('on'));
+    if (this.dropHi < 0) {
+      this.dropHi = 0;
+    }
+    this.markDropHi();
+  }
+
+  markDropHi() {
+    if (!this.dropOpts) {
+      return;
+    }
+    this.dropOpts.forEach((o, j) => o.classList.toggle('on', j === this.dropHi));
+    const on = this.dropOpts[this.dropHi];
+    if (on) {
+      on.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  moveDrop(dir) {
+    if (!this.dropEl || !this.dropOpts || !this.dropOpts.length) {
+      return;
+    }
+    const n = this.dropOpts.length;
+    this.dropHi = (this.dropHi + dir + n) % n;
+    this.markDropHi();
+    if (this.onUiSound) {
+      this.onUiSound('move');
+    }
+  }
+
+  confirmDrop() {
+    const it = this.items()[this.cursor];
+    const opt = it && it.options && it.options[this.dropHi];
+    this.closeDrop();
+    if (opt) {
+      this.pick(opt.value);
+    }
+  }
+
+  closeDrop() {
+    if (this.dropEl) {
+      this.dropEl.remove();
+      this.dropEl = null;
+    }
+    this.dropIndex = null;
+    this.dropOpts = null;
+    this.dropHi = 0;
+  }
+
+  pick(value) {
+    const it = this.items()[this.cursor];
+    if (!it || !it.pick) {
+      return;
+    }
+    it.pick(value);
+    saveSettings(this.settings);
+    this.renderMenu();
+    if (this.onUiSound) {
+      this.onUiSound('adjust');
+    }
+    if (this.onSettings) {
+      this.onSettings(this.settings);
+    }
   }
 
   /*
@@ -608,11 +845,7 @@ export class Ui {
         card.append(shot, still, body);
         card.addEventListener('mousemove', () => {
           if (this.cursor !== i) {
-            this.cursor = i;
-            this.renderMenu();
-            if (this.onUiSound) {
-              this.onUiSound('move');
-            }
+            this.setCursor(i);
           }
         });
         card.addEventListener('click', () => {
@@ -715,6 +948,7 @@ export class Ui {
   }
 
   show(screen) {
+    this.closeDrop();
     if (this.screen === 'maps' && screen !== 'maps') {
       /* Nothing draws a thumbnail for a screen nobody is looking at. */
       this.stopReels();
@@ -831,7 +1065,7 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, volts, packFrac, altitude, speedKph, throttle }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -839,7 +1073,13 @@ export class Ui {
     this.osdClockLabel.textContent = freestyle ? 'Airtime' : 'Lap';
     this.osdTimer.textContent = running ? formatTime(lapMs) : '0.00';
     this.osdTimer.className = running ? 'osd-timer' : 'osd-timer waiting';
-    this.osdGate.textContent = freestyle ? '' : `Gate ${gate} of ${gateCount}`;
+    if (freestyle) {
+      this.osdGate.textContent = '';
+    } else if (gateCue) {
+      this.osdGate.textContent = `Gate ${gate} of ${gateCount}, ${gateCue}`;
+    } else {
+      this.osdGate.textContent = `Gate ${gate} of ${gateCount}`;
+    }
     this.osdPack.textContent = `${volts.toFixed(1)} volts`;
     this.osdLast.textContent = !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
@@ -869,11 +1109,7 @@ export class Ui {
     if (!n) {
       return;
     }
-    this.cursor = (this.cursor + dir + n) % n;
-    this.renderMenu();
-    if (this.onUiSound) {
-      this.onUiSound('move');
-    }
+    this.setCursor((this.cursor + dir + n) % n);
   }
 
   adjust(dir) {
@@ -907,6 +1143,13 @@ export class Ui {
   }
 
   back() {
+    if (this.dropEl) {
+      this.closeDrop();
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      return;
+    }
     if (this.screen === 'title' || this.screen === 'flight') {
       return;
     }
@@ -983,6 +1226,24 @@ export class Ui {
       }
       return false;
     }
+    if (this.dropEl) {
+      if (code === 'ArrowUp' || code === 'KeyW') {
+        this.moveDrop(-1);
+        return true;
+      }
+      if (code === 'ArrowDown' || code === 'KeyS') {
+        this.moveDrop(1);
+        return true;
+      }
+      if (code === 'Enter' || code === 'Space') {
+        this.confirmDrop();
+        return true;
+      }
+      if (code === 'Escape' || code === 'Backspace') {
+        this.back();
+        return true;
+      }
+    }
     if (code === 'ArrowUp' || code === 'KeyW') {
       this.move(-1);
       return true;
@@ -1041,6 +1302,25 @@ export class Ui {
     };
     const it = this.items()[this.cursor];
     const rollAdjusts = Boolean(it && it.adjust);
+    if (this.dropEl) {
+      if (now.up && !this.padPrev.up) {
+        this.moveDrop(-1);
+      }
+      if (now.down && !this.padPrev.down) {
+        this.moveDrop(1);
+      }
+      if ((now.right && !this.padPrev.right) || (now.select && !this.padPrev.select)) {
+        this.confirmDrop();
+      }
+      if ((now.left && !this.padPrev.left) || (now.back && !this.padPrev.back)) {
+        this.closeDrop();
+        if (this.onUiSound) {
+          this.onUiSound('back');
+        }
+      }
+      this.padPrev = now;
+      return;
+    }
     if (now.up && !this.padPrev.up) {
       this.move(-1);
     }

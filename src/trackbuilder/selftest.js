@@ -36,10 +36,15 @@ import {
 } from './model.js';
 import { applyAutoFaces, flipFace } from './faces.js';
 import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
+import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
 import { RAD, DEG } from './geometry.js';
+import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight } from './elements.js';
+import { courseFromDocument } from '../game/trackdoc.js';
+import { GATE_SCALE } from '../game/track.js';
+import { Race } from '../game/race.js';
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -462,6 +467,20 @@ function suiteWarnings() {
   fence.dims.height = 6;
   check('a barrier on the line warns', codes(collectWarnings(bar, buildPath(bar))).has('barrier'));
 
+  const wallDoc = createTrack();
+  const wall = place(wallDoc, 'barrier', 10, 10, { yaw: 0.4 });
+  const wallCourse = courseFromDocument(wallDoc);
+  const wallSt = wallCourse.structures.find((s) => s.type === 'barrier');
+  check('a wall in the world faces the same way as in the builder',
+    wallSt && Math.abs(wallSt.yaw - wall.yaw) < 1e-9,
+    wallSt ? `${wallSt.yaw}` : 'missing');
+  const gateDoc = createTrack();
+  place(gateDoc, 'gate', 10, 10, { yaw: 0 });
+  const gateSt = courseFromDocument(gateDoc).structures.find((s) => s.type === 'gate');
+  check('a gate still gets the quarter turn its plane needs',
+    gateSt && Math.abs(gateSt.yaw - Math.PI / 2) < 1e-9,
+    gateSt ? `${gateSt.yaw}` : 'missing');
+
   const out = demoTrack();
   out.field.width = 20;
   out.field.depth = 20;
@@ -515,12 +534,202 @@ function suiteSequenceNaming() {
     const el = elementById(doc, s.elementId);
     return el && el.type === 'ladder';
   });
-  check('a ladder entry names its level', /level \d of 3/.test(sequenceLabel(doc, ladderSeqs[0])),
+  check('a ladder entry names its level', /bottom|middle|top/.test(sequenceLabel(doc, ladderSeqs[0])),
     sequenceLabel(doc, ladderSeqs[0]));
   check('a ladder has three openings', aperturesOf(elementById(doc, ladderSeqs[0].elementId)).length === 3);
   const flagSeq = doc.sequence.find((s) => elementById(doc, s.elementId).type === 'flag');
   check('a marker names its pass side in prose', /pass on the (left|right)/.test(faceLabel(doc, flagSeq)),
     faceLabel(doc, flagSeq));
+}
+
+function suiteFigures() {
+  console.log('\nstacked figures');
+  const dbl = createTrack();
+  const g0 = place(dbl, 'gate', 0, 0);
+  const stack = place(dbl, 'doubleStack', 10, 0);
+  const g1 = place(dbl, 'gate', 20, 0);
+  addToSequence(dbl, g0.id, 0);
+  addToSequence(dbl, stack.id, 0);
+  addToSequence(dbl, g1.id, 0);
+  check('a double stack has two openings', aperturesOf(stack).length === 2);
+  check('placing it sequences one opening', dbl.sequence.filter((s) => s.elementId === stack.id).length === 1);
+  check('a new stack wants a spiral up', defaultFigure(stack) === 'spiralUp');
+
+  applyFigure(dbl, stack.id, 'spiralUp');
+  const spiral = dbl.sequence.filter((s) => s.elementId === stack.id);
+  check('spiral up writes two passes', spiral.length === 2);
+  check('bottom then top', spiral[0].apertureIndex === 0 && spiral[1].apertureIndex === 1,
+    `${spiral[0].apertureIndex} then ${spiral[1].apertureIndex}`);
+  check('faces stay the same', spiral[0].entry === spiral[1].entry,
+    `${spiral[0].entry} and ${spiral[1].entry}`);
+  check('the figure is detected as spiral up', matchingFigure(dbl, stack) === 'spiralUp',
+    matchingFigure(dbl, stack));
+  check('the two passes stay consecutive in the order',
+    dbl.sequence[1].elementId === stack.id && dbl.sequence[2].elementId === stack.id);
+
+  spiral[1].entry = -spiral[0].entry;
+  check('an old alternating spiral is not the current figure', matchingFigure(dbl, stack) !== 'spiralUp');
+  check('upgrading it restores the same face', upgradeStackedFigures(dbl) === true);
+  check('and it is a spiral up again', matchingFigure(dbl, stack) === 'spiralUp');
+  check('and both holes share a face', spiral[0].entry === spiral[1].entry);
+
+  const path = buildPath(dbl);
+  const wraps = path.knots.filter((k) => k.role === 'wrap');
+  check('the racing line wraps around the stack', wraps.length === 1, `${wraps.length} wraps`);
+  if (wraps.length) {
+    const st = stack.position;
+    const off = Math.hypot(wraps[0].pos.x - st.x, wraps[0].pos.y - st.y);
+    check('the wrap sits off the frame', off > 1.5, `${off.toFixed(2)} m`);
+  }
+
+  applyFigure(dbl, stack.id, 'splitS');
+  const split = dbl.sequence.filter((s) => s.elementId === stack.id);
+  check('split-S is top then bottom', split[0].apertureIndex === 1 && split[1].apertureIndex === 0,
+    `${split[0].apertureIndex} then ${split[1].apertureIndex}`);
+  check('the figure is detected as split-S', matchingFigure(dbl, stack) === 'splitS',
+    matchingFigure(dbl, stack));
+  check('the sequence names the figure', /Split-S/.test(sequenceLabel(dbl, split[0])),
+    sequenceLabel(dbl, split[0]));
+
+  const course = courseFromDocument(dbl);
+  const stacked = course.stations.filter((s) => s.type === 'doubleStack');
+  check('the course scores two stacked stations', stacked.length === 2, `${stacked.length}`);
+  check('the first station cues the top of the split-S', stacked[0]?.cue === 'Split-S, top',
+    stacked[0]?.cue);
+  check('the second station cues the bottom', stacked[1]?.cue === 'Split-S, bottom',
+    stacked[1]?.cue);
+  check('the course carries one figure ribbon', course.figures.length === 1, `${course.figures.length}`);
+  check('the ribbon goes opening, wrap, opening', course.figures[0]?.points.length === 3,
+    `${course.figures[0]?.points.length}`);
+  check('the structure is built as two openings', stacked[0].structure.dims.stack === 2,
+    `${stacked[0].structure.dims.stack}`);
+
+  const raceGates = course.stations.map((st, i) => ({
+    position: { x: st.x, y: 0, z: st.z },
+    heading: st.yaw,
+    pitch: st.pitch ?? 0,
+    flyOrder: i,
+    elementId: st.elementId,
+    apertureIndex: st.apertureIndex,
+    apertures: [{ centreY: st.centreY, clearW: st.clearW, clearH: st.clearH }],
+    aperture: { centreY: st.centreY, clearW: st.clearW, clearH: st.clearH },
+  }));
+  const race = new Race(raceGates);
+  check('the race has two stacked stations', race.gates.filter((g) => g.elementId === stack.id).length === 2);
+  check('each stacked station scores one opening',
+    race.gates.filter((g) => g.elementId === stack.id).every((g) => g.apertures.length === 1));
+
+  function flyThrough(g, toward = 1) {
+    const ap = g.apertures[0];
+    const cy = g.y + ap.centreY;
+    const s = toward >= 0 ? 1 : -1;
+    return {
+      prev: { x: g.x - g.az.x * 2 * s, y: cy - g.az.y * 2 * s, z: g.z - g.az.z * 2 * s },
+      curr: { x: g.x + g.az.x * 2 * s, y: cy + g.az.y * 2 * s, z: g.z + g.az.z * 2 * s },
+    };
+  }
+
+  let seg = flyThrough(race.gates[0]);
+  race.update(seg.prev, seg.curr, 10, 10);
+  check('the lead-in leaves the first stacked hole next', race.next === 1, `next ${race.next}`);
+  seg = flyThrough(race.gates[1]);
+  race.update(seg.prev, seg.curr, 20, 20);
+  check('one hole of the stack is one gate', race.next === 2, `next ${race.next}`);
+  seg = flyThrough(race.gates[2]);
+  race.update(seg.prev, seg.curr, 30, 30);
+  check('the second hole is its own gate', race.next === 3, `next ${race.next}`);
+
+  const miss = new Race(raceGates);
+  seg = flyThrough(miss.gates[0]);
+  miss.update(seg.prev, seg.curr, 10, 10);
+  seg = flyThrough(miss.gates[2]);
+  miss.update(seg.prev, seg.curr, 20, 20);
+  check('the wrong hole of the stack does not void the lap',
+    !(miss.flash && /void/i.test(miss.flash.text)));
+  check('and does not count as the hole that was next', miss.next === 1, `next ${miss.next}`);
+
+  const skip = new Race(raceGates);
+  seg = flyThrough(skip.gates[0]);
+  skip.update(seg.prev, seg.curr, 10, 10);
+  seg = flyThrough(skip.gates[3]);
+  skip.update(seg.prev, seg.curr, 20, 20);
+  check('a different gate out of order still voids',
+    Boolean(skip.flash && /void/i.test(skip.flash.text)));
+
+  const tri = createTrack();
+  const t = place(tri, 'ladder', 0, 0);
+  addToSequence(tri, t.id, 0);
+  applyFigure(tri, t.id, 'spiralDown');
+  const down = tri.sequence.filter((s) => s.elementId === t.id);
+  check('spiral down on a triple is three passes', down.length === 3);
+  check('top then middle then bottom',
+    down[0].apertureIndex === 2 && down[1].apertureIndex === 1 && down[2].apertureIndex === 0,
+    down.map((s) => s.apertureIndex).join(','));
+  check('the figure is detected as spiral down', matchingFigure(tri, t) === 'spiralDown',
+    matchingFigure(tri, t));
+  check('spiral down alternates faces', down[0].entry === -down[1].entry && down[1].entry === -down[2].entry,
+    down.map((s) => s.entry).join(','));
+
+  applyFigure(tri, t.id, 'splitS');
+  const leap = tri.sequence.filter((s) => s.elementId === t.id);
+  check('split-S on a triple skips the middle', leap.length === 2 && leap[0].apertureIndex === 2 && leap[1].apertureIndex === 0,
+    leap.map((s) => s.apertureIndex).join(','));
+
+  const skipped = createTrack();
+  const a = place(skipped, 'gate', 0, 0);
+  const lad = place(skipped, 'ladder', 10, 0);
+  const b = place(skipped, 'gate', 20, 0);
+  addToSequence(skipped, a.id, 0);
+  addToSequence(skipped, lad.id, 0);
+  addToSequence(skipped, b.id, 0);
+  addNextLevel(skipped, lad.id);
+  /* Second ladder pass is at the end, not consecutive with the first. */
+  const between = buildPath(skipped);
+  check('a stack flown twice with a gate between does not wrap',
+    between.knots.filter((k) => k.role === 'wrap').length === 0,
+    `${between.knots.filter((k) => k.role === 'wrap').length} wraps`);
+}
+
+function suiteFlaggedGate() {
+  console.log('\nflagged gate');
+  const doc = createTrack();
+  const g = place(doc, 'flaggedGate', 10, 10);
+  check('a new flagged gate defaults to left', g.flagSide === 'left');
+  check('left is the minus width-axis end', flagSideSigns(flagSideOf(g)).join(',') === '-1');
+  check('it is one opening, same as a gate', aperturesOf(g).length === 1);
+  check('its dims match a standard gate',
+    g.dims.clearW === ELEMENTS.gate.dims.clearW && g.dims.clearH === ELEMENTS.gate.dims.clearH);
+  const gateH = elementHeight(ELEMENTS.gate, ELEMENTS.gate.dims);
+  const flaggedH = elementHeight(ELEMENTS.flaggedGate, g.dims);
+  check('its height includes the header mast', Math.abs(flaggedH - (gateH + GATE_FLAG_H)) < 1e-9,
+    `${flaggedH} vs ${gateH} + ${GATE_FLAG_H}`);
+  check('A arms it', elementByKey('A')?.id === 'flaggedGate');
+  check('it sits next to Gate in the palette', PALETTE_ORDER[0] === 'gate' && PALETTE_ORDER[1] === 'flaggedGate');
+
+  g.flagSide = 'both';
+  check('both is both ends', flagSideSigns(flagSideOf(g)).join(',') === '-1,1');
+  const back = deserialize(serialize(doc));
+  const g2 = back.doc.elements.find((e) => e.type === 'flaggedGate');
+  check('both round trips', g2?.flagSide === 'both');
+  check('the demo track is not carrying one', !serialize(demoTrack()).includes('flaggedGate'));
+
+  const plainDoc = createTrack();
+  place(plainDoc, 'gate', 0, 0);
+  check('a plain gate does not write flagSide', !serialize(plainDoc).includes('flagSide'));
+
+  const repaired = normalize({
+    schemaVersion: 1,
+    elements: [{ id: 'el-1', type: 'flaggedGate', position: { x: 0, y: 0 }, flagSide: 'up' }],
+  });
+  check('an unknown side becomes left', repaired.doc.elements[0].flagSide === 'left');
+
+  addToSequence(doc, g.id, 0);
+  const course = courseFromDocument(doc);
+  const st = course.structures.find((s) => s.type === 'flaggedGate');
+  check('the field gets both signs', st && st.flagSigns.join(',') === '-1,1',
+    st ? st.flagSigns.join(',') : 'missing');
+  check('and the mast height is scaled', st && Math.abs(st.flagH - GATE_FLAG_H * GATE_SCALE) < 1e-9,
+    st ? String(st.flagH) : 'missing');
 }
 
 /*
@@ -539,7 +748,7 @@ function suiteSchemaDoc() {
     check('schema.md is readable', false, e.message);
     return;
   }
-  const blocks = [...md.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const blocks = [...md.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
   check('schema.md carries exactly one worked example', blocks.length === 1, `${blocks.length} json blocks`);
   if (blocks.length !== 1) {
     return;
@@ -578,6 +787,8 @@ function main() {
   suiteWarnings();
   suiteHistory();
   suiteSequenceNaming();
+  suiteFigures();
+  suiteFlaggedGate();
   suiteSchemaDoc();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;

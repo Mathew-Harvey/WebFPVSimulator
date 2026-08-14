@@ -33,11 +33,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, flagSideOf, flagSideSigns } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter,
 } from './model.js';
 import { sequenceNumbers } from './sequence.js';
+import { figureCue } from './figures.js';
 import { travelDirection, passOffsetSign } from './faces.js';
 import {
   add, apertureCorners, clamp, dist, leftOf, normalize, pointSegment, scale, sub, yawVector,
@@ -601,7 +602,43 @@ export class View2D {
     for (const n of numbers) {
       this.drawArrowFor(ctx, el, n, dive);
     }
+    this.drawHeaderFlags(ctx, el, selected);
     this.drawNumbers(ctx, el, numbers, selected);
+  }
+
+  /*
+   * Tiny pennants at the header ends, so a flagged gate is not a plain gate
+   * on the plan. Left and right are the width-axis ends as seen facing the
+   * gate, matching the inspector cards.
+   */
+  drawHeaderFlags(ctx, el, selected) {
+    const signs = flagSideSigns(flagSideOf(el));
+    if (!signs.length) {
+      return;
+    }
+    const u = { x: -Math.sin(el.yaw), y: Math.cos(el.yaw) };
+    const half = el.dims.clearW * 0.5;
+    ctx.fillStyle = selected ? C.selected : C.marker;
+    for (const sx of signs) {
+      const base = {
+        x: el.position.x + u.x * sx * half,
+        y: el.position.y + u.y * sx * half,
+      };
+      const tip = {
+        x: base.x + u.x * sx * 0.55,
+        y: base.y + u.y * sx * 0.55,
+      };
+      const p = this.toScreen(base);
+      const q = this.toScreen(tip);
+      const dx = q.x - p.x;
+      const dy = q.y - p.y;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+      ctx.lineTo(p.x + dx * 0.62 - dy * 0.42, p.y + dy * 0.62 + dx * 0.42);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   /*
@@ -835,7 +872,7 @@ export class View2D {
         ctx.font = '9px ui-monospace, monospace';
         ctx.fillStyle = C.numberBg;
         ctx.textAlign = 'left';
-        ctx.fillText(`L${(n.apertureIndex ?? 0) + 1}`, c.x + 12, y + 0.5);
+        ctx.fillText(figureCue(this.host.doc, el, n.seq) || `L${(n.apertureIndex ?? 0) + 1}`, c.x + 12, y + 0.5);
       }
     });
   }

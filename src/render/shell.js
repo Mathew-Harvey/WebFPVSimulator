@@ -193,6 +193,9 @@ export function buildShell(canvas) {
     pixelRatio,
     quad: craft.group,
     discs: craft.discs,
+    blades: craft.blades,
+    cameraMount: craft.cameraMount,
+    propSpin: craft.propSpin,
     resize,
   };
 }

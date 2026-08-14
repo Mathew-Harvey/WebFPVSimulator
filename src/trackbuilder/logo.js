@@ -54,13 +54,14 @@
  */
 
 import { LOGO_MAX_CHARS, isUsableLogo } from './model.js';
+import { paintGateHeader } from '../art/banners.js';
 
 /*
  * The board the logo is fitted to, and the sizes the encode steps down
  * through until one lands under the document's cap.
  */
 export const LOGO_ASPECT = 3;
-const BOARD_SIZES = [[1200, 400], [768, 256], [540, 180], [384, 128]];
+const BOARD_SIZES = [400, 256, 180, 128].map((bh) => [bh * LOGO_ASPECT, bh]);
 
 /* Refused before it is decoded. A browser will happily try to decode a 40
  * megapixel image and take the tab with it. */
@@ -148,13 +149,12 @@ export async function normaliseLogo(file) {
  * Draw the gate's header board as the renderer builds it, so an author sees
  * where their logo lands before they fly it rather than after.
  *
- * The proportions are read off src/render/scene.js's gateBanner: a board
- * 0.58 m tall spanning the whole structure, a hem top and bottom, the number
- * roundel pushed left when there is a logo, and the logo three by one
- * centred in what is left. Numbers rather than a shared constant because the
- * two live in different halves of the project and the builder must not
- * import the renderer; if the banner is ever re-proportioned, this is the
- * drawing that has to follow it.
+ * The print comes from src/art/banners.js, the same painter the world and
+ * the 3D preview use, so this cannot drift into a maroon board while the
+ * gates in the air are white. The roundel is geometry in the world, so it
+ * is drawn on top here as a stand in, in the number zone the painter left
+ * clear. The builder must not import the renderer; sharing the artwork
+ * module is the allowed half of that split.
  */
 export function drawBannerPreview(canvas, dataUrl, image) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -169,31 +169,22 @@ export function drawBannerPreview(canvas, dataUrl, image) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  /* The board, in the race panel's own colour. */
-  ctx.fillStyle = '#6b2a22';
-  ctx.fillRect(0, 0, w, h);
-  const hem = Math.max(2, h * 0.078);
-  ctx.fillStyle = '#e4d9bf';
-  ctx.fillRect(0, 0, w, hem);
-  ctx.fillRect(0, h - hem, w, hem);
+  const logo = dataUrl && image && image.complete && image.naturalWidth > 0 ? image : null;
+  paintGateHeader(ctx, w, h, { logo });
 
-  const roundelR = h * 0.26;
-  const roundelX = dataUrl ? roundelR + h * 0.12 : w * 0.5;
+  const numberZone = 0.22;
+  const roundelR = h * 0.32;
+  const roundelX = w * numberZone * 0.5;
   ctx.beginPath();
   ctx.arc(roundelX, h * 0.5, roundelR, 0, Math.PI * 2);
   ctx.fillStyle = '#e4d9bf';
   ctx.fill();
+  ctx.strokeStyle = '#18202f';
+  ctx.lineWidth = Math.max(2, h * 0.045);
+  ctx.stroke();
   ctx.fillStyle = '#18202f';
   ctx.font = `700 ${Math.round(roundelR * 1.25)}px system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('1', roundelX, h * 0.54);
-
-  if (dataUrl && image && image.complete && image.naturalWidth > 0) {
-    const left = roundelX + roundelR + h * 0.12;
-    const right = w - h * 0.12;
-    const logoH = Math.min(h - hem * 2 - h * 0.07, Math.max(0, right - left) / LOGO_ASPECT);
-    const logoW = logoH * LOGO_ASPECT;
-    ctx.drawImage(image, (left + right - logoW) * 0.5, (h - logoH) * 0.5, logoW, logoH);
-  }
 }

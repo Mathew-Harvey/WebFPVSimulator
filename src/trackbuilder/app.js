@@ -34,12 +34,14 @@ import { ELEMENTS, KIND, elementByKey } from './elements.js';
 import {
   createTrack, createElement, deepClone, deserialize, duplicateTrack,
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
+  aperturesOf,
 } from './model.js';
 import { applyAutoFaces, clearOverride, defaultYawFor, flipFace } from './faces.js';
 import {
   addToSequence, addNextLevel, clampSequenceToApertures, moveInSequence,
   removeElement, removeFromSequence, setApertureIndex,
 } from './sequence.js';
+import { applyFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
 import { buildPath } from './path.js';
 import { collectWarnings, sortWarnings } from './warnings.js';
 import { History } from './history.js';
@@ -304,10 +306,21 @@ export class App {
       newId = element.id;
       if (isSequenceable(element)) {
         addToSequence(d, element.id, 0);
+        const fig = defaultFigure(element);
+        if (fig !== 'single') {
+          applyFigure(d, element.id, fig);
+        }
       }
     });
     if (newId) {
       this.setSelection([newId]);
+      const placed = elementById(this.doc, newId);
+      if (placed && aperturesOf(placed).length > 1) {
+        if (!this.pathVisible) {
+          this.togglePath();
+        }
+        this.toast('Each hole is its own gate. This stack is a spiral up: bottom, wrap around, then the top. Change it under How it is flown.');
+      }
     }
   }
 
@@ -412,6 +425,13 @@ export class App {
     this.edit('fly another level', (d) => { addNextLevel(d, elementId); });
   }
 
+  applyFigure(elementId, figureId) {
+    this.edit(`fly ${figureId}`, (d) => { applyFigure(d, elementId, figureId); });
+    if (figureId !== 'single' && !this.pathVisible) {
+      this.togglePath();
+    }
+  }
+
   removeSequenceEntry(seqId) {
     this.edit('remove from the course', (d) => { removeFromSequence(d, seqId); });
   }
@@ -490,6 +510,7 @@ export class App {
 
   loadDocument(doc, message) {
     this.doc = doc;
+    upgradeStackedFigures(this.doc);
     applyAutoFaces(this.doc);
     this.selection.clear();
     this.history.reset();
@@ -602,7 +623,7 @@ export class App {
     const body = document.createElement('div');
     const help = document.createElement('p');
     help.className = 'tb-help';
-    help.textContent = 'Every gate on this course carries a printed header board. The picture goes on it, beside the gate number, on both faces, and it travels inside the track file so a course you send somebody arrives with its branding on.';
+    help.textContent = 'Every gate on this course is a white board. The picture sits on the header, beside the gate number, on both faces, and it travels inside the track file so a course you send somebody arrives with its branding on.';
     body.append(help);
 
     const preview = document.createElement('canvas');

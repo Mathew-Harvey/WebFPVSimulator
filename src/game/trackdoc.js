@@ -54,11 +54,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf,
 } from '../trackbuilder/model.js';
 import { buildPath } from '../trackbuilder/path.js';
+import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
 import { GATE_SCALE } from './track.js';
 
 /*
@@ -82,6 +83,21 @@ export function headingForTravel(tx, tz) {
     return null;
   }
   return Math.atan2(-tx / n, -tz / n);
+}
+
+/* Document yaw to scene yaw. A GATE's document yaw is a plane normal, so
+ * the scene heading is a quarter turn on from it. Everything else (a wall,
+ * a flag, the start pads) is a heading about up, and adding that quarter
+ * turn is what stood every barrier 90 degrees off the builder's preview. */
+function sceneYawFor(el, kind) {
+  if (kind === KIND.APERTURE) {
+    return el.yaw + Math.PI / 2;
+  }
+  if (kind === KIND.START) {
+    const forward = { x: Math.cos(el.yaw), z: -Math.sin(el.yaw) };
+    return headingForTravel(forward.x, forward.z) ?? 0;
+  }
+  return el.yaw;
 }
 
 /* Document point to scene point, horizontally. Height is the scene's job. */
@@ -129,6 +145,7 @@ function builtDims(dims) {
  */
 export function courseFromDocument(raw) {
   const { doc, repairs } = normalize(raw);
+  upgradeStackedFigures(doc);
   const field = doc.field;
   const warnings = [...repairs];
 
@@ -153,20 +170,17 @@ export function courseFromDocument(raw) {
       x: p.x,
       z: p.z,
       baseY: el.position.z,
-      /*
-       * Scene yaw. A document yaw of psi points the plane normal along
-       * (cos psi, sin psi) in document x and y, which is (cos psi, -sin psi)
-       * in scene x and z, and a scene yaw of h points it along
-       * (sin h, cos h). Solving gives h = psi + pi/2, and the whole
-       * derivation is one line because the frame conversion above is the
-       * only place handedness is touched.
-       */
-      yaw: el.yaw + Math.PI / 2,
+      yaw: sceneYawFor(el, kind),
       /* Tilt of the aperture plane, radians, straight from the document.
        * Zero for everything that is not an aperture. */
       pitch: kind === KIND.APERTURE ? el.pitch : 0,
       dims: kind === KIND.APERTURE ? builtDims(el.dims) : { ...el.dims },
     };
+    if (def.flagSide) {
+      s.flagSigns = flagSideSigns(flagSideOf(el));
+      s.flagH = GATE_FLAG_H * GATE_SCALE;
+      s.flagPoleR = GATE_FLAG_POLE_R * GATE_SCALE;
+    }
     structures.push(s);
     byElement.set(el.id, s);
   }
@@ -232,6 +246,8 @@ export function courseFromDocument(raw) {
       pitch: tilt,
       name: structure.name,
       type: el.type,
+      entry: knot.seq.entry,
+      cue: '',
     });
   }
 
@@ -301,6 +317,7 @@ export function courseFromDocument(raw) {
     stations,
     spawn,
     line,
+    figures: stampFigures(doc, field, stations),
     warnings,
     /* Kept so a caller can report on the track without re-reading it. */
     lapLength: path.length,
@@ -308,6 +325,55 @@ export function courseFromDocument(raw) {
   };
   out.samples = corridorSamples(out);
   return out;
+}
+
+/*
+ * Name each stacked pass, and build the polyline the world draws as the
+ * figure's hint: the openings in order, with a wrap between each pair so
+ * the ribbon goes around the stack rather than through it.
+ *
+ * Mutates stations (writes `cue`). Returns the figures list.
+ */
+function stampFigures(doc, field, stations) {
+  const figures = [];
+  let i = 0;
+  while (i < stations.length) {
+    let j = i;
+    while (j + 1 < stations.length && stations[j + 1].elementId === stations[i].elementId) {
+      j += 1;
+    }
+    const run = stations.slice(i, j + 1);
+    const el = elementById(doc, stations[i].elementId);
+    if (el) {
+      const seqs = run.map((st) => ({ apertureIndex: st.apertureIndex, entry: st.entry }));
+      for (const st of run) {
+        st.cue = figureCueOf(el, { apertureIndex: st.apertureIndex }, seqs);
+      }
+      if (run.length >= 2) {
+        const points = [];
+        for (let k = 0; k < run.length; k += 1) {
+          const st = run[k];
+          points.push({ x: st.x, y: st.baseY + st.centreY, z: st.z });
+          if (k < run.length - 1) {
+            const nxt = run[k + 1];
+            const wrap = wrapBetween(el, seqs[k], seqs[k + 1]);
+            const p = toScene(field, wrap.pos);
+            points.push({
+              x: p.x,
+              y: (st.baseY + st.centreY + nxt.baseY + nxt.centreY) * 0.5,
+              z: p.z,
+            });
+          }
+        }
+        figures.push({
+          flyOrders: run.map((st) => st.flyOrder),
+          points,
+        });
+      }
+    }
+    i = j + 1;
+  }
+  return figures;
 }
 
 /*

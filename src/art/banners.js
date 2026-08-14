@@ -2,11 +2,12 @@
  * banners.js: the printed vinyl a race course is dressed in.
  *
  * WHAT THIS IS. Every gate on a drone racing course wears printed banner
- * sleeves, and every course is lined with printed teardrop flags. They are
- * one design language: an off white ground, a navy field, a red flash, and a
- * chequered flag band, with the event's mark laid over it. This module paints
- * that language onto canvases. It knows nothing about Three.js, nothing about
- * the physics, and nothing about the track document.
+ * sleeves, and every course is lined with printed teardrop flags. The gates
+ * and walls are white vinyl, with the event's mark sitting on the header
+ * board, and the flags keep the navy, red and chequer language that says
+ * racing from further away than a wordmark can be read. This module paints
+ * that onto canvases. It knows nothing about Three.js, nothing about the
+ * physics, and nothing about the track document.
  *
  * WHY IT IS SHARED AND WHY IT LIVES HERE. Two consumers need identical
  * artwork: src/render/scene.js dresses the world with it, and
@@ -17,10 +18,11 @@
  * is the art both of them draw from, so it is its own directory.
  *
  * NO TRADEMARKS. The reference for this look is a MultiGP course, and what is
- * reproduced is the FORM: a chequered flag band, a navy header, a red flash,
- * sleeve banners down the uprights. The mark in the middle is whatever the
- * author uploads, and with nothing uploaded it is a chequered flag device
- * this file draws, not anybody's logo.
+ * reproduced is the FORM: a white header board, sleeve banners down the
+ * uprights, a chequered flag band as a border, teardrop flags with a navy or
+ * red sweep. The mark on the board is whatever the author uploads, and with
+ * nothing uploaded it is a chequered flag device this file draws, not
+ * anybody's logo.
  *
  * THE CALLER OWNS THE CANVAS. Each painter takes a 2D context and its size
  * and paints the whole of it. The caller decides how big, wraps it in
@@ -64,6 +66,17 @@ export const BANNER = {
   chequerDark: '#23272f',
   chequerLight: '#eae6dd',
 };
+
+/* The same colours as 0xRRGGBB, for the two Three.js consumers that cannot
+ * feed a CSS string into a MeshLambertMaterial. Named rather than parsed at
+ * each call site so a typo in a colour name fails here, once. */
+export function bannerHex(name) {
+  const s = BANNER[name];
+  if (typeof s !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(s)) {
+    throw new Error(`banners: ${name} is not a six digit colour`);
+  }
+  return Number.parseInt(s.slice(1), 16);
+}
 
 /* A chequered flag band. `cells` counts the checks ACROSS the band, and the
  * band is always two checks deep, which is what a racing chequer is. */
@@ -131,8 +144,9 @@ function fit(ctx, img, x, y, w, h) {
 /*
  * THE GATE HEADER, the banner sleeved over the top rail.
  *
- * Navy, with a chequer band along the foot and a red flash at each end, and
- * the mark in the middle.
+ * White vinyl, with the sponsor's mark sitting on it. That is the whole of
+ * the board a pilot reads at commit range: a pale sheet and a picture, not
+ * a navy field with a mark squeezed between two red flashes.
  *
  * BOTH ENDS ARE LEFT CLEAR, and it has to be both. The gate number sits at
  * one end as real geometry, a pale roundel with the numeral raised on it,
@@ -149,51 +163,30 @@ function fit(ctx, img, x, y, w, h) {
 export function paintGateHeader(ctx, w, h, opts = {}) {
   const numberZone = opts.numberZone ?? 0.22;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = BANNER.navy;
+  ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);
 
-  /* The hems: the bound edge top and bottom, which is what stops a printed
-   * sheet reading as a slab of flat colour at any distance. */
-  ctx.fillStyle = BANNER.vinyl;
-  ctx.fillRect(0, 0, w, h * 0.055);
-  ctx.fillRect(0, h * 0.945, w, h * 0.055);
+  /* The hems: a shade darker bound edge top and bottom, which is what stops
+   * a white sheet reading as a hole in the sky at any distance. */
+  ctx.fillStyle = BANNER.vinylShade;
+  ctx.fillRect(0, 0, w, h * 0.045);
+  ctx.fillRect(0, h * 0.955, w, h * 0.045);
 
   /*
-   * A chequer band along the foot, full width, which is the one motif that
-   * says racing from further away than any wordmark can be read. Thinner
-   * than it started: at 0.155 of the board it was a third of the header's
-   * visible depth and the navy field it is supposed to trim had nothing
-   * left to be. A racing chequer is a border, not a stripe.
+   * A chequer band along the foot, full width. On a white board this is the
+   * one dark motif that still says racing from further away than the logo
+   * can be read. A racing chequer is a border, not a stripe, so it stays
+   * thin: most of the board is the white the mark sits on.
    */
-  chequer(ctx, 0, h * 0.845, w, h * 0.10, Math.round(w / (h * 0.06)));
-  /* A hairline of red over it, which is what separates the chequer from the
-   * navy instead of letting the two meet as two dark bands. */
-  ctx.fillStyle = BANNER.red;
-  ctx.fillRect(0, h * 0.822, w, h * 0.022);
-
-  /* Red flashes at both ends, angled, the way a printed banner is cut. */
-  ctx.fillStyle = BANNER.red;
-  for (const s of [0, 1]) {
-    ctx.save();
-    ctx.translate(s === 0 ? 0 : w, 0);
-    ctx.scale(s === 0 ? 1 : -1, 1);
-    ctx.beginPath();
-    ctx.moveTo(0, h * 0.055);
-    ctx.lineTo(w * 0.062, h * 0.055);
-    ctx.lineTo(w * 0.030, h * 0.822);
-    ctx.lineTo(0, h * 0.822);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
+  chequer(ctx, 0, h * 0.88, w, h * 0.075, Math.round(w / (h * 0.06)));
 
   const left = w * numberZone;
   const right = w * (1 - numberZone);
-  /* The mark gets the navy field between the hems and the chequer, which is
-   * more of the board than it had: the taller box is most of what makes an
-   * uploaded logo readable at the distance a pilot commits to a gate. */
-  const boxY = h * 0.115;
-  const boxH = h * 0.685;
+  /* The mark gets nearly the whole board between the hems and the chequer.
+   * Fitted, never cropped: a logo with a piece cut off it is worse than a
+   * small logo. */
+  const boxY = h * 0.07;
+  const boxH = h * 0.79;
   if (opts.logo) {
     fit(ctx, opts.logo, left, boxY, right - left, boxH);
   } else {
@@ -205,9 +198,9 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
  * THE UPRIGHT SLEEVE, the banner wrapped round each leg.
  *
  * Painted the tall way: the canvas is narrow and tall and lands on the gate
- * the same way up. Off white ground, a chequer column down the outer edge, a
- * navy foot, and the mark turned on its side in the middle, which is exactly
- * what a printed sleeve does with a horizontal logo.
+ * the same way up. White vinyl, a chequer column down the outer edge so a
+ * white wall still has a silhouette, and the mark turned on its side in the
+ * middle, which is exactly what a printed sleeve does with a horizontal logo.
  */
 export function paintGateSleeve(ctx, w, h, opts = {}) {
   ctx.clearRect(0, 0, w, h);
@@ -227,29 +220,23 @@ export function paintGateSleeve(ctx, w, h, opts = {}) {
   ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);
 
-  /* The chequer column, down one edge. */
-  const colW = w * 0.26;
+  /* The chequer column, down one edge. Narrower than it was: the wall is
+   * the white, and the chequer is the border that stops it vanishing. */
+  const colW = w * 0.18;
   chequerColumn(ctx, 0, 0, colW, h, Math.round(h / (colW * 0.5)));
-
-  /* Navy at the foot and a red rule above it: the banner is heavier at the
-   * bottom, which is how a hanging sleeve reads and how they are printed. */
-  ctx.fillStyle = BANNER.navy;
-  ctx.fillRect(colW, h * 0.86, w - colW, h * 0.14);
-  ctx.fillStyle = BANNER.red;
-  ctx.fillRect(colW, h * 0.835, w - colW, h * 0.022);
 
   if (opts.logo) {
     /* Turned a quarter, reading up the banner. */
     ctx.save();
-    ctx.translate(colW + (w - colW) * 0.5, h * 0.45);
+    ctx.translate(colW + (w - colW) * 0.5, h * 0.48);
     ctx.rotate(-Math.PI / 2);
-    fit(ctx, opts.logo, -h * 0.30, -(w - colW) * 0.42, h * 0.60, (w - colW) * 0.84);
+    fit(ctx, opts.logo, -h * 0.34, -(w - colW) * 0.42, h * 0.68, (w - colW) * 0.84);
     ctx.restore();
   } else {
     ctx.save();
-    ctx.translate(colW + (w - colW) * 0.5, h * 0.45);
+    ctx.translate(colW + (w - colW) * 0.5, h * 0.48);
     ctx.rotate(-Math.PI / 2);
-    chequerDevice(ctx, -h * 0.14, -(w - colW) * 0.34, h * 0.28, (w - colW) * 0.68);
+    chequerDevice(ctx, -h * 0.16, -(w - colW) * 0.34, h * 0.32, (w - colW) * 0.68);
     ctx.restore();
   }
   ctx.restore();

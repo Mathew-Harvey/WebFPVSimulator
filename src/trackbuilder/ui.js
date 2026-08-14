@@ -30,9 +30,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, PATH_TOGGLE, paletteItems } from './elements.js';
+import { ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf } from './elements.js';
 import { aperturesOf, elementById, kindOf, isSequenceable } from './model.js';
 import { sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
+import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js';
 import { elevationProfile, sequencedElementCount } from './path.js';
 import { drawProfile } from './profile.js';
 import { DEG, RAD } from './geometry.js';
@@ -65,6 +66,128 @@ function show(x, places = 2) {
   }
   const s = x.toFixed(places);
   return s.replace(/\.?0+$/, '') || '0';
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+
+function svgEl(name, attrs) {
+  const n = document.createElementNS(SVG, name);
+  for (const [k, v] of Object.entries(attrs)) {
+    n.setAttribute(k, String(v));
+  }
+  return n;
+}
+
+/*
+ * A tiny diagram of a stacked gate and how it is flown. The inspector is
+ * where an author decides the figure, so the picture has to carry the
+ * meaning: which holes, which way, wrap or invert.
+ */
+function figureIcon(figId, levels) {
+  const n = Math.max(2, Math.min(3, levels));
+  const svg = svgEl('svg', { viewBox: '0 0 72 80', 'aria-hidden': 'true' });
+  const holeH = n === 3 ? 18 : 22;
+  const gap = 4;
+  const total = n * holeH + (n - 1) * gap;
+  const top = (80 - total) / 2;
+  const x = 22;
+  const w = 28;
+  const used = new Set();
+  if (figId === 'single') {
+    used.add(0);
+  } else if (figId === 'splitS') {
+    used.add(n - 1);
+    used.add(0);
+  } else {
+    for (let i = 0; i < n; i += 1) {
+      used.add(i);
+    }
+  }
+  const yOf = (i) => top + (n - 1 - i) * (holeH + gap);
+  for (let i = 0; i < n; i += 1) {
+    const y = yOf(i);
+    const on = used.has(i);
+    svg.append(svgEl('rect', {
+      x, y, width: w, height: holeH, rx: 2,
+      fill: on ? 'rgba(255, 212, 92, 0.18)' : 'rgba(157, 179, 200, 0.06)',
+      stroke: on ? '#ffd45c' : 'rgba(157, 179, 200, 0.35)',
+      'stroke-width': on ? 1.6 : 1,
+    }));
+  }
+  const midY = (i) => yOf(i) + holeH / 2;
+  const left = x - 6;
+  const right = x + w + 6;
+  const arrow = (x1, y1, x2, y2, dashed = false) => {
+    const p = svgEl('path', {
+      d: `M${x1} ${y1} L${x2} ${y2}`,
+      fill: 'none',
+      stroke: '#7dffb4',
+      'stroke-width': 1.8,
+      'stroke-linecap': 'round',
+    });
+    if (dashed) {
+      p.setAttribute('stroke-dasharray', '3 2');
+      p.setAttribute('stroke', '#9db3c8');
+    }
+    svg.append(p);
+  };
+  if (figId === 'single') {
+    arrow(left, midY(0), right, midY(0));
+  } else if (figId === 'splitS') {
+    arrow(left, midY(n - 1), right, midY(n - 1));
+    arrow(right, midY(n - 1), right, midY(0), true);
+    arrow(right, midY(0), left, midY(0));
+  } else if (figId === 'spiralDown') {
+    for (let i = n - 1; i >= 0; i -= 1) {
+      const fromLeft = (n - 1 - i) % 2 === 0;
+      if (fromLeft) {
+        arrow(left, midY(i), right, midY(i));
+      } else {
+        arrow(right, midY(i), left, midY(i));
+      }
+      if (i > 0) {
+        const xw = fromLeft ? right : left;
+        arrow(xw, midY(i), xw, midY(i - 1), true);
+      }
+    }
+  } else {
+    for (let i = 0; i < n; i += 1) {
+      arrow(left, midY(i), right, midY(i));
+      if (i < n - 1) {
+        arrow(right, midY(i), right, midY(i + 1), true);
+      }
+    }
+  }
+  return svg;
+}
+
+const FLAG_SIDE_LABEL = { left: 'Left', right: 'Right', both: 'Both' };
+
+function flagSideIcon(side) {
+  const svg = svgEl('svg', { viewBox: '0 0 72 56', 'aria-hidden': 'true' });
+  svg.append(svgEl('rect', {
+    x: 18, y: 22, width: 36, height: 26, rx: 2,
+    fill: 'rgba(255, 212, 92, 0.10)',
+    stroke: '#9db3c8',
+    'stroke-width': 2,
+  }));
+  svg.append(svgEl('rect', {
+    x: 14, y: 16, width: 44, height: 8, rx: 1,
+    fill: '#c7d8e6',
+  }));
+  const pennant = (cx, dir) => {
+    svg.append(svgEl('polygon', {
+      points: `${cx},16 ${cx},3 ${cx + dir * 14},9.5`,
+      fill: '#f7e8cd',
+    }));
+  };
+  if (side === 'left' || side === 'both') {
+    pennant(16, -1);
+  }
+  if (side === 'right' || side === 'both') {
+    pennant(56, 1);
+  }
+  return svg;
 }
 
 export class Panels {
@@ -224,6 +347,10 @@ export class Panels {
       this.host.edit('rename', (d) => { elementById(d, element.id).name = val; });
     }, { text: true }));
 
+    if (def.kind === KIND.APERTURE && aperturesOf(element).length > 1) {
+      this.renderFigurePicker(host, doc, element);
+    }
+
     const grid = el('div', 'tb-grid3');
     grid.append(
       this.field(`x-${element.id}`, 'X', element.position.x, (val) => {
@@ -284,6 +411,10 @@ export class Panels {
     }
     host.append(dims);
 
+    if (def.flagSide) {
+      this.renderFlagSidePicker(host, element);
+    }
+
     if (def.kind === KIND.ANNOTATION) {
       host.append(this.field(`text-${element.id}`, 'Text', element.text ?? '', (val) => {
         this.host.edit('label', (d) => { elementById(d, element.id).text = val; });
@@ -297,38 +428,92 @@ export class Panels {
       .filter(({ s }) => s.elementId === element.id);
 
     if (isSequenceable(element)) {
-      host.append(el('h3', null, entries.length > 1 ? 'In the course, twice or more' : 'In the course'));
+      const fig = matchingFigure(doc, element);
+      const named = fig && fig !== 'single';
+      host.append(el('h3', null, named
+        ? `Passes, ${entries.length}`
+        : (entries.length > 1 ? 'In the course, twice or more' : 'In the course')));
       if (!entries.length) {
         host.append(el('p', 'tb-help', 'Not in the flying order.'));
         host.append(button('Add to the course', 'tb-btn', () => this.host.addToSequence(element.id)));
       }
       for (const { s, i } of entries) {
-        host.append(this.sequenceCard(doc, element, s, i));
+        host.append(this.sequenceCard(doc, element, s, i, named));
       }
-      if (def.kind === KIND.APERTURE && aperturesOf(element).length > 1) {
+      if (def.kind === KIND.APERTURE && aperturesOf(element).length > 1 && !named) {
         host.append(button('Fly another level', 'tb-btn', () => this.host.addLevel(element.id),
-          'Add a second sequence entry on this structure, on the next unused opening.'));
+          'Add another gate on this stack, on the next unused opening.'));
       }
     }
   }
 
-  sequenceCard(doc, element, seq, index) {
+  renderFigurePicker(host, doc, element) {
+    const current = matchingFigure(doc, element);
+    const n = aperturesOf(element).length;
+    host.append(el('h3', null, 'How it is flown'));
+    host.append(el('p', 'tb-help', 'Each hole is its own gate. Pick the figure, then fly that line. The racing line shows the wrap.'));
+    const grid = el('div', 'tb-fig-grid');
+    for (const fig of figuresFor(element)) {
+      const b = el('button', current === fig.id ? 'tb-fig-card on' : 'tb-fig-card');
+      b.type = 'button';
+      b.title = fig.hint;
+      b.append(figureIcon(fig.id, n));
+      b.append(el('strong', null, fig.label));
+      grid.append(b);
+      b.addEventListener('click', () => this.host.applyFigure(element.id, fig.id));
+    }
+    host.append(grid);
+    const blurb = current
+      ? figureBlurb(element, current)
+      : 'This mix is not a named figure. Each hole you listed still counts as its own gate.';
+    if (blurb) {
+      host.append(el('p', 'tb-fig-blurb', blurb));
+    }
+  }
+
+  renderFlagSidePicker(host, element) {
+    const current = flagSideOf(element);
+    host.append(el('h3', null, 'Header flag'));
+    host.append(el('p', 'tb-help', 'Pennant on the header, as seen facing the gate.'));
+    const grid = el('div', 'tb-side-grid');
+    for (const side of FLAG_SIDES) {
+      const b = el('button', current === side ? 'tb-fig-card on' : 'tb-fig-card');
+      b.type = 'button';
+      b.append(flagSideIcon(side));
+      b.append(el('strong', null, FLAG_SIDE_LABEL[side]));
+      grid.append(b);
+      b.addEventListener('click', () => {
+        this.host.edit('flag side', (d) => {
+          const e2 = elementById(d, element.id);
+          if (e2) {
+            e2.flagSide = side;
+          }
+        });
+      });
+    }
+    host.append(grid);
+  }
+
+  sequenceCard(doc, element, seq, index, namedFigure = false) {
     const card = el('div', 'tb-card');
     const head = el('div', 'tb-card-head');
-    head.append(el('span', 'tb-num', String(index + 1)), el('span', 'tb-card-title', sequenceLabel(doc, seq)));
+    const title = namedFigure
+      ? `${levelName(element, seq.apertureIndex)}, gate ${index + 1}`
+      : sequenceLabel(doc, seq);
+    head.append(el('span', 'tb-num', String(index + 1)), el('span', 'tb-card-title', title));
     if (seq.overridden || element.yawOverridden) {
       head.append(el('span', 'tb-badge', 'overridden'));
     }
     card.append(head);
 
     const levels = aperturesOf(element);
-    if (levels.length > 1) {
+    if (levels.length > 1 && !namedFigure) {
       const row = el('label', 'tb-field');
-      row.append(el('span', 'tb-field-label', 'Level'));
+      row.append(el('span', 'tb-field-label', 'Hole'));
       const sel = el('select');
       sel.dataset.tbkey = `lvl-${seq.id}`;
       levels.forEach((ap, i) => {
-        const opt = el('option', null, `${i + 1}, centre ${show(element.position.z + ap.centerH, 2)} m`);
+        const opt = el('option', null, `${levelName(element, i)}, centre ${show(element.position.z + ap.centerH, 2)} m`);
         opt.value = String(i);
         if (i === (seq.apertureIndex ?? 0)) {
           opt.selected = true;
@@ -403,7 +588,7 @@ export class Panels {
     host.append(el('h3', null, `Flying order, ${doc.sequence.length}`));
 
     if (!doc.sequence.length) {
-      host.append(el('p', 'tb-help', 'Empty. Placing a gate, a ladder, a tower, a dive gate, a flag or a cone adds it to the order automatically.'));
+      host.append(el('p', 'tb-help', 'Empty. Placing a gate or a stack adds it to the order. A stack is one structure and several gates: pick how it is flown in the inspector.'));
     }
 
     const list = el('ol', 'tb-seq');

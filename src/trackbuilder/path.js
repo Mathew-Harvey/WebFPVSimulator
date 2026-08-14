@@ -47,6 +47,7 @@ import {
   elementById, kindOf, entryAnchor, elementNormal, startPadsOf,
 } from './model.js';
 import { passOffsetSign } from './faces.js';
+import { wrapBetween } from './figures.js';
 import {
   add, cross, dist, dot, leftOf, length, normalize, scale, sub, yawVector,
 } from './geometry.js';
@@ -143,7 +144,35 @@ export function buildKnots(doc) {
       markerPos: { ...k.pos },
     });
   }
-  return knots;
+
+  /*
+   * Wraps between two stacked passes on the SAME structure. Without these
+   * the Hermite climbs the shared XY and the line goes through the PVC.
+   * A wrap is not a station: trackdoc only scores aperture knots.
+   */
+  const withWraps = [];
+  for (let i = 0; i < knots.length; i += 1) {
+    withWraps.push(knots[i]);
+    const a = knots[i];
+    const b = knots[i + 1];
+    if (!b || a.role !== 'aperture' || b.role !== 'aperture' || a.elementId !== b.elementId) {
+      continue;
+    }
+    const stacked = elementById(doc, a.elementId);
+    if (!stacked || !a.seq || !b.seq) {
+      continue;
+    }
+    const wrap = wrapBetween(stacked, a.seq, b.seq);
+    withWraps.push({
+      pos: wrap.pos,
+      tangent: wrap.tangent,
+      role: 'wrap',
+      seq: null,
+      index: null,
+      elementId: stacked.id,
+    });
+  }
+  return withWraps;
 }
 
 /* Cubic Hermite basis, and its first two derivatives. */

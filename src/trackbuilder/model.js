@@ -38,7 +38,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, TUNING, apertureLevels, elementHeight } from './elements.js';
+import { ELEMENTS, KIND, TUNING, apertureLevels, elementHeight, normalizeFlagSide } from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
 
 /*
@@ -209,6 +209,9 @@ export function createElement(doc, type, position, yaw = 0) {
   };
   if (def.kind === KIND.ANNOTATION) {
     el.text = 'Label';
+  }
+  if (def.flagSide) {
+    el.flagSide = def.flagSide;
   }
   return el;
 }
@@ -426,6 +429,9 @@ export function normalize(raw) {
     if (def.kind === KIND.ANNOTATION) {
       el.text = str(rawEl.text, 'Label');
     }
+    if (def.flagSide) {
+      el.flagSide = normalizeFlagSide(rawEl.flagSide, def.flagSide);
+    }
     doc.elements.push(el);
   }
 
@@ -535,6 +541,9 @@ export function toPlain(doc) {
       }
       if (def.kind === KIND.ANNOTATION) {
         out.text = el.text ?? '';
+      }
+      if (def.flagSide) {
+        out.flagSide = normalizeFlagSide(el.flagSide, def.flagSide);
       }
       return out;
     }),

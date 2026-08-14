@@ -290,6 +290,51 @@
 
       .tb-row-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 
+      .tb-fig-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin: 8px 0 10px;
+      }
+      .tb-fig-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 6px 8px;
+        cursor: pointer;
+        color: var(--slate);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        font: inherit;
+        text-align: left;
+      }
+      .tb-fig-card:hover { border-color: rgba(255, 212, 92, 0.55); }
+      .tb-fig-card.on {
+        border-color: var(--amber);
+        background: rgba(255, 212, 92, 0.12);
+      }
+      .tb-fig-card svg { width: 100%; height: 78px; display: block; }
+      .tb-fig-card strong {
+        font-size: 12px;
+        color: var(--cream);
+        font-weight: 650;
+      }
+      .tb-fig-blurb {
+        margin: 0 0 12px;
+        color: var(--cream);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .tb-side-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+        margin: 8px 0 10px;
+      }
+      .tb-side-grid .tb-fig-card svg { height: 52px; }
+
       .tb-mini {
         flex: none;
         background: transparent;
@@ -415,14 +460,14 @@
 
       /* The gate's header board, drawn at the proportions the renderer
          builds it at, so what an author sees here is where the picture
-         lands in the air. Transparent parts of a logo show the board's own
-         colour through, which is exactly what they do on the gate. */
+         lands in the air. The board is white vinyl; transparent parts of a
+         logo show that through, which is exactly what they do on the gate. */
       .tb-logo-preview {
         display: block;
         width: 100%;
         margin: 10px 0 6px;
         border-radius: 4px;
-        background: var(--panel-2);
+        background: #dcd6ca;
       }
     </style>
     <script type="importmap">

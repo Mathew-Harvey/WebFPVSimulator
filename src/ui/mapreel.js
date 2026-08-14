@@ -58,6 +58,7 @@
  */
 
 import { circuitPoint, CIRCUIT_STATIONS } from '../game/circuit.js';
+import { bannerHex } from '../art/banners.js';
 
 /* Sun direction, matching src/render/scene.js's SUN_DIR closely enough that
  * a lit face is lit in the same place. */
@@ -140,10 +141,10 @@ function pushQuad(faces, pts, n, color) {
  */
 function pushGate(faces, x, z, yaw, isStart, clearW = 1.7526, clearH = 1.7526, sill = 0) {
   const tube = 0.038;
-  /* The world's own dress: aluminium frame, off white printed sleeves, a
-   * navy header, and the start gate's green flash. */
-  const panel = isStart ? 0x24603d : 0x1e3566;
-  const vinyl = 0xdcd6ca;
+  /* The world's own dress: aluminium frame, white printed sleeves and a
+   * white header with the mark on it. The start gate is the mint ring, not
+   * a green board. */
+  const vinyl = bannerHex('vinyl');
   const frame = 0x9aa2b0;
   const upX = clearW * 0.5 + tube;
   const top = sill + clearH + 2 * tube;
@@ -164,7 +165,7 @@ function pushGate(faces, x, z, yaw, isStart, clearW = 1.7526, clearH = 1.7526, s
   }
   /* The header board, which is what makes a gate read as a gate at 240 px:
    * a horizontal bar of colour above a square hole. */
-  pushBox(faces, x, top + 0.58 * 0.5 + 0.03, z, 2 * (upX + tube + 0.42), 0.58, 0.06, yaw, panel);
+  pushBox(faces, x, top + 0.58 * 0.5 + 0.03, z, 2 * (upX + tube + 0.42), 0.58, 0.06, yaw, vinyl);
   pushBox(faces, x, top + 0.03, z, 2 * (upX + tube + 0.42), 0.09, 0.07, yaw, 0xe4d9bf);
   /* The lit opening. Four thin bars just inside the frame, in the same mint
    * and amber the world lights them with. */
@@ -511,7 +512,7 @@ async function customReel() {
     const p = toReel(el.position);
     if (def.kind === KIND.OBSTACLE) {
       pushBox(faces, p.x, el.position.z + el.dims.height * 0.5, p.z,
-        el.dims.width, el.dims.height, el.dims.depth, -el.yaw, 0x3d4763);
+        el.dims.width, el.dims.height, el.dims.depth, -el.yaw, bannerHex('vinyl'));
     } else if (def.kind === KIND.START) {
       const n = Math.max(1, Math.round(el.dims.pads));
       for (let i = 0; i < n; i += 1) {

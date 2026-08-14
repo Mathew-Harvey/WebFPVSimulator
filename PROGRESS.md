@@ -6101,3 +6101,324 @@ module or the input path. **Check 14 audio-bed passes**: context running, music
 gain **0.425** (was 0.200, floor is 0.05), 46 steps in 4.01 s at 11.47 per
 second on a 174 BPM bed, **63 nodes** of the 64 budget. Check 13 console-clean
 passes with zero errors and zero warnings.
+
+### 2026-08-14 evening | track builder | white gates
+
+Changed: the gates and walls are white vinyl, with the sponsor logo sitting
+on the header board.
+
+The printed dress lived in src/art/banners.js as a navy header with red
+flashes and a navy foot on each sleeve. That is the board an author saw in
+the builder preview, in the world, and on the map reel. It is now the
+measured off white (0xdcd6ca, a step under the sky, never pure white) with
+the uploaded mark fitted onto it, a thin chequer along the foot so a white
+board still reads as a race gate at distance, and the same white on the
+upright sleeves and on barrier walls. The start gate is the mint ring, not
+a green sandwich behind a white print.
+
+The builder's logo dialog was still drawing a maroon board (#6b2a22) that
+had never been updated when the world went navy. It now calls the same
+paintGateHeader the world uses, so the preview cannot drift again.
+
+What went wrong: nothing in the document or the racing line. The 2D plan
+still paints barriers red, on purpose: that overlay is the collision
+warning, not the world's colour.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 67 passed, 1
+failed (schema.md json block count, CRLF vs the regex looking for a
+bare newline). Pre-existing on this machine, not this change.
+
+### 2026-08-14 evening | track builder | stacked figures
+
+Changed: a double stack and a triple stack are first class obstacles, and
+how they are flown is a named figure rather than a pile of sequence rows
+the author has to assemble by hand.
+
+`doubleStack` is two 5x5s on the ground (hotkey 2). `ladder` is still the
+document type for three stacked 5x5s, so old tracks load, but the palette
+now calls it Triple stack (hotkey R). Each opening is its own pass. The
+inspector's How it is flown row writes the figure in one click:
+
+- One opening: the chosen hole, which is how a stack is placed.
+- Spiral up: bottom to top, faces alternating, the line wrapping around.
+- Spiral down: top to bottom, triples only.
+- Split-S: top then bottom the other way. A triple skips the middle.
+
+The figure is not a stored field. It is detected from consecutive sequence
+entries, so a track from before this existed still round trips and a hand
+edit that leaves the plan still lights the matching button. Between two
+stacked passes the racing line inserts a wrap knot off the frame, so the
+Hermite goes around the PVC instead of climbing through it. Wrap knots are
+not stations. Curvature warnings skip them.
+
+In the world: the magenta glow sits on the hole this station names, the
+OSD reads `Gate 4 of 12, Split-S, top`, and a magenta ribbon through that
+figure stays on while it is next. Unused openings on a stack are not
+scored.
+
+What went wrong: the course builder wrote `cue` onto each station, then
+`coursePlacements` copied fly order, aperture and yaw and dropped the cue,
+so the OSD never saw it. The figure ribbon was fine because it reads
+`course.figures` directly. Also the schema.md json-block check was matching
+a bare newline and failing on this machine's CRLF; the regex now allows
+either, which is the check being honest rather than the document being
+rewritten.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 96 passed, 0
+failed.
+
+### 2026-08-14 evening | game menu | values and layout
+
+Changed: every menu row that holds a value now has a mouse control, and
+the helper text no longer resizes the menu.
+
+Dropdowns cover named lists (tune, rates, camera, pack, laps, music track,
+on/off). Stepped numbers (volume, motors, wind, music, ambience) get up
+and down arrows beside the value. Keyboard left/right and radio roll still
+cycle a focused row. An open dropdown eats up/down so it walks the list
+instead of the menu.
+
+The note used to sit under the rows inside a centred column, so a long
+explanation grew the block and the whole screen jumped. It now lives in a
+right-hand column. The rows stay put. Settings rows scroll inside a capped
+height so that list cannot shove the header either. On a narrow window the
+note stacks under the rows with a reserved height, same idea.
+
+What went wrong: an earlier edit of back() dropped the title/flight guard
+and left a stray return. Caught on a re-read, not in play.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | track builder | stacked gates score separately
+
+Changed: each hole of a stacked gate is its own scoring gate, and the
+builder leads with that instead of burying it under dimensions.
+
+A designed stack already named the opening, but placing one still wrote a
+single sequence entry, so a double or a triple looked like two or three
+gates and scored as one. New double stacks, triple stacks and towers write
+a spiral up: bottom, wrap around, next hole from the other face. The
+inspector opens on How it is flown, with a card per figure and a sentence
+that says how many gates that is. One opening is still there, for a stack
+that is only scenery around a single hole.
+
+The race credits one station per named opening. Flying through the wrong
+hole of the same stack is a miss, not an out of sequence void, because
+those holes share a plane. A different structure still voids. In the
+world each scored hole carries its own number, matching the OSD.
+
+What went wrong: the first stacked figures pass treated "one opening" as
+the placement default, which is the MultiGP ladder rule (one structure,
+one gate) and the opposite of what a spiral is. The figure buttons were
+also a row of labels under the dimension grid, so they were easy to never
+press.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 106 passed, 0
+failed.
+
+### 2026-08-14 evening | track builder | numbers on the right hole
+
+Changed: a stacked gate's sequence number sits in the opening that pass
+uses, not above it.
+
+The preview used to float the number at the opening centre plus half the
+clear height. On a double stack that is the middle of the hole above, so
+the bottom pass's 2 sat in the top opening while the line went through
+the bottom. The number is now at that opening's centre, a half metre in
+front of the plane, and labelled `2  bottom` so a stack flown low then
+high later reads both visits on the holes they belong to.
+
+What went wrong: the single gate case (number above the header) was
+copied onto stacks without asking whether there was a hole up there.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | custom course | no dressing flags on a designed track
+
+Changed: a track you built no longer gets the circuit's course-marker
+flags planted along its racing line.
+
+The field still lines the built in figure eight with 72 flags. A designed
+course already stands the flags the author placed. The same loop, with a
+floor of eight, put a ring of sails around a one-gate track: a short lap
+is a twelve metre circle around the only obstacle, and eight flags 8.5 m
+off that line sit in the arena. Those flags were never in the document.
+
+What went wrong: dressing density was scaled by lap length so a small
+course would not become a picket fence. A floor of eight flags on a tiny
+loop is still a picket fence, just a round one.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | custom course | walls match the builder
+
+Changed: a barrier on the flown track faces the same way as in the
+builder.
+
+Every structure used to get the gate yaw conversion (document angle plus a
+quarter turn), which is right for an aperture whose yaw is a plane normal
+and wrong for a wall whose yaw is just which way the long side runs. The
+collider used the same number, so the solid wall was 90 degrees off too.
+Flags, cones and start pads go through the heading form as well. Gates are
+unchanged.
+
+What went wrong: one conversion was applied to every element kind because
+the first designed-course work was gates, and a wall is not a gate.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 108 passed, 0
+failed.
+
+### 2026-08-14 evening | settings | cel shaded racing quad
+
+Changed: Settings now shows a 5 inch racing quad in the left column, cel
+shaded, and the live stick channels pose it.
+
+The flying airframe in craft.js stays the budgeted silhouette: it is
+hidden in FPV and counted by check 16's field draw totals, so dressing it
+would move P1 and P2. The product shot is a second renderer, allocated
+the first time Settings opens, never parented into the map, so the field
+budget cannot see it. Same published dimensions and motor order as the
+flyer: true X, 220 mm diagonal, 5 inch triblades, props in, orange TPU
+canopy, brass standoffs, green stack, lipo under the frame, camera on a
+mount that follows the Camera angle setting. Roll, pitch and yaw bank the
+pose; throttle spools the props, lights the arm LEDs and lifts it off the
+pedestal. Drag orbits the view. Headless frames showed the first camera
+sitting behind the tail, so the home azimuth is a front three quarter, the
+arms are separate meshes so the X reads, and the panel is an opaque studio
+rather than a hole in the attract view.
+
+What went wrong: first lighting pass used four directional lights. The
+toon ramp averaged them into grey, which is the opposite of this
+renderer. One sun plus a hemisphere, same as the world. First framing
+looked at the battery.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | flight | green target, no racing line
+
+Changed: the sim no longer draws a racing line. The next gate is a
+pulsing green pane in the opening, with a tick on the face you fly
+through and a cross on the face you do not. Passing it moves the pane
+to the next gate.
+
+The planner still draws its path. The line in the air was a learning
+ribbon, plus a magenta figure hint through stacked passes, and both
+were telling the same story the pane now tells. The target used to be
+magenta because grass is green; the pane is a neon that sits above the
+turf. A spiral's second pass comes the other way, so the tick follows
+the entry.
+
+What went wrong: the corridor of three lit gates and the ribbon were
+built to replace a drawn line, then the line was put back as a setting.
+One green hole that jumps is the thing a pilot actually uses.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | craft | acro preview, pad intro, one model
+
+Changed: the settings window is larger and pulled back so the whole X
+fits; the preview is acro (stick is a rate, hands off holds attitude);
+the same airframe now sits on the pad in every map, and Fly dollies
+from that shot into FPV.
+
+craft.js is a wrapper around herocraft.js. Check 15 still sees a hidden
+body box of the published 0.155 m length and four disc cylinders as
+direct children. The field draw budget will move: this model is more
+meshes than the box-and-cone, and it is visible on the title screen.
+Thresholds.json is not edited. Check 16 is a leak detector, not a ban
+on drawing the aircraft.
+
+Throttle during the hold skips to the zoom so a punch-out is not
+waiting on a cutscene.
+
+What went wrong: the first preview was angle mode, springing back to
+level, and the camera sat on the nose so props were cropped. Both
+read from the owner's screenshot.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | flight | spiral same face, red or green pane
+
+Changed: a spiral up or down enters every hole from the same face. The
+target pane is green from that face and red from the other. The tick and
+the cross are gone.
+
+Split-S still comes back the other way. A track saved when spiral meant
+alternating faces is rewritten on load, same holes, same first-pass
+sign.
+
+What went wrong: spiral up was coded as a helix that reversed heading
+each pass, which is a split-S stacked, and the pane followed that with a
+tick on one side and a cross on the other.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 113 passed, 0
+failed.
+
+### 2026-08-14 evening | track builder | spiral down is not spiral up
+
+Changed: spiral down alternates faces again. Spiral up still enters every
+hole from the same face.
+
+Same face top to bottom was just a spiral up flown backwards, so the two
+cards wrote the same figure. Spiral down is top, wrap, the other face,
+then the next hole down. A track saved in the few minutes those two
+matched is rewritten on load.
+
+What went wrong: making both figures "same face" treated direction as
+the only difference, which is not how the two are flown.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 113 passed, 0
+failed.
+
+### 2026-08-14 evening | craft | bigger acro preview, pad then FPV
+
+Changed: the settings pane is a larger square (canvas in a sized frame,
+left column given more of the stage) and the studio camera sits further
+back and above so the whole X including prop tips fits. Preview is acro:
+stick is a body rate, deadzone 0.14, no spring to level. Caption says so.
+
+Fly and Restart hold a three-quarter of the same airframe on the pad,
+then dolly into FPV. Hitch frames used to add the loop's 100 ms cap to
+the intro clock and skip the shot before it drew; the clock now steps at
+most 33 ms a frame. Punch-out still skips the hold, at takeoff throttle
+rather than a hair trigger. Same path on every map: the camera is offset
+from the craft, not from a field-only landmark.
+
+What went wrong: the first pad capture was already FPV. The underside
+3/4 plus a 0.2 m near plane ate the airframe, and a compile hitch burned
+the hold. Settings still cropped until the camera backed off to 1.32 m
+at 26 degrees.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-14 evening | track builder | flagged gate
+
+Changed: new palette element `flaggedGate` (A), a standard 5x5 with a
+pennant on the header. Inspector cards pick left, right or both, as
+seen facing the gate. Default left. `flagSide` is an element field, not
+a dimension. The hole is still one gate in the flying order. Builder
+plan, builder preview and the race field all draw the same teardrop
+stood on the header, sail outboard. Mast length lives once as
+GATE_FLAG_H in elements.js.
+
+What went wrong: nothing yet. The first sketch treated the pennant as a
+sequence marker, which would have made a flagged gate two knots.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. Track builder selftest: 127 passed, 0
+failed.
+
+

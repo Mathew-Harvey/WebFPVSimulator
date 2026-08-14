@@ -46,9 +46,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns } from './elements.js';
 import { aperturesOf, elementById, kindOf, apertureCenter } from './model.js';
 import { sequenceNumbers } from './sequence.js';
+import { levelName } from './figures.js';
 import { apertureFrame, clamp } from './geometry.js';
 
 /*
@@ -58,7 +59,7 @@ import { apertureFrame, clamp } from './geometry.js';
  * builder use it without importing a line of the simulator.
  */
 import {
-  BANNER_SIZE, bannerCanvas, paintGateHeader, paintGateSleeve, paintFlagSail,
+  BANNER_SIZE, bannerCanvas, bannerHex, paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
 
 /* The header banner's height and the fraction of it left clear at each end
@@ -73,7 +74,7 @@ const COL = {
   frameSel: 0xffd45c,
   entry: 0x7dffb4,
   exit: 0xff7d7d,
-  barrier: 0xd06a6a,
+  barrier: bannerHex('vinyl'),
   marker: 0xf7e8cd,
   cone: 0xff9a4d,
   start: 0x7dffb4,
@@ -550,20 +551,36 @@ export class View3D {
       group.add(sprite);
     }
 
-    /* The sequence number, one per opening flown, floating just above the
-     * opening it belongs to so a ladder flown at two levels reads its two
-     * numbers at the two heights rather than in a pile. */
+    /* The sequence number sits on the opening it belongs to. It used to
+     * float above the opening, which on a stack put the bottom pass's
+     * number in the top hole: centre plus half a 5 ft opening is the
+     * middle of the level above. A stack flown low then high has to show
+     * 2 in the bottom and 7 in the top, not both in the top. */
     for (const n of numbers) {
-      let above = 1.6;
+      let label = String(n.number);
+      let worldH = 1.1;
+      const spritePos = { x: 0, y: 0, z: 1.6 };
       if (def.kind === KIND.APERTURE) {
         const levels = aperturesOf(el);
         const ap = levels[Math.min(n.apertureIndex ?? 0, levels.length - 1)];
-        above = ap.centerH + ap.clearH / 2 + 0.7;
+        if (levels.length > 1) {
+          const f = apertureFrame(el.yaw, el.pitch);
+          const same = numbers.filter((x) => (x.apertureIndex ?? 0) === (n.apertureIndex ?? 0));
+          const slot = Math.max(0, same.findIndex((x) => x.seq === n.seq));
+          const along = 0.55 + slot * 0.4;
+          spritePos.x = f.normal.x * along;
+          spritePos.y = f.normal.y * along;
+          spritePos.z = ap.centerH + f.normal.z * along;
+          label = `${n.number}  ${levelName(el, n.apertureIndex)}`;
+          worldH = 0.85;
+        } else {
+          spritePos.z = ap.centerH + ap.clearH / 2 + 0.7;
+        }
       } else {
-        above = (def.kind === KIND.MARKER ? el.dims.height : 1.0) + 0.7;
+        spritePos.z = (def.kind === KIND.MARKER ? el.dims.height : 1.0) + 0.7;
       }
-      const sprite = textSprite(String(n.number), 1.1, '#101a26', selected ? '#ffd45c' : '#f7e8cd');
-      sprite.position.set(0, 0, above);
+      const sprite = textSprite(label, worldH, '#101a26', selected ? '#ffd45c' : '#f7e8cd');
+      sprite.position.set(spritePos.x, spritePos.y, spritePos.z);
       group.add(sprite);
     }
     return group;
@@ -727,6 +744,55 @@ export class View3D {
       );
       this.register(mast, el);
       group.add(mast);
+    }
+
+    this.buildHeaderFlags(group, el, selected);
+  }
+
+  /*
+   * Pennants on the header corners of a flagged gate. Same teardrop as a
+   * turn flag, stood on the board rather than spiked in the grass, sails
+   * pointing outboard so they do not cover the opening.
+   */
+  buildHeaderFlags(group, el, selected) {
+    const signs = flagSideSigns(flagSideOf(el));
+    if (!signs.length || Math.abs(el.pitch) >= Math.PI / 6) {
+      return;
+    }
+    const levels = aperturesOf(el);
+    const top = levels[levels.length - 1];
+    const tube = FRAME_TUBE_OD;
+    const sleeveW = 0.42;
+    const headerW = 2 * (top.clearW / 2 + tube + sleeveW);
+    const headerTop = top.sillH + top.clearH + tube * 2 + BANNER_H + 0.03;
+    const f = apertureFrame(el.yaw, el.pitch);
+    const h = GATE_FLAG_H;
+    const poleR = GATE_FLAG_POLE_R;
+    const poleMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
+    const kit = this.bannerKit();
+    let i = 0;
+    for (const sx of signs) {
+      const x = f.widthAxis.x * sx * (headerW / 2);
+      const y = f.widthAxis.y * sx * (headerW / 2);
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(poleR, poleR, h, 8),
+        poleMat,
+      );
+      pole.rotation.x = Math.PI / 2;
+      pole.position.set(x, y, headerTop + h / 2);
+      this.register(pole, el);
+      group.add(pole);
+      const sail = new THREE.Mesh(
+        sailPlaneGeometry(poleR, h),
+        selected
+          ? new THREE.MeshLambertMaterial({ color: COL.frameSel, side: THREE.DoubleSide })
+          : kit.sails[i % kit.sails.length],
+      );
+      sail.rotation.x = Math.PI / 2;
+      sail.rotation.y = -Math.atan2(f.widthAxis.y * sx, f.widthAxis.x * sx);
+      sail.position.set(x, y, headerTop);
+      group.add(sail);
+      i += 1;
     }
   }
 

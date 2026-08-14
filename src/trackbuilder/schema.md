@@ -176,7 +176,7 @@ course; that is what `sequence` is for.
 | field | type | meaning |
 | --- | --- | --- |
 | `id` | string | `el-` and a number. Unique within the document. Referenced by `sequence[].elementId`. |
-| `type` | string | One of the nine types below. An unknown type means the whole element is dropped on read. |
+| `type` | string | One of the eleven types below. An unknown type means the whole element is dropped on read. |
 | `name` | string | The author's label for it. May be empty, in which case the tool shows the type's name. |
 | `position` | object | Where the element's **base** sits: `x` and `y` on the ground, `z` the height of the base above the ground. Almost always `z: 0`; the 3D view's one editing gesture raises it. |
 | `yaw` | number, radians | Which way the element faces. See the conventions above. |
@@ -184,15 +184,18 @@ course; that is what `sequence` is for.
 | `yawOverridden` | boolean | `true` when the AUTHOR set the heading, which stops the tool re-deriving it. See **Faces and pass sides**. |
 | `dims` | object | Dimensions, in metres, whose keys depend on `type`. Always complete: a missing key is filled from the default on read. |
 | `text` | string | **Labels only.** The text drawn on the field. |
+| `flagSide` | `"left"`, `"right"` or `"both"` | **Flagged gates only.** Which end of the header the pennant sits on, as seen facing the gate. Default `left`. Not a dimension. |
 
-### The nine element types
+### The eleven element types
 
 Each row's `kind` decides everything the tool does with it.
 
 | `type` | key | kind | in the course? | `dims` keys |
 | --- | --- | --- | --- | --- |
 | `gate` | G | aperture | yes, once per opening | `levels sillH clearW clearH levelPitch` |
-| `ladder` | R | aperture | yes, once per opening | same |
+| `flaggedGate` | A | aperture | yes, once per opening | same. A 5x5 with a pennant on the header. `flagSide` chooses left, right or both. The palette calls it Flagged gate. |
+| `doubleStack` | 2 | aperture | yes, once per opening | same |
+| `ladder` | R | aperture | yes, once per opening | same. Three stacked 5x5s. The palette calls it Triple stack. |
 | `tower` | T | aperture | yes, once per opening | same |
 | `diveGate` | D | aperture | yes, once per opening | same |
 | `barrier` | B | obstacle | **never** | `width depth height` |
@@ -275,6 +278,32 @@ A structure may appear more than once. That is the point:
 
 One ladder on the field. Two entries in the flying order. Two levels, two
 opposite faces. A consumer must not assume one element is one gate.
+
+### Stacked figures
+
+A double stack or a triple stack is one structure and several openings. Each
+opening is a pass of its own. The inspector offers named figures that write
+those passes in one click:
+
+| figure | openings, in order | faces |
+| --- | --- | --- |
+| One opening | the chosen hole | derived, or as set |
+| Spiral up | bottom to top | the same face on every hole, wrapping around the stack |
+| Spiral down | top to bottom, triples only | alternating, wrapping around the stack |
+| Split-S | top, then bottom | opposite. On a triple the middle opening is skipped. |
+
+The figure is not a stored field. It is detected from the consecutive sequence
+entries on that element, so a track from before figures existed still loads,
+and a hand edit that leaves the plan still lights the matching button.
+
+Placing a double stack or a triple stack writes a spiral up, so each hole is
+already a gate. The inspector's How it is flown cards change that.
+
+Between two stacked passes the racing line inserts a wrap knot off the
+structure, so the spline goes around the frame instead of climbing through it.
+Wrap knots are not stations. The game scores only aperture knots, and each
+named opening is scored on its own: flying through one hole of a stack does
+not count the others.
 
 Barriers, labels and the start pads never appear in `sequence`. An entry that
 points at one is dropped on read.

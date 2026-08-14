@@ -71,6 +71,46 @@ export const KIND = {
 export const FRAME_TUBE_OD = 1.315 * IN;
 
 /*
+ * Header pennant on a flagged gate. The mast stands on the header board, it
+ * does not spike the ground, and this is the only place its length is
+ * written. Pole radius is the tube a teardrop sail sleeves onto, not the
+ * gate's own PVC.
+ */
+export const GATE_FLAG_H = 1.45;
+export const GATE_FLAG_POLE_R = 0.012;
+
+export const FLAG_SIDES = ['left', 'right', 'both'];
+
+export function normalizeFlagSide(value, fallback = 'left') {
+  if (value === 'left' || value === 'right' || value === 'both') {
+    return value;
+  }
+  return fallback;
+}
+
+/* Which header ends carry a pennant. Left is local -X when facing the gate. */
+export function flagSideSigns(side) {
+  if (side === 'right') {
+    return [1];
+  }
+  if (side === 'both') {
+    return [-1, 1];
+  }
+  if (side === 'left') {
+    return [-1];
+  }
+  return [];
+}
+
+export function flagSideOf(el) {
+  const def = ELEMENTS[el?.type];
+  if (!def?.flagSide) {
+    return null;
+  }
+  return normalizeFlagSide(el.flagSide, def.flagSide);
+}
+
+/*
  * Every element type, in palette order, with its hotkey and its default
  * dimensions.
  *
@@ -105,13 +145,46 @@ export const ELEMENTS = {
     pitch: 0,
     dims: { levels: 1, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
   },
+  flaggedGate: {
+    id: 'flaggedGate',
+    label: 'Flagged gate',
+    key: 'A',
+    group: 'track',
+    kind: KIND.APERTURE,
+    /* Which end of the header the pennant sits on, as seen facing the gate.
+     * Not a dimension: it is an element field like a label's text. The
+     * inspector offers left, right or both; this is the default a newly
+     * placed one gets. */
+    flagSide: 'left',
+    note: 'Standard square gate with a pennant on the header. Pick left, right or both in the inspector.',
+    /* Same 5 ft opening as `gate`. The pennant is dress on the header, not
+     * a second sequence marker: the hole is still one gate.
+     * VERIFY: nothing on multigp.com dimensions a header flag. 1.45 m of
+     * mast above the board is the tool's own length, written once as
+     * GATE_FLAG_H. */
+    pitch: 0,
+    dims: { levels: 1, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
+  },
+  doubleStack: {
+    id: 'doubleStack',
+    label: 'Double stack',
+    key: '2',
+    group: 'track',
+    kind: KIND.APERTURE,
+    note: 'Two standard gates stacked. Each hole is its own gate. Placing one writes a spiral up; pick split-S or one opening in the inspector.',
+    /* "5x5 Double Gate Tower: two standard gates stacked vertically", sat
+     * on the ground rather than elevated. The elevated version is `tower`.
+     * VERIFY: whether the published double gate tower sits on the ground. */
+    pitch: 0,
+    dims: { levels: 2, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
+  },
   ladder: {
     id: 'ladder',
-    label: 'Ladder',
+    label: 'Triple stack',
     key: 'R',
     group: 'track',
     kind: KIND.APERTURE,
-    note: 'Physical structure with several stacked apertures.',
+    note: 'Three standard gates stacked. Each hole is its own gate. Placing one writes a spiral up; pick spiral down, split-S or one opening in the inspector.',
     /* "5x5 Ladder: three standard gates stacked vertically." The openings
      * share a frame tube, so each sill sits one opening plus one tube above
      * the one below it.
@@ -223,7 +296,7 @@ export const ELEMENTS = {
  * draws. It is written out rather than derived from Object.keys so a future
  * reorder is one obvious edit. */
 export const PALETTE_ORDER = [
-  'gate', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone',
+  'gate', 'flaggedGate', 'doubleStack', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone',
 ];
 export const PALETTE_EXTRA = ['startPads', 'label'];
 
@@ -298,6 +371,15 @@ export const TUNING = {
   /* Clearance a barrier is given when the line is tested against it. The
    * line is a centreline and a quad is not a point. */
   barrierClearance: 0.35,
+
+  /*
+   * How far the racing line steps off a stacked gate between two passes, in
+   * metres. A Hermite between two openings that share an XY climbs through
+   * the PVC; this offset is what turns that climb into a wrap around the
+   * structure. Sized from the 5 ft opening plus its sleeves plus a body
+   * length, so the line clears the frame on a standard stack.
+   */
+  stackWrap: 2.6,
 };
 
 /* Convenience: every element definition in palette order, extras last. */
@@ -345,7 +427,8 @@ export function elementHeight(def, dims) {
   if (def.kind === KIND.APERTURE) {
     const levels = apertureLevels(dims);
     const top = levels[levels.length - 1];
-    return top.sillH + top.clearH + FRAME_TUBE_OD;
+    const h = top.sillH + top.clearH + FRAME_TUBE_OD;
+    return def.flagSide ? h + GATE_FLAG_H : h;
   }
   if (def.kind === KIND.OBSTACLE) {
     return dims.height;

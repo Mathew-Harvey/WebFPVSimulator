@@ -46,6 +46,7 @@ import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui } from './ui/ui.js';
+import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
@@ -117,6 +118,19 @@ const SURFACE_BIAS = 0.40;
  * the pilot did not fly.
  */
 const PARKED_LIFT = 0.30;
+/*
+ * Opening shot when a run starts: the quad on the pad, then a dolly into
+ * the FPV camera. Hold and zoom are wall milliseconds of the same 1 ms
+ * accumulator the frame already uses, so a hitch stretches the shot
+ * rather than skipping it.
+ */
+const INTRO_HOLD = 1400;
+const INTRO_ZOOM = 1100;
+const INTRO_TOTAL = INTRO_HOLD + INTRO_ZOOM;
+/* Hitch frames are capped at 100 ms in the loop. Adding that whole cap
+ * to the intro clock burns the pad shot before a single exterior frame
+ * is shown. A real frame is about 16 ms; 33 ms is 30 fps. */
+const INTRO_STEP_MAX = 33;
 /*
  * How far behind the next gate a crashed craft is put back on the ground, in
  * metres along that gate's own approach. The same figure the race field
@@ -216,6 +230,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   input.startPolling(2);
   const ui = new Ui(uiRoot);
+  let showcase = null;
   /*
    * boot.js read the stored map before any module loaded, so it could weight
    * the loading screen. ui.js is the owner of the setting; if the two ever
@@ -648,7 +663,6 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     loading.start('frame');
     attractCam = makeAttractCamera(view);
-    view.setRacingLine(ui.settings.racingLine);
     race = new Race(view.gates);
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
@@ -713,7 +727,6 @@ export async function boot({ loading, bootStart, mapId }) {
         reset();
       }
     }
-    view.setRacingLine(s.racingLine);
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
@@ -772,6 +785,7 @@ export async function boot({ loading, bootStart, mapId }) {
       reset();
       mode = 'flight';
       ui.show('flight');
+      introMs = 0;
     } else if (action === 'resume') {
       mode = 'flight';
       ui.show('flight');
@@ -905,9 +919,18 @@ export async function boot({ loading, bootStart, mapId }) {
   const qSpawn = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
   const camFwd = new THREE.Vector3();
+  const introFrom = new THREE.Vector3();
+  const introLook = new THREE.Vector3();
+  const introRight = new THREE.Vector3();
+  const introUp = new THREE.Vector3(0, 1, 0);
+  const introQuat = new THREE.Quaternion();
+  const fpvPos = new THREE.Vector3();
+  const fpvQuat = new THREE.Quaternion();
   /* Eased toward PARKED_LIFT while the craft is down and toward zero once it
    * is flying, so the view rises off the pad rather than jumping. */
   let parkedLift = PARKED_LIFT;
+  /* -1: FPV. 0..INTRO_TOTAL: the pad shot at the start of a run. */
+  let introMs = -1;
   /*
    * The title screen's camera. It belongs to the MAP, because the shot that
    * shows a map off is the map's business: the race field flies its own
@@ -1428,57 +1451,97 @@ export async function boot({ loading, bootStart, mapId }) {
     airtimeMs = launched ? simTimeMs : 0;
 
     /* Prop discs spin at a visibly aliased fraction of true RPM, the way
-     * they read on a real FPV feed. */
+     * they read on a real FPV feed. The blades follow, and crawl while the
+     * craft is on show with the motors stopped so the title and the pad
+     * shot are not a frozen model. */
     for (let m = 0; m < 4; m += 1) {
-      shell.discs[m].rotation.y += stateCurr[14 + m] * 1e-4;
+      const vis = stateCurr[14 + m] * 1e-4 + (shell.quad.visible ? 0.10 : 0);
+      shell.discs[m].rotation.y += vis;
+      if (shell.blades) {
+        const dir = shell.propSpin ? shell.propSpin[m] : 1;
+        shell.blades[m].rotation.y += vis * dir;
+      }
+    }
+    if (shell.cameraMount) {
+      shell.cameraMount.rotation.x = (camTilt * Math.PI) / 180;
     }
 
-    if (mode !== 'title') {
+    camFwd.set(0, 0, -1).applyQuaternion(qPrev);
+    fpvPos.copy(pCurr).addScaledVector(camFwd, simLenToWorld(0.0775));
+    const wantLift = (landed || crashed || !launched) ? PARKED_LIFT : 0;
+    parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
+    if (parkedLift > 0.001) {
+      fpvPos.y += parkedLift;
+    }
+    fpvQuat.copy(qPrev).multiply(qTilt);
+
+    if (mode === 'title') {
+      shell.quad.visible = true;
+      attractCam.update(nowWall, shell.camera);
+      if (shell.camera.fov !== ui.settings.cameraFov) {
+        shell.camera.fov = ui.settings.cameraFov;
+        shell.camera.updateProjectionMatrix();
+      }
+    } else if (introMs >= 0 && (mode === 'flight' || mode === 'paused') && !camOverride) {
+      if (mode === 'flight') {
+        /* Punch-out skips the hold. TAKEOFF_THROTTLE, not a hair trigger:
+         * a resting gamepad axis at 0.08 used to skip the shot entirely. */
+        if (input.channels.throttle > TAKEOFF_THROTTLE && introMs < INTRO_HOLD) {
+          introMs = INTRO_HOLD;
+        }
+        introMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
+      }
+      let zoom = (introMs - INTRO_HOLD) / INTRO_ZOOM;
+      if (zoom < 0) {
+        zoom = 0;
+      }
+      if (zoom > 1) {
+        zoom = 1;
+      }
+      zoom = zoom * zoom * (3 - 2 * zoom);
+
+      /* Three-quarter from above, far enough that the 0.2 m near plane
+       * cannot eat the airframe, close enough that the X fills the shot. */
+      introRight.set(1, 0, 0).applyQuaternion(qPrev);
+      introFrom.copy(pCurr)
+        .addScaledVector(camFwd, -0.58)
+        .addScaledVector(introRight, 0.38)
+        .addScaledVector(introUp, 0.32);
+      introLook.copy(pCurr)
+        .addScaledVector(introUp, 0.03)
+        .addScaledVector(camFwd, 0.22);
+      shell.camera.up.set(0, 1, 0);
+      shell.camera.position.copy(introFrom);
+      shell.camera.lookAt(introLook);
+      introQuat.copy(shell.camera.quaternion);
+      shell.camera.position.lerpVectors(introFrom, fpvPos, zoom);
+      shell.camera.quaternion.copy(introQuat).slerp(fpvQuat, zoom);
+
+      const fov = 42 + (ui.settings.cameraFov - 42) * zoom;
+      if (Math.abs(shell.camera.fov - fov) > 0.05) {
+        shell.camera.fov = fov;
+        shell.camera.updateProjectionMatrix();
+      }
+
+      shell.quad.visible = zoom < 0.88;
+      if (introMs >= INTRO_TOTAL) {
+        introMs = -1;
+        shell.quad.visible = false;
+        shell.camera.position.copy(fpvPos);
+        shell.camera.quaternion.copy(fpvQuat);
+        shell.camera.fov = ui.settings.cameraFov;
+        shell.camera.updateProjectionMatrix();
+      }
+    } else {
       /* The camera sits inside the airframe, so the quad must be hidden or
        * you fly looking at the inside of its own outline hull. */
       shell.quad.visible = false;
-      /*
-       * AT THE FRONT OF THE FRAME, where a real FPV camera bolts on, not at
-       * the centre of mass. With the camera at the centre, every forward
-       * contact happened 17.35 cm in front of the lens: the pilot watched a
-       * gate upright they had visibly not reached take the lap away, and
-       * read it as "the drone is huge". 0.0775 m is the body's front edge
-       * (bodyLength / 2 in src/render/craft.js), which leaves the prop arc
-       * 9.6 cm ahead of the lens, the same order a real 5 inch puts it.
-       * The offset is along the airframe's own forward axis, untilted: the
-       * camera TILTS on its mount, it does not slide along its view ray.
-       *
-       * It is an AIRFRAME length, so it goes into the scene through
-       * simLenToWorld like the model and the collision ellipsoid: 0.062 m of
-       * world at WORLD_SCALE 1.25. A camera mount left at its unscaled value
-       * would sit outside its own airframe.
-       */
-      camFwd.set(0, 0, -1).applyQuaternion(qPrev);
-      shell.camera.position.copy(pCurr).addScaledVector(camFwd, simLenToWorld(0.0775));
-      /*
-       * The pad lift. On the ground, in the air, or wrecked, the camera is
-       * raised by however much of PARKED_LIFT is currently eased in, which
-       * is the whole of it while the craft is down and none of it once it is
-       * flying. Applied along WORLD up rather than the airframe's, because
-       * what it is compensating for is the ground being inside the near
-       * plane, and the ground is where world up says it is.
-       */
-      const wantLift = (landed || crashed || !launched) ? PARKED_LIFT : 0;
-      parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
-      if (parkedLift > 0.001) {
-        shell.camera.position.y += parkedLift;
+      shell.camera.position.copy(fpvPos);
+      shell.camera.quaternion.copy(fpvQuat);
+      if (shell.camera.fov !== ui.settings.cameraFov) {
+        shell.camera.fov = ui.settings.cameraFov;
+        shell.camera.updateProjectionMatrix();
       }
-      shell.camera.quaternion.copy(qPrev).multiply(qTilt);
-    } else {
-      /*
-       * Attract view: the craft parked, and the camera FLYING THE MAP rather
-       * than circling one point of it. What the line is is the map's
-       * business and src/render/attract.js is the whole of the shell's half
-       * of it. The old orbit is still in there as the fallback for a map
-       * with no line, which is what an empty custom course is.
-       */
-      shell.quad.visible = true;
-      attractCam.update(nowWall, shell.camera);
     }
 
     /* Harness camera. The cost ledger has to be published for three views,
@@ -1501,10 +1564,6 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     view.updateAnim(mode === 'title' ? titleStepMs : simTimeMs);
 
-    /* The racing line guide, driven off the same interpolated position the
-     * craft is drawn at, so what it says about being on the line is what the
-     * pilot can see. */
-    view.updateRacingLine(pCurr);
     view.updateShadowFocus(camOverride ? shell.camera.position : pCurr);
     /* Propwash strength for the grass: mean rotor speed against hover. */
     const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
@@ -1517,6 +1576,24 @@ export async function boot({ loading, bootStart, mapId }) {
     const renderMs = performance.now() - renderStart;
     renderStats.calls = shell.renderer.info.render.calls;
     renderStats.triangles = shell.renderer.info.render.triangles;
+
+    /*
+     * Settings airframe. Own renderer, so the field's draw budget cannot
+     * see it, and only allocated the first time this screen opens.
+     */
+    if (ui.screen === 'settings') {
+      if (!showcase) {
+        showcase = createShowcase(ui.craftCanvas);
+        if (showcase.failed) {
+          ui.craftCaption.textContent = 'The 3D preview could not start.';
+        }
+      }
+      showcase.setActive(true);
+      showcase.update(dt, input.channels, nowWall, ui.settings.cameraAngle);
+      showcase.render();
+    } else if (showcase) {
+      showcase.setActive(false);
+    }
 
     /* Overlay. */
     const st = stateCurr;
@@ -1545,11 +1622,13 @@ export async function boot({ loading, bootStart, mapId }) {
        * on needs it to mean three metres over that roof.
        */
       const p = shell.quad.position;
+      const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
         mode: view.mode,
         lapMs: race.freestyle ? airtimeMs : race.currentLapMs(simNow),
         gate: race.next + 1,
         gateCount: race.gates.length,
+        gateCue: nextGt && nextGt.cue ? nextGt.cue : '',
         volts: st[18],
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
@@ -1666,6 +1745,12 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__setCam = (a, b, c, d, e, f) => {
     camOverride = a == null ? null : [a, b, c, d, e, f];
   };
+  window.__intro = () => ({
+    ms: introMs,
+    holding: introMs >= 0 && introMs < INTRO_HOLD,
+    zooming: introMs >= INTRO_HOLD && introMs < INTRO_TOTAL,
+    quadVisible: shell.quad.visible,
+  });
   /* Put the race on a given gate. The ledger and the value measurements
    * park the camera at a point on the racing line, and a pilot at that
    * point has a real next gate, which is not gate 0 just because the run

@@ -135,6 +135,12 @@ export function collectWarnings(doc, path) {
   const limit = doc.settings.minCurveRadius;
   let worst = null;
   for (const smp of path.samples) {
+    const seg = path.segments[smp.segment];
+    /* A wrap around a stacked gate is supposed to be tight. The warning is
+     * for the lap between obstacles, not for the figure itself. */
+    if (seg && (seg.a.role === 'wrap' || seg.b.role === 'wrap')) {
+      continue;
+    }
     if (smp.radius < limit && (worst == null || smp.radius < worst.radius)) {
       worst = smp;
     }
@@ -228,7 +234,7 @@ const HORIZONTAL_FLOOR = 0.2;
  * they stay in.
  */
 function hasFace(knot) {
-  return knot.role !== 'marker';
+  return knot.role === 'start' || knot.role === 'finish' || knot.role === 'aperture';
 }
 
 function reversed(tangent, from, to) {

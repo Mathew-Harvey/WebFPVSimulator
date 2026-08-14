@@ -10,9 +10,10 @@
  * element id with different apertureIndex and different entry signs.
  *
  * So: adding an element to the field adds ONE sequence entry, on its lowest
- * opening, because that is the common case and the panel makes adding the
- * second one a single click. Deleting an element deletes every entry that
- * points at it. Reordering moves entries, never elements.
+ * opening, because that is the common case. A double stack or a triple stack
+ * is then rewritten to a spiral up by the app, because each hole is a gate.
+ * Deleting an element deletes every entry that points at it. Reordering
+ * moves entries, never elements.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -35,6 +36,7 @@ import {
   createSequenceEntry, elementById, kindOf, aperturesOf, isSequenceable,
 } from './model.js';
 import { applyAutoFaces } from './faces.js';
+import { matchingFigureOf, FIGURES, levelName, runContaining } from './figures.js';
 
 /*
  * Append an element to the flying order, or insert it at a position.
@@ -175,7 +177,12 @@ export function sequenceLabel(doc, seq) {
   if (def.kind === KIND.APERTURE) {
     const levels = aperturesOf(el);
     if (levels.length > 1) {
-      return `${base}, level ${(seq.apertureIndex ?? 0) + 1} of ${levels.length}`;
+      const fig = matchingFigureOf(el, runContaining(doc, seq));
+      const level = levelName(el, seq.apertureIndex);
+      if (fig && fig !== 'single') {
+        return `${base}, ${FIGURES[fig].label}, ${level}`;
+      }
+      return `${base}, ${level}`;
     }
   }
   return base;

@@ -38,6 +38,7 @@
 
 import * as THREE from 'three';
 import { buildCraft } from './craft.js';
+import { CAMERA_FOV_DEFAULT } from './lens.js';
 
 /*
  * Free every GPU resource a map's scene graph owns.
@@ -133,21 +134,38 @@ export function disposeSceneGraph(root, keepTextures) {
   };
 }
 
-export function buildShell(canvas) {
+export function buildShell(canvas, opts) {
   /* No depth and no stencil on the default framebuffer. The only thing ever
    * drawn into it is a fullscreen quad from whichever map's post chain is
    * active, which is neither depth tested nor stencilled, and a browser hands
    * out a D24S8 buffer by default: measured, 8.3 MB of the frame's 120 MB
    * render target budget for a buffer nothing reads. antialias stays off
    * because both post chains allocate their own targets, so the flag would
-   * multisample that same one quad. */
+   * multisample that same one quad.
+   *
+   * opts.pixelRatio and opts.powerPreference are for the orbit thumbnail
+   * page, which must not inherit a 2x retina buffer or a high-performance
+   * GPU hint while it records a 480p clip. */
+  const options = opts || {};
+  /*
+   * high-performance, not default: on a dual-GPU laptop "default" often
+   * picks the battery iGPU and the discrete chip sits idle. Quality
+   * presets then scale resolution and effects; they do not pick the
+   * device. failIfMajorPerformanceCaveat stays false so a machine with
+   * only a software rasteriser still boots. Orbit thumbnails pass
+   * low-power explicitly because they are a second context.
+   */
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: false,
     depth: false,
     stencil: false,
+    powerPreference: options.powerPreference || 'high-performance',
+    failIfMajorPerformanceCaveat: false,
   });
-  const pixelRatio = Math.min(window.devicePixelRatio, 2);
+  const pixelRatio = options.pixelRatio != null
+    ? options.pixelRatio
+    : Math.min(window.devicePixelRatio, 2);
   renderer.setPixelRatio(pixelRatio);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   /* No filmic tone curve: it desaturates exactly the flat saturated colour
@@ -166,7 +184,9 @@ export function buildShell(canvas) {
    * camera.far and calls updateProjectionMatrix in its own build. The value
    * here is the field's, because the field is what boots.
    */
-  const camera = new THREE.PerspectiveCamera(100, 1, 0.2, 2600);
+  /* The boot lens, replaced by the pilot's own on the first settings pass.
+   * lens.js is where the number is argued. */
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEFAULT, 1, 0.2, 2600);
   /* Layer 1 is the no ink layer and layer 2 is the grass, both read by the
    * race field's outline prepass in post.js. The city's pipeline is screen
    * space and puts everything on layer 0, so enabling these costs it nothing
@@ -177,8 +197,18 @@ export function buildShell(canvas) {
   const craft = buildCraft();
 
   function resize() {
-    const w = canvas.clientWidth || window.innerWidth;
-    const h = canvas.clientHeight || window.innerHeight;
+    /*
+     * The stylesheet sizes the canvas (100 percent of the viewport). Measuring
+     * clientWidth after an inline width/height has been written returns that
+     * pinned size, not the window, which is how a resize left a band of page
+     * background under the world while the overlay still filled the frame.
+     * The city's vendored pipeline calls setSize with updateStyle true; even
+     * after we undo that, innerWidth is the size we actually want.
+     */
+    canvas.style.width = '';
+    canvas.style.height = '';
+    const w = Math.max(1, window.innerWidth);
+    const h = Math.max(1, window.innerHeight);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();

@@ -51,6 +51,7 @@ import { aperturesOf, elementById, kindOf, apertureCenter } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { levelName } from './figures.js';
 import { apertureFrame, clamp } from './geometry.js';
+import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 
 /*
  * The printed vinyl the world dresses its gates and flags in, so what an
@@ -61,6 +62,9 @@ import { apertureFrame, clamp } from './geometry.js';
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
+import {
+  assembleStartBlock, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK, START_BLOCK_FOAM, START_BLOCK_LIP,
+} from '../art/startblock.js';
 
 /* The header banner's height and the fraction of it left clear at each end
  * for the gate number, matching src/render/scene.js. */
@@ -488,6 +492,13 @@ export class View3D {
       }
     }
 
+    if (this.host.path && this.host.path.samples.length > 1) {
+      /* Ground marks always, not only when the Hermite is toggled. The
+       * taut string is what the race field paints, and the preview has
+       * to show the same line or an author is editing a different course
+       * from the one they fly. */
+      g.add(this.buildGuideMarks(this.host.path));
+    }
     if (this.host.pathVisible && this.host.path && this.host.path.samples.length > 1) {
       g.add(this.buildPath(this.host.path));
     }
@@ -798,6 +809,30 @@ export class View3D {
 
   buildMarker(group, el, selected) {
     const colour = selected ? COL.frameSel : (el.type === 'cone' ? COL.cone : COL.marker);
+    /*
+     * A waypoint is a ghost. Nothing stands there on the race field, so the
+     * preview shows a see through post and a ring on the ground: enough to
+     * find and grab, not enough to be mistaken for an obstacle.
+     */
+    if (el.type === 'waypoint') {
+      const mat = new THREE.MeshBasicMaterial({
+        color: selected ? COL.frameSel : COL.entry,
+        transparent: true,
+        opacity: 0.34,
+      });
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(el.dims.poleRadius * 2, el.dims.poleRadius * 2, el.dims.height, 6),
+        mat,
+      );
+      post.rotation.x = Math.PI / 2;
+      post.position.z = el.dims.height / 2;
+      this.register(post, el);
+      group.add(post);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.36, 0.46, 20), mat);
+      ring.position.z = 0.02;
+      group.add(ring);
+      return;
+    }
     if (el.type === 'cone') {
       const cone = new THREE.Mesh(
         new THREE.ConeGeometry(el.dims.baseRadius, el.dims.height, 12),
@@ -839,15 +874,33 @@ export class View3D {
   }
 
   buildStart(group, el, selected) {
-    const mat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.start });
+    const tint = selected ? COL.frameSel : null;
+    const mats = {
+      wood: new THREE.MeshLambertMaterial({ color: tint ?? START_BLOCK_WOOD }),
+      base: new THREE.MeshLambertMaterial({ color: tint ?? START_BLOCK_WOOD_DARK }),
+      foam: new THREE.MeshLambertMaterial({ color: tint ?? START_BLOCK_FOAM }),
+      lip: new THREE.MeshLambertMaterial({ color: tint ?? START_BLOCK_LIP }),
+    };
     const n = Math.max(1, Math.round(el.dims.pads));
     for (let i = 0; i < n; i += 1) {
       const off = (i - (n - 1) / 2) * el.dims.spacing;
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(el.dims.padSize, el.dims.padSize, 0.04), mat);
-      pad.position.set(-Math.sin(el.yaw) * off, Math.cos(el.yaw) * off, 0.02);
-      pad.rotation.z = el.yaw;
-      this.register(pad, el);
-      group.add(pad);
+      const holder = new THREE.Group();
+      holder.position.set(-Math.sin(el.yaw) * off, Math.cos(el.yaw) * off, 0);
+      holder.rotation.z = el.yaw;
+      const stand = assembleStartBlock(THREE, el.dims.padSize, mats);
+      /*
+       * assembleStartBlock is Y up (X across, Y up, Z toward spawn). This
+       * preview is Z up with +X along the heading, so one Euler takes the
+       * stand into the document frame without rebuilding it.
+       */
+      stand.rotation.set(Math.PI / 2, 0, -Math.PI / 2);
+      holder.add(stand);
+      stand.traverse((o) => {
+        if (o.isMesh) {
+          this.register(o, el);
+        }
+      });
+      group.add(holder);
     }
     const pts = [0, 0, 0.05, Math.cos(el.yaw) * 3, Math.sin(el.yaw) * 3, 0.05];
     const geo = new THREE.BufferGeometry();
@@ -863,6 +916,32 @@ export class View3D {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: COL.path }));
+  }
+
+  buildGuideMarks(path) {
+    const tris = tessellateGuide(guideFromKnots(knotsFromPath(path)));
+    if (tris.length < 3) {
+      return new THREE.Group();
+    }
+    const pos = new Float32Array(tris.length * 3);
+    for (let i = 0; i < tris.length; i += 1) {
+      pos[i * 3] = tris[i].x;
+      pos[i * 3 + 1] = tris[i].z;
+      pos[i * 3 + 2] = 0.04;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffef9a,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.96,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 2;
+    return mesh;
   }
 
   register(mesh, el) {

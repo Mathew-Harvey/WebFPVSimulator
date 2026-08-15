@@ -5,3 +5,6 @@ build/
 *.log
 .DS_Store
 .loop/shots/
+tracks/json/edit-keys.json
+# Plan view PNGs written by tracks/plan.mjs while reviewing an import.
+tracks/_review/

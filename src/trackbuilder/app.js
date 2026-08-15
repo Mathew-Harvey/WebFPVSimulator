@@ -54,9 +54,23 @@ import { View2D } from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
 import { RAD } from './geometry.js';
-import { boardOrigin, boardPageUrl, publishTrack, setBoardOrigin } from '../share/board.js';
+import { boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation } from '../share/board.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
-import { clearShareImport, readEditKey, writeEditKey } from '../share/session.js';
+import {
+  clearShareImport, readEditKey, readShareImport, takeBuilderIntent,
+} from '../share/session.js';
+import {
+  bindOwnedCanvas,
+  flyCanvasWithoutListing,
+  forkDocument,
+  inspectCourse,
+  isEmptyCanvas,
+  rememberPublish,
+  suggestRemixName,
+  syncOwnedName,
+  syncOwnedIdentity,
+  pushOwnedListing,
+} from '../share/listing.js';
 
 export class App {
   constructor(nodes) {
@@ -100,6 +114,78 @@ export class App {
       return;
     }
     this.doc = createTrack();
+  }
+
+  async adoptIncomingShare() {
+    try {
+      let share = readShareImport();
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('share')) {
+        try {
+          share = await adoptShareFromLocation();
+        } catch (e) {
+          this.toast(`Could not open that published course. ${e.message || e}`);
+          return;
+        }
+      }
+      if (!share || !share.document) {
+        share = readShareImport() || share;
+      }
+      const intent = takeBuilderIntent();
+      if (!share || !share.document) {
+        return;
+      }
+      const owned = Boolean(readEditKey(share.id));
+      const fromBoard = Boolean(params.get('share'));
+      const wantRemix = (intent && intent.kind === 'remix') || (!owned && fromBoard);
+      const wantEdit = owned && (fromBoard || (intent && intent.kind === 'edit'));
+      if (!wantRemix && !wantEdit) {
+        return;
+      }
+      const incoming = normalize(share.document).doc;
+      if (wantEdit) {
+        const load = () => {
+          this.loadDocument(incoming, `Editing "${incoming.name}" on the board.`);
+        };
+        if (!isEmptyCanvas(this.doc) && this.doc.id !== incoming.id) {
+          this.confirm(
+            'Replace the course on the canvas?',
+            'Your current canvas will be replaced with this published course. Save it first if you still need it.',
+            load,
+          );
+        } else {
+          load();
+        }
+        return;
+      }
+      const copy = forkDocument(incoming, {
+        sourceId: share.id,
+        sourceName: share.name || incoming.name,
+        sourceAuthor: share.author || '',
+        board: share.board || boardOrigin(),
+      });
+      const load = () => {
+        clearShareImport();
+        this.loadDocument(copy, `This is your copy of "${share.name || incoming.name}". Publish it under a new name to put it on the board.`);
+      };
+      if (!isEmptyCanvas(this.doc) && this.doc.id !== share.id) {
+        this.confirm(
+          `Open a copy of "${share.name || incoming.name}"?`,
+          'The course on your canvas will be replaced. Save it first if you still need it.',
+          load,
+        );
+      } else {
+        load();
+      }
+    } finally {
+      this.syncBoardIdentity();
+    }
+  }
+
+  syncBoardIdentity() {
+    syncOwnedIdentity().catch(() => {
+      /* The board can stay a step behind until they save the name again. */
+    });
   }
 
   bindResize() {
@@ -609,18 +695,58 @@ export class App {
    * Put this course on the public board. The document goes as it is, logo
    * included, so every gate and every flag on the board copy wears the
    * same print the author sees here.
+   *
+   * Three shapes of this dialog, because they are three different promises:
+   * a first publish, an update of a listing this browser owns, and a copy
+   * of someone else's course under a new name.
    */
+  listingOfCanvas() {
+    return inspectCourse({
+      share: null,
+      autosave: { doc: this.doc },
+    });
+  }
+
   openPublish() {
+    if (this.nameInput && this.nameInput.value) {
+      this.doc.name = this.nameInput.value.trim() || 'Untitled track';
+    }
     if (!this.doc.sequence.length) {
       this.toast('A published course needs at least one gate in the flying order.');
       return;
     }
     this.autosaver.flush();
+    const listing = this.listingOfCanvas();
+    const remix = listing.kind === 'remix';
+    const owned = listing.kind === 'owned';
     const body = document.createElement('div');
     const help = document.createElement('p');
     help.className = 'tb-help';
-    help.textContent = 'The public board keeps a copy of this course, including the logo on the gates and flags. Times people post are stored there. The copy in this browser is still only in this browser.';
+    if (remix) {
+      const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
+      const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
+      help.textContent = `This is your copy${of}${by}. It goes on the board as a new course under the name below. The original stays.`;
+    } else if (owned && listing.layoutDrift) {
+      help.textContent = 'The layout changed. Updating the board will clear posted times. A rename alone would have kept them.';
+    } else if (owned) {
+      help.textContent = 'This course is already on the board. Updating it keeps the times if the flying layout has not changed.';
+    } else {
+      help.textContent = 'The public board keeps a copy of this course, including the logo on the gates and flags. Times people post are stored there.';
+    }
     body.append(help);
+
+    const courseField = document.createElement('div');
+    courseField.className = 'tb-field';
+    const courseLabel = document.createElement('label');
+    courseLabel.className = 'tb-field-label';
+    courseLabel.textContent = 'Course name';
+    const courseInput = document.createElement('input');
+    courseInput.type = 'text';
+    courseInput.maxLength = 80;
+    courseInput.value = remix ? suggestRemixName(this.doc.name) : this.doc.name;
+    courseInput.style.width = '220px';
+    courseField.append(courseLabel, courseInput);
+    body.append(courseField);
 
     const nameField = document.createElement('div');
     nameField.className = 'tb-field';
@@ -658,31 +784,59 @@ export class App {
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'tb-btn tb-primary';
-    send.textContent = 'Publish this course';
+    send.textContent = owned ? 'Update the board' : (remix ? 'Publish as yours' : 'Publish this course');
     send.addEventListener('click', async () => {
       const author = writePilotName(nameInput.value);
       if (!author) {
         status.textContent = nameRules();
         return;
       }
+      const courseName = String(courseInput.value || '').trim() || 'Untitled track';
+      this.doc.name = courseName;
+      if (this.nameInput) {
+        this.nameInput.value = courseName;
+      }
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
       status.textContent = 'Sending the course, logo included.';
-      try {
+      const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
-          document: toPlain(this.doc),
-          editKey: readEditKey(this.doc.id),
+          document: toPlain(doc),
+          editKey: readEditKey(doc.id),
           origin,
         });
-        if (posted.editKey) {
-          writeEditKey(posted.id || this.doc.id, posted.editKey);
+        rememberPublish(toPlain(doc), posted, origin, author);
+        writeAutosave(doc);
+        return posted;
+      };
+      try {
+        let posted;
+        try {
+          posted = await sendDoc(this.doc);
+        } catch (e) {
+          if (!e || !e.conflict) {
+            throw e;
+          }
+          const copy = forkDocument(this.doc, {
+            name: courseName,
+            board: origin,
+            sourceId: this.doc.id,
+            sourceName: this.doc.name,
+            sourceAuthor: '',
+          });
+          this.loadDocument(copy, '');
+          posted = await sendDoc(this.doc);
+          status.textContent = `This id was already on the board, so it went up as a new course, "${posted.name}".`;
         }
         const cleared = posted.timesCleared
           ? ' The flying layout changed, so the old times were cleared.'
           : '';
-        status.textContent = `Published as "${posted.name}".${cleared}`;
+        if (!status.textContent.startsWith('This id')) {
+          status.textContent = `Published as "${posted.name}".${cleared}`;
+        }
         this.toast(`Published "${posted.name}" to the board.`);
+        this.updateTopBar();
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';
         open.href = boardPageUrl(origin);
@@ -697,7 +851,7 @@ export class App {
       }
     });
     body.append(send);
-    this.modal('Publish this course', body);
+    this.modal(owned ? 'Update this course' : (remix ? 'Publish as yours' : 'Publish this course'), body);
   }
 
   /* ---------------- the event logo ---------------- */
@@ -865,6 +1019,7 @@ export class App {
     name.dataset.tbkey = 'track-name';
     name.addEventListener('change', () => {
       this.edit('rename track', (d) => { d.name = name.value || 'Untitled track'; });
+      this.syncNameIfOwned();
     });
     this.nameInput = name;
 
@@ -914,15 +1069,10 @@ export class App {
      * somebody to remember to press Save before they fly is asking them to
      * fly the wrong track once.
      */
-    this.flyBtn = btn('Fly this track', () => {
-      this.autosaver.flush();
-      /* The share seat is a published course. Flying the canvas must not
-       * leave that import in place, or the simulator would build the board
-       * copy instead of this one. */
-      clearShareImport();
-      window.location.href = '../../index.html?map=custom';
-    }, 'Build the world around this course and fly it', 'tb-btn tb-primary');
+    this.flyBtn = btn('Fly this track', () => this.flyThisTrack(), 'Build the world around this course and fly it', 'tb-btn tb-primary');
     this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, logo and all');
+    this.listingChip = document.createElement('span');
+    this.listingChip.className = 'tb-listing';
 
     const back = document.createElement('a');
     back.className = 'tb-btn tb-quiet';
@@ -932,6 +1082,7 @@ export class App {
     bar.append(
       Object.assign(document.createElement('span'), { className: 'tb-title', textContent: 'Track Builder' }),
       name,
+      this.listingChip,
       group(
         btn('New', () => this.newTrack()),
         btn('Save', () => this.save(), 'Control S'),
@@ -967,6 +1118,69 @@ export class App {
     this.mode2d.classList.toggle('on', this.mode === '2d');
     this.mode3d.classList.toggle('on', this.mode === '3d');
     this.pathBtn.classList.toggle('on', this.pathVisible);
+    if (this.listingChip && this.publishBtn) {
+      const listing = this.listingOfCanvas();
+      this.listingChip.className = 'tb-listing';
+      if (listing.kind === 'owned') {
+        this.listingChip.classList.add('owned');
+        this.listingChip.textContent = listing.layoutDrift
+          ? 'Layout not on the board'
+          : listing.nameDrift
+            ? 'Rename waiting'
+            : 'On the board';
+        this.publishBtn.textContent = listing.canUpdateListing ? 'Update board' : 'On the board';
+        this.publishBtn.title = listing.layoutDrift
+          ? 'The layout changed. Updating the board will clear posted times.'
+          : 'This course is on the public board. A rename updates the listing.';
+      } else if (listing.kind === 'remix') {
+        this.listingChip.classList.add('remix');
+        const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
+        this.listingChip.textContent = `Copy${of}`;
+        this.publishBtn.textContent = 'Publish as yours';
+        this.publishBtn.title = 'Put this copy on the board under a new name. The original stays.';
+      } else {
+        this.listingChip.textContent = listing.canPublishNew ? 'Not on the board' : 'Not on the board';
+        this.publishBtn.textContent = 'Publish';
+        this.publishBtn.title = 'Put this course on the public board, logo and all';
+      }
+    }
+  }
+
+  async syncNameIfOwned() {
+    this.autosaver.flush();
+    if (!readEditKey(this.doc.id)) {
+      this.updateTopBar();
+      return;
+    }
+    try {
+      const result = await syncOwnedName(toPlain(this.doc));
+      if (result && result.ok) {
+        this.toast(`Name updated on the board: "${this.doc.name}".`);
+      } else if (result && result.skipped === 'layout-changed') {
+        this.toast('The layout changed too. Update the board to send the new name.');
+      }
+    } catch (e) {
+      this.toast(`Could not update the name on the board. ${e.message || e}`);
+    }
+    this.updateTopBar();
+  }
+
+  async flyThisTrack() {
+    this.autosaver.flush();
+    if (this.nameInput && this.nameInput.value && this.nameInput.value !== this.doc.name) {
+      this.doc.name = this.nameInput.value;
+    }
+    if (readEditKey(this.doc.id)) {
+      try {
+        await pushOwnedListing(toPlain(this.doc));
+      } catch (e) {
+        /* Still fly. The board name can catch up. */
+      }
+      bindOwnedCanvas(this.doc);
+    } else {
+      flyCanvasWithoutListing();
+    }
+    window.location.href = '../../index.html?map=custom';
   }
 
   toast(message) {

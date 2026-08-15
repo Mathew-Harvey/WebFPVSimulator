@@ -15,9 +15,10 @@
  * This file only provides the hardware abstraction layer STAGE1.md says
  * to stub: a gyro device read that returns the simulated body rates as
  * 16 bit counts exactly as Betaflight's own SITL target does, the motor
- * endpoint arithmetic that normally lives in drivers/dshot.c, and the
- * battery sag reading. Config keys are applied by bf_settings.c against
- * the real parameter group structs.
+ * endpoint arithmetic that normally lives in drivers/dshot.c, the
+ * battery sag reading, and (when ANGLE_MODE is on) the plant attitude
+ * that pidLevel would otherwise read from the IMU. Config keys are
+ * applied by bf_settings.c against the real parameter group structs.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -38,6 +39,7 @@
 #include "platform.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "common/axis.h"
@@ -53,6 +55,7 @@
 #include "fc/rc_controls.h"
 #include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
+#include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/mixer_init.h"
 #include "flight/pid.h"
@@ -101,6 +104,93 @@ extern const pidConfig_t pgResetTemplate_pidConfig;
  * Betaflight's compiled code.
  */
 static float g_gyro_dps[XYZ_AXIS_COUNT];
+
+/*
+ * ---- GYRO VIBRATION, WITHOUT WHICH THE WHOLE FILTER CHAIN IS DECORATIVE ----
+ *
+ * The simulated gyro handed Betaflight the exact body rate. Measured in a
+ * steady hover, the filtered gyro moved 0.0016 deg/s from one sample to the
+ * next; a real 5 inch sits at 1 to 5 deg/s filtered and 20 to 100 raw. Three
+ * things follow from a perfectly clean gyro and all of them are wrong:
+ * gyro_lpf and dterm_lpf could only ever cost delay, so the sim rewarded
+ * removing filters where a real quad punishes it; D term gain was free, so a
+ * tune that felt good here would oscillate on a real machine; and nothing in
+ * the model could tell you why anyone soft mounts a stack.
+ *
+ * WHAT IS MODELLED. Prop and bell imbalance shake the frame, the flight
+ * controller is bolted to the frame, and the gyro measures that shake on top
+ * of the body rate. So this is added to the SENSOR READING and not to the
+ * plant's omega: the airframe is still a rigid body, and the only way the
+ * vibration reaches the trajectory is the way it does in life, through the
+ * controller reacting to it. Imbalance force goes as rotor speed squared, so
+ * the amplitude is scaled by (w / w_full)^2 off the actual motor speeds,
+ * which is why it is quiet in a hover and loud on the power.
+ *
+ * THE BAND. A 1 kHz gyro can represent nothing above 500 Hz, and a real 5
+ * inch's prop fundamental is 130 to 430 Hz at 8k to 26k RPM, so the content
+ * that matters does fit. It is shaped as a band rather than a line because a
+ * real spectrum is a broad hump: four rotors at slightly different speeds,
+ * plus frame modes, is not a tone. Same one pole pair the propwash uses,
+ * 80 to 350 Hz, coefficients 1 - exp(-2 pi f dt) at dt = 1 ms.
+ *
+ * THE AMPLITUDE is set against the FILTERED figure, because that is what a
+ * real blackbox log reports and so the only one that can be compared. A good
+ * 5 inch reads 1 to 3 deg/s RMS of filtered gyro around cruise and 3 to 6 on
+ * the power. 12 deg/s of raw injection overshot that, measuring 4.21 at 55
+ * percent throttle and 7.35 at full; 8.0 lands at 2.8 and 4.9. A tired set of
+ * props runs several times either figure. Yaw is taken at 0.6 of roll and
+ * pitch because the frame is stiffer in that direction. On top sits a
+ * 0.2 deg/s floor for the sensor itself, roughly an ICM-42688 over a 500 Hz
+ * bandwidth.
+ *
+ * The RMS divisor is MEASURED, not estimated: 0.340474 over eight million
+ * samples of this exact recursion, peak 2.92 sigma, so unlike the propwash
+ * channel it needs no clamp. The propwash comment records what happens when
+ * that number is guessed instead.
+ *
+ * DETERMINISM. Its own xorshift32 seed, integer operations only, reset with
+ * the rest of the controller state in bridge_reset.
+ */
+#define GYRO_VIB_A_HI 0.889099
+#define GYRO_VIB_A_LO 0.395077
+#define GYRO_VIB_RMS 0.340474
+#define GYRO_VIB_FULL_DPS 8.0
+#define GYRO_VIB_REF_W 2700.0
+#define GYRO_VIB_YAW_SHARE 0.6
+#define GYRO_NOISE_FLOOR_DPS 0.20
+
+static unsigned int g_vib_seed;
+static double g_vib_fast[XYZ_AXIS_COUNT];
+static double g_vib_slow[XYZ_AXIS_COUNT];
+
+static double sim_vib_noise(void) {
+  unsigned int x = g_vib_seed;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  g_vib_seed = x;
+  /* 24 bits to a double in -1..1, exactly representable. */
+  return ((double)(x >> 8)) * (1.0 / 8388608.0) - 1.0;
+}
+
+static void sim_gyro_add_vibration(const SimState *s) {
+  double w_sum = 0.0;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    w_sum += s->motor_omega[m];
+  }
+  const double w_mean = w_sum * 0.25;
+  const double ratio = w_mean / GYRO_VIB_REF_W;
+  const double amp = GYRO_VIB_FULL_DPS * ratio * ratio;
+  for (int a = 0; a < XYZ_AXIS_COUNT; a += 1) {
+    /* Run the channel every step regardless of throttle, so spooling up does
+     * not restart the vibration mid flight. */
+    g_vib_fast[a] += GYRO_VIB_A_HI * (sim_vib_noise() - g_vib_fast[a]);
+    g_vib_slow[a] += GYRO_VIB_A_LO * (g_vib_fast[a] - g_vib_slow[a]);
+    const double band = (g_vib_fast[a] - g_vib_slow[a]) / GYRO_VIB_RMS;
+    const double axis = (a == FD_YAW) ? GYRO_VIB_YAW_SHARE : 1.0;
+    g_gyro_dps[a] += (float)(band * (amp * axis + GYRO_NOISE_FLOOR_DPS));
+  }
+}
 
 static bool sim_gyro_read(gyroDev_t *dev) {
   for (int a = 0; a < XYZ_AXIS_COUNT; a += 1) {
@@ -167,12 +257,18 @@ void bf_config_begin(void) {
   currentPidProfile = pidProfilesMutable(0);
   currentControlRateProfile = controlRateProfilesMutable(0);
 
-  /* Simulator posture: quad X, airmode always on. RC smoothing is left at
-   * the Betaflight default and must stay on: getFeedforward returns the
-   * smoothed value, so disabling it silently zeroes feedforward on every
-   * axis. That bug cost a tuning session; see PROGRESS.md. */
+  /* Simulator posture: quad X, airmode and anti gravity on. RC smoothing is
+   * left at the Betaflight default and must stay on: getFeedforward returns
+   * the smoothed value, so disabling it silently zeroes feedforward on every
+   * axis. That bug cost a tuning session; see PROGRESS.md.
+   *
+   * FEATURE_ANTI_GRAVITY is in this list because Betaflight's own default is
+   * FEATURE_ANTI_GRAVITY | FEATURE_AIRMODE (config/feature.c). Assigning only
+   * airmode here cleared it, so anti_gravity_gain was inert no matter what a
+   * preset said: three traces at gain 0, 80 and 250 hashed identically.
+   * Setting the bit is only half of it; see bf_runtime_init. */
   mixerConfigMutable()->mixerMode = MIXER_QUADX;
-  featureConfigMutable()->enabledFeatures = FEATURE_AIRMODE;
+  featureConfigMutable()->enabledFeatures = FEATURE_AIRMODE | FEATURE_ANTI_GRAVITY;
 
   bf_settings_build();
 }
@@ -190,7 +286,37 @@ int bf_config_apply_command(const char *word0, const char *word1) {
     bf_settings_apply_simplified();
     return SIM_OK;
   }
-  /* Everything else a diff can carry (batch, board_name, feature, profile,
+  /*
+   * `feature NAME` and `feature -NAME`, which is how a diff carries its
+   * feature set. This was discarded, so a preset could not switch airmode or
+   * anti gravity even though both change how the craft flies and both are
+   * compiled in. Only the two features whose subsystems this module actually
+   * has are honoured; every other name addresses machinery that is not here,
+   * which is the same policy bf_settings.c applies to inert keys.
+   */
+  if (strcmp(word0, "feature") == 0 && word1[0] != 0) {
+    const char *name = word1;
+    int on = 1;
+    if (name[0] == '-') {
+      on = 0;
+      name += 1;
+    }
+    uint32_t bit = 0;
+    if (strcmp(name, "AIRMODE") == 0) {
+      bit = FEATURE_AIRMODE;
+    } else if (strcmp(name, "ANTI_GRAVITY") == 0) {
+      bit = FEATURE_ANTI_GRAVITY;
+    }
+    if (bit != 0) {
+      if (on) {
+        featureConfigMutable()->enabledFeatures |= bit;
+      } else {
+        featureConfigMutable()->enabledFeatures &= ~bit;
+      }
+    }
+    return SIM_OK;
+  }
+  /* Everything else a diff can carry (batch, board_name, profile,
    * rateprofile, defaults, resource, aux) addresses machinery this module
    * does not have. One profile and one rate profile exist here and both
    * are profile 0. */
@@ -226,6 +352,45 @@ static void bf_runtime_init(void) {
 
   ENABLE_ARMING_FLAG(ARMED);
   pidStabilisationState(PID_STABILISATION_ON);
+
+  /*
+   * THE TWO FEATURE FLAGS THAT DO NOTHING UNTIL SOMETHING RUNS THEM.
+   *
+   * Setting a bit in enabledFeatures is not what turns a Betaflight feature
+   * on. Two of them are latched into runtime state by fc/core.c, which this
+   * build does not compile, so both sat off for the whole of this project's
+   * life while the config said they were on.
+   *
+   * Airmode: mixer.c asks airmodeIsEnabled(), which returns a static in
+   * rc_modes.c written only by updateActivatedModes(). With it false,
+   * applyMixerAdjustment scales roll and pitch mix authority by
+   * scaleRangef(throttle, 0, 0.5, 0.5, 1.0), so the craft had between 52 and
+   * 100 percent of its authority depending on where the throttle stick was.
+   * Measured on the mixer: peak split 0.472 duty at 2 percent throttle and
+   * 0.945 above half, tracing that ramp exactly. A full roll step at 25
+   * percent throttle rose to 90 percent in 59 ms against 45 ms at 55 percent.
+   * That is the mushiness on a chop, and it is not what a real quad does.
+   *
+   * Anti gravity: pidRuntime.antiGravityEnabled is set only by
+   * pidSetAntiGravityState from core.c. It is called here with the same
+   * expression core.c uses, minus the aux switch this build has no channels
+   * for. Must come after pidInit, which owns pidRuntime.
+   *
+   * And featureInit, which is the link that made the first attempt at this
+   * fix change nothing at all. featureIsEnabled reads runtimeFeatureMask, a
+   * static that only featureInit copies enabledFeatures into; fc/init.c calls
+   * it on hardware and nothing called it here, so the mask was zero and every
+   * feature in this build has always read as off. Assigning FEATURE_AIRMODE
+   * in bf_config_begin was therefore never enough on its own.
+   *
+   * updateActivatedModes is Betaflight's own function rather than a local
+   * assignment so that aux driven modes work unchanged the day this build
+   * gets aux channels. With no mode activation conditions analysed its loops
+   * are empty and it reduces to the airmode line.
+   */
+  featureInit();
+  updateActivatedModes();
+  pidSetAntiGravityState(featureIsEnabled(FEATURE_ANTI_GRAVITY));
 }
 
 int bf_config_finish(void) {
@@ -317,6 +482,65 @@ double sim_bf_debug(int what) {
 #define BF_WARMUP_MS 2600
 #define BF_WARMUP_FRAME_MS 4
 
+/*
+ * ANGLE MODE, kept off the acro path.
+ *
+ * Betaflight already compiled pidLevel into this module. ANGLE_MODE is
+ * the same flag a radio aux switch raises; pidController then replaces
+ * the roll and pitch rate setpoints with the level-mode output and leaves
+ * the inner PID, the mixer and the plant alone. The IMU is stubbed for
+ * acro, so the only extra work is feeding attitude and raising the flag.
+ *
+ * Attitude comes from the plant quaternion, not from compiling imu.c.
+ * That is Betaflight SITL's own choice when USE_IMU_CALC is off: the
+ * simulator knows the pose, so the AHRS is skipped. Pitch is written in
+ * the gyro frame (nose down positive), which is what sitl.c does with
+ * `imuSetAttitudeRPY(xf, -yf, zf)` and the comment "yes! pitch was
+ * inverted!!". Roll is right-wing-down positive, matching +p.
+ *
+ * g_angle_mode defaults to 0. The harness never calls sim_set_angle_mode,
+ * so the acro trajectory does not run atan2 or touch flightModeFlags.
+ */
+static int g_angle_mode = 0;
+
+static int16_t bf_deci_deg(float rad) {
+  float d = rad * (1800.0f / M_PIf);
+  if (d > 1800.0f) {
+    d = 1800.0f;
+  }
+  if (d < -1800.0f) {
+    d = -1800.0f;
+  }
+  return (int16_t)lrintf(d);
+}
+
+static void bf_feed_attitude(const SimState *s) {
+  const float w = (float)s->quat[0];
+  const float x = (float)s->quat[1];
+  const float y = (float)s->quat[2];
+  const float z = (float)s->quat[3];
+  /* World-up in the body frame. Plant quat is body to world, z up, y left. */
+  const float ux = 2.0f * (x * z - w * y);
+  const float uy = 2.0f * (y * z + w * x);
+  const float uz = 1.0f - 2.0f * (x * x + y * y);
+  const float horiz = __builtin_sqrtf(uy * uy + uz * uz);
+  attitude.values.roll = bf_deci_deg(atan2_approx(uy, uz));
+  attitude.values.pitch = bf_deci_deg(atan2_approx(-ux, horiz));
+}
+
+static void bf_apply_angle_mode_flag(void) {
+  if (g_angle_mode) {
+    flightModeFlags |= ANGLE_MODE;
+  } else {
+    flightModeFlags &= (uint16_t)~ANGLE_MODE;
+  }
+}
+
+void bridge_set_angle_mode(int on) {
+  g_angle_mode = on ? 1 : 0;
+  bf_apply_angle_mode_flag();
+}
+
 void bridge_reset(void) {
   /* Fresh controller state for a fresh trajectory: re run the init chain
    * so PID integrators, filters and rc state start identically. */
@@ -324,7 +548,11 @@ void bridge_reset(void) {
   memset(rcData, 0, sizeof(rcData));
   for (int a = 0; a < XYZ_AXIS_COUNT; a += 1) {
     g_gyro_dps[a] = 0.0f;
+    g_vib_fast[a] = 0.0;
+    g_vib_slow[a] = 0.0;
   }
+  /* Any non zero constant seeds xorshift32; fixed, which is the point. */
+  g_vib_seed = 0x2545F491u;
   for (int i = 0; i < 4; i += 1) {
     rcData[i] = (i == THROTTLE) ? 1000.0f : 1500.0f;
   }
@@ -337,6 +565,9 @@ void bridge_reset(void) {
     processRcCommand();
   }
   pidResetIterm();
+  /* Reset does not clear the shell's requested mode. Re-apply after the
+   * init chain so a craft that was in angle stays in angle. */
+  bf_apply_angle_mode_flag();
 }
 
 #define SIM_RAD_TO_DEG 57.29577951308232
@@ -353,6 +584,7 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
   g_gyro_dps[FD_ROLL] = (float)(s->omega[0] * SIM_RAD_TO_DEG);
   g_gyro_dps[FD_PITCH] = (float)(s->omega[1] * SIM_RAD_TO_DEG);
   g_gyro_dps[FD_YAW] = (float)(s->omega[2] * SIM_RAD_TO_DEG);
+  sim_gyro_add_vibration(s);
 
   /* Stick channels from sim_abi.h: +roll right, +pitch nose up, +yaw nose
    * right. Betaflight internal pitch is nose down positive, so the pitch
@@ -391,6 +623,13 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
    * stays monotonic across reset. */
   sim_bf_now_ms = (uint32_t)(BF_WARMUP_MS + s->step_index);
   const timeUs_t now_us = (timeUs_t)((BF_WARMUP_MS + s->step_index) * 1000);
+
+  /* Angle mode only. Acro never enters: g_angle_mode stays 0, attitude
+   * stays untouched, pidLevel is not reached. */
+  if (g_angle_mode) {
+    bf_apply_angle_mode_flag();
+    bf_feed_attitude(s);
+  }
 
   /* Faithful flight controller wiring, in fc/core.c's own order:
    * gyro sample, gyro filter, rc command, PID, mixer.

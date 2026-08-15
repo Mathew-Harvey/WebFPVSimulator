@@ -26,11 +26,13 @@
 
 import { buildFieldScene } from '../render/scene.js';
 import { buildComposer } from '../render/post.js';
+import { qualityFor } from '../render/quality.js';
 
-export async function buildMap(shell, onProgress) {
+export async function buildMap(shell, onProgress, options) {
   const progress = onProgress ?? (() => {});
-  const map = buildFieldScene(shell, progress);
-  const post = buildComposer(shell.renderer, map.scene, shell.camera);
+  const q = qualityFor(options && options.quality);
+  const map = buildFieldScene(shell, progress, null, q);
+  const post = buildComposer(shell.renderer, map.scene, shell.camera, q);
   const d = shell.resize();
   post.setSize(d.w, d.h);
   const sceneDispose = map.dispose;

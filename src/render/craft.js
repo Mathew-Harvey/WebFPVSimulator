@@ -53,12 +53,12 @@ export const CRAFT_DIMS = {
 
 export function buildCraft() {
   /*
-   * The airframe is MODELLED at its true size in herocraft.js and DRAWN a
-   * quarter smaller, because the world it flies in is WORLD_SCALE times its
-   * own scale (src/render/frame.js). Every dimension in CRAFT_DIMS stays a
-   * real 5 inch machine's, which is what plant.c flies and what check 15
-   * bands, and the single group scale is the one place the world's ratio
-   * touches the model.
+   * The airframe is MODELLED at its true size in herocraft.js and DRAWN at
+   * 1/WORLD_SCALE of it, because the world it flies in is WORLD_SCALE times
+   * its own scale (src/render/frame.js). That ratio is 1 now, so the drawn
+   * craft is a real 5 inch machine and the group scale is the identity; the
+   * seam stays because it is the one place the world's ratio touches the
+   * model, and check 15 asserts the declared ratio reached it.
    */
   return buildHeroCraft({
     name: 'craft',

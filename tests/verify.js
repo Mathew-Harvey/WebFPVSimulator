@@ -252,16 +252,31 @@ async function main() {
             'const bs = new THREE.Vector3(); bb.getSize(bs);' +
             'const origin = new THREE.Vector3().setFromMatrixPosition(g.matrixWorld);' +
             'const at = new THREE.Vector3();' +
+            /*
+             * The swept disc: how far the outside of a spinning prop reaches
+             * from the craft's centre.
+             *
+             * THE PROP RADIUS COMES FROM THE GEOMETRY AND ITS WORLD SCALE,
+             * NOT FROM A WORLD BOUNDING BOX. A CylinderGeometry's box is a
+             * SQUARE 2r by 2r in plan, and the discs spin, so an axis aligned
+             * box around that square grows to 2r*sqrt(2) as it turns. Reading
+             * half of it as the radius therefore reported anything from
+             * 0.0635 to 0.0898 m depending on which frame the measurement
+             * landed on, which is how this check produced 0.1438 m on one run
+             * and 0.1957 m on the next for a craft that had not changed. It
+             * failed both times, against a true 0.1735 m, and the failure
+             * looked like a scale error in the model rather than a spinning
+             * square in the harness.
+             */
+            'const wsc = new THREE.Vector3();' +
             'let maxR = 0;' +
             'for (const c of g.children) {' +
               'if (!c.geometry || c.geometry.type !== "CylinderGeometry") { continue; }' +
               'const rr = c.geometry.parameters.radiusTop;' +
               'if (rr < 0.05) { continue; }' +
-              'c.geometry.computeBoundingBox();' +
-              'const pb = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);' +
-              'const ps = new THREE.Vector3(); pb.getSize(ps);' +
+              'c.getWorldScale(wsc);' +
               'at.setFromMatrixPosition(c.matrixWorld).sub(origin);' +
-              'const d = Math.hypot(at.x, at.z) + Math.max(ps.x, ps.z) * 0.5;' +
+              'const d = Math.hypot(at.x, at.z) + rr * Math.max(Math.abs(wsc.x), Math.abs(wsc.z));' +
               'if (d > maxR) { maxR = d; }' +
             '}' +
             'const th = window.__craftState().thresholds;' +

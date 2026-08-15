@@ -279,6 +279,37 @@ export const ELEMENTS = {
      * VERIFY: nothing on multigp.com, this is a road cone. */
     dims: { height: 28 * IN, baseRadius: 7 * IN, clearance: 1 },
   },
+  waypoint: {
+    id: 'waypoint',
+    label: 'Waypoint',
+    key: 'W',
+    group: 'track',
+    kind: KIND.MARKER,
+    note: 'Nothing is standing here. The line is required to pass through this point, at this height. Not drawn on the race field.',
+    /*
+     * NOT AN OBSTACLE, AND THAT IS THE WHOLE POINT.
+     *
+     * A waypoint says "the lap goes through here" and nothing else. It exists
+     * because imported courses need it: Velocidrone lets an author drop an
+     * invisible trigger box in open air to pin the racing line where there is
+     * no gate to fly through, and 55 of the stops across the tracks under
+     * tracks/ are exactly that. Before this existed the import had to call
+     * each one either a gate, which puts PVC on the field that is not on the
+     * real course, or a flag, which is worse, because a flag is passed at a
+     * clearance radius and so the line is pushed 1.5 m off the one point the
+     * author was trying to pin it to.
+     *
+     * It is a MARKER because path.js already does the right thing with one:
+     * the knot lands at marker plus clearance times the pass side, so a
+     * clearance of ZERO puts the knot exactly on the point and takes its
+     * tangent from the run of the course. A marker also cannot raise a
+     * reversal warning, which is correct: a waypoint has no face to reverse.
+     *
+     * height is how tall it is DRAWN in the builder, so an author can see one
+     * and grab it. Nothing is built for it on the race field.
+     */
+    dims: { height: 1.6, poleRadius: 0.02, clearance: 0 },
+  },
   startPads: {
     id: 'startPads',
     label: 'Start Pads',
@@ -286,9 +317,10 @@ export const ELEMENTS = {
     group: 'extra',
     kind: KIND.START,
     note: 'Lap start position and heading. Exactly one per track.',
-    /* A row of launch pads on the start line. MultiGP runs heats of four,
-     * so four pads at 1.5 m spacing is the default shape. The pad itself is
-     * a 0.6 m square mat.
+    /* A row of launch stands on the start line. MultiGP runs heats of four,
+     * so four stands at 1.5 m spacing is the default grid. padSize is the
+     * cell the stand sits in; the mesh is a two-rail wooden start block,
+     * not a floor tile. See src/art/startblock.js.
      * VERIFY: MultiGP's published starting grid spacing, if any. */
     dims: { pads: 4, spacing: 1.5, padSize: 0.6 },
   },
@@ -309,7 +341,7 @@ export const ELEMENTS = {
  * draws. It is written out rather than derived from Object.keys so a future
  * reorder is one obvious edit. */
 export const PALETTE_ORDER = [
-  'gate', 'flaggedGate', 'doubleStack', 'flaggedDoubleStack', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone',
+  'gate', 'flaggedGate', 'doubleStack', 'flaggedDoubleStack', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone', 'waypoint',
 ];
 export const PALETTE_EXTRA = ['startPads', 'label'];
 
@@ -450,7 +482,8 @@ export function elementHeight(def, dims) {
     return dims.height;
   }
   if (def.kind === KIND.START) {
-    return 0.05;
+    /* Visual height of the launch stand in src/art/startblock.js. */
+    return Math.max(0.08, dims.padSize * 0.40);
   }
   return dims.textHeight;
 }

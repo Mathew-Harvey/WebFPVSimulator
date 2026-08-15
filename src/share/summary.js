@@ -15,7 +15,7 @@
  * your option) any later version.
  *
  * WebFPVSimulator is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
@@ -23,39 +23,16 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { readShareImport } from './session.js';
-import { readAutosave } from '../trackbuilder/storage.js';
+import { inspectCourse } from './listing.js';
 
 export function activeCourseSummary() {
   try {
-    const share = readShareImport();
-    if (share && share.document) {
-      const doc = share.document;
-      return {
-        name: share.name || doc.name || 'Untitled track',
-        gates: Array.isArray(doc.sequence) ? doc.sequence.length : 0,
-        elements: Array.isArray(doc.elements) ? doc.elements.length : 0,
-        shared: true,
-        author: share.author || '',
-        shareId: share.id,
-        board: share.board || '',
-      };
+    const course = inspectCourse();
+    if (!course || course.kind === 'none' || !course.doc) {
+      return null;
     }
-    const saved = readAutosave();
-    if (saved && saved.doc) {
-      const doc = saved.doc;
-      return {
-        name: doc.name || 'Untitled track',
-        gates: doc.sequence.length,
-        elements: doc.elements.length,
-        shared: false,
-        author: '',
-        shareId: null,
-        board: '',
-      };
-    }
+    return course;
   } catch (e) {
     return null;
   }
-  return null;
 }

@@ -48,14 +48,21 @@ import { SESSION_TEXTURES } from './session-textures.js';
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
 import { builtObstacle, BUILT_FRAME_TUBE_OD, GATE_SCALE } from '../game/track.js';
+import { qualityFor } from './quality.js';
 /* The shape of the built in circuit, shared with the map screen's thumbnail
  * so the picture of the course and the course cannot drift apart. */
 import { circuitPoint, CIRCUIT_POINTS, CIRCUIT_STATIONS } from '../game/circuit.js';
+import { guideFromPolyline } from '../game/guide.js';
+import { buildGuideMesh, paintGuideOnPitch } from './marks.js';
 /* The printed vinyl a course is dressed in, shared with the track builder's
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
+import {
+  assembleStartBlock, startBlockContactHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
+  START_BLOCK_FOAM, START_BLOCK_LIP,
+} from '../art/startblock.js';
 import { Colliders } from '../game/collide.js';
 
 /*
@@ -322,7 +329,7 @@ function pitchCover(pitch, x, z) {
  * meadow instead of ending on a cut line, and the terrain underneath is
  * tinted the same green so the fade has somewhere to go.
  */
-function pitchSurface(pitch) {
+function pitchSurface(pitch, guide) {
   const w = pitch.mownW * 2;
   const d = pitch.mownD * 2;
   /* Pixels per metre, so a 0.3 m marking is four pixels wide whatever size
@@ -356,6 +363,14 @@ function pitchSurface(pitch) {
   ctx.strokeStyle = `#${PITCH.line.getHexString()}`;
   ctx.lineWidth = lw;
   ctx.strokeRect(inset, inset, cw - inset * 2, ch - inset * 2);
+
+  /* The racing line, in the turf. A raised mesh sits on top as well, but
+   * the pitch is transparent and would otherwise paint over any opaque
+   * decal; stamping the triangles into this canvas means the marks are
+   * still there even when the mesh loses a depth fight. */
+  if (guide) {
+    paintGuideOnPitch(ctx, pitch, guide);
+  }
 
   /* Fade the outer edge to nothing so the pitch joins the meadow. */
   const fadePx = Math.max(2, PITCH.fade * ppm);
@@ -965,7 +980,7 @@ function cliff(rng, height, x, z, caps) {
  * the wind is a vertex shader function of world position so neighbouring
  * blades move together in gusts instead of each doing its own thing.
  */
-function grassField(height, samples, rng, pitch) {
+function grassField(height, samples, rng, pitch, fieldQ) {
   /* Measured as the blades are made rather than restated from the formula
    * above, so a scale check reads what was BUILT. See references in
    * buildFieldScene. */
@@ -1034,7 +1049,8 @@ function grassField(height, samples, rng, pitch) {
    * chips lying on the grass rather than as grass.
    */
   const BLADES_WORLD = 184000;
-  const BLADES_EXTRA = 92000;
+  const worldKeep = fieldQ && fieldQ.grassWorldKeep != null ? fieldQ.grassWorldKeep : 1;
+  const BLADES_EXTRA = fieldQ && fieldQ.grassExtra != null ? fieldQ.grassExtra : 92000;
   const BLADES = BLADES_WORLD + BLADES_EXTRA;
   const positions = new Float32Array(BLADES * 4 * 3);
   /*
@@ -1071,7 +1087,7 @@ function grassField(height, samples, rng, pitch) {
    * 0.036 blades per square metre, and that is the speckle a reviewer sees
    * on the distant ground rather than anything that reads as a meadow.
    */
-  const emit = (r, extra) => {
+  const emit = (r, extra, write) => {
     let x;
     let z;
     if (extra) {
@@ -1121,7 +1137,15 @@ function grassField(height, samples, rng, pitch) {
      * a course as flat as possible, so 3 to 9 cm is both what the sport uses and
      * what leaves a parked quad able to see.
      */
-    const h = 0.03 + r() * 0.06;
+    const hRoll = r();
+    /* On the mown pitch the blades have to sit UNDER the paint. 3 to 9 cm
+     * of grass on a 5.5 cm decal is how the first custom-course pass of
+     * these marks vanished: the turf overlay hid them and the grass hid
+     * whatever was left. Same rng draw, shorter blades. */
+    const mown = pitchCover(pitch, x, z);
+    const h = mown > 0.35
+      ? 0.006 + hRoll * 0.012
+      : 0.03 + hRoll * 0.06;
     if (h < bladeMin) {
       bladeMin = h;
     }
@@ -1195,6 +1219,9 @@ function grassField(height, samples, rng, pitch) {
       if (!keep) {
         continue;
       }
+      if (!write) {
+        continue;
+      }
       positions[vi + 0] = vx;
       positions[vi + 1] = vy;
       positions[vi + 2] = vz;
@@ -1207,12 +1234,20 @@ function grassField(height, samples, rng, pitch) {
       bend[vi / 3] = Math.round(b * 255);
       vi += 3;
     }
+    if (!write) {
+      return;
+    }
     indices[ii++] = v0 + 0; indices[ii++] = v0 + 1; indices[ii++] = v0 + 2;
     indices[ii++] = v0 + 1; indices[ii++] = v0 + 3; indices[ii++] = v0 + 2;
     made += 1;
   };
   for (let i = 0; i < BLADES_WORLD; i += 1) {
-    emit(rng, false);
+    /* Walk every world draw so the rng stream after the grass is the same
+     * stream High has always used. Low writes a subset; the valley does
+     * not move. */
+    const write = worldKeep >= 1
+      || ((((i + 1) * worldKeep) | 0) !== ((i * worldKeep) | 0));
+    emit(rng, false, write);
   }
   /*
    * The second stream. A different seed from the world's 20260811 so the
@@ -1223,7 +1258,7 @@ function grassField(height, samples, rng, pitch) {
    */
   const extraRng = makeRng(90210077);
   for (let i = 0; i < BLADES_EXTRA; i += 1) {
-    emit(extraRng, true);
+    emit(extraRng, true, true);
   }
   const geo = new THREE.BufferGeometry();
   /* Trimmed by the write cursors, not by made times a constant: a blade is
@@ -1783,6 +1818,20 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
  * whose heading matches the mesh yaw; setNextGate flips the whole group
  * when a pass (a split-S, a reverse) comes the other way.
  */
+/*
+ * The direction of travel through an opening, in scene axes.
+ *
+ * The same expression race.js builds its aperture frame from, so the paint
+ * on a gate and the test that scores it cannot disagree about which way
+ * through it goes. Kept as one function because that agreement is the whole
+ * value of it: a gate that scores differently from how it looks is a gate the
+ * pilot cannot learn.
+ */
+function travelAxis(heading, pitch) {
+  const cp = Math.cos(pitch);
+  return { x: -cp * Math.sin(heading), y: Math.sin(pitch), z: -cp * Math.cos(heading) };
+}
+
 function gateCue(clearW, clearH) {
   const cue = new THREE.Group();
   cue.visible = false;
@@ -2066,8 +2115,7 @@ function cornerFittings(group, sills, clearW, clearH, tubeR) {
 
 /*
  * A designed course's racing line as a curve, for the things that want one:
- * the terrain's flat corridor, the scenery's exclusion test, and the title
- * screen's orbiting camera.
+ * the terrain's flat corridor and the scenery's exclusion test.
  *
  * Thinned before it is fitted. The line arrives as thousands of samples and
  * a CatmullRom through all of them is both slow to evaluate and wobbly,
@@ -2099,6 +2147,24 @@ function courseCurve(course) {
 }
 
 /*
+ * The built in circuit, sampled the way it is FLYING, not the way it is
+ * parameterised. Scene index i is flown as gateCount - i, so the paint
+ * has to run against the curve parameter or every arrow points at the
+ * previous gate.
+ */
+function circuitGuidePoints(curve) {
+  const n = 220;
+  const pts = [];
+  for (let i = 0; i <= n; i += 1) {
+    let u = -i / n;
+    u -= Math.floor(u);
+    const p = curve.getPointAt(u);
+    pts.push({ x: p.x, z: p.z });
+  }
+  return pts;
+}
+
+/*
  * Everything on a designed course that is NOT flown through: barriers, turn
  * flags and cones.
  *
@@ -2107,7 +2173,7 @@ function courseCurve(course) {
  * already tells the author when their line clips one, so the two halves
  * agree about what a barrier is.
  */
-function courseProps(course, height, scene, colliders, baker, kit) {
+function courseProps(course, height, scene, colliders, baker, kit, padDecks = []) {
   const mats = sharedObstacleMats();
   /* Which sail print each marker gets, so a course's flags alternate the
    * way the field's do rather than all being the same one. */
@@ -2183,17 +2249,32 @@ function courseProps(course, height, scene, colliders, baker, kit) {
       continue;
     }
     if (s.type === 'startPads') {
+      /*
+       * A row of launch stands, not floor tiles. Real 5 inch start blocks
+       * are two foam-topped rails on a short wedge so the front arms can
+       * catch when the pilot pitches forward. padSize is the grid cell the
+       * stand sits in; the mesh is the stand.
+       */
       const n = Math.max(1, Math.round(s.dims.pads));
-      const pad = s.dims.padSize;
-      const mat = celMaterial({ color: 0x2f4f3a, rim: 0.2 });
+      const mats = {
+        wood: celMaterial({ color: START_BLOCK_WOOD, rim: 0.18 }),
+        base: celMaterial({ color: START_BLOCK_WOOD_DARK, rim: 0.16 }),
+        foam: celMaterial({ color: START_BLOCK_FOAM, rim: 0.12 }),
+        lip: celMaterial({ color: START_BLOCK_LIP, rim: 0.24 }),
+      };
       for (let i = 0; i < n; i += 1) {
         const off = (i - (n - 1) / 2) * s.dims.spacing;
-        const m = new THREE.Mesh(new THREE.BoxGeometry(pad, 0.04, pad), mat);
+        const stand = assembleStartBlock(THREE, s.dims.padSize, mats);
         /* Across the pads' own heading, which is the start line. */
-        m.position.set(s.x + Math.cos(s.yaw) * off, y + 0.02, s.z - Math.sin(s.yaw) * off);
-        m.rotation.y = s.yaw;
-        m.receiveShadow = true;
-        baker.bake(m);
+        stand.position.set(s.x + Math.cos(s.yaw) * off, y, s.z - Math.sin(s.yaw) * off);
+        stand.rotation.y = s.yaw;
+        baker.bake(stand);
+        padDecks.push({
+          x: stand.position.x,
+          z: stand.position.z,
+          yaw: s.yaw,
+          padSize: s.dims.padSize,
+        });
       }
     }
   }
@@ -2866,11 +2947,12 @@ function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018) {
 /*
  * The title screen's flythrough, as a closed line of points.
  *
- * THE ATTRACT CAMERA USED TO ORBIT A POINT, and on a map with a course that
- * is the wrong shot: it framed the start gate and nothing else, so a player
- * choosing between two tracks was shown the same nine metre circle whichever
- * one they picked. What a course looks like IS the course, so the camera
- * flies it.
+ * THE BUILT IN CIRCUIT'S TITLE SHOT. On a map with a course that covers a
+ * field, orbiting a point is the wrong shot: it framed the start gate and
+ * nothing else, so a player choosing between two tracks was shown the same
+ * nine metre circle whichever one they picked. What that course looks like
+ * IS the course, so the camera flies it. A designed course does not use
+ * this line; see attractOrbit.
  *
  * It flies ABOVE the racing line rather than along it, and the clearance is
  * derived rather than picked. A fixed height cannot work on this field: a
@@ -2915,6 +2997,77 @@ function attractPath(curve, tops, height) {
     }
   }
   return pts;
+}
+
+/*
+ * Title shot for a designed course: orbit the layout, looking at it.
+ *
+ * Flying the racing line is the right establishing shot on a circuit that
+ * covers a field. On a custom track it is often the wrong one. A single
+ * triple stack's line is a few metres of wrap around one structure, and the
+ * camera sprints that knot in a couple of seconds. What a compact course
+ * looks like is the structure standing on the pitch, so the camera circles
+ * it, framed from the course's own bounds rather than from the start gate.
+ *
+ * Empty courses keep the old nine metre spawn circle: circling nothing is
+ * still a better shot of an empty pitch than a flight round nothing.
+ */
+function attractOrbit(course, gates, tops, heightFn) {
+  const spawn = course.spawn || { x: 0, z: 0 };
+  if (!course.structures.length && !gates.length) {
+    return {
+      x: spawn.x,
+      y: heightFn(spawn.x, spawn.z),
+      z: spawn.z,
+      radius: 9,
+      eye: 2.4,
+      aim: 0.85,
+      path: null,
+    };
+  }
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  const include = (x, z, r) => {
+    minX = Math.min(minX, x - r);
+    maxX = Math.max(maxX, x + r);
+    minZ = Math.min(minZ, z - r);
+    maxZ = Math.max(maxZ, z + r);
+  };
+  for (const s of course.structures) {
+    const d = s.dims || {};
+    const r = Math.max(2.2, (d.clearW ?? d.width ?? 0) * 0.5, (d.depth ?? 0) * 0.5);
+    include(s.x, s.z, r);
+  }
+  for (const g of gates) {
+    include(g.position.x, g.position.z, 2.2);
+  }
+  include(spawn.x, spawn.z, 2.2);
+  const cx = (minX + maxX) * 0.5;
+  const cz = (minZ + maxZ) * 0.5;
+  const ground = heightFn(cx, cz);
+  let top = ground + 2.4;
+  for (const t of tops) {
+    top = Math.max(top, t.top);
+  }
+  const span = Math.hypot((maxX - minX) * 0.5, (maxZ - minZ) * 0.5);
+  const rise = Math.max(1.6, top - ground);
+  /* Radius floors at 16 m so a single stack is not a tight fidget around
+   * its own frame, and caps at 80 m so a pitch-filling layout still reads
+   * as a course rather than as a smudge on the horizon. */
+  const radius = Math.min(80, Math.max(16, span * 1.4 + 4, rise * 1.1 + 8));
+  const eye = Math.max(3.4, rise * 0.38 + span * 0.12 + 2.0);
+  const aim = Math.max(0.7, Math.min(rise * 0.35, eye - 1.4));
+  return {
+    x: cx,
+    y: ground,
+    z: cz,
+    radius,
+    eye,
+    aim,
+    path: null,
+  };
 }
 
 function skyDome() {
@@ -3030,13 +3183,16 @@ function clouds(rng) {
  * the point of flying your own track is to fly it in this world rather than
  * in a grey box.
  */
-export function buildFieldScene(shell, onProgress, course = null) {
+export function buildFieldScene(shell, onProgress, course = null, quality = null) {
+  const q = quality && quality.field ? quality : qualityFor(quality);
   const renderer = shell.renderer;
   const camera = shell.camera;
   const progress = onProgress ?? (() => {});
-  /* PCF soft, not PCF. The field's shadow map covers 144 m at 2048, so the
-   * softer filter is what keeps a tree's cast edge from reading as a
-   * staircase. The city sets its own. */
+  /* PCF soft, not PCF, when High or Medium ask for it. The field's shadow
+   * map covers 144 m at 2048, so the softer filter is what keeps a tree's
+   * cast edge from reading as a staircase. The city sets its own. Low
+   * turns the map off: a Deck's fill rate cannot pay for a 2048 cascade. */
+  renderer.shadowMap.enabled = q.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
@@ -3050,13 +3206,14 @@ export function buildFieldScene(shell, onProgress, course = null) {
 
   const sun = new THREE.DirectionalLight(0xffe9c4, 1.45);
   sun.position.copy(SUN_DIR).multiplyScalar(120);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.castShadow = q.shadows;
+  const shadowMap = q.field.shadowMap || 2048;
+  sun.shadow.mapSize.set(shadowMap, shadowMap);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 320;
   sun.shadow.bias = -0.0012;
   sun.shadow.normalBias = 0.03;
-  const shadowExtent = 72;
+  const shadowExtent = q.field.shadowHalf || 72;
   sun.shadow.camera.left = -shadowExtent;
   sun.shadow.camera.right = shadowExtent;
   sun.shadow.camera.top = shadowExtent;
@@ -3069,10 +3226,11 @@ export function buildFieldScene(shell, onProgress, course = null) {
 
   /*
    * The curve is the spine of the world: the terrain flattens a corridor
-   * along it, the scenery keeps clear of it, and the title screen's camera
-   * flies around it. A designed course has one too, its own racing line, so
-   * the same three things happen for it and a custom track lands on flat
-   * mown ground with the trees kept off it rather than in a forest.
+   * along it and the scenery keeps clear of it. A designed course has one
+   * too, its own racing line, so the same two things happen for it and a
+   * custom track lands on flat mown ground with the trees kept off it
+   * rather than in a forest. The built in circuit's title camera also
+   * flies this line; a designed course orbits the layout instead.
    */
   /* A designed course stands on a marked pitch; the built in circuit is a
    * cross country loop through a valley and has never had one. */
@@ -3089,12 +3247,12 @@ export function buildFieldScene(shell, onProgress, course = null) {
   const ground = terrain(height, samples, pitch);
   scene.add(ground);
   if (pitch) {
-    scene.add(pitchSurface(pitch));
+    scene.add(pitchSurface(pitch, course && course.guide));
   }
   const occluders = [];
   const water0 = water(height);
   scene.add(water0.mesh);
-  const grass = grassField(height, samples, rng, pitch);
+  const grass = grassField(height, samples, rng, pitch, q.field);
   /* Layer 1 is the no ink layer, excluded from the outline prepass.
    * Grass belongs here: a per blade outline turns a field into a pile of
    * glass shards, and the blades are far too thin to need a silhouette. */
@@ -3377,6 +3535,10 @@ export function buildFieldScene(shell, onProgress, course = null) {
         cueGroup: made.cueGroup,
         fillMat: made.fillMat,
         meshYaw: yaw,
+        /* The STRUCTURE's own tilt, which is not the station's: the station's
+         * pitch has the entry sign folded in and this does not. setNextGate
+         * needs both to work out which face the pilot approaches from. */
+        meshPitch: st.pitch ?? 0,
         aperture: scoring[0],
         apertures: scoring,
         primary: made.primary,
@@ -3398,8 +3560,30 @@ export function buildFieldScene(shell, onProgress, course = null) {
   }
 
   /* Barriers, flags, cones and the start pads a designed course carries. */
+  const padDecks = [];
   if (course) {
-    courseProps(course, height, scene, colliders, baker, kit);
+    courseProps(course, height, scene, colliders, baker, kit, padDecks);
+  }
+
+  /*
+   * Athletic paint on the ground: a dashed taut-string line, an arrow on
+   * the approach to each gate, and a solid wrap on the fly side of every
+   * flag. Designed courses bring the guide already converted; the built
+   * in circuit samples its own curve in the direction it is flown, which
+   * is against the parameter, so a mark in front of gate 13 is in front
+   * of the gate the pilot actually meets second.
+   */
+  {
+    const guide = course
+      ? (course.guide || null)
+      : guideFromPolyline(circuitGuidePoints(curve), {
+        holes: placements.map((st) => ({ x: st.x, z: st.z, r: 1.15 })),
+        cues: placements.map((st) => ({ x: st.x, z: st.z, kind: 'gate' })),
+      });
+    const marks = guide ? buildGuideMesh(guide, height, pitch) : null;
+    if (marks) {
+      scene.add(marks);
+    }
   }
 
   /*
@@ -3438,9 +3622,6 @@ export function buildFieldScene(shell, onProgress, course = null) {
       if (gt.cueGroup) {
         gt.cueGroup.visible = false;
       }
-      if (gt.glowMesh) {
-        gt.glowMesh.rotation.y = 0;
-      }
     }
     nextGateIdx = i;
     const target = i >= 0 && i < gates.length ? gates[i] : null;
@@ -3462,17 +3643,38 @@ export function buildFieldScene(shell, onProgress, course = null) {
         target.cueGroup.position.y = target.aperture.centreY;
       }
     }
-    /* Local +Z is the approach face when the station's heading matches
-     * the mesh. A split-S comes back the other way, so the pane turns
-     * around and green stays on the entry. A spiral keeps the same
-     * face, so this stays put. */
-    const flip = Math.cos(target.heading - (target.meshYaw ?? target.heading)) < 0;
-    const yaw = flip ? Math.PI : 0;
-    if (target.glowMesh) {
-      target.glowMesh.rotation.y = yaw;
+    /*
+     * GREEN ON THE FACE THE PILOT COMES FROM, RED ON THE OTHER, and both
+     * halves of this were wrong on a dive gate.
+     *
+     * It used to decide the reversal by comparing two YAWS and then turn the
+     * pane half a turn about Y. A yaw comparison cannot see the difference
+     * between flying up through a hoop and flying down through it, and a yaw
+     * rotation cannot reverse one either: a dive gate's aperture is
+     * horizontal, so spinning it about the vertical axis leaves exactly the
+     * same face pointing at the sky. Every dive gate therefore wore whichever
+     * face its mesh happened to build as the front, which is red on the way
+     * in for the usual case of one flown downwards.
+     *
+     * So the test is the full direction of travel against the structure's own
+     * facing axis, using race.js's aperture frame so the paint and the
+     * scoring cannot disagree about which way through the gate goes. And the
+     * swap is in the COLOURS, not in a rotation: both shaders already choose
+     * on gl_FrontFacing, so this is orientation independent and reverses a
+     * flat hoop as readily as an upright gate.
+     */
+    const travel = travelAxis(target.heading, target.pitch ?? 0);
+    const facing = travelAxis(target.meshYaw ?? target.heading, target.meshPitch ?? 0);
+    const flip = (travel.x * facing.x + travel.y * facing.y + travel.z * facing.z) < 0;
+    const near = flip ? WRONG_COLOUR : NEXT_COLOUR;
+    const far = flip ? NEXT_COLOUR : WRONG_COLOUR;
+    target.glowMat.uniforms.uFront.value.set(near);
+    target.glowMat.uniforms.uBack.value.set(far);
+    if (target.fillMat) {
+      target.fillMat.uniforms.uFront.value.set(near);
+      target.fillMat.uniforms.uBack.value.set(far);
     }
     if (target.cueGroup) {
-      target.cueGroup.rotation.y = yaw;
       target.cueGroup.visible = true;
     }
   }
@@ -3931,51 +4133,56 @@ export function buildFieldScene(shell, onProgress, course = null) {
    */
   const start = gates.length ? gates[0] : null;
   const SPAWN_BACK = 7;
-  /* A designed course parks the quad on its own start pads, which is where
-   * its author put the line. The built in circuit has no pads, so it stands
-   * the quad back from its timing gate. */
+  /* A designed course parks the quad on its own start pads. The built in
+   * circuit has no pads, so it stands the quad back from its timing gate. */
   const spawn = course
-    ? { x: course.spawn.x, z: course.spawn.z, yaw: course.spawn.yaw }
+    ? { x: course.spawn.x, z: course.spawn.z, yaw: course.spawn.yaw, pitch: course.spawn.pitch || 0 }
     : {
       x: start.position.x + Math.sin(start.heading) * SPAWN_BACK,
       z: start.position.z + Math.cos(start.heading) * SPAWN_BACK,
       yaw: start.heading,
     };
   /*
-   * What the title screen looks at. A LAP of the course, flown, with the
-   * orbit kept as the fallback for a map that has no course at all: a
-   * player who has never opened the track builder picks Your track and gets
-   * an empty pitch, and circling the spawn is a better shot of nothing than
-   * a flight round nothing.
+   * What the title screen looks at.
    *
-   * The orbit's framing is unchanged and still earns its comment: the
-   * opening is 1.524 m square with its centre at 0.762 m, so 9 m out and
-   * 2.4 m up, aimed at the aperture centre. 19 m out aimed 2.5 m up was
+   * The built in circuit flies a lap: what that course looks like IS the
+   * course, and the line is long enough that a cruise along it reads as a
+   * flight rather than as a fidget. A designed course orbits its own
+   * bounds instead. The orbit's fallback framing (empty pitch, or the
+   * built-in start-gate circle) is unchanged and still earns its comment:
+   * the opening is 1.524 m square with its centre at 0.762 m, so 9 m out
+   * and 2.4 m up, aimed at the aperture centre. 19 m out aimed 2.5 m up was
    * framed for a 5 m gate and pointed at empty air above one too small to
    * see.
    */
-  const attract = {
-    x: start ? start.position.x : spawn.x,
-    y: start ? start.position.y : height(spawn.x, spawn.z),
-    z: start ? start.position.z : spawn.z,
-    radius: 9,
-    eye: 2.4,
-    aim: 0.85,
-    path: gates.length ? attractPath(curve, obstacleTops, height) : null,
-    /* Metres per second along the line, and metres of look ahead. 13 m/s is
-     * a cruising lap rather than a racing one, which is what a title screen
-     * wants: fast enough to read as flight, slow enough to read the course. */
-    speed: 13,
-    lookAhead: 17,
-    /* How far below the camera the aim point sits, so the shot looks along
-     * the course and slightly down at it rather than at the horizon. */
-    aimDrop: 2.6,
-  };
+  const attract = course
+    ? attractOrbit(course, gates, obstacleTops, height)
+    : {
+      x: start ? start.position.x : spawn.x,
+      y: start ? start.position.y : height(spawn.x, spawn.z),
+      z: start ? start.position.z : spawn.z,
+      radius: 9,
+      eye: 2.4,
+      aim: 0.85,
+      path: gates.length ? attractPath(curve, obstacleTops, height) : null,
+      /* Metres per second along the line, and metres of look ahead. 13 m/s
+       * is a cruising lap rather than a racing one, which is what a title
+       * screen wants: fast enough to read as flight, slow enough to read
+       * the course. */
+      speed: 13,
+      lookAhead: 17,
+      /* How far below the camera the aim point sits, so the shot looks
+       * along the course and slightly down at it rather than at the
+       * horizon. */
+      aimDrop: 2.6,
+    };
 
   return {
     id: course ? 'custom' : 'field',
     name: course ? course.name : 'Race field',
-    mode: 'race',
+    /* A designed course with no stations is freestyle: no lap, no gate
+     * HUD. The built in field always has a circuit, so it stays a race. */
+    mode: course && !(course.stations && course.stations.length) ? 'freestyle' : 'race',
     scene, gates, curve, colliders, spawn, attract,
     /* Anything the reader could not honour, for the shell to show once. */
     notes: course ? course.warnings : [],
@@ -3997,6 +4204,7 @@ export function buildFieldScene(shell, onProgress, course = null) {
       grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
     },
     updateShadowFocus, updateWind, setNextGate,
+    graphics: q.id,
     /* Kept as no-ops so the shell has one call shape. The racing line is
      * a planner tool now; the target in the air is the green pane. */
     setRacingLine() {},
@@ -4005,11 +4213,42 @@ export function buildFieldScene(shell, onProgress, course = null) {
     /*
      * The contact surface. The third argument is the height the query is made
      * FROM, which the city needs so a quad can fly under the overbridge and
-     * land on its deck. The field has one ground surface and no decks, so it
-     * ignores it, and the argument is accepted rather than dropped so main.js
-     * has one call shape for both maps.
+     * land on its deck. The field's dirt is one surface; a designed course
+     * also offers each launch stand as a short deck, so the craft can rest
+     * on the rails. A query from well below the stand still sees grass,
+     * matching the city's step rule, so scenery placed with height(x, z)
+     * stays on the dirt and the stands do not sit on themselves.
      */
-    height: (x, z) => height(x, z),
+    height: (x, z, fromY) => {
+      const g = height(x, z);
+      if (!padDecks.length) {
+        return g;
+      }
+      let best = null;
+      for (const pad of padDecks) {
+        const dx = x - pad.x;
+        const dz = z - pad.z;
+        const c = Math.cos(pad.yaw);
+        const s = Math.sin(pad.yaw);
+        const across = dx * c - dz * s;
+        const along = dx * s + dz * c;
+        const deck = startBlockContactHeight(pad.padSize, across, along);
+        if (deck == null) {
+          continue;
+        }
+        const top = g + deck;
+        if (best == null || top > best) {
+          best = top;
+        }
+      }
+      if (best == null) {
+        return g;
+      }
+      if (fromY == null || fromY + 0.55 >= best) {
+        return best;
+      }
+      return g;
+    },
     /* No animation on the field depends on the physics clock: the flags and
      * the glow pulse are wall clock decoration and updateWind already drives
      * them. Present so the shell has one call shape. */

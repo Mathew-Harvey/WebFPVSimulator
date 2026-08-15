@@ -131,12 +131,15 @@ export function buildKnots(doc) {
     }
 
     /* Marker. Push the knot off the pole by the clearance radius, to the
-     * left or the right of the direction of travel. */
+     * left or the right of the direction of travel. Keep the tangent on
+     * the plan: a flag has no vertical face, and a z component here is
+     * what sends the Hermite between two ground markers underground. */
     const left = leftOf(chainDir);
     const off = scale(left, (k.seq.clearance ?? 0) * passOffsetSign(k.seq.passSide));
+    const flat = normalize({ x: chainDir.x, y: chainDir.y, z: 0 }, { x: 1, y: 0, z: 0 });
     knots.push({
       pos: add(k.pos, off),
-      tangent: chainDir,
+      tangent: flat,
       role: 'marker',
       seq: k.seq,
       index: k.index,

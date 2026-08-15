@@ -330,8 +330,8 @@
         "source": "A Japanese level crossing boom sits 1.00 to 1.40 m above the road. Measured from the arm pivot's world position, and it is what src/maps/city/animation.js gives the boom collider."
       },
       "world_scale": {
-        "value": 1.25,
-        "source": "The world is modelled at 1.25 times the aircraft's own scale (src/render/frame.js WORLD_SCALE), after the owner flew both maps and reported the drone reading too large against an honestly sized gate and town. The check divides it back out before banding the airframe, so this is the declared ratio the page has to agree with, not a tolerance."
+        "value": 1,
+        "source": "The world is modelled at 1 times the aircraft's own scale (src/render/frame.js WORLD_SCALE), so a metre in the physics is a metre in the world. It was 1.25 for one round, to answer a report that the drone read too large against the gate and the town. That was the wrong lever: dividing the craft's displacement cannot change the angle a gate subtends, so it made no gate any bigger and it made every course a quarter longer to fly, which is a quarter added to every lap time on the board. Apparent size belongs to the camera and was fixed there, in CAMERA_FOVS. The check divides this back out before banding the airframe, so it is the declared ratio the page has to agree with, not a tolerance."
       },
       "collider_fit_max_trim_m": {
         "value": 2.0,

@@ -202,8 +202,20 @@ Each row's `kind` decides everything the tool does with it.
 | `barrier` | B | obstacle | **never** | `width depth height` |
 | `flag` | F | marker | yes, with a pass side | `height poleRadius clearance` |
 | `cone` | C | marker | yes, with a pass side | `height baseRadius clearance` |
+| `waypoint` | W | marker | yes, at zero clearance | `height poleRadius clearance` |
 | `startPads` | S | start | **never**, it is the line itself | `pads spacing padSize` |
 | `label` | L | annotation | **never** | `textHeight` |
+
+A `waypoint` is the one element that is **not a thing standing on the field**.
+It says only that the lap passes through this point, at this height, and it is
+a marker so that the rule above gives it what it needs: the knot lands at
+`position + clearance * side`, and its clearance is zero, so the knot is the
+point itself and the tangent comes from the run of the course. It is drawn in
+the builder so an author can grab it, and nothing is built for it on the race
+field. It exists because imported courses need it: Velocidrone lets an author
+drop an invisible trigger volume in open air to pin the racing line where there
+is no gate, and a course that reads one of those as a gate puts obstacles on
+the field that are not on the real track.
 
 Exactly one `startPads` element may exist. A second one is dropped on read.
 

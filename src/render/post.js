@@ -323,12 +323,18 @@ const GradeShader = {
   `,
 };
 
-export function buildComposer(renderer, scene, camera) {
+export function buildComposer(renderer, scene, camera, quality) {
   const size = new THREE.Vector2();
   renderer.getSize(size);
   const dpr = renderer.getPixelRatio();
   const w = Math.max(1, Math.floor(size.x * dpr));
   const h = Math.max(1, Math.floor(size.y * dpr));
+  /* High (or an omitted quality) keeps both. Low drops the outline prepass
+   * and bloom; Medium drops bloom and keeps the ink, which is also the
+   * field's antialiasing. See src/render/quality.js. */
+  const fieldQ = quality && quality.field ? quality.field : null;
+  const wantOutline = !fieldQ || fieldQ.outline !== false;
+  const wantBloom = !fieldQ || fieldQ.bloom !== false;
 
   /*
    * Normals and depth come from one prepass into a target the composer
@@ -342,34 +348,40 @@ export function buildComposer(renderer, scene, camera) {
    * is what takes the edge pass from 11 texture fetches per output pixel
    * to 6 and leaves room in P4 for the two the antialiasing needs.
    */
-  const normalTarget = new THREE.WebGLRenderTarget(w, h, {
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
-  });
-  /* Cleared to a normal of zero and a depth of one: the sky writes nothing
-   * into this target and the edge pass has to read the far plane there,
-   * not the near one. rgba (0, 0, 1, 0) unpacks to exactly depth 1. */
+  let normalTarget = null;
+  let geoUniforms = null;
+  let normalMaterial = null;
+  let grassMaskMaterial = null;
   const GEO_CLEAR = new THREE.Color(0, 0, 1);
-  const geoUniforms = {
-    uNear: { value: camera.near },
-    uFar: { value: camera.far },
-  };
-  const normalMaterial = new THREE.ShaderMaterial({
-    uniforms: geoUniforms,
-    vertexShader: GEO_VERT,
-    fragmentShader: geoFragment(false),
-  });
-  /* Grass is stamped with a normal of zero, which is not a value any
-   * encoded normal can take, so the outline pass can recognise a grass
-   * pixel and refuse to ink it while still using the depth the grass
-   * wrote. Without the depth, the ink pass drew the silhouettes of gate
-   * legs and tree trunks that the grass was standing in front of, as
-   * rectangles floating in the meadow with nothing inside them. */
-  const grassMaskMaterial = new THREE.ShaderMaterial({
-    uniforms: geoUniforms,
-    vertexShader: GEO_VERT,
-    fragmentShader: geoFragment(true),
-  });
+  if (wantOutline) {
+    normalTarget = new THREE.WebGLRenderTarget(w, h, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+    });
+    /* Cleared to a normal of zero and a depth of one: the sky writes nothing
+     * into this target and the edge pass has to read the far plane there,
+     * not the near one. rgba (0, 0, 1, 0) unpacks to exactly depth 1. */
+    geoUniforms = {
+      uNear: { value: camera.near },
+      uFar: { value: camera.far },
+    };
+    normalMaterial = new THREE.ShaderMaterial({
+      uniforms: geoUniforms,
+      vertexShader: GEO_VERT,
+      fragmentShader: geoFragment(false),
+    });
+    /* Grass is stamped with a normal of zero, which is not a value any
+     * encoded normal can take, so the outline pass can recognise a grass
+     * pixel and refuse to ink it while still using the depth the grass
+     * wrote. Without the depth, the ink pass drew the silhouettes of gate
+     * legs and tree trunks that the grass was standing in front of, as
+     * rectangles floating in the meadow with nothing inside them. */
+    grassMaskMaterial = new THREE.ShaderMaterial({
+      uniforms: geoUniforms,
+      vertexShader: GEO_VERT,
+      fragmentShader: geoFragment(true),
+    });
+  }
 
   /*
    * No multisampling on the composer target. Measured, 4x on an RGBA16F
@@ -388,10 +400,13 @@ export function buildComposer(renderer, scene, camera) {
   const composer = new EffectComposer(renderer, composerTarget);
   composer.addPass(new RenderPass(scene, camera));
 
-  const outline = new ShaderPass(OutlineShader);
-  outline.uniforms.tGeo.value = normalTarget.texture;
-  outline.uniforms.uResolution.value.set(w, h);
-  composer.addPass(outline);
+  let outline = null;
+  if (wantOutline) {
+    outline = new ShaderPass(OutlineShader);
+    outline.uniforms.tGeo.value = normalTarget.texture;
+    outline.uniforms.uResolution.value.set(w, h);
+    composer.addPass(outline);
+  }
 
   /*
    * Bloom threshold. At 0.92 on linear luminance nothing in the world
@@ -402,19 +417,22 @@ export function buildComposer(renderer, scene, camera) {
    * no tone mapping, so raising the ring colour past one instead would
    * clamp it to white and take away the hue that identifies the target.
    */
-  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.78);
-  /* Every one of bloom's eleven targets is written by a fullscreen quad
-   * and none of them is depth tested, but three.js gives a render target a
-   * depth renderbuffer by default. Measured, that was 7.6 MB of the frame's
-   * render target budget spent on depth buffers nothing reads. Eleven, not
-   * thirteen, which is what this comment said until a reviewer counted
-   * them: three at 960x540 and a pair each at 480x270, 240x135, 120x68 and
-   * 60x34. The 7.6 MB was right because it was measured; the count beside
-   * it was not, because it was not. */
-  for (const rt of bloomTargets(bloom)) {
-    rt.depthBuffer = false;
+  let bloom = null;
+  if (wantBloom) {
+    bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.28, 0.55, 0.78);
+    /* Every one of bloom's eleven targets is written by a fullscreen quad
+     * and none of them is depth tested, but three.js gives a render target a
+     * depth renderbuffer by default. Measured, that was 7.6 MB of the frame's
+     * render target budget spent on depth buffers nothing reads. Eleven, not
+     * thirteen, which is what this comment said until a reviewer counted
+     * them: three at 960x540 and a pair each at 480x270, 240x135, 120x68 and
+     * 60x34. The 7.6 MB was right because it was measured; the count beside
+     * it was not, because it was not. */
+    for (const rt of bloomTargets(bloom)) {
+      rt.depthBuffer = false;
+    }
+    composer.addPass(bloom);
   }
-  composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
 
@@ -553,12 +571,17 @@ export function buildComposer(renderer, scene, camera) {
    * the cloud.
    */
   const PREPASS_DEPTH_LAYER = 3;
-  promoteToPrepass(scene, PREPASS_DEPTH_LAYER);
+  if (wantOutline) {
+    promoteToPrepass(scene, PREPASS_DEPTH_LAYER);
+  }
   /* Reused rather than allocated: P8 forbids a new object anywhere in the
    * per frame path, and renderNormals runs every frame. */
   const prevClear = new THREE.Color();
 
   function renderNormals() {
+    if (!wantOutline) {
+      return;
+    }
     const prevBg = scene.background;
     const prevOverride = scene.overrideMaterial;
     const prevFog = scene.fog;
@@ -615,10 +638,16 @@ export function buildComposer(renderer, scene, camera) {
     const bw = Math.max(1, Math.floor(width * p));
     const bh = Math.max(1, Math.floor(height * p));
     composer.setSize(width, height);
-    normalTarget.setSize(bw, bh);
-    outline.uniforms.uResolution.value.set(bw, bh);
-    for (const rt of bloomTargets(bloom)) {
-      rt.depthBuffer = false;
+    if (normalTarget) {
+      normalTarget.setSize(bw, bh);
+    }
+    if (outline) {
+      outline.uniforms.uResolution.value.set(bw, bh);
+    }
+    if (bloom) {
+      for (const rt of bloomTargets(bloom)) {
+        rt.depthBuffer = false;
+      }
     }
   }
 
@@ -645,15 +674,27 @@ export function buildComposer(renderer, scene, camera) {
      * does that once and once is enough.
      */
     dispose() {
-      for (const rt of [composer.renderTarget1, composer.renderTarget2, normalTarget]) {
+      const rts = [composer.renderTarget1, composer.renderTarget2];
+      if (normalTarget) {
+        rts.push(normalTarget);
+      }
+      for (const rt of rts) {
         rt.dispose();
       }
-      bloom.dispose();
-      outline.material.dispose();
+      if (bloom) {
+        bloom.dispose();
+      }
+      if (outline) {
+        outline.material.dispose();
+      }
       grade.material.dispose();
       composer.copyPass.material.dispose();
-      normalMaterial.dispose();
-      grassMaskMaterial.dispose();
+      if (normalMaterial) {
+        normalMaterial.dispose();
+      }
+      if (grassMaskMaterial) {
+        grassMaskMaterial.dispose();
+      }
     },
     outline,
     bloom,

@@ -13,16 +13,21 @@ field. `tests/lib/checks.js` check 16 measures it.
 
 ## The contract a map module must satisfy
 
-    export async function buildMap(shell, onProgress) -> MapInstance
+    export async function buildMap(shell, onProgress, options) -> MapInstance
 
 `shell` is `{ renderer, camera, canvas, pixelRatio, quad, discs, resize }`.
 `onProgress(fraction)` is optional and drives the loading screen's world stage.
+`options` is optional. `options.quality` is `'low' | 'medium' | 'high'` and
+selects the graphics preset in `src/render/quality.js`. Custom tracks also
+accept `options.document`. The instance stamps `graphics` with the resolved
+id.
 
 A MapInstance is:
 
-    id            'field' | 'city'
+    id            'field' | 'city' | 'custom'
     name          what the menu shows
     mode          'race' | 'freestyle'
+    graphics      'low' | 'medium' | 'high'
     scene         THREE.Scene, with shell.quad added to it
     post          { render(), setSize(w, h) }
     colliders     a built src/game/collide.js Colliders

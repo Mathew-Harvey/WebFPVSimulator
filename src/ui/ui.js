@@ -1,6 +1,6 @@
 /*
- * ui.js: the product shell. Title, how to fly, settings, pause, results,
- * and the flight overlay.
+ * ui.js: the product shell. Title, how to fly, credits, settings, pause, results,
+ * stick calibration, and the flight overlay.
  *
  * Why this exists: the page used to load straight into a falling quad with
  * a monospace debug dump in the corner. That reads as a tech demo. A
@@ -9,11 +9,14 @@
  * result to read at the end of a run.
  *
  * Every screen is navigable from the keyboard alone and from a radio or
- * gamepad alone. On a radio there are no reliable menu buttons, so the
- * sticks drive the menu: pitch moves the cursor, roll right selects, roll
- * left goes back. Any gamepad button also selects. The screens say so.
- * Rows that hold a value also have a mouse control: up and down arrows
- * for a stepped number, a dropdown for a named list.
+ * gamepad alone, except Settings and the title. On a radio there are no
+ * reliable menu buttons, so the sticks drive the other menus: pitch moves
+ * the cursor, roll right selects, roll left goes back. Any gamepad button
+ * also selects. Title and Settings keep the sticks for the airframe, so
+ * those screens are mouse and keyboard for the rows. A radio switch still
+ * selects on the title. The screens say so. Rows that hold a value also
+ * have a mouse control: up and down arrows for a stepped number, a
+ * dropdown for a named list.
  *
  * The DOM is built here rather than in index.html so the markup and the
  * state machine that drives it sit in one file. Styling lives in
@@ -46,18 +49,49 @@ import {
   RATE_MAX_CHOICES,
   RATE_CENTRE_CHOICES,
   RATE_EXPO_CHOICES,
+  THROTTLE_CAP_CHOICES,
+  hoverStickPercent,
 } from '../../configs/rates.js';
 import { boardPageUrl } from '../share/board.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
+import { inspectCourse } from '../share/listing.js';
 import { activeCourseSummary } from '../share/summary.js';
+import {
+  readPendingTime,
+  readPostedBest,
+  writeBuilderIntent,
+  writePendingTime,
+} from '../share/session.js';
+import {
+  clipKeyForMap,
+  getClip,
+  putClip,
+  makeClipElement,
+  recordCanvasStream,
+  withCaptureLock,
+  whenVisible,
+  CLIP_MS_MAX,
+  CLIP_W,
+  CLIP_H,
+} from '../share/orbitcache.js';
+import {
+  GRAPHICS_IDS,
+  detectDefaultGraphics,
+  graphicsLabel,
+  graphicsNote,
+  normalizeGraphics,
+} from '../render/quality.js';
+import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
+import { JOKE_MS, quotedJoke } from './loading.js';
+import { fillCredits } from './credits.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
 export const CAMERA_ANGLES = [15, 20, 25, 30, 35, 40];
-/* Vertical field of view, degrees. 100 is the long-standing default; the
- * list brackets real FPV cameras, whose diagonal runs about 135 to 160
- * degrees depending on lens and sensor. */
-export const CAMERA_FOVS = [90, 100, 110, 120];
+export const FLIGHT_MODES = ['acro', 'angle'];
+/* The lens, and the derivation behind it, live in src/render/lens.js. It is
+ * re-exported here because the settings screen is where a pilot meets it. */
+export { CAMERA_FOVS, CAMERA_FOV_DEFAULT };
 export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
 export const LAP_COUNTS = [1, 3, 5];
 
@@ -79,8 +113,14 @@ const DEFAULTS = {
   rateYawMax: RATE_DEFAULTS.rateYawMax,
   rateCentre: RATE_DEFAULTS.rateCentre,
   rateExpo: RATE_DEFAULTS.rateExpo,
+  /* Betaflight's throttle limit, SCALE type. 100 is off, which is what a
+   * freshly flashed quad does, so that is where the menu starts. */
+  throttleCap: RATE_DEFAULTS.throttleCap,
+  /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
+   * Keyboard flight always raises angle, regardless of this value. */
+  flightMode: 'acro',
   cameraAngle: 30,
-  cameraFov: 100,
+  cameraFov: CAMERA_FOV_DEFAULT,
   packVoltage: 4.2,
   laps: 3,
   sound: true,
@@ -102,6 +142,11 @@ const DEFAULTS = {
   ambienceLevel: 4,
   focusTone: false,
   readout: false,
+  /* Named preset, not a bag of sliders. 'high' is the authored look and
+   * the default on a first run that is not a Steam Deck; see
+   * src/render/quality.js. A string so loadSettings' typeof gate accepts
+   * it, and an unknown value falls back to high rather than throwing. */
+  graphics: 'high',
 };
 
 export function loadSettings() {
@@ -112,10 +157,46 @@ export function loadSettings() {
     stored = {};
   }
   const s = { ...DEFAULTS };
+  const hadGraphics = typeof stored.graphics === 'string';
   for (const k of Object.keys(DEFAULTS)) {
     if (typeof stored[k] === typeof DEFAULTS[k]) {
       s[k] = stored[k];
     }
+  }
+  if (s.flightMode !== 'angle') {
+    s.flightMode = 'acro';
+  }
+  /*
+   * A setting the pilot picks off a LIST has to still be on that list.
+   *
+   * The typeof gate above is not enough on its own: it accepts any number at
+   * all, so a hand edited local storage entry could set the field of view to
+   * 5 and the projection would be a telescope with no way back except
+   * clearing the site. It also silently keeps a value the list no longer
+   * offers, which is how the field of view recalibration would have reached
+   * nobody who had ever opened Settings: their stored 100 is not on the new
+   * list and was chosen against a different camera model, so it goes back to
+   * the default rather than being snapped to the nearest survivor.
+   */
+  for (const [key, allowed] of [
+    ['cameraFov', CAMERA_FOVS],
+    ['cameraAngle', CAMERA_ANGLES],
+    ['laps', LAP_COUNTS],
+    ['packVoltage', PACK_VOLTAGES],
+    ['throttleCap', THROTTLE_CAP_CHOICES],
+  ]) {
+    if (!allowed.includes(s[key])) {
+      s[key] = DEFAULTS[key];
+    }
+  }
+  /* First run, or an older save from before this key existed: pick Low
+   * on a Deck so the page is flyable, High everywhere else so the
+   * authored look is what a new desktop player sees. A stored choice,
+   * even a stale one, wins over detection. */
+  if (!hadGraphics) {
+    s.graphics = detectDefaultGraphics();
+  } else {
+    s.graphics = normalizeGraphics(s.graphics);
   }
   return s;
 }
@@ -141,6 +222,35 @@ export function formatTime(ms) {
   return s.toFixed(2);
 }
 
+function formatDelta(ms) {
+  if (ms == null || !Number.isFinite(ms)) {
+    return '';
+  }
+  const core = formatTime(Math.abs(ms));
+  if (ms < 0) {
+    return `-${core}`;
+  }
+  if (ms > 0) {
+    return `+${core}`;
+  }
+  return core;
+}
+
+function makeGimbal(caption) {
+  const box = el('div', 'osd-gimbal');
+  const plate = el('div', 'osd-gimbal-plate');
+  plate.append(el('div', 'osd-cross-x'), el('div', 'osd-cross-y'));
+  const nub = el('div', 'osd-nub');
+  plate.append(nub);
+  box.append(plate, el('div', 'osd-gimbal-cap', caption));
+  return { box, nub };
+}
+
+function placeNub(nub, x, y) {
+  nub.style.left = `${50 + x * 50}%`;
+  nub.style.top = `${50 - y * 50}%`;
+}
+
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) {
@@ -157,6 +267,28 @@ function btn(cls, text) {
   n.type = 'button';
   return n;
 }
+
+function hintWithKeys(keys, text) {
+  const n = el('div', 'hint');
+  const ks = el('span', 'hint-keys');
+  for (const k of keys) {
+    ks.append(el('kbd', null, k));
+  }
+  n.append(ks, el('span', 'hint-copy', text));
+  return n;
+}
+
+function wordmark() {
+  const h = el('h1', 'wordmark');
+  h.append(document.createTextNode('WEB'), el('span', 'fpv', 'FPV'));
+  return h;
+}
+
+/*
+ * First-time thumbnail wait. Recording a clip takes several seconds
+ * (the city, longer). A blank card looks like a stall. Same copy as the
+ * boot screen: "loading" and a joke. Cached visits never see it.
+ */
 
 /* A menu plus a side column for its note, so the note cannot resize the rows. */
 function wrapMenu() {
@@ -204,14 +336,123 @@ function customMapNote(map, seat) {
   if (map.id !== 'custom') {
     return map.note;
   }
-  if (seat && seat.shared) {
+  if (!seat) {
+    return map.note;
+  }
+  const gates = `${seat.gates} gate${seat.gates === 1 ? '' : 's'}`;
+  if (seat.kind === 'community') {
     const by = seat.author ? ` by ${seat.author}` : '';
-    return `${seat.name}${by}. A published course. Fly it and post a time under your name.`;
+    return `${seat.name}${by}. A published course. Fly it and upload a time, or edit a copy under a new name.`;
   }
-  if (seat) {
-    return `${seat.name}, ${seat.gates} gate${seat.gates === 1 ? '' : 's'}. This copy lives in this browser until you publish it.`;
+  if (seat.kind === 'owned') {
+    if (seat.layoutDrift) {
+      return `${seat.name}. Your course on the board, with a layout that has not been updated yet. Update it before uploading a time.`;
+    }
+    return `${seat.name}. Your course on the board. Fly it and upload a time. A rename in the editor updates the board.`;
   }
-  return map.note;
+  if (seat.kind === 'remix') {
+    const of = seat.sourceName ? ` of ${seat.sourceName}` : '';
+    const by = seat.sourceAuthor ? ` by ${seat.sourceAuthor}` : '';
+    return `${seat.name}, your copy${of}${by}. Publish it under a new name to put it on the board.`;
+  }
+  return `${seat.name}, ${gates}. This copy lives in this browser until you publish it.`;
+}
+
+function liveListing(mapId) {
+  if (mapId && mapId !== 'custom') {
+    return null;
+  }
+  try {
+    const course = inspectCourse();
+    return course && course.kind !== 'none' ? course : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function uploadAction(listing, { fastestMs, timePosted }) {
+  if (!listing || !listing.canPostTime || !listing.shareId) {
+    return null;
+  }
+  const pending = readPendingTime();
+  const ms = Number.isFinite(fastestMs)
+    ? fastestMs
+    : (pending && pending.trackId === listing.shareId ? pending.lapMs : null);
+  if (ms == null) {
+    return null;
+  }
+  if (timePosted) {
+    const rank = timePosted.rank != null ? ` Rank ${timePosted.rank}.` : '';
+    return {
+      label: 'Time uploaded',
+      action: 'posttime',
+      note: `That lap is on the public board.${rank}`,
+    };
+  }
+  const best = readPostedBest(listing.shareId);
+  const isNew = best != null && ms < best;
+  return {
+    label: isNew ? `Upload new best, ${formatTime(ms)}` : `Upload ${formatTime(ms)}`,
+    action: 'posttime',
+    note: isNew
+      ? 'Faster than the last time you uploaded from this browser. Sends this lap to the public board.'
+      : 'Send this lap to the public board under your name.',
+  };
+}
+
+function publishAction(listing, published) {
+  if (!listing || listing.kind === 'community') {
+    return null;
+  }
+  if (listing.canPublishNew && !published) {
+    const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
+    const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
+    return {
+      label: listing.remix ? 'Publish this course' : 'Publish this course',
+      action: 'publishcourse',
+      note: listing.remix
+        ? `Your copy${of}${by}. Goes on the board under a new name. Then you can upload a time.`
+        : 'Put this course on the public board. Then you can upload a time.',
+    };
+  }
+  if (listing.canUpdateListing && listing.layoutDrift) {
+    return {
+      label: 'Update this course',
+      action: 'publishcourse',
+      note: 'The layout changed. Updating the board will clear posted times, then you can upload a time.',
+    };
+  }
+  if (published) {
+    return {
+      label: 'Published',
+      action: 'leaderboard',
+      note: 'This course is on the public board.',
+    };
+  }
+  return null;
+}
+
+function remixAction(listing) {
+  if (!listing || !listing.canRemix) {
+    return null;
+  }
+  const by = listing.author ? ` by ${listing.author}` : '';
+  return {
+    label: 'Edit a copy',
+    action: 'remix',
+    note: `Open ${listing.name}${by} in the track builder as your own course, under a new name.`,
+  };
+}
+
+function editOwnAction(listing) {
+  if (!listing || listing.kind !== 'owned') {
+    return null;
+  }
+  return {
+    label: 'Edit this course',
+    action: 'editown',
+    note: 'Open this course in the track builder. A rename updates the name on the board. A layout change asks before clearing times.',
+  };
 }
 
 function tuneItem(s) {
@@ -225,6 +466,35 @@ function tuneItem(s) {
   );
 }
 
+function graphicsItem(s) {
+  const id = normalizeGraphics(s.graphics);
+  return choice(
+    'Graphics',
+    graphicsNote(id),
+    GRAPHICS_IDS,
+    id,
+    graphicsLabel,
+    (v) => { s.graphics = v; },
+  );
+}
+
+function gpuItem(info) {
+  if (!info) {
+    return {
+      label: 'GPU',
+      value: 'Detecting',
+      note: 'Read from the WebGL context that is drawing the world.',
+      info: true,
+    };
+  }
+  return {
+    label: 'GPU',
+    value: info.display,
+    note: info.note,
+    info: true,
+  };
+}
+
 export class Ui {
   constructor(root) {
     this.root = root;
@@ -236,11 +506,17 @@ export class Ui {
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
+    this.resultsFastest = null;
+    this.coursePublished = null;
     this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
     this.dropEl = null;
     this.dropIndex = null;
     this.menuRows = [];
     this.rowOffset = 0;
+    this.reelFreezeWorld = false;
+    this.gpuInfo = null;
+    this.ptrX = null;
+    this.ptrY = null;
     this.build();
     this.root.addEventListener('mousedown', (e) => {
       if (this.dropEl && !this.dropEl.contains(e.target) && !e.target.closest('.drop-btn')) {
@@ -273,13 +549,19 @@ export class Ui {
     const packBlock = el('div', 'osd-corner osd-left');
     packBlock.append(el('div', 'osd-label', 'Pack'), this.osdPack, packBar);
     this.osdSpeed = el('div', 'osd-value', '');
+    this.osdFlight = el('div', 'osd-sub osd-mode', '');
     this.osdAlt = el('div', 'osd-sub', '');
     this.osdThrBar = el('div', 'bar-fill warm');
     const thrBar = el('div', 'bar');
     thrBar.append(this.osdThrBar);
     const flightBlock = el('div', 'osd-corner osd-right');
-    flightBlock.append(this.osdSpeed, this.osdAlt, el('div', 'osd-label', 'Throttle'), thrBar);
-    this.osd.append(top, packBlock, flightBlock);
+    flightBlock.append(this.osdSpeed, this.osdFlight, this.osdAlt, el('div', 'osd-label', 'Throttle'), thrBar);
+    const sticks = el('div', 'osd-sticks is-off');
+    this.osdStickLeft = makeGimbal('Yaw, throttle');
+    this.osdStickRight = makeGimbal('Roll, pitch');
+    sticks.append(this.osdStickLeft.box, this.osdStickRight.box);
+    this.osdSticks = sticks;
+    this.osd.append(top, packBlock, flightBlock, sticks);
     r.append(this.osd);
 
     /* Centre banner: launch prompt, lap splits, crash notice, and the
@@ -293,9 +575,10 @@ export class Ui {
     this.screens = {};
 
     const title = el('div', 'screen screen-title');
+    const copy = el('div', 'title-copy');
     const brand = el('div', 'brand');
     this.brandSub = el('div', 'brand-sub', '');
-    brand.append(el('h1', null, 'WEBFPV'), this.brandSub);
+    brand.append(wordmark(), this.brandSub);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a course to put it on the public board.');
@@ -303,7 +586,15 @@ export class Ui {
     const titleBlock = wrapMenu();
     this.titleMenu = titleBlock.menu;
     this.titleHelp = titleBlock.help;
-    title.append(brand, titleBlock.stage, el('div', 'hint', 'Arrow keys move, Enter selects. On a radio: pitch to move, roll right to select.'));
+    const titleFoot = el('div', 'title-foot');
+    titleFoot.append(
+      hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter selects. A radio banks the quad. Any switch selects.'),
+      titleBlock.stage,
+    );
+    copy.append(brand, titleFoot);
+    this.craftCanvas = el('canvas', 'craft-view');
+    this.craftCanvas.setAttribute('aria-hidden', 'true');
+    title.append(copy);
     this.screens.title = title;
 
     const howto = el('div', 'screen screen-page');
@@ -313,10 +604,11 @@ export class Ui {
     kb.append(el('h3', null, 'Keyboard'));
     const kbList = el('dl');
     for (const [k, v] of [
-      ['W and S', 'Throttle up and down. It stays where you leave it.'],
-      ['A and D', 'Yaw left and right, turning the nose.'],
-      ['Up and down arrows', 'Pitch. Up arrow tips the nose down and flies you forward.'],
-      ['Left and right arrows', 'Roll left and right.'],
+      ['W and S', 'Throttle. A tap is a nudge, a hold climbs, a long hold punches. Let go and it holds height. Hold S to come down.'],
+      ['A and D', 'Yaw. Same analog: tap a little, hold more, long hold full.'],
+      ['Up and down arrows', 'Pitch. Up arrow is stick forward, nose down, fly forward. Tap, hold, long hold.'],
+      ['Left and right arrows', 'Roll. Same analog as the other keys.'],
+      ['Ghost sticks', 'Two transparent gimbals at the bottom of the frame show the stick the keys are making. A radio does not show them.'],
       ['Escape', 'Pause.'],
       ['R', 'Put the quad back on the start line.'],
     ]) {
@@ -328,7 +620,7 @@ export class Ui {
     const padList = el('dl');
     for (const [k, v] of [
       ['Plug in', 'Put your radio in joystick mode before loading the page.'],
-      ['Calibrate', 'Choose Calibrate sticks in Settings, then follow the prompts.'],
+      ['Calibrate', 'Choose Calibrate sticks in Settings. Centre, sweep the sticks, then one named move per channel.'],
       ['Left stick', 'Throttle and yaw, as on a Mode 2 radio.'],
       ['Right stick', 'Pitch and roll.'],
       ['Menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
@@ -338,12 +630,26 @@ export class Ui {
     pad.append(padList);
     cols.append(kb, pad);
     howto.append(cols);
-    howto.append(el('p', 'lede', 'This quad does not hold itself level. Let go of the sticks and it keeps whatever attitude you left it in, so every turn has to be flown back out again. A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the pulsing gate: green is the way through, red is the wrong face. The pane jumps to the next gate when you pass. Touching a gate frame is a crash.'));
+    howto.append(el('p', 'lede', 'On a radio in Acro this quad does not hold itself level. Let go of the sticks and it keeps whatever attitude you left it in, so every turn has to be flown back out again. Keyboard flight is Angle: sticks tilt the quad, and letting go brings it back to level. Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold moves it further and sits at a flyable amount, a long hold goes to full. Watch the ghost sticks. W is throttle (left stick forward), the up arrow is pitch (right stick forward). Let go of W and throttle returns to a hover. A radio throttle still stays where you leave it. A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the pulsing gate: green is the way through, red is the wrong face. The pane jumps to the next gate when you pass. Touching a gate frame is a crash.'));
     const howtoBlock = wrapMenu();
     this.howtoMenu = howtoBlock.menu;
     this.howtoHelp = howtoBlock.help;
     howto.append(howtoBlock.stage);
     this.screens.howto = howto;
+
+    const credits = el('div', 'screen screen-page screen-credits');
+    credits.append(el('h2', null, 'Credits'));
+    this.creditsRoll = el('div', 'credits-roll');
+    fillCredits(this.creditsRoll, { assetBase: 'assets/credits' });
+    const creditsBlock = wrapMenu();
+    this.creditsMenu = creditsBlock.menu;
+    this.creditsHelp = creditsBlock.help;
+    credits.append(
+      this.creditsRoll,
+      creditsBlock.stage,
+      hintWithKeys(['Esc'], 'Goes back. Arrow keys still move the menu.'),
+    );
+    this.screens.credits = credits;
 
     /*
      * The map screen. Cards rather than a row of text, and each card plays a
@@ -356,20 +662,24 @@ export class Ui {
      * "Race field" and "Freestyle city". What a world is like is not
      * something a sentence gets across, so the cards show it.
      *
-     * The thumbnails are built in src/ui/mapreel.js, which is imported
-     * lazily the first time this screen opens. That is not tidiness: the
-     * city's own modules must never be fetched until the city is chosen
-     * (check 16 asserts it), and the reel module reaches for the track
-     * builder's data to draw a designed course, so none of it belongs on the
-     * boot path.
+     * The thumbnail is a recorded loop of the title shot, not a live world.
+     * The first visit that needs a card records 480p into IndexedDB; every
+     * visit after that is a <video> element. Boot still does not fetch the
+     * city (check 16). Opening this screen does not keep a second WebGL
+     * copy of any world running, which is what a Steam Deck with other tabs
+     * open actually survives.
      */
-    const maps = el('div', 'screen screen-page');
+    const maps = el('div', 'screen screen-page screen-maps');
     maps.append(el('h2', null, 'Choose a world'));
     this.mapCardHost = el('div', 'map-cards');
-    this.mapsHelp = el('div', 'menu-help menu-help-below');
-    this.mapsMenu = el('div', 'menu');
-    maps.append(this.mapCardHost, this.mapsHelp, this.mapsMenu,
-      el('div', 'hint', 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'));
+    const mapsBlock = wrapMenu();
+    this.mapsMenu = mapsBlock.menu;
+    this.mapsHelp = mapsBlock.help;
+    maps.append(
+      this.mapCardHost,
+      mapsBlock.stage,
+      hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'),
+    );
     this.screens.maps = maps;
 
     const settings = el('div', 'screen screen-page screen-settings');
@@ -378,16 +688,43 @@ export class Ui {
     this.settingsMenu = settingsBlock.menu;
     this.settingsMenu.classList.add('menu-scroll');
     this.settingsHelp = settingsBlock.help;
-    this.craftCanvas = el('canvas', 'craft-view');
-    this.craftCanvas.setAttribute('aria-hidden', 'true');
+    this.craftSettingsFrame = el('div', 'craft-showcase-frame');
+    this.craftSettingsFrame.append(this.craftCanvas);
     this.craftCaption = el('div', 'craft-showcase-cap', 'Acro. Sticks are rates. Hands off holds.');
     const showcase = el('div', 'craft-showcase');
-    const frame = el('div', 'craft-showcase-frame');
-    frame.append(this.craftCanvas);
-    showcase.append(frame, this.craftCaption);
+    showcase.append(this.craftSettingsFrame, this.craftCaption);
     settingsBlock.stage.prepend(showcase);
-    settings.append(settingsBlock.stage, el('div', 'hint', 'Arrows and dropdowns change a value. On a radio, roll changes it. The quad on the left follows the sticks.'));
+    settings.append(settingsBlock.stage, el('div', 'hint', 'Mouse or arrow keys change a value. The quad follows the radio or gamepad.'));
     this.screens.settings = settings;
+
+    const calibrate = el('div', 'screen screen-page screen-calibrate');
+    calibrate.append(el('h2', null, 'Calibrate sticks'));
+    this.calKicker = el('div', 'cal-kicker', '');
+    this.calPrompt = el('p', 'cal-prompt', '');
+    this.calHint = el('p', 'cal-hint', '');
+    const calSticks = el('div', 'cal-sticks');
+    this.calStickLeft = makeGimbal('Yaw, throttle');
+    this.calStickRight = makeGimbal('Roll, pitch');
+    calSticks.append(this.calStickLeft.box, this.calStickRight.box);
+    this.calList = el('ol', 'cal-steps');
+    const calBtns = el('div', 'cal-actions');
+    this.calCancelBtn = btn('name-dialog-btn', 'Cancel');
+    this.calSaveBtn = btn('name-dialog-btn on', 'Save mapping');
+    this.calSaveBtn.disabled = true;
+    this.calCancelBtn.addEventListener('click', () => this.act('calibrate-cancel'));
+    this.calSaveBtn.addEventListener('click', () => this.act('calibrate-save'));
+    calBtns.append(this.calCancelBtn, this.calSaveBtn);
+    calibrate.append(
+      this.calKicker,
+      this.calPrompt,
+      this.calHint,
+      calSticks,
+      this.calList,
+      calBtns,
+      hintWithKeys(['Esc'], 'Cancels. Nothing is saved until Save mapping.'),
+    );
+    this.screens.calibrate = calibrate;
+    this.calCanSave = false;
 
     const paused = el('div', 'screen screen-modal');
     paused.append(el('h2', null, 'Paused'));
@@ -397,13 +734,32 @@ export class Ui {
     paused.append(pausedBlock.stage);
     this.screens.paused = paused;
 
-    const results = el('div', 'screen screen-page');
-    this.resultsHead = el('h2', null, 'Run complete');
+    const results = el('div', 'screen screen-results');
+    const resultsCopy = el('div', 'results-copy');
+    const resultsTop = el('div', 'results-top');
+    this.resultsKicker = el('div', 'results-kicker', '');
+    this.resultsHead = el('h2', 'results-head', 'Run complete');
+    this.resultsHero = el('div', 'results-hero');
+    this.resultsHeroCap = el('div', 'results-hero-cap', 'Best lap');
+    this.resultsHeroTime = el('div', 'results-hero-time', '');
+    this.resultsHeroMeta = el('div', 'results-hero-meta', '');
+    this.resultsHero.append(this.resultsHeroCap, this.resultsHeroTime, this.resultsHeroMeta);
     this.resultsBody = el('div', 'results');
+    this.resultsNote = el('p', 'results-note', '');
+    resultsTop.append(
+      this.resultsKicker,
+      this.resultsHead,
+      this.resultsHero,
+      this.resultsBody,
+      this.resultsNote,
+    );
     const resultsBlock = wrapMenu();
     this.resultsMenu = resultsBlock.menu;
     this.resultsHelp = resultsBlock.help;
-    results.append(this.resultsHead, this.resultsBody, resultsBlock.stage);
+    const resultsFoot = el('div', 'results-foot');
+    resultsFoot.append(resultsBlock.stage);
+    resultsCopy.append(resultsTop, resultsFoot);
+    results.append(resultsCopy);
     this.screens.results = results;
 
     this.nameDialog = el('div', 'name-dialog');
@@ -428,9 +784,128 @@ export class Ui {
 
   markTimePosted(posted) {
     this.timePosted = posted || { ok: true };
-    if (this.screen === 'results') {
+    if (this.screen === 'title' || this.screen === 'results') {
       this.renderMenu();
     }
+  }
+
+  markCoursePublished(posted) {
+    this.coursePublished = posted || { ok: true };
+    if (this.screen === 'title' || this.screen === 'results' || this.screen === 'maps') {
+      this.renderMenu();
+    }
+  }
+
+  /*
+   * Typed fields. The stick menu cannot enter a name, so this is a small
+   * overlay. Resolves to a map of field keys, or null if they cancel.
+   */
+  askForm({ title, detail, confirmLabel, fields } = {}) {
+    if (this.nameWait) {
+      this.closeNameDialog(null);
+    }
+    const list = Array.isArray(fields) && fields.length
+      ? fields
+      : [{
+        key: 'name',
+        label: '',
+        value: readPilotName() || '',
+        maxLength: 24,
+        placeholder: 'Name',
+        rules: nameRules(),
+        save: writePilotName,
+      }];
+    return new Promise((resolve) => {
+      this.nameWait = resolve;
+      const box = el('div', 'name-dialog-box');
+      box.append(el('h2', null, title || 'Your name'));
+      if (detail) {
+        box.append(el('p', 'lede', detail));
+      }
+      const inputs = [];
+      const err = el('p', 'name-dialog-err', '');
+      for (const spec of list) {
+        if (spec.label) {
+          box.append(el('p', 'name-dialog-label', spec.label));
+        }
+        if (spec.rules && !spec.label) {
+          box.append(el('p', 'lede', spec.rules));
+        } else if (spec.rules) {
+          box.append(el('p', 'lede', spec.rules));
+        }
+        const field = document.createElement('input');
+        field.type = 'text';
+        field.className = 'name-dialog-input';
+        field.maxLength = spec.maxLength || 80;
+        field.autocomplete = spec.autocomplete || 'off';
+        field.value = spec.value || '';
+        field.placeholder = spec.placeholder || spec.label || '';
+        field.dataset.key = spec.key;
+        box.append(field);
+        inputs.push({ spec, field });
+      }
+      const row = el('div', 'name-dialog-row');
+      const save = btn('name-dialog-btn on', confirmLabel || 'Save');
+      const cancel = btn('name-dialog-btn', 'Cancel');
+      row.append(save, cancel);
+      box.append(err, row);
+      this.nameDialog.textContent = '';
+      this.nameDialog.append(box);
+      this.nameDialog.hidden = false;
+      const readValues = () => {
+        const out = {};
+        for (const { spec, field } of inputs) {
+          let value = String(field.value || '').trim();
+          if (spec.save) {
+            value = spec.save(field.value);
+            if (!value) {
+              err.textContent = spec.rules || 'That value is not usable.';
+              field.focus();
+              return null;
+            }
+          } else if (spec.required !== false && !value) {
+            err.textContent = spec.empty || 'That needs a name.';
+            field.focus();
+            return null;
+          }
+          out[spec.key] = value;
+        }
+        return out;
+      };
+      const finish = (value) => {
+        this.closeNameDialog(value);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          const values = readValues();
+          if (values) {
+            finish(values);
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(null);
+        }
+      };
+      this.nameKeyHandler = onKey;
+      this.nameDialog.addEventListener('keydown', onKey, true);
+      save.addEventListener('click', () => {
+        const values = readValues();
+        if (values) {
+          finish(values);
+        }
+      });
+      cancel.addEventListener('click', () => finish(null));
+      this.nameDialog.addEventListener('click', (e) => {
+        if (e.target === this.nameDialog) {
+          finish(null);
+        }
+      }, { once: true });
+      inputs[0].field.focus();
+      inputs[0].field.select();
+    });
   }
 
   /*
@@ -439,72 +914,28 @@ export class Ui {
    * they cancel.
    */
   askName({ title, detail } = {}) {
-    if (this.nameWait) {
-      this.closeNameDialog(null);
-    }
-    return new Promise((resolve) => {
-      this.nameWait = resolve;
-      const box = el('div', 'name-dialog-box');
-      box.append(el('h2', null, title || 'Your name'));
-      box.append(el('p', 'lede', detail || 'Posted times and published courses carry this name.'));
-      box.append(el('p', 'lede', nameRules()));
-      const field = document.createElement('input');
-      field.type = 'text';
-      field.className = 'name-dialog-input';
-      field.maxLength = 24;
-      field.autocomplete = 'nickname';
-      field.value = readPilotName() || '';
-      field.placeholder = 'Name';
-      const err = el('p', 'name-dialog-err', '');
-      const row = el('div', 'name-dialog-row');
-      const save = btn('name-dialog-btn on', 'Save');
-      const cancel = btn('name-dialog-btn', 'Cancel');
-      row.append(save, cancel);
-      box.append(field, err, row);
-      this.nameDialog.textContent = '';
-      this.nameDialog.append(box);
-      this.nameDialog.hidden = false;
-      const finish = (value) => {
-        field.removeEventListener('keydown', onKey);
-        this.closeNameDialog(value);
-      };
-      const onKey = (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          e.stopPropagation();
-          const name = writePilotName(field.value);
-          if (!name) {
-            err.textContent = nameRules();
-            return;
-          }
-          finish(name);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          finish(null);
-        }
-      };
-      field.addEventListener('keydown', onKey);
-      save.addEventListener('click', () => {
-        const name = writePilotName(field.value);
-        if (!name) {
-          err.textContent = nameRules();
-          return;
-        }
-        finish(name);
-      });
-      cancel.addEventListener('click', () => finish(null));
-      this.nameDialog.addEventListener('click', (e) => {
-        if (e.target === this.nameDialog) {
-          finish(null);
-        }
-      }, { once: true });
-      field.focus();
-      field.select();
-    });
+    return this.askForm({
+      title: title || 'Your name',
+      detail: detail || 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.',
+      confirmLabel: 'Save',
+      fields: [{
+        key: 'name',
+        label: '',
+        value: readPilotName() || '',
+        maxLength: 24,
+        placeholder: 'Name',
+        autocomplete: 'nickname',
+        rules: nameRules(),
+        save: writePilotName,
+      }],
+    }).then((values) => (values ? values.name : null));
   }
 
   closeNameDialog(value) {
+    if (this.nameKeyHandler) {
+      this.nameDialog.removeEventListener('keydown', this.nameKeyHandler, true);
+      this.nameKeyHandler = null;
+    }
     this.nameDialog.hidden = true;
     this.nameDialog.textContent = '';
     const done = this.nameWait;
@@ -521,7 +952,8 @@ export class Ui {
     if (this.screen === 'title') {
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
-      return [
+      const listing = m.id === 'custom' ? liveListing('custom') : null;
+      const rows = [
         { label: 'Fly', action: 'fly' },
         {
           label: 'Map',
@@ -539,16 +971,43 @@ export class Ui {
         {
           label: 'Track builder',
           action: 'trackbuilder',
-          note: 'Design a course. Place gates, set which way each one is flown, and derive the racing line. Tracks stay in this browser until you publish them.',
-        },
-        {
-          label: 'Leaderboard',
-          action: 'leaderboard',
-          note: 'Published courses and their times. Opens in a new tab.',
+          note: listing && listing.kind === 'community'
+            ? 'Opens your canvas. Edit a copy, below, to remix this published course.'
+            : 'Design a course. Place gates, set which way each one is flown, and derive the racing line. Tracks stay in this browser until you publish them.',
         },
       ];
+      const remix = remixAction(listing);
+      if (remix) {
+        rows.push(remix);
+      }
+      const editOwn = editOwnAction(listing);
+      if (editOwn) {
+        rows.push(editOwn);
+      }
+      const publish = publishAction(listing, this.coursePublished);
+      if (publish) {
+        rows.push(publish);
+      }
+      const upload = uploadAction(listing, { timePosted: this.timePosted });
+      if (upload) {
+        rows.push(upload);
+      }
+      rows.push({
+        label: 'Leaderboard',
+        action: 'leaderboard',
+        note: 'Published courses and their times. Opens in a new tab.',
+      });
+      rows.push({
+        label: 'Credits',
+        action: 'credits',
+        note: 'Who made this, who flew it, and whose work it stands on.',
+      });
+      return rows;
     }
     if (this.screen === 'howto') {
+      return [{ label: 'Back', action: 'back' }];
+    }
+    if (this.screen === 'credits') {
       return [{ label: 'Back', action: 'back' }];
     }
     if (this.screen === 'maps') {
@@ -572,7 +1031,7 @@ export class Ui {
           value: name || 'Not set',
           action: 'setname',
           note: name
-            ? 'Posted times and published courses carry this name. It stays in this browser.'
+            ? 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.'
             : `Needed to publish a course or post a time. ${nameRules()}`,
         },
         choice(
@@ -608,6 +1067,24 @@ export class Ui {
           (n) => { s.rateExpo = n; },
         ),
         choice(
+          'Throttle cap',
+          'This quad is 9 to 1 thrust to weight and hovers at a fifth of the stick, so almost all the travel is above hover. The cap keeps the full stick range and spreads it over less throttle, so the same stick movement is a smaller change. It does not slow the quad down, it caps the top.',
+          THROTTLE_CAP_CHOICES,
+          s.throttleCap,
+          (n) => (n === 100
+            ? `Off, hover at ${hoverStickPercent(n).toFixed(0)} percent of stick`
+            : `${n} percent, hover at ${hoverStickPercent(n).toFixed(0)} percent of stick`),
+          (n) => { s.throttleCap = n; },
+        ),
+        choice(
+          'Flight mode',
+          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
+          FLIGHT_MODES,
+          s.flightMode === 'angle' ? 'angle' : 'acro',
+          (id) => (id === 'angle' ? 'Angle' : 'Acro'),
+          (id) => { s.flightMode = id; },
+        ),
+        choice(
           'Camera angle',
           'How far the camera tilts up. More angle suits more speed. The quad beside the list shows it.',
           CAMERA_ANGLES,
@@ -617,12 +1094,14 @@ export class Ui {
         ),
         choice(
           'Field of view',
-          'Wider sees more and feels roomier, narrower magnifies. Real FPV cameras sit around 110.',
+          'Wider sees more, narrower magnifies. 75 matches what an FPV lens does to the middle of the frame; 85 gives some of that back for width.',
           CAMERA_FOVS,
           s.cameraFov,
           (n) => `${n} degrees vertical`,
           (n) => { s.cameraFov = n; },
         ),
+        graphicsItem(s),
+        gpuItem(this.gpuInfo),
         choice(
           'Pack charge',
           'A tired pack sags harder and gives less punch. Best laps are kept per charge level.',
@@ -683,36 +1162,57 @@ export class Ui {
           s.readout,
           (v) => { s.readout = v; },
         ),
-        { label: 'Calibrate sticks', action: 'calibrate', note: 'Teach the game your radio, one stick at a time.' },
+        { label: 'Calibrate sticks', action: 'calibrate', note: 'Centre, full range, then one named move per stick. Saved after you check it.' },
         { label: 'Back', action: 'back' },
       ];
     }
     if (this.screen === 'paused') {
-      return [
+      const listing = this.settings.map === 'custom' ? liveListing('custom') : null;
+      const rows = [
         { label: 'Resume', action: 'resume' },
         { label: 'Restart run', action: 'restart' },
         tuneItem(s),
+        graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
-        { label: 'Quit to title', action: 'title' },
+        { label: 'Credits', action: 'credits', note: 'Who made this, who flew it, and whose work it stands on.' },
       ];
+      const remix = remixAction(listing);
+      if (remix) {
+        rows.push(remix);
+      }
+      rows.push({ label: 'Quit to title', action: 'title' });
+      return rows;
     }
     if (this.screen === 'results') {
+      const listing = this.settings.map === 'custom' ? liveListing('custom') : null;
       const rows = [
         { label: 'Fly again', action: 'restart' },
       ];
-      if (this.share && this.share.id) {
-        rows.push({
-          label: this.timePosted ? 'Time posted' : 'Post this time',
-          action: 'posttime',
-          note: this.timePosted
-            ? 'That lap is on the public board.'
-            : 'Send your fastest clean lap to the public board. Needs a name.',
-        });
+      const upload = uploadAction(listing, {
+        fastestMs: this.resultsFastest,
+        timePosted: this.timePosted,
+      });
+      if (upload) {
+        rows.push(upload);
+      }
+      const publish = publishAction(listing, this.coursePublished);
+      if (publish) {
+        rows.push(publish);
+      }
+      const remix = remixAction(listing);
+      if (remix) {
+        rows.push(remix);
+      }
+      const editOwn = editOwnAction(listing);
+      if (editOwn) {
+        rows.push(editOwn);
+      }
+      if (listing && (listing.published || listing.shareId || this.coursePublished)) {
         rows.push({
           label: 'Open the board',
           action: 'leaderboard',
-          note: `The public page for ${this.share.name || 'this course'}.`,
+          note: `The public page for ${listing.name || 'this course'}.`,
         });
       }
       rows.push({ label: 'Back to title', action: 'title' });
@@ -729,6 +1229,7 @@ export class Ui {
     const host = {
       title: this.titleMenu,
       howto: this.howtoMenu,
+      credits: this.creditsMenu,
       maps: this.mapsMenu,
       settings: this.settingsMenu,
       paused: this.pausedMenu,
@@ -751,26 +1252,26 @@ export class Ui {
     this.menuRows = [];
     rows.forEach((it, k) => {
       const i = k + offset;
-      const row = el('div', 'row');
+      const row = el('div', it.info ? 'row row-info' : 'row');
       row.append(el('span', 'row-label', it.label));
       if (it.options) {
         row.append(this.makeDrop(it, i));
       } else if (it.step || it.adjust) {
         row.append(this.makeStepper(it, i));
       } else if (it.value != null) {
-        row.append(el('span', 'row-value', it.value));
+        const val = el('span', 'row-value', it.value);
+        if (it.info) {
+          val.title = it.value;
+        }
+        row.append(val);
       }
       /* A browser player reaches for the mouse. A menu that only answers
        * to arrow keys reads as broken, not as keyboard first. */
-      /* mousemove, not mouseenter: the menu is rebuilt on every value
-       * change, and a fresh element appearing under a stationary pointer
-       * fires enter, which dragged the cursor back to wherever the mouse
-       * happened to be resting and made the arrow keys look broken. */
-      row.addEventListener('mousemove', () => {
-        if (this.cursor !== i) {
-          this.setCursor(i);
-        }
-      });
+      /* Hover only when the pointer actually moved. mouseenter fires when
+       * a rebuilt row appears under a stationary pointer, and so does
+       * mousemove after scrollIntoView: both snapped the cursor back and
+       * made the arrow keys look broken. */
+      row.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
       row.addEventListener('click', (e) => {
         if (e.target.closest('.row-control')) {
           return;
@@ -780,7 +1281,7 @@ export class Ui {
         this.syncCursor(false);
         /* Value rows change through the arrows or the dropdown. Clicking
          * the label only focuses them. Action rows still fire. */
-        if (!it.adjust && !it.options && !it.step) {
+        if (!it.adjust && !it.options && !it.step && !it.info) {
           this.select();
         }
       });
@@ -795,6 +1296,7 @@ export class Ui {
     return {
       title: this.titleHelp,
       howto: this.howtoHelp,
+      credits: this.creditsHelp,
       maps: this.mapsHelp,
       settings: this.settingsHelp,
       paused: this.pausedHelp,
@@ -816,6 +1318,25 @@ export class Ui {
     if (scroll && on && typeof on.scrollIntoView === 'function') {
       on.scrollIntoView({ block: 'nearest' });
     }
+  }
+
+  /* True when this event is a real pointer move, not Chromium reporting
+   * that the element under a still mouse changed because the list scrolled
+   * or was rebuilt. */
+  pointerMoved(e) {
+    const x = e.clientX;
+    const y = e.clientY;
+    const moved = this.ptrX != null && (x !== this.ptrX || y !== this.ptrY);
+    this.ptrX = x;
+    this.ptrY = y;
+    return moved;
+  }
+
+  hoverCursor(e, i) {
+    if (!this.pointerMoved(e) || this.cursor === i) {
+      return;
+    }
+    this.setCursor(i);
   }
 
   setCursor(i) {
@@ -977,8 +1498,8 @@ export class Ui {
    *
    * BUILT ONCE, then only re-marked. The menu is rebuilt from scratch on
    * every cursor move, which is what keeps it honest everywhere else, and
-   * doing that here would throw away three canvases and three reels twenty
-   * times a second as somebody arrowed along the row.
+   * doing that here would throw away three live shots twenty times a
+   * second as somebody arrowed along the row.
    */
   renderMapCards() {
     const host = this.mapCardHost;
@@ -987,28 +1508,25 @@ export class Ui {
     }
     const items = this.items().filter((it) => it.map);
     if (!this.mapCards || this.mapCards.length !== items.length) {
+      this.stopReels();
       host.textContent = '';
       this.mapCards = items.map((it, i) => {
         const card = el('div', 'map-card');
-        const shot = el('canvas', 'map-reel');
+        const shot = el('div', 'map-reel');
         const body = el('div', 'map-card-body');
         const name = el('div', 'map-card-name', it.label);
         const tag = el('div', 'map-card-tag', '');
         const still = el('div', 'map-card-still', '');
         body.append(name, tag);
         card.append(shot, still, body);
-        card.addEventListener('mousemove', () => {
-          if (this.cursor !== i) {
-            this.setCursor(i);
-          }
-        });
+        card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
         card.addEventListener('click', () => {
           this.cursor = i;
           this.select();
         });
         host.append(card);
         return {
-          card, shot, tag, still, name, id: it.map.id,
+          card, shot, tag, still, name, id: it.map.id, liveCanvas: null,
         };
       });
       this.startReels();
@@ -1024,84 +1542,351 @@ export class Ui {
   }
 
   /*
-   * Start the thumbnails. The module arrives through a dynamic import, so a
-   * player who never opens this screen never fetches a line of it, and the
-   * whole thing is guarded: a thumbnail that cannot be built is a card with
-   * a sentence on it, never a screen that fails to open.
+   * Start the thumbnails. Cached clips play immediately. A miss records
+   * once, one world at a time, then the iframe (or the live copy of the
+   * title view) is thrown away.
    */
   startReels() {
     this.stopReels();
     const cards = this.mapCards ?? [];
-    const session = {};
+    const current = this.settings.map;
+    const ac = new AbortController();
+    const session = { ac, urls: [], unsub: [] };
     this.reelSession = session;
-    import('./mapreel.js').then(async ({ reelFor, makeReel }) => {
-      if (this.reelSession !== session) {
-        return;
-      }
-      const live = [];
-      for (const c of cards) {
-        let reel = null;
-        try {
-          reel = await reelFor(c.id);
-        } catch (e) {
-          reel = null;
+    this.reelFreezeWorld = false;
+
+    const onVis = () => {
+      const hide = document.hidden || this.screen !== 'maps';
+      for (const c of this.mapCards || []) {
+        if (!c.clip || !c.clip.pause) {
+          continue;
         }
+        if (hide) {
+          c.clip.pause();
+        } else {
+          c.clip.play().catch(() => {});
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    session.unsub.push(() => document.removeEventListener('visibilitychange', onVis));
+
+    const pending = [];
+    for (const c of cards) {
+      c.shot.replaceChildren();
+      c.liveCanvas = null;
+      c.clip = null;
+      c.still.textContent = '';
+      if (c.id === 'custom' && !activeCourseSummary()) {
+        c.still.textContent = 'Nothing built yet. Open the track builder from the title screen.';
+        continue;
+      }
+      pending.push(c);
+    }
+
+    const run = async () => {
+      const misses = [];
+      for (const c of pending) {
         if (this.reelSession !== session) {
           return;
         }
-        if (!reel) {
-          c.still.textContent = c.id === 'custom'
-            ? 'Nothing built yet. Open the track builder from the title screen.'
-            : 'No preview.';
-          continue;
+        c.clipKey = clipKeyForMap(c.id);
+        try {
+          const blob = await getClip(c.clipKey);
+          if (blob) {
+            this.attachClip(c, blob, session);
+            continue;
+          }
+        } catch (e) {
+          /* Cache read failed: record instead. */
         }
-        c.still.textContent = '';
-        live.push({ card: c, reel: makeReel(c.shot, reel) });
+        misses.push(c);
       }
-      if (!live.length || this.reelSession !== session) {
+      if (misses.length) {
+        misses.forEach((c, i) => {
+          c.jokeOff = i;
+          this.showReelWait(c, session);
+        });
+        this.startReelJokes(session);
+      }
+      const currentMiss = misses.filter((c) => c.id === current);
+      const otherMiss = misses.filter((c) => c.id !== current);
+      for (const c of currentMiss) {
+        if (this.reelSession !== session) {
+          return;
+        }
+        await this.captureCurrentCard(c, session);
+      }
+      for (const c of otherMiss) {
+        if (this.reelSession !== session) {
+          return;
+        }
+        await this.captureRemoteCard(c, session);
+      }
+    };
+    run().catch((e) => {
+      if (e && e.name === 'AbortError') {
         return;
       }
-      /*
-       * One clock for every card, at 20 frames a second rather than the
-       * display's rate. These are 240 pixel canvases behind a menu, and the
-       * world is still being rendered behind them at the display's rate;
-       * spending a full frame budget on three thumbnails would make the
-       * menu the most expensive screen in the product.
-       */
-      const start = performance.now();
-      let lastDraw = 0;
-      const tick = (now) => {
-        if (this.reelSession !== session || this.screen !== 'maps') {
-          return;
-        }
-        this.reelRaf = requestAnimationFrame(tick);
-        if (now - lastDraw < 50) {
-          return;
-        }
-        lastDraw = now;
-        for (const l of live) {
-          const w = l.card.shot.clientWidth;
-          const h = l.card.shot.clientHeight;
-          if (w > 0 && h > 0 && (l.card.shot.width !== w || l.card.shot.height !== h)) {
-            l.card.shot.width = w;
-            l.card.shot.height = h;
-          }
-          l.reel.frame((now - start) * 0.001);
-        }
-      };
-      this.reelRaf = requestAnimationFrame(tick);
-    }).catch(() => {
-      for (const c of cards) {
-        c.still.textContent = 'No preview.';
-      }
+      console.warn(e);
     });
   }
 
+  attachClip(c, blob, session) {
+    const { node, url } = makeClipElement(blob, 'map-reel-view');
+    session.urls.push(url);
+    c.liveCanvas = null;
+    c.clip = node;
+    c.wait = null;
+    c.waitJoke = null;
+    c.still.textContent = '';
+    c.shot.replaceChildren(node);
+    if (document.hidden && node.pause) {
+      node.pause();
+    }
+  }
+
+  showReelWait(c, session) {
+    let wait = c.wait;
+    if (!wait || !c.shot.contains(wait)) {
+      wait = el('div', 'map-reel-wait');
+      const stage = el('div', 'map-reel-wait-stage', 'loading');
+      const joke = el('div', 'map-reel-wait-joke');
+      wait.append(stage, joke);
+      c.wait = wait;
+      c.waitJoke = joke;
+      c.shot.append(wait);
+    }
+    c.waitJoke.textContent = quotedJoke(session.jokeAt, c.jokeOff);
+  }
+
+  startReelJokes(session) {
+    if (session.jokeTimer != null) {
+      return;
+    }
+    session.jokeAt = 0;
+    const tick = () => {
+      session.jokeAt += 1;
+      for (const c of this.mapCards || []) {
+        if (c.waitJoke) {
+          c.waitJoke.textContent = quotedJoke(session.jokeAt, c.jokeOff);
+        }
+      }
+    };
+    session.jokeTimer = setInterval(tick, JOKE_MS);
+    session.unsub.push(() => {
+      clearInterval(session.jokeTimer);
+      session.jokeTimer = null;
+    });
+  }
+
+  /*
+   * The world already on screen is the title shot. Copy it into a 480p
+   * canvas for a few seconds rather than loading the same map a second
+   * time, then keep the clip.
+   */
+  async captureCurrentCard(c, session) {
+    const canvas = el('canvas', 'map-reel-view');
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.width = CLIP_W;
+    canvas.height = CLIP_H;
+    canvas.dataset.clip = '1';
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (ctx) {
+      ctx.fillStyle = '#1a241c';
+      ctx.fillRect(0, 0, CLIP_W, CLIP_H);
+    }
+    c.shot.append(canvas);
+    c.liveCanvas = canvas;
+    c.still.textContent = '';
+    this.showReelWait(c, session);
+    try {
+      await withCaptureLock(async () => {
+        if (this.reelSession !== session) {
+          return;
+        }
+        const again = await getClip(c.clipKey);
+        if (again) {
+          this.attachClip(c, again, session);
+          return;
+        }
+        await whenVisible(session.ac.signal);
+        const blob = await recordCanvasStream(canvas, CLIP_MS_MAX, session.ac.signal);
+        await putClip(c.clipKey, blob);
+        if (this.reelSession !== session) {
+          return;
+        }
+        this.attachClip(c, blob, session);
+      });
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        return;
+      }
+      c.wait = null;
+      c.waitJoke = null;
+      c.shot.replaceChildren();
+      c.still.textContent = 'Preview unavailable.';
+    } finally {
+      c.liveCanvas = null;
+    }
+  }
+
+  /*
+   * A world that is not loaded: iframe the orbit page, which records,
+   * caches, and posts the clip. Then the iframe dies.
+   */
+  async captureRemoteCard(c, session) {
+    c.still.textContent = '';
+    const frame = document.createElement('iframe');
+    frame.className = 'map-reel-view';
+    frame.title = 'World preview';
+    frame.tabIndex = -1;
+    frame.setAttribute('aria-hidden', 'true');
+    c.shot.append(frame);
+    this.showReelWait(c, session);
+    this.reelFreezeWorld = true;
+    try {
+      await whenVisible(session.ac.signal);
+      const blob = await new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (err, value) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.removeEventListener('message', onMsg);
+          session.ac.signal.removeEventListener('abort', onAbort);
+          clearTimeout(timer);
+          if (err) {
+            reject(err);
+          } else {
+            resolve(value);
+          }
+        };
+        const onAbort = () => finish(new DOMException('aborted', 'AbortError'));
+        const onMsg = (e) => {
+          if (!e.data || e.data.type !== 'webfpv-orbit-clip') {
+            return;
+          }
+          if (frame.contentWindow !== e.source) {
+            return;
+          }
+          const mime = e.data.mime || 'video/webm';
+          const buffer = e.data.buffer;
+          if (!buffer) {
+            finish(new Error('Preview sent no clip.'));
+            return;
+          }
+          finish(null, new Blob([buffer], { type: mime }));
+        };
+        const timer = setTimeout(() => finish(new Error('Preview timed out.')), 90000);
+        session.ac.signal.addEventListener('abort', onAbort);
+        window.addEventListener('message', onMsg);
+        if (session.ac.signal.aborted) {
+          onAbort();
+          return;
+        }
+        frame.src = `/src/share/orbit.html?map=${encodeURIComponent(c.id)}&thumb=1`;
+      });
+      if (this.reelSession !== session) {
+        return;
+      }
+      await putClip(c.clipKey, blob);
+      this.attachClip(c, blob, session);
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        return;
+      }
+      c.wait = null;
+      c.waitJoke = null;
+      c.shot.replaceChildren();
+      c.still.textContent = 'Preview unavailable.';
+    } finally {
+      if (frame.parentNode) {
+        frame.remove();
+      }
+      if (this.reelSession === session) {
+        this.reelFreezeWorld = false;
+      }
+    }
+  }
+
+  /*
+   * Copy the title view onto the card for the world that is already loaded,
+   * and onto the recorder, while a first clip is being made. After that
+   * there is nothing to copy: the cards are videos.
+   */
+  paintMapThumbs(src) {
+    if (this.screen !== 'maps' || !this.mapCards) {
+      return;
+    }
+    const sw = src.width;
+    const sh = src.height;
+    if (!(sw > 0 && sh > 0)) {
+      return;
+    }
+    for (const c of this.mapCards) {
+      const dest = c.liveCanvas;
+      if (!dest) {
+        continue;
+      }
+      if (dest.dataset.clip !== '1') {
+        const dw = Math.max(1, dest.clientWidth);
+        const dh = Math.max(1, dest.clientHeight);
+        if (dest.width !== dw || dest.height !== dh) {
+          dest.width = dw;
+          dest.height = dh;
+        }
+      }
+      const dw = dest.width;
+      const dh = dest.height;
+      const scale = Math.max(dw / sw, dh / sh);
+      const cw = dw / scale;
+      const ch = dh / scale;
+      try {
+        dest.getContext('2d').drawImage(
+          src,
+          (sw - cw) * 0.5, (sh - ch) * 0.5, cw, ch,
+          0, 0, dw, dh,
+        );
+      } catch (e) {
+        /* A tainted read would take the frame with it. */
+      }
+    }
+  }
+
   stopReels() {
+    this.reelFreezeWorld = false;
+    if (this.reelSession) {
+      try {
+        this.reelSession.ac.abort();
+      } catch (e) {
+        /* Already aborted. */
+      }
+      if (this.reelSession.unsub) {
+        for (const fn of this.reelSession.unsub) {
+          fn();
+        }
+      }
+      if (this.reelSession.urls) {
+        for (const url of this.reelSession.urls) {
+          URL.revokeObjectURL(url);
+        }
+      }
+    }
     this.reelSession = null;
     if (this.reelRaf != null) {
       cancelAnimationFrame(this.reelRaf);
       this.reelRaf = null;
+    }
+    if (this.mapCards) {
+      for (const c of this.mapCards) {
+        c.liveCanvas = null;
+        c.clip = null;
+        if (c.shot) {
+          c.shot.replaceChildren();
+        }
+      }
     }
   }
 
@@ -1121,7 +1906,28 @@ export class Ui {
      * pack are what the player paused to look at. */
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
+    this.mountCraft(screen);
     this.renderMenu();
+  }
+
+  /*
+   * Settings holds the studio canvas. The title no longer does: that
+   * screen uses the world airframe, and moving a WebGL canvas off a
+   * live renderer is how you lose the context on some GPUs.
+   */
+  mountCraft(screen) {
+    if (!this.craftCanvas || !this.craftSettingsFrame) {
+      return;
+    }
+    if (screen === 'settings' && this.craftCanvas.parentNode !== this.craftSettingsFrame) {
+      this.craftSettingsFrame.appendChild(this.craftCanvas);
+    }
+  }
+
+  setCraftCaption(text) {
+    if (this.craftCaption) {
+      this.craftCaption.textContent = text;
+    }
   }
 
   isModal() {
@@ -1142,13 +1948,36 @@ export class Ui {
     if (this.brandSub) {
       this.brandSub.textContent = freestyle ? `${m.name}, free flight` : `${m.name}, time trial`;
     }
+    this.titleBest.textContent = '';
     if (freestyle) {
       this.titleBest.textContent = 'No gates, no clock, no lap';
       this.osdBest.textContent = '';
       return;
     }
-    this.titleBest.textContent = ms != null ? `Track record ${formatTime(ms)}` : 'No lap recorded yet';
+    if (ms != null) {
+      this.titleBest.append('Track record ', el('span', 'brand-best-time', formatTime(ms)));
+    } else {
+      this.titleBest.textContent = 'No lap recorded yet';
+    }
     this.osdBest.textContent = ms != null ? `Record ${formatTime(ms)}` : 'No record yet';
+  }
+
+  resultsCourseName() {
+    if (this.share && this.share.name) {
+      return this.share.name;
+    }
+    if (this.settings.map === 'custom') {
+      try {
+        const listing = inspectCourse();
+        if (listing && listing.name) {
+          return listing.name;
+        }
+      } catch (e) {
+        /* Fall through to the map name. */
+      }
+    }
+    const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
+    return m.name;
   }
 
   /*
@@ -1156,44 +1985,119 @@ export class Ui {
    * thrown away. Voided attempts keep their lap number and appear as
    * rows: renumbering the survivors tells the player they flew a
    * different race from the one they remember.
+   *
+   * recordAtStart is the track record as the run began. The live best
+   * may have moved during the run, and the hero line needs the old
+   * figure to say whether this lap beat it.
    */
-  showResults(log, best) {
+  showResults(log, best, recordAtStart) {
     this.resultsBody.textContent = '';
+    this.resultsNote.textContent = '';
     const clean = log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
     const fastest = clean.length ? Math.min(...clean) : null;
-    this.resultsHead.textContent = clean.length ? 'Run complete' : 'Run ended';
+    const slowest = clean.length ? Math.max(...clean) : null;
+    const hadRecord = recordAtStart != null && Number.isFinite(recordAtStart);
+    const isRecord = fastest != null && (!hadRecord || fastest < recordAtStart);
+    const matched = fastest != null && hadRecord && fastest === recordAtStart;
+    const screen = this.screens.results;
+    screen.classList.toggle('is-record', Boolean(isRecord));
+    screen.classList.toggle('is-empty', !clean.length);
+    screen.classList.remove('is-in');
+    void screen.offsetWidth;
+    screen.classList.add('is-in');
+
+    this.resultsKicker.textContent = this.resultsCourseName();
     if (!clean.length) {
-      this.resultsBody.append(el('p', 'lede', 'No clean lap this run. Touching a gate or hitting the ground voids the lap it happens on, and the clock starts again at the mint ring.'));
+      this.resultsHead.textContent = 'Run ended';
+      this.resultsHeroTime.textContent = '';
+      this.resultsHeroMeta.textContent = '';
+      this.resultsHeroMeta.className = 'results-hero-meta';
+      this.resultsBody.append(el('p', 'results-empty', 'No clean lap this run. Hitting the ground or a gate frame costs the time it takes to get going again. Only an out of sequence gate voids the lap and sends you back to the mint ring.'));
+    } else {
+      this.resultsHead.textContent = isRecord
+        ? 'New track record'
+        : (matched ? 'Matched the record' : 'Run complete');
+      this.resultsHeroCap.textContent = clean.length === 1 ? 'Lap time' : 'Best lap';
+      this.resultsHeroTime.textContent = formatTime(fastest);
+      if (isRecord && hadRecord) {
+        this.resultsHeroMeta.textContent = `${formatDelta(fastest - recordAtStart)}  previous ${formatTime(recordAtStart)}`;
+        this.resultsHeroMeta.className = 'results-hero-meta gain';
+      } else if (isRecord) {
+        this.resultsHeroMeta.textContent = 'First record on this course';
+        this.resultsHeroMeta.className = 'results-hero-meta gain';
+      } else if (matched) {
+        this.resultsHeroMeta.textContent = `Equals the record  ${formatTime(best)}`;
+        this.resultsHeroMeta.className = 'results-hero-meta gain';
+      } else {
+        this.resultsHeroMeta.textContent = `${formatDelta(fastest - best)} off the record  ${formatTime(best)} to beat`;
+        this.resultsHeroMeta.className = 'results-hero-meta off';
+      }
     }
     log.forEach((entry) => {
-      const row = el('div', `result-row${entry.ms == null ? ' void' : ''}`);
-      row.append(el('span', 'result-label', `Lap ${entry.n}`));
+      const fastestRow = entry.ms != null && entry.ms === fastest;
+      const row = el('div', `result-row${entry.ms == null ? ' void' : ''}${fastestRow ? ' fastest' : ''}`);
+      const main = el('div', 'result-main');
+      main.append(el('span', 'result-label', `Lap ${entry.n}`));
       if (entry.ms == null) {
-        row.append(el('span', 'result-time', 'void'));
-        row.append(el('span', 'result-why', (entry.reason || '').replace(/\n/g, ' ').toLowerCase()));
+        main.append(el('span', 'result-time', 'void'));
+        main.append(el('span', 'result-why', (entry.reason || '').replace(/\n/g, ' ').toLowerCase()));
+        row.append(main);
       } else {
-        row.append(el('span', 'result-time', formatTime(entry.ms)));
-        if (entry.ms === fastest) {
-          row.append(el('span', 'result-tag', 'fastest'));
+        main.append(el('span', 'result-time', formatTime(entry.ms)));
+        if (fastestRow && clean.length > 1) {
+          main.append(el('span', 'result-tag', 'fastest'));
+        }
+        row.append(main);
+        if (slowest > 0) {
+          const bar = el('div', 'result-bar');
+          const fill = el('div', 'result-bar-fill');
+          fill.style.width = `${Math.max(10, (entry.ms / slowest) * 100)}%`;
+          bar.append(fill);
+          row.append(bar);
         }
       }
       this.resultsBody.append(row);
     });
-    if (clean.length) {
+    if (clean.length > 1) {
       const total = clean.reduce((a, b) => a + b, 0);
       const row = el('div', 'result-row total');
-      row.append(el('span', 'result-label', clean.length === log.length ? 'Total' : 'Clean laps total'));
-      row.append(el('span', 'result-time', formatTime(total)));
+      const main = el('div', 'result-main');
+      main.append(el('span', 'result-label', clean.length === log.length ? 'Total' : 'Clean laps total'));
+      main.append(el('span', 'result-time', formatTime(total)));
+      row.append(main);
       this.resultsBody.append(row);
-    }
-    if (best != null) {
-      this.resultsBody.append(el('p', 'lede', `Track record ${formatTime(best)}.`));
     }
     if (this.share && this.share.id) {
       const by = this.share.author ? ` by ${this.share.author}` : '';
-      this.resultsBody.append(el('p', 'lede', `${this.share.name || 'This course'}${by} is on the public board. Post a time under your name to appear on it.`));
+      this.resultsNote.textContent = `${this.share.name || 'This course'}${by} is on the public board. Upload a time under your name to appear on it.`;
+    } else {
+      try {
+        const listing = inspectCourse();
+        if (listing && listing.kind === 'remix') {
+          const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
+          this.resultsNote.textContent = `${listing.name} is your copy${of}. Publish it under a new name to put it on the board.`;
+        } else if (listing && listing.kind === 'local' && listing.canPublishNew) {
+          this.resultsNote.textContent = `${listing.name} lives in this browser. Publish it to put it on the board, then you can upload a time.`;
+        } else if (listing && listing.kind === 'owned' && listing.layoutDrift) {
+          this.resultsNote.textContent = `${listing.name} has a layout that is not on the board yet. Update the course before uploading a time.`;
+        }
+      } catch (e) {
+        /* A summary failure must not hide the times. */
+      }
     }
     this.timePosted = null;
+    this.coursePublished = null;
+    this.resultsFastest = fastest;
+    if (fastest != null) {
+      try {
+        const listing = inspectCourse();
+        if (listing && listing.canPostTime && listing.shareId) {
+          writePendingTime({ trackId: listing.shareId, lapMs: fastest, name: listing.name });
+        }
+      } catch (e) {
+        /* Keep the results screen even if storage is unavailable. */
+      }
+    }
     this.show('results');
   }
 
@@ -1228,7 +2132,7 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -1247,8 +2151,81 @@ export class Ui {
     this.osdLast.textContent = !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
     this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
+    if (this.osdFlight) {
+      this.osdFlight.textContent = flightMode === 'angle' ? 'Angle' : 'Acro';
+    }
     this.osdAlt.textContent = `${altitude.toFixed(1)} m above the ground`;
     this.osdThrBar.style.width = `${Math.max(0, Math.min(1, throttle)) * 100}%`;
+  }
+
+  /*
+   * Keyboard stick ghost. Mode 2: left is yaw (x) and throttle (y, idle
+   * at the bottom), right is roll (x) and pitch (y, stick forward is up,
+   * matching the radio and the up arrow). Hidden when a radio is the
+   * stick source.
+   */
+  setStickOverlay({ show, roll, pitch, yaw, throttle }) {
+    if (!this.osdSticks) {
+      return;
+    }
+    this.osdSticks.className = show ? 'osd-sticks' : 'osd-sticks is-off';
+    if (!show) {
+      return;
+    }
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    placeNub(this.osdStickLeft.nub, clamp(yaw), clamp(throttle * 2 - 1));
+    placeNub(this.osdStickRight.nub, clamp(roll), clamp(-pitch));
+  }
+
+  setCalibration(view) {
+    if (!this.calPrompt) {
+      return;
+    }
+    if (!view) {
+      this.calCanSave = false;
+      if (this.calSaveBtn) {
+        this.calSaveBtn.disabled = true;
+      }
+      return;
+    }
+    const n = view.stepIndex + 1;
+    this.calKicker.textContent = `Step ${n} of ${view.stepCount}, ${view.title}`;
+    this.calPrompt.textContent = view.prompt;
+    this.calHint.textContent = view.hint;
+    this.calCanSave = Boolean(view.canSave);
+    if (this.calSaveBtn) {
+      this.calSaveBtn.disabled = !view.canSave;
+    }
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
+    placeNub(this.calStickLeft.nub, clamp(ch.yaw), clamp(ch.throttle * 2 - 1));
+    placeNub(this.calStickRight.nub, clamp(ch.roll), clamp(-ch.pitch));
+    const labels = [
+      ['center', 'Centre'],
+      ['sweep', 'Full range'],
+      ['throttle', 'Throttle'],
+      ['roll', 'Roll'],
+      ['pitch', 'Pitch'],
+      ['yaw', 'Yaw'],
+      ['confirm', 'Check'],
+    ];
+    this.calList.textContent = '';
+    for (const [id, label] of labels) {
+      const li = el('li', null, label);
+      if (id === view.step) {
+        li.className = 'on';
+      } else if (labels.findIndex((x) => x[0] === id) < view.stepIndex) {
+        li.className = 'done';
+      }
+      this.calList.append(li);
+    }
+  }
+
+  setGpuInfo(info) {
+    this.gpuInfo = info || null;
+    if (this.screen === 'settings') {
+      this.renderMenu();
+    }
   }
 
   setReadout(lines) {
@@ -1295,6 +2272,9 @@ export class Ui {
     if (!it) {
       return;
     }
+    if (it.info) {
+      return;
+    }
     if (it.adjust) {
       this.adjust(1);
       return;
@@ -1319,6 +2299,10 @@ export class Ui {
     if (this.onUiSound) {
       this.onUiSound('back');
     }
+    if (this.screen === 'calibrate') {
+      this.act('calibrate-cancel');
+      return;
+    }
     if (this.screen === 'results') {
       this.act('title');
       return;
@@ -1341,11 +2325,21 @@ export class Ui {
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
+    if (action === 'remix') {
+      writeBuilderIntent({ kind: 'remix' });
+      window.location.href = 'src/trackbuilder/index.html';
+      return;
+    }
+    if (action === 'editown') {
+      writeBuilderIntent({ kind: 'edit' });
+      window.location.href = 'src/trackbuilder/index.html';
+      return;
+    }
     if (action === 'leaderboard') {
       window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
       return;
     }
-    if (action === 'howto' || action === 'settings' || action === 'maps') {
+    if (action === 'howto' || action === 'settings' || action === 'maps' || action === 'credits') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
@@ -1377,10 +2371,17 @@ export class Ui {
   }
 
   /* Returns true when the key was a menu key and the shell should not
-   * treat it as a flight control. */
-  handleKey(code) {
+   * treat it as a flight control. repeat is the browser's key-repeat
+   * flag: a held or quickly tapped arrow must step the cursor, but Enter
+   * and Escape must not fire again. */
+  handleKey(code, repeat = false) {
     if (this.nameDialog && !this.nameDialog.hidden) {
       return true;
+    }
+    const nav = code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight'
+      || code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD';
+    if (repeat && !nav) {
+      return this.screen !== 'flight';
     }
     if (code === 'F3') {
       this.settings.readout = !this.settings.readout;
@@ -1395,6 +2396,20 @@ export class Ui {
         return true;
       }
       return false;
+    }
+    if (this.screen === 'calibrate') {
+      if (code === 'Escape' || code === 'Backspace') {
+        this.back();
+        return true;
+      }
+      if ((code === 'Enter' || code === 'Space') && this.calCanSave) {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        this.act('calibrate-save');
+        return true;
+      }
+      return true;
     }
     if (this.dropEl) {
       if (code === 'ArrowUp' || code === 'KeyW') {
@@ -1455,7 +2470,8 @@ export class Ui {
    * Stick navigation. nav is { up, down, left, right, select, back },
    * already resolved by the shell from either the calibrated channels or,
    * when the radio has never been calibrated, from any axis at all. Edge
-   * triggered, so a held stick moves one row.
+   * triggered, so a held stick moves one row. Title and Settings do not
+   * use pitch and roll for the cursor: those screens pose the airframe.
    */
   pollPad(nav) {
     if (this.screen === 'flight') {
@@ -1470,6 +2486,30 @@ export class Ui {
       select: Boolean(nav.select),
       back: Boolean(nav.back),
     };
+    if (this.screen === 'calibrate') {
+      if (now.back && !this.padPrev.back) {
+        this.act('calibrate-cancel');
+      }
+      if (now.select && !this.padPrev.select && this.calCanSave) {
+        this.act('calibrate-save');
+      }
+      this.padPrev = now;
+      return;
+    }
+    /*
+     * Title and Settings pose the airframe from the live stick channels.
+     * Pitch and roll that fly it used to step the cursor. Keyboard owns
+     * the rows; a radio switch still selects on the title so Fly is one
+     * flick away. The pad is tracked so a held stick does not fire an
+     * edge the moment the screen closes.
+     */
+    if (this.screen === 'settings' || this.screen === 'title') {
+      if (this.screen === 'title' && now.select && !this.padPrev.select) {
+        this.select();
+      }
+      this.padPrev = now;
+      return;
+    }
     const it = this.items()[this.cursor];
     const rollAdjusts = Boolean(it && it.adjust);
     if (this.dropEl) {

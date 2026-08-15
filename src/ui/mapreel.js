@@ -1,11 +1,10 @@
 /*
  * mapreel.js: the moving thumbnails on the map screen.
  *
- * WHAT THIS IS. Each map on the map screen shows a short looping flight
- * through it, so a player picks a world by looking at it rather than by
- * reading a sentence about it. The loop is a real flight along the same
- * line the title screen's camera flies, rendered here into a 240 pixel
- * canvas.
+ * WHAT THIS IS. Each map on the map screen shows a short looping shot of
+ * it, so a player picks a world by looking at it rather than by reading a
+ * sentence about it. The loop is the same shot the title screen's camera
+ * flies, rendered here into a 240 pixel canvas.
  *
  * WHY IT IS NOT THE REAL RENDERER. Three reasons, and the first one is
  * binding:
@@ -39,7 +38,8 @@
  * which src/render/scene.js builds the real one from, so the reel and the
  * world cannot disagree about the shape of the course. The designed course
  * comes from the track builder's own data modules, the same one way
- * dependency src/game/trackdoc.js already declares.
+ * dependency src/game/trackdoc.js already declares. Its camera orbits the
+ * layout rather than flying the racing line, matching the title shot.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -59,6 +59,9 @@
 
 import { circuitPoint, CIRCUIT_STATIONS } from '../game/circuit.js';
 import { bannerHex } from '../art/banners.js';
+import {
+  startBlockDims, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK, START_BLOCK_FOAM,
+} from '../art/startblock.js';
 
 /* Sun direction, matching src/render/scene.js's SUN_DIR closely enough that
  * a lit face is lit in the same place. */
@@ -446,20 +449,15 @@ function cityReel() {
  * builder's pure data, the builder may not read the game.
  */
 async function customReel() {
-  const [{ readAutosave }, { readShareImport }, { buildPath }, { ELEMENTS, KIND, apertureLevels }] = await Promise.all([
+  const [{ readAutosave }, { readShareImport }, { ELEMENTS, KIND, apertureLevels }] = await Promise.all([
     import('../trackbuilder/storage.js'),
     import('../share/session.js'),
-    import('../trackbuilder/path.js'),
     import('../trackbuilder/elements.js'),
   ]);
   const share = readShareImport();
   const saved = readAutosave();
   const doc = (share && share.document) || (saved && saved.doc) || null;
   if (!doc || !doc.sequence.length) {
-    return null;
-  }
-  const path = buildPath(doc);
-  if (!path.samples.length) {
     return null;
   }
   /* Document frame to the reel's frame, the same conversion trackdoc.js
@@ -505,7 +503,9 @@ async function customReel() {
       pushGate(faces, p.x, p.z, -el.yaw, order === 0,
         ap.clearW * k, ap.clearH * k, (el.position.z + ap.sillH) * k);
       order += 1;
-    } else if (def.kind === KIND.MARKER) {
+    } else if (def.kind === KIND.MARKER && el.type !== 'waypoint') {
+      /* A waypoint is not an object, so the reel does not stand one up. It
+       * still shapes the line, and the line is drawn from the path. */
       pushFlag(faces, p.x, p.z, -el.yaw, order === 0 ? 0x7dffb4 : 0xc4452f);
     }
   }
@@ -517,10 +517,22 @@ async function customReel() {
         el.dims.width, el.dims.height, el.dims.depth, -el.yaw, bannerHex('vinyl'));
     } else if (def.kind === KIND.START) {
       const n = Math.max(1, Math.round(el.dims.pads));
+      const d = startBlockDims(el.dims.padSize);
+      const h = d.baseH + d.rise * 0.5;
       for (let i = 0; i < n; i += 1) {
         const off = (i - (n - 1) / 2) * el.dims.spacing;
-        pushBox(faces, p.x + Math.cos(-el.yaw) * off, 0.03, p.z - Math.sin(-el.yaw) * off,
-          el.dims.padSize, 0.05, el.dims.padSize, -el.yaw, 0x2f4f3a);
+        const cx = p.x + Math.cos(-el.yaw) * off;
+        const cz = p.z - Math.sin(-el.yaw) * off;
+        pushBox(faces, cx, d.baseH * 0.5, cz,
+          d.spanAcross, d.baseH, d.railLen, -el.yaw, START_BLOCK_WOOD_DARK);
+        for (const side of [-1, 1]) {
+          const rx = cx + Math.cos(-el.yaw) * side * d.railX;
+          const rz = cz - Math.sin(-el.yaw) * side * d.railX;
+          pushBox(faces, rx, h, rz,
+            d.railW, d.rise + d.railT, d.railLen * 0.92, -el.yaw, START_BLOCK_WOOD);
+          pushBox(faces, rx, h + d.rise * 0.35, rz,
+            d.railW * 0.9, d.foamT * 2, d.railLen * 0.88, -el.yaw, START_BLOCK_FOAM);
+        }
       }
     }
   }
@@ -529,30 +541,58 @@ async function customReel() {
     pushTree(faces, Math.cos(a) * (hw + 26), Math.sin(a) * (hd + 26), 1 + (t % 3) * 0.3);
   }
 
-  /* The camera flies the author's own racing line, lifted clear of the
-   * tallest thing on the course, which is the same rule the world's title
-   * camera follows. */
+  /*
+   * Orbit the layout, looking at it. The same shot the world's title camera
+   * uses on a designed course, and for the same reason: flying the racing
+   * line on a compact track (a single triple stack is the usual case) is a
+   * two second fidget around a few metres of wrap. Numbers match
+   * attractOrbit in src/render/scene.js so the thumbnail and the title
+   * agree about how far out the camera sits.
+   */
+  const points = [];
   let tallest = 2.6;
   for (const el of doc.elements) {
     const def = ELEMENTS[el.type];
+    if (!def || def.kind === KIND.ANNOTATION) {
+      continue;
+    }
+    const p = toReel(el.position);
+    const d = el.dims || {};
+    const r = Math.max(2.2, (d.clearW ?? d.width ?? 0) * 0.5, (d.depth ?? 0) * 0.5);
+    points.push({ x: p.x, z: p.z, r });
     if (def.kind === KIND.APERTURE) {
       const levels = apertureLevels(el.dims);
       const top = levels[levels.length - 1];
       tallest = Math.max(tallest, (el.position.z + top.sillH + top.clearH) * 1.15 + 0.8);
+    } else if (def.kind === KIND.OBSTACLE) {
+      tallest = Math.max(tallest, (el.position.z || 0) + (d.height || 0));
     }
   }
-  const eye = tallest + 2.6;
-  const camPath = [];
-  const stride = Math.max(1, Math.round(path.samples.length / 90));
-  for (let i = 0; i < path.samples.length; i += stride) {
-    const q = toReel(path.samples[i].pos);
-    camPath.push({ x: q.x, y: eye, z: q.z });
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x - p.r);
+    maxX = Math.max(maxX, p.x + p.r);
+    minZ = Math.min(minZ, p.z - p.r);
+    maxZ = Math.max(maxZ, p.z + p.r);
   }
-  if (camPath.length < 4) {
-    return null;
-  }
+  const cx = Number.isFinite(minX) ? (minX + maxX) * 0.5 : 0;
+  const cz = Number.isFinite(minZ) ? (minZ + maxZ) * 0.5 : 0;
+  const span = Number.isFinite(minX)
+    ? Math.hypot((maxX - minX) * 0.5, (maxZ - minZ) * 0.5)
+    : 0;
+  const rise = Math.max(1.6, tallest);
+  const radius = Math.min(80, Math.max(16, span * 1.4 + 4, rise * 1.1 + 8));
+  const eyeH = Math.max(3.4, rise * 0.38 + span * 0.12 + 2.0);
+  const aim = Math.max(0.7, Math.min(rise * 0.35, eyeH - 1.4));
   return {
-    faces, path: camPath, sky: FIELD_SKY, speed: 11, fog: 150, lookAhead: 14, drop: 2.2, lens: 0.85,
+    faces,
+    orbit: { x: cx, y: 0, z: cz, radius, eye: eyeH, aim },
+    sky: FIELD_SKY,
+    fog: 150,
+    lens: 0.85,
   };
 }
 
@@ -657,7 +697,7 @@ function clipNear(poly) {
 }
 
 export function makeReel(canvas, reel) {
-  const track = walkable(reel.path);
+  const track = reel.orbit ? null : walkable(reel.path);
   const horizon = rgb(reel.sky.horizon);
   const high = rgb(reel.sky.high);
   const groundCol = rgb(reel.sky.ground);
@@ -675,27 +715,45 @@ export function makeReel(canvas, reel) {
         return;
       }
       const ctx = canvas.getContext('2d');
-      const eye = track.at(seconds * reel.speed);
-      const aim = track.at(seconds * reel.speed + reel.lookAhead);
-      const back = track.at(seconds * reel.speed - reel.lookAhead);
+      let eye;
+      let aim;
+      if (reel.orbit) {
+        /* Same circle the title camera flies, looking AT the layout rather
+         * than along a tangent. 0.11 rad/s is attract.js's 0.00011 per ms. */
+        const o = reel.orbit;
+        const ang = seconds * (o.rate ?? 0.11);
+        eye = {
+          x: o.x + Math.sin(ang) * o.radius,
+          y: o.y + o.eye,
+          z: o.z + Math.cos(ang) * o.radius,
+        };
+        aim = { x: o.x, y: o.y + o.aim, z: o.z };
+        bank = 0;
+      } else {
+        eye = track.at(seconds * reel.speed);
+        aim = track.at(seconds * reel.speed + reel.lookAhead);
+        const back = track.at(seconds * reel.speed - reel.lookAhead);
+        const yawNow = Math.atan2(aim.x - eye.x, aim.z - eye.z);
+        const yaw0 = Math.atan2(eye.x - back.x, eye.z - back.z);
+        let turn = yawNow - yaw0;
+        while (turn > Math.PI) {
+          turn -= Math.PI * 2;
+        }
+        while (turn < -Math.PI) {
+          turn += Math.PI * 2;
+        }
+        const dt = last == null ? 0 : Math.min(0.12, seconds - last);
+        last = seconds;
+        bank += (Math.max(-0.20, Math.min(0.20, turn * 0.85)) - bank) * Math.min(1, dt * 2.4);
+      }
       const yaw = Math.atan2(aim.x - eye.x, aim.z - eye.z);
-      const yaw0 = Math.atan2(eye.x - back.x, eye.z - back.z);
-      let turn = yaw - yaw0;
-      while (turn > Math.PI) {
-        turn -= Math.PI * 2;
-      }
-      while (turn < -Math.PI) {
-        turn += Math.PI * 2;
-      }
-      const dt = last == null ? 0 : Math.min(0.12, seconds - last);
-      last = seconds;
-      bank += (Math.max(-0.20, Math.min(0.20, turn * 0.85)) - bank) * Math.min(1, dt * 2.4);
-      /* Pitch, as a screen shear rather than a rotation: the aim point is a
-       * fixed drop below the camera, which is the same framing rule the
-       * title camera uses, and at these angles a shear and a rotation are
-       * indistinguishable at 240 pixels. */
+      /* Pitch, as a screen shear rather than a rotation. A flythrough drops
+       * the aim a fixed amount below the camera, which is the same framing
+       * rule the title camera uses. An orbit already aims at a point on the
+       * layout, so that drop would look past the thing it is circling. */
       const aimDist = Math.max(1, Math.hypot(aim.x - eye.x, aim.z - eye.z));
-      const pitch = Math.atan2((aim.y - reel.drop) - eye.y, aimDist);
+      const aimY = reel.orbit ? aim.y : (aim.y - reel.drop);
+      const pitch = Math.atan2(aimY - eye.y, aimDist);
 
       /*
        * The lens, per reel. A thumbnail of a 570 m circuit and a thumbnail

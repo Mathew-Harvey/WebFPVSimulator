@@ -81,12 +81,18 @@ export const FRAME_TUBE_OD_SOURCE = 'assumed 1 inch nominal schedule 40 PVC, not
  * with the rulebook still on the page, and it is recorded as one because a
  * future round is going to ask why a gate here is not 5 ft.
  *
- * It stacks with WORLD_SCALE in src/render/frame.js and the two are NOT the
- * same lever. WORLD_SCALE makes the aircraft smaller against everything in
- * both maps; this makes the race field's obstacles larger against the rest of
- * the race field as well. Together a standard gate's opening reads 1.7526 m
- * against a craft that is 0.2776 m across, which is 6.31 gate widths to the
- * quad where MultiGP against a real 5 inch is 4.39.
+ * This is now the ONLY departure from real dimensions anywhere in the world.
+ * WORLD_SCALE in src/render/frame.js used to stack a second one on top, and
+ * the pair of them put a 1.7526 m opening against a 0.2776 m craft, 6.31
+ * gate widths to the quad where MultiGP against a real 5 inch is 4.39. That
+ * scale is back to 1, so the ratio is 1.7526 against 0.347, which is 5.05
+ * gate widths: the 15 percent above, and nothing else.
+ *
+ * Note what this constant does NOT do. It makes a gate bigger in metres, and
+ * a bigger gate seen from proportionally further away looks identical, so it
+ * is not the lever that decides whether a gate reads as small on screen.
+ * That is the camera's field of view, and src/render/lens.js carries the
+ * derivation.
  *
  * Everything with a length scales, so an obstacle grows as one object: the
  * opening, the sill a tower stands its opening on, the hurdle bar, the flag

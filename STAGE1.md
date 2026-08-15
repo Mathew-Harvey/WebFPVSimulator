@@ -12,8 +12,18 @@ One preset only in Stage 1. A 5 inch freestyle quad:
 - Battery 6S, 1300 mAh, nominal 22.2 V, 4.20 V per cell charged, 3.50 V per cell empty
 - Four motors, 1900 kV, at the corners of a 220 mm diagonal
 - 5 x 4.3 x 3 propellers
-- Thrust-to-weight approximately 4.5 to 1 at full charge
-- Inertia tensor diagonal, roll 0.0055, pitch 0.0060, yaw 0.0110 kg m squared
+- Thrust-to-weight 9.2 to 1 at full charge, measured
+- Inertia tensor diagonal, roll 0.0035, pitch 0.0038, yaw 0.0068 kg m squared
+
+The last two lines used to read 4.5 to 1 and 0.0055 / 0.0060 / 0.0110, and
+neither was ever what the code did. They are corrected to what
+`src/native/plant.c` builds and `scripts/flightcheck.js` measures, because
+the code is the one with a derivation: its thrust and drag coefficients are a
+physical pair fixed by momentum theory with an enforced figure of merit, and
+every band in the check table below was fitted against them. The old figures
+also do not describe this aircraft. A 650 g 5 inch on 6S with 1900 kV motors
+and tri-blades is 9 to 12 to 1 in the real world; 4.5 to 1 is a heavy 7 inch,
+and 0.0055 / 0.0060 / 0.0110 is a 7 inch's inertia too. See PROGRESS.md.
 
 ## Architecture
 

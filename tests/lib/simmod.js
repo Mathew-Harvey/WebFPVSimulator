@@ -85,6 +85,7 @@ export async function loadSim(wasmBytes) {
     'sim_step',
     'sim_motor_override',
     'sim_rest',
+    'sim_set_angle_mode',
     'sim_state_size',
     'sim_state',
     'malloc',
@@ -148,6 +149,11 @@ export class Sim {
    * landing. See sim_abi.h for why this exists. */
   rest() {
     return this.e.sim_rest();
+  }
+
+  /* Betaflight ANGLE_MODE. 0 is acro. See sim_abi.h. */
+  setAngleMode(on) {
+    return this.e.sim_set_angle_mode(on ? 1 : 0);
   }
 
   stateSize() {

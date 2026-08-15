@@ -137,6 +137,11 @@ SIM_EXPORT int sim_rest(void) {
   return SIM_OK;
 }
 
+SIM_EXPORT int sim_set_angle_mode(int on) {
+  bridge_set_angle_mode(on);
+  return SIM_OK;
+}
+
 SIM_EXPORT int sim_motor_override(int motor, double duty) {
   if (!g_initialised) {
     return SIM_ERR_BAD_STATE;

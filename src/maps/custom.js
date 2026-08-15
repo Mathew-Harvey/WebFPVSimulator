@@ -8,13 +8,15 @@
  * document and hand it over, which is what this file does and all it does.
  *
  * WHICH TRACK. A published course imported from the public board, if one is
- * sitting in the share seat, otherwise the one open in the builder. The
- * builder autosaves its working document on every edit, so pressing Fly this
- * track and then choosing Your track flies exactly what is on the builder's
- * canvas, with no save step to forget. A share import is a different key:
- * the board opens the simulator with ?share=id, the document lands here, and
- * the draft is left alone. Reading both through the modules that own those
- * keys means neither key is written down twice.
+ * sitting in the share seat, otherwise the one open in the builder. Flying
+ * a course this browser published writes the share seat from the canvas, so
+ * a time can still go back to the same listing. A remix of someone else's
+ * course clears that seat, so the canvas is what flies, and the menus offer
+ * to publish it under a new name.
+ *
+ * An optional third argument `{ document }` injects a course without touching
+ * either seat. The public board's orbit thumbnail uses that so several cards
+ * can show several courses at once.
  *
  * NO TRACK IS NOT AN ERROR. A player who picks this map having never opened
  * the builder gets the world with nothing in it and a note saying so, the
@@ -41,6 +43,7 @@ import { buildComposer } from '../render/post.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { readAutosave } from '../trackbuilder/storage.js';
 import { readShareImport } from '../share/session.js';
+import { qualityFor } from '../render/quality.js';
 
 /*
  * The document that will be built, or null. A share import wins, then the
@@ -79,16 +82,19 @@ export function trackSummary() {
   };
 }
 
-export async function buildMap(shell, onProgress) {
+export async function buildMap(shell, onProgress, options) {
   const progress = onProgress ?? (() => {});
-  const share = readShareImport();
-  const doc = workingDocument();
+  const opts = options || {};
+  const q = qualityFor(opts.quality);
+  const injected = Object.prototype.hasOwnProperty.call(opts, 'document');
+  const share = injected ? null : readShareImport();
+  const doc = injected ? opts.document : workingDocument();
   const course = doc ? courseFromDocument(doc) : emptyCourse();
-  const map = buildFieldScene(shell, progress, course);
+  const map = buildFieldScene(shell, progress, course, q);
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;
-  const post = buildComposer(shell.renderer, map.scene, shell.camera);
+  const post = buildComposer(shell.renderer, map.scene, shell.camera, q);
   const d = shell.resize();
   post.setSize(d.w, d.h);
   const sceneDispose = map.dispose;
@@ -113,6 +119,7 @@ function emptyCourse() {
     spawn: { x: 0, z: 0, yaw: 0 },
     line: [],
     samples: [{ x: 0, z: 0 }],
+    guide: { samples: [], dashes: [], arrows: [], flagArcs: [], length: 0 },
     warnings: ['Nothing has been built yet. Open the track builder from the title screen, place some gates, then come back.'],
     lapLength: 0,
     closed: false,

@@ -325,14 +325,16 @@ export function applyFigure(doc, elementId, figureId) {
   const plan = figureId === 'single'
     ? [{ apertureIndex: Math.min(keepLevel, aperturesOf(el).length - 1), entry: approach }]
     : figurePlan(el, figureId, approach);
-  const made = [];
+  /* Insert one at a time so newSequenceId sees the previous id. Building
+   * the batch off to the side reused sq-N for every pass. */
+  let at = insertAt;
   for (const step of plan) {
     const entry = createSequenceEntry(doc, elementId, step.apertureIndex);
     entry.entry = step.entry;
     entry.overridden = figureId !== 'single';
-    made.push(entry);
+    doc.sequence.splice(at, 0, entry);
+    at += 1;
   }
-  doc.sequence.splice(insertAt, 0, ...made);
   applyAutoFaces(doc);
   return true;
 }

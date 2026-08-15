@@ -64,6 +64,8 @@ export const RATE_DEFAULTS = {
   rateYawMax: 670,
   rateCentre: 70,
   rateExpo: 0,
+  /* 100 is off, which is what a freshly flashed quad does. */
+  throttleCap: 100,
 };
 
 /* Offered values. Multiples of 10 because the firmware field is tens of
@@ -72,6 +74,38 @@ export const RATE_DEFAULTS = {
 export const RATE_MAX_CHOICES = [400, 420, 500, 600, 670, 700, 800, 900, 1000, 1100, 1200, 1400];
 export const RATE_CENTRE_CHOICES = [30, 40, 50, 60, 70, 80, 100, 120, 140];
 export const RATE_EXPO_CHOICES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70];
+
+/*
+ * The throttle cap, as a percentage of full throttle.
+ *
+ * WHY A RACE QUAD NEEDS ONE. This airframe is 9.2 : 1 static thrust to
+ * weight, which is what a 650 g 5 inch on 6S with 1900 kV motors really is,
+ * and it hovers at 19.5 percent of stick (scripts/flightcheck.js measures
+ * both). So four fifths of the throttle travel is above hover, the useful
+ * band around it is a couple of percent of stick, and ten percent of stick
+ * takes you from holding altitude to climbing at 9 m/s. That is not a bug in
+ * the model, it is what the aircraft is, and it is exactly why the throttle
+ * limit exists in Betaflight and why racers use it.
+ *
+ * SCALE, NOT CLIP, and the difference is the whole point. Betaflight offers
+ * both in flight/mixer.c applyThrottleLimit:
+ *
+ *   CLIP    output = min(stick, cap).   Stick above the cap does nothing.
+ *           The travel is thrown away and the resolution below is unchanged.
+ *   SCALE   output = stick * cap.       Full stick travel is redistributed
+ *           across nothing-to-cap, so every millimetre of stick is worth
+ *           `cap` as much throttle and the resolution improves by 1/cap.
+ *
+ * SCALE is the one that gives resolution back. At 60 percent, hover moves
+ * from 19.5 to 32 percent of stick and the stick is two thirds as touchy; at
+ * 40 percent, hover sits at half stick, which is the classic setup.
+ *
+ * The cap is NOT reimplemented here. These two lines go into the rate profile
+ * and Betaflight's own mixer does the work, per CLAUDE.md: if a Betaflight
+ * behaviour is missing, compile more of Betaflight rather than approximate
+ * it. It was already compiled; nothing had ever switched it on.
+ */
+export const THROTTLE_CAP_CHOICES = [100, 90, 80, 70, 60, 50, 40];
 
 function nearest(choices, value) {
   let best = choices[0];
@@ -91,6 +125,7 @@ export function normaliseRates(s) {
     rateYawMax: nearest(RATE_MAX_CHOICES, s.rateYawMax ?? RATE_DEFAULTS.rateYawMax),
     rateCentre: nearest(RATE_CENTRE_CHOICES, s.rateCentre ?? RATE_DEFAULTS.rateCentre),
     rateExpo: nearest(RATE_EXPO_CHOICES, s.rateExpo ?? RATE_DEFAULTS.rateExpo),
+    throttleCap: nearest(THROTTLE_CAP_CHOICES, s.throttleCap ?? RATE_DEFAULTS.throttleCap),
   };
 }
 
@@ -117,6 +152,11 @@ export function ratesDiff(s) {
     `set roll_expo = ${r.rateExpo}`,
     `set pitch_expo = ${r.rateExpo}`,
     `set yaw_expo = ${r.rateExpo}`,
+    /* Both lines always, so turning the cap off writes OFF rather than
+     * leaving the previous SCALE in a rate profile that is not reset between
+     * inits. */
+    `set throttle_limit_type = ${r.throttleCap < 100 ? 'SCALE' : 'OFF'}`,
+    `set throttle_limit_percent = ${r.throttleCap}`,
     '',
   ].join('\n');
 }
@@ -124,5 +164,30 @@ export function ratesDiff(s) {
 /* One line for the menu, so the pilot can read the whole curve at a glance. */
 export function ratesSummary(s) {
   const r = normaliseRates(s);
-  return `${r.rateCentre} centre, ${r.rateMax} max, ${r.rateExpo / 100} expo`;
+  const cap = r.throttleCap < 100 ? `, throttle capped at ${r.throttleCap}` : '';
+  return `${r.rateCentre} centre, ${r.rateMax} max, ${r.rateExpo / 100} expo${cap}`;
+}
+
+/*
+ * Where hover lands on the stick at each cap, as a percentage of travel.
+ *
+ * MEASURED, NOT DERIVED, and the difference is the reason this is a table
+ * rather than a formula. The obvious formula is hover divided by the cap,
+ * because SCALE multiplies the mixer's throttle by it. That overstates every
+ * value, by six percentage points at a cap of 40, because thrust is not
+ * linear in the throttle command: the pack sags and the motors load up, so
+ * halving the command does not halve the thrust and the stick does not have
+ * to come up as far as the algebra says.
+ *
+ * These are read off the compiled module by scripts/flightcheck.js, which
+ * bisects for the throttle that holds altitude at each cap. Re-run it if the
+ * plant changes. It is in the menu because "60 percent" means nothing to a
+ * pilot and "hover near a third of the stick" means everything.
+ */
+const HOVER_STICK_PERCENT = new Map([
+  [100, 19.5], [90, 21.1], [80, 23.1], [70, 25.8], [60, 29.2], [50, 33.9], [40, 41.1],
+]);
+
+export function hoverStickPercent(cap) {
+  return HOVER_STICK_PERCENT.get(nearest(THROTTLE_CAP_CHOICES, cap)) ?? 19.5;
 }

@@ -31,43 +31,50 @@
 /*
  * How much larger the world is than the aircraft, as a pure number.
  *
- * The owner flew it and reported the same thing twice: "the gates and the
- * town are too small compared to the drone", "the scale doesn't feel right".
- * Both maps measure correct. A MultiGP standard gate is 1.524 m because
- * MultiGP publishes 5 ft (src/game/track.js), the town's doorways are 1.9 to
- * 2.1 m and its kerbs 0.10 to 0.20 m because a tape measure in a Japanese
- * suburb says so (src/maps/city/references.js), and check 15 asserts all of
- * it. So there is nothing in either world to correct, and shrinking a gate
- * to taste would just be deleting the one citation the project has.
- *
- * What is adjustable is how big the AIRCRAFT is against all of it. This is
- * the ratio, and it is the whole of the change: at 1.25 every solid thing in
- * both maps stands a quarter larger relative to the camera than it did, the
- * craft's own camera flies a quarter lower over the same ground, and the
- * world goes past a quarter slower for its size. That is the cue the eye
- * actually reads as scale, and it is why an honest 1.524 m gate can still
- * fly like a toy hoop: angular size alone is scale invariant, so a bigger
- * gate at a proportionally greater distance looks identical. What changes
- * the feel is the size and speed of the aircraft moving through it.
- *
- * It is applied HERE and only here because this file is already the one and
- * only conversion between the physics frame and the world frame, and a scale
- * is exactly that kind of conversion. Downstream of this line the aircraft
- * is 1/1.25 of its true size and travels 1/1.25 as far per second; upstream
- * of it nothing has changed at all. The physics module, the ABI, the
- * determinism trace and every published dimension in either map are
- * untouched, which is the property that made this the right seam:
- *
  *   world metres = sim metres / WORLD_SCALE
  *
- * Everything the shell measures in world metres (terrain heights, collider
- * boxes, the surface bias, gate apertures) is the world's own truth and does
- * not pass through here. Everything that is a fact about the airframe (its
- * 0.110 m arm, its 2.0 m/s landing gate, its closing speed into a gate
- * upright) stays in sim metres, because a landing leg does not care what
- * scale the town was built at.
+ * IT IS 1, AND THE HISTORY OF WHY IT WAS NOT IS THE REASON THIS COMMENT IS
+ * LONG.
+ *
+ * The owner flew it and reported "the gates and the town are too small
+ * compared to the drone". The response was to set this to 1.25, on the
+ * reasoning, written down here at the time, that "at 1.25 every solid thing
+ * in both maps stands a quarter larger relative to the camera than it did".
+ *
+ * That reasoning is wrong, and the second report, "the gates feel small and
+ * the field is large", is what it produces. This scale divides the craft's
+ * displacement about the sim origin. It does not touch the world, so it
+ * cannot change how big anything in the world LOOKS: the on screen height of
+ * a gate is
+ *
+ *   pixels = viewportHeight * clearH / (2 * depth * tan(fov / 2))
+ *
+ * and WORLD_SCALE appears nowhere in it. A gate seen from 10 world metres
+ * subtends exactly the same angle at 1.25 as it does at 1. What the scale
+ * does change is how much sim distance buys a world metre, so at 1.25 the
+ * craft crossed every course a quarter slower and a 542 m lap had to be
+ * flown as 678 m. That is the whole of the "field is large" report, and on a
+ * project that publishes lap times to a leaderboard it is worse than a feel
+ * problem: it is a quarter added to every time.
+ *
+ * So the lever was the wrong one. Apparent size is the CAMERA's, and the
+ * camera is where it has been fixed: see src/render/lens.js, which carries
+ * the derivation. Here, 1 restores the property that makes the rest
+ * of the project's dimensions mean anything, which is that a metre in the
+ * physics is a metre in the world.
+ *
+ * The seam stays, because it is the right seam if the ratio is ever wanted
+ * again: this file is already the one and only conversion between the
+ * physics frame and the world frame, and a scale is exactly that kind of
+ * conversion. Everything the shell measures in world metres (terrain
+ * heights, collider boxes, the surface bias, gate apertures) is the world's
+ * own truth and does not pass through here. Everything that is a fact about
+ * the airframe (its 0.110 m arm, its 2.0 m/s landing gate) stays in sim
+ * metres, because a landing leg does not care what scale the town was built
+ * at. tests/thresholds.json carries the declared value so that changing it
+ * has to be done in two places on purpose.
  */
-export const WORLD_SCALE = 1.25;
+export const WORLD_SCALE = 1;
 
 /* A length in sim metres as a length in world metres. Sizes and offsets that
  * belong to the AIRCRAFT go through this on their way into the scene: its

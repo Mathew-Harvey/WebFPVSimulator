@@ -94,9 +94,12 @@ extern const PlantParams PLANT;
  * clockwise. */
 extern const double PLANT_SPIN[SIM_MOTOR_COUNT];
 
-/* Motor position in the body xy plane, Betaflight order. */
+/* Motor position in the body frame, Betaflight order. z is the height of the
+ * rotor disc above the centre of gravity and is what turns rotor drag into a
+ * nose up pitching moment at speed; see plant.c. */
 extern const double PLANT_POS_X[SIM_MOTOR_COUNT];
 extern const double PLANT_POS_Y[SIM_MOTOR_COUNT];
+extern const double PLANT_POS_Z[SIM_MOTOR_COUNT];
 
 void plant_reset(SimState *s);
 
@@ -129,6 +132,13 @@ void bridge_reset(void);
  */
 void bridge_run(const SimState *s, const double rc[4], int rx_new,
                 double duty[SIM_MOTOR_COUNT]);
+
+/*
+ * Raise or lower Betaflight ANGLE_MODE. Stored across reset so a shell
+ * that asked for angle before sim_reset still has it after. The plant
+ * does not read this.
+ */
+void bridge_set_angle_mode(int on);
 
 /*
  * Betaflight glue, implemented in bf/bf_glue.c which is compiled against

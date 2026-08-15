@@ -63,6 +63,7 @@ import {
 } from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
 import { yieldToPaint } from '../../ui/loading.js';
+import { qualityFor } from '../../render/quality.js';
 
 /*
  * Where a run starts. On the road south of the level crossing, facing north
@@ -255,9 +256,11 @@ function cityAttractPath(world) {
  * The far plane stays long. It costs nothing, it is depth precision rather
  * than draw calls, and the sky dome and the hills behind the town live out
  * there.
+ *
+ * High's live numbers (fog 22 to 65, cull 70, foliage keep 0.65, shadow
+ * half 22) live in src/render/quality.js so Medium and Low can scale them
+ * without a second copy of the reasoning.
  */
-const FOG_NEAR = 22;
-const FOG_FAR = 65;
 const CAMERA_FAR = 900;
 
 /*
@@ -285,9 +288,7 @@ const CAMERA_FAR = 900;
  * cell is only dropped once ALL of it is out of range and an 80 m cell rarely
  * is. 40 m is better on both axes at every radius measured.
  */
-const CULL_RADIUS = 70;
 const CULL_CELL = 40;
-const SHADOW_HALF = 22;
 
 /*
  * How finely the shadow proxies are cut. See buildShadowProxies in ./bake.js
@@ -311,10 +312,9 @@ const SHADOW_PROXY_CELL = 24;
  * It reads as thinning rather than deletion because a canopy here is a few
  * dozen blobs scattered through the tree's volume, so removing some of them
  * makes the tree airier and not smaller, and every trunk is untouched. Swept
- * numbers are in PROGRESS.md.
+ * numbers are in PROGRESS.md. High keeps 0.65; Medium and Low keep less.
+ * The live value is src/render/quality.js.
  */
-const FOLIAGE_KEEP = 0.65;
-
 
 /*
  * How coarsely the static merge groups geometry, and why it is NOT CULL_CELL.
@@ -419,20 +419,51 @@ const CASTER_MIN_RADIUS_INSTANCED = 0.8;
  * `renderer.setSize(w, h, true)`. Both are correct for a page that owns its
  * renderer and wrong for ours: the pixel ratio is the session's and the race
  * field's render targets are sized against it, and `updateStyle` true writes
- * inline width and height onto a canvas the stylesheet sizes. Subclassing
- * rather than patching the vendored file keeps ./vendored/core/post.js byte
- * identical to upstream.
+ * inline width and height onto a canvas the stylesheet sizes. Calling
+ * setSize again with updateStyle false does not clear those styles, so they
+ * have to be stripped here. Subclassing rather than patching the vendored
+ * file keeps ./vendored/core/post.js byte identical to upstream.
  */
 class CityPipeline extends Pipeline {
   constructor(renderer, scene, camera, opts) {
     super(renderer, scene, camera, opts);
     this.shellPixelRatio = renderer.getPixelRatio();
+    this.minScale = opts && opts.minScale != null ? opts.minScale : 1;
+    this.preferScale = opts && opts.preferScale != null ? opts.preferScale : null;
   }
 
   setSize(w, h) {
-    super.setSize(w, h);
+    /* Own scale math, not super.setSize. The vendored walker pipeline
+     * floors scale at 1.0 so a low-DPI screen supersamples for clean ink.
+     * Low on a Deck has to go below 1.0 or the fill rate is the whole
+     * frame. High keeps minScale 1 so 1080p matches the measured budget. */
+    const dpr = window.devicePixelRatio || 1;
+    let scale = this.forceScale
+      || this.preferScale
+      || (dpr < 1.5 ? 1.5 : Math.min(dpr, 2));
+    if (w * h * scale * scale > this.pixelBudget) {
+      scale = Math.max(this.minScale, Math.sqrt(this.pixelBudget / (w * h)));
+    }
+    this.scale = scale;
+    const rw = Math.max(2, Math.floor(w * scale));
+    const rh = Math.max(2, Math.floor(h * scale));
+    this.size.set(rw, rh);
+
+    this.rtScene.setSize(rw, rh);
+    this.rtA.setSize(rw, rh);
+    this.rtB.setSize(rw, rh);
+
+    const texel = new THREE.Vector2(1 / rw, 1 / rh);
+    this.ink.mat.uniforms.uTexel.value.copy(texel);
+    this.fxaa.mat.uniforms.uTexel.value.copy(texel);
+    this.ink.mat.uniforms.uNear.value = this.camera.near;
+    this.ink.mat.uniforms.uFar.value = this.camera.far;
+    this.ink.mat.uniforms.uThickness.value = 1.05 + 0.55 * scale;
+
     this.renderer.setPixelRatio(this.shellPixelRatio);
     this.renderer.setSize(w, h, false);
+    this.renderer.domElement.style.width = '';
+    this.renderer.domElement.style.height = '';
     setOutlineResolution(this.size.x, this.size.y);
   }
 }
@@ -974,19 +1005,27 @@ function buildColliders(world) {
   return { colliders, noTop, noBottom, slabs, fit: fitStats };
 }
 
-export async function buildMap(shell, onProgress) {
+export async function buildMap(shell, onProgress, options) {
   const renderer = shell.renderer;
   const camera = shell.camera;
   const progress = onProgress ?? (() => {});
+  const q = qualityFor(options && options.quality);
+  const fogNear = q.city.fogNear;
+  const fogFar = Math.min(q.city.fogFar, q.city.cullRadius - 4);
+  const half = q.city.shadowHalf;
+  const foliageKeep = q.city.foliageKeep;
+  const cullDefault = q.city.cullRadius;
 
   /* PCF, not PCF soft. The town's shadow map covers 68 m at 2048, which is
    * 3.3 cm per texel, and at that density the softer filter smears a fence
-   * post's shadow into a smudge. The field sets its own. */
+   * post's shadow into a smudge. The field sets its own. Low turns the
+   * map off. */
+  renderer.shadowMap.enabled = q.shadows;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setClearColor(new THREE.Color(PAL.fog), 1);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(PAL.fog, FOG_NEAR, FOG_FAR);
+  scene.fog = new THREE.Fog(PAL.fog, fogNear, fogFar);
   camera.far = CAMERA_FAR;
   camera.updateProjectionMatrix();
 
@@ -996,10 +1035,11 @@ export async function buildMap(shell, onProgress) {
    * the town's own. Without the planet there is no local surface frame to
    * seat them in, so they are plain offsets from the shadow target. */
   const sun = new THREE.DirectionalLight(PAL.sun, 2.25);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.castShadow = q.shadows;
+  const shadowMap = q.city.shadowMap || 2048;
+  sun.shadow.mapSize.set(shadowMap, shadowMap);
   /*
-   * 22 m half width, not the town's 34.
+   * 22 m half width on High, not the town's 34.
    *
    * The town's shadow camera is sized for a walker who sees 23 m of ground.
    * A quad at 25 m/s crosses 34 m in 1.4 s, and everything inside that box is
@@ -1009,7 +1049,6 @@ export async function buildMap(shell, onProgress) {
    * What it costs is a cast shadow from a building the pilot is about to
    * reach, which at 25 m/s is under a second of warning.
    */
-  const half = SHADOW_HALF;
   sun.shadow.camera.left = -half;
   sun.shadow.camera.right = half;
   sun.shadow.camera.top = half;
@@ -1120,20 +1159,29 @@ export async function buildMap(shell, onProgress) {
    */
   const baked = bakeCity(world, {
     cell: MERGE_CELL,
-    shadowCell: MERGE_SHADOW_CELL,
+    shadowCell: q.shadows ? MERGE_SHADOW_CELL : MERGE_CELL,
     cullCell: CULL_CELL,
-    casterMinRadius: CASTER_MIN_RADIUS,
-    casterMinRadiusInstanced: CASTER_MIN_RADIUS_INSTANCED,
+    casterMinRadius: q.shadows ? CASTER_MIN_RADIUS : 1e9,
+    casterMinRadiusInstanced: q.shadows ? CASTER_MIN_RADIUS_INSTANCED : 1e9,
     /* See findAnimated in ./bake.js. Turn this OFF the day anything in this
      * shell can press one of the town's buttons. */
     releaseStillRigs: true,
-    shadowProxyCell: SHADOW_PROXY_CELL,
+    shadowProxyCell: q.shadows ? q.city.shadowProxyCell : 0,
   });
-  const thinned = thinFoliage(world.root, { keep: FOLIAGE_KEEP });
+  const thinned = thinFoliage(world.root, { keep: foliageKeep });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
   const anim = cityAnimation(world, colliders, boomIndices, trainCars);
+  if (!q.city.petals && world.petals && world.petals.meshes) {
+    /* Floating blossom is a per-frame instance update of 980 cards. Low
+     * keeps the fallen drifts (static, three draws) and drops the live
+     * field. */
+    for (const m of world.petals.meshes) {
+      m.visible = false;
+    }
+    world.petals.update = () => {};
+  }
   /* Measured AFTER cityAnimation has seated the booms at step zero, so it is
    * the extent a quad would actually meet. */
   references.crossingBoomCollider = {
@@ -1145,7 +1193,7 @@ export async function buildMap(shell, onProgress) {
 
   const pipeline = new CityPipeline(renderer, scene, camera, {
     /*
-     * 2.6e6, not the town's own 4.6e6.
+     * 2.6e6 on High, not the town's own 4.6e6.
      *
      * The pipeline holds three full resolution targets plus a depth texture:
      * half float RGBA for the scene and the ink result at 8 bytes a pixel, a
@@ -1155,10 +1203,15 @@ export async function buildMap(shell, onProgress) {
      * 120 MB ceiling, with nothing left for anything else that ever wants a
      * target. At 2.6e6 it is 62.4 MB. The cost is supersampling: the town
      * asks for 1.5x on a low DPI screen and gets about 1.1x at 1080p. The
-     * measured effect on the ink is in PROGRESS.md.
+     * measured effect on the ink is in PROGRESS.md. Medium and Low tighten
+     * the budget further; see src/render/quality.js.
      */
-    pixelBudget: 2.6e6,
+    pixelBudget: q.city.pixelBudget,
+    minScale: q.city.minScale,
+    preferScale: q.city.preferScale,
   });
+  pipeline.enabled.ink = q.city.ink;
+  pipeline.enabled.fxaa = q.city.fxaa;
   const d = shell.resize();
   pipeline.setSize(d.w, d.h);
 
@@ -1187,7 +1240,8 @@ export async function buildMap(shell, onProgress) {
    * every frame and P8 forbids allocating in that path.
    */
   const proxyMeshes = baked.proxies ? baked.proxies.meshes : [];
-  const proxyReach = Math.hypot(SHADOW_PROXY_CELL, SHADOW_PROXY_CELL) * 0.5;
+  const proxyCell = q.city.shadowProxyCell || SHADOW_PROXY_CELL;
+  const proxyReach = Math.hypot(proxyCell, proxyCell) * 0.5;
   const proxyView = new THREE.Matrix4();
   const proxyEye = new THREE.Vector3();
   const proxyUp = new THREE.Vector3(0, 1, 0);
@@ -1207,8 +1261,8 @@ export async function buildMap(shell, onProgress) {
        * in front of the camera. The depth range is the shadow camera's own
        * near and far, widened the same way. */
       const d = -proxyAt.z;
-      m.visible = Math.abs(proxyAt.x) <= SHADOW_HALF + proxyReach
-        && Math.abs(proxyAt.y) <= SHADOW_HALF + proxyReach
+      m.visible = Math.abs(proxyAt.x) <= half + proxyReach
+        && Math.abs(proxyAt.y) <= half + proxyReach
         && d >= sun.shadow.camera.near - proxyReach
         && d <= sun.shadow.camera.far + proxyReach;
     }
@@ -1239,10 +1293,10 @@ export async function buildMap(shell, onProgress) {
 
   /* Overridable so a sweep can measure the draw call count against the cull
    * radius rather than one value being asserted. Harness only. */
-  let cullRadius = CULL_RADIUS;
+  let cullRadius = cullDefault;
   let cullR2 = cullRadius * cullRadius;
   function setCullRadius(r) {
-    cullRadius = r == null ? CULL_RADIUS : r;
+    cullRadius = r == null ? cullDefault : r;
     cullR2 = cullRadius * cullRadius;
   }
   /*
@@ -1291,6 +1345,7 @@ export async function buildMap(shell, onProgress) {
     id: 'city',
     name: 'Freestyle city',
     mode: 'freestyle',
+    graphics: q.id,
     scene,
     post: pipeline,
     colliders,
@@ -1349,11 +1404,11 @@ export async function buildMap(shell, onProgress) {
       cullCells: cull.cells.length,
       cullAlways: cull.always.length,
       cullRadius,
-      foliageKeep: FOLIAGE_KEEP,
+      foliageKeep,
       ...thinned,
       ...baked.stats,
       ...chunked,
-      shadowExtent: SHADOW_HALF,
+      shadowExtent: half,
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       ...anim.stats(),

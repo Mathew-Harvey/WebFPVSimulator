@@ -9,8 +9,10 @@
  * THE DIRECTION OF THE DEPENDENCY IS DELIBERATE AND IT IS ONE WAY. This
  * module imports the builder's model.js, elements.js, geometry.js and
  * path.js, which are pure data and pure functions: no DOM, no canvas, no
- * Three.js, no imports of their own outside that set. The builder still
- * imports nothing from the game and must not. The alternative, a second
+ * Three.js, no imports of their own outside that set. The ground-mark
+ * builder in guide.js is the same kind of thing, and lives on this side
+ * of the seam so the renderer never has to read a document. The builder
+ * still imports nothing from the game and must not. The alternative, a second
  * implementation of normalize() and of the aperture maths living here, is
  * exactly the drift schema.md exists to prevent: two readers of one format
  * disagreeing about what a tilted gate means is a bug nobody would find
@@ -61,11 +63,13 @@ import {
 import { buildPath } from '../trackbuilder/path.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
 import { GATE_SCALE } from './track.js';
+import { startBlockLaneOffset, startBlockDims } from '../art/startblock.js';
+import { guideFromKnots } from './guide.js';
 
 /*
- * How far behind the start pads the craft is parked, in metres, along the
- * pads' own heading. The pads are 0.6 m squares in a row and the quad has to
- * start behind the line rather than on it.
+ * How far behind the FIRST GATE the craft is parked when a track has no
+ * start pads. The pads themselves are where the quad sits; they are not a
+ * timing plane, so a course that has them parks on a stand, not behind it.
  */
 const SPAWN_BACK = 2.5;
 
@@ -137,7 +141,8 @@ function builtDims(dims) {
  *               list: a ladder flown twice is one structure and two stations
  *   spawn       where the quad is parked, from the start pads
  *   line        the racing line as scene points, which the terrain uses to
- *               flatten its corridor and the title screen uses to fly around
+ *               flatten its corridor
+ *   guide       the taut-string ground marks: dashes, gate arrows, flag wraps
  *   warnings    anything the game itself could not honour
  *
  * Never throws. A document it cannot use yields a course with no stations,
@@ -251,8 +256,9 @@ export function courseFromDocument(raw) {
     });
   }
 
-  /* Where the quad is parked. Behind the pads along their own heading, the
-   * same relationship the field's own start line has with its spawn. */
+  /* Where the quad is parked. On a launch stand when the track has pads,
+   * otherwise behind the first gate the same way the field stands off its
+   * own timing line. */
   const pads = startPadsOf(doc);
   let spawn = null;
   if (pads) {
@@ -271,12 +277,16 @@ export function courseFromDocument(raw) {
      */
     const forward = { x: Math.cos(pads.yaw), z: -Math.sin(pads.yaw) };
     const yaw = headingForTravel(forward.x, forward.z) ?? 0;
-    /* Behind the line, along the heading, the same way the field stands its
-     * quad back from its own timing gate. */
+    /* Onto one stand in the row, using the same across-the-line offset the
+     * mesh uses, so the craft sits on a block rather than in the grass
+     * between two. Pitch matches the ramp so the front arms rest on the
+     * foam. */
+    const off = startBlockLaneOffset(pads.dims);
     spawn = {
-      x: p.x + Math.sin(yaw) * SPAWN_BACK,
-      z: p.z + Math.cos(yaw) * SPAWN_BACK,
+      x: p.x + Math.cos(yaw) * off,
+      z: p.z - Math.sin(yaw) * off,
       yaw,
+      pitch: startBlockDims(pads.dims.padSize).tilt,
     };
   } else if (stations.length) {
     const first = stations[0];
@@ -291,11 +301,19 @@ export function courseFromDocument(raw) {
   }
 
   /* The racing line in scene metres. The terrain flattens a corridor along
-   * it and the title screen's camera flies around it. */
+   * it. */
   const line = path.samples.map((s) => {
     const p = toScene(field, s.pos);
     return { x: p.x, y: s.pos.z, z: p.z };
   });
+
+  /*
+   * Ground marks. Built from the knots, not from the Hermite samples: the
+   * paint has to hug flags on the pass side the way a racer does, and the
+   * cubic through gate-normal tangents does not. Scene XZ, so the renderer
+   * never has to know a document existed.
+   */
+  const guide = guideFromKnots(sceneKnots(path.knots, field));
 
   if (!stations.length) {
     warnings.push('This track has nothing to fly through, so there is no lap to time.');
@@ -317,6 +335,7 @@ export function courseFromDocument(raw) {
     stations,
     spawn,
     line,
+    guide,
     figures: stampFigures(doc, field, stations),
     warnings,
     /* Kept so a caller can report on the track without re-reading it. */
@@ -374,6 +393,25 @@ function stampFigures(doc, field, stations) {
     i = j + 1;
   }
   return figures;
+}
+
+/*
+ * Knots the ground-mark builder wants, in the scene frame. A marker's fly
+ * point is already offset; the pole and the clearance go with it so the
+ * string line can wrap the peg instead of the Hermite bulge.
+ */
+function sceneKnots(knots, field) {
+  return knots.map((k) => {
+    const p = toScene(field, k.pos);
+    const out = { role: k.role, x: p.x, z: p.z, radius: 0 };
+    if (k.role === 'marker' && k.markerPos) {
+      const pole = toScene(field, k.markerPos);
+      out.poleX = pole.x;
+      out.poleZ = pole.z;
+      out.radius = k.seq && k.seq.clearance != null ? k.seq.clearance : 1.5;
+    }
+    return out;
+  });
 }
 
 /*

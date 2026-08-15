@@ -210,6 +210,10 @@ export class Race {
     this.laps = [];         /* completed clean lap times, in order */
     this.voided = 0;        /* laps thrown away by a crash */
     this.lastOpening = -1;  /* which opening of a stacked obstacle was used */
+    /* The record as this run began. The live best updates on a faster
+     * lap, and the results screen needs the old figure to say whether
+     * this run beat it and by how much. */
+    this.recordAtStart = this.bestMs;
   }
 
   /* Number of the lap now being flown, counting voided attempts. */
@@ -248,6 +252,16 @@ export class Race {
     this.flash = { text: reason, untilMs: wallMs + 1800 };
   }
 
+  /*
+   * Throw the running lap away and send the order back to the timing gate.
+   *
+   * NOTHING CALLS THIS ANY MORE and that is a statement of the rules rather
+   * than an oversight. A gate tap is a crash and costs time, not the lap;
+   * flying a gate out of sequence costs nothing at all, by the owner's
+   * instruction; see update(). It stays because voiding a lap is a real
+   * operation on the run, the results screen still knows how to show one, and
+   * the next rule that needs it should not have to reinvent the bookkeeping.
+   */
   voidLap(reason, wallMs) {
     if (this.freestyle) {
       /* Nothing to void, but a crash still says so. The shell calls this from
@@ -366,31 +380,6 @@ export class Race {
     return passed;
   }
 
-  /*
-   * Did the segment cross THIS gate's opening in the direction of travel? The
-   * same test tryPass makes, without the scoring side effects, so the sequence
-   * rule and the scoring cannot disagree about what a crossing is.
-   */
-  crossesGate(g, prev, curr) {
-    /* Opening by opening in its own frame, the same walk tryPass makes. */
-    for (let k = 0; k < g.apertures.length; k += 1) {
-      const ap = g.apertures[k];
-      const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
-      const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
-      if (!(a.z <= 0 && b.z > 0)) {
-        continue;
-      }
-      const t = a.z / (a.z - b.z);
-      const cx = a.x + (b.x - a.x) * t;
-      const cy = a.y + (b.y - a.y) * t;
-      if (Math.abs(cx) <= ap.clearW * 0.5 - CRAFT_WORLD_R
-        && Math.abs(cy) <= ap.clearH * 0.5 - CRAFT_WORLD_R) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   /* Per frame. simMs is the simulation clock at the rendered state,
    * wallMs the wall clock (flash expiry only). Returns
    * { passed: gateIndex|null, hitFrame: bool }; a frame hit voids the
@@ -403,32 +392,28 @@ export class Race {
     this.prevSimMs = simMs;
     const passed = this.tryPass(prev, curr, prevSimMs, simMs, wallMs);
     /*
-     * MultiGP's own rule, which track.js quotes verbatim and this file did not
-     * enforce: "If any obstacle is entered out of sequence or direction at any
-     * time the run is invalid." Crossing a gate that is not the one the race
-     * wants now voids the lap. It costs no time to do, so it was never an
-     * exploit, but a file that quotes a rule should obey it.
+     * FLYING THROUGH A GATE THAT IS NOT THE TARGET COSTS NOTHING.
+     *
+     * This used to void the lap, on MultiGP's own rule, which track.js quotes
+     * verbatim: "If any obstacle is entered out of sequence or direction at
+     * any time the run is invalid." The owner has overruled it: "if i go
+     * through other gates that are not the target gate, then that is fine, no
+     * penalty, the lap can still be completed, assuming i run through the
+     * correct gate."
+     *
+     * It is the right call for this simulator even though it departs from the
+     * rulebook. These courses are imported from Velocidrone and several of
+     * them are dense: 2025 WA States has a five gate tunnel the lap crosses
+     * on the way to somewhere else, and WCMRC Round 5 flies one gate five
+     * times in a lap. On a course like that an incidental crossing is a
+     * feature of the geometry rather than a shortcut, and voiding for it
+     * punishes the pilot for the layout. Nothing is gained by cutting a gate
+     * either: the sequence still has to be flown in order, so an out of
+     * sequence pass advances nothing and only costs the time it took.
+     *
+     * The rule stays quoted in track.js because it is a citation of what
+     * MultiGP says, and this is a citation of what we do instead.
      */
-    if (passed == null && this.lapStartMs != null) {
-      const want = this.gates[this.next];
-      for (let gi = 0; gi < this.gates.length; gi += 1) {
-        if (gi === this.next) {
-          continue;
-        }
-        const other = this.gates[gi];
-        /* Other holes of the stack you are flying at. Going through the
-         * top while the bottom is next is a miss, not a lap void: they
-         * share a plane, and a void for the unused opening would make a
-         * double stack unflyable. A different structure still voids. */
-        if (want.elementId != null && other.elementId === want.elementId) {
-          continue;
-        }
-        if (this.crossesGate(other, prev, curr)) {
-          this.voidLap('Out of sequence\nLap void', wallMs);
-          break;
-        }
-      }
-    }
     /* hitFrame is gone. The frame is solid geometry now and touching it is a
      * crash, decided by src/game/collide.js in the shell, not a lap penalty
      * decided here. The return shape keeps its second field so the shell's

@@ -11,9 +11,11 @@
  * same board. The document is the same schema.md object the builder writes,
  * logo included, so a published course arrives wearing its sponsor print.
  *
- * THE BUILDER'S AUTOSAVE IS A DIFFERENT KEY. Fly this track clears the
- * import so the working canvas wins. A shared course never overwrites the
- * draft, and a draft never overwrites a shared course. They are two seats.
+ * THE BUILDER'S AUTOSAVE IS A DIFFERENT KEY. A community course opened from
+ * the board sits in the share seat. The working canvas is the autosave.
+ * They do not overwrite each other, unless the player asks to edit a copy.
+ * Flying a course this browser published writes the share seat from the
+ * canvas, so a time can still go back to the same listing.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -33,6 +35,10 @@
 
 const IMPORT_KEY = 'webfpv.share.import.v1';
 const EDIT_KEY = 'webfpv.share.editkeys.v1';
+const BIND_KEY = 'webfpv.share.bind.v1';
+const PENDING_KEY = 'webfpv.share.pending.v1';
+const POSTED_KEY = 'webfpv.share.posted.v1';
+const INTENT_KEY = 'webfpv.share.builderIntent.v1';
 
 function readJson(key, fallback) {
   try {
@@ -98,4 +104,128 @@ export function writeEditKey(trackId, key) {
   }
   all[trackId] = String(key);
   return writeJson(EDIT_KEY, all);
+}
+
+export function readAllEditKeys() {
+  const all = readJson(EDIT_KEY, {});
+  if (!all || typeof all !== 'object' || Array.isArray(all)) {
+    return {};
+  }
+  return all;
+}
+
+function mapGet(key, id) {
+  const all = readJson(key, {});
+  if (!all || typeof all !== 'object' || Array.isArray(all) || !id) {
+    return null;
+  }
+  const row = all[id];
+  return row && typeof row === 'object' ? row : null;
+}
+
+function mapSet(key, id, value) {
+  const all = readJson(key, {});
+  if (!all || typeof all !== 'object' || Array.isArray(all) || !id) {
+    return false;
+  }
+  if (value == null) {
+    delete all[id];
+  } else {
+    all[id] = value;
+  }
+  return writeJson(key, all);
+}
+
+/*
+ * A local document id bound to a listing on the board. Owned listings
+ * carry the last name and layout we sent, so a rename can update the
+ * board without touching times, and a layout change can warn first.
+ */
+export function readBind(trackId) {
+  return mapGet(BIND_KEY, trackId);
+}
+
+export function writeBind(trackId, bind) {
+  if (!bind || typeof bind !== 'object') {
+    return mapSet(BIND_KEY, trackId, null);
+  }
+  return mapSet(BIND_KEY, trackId, {
+    board: String(bind.board || ''),
+    author: String(bind.author || ''),
+    nameOnBoard: String(bind.nameOnBoard || ''),
+    layoutFingerprint: String(bind.layoutFingerprint || ''),
+    owned: Boolean(bind.owned),
+    sourceId: bind.sourceId ? String(bind.sourceId) : '',
+    sourceName: String(bind.sourceName || ''),
+    sourceAuthor: String(bind.sourceAuthor || ''),
+  });
+}
+
+export function readPendingTime() {
+  const raw = readJson(PENDING_KEY, null);
+  if (!raw || typeof raw !== 'object' || !raw.trackId || !Number.isFinite(raw.lapMs)) {
+    return null;
+  }
+  return raw;
+}
+
+export function writePendingTime(payload) {
+  if (!payload || !payload.trackId || !Number.isFinite(payload.lapMs)) {
+    return false;
+  }
+  return writeJson(PENDING_KEY, {
+    trackId: String(payload.trackId),
+    lapMs: Math.round(payload.lapMs),
+    name: String(payload.name || ''),
+  });
+}
+
+export function clearPendingTime(trackId) {
+  const cur = readPendingTime();
+  if (trackId && cur && cur.trackId !== trackId) {
+    return;
+  }
+  try {
+    localStorage.removeItem(PENDING_KEY);
+  } catch (e) {
+    /* nothing to do about it */
+  }
+}
+
+export function readPostedBest(trackId) {
+  const row = mapGet(POSTED_KEY, trackId);
+  const ms = row && Number(row.lapMs);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+export function writePostedBest(trackId, lapMs) {
+  const prev = readPostedBest(trackId);
+  const next = Math.round(Number(lapMs));
+  if (!Number.isFinite(next)) {
+    return false;
+  }
+  if (prev != null && next >= prev) {
+    return true;
+  }
+  return mapSet(POSTED_KEY, trackId, { lapMs: next });
+}
+
+export function writeBuilderIntent(intent) {
+  if (!intent || typeof intent !== 'object') {
+    return false;
+  }
+  return writeJson(INTENT_KEY, { kind: String(intent.kind || '') });
+}
+
+export function takeBuilderIntent() {
+  const raw = readJson(INTENT_KEY, null);
+  try {
+    localStorage.removeItem(INTENT_KEY);
+  } catch (e) {
+    /* nothing to do about it */
+  }
+  if (!raw || typeof raw !== 'object' || !raw.kind) {
+    return null;
+  }
+  return raw;
 }

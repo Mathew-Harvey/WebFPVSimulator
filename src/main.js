@@ -6,9 +6,11 @@
  * and never reaches the integrator; a dropped frame changes nothing about
  * the trajectory.
  *
- * The page opens on a title, with the world alive behind it and the camera
- * circling the start gate. Physics steps only while a run is in progress,
- * so a paused game or a results screen costs the trajectory nothing.
+ * The page opens on a title: the loaded map fills the canvas, the session
+ * airframe flies the map's attract line, and the menu sits on top as a
+ * HUD. That shot is the same world the player is about to fly, not a
+ * second scene. Settings still has its own cheap studio context, created
+ * when that screen opens and torn down when flight starts.
  *
  * Ground handling is deliberately shell side: the physics module has no
  * ground plane (the verification harness measures free air behaviour), so
@@ -38,6 +40,8 @@
 
 import * as THREE from 'three';
 import { buildShell } from './render/shell.js';
+import { applyPixelRatio, normalizeGraphics } from './render/quality.js';
+import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
@@ -47,7 +51,14 @@ import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, postTime } from './share/board.js';
-import { readPilotName } from './share/pilot.js';
+import { inspectCourse, publishCurrentCourse, pushOwnedListing, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
+import {
+  clearPendingTime,
+  readPendingTime,
+  writePendingTime,
+  writePostedBest,
+} from './share/session.js';
 import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
@@ -121,18 +132,46 @@ const SURFACE_BIAS = 0.40;
  */
 const PARKED_LIFT = 0.30;
 /*
- * Opening shot when a run starts: the quad on the pad, then a dolly into
- * the FPV camera. Hold and zoom are wall milliseconds of the same 1 ms
- * accumulator the frame already uses, so a hitch stretches the shot
- * rather than skipping it.
+ * Opening shot when a run starts: orbit the quad on the pad, settle
+ * behind it, then dolly into the FPV camera. The three spans are wall
+ * milliseconds of the same 1 ms accumulator the frame already uses, so
+ * a hitch stretches the shot rather than skipping it.
  */
-const INTRO_HOLD = 1400;
-const INTRO_ZOOM = 1100;
-const INTRO_TOTAL = INTRO_HOLD + INTRO_ZOOM;
+const INTRO_ORBIT = 2200;
+const INTRO_APPROACH = 800;
+const INTRO_ZOOM = 1000;
+const INTRO_FLY = INTRO_ORBIT + INTRO_APPROACH;
+const INTRO_TOTAL = INTRO_FLY + INTRO_ZOOM;
 /* Hitch frames are capped at 100 ms in the loop. Adding that whole cap
  * to the intro clock burns the pad shot before a single exterior frame
  * is shown. A real frame is about 16 ms; 33 ms is 30 fps. */
 const INTRO_STEP_MAX = 33;
+/* Orbit starts on a three-quarter behind the right shoulder and walks
+ * 300 degrees, which lands dead astern. Approach then closes from that
+ * same point. Radii are world metres, outside the 0.2 m near plane. */
+const INTRO_THETA0 = 0.55;
+const INTRO_ORBIT_SPAN = (300 * Math.PI) / 180;
+const INTRO_ORBIT_RADIUS = 0.72;
+const INTRO_ORBIT_HEIGHT = 0.30;
+const INTRO_APPROACH_RADIUS = 0.40;
+const INTRO_APPROACH_HEIGHT = 0.14;
+const INTRO_FOV = 40;
+/* Finish shot. Pulls off the FPV lens onto a three-quarter of the
+ * frozen craft, then sways. Radii in world metres. */
+const FINISH_FOV = 46;
+const FINISH_RADIUS = 2.35;
+const FINISH_HEIGHT = 0.88;
+const FINISH_PULL_MS = 1050;
+const FINISH_SWAY = 0.00055;
+function introEase(t) {
+  if (t <= 0) {
+    return 0;
+  }
+  if (t >= 1) {
+    return 1;
+  }
+  return t * t * (3 - 2 * t);
+}
 /*
  * How far behind the next gate a crashed craft is put back on the ground, in
  * metres along that gate's own approach. The same figure the race field
@@ -174,6 +213,7 @@ async function fetchBytes(url, onProgress) {
 
 /* Reused rather than allocated at every spawn. */
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
+const AXIS_X = new THREE.Vector3(1, 0, 0);
 
 /*
  * Bring one map in and make it the world.
@@ -198,7 +238,7 @@ const MAP_MODULE_COUNT = { field: 3, city: 63, custom: 9 };
  * modules under the city's prefix and the bar sat at zero. */
 const MAP_MODULE_PREFIX = { field: '/src/maps/field', city: '/src/maps/city/', custom: '/src/maps/custom' };
 
-async function loadMap(shell, id, loading) {
+async function loadMap(shell, id, loading, options) {
   const entry = mapById(id);
   loading.start('module');
   const counter = moduleCounter(
@@ -216,7 +256,8 @@ async function loadMap(shell, id, loading) {
   loading.detail = '';
   loading.start('world');
   await yieldToPaint();
-  const map = await mod.buildMap(shell, (f) => loading.progress('world', f));
+  const map = await mod.buildMap(shell, (f) => loading.progress('world', f), options);
+  map.graphics = normalizeGraphics(options && options.quality);
   loading.done('world');
   return map;
 }
@@ -232,6 +273,9 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   input.startPolling(2);
   const ui = new Ui(uiRoot);
+  const gpuInfo = readGpuInfo(shell.renderer);
+  ui.setGpuInfo(gpuInfo);
+  window.__gpu = gpuInfo;
   let showcase = null;
   /*
    * boot.js read the stored map before any module loaded, so it could weight
@@ -263,10 +307,27 @@ export async function boot({ loading, bootStart, mapId }) {
   } catch (e) {
     ui.setBanner(`Could not open that published course.\n${e.message ?? e}`, true);
   }
+  /*
+   * The handle lives in this browser. If it has changed since this browser
+   * last published, push it to the board so the author line and the times
+   * posted under the old handle catch up. A layout change is not sent here:
+   * that still asks first, because it clears times.
+   */
+  (async () => {
+    try {
+      const listing = inspectCourse();
+      await pushOwnedListing(listing && listing.doc ? listing.doc : null);
+    } catch (e) {
+      /* The board can stay a step behind until they save the name again. */
+    }
+  })();
 
+  let view = null;
   window.addEventListener('resize', () => {
     const d = shell.resize();
-    view.post.setSize(d.w, d.h);
+    if (view && view.post) {
+      view.post.setSize(d.w, d.h);
+    }
   });
   const audio = new MotorAudio();
 
@@ -303,7 +364,8 @@ export async function boot({ loading, bootStart, mapId }) {
   loading.done('sim');
   loading.detail = '';
 
-  let view = await loadMap(shell, ui.settings.map, loading);
+  applyPixelRatio(shell, ui.settings.graphics);
+  view = await loadMap(shell, ui.settings.map, loading, { quality: ui.settings.graphics });
   ui.setShare(view.share || null);
   loading.start('frame');
 
@@ -318,6 +380,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let startZ = 0;
   let startY = 0;
   let startYaw = 0;
+  let startPitch = 0;
   /*
    * The height of the surface a craft standing at (x, z) rests on.
    *
@@ -338,6 +401,7 @@ export async function boot({ loading, bootStart, mapId }) {
     startX = view.spawn.x;
     startZ = view.spawn.z;
     startYaw = view.spawn.yaw;
+    startPitch = view.spawn.pitch || 0;
     /* Terrain here is not at y = 0. Spawning without its height puts the
      * craft underground, looking up at the lit underside of the terrain. */
     startY = groundAt(startX, startZ);
@@ -408,6 +472,8 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   let crashed = false;
   let crashedAtWall = 0;
+  /* -1: FPV. 0..INTRO_TOTAL: orbit, approach, then zoom at the start of a run. */
+  let introMs = -1;
   /*
    * The craft starts ON THE GROUND, landed, not hanging in mid air.
    *
@@ -469,19 +535,35 @@ export async function boot({ loading, bootStart, mapId }) {
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
   let notice = null; /* { text, untilMs } for one off shell messages */
+  /* How many laps THIS run lasts. Settings.laps can change from pause, and
+   * reading it live used to end a 5 lap run the moment someone dropped the
+   * setting to 1. */
+  let runLaps = ui.settings.laps;
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs, view.mode);
+
+  function showCourseNotes() {
+    if (view.notes && view.notes.length) {
+      notice = { text: view.notes.join('\n'), untilMs: performance.now() + 5600 };
+    }
+  }
+  showCourseNotes();
 
   /*
    * One way into the crash path, because there are now three things that can
    * cause one: arriving at the ground too fast, arriving at it too far from
-   * upright, and touching anything solid. The lap dies, the run does not.
+   * upright, and touching anything solid. The run continues. Time is the
+   * penalty.
    */
   function crashInto(reason, nowWall) {
     crashed = true;
     landed = false;
     takingOff = false;
     crashedAtWall = nowWall;
+    /* The intro camera is a run-start cutscene. Leaving it running through
+     * a wreck kept the orbit going over a locked-out craft, then recovery
+     * landed inside the remaining shot. */
+    introMs = -1;
     /*
      * A crash is flown out of, not restarted from. The race keeps its place
      * in the flying order and its lap clock; resetCraft puts the craft back
@@ -544,6 +626,7 @@ export async function boot({ loading, bootStart, mapId }) {
       startX = at.x;
       startZ = at.z;
       startYaw = at.yaw;
+      startPitch = 0;
       startY = groundAt(startX, startZ);
       qSpawn.setFromAxisAngle(AXIS_Y, startYaw);
     }
@@ -579,10 +662,7 @@ export async function boot({ loading, bootStart, mapId }) {
     lastHitKind = 'none';
     input.keys.clear();
     input.drain();
-    input.kb.throttle = 0;
-    input.kb.roll = 0;
-    input.kb.pitch = 0;
-    input.kb.yaw = 0;
+    input.resetKeyboardSticks();
     raceHasPrev = false;
     groundHasPrev = false;
     statePrev = readState();
@@ -623,11 +703,9 @@ export async function boot({ loading, bootStart, mapId }) {
     lastHitKind = 'none';
     input.keys.clear();
     input.drain();
-    input.kb.throttle = 0;
-    input.kb.roll = 0;
-    input.kb.pitch = 0;
-    input.kb.yaw = 0;
+    input.resetKeyboardSticks();
     race.reset();
+    runLaps = ui.settings.laps;
     view.setNextGate(race.nextSceneIndex());
     raceHasPrev = false;
     groundHasPrev = false;
@@ -641,59 +719,143 @@ export async function boot({ loading, bootStart, mapId }) {
    * `mapReady` is what keeps the frame loop out of a half built world: the
    * loop keeps running through the swap because stopping and restarting it
    * would lose the accumulator, so it has to be told to skip a frame instead.
+   * `swapInFlight` is the lock that used to be the same flag: conflating them
+   * meant a failed load left mapReady false forever, so the next map pick
+   * was refused and the shell froze on a disposed scene.
    * Disposing BEFORE building is deliberate and it is the whole point of the
    * split: the city's render targets and the field's must never both exist,
    * or P5's 120 MB budget is measured against two worlds.
    */
   let mapReady = true;
+  let swapInFlight = false;
   let finishLoadingOnFrame = true;
-  async function swapMap(id) {
-    if (!mapReady || id === view.id) {
+
+  function adoptLoadedView(keepPlace, stayMode, stayScreen) {
+    attractCam = makeAttractCamera(view);
+    if (!keepPlace) {
+      race = new Race(view.gates);
+      race.setRecordKey(recordKey());
+      ui.setBest(race.bestMs, view.mode);
+      adoptSpawn();
+      ui.setShare(view.share || null);
+      reset();
+      mode = 'title';
+      ui.show('title');
+      showCourseNotes();
+    } else {
+      /* Same map, new look. Physics and the lap stay where they were; the
+       * new gate meshes just need the current next-gate highlight. */
+      view.setNextGate(race.nextSceneIndex());
+      ui.setShare(view.share || null);
+      ui.setBest(race.bestMs, view.mode);
+      mode = stayMode === 'flight' ? 'paused' : stayMode;
+      if (stayScreen) {
+        ui.show(stayScreen);
+      }
+    }
+    finishLoadingOnFrame = true;
+    mapReady = true;
+  }
+
+  async function syncWorld() {
+    const wantId = ui.settings.map;
+    const wantQ = normalizeGraphics(ui.settings.graphics);
+    if (swapInFlight) {
       return;
     }
+    if (mapReady && wantId === view.id && wantQ === view.graphics) {
+      return;
+    }
+    const keepPlace = mapReady && wantId === view.id;
+    const stayScreen = (ui.screen === 'settings' || ui.screen === 'paused' || ui.screen === 'title')
+      ? ui.screen
+      : null;
+    const stayMode = keepPlace ? mode : 'title';
+    swapInFlight = true;
     mapReady = false;
-    mode = 'title';
-    ui.show('title');
-    const entry = mapById(id);
+    if (!keepPlace) {
+      mode = 'title';
+      ui.show('title');
+    }
+    const entry = mapById(wantId);
     loading.run(planStages(['module', 'world', 'frame'], entry.buildMs));
     /* Paint the loading screen BEFORE disposing a world and building another,
      * because both of those block the main thread and a screen nobody
      * composited is not a screen. */
     await yieldToPaint();
     const previous = view.id;
-    view.dispose();
+    const previousGraphics = view.graphics;
     try {
-      view = await loadMap(shell, id, loading);
+      view.dispose();
+    } catch (e) {
+      /* Already gone, or the last swap never produced a world. */
+    }
+    applyPixelRatio(shell, wantQ);
+    try {
+      view = await loadMap(shell, wantId, loading, { quality: wantQ });
+      loading.start('frame');
+      adoptLoadedView(keepPlace, stayMode, stayScreen);
     } catch (e) {
       /*
        * The old world is already gone by here, deliberately: disposing before
        * building is what keeps two maps' render targets from ever coexisting.
-       * That means a failed load leaves nothing to fall back to, so it has to
-       * be SAID rather than swallowed. Without this the shell sat on
-       * mapReady false forever with a frozen frame and no message, which is
-       * the worst of the three possible outcomes.
+       * Rebuild the map that was just disposed. A message with no world
+       * behind it used to leave mapReady false forever.
        */
-      loading.fail(`${entry.name} could not be loaded. ${e.message ?? e}`);
-      ui.settings.map = previous;
       console.error(e);
-      return;
+      ui.settings.map = previous;
+      ui.settings.graphics = previousGraphics;
+      try {
+        applyPixelRatio(shell, previousGraphics);
+        view = await loadMap(shell, previous, loading, { quality: previousGraphics });
+        loading.start('frame');
+        adoptLoadedView(keepPlace, stayMode, stayScreen);
+        notice = {
+          text: `${entry.name} could not be loaded.`,
+          untilMs: performance.now() + 4200,
+        };
+      } catch (e2) {
+        console.error(e2);
+        loading.fail(`${entry.name} could not be loaded. ${e.message ?? e}`);
+      }
+    } finally {
+      swapInFlight = false;
     }
-    loading.start('frame');
-    attractCam = makeAttractCamera(view);
-    race = new Race(view.gates);
-    race.setRecordKey(recordKey());
-    ui.setBest(race.bestMs, view.mode);
-    adoptSpawn();
-    ui.setShare(view.share || null);
-    reset();
-    finishLoadingOnFrame = true;
-    mapReady = true;
     /* A change requested DURING the swap was refused by the guard at the top,
      * and ui.js has already saved it, so the setting and the loaded map would
      * otherwise stay diverged with the title screen naming a map that is not
      * there. Honour it now. */
-    if (ui.settings.map !== view.id) {
-      await swapMap(ui.settings.map);
+    if (mapReady && (ui.settings.map !== view.id || normalizeGraphics(ui.settings.graphics) !== view.graphics)) {
+      await syncWorld();
+    }
+  }
+  async function swapMap(id) {
+    ui.settings.map = id;
+    return syncWorld();
+  }
+
+  /*
+   * ANGLE MODE is a Betaflight flight-mode flag, not a plant change. The
+   * module defaults to acro. Keyboard stick input cannot hold a rate, so
+   * it always raises ANGLE_MODE; a radio uses the setting. Changing this
+   * does not re-init the module and does not reset the craft.
+   */
+  let angleModeOn = false;
+
+  function wantAngleMode() {
+    return input.isKeyboardPrimary() || ui.settings.flightMode === 'angle';
+  }
+
+  function syncAngleMode() {
+    const want = wantAngleMode();
+    if (want !== angleModeOn) {
+      angleModeOn = want;
+      sim.setAngleMode(want);
+    }
+    if (ui.setCraftCaption && !(showcase && showcase.failed)) {
+      ui.setCraftCaption(want
+        ? 'Angle. Sticks are tilt. Hands off levels.'
+        : 'Acro. Sticks are rates. Hands off holds.');
     }
   }
 
@@ -716,8 +878,8 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
-    if (s.map !== view.id) {
-      swapMap(s.map);
+    if (s.map !== view.id || normalizeGraphics(s.graphics) !== view.graphics) {
+      syncWorld();
     }
     /*
      * Only a MOVE of the Tune item swaps the tune. Comparing against what
@@ -749,6 +911,7 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setEnabled(s.sound);
     applyMix(s);
     ui.setReadout('');
+    syncAngleMode();
   }
 
   /*
@@ -791,15 +954,22 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   async function submitBoardTime() {
-    const share = view.share;
-    if (!share || !share.id) {
-      notice = { text: 'This course is not on the public board.', untilMs: performance.now() + 2800 };
+    const listing = inspectCourse();
+    const trackId = listing && listing.shareId;
+    if (!trackId || !listing.canPostTime) {
+      notice = { text: listing && listing.layoutDrift
+        ? 'Update this course on the board before uploading a time.'
+        : 'This course is not on the public board yet.', untilMs: performance.now() + 2800 };
       return;
     }
     const clean = race.log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
-    const fastest = clean.length ? Math.min(...clean) : null;
+    const fromRun = clean.length ? Math.min(...clean) : null;
+    const pending = readPendingTime();
+    const fastest = fromRun != null
+      ? fromRun
+      : (pending && pending.trackId === trackId ? pending.lapMs : null);
     if (fastest == null) {
-      notice = { text: 'No clean lap to post.', untilMs: performance.now() + 2800 };
+      notice = { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
       return;
     }
     let name = readPilotName();
@@ -814,16 +984,95 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     try {
       const posted = await postTime({
-        trackId: share.id,
+        trackId,
         name,
         lapMs: Math.round(fastest),
-        origin: share.board,
+        origin: listing.board,
       });
+      writePostedBest(trackId, fastest);
+      clearPendingTime(trackId);
       const rank = posted.rank != null ? ` Rank ${posted.rank}.` : '';
-      notice = { text: `Posted ${name}, ${(fastest / 1000).toFixed(2)} s.${rank}`, untilMs: performance.now() + 3600 };
+      notice = { text: `Uploaded ${name}, ${(fastest / 1000).toFixed(2)} s.${rank}`, untilMs: performance.now() + 3600 };
       ui.markTimePosted(posted);
     } catch (e) {
-      notice = { text: `Could not post that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+      notice = { text: `Could not upload that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+    }
+  }
+
+  async function submitCoursePublish() {
+    const listing = inspectCourse();
+    if (!listing || !listing.doc) {
+      notice = { text: 'Nothing to publish.', untilMs: performance.now() + 2800 };
+      return;
+    }
+    if (!listing.canPublishNew && !listing.canUpdateListing) {
+      notice = { text: 'This course is already on the public board.', untilMs: performance.now() + 2800 };
+      return;
+    }
+    const remix = listing.kind === 'remix';
+    const updating = listing.canUpdateListing && listing.layoutDrift;
+    const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
+    const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
+    const detail = updating
+      ? 'The layout changed. Updating the board will clear posted times.'
+      : remix
+        ? `This is your copy${of}${by}. It goes on the board as a new course. The original stays.`
+        : 'The public board keeps a copy of this course, including the logo on the gates and flags.';
+    const values = await ui.askForm({
+      title: updating ? 'Update this course' : 'Publish this course',
+      detail,
+      confirmLabel: updating ? 'Update the board' : 'Publish',
+      fields: [
+        {
+          key: 'course',
+          label: 'Course name',
+          value: remix ? suggestRemixName(listing.name) : listing.name,
+          maxLength: 80,
+          placeholder: 'Course name',
+        },
+        {
+          key: 'author',
+          label: 'Your name',
+          value: readPilotName() || '',
+          maxLength: 24,
+          placeholder: 'Name',
+          autocomplete: 'nickname',
+          rules: nameRules(),
+          save: writePilotName,
+        },
+      ],
+    });
+    if (!values) {
+      return;
+    }
+    try {
+      const result = await publishCurrentCourse({
+        doc: listing.doc,
+        author: values.author,
+        origin: listing.board,
+        courseName: values.course,
+      });
+      const cleared = result.posted.timesCleared
+        ? ' Old times were cleared because the layout changed.'
+        : '';
+      const forked = result.forked ? ' Published as a new course.' : '';
+      notice = { text: `Published "${result.posted.name}".${forked}${cleared}`, untilMs: performance.now() + 4000 };
+      ui.setShare({
+        id: result.posted.id,
+        name: result.posted.name,
+        author: values.author,
+        board: listing.board,
+      });
+      ui.markCoursePublished(result.posted);
+      if (ui.resultsFastest != null) {
+        writePendingTime({
+          trackId: result.posted.id,
+          lapMs: ui.resultsFastest,
+          name: result.posted.name,
+        });
+      }
+    } catch (e) {
+      notice = { text: `Could not publish that course.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
     }
   }
 
@@ -852,18 +1101,43 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (action === 'calibrate') {
       if (input.firstGamepad()) {
         input.startCalibration();
+        ui.show('calibrate');
       } else {
         notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.', untilMs: performance.now() + 3200 };
+      }
+    } else if (action === 'calibrate-cancel') {
+      input.cancelCalibration();
+      ui.show('settings');
+    } else if (action === 'calibrate-save') {
+      if (input.acceptCalibration()) {
+        ui.show('settings');
+        notice = { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
       }
     } else if (action === 'leaderboard') {
       window.open(boardPageUrl(), '_blank', 'noopener');
     } else if (action === 'setname') {
-      ui.askName({
-        title: 'Your name',
-        detail: 'Posted times and published courses carry this name. It stays in this browser.',
-      });
+      (async () => {
+        const name = await ui.askName({
+          title: 'Your name',
+          detail: 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.',
+        });
+        if (!name) {
+          return;
+        }
+        try {
+          const result = await syncOwnedIdentity();
+          const updated = Array.isArray(result.results) && result.results.some((r) => r.ok);
+          if (updated) {
+            notice = { text: `Name on the board is now ${name}.`, untilMs: performance.now() + 3200 };
+          }
+        } catch (e) {
+          notice = { text: `Name saved here. The board could not be updated.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+        }
+      })();
     } else if (action === 'posttime') {
       submitBoardTime();
+    } else if (action === 'publishcourse') {
+      submitCoursePublish();
     }
     if (s) {
       applySettings(s);
@@ -875,7 +1149,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * mapped channels drive the cursor, which lets roll adjust a value. When
    * they have not, any axis at all moves the cursor, because the way to
    * calibrate is a menu item and a wrong axis guess would otherwise lock
-   * the player out of it.
+   * the player out of it. Settings ignores this: the sticks pose the
+   * airframe there, and the cursor is mouse and keyboard only.
    */
   function padNav() {
     const btn = input.padMenuButtons();
@@ -930,9 +1205,12 @@ export async function boot({ loading, bootStart, mapId }) {
     applyMix(ui.settings);
   }
 
-  input.onKey = (code) => {
+  input.onKey = (code, repeat) => {
     wakeAudio();
-    if (ui.handleKey(code)) {
+    if (ui.handleKey(code, repeat)) {
+      return;
+    }
+    if (repeat) {
       return;
     }
     /* Flight only keys. */
@@ -981,6 +1259,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const qCurr = new THREE.Quaternion();
   const qTilt = new THREE.Quaternion();
   const qSpawn = new THREE.Quaternion();
+  const qPad = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
   const camFwd = new THREE.Vector3();
   const introFrom = new THREE.Vector3();
@@ -988,13 +1267,15 @@ export async function boot({ loading, bootStart, mapId }) {
   const introRight = new THREE.Vector3();
   const introUp = new THREE.Vector3(0, 1, 0);
   const introQuat = new THREE.Quaternion();
-  const fpvPos = new THREE.Vector3();
-  const fpvQuat = new THREE.Quaternion();
+    const fpvPos = new THREE.Vector3();
+    const fpvQuat = new THREE.Quaternion();
+    const finishFpvPos = new THREE.Vector3();
+    const finishFpvQuat = new THREE.Quaternion();
+    /* -1: not on the finish shot. 0+: milliseconds into the pull-out. */
+    let finishCamMs = -1;
   /* Eased toward PARKED_LIFT while the craft is down and toward zero once it
    * is flying, so the view rises off the pad rather than jumping. */
   let parkedLift = PARKED_LIFT;
-  /* -1: FPV. 0..INTRO_TOTAL: the pad shot at the start of a run. */
-  let introMs = -1;
   /*
    * The title screen's camera. It belongs to the MAP, because the shot that
    * shows a map off is the map's business: the race field flies its own
@@ -1046,6 +1327,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
 
     input.poll(nowWall);
+    syncAngleMode();
     const samples = input.drain();
     for (const smp of samples) {
       rcPending.push(smp);
@@ -1405,8 +1687,18 @@ export async function boot({ loading, bootStart, mapId }) {
        * aware vertical half extent, within millimetres of REST_HEIGHT, but
        * the terrain under it may differ from where contact tripped. Seat
        * the render on the resolved ground so a landing looks like a
-       * landing. Render only: the physics state is untouched. */
-      pCurr.y = groundY + simLenToWorld(REST_HEIGHT);
+       * landing. Render only: the physics state is untouched.
+       *
+       * On a launch stand the rails are pitched, so the parked pose is too:
+       * REST_HEIGHT is along the ramp normal, which is why it is scaled by
+       * cos(pitch), and a local nose-down rotation puts the arms on the
+       * foam. Crash recovery on grass keeps startPitch at 0 and this
+       * reduces to the old seating. */
+      pCurr.y = groundY + simLenToWorld(REST_HEIGHT) * Math.cos(startPitch);
+      if (startPitch) {
+        qPad.setFromAxisAngle(AXIS_X, -startPitch);
+        qPrev.multiply(qPad);
+      }
     } else if (crashed) {
       /*
        * A WRECK DOES NOT SINK. The integrator has no ground plane, so a
@@ -1498,10 +1790,10 @@ export async function boot({ loading, bootStart, mapId }) {
             audio.event('gate');
           }
         }
-        if (!race.freestyle && race.lap >= ui.settings.laps) {
+        if (!race.freestyle && race.lap >= runLaps) {
           mode = 'results';
           ui.setBest(race.bestMs, view.mode);
-          ui.showResults(race.log, race.bestMs);
+          ui.showResults(race.log, race.bestMs, race.recordAtStart);
         }
       }
       racePrev.copy(pCurr);
@@ -1514,12 +1806,40 @@ export async function boot({ loading, bootStart, mapId }) {
      * frame hitch cannot spend a pilot's battery for them. */
     airtimeMs = launched ? simTimeMs : 0;
 
+    /*
+     * The world is the title picture, the flight picture, the pause
+     * picture, the finish picture and the map-card recorder. Settings
+     * and How to fly hide it. The studio on Settings is a second
+     * context and must not exist while this one is composing a world
+     * the player is flying. visibility:hidden, not display:none: some
+     * GPUs drop a context that leaves the document.
+     */
+    const freezeWorld = Boolean(ui.reelFreezeWorld);
+    const attractOn = !freezeWorld && mode === 'title' && ui.screen === 'title';
+    const studioOn = ui.screen === 'settings';
+    const worldLive = !freezeWorld && (
+      Boolean(finishLoadingOnFrame)
+      || mode === 'flight'
+      || mode === 'paused'
+      || mode === 'results'
+      || ui.screen === 'maps'
+      || attractOn
+      || Boolean(camOverride)
+    );
+    const wantVis = worldLive ? 'visible' : 'hidden';
+    if (shell.canvas.style.visibility !== wantVis) {
+      shell.canvas.style.visibility = wantVis;
+    }
+
     /* Prop discs spin at a visibly aliased fraction of true RPM, the way
-     * they read on a real FPV feed. The blades follow, and crawl while the
-     * craft is on show with the motors stopped so the title and the pad
-     * shot are not a frozen model. */
+     * they read on a real FPV feed. The blades follow. On the title the
+     * plant is frozen, so a cruise spin stands in for flight; a crawl is
+     * left for the pad shot so the model is not frozen there either. */
+    const titleSpin = attractOn || (mode === 'title' && worldLive) || mode === 'results';
     for (let m = 0; m < 4; m += 1) {
-      const vis = stateCurr[14 + m] * 1e-4 + (shell.quad.visible ? 0.10 : 0);
+      const vis = titleSpin
+        ? 0.38 + input.channels.throttle * 0.42
+        : stateCurr[14 + m] * 1e-4 + (shell.quad.visible ? 0.10 : 0);
       shell.discs[m].rotation.y += vis;
       if (shell.blades) {
         const dir = shell.propSpin ? shell.propSpin[m] : 1;
@@ -1539,55 +1859,106 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     fpvQuat.copy(qPrev).multiply(qTilt);
 
-    if (mode === 'title') {
-      shell.quad.visible = true;
-      attractCam.update(nowWall, shell.camera);
-      if (shell.camera.fov !== ui.settings.cameraFov) {
-        shell.camera.fov = ui.settings.cameraFov;
-        shell.camera.updateProjectionMatrix();
-      }
-    } else if (introMs >= 0 && (mode === 'flight' || mode === 'paused') && !camOverride) {
-      if (mode === 'flight') {
-        /* Punch-out skips the hold. TAKEOFF_THROTTLE, not a hair trigger:
-         * a resting gamepad axis at 0.08 used to skip the shot entirely. */
-        if (input.channels.throttle > TAKEOFF_THROTTLE && introMs < INTRO_HOLD) {
-          introMs = INTRO_HOLD;
-        }
-        introMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
-      }
-      let zoom = (introMs - INTRO_HOLD) / INTRO_ZOOM;
-      if (zoom < 0) {
-        zoom = 0;
-      }
-      if (zoom > 1) {
-        zoom = 1;
-      }
-      zoom = zoom * zoom * (3 - 2 * zoom);
+    if (mode !== 'results' && finishCamMs >= 0) {
+      finishCamMs = -1;
+    }
 
-      /* Three-quarter from above, far enough that the 0.2 m near plane
-       * cannot eat the airframe, close enough that the X fills the shot. */
+    if (mode === 'title') {
+      if (worldLive && !camOverride) {
+        shell.quad.visible = true;
+        attractCam.update(nowWall, shell.camera, {
+          craft: shell.quad,
+          overlay: ui.screen === 'title',
+          roll: input.channels.roll,
+          pitch: input.channels.pitch,
+          yaw: input.channels.yaw,
+        });
+      }
+    } else if (mode === 'results' && !camOverride) {
+      /* Pull off the FPV lens onto a three-quarter of the frozen craft,
+       * then sway. The airframe keeps the attitude it finished with. */
+      if (finishCamMs < 0) {
+        finishCamMs = 0;
+        finishFpvPos.copy(fpvPos);
+        finishFpvQuat.copy(fpvQuat);
+      }
+      finishCamMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
+      const pull = introEase(Math.min(1, finishCamMs / FINISH_PULL_MS));
+      const sway = 0.62 + Math.sin(finishCamMs * FINISH_SWAY) * 0.28;
       introRight.set(1, 0, 0).applyQuaternion(qPrev);
       introFrom.copy(pCurr)
-        .addScaledVector(camFwd, -0.58)
-        .addScaledVector(introRight, 0.38)
-        .addScaledVector(introUp, 0.32);
-      introLook.copy(pCurr)
-        .addScaledVector(introUp, 0.03)
-        .addScaledVector(camFwd, 0.22);
+        .addScaledVector(camFwd, -FINISH_RADIUS * Math.cos(sway))
+        .addScaledVector(introRight, FINISH_RADIUS * Math.sin(sway))
+        .addScaledVector(introUp, FINISH_HEIGHT);
+      const floor = view.height(introFrom.x, introFrom.z, introFrom.y) + 0.42;
+      if (introFrom.y < floor) {
+        introFrom.y = floor;
+      }
+      introLook.copy(pCurr).addScaledVector(introUp, 0.06);
+      shell.quad.visible = true;
       shell.camera.up.set(0, 1, 0);
       shell.camera.position.copy(introFrom);
       shell.camera.lookAt(introLook);
       introQuat.copy(shell.camera.quaternion);
-      shell.camera.position.lerpVectors(introFrom, fpvPos, zoom);
-      shell.camera.quaternion.copy(introQuat).slerp(fpvQuat, zoom);
+      shell.camera.position.lerpVectors(finishFpvPos, introFrom, pull);
+      shell.camera.quaternion.copy(finishFpvQuat).slerp(introQuat, pull);
+      const dist = Math.max(0.8, shell.camera.position.distanceTo(pCurr));
+      const narrow = shell.camera.aspect < 0.95;
+      shell.camera.translateX((narrow ? 0 : -0.20) * dist * pull);
+      shell.camera.translateY((narrow ? -0.14 : -0.04) * dist * pull);
+      const fov = ui.settings.cameraFov + (FINISH_FOV - ui.settings.cameraFov) * pull;
+      if (Math.abs(shell.camera.fov - fov) > 0.05) {
+        shell.camera.fov = fov;
+        shell.camera.updateProjectionMatrix();
+      }
+    } else if (introMs >= 0 && (mode === 'flight' || mode === 'paused') && !camOverride) {
+      if (mode === 'flight') {
+        /* Punch-out skips the orbit and the approach. TAKEOFF_THROTTLE,
+         * not a hair trigger: a resting gamepad axis at 0.08 used to skip
+         * the shot entirely. */
+        if (input.channels.throttle > TAKEOFF_THROTTLE && introMs < INTRO_FLY) {
+          introMs = INTRO_FLY;
+        }
+        introMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
+      }
+      const orbitU = introEase(introMs / INTRO_ORBIT);
+      const approachU = introEase((introMs - INTRO_ORBIT) / INTRO_APPROACH);
+      const zoomU = introEase((introMs - INTRO_FLY) / INTRO_ZOOM);
+      const theta = INTRO_THETA0 - INTRO_ORBIT_SPAN * orbitU;
+      const radius = INTRO_ORBIT_RADIUS
+        + (INTRO_APPROACH_RADIUS - INTRO_ORBIT_RADIUS) * approachU;
+      const height = INTRO_ORBIT_HEIGHT
+        + (INTRO_APPROACH_HEIGHT - INTRO_ORBIT_HEIGHT) * approachU;
 
-      const fov = 42 + (ui.settings.cameraFov - 42) * zoom;
+      introRight.set(1, 0, 0).applyQuaternion(qPrev);
+      introFrom.copy(pCurr)
+        .addScaledVector(introRight, Math.cos(theta) * radius)
+        .addScaledVector(camFwd, -Math.sin(theta) * radius)
+        .addScaledVector(introUp, height);
+      /* Orbit looks at the airframe. Approach turns the look down the
+       * course so the zoom is a dolly into the FPV camera, not a snap. */
+      introLook.copy(pCurr)
+        .addScaledVector(introUp, 0.04 + 0.04 * approachU)
+        .addScaledVector(camFwd, 0.08 + 1.4 * approachU);
+      shell.camera.up.set(0, 1, 0);
+      shell.camera.position.copy(introFrom);
+      shell.camera.lookAt(introLook);
+      if (zoomU > 0) {
+        introQuat.copy(shell.camera.quaternion);
+        shell.camera.position.lerpVectors(introFrom, fpvPos, zoomU);
+        shell.camera.quaternion.copy(introQuat).slerp(fpvQuat, zoomU);
+      }
+
+      const fovMid = 46;
+      const fov = zoomU > 0
+        ? fovMid + (ui.settings.cameraFov - fovMid) * zoomU
+        : INTRO_FOV + (fovMid - INTRO_FOV) * approachU;
       if (Math.abs(shell.camera.fov - fov) > 0.05) {
         shell.camera.fov = fov;
         shell.camera.updateProjectionMatrix();
       }
 
-      shell.quad.visible = zoom < 0.88;
+      shell.quad.visible = zoomU < 0.88;
       if (introMs >= INTRO_TOTAL) {
         introMs = -1;
         shell.quad.visible = false;
@@ -1620,43 +1991,77 @@ export async function boot({ loading, bootStart, mapId }) {
       shell.camera.lookAt(camLookAt.set(camOverride[3], camOverride[4], camOverride[5]));
     }
 
-    if (mode === 'title') {
+    /* Attract clock and scenery only while this context is actually
+     * composing a world. Settings skips it. Title and Maps still need
+     * it so the flythrough and a first-visit thumbnail stay live. */
+
+    if (worldLive && mode === 'title') {
       titleAcc += dt;
       const ts = Math.floor(titleAcc);
       titleAcc -= ts;
       titleStepMs += ts > 100 ? 100 : ts;
     }
-    view.updateAnim(mode === 'title' ? titleStepMs : simTimeMs);
+    if (worldLive) {
+      view.updateAnim(
+        mode === 'title'
+          ? titleStepMs
+          : (mode === 'results' ? simTimeMs + Math.max(0, finishCamMs) : simTimeMs),
+      );
 
-    view.updateShadowFocus(camOverride ? shell.camera.position : pCurr);
-    /* Propwash strength for the grass: mean rotor speed against hover. */
-    const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
-    view.updateWind(nowWall * 0.001, pCurr, Math.min(1.3, meanRpm / 9000));
+      const focus = camOverride
+        ? shell.camera.position
+        : (mode === 'title' ? shell.quad.position : pCurr);
+      view.updateShadowFocus(focus);
+      /* Propwash strength for the grass: mean rotor speed against hover.
+       * Title has no plant, so a cruise wash stands in under the hero. */
+      const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
+      const wash = (mode === 'title' || mode === 'results')
+        ? 0.85
+        : Math.min(1.3, meanRpm / 9000);
+      view.updateWind(nowWall * 0.001, focus, wash);
+    }
     /* info is accumulated across the whole frame (prepass, shadow map,
      * composer passes) and read back through __renderStats. */
     shell.renderer.info.reset();
     const renderStart = performance.now();
-    view.post.render();
+    if (worldLive) {
+      view.post.render();
+    }
+    if (ui.screen === 'maps') {
+      ui.paintMapThumbs(shell.canvas);
+    }
     const renderMs = performance.now() - renderStart;
     renderStats.calls = shell.renderer.info.render.calls;
     renderStats.triangles = shell.renderer.info.render.triangles;
 
     /*
-     * Settings airframe. Own renderer, so the field's draw budget cannot
-     * see it, and only allocated the first time this screen opens.
+     * Settings studio. Own renderer, so the field's draw budget cannot
+     * see it. Created when Settings opens, disposed when it closes, so
+     * Fly never shares the GPU with a second WebGL context. The title
+     * uses the world craft instead.
      */
-    if (ui.screen === 'settings') {
+    if (studioOn) {
       if (!showcase) {
         showcase = createShowcase(ui.craftCanvas);
         if (showcase.failed) {
-          ui.craftCaption.textContent = 'The 3D preview could not start.';
+          ui.setCraftCaption('The 3D preview could not start.');
         }
       }
-      showcase.setActive(true);
-      showcase.update(dt, input.channels, nowWall, ui.settings.cameraAngle);
-      showcase.render();
+      if (!showcase.failed) {
+        ui.mountCraft('settings');
+        showcase.setActive(true);
+        if (!document.hidden) {
+          showcase.update(dt, input.channels, nowWall, ui.settings.cameraAngle, angleModeOn);
+          showcase.render();
+        }
+      }
     } else if (showcase) {
-      showcase.setActive(false);
+      try {
+        showcase.dispose();
+      } catch (e) {
+        /* Already gone. */
+      }
+      showcase = null;
     }
 
     /* Overlay. */
@@ -1699,13 +2104,33 @@ export async function boot({ loading, bootStart, mapId }) {
         altitude: p.y - view.height(p.x, p.z, p.y),
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
+        flightMode: angleModeOn ? 'angle' : 'acro',
       });
+      const ch = input.channels;
+      ui.setStickOverlay({
+        show: input.isKeyboardPrimary(),
+        roll: ch.roll,
+        pitch: ch.pitch,
+        yaw: ch.yaw,
+        throttle: ch.throttle,
+      });
+    } else if (mode !== 'paused') {
+      ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });
     }
 
-    const cal = input.calibrationPrompt();
+    const cal = input.calibrationView();
     const lapFlash = race.flashText(nowWall);
-    if (cal) {
-      ui.setBanner(cal, true);
+    if (ui.screen === 'calibrate') {
+      if (cal) {
+        ui.setCalibration(cal);
+      } else {
+        ui.show('settings');
+        if (input.calResult === 'saved') {
+          notice = { text: 'Stick mapping saved.', untilMs: nowWall + 2800 };
+        }
+        input.calResult = null;
+      }
+      ui.setBanner('');
     } else if (notice && nowWall < notice.untilMs) {
       ui.setBanner(notice.text);
     } else if (ui.isModal()) {
@@ -1811,8 +2236,10 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   window.__intro = () => ({
     ms: introMs,
-    holding: introMs >= 0 && introMs < INTRO_HOLD,
-    zooming: introMs >= INTRO_HOLD && introMs < INTRO_TOTAL,
+    holding: introMs >= 0 && introMs < INTRO_FLY,
+    orbiting: introMs >= 0 && introMs < INTRO_ORBIT,
+    approaching: introMs >= INTRO_ORBIT && introMs < INTRO_FLY,
+    zooming: introMs >= INTRO_FLY && introMs < INTRO_TOTAL,
     quadVisible: shell.quad.visible,
   });
   /* Put the race on a given gate. The ledger and the value measurements
@@ -2134,6 +2561,7 @@ export async function boot({ loading, bootStart, mapId }) {
     id: view.id,
     name: view.name,
     mode: view.mode,
+    graphics: view.graphics,
     gates: view.gates.length,
     spawn: { x: startX, y: startY, z: startZ, yaw: startYaw },
     ready: mapReady,
@@ -2198,6 +2626,12 @@ export async function boot({ loading, bootStart, mapId }) {
     input.kb.pitch = pitch;
     input.kb.yaw = yaw;
     input.kb.throttle = throttle;
+    /* Do not spring this toward hover. The capture wrote a throttle and
+     * means it, the same way a radio stick holds a value. */
+    input.kbAir = false;
+    input.kbThrFromKeys = false;
+    input.kbHoldMs = { roll: 0, pitch: 0, yaw: 0, w: 0, s: 0 };
+    input.kbHoldDir = { roll: 0, pitch: 0, yaw: 0 };
     return { roll, pitch, yaw, throttle };
   };
   /* Is anything solid on the segment from p to q? Same call the frame loop

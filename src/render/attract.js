@@ -15,9 +15,21 @@
  * comes back over the roofs. Neither can clip anything, because in both
  * cases the line is drawn from the same data the world was built out of.
  *
- * The orbit stays as the fallback, for a map with nothing to fly around:
- * an empty custom course is a real state, and circling nothing is a better
- * shot of it than flying round nothing.
+ * The orbit is also what a designed course asks for. Flying its racing line
+ * is the wrong shot on a compact layout: a single triple stack's line is a
+ * few metres of wrap, and the camera sprints that knot in a couple of
+ * seconds. The map hands over a point, a radius and an eye height framed
+ * from the course's own bounds, and this file circles it. Empty custom
+ * courses keep the old nine metre spawn circle, because circling nothing is
+ * a better shot of an empty pitch than a flight round nothing.
+ *
+ * TITLE HERO. The camera stays ON that cleared line. The session airframe
+ * is posed a couple of metres ahead on the same line, slightly off to the
+ * side so the X reads, and the overlay then nudges the frame so the quad
+ * sits in the open sky next to the menu rather than under the type. Sticks
+ * add a little extra attitude; they do not fly the line. Nothing here is a
+ * second scene graph. When Fly is pressed the shell stops calling update,
+ * seats the craft at spawn, and the same world is the flight world.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -45,27 +57,118 @@ import * as THREE from 'three';
  * at an angle to it. */
 const MAX_BANK = 0.22;
 
+/* Radians per millisecond. A full circle is about 57 s, slow enough that
+ * the title shot reads as a look rather than as a spin. Thumbnails time
+ * scale this so one revolution fits in the clip. */
+const ORBIT_RAD_PER_MS = 0.00011;
+const ORBIT_PERIOD_MS = (Math.PI * 2) / ORBIT_RAD_PER_MS;
+
+/* Cinematic fov, not the FPV lens. 100 degrees made the airframe a speck
+ * and the title read as a landscape wallpaper. */
+const ATTRACT_FOV = 44;
+const ATTRACT_FOV_NARROW = 50;
+
+/* Metres along the cleared line from the camera to the airframe. Close
+ * enough that a 5 inch X fills the open side of the title, far enough that
+ * the world behind it still reads. */
+const CRAFT_LEAD = 1.62;
+/* Metres to the camera's right, so the shot is a three quarter and not a
+ * dead chase that hides the arms. */
+const CRAFT_SIDE = 0.34;
+
+function applyFov(camera, overlay) {
+  const narrow = Boolean(overlay) && camera.aspect < 0.95;
+  const fov = narrow ? ATTRACT_FOV_NARROW : ATTRACT_FOV;
+  if (Math.abs(camera.fov - fov) > 0.05) {
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+  }
+}
+
+/*
+ * Slide the subject into the hole the overlay leaves. Wide: the menu owns
+ * the left third, so the camera steps left and the quad sits on the right.
+ * Narrow: the menu owns the bottom, so the camera steps down and the quad
+ * sits in the upper sky. Applied AFTER lookAt, and lookAt is not called
+ * again, or the shift would cancel.
+ */
+function frameOverlay(camera, lookAt, overlay) {
+  if (!overlay) {
+    return;
+  }
+  const narrow = camera.aspect < 0.95;
+  const dist = Math.max(0.8, camera.position.distanceTo(lookAt));
+  camera.translateX((narrow ? 0 : -0.17) * dist);
+  camera.translateY((narrow ? -0.16 : -0.05) * dist);
+}
+
+function poseCraft(craft, from, toward, bank, flourish) {
+  if (!craft) {
+    return;
+  }
+  craft.visible = true;
+  craft.position.copy(from);
+  craft.up.set(0, 1, 0);
+  craft.lookAt(toward);
+  let roll = flourish ? flourish.roll : 0;
+  let pitch = flourish ? flourish.pitch : 0;
+  let yaw = flourish ? flourish.yaw : 0;
+  if (Math.abs(roll) < 0.14) {
+    roll = 0;
+  }
+  if (Math.abs(pitch) < 0.14) {
+    pitch = 0;
+  }
+  if (Math.abs(yaw) < 0.14) {
+    yaw = 0;
+  }
+  craft.rotateZ(bank + roll * 0.28);
+  craft.rotateX(pitch * 0.18);
+  craft.rotateY(-yaw * 0.22);
+}
+
 export function makeAttractCamera(view) {
   const spec = view && view.attract ? view.attract : null;
   const pts = spec && Array.isArray(spec.path) ? spec.path : null;
 
   if (!pts || pts.length < 4) {
     /* The orbit, kept verbatim so a map without a line behaves exactly as
-     * every map did before there were lines. */
+     * every map did before there were lines. The airframe, when asked for,
+     * hovers at the look-at so the same circle is a product shot of the
+     * layout rather than an empty spin. */
     const target = new THREE.Vector3();
+    const craftPos = new THREE.Vector3();
+    const toward = new THREE.Vector3();
     const at = spec ?? { x: 0, y: 0, z: 0, radius: 9, eye: 2.4, aim: 0.85 };
     return {
       kind: 'orbit',
-      update(nowMs, camera) {
-        const ang = nowMs * 0.00011;
+      periodMs: ORBIT_PERIOD_MS,
+      update(nowMs, camera, opts) {
+        const overlay = Boolean(opts && opts.overlay);
+        const craft = opts && opts.craft;
+        const ang = nowMs * ORBIT_RAD_PER_MS;
+        applyFov(camera, overlay);
         camera.up.set(0, 1, 0);
         camera.position.set(
           at.x + Math.sin(ang) * at.radius,
           at.y + at.eye,
           at.z + Math.cos(ang) * at.radius,
         );
-        target.set(at.x, at.y + at.aim, at.z);
+        craftPos.set(at.x, at.y + Math.min(1.15, at.eye * 0.42), at.z);
+        toward.set(
+          craftPos.x - Math.cos(ang),
+          craftPos.y,
+          craftPos.z + Math.sin(ang),
+        );
+        poseCraft(craft, craftPos, toward, 0, opts);
+        if (craft) {
+          target.copy(craftPos);
+          target.y += 0.04;
+        } else {
+          target.set(at.x, at.y + at.aim, at.z);
+        }
         camera.lookAt(target);
+        frameOverlay(camera, target, overlay);
       },
     };
   }
@@ -89,26 +192,37 @@ export function makeAttractCamera(view) {
   const speed = spec.speed ?? 12;
   const lookAhead = Math.min(length * 0.2, spec.lookAhead ?? 16);
   const aimDrop = spec.aimDrop ?? 2.0;
+  const lead = Math.min(lookAhead * 0.45, CRAFT_LEAD);
 
   const pos = new THREE.Vector3();
   const aim = new THREE.Vector3();
   const back = new THREE.Vector3();
+  const craftPos = new THREE.Vector3();
+  const craftAim = new THREE.Vector3();
+  const fwd = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const worldUp = new THREE.Vector3(0, 1, 0);
   let bank = 0;
   let lastMs = null;
 
   return {
     kind: 'path',
     length,
-    update(nowMs, camera) {
+    periodMs: (length / speed) * 1000,
+    update(nowMs, camera, opts) {
       /*
        * The parameter comes from the WALL clock, not from an accumulator, so
        * a tab that was backgrounded for a minute resumes where the clock
        * says it is rather than sprinting to catch up. Nothing here reaches
        * the simulation, so there is no determinism claim to break.
        */
+      const overlay = Boolean(opts && opts.overlay);
+      const craft = opts && opts.craft;
       const u = ((nowMs * 0.001 * speed) / length) % 1;
       curve.getPointAt(u, pos);
       curve.getPointAt((u + lookAhead / length) % 1, aim);
+      curve.getPointAt((u + lead / length) % 1, craftPos);
+      curve.getPointAt((u + (lead + lookAhead * 0.35) / length) % 1, craftAim);
       /*
        * Bank, from the heading change between where the camera is and where
        * it is looking. Taken as a turn RATE by dividing by the look ahead,
@@ -127,17 +241,38 @@ export function makeAttractCamera(view) {
         d += Math.PI * 2;
       }
       const want = Math.max(-MAX_BANK, Math.min(MAX_BANK, d * 0.9));
-      /* Time constant on the wall clock, so the roll settles at the same
-       * rate whatever the frame rate is. */
-      const dt = lastMs == null ? 0 : Math.min(0.1, (nowMs - lastMs) * 0.001);
+      /* Time constant on the clock the caller passes. Capture rewinds that
+       * clock to the start of a loop; treat a backwards step as a new take
+       * rather than a huge negative dt that yanks the bank. */
+      const dt = lastMs == null || nowMs < lastMs
+        ? 0
+        : Math.min(0.1, (nowMs - lastMs) * 0.001);
       lastMs = nowMs;
       bank += (want - bank) * Math.min(1, dt * 2.2);
 
+      fwd.copy(aim).sub(pos);
+      fwd.y = 0;
+      if (fwd.lengthSq() < 1e-8) {
+        fwd.set(0, 0, 1);
+      } else {
+        fwd.normalize();
+      }
+      right.crossVectors(fwd, worldUp);
+      if (right.lengthSq() < 1e-8) {
+        right.set(1, 0, 0);
+      } else {
+        right.normalize();
+      }
+      craftPos.addScaledVector(right, CRAFT_SIDE);
+
+      applyFov(camera, overlay);
       camera.up.set(0, 1, 0);
       camera.position.copy(pos);
       aim.y -= aimDrop;
       camera.lookAt(aim);
       camera.rotateZ(bank);
+      poseCraft(craft, craftPos, craftAim, bank, opts);
+      frameOverlay(camera, aim, overlay);
     },
   };
 }

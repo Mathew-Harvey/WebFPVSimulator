@@ -91,9 +91,34 @@ const PlantParams PLANT = {
    * 139 before this change.
    */
   .cda_front = 0.0130,
-  .cda_side = 0.0130,
+  /*
+   * Side is not the same as front, and copying the frontal figure across was
+   * wrong rather than approximate. An X frame is nearly symmetric in the
+   * arms, the motors and the stack, so most of the projected area is the same
+   * either way. The pack is not: a 6S 1300 is roughly 35 mm wide by 75 mm
+   * long, so it shows about 0.0026 m squared broadside against 0.0012 m
+   * squared nose on. That is 0.0014 m squared more area at the same bluff
+   * body Cd near 1.2, which is 0.0017. Hence 0.0147.
+   *
+   * This is a small correction and it is NOT the fix for a banked turn
+   * washing out; that is mostly correct acro behaviour, since nothing turns
+   * the nose without rudder. See PROGRESS.md.
+   */
+  .cda_side = 0.0147,
   .rho = 1.225,
-  .k_propwash = 0.12,
+  /*
+   * Unsteady wash amplitude as a fraction of a rotor's thrust at full
+   * recirculation depth. 0.12 produced 17.7 deg/s peak to peak of gyro at the
+   * worst point of a props level descent, measured over a 1.5 s window. A
+   * real 5 inch in propwash runs 50 to 150 deg/s peak to peak and shakes the
+   * video visibly, so the model was roughly a third of the low end. 0.30 puts
+   * it near 45 deg/s, still at the quiet end of real.
+   *
+   * This is a FEEL constant, not a derived one. It is the one number in this
+   * file a pilot should be asked about directly, and it is deliberately set
+   * at the conservative end so that judgement is about raising it.
+   */
+  .k_propwash = 0.30,
   .prop_r = 0.0635,
   .k_rotor_drag = 0.43842,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
@@ -214,6 +239,33 @@ const double PLANT_POS_X[SIM_MOTOR_COUNT] = { -0.0777817459305202, 0.07778174593
                                               -0.0777817459305202, 0.0777817459305202 };
 const double PLANT_POS_Y[SIM_MOTOR_COUNT] = { -0.0777817459305202, -0.0777817459305202,
                                               0.0777817459305202, 0.0777817459305202 };
+
+/*
+ * THE ROTOR DISCS ARE ABOVE THE CENTRE OF GRAVITY, AND THAT IS WHY A QUAD
+ * PITCHES UP WHEN IT GOES FAST.
+ *
+ * Every motor sat at z = 0 here, which made the airframe a flat plate as far
+ * as moments were concerned. A pure z force at (x, y, z) has a moment
+ * (y F, -x F, 0) about the origin whatever z is, so the thrust itself does
+ * not care and none of the vertical checks can move. What DOES care is the
+ * in plane force, and this airframe has a large one: the rotor drag in 3b
+ * below. Applied at z = 0 it produced only a yaw moment. Applied where the
+ * discs actually are it produces the nose up pitching moment that every
+ * multirotor carries at speed and that a pilot trims out with forward stick.
+ *
+ * Measured before this change: the pitching moment in forward flight was
+ * identically zero at every speed, so the craft flew fast with the stick
+ * centred and nothing happened to the nose when the throttle was chopped.
+ * That is one of the loudest tells that a simulator is not a quad.
+ *
+ * The number is geometry, not a fit. On this 5 inch the arms carry the
+ * motors at the frame's mid plate; the prop disc sits about 28 mm above that
+ * once the motor bell and the prop hub are counted. The centre of gravity of
+ * a 650 g machine with a 250 g pack strapped on top sits about 8 mm above the
+ * same plate. Disc minus CG is therefore about 20 mm, and it is the same for
+ * all four because they are on one plate.
+ */
+const double PLANT_POS_Z[SIM_MOTOR_COUNT] = { 0.020, 0.020, 0.020, 0.020 };
 
 /*
  * Descent aerodynamics. mu is the axial advance ratio, va / pitch_speed, and
@@ -518,9 +570,25 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
          * contradicted the comment directly above it and is not what the
          * onset of recirculation looks like.
          */
+        /*
+         * The upper edge was 2.0 and that made the fastest descents perfectly
+         * smooth, which is backwards. Measured on the build before this
+         * change: props level, sinking at 7.7 m/s, depth 1.000 and 17.7 deg/s
+         * of gyro; sinking at 14.1 m/s and beyond, depth 0.000 and 0.1 deg/s.
+         * A quad falling at 14 m/s out of a chopped dive is not glass, it is
+         * the worst of it.
+         *
+         * 2.0 is where the windmill brake state is fully established for a
+         * rotor in clean axial flow, and taking it as a hard edge assumes the
+         * four discs are the only thing in the air. They are not: the frame,
+         * the pack and the arms shed their own wake, and the discs sit in it.
+         * The tail is carried to 3.0 instead, which is where the momentum
+         * theory gap actually closes for a real rotor rather than an ideal
+         * one, and the decay is spread over that whole range.
+         */
         double d = 0.0;
-        if (rw > 0.25 && rw < 2.0) {
-          d = (rw <= 1.0) ? (rw - 0.25) / 0.75 : (2.0 - rw);
+        if (rw > 0.25 && rw < 3.0) {
+          d = (rw <= 1.0) ? (rw - 0.25) / 0.75 : (3.0 - rw) / 2.0;
         }
         wash_depth = d;
         if (m == 0) {
@@ -730,7 +798,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * rather than the craft's.
    */
   const double disc_area = 3.14159265358979323846 * PLANT.prop_r * PLANT.prop_r;
-  double rotor_drag_tau_z = 0.0;
+  double rotor_drag_tau[3] = { 0.0, 0.0, 0.0 };
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     if (thrust[m] <= 1e-6) {
       continue;
@@ -753,10 +821,20 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     const double fy = -h * (vy / vperp);
     f_body[0] += fx;
     f_body[1] += fy;
-    /* An in plane force at the rotor's position has a moment about z. The
-     * four cancel exactly in translation, by symmetry; what survives is the
-     * yaw damping from the omega x r part above. */
-    rotor_drag_tau_z += PLANT_POS_X[m] * fy - PLANT_POS_Y[m] * fx;
+    /* An in plane force at the rotor's position has a moment about all three
+     * axes, r x F with r = (x, y, z).
+     *
+     * About z the four cancel exactly in translation, by symmetry; what
+     * survives is the yaw damping from the omega x r part above.
+     *
+     * About x and y they do NOT cancel, because PLANT_POS_Z is the same sign
+     * for all four: the whole rotor plane is above the CG, so the summed
+     * rearward drag of the discs is a nose up couple in forward flight and a
+     * roll away couple in a sideways slide. This is the pitch up at speed
+     * that was missing entirely. */
+    rotor_drag_tau[0] += -PLANT_POS_Z[m] * fy;
+    rotor_drag_tau[1] += PLANT_POS_Z[m] * fx;
+    rotor_drag_tau[2] += PLANT_POS_X[m] * fy - PLANT_POS_Y[m] * fx;
   }
 
   /* 4. Body torques: thrust moments, stator reaction, gyroscopic term.
@@ -765,13 +843,19 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * terms a purely vertical thrust produces. Its z component is what a canted
    * motor contributes to yaw, and it is the whole reason check 10 can be
    * anything other than exactly zero. */
-  double tau[3] = { stator_torque[0], stator_torque[1], stator_torque[2] + rotor_drag_tau_z };
+  double tau[3] = { stator_torque[0] + rotor_drag_tau[0],
+                    stator_torque[1] + rotor_drag_tau[1],
+                    stator_torque[2] + rotor_drag_tau[2] };
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     const double fx = thrust[m] * PLANT_AXIS[m][0];
     const double fy = thrust[m] * PLANT_AXIS[m][1];
     const double fz = thrust[m] * PLANT_AXIS[m][2];
-    tau[0] += PLANT_POS_Y[m] * fz;
-    tau[1] += -PLANT_POS_X[m] * fz;
+    /* Full r x F with r = (x, y, z). The z arm contributes nothing for a
+     * purely vertical thrust, which is why the hover and punch checks cannot
+     * move; it only picks up the small in plane components the motor cant
+     * produces. */
+    tau[0] += PLANT_POS_Y[m] * fz - PLANT_POS_Z[m] * fy;
+    tau[1] += PLANT_POS_Z[m] * fx - PLANT_POS_X[m] * fz;
     tau[2] += PLANT_POS_X[m] * fy - PLANT_POS_Y[m] * fx;
   }
   /* omega x (I omega + h_prop) */

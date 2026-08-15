@@ -6,10 +6,10 @@
  * builds a world that generates a few hundred Canvas2D textures on the main
  * thread. On a slow link the first of those dominates; on a slow machine the
  * last does. A bar on a timer is wrong in both cases and, worse, it is wrong
- * in a way that hides which one is the problem. So every stage here is named,
- * every stage's progress comes from something that actually happened, and the
- * screen prints the elapsed time on the stage it is on, so a stall is legible
- * as "Town, 14 s" rather than as a bar that stopped.
+ * in a way that hides which one is the problem. So every stage here is named
+ * and every stage's progress comes from something that actually happened. The
+ * player just sees "loading" and a joke. The bar still tracks real work, so a
+ * stall is a bar that stopped rather than a spinner that lied.
  *
  * WHERE THE PROGRESS COMES FROM, per stage:
  *
@@ -86,6 +86,37 @@ const STAGE_NAMES = {
   world: 'World',
   frame: 'First frame',
 };
+
+export const JOKE_MS = 4800;
+
+export const LOADING_JOKES = [
+  'I complimented my quad on its propellers. It said thanks for the props.',
+  'My flight controller only eats Greek food. It loves a good gyro.',
+  'My LiPo went to prison. It\'s doing time in six cells.',
+  'My quad is a helicopter parent. It never stops hovering.',
+  'My tiny whoop just won the race. Big whoop.',
+  'Someone snapped my carbon. I\'ve been framed.',
+  'My quad broke an arm, and now it won\'t arm. Poetic.',
+  'Race directors are so exclusive. Pure gatekeeping.',
+  'My racing record is chequered. That\'s the whole point.',
+  'My VTX and I just click. Same wavelength.',
+  'My battery reads the news every morning. It likes to stay current.',
+  'The packs went on strike. It was revolting.',
+  'My old LiPo refuses to change. Too much internal resistance.',
+  'My battery left the army. Honourable discharge.',
+  'Why did the pilot bring soap to the track? Prop wash.',
+  'What does a baby battery call its mum? mAh.',
+  'My quad went low carb. Kept the fibre.',
+  'My quad was on a roll. Then a pitch. Then a yaw.',
+  'My quad asked for a raise, so I upped its rates.',
+  'The start gates are in mint condition. Never been hit. Yet.',
+];
+
+export function quotedJoke(index, offset) {
+  const n = LOADING_JOKES.length;
+  const i = (((index || 0) + (offset || 0)) % n + n) % n;
+  return `"${LOADING_JOKES[i]}"`;
+}
 
 /*
  * Stage plan for one load. `worldMs` is the map's own measured build time, so
@@ -215,10 +246,12 @@ export class Loading {
     this.root = root;
     this.bar = root.querySelector('.loading-fill');
     this.stageEl = root.querySelector('.loading-stage');
-    this.detailEl = root.querySelector('.loading-detail');
+    this.jokeEl = root.querySelector('.loading-joke');
     this.stages = [];
     this.index = -1;
     this.frac = 0;
+    this.failed = false;
+    this.jokeSeed = 0;
     this.startedAt = 0;
     this.stageStartedAt = 0;
     /* Every stage's real duration, for the harness and for re-measuring the
@@ -249,17 +282,19 @@ export class Loading {
     this.stages = stages;
     this.index = -1;
     this.frac = 0;
+    this.failed = false;
+    this.jokeSeed = Math.floor(Math.random() * LOADING_JOKES.length);
     this.startedAt = performance.now();
     this.timings = {};
     this.root.hidden = false;
     this.root.style.opacity = '1';
+    this.bar.style.background = '';
+    this.jokeEl.classList.remove('is-error');
     this.visible = true;
+    this.stageEl.textContent = 'loading';
     this.paint();
     if (!this.ticker) {
-      /* One second is enough to make a stall legible and slow enough that the
-       * screen is not itself a cost while the main thread is building a
-       * world. It only ever writes text that changed. */
-      this.ticker = setInterval(() => this.paintElapsed(), 250);
+      this.ticker = setInterval(() => this.paintJoke(), 250);
     }
   }
 
@@ -316,30 +351,25 @@ export class Loading {
     }
     const pct = (this.value() * 100).toFixed(1);
     this.bar.style.width = `${pct}%`;
-    const s = this.stages[this.index];
-    this.stageEl.textContent = s ? s.name : 'Starting';
-    this.paintElapsed();
+    this.paintJoke();
   }
 
-  paintElapsed() {
-    if (!this.visible) {
+  paintJoke() {
+    if (!this.visible || this.failed) {
       return;
     }
-    const s = this.stages[this.index];
-    const el = ((performance.now() - (s ? this.stageStartedAt : this.startedAt)) / 1000);
-    const parts = [];
-    if (this.detail) {
-      parts.push(this.detail);
+    const at = this.jokeSeed + Math.floor((performance.now() - this.startedAt) / JOKE_MS);
+    const text = quotedJoke(at);
+    if (this.jokeEl.textContent !== text) {
+      this.jokeEl.textContent = text;
     }
-    parts.push(`${el.toFixed(1)} s`);
-    /* Comma, not spaces: consecutive spaces collapse in HTML and the readout
-     * ran together as "11 of 61 modules 1.0 s". */
-    this.detailEl.textContent = parts.join(', ');
   }
 
   fail(message) {
+    this.failed = true;
     this.stageEl.textContent = 'Could not start';
-    this.detailEl.textContent = message;
+    this.jokeEl.textContent = message;
+    this.jokeEl.classList.add('is-error');
     this.bar.style.width = '100%';
     this.bar.style.background = '#e8503a';
     if (this.ticker) {

@@ -40,9 +40,11 @@ import {
 import { sequenceNumbers } from './sequence.js';
 import { figureCue } from './figures.js';
 import { travelDirection, passOffsetSign } from './faces.js';
+import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import {
   add, apertureCorners, clamp, dist, leftOf, normalize, pointSegment, scale, sub, yawVector,
 } from './geometry.js';
+import { startBlockDims } from '../art/startblock.js';
 
 const RULER = 26;              /* pixels of ruler along the top and the left */
 const MIN_SCALE = 2;           /* pixels per metre */
@@ -440,6 +442,9 @@ export class View2D {
     this.drawField(ctx, doc);
     this.drawGrid(ctx, doc);
 
+    if (this.host.path && this.host.path.samples.length > 1) {
+      this.drawGuidePaint(ctx, this.host.path);
+    }
     if (this.host.pathVisible && this.host.path) {
       this.drawPath(ctx, this.host.path);
     }
@@ -727,6 +732,26 @@ export class View2D {
     const def = ELEMENTS[el.type];
     const c = this.toScreen(el.position);
     const r = Math.max(4, (def.dims.baseRadius ?? 0.12) * this.cam.scale);
+
+    /* A waypoint is drawn hollow, because nothing is standing there. A solid
+     * dot would read as an obstacle, which is the one thing it is not. */
+    if (el.type === 'waypoint') {
+      const rr = Math.max(5, 0.45 * this.cam.scale);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, rr, 0, Math.PI * 2);
+      ctx.strokeStyle = selected ? C.selected : C.marker;
+      ctx.lineWidth = hovered ? 2.5 : 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = selected ? C.selected : C.marker;
+      ctx.fill();
+      this.drawNumbers(ctx, el, numbers, selected);
+      return;
+    }
+
     ctx.beginPath();
     ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
     ctx.fillStyle = selected ? C.selected : C.marker;
@@ -814,13 +839,36 @@ export class View2D {
     ctx.beginPath();
     poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.closePath();
-    ctx.fillStyle = 'rgba(125, 255, 180, 0.18)';
+    ctx.fillStyle = 'rgba(125, 255, 180, 0.12)';
     ctx.fill();
     ctx.strokeStyle = selected ? C.selected : C.start;
     ctx.lineWidth = selected ? 2.4 : 1.8;
     ctx.stroke();
-    /* The heading, which is the half of the start pads that is not a
-     * position. */
+
+    /* Each stand as a U: two rails along the heading and a brace at the
+     * back, which is the plan of a real launch block rather than a tile. */
+    const n = Math.max(1, Math.round(el.dims.pads));
+    const fwd = yawVector(el.yaw);
+    const side = leftOf(fwd);
+    const d = startBlockDims(el.dims.padSize);
+    const fill = selected ? C.selected : '#c4a06a';
+    const foam = selected ? C.selected : '#3a3a3a';
+    for (let i = 0; i < n; i += 1) {
+      const off = (i - (n - 1) / 2) * el.dims.spacing;
+      const cx = el.position.x + side.x * off;
+      const cy = el.position.y + side.y * off;
+      this.fillWorldRect(ctx, cx, cy, fwd, side, d.railLen / 2, d.spanAcross / 2, 'rgba(122, 82, 48, 0.35)');
+      for (const s of [-1, 1]) {
+        const rx = cx + side.x * s * d.railX;
+        const ry = cy + side.y * s * d.railX;
+        this.fillWorldRect(ctx, rx, ry, fwd, side, d.railLen / 2, d.railW / 2, foam);
+        this.fillWorldRect(ctx, rx, ry, fwd, side, d.railLen / 2, d.railW * 0.28, fill);
+      }
+      const bx = cx - fwd.x * (d.railLen / 2 - d.braceT);
+      const by = cy - fwd.y * (d.railLen / 2 - d.braceT);
+      this.fillWorldRect(ctx, bx, by, fwd, side, d.braceT, (d.gap + 2 * d.railW) / 2, fill);
+    }
+
     const c = this.toScreen(el.position);
     const u = yawVector(el.yaw);
     const len = 34;
@@ -831,6 +879,20 @@ export class View2D {
     ctx.lineTo(c.x + u.x * len, c.y - u.y * len);
     ctx.stroke();
     arrowHead(ctx, c.x + u.x * len, c.y - u.y * len, Math.atan2(-u.y, u.x), 7, C.start);
+  }
+
+  fillWorldRect(ctx, cx, cy, fwd, side, halfAlong, halfAcross, colour) {
+    const pts = [
+      { x: cx + fwd.x * halfAlong + side.x * halfAcross, y: cy + fwd.y * halfAlong + side.y * halfAcross },
+      { x: cx + fwd.x * halfAlong - side.x * halfAcross, y: cy + fwd.y * halfAlong - side.y * halfAcross },
+      { x: cx - fwd.x * halfAlong - side.x * halfAcross, y: cy - fwd.y * halfAlong - side.y * halfAcross },
+      { x: cx - fwd.x * halfAlong + side.x * halfAcross, y: cy - fwd.y * halfAlong + side.y * halfAcross },
+    ].map((p) => this.toScreen(p));
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fillStyle = colour;
+    ctx.fill();
   }
 
   drawLabel(ctx, el, selected) {
@@ -935,6 +997,30 @@ export class View2D {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${def.label}  ${round1(at.x)}, ${round1(at.y)} m`, p.x + 18, p.y);
+  }
+
+  /*
+   * The taut-string paint, the same triangles the race field stamps on
+   * the pitch. Always on, so the plan and the flown course agree about
+   * which side of a flag the quad goes.
+   */
+  drawGuidePaint(ctx, path) {
+    const tris = tessellateGuide(guideFromKnots(knotsFromPath(path)));
+    if (tris.length < 3) {
+      return;
+    }
+    ctx.fillStyle = 'rgba(255, 239, 154, 0.88)';
+    ctx.beginPath();
+    for (let i = 0; i < tris.length; i += 3) {
+      const a = this.toScreen({ x: tris[i].x, y: tris[i].z });
+      const b = this.toScreen({ x: tris[i + 1].x, y: tris[i + 1].z });
+      const c = this.toScreen({ x: tris[i + 2].x, y: tris[i + 2].z });
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.closePath();
+    }
+    ctx.fill();
   }
 
   drawPath(ctx, path) {

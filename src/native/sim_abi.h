@@ -140,6 +140,18 @@ int sim_motor_override(int motor, double duty);
  */
 int sim_rest(void);
 
+/*
+ * Enable or disable Betaflight ANGLE_MODE. Off (0) is acro, the default,
+ * and the path every harness replay takes. On (non-zero) feeds the plant
+ * attitude into Betaflight's compiled pidLevel and sets ANGLE_MODE, so
+ * stick is a tilt target and centred sticks recover to level. Plant,
+ * mixer and the acro PID are not reimplemented here: this is the same
+ * flag a radio aux switch would raise. Additive ABI change, version
+ * unchanged: no existing entry point moved or changed meaning. A replay
+ * that never calls this is bit-identical to one from before it existed.
+ */
+int sim_set_angle_mode(int on);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

@@ -42,9 +42,12 @@ import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
 import { RAD, DEG } from './geometry.js';
 import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight } from './elements.js';
+import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { courseFromDocument } from '../game/trackdoc.js';
+import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
+import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -405,6 +408,72 @@ function suitePath() {
     Math.abs(arc - wanted) / wanted < 0.02, `${arc.toFixed(2)} m, wanted ${wanted.toFixed(2)} m`);
 }
 
+function suiteGuide() {
+  console.log('\nground marks');
+
+  const empty = guideFromKnots([]);
+  check('no knots, no paint', empty.samples.length === 0 && empty.dashes.length === 0);
+
+  /* Left turn: gate, flag, gate. The quad passes on the flag's right, so
+   * the painted wrap and the chevron have to sit on that side, not on the
+   * inside of the L. */
+  const turn = createTrack();
+  const t0 = place(turn, 'gate', 0, 0);
+  const fl = place(turn, 'flag', 10, 0);
+  const t1 = place(turn, 'gate', 10, 10);
+  addToSequence(turn, t0.id, 0);
+  addToSequence(turn, fl.id, 0);
+  addToSequence(turn, t1.id, 0);
+  const turnPath = buildPath(turn);
+  const turnGuide = guideFromKnots(knotsFromPath(turnPath));
+  check('a left turn still produces a line', turnGuide.samples.length > 10, `${turnGuide.samples.length} samples`);
+  check('and paints a wrap at the flag', turnGuide.flagArcs.length === 1, `${turnGuide.flagArcs.length} wraps`);
+  check('and puts an arrow on the approach to each gate',
+    turnGuide.arrows.filter((a) => a.kind === 'gate').length >= 2,
+    `${turnGuide.arrows.map((a) => a.kind).join(',')}`);
+
+  const wrap = turnGuide.flagArcs[0];
+  const pole = { x: 10, z: 0 };
+  if (wrap) {
+    const radii = wrap.points.map((p) => Math.hypot(p.x - pole.x, p.z - pole.z));
+    const meanR = radii.reduce((a, b) => a + b, 0) / radii.length;
+    check('the wrap sits on the clearance circle',
+      Math.abs(meanR - 1.5) < 0.08, `mean ${meanR.toFixed(3)} m`);
+    /* Pass side is right: knot is south-east of the flag. The chevron
+     * must be on that half, not north of the pole on the inside. */
+    check('the chevron is on the fly side, not the inside of the turn',
+      wrap.chevron.z < pole.z - 0.4,
+      `chevron z ${wrap.chevron.z.toFixed(2)}, pole ${pole.z}`);
+    const wrong = wrap.points.filter((p) => (p.x - pole.x) * (wrap.chevron.x - pole.x)
+      + (p.z - pole.z) * (wrap.chevron.z - pole.z) < 0).length;
+    check('the painted comma does not go the wrong side of the flag',
+      wrong === 0, `${wrong} of ${wrap.points.length} points on the back side`);
+  }
+
+  /* Samples near the flag must stay outside the pole. A line through the
+   * flag would be the bug this whole file exists to prevent. */
+  const near = turnGuide.samples.filter((s) => Math.hypot(s.x - pole.x, s.z - pole.z) < 4);
+  const minR = Math.min(...near.map((s) => Math.hypot(s.x - pole.x, s.z - pole.z)));
+  check('the taut string does not run through the flag',
+    minR > 1.2, `closest ${minR.toFixed(3)} m`);
+
+  const demo = guideFromKnots(knotsFromPath(buildPath(demoTrack())));
+  check('the demo lap has dashes', demo.dashes.length > 8, `${demo.dashes.length} dashes`);
+  check('the demo lap has gate arrows',
+    demo.arrows.some((a) => a.kind === 'gate'), `${demo.arrows.length} arrows`);
+  check('the demo lap wraps its turn flag', demo.flagArcs.length >= 1, `${demo.flagArcs.length} wraps`);
+  check('and tessellates into paint triangles',
+    tessellateGuide(demo).length >= 60, `${tessellateGuide(demo).length} verts`);
+
+  const course = courseFromDocument(demoTrack());
+  check('the course carries a guide in scene metres',
+    course.guide && course.guide.samples.length > 10,
+    course.guide ? `${course.guide.samples.length} samples` : 'missing');
+  check('and at least one flag wrap survived the frame conversion',
+    course.guide && course.guide.flagArcs.length >= 1,
+    course.guide ? `${course.guide.flagArcs.length} wraps` : 'missing');
+}
+
 function suiteWarnings() {
   console.log('\nwarnings');
 
@@ -557,7 +626,9 @@ function suiteFigures() {
 
   applyFigure(dbl, stack.id, 'spiralUp');
   const spiral = dbl.sequence.filter((s) => s.elementId === stack.id);
+  const seqIds = dbl.sequence.map((s) => s.id);
   check('spiral up writes two passes', spiral.length === 2);
+  check('figure passes keep unique sequence ids', new Set(seqIds).size === seqIds.length, seqIds.join(','));
   check('bottom then top', spiral[0].apertureIndex === 0 && spiral[1].apertureIndex === 1,
     `${spiral[0].apertureIndex} then ${spiral[1].apertureIndex}`);
   check('faces stay the same', spiral[0].entry === spiral[1].entry,
@@ -648,13 +719,22 @@ function suiteFigures() {
     !(miss.flash && /void/i.test(miss.flash.text)));
   check('and does not count as the hole that was next', miss.next === 1, `next ${miss.next}`);
 
+  /*
+   * This used to assert the opposite, that a different gate flown out of
+   * order voids the lap, which was MultiGP's rule. The owner overruled it:
+   * an incidental crossing costs nothing. See the note in race.js update().
+   * The second half is what makes it safe: nothing is gained either, because
+   * the order still has to be flown and the pass advances nothing.
+   */
   const skip = new Race(raceGates);
   seg = flyThrough(skip.gates[0]);
   skip.update(seg.prev, seg.curr, 10, 10);
+  const wasNext = skip.next;
   seg = flyThrough(skip.gates[3]);
   skip.update(seg.prev, seg.curr, 20, 20);
-  check('a different gate out of order still voids',
-    Boolean(skip.flash && /void/i.test(skip.flash.text)));
+  check('a different gate out of order costs nothing',
+    !(skip.flash && /void/i.test(skip.flash.text)));
+  check('and does not advance the order', skip.next === wasNext, `next ${skip.next}`);
 
   const tri = createTrack();
   const t = place(tri, 'ladder', 0, 0);
@@ -828,6 +908,118 @@ function suiteSchemaDoc() {
     collectWarnings(doc, path).filter((w) => w.level === 'warn').length === 0);
 }
 
+function suiteListing() {
+  console.log('listing');
+  const doc = createTrack('Ladder Loop');
+  const gate = createElement(doc, 'gate', { x: 10, y: 8, z: 0 });
+  doc.elements.push(gate);
+  doc.sequence.push({ id: 'sq-1', elementId: gate.id, apertureIndex: 0, entry: 1 });
+  const renamed = { ...doc, name: 'Renamed Loop' };
+  check('layout fingerprint ignores the title', layoutFingerprint(doc) === layoutFingerprint(renamed));
+  check('remix name tags a course', suggestRemixName('Ladder Loop') === 'Ladder Loop remix');
+  check('remix name does not double tag', suggestRemixName('Ladder Loop remix') === 'Ladder Loop remix');
+  const community = inspectCourse({
+    share: { id: doc.id, name: doc.name, author: 'Ada Rook', board: 'http://127.0.0.1:3100', document: doc },
+    autosave: null,
+    editKeyFor: () => null,
+    bindFor: () => null,
+  });
+  check('a board course you do not own is a community listing', community.kind === 'community' && community.canRemix && community.canPostTime);
+  const owned = inspectCourse({
+    share: { id: doc.id, name: doc.name, author: 'Ada Rook', board: 'http://127.0.0.1:3100', document: doc },
+    autosave: null,
+    editKeyFor: (id) => (id === doc.id ? 'key' : null),
+    bindFor: () => ({ layoutFingerprint: layoutFingerprint(doc), nameOnBoard: doc.name, owned: true }),
+  });
+  check('a board course you published is owned', owned.kind === 'owned' && owned.canPostTime && !owned.canRemix);
+  const remix = inspectCourse({
+    share: null,
+    autosave: { doc },
+    editKeyFor: () => null,
+    bindFor: (id) => (id === doc.id ? { sourceId: 'trk-other', sourceName: 'City Loop', sourceAuthor: 'Bo' } : null),
+  });
+  check('a copy of someone else is a remix', remix.kind === 'remix' && remix.canPublishNew && !remix.canPostTime && remix.sourceName === 'City Loop');
+  const drifted = inspectCourse({
+    share: null,
+    autosave: { doc: renamed },
+    editKeyFor: (id) => (id === renamed.id ? 'key' : null),
+    bindFor: () => ({ layoutFingerprint: layoutFingerprint(doc), nameOnBoard: 'Old Name', owned: true }),
+  });
+  check('an owned rename is name drift, not layout drift', drifted.nameDrift === true && drifted.layoutDrift === false && drifted.canPostTime);
+  const authorShift = inspectCourse({
+    share: { id: doc.id, name: doc.name, author: 'Ada Rook', board: 'http://127.0.0.1:3100', document: doc },
+    autosave: null,
+    editKeyFor: (id) => (id === doc.id ? 'key' : null),
+    bindFor: () => ({ layoutFingerprint: layoutFingerprint(doc), nameOnBoard: doc.name, owned: true, author: 'Ada Rook' }),
+    pilotName: 'Ada Two',
+  });
+  check('an owned handle change is author drift, not layout drift', authorShift.authorDrift === true && authorShift.layoutDrift === false && authorShift.canUpdateListing === true);
+}
+
+function suiteStartBlock() {
+  const d = startBlockDims(0.6);
+  check('a default stand fits inside its pad cell', d.railLen < 0.6 && d.spanAcross < 0.6,
+    `${d.railLen.toFixed(3)} x ${d.spanAcross.toFixed(3)}`);
+  check('the rails leave a gap for the battery', d.gap > 0.05 && d.gap < 0.2, String(d.gap));
+  check('the ramp is tilted, not a floor tile', d.tilt > 0.3 && d.tilt < 0.7, String(d.tilt));
+  const h = startBlockHeight(0.6);
+  check('the stand has height a 5 inch can catch', h > 0.15 && h < 0.4, String(h));
+  const eh = elementHeight(ELEMENTS.startPads, ELEMENTS.startPads.dims);
+  check('elementHeight matches the mesh height', Math.abs(eh - h) < 0.05, `${eh} vs ${h}`);
+  const course = courseFromDocument(demoTrack());
+  const pads = course.structures.find((s) => s.type === 'startPads');
+  const dist = Math.hypot(course.spawn.x - pads.x, course.spawn.z - pads.z);
+  const want = Math.abs(startBlockLaneOffset(pads.dims));
+  check('the quad parks on a pad, not behind the grid', Math.abs(dist - want) < 0.05,
+    `${dist.toFixed(3)} m from the grid, lane ${want.toFixed(3)}`);
+  check('the parked pose matches the ramp', course.spawn.pitch > 0.3 && course.spawn.pitch < 0.7,
+    String(course.spawn.pitch));
+}
+
+/*
+ * The waypoint, which is the one element that is not a thing standing on the
+ * field. Everything below is a property the import depends on: if a waypoint
+ * ever grows a clearance the racing line stops going through the point the
+ * author pinned, and if it ever reaches the race field it becomes an
+ * obstacle that is not on the real course.
+ */
+function suiteWaypoint() {
+  console.log('\nwaypoint');
+  const doc = createTrack();
+  const a = place(doc, 'gate', 0, 0);
+  const w = place(doc, 'waypoint', 10, 4);
+  const b = place(doc, 'gate', 20, 0);
+  addToSequence(doc, a.id, 0);
+  addToSequence(doc, w.id, 0);
+  addToSequence(doc, b.id, 0);
+
+  check('W arms it', elementByKey('W')?.id === 'waypoint');
+  check('it is a marker, so it can be in the flying order', ELEMENTS.waypoint.kind === 'marker');
+  const seq = doc.sequence[1];
+  check('its clearance is zero', seq.clearance === 0, String(seq.clearance));
+
+  /* The whole point: the knot is the waypoint, not an offset from it. */
+  const path = buildPath(doc);
+  const knot = path.knots.find((k) => k.elementId === w.id);
+  check('the line goes through the point, not past it',
+    knot && Math.hypot(knot.pos.x - 10, knot.pos.y - 4) < 1e-9,
+    knot ? `${knot.pos.x}, ${knot.pos.y}` : 'no knot');
+
+  /* A marker has no face, so it cannot be told to flip one. */
+  const reversals = collectWarnings(doc, path).filter((v) => v.code === 'reversal' && v.elementId === w.id);
+  check('it never raises a reversal, having no face to reverse', reversals.length === 0);
+
+  const back = deserialize(serialize(doc));
+  check('it round trips', back.doc.elements.some((e) => e.type === 'waypoint' && e.position.x === 10));
+
+  /* Nothing is built for it on the race field. It still shapes the line. */
+  const course = courseFromDocument(doc);
+  check('the field builds no station for it',
+    course.stations.every((st) => st.type !== 'waypoint'));
+  check('and it scores nothing, so a lap counts the gates only',
+    course.stations.length === 2, `${course.stations.length} stations`);
+}
+
 function main() {
   if (process.argv.includes('--emit')) {
     process.stdout.write(serialize(demoTrack()));
@@ -837,13 +1029,17 @@ function main() {
   suiteRoundTrip();
   suiteFaces();
   suitePath();
+  suiteGuide();
   suiteWarnings();
   suiteHistory();
   suiteSequenceNaming();
   suiteFigures();
   suiteFlaggedGate();
   suiteFlaggedDoubleStack();
+  suiteWaypoint();
   suiteSchemaDoc();
+  suiteListing();
+  suiteStartBlock();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 }

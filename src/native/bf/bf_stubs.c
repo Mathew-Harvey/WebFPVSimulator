@@ -41,7 +41,9 @@
 /* Parameter group storage normally defined in sensors/acceleration.c. */
 accelerometerConfig_t accelerometerConfig_System;
 
-/* Attitude estimate from flight/imu.c; zeroed, never used in acro. */
+/* Attitude estimate. Acro never reads it. Angle mode writes plant Euler
+ * angles into this from bf_glue.c, which is what SITL does instead of
+ * compiling the AHRS. */
 attitudeEulerAngles_t attitude;
 
 bool failsafeIsActive(void) { return false; }
@@ -55,9 +57,17 @@ void imuQuaternionHeadfreeTransformVectorEarthToBody(t_fp_vector_def *v) { (void
 
 bool isLaunchControlActive(void) { return false; }
 
-/* Simulated milliseconds, advanced by the glue each step. */
+/* Simulated milliseconds, advanced by the glue each step.
+ *
+ * micros() comes off the same counter rather than a second one. The step is
+ * 1 ms, so a microsecond clock has no more information to give and inventing
+ * sub-step resolution would be a second timebase to keep in sync. It is
+ * referenced by rc_modes.c's sticky mode path, which cannot run here because
+ * no mode activation conditions are analysed, but the symbol has to resolve
+ * now that bf_glue.c calls updateActivatedModes. */
 uint32_t sim_bf_now_ms;
-uint32_t millis(void) { return sim_bf_now_ms; }
+timeMs_t millis(void) { return sim_bf_now_ms; }
+timeUs_t micros(void) { return (timeUs_t)sim_bf_now_ms * 1000u; }
 
 bool rxIsReceivingSignal(void) { return true; }
 
@@ -89,9 +99,15 @@ bool isMotorProtocolDshot(void) { return true; }
  * this build compiles for its filter chain. The simulated gyro is never
  * calibrated and never overflows, so neither ever sounds or reschedules. */
 void beeper(beeperMode_e mode) { (void)mode; }
+void beeperConfirmationBeeps(uint8_t beepCount) { (void)beepCount; }
+void beeperSilence(void) {}
 void schedulerResetTaskStatistics(taskId_e taskId) { (void)taskId; }
 
-/* Core state: always armed, airmode on, never crashed or disarming. */
+/* Core state: never crashed, never disarming.
+ *
+ * isAirmodeActivated is core.c's throttle latch, not the airmode feature.
+ * The feature itself is airmodeIsEnabled() in rc_modes.c, which this file
+ * once claimed to cover and did not: bf_glue.c raises it now. */
 void disarm(flightLogDisarmReason_e reason) { (void)reason; }
 bool isFlipOverAfterCrashActive(void) { return false; }
 bool isAirmodeActivated(void) { return true; }

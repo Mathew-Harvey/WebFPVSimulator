@@ -275,8 +275,8 @@ void bf_settings_build(void) {
   U8("crash_recovery_rate", p->crash_recovery_rate);
   U16("crash_limit_yaw", p->crash_limit_yaw);
 
-  /* ---- Self levelling gains. Acro only flies here, but the fields are
-   * real and a diff that carries them must not silently lose them. ---- */
+  /* ---- Self levelling gains. pidLevel reads these when ANGLE_MODE is
+   * on. Acro never does. A diff that carries them must not lose them. ---- */
   U8(PARAM_NAME_ANGLE_P_GAIN, p->pid[PID_LEVEL].P);
   U8(PARAM_NAME_ANGLE_FEEDFORWARD, p->pid[PID_LEVEL].F);
   U8(PARAM_NAME_ANGLE_FF_SMOOTHING_MS, p->angle_feedforward_smoothing_ms);

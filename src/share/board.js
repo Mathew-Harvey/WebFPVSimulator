@@ -6,7 +6,11 @@
  *   Board page     {board}/
  *   Board API      {board}/api/tracks
  *   Fly a course   {sim}/?map=custom&share={id}&board={board}
+ *   Orbit thumb    {sim}/src/share/orbit.html?map=custom&share={id}&board={board}
  *   Publish        POST {board}/api/tracks   { author, document, editKey? }
+ *   Update listing POST {board}/api/tracks   same, with the edit key from
+ *                  the browser that first published. A name-only update
+ *                  keeps the times. A layout change clears them.
  *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs }
  *
  * The track document is the only payload. schema.md is the contract. The
@@ -98,7 +102,10 @@ async function readJson(res) {
   }
   if (!res.ok) {
     const message = (body && body.error) || text || `The board answered ${res.status}.`;
-    throw new Error(message);
+    const err = new Error(message);
+    err.status = res.status;
+    err.conflict = Boolean(body && body.conflict) || res.status === 409;
+    throw err;
   }
   return body;
 }
@@ -133,9 +140,11 @@ export async function postTime({ trackId, name, lapMs, origin }) {
 }
 
 /*
- * A share= id in the URL becomes the course this page will fly. The fetch
- * is the only network the simulator does for a published track; after that
- * the document sits in local storage like any other import.
+ * A share= id in the URL becomes the course this page will fly, or the
+ * course the builder will copy. The fetch is the only network either page
+ * does for a published track; after that the document sits in local storage
+ * like any other import. The return value is that same payload, document
+ * included: the builder loads the canvas from it, not from the storage key.
  */
 export async function adoptShareFromLocation() {
   let id = '';
@@ -150,17 +159,13 @@ export async function adoptShareFromLocation() {
   const origin = boardOrigin();
   const payload = await fetchTrackDocument(id, origin);
   const document = payload.document || payload;
-  writeShareImport({
+  const share = {
     id: payload.id || id,
     name: payload.name || document.name,
     author: payload.author || '',
     board: origin,
     document,
-  });
-  return {
-    id: payload.id || id,
-    name: payload.name || document.name,
-    author: payload.author || '',
-    board: origin,
   };
+  writeShareImport(share);
+  return share;
 }

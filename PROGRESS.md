@@ -23,6 +23,7 @@ Anything the loop could not resolve on its own, or a threshold it believes is wr
   A human should also note that STAGE1.md's stated 4.5 to 1 thrust to weight is itself low for the airframe it describes, and that the hover-throttle band and the TWR figure cannot both be satisfied with real motor constants. Loop B has not changed any threshold.
 - Betaflight's own default tune misbehaves on the current plant, which is diagnostic rather than a tuning problem. configs/freestyle.diff halves I on all three axes relative to Betaflight 4.5.1 defaults, and its header records that the stock tune overshoots 17 percent and reverses 72 deg/s here. Stock Betaflight flies a real 5 inch well. A plant on which Betaflight's defaults misbehave is a wrong plant, not a plant that needs a custom tune, so the tune should be reverted to defaults after the prop fix and used as the test of whether the plant is right.
 - Check 10, yaw-coupling, Loop B evidence and argument. Measured 0.00 degrees exactly, against a floor of 2.0. This is not a missing feature switch; it is structural. Every Stage 1 mechanism cancels pairwise on a symmetric quad X because each mixer group (left, right, front, rear) contains exactly one clockwise and one counter clockwise motor: RPM squared drag torque deltas cancel between the rising pair (RL counter clockwise, FL clockwise), stator reaction to spin up and spin down cancels the same way, net prop angular momentum stays zero under any left right differential, and with q = r = 0 the Euler coupling terms vanish. The measured 0.00 is exact because the floating point trajectories are bitwise symmetric. The real world coupling comes from inflow and advance ratio asymmetry across the rolling disc, which STAGE1.md explicitly defers to Stage 2, and Betaflight's yaw PID would suppress most of any small drift anyway. Faking an asymmetry to buy the sign would violate the project's own rule that yaw coupling falls out of the physics rather than being scripted. Options for the human: accept the check as a Stage 2 gate and re band it when inflow lands, or re specify it as a yaw damping check (prop drag torque computed against air relative rotation speed, spin plus body yaw rate, gives real damping and is Stage 1 sized). Loop B continues with the check honestly red.
+- Check 10, yaw-coupling, third round of evidence, 2026-08-15. Now measured at -0.07 deg against the 2.0 floor, so the SIGN is right and has been right since the motor cant landed; only the magnitude is short, and it is short by a factor of about 28. Two things were tested this turn and neither moved it. Turning airmode on (see the run log below) was expected to help, because a saturated roll at throttle 0.5 now drives the motors to their stops and leaves the yaw axis no mixer headroom to correct with; it changed the reading from -0.08 to -0.07. And the rotor plane was lifted to its real height above the CG, which adds pitch and roll moments from rotor drag but cannot add yaw, because a force in the xy plane applied at (x, y, z) has a z moment that does not involve z at all. The algebra in plant.c stands: the only Stage 1 mechanism that can yaw a symmetric quad X during a roll is build tolerance in the motor mounting, and the yaw PID cancels most of what the current tolerance produces. Reaching 2.0 deg through the cant table alone needs a tangential misalignment sum near 30 deg against the roll column, which is not a build tolerance, it is a broken frame. Recommendation for the human, unchanged in substance: re band this against a measured figure from a real machine, or re specify it as a yaw DAMPING check, which the plant does have honestly. The threshold has not been touched.
 - Check 10, yaw-coupling, expected sign. STAGE1.md asks for "non-zero, correct sign" but does not name the sign, so Loop A had to fix one in `tests/thresholds.json` (`expected_sign: -1`, meaning nose-right body yaw accumulation during a full right roll, with the sim_abi.h convention that positive r yaws nose left). Loop A could not derive this sign from first principles: for an ideal symmetric X quad, the roll mixer moves one CW and one CCW motor up and one of each down, so RPM squared drag torque deltas, prop spin-up inertia reactions, and net prop angular momentum all cancel pairwise, giving exactly zero roll-to-yaw coupling at this modelling order. The real-world coupling pilots feel comes from effects that may or may not emerge from the Stage 1 plant. The sign, and whether the 2.0 degree floor is reachable at all in Stage 1, are provisional Loop A choices. If Loop B's model robustly produces the opposite sign, or near zero, write the measured value here and let a human re-set `expected_sign` or the floor. Loop B must not edit thresholds.json.
 
 ---
@@ -43,6 +44,9 @@ Choices made during the build that are not already in CLAUDE.md. One line each, 
 - Fixture configs are Betaflight 4.5 style diffs with ACTUAL rates. Check 9's configured max rate and check 12's expected ratio are parsed from the fixture files at run time, never hardcoded, so the fixtures stay the single source alongside thresholds.json.
 - Emscripten is located via PATH, `$EMSDK`, `$HOME/emsdk`, or `/opt/emsdk` in that order by `scripts/build-wasm.sh`.
 - Render side dependency, justified as CLAUDE.md requires: the import map gains `three/addons/` alongside `three`, both pinned to 0.160.0 on the same CDN. This is the same package, not a new dependency, and it supplies EffectComposer, RenderPass, ShaderPass, UnrealBloomPass and OutputPass. Writing a bloom downsample chain and a composer by hand would be a few hundred lines of render code carrying no project specific meaning. Nothing else is on the render side and the physics path is untouched by any of it.
+- Map card thumbnails are recorded 480p clips in IndexedDB, not live WebGL. Three live orbit iframes plus the title world is four renderers, which a Steam Deck with other tabs open cannot hold. The first visit that needs a card records one loop at 10 fps; every visit after that is a video element. Bump CLIP_VERSION in src/share/orbitcache.js to invalidate old clips when the shot changes. The board featured card is ~670 by 340 CSS pixels, so 240p (426 by 240 at 180 kbps) smeared; 854 by 480 at 800 kbps is 4x the pixels and matches that card without a second live renderer.
+- Graphics is three named presets (Low, Medium, High) in `src/render/quality.js`, not a bag of sliders. High is the authored look so the field budget check does not move. First run on a Steam Deck / SteamOS user agent picks Low; everyone else gets High. The session renderer asks for `powerPreference: 'high-performance'` and leaves `failIfMajorPerformanceCaveat` false: a discrete GPU is used when one is present, and no preset requires one. Changing the preset rebuilds the world because grass count, city foliage and shadow proxies are bake time.
+- Settings shows the GPU WebGL actually bound, via `WEBGL_debug_renderer_info` on the session renderer. A page cannot list every chip in the machine. Firefox resist-fingerprinting and some Safari builds hide the name; software rasterisers (SwiftShader, llvmpipe) are labelled as such. Local display only, nothing is uploaded, and no second WebGL context is created to probe.
 
 ---
 
@@ -6449,4 +6453,1761 @@ Mathew-Harvey/WebFPVSimulator-LeaderBoard.
 Verify: not run. This turn does not touch src/native, the WASM build,
 the input path or the simulation trace.
 
+### 2026-08-14 evening | custom track | orbit the title shot
 
+Changed: a designed course no longer flies its racing line on the title
+screen or the map reel. A single triple stack's line is a few metres of
+wrap, and at 13 m/s that was a two second fidget. Custom tracks now
+orbit the layout, framed from the course's own bounds (16 m floor so a
+compact stack is not a tight circle around its own frame). The built in
+circuit still flies a lap. Empty custom courses keep the old nine metre
+spawn circle.
+
+What went wrong: nothing yet. The first thought was to keep the
+flythrough and only switch on a length threshold, but a compact course
+is exactly what a custom track often is, and orbiting the whole layout
+is the shot the old start-gate circle was trying to be.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-14 | chrome | sakura forest restyle
+
+Changed: title, map picker, loading, shared menus, the public board,
+and the track builder's chrome tokens. Cream / sakura / forest instead
+of cream / amber / navy. WEB and FPV split in the wordmark. Title
+layout is brand top left, menu bottom right, so the live flythrough
+keeps the middle of the frame. Map cards get a sakura hairline and
+edge. Records stay mint. In-flight OSD stays amber, because that has
+to read over whatever the camera is looking at.
+
+What was not taken from the mock, on purpose: no webfonts (the bundled
+page shipped hundreds of woff2 files), no falling petals (a forever
+compositor animation on top of a 1000 Hz sim and a live Three.js
+view), no painted SVG landscape (the world behind the menu is the
+picture), no backdrop-filter, no Japanese subtitle. The chequer on the
+board stays. The builder canvas still selects in amber so a working
+tool does not lose contrast.
+
+What went wrong: a search-replace ate the `.map-cards` selector and
+left its properties hanging. Caught and restored in the same turn.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | chrome | window resize fills the view
+
+Changed: the world canvas tracks the window again. `shell.resize` now
+reads `window.innerWidth` / `innerHeight` and clears any inline canvas
+size first. The city's pipeline already called `setSize` with
+`updateStyle` true, which wrote pixel width and height onto the canvas;
+a second `setSize(..., false)` does not undo that, so later resizes
+measured the pinned size and left a band of page background under the
+world while the overlay (position fixed) still filled the frame. The
+subclass now strips those styles, and `#view` is itself `position:
+fixed; inset: 0`.
+
+What went wrong: the subclass comment already named the inline style
+write as wrong for this page, then only called `setSize` with
+`updateStyle` false, which updates the drawing buffer and leaves the
+styles in place. `clientWidth` after that is the previous window, so
+the size could never change.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | chrome | menu help no longer shoves the rows
+
+Changed: hover notes that sit under a menu now occupy a locked slot
+(--menu-help-slot, three lines on a wide window, four on a narrow one)
+instead of growing the block. The title restyle had stacked help under
+the rows in a column flex, and collapsed the slot when a row had no
+note or a short one. Moving between Fly and Track builder then
+rewrapped the text and the whole menu jumped, because the title foot
+sits at the bottom of the screen and extra height pushes the rows up.
+The map screen's note under the cards and the stacked layout under
+860px use the same slot. Side-column help on settings, pause and the
+rest was already out of that flow.
+
+What went wrong: an earlier pass moved help into a right-hand column
+so it could not resize the rows, then the title layout put it back
+underneath without reserving height, and `:empty { padding: 0 }`
+collapsed the slot on rows that have no note.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | chrome | title note sits beside the menu
+
+Changed: the hover note is no longer under the title rows. It hangs to
+the left of the panel, out of flow, so a long line wrapping cannot
+move the list. The previous pass put that note in a locked grid row
+under the menu and left `grid-column: 2` plus the three column
+template in place, which squeezed the panel until Map and Tune values
+sat on top of their labels. The title stage is a block of its own
+width again. Map picker help sits beside Back rather than between the
+cards and the row. On a narrow window the title note moves above the
+panel, still out of flow.
+
+What went wrong: treating the title as a two row grid without resetting
+the inherited three column template. Column 1 kept a 360 px minimum
+inside a 520 px stage, so the rows had nothing left.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | chrome | craft livery and start orbit
+
+Changed: the hero airframe no longer wears the old orange and teal on
+cool navy carbon. Frame, canopy, props and lamps now use the same
+forest, sakura, cream and mint as the page and the board. The settings
+studio clear colour and pedestal follow. Starting a map no longer holds
+a static three-quarter: the camera orbits the pad, settles behind the
+quad, then dollies into the FPV camera. Throttle still skips the
+exterior and starts the zoom.
+
+What went wrong: the pad shot was a still, so the new livery never got
+a look, and the canopy was still the previous shell's orange.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | maps | real title-shot thumbnails
+
+Changed: map cards and the public board no longer show a blocky drawing
+of a world. The card for the map already loaded copies the title
+camera's own framebuffer after each compose. The other cards, and every
+course on the board, iframe src/share/orbit.html, which loads that map
+and flies the same attract camera through the same post chain, with no
+physics and no WASM. A published course is injected into the custom map
+without writing the player's share seat, so two board cards can orbit
+two courses at once. Boot still does not fetch the city.
+
+What went wrong: the map reel existed so opening Choose a world would
+not pay for the town. That guarantee still holds at boot (check 16).
+Opening the map screen now does load the other worlds, one at a time,
+because a caricature is not the picture the owner asked for.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | flight | Betaflight angle mode
+
+Changed: Settings gained a Flight mode row, Acro or Angle. Keyboard
+stick input (no radio enumerated) always raises ANGLE_MODE. A radio
+uses the setting. The OSD prints which one is live.
+
+This is Betaflight's own pidLevel, not a second controller. pid.c was
+already compiled with USE_ACC. The glue now feeds plant attitude into
+the existing `attitude` Euler block (SITL's USE_IMU_CALC-off path:
+sitl.c inverts pitch so the value matches the gyro frame, nose down
+positive) and sets the ANGLE_MODE flag. Plant, mixer, rates, and the
+inner PID are untouched. Acro is the default; sim_set_angle_mode is an
+additive ABI entry, version still 1. The harness never calls it.
+
+What went wrong: compiling imu.c would have pulled GPS, mag and the
+AHRS. Feeding the true quaternion is what SITL already does. A JS
+self-level on the sticks would have been a second controller on top of
+acro rates and would have fought the tune.
+
+Verify: `npm run build:wasm` exit 0. `git diff --stat vendor/betaflight`
+empty. `npm run verify` 12 of 16 passing. Physics: determinism-repeat
+and determinism-cross-host hash ce9826fc2ce5 (Node and Chrome
+identical), frame-independence 1 hash across 30/60/144/240, hover-
+throttle 0.2051, punch-out 82.1 m, terminal-velocity 31.3 m/s, motor-
+step-response 18 ms, rate-tracking 669.8 deg/s (0.02 percent off 670),
+battery-sag 10.15 percent, diff-passthrough ratio 1.2542 (0.04 percent
+off), console-clean errors=0 warnings=0. FAIL: yaw-coupling -0.08 deg
+vs floor 2.0 (known red, recent runs were -0.06 to -0.09, threshold
+untouched), build-clean (this Windows runner's spawnSync('npm') is
+ENOENT; the same wasm build invoked directly exits 0 and vendor is
+clean), world-scale and map-isolation (craft draw size and field draw
+totals, not this change). Flight feel of angle mode is awaiting human
+judgement.
+
+### 2026-08-15 | input | keyboard collective throttle
+
+Changed: keyboard-as-primary throttle is no longer a latched slider.
+W climbs, S descends, and releasing W/S springs to hover (0.22) once
+airborne, or to 0 on the pad after S parks. A short hold of W targets
+0.42, not 1.0; holding about 700 ms opens the target to full so a
+punch is still possible. A connected radio is untouched: analog
+throttle still latches, and W/S overlay on a pad still uses the old
+rate. Howto copy updated. Reset and the harness __stick poke clear the
+collective flags so a written throttle is not sprung.
+
+What went wrong: a key is digital. The radio path (hold an analog
+value) copied onto W/S as latch-to-last, so one press of W in angle
+mode became full throttle forever. Springing always, including when
+__stick wrote a throttle, would have broken captures that bypass the
+keys.
+
+Verify: `npm run build:wasm` exit 0. `git diff --stat vendor/betaflight`
+empty. `npm run verify` 12 of 16 passing. Physics hashes unchanged
+ce9826fc2ce5 Node=Chrome, frame-independence 1 hash, hover-throttle
+0.2051, punch-out 82.1 m, terminal-velocity 31.3 m/s, motor-step-
+response 18 ms, rate-tracking 669.8 deg/s, battery-sag 10.15 percent,
+diff-passthrough 1.2542. FAIL: yaw-coupling -0.08 deg vs floor 2.0
+(known red), build-clean (spawnSync npm empty fail from the runner;
+direct `npm run build:wasm` exits 0), world-scale and map-isolation
+(craft draw size and field draw totals, not this change). Keyboard
+feel is awaiting human judgement.
+
+### 2026-08-15 | ui | keyboard stick overlay
+
+Changed: when the keyboard is the stick source, flight shows two
+transparent Mode 2 gimbals at the bottom of the frame. Left is yaw and
+throttle (idle at the bottom), right is roll and pitch (stick forward
+is up, matching the up arrow). A connected radio hides them. Howto
+gained a line.
+
+What went wrong: nothing yet. The overlay reads the same channels the
+module already consumes, so it cannot disagree with what is being
+flown.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | maps | cache orbit thumbnails as video
+
+Changed: map cards no longer keep live WebGL worlds running. The first
+visit that needs a thumbnail records a 240p, 10 fps loop into
+IndexedDB (src/share/orbitcache.js). Later visits play that clip in a
+video element. The world already on screen is copied from the title
+view while it records, so the city is not built a second time. Other
+worlds record one at a time in orbit.html, then the iframe is
+destroyed and the title compose is frozen for that capture so two post
+chains do not run together. A Web Lock serialises captures across
+iframes of this origin. Designed courses key the clip by share id or
+by document id plus modified stamp.
+
+What went wrong: the previous map screen iframed orbit.html for every
+card that was not the loaded map and copied the title framebuffer
+every frame for the one that was. That is a second city (nineteen
+thousand meshes) plus a GPU readback, on a page that is already
+drawing a world, which is exactly the load a Steam Deck with other
+tabs open cannot carry. A caricature reel was rejected earlier
+because it is not a picture of the town; a recorded loop of the real
+title shot is.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | input | keyboard hold-time analog
+
+Changed: keyboard stick keys no longer race to full in 110 ms.
+Hold time is the analog. A tap (~90 ms) is 0.16 stick, a hold
+reaches a flyable cruise of 0.34 at 240 ms and stays there until
+750 ms, a long hold opens to full at 1.25 s. Release springs to
+centre, or to hover on throttle once airborne. W is still Mode 2
+throttle. The ghost sticks show the same values. Radio analog
+throttle is untouched.
+
+What went wrong: RATE_UP 9 made a tap and a punch the same input.
+The first collective also jumped W to a 0.42 climb target, so short
+presses were still a rocket. A key cannot sit at 30 percent the way
+a radio stick can, so cruise is a plateau while held: that is the
+only way a digital key can fly a straight without running away to
+the stop.
+
+Verify: `npm run build:wasm` exit 0. `git diff --stat vendor/betaflight`
+empty. `npm run verify` 12 of 16 passing. Physics hashes unchanged
+ce9826fc2ce5 Node=Chrome, hover-throttle 0.2051, punch-out 82.1 m,
+terminal-velocity 31.3 m/s, motor-step-response 18 ms, rate-tracking
+669.8 deg/s, battery-sag 10.15 percent, diff-passthrough 1.2542.
+FAIL: yaw-coupling -0.08 deg vs floor 2.0 (known red), build-clean
+(spawnSync npm empty fail from the runner; direct build:wasm exits
+0), world-scale and map-isolation (not this change). Keyboard feel
+is awaiting human judgement.
+
+### 2026-08-15 | maps | branded wait while a clip records
+
+Changed: the first time a map card has no cached preview it no longer
+sits blank or says Saving a preview. It shows the WEB FPV wordmark, a
+spinning quad, why this wait exists (one recording, then the card is
+a video, because a second live world stalls a Deck), and a rotating
+FPV dad joke. Cards still in the queue say they are waiting their
+turn. Cached visits never see it.
+
+What went wrong: a 7 to 15 second capture with no copy reads as a
+frozen menu. The jokes are not the product. They are what fills the
+seconds the cache is buying, so the player is told the cost is paid
+once.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | maps | better wait jokes
+
+Changed: swapped the first-time clip wait jokes for the owner's set.
+
+What went wrong: the first batch was filler. These land.
+
+Verify: not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | share | track builder and board stay one listing
+
+Changed: flying a course you published no longer drops its board identity,
+so a rename you own updates the listing without clearing times, a clean
+lap offers Upload on results and title, and editing someone else's course
+forks it under a new name with Publish as yours on the builder, the title,
+results, pause, and the board card.
+
+What went wrong: Fly this track always cleared the share seat, so the
+simulator treated an owned published course as a private draft. Posting a
+time vanished, a rename stayed local, and publishing a copy of someone
+else's id 409ed. The split is now: owner keeps the id and the edit key,
+a remix mints a new id, layout changes still clear times, a title change
+does not.
+
+Verify: `node src/trackbuilder/selftest.js` 152 passed, including seven
+listing checks. Leaderboard `npm test` all passed, including rename keeps
+times over the file store and HTTP. Physics verify not run. This turn does
+not touch src/native, the WASM build, the input path or the simulation
+trace.
+
+### 2026-08-15 | graphics | Low Medium High presets
+
+Changed: Settings and Pause gained a Graphics row (Low, Medium, High).
+High is the look the field and city were authored at. Medium is a 2020
+laptop: 1.25x pixel cap, 1024 shadows, no bloom, thinned extra grass and
+city foliage, city ink without FXAA. Low is a Steam Deck: 0.85 scale, no
+shadow maps, no field outline prepass, no bloom, no live petals, heavier
+foliage thin, city pipeline allowed below 1.0 scale. First run on SteamOS
+picks Low. The session GL context asks for the discrete GPU when one
+exists and still boots on a software rasteriser. Changing the preset
+rebuilds the current world and keeps a paused run in place.
+
+What went wrong: the original spec said none of the presets should
+require a GPU, and that High should require a 2021 PC. Those cannot both
+mean a hardware gate. WebGL always talks to a GPU or a software stand-in.
+The fix is: no preset needs a discrete GPU or WebGPU, High is sized for a
+2021-class machine, and `powerPreference: 'high-performance'` is how a
+present GPU gets used. Defaulting to Medium would have failed the field
+budget check, so High stays the default. Grass world blade count cannot
+drop without relocating the valley, so Low still walks the 184000-draw
+rng stream and writes a subset.
+
+Verify: syntax check on the touched JS files. Physics verify not run.
+This turn does not touch src/native, the WASM build, the input path or
+the simulation trace.
+
+### 2026-08-15 | share | board orbit clip loops a full cycle
+
+Changed: leaderboard and map-card thumbnails now record one full camera
+cycle instead of a 5-7 s slice of a 57 s orbit. Capture time-scales the
+attract camera so the clip closes on itself, Chrome's MediaRecorder
+Duration of 0 is stamped with the real length so `<video loop>` does not
+restart after a few frames, and CLIP_VERSION is 2 so the old jumping
+clips are dropped.
+
+What went wrong: a designed course uses the orbit camera, whose natural
+period is 2 pi / 0.00011 ms, about 57 s. The recorder capped at 7 s and
+left the camera on the wall clock, so the video jumped back 50 s of
+heading every loop. Separately, Chrome writes Duration 0 into the WebM,
+and a looped video with no length plays as a stuttering flash.
+
+Verify: `node --check` on orbit.js, orbitcache.js, attract.js. A synthetic
+WebM header with Duration 0 stamps as 12000. Physics verify not run.
+This turn does not touch src/native, the WASM build, the input path or
+the simulation trace.
+
+### 2026-08-15 | settings | GPU name from the session WebGL context
+
+Changed: Settings now has a GPU row under Graphics. `src/render/gpuinfo.js`
+reads `WEBGL_debug_renderer_info` from the session renderer (the one
+already drawing the world), tidies ANGLE/Direct3D/Vulkan soup, and
+labels software rasterisers. The name is display only: not uploaded,
+not used to pick a preset.
+
+What went wrong: a browser cannot enumerate GPUs. Dual-GPU laptops only
+report the chip this tab bound after `powerPreference: high-performance`.
+Some browsers return a generic string instead of the chip; the row then
+says the name is hidden rather than inventing one. A second WebGL
+context to probe would be a second GPU reservation, which the Deck
+cannot spare, so this reads the session context only.
+
+Verify: `node --check` on gpuinfo.js, ui.js, main.js, plus tidyGpuName
+samples. Physics verify not run. This turn does not touch src/native,
+the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | art | start pads were floor tiles
+
+Changed: the start grid is now a row of FPV launch stands. A real 5 inch
+start block is two foam-topped rails on a short wooden wedge, with a gap
+for the battery and a lip so the front arms catch when the pilot pitches
+forward (GetFPV's DIY n-stand, the printed tiltable blocks MultiGP
+chapters use, ProLaunch's aluminium pad). The old mesh was a 4 cm grey
+slab. Shared in `src/art/startblock.js` so the world, the track builder
+and the map reel draw the same object. padSize stays the grid cell.
+
+What went wrong: the first pass used ExtrudeGeometry for the wedge
+cheeks. The scene baker merges every mesh that shares a cel material,
+and ExtrudeGeometry's attribute set is not BoxGeometry's, so
+mergeGeometries would return null and the stands would vanish on load.
+The cheeks are a BufferGeometry with position, normal and uv instead.
+
+Verify: `node --check` on the touched files, `node src/trackbuilder/selftest.js`
+157 passed, 0 failed, including five new stand-dimension checks. A
+Three r160 smoke test built the mesh: 10 parts, sits on y=0, 0.24 m
+tall, all geos share the same attributes. Physics verify not run. This
+turn does not touch src/native, the WASM build, the input path or the
+simulation trace.
+
+### 2026-08-15 | settings | radio sticks no longer move the cursor
+
+Changed: Settings ignores radio and gamepad menu navigation. Pitch and
+roll used to step the highlighted row and change the value while the
+same channels posed the airframe on the left, so flying the preview
+also walked the list. Mouse and keyboard still move the cursor and
+change a value. Other screens still use stick nav. Pad edges are still
+tracked on Settings so a held stick does not fire the moment the screen
+closes.
+
+What went wrong: nothing. The old hint told the player that roll
+changes a setting, which was the conflict.
+
+Verify: `node --check` on ui.js and main.js. Physics verify not run.
+This turn does not touch src/native, the WASM build, the input path or
+the simulation trace.
+
+### 2026-08-15 | ui | loading screens are a word and a joke
+
+Changed: boot and the map-card wait no longer explain themselves. Both
+say "loading" and a quoted FPV joke. The wordmark, spinning quad, stage
+names, byte counts, and the Deck-stall copy are gone. The boot bar still
+tracks real work underneath. Jokes live in loading.js so the two screens
+share one list.
+
+What went wrong: the card wait was a second product: RECORDING THIS
+PREVIEW, a paragraph about why, a logo, a spinner. The seconds still
+need filling. A joke does that. The rest was clutter.
+
+Verify: `node --check` on loading.js, ui.js. Physics verify not run.
+This turn does not touch src/native, the WASM build, the input path or
+the simulation trace.
+
+### 2026-08-15 | title | greeting page is the airframe
+
+Changed: the title is a product shot of the 5 inch craft, not a
+flythrough of the loaded map. The model is the same one Settings
+uses and it answers the sticks the same way (shared `craftpose.js`:
+acro rates, angle tilt, motor mix, prop wash). One cheap WebGL
+context is allocated once and the canvas is reparented between title
+and Settings. No antialias, no shadow map, pixel ratio 1, low-power
+hint, lite hero (no outline hulls). The world renderer is hidden and
+idle on title, Settings, How to fly and results; Maps still composes
+so a first-visit thumbnail can copy the attract shot. A radio switch
+still selects Fly. Pitch and roll no longer walk the title rows,
+because they pose the quad.
+
+What went wrong: putting a second full studio on top of the live
+world would have been a third GPU reservation on a Deck. Drawing the
+whole map behind a menu nobody is looking through was the cost. The
+greeting now pays for one small unlit-shadow mesh list.
+
+Verify: `node --check` on craftpose.js, showcase.js, herocraft.js,
+main.js, ui.js. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | board | changing your name now updates the listing
+
+Changed: "Your name" in Settings was only a localStorage key. The
+board still showed the handle sent with the course and with each
+time, so a rename left `andAgainFPV` on the author line and on every
+posted lap. Saving a new name now republishes owned courses with the
+new handle. The board retitles times that used the old author name
+on those courses, and leaves everyone else's times. Opening the
+simulator or the builder does the same catch-up if the name already
+changed in this browser.
+
+What went wrong: `syncOwnedName` skipped whenever the course title
+matched, even if the author had changed, and the store never rewrote
+times. There is still no account, so this only covers courses this
+browser published. A time posted on someone else's course under the
+old handle stays until a new lap is uploaded.
+
+Verify: `node --check` on the touched simulator files,
+`node src/trackbuilder/selftest.js`, leaderboard `npm test`. Physics
+verify not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | spawn | quad sits on the start block
+
+Changed: a designed course parks the craft ON a launch stand, not 2.5 m
+behind the grid. Spawn is the middle lane of the row, the contact
+surface offers the foam as a short deck so the landed pose rests on the
+rails, and the parked attitude matches the 28 degree ramp so the front
+arms catch the lip. Crash recovery on grass is still flat. The built in
+circuit still stands off its timing gate; it has no pads.
+
+What went wrong: parking at the startPads element's origin put a four
+pad grid's craft in the grass BETWEEN two stands. The same across-line
+offset the mesh already used picks a real lane.
+
+Verify: `node --check` on trackdoc.js, scene.js, main.js, startblock.js.
+`node src/trackbuilder/selftest.js` 160 passed, including "parks on a
+pad, not behind the grid". Physics verify not run. This turn does not
+touch src/native, the WASM build, the input path or the simulation
+trace.
+
+### 2026-08-15 | share | orbit clips at 480p
+
+Changed: board and map-card orbit thumbnails record at 854 by 480,
+800 kbps, instead of 426 by 240 at 180 kbps. Cache key includes the
+size, so the next visit re-records. Playback is still a video element.
+
+What went wrong: the board's featured card is about 670 by 340 CSS
+pixels. Stretching 240p across that, with 180 kbps on top, is the
+pixelated smear on the poster. Capture is still one-shot and still
+serialized; live WebGL on the card is still the thing a Steam Deck
+cannot hold.
+
+Verify: `node --check` on orbitcache.js, orbit.js, ui.js, shell.js.
+Physics verify not run. This turn does not touch src/native, the WASM
+build, the input path or the simulation trace.
+
+### 2026-08-15 | ui | keyboard menu cursor no longer skips or snaps back
+
+Changed: fast keyboard menu navigation actually steps the highlight.
+Key-repeat events now move the cursor (Enter and Escape still fire once),
+and arrow repeats preventDefault so the menu list cannot scroll underneath
+a still mouse. Hover only follows the pointer when clientX/clientY
+changed, so scrollIntoView and a rebuilt row no longer synthesize a
+mousemove that snaps the cursor back to whatever row the mouse is resting
+on.
+
+What went wrong: input.js dropped e.repeat before preventDefault and
+before onKey. A held or quickly tapped ArrowDown left the cursor on the
+same row while the browser scrolled .menu-scroll, then Chromium fired
+mousemove for the row now under the pointer and setCursor walked it back.
+The same snap happened on a single tap whenever scrollIntoView moved the
+list. mouseenter was already replaced by mousemove for the rebuild case;
+mousemove still fires when the element under a stationary pointer changes.
+
+Verify: `node --check` on ui.js, input.js, main.js. `npm run verify` 9 of
+16. Physics rows that ran against the existing wasm are unchanged:
+determinism-repeat ce9826fc2ce5, frame-independence 1 hash, hover 0.2051,
+punch-out 82.1 m, terminal 31.3 m/s, motor-step 18 ms, rate-tracking 0.02
+percent, battery-sag 10.15 percent, diff-passthrough 0.04 percent.
+yaw-coupling still the known red at -0.08 deg. build-clean failed (wasm
+rebuild exited 1 in this shell), Chrome-backed checks 3, 13, 14, 15, 16
+failed with no Chromium. The keys Set still ignores repeats, so the
+sample queue is the same shape.
+
+### 2026-08-15 | ui | stick calibration follows the standard procedure
+
+Changed: Calibrate sticks is a real wizard again, not a five sentence
+banner over Settings. The old overlay waited 1.5 s then assigned every
+channel to whichever axis was furthest from rest, with no return to
+centre between steps. Throttle is not spring centred, so holding it up
+and immediately asking for roll mapped all four channels onto the
+throttle axis. The new procedure is the usual one: wait until the
+sticks are actually still and record rest, sweep both gimbals through
+their full travel so both ends are known, then one named deflection per
+channel with a rest gate between each (already-mapped axes are ignored,
+diagonals are ignored), then a live Mode 2 check. Nothing is written to
+localStorage, and the in-memory flight map is left alone, until Save
+mapping. Escape or Cancel discards the draft. Endpoints are stored as
+pos/neg so a lopsided gimbal still reaches +1 and -1; old maps that
+only stored `full` still load.
+
+What went wrong: the first version of this wizard treated "largest
+steady excursion" as enough, and advanced the stage while the stick was
+still held. That is not a calibration procedure, it is a race the
+player always loses on throttle.
+
+Verify: node --check on input.js, ui.js, main.js. A throwaway node
+selftest drove a fake AETR pad through the wizard: holding throttle up
+for 2 s after capture stayed on the throttle release step and left roll
+unassigned; diagonals did not capture; cancel did not rewrite the map;
+the saved map read roll/pitch/yaw/throttle on the expected axes. `npm
+run verify` 9 of 16. Physics rows against the existing wasm are
+unchanged: determinism-repeat ce9826fc2ce5, frame-independence 1 hash,
+hover 0.2051, punch-out 82.1 m, terminal 31.3 m/s, motor-step 18 ms,
+rate-tracking 0.02 percent, battery-sag 10.15 percent, diff-passthrough
+0.04 percent. yaw-coupling still the known red at -0.08 deg.
+build-clean failed (wasm rebuild exited 1 in this shell). Chrome-backed
+checks 3, 13, 14, 15, 16 failed with no Chromium. Default AETR guess
+and the keyboard path are untouched, so the sample queue shape for the
+harness is the same.
+
+### 2026-08-15 | title | map flythrough, world craft, studio unloads
+
+Changed: the greeting is the loaded map again, with the session airframe
+on the attract line, not a boxed studio on a solid forest. The camera
+stays on the map's cleared path. The quad sits a couple of metres ahead
+and a little to the side so the X reads, and the overlay then nudges the
+frame so the craft sits in the open sky: right of the menu on a wide
+screen, above it on a phone. Sticks add a little extra attitude. Title
+CSS is a HUD hole, not a second landscape; the keep-note and the 42 vh
+studio box are gone on small screens so the world can occupy the middle.
+
+Settings still has the cheap studio, but it is created when that screen
+opens and disposed when it closes, including on Fly, so flight never
+shares the GPU with a second WebGL context. The attract pose is just a
+transform of the world craft; there is no second scene to unload. Map
+card clips bump CLIP_VERSION to 3 so they pick up the hero in the shot.
+
+What went wrong: this morning's product shot hid the world and spent a
+second context on a boxed quad. On a phone that box ate 42 vh and the
+map was not in the picture at all. Drawing the whole town behind a menu
+is the cost the greeting is allowed to pay. Flight is not.
+
+Verify: `node --check` on attract.js, showcase.js, herocraft.js,
+craftpose.js, main.js, ui.js, orbit.js, orbitcache.js. Physics verify
+not run. This turn does not touch src/native, the WASM build, the input
+path or the simulation trace.
+
+### 2026-08-15 | sweep | shell freeze, HUD, board store
+
+Changed: a failed map or graphics swap now rebuilds the previous world
+instead of leaving mapReady false forever on a disposed scene. Gateless
+custom courses report as freestyle so the OSD is Airtime, not Gate 1 of
+0. Course warnings show once as a banner. A run snapshots its lap count
+at start, so dropping Laps in pause cannot end the race on the next
+frame. A crash kills the intro camera. Results copy matches the current
+crash rule. Orbit capture tears down the resize listener and the world
+on failure as well as success, and revokes clip object URLs. Studio
+reset zeroes prop spin. Showcase dispose uses the shared scene-graph
+free. The board refuses encoded parent paths, does not wipe a corrupt
+board.json, serialises file writes, wraps Postgres publish and post in
+a transaction, and unloads off-screen orbit iframes.
+
+What went wrong: the fail path already showed a message, but it never
+set mapReady or rebuilt anything, so the next map pick was refused by
+the same flag that skips the frame loop. Parallel file-store posts
+could drop a time because two flushes raced. startsWith(publicDir)
+treated public-sibling as inside public.
+
+Verify: `node --check` on the touched simulator files,
+`node src/trackbuilder/selftest.js` 160 passed, leaderboard `npm test`
+all passed including new checks for boolean laps, svg logos, missing
+sequence ids, parallel posts, and encoded parent paths. Physics verify
+not run. This turn does not touch src/native, the WASM build, the input
+path or the simulation trace.
+
+### 2026-08-15 | ui | title hover notes no longer shove the menu
+
+Changed: the title row notes are taken out of flow. They sit above the
+footer (hint and menu) as an overlay, so a long Map line and an empty
+Fly line occupy the same layout. The rows stay put.
+
+What went wrong: the title stacked the note above the menu with
+column-reverse and position static. Hovering a row rewrote the note,
+the block grew or shrank, and the whole menu dropped or jumped.
+
+Verify: CSS only in index.html. Physics verify not run. This turn does
+not touch src/native, the WASM build, the input path or the simulation
+trace.
+
+### 2026-08-15 | ui | finish screen is a HUD over the craft
+
+Changed: crossing the last gate no longer dumps a centred table on a
+dark page. The world stays up. The camera pulls off the FPV lens onto
+a three-quarter of the frozen airframe, then sways, with the times as
+a left HUD like the title. The hero number is the best clean lap, mint
+when it is a new record, with a signed delta against the record as the
+run began. Lap rows get duration bars. The menu sits under the times
+in that column instead of floating in the middle of the frame.
+
+What went wrong: the old screen hid the canvas, so the payoff for a
+run was a blank forest panel and a 20 px table. The live best was
+already overwritten by the time the screen opened, so it could not
+say whether this lap beat the previous record.
+
+Verify: `node --check` on ui.js, main.js, race.js. Physics verify not
+run. This turn does not touch src/native, the WASM build, the input
+path or the simulation trace.
+
+### 2026-08-15 | tracks | Velocidrone .trk files become flyable courses
+
+Changed: `tracks/convert.mjs` decrypts the five Velocidrone `.trk` files
+in memory (AES-128-ECB, same key TrackDraw uses) and writes track-builder
+documents. Prefab 88 is a gate or a flag by scale. Stacked 88s at one plan
+position become a double or a ladder. Mesh copies (prefab 150/169 sitting
+on an 88 checkpoint) are not extra holes. `2024-States.trk` is the same
+course as the aligned ironoid file and is not published. The whiteboard
+photos do not match any of the `.trk` layouts (those are 90 m championship
+fields or a 11 m micro, the photos are club weekly sketches), so the photo
+courses stay as hand layouts plus the 2022 MultiGP GQ from the official
+diagram. Twelve courses posted to the local board as andAgainFPV.
+ladder-up skill was left alone.
+
+What went wrong: first pass treated every Velocidrone mesh as a flown
+gate, so WCMRC Round 5 sequenced the same hole twice and invented false
+stacks. Path length was reported n/a because the script read `arcLength`
+instead of `length`. Forcing yawOverridden on every imported gate produced
+a reversal warning on almost every face. Decrypting to a `_decoded`
+folder was blocked; convert now keeps plaintext in memory only.
+
+Verify: `node --check tracks/convert.mjs`, `node tracks/convert.mjs
+--publish` wrote 12 documents and the board list is 13 including
+ladder-up skill. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | tracks | drop the whiteboard reconstructions
+
+Changed: the seven Club * courses (Hand Sketch, Hoops, Yellow Sweep,
+Twin Orbits, Yellow Table, Purple Loop, Orange Path) are gone from
+`tracks/convert.mjs`, from `tracks/json/`, and from the local board.
+They were traced off whiteboard photos and were not accurate enough
+to fly. What remains is the four Velocidrone imports, the 2022 MultiGP
+GQ from the official diagram, and ladder-up skill.
+
+What went wrong: nothing this turn. The board process holds
+board.json in memory, so the file edit only stuck after a restart.
+
+Verify: `node --check tracks/convert.mjs`, `node tracks/convert.mjs`
+writes 5 documents. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | ui | credits page on the sim and the board
+
+Changed: a Credits screen in the simulator (title and pause menus) and
+a matching overlay on the public board (`#credits`). Official marks
+for Betaflight, Track Draw, Grok and Claude live in `assets/credits`
+and `public/credits`. The roll names andAgainFPV, the beta pilots
+(Asylum, Jannes, LeStar), Betaflight as the compiled controller,
+Track Draw and Dutch Drone Squad for the course language, and the
+Grok/Claude horde. `scripts/serve.js` now serves SVG and raster
+images with the right MIME type so the logos actually render.
+
+What went wrong: fetching a bundled xAI zip was blocked, so the marks
+came from GitHub contents API payloads (Betaflight dark wordmark,
+TrackDraw colour-on-dark, simple-icons Claude starburst, Grok 2025
+wordmark) instead of a bulk download. Dutch Drone Squad has no public
+vector mark that loaded cleanly, so they are named in the Track Draw
+copy rather than given a fake logo.
+
+Verify: `node --check` on `src/ui/credits.js`, `src/ui/ui.js`,
+`scripts/serve.js`, and the board's `public/credits.js` and
+`public/app.js`. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | tracks | six more Velocidrone courses, flags tuned
+
+Changed: `tracks/convert.mjs` now imports 2023 AU NATS Qualifying,
+2023 AU NATS 5 inch, 2022 AU Nationals, 2023 MultiGP GQ, ROX Open 2023
+and FAI Turkiye 2024. A flag sitting within 2.2 m of a gate becomes a
+header pennant (`flaggedGate` / `flaggedDoubleStack`) with left/right
+from the width axis, so it is not a second hole on the racing line.
+Sky flags above 8 m are dropped. Uniformly scaled prefab 88 cubes stay
+gates. After the line is built, any remaining turn flag whose samples
+clip the pole is flipped, given more clearance, then nudged off the
+tube. Split-S and GQ hairpins still warn reversal; that is the figure,
+not a backwards gate.
+
+What went wrong: path.js offsets a marker by `seq.clearance`, not
+`dims.clearance`, so bumping the element dim did nothing and 2023 GQ
+flag 7 sat in the line at 0.14 m. The nudge pass is what cleared it.
+
+Verify: `node --check tracks/convert.mjs`, `node tracks/convert.mjs
+--publish`. No CLIP reports. Physics verify not run. This turn does
+not touch src/native, the WASM build, the input path or the simulation
+trace.
+
+### 2026-08-15 | tracks | no floating gates, no flags in the hole
+
+Changed: Velocidrone Y is no longer copied as altitude. Every imported
+gate sits on the ground. Stacks are standard MultiGP doubles and
+triples, not towers on stilts. A flag in the opening corridor is
+either a header pennant on that gate, or is slid 0.6 m off the leg
+and 0.46 m behind it. The 2022 GQ flag 15 was on the centreline of
+gate 14; it now sits on the left leg.
+
+What went wrong: prefab origin height (3 m to 15 m) was written to
+`position.z`, which lifts the mesh with no legs, so gates hung in the
+sky. Flags 4 m in front of a hole were treated as turn markers and
+left in the approach.
+
+Verify: convert reports no FLOAT and no FRONT. `--publish` updated all
+11 courses. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | tracks | numbered flags stay, holes stay clear
+
+Changed: a uniquely numbered Velocidrone flag is no longer eaten as a
+header pennant. Only a flag that shares a checkpoint number with a
+nearby gate becomes dress. A sequenced flag in a hole, or on that
+gate's approach centreline, slides 0.6 m off the nearest leg and
+stays in the flying order. 2022 MultiGP GQ is 15 checkpoints again
+(flags 8 and 15 restored, launch pulled off gate 14). 2023 MultiGP
+GQ is 16 again (flags 2 and 5 restored). Split-S no longer writes
+duplicate sequence ids. Marker tangents stay on the plan, so two
+ground flags no longer send the Hermite underground. All 11 courses
+republished. ladder-up skill was left alone.
+
+What went wrong: merge radius 2.2 m treated GQ turn flags as header
+copies and dropped them. applyFigure built its new sequence entries
+off to the side, so newSequenceId reused sq-N. Flag knots inherited
+a vertical chain tangent from a neighbouring stack, and the cubic
+between two z=0 markers punched through the ground.
+
+Verify: `node src/trackbuilder/selftest.js` 161 passed. convert
+reports no FLOAT, no FRONT, no CLIP, no underground, unique sq-ids.
+`--publish` updated 11 courses, board still lists 12 including
+ladder-up skill. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+### 2026-08-15 | tracks | drop WA Micro Champs for now
+
+Changed: WA Micro Champs is out of the converter, the local JSON, and
+the public board. The .trk stays in `tracks/` for when micro comes
+back. The other ten Velocidrone courses and 2022 MultiGP GQ are
+unchanged. ladder-up skill is unchanged.
+
+What went wrong: nothing this turn.
+
+Verify: convert no longer lists the micro course. Board list is the
+remaining eleven published courses plus ladder-up skill. Physics
+verify not run. This turn does not touch src/native, the WASM build,
+the input path or the simulation trace.
+
+### 2026-08-15 | ui | credits logos were broken images
+
+Changed: credits logos are fetched as text and inlined as `<svg>`,
+not painted with `<img src>`. Chrome will not draw an SVG image whose
+response type is `application/octet-stream`. The running `npm run
+serve` process still had the old MIME table, so every mark 200'd and
+still showed as a broken icon. Inline SVG does not care about the
+type. Same change on the board.
+
+What went wrong: last turn added `.svg` to serve.js, then reported
+the logos as working. They were not. The live server was never
+restarted, and an `<img>` is the one tag that enforces image MIME.
+
+Verify: `curl -sI http://127.0.0.1:8000/assets/credits/betaflight.svg`
+is 200, still octet-stream from the live process. `node --check` on
+both `credits.js` files. Physics verify not run. This turn does not
+touch src/native, the WASM build, the input path or the simulation
+trace.
+
+### 2026-08-15 | builder | remix from the board left an empty canvas
+
+Changed: `adoptShareFromLocation` now returns the fetched document, not
+just the listing id. Remix in the builder from the public board opens
+`?share=id`, fetches the course, then `adoptIncomingShare` used to bail
+because the return had no `document`. The fetch was writing the share
+seat and then handing the builder a stub. The builder also re-reads the
+share seat if that return is still missing a document, so this class of
+drop cannot silently skip the load again.
+
+What went wrong: the simulator only needed a truthy adopt result, then
+read the document from local storage. The builder reads `share.document`
+on the return value. Remix from the board never went through
+`writeBuilderIntent`, so there was no second path to pick the document
+up.
+
+Verify: `node --check` on `src/share/board.js` and
+`src/trackbuilder/app.js`. Physics verify not run. This turn does not
+touch src/native, the WASM build, the input path or the simulation
+trace.
+
+### 2026-08-15 | tracks | ground marks that show where to fly
+
+Changed: every race course now carries athletic-white paint on the
+ground. Not the builder's Hermite. A racer flies a taut string: circular
+wraps around flags and cones at the clearance radius on the named pass
+side, and straight through gate centres. Painting the Hermite would have
+squared up to every gate and ballooned past the side of a flag a pilot
+actually takes.
+
+The paint is sparse on purpose. A dashed centreline (1.05 m on, 2.4 m
+off), an arrow a few metres before each gate, and a 120 degree comma
+plus chevron on the fly side of every flag. The comma is clipped to the
+fly hemisphere so it cannot ring the pole and say "either side". Green
+stays the next-gate pane, orange stays the cones. Hierarchy is shape,
+not a third accent colour.
+
+Designed courses build the guide in `trackdoc.js` from the knots.
+The built in figure eight samples its Catmull-Rom against the parameter,
+because scene index i is flown as gateCount - i. One merged mesh, layer
+1, depthWrite false, so dashes do not grow ink outlines and the outline
+prepass does not gain a draw.
+
+What went wrong: first pass of the flag comma used a 150 degree window
+centred on the apex and two of thirteen samples sat on the back of the
+flag on a left-hander. That is the confusion the mark exists to prevent.
+Clipped to the fly hemisphere and narrowed to 120 degrees. First gate
+of an open line also had no approach, so it got no arrow; an exit arrow
+just after the frame covers that case.
+
+Verify: `node src/trackbuilder/selftest.js` 174 passed, 0 failed,
+including a new ground-marks suite (wrap on the clearance circle,
+chevron on the pass side, taut string does not run through the flag,
+demo course carries a guide after the scene-frame conversion).
+`node --check` on guide.js, marks.js, trackdoc.js, scene.js, custom.js,
+selftest.js. Physics verify not run. This turn does not touch
+src/native, the WASM build, the input path or the simulation trace.
+
+Check 16 field budget will move. The field gains one mesh of paint
+(P1 +1 colour pass, meshes +1, a few hundred triangles). The check's
+job is still the same: the city must cost the field nothing, and a
+round trip must not leak. The absolute numbers in thresholds.json were
+not edited; they need a re-measure on the next map-isolation run.
+
+
+
+
+
+
+
+
+
+
+
+
+### 2026-08-15 | render | the gate was never small, the lens was
+
+Flying it: "the gates in my sim feel small and the field is large".
+Both symptoms, one cause, and the cause is the fix that was applied to
+the previous round of the same report.
+
+WORLD_SCALE was the wrong lever and it has gone back to 1. It divides
+the craft displacement about the sim origin, so it cannot change how
+big anything in the world LOOKS: the on screen height of a gate is
+viewportH * clearH / (2 * depth * tan(fov/2)) and the scale is not in
+it. A gate at 10 world metres subtended exactly the same angle at 1.25
+as it does at 1. What it did change was how much sim distance buys a
+world metre, so the craft crossed every course a quarter slower and a
+542 m lap had to be flown as 678 m. That is the whole of "the field is
+large", and on a project that publishes lap times it is a quarter added
+to every time on the board. The comment in frame.js asserted the
+opposite in as many words, "every solid thing stands a quarter larger
+relative to the camera", and that claim was simply false.
+
+Apparent size belongs to the camera. An FPV lens is a fisheye, close to
+equidistant r = f*theta, and its published 150 to 160 degrees is the
+TOTAL COVERAGE of that projection; Three.js is rectilinear, r = f*tan
+theta, which spends its image on the periphery. Typing the lens figure
+into a rectilinear camera therefore matches the property nobody looks
+at and squashes the middle of the frame, which is the part you fly a
+gate with. Matching CENTRE magnification instead gives tan(v/2) =
+thetaV, and a 155 degree diagonal lens on 4:3 has thetaV = 46.5 deg =
+0.8116 rad, so v = 78 degrees. The old default of 100 was showing the
+centre tan(50)/tan(39.05) = 1.47 times too small.
+
+Default is now 85, not 78, because a rectilinear projection cannot have
+both a fisheye centre and a fisheye periphery and a racer has to see
+the next gate before they are pointed at it. 85 keeps 117 degrees of
+width against 129 at the old 100 and makes the middle of the frame 1.30
+times larger. List is 75, 85, 95, 105 so the honest 75 is available.
+The number, the list and the derivation are one dependency free module,
+src/render/lens.js, because the shell, the settings screen and the
+shared orbit clip all need it and none should depend on the others.
+
+Gates were NOT too small. GATE_SCALE stays 1.15 and is untouched: a
+1.524 m MultiGP opening is built at 1.7526 m, which check 15 measures.
+With WORLD_SCALE back to 1 that is 5.05 gate widths to a 0.347 m quad
+against 4.39 for the real pair, so the one declared departure is the
+only one left; the pair of scales used to make it 6.31.
+
+Two bugs found on the way. loadSettings only type checked, so any
+number at all passed for an enumerated setting: a stored 100 would have
+survived the recalibration and reached nobody who had opened Settings,
+and a hand edited entry could set the field of view to 5 with no way
+back. Enumerated settings are now checked against their own list.
+
+Check 15's craft sweep measurement was reading the world AABB of the
+prop discs. A CylinderGeometry box is a SQUARE in plan and the discs
+spin, so the box grows to 2r*sqrt(2) as it turns and half of it was
+being read as the radius: 0.1438 m on one run and 0.1957 m on the next
+for a craft that had not changed, failing both times against a true
+0.1735 m and looking like a scale error in the model. It now takes the
+radius from the geometry and its world scale, which is rotation
+invariant.
+
+Verify: npm run verify, 13 of 16, with SIM_CHROME_BIN set. Check 15
+world-scale PASSES: world scale
+1.0000, craft body 0.1552 m, sweep 0.1735 m against a true 0.1735 m,
+collision radius 0.1735 m, gate opening 1.7526 m. Check 13 console
+clean passes. The live camera was read back out of the page at 85.
+node src/trackbuilder/selftest.js 182 passed, 0 failed.
+
+Still failing and none of it this turn: check 1 build:wasm, no
+Emscripten on this machine; check 10 yaw-coupling drift below floor, a
+physics threshold this turn does not touch; check 16 map-isolation
+draw calls against the c3c6e44 baseline, which the previous entry
+already recorded as needing a re-measure. Check 15 was confirmed to be
+failing BEFORE this change by putting WORLD_SCALE back to 1.25 for one
+run: it reported 0.1797 m against 0.1735 m and failed identically.
+
+### 2026-08-15 | tracks | custom-course marks were under the pitch
+
+Changed: designed courses actually show the racing-line paint. The
+first pass built the mesh and then hid it: the mown pitch is
+transparent, Three draws transparents after opaques, and the turf
+painted over every dash. The paint is now a transparent decal above
+the pitch, the same triangles are stamped into the pitch canvas so
+they live IN the turf, and grass on the mown rectangle is shortened
+to sit under the marks. Athletic yellow-white instead of cream, which
+vanished on the light mower band.
+
+The same triangles draw in the track builder, always, on both the
+plan and the 3D preview, so an author sees the flown line (which side
+of a flag, which way through a gate) while they place it, not only
+after they hit Fly.
+
+What went wrong: treating the pitch like meadow. An opaque 2.8 cm
+decal under a transparent overlay at 2 cm is a decal nobody can see,
+and 3 to 9 cm blades on a 5 cm mark finish the job.
+
+Verify: `node src/trackbuilder/selftest.js` 183 passed, 0 failed,
+including tessellation of the demo guide. `node --check` on guide.js,
+marks.js, scene.js, view2d.js, view3d.js, selftest.js. Physics verify
+not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace.
+
+### 2026-08-15 | tracks | the Velocidrone import was reading the file wrong
+
+Reviewed all twelve .trk files against the documents built from them.
+The flying order was right. Almost nothing else was, and the reasons
+are worth writing down because every one of them was a plausible
+reading of an undocumented format.
+
+WHAT THE FORMAT ACTUALLY IS, now established rather than assumed, and
+cross checked against dutchdronesquad/trackdraw's exporter, which
+writes files Velocidrone loads.
+
+`gates` is the flying order and the `gate` field is the index. That
+beats file order on all twelve tracks by 25 to 180 percent of lap
+length, so the old sort was correct. Three kinds of thing are in that
+array: a gate mesh, a flag or cone mesh, and prefab 88, which is
+Velocidrone's invisible CHECKPOINT volume. Turn flags, cones, props and
+the start grid are in `barriers` and are never part of the order.
+
+A gate mesh faces along its local FORWARD axis. A checkpoint faces
+along its local RIGHT. Twelve checkpoints across three tracks sit
+inside the opening of a real gate mesh, so those pairs are the same
+hole and have to agree: local right matches the mesh's forward at
+0.996, against 0.059 and 0.017 for the other two axes. A checkpoint is
+authored flat and stood up with a quarter turn about X, so its Euler
+yaw is gimbal locked and reading an angle out of the quaternion returns
+garbage. The import now reads axes, never angles.
+
+A checkpoint's scale is metres. The ones standing in real gates on 2024
+WA States measure 1.51 by 1.27 and 1.46 by 1.15 against a 1.524 m
+MultiGP gate; free air ones on the same track reach 7.6 by 4.3, which
+is nobody's gate. That gap separates "this is a hole" from "this is a
+waypoint with nothing there".
+
+EIGHT BUGS, all now fixed.
+
+vdYawToDoc returned yaw + pi/2 where the Unity to document conversion
+is pi/2 MINUS yaw. Unity is left handed, the document is right handed,
+so mapping x,z onto x,y reverses the sense of a heading. The two agree
+whenever the yaw is a multiple of a quarter turn, which is why it
+survived a look at four field tracks, and it is wrong by twice the
+angle everywhere else.
+
+It did not matter, because imported apertures were created without
+yawOverridden and applyAutoFaces then span every one of them to face
+the line between its neighbours. No authored heading survived the
+import at all. A four gate tunnel became four gates facing four ways.
+
+Reading one scalar yaw for every prefab is ninety degrees wrong for
+every checkpoint, per the axis finding above.
+
+isFlag88 decided gate against flag from the object's scale. A
+checkpoint is flown THROUGH; a flag is flown AROUND at a 1.5 m offset.
+On 2024 WA States that inverted eleven of thirty four stops, and it
+pushed the line 1.5 m off the one point the author was pinning it to.
+
+seenPos discarded any station at a position already used, so repeat
+passes vanished. WCMRC Round 5 flies one gate five times; four of those
+passes were being deleted. It is now 30 entries over 19 sites.
+
+pinAperturesToGround flattened every aperture to z=0 and sillH=0, so
+the four stacked structures on WA States and FAI Turkiye's rooftop
+section lost all their vertical shape.
+
+The branch meant to fold header pennants into gates compared
+s.n === stations[best].n, and those numbers are unique per stop, so it
+never fired once.
+
+Tilt was never read. WA States has two gates 58 and 50 degrees off
+vertical and ROX Open one at 73.
+
+WHAT THE IMPORT DOES NOW. course.mjs reads a .trk into sites and stops
+and holds all of the judgement; convert.mjs only translates. One SITE
+on the field is one element, however many holes it has and however many
+times the lap visits it; one STOP is one sequence entry pointing at
+that element and that hole. Consecutive repeats are dropped because two
+knots in one place give the line no direction; a repeat later in the
+lap is a real second pass and is kept.
+
+polish() lost most of itself and that is the point. It used to slide
+flags sideways, push markers off the line, flatten every aperture and
+re-aim every stack at its predecessor. All of it was compensating for
+the misreading. What is left is the three things that are genuinely
+derived and are not in the file: which way through each hole the line
+goes, which side of a pole it passes, and how taut the spline is.
+
+A waypoint element type was added for the 55 free air checkpoints
+across the nine courses. It is a marker with ZERO clearance, so
+path.js puts the knot exactly on the point and takes its tangent from
+the run of the course, and it is not built on the race field. The
+alternative was calling each one a gate, which puts PVC on a field
+where the real course has none, or a flag, which is worse because a
+flag is passed at a radius. Owner picked the waypoint.
+
+Two more found while checking. Markers were placed at z=0 whatever
+their height, and FAI Turkiye rounds four flags twenty metres up on a
+structure, so the line dived to the ground and back for each of them.
+And clamping a stack's sillH at zero lifted every hole above it by the
+same amount, which put ROX Open's 7.07 m top hole at 8.04 m; the pitch
+is now anchored on the top hole.
+
+Verify: node tracks/check.mjs, 653 passed, 0 failed. It asserts, per
+track and per stop, that the order matches the file, that every element
+stands where the file puts it to the millimetre under one shared
+offset, that every aperture's yaw is pi/2 minus the Unity heading of
+its own normal modulo a half turn, and that every hole's centre is the
+height of the checkpoint that marks it. Those are the four things that
+were wrong, so they are the four things that are now asserted rather
+than eyeballed. node src/trackbuilder/selftest.js 183 passed, 0 failed,
+including a new waypoint suite. npm run verify 13 of 16, unchanged by
+this work.
+
+Still warning and not a fault: reversals and one tight corner per
+track. These are hairpins in the source courses, where the lap arrives
+at a gate and leaves on the same side, so the aperture normal opposes
+one of its two chords and the Hermite makes a cusp rather than a loop.
+The builder is right to say the drawn line is not flyable there. The
+elements are correct; the line through them is a guide.
+
+Also expected: unsequenced markers, five on 2024 WA States and twenty
+on 2025 WA States. Those are real flags and cones from `barriers` that
+Velocidrone does not make checkpoints, including a ten flag fence line
+down one side of the 2025 course. They are placed because they are
+standing there, and the warning is honest.
+
+New review tools, none of them shipped code: tracks/trk.mjs reads the
+container, tracks/course.mjs is the reading, tracks/inspect.mjs dumps a
+file, tracks/report.mjs says what a track contains, tracks/plan.mjs
+draws a plan view of the .trk and of the document side by side, and
+tracks/png.mjs is the 60 line PNG writer that makes that possible.
+Judging an import from columns of coordinates does not work; a picture
+settled the ordering and mirroring questions in one glance.
+
+### 2026-08-15 | flight | the throttle was always this sharp, the world got faster
+
+Report after the camera and world scale round: "the quad is harder to fly
+now, feels like it needs a throttle cap with the uncapped amount
+distributed". Both halves of that are right, and they are two different
+things.
+
+WHY IT GOT HARDER, and it is not the flight model. The determinism hash
+is still ce9826fc2ce5, byte for byte, so the aircraft is the one it has
+always been. What changed last round is that WORLD_SCALE went from 1.25
+to 1, so the craft covers world distance a quarter faster, and the lens
+went from 100 to 85 degrees, so the picture is 1.30 times magnified.
+Optical flow is the product of those, about 1.6 times what it was. The
+world going past 60 percent faster is the whole of "harder to fly". The
+field of view is a menu setting, so 95 gives most of it back.
+
+THE BUG SWEEP. scripts/flightcheck.js is new: it measures the aircraft
+off the compiled module and prints the numbers next to STAGE1.md's
+declared airframe, because a check inside its band can still be
+modelling a different aircraft from the one in the specification. It is
+read only and it tunes nothing.
+
+Two lines of STAGE1.md were never what the code did.
+
+  thrust to weight   spec said 4.5 to 1, measured 9.24 to 1
+  inertia            spec said 0.0055 / 0.0060 / 0.0110,
+                     code has 0.0035 / 0.0038 / 0.0068
+
+The SPEC is what was corrected, not the plant, and the argument is that
+the code is the side with a derivation. plant.c fixes kt and kq as a
+physical pair through momentum theory with an enforced figure of merit,
+which sim_bf_debug case 12 recomputes and a gate bands at 0.4 to 0.6,
+and every threshold in the check table was fitted against those
+constants. The old figures also do not describe this aircraft: a 650 g
+5 inch on 6S with 1900 kV motors and tri-blades is 9 to 12 to 1 in the
+real world and 4.5 to 1 is a heavy 7 inch, whose inertia is also about
+0.0055 / 0.0060 / 0.0110. So the spec line was describing a different
+quad. Nothing in src/native was touched.
+
+Everything else measured sane: full throttle 26035 RPM per motor, pack
+sagging to 17.9 V at 187 A, peak roll acceleration 18522 deg/s squared,
+hover 19.5 percent of stick at 4.2 V per cell against check 5's 0.2051
+at 4.0.
+
+Check 10 yaw-coupling is still the known red at -0.08 deg and is still
+not touched. plant.c already carries the algebra: on a symmetric QUADX
+the spin weighted sum over a roll column is identically zero for ANY
+function of motor speed, so no nonlinearity can produce a yaw from a
+roll, and the coupling that exists comes from the modelled build
+tolerance in the motor cant table. It is smaller than the 2 degree
+floor. Raising the floor would be fudging a threshold and lowering the
+coupling further is not available.
+
+WHAT THE THROTTLE ACTUALLY DOES, which is the real finding. At 9.2 to 1
+and hovering at 19.5 percent of stick, four fifths of the travel is
+above hover. Measured climb rate against stick: 0.10 falls at 15.2 m/s,
+0.20 holds at +0.6, 0.30 climbs at 9.4, 1.00 climbs at 31.3. Ten percent
+of stick is the difference between holding altitude and climbing at nine
+metres a second, and of the eight sampled positions exactly one is
+inside plus or minus 8 m/s. That is not a defect, it is what the
+aircraft is, and it is why the throttle limit exists in Betaflight.
+
+THE CAP. Not written, switched on. flight/mixer.c applyThrottleLimit was
+already compiled and reachable and nothing had ever set the rate profile
+fields, which sit at OFF and 100 after a PG reset. configs/rates.js now
+emits throttle_limit_type and throttle_limit_percent with the rest of
+the rate profile, so Betaflight's own mixer does the work and
+main.js re-inits on the text change exactly as it already did for rates.
+
+SCALE, not CLIP, and that is the pilot's "uncapped amount distributed".
+CLIP is min(stick, cap) and throws the travel away; SCALE is stick times
+cap, so the whole stick is redistributed across nothing-to-cap and every
+millimetre is worth `cap` as much throttle.
+
+Measured, per cap, by bisecting for the throttle that holds altitude:
+
+  cap   hover at   full stick climbs
+  100   19.5 pct   31.3 m/s
+   90   21.1       30.2
+   80   23.1       28.6
+   70   25.8       26.6
+   60   29.2       24.0
+   50   33.9       20.8
+   40   41.1       16.8
+
+The menu prints those, not the arithmetic. The obvious formula, hover
+divided by cap, overstates every one of them, by six points at a cap of
+40, because thrust is not linear in the throttle command: the pack sags
+and the motors load up, so halving the command does not halve the thrust
+and the stick does not come up as far as the algebra says. The table is
+measured and flightcheck.js reprints it if the plant changes.
+
+Default is 100, off, because a freshly flashed quad has no throttle
+limit and rates.js's whole argument is that the menu starts where the
+firmware starts. 60 is the one to try: hover moves to just under a third
+of the stick and the stick is two thirds as touchy.
+
+Also fixed: loadSettings now checks throttleCap against its own list
+along with the other enumerated settings, so a stale or hand edited
+value cannot put an out of range number into a uint8 firmware field.
+
+Verify: npm run verify 13 of 16 with SIM_CHROME_BIN set, and every
+physics check unchanged, which is the point. determinism-repeat and
+cross-host both ce9826fc2ce5, the same hash as before this change,
+because the cap defaults to off. hover-throttle 0.2051, punch-out
+82.1 m, terminal 31.3 m/s, motor-step 18 ms, rate-tracking 0.02 percent,
+battery-sag 10.15 percent, diff-passthrough 0.04 percent, console-clean
+0 errors, world-scale pass. The settings screen was opened in the
+harness and the Throttle cap row renders with no console errors. Still
+red and none of it this turn: check 1 build:wasm with no Emscripten
+here, check 10 as above, check 16 against the c3c6e44 draw call
+baseline. node src/trackbuilder/selftest.js 183 passed, node
+tracks/check.mjs 653 passed.
+
+### 2026-08-15 | tracks | 33 gates were standing across the course
+
+Reported from the cockpit on 2025 WA States, and then corrected in a way
+that saved a wrong fix: "there is a gate blocking the next gate", then
+"the pile of gates is a tunnel and correct, its the 90 degrees rotated
+gate that is not correct". The second half is what made this findable.
+The first reading of the screenshot was that a cluster of frames had
+been imported on top of each other, and a check for exactly that found
+nothing, because there was nothing.
+
+WHAT IT REALLY WAS. The import keeps the heading the .trk gives every
+gate, which is right and is the whole point of the previous round. It
+kept it unconditionally, and on 33 gates across eight of the nine
+courses the authored normal is more than 60 degrees from the way the lap
+travels through the gate. Several are at EXACTLY 90.0. A gate is a hole
+and you go through it along its normal, so at 60 degrees off the opening
+is already down to half its width and at 90 it is a wall across the
+course.
+
+It is NOT a misread quaternion, and 2023 GQ Scale proves it: its start
+gate and its gate 3 carry the identical rotation [1000,0,0,0], the lap
+crosses the start gate north to south, which the grid parked 33 m due
+north of it confirms on its own, and it crosses gate 3 east to west. The
+file is self consistent and gate 3 still cannot be flown on that
+heading. In Velocidrone it does not have to be: a gate's collision is
+its frame, the checkpoint that scores it is a separate volume, and an
+object left at the default rotation still counts if you cross the
+trigger.
+
+THE RULE. Keep the authored heading unless the lap cannot use it, and
+then aim the gate down the lap and hand it back to the builder's own
+auto face rule. 33 gates down to 6.
+
+The first version of the rule was wrong and the tunnel caught it. It
+tested the gate's normal against the chord from the stop BEFORE to the
+stop AFTER, which is the bisector of the turn, not the direction through
+the hole. That condemned the entrance to 2025 WA States' five gate
+tunnel, re-aiming it 80 degrees and breaking the one part of that course
+the owner had just said was correct. Arriving at a tunnel from the side
+is normal: you swing in and then go straight through. The test now takes
+the entry leg and the exit leg SEPARATELY and only condemns a gate that
+agrees with neither.
+
+The 6 that remain are structural rather than fixable. Every one is a
+site flown more than once, where the two passes go through at different
+angles: one structure cannot face two ways, and the builder has the same
+rule for the same reason.
+
+A WRONG FIX, TRIED AND REVERTED, recorded because the reasoning looked
+good. 2025 WA States leaves the tunnel through the 1.9 m gap between
+gates 19 and 20, and the checkpoint marking that leg is a 6.3 by 4.0 m
+trigger box. It seemed to follow that the box's CENTRE could land inside
+a frame and that a waypoint should be allowed to slide along its own box
+to a clear spot, since the lap would still cross the volume the author
+drew. Measured: the waypoint was already 1.9 m clear, so it fixed
+nothing, and the clearance test ignored height, so it shoved a waypoint
+sitting 7.5 m ABOVE a gate a metre sideways for no reason. Reverted. The
+line on that leg is close to gate 20 because the Hermite OVERSHOOTS the
+hairpin at the waypoint before it and bows out two metres, which is the
+path model and not the import.
+
+Two new checks in tracks/check.mjs. One asserts that no two obstacles
+stand inside each other, measured at the size the race field builds them
+rather than the document's, because trackdoc.js puts every dimension
+through GATE_SCALE and testing the smaller figure would test a course
+nobody flies. It passes on all nine. The other walks the racing line and
+counts places where it comes within 0.55 m of an obstacle it is not
+flying, and that one REPORTS rather than fails: a flag 1.5 ft behind a
+gate is a MultiGP standard and the lap is meant to come back past the
+frame to wrap it, an out and back down a tunnel passes every gate in it
+twice, and the biggest group is the Hermite overshoot above. Failing on
+those would be failing on a correct import.
+
+tracks/squareon.mjs is new and lists what is left.
+
+Verify: node tracks/check.mjs 2569 passed, 0 failed, plus 5 tracks
+carrying line-clearance notes for a person to read. node
+tracks/squareon.mjs 6 remaining, all multi pass sites. node
+src/trackbuilder/selftest.js 183 passed. npm run verify 13 of 16,
+determinism ce9826fc2ce5 unchanged, nothing in this turn touches the
+physics. Still red and not this turn: build:wasm with no Emscripten,
+yaw-coupling, and the c3c6e44 draw call baseline.
+
+Laps moved a little as gates turned: 2024 WA States 594.5 to 590.7 m,
+2023 MultiGP GQ 306.5 to 302.5, 2022 AU Nationals 632.4 to 629.4.
+Reversal warnings fell with them, 2022 AU Nationals from 6 to 3.
+
+### 2026-08-15 | race | grid square to the first gate, and no penalty for a stray gate
+
+Three reports off one flight, and the first two were the same bug.
+
+THE GRID WAS 127 DEGREES OFF. It was aimed from the first obstacle
+towards the SECOND, which points at the first gate and says nothing
+about which way you have to cross it. On 2025 WA States that left the
+pads 127 degrees off gate 0's normal, so the launch faces the gate edge
+on. The owner measured it by eye as 60 and asked for the pads to be
+square to the first element always.
+
+"THE GATE DIDN'T REGISTER THAT I FLEW THROUGH" was the same fault, one
+step downstream. applyAutoFaces reads the chain pads-gate-next to choose
+each aperture's entry SIGN, so a grid pointing the wrong way chose the
+sign for a crossing nobody makes, and race.js tryPass then scored a
+genuine pass as a backwards one and rejected it. Nothing was wrong with
+the scoring.
+
+The launch axis is now the first APERTURE'S OWN NORMAL, signed to agree
+with where the lap goes afterwards, with the pads 3.2 m back along it.
+A first obstacle with no plane, a flag or a waypoint, has nothing to be
+square to, so the pads just face it. Measured after: all nine imported
+courses are 0.0 degrees off the first gate's axis. The tenth, 2022
+MultiGP GQ, is 7.1 degrees, and it is left alone because it is the hand
+built plan from the published diagram rather than a .trk import and its
+grid is where the diagram puts it.
+
+The grid's authored position in the barriers is no longer used at all.
+It is worth less than being straight: Velocidrone parks it wherever the
+designer dropped it, and a grid off to one side also makes the lap
+arrive at the finish line from in front of it, which path.js turns into
+a zero radius cusp in the last few metres of every lap.
+
+NO PENALTY FOR A GATE THAT IS NOT THE TARGET. Removed, on the owner's
+instruction: "if i go through other gates that are not the target gate,
+then that is fine, no penalty, the lap can still be completed, assuming
+i run through the correct gate." This departs from MultiGP's rule, which
+track.js quotes verbatim and which race.js enforced, and it is the right
+call for these courses: 2025 WA States has a five gate tunnel the lap
+crosses on the way to somewhere else and WCMRC Round 5 flies one gate
+five times in a lap, so an incidental crossing is the geometry rather
+than a shortcut. Nothing is gained by it either, because the sequence
+still has to be flown in order and an out of sequence pass advances
+nothing. track.js keeps the citation of what MultiGP says; race.js now
+carries a citation of what we do instead.
+
+crossesGate went with it, having been written for that rule and nothing
+else. voidLap stays and is now called by nothing, which is a statement
+of the rules rather than an oversight, and it says so: a gate tap is a
+crash and costs time, a stray gate costs nothing, so no rule voids a lap
+any more.
+
+The self test asserted the old rule and now asserts the new one, in both
+directions: a stray gate costs nothing AND does not advance the order.
+
+AND THE REASON NONE OF THE PREVIOUS TWO ROUNDS HAD REACHED THE COCKPIT.
+The owner asked whether to restart the server. The server was fine; the
+data on it was not. The shell does not read tracks/json, it fetches from
+the board API, and the board was still serving the documents published
+at 04:43, before the import rewrite. Every fix from the two previous
+entries was on disk and nowhere else. `node tracks/convert.mjs` only
+writes files; `--publish` is what makes them flyable, and it had not
+been run. Published now. Worth remembering as a rule: an import change
+is not finished until it is published and the page is hard reloaded,
+because board.js caches the fetched course in session storage.
+
+Verify: node tracks/check.mjs 2569 passed 0 failed, node
+src/trackbuilder/selftest.js 184 passed 0 failed, npm run verify 13 of
+16 with determinism ce9826fc2ce5 unchanged and console-clean passing.
+Still red and not this turn: build:wasm with no Emscripten,
+yaw-coupling, and the c3c6e44 draw call baseline.
+
+### 2026-08-15 | tracks | the grid rule now applies to every course, checked
+
+Asked to go through all tracks and confirm the start grid fix had
+actually landed everywhere. It had not, and checking properly found two
+things.
+
+THE HAND BUILT COURSE WAS NEVER COVERED. The fix from the previous entry
+lived in fromTrk, so it reached the nine .trk imports and skipped 2022
+MultiGP GQ, which is built by fromPlan from the published diagram. That
+diagram puts LAUNCH away to one side, and the grid sat 10.0 m off the
+timing gate's axis, which is the exact complaint.
+
+So squaring the grid moved into polish(), where both paths go through
+it, because it is a rule about COURSES rather than about Velocidrone
+files. It is iterated four times: the first gate's heading is derived by
+applyAutoFaces from a chain that STARTS at the pads, so moving the pads
+moves the gate, which moves where the pads should be. These courses
+settle in two.
+
+All ten now read identically: pads 3.20 m behind the first gate, on its
+axis, and the gate scores.
+
+THE CHECK IS AN ACTUAL FLIGHT, NOT AN ANGLE. tracks/check.mjs now builds
+each course exactly as the race field builds it, hands it to the real
+Race, and flies a straight segment from behind the first gate along the
+direction of travel that gate was given. If the answer is not "gate 0
+scored" the lap cannot be started, whatever the geometry measures. That
+is the assertion that would have caught the original report, because the
+original fault was an entry SIGN and not an angle.
+
+A false alarm worth recording, because the first version of the check
+failed all nine tracks on a constant 0.75 m. That is not a crooked grid:
+a lone pilot parks on the pad nearest the middle of a four stand grid,
+so the craft sits one lane over, and startBlockLaneOffset says exactly
+0.75. A number that is identical on all nine courses is a property of
+the start block, not of any of them. The tolerance is the lane offset
+plus slop, and it reads the offset from the pads' own dims rather than
+hard coding it.
+
+Verify: node tracks/check.mjs 2596 passed, 0 failed. node
+src/trackbuilder/selftest.js 184 passed, 0 failed. npm run verify 13 of
+16, determinism ce9826fc2ce5 unchanged, console-clean passing. Published
+all ten to the board. Still red and not this turn: build:wasm with no
+Emscripten, yaw-coupling, the c3c6e44 draw call baseline.
+
+### 2026-08-15 | render | a dive gate showed red on the way in
+
+Reported: "dive gates have the red and green reversed the wrong way".
+
+The race field marks the next gate with green on the face the pilot
+approaches from and red on the other. setNextGate decided which was
+which by comparing two YAWS, and applied the reversal by turning the
+pane half a turn about Y. Neither works on a dive gate. A yaw comparison
+cannot tell flying up through a hoop from flying down through it,
+because the difference is in the pitch and in the entry sign; and a yaw
+rotation cannot reverse a horizontal aperture, because spinning a flat
+pane about the vertical axis leaves the same face pointing at the sky.
+So every dive gate wore whichever face its mesh happened to build as the
+front, which is red on the way in for the usual case of one flown
+downwards. Upright gates were unaffected, which is why it took a pilot
+to find it.
+
+Two changes. The test is now the full direction of travel against the
+structure's own facing axis, built from the SAME expression race.js uses
+for its aperture frame, so the paint and the scoring cannot disagree
+about which way through a gate goes; travelAxis() is that expression,
+named once. And the swap is in the COLOURS rather than in a rotation:
+both the glow and the target pane already choose on gl_FrontFacing, so
+setting uFront and uBack is orientation independent and reverses a flat
+hoop as readily as an upright gate. The station carries the signed tilt
+and the structure carries its own, so meshPitch is now stored beside
+meshYaw; without both there is nothing to compare.
+
+The builder's 3D preview already had this right, and is the reference:
+view3d.js paints [[-seq.entry, entry], [seq.entry, exit]], which is the
+entry SIGN and therefore correct at any tilt. Only the race field was
+wrong. The dead rotation reset in the clearing loop went with the fix.
+
+THE PHYSICS MODULE WAS REBUILT MID SESSION AND THE BASELINE MOVED.
+Flagging rather than burying it. dist/sim.wasm on disk is dated 16:06:24
+today and is 69851 bytes against the committed 76369, and the
+determinism trace moved from ce9826fc2ce5 to aa43b60b735b. The new hash
+is stable and identical across Node and Chrome and across all four frame
+rates, so the module is as deterministic as it ever was; it is a
+different module. Nothing this session touched src/native, the build or
+any test input.
+
+The likely reading is that the committed binary was built from the
+COMMITTED sources while src/native/plant.c, sim.c and the three bf files
+all carry uncommitted modifications, and this is the first time in the
+session that build:wasm got far enough to link. A previous entry already
+recorded that the runner reports a spurious empty failure for
+build-clean while a direct build:wasm exits 0, so the rebuild would not
+have announced itself.
+
+What moved is consistent with that and with nothing worse. Every
+steady state measurement is unchanged to the digit: thrust to weight
+9.24 to 1, 26035 RPM at full throttle, 187 A and 17.9 V under load,
+hover 0.195. What drifted is integrated over seconds, by under half a
+percent: punch-out 82.1 to 81.4 m, terminal 31.3 to 31.0 m/s, rate
+tracking 0.02 to 0.23 percent off, diff-passthrough 0.04 to 0.41. All
+still inside their bands and checks 5 to 12 all pass.
+
+It needs an owner decision rather than a quiet re-baseline: either keep
+this binary, in which case the recorded hash in the entries above is
+stale and lap times set against the old one are not comparable, or
+`git checkout -- dist/sim.wasm` to go back to the committed artefact and
+build deliberately later.
+
+Verify: npm run verify 13 of 16. node src/trackbuilder/selftest.js 184
+passed, node tracks/check.mjs 2596 passed. console-clean passes, so the
+scene still builds. Still red and not this turn: build-clean,
+yaw-coupling, the c3c6e44 draw call baseline.
+
+### 2026-08-15 | flight feel | three features that were never on, and the noise floor that made every filter decorative
+
+A full sweep for flight feel defects, then the fixes. The headline is that
+this build was not running the firmware its own config described, and had
+not been for the whole of the project.
+
+THREE LINKS IN ONE CHAIN, ALL BROKEN. featureIsEnabled reads
+runtimeFeatureMask, a static that only featureInit copies enabledFeatures
+into. fc/init.c calls featureInit on hardware and nothing called it here, so
+the mask was zero and EVERY feature in this build has always read as off.
+Above that, mixer.c asks airmodeIsEnabled(), a second static that only
+updateActivatedModes writes, and that lives in fc/core.c which is not
+compiled. Above that again, pidRuntime.antiGravityEnabled is set only by
+pidSetAntiGravityState, also from core.c. And bf_config_begin was assigning
+enabledFeatures = FEATURE_AIRMODE, which dropped the FEATURE_ANTI_GRAVITY
+that Betaflight's own default carries.
+
+The first attempt at the fix set the feature bits and called
+updateActivatedModes and pidSetAntiGravityState, and the trace hash did not
+move by a single bit. That is the useful part of this entry: the hash is the
+only thing that told the truth. featureInit was the missing link.
+
+WHAT IT WAS COSTING. Airmode off means applyMixerAdjustment scales roll and
+pitch mix authority by scaleRangef(throttle, 0, 0.5, 0.5, 1.0). Measured off
+the mixer, peak split during a saturated pitch reversal: 0.472 duty at 2
+percent throttle, 0.522 at 10, 0.671 at 25, 0.820 at 40, 0.919 at 50, 0.945
+above. That traces the airmode-off ramp exactly. With it on the same sweep
+reads 0.945 at every throttle. A full roll step at 25 percent throttle rose
+to 90 percent in 59 ms and stopped in 56 ms; it is now 54 and 52 against 45
+and 41 on the power, and the remainder is thrust availability, which is
+physical. Anti gravity was provably dead: punch traces at anti_gravity_gain
+0, 80 and 250 hashed identically. They now differ, and feature
+-ANTI_GRAVITY reproduces the gain-0 hash exactly, which is the cross check
+that the CLI path and the runtime flag agree.
+
+The feature CLI line was being discarded, so no preset could have switched
+either one on for itself. bf_config_apply_command now honours feature NAME
+and feature -NAME for the two features whose subsystems are actually
+compiled here, and ignores the rest on the same grounds bf_settings.c
+ignores inert keys.
+
+micros() had to be stubbed. It was never referenced before, so the linker
+never asked for it; calling updateActivatedModes pulls in rc_modes.c's
+sticky mode path. It comes off the same counter millis() does, because the
+step is 1 ms and inventing sub step resolution would be a second timebase to
+keep in sync.
+
+THE GYRO WAS PERFECT, AND THAT IS A DEFECT. Measured in a steady hover, the
+filtered gyro moved 0.0016 deg/s between samples. Real is 1 to 5 filtered.
+Everything downstream followed: gyro_lpf and dterm_lpf could only ever cost
+delay, so the sim rewarded removing filters where a real quad punishes it,
+and D term gain was free, so a tune that felt right here would oscillate on
+a real machine. There is now a vibration model on the SENSOR READING, not on
+the plant's omega, because the airframe is still a rigid body and the only
+path a real vibration takes to the trajectory is the controller reacting to
+it. Band limited 80 to 350 Hz, amplitude scaled by rotor speed squared off
+the actual motor speeds. The RMS divisor was measured over eight million
+samples of the exact recursion, 0.340474, peak 2.92 sigma, so unlike the
+propwash channel it needs no clamp.
+
+Amplitude was set against the FILTERED figure, because that is what a real
+blackbox log reports and so the only one comparable. 12 deg/s of raw
+injection read 4.21 deg/s filtered at 55 percent throttle and 7.35 at full,
+which is hot for a good build; 8.0 lands at 2.8 and 4.9, against a real 1 to
+3 around cruise and 3 to 6 on the power.
+
+The trade now exists. At 55 percent throttle, filters at 4.5 defaults give
+4.21 deg/s of filtered gyro and 17.9 percent motor ripple; wide open gives
+6.58 and 94.5 percent, which is a real quad cooking its motors; heavily
+filtered gives 1.96 and 5.7. None of that difference existed before.
+
+THE ROTOR PLANE IS ABOVE THE CG. Every motor sat at z = 0, which made the
+airframe a flat plate as far as moments were concerned, so the pitching
+moment in forward flight was identically zero at every speed and nothing
+happened to the nose when the throttle was chopped. A pure z force at
+(x, y, z) has a moment that does not involve z, so thrust does not care and
+none of the vertical checks could move; what does care is the rotor drag,
+which is large at speed and was being applied at the wrong height. The discs
+are about 20 mm above the CG on this airframe, derived in plant.c from the
+frame plate, the bell and a 250 g pack on top. Rear motors now run 2.8 to
+4.9 percent harder than front in fast level flight against 0.14 percent at
+hover, which is the nose up moment being trimmed out.
+
+Worth being honest about what this does and does not give. In acro a centred
+pitch stick commands zero rate and the loop holds it, so the nose does not
+visibly rear; the moment shows up as a real I term offset instead, which is
+what iterm relax and anti gravity now have something to work against. A real
+quad probably carries more than this, because blade flapping adds to it, and
+that needs a blade stiffness figure this project does not have.
+
+PROPWASH WAS TOO NARROW AND TOO QUIET. The upper gate was a descent to
+induced velocity ratio of 2.0, which made the FASTEST descents perfectly
+smooth: props level sinking at 7.7 m/s read depth 1.000 and 17.7 deg/s of
+gyro, and at 14.1 m/s and beyond it read 0.000 and 0.1 deg/s. That is
+backwards. 2.0 is where the windmill brake state is established for a rotor
+in clean axial flow, which assumes the four discs are the only thing in the
+air; the frame and the pack shed their own wake and the discs sit in it. The
+tail is carried to 3.0. With k_propwash also raised from 0.12 to 0.30 the
+envelope now reads 10.5 deg/s at 3.0 m/s of sink, 33.3 at 7.7, 23.3 at 11.5,
+12.2 at 14.1 and 3.6 at 15.8. Real propwash is 50 to 150 peak to peak, so
+this is still at the quiet end deliberately: k_propwash is the one number in
+plant.c a pilot should be asked about directly.
+
+A comment corrected while in there. plant.c claimed keying the gate on
+induced velocity would find the case of pulling out of a dive on the
+throttle. Instrumented, that manoeuvre reads depth 0.000 for its whole
+duration, because in a nose down dive the body z airspeed is POSITIVE, the
+disc being tilted into the flow, so the descent branch is never entered at
+all. It fires when the craft is level and still sinking, which is a real
+case and a common one, but not the one the comment named.
+
+cda_side was the frontal figure copied across. An X frame is nearly
+symmetric in arms, motors and stack, but the pack is not: a 6S 1300 shows
+0.0026 m2 broadside against 0.0012 nose on. 0.0130 to 0.0147. It is a small
+correction and it is NOT the fix for a banked turn washing out.
+
+TWO THINGS FROM THE SWEEP THAT WERE NOT FIXED, WITH THE REASONING.
+
+An ESC transport delay was going to be added, on the grounds that real
+hardware has DShot frame time plus ESC decode between the mixer and the
+motor and this build has exactly zero. It should not be. That delay is 0.2
+to 0.3 ms and the step is 1 ms, so the smallest thing this model can
+represent is three to five times too big. The 1 kHz loop already carries
+about 0.5 ms of hold delay that an 8 kHz quad does not, which more than
+covers what is missing. Adding a step of lag would make the model less like
+a real quad, not more.
+
+A banked turn flies 4 to 14 times the coordinated radius with 52 to 75
+degrees of sideslip, measured as the curvature of the ground track rather
+than the yaw rate. This reads like a defect and mostly is not: nothing turns
+the nose in acro without rudder, so a held bank with no yaw input does fly a
+straight diagonal in real life too. The honest measurement of the lateral
+damping is the sideslip decay, and at 12.0 m/s washing to 7.5 in two seconds
+the model matches the figure plant.c already claims. Whether that is right
+is a pilot judgement, not something to be settled by doubling a coefficient
+that has a derivation behind it.
+
+BUILD NOTE. Emscripten was reachable all along on this machine at ~/emsdk;
+emsdk_env.sh silently fails because it shells out to python3 and the only
+python3 on PATH is the Microsoft Store stub. Sourcing it with the emsdk's
+own bundled python first on PATH fixes it. Separately, verify.js runBuild
+uses spawnSync with a bare npm, which cannot work on Node 22 on Windows:
+bare npm gives ENOENT because libuv does not append .cmd, and npm.cmd gives
+EINVAL because Node refuses to spawn .cmd without a shell. Worked around
+outside the repo rather than by editing tests/. Worth a human deciding
+whether runBuild should pass shell true, which would make check 1 runnable
+on Windows without a shim.
+
+Verify: 14 of 16 passing, up from 13. build-clean PASS for the first time in
+this environment. determinism-repeat and determinism-cross-host agree at
+81f331bf7dab, moved from ce9826fc2ce5 as they must after a physics change.
+frame-independence 1 hash across 4 rates. hover-throttle 0.2051 unchanged.
+punch-out 81.4 m against 82.1 before, band 55 to 85. terminal-velocity 31.0
+m/s against 31.3, band 30 to 40; the loss is the D term now working against
+real noise, which is what a real quad also pays. motor-step-response 18 ms
+unchanged. rate-tracking 671.6 deg/s, 0.23 percent off, band 3. battery-sag
+10.09 percent, band 4 to 15. diff-passthrough ratio 1.2486 against 1.2537
+expected, 0.41 percent off, band 2. console-clean, audio-bed and world-scale
+all pass. Still red and not this turn: yaw-coupling at -0.07 deg against the
+2.0 floor, argument added under OPEN QUESTIONS and the threshold untouched;
+map-isolation on the c3c6e44 draw call baseline, which is a render
+regression and has nothing to do with this work.
+
+Flight feel itself is not verifiable here. The harness is green apart from
+those two, and the feel is awaiting the owner's judgement, with k_propwash
+and GYRO_VIB_FULL_DPS the two numbers most likely to need moving.
+
+### 2026-08-15 | tracks | flow: a tunnel that told you to fly back out
+
+Reported: "the tunnel on the track, the first gate is asking the pilot to
+go the wrong way", with the instruction to always inspect the flight
+path for flow as a final check and to double check any track with an
+anti flow section.
+
+Measured on 2025 WA States: gates 17 to 20 of the five gate tunnel all
+carried entry -1, westward, and gate 16 at the mouth carried +1. Its
+tangent against the way the lap continues scored -1.00, which is as
+wrong as the number goes. The tunnel told you to turn round.
+
+WHY THE AUTO FACE RULE PICKED IT. For an element whose heading is fixed,
+faces.js chooses the entry sign from the dot of the aperture normal with
+the BISECTOR of the turn, the chord from the previous knot to the next.
+At the mouth of a tunnel you arrive from the side and leave straight
+down it, so the bisector is nearly square to the hole: at gate 16 that
+dot is 0.17, which is noise, and the sign it produced was a coin toss
+that landed wrong. The bisector is the right question at a corner and
+the wrong one here.
+
+WHY fixReversals DID NOT CATCH IT. Flipping gate 16 trades a departure
+reversal for an arrival one, so that loop oscillates and gives up. The
+two are not equal and this is the whole rule: the DEPARTURE is something
+the pilot must obey, because it is which way through the hole they have
+to go, while the arrival is a manoeuvre and swinging round to the mouth
+of a tunnel is a normal thing to fly. Flow is judged on the departure
+alone and it outranks the arrival.
+
+fixFlow() runs last in polish. A stacked figure is exempt, because
+consecutive passes of one structure share a place and the chord between
+them is a wrap carrying no direction.
+
+FLIPPING THE SIGN IS NOT ALWAYS ENOUGH, which cost a second pass to
+learn. For an element whose heading is DERIVED rather than authored,
+faces.js re-aims it every time: el.yaw comes off the bisector and then
+turns a half turn when entry is -1, so the tangent always returns to the
+bisector and the flip rotates the gate instead of turning the line
+round. On a leg that goes out to a gate and back the way it came the
+bisector is opposite the departure, so nothing moved and the loop span.
+2023 GQ Scale's gate 14 is exactly that, in from the west and out to the
+west. A derived heading is therefore re-aimed down the departure and
+pinned; an AUTHORED heading is never turned, only its sign moves,
+because the .trk is the authority on it; and neither is done to a
+structure flown more than once, because one frame cannot face two ways.
+
+tracks/check.mjs asserts it now, which is the final check that was
+asked for: no gate sends the pilot away from the next one. It was 6
+gates across two tracks after the first attempt and is 0 across all
+nine now.
+
+THE WASM MOVED AGAIN AND IT IS NOT THIS SESSION. dist/sim.wasm was
+replaced at 16:06:24 and again at 16:10:54, and the determinism trace
+went ce9826fc2ce5, aa43b60b735b, 81f331bf7dab. It is stable now: the
+file's SHA256 is identical before and after a verify run, the hash
+repeats, and Node and Chrome agree. Emscripten is not installed for this
+shell and build-wasm.sh cannot run here, and a parallel session was
+searching for emsdk, so the replacements came from work alongside this
+one rather than from anything here. Nothing in these entries touches
+src/native. Flagged only so the hashes recorded above are known to be
+of their moment.
+
+Verify: node tracks/check.mjs 2605 passed 0 failed, node
+src/trackbuilder/selftest.js 184 passed 0 failed, npm run verify 13 of
+16 with console-clean and world-scale passing. Published all ten.

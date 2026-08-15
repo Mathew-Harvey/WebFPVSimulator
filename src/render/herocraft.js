@@ -5,6 +5,8 @@
  * at -z, 220 mm diagonal, 5 inch discs. src/render/craft.js is the session
  * wrapper that names it, scales it into the world, and keeps the body box
  * and prop discs as direct children so check 15 can still measure it.
+ * Settings passes `lite` so the overlay skips outline hulls and shadow
+ * casters; the world craft stays full, including on the title flythrough.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -45,7 +47,7 @@ function bake(geo, x, y, z, rx, ry, rz) {
   return g;
 }
 
-function bladeShape() {
+function bladeShape(segments) {
   const r = CRAFT_PROP_R;
   const s = new THREE.Shape();
   s.moveTo(0.0018, 0.006);
@@ -56,11 +58,11 @@ function bladeShape() {
   return new THREE.ExtrudeGeometry(s, {
     depth: 0.0017,
     bevelEnabled: false,
-    curveSegments: 8,
+    curveSegments: segments,
   });
 }
 
-function bellLathe() {
+function bellLathe(segments) {
   const pts = [
     new THREE.Vector2(0.0008, 0.0115),
     new THREE.Vector2(0.0096, 0.0115),
@@ -70,7 +72,7 @@ function bellLathe() {
     new THREE.Vector2(0.0084, -0.0105),
     new THREE.Vector2(0.0040, -0.0105),
   ];
-  return new THREE.LatheGeometry(pts, 16);
+  return new THREE.LatheGeometry(pts, segments);
 }
 
 /*
@@ -82,41 +84,63 @@ export const PROP_SPIN = [-1, 1, 1, -1];
 
 export function buildHeroCraft(opts = {}) {
   const fog = opts.fog !== false;
+  /*
+   * Lite is the Settings overlay: same silhouette, fewer rings, no inverted
+   * hulls, no shadow casters. The world craft stays full. Outline hulls
+   * roughly double the draw list, and Settings already pays for a second
+   * WebGL context; that context has to stay cheap.
+   */
+  const lite = Boolean(opts.lite);
+  const inkOn = !lite;
+  const shade = !lite;
   const cel = (o) => celMaterial({ fog, cloudShadow: 0, ...o });
   const group = new THREE.Group();
   group.name = opts.name ?? 'hero-craft';
   if (opts.worldScale) {
     group.scale.setScalar(1 / WORLD_SCALE);
   }
+  const hull = (mesh, t, c) => {
+    if (inkOn) {
+      outlineHull(mesh, t, c);
+    }
+    return mesh;
+  };
 
-  const carbon = cel({ color: 0x242a36, rim: 0.30, spec: 0.22, specWidth: 0.012 });
-  const carbonDeep = cel({ color: 0x171b24, rim: 0.18, spec: 0.12 });
-  const livery = cel({ color: 0x3d9a78, rim: 0.26, spec: 0.28 });
-  const brass = cel({ color: 0xb08a4a, rim: 0.30, spec: 0.55, specWidth: 0.018 });
-  const pcb = cel({ color: 0x1d6a3c, rim: 0.20, spec: 0.22 });
-  const canopy = cel({ color: 0xe8503a, rim: 0.42, spec: 0.48, specWidth: 0.016 });
-  const canopyDeep = cel({ color: 0xa83224, rim: 0.28, spec: 0.22 });
-  const bell = cel({ color: 0xc5ced8, rim: 0.32, spec: 0.72, specWidth: 0.022 });
-  const stator = cel({ color: 0x3a414c, rim: 0.24, spec: 0.20 });
-  const camBody = cel({ color: 0x1c1f28, rim: 0.26, spec: 0.35 });
+  /*
+   * Same palette the page and the board paint in CSS: forest carbon, cream
+   * vinyl, sakura chrome, mint for a live lamp. The canopy and the front
+   * props are the sakura so the airframe reads as the wordmark, not as a
+   * leftover orange racer from the previous shell.
+   */
+  const carbon = cel({ color: 0x1c241e, rim: 0.30, spec: 0.22, specWidth: 0.012 });
+  const carbonDeep = cel({ color: 0x121810, rim: 0.18, spec: 0.12 });
+  const livery = cel({ color: 0xe8dcc0, rim: 0.26, spec: 0.28 });
+  const brass = cel({ color: 0xc4b48a, rim: 0.30, spec: 0.55, specWidth: 0.018 });
+  const pcb = cel({ color: 0x2a4a38, rim: 0.20, spec: 0.22 });
+  const canopy = cel({ color: 0xe8a8b8, rim: 0.42, spec: 0.48, specWidth: 0.016 });
+  const canopyDeep = cel({ color: 0xc47888, rim: 0.28, spec: 0.22 });
+  const bell = cel({ color: 0xd8d0c4, rim: 0.32, spec: 0.72, specWidth: 0.022 });
+  const stator = cel({ color: 0x2a322c, rim: 0.24, spec: 0.20 });
+  const camBody = cel({ color: 0x141c16, rim: 0.26, spec: 0.35 });
   const lens = cel({
-    color: 0x141820,
+    color: 0x101610,
     rim: 0.40,
     spec: 0.95,
     specWidth: 0.03,
-    specColor: 0xb8d4ff,
+    specColor: 0xf3ead4,
     side: THREE.DoubleSide,
   });
-  const ring = cel({ color: 0x8a93a0, rim: 0.28, spec: 0.55 });
-  const battery = cel({ color: 0x1a1d26, rim: 0.22, spec: 0.16 });
-  const tape = cel({ color: 0xe2b84a, rim: 0.24, spec: 0.30 });
-  const strap = cel({ color: 0x2a3140, rim: 0.20 });
-  const hubMat = cel({ color: 0x1a1e26, rim: 0.22, spec: 0.25 });
-  const propFront = cel({ color: 0xff6a45, rim: 0.30, spec: 0.28 });
-  const propRear = cel({ color: 0x4a5564, rim: 0.26, spec: 0.22 });
-  const antenna = cel({ color: 0x2c3340, rim: 0.22 });
+  const ring = cel({ color: 0xb8b09e, rim: 0.28, spec: 0.55 });
+  const battery = cel({ color: 0x161c18, rim: 0.22, spec: 0.16 });
+  const tape = cel({ color: 0xdcd6ca, rim: 0.24, spec: 0.30 });
+  const strap = cel({ color: 0x1a241c, rim: 0.20 });
+  const hubMat = cel({ color: 0x161c18, rim: 0.22, spec: 0.25 });
+  const propFront = cel({ color: 0xe890a8, rim: 0.30, spec: 0.28 });
+  const propRear = cel({ color: 0x4a554c, rim: 0.26, spec: 0.22 });
+  const antenna = cel({ color: 0x1a241c, rim: 0.22 });
   const antennaTip = cel({ color: 0x7dffb4, rim: 0.20, spec: 0.4 });
-  const xt60 = cel({ color: 0xd4a017, rim: 0.24, spec: 0.35 });
+  const xt60 = cel({ color: 0xe8c04a, rim: 0.24, spec: 0.35 });
+  const ink = 0x0c120e;
 
   const a = MOTOR_ARM;
   const motors = [
@@ -162,8 +186,8 @@ export function buildHeroCraft(opts = {}) {
     g.dispose();
   }
   const plates = new THREE.Mesh(plateGeo, carbon);
-  plates.castShadow = true;
-  outlineHull(plates, 1.07, 0x10141c);
+  plates.castShadow = shade;
+  hull(plates, 1.07, ink);
   group.add(plates);
 
   for (let i = 0; i < 4; i += 1) {
@@ -175,19 +199,19 @@ export function buildHeroCraft(opts = {}) {
     const armGeo = new THREE.BoxGeometry(0.016, 0.0076, span * 0.78);
     armGeo.applyMatrix4(dummy.matrix);
     const arm = new THREE.Mesh(armGeo, carbon);
-    arm.castShadow = true;
-    outlineHull(arm, 1.08, 0x10141c);
+    arm.castShadow = shade;
+    hull(arm, 1.08, ink);
     group.add(arm);
     const pad = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.0052, 0.028), carbon);
     pad.position.set(mx, 0.001, mz);
-    pad.castShadow = true;
-    outlineHull(pad, 1.08, 0x10141c);
+    pad.castShadow = shade;
+    hull(pad, 1.08, ink);
     group.add(pad);
   }
 
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.0016, 0.070), livery);
   stripe.position.set(0, 0.0252, 0.004);
-  stripe.castShadow = true;
+  stripe.castShadow = shade;
   group.add(stripe);
   const noseMark = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.0016, 0.010), canopy);
   noseMark.position.set(0, 0.0252, -0.032);
@@ -200,9 +224,9 @@ export function buildHeroCraft(opts = {}) {
     [-0.012, -0.008],
   ];
   for (const [sx, sz] of standAt) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.0024, 0.0024, 0.024, 8), brass);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.0024, 0.0024, 0.024, lite ? 6 : 8), brass);
     post.position.set(sx, 0.010, sz);
-    post.castShadow = true;
+    post.castShadow = shade;
     group.add(post);
   }
 
@@ -215,8 +239,8 @@ export function buildHeroCraft(opts = {}) {
 
   const pack = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.024, 0.072), battery);
   pack.position.set(0, -0.018, 0.012);
-  pack.castShadow = true;
-  outlineHull(pack, 1.06, 0x10141c);
+  pack.castShadow = shade;
+  hull(pack, 1.06, ink);
   group.add(pack);
   const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.0372, 0.0034, 0.073), tape);
   wrap.position.set(0, -0.012, 0.012);
@@ -233,8 +257,8 @@ export function buildHeroCraft(opts = {}) {
   const pod = new THREE.Mesh(podGeo, canopy);
   pod.scale.set(1.08, 0.70, 1.48);
   pod.position.set(0, 0.020, -0.056);
-  pod.castShadow = true;
-  outlineHull(pod, 1.09, 0x1a1010);
+  pod.castShadow = shade;
+  hull(pod, 1.09, 0x1a1214);
   group.add(pod);
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.012, 0.008), canopyDeep);
   visor.position.set(0, 0.022, -0.082);
@@ -245,40 +269,40 @@ export function buildHeroCraft(opts = {}) {
   group.add(cameraMount);
   const housing = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.019, 0.022), camBody);
   housing.position.set(0, 0, -0.004);
-  housing.castShadow = true;
-  outlineHull(housing, 1.08, 0x0c1016);
+  housing.castShadow = shade;
+  hull(housing, 1.08, 0x0c120e);
   cameraMount.add(housing);
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0084, 0.0090, 0.014, 14), camBody);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0084, 0.0090, 0.014, lite ? 8 : 14), camBody);
   barrel.rotation.x = Math.PI / 2;
   barrel.position.set(0, 0, -0.018);
   cameraMount.add(barrel);
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.0078, 18), lens);
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.0078, lite ? 10 : 18), lens);
   glass.rotation.y = Math.PI;
   glass.position.set(0, 0, -0.0242);
   cameraMount.add(glass);
-  const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.0084, 0.0013, 8, 18), ring);
+  const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.0084, 0.0013, lite ? 5 : 8, lite ? 10 : 18), ring);
   bezel.position.set(0, 0, -0.0236);
   cameraMount.add(bezel);
 
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.0013, 0.0013, 0.042, 8), antenna);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.0013, 0.0013, 0.042, lite ? 5 : 8), antenna);
   mast.position.set(-0.012, 0.038, 0.036);
   mast.rotation.z = 0.18;
   mast.rotation.x = -0.22;
   group.add(mast);
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.0022, 8, 8), antennaTip);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.0022, lite ? 5 : 8, lite ? 5 : 8), antennaTip);
   tip.position.set(-0.0156, 0.057, 0.031);
   group.add(tip);
 
-  const bladeGeo = bladeShape();
+  const bladeGeo = bladeShape(lite ? 5 : 8);
   bladeGeo.rotateX(-Math.PI / 2);
   bladeGeo.translate(0, 0, 0);
   const discs = [];
   const blades = [];
   const leds = [];
-  const bellGeo = bellLathe();
-  const statorGeo = new THREE.CylinderGeometry(0.0088, 0.0088, 0.014, 12);
+  const bellGeo = bellLathe(lite ? 10 : 16);
+  const statorGeo = new THREE.CylinderGeometry(0.0088, 0.0088, 0.014, lite ? 8 : 12);
   const nutGeo = new THREE.CylinderGeometry(0.0036, 0.0036, 0.0032, 6);
-  const hubGeo = new THREE.CylinderGeometry(0.0075, 0.0075, 0.0045, 12);
+  const hubGeo = new THREE.CylinderGeometry(0.0075, 0.0075, 0.0045, lite ? 8 : 12);
 
   for (let m = 0; m < 4; m += 1) {
     const [mx, mz] = motors[m];
@@ -289,12 +313,12 @@ export function buildHeroCraft(opts = {}) {
 
     const statorMesh = new THREE.Mesh(statorGeo, stator);
     statorMesh.position.y = -0.002;
-    statorMesh.castShadow = true;
+    statorMesh.castShadow = shade;
     motor.add(statorMesh);
     const bellMesh = new THREE.Mesh(bellGeo, bell);
     bellMesh.position.y = 0.006;
-    bellMesh.castShadow = true;
-    outlineHull(bellMesh, 1.07, 0x12161c);
+    bellMesh.castShadow = shade;
+    hull(bellMesh, 1.07, 0x121810);
     motor.add(bellMesh);
     const nut = new THREE.Mesh(nutGeo, ring);
     nut.position.y = 0.018;
@@ -309,15 +333,15 @@ export function buildHeroCraft(opts = {}) {
     for (let b = 0; b < 3; b += 1) {
       const blade = new THREE.Mesh(bladeGeo, propMat);
       blade.rotation.y = (b * Math.PI * 2) / 3;
-      blade.castShadow = true;
+      blade.castShadow = shade;
       rotor.add(blade);
     }
     blades.push(rotor);
 
     const disc = new THREE.Mesh(
-      new THREE.CylinderGeometry(CRAFT_PROP_R, CRAFT_PROP_R, 0.0012, 24),
+      new THREE.CylinderGeometry(CRAFT_PROP_R, CRAFT_PROP_R, 0.0012, lite ? 12 : 24),
       new THREE.MeshBasicMaterial({
-        color: front ? 0xff8a63 : 0x5a6572,
+        color: front ? 0xe8a8b8 : 0x5a6558,
         transparent: true,
         opacity: 0.12,
         depthWrite: false,
@@ -335,7 +359,7 @@ export function buildHeroCraft(opts = {}) {
     discs.push(disc);
 
     const ledMat = new THREE.MeshBasicMaterial({
-      color: front ? 0xff5533 : 0x7dffb4,
+      color: front ? 0xe8a8b8 : 0x7dffb4,
       fog,
     });
     const led = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.0022, 0.010), ledMat);
@@ -345,7 +369,7 @@ export function buildHeroCraft(opts = {}) {
     led.position.copy(dummy.position);
     led.quaternion.copy(dummy.quaternion);
     group.add(led);
-    leds.push({ mesh: led, mat: ledMat, front, base: front ? 0xff5533 : 0x7dffb4 });
+    leds.push({ mesh: led, mat: ledMat, front, base: front ? 0xe8a8b8 : 0x7dffb4 });
   }
 
   return {

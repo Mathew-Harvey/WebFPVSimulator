@@ -1,11 +1,11 @@
 /*
- * showcase.js: the settings-screen airframe.
+ * showcase.js: the studio airframe on Settings.
  *
- * A small studio, its own renderer, lit for the cel look. The flying
- * world's draw budget cannot see it: a second context, allocated the first
- * time Settings opens, never attached to the map scene. The quad is the
- * hero model from herocraft.js, posed from the live stick channels so a
- * radio in the hand moves the machine on the screen.
+ * One small WebGL context, allocated when Settings opens and disposed
+ * when it closes, so flight never shares the GPU with a second renderer.
+ * Cheap on purpose: no antialias, no shadow map, pixel ratio 1, low-power
+ * hint, lite hero (no outline hulls). The flying world's draw budget
+ * cannot see it. Stick response lives in craftpose.js.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -24,57 +24,22 @@
  */
 
 import * as THREE from 'three';
-import { celMaterial, outlineHull } from './celmat.js';
-import { buildHeroCraft, PROP_SPIN } from './herocraft.js';
-
-const RATE_ROLL = 2.8;
-const RATE_PITCH = 2.8;
-const RATE_YAW = 2.4;
-const STICK_DEAD = 0.14;
-const HOVER = 0.016;
-const LIFT = 0.038;
-
-function damp(cur, target, lambda, dt) {
-  return cur + (target - cur) * (1 - Math.exp(-lambda * dt));
-}
-
-function clamp01(v) {
-  if (v < 0) {
-    return 0;
-  }
-  if (v > 1) {
-    return 1;
-  }
-  return v;
-}
-
-function motorMix(thr, roll, pitch, yaw) {
-  const t = 0.16 + thr * 0.84;
-  return [
-    clamp01(t - 0.22 * roll - 0.22 * pitch + 0.12 * yaw),
-    clamp01(t - 0.22 * roll + 0.22 * pitch - 0.12 * yaw),
-    clamp01(t + 0.22 * roll - 0.22 * pitch - 0.12 * yaw),
-    clamp01(t + 0.22 * roll + 0.22 * pitch + 0.12 * yaw),
-  ];
-}
-
-function hexRgb(hex, gain) {
-  const r = Math.min(255, Math.round(((hex >> 16) & 255) * gain));
-  const g = Math.min(255, Math.round(((hex >> 8) & 255) * gain));
-  const b = Math.min(255, Math.round((hex & 255) * gain));
-  return (r << 16) | (g << 8) | b;
-}
+import { buildHeroCraft } from './herocraft.js';
+import { createCraftPose } from './craftpose.js';
+import { disposeSceneGraph } from './shell.js';
+import { SESSION_TEXTURES } from './session-textures.js';
 
 export function createShowcase(canvas) {
   let renderer = null;
   try {
     renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: false,
       alpha: false,
       depth: true,
       stencil: false,
       powerPreference: 'low-power',
+      failIfMajorPerformanceCaveat: false,
     });
   } catch (e) {
     return {
@@ -86,60 +51,33 @@ export function createShowcase(canvas) {
     };
   }
 
-  renderer.setClearColor(0x121c28, 1);
+  renderer.setClearColor(0x1a241c, 1);
+  renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = false;
+  if (renderer.debug) {
+    renderer.debug.checkShaderErrors = false;
+  }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(26, 1, 0.04, 4);
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.04, 4);
+  const look = new THREE.Vector3(0, 0.01, 0.02);
 
-  const hemi = new THREE.HemisphereLight(0xb7d4ff, 0x3a2a22, 0.82);
+  const hemi = new THREE.HemisphereLight(0xf0e6d0, 0x2a3828, 0.82);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(0xffe2b8, 2.45);
   sun.position.set(0.48, 0.92, -0.52);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(512, 512);
-  sun.shadow.camera.near = 0.12;
-  sun.shadow.camera.far = 2.4;
-  sun.shadow.camera.left = -0.55;
-  sun.shadow.camera.right = 0.55;
-  sun.shadow.camera.top = 0.55;
-  sun.shadow.camera.bottom = -0.55;
-  sun.shadow.bias = -0.0004;
+  sun.castShadow = false;
   scene.add(sun);
-  scene.add(sun.target);
-
-  /*
-   * One sun plus a hemisphere. Extra directional lights flatten the toon
-   * ramp into a grey average, which is the opposite of the cel look.
-   * The rim the materials already carry is the edge light.
-   */
-
-  const pedestalMat = celMaterial({
-    color: 0x1a2433,
-    rim: 0.16,
-    spec: 0.12,
-    fog: false,
-    cloudShadow: 0,
-  });
-  const pedestal = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.20, 0.22, 0.010, 28),
-    pedestalMat,
-  );
-  pedestal.position.y = -0.058;
-  pedestal.receiveShadow = true;
-  outlineHull(pedestal, 1.04, 0x0c1018);
-  scene.add(pedestal);
 
   const catcher = new THREE.Mesh(
-    new THREE.CircleGeometry(0.28, 28),
+    new THREE.CircleGeometry(0.22, 16),
     new THREE.MeshBasicMaterial({
-      color: 0x0b121c,
+      color: 0x0e140f,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.38,
       depthWrite: false,
       fog: false,
     }),
@@ -149,34 +87,27 @@ export function createShowcase(canvas) {
   scene.add(catcher);
 
   const washMat = new THREE.MeshBasicMaterial({
-    color: 0x9ec8ff,
+    color: 0x7dffb4,
     transparent: true,
     opacity: 0,
     depthWrite: false,
     fog: false,
   });
-  const wash = new THREE.Mesh(new THREE.CircleGeometry(0.12, 28), washMat);
+  const wash = new THREE.Mesh(new THREE.CircleGeometry(0.12, 16), washMat);
   wash.rotation.x = -Math.PI / 2;
   wash.position.y = -0.052;
   scene.add(wash);
 
-  const hero = buildHeroCraft({ fog: false });
+  const hero = buildHeroCraft({ fog: false, lite: true });
   const pose = new THREE.Group();
   pose.add(hero.group);
   scene.add(pose);
-  const omega = new THREE.Vector3();
-  const dq = new THREE.Quaternion();
+  const craftPose = createCraftPose();
 
   const state = {
-    roll: 0,
-    pitch: 0,
-    yaw: 0,
-    height: HOVER,
     az: Math.PI - 0.62,
     el: 0.34,
     dist: 1.32,
-    rpm: [0.16, 0.16, 0.16, 0.16],
-    spin: [0, 0, 0, 0],
     dragAz: 0,
     dragging: false,
     lastX: 0,
@@ -184,32 +115,34 @@ export function createShowcase(canvas) {
   };
 
   canvas.style.touchAction = 'none';
-  canvas.addEventListener('pointerdown', (e) => {
+  const onDown = (e) => {
     e.preventDefault();
     state.dragging = true;
     state.lastX = e.clientX;
     canvas.setPointerCapture(e.pointerId);
-  });
-  canvas.addEventListener('pointermove', (e) => {
+  };
+  const onMove = (e) => {
     if (!state.dragging) {
       return;
     }
     state.dragAz += (e.clientX - state.lastX) * 0.007;
     state.lastX = e.clientX;
-  });
+  };
   const endDrag = (e) => {
     state.dragging = false;
     if (canvas.hasPointerCapture(e.pointerId)) {
       canvas.releasePointerCapture(e.pointerId);
     }
   };
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
 
   const size = { w: 0, h: 0 };
   function resize() {
-    const w = canvas.clientWidth || 0;
-    const h = canvas.clientHeight || 0;
+    const w = canvas.clientWidth | 0;
+    const h = canvas.clientHeight | 0;
     if (w < 8 || h < 8) {
       return false;
     }
@@ -218,10 +151,9 @@ export function createShowcase(canvas) {
     }
     size.w = w;
     size.h = h;
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
-    renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    camera.fov = w > h * 1.15 ? 32 : 28;
     camera.updateProjectionMatrix();
     return true;
   }
@@ -235,9 +167,10 @@ export function createShowcase(canvas) {
 
   function setActive(on) {
     if (on && !state.active) {
-      pose.quaternion.identity();
-      pose.position.y = HOVER;
-      state.height = HOVER;
+      craftPose.reset(pose);
+      for (let m = 0; m < 4; m += 1) {
+        hero.blades[m].rotation.y = 0;
+      }
     }
     state.active = on;
     if (on) {
@@ -245,53 +178,28 @@ export function createShowcase(canvas) {
     }
   }
 
-  function update(dtMs, channels, nowMs, cameraAngle) {
+  function damp(cur, target, lambda, dt) {
+    return cur + (target - cur) * (1 - Math.exp(-lambda * dt));
+  }
+
+  function update(dtMs, channels, nowMs, cameraAngle, angleMode) {
     if (!state.active) {
       return;
     }
     const dt = Math.min(0.05, Math.max(0, dtMs) * 0.001);
-    const t = nowMs * 0.001;
-    const roll = channels.roll || 0;
-    const pitch = channels.pitch || 0;
-    const yaw = channels.yaw || 0;
-    const thr = clamp01(channels.throttle || 0);
-
-    /*
-     * Acro, not angle. Stick is a rate in the body frame. There is no
-     * spring back to level: hands off, the attitude stays where it is.
-     */
-    const rr = Math.abs(roll) > STICK_DEAD ? roll : 0;
-    const pp = Math.abs(pitch) > STICK_DEAD ? pitch : 0;
-    const yy = Math.abs(yaw) > STICK_DEAD ? yaw : 0;
-    omega.set(pp * RATE_PITCH, -yy * RATE_YAW, -rr * RATE_ROLL);
-    const half = dt * 0.5;
-    dq.set(omega.x * half, omega.y * half, omega.z * half, 1).normalize();
-    pose.quaternion.multiply(dq);
-    const bob = Math.sin(t * 2.15) * 0.0045 + Math.sin(t * 3.4) * 0.002;
-    state.height = damp(state.height, HOVER + thr * LIFT + bob, 6, dt);
-    pose.position.y = state.height;
-
-    const tilt = ((cameraAngle ?? 30) * Math.PI) / 180;
-    hero.cameraMount.rotation.x = tilt;
-
-    const mix = motorMix(thr, roll, pitch, yaw);
-    for (let m = 0; m < 4; m += 1) {
-      state.rpm[m] = damp(state.rpm[m], mix[m], 9, dt);
-      const rate = (9 + state.rpm[m] * 48) * PROP_SPIN[m];
-      state.spin[m] += rate * dt;
-      hero.blades[m].rotation.y = state.spin[m];
-      hero.discs[m].material.opacity = 0.08 + state.rpm[m] * 0.40;
-      const led = hero.leds[m];
-      const gain = 0.28 + state.rpm[m] * 0.95;
-      led.mat.color.setHex(hexRgb(led.base, gain));
-    }
-
-    const hot = 0.12 + thr * 0.62;
-    hero.stator.emissive.setRGB(0.50 * hot, 0.14 * hot, 0.04 * hot);
-    hero.stator.emissiveIntensity = 0.8;
+    const thr = craftPose.update(
+      dtMs,
+      channels,
+      nowMs,
+      cameraAngle,
+      angleMode,
+      hero,
+      pose,
+    );
 
     washMat.opacity = thr * 0.12;
-    wash.scale.setScalar(0.85 + thr * 0.55);
+    const ws = 0.85 + thr * 0.55;
+    wash.scale.set(ws, ws, ws);
 
     const homeAz = Math.PI - 0.62;
     state.az = damp(state.az, homeAz + state.dragAz, 3.2, dt);
@@ -306,19 +214,29 @@ export function createShowcase(canvas) {
       ca * ce * state.dist,
     );
     camera.up.set(0, 1, 0);
-    camera.lookAt(0, 0.01, 0.02);
+    camera.lookAt(look);
   }
 
   function render() {
-    if (!state.active || !resize()) {
+    if (!state.active || document.hidden || !resize()) {
       return;
     }
     renderer.render(scene, camera);
   }
 
   function dispose() {
+    state.active = false;
     ro.disconnect();
-    renderer.dispose();
+    canvas.removeEventListener('pointerdown', onDown);
+    canvas.removeEventListener('pointermove', onMove);
+    canvas.removeEventListener('pointerup', endDrag);
+    canvas.removeEventListener('pointercancel', endDrag);
+    disposeSceneGraph(scene, SESSION_TEXTURES);
+    try {
+      renderer.dispose();
+    } catch (e) {
+      /* Already gone. */
+    }
   }
 
   return { update, render, setActive, dispose, failed: false };

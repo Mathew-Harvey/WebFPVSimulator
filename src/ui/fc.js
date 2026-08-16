@@ -211,8 +211,9 @@ function fieldRank(field, page) {
   return 0;
 }
 
-function fieldNote(field, draft) {
-  if (field.key === 'gyro_lpf1_static_hz' && Number(cliGet(draft, 'gyro_lpf1_dyn_min_hz')) > 0) {
+function fieldNote(field, draft, session) {
+  const look = (key) => (session ? session.cliValue(key) : cliGet(draft, key));
+  if (field.key === 'gyro_lpf1_static_hz' && Number(look('gyro_lpf1_dyn_min_hz')) > 0) {
     return 'Firmware inits LPF1 from gyro_lpf1_dyn_min_hz while that is above 0. Set dyn min to 0 to make this cutoff live. Same as 4.5.1.';
   }
   if (field.status === STATUS.GATED) {
@@ -235,6 +236,9 @@ export class FcSession {
   constructor() {
     this.snapshot = '';
     this.draft = '';
+    /* See cliMapCached: the parsed draft and the text it was parsed from. */
+    this.cliCache = null;
+    this.cliCacheText = null;
     this.tab = 'pid';
     this.page = 'pid';
     this.runActive = false;
@@ -269,6 +273,34 @@ export class FcSession {
     this.confirm = 'import-rates';
     this.tab = 'cli';
     this.draft = this.importText;
+  }
+
+  /*
+   * The parsed draft, built at most once per distinct draft text.
+   *
+   * cliGet is cliMap().get(), and cliMap splits and scans the WHOLE dump.
+   * fieldItem asked for one key per field, items() ran fieldItem for every
+   * visible field, and the menu calls items() several times per keystroke,
+   * so a cursor move on Configuration (126 fields) re-parsed a 20 kB dump
+   * hundreds of times and the screen fell below a readable frame rate while
+   * scrolling.
+   *
+   * Keyed on the text, not invalidated by hand. draft is assigned from a
+   * dozen places here and directly from main.js when a config load lands,
+   * and a cache cleared at each of those is a cache that goes stale the day
+   * a thirteenth is added. Strings are immutable, so holding the one it was
+   * built from is the whole check.
+   */
+  cliMapCached() {
+    if (!this.cliCache || this.cliCacheText !== this.draft) {
+      this.cliCache = cliMap(this.draft);
+      this.cliCacheText = this.draft;
+    }
+    return this.cliCache;
+  }
+
+  cliValue(key) {
+    return this.cliMapCached().get(key) ?? null;
   }
 
   dirty() {
@@ -646,12 +678,12 @@ export class FcSession {
   }
 
   fieldItem(field, tabGrey) {
-    const raw = cliGet(this.draft, field.key);
+    const raw = this.cliValue(field.key);
     const dynMinOn = field.key === 'gyro_lpf1_static_hz'
-      && Number(cliGet(this.draft, 'gyro_lpf1_dyn_min_hz')) > 0;
+      && Number(this.cliValue('gyro_lpf1_dyn_min_hz')) > 0;
     const enabled = !tabGrey && fieldEnabled(field) && !dynMinOn;
-    const note = fieldNote(field, this.draft);
-    const actual = isActualRateKey(field.key) && cliGet(this.draft, 'rates_type') === 'ACTUAL';
+    const note = fieldNote(field, this.draft, this);
+    const actual = isActualRateKey(field.key) && this.cliValue('rates_type') === 'ACTUAL';
     const label = actual ? actualRateLabel(field.key) : field.key;
     const greyClass = enabled ? (field.status === STATUS.GATED ? 'row-gated' : '') : 'row-grey';
     if (!enabled) {
@@ -771,7 +803,19 @@ export function drawAttitude(canvas, q) {
   const sinr = 2 * (qw * qx + qy * qz);
   const cosr = 1 - 2 * (qx * qx + qy * qy);
   const roll = Math.atan2(sinr, cosr);
-  const sinp = 2 * (qw * qy - qz * qx);
+  /*
+   * The sign is the whole point here. This instrument is drawn the way an
+   * aviation horizon is drawn, which assumes the aerospace NED frame: x
+   * forward, y RIGHT, z DOWN. The quaternion it is fed is the plant's, and
+   * that frame is x forward, y LEFT, z UP, so a positive rotation about
+   * body y is nose DOWN, not nose up. Reading NED pitch off it put the
+   * ground up when the nose went down. Negating the pitch term is the frame
+   * change, and it belongs here, at the instrument, because this is a
+   * drawing and not the render boundary: the one conversion that physics is
+   * allowed lives in src/render/frame.js. Roll needs no such fix, it reads
+   * the same in both frames.
+   */
+  const sinp = 2 * (qz * qx - qw * qy);
   const pitch = Math.abs(sinp) >= 1 ? Math.sign(sinp) * (Math.PI / 2) : Math.asin(sinp);
   ctx.fillStyle = '#3a81c5';
   ctx.fillRect(0, 0, w, h);

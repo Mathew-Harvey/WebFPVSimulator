@@ -191,6 +191,16 @@ export async function adoptShareFromLocation() {
     board: origin,
     document,
   };
-  writeShareImport(share);
+  /*
+   * The seat is how the custom map finds the course, so a refused write is
+   * not a detail to swallow: private mode and a full quota both return
+   * false here, and the boot went on to build the custom map from whatever
+   * the autosave held. The pilot followed a Fly link and flew someone
+   * else's track under this one's name. main.js already catches this and
+   * puts the message on the banner.
+   */
+  if (!writeShareImport(share)) {
+    throw new Error('This browser would not store that course, so it cannot be flown here.');
+  }
   return share;
 }

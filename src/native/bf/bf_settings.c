@@ -551,6 +551,16 @@ int bf_settings_apply(const char *key, const char *value, double num, int have_n
       }
       return SIM_ERR_CONFIG_PARSE;
     }
+    /*
+     * A number given for a lookup key has to name one of its words. The CLI
+     * accepts the index form, so this does too, but only in range: without
+     * the bound an out of range index was stored raw and dumped back as a
+     * number no word matches, which is the silent half of the same policy
+     * that makes a misspelled word above loud.
+     */
+    if (s->lut != 0 && (num < 0.0 || num >= (double)s->lut_n)) {
+      return SIM_ERR_CONFIG_PARSE;
+    }
     store(s, num);
     g_applied += 1;
     return SIM_OK;

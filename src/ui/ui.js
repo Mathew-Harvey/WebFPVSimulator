@@ -541,6 +541,7 @@ export class Ui {
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
     this.resultsFastest = null;
+    this.resultsDocId = null;
     this.coursePublished = null;
     this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
     this.dropEl = null;
@@ -1024,11 +1025,21 @@ export class Ui {
         }
       });
       cancel.addEventListener('click', () => finish(null));
-      this.nameDialog.addEventListener('click', (e) => {
+      /*
+       * Backdrop cancel. This used to be a `{ once: true }` listener, which
+       * spends itself on the FIRST click anywhere in the dialog: one click
+       * in the name field and clicking the backdrop no longer closed
+       * anything. It also outlived a dialog closed by a button, because
+       * `once` only removes the listener when it actually fires, so every
+       * open that ended on Save left one behind on a node that is reused.
+       * Held and removed in closeNameDialog, next to the key handler.
+       */
+      this.nameClickHandler = (e) => {
         if (e.target === this.nameDialog) {
           finish(null);
         }
-      }, { once: true });
+      };
+      this.nameDialog.addEventListener('click', this.nameClickHandler);
       inputs[0].field.focus();
       inputs[0].field.select();
     });
@@ -1061,6 +1072,10 @@ export class Ui {
     if (this.nameKeyHandler) {
       this.nameDialog.removeEventListener('keydown', this.nameKeyHandler, true);
       this.nameKeyHandler = null;
+    }
+    if (this.nameClickHandler) {
+      this.nameDialog.removeEventListener('click', this.nameClickHandler);
+      this.nameClickHandler = null;
     }
     this.nameDialog.hidden = true;
     this.nameDialog.textContent = '';
@@ -2373,9 +2388,14 @@ export class Ui {
     this.timePosted = null;
     this.coursePublished = null;
     this.resultsFastest = fastest;
+    /* Which course this lap was flown on. The time and the document have to
+     * travel together: publishing a DIFFERENT course while these results are
+     * still on screen used to hand the new course this lap. */
+    this.resultsDocId = null;
     if (fastest != null) {
       try {
         const listing = inspectCourse();
+        this.resultsDocId = listing && listing.doc ? listing.doc.id : null;
         if (listing && listing.canPostTime && listing.shareId) {
           writePendingTime({ trackId: listing.shareId, lapMs: fastest, name: listing.name });
         }

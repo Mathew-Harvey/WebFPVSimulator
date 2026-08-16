@@ -88,6 +88,19 @@ async function start() {
   } catch (e) {
     /* No URL to read. Keep the stored setting. */
   }
+  /*
+   * An id no map has is a stale bookmark, a typo or a settings blob from a
+   * build that had another world, and it used to reach main.js verbatim: the
+   * loaders normalise it to the field while the setting kept the bad string,
+   * so the Map row named a world that was not there and syncWorld saw a
+   * mismatch it could never clear. This is the fallback the comment above
+   * already promised. MAP_BUILD_MS is keyed by map id and is imported here
+   * anyway, so the check does not drag the registry, and its loader thunks,
+   * into the boot graph.
+   */
+  if (!Object.hasOwn(MAP_BUILD_MS, mapId)) {
+    mapId = 'field';
+  }
   const worldMs = MAP_BUILD_MS[mapId] ?? MAP_BUILD_MS.field;
 
   loading.run(planStages(['three', 'sim', 'module', 'world', 'frame'], worldMs));

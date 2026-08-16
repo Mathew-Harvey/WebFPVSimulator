@@ -369,6 +369,19 @@ export class InputManager {
     this.sampleHz = 0;
 
     window.addEventListener('keydown', (e) => {
+      /*
+       * A text field owns its own keys. This listener is on the window and
+       * the fields below it (the pilot name, the course name, the board
+       * address, the FC dump) do not stop propagation for anything but
+       * Enter and Escape, so without this bail out the preventDefault below
+       * ate the space bar: a pilot could not type a space in their own name,
+       * and the arrows could not move the caret. Sticks are not flown from a
+       * text box, so swallowing the whole event here is right.
+       */
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+        return;
+      }
       if (!e.repeat) {
         this.keys.add(e.code);
       }

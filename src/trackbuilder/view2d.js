@@ -190,8 +190,15 @@ export class View2D {
       return boxCorners(el.position, el.yaw, el.dims.width, el.dims.depth);
     }
     if (def.kind === KIND.START) {
+      /* The row lies ACROSS the heading, because that is the start line: a
+       * pad element's yaw is the direction the quad faces, and trackdoc runs
+       * it through headingForTravel before the mesh loop steps the stands
+       * sideways off it. boxCorners spends its third argument along the yaw
+       * and its fourth across, so the span is the fourth. Handing it the
+       * third turned the pick box a quarter turn out of the stands it is
+       * supposed to be wrapped around. */
       const span = Math.max(el.dims.padSize, (el.dims.pads - 1) * el.dims.spacing + el.dims.padSize);
-      return boxCorners(el.position, el.yaw, span, el.dims.padSize);
+      return boxCorners(el.position, el.yaw, el.dims.padSize, span);
     }
     if (def.kind === KIND.MARKER) {
       const r = Math.max(def.dims.baseRadius ?? 0.2, 0.22);
@@ -311,6 +318,14 @@ export class View2D {
 
     if (e.shiftKey) {
       this.host.toggleSelection(hit.id);
+      /* Shift clicking a selected element takes it OUT of the selection, so
+       * there is nothing to drag by and no origin recorded for it. Starting
+       * a move here used to look up the anchor's origin in a map that no
+       * longer held it and throw on the first mouse move. Deselecting is the
+       * whole gesture. */
+      if (!this.host.selection.has(hit.id)) {
+        return;
+      }
     } else if (!this.host.selection.has(hit.id)) {
       this.host.setSelection([hit.id]);
     }

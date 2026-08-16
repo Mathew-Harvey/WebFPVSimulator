@@ -382,6 +382,15 @@ export function normalize(raw) {
   }
 
   const seenIds = new Set();
+  /*
+   * Every id the file carries, including the ones this loop has not reached
+   * yet. Repairing an id against seenIds alone let a renamed element take an
+   * id that belonged to an element further down the list: that element then
+   * looked like the duplicate and was renamed in its turn, and every
+   * sequence entry naming the id now pointed at the wrong gate. Renaming
+   * has to dodge the whole file, not just the part already read.
+   */
+  const rawIds = (Array.isArray(src.elements) ? src.elements : []).map((e) => str(e?.id));
   let startSeen = false;
   for (const rawEl of Array.isArray(src.elements) ? src.elements : []) {
     const type = str(rawEl?.type);
@@ -399,7 +408,7 @@ export function normalize(raw) {
     }
     let id = str(rawEl.id);
     if (!id || seenIds.has(id)) {
-      id = nextId([...seenIds], 'el');
+      id = nextId([...seenIds, ...rawIds], 'el');
       repairs.push(`an element had a missing or duplicate id, renamed to ${id}.`);
     }
     seenIds.add(id);

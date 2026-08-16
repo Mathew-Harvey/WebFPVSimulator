@@ -9185,3 +9185,146 @@ t63 26 ms, rate-tracking 671.5, sag 11.14 percent). build:wasm exited
 its 2 deg floor. None of that is this change: native and the harness
 were not touched.
 
+
+### 2026-08-16 | sweep | batch A and B of the bug and duplication sweep
+
+Asked: sweep the whole simulator, the physics, the flight model, the
+track builder and the leaderboard integration for bugs, duplicated and
+redundant code. List them for approval, fix nothing yet, do not regress
+the gameplay, polish where it helps. Thirteen review passes over both
+repos found 154 items after deduplication. Batches A and B, the
+critical one and the majors, are this turn. The minors and trivials are
+not, and neither is the barrier collider, which is the one item whose
+fix changes what the craft can hit.
+
+**An unknown map id rebuilt the world forever.** `boot.js` took `?map=`
+verbatim, every loader normalises through `mapById`, which falls back to
+`MAPS[0]`, so `view.id` became `field` while `ui.settings.map` stayed
+`bogus`. The tail guard in `syncWorld` compared the raw setting against
+`view.id`, saw a mismatch that could never clear, and called itself
+again: dispose, rebuild, about 3 s of blocking work, re-enter. A stale
+bookmark locked the tab. `syncWorld` now normalises at both ends, and
+`boot.js` drops an id no map has, which is the fallback its own comment
+already claimed.
+
+**A text field could not take a space.** The window keydown listener
+preventDefaults Space and the arrows so menu navigation does not scroll
+the page, and nothing exempted a focused field, so a pilot could not
+type a space in their own name. Typing targets now bail out before both
+the latch and the preventDefault. The FC textarea was never affected: it
+stops propagation itself.
+
+**Shift clicking a selected element threw.** The gesture deselects, then
+the code started a move drag anyway and looked up the anchor's origin in
+a map that no longer held it. Deselecting is now the whole gesture.
+
+**Duplicate id repair could rebind the flying order.** `normalize` chose
+a replacement id against the ids it had seen SO FAR, so a repaired
+element could take an id belonging to an element further down the list.
+That element was then renamed in its turn and every sequence entry
+naming the id pointed at the wrong gate. Repair now dodges every id in
+the file.
+
+**The board.** Path ids were fed straight into a plain object, so
+`/api/tracks/constructor` found `Object.prototype` and turned a 404 into
+a 500; ids now go through the same `TRACK_ID_RE` publishing already
+enforces. `PgStore.addTime` ranked a new row by sending its own
+timestamp back as a parameter, and `posted_utc` is a TIMESTAMPTZ with
+microseconds while a JS Date carries milliseconds, so the row never
+counted itself and the fastest lap reported rank 0. Ranking now happens
+inside Postgres against the inserted id. Boot ignored `r.ok`, so a 500
+painted "The board is empty", the one screen that tells a visitor to go
+and build the first course.
+
+**The plan drawings disagreed with the builder three ways.** Barriers
+were drawn with their long side across the heading, a quarter turn out
+of both `view2d.js` and `scene.js`. `planFromDocument` carried no dims,
+so the drawer rebuilt every size from a copy of the builder's type
+defaults: a five level ladder drew three arcs and a twenty metre barrier
+drew as four, while the gate count on the same card told the truth.
+Numbers were assigned per element, so a stack flown three times got one
+badge and the last number fell short of the count beside it. Marks now
+carry levels, width and depth, numbering follows the flying order, and
+coincident badges stack the way the builder stacks them.
+
+**The artificial horizon pitched the wrong way.** `drawAttitude` reads
+NED Euler angles off a quaternion the ABI declares as x forward, y LEFT,
+z UP, where a positive rotation about body y is nose DOWN. Roll reads
+the same in both frames, so only pitch was inverted and the two axes
+disagreed with each other. Negated at the instrument, which is a
+drawing: the one physics conversion still lives in `render/frame.js`.
+
+**The FC menu dropped frames.** `cliGet` is `cliMap().get()` and
+`cliMap` splits and scans the whole dump, `fieldItem` asked for one key
+per field, and the menu calls `items()` several times per keystroke, so
+a cursor move on Configuration re-parsed a 20 kB dump hundreds of times.
+The parse is now memoised on the text it came from rather than cleared
+by hand, because `draft` is assigned from a dozen places here and one
+more in `main.js`.
+
+Smaller ones: a failed map load at boot bricked the session where the
+swap path has fallen back for a while; a refused `writeShareImport` was
+ignored, so a Fly link could silently fly whatever the autosave held;
+the name dialog's backdrop cancel used `{ once: true }`, which spends
+itself on the first click anywhere in the dialog and leaks when the
+dialog closes by button; the start pads pick box was a quarter turn out
+of the stands; publishing course B with course A's results on screen
+attached A's lap to B.
+
+**Deleted `src/ui/mapreel.js`,** 884 lines nothing imports. The map
+screen was rebuilt on recorded clips through `orbitcache.js`. It held
+`GATE_SCALE` as a bare 1.15 twice, a second copy of the document to
+scene conversion, re-typed camera numbers and six duplicated colours,
+all invisible because the file never ran.
+
+**Deduplicated `reset()` against `resetCraft()`.** About 35 lines were
+verbatim, comments included. `reset` is now the run's own three
+concerns, the pack voltage, the spawn and the lap clock, and then
+`resetCraft(null)`. The reordering is safe: `adoptSimClock` and
+`pinRcGrid` follow `simStepMs`, not the lap clock.
+
+**`launched` was a constant.** Initialised true, only ever assigned
+true, because setting it false on a respawn was what made every recovery
+repeat the takeoff trap. Every test of it was therefore a constant and
+the takeoff hint it gated could not appear. Replaced with
+`flownThisRun`, which nothing but the banner reads, so it cannot reach
+the integrator or the RC grid the way the old flag could.
+
+What went wrong this turn. The boot fallback first used `notice`, which
+is declared with `let` about two hundred lines further down, so the
+catch would have thrown in the temporal dead zone. `node --check` cannot
+see that. It uses `ui.setBanner` now, which is what the share adoption
+failure above it already does. The `boot.js` id check first went inside
+the URL try block, where a throw before it would leave a stored bad id
+unvalidated; it belongs after. Importing `MAPS` into `boot.js` was
+considered and rejected: `build-cost.js` exists precisely to keep the
+registry's loader thunks out of the boot graph, so the check reads
+`MAP_BUILD_MS` keys instead. The start pads footprint needed
+`headingForTravel` to settle which axis is the heading, because
+`scene.js` says "across" in a comment and `view2d.js` said along in
+code.
+
+`npm run verify`: 13 of 16, unchanged from before this turn. Physics
+hash 6d17d4814bdc unchanged (hover 0.2637, punch 81.5 m, terminal
+31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent). The three
+failures are the three that were already failing. build-clean needs
+emcc, which is not installed here, and `vendor/betaflight` is empty in
+this container, so the one C change this turn, the missing lookup bound
+in `bf_settings.c`, IS NOT COMPILED OR TESTED. It needs a build
+somewhere that has the toolchain before it can be trusted. It cannot
+reject a shipped preset: there are eight lookup backed keys and no
+config sets one numerically out of range. yaw-coupling is -0.12 deg
+against its 2 deg floor. map-isolation is a stale baseline, not a leak,
+and the fix for that is batch C, argued there rather than here.
+
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`node tracks/check.mjs`: 3882 passed, 0 failed.
+`node scripts/preset-lint.js`: 2 of 2 presets clean.
+Leaderboard `node src/selftest.js`: all passed.
+`scripts/fc-catalog-lint.js` cannot run here, it reads the empty vendor
+tree.
+
+Next: batch C is check 16's leak detector, which compares boot and post
+round trip only against a frozen constant and never against each other,
+so the half that can see a leak is expressed through history. Then the
+79 minors and 49 trivials, and the barrier collider if it is wanted.

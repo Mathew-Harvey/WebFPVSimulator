@@ -379,7 +379,31 @@ export async function boot({ loading, bootStart, mapId }) {
   loading.detail = '';
 
   applyPixelRatio(shell, ui.settings.graphics);
-  view = await loadMap(shell, ui.settings.map, loading, { quality: ui.settings.graphics });
+  /*
+   * The swap path has fallen back to the previous map on a failed load for
+   * a while; boot had nothing, so one map that would not build (a bad
+   * asset, a WebGL context the city cannot have, a course the custom map
+   * chokes on) took the whole session down before the title screen. The
+   * field is the floor: it is the default map and the smallest world here,
+   * so if it cannot build there is nothing to fall back TO and the throw is
+   * honest.
+   */
+  try {
+    view = await loadMap(shell, ui.settings.map, loading, { quality: ui.settings.graphics });
+  } catch (e) {
+    if (ui.settings.map === 'field') {
+      throw e;
+    }
+    console.error(e);
+    const failed = mapById(ui.settings.map).name;
+    ui.settings.map = 'field';
+    ui.renderMenu();
+    view = await loadMap(shell, 'field', loading, { quality: ui.settings.graphics });
+    /* The banner, not `notice`: that is declared with the frame loop's own
+     * state further down and does not exist yet. This is the same way the
+     * share adoption above reports a boot failure. */
+    ui.setBanner(`${failed} could not be loaded.\nThe race field was loaded instead.`, true);
+  }
   ui.setShare(view.share || null);
   loading.start('frame');
 
@@ -545,8 +569,17 @@ export async function boot({ loading, bootStart, mapId }) {
    * Starting landed hands the craft to the on ground branch below, which
    * already holds it, already keeps the lap clock honest and already gates
    * liftoff on TAKEOFF_THROTTLE. A real quad sits on the ground before a run.
+   *
+   * There used to be a `launched` flag here as well. It was initialised true
+   * and never assigned anything but true, because setting it false on a
+   * respawn was what made every recovery repeat the takeoff trap, so every
+   * test of it was a constant and the takeoff hint it gated could not
+   * appear. What the banner actually wants is "has this run left the ground
+   * yet", which is a render question, not a flight one: nothing below reads
+   * this, so it cannot gate the integrator or the RC grid the way the old
+   * flag could.
    */
-  let launched = true;
+  let flownThisRun = false;
   /* On the ground, upright, intact, physics frozen. Position is not
    * writable through the ABI, so the craft is held by not stepping it;
    * sim_rest zeroes the velocity at each judged touchdown so the frozen
@@ -701,11 +734,11 @@ export async function boot({ loading, bootStart, mapId }) {
     rcPending.length = 0;
     adoptSimClock();
     crashed = false;
-    /* Back on the ground, landed, exactly as at boot. Setting launched false
-     * here is what made every respawn repeat the takeoff trap. */
-    launched = true;
+    /* Back on the ground, landed, exactly as at boot. */
     landed = true;
     takingOff = false;
+    /* Parked again, so the takeoff hint is due again. Render only. */
+    flownThisRun = false;
     groundY = groundAt(startX, startZ);
     /* Clear the judgement that produced the last crash. Leaving it behind is
      * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
@@ -733,36 +766,25 @@ export async function boot({ loading, bootStart, mapId }) {
      * to a point on the course, and a new run must not begin from wherever
      * the last one happened to end. */
     adoptSpawn();
-    sim.reset();
-    sim.setCellVoltage(runVoltage);
+    /*
+     * The LAP clock, which resetCraft deliberately leaves alone: a crash
+     * recovery keeps the run going, a fresh run does not. Setting it here,
+     * before the craft reset, keeps the two clocks in the same order they
+     * were written in. Nothing in resetCraft reads it: adoptSimClock and
+     * pinRcGrid follow simStepMs, which mirrors the module.
+     */
     simTimeMs = 0;
-    acc = 0;
-    rcPending.length = 0;
-    adoptSimClock();
-    crashed = false;
-    /* Back on the ground, landed, exactly as at boot. Setting launched false
-     * here is what made every respawn repeat the takeoff trap. */
-    launched = true;
-    landed = true;
-    takingOff = false;
-    groundY = groundAt(startX, startZ);
-    /* Clear the judgement that produced the last crash. Leaving it behind is
-     * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
-     * the start line, which reads as a landing gate that does not work. */
-    lastDescent = 0;
-    lastTiltDeg = 0;
-    lastClosing = 0;
-    lastHitKind = 'none';
-    input.keys.clear();
-    input.drain();
-    input.resetKeyboardSticks();
+    /*
+     * Everything else a reset does to the CRAFT is resetCraft's job, and it
+     * used to be a verbatim copy of it, comments and all, which is the kind
+     * of duplication that survives until the two drift and a crash recovery
+     * starts clearing something a restart does not. Passing null keeps the
+     * spawn adoptSpawn just set.
+     */
+    resetCraft(null);
     race.reset();
     runLaps = ui.settings.laps;
     view.setNextGate(race.nextSceneIndex());
-    raceHasPrev = false;
-    groundHasPrev = false;
-    statePrev = readState();
-    stateCurr = statePrev;
   }
 
   /*
@@ -810,7 +832,13 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   async function syncWorld() {
-    const wantId = ui.settings.map;
+    /* Normalised, not raw. Every loader path runs the id through mapById,
+     * which falls back to the first map for an id no map has, so a raw
+     * setting of 'bogus' would leave view.id as 'field' and the tail guard
+     * below would see a mismatch that can never clear: dispose, rebuild,
+     * re-enter, forever. ?map= is taken verbatim in boot.js, so an unknown
+     * id is reachable from a stale bookmark. */
+    const wantId = mapById(ui.settings.map).id;
     const wantQ = normalizeGraphics(ui.settings.graphics);
     if (swapInFlight) {
       return;
@@ -877,7 +905,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * and ui.js has already saved it, so the setting and the loaded map would
      * otherwise stay diverged with the title screen naming a map that is not
      * there. Honour it now. */
-    if (mapReady && (ui.settings.map !== view.id || normalizeGraphics(ui.settings.graphics) !== view.graphics)) {
+    if (mapReady && (mapById(ui.settings.map).id !== view.id || normalizeGraphics(ui.settings.graphics) !== view.graphics)) {
       await syncWorld();
     }
   }
@@ -1132,7 +1160,11 @@ export async function boot({ loading, bootStart, mapId }) {
         board: listing.board,
       });
       ui.markCoursePublished(result.posted);
-      if (ui.resultsFastest != null) {
+      /* Only when the lap on the results screen was flown on the course that
+       * was just published. Publishing course B with course A's results still
+       * up used to attach A's lap to B, because resultsFastest is a bare
+       * number with no course attached to it. */
+      if (ui.resultsFastest != null && ui.resultsDocId != null && ui.resultsDocId === listing.doc.id) {
         writePendingTime({
           trackId: result.posted.id,
           lapMs: ui.resultsFastest,
@@ -1147,7 +1179,7 @@ export async function boot({ loading, bootStart, mapId }) {
   ui.onSettings = applySettings;
   ui.onFcOpen = (page) => {
     const dump = moduleDump(sim);
-    const runActive = (mode === 'flight' || mode === 'paused') && launched && !landed && !crashed;
+    const runActive = (mode === 'flight' || mode === 'paused') && !landed && !crashed;
     ui.fc.open(dump, { runActive, page });
   };
   ui.onFcSave = (draft, opts) => {
@@ -1412,7 +1444,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * A file with no rate keys still loads silently keep-mine. */
       if (dumpCarriesRates(text)) {
         const dump = moduleDump(sim);
-        const runActive = (mode === 'flight' || mode === 'paused') && launched && !landed && !crashed;
+        const runActive = (mode === 'flight' || mode === 'paused') && !landed && !crashed;
         ui.returnTo = ui.screen === 'paused'
           ? 'paused'
           : (ui.screen === 'settings' ? 'settings' : 'title');
@@ -1538,7 +1570,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * queue grew for as long as the page was open, at the 100 ms heartbeat
      * alone, and the first frame of flight had to walk all of it.
      */
-    if (!(mode === 'flight' && !crashed && launched && !landed) && rcPending.length > 1) {
+    if (!(mode === 'flight' && !crashed && !landed) && rcPending.length > 1) {
       rcPending.splice(0, rcPending.length - 1);
     }
     /* Hard bound, whatever else happens. */
@@ -1549,11 +1581,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.pollPad(padNav());
     }
 
-    if (mode === 'flight' && !crashed && (!launched || landed)) {
+    if (mode === 'flight' && !crashed && landed) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
-      if (!launched && thr > 0.05) {
-        launched = true;
-      } else if (landed && thr > TAKEOFF_THROTTLE) {
+      if (landed && thr > TAKEOFF_THROTTLE) {
         /* Off again. The RC frame grid rides the SIM's own clock, which
          * froze with the integrator, so it is already seated; this re-pin
          * is belt and braces against any future path that moves rcNextMs
@@ -1562,13 +1592,14 @@ export async function boot({ loading, bootStart, mapId }) {
          * second of stick lag. */
         landed = false;
         takingOff = true;
+        flownThisRun = true;
         adoptSimClock();
         if (typeof audio.event === 'function') {
           audio.event('takeoff');
         }
       }
     }
-    if (mode === 'flight' && !crashed && launched && !landed) {
+    if (mode === 'flight' && !crashed && !landed) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
        * into the future. Snap the shell to step_index instead. */
@@ -1831,7 +1862,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
       }
-    } else if (mode === 'flight' && !crashed && launched && landed) {
+    } else if (mode === 'flight' && !crashed && landed) {
       /*
        * Sitting on the ground. The integrator does NOT step: position is
        * still not writable through the ABI, so the craft is held by not
@@ -1947,7 +1978,7 @@ export async function boot({ loading, bootStart, mapId }) {
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    if (mode === 'flight' && !crashed && !landed && launched && raceHasPrev) {
+    if (mode === 'flight' && !crashed && !landed && raceHasPrev) {
       /* The craft the query sweeps is the ellipsoid: CRAFT_R across the
        * props, vHalfFrame through the body at its current tilt. */
       const k = view.colliders.hit(
@@ -1997,7 +2028,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * clock at that state: gate crossings are swept over the frame's
      * travel, so speed cannot tunnel a gate. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
-    if (mode === 'flight' && !crashed && launched) {
+    if (mode === 'flight' && !crashed) {
       if (raceHasPrev) {
         const res = race.update(racePrev, pCurr, simNow, nowWall);
         if (res.passed != null) {
@@ -2020,7 +2051,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * run began, which is what a pilot flying a pack wants beside the pack
      * bar. It reads on the sim clock for the same reason a lap does, so a
      * frame hitch cannot spend a pilot's battery for them. */
-    airtimeMs = launched ? simTimeMs : 0;
+    airtimeMs = simTimeMs;
 
     /*
      * The world is the title picture, the flight picture, the pause
@@ -2076,7 +2107,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fpvPos.copy(pCurr)
       .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
       .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
-    const wantLift = (landed || crashed || !launched) ? PARKED_LIFT : 0;
+    const wantLift = (landed || crashed) ? PARKED_LIFT : 0;
     parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
@@ -2376,7 +2407,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setBanner('');
     } else if (crashed) {
       ui.setBanner('Crashed');
-    } else if (!launched) {
+    } else if (!flownThisRun) {
       ui.setBanner(race.freestyle
         ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
         : 'Throttle up to take off\nThe green gate starts your lap');
@@ -2553,7 +2584,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   window.__craftState = () => ({
     mode,
-    launched,
+    flownThisRun,
     landed,
     crashed,
     descentRate: lastDescent,

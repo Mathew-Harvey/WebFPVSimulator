@@ -25,7 +25,7 @@
 
 import * as THREE from 'three';
 import { buildHeroCraft } from './herocraft.js';
-import { createCraftPose } from './craftpose.js';
+import { createCraftPose, damp } from './craftpose.js';
 import { disposeSceneGraph } from './shell.js';
 import { SESSION_TEXTURES } from './session-textures.js';
 
@@ -176,10 +176,6 @@ export function createShowcase(canvas) {
     if (on) {
       resize();
     }
-  }
-
-  function damp(cur, target, lambda, dt) {
-    return cur + (target - cur) * (1 - Math.exp(-lambda * dt));
   }
 
   function update(dtMs, channels, nowMs, cameraAngle, angleMode) {

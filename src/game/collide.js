@@ -132,7 +132,7 @@ export function craftVerticalHalf(sinTilt) {
 }
 
 /*
- * Names, in the order kind indices are assigned. Reported by counts().
+ * Names, in the order kind indices are assigned. Reported by stats().
  *
  * `wall` and `boom` are the city's, and they are boxes rather than capsules.
  * A city is authored as axis aligned rectangles because a walker only ever
@@ -615,7 +615,12 @@ export class Colliders {
           }
         }
       } else if (qb < 0) {
-        /* Linear decreasing piece: one crossing. */
+        /* Defensive, and the algebra says it cannot be reached: getting here
+       * needs qa === 0 with qb < 0, and qa is a sum of squares that is zero
+       * only for a zero length segment, which the caller has already dealt
+       * with. Kept rather than deleted so a future change to the quadratic
+       * above does not silently lose the linear case, but do not go hunting
+       * for the input that runs it. */
         const root = (1 - qc) / qb;
         if (root >= t0 && root <= t1) {
           return root;
@@ -828,7 +833,6 @@ export class Colliders {
    */
   hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R) {
     this.hitIndex = -1;
-    this.hitMoving = -1;
     this.hitKind = -1;
     this.hitNormalDot = 0;
     this.hitT = -1;
@@ -989,7 +993,6 @@ export class Colliders {
       const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
       const tl = Math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz);
       this.hitIndex = -1;
-      this.hitMoving = bestMoving;
       this.hitKind = this.movingKind[bestMoving];
       this.hitT = bestT;
       if (nl > 1e-9 && tl > 1e-9) {

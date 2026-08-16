@@ -54,7 +54,7 @@
  */
 
 import { LOGO_MAX_CHARS, isUsableLogo } from './model.js';
-import { paintGateHeader } from '../art/banners.js';
+import { HEADER_NUMBER_ZONE, paintGateHeader } from '../art/banners.js';
 
 /*
  * The board the logo is fitted to, and the sizes the encode steps down
@@ -172,7 +172,7 @@ export function drawBannerPreview(canvas, dataUrl, image) {
   const logo = dataUrl && image && image.complete && image.naturalWidth > 0 ? image : null;
   paintGateHeader(ctx, w, h, { logo });
 
-  const numberZone = 0.22;
+  const numberZone = HEADER_NUMBER_ZONE;
   const roundelR = h * 0.32;
   const roundelX = w * numberZone * 0.5;
   ctx.beginPath();

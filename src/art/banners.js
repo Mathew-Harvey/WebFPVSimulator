@@ -160,8 +160,17 @@ function fit(ctx, img, x, y, w, h) {
  * `numberZone` is that clear fraction of the width at each end, so the two
  * halves of the design cannot disagree about where the roundel lands.
  */
+/*
+ * Fraction of a gate header's width kept clear at EACH end for the roundel.
+ * The painter here and everyone who has to place a roundel ON a header have
+ * to agree, and they did not: this number was written out again in
+ * render/scene.js and a third time in trackbuilder/logo.js, each with a
+ * comment claiming it was shared. Exported so the claim is true.
+ */
+export const HEADER_NUMBER_ZONE = 0.22;
+
 export function paintGateHeader(ctx, w, h, opts = {}) {
-  const numberZone = opts.numberZone ?? 0.22;
+  const numberZone = opts.numberZone ?? HEADER_NUMBER_ZONE;
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);

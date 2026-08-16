@@ -50,7 +50,7 @@ import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
-import { Ui } from './ui/ui.js';
+import { Ui, formatTime } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, postTime } from './share/board.js';
 import { inspectCourse, publishCurrentCourse, pushOwnedListing, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
@@ -187,6 +187,10 @@ const RECOVER_BACK = 7;
  * typical ELRS link and matches the harness recording rate. */
 const RC_HZ = 250;
 /* Pack nominal, for the charge bar: 6S between empty and full. */
+/* The 6 is PLANT.cells in src/native/plant.c, restated here because the ABI
+ * does not report it. These are the HUD gauge's ends only: the physics reads
+ * its own constant and never these. Change the plant's cell count and this
+ * has to follow, or the bar lies while the flight is right. */
 const PACK_EMPTY_V = 6 * 3.3;
 const PACK_FULL_V = 6 * 4.2;
 /* Full throttle rotor speed on a charged pack, measured off the compiled
@@ -238,7 +242,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
  * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 3, city: 63, custom: 9 };
+const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero. */
@@ -331,7 +335,11 @@ export async function boot({ loading, bootStart, mapId }) {
   let view = null;
   window.addEventListener('resize', () => {
     const d = shell.resize();
-    if (view && view.post) {
+    /* mapReady as well as view: a swap disposes the old pipeline before it
+     * builds the new one, and a resize landing in that window used to call
+     * setSize on render targets that had already been freed. mapReady is
+     * false for exactly that gap. */
+    if (view && view.post && mapReady) {
       view.post.setSize(d.w, d.h);
     }
   });
@@ -433,6 +441,33 @@ export async function boot({ loading, bootStart, mapId }) {
   function groundAt(x, z) {
     const bare = view.height(x, z, -1000);
     return view.height(x, z, bare);
+  }
+
+  /* Is a run under way. Written out twice, once in the FC open handler and
+   * once in the drop handler, which is two places to remember when what
+   * counts as "under way" changes. */
+  /* The y component of the craft's own up vector, in world space, clamped
+   * into the domain of acos. Rotating world up by q leaves 1 - 2(x^2 + z^2),
+   * and the clamp is there because a normalised quaternion can still put
+   * that a bit outside [-1, 1] in floating point. Written out twice, a
+   * hundred lines apart, once for the tilt aware half extent and once for
+   * the landing judgement: two copies of a sign convention is exactly the
+   * kind of thing that gets fixed in one place only.
+   *
+   * Render side, not physics: this reads the RENDERED quaternion, which is
+   * a frame behind the integrator on purpose. */
+  function craftUpY() {
+    const qx = shell.quad.quaternion.x;
+    const qz = shell.quad.quaternion.z;
+    const u = 1 - 2 * (qx * qx + qz * qz);
+    if (u > 1) {
+      return 1;
+    }
+    return u < -1 ? -1 : u;
+  }
+
+  function isRunActive() {
+    return (mode === 'flight' || mode === 'paused') && !landed && !crashed;
   }
 
   function adoptSpawn() {
@@ -739,7 +774,10 @@ export async function boot({ loading, bootStart, mapId }) {
     takingOff = false;
     /* Parked again, so the takeoff hint is due again. Render only. */
     flownThisRun = false;
-    groundY = groundAt(startX, startZ);
+    /* startY is that same query, taken a few lines up by adoptSpawn or by
+     * the `at` branch. Asking the terrain twice for one point is how the
+     * two drift if one of them ever grows an offset. */
+    groundY = startY;
     /* Clear the judgement that produced the last crash. Leaving it behind is
      * how __craftState reports a 2.8 m/s arrival on a craft sitting calmly on
      * the start line, which reads as a landing gate that does not work. */
@@ -751,6 +789,12 @@ export async function boot({ loading, bootStart, mapId }) {
     input.drain();
     input.resetKeyboardSticks();
     raceHasPrev = false;
+    /* The race interpolates a gate crossing between its own previous sim
+     * time and this one. A respawn teleports the craft, so the segment
+     * either side of it is not a flight path: leaving prevSimMs behind put
+     * a crossing time somewhere in the gap. Nulling it makes the first
+     * update after a recovery use simMs exactly. */
+    race.prevSimMs = null;
     groundHasPrev = false;
     statePrev = readState();
     stateCurr = statePrev;
@@ -941,7 +985,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function applySettings(s) {
     camTilt = s.cameraAngle;
-    qTilt.setFromAxisAngle(new THREE.Vector3(1, 0, 0), (camTilt * Math.PI) / 180);
+    qTilt.setFromAxisAngle(AXIS_X, (camTilt * Math.PI) / 180);
     /* Vertical field of view. The default 100 keeps every measured budget
      * comparable; the setting exists because how roomy a course feels is a
      * pilot preference on real quads too, set by lens choice. */
@@ -1058,8 +1102,10 @@ export async function boot({ loading, bootStart, mapId }) {
         : 'This course is not on the public board yet.', untilMs: performance.now() + 2800 };
       return;
     }
-    const clean = race.log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
-    const fromRun = clean.length ? Math.min(...clean) : null;
+    /* race owns what a record lap is. This used to re-filter and re-min
+     * the log beside it, which is the same answer until one of them
+     * changes its mind about a voided lap. */
+    const fromRun = race.bestLapMs();
     const pending = readPendingTime();
     const fastest = fromRun != null
       ? fromRun
@@ -1088,7 +1134,10 @@ export async function boot({ loading, bootStart, mapId }) {
       writePostedBest(trackId, fastest);
       clearPendingTime(trackId);
       const rank = posted.rank != null ? ` Rank ${posted.rank}.` : '';
-      notice = { text: `Uploaded ${name}, ${(fastest / 1000).toFixed(2)} s.${rank}`, untilMs: performance.now() + 3600 };
+      /* formatTime, the same one the menu row that triggered this upload is
+       * labelled with. A confirmation that spells the time differently from
+       * the button reads as a different number. */
+      notice = { text: `Uploaded ${name}, ${formatTime(fastest)}.${rank}`, untilMs: performance.now() + 3600 };
       ui.markTimePosted(posted);
     } catch (e) {
       notice = { text: `Could not upload that time.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
@@ -1179,7 +1228,7 @@ export async function boot({ loading, bootStart, mapId }) {
   ui.onSettings = applySettings;
   ui.onFcOpen = (page) => {
     const dump = moduleDump(sim);
-    const runActive = (mode === 'flight' || mode === 'paused') && !landed && !crashed;
+    const runActive = isRunActive();
     ui.fc.open(dump, { runActive, page });
   };
   ui.onFcSave = (draft, opts) => {
@@ -1321,8 +1370,6 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.show('settings');
         notice = { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
       }
-    } else if (action === 'leaderboard') {
-      window.open(boardPageUrl(), '_blank', 'noopener');
     } else if (action === 'setname') {
       (async () => {
         const name = await ui.askName({
@@ -1444,7 +1491,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * A file with no rate keys still loads silently keep-mine. */
       if (dumpCarriesRates(text)) {
         const dump = moduleDump(sim);
-        const runActive = (mode === 'flight' || mode === 'paused') && !landed && !crashed;
+        const runActive = isRunActive();
         ui.returnTo = ui.screen === 'paused'
           ? 'paused'
           : (ui.screen === 'settings' ? 'settings' : 'title');
@@ -1617,10 +1664,10 @@ export async function boot({ loading, bootStart, mapId }) {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
-      /* Cap a huge stall (tab hidden) to keep the loop responsive. */
-      if (steps > 100) {
-        steps = 100;
-      }
+      /* No clamp on steps: dt is already capped at 100 ms where it is
+       * read, and acc carries less than 1 ms forward, so this cannot ask
+       * for more than 100 steps. The cap belongs on the wall clock, in one
+       * place, not on three copies of its consequence. */
       /* Resample the polled stick values onto a fixed RC frame grid. The
        * display runs at whatever rate it runs at; the radio does not, and
        * the controller's feedforward and smoothing read the frame
@@ -1709,15 +1756,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * diameter to the vertical. Computed from last frame's rendered
        * quaternion, one frame of tilt lag on a 1 ms physics grid.
        */
-      const cqx = shell.quad.quaternion.x;
-      const cqz = shell.quad.quaternion.z;
-      let upNow = 1 - 2 * (cqx * cqx + cqz * cqz);
-      if (upNow > 1) {
-        upNow = 1;
-      }
-      if (upNow < -1) {
-        upNow = -1;
-      }
+      const upNow = craftUpY();
       vHalfFrame = craftVerticalHalf(Math.sqrt(1 - upNow * upNow));
       const vHalf = vHalfFrame;
       let touched = false;
@@ -1816,15 +1855,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Tilt from vertical, from the quaternion directly: rotating world
          * up by q gives a y component of 1 - 2(x^2 + z^2), and the angle to
          * vertical is its arc cosine. */
-        const qx = shell.quad.quaternion.x;
-        const qz = shell.quad.quaternion.z;
-        let upY = 1 - 2 * (qx * qx + qz * qz);
-        if (upY > 1) {
-          upY = 1;
-        }
-        if (upY < -1) {
-          upY = -1;
-        }
+        const upY = craftUpY();
         const tiltDeg = (Math.acos(upY) * 180) / Math.PI;
         lastDescent = descent;
         lastTiltDeg = tiltDeg;
@@ -1878,9 +1909,6 @@ export async function boot({ loading, bootStart, mapId }) {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
-      if (steps > 100) {
-        steps = 100;
-      }
       simTimeMs += steps;
       adoptSimClock();
       statePrev = stateCurr;
@@ -1900,9 +1928,6 @@ export async function boot({ loading, bootStart, mapId }) {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
-      if (steps > 100) {
-        steps = 100;
-      }
       simTimeMs += steps;
       statePrev = stateCurr;
       if (nowWall - crashedAtWall > 1400) {
@@ -2333,7 +2358,10 @@ export async function boot({ loading, bootStart, mapId }) {
 
     /* Overlay. */
     const st = stateCurr;
-    const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
+    /* speedNow, not a second square root of the same three numbers: it is
+     * assigned unconditionally from this very state block earlier in the
+     * frame, and its comment there already claims it is read once. */
+    const speed = speedNow;
     /* P13: audio scheduling work on the main thread, worst case, and it has
      * to allocate nothing. Two scalars written in place, and the rpm array
      * is hoisted out of the loop for the same reason. */
@@ -2937,8 +2965,12 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /* Is anything solid on the segment from p to q? Same call the frame loop
    * makes, so a capture can assert what a quad would hit. */
-  window.__hit = (px, py, pz, qx, qy, qz) => {
-    const k = view.colliders.hit(px, py, pz, qx, qy, qz);
+  window.__hit = (px, py, pz, qx, qy, qz, vh = vHalfFrame) => {
+    /* The frame loop passes its tilt aware half extent to every real
+     * query, so a probe that left it out was asking a different question
+     * from the one the game asks and answering for a craft of another
+     * shape. Defaulted, still overridable. */
+    const k = view.colliders.hit(px, py, pz, qx, qy, qz, vh);
     return { kind: k < 0 ? null : view.colliders.kindName(k), index: view.colliders.hitIndex };
   };
   /* Shadow pass on or off, so the ledger can attribute draw calls between the

@@ -78,13 +78,40 @@ const PASS_MARGIN = 0.02;
 
 const DEFAULT_KEY = 'webfpv.bestLapMs';
 
+/*
+ * A gate's own frame, from its heading and pitch. Exported because
+ * render/scene.js had travelAxis written out again, and the direction of
+ * travel through a gate deciding two different things in two files is how a
+ * dive gate ends up drawn along one axis and scored along another. The game
+ * owns this: the renderer imports it, never the other way round.
+ */
+export function gateAcross(heading) {
+  return { x: -Math.cos(heading), y: 0, z: Math.sin(heading) };
+}
+
+export function gateUp(heading, pitch) {
+  const sp = Math.sin(pitch);
+  return { x: sp * Math.sin(heading), y: Math.cos(pitch), z: sp * Math.cos(heading) };
+}
+
+export function travelAxis(heading, pitch) {
+  const cp = Math.cos(pitch);
+  return { x: -cp * Math.sin(heading), y: Math.sin(pitch), z: -cp * Math.cos(heading) };
+}
+
+/* The same shape ui.js formatTime writes: no leading "0:" under a minute.
+ * The flash and the results table used to spell one lap two ways. */
 function fmt(ms) {
   if (ms == null || !Number.isFinite(ms)) {
     return '--:--.--';
   }
-  const s = ms / 1000;
-  const m = Math.floor(s / 60);
-  return `${m}:${(s - m * 60).toFixed(2).padStart(5, '0')}`;
+  const total = ms / 1000;
+  const m = Math.floor(total / 60);
+  const s = total - m * 60;
+  if (m > 0) {
+    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+  }
+  return s.toFixed(2);
 }
 
 export class Race {
@@ -133,7 +160,14 @@ export class Race {
      * one everywhere else.
      */
     const order = gates
-      .map((g, idx) => ({ idx, flyOrder: g.flyOrder ?? (idx === 0 ? 0 : gates.length - idx) }))
+      /* g.flyOrder, with no fallback. It used to default to
+       * `idx === 0 ? 0 : gates.length - idx`, which is scene.js's built in
+       * circuit ordering written out a second time, in the one file that
+       * must not have its own opinion about flying order. Every caller has
+       * supplied flyOrder for a while; a course that does not is a bug in
+       * the caller and should read as one rather than being silently
+       * scored in an order nobody chose. */
+      .map((g, idx) => ({ idx, flyOrder: g.flyOrder }))
       .sort((a, b) => a.flyOrder - b.flyOrder)
       .map((e) => e.idx);
     this.gates = order.map((idx) => {
@@ -157,14 +191,9 @@ export class Race {
        */
       const h = g.heading;
       const p = g.pitch ?? 0;
-      const cp = Math.cos(p);
-      const sp = Math.sin(p);
-      /* Across the opening. Unaffected by the tilt, which is about this axis. */
-      const ax = { x: -Math.cos(h), y: 0, z: Math.sin(h) };
-      /* Up the opening, in its own plane. */
-      const ay = { x: sp * Math.sin(h), y: cp, z: sp * Math.cos(h) };
-      /* Along the direction of travel. */
-      const az = { x: -cp * Math.sin(h), y: sp, z: -cp * Math.cos(h) };
+      const ax = gateAcross(h);
+      const ay = gateUp(h, p);
+      const az = travelAxis(h, p);
       return {
         idx,
         x: g.position.x,
@@ -234,8 +263,6 @@ export class Race {
      * the player just did. */
     this.log = [];
     this.laps = [];         /* completed clean lap times, in order */
-    this.voided = 0;        /* laps thrown away by a crash */
-    this.lastOpening = -1;  /* which opening of a stacked obstacle was used */
     /* The record as this run began. The live best updates on a faster
      * lap, and the results screen needs the old figure to say whether
      * this run beat it and by how much. */
@@ -298,7 +325,6 @@ export class Race {
     }
     if (this.lapStartMs != null) {
       this.log.push({ n: this.lapNumber(), ms: null, reason });
-      this.voided += 1;
     }
     this.lapStartMs = null;
     this.next = 0;
@@ -422,7 +448,6 @@ export class Race {
     if (used < 0) {
       return null;
     }
-    this.lastOpening = used;
     const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
@@ -466,7 +491,7 @@ export class Race {
    * running lap, it does not crash the craft. */
   update(prev, curr, simMs, wallMs) {
     if (this.freestyle) {
-      return { passed: null, hitFrame: false, opening: -1 };
+      return { passed: null, hitFrame: false };
     }
     const prevSimMs = this.prevSimMs ?? simMs;
     this.prevSimMs = simMs;
@@ -498,7 +523,7 @@ export class Race {
      * crash, decided by src/game/collide.js in the shell, not a lap penalty
      * decided here. The return shape keeps its second field so the shell's
      * call site does not have to care which round it is. */
-    return { passed, hitFrame: false, opening: this.lastOpening };
+    return { passed, hitFrame: false };
   }
 
   /* UTT is scored on one lap and chapter racing on three consecutive, so

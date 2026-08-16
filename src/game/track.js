@@ -43,10 +43,14 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* The only conversion in the file. 1 international foot is 0.3048 m exactly,
- * so nothing here is a rounded constant: the metre figures are computed. */
-const FT = 0.3048;
-const IN = FT / 12;
+/* FT and IN come from src/units.js, shared with the track builder: the
+ * builder may not import the game, so the constants they both need live in
+ * a leaf module rather than being typed out twice. */
+import { FT, IN, FRAME_TUBE_OD } from '../units.js';
+
+/* Re-exported because this module's callers already read it from here. The
+ * provenance of the 1.315 in figure is written down in src/units.js. */
+export { FRAME_TUBE_OD };
 
 /*
  * The obstacle library, at published dimensions.
@@ -56,14 +60,7 @@ const IN = FT / 12;
  * of the opening above the ground: zero for a gate standing on the field,
  * and the published elevation for a tower or a dive gate.
  *
- * Frame tube diameter is not published on the obstacles page. MultiGP gates
- * are built from schedule 40 PVC, and 1 inch nominal schedule 40 PVC has an
- * outside diameter of 1.315 in, which is the figure used here and is marked
- * as an assumption rather than a citation. It changes how the gate looks and
- * changes nothing about the opening, which is the dimension that matters.
  */
-export const FRAME_TUBE_OD = 1.315 * IN;
-export const FRAME_TUBE_OD_SOURCE = 'assumed 1 inch nominal schedule 40 PVC, not published by MultiGP';
 
 /*
  * How much larger than published every obstacle is BUILT, as a pure number.
@@ -358,95 +355,17 @@ export const UTT3 = {
 };
 
 /*
- * The clear opening of a placed gate, in metres, as the pair a runtime
- * assertion should check against the geometry that gets built. T1 asserts
- * the standard gate at 1.524 m square within 10 mm, and this is the number
- * it asserts against, computed from feet rather than typed.
- */
-export function aperture(kind) {
-  const o = builtObstacle(kind);
-  return { clearW: o.clearW, clearH: o.clearH, sillH: o.sillH };
-}
-
-/*
- * Where the timed course's gates are, in metres, in the course frame, with
- * their aperture centres. `centreY` is the height of the middle of the
- * opening above the field, which for a gate standing on the ground is half
- * its clear height and for a tower is its sill plus half.
- */
-export function courseGates(track = UTT3) {
-  return track.gates.map((g) => {
-    const o = builtObstacle(g.kind);
-    return {
-      n: g.n,
-      kind: g.kind,
-      role: g.role ?? 'gate',
-      x: g.x,
-      z: g.z,
-      facing: g.facing,
-      clearW: o.clearW,
-      clearH: o.clearH,
-      sillH: o.sillH,
-      centreY: o.sillH + (o.clearH ?? 0) * 0.5,
-      /* Heading of the gate's plane normal in the course frame, radians,
-       * measured from +z toward +x, which is what a Three.js rotation about
-       * y wants. A gate facing along z has normal +z and heading 0. */
-      heading: g.facing === 'z' ? 0 : Math.PI * 0.5,
-    };
-  });
-}
-
-/*
- * The racing line.
+ * UTT3 above is cited reference data and nothing reads it. It stays because
+ * it is the published geometry this file's dimensions were derived from and
+ * the provenance is worth more than the bytes.
  *
- * MultiGP does not publish coordinates for the line, only for the gates. It
- * does publish a rendered racing line for UTT 3, and that render fixes the
- * topology: a closed loop that crosses the gate row at each of gates 5, 4,
- * 3 and 2 and runs back along the far side of the field through the timing
- * gate, with the amplitude of the crossings decaying from the gate 2 end
- * toward the gate 5 end, which is what gives the track its name.
- *
- * So the waypoints below are DERIVED, not quoted. Each gate contributes a
- * point on its own aperture centre plus a point a stated distance out on
- * each side along its own normal, so the line passes through every gate
- * square to its plane, and the returned list is in flying order. The lobe
- * depth is the one free parameter and it is stated rather than tuned: 12 m,
- * which keeps every lobe inside the field's 36.5 m width given the timing
- * gate's 14 m offset on the other side.
- *
- * Anything that wants a smooth curve should build one through these points.
- * This function does not import a curve type, on purpose.
+ * What used to sit here did NOT have that excuse: aperture(), courseGates(),
+ * racingLine(), LOBE_DEPTH and GATE_APPROACH were a second, parallel idea of
+ * what a course is, written before the track builder existed and read by
+ * nothing in src, tests, scripts or tracks. A course is a document now, and
+ * game/trackdoc.js turns it into stations. Two answers to "where are the
+ * gates" is one more than a reader should have to choose between.
  */
-export const LOBE_DEPTH = 12;
-export const GATE_APPROACH = 6;
-
-export function racingLine(track = UTT3) {
-  const gates = courseGates(track);
-  const byN = new Map(gates.map((g) => [g.n, g]));
-  const pts = [];
-  const push = (x, y, z, label) => pts.push({ x, y, z, label });
-  /* Flying order is the published sequence: the timing gate, then 2, 3, 4,
-   * 5, then back to the timing gate. The timing gate is crossed along x, so
-   * the loop returns along the far side of the field. */
-  const t = byN.get(1);
-  push(t.x - GATE_APPROACH, t.centreY, t.z, 'approach 1');
-  push(t.x, t.centreY, t.z, 'gate 1');
-  push(t.x + GATE_APPROACH, t.centreY, t.z, 'exit 1');
-  /* Out to the gate 2 end along the timing gate's side of the row, then the
-   * weave: each numbered gate is crossed alternately, so the line leaves the
-   * row on the far side after gate 2 and comes back through gate 3. */
-  let side = 1;
-  for (const n of [2, 3, 4, 5]) {
-    const g = byN.get(n);
-    push(g.x, g.centreY, g.z - side * LOBE_DEPTH, `approach ${n}`);
-    push(g.x, g.centreY, g.z, `gate ${n}`);
-    push(g.x, g.centreY, g.z + side * LOBE_DEPTH, `exit ${n}`);
-    side = -side;
-  }
-  /* Back along the timing gate's side of the field to the start. */
-  push(byN.get(5).x - LOBE_DEPTH, t.centreY, t.z, 'return');
-  return pts;
-}
 
 /*
  * MultiGP timing. UTT is scored on a single lap, and chapter racing reports

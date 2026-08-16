@@ -70,8 +70,12 @@ import { guideFromKnots } from './guide.js';
  * How far behind the FIRST GATE the craft is parked when a track has no
  * start pads. The pads themselves are where the quad sits; they are not a
  * timing plane, so a course that has them parks on a stand, not behind it.
+ *
+ * This is the distance, not a third of it. It was 2.5 and multiplied by 3 at
+ * its only use, which reads as though 2.5 m were the parking distance when
+ * the quad has always been parked at 7.5.
  */
-const SPAWN_BACK = 2.5;
+const SPAWN_BACK = 7.5;
 
 /*
  * The direction of travel through a gate is MINUS its plane normal, which is
@@ -339,8 +343,8 @@ export function courseFromDocument(raw) {
   } else if (stations.length) {
     const first = stations[0];
     spawn = {
-      x: first.x + Math.sin(first.yaw) * SPAWN_BACK * 3,
-      z: first.z + Math.cos(first.yaw) * SPAWN_BACK * 3,
+      x: first.x + Math.sin(first.yaw) * SPAWN_BACK,
+      z: first.z + Math.cos(first.yaw) * SPAWN_BACK,
       yaw: first.yaw,
     };
     warnings.push('No start pads in the track, so the quad is parked behind the first gate.');

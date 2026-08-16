@@ -33,10 +33,13 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* The only unit conversion in the module. 1 international foot is 0.3048 m
- * exactly, so every metre figure below is computed rather than rounded. */
-const FT = 0.3048;
-const IN = FT / 12;
+/* FT and IN come from src/units.js, shared with src/game/track.js. The
+ * builder must not import the game, so the constants they both need live in
+ * a leaf module rather than being typed out twice. */
+import { FT, IN, FRAME_TUBE_OD } from '../units.js';
+
+/* Re-exported because this module's consumers already read it from here. */
+export { FRAME_TUBE_OD };
 
 /*
  * What an element IS, which decides everything the tool does with it.
@@ -69,7 +72,6 @@ export const KIND = {
  * VERIFY: whether MultiGP specifies a tube size anywhere. Treated as an
  * assumption until then.
  */
-export const FRAME_TUBE_OD = 1.315 * IN;
 
 /*
  * Header pennant on a flagged gate. The mast stands on the header board, it

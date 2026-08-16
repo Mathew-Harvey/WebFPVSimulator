@@ -30,7 +30,10 @@ const STICK_DEAD = 0.14;
 export const HOVER = 0.016;
 const LIFT = 0.038;
 
-function damp(cur, target, lambda, dt) {
+/* Exponential approach, frame rate independent. Exported because
+ * showcase.js had its own byte-identical copy. RENDER SIDE ONLY: this uses
+ * Math.exp, which the physics path is not allowed to touch. */
+export function damp(cur, target, lambda, dt) {
   return cur + (target - cur) * (1 - Math.exp(-lambda * dt));
 }
 

@@ -52,12 +52,15 @@ import { qualityFor } from './quality.js';
 /* The shape of the built in circuit, shared with the map screen's thumbnail
  * so the picture of the course and the course cannot drift apart. */
 import { circuitPoint, CIRCUIT_POINTS, CIRCUIT_STATIONS } from '../game/circuit.js';
-import { guideFromPolyline } from '../game/guide.js';
+import { GUIDE, guideFromPolyline } from '../game/guide.js';
+/* The gate frame belongs to the scorer, so the mesh and the test agree. */
+import { travelAxis } from '../game/race.js';
 import { buildGuideMesh, paintGuideOnPitch } from './marks.js';
 /* The printed vinyl a course is dressed in, shared with the track builder's
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
-  BANNER_SIZE, bannerCanvas, bannerHex, paintGateHeader, paintGateSleeve, paintFlagSail,
+  BANNER_SIZE, bannerCanvas, bannerHex, HEADER_NUMBER_ZONE,
+  paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
 import {
   assembleStartBlock, startBlockContactHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
@@ -1456,11 +1459,6 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
  * value of it: a gate that scores differently from how it looks is a gate the
  * pilot cannot learn.
  */
-function travelAxis(heading, pitch) {
-  const cp = Math.cos(pitch);
-  return { x: -cp * Math.sin(heading), y: Math.sin(pitch), z: -cp * Math.cos(heading) };
-}
-
 function gateCue(clearW, clearH) {
   const cue = new THREE.Group();
   cue.visible = false;
@@ -1626,9 +1624,50 @@ function printedPanel(w, h, depth, mat, substrate) {
  * different frames.
  */
 const GATE_BANNER_H = 0.58;
-/* Fraction of the header's width left clear at EACH end for the roundel.
- * Shared with the painter so the two cannot disagree. */
-const HEADER_NUMBER_ZONE = 0.22;
+
+/*
+ * A flat printed panel, as a ROW of capsules rather than one fat one.
+ *
+ * The collision system speaks capsules, and the obvious way to wrap a panel
+ * in one is to give it a radius that covers the panel's large dimension.
+ * That is what the sleeves and the header board used to do, and it buys the
+ * coverage by inflating the THIN axis to match: a 3 cm sleeve got a 21 cm
+ * radius and the 58 cm header board got 29 cm, so a third of a metre of
+ * solid nothing stood in front of a printed sheet and a line that visibly
+ * cleared it did not. Same fault as the barriers, same fix: spend capsules
+ * across the long axis so each one's radius can stay near the real
+ * thickness. PANEL_CAP_R is the compromise, comfortably thicker than any
+ * panel here so the sheet is never porous, and a third of what a single
+ * capsule cost in the direction pilots actually approach from.
+ *
+ * `span` is the panel's long axis half length, `axis` is 'x' or 'y' for
+ * which way it runs, and the returned capsules are in the gate's own frame.
+ */
+const PANEL_CAP_R = 0.08;
+
+function panelCaps(kind, cx, cy, halfLong, halfShort, axis) {
+  const out = [];
+  const rows = Math.max(1, Math.ceil((halfShort * 2) / (PANEL_CAP_R * 2)));
+  for (let i = 0; i < rows; i += 1) {
+    const off = (i + 0.5) * ((halfShort * 2) / rows) - halfShort;
+    if (axis === 'y') {
+      out.push({
+        kind,
+        ax: cx + off, ay: cy - halfLong, az: 0,
+        bx: cx + off, by: cy + halfLong, bz: 0,
+        r: PANEL_CAP_R,
+      });
+    } else {
+      out.push({
+        kind,
+        ax: cx - halfLong, ay: cy + off, az: 0,
+        bx: cx + halfLong, by: cy + off, bz: 0,
+        r: PANEL_CAP_R,
+      });
+    }
+  }
+  return out;
+}
 
 function gateBanner(index, outerW, headerMat, substrate) {
   const mats = sharedObstacleMats();
@@ -1882,21 +1921,38 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       outlineHull(box, 1.02);
       baker.bake(box);
       /*
-       * A capsule along the barrier's long axis, its radius half the short
-       * one. A box collider would be exact and the collision system speaks
-       * capsules, so this is the inscribed one: it under covers the two ends
-       * by the corner radius, which is the safe direction to be wrong in for
-       * a thing you are trying not to hit.
+       * Capsules along the barrier's long axis, radius half the SHORT one,
+       * stacked up the height. A box collider would be exact and the
+       * collision system speaks capsules, so each one is inscribed: it
+       * under covers the two ends by the corner radius, which is the safe
+       * direction to be wrong in for a thing you are trying not to hit.
+       *
+       * It used to be a single capsule at mid height with a radius of
+       * max(d, h) / 2, because one horizontal capsule of radius d / 2
+       * cannot reach the top and bottom of a barrier taller than it is
+       * deep. Taking the height instead bought that coverage by inflating
+       * the DEPTH to match: the stock 4 by 1 by 2 m barrier got a 1 m
+       * radius against a 1 m deep panel, so half a metre of solid nothing
+       * stood in front of each face and a line that visibly cleared the
+       * barrier hit it. Stacking is how you get the height without paying
+       * for it sideways. ceil(h / d) rows keeps the spacing at or under
+       * one diameter, so the capsules touch and the face has no gap in it.
        */
-      const half = Math.max(0, w * 0.5 - d * 0.5);
+      const rowR = d * 0.5;
+      const rows = Math.max(1, Math.ceil(h / Math.max(d, 1e-6)));
+      const rowH = h / rows;
+      const half = Math.max(0, w * 0.5 - rowR);
       const cs = Math.cos(s.yaw);
       const sn = Math.sin(s.yaw);
-      colliders.add(
-        'wall',
-        s.x - half * cs, y + h * 0.5, s.z + half * sn,
-        s.x + half * cs, y + h * 0.5, s.z - half * sn,
-        Math.max(d * 0.5, h * 0.5),
-      );
+      for (let i = 0; i < rows; i += 1) {
+        const cy = y + (i + 0.5) * rowH;
+        colliders.add(
+          'wall',
+          s.x - half * cs, cy, s.z + half * sn,
+          s.x + half * cs, cy, s.z - half * sn,
+          rowR,
+        );
+      }
       continue;
     }
     if (s.type === 'cone') {
@@ -2360,7 +2416,9 @@ function obstacle(spec, index, isStart, opts = {}) {
       sx < 0 ? kit.sleeveFlipped : kit.sleeve, substrate);
     sleeve.position.set(cx, panelBottom + panelH * 0.5, 0);
     g.add(sleeve);
-    caps.push({ kind: 'obstacle', ax: cx, ay: panelBottom, az: 0, bx: cx, by: panelBottom + panelH, bz: 0, r: panelW * 0.5 });
+    caps.push(...panelCaps(
+      'obstacle', cx, panelBottom + panelH * 0.5, panelH * 0.5, panelW * 0.5, 'y',
+    ));
   }
 
   /* The header banner, spanning the whole structure. */
@@ -2369,12 +2427,9 @@ function obstacle(spec, index, isStart, opts = {}) {
   const plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
   plateGroup.position.set(0, plateY, 0);
   g.add(plateGroup);
-  caps.push({
-    kind: 'obstacle',
-    ax: -plateGroup.userData.halfW, ay: plateY, az: 0,
-    bx: plateGroup.userData.halfW, by: plateY, bz: 0,
-    r: plateGroup.userData.r,
-  });
+  caps.push(...panelCaps(
+    'obstacle', 0, plateY, plateGroup.userData.halfW, plateGroup.userData.r, 'x',
+  ));
 
   /* The lit target, shared with the tilted gate builder. */
   const marks = apertureMarkers(g, sills, clearW, clearH, stack, isStart, opts.primary);
@@ -3283,7 +3338,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     const guide = course
       ? (course.guide || null)
       : guideFromPolyline(circuitGuidePoints(curve), {
-        holes: placements.map((st) => ({ x: st.x, z: st.z, r: 1.15, kind: 'gate' })),
+        holes: placements.map((st) => ({ x: st.x, z: st.z, r: GUIDE.holeGate, kind: 'gate' })),
         cues: circuitGuideCues(placements),
       });
     const marks = guide ? buildGuideMesh(guide, height, pitch) : null;

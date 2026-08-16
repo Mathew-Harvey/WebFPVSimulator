@@ -61,6 +61,11 @@ async function start() {
    * and a stored value that is not a known map falls back to the field. */
   let mapId = 'field';
   try {
+    /* SETTINGS_KEY in src/ui/ui.js owns this string; ui.js is the only
+     * writer. It is spelled out rather than imported ON PURPOSE: ui.js
+     * pulls in the map registry and the track table, and dragging that
+     * graph into boot is the very thing src/maps/build-cost.js exists to
+     * prevent. Change it there and change it here. */
     mapId = JSON.parse(localStorage.getItem('webfpv.settings.v2') || '{}').map || 'field';
   } catch (e) {
     mapId = 'field';

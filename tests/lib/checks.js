@@ -754,10 +754,10 @@ export function buildChecks() {
           fails.push(`MAP_MODULE_COUNT says ${r.cityExpectedModules} city modules, the browser fetched ${after}`);
         }
         const b = r.fieldBudget;
-        const base = th.field_budget_at_c3c6e44;
+        const base = th.field_budget;
         const same = (label, got, want, tol) => {
           if (!(Math.abs(got - want) <= tol)) {
-            fails.push(`${label} ${got} against ${want} at c3c6e44`);
+            fails.push(`${label} ${got} against the recorded ${want}`);
           }
         };
         const b2 = r.fieldBudgetAfterRoundTrip;
@@ -776,6 +776,28 @@ export function buildChecks() {
         if (!b2) {
           fails.push('the field budget after a round trip was not measured');
         } else {
+          /*
+           * Against BOOT, not against the constant. This is the assertion
+           * the check was named for and it was the one thing missing: both
+           * halves were compared only to a figure recorded at a commit, so
+           * the sentence "the field costs the same after visiting the city"
+           * was never actually written down. Anything the city fails to
+           * free shows up here, on any machine, without anybody having to
+           * re-measure a constant first, and a legitimate change to the
+           * field's own dressing cannot switch the leak detector off.
+           */
+          if (b) {
+            const held = (label, got, want, tol) => {
+              if (!(Math.abs(got - want) <= tol)) {
+                fails.push(`${label} ${got} against ${want} at boot, across a round trip`);
+              }
+            };
+            held('P1 draw calls', b2.p1, b.p1, 0);
+            held('P2 triangles', b2.p2, b.p2, 0);
+            held('P5 target MB', b2.p5, b.p5, 0.05);
+            held('P10 attribute MB', b2.p10, b.p10, 0.05);
+            held('meshes', b2.meshes, b.meshes, 0);
+          }
           same('P1 after round trip', b2.p1, base.p1.value, 0);
           same('P2 after round trip', b2.p2, base.p2.value, 0);
           same('P5 after round trip', b2.p5, base.p5_MB.value, 0.05);

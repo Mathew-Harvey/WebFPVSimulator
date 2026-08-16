@@ -9328,3 +9328,72 @@ Next: batch C is check 16's leak detector, which compares boot and post
 round trip only against a frozen constant and never against each other,
 so the half that can see a leak is expressed through history. Then the
 79 minors and 49 trivials, and the barrier collider if it is wanted.
+
+### 2026-08-16 | sweep | batch C, check 16 measures the leak it is named for
+
+Batch C of the sweep. Check 16 was failing on a field with nothing
+wrong with it, and the reason it could fail that way is the bug.
+
+**The check never compared the two things it exists to compare.** It
+takes two measurements, the field at boot and the field after a field
+to city to field round trip, and it compared BOTH of them only against
+`field_budget_at_c3c6e44`, a constant in thresholds.json. The one
+boot versus round trip comparison in the whole check was the cel clock
+walk. So the sentence the check is named for, the field costs the same
+after visiting the city, was never written down: it was inferred from
+two separate equalities against a number in a file. Any legitimate
+change to the field's own dressing moved both measurements together,
+broke both comparisons, and switched the leak detector off. That is
+what had happened.
+
+`checks.js` now asserts the round trip against BOOT, exactly, for draw
+calls, triangles, target MB, attribute MB and meshes, before it looks
+at the constant at all. On this run they held exactly, both sides 313,
+895639, 69.8, 27.4, 170. There is no leak, and that is now a
+measurement rather than an assumption.
+
+**Then, and only then, the constant was re-measured,** because it was
+stale for two reasons and both are deliberate. Grass blades are no
+longer drawn: `grassField` still walks the rng so the deterministic
+stream is untouched, but it emits no mesh, and that is where 1,093,862
+triangles and 17.6 MB of attributes went. The detailed quad added in
+e469071 is 82 meshes by itself. Measured at HEAD through
+`window.__budget` and a scene walk: 170 meshes, 82 of them the craft
+and 88 the field's own dressing. The field is BELOW the 96 it was
+recorded at. Every bit of the increase is a model that was added on
+purpose, and the craft is not what this check polices.
+
+This is a re-measure, not a threshold loosened to get a pass, and the
+distinction is worth being strict about because CLAUDE.md forbids the
+second one. Nothing here was widened: every figure is still an exact
+equality, no tolerance moved, and the assertion that can actually catch
+a leak no longer depends on this constant in either direction. If the
+city starts leaking tomorrow the new boot comparison fails on any
+machine without anyone re-measuring anything first.
+
+The key is renamed `field_budget`. It was called
+`field_budget_at_c3c6e44` through two earlier re-measures that had
+already left it nowhere near c3c6e44, so the name was documenting a
+commit that no longer had anything to do with the numbers under it.
+
+What went wrong this turn. The first reading of this, from the sweep,
+blamed the grass alone. That explains triangles and megabytes falling
+and cannot explain draw calls nearly doubling and meshes going 96 to
+170, so it was wrong, and re-baselining on it would have buried an
+unexplained 142 draw calls in a threshold file. Grass is also not
+deleted: check 15 still measures blade heights off the rng walk. An
+attempt to measure the previous commit in a git worktree failed, that
+tree does not boot here (`lens.js` has no `CAMERA_MOUNT_FORWARD`), so
+the breakdown came from walking the live scene and counting craft
+meshes against the rest instead, which is a better answer anyway
+because it says WHAT the meshes are rather than when they appeared.
+
+`npm run verify`: 14 of 16, up from 13. Check 16 passes. Physics hash
+6d17d4814bdc unchanged. The two remaining failures are unchanged and
+neither is this: build-clean needs emcc, absent here with an empty
+`vendor/betaflight`, and yaw-coupling is -0.12 deg against its 2 deg
+floor, which is a real physics gap and is argued where it belongs, not
+here.
+
+Next: the 79 minors and 49 trivials, and the barrier collider, which
+is the only item left whose fix changes what the craft can hit.

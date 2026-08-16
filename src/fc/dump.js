@@ -113,10 +113,6 @@ export function parseCli(text) {
   return { sets, commands };
 }
 
-export function serializeSets(sets) {
-  return sets.map((s) => `set ${s.key} = ${s.value}`).join('\n');
-}
-
 export function cliMap(text) {
   const map = new Map();
   for (const s of parseCli(text).sets) {

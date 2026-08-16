@@ -93,7 +93,7 @@ the file.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schemaVersion` | integer | The version of THIS document. `1` today. A consumer that does not recognise the number should refuse rather than guess. |
+| `schemaVersion` | integer | The version of THIS document. `1` today. A consumer seeing a HIGHER number reads on a best effort basis, drops what it does not recognise and says so, which is what `normalize()` does and what the Versioning section below states. |
 | `id` | string | Stable identity of the track, `trk-` followed by eight hex digits. Used as the key in local storage. Two identical tracks are still two tracks, so this is not derived from the contents. |
 | `name` | string | What the author calls it. Not unique, not an identifier. |
 | `createdUtc` | string | ISO 8601 UTC, seconds resolution, when the track was first made. |

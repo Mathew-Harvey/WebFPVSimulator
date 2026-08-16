@@ -278,9 +278,15 @@ function firstBarrierHit(path, bar) {
   const maxZ = bar.position.z + bar.dims.height;
   const pad = TUNING.barrierClearance;
   const sub4 = 4;
-  for (let i = 0; i < path.samples.length; i += 1) {
+  /*
+   * Stop one short and test the last sample on its own. The loop used to run
+   * to the end and clamp b to the final index, so the last iteration had
+   * a === b and interpolated the same point four times.
+   */
+  const n = path.samples.length;
+  for (let i = 0; i < n - 1; i += 1) {
     const a = path.samples[i];
-    const b = path.samples[Math.min(path.samples.length - 1, i + 1)];
+    const b = path.samples[i + 1];
     for (let j = 0; j < sub4; j += 1) {
       const t = j / sub4;
       const p = lerp(a.pos, b.pos, t);
@@ -288,6 +294,10 @@ function firstBarrierHit(path, bar) {
         return { s: a.s + (b.s - a.s) * t, pos: p };
       }
     }
+  }
+  const last = n ? path.samples[n - 1] : null;
+  if (last && insideYawedBox(last.pos, bar.position, bar.yaw, halfW, halfD, minZ, maxZ, pad)) {
+    return { s: last.s, pos: last.pos };
   }
   return null;
 }

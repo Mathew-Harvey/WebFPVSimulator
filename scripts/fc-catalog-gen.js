@@ -44,7 +44,27 @@ const rows = table.map((row) => ({
   live: liveSet.has(row.key),
 }));
 
+/*
+ * Keys bf_settings.c applies that Betaflight's own valueTable does not
+ * carry. There is exactly one family of them, the rpm_filter_weights, which
+ * patches/0001 adds, and they really do belong to RPM_FILTER_CONFIG.
+ *
+ * The loop below stamps that pg on EVERY key that falls through here, so a
+ * key added to bf_settings.c with a typo, or one whose valueTable entry
+ * moves, would be filed silently under a parameter group it has nothing to
+ * do with and the catalog would look complete. Fail instead: a new family
+ * here is a decision, not a default.
+ */
 const extra = live.filter((k) => !table.some((r) => r.key === k));
+const unexpected = extra.filter((k) => !/^rpm_filter_weights_[123]$/.test(k));
+if (unexpected.length) {
+  throw new Error(
+    `fc-catalog-gen: ${unexpected.length} key(s) in bf_settings.c are not in the `
+    + `valueTable and are not rpm_filter_weights: ${unexpected.join(', ')}. `
+    + 'Give each one its real parameter group here rather than letting it '
+    + 'inherit RPM_FILTER_CONFIG.',
+  );
+}
 for (const key of extra) {
   rows.push({
     key,

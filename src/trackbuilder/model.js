@@ -233,7 +233,12 @@ export function createSequenceEntry(doc, elementId, apertureIndex = 0) {
   const entry = {
     id: newSequenceId(doc),
     elementId,
-    apertureIndex: def.kind === KIND.APERTURE ? int(apertureIndex, 0, 0) : null,
+    /* Clamped at BOTH ends. int(x, 0, 0) pins the floor at zero and leaves
+     * the ceiling open, so an index past the last hole of a stack was stored
+     * as given and every reader after it had to clamp again. */
+    apertureIndex: def.kind === KIND.APERTURE
+      ? int(apertureIndex, 0, 0, Math.max(0, aperturesOf(el).length - 1))
+      : null,
     /* 0 means the face has not been decided. The auto-defaulting pass in
      * faces.js normally sets it the moment the element is placed, and the
      * results panel warns about any that survive. */
@@ -342,9 +347,13 @@ export function normalize(raw) {
   const version = int(src.schemaVersion, 0, 0);
   if (version > SCHEMA_VERSION) {
     repairs.push(`document says schemaVersion ${version}, this build understands ${SCHEMA_VERSION}. Unknown fields were dropped.`);
-  } else if (version > 0 && version < SCHEMA_VERSION) {
-    repairs.push(`migrated from schemaVersion ${version} to ${SCHEMA_VERSION}.`);
   }
+  /* There is no older version to migrate FROM: SCHEMA_VERSION is still 1, so
+   * a `version > 0 && version < SCHEMA_VERSION` arm here could never run. It
+   * was removed rather than left as a promise. When the version first bumps,
+   * the migration goes inline in this function, field by field, because
+   * normalize already reads every field with a default and that is most of
+   * what a migration is. */
 
   const doc = {
     schemaVersion: SCHEMA_VERSION,

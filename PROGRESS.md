@@ -9397,3 +9397,108 @@ here.
 
 Next: the 79 minors and 49 trivials, and the barrier collider, which
 is the only item left whose fix changes what the craft can hit.
+
+### 2026-08-16 | sweep | batches D, E and F, the minors, the trivials and the barrier
+
+The rest of the sweep. About 100 of the 128 remaining items are done;
+what is not done is listed at the end with a reason for each, because
+a list of fixes with the awkward ones quietly missing is worse than no
+list.
+
+**The barrier collider, which was batch F and the one item that
+changes what the craft can hit.** A barrier got a single capsule at
+mid height with radius max(depth, height) / 2. The max is there
+because one horizontal capsule of radius depth/2 cannot reach the top
+of a barrier taller than it is deep, so the height was used instead,
+and that bought the vertical coverage by inflating the DEPTH to match.
+The stock 4 by 1 by 2 m barrier therefore had a 1 m radius against a
+1 m deep panel: half a metre of solid nothing in front of each face,
+and a line that visibly cleared the barrier hit it. It is now
+ceil(h / d) capsules of radius d / 2 stacked up the height, spacing at
+or under one diameter so the face has no gap. The stock barrier goes
+from one collider to two.
+
+The same fault was in the gate sleeves and the header board, and it
+was worse there: a 3 cm sleeve collided as a 21 cm cylinder, the 58 cm
+header board as a 29 cm one. Both go through one panelCaps helper now.
+This makes gates and barriers LESS solid than they were, which is the
+direction the drawings always claimed.
+
+**Bugs worth naming.** chunkInstanced cloned the whole source colour
+buffer into each chunk without remapping, so chunk instance k got
+SOURCE instance k's colour and every chunk after the first was
+coloured from the wrong end of the set. elevationProfile computed the
+extremes and then emitted on a fixed stride, so the peak of a course
+was in the axis label and missing from the line under it unless it
+happened to land on a multiple of the stride; it takes two passes now.
+View3D's disposeContent freed the cached bannerKit materials on every
+rebuild, which undid the cache it was supposed to keep and handed the
+NEXT rebuild materials whose GPU resources were already released.
+firstBarrierHit's last iteration had a === b and tested one point four
+times. createSequenceEntry clamped apertureIndex at the floor and left
+the ceiling open. A rates change overwrote configText before init, so
+a refused init poisoned the text every other recovery path restores
+from.
+
+fc-catalog-gen stamped RPM_FILTER_CONFIG on every key it found in
+bf_settings.c and not in the valueTable. There is exactly one family
+that legitimately lands there, so it now throws on anything else
+rather than filing a typo under a parameter group it has nothing to do
+with and reporting a complete catalog.
+
+**Native, and none of it compiled.** Deleted aero_torque_z, which was
+accumulated for every motor every step and then explicitly discarded,
+and motor_domega, written every step and at reset and read by nothing.
+Deleted sim_bf_key_status and bf_settings_status, exported and called
+by nothing. Removed a duplicate rx/rx.h. sim.c says SIM_STEP_HZ where
+it meant it. THE VENDOR TREE IS EMPTY IN THIS CONTAINER AND emcc IS
+NOT INSTALLED, so every one of these needs a build somewhere that has
+the toolchain before it can be believed.
+
+**Not done, and why.** These are the items I judged I could not land
+honestly here rather than ones I ran out of appetite for.
+
+- plant.c's Glauert solve is spelled three times and the tidy fix is
+  two static inline helpers. Extracting them can reorder floating
+  point operations, and the only instrument that would catch that is
+  a rebuilt module and a trace hash. Cannot rebuild here, so this is
+  a change whose whole risk is invisible in this container.
+- bf_settings.c matching lookup WORDS case sensitively where the
+  Betaflight CLI is case insensitive, the INERT_PREFIX list that has
+  drifted from catalog.js, and dropping the bf_runtime_init that
+  bridge_reset redoes. All three change how a config parses, all three
+  are unverifiable without a build.
+- bf_settings.c's raw key strings that should be PARAM_NAME_ macros:
+  checking each macro exists needs vendor/betaflight/src/main/fc/
+  parameter_names.h, which is not here.
+- plant.c's ESC current ceiling note argues from a superseded constant
+  set. Rewriting it means recomputing the figures, and a comment with
+  numbers I guessed at is worse than one that is visibly historical.
+- scene.js's flag sail outline and the bannerKit paint closure are
+  duplicated into view3d.js. Both are real, both are a hundred line
+  extraction across the render boundary, and neither has a test that
+  would catch a mistake. Worth doing deliberately, not at the end of a
+  long pass.
+- credits.js exists in both repos and has drifted. Two repos cannot
+  share an import; the honest fix is a build step or an options
+  argument, which is a decision rather than a cleanup.
+- The city's cover pass tests authored rectangles rather than the
+  fitted boxes it added, and boomExtentDown leaves the train boxes
+  swept. Both are real and both are inside the city's collider
+  fitting, where I do not have a way to assert the before and after
+  from here.
+
+`npm run verify`: 14 of 16, physics hash 6d17d4814bdc unchanged
+(hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26 ms,
+rate-tracking 671.5, sag 11.14 percent). The two failures are the two
+that were already failing: build-clean needs emcc, yaw-coupling is
+-0.12 deg against its 2 deg floor.
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`node tracks/check.mjs`: 3882 passed, 0 failed.
+`node scripts/preset-lint.js`: 2 of 2 clean.
+`node scripts/fc-trace.js`: 23 of 23 clean.
+Leaderboard `node src/selftest.js`: all passed.
+
+Next: the deferred list above, starting with the plant.c and
+bf_settings.c items on a machine with emcc, because those are the ones
+that need a trace hash rather than an argument.

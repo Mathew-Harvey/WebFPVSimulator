@@ -293,14 +293,32 @@ export function elevationProfile(path, maxPoints = 400) {
     return { points: [], minZ: 0, maxZ: 0, length: 0 };
   }
   const stride = Math.max(1, Math.ceil(n / maxPoints));
-  const points = [];
+  /*
+   * Two passes, because the extremes have to be KNOWN before the thinning
+   * can be told to keep them. One pass computed minZ and maxZ correctly and
+   * then emitted purely on the stride, so the peak of the course was
+   * reported in the axis labels and missing from the line under them
+   * whenever it did not happen to land on a multiple of the stride.
+   */
   let minZ = Infinity;
   let maxZ = -Infinity;
+  let minIdx = 0;
+  let maxIdx = 0;
   for (let i = 0; i < n; i += 1) {
-    const p = path.samples[i];
-    minZ = Math.min(minZ, p.pos.z);
-    maxZ = Math.max(maxZ, p.pos.z);
-    if (i % stride === 0 || i === n - 1) {
+    const z = path.samples[i].pos.z;
+    if (z < minZ) {
+      minZ = z;
+      minIdx = i;
+    }
+    if (z > maxZ) {
+      maxZ = z;
+      maxIdx = i;
+    }
+  }
+  const points = [];
+  for (let i = 0; i < n; i += 1) {
+    if (i % stride === 0 || i === n - 1 || i === minIdx || i === maxIdx) {
+      const p = path.samples[i];
       points.push({ s: p.s, z: p.pos.z });
     }
   }

@@ -335,6 +335,13 @@ export function bannerCanvas(w, h) {
  * gate header is 2.74 m of vinyl a pilot passes within a metre of, and a
  * sleeve and a sail are read from further out and mostly in silhouette.
  */
+/*
+ * The printed header board's height in METRES. The canvas aspects below are
+ * derived from it, and so are the mesh in render/scene.js and the preview in
+ * trackbuilder/view3d.js, which each held their own 0.58.
+ */
+export const GATE_BANNER_H = 0.58;
+
 export const BANNER_SIZE = {
   /*
    * Each one's ASPECT is the aspect of the surface it lands on, because a

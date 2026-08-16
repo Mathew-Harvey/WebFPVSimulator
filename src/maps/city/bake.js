@@ -1542,8 +1542,24 @@ export function chunkInstanced(root, { cell = 40 } = {}) {
         chunk.setMatrixAt(k, m);
       }
       chunk.instanceMatrix.needsUpdate = true;
+      /*
+       * REMAPPED, not cloned. The chunk holds instances idx[0..n], so
+       * instance k here is source instance idx[k]: copying the source
+       * buffer whole handed chunk instance k the colour of SOURCE instance
+       * k, which is a different tree. Every chunk after the first got its
+       * colours from the wrong end of the set, and a clone of a longer
+       * buffer also leaves the tail of it in memory for nothing.
+       */
       if (src.instanceColor) {
-        chunk.instanceColor = src.instanceColor.clone();
+        const from = src.instanceColor.array;
+        const colours = new Float32Array(idx.length * 3);
+        for (let k = 0; k < idx.length; k += 1) {
+          colours[k * 3] = from[idx[k] * 3];
+          colours[k * 3 + 1] = from[idx[k] * 3 + 1];
+          colours[k * 3 + 2] = from[idx[k] * 3 + 2];
+        }
+        chunk.instanceColor = new THREE.InstancedBufferAttribute(colours, 3);
+        chunk.instanceColor.needsUpdate = true;
       }
       chunk.computeBoundingSphere();
       /* Seated in the source's parent so any transform above it still

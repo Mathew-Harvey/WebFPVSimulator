@@ -565,9 +565,13 @@ export const TRACKS = [
       C: k('bd ~ g ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~'),
       D: k('bd ~ ~ ~ ~ ~ ~ g bd bd ~ ~ ~ ~ g ~'),
     }),
-    snare: seq('A A A B  A A A B  A A A B  A A B C', {
+    /* B was byte identical to A, so the A/B alternation this layout spells
+     * out played as one bar repeated and the pattern read as busier than it
+     * sounds. Every sibling track puts a ghost note on its B; if one was
+     * meant here, add it to a new B and put the Bs back. As written this is
+     * the same audio, sample for sample. */
+    snare: seq('A A A A  A A A A  A A A A  A A A C', {
       A: n('~ ~ sd ~ ~ ~ sd ~'),
-      B: n('~ ~ sd ~ ~ ~ sd ~'),
       C: n('~ ~ sd ~ ~ g sd g'),
     }),
     hat: seq('A A A A  B A A A  A A A A  B A A C', {

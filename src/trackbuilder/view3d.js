@@ -61,7 +61,8 @@ import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js
  * builder use it without importing a line of the simulator.
  */
 import {
-  BANNER_SIZE, bannerCanvas, bannerHex, paintGateHeader, paintGateSleeve, paintFlagSail,
+  BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H,
+  paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
 import {
   assembleStartBlock, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK, START_BLOCK_FOAM, START_BLOCK_LIP,
@@ -69,7 +70,8 @@ import {
 
 /* The header banner's height and the fraction of it left clear at each end
  * for the gate number, matching src/render/scene.js. */
-const BANNER_H = 0.58;
+/* The board's real height, from the module that paints it. */
+const BANNER_H = GATE_BANNER_H;
 
 const COL = {
   ground: 0x16232f,
@@ -202,7 +204,11 @@ export class View3D {
         tex.needsUpdate = true;
         this.host.requestDraw();
       });
-      return new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
+      const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
+      /* Owned by the kit, not by the scene graph it gets attached to. See
+       * disposeContent, which walks the content and frees what it finds. */
+      mat.userData.sharedKit = true;
+      return mat;
     };
     this.kit = {
       logo,
@@ -475,6 +481,15 @@ export class View3D {
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
+          /* Skip the banner kit. Its materials are CACHED across rebuilds
+           * and freed by bannerKit itself when the logo changes: disposing
+           * them here undid the cache on every rebuild, so every edit
+           * repainted four canvases and uploaded four textures, and the
+           * meshes of the rebuild after that were handed materials whose
+           * GPU resources had already been released. */
+          if (m.userData && m.userData.sharedKit) {
+            continue;
+          }
           if (m.map) {
             m.map.dispose();
           }

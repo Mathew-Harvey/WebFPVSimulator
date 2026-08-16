@@ -59,7 +59,7 @@ import { buildGuideMesh, paintGuideOnPitch } from './marks.js';
 /* The printed vinyl a course is dressed in, shared with the track builder's
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
-  BANNER_SIZE, bannerCanvas, bannerHex, HEADER_NUMBER_ZONE,
+  BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, HEADER_NUMBER_ZONE,
   paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
 import {
@@ -1623,7 +1623,7 @@ function printedPanel(w, h, depth, mat, substrate) {
  * sits on top of the uprights, and those are two different heights in two
  * different frames.
  */
-const GATE_BANNER_H = 0.58;
+
 
 /*
  * A flat printed panel, as a ROW of capsules rather than one fat one.

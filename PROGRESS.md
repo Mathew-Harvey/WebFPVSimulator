@@ -8757,4 +8757,189 @@ had to `eval`).
 Next: CLI textarea plus dump import (keep mine / use dump). Then mixed
 tabs. Do not reopen F9 by stealing the title pose.
 
+### 2026-08-16 | ui | Choose new map opens the board in a new tab
+
+Bug: Custom map -> Choose new map assigned `window.location.href` to the
+board origin, so this tab left the simulator. Leaderboard already used
+`window.open(..., '_blank')`, and the board's Fly this course also opens
+the sim in a new tab. The two together dumped the flying tab and spawned
+a second sim.
+
+Fix: `selectmap` uses the same `window.open` as Leaderboard. This tab
+stays on the title. Pick a course on the board, Fly this course still
+opens the sim.
+
+What went wrong: the nested Custom map submenu treated Choose new map as
+a leave-this-page path, like the track builder. The board is not the
+builder. It is a picker whose Fly link already targets `_blank`.
+
+Physics, WASM and the determinism trace were not touched. Hard reload,
+Map, Custom map, Choose new map.
+
+### 2026-08-16 | ui | Choose new map opened the sim, not the board
+
+The new tab was real. The address was not. `Choose new map` called
+`boardPageUrl(this.share && this.share.board)`. With no published course
+loaded that argument is `null`. Default parameters only fire for
+`undefined`, so `boardPageUrl` built `"/"`, which is this origin, the
+simulator at :8000, not the board at :3100.
+
+Fix: empty, null, or same-origin values fall through to the board origin,
+then `http://127.0.0.1:3100`. Checked: null, empty, omitted, and the sim
+origin all open `http://127.0.0.1:3100/`.
+
+What went wrong: last turn made the tab `_blank` and stopped there. The
+URL still collapsed to this page whenever the share seat was empty, which
+is the usual Choose new map case.
+
+Physics, WASM and the determinism trace were not touched. Hard reload,
+Map, Custom map, Choose new map. The new tab should be The Board.
+
+### 2026-08-16 | music | the persistent tone was the pad hold
+
+The owner: every music track has a persistent tone in the background.
+
+Round 37 already moved the pad down and switched triangle to sine. That
+killed the 2 to 3 kHz third harmonic. It left the fundamental ON. The
+drum and bass swell ramped three sines up to 0.025 then down to a 0.02
+floor at 94 percent of the chord span, and never returned to silence.
+That is a drone with a kick drum on it. The lofi keys used 2.4 to 3.4 s
+decays against strike gaps as short as 1.43 s, so they overlapped into
+the same wash. A sine that never dies is a whistle in any octave, which
+is why moving it down did not fix what the owner heard.
+
+Changed, every track, no new nodes:
+
+- All twelve pads are pluck. DnB strikes on the 1 of each two bar half,
+  280 ms of ring. Lofi keys 280 to 700 ms, always shorter than the gap
+  to the next strike. Import throws if a decay fills that gap, so a new
+  sheet cannot write the hold back in.
+- The leftover swell path, if anything still names it, peaks and dies
+  instead of parking at 0.02.
+- Three voices detuned -11 / 0 / +13 cents so a stab is a chord beating,
+  not one test tone.
+
+Duty cycle of the pad, decay over minimum strike gap:
+
+    track            before (hold or overlap)   after
+    night-circuit    ~0.94                      0.10
+    porch-light      0.40                       0.08
+    rolling-deep     ~0.94                      0.10
+    rainy-glass      0.95                       0.17
+    skyline          ~0.94                      0.10
+    corner-store     1.40 (decay longer than gap, always on)
+                                                0.20
+    undertow         ~0.94                      0.10
+    paper-planes     0.51                       0.10
+    copper-wire      ~0.94                      0.10
+    slow-orbit       0.81                       0.17
+    afterimage       ~0.94                      0.08
+    amber-dusk       1.24 (always on)           0.22
+
+Music-only renders, 8 s, idle motors muted, --tones=400,2000. Round 37's
+full mix still had pad partials at 16 to 19 dB prominence. First pass
+this turn (650 ms dnb / 1.0 s lofi) left Corner Store at 20.3 dB, so
+the decays came down again. Measured after the second cut:
+
+    track            top peak           prominence   bin
+    night-circuit    785 Hz             5.86 dB      -66.0
+    rolling-deep     738 Hz             4.43         -66.3
+    skyline          738 Hz             5.83         -65.0
+    undertow         996 Hz             5.04         -65.6
+    copper-wire      785 Hz             7.00         -65.1
+    afterimage       1761 Hz (snare)    6.03         -59.1
+    porch-light      659 Hz             10.33        -62.4
+    rainy-glass      656 Hz             12.83        -58.4
+    corner-store     785 Hz             10.94        -61.2
+    paper-planes     741 Hz             12.34        -60.3
+    slow-orbit       656 Hz             9.80         -60.7
+    amber-dusk       785 Hz             13.14        -59.2
+
+Lofi keys still show as tones in a music-only FFT, because a piano note
+is a tone. They now occupy 8 to 22 percent of the bar instead of the
+whole bar. Hover full mix, Night Circuit: loudest peaks are the motor's
+own 418.9 Hz (26.78 dB) and 627 Hz (24.90 dB). Same motor second
+harmonic Round 37 named. Pad frequencies are not in that list.
+
+What went wrong: the first cut this turn left 650 ms dnb stabs and 1 s
+lofi rings. Corner Store, three strikes per span at level 0.051, still
+measured 20.3 dB prominence. Shortened and dropped the busy tracks, then
+re-measured all twelve.
+
+Verify, this turn, with SIM_CHROME_BIN set: 13 of 16. Check 14 audio-bed
+passes, ctx running, music gain 0.425, 46 steps in 4.01 s, 63 nodes.
+console-clean errors=0 warnings=0. Determinism hash 6d17d4814bdc
+unchanged, as it must, nothing here touches the plant. Same two reds
+this container always has (build-clean, emcc/npm spawn; yaw-coupling
+-0.12 deg against the 2.0 floor) plus map-isolation still adrift of the
+c3c6e44 snapshot from the grass cut, not this change.
+
+Hard reload, play each track. The kick, snare, hats and sub are the bed.
+Chords should poke, then go.
+
+### 2026-08-16 | loop | Configurator gauntlet round 3: homage chrome, CLI, import, presets, mixed tabs
+
+Asked: five more unattended rounds, Configurator colours as homage with
+credit to the Betaflight developers, not an iframe of their app.
+
+Built on the existing dump path. The FC screen is now charcoal and
+`#ffbb00` after Configurator 10.10, with a left tab strip of all 24
+tabs, a credit line, and the same CLI dump Save already used.
+
+New surfaces, still one write path (draft CLI to `composeConfig` to
+`sim_init` to `adoptSimClock`):
+
+- CLI textarea over the live dump. Typing does not rebuild the menu.
+- Drop of a dump that carries rates asks Keep my rates (default) vs
+  Use dump rates. A file with no rate keys still loads keep-mine
+  silently. Escape on that dialog is Cancel: discard and leave.
+- Presets tab lists the registry. Picking one fills the draft with
+  keep-mine rates. Save still required.
+- Configuration: `feature AIRMODE` and `ANTI_GRAVITY` live. GPS, OSD,
+  LED, telemetry, RX_SPI, 3D, SERVO grey.
+- Modes: ANGLE is on/off through `sim_set_angle_mode`, same ABI as
+  Settings. ARM grey always on. HORIZON / GPS RESCUE grey.
+- Setup: attitude from the plant quaternion. Acc/mag cal grey.
+- Motors: title-only `sim_motor_override` test. Mid-race grey.
+
+After review (both REJECT):
+
+- ACTUAL rates rows are now `roll centre` / `roll max rate` at 70 / 670
+  deg/s, not `roll_rc_rate` next to 70. Export still writes CLI 7 / 67.
+- `MACRO_BOUNDS` F_GAIN_MAX 1000 and ITERM_ACCELERATOR_GAIN_MAX 250,
+  matching 4.5.1 `pid.h`.
+- `horizon_*` recatalogued APPLIED_INERT. HORIZON_MODE is never raised.
+- Escape on the import dialog no longer leaves the dropped dump as the
+  unsaved draft.
+- `gyro_lpf1_static_hz` stays LIVE with a note when dyn min is above 0.
+
+Left recorded, not stolen: F9 title-pad (shell law). The five-knob
+`ratesDiff` shadow cannot hold independent pitch or BETAFLIGHT; FC Save
+uses `RATES_DUMP` so the draft wins until a later KEEP compose.
+
+Catalog: valueTable 683, bf_settings 175, LIVE 154, GATED 5,
+APPLIED_INERT 16, INERT 511, ABSENT 10, tabs 24.
+
+`lint:catalog` 0, `lint:fc` 21/21. F3 hash unchanged
+`0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`.
+Shots `.loop/evidence/fc-r3/`, console 0/0/0, homage true, 24 tabs.
+F14 after save-restart: simStepMs 0 = moduleMs 0, p_roll 80.
+
+Verify this turn, SIM_CHROME_BIN set: 13 of 16. Physics floor held:
+hash `6d17d4814bdc`, hover 0.2637, punch 81.5 m, terminal 31.1 m/s,
+t63 26 ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough
+1.2478. world-scale now PASS (craft body 0.1552 m). Direct
+`build:wasm` exit 0, vendor diff empty. Red: build-clean spawnSync npm,
+yaw-coupling, map-isolation vs c3c6e44. tests/ not edited.
+
+What went wrong: first shot run failed takeoff (`__stick` 0.4) so
+save-run never armed. Forced `runActive` for the confirm shot. Import
+Escape was a clear-confirm no-op until the QA review. Compacted CLI,
+import, presets, mixed tabs, Modes and Setup into one round so the
+homage screen was not a PID page wearing orange.
+
+Next: independent pitch / `rates_type` through KEEP compose, or leave
+the five-knob shadow documented. Do not steal the title pose for F9.
+
+
 

@@ -129,6 +129,49 @@ export function cliGet(text, key) {
   return cliMap(text).get(key) ?? null;
 }
 
+export function dumpCarriesRates(text) {
+  for (const s of parseCli(text).sets) {
+    if (RATE_KEYS.has(s.key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function featureEnabled(text, name) {
+  let on = null;
+  const pos = `feature ${name}`;
+  const neg = `feature -${name}`;
+  for (const raw of (text ?? '').split('\n')) {
+    const t = raw.replace(/\r$/, '').trim();
+    if (t === pos) {
+      on = true;
+    } else if (t === neg) {
+      on = false;
+    }
+  }
+  return on;
+}
+
+export function setFeatureLine(text, name, on) {
+  const want = on ? `feature ${name}` : `feature -${name}`;
+  const pos = `feature ${name}`;
+  const neg = `feature -${name}`;
+  const lines = [];
+  for (const raw of (text ?? '').split('\n')) {
+    const t = raw.replace(/\r$/, '').trim();
+    if (t === pos || t === neg) {
+      continue;
+    }
+    lines.push(raw.replace(/\r$/, ''));
+  }
+  while (lines.length && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  lines.push(want);
+  return `${lines.join('\n')}\n`;
+}
+
 export function tuneBody(text) {
   const kept = [];
   for (const raw of (text ?? '').split('\n')) {

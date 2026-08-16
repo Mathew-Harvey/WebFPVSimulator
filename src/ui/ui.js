@@ -81,7 +81,7 @@ import {
 import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { downloadCli, FcSession } from './fc.js';
+import { downloadCli, drawAttitude, FcSession, paintTabStrip } from './fc.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -514,8 +514,26 @@ export class Ui {
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
     this.onFcOpen = null;    /* (page) => void */
-    this.onFcSave = null;    /* (draft, { restart }) => void */
+    this.onFcSave = null;    /* (draft, { restart, presetId }) => void */
+    this.onFcImport = null;  /* (text, name, policy) => void */
+    this.onFcAngle = null;   /* (on) => void, same sim_set_angle_mode as Settings */
+    this.onFcMotor = null;   /* (motor, duty) => void, sim_motor_override */
     this.fc = new FcSession();
+    this.fc.getFlightMode = () => (this.settings.flightMode === 'angle' ? 'angle' : 'acro');
+    this.fc.setFlightMode = (on) => {
+      this.settings.flightMode = on ? 'angle' : 'acro';
+      saveSettings(this.settings);
+      if (this.onFcAngle) {
+        this.onFcAngle(Boolean(on));
+      }
+      this.renderMenu();
+    };
+    this.fc.motorTestAllowed = () => !this.fc.runActive && this.returnTo !== 'paused';
+    this.fc.onMotorTest = (motor, duty) => {
+      if (this.onFcMotor) {
+        this.onFcMotor(motor, duty);
+      }
+    };
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
@@ -741,14 +759,60 @@ export class Ui {
     this.screens.settings = settings;
 
     const fc = el('div', 'screen screen-page screen-fc');
-    fc.append(el('h2', null, 'Flight controller'));
+    const fcHead = el('div', 'fc-head');
+    fcHead.append(el('h2', null, 'Flight controller'));
+    const homage = el('p', 'fc-homage');
+    const cfgLink = el('a', null, 'Betaflight Configurator');
+    cfgLink.href = 'https://github.com/betaflight/betaflight-configurator';
+    cfgLink.target = '_blank';
+    cfgLink.rel = 'noopener noreferrer';
+    const bfLink = el('a', null, 'Betaflight');
+    bfLink.href = 'https://github.com/betaflight/betaflight';
+    bfLink.target = '_blank';
+    bfLink.rel = 'noopener noreferrer';
+    homage.append(
+      document.createTextNode('Tab names, 4.5.1 fields, and these colours after '),
+      cfgLink,
+      document.createTextNode(' 10.10. This is not that app. Firmware is compiled '),
+      bfLink,
+      document.createTextNode(' 4.5.1. With thanks to the Betaflight developers. GPLv3.'),
+    );
+    fcHead.append(homage);
+    this.fcDirty = el('span', 'fc-dirty', '');
+    fcHead.append(this.fcDirty);
+    const fcBody = el('div', 'fc-body');
+    this.fcTabs = el('nav', 'fc-tabs');
+    this.fcTabs.setAttribute('aria-label', 'Configurator tabs');
+    const fcWork = el('div', 'fc-work');
     const fcBlock = wrapMenu();
     this.fcMenu = fcBlock.menu;
     this.fcMenu.classList.add('menu-scroll');
     this.fcHelp = fcBlock.help;
+    this.fcCli = el('textarea', 'fc-cli');
+    this.fcCli.spellcheck = false;
+    this.fcCli.setAttribute('aria-label', 'Betaflight CLI dump');
+    this.fcCli.hidden = true;
+    this.fcCli.addEventListener('input', () => {
+      this.fc.setDraft(this.fcCli.value);
+      this.syncFcDirty();
+    });
+    this.fcCli.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') {
+        this.fcCli.blur();
+      }
+      e.stopPropagation();
+    });
+    this.fcAttitude = el('canvas', 'fc-attitude');
+    this.fcAttitude.width = 220;
+    this.fcAttitude.height = 220;
+    this.fcAttitude.setAttribute('aria-label', 'Attitude');
+    this.fcAttitude.hidden = true;
+    fcWork.append(fcBlock.stage, this.fcCli, this.fcAttitude);
+    fcBody.append(this.fcTabs, fcWork);
     fc.append(
-      fcBlock.stage,
-      el('div', 'hint', 'This is Configurator. Save writes a CLI dump into Betaflight. Grey means this sim does not have that machine.'),
+      fcHead,
+      fcBody,
+      el('div', 'hint', 'Save writes a CLI dump into compiled Betaflight. Grey means this sim does not have that machine.'),
     );
     this.screens.fc = fc;
 
@@ -1100,7 +1164,7 @@ export class Ui {
           label: 'Choose new map',
           kicker: 'Board',
           copy: 'Open the public board and pick a published course to fly.',
-          note: 'Opens the public board, where published courses and their times live.',
+          note: 'Opens the public board in a new tab. Pick a course, then Fly this course.',
           choiceCard: true,
           action: 'selectmap',
         },
@@ -1395,6 +1459,49 @@ export class Ui {
     });
     host.scrollTop = scroll;
     this.syncCursor(false);
+    this.syncFcChrome();
+  }
+
+  syncFcChrome() {
+    if (!this.fcTabs) {
+      return;
+    }
+    const on = this.screen === 'fc';
+    if (on) {
+      paintTabStrip(this.fcTabs, this.fc, (id) => {
+        if (this.fc.confirm) {
+          return;
+        }
+        this.fc.setTab(id);
+        this.cursor = 0;
+        this.renderMenu();
+      });
+    }
+    const confirm = Boolean(this.fc.confirm);
+    const cliOn = on && this.fc.tab === 'cli' && !confirm;
+    this.fcCli.hidden = !cliOn;
+    if (cliOn && document.activeElement !== this.fcCli) {
+      this.fcCli.value = this.fc.draft;
+    }
+    const setupOn = on && this.fc.tab === 'setup' && !confirm;
+    this.fcAttitude.hidden = !setupOn;
+    if (setupOn) {
+      drawAttitude(this.fcAttitude, this.fc.attitude);
+    }
+    this.syncFcDirty();
+  }
+
+  syncFcDirty() {
+    if (!this.fcDirty) {
+      return;
+    }
+    this.fcDirty.textContent = this.fc.dirty() ? 'Unsaved' : '';
+  }
+
+  paintFcAttitude() {
+    if (this.screen === 'fc' && this.fc.tab === 'setup' && !this.fc.confirm) {
+      drawAttitude(this.fcAttitude, this.fc.attitude);
+    }
   }
 
   helpNode() {
@@ -2483,6 +2590,10 @@ export class Ui {
       return;
     }
     if (this.screen === 'fc') {
+      if (this.fc.confirm === 'import-rates') {
+        this.act('fc-import-cancel');
+        return;
+      }
       if (this.fc.confirm) {
         this.fc.confirm = null;
         this.cursor = 0;
@@ -2577,15 +2688,13 @@ export class Ui {
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
-    if (action === 'leaderboard') {
+    /* Leaderboard and Choose new map are the same page. The board's
+     * Fly this course already opens the sim in a new tab, so this tab
+     * has to stay put. Navigating away here left the pilot with no sim
+     * and a second one from Fly. share.board is the board origin when
+     * a published course is loaded, otherwise the default board. */
+    if (action === 'leaderboard' || action === 'selectmap') {
       window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
-      return;
-    }
-    /* Same destination as Leaderboard, but this is the path from Choose
-     * new map, so it leaves the simulator the way the track builder does:
-     * pick a course on the board, then Fly this course comes back. */
-    if (action === 'selectmap') {
-      window.location.href = boardPageUrl(this.share && this.share.board);
       return;
     }
     if (action === 'choosetrack') {
@@ -2628,15 +2737,17 @@ export class Ui {
         this.renderMenu();
         return;
       }
+      this.fc.stopMotors();
       if (this.onFcSave) {
-        this.onFcSave(this.fc.draft, { restart: false });
+        this.onFcSave(this.fc.draft, { restart: false, presetId: this.fc.presetId });
       }
       return;
     }
     if (action === 'fc-save-restart') {
       this.fc.confirm = null;
+      this.fc.stopMotors();
       if (this.onFcSave) {
-        this.onFcSave(this.fc.draft, { restart: true });
+        this.onFcSave(this.fc.draft, { restart: true, presetId: this.fc.presetId });
       }
       return;
     }
@@ -2644,6 +2755,42 @@ export class Ui {
       this.fc.confirm = null;
       this.cursor = 0;
       this.renderMenu();
+      return;
+    }
+    if (action === 'fc-import-keep' || action === 'fc-import-dump') {
+      const policy = action === 'fc-import-keep' ? 'keep-mine' : 'use-dump';
+      const text = this.fc.importText;
+      const name = this.fc.importName;
+      this.fc.confirm = null;
+      if (this.onFcImport) {
+        this.onFcImport(text, name, policy);
+      }
+      return;
+    }
+    if (action === 'fc-import-cancel') {
+      this.fc.confirm = null;
+      this.fc.discard();
+      this.act('fc-back');
+      return;
+    }
+    if (action === 'fc-focus-cli') {
+      this.fcCli.hidden = false;
+      this.fcCli.value = this.fc.draft;
+      this.fcCli.focus();
+      return;
+    }
+    if (action === 'fc-motors-stop') {
+      this.fc.stopMotors();
+      this.renderMenu();
+      return;
+    }
+    if (action.startsWith('fc-preset:')) {
+      const id = action.slice('fc-preset:'.length);
+      this.fc.applyPreset(id).then(() => {
+        this.renderMenu();
+      }).catch((err) => {
+        console.error(err);
+      });
       return;
     }
     if (action === 'fc-discard') {
@@ -2656,6 +2803,7 @@ export class Ui {
       return;
     }
     if (action === 'fc-back') {
+      this.fc.stopMotors();
       this.fc.discard();
       const dest = this.returnTo === 'paused' || this.returnTo === 'settings'
         ? this.returnTo
@@ -2714,6 +2862,12 @@ export class Ui {
    * and Escape must not fire again. */
   handleKey(code, repeat = false) {
     if (this.nameDialog && !this.nameDialog.hidden) {
+      return true;
+    }
+    if (this.screen === 'fc' && this.fcCli && document.activeElement === this.fcCli) {
+      if (code === 'Escape') {
+        this.fcCli.blur();
+      }
       return true;
     }
     const nav = code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight'

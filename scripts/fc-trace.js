@@ -31,7 +31,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RATE_DEFAULTS } from '../configs/rates.js';
-import { composeConfig, expandRpmWeights, exportCli, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, setCliValue } from '../src/fc/dump.js';
+import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, setCliValue, setFeatureLine } from '../src/fc/dump.js';
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { must, sha256Hex } from '../tests/lib/replay.js';
 
@@ -275,6 +275,29 @@ record(
     'F10 Karate slider apply moves p_roll',
     p0 != null && p1 != null && p0 !== p1 && /simplified_tuning apply/.test(edited),
     `p_roll ${p0} -> ${p1} after simplified_pi_gain 120`,
+  );
+}
+
+{
+  record(
+    'F8 dumpCarriesRates is false on Karate (no rateprofile)',
+    dumpCarriesRates(karateDiff) === false,
+    dumpCarriesRates(karateDiff) ? 'carries rates' : 'no rate keys',
+  );
+  const withRates = withLine(karateDiff, 'set roll_srate = 42');
+  record(
+    'F8 dumpCarriesRates is true when a dump has roll_srate',
+    dumpCarriesRates(withRates) === true,
+    'roll_srate present',
+  );
+}
+
+{
+  const off = setFeatureLine(base, 'AIRMODE', false);
+  record(
+    'F4 feature line writes feature -AIRMODE',
+    featureEnabled(off, 'AIRMODE') === false && /feature -AIRMODE/.test(off),
+    featureEnabled(off, 'AIRMODE') == null ? 'unset' : 'off',
   );
 }
 

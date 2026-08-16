@@ -65,7 +65,7 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { ratesDiff, ratesSummary } from '../configs/rates.js';
-import { composeConfig, moduleDump, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, tuneBody } from './fc/dump.js';
+import { composeConfig, dumpCarriesRates, moduleDump, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -1168,8 +1168,16 @@ export async function boot({ loading, bootStart, mapId }) {
     tuneText = tuneBody(draft);
     ratesText = ratesDiff(ui.settings);
     configText = nextText;
-    configId = '';
-    configName = 'flight-controller.diff';
+    if (opts && opts.presetId) {
+      configId = opts.presetId;
+      configName = `${opts.presetId}.diff`;
+      ui.settings.tune = opts.presetId;
+      menuTune = opts.presetId;
+      ui.persistSettings();
+    } else {
+      configId = '';
+      configName = 'flight-controller.diff';
+    }
     adoptSimClock();
     sim.setCellVoltage(runVoltage);
     race.setRecordKey(recordKey());
@@ -1186,6 +1194,51 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     ui.renderMenu();
+  };
+  ui.onFcImport = (text, name, policy) => {
+    bumpConfigGen();
+    const useDump = policy === RATES_DUMP;
+    if (useDump) {
+      Object.assign(ui.settings, ratesSettingsFromDump(text));
+      ui.persistSettings();
+    }
+    const nextText = composeConfig(text, ui.settings, useDump ? RATES_DUMP : RATES_KEEP);
+    const code = sim.init(nextText);
+    if (code !== SIM_OK) {
+      notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
+      sim.init(configText);
+      adoptSimClock();
+      reset();
+      ui.fc.open(moduleDump(sim), { runActive: false, tab: 'cli' });
+      ui.renderMenu();
+      return;
+    }
+    tuneText = text;
+    configText = nextText;
+    configName = name || 'dropped.diff';
+    configId = '';
+    ratesText = ratesDiff(ui.settings);
+    adoptSimClock();
+    sim.setCellVoltage(runVoltage);
+    race.setRecordKey(recordKey());
+    ui.setBest(race.bestMs, view.mode);
+    notice = {
+      text: useDump
+        ? `Flying ${configName}\nRates from the dump.`
+        : `Flying ${configName}\nRates from the menu: ${ratesSummary(ui.settings)}`,
+      untilMs: performance.now() + 3200,
+    };
+    reset();
+    const live = moduleDump(sim);
+    ui.fc.open(live, { runActive: false, tab: 'cli' });
+    ui.renderMenu();
+  };
+  ui.onFcAngle = (on) => {
+    ui.settings.flightMode = on ? 'angle' : 'acro';
+    syncAngleMode();
+  };
+  ui.onFcMotor = (motor, duty) => {
+    sim.motorOverride(motor, duty);
   };
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */
@@ -1354,16 +1407,26 @@ export async function boot({ loading, bootStart, mapId }) {
       if (!isLiveConfigLoad(gen)) {
         return;
       }
-      /* A dropped diff is a TUNE. composeConfig keep-mine appends the menu
-       * rates last, so a file that carries its own rateprofile is overridden
-       * rather than quietly taking the sticks over. The notice says so. */
+      /* A dropped diff that carries a rateprofile asks. Default is keep
+       * mine, the same policy composeConfig used when there was no dialog.
+       * A file with no rate keys still loads silently keep-mine. */
+      if (dumpCarriesRates(text)) {
+        const dump = moduleDump(sim);
+        const runActive = (mode === 'flight' || mode === 'paused') && launched && !landed && !crashed;
+        ui.returnTo = ui.screen === 'paused'
+          ? 'paused'
+          : (ui.screen === 'settings' ? 'settings' : 'title');
+        ui.fc.open(dump, { runActive, tab: 'cli' });
+        ui.fc.openImport(text, file.name);
+        ui.show('fc');
+        return;
+      }
       const nextText = composeConfig(text, ui.settings, RATES_KEEP);
       const code = sim.init(nextText);
       if (code === SIM_OK) {
         tuneText = text;
         configText = nextText;
         configName = file.name;
-        /* A dropped diff is not one of the registry tunes any more. */
         configId = '';
         adoptSimClock();
         race.setRecordKey(recordKey());
@@ -2323,6 +2386,16 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setBanner('');
     }
 
+    if (ui.screen === 'fc' && stateCurr) {
+      ui.fc.attitude = {
+        w: stateCurr[7],
+        x: stateCurr[8],
+        y: stateCurr[9],
+        z: stateCurr[10],
+      };
+      ui.paintFcAttitude();
+    }
+
     if (ui.settings.readout) {
       /* Performance only. The setting promises frame rate and draw
        * counts, so anything else here is developer output that the
@@ -2400,6 +2473,11 @@ export async function boot({ loading, bootStart, mapId }) {
     confirm: ui.fc.confirm,
     p_roll: (ui.fc.draft.match(/set p_roll = (\S+)/) || [])[1] || null,
     simplifiedApply: /simplified_tuning apply/.test(ui.fc.draft),
+    cliLen: ui.fc.draft.length,
+    presetId: ui.fc.presetId || '',
+    importName: ui.fc.importName || '',
+    homage: Boolean(document.querySelector('.screen-fc .fc-homage')),
+    tabs: document.querySelectorAll('.fc-tab').length,
     simStepMs,
     lastTs,
     moduleMs: Math.round(readState()[0] * 1000),

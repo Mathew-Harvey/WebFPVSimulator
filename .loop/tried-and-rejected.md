@@ -1,6 +1,36 @@
 # Tried and rejected
 
+## Configurator loop, round 3
+
+**Leaving the import dialog's Escape as clear-confirm.** The dropped
+text was already the draft. Save then used `RATES_DUMP`, so dump rates
+won after a cancel. Escape is now `fc-import-cancel`: discard and leave.
+
+**Labelling ACTUAL rates with the CLI key next to Configurator deg/s.**
+Round 2 put 70 / 670 next to `roll_rc_rate`. A dump-flasher copies the
+number beside the CLI name and writes `set roll_rc_rate = 70`. The row
+is now `roll centre` / `roll max rate`. Export still writes 7 / 67.
+
+**Leaving `horizon_*` LIVE because they parse.** HORIZON_MODE is never
+raised. Same class as the r1 LIVE-that-never-flies list. APPLIED_INERT.
+
+**`MACRO_BOUNDS` F_GAIN_MAX 2000 and ITERM_ACCELERATOR_GAIN_MAX 30000.**
+4.5.1 `pid.h` is 1000 and 250. The UI could step past CLI.
+
+**Stealing the title pose so a radio can open FC.** Still rejected.
+Pause is the radio path.
+
+**Widening `ratesDiff` so KEEP can hold independent pitch and
+`rates_type`.** FC Save uses `RATES_DUMP`, so the draft is the truth
+until a KEEP compose. Expanding the menu object is a rates-policy
+change, not this screen. Recorded, not done.
+
+**Demoting `gyro_lpf1_static_hz` to GATED.** It is live when dyn min is
+0. The Filters note says so when dyn min is above 0. Do not grey a
+control 4.5.1 itself uses on a static LPF board.
+
 ## Configurator loop, round 2
+
 
 **Showing ACTUAL `roll_rc_rate` / `roll_srate` as the CLI uint8 (7 / 67).**
 Settings and Configurator 4.5.1 already speak deg/s (70 / 670). One click

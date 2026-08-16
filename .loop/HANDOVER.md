@@ -9,6 +9,69 @@ then `.loop/state.json`, then `.loop/tried-and-rejected.md`, then
 The Configurator gauntlet. Constitution: `prompts/fc-configurator-loop.md`.
 Branch: `loop/fc-configurator`. Do not fast-forward `main`.
 
+Round 3 (this handover) is the homage Configurator chrome plus CLI,
+import dialog, Presets, mixed Configuration/Receiver/Motors, Modes
+ANGLE, and Setup attitude. Still one write path: draft CLI to
+`composeConfig` to `sim_init` to `adoptSimClock`.
+
+Next item: KEEP compose cannot hold independent pitch / `rates_type`
+(five-knob `ratesDiff` shadow). Either extend the menu object or
+document it. Do not steal the title pose for F9. Optional: `dshot_idle`
+as percent, profile 0 greyed not omitted, Receiver stick preview.
+
+### Screen (measured)
+
+FC is charcoal / `#ffbb00` after Configurator 10.10. Credit line names
+Configurator and compiled 4.5.1. 24 tabs in the left strip. Shots in
+`.loop/evidence/fc-r3/`: pid, cli textarea, osd grey, presets, modes,
+setup horizon, configuration AIRMODE live, motors, rates (`roll centre`
+70 deg/s), receiver, filters, import Keep my rates, save-confirm,
+settings summary. Console 0/0/0. `__fc().homage` true, `tabs` 24.
+
+F14 after Save-and-restart: simStepMs 0, moduleMs 0, lastTs 0, p_roll 80.
+Cite 2026-08-16. Escape on import returns to title (discard).
+
+### Catalog counts (measured, `npm run lint:catalog` exit 0)
+
+valueTable 683, bf_settings.c 175, catalog CLI 686, LIVE 154, GATED 5,
+APPLIED_INERT 16, INERT 511, ABSENT 10, tabs 24.
+
+Five `horizon_*` keys moved LIVE to APPLIED_INERT after QA review.
+`MACRO_BOUNDS` F_GAIN_MAX 1000, ITERM_ACCELERATOR_GAIN_MAX 250.
+
+### Traces (`npm run lint:fc` 21/21)
+
+F3 to F7 hashes unchanged (base
+`0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`).
+F8 dumpCarriesRates false on Karate, true with `roll_srate`.
+F10 Karate slider apply: p_roll 38 to 54.
+Prints in `.loop/evidence/fc-r3/lint-fc.txt`.
+
+UI asks `catalog.js` `status(key)`, never `sim_bf_key_status`.
+
+### Verify this turn (13 of 16, SIM_CHROME_BIN set)
+
+Physics floor held: hash `6d17d4814bdc`, hover 0.2637, punch 81.5 m,
+terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent,
+diff-passthrough 1.2478. world-scale PASS, craft body 0.1552 m. Direct
+`npm run build:wasm` exit 0. Vendor diff empty. tests/ not edited.
+
+Still red: yaw-coupling, build-clean spawnSync npm, map-isolation vs
+c3c6e44.
+
+### Review, binding, both REJECT then fixes
+
+Configurator user 557f5db2. QA tester 02a5e42e. Highest-cost FAILs
+fixed: import Escape leak, ACTUAL rate labels vs CLI names, horizon_*
+APPLIED_INERT, pid.h bounds. Re-shot. F9 title-pad left as shell law.
+ratesDiff shadow recorded, not widened.
+
+Human-pinned: all tabs shown grey not hidden; rates keep-mine by default;
+`motor_kv` APPLIED_INERT; 1 kHz stays; no Airframe page; profile 0 only;
+Angle stays `sim_set_angle_mode`.
+
+## Previous handover (round 2, kept)
+
 Round 2 (this handover) is the PID Tuning + Filters + Rates screen.
 `src/ui/fc.js` edits CLI dump text. Save is `composeConfig` then `sim.init`
 then `adoptSimClock`. Grey-out is `catalog.js`, one disabled style.
@@ -68,6 +131,7 @@ Human-pinned: all tabs shown grey not hidden; rates keep-mine by default;
 Angle stays `sim_set_angle_mode`.
 
 ## Previous handover (round 1, kept)
+
 
 Round 1 was catalog + WASM dump export + `scripts/fc-trace.js`. No screen.
 

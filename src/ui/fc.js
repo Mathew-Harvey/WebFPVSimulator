@@ -6,6 +6,9 @@
  * already uses. Grey-out is catalog.status, one disabled style, no per-tab
  * special cases.
  *
+ * Colours and tab names are a homage of Betaflight Configurator 10.10
+ * (firmware 4.5.1). This is not that app: no Vue, no MSP, no iframe.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -22,7 +25,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { RATE_DEFAULTS } from '../../configs/rates.js';
+import { TUNES, tunePath } from '../../configs/registry.js';
 import {
+  FEATURES,
   FIELDS,
   STATUS,
   TABS,
@@ -31,7 +37,16 @@ import {
   lookupValues,
   tabFields,
 } from '../fc/catalog.js';
-import { cliGet, exportCli, setCliValue } from '../fc/dump.js';
+import {
+  cliGet,
+  composeConfig,
+  exportCli,
+  featureEnabled,
+  RATES_KEEP,
+  ratesSettingsFromDump,
+  setCliValue,
+  setFeatureLine,
+} from '../fc/dump.js';
 
 const PID_PAGES = [
   { id: 'pid', label: 'PID' },
@@ -51,6 +66,17 @@ function clamp(n, lo, hi) {
 
 function stepFor(_min, _max) {
   return 1;
+}
+
+function actualRateLabel(key) {
+  const axis = key.split('_')[0];
+  if (key.endsWith('_rc_rate')) {
+    return `${axis} centre`;
+  }
+  if (key.endsWith('_srate')) {
+    return `${axis} max rate`;
+  }
+  return key;
 }
 
 function isActualRateKey(key) {
@@ -114,7 +140,10 @@ function fieldRank(field, page) {
   return 0;
 }
 
-function fieldNote(field) {
+function fieldNote(field, draft) {
+  if (field.key === 'gyro_lpf1_static_hz' && Number(cliGet(draft, 'gyro_lpf1_dyn_min_hz')) > 0) {
+    return 'Firmware inits LPF1 from gyro_lpf1_dyn_min_hz while that is above 0. Set dyn min to 0 to make this cutoff live. Same as 4.5.1.';
+  }
   if (field.status === STATUS.GATED) {
     return field.reason;
   }
@@ -127,6 +156,10 @@ function fieldNote(field) {
   return field.key;
 }
 
+function ratesForCompose(draft) {
+  return { ...RATE_DEFAULTS, ...ratesSettingsFromDump(draft) };
+}
+
 export class FcSession {
   constructor() {
     this.snapshot = '';
@@ -135,6 +168,15 @@ export class FcSession {
     this.page = 'pid';
     this.runActive = false;
     this.confirm = null;
+    this.importText = '';
+    this.importName = '';
+    this.presetId = '';
+    this.motorDuty = [0, 0, 0, 0];
+    this.attitude = { w: 1, x: 0, y: 0, z: 0 };
+    this.getFlightMode = () => 'acro';
+    this.setFlightMode = () => {};
+    this.motorTestAllowed = () => false;
+    this.onMotorTest = () => {};
   }
 
   open(dumpText, opts = {}) {
@@ -144,6 +186,18 @@ export class FcSession {
     this.page = opts.page || 'pid';
     this.runActive = Boolean(opts.runActive);
     this.confirm = null;
+    this.importText = '';
+    this.importName = '';
+    this.presetId = '';
+    this.motorDuty = [0, 0, 0, 0];
+  }
+
+  openImport(text, name) {
+    this.importText = text ?? '';
+    this.importName = name || 'dropped.diff';
+    this.confirm = 'import-rates';
+    this.tab = 'cli';
+    this.draft = this.importText;
   }
 
   dirty() {
@@ -153,6 +207,8 @@ export class FcSession {
   discard() {
     this.draft = this.snapshot;
     this.confirm = null;
+    this.presetId = '';
+    this.stopMotors();
   }
 
   setTab(id) {
@@ -162,12 +218,62 @@ export class FcSession {
     }
   }
 
+  setDraft(text) {
+    this.draft = text ?? '';
+    this.presetId = '';
+  }
+
   setValue(key, value) {
     const f = FIELDS.find((row) => row.key === key);
     if (!f || !fieldEnabled(f)) {
       return;
     }
     this.draft = setCliValue(this.draft, key, value);
+    this.presetId = '';
+  }
+
+  setFeature(name, on) {
+    const row = FEATURES.find((f) => f.name === name);
+    if (!row || row.status !== STATUS.LIVE) {
+      return;
+    }
+    this.draft = setFeatureLine(this.draft, name, on);
+    this.presetId = '';
+  }
+
+  async applyPreset(id) {
+    const path = tunePath(id);
+    const res = await fetch(path);
+    if (!res.ok) {
+      throw new Error(`preset ${id} HTTP ${res.status}`);
+    }
+    const text = await res.text();
+    this.draft = composeConfig(text, ratesForCompose(this.draft), RATES_KEEP);
+    this.presetId = id;
+    this.tab = 'pid';
+    this.page = 'pid';
+  }
+
+  stopMotors() {
+    this.motorDuty = [0, 0, 0, 0];
+    this.onMotorTest(-1, -1);
+  }
+
+  setMotorDuty(index, duty) {
+    if (!this.motorTestAllowed()) {
+      return;
+    }
+    const d = clamp(duty, 0, 1);
+    if (index < 0) {
+      this.motorDuty = [d, d, d, d];
+      this.onMotorTest(-1, d > 0 ? d : -1);
+      if (d === 0) {
+        this.onMotorTest(-1, -1);
+      }
+      return;
+    }
+    this.motorDuty[index] = d;
+    this.onMotorTest(index, d > 0 ? d : -1);
   }
 
   exportText() {
@@ -186,6 +292,25 @@ export class FcSession {
           label: 'Wait until the result screen',
           action: 'fc-wait',
           note: 'Keeps the draft. Save when the run is over. Live PID mid-lap is out of this round.',
+        },
+      ];
+    }
+    if (this.confirm === 'import-rates') {
+      return [
+        {
+          label: 'Keep my rates',
+          action: 'fc-import-keep',
+          note: `Default. Loads ${this.importName} as a tune and keeps the rates already on this radio.`,
+        },
+        {
+          label: 'Use dump rates',
+          action: 'fc-import-dump',
+          note: `Takes rateprofile lines from ${this.importName}. Same as flashing a tune that carried the pilot's rates.`,
+        },
+        {
+          label: 'Cancel',
+          action: 'fc-import-cancel',
+          note: 'Leaves the live dump alone.',
         },
       ];
     }
@@ -238,6 +363,152 @@ export class FcSession {
       note: 'Leaves this screen. Unsaved edits are discarded.',
     });
 
+    if (this.tab === 'cli') {
+      rows.push({
+        label: 'Edit dump',
+        action: 'fc-focus-cli',
+        note: 'The textarea is the dump. Typing here is the same as editing fields. Save is sim_init of this text.',
+      });
+      return rows;
+    }
+
+    if (this.tab === 'presets') {
+      for (const t of TUNES) {
+        rows.push({
+          label: t.name,
+          action: `fc-preset:${t.id}`,
+          note: `${t.note} Keep-mine rates. Save still required.`,
+        });
+      }
+      rows.push({
+        label: 'firmware-presets',
+        value: 'Unavailable',
+        note: 'Optional later: fetch from betaflight/firmware-presets 4.5 branch only. Master presets would be a version lie.',
+        info: true,
+        disabled: true,
+        rowClass: 'row-grey',
+      });
+      return rows;
+    }
+
+    if (this.tab === 'modes') {
+      const angle = this.getFlightMode() === 'angle';
+      rows.push({
+        label: 'ARM',
+        value: 'Always on',
+        note: 'The sim is always armed. A real board uses an AUX range.',
+        info: true,
+        disabled: true,
+        rowClass: 'row-grey',
+      });
+      rows.push({
+        label: 'ANGLE',
+        note: 'On or off, same sim_set_angle_mode as Flight mode in Settings. A real board uses an AUX range. Keyboard flight always uses Angle.',
+        value: angle ? 'On' : 'Off',
+        current: angle,
+        options: [
+          { value: true, label: 'On' },
+          { value: false, label: 'Off' },
+        ],
+        pick: (v) => this.setFlightMode(v === true || v === 'true'),
+        adjust: () => this.setFlightMode(!angle),
+      });
+      rows.push({
+        label: 'HORIZON',
+        value: 'Unavailable',
+        note: 'No AUX channels until they are fed from the gamepad.',
+        info: true,
+        disabled: true,
+        rowClass: 'row-grey',
+      });
+      rows.push({
+        label: 'GPS RESCUE',
+        value: 'Unavailable',
+        note: 'No GPS sensor in the plant.',
+        info: true,
+        disabled: true,
+        rowClass: 'row-grey',
+      });
+      return rows;
+    }
+
+    if (this.tab === 'setup') {
+      rows.push({
+        label: 'Attitude',
+        value: 'Live',
+        note: 'Horizon from the plant quaternion (sim_state). The simulated gyro needs no calibration.',
+        info: true,
+      });
+    }
+
+    if (this.tab === 'configuration') {
+      for (const feat of FEATURES) {
+        const live = feat.status === STATUS.LIVE;
+        const on = featureEnabled(this.draft, feat.name);
+        const shown = on == null ? (live ? 'unset' : 'Off') : (on ? 'On' : 'Off');
+        if (!live) {
+          rows.push({
+            label: `feature ${feat.name}`,
+            value: shown,
+            note: feat.reason,
+            info: true,
+            disabled: true,
+            rowClass: 'row-grey',
+          });
+          continue;
+        }
+        const current = Boolean(on);
+        rows.push({
+          label: `feature ${feat.name}`,
+          note: feat.reason,
+          value: current ? 'On' : 'Off',
+          current,
+          options: [
+            { value: true, label: 'On' },
+            { value: false, label: 'Off' },
+          ],
+          pick: (v) => this.setFeature(feat.name, v === true || v === 'true'),
+          adjust: () => this.setFeature(feat.name, !current),
+        });
+      }
+    }
+
+    if (this.tab === 'motors') {
+      const allowed = this.motorTestAllowed();
+      if (!allowed) {
+        rows.push({
+          label: 'Motor test',
+          value: 'Unavailable',
+          note: 'Motor test uses sim_motor_override on the title, never mid-race. Open Flight controller from the title.',
+          info: true,
+          disabled: true,
+          rowClass: 'row-grey',
+        });
+      } else {
+        rows.push({
+          label: 'All motors',
+          note: 'Title only. sim_motor_override, the same ABI check 8 uses. Stop before you Save.',
+          value: `${Math.round(this.motorDuty[0] * 100)} %`,
+          step: true,
+          adjust: (d) => this.setMotorDuty(-1, this.motorDuty[0] + d * 0.05),
+        });
+        for (let i = 0; i < 4; i += 1) {
+          rows.push({
+            label: `Motor ${i + 1}`,
+            note: 'Betaflight order: 1 rear right, 2 front right, 3 rear left, 4 front left.',
+            value: `${Math.round(this.motorDuty[i] * 100)} %`,
+            step: true,
+            adjust: (d) => this.setMotorDuty(i, this.motorDuty[i] + d * 0.05),
+          });
+        }
+        rows.push({
+          label: 'Stop motors',
+          action: 'fc-motors-stop',
+          note: 'Clears sim_motor_override.',
+        });
+      }
+    }
+
     const fields = this.visibleFields();
     if (tab.grey && fields.length === 0) {
       rows.push({
@@ -260,6 +531,9 @@ export class FcSession {
     if (this.tab === 'pid') {
       list = list.filter((f) => f.page === this.page);
     }
+    if (this.tab === 'cli' || this.tab === 'presets' || this.tab === 'modes') {
+      return [];
+    }
     const enabled = [];
     const grey = [];
     for (const f of list) {
@@ -280,8 +554,9 @@ export class FcSession {
   fieldItem(field, tabGrey) {
     const raw = cliGet(this.draft, field.key);
     const enabled = !tabGrey && fieldEnabled(field);
-    const note = fieldNote(field);
-    const label = field.key;
+    const note = fieldNote(field, this.draft);
+    const actual = isActualRateKey(field.key) && cliGet(this.draft, 'rates_type') === 'ACTUAL';
+    const label = actual ? actualRateLabel(field.key) : field.key;
     const greyClass = enabled ? (field.status === STATUS.GATED ? 'row-gated' : '') : 'row-grey';
     if (!enabled) {
       return {
@@ -310,7 +585,6 @@ export class FcSession {
     const { min, max } = fieldBounds(field);
     const n = Number(raw);
     const cur = Number.isFinite(n) ? n : min;
-    const actual = isActualRateKey(field.key) && cliGet(this.draft, 'rates_type') === 'ACTUAL';
     const shown = actual ? cur * 10 : cur;
     const lo = actual ? min * 10 : min;
     const hi = actual ? max * 10 : max;
@@ -318,7 +592,7 @@ export class FcSession {
     return {
       label,
       note: actual
-        ? 'ACTUAL rates. Firmware stores tens of deg/s. This row shows deg/s, same as the Settings summary.'
+        ? `Configurator display. CLI is ${field.key} = ${cur} (tens of deg/s). Export writes that.`
         : note,
       value: actual ? `${shown} deg/s` : formatField(field, String(cur)),
       step: true,
@@ -330,6 +604,77 @@ export class FcSession {
       rowClass: greyClass,
     };
   }
+}
+
+export function paintTabStrip(nav, session, onPick) {
+  if (!nav.dataset.ready) {
+    nav.textContent = '';
+    for (const t of TABS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fc-tab';
+      b.dataset.id = t.id;
+      b.textContent = t.label;
+      b.addEventListener('click', () => onPick(t.id));
+      nav.append(b);
+    }
+    nav.dataset.ready = '1';
+  }
+  for (const b of nav.children) {
+    const t = TABS.find((x) => x.id === b.dataset.id);
+    b.classList.toggle('on', session.tab === b.dataset.id);
+    b.classList.toggle('grey', Boolean(t && t.grey));
+  }
+}
+
+/*
+ * A Configurator-shaped horizon from the plant quaternion. Body-to-world,
+ * z up. Not Betaflight's Three.js widget and not their assets.
+ */
+export function drawAttitude(canvas, q) {
+  if (!canvas) {
+    return;
+  }
+  const w = canvas.width;
+  const h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx || w < 8 || h < 8) {
+    return;
+  }
+  const qw = q.w;
+  const qx = q.x;
+  const qy = q.y;
+  const qz = q.z;
+  const sinr = 2 * (qw * qx + qy * qz);
+  const cosr = 1 - 2 * (qx * qx + qy * qy);
+  const roll = Math.atan2(sinr, cosr);
+  const sinp = 2 * (qw * qy - qz * qx);
+  const pitch = Math.abs(sinp) >= 1 ? Math.sign(sinp) * (Math.PI / 2) : Math.asin(sinp);
+  ctx.fillStyle = '#3a81c5';
+  ctx.fillRect(0, 0, w, h);
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(-roll);
+  const y = pitch * (h / Math.PI);
+  ctx.fillStyle = '#6b4a2b';
+  ctx.fillRect(-w, y, w * 2, h * 2);
+  ctx.strokeStyle = '#ffbb00';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-w, y);
+  ctx.lineTo(w, y);
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = '#ffbb00';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.2, h / 2);
+  ctx.lineTo(w * 0.45, h / 2);
+  ctx.moveTo(w * 0.55, h / 2);
+  ctx.lineTo(w * 0.8, h / 2);
+  ctx.moveTo(w / 2 - 6, h / 2);
+  ctx.lineTo(w / 2 + 6, h / 2);
+  ctx.stroke();
 }
 
 export function downloadCli(filename, text) {

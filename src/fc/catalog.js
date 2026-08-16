@@ -85,6 +85,16 @@ const APPLIED_INERT = {
     'Stored in the PID profile. Would need fc/core.c compiled; nothing in this 1 ms loop reads it.',
   gyro_filter_debug_axis:
     'Stored. Only DEBUG_SET reads it, and blackbox debug is not a flight control here.',
+  horizon_level_strength:
+    'Stored. HORIZON_MODE is never raised. ANGLE is sim_set_angle_mode. pidLevel never reads Horizon gains.',
+  horizon_limit_sticks:
+    'Stored. HORIZON_MODE is never raised. pidLevel never reads Horizon stick limits.',
+  horizon_limit_degrees:
+    'Stored. HORIZON_MODE is never raised.',
+  horizon_ignore_sticks:
+    'Stored. HORIZON_MODE is never raised.',
+  horizon_delay_ms:
+    'Stored. HORIZON_MODE is never raised.',
 };
 
 const INERT_REASONS = [
@@ -340,12 +350,12 @@ function decorate(row) {
 }
 
 export const TABS = [
-  { id: 'setup', label: 'Setup', grey: true, reason: 'Attitude readout is not on this screen yet. Calibration stays in Settings' },
+  { id: 'setup', label: 'Setup', grey: false, reason: 'Attitude is live from the plant quaternion. Calibration stays grey: the simulated gyro needs no cal' },
   { id: 'ports', label: 'Ports', grey: true, reason: 'No UART grid. The sim is not a radio link' },
   { id: 'configuration', label: 'Configuration', grey: false, reason: '' },
   { id: 'pid', label: 'PID Tuning', grey: false, reason: '' },
   { id: 'receiver', label: 'Receiver', grey: false, reason: '' },
-  { id: 'modes', label: 'Modes', grey: true, reason: 'ANGLE is the Flight mode row in Settings. ARM is always on. No AUX channels' },
+  { id: 'modes', label: 'Modes', grey: false, reason: 'ANGLE is on or off here and in Settings, same sim_set_angle_mode. ARM is always on. No AUX channels' },
   { id: 'adjustments', label: 'Adjustments', grey: true, reason: 'No AUX channels, so in-flight PID adj is not compiled' },
   { id: 'servos', label: 'Servos', grey: true, reason: 'No servos on this airframe' },
   { id: 'motors', label: 'Motors', grey: false, reason: '' },
@@ -357,13 +367,32 @@ export const TABS = [
   { id: 'blackbox', label: 'Blackbox', grey: true, reason: 'No blackbox device in this build' },
   { id: 'blackbox-viewer', label: 'Blackbox viewer', grey: true, reason: 'No blackbox device in this build' },
   { id: 'power', label: 'Power', grey: true, reason: 'Plant owns pack voltage; use Pack charge in Settings' },
-  { id: 'presets', label: 'Presets', grey: true, reason: 'Tune on the title is the preset picker. firmware-presets fetch is not wired' },
-  { id: 'cli', label: 'CLI', grey: true, reason: 'No CLI textarea yet. Export on this screen already downloads CLI text' },
+  { id: 'presets', label: 'Presets', grey: false, reason: 'Registry tunes. firmware-presets fetch is not wired. Master presets would be a version lie' },
+  { id: 'cli', label: 'CLI', grey: false, reason: 'Same tokenizer as bridge.c. Save is sim_init of this text' },
   { id: 'flasher', label: 'Firmware flasher', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
   { id: 'autotune', label: 'Autotune', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
   { id: 'flight-plan', label: 'Flight plan', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
   { id: 'cloud-profile', label: 'User cloud profile', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
   { id: 'cloud-backups', label: 'Backups to cloud', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
+];
+
+/*
+ * Features are CLI commands, not valueTable keys. Do not put them in
+ * FIELDS or catalog-lint will demand a firmware setting that does not
+ * exist. The Configuration tab asks this list the same way it asks
+ * status(key) for set lines.
+ */
+export const FEATURES = [
+  { name: 'AIRMODE', status: STATUS.LIVE, reason: 'Compiled. Writes feature AIRMODE or feature -AIRMODE. Same path a preset uses.' },
+  { name: 'ANTI_GRAVITY', status: STATUS.LIVE, reason: 'Compiled. Writes feature ANTI_GRAVITY or feature -ANTI_GRAVITY.' },
+  { name: 'GPS', status: STATUS.INERT, reason: 'No GPS sensor in the plant' },
+  { name: 'OSD', status: STATUS.INERT, reason: 'No OSD pixels in the FPV view yet' },
+  { name: 'LED_STRIP', status: STATUS.INERT, reason: 'No LED strip in the plant' },
+  { name: 'TELEMETRY', status: STATUS.INERT, reason: 'No telemetry radio link' },
+  { name: 'RX_SPI', status: STATUS.INERT, reason: 'No SPI receiver. Sticks come from the Gamepad path' },
+  { name: '3D', status: STATUS.INERT, reason: 'No 3D mixer on this airframe' },
+  { name: 'SERVO', status: STATUS.INERT, reason: 'No servos on this airframe' },
+  { name: 'SOFTSERIAL', status: STATUS.INERT, reason: 'No UART grid. The sim is not a radio link' },
 ];
 
 export const ABSENT_FIELDS = [
@@ -461,7 +490,7 @@ export const LOOKUPS = {
 const MACRO_BOUNDS = {
   PID_GAIN_MAX: 250,
   D_MIN_GAIN_MAX: 250,
-  F_GAIN_MAX: 2000,
+  F_GAIN_MAX: 1000,
   TPA_MAX: 100,
   LPF_MAX_HZ: 1000,
   DYN_LPF_MAX_HZ: 1000,
@@ -476,7 +505,7 @@ const MACRO_BOUNDS = {
   CONTROL_RATE_CONFIG_RATE_LIMIT_MIN: 200,
   CONTROL_RATE_CONFIG_RATE_LIMIT_MAX: 1998,
   ITERM_ACCELERATOR_GAIN_OFF: 0,
-  ITERM_ACCELERATOR_GAIN_MAX: 30000,
+  ITERM_ACCELERATOR_GAIN_MAX: 250,
   PIDSUM_LIMIT_MIN: 100,
   PIDSUM_LIMIT_MAX: 1000,
   MOTOR_OUTPUT_LIMIT_PERCENT_MIN: 1,

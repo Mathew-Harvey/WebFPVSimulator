@@ -165,7 +165,9 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
   bfBody.append(
     document.createTextNode('The rates, the PID loop, the filters, feedforward, TPA, iterm relax, airmode, anti-gravity. Compiled into this page, not rewritten. '),
     link('https://github.com/betaflight/betaflight', 'Betaflight'),
-    document.createTextNode(' is GPLv3, so this is too.'),
+    document.createTextNode(' is GPLv3, so this is too. The flight-controller screen is a homage of '),
+    link('https://github.com/betaflight/betaflight-configurator', 'Betaflight Configurator'),
+    document.createTextNode(' 10.10: tab names, 4.5.1 fields, and the classic dark grey and orange. It is not that app. No Vue, no MSP, no iframe. With thanks to the Betaflight developers.'),
   );
   controller.append(card({
     src: src('betaflight.svg'),

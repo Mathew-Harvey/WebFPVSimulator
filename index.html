@@ -405,13 +405,132 @@
         border-left-color: rgba(255, 212, 92, 0.28);
       }
       .row-gated .row-value { color: var(--amber); }
+
+      /*
+       * Flight controller screen. Colours after Betaflight Configurator
+       * 10.10 (firmware 4.5.1 era): dark grey chrome, #ffbb00 accent.
+       * Homage, not a copy of the Vue app. Title and Settings stay cream
+       * and sakura.
+       */
+      .screen-fc {
+        --bf-accent: #ffbb00;
+        --bf-bg: #4d4d4d;
+        --bf-header: #393b3e;
+        --bf-panel: #3a3a3a;
+        --bf-box: #2e2e2e;
+        --bf-text: #ffffff;
+        --bf-muted: #b2b2b6;
+        --bf-grey: #9c9c9c;
+        align-items: stretch;
+        justify-content: flex-start;
+        padding: 1.6vh 1.6vw 2vh;
+        background: var(--bf-bg);
+        color: var(--bf-text);
+      }
+      .screen-fc h2 {
+        margin: 0 0 6px;
+        color: var(--bf-accent);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-size: clamp(18px, 2.2vw, 26px);
+      }
+      .fc-dirty {
+        display: inline-block;
+        margin-left: 10px;
+        color: var(--bf-accent);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .fc-dirty:empty { display: none; }
+      .fc-homage {
+        margin: 0 0 12px;
+        max-width: 72em;
+        color: var(--bf-muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .fc-homage a {
+        color: var(--bf-accent);
+        pointer-events: auto;
+      }
+      .fc-body {
+        display: flex;
+        gap: 12px;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        pointer-events: auto;
+      }
+      .fc-tabs {
+        flex: 0 0 11.5em;
+        overflow-y: auto;
+        background: var(--bf-header);
+        padding: 8px 0;
+        pointer-events: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #ffbb00 #2e2e2e;
+      }
+      .fc-tab {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: transparent;
+        color: var(--bf-text);
+        font: inherit;
+        font-size: 13px;
+        padding: 7px 12px 7px 14px;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+      }
+      .fc-tab:hover { background: rgba(255, 187, 0, 0.08); }
+      .fc-tab.on {
+        background: var(--bf-panel);
+        border-left-color: var(--bf-accent);
+        color: var(--bf-accent);
+        font-weight: 650;
+      }
+      .fc-tab.grey { color: var(--bf-grey); }
+      .fc-tab.grey.on { color: var(--bf-muted); border-left-color: var(--bf-grey); }
+      .fc-work {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .screen-fc .menu-stage {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        margin-top: 0;
+      }
+      .screen-fc .menu {
+        background: var(--bf-box);
+        border-top: 2px solid var(--bf-accent);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+        min-width: 0;
+        width: 100%;
+      }
       .screen-fc .menu-scroll {
-        max-height: min(62vh, 38em);
+        max-height: min(52vh, 34em);
+        scrollbar-color: #ffbb00 #2e2e2e;
+      }
+      .screen-fc .menu-help {
+        color: var(--bf-muted);
+        border-left-color: rgba(255, 187, 0, 0.28);
       }
       .screen-fc .row {
         gap: 10px;
         padding: 8px 16px 8px 18px;
         font-size: clamp(13px, 1.45vw, 16px);
+        color: var(--bf-text);
+      }
+      .screen-fc .row.on {
+        color: var(--bf-text);
+        border-left-color: var(--bf-accent);
+        background: linear-gradient(90deg, rgba(255, 187, 0, 0.16), rgba(255, 187, 0, 0) 48%);
       }
       .screen-fc .row-label {
         font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
@@ -421,6 +540,42 @@
         max-width: none;
         overflow: visible;
         text-overflow: clip;
+        color: var(--bf-accent);
+      }
+      .screen-fc .drop-btn, .screen-fc .step {
+        color: var(--bf-accent);
+      }
+      .screen-fc .row-grey {
+        color: var(--bf-grey);
+      }
+      .screen-fc .row-grey .row-value { color: var(--bf-grey); }
+      .screen-fc .row-gated .row-value { color: var(--bf-accent); }
+      .screen-fc .hint { color: var(--bf-muted); pointer-events: none; }
+      .fc-cli {
+        display: block;
+        width: 100%;
+        min-height: 22em;
+        margin-top: 8px;
+        box-sizing: border-box;
+        pointer-events: auto;
+        user-select: text;
+        resize: vertical;
+        background: #1d1d1d;
+        color: #f0f0f0;
+        border: 1px solid #6b6b6b;
+        font: 12px/1.45 ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+        padding: 10px 12px;
+      }
+      .fc-cli:focus { outline: 1px solid var(--bf-accent); }
+      .fc-cli[hidden], .fc-attitude[hidden] { display: none !important; }
+      .fc-attitude {
+        display: block;
+        margin: 10px 0 0;
+        width: 220px;
+        height: 220px;
+        background: #2e2e2e;
+        border: 1px solid #6b6b6b;
+        pointer-events: none;
       }
       .row-label { min-width: 0; flex: 1 1 auto; }
       .row.on .row-label { font-weight: 650; }

@@ -3,6 +3,15 @@
  * sources, compiled against the real Betaflight headers with the SITL
  * target configuration.
  *
+ * patches/0001 switches on the dynamic notch, the RPM filter and dynamic
+ * idle for this target. All three are gated on DShot telemetry upstream,
+ * which this build has no driver for and does not need: the plant knows every
+ * rotor's speed exactly, and getMotorFrequencyHz below hands it over through
+ * the same lag a real telemetry stream carries. Of the three, the RPM filter
+ * and dynamic idle run; the dynamic notch declines to arm below a 2 kHz loop,
+ * which is Betaflight's own rule and would apply to a real quad at this loop
+ * rate too.
+ *
  * Everything with control feel in it is Betaflight's own compiled code:
  * gyroUpdate and gyroFiltering (the gyro filter chain, lpf1, lpf2, the
  * static notches and the dynamic lpf), updateRcCommands and
@@ -56,10 +65,12 @@
 #include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 #include "flight/imu.h"
+#include "flight/dyn_notch_filter.h"
 #include "flight/mixer.h"
 #include "flight/mixer_init.h"
 #include "flight/pid.h"
 #include "flight/pid_init.h"
+#include "flight/rpm_filter.h"
 #include "pg/motor.h"
 #include "pg/rx.h"
 #include "rx/rx.h"
@@ -92,6 +103,8 @@ extern void pgResetFn_motorConfig(motorConfig_t *motorConfig);
 extern void pgResetFn_mixerConfig(mixerConfig_t *mixerConfig);
 extern void pgResetFn_gyroConfig(gyroConfig_t *gyroConfig);
 extern const pidConfig_t pgResetTemplate_pidConfig;
+extern const dynNotchConfig_t pgResetTemplate_dynNotchConfig;
+extern const rpmFilterConfig_t pgResetTemplate_rpmFilterConfig;
 
 /*
  * ---- The gyro device ----
@@ -126,22 +139,45 @@ static float g_gyro_dps[XYZ_AXIS_COUNT];
  * the amplitude is scaled by (w / w_full)^2 off the actual motor speeds,
  * which is why it is quiet in a hover and loud on the power.
  *
- * THE BAND. A 1 kHz gyro can represent nothing above 500 Hz, and a real 5
- * inch's prop fundamental is 130 to 430 Hz at 8k to 26k RPM, so the content
- * that matters does fit. It is shaped as a band rather than a line because a
- * real spectrum is a broad hump: four rotors at slightly different speeds,
- * plus frame modes, is not a tone. Same one pole pair the propwash uses,
- * 80 to 350 Hz, coefficients 1 - exp(-2 pi f dt) at dt = 1 ms.
+ * TWO PARTS, AND THE FIRST ONE IS THE POINT.
+ *
+ * Prop and bell imbalance is a once per revolution force, so it is a LINE at
+ * each rotor's own frequency, not a hump. That matters beyond realism: a line
+ * is what a dynamic notch hunts and what an RPM filter is aimed at, and a
+ * model that only emits broadband hash gives neither of them anything to do.
+ * Four rotors at four slightly different speeds put four moving lines in the
+ * spectrum, which is exactly what a blackbox spectrogram of a real quad looks
+ * like. Each is generated at its rotor's true frequency by integrating its
+ * own phase, and the four carry different imbalance factors because no two
+ * props are balanced alike. A rotating imbalance is inherently quadrature
+ * between the two in plane axes, so roll takes the sine and pitch the cosine
+ * of the same phase; yaw takes less, at 0.5, because the frame is stiffer
+ * about that axis and it reaches the gyro through plate bending rather than
+ * directly. That last split is a coupling model, not a derived modal
+ * response, and is the one part of this that is chosen rather than physical.
+ *
+ * A 1 kHz gyro can represent nothing above 500 Hz. The prop fundamental runs
+ * 130 Hz at idle to 426 Hz at full throttle, so the whole range fits under
+ * Nyquist with room to spare. Blade passing at three times that does not, and
+ * is not modelled: imbalance is once per rev and that is the term that
+ * dominates a real spectrum anyway.
+ *
+ * The second part is a broad 80 to 350 Hz hump for frame modes and general
+ * airframe hash, on the same one pole pair the propwash uses, coefficients
+ * 1 - exp(-2 pi f dt) at dt = 1 ms.
  *
  * THE AMPLITUDE is set against the FILTERED figure, because that is what a
  * real blackbox log reports and so the only one that can be compared. A good
  * 5 inch reads 1 to 3 deg/s RMS of filtered gyro around cruise and 3 to 6 on
- * the power. 12 deg/s of raw injection overshot that, measuring 4.21 at 55
- * percent throttle and 7.35 at full; 8.0 lands at 2.8 and 4.9. A tired set of
- * props runs several times either figure. Yaw is taken at 0.6 of roll and
- * pitch because the frame is stiffer in that direction. On top sits a
- * 0.2 deg/s floor for the sensor itself, roughly an ICM-42688 over a 500 Hz
- * bandwidth.
+ * the power. 12 deg/s of broadband injection overshot that, measuring 4.21 at
+ * 55 percent throttle and 7.35 at full. 5.0 of hump plus 3.0 of line still
+ * read as a loose, unbalanced machine at full throttle on the sticks, which
+ * a pilot flying this build named as too much shake rather than as a tight
+ * race quad. 1.5 of hump and 0.8 of line is about a third of that energy:
+ * the spectrum is still there for the filters to work on, the pad is still
+ * not silent, and the video no longer swims on a punch. A tired set of
+ * props runs several times either figure. On top sits a 0.2 deg/s floor for
+ * the sensor itself, roughly an ICM-42688 over a 500 Hz bandwidth.
  *
  * The RMS divisor is MEASURED, not estimated: 0.340474 over eight million
  * samples of this exact recursion, peak 2.92 sigma, so unlike the propwash
@@ -154,14 +190,24 @@ static float g_gyro_dps[XYZ_AXIS_COUNT];
 #define GYRO_VIB_A_HI 0.889099
 #define GYRO_VIB_A_LO 0.395077
 #define GYRO_VIB_RMS 0.340474
-#define GYRO_VIB_FULL_DPS 8.0
+#define GYRO_VIB_FULL_DPS 1.5
+#define GYRO_VIB_LINE_DPS 0.8
 #define GYRO_VIB_REF_W 2700.0
 #define GYRO_VIB_YAW_SHARE 0.6
+#define GYRO_VIB_LINE_YAW_SHARE 0.5
 #define GYRO_NOISE_FLOOR_DPS 0.20
+
+/* Per rotor imbalance, as a multiple of the nominal line amplitude. No two
+ * props are balanced alike and identical values would put four lines exactly
+ * on top of each other whenever the motors happened to match. */
+static const double GYRO_VIB_IMBALANCE[SIM_MOTOR_COUNT] = { 1.00, 0.78, 1.24, 0.92 };
+/* Fixed phase offsets, radians, so the four lines do not start aligned. */
+static const double GYRO_VIB_PHASE0[SIM_MOTOR_COUNT] = { 0.0, 1.9, 3.6, 5.1 };
 
 static unsigned int g_vib_seed;
 static double g_vib_fast[XYZ_AXIS_COUNT];
 static double g_vib_slow[XYZ_AXIS_COUNT];
+static double g_vib_phase[SIM_MOTOR_COUNT];
 
 static double sim_vib_noise(void) {
   unsigned int x = g_vib_seed;
@@ -174,6 +220,7 @@ static double sim_vib_noise(void) {
 }
 
 static void sim_gyro_add_vibration(const SimState *s) {
+  static const double TWO_PI = 6.283185307179586;
   double w_sum = 0.0;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     w_sum += s->motor_omega[m];
@@ -190,6 +237,80 @@ static void sim_gyro_add_vibration(const SimState *s) {
     const double axis = (a == FD_YAW) ? GYRO_VIB_YAW_SHARE : 1.0;
     g_gyro_dps[a] += (float)(band * (amp * axis + GYRO_NOISE_FLOOR_DPS));
   }
+  /* One imbalance line per rotor, at that rotor's own frequency. Phase is
+   * integrated rather than derived from a step count so it stays correct
+   * while the motor speed changes, which is the whole point of it: the line
+   * has to slide up the spectrum with the throttle for a dynamic notch or an
+   * RPM filter to have anything to track. */
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    const double w = s->motor_omega[m];
+    double p = g_vib_phase[m] + w * SIM_DT;
+    /* One conditional wrap is enough: the step advance is at most 2.8 rad. */
+    if (p > TWO_PI) {
+      p -= TWO_PI;
+    }
+    g_vib_phase[m] = p;
+    const double r = w / GYRO_VIB_REF_W;
+    const double a_line = GYRO_VIB_LINE_DPS * r * r * GYRO_VIB_IMBALANCE[m];
+    if (a_line < 1e-4) {
+      continue;
+    }
+    /* sin_approx wraps to -PI..PI itself and is Betaflight's own compiled
+     * polynomial, so this stays inside the no-host-libm rule. */
+    const float ph = (float)(p + GYRO_VIB_PHASE0[m]);
+    const float sn = sin_approx(ph);
+    const float cs = cos_approx(ph);
+    g_gyro_dps[FD_ROLL] += (float)a_line * sn;
+    g_gyro_dps[FD_PITCH] += (float)a_line * cs;
+    g_gyro_dps[FD_YAW] += (float)(a_line * GYRO_VIB_LINE_YAW_SHARE) * sn;
+  }
+}
+
+/*
+ * ---- ROTOR SPEED TELEMETRY ----
+ *
+ * On hardware these live in drivers/dshot.c and are fed by bidirectional
+ * DShot: the ESC sends eRPM back up the signal wire and the flight controller
+ * low passes it. The RPM filter aims its notches with them and dynamic idle
+ * regulates on them. This build does not compile the DShot driver and does
+ * not need to, because the plant knows every rotor's speed exactly.
+ *
+ * IT IS NOT HANDED OVER PERFECTLY, AND THAT IS DELIBERATE. A real RPM filter
+ * chases a number that arrives late: drivers/dshot.c runs each motor's
+ * frequency through a PT1 at rpm_filter_lpf_hz, 150 Hz by default, and that
+ * lag is why an RPM filter cannot track a fast transient perfectly and why
+ * pilots still run a dynamic notch alongside it. Handing over the exact
+ * instantaneous speed would make the filter better than any real one and
+ * would quietly flatter every tune built against it, so the same PT1 is
+ * applied here, read from the same config key.
+ *
+ * Frequency is mechanical Hz, revolutions per second, which is what
+ * getMinMotorFrequencyHz means to dynamic idle's dynIdleMinRps.
+ */
+static float g_motor_hz[SIM_MOTOR_COUNT];
+static float g_motor_hz_min;
+static float g_motor_hz_gain = 1.0f;
+
+float getMotorFrequencyHz(uint8_t motorIndex) {
+  if (motorIndex >= SIM_MOTOR_COUNT) {
+    return 0.0f;
+  }
+  return g_motor_hz[motorIndex];
+}
+
+float getMinMotorFrequencyHz(void) { return g_motor_hz_min; }
+
+static void sim_update_motor_frequency(const SimState *s) {
+  const float two_pi = 6.283185307179586f;
+  float lo = 1e30f;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    const float hz = (float)(s->motor_omega[m]) / two_pi;
+    g_motor_hz[m] += g_motor_hz_gain * (hz - g_motor_hz[m]);
+    if (g_motor_hz[m] < lo) {
+      lo = g_motor_hz[m];
+    }
+  }
+  g_motor_hz_min = lo;
 }
 
 static bool sim_gyro_read(gyroDev_t *dev) {
@@ -251,6 +372,8 @@ void bf_config_begin(void) {
   pgResetFn_motorConfig(motorConfigMutable());
   pgResetFn_mixerConfig(mixerConfigMutable());
   pgResetFn_gyroConfig(gyroConfigMutable());
+  *dynNotchConfigMutable() = pgResetTemplate_dynNotchConfig;
+  *rpmFilterConfigMutable() = pgResetTemplate_rpmFilterConfig;
   *pidConfigMutable() = pgResetTemplate_pidConfig;
   resetPidProfile(pidProfilesMutable(0));
 
@@ -344,6 +467,7 @@ static void bf_runtime_init(void) {
   gyroInitFilters();
 
   pidInit(currentPidProfile);
+  pidResetTransientState();
   initRcProcessing();
   initEscEndpoints();
   mixerInit(mixerConfig()->mixerMode);
@@ -391,6 +515,13 @@ static void bf_runtime_init(void) {
   featureInit();
   updateActivatedModes();
   pidSetAntiGravityState(featureIsEnabled(FEATURE_ANTI_GRAVITY));
+
+  /* Same PT1 gain drivers/dshot.c gives the reported rotor frequency, from
+   * the same config key, so the RPM filter sees the lag a real one sees.
+   * rpmFilterInit and dynNotchInit are not called here: pid_init.c and
+   * gyro_init.c already do it, from the chain above. */
+  g_motor_hz_gain = pt1FilterGain((float)rpmFilterConfig()->rpm_filter_lpf_hz,
+                                  targetPidLooptime * 1e-6f);
 }
 
 int bf_config_finish(void) {
@@ -467,6 +598,27 @@ double sim_bf_debug(int what) {
   case 48: return PLANT_DBG_VA;
   default: return 0.0;
   }
+}
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+int sim_bf_dump(char *out, int cap) {
+  return bf_settings_dump(out, cap);
+}
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+int sim_bf_get(const char *key, char *out, int cap) {
+  return bf_settings_get(key, cap > 0 ? out : 0, cap);
+}
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+int sim_bf_key_status(const char *key) {
+  return bf_settings_status(key);
 }
 
 /*
@@ -551,6 +703,11 @@ void bridge_reset(void) {
     g_vib_fast[a] = 0.0;
     g_vib_slow[a] = 0.0;
   }
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    g_vib_phase[m] = 0.0;
+    g_motor_hz[m] = 0.0f;
+  }
+  g_motor_hz_min = 0.0f;
   /* Any non zero constant seeds xorshift32; fixed, which is the point. */
   g_vib_seed = 0x2545F491u;
   for (int i = 0; i < 4; i += 1) {
@@ -585,6 +742,8 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
   g_gyro_dps[FD_PITCH] = (float)(s->omega[1] * SIM_RAD_TO_DEG);
   g_gyro_dps[FD_YAW] = (float)(s->omega[2] * SIM_RAD_TO_DEG);
   sim_gyro_add_vibration(s);
+  /* Before gyroFiltering, which is where rpmFilterApply reads it. */
+  sim_update_motor_frequency(s);
 
   /* Stick channels from sim_abi.h: +roll right, +pitch nose up, +yaw nose
    * right. Betaflight internal pitch is nose down positive, so the pitch

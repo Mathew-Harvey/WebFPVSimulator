@@ -58,7 +58,9 @@
 #include "flight/mixer_init.h"
 #include "flight/pid.h"
 #include "flight/pid_init.h"
+#include "pg/dyn_notch.h"
 #include "pg/motor.h"
+#include "pg/rpm_filter.h"
 #include "pg/rx.h"
 #include "rx/rx.h"
 #include "sensors/gyro.h"
@@ -160,6 +162,8 @@ void bf_settings_build(void) {
   motorConfig_t *m = motorConfigMutable();
   mixerConfig_t *mx = mixerConfigMutable();
   pidConfig_t *pc = pidConfigMutable();
+  dynNotchConfig_t *dn = dynNotchConfigMutable();
+  rpmFilterConfig_t *rf = rpmFilterConfigMutable();
 
   /* ---- PID gains, flight/pid.c ---- */
   U8("p_roll", p->pid[PID_ROLL].P);
@@ -323,6 +327,39 @@ void bf_settings_build(void) {
   U16("yaw_spin_threshold", g->yaw_spin_threshold);
   LUT8("gyro_filter_debug_axis", g->gyro_filter_debug_axis, LUT_GYRO_DEBUG_AXIS);
 
+  /*
+   * ---- Dynamic notch and RPM filter ----
+   *
+   * Both were in the inert list, on the honest grounds that neither feature
+   * was compiled and there was no gyro noise for them to remove. Both of
+   * those reasons are gone: patches/0001 switches the features on for this
+   * target and the gyro now carries a real spectrum with one imbalance line
+   * per rotor. A preset's filter section has to reach them or a race tune
+   * would be flown on Betaflight's defaults no matter what it said.
+   *
+   * THE RPM FILTER WORKS AND THE DYNAMIC NOTCH DOES NOT, and the reason is
+   * Betaflight's own. dyn_notch_filter.c refuses to arm below a 2 kHz loop
+   * (DYN_NOTCH_UPDATE_MIN_HZ) because its SDFT cannot resolve anything useful
+   * at less, and CLAUDE.md fixes this build at 1 kHz. So a real quad running
+   * a 1 kHz loop has no dynamic notch either, and this is the firmware
+   * behaving correctly rather than a wiring fault. The keys are still applied
+   * to the real parameter group, so they mean what they say the day the loop
+   * rate rises; measured today they change nothing. See PROGRESS.md, where
+   * raising the loop rate is raised as a question for a human.
+   */
+  U16("dyn_notch_min_hz", dn->dyn_notch_min_hz);
+  U16("dyn_notch_max_hz", dn->dyn_notch_max_hz);
+  U16("dyn_notch_q", dn->dyn_notch_q);
+  U8("dyn_notch_count", dn->dyn_notch_count);
+  U8("rpm_filter_harmonics", rf->rpm_filter_harmonics);
+  U8("rpm_filter_weights_1", rf->rpm_filter_weights[0]);
+  U8("rpm_filter_weights_2", rf->rpm_filter_weights[1]);
+  U8("rpm_filter_weights_3", rf->rpm_filter_weights[2]);
+  U8("rpm_filter_min_hz", rf->rpm_filter_min_hz);
+  U16("rpm_filter_fade_range_hz", rf->rpm_filter_fade_range_hz);
+  U16("rpm_filter_q", rf->rpm_filter_q);
+  U16("rpm_filter_lpf_hz", rf->rpm_filter_lpf_hz);
+
   /* ---- Rates, fc/rc.c ---- */
   LUT8(PARAM_NAME_RATES_TYPE, r->rates_type, LUT_RATES_TYPE);
   U8("roll_rc_rate", r->rcRates[FD_ROLL]);
@@ -409,8 +446,6 @@ static const char *const INERT_PREFIX[] = {
   "crsf_",
   "failsafe_",   /* the link never fails here */
   "rx_",         /* receiver pulse limits */
-  "rpm_filter_", /* see bf_glue.c: no gyro noise to filter */
-  "dyn_notch_",  /* likewise */
   "gyro_calib",  /* the simulated gyro needs no calibration */
   "gyro_overflow",
   "gyro_offset",
@@ -441,7 +476,7 @@ static const char *const INERT_PREFIX[] = {
   "launch_",       /* launch control needs an arming sequence */
   "auto_profile_cell_count",
   "runaway_takeoff_deactivate",
-  "rpm_limit",
+  "rpm_limit",     /* the rpm limiter needs an ESC telemetry current loop */
   "thr_",          /* thr_mid and thr_expo are applied above */
   "max_aux_channels",
   "mixer_",        /* mixer_type is applied above */
@@ -546,4 +581,148 @@ int bf_settings_count(int which) {
  */
 void bf_settings_apply_simplified(void) {
   applySimplifiedTuning(pidProfilesMutable(0), gyroConfigMutable());
+}
+
+typedef struct {
+  char *p;
+  int cap;
+  int n;
+} DumpBuf;
+
+static void dputc(DumpBuf *b, char c) {
+  if (b->p && b->cap > 0 && b->n < b->cap - 1) {
+    b->p[b->n] = c;
+  }
+  b->n += 1;
+}
+
+static void dputs(DumpBuf *b, const char *s) {
+  while (*s) {
+    dputc(b, *s);
+    s += 1;
+  }
+}
+
+static void dput_long(DumpBuf *b, long v) {
+  char tmp[16];
+  int i = 0;
+  unsigned long u;
+  if (v < 0) {
+    dputc(b, '-');
+    u = (unsigned long)(-v);
+  } else {
+    u = (unsigned long)v;
+  }
+  if (u == 0) {
+    dputc(b, '0');
+    return;
+  }
+  while (u > 0 && i < 16) {
+    tmp[i] = (char)('0' + (u % 10));
+    i += 1;
+    u /= 10;
+  }
+  while (i > 0) {
+    i -= 1;
+    dputc(b, tmp[i]);
+  }
+}
+
+static void dterm(DumpBuf *b) {
+  if (b->p && b->cap > 0) {
+    int i = b->n;
+    if (i >= b->cap) {
+      i = b->cap - 1;
+    }
+    b->p[i] = 0;
+  }
+}
+
+static long read_num(const BfSetting *s) {
+  switch (s->type) {
+  case T_U8:
+    return (long)*(uint8_t *)s->field;
+  case T_U16:
+    return (long)*(uint16_t *)s->field;
+  case T_I8:
+    return (long)*(int8_t *)s->field;
+  case T_I16:
+    return (long)*(int16_t *)s->field;
+  }
+  return 0;
+}
+
+static void format_value(const BfSetting *s, DumpBuf *b) {
+  const long v = read_num(s);
+  if (s->lut != 0 && v >= 0 && v < s->lut_n) {
+    dputs(b, s->lut[v]);
+    return;
+  }
+  dput_long(b, v);
+}
+
+static void dump_feature(DumpBuf *b, uint32_t mask, uint32_t bit, const char *name) {
+  dputs(b, "feature ");
+  if ((mask & bit) == 0) {
+    dputc(b, '-');
+  }
+  dputs(b, name);
+  dputc(b, '\n');
+}
+
+int bf_settings_dump(char *out, int cap) {
+  DumpBuf b;
+  b.p = out;
+  b.cap = cap;
+  b.n = 0;
+  {
+    const uint32_t mask = featureConfig()->enabledFeatures;
+    dump_feature(&b, mask, FEATURE_AIRMODE, "AIRMODE");
+    dump_feature(&b, mask, FEATURE_ANTI_GRAVITY, "ANTI_GRAVITY");
+  }
+  for (int i = 0; i < g_count; i += 1) {
+    const BfSetting *s = &g_table[i];
+    dputs(&b, "set ");
+    dputs(&b, s->name);
+    dputs(&b, " = ");
+    format_value(s, &b);
+    dputc(&b, '\n');
+  }
+  dterm(&b);
+  return b.n;
+}
+
+int bf_settings_get(const char *key, char *out, int cap) {
+  DumpBuf b;
+  b.p = out;
+  b.cap = cap;
+  b.n = 0;
+  if (key == 0) {
+    return -1;
+  }
+  for (int i = 0; i < g_count; i += 1) {
+    const BfSetting *s = &g_table[i];
+    if (strcmp(s->name, key) != 0) {
+      continue;
+    }
+    format_value(s, &b);
+    dterm(&b);
+    return b.n;
+  }
+  return -1;
+}
+
+int bf_settings_status(const char *key) {
+  if (key == 0) {
+    return 2;
+  }
+  for (int i = 0; i < g_count; i += 1) {
+    if (strcmp(g_table[i].name, key) == 0) {
+      return 0;
+    }
+  }
+  if (is_inert(key)) {
+    return 1;
+  }
+  return 2;
 }

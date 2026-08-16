@@ -65,7 +65,11 @@ SIM_SRC="src/native/sim.c src/native/plant.c src/native/bridge.c src/native/libm
 
 # Betaflight sources compiled with the SITL target configuration, plus the
 # glue that feeds the simulated gyro in and reads motor outputs back.
-BF_INC="-I vendor/betaflight/src/main/target/SITL -I vendor/betaflight/src/main -DSIMULATOR_BUILD"
+# SIM_ROTOR_TELEMETRY is read by patches/0001: it switches on the dynamic
+# notch, the RPM filter and dynamic idle. All three need DShot telemetry on
+# hardware to learn rotor speed, and this simulator knows it exactly, so the
+# only thing standing between them and working was a target guard.
+BF_INC="-I vendor/betaflight/src/main/target/SITL -I vendor/betaflight/src/main -DSIMULATOR_BUILD -DSIM_ROTOR_TELEMETRY"
 BF_SRC="
   src/native/bf/bf_glue.c
   src/native/bf/bf_settings.c
@@ -83,11 +87,16 @@ BF_SRC="
   vendor/betaflight/src/main/flight/pid_init.c
   vendor/betaflight/src/main/flight/mixer.c
   vendor/betaflight/src/main/flight/mixer_init.c
+  vendor/betaflight/src/main/flight/dyn_notch_filter.c
+  vendor/betaflight/src/main/flight/rpm_filter.c
   vendor/betaflight/src/main/common/maths.c
   vendor/betaflight/src/main/common/filter.c
+  vendor/betaflight/src/main/common/sdft.c
   vendor/betaflight/src/main/common/bitarray.c
   vendor/betaflight/src/main/pg/rx.c
   vendor/betaflight/src/main/pg/motor.c
+  vendor/betaflight/src/main/pg/dyn_notch.c
+  vendor/betaflight/src/main/pg/rpm_filter.c
   vendor/betaflight/src/main/config/feature.c
   vendor/betaflight/src/main/build/debug.c
 "
@@ -98,8 +107,12 @@ for src in $SIM_SRC; do
   emcc -c "$src" -I src/native $CFLAGS_COMMON -Wall -o "$obj"
   OBJS="$OBJS $obj"
 done
+# Object names carry the parent directory. Betaflight has more than one file
+# with the same basename (flight/rpm_filter.c and pg/rpm_filter.c), and a
+# basename-only rule silently overwrites one with the other, which the linker
+# then reports as a pile of duplicate symbols from a single object.
 for src in $BF_SRC; do
-  obj="build/obj/bf_$(basename "$src" .c).o"
+  obj="build/obj/bf_$(basename "$(dirname "$src")")_$(basename "$src" .c).o"
   emcc -c "$src" -I src/native $BF_INC $CFLAGS_COMMON -o "$obj"
   OBJS="$OBJS $obj"
 done

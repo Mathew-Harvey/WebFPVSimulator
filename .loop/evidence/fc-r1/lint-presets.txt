@@ -1,0 +1,10 @@
+
+> webfpvsimulator@0.1.0 lint:presets
+> node scripts/preset-lint.js
+
+preset-lint: every shipped tune, against the compiled module
+
+ ok   betaflight-default.diff  96 set lines: 91 applied, 5 inert by design, 0 unrecognised
+ ok   karate-race.diff         120 set lines: 112 applied, 8 inert by design, 0 unrecognised
+
+2 of 2 presets clean

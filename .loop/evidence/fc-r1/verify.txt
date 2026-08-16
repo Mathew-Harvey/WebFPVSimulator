@@ -1,0 +1,31 @@
+npm run verify this turn, SIM_CHROME_BIN set to Chrome.
+
+After restoring tests/thresholds.json to HEAD (D7). 13 of 16 checks passing.
+
+| #  | check                  | measured                                           | threshold                                                              | result | reason                                                                                       |
+|----|------------------------|----------------------------------------------------|------------------------------------------------------------------------|--------|----------------------------------------------------------------------------------------------|
+| 1  | build-clean            | build exit 1, vendor diff empty                    | exit 0, vendor diff empty, init OK                                     | FAIL   | build:wasm exited 1                                                                          |
+| 2  | determinism-repeat     | a=6d17d4814bdc b=6d17d4814bdc                      | two in-process replay hashes identical                                 | PASS   |                                                                                              |
+| 3  | determinism-cross-host | node=6d17d4814bdc chrome=6d17d4814bdc              | Node and headless Chrome hashes identical                              | PASS   |                                                                                              |
+| 4  | frame-independence     | 1 distinct hash(es) across 4 rates                 | traces at 30, 60, 144, 240 Hz identical                                | PASS   |                                                                                              |
+| 5  | hover-throttle         | 0.2637                                             | 0.20 to 0.30                                                           | PASS   |                                                                                              |
+| 6  | punch-out              | 81.5 m                                             | 55 to 85 m                                                             | PASS   |                                                                                              |
+| 7  | terminal-velocity      | 31.1 m/s                                           | 30 to 40 m/s                                                           | PASS   |                                                                                              |
+| 8  | motor-step-response    | 26 ms                                              | 10 to 30 ms                                                            | PASS   |                                                                                              |
+| 9  | rate-tracking          | 671.5 deg/s vs 670 configured (0.22 percent off)   | within 3 percent of configured max rate                                | PASS   |                                                                                              |
+| 10 | yaw-coupling           | -0.12 deg                                          | |drift| >= 2 deg, sign negative                                        | FAIL   | drift below floor                                                                            |
+| 11 | battery-sag            | 11.14 percent lower (26024 vs 23125 RPM)           | peak RPM 4 to 15 percent lower at 3.60 V                               | PASS   |                                                                                              |
+| 12 | diff-passthrough       | ratio 1.2478 vs 1.2537 expected (0.47 percent off) | rate ratio matches diff ratio within 2 percent                         | PASS   |                                                                                              |
+| 13 | console-clean          | errors=0 warnings=0 run=ok                         | zero errors, zero warnings                                             | PASS   |                                                                                              |
+| 14 | audio-bed              | ctx running, music gain 0.425, 47 steps in 4.01 s  | context running, bed audible, scheduler advancing                      | PASS   |                                                                                              |
+| 15 | world-scale            | world scale 1.0000, grass blade min 0.0300 m, max 0.0900 m | reference objects inside their real world bands                        | PASS   |                                                                                              |
+| 16 | map-isolation          | city modules 0 then 63; field P1 313, P2 895639, P5 69.8 MB, P10 27.4 MB, 170 meshes; round trip identical | no city module requested with the field selected, field cost unchanged | FAIL   | P1 313 against 171; P2 895639 against 1989501; P10 27.4 against 45; meshes 170 against 96 |
+
+Same turn, not inside verify.js:
+  npm run build:wasm  ->  build:wasm: wrote dist/sim.wasm  (exit 0)
+  git diff --stat vendor/betaflight  ->  empty
+  git diff HEAD -- tests/  ->  empty
+
+Physics floor from the previous PROGRESS.md table: hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough 1.2478, hash 6d17d4814bdc. This table matches those numbers.
+
+map-isolation is red against the committed c3c6e44 snapshot because the working tree no longer draws grass blades. The constitution names this: do not widen the snapshot. tests/thresholds.json was restored to HEAD after review.

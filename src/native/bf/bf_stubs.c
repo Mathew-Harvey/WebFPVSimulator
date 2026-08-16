@@ -27,8 +27,12 @@
 
 #include "platform.h"
 
+#include "common/maths.h"
 #include "drivers/time.h"
 #include "fc/core.h"
+#include "fc/rc_controls.h"
+#include "pg/rx.h"
+#include "rx/rx.h"
 #include "flight/failsafe.h"
 #include "flight/imu.h"
 #include "io/beeper.h"
@@ -85,6 +89,34 @@ batteryConfig_t batteryConfig_System;
  * the glue. Only read when vbat_sag_compensation is enabled. */
 uint16_t sim_bf_sag_cell_cv = 420;
 uint16_t getBatterySagCellVoltage(void) { return sim_bf_sag_cell_cv; }
+
+/*
+ * Throttle as a percentage of travel, from fc/core.c. Only the dynamic notch
+ * calls it, and only to decide whether to publish its peak frequency for an
+ * OSD this build does not have, so nothing flies differently on it. It is
+ * still the real expression rather than a constant, minus the 3D branch: this
+ * airframe is not reversible and FEATURE_3D is never set.
+ */
+int8_t calculateThrottlePercent(void) {
+  const int channelData = constrain((int)rcData[THROTTLE], PWM_RANGE_MIN, PWM_RANGE_MAX);
+  return (int8_t)constrain(((channelData - rxConfig()->mincheck) * 100) /
+                               (PWM_RANGE_MAX - rxConfig()->mincheck),
+                           0, 100);
+}
+uint8_t calculateThrottlePercentAbs(void) {
+  const int8_t p = calculateThrottlePercent();
+  return (uint8_t)(p < 0 ? -p : p);
+}
+
+/*
+ * Bidirectional DShot is "fitted". mixer_init.c gates dynamic idle on it and
+ * the RPM filter needs a rotor speed to aim at; bf_glue.c supplies both from
+ * the plant, through the same PT1 lag drivers/dshot.c applies to a real
+ * telemetry stream. Saying false here would switch dynamic idle off while the
+ * config claimed it was on, which is the class of quiet lie this file has
+ * already been caught in once.
+ */
+bool useDshotTelemetry = true;
 
 /* DShot command plumbing. The motor endpoints in bf_glue.c model a DShot
  * ESC, so this agrees with them; every caller of it in the compiled set is

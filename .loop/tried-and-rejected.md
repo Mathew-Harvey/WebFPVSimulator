@@ -1,5 +1,41 @@
 # Tried and rejected
 
+## Configurator loop, round 1
+
+**Writing patch 0002 with PowerShell `>`.** That produced UTF-16 LE + CRLF.
+`git apply` said no valid patches. Rewrite patches with Node as UTF-8 LF.
+After a failed apply, restore vendor with `git apply -R`, not
+`git checkout -- vendor`.
+
+**Hashing two `sim_init` calls on one WASM instance.** Function-statics
+survive (`previousThrottle`, rc-smoothing `initialized`, feedforward
+state). Any two inits hashed differently, so F4 LIVE tests were false
+passes. Check 2 uses two `freshSim()` instances. fc-trace does the same.
+Patch 0002 hoists rc/pid statics; leftover feedforward statics in
+`calculateFeedforward` still mean same-instance Save is not bit-identical.
+Do not treat a second init on one module as a power-on.
+
+**Differing `gyro_lpf1_static_hz` while dyn LPF is on.** Default
+`gyro_lpf1_dyn_min_hz = 250` means the static cutoff does not steer the
+filter. The F4 pair turns dyn min off on both arms, then 250 vs 100.
+
+**Leaving write-table keys LIVE because they parse.** QA review: 
+`min_throttle`, `max_throttle`, `min_command`, `motor_poles`,
+`crashflip_expo`, `crashflip_motor_percent`, `fpv_mix_degrees`,
+`runaway_takeoff_prevention`, `gyro_filter_debug_axis` write PGs this
+build compiles and nothing in the 1 ms loop reads them. That is the
+`d_min_roll` class of lie. They are APPLIED_INERT. LIVE means the compiled
+loop actually uses the field every millisecond.
+
+**Trusting `sim_bf_key_status` as enablement.** Native 0 means "in
+bf_settings.c", which includes GATED and APPLIED_INERT. The screen must
+ask `catalog.js`.
+
+**Moving `tests/thresholds.json` so map-isolation stays green after grass
+blades stopped being drawn.** D7 forbids it. Restored to HEAD. map-isolation
+is red against the committed snapshot, which the constitution already
+names. Do not widen it in this loop.
+
 Approaches that were attempted and abandoned, with the reason, so a later
 round does not spend itself rediscovering them. Earlier entries from the
 first loop are in .loop/state.json under tried_and_rejected and in

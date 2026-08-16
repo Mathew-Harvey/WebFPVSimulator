@@ -1,10 +1,70 @@
 # Handover
 
-Read `CLAUDE.md` first, then this, then `.loop/state.json`, then
-`.loop/tried-and-rejected.md`, then `.loop/blocked.md`, then
-`.loop/threshold-disputes.md`.
+Read `CLAUDE.md` first, then `prompts/fc-configurator-loop.md`, then this,
+then `.loop/state.json`, then `.loop/tried-and-rejected.md`, then
+`.loop/blocked.md`, then `.loop/threshold-disputes.md`.
 
 ## Which loop is running
+
+The Configurator gauntlet. Constitution: `prompts/fc-configurator-loop.md`.
+Branch: `loop/fc-configurator`. Do not fast-forward `main`.
+
+Round 1 (this handover) is catalog + WASM dump export + `scripts/fc-trace.js`.
+There is no FC screen yet. Do not start `src/ui/fc.js` until the next round.
+Next item is Phase 1: PID Tuning + Filters + Rates, Save through
+`composeConfig`, `adoptSimClock` after every FC `sim_init`.
+
+### Catalog counts (measured, `npm run lint:catalog` exit 0)
+
+valueTable 683, bf_settings.c 175, catalog CLI 686, LIVE 159, GATED 5,
+APPLIED_INERT 11, INERT 511, ABSENT 10, tabs 24. 159 + 5 + 11 = 175
+write-table keys classified.
+
+GATED: `dyn_notch_count/q/min_hz/max_hz`, `pid_process_denom`.
+APPLIED_INERT: `motor_kv`, `gyro_hardware_lpf`, plus nine keys a QA
+reviewer caught as LIVE-that-never-flies: `min_throttle`, `max_throttle`,
+`min_command`, `motor_poles`, `crashflip_expo`, `crashflip_motor_percent`,
+`fpv_mix_degrees`, `runaway_takeoff_prevention`, `gyro_filter_debug_axis`.
+
+### F3 to F7 hashes (`npm run lint:fc` 13/13)
+
+Cold-module SHA-256 of the short hover + roll pulse:
+
+- F3 base / round-trip: `0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`
+- F4 p_roll: `275ba811887beb78b22963a9c80da18b6c3f4338e09e68c363a86477bec0baeb`
+- F4 gyro_lpf1_static_hz (dyn off, 250 vs 100): `8be47ab6b8fc5f7faea261d817448eec5e227ff7f30fe9829789cd51f19ad144` vs `2291bd607a51de6e5c9c1249e2d0a17cbb0edde2c1fca87f3f63720295852d74`
+- F4 roll_srate: `2226f25340bcc382bda7250ce4adc96dcb4f97d37278abca0fb9e11eaffba6e6`
+- F4 rpm_filter_harmonics: `d7dbf427a864e4368487667ee410366d334d75cd6d5fb32ab254c8d2c39319c7`
+- F4 feature -AIRMODE: `3ddf62b76d4d4773d06c162ba1394957b7f06b2ff96881580ebed73142d7e31a`
+- F5 osd_rssi_pos: equal to base
+- F6 dyn_notch_count 0 vs 3: both equal to base (DYN_NOTCH_UPDATE_MIN_HZ 2 kHz)
+- F7 keep-mine / Karate: module `roll_srate=67`; use-dump: `42`
+
+fc-trace uses a fresh WASM instance per hash. A second `sim_init` on one
+instance is not a power-on (leftover feedforward statics). Patch 0002
+resets rc/pid function-statics; leftover FF statics remain a Save-on-same-
+instance edge.
+
+### Verify this turn (13 of 16, SIM_CHROME_BIN set)
+
+Physics floor held: hash `6d17d4814bdc`, hover 0.2637, punch 81.5 m,
+terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent,
+diff-passthrough 1.2478. yaw-coupling still red. build-clean red because
+`tests/verify.js` spawnSync("npm") on Windows (direct `npm run build:wasm`
+exits 0, vendor diff empty). map-isolation red against the committed
+c3c6e44 snapshot after `tests/thresholds.json` was restored to HEAD.
+
+UI must ask `src/fc/catalog.js` `status(key)`, never `sim_bf_key_status`
+(native 0 means write-table, which includes GATED and APPLIED_INERT).
+
+Dump export emits `rpm_filter_weights_1/2/3`. A real Configurator will not
+accept those three lines. F12 when Export exists.
+
+Human-pinned: all tabs shown grey not hidden; rates keep-mine by default;
+`motor_kv` APPLIED_INERT; 1 kHz stays; no Airframe page; profile 0 only;
+Angle stays `sim_set_angle_mode`.
+
+## Previous loop (kept)
 
 The world, sound and track loop. Three things have to hold at once: a world
 that makes a stranger believe this is a commercial product and runs on a
@@ -13,7 +73,7 @@ for, and a real MultiGP course at real MultiGP dimensions under MultiGP
 rules. The G and P items carry over from the low spec loop unchanged. The A
 sound items and the T track items are new.
 
-Branch: `claude/webfpv-world-sound-track-kdx9vo`, cut from `main`.
+Branch (old): `claude/webfpv-world-sound-track-kdx9vo`, cut from `main`.
 
 `main` was fast forwarded to round 10 **on the human owner's explicit
 instruction**, not because the rubric went green. It did not: G, A and T are

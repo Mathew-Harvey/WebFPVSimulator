@@ -39,4 +39,17 @@ int bf_settings_count(int which);
  * which is what the `simplified_tuning apply` CLI line does. */
 void bf_settings_apply_simplified(void);
 
+/* Write the live parameter groups as CLI text (feature lines, then every
+ * key in the write table as `set key = value`). Returns the number of
+ * characters excluding the trailing NUL. If that is >= cap the buffer is
+ * truncated; the return is still the full size so the host can retry. */
+int bf_settings_dump(char *out, int cap);
+
+/* Write one key's current value as CLI would print it. Returns the
+ * character count excluding NUL, or -1 if the key is not in the table. */
+int bf_settings_get(const char *key, char *out, int cap);
+
+/* 0 = in the write table, 1 = inert by prefix, 2 = unknown. */
+int bf_settings_status(const char *key);
+
 #endif /* BF_SETTINGS_H */

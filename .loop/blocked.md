@@ -119,3 +119,22 @@ is unsatisfiable in a browser and the item is blocked, or whether it means
 reproducible to a stated tolerance, in which case the tolerance is one
 float32 ULP per sample and the probe can gate on it. No threshold has been
 changed either way.
+
+## 6. verify.js spawnSync("npm") on Windows
+
+`tests/verify.js` `runBuild` calls `spawnSync('npm', ['run', 'build:wasm'])`
+without `shell: true`. On this Windows host that returns empty output and
+exit 1, so check 1 is red even when `npm run build:wasm` exits 0 and
+`git diff --stat vendor/betaflight` is empty. This loop cannot edit
+`tests/`. Direct build plus vendor-clean is the evidence that the module
+compiled. A human can add `shell: true` on Windows in a different change.
+
+## 7. map-isolation vs the committed field snapshot
+
+The working tree no longer draws grass blades. Measured field cost is P1
+313, P2 895639, P5 69.8 MB, P10 27.4 MB, 170 meshes. The committed
+`field_budget_at_c3c6e44` snapshot is P1 171, P2 1989501, P10 45.0, 96
+meshes. This loop restored `tests/thresholds.json` to HEAD (D7). The
+constitution says map-isolation may be red against that baseline and must
+not be widened here. A human decides whether the grass-off snapshot belongs
+in `tests/` as its own commit.

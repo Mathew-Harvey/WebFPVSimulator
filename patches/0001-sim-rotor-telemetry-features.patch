@@ -1,0 +1,28 @@
+diff --git a/src/main/target/common_post.h b/src/main/target/common_post.h
+index 0b2ad4c..cff5fae 100644
+--- a/src/main/target/common_post.h
++++ b/src/main/target/common_post.h
+@@ -641,3 +641,23 @@ extern uint8_t __config_end;
+ #define USE_PIN_PULL_UP_DOWN
+ #endif
+ #endif // USE_PINIO
++
++// WebFPVSimulator: rotor speed is known exactly, so the features that need
++// DShot telemetry on hardware can run here without it. Additive and gated on
++// a define this target alone sets, so no real target is affected.
++//
++// USE_DYN_NOTCH_FILTER is undefined above for SIMULATOR_BUILD with the
++// comment "This feature uses 'arm_math.h', which does not exist for x86".
++// That is stale for 4.5: common/sdft.h uses C99 <complex.h>, not arm_math.h,
++// and it compiles clean under clang.
++#ifdef SIM_ROTOR_TELEMETRY
++#ifndef USE_DYN_NOTCH_FILTER
++#define USE_DYN_NOTCH_FILTER
++#endif
++#ifndef USE_RPM_FILTER
++#define USE_RPM_FILTER
++#endif
++#ifndef USE_DYN_IDLE
++#define USE_DYN_IDLE
++#endif
++#endif // SIM_ROTOR_TELEMETRY

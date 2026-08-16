@@ -1,0 +1,121 @@
+diff --git a/src/main/fc/rc.c b/src/main/fc/rc.c
+index 0cf640b..3b28273 100644
+--- a/src/main/fc/rc.c
++++ b/src/main/fc/rc.c
+@@ -21,6 +21,7 @@
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <math.h>
+ 
+ #include "platform.h"
+@@ -69,6 +70,10 @@ static applyRatesFn *applyRates;
+ 
+ static uint16_t currentRxIntervalUs; // packet interval in microseconds
+ static float currentRxRateHz; // packet rate in hertz
++static timeUs_t lastRxTimeUs;
++static FAST_DATA_ZERO_INIT bool rcSmoothingFilterReady;
++static uint16_t previousRxIntervalUs;
++static float prevRxRateHz;
+ 
+ static bool isRxDataNew = false;
+ static bool isRxIntervalValid = false;
+@@ -263,8 +268,6 @@ static void scaleRawSetpointToFpvCamAngle(void)
+ 
+ void updateRcRefreshRate(timeUs_t currentTimeUs)
+ {
+-    static timeUs_t lastRxTimeUs;
+-
+     timeDelta_t frameAgeUs;
+     timeDelta_t frameDeltaUs = rxGetFrameDelta(&frameAgeUs);
+ 
+@@ -370,12 +373,11 @@ FAST_CODE_NOINLINE bool rcSmoothingAutoCalculate(void)
+ static FAST_CODE void processRcSmoothingFilter(void)
+ {
+     static FAST_DATA_ZERO_INIT float rxDataToSmooth[4];
+-    static FAST_DATA_ZERO_INIT bool initialized;
+     static FAST_DATA_ZERO_INIT bool calculateCutoffs;
+ 
+     // first call initialization
+-    if (!initialized) {
+-        initialized = true;
++    if (!rcSmoothingFilterReady) {
++        rcSmoothingFilterReady = true;
+         rcSmoothingData.filterInitialized = false;
+         rcSmoothingData.smoothedRxRateHz = 0.0f;
+         rcSmoothingData.sampleCount = 0;
+@@ -414,12 +416,10 @@ static FAST_CODE void processRcSmoothingFilter(void)
+                 // Wait 1000ms after power to let the PID loop stabilize before starting average frame rate calculation
+                 if (rxIsReceivingSignal() && isRxIntervalValid) {
+ 
+-                    static uint16_t previousRxIntervalUs;
+                     if (abs(currentRxIntervalUs - previousRxIntervalUs) < (previousRxIntervalUs - (previousRxIntervalUs / 8))) {
+                         // exclude large steps, eg after dropouts or telemetry
+                         // by using interval here, we catch a dropout/telemetry where the inteval increases by 100%, but accept
+                         // the return to normal value, which is only 50% different from the 100% interval of a single drop, and 66% of a return after a double drop.
+-                        static float prevRxRateHz;
+                         // smooth the current Rx link frequency estimates
+                         const float kF = 0.1f; // first order lowpass smoothing filter coefficient
+                         const float smoothedRxRateHz = prevRxRateHz + kF * (currentRxRateHz - prevRxRateHz);
+@@ -774,6 +774,12 @@ bool isMotorsReversed(void)
+ 
+ void initRcProcessing(void)
+ {
++    lastRxTimeUs = 0;
++    rcSmoothingFilterReady = false;
++    previousRxIntervalUs = 0;
++    prevRxRateHz = 0.0f;
++    memset(&rcSmoothingData, 0, sizeof(rcSmoothingData));
++
+     rcCommandDivider = 500.0f - rcControlsConfig()->deadband;
+     rcCommandYawDivider = 500.0f - rcControlsConfig()->yaw_deadband;
+ 
+diff --git a/src/main/flight/pid.c b/src/main/flight/pid.c
+index e7f818c..509eba4 100644
+--- a/src/main/flight/pid.c
++++ b/src/main/flight/pid.c
+@@ -79,6 +79,15 @@ FAST_DATA_ZERO_INIT uint32_t targetPidLooptime;
+ FAST_DATA_ZERO_INIT pidAxisData_t pidData[XYZ_AXIS_COUNT];
+ FAST_DATA_ZERO_INIT pidRuntime_t pidRuntime;
+ 
++static float previousThrottle = 0.0f;
++static bool isTpaLowFaded = false;
++
++void pidResetTransientState(void)
++{
++    previousThrottle = 0.0f;
++    isTpaLowFaded = false;
++}
++
+ #if defined(USE_ABSOLUTE_CONTROL)
+ STATIC_UNIT_TESTED FAST_DATA_ZERO_INIT float axisError[XYZ_AXIS_COUNT];
+ #endif
+@@ -279,7 +288,6 @@ void pidResetIterm(void)
+ 
+ void pidUpdateTpaFactor(float throttle)
+ {
+-    static bool isTpaLowFaded = false;
+     // don't permit throttle > 1 & throttle < 0 ? is this needed ? can throttle be > 1 or < 0 at this point
+     throttle = constrainf(throttle, 0.0f, 1.0f);
+     bool isThrottlePastTpaLowBreakpoint = (throttle < pidRuntime.tpaLowBreakpoint && pidRuntime.tpaLowBreakpoint > 0.01f) ? false : true;
+@@ -297,7 +305,6 @@ void pidUpdateTpaFactor(float throttle)
+ 
+ void pidUpdateAntiGravityThrottleFilter(float throttle)
+ {
+-    static float previousThrottle = 0.0f;
+     const float throttleInv = 1.0f - throttle;
+     float throttleDerivative = fabsf(throttle - previousThrottle) * pidRuntime.pidFrequency;
+     DEBUG_SET(DEBUG_ANTI_GRAVITY, 0, lrintf(throttleDerivative * 100));
+diff --git a/src/main/flight/pid.h b/src/main/flight/pid.h
+index f509350..cc735d9 100644
+--- a/src/main/flight/pid.h
++++ b/src/main/flight/pid.h
+@@ -439,6 +439,7 @@ extern pt1Filter_t throttleLpf;
+ void resetPidProfile(pidProfile_t *profile);
+ 
+ void pidResetIterm(void);
++void pidResetTransientState(void);
+ void pidStabilisationState(pidStabilisationState_e pidControllerState);
+ void pidSetItermAccelerator(float newItermAccelerator);
+ bool crashRecoveryModeActive(void);

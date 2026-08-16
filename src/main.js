@@ -45,6 +45,7 @@ import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
+import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, makeLensShake } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager } from './input/input.js';
 import { Race } from './game/race.js';
@@ -64,6 +65,7 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { ratesDiff, ratesSummary } from '../configs/rates.js';
+import { composeConfig, RATES_KEEP } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -187,6 +189,10 @@ const RC_HZ = 250;
 /* Pack nominal, for the charge bar: 6S between empty and full. */
 const PACK_EMPTY_V = 6 * 3.3;
 const PACK_FULL_V = 6 * 4.2;
+/* Full throttle rotor speed on a charged pack, measured off the compiled
+ * module at 25,570 RPM. Only the lens shake reads it, to turn motor speed
+ * into a 0 to 1 imbalance scale, so a few percent either way is invisible. */
+const FULL_THROTTLE_RPM = 25600;
 
 const uiRoot = document.getElementById('ui');
 
@@ -347,17 +353,25 @@ export async function boot({ loading, bootStart, mapId }) {
   let menuTune = ui.settings.tune;
   let configName = `${configId}.diff`;
   /*
-   * A flown config is a TUNE plus the pilot's RATES, composed here and
-   * nowhere else. No file in configs/ carries a rateprofile any more, and the
-   * rate lines are appended last so that even a diff the pilot drops on the
-   * page flies on the rates in the menu. See configs/rates.js for why the
-   * two were separated: shipping rates inside the Karate preset meant
-   * choosing that tune also halved the stick authority, so the tune could
-   * never be judged on its own.
+   * Async config loads (tune menu, dropped diff) are generation counted.
+   * A stale fetch must not call sim_init after a newer choice has already
+   * won, and Fly / Resume must not start a run whose RC timestamps will be
+   * invalidated by a sim_init still in flight. See adoptSimClock.
+   */
+  let configGen = 0;
+  let configLoadWait = Promise.resolve();
+  /*
+   * A flown config is a TUNE plus the pilot's RATES, joined only by
+   * composeConfig in src/fc/dump.js. No file in configs/ carries a
+   * rateprofile any more, and the rate lines are appended last so that even
+   * a diff the pilot drops on the page flies on the rates in the menu. See
+   * configs/rates.js for why the two were separated: shipping rates inside
+   * the Karate preset meant choosing that tune also halved the stick
+   * authority, so the tune could never be judged on its own.
    */
   let tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
   let ratesText = ratesDiff(ui.settings);
-  let configText = tuneText + ratesText;
+  let configText = composeConfig(tuneText, ui.settings, RATES_KEEP);
   if (sim.init(configText) !== SIM_OK) {
     throw new Error(`sim_init failed on ${configName}`);
   }
@@ -469,6 +483,46 @@ export async function boot({ loading, bootStart, mapId }) {
     if (rcPending.length > 1) {
       rcPending.splice(0, rcPending.length - 1);
     }
+  }
+
+  /*
+   * JS RC time follows the module, never the other way around. sim_init and
+   * sim_reset restart the input stream at t = 0. Stamping sim.input from a
+   * leftover lastTs puts every sample in the queue's future: sim_step only
+   * consumes a sample once step_index reaches its timestamp, so the lag
+   * equals the leftover. That was round 16b (lap clock) and the tune-swap
+   * lag (async sim_init). Read the module every time the stream can restart.
+   */
+  function adoptSimClock() {
+    const st = readState();
+    simStepMs = Math.round(st[0] * 1000);
+    pinRcGrid();
+  }
+
+  function bumpConfigGen() {
+    configGen += 1;
+    return configGen;
+  }
+
+  function isLiveConfigLoad(gen) {
+    return gen === configGen;
+  }
+
+  function whenConfigReady(fn) {
+    const gen = configGen;
+    configLoadWait.then(() => {
+      if (configGen !== gen) {
+        whenConfigReady(fn);
+        return;
+      }
+      fn();
+    }, () => {
+      if (configGen !== gen) {
+        whenConfigReady(fn);
+        return;
+      }
+      fn();
+    });
   }
   let crashed = false;
   let crashedAtWall = 0;
@@ -639,13 +693,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * follow or every queued stick sample lands in the integrator's future.
      * simTimeMs is the LAP clock and belongs to the race, which is still
      * running: zeroing it here is what used to hand a crashed pilot their
-     * lap time back.
+     * lap time back. adoptSimClock reads that zero from the module rather
+     * than assuming it, so a future reset that keeps a warmup offset cannot
+     * silently desync the RC grid again.
      */
-    simStepMs = 0;
     acc = 0;
-    lastTs = 0;
-    rcNextMs = 0;
     rcPending.length = 0;
+    adoptSimClock();
     crashed = false;
     /* Back on the ground, landed, exactly as at boot. Setting launched false
      * here is what made every respawn repeat the takeoff trap. */
@@ -682,11 +736,9 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.reset();
     sim.setCellVoltage(runVoltage);
     simTimeMs = 0;
-    simStepMs = 0;
     acc = 0;
-    lastTs = 0;
-    rcNextMs = 0;
     rcPending.length = 0;
+    adoptSimClock();
     crashed = false;
     /* Back on the ground, landed, exactly as at boot. Setting launched false
      * here is what made every respawn repeat the takeoff trap. */
@@ -888,7 +940,9 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (s.tune !== menuTune) {
       menuTune = s.tune;
-      swapTune(s.tune);
+      configLoadWait = swapTune(s.tune).catch((e) => {
+        console.error(e);
+      });
     }
     /*
      * Rates are part of the config text, so changing one re-inits the module
@@ -899,8 +953,9 @@ export async function boot({ loading, bootStart, mapId }) {
     const nextRates = ratesDiff(s);
     if (nextRates !== ratesText) {
       ratesText = nextRates;
-      configText = tuneText + ratesText;
+      configText = composeConfig(tuneText, s, RATES_KEEP);
       if (sim.init(configText) === SIM_OK) {
+        adoptSimClock();
         sim.setCellVoltage(runVoltage);
         race.setRecordKey(recordKey());
         ui.setBest(race.bestMs, view.mode);
@@ -922,6 +977,10 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   async function swapTune(id) {
     const entry = tuneById(id);
+    /* Bump first so switching back to the already loaded tune cancels an
+     * in-flight fetch of a different one. The old early return before the
+     * bump is how "off Karate and back" loaded the other tune anyway. */
+    const gen = bumpConfigGen();
     if (entry.id === configId) {
       return;
     }
@@ -929,23 +988,32 @@ export async function boot({ loading, bootStart, mapId }) {
     try {
       text = new TextDecoder().decode(await fetchBytes(tunePath(entry.id)));
     } catch (e) {
+      if (!isLiveConfigLoad(gen)) {
+        return;
+      }
       ui.settings.tune = configId;
       notice = { text: `${entry.name} could not be loaded.`, untilMs: performance.now() + 3200 };
       console.error(e);
       return;
     }
-    const code = sim.init(text + ratesText);
+    if (!isLiveConfigLoad(gen)) {
+      return;
+    }
+    const nextText = composeConfig(text, ui.settings, RATES_KEEP);
+    const code = sim.init(nextText);
     if (code !== SIM_OK) {
       ui.settings.tune = configId;
       sim.init(configText);
+      adoptSimClock();
       reset();
       notice = { text: `${entry.name} could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
       return;
     }
     configId = entry.id;
     tuneText = text;
-    configText = tuneText + ratesText;
+    configText = nextText;
     configName = `${entry.id}.diff`;
+    adoptSimClock();
     sim.setCellVoltage(runVoltage);
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
@@ -1085,15 +1153,28 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   };
   ui.onAction = (action, s) => {
+    if (s) {
+      applySettings(s);
+    }
     if (action === 'fly' || action === 'restart') {
-      reset();
-      mode = 'flight';
-      ui.show('flight');
-      introMs = 0;
-    } else if (action === 'resume') {
-      mode = 'flight';
-      ui.show('flight');
-    } else if (action === 'pause') {
+      /* A tune fetch in flight would sim_init under a run whose lastTs had
+       * already started climbing. Wait until the load is the current one. */
+      whenConfigReady(() => {
+        reset();
+        mode = 'flight';
+        ui.show('flight');
+        introMs = 0;
+      });
+      return;
+    }
+    if (action === 'resume') {
+      whenConfigReady(() => {
+        mode = 'flight';
+        ui.show('flight');
+      });
+      return;
+    }
+    if (action === 'pause') {
       mode = 'paused';
     } else if (action === 'title') {
       mode = 'title';
@@ -1138,9 +1219,6 @@ export async function boot({ loading, bootStart, mapId }) {
       submitBoardTime();
     } else if (action === 'publishcourse') {
       submitCoursePublish();
-    }
-    if (s) {
-      applySettings(s);
     }
   };
 
@@ -1222,32 +1300,43 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /* Fly your own Betaflight diff: drop the file anywhere on the page. */
   window.addEventListener('dragover', (e) => e.preventDefault());
-  window.addEventListener('drop', async (e) => {
+  window.addEventListener('drop', (e) => {
     e.preventDefault();
     const file = e.dataTransfer?.files?.[0];
     if (!file) {
       return;
     }
-    const text = await file.text();
-    /* A dropped diff is a TUNE. The rates still come from the menu, appended
-     * last, so a file that carries its own rateprofile is overridden rather
-     * than quietly taking the sticks over. The notice says so. */
-    const code = sim.init(text + ratesText);
-    if (code === SIM_OK) {
-      tuneText = text;
-      configText = tuneText + ratesText;
-      configName = file.name;
-      /* A dropped diff is not one of the registry tunes any more. */
-      configId = '';
-      race.setRecordKey(recordKey());
-      ui.setBest(race.bestMs, view.mode);
-      notice = { text: `Flying ${configName}\nRates from the menu: ${ratesSummary(ui.settings)}`, untilMs: performance.now() + 3200 };
-      reset();
-    } else {
-      notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
-      sim.init(configText);
-      reset();
-    }
+    const gen = bumpConfigGen();
+    configLoadWait = (async () => {
+      const text = await file.text();
+      if (!isLiveConfigLoad(gen)) {
+        return;
+      }
+      /* A dropped diff is a TUNE. composeConfig keep-mine appends the menu
+       * rates last, so a file that carries its own rateprofile is overridden
+       * rather than quietly taking the sticks over. The notice says so. */
+      const nextText = composeConfig(text, ui.settings, RATES_KEEP);
+      const code = sim.init(nextText);
+      if (code === SIM_OK) {
+        tuneText = text;
+        configText = nextText;
+        configName = file.name;
+        /* A dropped diff is not one of the registry tunes any more. */
+        configId = '';
+        adoptSimClock();
+        race.setRecordKey(recordKey());
+        ui.setBest(race.bestMs, view.mode);
+        notice = { text: `Flying ${configName}\nRates from the menu: ${ratesSummary(ui.settings)}`, untilMs: performance.now() + 3200 };
+        reset();
+      } else {
+        notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
+        sim.init(configText);
+        adoptSimClock();
+        reset();
+      }
+    })().catch((err) => {
+      console.error(err);
+    });
   });
 
   /* Reused, not rebuilt: applySettings runs off a menu keypress, but the
@@ -1262,6 +1351,10 @@ export async function boot({ loading, bootStart, mapId }) {
   const qPad = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
   const camFwd = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+  const qShake = new THREE.Quaternion();
+  const shakeEuler = new THREE.Euler();
+  const lensShake = makeLensShake();
   const introFrom = new THREE.Vector3();
   const introLook = new THREE.Vector3();
   const introRight = new THREE.Vector3();
@@ -1364,13 +1457,27 @@ export async function boot({ loading, bootStart, mapId }) {
          * second of stick lag. */
         landed = false;
         takingOff = true;
-        pinRcGrid();
+        adoptSimClock();
         if (typeof audio.event === 'function') {
           audio.event('takeoff');
         }
       }
     }
     if (mode === 'flight' && !crashed && launched && !landed) {
+      /* The module is the source of truth. If sim_init ran and JS time was
+       * left behind, raising ts to lastTs would stamp every sample seconds
+       * into the future. Snap the shell to step_index instead. */
+      const moduleMs = Math.round(readState()[0] * 1000);
+      if (simStepMs !== moduleMs) {
+        acc = 0;
+        simStepMs = moduleMs;
+        pinRcGrid();
+        landed = true;
+        takingOff = false;
+        sim.rest();
+        stateCurr = readState();
+        statePrev = stateCurr;
+      } else {
       acc += dt;
       let steps = Math.floor(acc);
       acc -= steps;
@@ -1397,12 +1504,15 @@ export async function boot({ loading, bootStart, mapId }) {
         while (rcPending.length > 0 && rcPending[0].wallT + wallToSim <= rcNextMs) {
           rcHeld = rcPending.shift();
         }
-        let ts = rcNextMs / 1000;
-        if (ts < lastTs) {
-          ts = lastTs;
-        }
+        /* Stamp the grid, never lastTs. lastTs was the round 16b / tune-swap
+         * amplifier: a leftover second became every sample's timestamp. */
+        const ts = rcNextMs / 1000;
         lastTs = ts;
-        sim.input(ts, rcHeld.roll, rcHeld.pitch, rcHeld.yaw, rcHeld.throttle);
+        const inCode = sim.input(ts, rcHeld.roll, rcHeld.pitch, rcHeld.yaw, rcHeld.throttle);
+        if (inCode !== SIM_OK) {
+          adoptSimClock();
+          break;
+        }
         rcNextMs += framePeriod;
       }
       if (steps >= 1) {
@@ -1615,6 +1725,7 @@ export async function boot({ loading, bootStart, mapId }) {
           crashInto('Crashed', nowWall);
         }
       }
+      }
     } else if (mode === 'flight' && !crashed && launched && landed) {
       /*
        * Sitting on the ground. The integrator does NOT step: position is
@@ -1635,7 +1746,7 @@ export async function boot({ loading, bootStart, mapId }) {
         steps = 100;
       }
       simTimeMs += steps;
-      pinRcGrid();
+      adoptSimClock();
       statePrev = stateCurr;
     } else if (mode === 'flight' && crashed) {
       /*
@@ -1823,6 +1934,8 @@ export async function boot({ loading, bootStart, mapId }) {
       || mode === 'paused'
       || mode === 'results'
       || ui.screen === 'maps'
+      || ui.screen === 'choosetrack'
+      || ui.screen === 'editormap'
       || attractOn
       || Boolean(camOverride)
     );
@@ -1850,14 +1963,32 @@ export async function boot({ loading, bootStart, mapId }) {
       shell.cameraMount.rotation.x = (camTilt * Math.PI) / 180;
     }
 
+    /* The lens sits where herocraft.js bolts it, forward AND up, not at the
+     * centre of gravity's height. src/render/lens.js carries both numbers and
+     * the reason. camUp is the craft's own up, so the offset rolls with it. */
     camFwd.set(0, 0, -1).applyQuaternion(qPrev);
-    fpvPos.copy(pCurr).addScaledVector(camFwd, simLenToWorld(0.0775));
+    camUp.set(0, 1, 0).applyQuaternion(qPrev);
+    fpvPos.copy(pCurr)
+      .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
+      .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
     const wantLift = (landed || crashed || !launched) ? PARKED_LIFT : 0;
     parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
     }
     fpvQuat.copy(qPrev).multiply(qTilt);
+    /*
+     * Vibration, so the buzz the flight controller is fighting is something
+     * the pilot can see. Driven by the motors' own speed out of the state
+     * block, scaled the same way the gyro model scales it. Render only: it
+     * moves the view, never the craft, so no trajectory depends on it.
+     */
+    {
+      const rpmMean = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
+      const shake = lensShake.update(dt, rpmMean / FULL_THROTTLE_RPM);
+      qShake.setFromEuler(shakeEuler.set(shake.x, shake.y, shake.z, 'XYZ'));
+      fpvQuat.multiply(qShake);
+    }
 
     if (mode !== 'results' && finishCamMs >= 0) {
       finishCamMs = -1;
@@ -2012,8 +2143,8 @@ export async function boot({ loading, bootStart, mapId }) {
         ? shell.camera.position
         : (mode === 'title' ? shell.quad.position : pCurr);
       view.updateShadowFocus(focus);
-      /* Propwash strength for the grass: mean rotor speed against hover.
-       * Title has no plant, so a cruise wash stands in under the hero. */
+      /* Wash used to drive grass propwash. Blades are not drawn. The
+       * argument stays on the call so every map has one updateWind shape. */
       const meanRpm = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
       const wash = (mode === 'title' || mode === 'results')
         ? 0.85
@@ -2354,6 +2485,11 @@ export async function boot({ loading, bootStart, mapId }) {
     fps: Math.round(fps),
     pending: rcPending.length,
     held: { ...rcHeld },
+    simStepMs,
+    lastTs,
+    rcNextMs,
+    moduleMs: Math.round(readState()[0] * 1000),
+    configGen,
   });
   window.__boot = () => ({
     firstFrameMs,

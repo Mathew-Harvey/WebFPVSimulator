@@ -1,6 +1,6 @@
 {
-  "note": "Round numbering: PROGRESS.md rounds 1 to 5 are the old polish loop, 6 to 9 are the low spec loop, and this loop continues the overall count from 10. The polish loop's A/B/C rubric is superseded and kept in history only. The A items in rubric_A below are the SOUND rubric of this loop, not the old polish loop's A items.",
-  "round": 11,
+  "note": "FC loop round numbering starts at 1. PROGRESS.md rounds 1 to 5 are the old polish loop, 6 to 9 the low spec loop, 10+ the world-sound-track loop, kept below. The A items in rubric_A are that loop's SOUND rubric, not this one.",
+  "round": 1,
   "attempted": {
     "1": "A1, the product shell: title, how to fly, settings, pause, results, and a flight display replacing the developer HUD",
     "2": "A4 and A5, plus every defect the two round 1 reviewers raised",
@@ -14,7 +14,7 @@
     "10": "The two missing instruments. scripts/audio-probe.js renders the real audio graph on an OfflineAudioContext and measures it; scripts/shots.js writes an aim sidecar beside every PNG recording which gate the race actually wants. No feature. Both instruments calibrated against predictable signals before any claim was made from them.",
     "11": "Solid collisions (new src/game/collide.js, exact swept capsule test, 1777 colliders), safe landing versus crash as a shell state because the ABI cannot write velocity, regulation MultiGP obstacles replacing the 2.30x oversized torus gate, five obstacle types including two triple stack ladders and a dive tower, a rebuilt motor model at the true blade pass frequency, and a new generated lofi drum and bass bed."
   },
-  "verify": "12 of 13 in round 11, run in the same turn as the claim. yaw-coupling is the single red and no threshold has been touched.",
+  "verify": "13 of 16 in FC round 1, SIM_CHROME_BIN set. Physics floor held: hash 6d17d4814bdc, hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough 1.2478. Red: build-clean (spawnSync npm on Windows), yaw-coupling, map-isolation against committed c3c6e44 snapshot. tests/ not edited.",
   "rubric": {
     "A1": "pass, reviewer 1 round 1",
     "A2": "pass, reviewer 1 round 1",
@@ -65,7 +65,39 @@
   ],
   "consecutive_all_green": 0,
   "done_condition": "Not met, but much closer. Round 11 closed A1 A3 A4 A5 A6 A8 A10 A11 T1 T2 T3 T4 and P1, and made collisions and landing real. Still failing: P2 P6 P8 P10 P11, G items other than the scale corrections, T5 and T6 partial. A2 and A7 each have one owed measurement.",
-  "loop": "world-sound-track loop. Three rubrics at once: G the world, A the sound, T the track, plus P budgets and D integrity. The lowspec-aaa-loop G and P items carry over unchanged. The A and T sections are new in this loop.",
+  "loop": "fc-configurator",
+  "fc_round": 1,
+  "attempted_fc": {
+    "1": "Catalog generated and linted against 4.5.1 valueTable. WASM dump/get/status. composeConfig is the only tune+rates join. fc-trace F3 to F7. Nine write-table keys demoted LIVE to APPLIED_INERT after QA review."
+  },
+  "rubric_F": {
+    "F1": "PASS at r1 review (both). lint:catalog exit 0, 683 valueTable keys covered.",
+    "F2": "FAIL at r1 QA review: nine write-table keys labelled LIVE that the 1 ms loop does not read. Recatalogued to APPLIED_INERT (159 LIVE, 11 APPLIED_INERT). Engineer had PASS on schema. Not re-reviewed.",
+    "F3": "PASS. Hash 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8 round-trip, 175 set lines.",
+    "F4": "PASS. Five one-key diffs move the short trace.",
+    "F5": "PASS. osd_rssi_pos does not move the hash.",
+    "F6": "PASS. dyn_notch_count 0 vs 3 equal; comment names DYN_NOTCH_UPDATE_MIN_HZ 2 kHz.",
+    "F7": "PASS. moduleGet roll_srate 67 keep-mine / Karate, 42 use-dump.",
+    "F8": "PASS from code: drop uses composeConfig keep-mine; Volume cannot call sim.init.",
+    "F9": "CANNOT VERIFY, no src/ui/fc.js (round 1 is not a screen).",
+    "F10": "CANNOT VERIFY, no screen.",
+    "F11": "CANNOT VERIFY, no screen.",
+    "F12": "CANNOT VERIFY, no Export. Dump already emits rpm_filter_weights_1/2/3 which a real Configurator will not accept.",
+    "F13": "CANNOT VERIFY, no screen. Settings still has the five rate rows.",
+    "F14": "CANNOT VERIFY, no Save. adoptSimClock still runs on current sim.init sites.",
+    "D1": "FAIL at r1 review on tests/thresholds.json (restored to HEAD) and on verify spawnSync npm. Physics floor held. yaw-coupling still red. map-isolation now red against committed snapshot.",
+    "D2": "PASS. vendor/betaflight diff empty.",
+    "D3": "CANNOT VERIFY for the FC path (no screen). console-clean on verify load is 0/0.",
+    "D4": "PASS. No JS Math.sin/cos/pow in src/native or src/input.",
+    "D5": "PASS. New src/fc and scripts/fc-* have GPLv3. No new npm dependencies.",
+    "D6": "PASS. No em/en dashes in new FC sources.",
+    "D7": "FAIL at r1 review, then tests/thresholds.json restored. git diff HEAD -- tests/ empty after the restore.",
+    "D8": "PASS. Counts and hashes from lint:catalog / lint:fc / verify this turn.",
+    "D9": "PASS. lint:presets exit 0.",
+    "D10": "PASS. ui.js has no p_roll, d_min, tpa_rate, gyro_lpf.",
+    "D11": "PASS. composeConfig is the only join.",
+    "D12": "FAIL at engineer review (verify spawnSync vs later wasm). Same-turn direct build:wasm exit 0 then lint:fc and verify against dist/sim.wasm. Physics hash 6d17d4814bdc."
+  },
   "ledger_1080p": {
     "measured_in": "round 11, .loop/evidence/r11/ledger-numbers.md",
     "P1_draw_calls": {

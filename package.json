@@ -10,10 +10,13 @@
   },
   "scripts": {
     "verify": "node tests/verify.js",
-    "build:wasm": "bash scripts/build-wasm.sh",
+    "build:wasm": "node scripts/run-bash.js scripts/build-wasm.sh",
     "gen:baseline": "node tests/gen/gen-baseline.js",
     "serve": "node scripts/serve.js",
     "gates": "node scripts/gates.js",
-    "lint:presets": "node scripts/preset-lint.js"
+    "lint:presets": "node scripts/preset-lint.js",
+    "lint:catalog": "node scripts/fc-catalog-lint.js",
+    "lint:fc": "node scripts/fc-trace.js",
+    "gen:catalog": "node scripts/fc-catalog-gen.js"
   }
 }

@@ -47,6 +47,7 @@ Choices made during the build that are not already in CLAUDE.md. One line each, 
 - Map card thumbnails are recorded 480p clips in IndexedDB, not live WebGL. Three live orbit iframes plus the title world is four renderers, which a Steam Deck with other tabs open cannot hold. The first visit that needs a card records one loop at 10 fps; every visit after that is a video element. Bump CLIP_VERSION in src/share/orbitcache.js to invalidate old clips when the shot changes. The board featured card is ~670 by 340 CSS pixels, so 240p (426 by 240 at 180 kbps) smeared; 854 by 480 at 800 kbps is 4x the pixels and matches that card without a second live renderer.
 - Graphics is three named presets (Low, Medium, High) in `src/render/quality.js`, not a bag of sliders. High is the authored look so the field budget check does not move. First run on a Steam Deck / SteamOS user agent picks Low; everyone else gets High. The session renderer asks for `powerPreference: 'high-performance'` and leaves `failIfMajorPerformanceCaveat` false: a discrete GPU is used when one is present, and no preset requires one. Changing the preset rebuilds the world because grass count, city foliage and shadow proxies are bake time.
 - Settings shows the GPU WebGL actually bound, via `WEBGL_debug_renderer_info` on the session renderer. A page cannot list every chip in the machine. Firefox resist-fingerprinting and some Safari builds hide the name; software rasterisers (SwiftShader, llvmpipe) are labelled as such. Local display only, nothing is uploaded, and no second WebGL context is created to probe.
+- Grass blades are not drawn. The race field still walks the 184000 world rng draws so the valley does not move, then writes no vertices. City hill tufts are collected and not instanced. Reeds, trees and flowers stay. Density is not a quality lever.
 
 ---
 
@@ -8211,3 +8212,476 @@ of their moment.
 Verify: node tracks/check.mjs 2605 passed 0 failed, node
 src/trackbuilder/selftest.js 184 passed 0 failed, npm run verify 13 of
 16 with console-clean and world-scale passing. Published all ten.
+
+### 2026-08-16 | flight feel | full throttle shake and propwash cut to about a quarter
+
+The owner flew the louder build and said there was lots of vibration and
+shaking at full throttle, and lots of propwash, and that this is not
+correct. Three amplitudes, all feel constants, all cut by about the same
+factor.
+
+THE FULL THROTTLE SHAKE WAS NOT THE WASH. Propwash is gated on descent
+into the rotor's own induced velocity, so a punch on the power never
+enters it. What grows with RPM squared, and is therefore worst at full
+throttle, is the gyro injection and the camera shake that was added to
+make that injection visible. GYRO_VIB_FULL_DPS 5.0 to 1.5, GYRO_VIB_LINE_DPS
+3.0 to 0.8, SHAKE_FULL_RAD 0.22 deg to 0.06. The spectrum is still there
+for the filters to chew on; the video should stop swimming on a straight.
+
+k_propwash 0.30 to 0.08, below the original 0.12, with the wider descent
+window left in place so a fast fall is still not glass. 0.30 was inside
+the published 50 to 150 deg/s band and was still too much on this
+machine. Raise it if the wash disappears; do not put it back at 0.30
+without a pilot saying so.
+
+Verify: 14 of 16 passing. determinism-repeat and determinism-cross-host
+agree at 6d17d4814bdc, moved from 578dfc82b9e0 as they must after a
+physics change. hover-throttle 0.2637 unchanged. punch-out 81.5 m against
+80.9 before, band 55 to 85: a little more altitude because the D term is
+fighting less noise, which is the same tax a real tight build stops
+paying. terminal-velocity 31.1 m/s against 30.9, band 30 to 40.
+motor-step-response 26 ms unchanged. rate-tracking 671.5 deg/s, 0.22
+percent off, band 3. battery-sag 11.14 percent, band 4 to 15.
+diff-passthrough 1.2478 against 1.2537, 0.47 percent off, band 2.
+console-clean, audio-bed and world-scale pass. Still red and not this
+turn: yaw-coupling at -0.12 deg against the 2.0 floor; map-isolation on
+the c3c6e44 draw call baseline.
+
+Flight feel itself is not verifiable here. The harness is green apart
+from those two. If it is still too lively, these three numbers are the
+ones to cut again.
+
+### 2026-08-16 | tooling | npm run build:wasm was calling the broken WSL bash stub
+
+On this machine `bash` is %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe, which
+prints "WSL installation appears to be corrupted" and waits for a key.
+Git Bash is installed and is the shell the wasm build actually needs.
+package.json now runs scripts/build-wasm.sh through scripts/run-bash.js,
+which prefers Git Bash and skips the WindowsApps stub. The physics module
+is unchanged.
+
+### 2026-08-16 | karate | I-term relax cutoff 45 to 15, the snap back on rolls
+
+The owner: Karate has snap back on rolls and flips that the Betaflight
+default does not. Measured, same rates, throttle 0.35, a 50 ms stick ramp
+that is closer to a thumb than an instant step:
+
+  default          peak 678 deg/s, reverse bounce  -8 deg/s, stop 65 ms
+  karate, cutoff 45 peak 702 deg/s, reverse bounce -53 deg/s, stop 65 ms
+  karate, cutoff 15 peak 686 deg/s, reverse bounce -17 deg/s, stop 68 ms
+
+The stop time does not move. The twitch the other way is I-term dumping.
+Published karate_race.txt sets iterm_relax_cutoff 45 so I keeps working
+through a flip on a noisy real 5 inch. On this plant that cutoff lets I
+wind for the whole throw and reverse the craft when the stick centres.
+15 is Betaflight's own default. Feedforward boost 18 was tried alone and
+did not move the bounce at all.
+
+configs/karate-race.diff now writes 15. Reload the page, or switch away
+from Karate and back, so the diff is parsed again. No wasm rebuild.
+
+### 2026-08-16 | karate | remaining twitch: I-gain 120 to 75, FF boost 18 to 10
+
+The owner still felt the twitch after iterm_relax_cutoff was already 15.
+Cutoff 15 took a 50 ms throw from -53 deg/s bounce to -17. The default is
+-8. Two leftovers, isolated separately.
+
+Feedforward boost 18 was a reverse kick on stick release. 10 lands roll
+bounce at -9.6 and pitch at -10.3, which is the default. 0 was worse, not
+better. The stop got quicker, 68 ms to 59, because it was no longer
+travelling through zero and coming back.
+
+I-gain 120 produced I 81, almost the default's 80, but Karate's P is 38
+against 45 so a held flip overshoots the commanded rate and I winds the
+other way for the whole throw. That is the remaining instant-step bounce,
+-32 against the default's -21, which boost does not touch. I-gain 75
+produces I 51 and takes that to -23.
+
+Together, against the default, same rates, throttle 0.35:
+
+  50 ms throw   default roll -8.3 / pitch -10.6   karate -7.9 / -8.0
+  instant step  default roll -21.4 / pitch -27.1  karate -22.9 / -25.8
+  stop          default 65 ms                     karate 59 ms
+
+Reload the page, or switch off Karate and back. No wasm rebuild.
+
+### 2026-08-16 | ui | Choose map, and an empty Your track asks make or select
+
+The map screen heading is Choose map, not Choose a world. Clicking Your
+track with no course loaded (nothing in the share seat, and no builder
+autosave with gates or elements) no longer builds an empty field. It
+opens a two-card screen: Make a map goes to the track builder, Select a
+map goes to the public board in this tab so Fly this course can come
+back. Back from that screen returns to Your track on the map row.
+
+What went wrong: an empty canvas used to be a map you could fly, which
+looked like a broken race. The title still has Track builder and
+Leaderboard of its own; this path is only the Your track card when there
+is nothing to fly.
+
+### 2026-08-16 | input | stick lag after a tune change, the same clock skew as round 16b
+
+The owner: change a tune, then fly, and the sticks lag by seconds. Not
+Karate PID. Same class as round 16b, and it kept coming back because each
+earlier fix closed one path and left the others.
+
+**The mechanism.** sim_init and sim_reset restart the input stream at t = 0.
+sim_step only consumes a sample once step_index reaches that sample's
+timestamp. The shell stamped sim.input from leftover JS time (lastTs,
+rcNextMs, simStepMs). If JS was ahead, every sample sat in the queue's
+future and the lag equalled the leftover.
+
+Measured on dist/sim.wasm, replica of the fill loop, fly 4.8 s then
+sim_init without pairing the JS clocks:
+
+  old: raise ts to leftover lastTs          4821 ms to 50 deg/s
+  old: zero simStepMs and rcNextMs, keep lastTs, still clamp   4817 ms
+  new: adopt step_index, never raise ts     17 ms
+
+Zeroing the grid is not enough. `if (ts < lastTs) ts = lastTs` turns a
+stale lastTs into every sample's timestamp. That is why round 16b's
+simStepMs split was not enough the moment any other path called sim_init
+and left lastTs behind: Fly during a tune fetch, off Karate and back
+before the first fetch landed, drop a diff, change rates, crash reset
+that adopted the wrong clock.
+
+**Why the tune menu hit it.** applySettings fired swapTune without
+await and without a generation token. menuTune updated immediately;
+configId only after the fetch. Switching off Karate and back early
+returned the second swap (entry.id === configId, still the old tune),
+then the first fetch called sim_init under a run whose lastTs had
+already started climbing. Fly / Resume did not wait. sim.input return
+codes were ignored.
+
+**The fix, four layers, all in src/main.js. Native and ABI untouched.**
+
+1. The module is the source of truth. adoptSimClock reads
+   readState()[0], sets simStepMs, pins the RC grid. Called after every
+   sim_init and sim_reset, on takeoff, and every landed frame. pinRcGrid
+   alone reseated JS onto JS, which is how a parked craft after an init
+   still queued from t = 4.8.
+2. Never raise ts to leftover lastTs. Stamp rcNextMs/1000. If sim.input
+   fails, adoptSimClock and stop filling that block.
+3. Async config loads are generation counted. bumpConfigGen runs before
+   the already-loaded early return, so switching back to the loaded tune
+   cancels an in-flight fetch of a different one. Stale fetches must not
+   call sim_init. Dropped diffs use the same generation.
+4. Fly / Restart / Resume wait until the current generation's load has
+   settled, then reset and start. applySettings runs first so a Tune
+   change on the same click is the load being waited on, not a fetch
+   that starts after the clocks are already climbing.
+
+Flying-frame backstop: if simStepMs !== moduleMs, snap, rest, land. Do
+not keep filling future timestamps. One frame on the pad beats seconds
+of lag. window.__stickPath now publishes simStepMs, lastTs, rcNextMs,
+moduleMs and configGen so the next report can be a clock read, not a
+guess.
+
+Rates still re-init synchronously and do not bump configGen: a rates
+edit during a tune fetch must not cancel that fetch. The swap then inits
+the new tune with the already updated ratesText.
+
+What went wrong on the way: treating this as a Karate PID problem; a
+one-path reset of simStepMs that left lastTs as a lower bound; an early
+return in swapTune before the generation bump, which is how off-and-back
+loaded the other tune anyway; Fly starting the run and then applySettings
+starting the fetch underneath it.
+
+Verify, this turn, with SIM_CHROME_BIN set: 13 of 16 passing.
+determinism-repeat and determinism-cross-host agree at 6d17d4814bdc,
+unchanged, as they must: the harness drives the sim directly and never
+touches the shell clocks. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step-response 26 ms, rate-tracking
+671.5 deg/s (0.22 percent off), battery-sag 11.14 percent,
+diff-passthrough 1.2478 (0.47 percent off). console-clean, audio-bed,
+world-scale pass. Still red and not this turn: yaw-coupling -0.12 deg
+against the 2.0 floor; map-isolation against the c3c6e44 draw-call
+baseline. build-clean failed in verify.js because spawnSync("npm") on
+this Windows host returns empty output and exit 1; a direct
+npm run build:wasm exits 0 and git diff --stat vendor/betaflight is
+empty. The comparable previous run was 14 of 16 with the same physics
+numbers. Flight feel itself is not verifiable here.
+
+A rebuild during verify grew dist/sim.wasm 69851 to 80465 bytes. The
+trace hash did not move. This turn did not edit src/native.
+
+### 2026-08-16 | tracks | launch blocks 15 m behind the start gate
+
+Asked: the launch blocks should be at least 15 metres from the start
+gate. They were not. polish() parked them 3.2 m behind the first
+aperture, square on, which is a body length and a bit and leaves the
+motors nowhere to spool before the opening.
+
+GRID_BACK is 15. The axis rule is unchanged: first aperture's own
+normal, signed to agree with where the lap goes afterwards. The field
+then has to hold the new grid. It was sized around the gates with 6 m
+of grass, and 15 m back is outside that box whenever a course starts
+near an edge, so fitFieldAround grows the far side or shifts the
+document when the pads cross the origin. Two fields grew: FAI Turkiye
+2024 126x118 to 134x118, 2022 MultiGP GQ 64x34 to 68x37. The other
+eight already had the room.
+
+Measured after, all ten: pads 15.00 m behind gate 0, on its axis,
+inside the field. tracks/check.mjs now asserts the 15 m floor, same
+way it already asserts behind and square on. Published all ten.
+
+Verify: node tracks/check.mjs 2614 passed, 0 failed. node
+src/trackbuilder/selftest.js 184 passed, 0 failed. Physics, WASM and
+the determinism trace were not touched this turn. Hard reload the
+page: the shell fetches the board, and board.js caches the course in
+session storage.
+
+### 2026-08-16 | loop | Configurator gauntlet prompt
+
+No product code. The owner asked for a Grok gauntlet that builds a
+Betaflight Configurator mirror (every option present, unavailable
+greyed out) without regressing the plant or turning the shell into
+a second firmware.
+
+Wrote `prompts/fc-configurator-loop.md` as the constitution: one
+write path (UI to CLI dump to existing `sim_init`), catalog-driven
+grey-out, human-pinned rates policy (keep mine by default),
+`motor_kv` stays applied-inert, 1 kHz stays, no Vue/MSP/JS PID.
+Round 1 is catalog plus dump export plus trace scripts, not a
+screen. F and D rubric items are falsifiable. Adversarial review
+is binding, same shape as the world-sound-track loop.
+
+Pointed `prompts/LOOP.md` Loop C and `.loop/NEXT-SESSION-PROMPT.md`
+at that file so a fresh Grok session pastes one prompt.
+
+What went wrong: nothing implemented this turn, by request. The
+next session owns the code.
+
+### 2026-08-16 | tracks | ground arrows as a height cue, and not a mess
+
+Asked: the arrows on the ground were unclear, stacked and messy around
+flags. Two arrows side by side means go up. One arrow means stay low.
+Use them only as needed, more sparsely. Understand the logic, clear it
+on every map, then put it back once it was a language.
+
+The marks were never authored per map. guide.js paints every race
+course: the built in figure eight through guideFromPolyline, designed
+tracks through guideFromKnots. Clearing it once clears it everywhere.
+What it used to do: an arrow before every gate, another every 36 m on
+empty runs, and a 120 degree wrap plus two stacked chevrons on every
+flag. A slalom of close flags printed all of that on top of itself.
+
+What it does now. Dashes still follow the taut string. Arrows only at
+a height decision, at the start of the lap, and on a long empty run
+(70 m since the last mark). Fly height at or above 2.0 m is go up
+(two arrows side by side, 0.98 m apart). Below that is stay low
+(one arrow). A 5x5 tower centres at 2.29 m, a standard gate at 0.76 m.
+Flags get no arrow. Isolated flags keep the pass-side comma, without
+the chevron. Flags closer than 5 m to another pole get dashes only.
+Arrows keep 4.2 m off a flag pole, sliding back along the line rather
+than sitting in the wrap.
+
+Demo lap, measured: 8 gates, 2 flags, 3 arrows (start stay-low, dual
+before the tower, single after the high stretch), 2 isolated wraps, 0
+arrows within 4.2 m of a flag. A three-flag slalom 2.5 m apart paints
+0 wraps and 0 arrows on the poles.
+
+What went wrong: first long-run pass looked ahead to the next high
+gate and printed a dual 60 m early, then another dual on the actual
+approach. Run fillers now keep the last instructed height and only
+sit in a 70 m gap.
+
+Verify: node src/trackbuilder/selftest.js 192 passed, 0 failed,
+including the new slalom, dual-pair tessellation, and height-coding
+checks. node --check on guide.js, trackdoc.js, scene.js, selftest.js.
+Physics verify not run. This turn does not touch src/native, the WASM
+build, the input path or the simulation trace. Hard reload to see it.
+
+### 2026-08-16 | ui | Custom map is a submenu, then create / edit
+
+Asked: Map should show Race field, Custom map, Freestyle city. Custom
+map then shows Current map, Choose new map (the public board), and
+Create / edit map. That last one opens the map editor as two cards:
+Edit current map, or Start new map.
+
+Your track is now Custom map. Clicking it always opens the three-card
+submenu, even when a course is already loaded. Current map is the fly
+action and stays dim if nothing is loaded, so an empty canvas is not a
+map you can fly. Choose new map leaves this tab for the board, same as
+before. Create / edit is a second pick screen. Track builder on the
+title uses that same screen.
+
+Start new map writes a builder intent, clears the share seat, and the
+builder restores a blank canvas instead of the autosave. Edit current
+map is the old Track builder link.
+
+What went wrong: the empty-Your-track path from this morning skipped
+the submenu once a course was loaded, and it only offered make or
+select. That hid fly-current and made create / edit the same as open
+the builder.
+
+Physics, WASM and the determinism trace were not touched. Hard reload
+the title, then Map.
+
+### 2026-08-16 | render | grass blades are not drawn, on purpose
+
+The owner: even on High, no grass leaves. That is a gift, not a bug to
+put back. Make it deliberate and stop paying for a mesh nobody can see.
+
+**Where it vanished.** Not a quality preset. High still asked for the
+full 184000 world blades plus 92000 extra. Successive scale corrections
+in `grassField` took a blade from 0.26 to 0.68 m down to 0.03 to 0.09 m
+high and 8 to 18 mm wide so a parked FPV camera could see past it and a
+regulation gate would not drown. The same file already recorded that a
+rasteriser with no MSAA drops a triangle that tapers under one pixel.
+At racing height that is the whole field: High was submitting 552,000
+triangles in the colour pass and again in the outline prepass, plus a
+wind and propwash shader and about 18 MB of attributes, for a mesh the
+pilot cannot see.
+
+**What changed.** `grassField` still walks the 184000 world rng draws,
+in the same order, including the thrown-away fifth vertex, so every
+tree, rock, cliff, flower and mountain stays put. It writes no
+vertices, builds no shader, and skips the extra density stream. City
+hill tufts (`buildTufts`) still collect spots so the planting rng does
+not move, then instance nothing. Canal and lake reeds stay: those are
+water plants, not lawn blades. Quality knobs `grassWorldKeep` and
+`grassExtra` are gone. Layer 2 is empty.
+
+What went wrong on the way: the first post.js comment edit ate the
+opening `/*` of the prepass pass-two block and left a `/` that parsed
+as a regex, so the page would not boot (audio-bed, world-scale,
+map-isolation all red with `Invalid regular expression: missing /`).
+Fixed, then re-measured.
+
+Verify, this turn, with SIM_CHROME_BIN set: 14 of 16 passing after
+the budget snapshot was updated to the no-blade ledger.
+determinism-repeat and determinism-cross-host agree at 6d17d4814bdc,
+unchanged, as they must. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step-response 26 ms, rate-tracking
+671.5 deg/s (0.22 percent off), battery-sag 11.14 percent,
+diff-passthrough 1.2478 (0.47 percent off). console-clean, audio-bed
+pass. world-scale: grass blade min 0.0300 m, max 0.0900 m, still
+inside band, because the rng walk still authors those heights.
+map-isolation: city modules 0 then 63; field P1 313, P2 895639, P5
+69.8 MB, P10 27.4 MB, 170 meshes, identical after a city round trip.
+P2 down 1,093,862 and P10 down 17.6 MB against the previous snapshot:
+that is the grass mesh. P1 and mesh count were already adrift of the
+171 / 96 dressing snapshot on this working tree (the previous run log
+had map-isolation red); this snapshot is the field as measured with no
+grass. Still red and not this turn: yaw-coupling -0.12 deg against the
+2.0 floor; build-clean fails in verify.js because spawnSync("npm") on
+this Windows host returns empty output and exit 1. Flight feel itself
+is not verifiable here. Hard reload the page: the turf is the
+terrain's own colour.
+
+### 2026-08-16 | render | grass cut did not unseat the worlds
+
+Asked: check the blade cut has not broken a scene, or left things
+floating, or sitting in the dirt.
+
+Race field: spawn gap 0. All 14 gate bases sit on `__surface` (gap 0).
+Collider census unchanged (292 trees, 90 rocks, 49 gates, 72 poles),
+so the 184000-draw rng walk still plants the same world. Trees, flags
+and gate feet look planted on the turf in spawn, gate-foot and meadow
+shots. Rocks still use `height + r * 0.35`, which is the old bury of
+a boulder into the slope, not a new hole.
+
+The one thing that did float was the meadow chips. They were lifted
+6 to 16 cm so they poked out of the old blade canopy. With no blades
+that was a field of hovering petals. Same rng draw, lift is now 1.2
+to 3.0 cm. Re-measured: min 0.0047 m, p50 0.0228 m, max 0.0300 m.
+
+Freestyle city: spawn gap 0. `hillTuft` count 0, as intended. Hill
+rocks p50 about 0.15 to 0.28 m (instance origin at the rock centre).
+Grove and sakura canopies 4 to 10 m. Lake reeds p50 about -0.015 m,
+still seated in the water. Street props (van, scooter, poles, fences)
+sit on the pavement in spawn and hill shots. No console errors.
+
+Custom map was not rebuilt: it has no grass mesh of its own.
+
+Physics verify not run. This turn does not touch src/native, the WASM
+build, the input path or the simulation trace. Hard reload if the
+page was already open: flowers sit on the dirt instead of hovering.
+
+### 2026-08-16 | fc | Configurator round 1: catalog, dump export, traces
+
+Round 1 of `prompts/fc-configurator-loop.md`. No FC screen. The UI
+will edit CLI text; compiled Betaflight 4.5.1 is the only place a live
+control runs. Values travel as CLI through `sim_init` -> `bridge.c` ->
+`bf_settings.c`. Grey-out is `src/fc/catalog.js`, not a pile of ifs.
+
+**Built.** `src/fc/catalog.js` plus generated `catalog-data.js`.
+`src/fc/dump.js` `composeConfig(tune, rates, policy)` is the only
+tune+rates join. `src/main.js` uses it for boot, rates change,
+`swapTune`, and drop-file (keep-mine). WASM `sim_bf_dump` /
+`sim_bf_get` / `sim_bf_key_status` next to `sim_bf_debug`. Patch
+`0002` hoists rc/pid function-statics so a later Save is closer to a
+power-on. `scripts/fc-catalog-lint.js` and `scripts/fc-trace.js`.
+
+**Catalog, measured, `npm run lint:catalog` exit 0.** valueTable 683,
+bf_settings.c 175, catalog CLI 686, LIVE 159, GATED 5, APPLIED_INERT
+11, INERT 511, ABSENT 10, tabs 24. 159 + 5 + 11 = 175 write-table
+keys. Three extras not in valueTable: `rpm_filter_weights_1/2/3`
+(parent array key is INERT).
+
+**Traces, `npm run lint:fc` 13/13.** Cold module per hash. Short
+hover plus roll pulse SHA-256:
+
+- F3 base / dump round-trip:
+  `0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`
+  Dump shape: 175 set lines.
+- F4 p_roll 45 vs 80:
+  `275ba811887beb78b22963a9c80da18b6c3f4338e09e68c363a86477bec0baeb`
+- F4 gyro_lpf1_static_hz, dyn min 0, then 250 vs 100:
+  `8be47ab6b8fc5f7faea261d817448eec5e227ff7f30fe9829789cd51f19ad144`
+  vs `2291bd607a51de6e5c9c1249e2d0a17cbb0edde2c1fca87f3f63720295852d74`
+- F4 roll_srate:
+  `2226f25340bcc382bda7250ce4adc96dcb4f97d37278abca0fb9e11eaffba6e6`
+- F4 rpm_filter_harmonics:
+  `d7dbf427a864e4368487667ee410366d334d75cd6d5fb32ab254c8d2c39319c7`
+- F4 feature -AIRMODE:
+  `3ddf62b76d4d4773d06c162ba1394957b7f06b2ff96881580ebed73142d7e31a`
+- F5 `osd_rssi_pos = 123`: equal to base
+- F6 `dyn_notch_count` 0 vs 3 at 1 kHz: both equal to base. Comment
+  names `DYN_NOTCH_UPDATE_MIN_HZ` 2 kHz.
+- F7 keep-mine and Karate: module `roll_srate=67`. use-dump: `42`.
+
+**Presets.** `npm run lint:presets` exit 0. default 91 applied / 5
+inert; karate 112 / 8. 0 unrecognised.
+
+**Verify, this turn, SIM_CHROME_BIN set: 13 of 16.**
+determinism-repeat and determinism-cross-host agree at 6d17d4814bdc.
+hover-throttle 0.2637, punch-out 81.5 m, terminal-velocity 31.1 m/s,
+motor-step-response 26 ms, rate-tracking 671.5 deg/s (0.22 percent
+off), battery-sag 11.14 percent, diff-passthrough 1.2478 (0.47 percent
+off). console-clean, audio-bed, world-scale pass. Direct
+`npm run build:wasm` exits 0. `git diff --stat vendor/betaflight` is
+empty. dist/sim.wasm 69851 to 83160 bytes. The Stage 1 trace hash did
+not move.
+
+Still red, named in the constitution: yaw-coupling -0.12 deg against
+the 2.0 floor; build-clean because spawnSync("npm") on this Windows
+host (cannot edit tests/verify.js); map-isolation against the
+committed c3c6e44 snapshot after tests/thresholds.json was restored
+to HEAD. Flight feel itself is not verifiable here.
+
+**Review, two hostile agents, binding.** QA tester
+(24ce241f-ce5c-4489-8fe2-431814eb5385) REJECT. Engineer
+(83812a32-13d9-4d56-8cb0-f657e96ddf0d) REJECT. F3 to F8 PASS on
+artefacts. F9 to F14 CANNOT VERIFY (no screen). QA F2 FAIL: nine
+write-table keys labelled LIVE that the 1 ms loop does not read.
+Demoted to APPLIED_INERT. Lint now requires every bf_settings.c key
+to be LIVE, GATED, or APPLIED_INERT. Both FAIL D7 on
+tests/thresholds.json; restored to HEAD. Engineer notes native status
+0 is write-table, not LIVE, and dump will emit
+`rpm_filter_weights_1/2/3` which a real Configurator will refuse
+(F12 when Export exists).
+
+**What went wrong.** Pack voltage on first init plants 4.2 V leftover
+OC; traces now `setCellVoltage(4.0)` then `sim.reset()`. Second init
+on one WASM is not a power-on. Dyn LPF hides static gyro cutoff.
+PowerShell `>` wrote patch 0002 as UTF-16; rewritten UTF-8 LF. LIVE
+meant "in the write table" until QA named the readers that are
+missing. The grass-off field snapshot in tests/ was a D7 breach for
+this loop even though another turn wrote it; restored.
+
+Next: PID Tuning + Filters + Rates in `src/ui/fc.js`. Save is
+`composeConfig` then `sim.init` then `adoptSimClock`. UI asks
+`catalog.js` `status(key)`, never `sim_bf_key_status`.
+

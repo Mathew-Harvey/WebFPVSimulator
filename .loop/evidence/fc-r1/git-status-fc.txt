@@ -1,0 +1,13 @@
+﻿ M package.json
+ M src/main.js
+ M src/native/bf/bf_glue.c
+ M src/native/bf/bf_settings.c
+ M src/native/bf/bf_settings.h
+ M src/native/bf/bf_stubs.c
+ M src/ui/ui.js
+?? patches/0002-reset-runtime-statics-on-init.patch
+?? scripts/fc-catalog-gen.js
+?? scripts/fc-catalog-lint.js
+?? scripts/fc-trace.js
+?? scripts/fc-valuetable.js
+?? src/fc/

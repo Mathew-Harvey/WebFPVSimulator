@@ -328,7 +328,56 @@ export function ratesSettingsFromDump(text) {
   if (Number.isFinite(cap)) {
     out.throttleCap = cap;
   }
+  const rateProfile = sanitiseRateProfile(Object.fromEntries(map));
+  if (Object.keys(rateProfile).length > 0) {
+    out.rateProfile = rateProfile;
+  }
   return out;
+}
+
+export function sanitiseRateProfile(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') {
+    return out;
+  }
+  for (const k of RATE_KEYS) {
+    const v = raw[k];
+    if (typeof v === 'string' && v.length > 0) {
+      out[k] = v;
+    } else if (typeof v === 'number' && Number.isFinite(v)) {
+      out[k] = String(v);
+    }
+  }
+  return out;
+}
+
+/*
+ * KEEP compose must emit the pilot's full rateprofile, not the five-knob
+ * Settings shadow. Independent pitch, yaw, rates_type, thr_mid and expo
+ * live here. An empty profile falls back to ratesDiff so a first run and
+ * Karate keep-mine still write ACTUAL 7 / 67.
+ */
+export function ratesCli(s) {
+  const profile = sanitiseRateProfile(s && s.rateProfile);
+  if (Object.keys(profile).length === 0) {
+    return ratesDiff(s);
+  }
+  const lines = ['', '# Rates, from the menu. See configs/rates.js.', 'rateprofile 0'];
+  const written = new Set();
+  for (const k of RATE_KEYS) {
+    if (profile[k] != null) {
+      lines.push(`set ${k} = ${profile[k]}`);
+      written.add(k);
+    }
+  }
+  for (const raw of ratesDiff(s).split('\n')) {
+    const t = raw.replace(/\r$/, '').trim();
+    const key = setKey(t);
+    if (key && RATE_KEYS.has(key) && !written.has(key)) {
+      lines.push(t);
+    }
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 export function expandRpmWeights(text) {
@@ -389,7 +438,7 @@ export function composeConfig(tuneText, rates, policy = RATES_KEEP) {
   if (out.length && !out.endsWith('\n')) {
     out += '\n';
   }
-  const menuRates = ratesDiff(rates);
+  const menuRates = ratesCli(rates);
   if (policy === RATES_DUMP && dumpRateLines.length > 0) {
     return out + menuRates + dumpRateLines.join('\n') + '\n';
   }

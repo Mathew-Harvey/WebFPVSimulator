@@ -161,8 +161,27 @@ export function ratesDiff(s) {
   ].join('\n');
 }
 
-/* One line for the menu, so the pilot can read the whole curve at a glance. */
+/* One line for the menu, so the pilot can read the whole curve at a glance.
+ * When rateProfile is set (FC Save or use-dump), that is the truth, not the
+ * five knobs. Otherwise a split pitch or BETAFLIGHT dump would show 670 max
+ * while the module flew something else. */
 export function ratesSummary(s) {
+  const p = s && s.rateProfile;
+  if (p && typeof p === 'object' && p.roll_srate != null && p.roll_srate !== '') {
+    const type = p.rates_type || 'ACTUAL';
+    if (type === 'ACTUAL') {
+      const centre = Number(p.roll_rc_rate) * 10;
+      const max = Number(p.roll_srate) * 10;
+      const pitch = Number(p.pitch_srate) * 10;
+      const expo = Number(p.roll_expo) || 0;
+      const split = Number.isFinite(pitch) && pitch !== max ? `, pitch ${pitch}` : '';
+      const cap = Number(p.throttle_limit_percent);
+      const capNote = Number.isFinite(cap) && cap < 100 ? `, throttle capped at ${cap}` : '';
+      return `${centre} centre, ${max} max${split}, ${expo / 100} expo${capNote}`;
+    }
+    const pitch = p.pitch_srate != null ? p.pitch_srate : p.roll_srate;
+    return `${type}, roll ${p.roll_srate}, pitch ${pitch}`;
+  }
   const r = normaliseRates(s);
   const cap = r.throttleCap < 100 ? `, throttle capped at ${r.throttleCap}` : '';
   return `${r.rateCentre} centre, ${r.rateMax} max, ${r.rateExpo / 100} expo${cap}`;

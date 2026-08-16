@@ -9034,4 +9034,54 @@ diff-passthrough 1.2478, craft body 0.1552 m.
 
 Next: persist every RATE_KEYS entry through KEEP compose.
 
+### 2026-08-16 | audio | motors and wind down 70 percent
+
+The owner: decrease motor noise relative volume by 70 percent, same
+with wind.
+
+Applied on the stem buses as `FLIGHT_STEM = 0.3`, not on the RPM-to-gain
+law and not on the Motors / Wind sliders. A setting of 5 is still half
+of 10. Both stems are 10.5 dB quieter against the music. Pitch and the
+6 dB throttle span do not move.
+
+Flight trace, 10 s, volume 0.6, stems at default 0.5:
+
+    stem     RMS
+    motors   -32.60 dBFS    20 log10(0.3) is -10.46; previous published
+                            motor stem after the 0.63 cut was -22.15, and
+                            -22.15 plus -10.45 is -32.60 exactly
+    wind     -40.43 dBFS
+    full mix -21.78 dBFS    music is now carrying the mix. A3's band is
+                            -20 to -14. Reported, not argued away, not
+                            a threshold change.
+
+Verify, this turn: 13 of 16. audio-bed passes, 63 nodes, music gain
+0.425. Hash 6d17d4814bdc unchanged. Same three reds as this machine.
+Hard reload. Motors and Wind sliders still work; they start from a
+quieter floor.
+
+### 2026-08-16 | loop | Configurator gauntlet round 5: KEEP compose holds the full rateprofile
+
+Asked: five unattended rounds. Round 5 is the highest-cost r4 FAIL:
+KEEP compose flattened pitch and rates_type.
+
+settings.rateProfile now stores every RATE_KEYS entry from the last FC
+Save or use-dump import. ratesCli emits that profile first, then fills
+gaps from the five-knob ratesDiff. An empty profile still writes ACTUAL
+7 / 67, so Karate keep-mine stays roll_srate=67.
+
+ratesSummary reads the profile so Settings cannot show 670 max while
+the module flies pitch 42.
+
+lint:fc 23/23. F7 split: pitch_srate=42 rates_type=BETAFLIGHT
+roll_srate=67. F13 summary: BETAFLIGHT, roll 67, pitch 42. F3 hash
+unchanged 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8.
+Verify 13 of 16, physics hash 6d17d4814bdc, hover 0.2637, punch 81.5 m,
+terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent.
+
+Pilot review ACCEPT. QA REJECT on F9 (blocked, not stolen) and the
+dirty plant (not staged).
+
+Next: Receiver stick preview, dshot idle as percent, profile 0 greyed.
+Do not fast-forward main. Do not commit plant.c.
 

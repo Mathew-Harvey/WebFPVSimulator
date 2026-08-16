@@ -14,7 +14,7 @@
     "10": "The two missing instruments. scripts/audio-probe.js renders the real audio graph on an OfflineAudioContext and measures it; scripts/shots.js writes an aim sidecar beside every PNG recording which gate the race actually wants. No feature. Both instruments calibrated against predictable signals before any claim was made from them.",
     "11": "Solid collisions (new src/game/collide.js, exact swept capsule test, 1777 colliders), safe landing versus crash as a shell state because the ABI cannot write velocity, regulation MultiGP obstacles replacing the 2.30x oversized torus gate, five obstacle types including two triple stack ladders and a dive tower, a rebuilt motor model at the true blade pass frequency, and a new generated lofi drum and bass bed."
   },
-  "verify": "13 of 16 in FC round 4, SIM_CHROME_BIN set. Physics floor held: hash 6d17d4814bdc, hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough 1.2478. world-scale PASS craft body 0.1552 m. Red: build-clean (spawnSync npm on Windows), yaw-coupling, map-isolation against committed c3c6e44 snapshot. tests/ not edited. FC path shots: 0 console errors, 0 warnings. Table in .loop/evidence/fc-r4/verify.txt.",
+  "verify": "13 of 16 in FC round 5, SIM_CHROME_BIN set. Physics floor held: hash 6d17d4814bdc, hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough 1.2478. world-scale PASS craft body 0.1552 m. Red: build-clean, yaw-coupling, map-isolation. tests/ not edited. lint:fc 23/23. Table in .loop/evidence/fc-r5/verify.txt.",
   "rubric": {
     "A1": "pass, reviewer 1 round 1",
     "A2": "pass, reviewer 1 round 1",
@@ -66,12 +66,13 @@
   "consecutive_all_green": 0,
   "done_condition": "Not met, but much closer. Round 11 closed A1 A3 A4 A5 A6 A8 A10 A11 T1 T2 T3 T4 and P1, and made collisions and landing real. Still failing: P2 P6 P8 P10 P11, G items other than the scale corrections, T5 and T6 partial. A2 and A7 each have one owed measurement.",
   "loop": "fc-configurator",
-  "fc_round": 4,
+  "fc_round": 5,
   "attempted_fc": {
     "1": "Catalog generated and linted against 4.5.1 valueTable. WASM dump/get/status. composeConfig is the only tune+rates join. fc-trace F3 to F7. Nine write-table keys demoted LIVE to APPLIED_INERT after QA review.",
     "2": "PID Tuning + Filters + Rates screen in src/ui/fc.js. Save is composeConfig then sim.init then adoptSimClock. Rate rows left Settings. After review: ACTUAL rates shown as deg/s, empty tabs greyed, rpm_filter_weights expanded on load.",
     "3": "Homage Configurator chrome, CLI textarea, import keep-mine dialog, Presets, mixed Configuration/Receiver/Motors, Modes ANGLE, Setup attitude. After review: import Escape cancels, ACTUAL labels are centre/max rate, horizon_* APPLIED_INERT, pid.h bounds.",
-    "4": "Classic 10.10 chrome: orange header, page strip, horizontal Save bar, status strip, section headers. After review: shots-log and verify.txt on disk, gyro_lpf1_static_hz grey under dyn min, ACTUAL labels left as r3, KEEP compose deferred."
+    "4": "Classic 10.10 chrome: orange header, page strip, horizontal Save bar, status strip, section headers. After review: shots-log and verify.txt on disk, gyro_lpf1_static_hz grey under dyn min, ACTUAL labels left as r3, KEEP compose deferred.",
+    "5": "KEEP compose persists rateProfile. Independent pitch_srate and rates_type survive a tune switch. Karate keep-mine still roll_srate=67. ratesSummary reads the profile."
   },
   "rubric_F": {
     "F1": "PASS at r1 review (both). lint:catalog exit 0, 683 valueTable keys covered.",
@@ -80,7 +81,7 @@
     "F4": "PASS. Five one-key diffs move the short trace. feature -AIRMODE dump helper added r3.",
     "F5": "PASS. osd_rssi_pos does not move the hash.",
     "F6": "PASS. dyn_notch_count 0 vs 3 equal; comment names DYN_NOTCH_UPDATE_MIN_HZ 2 kHz.",
-    "F7": "FAIL at r4 QA: lint:fc roll_srate=67 is green, but KEEP compose still flattens pitch and rates_type via five-knob ratesDiff. Scheduled round 5.",
+    "F7": "PASS at r5. lint:fc module readback: KEEP split pitch_srate=42 rates_type=BETAFLIGHT roll_srate=67. Karate keep-mine still 67.",
     "F8": "PASS at r3 after fix. dumpCarriesRates gates the dialog. Escape is cancel (discard). Volume cannot call sim.init.",
     "F9": "FAIL at r2 to r4: radio cannot open FC from title (pollPad poses the airframe). Keyboard from title and gamepad from pause work. blocked.md item 8.",
     "F10": "PASS labels at r3 (centre / max rate). r4: gyro_lpf1_static_hz grey while dyn min above 0. Catalog stays LIVE. Karate slider apply p_roll 38 to 54.",
@@ -98,7 +99,7 @@
     "D8": "PASS at r4. Counts and hashes from lint:catalog / lint:fc / verify this turn. Prints in .loop/evidence/fc-r4/.",
     "D9": "PASS. lint:presets exit 0.",
     "D10": "PASS. ui.js has no p_roll, d_min, tpa_rate, gyro_lpf.",
-    "D11": "PASS. composeConfig is the only join. ratesDiff five-knob shadow is F7, scheduled round 5.",
+    "D11": "PASS. composeConfig is the only join. ratesCli emits rateProfile then fills from ratesDiff.",
     "D12": "PASS at r3. Direct npm run build:wasm exit 0 this turn, vendor diff empty. Physics hash 6d17d4814bdc. verify spawnSync npm still red in tests/verify.js."
   },
   "ledger_1080p": {

@@ -81,6 +81,7 @@ import {
 import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
+import { sanitiseRateProfile } from '../fc/dump.js';
 import { downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
@@ -114,6 +115,9 @@ const DEFAULTS = {
   /* Betaflight's throttle limit, SCALE type. 100 is off, which is what a
    * freshly flashed quad does, so that is where the menu starts. */
   throttleCap: RATE_DEFAULTS.throttleCap,
+  /* Full rateprofile from the last FC Save or use-dump import. Empty
+   * means ratesDiff five knobs, which is a first run and Karate keep-mine. */
+  rateProfile: {},
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -193,6 +197,7 @@ export function loadSettings() {
   } else {
     s.graphics = normalizeGraphics(s.graphics);
   }
+  s.rateProfile = sanitiseRateProfile(s.rateProfile);
   return s;
 }
 

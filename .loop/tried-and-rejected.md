@@ -1,5 +1,20 @@
 # Tried and rejected
 
+## Configurator loop, round 5
+
+**Leaving KEEP compose on the five-knob ratesDiff shadow.** Independent
+pitch and rates_type died on the next tune switch. ratesCli now emits
+settings.rateProfile first.
+
+**Leaving ratesSummary on the five knobs after that.** Settings could
+say 670 max while the module flew pitch_srate 42. Summary reads the
+profile when it is set.
+
+**Stealing the title pose for F9.** Still rejected. blocked.md item 8.
+
+**Staging plant.c on this branch.** QA named it. This loop does not
+commit the dirty plant.
+
 ## Configurator loop, round 4
 
 **Leaving Save / Discard / Export / Back as four stacked full-width slabs.**

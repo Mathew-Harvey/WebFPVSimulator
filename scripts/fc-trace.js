@@ -30,8 +30,8 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { RATE_DEFAULTS } from '../configs/rates.js';
-import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, setCliValue, setFeatureLine } from '../src/fc/dump.js';
+import { RATE_DEFAULTS, ratesSummary } from '../configs/rates.js';
+import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, setCliValue, setFeatureLine } from '../src/fc/dump.js';
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { must, sha256Hex } from '../tests/lib/replay.js';
 
@@ -204,6 +204,33 @@ record(
     'F7 karate keep-mine roll_srate',
     karateSrate === '67',
     `module roll_srate=${karateSrate} (want 67; Karate must not steal stick authority)`,
+  );
+
+  const splitDump = [
+    'set p_roll = 45',
+    'set rates_type = BETAFLIGHT',
+    'set roll_srate = 67',
+    'set pitch_srate = 42',
+    'set yaw_srate = 55',
+    '',
+  ].join('\n');
+  const mine = { ...RATE_DEFAULTS, ...ratesSettingsFromDump(splitDump) };
+  const nextTune = composeConfig('set p_roll = 80\n', mine, RATES_KEEP);
+  const simSplit = await newSim();
+  must(simSplit.init(nextTune), 'sim_init keep-mine split rates');
+  const keepPitch = moduleGet(simSplit, 'pitch_srate');
+  const keepType = moduleGet(simSplit, 'rates_type');
+  const keepRoll = moduleGet(simSplit, 'roll_srate');
+  record(
+    'F7 keep-mine holds pitch_srate and rates_type',
+    keepPitch === '42' && keepType === 'BETAFLIGHT' && keepRoll === '67',
+    `pitch_srate=${keepPitch} rates_type=${keepType} roll_srate=${keepRoll}`,
+  );
+  const summary = ratesSummary(mine);
+  record(
+    'F13 summary reads rateProfile',
+    summary === 'BETAFLIGHT, roll 67, pitch 42',
+    summary,
   );
 }
 

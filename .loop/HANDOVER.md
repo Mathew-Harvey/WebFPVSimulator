@@ -9,6 +9,33 @@ then `.loop/state.json`, then `.loop/tried-and-rejected.md`, then
 The Configurator gauntlet. Constitution: `prompts/fc-configurator-loop.md`.
 Branch: `loop/fc-configurator`. Do not fast-forward `main`.
 
+Round 5 (this handover) is KEEP compose: `settings.rateProfile` holds
+the full RATE_KEYS profile so independent pitch / `rates_type` survive
+a tune switch. Empty profile still uses five-knob `ratesDiff` (Karate
+keep-mine `roll_srate=67`). `ratesSummary` reads the profile so Settings
+cannot show 670 max while the module flies 42.
+
+Next item: Receiver stick preview, `dshot_idle` as percent, profile 0
+greyed not omitted. Do not steal the title pose for F9. Do not commit
+the dirty plant on this branch.
+
+Pilot review ACCEPT (323d70a9). QA REJECT (5e2a36c3) on F9 (blocked)
+and the dirty plant (not staged) and the summary lie (fixed, lint F13).
+
+### KEEP compose (measured, `npm run lint:fc` 23/23)
+
+F7 split: pitch_srate=42 rates_type=BETAFLIGHT roll_srate=67.
+F7 Karate keep-mine: roll_srate=67.
+F13 summary: `BETAFLIGHT, roll 67, pitch 42`.
+F3 hash unchanged
+`0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`.
+
+Verify this turn: 13 of 16, physics hash `6d17d4814bdc`, hover 0.2637,
+punch 81.5 m, terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag
+11.14 percent. Table in `.loop/evidence/fc-r5/verify.txt`.
+
+## Previous handover (round 4, kept)
+
 Round 4 (this handover) is classic Configurator 10.10 homage chrome:
 orange `#ffbb00` header with a BETAFLIGHT wordmark (text, not their
 logo), left tabs, PID/Filters/Rates page strip, horizontal Save bar,

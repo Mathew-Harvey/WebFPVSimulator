@@ -1,6 +1,6 @@
 /*
  * ui.js: the product shell. Title, how to fly, credits, settings, pause, results,
- * stick calibration, and the flight overlay.
+ * stick calibration, the flight overlay, and the flight-controller screen.
  *
  * Why this exists: the page used to load straight into a falling quad with
  * a monospace debug dump in the corner. That reads as a tech demo. A
@@ -46,21 +46,18 @@ import { TRACKS, trackById } from '../render/tracks.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
 import {
   RATE_DEFAULTS,
-  RATE_MAX_CHOICES,
-  RATE_CENTRE_CHOICES,
-  RATE_EXPO_CHOICES,
-  THROTTLE_CAP_CHOICES,
-  hoverStickPercent,
+  ratesSummary,
 } from '../../configs/rates.js';
 import { boardPageUrl } from '../share/board.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
-import { inspectCourse } from '../share/listing.js';
+import { inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
   readPendingTime,
   readPostedBest,
   writeBuilderIntent,
   writePendingTime,
+  clearShareImport,
 } from '../share/session.js';
 import {
   clipKeyForMap,
@@ -84,6 +81,7 @@ import {
 import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
+import { downloadCli, FcSession } from './fc.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -183,7 +181,6 @@ export function loadSettings() {
     ['cameraAngle', CAMERA_ANGLES],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
-    ['throttleCap', THROTTLE_CAP_CHOICES],
   ]) {
     if (!allowed.includes(s[key])) {
       s[key] = DEFAULTS[key];
@@ -332,12 +329,25 @@ function stepper(label, note, value, adjust) {
   return { label, note, value, adjust, step: true };
 }
 
+function hasLoadedTrack() {
+  const seat = activeCourseSummary();
+  return Boolean(seat && seat.doc && !isEmptyCanvas(seat.doc));
+}
+
+function isPickScreen(screen) {
+  return screen === 'choosetrack' || screen === 'editormap';
+}
+
+function isCardScreen(screen) {
+  return screen === 'maps' || isPickScreen(screen);
+}
+
 function customMapNote(map, seat) {
   if (map.id !== 'custom') {
     return map.note;
   }
-  if (!seat) {
-    return map.note;
+  if (!seat || isEmptyCanvas(seat.doc)) {
+    return 'No course loaded. Choose this to pick one from the board, or make one.';
   }
   const gates = `${seat.gates} gate${seat.gates === 1 ? '' : 's'}`;
   if (seat.kind === 'community') {
@@ -503,6 +513,9 @@ export class Ui {
     this.cursor = 0;
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
+    this.onFcOpen = null;    /* (page) => void */
+    this.onFcSave = null;    /* (draft, { restart }) => void */
+    this.fc = new FcSession();
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
@@ -524,6 +537,19 @@ export class Ui {
       }
     });
     this.show('title');
+  }
+
+  makePickScreen(title) {
+    const root = el('div', 'screen screen-page screen-maps screen-pick');
+    root.append(el('h2', null, title));
+    const host = el('div', 'pick-cards');
+    const block = wrapMenu();
+    root.append(
+      host,
+      block.stage,
+      hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'),
+    );
+    return { root, host, menu: block.menu, help: block.help };
   }
 
   build() {
@@ -655,7 +681,7 @@ export class Ui {
      * The map screen. Cards rather than a row of text, and each card plays a
      * short flight through the world it offers.
      *
-     * WHY A SCREEN AND NOT A ROW. Choosing the world is the biggest choice a
+     * WHY A SCREEN AND NOT A ROW. Choosing the map is the biggest choice a
      * player makes and it takes seconds to honour, and until now it was a
      * name on a menu row that you stepped through with the arrow keys: a
      * player who had never flown either one was choosing between the strings
@@ -668,9 +694,14 @@ export class Ui {
      * city (check 16). Opening this screen does not keep a second WebGL
      * copy of any world running, which is what a Steam Deck with other tabs
      * open actually survives.
+     *
+     * Custom map always opens a second card screen: fly the current
+     * course, pick a published one from the board, or create / edit.
+     * Create / edit is a third screen: edit the current map, or start a
+     * new one, then the track builder page itself.
      */
     const maps = el('div', 'screen screen-page screen-maps');
-    maps.append(el('h2', null, 'Choose a world'));
+    maps.append(el('h2', null, 'Choose map'));
     this.mapCardHost = el('div', 'map-cards');
     const mapsBlock = wrapMenu();
     this.mapsMenu = mapsBlock.menu;
@@ -681,6 +712,18 @@ export class Ui {
       hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'),
     );
     this.screens.maps = maps;
+
+    const chooseTrack = this.makePickScreen('Custom map');
+    this.pickCardHost = chooseTrack.host;
+    this.chooseTrackMenu = chooseTrack.menu;
+    this.chooseTrackHelp = chooseTrack.help;
+    this.screens.choosetrack = chooseTrack.root;
+
+    const editorMap = this.makePickScreen('Create / edit map');
+    this.editMapCardHost = editorMap.host;
+    this.editMapMenu = editorMap.menu;
+    this.editMapHelp = editorMap.help;
+    this.screens.editormap = editorMap.root;
 
     const settings = el('div', 'screen screen-page screen-settings');
     settings.append(el('h2', null, 'Settings'));
@@ -696,6 +739,18 @@ export class Ui {
     settingsBlock.stage.prepend(showcase);
     settings.append(settingsBlock.stage, el('div', 'hint', 'Mouse or arrow keys change a value. The quad follows the radio or gamepad.'));
     this.screens.settings = settings;
+
+    const fc = el('div', 'screen screen-page screen-fc');
+    fc.append(el('h2', null, 'Flight controller'));
+    const fcBlock = wrapMenu();
+    this.fcMenu = fcBlock.menu;
+    this.fcMenu.classList.add('menu-scroll');
+    this.fcHelp = fcBlock.help;
+    fc.append(
+      fcBlock.stage,
+      el('div', 'hint', 'This is Configurator. Save writes a CLI dump into Betaflight. Grey means this sim does not have that machine.'),
+    );
+    this.screens.fc = fc;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
     calibrate.append(el('h2', null, 'Calibrate sticks'));
@@ -958,7 +1013,7 @@ export class Ui {
         {
           label: 'Map',
           value: seat ? seat.name : m.name,
-          /* An action, not a value to step through. Choosing the world loads
+          /* An action, not a value to step through. Choosing the map loads
            * one, which takes seconds, so stepping past a world with the
            * arrow key used to start building it: the map screen makes the
            * choice deliberate and shows what each one is. */
@@ -967,13 +1022,14 @@ export class Ui {
         },
         tuneItem(s),
         { label: 'How to fly', action: 'howto' },
+        { label: 'Flight controller', action: 'fc', note: 'Betaflight 4.5.1 settings. Save writes a CLI dump. Grey options are named, not hidden.' },
         { label: 'Settings', action: 'settings' },
         {
           label: 'Track builder',
-          action: 'trackbuilder',
+          action: 'editormap',
           note: listing && listing.kind === 'community'
-            ? 'Opens your canvas. Edit a copy, below, to remix this published course.'
-            : 'Design a course. Place gates, set which way each one is flown, and derive the racing line. Tracks stay in this browser until you publish them.',
+            ? 'Opens the map editor. Edit a copy, below, to remix this published course.'
+            : 'Opens the map editor. Edit the current map, or start a new one.',
         },
       ];
       const remix = remixAction(listing);
@@ -1011,14 +1067,79 @@ export class Ui {
       return [{ label: 'Back', action: 'back' }];
     }
     if (this.screen === 'maps') {
-      const seat = activeCourseSummary();
+      const seat = hasLoadedTrack() ? activeCourseSummary() : null;
       return [
         ...MAPS.map((m) => ({
-          label: m.id === 'custom' && seat ? seat.name : m.name,
+          label: m.name,
           note: customMapNote(m, m.id === 'custom' ? seat : null),
           map: m,
-          action: `map:${m.id}`,
+          action: m.id === 'custom' ? 'choosetrack' : `map:${m.id}`,
         })),
+        { label: 'Back', action: 'back' },
+      ];
+    }
+    if (this.screen === 'choosetrack') {
+      const loaded = hasLoadedTrack();
+      const seat = loaded ? activeCourseSummary() : null;
+      const currentName = seat && seat.name ? seat.name : 'the current course';
+      return [
+        {
+          label: 'Current map',
+          kicker: 'Fly',
+          copy: loaded
+            ? `Fly ${currentName}.`
+            : 'No course loaded. Make one, or pick one from the board first.',
+          note: loaded
+            ? `Fly ${currentName} on the custom map.`
+            : 'Nothing to fly yet. Choose a map from the board, or create one.',
+          choiceCard: true,
+          disabled: !loaded,
+          action: 'map:custom',
+        },
+        {
+          label: 'Choose new map',
+          kicker: 'Board',
+          copy: 'Open the public board and pick a published course to fly.',
+          note: 'Opens the public board, where published courses and their times live.',
+          choiceCard: true,
+          action: 'selectmap',
+        },
+        {
+          label: 'Create / edit map',
+          kicker: 'Editor',
+          copy: 'Open the map editor. Edit the current map, or start a new one.',
+          note: 'Opens the map editor. Edit the course on the canvas, or start a new one.',
+          choiceCard: true,
+          action: 'editormap',
+        },
+        { label: 'Back', action: 'back' },
+      ];
+    }
+    if (this.screen === 'editormap') {
+      const loaded = hasLoadedTrack();
+      const seat = loaded ? activeCourseSummary() : null;
+      const currentName = seat && seat.name ? seat.name : 'the current map';
+      return [
+        {
+          label: 'Edit current map',
+          kicker: 'Edit',
+          copy: loaded
+            ? `Open ${currentName} in the track builder.`
+            : 'Open the track builder on the canvas. Nothing is on it yet.',
+          note: loaded
+            ? `Edit ${currentName} in the track builder.`
+            : 'Opens the track builder. The canvas is empty, so this is a blank course.',
+          choiceCard: true,
+          action: 'trackbuilder',
+        },
+        {
+          label: 'Start new map',
+          kicker: 'New',
+          copy: 'Clear the canvas and start a new course.',
+          note: 'Opens the track builder on a blank course. Unsaved work on the canvas is gone.',
+          choiceCard: true,
+          action: 'trackbuilder-new',
+        },
         { label: 'Back', action: 'back' },
       ];
     }
@@ -1034,48 +1155,13 @@ export class Ui {
             ? 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.'
             : `Needed to publish a course or post a time. ${nameRules()}`,
         },
-        choice(
-          'Rate, roll and pitch',
-          'ACTUAL rates. How fast the quad spins with the stick against the stop, exactly. Betaflight ships 670.',
-          RATE_MAX_CHOICES,
-          s.rateMax,
-          (n) => `${n} deg/s`,
-          (n) => { s.rateMax = n; },
-        ),
-        choice(
-          'Rate, yaw',
-          'Yaw is usually set a little below roll and pitch, but that is taste.',
-          RATE_MAX_CHOICES,
-          s.rateYawMax,
-          (n) => `${n} deg/s`,
-          (n) => { s.rateYawMax = n; },
-        ),
-        choice(
-          'Centre sensitivity',
-          'How lively the middle of the stick is, where you fly most of a lap. It is the slope of the curve at centre, not the rate at half stick: 70 with a 670 max gives 185 deg/s at half. Betaflight ships 70.',
-          RATE_CENTRE_CHOICES,
-          s.rateCentre,
-          (n) => `${n} deg/s per stick at centre`,
-          (n) => { s.rateCentre = n; },
-        ),
-        choice(
-          'Expo',
-          'Bends the curve between centre and full stick. Softer middle, same ends.',
-          RATE_EXPO_CHOICES,
-          s.rateExpo,
-          (n) => (n === 0 ? 'None' : (n / 100).toFixed(2)),
-          (n) => { s.rateExpo = n; },
-        ),
-        choice(
-          'Throttle cap',
-          'This quad is 9 to 1 thrust to weight and hovers at a fifth of the stick, so almost all the travel is above hover. The cap keeps the full stick range and spreads it over less throttle, so the same stick movement is a smaller change. It does not slow the quad down, it caps the top.',
-          THROTTLE_CAP_CHOICES,
-          s.throttleCap,
-          (n) => (n === 100
-            ? `Off, hover at ${hoverStickPercent(n).toFixed(0)} percent of stick`
-            : `${n} percent, hover at ${hoverStickPercent(n).toFixed(0)} percent of stick`),
-          (n) => { s.throttleCap = n; },
-        ),
+        { label: 'Flight controller', action: 'fc', note: 'PID, filters and rates. Save writes a CLI dump into compiled Betaflight 4.5.1.' },
+        {
+          label: 'Rates',
+          value: ratesSummary(s),
+          action: 'fc-rates',
+          note: 'Pilot rates. Changing a tune does not overwrite them. Opens the Rates page of the flight controller.',
+        },
         choice(
           'Flight mode',
           'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
@@ -1172,6 +1258,7 @@ export class Ui {
         { label: 'Resume', action: 'resume' },
         { label: 'Restart run', action: 'restart' },
         tuneItem(s),
+        { label: 'Flight controller', action: 'fc', note: 'PID, filters and rates. Save during a run asks to restart.' },
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
@@ -1218,6 +1305,9 @@ export class Ui {
       rows.push({ label: 'Back to title', action: 'title' });
       return rows;
     }
+    if (this.screen === 'fc') {
+      return this.fc.items();
+    }
     return [];
   }
 
@@ -1226,12 +1316,18 @@ export class Ui {
     if (this.screen === 'maps') {
       this.renderMapCards();
     }
+    if (isPickScreen(this.screen)) {
+      this.renderPickCards();
+    }
     const host = {
       title: this.titleMenu,
       howto: this.howtoMenu,
       credits: this.creditsMenu,
       maps: this.mapsMenu,
+      choosetrack: this.chooseTrackMenu,
+      editormap: this.editMapMenu,
       settings: this.settingsMenu,
+      fc: this.fcMenu,
       paused: this.pausedMenu,
       results: this.resultsMenu,
     }[this.screen];
@@ -1244,15 +1340,24 @@ export class Ui {
     }
     const scroll = host.scrollTop;
     host.textContent = '';
-    /* The map screen draws its worlds as cards above this menu, so the rows
-     * here are only what is left over, which is Back. */
-    const rows = this.screen === 'maps' ? items.filter((it) => !it.map) : items;
+    /* The map screens draw their choices as cards above this menu, so the
+     * rows here are only what is left over, which is Back. */
+    const rows = isCardScreen(this.screen)
+      ? items.filter((it) => !it.map && !it.choiceCard)
+      : items;
     const offset = items.length - rows.length;
     this.rowOffset = offset;
     this.menuRows = [];
     rows.forEach((it, k) => {
       const i = k + offset;
-      const row = el('div', it.info ? 'row row-info' : 'row');
+      const cls = ['row'];
+      if (it.info) {
+        cls.push('row-info');
+      }
+      if (it.rowClass) {
+        cls.push(it.rowClass);
+      }
+      const row = el('div', cls.join(' '));
       row.append(el('span', 'row-label', it.label));
       if (it.options) {
         row.append(this.makeDrop(it, i));
@@ -1298,7 +1403,10 @@ export class Ui {
       howto: this.howtoHelp,
       credits: this.creditsHelp,
       maps: this.mapsHelp,
+      choosetrack: this.chooseTrackHelp,
+      editormap: this.editMapHelp,
       settings: this.settingsHelp,
+      fc: this.fcHelp,
       paused: this.pausedHelp,
       results: this.resultsHelp,
     }[this.screen];
@@ -1347,6 +1455,10 @@ export class Ui {
     this.cursor = i;
     if (this.screen === 'maps' && this.mapCards) {
       this.mapCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    }
+    const pickCards = this.screen === 'editormap' ? this.editMapCards : this.pickCards;
+    if (isPickScreen(this.screen) && pickCards) {
+      pickCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
     }
     this.syncCursor();
     if (this.onUiSound) {
@@ -1483,12 +1595,14 @@ export class Ui {
       return;
     }
     it.pick(value);
-    saveSettings(this.settings);
+    if (this.screen !== 'fc') {
+      saveSettings(this.settings);
+    }
     this.renderMenu();
     if (this.onUiSound) {
       this.onUiSound('adjust');
     }
-    if (this.onSettings) {
+    if (this.onSettings && this.screen !== 'fc') {
       this.onSettings(this.settings);
     }
   }
@@ -1535,9 +1649,47 @@ export class Ui {
       c.card.classList.toggle('on', i === this.cursor);
       c.tag.textContent = c.id === this.settings.map ? 'Flying now' : '';
       if (c.id === 'custom' && c.name) {
-        const seat = activeCourseSummary();
-        c.name.textContent = seat ? seat.name : 'Your track';
+        c.name.textContent = 'Custom map';
+        if (c.id !== this.settings.map) {
+          const seat = hasLoadedTrack() ? activeCourseSummary() : null;
+          c.tag.textContent = seat ? seat.name : '';
+        }
       }
+    });
+  }
+
+  /*
+   * Text cards for Custom map and Create / edit map. Same chrome as the
+   * world cards, type instead of a flight clip, because none of these
+   * destinations is a world this page can thumbnail.
+   */
+  renderPickCards() {
+    const host = this.screen === 'editormap' ? this.editMapCardHost : this.pickCardHost;
+    const cacheKey = this.screen === 'editormap' ? 'editMapCards' : 'pickCards';
+    if (!host) {
+      return;
+    }
+    const items = this.items().filter((it) => it.choiceCard);
+    if (!this[cacheKey] || this[cacheKey].length !== items.length) {
+      host.textContent = '';
+      this[cacheKey] = items.map((it, i) => {
+        const card = el('div', it.disabled ? 'pick-card is-off' : 'pick-card');
+        card.append(
+          el('div', 'pick-card-kicker', it.kicker || ''),
+          el('div', 'pick-card-name', it.label),
+          el('div', 'pick-card-copy', it.copy || it.note || ''),
+        );
+        card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
+        card.addEventListener('click', () => {
+          this.cursor = i;
+          this.select();
+        });
+        host.append(card);
+        return { card };
+      });
+    }
+    this[cacheKey].forEach((c, i) => {
+      c.card.classList.toggle('on', i === this.cursor);
     });
   }
 
@@ -1577,8 +1729,8 @@ export class Ui {
       c.liveCanvas = null;
       c.clip = null;
       c.still.textContent = '';
-      if (c.id === 'custom' && !activeCourseSummary()) {
-        c.still.textContent = 'Nothing built yet. Open the track builder from the title screen.';
+      if (c.id === 'custom' && !hasLoadedTrack()) {
+        c.still.textContent = 'No course loaded. Choose this to fly the current map, pick one from the board, or make one.';
         continue;
       }
       pending.push(c);
@@ -1896,6 +2048,12 @@ export class Ui {
       /* Nothing draws a thumbnail for a screen nobody is looking at. */
       this.stopReels();
       this.mapCards = null;
+    }
+    if (this.screen === 'choosetrack' && screen !== 'choosetrack') {
+      this.pickCards = null;
+    }
+    if (this.screen === 'editormap' && screen !== 'editormap') {
+      this.editMapCards = null;
     }
     this.screen = screen;
     this.cursor = 0;
@@ -2221,6 +2379,10 @@ export class Ui {
     }
   }
 
+  persistSettings() {
+    saveSettings(this.settings);
+  }
+
   setGpuInfo(info) {
     this.gpuInfo = info || null;
     if (this.screen === 'settings') {
@@ -2256,12 +2418,14 @@ export class Ui {
     const it = this.items()[this.cursor];
     if (it && it.adjust) {
       it.adjust(dir);
-      saveSettings(this.settings);
+      if (this.screen !== 'fc') {
+        saveSettings(this.settings);
+      }
       this.renderMenu();
       if (this.onUiSound) {
         this.onUiSound('adjust');
       }
-      if (this.onSettings) {
+      if (this.onSettings && this.screen !== 'fc') {
         this.onSettings(this.settings);
       }
     }
@@ -2273,6 +2437,12 @@ export class Ui {
       return;
     }
     if (it.info) {
+      return;
+    }
+    if (it.disabled) {
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
       return;
     }
     if (it.adjust) {
@@ -2312,7 +2482,73 @@ export class Ui {
       this.act('resume');
       return;
     }
+    if (this.screen === 'fc') {
+      if (this.fc.confirm) {
+        this.fc.confirm = null;
+        this.cursor = 0;
+        this.renderMenu();
+        return;
+      }
+      this.act('fc-back');
+      return;
+    }
+    if (this.screen === 'editormap') {
+      if (this.editormapFrom === 'choosetrack') {
+        this.returnToChooseTrack();
+        return;
+      }
+      this.act(this.editormapFrom === 'paused' ? 'paused' : 'title');
+      return;
+    }
+    if (this.screen === 'choosetrack') {
+      this.returnToMaps();
+      return;
+    }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
+  }
+
+  /* Custom map opened this screen, so Back lands on that card rather than
+   * the first world in the row. */
+  returnToMaps() {
+    this.show('maps');
+    const idx = this.items().findIndex((it) => it.map && it.map.id === 'custom');
+    if (idx < 0) {
+      return;
+    }
+    this.cursor = idx;
+    if (this.mapCards) {
+      this.mapCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    }
+    this.syncCursor(false);
+  }
+
+  /* Create / edit opened from Custom map, so Back lands on that card. */
+  returnToChooseTrack() {
+    this.show('choosetrack');
+    const idx = this.items().findIndex((it) => it.action === 'editormap');
+    if (idx < 0) {
+      this.focusFirstEnabledCard();
+      return;
+    }
+    this.cursor = idx;
+    if (this.pickCards) {
+      this.pickCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    }
+    this.syncCursor(false);
+  }
+
+  focusFirstEnabledCard() {
+    const items = this.items();
+    const idx = items.findIndex((it) => it.choiceCard && !it.disabled);
+    if (idx < 0) {
+      return;
+    }
+    this.cursor = idx;
+    const cards = this.screen === 'editormap' ? this.editMapCards : this.pickCards;
+    if (cards) {
+      cards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    }
+    this.syncCursor(false);
   }
 
   act(action) {
@@ -2322,6 +2558,12 @@ export class Ui {
      * point: the builder shares no module, no canvas and no state with the
      * flight model, only the track document its schema.md describes. */
     if (action === 'trackbuilder') {
+      window.location.href = 'src/trackbuilder/index.html';
+      return;
+    }
+    if (action === 'trackbuilder-new') {
+      writeBuilderIntent({ kind: 'new' });
+      clearShareImport();
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
@@ -2339,18 +2581,102 @@ export class Ui {
       window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
       return;
     }
+    /* Same destination as Leaderboard, but this is the path from Choose
+     * new map, so it leaves the simulator the way the track builder does:
+     * pick a course on the board, then Fly this course comes back. */
+    if (action === 'selectmap') {
+      window.location.href = boardPageUrl(this.share && this.share.board);
+      return;
+    }
+    if (action === 'choosetrack') {
+      if (!hasLoadedTrack()) {
+        this.returnToChooseTrack();
+      } else {
+        this.show('choosetrack');
+      }
+      return;
+    }
+    if (action === 'editormap') {
+      this.editormapFrom = this.screen === 'choosetrack'
+        ? 'choosetrack'
+        : (this.screen === 'paused' ? 'paused' : 'title');
+      this.show('editormap');
+      return;
+    }
     if (action === 'howto' || action === 'settings' || action === 'maps' || action === 'credits') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
     }
+    if (action === 'fc' || action === 'fc-rates') {
+      this.returnTo = this.screen === 'paused'
+        ? 'paused'
+        : (this.screen === 'settings' ? 'settings' : 'title');
+      if (this.onFcOpen) {
+        this.onFcOpen(action === 'fc-rates' ? 'rates' : 'pid');
+      }
+      this.show('fc');
+      return;
+    }
+    if (action === 'fc-save') {
+      if (!this.fc.dirty()) {
+        return;
+      }
+      if (this.fc.runActive) {
+        this.fc.confirm = 'save-run';
+        this.cursor = 0;
+        this.renderMenu();
+        return;
+      }
+      if (this.onFcSave) {
+        this.onFcSave(this.fc.draft, { restart: false });
+      }
+      return;
+    }
+    if (action === 'fc-save-restart') {
+      this.fc.confirm = null;
+      if (this.onFcSave) {
+        this.onFcSave(this.fc.draft, { restart: true });
+      }
+      return;
+    }
+    if (action === 'fc-wait') {
+      this.fc.confirm = null;
+      this.cursor = 0;
+      this.renderMenu();
+      return;
+    }
+    if (action === 'fc-discard') {
+      this.fc.discard();
+      this.renderMenu();
+      return;
+    }
+    if (action === 'fc-export') {
+      downloadCli('betaflight.diff', this.fc.exportText());
+      return;
+    }
+    if (action === 'fc-back') {
+      this.fc.discard();
+      const dest = this.returnTo === 'paused' || this.returnTo === 'settings'
+        ? this.returnTo
+        : 'title';
+      this.show(dest);
+      return;
+    }
     /*
-     * Choosing a world. It goes through onSettings rather than onAction
+     * Choosing a map. It goes through onSettings rather than onAction
      * because a map change IS a settings change, and the shell's
      * applySettings is the one place that knows a changed map means a swap.
+     * Custom map with nothing loaded is not a map yet: Current map stays
+     * on the submenu instead of building an empty field.
      */
     if (action.startsWith('map:')) {
-      this.settings.map = action.slice(4);
+      const id = action.slice(4);
+      if (id === 'custom' && !hasLoadedTrack()) {
+        this.returnToChooseTrack();
+        return;
+      }
+      this.settings.map = id;
       saveSettings(this.settings);
       this.show(this.returnTo === 'paused' ? 'paused' : 'title');
       if (this.onSettings) {
@@ -2359,6 +2685,18 @@ export class Ui {
       return;
     }
     if (action === 'back') {
+      if (this.screen === 'editormap') {
+        if (this.editormapFrom === 'choosetrack') {
+          this.returnToChooseTrack();
+          return;
+        }
+        this.show(this.editormapFrom === 'paused' ? 'paused' : 'title');
+        return;
+      }
+      if (this.screen === 'choosetrack') {
+        this.returnToMaps();
+        return;
+      }
       this.show(this.returnTo === 'paused' ? 'paused' : 'title');
       return;
     }
@@ -2438,9 +2776,9 @@ export class Ui {
       return true;
     }
     if (code === 'ArrowLeft' || code === 'KeyA') {
-      /* The map screen lays its worlds out in a row, so left and right are
-       * what a player reaches for. Nothing on it has a value to adjust. */
-      if (this.screen === 'maps') {
+      /* The map screens lay their cards out in a row, so left and right are
+       * what a player reaches for. Nothing on them has a value to adjust. */
+      if (isCardScreen(this.screen)) {
         this.move(-1);
       } else {
         this.adjust(-1);
@@ -2448,7 +2786,7 @@ export class Ui {
       return true;
     }
     if (code === 'ArrowRight' || code === 'KeyD') {
-      if (this.screen === 'maps') {
+      if (isCardScreen(this.screen)) {
         this.move(1);
       } else {
         this.adjust(1);

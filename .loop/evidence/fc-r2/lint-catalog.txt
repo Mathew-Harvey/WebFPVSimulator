@@ -1,0 +1,13 @@
+fc-catalog-lint: 4.5.1 valueTable against src/fc/catalog.js
+
+  valueTable keys     683
+  bf_settings.c keys  175
+  catalog CLI keys    686
+  LIVE                159
+  GATED               5
+  APPLIED_INERT       11
+  INERT               511
+  ABSENT              10
+  tabs                24
+
+ok  catalog covers valueTable, LIVE keys are in bf_settings.c

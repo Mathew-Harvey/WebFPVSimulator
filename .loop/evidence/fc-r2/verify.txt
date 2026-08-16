@@ -1,0 +1,13 @@
+npm run verify, SIM_CHROME_BIN set. 12 of 16.
+
+Physics floor held vs FC round 1: hash 6d17d4814bdc, hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough 1.2478.
+
+PASS: determinism-repeat, determinism-cross-host, frame-independence, hover, punch, terminal, motor-step, rate-tracking, battery-sag, diff-passthrough, console-clean, audio-bed.
+
+FAIL (named, not this round's files):
+- build-clean: spawnSync npm on Windows (same as round 1)
+- yaw-coupling: -0.12 deg against 2.0 floor (same)
+- map-isolation: against committed c3c6e44 snapshot (same)
+- world-scale: craft body 0.1766 m outside 0.15 to 0.16. Was PASS in FC round 1. Working tree also has dirty src/native/plant.c, src/render/*, src/maps/*. This round did not edit those files.
+
+console-clean on verify load: 0/0. FC path shots: 0 errors 0 warnings 0 harness faults.

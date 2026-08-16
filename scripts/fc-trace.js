@@ -31,7 +31,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RATE_DEFAULTS } from '../configs/rates.js';
-import { composeConfig, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP } from '../src/fc/dump.js';
+import { composeConfig, expandRpmWeights, exportCli, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, setCliValue } from '../src/fc/dump.js';
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { must, sha256Hex } from '../tests/lib/replay.js';
 
@@ -204,6 +204,77 @@ record(
     'F7 karate keep-mine roll_srate',
     karateSrate === '67',
     `module roll_srate=${karateSrate} (want 67; Karate must not steal stick authority)`,
+  );
+}
+
+{
+  const src = [
+    'set p_roll = 45',
+    'set simplified_d_gain = 70',
+    '',
+  ].join('\n');
+  const slid = setCliValue(src, 'simplified_d_gain', '90');
+  const applyLast = slid.trim().endsWith('simplified_tuning apply');
+  const applyCount = (slid.match(/simplified_tuning apply/g) || []).length;
+  record(
+    'F10 setCliValue slider inserts apply last',
+    applyLast && applyCount === 1 && /set simplified_d_gain = 90/.test(slid),
+    applyLast ? 'apply is last line' : slid,
+  );
+  const expert = setCliValue(slid, 'p_roll', '80');
+  const lines = expert.trim().split('\n');
+  const applyAt = lines.indexOf('simplified_tuning apply');
+  const pAt = lines.findIndex((l) => l.startsWith('set p_roll ='));
+  record(
+    'F10 setCliValue expert sits below apply',
+    applyAt >= 0 && pAt > applyAt && lines[pAt] === 'set p_roll = 80',
+    `apply@${applyAt} p_roll@${pAt}`,
+  );
+}
+
+{
+  const src = [
+    'set rpm_filter_weights_1 = 100',
+    'set rpm_filter_weights_2 = 50',
+    'set rpm_filter_weights_3 = 0',
+    'set p_roll = 45',
+    '',
+  ].join('\n');
+  const out = exportCli(src);
+  record(
+    'F12 exportCli rewrites rpm_filter_weights',
+    /set rpm_filter_weights = 100,50,0/.test(out)
+      && !/rpm_filter_weights_1/.test(out)
+      && !/rpm_filter_weights_2/.test(out)
+      && !/rpm_filter_weights_3/.test(out),
+    out.trim().split('\n').join(' | '),
+  );
+  const expanded = expandRpmWeights(out);
+  record(
+    'F12 expandRpmWeights restores _1 _2 _3',
+    /set rpm_filter_weights_1 = 100/.test(expanded)
+      && /set rpm_filter_weights_2 = 50/.test(expanded)
+      && /set rpm_filter_weights_3 = 0/.test(expanded)
+      && !/set rpm_filter_weights =/.test(expanded),
+    expanded.trim().split('\n').join(' | '),
+  );
+}
+
+{
+  const karateKeep = composeConfig(karateDiff, RATE_DEFAULTS, RATES_KEEP);
+  const simKarate = await newSim();
+  must(simKarate.init(karateKeep), 'sim_init karate sliders');
+  const p0 = moduleGet(simKarate, 'p_roll');
+  const dumped = moduleDump(simKarate);
+  const edited = setCliValue(dumped, 'simplified_pi_gain', '120');
+  const use = composeConfig(edited, RATE_DEFAULTS, RATES_DUMP);
+  const simSlid = await newSim();
+  must(simSlid.init(use), 'sim_init slider apply');
+  const p1 = moduleGet(simSlid, 'p_roll');
+  record(
+    'F10 Karate slider apply moves p_roll',
+    p0 != null && p1 != null && p0 !== p1 && /simplified_tuning apply/.test(edited),
+    `p_roll ${p0} -> ${p1} after simplified_pi_gain 120`,
   );
 }
 

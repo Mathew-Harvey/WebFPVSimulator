@@ -65,7 +65,7 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { ratesDiff, ratesSummary } from '../configs/rates.js';
-import { composeConfig, RATES_KEEP } from './fc/dump.js';
+import { composeConfig, moduleDump, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -819,7 +819,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     const keepPlace = mapReady && wantId === view.id;
-    const stayScreen = (ui.screen === 'settings' || ui.screen === 'paused' || ui.screen === 'title')
+    const stayScreen = (ui.screen === 'settings' || ui.screen === 'paused' || ui.screen === 'title' || ui.screen === 'fc')
       ? ui.screen
       : null;
     const stayMode = keepPlace ? mode : 'title';
@@ -1145,6 +1145,48 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   ui.onSettings = applySettings;
+  ui.onFcOpen = (page) => {
+    const dump = moduleDump(sim);
+    const runActive = (mode === 'flight' || mode === 'paused') && launched && !landed && !crashed;
+    ui.fc.open(dump, { runActive, page });
+  };
+  ui.onFcSave = (draft, opts) => {
+    bumpConfigGen();
+    const ratesPatch = ratesSettingsFromDump(draft);
+    Object.assign(ui.settings, ratesPatch);
+    ui.persistSettings();
+    const nextText = composeConfig(draft, ui.settings, RATES_DUMP);
+    const code = sim.init(nextText);
+    if (code !== SIM_OK) {
+      notice = { text: `That dump could not be saved.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
+      sim.init(configText);
+      adoptSimClock();
+      reset();
+      ui.renderMenu();
+      return;
+    }
+    tuneText = tuneBody(draft);
+    ratesText = ratesDiff(ui.settings);
+    configText = nextText;
+    configId = '';
+    configName = 'flight-controller.diff';
+    adoptSimClock();
+    sim.setCellVoltage(runVoltage);
+    race.setRecordKey(recordKey());
+    ui.setBest(race.bestMs, view.mode);
+    reset();
+    const live = moduleDump(sim);
+    ui.fc.snapshot = live;
+    ui.fc.draft = live;
+    ui.fc.runActive = false;
+    if (opts && opts.restart) {
+      mode = 'flight';
+      ui.show('flight');
+      introMs = 0;
+      return;
+    }
+    ui.renderMenu();
+  };
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */
   ui.onUiSound = (kind) => {
@@ -2350,6 +2392,18 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;
+  window.__fc = () => ({
+    screen: ui.screen,
+    tab: ui.fc.tab,
+    page: ui.fc.page,
+    dirty: ui.fc.dirty(),
+    confirm: ui.fc.confirm,
+    p_roll: (ui.fc.draft.match(/set p_roll = (\S+)/) || [])[1] || null,
+    simplifiedApply: /simplified_tuning apply/.test(ui.fc.draft),
+    simStepMs,
+    lastTs,
+    moduleMs: Math.round(readState()[0] * 1000),
+  });
   /* A function, not a snapshot. Every other handle here reads `view` or
    * `race` at call time; this one captured the object identity at boot, so
    * after a map swap it answered with the previous map's race. */

@@ -8685,3 +8685,76 @@ Next: PID Tuning + Filters + Rates in `src/ui/fc.js`. Save is
 `composeConfig` then `sim.init` then `adoptSimClock`. UI asks
 `catalog.js` `status(key)`, never `sim_bf_key_status`.
 
+### 2026-08-16 | fc | Configurator round 2: PID Filters Rates screen
+
+Round 2 of `prompts/fc-configurator-loop.md`. The screen edits CLI dump
+text. Compiled Betaflight 4.5.1 is the only place a live control runs.
+Save is `composeConfig` then `sim.init` then `adoptSimClock`.
+
+**Built.** `src/ui/fc.js` dump editor: 24 tabs, PID/Filters/Rates pages,
+grey-out from `catalog.status`, Save / Discard / Export / Back. Settings
+lost the five rate rows and gained a rates summary plus a Flight
+controller row. Title and pause also open it. `onFcSave` patches the five
+menu knobs from the dump, composes with `RATES_DUMP`, inits, adopts the
+module clock, then `reset()`. Volume cannot `sim_init`. FC field edits do
+not call `applySettings`.
+
+**Shots, `scripts/shots.js`, SIM_CHROME_BIN set.**
+`.loop/evidence/fc-r2/`: fc-pid (simplified sliders then expert P),
+fc-filters (gyro LPF with Hz), fc-rates (ACTUAL 70/670 deg/s), fc-osd
+(grey, unset, "No OSD pixels in the FPV view yet"), fc-cli (grey
+Unavailable), settings-fc (70 centre, 670 max, 0 expo), fc-save-confirm
+during a run. Console errors=0 warnings=0 harness faults=0.
+
+**F14, measured.** After Save-and-restart: `simStepMs` 0 equals `moduleMs`
+0, `lastTs` 0 is not ahead, `p_roll` 80 in `sim_bf_debug`. Cite 2026-08-16
+stick-lag. `configGen` 1.
+
+**lint:catalog** exit 0, counts unchanged: valueTable 683, LIVE 159, GATED
+5, APPLIED_INERT 11, INERT 511, ABSENT 10, tabs 24.
+
+**lint:fc** 18/18. F3 to F7 hashes unchanged from round 1. F10 Karate
+slider apply: p_roll 38 to 54. F12 export then expand round-trip on
+`rpm_filter_weights`.
+
+**lint:presets** exit 0.
+
+**Verify, this turn, SIM_CHROME_BIN set: 12 of 16.** Physics floor held:
+hash 6d17d4814bdc, hover 0.2637, punch 81.5 m, terminal 31.1 m/s, t63 26
+ms, rate-tracking 671.5, sag 11.14 percent, diff-passthrough 1.2478.
+console-clean, audio-bed pass. Direct `npm run build:wasm` exit 0. Vendor
+diff empty. tests/ not edited.
+
+Still red, named: yaw-coupling; build-clean spawnSync npm; map-isolation
+vs c3c6e44. New red vs round 1: world-scale craft body 0.1766 m. That
+measurement is on a working tree that also has dirty `plant.c` and render
+files. This commit does not include those files. Flight feel itself is
+not verifiable here.
+
+**Review, two hostile agents, binding, both REJECT.** Configurator user
+(59fc7665-5c3d-489f-b3ec-58df42b793bb) and QA tester
+(8e3621b9-8a43-4e44-beab-4f48c1287fac). F3 to F8, F13, F14, D2 to D11
+PASS on artefacts. Ranked FAILs: F10 rates 10x (CLI 7 vs Settings 70),
+F11 empty live tabs, F12 export parent form not parsed on load, F9 radio
+cannot open FC from title, D1 world-scale regression.
+
+**Fixed after review, not re-reviewed.** ACTUAL rc_rate/srate shown as
+deg/s, expert step 1. Setup/Modes/Presets/CLI grey with a reason.
+`expandRpmWeights` on `composeConfig`. Re-shot fc-rates and fc-cli.
+
+**Left as shell law.** Title pad poses the airframe. Keyboard opens FC
+from title. A radio opens it from pause.
+
+**What went wrong.** PowerShell ate the quotes in `until:` expressions,
+so the first shot run burned 20 s per step and `act("fc-save")` became
+`act(fc-save)`. Drive shots from a `.mjs` args array. `simplified_d_gain`
+does not move `p_roll`; the slider proof uses `simplified_pi_gain`.
+Apply in the middle of a WASM dump leaves expert P below it, so a slider
+write changed nothing until apply was moved to last. `stepFor` spanning
+250 stepped P by 10, so the keyboard could not land 80 (the F14 harness
+had to `eval`).
+
+Next: CLI textarea plus dump import (keep mine / use dump). Then mixed
+tabs. Do not reopen F9 by stealing the title pose.
+
+

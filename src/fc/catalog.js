@@ -171,7 +171,7 @@ const INERT_REASONS = [
   [/^rcdevice_/, 'No RunCam device in the sim'],
   [/^rc_smoothing_debug/, 'Debug axis is a blackbox probe'],
   [/^rc_smoothing_active/, 'Read-only firmware diagnostic, not a flight control here'],
-  [/^rpm_filter_weights$/, 'Array CLI form is not parsed. Harmonic weights are LIVE as rpm_filter_weights_1, _2, _3'],
+  [/^rpm_filter_weights$/, 'Array form is expanded to rpm_filter_weights_1/2/3 on load. Export writes the array form a 4.5 Configurator accepts'],
 ];
 
 function inertReason(key) {
@@ -278,6 +278,9 @@ function pageFor(key, tab) {
   if (tab !== 'pid') {
     return '';
   }
+  if (/^simplified_(dterm_filter|gyro_filter)/.test(key)) {
+    return 'filters';
+  }
   if (/^(gyro_|dterm_|dyn_notch|rpm_filter|yaw_lowpass|yaw_spin)/.test(key)) {
     return 'filters';
   }
@@ -337,12 +340,12 @@ function decorate(row) {
 }
 
 export const TABS = [
-  { id: 'setup', label: 'Setup', grey: false, reason: '' },
+  { id: 'setup', label: 'Setup', grey: true, reason: 'Attitude readout is not on this screen yet. Calibration stays in Settings' },
   { id: 'ports', label: 'Ports', grey: true, reason: 'No UART grid. The sim is not a radio link' },
   { id: 'configuration', label: 'Configuration', grey: false, reason: '' },
   { id: 'pid', label: 'PID Tuning', grey: false, reason: '' },
   { id: 'receiver', label: 'Receiver', grey: false, reason: '' },
-  { id: 'modes', label: 'Modes', grey: false, reason: '' },
+  { id: 'modes', label: 'Modes', grey: true, reason: 'ANGLE is the Flight mode row in Settings. ARM is always on. No AUX channels' },
   { id: 'adjustments', label: 'Adjustments', grey: true, reason: 'No AUX channels, so in-flight PID adj is not compiled' },
   { id: 'servos', label: 'Servos', grey: true, reason: 'No servos on this airframe' },
   { id: 'motors', label: 'Motors', grey: false, reason: '' },
@@ -354,8 +357,8 @@ export const TABS = [
   { id: 'blackbox', label: 'Blackbox', grey: true, reason: 'No blackbox device in this build' },
   { id: 'blackbox-viewer', label: 'Blackbox viewer', grey: true, reason: 'No blackbox device in this build' },
   { id: 'power', label: 'Power', grey: true, reason: 'Plant owns pack voltage; use Pack charge in Settings' },
-  { id: 'presets', label: 'Presets', grey: false, reason: '' },
-  { id: 'cli', label: 'CLI', grey: false, reason: '' },
+  { id: 'presets', label: 'Presets', grey: true, reason: 'Tune on the title is the preset picker. firmware-presets fetch is not wired' },
+  { id: 'cli', label: 'CLI', grey: true, reason: 'No CLI textarea yet. Export on this screen already downloads CLI text' },
   { id: 'flasher', label: 'Firmware flasher', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
   { id: 'autotune', label: 'Autotune', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
   { id: 'flight-plan', label: 'Flight plan', grey: true, reason: 'Configurator chrome. Not a CLI key here' },
@@ -433,3 +436,84 @@ export function catalogCounts() {
 
 export const GATED_KEYS = Object.keys(GATED);
 export const APPLIED_INERT_KEYS = Object.keys(APPLIED_INERT);
+
+/*
+ * CLI lookup names as Betaflight 4.5.1 prints them. The FC screen cycles
+ * these strings. It does not invent numeric enums.
+ */
+export const LOOKUPS = {
+  OFF_ON: ['OFF', 'ON'],
+  OFF_ON_AUTO: ['OFF', 'ON', 'AUTO'],
+  ITERM_RELAX: ['OFF', 'RP', 'RPY', 'RP_INC', 'RPY_INC'],
+  ITERM_RELAX_TYPE: ['GYRO', 'SETPOINT'],
+  TPA_MODE: ['PD', 'D'],
+  RATES_TYPE: ['BETAFLIGHT', 'RACEFLIGHT', 'KISS', 'ACTUAL', 'QUICK'],
+  GYRO_LPF_TYPE: ['PT1', 'BIQUAD', 'PT2', 'PT3'],
+  DTERM_LPF_TYPE: ['PT1', 'BIQUAD', 'PT2', 'PT3'],
+  MIXER_TYPE: ['LEGACY', 'LINEAR', 'DYNAMIC', 'EZLANDING'],
+  THROTTLE_LIMIT_TYPE: ['OFF', 'SCALE', 'CLIP'],
+  SIMPLIFIED_TUNING_PIDS_MODE: ['OFF', 'RP', 'RPY'],
+  FEEDFORWARD_AVERAGING: ['OFF', '2_POINT', '3_POINT', '4_POINT'],
+  CRASH_RECOVERY: ['OFF', 'ON', 'BEEP', 'DISARM'],
+  GYRO_HARDWARE_LPF: ['NORMAL', 'OPTION_1', 'OPTION_2', 'EXPERIMENTAL'],
+};
+
+const MACRO_BOUNDS = {
+  PID_GAIN_MAX: 250,
+  D_MIN_GAIN_MAX: 250,
+  F_GAIN_MAX: 2000,
+  TPA_MAX: 100,
+  LPF_MAX_HZ: 1000,
+  DYN_LPF_MAX_HZ: 1000,
+  DYN_NOTCH_COUNT_MAX: 5,
+  MAX_PID_PROCESS_DENOM: 16,
+  SIMPLIFIED_TUNING_PIDS_MIN: 0,
+  SIMPLIFIED_TUNING_FILTERS_MIN: 10,
+  SIMPLIFIED_TUNING_MAX: 200,
+  CONTROL_RATE_CONFIG_RATE_MAX: 255,
+  CONTROL_RATE_CONFIG_RC_EXPO_MAX: 100,
+  CONTROL_RATE_CONFIG_RC_RATES_MAX: 255,
+  CONTROL_RATE_CONFIG_RATE_LIMIT_MIN: 200,
+  CONTROL_RATE_CONFIG_RATE_LIMIT_MAX: 1998,
+  ITERM_ACCELERATOR_GAIN_OFF: 0,
+  ITERM_ACCELERATOR_GAIN_MAX: 30000,
+  PIDSUM_LIMIT_MIN: 100,
+  PIDSUM_LIMIT_MAX: 1000,
+  MOTOR_OUTPUT_LIMIT_PERCENT_MIN: 1,
+  MOTOR_OUTPUT_LIMIT_PERCENT_MAX: 100,
+  PWM_RANGE_MIN: 1000,
+  PWM_RANGE_MAX: 2000,
+  UINT8_MAX: 255,
+  UINT16_MAX: 65535,
+};
+
+function tokenNumber(tok, fallback) {
+  if (tok == null || tok === '') {
+    return fallback;
+  }
+  if (/^-?\d+$/.test(tok)) {
+    return Number(tok);
+  }
+  if (Object.prototype.hasOwnProperty.call(MACRO_BOUNDS, tok)) {
+    return MACRO_BOUNDS[tok];
+  }
+  return fallback;
+}
+
+export function fieldBounds(field) {
+  const fallbackMax = field.type === 'UINT16' || field.type === 'INT16' ? 2000 : 255;
+  const fallbackMin = field.type === 'INT8' || field.type === 'INT16' ? -128 : 0;
+  return {
+    min: tokenNumber(field.min, fallbackMin),
+    max: tokenNumber(field.max, fallbackMax),
+  };
+}
+
+export function lookupValues(name) {
+  return LOOKUPS[name] ?? null;
+}
+
+export function fieldEnabled(field) {
+  const s = status(field.key);
+  return s === STATUS.LIVE || s === STATUS.GATED;
+}

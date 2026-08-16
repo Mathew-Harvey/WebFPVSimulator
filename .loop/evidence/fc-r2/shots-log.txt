@@ -1,0 +1,36 @@
+until !!window.__fc ok
+until window.__ui.screen==='fc' ok
+eval window.__fc() = {"screen":"fc","tab":"pid","page":"pid","dirty":false,"confirm":null,"p_roll":"45","simplifiedApply":false,"simStepMs":0,"lastTs":0,"moduleMs":0}
+shot fc-pid.png
+eval setTab osd
+until window.__fc().tab==='osd' ok
+shot fc-osd.png
+eval page filters
+until window.__fc().page==='filters' ok
+shot fc-filters.png
+eval page rates
+until window.__fc().page==='rates' ok
+shot fc-rates.png
+until title ok
+until settings ok
+shot settings-fc.png
+until title ok
+until flight ok
+eval window.__stick(0,0,0,0.4)
+until landed===false ok
+until paused ok
+until fc ok
+eval setValue p_roll 80
+expect dirty ok
+eval act fc-save
+until confirm==='save-run' ok
+shot fc-save-confirm.png
+eval act fc-save-restart
+until flight ok
+eval window.__fc() = {"screen":"flight","tab":"pid","page":"pid","dirty":false,"confirm":null,"p_roll":"80","simplifiedApply":false,"simStepMs":0,"lastTs":0,"moduleMs":0}
+eval window.__stickPath() = {"padHz":0,"sampleHz":10,"queued":0,"source":"the keyboard","rcHz":250,"fps":91,"pending":1,"held":{"wallT":5147.099999964237,"roll":0,"pitch":0,"yaw":0,"throttle":0.4},"simStepMs":0,"lastTs":0,"rcNextMs":0,"moduleMs":0,"configGen":1}
+eval window.__tune().pRoll = 80
+expect simStepMs===moduleMs && lastTs not ahead ok
+console errors=0 warnings=0 harness faults=0
+
+F14: after Save, simStepMs 0 equals moduleMs 0, lastTs 0 is not ahead. Cite 2026-08-16 adoptSimClock. p_roll 80 landed in sim_bf_debug(17).

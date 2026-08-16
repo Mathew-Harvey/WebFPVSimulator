@@ -9,10 +9,67 @@ then `.loop/state.json`, then `.loop/tried-and-rejected.md`, then
 The Configurator gauntlet. Constitution: `prompts/fc-configurator-loop.md`.
 Branch: `loop/fc-configurator`. Do not fast-forward `main`.
 
-Round 1 (this handover) is catalog + WASM dump export + `scripts/fc-trace.js`.
-There is no FC screen yet. Do not start `src/ui/fc.js` until the next round.
-Next item is Phase 1: PID Tuning + Filters + Rates, Save through
-`composeConfig`, `adoptSimClock` after every FC `sim_init`.
+Round 2 (this handover) is the PID Tuning + Filters + Rates screen.
+`src/ui/fc.js` edits CLI dump text. Save is `composeConfig` then `sim.init`
+then `adoptSimClock`. Grey-out is `catalog.js`, one disabled style.
+
+Next item: CLI textarea plus dump import dialog (keep mine / use dump),
+then mixed tabs (Receiver, Features, Motors), then the grey museum polish.
+
+### Screen (measured)
+
+Title, Settings, and Pause all have Flight controller. Settings rates
+summary is `70 centre, 670 max, 0 expo`. Five rate steppers are gone.
+
+Shots in `.loop/evidence/fc-r2/`: fc-pid, fc-filters, fc-rates (ACTUAL
+70/670 deg/s), fc-osd (grey, unset, reason), fc-cli (grey Unavailable),
+settings-fc, fc-save-confirm. Console 0/0/0 on that path.
+
+F14 after Save-and-restart: simStepMs 0, moduleMs 0, lastTs 0, p_roll 80
+in sim_bf_debug. Cite 2026-08-16.
+
+### Catalog counts (measured, `npm run lint:catalog` exit 0)
+
+valueTable 683, bf_settings.c 175, catalog CLI 686, LIVE 159, GATED 5,
+APPLIED_INERT 11, INERT 511, ABSENT 10, tabs 24. Unchanged from round 1.
+
+Empty live tabs were greying a lie: Setup, Modes, Presets, CLI are now
+grey with a reason. Receiver, Motors, Configuration stay reachable.
+
+### Traces (`npm run lint:fc` 18/18)
+
+F3 to F7 hashes unchanged from round 1 (base
+`0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`).
+F10 Karate slider apply: p_roll 38 to 54 after simplified_pi_gain 120.
+F12 exportCli writes `rpm_filter_weights = a,b,c`; expandRpmWeights on
+composeConfig restores `_1/_2/_3`.
+
+UI asks `catalog.js` `status(key)`, never `sim_bf_key_status`.
+
+### Verify this turn (12 of 16, SIM_CHROME_BIN set)
+
+Physics floor held: hash `6d17d4814bdc`, hover 0.2637, punch 81.5 m,
+terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent,
+diff-passthrough 1.2478. Direct `npm run build:wasm` exit 0. Vendor diff
+empty. tests/ not edited.
+
+Still red: yaw-coupling, build-clean spawnSync npm, map-isolation vs
+c3c6e44. New red vs round 1: world-scale craft body 0.1766 m. That is
+dirty `plant.c` / render on the working tree, not in the FC commit.
+
+### Review, binding, both REJECT
+
+Configurator user 59fc7665. QA tester 8e3621b9. Highest-cost FAIL was
+ACTUAL rates as CLI 7/67. Fixed and re-shot. Empty tabs greyed. Weights
+expand on load. F9 title-pad left as shell law (pause is the radio path).
+
+Human-pinned: all tabs shown grey not hidden; rates keep-mine by default;
+`motor_kv` APPLIED_INERT; 1 kHz stays; no Airframe page; profile 0 only;
+Angle stays `sim_set_angle_mode`.
+
+## Previous handover (round 1, kept)
+
+Round 1 was catalog + WASM dump export + `scripts/fc-trace.js`. No screen.
 
 ### Catalog counts (measured, `npm run lint:catalog` exit 0)
 

@@ -1,5 +1,36 @@
 # Tried and rejected
 
+## Configurator loop, round 2
+
+**Showing ACTUAL `roll_rc_rate` / `roll_srate` as the CLI uint8 (7 / 67).**
+Settings and Configurator 4.5.1 already speak deg/s (70 / 670). One click
+with `stepFor` spanning 255 was 7 to 17, i.e. 70 to 170 deg/s. Display
+ACTUAL rc_rate and srate as value times 10 with `deg/s`, step 10 deg/s
+(one CLI unit). Expert P/I/D step is 1 so the keyboard can land 80.
+
+**Leaving Presets, CLI, Setup, and Modes as live tabs with zero enabled
+fields.** They looked like Configurator and saved nothing. Grey them with
+a reason until those surfaces exist. Do not hide them.
+
+**Exporting `rpm_filter_weights = a,b,c` without expanding it on load.**
+A real Configurator wants that line. This sim's write table only has
+`_1/_2/_3`. `composeConfig` now expands the array form so Export then
+drop does not silently drop harmonic weights.
+
+**Letting `pollPad` drive the title cursor onto Flight controller.** Title
+and Settings keep the sticks for the airframe. That is existing shell
+law, and blocked.md item 4. Keyboard opens FC from title (shots). A radio
+opens it from pause. Do not steal the title pose.
+
+**Inserting `simplified_tuning apply` after the last slider line.** A WASM
+dump already contains expert P/I/D that apply wrote last init. Apply in
+the middle leaves those expert lines below it, so moving a slider writes
+the slider and changes nothing. Apply has to be last. Expert edits then
+move below it.
+
+**Stepping PID gains by 10 because the span is 250.** Configurator steps
+one unit. `p_roll` 45 could not reach 80 from the keyboard. Always step 1.
+
 ## Configurator loop, round 1
 
 **Writing patch 0002 with PowerShell `>`.** That produced UTF-16 LE + CRLF.

@@ -1,0 +1,22 @@
+fc-trace: LIVE / INERT / GATED / rates against compiled Betaflight
+
+ ok   F3 base repeat                             0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  vs  0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8
+ ok   F3 dump shape                              175 set lines
+ ok   F3 round-trip                              base 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  dump 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8
+ ok   F4 LIVE p_roll                             0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  vs  275ba811887beb78b22963a9c80da18b6c3f4338e09e68c363a86477bec0baeb
+ ok   F4 LIVE gyro_lpf1_static_hz                8be47ab6b8fc5f7faea261d817448eec5e227ff7f30fe9829789cd51f19ad144  vs  2291bd607a51de6e5c9c1249e2d0a17cbb0edde2c1fca87f3f63720295852d74
+ ok   F4 LIVE roll_srate                         0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  vs  2226f25340bcc382bda7250ce4adc96dcb4f97d37278abca0fb9e11eaffba6e6
+ ok   F4 LIVE rpm_filter_harmonics               0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  vs  d7dbf427a864e4368487667ee410366d334d75cd6d5fb32ab254c8d2c39319c7
+ ok   F4 LIVE feature -AIRMODE                   0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  vs  3ddf62b76d4d4773d06c162ba1394957b7f06b2ff96881580ebed73142d7e31a
+ ok   F5 INERT osd_rssi_pos                      base 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  inert 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8
+ ok   F6 GATED dyn_notch_count 0 vs 3 at 1 kHz   0 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8  3 0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8
+ ok   F7 keep-mine roll_srate                    module roll_srate=67 (want 67 from menu, not 42 from dump)
+ ok   F7 use-dump roll_srate                     module roll_srate=42 (want 42 from dump)
+ ok   F7 karate keep-mine roll_srate             module roll_srate=67 (want 67; Karate must not steal stick authority)
+ ok   F10 setCliValue slider inserts apply last  apply is last line
+ ok   F10 setCliValue expert sits below apply    apply@1 p_roll@2
+ ok   F12 exportCli rewrites rpm_filter_weights  set p_roll = 45 | set rpm_filter_weights = 100,50,0
+ ok   F12 expandRpmWeights restores _1 _2 _3     set p_roll = 45 |  | set rpm_filter_weights_1 = 100 | set rpm_filter_weights_2 = 50 | set rpm_filter_weights_3 = 0
+ ok   F10 Karate slider apply moves p_roll       p_roll 38 -> 54 after simplified_pi_gain 120
+
+18 of 18 traces clean

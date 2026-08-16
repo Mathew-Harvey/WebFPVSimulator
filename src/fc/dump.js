@@ -117,10 +117,216 @@ export function serializeSets(sets) {
   return sets.map((s) => `set ${s.key} = ${s.value}`).join('\n');
 }
 
+export function cliMap(text) {
+  const map = new Map();
+  for (const s of parseCli(text).sets) {
+    map.set(s.key, s.value);
+  }
+  return map;
+}
+
+export function cliGet(text, key) {
+  return cliMap(text).get(key) ?? null;
+}
+
+export function tuneBody(text) {
+  const kept = [];
+  for (const raw of (text ?? '').split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const t = line.trim();
+    if (t.startsWith('set ')) {
+      const key = setKey(t);
+      if (key && RATE_KEYS.has(key)) {
+        continue;
+      }
+    }
+    if (t.startsWith('rateprofile ')) {
+      continue;
+    }
+    kept.push(line);
+  }
+  let out = kept.join('\n');
+  if (out.length && !out.endsWith('\n')) {
+    out += '\n';
+  }
+  return out;
+}
+
+function hasCommand(text, cmd) {
+  const want = cmd.trim();
+  for (const raw of (text ?? '').split('\n')) {
+    if (raw.replace(/\r$/, '').trim() === want) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isSimplifiedKey(key) {
+  return key.startsWith('simplified_');
+}
+
+export function ensureSimplifiedApply(text) {
+  /*
+   * Apply has to be last. A WASM dump is the live PGs, including expert
+   * P/I/D that simplified_tuning already wrote on the previous init. If
+   * apply sits above those expert lines, moving a slider writes the
+   * slider and changes nothing, which is a LIVE control that lies.
+   */
+  const kept = [];
+  for (const raw of (text ?? '').split('\n')) {
+    if (raw.replace(/\r$/, '').trim() === 'simplified_tuning apply') {
+      continue;
+    }
+    kept.push(raw);
+  }
+  while (kept.length && kept[kept.length - 1] === '') {
+    kept.pop();
+  }
+  kept.push('simplified_tuning apply');
+  return `${kept.join('\n')}\n`;
+}
+
+function moveSetAfterApply(text, key) {
+  const lines = (text ?? '').split('\n');
+  let applyAt = -1;
+  let keyAt = -1;
+  let keyLine = null;
+  for (let i = 0; i < lines.length; i += 1) {
+    const t = lines[i].replace(/\r$/, '').trim();
+    if (t === 'simplified_tuning apply') {
+      applyAt = i;
+    }
+    if (setKey(t) === key) {
+      keyAt = i;
+      keyLine = lines[i];
+    }
+  }
+  if (applyAt < 0 || keyAt < 0 || keyAt > applyAt) {
+    return text;
+  }
+  lines.splice(keyAt, 1);
+  if (keyAt < applyAt) {
+    applyAt -= 1;
+  }
+  lines.splice(applyAt + 1, 0, keyLine);
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+export function setCliValue(text, key, value) {
+  const line = `set ${key} = ${value}`;
+  const lines = (text ?? '').split('\n');
+  let found = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (setKey(lines[i].replace(/\r$/, '').trim()) === key) {
+      found = i;
+    }
+  }
+  if (found >= 0) {
+    lines[found] = line;
+  } else {
+    while (lines.length && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+    lines.push(line);
+  }
+  let out = `${lines.join('\n').replace(/\n+$/, '')}\n`;
+  if (isSimplifiedKey(key)) {
+    out = ensureSimplifiedApply(out);
+  } else if (hasCommand(out, 'simplified_tuning apply')) {
+    out = moveSetAfterApply(out, key);
+  }
+  return out;
+}
+
+const WEIGHT_KEYS = ['rpm_filter_weights_1', 'rpm_filter_weights_2', 'rpm_filter_weights_3'];
+
+export function exportCli(text) {
+  const map = cliMap(text);
+  const lines = [];
+  for (const raw of (text ?? '').split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const key = setKey(line.trim());
+    if (key && WEIGHT_KEYS.includes(key)) {
+      continue;
+    }
+    lines.push(line);
+  }
+  if (WEIGHT_KEYS.some((k) => map.has(k))) {
+    const w = WEIGHT_KEYS.map((k) => map.get(k) ?? '100').join(',');
+    while (lines.length && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+    lines.push(`set rpm_filter_weights = ${w}`);
+  }
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+export function ratesSettingsFromDump(text) {
+  const map = cliMap(text);
+  const centre = Number(map.get('roll_rc_rate'));
+  const max = Number(map.get('roll_srate'));
+  const yaw = Number(map.get('yaw_srate'));
+  const expo = Number(map.get('roll_expo'));
+  const cap = Number(map.get('throttle_limit_percent'));
+  const out = {};
+  if (Number.isFinite(centre)) {
+    out.rateCentre = centre * 10;
+  }
+  if (Number.isFinite(max)) {
+    out.rateMax = max * 10;
+  }
+  if (Number.isFinite(yaw)) {
+    out.rateYawMax = yaw * 10;
+  }
+  if (Number.isFinite(expo)) {
+    out.rateExpo = expo;
+  }
+  if (Number.isFinite(cap)) {
+    out.throttleCap = cap;
+  }
+  return out;
+}
+
+export function expandRpmWeights(text) {
+  const lines = [];
+  let weights = null;
+  for (const raw of (text ?? '').split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const key = setKey(line.trim());
+    if (key === 'rpm_filter_weights') {
+      const eq = line.indexOf('=');
+      weights = eq >= 0 ? line.slice(eq + 1).trim() : '';
+      continue;
+    }
+    lines.push(line);
+  }
+  if (weights == null) {
+    return text ?? '';
+  }
+  const parts = weights.split(',').map((s) => s.trim());
+  const names = WEIGHT_KEYS;
+  for (let i = 0; i < names.length; i += 1) {
+    const v = parts[i] && parts[i] !== '' ? parts[i] : '100';
+    let found = false;
+    for (let j = 0; j < lines.length; j += 1) {
+      if (setKey(lines[j].trim()) === names[i]) {
+        lines[j] = `set ${names[i]} = ${v}`;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      lines.push(`set ${names[i]} = ${v}`);
+    }
+  }
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`;
+}
+
 export function composeConfig(tuneText, rates, policy = RATES_KEEP) {
   const kept = [];
   const dumpRateLines = [];
-  const src = tuneText ?? '';
+  const src = expandRpmWeights(tuneText ?? '');
   for (const raw of src.split('\n')) {
     const line = raw.replace(/\r$/, '');
     const t = line.trim();

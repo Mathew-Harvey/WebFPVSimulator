@@ -151,7 +151,8 @@ export function buildKnots(doc) {
   /*
    * Wraps between two stacked passes on the SAME structure. Without these
    * the Hermite climbs the shared XY and the line goes through the PVC.
-   * A wrap is not a station: trackdoc only scores aperture knots.
+   * A wrap is not a station: trackdoc scores aperture knots, and marker
+   * knots that carry a clearance, but never these.
    */
   const withWraps = [];
   for (let i = 0; i < knots.length; i += 1) {

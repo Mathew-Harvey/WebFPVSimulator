@@ -12,12 +12,12 @@
  * frame.
  *
  * POOLED, NOT PER NOTE, AND NOT PER TRACK. There is exactly one voice per
- * drum, one for the sub bass, three for the pad and one crackle loop, each
- * a persistent chain whose gain is enveloped at a scheduled time. A track
- * change moves filter corners and reads different pattern data; it creates
- * nothing. That is what keeps twelve tracks inside the same 64 node budget
- * (tests/thresholds.json, audio-bed) that one track lived in. The node
- * count is fixed the moment attach runs.
+ * drum, one for the sub bass, two for a dark reese, three for the pad,
+ * each a persistent chain whose gain is enveloped at a scheduled time. A
+ * track change moves filter corners and reads different pattern data; it
+ * creates nothing. That is what keeps twelve tracks inside the same 64
+ * node budget (tests/thresholds.json, audio-bed) that one track lived in.
+ * The node count is fixed the moment attach runs.
  *
  * THE SCHEDULER'S CLOCK. `step` is monotonic for the life of the graph and
  * verify check 14 measures its advance, so a track switch must not rewind
@@ -28,15 +28,14 @@
  *
  * LOOP PERIODIC, and the seam is MEASURED rather than assumed, with
  * scripts/audio-probe.js --seam. The wow period divides every loop by
- * construction, checked at import in tracks.js. The crackle buffer is
- * deliberately NOT commensurate with any loop, because dust on a record
- * does not follow the bars.
+ * construction, checked at import in tracks.js.
  *
  * WHERE IT SITS IN THE SPECTRUM. The motor model owns roughly 130 Hz to
- * 900 Hz. Every track keeps its sub bass and kick below 120 Hz, its snare
- * and hats above 1.5 kHz, and its pad around 660 Hz to 2 kHz at bed level,
- * so the bed never sings in the octaves the pilot is listening to. A pilot
- * flies partly on the pitch of the motors.
+ * 900 Hz. Every track keeps its sub bass, kick and reese below 160 Hz, its
+ * snare and hats above 1.5 kHz, and its pad as short chord stabs between
+ * 524 Hz and 1320 Hz. Hats are ticks, not a hiss. There is no vinyl
+ * crackle: that was the static. There is no ambience stem: that was the
+ * hum.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -55,19 +54,6 @@
  */
 
 import { TRACKS, trackById, BAR_STEPS } from './tracks.js';
-
-/*
- * The crackle bed under the lofi tracks, as one number. It rides the music
- * bus, so the music level and the duck already govern it; each track then
- * scales it by its own `crackle`, zero on every drum and bass track. The
- * buffer bakes pops at about 12 per second and a faint hiss, and 0.5 here
- * puts the loudest lofi setting near -46 dBFS in a bed only render, which
- * is texture, not signal.
- */
-const CRACKLE_LEVEL = 0.5;
-/* Not a divisor or multiple of any track's loop, so the dust never phase
- * locks to the bars. Chosen odd on purpose. */
-const CRACKLE_SECONDS = 9.7;
 
 /*
  * The pad's register guard: every chord tone folded by octaves into the
@@ -99,6 +85,11 @@ function padSemitone(n) {
   }
   return s;
 }
+
+/* A few cents of spread so a chord stab is three voices beating, not one
+ * sine. A unison triad of sines is a test tone; 11 to 13 cents is a
+ * chorus width, not a chord change. */
+const PAD_CENTS = [-11, 0, 13];
 
 export class Music {
   constructor() {
@@ -188,22 +179,43 @@ export class Music {
     this.subOsc.start();
 
     /*
-     * The pad: three SINES a chord apart through one lowpass. On the drum
-     * and bass tracks it swells over the chord; on the lofi tracks the same
-     * three voices are struck with a fast attack and a long decay, which is
-     * what makes them read as keys. Same nodes either way.
+     * Reese: two detuned saws through a 140 Hz lowpass. The sine sub is
+     * the weight; this is the growl. Capped at 140 Hz so it cannot sing
+     * in the blade pass band. Nodes paid for by deleting the crackle
+     * loop and the ambience stem, both of which the owner heard as noise.
+     */
+    this.reeseLp = keep(ctx.createBiquadFilter());
+    this.reeseLp.type = 'lowpass';
+    this.reeseLp.frequency.value = 140;
+    this.reeseLp.Q.value = 0.8;
+    this.reeseGain = keep(ctx.createGain());
+    this.reeseGain.gain.value = 0;
+    this.reeseLp.connect(this.reeseGain);
+    this.reeseGain.connect(this.gain);
+    this.reeseOscs = [];
+    for (let i = 0; i < 2; i += 1) {
+      const osc = keep(ctx.createOscillator());
+      osc.type = 'sawtooth';
+      osc.frequency.value = this.track.bass.rootHz;
+      osc.detune.value = i === 0 ? -8 : 11;
+      osc.connect(this.reeseLp);
+      osc.start();
+      this.reeseOscs.push(osc);
+    }
+
+    /*
+     * The pad: three SINES a chord apart through one lowpass. Every track
+     * now strikes them and lets them die. The swell path used to hold the
+     * triad at 0.02 for 94 percent of the chord span and never return to
+     * silence, which is a drone, and a sine drone is a whistle no matter
+     * which octave you put it in. Round 37 moved it down and killed the
+     * triangle's third harmonic. The owner still heard a tone, because
+     * the tone was the hold, not the harmonic.
      *
-     * They were triangles, and the triangle is what the owner heard as a
-     * high pitched annoying overtone. A triangle's third harmonic is 19 dB
-     * down, and the pad lowpass at 2500 Hz let it through almost untouched:
-     * a narrowband peak search over the rendered bed found the three chord
-     * fundamentals standing 27 to 34 dB above the local spectral floor AND
-     * their third harmonics at 2639 and 3140 Hz standing 9 to 11 dB above
-     * it, sustained for a whole four bar chord, in the octave the ear
-     * complains about first. A sine has no third harmonic, so those two
-     * peaks are gone by construction rather than filtered down. What the
-     * pad loses is a little bite, which it was spending in the worst
-     * possible band.
+     * They were triangles first. A triangle's third harmonic is 19 dB
+     * down, and the old 2500 Hz lowpass let it through. Sine has no third
+     * harmonic, so those 2 to 3 kHz peaks stay gone. What remains is a
+     * chord event, not a bed.
      */
     this.padOscs = [];
     this.padGain = keep(ctx.createGain());
@@ -273,47 +285,6 @@ export class Music {
       this.hatGain.connect(this.gain);
     }
     this.hatSrc.start();
-
-    /*
-     * The vinyl crackle: a baked loop of pops and faint hiss, gained per
-     * track. Its own LCG stream, seeded differently from the drum noise so
-     * the two never correlate, and its edges are faded so the loop point
-     * cannot click. It sits UNDER the shelf like everything else, which
-     * dulls the pops the way a worn stylus does.
-     */
-    const cLen = Math.round(CRACKLE_SECONDS * sr);
-    const cBuf = ctx.createBuffer(1, cLen, sr);
-    const cCh = cBuf.getChannelData(0);
-    let cs = 1357924680;
-    let pop = 0;
-    let popSign = 1;
-    for (let i = 0; i < cLen; i += 1) {
-      cs = (cs * 1103515245 + 12345) & 0x7fffffff;
-      const r = cs / 0x7fffffff;
-      /* About 12 pops a second, each a one sided burst decaying over a
-       * dozen samples, amplitude drawn from the same stream. */
-      if (r < 12 / sr) {
-        cs = (cs * 1103515245 + 12345) & 0x7fffffff;
-        pop = 0.15 + 0.75 * (cs / 0x7fffffff);
-        popSign = -popSign;
-      }
-      pop *= 0.72;
-      const hiss = ((r * 2) - 1) * 0.010;
-      let v = hiss + pop * popSign;
-      const edge = Math.min(i, cLen - 1 - i);
-      if (edge < 2048) {
-        v *= edge / 2048;
-      }
-      cCh[i] = v;
-    }
-    this.crackleSrc = keep(ctx.createBufferSource());
-    this.crackleSrc.buffer = cBuf;
-    this.crackleSrc.loop = true;
-    this.crackleGain = keep(ctx.createGain());
-    this.crackleGain.gain.value = this.track.crackle * CRACKLE_LEVEL;
-    this.crackleSrc.connect(this.crackleGain);
-    this.crackleGain.connect(this.gain);
-    this.crackleSrc.start();
 
     this.startTime = 0;
     this.step = 0;
@@ -388,10 +359,10 @@ export class Music {
   }
 
   /*
-   * Point the shared voices at the current track: filter corners, shelf,
-   * crackle. Short time constants rather than steps, so a switch cannot
-   * click, and no node is made or dropped: that is the whole deal that
-   * keeps the crate inside the node budget.
+   * Point the shared voices at the current track: filter corners, shelf.
+   * Short time constants rather than steps, so a switch cannot click, and
+   * no node is made or dropped: that is the whole deal that keeps the
+   * crate inside the node budget.
    */
   applyVoices(at) {
     const tr = this.track;
@@ -402,12 +373,13 @@ export class Music {
     this.snareBp.Q.setTargetAtTime(tr.snareTone.q, at, T);
     this.hatHp.frequency.setTargetAtTime(tr.hatTone.hp, at, T);
     this.padLp.frequency.setTargetAtTime(tr.pads.lp, at, T);
-    this.crackleGain.gain.setTargetAtTime(tr.crackle * CRACKLE_LEVEL, at, 0.1);
-    /* A pad mid swell from the previous track would otherwise hold its
-     * chord into the new one. Let it go quickly and let the new track's
-     * first chord strike or swell it back up. */
+    /* A pad or reese from the previous track would otherwise hang into
+     * the new one. Let them go and let the new track's first events
+     * bring them back. */
     this.padGain.gain.cancelScheduledValues(at);
-    this.padGain.gain.setTargetAtTime(0.0001, at, 0.08);
+    this.padGain.gain.setTargetAtTime(0, at, 0.08);
+    this.reeseGain.gain.cancelScheduledValues(at);
+    this.reeseGain.gain.setTargetAtTime(0, at, 0.08);
   }
 
   /* A cue pulls the bed down and lets it back up. Measurable by design. */
@@ -515,9 +487,9 @@ export class Music {
       const peak = sn === '1' ? st.peak : st.ghost;
       const g = this.snareGain.gain;
       g.cancelScheduledValues(at);
-      g.setValueAtTime(0.0001, at);
-      g.exponentialRampToValueAtTime(peak, at + 0.012);
-      g.exponentialRampToValueAtTime(0.0001, at + st.len);
+      g.setValueAtTime(0, at);
+      g.linearRampToValueAtTime(peak, at + 0.008);
+      g.linearRampToValueAtTime(0, at + st.len);
     }
 
     const h = tr.hat[i];
@@ -526,9 +498,9 @@ export class Music {
       const peak = h === 'a' ? ht.accent : (h === '1' ? ht.tick : ht.tick * 0.5);
       const g = this.hatGain.gain;
       g.cancelScheduledValues(at);
-      g.setValueAtTime(0.0001, at);
-      g.exponentialRampToValueAtTime(peak, at + 0.010);
-      g.exponentialRampToValueAtTime(0.0001, at + ht.len);
+      g.setValueAtTime(0, at);
+      g.linearRampToValueAtTime(peak, at + 0.004);
+      g.linearRampToValueAtTime(0, at + ht.len);
     }
 
     /*
@@ -554,15 +526,28 @@ export class Music {
       g.setValueAtTime(0.0001, at);
       g.exponentialRampToValueAtTime(tr.bassTone.peak, at + 0.015);
       g.exponentialRampToValueAtTime(0.0001, at + tr.bassTone.noteSteps * stepS);
+      const reeseAmt = tr.bassTone.reese || 0;
+      if (reeseAmt > 0) {
+        for (let r = 0; r < this.reeseOscs.length; r += 1) {
+          const rf = this.reeseOscs[r].frequency;
+          rf.cancelScheduledValues(at);
+          rf.setValueAtTime(hz, at);
+        }
+        const rg = this.reeseGain.gain;
+        rg.cancelScheduledValues(at);
+        rg.setValueAtTime(0, at);
+        rg.linearRampToValueAtTime(reeseAmt, at + 0.02);
+        rg.linearRampToValueAtTime(0, at + tr.bassTone.noteSteps * stepS);
+      }
       break;
     }
 
     /*
-     * The pad. Chord changes land on the chord grid; how the chord sounds
-     * is the track's choice of mode. 'swell' rises over hundreds of
-     * milliseconds and holds the span, the drum and bass colour. 'pluck'
-     * strikes the same three voices at listed steps within the span and
-     * lets them ring down, which is the lofi keys.
+     * The pad. Chord changes land on the chord grid. Both modes are
+     * events that return to silence: a held sine triad is the persistent
+     * tone the owner reported on every track. 'swell' still exists so an
+     * old sheet can name it, but it now peaks and dies instead of holding
+     * a 0.02 floor across the span. 'pluck' strikes at listed steps.
      */
     const chordSteps = tr.pads.barsPerChord * BAR_STEPS;
     const pos = i % chordSteps;
@@ -571,18 +556,19 @@ export class Music {
       for (let v = 0; v < this.padOscs.length; v += 1) {
         const f = this.padOscs[v].frequency;
         f.cancelScheduledValues(at);
-        f.setValueAtTime(tr.pads.baseHz * 2 ** (padSemitone(chord[v]) / 12), at);
+        const semi = padSemitone(chord[v]) + PAD_CENTS[v] / 100;
+        f.setValueAtTime(tr.pads.baseHz * 2 ** (semi / 12), at);
       }
     }
     if (tr.pads.mode === 'swell') {
       if (pos === 0) {
         const g = this.padGain.gain;
+        const span = chordSteps * stepS;
+        const die = Math.min(tr.pads.attack + 0.8, span * 0.4);
         g.cancelScheduledValues(at);
         g.setValueAtTime(Math.max(0.0001, g.value), at);
         g.linearRampToValueAtTime(tr.pads.level, at + tr.pads.attack);
-        /* Held almost the whole span, then eased off so the chord change
-         * is a change rather than a crossfade of two triads. */
-        g.linearRampToValueAtTime(0.02, at + chordSteps * stepS * 0.94);
+        g.exponentialRampToValueAtTime(0.0001, at + die);
       }
     } else if (tr.pads.strikes.indexOf(pos) >= 0) {
       const g = this.padGain.gain;

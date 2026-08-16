@@ -6,45 +6,39 @@
  * more tracks cannot mean more voices. A track here is a sheet of numbers
  * and pattern strings that src/render/music.js performs on the one pooled
  * instrument set it already owns: a kick, a snare, a hat, a sub, a three
- * voice pad and a crackle loop. Twelve tracks cost the same node count as
+ * voice pad and a reese pair. Twelve tracks cost the same node count as
  * one.
+ *
+ * Drum lines are written in the public Tidal / Strudel mini-notation
+ * (src/render/mini.js) and expanded to sixteenth strings at import. The
+ * notation is the language; the performer is ours. @strudel/web is AGPL
+ * and is not imported.
  *
  * Patterns are sixteenth step strings, 16 characters to a bar: '1' a full
  * hit, 'g' a ghost, 'a' an accent (hats only), '.' nothing. Most tracks
  * write each bar once and arrange bars with seq(), because a reviewer can
  * read four bars and an arrangement where a 256 character string is a wall.
- * Track one is the shipped 174 BPM bed kept verbatim, strings and all, so
- * every number measured against it stays comparable.
  *
  * Two genre conventions, stated so the data reads as intent:
  *
  *   dnb: 170 to 176 BPM, sixteen bar loops, no swing, two step kick with
- *   the syncopation in the ghosts, snare on two and four, pads swelling
- *   over four bar chords.
+ *   the syncopation in the ghosts, snare on two and four, chord stabs on
+ *   the phrase. Not a held pad. A held sine triad is a whistle.
  *
  *   lofi: 72 to 88 BPM, eight bar loops, swung sixteenths, boom bap kick,
- *   plucked keys instead of a swell, a heavier shelf, more pitch wow, and
- *   the vinyl crackle bed on.
+ *   plucked keys that die before the next strike, a heavier shelf, more
+ *   pitch wow. No vinyl hiss. The crackle was static, and it is gone.
  *
  * Every track keeps the bed's band split: sub and kick below 120 Hz, snare
- * and hats above 1.5 kHz, keys from 524 Hz to 1320 Hz.
- *
- * THE KEYS MOVED DOWN, and the reason is a defect report. The split used to
- * read "keys around 660 Hz to 2 kHz", which sounds like an empty lane and
- * was one: nothing else in the mix lives between 1 and 2 kHz, so three
- * sustained pad voices there stood 27 to 34 dB above the local spectral
- * floor with nothing beside them, and the owner heard that for what it is,
- * a high pitched annoying overtone. A tone with no neighbours is a whistle
- * however quiet it is.
- *
- * What the split is actually protecting is the pitch the pilot flies on,
- * and that is the blade pass FUNDAMENTAL, 130 Hz at 2600 RPM to 450 Hz wide
- * open, not the whole span of the motor model's harmonics. So the base came
- * down from 880 Hz to 660 Hz and the register guard in music.js holds every
- * chord tone between 524 Hz and 1320 Hz: clear of the fundamental at every
- * throttle setting, clear of the 2 to 5 kHz band the ear complains about
- * first, and sitting where the motors and the wind have enough of their own
- * energy that the keys are a chord in a mix rather than a tone over one.
+ * and hats above 1.5 kHz, keys from 524 Hz to 1320 Hz. The keys are STABS
+ * that die before the next strike. Round 37 moved them down and switched
+ * the oscillators to sine, and the owner still heard a tone on every
+ * track, because the drum and bass swell held three sines at a 0.02 floor
+ * for 94 percent of every chord span, and the lofi decays of 2.4 to 3.4 s
+ * overlapped into the same drone. A sine that never returns to silence is
+ * a whistle in any octave. The crate now fails at import if a pluck decay
+ * fills the gap to the next strike, so a new track cannot write the hold
+ * back in.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -61,6 +55,8 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+
+import { mini } from './mini.js';
 
 export const BAR_STEPS = 16;
 
@@ -81,18 +77,16 @@ function seq(layout, bars) {
 }
 
 /*
- * The shipped bed's patterns, verbatim. These strings predate seq() and
- * stay as strings because the measured seam, tempo and band figures in
- * PROGRESS.md were taken against exactly this data.
+ * Drum bars as mini-notation, one cycle = one bar. seq() still arranges
+ * them. Night Circuit is no longer a special 256 character fossil: the
+ * seam is measured against whatever is playing, not against a frozen
+ * string.
  */
-const NIGHT_KICK = '1.......g.1.....1.......g.1.....1.......g.1.....1.......g.1...g.1.........1.....1.......g.1.....1.........1.....1.......g.1...g.1.......g.1.....1.......g.1.....1.......g.1.....1.......g.1...g.1.........1.....1.......g.1.....1.........1.....1.......g.1.1.g1';
-const NIGHT_SNARE = '....1.......1.......1.......1.......1.......1.......1......g1.g.....1.......1.......1......g1.......1.......1.......1......g1.g.....1.......1.......1.......1..g....1.......1.......1......g1.g.....1.......1.......1......g1.......1.......1..g....1.......1.gg';
-const NIGHT_HAT = 'a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a.1.a1a1';
+const k = (s) => mini(s, 'kick');
+const n = (s) => mini(s, 'snare');
+const h = (s) => mini(s, 'hat');
 
-/* Genre defaults, spread into each track then overridden per track. The
- * numbers for dnb are the shipped bed's, measured and argued over in
- * PROGRESS.md; the lofi set darkens the shelf, widens the wow, swings the
- * grid and turns the crackle on. */
+/* Genre defaults, spread into each track then overridden per track. */
 const DNB = {
   genre: 'dnb',
   bars: 16,
@@ -100,42 +94,32 @@ const DNB = {
   loops: 3,
   shelf: { hz: 3200, db: -14 },
   wow: { seconds: 0.005, periodBars: 8, cents: 12 },
-  crackle: 0,
   kickTone: { start: 96, end: 44, drop: 0.09, peak: 0.5, ghost: 0.24, len: 0.16, ghostLen: 0.10 },
-  snareTone: { bp: 2100, q: 0.9, peak: 1.9, ghost: 0.85, len: 0.11 },
+  snareTone: { bp: 2100, q: 0.9, peak: 1.9, ghost: 0.85, len: 0.09 },
   /*
-   * THE HATS CAME DOWN 5 dB, in both genres, because the bed went up 6.5.
-   * A hat is highpassed noise at 6.5 kHz and it is the single highest thing
-   * in the mix; carrying it up with the rest of the bed would have answered
-   * a complaint about a high pitched overtone by adding 6.5 dB of hi hat.
-   * Down 5 leaves the hats 1.5 dB above where the owner last heard them,
-   * which is the smallest move that keeps the groove readable, and it is
-   * what holds the 2 to 8 kHz band inside A1's 12 dB bar with the bed up.
+   * Hats are TICKS, 28 ms, not a 60 ms hiss every eighth. The looping
+   * noise source through a 6.5 kHz highpass with a 0.0001 floor was a
+   * static bed the pad used to mask. Darker, shorter, quieter.
    */
-  hatTone: { hp: 6500, accent: 0.48, tick: 0.17, len: 0.06 },
-  bassTone: { peak: 0.75, noteSteps: 3.2 },
-  pads: { baseHz: 660, lp: 1500, barsPerChord: 4, mode: 'swell', level: 0.025, attack: 0.30 },
+  hatTone: { hp: 4800, accent: 0.22, tick: 0.09, len: 0.028 },
+  bassTone: { peak: 0.75, noteSteps: 3.2, reese: 0.20 },
+  pads: {
+    baseHz: 660, lp: 1500, barsPerChord: 4, mode: 'pluck',
+    level: 0.024, attack: 0.008, decay: 0.28, strikes: [0, 32],
+  },
 };
 const LOFI_STYLE = {
   genre: 'lofi',
   bars: 8,
-  /* Fraction of a sixteenth added to every odd step. 0.24 puts the pair
-   * ratio at 62 percent, a lazy MPC swing rather than a shuffle. */
   swing: 0.24,
   loops: 3,
   shelf: { hz: 2800, db: -16 },
   wow: { seconds: 0.007, periodBars: 4, cents: 18 },
-  crackle: 0.7,
-  /* Hotter per hit than the dnb numbers, on purpose: at half the tempo
-   * there are half the onsets, and equal peaks measured the lofi bed 7 dB
-   * under the drum and bass bed, which read as the music leaving the room
-   * every time the rotation changed genre. These bring the sparse groove
-   * within about 3 dB of the busy one. */
   kickTone: { start: 82, end: 48, drop: 0.11, peak: 0.72, ghost: 0.34, len: 0.22, ghostLen: 0.13 },
-  snareTone: { bp: 1750, q: 0.8, peak: 2.1, ghost: 0.9, len: 0.14 },
-  hatTone: { hp: 6000, accent: 0.40, tick: 0.16, len: 0.05 },
-  bassTone: { peak: 0.95, noteSteps: 6.0 },
-  pads: { baseHz: 660, lp: 1400, barsPerChord: 2, mode: 'pluck', level: 0.048, attack: 0.025, decay: 2.4, strikes: [0] },
+  snareTone: { bp: 1750, q: 0.8, peak: 2.1, ghost: 0.9, len: 0.11 },
+  hatTone: { hp: 4200, accent: 0.16, tick: 0.07, len: 0.024 },
+  bassTone: { peak: 0.95, noteSteps: 6.0, reese: 0 },
+  pads: { baseHz: 660, lp: 1400, barsPerChord: 2, mode: 'pluck', level: 0.036, attack: 0.018, decay: 0.50, strikes: [0] },
 };
 
 /*
@@ -154,9 +138,23 @@ export const TRACKS = [
     id: 'night-circuit',
     name: 'Night Circuit',
     bpm: 174,
-    kick: NIGHT_KICK,
-    snare: NIGHT_SNARE,
-    hat: NIGHT_HAT,
+    kick: seq('A A A B  A A C B  A A A B  A A C D', {
+      A: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ g ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ g ~ ~ ~'),
+      D: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ g ~ bd ~ g'),
+    }),
+    snare: seq('A A A B  A A A B  A A C B  A A A D', {
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd g'),
+      C: n('~ ~ sd ~ g ~ sd ~'),
+      D: n('~ ~ sd ~ ~ ~ sd [sg sg]'),
+    }),
+    hat: seq('A A A A  A A A B  A A A A  A A B C', {
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh ~ ho ~ hh ho'),
+      C: h('ho ~ hh ~ ho hh ho hh'),
+    }),
     bass: {
       rootHz: 55,
       phraseBars: 8,
@@ -185,19 +183,19 @@ export const TRACKS = [
     name: 'Porch Light',
     bpm: 80,
     kick: seq('A A A B  A A C B', {
-      A: '1......1..1.....',
-      B: '1......1..1...g.',
-      C: '1.........1..1..',
+      A: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ g ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~'),
     }),
     snare: seq('A A A B  A A A C', {
-      A: '....1.......1...',
-      B: '....1.......1..g',
-      C: '....1......g1.g.',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd g'),
+      C: n('~ ~ sd ~ ~ g sd g'),
     }),
     hat: seq('A A B A  A A B C', {
-      A: 'a.1.1.1.a.1.1.1.',
-      B: 'a.1.1.1.a.1.1.11',
-      C: 'a.1.1.g.a.g.1.g.',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh ~ ho ~ hh hh'),
+      C: h('ho ~ hh g ho ~ hh ~'),
     }),
     bass: {
       rootHz: 55,
@@ -224,21 +222,21 @@ export const TRACKS = [
     name: 'Rolling Deep',
     bpm: 172,
     kick: seq('A A A B  A A C B  A A A B  A C A D', {
-      A: '1.......g.1.....',
-      B: '1.......g.1...g.',
-      C: '1.........1..g..',
-      D: '1.......g.1.g.g1',
+      A: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ g ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ g ~ ~ ~ ~'),
+      D: k('bd ~ ~ ~ ~ ~ ~ g bd ~ g ~ g bd ~ ~'),
     }),
     snare: seq('A A A B  A A A B  A A C B  A A A D', {
-      A: '....1.......1...',
-      B: '....1......g1..g',
-      C: '....1..g....1...',
-      D: '....1.......1.gg',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ g ~ sd g'),
+      C: n('~ ~ sd g ~ ~ sd ~'),
+      D: n('~ ~ sd ~ ~ ~ sd [sg sg]'),
     }),
     hat: seq('A A A A  A A A B  A A A A  A A B C', {
-      A: 'a.1.a.1.a.1.a.1.',
-      B: 'a.1.a.1.a.1.a.11',
-      C: 'a.1.a.1.a.11a1a1',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh ~ ho ~ hh ho'),
+      C: h('ho ~ hh ~ ho hh ho hh'),
     }),
     bass: {
       rootHz: 49,
@@ -268,20 +266,19 @@ export const TRACKS = [
     name: 'Rainy Glass',
     bpm: 76,
     swing: 0.27,
-    crackle: 0.85,
     kick: seq('A B A C  A B A D', {
-      A: '1.........1.....',
-      B: '1......g..1.....',
-      C: '1......1..1..g..',
-      D: '1......1..1.....',
+      A: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ g ~ bd ~ ~ ~ ~ ~ ~ ~'),
+      C: k('bd ~ ~ ~ ~ ~ bd ~ bd ~ ~ g ~ ~ ~ ~'),
+      D: k('bd ~ ~ ~ ~ ~ bd ~ bd ~ ~ ~ ~ ~ ~ ~'),
     }),
     snare: seq('A A A A  A A A B', {
-      A: '....1.......1...',
-      B: '....1.......1..g',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd g'),
     }),
     hat: seq('A A A B  A A A B', {
-      A: 'a...1...a...1...',
-      B: 'a...1...a...1.g.',
+      A: h('ho ~ ~ hh ~ ~ hh ~'),
+      B: h('ho ~ ~ hh ~ ~ hh g'),
     }),
     bass: {
       rootHz: 43.65,
@@ -300,7 +297,7 @@ export const TRACKS = [
       [-4, 3, 8],
       [-2, 5, 10],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.045, decay: 3.0, strikes: [0, 16] },
+    pads: { ...LOFI_STYLE.pads, level: 0.034, decay: 0.55, strikes: [0, 16] },
   },
 
   {
@@ -310,20 +307,20 @@ export const TRACKS = [
     bpm: 176,
     shelf: { hz: 3600, db: -12 },
     kick: seq('A A A B  A A A B  A C A B  A A C D', {
-      A: '1.........1.....',
-      B: '1.......g.1...g.',
-      C: '1.......g.1.....',
-      D: '1.........1.gg.1',
+      A: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ g ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      D: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ g g ~ bd ~ ~'),
     }),
     snare: seq('A A A B  A A A B  A A A B  A A B C', {
-      A: '....1.......1...',
-      B: '....1.......1..g',
-      C: '....1..g...g1.g.',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd g'),
+      C: n('~ ~ sd g ~ g sd g'),
     }),
     hat: seq('A A A B  A A A B  A A A B  A B A C', {
-      A: 'a.1.a.1.a.1.a.1.',
-      B: 'a.11a.1.a.1.a.1.',
-      C: 'a.11a.11a.1.a1a1',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho hh ho ~ hh ~ hh ~'),
+      C: h('ho hh ho hh ho ~ ho hh'),
     }),
     bass: {
       rootHz: 43.65,
@@ -346,7 +343,7 @@ export const TRACKS = [
       [-3, 4, 9],
       [-1, 2, 7],
     ],
-    pads: { ...DNB.pads, level: 0.029, barsPerChord: 4 },
+    pads: { ...DNB.pads, level: 0.026, barsPerChord: 4 },
   },
 
   {
@@ -356,20 +353,20 @@ export const TRACKS = [
     bpm: 84,
     swing: 0.2,
     kick: seq('A A B C  A A B D', {
-      A: '1......1..1.....',
-      B: '1..g...1..1.....',
-      C: '1......1..1..1..',
-      D: '1......1..1...g1',
+      A: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ ~'),
+      B: k('bd ~ g ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ bd ~ ~'),
+      D: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ g bd'),
     }),
     snare: seq('A A A B  A A A C', {
-      A: '....1.......1...',
-      B: '....1.....g.1...',
-      C: '....1.......1g.g',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ g sd ~'),
+      C: n('~ ~ sd ~ ~ ~ sd g'),
     }),
     hat: seq('A B A B  A B A C', {
-      A: 'a.1.1.1.a.1.1.1.',
-      B: 'a.1.1.11a.1.1.1.',
-      C: 'a.111.1.a.1.11g.',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh hh ho ~ hh ~'),
+      C: h('ho hh hh ~ ho ~ hh g'),
     }),
     bass: {
       rootHz: 49,
@@ -387,7 +384,7 @@ export const TRACKS = [
       [-2, 2, 8],
       [-4, 0, 7],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.051, decay: 2.0, strikes: [0, 8, 20] },
+    pads: { ...LOFI_STYLE.pads, level: 0.028, decay: 0.28, strikes: [0, 8, 20] },
   },
 
   {
@@ -397,19 +394,19 @@ export const TRACKS = [
     bpm: 170,
     shelf: { hz: 2800, db: -15 },
     kick: seq('A A A A  B A A C  A A A A  B A C D', {
-      A: '1.......g.1.....',
-      B: '1..g....g.1.....',
-      C: '1.......g.1...g1',
-      D: '1.g.....g.1..g.1',
+      A: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ g ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ g bd'),
+      D: k('bd g ~ ~ ~ ~ ~ g bd ~ ~ g ~ bd ~ ~'),
     }),
     snare: seq('A A A A  A A A B  A A A A  A A B C', {
-      A: '....1.......1...',
-      B: '....1.......1.g.',
-      C: '....1...g...1.gg',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd g'),
+      C: n('~ ~ sd ~ g ~ sd [sg sg]'),
     }),
     hat: seq('A A A A  A A A A  B A A A  A A A B', {
-      A: 'a...a.1.a...a.1.',
-      B: 'a...a.1.a..1a.1.',
+      A: h('ho ~ ho hh ho ~ ho hh'),
+      B: h('ho ~ ho hh ho hh ho hh'),
     }),
     bass: {
       rootHz: 55,
@@ -443,18 +440,18 @@ export const TRACKS = [
     swing: 0.3,
     wow: { seconds: 0.009, periodBars: 4, cents: 22 },
     kick: seq('A B A C  A B A C', {
-      A: '1.........1.....',
-      B: '1.......g.1.....',
-      C: '1......1..1.....',
+      A: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      C: k('bd ~ ~ ~ ~ ~ bd ~ bd ~ ~ ~ ~ ~ ~ ~'),
     }),
     snare: seq('A A A A  A A A B', {
-      A: '....1.......1...',
-      B: '....1......g1...',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ g sd ~'),
     }),
     hat: seq('A A B A  A A B C', {
-      A: 'a...1...a...1...',
-      B: 'a...1..ga...1...',
-      C: 'a...1...a..g1.g.',
+      A: h('ho ~ ~ hh ~ ~ hh ~'),
+      B: h('ho ~ ~ hh g ~ hh ~'),
+      C: h('ho ~ ~ hh ~ g hh g'),
     }),
     bass: {
       rootHz: 41.2,
@@ -472,7 +469,7 @@ export const TRACKS = [
       [-1, 4, 7],
       [0, 5, 9],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.042, decay: 3.4, attack: 0.05 },
+    pads: { ...LOFI_STYLE.pads, level: 0.032, decay: 0.70, attack: 0.04 },
   },
 
   {
@@ -481,19 +478,19 @@ export const TRACKS = [
     name: 'Copper Wire',
     bpm: 174,
     kick: seq('A B A C  A B A C  A B A C  A B C D', {
-      A: '1.......g.1.....',
-      B: '1.....g...1.....',
-      C: '1.......g.1..g..',
-      D: '1.....g.g.1.1..g',
+      A: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ g ~ ~ bd ~ ~ ~ ~ ~ ~ ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ g ~ ~ ~ ~'),
+      D: k('bd ~ ~ ~ ~ g ~ g bd ~ bd ~ ~ ~ g ~'),
     }),
     snare: seq('A A B A  A A B A  A A B A  A B A C', {
-      A: '....1.......1...',
-      B: '....1..g....1..g',
-      C: '....1.g.....1ggg',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd g ~ ~ sd g'),
+      C: n('~ ~ sd g ~ ~ sd [sg sg]'),
     }),
     hat: seq('A A A B  A A A B  A A A B  A A B B', {
-      A: 'a.1.a.1.a.1.a.1.',
-      B: 'a.1.a1..a.1.a.1.',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh ho ~ ~ hh ~'),
     }),
     bass: {
       rootHz: 41.2,
@@ -523,20 +520,19 @@ export const TRACKS = [
     name: 'Slow Orbit',
     bpm: 88,
     swing: 0.18,
-    crackle: 0.55,
     kick: seq('A A B A  A A B C', {
-      A: '1......1..1.....',
-      B: '1......1..1....g',
-      C: '1......1.g1..1..',
+      A: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ g'),
+      C: k('bd ~ ~ ~ ~ ~ ~ bd g ~ bd ~ ~ bd ~ ~'),
     }),
     snare: seq('A B A B  A B A C', {
-      A: '....1.......1...',
-      B: '....1.......1..g',
-      C: '....1..g....1.g.',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd g'),
+      C: n('~ ~ sd g ~ ~ sd g'),
     }),
     hat: seq('A A A B  A A A B', {
-      A: 'a.1.1.1.a.1.1.1.',
-      B: 'a.1.1.1.a.1.11g.',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh ~ ho ~ hh g'),
     }),
     bass: {
       rootHz: 46.25,
@@ -554,7 +550,7 @@ export const TRACKS = [
       [-2, 3, 7],
       [1, 5, 12],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.045, decay: 2.2, strikes: [0, 16] },
+    pads: { ...LOFI_STYLE.pads, level: 0.032, decay: 0.45, strikes: [0, 16] },
   },
 
   {
@@ -564,20 +560,20 @@ export const TRACKS = [
     bpm: 172,
     shelf: { hz: 3400, db: -13 },
     kick: seq('A A A B  A A A B  C A A B  A A B D', {
-      A: '1.......g.1.....',
-      B: '1.........1...g.',
-      C: '1..g......1.....',
-      D: '1.......g.11...g',
+      A: k('bd ~ ~ ~ ~ ~ ~ g bd ~ ~ ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ g ~'),
+      C: k('bd ~ g ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~'),
+      D: k('bd ~ ~ ~ ~ ~ ~ g bd bd ~ ~ ~ ~ g ~'),
     }),
     snare: seq('A A A B  A A A B  A A A B  A A B C', {
-      A: '....1.......1...',
-      B: '....1.......1g..',
-      C: '....1....g..1.g1',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ ~ sd ~'),
+      C: n('~ ~ sd ~ ~ g sd g'),
     }),
     hat: seq('A A A A  B A A A  A A A A  B A A C', {
-      A: 'a.1.a.1.a.1.a.1.',
-      B: 'a.1.a.1.a.1.a11.',
-      C: 'a.1.a.1.a1a1a1a1',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ hh ~ ho ~ hh ho'),
+      C: h('ho ~ hh ~ ho hh ho hh'),
     }),
     bass: {
       rootHz: 49,
@@ -604,7 +600,7 @@ export const TRACKS = [
       [-3, 2, 5],
       [-1, 4, 7],
     ],
-    pads: { ...DNB.pads, barsPerChord: 2, level: 0.027, attack: 0.22 },
+    pads: { ...DNB.pads, barsPerChord: 2, level: 0.022, attack: 0.008, decay: 0.22, strikes: [0] },
   },
 
   {
@@ -614,20 +610,20 @@ export const TRACKS = [
     bpm: 80,
     swing: 0.22,
     kick: seq('A B A C  A B A D', {
-      A: '1......1..1.....',
-      B: '1......g..1..1..',
-      C: '1......1..1....g',
-      D: '1......1.g1.....',
+      A: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ ~'),
+      B: k('bd ~ ~ ~ ~ ~ g ~ bd ~ ~ bd ~ ~ ~ ~'),
+      C: k('bd ~ ~ ~ ~ ~ ~ bd ~ ~ bd ~ ~ ~ ~ g'),
+      D: k('bd ~ ~ ~ ~ ~ ~ bd g ~ bd ~ ~ ~ ~ ~'),
     }),
     snare: seq('A A A B  A A A C', {
-      A: '....1.......1...',
-      B: '....1.....g.1...',
-      C: '....1.......1gg.',
+      A: n('~ ~ sd ~ ~ ~ sd ~'),
+      B: n('~ ~ sd ~ ~ g sd ~'),
+      C: n('~ ~ sd ~ ~ ~ sd [sg sg]'),
     }),
     hat: seq('A B A B  A B A C', {
-      A: 'a.1.1.1.a.1.1.1.',
-      B: 'a.1.g.1.a.1.g.1.',
-      C: 'a.1.g.1.a.g.1g..',
+      A: h('ho ~ hh ~ ho ~ hh ~'),
+      B: h('ho ~ g ~ ho ~ g ~'),
+      C: h('ho ~ g ~ ho g hh ~'),
     }),
     bass: {
       rootHz: 55,
@@ -645,7 +641,7 @@ export const TRACKS = [
       [-5, 0, 7],
       [-4, 3, 10],
     ],
-    pads: { ...LOFI_STYLE.pads, level: 0.048, decay: 2.8, strikes: [0, 20] },
+    pads: { ...LOFI_STYLE.pads, level: 0.034, decay: 0.50, strikes: [0, 20] },
   },
 ];
 
@@ -697,5 +693,34 @@ for (const t of TRACKS) {
     if (c.length !== 3) {
       throw new Error(`tracks: ${t.id} chord [${c}] wants exactly 3 voices`);
     }
+  }
+  /*
+   * A pad decay that fills the gap to the next strike is a held tone with
+   * extra onsets, which is the defect this crate just spent a round
+   * removing. Fail at import so a new track cannot write it back in.
+   */
+  if (t.pads.mode === 'pluck') {
+    if (!Array.isArray(t.pads.strikes) || t.pads.strikes.length < 1) {
+      throw new Error(`tracks: ${t.id} pluck wants at least one strike`);
+    }
+    if (!(t.pads.decay > t.pads.attack)) {
+      throw new Error(`tracks: ${t.id} pad decay must be longer than attack`);
+    }
+    const hits = t.pads.strikes.filter((s) => s >= 0 && s < chordSteps).sort((a, b) => a - b);
+    if (hits.length < 1) {
+      throw new Error(`tracks: ${t.id} pad strikes sit outside the chord span`);
+    }
+    const stepS = 60 / t.bpm / 4;
+    for (let i = 0; i < hits.length; i += 1) {
+      const next = i + 1 < hits.length ? hits[i + 1] : hits[0] + chordSteps;
+      const gap = (next - hits[i]) * stepS;
+      if (t.pads.decay >= gap) {
+        throw new Error(
+          `tracks: ${t.id} pad decay ${t.pads.decay}s fills the ${gap.toFixed(2)}s strike gap`,
+        );
+      }
+    }
+  } else if (t.pads.mode !== 'swell') {
+    throw new Error(`tracks: ${t.id} pads.mode ${t.pads.mode} is not swell or pluck`);
   }
 }

@@ -43,8 +43,9 @@ const IN = FT / 12;
  *
  *   aperture   has one or more holes to fly through, so it can appear in the
  *              sequence, once per hole, each with its own entry face.
- *   marker     has no hole. It is passed on one side at a clearance radius,
- *              so it appears in the sequence with a pass side and no face.
+ *   marker     is passed on one side at a clearance radius. The pass side
+ *              is a virtual gate: a square beside the pole that the quad
+ *              has to fly through, the same way it flies a real opening.
  *   obstacle   is solid. It never appears in the sequence, and the path
  *              warning pass tests the racing line against it.
  *   start      the lap's start position and heading. Exactly one per track.
@@ -108,6 +109,28 @@ export function flagSideOf(el) {
     return null;
   }
   return normalizeFlagSide(el.flagSide, def.flagSide);
+}
+
+/*
+ * The scoring square a flag or a cone assigns on its pass side.
+ *
+ * Width is twice the clearance, so the inner edge sits on the pole and the
+ * outer edge is one clearance past the racing line. Height is at least that
+ * wide, and at least as tall as the marker, so a 2.5 m flag is not scored
+ * by a waist-high slot. Waypoints keep a clearance of zero and do not get
+ * one of these: they pin the line, they are not a hole.
+ */
+export function virtualApertureDims(el, seq) {
+  const clearance = Math.max(0, seq?.clearance ?? el?.dims?.clearance ?? 0);
+  const clearW = Math.max(0.8, clearance * 2);
+  const poleH = Math.max(0, el?.dims?.height ?? 0);
+  const clearH = Math.max(clearW, poleH);
+  return {
+    clearW,
+    clearH,
+    sillH: 0,
+    centerH: clearH * 0.5,
+  };
 }
 
 /*
@@ -258,7 +281,7 @@ export const ELEMENTS = {
     key: 'F',
     group: 'track',
     kind: KIND.MARKER,
-    note: 'Turn marker. Not flown through. Passed on one side.',
+    note: 'Turn marker. The pass side is a virtual gate: a green square beside the pole that has to be flown through.',
     /* "Split-S Gate: flag placement 1.5 ft behind and to the side of the
      * gate" is the only flag dimension MultiGP publishes, and it is an
      * offset rather than a flag. A turn flag on a course is a pole with a
@@ -273,7 +296,7 @@ export const ELEMENTS = {
     key: 'C',
     group: 'track',
     kind: KIND.MARKER,
-    note: 'Ground marker. Passed on one side.',
+    note: 'Ground marker. The pass side is a virtual gate, the same as a flag.',
     /* A standard traffic cone: 28 in tall on a 14 in square base. Not a
      * MultiGP dimension, a highway one, and near enough for a ground marker.
      * VERIFY: nothing on multigp.com, this is a road cone. */

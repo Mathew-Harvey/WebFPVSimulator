@@ -27,18 +27,23 @@
  * about 70 percent quieter than the music. 70 percent quieter in amplitude
  * is a factor of 0.3, so 10.5 dB of RATIO, and it is split rather than
  * taken all from one side: 4.0 dB off the motor voice gains here, 6.5 dB on
- * to the bed in music.js, 3.0 dB on to the wind and the ambience. The split
- * is forced. The motors were carrying the mix's loudness, and taking the
- * whole 10.5 dB off them alone measured a flight render at -24.7 dBFS,
- * outside the -20 to -14 dBFS band the loudness bar asks for. Every figure
- * is in PROGRESS.md either side of the change. The flight instrument
- * survives because the information is in the PITCH, which is untouched.
+ * to the bed in music.js. The split is forced. The motors were carrying
+ * the mix's loudness, and taking the whole 10.5 dB off them alone measured
+ * a flight render at -24.7 dBFS, outside the -20 to -14 dBFS band the
+ * loudness bar asks for. Every figure is in PROGRESS.md either side of
+ * the change. The flight instrument survives because the information is
+ * in the PITCH, which is untouched.
  *
- * THE AMBIENCE. A new stem: a baked outdoor bed, low air and a few
- * birds, that carries the world while the craft is parked or slow and
- * fades away as airspeed builds, the way the real outdoors disappears
- * under a real quad. One looped stereo buffer this file bakes from a
- * deterministic LCG, two nodes, its own settings row.
+ * THE AMBIENCE IS GONE. It was a looped lowpassed-noise buffer with a
+ * handful of sine birds, and the owner heard it as a hum. The stem, the
+ * bake, the settings row and the airspeed fade are all removed. A saved
+ * ambienceLevel is ignored.
+ *
+ * MOTORS AND WIND, 70 PERCENT DOWN. Applied on the stem buses as
+ * FLIGHT_STEM 0.3, so a Motors or Wind setting of 5 is the same ratio
+ * it always was, just 10.5 dB quieter against the music. The blade pass
+ * pitch and the 6 dB throttle span are the voice law, not the bus, and
+ * they do not move.
  *
  * THE CUES. A gate pass is a satisfying CLICK now, a knuckle of filtered
  * noise over a falling tick, not a synth blip; a frame graze is the same
@@ -158,23 +163,13 @@ const FOCUS_CARRIER_HZ = 1000;
 const FOCUS_BEAT_HZ = 6;
 
 /*
- * The ambience bed. Length chosen NOT commensurate with any music loop so
- * the birds never phase lock to the bars, and long enough that the chirp
- * pattern does not read as a loop inside one lap. AMB_LEVEL is the bus
- * gain at full setting with the craft parked; the bed then fades with
- * airspeed in update(), because six metres per second of wash is already
- * louder than a meadow. The bird syllables live around 3 to 4.5 kHz,
- * which is fine HERE and forbidden to the motors: A1 protects that band
- * from the flight stems, and the ambience is neither of them and twenty
- * odd dB quieter.
+ * Keep 30 percent of the motor and wind stems. The owner asked to drop
+ * both by 70 percent, relative to the rest of the mix. Applied on the
+ * stem buses so the RPM-to-gain law, the 6 dB throttle span, and the
+ * pitch the pilot flies on are untouched. Music and cues do not ride
+ * these buses.
  */
-const AMB_SECONDS = 22.5;
-/* 0.71, up from 0.5, which is the same 3.0 dB the wind took. The ambience
- * is one of the stems the owner meant by "the music etc": it has to move
- * with the bed or the world drops out from under a mix that just got
- * louder everywhere else. */
-const AMB_LEVEL = 0.71;
-const AMB_SPEED_FADE = 0.8;
+const FLIGHT_STEM = 0.3;
 
 export class MotorAudio {
   constructor() {
@@ -187,7 +182,7 @@ export class MotorAudio {
     /* Per stem, each 0 to 1, driven by their own settings rows. These
      * mirror the DEFAULTS in src/ui/ui.js divided by ten, and the probe
      * measures at exactly these values when no mix argument is given. */
-    this.mix = { motors: 0.5, wind: 0.5, music: 0.5, focus: 1, ambience: 0.4 };
+    this.mix = { motors: 0.5, wind: 0.5, music: 0.5, focus: 1, ambience: 0 };
     this.focusOn = false;
     this.music = new Music();
     /* Every AudioNode this instance owns, for P12. A node created and
@@ -234,7 +229,8 @@ export class MotorAudio {
       this.mix.focus = Math.max(0, Math.min(1, m.focus));
     }
     if (typeof m.ambience === 'number') {
-      this.mix.ambience = Math.max(0, Math.min(1, m.ambience));
+      /* Kept so the probe can still name the stem. Always silent. */
+      this.mix.ambience = 0;
     }
     this.applyBuses();
   }
@@ -258,8 +254,8 @@ export class MotorAudio {
     if (!this.motorBus) {
       return;
     }
-    this.motorBus.gain.value = this.mix.motors;
-    this.windBus.gain.value = this.mix.wind;
+    this.motorBus.gain.value = this.mix.motors * FLIGHT_STEM;
+    this.windBus.gain.value = this.mix.wind * FLIGHT_STEM;
     /* The focus tone is quiet on purpose. It is a tone under a mix, not a
      * test signal, and two steady carriers at any real level would mask the
      * flight instrument. */
@@ -342,7 +338,7 @@ export class MotorAudio {
     this.flightDuck = flightDuck;
 
     const motorBus = keep(ctx.createGain());
-    motorBus.gain.value = this.mix.motors;
+    motorBus.gain.value = this.mix.motors * FLIGHT_STEM;
     /* Nothing below 60 Hz from the motors. The blade pass fundamental is
      * 130 Hz at the bottom of the flight range, so everything this removes is
      * either the idle drone or rumble no headphone renders as pitch, and it is
@@ -355,7 +351,7 @@ export class MotorAudio {
     motorHp.connect(flightDuck);
     this.motorBus = motorBus;
     const windBus = keep(ctx.createGain());
-    windBus.gain.value = this.mix.wind;
+    windBus.gain.value = this.mix.wind * FLIGHT_STEM;
     windBus.connect(flightDuck);
     this.windBus = windBus;
     const focusBus = keep(ctx.createGain());
@@ -452,108 +448,6 @@ export class MotorAudio {
     ng.connect(windBus);
     noise.start();
     this.noiseGain = ng;
-
-    /*
-     * The ambience: one looped stereo buffer, baked here, two nodes.
-     *
-     * The air is LCG noise through two one pole lowpasses IN THE BAKE, so
-     * no filter node is spent on it, breathing on a slow sinusoid whose
-     * period divides the loop exactly (three cycles in 22.5 s) so the seam
-     * cannot step the envelope. The birds are sine syllables written
-     * directly into the samples: a handful of two to four note calls at
-     * LCG times, each panned by writing more of it into one channel.
-     * Everything is deterministic, so two renders agree and the probe can
-     * measure this stem like any other.
-     *
-     * It hangs off the flight duck: a cue or a crash pulls the world down
-     * with the motors, which is what attention does.
-     */
-    const ambBus = keep(ctx.createGain());
-    ambBus.gain.value = 0;
-    ambBus.connect(flightDuck);
-    this.ambBus = ambBus;
-    const aLen = Math.floor(ctx.sampleRate * AMB_SECONDS);
-    const aBuf = ctx.createBuffer(2, aLen, ctx.sampleRate);
-    let as = 424242;
-    const arnd = () => {
-      as = (as * 1103515245 + 12345) & 0x7fffffff;
-      return as / 0x7fffffff;
-    };
-    /* The loop seam is handled the way every seam in this project is:
-     * removed by construction and then measurable. The air is rendered
-     * with an extra crossfade tail, and the head is blended from the tail
-     * so the last sample flows into the first with no filter state step.
-     * The breathing sinusoid completes whole cycles over the loop, so it
-     * needs no help. */
-    const aFade = Math.floor(ctx.sampleRate * 0.1);
-    for (let c = 0; c < 2; c += 1) {
-      const ac = aBuf.getChannelData(c);
-      /* Decorrelated air per channel: separate stretches of the stream. */
-      let lp1 = 0;
-      let lp2 = 0;
-      const k = 1 - Math.exp((-2 * Math.PI * 320) / ctx.sampleRate);
-      const breathePhase = c === 0 ? 0 : Math.PI / 3;
-      const air = new Float32Array(aLen + aFade);
-      for (let i = 0; i < aLen + aFade; i += 1) {
-        const w = arnd() * 2 - 1;
-        lp1 += k * (w - lp1);
-        lp2 += k * (lp1 - lp2);
-        air[i] = lp2 * 2.2;
-      }
-      for (let i = 0; i < aLen; i += 1) {
-        let v = air[i];
-        if (i < aFade) {
-          const u = i / aFade;
-          v = air[aLen + i] * (1 - u) + v * u;
-        }
-        const breathe = 1 + 0.35 * Math.sin((2 * Math.PI * 3 * i) / aLen + breathePhase);
-        ac[i] = v * breathe;
-      }
-    }
-    /* The birds. Fourteen calls over the loop, written into both channels
-     * with a per call pan weight. Syllables sweep down a few semitones
-     * with a light vibrato, which is enough birdsong for a bed that sits
-     * 20 dB under the music. */
-    for (let call = 0; call < 14; call += 1) {
-      const t0 = (0.5 + arnd() * (AMB_SECONDS - 1.5)) * ctx.sampleRate;
-      const syllables = 2 + Math.floor(arnd() * 3);
-      const f0 = 3100 + arnd() * 1400;
-      const wL = 0.15 + 0.7 * arnd();
-      const wR = 1 - wL;
-      let at = t0;
-      for (let syl = 0; syl < syllables; syl += 1) {
-        const dur = Math.floor((0.04 + arnd() * 0.07) * ctx.sampleRate);
-        /* A syllable cut by the loop edge would be a step at the seam, so
-         * a call that runs out of room simply ends early. */
-        if (at + dur >= aLen - 2400) {
-          break;
-        }
-        const drop = 0.85 + arnd() * 0.12;
-        const vibHz = 30 + arnd() * 30;
-        const amp = 0.05 + arnd() * 0.05;
-        const chL = aBuf.getChannelData(0);
-        const chR = aBuf.getChannelData(1);
-        for (let i = 0; i < dur; i += 1) {
-          const idx = Math.floor(at) + i;
-          if (idx >= aLen) {
-            break;
-          }
-          const u = i / dur;
-          const hz = f0 * (1 - (1 - drop) * u);
-          const vib = 1 + 0.04 * Math.sin((2 * Math.PI * vibHz * i) / ctx.sampleRate);
-          const env = Math.sin(Math.PI * u) ** 2;
-          const v = Math.sin((2 * Math.PI * hz * vib * i) / ctx.sampleRate) * env * amp;
-          chL[idx] += v * wL;
-          chR[idx] += v * wR;
-        }
-        at += dur + (0.03 + arnd() * 0.10) * ctx.sampleRate;
-      }
-    }
-    const ambSrc = keep(ctx.createBufferSource());
-    ambSrc.buffer = aBuf;
-    ambSrc.loop = true;
-    ambSrc.connect(ambBus);
-    ambSrc.start();
 
     /*
      * The binaural focus tone: one carrier per ear, differing by the beat
@@ -901,18 +795,6 @@ export class MotorAudio {
      */
     const rush = Math.min(1, speed / 32);
     this.noiseGain.gain.setTargetAtTime(0.085 + 0.71 * rush * rush + 0.17 * loudest, t, 0.06);
-    /*
-     * The world recedes as the air arrives. Parked, the ambience is the
-     * loudest quiet thing in the render; at race speed it is nearly gone,
-     * which is both what a real meadow does under a quad and what keeps
-     * the bed out of the wind's way. The slow time constant makes slowing
-     * down a swell rather than a switch.
-     */
-    this.ambBus.gain.setTargetAtTime(
-      this.mix.ambience * AMB_LEVEL * (1 - AMB_SPEED_FADE * rush),
-      t,
-      0.25,
-    );
     /* The bed's own clock. Ticked from here so the probe, which drives this
      * exact update, exercises the scheduler too: an instrument that cannot
      * see the music cannot measure it. */

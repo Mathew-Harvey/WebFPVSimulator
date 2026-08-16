@@ -6,8 +6,8 @@
  * console racer treat Low / Medium / High as the player-facing control and
  * hide the knobs behind them. One row, three values, a note that says what
  * the current one is for. Changing it rebuilds the world, because the
- * expensive levers (grass count, city foliage, shadow proxies) are bake
- * time, not frame time.
+ * expensive levers (city foliage, shadow proxies) are bake time, not
+ * frame time. Grass blades are not a lever: they are not drawn.
  *
  * WHAT THE ORIGINAL SPEC GOT WRONG, AND WHAT THIS FILE FIXES.
  *
@@ -38,10 +38,9 @@
  *   opened on purpose.
  *
  *   "Low, a bit less grass."
- *   The first 184000 grass blades ARE the world's rng stream. Changing
- *   that count moves every tree, rock and mountain. Low still walks the
- *   whole stream and writes a subset, so the valley does not relocate.
- *   Extra blades (a second stream) are the safe density lever.
+ *   Blades are not drawn at any preset. The first 184000 world draws
+ *   are still walked so the valley does not relocate. Density is not a
+ *   quality lever.
  *
  * TARGETS, not promises. These are the machines the presets are BUILT
  * for, at 60 fps where the hardware can hold it, 40 fps on a Deck in its
@@ -80,8 +79,6 @@ const PRESETS = {
       shadowMap: 0,
       shadowFilter: 'none',
       shadowHalf: 72,
-      grassWorldKeep: 0.42,
-      grassExtra: 0,
       outline: false,
       bloom: false,
     },
@@ -114,8 +111,6 @@ const PRESETS = {
       shadowMap: 1024,
       shadowFilter: 'pcfsoft',
       shadowHalf: 72,
-      grassWorldKeep: 1,
-      grassExtra: 36000,
       outline: true,
       bloom: false,
     },
@@ -147,8 +142,6 @@ const PRESETS = {
       shadowMap: 2048,
       shadowFilter: 'pcfsoft',
       shadowHalf: 72,
-      grassWorldKeep: 1,
-      grassExtra: 92000,
       outline: true,
       bloom: true,
     },

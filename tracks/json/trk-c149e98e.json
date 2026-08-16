@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "trk-c149e98e",
   "name": "FAI Turkiye 2024",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
-    "width": 126,
+    "width": 134,
     "depth": 118,
     "gridSize": 1
   },
@@ -106,9 +106,9 @@
         "y": 59.37,
         "z": 0
       },
-      "yaw": -1.574796,
+      "yaw": 2.262911,
       "pitch": 0,
-      "yawOverridden": true,
+      "yawOverridden": false,
       "dims": {
         "levels": 1,
         "sillH": 0.568,
@@ -126,9 +126,9 @@
         "y": 59.34,
         "z": 0
       },
-      "yaw": -1.574796,
+      "yaw": 1.828687,
       "pitch": 0,
-      "yawOverridden": true,
+      "yawOverridden": false,
       "dims": {
         "levels": 1,
         "sillH": 0.568,
@@ -618,7 +618,7 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 115.68,
+        "x": 127.48,
         "y": 36.77,
         "z": 0
       },
@@ -676,16 +676,16 @@
       "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-6",
       "elementId": "el-6",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-7",
@@ -709,10 +709,10 @@
       "id": "sq-9",
       "elementId": "el-9",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-10",
@@ -917,7 +917,7 @@
       "elementId": "el-31",
       "apertureIndex": null,
       "entry": null,
-      "passSide": "right",
+      "passSide": "left",
       "clearance": 1.5,
       "overridden": false
     }

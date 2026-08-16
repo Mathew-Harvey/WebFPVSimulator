@@ -54,16 +54,64 @@
  * quad near 8750 RPM (916 rad/s), so kt = (mg/4) / w^2 = 1.90e-6.
  *
  * kq from kt through momentum theory with an ENFORCED figure of merit:
- * kq = kt^1.5 / (FM * sqrt(2 rho A)), FM = 0.5 for a triblade at this
- * disc loading, A = pi 0.0635^2. That gives 2.97e-8. The two are a
+ * kq = kt^1.5 / (FM * sqrt(2 rho A)), A = pi 0.0635^2. The two are a
  * physical pair, never two free knobs; sim_bf_debug case 12 recomputes
  * FM from the compiled constants and the P5 gate asserts it in 0.4-0.6.
  *
- * r_motor is winding plus ESC plus leads for a 2207, j_rotor a triblade
- * plus bell, r_cell a healthy 6S 1300. Inertia from four 45 g motor and
- * prop assemblies at 77.8 mm plus a centred pack. Absolute RPM, hover
- * current, punch current and the motor time constant now land in real
- * ranges instead of compensating for a free-energy prop.
+ * ---- THE ELECTRICAL SET WAS RE-DERIVED AS ONE SYSTEM ----
+ *
+ * ke, r_motor, r_cell, kq and j_rotor cannot be fixed one at a time and the
+ * previous set proved it. It ran the pack at 39 mOhm, which is two and a half
+ * times a real 6S 1300, and that resistance was the only thing holding the
+ * top end down: drop it on its own and full throttle RPM goes from 26,000 to
+ * 34,100, which is a thrust to weight of 15.9. So the sag was doing a job
+ * that belonged to the motor. What it cost was measured, and all of it is
+ * felt continuously rather than at the margins:
+ *
+ *   sustained full throttle    187 A pack, 2.99 V a cell
+ *   hover                      19.6 percent of stick
+ *   duty to RPM                RPM went as duty^0.67, so the bottom of the
+ *                              stick was twice as sensitive as the top
+ *
+ * A 6S pack held at 2.99 V a cell for the length of a straight is not a pack
+ * a pilot would fly twice, and hover at a fifth of the stick puts the whole
+ * low speed working range inside seven percent of travel.
+ *
+ * The set below is solved against published thrust stand data for a 2207
+ * 1900 kV on 6S with a 5x4.3x3: about 26,000 RPM, 1.5 kgf per motor and 33 A
+ * per motor at full throttle, and 3 to 4 A per motor at hover. Two equations,
+ * the full throttle and hover equilibria, in the two unknowns ke and r_motor,
+ * with r_cell at the 2.5 mOhm a real race pack measures. It lands:
+ *
+ *   full throttle   2723 rad/s, 32.8 A a motor, 131 A pack, 3.87 V a cell,
+ *                   58.7 N of thrust, thrust to weight 9.21
+ *   hover           897 rad/s, 3.56 A a motor, duty 0.252
+ *   duty to RPM     RPM as duty^0.81, against a real ESC's roughly 0.9
+ *
+ * WHY ke IS NOT 60/(2 pi 1900). It is 0.006336, which is the constant of a
+ * 1507 kV motor, and that is deliberate. Nameplate kV is measured unloaded
+ * and real motors saturate: the loaded torque constant of these 2207s is
+ * consistently ten to twenty percent better than the plate implies, which is
+ * why a thrust stand reads 33 A where 60/(2 pi 1900) predicts 41. Forcing the
+ * nameplate value instead would need kq low enough to put the figure of merit
+ * at 0.67, above the physical band the P5 gate asserts, so the choice is
+ * between an honest ke and a prop that beats momentum theory again. The
+ * airframe is still a 1900 kV motor; this is its loaded constant.
+ *
+ * WHAT IS STILL WRONG. There is no winding inductance and no ESC current
+ * ceiling, so the instant a punch starts the only thing between duty and
+ * current is resistance, and the model briefly draws about 320 A. That figure
+ * is silly and it is reported honestly by sim_state. It is NOT a feel defect,
+ * because it lasts two or three milliseconds and the rotor's own time
+ * constant of 34 ms filters it completely before it reaches thrust. A ceiling
+ * cannot be added without breaking check 8, which asks a rotor to reach 63
+ * percent of full speed inside 30 ms and therefore demands the current;
+ * plant.c has recorded that trade twice now and it needs check 8 re-specified
+ * as a small signal measurement, which is a human decision.
+ *
+ * j_rotor is 8.0e-6 against a real 2207 bell plus 5 inch triblade near 9e-6.
+ * 9e-6 reads about 29 ms on check 8 against a 30 ms ceiling, which is not
+ * margin worth having; 8.0e-6 is inside the real range and leaves some.
  */
 const PlantParams PLANT = {
   .mass_kg = 0.65,
@@ -72,12 +120,12 @@ const PlantParams PLANT = {
   .arm_x = 0.0777817459305202, /* 0.110 / sqrt(2) */
   .arm_y = 0.0777817459305202,
   .kt = 1.98e-6,
-  .kq = 3.16e-8,
-  .ke = 0.005025938238811099, /* 60 / (2 pi 1900) */
-  .r_motor = 0.09,
-  .j_rotor = 6.0e-6,
+  .kq = 2.80e-8,   /* figure of merit 0.565, inside the 0.4 to 0.6 band */
+  .ke = 0.006336,  /* loaded torque constant, 1507 kV; see the note above */
+  .r_motor = 0.1825,
+  .j_rotor = 8.0e-6,
   .cells = 6.0,
-  .r_cell = 0.0065,
+  .r_cell = 0.0025, /* 2.5 mOhm a cell, a real 6S 1300 race pack */
   .cda_plan = 0.0225,
   /*
    * Body drag areas. These were 0.016 and that number was doing two jobs:
@@ -109,16 +157,15 @@ const PlantParams PLANT = {
   /*
    * Unsteady wash amplitude as a fraction of a rotor's thrust at full
    * recirculation depth. 0.12 produced 17.7 deg/s peak to peak of gyro at the
-   * worst point of a props level descent, measured over a 1.5 s window. A
-   * real 5 inch in propwash runs 50 to 150 deg/s peak to peak and shakes the
-   * video visibly, so the model was roughly a third of the low end. 0.30 puts
-   * it near 45 deg/s, still at the quiet end of real.
-   *
-   * This is a FEEL constant, not a derived one. It is the one number in this
-   * file a pilot should be asked about directly, and it is deliberately set
-   * at the conservative end so that judgement is about raising it.
+   * worst point of a props level descent. 0.30 put it near 45 to 59 deg/s,
+   * which is inside the published 50 to 150 band and was still too much on
+   * the sticks: a pilot flying this build called the full throttle shake
+   * and the wash both too hot. 0.08 is about a quarter of that, back under
+   * the original 0.12, with the wider descent window still in place so a
+   * fast fall is not glass. This is a FEEL constant. Raise it if the wash
+   * disappears; do not put it back at 0.30 without a pilot saying so.
    */
-  .k_propwash = 0.30,
+  .k_propwash = 0.08,
   .prop_r = 0.0635,
   .k_rotor_drag = 0.43842,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
@@ -600,6 +647,61 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
         PLANT_DBG_VA = va;
       }
     }
+    /*
+     * TRANSLATIONAL LIFT, which is why a quad gets lighter as it accelerates.
+     *
+     * A hovering rotor has to push air down through itself, and that induced
+     * downwash is a headwind its own blades fly into. Move the disc sideways
+     * and it meets fresh air instead: the induced velocity collapses, the
+     * blades see a higher angle of attack, and thrust rises for the same
+     * shaft speed. Helicopter pilots feel it as effective translational lift
+     * and it is just as real on a multirotor, which is why a quad that
+     * accelerates out of a hover climbs without the throttle moving, and why
+     * a fast pass needs less throttle than the same thrust would need still.
+     *
+     * The model had none of it. Thrust depended only on the AXIAL inflow, so
+     * a rotor at 25 m/s of edgewise flow behaved exactly like a rotor in
+     * still air, and the craft flew as though its discs never noticed they
+     * were moving.
+     *
+     * kt is calibrated so that axial = 1 IS the hover case, which already has
+     * the hover induced velocity baked into it. What is missing is therefore
+     * not vi but the CHANGE in vi, so the correction is (vh - vi) over the
+     * pitch speed: identically zero in a hover or a vertical climb, where it
+     * must not disturb checks 5, 6, 7 and 11, and worth about a fifth more
+     * thrust at racing speed.
+     *
+     * vi comes from the same Glauert quartic the rotor drag uses in 3b,
+     * solved in the same numerically safe form. It is computed here from the
+     * IDEAL thrust kt w^2 rather than the actual, because the actual is what
+     * this expression is about to produce; 3b re-solves it against the real
+     * thrust because by then it has one. Two solves of the same relation is
+     * not tidy, and the alternative is an iteration the fixed step cannot
+     * afford.
+     */
+    double axial_gain = 0.0;
+    {
+      const double vx_r = v_body[0] - r * PLANT_POS_Y[m];
+      const double vy_r = v_body[1] + r * PLANT_POS_X[m];
+      const double vperp = sim_sqrt(vx_r * vx_r + vy_r * vy_r);
+      const double t_ideal = PLANT.kt * w * w;
+      if (vperp > 1e-6 && t_ideal > 1e-6) {
+        const double vh = sim_sqrt(t_ideal / (2.0 * PLANT.rho * 3.14159265358979323846 *
+                                              PLANT.prop_r * PLANT.prop_r));
+        const double xr = vperp / vh;
+        const double x2 = xr * xr;
+        const double y2 = 2.0 / (sim_sqrt(x2 * x2 + 4.0) + x2);
+        const double vi = vh * sim_sqrt(y2);
+        axial_gain = (vh - vi) / pitch_speed;
+        /* Bounded because at idle the pitch speed collapses faster than the
+         * induced velocity does and the ratio runs away. The thrust it is
+         * scaling is a tenth of a newton there, so the bound costs nothing
+         * real and stops a division from writing the flight model. */
+        if (axial_gain > 0.35) {
+          axial_gain = 0.35;
+        }
+      }
+    }
     if (mu >= 0.0) {
       /* Climb and hover. Thrust falls as the craft chases its own wake, and
        * crosses zero when the axial speed reaches the pitch speed. */
@@ -646,6 +748,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * deterministic, and scaled by how deep into the loss the rotor is so it
      * does nothing in normal flight.
      */
+    axial += axial_gain;
     if (axial < 1.0) {
       const double depth = 1.0 - axial;
       axial += depth * PLANT_INFLOW_ASYM[m];

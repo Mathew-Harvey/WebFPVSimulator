@@ -13,11 +13,11 @@
  * hue as the horizon band of the sky so distance dissolves instead of
  * clipping.
  *
- * Ground detail near, silhouettes far. Wind animated grass covers the
- * ground the pilot actually flies through, because at 20 m/s the sensation
- * of speed comes almost entirely from close ground texture moving. Beyond
- * that, trees and rocks carry the parallax, and the mountain rings carry
- * the horizon.
+ * Ground detail near, silhouettes far. The turf is the terrain's own
+ * colour. Grass blades are not drawn: they were scaled to a few
+ * centimetres and vanished at racing height while still costing half a
+ * million triangles twice a frame. Trees and rocks carry the near
+ * parallax, and the mountain rings carry the horizon.
  *
  * All static scenery is authored directly in Three.js space (y up). Only
  * the quad's simulated state crosses frames, and that conversion lives in
@@ -976,172 +976,41 @@ function cliff(rng, height, x, z, caps) {
 }
 
 /*
- * Grass. One merged buffer rather than instancing: a single draw call, and
- * the wind is a vertex shader function of world position so neighbouring
- * blades move together in gusts instead of each doing its own thing.
+ * Grass blades are not drawn.
+ *
+ * They used to be a 184000 plus extra merged buffer, two triangles each,
+ * submitted in the colour pass and again in the outline prepass, with a
+ * custom wind and propwash shader. Successive scale corrections took a
+ * blade from 0.26 to 0.68 m down to 0.03 to 0.09 m high and 8 to 18 mm
+ * wide. At racing height, without MSAA, that is sub-pixel: High still
+ * paid 552,000 triangles twice a frame for a mesh the pilot cannot see.
+ * The ground colour is the turf. Near parallax is trees and rocks.
+ *
+ * The first 184000 draws ARE the world's rng stream. One extra or one
+ * fewer here and every tree, rock, cliff, flower and mountain moves.
+ * Walk the stream, write no vertices, skip the extra density stream.
+ * Blade heights are still measured so the world-scale check reads what
+ * this loop authors, not a restated formula.
  */
-function grassField(height, samples, rng, pitch, fieldQ) {
-  /* Measured as the blades are made rather than restated from the formula
-   * above, so a scale check reads what was BUILT. See references in
-   * buildFieldScene. */
+function grassField(samples, rng, pitch) {
   let bladeMin = Infinity;
   let bladeMax = -Infinity;
-  /*
-   * Blade count and blade size, both measured against a frame rather than
-   * guessed. 46000 blades of 7.5 to 13 cm width spread over 900 by 900 m
-   * put roughly one blade per two square metres, so at eye height the near
-   * field was a handful of very large isolated fins over bare ground: it
-   * read as scattered debris, not as a meadow, and a blade as wide as a
-   * hand also reads as the wrong plant. Four times as many blades, half as
-   * wide, concentrated in a tighter band along the circuit where the eye
-   * actually is.
-   */
-  /*
-   * Two counts, and the split is the whole trick.
-   *
-   * Cover was measured, not estimated: a capture from a pilot's eye at
-   * 1.0 m over the racing line, against the same capture with the grass
-   * mesh hidden, differs in 3.19 percent of the ground pixels. That is
-   * what "sparse specks on flat green" means as a number, and the scale
-   * review's 14.5 percent was a more generous accounting of the same
-   * field.
-   *
-   * The first BLADES_WORLD blades are drawn from the WORLD rng in exactly
-   * the order they always were, because that single stream goes on to
-   * place every tree, rock, cliff, flower and mountain in the valley: one
-   * extra or one fewer draw here and the whole world is a different world,
-   * which is why the last two rounds refused to touch the count. The extra
-   * blades are drawn from a SECOND stream of their own, so the field gets
-   * denser and nothing else in the valley moves by a millimetre. Verified
-   * by capture, not by argument.
-   *
-   * BLADES_EXTRA is set by TRIANGLES, not by bytes, and two measured dead
-   * ends are why.
-   *
-   * First try: keep the old five vertex blade and raise the count with the
-   * bytes the byte attributes freed. 72000 extra blades moved cover from
-   * 3.19 to 3.79 percent and cost 433,840 triangles, taking P2 from 1.93
-   * to 2.36 million against a 1.2 million ceiling. Two thirds of a million
-   * triangles for six tenths of a point.
-   *
-   * Second try: a three vertex blade, one triangle, 48 bytes, and 440000
-   * of them inside the same 48 MB. Predicted about twice the cover from
-   * 2.39 times the blades at 0.83 of the silhouette area each. MEASURED
-   * 3.28 percent, which is the 184000 blade field to within the wind
-   * phase, and the near field fell from 2.40 to 1.74. The prediction was
-   * wrong because it counted area and the frame counts PIXELS: a blade
-   * base is 3 to 7 px wide at 1 m and a triangle that tapers to a point
-   * spends its upper half under one pixel wide, where a rasteriser with no
-   * multisampling drops it entirely. Area above the pixel is what covers
-   * ground.
-   *
-   * So: four vertices, base pair and a BLUNT top pair at 0.95 of the
-   * height and 0.45 of the width, two triangles. The silhouette integrates
-   * to 1.38 w h against the five vertex blade's 1.20, it holds more than a
-   * pixel of width all the way to the top, and a blunt top is what a mown
-   * blade actually looks like, which is cut. 276000 of them is 552,000
-   * triangles, exactly the count the field had before this round, and
-   * 17,664,000 attribute bytes.
-   *
-   * A top at 0.72 of the width was tried first and measured MORE cover,
-   * 7.18 percent against 4.70. Rejected on the frame rather than on the
-   * number: that wide a top is a rectangle, and the near field read as pale
-   * chips lying on the grass rather than as grass.
-   */
   const BLADES_WORLD = 184000;
-  const worldKeep = fieldQ && fieldQ.grassWorldKeep != null ? fieldQ.grassWorldKeep : 1;
-  const BLADES_EXTRA = fieldQ && fieldQ.grassExtra != null ? fieldQ.grassExtra : 92000;
-  const BLADES = BLADES_WORLD + BLADES_EXTRA;
-  const positions = new Float32Array(BLADES * 4 * 3);
-  /*
-   * Colour as a normalised unsigned byte triple, not three float32.
-   *
-   * Measured: P10 attribute bytes 51,708,044 against a 48,000,000 ceiling,
-   * of which the grass was 25,760,000. A blade colour is an albedo in
-   * [0,1] that gets multiplied by a light term and written to an 8 bit
-   * framebuffer, so 24 bits of mantissa per channel buys nothing: the
-   * jitter this loop applies is plus or minus 0.05 in lightness, which is
-   * 13 counts of 255. Three floats to three normalised bytes takes the
-   * colour attribute from 11,040,000 bytes to 2,760,000.
-   */
-  const colors = new Uint8Array(BLADES * 4 * 3);
-  /* aBend the same way, and it is even more clear cut: this attribute only
-   * ever holds 0, 0.6 and 1, and 0.6 is 153/255 exactly, so the normalised
-   * byte is not an approximation of anything. 3,680,000 bytes to 920,000. */
-  const bend = new Uint8Array(BLADES * 4);
-  const indices = new Uint32Array(BLADES * 6);
-  const rootC = new THREE.Color();
-  const tipC = new THREE.Color();
-  const c = new THREE.Color();
-  let vi = 0;
-  let ii = 0;
-  let made = 0;
-  /*
-   * One blade, drawn from whichever stream it belongs to. `extra` picks the
-   * placement rule: the world blades keep the original two branch rule
-   * exactly, draw for draw, and the extra blades all land in the near band
-   * because cover is a SCREEN quantity. A blade 40 m away covers a
-   * fraction of a pixel and cannot read as cover at any density this
-   * budget allows; a blade 3 m away covers tens of pixels. The existing
-   * wide scatter, 16 percent of the blades over 810,000 square metres, is
-   * 0.036 blades per square metre, and that is the speckle a reviewer sees
-   * on the distant ground rather than anything that reads as a meadow.
-   */
-  const emit = (r, extra, write) => {
+  for (let i = 0; i < BLADES_WORLD; i += 1) {
     let x;
     let z;
-    if (extra) {
-      const s = samples[Math.floor(r() * samples.length)];
-      const a = r() * Math.PI * 2;
-      /* Squared, not cubed, and out to 16 m rather than 42: tighter to the
-       * line than the original draw, because that is the band the camera
-       * actually flies through. */
-      const u = r();
-      const rad = 0.5 + 24 * u * u;
-      x = s.x + Math.cos(a) * rad;
-      z = s.z + Math.sin(a) * rad;
-    } else if (r() < 0.84) {
-      const s = samples[Math.floor(r() * samples.length)];
-      const a = r() * Math.PI * 2;
-      /* Radius from a cubed uniform, not a uniform: dense at the circuit
-       * and thinning outward to 42 m. A flat distribution inside a hard
-       * radius projects its outer wall as a ruler straight horizontal line
-       * across the frame, which is exactly what it did at 22 m. */
-      const u = r();
+    if (rng() < 0.84) {
+      const s = samples[Math.floor(rng() * samples.length)];
+      const a = rng() * Math.PI * 2;
+      const u = rng();
       const rad = 1 + 41 * u * u * u;
       x = s.x + Math.cos(a) * rad;
       z = s.z + Math.sin(a) * rad;
     } else {
-      x = (r() - 0.5) * 900;
-      z = (r() - 0.5) * 900;
+      x = (rng() - 0.5) * 900;
+      z = (rng() - 0.5) * 900;
     }
-    const y = height(x, z);
-    /*
-     * Blade height, and it is a SCALE decision rather than a look decision.
-     * It was 0.26 to 0.68 m, chosen when a gate was 5 m tall and its aperture
-     * centre was 2.5 m up. A regulation MultiGP gate is 1.524 m to the top of
-     * its opening, so grass to 0.68 m is knee deep beside it and the gates
-     * drown: measured on the title frame, the mid field grass reached most of
-     * the way up the gate and the target was invisible at 20 m. MultiGP also
-     * says a course should be as flat as possible, and a chapter races on
-     * mown grass. 0.09 to 0.24 m is ankle height, which puts the gate back to
-     * being the tallest thing near the racing line.
-     */
-    /*
-     * Blade HEIGHT, and the resting camera is what settles it.
-     *
-     * 0.09 to 0.24 m was already a correction from 0.26 to 0.68, but a quad at
-     * rest has its camera 7.5 cm off the deck, so grass to 24 cm put the FPV
-     * camera INSIDE the canopy and the first frame of the game was half filled
-     * with slabs of leaf. A mown chapter field is 3 to 5 cm and MultiGP asks for
-     * a course as flat as possible, so 3 to 9 cm is both what the sport uses and
-     * what leaves a parked quad able to see.
-     */
-    const hRoll = r();
-    /* On the mown pitch the blades have to sit UNDER the paint. 3 to 9 cm
-     * of grass on a 5.5 cm decal is how the first custom-course pass of
-     * these marks vanished: the turf overlay hid them and the grass hid
-     * whatever was left. Same rng draw, shorter blades. */
+    const hRoll = rng();
     const mown = pitchCover(pitch, x, z);
     const h = mown > 0.35
       ? 0.006 + hRoll * 0.012
@@ -1152,256 +1021,16 @@ function grassField(height, samples, rng, pitch, fieldQ) {
     if (h > bladeMax) {
       bladeMax = h;
     }
-    /*
-     * Blade WIDTH, and it was the worst scale error in the project.
-     *
-     * Measured in a frame rather than inferred: one blade's base came out
-     * 0.0985 m across, which is 39 percent of the 250 mm craft's span. Real
-     * grass is about 4 mm, 1.6 percent. The finest detail in every frame was
-     * half the aircraft, so the aircraft read as a toy no matter how correct
-     * its own dimensions were. Aspect ratio was 0.80 to 4.6 where real grass
-     * is 15 to 60.
-     *
-     * 8 to 18 mm is a compromise, not the real 4 mm: the blade count is left
-     * alone because it drives the rng stream for the whole world and because
-     * P2 and P10 are already over budget, and 4 mm blades at this density
-     * would be invisible. Aspect is now 5 to 30, which is in the right
-     * territory. Raising the count to recover ground cover is the next round's
-     * call and it makes P2 and P10 worse, which has to be said out loud.
-     */
-    const w = 0.008 + r() * 0.010;
-    const a = r() * Math.PI;
-    const dx = Math.cos(a) * w;
-    const dz = Math.sin(a) * w;
-    /*
-     * Root exactly the ground colour, tip lifted in value and nudged warm.
-     * One meadow, lighter at the tips.
-     *
-     * The lift was 0.13 and it is 0.08, because the blade changed shape. A
-     * pale top on a thin curved sliver reads as a catch of light; the same
-     * pale top on a blunt ribbon reads as a paper chip, and the first
-     * capture of the new blade was confetti scattered across the near
-     * field. Cover, measured by hiding the mesh, only counts pixels the
-     * grass changes, so it rewards exactly the contrast that was making the
-     * field look littered: that number has to be read beside the frame and
-     * not instead of it.
-     */
-    groundAlbedo(x, z, y, samples, rootC, pitch);
-    tipC.copy(rootC).offsetHSL(0.012, 0.05, 0.08);
-    /*
-     * FOUR vertices, base pair and a blunt top pair, two triangles. It was
-     * five: a base pair, a mid pair at 0.6 of the height, and a single
-     * vertex tip, so the blade could curve as it bent. The reasoning for
-     * dropping the tip is in the block comment on the counts above, and it
-     * is a pixel argument rather than an area argument.
-     *
-     * The FIFTH vertex is still walked and still draws its colour jitter
-     * below, and that is deliberate. This loop's draws are the world's one
-     * rng stream in its one order, so dropping a vertex's worth of draws
-     * would move every tree, rock, cliff, flower and mountain placed after
-     * the grass. The value is drawn and thrown away, which is the only
-     * safe way to skip anything in this file.
-     */
-    const vs = [
-      [x - dx, y, z - dz, 0, true],
-      [x + dx, y, z + dz, 0, true],
-      [x - dx * 0.45, y + h * 0.95, z - dz * 0.45, 1, true],
-      [x + dx * 0.45, y + h * 0.95, z + dz * 0.45, 1, true],
-      [x, y + h, z, 1, false],
-    ];
-    const v0 = vi / 3;
-    for (const [vx, vy, vz, b, keep] of vs) {
-      /* Per blade hue and value jitter: a field of identical blades reads
-       * as one plastic sheet no matter how it is lit. Jitter stays small
-       * so the roots keep matching the ground. */
-      c.copy(rootC).lerp(tipC, b * (0.55 + r() * 0.45));
-      c.offsetHSL((r() - 0.5) * 0.025, (r() - 0.5) * 0.08, (r() - 0.5) * 0.05);
-      if (!keep) {
-        continue;
-      }
-      if (!write) {
-        continue;
-      }
-      positions[vi + 0] = vx;
-      positions[vi + 1] = vy;
-      positions[vi + 2] = vz;
-      /* Rounded, not truncated: truncation biases every blade dark by half
-       * a count, which over a million vertices is a systematic 0.2 percent
-       * darkening of the meadow for no reason. */
-      colors[vi + 0] = Math.round(c.r * 255);
-      colors[vi + 1] = Math.round(c.g * 255);
-      colors[vi + 2] = Math.round(c.b * 255);
-      bend[vi / 3] = Math.round(b * 255);
-      vi += 3;
+    rng();
+    rng();
+    for (let v = 0; v < 5; v += 1) {
+      rng();
+      rng();
+      rng();
+      rng();
     }
-    if (!write) {
-      return;
-    }
-    indices[ii++] = v0 + 0; indices[ii++] = v0 + 1; indices[ii++] = v0 + 2;
-    indices[ii++] = v0 + 1; indices[ii++] = v0 + 3; indices[ii++] = v0 + 2;
-    made += 1;
-  };
-  for (let i = 0; i < BLADES_WORLD; i += 1) {
-    /* Walk every world draw so the rng stream after the grass is the same
-     * stream High has always used. Low writes a subset; the valley does
-     * not move. */
-    const write = worldKeep >= 1
-      || ((((i + 1) * worldKeep) | 0) !== ((i * worldKeep) | 0));
-    emit(rng, false, write);
   }
-  /*
-   * The second stream. A different seed from the world's 20260811 so the
-   * extra blades do not land on top of the ones the world stream already
-   * placed: the two generators share a multiplier, so the same seed would
-   * reproduce the same sequence and every extra blade would be a duplicate
-   * of a world blade with a different placement rule applied to it.
-   */
-  const extraRng = makeRng(90210077);
-  for (let i = 0; i < BLADES_EXTRA; i += 1) {
-    emit(extraRng, true, true);
-  }
-  const geo = new THREE.BufferGeometry();
-  /* Trimmed by the write cursors, not by made times a constant: a blade is
-   * four vertices and two triangles now, and hard coding the old five and
-   * nine here is how a buffer ends up with a tail of zeroed vertices that
-   * draw a degenerate triangle at the world origin. */
-  geo.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, vi), 3));
-  /* The trailing true is `normalized`: the shader still reads `color` as a
-   * vec3 in [0,1], the byte 255 meaning 1.0. */
-  geo.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, vi), 3, true));
-  geo.setAttribute('aBend', new THREE.BufferAttribute(bend.subarray(0, vi / 3), 1, true));
-  geo.setIndex(new THREE.BufferAttribute(indices.subarray(0, ii), 1));
-  geo.computeBoundingSphere();
-
-  /*
-   * Light for the blades, derived from the scene's own lights rather than
-   * guessed, so a blade matches the ground it grows out of.
-   *
-   * A toon surface facing up receives sunColour x sunIntensity x the
-   * ramp's lit band, plus the hemisphere light's sky colour x its
-   * intensity. In shadow it receives the ramp's cool band instead. Those
-   * two products are GRASS_LIT and GRASS_SHADE, in linear working space,
-   * and the numbers come from SUN_COLOUR 0xffe9c4 at 1.45, the hemisphere
-   * 0x8fb8e8 at 0.42, and the ramp stops in celmat.js. Measured against a
-   * frame afterwards, not asserted: see PROGRESS.md.
-   *
-   * Before this the fragment shader was one line, vec3 col = vColor, with
-   * a comment claiming the sun gain was baked in. It was not, and a
-   * reviewer measured the meadow at 27 percent darker than the terrain
-   * underneath it.
-   */
-  const mat = new THREE.ShaderMaterial({
-    lights: true,
-    uniforms: THREE.UniformsUtils.merge([
-      THREE.UniformsLib.lights,
-      {
-        uTime: { value: 0 },
-        uFogColor: { value: new THREE.Color(HORIZON) },
-        uFogNear: { value: FOG_NEAR },
-        uFogFar: { value: FOG_FAR },
-        uSun: { value: SUN_DIR.clone() },
-        uQuad: { value: new THREE.Vector3(0, -100, 0) },
-        uWash: { value: 0 },
-        uLit: { value: new THREE.Vector3(1.568, 1.300, 0.938) },
-        uShade: { value: new THREE.Vector3(0.331, 0.463, 0.719) },
-        uCloud: { value: 0.34 },
-      },
-    ]),
-    side: THREE.DoubleSide,
-    vertexShader: /* glsl */ `
-      #include <common>
-      #include <shadowmap_pars_vertex>
-      attribute float aBend;
-      varying vec3 vColor;
-      varying float vFog;
-      varying float vBend;
-      varying vec3 vWorld;
-      uniform float uTime;
-      uniform vec3 uQuad;
-      uniform float uWash;
-      void main() {
-        vColor = color;
-        vBend = aBend;
-        vec3 p = position;
-        // gusts: a slow travelling wave across the field plus a fast
-        // flutter, both keyed to world position so blades move as a mass
-        float gust = sin(p.x * 0.045 + p.z * 0.03 + uTime * 1.1);
-        float flutter = sin(p.x * 0.9 + p.z * 0.7 + uTime * 5.5);
-        float amp = aBend * aBend;
-        /* Tip travel used to reach 0.461 m, which is 1.9 to 5.1 times the
-         * blade's OWN height: a blade cannot throw its tip twice its length,
-         * and the near field read as a floor of half metre ribbons rather than
-         * as grass. Capped at about a quarter of blade height. */
-        p.x += (gust * 0.050 + flutter * 0.012) * amp;
-        p.z += (gust * 0.030 + flutter * 0.010) * amp;
-        p.y -= abs(gust) * 0.05 * amp;
-        // propwash: grass under the craft blasts radially outward and
-        // flattens, hardest directly below, gone a few metres out. This
-        // is the strongest low altitude speed and height cue there is.
-        vec2 dq = p.xz - uQuad.xz;
-        float dHor = length(dq);
-        float wash = uWash
-          * (1.0 - smoothstep(0.4, 3.4, dHor))
-          * (1.0 - smoothstep(1.0, 7.5, uQuad.y - p.y));
-        if (wash > 0.001) {
-          vec2 dir = dHor > 0.05 ? dq / dHor : vec2(1.0, 0.0);
-          float shake = sin(uTime * 29.0 + p.x * 7.3 + p.z * 5.1);
-          p.x += dir.x * wash * amp * (0.85 + 0.3 * shake);
-          p.z += dir.y * wash * amp * (0.85 + 0.3 * shake);
-          p.y -= wash * amp * 0.4;
-        }
-        /* The shadow chunks want a world position and a normal to offset
-         * along. Blades stand on the ground, so up is the right normal for
-         * the bias, and it is only used for the bias. */
-        vec4 worldPosition = modelMatrix * vec4(p, 1.0);
-        vWorld = worldPosition.xyz;
-        vec3 transformedNormal = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));
-        #include <shadowmap_vertex>
-        vec4 mv = viewMatrix * worldPosition;
-        vFog = -mv.z;
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      #include <common>
-      #include <packing>
-      #include <shadowmap_pars_fragment>
-      /* getShadowMask reads a bool called receiveShadow, which the
-       * renderer declares for its own materials and not for a raw
-       * ShaderMaterial. This grass always receives shadows, so define it
-       * rather than plumb a uniform nothing would ever set to false. */
-      #define receiveShadow true
-      #include <shadowmask_pars_fragment>
-      ${CLOUD_SHADOW_GLSL}
-      varying vec3 vColor;
-      varying float vFog;
-      varying float vBend;
-      varying vec3 vWorld;
-      uniform vec3 uFogColor;
-      uniform float uFogNear;
-      uniform float uFogFar;
-      uniform vec3 uLit;
-      uniform vec3 uShade;
-      uniform float uCloud;
-      uniform float uTime;
-      void main() {
-        /* The same two light products the terrain gets, so a blade is the
-         * value of the ground plus a little, never a darker rash on it. */
-        float lit = getShadowMask();
-        lit *= 1.0 - uCloud * celCloudShadow(vWorld.xz, uTime);
-        /* Roots sit in the field's own occlusion, tips catch the sun. A
-         * shallow ramp: a steep one turns a meadow into stripes. */
-        lit *= 0.74 + 0.26 * vBend;
-        vec3 col = vColor * mix(uShade, uLit, lit);
-        float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-        gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
-      }
-    `,
-  });
-  mat.vertexColors = true;
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  return { mesh, mat, bladeHeightRange: [bladeMin, bladeMax] };
+  return { bladeHeightRange: [bladeMin, bladeMax] };
 }
 
 /*
@@ -1874,6 +1503,42 @@ function gateCue(clearW, clearH) {
 }
 
 /*
+ * A scoring square with no PVC: the pass side of a flag or a cone.
+ *
+ * Same lit outline, halo, glow and green pane a real opening wears, so the
+ * next-gate paint and the race test cannot disagree about where the hole
+ * is. Resting colour is the start green rather than the cream of a PVC
+ * gate, because this square is the thing the pilot has to fly through and
+ * it has no frame to read it against.
+ */
+function virtualGate(clearW, clearH) {
+  const g = new THREE.Group();
+  const marks = apertureMarkers(g, [0], clearW, clearH, 1, true, 0);
+  /* A real gate hides this pane until it is next. A flag's square IS the
+   * thing the pilot has to fly through, so it stays up. */
+  marks.cue.visible = true;
+  return {
+    group: g,
+    kindName: 'virtualGate',
+    top: clearH,
+    animate: [marks.ring, marks.halo, marks.glow, marks.cue],
+    ringMat: marks.ring.material,
+    haloMat: marks.halo.material,
+    glowMat: marks.glow.material,
+    glowMesh: marks.glow,
+    cueGroup: marks.cue,
+    fillMat: marks.fillMat,
+    ringColor: marks.ringColor,
+    apertures: [{
+      shape: 'square', index: 0, sillH: 0, centreY: clearH * 0.5, clearW, clearH,
+    }],
+    primary: 0,
+    aperture: { shape: 'square', index: 0, sillH: 0, centreY: clearH * 0.5, clearW, clearH },
+    colliders: [],
+  };
+}
+
+/*
  * A library obstacle's BUILT dimensions, named.
  *
  * src/game/track.js keeps MultiGP's figures as citations and GATE_SCALE is
@@ -2164,6 +1829,31 @@ function circuitGuidePoints(curve) {
   return pts;
 }
 
+/* Fly height of a station's scored opening, for the ground-arrow cue. */
+function stationFlyHeight(spec, apertureIndex) {
+  const clearH = spec.clearH || 0;
+  const sill = spec.sillH || 0;
+  const stack = Math.max(1, spec.stack || 1);
+  const pitch = spec.levelPitch || (clearH + BUILT_FRAME_TUBE_OD);
+  let idx = 0;
+  if (apertureIndex != null) {
+    idx = Math.min(Math.max(0, apertureIndex), stack - 1);
+  }
+  return sill + idx * pitch + clearH * 0.5;
+}
+
+function circuitGuideCues(placements) {
+  return placements
+    .map((st) => ({
+      x: st.x,
+      z: st.z,
+      y: stationFlyHeight(st.spec, st.primary),
+      kind: st.isStart ? 'start' : 'gate',
+      order: st.plateIndex,
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
 /*
  * Everything on a designed course that is NOT flown through: barriers, turn
  * flags and cones.
@@ -2299,6 +1989,37 @@ function coursePlacements(course) {
   const byElement = new Map();
   const out = [];
   course.stations.forEach((st, i) => {
+    if (st.virtual) {
+      out.push({
+        virtual: true,
+        spec: {
+          kindName: st.type,
+          clearW: st.clearW,
+          clearH: st.clearH,
+          sillH: 0,
+          stack: 1,
+        },
+        x: st.x,
+        z: st.z,
+        baseY: st.baseY,
+        yaw: st.yaw,
+        pitch: 0,
+        isStart: false,
+        plateIndex: i,
+        primary: 0,
+        elementId: st.elementId,
+        stations: [{
+          flyOrder: i,
+          apertureIndex: 0,
+          yaw: st.yaw,
+          pitch: 0,
+          cue: st.cue ?? '',
+          elementId: st.elementId,
+          virtual: true,
+        }],
+      });
+      return;
+    }
     let pl = byElement.get(st.elementId);
     if (!pl) {
       const structure = st.structure;
@@ -2321,7 +2042,7 @@ function coursePlacements(course) {
          * planes, which is what it is on a real field. */
         yaw: st.yaw,
         pitch: st.pitch,
-        isStart: i === 0,
+        isStart: course.stations.findIndex((s) => !s.virtual) === i,
         plateIndex: i,
         primary: st.apertureIndex,
         elementId: st.elementId,
@@ -2406,13 +2127,14 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   pivot.position.set(0, centreY, 0);
   /*
    * Sign. The station's pitch is the dip of the direction of travel, and
-   * travel is minus the frame's own normal, so a frame that is dived
-   * through leans its normal UP by the same angle. Rotating the pivot about
-   * its local x by -pitch takes local +z to (0, sin pitch, cos pitch)
-   * reflected through the travel convention; the one line that has to agree
-   * with race.js is this one, and the check in tests asserts it.
+   * travel is minus the frame's own normal. Rotating the pivot about its
+   * local x by +pitch takes local +z to the document's aperture normal,
+   * which is the same plane race.js scores against. The previous minus
+   * sign leaned the hoop the other way: a 55 degree dive gate's mesh and
+   * its scoring plane were 110 degrees apart, so flying the green square
+   * never crossed the test.
    */
-  pivot.rotation.x = -pitch;
+  pivot.rotation.x = pitch;
   g.add(pivot);
 
   const halfW = clearW * 0.5;
@@ -2447,13 +2169,12 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   /*
    * Colliders for the tilted frame, in the OBSTACLE's frame rather than the
    * pivot's, because the placement code transforms one frame and knows
-   * nothing about pivots. Rotating a point (0, y, z) about x by -pitch gives
-   * (0, y cos p + z sin p, -y sin p + z cos p); z is zero for every one of
-   * these, so it is one cosine and one sine each.
+   * nothing about pivots. Rotating a point (0, y, 0) about x by +pitch gives
+   * (0, y cos p, y sin p); adding the pivot height is the rest.
    */
   const cp = Math.cos(pitch);
   const sp = Math.sin(pitch);
-  const at = (x, y) => ({ x, y: centreY + y * cp, z: -y * sp });
+  const at = (x, y) => ({ x, y: centreY + y * cp, z: y * sp });
   for (const sy of [-1, 1]) {
     const a = at(-(halfW + tubeR), sy * (halfH + tubeR));
     const b = at(halfW + tubeR, sy * (halfH + tubeR));
@@ -3252,26 +2973,8 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   const occluders = [];
   const water0 = water(height);
   scene.add(water0.mesh);
-  const grass = grassField(height, samples, rng, pitch, q.field);
-  /* Layer 1 is the no ink layer, excluded from the outline prepass.
-   * Grass belongs here: a per blade outline turns a field into a pile of
-   * glass shards, and the blades are far too thin to need a silhouette. */
-  grass.mesh.layers.set(2);
-  /* Blades do not cast: 184000 of them in the shadow map would cost more
-   * than it buys, and the terrain's own cast shadow already grounds the
-   * field. The count in this comment said 46000, which was the blade count
-   * before round 3 of the previous loop quadrupled it.
-   *
-   * receiveShadow is set below and it is a no operation, which is a real
-   * defect and not a stale comment: the grass material is a ShaderMaterial
-   * computing its own sun term, so three.js sets the flag and nothing
-   * reads it. Measured by a reviewer, blades standing inside a tree's cast
-   * shadow are 0.125 against 0.132 for blades outside it, while the ground
-   * under the same shadow is 0.012. The flag is left set because it is
-   * what the fix will need; the fix is a shadow map lookup in the grass
-   * fragment shader and it is not this round's item. */
-  grass.mesh.receiveShadow = true;
-  scene.add(grass.mesh);
+  /* Walks the world rng so the valley does not move. No mesh. */
+  const grass = grassField(samples, rng, pitch);
   const noInkBaker = makeBaker();
   noInkBaker.bake(clouds(rng));
   /* Layer 0, not the no ink layer. Clouds used to write no depth into the
@@ -3425,15 +3128,17 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   for (let i = 0; i < placements.length; i += 1) {
     const st = placements[i];
     const flyOrder = st.plateIndex;
-    const made = Math.abs(st.pitch) > 1e-6
-      ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit })
-      : obstacle(st.spec, flyOrder, st.isStart, {
-        primary: st.primary,
-        kit,
-        flagSigns: st.flagSigns,
-        flagH: st.flagH,
-        flagPoleR: st.flagPoleR,
-      });
+    const made = st.virtual
+      ? virtualGate(st.spec.clearW, st.spec.clearH)
+      : (Math.abs(st.pitch) > 1e-6
+        ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit })
+        : obstacle(st.spec, flyOrder, st.isStart, {
+          primary: st.primary,
+          kit,
+          flagSigns: st.flagSigns,
+          flagH: st.flagH,
+          flagPoleR: st.flagPoleR,
+        }));
     const g = made.group;
     const y = height(st.x, st.z) + st.baseY;
     const yaw = st.yaw;
@@ -3555,6 +3260,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         wantW: st.spec.clearW,
         wantH: st.spec.clearH,
         flyOrder: station.flyOrder,
+        virtual: Boolean(st.virtual),
       });
     }
   }
@@ -3566,19 +3272,19 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   }
 
   /*
-   * Athletic paint on the ground: a dashed taut-string line, an arrow on
-   * the approach to each gate, and a solid wrap on the fly side of every
-   * flag. Designed courses bring the guide already converted; the built
-   * in circuit samples its own curve in the direction it is flown, which
-   * is against the parameter, so a mark in front of gate 13 is in front
-   * of the gate the pilot actually meets second.
+   * Athletic paint on the ground: a dashed taut-string line, arrows only
+   * at a height decision (two side by side: go up, one: stay low), and a
+   * wrap on an isolated flag. Designed courses bring the guide already
+   * converted; the built in circuit samples its own curve in the direction
+   * it is flown, which is against the parameter, so a mark in front of
+   * gate 13 is in front of the gate the pilot actually meets second.
    */
   {
     const guide = course
       ? (course.guide || null)
       : guideFromPolyline(circuitGuidePoints(curve), {
-        holes: placements.map((st) => ({ x: st.x, z: st.z, r: 1.15 })),
-        cues: placements.map((st) => ({ x: st.x, z: st.z, kind: 'gate' })),
+        holes: placements.map((st) => ({ x: st.x, z: st.z, r: 1.15, kind: 'gate' })),
+        cues: circuitGuideCues(placements),
       });
     const marks = guide ? buildGuideMesh(guide, height, pitch) : null;
     if (marks) {
@@ -3594,6 +3300,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * shipping a barn door, which is what the old 3.5 m torus was.
    */
   for (const gt of gates) {
+    if (gt.virtual) {
+      continue;
+    }
     for (const ap of gt.apertures) {
       if (Math.abs(ap.clearW - gt.wantW) > 0.01 || Math.abs(ap.clearH - gt.wantH) > 0.01) {
         throw new Error(
@@ -3620,7 +3329,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       gt.haloMat.opacity = 0.34;
       gt.glowMat.uniforms.uGain.value = 0.08;
       if (gt.cueGroup) {
-        gt.cueGroup.visible = false;
+        gt.cueGroup.visible = Boolean(gt.virtual);
       }
     }
     nextGateIdx = i;
@@ -3788,9 +3497,11 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.3) {
         continue;
       }
-      /* Hug the ground: floating half a metre up they read as z fighting
-       * rectangles, not flowers in the grass. */
-      const y = height(x, z) + 0.06 + rng() * 0.1;
+      /* Hug the dirt. These used to sit 6 to 16 cm up so they poked out of
+       * the grass canopy. Blades are not drawn, so that lift is a field of
+       * floating chips. A centimetre or two clears the terrain without
+       * z fighting. Same rng draw, shorter lift. */
+      const y = height(x, z) + 0.012 + rng() * 0.018;
       const w = 0.045 + rng() * 0.035;
       cc.set(petals[Math.floor(rng() * petals.length)]);
       const base = v / 3;
@@ -4090,12 +3801,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     sun.target.updateMatrixWorld();
   }
 
-  function updateWind(t, quadPos, wash) {
-    grass.mat.uniforms.uTime.value = t;
-    if (quadPos) {
-      grass.mat.uniforms.uQuad.value.copy(quadPos);
-      grass.mat.uniforms.uWash.value = wash ?? 0;
-    }
+  function updateWind(t) {
     water0.mat.uniforms.uTime.value = t;
     /* This is what flies the flags now. Every sail's wave is a function of
      * this clock and the vertex's own world position, computed in the cel
@@ -4189,9 +3895,11 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     /*
      * Reference objects, measured off the built world rather than restated.
      * The gate aperture is read out of the torus the scene actually drew, and
-     * the grass is measured because a 0.26 to 0.68 m blade beside a 1.524 m
-     * opening is exactly the scale error this project has already shipped
-     * once. tests/lib/checks.js check 15 asserts them.
+     * grass blade height is still measured off the world rng walk even though
+     * blades are not drawn: a 0.26 to 0.68 m blade beside a 1.524 m opening
+     * is the scale error this project has already shipped once, and the
+     * check has to keep seeing the authored size. tests/lib/checks.js check
+     * 15 asserts them.
      */
     references: {
       /* 1.524 is MultiGP's published 5 ft opening; the course is BUILT at

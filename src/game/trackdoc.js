@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf,
 } from '../trackbuilder/model.js';
@@ -142,7 +142,8 @@ function builtDims(dims) {
  *   spawn       where the quad is parked, from the start pads
  *   line        the racing line as scene points, which the terrain uses to
  *               flatten its corridor
- *   guide       the taut-string ground marks: dashes, gate arrows, flag wraps
+ *   guide       the taut-string ground marks: dashes, sparse height-coded
+ *               arrows (one stay low, two go up), isolated flag wraps
  *   warnings    anything the game itself could not honour
  *
  * Never throws. A document it cannot use yields a course with no stations,
@@ -154,8 +155,8 @@ export function courseFromDocument(raw) {
   const field = doc.field;
   const warnings = [...repairs];
 
-  /* One structure per element. Markers and barriers are here too: they are
-   * built and they are solid, they are simply never flown through. */
+  /* One structure per element. Markers stand on the field; flags and cones
+   * also score, through a virtual square on the pass side. */
   const structures = [];
   const byElement = new Map();
   for (const el of doc.elements) {
@@ -200,12 +201,58 @@ export function courseFromDocument(raw) {
   const path = buildPath(doc);
   const stations = [];
   for (const knot of path.knots) {
-    if (knot.role !== 'aperture' || !knot.seq) {
+    if (!knot.seq) {
       continue;
     }
     const el = elementById(doc, knot.seq.elementId);
     const structure = byElement.get(knot.seq.elementId);
     if (!el || !structure) {
+      continue;
+    }
+
+    if (knot.role === 'marker') {
+      /*
+       * A FLAG OR A CONE SCORES AS A VIRTUAL GATE on the pass side the
+       * sequence named. The square sits on the racing-line knot, inner
+       * edge on the pole, and the race field draws it as the same green
+       * pane a real opening wears. Waypoints keep a clearance of zero
+       * and are skipped: they pin the line, they are not a hole.
+       */
+      if (el.type === 'waypoint') {
+        continue;
+      }
+      const clearance = knot.seq.clearance ?? 0;
+      if (clearance < 0.05) {
+        continue;
+      }
+      const dims = virtualApertureDims(el, knot.seq);
+      const t = knot.tangent;
+      const travel = { x: t.x, y: t.z, z: -t.y };
+      const heading = headingForTravel(travel.x, travel.z);
+      const pos = toScene(field, knot.pos);
+      stations.push({
+        elementId: el.id,
+        structure,
+        apertureIndex: 0,
+        flyOrder: stations.length,
+        x: pos.x,
+        z: pos.z,
+        baseY: knot.pos.z,
+        centreY: dims.centerH,
+        clearW: dims.clearW,
+        clearH: dims.clearH,
+        yaw: heading == null ? structure.yaw : heading,
+        pitch: 0,
+        name: structure.name,
+        type: el.type,
+        entry: 1,
+        cue: '',
+        virtual: true,
+      });
+      continue;
+    }
+
+    if (knot.role !== 'aperture') {
       continue;
     }
     const apertures = aperturesOf(el);
@@ -253,6 +300,7 @@ export function courseFromDocument(raw) {
       type: el.type,
       entry: knot.seq.entry,
       cue: '',
+      virtual: false,
     });
   }
 
@@ -403,7 +451,7 @@ function stampFigures(doc, field, stations) {
 function sceneKnots(knots, field) {
   return knots.map((k) => {
     const p = toScene(field, k.pos);
-    const out = { role: k.role, x: p.x, z: p.z, radius: 0 };
+    const out = { role: k.role, x: p.x, z: p.z, y: k.pos.z, radius: 0 };
     if (k.role === 'marker' && k.markerPos) {
       const pole = toScene(field, k.markerPos);
       out.poleX = pole.x;

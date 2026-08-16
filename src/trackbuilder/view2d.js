@@ -33,7 +33,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, flagSideOf, flagSideSigns } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter,
 } from './model.js';
@@ -795,6 +795,29 @@ export class View2D {
     const at = add(el.position, scale(left, (seq.clearance ?? 0) * passOffsetSign(seq.passSide)));
     const p = this.toScreen(at);
     const ang = Math.atan2(-u.y, u.x);
+
+    if ((seq.clearance ?? 0) >= 0.05) {
+      const dims = virtualApertureDims(el, seq);
+      /* The virtual gate, in plan: a green bar the width of the scoring
+       * square, sitting on the pass side. A vertical square collapses to a
+       * bar the same way a real gate does. */
+      const hw = dims.clearW / 2;
+      const hd = 0.18;
+      const corners = [
+        add(at, add(scale(left, -hw), scale(u, -hd))),
+        add(at, add(scale(left, hw), scale(u, -hd))),
+        add(at, add(scale(left, hw), scale(u, hd))),
+        add(at, add(scale(left, -hw), scale(u, hd))),
+      ].map((q) => this.toScreen(q));
+      ctx.beginPath();
+      corners.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(125, 255, 180, 0.22)';
+      ctx.fill();
+      ctx.strokeStyle = C.entry;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     /* The clearance circle, so the radius is a thing you can see and not a
      * number in a panel. */

@@ -41,10 +41,10 @@ import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
 import { RAD, DEG } from './geometry.js';
-import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight } from './elements.js';
+import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight, virtualApertureDims } from './elements.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { courseFromDocument } from '../game/trackdoc.js';
-import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
+import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
@@ -415,8 +415,7 @@ function suiteGuide() {
   check('no knots, no paint', empty.samples.length === 0 && empty.dashes.length === 0);
 
   /* Left turn: gate, flag, gate. The quad passes on the flag's right, so
-   * the painted wrap and the chevron have to sit on that side, not on the
-   * inside of the L. */
+   * the painted wrap has to sit on that side, not on the inside of the L. */
   const turn = createTrack();
   const t0 = place(turn, 'gate', 0, 0);
   const fl = place(turn, 'flag', 10, 0);
@@ -427,25 +426,28 @@ function suiteGuide() {
   const turnPath = buildPath(turn);
   const turnGuide = guideFromKnots(knotsFromPath(turnPath));
   check('a left turn still produces a line', turnGuide.samples.length > 10, `${turnGuide.samples.length} samples`);
-  check('and paints a wrap at the flag', turnGuide.flagArcs.length === 1, `${turnGuide.flagArcs.length} wraps`);
-  check('and puts an arrow on the approach to each gate',
-    turnGuide.arrows.filter((a) => a.kind === 'gate').length >= 2,
-    `${turnGuide.arrows.map((a) => a.kind).join(',')}`);
+  check('and paints a wrap at the isolated flag', turnGuide.flagArcs.length === 1, `${turnGuide.flagArcs.length} wraps`);
+  check('and puts one stay-low arrow on the lap, not one per gate',
+    turnGuide.arrows.length >= 1
+    && turnGuide.arrows.every((a) => a.lanes === 1)
+    && turnGuide.arrows.filter((a) => a.kind === 'gate').length <= 1,
+    `${turnGuide.arrows.map((a) => `${a.kind}:${a.lanes}`).join(',')}`);
 
   const wrap = turnGuide.flagArcs[0];
   const pole = { x: 10, z: 0 };
+  const flyKnot = turnPath.knots.find((k) => k.role === 'marker');
+  const fly = flyKnot ? { x: flyKnot.pos.x, z: flyKnot.pos.y } : pole;
   if (wrap) {
     const radii = wrap.points.map((p) => Math.hypot(p.x - pole.x, p.z - pole.z));
     const meanR = radii.reduce((a, b) => a + b, 0) / radii.length;
     check('the wrap sits on the clearance circle',
       Math.abs(meanR - 1.5) < 0.08, `mean ${meanR.toFixed(3)} m`);
-    /* Pass side is right: knot is south-east of the flag. The chevron
-     * must be on that half, not north of the pole on the inside. */
-    check('the chevron is on the fly side, not the inside of the turn',
-      wrap.chevron.z < pole.z - 0.4,
-      `chevron z ${wrap.chevron.z.toFixed(2)}, pole ${pole.z}`);
-    const wrong = wrap.points.filter((p) => (p.x - pole.x) * (wrap.chevron.x - pole.x)
-      + (p.z - pole.z) * (wrap.chevron.z - pole.z) < 0).length;
+    const midZ = wrap.points.reduce((s, p) => s + p.z, 0) / wrap.points.length;
+    check('the wrap sits on the fly side, not the inside of the turn',
+      (midZ - pole.z) * (fly.z - pole.z) > 0,
+      `wrap mean z ${midZ.toFixed(2)}, fly ${fly.z.toFixed(2)}, pole ${pole.z}`);
+    const wrong = wrap.points.filter((p) => (p.x - pole.x) * (fly.x - pole.x)
+      + (p.z - pole.z) * (fly.z - pole.z) < 0).length;
     check('the painted comma does not go the wrong side of the flag',
       wrong === 0, `${wrong} of ${wrap.points.length} points on the back side`);
   }
@@ -456,14 +458,56 @@ function suiteGuide() {
   const minR = Math.min(...near.map((s) => Math.hypot(s.x - pole.x, s.z - pole.z)));
   check('the taut string does not run through the flag',
     minR > 1.2, `closest ${minR.toFixed(3)} m`);
+  check('and no arrow sits on the flag',
+    turnGuide.arrows.every((a) => Math.hypot(a.x - pole.x, a.z - pole.z) > 3.5),
+    turnGuide.arrows.map((a) => Math.hypot(a.x - pole.x, a.z - pole.z).toFixed(2)).join(','));
 
-  const demo = guideFromKnots(knotsFromPath(buildPath(demoTrack())));
+  /* Three flags 2.5 m apart: a slalom. Wrapping every pole stacked. */
+  const slalom = createTrack();
+  const sg0 = place(slalom, 'gate', 0, 0);
+  const sf1 = place(slalom, 'flag', 8, 0);
+  const sf2 = place(slalom, 'flag', 10.5, 0);
+  const sf3 = place(slalom, 'flag', 13, 0);
+  const sg1 = place(slalom, 'gate', 22, 0);
+  for (const el of [sg0, sf1, sf2, sf3, sg1]) {
+    addToSequence(slalom, el.id, 0);
+  }
+  applyAutoFaces(slalom);
+  const slalomGuide = guideFromKnots(knotsFromPath(buildPath(slalom)));
+  check('a tight flag slalom does not paint a wrap on every pole',
+    slalomGuide.flagArcs.length === 0, `${slalomGuide.flagArcs.length} wraps`);
+  const slalomPoles = [[8, 0], [10.5, 0], [13, 0]];
+  const stacked = slalomGuide.arrows.filter((a) => slalomPoles.some(
+    ([x, z]) => Math.hypot(a.x - x, a.z - z) < 3.5,
+  ));
+  check('and does not stack arrows on those flags',
+    stacked.length === 0, `${stacked.length} arrows on flags`);
+
+  const demoPath = buildPath(demoTrack());
+  const demo = guideFromKnots(knotsFromPath(demoPath));
+  const demoApertures = demoPath.knots.filter((k) => k.role === 'aperture').length;
+  check('the demo tower is a go-up height',
+    demoPath.knots.some((k) => k.role === 'aperture' && k.pos.z >= GUIDE.highM));
   check('the demo lap has dashes', demo.dashes.length > 8, `${demo.dashes.length} dashes`);
-  check('the demo lap has gate arrows',
-    demo.arrows.some((a) => a.kind === 'gate'), `${demo.arrows.length} arrows`);
-  check('the demo lap wraps its turn flag', demo.flagArcs.length >= 1, `${demo.flagArcs.length} wraps`);
+  check('the demo lap has fewer arrows than gates',
+    demo.arrows.length > 0 && demo.arrows.length < demoApertures,
+    `${demo.arrows.length} arrows, ${demoApertures} gates`);
+  check('a dual arrow marks the climb to the tower',
+    demo.arrows.some((a) => a.lanes === 2),
+    demo.arrows.map((a) => `${a.kind}:${a.lanes}`).join(','));
+  check('a single arrow marks a low stretch',
+    demo.arrows.some((a) => a.lanes === 1),
+    demo.arrows.map((a) => `${a.kind}:${a.lanes}`).join(','));
+  check('the demo lap wraps its isolated turn flag', demo.flagArcs.length >= 1, `${demo.flagArcs.length} wraps`);
   check('and tessellates into paint triangles',
     tessellateGuide(demo).length >= 60, `${tessellateGuide(demo).length} verts`);
+
+  const dual = { x: 0, z: 0, hx: 1, hz: 0, kind: 'gate', lanes: 2 };
+  const single = { x: 0, z: 0, hx: 1, hz: 0, kind: 'gate', lanes: 1 };
+  const emptyPaint = { dashes: [], flagArcs: [], arrows: [] };
+  check('two side-by-side arrows tessellate as a pair',
+    tessellateGuide({ ...emptyPaint, arrows: [dual] }).length
+    === tessellateGuide({ ...emptyPaint, arrows: [single] }).length * 2);
 
   const course = courseFromDocument(demoTrack());
   check('the course carries a guide in scene metres',
@@ -472,6 +516,10 @@ function suiteGuide() {
   check('and at least one flag wrap survived the frame conversion',
     course.guide && course.guide.flagArcs.length >= 1,
     course.guide ? `${course.guide.flagArcs.length} wraps` : 'missing');
+  check('and the converted guide still codes height on its arrows',
+    course.guide && course.guide.arrows.some((a) => a.lanes === 2)
+    && course.guide.arrows.some((a) => a.lanes === 1),
+    course.guide ? course.guide.arrows.map((a) => `${a.kind}:${a.lanes}`).join(',') : 'missing');
 }
 
 function suiteWarnings() {
@@ -983,6 +1031,129 @@ function suiteStartBlock() {
  * author pinned, and if it ever reaches the race field it becomes an
  * obstacle that is not on the real course.
  */
+function raceFromCourse(course) {
+  return new Race(course.stations.map((st, i) => ({
+    position: { x: st.x, y: 0, z: st.z },
+    heading: st.yaw,
+    pitch: st.pitch ?? 0,
+    flyOrder: i,
+    elementId: st.elementId,
+    apertureIndex: st.apertureIndex,
+    kindName: st.type,
+    virtual: Boolean(st.virtual),
+    apertures: [{ centreY: st.centreY, clearW: st.clearW, clearH: st.clearH }],
+    aperture: { centreY: st.centreY, clearW: st.clearW, clearH: st.clearH },
+  })));
+}
+
+function flyAlong(g, toward = 1) {
+  const ap = g.apertures[0];
+  const cy = g.y + ap.centreY;
+  const s = toward >= 0 ? 1 : -1;
+  return {
+    prev: { x: g.x - g.az.x * 2 * s, y: cy - g.az.y * 2 * s, z: g.z - g.az.z * 2 * s },
+    curr: { x: g.x + g.az.x * 2 * s, y: cy + g.az.y * 2 * s, z: g.z + g.az.z * 2 * s },
+  };
+}
+
+function suiteScoring() {
+  console.log('\ngate scoring');
+
+  const dv = createTrack();
+  const high = place(dv, 'tower', 0, 0);
+  const dive = place(dv, 'diveGate', 10, 0, { pitch: 55 * RAD });
+  const low = place(dv, 'gate', 20, 0);
+  for (const el of [high, dive, low]) {
+    addToSequence(dv, el.id, 0);
+  }
+  const diveCourse = courseFromDocument(dv);
+  const diveSt = diveCourse.stations.find((s) => s.type === 'diveGate');
+  check('a tilted dive gate is a scoring station', Boolean(diveSt), 'missing');
+  check('its travel dips below the horizontal', diveSt && diveSt.pitch < -0.2,
+    diveSt ? `${(diveSt.pitch * DEG).toFixed(1)} deg` : 'missing');
+  const diveRace = raceFromCourse(diveCourse);
+  const diveGate = diveRace.gates.find((g) => g.kindName === 'diveGate');
+  check('the race built a dive gate', Boolean(diveGate));
+  diveRace.next = diveRace.gates.indexOf(diveGate);
+  const diveSeg = flyAlong(diveGate);
+  const diveHit = diveRace.update(diveSeg.prev, diveSeg.curr, 10, 10);
+  check('flying down through a tilted dive gate registers', diveHit.passed != null,
+    `passed ${diveHit.passed}`);
+
+  const reverse = raceFromCourse(diveCourse);
+  const revG = reverse.gates.find((g) => g.kindName === 'diveGate');
+  reverse.next = reverse.gates.indexOf(revG);
+  const back = flyAlong(revG, -1);
+  const backHit = reverse.update(back.prev, back.curr, 10, 10);
+  check('flying the dive gate the wrong way does not register', backHit.passed == null,
+    `passed ${backHit.passed}`);
+
+  const turn = createTrack();
+  const t0 = place(turn, 'gate', 0, 0);
+  const fl = place(turn, 'flag', 10, 0);
+  const t1 = place(turn, 'gate', 10, 10);
+  addToSequence(turn, t0.id, 0);
+  addToSequence(turn, fl.id, 0);
+  addToSequence(turn, t1.id, 0);
+  const flagCourse = courseFromDocument(turn);
+  const flagSt = flagCourse.stations.find((s) => s.type === 'flag');
+  check('a flag in the order is a virtual gate', Boolean(flagSt && flagSt.virtual));
+  const dims = virtualApertureDims(fl, turn.sequence[1]);
+  check('the square is twice the clearance wide', flagSt && Math.abs(flagSt.clearW - dims.clearW) < 1e-9,
+    flagSt ? `${flagSt.clearW}` : 'missing');
+  const flagRace = raceFromCourse(flagCourse);
+  const flagG = flagRace.gates.find((g) => g.virtual);
+  check('the race scores the flag square', Boolean(flagG && flagG.virtual));
+  /* First station is the lead-in gate. Fly it so the flag is next. */
+  const g0 = flagRace.gates[0];
+  const lead = flyAlong(g0);
+  flagRace.update(lead.prev, lead.curr, 10, 10);
+  check('the flag is next after the lead-in', flagRace.next === flagRace.gates.indexOf(flagG),
+    `next ${flagRace.next}`);
+  const flagSeg = flyAlong(flagG);
+  const flagHit = flagRace.update(flagSeg.prev, flagSeg.curr, 20, 20);
+  check('flying the pass-side square registers the flag', flagHit.passed != null,
+    `passed ${flagHit.passed}`);
+
+  const missFlag = raceFromCourse(flagCourse);
+  missFlag.update(lead.prev, lead.curr, 10, 10);
+  const pole = flagCourse.structures.find((s) => s.type === 'flag');
+  const other = {
+    prev: { x: pole.x - flagG.az.x * 2, y: flagG.y + flagG.apertures[0].centreY, z: pole.z - flagG.az.z * 2 },
+    curr: { x: pole.x + flagG.az.x * 2, y: flagG.y + flagG.apertures[0].centreY, z: pole.z + flagG.az.z * 2 },
+  };
+  const missHit = missFlag.update(other.prev, other.curr, 20, 20);
+  check('flying the other side of the pole does not register the flag', missHit.passed == null,
+    `passed ${missHit.passed}`);
+
+  const edge = createTrack();
+  const a = place(edge, 'gate', 0, 0);
+  const b = place(edge, 'gate', 10, 0);
+  addToSequence(edge, a.id, 0);
+  addToSequence(edge, b.id, 0);
+  const edgeCourse = courseFromDocument(edge);
+  const edgeRace = raceFromCourse(edgeCourse);
+  const eg = edgeRace.gates[0];
+  const eap = eg.apertures[0];
+  const cy = eg.y + eap.centreY;
+  /* A line through the opening 5 cm inside the left stile, along travel.
+   * The old test shrank the hole by the craft radius and this missed. */
+  const inset = eap.clearW * 0.5 - 0.05;
+  const prev = {
+    x: eg.x + eg.ax.x * inset - eg.az.x * 2,
+    y: cy - eg.az.y * 2,
+    z: eg.z + eg.ax.z * inset - eg.az.z * 2,
+  };
+  const curr = {
+    x: eg.x + eg.ax.x * inset + eg.az.x * 2,
+    y: cy + eg.az.y * 2,
+    z: eg.z + eg.ax.z * inset + eg.az.z * 2,
+  };
+  const edgeHit = edgeRace.update(prev, curr, 10, 10);
+  check('a line through the opening near the stile still registers', edgeHit.passed != null,
+    `passed ${edgeHit.passed}`);
+}
+
 function suiteWaypoint() {
   console.log('\nwaypoint');
   const doc = createTrack();
@@ -1036,6 +1207,7 @@ function main() {
   suiteFigures();
   suiteFlaggedGate();
   suiteFlaggedDoubleStack();
+  suiteScoring();
   suiteWaypoint();
   suiteSchemaDoc();
   suiteListing();

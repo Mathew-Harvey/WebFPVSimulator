@@ -28,8 +28,9 @@
 #
 # `simplified_tuning apply` below is a real CLI command and this simulator
 # runs Betaflight's own config/simplified_tuning.c on it. The sliders
-# above it produce roll P38 I81 D35 Dmax21 F126 and pitch P41 I89 D40
-# Dmax23 F137, and the lines below it override what they are meant to.
+# above it produce roll P38 I51 D35 Dmax21 F125 and pitch P41 I56 D40
+# Dmax23 F137 after the I-gain cut this file documents at the slider
+# block. Published karate_race.txt produced I81 / I89.
 #
 # WHAT THIS SIMULATOR CANNOT GIVE THE TUNE, stated plainly because half of
 # a race tune is its filter tune:
@@ -178,7 +179,16 @@ set thrust_linear = 0
 set throttle_boost = 2
 
 # ---- karate_race.txt, I term ----
-set iterm_relax_cutoff = 45
+#
+# Published karate_race.txt sets 45. That is correct on a real 5 inch, where
+# the craft is noisy and I has to keep working through a flip. On this plant
+# a cutoff of 45 lets I wind for the whole stick throw and dump it as reverse
+# rate when the stick centres: measured bounce -53 deg/s on a 50 ms ramp
+# against the default tune's -8, with the same 65 ms stop. 15 is
+# Betaflight's own default and is what I-term relax is for. The stop stays
+# Karate-quick; only the twitch the other way goes. Do not put 45 back
+# without a pilot saying the bounce is gone.
+set iterm_relax_cutoff = 15
 
 # ---- karate_race.txt, PID sum limits ----
 #
@@ -196,8 +206,16 @@ set iterm_limit = 500
 set pidsum_limit_yaw = 1000
 
 # ---- karate_race.txt, PID values through the sliders ----
+#
+# Published karate_race.txt sets simplified_i_gain 120, which produces roll
+# I 81. That is almost the default's 80, but Karate's P is 38 against 45, so
+# a held flip overshoots the commanded rate and I winds the other way for
+# the whole throw. On centre that I is the twitch. 75 produces I 51, which
+# with feedforward_boost 10 lands bounce on a 50 ms throw at the default's
+# -8 deg/s, and on an instant step at the default's -22, without moving the
+# 59 ms stop. The published 120 is for a noisier real quad.
 set simplified_pids_mode = RP
-set simplified_i_gain = 120
+set simplified_i_gain = 75
 set simplified_d_gain = 70
 set simplified_pi_gain = 85
 set simplified_dmax_gain = 200
@@ -213,10 +231,16 @@ set tpa_rate = 70
 set tpa_breakpoint = 1250
 
 # ---- presets/4.3/rc_link/generic/250hz_race.txt ----
+#
+# Published 250hz_race.txt sets feedforward_boost 18. On a 50 ms stick
+# release that was a reverse kick of -17 deg/s after I-term relax was
+# already at 15. 10 is still a race boost, default is 15, and 10 is the
+# value that matches the default's bounce without slowing the stop. 0 was
+# worse, not better: the stop then undershoots and I dumps late.
 set feedforward_averaging = 2_POINT
 set feedforward_smooth_factor = 35
 set feedforward_jitter_factor = 4
-set feedforward_boost = 18
+set feedforward_boost = 10
 set rc_smoothing_auto_factor = 25
 set rc_smoothing_auto_factor_throttle = 25
 

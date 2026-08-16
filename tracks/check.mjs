@@ -46,7 +46,7 @@ import { fileURLToPath } from 'node:url';
 
 import { readCourse } from './course.mjs';
 import { docYaw } from './trk.mjs';
-import { TRK_FILES } from './sources.mjs';
+import { CHECK_TRACKS } from './sources.mjs';
 import {
   deserialize, aperturesOf, kindOf, apertureCenter, entryAnchor, elementNormal, startPadsOf,
 } from '../src/trackbuilder/model.js';
@@ -127,8 +127,10 @@ function segmentGap(p, q) {
   return best;
 }
 
-for (const spec of TRK_FILES) {
-  const course = readCourse(await readFile(join(here, spec.file), 'utf8'), spec.name);
+for (const spec of CHECK_TRACKS) {
+  const course = spec.file
+    ? readCourse(await readFile(join(here, spec.file), 'utf8'), spec.name)
+    : null;
   const { doc, error } = deserialize(await readFile(join(here, 'json', `${spec.id}.json`), 'utf8'));
   if (error) {
     check(spec.name, 'the document reads back', false, error);
@@ -138,8 +140,14 @@ for (const spec of TRK_FILES) {
   check(spec.name, 'the document reads back with no repairs needed',
     deserialize(JSON.stringify(doc)).repairs.length === 0);
 
+  if (!course) {
+    check(spec.name, 'exactly one start grid',
+      doc.elements.filter((e) => kindOf(e) === KIND.START).length === 1);
+  }
+
   /* ---- ORDER ---- */
-  const flown = course.stops.filter((s) => s.repeatOf == null);
+  const flown = course ? course.stops.filter((s) => s.repeatOf == null) : [];
+  if (course) {
   check(spec.name, 'every checkpoint that is not a consecutive repeat is flown',
     doc.sequence.length === flown.length, `${doc.sequence.length} entries against ${flown.length} stops`);
 
@@ -166,7 +174,12 @@ for (const spec of TRK_FILES) {
     const site = course.sites[stop.siteId];
     /* A site is the mean of its members, so a stack that leans is allowed to
      * sit between its own holes. Everything else is exact. */
-    const slack = site.members.length > 1 ? 1.0 : 0.002;
+    /* Markers that sat in a hole are parked at the nearest leg. The
+     * corridor is 4.2 m along the normal, so the pole can move that far
+     * plus a gate-half across. Apertures stay millimetre exact. */
+    const slack = kindOf(el) === KIND.MARKER
+      ? 4.5
+      : (site.members.length > 1 ? 1.0 : 0.002);
     check(spec.name, `stop ${stop.order} stands where the file puts it`,
       dx <= slack && dy <= slack, `${dx.toFixed(3)}, ${dy.toFixed(3)} m out`);
 
@@ -236,6 +249,7 @@ for (const spec of TRK_FILES) {
     doc.elements.length === course.sites.length + loose.length + pads,
     `${doc.elements.length} against ${course.sites.length} + ${loose.length} + ${pads}`);
   check(spec.name, 'exactly one start grid', pads === 1);
+  }
 
   /*
    * NOTHING STANDS INSIDE ANYTHING ELSE.
@@ -262,8 +276,27 @@ for (const spec of TRK_FILES) {
     }
   }
 
-  /* And a marker is not standing in a gate's opening either. */
+  /* And a marker is not standing in a gate's opening either. Distance to
+   * the frame line misses a pole on the centreline: 1.5 m in front of the
+   * hole is 1.5 m from the PVC and still the thing you hit. So the corridor
+   * through the opening fails too. */
   for (const m of doc.elements.filter((e) => e.type === 'flag' || e.type === 'cone')) {
+    for (const el of solid) {
+      if ((el.position.z || 0) + 3 < (m.position.z || 0) - 0.05) {
+        continue;
+      }
+      const frame = apertureFrame(el.yaw, 0);
+      const dx = m.position.x - el.position.x;
+      const dy = m.position.y - el.position.y;
+      const alongN = dx * frame.normal.x + dy * frame.normal.y;
+      const alongW = dx * frame.widthAxis.x + dy * frame.widthAxis.y;
+      /* Same unscaled opening the converter parks against. GATE_SCALE is
+       * the race-field mesh, not the document's own metres. */
+      const half = (el.dims.clearW || 1.524) / 2;
+      const inCorridor = Math.abs(alongW) < half * 0.5 && Math.abs(alongN) < 4.2;
+      check(spec.name, `${m.name || m.type} is not on the centreline of ${el.name || el.type}`,
+        !inCorridor, `${alongN.toFixed(2)} m along the normal, ${alongW.toFixed(2)} m across`);
+    }
     for (const p of prints) {
       if (p.hiZ < m.position.z - 0.05) {
         continue;
@@ -271,6 +304,57 @@ for (const spec of TRK_FILES) {
       const gap = pointSegment({ ...m.position, z: 0 }, p.a, p.b).dist;
       check(spec.name, `${m.name || m.type} is not standing in ${p.label}`,
         gap > 0.25, `${gap.toFixed(2)} m from the frame`);
+    }
+  }
+
+  /* Two parallel gates side by side, a third at 90 degrees in front of
+   * them, is the wall reported from the cockpit. */
+  for (let i = 0; i < solid.length; i += 1) {
+    if (solid[i].type === 'diveGate') {
+      continue;
+    }
+    for (let j = i + 1; j < solid.length; j += 1) {
+      if (solid[j].type === 'diveGate') {
+        continue;
+      }
+      const a = solid[i];
+      const b = solid[j];
+      const dx = b.position.x - a.position.x;
+      const dy = b.position.y - a.position.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1.5 || dist > 6.5) {
+        continue;
+      }
+      const fa = apertureFrame(a.yaw, 0);
+      const fb = apertureFrame(b.yaw, 0);
+      if (Math.abs(fa.normal.x * fb.normal.x + fa.normal.y * fb.normal.y) < 0.85) {
+        continue;
+      }
+      if (Math.abs(fa.widthAxis.x * dx + fa.widthAxis.y * dy) / dist < 0.7) {
+        continue;
+      }
+      const midX = (a.position.x + b.position.x) / 2;
+      const midY = (a.position.y + b.position.y) / 2;
+      for (const c of solid) {
+        if (c.id === a.id || c.id === b.id || c.type === 'diveGate') {
+          continue;
+        }
+        const fc = apertureFrame(c.yaw, 0);
+        if (Math.abs(fa.normal.x * fc.normal.x + fa.normal.y * fc.normal.y) > Math.cos((50 * Math.PI) / 180)) {
+          continue;
+        }
+        const da = Math.hypot(c.position.x - a.position.x, c.position.y - a.position.y);
+        const db = Math.hypot(c.position.x - b.position.x, c.position.y - b.position.y);
+        if (Math.min(da, db) > 4) {
+          continue;
+        }
+        const alongN = (c.position.x - midX) * fa.normal.x + (c.position.y - midY) * fa.normal.y;
+        if (Math.abs(alongN) < 0.3 || Math.abs(alongN) > 4) {
+          continue;
+        }
+        check(spec.name, `${c.name || c.type} is not a 90 degree wall in front of ${a.name} and ${b.name}`,
+          false, `${Math.min(da, db).toFixed(2)} m in front of the pair`);
+      }
     }
   }
 
@@ -331,6 +415,7 @@ for (const spec of TRK_FILES) {
       apertureIndex: st.apertureIndex,
       apertures: [{ centreY: st.centreY, clearW: st.clearW, clearH: st.clearH }],
       aperture: { centreY: st.centreY, clearW: st.clearW, clearH: st.clearH },
+      virtual: Boolean(st.virtual),
     }));
     const race = new Race(raceGates);
     const g0 = race.gates[0];
@@ -353,19 +438,28 @@ for (const spec of TRK_FILES) {
      * tolerance is the lane offset plus slop rather than zero: a constant
      * that is identical on all nine courses is a property of the start block,
      * not of any of them.
+     *
+     * The timing gate, not a flag's virtual square: the pads face the first
+     * real opening, and a course that leads with a marker still starts
+     * there.
      */
     const spawn = built.spawn;
     const pads = doc.elements.find((e) => kindOf(e) === KIND.START);
+    const timing = race.gates[race.timingIdx] ?? g0;
     if (spawn && pads) {
       const lane = Math.abs(startBlockLaneOffset(pads.dims));
-      const vx = spawn.x - g0.x;
-      const vz = spawn.z - g0.z;
-      const along = vx * g0.az.x + vz * g0.az.z;
-      const across = Math.abs(vx * g0.ax.x + vz * g0.ax.z);
+      const vx = spawn.x - timing.x;
+      const vz = spawn.z - timing.z;
+      const along = vx * timing.az.x + vz * timing.az.z;
+      const across = Math.abs(vx * timing.ax.x + vz * timing.ax.z);
       check(spec.name, 'the grid is behind the first gate, not in front of it',
         along < 0, `${along.toFixed(2)} m along the axis`);
       check(spec.name, 'the grid is square to the first gate, not off to one side',
         across <= lane + 0.15, `${across.toFixed(2)} m off the axis, lane is ${lane.toFixed(2)}`);
+      /* Must match GRID_BACK in convert.mjs. Measured at the spawn, whose
+       * along-axis distance is the pad standoff: the lane offset is across. */
+      check(spec.name, 'the grid is at least 15 m behind the first gate',
+        -along >= 15 - 0.05, `${(-along).toFixed(2)} m behind`);
     }
   }
 
@@ -407,7 +501,9 @@ for (const spec of TRK_FILES) {
     }
     const n = elementNormal(el);
     const dot = ((n.x * seq.entry) * dx + (n.y * seq.entry) * dy) / len;
-    if (dot < 0) {
+    /* Same cutoff as FLOW_AWAY in convert.mjs: a square corner after the
+     * hole is not "away from the next one". */
+    if (dot < -0.2) {
       anti.push(`${el.name || el.type} at position ${i} points ${(Math.acos(Math.max(-1, dot)) * DEG).toFixed(0)} deg away from the next one`);
     }
   }

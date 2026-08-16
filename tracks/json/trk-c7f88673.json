@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-c7f88673",
   "name": "2023 AU NATS 5 inch",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 108,
     "depth": 86,
@@ -530,7 +530,7 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 72.2,
+        "x": 84,
         "y": 70.13,
         "z": 0
       },
@@ -612,10 +612,10 @@
       "id": "sq-8",
       "elementId": "el-8",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-9",

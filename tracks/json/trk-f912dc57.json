@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "id": "trk-f912dc57",
   "name": "2024 WA States",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 106,
     "depth": 74,
     "gridSize": 1
   },
   "settings": {
-    "tangentScale": 0.86,
+    "tangentScale": 0.74,
     "minCurveRadius": 2.5,
     "samplesPerSegment": 48
   },
@@ -563,7 +563,7 @@
         "clearH": 1.524,
         "levelPitch": 1.557401
       },
-      "flagSide": "left"
+      "flagSide": "right"
     },
     {
       "id": "el-29",
@@ -594,9 +594,9 @@
         "y": 63.765,
         "z": 0
       },
-      "yaw": -1.676803,
+      "yaw": -2.831819,
       "pitch": 0,
-      "yawOverridden": true,
+      "yawOverridden": false,
       "dims": {
         "levels": 2,
         "sillH": 0,
@@ -700,8 +700,8 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 8.101379,
-        "y": 45.799034,
+        "x": 7.811462,
+        "y": 57.595472,
         "z": 0
       },
       "yaw": -1.546225,
@@ -773,7 +773,7 @@
       "id": "sq-7",
       "elementId": "el-7",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
       "overridden": true
@@ -872,10 +872,10 @@
       "id": "sq-18",
       "elementId": "el-17",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-19",
@@ -998,10 +998,10 @@
       "id": "sq-32",
       "elementId": "el-29",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-37",

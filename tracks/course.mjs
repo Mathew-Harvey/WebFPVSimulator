@@ -366,24 +366,118 @@ export function readCourse(text, displayName) {
       [s.x - before.x, s.z - before.z],
       [after.x - s.x, after.z - s.z],
     ];
+    /*
+     * A SHORT LEG TO ANOTHER GATE IS A TUNNEL, and the heading has to agree
+     * with that leg, not with a long swing-in from the side.
+     *
+     * The entry-OR-exit test is right at a corner: arriving from the side
+     * and leaving straight through is a normal manoeuvre, and condemning the
+     * entrance of 2025 WA States' five gate tunnel on the bisector was the
+     * bug that put this rule in. It is the wrong test inside the tunnel.
+     * 2023 MultiGP GQ's gates 10 and 12 sit 3.6 m apart in a line with gate
+     * 11, which this pass had already aimed along the line. Their authored
+     * normals agreed with the long arrival (or the long departure) and so
+     * they stayed 90 degrees to the tunnel: two gates facing the camera and
+     * a wall between them. From the cockpit that is "a 90 degree gate right
+     * in front of two gates side by side".
+     *
+     * So a neighbour that is itself a gate, within a gate-and-a-bit, wins.
+     * The long swing-in is ignored for that decision, and the heading is
+     * aimed along that short leg.
+     */
+    const beforeSite = sites[before.siteId];
+    const afterSite = sites[after.siteId];
+    const entryLen = Math.hypot(legs[0][0], legs[0][1]);
+    const exitLen = Math.hypot(legs[1][0], legs[1][1]);
+    const tunnel = [];
+    if (entryLen > 0.5 && entryLen < 5.5 && beforeSite?.role === 'gate') {
+      tunnel.push(legs[0]);
+    }
+    if (exitLen > 0.5 && exitLen < 5.5 && afterSite?.role === 'gate') {
+      tunnel.push(legs[1]);
+    }
+    const use = tunnel.length ? tunnel : legs;
     let best = 0;
-    for (const [dx, dz] of legs) {
+    let aim = null;
+    let judged = false;
+    for (const [dx, dz] of use) {
       const len = Math.hypot(dx, dz);
-      if (len < 1) {
+      if (len < (tunnel.length ? 0.5 : 1)) {
         continue;
       }
-      best = Math.max(best, Math.abs((Math.sin(site.heading) * dx + Math.cos(site.heading) * dz) / len));
+      judged = true;
+      const along = Math.abs((Math.sin(site.heading) * dx + Math.cos(site.heading) * dz) / len);
+      if (along >= best) {
+        best = along;
+        aim = [dx / len, dz / len];
+      }
     }
-    const exit = legs[1];
-    const exitLen = Math.hypot(exit[0], exit[1]);
-    if (best > 0 && best < UNFLYABLE && exitLen > 1) {
+    if (judged && best < UNFLYABLE && aim) {
       site.headingTrusted = false;
-      /* Aim it down the way the lap leaves. For a site flown once the
-       * builder's own auto face rule refines this from the racing line; for
-       * one flown more than once it will not rotate the structure at all, so
-       * this is the answer it keeps. */
-      site.heading = Math.atan2(exit[0] / exitLen, exit[1] / exitLen);
+      /* Aim it down the way the lap leaves, or along the tunnel if that is
+       * what was judged. For a site flown once the builder's own auto face
+       * rule refines this from the racing line; for one flown more than once
+       * it will not rotate the structure at all, so this is the answer it
+       * keeps. */
+      site.heading = Math.atan2(aim[0], aim[1]);
       site.headingDerived = true;
+    }
+  }
+
+  /*
+   * Two parallel gates side by side with a third at 90 degrees in front:
+   * that third heading is not usable. 2025 WA States 25 and 27 face the
+   * same way 3.9 m apart; 26 sits in front of them square-on, close enough
+   * that its side panel is the thing you hit. Mark it derived so the import
+   * does not pin the wall, and aim it with the pair. convert.mjs repeats the
+   * same geometry on the document as a safety net for the hand-built plan.
+   */
+  const gateSites = sites.filter((t) => t.role === 'gate');
+  for (let i = 0; i < gateSites.length; i += 1) {
+    for (let j = i + 1; j < gateSites.length; j += 1) {
+      const a = gateSites[i];
+      const b = gateSites[j];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 1.5 || dist > 6.5) {
+        continue;
+      }
+      const aNx = Math.sin(a.heading);
+      const aNz = Math.cos(a.heading);
+      const bNx = Math.sin(b.heading);
+      const bNz = Math.cos(b.heading);
+      if (Math.abs(aNx * bNx + aNz * bNz) < 0.85) {
+        continue;
+      }
+      const alongW = Math.abs(aNz * dx - aNx * dz) / dist;
+      if (alongW < 0.7) {
+        continue;
+      }
+      const midX = (a.x + b.x) / 2;
+      const midZ = (a.z + b.z) / 2;
+      for (const c of gateSites) {
+        if (c.id === a.id || c.id === b.id) {
+          continue;
+        }
+        const cNx = Math.sin(c.heading);
+        const cNz = Math.cos(c.heading);
+        if (Math.abs(aNx * cNx + aNz * cNz) > Math.cos((50 * Math.PI) / 180)) {
+          continue;
+        }
+        const da = Math.hypot(c.x - a.x, c.z - a.z);
+        const db = Math.hypot(c.x - b.x, c.z - b.z);
+        if (Math.min(da, db) > 4) {
+          continue;
+        }
+        const alongN = (c.x - midX) * aNx + (c.z - midZ) * aNz;
+        if (Math.abs(alongN) < 0.3 || Math.abs(alongN) > 4) {
+          continue;
+        }
+        c.headingTrusted = false;
+        c.heading = a.heading;
+        c.headingDerived = true;
+      }
     }
   }
 

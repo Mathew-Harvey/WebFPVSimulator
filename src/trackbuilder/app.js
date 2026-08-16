@@ -57,7 +57,7 @@ import { RAD } from './geometry.js';
 import { boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation } from '../share/board.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
-  clearShareImport, readEditKey, readShareImport, takeBuilderIntent,
+  clearShareImport, readBuilderIntent, readEditKey, readShareImport, takeBuilderIntent,
 } from '../share/session.js';
 import {
   bindOwnedCanvas,
@@ -104,6 +104,13 @@ export class App {
   /* ---------------- lifecycle ---------------- */
 
   restore() {
+    /* Start new map is chosen in the simulator before this page loads, so
+     * the autosave must not come back as the canvas they asked to leave. */
+    const intent = readBuilderIntent();
+    if (intent && intent.kind === 'new') {
+      this.doc = createTrack();
+      return;
+    }
     const saved = readAutosave();
     if (saved && saved.doc) {
       this.doc = saved.doc;
@@ -118,6 +125,12 @@ export class App {
 
   async adoptIncomingShare() {
     try {
+      const intent = takeBuilderIntent();
+      if (intent && intent.kind === 'new') {
+        clearShareImport();
+        this.loadDocument(createTrack(), 'New map.');
+        return;
+      }
       let share = readShareImport();
       const params = new URLSearchParams(window.location.search);
       if (params.get('share')) {
@@ -131,7 +144,6 @@ export class App {
       if (!share || !share.document) {
         share = readShareImport() || share;
       }
-      const intent = takeBuilderIntent();
       if (!share || !share.document) {
         return;
       }

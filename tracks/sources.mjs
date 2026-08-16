@@ -43,3 +43,12 @@ export const TRK_FILES = [
   { file: 'ROX OPEN 2023.trk', name: 'ROX Open 2023' },
   { file: 'FAI Turkiye Drone Race 2024 Istanbul.trk', name: 'FAI Turkiye 2024' },
 ].map((spec) => ({ ...spec, id: trackId(spec.name) }));
+
+/* Courses built from a published diagram rather than a .trk. convert.mjs
+ * writes these next to the imports, and check.mjs has to walk them too or a
+ * flag in a hole on the hand-built 2022 MultiGP GQ never fails a check. */
+export const PLAN_TRACKS = [
+  { name: '2022 MultiGP GQ' },
+].map((spec) => ({ ...spec, id: trackId(spec.name) }));
+
+export const CHECK_TRACKS = [...TRK_FILES, ...PLAN_TRACKS];

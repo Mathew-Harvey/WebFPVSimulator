@@ -2328,49 +2328,14 @@ export function buildOutcrops(ctx, spots) {
 /**
  * 野草 -- tussocks of rough grass.
  *
- * Three tapered blades per tuft, leaning apart.  They are the only thing in the
- * world at the 0.3 m scale on open ground, and the crow lesson applies: under
- * 0.3 m a prop reads as a dot, so these are 0.42-0.72 m and the blades are
- * splayed enough to carry a silhouette at ten metres.  Two tones, instanced,
- * `flat: false` for the same reason the reeds need it -- at blade thickness you
- * only ever see one facet and a flat-shaded facet turned from the sun is nearly
- * black.
+ * Not drawn. Callers still collect spots so the planting rng, and
+ * everything hung off it, does not move. The race field made the same
+ * cut: blades cost a shadow-caster pass for a texture the pilot does
+ * not need.
  */
 export function buildTufts(ctx, spots) {
-  if (!spots.length) return;
-  const blade = new THREE.ConeGeometry(0.055, 1, 4, 1);
-  blade.translate(0, 0.5, 0);
-  const lists = [[], []];
-  for (const s of spots) {
-    const rng = rngKit(s.seed ?? 77);
-    const n = s.n ?? 5;
-    const yOf = s.yAt ?? hillMeshY;          // see `buildOutcrops`
-    for (let k = 0; k < n; k++) {
-      const px = s.x + rng.range(-1, 1) * (s.spread ?? 1.4);
-      const pz = s.z + rng.range(-1, 1) * (s.spread ?? 1.4);
-      const y = yOf(px, pz);
-      const hh = rng.range(0.42, 0.72) * (s.scale ?? 1);
-      for (let b = 0; b < 3; b++) {
-        const a = rng.range(0, 6.3);
-        const lean = rng.range(0.12, 0.42);
-        lists[(k + b) % 2].push(trs(
-          px + Math.cos(a) * 0.05, y, pz + Math.sin(a) * 0.05,
-          lean * Math.sin(a), 0, -lean * Math.cos(a),
-          rng.range(0.8, 1.2), hh, rng.range(0.8, 1.2)
-        ));
-      }
-    }
-  }
-  const tone = [PAL.hillGrassDeep, 0xb2c894];
-  lists.forEach((list, k) => {
-    if (!list.length) return;
-    const inst = new THREE.InstancedMesh(
-      blade, cel({ color: tone[k], bands: 3, tint: 0x5b6f8c, flat: false }), list.length);
-    list.forEach((mx, idx) => inst.setMatrixAt(idx, mx));
-    inst.castShadow = true;
-    inst.name = 'hillTuft' + k;
-    ctx.add(inst);
-  });
+  void ctx;
+  void spots;
 }
 
 /* -------------------------------- moss patches -------------------------------- */

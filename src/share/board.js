@@ -82,8 +82,33 @@ export function setBoardOrigin(origin) {
   return value;
 }
 
-export function boardPageUrl(origin = boardOrigin()) {
-  return `${trimOrigin(origin)}/`;
+function usableBoardOrigin(origin) {
+  const trimmed = trimOrigin(origin);
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    const here = trimOrigin(window.location.origin);
+    /* The board is a different site. Opening this page (the simulator)
+     * as the board is how Choose new map reloaded the sim in a new tab. */
+    if (here && trimmed === here) {
+      return '';
+    }
+  } catch (e) {
+    /* No window, as in Node. */
+  }
+  return trimmed;
+}
+
+/* An omitted, empty, or same-origin value must not become "/". That is
+ * this page. `boardPageUrl(null)` also does not use a default argument,
+ * because only undefined does, and Choose new map passes share.board,
+ * which is null when nothing from the board is loaded. */
+export function boardPageUrl(origin) {
+  const base = usableBoardOrigin(origin)
+    || usableBoardOrigin(boardOrigin())
+    || DEFAULT_BOARD_ORIGIN;
+  return `${base}/`;
 }
 
 export function flyUrl(trackId, origin = boardOrigin()) {

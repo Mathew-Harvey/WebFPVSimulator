@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-ca60325f",
   "name": "ROX Open 2023",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 64,
     "depth": 103,
@@ -406,9 +406,9 @@
         "y": 17.99,
         "z": 0
       },
-      "yaw": -1.310185,
+      "yaw": -2.347134,
       "pitch": 0,
-      "yawOverridden": true,
+      "yawOverridden": false,
       "dims": {
         "levels": 1,
         "sillH": 0,
@@ -538,8 +538,8 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 9.828283,
-        "y": 32.221656,
+        "x": 12.476951,
+        "y": 20.722762,
         "z": 0
       },
       "yaw": 1.797189,

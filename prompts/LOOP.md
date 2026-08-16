@@ -109,6 +109,49 @@ the verify output table, and anything you got wrong and had to undo.
 
 ---
 
+## Loop C: Configurator gauntlet
+
+Fresh session, after the plant and the CLI path already fly. The
+agent is Grok. The prompt is `prompts/fc-configurator-loop.md`.
+
+This is not a green-field physics loop. The controller is already
+compiled Betaflight 4.5.1. The job is a Configurator-shaped settings
+surface on top of the existing `sim_init` dump path, with unavailable
+options greyed out, without a second firmware in JavaScript, and
+without regressing verify.
+
+Paste this into a fresh session:
+
+```
+Read CLAUDE.md, then prompts/fc-configurator-loop.md, in full before
+doing anything.
+
+You are running the Configurator gauntlet in
+prompts/fc-configurator-loop.md. That file is the constitution for
+this loop. Do not rewrite it. Do not reopen the human-pinned
+decisions in it.
+
+Cut branch loop/fc-configurator from current HEAD if you are not
+already on it. Round 1 is the catalog, the WASM dump export, and
+scripts/fc-trace.js. Round 1 is not a screen.
+
+Hard constraints, these are not negotiable:
+- Do not edit anything under tests/.
+- Do not edit vendor/betaflight in place. Patches go in patches/.
+- Do not change the plant, the ABI version, or the 1 kHz step.
+- Do not embed betaflight-configurator, Vue, MSP, or a JS PID.
+- Never report a check as passing without running npm run verify
+  in that same turn.
+- After every turn that changes code, append to PROGRESS.md.
+
+/goal two consecutive adversarial rounds with every F and D item
+PASS, lint:catalog lint:fc lint:presets exit 0, and no physics
+regression. Stop when the rubric is green or every remainder is
+blocked in .loop/blocked.md.
+```
+
+---
+
 ## What the loop cannot tell you
 
 When Loop B goes green, you have a simulator that is deterministic, frame-rate independent, and physically plausible within the bands you set. You do not yet have one that feels right. That gate is human:

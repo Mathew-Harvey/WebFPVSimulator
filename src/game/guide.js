@@ -21,10 +21,12 @@
  *   are points too. The ground mark is the plan of that wrap, which is
  *   the bit that says "go around, then back through".
  *
- * The paint is sparse on purpose. A dashed centreline, an arrow a few
- * metres before each gate, and a solid arc plus chevron on the fly side
- * of every flag. That is what a chapter paints with a marker and a can
- * of athletic white. A continuous stripe would read as a road.
+ * The paint is sparse on purpose. A dashed centreline, and arrows only
+ * where the pilot has a height decision: two arrows side by side means
+ * go up, one arrow means stay low. A comma on the fly side of an
+ * isolated flag shows the pass. Close flags in a slalom get the dashes
+ * only; wrapping every pole with a chevron is how the marks stacked.
+ * A continuous stripe would read as a road.
  *
  * Scene frame, Y up, metres. This file does not import the builder and
  * it does not import Three.js: the field map must not pay for a track
@@ -64,11 +66,22 @@ export const GUIDE = {
   holeGate: 1.15,
   holeStart: 1.7,
   holeFlag: 0.35,
-  /* Arrow sits this far before a gate, along the line, so it is in the
-   * approach the pilot is already looking at and not under the frame. */
-  approach: 5.2,
-  /* A second arrow on a long run with nothing else to aim at. */
-  longRun: 36,
+  /* Arrow sits this far before a height decision, along the line. */
+  approach: 6.8,
+  /* A direction arrow on a long empty run with nothing else to aim at. */
+  longRun: 70,
+  /* Fly height at or above this, metres, is "go up". A standard 5x5
+   * opening centres at 0.76 m; a 5x5 tower centres at 2.29 m. */
+  highM: 2.0,
+  /* Do not sit an arrow this close to a flag pole. The wrap already
+   * talks there, and a second mark is the stacked mess. */
+  flagArrowClear: 4.2,
+  /* Two painted wraps closer than this read as one blob. */
+  wrapCluster: 5.0,
+  /* Euclidean keep-out between arrows, metres. Height changes may sit
+   * closer than a long-run filler. */
+  arrowClear: 5.0,
+  arrowClearRun: 14,
   /* Flag wrap: how much of the clearance circle is painted. A full ring
    * would say "go either side". 120 degrees on the fly side does not. */
   wrapSpan: (120 * Math.PI) / 180,
@@ -76,10 +89,11 @@ export const GUIDE = {
    * on mown turf, which is paler than meadow grass. */
   dashW: 0.30,
   arcW: 0.44,
-  chevW: 0.13,
-  arrowLen: 1.55,
-  arrowW: 0.44,
-  arrowShaft: 0.13,
+  arrowLen: 1.85,
+  arrowW: 0.52,
+  arrowShaft: 0.16,
+  /* Centre to centre of a dual "go up" pair. */
+  pairGap: 0.98,
 };
 
 export function emptyGuide() {
@@ -121,6 +135,19 @@ function onCircle(cx, cz, r, ang) {
 
 function isPeg(k) {
   return k.role === 'marker' && k.radius > 0.25 && k.poleX != null && k.poleZ != null;
+}
+
+function pegCrowded(knots, i) {
+  const a = knots[i];
+  for (let j = 0; j < knots.length; j += 1) {
+    if (j === i || !isPeg(knots[j])) {
+      continue;
+    }
+    if (hypot2(a.poleX - knots[j].poleX, a.poleZ - knots[j].poleZ) < GUIDE.wrapCluster) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /*
@@ -307,7 +334,7 @@ function stringLine(knots) {
 
     const sweep = sweepVia(tin.ang, apexAng, tout.ang);
     pushPoint(pts, tin.x, tin.z);
-    const arcPts = sampleArc(pts, cx, cz, r, tin.ang, sweep);
+    sampleArc(pts, cx, cz, r, tin.ang, sweep);
     pushPoint(pts, tout.x, tout.z);
 
     /* The painted wrap is a window on that arc, centred on the apex, so
@@ -341,38 +368,21 @@ function stringLine(knots) {
         paint.push(onCircle(cx, cz, r, from + dir * tight * (s / steps)));
       }
     }
-    const heading = travelAt(arcPts, apex);
+    /* A slalom of close flags already has the dashed string weaving
+     * through. Painting a comma on every pole stacks the marks. Isolated
+     * flags keep the wrap so the pass side is still named. */
+    if (pegCrowded(knots, i)) {
+      continue;
+    }
     flagArcs.push({
       cx,
       cz,
       r,
       points: paint.map((p) => ({ x: p.x, z: p.z })),
-      chevron: { x: apex.x, z: apex.z, hx: heading.hx, hz: heading.hz },
     });
   }
 
   return { pts, flagArcs };
-}
-
-function travelAt(arcPts, apex) {
-  if (!arcPts.length) {
-    return { hx: 1, hz: 0 };
-  }
-  let i = 0;
-  let best = Infinity;
-  for (let n = 0; n < arcPts.length; n += 1) {
-    const d = hypot2(arcPts[n].x - apex.x, arcPts[n].z - apex.z);
-    if (d < best) {
-      best = d;
-      i = n;
-    }
-  }
-  const a = arcPts[Math.max(0, i - 1)];
-  const b = arcPts[Math.min(arcPts.length - 1, i + 1)];
-  const dx = b.x - a.x;
-  const dz = b.z - a.z;
-  const len = Math.hypot(dx, dz) || 1;
-  return { hx: dx / len, hz: dz / len };
 }
 
 function resample(pts, spacing) {
@@ -514,6 +524,15 @@ function sampleAtS(samples, s) {
   return last;
 }
 
+function farAlong(arrows, s, min) {
+  for (const a of arrows) {
+    if (a.s != null && Math.abs(a.s - s) < min) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function farFrom(arrows, x, z, min) {
   for (const a of arrows) {
     if (hypot2(a.x - x, a.z - z) < min) {
@@ -523,53 +542,106 @@ function farFrom(arrows, x, z, min) {
   return true;
 }
 
+function lanesFor(y) {
+  return (y ?? 0) >= GUIDE.highM ? 2 : 1;
+}
+
+function firstGateY(cues) {
+  for (const c of cues) {
+    if (c.kind === 'gate') {
+      return c.y ?? 0;
+    }
+  }
+  return 0;
+}
+
+function tooCloseToFlag(x, z, holes) {
+  for (const h of holes) {
+    if (h.kind === 'flag' && hypot2(x - h.x, z - h.z) < GUIDE.flagArrowClear) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pickArrowPoint(samples, at, holes, after) {
+  const deltas = after
+    ? [2.2, 4.5, 7.5]
+    : [-GUIDE.approach, -(GUIDE.approach + 3.5), -(GUIDE.approach + 7), 2.6];
+  for (const d of deltas) {
+    const p = sampleAtS(samples, at.s + d);
+    if (!p) {
+      continue;
+    }
+    if (inHole(p.x, p.z, holes) || tooCloseToFlag(p.x, p.z, holes)) {
+      continue;
+    }
+    return p;
+  }
+  return null;
+}
+
+/*
+ * Arrows are a height cue, not a breadcrumb. Two side by side: go up.
+ * One: stay low. Placed on a height change, at the start of the lap,
+ * and on a long empty run. Never on a flag.
+ */
 function layoutArrows(samples, cues, holes) {
   const arrows = [];
   if (samples.length < 2) {
     return arrows;
   }
 
+  const gateY = firstGateY(cues);
+  const cueS = [];
   for (const cue of cues) {
-    const i = nearestSample(samples, cue.x, cue.z);
-    const at = samples[i];
-    if (cue.kind === 'start') {
-      const p = sampleAtS(samples, at.s + 2.2);
-      if (p && farFrom(arrows, p.x, p.z, 3)) {
-        arrows.push({ x: p.x, z: p.z, hx: p.hx, hz: p.hz, kind: 'start' });
-      }
-      continue;
-    }
     if (cue.kind === 'flag') {
-      /* The wrap chevron is the flag's mark. An extra arrow on the
-       * approach would double-print the same decision. */
       continue;
     }
-    /* Gate: sit on the approach, not under the frame. A gate that opens
-     * the lap has no approach, so the arrow sits just after it instead. */
-    let p = sampleAtS(samples, at.s - GUIDE.approach);
-    if (!p || inHole(p.x, p.z, holes) || at.s - p.s < 1.6) {
-      p = sampleAtS(samples, at.s + 2.6);
-    }
-    if (!p || inHole(p.x, p.z, holes)) {
-      continue;
-    }
-    if (farFrom(arrows, p.x, p.z, 3.2)) {
-      arrows.push({ x: p.x, z: p.z, hx: p.hx, hz: p.hz, kind: 'gate' });
-    }
+    const i = nearestSample(samples, cue.x, cue.z);
+    cueS.push({ cue, at: samples[i], s: samples[i].s });
   }
 
-  /* Long empty runs get one arrow so a 40 m straight is not a guess. */
+  let lastLanes = null;
+
+  const tryPush = (p, kind, lanes, min) => {
+    if (!p || !farFrom(arrows, p.x, p.z, min)) {
+      return false;
+    }
+    arrows.push({
+      x: p.x, z: p.z, s: p.s, hx: p.hx, hz: p.hz, kind, lanes,
+    });
+    lastLanes = lanes;
+    return true;
+  };
+
+  for (const row of cueS) {
+    const lanes = row.cue.kind === 'start' ? lanesFor(gateY) : lanesFor(row.cue.y);
+    const initial = lastLanes == null;
+    const changed = lastLanes != null && lanes !== lastLanes;
+    if (!(row.cue.kind === 'start' || initial || changed)) {
+      continue;
+    }
+    const after = row.cue.kind === 'start' || row.s < 1.6;
+    const p = pickArrowPoint(samples, row.at, holes, after);
+    tryPush(p, row.cue.kind === 'start' ? 'start' : 'gate', lanes, GUIDE.arrowClear);
+  }
+
   let next = GUIDE.longRun;
   for (const p of samples) {
     if (p.s < next) {
       continue;
     }
-    next = p.s + GUIDE.longRun;
-    if (inHole(p.x, p.z, holes)) {
+    if (inHole(p.x, p.z, holes) || tooCloseToFlag(p.x, p.z, holes)
+        || !farAlong(arrows, p.s, GUIDE.longRun)) {
+      next = p.s + 2;
       continue;
     }
-    if (farFrom(arrows, p.x, p.z, 16)) {
-      arrows.push({ x: p.x, z: p.z, hx: p.hx, hz: p.hz, kind: 'run' });
+    const lanes = lastLanes ?? 1;
+    if (tryPush(p, 'run', lanes, GUIDE.arrowClearRun)) {
+      next = p.s + GUIDE.longRun;
+    } else {
+      next = p.s + 2;
     }
   }
   return arrows;
@@ -579,11 +651,11 @@ function holesFromKnots(knots) {
   const holes = [];
   for (const k of knots) {
     if (k.role === 'aperture') {
-      holes.push({ x: k.x, z: k.z, r: GUIDE.holeGate });
+      holes.push({ x: k.x, z: k.z, r: GUIDE.holeGate, kind: 'gate' });
     } else if (k.role === 'start' || k.role === 'finish') {
-      holes.push({ x: k.x, z: k.z, r: GUIDE.holeStart });
+      holes.push({ x: k.x, z: k.z, r: GUIDE.holeStart, kind: 'start' });
     } else if (isPeg(k)) {
-      holes.push({ x: k.poleX, z: k.poleZ, r: GUIDE.holeFlag });
+      holes.push({ x: k.poleX, z: k.poleZ, r: GUIDE.holeFlag, kind: 'flag' });
     }
   }
   return holes;
@@ -592,12 +664,13 @@ function holesFromKnots(knots) {
 function cuesFromKnots(knots) {
   const cues = [];
   for (const k of knots) {
+    const y = k.y ?? 0;
     if (k.role === 'aperture') {
-      cues.push({ x: k.x, z: k.z, kind: 'gate' });
+      cues.push({ x: k.x, z: k.z, y, kind: 'gate' });
     } else if (k.role === 'start') {
-      cues.push({ x: k.x, z: k.z, kind: 'start' });
+      cues.push({ x: k.x, z: k.z, y, kind: 'start' });
     } else if (k.role === 'marker') {
-      cues.push({ x: k.x, z: k.z, kind: 'flag' });
+      cues.push({ x: k.x, z: k.z, y, kind: 'flag' });
     }
   }
   return cues;
@@ -618,6 +691,7 @@ function finishGuide(pts, flagArcs, holes, cues) {
  * Knots in scene XZ:
  *   role     'start' | 'aperture' | 'marker' | 'wrap' | 'finish'
  *   x, z     fly point (already offset, for a marker)
+ *   y        fly height, metres, used to pick one arrow or two
  *   poleX, poleZ, radius   only on markers
  */
 export function guideFromKnots(knots) {
@@ -640,7 +714,9 @@ export function guideFromPolyline(points, opts = {}) {
   for (const p of points) {
     pushPoint(pts, p.x, p.z);
   }
-  const holes = (opts.holes || []).map((h) => ({ x: h.x, z: h.z, r: h.r }));
+  const holes = (opts.holes || []).map((h) => ({
+    x: h.x, z: h.z, r: h.r, kind: h.kind || 'gate',
+  }));
   const cues = opts.cues || [];
   return finishGuide(pts, [], holes, cues);
 }
@@ -656,7 +732,7 @@ export function knotsFromPath(path) {
     return [];
   }
   return path.knots.map((k) => {
-    const out = { role: k.role, x: k.pos.x, z: k.pos.y, radius: 0 };
+    const out = { role: k.role, x: k.pos.x, z: k.pos.y, y: k.pos.z, radius: 0 };
     if (k.role === 'marker' && k.markerPos) {
       out.poleX = k.markerPos.x;
       out.poleZ = k.markerPos.y;
@@ -709,39 +785,20 @@ export function tessellateGuide(guide) {
   }
   for (const arc of guide.flagArcs) {
     ribbon(arc.points, GUIDE.arcW * 0.5);
-    const c = arc.chevron;
-    if (c) {
-      const len = Math.hypot(c.hx, c.hz) || 1;
-      const fx = c.hx / len;
-      const fz = c.hz / len;
-      const rx = fz;
-      const rz = -fx;
-      const mk = (ox, oz) => ({
-        x: c.x + fx * ox + rx * oz,
-        z: c.z + fz * ox + rz * oz,
-      });
-      for (const back of [-0.20, 0.10]) {
-        ribbon([
-          mk(back - 0.32, -0.36),
-          mk(back + 0.26, 0),
-          mk(back - 0.32, 0.36),
-        ], GUIDE.chevW * 0.5);
-      }
-    }
   }
-  for (const a of guide.arrows) {
-    const len = Math.hypot(a.hx, a.hz) || 1;
-    const fx = a.hx / len;
-    const fz = a.hz / len;
+  const stampArrow = (x, z, hx, hz) => {
+    const len = Math.hypot(hx, hz) || 1;
+    const fx = hx / len;
+    const fz = hz / len;
     const rx = fz;
     const rz = -fx;
     const half = GUIDE.arrowLen * 0.5;
-    const tipX = a.x + fx * half;
-    const tipZ = a.z + fz * half;
-    const baseX = a.x - fx * 0.12;
-    const baseZ = a.z - fz * 0.12;
-    const backX = a.x - fx * half;
-    const backZ = a.z - fz * half;
+    const tipX = x + fx * half;
+    const tipZ = z + fz * half;
+    const baseX = x - fx * 0.12;
+    const baseZ = z - fz * 0.12;
+    const backX = x - fx * half;
+    const backZ = z - fz * half;
     const hw = GUIDE.arrowW * 0.5;
     const sw = GUIDE.arrowShaft * 0.5;
     tri(
@@ -755,6 +812,19 @@ export function tessellateGuide(guide) {
       baseX + rx * sw, baseZ + rz * sw,
       baseX - rx * sw, baseZ - rz * sw,
     );
+  };
+  for (const a of guide.arrows) {
+    const lanes = a.lanes === 2 ? 2 : 1;
+    if (lanes === 1) {
+      stampArrow(a.x, a.z, a.hx, a.hz);
+      continue;
+    }
+    const len = Math.hypot(a.hx, a.hz) || 1;
+    const rx = a.hz / len;
+    const rz = -a.hx / len;
+    const gap = GUIDE.pairGap * 0.5;
+    stampArrow(a.x + rx * gap, a.z + rz * gap, a.hx, a.hz);
+    stampArrow(a.x - rx * gap, a.z - rz * gap, a.hx, a.hz);
   }
   return tris;
 }

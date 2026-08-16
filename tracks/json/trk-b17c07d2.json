@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-b17c07d2",
   "name": "2023 AU NATS Qualifying",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 45,
     "depth": 80,
@@ -268,8 +268,8 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 38.390001,
-        "y": 42.32,
+        "x": 38.390005,
+        "y": 30.52,
         "z": 0
       },
       "yaw": 1.570797,

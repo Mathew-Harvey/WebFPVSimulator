@@ -68,3 +68,112 @@
 export const CAMERA_FOVS = [75, 85, 95, 105];
 
 export const CAMERA_FOV_DEFAULT = 85;
+
+/*
+ * WHERE THE CAMERA IS BOLTED, in metres in the body frame.
+ *
+ * The FPV view was placed 7.75 cm in front of the centre of gravity and at
+ * exactly its height, while the airframe model in herocraft.js mounts the
+ * camera 8.0 cm forward and 1.8 cm UP. The forward offset is the one that
+ * matters most and it was there; the vertical one was missing, and it is not
+ * nothing. A roll is about the body x axis through the CG, so a camera above
+ * that axis swings sideways as the craft rolls, and at a 670 deg/s roll rate
+ * 1.8 cm of arm is 0.21 m/s of lateral camera motion. That is the parallax
+ * that tells a pilot the lens is on a machine rather than floating at its
+ * centre of mass.
+ *
+ * These live here rather than being typed again in main.js so the view and
+ * the model cannot drift apart, which is how the 7.75 against 8.0 happened.
+ */
+export const CAMERA_MOUNT_FORWARD = 0.080;
+export const CAMERA_MOUNT_UP = 0.018;
+
+/*
+ * LENS SHAKE.
+ *
+ * The plant now has a vibration model, but it lives on the gyro reading,
+ * because the airframe really is a rigid body and what shakes is the plate
+ * the flight controller is bolted to. The camera is bolted to the same plate,
+ * so the pilot should SEE it, and until now the view was perfectly steady
+ * while the controller fought a spectrum of noise.
+ *
+ * THE BAND IS DELIBERATELY LOW. Real vibration is at the prop fundamental,
+ * 130 to 430 Hz, and no display can show that: at 60 frames per second
+ * anything above 30 Hz aliases. What a real FPV feed actually shows is the
+ * beat between the prop frequency and the camera's own frame rate, which is
+ * low frequency and looks random, plus frame flex. So the model is a 3 to 14
+ * Hz band, which is what survives to the screen, rather than a pretend 200 Hz
+ * that would only ever alias into hash.
+ *
+ * Amplitude goes as rotor speed squared, the same imbalance law the gyro
+ * model uses, so it is invisible on the pad, present on the power, and it
+ * grows through a punch. 0.22 degrees RMS at full throttle was about two
+ * and a half pixels of swim at 1080p and 85 degrees of vertical field, and
+ * a pilot flying this build called it too much, the same report as the
+ * gyro injection it is paired with. 0.06 degrees is about two thirds of a
+ * pixel: a hint that the motors are spinning, not a feed you fly through.
+ *
+ * FRAME RATE INDEPENDENCE IS NOT FREE AND ONE CONSTANT WILL NOT DO IT. Both
+ * poles are exact exponentials of the frame's own dt, which handles the
+ * spectrum, but the band's GAIN still moves: measured over four million
+ * samples, the RMS of (fast - slow) runs 0.601 at 30 fps, 0.755 at 60, 0.846
+ * at 144 and 0.871 at 240. That is a 45 percent swing, so a hardcoded divisor
+ * would make the shake grow with the frame rate, which is precisely the class
+ * of bug this project spends its comments on.
+ *
+ * It has a closed form. For an AR(1) f with coefficient a and unit variance,
+ * low passed by an AR(1) s with coefficient b,
+ *
+ *   var(s)     = (1 - b)(1 + ab) / ((1 + b)(1 - ab))
+ *   cov(f, s)  = (1 - b) / (1 - ab)
+ *   var(f - s) = 1 + var(s) - 2 cov(f, s)
+ *
+ * which reproduces the measured 0.7552 at 60 fps exactly. It is evaluated per
+ * frame, which is a dozen flops, and the shake then measures the same at any
+ * rate. Nothing here reaches the simulation, so there is no determinism claim
+ * to break and Math.random is fine.
+ */
+const SHAKE_FAST_HZ = 14;
+const SHAKE_SLOW_HZ = 3;
+const SHAKE_FULL_RAD = 0.06 * Math.PI / 180;
+
+export function makeLensShake() {
+  const fast = [0, 0, 0];
+  const slow = [0, 0, 0];
+  const out = { x: 0, y: 0, z: 0 };
+  return {
+    /*
+     * dtMs is the frame's own wall delta. rpmFraction is mean rotor speed
+     * over its full throttle value, 0 to 1. Returns a small rotation in
+     * radians about the camera's own axes.
+     */
+    update(dtMs, rpmFraction) {
+      const dt = Math.min(Math.max(dtMs, 0), 100) / 1000;
+      const a = Math.exp(-dt * 2 * Math.PI * SHAKE_FAST_HZ);
+      const b = Math.exp(-dt * 2 * Math.PI * SHAKE_SLOW_HZ);
+      const kFast = a;
+      const kSlow = b;
+      const drive = Math.sqrt(1 - a * a);
+      const ab = a * b;
+      const varS = ((1 - b) * (1 + ab)) / ((1 + b) * (1 - ab));
+      const covFS = (1 - b) / (1 - ab);
+      const bandVar = 1 + varS - 2 * covFS;
+      const bandRms = bandVar > 1e-6 ? Math.sqrt(bandVar) : 1;
+      const r = rpmFraction > 0 ? (rpmFraction > 1 ? 1 : rpmFraction) : 0;
+      const amp = (SHAKE_FULL_RAD * r * r) / bandRms;
+      for (let a = 0; a < 3; a += 1) {
+        /* Box-Muller would be tidier; the sum of three uniforms is close
+         * enough to normal for a two pixel effect and is cheaper. */
+        const n = (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+        fast[a] = fast[a] * kFast + drive * n;
+        slow[a] = slow[a] * kSlow + (1 - kSlow) * fast[a];
+      }
+      /* Yaw shakes less than pitch and roll, as on the gyro: the frame is
+       * stiffer about that axis. */
+      out.x = (fast[0] - slow[0]) * amp;
+      out.y = (fast[1] - slow[1]) * amp * 0.6;
+      out.z = (fast[2] - slow[2]) * amp;
+      return out;
+    },
+  };
+}

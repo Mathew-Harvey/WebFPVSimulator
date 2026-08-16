@@ -217,15 +217,20 @@ export function writeBuilderIntent(intent) {
   return writeJson(INTENT_KEY, { kind: String(intent.kind || '') });
 }
 
-export function takeBuilderIntent() {
+export function readBuilderIntent() {
   const raw = readJson(INTENT_KEY, null);
+  if (!raw || typeof raw !== 'object' || !raw.kind) {
+    return null;
+  }
+  return raw;
+}
+
+export function takeBuilderIntent() {
+  const raw = readBuilderIntent();
   try {
     localStorage.removeItem(INTENT_KEY);
   } catch (e) {
     /* nothing to do about it */
-  }
-  if (!raw || typeof raw !== 'object' || !raw.kind) {
-    return null;
   }
   return raw;
 }

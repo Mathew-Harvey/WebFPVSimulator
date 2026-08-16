@@ -615,9 +615,10 @@ export function buildComposer(renderer, scene, camera, quality) {
     renderer.render(scene, camera);
 
     /* Pass two: depth without ink, sentinel normal, into the same target.
-     * Layer 2 is the grass and PREPASS_DEPTH_LAYER is what promoteToPrepass
-     * picked out of layer 1. One render call for both, so the frame still
-     * makes exactly three scene draws and P3 and P4 do not move. */
+     * PREPASS_DEPTH_LAYER is what promoteToPrepass picked out of layer 1.
+     * Layer 2 used to hold the grass field; blades are not drawn. One render
+     * call, so the frame still makes exactly three scene draws and P3 and
+     * P4 do not move. */
     scene.overrideMaterial = grassMaskMaterial;
     camera.layers.mask = (1 << 2) | (1 << PREPASS_DEPTH_LAYER);
     renderer.autoClear = false;

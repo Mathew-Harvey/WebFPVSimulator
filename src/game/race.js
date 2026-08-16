@@ -3,10 +3,10 @@
  * frame contact.
  *
  * Scoring aperture is the glowing RING, not the outer frame: the ring is
- * what a pilot aims at, and at 3.3 m effective diameter it demands a
- * line, where the full 6 by 5 frame was a barn door. Detection is a
- * plane crossing test in the gate's local frame, swept over the segment
- * the craft travelled this frame, so speed cannot tunnel a gate.
+ * what a pilot aims at. Detection is a swept box in the gate's local
+ * frame, the opening extruded a short way along the direction of travel,
+ * so a line through the hole at an angle still counts and a dive gate
+ * scores against the same plane the mesh stands in.
  *
  * Lap times run on the SIMULATION clock, interpolated to the crossing
  * point, not on the wall clock: a frame hitch freezes the quad, and a
@@ -51,14 +51,30 @@
  * more: the frame is solid, collision is src/game/collide.js, and hitting
  * one is a crash. The owner's words were that the gates need to be solid.
  *
- * CRAFT_WORLD_R, not CRAFT_R: the aperture is a world length, measured off
- * the gate the scene drew, so the craft folded into it has to be the craft in
- * the world's metres. Mixing the airframe's own 0.1735 m into a world test
- * would score every gate against a quad a quarter larger than the one flying
- * through it, which is the same class of error as the 0.1885 radius.
+ * The scoring hole is the visible opening, minus a fingernail of margin.
+ * Folding the craft radius in on top of that was a second shrink: a 1.75 m
+ * gate offered 1.40 m, and a clean line near the stile did not count.
+ * Collision already owns a clip of the tube.
  */
-import { CRAFT_WORLD_R } from './collide.js';
 import { fastestLap, fastestThreeConsecutive } from './track.js';
+
+/*
+ * How far the scoring volume sticks out either side of the opening, metres.
+ *
+ * A zero-thickness plane is exact when you fly square through the middle
+ * and silent when you do not: a dive, a split-S, a line that clips the
+ * near edge of a thick hoop, all cross the midplane outside the rectangle
+ * even though the craft went through the hole the pilot can see. Half a
+ * metre of depth is the frame's own thickness plus a little, enough that
+ * a path through the visible opening intersects the box, not enough that
+ * flying past the gate to one side can clip it.
+ */
+const PASS_DEPTH = 0.5;
+/* Keep the scoring hole a fingernail inside the PVC so a pass credited
+ * here is a pass that did not have to tunnel the tube. Collision already
+ * owns a real clip. This is not the craft radius: folding that in stole
+ * 35 cm off a 1.75 m opening and made a clean edge line miss. */
+const PASS_MARGIN = 0.02;
 
 const DEFAULT_KEY = 'webfpv.bestLapMs';
 
@@ -73,7 +89,7 @@ function fmt(ms) {
 
 export class Race {
   /* gates: [{ position: Vector3 (base, on terrain), heading: rad }] in
-   * scene order along the curve, gate 0 the start and finish line.
+   * scene order along the curve. The first non-virtual gate times the lap.
    *
    * The craft spawns facing opposite the curve's parameter direction
    * (verified numerically: spawn forward dot tangent = -1), so the course
@@ -168,8 +184,18 @@ export class Race {
          * built in circuit, which has one station per obstacle. */
         elementId: g.elementId ?? null,
         apertureIndex: g.apertureIndex ?? null,
+        /* A flag or a cone scores as a square on its pass side, with no
+         * PVC. The first real opening is still the timing gate. */
+        virtual: Boolean(g.virtual),
       };
     });
+    this.timingIdx = 0;
+    for (let i = 0; i < this.gates.length; i += 1) {
+      if (!this.gates[i].virtual) {
+        this.timingIdx = i;
+        break;
+      }
+    }
     this.key = DEFAULT_KEY;
     this.bestMs = this.loadBest();
     this.reset();
@@ -301,10 +327,66 @@ export class Race {
     };
   }
 
-  /* Segment prev to curr against the next gate's plane. A pass is a
-   * crossing in the direction of travel whose interpolated crossing
-   * point lies inside the ring, craft radius folded in. Returns the sim
-   * time of the crossing, or null. */
+  /*
+   * Does the travel from local point a to local point b hit this opening?
+   * The opening is an AABB: the visible rectangle extruded PASS_DEPTH either
+   * side of the plane. Forward motion only, so a reverse pass does not
+   * count. Returns the parameter t in [0, 1] at first contact, or -1.
+   */
+  openingHits(a, b, halfW, halfH) {
+    if (!(halfW > 0) || !(halfH > 0)) {
+      return -1;
+    }
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    if (dz <= 1e-9) {
+      return -1;
+    }
+    let t0 = 0;
+    let t1 = 1;
+    const clip = (p, d, lo, hi) => {
+      if (Math.abs(d) < 1e-12) {
+        return p >= lo && p <= hi;
+      }
+      let u0 = (lo - p) / d;
+      let u1 = (hi - p) / d;
+      if (u0 > u1) {
+        const tmp = u0;
+        u0 = u1;
+        u1 = tmp;
+      }
+      if (u0 > t0) {
+        t0 = u0;
+      }
+      if (u1 < t1) {
+        t1 = u1;
+      }
+      return t0 <= t1;
+    };
+    if (!clip(a.x, dx, -halfW, halfW)) {
+      return -1;
+    }
+    if (!clip(a.y, dy, -halfH, halfH)) {
+      return -1;
+    }
+    if (!clip(a.z, dz, -PASS_DEPTH, PASS_DEPTH)) {
+      return -1;
+    }
+    /* Prefer the midplane if the clipped segment actually crosses it, so a
+     * square-on pass times the hole the pilot can see. An angled line that
+     * only clips the thick volume, never z = 0 inside the rectangle, still
+     * counts at first contact. */
+    const tz = -a.z / dz;
+    if (tz >= t0 && tz <= t1) {
+      return tz;
+    }
+    return t0;
+  }
+
+  /* Segment prev to curr against the next gate. A pass is the travel
+   * intersecting the opening's box in the direction of travel. Returns
+   * the sim time of first contact, or null. */
   tryPass(prev, curr, prevSimMs, simMs, wallMs) {
     const g = this.gates[this.next];
     /*
@@ -315,9 +397,11 @@ export class Race {
      * its own centre, and testing them against a plane through the base
      * would score a dive gate against a hole that is not where it is.
      *
-     * A square opening scores as a square, with the craft's own radius
-     * folded in on both axes, so a pass the game credits is a pass the
-     * craft's body actually fits through.
+     * A square opening scores as a square. The test is a swept box, the
+     * visible hole extruded a short way along travel, so a line through
+     * the opening at an angle still counts. The craft radius is not
+     * folded in: collision already owns a clip of the tube, and shrinking
+     * the hole by that radius made a clean edge line miss.
      */
     let used = -1;
     let t = 0;
@@ -325,19 +409,15 @@ export class Race {
       const ap = g.apertures[k];
       const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
       const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
-      if (!(a.z <= 0 && b.z > 0)) {
+      const halfW = ap.clearW * 0.5 - PASS_MARGIN;
+      const halfH = ap.clearH * 0.5 - PASS_MARGIN;
+      const tk = this.openingHits(a, b, halfW, halfH);
+      if (tk < 0) {
         continue;
       }
-      const tk = a.z / (a.z - b.z);
-      const cx = a.x + (b.x - a.x) * tk;
-      const cy = a.y + (b.y - a.y) * tk;
-      const halfW = ap.clearW * 0.5 - CRAFT_WORLD_R;
-      const halfH = ap.clearH * 0.5 - CRAFT_WORLD_R;
-      if (Math.abs(cx) <= halfW && Math.abs(cy) <= halfH) {
-        used = k;
-        t = tk;
-        break;
-      }
+      used = k;
+      t = tk;
+      break;
     }
     if (used < 0) {
       return null;
@@ -346,7 +426,7 @@ export class Race {
     const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
-    if (passed === 0) {
+    if (passed === this.timingIdx) {
       if (this.lapStartMs != null) {
         this.lastLapMs = crossMs - this.lapStartMs;
         this.lap += 1;

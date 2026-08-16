@@ -41,7 +41,8 @@ typedef struct {
   double arm_y;      /* |y| of each motor from CG, metres */
   double kt;         /* thrust coefficient, N per (rad/s)^2 */
   double kq;         /* prop drag torque coefficient, N m per (rad/s)^2 */
-  double ke;         /* back EMF constant, V s/rad, from 1900 kV */
+  double ke;         /* back EMF constant, V s/rad. The LOADED constant, not
+                      * 60/(2 pi kV) off the nameplate; plant.c says why. */
   double r_motor;    /* effective motor plus ESC resistance, ohms */
   double j_rotor;    /* rotor plus prop inertia, kg m^2 */
   double cells;      /* series cells */

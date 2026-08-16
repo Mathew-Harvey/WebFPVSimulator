@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-a75a1bc4",
   "name": "WCMRC Round 5",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 48,
     "depth": 83,
@@ -144,9 +144,9 @@
         "y": 53.406667,
         "z": 0
       },
-      "yaw": 2.182052,
+      "yaw": -1.261476,
       "pitch": 0,
-      "yawOverridden": true,
+      "yawOverridden": false,
       "dims": {
         "levels": 1,
         "sillH": 0,
@@ -164,9 +164,9 @@
         "y": 51.541667,
         "z": 0
       },
-      "yaw": 2.182052,
+      "yaw": -1.709771,
       "pitch": 0,
-      "yawOverridden": true,
+      "yawOverridden": false,
       "dims": {
         "levels": 1,
         "sillH": 0,
@@ -346,8 +346,8 @@
       "type": "flag",
       "name": "30",
       "position": {
-        "x": 6.386667,
-        "y": 7.436667,
+        "x": 4.722627,
+        "y": 6.555997,
         "z": 0.24
       },
       "yaw": -0.441939,
@@ -382,8 +382,8 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 41.544433,
-        "y": 23.303961,
+        "x": 40.319318,
+        "y": 11.567731,
         "z": 0
       },
       "yaw": 1.466786,
@@ -428,10 +428,10 @@
       "id": "sq-4",
       "elementId": "el-4",
       "apertureIndex": 1,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-5",
@@ -464,7 +464,7 @@
       "id": "sq-8",
       "elementId": "el-7",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
       "overridden": false
@@ -473,7 +473,7 @@
       "id": "sq-9",
       "elementId": "el-8",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
       "overridden": false
@@ -581,10 +581,10 @@
       "id": "sq-21",
       "elementId": "el-4",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-22",
@@ -617,7 +617,7 @@
       "id": "sq-25",
       "elementId": "el-8",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
       "overridden": true
@@ -626,7 +626,7 @@
       "id": "sq-26",
       "elementId": "el-7",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
       "overridden": false
@@ -663,7 +663,7 @@
       "elementId": "el-19",
       "apertureIndex": null,
       "entry": null,
-      "passSide": "right",
+      "passSide": "left",
       "clearance": 1.5,
       "overridden": false
     }

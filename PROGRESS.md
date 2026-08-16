@@ -9085,3 +9085,103 @@ dirty plant (not staged).
 Next: Receiver stick preview, dshot idle as percent, profile 0 greyed.
 Do not fast-forward main. Do not commit plant.c.
 
+### 2026-08-16 | tracks | flags in holes, 90 degree walls
+
+Cockpit: 2022 MultiGP GQ had a flag in the opening of the gate marked 5
+(that plate is gate 9, flag 8 sat 1.50 m along its normal). A second
+shot: a 90 degree gate in front of two openings side by side (2025 WA
+States 25-27, and 2023 MultiGP GQ 10-12 as a tunnel with 10 and 12
+still facing the camera).
+
+What was actually wrong. Stations are apertures only, so the numbered
+plate is not the element named "5". `flagCorridor` only treated
+positive `alongN` as the approach, so convert never printed FRONT and
+`check.mjs` never walked the hand-built GQ (`PLAN_TRACKS` was not in
+the list). UNFLYABLE used entry OR exit, so a long swing-in "agreed"
+and the tunnel mouths stayed 90 degrees to the line. And
+`alignTunnels` first treated every two nearby gates as a tunnel, which
+dragged FAI Turkiye 9 and 12 onto the chord between them.
+
+Fixes, positions of imported gates stay put:
+
+- Park a flag or cone that sits in a hole, or on that hole's
+  centreline out to 4.2 m, at the nearest leg (MultiGP 2 ft off the
+  stake). GQ flag 8 is authored there.
+- A short leg to a nearby gate wins over a long swing-in. Three
+  collinear gates face along that line. A 90 degree gate in front of a
+  parallel pair is turned to match the pair.
+- GQ 3-4-5 is a U and is pinned, because auto-face aims the middle of
+  a U across the hole.
+
+`check.mjs` now walks GQ, fails a pole on the opening centreline, and
+fails a 90 degree wall in front of a pair. Flow treats a square corner
+after a hole as a corner (`dot < -0.2`), not as anti-flow.
+
+What went wrong this turn. First regen aligned two-gate corners and
+failed FAI headings plus three flow checks. Requiring three collinear
+gates for a tunnel, and running `fixFlow` after the layout passes,
+cleared them. Marker slack against the .trk is 4.5 m because a pole
+can move that far from the corridor to the leg.
+
+`node tracks/check.mjs`: 3882 passed, 0 failed.
+`node src/trackbuilder/selftest.js`: 192 passed, 0 failed.
+Published all ten to the local board. Physics not touched, `npm run
+verify` not run.
+
+Next: reload the board courses. 2022 MultiGP GQ gate 9 should have its
+flag at the stake, not in the hole. 2025 WA 25-27 should be three
+openings, not a wall in front of a pair.
+
+### 2026-08-16 | race | missed gates, dive gates, flag virtual squares
+
+Asked: some gates miss when flown a particular way, dive gates do not
+register, and a flag's pass side should be a virtual gate: a green
+square you have to fly through.
+
+Three faults, one scoring story.
+
+Dive gates. `tiltedGate` leaned the hoop with `rotation.x = -pitch`
+while race.js already scored the document plane. Station pitch is the
+dip of travel, negative on a downward dive. Minus that rotation put
+the mesh 110 degrees off the test for a typical 55 degree dive, so
+flying the green square never crossed it. Flat plus or minus 90 degree
+dives accidentally agreed. Fix: `pivot.rotation.x = pitch`, and the
+collider helper `at()` now uses `z: y * sin(pitch)` to match.
+
+Missed gates. `tryPass` was a zero-thickness plane and it shrank the
+hole by `CRAFT_WORLD_R` (~0.17 m) on both axes. A line through the
+visible opening near the stile, or at an angle through a thick hoop,
+crossed the midplane outside that smaller rectangle. Scoring is now a
+swept box: the visible rectangle extruded 0.5 m along travel, minus
+2 cm of margin inside the PVC, forward only. If the clipped segment
+crosses the midplane, that is the time used, so a square-on pass still
+times the hole. Collision already owns a clip of the tube.
+
+Flags. `courseFromDocument` only emitted stations for `role ===
+'aperture'`. A flag or cone in the order shaped the racing line and
+scored nothing. Markers with clearance at least 0.05 m are now
+virtual stations at the knot, not the pole: width twice the
+clearance so the inner edge sits on the pole, height at least that
+wide and at least the pole. The race field draws the same green pane
+a real opening wears and keeps it visible. The builder 3D preview
+draws the square on the pass side; the 2D plan draws it as a green
+bar. Flip side moves it. Waypoints keep clearance zero and still do
+not score. The first real opening, not a flag, still times the lap
+(`timingIdx`).
+
+What went wrong this turn. First read of the dive miss blamed the
+scoring frame; the frame was already right and the mesh was backwards.
+Folding the craft radius into the hole looked like collision honesty
+and was the opposite: it made a clean edge line miss. Virtual squares
+must not go through `GATE_SCALE`: flag positions are document metres.
+
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`node tracks/check.mjs`: 3882 passed, 0 failed.
+`npm run verify`: 9 of 16. Physics hash 6d17d4814bdc unchanged
+(determinism-repeat, hover 0.2637, punch 81.5 m, terminal 31.1 m/s,
+t63 26 ms, rate-tracking 671.5, sag 11.14 percent). build:wasm exited
+1 with empty output on this machine; headless Chrome was not found
+(checks 3, 13, 14, 15, 16). yaw-coupling measured -0.12 deg, below
+its 2 deg floor. None of that is this change: native and the harness
+were not touched.
+

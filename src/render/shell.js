@@ -187,10 +187,11 @@ export function buildShell(canvas, opts) {
   /* The boot lens, replaced by the pilot's own on the first settings pass.
    * lens.js is where the number is argued. */
   const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEFAULT, 1, 0.2, 2600);
-  /* Layer 1 is the no ink layer and layer 2 is the grass, both read by the
-   * race field's outline prepass in post.js. The city's pipeline is screen
-   * space and puts everything on layer 0, so enabling these costs it nothing
-   * and keeps one camera good for both. */
+  /* Layer 1 is the no ink layer. Layer 2 used to be the grass field; blades
+   * are not drawn. Both bits are still enabled so the race field's outline
+   * prepass in post.js keeps one camera good for both maps. The city's
+   * pipeline is screen space and puts everything on layer 0, so enabling
+   * these costs it nothing. */
   camera.layers.enable(1);
   camera.layers.enable(2);
 

@@ -44,9 +44,9 @@ export const MAPS = [
   },
   {
     id: 'custom',
-    name: 'Your track',
+    name: 'Custom map',
     mode: 'race',
-    note: 'The course open in the track builder, or a published course opened from the public board.',
+    note: 'A course you built, or one you picked from the board. Choose this to fly it, pick another, or make one.',
     buildMs: MAP_BUILD_MS.custom,
     load: () => import('./custom.js'),
   },

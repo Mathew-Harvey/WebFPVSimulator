@@ -183,7 +183,11 @@ function flagCorridor(flag, gate) {
   const dist = Math.hypot(dx, dy);
   const half = (gate.dims?.clearW || CLEAR) / 2;
   const inHole = Math.abs(alongW) < half * 0.85 && Math.abs(alongN) < 0.7;
-  const onApproach = Math.abs(alongW) < half * 0.35 && alongN > 0.7 && alongN < 4.2;
+  /* Both faces of the plane. A flag 1.5 m the other side of the normal is
+   * still in the hole you are about to fly, and the previous test only
+   * caught the +normal side, which is how 2022 MultiGP GQ flag 8 sat on
+   * gate 9's centreline and never printed FRONT. */
+  const onApproach = Math.abs(alongW) < half * 0.5 && Math.abs(alongN) > 0.7 && Math.abs(alongN) < 4.2;
   return {
     gate,
     frame,
@@ -228,8 +232,14 @@ function flagBeforeGate(doc, flag, gate) {
  * heading is derived by applyAutoFaces from the chain that STARTS at the
  * pads, so moving the pads moves the gate, which moves where the pads should
  * be. Four passes is far more than it needs: the courses here settle in two.
+ *
+ * The pads sit GRID_BACK metres behind that gate. 3.2 m was a body length
+ * and a bit, which left the motors nowhere to spool before the opening; the
+ * owner's floor is 15 m. The field then has to grow to hold them: it was
+ * sized around the gates with PAD metres of grass, and 15 m back is outside
+ * that box on every course that starts near an edge.
  */
-const GRID_BACK = 3.2;
+const GRID_BACK = 15;
 
 function squareGridToFirstGate(doc) {
   const pads = startPadsOf(doc);
@@ -261,6 +271,42 @@ function squareGridToFirstGate(doc) {
     pads.yawOverridden = true;
     applyAutoFaces(doc);
   }
+  fitFieldAround(doc);
+}
+
+/*
+ * Keep every element, including the grid just placed, inside the field with
+ * PAD metres of grass. Growing the far edge is a ceil of the new max;
+ * crossing the origin means shifting the whole document, because a negative
+ * coordinate is outside the field by definition and the race field's origin
+ * is the near left corner.
+ */
+function fitFieldAround(doc) {
+  if (!doc.elements.length) {
+    return;
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const el of doc.elements) {
+    minX = Math.min(minX, el.position.x);
+    minY = Math.min(minY, el.position.y);
+    maxX = Math.max(maxX, el.position.x);
+    maxY = Math.max(maxY, el.position.y);
+  }
+  const shiftX = Math.max(0, PAD - minX);
+  const shiftY = Math.max(0, PAD - minY);
+  if (shiftX || shiftY) {
+    for (const el of doc.elements) {
+      el.position.x += shiftX;
+      el.position.y += shiftY;
+    }
+    maxX += shiftX;
+    maxY += shiftY;
+  }
+  doc.field.width = Math.max(doc.field.width + shiftX, Math.ceil(maxX + PAD));
+  doc.field.depth = Math.max(doc.field.depth + shiftY, Math.ceil(maxY + PAD));
 }
 
 /*
@@ -292,6 +338,11 @@ function squareGridToFirstGate(doc) {
  * carries no direction to agree with.
  */
 const WRAP_CHORD = 0.5;
+/* A square turn after a hole is a corner, not anti-flow. cos(90 deg) is 0,
+ * and a tunnel exit whose next checkpoint sits a few degrees behind the
+ * plane (2023 MultiGP GQ gate 12, 94 deg) is still that corner. Sending the
+ * pilot back through the hole is closer to 180. */
+const FLOW_AWAY = -0.2;
 
 function flowScore(doc) {
   const chain = anchorChain(doc);
@@ -346,7 +397,7 @@ function fixFlow(doc) {
   for (let pass = 0; pass < 6; pass += 1) {
     let changed = 0;
     for (const row of flowScore(doc)) {
-      if (row.dot >= 0) {
+      if (row.dot >= FLOW_AWAY) {
         continue;
       }
       const refs = doc.sequence.filter((s) => s.elementId === row.el.id).length;
@@ -383,9 +434,208 @@ function polish(doc) {
   clearMarkerPoles(doc);
   applyAutoFaces(doc);
   fixFlow(doc);
+  /* Headings first, then the two layout faults the cockpit actually hits:
+   * a tunnel with a 90 degree gate in it, and a flag on the centreline of
+   * a hole. Both set yawOverridden / move a marker, so they run after the
+   * last auto-face pass that would otherwise undo them. */
+  alignTunnels(doc);
+  unwallSideBySide(doc);
+  /* Entry signs for the headings those two just wrote. Then departure
+   * wins, because applyAutoFaces still picks the sign off the bisector
+   * and a U-blocker re-aimed with the pair is square to that bisector. */
+  applyAutoFaces(doc);
+  fixFlow(doc);
+  parkFlagsOffOpenings(doc);
   easeUnderground(doc);
   renumberSequence(doc);
   return doc;
+}
+
+function pickFlagSide(doc, flag, gate, frame) {
+  const fi = doc.sequence.findIndex((s) => s.elementId === flag.id);
+  if (fi > 0) {
+    const prev = elementById(doc, doc.sequence[fi - 1].elementId);
+    if (prev) {
+      const alongW = (prev.position.x - gate.position.x) * frame.widthAxis.x
+        + (prev.position.y - gate.position.y) * frame.widthAxis.y;
+      if (Math.abs(alongW) > 0.05) {
+        return alongW < 0 ? -1 : 1;
+      }
+    }
+  }
+  return -1;
+}
+
+/*
+ * A sequenced flag whose pole sits in a hole, or on that hole's approach
+ * centreline, moves to the nearest leg.
+ *
+ * MultiGP puts a flag 2 ft off the stake, beside the frame, not in front of
+ * the opening. The previous import left numbered turn flags on the
+ * centreline because sliding them was how a course stopped being the
+ * course. That was the right instinct for a flag that was already at the
+ * leg, and the wrong one for a flag the pilot hits on the way through.
+ * 2022 MultiGP GQ flag 8 was 1.50 m along gate 9's normal, which is the
+ * opening, and the plate on that gate reads 5 because flags are not
+ * stations.
+ */
+function parkFlagsOffOpenings(doc) {
+  const apertures = doc.elements.filter((e) => kindOf(e) === KIND.APERTURE);
+  for (const flag of doc.elements) {
+    if (flag.type !== 'flag' && flag.type !== 'cone') {
+      continue;
+    }
+    let best = null;
+    for (const gate of apertures) {
+      const row = flagCorridor(flag, gate);
+      if (!(row.inHole || row.onApproach)) {
+        continue;
+      }
+      if (!best || Math.abs(row.alongN) < Math.abs(best.alongN)) {
+        best = { ...row, gate };
+      }
+    }
+    if (!best) {
+      continue;
+    }
+    const gate = best.gate;
+    const frame = best.frame;
+    const side = Math.abs(best.alongW) > 0.05
+      ? (best.alongW < 0 ? -1 : 1)
+      : pickFlagSide(doc, flag, gate, frame);
+    const nSign = best.alongN >= 0 ? 1 : -1;
+    flag.position.x = gate.position.x
+      + frame.widthAxis.x * side * (LEG_HALF + FLAG_GAP)
+      + frame.normal.x * nSign * 0.2;
+    flag.position.y = gate.position.y
+      + frame.widthAxis.y * side * (LEG_HALF + FLAG_GAP)
+      + frame.normal.y * nSign * 0.2;
+  }
+}
+
+/*
+ * Gates in a line are a tunnel and they all face along that line.
+ *
+ * Pairwise "entry OR exit agrees" left 2023 MultiGP GQ's gates 10 and 12
+ * facing the camera while gate 11, already re-aimed, faced down the tunnel.
+ * From in front that is two openings side by side and a wall between them.
+ */
+function alignTunnels(doc) {
+  const solid = doc.elements.filter((e) => kindOf(e) === KIND.APERTURE && e.type !== 'diveGate');
+  for (const a of solid) {
+    const near = solid.filter((b) => (
+      b.id !== a.id
+      && Math.hypot(b.position.x - a.position.x, b.position.y - a.position.y) < 5.5
+    ));
+    if (!near.length) {
+      continue;
+    }
+    const pts = [a, ...near];
+    let axis = null;
+    let axisLen = 0;
+    for (let i = 0; i < pts.length; i += 1) {
+      for (let j = i + 1; j < pts.length; j += 1) {
+        const dx = pts[j].position.x - pts[i].position.x;
+        const dy = pts[j].position.y - pts[i].position.y;
+        const len = Math.hypot(dx, dy);
+        if (len > axisLen) {
+          axisLen = len;
+          axis = { ux: dx / len, uy: dy / len };
+        }
+      }
+    }
+    /* Two gates in a line are a pair, not a tunnel. Aiming both along the
+     * chord between them is how FAI Turkiye 9 and 12, a corner 3 m apart,
+     * got dragged onto the same heading. Three collinear is a tunnel. */
+    if (!axis || axisLen < 2 || pts.length < 3) {
+      continue;
+    }
+    let maxOff = 0;
+    for (const p of pts) {
+      const dx = p.position.x - a.position.x;
+      const dy = p.position.y - a.position.y;
+      maxOff = Math.max(maxOff, Math.abs(dx * -axis.uy + dy * axis.ux));
+    }
+    /* A U-combo has the middle gate a couple of metres off the line of the
+     * two parallel ones. That is not a tunnel and unwallSideBySide handles
+     * it. 1.2 m is inside a gate width, so a leaning stack still counts. */
+    if (maxOff > 1.2) {
+      continue;
+    }
+    const yaw = wrapAngle(Math.atan2(axis.uy, axis.ux));
+    for (const p of pts) {
+      const n = apertureFrame(p.yaw, 0).normal;
+      const along = Math.abs(n.x * axis.ux + n.y * axis.uy);
+      if (along < Math.cos(Math.PI / 6)) {
+        p.yaw = yaw;
+        p.yawOverridden = true;
+      }
+    }
+  }
+}
+
+/*
+ * Two parallel gates side by side, a third at 90 degrees in front of them:
+ * the third is a wall across both openings. 2025 WA States gates 25 and 27
+ * face east-west 3.9 m apart; gate 26 sits 2.5 m in front of them facing
+ * north-south, close enough that its side panel is the thing you hit.
+ *
+ * Positions stay. The 90 degree gate is turned to match the pair, so it
+ * becomes another opening rather than a wall. A real U-combo with room
+ * around it has a frame gap bigger than this pass looks at.
+ */
+function unwallSideBySide(doc) {
+  const solid = doc.elements.filter((e) => kindOf(e) === KIND.APERTURE && e.type !== 'diveGate');
+  for (let i = 0; i < solid.length; i += 1) {
+    for (let j = i + 1; j < solid.length; j += 1) {
+      const a = solid[i];
+      const b = solid[j];
+      const dx = b.position.x - a.position.x;
+      const dy = b.position.y - a.position.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1.5 || dist > 6.5) {
+        continue;
+      }
+      const fa = apertureFrame(a.yaw, 0);
+      const fb = apertureFrame(b.yaw, 0);
+      const planeDot = Math.abs(fa.normal.x * fb.normal.x + fa.normal.y * fb.normal.y);
+      if (planeDot < 0.85) {
+        continue;
+      }
+      const alongW = Math.abs(fa.widthAxis.x * dx + fa.widthAxis.y * dy) / dist;
+      if (alongW < 0.7) {
+        continue;
+      }
+      const midX = (a.position.x + b.position.x) / 2;
+      const midY = (a.position.y + b.position.y) / 2;
+      for (const c of solid) {
+        if (c.id === a.id || c.id === b.id) {
+          continue;
+        }
+        const fc = apertureFrame(c.yaw, 0);
+        const cDot = Math.abs(fa.normal.x * fc.normal.x + fa.normal.y * fc.normal.y);
+        if (cDot > Math.cos((50 * Math.PI) / 180)) {
+          continue;
+        }
+        const da = Math.hypot(c.position.x - a.position.x, c.position.y - a.position.y);
+        const db = Math.hypot(c.position.x - b.position.x, c.position.y - b.position.y);
+        if (Math.min(da, db) > 4) {
+          continue;
+        }
+        const alongN = (c.position.x - midX) * fa.normal.x + (c.position.y - midY) * fa.normal.y;
+        if (Math.abs(alongN) < 0.3 || Math.abs(alongN) > 4) {
+          continue;
+        }
+        c.yaw = a.yaw;
+        c.yawOverridden = true;
+        /* The pair is the reference. If auto-face then rotates either of
+         * them, the copied heading is 90 degrees to a pair that is no
+         * longer a pair, and the wall is back. */
+        a.yawOverridden = true;
+        b.yawOverridden = true;
+      }
+    }
+  }
 }
 
 function easeUnderground(doc) {
@@ -644,9 +894,9 @@ function fromTrk(raw, displayName) {
    * backwards one. "The gate didn't register that I flew through" was this.
    *
    * So the launch axis is the first APERTURE'S OWN NORMAL, signed to agree
-   * with where the lap goes afterwards, and the pads sit back along it. A
-   * first obstacle with no plane, a flag or a waypoint, has nothing to be
-   * square to, so the pads simply face it.
+   * with where the lap goes afterwards, and the pads sit GRID_BACK metres
+   * along it. A first obstacle with no plane, a flag or a waypoint, has
+   * nothing to be square to, so the pads simply face it.
    *
    * The grid's authored position in the barriers is not used. It is the one
    * thing in the file worth less than the property of being straight, because
@@ -668,8 +918,7 @@ function fromTrk(raw, displayName) {
       const sign = onward >= 0 ? 1 : -1;
       yaw = Math.atan2(n.y * sign, n.x * sign);
     }
-    const back = 3.2;
-    addEl(doc, 'startPads', target.x - Math.cos(yaw) * back, target.y - Math.sin(yaw) * back, {
+    addEl(doc, 'startPads', target.x - Math.cos(yaw) * GRID_BACK, target.y - Math.sin(yaw) * GRID_BACK, {
       name: 'Grid',
       yaw,
       yawOverridden: true,
@@ -720,13 +969,20 @@ function gqTrack() {
     { type: 'startPads', x: 54, y: 3, yaw: Math.PI, yawOverridden: true, name: 'Launch' },
     { type: 'gate', x: 31, y: 15.2, name: '1 timing' },
     { type: 'flag', x: 19.5, y: 7.3, name: '2' },
-    { type: 'gate', x: 8, y: 7.3, name: '3' },
-    { type: 'gate', x: 8, y: 4.9, name: '4' },
-    { type: 'gate', x: 5.5, y: 7.3, name: '5' },
+    /* 3-4-5 is a U: west through 3, south through 4, then out through 5
+     * toward 6. Auto-face aims each gate along the bisector of the turn, so
+     * the middle of a U comes out facing across the hole, which is the wall
+     * in front of the pair. The diagram's headings are the flight through
+     * each opening, pinned. */
+    { type: 'gate', x: 8, y: 7.3, name: '3', yaw: Math.PI, yawOverridden: true },
+    { type: 'gate', x: 8, y: 4.9, name: '4', yaw: -Math.PI / 2, yawOverridden: true },
+    { type: 'gate', x: 5.5, y: 7.3, name: '5', yaw: Math.atan2(24 - 7.3, 19.5 - 5.5), yawOverridden: true },
     { type: 'gate', x: 19.5, y: 24, name: '6' },
     { type: 'flag', x: 2, y: 24, name: '7' },
-    { type: 'flag', x: 2, y: 26.2, name: '8' },
-    { type: 'gate', x: 3.5, y: 26.2, name: '9' },
+    /* Flag 8 is 2 ft off gate 9's left stake, not on the centreline. The
+     * previous plan put it 1.5 m west of the opening, which is the hole. */
+    { type: 'flag', x: 3.5 - 0.2, y: 26.2 - (LEG_HALF + FLAG_GAP), name: '8' },
+    { type: 'gate', x: 3.5, y: 26.2, name: '9', yaw: 0, yawOverridden: true },
     {
       type: 'barrier',
       x: 3.5,

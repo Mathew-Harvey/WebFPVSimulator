@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-4f62e1b9",
   "name": "2023 MultiGP GQ",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 76,
     "depth": 60,
@@ -218,7 +218,7 @@
         "y": 38.9,
         "z": 0
       },
-      "yaw": 0,
+      "yaw": -1.570796,
       "pitch": 0,
       "yawOverridden": true,
       "dims": {
@@ -258,7 +258,7 @@
         "y": 31.7,
         "z": 0
       },
-      "yaw": 3.141593,
+      "yaw": -1.570796,
       "pitch": 0,
       "yawOverridden": true,
       "dims": {
@@ -332,8 +332,8 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 6.000001,
-        "y": 23.7,
+        "x": 6.000005,
+        "y": 35.5,
         "z": 0
       },
       "yaw": -1.570797,
@@ -441,10 +441,10 @@
       "id": "sq-11",
       "elementId": "el-11",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": false
+      "overridden": true
     },
     {
       "id": "sq-12",
@@ -486,10 +486,10 @@
       "id": "sq-16",
       "elementId": "el-16",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     }
   ]
 }

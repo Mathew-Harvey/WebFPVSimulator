@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "id": "trk-0870b164",
   "name": "2022 AU Nationals",
-  "createdUtc": "2026-08-15T08:16:47Z",
-  "modifiedUtc": "2026-08-15T08:16:47Z",
+  "createdUtc": "2026-08-16T07:01:29Z",
+  "modifiedUtc": "2026-08-16T07:01:29Z",
   "field": {
     "width": 128,
     "depth": 108,
     "gridSize": 1
   },
   "settings": {
-    "tangentScale": 0.62,
+    "tangentScale": 0.74,
     "minCurveRadius": 2.5,
     "samplesPerSegment": 48
   },
@@ -712,8 +712,8 @@
       "type": "startPads",
       "name": "Grid",
       "position": {
-        "x": 35.712927,
-        "y": 21.667354,
+        "x": 47.486844,
+        "y": 20.88322,
         "z": 0
       },
       "yaw": 3.075092,
@@ -893,19 +893,19 @@
       "id": "sq-19",
       "elementId": "el-19",
       "apertureIndex": 0,
-      "entry": -1,
+      "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-20",
       "elementId": "el-20",
       "apertureIndex": 0,
-      "entry": 1,
+      "entry": -1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-21",

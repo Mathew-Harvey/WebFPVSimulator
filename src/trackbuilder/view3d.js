@@ -46,11 +46,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
 import { aperturesOf, elementById, kindOf, apertureCenter } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { levelName } from './figures.js';
-import { apertureFrame, clamp } from './geometry.js';
+import { travelDirection, passOffsetSign } from './faces.js';
+import { apertureFrame, clamp, leftOf, normalize, scale } from './geometry.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 
 /*
@@ -552,7 +553,7 @@ export class View3D {
       this.register(mesh, el);
       group.add(mesh);
     } else if (def.kind === KIND.MARKER) {
-      this.buildMarker(group, el, selected);
+      this.buildMarker(group, el, selected, numbers);
     } else if (def.kind === KIND.START) {
       this.buildStart(group, el, selected);
     } else {
@@ -807,7 +808,7 @@ export class View3D {
     }
   }
 
-  buildMarker(group, el, selected) {
+  buildMarker(group, el, selected, numbers = []) {
     const colour = selected ? COL.frameSel : (el.type === 'cone' ? COL.cone : COL.marker);
     /*
      * A waypoint is a ghost. Nothing stands there on the race field, so the
@@ -844,6 +845,7 @@ export class View3D {
       cone.position.z = el.dims.height / 2;
       this.register(cone, el);
       group.add(cone);
+      this.buildVirtualGates(group, el, numbers, selected);
       return;
     }
     const pole = new THREE.Mesh(
@@ -871,6 +873,69 @@ export class View3D {
     sail.rotation.x = Math.PI / 2;
     sail.rotation.y = -el.yaw;
     group.add(sail);
+    this.buildVirtualGates(group, el, numbers, selected);
+  }
+
+  /*
+   * The pass-side scoring square. One per sequence entry, so a flag flown
+   * twice gets two holes. Green on the face the quad comes from, red on
+   * the other, matching a real gate. Inner edge on the pole.
+   */
+  buildVirtualGates(group, el, numbers, selected) {
+    if (!this.host?.doc) {
+      return;
+    }
+    for (const n of numbers) {
+      const seq = n.seq;
+      if (!seq || (seq.clearance ?? 0) < 0.05) {
+        continue;
+      }
+      const dir = travelDirection(this.host.doc, seq.id);
+      if (!dir) {
+        continue;
+      }
+      const dims = virtualApertureDims(el, seq);
+      const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
+      const left = leftOf(u);
+      const off = scale(left, seq.clearance * passOffsetSign(seq.passSide));
+      const f = {
+        widthAxis: left,
+        heightAxis: { x: 0, y: 0, z: 1 },
+        normal: { x: u.x, y: u.y, z: 0 },
+      };
+      const basis = new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(f.widthAxis.x, f.widthAxis.y, f.widthAxis.z),
+        new THREE.Vector3(f.heightAxis.x, f.heightAxis.y, f.heightAxis.z),
+        new THREE.Vector3(f.normal.x, f.normal.y, f.normal.z),
+      );
+      const quat = new THREE.Quaternion().setFromRotationMatrix(basis);
+      const cx = off.x;
+      const cy = off.y;
+      const cz = dims.centerH;
+      const loop = [
+        -dims.clearW / 2, -dims.clearH / 2, 0, dims.clearW / 2, -dims.clearH / 2, 0,
+        dims.clearW / 2, dims.clearH / 2, 0, -dims.clearW / 2, dims.clearH / 2, 0,
+      ];
+      const holder = new THREE.Group();
+      holder.position.set(cx, cy, cz);
+      holder.quaternion.copy(quat);
+      const loopGeo = new THREE.BufferGeometry();
+      loopGeo.setAttribute('position', new THREE.Float32BufferAttribute(loop, 3));
+      holder.add(new THREE.LineLoop(loopGeo, new THREE.LineBasicMaterial({
+        color: selected ? COL.frameSel : COL.entry,
+      })));
+      for (const [side, colour] of [[-1, COL.entry], [1, COL.exit]]) {
+        const pane = new THREE.Mesh(
+          new THREE.PlaneGeometry(dims.clearW, dims.clearH),
+          new THREE.MeshBasicMaterial({
+            color: colour, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false,
+          }),
+        );
+        pane.position.z = side * 0.12;
+        holder.add(pane);
+      }
+      group.add(holder);
+    }
   }
 
   buildStart(group, el, selected) {

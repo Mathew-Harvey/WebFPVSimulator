@@ -137,4 +137,12 @@ The working tree no longer draws grass blades. Measured field cost is P1
 meshes. This loop restored `tests/thresholds.json` to HEAD (D7). The
 constitution says map-isolation may be red against that baseline and must
 not be widened here. A human decides whether the grass-off snapshot belongs
-in `tests/` as its own commit.
+## 8. F9 gamepad from title into Flight controller
+
+Title and Settings `pollPad` pose the parked airframe. Cursor never
+moves, so select fires Fly. Keyboard opens FC from title (shots). A
+radio opens it from pause. Chromium has no gamepad injection
+(blocked item 4). Stealing the title pose was rejected in rounds 2 to
+4. A human who wants pad-from-title has to pick a dedicated control
+that does not take the craft's sticks.
+

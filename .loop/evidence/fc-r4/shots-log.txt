@@ -1,0 +1,24 @@
+until !!window.__fc ok
+until window.__ui.screen==='fc' ok
+eval window.__fc() = {"screen":"fc","tab":"pid","page":"pid","dirty":false,"confirm":null,"p_roll":"45","simplifiedApply":false,"cliLen":4706,"presetId":"","importName":"","homage":true,"chrome":true,"status":true,"tabs":24,"simStepMs":0,"lastTs":0,"moduleMs":0}
+expect fc-head backgroundColor rgb(255, 187, 0) ok
+expect homage===true chrome===true status===true tabs===24 ok
+shot fc-pid.png
+until tab==='cli' ok
+shot fc-cli.png
+until tab==='osd' ok
+shot fc-osd.png
+until page==='filters' ok
+shot fc-filters.png
+until page==='rates' ok
+shot fc-rates.png
+until tab==='configuration' ok
+shot fc-configuration.png
+until screen==='fc' from pause ok
+expect dirty ok
+until confirm==='save-run' ok
+shot fc-save-confirm.png
+until screen==='flight' after fc-save-restart ok
+eval window.__fc() = {"screen":"flight","tab":"pid","page":"pid","dirty":false,"confirm":null,"p_roll":"80","simplifiedApply":false,"cliLen":4706,"presetId":"","importName":"","homage":true,"chrome":true,"status":true,"tabs":24,"simStepMs":0,"lastTs":0,"moduleMs":0}
+expect simStepMs===moduleMs && lastTs<=simStepMs/1000 ok
+console errors=0 warnings=0 harness faults=0

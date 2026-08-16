@@ -7,6 +7,11 @@ mutually inconsistent (derivation in threshold-disputes.md entry 1).
 The plant stays honest, P4 stays red on the t80 sub item, and the
 dispute is routed to a human.
 
-Conflict 2: Gate P5 zero to 100 wants mean acceleration under 2.18 g.
-Gate P4 TWR floor of 8 delivers about 5.5 g. Resolution: same as
-above; recorded in threshold-disputes.md entry 2, physics unchanged.
+Conflict 3: Configurator ACTUAL rates labels. Round 2 showed CLI
+`roll_rc_rate` next to 70 deg/s, which teaches a dump-flasher to write
+`set roll_rc_rate = 70`. Round 3 labelled the row `roll centre` / `roll
+max rate` and kept CLI export at 7 / 67. Round 4 Configurator review
+wanted the CLI key back. Resolution: keep the r3 labels. Help on the
+row still says `CLI is roll_rc_rate = 7`. Do not oscillate.
+
+

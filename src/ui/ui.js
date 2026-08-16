@@ -81,7 +81,7 @@ import {
 import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { downloadCli, drawAttitude, FcSession, paintTabStrip } from './fc.js';
+import { downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -136,8 +136,6 @@ const DEFAULTS = {
    * A string so the typeof gate accepts it, and an unknown id falls back
    * to the first track in src/render/tracks.js. */
   musicTrack: 'rotation',
-  /* The outdoors between runs: low air and birdsong that fade with speed. */
-  ambienceLevel: 4,
   focusTone: false,
   readout: false,
   /* Named preset, not a bag of sliders. 'high' is the authored look and
@@ -760,7 +758,13 @@ export class Ui {
 
     const fc = el('div', 'screen screen-page screen-fc');
     const fcHead = el('div', 'fc-head');
-    fcHead.append(el('h2', null, 'Flight controller'));
+    const fcBrand = el('div', 'fc-brand');
+    fcBrand.append(el('span', 'fc-wordmark', 'BETAFLIGHT'));
+    fcBrand.append(el('span', 'fc-fw', '4.5.1'));
+    fcBrand.append(el('span', 'fc-conn', 'WASM'));
+    this.fcDirty = el('span', 'fc-dirty', '');
+    fcBrand.append(this.fcDirty);
+    fcHead.append(fcBrand);
     const homage = el('p', 'fc-homage');
     const cfgLink = el('a', null, 'Betaflight Configurator');
     cfgLink.href = 'https://github.com/betaflight/betaflight-configurator';
@@ -771,19 +775,20 @@ export class Ui {
     bfLink.target = '_blank';
     bfLink.rel = 'noopener noreferrer';
     homage.append(
-      document.createTextNode('Tab names, 4.5.1 fields, and these colours after '),
+      document.createTextNode('Homage of '),
       cfgLink,
-      document.createTextNode(' 10.10. This is not that app. Firmware is compiled '),
+      document.createTextNode(' 10.10 colours and tabs, not that app. No Vue, no MSP, no iframe. Firmware is compiled '),
       bfLink,
       document.createTextNode(' 4.5.1. With thanks to the Betaflight developers. GPLv3.'),
     );
     fcHead.append(homage);
-    this.fcDirty = el('span', 'fc-dirty', '');
-    fcHead.append(this.fcDirty);
     const fcBody = el('div', 'fc-body');
     this.fcTabs = el('nav', 'fc-tabs');
     this.fcTabs.setAttribute('aria-label', 'Configurator tabs');
     const fcWork = el('div', 'fc-work');
+    this.fcPages = el('div', 'fc-pages');
+    this.fcPages.setAttribute('aria-label', 'PID Tuning pages');
+    this.fcPages.hidden = true;
     const fcBlock = wrapMenu();
     this.fcMenu = fcBlock.menu;
     this.fcMenu.classList.add('menu-scroll');
@@ -807,13 +812,10 @@ export class Ui {
     this.fcAttitude.height = 220;
     this.fcAttitude.setAttribute('aria-label', 'Attitude');
     this.fcAttitude.hidden = true;
-    fcWork.append(fcBlock.stage, this.fcCli, this.fcAttitude);
+    fcWork.append(this.fcPages, fcBlock.stage, this.fcCli, this.fcAttitude);
     fcBody.append(this.fcTabs, fcWork);
-    fc.append(
-      fcHead,
-      fcBody,
-      el('div', 'hint', 'Save writes a CLI dump into compiled Betaflight. Grey means this sim does not have that machine.'),
-    );
+    const fcStatus = el('div', 'fc-status', 'Connected: WASM  ·  Betaflight 4.5.1  ·  PID 1 kHz  ·  Profile 0  ·  Homage of Configurator 10.10, not that app');
+    fc.append(fcHead, fcBody, fcStatus);
     this.screens.fc = fc;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
@@ -1294,12 +1296,6 @@ export class Ui {
           (id) => (id === 'rotation' ? 'Rotation' : trackById(id).name),
           (id) => { s.musicTrack = id; },
         ),
-        stepper(
-          'Ambience',
-          'The outdoors: low air and birdsong. It fades away as speed builds.',
-          s.ambienceLevel > 0 ? `${s.ambienceLevel}` : 'Off',
-          (d) => { s.ambienceLevel = Math.max(0, Math.min(10, s.ambienceLevel + d)); },
-        ),
         toggle(
           'Binaural tone',
           'A quiet 1000 Hz tone, 6 Hz apart between the ears. Needs headphones to do anything at all.',
@@ -1412,6 +1408,7 @@ export class Ui {
     const offset = items.length - rows.length;
     this.rowOffset = offset;
     this.menuRows = [];
+    let fcBar = null;
     rows.forEach((it, k) => {
       const i = k + offset;
       const cls = ['row'];
@@ -1454,7 +1451,15 @@ export class Ui {
           this.select();
         }
       });
-      host.append(row);
+      if (this.screen === 'fc' && it.rowClass === 'fc-btn') {
+        if (!fcBar) {
+          fcBar = el('div', 'fc-bar');
+          host.append(fcBar);
+        }
+        fcBar.append(row);
+      } else {
+        host.append(row);
+      }
       this.menuRows.push(row);
     });
     host.scrollTop = scroll;
@@ -1476,6 +1481,16 @@ export class Ui {
         this.cursor = 0;
         this.renderMenu();
       });
+      if (this.fcPages) {
+        paintPageStrip(this.fcPages, this.fc, (id) => {
+          if (this.fc.confirm) {
+            return;
+          }
+          this.fc.page = id;
+          this.cursor = 0;
+          this.renderMenu();
+        });
+      }
     }
     const confirm = Boolean(this.fc.confirm);
     const cliOn = on && this.fc.tab === 'cli' && !confirm;

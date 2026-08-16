@@ -9,6 +9,64 @@ then `.loop/state.json`, then `.loop/tried-and-rejected.md`, then
 The Configurator gauntlet. Constitution: `prompts/fc-configurator-loop.md`.
 Branch: `loop/fc-configurator`. Do not fast-forward `main`.
 
+Round 4 (this handover) is classic Configurator 10.10 homage chrome:
+orange `#ffbb00` header with a BETAFLIGHT wordmark (text, not their
+logo), left tabs, PID/Filters/Rates page strip, horizontal Save bar,
+orange status strip, section headers. Still one write path: draft CLI
+to `composeConfig` to `sim_init` to `adoptSimClock`. First shot run
+threw `Identifier brand already declared`; renamed to `fcBrand`.
+
+Next item: KEEP compose five-knob `ratesDiff` shadow (independent
+pitch / `rates_type`). Highest-cost FAIL from r4 QA. Do not steal the
+title pose for F9. ACTUAL row labels stay centre / max rate (conflict
+with showing CLI names next to 70 deg/s).
+
+### Screen (measured)
+
+`fc-head` background `rgb(255, 187, 0)`. `__fc().homage` true,
+`chrome` true, `status` true, `tabs` 24. Shots in
+`.loop/evidence/fc-r4/`. Console errors=0 warnings=0 harness faults=0
+in `shots-log.txt`. After save-restart: simStepMs 0, moduleMs 0,
+lastTs 0, p_roll 80. Cite 2026-08-16.
+
+`gyro_lpf1_static_hz` is grey while `gyro_lpf1_dyn_min_hz` is above 0.
+Catalog status stays LIVE. Same as 4.5.1 when dyn LPF1 is on.
+
+### Catalog counts (measured, `npm run lint:catalog` exit 0)
+
+valueTable 683, bf_settings.c 175, catalog CLI 686, LIVE 154, GATED 5,
+APPLIED_INERT 16, INERT 511, ABSENT 10, tabs 24.
+
+### Traces (`npm run lint:fc` 21/21)
+
+F3 to F7 hashes unchanged (base
+`0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`).
+Prints in `.loop/evidence/fc-r4/lint-fc.txt`.
+
+### Verify this turn (13 of 16)
+
+Physics floor held: hash `6d17d4814bdc`, hover 0.2637, punch 81.5 m,
+terminal 31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent,
+diff-passthrough 1.2478. world-scale PASS, craft body 0.1552 m.
+Vendor diff empty. tests/ not edited. Table in
+`.loop/evidence/fc-r4/verify.txt`.
+
+Still red: yaw-coupling, build-clean spawnSync npm, map-isolation vs
+c3c6e44.
+
+### Review, binding, both REJECT then fixes
+
+Configurator user 6422644f. QA tester 9adbae79. Evidence files added
+(`shots-log.txt`, `verify.txt`). Static LPF1 grey under dyn min.
+F9 title-pad left as shell law. ACTUAL labels left as r3 (conflicts.md).
+KEEP compose scheduled as round 5.
+
+Human-pinned: all tabs shown grey not hidden; rates keep-mine by default;
+`motor_kv` APPLIED_INERT; 1 kHz stays; no Airframe page; profile 0 only;
+Angle stays `sim_set_angle_mode`.
+
+## Previous handover (round 3, kept)
+
 Round 3 (this handover) is the homage Configurator chrome plus CLI,
 import dialog, Presets, mixed Configuration/Receiver/Motors, Modes
 ANGLE, and Setup attitude. Still one write path: draft CLI to

@@ -407,63 +407,84 @@
       .row-gated .row-value { color: var(--amber); }
 
       /*
-       * Flight controller screen. Colours after Betaflight Configurator
-       * 10.10 (firmware 4.5.1 era): dark grey chrome, #ffbb00 accent.
-       * Homage, not a copy of the Vue app. Title and Settings stay cream
-       * and sakura.
+       * Flight controller screen. Palette after Betaflight Configurator
+       * 10.10 (firmware 4.5.1 era): #ffbb00 header, #4d4d4d body, dark
+       * left tabs. Homage: our layout, system fonts, no Vue, no MSP, no
+       * iframe, no copied logo. Title and Settings stay cream and sakura.
        */
       .screen-fc {
         --bf-accent: #ffbb00;
+        --bf-ink: #1a1a1a;
         --bf-bg: #4d4d4d;
         --bf-header: #393b3e;
-        --bf-panel: #3a3a3a;
-        --bf-box: #2e2e2e;
+        --bf-panel: #414141;
+        --bf-box: #3a3a3a;
         --bf-text: #ffffff;
-        --bf-muted: #b2b2b6;
+        --bf-muted: #c5c5c5;
         --bf-grey: #9c9c9c;
         align-items: stretch;
         justify-content: flex-start;
-        padding: 1.6vh 1.6vw 2vh;
+        padding: 0;
         background: var(--bf-bg);
         color: var(--bf-text);
+        font-family: "Segoe UI", system-ui, sans-serif;
       }
-      .screen-fc h2 {
-        margin: 0 0 6px;
-        color: var(--bf-accent);
-        letter-spacing: 0.06em;
+      .fc-head {
+        flex: 0 0 auto;
+        background: var(--bf-accent);
+        color: var(--bf-ink);
+        padding: 8px 14px 7px;
+        pointer-events: auto;
+      }
+      .fc-brand {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .fc-wordmark {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        line-height: 1;
+      }
+      .fc-fw, .fc-conn {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        font-size: clamp(18px, 2.2vw, 26px);
       }
       .fc-dirty {
-        display: inline-block;
-        margin-left: 10px;
-        color: var(--bf-accent);
-        font-size: 12px;
-        letter-spacing: 0.12em;
+        margin-left: auto;
+        color: var(--bf-ink);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
       }
       .fc-dirty:empty { display: none; }
       .fc-homage {
-        margin: 0 0 12px;
-        max-width: 72em;
-        color: var(--bf-muted);
-        font-size: 12px;
-        line-height: 1.45;
+        margin: 4px 0 0;
+        max-width: 86em;
+        color: #3a3208;
+        font-size: 11px;
+        line-height: 1.4;
       }
       .fc-homage a {
-        color: var(--bf-accent);
+        color: var(--bf-ink);
+        font-weight: 700;
         pointer-events: auto;
       }
       .fc-body {
         display: flex;
-        gap: 12px;
+        gap: 0;
         flex: 1 1 auto;
         min-height: 0;
         width: 100%;
         pointer-events: auto;
       }
       .fc-tabs {
-        flex: 0 0 11.5em;
+        flex: 0 0 12.5em;
         overflow-y: auto;
         background: var(--bf-header);
         padding: 8px 0;
@@ -499,32 +520,72 @@
         display: flex;
         flex-direction: column;
         min-height: 0;
+        background: var(--bf-panel);
+      }
+      .fc-pages {
+        display: flex;
+        gap: 0;
+        flex: 0 0 auto;
+        background: var(--bf-header);
+        border-bottom: 1px solid #2a2a2a;
+      }
+      .fc-pages[hidden] { display: none !important; }
+      .fc-page {
+        border: 0;
+        background: transparent;
+        color: var(--bf-muted);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 650;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 8px 16px;
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+      }
+      .fc-page.on {
+        color: var(--bf-accent);
+        border-bottom-color: var(--bf-accent);
+        background: var(--bf-panel);
       }
       .screen-fc .menu-stage {
+        display: grid;
+        grid-template-columns: 1fr minmax(14em, 22em);
+        align-items: stretch;
         flex: 1 1 auto;
         min-height: 0;
         width: 100%;
         margin-top: 0;
       }
-      .screen-fc .menu {
+      .screen-fc .menu-stage .menu {
+        grid-column: 1;
         background: var(--bf-box);
-        border-top: 2px solid var(--bf-accent);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+        border-top: 0;
+        border-radius: 0;
+        box-shadow: none;
         min-width: 0;
         width: 100%;
+        height: 100%;
+        margin-top: 0;
+        padding: 0 0 12px;
       }
       .screen-fc .menu-scroll {
-        max-height: min(52vh, 34em);
+        max-height: none;
+        height: 100%;
         scrollbar-color: #ffbb00 #2e2e2e;
       }
       .screen-fc .menu-help {
+        grid-column: 2;
         color: var(--bf-muted);
-        border-left-color: rgba(255, 187, 0, 0.28);
+        border-left: 1px solid #2a2a2a;
+        background: var(--bf-header);
+        padding: 12px 14px;
+        max-width: none;
       }
       .screen-fc .row {
         gap: 10px;
-        padding: 8px 16px 8px 18px;
-        font-size: clamp(13px, 1.45vw, 16px);
+        padding: 7px 16px 7px 18px;
+        font-size: 13px;
         color: var(--bf-text);
       }
       .screen-fc .row.on {
@@ -533,8 +594,8 @@
         background: linear-gradient(90deg, rgba(255, 187, 0, 0.16), rgba(255, 187, 0, 0) 48%);
       }
       .screen-fc .row-label {
-        font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
-        font-size: 0.92em;
+        font-family: inherit;
+        font-size: 13px;
       }
       .screen-fc .row-value {
         max-width: none;
@@ -542,27 +603,68 @@
         text-overflow: clip;
         color: var(--bf-accent);
       }
-      .screen-fc .drop-btn, .screen-fc .step {
-        color: var(--bf-accent);
-      }
       .screen-fc .row-grey {
         color: var(--bf-grey);
       }
       .screen-fc .row-grey .row-value { color: var(--bf-grey); }
       .screen-fc .row-gated .row-value { color: var(--bf-accent); }
-      .screen-fc .hint { color: var(--bf-muted); pointer-events: none; }
+      .screen-fc .fc-section {
+        color: var(--bf-accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        border-bottom: 1px solid #555;
+        margin-top: 8px;
+        pointer-events: none;
+      }
+      .screen-fc .fc-bar {
+        display: flex;
+        gap: 8px;
+        padding: 10px 12px 6px;
+        flex-wrap: wrap;
+      }
+      .screen-fc .fc-btn {
+        background: var(--bf-accent);
+        color: var(--bf-ink);
+        font-weight: 700;
+        margin: 0;
+        border-radius: 3px;
+        border-left: 0;
+        flex: 1 1 6em;
+        justify-content: center;
+        padding: 8px 10px;
+      }
+      .screen-fc .fc-btn .row-label { color: var(--bf-ink); font-weight: 700; }
+      .screen-fc .fc-btn.on {
+        background: #ffd24d;
+        color: var(--bf-ink);
+        border-left: 0;
+      }
+      .fc-status {
+        flex: 0 0 auto;
+        background: var(--bf-accent);
+        color: var(--bf-ink);
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.04em;
+        padding: 5px 14px;
+        pointer-events: auto;
+      }
       .fc-cli {
         display: block;
         width: 100%;
-        min-height: 22em;
-        margin-top: 8px;
+        flex: 1 1 auto;
+        min-height: 12em;
+        margin: 0;
         box-sizing: border-box;
         pointer-events: auto;
         user-select: text;
-        resize: vertical;
+        resize: none;
         background: #1d1d1d;
         color: #f0f0f0;
-        border: 1px solid #6b6b6b;
+        border: 0;
+        border-top: 1px solid #6b6b6b;
         font: 12px/1.45 ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
         padding: 10px 12px;
       }
@@ -570,7 +672,7 @@
       .fc-cli[hidden], .fc-attitude[hidden] { display: none !important; }
       .fc-attitude {
         display: block;
-        margin: 10px 0 0;
+        margin: 12px 16px;
         width: 220px;
         height: 220px;
         background: #2e2e2e;
@@ -625,6 +727,34 @@
         padding: 7px 16px; cursor: pointer;
       }
       .drop-opt:hover, .drop-opt.on { color: var(--cream); background: rgba(232, 168, 184, 0.12); }
+      .screen-fc .drop-btn, .screen-fc .step { color: var(--bf-accent); }
+      .screen-fc .step { background: rgba(255, 187, 0, 0.18); }
+      .screen-fc .step:hover { background: rgba(255, 187, 0, 0.4); }
+      .screen-fc .drop-btn::after { border-top-color: var(--bf-accent); }
+      .screen-fc .drop-list {
+        background: #2e2e2e;
+        box-shadow: inset 0 0 0 1px rgba(255, 187, 0, 0.45), 0 14px 32px rgba(0, 0, 0, 0.55);
+        scrollbar-color: #ffbb00 #2e2e2e;
+      }
+      .screen-fc .drop-opt { color: #ddd; }
+      .screen-fc .drop-opt:hover, .screen-fc .drop-opt.on {
+        color: #fff;
+        background: rgba(255, 187, 0, 0.16);
+      }
+      @media (max-width: 860px) {
+        .screen-fc .menu-stage {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+        }
+        .screen-fc .menu-help {
+          grid-column: auto;
+          max-width: none;
+          border-left: none;
+        }
+        .fc-tabs { flex: 0 0 8.5em; }
+        .fc-wordmark { font-size: 16px; }
+      }
       .hint {
         display: flex; align-items: center; gap: 12px;
         margin-top: 22px; min-height: 1.4em; max-width: 42em;

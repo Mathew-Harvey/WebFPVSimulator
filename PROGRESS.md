@@ -8941,5 +8941,97 @@ homage screen was not a PID page wearing orange.
 Next: independent pitch / `rates_type` through KEEP compose, or leave
 the five-knob shadow documented. Do not steal the title pose for F9.
 
+### 2026-08-16 | audio | ambience hum, vinyl static, and a Strudel-shaped crate
+
+The owner: ambience is an annoying hum, take it out completely. The
+tracks now have annoying static. And, the hard one: use Strudel or the
+like to make actually nice tracks, expecting a few adversarial loops.
+
+#### Ambience
+
+The stem was a 22.5 s loop of LCG noise through a 320 Hz bake lowpass
+plus fourteen sine bird calls. That air is a hum. Removed: the bake,
+the two nodes, the airspeed fade, the settings row. `setMix({ambience})`
+still accepts the key so the probe does not throw, and forces 0.
+Ambience-only render, 6 s, idle: peak sample 0.0000, RMS -Infinity.
+
+#### Static
+
+Two sources, both more obvious once the pad drone died last turn.
+
+1. Vinyl crackle. A looped hiss-and-pop buffer at 0.7 to 0.85 on every
+   lofi track. Gone. The nodes paid for a reese pair instead.
+2. Hats. Highpassed noise at 6.5 kHz, 60 ms, every eighth, with an
+   exponential floor of 0.0001 so the hiss never actually stopped.
+   Hats are now 24 to 28 ms ticks at 4.2 to 4.8 kHz, linearRamp to
+   true 0, and the patterns are `ho ~ hh ~` rather than a 16-step
+   noise bed.
+
+Porch Light, music only, --tones=2000,8000: loudest peak 5183 Hz at
+-75 dBFS, 6.3 dB prominence. That is a noise floor, not a bed.
+
+#### Strudel, and why it is not in the page
+
+[@strudel/web](https://www.npmjs.com/package/@strudel/web) is
+AGPL-3.0-or-later. Importing it would relicense the combined work,
+needs a bundler this project does not have, wants sample banks this
+licence cannot ship, and builds an unbounded Web Audio graph against
+the 64 node budget. So it is not imported. The public mini-notation
+(sequences, rests, brackets, *repeat, Euclidean) is, in
+`src/render/mini.js`, original GPLv3, expanding one cycle to one bar
+of sixteenths. All twelve drum lines are rewritten in that language.
+The performer is still the pooled graph.
+
+Reese: two detuned saws through a 140 Hz lowpass, on the dnb tracks
+only, scheduled with the sub. Nodes: minus 2 crackle, minus 2
+ambience, plus 4 reese, still 63.
+
+Night Circuit, music only: pad-band prominence 4.5 dB (was 16 to 34
+with the held triad). Tempo 173.48 BPM against authored 174.
+
+This is loop 1 of the music gauntlet. The hum and the static have
+measured causes and are gone. Whether the new grooves are *nice* is
+ears, not an FFT.
+
+Verify, this turn, SIM_CHROME_BIN set: 13 of 16. Check 14 audio-bed
+passes, ctx running, music gain 0.425, 46 steps in 4.02 s, **63
+nodes**. console-clean errors=0 warnings=0. Determinism hash
+6d17d4814bdc unchanged. Same reds as this machine: build-clean,
+yaw-coupling -0.12 deg, map-isolation vs c3c6e44. tests/ not edited.
+
+Hard reload. Ambience is no longer a setting. Play the crate.
+
+### 2026-08-16 | loop | Configurator gauntlet round 4: classic 10.10 chrome
+
+Asked: five unattended rounds, Configurator colours as homage with credit
+to the Betaflight developers.
+
+The FC screen is now an orange `#ffbb00` header (BETAFLIGHT 4.5.1 WASM
+as text, not their logo), dark left tabs, PID/Filters/Rates page strip,
+horizontal Save/Discard/Export/Back, orange status strip, section
+headers. Title and Settings stay cream and sakura. Save is still
+composeConfig then sim_init then adoptSimClock.
+
+What went wrong: first shot run threw `Identifier brand already
+declared` because the title screen already bound `brand`. Renamed to
+`fcBrand`. Verify during that failure was 11 of 16 (audio-bed and
+world-scale died on the SyntaxError). After the rename, verify 13 of
+16 and shots console 0/0/0.
+
+After review (both REJECT): wrote `shots-log.txt` and `verify.txt` so
+D1/D3/D8 are files, not chat. `gyro_lpf1_static_hz` is grey while dyn
+min is above 0 (catalog stays LIVE). ACTUAL labels stay centre / max
+rate (conflicts.md 3). F9 title-pad stays blocked. KEEP compose
+scheduled as round 5.
+
+Measured: `fc-head` `rgb(255, 187, 0)`, homage/chrome/status true, 24
+tabs. F14 after save-restart: simStepMs 0 = moduleMs 0, lastTs 0,
+p_roll 80. lint:catalog 0, lint:fc 21/21, F3 hash
+`0cfec5939c86abc38d3edc1cc0c849ffbcb703eb21a27f17a6a3bb33c87145e8`.
+Physics hash `6d17d4814bdc`, hover 0.2637, punch 81.5 m, terminal
+31.1 m/s, t63 26 ms, rate-tracking 671.5, sag 11.14 percent,
+diff-passthrough 1.2478, craft body 0.1552 m.
+
+Next: persist every RATE_KEYS entry through KEEP compose.
 
 

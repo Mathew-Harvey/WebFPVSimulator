@@ -1355,7 +1355,7 @@ export async function boot({ loading, bootStart, mapId }) {
       mixArg.wind = s.windLevel / 10;
       mixArg.music = s.musicLevel / 10;
       mixArg.focus = 1;
-      mixArg.ambience = s.ambienceLevel / 10;
+      mixArg.ambience = 0;
       audio.setMix(mixArg);
     }
     if (typeof audio.setMusicEnabled === 'function') {
@@ -2477,6 +2477,8 @@ export async function boot({ loading, bootStart, mapId }) {
     presetId: ui.fc.presetId || '',
     importName: ui.fc.importName || '',
     homage: Boolean(document.querySelector('.screen-fc .fc-homage')),
+    chrome: Boolean(document.querySelector('.screen-fc .fc-wordmark')),
+    status: Boolean(document.querySelector('.screen-fc .fc-status')),
     tabs: document.querySelectorAll('.fc-tab').length,
     simStepMs,
     lastTs,

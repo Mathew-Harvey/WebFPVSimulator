@@ -1,5 +1,29 @@
 # Tried and rejected
 
+## Configurator loop, round 4
+
+**Leaving Save / Discard / Export / Back as four stacked full-width slabs.**
+Configurator 10.10 puts actions in a compact bar. They now sit in `.fc-bar`.
+
+**`const brand` in the FC constructor.** The title screen already binds
+`brand`. First shot run threw `Identifier brand already declared` and
+`window.__fc` never existed. Renamed to `fcBrand`.
+
+**Demoting `gyro_lpf1_static_hz` in the catalog because dyn LPF is on.**
+It is LIVE when dyn min is 0. The Filters row is grey while dyn min is
+above 0. Same as 4.5.1. Do not GATED a cutoff the firmware uses on a
+static board.
+
+**Putting CLI `roll_rc_rate` next to 70 deg/s.** Round 3 rejected that.
+Round 4 Configurator review wanted the CLI name back. That is conflict 3.
+Keep centre / max rate.
+
+**Stealing the title pose so a radio can open FC.** Still rejected.
+Pause is the radio path. F9 stays blocked.
+
+**Widening `ratesDiff` in the chrome round.** Highest-cost QA FAIL, but
+it is a rates-policy change, not the header. Scheduled as round 5.
+
 ## Configurator loop, round 3
 
 **Leaving the import dialog's Escape as clear-confirm.** The dropped

@@ -1,0 +1,25 @@
+npm run verify this turn (after SyntaxError: Identifier brand already declared was renamed to fcBrand).
+
+13 of 16 checks passing. SIM_CHROME_BIN set. tests/ not edited.
+
+| #  | check                  | measured                                           | result |
+|----|------------------------|----------------------------------------------------|--------|
+| 1  | build-clean            | build exit 1, vendor diff empty                    | FAIL   |
+| 2  | determinism-repeat     | a=6d17d4814bdc b=6d17d4814bdc                      | PASS   |
+| 3  | determinism-cross-host | node=6d17d4814bdc chrome=6d17d4814bdc              | PASS   |
+| 4  | frame-independence     | 1 distinct hash(es) across 4 rates                 | PASS   |
+| 5  | hover-throttle         | 0.2637                                             | PASS   |
+| 6  | punch-out              | 81.5 m                                             | PASS   |
+| 7  | terminal-velocity      | 31.1 m/s                                           | PASS   |
+| 8  | motor-step-response    | 26 ms                                              | PASS   |
+| 9  | rate-tracking          | 671.5 deg/s vs 670 configured (0.22 percent off)   | PASS   |
+| 10 | yaw-coupling           | -0.12 deg                                          | FAIL   |
+| 11 | battery-sag            | 11.14 percent lower (26024 vs 23125 RPM)           | PASS   |
+| 12 | diff-passthrough       | ratio 1.2478 vs 1.2537 expected (0.47 percent off) | PASS   |
+| 13 | console-clean          | errors=0 warnings=0 run=ok                         | PASS   |
+| 14 | audio-bed              | ctx running, music gain 0.425, 46 steps in 4.03 s  | PASS   |
+| 15 | world-scale            | craft body 0.1552 m                                | PASS   |
+| 16 | map-isolation          | P1 313 against 171 at c3c6e44                      | FAIL   |
+
+git diff --stat vendor/betaflight: empty (from verify row 1).
+git diff HEAD -- tests/: empty this round (FC files only).

@@ -93,6 +93,77 @@ function formatField(field, raw) {
   return String(raw);
 }
 
+function sectionFor(field, page) {
+  const k = field.key;
+  if (page === 'pid') {
+    if (k.startsWith('simplified_')) {
+      return 'Simplified tuning';
+    }
+    if (/^[pidf]_/.test(k) || k.startsWith('d_min')) {
+      return 'PID';
+    }
+    if (k.startsWith('iterm_')) {
+      return 'Iterm relax';
+    }
+    if (k.startsWith('anti_gravity')) {
+      return 'Anti gravity';
+    }
+    if (k.startsWith('tpa_') || k.startsWith('throttle_boost')) {
+      return 'TPA';
+    }
+    if (k.startsWith('feedforward_')) {
+      return 'Feedforward';
+    }
+    if (k.startsWith('angle_') || k.startsWith('horizon_') || k.startsWith('level_')) {
+      return 'Angle';
+    }
+    return 'Advanced';
+  }
+  if (page === 'filters') {
+    if (k.startsWith('simplified_')) {
+      return 'Simplified filters';
+    }
+    if (k.startsWith('gyro_lpf')) {
+      return 'Gyro lowpass';
+    }
+    if (k.startsWith('dyn_notch')) {
+      return 'Dynamic gyro notch';
+    }
+    if (k.startsWith('dterm_') || k.startsWith('yaw_lowpass')) {
+      return 'D term';
+    }
+    if (k.startsWith('rpm_')) {
+      return 'RPM filter';
+    }
+    return 'Filters';
+  }
+  if (page === 'rates') {
+    if (k === 'rates_type' || /_rc_rate$|_srate$|_expo$|_rate_limit$/.test(k) || k.startsWith('quickrates')) {
+      return 'Rates';
+    }
+    return 'Throttle';
+  }
+  if (field.tab === 'receiver') {
+    if (k.startsWith('rc_smoothing')) {
+      return 'RC smoothing';
+    }
+    if (/check$|mid_rc|airmode_start/.test(k)) {
+      return 'Receiver';
+    }
+    return 'Radio link';
+  }
+  if (field.tab === 'motors') {
+    if (/^dshot_|^motor_poles|^bidir/.test(k)) {
+      return 'DShot';
+    }
+    return 'Mixer';
+  }
+  if (field.tab === 'configuration') {
+    return 'Configuration';
+  }
+  return '';
+}
+
 function fieldRank(field, page) {
   const k = field.key;
   if (page === 'pid') {
@@ -343,6 +414,7 @@ export class FcSession {
     rows.push({
       label: 'Save',
       action: 'fc-save',
+      rowClass: 'fc-btn',
       note: this.dirty()
         ? 'Writes the draft dump through sim_init, then adopts the module clock so stick lag cannot return.'
         : 'No edits. Save does not re-init, so a live race is not killed for nothing.',
@@ -350,16 +422,19 @@ export class FcSession {
     rows.push({
       label: 'Discard',
       action: 'fc-discard',
+      rowClass: 'fc-btn',
       note: 'Restores the dump that was live when this screen opened.',
     });
     rows.push({
       label: 'Export',
       action: 'fc-export',
+      rowClass: 'fc-btn',
       note: 'Downloads CLI text a 4.5 Configurator can read. Does not Save.',
     });
     rows.push({
       label: 'Back',
       action: 'fc-back',
+      rowClass: 'fc-btn',
       note: 'Leaves this screen. Unsaved edits are discarded.',
     });
 
@@ -442,6 +517,13 @@ export class FcSession {
     }
 
     if (this.tab === 'configuration') {
+      rows.push({
+        label: 'Features',
+        info: true,
+        disabled: true,
+        rowClass: 'fc-section',
+        note: 'feature lines in the dump. Same path a preset uses.',
+      });
       for (const feat of FEATURES) {
         const live = feat.status === STATUS.LIVE;
         const on = featureEnabled(this.draft, feat.name);
@@ -520,7 +602,19 @@ export class FcSession {
         rowClass: 'row-grey',
       });
     }
+    let lastSection = '';
     for (const field of fields) {
+      const section = sectionFor(field, this.tab === 'pid' ? this.page : '');
+      if (section && section !== lastSection) {
+        lastSection = section;
+        rows.push({
+          label: section,
+          info: true,
+          disabled: true,
+          rowClass: 'fc-section',
+          note: 'Configurator group. Values still travel as CLI.',
+        });
+      }
       rows.push(this.fieldItem(field, tab.grey));
     }
     return rows;
@@ -553,7 +647,9 @@ export class FcSession {
 
   fieldItem(field, tabGrey) {
     const raw = cliGet(this.draft, field.key);
-    const enabled = !tabGrey && fieldEnabled(field);
+    const dynMinOn = field.key === 'gyro_lpf1_static_hz'
+      && Number(cliGet(this.draft, 'gyro_lpf1_dyn_min_hz')) > 0;
+    const enabled = !tabGrey && fieldEnabled(field) && !dynMinOn;
     const note = fieldNote(field, this.draft);
     const actual = isActualRateKey(field.key) && cliGet(this.draft, 'rates_type') === 'ACTUAL';
     const label = actual ? actualRateLabel(field.key) : field.key;
@@ -624,6 +720,33 @@ export function paintTabStrip(nav, session, onPick) {
     const t = TABS.find((x) => x.id === b.dataset.id);
     b.classList.toggle('on', session.tab === b.dataset.id);
     b.classList.toggle('grey', Boolean(t && t.grey));
+  }
+}
+
+export function paintPageStrip(nav, session, onPick) {
+  if (!nav) {
+    return;
+  }
+  const show = session.tab === 'pid' && !session.confirm;
+  nav.hidden = !show;
+  if (!show) {
+    return;
+  }
+  if (!nav.dataset.ready) {
+    nav.textContent = '';
+    for (const p of PID_PAGES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fc-page';
+      b.dataset.id = p.id;
+      b.textContent = p.label;
+      b.addEventListener('click', () => onPick(p.id));
+      nav.append(b);
+    }
+    nav.dataset.ready = '1';
+  }
+  for (const b of nav.children) {
+    b.classList.toggle('on', session.page === b.dataset.id);
   }
 }
 

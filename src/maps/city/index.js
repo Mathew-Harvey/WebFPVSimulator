@@ -299,7 +299,6 @@ const CULL_CELL = 40;
  * between four and nine inside the box depending on where the craft sits,
  * against the 351 calls the shadow pass cost when the town cast for itself.
  */
-const SHADOW_PROXY_CELL = 24;
 
 /*
  * How much of the town's planting survives.
@@ -1240,7 +1239,12 @@ export async function buildMap(shell, onProgress, options) {
    * every frame and P8 forbids allocating in that path.
    */
   const proxyMeshes = baked.proxies ? baked.proxies.meshes : [];
-  const proxyCell = q.city.shadowProxyCell || SHADOW_PROXY_CELL;
+  /* quality.js owns this number; there used to be a SHADOW_PROXY_CELL
+   * constant here holding a second copy of the same 24. The `||` rather
+   * than `??` is deliberate and narrow: the lowest tier sets
+   * shadowProxyCell 0 next to shadowMap 0, so shadows are off there and a
+   * zero cell would only give proxyReach nothing to work with. */
+  const proxyCell = q.city.shadowProxyCell || 24;
   const proxyReach = Math.hypot(proxyCell, proxyCell) * 0.5;
   const proxyView = new THREE.Matrix4();
   const proxyEye = new THREE.Vector3();
@@ -1353,13 +1357,11 @@ export async function buildMap(shell, onProgress, options) {
     gates: [],
     curve: null,
     spawn: SPAWN,
+    /* Only path, speed, lookAhead and aimDrop are read: see the top of
+     * src/render/attract.js. This object used to carry x, y, z, radius, eye
+     * and aim as well, left over from the orbit shot the city's flythrough
+     * replaced, and they read as live camera settings. */
     attract: {
-      x: SPAWN.x,
-      y: world.heightAt(SPAWN.x, SPAWN.z),
-      z: SPAWN.z,
-      radius: 11,
-      eye: 3.2,
-      aim: 1.2,
       path: cityAttractPath(world),
       /* Slower than the field's 13 m/s. The field's shot is a lap of a
        * course and wants to read as racing; this one is a street with things

@@ -722,17 +722,3 @@ int bf_settings_get(const char *key, char *out, int cap) {
   return -1;
 }
 
-int bf_settings_status(const char *key) {
-  if (key == 0) {
-    return 2;
-  }
-  for (int i = 0; i < g_count; i += 1) {
-    if (strcmp(g_table[i].name, key) == 0) {
-      return 0;
-    }
-  }
-  if (is_inert(key)) {
-    return 1;
-  }
-  return 2;
-}

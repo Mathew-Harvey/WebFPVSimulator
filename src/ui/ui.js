@@ -42,6 +42,18 @@
  */
 
 import { MAPS } from '../maps/registry.js';
+import { CAL_STEPS } from '../input/input.js';
+
+/* Wording for input.js's calibration steps. The order lives there. */
+const CAL_LABELS = {
+  center: 'Centre',
+  sweep: 'Full range',
+  throttle: 'Throttle',
+  roll: 'Roll',
+  pitch: 'Pitch',
+  yaw: 'Yaw',
+  confirm: 'Check',
+};
 import { TRACKS, trackById } from '../render/tracks.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
 import {
@@ -82,7 +94,7 @@ import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { sanitiseRateProfile } from '../fc/dump.js';
-import { downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
+import { cycle, downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
@@ -251,6 +263,18 @@ function placeNub(nub, x, y) {
   nub.style.top = `${50 - y * 50}%`;
 }
 
+/*
+ * Both gimbal plates from a channel set. The clamp, the throttle rescale
+ * from 0..1 to -1..1 and the pitch negate were written out twice, in the
+ * flight overlay and in the calibration screen, which is two places to get
+ * the pitch sign wrong in.
+ */
+function placeSticks(left, right, ch) {
+  const clamp = (v) => Math.max(-1, Math.min(1, v));
+  placeNub(left.nub, clamp(ch.yaw), clamp(ch.throttle * 2 - 1));
+  placeNub(right.nub, clamp(ch.roll), clamp(-ch.pitch));
+}
+
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) {
@@ -300,12 +324,6 @@ function wrapMenu() {
 }
 
 /* Step a value through a list, wrapping. */
-function cycle(list, value, dir) {
-  const i = list.indexOf(value);
-  const n = list.length;
-  return list[((i < 0 ? 0 : i) + dir + n) % n];
-}
-
 function choice(label, note, choices, current, format, set) {
   const fmt = format || ((v) => String(v));
   return {
@@ -421,7 +439,7 @@ function publishAction(listing, published) {
     const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
     const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
     return {
-      label: listing.remix ? 'Publish this course' : 'Publish this course',
+      label: 'Publish this course',
       action: 'publishcourse',
       note: listing.remix
         ? `Your copy${of}${by}. Goes on the board under a new name. Then you can upload a time.`
@@ -955,9 +973,7 @@ export class Ui {
         if (spec.label) {
           box.append(el('p', 'name-dialog-label', spec.label));
         }
-        if (spec.rules && !spec.label) {
-          box.append(el('p', 'lede', spec.rules));
-        } else if (spec.rules) {
+        if (spec.rules) {
           box.append(el('p', 'lede', spec.rules));
         }
         const field = document.createElement('input');
@@ -2080,7 +2096,7 @@ export class Ui {
           onAbort();
           return;
         }
-        frame.src = `/src/share/orbit.html?map=${encodeURIComponent(c.id)}&thumb=1`;
+        frame.src = `/src/share/orbit.html?map=${encodeURIComponent(c.id)}`;
       });
       if (this.reelSession !== session) {
         return;
@@ -2206,22 +2222,7 @@ export class Ui {
      * pack are what the player paused to look at. */
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
-    this.mountCraft(screen);
     this.renderMenu();
-  }
-
-  /*
-   * Settings holds the studio canvas. The title no longer does: that
-   * screen uses the world airframe, and moving a WebGL canvas off a
-   * live renderer is how you lose the context on some GPUs.
-   */
-  mountCraft(screen) {
-    if (!this.craftCanvas || !this.craftSettingsFrame) {
-      return;
-    }
-    if (screen === 'settings' && this.craftCanvas.parentNode !== this.craftSettingsFrame) {
-      this.craftSettingsFrame.appendChild(this.craftCanvas);
-    }
   }
 
   setCraftCaption(text) {
@@ -2397,7 +2398,7 @@ export class Ui {
         const listing = inspectCourse();
         this.resultsDocId = listing && listing.doc ? listing.doc.id : null;
         if (listing && listing.canPostTime && listing.shareId) {
-          writePendingTime({ trackId: listing.shareId, lapMs: fastest, name: listing.name });
+          writePendingTime({ trackId: listing.shareId, lapMs: fastest });
         }
       } catch (e) {
         /* Keep the results screen even if storage is unavailable. */
@@ -2477,9 +2478,7 @@ export class Ui {
     if (!show) {
       return;
     }
-    const clamp = (v) => Math.max(-1, Math.min(1, v));
-    placeNub(this.osdStickLeft.nub, clamp(yaw), clamp(throttle * 2 - 1));
-    placeNub(this.osdStickRight.nub, clamp(roll), clamp(-pitch));
+    placeSticks(this.osdStickLeft, this.osdStickRight, { yaw, throttle, roll, pitch });
   }
 
   setCalibration(view) {
@@ -2501,29 +2500,22 @@ export class Ui {
     if (this.calSaveBtn) {
       this.calSaveBtn.disabled = !view.canSave;
     }
-    const clamp = (v) => Math.max(-1, Math.min(1, v));
     const ch = view.channels || { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
-    placeNub(this.calStickLeft.nub, clamp(ch.yaw), clamp(ch.throttle * 2 - 1));
-    placeNub(this.calStickRight.nub, clamp(ch.roll), clamp(-ch.pitch));
-    const labels = [
-      ['center', 'Centre'],
-      ['sweep', 'Full range'],
-      ['throttle', 'Throttle'],
-      ['roll', 'Roll'],
-      ['pitch', 'Pitch'],
-      ['yaw', 'Yaw'],
-      ['confirm', 'Check'],
-    ];
+    placeSticks(this.calStickLeft, this.calStickRight, ch);
+    /* The ORDER is input.js's CAL_STEPS, imported rather than re-typed:
+     * this list used to restate it, so a step added to the calibration
+     * would have run without ever appearing in the list beside it. Only the
+     * wording is the UI's business. */
     this.calList.textContent = '';
-    for (const [id, label] of labels) {
-      const li = el('li', null, label);
+    CAL_STEPS.forEach((id, i) => {
+      const li = el('li', null, CAL_LABELS[id] ?? id);
       if (id === view.step) {
         li.className = 'on';
-      } else if (labels.findIndex((x) => x[0] === id) < view.stepIndex) {
+      } else if (i < view.stepIndex) {
         li.className = 'done';
       }
       this.calList.append(li);
-    }
+    });
   }
 
   persistSettings() {
@@ -2872,20 +2864,12 @@ export class Ui {
       }
       return;
     }
+    /* back() is the one implementation. This branch used to be a copy of
+     * its last three cases and had already drifted: it called show() where
+     * back() calls act(), so a Back ROW left main.js unaware of the screen
+     * change that the Escape key told it about. */
     if (action === 'back') {
-      if (this.screen === 'editormap') {
-        if (this.editormapFrom === 'choosetrack') {
-          this.returnToChooseTrack();
-          return;
-        }
-        this.show(this.editormapFrom === 'paused' ? 'paused' : 'title');
-        return;
-      }
-      if (this.screen === 'choosetrack') {
-        this.returnToMaps();
-        return;
-      }
-      this.show(this.returnTo === 'paused' ? 'paused' : 'title');
+      this.back();
       return;
     }
     if (action === 'title' || action === 'paused') {

@@ -176,7 +176,7 @@ SIM_EXPORT int sim_step(int n) {
   for (int k = 0; k < n; k += 1) {
     /* Consume every sample whose timestamp falls inside this step. Each
      * consumed sample is an RC frame for the controller. */
-    const long long step_end_us = (S.step_index + 1) * 1000;
+    const long long step_end_us = (S.step_index + 1) * (1000000LL / SIM_STEP_HZ);
     int rx_new = 0;
     while (g_q_head != g_q_tail && g_queue[g_q_head].t_us < step_end_us) {
       g_current_rc[0] = g_queue[g_q_head].ch[0];
@@ -208,7 +208,7 @@ SIM_EXPORT int sim_state(double *out) {
   if (!g_initialised) {
     return SIM_ERR_BAD_STATE;
   }
-  out[0] = (double)S.step_index / 1000.0;
+  out[0] = (double)S.step_index / (double)SIM_STEP_HZ;
   out[1] = S.pos[0];
   out[2] = S.pos[1];
   out[3] = S.pos[2];

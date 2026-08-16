@@ -54,7 +54,9 @@ const PID_PAGES = [
   { id: 'rates', label: 'Rates' },
 ];
 
-function cycle(list, value, dir) {
+/* Step through a list with wraparound. Exported because ui.js had a
+ * byte-identical copy while already importing this module. */
+export function cycle(list, value, dir) {
   const i = list.indexOf(value);
   const n = list.length;
   return list[((i < 0 ? 0 : i) + dir + n) % n];
@@ -62,10 +64,6 @@ function cycle(list, value, dir) {
 
 function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
-}
-
-function stepFor(_min, _max) {
-  return 1;
 }
 
 function actualRateLabel(key) {
@@ -673,7 +671,12 @@ export class FcSession {
         grey.push(f);
       }
     }
-    enabled.sort((a, b) => fieldRank(a, this.page) - fieldRank(b, this.page));
+    /* The same guarded page the sectionFor call above uses. Sorting with a
+     * raw this.page ranked a Receiver or Motors tab by whatever PID page
+     * was last open, so the rows moved under the cursor depending on where
+     * the pilot had been. */
+    const page = this.tab === 'pid' ? this.page : '';
+    enabled.sort((a, b) => fieldRank(a, page) - fieldRank(b, page));
     return enabled.concat(grey);
   }
 
@@ -716,7 +719,10 @@ export class FcSession {
     const shown = actual ? cur * 10 : cur;
     const lo = actual ? min * 10 : min;
     const hi = actual ? max * 10 : max;
-    const step = actual ? 10 : stepFor(min, max);
+    /* stepFor(min, max) used to sit here taking a range and returning 1
+     * whatever it was given, which reads as a considered step size and is
+     * not one. */
+    const step = actual ? 10 : 1;
     return {
       label,
       note: actual

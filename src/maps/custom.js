@@ -39,7 +39,9 @@
  */
 
 import { buildFieldScene } from '../render/scene.js';
-import { buildComposer } from '../render/post.js';
+/* The composer wrap and its dispose live with the field map, which is the
+ * same world this one dresses with a designed course. */
+import { attachComposer } from './field.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { readAutosave } from '../trackbuilder/storage.js';
 import { readShareImport } from '../share/session.js';
@@ -64,24 +66,6 @@ export function workingDocument() {
   }
 }
 
-/* Enough to put a name on the menu without building anything. */
-export function trackSummary() {
-  const share = readShareImport();
-  const doc = workingDocument();
-  if (!doc) {
-    return null;
-  }
-  const gates = doc.sequence.length;
-  return {
-    name: doc.name,
-    gates,
-    elements: doc.elements.length,
-    shared: Boolean(share),
-    author: share ? share.author : '',
-    shareId: share ? share.id : null,
-  };
-}
-
 export async function buildMap(shell, onProgress, options) {
   const progress = onProgress ?? (() => {});
   const opts = options || {};
@@ -94,16 +78,7 @@ export async function buildMap(shell, onProgress, options) {
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;
-  const post = buildComposer(shell.renderer, map.scene, shell.camera, q);
-  const d = shell.resize();
-  post.setSize(d.w, d.h);
-  const sceneDispose = map.dispose;
-  map.post = post;
-  map.dispose = () => {
-    post.dispose();
-    sceneDispose();
-  };
-  return map;
+  return attachComposer(shell, map, q);
 }
 
 /* A course with nothing in it, so the world still builds and the shell still

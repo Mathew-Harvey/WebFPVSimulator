@@ -21,8 +21,14 @@
 # preset impossible to judge, because choosing it changed the tune and the
 # stick authority in one keypress.
 #
-# Airframe: the reference 5 inch of STAGE1.md, 6S, 1900 kV, 0.65 kg. The
-# airframe keys are read by the plant, not by Betaflight.
+# Airframe: the reference 5 inch of STAGE1.md, 6S, 1900 kV, 0.65 kg.
+#
+# The airframe keys below are STORED, not read. The Stage 1 plant's mass,
+# kV, cell count and rotor size are constants in src/native/plant.c and
+# changing motor_kv here changes nothing about how the craft flies. They
+# are kept so a dump round trips and so the numbers are written down
+# beside the tune that assumes them. This block used to claim the plant
+# read them.
 
 batch start
 

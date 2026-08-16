@@ -447,7 +447,6 @@ void plant_reset(SimState *s) {
   s->quat[3] = 0.0;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     s->motor_omega[m] = 0.0;
-    s->motor_domega[m] = 0.0;
     s->wash_fast[m] = 0.0;
     s->wash_slow[m] = 0.0;
   }
@@ -550,7 +549,6 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   double thrust[SIM_MOTOR_COUNT];
   double stator_torque[3] = { 0.0, 0.0, 0.0 }; /* reaction on the frame */
   double h_prop[3] = { 0.0, 0.0, 0.0 };        /* net prop angular momentum */
-  double aero_torque_z = 0.0;   /* prop drag about z, in the air's frame */
   double pack_current = 0.0;
   const double p = s->omega[0];
   const double q = s->omega[1];
@@ -786,7 +784,6 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     if (w_next < 0.0) {
       w_next = 0.0;
     }
-    s->motor_domega[m] = (w_next - w) / SIM_DT;
     s->motor_omega[m] = w_next;
     double t = PLANT.kt * w_next * w_next * axial;
     if (t < 0.0) {
@@ -803,14 +800,12 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     h_prop[0] += hm * PLANT_AXIS[m][0];
     h_prop[1] += hm * PLANT_AXIS[m][1];
     h_prop[2] += hm * PLANT_AXIS[m][2];
-    aero_torque_z += -drag_mag;
     const double draw = d * i;
     if (draw > 0.0) {
       pack_current += draw;
     }
   }
   s->pack_current = pack_current;
-  (void)aero_torque_z;
 
   /* 3. Body frame forces: thrust along +z, quadratic drag per axis. */
   const double cda[3] = { PLANT.cda_front, PLANT.cda_side, PLANT.cda_plan };

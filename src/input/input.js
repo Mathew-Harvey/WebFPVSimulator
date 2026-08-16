@@ -56,7 +56,11 @@ const DEFAULT_MAP = {
   throttle: { axis: 2, low: -1, high: 1 },
 };
 
-const CAL_STEPS = ['center', 'sweep', 'throttle', 'roll', 'pitch', 'yaw', 'confirm'];
+export const CAL_STEPS = ['center', 'sweep', 'throttle', 'roll', 'pitch', 'yaw', 'confirm'];
+
+/* How far a stick has to leave centre to count as a menu keypress. Shared
+ * with main.js padNav, which used to spell it out four more times. */
+export const NAV_DEFLECT = 0.55;
 const IDENT_CHANNELS = ['throttle', 'roll', 'pitch', 'yaw'];
 
 const CAL = {
@@ -438,6 +442,11 @@ export class InputManager {
   padMenuButtons() {
     const gp = this.firstGamepad();
     if (!gp || !gp.buttons) {
+      /* Disarm as well as bail. The release guard below only runs once per
+       * arming, so a pad that goes away and comes back with a latched
+       * switch still held would have kept the arming it earned before it
+       * was unplugged, and fired the first menu item on sight. */
+      this.padArmed = false;
       return { select: false, back: false };
     }
     const at = (i) => Boolean(gp.buttons[i] && gp.buttons[i].pressed);
@@ -468,6 +477,10 @@ export class InputManager {
   navRaw() {
     const gp = this.firstGamepad();
     if (!gp) {
+      /* Forget where the sticks rested. A different radio with the same
+       * axis count would otherwise be measured against the last one's
+       * resting position and read as permanently deflected. */
+      this.navRest = null;
       return { up: false, down: false };
     }
     const axes = gp.axes;
@@ -858,11 +871,10 @@ export class InputManager {
     }
     let next;
     if (this.calibration) {
-      if (gp) {
-        this.runCalibration(gp, dtMs);
-      } else {
-        this.calibration.waiting = true;
-      }
+      /* Unconditional: runCalibration's own first line sets waiting when
+       * there is no pad, so the else arm here was a second copy that could
+       * only ever agree with it. */
+      this.runCalibration(gp, dtMs);
       next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
       this.source = 'the calibration wizard';
     } else if (gp) {

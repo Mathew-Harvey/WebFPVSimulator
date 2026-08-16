@@ -94,6 +94,7 @@ export class App {
     this.buildTopBar();
     this.bindKeys();
     this.bindResize();
+    this.bindModalBackdrop();
 
     this.view2d.resize();
     this.view2d.frameField();
@@ -114,6 +115,10 @@ export class App {
     const saved = readAutosave();
     if (saved && saved.doc) {
       this.doc = saved.doc;
+      /* Same upgrade every other entry point runs. An autosave written
+       * before stacked figures existed came back without one, so a reopened
+       * session flew a stack differently from the file it was saved to. */
+      upgradeStackedFigures(this.doc);
       applyAutoFaces(this.doc);
       if (saved.repairs.length) {
         this.toast(`Recovered the working track. ${saved.repairs.length} thing${saved.repairs.length === 1 ? '' : 's'} needed repairing.`);
@@ -170,13 +175,17 @@ export class App {
         }
         return;
       }
-      const copy = forkDocument(incoming, {
+      const { copy, commit } = forkDocument(incoming, {
         sourceId: share.id,
         sourceName: share.name || incoming.name,
         sourceAuthor: share.author || '',
         board: share.board || boardOrigin(),
       });
       const load = () => {
+        /* Committed HERE, not in forkDocument: the confirm below can be
+         * declined, and a bind for a copy the author never opened is a
+         * course this browser claims to own and has never seen. */
+        commit();
         clearShareImport();
         this.loadDocument(copy, `This is your copy of "${share.name || incoming.name}". Publish it under a new name to put it on the board.`);
       };
@@ -561,8 +570,13 @@ export class App {
       this.createPath();
       return;
     }
+    /* renderAll and updateTopBar, the same pair createPath calls. Only the
+     * palette was refreshed, so the top bar's Create Path button stayed lit
+     * and the Results panel went on showing the lap figures of a path that
+     * is no longer drawn. */
     this.pathVisible = false;
-    this.panels.renderPalette();
+    this.panels.renderAll();
+    this.updateTopBar();
     this.view3d.markDirty();
     this.requestDraw();
   }
@@ -830,13 +844,14 @@ export class App {
           if (!e || !e.conflict) {
             throw e;
           }
-          const copy = forkDocument(this.doc, {
+          const { copy, commit } = forkDocument(this.doc, {
             name: courseName,
             board: origin,
             sourceId: this.doc.id,
             sourceName: this.doc.name,
             sourceAuthor: '',
           });
+          commit();
           this.loadDocument(copy, '');
           posted = await sendDoc(this.doc);
           status.textContent = `This id was already on the board, so it went up as a new course, "${posted.name}".`;
@@ -1151,7 +1166,7 @@ export class App {
         this.publishBtn.textContent = 'Publish as yours';
         this.publishBtn.title = 'Put this copy on the board under a new name. The original stays.';
       } else {
-        this.listingChip.textContent = listing.canPublishNew ? 'Not on the board' : 'Not on the board';
+        this.listingChip.textContent = 'Not on the board';
         this.publishBtn.textContent = 'Publish';
         this.publishBtn.title = 'Put this course on the public board, logo and all';
       }
@@ -1233,11 +1248,21 @@ export class App {
     row.append(close);
     box.append(row);
     back.append(box);
+    /* The backdrop click handler is bound ONCE, in the constructor. It used
+     * to be registered per open with { once: true }, which only removes
+     * itself when it fires: closing with a button left it attached, so a
+     * session that opened five modals through their buttons carried five
+     * handlers on a node that is reused. The e.target check already makes
+     * it harmless while the modal is hidden. */
+  }
+
+  bindModalBackdrop() {
+    const back = this.nodes.modal;
     back.addEventListener('click', (e) => {
-      if (e.target === back) {
+      if (e.target === back && !back.hidden) {
         this.closeModal();
       }
-    }, { once: true });
+    });
   }
 
   confirm(title, detail, run) {

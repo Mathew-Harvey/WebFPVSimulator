@@ -73,7 +73,6 @@ typedef struct {
   double omega[3]; /* body rates p q r, rad/s */
   /* motors, Betaflight order: 0 RR, 1 FR, 2 RL, 3 FL */
   double motor_omega[SIM_MOTOR_COUNT]; /* rad/s */
-  double motor_domega[SIM_MOTOR_COUNT]; /* last step's d omega / dt */
   /* Propwash: a band limited turbulence field, one channel per rotor, run
    * every step whether the craft is in the wash or not so that flying into
    * it does not restart it. Deterministic; see plant.c. */

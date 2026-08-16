@@ -431,7 +431,11 @@ export function normalize(raw) {
         z: num(rawEl.position?.z),
       },
       yaw: num(wrapAngle(num(rawEl.yaw))),
-      pitch: num(wrapAngle(num(rawEl.pitch, def.pitch ?? 0))),
+      /* CLAMPED, not wrapped, which is what schema.md documents and what
+       * setPitch does. Wrapping turned a nonsense 100 degree dive into a
+       * legal looking 80 degree one pointing the other way instead of
+       * pinning it at vertical. */
+      pitch: num(Math.max(-Math.PI / 2, Math.min(Math.PI / 2, num(rawEl.pitch, def.pitch ?? 0)))),
       yawOverridden: bool(rawEl.yawOverridden),
       dims,
     };

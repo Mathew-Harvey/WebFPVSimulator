@@ -329,6 +329,12 @@ export class View3D {
     cv.addEventListener('pointerdown', (e) => this.onDown(e));
     cv.addEventListener('pointermove', (e) => this.onMove(e));
     cv.addEventListener('pointerup', (e) => this.onUp(e));
+    /* A pointercancel is a drag the browser took away: a touch turned into
+     * a system gesture, or the window lost the pointer. Without this the
+     * height edit stayed open and the element went on following the cursor
+     * on plain hover, with no button held. View2D has had this for a
+     * while. */
+    cv.addEventListener('pointercancel', (e) => this.onCancel(e));
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
       this.orbit.radius *= Math.exp(e.deltaY * 0.0012);
@@ -426,6 +432,16 @@ export class View3D {
        * feels the same close in and far out. */
       const k = this.orbit.radius * 0.0022;
       this.host.raiseSelected(this.drag.origin, -dy * k, e.altKey);
+    }
+  }
+
+  onCancel(e) {
+    if (this.drag && this.drag.kind === 'height') {
+      this.host.cancelEdit();
+    }
+    this.drag = null;
+    if (e && this.canvas.hasPointerCapture?.(e.pointerId)) {
+      this.canvas.releasePointerCapture(e.pointerId);
     }
   }
 

@@ -111,12 +111,6 @@ export function boardPageUrl(origin) {
   return `${base}/`;
 }
 
-export function flyUrl(trackId, origin = boardOrigin()) {
-  const here = window.location.origin;
-  const board = encodeURIComponent(trimOrigin(origin));
-  return `${here}/?map=custom&share=${encodeURIComponent(trackId)}&board=${board}`;
-}
-
 async function readJson(res) {
   const text = await res.text();
   let body = null;

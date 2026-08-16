@@ -28,10 +28,14 @@ import { buildFieldScene } from '../render/scene.js';
 import { buildComposer } from '../render/post.js';
 import { qualityFor } from '../render/quality.js';
 
-export async function buildMap(shell, onProgress, options) {
-  const progress = onProgress ?? (() => {});
-  const q = qualityFor(options && options.quality);
-  const map = buildFieldScene(shell, progress, null, q);
+/*
+ * Give a built scene its composer, and a dispose that frees both.
+ *
+ * Exported because custom.js needs the identical seven lines: the field and
+ * the custom map are the same world with a different course in it, and the
+ * dispose in particular is not a detail to keep two copies of.
+ */
+export function attachComposer(shell, map, q) {
   const post = buildComposer(shell.renderer, map.scene, shell.camera, q);
   const d = shell.resize();
   post.setSize(d.w, d.h);
@@ -46,4 +50,10 @@ export async function buildMap(shell, onProgress, options) {
     sceneDispose();
   };
   return map;
+}
+
+export async function buildMap(shell, onProgress, options) {
+  const progress = onProgress ?? (() => {});
+  const q = qualityFor(options && options.quality);
+  return attachComposer(shell, buildFieldScene(shell, progress, null, q), q);
 }

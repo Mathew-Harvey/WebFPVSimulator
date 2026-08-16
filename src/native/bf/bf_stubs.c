@@ -37,7 +37,6 @@
 #include "flight/imu.h"
 #include "io/beeper.h"
 #include "scheduler/scheduler.h"
-#include "rx/rx.h"
 #include "sensors/acceleration.h"
 #include "sensors/battery.h"
 #include "sensors/gyro.h"

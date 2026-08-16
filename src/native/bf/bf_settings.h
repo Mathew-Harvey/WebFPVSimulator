@@ -50,6 +50,5 @@ int bf_settings_dump(char *out, int cap);
 int bf_settings_get(const char *key, char *out, int cap);
 
 /* 0 = in the write table, 1 = inert by prefix, 2 = unknown. */
-int bf_settings_status(const char *key);
 
 #endif /* BF_SETTINGS_H */

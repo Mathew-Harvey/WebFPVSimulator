@@ -54,8 +54,33 @@ function clipPrefix() {
   return `v${CLIP_VERSION}:${CLIP_W}x${CLIP_H}@${CLIP_FPS}`;
 }
 
-export function clipKeyForShare(shareId) {
-  return `${clipPrefix()}:custom:share:${shareId}`;
+export function clipKeyForShare(shareId, stamp = '') {
+  return `${clipPrefix()}:custom:share:${shareId}:${stamp}`;
+}
+
+/*
+ * The key for a published course, stamped with the version of it this
+ * browser is holding.
+ *
+ * The share branch used to key on the id alone, while the autosave branch
+ * below already carried a modifiedUtc. So a course that was republished
+ * with a new layout kept serving the shot of the old one, for as long as
+ * the cache lived, and the only way out was clearing storage. The stamp
+ * comes from the seat rather than from the caller because BOTH readers,
+ * the map screen through clipKeyForMap and the orbit page itself, have to
+ * arrive at the same string or one records under a key the other never
+ * looks up.
+ */
+export function clipKeyForSeatedShare(shareId) {
+  try {
+    const share = readShareImport();
+    if (share && share.id === shareId) {
+      return clipKeyForShare(shareId, (share.document && share.document.modifiedUtc) || '');
+    }
+  } catch (e) {
+    /* Private mode, or a corrupt seat: fall through to the bare id. */
+  }
+  return clipKeyForShare(shareId);
 }
 
 /*
@@ -69,7 +94,7 @@ export function clipKeyForMap(mapId) {
     try {
       const share = readShareImport();
       if (share && share.id) {
-        return clipKeyForShare(share.id);
+        return clipKeyForShare(share.id, (share.document && share.document.modifiedUtc) || '');
       }
       const saved = readAutosave();
       const doc = saved && saved.doc;

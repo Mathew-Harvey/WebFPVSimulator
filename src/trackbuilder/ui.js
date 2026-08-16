@@ -65,7 +65,10 @@ function show(x, places = 2) {
     return '';
   }
   const s = x.toFixed(places);
-  return s.replace(/\.?0+$/, '') || '0';
+  /* Only strip AFTER a decimal point. With places 0 there is no point in
+   * the string and the old expression chewed the trailing zeros off the
+   * number itself: a levels count of 40 displayed as 4, and 100 as 1. */
+  return s.includes('.') ? (s.replace(/\.?0+$/, '') || '0') : s;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';

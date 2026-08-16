@@ -35,7 +35,7 @@ import {
   CLIP_W,
   CLIP_H,
   clipKeyForMap,
-  clipKeyForShare,
+  clipKeyForSeatedShare,
   clipDurationMs,
   getClip,
   putClip,
@@ -79,7 +79,7 @@ function bytesToBase64(bytes) {
 function clipKey() {
   const shareId = params.get('share') || '';
   if (shareId) {
-    return clipKeyForShare(shareId);
+    return clipKeyForSeatedShare(shareId);
   }
   return clipKeyForMap(params.get('map') || 'field');
 }

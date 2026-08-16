@@ -11,8 +11,6 @@
  *   APPLIED_INERT  writes a PG; nothing that flies reads it
  *   INERT          real 4.5 CLI key, subsystem not compiled
  *   ABSENT         Configurator chrome that is not a CLI key here
- *   SHELL          game / radio convenience, not on this screen
- *   PLANT          physics constants, not a Configurator tab
  *
  * This file is part of WebFPVSimulator.
  *
@@ -38,8 +36,6 @@ export const STATUS = {
   APPLIED_INERT: 'APPLIED_INERT',
   INERT: 'INERT',
   ABSENT: 'ABSENT',
-  SHELL: 'SHELL',
-  PLANT: 'PLANT',
 };
 
 /*
@@ -454,8 +450,6 @@ export function catalogCounts() {
     APPLIED_INERT: 0,
     INERT: 0,
     ABSENT: 0,
-    SHELL: 0,
-    PLANT: 0,
   };
   for (const f of FIELDS) {
     counts[f.status] += 1;

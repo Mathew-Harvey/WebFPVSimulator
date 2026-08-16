@@ -38,27 +38,10 @@ import { normalize, serialize, toPlain, touch } from './model.js';
 const LIBRARY_KEY = 'webfpv.trackbuilder.library.v1';
 const AUTOSAVE_KEY = 'webfpv.trackbuilder.autosave.v1';
 
-function readJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      return fallback;
-    }
-    return JSON.parse(raw);
-  } catch (e) {
-    return fallback;
-  }
-}
-
-function writeJson(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch (e) {
-    /* Private mode, or the quota. The caller tells the user. */
-    return false;
-  }
-}
+/* readJson and writeJson come from src/share/session.js, which had the same
+ * two functions byte for byte. Private mode and the quota are handled there:
+ * a failed write returns false and the caller tells the user. */
+import { readJson, writeJson } from '../share/session.js';
 
 /* ------------------------------------------------------------------ */
 /* The library                                                         */

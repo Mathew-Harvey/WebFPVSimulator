@@ -488,7 +488,6 @@ export class View2D {
 
   drawGrid(ctx, doc) {
     const g = doc.field.gridSize;
-    const px = g * this.cam.scale;
     /* Below six pixels a 1 m grid is a grey wash, so it steps up by tens
      * until it is legible again. */
     let step = g;
@@ -514,9 +513,6 @@ export class View2D {
         ctx.lineTo(q.x, Math.round(q.y) + 0.5);
       }
       ctx.stroke();
-      if (px >= 6 && pass === 0) {
-        continue;
-      }
     }
   }
 

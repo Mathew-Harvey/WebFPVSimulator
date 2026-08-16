@@ -315,6 +315,11 @@ export class Loading {
     }
     this.frac = Math.max(0, Math.min(1, frac));
     if (detail !== undefined) {
+      /* Recorded, not painted. There is no element for it: the bar shows a
+       * stage name and a percentage, and five callers set this expecting a
+       * subtitle they never got. Kept as one line so `loading.detail = x`
+       * at the call sites stays harmless, and so the next person to want a
+       * subtitle has the value already arriving. */
       this.detail = detail;
     }
     this.paint();

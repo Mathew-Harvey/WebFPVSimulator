@@ -44,6 +44,14 @@ import {
   writeShareImport,
 } from './session.js';
 
+/*
+ * MIRRORS layoutHash in WebFPVSimulator-LeaderBoard/src/validate.js. The
+ * board decides when a layout has changed enough to clear a course's times;
+ * this is the client's prediction of that answer, used to warn before
+ * publishing. They must agree on WHICH KEYS count as the layout, currently
+ * field, elements and sequence. Different hashes, same key list: change one
+ * and change the other, or the warning and the clearing disagree.
+ */
 export function layoutFingerprint(doc) {
   if (!doc || typeof doc !== 'object') {
     return '';
@@ -238,9 +246,17 @@ export function inspectCourse(parts = {}) {
   });
 }
 
+/*
+ * A remix of a course, and the bind that would make it this browser's.
+ *
+ * The bind is RETURNED rather than written, because one of the two callers
+ * asks the author to confirm first: writing it here meant declining the
+ * "open a copy?" prompt still left a bind behind for a document that was
+ * never opened. The caller commits when the fork actually happens.
+ */
 export function forkDocument(doc, extra = {}) {
   const copy = duplicateTrack(doc, extra.name || suggestRemixName(doc && doc.name));
-  writeBind(copy.id, {
+  const bind = {
     board: extra.board || '',
     author: '',
     nameOnBoard: '',
@@ -249,8 +265,8 @@ export function forkDocument(doc, extra = {}) {
     sourceId: extra.sourceId || (doc && doc.id) || '',
     sourceName: extra.sourceName || (doc && doc.name) || '',
     sourceAuthor: extra.sourceAuthor || '',
-  });
-  return copy;
+  };
+  return { copy, commit: () => writeBind(copy.id, bind) };
 }
 
 export function rememberPublish(doc, posted, origin, author, extra = {}) {

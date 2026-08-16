@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # build-wasm.sh: compile the physics module to dist/sim.wasm with Emscripten.
 #
-# Stage 1 Loop A compiles only the stub in src/native/sim.c. When Loop B
-# brings in Betaflight, the flow stays the same shape: copy the needed
-# vendor/betaflight sources into a build directory, apply patches/*.patch to
-# that copy, and add the objects to this link. vendor/betaflight itself is
-# never modified in place; `git diff --stat vendor/betaflight` must remain
-# empty after a build.
+# Betaflight IS compiled in: its controller objects are listed below and
+# linked alongside src/native. The two patches in patches/ are applied to
+# the vendor tree before those objects are built and reverted by the EXIT
+# trap afterwards, so vendor/betaflight is never modified in place and
+# `git diff --stat vendor/betaflight` must remain empty after a build.
+#
+# This header used to say Loop A compiled "only the stub in sim.c" and the
+# block below used to say no patches existed yet. Both were true once.
 #
 # Determinism flags are load-bearing: no fast math, no fp contraction, no
 # relaxed SIMD. Do not remove them.
@@ -46,10 +48,11 @@ fi
 
 mkdir -p dist build/obj
 
-# Apply patches to a pristine vendor tree state check. Patches in patches/
-# are applied with git apply against the vendor tree at build time and
-# reverted after object compilation, so the tree stays clean. None exist
-# yet; the hook is here so adding one is a one line change.
+# Patches in patches/ are applied with git apply against the vendor tree at
+# build time and reverted after object compilation, so the tree stays clean.
+# There are two: 0001 adds the rotor telemetry the plant feeds the RPM
+# filter, and 0002 resets runtime statics on init so a re-init is a real
+# reset rather than a warm start.
 PATCHES=$(ls patches/*.patch 2>/dev/null || true)
 if [ -n "$PATCHES" ]; then
   for p in $PATCHES; do

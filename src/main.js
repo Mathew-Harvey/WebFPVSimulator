@@ -47,7 +47,7 @@ import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, makeLensShake } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
-import { InputManager } from './input/input.js';
+import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
@@ -1024,13 +1024,31 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const nextRates = ratesDiff(s);
     if (nextRates !== ratesText) {
-      ratesText = nextRates;
-      configText = composeConfig(tuneText, s, RATES_KEEP);
-      if (sim.init(configText) === SIM_OK) {
+      /*
+       * Composed into a LOCAL first. A refused sim_init is not a no-op down
+       * in the module: bridge_parse_config has already reset every
+       * parameter group to its default and applied part of the new text, so
+       * the craft is flying a half applied config with the PREVIOUS run's
+       * filter and PID init products. The other four init sites recover by
+       * re-initing the text that worked; this one did not, and it had
+       * already overwritten configText with the rejected text, so every one
+       * of those recoveries would have restored the bad config too.
+       */
+      const nextText = composeConfig(tuneText, s, RATES_KEEP);
+      if (sim.init(nextText) === SIM_OK) {
+        ratesText = nextRates;
+        configText = nextText;
         adoptSimClock();
         sim.setCellVoltage(runVoltage);
         race.setRecordKey(recordKey());
         ui.setBest(race.bestMs, view.mode);
+        reset();
+      } else if (sim.init(configText) === SIM_OK) {
+        /* Back to the config that worked, and re-seat the clock and the
+         * craft, because the failed attempt moved the module underneath
+         * them. */
+        adoptSimClock();
+        sim.setCellVoltage(runVoltage);
         reset();
       }
     }
@@ -1214,11 +1232,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * up used to attach A's lap to B, because resultsFastest is a bare
        * number with no course attached to it. */
       if (ui.resultsFastest != null && ui.resultsDocId != null && ui.resultsDocId === listing.doc.id) {
-        writePendingTime({
-          trackId: result.posted.id,
-          lapMs: ui.resultsFastest,
-          name: result.posted.name,
-        });
+        writePendingTime({ trackId: result.posted.id, lapMs: ui.resultsFastest });
       }
     } catch (e) {
       notice = { text: `Could not publish that course.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
@@ -1409,10 +1423,10 @@ export async function boot({ loading, bootStart, mapId }) {
     if (input.map.stored) {
       const c = input.channels;
       return {
-        up: c.pitch > 0.55,
-        down: c.pitch < -0.55,
-        right: c.roll > 0.55,
-        left: c.roll < -0.55,
+        up: c.pitch > NAV_DEFLECT,
+        down: c.pitch < -NAV_DEFLECT,
+        right: c.roll > NAV_DEFLECT,
+        left: c.roll < -NAV_DEFLECT,
         select: btn.select,
         back: btn.back,
       };
@@ -2340,7 +2354,6 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
       if (!showcase.failed) {
-        ui.mountCraft('settings');
         showcase.setActive(true);
         if (!document.hidden) {
           showcase.update(dt, input.channels, nowWall, ui.settings.cameraAngle, angleModeOn);

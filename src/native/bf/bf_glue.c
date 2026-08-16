@@ -552,6 +552,10 @@ double sim_bf_debug(int what) {
   case 10: return PLANT.kt;
   case 11: return PLANT.kq;
   case 12: {
+    /* 0.0635 is PLANT.prop_r in src/native/plant.c. Restated rather than
+     * imported because PLANT is that file's own struct and this is a debug
+     * slot, not the physics; if the rotor ever changes size, this figure of
+     * merit goes wrong quietly. */
     const double area = 3.14159265358979 * 0.0635 * 0.0635;
     const double ideal = sim_sqrt_pub(PLANT.kt * PLANT.kt * PLANT.kt) / sim_sqrt_pub(2.0 * PLANT.rho * area);
     return ideal / PLANT.kq;
@@ -612,13 +616,6 @@ EMSCRIPTEN_KEEPALIVE
 #endif
 int sim_bf_get(const char *key, char *out, int cap) {
   return bf_settings_get(key, cap > 0 ? out : 0, cap);
-}
-
-#ifdef __EMSCRIPTEN__
-EMSCRIPTEN_KEEPALIVE
-#endif
-int sim_bf_key_status(const char *key) {
-  return bf_settings_status(key);
 }
 
 /*

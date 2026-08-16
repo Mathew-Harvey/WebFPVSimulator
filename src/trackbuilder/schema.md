@@ -176,7 +176,7 @@ course; that is what `sequence` is for.
 | field | type | meaning |
 | --- | --- | --- |
 | `id` | string | `el-` and a number. Unique within the document. Referenced by `sequence[].elementId`. |
-| `type` | string | One of the twelve types below. An unknown type means the whole element is dropped on read. |
+| `type` | string | One of the element types below. An unknown type means the whole element is dropped on read. |
 | `name` | string | The author's label for it. May be empty, in which case the tool shows the type's name. |
 | `position` | object | Where the element's **base** sits: `x` and `y` on the ground, `z` the height of the base above the ground. Almost always `z: 0`; the 3D view's one editing gesture raises it. |
 | `yaw` | number, radians | Which way the element faces. See the conventions above. |
@@ -186,7 +186,7 @@ course; that is what `sequence` is for.
 | `text` | string | **Labels only.** The text drawn on the field. |
 | `flagSide` | `"left"`, `"right"` or `"both"` | **Flagged gates and flagged doubles only.** Which end of the top header the pennant sits on, as seen facing the gate. Default `left`. Not a dimension. |
 
-### The twelve element types
+### The element types
 
 Each row's `kind` decides everything the tool does with it.
 

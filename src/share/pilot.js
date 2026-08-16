@@ -24,6 +24,10 @@
 
 const NAME_KEY = 'webfpv.pilot.name';
 
+/* MIRRORS the board's NAME_RE in WebFPVSimulator-LeaderBoard/src/validate.js,
+ * which is the one that actually decides. Two repos, so it cannot be
+ * imported: change both, or this browser accepts a name the board refuses
+ * and the pilot finds out at upload time. */
 const NAME_RE = /^[A-Za-z0-9._\- ]{2,24}$/;
 
 export function normaliseName(raw) {

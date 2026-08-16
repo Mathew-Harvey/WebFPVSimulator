@@ -40,7 +40,10 @@ const PENDING_KEY = 'webfpv.share.pending.v1';
 const POSTED_KEY = 'webfpv.share.posted.v1';
 const INTENT_KEY = 'webfpv.share.builderIntent.v1';
 
-function readJson(key, fallback) {
+/* Exported: src/trackbuilder/storage.js had a byte-identical pair. This
+ * module imports nothing, so the builder can take them from here without a
+ * cycle. */
+export function readJson(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) {
@@ -52,7 +55,7 @@ function readJson(key, fallback) {
   }
 }
 
-function writeJson(key, value) {
+export function writeJson(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     return true;
@@ -173,10 +176,12 @@ export function writePendingTime(payload) {
   if (!payload || !payload.trackId || !Number.isFinite(payload.lapMs)) {
     return false;
   }
+  /* trackId and lapMs only. There used to be a `name` here holding the
+   * COURSE name, written by every caller and read by none, sitting one
+   * field away from the pilot name it reads like. */
   return writeJson(PENDING_KEY, {
     trackId: String(payload.trackId),
     lapMs: Math.round(payload.lapMs),
-    name: String(payload.name || ''),
   });
 }
 

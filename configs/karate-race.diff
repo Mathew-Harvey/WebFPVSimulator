@@ -35,14 +35,17 @@
 # WHAT THIS SIMULATOR CANNOT GIVE THE TUNE, stated plainly because half of
 # a race tune is its filter tune:
 #
-#   * RPM filtering does nothing here. The tune's warning that you must
-#     run it is about motor and frame resonance putting heat into the
-#     motors. This model has a perfectly smooth gyro, so there is no
-#     resonance to notch out, and USE_RPM_FILTER is not built for the
-#     SITL target anyway.
-#   * Dynamic notches do nothing, for the same reason, and Betaflight
-#     itself undefines USE_DYN_NOTCH_FILTER on any SIMULATOR_BUILD
-#     because the FFT wants CMSIS arm_math.h.
+#   * RPM filtering IS built and IS live: patches/0001 feeds the plant's
+#     rotor speeds through the drivers/dshot.c PT1 lag into Betaflight's
+#     own filter, so the rpm_filter_ keys below do what they say. What it
+#     has nothing to bite on is the reason the tune asks for it: this
+#     model has a perfectly smooth gyro, so there is no motor or frame
+#     resonance to notch out and no heat to save.
+#   * Dynamic notches are built too, and likewise find nothing to track in
+#     a gyro with no noise in it.
+#
+#     Both of the above used to be listed here as NOT BUILT. That was true
+#     before patches/0001.
 #   * The gyro lowpass settings DO matter and are live: lpf1 dynamic
 #     500 to 1000 Hz against the default 250 to 500 Hz is real phase
 #     lead, and it is compiled Betaflight code applying it.

@@ -73,6 +73,14 @@ export const GUIDE = {
   /* Fly height at or above this, metres, is "go up". A standard 5x5
    * opening centres at 0.76 m; a 5x5 tower centres at 2.29 m. */
   highM: 2.0,
+  /* Hysteresis either side of highM. Without it a course whose gates sit
+   * a few centimetres apart across the threshold painted an arrow at every
+   * one of them, alternating one lane and two. See lanesNext.
+   *
+   * 0.25 and not wider: a 5x5 tower centres at 2.29 m and MUST still read
+   * as go up, so the upper edge has to stay below that. That leaves 1.75 to
+   * 2.25 as the band a course has to cross to say anything. */
+  highBand: 0.25,
   /* Do not sit an arrow this close to a flag pole. The wrap already
    * talks there, and a second mark is the stacked mess. */
   flagArrowClear: 4.2,
@@ -546,6 +554,31 @@ function lanesFor(y) {
   return (y ?? 0) >= GUIDE.highM ? 2 : 1;
 }
 
+/*
+ * The lane cue WITH hysteresis, given what it currently reads.
+ *
+ * lanesFor is a hard edge at highM, and a course whose gates sit either
+ * side of it by a few centimetres flipped the cue at every gate: an arrow
+ * at each one, alternating one and two, which says "change height now" over
+ * and over on a stretch that is essentially level. A height cue that fires
+ * constantly is not a cue.
+ *
+ * Going UP has to clear highM + band, coming back DOWN has to fall below
+ * highM - band, so a course has to mean it. The band is generous on
+ * purpose: 0.45 m is over half a gate opening, and anything inside it is
+ * not a height decision a pilot makes with the sticks.
+ */
+function lanesNext(y, current) {
+  const h = y ?? 0;
+  if (current == null) {
+    return lanesFor(h);
+  }
+  if (current === 2) {
+    return h < GUIDE.highM - GUIDE.highBand ? 1 : 2;
+  }
+  return h >= GUIDE.highM + GUIDE.highBand ? 2 : 1;
+}
+
 function firstGateY(cues) {
   for (const c of cues) {
     if (c.kind === 'gate') {
@@ -602,6 +635,15 @@ function layoutArrows(samples, cues, holes) {
     cueS.push({ cue, at: samples[i], s: samples[i].s });
   }
 
+  /*
+   * The lane cue as it stands at this point in the lap. This is SEPARATE
+   * from the last arrow actually painted: it used to be one variable, so a
+   * cue whose arrow was rejected for sitting too close to its neighbour
+   * left the state believing the height had not changed, and the change was
+   * then re-announced at the NEXT gate, which is how a cue for one climb
+   * ended up drawn somewhere down the following straight.
+   */
+  let laneState = null;
   let lastLanes = null;
 
   const tryPush = (p, kind, lanes, min) => {
@@ -616,9 +658,13 @@ function layoutArrows(samples, cues, holes) {
   };
 
   for (const row of cueS) {
-    const lanes = row.cue.kind === 'start' ? lanesFor(gateY) : lanesFor(row.cue.y);
-    const initial = lastLanes == null;
-    const changed = lastLanes != null && lanes !== lastLanes;
+    const want = row.cue.kind === 'start' ? gateY : row.cue.y;
+    const lanes = lanesNext(want, laneState);
+    const initial = laneState == null;
+    const changed = laneState != null && lanes !== laneState;
+    /* Updated whether or not an arrow lands, so a rejected one is dropped
+     * rather than deferred onto the next gate. */
+    laneState = lanes;
     if (!(row.cue.kind === 'start' || initial || changed)) {
       continue;
     }
@@ -637,7 +683,7 @@ function layoutArrows(samples, cues, holes) {
       next = p.s + 2;
       continue;
     }
-    const lanes = lastLanes ?? 1;
+    const lanes = laneState ?? lastLanes ?? 1;
     if (tryPush(p, 'run', lanes, GUIDE.arrowClearRun)) {
       next = p.s + GUIDE.longRun;
     } else {

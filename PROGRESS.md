@@ -9502,3 +9502,66 @@ Leaderboard `node src/selftest.js`: all passed.
 Next: the deferred list above, starting with the plant.c and
 bf_settings.c items on a machine with emcc, because those are the ones
 that need a trace hash rather than an argument.
+
+### 2026-08-17 | guide | the ground paint was drawn twice, and the height cue chattered
+
+Asked: the arrows on the track are messy and chaotic, on a designed
+course. Two causes, and the first is the one that made it look like
+smeared paint rather than sparse paint.
+
+**The guide was drawn twice, on purpose, and the second copy was the
+mess.** `makePitch` stamped the guide's triangles into the turf canvas
+and `buildGuideMesh` then built the same triangles as a raised mesh on
+top. The comment explained the stamp as a fallback for the mesh losing
+a depth fight. The mesh has since grown a lift off the terrain,
+`polygonOffset -4`, `depthWrite false` and `renderOrder 4`, so it does
+not lose that fight, and the fallback had quietly become a permanent
+second copy: FLAT where the mesh follows the ground, and drawn at the
+pitch canvas's own resolution, which is 2048 px across the whole mown
+area. On a big field that is about 9 px per metre, so the 0.16 m arrow
+shaft was rendered one and a half pixels wide. Every mark had a jagged,
+slightly misregistered ghost of itself underneath it, and at a grazing
+FPV angle the two separate. The stamp is gone and `paintGuideOnPitch`
+with it. If the mesh ever does lose a depth fight, the fix is the
+fight, not painting everything twice.
+
+**The height cue chattered.** `lanesFor` is a hard edge at
+`GUIDE.highM` 2.0 m, so a course whose gates sit a few centimetres
+either side of it flipped the cue at every gate: an arrow at each one,
+alternating one lane and two, saying "change height now" over and over
+along a stretch that is essentially level. A cue that fires constantly
+is not a cue. `lanesNext` adds hysteresis: going up has to clear
+2.25 m, coming back down has to fall below 1.75 m.
+
+The band is 0.25 and not wider FOR A REASON. A 5x5 tower centres at
+2.29 m and has to keep reading as go up, so the upper edge has to stay
+under it. The first attempt used 0.45, which put the tower inside the
+band and cost the demo course its climb cue: the selftest's "a dual
+arrow marks the climb to the tower" caught it, which is exactly what
+that check is for.
+
+**And the lane state was tangled with the arrow that announced it.**
+`lastLanes` was only updated when an arrow was actually placed, so a
+cue whose arrow was rejected for sitting too close to a neighbour left
+the state believing the height had not changed, and the change was
+re-announced at the NEXT gate. A cue for one climb ended up painted
+somewhere down the following straight. `laneState` now advances at
+every cue whether or not an arrow lands.
+
+Measured over the ten shipped courses, gate arrows fall and the
+spacing opens up. 2023 AU NATS 5inch goes from 8 gate arrows to 6 and
+its closest pair from 16.1 m to 23.8 m. WA States 2025 goes from 6 gate
+arrows to 4. The 191 m micro course goes from 3 arrows to 2. Nothing
+loses its start arrow or its tower cue.
+
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`node tracks/check.mjs`: 3882 passed, 0 failed.
+`npm run verify`: 14 of 16, physics hash 6d17d4814bdc unchanged. The
+two failures are the standing two, build-clean needing emcc and
+yaw-coupling at -0.12 deg.
+
+Next: if the pair still reads as one blob at speed, the glyph itself is
+the next thing to look at. It is a 3.6:1 dart, 57 percent head, and the
+"go up" pair sits 0.98 m centre to centre with each arrow 0.52 m wide,
+so under half a metre of grass separates them. That is a shape change
+rather than a placement change and is worth doing on its own.

@@ -67,31 +67,6 @@ function paintMaterial() {
  *   v = (z + mownD) / depth     (v=1 at +z, after the geometry's v flip)
  *   canvas y = (1-v) * h        (CanvasTexture flipY)
  */
-export function paintGuideOnPitch(ctx, pitch, guide) {
-  const tris = tessellateGuide(guide);
-  if (!tris.length) {
-    return;
-  }
-  const w = pitch.mownW * 2;
-  const d = pitch.mownD * 2;
-  const cw = ctx.canvas.width;
-  const ch = ctx.canvas.height;
-  const toX = (x) => ((x + pitch.mownW) / w) * cw;
-  const toY = (z) => (1 - (z + pitch.mownD) / d) * ch;
-  ctx.fillStyle = PAINT_CSS;
-  ctx.beginPath();
-  for (let i = 0; i < tris.length; i += 3) {
-    const a = tris[i];
-    const b = tris[i + 1];
-    const c = tris[i + 2];
-    ctx.moveTo(toX(a.x), toY(a.z));
-    ctx.lineTo(toX(b.x), toY(b.z));
-    ctx.lineTo(toX(c.x), toY(c.z));
-    ctx.closePath();
-  }
-  ctx.fill();
-}
-
 /*
  * Build the raised decal, or null when there is nothing to paint. `pitch`
  * is the makePitch() object or null.

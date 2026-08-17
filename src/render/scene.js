@@ -55,7 +55,7 @@ import { circuitPoint, CIRCUIT_POINTS, CIRCUIT_STATIONS } from '../game/circuit.
 import { GUIDE, guideFromPolyline } from '../game/guide.js';
 /* The gate frame belongs to the scorer, so the mesh and the test agree. */
 import { travelAxis } from '../game/race.js';
-import { buildGuideMesh, paintGuideOnPitch } from './marks.js';
+import { buildGuideMesh } from './marks.js';
 /* The printed vinyl a course is dressed in, shared with the track builder's
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
@@ -367,13 +367,20 @@ function pitchSurface(pitch, guide) {
   ctx.lineWidth = lw;
   ctx.strokeRect(inset, inset, cw - inset * 2, ch - inset * 2);
 
-  /* The racing line, in the turf. A raised mesh sits on top as well, but
-   * the pitch is transparent and would otherwise paint over any opaque
-   * decal; stamping the triangles into this canvas means the marks are
-   * still there even when the mesh loses a depth fight. */
-  if (guide) {
-    paintGuideOnPitch(ctx, pitch, guide);
-  }
+  /*
+   * The racing line is NOT stamped here any more.
+   *
+   * It used to be, as a fallback for the raised mesh losing a depth fight.
+   * The mesh has since grown a lift off the terrain, polygonOffset -4 and
+   * depthWrite false, so it does not lose that fight, and the fallback had
+   * become a second copy of every mark: flat where the mesh follows the
+   * ground, and drawn at this canvas's resolution, which is 2048 px across
+   * the whole mown area. On a big field that is about 9 px per metre, so
+   * the 0.16 m arrow shaft came out one and a half pixels wide. A crisp
+   * arrow with a jagged ghost of itself underneath is what "the arrows look
+   * messy" turned out to be. If the mesh ever does lose a depth fight, fix
+   * the fight rather than painting the marks twice.
+   */
 
   /* Fade the outer edge to nothing so the pitch joins the meadow. */
   const fadePx = Math.max(2, PITCH.fade * ppm);

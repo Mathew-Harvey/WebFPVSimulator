@@ -307,6 +307,32 @@ export async function boot({ loading, bootStart, mapId }) {
   const gpuInfo = readGpuInfo(shell.renderer);
   ui.setGpuInfo(gpuInfo);
   window.__gpu = gpuInfo;
+  /*
+   * A machine with no usable GPU hands WebGL to SwiftShader or llvmpipe and
+   * keeps drawing, so nothing fails and nothing says why. It just runs at a
+   * handful of frames per second, and because the picture is what tells a
+   * pilot where the quad is, a slow picture reads as a slow radio. The
+   * sticks are not late: they are sampled off their own 2 ms timer and
+   * stamped, and the module consumes each one at the moment it was taken.
+   * The frame carrying the answer back is what is late.
+   *
+   * Detection could not know this earlier. loadSettings runs before any
+   * context exists and can only read the user agent, which names a Steam
+   * Deck and nothing else. This is the first line that has the renderer, so
+   * it is the first line that can tell a CPU rasteriser from a GPU.
+   *
+   * Only a DETECTED value is lowered. Someone who picked High on this
+   * machine and meant it keeps it, however it runs.
+   */
+  if (gpuInfo.software && ui.settings.graphicsAuto && ui.settings.graphics !== 'low') {
+    ui.settings.graphics = 'low';
+    /* Still detected, not chosen, so this stays set. It costs nothing: the
+     * value is already Low, so the test above short circuits on every later
+     * boot, and leaving the flag honest is what lets a future round raise a
+     * machine back up if it turns out to have had a GPU all along. */
+    ui.persistSettings();
+    ui.renderMenu();
+  }
   let showcase = null;
   /*
    * boot.js read the stored map before any module loaded, so it could weight

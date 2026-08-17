@@ -10442,3 +10442,56 @@ the external URL is not a slower option, it is a board that fails to start.
 Physics, WASM, input and the module ABI were not changed. verify 15 of 16,
 build-clean red for want of emcc only. The board origin precedence chain
 was re-checked against the new constant, 11 of 11.
+
+### 2026-08-17 | fix | a CPU rasteriser now picks its own preset
+
+Reported as stick lag: high on a GPU-less Linux laptop in Chromium, fine on
+a Windows desktop with a GPU. The sticks were not the problem and the input
+path needed no change. Sampling already runs on its own 2 ms timer at
+main.js startPolling(2), independent of the frame rate, and every sample
+carries the wall clock moment it was taken, which the frame maps onto sim
+time through wallToSim and replays at the right step. A slow frame does not
+delay a stick. It delays the PICTURE, and since the picture is the only
+thing telling a pilot where the quad is, a late picture reads as a late
+radio. At the frame rates a software rasteriser manages, that is most of a
+tenth of a second of felt lag with nothing wrong upstream of it.
+
+The cause was detectDefaultGraphics, which could only read the user agent
+because it runs inside loadSettings before any WebGL context exists. It
+named the Steam Deck and returned high for everything else, so a machine
+with no GPU got the authored look rendered on the CPU. gpuinfo.js could
+already spot SwiftShader and llvmpipe, and its own note even said "Low is
+the preset that will run", but nothing acted on it.
+
+So the decision moved to the first line that can make it honestly. main.js
+already reads readGpuInfo off the session renderer, before applyPixelRatio
+and before loadMap, so lowering the preset there costs no rebuild: the
+world is simply built at Low. No second WebGL context, which gpuinfo.js's
+header rules out and the Deck cannot spare. Measured in headless Chrome,
+which is SwiftShader: software true, stored low, and the field drops from
+313 draw calls to 122, 895639 triangles to 382095, and 69.8 MB of render
+target to 18.6.
+
+A new setting, graphicsAuto, is what makes this safe. It records whether
+the preset was DETECTED or CHOSEN. Boot may lower a detected value and may
+never touch a chosen one, and picking anything in Settings clears the flag
+for good. Verified both ways: auto lands on low, a chosen high survives on
+the same software renderer.
+
+WHAT THIS BROKE, AND WHY THE THRESHOLD DID NOT MOVE. Check 16 went red at
+once: the field budget it pins came out at Low, because the harness browser
+is exactly the machine this change targets. The recorded numbers were not
+wrong and were not touched. The check had quietly become machine dependent,
+answering 122 here and 313 on any developer with a GPU, which is worse than
+a red check. shots.js gained --graphics, which seeds a chosen preset into
+storage before the page boots, and verify pins the cost run to high for the
+same reason it already pins the window to 1280 by 720: a cost measured at
+two presets reports a regression that is only a setting. Seeded through the
+real stored-choice door rather than a test hook, and SETTINGS_KEY is now
+exported from ui.js rather than copied, because a duplicated storage key is
+a harness that silently seeds nothing the day the key changes.
+
+Physics, WASM, the module ABI and the input path were not changed. verify
+15 of 16, build-clean red for want of emcc only and check 16 back at its
+recorded 313 / 895639 / 69.8 MB. Trackbuilder 225/225, link and replay
+selftests passed.

@@ -99,7 +99,12 @@ import { fillCredits } from './credits.js';
 import { sanitiseRateProfile } from '../fc/dump.js';
 import { cycle, downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
 
-const SETTINGS_KEY = 'webfpv.settings.v2';
+/* Exported for scripts/shots.js, which seeds a chosen graphics preset into
+ * storage before the page boots so a cost measurement is not taken at
+ * whatever preset the harness machine happens to detect. The key is
+ * exported rather than copied there, because a second copy of a storage key
+ * is a harness that silently seeds nothing the day this one changes. */
+export const SETTINGS_KEY = 'webfpv.settings.v2';
 
 export const CAMERA_ANGLES = [15, 20, 25, 30, 35, 40];
 export const FLIGHT_MODES = ['acro', 'angle'];
@@ -172,6 +177,14 @@ const DEFAULTS = {
    * src/render/quality.js. A string so loadSettings' typeof gate accepts
    * it, and an unknown value falls back to high rather than throwing. */
   graphics: 'high',
+  /* Whether the graphics value above was DETECTED or CHOSEN. Detection can
+   * only guess from the user agent before a context exists, and the thing
+   * worth knowing, whether this machine is rasterising on the CPU, is not
+   * knowable until the session renderer is up. So boot is allowed to lower
+   * a detected value once it can see the renderer, and is never allowed to
+   * touch one the pilot picked. Picking any value in Settings clears this
+   * for good, including picking the one detection would have chosen. */
+  graphicsAuto: true,
 };
 
 /*
@@ -603,7 +616,7 @@ function graphicsItem(s) {
     GRAPHICS_IDS,
     id,
     graphicsLabel,
-    (v) => { s.graphics = v; },
+    (v) => { s.graphics = v; s.graphicsAuto = false; },
   );
 }
 

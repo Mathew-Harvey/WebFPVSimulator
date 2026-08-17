@@ -17,6 +17,9 @@
     "lint:presets": "node scripts/preset-lint.js",
     "lint:catalog": "node scripts/fc-catalog-lint.js",
     "lint:fc": "node scripts/fc-trace.js",
-    "gen:catalog": "node scripts/fc-catalog-gen.js"
+    "gen:catalog": "node scripts/fc-catalog-gen.js",
+    "replay:selftest": "node scripts/replay-log.js --selftest",
+    "replay": "node scripts/replay-log.js",
+    "link:selftest": "node scripts/link-selftest.js"
   }
 }

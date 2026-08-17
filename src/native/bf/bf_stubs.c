@@ -60,17 +60,21 @@ void imuQuaternionHeadfreeTransformVectorEarthToBody(t_fp_vector_def *v) { (void
 
 bool isLaunchControlActive(void) { return false; }
 
-/* Simulated milliseconds, advanced by the glue each step.
+/* Simulated MICROSECONDS, advanced by the glue each step.
  *
- * micros() comes off the same counter rather than a second one. The step is
- * 1 ms, so a microsecond clock has no more information to give and inventing
- * sub-step resolution would be a second timebase to keep in sync. It is
- * referenced by rc_modes.c's sticky mode path, which cannot run here because
- * no mode activation conditions are analysed, but the symbol has to resolve
- * now that bf_glue.c calls updateActivatedModes. */
-uint32_t sim_bf_now_ms;
-timeMs_t millis(void) { return sim_bf_now_ms; }
-timeUs_t micros(void) { return (timeUs_t)sim_bf_now_ms * 1000u; }
+ * One counter, and milliseconds are derived from it rather than the other
+ * way round. It used to be the other way round, on the argument that a 1 ms
+ * step gives a microsecond clock no more information to carry. That was
+ * true at 1 kHz and stops being true the moment the step is shorter than a
+ * millisecond: an 8 kHz loop needs 125 us resolution or every Betaflight
+ * path that reads time sees the same instant eight times running.
+ *
+ * Referenced by rc_modes.c's sticky mode path, which cannot run here
+ * because no mode activation conditions are analysed, but the symbol has to
+ * resolve now that bf_glue.c calls updateActivatedModes. */
+uint32_t sim_bf_now_us;
+timeMs_t millis(void) { return sim_bf_now_us / 1000u; }
+timeUs_t micros(void) { return (timeUs_t)sim_bf_now_us; }
 
 bool rxIsReceivingSignal(void) { return true; }
 

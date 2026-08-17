@@ -25,7 +25,24 @@
 #ifndef SIM_INTERNAL_H
 #define SIM_INTERNAL_H
 
-#define SIM_DT (1.0 / 1000.0)
+#include "sim_abi.h"
+
+/*
+ * The step, derived from the ONE declared rate rather than typed again.
+ *
+ * SIM_STEP_HZ in sim_abi.h is the single place the loop rate is written
+ * down. It used to be written down here as well, as a bare 1.0/1000.0, and
+ * in four more places in the Betaflight glue as a bare 1000, so raising the
+ * rate meant finding all six and getting every one right. At 1000 these
+ * expressions are exactly the constants they replace: 1000000 / 1000 is
+ * 1000 in integer arithmetic and 1.0 / 1000.0 is unchanged, so a rebuild at
+ * the current rate must produce a bit identical trace. That equality is the
+ * test that this refactor changed nothing.
+ */
+#define SIM_DT (1.0 / (double)SIM_STEP_HZ)
+/* Microseconds of simulated time per step. Exact at every rate that divides
+ * a megahertz, which every rate worth running does. */
+#define SIM_US_PER_STEP (1000000 / SIM_STEP_HZ)
 #define SIM_MOTOR_COUNT 4
 
 /*

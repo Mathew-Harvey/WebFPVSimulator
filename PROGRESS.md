@@ -9613,3 +9613,137 @@ is to add that course to the pack.
 `node tracks/check.mjs`: 3922 passed, 0 failed, 40 of them new.
 `node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
 `npm run verify`: 14 of 16, physics hash 6d17d4814bdc unchanged.
+
+### 2026-08-17 | fidelity | P0 the blackbox harness, P1 the rate parameterised, P2 the radio
+
+Asked for the first three items of the flight feel roadmap. Two are
+landed and verified here. The third, the loop rate itself, is
+PREPARED and not flipped, for reasons stated below.
+
+**P0. A way to measure feel at all.** Every feel constant in this
+project was tuned until the closed loop landed inside a verification
+band, and no band measures feel; this file says so in as many words
+more than once. So k_propwash has been 0.60, 0.12, 0.30 and 0.08, each
+move decided by one pilot's memory of a real quad, and last round "it
+feels a little different" cost an archaeology session to explain.
+
+The way out is open to this project and closed to almost every other
+simulator: the controller is not a model of Betaflight, it IS
+Betaflight. Feed a real quad's logged sticks into this build with that
+quad's own diff and the firmware is identical on both sides, so the
+residual is the PLANT and nothing else.
+
+`tests/lib/blackbox.js` reads what `blackbox_decode` writes.
+`scripts/replay-log.js` flies it and reports two things, deliberately
+separated: the gyro residual against time, which has a horizon because
+open loop replay diverges and is supposed to, and divergence free
+scalars (hover throttle, deg/s per unit stick per axis, sag) which
+stay valid over a whole log and are what a constant should be fitted
+against. The headline number to watch across a change is how long the
+two flights stay inside 25 deg/s of each other. Longer is a better
+plant.
+
+THE CONVENTIONS ARE THE WHOLE RISK, and they are taken from the code
+rather than from memory. bf_glue.c:731-740 documents the gyro polarity
+it feeds the firmware, and it is written straight from s->omega, so
+blackbox gyroADC maps onto the state block one for one with no flips.
+bf_glue.c:751-761 builds rcData, and `rcData[PITCH] = 1500 - 500 *
+rc[1]` carries a MINUS, so a log's positive pitch is this ABI's
+negative pitch channel. Get that one backwards and the report is
+confident, plausible and worthless.
+
+So the harness proves itself before it is trusted: `--selftest` flies
+a script that moves every axis both ways, writes it out as
+blackbox_decode's own CSV, reads it back through the real parser,
+flies it again and requires the residual to be EXACTLY zero. It is.
+Then, as an end to end check that the reporting path can see a real
+difference, a log flown under the Karate tune and replayed under the
+default reports 0.09 to 0.17 deg/s RMS over the first 500 ms,
+divergence at 1.72 s, and identical steady rates, which is correct:
+this project moved rates out of tunes, so two tunes share rates and
+differ only in transient.
+
+**P2. The radio.** A stick sample used to land on the very next slot
+of a mathematically exact 4 ms grid, and every frame arrived. No radio
+does that, and the link is not something the controller is insulated
+from: feedforward is the derivative of the setpoint ACROSS rc frames
+and rc smoothing auto-tunes its cutoffs from the measured interval, so
+a jitter free grid hands both of them something no hardware would.
+That is the slightly uncanny sharpness.
+
+`src/input/link.js` puts a radio back: rate, transport delay, jitter
+and loss, five presets from ELRS 500 down to Crossfire. It lives in
+the SHELL and not the module on purpose. The determinism contract is
+that a given input stream produces a bit identical trace; shaping the
+stream is the shell's job, so the module stays bit identical and every
+existing .rec still replays exactly. Inside the module it would have
+made the trace depend on a link seed. Draws come from the same seeded
+xorshift32 discipline the propwash channel uses, never Math.random,
+because a link that cannot be replayed makes a lap time
+unreproducible. The default is 'perfect', which is the old behaviour
+exactly, and the shell keeps that as its own code path so the default
+and every recording made under it run the code that produced them.
+
+What went wrong, and it is the good kind. The first `pump` rewound the
+slot clock when a packet's arrival fell past the end of a render block
+and re-decided it next time. That drew fresh loss and jitter for an
+already decided packet, counted it twice, and made the model depend on
+how the render batched frames: 276 packets sent in a second at 250 Hz,
+and a different stream at 33 ms blocks than at 4 ms, which would have
+broken the ABI's batching promise from the outside. Its own selftest
+caught all three before any of it was wired in. A decided packet is
+now buffered in flight, which is what it physically is.
+`scripts/link-selftest.js`, 18 assertions, all passing.
+
+**P1. The rate is now a parameter. It is NOT raised.**
+
+Everything ran at a fixed 1 kHz: gyro, PID and physics. Raising it is
+the single biggest fidelity item on the list, because filter group
+delay is most of what "connected" means, and because the dynamic notch
+is compiled in but self-disables below 2 kHz by Betaflight's own rule,
+so every imported tune silently loses that layer.
+
+The rate was written down in six places: SIM_DT in sim_internal.h, and
+five bare 1000s in the glue. The worst was
+`sim_bf_now_ms = BF_WARMUP_MS + s->step_index`, which is only the time
+while one step is one millisecond; above 1 kHz it runs the firmware's
+whole clock fast by the rate ratio and every part of Betaflight that
+reads time is told the flight is happening faster than it is. The
+firmware clock is microseconds now, driven off the step index, with
+millis derived from it rather than the other way round.
+
+All of it derives from SIM_STEP_HZ, which sim_abi.h already declared
+and nothing used. At 1000 every expression is arithmetically the
+constant it replaced: 1000000 / 1000 is exactly 1000 in integer
+arithmetic, and 1.0 / 1000.0 is unchanged. The shell's clock is an
+integer STEP INDEX now instead of milliseconds, because
+`steps = Math.floor(acc)` reads an accumulator of milliseconds as a
+count of steps and every `simTimeMs += steps` says the same, which are
+silent factors of eight the moment the rate moves.
+
+WHY IT IS NOT FLIPPED. Three reasons, and none of them is reluctance.
+There is no toolchain here: emcc is absent and vendor/betaflight is
+empty, so not one line of the C above has been through a compiler.
+CLAUDE.md requires the advisor before a change to the build or the
+physics model's shape, and raising the loop rate is both. And the flip
+invalidates the trace hash and every measured band by design, so it
+needs a re-baseline argued on its own terms, not folded into a turn
+that also did two other things.
+
+What is now true is that flipping it is ONE line, `SIM_STEP_HZ` in
+sim_abi.h, and that the refactor has a test: rebuild at 1000 and the
+trace hash must be UNCHANGED. If it is, this parameterisation is
+proven neutral and the rate becomes a measurement rather than a leap.
+If it is not, the fault is in this turn's C and not in the rate.
+
+`npm run replay:selftest`: zero residual.
+`npm run link:selftest`: 18 assertions, all passed.
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`node tracks/check.mjs`: 3922 passed, 0 failed.
+`npm run verify`: 14 of 16, hash 6d17d4814bdc unchanged, which tests
+the PREBUILT wasm and therefore says nothing about this turn's C.
+
+Next: rebuild at 1 kHz and compare the hash, which is the gate on P1.
+Then a real blackbox log, which turns every constant in the plant from
+tuned-into-a-band into fitted-against-hardware. The link wants a
+settings row so a pilot can pick it without the console.

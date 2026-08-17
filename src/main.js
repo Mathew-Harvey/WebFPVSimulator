@@ -48,6 +48,7 @@ import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './ren
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, makeLensShake } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
+import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
@@ -186,6 +187,23 @@ const RECOVER_BACK = 7;
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
 const RC_HZ = 250;
+/*
+ * The physics step rate. This MUST equal SIM_STEP_HZ in
+ * src/native/sim_abi.h; the ABI does not report it, so the two are kept in
+ * step by hand and a mismatch shows up as the shell stepping the module at
+ * the wrong speed.
+ *
+ * The shell's clock is an integer STEP INDEX, not milliseconds. It was
+ * milliseconds, which is the same thing only while a step is a
+ * millisecond: `steps = Math.floor(acc)` reads an accumulator of
+ * milliseconds as a count of steps, and every `simTimeMs += steps` says
+ * the same. Raising the rate turns each of those into a silent factor of
+ * eight. Counting steps and deriving milliseconds keeps one clock. At
+ * 1000 Hz MS_PER_STEP is exactly 1 and every expression below reduces to
+ * what it replaced.
+ */
+const SIM_HZ = 1000;
+const MS_PER_STEP = 1000 / SIM_HZ;
 /* Pack nominal, for the charge bar: 6S between empty and full. */
 /* The 6 is PLANT.cells in src/native/plant.c, restated here because the ABI
  * does not report it. These are the HUD gauge's ends only: the physics reads
@@ -512,10 +530,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * the throttle up. Invisible before the takeoff fix, because at 60 fps
    * every takeoff crashed and the crash reset re-zeroed both clocks.
    */
-  let simStepMs = 0;
+  let simStepIdx = 0;
   let acc = 0;
   let lastTs = 0;
   let rcNextMs = 0;
+  /*
+   * The radio. Default is 'perfect', which is the behaviour this shell has
+   * always had: turning a real link on has to be a choice, so that a lap
+   * time never changes underneath a pilot who did not ask for it.
+   */
+  const rcLink = new RcLink(LINK_DEFAULT);
   /*
    * Stick samples waiting for an RC slot, and the value currently held.
    *
@@ -537,8 +561,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * flight.
    */
   function pinRcGrid() {
-    rcNextMs = simStepMs;
-    lastTs = simStepMs / 1000;
+    rcNextMs = simStepIdx * MS_PER_STEP;
+    lastTs = rcNextMs / 1000;
+    /* The radio restarts with the grid it feeds, so a reset is a reset and
+     * a replay of the same session draws the same jitter. */
+    rcLink.reset(rcNextMs);
     if (rcPending.length > 1) {
       rcPending.splice(0, rcPending.length - 1);
     }
@@ -554,7 +581,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function adoptSimClock() {
     const st = readState();
-    simStepMs = Math.round(st[0] * 1000);
+    simStepIdx = Math.round(st[0] * SIM_HZ);
     pinRcGrid();
   }
 
@@ -756,7 +783,7 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.setCellVoltage(runVoltage);
     /*
      * THE LAP CLOCK IS NOT TOUCHED, and the two clocks being separate
-     * variables is what makes that possible. simStepMs mirrors the module's
+     * variables is what makes that possible. simStepIdx mirrors the module's
      * own step_index, which sim_reset has just put back to zero, so it MUST
      * follow or every queued stick sample lands in the integrator's future.
      * simTimeMs is the LAP clock and belongs to the race, which is still
@@ -815,7 +842,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * recovery keeps the run going, a fresh run does not. Setting it here,
      * before the craft reset, keeps the two clocks in the same order they
      * were written in. Nothing in resetCraft reads it: adoptSimClock and
-     * pinRcGrid follow simStepMs, which mirrors the module.
+     * pinRcGrid follow simStepIdx, which mirrors the module.
      */
     simTimeMs = 0;
     /*
@@ -1664,10 +1691,10 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
        * into the future. Snap the shell to step_index instead. */
-      const moduleMs = Math.round(readState()[0] * 1000);
-      if (simStepMs !== moduleMs) {
+      const moduleIdx = Math.round(readState()[0] * SIM_HZ);
+      if (simStepIdx !== moduleIdx) {
         acc = 0;
-        simStepMs = moduleMs;
+        simStepIdx = moduleIdx;
         pinRcGrid();
         landed = true;
         takingOff = false;
@@ -1676,8 +1703,8 @@ export async function boot({ loading, bootStart, mapId }) {
         statePrev = stateCurr;
       } else {
       acc += dt;
-      let steps = Math.floor(acc);
-      acc -= steps;
+      let steps = Math.floor(acc / MS_PER_STEP);
+      acc -= steps * MS_PER_STEP;
       /* No clamp on steps: dt is already capped at 100 ms where it is
        * read, and acc carries less than 1 ms forward, so this cannot ask
        * for more than 100 steps. The cap belongs on the wall clock, in one
@@ -1686,7 +1713,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * display runs at whatever rate it runs at; the radio does not, and
        * the controller's feedforward and smoothing read the frame
        * interval directly. */
-      const blockEndSim = simStepMs + steps;
+      const blockEndSim = (simStepIdx + steps) * MS_PER_STEP;
       /*
        * Wall clock to sim clock, re-derived every frame rather than carried:
        * a sample taken (nowWall - wallT) ms ago belongs that many ms before
@@ -1695,22 +1722,59 @@ export async function boot({ loading, bootStart, mapId }) {
        * self corrects across the freezes where they do not.
        */
       const wallToSim = blockEndSim - nowWall;
-      const framePeriod = 1000 / RC_HZ;
-      while (rcNextMs < blockEndSim) {
-        /* Take every sample whose moment has arrived; hold the last one. */
-        while (rcPending.length > 0 && rcPending[0].wallT + wallToSim <= rcNextMs) {
+      /* Take every sample whose moment has arrived; hold the last one. This
+       * is the receiver holding its last frame, so a lost packet needs no
+       * separate handling: it is simply a frame that is never emitted. */
+      const pickAt = (atMs) => {
+        while (rcPending.length > 0 && rcPending[0].wallT + wallToSim <= atMs) {
           rcHeld = rcPending.shift();
         }
-        /* Stamp the grid, never lastTs. lastTs was the round 16b / tune-swap
-         * amplifier: a leftover second became every sample's timestamp. */
-        const ts = rcNextMs / 1000;
-        lastTs = ts;
-        const inCode = sim.input(ts, rcHeld.roll, rcHeld.pitch, rcHeld.yaw, rcHeld.throttle);
-        if (inCode !== SIM_OK) {
-          adoptSimClock();
-          break;
+        return rcHeld;
+      };
+      if (rcLink.isPerfect()) {
+        /*
+         * No radio. Kept as its own path and not routed through the link so
+         * that the default, and every recording made under it, is exactly
+         * the code that produced them: an exact grid, one frame per slot.
+         */
+        const framePeriod = 1000 / RC_HZ;
+        while (rcNextMs < blockEndSim) {
+          const held = pickAt(rcNextMs);
+          /* Stamp the grid, never lastTs. lastTs was the round 16b /
+           * tune-swap amplifier: a leftover second became every sample's
+           * timestamp. */
+          const ts = rcNextMs / 1000;
+          lastTs = ts;
+          const inCode = sim.input(ts, held.roll, held.pitch, held.yaw, held.throttle);
+          if (inCode !== SIM_OK) {
+            adoptSimClock();
+            break;
+          }
+          rcNextMs += framePeriod;
         }
-        rcNextMs += framePeriod;
+      } else {
+        /*
+         * A radio. The link owns the slot clock while it runs, so its rate
+         * rather than RC_HZ decides the cadence, and it hands back packets
+         * already sorted into arrival order with their transport delay and
+         * jitter applied. sim_input requires non decreasing timestamps and
+         * jitter can reorder two adjacent packets, so anything that still
+         * lands behind the last stamp is dropped rather than rejected by
+         * the module.
+         */
+        for (const pkt of rcLink.pump(blockEndSim, pickAt)) {
+          const ts = pkt.tMs / 1000;
+          if (ts < lastTs) {
+            continue;
+          }
+          lastTs = ts;
+          const inCode = sim.input(ts, pkt.rc.roll, pkt.rc.pitch, pkt.rc.yaw, pkt.rc.throttle);
+          if (inCode !== SIM_OK) {
+            adoptSimClock();
+            break;
+          }
+        }
+        rcNextMs = rcLink.nextMs;
       }
       if (steps >= 1) {
         if (steps > 1) {
@@ -1721,8 +1785,8 @@ export async function boot({ loading, bootStart, mapId }) {
         }
         sim.step(1);
         stateCurr = readState();
-        simTimeMs += steps;
-        simStepMs += steps;
+        simTimeMs += steps * MS_PER_STEP;
+        simStepIdx += steps;
       }
       /*
        * Ground contact, and whether it is a landing or a crash. This is the
@@ -1921,9 +1985,9 @@ export async function boot({ loading, bootStart, mapId }) {
        * free is not a race.
        */
       acc += dt;
-      let steps = Math.floor(acc);
-      acc -= steps;
-      simTimeMs += steps;
+      let steps = Math.floor(acc / MS_PER_STEP);
+      acc -= steps * MS_PER_STEP;
+      simTimeMs += steps * MS_PER_STEP;
       adoptSimClock();
       statePrev = stateCurr;
     } else if (mode === 'flight' && crashed) {
@@ -1940,9 +2004,9 @@ export async function boot({ loading, bootStart, mapId }) {
        * otherwise slide the wreck between the last two stale poses forever.
        */
       acc += dt;
-      let steps = Math.floor(acc);
-      acc -= steps;
-      simTimeMs += steps;
+      let steps = Math.floor(acc / MS_PER_STEP);
+      acc -= steps * MS_PER_STEP;
+      simTimeMs += steps * MS_PER_STEP;
       statePrev = stateCurr;
       if (nowWall - crashedAtWall > 1400) {
         /* Short lockout, then back on the COURSE: on the ground in front of
@@ -2552,7 +2616,7 @@ export async function boot({ loading, bootStart, mapId }) {
     chrome: Boolean(document.querySelector('.screen-fc .fc-wordmark')),
     status: Boolean(document.querySelector('.screen-fc .fc-status')),
     tabs: document.querySelectorAll('.fc-tab').length,
-    simStepMs,
+    simStepIdx,
     lastTs,
     moduleMs: Math.round(readState()[0] * 1000),
   });
@@ -2623,6 +2687,18 @@ export async function boot({ loading, bootStart, mapId }) {
    * contact was judged on, and the thresholds are published beside them so a
    * reviewer does not have to go and find them.
    */
+  /* The radio, for a capture or a pilot comparing links. Returns the id in
+   * force so a shot can name it. */
+  window.__link = (id) => {
+    if (id != null) {
+      rcLink.setPreset(id);
+      rcLink.reset(rcNextMs);
+    }
+    return { id: rcLink.id, hz: rcLink.hz, delayMs: rcLink.delayMs,
+      jitterMs: rcLink.jitterMs, lossPpm: rcLink.lossPpm,
+      sent: rcLink.sent, dropped: rcLink.dropped,
+      presets: Object.keys(LINK_PRESETS) };
+  };
   window.__craftState = () => ({
     mode,
     flownThisRun,
@@ -2691,7 +2767,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fps: Math.round(fps),
     pending: rcPending.length,
     held: { ...rcHeld },
-    simStepMs,
+    simStepIdx,
     lastTs,
     rcNextMs,
     moduleMs: Math.round(readState()[0] * 1000),

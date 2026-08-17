@@ -77,7 +77,7 @@
 #include "sensors/gyro.h"
 #include "sensors/gyro_init.h"
 
-extern uint32_t sim_bf_now_ms;
+extern uint32_t sim_bf_now_us;
 extern uint16_t sim_bf_sag_cell_cv;
 
 #include "../sim_abi.h"
@@ -451,12 +451,12 @@ static void bf_runtime_init(void) {
    * pid_process_denom; it is stored so it is visible, and forced here so
    * the physics step and the control loop cannot drift apart. */
   pidConfigMutable()->pid_process_denom = 1;
-  targetPidLooptime = 1000; /* microseconds, matches the 1 kHz plant step */
+  targetPidLooptime = SIM_US_PER_STEP; /* microseconds, one plant step */
 
   gyro.targetLooptime = targetPidLooptime;
   gyro.sampleLooptime = targetPidLooptime;
-  gyro.sampleRateHz = 1000;
-  gyro.accSampleRateHz = 1000;
+  gyro.sampleRateHz = SIM_STEP_HZ;
+  gyro.accSampleRateHz = SIM_STEP_HZ;
   gyro.gyroToUse = GYRO_CONFIG_USE_GYRO_1;
   gyro.gyroDebugMode = DEBUG_NONE;
   gyro.rawSensorDev = &gyro.gyroSensor1.gyroDev;
@@ -713,7 +713,7 @@ void bridge_reset(void) {
   bf_runtime_init();
 
   for (uint32_t ms = BF_WARMUP_FRAME_MS; ms <= BF_WARMUP_MS; ms += BF_WARMUP_FRAME_MS) {
-    sim_bf_now_ms = ms;
+    sim_bf_now_us = ms * 1000;
     updateRcRefreshRate((timeUs_t)ms * 1000);
     updateRcCommands();
     processRcCommand();
@@ -777,8 +777,21 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
 
   /* Flight time continues from the warm up offset so the receiver clock
    * stays monotonic across reset. */
-  sim_bf_now_ms = (uint32_t)(BF_WARMUP_MS + s->step_index);
-  const timeUs_t now_us = (timeUs_t)((BF_WARMUP_MS + s->step_index) * 1000);
+  /*
+   * MICROSECONDS, not milliseconds times a thousand.
+   *
+   * This used to be `BF_WARMUP_MS + s->step_index`, which is only the time
+   * if one step is one millisecond. Above 1 kHz that runs the firmware's
+   * whole clock fast by the rate ratio, and every piece of Betaflight that
+   * reads time (rc smoothing's interval estimate, feedforward's packet
+   * delta, anti gravity, iterm relax) would be told the flight is happening
+   * faster than it is. Driving microseconds off the step index and deriving
+   * milliseconds from THAT keeps one timebase and gives a 125 us step
+   * somewhere to be. At 1 kHz it is arithmetically the old expression.
+   */
+  const timeUs_t now_us =
+      (timeUs_t)((long long)BF_WARMUP_MS * 1000 + (long long)s->step_index * SIM_US_PER_STEP);
+  sim_bf_now_us = (uint32_t)now_us;
 
   /* Angle mode only. Acro never enters: g_angle_mode stays 0, attitude
    * stays untouched, pidLevel is not reached. */

@@ -85,8 +85,40 @@ timeDelta_t rxGetFrameDelta(timeDelta_t *frameAgeUs) {
   return 0;
 }
 
-/* Parameter group storage normally defined in sensors/battery.c. */
-batteryConfig_t batteryConfig_System;
+/*
+ * Parameter group storage normally defined in sensors/battery.c, WITH
+ * Betaflight's own defaults, because a zeroed struct here put a pilot on
+ * the ground.
+ *
+ * sensors/battery.c is not compiled, so its PG registration never runs and
+ * nothing resets this struct: whatever is written here is what the firmware
+ * reads, forever. It used to be a bare global, all zeros, and mixer.c's
+ * vbat_sag_compensation computes its working range as
+ *
+ *   vbatRangeToCompensate = CELL_VOLTAGE_FULL_CV - vbatwarningcellvoltage
+ *
+ * With the real default warning voltage of 3.50 V a cell that range is
+ * 0.70 V and the attenuation tops out at 70/420, about 17 percent of the
+ * output span held back at full charge and released as the pack sags,
+ * which is the whole feature. With the zero this struct carried, the range
+ * became the full 4.20 V, the attenuation reached 1.0 at full charge, and
+ * motorRangeMax collapsed onto motorRangeMin: every motor pinned at idle,
+ * which the owner flew and reported as "no throttle response at all" the
+ * first time the key was set. The values below are Betaflight 4.5.1's own
+ * defaults, in hundredths of a volt, and the meter sources are set so the
+ * feature's ADC gate, where the build carries it, sees a live meter.
+ *
+ * Designated initializers on purpose: the struct's field order belongs to
+ * Betaflight and may change under an upstream merge.
+ */
+batteryConfig_t batteryConfig_System = {
+  .vbatmaxcellvoltage = 430,
+  .vbatfullcellvoltage = 410,
+  .vbatmincellvoltage = 330,
+  .vbatwarningcellvoltage = 350,
+  .voltageMeterSource = VOLTAGE_METER_ADC,
+  .currentMeterSource = CURRENT_METER_VIRTUAL,
+};
 
 /* Battery sag cell voltage in hundredths of a volt, fed from the plant by
  * the glue. Only read when vbat_sag_compensation is enabled. */

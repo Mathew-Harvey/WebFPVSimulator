@@ -10271,3 +10271,52 @@ FC screen. Suggested to the owner rather than changed for them.
 Uncommanded yaw noise p95 was 5.1 deg/s, clean; held yaw averaged
 366 deg/s per unit stick, consistent with the documented default tune
 yaw clipping (upstream 13486) this project deliberately reproduces.
+
+### 2026-08-17 | fix | sag compensation grounded the craft: a zeroed batteryConfig
+
+First, the milestone: the owner's machine reports 16 of 16, the first
+full pass in the project's history. Every check builds, runs and
+passes on Windows, including the re-specified yaw band at -0.12 deg.
+
+Then the owner did exactly what the instrument is for: took the
+suggestion to try vbat_sag_compensation = 100, flew it, and reported
+"no throttle response at all". That is a real defect and it is OURS,
+not Betaflight's.
+
+sensors/battery.c is not compiled, so bf_stubs.c defines the
+batteryConfig parameter group storage itself, and it defined it as a
+bare global: all zeros, never reset by anything, never writable by any
+settings key. mixer.c computes the compensation's working range as
+CELL_VOLTAGE_FULL_CV minus vbatwarningcellvoltage. Betaflight's
+default warning voltage is 350 centivolts, giving a 70 cV range and a
+maximum attenuation of 70/420, about 17 percent of the output span
+reserved at full charge and released as the pack sags, which is the
+feature. The stub's zero made the range 420 cV, the attenuation hit
+1.0 at full charge, and motorRangeMax collapsed onto motorRangeMin:
+all four motors pinned to idle regardless of stick. The pilot's
+description is the formula's output, word for word.
+
+The storage now carries Betaflight 4.5.1's own defaults, designated
+initializers, in centivolts: max 430, full 410, min 330, warning 350,
+and live meter sources so the feature's ADC gate, where the build
+carries it, is satisfied. Nothing else reads this struct in the
+compiled set, no fixture config sets vbat_sag_compensation, and with
+the key at its default zero the attenuation multiplies by a zero
+factor, so the trace CANNOT move: the rebuild must reproduce hash
+6d17d4814bdc exactly, which is the owner's acceptance test before
+trying the key again.
+
+THIS C IS UNCOMPILED HERE. The vendor tree is empty in this container,
+so the designated initializer's field names have not been through a
+compiler; the owner's next npm run build:wasm is the check, and a
+field name error fails there loudly rather than flying wrong.
+
+Also noted: both log attachments this round were byte identical to the
+earlier 19:43:50 file, so the sag comp flight itself was never seen; a
+fresh download carries a fresh timestamp in its name, which is how to
+tell. The diagnosis stood on the owner's report alone this time, and
+the formula agreed with it exactly.
+
+Suites here: trackbuilder 225/225, tracks 3994/0, link and replay
+selftests all passed. verify 15 of 16 in this container, build-clean
+red for want of emcc only.

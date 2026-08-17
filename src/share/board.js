@@ -19,8 +19,9 @@
  * print on every gate and every flag the moment it is flown.
  *
  * The board origin is, in order: a ?board= query, a stored override, then
- * the local default. Production sets the stored override or edits
- * DEFAULT_BOARD_ORIGIN. Nothing here guesses a deployed host.
+ * the default for wherever this page is being served from. Nothing here
+ * guesses a deployed host: there are exactly two named hosts below and the
+ * page picks between them by its own hostname.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -40,8 +41,38 @@
 
 import { writeShareImport } from './session.js';
 
+/*
+ * Two named hosts, because this page is served from two kinds of place and
+ * only one of them has a board sitting next to it.
+ *
+ * Development serves the shell off a loopback address with the board on
+ * 3100 beside it. Anything else is a deploy, and a deploy has to name its
+ * board out loud: the shell is a static site, so there is no environment to
+ * read at run time and no server to ask. The name lives here instead.
+ *
+ * PRODUCTION_BOARD_ORIGIN is the one line to change when the board lands on
+ * a different URL than the one below. Both escape hatches still outrank it,
+ * so a fork can point somewhere else without editing this file: a ?board=
+ * query wins over everything, and the Publish dialog's stored override wins
+ * over the default.
+ */
 export const DEFAULT_BOARD_ORIGIN = 'http://127.0.0.1:3100';
+export const PRODUCTION_BOARD_ORIGIN = 'https://webfpvleaderboard.onrender.com';
 const ORIGIN_KEY = 'webfpv.board.origin';
+
+/* An empty hostname is a file:// open, which is a developer, not a deploy. */
+const LOOPBACK_HOSTS = new Set(['', 'localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
+
+export function defaultBoardOrigin() {
+  try {
+    return LOOPBACK_HOSTS.has(window.location.hostname)
+      ? DEFAULT_BOARD_ORIGIN
+      : PRODUCTION_BOARD_ORIGIN;
+  } catch (e) {
+    /* No window, as in Node, where the board is the local one or nothing. */
+    return DEFAULT_BOARD_ORIGIN;
+  }
+}
 
 function trimOrigin(value) {
   return String(value || '').trim().replace(/\/+$/, '');
@@ -67,7 +98,7 @@ export function boardOrigin() {
   } catch (e) {
     /* Private mode. */
   }
-  return DEFAULT_BOARD_ORIGIN;
+  return defaultBoardOrigin();
 }
 
 export function setBoardOrigin(origin) {
@@ -108,7 +139,7 @@ function usableBoardOrigin(origin) {
 export function boardPageUrl(origin) {
   const base = usableBoardOrigin(origin)
     || usableBoardOrigin(boardOrigin())
-    || DEFAULT_BOARD_ORIGIN;
+    || defaultBoardOrigin();
   return `${base}/`;
 }
 

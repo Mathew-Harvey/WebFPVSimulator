@@ -10350,3 +10350,66 @@ something in the air had to pause or hit F8 first. It now stays in the
 top right on the flight screen too. Click still pauses, then opens the
 form, so typing does not fly the quad. A quieter style on that screen
 only, so the FPV frame still reads. Physics was not touched.
+
+### 2026-08-17 | infrastructure | Render deploy, three resources not two
+
+The shape is a static site for the simulator, a Node web service for the
+board, and a Postgres instance behind the board. The simulator is static
+because it has no server side at all: dist/sim.wasm is committed, the shell
+is plain ES modules, and three.js comes from the CDN import map. That also
+buys the property worth having, which is that a Render static site never
+sleeps, so the page people fly stays warm while a free board naps.
+
+render.yaml added here for the static site. staticPublishPath is the whole
+tree and has to be: the page fetches by absolute path from the site root,
+and src/main.js imports /tests/lib/simmod.js to load the module, so a
+publish path of src plus dist serves a page that dies at boot. There is no
+build, so the build command is the assertion that stands in for one,
+test -f on both files a missing deploy would 404 on. Everything is served
+no-cache, because nothing in the tree is content hashed and a long cache
+can hand a visitor a module graph half from each deploy, which would read
+as a physics bug rather than a caching one. No X-Frame-Options anywhere,
+because the board draws each course thumbnail by framing this site's
+/src/share/orbit.html cross origin.
+
+THE ONE REAL CODE CHANGE. DEFAULT_BOARD_ORIGIN was http://127.0.0.1:3100
+unconditionally, so a deployed simulator asked a laptop's loopback for its
+courses: no list, a Publish dialog offering 127.0.0.1, and bug tickets
+posted into nothing. board.js now names two hosts and picks by
+window.location.hostname, loopback for development and
+PRODUCTION_BOARD_ORIGIN for anything else. A static site has no environment
+to read at run time, so the deployed host has to be a constant somewhere
+and the file's own header already said this was the place. Both escape
+hatches still outrank it, ?board= first and the stored override second,
+which was checked rather than assumed: eleven assertions over the
+precedence chain, both loopback spellings, IPv6, and the same-origin case
+that must not collapse to "/".
+
+The board's blueprint was already most of the way there. Corrected to
+npm ci over npm install (the lockfile is committed and install is free to
+resolve a different pg than the tests ran against), healthCheckPath
+/api/health, region written on both resources because Render's internal
+DATABASE_URL only resolves within one, an empty ipAllowList since the board
+reaches Postgres over the private network, and .node-version pinned to 22.
+
+Checked against a real Postgres 16 rather than the file store, since that
+is the path production takes and the selftest defaults to the other one:
+full suite green, and a second process against the same database confirms
+schema.sql is idempotent and a redeploy loses nothing. The cross origin
+half was checked with the two hosts pretending to be the deployed pair:
+preflight, a posted time, and a filed ticket all pass CORS, and with
+x-forwarded-proto set the board reports an https boardOrigin, which is the
+difference between working Fly links and links a browser refuses as mixed
+content.
+
+Not fixed, because it is Render's and not ours: the free Postgres instance
+is deleted after thirty days, not downgraded. Written down in DEPLOY.md as
+the first thing worth paying for, ahead of the sleeping board, because a
+slow first click is an annoyance and a deleted database is the courses
+gone. The board cannot fall back to its JSON file store there either, since
+Render's disk is ephemeral and that file would be wiped every deploy.
+
+Physics, WASM, input and the module ABI were not changed. verify 15 of 16
+in this container, build-clean red for want of emcc only and every other
+check on the committed binary green. Trackbuilder 225/225, leaderboard
+selftest green on both the file store and Postgres.

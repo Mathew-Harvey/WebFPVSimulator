@@ -296,7 +296,10 @@ async function loadMap(shell, id, loading, options) {
 export async function boot({ loading, bootStart, mapId }) {
   const BOOT_START = bootStart ?? performance.now();
   const canvas = document.getElementById('view');
-  const shell = buildShell(canvas);
+  /* The flying view wants the shortest path to the glass it can get, and
+   * has nothing to read its own frames back for. See shell.js for what the
+   * compositor queue costs a pilot. */
+  const shell = buildShell(canvas, { desynchronized: true });
   const input = new InputManager();
   /*
    * Sample the sticks on their own timer rather than once per rendered frame.

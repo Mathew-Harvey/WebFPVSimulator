@@ -10495,3 +10495,44 @@ Physics, WASM, the module ABI and the input path were not changed. verify
 15 of 16, build-clean red for want of emcc only and check 16 back at its
 recorded 313 / 895639 / 69.8 MB. Trackbuilder 225/225, link and replay
 selftests passed.
+
+### 2026-08-17 | fix | take the flying view out of the compositor queue
+
+Low fixed the frame rate on the GPU-less laptop, 45 per second, and the
+stick lag survived it. That rules out the previous round's explanation on
+its own: 45 frames per second is 22 ms a frame, which is within sight of a
+60 Hz desktop and nowhere near what was described.
+
+So the frame rate was never the whole latency. A canvas hands its finished
+frame to the browser compositor, which may hold one or two more before
+anything reaches the glass. That queue does not appear in the frame rate,
+because the frame rate counts frames PRODUCED and a pilot only feels frames
+SEEN. Two queued frames at 22 ms is another 44 ms, and it lands on top of
+however long the pad took to refresh.
+
+The flying view now asks for desynchronized, which lets the canvas present
+closer to directly at the cost of tearing. Opt in through buildShell rather
+than on by default, because orbit.js reads its own frames back to record a
+thumbnail clip and a buffer that bypasses the compositor is exactly the one
+a reader may find empty. Checked that the harness still captures a real
+picture rather than a blank one: 117 kB PNG, three sampled patches at
+distinct luminances, zero console errors. verify unchanged at 15 of 16.
+
+THIS IS A CANDIDATE, NOT A PROVEN FIX. It cannot be measured here: this
+container has no GPU, no display and no radio, so the number that would
+settle it has to come off the machine that has the problem.
+
+That number is padHz, and the instrumentation for it was already in the
+tree from an earlier round, unread. window.__stickPath() reports how often
+the browser refreshes the Gamepad object against how often we sample it.
+input.js's own comment states the test: if padHz sits at the frame rate,
+this browser is rAF-locked on gamepad input and no amount of polling will
+move it, only WebHID. On Linux, Chrome reads pads through evdev, which is
+where that is most likely to be true.
+
+Ruled out on the way past: the radio link. Its presets model 3 to 7.5 ms
+and are per browser, so a laptop carrying a different one than the desktop
+was a real candidate for a difference that looks like hardware. 7.5 ms is
+not what was described, and the worst preset is still a real radio.
+
+Physics, WASM, the module ABI and the input path were not changed.

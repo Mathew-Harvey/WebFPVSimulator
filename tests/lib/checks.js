@@ -378,7 +378,7 @@ export function buildChecks() {
     {
       num: 10,
       id: 'yaw-coupling',
-      thresholdText: '|drift| >= 2 deg, sign negative',
+      thresholdText: '|drift| 0.04 to 0.60 deg, sign negative',
       async run(ctx) {
         const th = ctx.th.checks['yaw-coupling'];
         const sim = await ctx.freshSim();
@@ -396,12 +396,25 @@ export function buildChecks() {
           },
         );
         const yawDeg = yawRad * DEG;
+        /*
+         * A BAND, not a floor. A symmetric QUADX cancels roll-to-yaw
+         * coupling exactly (the three line proof is in PROGRESS.md), so the
+         * only coupling a physical model can show is its build tolerance,
+         * and the plant's is measured at -0.12 deg here. The floor catches
+         * the tolerance model being deleted, which is the 0.00 this check
+         * read for the project's whole life; the cap catches the cants
+         * being inflated to fake a coupling, which is the only way the old
+         * 2.0 deg floor could ever have been satisfied.
+         */
         const bigEnough = Math.abs(yawDeg) >= th.min_abs_body_yaw_deg.value;
+        const smallEnough = Math.abs(yawDeg) <= th.max_abs_body_yaw_deg.value;
         const signOk = Math.sign(yawDeg) === th.expected_sign.value;
-        const pass = bigEnough && signOk;
+        const pass = bigEnough && smallEnough && signOk;
         let reason = '';
         if (!bigEnough) {
-          reason = 'drift below floor';
+          reason = 'drift below floor: the build tolerance model is not being felt';
+        } else if (!smallEnough) {
+          reason = 'drift above the build tolerance band';
         } else if (!signOk) {
           reason = 'wrong sign';
         }

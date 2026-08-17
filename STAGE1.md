@@ -80,7 +80,7 @@ Every check is a numeric band in `tests/thresholds.json`. `npm run verify` runs 
 | 7 | terminal-velocity | Level, full throttle, 20 s, speed plateau | 30 to 40 m/s |
 | 8 | motor-step-response | Step one motor 0 to 100 percent, time to 63 percent of final RPM | 10 to 30 ms |
 | 9 | rate-tracking | Full roll stick, steady-state roll rate vs configured max rate | within 3 percent |
-| 10 | yaw-coupling | Hard roll at constant throttle, yaw drift | non-zero, correct sign |
+| 10 | yaw-coupling | Hard roll at constant throttle, yaw drift | build-tolerance scale (0.04 to 0.60 deg), correct sign. A symmetric quad cancels this coupling exactly; only asymmetry produces it, so the check bands the modeled tolerance rather than demanding a drift no real quad shows. |
 | 11 | battery-sag | Identical punch-out at 4.20 V and 3.60 V per cell, peak RPM | 3.60 V run lower by 4 to 15 percent |
 | 12 | diff-passthrough | Parse two Betaflight diffs differing only in rates, run identical input | resulting max roll rates differ by the ratio in the diffs, within 2 percent |
 | 13 | console-clean | Browser harness run | zero errors, zero warnings |

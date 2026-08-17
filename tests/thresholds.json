@@ -203,12 +203,16 @@
         "source": "Loop A harness choice, duration of the hard roll"
       },
       "min_abs_body_yaw_deg": {
-        "value": 2.0,
-        "source": "Loop A harness choice, floor that makes 'non-zero' in STAGE1.md check 10 measurable; integrated body yaw rate over the hold"
+        "value": 0.04,
+        "source": "Re-specified at the owner's request, argued in PROGRESS.md 2026-08-17. The old floor of 2.0 was recorded by its own source as a 'Loop A harness choice', and PROGRESS.md carries a three line proof that a symmetric QUADX cancels roll-to-yaw coupling EXACTLY, for any per-motor physics: reaching 2.0 deg would need about 44 deg of column asymmetry, and a well tuned quad does not yaw two degrees in a one second roll. What the plant models instead is explicit build tolerance, tangential motor cants of -0.9/+1.4/+0.6/-1.2 deg whose sum against the roll column is -1.1 deg, measured at -0.12 deg of drift over this maneuver. The floor is set where deleting that tolerance model (drift collapses toward 0.00, which is where this check sat for the project's whole life) fails loudly, with margin under the measured -0.12."
       },
       "expected_sign": {
         "value": -1,
         "source": "Loop A provisional choice for a positive (right) roll input with Betaflight props-in rotation. Sign convention: positive r yaws nose left. See PROGRESS.md OPEN QUESTIONS"
+      },
+      "max_abs_body_yaw_deg": {
+        "value": 0.6,
+        "source": "The other half of the band, same argument. Coupling scales linearly with the cant table, so 0.60 deg is about five times the modeled build tolerance: someone inflating the invented cants to fake a bigger coupling, which is exactly how the old 2.0 floor would have had to be satisfied, fails this side. The check now guards the tolerance model from both directions instead of demanding a drift no physical quad exhibits."
       }
     },
     "battery-sag": {

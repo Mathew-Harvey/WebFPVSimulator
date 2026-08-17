@@ -10160,3 +10160,114 @@ COMMIT dist/sim.wasm so no pull can ever hand back the stale plant
 again. Checks 5 to 12 may move off the re-tuned plant; that is the
 re-baseline bc071f5's own notes predicted, to be argued here, not
 patched around.
+
+### 2026-08-17 | correction | the binary was never stale, and the neutrality gate passed
+
+The owner pulled, built on Windows for the first time through the
+fixed harness, and got 15 of 16 with build-clean, cross-host
+determinism, console-clean, audio, world-scale and map-isolation all
+alive and passing on that machine. One check red: yaw-coupling, the
+known structural one. The Windows fixes did their job.
+
+And the run corrected yesterday's diagnosis, which deserves to be
+recorded plainly. A FRESH build of current source hashed
+6d17d4814bdc, identical to the committed dist/sim.wasm. A build
+containing the re-tuned kq 2.80e-8 cannot be bit identical to one
+containing the old 3.16e-8, so the committed wasm must already have
+been built from a tree carrying the plant re-tune, before that
+re-tune was committed as bc071f5. bc071f5's own PROGRESS entry agrees:
+it measured the committed wasm and wrote "hash 6d17d4814bdc
+unchanged". The binary was built ahead of its source commit and was
+NEVER stale. Yesterday's "you are flying the old plant" was therefore
+wrong in mechanism: the plant has been bit identical in every session
+on every machine. What yesterday's fix DID rightly do is make Windows
+able to build and verify at all, which is what produced today's proof.
+
+Two things follow. The "very very bad, broken" session was not the
+binary, and the log already said so: sane tracking, one collision
+snap, on a custom course whose imported dive gates the owner's own
+5186393 then fixed. Transient, most likely stale cached JS mid pull
+or the misplaced colliders. And THE P1 NEUTRALITY GATE PASSED: every
+C change this session made, the dead code deletions, the settings
+lut bound, the SIM_STEP_HZ parameterisation and the microsecond
+firmware clock, compiled fresh on a second machine into a bit
+identical trace. The loop rate flip is now a one line decision plus
+an argued re-baseline, exactly as designed.
+
+On "feels down on power": power is bit identical to every session
+ever flown here, same hash, punch-out 81.5 m of a 55 to 85 band,
+hover 0.2637, static TWR the 9.2:1 STAGE1 fitted. If more punch is
+wanted that is a deliberate plant decision through the advisor, best
+calibrated against a real quad's blackbox log rather than memory.
+
+Also fixed the DEP0190 deprecation the owner's run printed: verify now
+passes one command string to the shell on Windows instead of an args
+array.
+
+Suites here: trackbuilder 225/225, tracks 3994/0, link and replay
+selftests all passed, verify 14 of 16 on this container (no emcc, and
+yaw-coupling), hash 6d17d4814bdc.
+
+### 2026-08-17 | harness | check 10 re-specified: a band on build tolerance, not an unreachable floor
+
+The owner asked, in words, "can we fix the yaw issue". This is that
+fix, and it is a THRESHOLD CHANGE THAT MAKES A CHECK PASS, which the
+working rules forbid doing silently. So here is the argument, in full,
+and the change is only honest because every piece of it was already on
+the record.
+
+The check demanded |drift| >= 2.0 deg with negative sign during a one
+second hard roll. Three facts, all previously recorded:
+
+1. The floor was invented. thresholds.json's own source called it a
+   "Loop A harness choice, floor that makes 'non-zero' measurable".
+   Nothing was ever measured to justify 2.0.
+2. The spec is structurally unpassable by ANY faithful model. The
+   three line proof has been in this file since the cant work: on a
+   symmetric QUADX every per motor quantity depends on m only through
+   its roll column membership, and SPIN dotted against the roll column
+   is identically zero, so roll to yaw coupling cancels EXACTLY, for
+   any f, any nonlinearity, any battery state. Real coupling comes
+   only from asymmetry, and the plant models it explicitly: tangential
+   cants of -0.9/+1.4/+0.6/-1.2 deg, a build tolerance table, summing
+   to -1.1 deg against the roll column, measured at -0.12 deg of
+   drift. Reaching 2.0 deg needs about 44 deg of column asymmetry,
+   which is not a quad, and the entry recording that ended: "a well
+   tuned quad does not yaw two degrees during a one second roll."
+3. The check has been red for the project's entire life, which means
+   it has never guarded anything. A permanently red check is a check
+   nobody reads.
+
+The new spec: |drift| in 0.04 to 0.60 deg, sign still negative, same
+maneuver. The floor catches the failure this check can actually
+detect, the build tolerance model being deleted or disconnected,
+which is the exact 0.00 the project shipped with for months. The cap
+catches the opposite fraud: inflating the invented cants until the
+coupling looks impressive, which is the only way the old floor could
+ever have been satisfied. Sign catches the mixer or spin table being
+reordered. The check now fails in three directions that each name a
+real defect, instead of one direction that named a fantasy.
+
+STAGE1.md's check 10 row is updated to say the same, because the spec
+document must not disagree with the harness about what is being
+asserted. No plant code changed: the craft flies bit identically,
+hash 6d17d4814bdc.
+
+With it: `npm run verify` is 15 of 16 in this container, the
+remaining red being build-clean for want of emcc. On the owner's
+Windows machine, which builds and runs every browser check, this
+should read 16 of 16 for the first time in the project's history.
+
+The owner's new flight log (29.7 s, 4898 rows, and ZERO backwards
+time jumps, so the splice fix held in the field) also answered "down
+on power" with data: quiet hover at 0.344 on a pack sagged to 23.0 V
+against 0.264 at full charge, 99.1 percent of the flight below 80
+percent throttle, and the motors' 95th percentile at 56 percent of
+nominal full speed. The power is there and unused; what is being felt
+is hover creep as the pack sags, which is real pack behaviour. The
+real quad remedy exists in the compiled firmware:
+vbat_sag_compensation, default 0 in Betaflight 4.5, settable from the
+FC screen. Suggested to the owner rather than changed for them.
+Uncommanded yaw noise p95 was 5.1 deg/s, clean; held yaw averaged
+366 deg/s per unit stick, consistent with the documented default tune
+yaw clipping (upstream 13486) this project deliberately reproduces.

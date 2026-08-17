@@ -33,7 +33,12 @@
 import { readShareImport } from './session.js';
 import { readAutosave } from '../trackbuilder/storage.js';
 
-export const CLIP_VERSION = 3;
+/* 4: the racing line stopped being painted twice. Every clip recorded
+ * before that shows the old doubled, ghosted ground paint, and the shot is
+ * the only thing that changed, so nothing else in the key would have
+ * invalidated them. Bumping this is how a change to the SHOT reaches
+ * thumbnails that are already in IndexedDB. */
+export const CLIP_VERSION = 4;
 export const CLIP_W = 854;
 export const CLIP_H = 480;
 export const CLIP_FPS = 10;

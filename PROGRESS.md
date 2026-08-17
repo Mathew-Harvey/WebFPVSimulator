@@ -9565,3 +9565,51 @@ the next thing to look at. It is a 3.6:1 dart, 57 percent head, and the
 "go up" pair sits 0.98 m centre to centre with each arrow 0.52 m wide,
 so under half a metre of grass separates them. That is a shape change
 rather than a placement change and is worth doing on its own.
+
+### 2026-08-17 | guide | nothing to migrate, one stale cache, and a check
+
+Asked: are all the existing user made tracks fixed, and are future ones
+arrowed correctly. Three answers, and the middle one was a real miss.
+
+**Nothing to migrate.** Arrows are not stored. A grep for `arrows`
+across schema.md, storage.js, model.js, session.js and the whole
+leaderboard finds nothing: the document holds elements and a flying
+order, and the guide is computed from it at load by
+`guideFromKnots(knotsFromPath(path))` every single time. So every track
+that already exists, in a browser's autosave, on the board, or imported
+from a .trk, gets the new placement the next time it is opened. There
+is no migration to write and no course that keeps the old paint.
+
+**One thing DID keep the old paint, and it is a cache.** The map screen
+does not draw a live world for a thumbnail, it plays a recorded clip
+out of IndexedDB, and orbitcache.js's own header says bumping
+CLIP_VERSION is how a later change to the shot invalidates old clips.
+The shot is exactly what changed. Every clip recorded before this would
+have gone on showing the doubled, ghosted paint, on the map screen and
+on the board's featured card, with nothing else in the key to shift it.
+CLIP_VERSION is 4. This is the bit that would have been missed by
+answering "arrows are computed, so it is fine".
+
+**Future tracks are held to a check rather than a promise.**
+`tracks/check.mjs` now asserts four things about the arrows of every
+course in the pack, so a new course added there, or a change to
+guide.js, has to keep clearing the same bar:
+
+- exactly one start arrow on the lap
+- more gates than arrows, because it is a cue and not a breadcrumb
+- no two arrows inside GUIDE.arrowClear of each other
+- no arrow painted within GUIDE.flagArrowClear of a turn marker, since
+  the flag's painted wrap already speaks there
+
+Those pass on all ten courses with room to spare: the closest pair
+anywhere in the pack is 7.7 m against a 5 m rule, and the busiest
+course is 9 arrows against 21 gates. That is worth stating plainly
+because it is the honest limit of the claim: the check says the arrows
+are SANE on every course in the pack, not that they are placed
+perfectly on a course nobody has drawn yet. Placement quality on an
+arbitrary future course is a judgement, and the way to keep it honest
+is to add that course to the pack.
+
+`node tracks/check.mjs`: 3922 passed, 0 failed, 40 of them new.
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`npm run verify`: 14 of 16, physics hash 6d17d4814bdc unchanged.

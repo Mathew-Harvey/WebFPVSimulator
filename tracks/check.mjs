@@ -53,6 +53,7 @@ import {
 import { KIND, ELEMENTS, FRAME_TUBE_OD } from '../src/trackbuilder/elements.js';
 import { wrapAngle, apertureFrame, pointSegment } from '../src/trackbuilder/geometry.js';
 import { buildPath } from '../src/trackbuilder/path.js';
+import { knotsFromPath, guideFromKnots, GUIDE } from '../src/game/guide.js';
 import { GATE_SCALE } from '../src/game/track.js';
 import { courseFromDocument } from '../src/game/trackdoc.js';
 import { Race } from '../src/game/race.js';
@@ -529,6 +530,55 @@ for (const spec of CHECK_TRACKS) {
       notes.push(`    ${b}`);
     }
   }
+
+  /*
+   * ---- THE GROUND ARROWS ----
+   *
+   * Arrows are a HEIGHT CUE, not a breadcrumb: two side by side means go
+   * up, one means stay low, and they are supposed to appear where that
+   * answer changes. The failure mode is not a crash, it is an arrow at
+   * every gate, which says "change height now" so often that it stops
+   * meaning anything, and that is invisible to every other check in this
+   * file. These assert the properties a person would look for, over every
+   * course in the pack, so a future course or a future change to guide.js
+   * has to keep clearing the same bar.
+   */
+  const guide = guideFromKnots(knotsFromPath(path));
+  const arrows = guide.arrows;
+  const apertures = path.knots.filter((k) => k.role === 'aperture').length;
+
+  check(spec.name, 'the lap has exactly one start arrow',
+    arrows.filter((a) => a.kind === 'start').length === 1,
+    `${arrows.filter((a) => a.kind === 'start').length}`);
+
+  /* A cue, not a trail of breadcrumbs. */
+  check(spec.name, 'there are fewer arrows than gates',
+    arrows.length > 0 && arrows.length < apertures,
+    `${arrows.length} arrows against ${apertures} gates`);
+
+  let closest = Infinity;
+  let closestAt = '';
+  for (let i = 0; i < arrows.length; i += 1) {
+    for (let j = i + 1; j < arrows.length; j += 1) {
+      const d = Math.hypot(arrows[i].x - arrows[j].x, arrows[i].z - arrows[j].z);
+      if (d < closest) {
+        closest = d;
+        closestAt = `${arrows[i].kind} and ${arrows[j].kind} at ${d.toFixed(1)} m`;
+      }
+    }
+  }
+  check(spec.name, 'no two arrows sit inside the keep-out',
+    !Number.isFinite(closest) || closest >= GUIDE.arrowClear, closestAt);
+
+  /* A flag already says "go round this side" with its painted wrap. A
+   * second mark on top of it is the stacked mess guide.js exists to avoid. */
+  const poles = doc.elements.filter((e) => kindOf(e) === KIND.MARKER);
+  const onPole = arrows.filter((a) => poles.some(
+    (m) => Math.hypot(a.x - (m.position.x - doc.field.width / 2),
+      a.z + (m.position.y - doc.field.depth / 2)) < GUIDE.flagArrowClear,
+  ));
+  check(spec.name, 'no arrow is painted on a turn marker',
+    onPole.length === 0, `${onPole.length} on a pole`);
 }
 
 console.log(`${passed} passed, ${failed} failed`);

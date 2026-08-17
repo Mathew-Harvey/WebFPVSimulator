@@ -51,7 +51,7 @@ export function drawProfile(canvas, profile) {
   if (!profile || profile.points.length < 2) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Create Path to see the elevation profile', w / 2, h / 2);
+    ctx.fillText('Put gates in the flying order to see the elevation', w / 2, h / 2);
     ctx.restore();
     return;
   }

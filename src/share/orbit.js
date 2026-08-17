@@ -235,7 +235,19 @@ async function renderAndCapture(mapId, shareId, key) {
       return;
     }
     raf = requestAnimationFrame(frame);
-    const dt = Math.min(nowWall - prevWall, 100);
+    /*
+     * A FLOOR AS WELL AS A CEILING. prevWall is seeded from
+     * performance.now() during setup, and the timestamp requestAnimationFrame
+     * hands the first callback is the time that FRAME began, which the
+     * browser may have started before the setup call that read the clock.
+     * The first delta is then negative, tens of milliseconds of it, and the
+     * camera clock started the recording behind zero.
+     *
+     * The ceiling was here for a backgrounded tab. The floor is for this:
+     * time does not run backwards, so a negative delta is a lie about the
+     * clock rather than a small step, and it belongs at zero.
+     */
+    const dt = Math.min(Math.max(nowWall - prevWall, 0), 100);
     prevWall = nowWall;
     camMs += dt * captureScale;
     attract.update(camMs, shell.camera, { craft: shell.quad });

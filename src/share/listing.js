@@ -247,6 +247,67 @@ export function inspectCourse(parts = {}) {
 }
 
 /*
+ * How a course relates to the board, in three words.
+ *
+ * ONE VOCABULARY, THREE SURFACES. inspectCourse already works this out
+ * exactly, and until now the answer was spoken differently everywhere it
+ * appeared: the track builder had a chip in its top bar, the simulator had
+ * five paragraphs of prose in a help column, and the two used different
+ * words for the same state. A player had to read a paragraph to learn
+ * whether they could upload a time. Both callers now take the label from
+ * here, so the same course wears the same badge wherever it is met.
+ *
+ * `tone` is the colour role, not a colour: mint is a course that is live on
+ * the board, amber is one that needs an action before it can be, slate is
+ * one that has never been published. The stylesheets decide the hex.
+ */
+export function courseChip(listing) {
+  if (!listing || listing.kind === 'none') {
+    return { label: 'No course', tone: 'none', note: 'Nothing loaded to fly.' };
+  }
+  if (listing.kind === 'owned') {
+    if (listing.layoutDrift) {
+      return {
+        label: 'Layout not on the board',
+        tone: 'warn',
+        note: 'The layout changed since it was published. Update the board before uploading a time.',
+      };
+    }
+    if (listing.nameDrift) {
+      return {
+        label: 'Rename waiting',
+        tone: 'warn',
+        note: 'The board still carries the old name. Updating it keeps the times.',
+      };
+    }
+    return { label: 'On the board', tone: 'live', note: 'Yours, published. Fly it and upload a time.' };
+  }
+  if (listing.kind === 'community') {
+    const by = listing.author ? ` by ${listing.author}` : '';
+    return {
+      label: 'On the board',
+      tone: 'live',
+      note: `Published${by}. Fly it and upload a time, or edit a copy under your own name.`,
+    };
+  }
+  if (listing.kind === 'remix') {
+    const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
+    return {
+      label: `Copy${of}`,
+      tone: 'warn',
+      note: 'Your copy. Publish it under a new name to put it on the board.',
+    };
+  }
+  return {
+    label: 'Not on the board',
+    tone: 'none',
+    note: listing.canPublishNew
+      ? 'Lives in this browser. Publish it to put it on the board, then you can upload a time.'
+      : 'Lives in this browser. It needs a flying order before it can be published.',
+  };
+}
+
+/*
  * A remix of a course, and the bind that would make it this browser's.
  *
  * The bind is RETURNED rather than written, because one of the two callers

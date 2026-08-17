@@ -60,9 +60,10 @@ import {
   RATE_DEFAULTS,
   ratesSummary,
 } from '../../configs/rates.js';
-import { boardPageUrl } from '../share/board.js';
+import { boardPageUrl, fetchTrackList } from '../share/board.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
-import { inspectCourse, isEmptyCanvas } from '../share/listing.js';
+import { courseChip, inspectCourse, isEmptyCanvas } from '../share/listing.js';
+import { drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
   readPendingTime,
@@ -160,6 +161,38 @@ const DEFAULTS = {
    * it, and an unknown value falls back to high rather than throwing. */
   graphics: 'high',
 };
+
+/*
+ * Has this browser ever flown here?
+ *
+ * The shell had this signal all along and threw it away: nothing on the
+ * title told visit one from visit one hundred, so somebody who had never
+ * held a stick got the same nine row list as somebody chasing a personal
+ * best, with the thing they needed sitting seventh.
+ *
+ * TWO SIGNALS, BOTH HAVE TO BE COLD. A saved settings blob means somebody
+ * changed something, and a stored best means somebody finished a lap. Either
+ * one is enough to say this is not a first run, because getting one of them
+ * wrong in the other direction would put the two row screen in front of a
+ * returning pilot, which is far worse than missing it once.
+ */
+function detectFirstRun() {
+  try {
+    if (localStorage.getItem(SETTINGS_KEY)) {
+      return false;
+    }
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i) || '';
+      if (key.startsWith('webfpv.best') || key.startsWith('webfpv.trackbuilder')) {
+        return false;
+      }
+    }
+    return true;
+  } catch (e) {
+    /* Private mode cannot tell us, so assume a returning pilot. */
+    return false;
+  }
+}
 
 export function loadSettings() {
   let stored = {};
@@ -355,38 +388,24 @@ function hasLoadedTrack() {
   return Boolean(seat && seat.doc && !isEmptyCanvas(seat.doc));
 }
 
-function isPickScreen(screen) {
-  return screen === 'choosetrack' || screen === 'editormap';
-}
-
+/* Screens whose choices are drawn as cards above the row list. The rows
+ * that remain are whatever is not a card. */
 function isCardScreen(screen) {
-  return screen === 'maps' || isPickScreen(screen);
+  return screen === 'courses';
 }
 
-function customMapNote(map, seat) {
-  if (map.id !== 'custom') {
-    return map.note;
+/* The plan of whatever is on the working canvas, or null. Derived rather
+ * than stored: the canvas changes in the builder, on another page. */
+function currentPlan() {
+  const seat = activeCourseSummary();
+  if (!seat || !seat.doc || isEmptyCanvas(seat.doc)) {
+    return null;
   }
-  if (!seat || isEmptyCanvas(seat.doc)) {
-    return 'No course loaded. Choose this to pick one from the board, or make one.';
+  try {
+    return planFromDocument(seat.doc);
+  } catch (e) {
+    return null;
   }
-  const gates = `${seat.gates} gate${seat.gates === 1 ? '' : 's'}`;
-  if (seat.kind === 'community') {
-    const by = seat.author ? ` by ${seat.author}` : '';
-    return `${seat.name}${by}. A published course. Fly it and upload a time, or edit a copy under a new name.`;
-  }
-  if (seat.kind === 'owned') {
-    if (seat.layoutDrift) {
-      return `${seat.name}. Your course on the board, with a layout that has not been updated yet. Update it before uploading a time.`;
-    }
-    return `${seat.name}. Your course on the board. Fly it and upload a time. A rename in the editor updates the board.`;
-  }
-  if (seat.kind === 'remix') {
-    const of = seat.sourceName ? ` of ${seat.sourceName}` : '';
-    const by = seat.sourceAuthor ? ` by ${seat.sourceAuthor}` : '';
-    return `${seat.name}, your copy${of}${by}. Publish it under a new name to put it on the board.`;
-  }
-  return `${seat.name}, ${gates}. This copy lives in this browser until you publish it.`;
 }
 
 function liveListing(mapId) {
@@ -401,26 +420,58 @@ function liveListing(mapId) {
   }
 }
 
+/*
+ * The four things a player can do to the course they are holding.
+ *
+ * EVERY ONE OF THESE ALWAYS RETURNS A ROW. They used to return null when
+ * they did not apply, and the caller pushed only the survivors, so the
+ * title menu swung between nine and thirteen rows: the row under the
+ * cursor moved depending on what the player had done last, and an action
+ * that was simply unavailable was indistinguishable from one that does not
+ * exist. A greyed row with a reason teaches; a missing row cannot.
+ *
+ * `disabled` is honoured by select(), and renderMenu paints it as row-grey.
+ */
 function uploadAction(listing, { fastestMs, timePosted }) {
-  if (!listing || !listing.canPostTime || !listing.shareId) {
-    return null;
-  }
   const pending = readPendingTime();
+  const shareId = listing && listing.shareId;
   const ms = Number.isFinite(fastestMs)
     ? fastestMs
-    : (pending && pending.trackId === listing.shareId ? pending.lapMs : null);
-  if (ms == null) {
-    return null;
-  }
-  if (timePosted) {
+    : (shareId && pending && pending.trackId === shareId ? pending.lapMs : null);
+  if (timePosted && shareId) {
     const rank = timePosted.rank != null ? ` Rank ${timePosted.rank}.` : '';
     return {
       label: 'Time uploaded',
       action: 'posttime',
+      disabled: true,
       note: `That lap is on the public board.${rank}`,
     };
   }
-  const best = readPostedBest(listing.shareId);
+  if (!listing || !shareId) {
+    return {
+      label: 'Upload a time',
+      action: 'posttime',
+      disabled: true,
+      note: 'Only a course on the board can hold a time. Publish this one first.',
+    };
+  }
+  if (!listing.canPostTime) {
+    return {
+      label: 'Upload a time',
+      action: 'posttime',
+      disabled: true,
+      note: 'The layout has changed since it was published. Update the course on the board first.',
+    };
+  }
+  if (ms == null) {
+    return {
+      label: 'Upload a time',
+      action: 'posttime',
+      disabled: true,
+      note: 'Fly a clean lap on this course and the lap appears here.',
+    };
+  }
+  const best = readPostedBest(shareId);
   const isNew = best != null && ms < best;
   return {
     label: isNew ? `Upload new best, ${formatTime(ms)}` : `Upload ${formatTime(ms)}`,
@@ -432,10 +483,14 @@ function uploadAction(listing, { fastestMs, timePosted }) {
 }
 
 function publishAction(listing, published) {
-  if (!listing || listing.kind === 'community') {
-    return null;
+  if (published) {
+    return {
+      label: 'Published',
+      action: 'leaderboard',
+      note: 'This course is on the public board. Opens its page.',
+    };
   }
-  if (listing.canPublishNew && !published) {
+  if (listing && listing.canPublishNew) {
     const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
     const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
     return {
@@ -446,43 +501,73 @@ function publishAction(listing, published) {
         : 'Put this course on the public board. Then you can upload a time.',
     };
   }
-  if (listing.canUpdateListing && listing.layoutDrift) {
+  if (listing && listing.canUpdateListing && listing.layoutDrift) {
     return {
       label: 'Update this course',
       action: 'publishcourse',
       note: 'The layout changed. Updating the board will clear posted times, then you can upload a time.',
     };
   }
-  if (published) {
+  if (listing && listing.kind === 'owned') {
     return {
-      label: 'Published',
-      action: 'leaderboard',
-      note: 'This course is on the public board.',
+      label: 'Publish this course',
+      action: 'publishcourse',
+      disabled: true,
+      note: 'Already on the board, and nothing has changed since.',
     };
   }
-  return null;
+  if (listing && listing.kind === 'community') {
+    return {
+      label: 'Publish this course',
+      action: 'publishcourse',
+      disabled: true,
+      note: 'Somebody else published this one. Edit a copy to put your own version on the board.',
+    };
+  }
+  return {
+    label: 'Publish this course',
+    action: 'publishcourse',
+    disabled: true,
+    note: listing && listing.kind === 'local'
+      ? 'A course needs a flying order before it can be published. Set one in the track builder.'
+      : 'Nothing to publish. Build a course, or pick one from the board.',
+  };
 }
 
 function remixAction(listing) {
-  if (!listing || !listing.canRemix) {
-    return null;
+  if (listing && listing.canRemix) {
+    const by = listing.author ? ` by ${listing.author}` : '';
+    return {
+      label: 'Edit a copy',
+      action: 'remix',
+      note: `Open ${listing.name}${by} in the track builder as your own course, under a new name.`,
+    };
   }
-  const by = listing.author ? ` by ${listing.author}` : '';
   return {
     label: 'Edit a copy',
     action: 'remix',
-    note: `Open ${listing.name}${by} in the track builder as your own course, under a new name.`,
+    disabled: true,
+    note: listing && listing.kind === 'owned'
+      ? 'This one is already yours. Edit this course instead.'
+      : 'Only a published course by somebody else can be copied.',
   };
 }
 
 function editOwnAction(listing) {
-  if (!listing || listing.kind !== 'owned') {
-    return null;
+  if (listing && listing.kind === 'owned') {
+    return {
+      label: 'Edit this course',
+      action: 'editown',
+      note: 'Open this course in the track builder. A rename updates the name on the board. A layout change asks before clearing times.',
+    };
   }
   return {
     label: 'Edit this course',
     action: 'editown',
-    note: 'Open this course in the track builder. A rename updates the name on the board. A layout change asks before clearing times.',
+    disabled: true,
+    note: listing && listing.kind === 'community'
+      ? 'Somebody else published this one. Edit a copy to make it yours.'
+      : 'Nothing of yours on the board to edit.',
   };
 }
 
@@ -530,6 +615,12 @@ export class Ui {
   constructor(root) {
     this.root = root;
     this.settings = loadSettings();
+    this.firstRun = detectFirstRun();
+    /* Set while a guided first flight is in the air. main.js reads it. */
+    this.guided = false;
+    this.boardCourses = [];
+    this.boardLoading = false;
+    this.onBoardCourse = null; /* (track) => Promise<boolean> */
     this.screen = 'title';
     this.cursor = 0;
     this.onAction = null;    /* (action, settings) => void */
@@ -577,19 +668,6 @@ export class Ui {
       }
     });
     this.show('title');
-  }
-
-  makePickScreen(title) {
-    const root = el('div', 'screen screen-page screen-maps screen-pick');
-    root.append(el('h2', null, title));
-    const host = el('div', 'pick-cards');
-    const block = wrapMenu();
-    root.append(
-      host,
-      block.stage,
-      hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'),
-    );
-    return { root, host, menu: block.menu, help: block.help };
   }
 
   build() {
@@ -649,6 +727,9 @@ export class Ui {
     brand.append(this.titleBest);
     this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a course to put it on the public board.');
     brand.append(this.keepNote);
+    /* First run only. Replaced by the keep note once a lap has been flown. */
+    this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
+    brand.append(this.firstNote);
     const titleBlock = wrapMenu();
     this.titleMenu = titleBlock.menu;
     this.titleHelp = titleBlock.help;
@@ -663,45 +744,59 @@ export class Ui {
     title.append(copy);
     this.screens.title = title;
 
-    const howto = el('div', 'screen screen-page');
+    /*
+     * How to fly.
+     *
+     * A CONTROL YOU OPERATE, not an essay you skim. This screen used to be
+     * two definition lists over a two hundred word centred paragraph. It was
+     * accurate and nobody read it, and the product already owned the one
+     * thing that teaches a stick: makeGimbal, the live gimbal pair the flight
+     * overlay and the calibration screen both use. So the sticks here are
+     * live. Press W on this screen and the left gimbal climbs, with the same
+     * hold ramp the flight path uses, because it IS the flight path: main.js
+     * feeds the same channels it feeds the quad.
+     *
+     * One half at a time. A keyboard pilot and a radio pilot need different
+     * sentences and neither needs the other's, so the page has a source
+     * switch and shows one column. Whichever the shell says is live is the
+     * one it opens on.
+     */
+    const howto = el('div', 'screen screen-page screen-howto');
     howto.append(el('h2', null, 'How to fly'));
-    const cols = el('div', 'cols');
-    const kb = el('div', 'col');
-    kb.append(el('h3', null, 'Keyboard'));
-    const kbList = el('dl');
-    for (const [k, v] of [
-      ['W and S', 'Throttle. A tap is a nudge, a hold climbs, a long hold punches. Let go and it holds height. Hold S to come down.'],
-      ['A and D', 'Yaw. Same analog: tap a little, hold more, long hold full.'],
-      ['Up and down arrows', 'Pitch. Up arrow is stick forward, nose down, fly forward. Tap, hold, long hold.'],
-      ['Left and right arrows', 'Roll. Same analog as the other keys.'],
-      ['Ghost sticks', 'Two transparent gimbals at the bottom of the frame show the stick the keys are making. A radio does not show them.'],
-      ['Escape', 'Pause.'],
-      ['R', 'Put the quad back on the start line.'],
-    ]) {
-      kbList.append(el('dt', null, k), el('dd', null, v));
+    howto.append(el('p', 'howto-lede', 'A quad has no brakes and no wings. Throttle only sets how hard the props push, so the way to slow down or turn is to point the quad somewhere else and push. Fly the pulsing gate: green is the way through, red is its wrong face.'));
+
+    const howtoTabs = el('div', 'howto-tabs');
+    this.howtoTabs = {};
+    for (const [id, label] of [['keyboard', 'Keyboard'], ['radio', 'Radio or gamepad']]) {
+      const b = btn('howto-tab', label);
+      b.addEventListener('click', () => this.setHowtoSource(id));
+      howtoTabs.append(b);
+      this.howtoTabs[id] = b;
     }
-    kb.append(kbList);
-    const pad = el('div', 'col');
-    pad.append(el('h3', null, 'Radio or gamepad'));
-    const padList = el('dl');
-    for (const [k, v] of [
-      ['Plug in', 'Put your radio in joystick mode before loading the page.'],
-      ['Calibrate', 'Choose Calibrate sticks in Settings. Centre, sweep the sticks, then one named move per channel.'],
-      ['Left stick', 'Throttle and yaw, as on a Mode 2 radio.'],
-      ['Right stick', 'Pitch and roll.'],
-      ['Menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
-    ]) {
-      padList.append(el('dt', null, k), el('dd', null, v));
-    }
-    pad.append(padList);
-    cols.append(kb, pad);
-    howto.append(cols);
-    howto.append(el('p', 'lede', 'On a radio in Acro this quad does not hold itself level. Let go of the sticks and it keeps whatever attitude you left it in, so every turn has to be flown back out again. Keyboard flight is Angle: sticks tilt the quad, and letting go brings it back to level. Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold moves it further and sits at a flyable amount, a long hold goes to full. Watch the ghost sticks. W is throttle (left stick forward), the up arrow is pitch (right stick forward). Let go of W and throttle returns to a hover. A radio throttle still stays where you leave it. A quad has no brakes and no wings. Throttle sets how hard the props push, and the only way to slow down or change direction is to point the quad somewhere else and push. Fly through the pulsing gate: green is the way through, red is the wrong face. The pane jumps to the next gate when you pass. Touching a gate frame is a crash.'));
+    howto.append(howtoTabs);
+
+    const howtoBody = el('div', 'howto-body');
+    const rig = el('div', 'howto-rig');
+    this.howtoStickLeft = makeGimbal('Yaw, throttle');
+    this.howtoStickRight = makeGimbal('Roll, pitch');
+    const sticksRow = el('div', 'howto-sticks');
+    sticksRow.append(this.howtoStickLeft.box, this.howtoStickRight.box);
+    this.howtoLive = el('div', 'howto-live', '');
+    rig.append(sticksRow, this.howtoLive);
+    this.howtoKeys = el('dl', 'howto-keys');
+    howtoBody.append(rig, this.howtoKeys);
+    howto.append(howtoBody);
+
+    this.howtoMode = el('p', 'howto-mode', '');
+    howto.append(this.howtoMode);
+
     const howtoBlock = wrapMenu();
     this.howtoMenu = howtoBlock.menu;
     this.howtoHelp = howtoBlock.help;
     howto.append(howtoBlock.stage);
     this.screens.howto = howto;
+    this.howtoSource = 'keyboard';
+    this.renderHowto();
 
     const credits = el('div', 'screen screen-page screen-credits');
     credits.append(el('h2', null, 'Credits'));
@@ -740,30 +835,28 @@ export class Ui {
      * Create / edit is a third screen: edit the current map, or start a
      * new one, then the track builder page itself.
      */
-    const maps = el('div', 'screen screen-page screen-maps');
-    maps.append(el('h2', null, 'Choose map'));
+    const courses = el('div', 'screen screen-page screen-maps screen-courses');
+    courses.append(el('h2', null, 'Courses'));
+    this.worldStrip = el('div', 'card-strip');
+    this.worldStrip.append(el('div', 'strip-label', 'Worlds'));
     this.mapCardHost = el('div', 'map-cards');
-    const mapsBlock = wrapMenu();
-    this.mapsMenu = mapsBlock.menu;
-    this.mapsHelp = mapsBlock.help;
-    maps.append(
-      this.mapCardHost,
-      mapsBlock.stage,
+    this.worldStrip.append(this.mapCardHost);
+    this.courseStrip = el('div', 'card-strip');
+    this.courseStrip.append(el('div', 'strip-label', 'Courses'));
+    this.courseCardHost = el('div', 'map-cards course-cards');
+    this.boardNote = el('div', 'board-note', '');
+    this.courseStrip.append(this.courseCardHost, this.boardNote);
+    const coursesBlock = wrapMenu();
+    this.coursesMenu = coursesBlock.menu;
+    this.coursesMenu.classList.add('menu-scroll');
+    this.coursesHelp = coursesBlock.help;
+    courses.append(
+      this.worldStrip,
+      this.courseStrip,
+      coursesBlock.stage,
       hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'),
     );
-    this.screens.maps = maps;
-
-    const chooseTrack = this.makePickScreen('Custom map');
-    this.pickCardHost = chooseTrack.host;
-    this.chooseTrackMenu = chooseTrack.menu;
-    this.chooseTrackHelp = chooseTrack.help;
-    this.screens.choosetrack = chooseTrack.root;
-
-    const editorMap = this.makePickScreen('Create / edit map');
-    this.editMapCardHost = editorMap.host;
-    this.editMapMenu = editorMap.menu;
-    this.editMapHelp = editorMap.help;
-    this.screens.editormap = editorMap.root;
+    this.screens.courses = courses;
 
     const settings = el('div', 'screen screen-page screen-settings');
     settings.append(el('h2', null, 'Settings'));
@@ -898,6 +991,13 @@ export class Ui {
       this.resultsBody,
       this.resultsNote,
     );
+    /* The course that lap was flown on, drawn the way the board and the
+     * builder draw it. A result read on a screen that never shows the shape
+     * of the course is a number without its subject. */
+    this.resultsPlanWrap = el('div', 'results-plan');
+    this.resultsPlan = planCanvas(null, 'Course plan');
+    this.resultsPlanWrap.append(this.resultsPlan);
+    resultsTop.append(this.resultsPlanWrap);
     const resultsBlock = wrapMenu();
     this.resultsMenu = resultsBlock.menu;
     this.resultsHelp = resultsBlock.help;
@@ -922,7 +1022,7 @@ export class Ui {
   setShare(share) {
     this.share = share || null;
     this.timePosted = null;
-    if (this.screen === 'title' || this.screen === 'maps' || this.screen === 'results') {
+    if (this.screen === 'title' || this.screen === 'courses' || this.screen === 'results') {
       this.renderMenu();
     }
   }
@@ -936,7 +1036,7 @@ export class Ui {
 
   markCoursePublished(posted) {
     this.coursePublished = posted || { ok: true };
-    if (this.screen === 'title' || this.screen === 'results' || this.screen === 'maps') {
+    if (this.screen === 'title' || this.screen === 'results' || this.screen === 'courses') {
       this.renderMenu();
     }
   }
@@ -1107,60 +1207,61 @@ export class Ui {
   items() {
     const s = this.settings;
     if (this.screen === 'title') {
+      /*
+       * FIRST RUN IS TWO ROWS, not nine. Nothing here used to tell visit one
+       * from visit one hundred, so a pilot who had never held a stick got the
+       * same list as somebody coming back for a personal best, with the one
+       * thing they needed sitting seventh. isFirstRun is a signal the product
+       * already had and threw away: no stored settings, no lap on record.
+       */
+      if (this.firstRun) {
+        return [
+          {
+            label: 'First flight',
+            action: 'firstflight',
+            primary: true,
+            note: 'The race field, levelled off, with the sticks drawn on screen and a prompt at each step.',
+          },
+          {
+            label: 'I have flown before',
+            action: 'skipfirst',
+            note: 'Straight to the full menu.',
+          },
+        ];
+      }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
-      const listing = m.id === 'custom' ? liveListing('custom') : null;
-      const rows = [
-        { label: 'Fly', action: 'fly' },
+      /*
+       * NINE ROWS, ALWAYS. The course actions that used to appear and vanish
+       * here live on the Courses screen and on Results, where the course
+       * itself is what the player is looking at.
+       */
+      return [
+        { label: 'Fly', action: 'fly', primary: true },
         {
-          label: 'Map',
+          label: 'Course',
           value: seat ? seat.name : m.name,
           /* An action, not a value to step through. Choosing the map loads
            * one, which takes seconds, so stepping past a world with the
-           * arrow key used to start building it: the map screen makes the
-           * choice deliberate and shows what each one is. */
-          action: 'maps',
-          note: customMapNote(m, seat),
+           * arrow key used to start building it. */
+          action: 'courses',
+          note: 'Worlds, your courses and the public board, in one place.',
         },
         tuneItem(s),
-        { label: 'How to fly', action: 'howto' },
+        { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
         { label: 'Flight controller', action: 'fc', note: 'Betaflight 4.5.1 settings. Save writes a CLI dump. Grey options are named, not hidden.' },
         { label: 'Settings', action: 'settings' },
         {
-          label: 'Track builder',
-          action: 'editormap',
-          note: listing && listing.kind === 'community'
-            ? 'Opens the map editor. Edit a copy, below, to remix this published course.'
-            : 'Opens the map editor. Edit the current map, or start a new one.',
+          label: 'Leaderboard',
+          action: 'leaderboard',
+          note: 'The public board, with every course and its times. Opens in a new tab.',
+        },
+        {
+          label: 'Credits',
+          action: 'credits',
+          note: 'Who made this, who flew it, and whose work it stands on.',
         },
       ];
-      const remix = remixAction(listing);
-      if (remix) {
-        rows.push(remix);
-      }
-      const editOwn = editOwnAction(listing);
-      if (editOwn) {
-        rows.push(editOwn);
-      }
-      const publish = publishAction(listing, this.coursePublished);
-      if (publish) {
-        rows.push(publish);
-      }
-      const upload = uploadAction(listing, { timePosted: this.timePosted });
-      if (upload) {
-        rows.push(upload);
-      }
-      rows.push({
-        label: 'Leaderboard',
-        action: 'leaderboard',
-        note: 'Published courses and their times. Opens in a new tab.',
-      });
-      rows.push({
-        label: 'Credits',
-        action: 'credits',
-        note: 'Who made this, who flew it, and whose work it stands on.',
-      });
-      return rows;
     }
     if (this.screen === 'howto') {
       return [{ label: 'Back', action: 'back' }];
@@ -1168,87 +1269,83 @@ export class Ui {
     if (this.screen === 'credits') {
       return [{ label: 'Back', action: 'back' }];
     }
-    if (this.screen === 'maps') {
-      const seat = hasLoadedTrack() ? activeCourseSummary() : null;
-      return [
-        ...MAPS.map((m) => ({
-          label: m.name,
-          note: customMapNote(m, m.id === 'custom' ? seat : null),
-          map: m,
-          action: m.id === 'custom' ? 'choosetrack' : `map:${m.id}`,
-        })),
-        { label: 'Back', action: 'back' },
-      ];
-    }
-    if (this.screen === 'choosetrack') {
+    /*
+     * Courses. ONE SCREEN WHERE THERE WERE THREE.
+     *
+     * Reaching the track builder used to be Title, Track builder, Create /
+     * edit map, then the builder, or Title, Map, Custom map, Create / edit
+     * map, then the builder. Two routes to the same page with three screens
+     * in between, and every one of those screens asked the player to choose
+     * before it showed them anything to choose between. Choose new map did
+     * not even list courses: it opened the board in a new tab, whose own Fly
+     * button then opened a second simulator.
+     *
+     * So: worlds and courses in one grid, the board's courses fetched into
+     * that same grid, and the builder one row away from all of it. Start a
+     * new course is the builder's own New button, which is where it belongs.
+     */
+    if (this.screen === 'courses') {
+      const listing = liveListing('custom');
       const loaded = hasLoadedTrack();
       const seat = loaded ? activeCourseSummary() : null;
-      const currentName = seat && seat.name ? seat.name : 'the current course';
-      return [
-        {
-          label: 'Current map',
-          kicker: 'Fly',
-          copy: loaded
-            ? `Fly ${currentName}.`
-            : 'No course loaded. Make one, or pick one from the board first.',
-          note: loaded
-            ? `Fly ${currentName} on the custom map.`
-            : 'Nothing to fly yet. Choose a map from the board, or create one.',
-          choiceCard: true,
-          disabled: !loaded,
+      const cards = MAPS.filter((m) => m.id !== 'custom').map((m) => ({
+        label: m.name,
+        note: m.note,
+        map: m,
+        action: `map:${m.id}`,
+      }));
+      if (loaded && seat) {
+        const chip = courseChip(listing);
+        cards.push({
+          label: seat.name,
+          note: `${chip.note} ${seat.gates} gate${seat.gates === 1 ? '' : 's'}.`,
+          course: { kind: 'current', seat, chip },
           action: 'map:custom',
-        },
+        });
+      }
+      for (const t of this.boardCourses || []) {
+        cards.push({
+          label: t.name,
+          note: t.author
+            ? `Published by ${t.author}. Choosing it loads the course and flies it here.`
+            : 'A published course. Choosing it loads the course and flies it here.',
+          course: { kind: 'board', track: t },
+          action: `board:${t.id}`,
+        });
+      }
+      const rows = [
         {
-          label: 'Choose new map',
-          kicker: 'Board',
-          copy: 'Open the public board and pick a published course to fly.',
-          note: 'Opens the public board in a new tab. Pick a course, then Fly this course.',
-          choiceCard: true,
-          action: 'selectmap',
-        },
-        {
-          label: 'Create / edit map',
-          kicker: 'Editor',
-          copy: 'Open the map editor. Edit the current map, or start a new one.',
-          note: 'Opens the map editor. Edit the course on the canvas, or start a new one.',
-          choiceCard: true,
-          action: 'editormap',
-        },
-        { label: 'Back', action: 'back' },
-      ];
-    }
-    if (this.screen === 'editormap') {
-      const loaded = hasLoadedTrack();
-      const seat = loaded ? activeCourseSummary() : null;
-      const currentName = seat && seat.name ? seat.name : 'the current map';
-      return [
-        {
-          label: 'Edit current map',
-          kicker: 'Edit',
-          copy: loaded
-            ? `Open ${currentName} in the track builder.`
-            : 'Open the track builder on the canvas. Nothing is on it yet.',
-          note: loaded
-            ? `Edit ${currentName} in the track builder.`
-            : 'Opens the track builder. The canvas is empty, so this is a blank course.',
-          choiceCard: true,
+          label: loaded ? 'Open in the track builder' : 'Build a course',
           action: 'trackbuilder',
+          note: loaded
+            ? 'Opens the track builder on the course above. New in there starts a blank one.'
+            : 'Opens the track builder on an empty field.',
         },
+        publishAction(listing, this.coursePublished),
+        uploadAction(listing, { timePosted: this.timePosted }),
+        remixAction(listing),
+        editOwnAction(listing),
         {
-          label: 'Start new map',
-          kicker: 'New',
-          copy: 'Clear the canvas and start a new course.',
-          note: 'Opens the track builder on a blank course. Unsaved work on the canvas is gone.',
-          choiceCard: true,
-          action: 'trackbuilder-new',
+          label: 'Open the board',
+          action: 'leaderboard',
+          note: 'The public page, with standings and every posted time. Opens in a new tab.',
         },
         { label: 'Back', action: 'back' },
       ];
+      return [...cards, ...rows];
     }
     if (this.screen === 'settings') {
       const musicIds = ['rotation', ...TRACKS.map((t) => t.id)];
       const name = readPilotName();
+      /*
+       * Twenty rows in one undivided scroll, in an order that grew rather
+       * than was chosen: a pilot's name sat next to a PID editor sat next to
+       * a binaural tone. The headings are the groups the list already had.
+       * `section: true` rows are not cursor stops, so arrowing down still
+       * lands only on things that do something.
+       */
       return [
+        { label: 'Pilot', section: true },
         {
           label: 'Your name',
           value: name || 'Not set',
@@ -1257,6 +1354,7 @@ export class Ui {
             ? 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.'
             : `Needed to publish a course or post a time. ${nameRules()}`,
         },
+        { label: 'Flight', section: true },
         { label: 'Flight controller', action: 'fc', note: 'PID, filters and rates. Save writes a CLI dump into compiled Betaflight 4.5.1.' },
         {
           label: 'Rates',
@@ -1272,6 +1370,7 @@ export class Ui {
           (id) => (id === 'angle' ? 'Angle' : 'Acro'),
           (id) => { s.flightMode = id; },
         ),
+        { label: 'Camera', section: true },
         choice(
           'Camera angle',
           'How far the camera tilts up. More angle suits more speed. The quad beside the list shows it.',
@@ -1288,8 +1387,10 @@ export class Ui {
           (n) => `${n} degrees vertical`,
           (n) => { s.cameraFov = n; },
         ),
+        { label: 'Graphics', section: true },
         graphicsItem(s),
         gpuItem(this.gpuInfo),
+        { label: 'Race', section: true },
         choice(
           'Pack charge',
           'A tired pack sags harder and gives less punch. Best laps are kept per charge level.',
@@ -1306,6 +1407,7 @@ export class Ui {
           (n) => `${n}`,
           (n) => { s.laps = n; },
         ),
+        { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
         stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
           s.volume = Math.max(0, Math.min(10, s.volume + d));
@@ -1338,6 +1440,7 @@ export class Ui {
           s.focusTone,
           (v) => { s.focusTone = v; },
         ),
+        { label: 'Sticks and diagnostics', section: true },
         toggle(
           'Performance readout',
           'Frame rate and draw counts, for tuning your machine.',
@@ -1349,9 +1452,10 @@ export class Ui {
       ];
     }
     if (this.screen === 'paused') {
-      const listing = this.settings.map === 'custom' ? liveListing('custom') : null;
-      const rows = [
-        { label: 'Resume', action: 'resume' },
+      /* Nine rows, always, and Resume is the button. The conditional Edit a
+       * copy that used to appear here belongs on the Courses screen. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         tuneItem(s),
         { label: 'Flight controller', action: 'fc', note: 'PID, filters and rates. Save during a run asks to restart.' },
@@ -1359,47 +1463,45 @@ export class Ui {
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
         { label: 'Credits', action: 'credits', note: 'Who made this, who flew it, and whose work it stands on.' },
+        { label: 'Quit to title', action: 'title' },
       ];
-      const remix = remixAction(listing);
-      if (remix) {
-        rows.push(remix);
-      }
-      rows.push({ label: 'Quit to title', action: 'title' });
-      return rows;
     }
     if (this.screen === 'results') {
+      /* Seven rows on a race, always the same seven, greyed when an action
+       * does not apply. A freestyle run has no course to publish, so it
+       * keeps only the two that mean anything. */
       const listing = this.settings.map === 'custom' ? liveListing('custom') : null;
-      const rows = [
-        { label: 'Fly again', action: 'restart' },
-      ];
-      const upload = uploadAction(listing, {
-        fastestMs: this.resultsFastest,
-        timePosted: this.timePosted,
-      });
-      if (upload) {
-        rows.push(upload);
+      /*
+       * A world has no course to publish and no listing to post to, so the
+       * five course actions would all be greyed at once, which is five rows
+       * of noise rather than one useful disabled row. Freestyle is the same
+       * for the same reason: no lap, nothing to upload.
+       */
+      if (this.osdMode === 'freestyle' || !listing) {
+        return [
+          { label: 'Fly again', action: 'restart', primary: true },
+          { label: 'Back to title', action: 'title' },
+        ];
       }
-      const publish = publishAction(listing, this.coursePublished);
-      if (publish) {
-        rows.push(publish);
-      }
-      const remix = remixAction(listing);
-      if (remix) {
-        rows.push(remix);
-      }
-      const editOwn = editOwnAction(listing);
-      if (editOwn) {
-        rows.push(editOwn);
-      }
-      if (listing && (listing.published || listing.shareId || this.coursePublished)) {
-        rows.push({
+      return [
+        { label: 'Fly again', action: 'restart', primary: true },
+        uploadAction(listing, {
+          fastestMs: this.resultsFastest,
+          timePosted: this.timePosted,
+        }),
+        publishAction(listing, this.coursePublished),
+        remixAction(listing),
+        editOwnAction(listing),
+        {
           label: 'Open the board',
           action: 'leaderboard',
-          note: `The public page for ${listing.name || 'this course'}.`,
-        });
-      }
-      rows.push({ label: 'Back to title', action: 'title' });
-      return rows;
+          disabled: !(listing && (listing.published || listing.shareId || this.coursePublished)),
+          note: listing && listing.name
+            ? `The public page for ${listing.name}.`
+            : 'The public board. A course has to be published before it has a page.',
+        },
+        { label: 'Back to title', action: 'title' },
+      ];
     }
     if (this.screen === 'fc') {
       return this.fc.items();
@@ -1409,19 +1511,18 @@ export class Ui {
 
   renderMenu() {
     this.closeDrop();
-    if (this.screen === 'maps') {
+    if (this.screen === 'courses') {
       this.renderMapCards();
+      this.renderCourseCards();
     }
-    if (isPickScreen(this.screen)) {
-      this.renderPickCards();
+    if (this.screens && this.screens.title) {
+      this.screens.title.classList.toggle('is-first', Boolean(this.firstRun));
     }
     const host = {
       title: this.titleMenu,
       howto: this.howtoMenu,
       credits: this.creditsMenu,
-      maps: this.mapsMenu,
-      choosetrack: this.chooseTrackMenu,
-      editormap: this.editMapMenu,
+      courses: this.coursesMenu,
       settings: this.settingsMenu,
       fc: this.fcMenu,
       paused: this.pausedMenu,
@@ -1431,15 +1532,15 @@ export class Ui {
       return;
     }
     const items = this.items();
-    if (this.cursor >= items.length) {
-      this.cursor = 0;
+    if (this.cursor >= items.length || !this.isStop(items[this.cursor])) {
+      this.cursor = this.firstStop(items);
     }
     const scroll = host.scrollTop;
     host.textContent = '';
-    /* The map screens draw their choices as cards above this menu, so the
-     * rows here are only what is left over, which is Back. */
+    /* The Courses screen draws its choices as cards above this menu, so the
+     * rows here are only what is left over. */
     const rows = isCardScreen(this.screen)
-      ? items.filter((it) => !it.map && !it.choiceCard)
+      ? items.filter((it) => !it.map && !it.course)
       : items;
     const offset = items.length - rows.length;
     this.rowOffset = offset;
@@ -1447,9 +1548,23 @@ export class Ui {
     let fcBar = null;
     rows.forEach((it, k) => {
       const i = k + offset;
+      /* A heading is not a row. It gets no cursor, no hover and no click,
+       * and syncCursor never has to think about it. */
+      if (it.section) {
+        const head = el('div', 'menu-section', it.label);
+        host.append(head);
+        this.menuRows.push(head);
+        return;
+      }
       const cls = ['row'];
       if (it.info) {
         cls.push('row-info');
+      }
+      if (it.disabled) {
+        cls.push('row-grey');
+      }
+      if (it.primary) {
+        cls.push('row-primary');
       }
       if (it.rowClass) {
         cls.push(it.rowClass);
@@ -1560,9 +1675,7 @@ export class Ui {
       title: this.titleHelp,
       howto: this.howtoHelp,
       credits: this.creditsHelp,
-      maps: this.mapsHelp,
-      choosetrack: this.chooseTrackHelp,
-      editormap: this.editMapHelp,
+      courses: this.coursesHelp,
       settings: this.settingsHelp,
       fc: this.fcHelp,
       paused: this.pausedHelp,
@@ -1611,12 +1724,12 @@ export class Ui {
     }
     this.closeDrop();
     this.cursor = i;
-    if (this.screen === 'maps' && this.mapCards) {
-      this.mapCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
-    }
-    const pickCards = this.screen === 'editormap' ? this.editMapCards : this.pickCards;
-    if (isPickScreen(this.screen) && pickCards) {
-      pickCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    if (this.screen === 'courses') {
+      const worlds = this.mapCards || [];
+      worlds.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+      (this.courseCards || []).forEach((c, j) => {
+        c.card.classList.toggle('on', j + worlds.length === this.cursor);
+      });
     }
     this.syncCursor();
     if (this.onUiSound) {
@@ -1806,49 +1919,141 @@ export class Ui {
     this.mapCards.forEach((c, i) => {
       c.card.classList.toggle('on', i === this.cursor);
       c.tag.textContent = c.id === this.settings.map ? 'Flying now' : '';
-      if (c.id === 'custom' && c.name) {
-        c.name.textContent = 'Custom map';
-        if (c.id !== this.settings.map) {
-          const seat = hasLoadedTrack() ? activeCourseSummary() : null;
-          c.tag.textContent = seat ? seat.name : '';
-        }
-      }
     });
   }
 
   /*
-   * Text cards for Custom map and Create / edit map. Same chrome as the
-   * world cards, type instead of a flight clip, because none of these
-   * destinations is a world this page can thumbnail.
+   * The course cards: what is on the canvas, and what is on the board.
+   *
+   * A COURSE IS DRAWN, NOT DESCRIBED. These used to be paragraphs of type on
+   * a blank card, so a player chose a course without ever seeing its shape,
+   * while the board and the builder were both drawing exactly the picture
+   * that would have told them. The plan is the same drawing all three use;
+   * see src/share/plan.js. The board ships one with its list, and the local
+   * canvas gets one derived from its document.
    */
-  renderPickCards() {
-    const host = this.screen === 'editormap' ? this.editMapCardHost : this.pickCardHost;
-    const cacheKey = this.screen === 'editormap' ? 'editMapCards' : 'pickCards';
+  renderCourseCards() {
+    const host = this.courseCardHost;
     if (!host) {
       return;
     }
-    const items = this.items().filter((it) => it.choiceCard);
-    if (!this[cacheKey] || this[cacheKey].length !== items.length) {
+    const items = this.items();
+    const offset = items.filter((it) => it.map).length;
+    const cards = items.filter((it) => it.course);
+    const key = cards.map((it) => `${it.course.kind}:${it.label}`).join('|');
+    if (!this.courseCards || this.courseCardKey !== key) {
       host.textContent = '';
-      this[cacheKey] = items.map((it, i) => {
-        const card = el('div', it.disabled ? 'pick-card is-off' : 'pick-card');
-        card.append(
-          el('div', 'pick-card-kicker', it.kicker || ''),
-          el('div', 'pick-card-name', it.label),
-          el('div', 'pick-card-copy', it.copy || it.note || ''),
-        );
+      this.courseCardKey = key;
+      this.courseCards = cards.map((it, k) => {
+        const i = k + offset;
+        const card = el('div', 'map-card course-card');
+        const shot = el('div', 'map-reel');
+        const plan = it.course.kind === 'board'
+          ? it.course.track.plan
+          : currentPlan();
+        const canvas = planCanvas(plan, `Plan of ${it.label}`);
+        shot.append(canvas);
+        const body = el('div', 'map-card-body');
+        const name = el('div', 'map-card-name', it.label);
+        const meta = el('div', 'map-card-meta', '');
+        if (it.course.kind === 'board') {
+          const t = it.course.track;
+          const bits = [t.author ? `by ${t.author}` : '', `${t.gates} gate${t.gates === 1 ? '' : 's'}`];
+          if (t.recordMs != null) {
+            bits.push(`record ${formatTime(t.recordMs)}`);
+          }
+          meta.textContent = bits.filter(Boolean).join('  ');
+        } else {
+          const size = fieldSize(plan);
+          meta.textContent = [`${it.course.seat.gates} gate${it.course.seat.gates === 1 ? '' : 's'}`, size]
+            .filter(Boolean)
+            .join('  ');
+        }
+        const chip = el('div', 'course-chip', '');
+        if (it.course.chip) {
+          chip.textContent = it.course.chip.label;
+          chip.classList.add(`tone-${it.course.chip.tone}`);
+        } else {
+          chip.textContent = 'On the board';
+          chip.classList.add('tone-live');
+        }
+        const tag = el('div', 'map-card-tag', '');
+        body.append(name, tag);
+        card.append(shot, chip, body, meta);
         card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
         card.addEventListener('click', () => {
           this.cursor = i;
           this.select();
         });
         host.append(card);
-        return { card };
+        return { card, canvas, tag, kind: it.course.kind };
       });
+      this.paintCoursePlans();
     }
-    this[cacheKey].forEach((c, i) => {
+    this.courseCards.forEach((c, k) => {
+      const i = k + offset;
       c.card.classList.toggle('on', i === this.cursor);
+      c.tag.textContent = c.kind === 'current' && this.settings.map === 'custom' ? 'Flying now' : '';
     });
+  }
+
+  /* A canvas reports no size until it is laid out, so the first paint waits
+   * for the frame after the cards are in the document. */
+  paintCoursePlans() {
+    if (!this.courseCards || !this.courseCards.length) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      for (const c of this.courseCards || []) {
+        drawPlan(c.canvas, c.canvas.planData, {});
+      }
+    });
+  }
+
+  /*
+   * The board's courses, fetched once per visit to the Courses screen.
+   *
+   * A NICETY, NOT A DEPENDENCY. A board that is down, blocked or simply not
+   * running leaves the worlds and the local course exactly as they are, with
+   * one line saying so. The old flow could not fail this softly because it
+   * navigated away to the board to do the same job.
+   */
+  loadBoardCourses() {
+    if (this.boardLoading) {
+      return;
+    }
+    this.boardLoading = true;
+    this.boardNote.textContent = 'Reading the board';
+    fetchTrackList(this.share && this.share.board ? this.share.board : undefined)
+      .then((list) => {
+        this.boardLoading = false;
+        /* The course on the canvas is already a card. Showing it twice, once
+         * as itself and once as its listing, is how a player ends up unsure
+         * which of the two they are about to fly. */
+        const seatId = (() => {
+          try {
+            const l = inspectCourse();
+            return l && l.shareId ? l.shareId : null;
+          } catch (e) {
+            return null;
+          }
+        })();
+        this.boardCourses = list.filter((t) => t.id !== seatId).slice(0, 8);
+        this.boardNote.textContent = this.boardCourses.length
+          ? ''
+          : 'No published courses on the board yet. Build one and publish it.';
+        if (this.screen === 'courses') {
+          this.renderMenu();
+        }
+      })
+      .catch(() => {
+        this.boardLoading = false;
+        this.boardCourses = [];
+        this.boardNote.textContent = 'The board is not answering, so only your own courses are listed.';
+        if (this.screen === 'courses') {
+          this.renderMenu();
+        }
+      });
   }
 
   /*
@@ -1866,7 +2071,7 @@ export class Ui {
     this.reelFreezeWorld = false;
 
     const onVis = () => {
-      const hide = document.hidden || this.screen !== 'maps';
+      const hide = document.hidden || this.screen !== 'courses';
       for (const c of this.mapCards || []) {
         if (!c.clip || !c.clip.pause) {
           continue;
@@ -1887,10 +2092,6 @@ export class Ui {
       c.liveCanvas = null;
       c.clip = null;
       c.still.textContent = '';
-      if (c.id === 'custom' && !hasLoadedTrack()) {
-        c.still.textContent = 'No course loaded. Choose this to fly the current map, pick one from the board, or make one.';
-        continue;
-      }
       pending.push(c);
     }
 
@@ -2127,7 +2328,7 @@ export class Ui {
    * there is nothing to copy: the cards are videos.
    */
   paintMapThumbs(src) {
-    if (this.screen !== 'maps' || !this.mapCards) {
+    if (this.screen !== 'courses' || !this.mapCards) {
       return;
     }
     const sw = src.width;
@@ -2202,19 +2403,23 @@ export class Ui {
 
   show(screen) {
     this.closeDrop();
-    if (this.screen === 'maps' && screen !== 'maps') {
+    if (this.screen === 'courses' && screen !== 'courses') {
       /* Nothing draws a thumbnail for a screen nobody is looking at. */
       this.stopReels();
       this.mapCards = null;
-    }
-    if (this.screen === 'choosetrack' && screen !== 'choosetrack') {
-      this.pickCards = null;
-    }
-    if (this.screen === 'editormap' && screen !== 'editormap') {
-      this.editMapCards = null;
+      this.courseCards = null;
+      this.courseCardKey = null;
     }
     this.screen = screen;
-    this.cursor = 0;
+    /* this.screen is already the new one, so items() describes where we are
+     * going. Settings opens on its first real row rather than on a heading. */
+    this.cursor = this.firstStop(this.items());
+    if (screen === 'courses') {
+      this.loadBoardCourses();
+    }
+    if (screen === 'howto') {
+      this.renderHowto();
+    }
     for (const [name, node] of Object.entries(this.screens)) {
       node.style.display = name === screen ? '' : 'none';
     }
@@ -2223,6 +2428,93 @@ export class Ui {
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
+  }
+
+  /*
+   * Fly a published course, in this tab.
+   *
+   * The old path for this was Choose new map, which opened the board in a
+   * new tab so the player could press its Fly button, which opened a THIRD
+   * tab with a second simulator in it. The board hands a course over through
+   * one fetch and one storage write, which is what adoptShareFromLocation
+   * already does for a Fly link, so the screen can simply do it here.
+   */
+  openBoardCourse(id) {
+    const track = (this.boardCourses || []).find((t) => t.id === id);
+    if (!track || this.boardLoading) {
+      return;
+    }
+    this.boardLoading = true;
+    this.boardNote.textContent = `Loading ${track.name}`;
+    if (this.onBoardCourse) {
+      this.onBoardCourse(track).then((ok) => {
+        this.boardLoading = false;
+        if (!ok) {
+          this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
+          return;
+        }
+        this.boardNote.textContent = '';
+        this.act('map:custom');
+      }).catch((err) => {
+        this.boardLoading = false;
+        this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
+      });
+    }
+  }
+
+  /*
+   * The tutorial's one column, and the sticks above it. Rebuilt rather than
+   * toggled because it is six lines of type and a switch nobody flips twice.
+   */
+  setHowtoSource(id) {
+    this.howtoSource = id === 'radio' ? 'radio' : 'keyboard';
+    this.renderHowto();
+    if (this.onUiSound) {
+      this.onUiSound('adjust');
+    }
+  }
+
+  renderHowto() {
+    if (!this.howtoKeys) {
+      return;
+    }
+    const radio = this.howtoSource === 'radio';
+    for (const [id, b] of Object.entries(this.howtoTabs)) {
+      b.classList.toggle('on', (id === 'radio') === radio);
+    }
+    this.howtoKeys.textContent = '';
+    const rows = radio
+      ? [
+        ['Left stick', 'Throttle up and down, yaw left and right. Mode 2, as on your radio.'],
+        ['Right stick', 'Pitch forward and back, roll left and right.'],
+        ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
+        ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
+        ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
+      ]
+      : [
+        ['W and S', 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.'],
+        ['A and D', 'Yaw, left and right on the spot.'],
+        ['Up and down', 'Pitch. Up is stick forward, nose down, fly forward.'],
+        ['Left and right', 'Roll.'],
+        ['R, then Escape', 'Back to the start line, and pause.'],
+      ];
+    for (const [k, v] of rows) {
+      this.howtoKeys.append(el('dt', null, k), el('dd', null, v));
+    }
+    this.howtoLive.textContent = radio
+      ? 'Move your sticks. These follow the radio.'
+      : 'Press the keys. These follow your hands.';
+    this.howtoMode.textContent = radio
+      ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Settings.'
+      : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
+  }
+
+  /* Live channels for the tutorial's gimbals, fed by the shell's loop. */
+  setHowtoSticks(ch) {
+    if (!this.howtoStickLeft || this.screen !== 'howto') {
+      return;
+    }
+    placeSticks(this.howtoStickLeft, this.howtoStickRight, ch);
   }
 
   setCraftCaption(text) {
@@ -2368,7 +2660,13 @@ export class Ui {
       row.append(main);
       this.resultsBody.append(row);
     }
-    if (this.share && this.share.id) {
+    /* The note is about the course that was FLOWN. It used to read
+     * inspectCourse unconditionally, so a lap on the race field came back
+     * with a line about whatever course happened to be on the builder's
+     * canvas, named and everything. */
+    if (this.settings.map !== 'custom') {
+      this.resultsNote.textContent = '';
+    } else if (this.share && this.share.id) {
       const by = this.share.author ? ` by ${this.share.author}` : '';
       this.resultsNote.textContent = `${this.share.name || 'This course'}${by} is on the public board. Upload a time under your name to appear on it.`;
     } else {
@@ -2404,7 +2702,15 @@ export class Ui {
         /* Keep the results screen even if storage is unavailable. */
       }
     }
+    /* A world has no plan to draw, so the panel goes away rather than
+     * showing an empty blueprint plate. */
+    const plan = this.settings.map === 'custom' ? currentPlan() : null;
+    this.resultsPlan.planData = plan;
+    this.resultsPlanWrap.hidden = !plan;
     this.show('results');
+    if (plan) {
+      requestAnimationFrame(() => drawPlan(this.resultsPlan, plan, { scaleBar: true }));
+    }
   }
 
   setBanner(text, panelled = false) {
@@ -2545,12 +2851,30 @@ export class Ui {
    * lands a small click through onUiSound, and the sound is made HERE, in
    * the one place each gesture funnels through, so the keyboard, the
    * sticks and the mouse all sound the same. */
+  /* A group heading is in the list so it renders in the right place, but it
+   * is not somewhere the cursor can land. */
+  isStop(it) {
+    return Boolean(it) && !it.section;
+  }
+
+  firstStop(items) {
+    const i = items.findIndex((it) => this.isStop(it));
+    return i < 0 ? 0 : i;
+  }
+
   move(dir) {
-    const n = this.items().length;
+    const items = this.items();
+    const n = items.length;
     if (!n) {
       return;
     }
-    this.setCursor((this.cursor + dir + n) % n);
+    let next = (this.cursor + dir + n) % n;
+    /* Step over headings. Bounded by n so a list of nothing but headings
+     * cannot spin here. */
+    for (let guard = 0; guard < n && !this.isStop(items[next]); guard += 1) {
+      next = (next + dir + n) % n;
+    }
+    this.setCursor(next);
   }
 
   adjust(dir) {
@@ -2635,63 +2959,7 @@ export class Ui {
       this.act('fc-back');
       return;
     }
-    if (this.screen === 'editormap') {
-      if (this.editormapFrom === 'choosetrack') {
-        this.returnToChooseTrack();
-        return;
-      }
-      this.act(this.editormapFrom === 'paused' ? 'paused' : 'title');
-      return;
-    }
-    if (this.screen === 'choosetrack') {
-      this.returnToMaps();
-      return;
-    }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
-  }
-
-  /* Custom map opened this screen, so Back lands on that card rather than
-   * the first world in the row. */
-  returnToMaps() {
-    this.show('maps');
-    const idx = this.items().findIndex((it) => it.map && it.map.id === 'custom');
-    if (idx < 0) {
-      return;
-    }
-    this.cursor = idx;
-    if (this.mapCards) {
-      this.mapCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
-    }
-    this.syncCursor(false);
-  }
-
-  /* Create / edit opened from Custom map, so Back lands on that card. */
-  returnToChooseTrack() {
-    this.show('choosetrack');
-    const idx = this.items().findIndex((it) => it.action === 'editormap');
-    if (idx < 0) {
-      this.focusFirstEnabledCard();
-      return;
-    }
-    this.cursor = idx;
-    if (this.pickCards) {
-      this.pickCards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
-    }
-    this.syncCursor(false);
-  }
-
-  focusFirstEnabledCard() {
-    const items = this.items();
-    const idx = items.findIndex((it) => it.choiceCard && !it.disabled);
-    if (idx < 0) {
-      return;
-    }
-    this.cursor = idx;
-    const cards = this.screen === 'editormap' ? this.editMapCards : this.pickCards;
-    if (cards) {
-      cards.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
-    }
-    this.syncCursor(false);
   }
 
   act(action) {
@@ -2704,12 +2972,7 @@ export class Ui {
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
-    if (action === 'trackbuilder-new') {
-      writeBuilderIntent({ kind: 'new' });
-      clearShareImport();
-      window.location.href = 'src/trackbuilder/index.html';
-      return;
-    }
+
     if (action === 'remix') {
       writeBuilderIntent({ kind: 'remix' });
       window.location.href = 'src/trackbuilder/index.html';
@@ -2725,26 +2988,38 @@ export class Ui {
      * has to stay put. Navigating away here left the pilot with no sim
      * and a second one from Fly. share.board is the board origin when
      * a published course is loaded, otherwise the default board. */
-    if (action === 'leaderboard' || action === 'selectmap') {
+    if (action === 'leaderboard') {
       window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
       return;
     }
-    if (action === 'choosetrack') {
-      if (!hasLoadedTrack()) {
-        this.returnToChooseTrack();
-      } else {
-        this.show('choosetrack');
+    /*
+     * First run. Choosing the first flight is also the moment the shell stops
+     * being a first run, so the full menu is there when the player comes back
+     * from the field, whatever happened out there.
+     */
+    if (action === 'firstflight' || action === 'skipfirst') {
+      this.firstRun = false;
+      this.settings.map = 'field';
+      saveSettings(this.settings);
+      this.renderMenu();
+      if (action === 'skipfirst') {
+        return;
+      }
+      this.guided = true;
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+      if (this.onAction) {
+        this.onAction('fly', this.settings);
       }
       return;
     }
-    if (action === 'editormap') {
-      this.editormapFrom = this.screen === 'choosetrack'
-        ? 'choosetrack'
-        : (this.screen === 'paused' ? 'paused' : 'title');
-      this.show('editormap');
+    /* A published course, chosen from the grid rather than from another tab. */
+    if (action.startsWith('board:')) {
+      this.openBoardCourse(action.slice('board:'.length));
       return;
     }
-    if (action === 'howto' || action === 'settings' || action === 'maps' || action === 'credits') {
+    if (action === 'howto' || action === 'settings' || action === 'courses' || action === 'credits') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
@@ -2853,7 +3128,6 @@ export class Ui {
     if (action.startsWith('map:')) {
       const id = action.slice(4);
       if (id === 'custom' && !hasLoadedTrack()) {
-        this.returnToChooseTrack();
         return;
       }
       this.settings.map = id;

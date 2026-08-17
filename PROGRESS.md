@@ -9613,3 +9613,171 @@ is to add that course to the pack.
 `node tracks/check.mjs`: 3922 passed, 0 failed, 40 of them new.
 `node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
 `npm run verify`: 14 of 16, physics hash 6d17d4814bdc unchanged.
+
+### 2026-08-17 | shell | eight of ten from the design review, and one dead screen
+
+Asked: a UI and UX critique of the whole shell, then implement all of it
+except the HUD colour pass and the phone decision.
+
+The review is in the conversation; what follows is what landed and what
+it cost. Every screen was driven in a real browser at 1440 by 900 and at
+390 by 844 first, because three of the findings below are things you
+cannot see by reading the source.
+
+**The Flight controller screen was dead, and had been.** `src/ui/fc.js`
+calls `cliMap(this.draft)` in `cliMapCached` and imports only `cliGet`
+from `src/fc/dump.js`. Opening the screen threw a `ReferenceError`
+before a single row rendered, and threw again on every animation frame
+while it was up: what a player got was the Betaflight header, the status
+bar, and nothing in between. It is reachable from the title, from
+Settings and from Pause, so three entry points landed on an empty
+screen, on the one feature this project leads with.
+
+One word fixes it. The thing worth writing down is why nothing caught
+it. Check 13, console-clean, watches for zero errors and zero warnings
+and passes: it flies, it does not open the flight controller. A screen
+built entirely out of `items()` can fail without failing anything else,
+and the only check that would have seen this is one that visits it. That
+is a check worth having and it is not written yet.
+
+**Everything on every screen weighed the same.** Nine rows on the title
+in which Fly and Credits were the same size, weight and colour, with a
+4 px cursor bar as the only hierarchy. `row-primary` is mint on dark
+ink, which is the treatment the builder already gives Fly this track,
+and the builder's own comment already states the rule: one green button
+per screen. Fly, Fly again and Resume have it now and nothing else does.
+
+**The menus changed shape underneath the cursor.** `uploadAction`,
+`publishAction`, `remixAction` and `editOwnAction` returned null when
+they did not apply and the caller pushed only the survivors, so the
+title swung between nine and thirteen rows and the row under the cursor
+moved depending on what the player did last. All four always return a
+row now, `disabled` with a sentence saying why, which `select()` already
+honoured and `renderMenu` paints as `row-grey`. A missing row cannot
+teach; a greyed one can.
+
+**The menu was not where its heading said it was.** `.menu-stage` was a
+`1.7fr / auto / 0.65fr` grid with the menu in column two, so on Paused
+and How to fly the h2 centred at 720 px in a 1440 px viewport and the
+panel centred at 915. A measured 195 px, not a feeling. The columns are
+symmetric now and Settings, which is the only screen that actually fills
+column one with the airframe studio, keeps the old ratio.
+
+**Four screens to reach the builder, by two routes.** Title, Track
+builder, Create / edit map, builder. Or Title, Map, Custom map, Create /
+edit map, builder. Three of those screens existed only to ask a
+question, and Choose new map did not even list courses: it opened the
+board in another tab, whose Fly button opened a THIRD tab with a second
+simulator in it. `maps`, `choosetrack` and `editormap` are gone,
+replaced by one `courses` screen: worlds in one strip, the working
+canvas and the board's published courses in another, and the builder one
+row below all of it. Start new map went with them, because the builder
+has a New button and that is where it belongs.
+
+**A course was three different pictures.** A recorded flight clip in the
+simulator, a blueprint plan on the board, a blueprint canvas in the
+builder. Two agreed. The odd one out was the screen where you choose
+what to fly, so a player picked a course without ever seeing its shape.
+`src/share/plan.js` is the board's `public/plan.js` carried over
+unchanged, plus `planFromDocument` from that repository's
+`src/validate.js`, because the board ships a stored plan with its list
+and the simulator has to derive one from the working document. The pair
+now has the same obligation the layout hash pair has, and the header
+says so: change a mark here, change it there in the same turn.
+
+**Five paragraphs of prose where three words would do.** `customMapNote`
+returned a different sentence for each of none, local, owned, remix and
+community, plus layout drift and name drift, and the builder said the
+same things in different words in its own top bar. `courseChip` in
+`src/share/listing.js` is the one place that answers now, and both read
+it, so the same course cannot be described two ways.
+
+**The tutorial taught sticks with prose.** Two definition lists over a
+two hundred word centred paragraph, and the product already owned
+`makeGimbal`, the live gimbal pair the flight overlay and the
+calibration screen both draw. The sticks on How to fly are live now, fed
+the same channels as the quad from the render loop, with a keyboard and
+radio switch so a pilot reads only their own half.
+
+**Nothing told visit one from visit one hundred.** `detectFirstRun`
+takes two signals that were already in local storage, a saved settings
+blob and any stored best, and both have to be cold. A first run is two
+rows, First flight and I have flown before, and the field with three
+prompts fired by what the pilot does rather than by a clock. It retires
+itself once a lap is on the board or three gates are behind them,
+because after that the lap splits are the more useful message.
+
+**The builder's bar was seventeen buttons that wrapped.** Publish and
+Fly this track, the two outcomes of the whole tool, fell to a second row
+while Duplicate held the first. Three zones now, file, canvas, out, with
+the outgoing zone pinned right and never wrapping, and Import, Export,
+Duplicate and Delete behind More so they stop competing with Save.
+Delete asks first; it used to remove a course on one click, inline
+beside Save.
+
+**And the builder hid its own validation behind a button.** `refresh`
+rebuilt the path only while `pathVisible` was true, so the length, the
+tightest radius, the elevation profile and every warning sat behind
+Create Path, and nothing told an author there was anything to find out.
+Deriving is what tells them, so it happens on every edit; `pathVisible`
+now means only what it says, whether the line is painted. The button is
+Show line.
+
+The inspector also clipped itself: at 320 px a two word label like Sill
+height wrapped inside a 78 px flex child and laid itself over the input
+beside it, and the paired Opening fields were cut off at the panel edge.
+Labels sit above their inputs now, which costs one line and cannot
+collide.
+
+NOT DONE, and deliberately. The HUD colour pass and the phone decision
+were held back by the owner. Both are still true: `--slate` at 11 px
+over a bright sky is unreadable at the top of the frame, which is where
+the lap label and the record line live, and the file's own rule says
+amber is for instruments that read over live footage. On a phone the
+builder is overlapping panels and there are no touch controls at all.
+
+**And the title camera has been indexing off the front of its own
+curve.** Not one of the ten, and not caused by any of them, but the
+Courses screen reaches it far more often than the old map screen did, so
+it is fixed here. `orbit.html?map=field` threw
+`Cannot read properties of undefined (reading 'distanceToSquared')` on
+every animation frame while recording a thumbnail. Two causes, one on
+top of the other.
+
+`prevWall` in `src/share/orbit.js` is seeded from `performance.now()`
+during setup, and the timestamp `requestAnimationFrame` hands the first
+callback is the time that FRAME began, which the browser can have
+started before that setup call read the clock. The first delta came out
+at about -43 ms. The clamp was `Math.min(dt, 100)`, a ceiling for a
+backgrounded tab with no floor under it, so the camera clock started
+below zero.
+
+Underneath that, `attract.js` wrapped every curve parameter with `% 1`,
+and JavaScript's `%` keeps the sign of the dividend: `-0.001 % 1` is
+-0.001, not 0.999. These are positions on a CLOSED loop where those two
+are the same place. three.js does not defend itself either, so
+`getPointAt` took the negative parameter through `getUtoTmapping` into
+`getPoint`, which computed a negative index and read `points[-1]`. One
+of the five call sites had already hand patched its own sign by adding 1
+before the modulo, which is the same bug noticed once and fixed in one
+place. `wrap01` now does it in all five.
+
+Fixing only the clock would have hidden the second one again. A camera
+asked for a position on a loop should answer for any input, not only for
+inputs that happen to be positive.
+
+The clip still came out the whole time, of a camera that never moved,
+because the recorder is an offscreen iframe and nobody reads the console
+of one of those.
+
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`npm run verify`: 14 of 16, physics hash 6d17d4814bdc unchanged. The two
+failures are the standing two, build-clean needing emcc and
+yaw-coupling at -0.12 deg. Nothing here touches the physics path.
+
+Next: two checks worth writing, both of them for things that broke
+without breaking anything a check was looking at. One opens the flight
+controller, because check 13 flies and watches the console and a screen
+that only breaks when you visit it can stay broken as long as nobody
+visits it. One opens the orbit recorder page directly, because its
+console is inside an iframe and check 13 never sees it.

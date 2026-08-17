@@ -45,12 +45,23 @@ function runBuild() {
    * A spawn ERROR is also surfaced now instead of being dropped, so "could
    * not start npm" can never again read as a silent build failure.
    */
-  const build = spawnSync('npm', ['run', 'build:wasm'], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: 600000,
-    shell: process.platform === 'win32',
-  });
+  /* One command STRING under a shell on Windows, not an args array: Node
+   * deprecated shell-plus-array (DEP0190) because the args are concatenated
+   * unescaped, and the owner's first successful Windows run printed exactly
+   * that warning. The command is a constant, so a string is also the honest
+   * form. Elsewhere the array form stays, with no shell in the way. */
+  const build = process.platform === 'win32'
+    ? spawnSync('npm run build:wasm', {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 600000,
+      shell: true,
+    })
+    : spawnSync('npm', ['run', 'build:wasm'], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 600000,
+    });
   const vendor = spawnSync('git', ['diff', '--stat', '--', 'vendor/betaflight'], {
     cwd: root,
     encoding: 'utf8',

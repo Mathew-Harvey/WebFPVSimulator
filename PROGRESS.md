@@ -10160,3 +10160,50 @@ COMMIT dist/sim.wasm so no pull can ever hand back the stale plant
 again. Checks 5 to 12 may move off the re-tuned plant; that is the
 re-baseline bc071f5's own notes predicted, to be argued here, not
 patched around.
+
+### 2026-08-17 | correction | the binary was never stale, and the neutrality gate passed
+
+The owner pulled, built on Windows for the first time through the
+fixed harness, and got 15 of 16 with build-clean, cross-host
+determinism, console-clean, audio, world-scale and map-isolation all
+alive and passing on that machine. One check red: yaw-coupling, the
+known structural one. The Windows fixes did their job.
+
+And the run corrected yesterday's diagnosis, which deserves to be
+recorded plainly. A FRESH build of current source hashed
+6d17d4814bdc, identical to the committed dist/sim.wasm. A build
+containing the re-tuned kq 2.80e-8 cannot be bit identical to one
+containing the old 3.16e-8, so the committed wasm must already have
+been built from a tree carrying the plant re-tune, before that
+re-tune was committed as bc071f5. bc071f5's own PROGRESS entry agrees:
+it measured the committed wasm and wrote "hash 6d17d4814bdc
+unchanged". The binary was built ahead of its source commit and was
+NEVER stale. Yesterday's "you are flying the old plant" was therefore
+wrong in mechanism: the plant has been bit identical in every session
+on every machine. What yesterday's fix DID rightly do is make Windows
+able to build and verify at all, which is what produced today's proof.
+
+Two things follow. The "very very bad, broken" session was not the
+binary, and the log already said so: sane tracking, one collision
+snap, on a custom course whose imported dive gates the owner's own
+5186393 then fixed. Transient, most likely stale cached JS mid pull
+or the misplaced colliders. And THE P1 NEUTRALITY GATE PASSED: every
+C change this session made, the dead code deletions, the settings
+lut bound, the SIM_STEP_HZ parameterisation and the microsecond
+firmware clock, compiled fresh on a second machine into a bit
+identical trace. The loop rate flip is now a one line decision plus
+an argued re-baseline, exactly as designed.
+
+On "feels down on power": power is bit identical to every session
+ever flown here, same hash, punch-out 81.5 m of a 55 to 85 band,
+hover 0.2637, static TWR the 9.2:1 STAGE1 fitted. If more punch is
+wanted that is a deliberate plant decision through the advisor, best
+calibrated against a real quad's blackbox log rather than memory.
+
+Also fixed the DEP0190 deprecation the owner's run printed: verify now
+passes one command string to the shell on Windows instead of an args
+array.
+
+Suites here: trackbuilder 225/225, tracks 3994/0, link and replay
+selftests all passed, verify 14 of 16 on this container (no emcc, and
+yaw-coupling), hash 6d17d4814bdc.

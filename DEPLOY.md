@@ -4,8 +4,8 @@ Your guess was right, and it is three resources, not two.
 
 | Resource | Render type | Repo | Why this type |
 | --- | --- | --- | --- |
-| `webfpvsim` | Static Site | WebFPVSimulator | No server side. Never sleeps. Free. |
-| `webfpvleaderboard` | Web Service, Node | WebFPVSimulator-LeaderBoard | Has an API and holds state. |
+| `webfpvsimulator` | Static Site | WebFPVSimulator | No server side. Never sleeps. Free. |
+| `webfpv-board` | Web Service, Node | WebFPVSimulator-LeaderBoard | Has an API and holds state. |
 | `webfpvleaderboard-db` | Postgres | attached to the board | The only durable store. |
 
 The simulator is a static site and not a web service because it has no
@@ -39,6 +39,65 @@ time. Its side of the link is a constant in the source:
 
 So deploy the board first, take its URL, then deploy the simulator.
 
+## By hand, rather than from the blueprints
+
+The blueprints below are the short path. If you would rather create each
+resource yourself in the dashboard, these are the fields that matter. Every
+one of them is a field the form gets wrong or leaves blank by default.
+
+**Postgres.** Create it first, and note which region you put it in. Every
+other resource has to go in that same region or the internal connection
+string will not resolve.
+
+**Web service, from the LeaderBoard repo.**
+
+| Field | Value |
+| --- | --- |
+| Language | Node |
+| Branch | `main` |
+| Region | the same one the database is in |
+| Root Directory | leave empty |
+| Build Command | `npm ci` |
+| Start Command | `npm start` |
+| Health Check Path (under Advanced) | `/api/health` |
+
+Render's form prefills the build command with `yarn`. Change it. There is
+no yarn lockfile here, so yarn resolves the dependency tree from scratch
+and can install a different `pg` than the tests ran against.
+
+Environment variables:
+
+| Key | Value |
+| --- | --- |
+| `DATABASE_URL` | the database's **Internal** connection string |
+| `SIM_ORIGIN` | the simulator's URL, no trailing slash |
+| `BOARD_TRUST_PROXY` | `1` |
+| `BUGS_TOKEN` | optional, any random string |
+
+Internal, not external, and this one is not a preference. Render's external
+connection string requires SSL, and `store.js` builds its pool with a
+connection string and nothing else. Handed the external URL, the board
+fails to start. The internal one is the short hostname with no
+`.<region>-postgres.render.com` on the end.
+
+**Static site, from the simulator repo.**
+
+| Field | Value |
+| --- | --- |
+| Branch | `main` |
+| Root Directory | leave empty |
+| Build Command | `test -f dist/sim.wasm && test -f tests/lib/simmod.js` |
+| Publish Directory | `.` |
+
+No environment variables, and no region field: a static site is on the CDN
+rather than in a region.
+
+The publish directory is the field to get right. It defaults to blank and
+the form suggests `build` or `dist`. Both are wrong here. It has to be the
+repository root, because the page fetches by absolute path from the site
+root and `src/main.js` imports `/tests/lib/simmod.js` to load the module.
+Publishing `dist` serves a directory with one file in it.
+
 ## 1. The board and its database
 
 Both come from one blueprint. In the Render dashboard: **New**, then
@@ -46,10 +105,10 @@ Both come from one blueprint. In the Render dashboard: **New**, then
 `render.yaml` in that repo creates the web service and the Postgres
 instance together and wires `DATABASE_URL` between them.
 
-Render appends a suffix to the hostname if `webfpvleaderboard` is already
+Render appends a suffix to the hostname if `webfpv-board` is already
 taken by someone else, so read the URL it actually gives you rather than
 assuming it. Call it `BOARD_URL` for the rest of this page. It will look
-like `https://webfpvleaderboard.onrender.com`.
+like `https://webfpv-board.onrender.com`.
 
 `SIM_ORIGIN` is deliberately left unset in the blueprint. The board starts
 fine without it and falls back to `http://127.0.0.1:8000`, which just means
@@ -60,7 +119,7 @@ the Fly buttons point at nothing yet. Step 3 fixes that.
 Edit one line in `src/share/board.js`:
 
 ```js
-export const PRODUCTION_BOARD_ORIGIN = 'https://webfpvleaderboard.onrender.com';
+export const PRODUCTION_BOARD_ORIGIN = 'https://webfpv-board.onrender.com';
 ```
 
 Put your `BOARD_URL` there, with no trailing slash. Commit and push.
@@ -75,10 +134,10 @@ at a different board without another deploy.
 
 ## 3. Wire the board back to the simulator
 
-On the `webfpvleaderboard` service, under **Environment**, set:
+On the `webfpv-board` service, under **Environment**, set:
 
 ```
-SIM_ORIGIN = https://webfpvsim.onrender.com
+SIM_ORIGIN = https://webfpvsimulator.onrender.com
 ```
 
 Your `SIM_URL`, no trailing slash. Save, which redeploys the board.
@@ -99,8 +158,8 @@ still handing the link around.
 In order, because each one depends on the last:
 
 ```bash
-BOARD=https://webfpvleaderboard.onrender.com
-SIM=https://webfpvsim.onrender.com
+BOARD=https://webfpv-board.onrender.com
+SIM=https://webfpvsimulator.onrender.com
 
 # The board is up and talking to Postgres, not to a JSON file.
 curl -s $BOARD/api/health
@@ -108,8 +167,8 @@ curl -s $BOARD/api/health
 
 # The board knows where the simulator is, and knows its own https origin.
 curl -s $BOARD/api/config
-# {"simOrigin":"https://webfpvsim.onrender.com",
-#  "boardOrigin":"https://webfpvleaderboard.onrender.com"}
+# {"simOrigin":"https://webfpvsimulator.onrender.com",
+#  "boardOrigin":"https://webfpv-board.onrender.com"}
 
 # The two files the simulator dies without.
 curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $SIM/dist/sim.wasm

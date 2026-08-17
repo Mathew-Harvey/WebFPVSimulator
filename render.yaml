@@ -13,7 +13,7 @@
 
 services:
   - type: web
-    name: webfpvsim
+    name: webfpvsimulator
     runtime: static
 
     # There is no build. This is the assertion that stands in for one: both

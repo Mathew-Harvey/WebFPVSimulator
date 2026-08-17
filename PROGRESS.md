@@ -10413,3 +10413,32 @@ Physics, WASM, input and the module ABI were not changed. verify 15 of 16
 in this container, build-clean red for want of emcc only and every other
 check on the committed binary green. Trackbuilder 225/225, leaderboard
 selftest green on both the file store and Postgres.
+
+### 2026-08-17 | infrastructure | name the real hosts, and the by hand path
+
+The services were created in the dashboard rather than from the
+blueprints, so the names are the owner's: WebFPV-Board and
+WebFPVSimulator, both in Singapore beside the database.
+PRODUCTION_BOARD_ORIGIN now says https://webfpv-board.onrender.com, and
+both render.yaml files were moved to those names and that region so the
+blueprint path stays a valid alternative rather than quietly disagreeing
+with the constant compiled into the page.
+
+DEPLOY.md gained a by hand section, because the dashboard form gets two
+fields wrong on its own and both are silent. It prefills the board's build
+command with yarn, and there is no yarn lockfile here, so yarn resolves the
+tree from scratch and can install a different pg than the tests ran
+against. And the static site's publish directory defaults to blank while
+the form suggests build or dist, when it has to be the repository root: the
+page fetches by absolute path from the site root and src/main.js imports
+/tests/lib/simmod.js, so publishing dist serves a directory holding one
+file.
+
+Written down there too: DATABASE_URL has to be the internal connection
+string, not the external one. store.js builds its pool from a connection
+string and nothing else, and Render's external endpoint requires SSL, so
+the external URL is not a slower option, it is a board that fails to start.
+
+Physics, WASM, input and the module ABI were not changed. verify 15 of 16,
+build-clean red for want of emcc only. The board origin precedence chain
+was re-checked against the new constant, 11 of 11.

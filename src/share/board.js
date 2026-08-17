@@ -57,7 +57,7 @@ import { writeShareImport } from './session.js';
  * over the default.
  */
 export const DEFAULT_BOARD_ORIGIN = 'http://127.0.0.1:3100';
-export const PRODUCTION_BOARD_ORIGIN = 'https://webfpvleaderboard.onrender.com';
+export const PRODUCTION_BOARD_ORIGIN = 'https://webfpv-board.onrender.com';
 const ORIGIN_KEY = 'webfpv.board.origin';
 
 /* An empty hostname is a file:// open, which is a developer, not a deploy. */

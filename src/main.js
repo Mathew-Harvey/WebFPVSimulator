@@ -18,7 +18,8 @@
  * reaches the ground, then resets. See PROGRESS.md.
  *
  * Keys in flight: Escape pauses, R returns to the start line, F3 toggles
- * the performance readout. Everything else is a menu choice.
+ * the performance readout, F8 reports a bug. Everything else is a menu
+ * choice.
  * Sticks: radio in joystick mode (Gamepad API) or WASD plus arrows.
  * Drop a Betaflight diff file onto the page to fly your own config.
  *

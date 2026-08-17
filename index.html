@@ -1583,12 +1583,18 @@
         display: flex; align-items: center; justify-content: center;
         background: rgba(12, 18, 14, 0.72);
         pointer-events: auto;
+        user-select: text;
       }
       .name-dialog[hidden] { display: none; }
       .name-dialog-box {
         width: min(420px, 86vw); padding: 22px 24px 20px;
         background: var(--panel); border-radius: 4px;
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.35), 0 18px 40px rgba(0, 0, 0, 0.55);
+      }
+      .name-dialog-box.bug {
+        width: min(520px, 92vw);
+        max-height: min(88vh, 740px);
+        overflow-y: auto;
       }
       .name-dialog-box h2 {
         margin: 0 0 10px; font-size: 22px; color: var(--cream);
@@ -1602,10 +1608,11 @@
       }
       .name-dialog-input {
         display: block; width: 100%; box-sizing: border-box;
-        margin: 12px 0 8px; padding: 9px 11px;
+        margin: 8px 0 4px; padding: 9px 11px;
         background: #121a14; border: 1px solid rgba(244, 236, 214, 0.16);
         border-radius: 4px; color: var(--cream); font: inherit; font-size: 16px;
       }
+      .name-dialog-area { min-height: 4.5em; resize: vertical; }
       .name-dialog-input:focus {
         outline: none; border-color: var(--sakura);
       }
@@ -1622,6 +1629,24 @@
         background: var(--mint); border-color: var(--mint);
         color: var(--deep); font-weight: 600;
       }
+      .name-dialog-btn:disabled { opacity: 0.45; cursor: default; }
+      .bug-chip {
+        position: absolute; top: 16px; right: 16px; z-index: 7;
+        pointer-events: auto;
+        appearance: none; border: 1px solid rgba(232, 168, 184, 0.45);
+        background: rgba(16, 22, 17, 0.82); color: var(--cream);
+        font: 600 12px/1 var(--ui-font); letter-spacing: 0.06em;
+        padding: 8px 12px; border-radius: 4px; cursor: pointer;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+      }
+      /* Live flight: same corner, a shade quieter so the FPV frame still
+         reads, still a real button. Click pauses, then opens the form. */
+      .bug-chip.on-flight {
+        background: rgba(16, 22, 17, 0.55);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      }
+      .bug-chip:hover { border-color: var(--sakura); color: var(--sakura); }
+      .bug-chip[hidden] { display: none; }
     </style>
     <!-- Three.js only, pinned. The addons path is the same package, used
          for the post processing chain; nothing else is on the render

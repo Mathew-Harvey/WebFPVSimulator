@@ -12,6 +12,7 @@
  *                  the browser that first published. A name-only update
  *                  keeps the times. A layout change clears them.
  *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs }
+ *   File a bug     POST {board}/api/bugs   { kind, title, what, ... }
  *
  * The track document is the only payload. schema.md is the contract. The
  * logo travels inside the document, so a published course wears its sponsor

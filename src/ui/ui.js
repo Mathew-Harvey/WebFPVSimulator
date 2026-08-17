@@ -62,6 +62,7 @@ import {
   ratesSummary,
 } from '../../configs/rates.js';
 import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
+import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
@@ -1025,11 +1026,16 @@ export class Ui {
     this.nameDialog.setAttribute('aria-modal', 'true');
     this.nameDialog.setAttribute('role', 'dialog');
 
+    this.bugChip = btn('bug-chip', 'Report a bug');
+    this.bugChip.title = 'F8 also opens this.';
+    this.bugChip.addEventListener('click', () => this.openBugReport());
+
     for (const s of Object.values(this.screens)) {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.banner, this.readout, this.nameDialog);
+    r.append(this.banner, this.readout, this.bugChip, this.nameDialog);
+    this.syncBugChip();
   }
 
   setShare(share) {
@@ -1210,10 +1216,224 @@ export class Ui {
     this.nameDialog.textContent = '';
     const done = this.nameWait;
     this.nameWait = null;
+    this.bugFiling = false;
     if (done) {
       done(value);
     }
+    this.syncBugChip();
     this.renderMenu();
+  }
+
+  syncBugChip() {
+    if (!this.bugChip) {
+      return;
+    }
+    const hide = this.nameDialog && !this.nameDialog.hidden;
+    this.bugChip.hidden = hide;
+    this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
+  }
+
+  bugSnapshot() {
+    const s = this.settings || {};
+    const seat = s.map === 'custom' ? activeCourseSummary() : null;
+    const gpu = this.gpuInfo || {};
+    let href = '';
+    try {
+      href = String(window.location.href || '').slice(0, 300);
+    } catch (e) {
+      href = '';
+    }
+    let userAgent = '';
+    try {
+      userAgent = String(navigator.userAgent || '').slice(0, 180);
+    } catch (e) {
+      userAgent = '';
+    }
+    return {
+      href,
+      screen: this.screen,
+      map: s.map || '',
+      courseId: (seat && (seat.shareId || (seat.doc && seat.doc.id))) || '',
+      courseName: (seat && seat.name) || '',
+      flightMode: s.flightMode || '',
+      graphics: s.graphics || '',
+      cameraAngle: s.cameraAngle,
+      cameraFov: s.cameraFov,
+      packVoltage: s.packVoltage,
+      link: s.link || '',
+      gpu: gpu.display || gpu.name || '',
+      userAgent,
+      viewport: {
+        w: window.innerWidth || 0,
+        h: window.innerHeight || 0,
+        dpr: window.devicePixelRatio || 1,
+      },
+    };
+  }
+
+  /*
+   * Pause first if they were in the air, so typing does not fly the quad,
+   * then open the form. Snapshot the context BEFORE pausing so an F8 from
+   * flight still records screen: flight.
+   */
+  openBugReport() {
+    if (this.bugFiling || (this.nameDialog && !this.nameDialog.hidden)) {
+      return;
+    }
+    this.bugFiling = true;
+    const context = this.bugSnapshot();
+    if (this.screen === 'flight') {
+      this.act('pause');
+      this.show('paused');
+    }
+    this.askBugReport(context);
+  }
+
+  askBugReport(context) {
+    if (this.nameWait) {
+      this.closeNameDialog(null);
+    }
+    const box = el('div', 'name-dialog-box bug');
+    box.append(el('h2', null, 'Report a bug'));
+    box.append(el(
+      'p',
+      'lede',
+      'Title and what happened are enough. The map, graphics, GPU and browser go with the ticket so you do not have to type those.',
+    ));
+
+    const kindLabel = el('p', 'name-dialog-label', 'Kind');
+    const kind = document.createElement('select');
+    kind.className = 'name-dialog-input';
+    for (const opt of BUG_KINDS) {
+      const o = document.createElement('option');
+      o.value = opt.id;
+      o.textContent = opt.label;
+      if (opt.id === 'wrong') {
+        o.selected = true;
+      }
+      kind.append(o);
+    }
+
+    const titleLabel = el('p', 'name-dialog-label', 'Title');
+    const title = document.createElement('input');
+    title.type = 'text';
+    title.className = 'name-dialog-input';
+    title.maxLength = 120;
+    title.placeholder = 'Short, specific';
+    title.autocomplete = 'off';
+
+    const whatLabel = el('p', 'name-dialog-label', 'What happened');
+    const what = document.createElement('textarea');
+    what.className = 'name-dialog-input name-dialog-area';
+    what.maxLength = 4000;
+    what.rows = 4;
+    what.placeholder = 'What you saw, heard, or could not do.';
+
+    const expectedLabel = el('p', 'name-dialog-label', 'What you expected (optional)');
+    const expected = document.createElement('textarea');
+    expected.className = 'name-dialog-input name-dialog-area';
+    expected.maxLength = 2000;
+    expected.rows = 2;
+
+    const stepsLabel = el('p', 'name-dialog-label', 'How to reproduce (optional)');
+    const steps = document.createElement('textarea');
+    steps.className = 'name-dialog-input name-dialog-area';
+    steps.maxLength = 2000;
+    steps.rows = 2;
+
+    const nameLabel = el('p', 'name-dialog-label', 'Your name (optional)');
+    const reporter = document.createElement('input');
+    reporter.type = 'text';
+    reporter.className = 'name-dialog-input';
+    reporter.maxLength = 24;
+    reporter.autocomplete = 'nickname';
+    reporter.value = readPilotName() || '';
+    reporter.placeholder = 'Leave blank to stay Anonymous';
+
+    const err = el('p', 'name-dialog-err', '');
+    const row = el('div', 'name-dialog-row');
+    const send = btn('name-dialog-btn on', 'Send');
+    const cancel = btn('name-dialog-btn', 'Cancel');
+    row.append(send, cancel);
+    box.append(
+      kindLabel, kind,
+      titleLabel, title,
+      whatLabel, what,
+      expectedLabel, expected,
+      stepsLabel, steps,
+      nameLabel, reporter,
+      err, row,
+    );
+    this.nameDialog.textContent = '';
+    this.nameDialog.append(box);
+    this.nameDialog.hidden = false;
+    this.syncBugChip();
+
+    const finish = (value) => {
+      this.closeNameDialog(value);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(null);
+      }
+    };
+    this.nameWait = () => {};
+    this.nameKeyHandler = onKey;
+    this.nameDialog.addEventListener('keydown', onKey, true);
+    this.nameClickHandler = (e) => {
+      if (e.target === this.nameDialog) {
+        finish(null);
+      }
+    };
+    this.nameDialog.addEventListener('click', this.nameClickHandler);
+    cancel.addEventListener('click', () => finish(null));
+    send.addEventListener('click', async () => {
+      err.textContent = '';
+      if (title.value.trim().length < 8) {
+        err.textContent = 'A title needs at least eight characters.';
+        title.focus();
+        return;
+      }
+      if (what.value.trim().length < 20) {
+        err.textContent = 'Say what happened, at least a sentence.';
+        what.focus();
+        return;
+      }
+      const payload = {
+        kind: kind.value,
+        title: title.value,
+        what: what.value,
+        expected: expected.value,
+        steps: steps.value,
+        reporter: reporter.value,
+        context,
+      };
+      send.disabled = true;
+      send.textContent = 'Sending';
+      try {
+        const posted = await submitBug(payload);
+        box.textContent = '';
+        box.append(el('h2', null, 'Sent'));
+        box.append(el(
+          'p',
+          'lede',
+          `Ticket ${posted.id} is on the board. Thanks.`,
+        ));
+        const doneRow = el('div', 'name-dialog-row');
+        const close = btn('name-dialog-btn on', 'Close');
+        close.addEventListener('click', () => finish(posted));
+        doneRow.append(close);
+        box.append(doneRow);
+        close.focus();
+      } catch (e) {
+        send.disabled = false;
+        send.textContent = 'Send';
+        err.textContent = e.message || 'The board could not take that report.';
+      }
+    });
+    title.focus();
   }
 
   /* Menu definitions are rebuilt on show so values read correctly. */
@@ -1245,9 +1465,10 @@ export class Ui {
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
       /*
-       * NINE ROWS, ALWAYS. The course actions that used to appear and vanish
-       * here live on the Courses screen and on Results, where the course
-       * itself is what the player is looking at.
+       * NINE ROWS PLUS REPORT, ALWAYS. The course actions that used to
+       * appear and vanish here live on the Courses screen and on Results,
+       * where the course itself is what the player is looking at. Report a
+       * bug is a stable last row so testers can send a ticket from title.
        */
       return [
         { label: 'Fly', action: 'fly', primary: true },
@@ -1273,6 +1494,11 @@ export class Ui {
           label: 'Credits',
           action: 'credits',
           note: 'Who made this, who flew it, and whose work it stands on.',
+        },
+        {
+          label: 'Report a bug',
+          action: 'reportbug',
+          note: 'Opens a short form. The map, graphics and browser go with it. F8 does the same, including from flight.',
         },
       ];
     }
@@ -1487,7 +1713,8 @@ export class Ui {
     }
     if (this.screen === 'paused') {
       /* Nine rows, always, and Resume is the button. The conditional Edit a
-       * copy that used to appear here belongs on the Courses screen. */
+       * copy that used to appear here belongs on the Courses screen. Report
+       * a bug is the chip in the corner, or F8, so this list stays put. */
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
@@ -2472,6 +2699,7 @@ export class Ui {
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
+    this.syncBugChip();
   }
 
   /*
@@ -2544,6 +2772,7 @@ export class Ui {
         ['Up and down', 'Pitch. Up is stick forward, nose down, fly forward.'],
         ['Left and right', 'Roll.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
+        ['F8', 'Report a bug. Pauses if you are in the air, then opens the form.'],
       ];
     for (const [k, v] of rows) {
       this.howtoKeys.append(el('dt', null, k), el('dd', null, v));
@@ -3039,6 +3268,10 @@ export class Ui {
       window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
       return;
     }
+    if (action === 'reportbug') {
+      this.openBugReport();
+      return;
+    }
     /*
      * First run. Choosing the first flight is also the moment the shell stops
      * being a first run, so the full menu is there when the player comes back
@@ -3224,6 +3457,10 @@ export class Ui {
       this.settings.readout = !this.settings.readout;
       saveSettings(this.settings);
       this.setReadout('');
+      return true;
+    }
+    if (code === 'F8') {
+      this.openBugReport();
       return true;
     }
     if (this.screen === 'flight') {

@@ -10320,3 +10320,33 @@ the formula agreed with it exactly.
 Suites here: trackbuilder 225/225, tracks 3994/0, link and replay
 selftests all passed. verify 15 of 16 in this container, build-clean
 red for want of emcc only.
+
+### 2026-08-17 | feature | in-game bug tickets, stored on the board
+
+Testers can report without touching flight. A Report a bug chip on
+every screen except live flight, the same row on the title menu, and
+F8 (which pauses first if they were in the air) open a modal: kind,
+title, what happened, optional expected / steps / name. Map, graphics,
+GPU and browser go with the ticket so an agent does not have to ask.
+
+Tickets live on the leaderboard process, not in the simulator: POST
+/api/bugs is public, GET list/get and POST update are the agent API,
+Postgres table bugs when DATABASE_URL is set, bugs key in board.json
+when it is not. Existing courses and times are untouched; a legacy
+board.json without that key still lists an empty ticket list. Inbox
+page is /bugs.
+
+Physics, WASM, input and the module ABI were not changed. Leaderboard
+npm test is the check for this turn, not npm run verify.
+
+Wrong: none yet. The pause menu was left at nine rows on purpose so
+the chip and F8 carry the report action in the air, rather than
+growing a list the pause screen was sized for.
+
+### 2026-08-17 | feature | report chip on the flight screen
+
+The Report a bug chip was hidden during live flight. Testers who saw
+something in the air had to pause or hit F8 first. It now stays in the
+top right on the flight screen too. Click still pauses, then opens the
+form, so typing does not fly the quad. A quieter style on that screen
+only, so the FPV frame still reads. Physics was not touched.

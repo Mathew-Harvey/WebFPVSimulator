@@ -9915,3 +9915,57 @@ Next: rebuild at 1 kHz and compare the hash, which is the gate on P1.
 Then a real blackbox log, which turns every constant in the plant from
 tuned-into-a-band into fitted-against-hardware. The link wants a
 settings row so a pilot can pick it without the console.
+
+### 2026-08-17 | tooling | a record button, and the radio reachable without a console
+
+Asked for a UI to get a flight log out, and one binary to build and fly.
+
+**The recorder.** `src/share/flightlog.js` holds the run and writes it as
+blackbox_decode CSV, the same format `scripts/replay-log.js` reads, so a
+sim flight and a real quad's log go through one parser and one report.
+Settings grows three rows under Sticks and diagnostics: Radio link,
+Flight log, and Download flight log. Off by default, because it holds
+every frame of the run in memory; turning it on starts a fresh log, so
+two runs never share a file with a time axis that jumps backwards.
+
+The CSV writer MOVED out of `tests/lib/blackbox.js` into src, because
+the browser is what produces a log and src must not import from tests.
+The parser stays in tests and re-exports the writer, so the round trip
+that proves the two agree still imports one module.
+
+Two things about a row are written down at the file head rather than
+left to be discovered. The motor columns carry ROTOR SPEED against a
+nominal full throttle, not ESC duty, because duty never crosses the ABI:
+the module reports RPM. And the rate is one row per rendered frame, so
+60 to 144 Hz against a real FC's 1 to 8 kHz. The stick and the gyro in a
+row are read at the same instant so the row is honest, there are simply
+fewer of them: enough to see a manoeuvre, not enough to see filter
+phase.
+
+Verified end to end in the browser rather than by inspection: flight
+log on, fly, 41 rows over 3.6 s, 7816 bytes, and the file parses back
+through `parseBlackboxCsv` with the right throttle and a pack sagged
+from 25.20 to 23.23 V. The 11 Hz in that capture is this container's
+software rasteriser, not the recorder.
+
+**The radio is reachable now.** P2 shipped behind `window.__link()`,
+which is not a UI. It is a Settings choice, and both new keys go through
+loadSettings' list gate as well as its typeof gate, so a hand edited
+local storage entry cannot select a link that does not exist. Default is
+still 'perfect', and its note says why: no radio, every frame on time,
+sharper than any real link, and records set on it are not comparable.
+
+**One build, not two.** The neutrality gate on the P1 refactor asked for
+two builds. It does not need to: the working tree already carries a wasm
+built from the commit before this work, so `npm run verify` BEFORE
+pulling gives the baseline hash for free, and one rebuild after the pull
+gives the other. Same proof, one compile.
+
+`node src/trackbuilder/selftest.js`: 204 passed, 0 failed.
+`node tracks/check.mjs`: 3922 passed, 0 failed.
+`npm run link:selftest`: all passed.
+`npm run replay:selftest`: zero residual.
+`npm run verify`: 14 of 16, hash 6d17d4814bdc unchanged, which is the
+prebuilt wasm here and still says nothing about this turn's C.
+
+Next: the hash comparison above is the gate on P1. Then a real log.

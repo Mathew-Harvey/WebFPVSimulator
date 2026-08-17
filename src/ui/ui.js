@@ -43,6 +43,7 @@
 
 import { MAPS } from '../maps/registry.js';
 import { CAL_STEPS } from '../input/input.js';
+import { LINK_PRESETS } from '../input/link.js';
 
 /* Wording for input.js's calibration steps. The order lives there. */
 const CAL_LABELS = {
@@ -155,6 +156,16 @@ const DEFAULTS = {
   musicTrack: 'rotation',
   focusTone: false,
   readout: false,
+  /*
+   * The radio between the sticks and the flight controller. 'perfect' is
+   * the behaviour this shell has always had, an exact packet grid with no
+   * delay, and it stays the default so a lap time never changes underneath
+   * a pilot who did not ask for it. See src/input/link.js.
+   */
+  link: 'perfect',
+  /* Record the flight for download as a blackbox CSV. Off by default: it
+   * holds every frame of the run in memory. */
+  flightLog: false,
   /* Named preset, not a bag of sliders. 'high' is the authored look and
    * the default on a first run that is not a Steam Deck; see
    * src/render/quality.js. A string so loadSettings' typeof gate accepts
@@ -224,6 +235,7 @@ export function loadSettings() {
    * the default rather than being snapped to the nearest survivor.
    */
   for (const [key, allowed] of [
+    ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
     ['cameraAngle', CAMERA_ANGLES],
     ['laps', LAP_COUNTS],
@@ -1448,6 +1460,27 @@ export class Ui {
           (v) => { s.readout = v; },
         ),
         { label: 'Calibrate sticks', action: 'calibrate', note: 'Centre, full range, then one named move per stick. Saved after you check it.' },
+        choice(
+          'Radio link',
+          s.link === 'perfect'
+            ? 'No radio: every frame arrives, exactly on time. Feedforward and RC smoothing read that cadence, so this is sharper than any real link.'
+            : `${LINK_PRESETS[s.link].hz} Hz, ${LINK_PRESETS[s.link].delayMs} ms delay, ${LINK_PRESETS[s.link].jitterMs} ms jitter. Records set on a perfect link are not comparable.`,
+          Object.keys(LINK_PRESETS),
+          s.link,
+          (id) => LINK_PRESETS[id].label,
+          (id) => { s.link = id; },
+        ),
+        toggle(
+          'Flight log',
+          'Record the run for download as a Betaflight blackbox CSV. Holds the whole flight in memory.',
+          s.flightLog,
+          (v) => { s.flightLog = v; },
+        ),
+        {
+          label: 'Download flight log',
+          action: 'downloadflightlog',
+          note: 'Writes what was recorded as blackbox_decode CSV, which scripts/replay-log.js reads.',
+        },
         { label: 'Back', action: 'back' },
       ];
     }

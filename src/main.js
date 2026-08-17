@@ -49,6 +49,7 @@ import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, makeLensShake } from './render/l
 import { MotorAudio } from './render/audio.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
+import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
@@ -541,6 +542,13 @@ export async function boot({ loading, bootStart, mapId }) {
    * time never changes underneath a pilot who did not ask for it.
    */
   const rcLink = new RcLink(LINK_DEFAULT);
+  /*
+   * The flight recorder. Off unless the pilot turns it on, because it holds
+   * every frame of the run in memory and nobody should pay for that without
+   * asking. Written out as blackbox_decode CSV so a sim flight and a real
+   * quad's log go through the same parser and the same report.
+   */
+  const flightLog = new FlightRecorder();
   /*
    * Stick samples waiting for an RC slot, and the value currently held.
    *
@@ -1080,6 +1088,17 @@ export async function boot({ loading, bootStart, mapId }) {
         reset();
       }
     }
+    /* The radio, and the recorder. Both are re-read here so a change in
+     * Settings lands without a restart. setPreset on the same id is a
+     * no-op, and setEnabled only clears the log when it goes from off to
+     * on, so neither re-applies anything on an unrelated settings change. */
+    if (rcLink.id !== s.link) {
+      rcLink.setPreset(s.link);
+      rcLink.reset(rcNextMs);
+    }
+    if (flightLog.on !== s.flightLog) {
+      flightLog.setEnabled(s.flightLog);
+    }
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
@@ -1461,6 +1480,21 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.show('settings');
         notice = { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
       }
+    } else if (action === 'downloadflightlog') {
+      if (flightLog.count < 2) {
+        notice = {
+          text: 'Nothing recorded yet.\nTurn the flight log on in Settings, then fly.',
+          untilMs: performance.now() + 3600,
+        };
+      } else {
+        const rows = flightLog.count;
+        const secs = flightLog.seconds;
+        downloadText(flightLogName(ui.settings.map), flightLog.csv());
+        notice = {
+          text: `Flight log saved.\n${rows} rows over ${secs.toFixed(1)} s.`,
+          untilMs: performance.now() + 3600,
+        };
+      }
     } else if (action === 'setname') {
       (async () => {
         const name = await ui.askName({
@@ -1837,6 +1871,10 @@ export async function boot({ loading, bootStart, mapId }) {
         stateCurr = readState();
         simTimeMs += steps * MS_PER_STEP;
         simStepIdx += steps;
+        /* One row per rendered frame, and only while actually flying. The
+         * state and the sticks are read at the same instant, so the row is
+         * honest about what the craft was doing and what it was told. */
+        flightLog.push(stateCurr, rcHeld, FULL_THROTTLE_RPM);
       }
       /*
        * Ground contact, and whether it is a landing or a crash. This is the
@@ -2762,6 +2800,15 @@ export async function boot({ loading, bootStart, mapId }) {
       sent: rcLink.sent, dropped: rcLink.dropped,
       presets: Object.keys(LINK_PRESETS) };
   };
+  /* The recorder, for a capture and for checking a session recorded
+   * anything before asking a pilot to download it. */
+  window.__flightLog = () => ({
+    on: flightLog.on, rows: flightLog.count, seconds: flightLog.seconds,
+    csv: flightLog.count > 1 ? flightLog.csv().length : 0,
+  });
+  /* The recorded CSV itself, so a capture can check the file the download
+   * button would write without driving a file dialog. */
+  window.__flightLogCsv = () => flightLog.csv();
   window.__craftState = () => ({
     mode,
     flownThisRun,

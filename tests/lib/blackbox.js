@@ -274,31 +274,10 @@ export function parseBlackboxCsv(text) {
 }
 
 /*
- * Write the simulator's own trace out in the same CSV shape.
- *
- * This is what makes the harness testable without a real log: run the sim,
- * write its flight as though blackbox_decode had produced it, read it back,
- * replay it, and the residual has to be zero. Any convention error above,
- * the pitch sign in particular, fails that round trip loudly instead of
- * showing up as a plausible tracking error against real hardware.
+ * The writer lives in src/share/flightlog.js, because the BROWSER is what
+ * produces a log and src must not import from tests. It is re-exported here
+ * so a reader of this file finds both halves of the format in one place,
+ * and so the round trip that proves the parser above agrees with the writer
+ * (scripts/replay-log.js --selftest) imports one module rather than two.
  */
-export function toBlackboxCsv(samples) {
-  const head = [
-    'time (us)',
-    'rcCommand[0]', 'rcCommand[1]', 'rcCommand[2]', 'rcCommand[3]',
-    'gyroADC[0]', 'gyroADC[1]', 'gyroADC[2]',
-    'motor[0]', 'motor[1]', 'motor[2]', 'motor[3]',
-    'vbatLatest (V)',
-  ].map((n) => `"${n}"`).join(', ');
-  const body = samples.map((s) => [
-    Math.round(s.tUs),
-    s.rc[0] * RC_SPAN,
-    -s.rc[1] * RC_SPAN,
-    s.rc[2] * RC_SPAN,
-    THR_MIN + s.rc[3] * THR_SPAN,
-    s.gyroDps[0], s.gyroDps[1], s.gyroDps[2],
-    ...(s.motor ?? [0, 0, 0, 0]).map((d) => d * 2047),
-    s.vbat ?? 0,
-  ].join(', '));
-  return `${head}\n${body.join('\n')}\n`;
-}
+export { toBlackboxCsv } from '../../src/share/flightlog.js';

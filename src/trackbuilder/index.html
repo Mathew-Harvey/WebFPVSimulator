@@ -93,15 +93,55 @@
 
       /* ---------------- top bar ---------------- */
 
+      /*
+       * THREE ZONES. What the course is, what you are doing to it, where it
+       * goes. This bar was one flat row of seventeen controls at a single
+       * weight, and it wrapped, so Publish and Fly this track (the two
+       * things the tool exists to reach) fell to a second row while
+       * Duplicate held the first. The zones do not wrap against each other:
+       * the middle one gives up its space first, and the outgoing zone is
+       * pinned right where the eye finishes.
+       */
       #tb-topbar {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 16px;
         padding: 8px 12px;
         background: var(--panel-2);
         border-bottom: 1px solid var(--line);
-        flex-wrap: wrap;
       }
+      .tb-zone { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .tb-zone-file { flex: 0 1 auto; }
+      .tb-zone-edit {
+        flex: 1 1 auto;
+        justify-content: center;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .tb-zone-out { flex: 0 0 auto; margin-left: auto; }
+
+      .tb-more { position: relative; }
+      .tb-more-menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        z-index: 30;
+        display: flex;
+        flex-direction: column;
+        min-width: 10em;
+        padding: 4px;
+        border-radius: 5px;
+        background: var(--panel);
+        box-shadow: inset 0 0 0 1px var(--line), 0 14px 30px rgba(0, 0, 0, 0.55);
+      }
+      .tb-more-menu[hidden] { display: none; }
+      .tb-more-item {
+        border: 0;
+        background: transparent;
+        border-radius: 4px;
+        text-align: left;
+      }
+      .tb-more-item:hover:not(:disabled) { background: rgba(157, 179, 200, 0.1); }
 
       .tb-title {
         font-weight: 800;
@@ -123,6 +163,7 @@
       }
 
       .tb-listing {
+        flex: 0 0 auto;
         font-size: 11px;
         color: var(--dim);
         padding: 4px 9px;
@@ -255,11 +296,23 @@
       .tb-help { margin: 6px 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
       .tb-kind { margin: 2px 0 8px; color: var(--slate); font-size: 11px; line-height: 1.45; }
 
-      .tb-field { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
-      .tb-field-label { flex: 1; color: var(--slate); font-size: 11px; }
+      /* The label above the input, not beside it. Side by side, a two word
+         label ("Sill height") wrapped to two lines inside a 78 px flex
+         child and laid itself over the input next to it, and the paired
+         Opening fields were cut off at the panel's edge. Stacking costs one
+         line and cannot collide. */
+      .tb-field {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        margin: 6px 0;
+        min-width: 0;
+      }
+      .tb-field-label { color: var(--slate); font-size: 11px; line-height: 1.3; }
       .tb-field input, .tb-field select {
-        width: 78px;
-        flex: none;
+        width: 100%;
+        min-width: 0;
         background: var(--panel-2);
         border: 1px solid var(--line);
         border-radius: 4px;
@@ -268,15 +321,12 @@
         font-size: 12px;
         padding: 3px 5px;
       }
-      .tb-field select { width: auto; max-width: 150px; }
-      .tb-field-suffix { flex: none; width: 22px; color: var(--dim); font-size: 10px; }
+      .tb-field select { max-width: 100%; }
+      .tb-field-suffix { display: none; }
 
       .tb-grid2, .tb-grid3 { display: grid; gap: 2px 8px; }
       .tb-grid2 { grid-template-columns: 1fr 1fr; }
       .tb-grid3 { grid-template-columns: 1fr 1fr 1fr; }
-      .tb-grid2 .tb-field input, .tb-grid3 .tb-field input { width: 100%; min-width: 0; }
-      .tb-grid2 .tb-field-suffix, .tb-grid3 .tb-field-suffix { display: none; }
-      .tb-grid3 .tb-field { flex-direction: column; align-items: stretch; gap: 1px; }
 
       .tb-card {
         border: 1px solid var(--line);

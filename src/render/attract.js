@@ -102,6 +102,38 @@ function frameOverlay(camera, lookAt, overlay) {
   camera.translateY((narrow ? -0.16 : -0.05) * dist);
 }
 
+/*
+ * A curve parameter, wrapped into [0, 1).
+ *
+ * JAVASCRIPT'S % KEEPS THE SIGN OF THE DIVIDEND, so `-0.001 % 1` is
+ * -0.001 and not 0.999. Every parameter below is a position along a CLOSED
+ * loop, where those two are the same place, and the raw operator was being
+ * trusted to say so. It does not, and three.js does not defend itself:
+ * getPointAt hands a negative u through getUtoTmapping to getPoint, which
+ * computes a negative index and reads points[-1], and the failure surfaces
+ * as `Cannot read properties of undefined (reading 'distanceToSquared')`
+ * once per animation frame.
+ *
+ * That is not hypothetical. The thumbnail recorder's first frame delta can
+ * be negative (see the floor in src/share/orbit.js), so the camera clock
+ * started below zero and the very first sample threw. The recorder is an
+ * offscreen iframe, so the clip still came out, of a camera that never
+ * moved, with nobody watching the console.
+ *
+ * Fixing the recorder's clock is necessary and is done. This is the other
+ * half: a camera that is asked for a position on a loop should answer for
+ * any input, not only for inputs that happen to be positive. One of the
+ * five call sites below already hand patched its own sign by adding 1
+ * before the modulo, which is the same bug noticed once and fixed in one
+ * place.
+ */
+function wrap01(x) {
+  if (!Number.isFinite(x)) {
+    return 0;
+  }
+  return ((x % 1) + 1) % 1;
+}
+
 function poseCraft(craft, from, toward, bank, flourish) {
   if (!craft) {
     return;
@@ -218,11 +250,11 @@ export function makeAttractCamera(view) {
        */
       const overlay = Boolean(opts && opts.overlay);
       const craft = opts && opts.craft;
-      const u = ((nowMs * 0.001 * speed) / length) % 1;
+      const u = wrap01((nowMs * 0.001 * speed) / length);
       curve.getPointAt(u, pos);
-      curve.getPointAt((u + lookAhead / length) % 1, aim);
-      curve.getPointAt((u + lead / length) % 1, craftPos);
-      curve.getPointAt((u + (lead + lookAhead * 0.35) / length) % 1, craftAim);
+      curve.getPointAt(wrap01(u + lookAhead / length), aim);
+      curve.getPointAt(wrap01(u + lead / length), craftPos);
+      curve.getPointAt(wrap01(u + (lead + lookAhead * 0.35) / length), craftAim);
       /*
        * Bank, from the heading change between where the camera is and where
        * it is looking. Taken as a turn RATE by dividing by the look ahead,
@@ -230,7 +262,7 @@ export function makeAttractCamera(view) {
        * fast or slow, and smoothed, because the aim point stepping between
        * spline segments would otherwise flick the horizon.
        */
-      curve.getPointAt((u - lookAhead / length + 1) % 1, back);
+      curve.getPointAt(wrap01(u - lookAhead / length), back);
       const h0 = Math.atan2(pos.x - back.x, pos.z - back.z);
       const h1 = Math.atan2(aim.x - pos.x, aim.z - pos.z);
       let d = h1 - h0;

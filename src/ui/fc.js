@@ -39,6 +39,7 @@ import {
 } from '../fc/catalog.js';
 import {
   cliGet,
+  cliMap,
   composeConfig,
   exportCli,
   featureEnabled,

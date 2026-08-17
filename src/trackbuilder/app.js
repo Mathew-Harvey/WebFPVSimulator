@@ -61,6 +61,7 @@ import {
 } from '../share/session.js';
 import {
   bindOwnedCanvas,
+  courseChip,
   flyCanvasWithoutListing,
   forkDocument,
   inspectCourse,
@@ -260,9 +261,16 @@ export class App {
   }
 
   refresh() {
-    if (this.pathVisible) {
-      this.rebuildPath();
-    }
+    /*
+     * DERIVE ALWAYS, DRAW ON REQUEST. The line used to be built only while
+     * it was being drawn, so the length, the tightest radius, the elevation
+     * profile and every warning sat behind a button: an author had to press
+     * Create Path to find out whether the course they had just built was
+     * valid, and nothing told them there was anything to find out. Deriving
+     * is what tells them, so it happens on every edit. pathVisible now means
+     * only what it says, whether the line is painted on the canvas.
+     */
+    this.rebuildPath();
     this.panels.renderAll();
     this.updateTopBar();
     this.view3d.markDirty();
@@ -571,9 +579,10 @@ export class App {
       return;
     }
     /* renderAll and updateTopBar, the same pair createPath calls. Only the
-     * palette was refreshed, so the top bar's Create Path button stayed lit
-     * and the Results panel went on showing the lap figures of a path that
-     * is no longer drawn. */
+     * palette was refreshed, so the top bar's button stayed lit while the
+     * line was gone. */
+    /* The path stays derived. Only the paint goes away, so the Results
+     * panel keeps reporting on the course either way. */
     this.pathVisible = false;
     this.panels.renderAll();
     this.updateTopBar();
@@ -658,6 +667,28 @@ export class App {
     const copy = duplicateTrack(this.doc);
     saveTrack(copy);
     this.loadDocument(copy, `Duplicated as "${copy.name}".`);
+  }
+
+  /* The bar's Delete. Named apart from removeCurrent so the confirm cannot
+   * be skipped by a caller reaching for the shorter name. */
+  confirmRemove() {
+    this.removeCurrent();
+  }
+
+  toggleMore() {
+    if (!this.moreMenu) {
+      return;
+    }
+    this.moreMenu.hidden = !this.moreMenu.hidden;
+    this.moreBtn.classList.toggle('on', !this.moreMenu.hidden);
+  }
+
+  closeMore() {
+    if (!this.moreMenu || this.moreMenu.hidden) {
+      return;
+    }
+    this.moreMenu.hidden = true;
+    this.moreBtn.classList.remove('on');
   }
 
   removeCurrent() {
@@ -1074,9 +1105,10 @@ export class App {
     this.mode3d = btn('3D', () => this.setMode('3d'), 'Preview. Drag an element to change its height.');
     /* Plain, not primary. There is one green button on this bar and it is
      * the one that leaves for the air; a second would make neither read as
-     * the thing to press. Create Path goes amber while a line is showing,
+     * the thing to press. Show line goes amber while a line is showing,
      * which is the state that matters. */
-    this.pathBtn = btn('Create Path', () => this.createPath(), 'Derive the racing line and draw it');
+    /* The line is derived on every edit now, so this only paints it. */
+    this.pathBtn = btn('Show line', () => this.togglePath(), 'Draw the racing line on the canvas');
 
     const file = document.createElement('input');
     file.type = 'file';
@@ -1106,31 +1138,73 @@ export class App {
     back.href = '../../index.html';
     back.textContent = 'Back to the simulator';
 
-    bar.append(
+    /*
+     * THREE ZONES, NOT SEVENTEEN BUTTONS.
+     *
+     * This bar was one flat row of seventeen controls at a single weight,
+     * which wrapped, so on any normal window Publish and Fly this track,
+     * the two things this whole tool exists to reach, landed on a second
+     * row while Duplicate sat on the first. The zones are what the buttons
+     * already were: what the course IS (file), what you are doing to it
+     * (canvas), and where it goes (publish and fly).
+     *
+     * The file zone's rarely used half sits behind More, so Import, Export,
+     * Duplicate and Delete stop competing with Save. Delete asks first: it
+     * used to sit inline beside Save and remove a course on one click.
+     */
+    this.moreWrap = document.createElement('div');
+    this.moreWrap.className = 'tb-more';
+    this.moreBtn = btn('More', () => this.toggleMore(), 'Import, export, duplicate, delete');
+    this.moreMenu = document.createElement('div');
+    this.moreMenu.className = 'tb-more-menu';
+    this.moreMenu.hidden = true;
+    for (const [label, fn, title, cls] of [
+      ['Duplicate', () => this.duplicate(), 'Copy this course under a new name', ''],
+      ['Import', () => file.click(), 'Read a .json track file', ''],
+      ['Export', () => this.exportFile(), 'Write a .json track file', ''],
+      ['Delete', () => this.confirmRemove(), 'Remove this course from this browser', 'tb-danger'],
+    ]) {
+      const b = btn(label, () => { this.closeMore(); fn(); }, title, `tb-more-item ${cls}`.trim());
+      this.moreMenu.append(b);
+    }
+    this.moreWrap.append(this.moreBtn, this.moreMenu);
+    document.addEventListener('mousedown', (e) => {
+      if (this.moreWrap && !this.moreWrap.contains(e.target)) {
+        this.closeMore();
+      }
+    });
+
+    const zoneFile = document.createElement('div');
+    zoneFile.className = 'tb-zone tb-zone-file';
+    zoneFile.append(
       Object.assign(document.createElement('span'), { className: 'tb-title', textContent: 'Track Builder' }),
       name,
       this.listingChip,
       group(
-        btn('New', () => this.newTrack()),
+        btn('New', () => this.newTrack(), 'Start a blank course'),
         btn('Save', () => this.save(), 'Control S'),
         btn('Load', () => this.openLoad()),
-        btn('Duplicate', () => this.duplicate()),
-        btn('Delete', () => this.removeCurrent(), null, 'tb-btn tb-danger'),
       ),
-      group(
-        btn('Import', () => file.click(), 'Read a .json track file'),
-        btn('Export', () => this.exportFile(), 'Write a .json track file'),
-      ),
-      group(btn('Logo', () => this.openLogo(), 'Put a picture on every gate on this course')),
+      this.moreWrap,
+    );
+
+    const zoneEdit = document.createElement('div');
+    zoneEdit.className = 'tb-zone tb-zone-edit';
+    zoneEdit.append(
       group(this.undoBtn, this.redoBtn),
       group(this.mode2d, this.mode3d),
-      group(btn('Fit', () => this.frameAll(), 'Frame the whole field')),
-      this.pathBtn,
-      this.publishBtn,
-      this.flyBtn,
-      back,
-      file,
+      group(
+        btn('Fit', () => this.frameAll(), 'Frame the whole field'),
+        this.pathBtn,
+        btn('Logo', () => this.openLogo(), 'Put a picture on every gate on this course'),
+      ),
     );
+
+    const zoneOut = document.createElement('div');
+    zoneOut.className = 'tb-zone tb-zone-out';
+    zoneOut.append(this.publishBtn, this.flyBtn, back);
+
+    bar.append(zoneFile, zoneEdit, zoneOut, file);
     this.updateTopBar();
   }
 
@@ -1147,26 +1221,27 @@ export class App {
     this.pathBtn.classList.toggle('on', this.pathVisible);
     if (this.listingChip && this.publishBtn) {
       const listing = this.listingOfCanvas();
+      /* The words come from courseChip in src/share/listing.js, which is
+       * also what the simulator's course cards read, so the same course
+       * cannot be described one way here and another way there. */
+      const chip = courseChip(listing);
       this.listingChip.className = 'tb-listing';
-      if (listing.kind === 'owned') {
+      this.listingChip.textContent = chip.label;
+      this.listingChip.title = chip.note;
+      if (chip.tone === 'live') {
         this.listingChip.classList.add('owned');
-        this.listingChip.textContent = listing.layoutDrift
-          ? 'Layout not on the board'
-          : listing.nameDrift
-            ? 'Rename waiting'
-            : 'On the board';
+      } else if (chip.tone === 'warn') {
+        this.listingChip.classList.add('remix');
+      }
+      if (listing.kind === 'owned') {
         this.publishBtn.textContent = listing.canUpdateListing ? 'Update board' : 'On the board';
         this.publishBtn.title = listing.layoutDrift
           ? 'The layout changed. Updating the board will clear posted times.'
           : 'This course is on the public board. A rename updates the listing.';
       } else if (listing.kind === 'remix') {
-        this.listingChip.classList.add('remix');
-        const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
-        this.listingChip.textContent = `Copy${of}`;
         this.publishBtn.textContent = 'Publish as yours';
         this.publishBtn.title = 'Put this copy on the board under a new name. The original stays.';
       } else {
-        this.listingChip.textContent = 'Not on the board';
         this.publishBtn.textContent = 'Publish';
         this.publishBtn.title = 'Put this course on the public board, logo and all';
       }

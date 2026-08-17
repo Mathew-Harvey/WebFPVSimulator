@@ -673,7 +673,7 @@ export class Panels {
 
     host.append(el('h3', null, 'Results'));
     if (!path) {
-      host.append(el('p', 'tb-help', 'Press Create Path to derive the racing line through the course.'));
+      host.append(el('p', 'tb-help', 'Nothing in the flying order yet. Place a gate and it appears here, with the lap figures and any warnings.'));
       const empty = el('div', 'tb-profile-foot');
       empty.append(el('h3', null, 'Elevation'), this.nodes.profile);
       host.append(empty);

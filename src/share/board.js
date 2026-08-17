@@ -129,6 +129,37 @@ async function readJson(res) {
   return body;
 }
 
+/*
+ * Every published course, with the plan the board already drew for its own
+ * cards. This is what lets the Courses screen show the board's courses in
+ * the same grid as the worlds instead of sending the player to another tab:
+ * "Choose new map" used to open the board, and the board's own Fly button
+ * then opened a SECOND simulator, so picking a course left the player with
+ * three tabs and two running physics loops.
+ *
+ * The list is a nicety, not a dependency. A board that is down, blocked by
+ * CORS or simply not running must leave the rest of the screen working, so
+ * every caller treats a rejection as "no community courses today".
+ */
+export async function fetchTrackList(origin = boardOrigin()) {
+  const board = trimOrigin(origin);
+  const res = await fetch(`${board}/api/tracks`);
+  const body = await readJson(res);
+  const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
+  return tracks.map((t) => ({
+    id: String(t.id || ''),
+    name: String(t.name || 'Untitled track'),
+    author: String(t.author || ''),
+    gates: Number(t.gates) || 0,
+    /* `best` is the board's own shape: the fastest lap and who flew it. */
+    recordMs: t.best && Number.isFinite(Number(t.best.lapMs)) ? Number(t.best.lapMs) : null,
+    recordBy: t.best ? String(t.best.name || '') : '',
+    times: Number(t.times) || 0,
+    plan: t.plan || null,
+    board,
+  })).filter((t) => t.id);
+}
+
 export async function fetchTrackDocument(id, origin = boardOrigin()) {
   const res = await fetch(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(id)}/document`);
   return readJson(res);

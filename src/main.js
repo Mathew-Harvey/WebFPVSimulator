@@ -52,7 +52,7 @@ import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
-import { adoptShareFromLocation, boardPageUrl, postTime } from './share/board.js';
+import { adoptShareFromLocation, boardPageUrl, fetchTrackDocument, postTime } from './share/board.js';
 import { inspectCourse, publishCurrentCourse, pushOwnedListing, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
@@ -60,6 +60,7 @@ import {
   readPendingTime,
   writePendingTime,
   writePostedBest,
+  writeShareImport,
 } from './share/session.js';
 import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
@@ -1267,6 +1268,55 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   ui.onSettings = applySettings;
+  /*
+   * The first flight's prompts.
+   *
+   * THREE LINES, FIRED BY WHAT THE PILOT DOES, not by a clock. The banner
+   * already carries the launch prompt and the lap splits, and the guide
+   * arrows are already painted on the grass, so a first run needs nothing
+   * new: it needs the three sentences that carry somebody from a hover to a
+   * gate, and then it needs to get out of the way.
+   *
+   * It retires itself. Once a lap is on the board, or three gates are behind
+   * them, the pilot is flying and the lap splits are the more useful message.
+   * Retiring here rather than on a timer means a slow first lap is never cut
+   * off mid prompt and a fast one is never nagged.
+   */
+  const guidedPrompt = (race) => {
+    if (race.freestyle || race.lastLapMs != null || race.next >= 3) {
+      ui.guided = false;
+      return '';
+    }
+    if (race.next === 0) {
+      return 'Tip forward with the up arrow, then throttle\nThe green gate starts your lap';
+    }
+    if (race.next === 1) {
+      return 'Through. The next gate turns green\nRed is the same gate, wrong side';
+    }
+    return 'Gate by gate. R puts you back on the line\nEscape pauses';
+  };
+  /*
+   * A published course chosen from the Courses grid. This is exactly what a
+   * ?share= link does at boot, minus the navigation: fetch the document,
+   * write the share seat, tell the shell which course it is now holding. The
+   * screen then acts map:custom and the world builds around it.
+   */
+  ui.onBoardCourse = async (track) => {
+    const payload = await fetchTrackDocument(track.id, track.board);
+    const doc = payload.document || payload;
+    const share = {
+      id: payload.id || track.id,
+      name: payload.name || track.name || doc.name,
+      author: payload.author || track.author || '',
+      board: track.board,
+      document: doc,
+    };
+    if (!writeShareImport(share)) {
+      throw new Error('This browser would not store that course.');
+    }
+    ui.setShare(share);
+    return true;
+  };
   ui.onFcOpen = (page) => {
     const dump = moduleDump(sim);
     const runActive = isRunActive();
@@ -2172,9 +2222,7 @@ export async function boot({ loading, bootStart, mapId }) {
       || mode === 'flight'
       || mode === 'paused'
       || mode === 'results'
-      || ui.screen === 'maps'
-      || ui.screen === 'choosetrack'
-      || ui.screen === 'editormap'
+      || ui.screen === 'courses'
       || attractOn
       || Boolean(camOverride)
     );
@@ -2397,7 +2445,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (worldLive) {
       view.post.render();
     }
-    if (ui.screen === 'maps') {
+    if (ui.screen === 'courses') {
       ui.paintMapThumbs(shell.canvas);
     }
     const renderMs = performance.now() - renderStart;
@@ -2492,6 +2540,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
     const cal = input.calibrationView();
     const lapFlash = race.flashText(nowWall);
+    /* Computed once: guidedPrompt retires the guided flag as a side effect,
+     * so calling it in a condition and again in the body would consume it. */
+    const guidedText = ui.guided ? guidedPrompt(race) : '';
     if (ui.screen === 'calibrate') {
       if (cal) {
         ui.setCalibration(cal);
@@ -2511,15 +2562,27 @@ export async function boot({ loading, bootStart, mapId }) {
        * you find that out. */
       ui.setBanner('');
     } else if (crashed) {
-      ui.setBanner('Crashed');
+      ui.setBanner(ui.guided ? 'Crashed\nPress R to go back to the start line' : 'Crashed');
     } else if (!flownThisRun) {
       ui.setBanner(race.freestyle
         ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
         : 'Throttle up to take off\nThe green gate starts your lap');
+    } else if (guidedText) {
+      ui.setBanner(guidedText);
     } else if (lapFlash) {
       ui.setBanner(lapFlash);
     } else {
       ui.setBanner('');
+    }
+
+    /* How to fly draws the same gimbals the flight overlay does, from the
+     * same channels, so pressing W on the tutorial moves the stick it is
+     * describing. It is the only screen outside flight that wants them. */
+    if (ui.screen === 'howto') {
+      const ch = input.channels;
+      ui.setHowtoSticks({
+        roll: ch.roll, pitch: ch.pitch, yaw: ch.yaw, throttle: ch.throttle,
+      });
     }
 
     if (ui.screen === 'fc' && stateCurr) {

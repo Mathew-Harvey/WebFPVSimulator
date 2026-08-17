@@ -61,7 +61,7 @@ import {
   RATE_DEFAULTS,
   ratesSummary,
 } from '../../configs/rates.js';
-import { boardPageUrl, fetchTrackList } from '../share/board.js';
+import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
@@ -632,6 +632,7 @@ export class Ui {
     this.guided = false;
     this.boardCourses = [];
     this.boardLoading = false;
+    this.openingBoardCourse = false;
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
     this.screen = 'title';
     this.cursor = 0;
@@ -854,7 +855,7 @@ export class Ui {
     this.mapCardHost = el('div', 'map-cards');
     this.worldStrip.append(this.mapCardHost);
     this.courseStrip = el('div', 'card-strip');
-    this.courseStrip.append(el('div', 'strip-label', 'Courses'));
+    this.courseStrip.append(el('div', 'strip-label', 'Most flown'));
     this.courseCardHost = el('div', 'map-cards course-cards');
     this.boardNote = el('div', 'board-note', '');
     this.courseStrip.append(this.courseCardHost, this.boardNote);
@@ -1292,9 +1293,9 @@ export class Ui {
      * not even list courses: it opened the board in a new tab, whose own Fly
      * button then opened a second simulator.
      *
-     * So: worlds and courses in one grid, the board's courses fetched into
-     * that same grid, and the builder one row away from all of it. Start a
-     * new course is the builder's own New button, which is where it belongs.
+     * So: worlds and five courses from the board in one grid, the builder
+     * one row away from all of it. Start a new course is the builder's own
+     * New button, which is where it belongs.
      */
     if (this.screen === 'courses') {
       const listing = liveListing('custom');
@@ -2045,6 +2046,8 @@ export class Ui {
 
   /*
    * The board's courses, fetched once per visit to the Courses screen.
+   * Five most flown, or the two that have times plus three random when
+   * the board is still too young for a top five.
    *
    * A NICETY, NOT A DEPENDENCY. A board that is down, blocked or simply not
    * running leaves the worlds and the local course exactly as they are, with
@@ -2071,10 +2074,18 @@ export class Ui {
             return null;
           }
         })();
-        this.boardCourses = list.filter((t) => t.id !== seatId).slice(0, 8);
-        this.boardNote.textContent = this.boardCourses.length
-          ? ''
-          : 'No published courses on the board yet. Build one and publish it.';
+        const rest = list.filter((t) => t.id !== seatId);
+        this.boardCourses = pickFeaturedTracks(rest, 5);
+        if (this.boardCourses.length) {
+          this.boardNote.textContent = rest.length > this.boardCourses.length
+            ? 'Five from the board. Open the board for every course.'
+            : '';
+        } else if (list.length) {
+          /* The only listing is the course already on a card above. */
+          this.boardNote.textContent = '';
+        } else {
+          this.boardNote.textContent = 'No published courses on the board yet. Build one and publish it.';
+        }
         if (this.screen === 'courses') {
           this.renderMenu();
         }
@@ -2474,25 +2485,28 @@ export class Ui {
    */
   openBoardCourse(id) {
     const track = (this.boardCourses || []).find((t) => t.id === id);
-    if (!track || this.boardLoading) {
+    if (!track || this.openingBoardCourse) {
       return;
     }
-    this.boardLoading = true;
+    this.openingBoardCourse = true;
     this.boardNote.textContent = `Loading ${track.name}`;
-    if (this.onBoardCourse) {
-      this.onBoardCourse(track).then((ok) => {
-        this.boardLoading = false;
-        if (!ok) {
-          this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
-          return;
-        }
-        this.boardNote.textContent = '';
-        this.act('map:custom');
-      }).catch((err) => {
-        this.boardLoading = false;
-        this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
-      });
+    if (!this.onBoardCourse) {
+      this.openingBoardCourse = false;
+      this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
+      return;
     }
+    this.onBoardCourse(track).then((ok) => {
+      this.openingBoardCourse = false;
+      if (!ok) {
+        this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
+        return;
+      }
+      this.boardNote.textContent = '';
+      this.act('map:custom');
+    }).catch((err) => {
+      this.openingBoardCourse = false;
+      this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
+    });
   }
 
   /*

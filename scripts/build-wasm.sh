@@ -53,12 +53,24 @@ mkdir -p dist build/obj
 # There are two: 0001 adds the rotor telemetry the plant feeds the RPM
 # filter, and 0002 resets runtime statics on init so a re-init is a real
 # reset rather than a warm start.
+# Strip CR before apply. Windows core.autocrlf checks the patch files out
+# as CRLF, and git apply then fails to match the LF vendor tree. The revert
+# lives in a function so the trap does not re-parse '\r' as the letter r.
+apply_vendor_patches() {
+  local reverse="${1:-}"
+  local p
+  for p in $PATCHES; do
+    if [ -n "$reverse" ]; then
+      tr -d $'\r' < "$p" | git -C vendor/betaflight apply $reverse || true
+    else
+      tr -d $'\r' < "$p" | git -C vendor/betaflight apply
+    fi
+  done
+}
 PATCHES=$(ls patches/*.patch 2>/dev/null || true)
 if [ -n "$PATCHES" ]; then
-  for p in $PATCHES; do
-    git -C vendor/betaflight apply "../../$p"
-  done
-  trap 'for p in $PATCHES; do git -C vendor/betaflight apply -R "../../$p" || true; done' EXIT
+  apply_vendor_patches
+  trap 'apply_vendor_patches -R || true' EXIT
 fi
 
 CFLAGS_COMMON="-std=gnu17 -O2 -fno-fast-math -ffp-contract=off"

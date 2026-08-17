@@ -36,7 +36,7 @@ import { buildPath } from '../src/trackbuilder/path.js';
 import { collectWarnings } from '../src/trackbuilder/warnings.js';
 import { wrapAngle, apertureFrame } from '../src/trackbuilder/geometry.js';
 import { KIND, ELEMENTS, FRAME_TUBE_OD } from '../src/trackbuilder/elements.js';
-import { readCourse, isDive } from './course.mjs';
+import { readCourse, isDive, ON_THE_GROUND } from './course.mjs';
 import { docYaw } from './trk.mjs';
 import { TRK_FILES, trackId } from './sources.mjs';
 
@@ -729,6 +729,14 @@ function apertureTypeFor(site) {
   return flagged ? 'flaggedGate' : 'gate';
 }
 
+/* A Velocidrone flag mesh is authored at mid pole. That AGL is not a
+ * rooftop. Anything taller than the pole itself is a real elevation. */
+function plantMarkerZ(agl, role) {
+  const h = ELEMENTS[role]?.dims?.height ?? 2.5;
+  const z = Math.max(0, agl || 0);
+  return z > h ? z : 0;
+}
+
 /*
  * The openings of one site as document dimensions.
  *
@@ -742,7 +750,26 @@ function apertureDims(site, clearH) {
   const levels = Math.max(1, site.levels.length);
   const raw = site.levels.map((l) => l.centre).filter((c) => c != null);
   if (!raw.length) {
-    return { levels, sillH: 0, clearW: IMPORT_W, clearH, levelPitch: clearH + FRAME_TUBE_OD };
+    /*
+     * No checkpoint: a standing gate sits on the grass. A dive hoop whose
+     * mesh is in the air has its origin at the opening, not at the foot of
+     * a mast, so that AGL is the hoop centre and the sill is back-calculated.
+     * Putting the elevation on position.z left a short hoop floating with
+     * nothing reaching the ground. A dive with no elevation at all is the
+     * MultiGP 15 ft hoop: a 6 ft opening lying on the turf is not a dive.
+     */
+    if (isDive(site) && (site.base || 0) > ON_THE_GROUND) {
+      const hoop = site.base;
+      return {
+        levels,
+        sillH: Math.max(0, hoop - clearH / 2),
+        clearW: IMPORT_W,
+        clearH,
+        levelPitch: clearH + FRAME_TUBE_OD,
+      };
+    }
+    const sillH = isDive(site) ? ELEMENTS.diveGate.dims.sillH : 0;
+    return { levels, sillH, clearW: IMPORT_W, clearH, levelPitch: clearH + FRAME_TUBE_OD };
   }
   /*
    * A HOLE CANNOT BE CENTRED LOWER THAN HALF ITS OWN HEIGHT, and most of the
@@ -753,7 +780,10 @@ function apertureDims(site, clearH) {
    * gate standing ON the floor.
    */
   const centres = raw.map((c) => Math.max(clearH / 2, c));
-  const sillH = centres[0] - clearH / 2;
+  let sillH = centres[0] - clearH / 2;
+  if (isDive(site) && sillH < 0.05) {
+    sillH = ELEMENTS.diveGate.dims.sillH;
+  }
   /*
    * The pitch is anchored on the TOP hole, not on the authored spacing.
    * Clamping the bottom of a stack and then keeping the spacing lifts every
@@ -825,10 +855,11 @@ function fromTrk(raw, displayName) {
       /* A marker's height is not always zero and dropping it is not
        * harmless: FAI Turkiye 2024 rounds four flags twenty metres up on a
        * structure, and a marker pinned to the ground would pull the racing
-       * line down twenty metres and back for each of them. */
+       * line down twenty metres and back for each of them. A mid-pole mesh
+       * origin (about 1.6 m) is not that: the pole stands on the grass. */
       siteEl.set(site.id, addEl(doc, site.role, pos.x, pos.y, {
         name,
-        z: Math.max(0, site.levels[0].centre),
+        z: plantMarkerZ(site.levels[0].centre, site.role),
         yaw: wrapAngle(docYaw(site.heading)),
       }));
       continue;
@@ -837,7 +868,7 @@ function fromTrk(raw, displayName) {
     const clearH = type === 'diveGate' ? ELEMENTS.diveGate.dims.clearH : IMPORT_H;
     const el = addEl(doc, type, pos.x, pos.y, {
       name,
-      z: site.base || 0,
+      z: type === 'diveGate' ? 0 : (site.base || 0),
       yaw: wrapAngle(docYaw(site.heading)),
       /*
        * THE AUTHOR'S HEADING STAYS, unless the lap cannot use it. Without
@@ -875,7 +906,7 @@ function fromTrk(raw, displayName) {
   for (const p of placedProps) {
     const at = toDoc(p.x, p.z);
     addEl(doc, p.role, at.x, at.y, {
-      z: Math.max(0, p.agl),
+      z: plantMarkerZ(p.agl, p.role),
       yaw: wrapAngle(docYaw(p.heading)),
     });
   }

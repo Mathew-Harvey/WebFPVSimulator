@@ -35,6 +35,7 @@ import { boardOrigin, fetchTrackDocument, publishTrack } from './board.js';
 import { readPilotName } from './pilot.js';
 import {
   clearShareImport,
+  courseSeatKey,
   readAllEditKeys,
   readBind,
   readEditKey,
@@ -83,6 +84,20 @@ export function suggestRemixName(original) {
 
 export function hasFlyingOrder(doc) {
   return Boolean(doc && Array.isArray(doc.sequence) && doc.sequence.length > 0);
+}
+
+/* The custom map the shell should be showing, from the two seats. */
+export function seatedCourseKey() {
+  const share = readShareImport();
+  if (share && share.id) {
+    return courseSeatKey(share, share.document);
+  }
+  try {
+    const saved = readAutosave();
+    return courseSeatKey(null, saved && saved.doc);
+  } catch (e) {
+    return courseSeatKey(null, null);
+  }
 }
 
 function pick(parts, key, fallback) {

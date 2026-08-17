@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "id": "trk-f912dc57",
   "name": "2024 WA States",
-  "createdUtc": "2026-08-16T07:01:29Z",
-  "modifiedUtc": "2026-08-16T07:01:29Z",
+  "createdUtc": "2026-08-17T10:25:48Z",
+  "modifiedUtc": "2026-08-17T10:25:48Z",
   "field": {
     "width": 106,
     "depth": 74,
     "gridSize": 1
   },
   "settings": {
-    "tangentScale": 0.74,
+    "tangentScale": 1.1,
     "minCurveRadius": 2.5,
     "samplesPerSegment": 48
   },
@@ -579,7 +579,7 @@
       "yawOverridden": true,
       "dims": {
         "levels": 1,
-        "sillH": 0,
+        "sillH": 4.572,
         "clearW": 1.524,
         "clearH": 1.8288,
         "levelPitch": 1.862201
@@ -612,7 +612,7 @@
       "position": {
         "x": 93.57,
         "y": 46.79,
-        "z": 0.18
+        "z": 0
       },
       "yaw": -1.570796,
       "pitch": 0,

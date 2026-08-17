@@ -33,6 +33,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { countElementsByType, formatElementCounts } from './elements.js';
 import { normalize, serialize, toPlain, touch } from './model.js';
 
 const LIBRARY_KEY = 'webfpv.trackbuilder.library.v1';
@@ -63,7 +64,7 @@ export function listTracks() {
         id: doc.id,
         name: doc.name,
         modifiedUtc: doc.modifiedUtc,
-        elements: doc.elements.length,
+        mix: formatElementCounts(countElementsByType(doc.elements)),
         sequence: doc.sequence.length,
       };
     })

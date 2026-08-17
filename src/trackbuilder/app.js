@@ -715,7 +715,7 @@ export class App {
       name.textContent = t.name;
       const meta = document.createElement('div');
       meta.className = 'tb-load-meta';
-      meta.textContent = `${t.elements} elements, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
+      meta.textContent = `${t.mix}, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
       name.append(meta);
       const open = document.createElement('button');
       open.type = 'button';

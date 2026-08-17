@@ -155,9 +155,48 @@ export async function fetchTrackList(origin = boardOrigin()) {
     recordMs: t.best && Number.isFinite(Number(t.best.lapMs)) ? Number(t.best.lapMs) : null,
     recordBy: t.best ? String(t.best.name || '') : '',
     times: Number(t.times) || 0,
+    publishedUtc: t.publishedUtc ? String(t.publishedUtc) : '',
     plan: t.plan || null,
     board,
   })).filter((t) => t.id);
+}
+
+const FEATURED_LIMIT = 5;
+const FEATURED_FLOWN_FLOOR = 3;
+
+function byMostFlown(a, b) {
+  return (b.times || 0) - (a.times || 0)
+    || (b.gates || 0) - (a.gates || 0)
+    || String(b.publishedUtc || '').localeCompare(String(a.publishedUtc || ''))
+    || String(a.id).localeCompare(String(b.id));
+}
+
+function shuffled(items) {
+  const list = items.slice();
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = list[i];
+    list[i] = list[j];
+    list[j] = tmp;
+  }
+  return list;
+}
+
+/*
+ * Five courses for the pick-a-map strip. Ranked by times posted when that
+ * ranking means something. Two or fewer flown courses is not a top five,
+ * so those lead and the rest of the five are drawn at random from the
+ * ones nobody has posted on yet.
+ */
+export function pickFeaturedTracks(tracks, limit = FEATURED_LIMIT) {
+  const list = (tracks || []).filter((t) => t && t.id);
+  const flown = list.filter((t) => (t.times || 0) > 0).sort(byMostFlown);
+  if (flown.length >= FEATURED_FLOWN_FLOOR) {
+    return list.slice().sort(byMostFlown).slice(0, limit);
+  }
+  const flownIds = new Set(flown.map((t) => t.id));
+  const rest = shuffled(list.filter((t) => !flownIds.has(t.id)));
+  return [...flown, ...rest.slice(0, Math.max(0, limit - flown.length))];
 }
 
 export async function fetchTrackDocument(id, origin = boardOrigin()) {

@@ -136,6 +136,36 @@ function builtDims(dims) {
   };
 }
 
+const FLOATING_DIVE_Z = 0.3;
+const EMPTY_SILL = 0.05;
+
+/*
+ * Imported JSON that still carries a Velocidrone mesh origin: a dive hoop
+ * whose elevation is on position.z with an empty sill, or a flag whose
+ * origin is halfway up the pole. Convert writes these planted; this is the
+ * same fold so an old published course still flies. A dive with no
+ * elevation at all is the MultiGP 15 ft hoop. Mutates the normalised copy,
+ * never the caller's document.
+ */
+function plantImportedHeights(doc) {
+  for (const el of doc.elements) {
+    if (el.type === 'diveGate' && (el.dims.sillH || 0) < EMPTY_SILL) {
+      if ((el.position.z || 0) > FLOATING_DIVE_Z) {
+        el.dims.sillH = Math.max(0, el.position.z - (el.dims.clearH || 0) / 2);
+      }
+      if ((el.dims.sillH || 0) < EMPTY_SILL) {
+        el.dims.sillH = ELEMENTS.diveGate.dims.sillH;
+      }
+      el.position.z = 0;
+    }
+    if ((el.type === 'flag' || el.type === 'cone')
+        && el.position.z > 0
+        && el.position.z < (el.dims.height || 2.5)) {
+      el.position.z = 0;
+    }
+  }
+}
+
 /*
  * Read a document and return a course.
  *
@@ -156,6 +186,7 @@ function builtDims(dims) {
 export function courseFromDocument(raw) {
   const { doc, repairs } = normalize(raw);
   upgradeStackedFigures(doc);
+  plantImportedHeights(doc);
   const field = doc.field;
   const warnings = [...repairs];
 

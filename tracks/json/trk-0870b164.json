@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "id": "trk-0870b164",
   "name": "2022 AU Nationals",
-  "createdUtc": "2026-08-16T07:01:29Z",
-  "modifiedUtc": "2026-08-16T07:01:29Z",
+  "createdUtc": "2026-08-17T10:25:48Z",
+  "modifiedUtc": "2026-08-17T10:25:48Z",
   "field": {
     "width": 128,
     "depth": 108,
     "gridSize": 1
   },
   "settings": {
-    "tangentScale": 0.74,
+    "tangentScale": 1.1,
     "minCurveRadius": 2.5,
     "samplesPerSegment": 48
   },
@@ -140,14 +140,14 @@
       "position": {
         "x": 29.94,
         "y": 64.25,
-        "z": 4.69
+        "z": 0
       },
       "yaw": 0.785895,
       "pitch": 1.314431,
       "yawOverridden": true,
       "dims": {
         "levels": 1,
-        "sillH": 0,
+        "sillH": 3.7756,
         "clearW": 1.524,
         "clearH": 1.8288,
         "levelPitch": 1.862201
@@ -312,14 +312,14 @@
       "position": {
         "x": 71.45,
         "y": 93.53,
-        "z": 3.73
+        "z": 0
       },
       "yaw": 1.865445,
       "pitch": -1.045763,
       "yawOverridden": true,
       "dims": {
         "levels": 1,
-        "sillH": 0,
+        "sillH": 2.8156,
         "clearW": 1.524,
         "clearH": 1.8288,
         "levelPitch": 1.862201
@@ -375,7 +375,7 @@
       "yawOverridden": true,
       "dims": {
         "levels": 1,
-        "sillH": 0,
+        "sillH": 4.572,
         "clearW": 1.524,
         "clearH": 1.8288,
         "levelPitch": 1.862201
@@ -395,7 +395,7 @@
       "yawOverridden": true,
       "dims": {
         "levels": 1,
-        "sillH": 0,
+        "sillH": 4.572,
         "clearW": 1.524,
         "clearH": 1.8288,
         "levelPitch": 1.862201
@@ -504,14 +504,14 @@
       "position": {
         "x": 99.78,
         "y": 45.76,
-        "z": 7.56
+        "z": 0
       },
       "yaw": -2.656484,
       "pitch": 1.307439,
       "yawOverridden": true,
       "dims": {
         "levels": 1,
-        "sillH": 0,
+        "sillH": 6.6456,
         "clearW": 1.524,
         "clearH": 1.8288,
         "levelPitch": 1.862201

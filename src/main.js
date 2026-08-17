@@ -54,7 +54,7 @@ import { Race } from './game/race.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, fetchTrackDocument, postTime } from './share/board.js';
-import { inspectCourse, publishCurrentCourse, pushOwnedListing, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
   clearPendingTime,
@@ -911,6 +911,28 @@ export async function boot({ loading, bootStart, mapId }) {
     mapReady = true;
   }
 
+  /* Custom is one map id and many courses. A second pick from the board
+   * used to no-op because wantId and view.id were both "custom". */
+  function wantedCourseKey(mapId) {
+    return mapId === 'custom' ? seatedCourseKey() : '';
+  }
+
+  function loadedCourseKey(map) {
+    if (!map || map.id !== 'custom') {
+      return '';
+    }
+    return map.courseKey || '';
+  }
+
+  function worldMatchesSettings() {
+    const wantId = mapById(ui.settings.map).id;
+    const wantQ = normalizeGraphics(ui.settings.graphics);
+    return view
+      && wantId === view.id
+      && wantQ === view.graphics
+      && wantedCourseKey(wantId) === loadedCourseKey(view);
+  }
+
   async function syncWorld() {
     /* Normalised, not raw. Every loader path runs the id through mapById,
      * which falls back to the first map for an id no map has, so a raw
@@ -923,10 +945,10 @@ export async function boot({ loading, bootStart, mapId }) {
     if (swapInFlight) {
       return;
     }
-    if (mapReady && wantId === view.id && wantQ === view.graphics) {
+    if (mapReady && worldMatchesSettings()) {
       return;
     }
-    const keepPlace = mapReady && wantId === view.id;
+    const keepPlace = mapReady && wantId === view.id && wantedCourseKey(wantId) === loadedCourseKey(view);
     const stayScreen = (ui.screen === 'settings' || ui.screen === 'paused' || ui.screen === 'title' || ui.screen === 'fc')
       ? ui.screen
       : null;
@@ -985,7 +1007,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * and ui.js has already saved it, so the setting and the loaded map would
      * otherwise stay diverged with the title screen naming a map that is not
      * there. Honour it now. */
-    if (mapReady && (mapById(ui.settings.map).id !== view.id || normalizeGraphics(ui.settings.graphics) !== view.graphics)) {
+    if (mapReady && !worldMatchesSettings()) {
       await syncWorld();
     }
   }
@@ -1038,7 +1060,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
-    if (s.map !== view.id || normalizeGraphics(s.graphics) !== view.graphics) {
+    if (!worldMatchesSettings()) {
       syncWorld();
     }
     /*

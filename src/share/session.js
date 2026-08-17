@@ -72,6 +72,22 @@ export function readShareImport() {
   return raw;
 }
 
+/*
+ * Which course a custom world was built from, or should be built from.
+ * The map id is only "custom"; two published courses share that id, so a
+ * swap has to compare this key or picking a second course from the menu
+ * leaves the first one standing.
+ */
+export function courseSeatKey(share, doc) {
+  if (share && share.id) {
+    return `share:${share.id}`;
+  }
+  if (doc && (doc.id || doc.modifiedUtc)) {
+    return `local:${doc.id || 'draft'}:${doc.modifiedUtc || ''}`;
+  }
+  return 'custom:empty';
+}
+
 export function writeShareImport(payload) {
   if (!payload || !payload.document || !payload.id) {
     return false;

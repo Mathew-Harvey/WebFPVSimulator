@@ -40,8 +40,8 @@ import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } fro
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
-import { RAD, DEG } from './geometry.js';
-import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight, virtualApertureDims } from './elements.js';
+import { RAD, DEG, wrapAngle } from './geometry.js';
+import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight, virtualApertureDims, countElementsByType, formatElementCounts } from './elements.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
@@ -204,6 +204,50 @@ function suiteRoundTrip() {
   check('the repairs are reported', hostile.repairs.length >= 4, `${hostile.repairs.length} repairs`);
 }
 
+function suiteElementCounts() {
+  console.log('\nelement counts by type');
+
+  check('an empty field has no types and says so',
+    countElementsByType([]).length === 0
+    && formatElementCounts([]) === 'no elements');
+
+  const extras = createTrack();
+  place(extras, 'startPads', 0, 0);
+  place(extras, 'label', 4, 0, { text: 'note' });
+  check('start pads and labels do not count as course furniture',
+    countElementsByType(extras.elements).length === 0);
+
+  const doc = demoTrack();
+  const rows = countElementsByType(doc.elements);
+  const byType = Object.fromEntries(rows.map((r) => [r.type, r.count]));
+  check('the demo names gates as gates, not a lump of elements', byType.gate === 4, `${byType.gate}`);
+  check('and the ladder as a triple stack', byType.ladder === 1);
+  check('and the dive gate, tower, flag, cone and barrier each on their own row',
+    byType.diveGate === 1 && byType.tower === 1 && byType.flag === 1
+    && byType.cone === 1 && byType.barrier === 1);
+  check('start pads and labels stay out of the inventory',
+    !byType.startPads && !byType.label && rows.every((r) => PALETTE_ORDER.includes(r.type)));
+  check('types with none on the field are omitted',
+    !byType.doubleStack && !byType.flaggedGate && !byType.waypoint);
+  check('the printed mix is the palette order, pluralised',
+    formatElementCounts(rows) === '4 gates, 1 triple stack, 1 tower, 1 dive gate, 1 barrier, 1 flag, 1 cone',
+    formatElementCounts(rows));
+
+  const mixed = createTrack();
+  place(mixed, 'gate', 0, 0);
+  place(mixed, 'flaggedGate', 4, 0);
+  place(mixed, 'doubleStack', 8, 0);
+  place(mixed, 'flaggedDoubleStack', 12, 0);
+  const mix = countElementsByType(mixed.elements);
+  check('a flagged gate stays a flagged gate, not folded into Gate',
+    mix.length === 4
+    && mix[0].type === 'gate' && mix[0].count === 1
+    && mix[1].type === 'flaggedGate' && mix[1].count === 1
+    && mix[2].type === 'doubleStack' && mix[2].count === 1
+    && mix[3].type === 'flaggedDoubleStack' && mix[3].count === 1,
+    formatElementCounts(mix));
+}
+
 function suiteFaces() {
   console.log('\nfaces and pass sides');
 
@@ -347,6 +391,8 @@ function suitePath() {
   check('the sequenced element count is under the entry count, because of the ladder',
     sequencedElementCount(doc) === doc.sequence.length - 1,
     `${sequencedElementCount(doc)} elements for ${doc.sequence.length} entries`);
+
+  /* Inventory by type is the quote an author wants, not a single lump. */
 
   /* The tangent scale is one constant and it has to actually do something. */
   const tight = { ...doc, settings: { ...doc.settings, tangentScale: 0.05 } };
@@ -1126,6 +1172,132 @@ function suiteScoring() {
   check('flying the other side of the pole does not register the flag', missHit.passed == null,
     `passed ${missHit.passed}`);
 
+  const hang = createTrack();
+  const hangDive = place(hang, 'diveGate', 10, 0, { z: 4.69, dims: { sillH: 0 } });
+  addToSequence(hang, hangDive.id, 0);
+  const hangCourse = courseFromDocument(hang);
+  const hangSt = hangCourse.structures.find((s) => s.type === 'diveGate');
+  const wantSill = (4.69 - hangDive.dims.clearH / 2) * GATE_SCALE;
+  check('a floating dive mast is planted on the ground', hangSt && hangSt.baseY === 0,
+    hangSt ? `baseY ${hangSt.baseY}` : 'missing');
+  check('and its elevation lives in the sill', hangSt && Math.abs(hangSt.dims.sillH - wantSill) < 0.02,
+    hangSt ? `sill ${hangSt.dims.sillH.toFixed(3)} vs ${wantSill.toFixed(3)}` : 'missing');
+
+  const grass = createTrack();
+  const grassDive = place(grass, 'diveGate', 10, 0, { dims: { sillH: 0 } });
+  addToSequence(grass, grassDive.id, 0);
+  const grassCourse = courseFromDocument(grass);
+  const grassSt = grassCourse.structures.find((s) => s.type === 'diveGate');
+  const want15 = ELEMENTS.diveGate.dims.sillH * GATE_SCALE;
+  check('a dive on the grass is a 15 ft MultiGP dive',
+    grassSt && Math.abs(grassSt.dims.sillH - want15) < 0.02,
+    grassSt ? `sill ${grassSt.dims.sillH.toFixed(3)} vs ${want15.toFixed(3)}` : 'missing');
+  check('and still planted on the ground', grassSt && grassSt.baseY === 0,
+    grassSt ? `baseY ${grassSt.baseY}` : 'missing');
+
+  const midPole = createTrack();
+  const mp0 = place(midPole, 'gate', 0, 0);
+  const mpFlag = place(midPole, 'flag', 10, 0, { z: 1.61 });
+  const mp1 = place(midPole, 'gate', 20, 0);
+  addToSequence(midPole, mp0.id, 0);
+  addToSequence(midPole, mpFlag.id, 0);
+  addToSequence(midPole, mp1.id, 0);
+  const midCourse = courseFromDocument(midPole);
+  const midSt = midCourse.structures.find((s) => s.type === 'flag');
+  const midStation = midCourse.stations.find((s) => s.type === 'flag');
+  check('a mid-pole flag origin is planted on the ground', midSt && midSt.baseY === 0,
+    midSt ? `baseY ${midSt.baseY}` : 'missing');
+  check('and its scoring square sits on the grass with it', midStation && midStation.baseY === 0,
+    midStation ? `baseY ${midStation.baseY}` : 'missing');
+
+  const roof = createTrack();
+  const rf0 = place(roof, 'gate', 0, 0);
+  const rfFlag = place(roof, 'flag', 10, 0, { z: 20 });
+  const rf1 = place(roof, 'gate', 20, 0);
+  addToSequence(roof, rf0.id, 0);
+  addToSequence(roof, rfFlag.id, 0);
+  addToSequence(roof, rf1.id, 0);
+  const roofCourse = courseFromDocument(roof);
+  const roofSt = roofCourse.structures.find((s) => s.type === 'flag');
+  check('a rooftop flag keeps its elevation', roofSt && Math.abs(roofSt.baseY - 20) < 1e-9,
+    roofSt ? `baseY ${roofSt.baseY}` : 'missing');
+
+  const stile = createTrack();
+  const stileLead = place(stile, 'gate', 0, 0);
+  const stileGate = place(stile, 'gate', 10, 0, { yaw: 0 });
+  stileGate.yawOverridden = true;
+  const stileL = place(stile, 'flag', 10, 1.4);
+  const stileR = place(stile, 'flag', 10, -1.4);
+  const stileNext = place(stile, 'gate', 20, 0);
+  for (const el of [stileLead, stileGate, stileL, stileR, stileNext]) {
+    addToSequence(stile, el.id, 0);
+  }
+  const stileCourse = courseFromDocument(stile);
+  const stileGateSt = stileCourse.stations.find((s) => s.elementId === stileGate.id);
+  const stileFlagSt = stileCourse.stations.find((s) => s.elementId === stileL.id);
+  const stileYawErr = stileGateSt && stileFlagSt
+    ? Math.abs(wrapAngle(stileFlagSt.yaw - stileGateSt.yaw))
+    : Infinity;
+  check('a flag on a gate stile faces the opening, not along the PVC',
+    stileYawErr < 15 * RAD,
+    Number.isFinite(stileYawErr) ? `${(stileYawErr * DEG).toFixed(1)} deg` : 'missing');
+  const stileRace = raceFromCourse(stileCourse);
+  const stileGateG = stileRace.gates.find((g) => g.elementId === stileGate.id);
+  const stileFlagG = stileRace.gates.find((g) => g.elementId === stileL.id);
+  for (const g of stileRace.gates) {
+    if (g === stileFlagG) {
+      break;
+    }
+    const seg = flyAlong(g);
+    stileRace.update(seg.prev, seg.curr, 10, 10);
+  }
+  check('the stile flag is next after its gate',
+    stileFlagG != null && stileRace.next === stileRace.gates.indexOf(stileFlagG),
+    `next ${stileRace.next}`);
+  const stileHit = stileFlagG ? stileRace.update(
+    flyAlong(stileFlagG).prev, flyAlong(stileFlagG).curr, 20, 20,
+  ) : { passed: null };
+  check('flying the stile square registers the flag', stileHit.passed != null,
+    `passed ${stileHit.passed}`);
+
+  const far = createTrack();
+  const farGate = place(far, 'gate', 10, 0, { yaw: 0 });
+  farGate.yawOverridden = true;
+  const farA = place(far, 'flag', 10, 3.5);
+  const farB = place(far, 'flag', 10, -3.5);
+  const farNext = place(far, 'gate', 20, 0);
+  for (const el of [farGate, farA, farB, farNext]) {
+    addToSequence(far, el.id, 0);
+  }
+  const farCourse = courseFromDocument(far);
+  const farGateSt = farCourse.stations.find((s) => s.elementId === farGate.id);
+  const farFlagSt = farCourse.stations.find((s) => s.elementId === farA.id);
+  const farYawErr = farGateSt && farFlagSt
+    ? Math.abs(wrapAngle(farFlagSt.yaw - farGateSt.yaw))
+    : 0;
+  const beside = createTrack();
+  const besideGate = place(beside, 'gate', 10, 0, { yaw: 0 });
+  besideGate.yawOverridden = true;
+  const besideFlag = place(beside, 'flag', 10, 2.75);
+  const besideOther = place(beside, 'flag', 10, -1.4);
+  const besideNext = place(beside, 'gate', 20, 0);
+  for (const el of [besideGate, besideFlag, besideOther, besideNext]) {
+    addToSequence(beside, el.id, 0);
+  }
+  const besideCourse = courseFromDocument(beside);
+  const besideGateSt = besideCourse.stations.find((s) => s.elementId === besideGate.id);
+  const besideFlagSt = besideCourse.stations.find((s) => s.elementId === besideFlag.id);
+  const besideYawErr = besideGateSt && besideFlagSt
+    ? Math.abs(wrapAngle(besideFlagSt.yaw - besideGateSt.yaw))
+    : Infinity;
+  check('a flag 2.75 m in the gate plane still faces the opening',
+    besideYawErr < 15 * RAD,
+    Number.isFinite(besideYawErr) ? `${(besideYawErr * DEG).toFixed(1)} deg` : 'missing');
+
+  check('a flag 3.5 m off a gate is a real turn, not a stile snap',
+    farYawErr > 60 * RAD,
+    Number.isFinite(farYawErr) ? `${(farYawErr * DEG).toFixed(1)} deg` : 'missing');
+
   const edge = createTrack();
   const a = place(edge, 'gate', 0, 0);
   const b = place(edge, 'gate', 10, 0);
@@ -1198,6 +1370,7 @@ function main() {
   }
   console.log('track builder self test');
   suiteRoundTrip();
+  suiteElementCounts();
   suiteFaces();
   suitePath();
   suiteGuide();

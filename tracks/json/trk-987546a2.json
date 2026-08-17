@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-987546a2",
   "name": "2022 MultiGP GQ",
-  "createdUtc": "2026-08-16T07:01:29Z",
-  "modifiedUtc": "2026-08-16T07:01:29Z",
+  "createdUtc": "2026-08-17T10:25:48Z",
+  "modifiedUtc": "2026-08-17T10:25:48Z",
   "field": {
     "width": 68,
     "depth": 37,
@@ -395,9 +395,9 @@
       "elementId": "el-9",
       "apertureIndex": null,
       "entry": null,
-      "passSide": "right",
+      "passSide": "left",
       "clearance": 1.5,
-      "overridden": false
+      "overridden": true
     },
     {
       "id": "sq-9",
@@ -406,7 +406,7 @@
       "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": true
+      "overridden": false
     },
     {
       "id": "sq-10",
@@ -451,7 +451,7 @@
       "entry": 1,
       "passSide": null,
       "clearance": null,
-      "overridden": false
+      "overridden": true
     },
     {
       "id": "sq-15",

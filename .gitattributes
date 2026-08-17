@@ -1,0 +1,3 @@
+# Patch files must stay LF. Windows core.autocrlf otherwise checks them
+# out as CRLF, and git apply then fails against the LF vendor tree.
+patches/*.patch text eol=lf

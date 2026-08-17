@@ -1987,6 +1987,7 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       const made = bannerFlag(
         kit, () => 0.5, height, s.x, s.z, markerIndex,
         Math.max(0.5, s.dims.height), Math.max(0.008, s.dims.poleRadius),
+        s.baseY,
       );
       markerIndex += 1;
       made.group.rotation.y = s.yaw;
@@ -2695,7 +2696,7 @@ function sailMaterial(tex, key) {
   });
 }
 
-function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018) {
+function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018, baseY = 0) {
   const g = new THREE.Group();
   const mast = Math.max(0.008, poleR);
   const pole = new THREE.Mesh(
@@ -2720,7 +2721,7 @@ function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018) {
   );
   sail.castShadow = true;
   g.add(sail);
-  g.position.set(x, height(x, z), z);
+  g.position.set(x, height(x, z) + baseY, z);
   g.rotation.y = rng() * Math.PI;
   return {
     group: g, sail, pole, foot, height: h,

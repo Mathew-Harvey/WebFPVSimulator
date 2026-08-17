@@ -460,6 +460,50 @@ export function paletteItems() {
   ];
 }
 
+const EXTRA_TYPES = new Set(PALETTE_EXTRA);
+
+/*
+ * How many of each palette type stand on the field. Start pads and labels
+ * are extras, not course furniture, so they stay out of this list. Types
+ * that are not present are omitted, and the order is the palette order so
+ * two tracks with the same mix always print the same way.
+ *
+ * This is the inventory an author quotes: 4 gates, 1 double stack, 1 dive
+ * gate, 2 flags. It is not the flying-order length, which still lives on
+ * the sequence. A flagged gate stays a flagged gate; the pennant is dress
+ * but the palette tool is distinct, and collapsing it into Gate would hide
+ * that.
+ */
+export function countElementsByType(elements) {
+  const tally = new Map();
+  for (const el of elements || []) {
+    const type = el && el.type;
+    if (!type || !ELEMENTS[type] || EXTRA_TYPES.has(type)) {
+      continue;
+    }
+    tally.set(type, (tally.get(type) || 0) + 1);
+  }
+  const rows = [];
+  for (const id of PALETTE_ORDER) {
+    const count = tally.get(id) || 0;
+    if (count > 0) {
+      rows.push({ type: id, label: ELEMENTS[id].label, count });
+    }
+  }
+  return rows;
+}
+
+/* "4 gates, 1 triple stack, 1 dive gate". Empty field: "no elements". */
+export function formatElementCounts(rows) {
+  if (!rows || !rows.length) {
+    return 'no elements';
+  }
+  return rows.map((row) => {
+    const word = row.count === 1 ? row.label : `${row.label}s`;
+    return `${row.count} ${word.toLowerCase()}`;
+  }).join(', ');
+}
+
 /* Look up an element definition by the hotkey the user pressed. Returns
  * undefined for a key that is not a palette key. */
 export function elementByKey(letter) {

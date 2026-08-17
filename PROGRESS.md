@@ -9969,3 +9969,133 @@ gives the other. Same proof, one compile.
 prebuilt wasm here and still says nothing about this turn's C.
 
 Next: the hash comparison above is the gate on P1. Then a real log.
+
+### 2026-08-17 | Windows rebuild after pull
+Changed: `npm run build:wasm` is the rebuild. It was failing on this
+machine because `core.autocrlf=true` checks `patches/*.patch` out as
+CRLF, and `git apply` then cannot match the LF vendor tree
+(`common_post.h:641, patch does not apply`). `scripts/build-wasm.sh`
+now strips CR through `tr` before apply and revert, using a function
+for the EXIT trap so a quoted `'\r'` is not re-parsed as the letter r.
+`.gitattributes` pins `patches/*.patch` to LF. No compile flags, ABI
+or plant change.
+Verify: `npm run build:wasm` exit 0, `git diff --stat vendor/betaflight`
+empty. `npm run verify` 9 of 16. PASS: determinism-repeat
+a=6d17d4814bdc b=6d17d4814bdc (unchanged), frame-independence 1 hash,
+hover-throttle 0.2637, punch-out 81.5 m, terminal-velocity 31.1 m/s,
+motor-step-response 26 ms, rate-tracking 671.5 vs 670 (0.22 percent),
+battery-sag 11.14 percent, diff-passthrough 0.47 percent. FAIL:
+build-clean (verify's `spawnSync('npm')` exits 1 with empty output on
+Windows in about a second; the same script run from the shell exits 0),
+determinism-cross-host / console-clean / audio-bed / world-scale /
+map-isolation (no Chrome, `SIM_CHROME_BIN` unset), yaw-coupling -0.12
+deg (standing, below the 2 deg floor).
+Wrong: first tried `git apply --ignore-cr-at-eol`; the git on PATH
+inside Git Bash rejects that flag. Then `tr -d '\r'` in a
+single-quoted trap became `tr -d r`, deleted every r from the reverse
+patch paths (`sc/main/taget/...`), and left the vendor tree dirty.
+Reverted those four files with a correct reverse apply, then moved the
+strip into `apply_vendor_patches`.
+
+### 2026-08-17 | Pick a map: five most flown, and load the one you click
+Changed: the Courses strip no longer dumps the first eight board listings
+in API order. `pickFeaturedTracks` in `src/share/board.js` shows the five
+most flown. When two or fewer courses have times, those lead and the rest
+of the five are random unflown ones, because that is not a top five yet.
+Clicking a board card from that menu now rebuilds the custom world even
+when the map id is already `custom`: `syncWorld` compares a course seat
+key (share id, or the local canvas) rather than the map id alone. The
+leaderboard Fly link worked because it boots a new tab with `?share=`.
+The in-menu path wrote the new document then no-op'd the swap. Clicks
+during a list refresh are no longer swallowed by the same `boardLoading`
+flag the fetch uses.
+Verify: `npm run verify` 9 of 16. PASS: determinism-repeat
+a=6d17d4814bdc b=6d17d4814bdc (unchanged, UI only), frame-independence
+1 hash, hover-throttle 0.2637, punch-out 81.5 m, terminal-velocity
+31.1 m/s, motor-step-response 26 ms, rate-tracking 671.5 vs 670
+(0.22 percent), battery-sag 11.14 percent, diff-passthrough 0.47 percent.
+FAIL: build-clean (verify's `spawnSync('npm')` on Windows, same as the
+rebuild entry above), determinism-cross-host / console-clean / audio-bed
+/ world-scale / map-isolation (no Chrome), yaw-coupling -0.12 deg
+(standing). A small node check of `pickFeaturedTracks` and
+`courseSeatKey` passed.
+Wrong: first draft of the syncWorld tail guard retried when the world
+already matched, which would loop. Inverted before verify. The click
+swallow was a second bug found while reading `openBoardCourse`: it
+shared `boardLoading` with the list fetch, so a second visit to Courses
+ignored clicks until the list came back.
+
+### 2026-08-17 | track builder | element counts by type
+
+Changed: the Results panel no longer quotes a single "Elements" total.
+It lists how many of each palette type stand on the field: Gate, Flagged
+gate, Double stack, Flagged double, Triple stack, Tower, Dive Gate,
+Barrier, Flag, Cone, Waypoint. Types with none on the field are omitted.
+Start pads and labels stay out, they are extras not course furniture.
+The saved-track list uses the same mix ("4 gates, 1 triple stack, 1 dive
+gate") instead of "N elements". Flying-order length is still "In the
+order", which is the number of things you fly through, not the inventory.
+
+`countElementsByType` and `formatElementCounts` live in elements.js next
+to the palette. A flagged gate stays a flagged gate; collapsing it into
+Gate would hide which tool was used.
+
+Verify: not run. This turn does not touch src/native, the WASM build, the
+input path or the simulation trace. `node src/trackbuilder/selftest.js`:
+213 passed, 0 failed, 9 of them new.
+Wrong: nothing. The count is of placed structures, not of sequence
+entries, so a ladder flown twice still shows as 1 triple stack and 2 in
+the order, which is the quote that was getting lost.
+
+### 2026-08-17 | track gates | floating dives, stile squares, flag height
+
+Changed: three import bugs that made published courses fly wrong.
+
+Dive hoops with no checkpoint were stored with the Velocidrone mesh AGL on
+`position.z` and `sillH` of 0. The field draws the mast from the structure
+base up to the hoop, so those hoops hung in the air on 2022 AU Nationals
+(gates 6, 16, 26) and ROX Open 2023 (gates 2, 27). Elevation now lives in
+`sillH`, mast on the ground. Convert writes that; `courseFromDocument` folds
+the same way so an old published JSON still plants.
+
+Flags on a gate stile took their virtual square's heading from the chain
+through the two poles, which runs along the PVC. The square stood at 90
+degrees to the opening, so a pass through the hole never hit it. A pole
+beside an aperture (in the gate plane, out at the stile, within 3 m) now
+uses that aperture's travel. A flag 2.75 m in the gate plane still snaps
+(ROX Open 29). A flag 3.5 m off a gate is left as a real turn.
+
+A Velocidrone flag mesh origin is mid pole, about 1.6 m. Convert stored that
+as `position.z`, the field planted the pole on the grass and scored a square
+at 1.6 m, and flying the visible flag missed. Origins below the pole height
+plant at 0. Rooftop flags (FAI Turkiye at 20 m) keep their elevation, and
+`bannerFlag` now stands on `terrain + baseY` so the mesh and the square agree.
+
+Verify: not run for the physics harness. This turn does not touch src/native,
+the WASM build, the input path or the simulation trace.
+`node src/trackbuilder/selftest.js`: 223 passed, 0 failed, 10 of them new.
+`node tracks/convert.mjs` rewrote the ten documents. `node tracks/check.mjs`:
+3990 passed, 0 failed. The human notes about the line passing near PVC are
+the same shape as before, plus FAI gate 9 sitting on the chord between stile
+flags 10 and 11 now that those squares face the opening.
+Wrong: a first radius of 4 m around every gate would have snapped 2023 AU
+NATS Qualifying flags 3 and 10, which are a real 90 degree turn. The stile
+test is in-plane geometry, not a search radius. Four dive hoops still sit
+on the grass with pitch near 90 deg and no elevation (WA States 31 and 30,
+AU Nationals 19 and 20): those .trk files have no checkpoint to raise them.
+
+### 2026-08-17 | track gates | grass dives are 15 ft
+
+Changed: a dive with no usable elevation is the MultiGP 15 ft hoop, not a
+6 ft opening lying on the turf. Convert writes `sillH` 4.572 m when a dive
+has no checkpoint (or a ground-level one). A mesh that is already in the
+air still sets the hoop from that AGL. `courseFromDocument` does the same
+fold for old JSON. 2024 WA States 31, 2025 WA States 30, and 2022 AU
+Nationals 19 and 20 now stand at 15 ft.
+Verify: not run for the physics harness. This turn does not touch src/native,
+the WASM build, the input path or the simulation trace.
+`node src/trackbuilder/selftest.js`: 225 passed, 0 failed, 2 of them new.
+`node tracks/convert.mjs` rewrote the ten documents. `node tracks/check.mjs`:
+3994 passed, 0 failed.
+Wrong: nothing. Dives that already had a checkpoint or an elevated mesh
+kept that height (FAI 19 stays at 2.92 m, AU Nationals 6 stays at 3.78 m).

@@ -54,7 +54,65 @@ import { KIND } from './elements.js';
 import {
   elementById, kindOf, entryAnchor, elementNormal, startPadsOf, sequenceRefCount,
 } from './model.js';
-import { cross, dot, normalize, sub, yawVector, wrapAngle } from './geometry.js';
+import { apertureFrame, cross, dot, normalize, sub, yawVector, wrapAngle } from './geometry.js';
+
+/*
+ * A flag parked on a gate stile has neighbours along the PVC, so the chain
+ * through it runs along the header and the virtual square would stand at 90
+ * degrees to the opening. When the pole is beside an aperture, travel is
+ * that aperture's, not the chain.
+ */
+const BESIDE_GATE_M = 3.0;
+const BESIDE_ALONG_N_M = 1.2;
+
+export function nearbyApertureTravel(doc, el) {
+  if (!el || (el.type !== 'flag' && el.type !== 'cone')) {
+    return null;
+  }
+  let best = null;
+  for (const gate of doc.elements) {
+    if (kindOf(gate) !== KIND.APERTURE || gate.type === 'diveGate') {
+      continue;
+    }
+    const dx = el.position.x - gate.position.x;
+    const dy = el.position.y - gate.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > BESIDE_GATE_M || dist < 0.15) {
+      continue;
+    }
+    const frame = apertureFrame(gate.yaw, 0);
+    const alongN = dx * frame.normal.x + dy * frame.normal.y;
+    const alongW = dx * frame.widthAxis.x + dy * frame.widthAxis.y;
+    const half = (gate.dims?.clearW || 1.524) / 2;
+    if (Math.abs(alongN) > BESIDE_ALONG_N_M || Math.abs(alongW) < half * 0.45) {
+      continue;
+    }
+    if (!best || dist < best.dist) {
+      best = { gate, dist };
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  const n = elementNormal(best.gate);
+  const sign = sequenceEntryNear(doc, el, best.gate);
+  return { x: n.x * sign, y: n.y * sign, z: n.z * sign };
+}
+
+function sequenceEntryNear(doc, marker, gate) {
+  const flagAt = doc.sequence.findIndex((s) => s.elementId === marker.id);
+  let best = null;
+  doc.sequence.forEach((s, i) => {
+    if (s.elementId !== gate.id || s.entry === 0) {
+      return;
+    }
+    const d = flagAt < 0 ? i : Math.abs(i - flagAt);
+    if (!best || d < best.d) {
+      best = { entry: s.entry, d };
+    }
+  });
+  return best ? best.entry : 1;
+}
 
 /*
  * The anchor chain the directions are read off: the start pads, then every
@@ -262,6 +320,12 @@ export function travelDirection(doc, seqId) {
          * the arrow through it has to agree with. */
         const n = elementNormal(el);
         return { x: n.x * seq.entry, y: n.y * seq.entry, z: n.z * seq.entry };
+      }
+      if (el && kindOf(el) === KIND.MARKER) {
+        const nearby = nearbyApertureTravel(doc, el);
+        if (nearby) {
+          return nearby;
+        }
       }
       return dirs[i];
     }

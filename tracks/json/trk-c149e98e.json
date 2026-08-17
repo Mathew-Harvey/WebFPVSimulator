@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "trk-c149e98e",
   "name": "FAI Turkiye 2024",
-  "createdUtc": "2026-08-16T07:01:29Z",
-  "modifiedUtc": "2026-08-16T07:01:29Z",
+  "createdUtc": "2026-08-17T10:25:48Z",
+  "modifiedUtc": "2026-08-17T10:25:48Z",
   "field": {
     "width": 134,
     "depth": 118,
@@ -204,7 +204,7 @@
       "position": {
         "x": 53.48,
         "y": 66.09,
-        "z": 1.61
+        "z": 0
       },
       "yaw": 2.466774,
       "pitch": 0,
@@ -222,7 +222,7 @@
       "position": {
         "x": 51.06,
         "y": 67.78,
-        "z": 1.61
+        "z": 0
       },
       "yaw": -0.749983,
       "pitch": 0,
@@ -712,25 +712,25 @@
       "entry": -1,
       "passSide": null,
       "clearance": null,
-      "overridden": false
+      "overridden": true
     },
     {
       "id": "sq-10",
       "elementId": "el-10",
       "apertureIndex": null,
       "entry": null,
-      "passSide": "left",
+      "passSide": "right",
       "clearance": 1.5,
-      "overridden": false
+      "overridden": true
     },
     {
       "id": "sq-11",
       "elementId": "el-11",
       "apertureIndex": null,
       "entry": null,
-      "passSide": "right",
+      "passSide": "left",
       "clearance": 1.5,
-      "overridden": false
+      "overridden": true
     },
     {
       "id": "sq-12",

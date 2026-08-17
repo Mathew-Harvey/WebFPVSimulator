@@ -128,7 +128,7 @@ const UNFLYABLE = Math.cos(Math.PI / 3);
 
 /* Below this a gate is standing on the ground and the few centimetres are
  * how the author dropped it, not an elevation. */
-const ON_THE_GROUND = 0.4;
+export const ON_THE_GROUND = 0.4;
 
 function meshRole(prefab) {
   if (Number(prefab) === CHECKPOINT_PREFAB) {

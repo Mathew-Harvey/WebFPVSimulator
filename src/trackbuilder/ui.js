@@ -30,11 +30,11 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf } from './elements.js';
+import { ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType } from './elements.js';
 import { aperturesOf, elementById, kindOf, isSequenceable } from './model.js';
 import { sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
 import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js';
-import { elevationProfile, sequencedElementCount } from './path.js';
+import { elevationProfile } from './path.js';
 import { drawProfile } from './profile.js';
 import { DEG, RAD } from './geometry.js';
 
@@ -674,6 +674,7 @@ export class Panels {
     host.append(el('h3', null, 'Results'));
     if (!path) {
       host.append(el('p', 'tb-help', 'Nothing in the flying order yet. Place a gate and it appears here, with the lap figures and any warnings.'));
+      appendTypeStats(host, doc);
       const empty = el('div', 'tb-profile-foot');
       empty.append(el('h3', null, 'Elevation'), this.nodes.profile);
       host.append(empty);
@@ -685,12 +686,12 @@ export class Panels {
     stats.append(
       stat('Length', `${path.length.toFixed(1)} m`),
       stat('In the order', String(doc.sequence.length)),
-      stat('Elements', String(sequencedElementCount(doc))),
       stat('Tightest radius', path.tightest && Number.isFinite(path.tightest.radius)
         ? `${path.tightest.radius.toFixed(2)} m` : 'straight'),
       stat('Lap', path.closed ? 'closes' : 'open'),
     );
     host.append(stats);
+    appendTypeStats(host, doc);
 
     const warnings = this.host.warnings ?? [];
     const bad = warnings.filter((w) => w.level === 'warn');
@@ -719,6 +720,19 @@ export class Panels {
     host.append(foot);
     drawProfile(this.nodes.profile, elevationProfile(path));
   }
+}
+
+function appendTypeStats(host, doc) {
+  const rows = countElementsByType(doc.elements);
+  if (!rows.length) {
+    return;
+  }
+  host.append(el('h3', null, 'On the field'));
+  const stats = el('div', 'tb-stats');
+  for (const row of rows) {
+    stats.append(stat(row.label, String(row.count)));
+  }
+  host.append(stats);
 }
 
 function stat(label, value) {

@@ -44,7 +44,7 @@ import { buildFieldScene } from '../render/scene.js';
 import { attachComposer } from './field.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { readAutosave } from '../trackbuilder/storage.js';
-import { readShareImport } from '../share/session.js';
+import { courseSeatKey, readShareImport } from '../share/session.js';
 import { qualityFor } from '../render/quality.js';
 
 /*
@@ -78,6 +78,10 @@ export async function buildMap(shell, onProgress, options) {
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;
+  /* Stamped from the document this build actually read, not from the seat
+   * at adopt time: a second pick during a swap must not claim the first
+   * world's geometry is already the new course. */
+  map.courseKey = courseSeatKey(share, doc);
   return attachComposer(shell, map, q);
 }
 

@@ -46,7 +46,7 @@ import { KIND } from './elements.js';
 import {
   elementById, kindOf, entryAnchor, elementNormal, startPadsOf,
 } from './model.js';
-import { passOffsetSign } from './faces.js';
+import { nearbyApertureTravel, passOffsetSign } from './faces.js';
 import { wrapBetween } from './figures.js';
 import {
   add, cross, dist, dot, leftOf, length, normalize, scale, sub, yawVector,
@@ -133,10 +133,13 @@ export function buildKnots(doc) {
     /* Marker. Push the knot off the pole by the clearance radius, to the
      * left or the right of the direction of travel. Keep the tangent on
      * the plan: a flag has no vertical face, and a z component here is
-     * what sends the Hermite between two ground markers underground. */
-    const left = leftOf(chainDir);
+     * what sends the Hermite between two ground markers underground.
+     * A pole on a gate stile takes that gate's travel, or the square
+     * stands along the PVC and a pass through the opening never hits it. */
+    const travel = nearbyApertureTravel(doc, el) || chainDir;
+    const left = leftOf(travel);
     const off = scale(left, (k.seq.clearance ?? 0) * passOffsetSign(k.seq.passSide));
-    const flat = normalize({ x: chainDir.x, y: chainDir.y, z: 0 }, { x: 1, y: 0, z: 0 });
+    const flat = normalize({ x: travel.x, y: travel.y, z: 0 }, { x: 1, y: 0, z: 0 });
     knots.push({
       pos: add(k.pos, off),
       tangent: flat,
@@ -325,10 +328,10 @@ export function elevationProfile(path, maxPoints = 400) {
   return { points, minZ, maxZ, length: path.length };
 }
 
-/* Distinct elements that appear in the flying order. The results panel
- * reports both this and the number of entries, because a ladder flown twice
- * is one element and two entries and quoting only one of those is how a
- * course description ends up wrong. */
+/* Distinct elements that appear in the flying order. A ladder flown twice
+ * is one element and two entries; quoting only one of those is how a course
+ * description ends up wrong. The results panel now breaks the field down by
+ * type, and still reports the entry count separately as "in the order". */
 export function sequencedElementCount(doc) {
   return new Set(doc.sequence.map((s) => s.elementId)).size;
 }

@@ -26,6 +26,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
+/*
+ * Windows paths included, because the owner's machine is a Windows machine
+ * and every browser-side check (3, 13, 14, 15, 16) was reporting
+ * harness-error there for want of a path this list already knew on two
+ * other platforms. Edge counts: it is Chromium and the harness drives it
+ * over CDP the same way, so a stock Windows install needs nothing extra.
+ */
+const winApps = process.env['ProgramFiles'] || 'C:\\Program Files';
+const winApps86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+const winLocal = process.env.LOCALAPPDATA || '';
 const CHROME_CANDIDATES = [
   process.env.SIM_CHROME_BIN,
   '/opt/pw-browsers/chromium',
@@ -34,6 +44,11 @@ const CHROME_CANDIDATES = [
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  join(winApps, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  join(winApps86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  winLocal ? join(winLocal, 'Google', 'Chrome', 'Application', 'chrome.exe') : null,
+  join(winApps86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  join(winApps, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
 ];
 
 export function findChrome() {

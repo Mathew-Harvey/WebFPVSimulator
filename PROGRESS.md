@@ -10099,3 +10099,64 @@ the WASM build, the input path or the simulation trace.
 3994 passed, 0 failed.
 Wrong: nothing. Dives that already had a checkpoint or an elevated mesh
 kept that height (FAI 19 stays at 2.92 m, AU Nationals 6 stays at 3.78 m).
+
+### 2026-08-17 | diagnosis | the bad feel is the OLD binary, and Windows could not say so
+
+Asked: pulled main, flight feel "very very bad, broken", with a flight
+log attached and a verify table full of failures. The log is the
+instrument built two turns ago, and this is its first real catch.
+
+**The diagnosis, from the log itself.** The uploaded flight has a
+quiet-hover throttle of 0.263 in its cleanest run. The stale binary
+committed at e4782a0 hovers at 0.2637; the owner's own plant re-tune
+(bc071f5) does not. The verify table agrees: trace hash 6d17d4814bdc,
+hover 0.2637, punch 81.5 m, every number the OLD wasm's. So the craft
+is flying the pre-re-tune plant again: old k_propwash 0.30 with four
+times the shake the owner tuned to 0.08, the old electrical set, none
+of bc071f5. The re-tuned binary the owner built last week was a local,
+uncommitted change to dist/sim.wasm, and the cleanup before pulling
+reverted it to the committed stale one. To hands calibrated on the
+re-tune, that reads as broken. The log shows no oscillation, no
+uncommanded bursts beyond one 648 deg/s collision snap, no stick
+fighting: mechanically sane flight on the wrong plant.
+
+**Why the harness could not say so on the owner's machine.** Check 1
+reported "build:wasm exited 1" with an EMPTY reason, on every run.
+tests/verify.js spawned `npm` without a shell, and on Windows npm is
+npm.cmd, which spawnSync cannot start bare: status null coerced to
+exit 1, stdout and stderr both empty, and the spawn error object was
+dropped. So on Windows the build step has never once actually run
+inside verify, and the one line that would have said "could not start
+npm" was thrown away. Fixed: shell on win32, and a spawn error is
+printed as the build output. Checks 3 and 13 to 16 all read
+harness-error for the same class of reason: CHROME_CANDIDATES knew
+Linux and macOS paths and not one Windows path. Chrome under Program
+Files, Program Files (x86) and LOCALAPPDATA, and Edge, which is
+Chromium and drives over CDP identically, are on the list now.
+
+**And the recorder's own flaw, caught by its first real file.** The
+log's time axis jumps backwards twice, because the module clock
+restarts at zero on every reset and a session holds several runs. The
+recorder now carries a splice offset: when a pushed time falls behind
+the last, the axis continues after a 100 ms seam, so one file holds
+several runs monotonically and anything that bins by time still works.
+
+Also merged the owner's 5186393 (dive hoops planted, stile flags
+faced, courses strip loads the clicked course, CRLF guard for patches
+on Windows). Selftest grew to 225 and the track pack to 3994 with it;
+all pass here.
+
+`node src/trackbuilder/selftest.js`: 225 passed, 0 failed.
+`node tracks/check.mjs`: 3994 passed, 0 failed.
+`npm run link:selftest` and `npm run replay:selftest`: all passed.
+`npm run verify`: 14 of 16 against this container's stale wasm, hash
+6d17d4814bdc unchanged. The Windows fixes cannot be exercised from
+this Linux container; the owner's next verify run is their test.
+
+Next, for the owner, in order: `npm run build:wasm` (PowerShell or
+WSL, as the successful build last week), confirm check 2's hash has
+CHANGED from 6d17d4814bdc, fly to confirm the feel is back, then
+COMMIT dist/sim.wasm so no pull can ever hand back the stale plant
+again. Checks 5 to 12 may move off the re-tuned plant; that is the
+re-baseline bc071f5's own notes predicted, to be argued here, not
+patched around.

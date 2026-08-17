@@ -36,18 +36,29 @@ import { runBrowserHarness } from './lib/browser.js';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 function runBuild() {
+  /*
+   * shell on Windows, because npm there is npm.cmd and spawnSync without a
+   * shell cannot start it at all. The failure mode was the worst kind:
+   * status null coerced to exit 1 with EMPTY stdout and stderr, so check 1
+   * reported "build:wasm exited 1" with a blank where the reason belongs,
+   * on every Windows machine, always. The owner stared at exactly that.
+   * A spawn ERROR is also surfaced now instead of being dropped, so "could
+   * not start npm" can never again read as a silent build failure.
+   */
   const build = spawnSync('npm', ['run', 'build:wasm'], {
     cwd: root,
     encoding: 'utf8',
     timeout: 600000,
+    shell: process.platform === 'win32',
   });
   const vendor = spawnSync('git', ['diff', '--stat', '--', 'vendor/betaflight'], {
     cwd: root,
     encoding: 'utf8',
   });
+  const spawnFault = build.error ? `verify could not run npm: ${build.error.message}\n` : '';
   return {
     exitCode: build.status ?? 1,
-    output: `${build.stdout ?? ''}${build.stderr ?? ''}`,
+    output: `${spawnFault}${build.stdout ?? ''}${build.stderr ?? ''}`,
     vendorDiff: (vendor.stdout ?? '').trim(),
   };
 }

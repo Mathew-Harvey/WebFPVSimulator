@@ -104,6 +104,20 @@ export class FlightRecorder {
     this.rows = [];
     this.on = false;
     this.dropped = 0;
+    /*
+     * The splice offset. The module's clock restarts at zero on every
+     * reset, and a crash recovery resets the module, so a session's second
+     * run used to make the file's time axis jump BACKWARDS mid stream. The
+     * owner's first real log did exactly that, twice, and any tool that
+     * bins by time reads such a file as one garbled flight. When a pushed
+     * time is behind the last one, the offset advances so the new run
+     * continues the axis after a visible 100 ms seam: one file, several
+     * runs, monotonic time, and the seam wide enough that a reader can see
+     * where the splice is.
+     */
+    this.offsetUs = 0;
+    this.lastRawUs = -Infinity;
+    this.lastOutUs = -Infinity;
   }
 
   setEnabled(on) {
@@ -120,6 +134,9 @@ export class FlightRecorder {
   clear() {
     this.rows.length = 0;
     this.dropped = 0;
+    this.offsetUs = 0;
+    this.lastRawUs = -Infinity;
+    this.lastOutUs = -Infinity;
   }
 
   get count() {
@@ -150,8 +167,14 @@ export class FlightRecorder {
       this.dropped += 1;
     }
     const rpmToDuty = (rpm) => (fullThrottleRpm > 0 ? rpm / fullThrottleRpm : 0);
+    const rawUs = st[0] * 1e6;
+    if (rawUs < this.lastRawUs) {
+      this.offsetUs = this.lastOutUs + 100000 - rawUs;
+    }
+    this.lastRawUs = rawUs;
+    this.lastOutUs = rawUs + this.offsetUs;
     this.rows.push({
-      tUs: st[0] * 1e6,
+      tUs: this.lastOutUs,
       rc: [rc.roll, rc.pitch, rc.yaw, rc.throttle],
       /* State block P, Q, R are rad/s; a blackbox gyro column is deg/s. */
       gyroDps: [st[11] * 57.29577951308232, st[12] * 57.29577951308232, st[13] * 57.29577951308232],

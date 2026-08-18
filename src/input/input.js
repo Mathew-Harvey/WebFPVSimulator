@@ -2,14 +2,18 @@
  * input.js: stick input for the shell.
  *
  * Sources, in priority order:
- *   1. A radio or controller in joystick mode via the Gamepad API. Axis
- *      order and polarity differ per radio, so a calibration wizard
- *      (Settings, Calibrate sticks) learns the mapping the usual way:
- *      centre, full range, then one named deflection per channel with a
- *      return to rest between each, then a live check before anything is
- *      saved. Until calibrated a common AETR guess is used for flight,
- *      and menu navigation falls back to any axis at all, so the wizard
- *      is always reachable.
+ *   1. A radio or controller in joystick mode via the Gamepad API. The
+ *      first pad in navigator.getGamepads() is the OS order, which on
+ *      Windows follows the Game Controllers list and is not something a
+ *      pilot can rearrange without unplugging. Settings, Choose joystick
+ *      and the boot/hotplug picker learn which device they meant by a
+ *      wiggle, then store id plus index. Axis order and polarity still
+ *      differ per radio, so a calibration wizard (Settings, Calibrate
+ *      sticks) learns the mapping the usual way: centre, full range, then
+ *      one named deflection per channel with a return to rest between
+ *      each, then a live check before anything is saved. Until calibrated
+ *      a common AETR guess is used for flight, and menu navigation falls
+ *      back to any axis at all, so the wizard is always reachable.
  *   2. Keyboard: WASD plus arrows mimic a Mode 2 radio. A/D are yaw,
  *      arrows are the right stick: up arrow pushes the stick forward
  *      (nose down), left and right arrows roll. Rate limited so it is
@@ -47,6 +51,7 @@
  */
 
 const STORE_KEY = 'webfpv_stick_map_v1';
+const PAD_STORE_KEY = 'webfpv.pad.v1';
 
 const DEFAULT_MAP = {
   /* AETR axis order, up and right positive, throttle low at -1. */
@@ -75,6 +80,12 @@ const CAL = {
   RELEASE_MS: 280,
 };
 
+const PAD_PICK = {
+  WIGGLE: 0.34,
+  WIGGLE_MS: 160,
+  IGNORE_MS: 450,
+};
+
 function cloneMap(map) {
   return {
     roll: { ...map.roll },
@@ -92,6 +103,71 @@ function snapshotAxes(gp) {
     out[i] = gp.axes[i];
   }
   return out;
+}
+
+function listGamepads() {
+  const out = [];
+  const list = typeof navigator !== 'undefined' && navigator.getGamepads
+    ? navigator.getGamepads()
+    : [];
+  for (let i = 0; i < list.length; i += 1) {
+    const gp = list[i];
+    if (gp && gp.connected && gp.axes && gp.axes.length >= 4) {
+      out.push(gp);
+    }
+  }
+  return out;
+}
+
+function padKey(gp) {
+  return `${gp.index}\0${gp.id || ''}`;
+}
+
+function shortPadName(id) {
+  let name = String(id || 'Joystick').replace(/\s+/g, ' ').trim();
+  name = name.replace(/\s*\(Vendor:.*$/i, '').trim();
+  if (name.length < 4) {
+    name = String(id || 'Joystick').trim() || 'Joystick';
+  }
+  if (name.length > 44) {
+    return `${name.slice(0, 42)}...`;
+  }
+  return name;
+}
+
+function loadPadChoice() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PAD_STORE_KEY) || 'null');
+    if (raw && raw.kind === 'none') {
+      return { kind: 'none' };
+    }
+    if (raw && raw.kind === 'pad' && typeof raw.id === 'string' && Number.isInteger(raw.index)) {
+      return { kind: 'pad', id: raw.id, index: raw.index };
+    }
+  } catch (e) {
+    /* Private mode or a corrupt blob: fly the old first-pad rule. */
+  }
+  return { kind: 'auto' };
+}
+
+function savePadChoice(choice) {
+  try {
+    if (!choice || choice.kind === 'auto') {
+      localStorage.removeItem(PAD_STORE_KEY);
+      return;
+    }
+    if (choice.kind === 'none') {
+      localStorage.setItem(PAD_STORE_KEY, JSON.stringify({ kind: 'none' }));
+      return;
+    }
+    localStorage.setItem(PAD_STORE_KEY, JSON.stringify({
+      kind: 'pad',
+      id: choice.id,
+      index: choice.index,
+    }));
+  } catch (e) {
+    /* private mode */
+  }
 }
 
 function maxAbsDelta(axes, rest) {
@@ -331,6 +407,12 @@ export class InputManager {
     this.kbHoldMs = { roll: 0, pitch: 0, yaw: 0, w: 0, s: 0 };
     this.kbHoldDir = { roll: 0, pitch: 0, yaw: 0 };
     this.map = this.loadMap();
+    this.padChoice = loadPadChoice();
+    this.padPick = null;
+    this.padPickQueued = null;
+    this.padPickResult = null;
+    this.seenPadKeys = new Set();
+    this.padWasPresent = false;
     this.calibration = null;
     this.calResult = null;
     this.lastWall = performance.now();
@@ -401,6 +483,7 @@ export class InputManager {
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
+    this.seedPadRoster();
   }
 
   loadMap() {
@@ -421,12 +504,345 @@ export class InputManager {
   }
 
   firstGamepad() {
-    for (const gp of navigator.getGamepads ? navigator.getGamepads() : []) {
-      if (gp && gp.connected && gp.axes.length >= 4) {
-        return gp;
+    const pads = listGamepads();
+    if (!pads.length) {
+      return null;
+    }
+    const choice = this.padChoice;
+    if (choice && choice.kind === 'none') {
+      return null;
+    }
+    if (choice && choice.kind === 'pad') {
+      const exact = this.matchPad(pads, choice);
+      if (exact) {
+        return exact;
+      }
+      return null;
+    }
+    return pads[0];
+  }
+
+  matchPad(pads, choice) {
+    if (!choice || choice.kind !== 'pad') {
+      return null;
+    }
+    for (let i = 0; i < pads.length; i += 1) {
+      if (pads[i].id === choice.id && pads[i].index === choice.index) {
+        return pads[i];
       }
     }
-    return null;
+    const sameId = [];
+    for (let i = 0; i < pads.length; i += 1) {
+      if (pads[i].id === choice.id) {
+        sameId.push(pads[i]);
+      }
+    }
+    return sameId.length === 1 ? sameId[0] : null;
+  }
+
+  setPadChoice(choice) {
+    this.padChoice = choice;
+    savePadChoice(choice);
+    this.navRest = null;
+    this.padArmed = false;
+  }
+
+  seedPadRoster() {
+    const pads = listGamepads();
+    this.seenPadKeys = new Set(pads.map(padKey));
+    this.padWasPresent = Boolean(this.matchPad(pads, this.padChoice));
+    if (pads.length >= 2) {
+      this.padPickQueued = 'boot';
+      return;
+    }
+    if (pads.length === 1 && !this.matchPad(pads, this.padChoice)) {
+      this.setPadChoice({ kind: 'pad', id: pads[0].id, index: pads[0].index });
+      this.padWasPresent = true;
+    }
+  }
+
+  /*
+   * Chrome often hides a pad until something on it moves, and Windows can
+   * reorder the Game Controllers list on a replug, so the roster is polled
+   * rather than trusted to gamepadconnected. A new key in the list is a
+   * device the picker has not seen this session.
+   */
+  notePadRoster() {
+    const pads = listGamepads();
+    const nowKeys = new Set(pads.map(padKey));
+    let added = 0;
+    nowKeys.forEach((k) => {
+      if (!this.seenPadKeys.has(k)) {
+        added += 1;
+      }
+    });
+    const prevCount = this.seenPadKeys.size;
+    this.seenPadKeys = nowKeys;
+    if (this.padPick) {
+      return;
+    }
+    if (added > 0 && pads.length >= 2) {
+      this.padPickQueued = prevCount === 0 ? 'boot' : 'hotplug';
+      return;
+    }
+    if (added > 0 && pads.length === 1 && !this.matchPad(pads, this.padChoice)) {
+      this.setPadChoice({ kind: 'pad', id: pads[0].id, index: pads[0].index });
+    }
+    if (this.padChoice && this.padChoice.kind === 'pad') {
+      const found = this.matchPad(pads, this.padChoice);
+      if (found) {
+        this.padWasPresent = true;
+      } else if (this.padWasPresent && pads.length >= 1) {
+        this.padWasPresent = false;
+        this.padPickQueued = this.padPickQueued || 'missing';
+      } else {
+        this.padWasPresent = false;
+      }
+    }
+  }
+
+  takePadPickQueue() {
+    const reason = this.padPickQueued;
+    this.padPickQueued = null;
+    return reason;
+  }
+
+  requestPadPick(reason) {
+    if (this.padPick) {
+      return;
+    }
+    this.padPickQueued = reason || 'menu';
+  }
+
+  startPadPick(reason) {
+    const pads = listGamepads();
+    if (!pads.length) {
+      return false;
+    }
+    this.padPick = {
+      reason: reason || 'menu',
+      phase: 'wiggle',
+      candidateKey: null,
+      blockedKey: null,
+      ignoreUntil: 0,
+      holdMs: 0,
+      rest: new Map(),
+      armed: false,
+    };
+    this.padPickResult = null;
+    this.snapshotPadRests(pads);
+    return true;
+  }
+
+  snapshotPadRests(pads) {
+    const p = this.padPick;
+    if (!p) {
+      return;
+    }
+    const live = pads || listGamepads();
+    const keep = new Set();
+    for (let i = 0; i < live.length; i += 1) {
+      const gp = live[i];
+      const key = padKey(gp);
+      keep.add(key);
+      if (!p.rest.has(key) || p.rest.get(key).length !== Math.min(gp.axes.length, 8)) {
+        p.rest.set(key, snapshotAxes(gp));
+      }
+    }
+    p.rest.forEach((v, key) => {
+      if (!keep.has(key)) {
+        p.rest.delete(key);
+        if (p.candidateKey === key) {
+          p.phase = 'wiggle';
+          p.candidateKey = null;
+          p.holdMs = 0;
+          p.armed = false;
+        }
+      }
+    });
+  }
+
+  cancelPadPick() {
+    this.padPick = null;
+    this.padPickResult = 'cancelled';
+  }
+
+  skipPadPick() {
+    this.setPadChoice({ kind: 'none' });
+    this.padWasPresent = false;
+    this.padPick = null;
+    this.padPickResult = 'skipped';
+  }
+
+  acceptPadPick() {
+    const p = this.padPick;
+    if (!p || p.phase !== 'confirm' || !p.candidateKey) {
+      return false;
+    }
+    const pads = listGamepads();
+    const gp = pads.find((g) => padKey(g) === p.candidateKey);
+    if (!gp) {
+      return false;
+    }
+    this.setPadChoice({ kind: 'pad', id: gp.id, index: gp.index });
+    this.padWasPresent = true;
+    this.padPick = null;
+    this.padPickResult = 'accepted';
+    return true;
+  }
+
+  rejectPadPick() {
+    const p = this.padPick;
+    if (!p) {
+      return;
+    }
+    const blocked = p.candidateKey;
+    p.phase = 'wiggle';
+    p.candidateKey = null;
+    p.holdMs = 0;
+    p.armed = false;
+    p.blockedKey = blocked;
+    p.ignoreUntil = performance.now() + PAD_PICK.IGNORE_MS;
+    this.snapshotPadRests();
+  }
+
+  padPickView() {
+    const p = this.padPick;
+    if (!p) {
+      return null;
+    }
+    const pads = listGamepads();
+    this.snapshotPadRests(pads);
+    const now = performance.now();
+    const cards = [];
+    for (let i = 0; i < pads.length; i += 1) {
+      const gp = pads[i];
+      const key = padKey(gp);
+      const rest = p.rest.get(key) || snapshotAxes(gp);
+      const motion = maxAbsDelta(snapshotAxes(gp), rest);
+      const axes = [0, 0, 0, 0];
+      for (let a = 0; a < 4; a += 1) {
+        axes[a] = gp.axes[a] || 0;
+      }
+      cards.push({
+        key,
+        title: `Joystick ${i + 1}`,
+        name: shortPadName(gp.id),
+        motion,
+        live: motion >= PAD_PICK.WIGGLE,
+        chosen: p.candidateKey === key,
+        axes,
+      });
+    }
+    const chosen = cards.find((c) => c.chosen) || null;
+    let prompt = 'Move the joystick you want to fly with.';
+    let hint = 'Each box is one plugged-in device. The one you move lights up.';
+    if (!cards.length) {
+      prompt = 'No joystick found.';
+      hint = 'Plug one in, set it to joystick mode, then move it.';
+    } else if (p.phase === 'confirm' && chosen) {
+      prompt = `Use ${chosen.title}?`;
+      hint = 'Yes keeps it. No waits for another wiggle.';
+    }
+    const skipLabel = p.reason === 'menu' ? 'Cancel' : 'Use keyboard instead';
+    return {
+      phase: p.phase,
+      reason: p.reason,
+      prompt,
+      hint,
+      canAccept: p.phase === 'confirm' && Boolean(chosen),
+      skipLabel,
+      cooling: now < p.ignoreUntil,
+      pads: cards,
+    };
+  }
+
+  runPadPick(dtMs) {
+    const p = this.padPick;
+    if (!p) {
+      return;
+    }
+    const pads = listGamepads();
+    this.snapshotPadRests(pads);
+    const now = performance.now();
+    if (p.phase === 'confirm') {
+      const gp = pads.find((g) => padKey(g) === p.candidateKey);
+      if (!gp) {
+        this.rejectPadPick();
+        return;
+      }
+      const at = (i) => Boolean(gp.buttons && gp.buttons[i] && gp.buttons[i].pressed);
+      const b = [at(0), at(1), at(2), at(3)];
+      const any = b.some(Boolean);
+      if (!p.armed) {
+        if (!any) {
+          p.armed = true;
+        }
+        return;
+      }
+      if (b[1]) {
+        this.rejectPadPick();
+        return;
+      }
+      if (b[0] || b[2] || b[3]) {
+        this.acceptPadPick();
+      }
+      return;
+    }
+    if (now < p.ignoreUntil) {
+      p.holdMs = 0;
+      return;
+    }
+    let best = null;
+    let bestMotion = 0;
+    for (let i = 0; i < pads.length; i += 1) {
+      const gp = pads[i];
+      const key = padKey(gp);
+      const rest = p.rest.get(key);
+      if (!rest) {
+        continue;
+      }
+      const motion = maxAbsDelta(snapshotAxes(gp), rest);
+      if (p.blockedKey && key === p.blockedKey) {
+        if (motion < PAD_PICK.WIGGLE) {
+          p.blockedKey = null;
+        } else {
+          continue;
+        }
+      }
+      if (motion > bestMotion) {
+        bestMotion = motion;
+        best = key;
+      }
+    }
+    if (!best || bestMotion < PAD_PICK.WIGGLE) {
+      p.holdMs = 0;
+      return;
+    }
+    p.holdMs += dtMs;
+    if (p.holdMs < PAD_PICK.WIGGLE_MS) {
+      return;
+    }
+    p.phase = 'confirm';
+    p.candidateKey = best;
+    p.holdMs = 0;
+    p.armed = false;
+  }
+
+  padSummary() {
+    const pads = listGamepads();
+    const selected = this.firstGamepad();
+    let using = 'Keyboard';
+    if (selected) {
+      const n = pads.findIndex((g) => g.index === selected.index && g.id === selected.id) + 1;
+      using = n > 0 ? `Joystick ${n}, ${shortPadName(selected.id)}` : shortPadName(selected.id);
+    } else if (this.padChoice && this.padChoice.kind === 'none') {
+      using = 'Keyboard';
+    }
+    return {
+      count: pads.length,
+      using,
+    };
   }
 
   /*
@@ -854,6 +1270,7 @@ export class InputManager {
     this.lastWall = nowWall;
 
     const gp = this.firstGamepad();
+    this.notePadRoster();
     /* The Gamepad object's own timestamp is the only honest statement of when
      * the browser last refreshed it. Counting its changes is how we find out
      * whether polling faster than the frame rate buys anything at all. */
@@ -870,7 +1287,11 @@ export class InputManager {
       this.rateWindowMs = 0;
     }
     let next;
-    if (this.calibration) {
+    if (this.padPick) {
+      this.runPadPick(dtMs);
+      next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
+      this.source = 'the joystick picker';
+    } else if (this.calibration) {
       /* Unconditional: runCalibration's own first line sets waiting when
        * there is no pad, so the else arm here was a second copy that could
        * only ever agree with it. */

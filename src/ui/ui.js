@@ -331,6 +331,19 @@ function makeGimbal(caption) {
   return { box, nub };
 }
 
+function makePadCard() {
+  const card = el('div', 'pad-card');
+  const title = el('div', 'pad-card-title', '');
+  const art = el('div', 'pad-card-art');
+  const left = makeGimbal('');
+  const right = makeGimbal('');
+  art.append(left.box, right.box);
+  const name = el('div', 'pad-card-name', '');
+  const status = el('div', 'pad-card-status', '');
+  card.append(title, art, name, status);
+  return { card, title, name, status, left, right };
+}
+
 function placeNub(nub, x, y) {
   nub.style.left = `${50 + x * 50}%`;
   nub.style.top = `${50 - y * 50}%`;
@@ -649,6 +662,17 @@ function gpuItem(info) {
     note: info.note,
     info: true,
   };
+}
+
+function padChooseNote(info) {
+  const n = info && typeof info.count === 'number' ? info.count : 0;
+  if (n <= 0) {
+    return 'Plug in a radio in joystick mode. If more than one is plugged in, this is how you pick which one flies.';
+  }
+  if (n === 1) {
+    return `One device is plugged in, ${info.using}. Open this to confirm it, or to switch to the keyboard.`;
+  }
+  return `${n} devices are plugged in. Move the one you want. Windows lists them in Game Controllers order; this screen is how you pick.`;
 }
 
 export class Ui {
@@ -1004,6 +1028,36 @@ export class Ui {
     );
     this.screens.calibrate = calibrate;
     this.calCanSave = false;
+
+    const padpick = el('div', 'screen screen-page screen-padpick');
+    padpick.append(el('h2', null, 'Choose joystick'));
+    this.padKicker = el('div', 'cal-kicker', 'Which device');
+    this.padPrompt = el('p', 'cal-prompt', 'Move the joystick you want to fly with.');
+    this.padHint = el('p', 'cal-hint', '');
+    this.padCards = el('div', 'pad-cards');
+    const padBtns = el('div', 'cal-actions pad-actions');
+    this.padYesBtn = btn('name-dialog-btn on', 'Yes, use this');
+    this.padNoBtn = btn('name-dialog-btn', 'No, not this one');
+    this.padSkipBtn = btn('name-dialog-btn', 'Use keyboard instead');
+    this.padYesBtn.addEventListener('click', () => this.act('padpick-yes'));
+    this.padNoBtn.addEventListener('click', () => this.act('padpick-no'));
+    this.padSkipBtn.addEventListener('click', () => {
+      this.act(this.padPickReason === 'menu' ? 'padpick-cancel' : 'padpick-skip');
+    });
+    padBtns.append(this.padYesBtn, this.padNoBtn, this.padSkipBtn);
+    padpick.append(
+      this.padKicker,
+      this.padPrompt,
+      this.padHint,
+      this.padCards,
+      padBtns,
+      hintWithKeys(['Enter', 'Esc'], 'Enter uses the highlighted joystick. Escape is No, or skip if none is highlighted.'),
+    );
+    this.screens.padpick = padpick;
+    this.padCardNodes = new Map();
+    this.padInfo = { count: 0, using: 'Keyboard' };
+    this.padPickReason = 'boot';
+    this.padPickPhase = 'wiggle';
 
     const paused = el('div', 'screen screen-modal');
     paused.append(el('h2', null, 'Paused'));
@@ -1707,6 +1761,12 @@ export class Ui {
           (v) => { s.focusTone = v; },
         ),
         { label: 'Sticks and diagnostics', section: true },
+        {
+          label: 'Choose joystick',
+          value: (this.padInfo && this.padInfo.using) || 'Keyboard',
+          action: 'choosepad',
+          note: padChooseNote(this.padInfo),
+        },
         toggle(
           'Performance readout',
           'Frame rate and draw counts, for tuning your machine.',
@@ -3127,6 +3187,68 @@ export class Ui {
     });
   }
 
+  setPadInfo(info) {
+    this.padInfo = info || { count: 0, using: 'Keyboard' };
+  }
+
+  setPadPick(view) {
+    if (!this.padPrompt) {
+      return;
+    }
+    if (!view) {
+      this.padCardNodes = new Map();
+      if (this.padCards) {
+        this.padCards.textContent = '';
+      }
+      return;
+    }
+    this.padKicker.textContent = view.pads.length > 1
+      ? `${view.pads.length} joysticks plugged in`
+      : (view.pads.length === 1 ? 'One joystick plugged in' : 'No joystick');
+    this.padPrompt.textContent = view.prompt;
+    this.padHint.textContent = view.hint;
+    if (this.padYesBtn) {
+      this.padYesBtn.disabled = !view.canAccept;
+    }
+    if (this.padNoBtn) {
+      this.padNoBtn.disabled = !view.canAccept;
+    }
+    if (this.padSkipBtn) {
+      this.padSkipBtn.textContent = view.skipLabel;
+    }
+    this.padPickPhase = view.phase;
+    this.padPickReason = view.reason;
+    const keys = view.pads.map((p) => p.key);
+    const have = this.padCardNodes || new Map();
+    const same = keys.length === have.size && keys.every((k) => have.has(k));
+    if (!same) {
+      this.padCards.textContent = '';
+      this.padCardNodes = new Map();
+      for (const pad of view.pads) {
+        const node = makePadCard();
+        this.padCards.append(node.card);
+        this.padCardNodes.set(pad.key, node);
+      }
+    }
+    for (const pad of view.pads) {
+      const node = this.padCardNodes.get(pad.key);
+      if (!node) {
+        continue;
+      }
+      node.title.textContent = pad.title;
+      node.name.textContent = pad.name;
+      node.status.textContent = pad.chosen
+        ? 'Use this one?'
+        : (pad.live ? 'Moving' : 'Resting');
+      node.card.classList.toggle('is-live', pad.live && !pad.chosen);
+      node.card.classList.toggle('is-on', pad.chosen);
+      const ax = pad.axes || [0, 0, 0, 0];
+      const clamp = (v) => Math.max(-1, Math.min(1, v));
+      placeNub(node.left.nub, clamp(ax[0]), clamp(-ax[1]));
+      placeNub(node.right.nub, clamp(ax[2]), clamp(-ax[3]));
+    }
+  }
+
   persistSettings() {
     saveSettings(this.settings);
   }
@@ -3237,6 +3359,14 @@ export class Ui {
     }
     if (this.screen === 'calibrate') {
       this.act('calibrate-cancel');
+      return;
+    }
+    if (this.screen === 'padpick') {
+      if (this.padPickPhase === 'confirm') {
+        this.act('padpick-no');
+      } else {
+        this.act(this.padPickReason === 'menu' ? 'padpick-cancel' : 'padpick-skip');
+      }
       return;
     }
     if (this.screen === 'results') {
@@ -3512,6 +3642,20 @@ export class Ui {
       }
       return true;
     }
+    if (this.screen === 'padpick') {
+      if (code === 'Escape' || code === 'Backspace') {
+        this.back();
+        return true;
+      }
+      if ((code === 'Enter' || code === 'Space') && this.padPickPhase === 'confirm') {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        this.act('padpick-yes');
+        return true;
+      }
+      return true;
+    }
     if (this.dropEl) {
       if (code === 'ArrowUp' || code === 'KeyW') {
         this.moveDrop(-1);
@@ -3594,6 +3738,12 @@ export class Ui {
       if (now.select && !this.padPrev.select && this.calCanSave) {
         this.act('calibrate-save');
       }
+      this.padPrev = now;
+      return;
+    }
+    if (this.screen === 'padpick') {
+      /* Buttons are read from the candidate pad inside input.js. Using
+       * firstGamepad() here would let the wrong radio confirm. */
       this.padPrev = now;
       return;
     }

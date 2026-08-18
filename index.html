@@ -868,6 +868,55 @@
       .cal-steps li.done { color: var(--mint); }
       .cal-actions { display: flex; gap: 10px; margin-top: 4px; }
       .cal-actions .name-dialog-btn:disabled { opacity: 0.35; cursor: default; }
+      .screen-padpick {
+        pointer-events: auto;
+        padding: 4vh 4vw 3vh;
+      }
+      .pad-cards {
+        display: flex; flex-wrap: wrap; justify-content: center;
+        gap: 16px; margin: 28px 0 18px; max-width: 1100px;
+      }
+      .pad-card {
+        width: 220px;
+        padding: 14px 14px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(243, 234, 212, 0.16);
+        background: rgba(12, 18, 14, 0.62);
+        text-align: center;
+        transition: border-color 0.12s linear, box-shadow 0.12s linear;
+      }
+      .pad-card.is-live {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 1px rgba(255, 212, 92, 0.55);
+      }
+      .pad-card.is-on {
+        border-color: var(--mint);
+        box-shadow: 0 0 0 2px rgba(125, 255, 180, 0.7);
+      }
+      .pad-card-title {
+        font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--sakura); margin-bottom: 10px;
+      }
+      .pad-card-art {
+        display: flex; justify-content: center; gap: 18px;
+        margin-bottom: 10px;
+      }
+      .pad-card .osd-gimbal-plate {
+        width: 72px; height: 72px;
+        background: rgba(12, 18, 14, 0.55);
+      }
+      .pad-card .osd-gimbal-cap { display: none; }
+      .pad-card-name {
+        font-size: 13px; color: var(--cream);
+        min-height: 2.4em; line-height: 1.3;
+      }
+      .pad-card-status {
+        margin-top: 4px; font-size: 12px; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--slate);
+      }
+      .pad-card.is-live .pad-card-status { color: var(--amber); }
+      .pad-card.is-on .pad-card-status { color: var(--mint); }
+      .pad-actions { flex-wrap: wrap; justify-content: center; }
       @media (max-width: 860px) {
         .menu-stage {
           display: flex; flex-direction: column; align-items: stretch;

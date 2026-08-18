@@ -10584,3 +10584,54 @@ PROGRESS.md was the only conflict. Both logs kept, remote 17 Aug
 entries first, camera-angle last. Auto-merged sources still carry
 both: clampCameraAngle and graphicsAuto / desynchronized on boot. No
 physics, ABI or input change. Wrong: none.
+
+### 2026-08-18 | investigate | music silent until first key or click
+
+Ticket: Jannes, title screen, Chrome 151. Music starts on first
+keyboard or controller input, not on load. Repro: refresh and do not
+touch anything.
+
+Real. Not a broken bed. The shell does not create an AudioContext
+until wakeAudio(), which is only hooked from input.onKey and a window
+pointerdown listener (main.js). Check 14 already documents this: a
+programmatic fly leaves ctx none, a real DevTools key starts the
+graph. The music scheduler is fine.
+
+Cannot start on load in Chrome. new AudioContext() before a user
+gesture is created suspended, prints "The AudioContext was not allowed
+to start", and check 13 (console-clean) would go red if we tried.
+resume() from boot or from a gamepad poll is not a user gesture
+either, so a radio-only path cannot unlock it. Refresh clears
+activation, which is why the repro is F5 and wait.
+
+No code change. A click-to-enter splash would delay the title to buy
+a gesture we already get from the first real key or click. Fighting
+autoplay is the wrong lever.
+
+### 2026-08-18 | feature | choose which joystick when several are plugged in
+
+Windows lists gamepads in Game Controllers order. firstGamepad() used
+the first slot in navigator.getGamepads(), so a wheel or a second
+radio stole the sticks and the only fix was unplugging. Chrome also
+hides a pad until something on it moves, which is why a wiggle is the
+honest identify.
+
+Settings now has Choose joystick. The screen shows one card per device
+with live gimbals. Move a stick, that card lights up, then Yes / No.
+No waits until that stick rests, then listens again. Boot opens the
+picker when two or more pads are already visible. A newly appeared
+pad (hotplug, or Chrome finally enumerating a second radio) opens it
+too, pausing a run first. The choice is stored as id plus index.
+
+Plant, ABI and the selected pad's mapping were not changed. Trace
+hash 6d17d4814bdc unchanged.
+
+Verify: 16 of 16. Hash 6d17d4814bdc Node=Chrome. hover-throttle
+0.2637, punch-out 81.5 m, terminal-velocity 31.1 m/s, motor-step
+26 ms, rate-tracking 671.5 deg/s (0.22 percent), yaw-coupling
+-0.12 deg, battery-sag 11.14 percent, diff-passthrough 1.2478 (0.47
+percent). console-clean, audio-bed, world-scale, map-isolation green.
+
+Wrong: after No, the same stick returning to rest would have counted
+as a new wiggle and asked again immediately. That stick is now
+blocked until it has been still.

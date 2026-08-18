@@ -723,6 +723,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
   let notice = null; /* { text, untilMs } for one off shell messages */
+  let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
    * reading it live used to end a 5 lap run the moment someone dropped the
    * setting to 1. */
@@ -1491,6 +1492,52 @@ export async function boot({ loading, bootStart, mapId }) {
       audio.ui(kind);
     }
   };
+
+  function leavePadPick() {
+    const dest = padPickReturn || 'title';
+    if (dest === 'paused') {
+      mode = 'paused';
+    }
+    ui.show(dest === 'flight' ? 'paused' : dest);
+    const sum = input.padSummary();
+    ui.setPadInfo(sum);
+    const result = input.padPickResult;
+    input.padPickResult = null;
+    if (result === 'accepted') {
+      notice = { text: `Flying with ${sum.using}.`, untilMs: performance.now() + 2800 };
+    } else if (result === 'skipped') {
+      notice = { text: 'Keyboard sticks. Choose joystick in Settings to pick a radio.', untilMs: performance.now() + 3200 };
+    }
+  }
+
+  function openPadPick(reason) {
+    if (ui.nameDialog && !ui.nameDialog.hidden) {
+      input.requestPadPick(reason);
+      return;
+    }
+    if (ui.screen === 'padpick') {
+      return;
+    }
+    if (!input.startPadPick(reason)) {
+      if (reason === 'menu') {
+        notice = { text: 'No radio or gamepad found.\nPlug one in, set it to joystick mode, then move it.', untilMs: performance.now() + 3200 };
+      }
+      return;
+    }
+    if (ui.screen === 'calibrate') {
+      input.cancelCalibration();
+    }
+    if (mode === 'flight' || ui.screen === 'flight') {
+      mode = 'paused';
+      padPickReturn = 'paused';
+    } else if (ui.screen === 'padpick') {
+      padPickReturn = 'title';
+    } else {
+      padPickReturn = ui.screen || 'title';
+    }
+    ui.show('padpick');
+  }
+
   ui.onAction = (action, s) => {
     if (s) {
       applySettings(s);
@@ -1533,6 +1580,20 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.show('settings');
         notice = { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
       }
+    } else if (action === 'choosepad') {
+      openPadPick('menu');
+    } else if (action === 'padpick-yes') {
+      if (input.acceptPadPick()) {
+        leavePadPick();
+      }
+    } else if (action === 'padpick-no') {
+      input.rejectPadPick();
+    } else if (action === 'padpick-skip') {
+      input.skipPadPick();
+      leavePadPick();
+    } else if (action === 'padpick-cancel') {
+      input.cancelPadPick();
+      leavePadPick();
     } else if (action === 'downloadflightlog') {
       if (flightLog.count < 2) {
         notice = {
@@ -1739,6 +1800,11 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let attractCam = makeAttractCamera(view);
   applySettings(ui.settings);
+
+  const bootPick = input.takePadPickQueue();
+  if (bootPick) {
+    openPadPick(bootPick);
+  }
 
   /* The spawn's placement in the world. Not fixed for the session any more:
    * the two maps start in different places, so this is re-adopted on every
@@ -2634,7 +2700,20 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Computed once: guidedPrompt retires the guided flag as a side effect,
      * so calling it in a condition and again in the body would consume it. */
     const guidedText = ui.guided ? guidedPrompt(race) : '';
-    if (ui.screen === 'calibrate') {
+    ui.setPadInfo(input.padSummary());
+    const queuedPick = input.takePadPickQueue();
+    if (queuedPick) {
+      openPadPick(queuedPick);
+    }
+    if (ui.screen === 'padpick') {
+      const pick = input.padPickView();
+      if (pick) {
+        ui.setPadPick(pick);
+      } else {
+        leavePadPick();
+      }
+      ui.setBanner('');
+    } else if (ui.screen === 'calibrate') {
       if (cal) {
         ui.setCalibration(cal);
       } else {

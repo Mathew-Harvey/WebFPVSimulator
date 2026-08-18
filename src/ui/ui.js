@@ -93,7 +93,14 @@ import {
   graphicsNote,
   normalizeGraphics,
 } from '../render/quality.js';
-import { CAMERA_FOVS, CAMERA_FOV_DEFAULT } from '../render/lens.js';
+import {
+  CAMERA_FOVS,
+  CAMERA_FOV_DEFAULT,
+  CAMERA_ANGLE_MIN,
+  CAMERA_ANGLE_MAX,
+  CAMERA_ANGLE_DEFAULT,
+  clampCameraAngle,
+} from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { sanitiseRateProfile } from '../fc/dump.js';
@@ -101,11 +108,16 @@ import { cycle, downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabSt
 
 const SETTINGS_KEY = 'webfpv.settings.v2';
 
-export const CAMERA_ANGLES = [15, 20, 25, 30, 35, 40];
 export const FLIGHT_MODES = ['acro', 'angle'];
 /* The lens, and the derivation behind it, live in src/render/lens.js. It is
  * re-exported here because the settings screen is where a pilot meets it. */
-export { CAMERA_FOVS, CAMERA_FOV_DEFAULT };
+export {
+  CAMERA_FOVS,
+  CAMERA_FOV_DEFAULT,
+  CAMERA_ANGLE_MIN,
+  CAMERA_ANGLE_MAX,
+  CAMERA_ANGLE_DEFAULT,
+};
 export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
 export const LAP_COUNTS = [1, 3, 5];
 
@@ -136,7 +148,7 @@ const DEFAULTS = {
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
-  cameraAngle: 30,
+  cameraAngle: CAMERA_ANGLE_DEFAULT,
   cameraFov: CAMERA_FOV_DEFAULT,
   packVoltage: 4.2,
   laps: 3,
@@ -238,7 +250,6 @@ export function loadSettings() {
   for (const [key, allowed] of [
     ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
-    ['cameraAngle', CAMERA_ANGLES],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
   ]) {
@@ -246,6 +257,9 @@ export function loadSettings() {
       s[key] = DEFAULTS[key];
     }
   }
+  /* Angle is a range, not a list: a stored 40 from the old six-step menu
+   * must survive, a stored 90 must not, and 45 has to be legal now. */
+  s.cameraAngle = clampCameraAngle(s.cameraAngle);
   /* First run, or an older save from before this key existed: pick Low
    * on a Deck so the page is flyable, High everywhere else so the
    * authored look is what a new desktop player sees. A stored choice,
@@ -1610,13 +1624,13 @@ export class Ui {
           (id) => { s.flightMode = id; },
         ),
         { label: 'Camera', section: true },
-        choice(
+        stepper(
           'Camera angle',
-          'How far the camera tilts up. More angle suits more speed. The quad beside the list shows it.',
-          CAMERA_ANGLES,
-          s.cameraAngle,
-          (n) => `${n} degrees`,
-          (n) => { s.cameraAngle = n; },
+          `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Left and right step one degree. The quad beside the list shows it.`,
+          `${s.cameraAngle} degrees`,
+          (d) => {
+            s.cameraAngle = clampCameraAngle(s.cameraAngle + d);
+          },
         ),
         choice(
           'Field of view',

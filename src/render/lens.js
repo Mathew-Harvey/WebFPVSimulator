@@ -70,6 +70,43 @@ export const CAMERA_FOVS = [75, 85, 95, 105];
 export const CAMERA_FOV_DEFAULT = 85;
 
 /*
+ * CAMERA TILT, degrees up from the airframe.
+ *
+ * This is the TPU mount angle, not a look-at. Zero is flat: the lens looks
+ * along the craft's nose, horizon in the middle of a level hover. 30 is a
+ * typical cruise. 45 to 55 is race. The list used to stop at 40 because it
+ * was a six-step menu, not because the airframe ran out of room, and a
+ * ticket on 2026-08-18 reported exactly that cap.
+ *
+ * The FPV quaternion and the model mount share this number. Both rotate
+ * about the craft's body X, so what Settings shows on the quad is what the
+ * goggles see. The viewpoint stays at the mount pivot (below). Sliding it
+ * out to the glass would move the picture at the default 30 as well as at
+ * 55, and a range change is not a reason to move the nodal point.
+ */
+export const CAMERA_ANGLE_MIN = 0;
+export const CAMERA_ANGLE_MAX = 55;
+export const CAMERA_ANGLE_DEFAULT = 30;
+
+export function clampCameraAngle(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return CAMERA_ANGLE_DEFAULT;
+  }
+  const n = Math.round(value);
+  if (n < CAMERA_ANGLE_MIN) {
+    return CAMERA_ANGLE_MIN;
+  }
+  if (n > CAMERA_ANGLE_MAX) {
+    return CAMERA_ANGLE_MAX;
+  }
+  return n;
+}
+
+export function cameraTiltRad(degrees) {
+  return (degrees * Math.PI) / 180;
+}
+
+/*
  * WHERE THE CAMERA IS BOLTED, in metres in the body frame.
  *
  * The FPV view was placed 7.75 cm in front of the centre of gravity and at
@@ -82,8 +119,10 @@ export const CAMERA_FOV_DEFAULT = 85;
  * that tells a pilot the lens is on a machine rather than floating at its
  * centre of mass.
  *
- * These live here rather than being typed again in main.js so the view and
- * the model cannot drift apart, which is how the 7.75 against 8.0 happened.
+ * These live here rather than being typed again in main.js or herocraft.js
+ * so the view and the model cannot drift apart, which is how the 7.75
+ * against 8.0 happened. herocraft.js places the mount at
+ * (0, CAMERA_MOUNT_UP, -CAMERA_MOUNT_FORWARD) in the Three.js craft frame.
  */
 export const CAMERA_MOUNT_FORWARD = 0.080;
 export const CAMERA_MOUNT_UP = 0.018;

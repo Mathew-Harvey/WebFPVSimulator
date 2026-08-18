@@ -10350,3 +10350,42 @@ something in the air had to pause or hit F8 first. It now stays in the
 top right on the flight screen too. Click still pauses, then opens the
 form, so typing does not fly the quad. A quieter style on that screen
 only, so the FPV frame still reads. Physics was not touched.
+
+### 2026-08-18 | bugfix | camera angle 0 to 55 degrees
+
+Ticket: Camera angle, Settings, field. Reported limited to 40 deg,
+expected 45 to 55. Context had cameraAngle 40, cameraFov 85.
+
+Cause: Settings offered a six value list, CAMERA_ANGLES = [15, 20, 25,
+30, 35, 40]. loadSettings snapped anything not on that list back to
+the default 30. The FPV quaternion and the model mount already shared
+the same body-X tilt, so 45 was never a physics or geometry limit. It
+was the menu.
+
+Fix: camera angle is a clamped range in src/render/lens.js, 0 to 55
+inclusive, one degree steps, default still 30. Settings uses the
+existing stepper (left/right, hold-repeat on keys) instead of a
+wrapping dropdown. Stored 15/20/25/30/35/40 keep working. 45 and 55
+are legal. Out of range values clamp, they do not reset to 30.
+
+Accuracy: FPV uses qPrev * Rx(tilt). The hero mount uses
+rotation.x = the same tilt. Mount bolt point is CAMERA_MOUNT_FORWARD
+and CAMERA_MOUNT_UP, now read by herocraft.js as well as main.js so
+the 7.75 vs 8.0 drift cannot return. Viewpoint stays at that pivot on
+purpose: moving it out to the glass would slide the picture at the
+default 30 as well as at 55.
+
+Not changed: FOV list, default 30, plant, ABI, input, WORLD_SCALE,
+shake, parked lift. Trace hash 6d17d4814bdc unchanged, as a render
+setting must.
+
+Verify: 16 of 16. Hash 6d17d4814bdc Node=Chrome, 1 hash across 4
+rates. hover-throttle 0.2637, punch-out 81.5 m, terminal-velocity
+31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s (0.22 percent),
+yaw-coupling -0.12 deg, battery-sag 11.14 percent, diff-passthrough
+ratio 1.2478 (0.47 percent). console-clean, audio-bed, world-scale,
+map-isolation green. vendor diff empty.
+
+Wrong: first clamp used Number(value), and Number(null) is 0, which
+would have flattened a missing setting instead of keeping 30. Now
+non-numbers return the default.

@@ -29,6 +29,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull } from './celmat.js';
 import { CRAFT_ARM, CRAFT_PROP_R } from '../game/collide.js';
 import { WORLD_SCALE } from './frame.js';
+import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from './lens.js';
 
 const MOTOR_ARM = CRAFT_ARM / Math.SQRT2;
 
@@ -265,7 +266,7 @@ export function buildHeroCraft(opts = {}) {
   group.add(visor);
 
   const cameraMount = new THREE.Group();
-  cameraMount.position.set(0, 0.018, -0.080);
+  cameraMount.position.set(0, CAMERA_MOUNT_UP, -CAMERA_MOUNT_FORWARD);
   group.add(cameraMount);
   const housing = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.019, 0.022), camBody);
   housing.position.set(0, 0, -0.004);

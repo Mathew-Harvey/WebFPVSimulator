@@ -46,7 +46,7 @@ import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
-import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, makeLensShake } from './render/lens.js';
+import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
@@ -1043,8 +1043,9 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function applySettings(s) {
-    camTilt = s.cameraAngle;
-    qTilt.setFromAxisAngle(AXIS_X, (camTilt * Math.PI) / 180);
+    camTilt = clampCameraAngle(s.cameraAngle);
+    s.cameraAngle = camTilt;
+    qTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));
     /* Vertical field of view. The default 100 keeps every measured budget
      * comparable; the setting exists because how roomy a course feels is a
      * pilot preference on real quads too, set by lens choice. */
@@ -2308,7 +2309,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
     if (shell.cameraMount) {
-      shell.cameraMount.rotation.x = (camTilt * Math.PI) / 180;
+      shell.cameraMount.rotation.x = cameraTiltRad(camTilt);
     }
 
     /* The lens sits where herocraft.js bolts it, forward AND up, not at the

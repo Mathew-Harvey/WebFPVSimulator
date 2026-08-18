@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { PROP_SPIN } from './herocraft.js';
+import { CAMERA_ANGLE_DEFAULT, cameraTiltRad } from './lens.js';
 
 const RATE_ROLL = 2.8;
 const RATE_PITCH = 2.8;
@@ -147,7 +148,7 @@ export function createCraftPose() {
     state.height = damp(state.height, HOVER + thr * LIFT + bob, 6, dt);
     pose.position.y = state.height;
 
-    hero.cameraMount.rotation.x = ((cameraAngle ?? 30) * Math.PI) / 180;
+    hero.cameraMount.rotation.x = cameraTiltRad(cameraAngle ?? CAMERA_ANGLE_DEFAULT);
 
     const mixed = motorMix(thr, roll, pitch, yaw);
     for (let m = 0; m < 4; m += 1) {

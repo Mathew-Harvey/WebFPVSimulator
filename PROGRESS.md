@@ -10692,4 +10692,34 @@ ACTUAL. Throttle cap is left alone; that row is not the rate curve.
 
 Plant, ABI and the default numbers were not changed.
 
+### 2026-08-18 | bugfix | leave the FC menu without guessing Esc
+
+Ticket: Le Star, FC Betaflight menu. Stuck until they found Escape.
+
+The screen looks like Configurator, so there is no product Back in the
+header, and the old Back row sat in a scrolling list under the rates
+graph. Escape from a focused rate field or the CLI dump never reached
+the menu: window keydown bails on INPUT/TEXTAREA, and those fields
+stopped propagation.
+
+Fix. A dark bar under the yellow header is always on screen: Save and
+exit when there are edits, Exit without saving (or Exit when clean),
+and an Esc hint. The menu rows say the same. Escape from a field now
+leaves. Save and exit writes then returns to Settings, pause or title.
+
+Same leave hint on How to fly, Settings, Courses, Pause (Esc resumes),
+Results, and the ones that already had it.
+
+Plant and ABI were not changed. Input path only forwards Escape from a
+text field to the menu. Sticks are unchanged.
+
+Verify: 16 of 16. Hash 6d17d4814bdc Node=Chrome. hover-throttle 0.2637,
+punch-out 81.5 m, terminal-velocity 31.1 m/s, motor-step 26 ms,
+rate-tracking 671.5 deg/s (0.22 percent), yaw-coupling -0.12 deg,
+battery-sag 11.14 percent, diff-passthrough 1.2478 (0.47 percent).
+console-clean, audio-bed, world-scale (craft body 0.1552 m),
+map-isolation green.
+
+
+
 

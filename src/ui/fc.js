@@ -252,6 +252,7 @@ export class FcSession {
     this.setFlightMode = () => {};
     this.motorTestAllowed = () => false;
     this.onMotorTest = () => {};
+    this.exitAfterSave = false;
   }
 
   open(dumpText, opts = {}) {
@@ -264,6 +265,7 @@ export class FcSession {
     this.importText = '';
     this.importName = '';
     this.presetId = '';
+    this.exitAfterSave = false;
     this.motorDuty = [0, 0, 0, 0];
   }
 
@@ -411,12 +413,12 @@ export class FcSession {
         {
           label: 'Save and restart the run',
           action: 'fc-save-restart',
-          note: 'Save writes the dump through sim_init, which resets the craft. That is the same as changing a rate today.',
+          note: 'Save writes the dump through sim_init, which resets the craft. That is the same as changing a rate today. Escape cancels and stays here.',
         },
         {
           label: 'Wait until the result screen',
           action: 'fc-wait',
-          note: 'Keeps the draft. Save when the run is over. Live PID mid-lap is out of this round.',
+          note: 'Keeps the draft. Save when the run is over. Live PID mid-lap is out of this round. Escape cancels and stays here.',
         },
       ];
     }
@@ -470,14 +472,24 @@ export class FcSession {
       action: 'fc-save',
       rowClass: 'fc-btn',
       note: this.dirty()
-        ? 'Writes the draft dump through sim_init, then adopts the module clock so stick lag cannot return.'
+        ? 'Writes the draft dump through sim_init and stays here. Save and exit is the yellow bar above.'
         : 'No edits. Save does not re-init, so a live race is not killed for nothing.',
     });
+    if (this.dirty()) {
+      rows.push({
+        label: 'Save and exit',
+        action: 'fc-save-exit',
+        rowClass: 'fc-btn',
+        note: this.runActive
+          ? 'Writes the dump, then asks whether to restart the run.'
+          : 'Writes the dump through sim_init, then leaves this screen.',
+      });
+    }
     rows.push({
       label: 'Discard',
       action: 'fc-discard',
       rowClass: 'fc-btn',
-      note: 'Restores the dump that was live when this screen opened.',
+      note: 'Restores the dump that was live when this screen opened. Stays here.',
     });
     rows.push({
       label: 'Export',
@@ -486,10 +498,12 @@ export class FcSession {
       note: 'Downloads CLI text a 4.5 Configurator can read. Does not Save.',
     });
     rows.push({
-      label: 'Back',
+      label: this.dirty() ? 'Exit without saving' : 'Exit',
       action: 'fc-back',
       rowClass: 'fc-btn',
-      note: 'Leaves this screen. Unsaved edits are discarded.',
+      note: this.dirty()
+        ? 'Leaves and restores the dump that was live when this screen opened. Escape does the same.'
+        : 'Leaves this screen. Escape does the same.',
     });
 
     if (this.tab === 'pid' && this.page === 'rates') {

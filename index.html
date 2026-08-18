@@ -538,6 +538,66 @@
         font-weight: 700;
         pointer-events: auto;
       }
+      .fc-exit {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 8px 14px;
+        background: #2a2a2a;
+        border-bottom: 1px solid #1a1a1a;
+        pointer-events: auto;
+      }
+      .fc-exit[hidden] { display: none !important; }
+      .fc-exit-btn {
+        border: 0;
+        border-radius: 4px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      .fc-exit-save {
+        background: var(--bf-accent);
+        color: var(--bf-ink);
+      }
+      .fc-exit-save:hover,
+      .fc-exit-save:focus-visible {
+        background: #ffd24d;
+        outline: none;
+      }
+      .fc-exit-leave {
+        background: #5c5c5c;
+        color: #fff;
+      }
+      .fc-exit-leave:hover,
+      .fc-exit-leave:focus-visible {
+        background: #6e6e6e;
+        outline: none;
+      }
+      .fc-exit-hint {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--bf-muted);
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .fc-exit-hint kbd {
+        display: inline-block;
+        min-width: 1.6em;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: #1a1a1a;
+        color: var(--bf-accent);
+        font: 700 12px/1.2 ui-monospace, "Cascadia Mono", monospace;
+        text-align: center;
+        box-shadow: 0 1px 0 #000;
+      }
       .fc-body {
         display: flex;
         gap: 0;
@@ -996,6 +1056,12 @@
         display: flex; align-items: center; gap: 12px;
         margin-top: 22px; min-height: 1.4em; max-width: 42em;
         font-size: 13px; color: rgba(235, 230, 215, 0.6); letter-spacing: 0.02em; text-align: center;
+        pointer-events: none;
+      }
+      .screen-modal .hint {
+        margin-left: auto;
+        margin-right: auto;
+        color: rgba(235, 230, 215, 0.8);
       }
       .title-foot .hint {
         margin-top: 0; text-align: left; max-width: none;

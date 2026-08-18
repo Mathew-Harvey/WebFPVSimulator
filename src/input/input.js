@@ -466,6 +466,11 @@ export class InputManager {
        */
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+        /* Escape still belongs to the menu: a focused rates field or CLI
+         * dump used to swallow it, so the FC screen had no leave key. */
+        if (e.code === 'Escape' && !e.repeat && this.onKey) {
+          this.onKey(e.code, false);
+        }
         return;
       }
       if (!e.repeat) {

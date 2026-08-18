@@ -859,7 +859,7 @@ export class Ui {
     const howtoBlock = wrapMenu();
     this.howtoMenu = howtoBlock.menu;
     this.howtoHelp = howtoBlock.help;
-    howto.append(howtoBlock.stage);
+    howto.append(howtoBlock.stage, hintWithKeys(['Esc'], 'Goes back. Arrow keys still move the menu.'));
     this.screens.howto = howto;
     this.howtoSource = 'keyboard';
     this.renderHowto();
@@ -920,7 +920,7 @@ export class Ui {
       this.worldStrip,
       this.courseStrip,
       coursesBlock.stage,
-      hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter chooses. On a radio: pitch to move, roll right to choose.'),
+      hintWithKeys(['↑↓', 'Enter', 'Esc'], 'Arrow keys move, Enter chooses. Escape goes back. On a radio: pitch to move, roll right to choose.'),
     );
     this.screens.courses = courses;
 
@@ -936,7 +936,7 @@ export class Ui {
     const showcase = el('div', 'craft-showcase');
     showcase.append(this.craftSettingsFrame, this.craftCaption);
     settingsBlock.stage.prepend(showcase);
-    settings.append(settingsBlock.stage, el('div', 'hint', 'Mouse or arrow keys change a value. The quad follows the radio or gamepad.'));
+    settings.append(settingsBlock.stage, hintWithKeys(['Esc'], 'Goes back. Changes are already stored. Arrow keys still move the menu.'));
     this.screens.settings = settings;
 
     const fc = el('div', 'screen screen-page screen-fc');
@@ -965,6 +965,23 @@ export class Ui {
       document.createTextNode(' 4.5.1. With thanks to the Betaflight developers. GPLv3.'),
     );
     fcHead.append(homage);
+    const fcExit = el('div', 'fc-exit');
+    this.fcSaveExit = btn('fc-exit-btn fc-exit-save', 'Save and exit');
+    this.fcSaveExit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.act('fc-save-exit');
+    });
+    this.fcLeave = btn('fc-exit-btn fc-exit-leave', 'Exit without saving');
+    this.fcLeave.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.act('fc-back');
+    });
+    const fcExitHint = el('div', 'fc-exit-hint');
+    fcExitHint.append(el('kbd', null, 'Esc'));
+    this.fcExitCopy = el('span', 'fc-exit-copy', 'exits without saving');
+    fcExitHint.append(this.fcExitCopy);
+    fcExit.append(this.fcSaveExit, this.fcLeave, fcExitHint);
+    this.fcExit = fcExit;
     const fcBody = el('div', 'fc-body');
     this.fcTabs = el('nav', 'fc-tabs');
     this.fcTabs.setAttribute('aria-label', 'Configurator tabs');
@@ -1007,6 +1024,7 @@ export class Ui {
     this.fcCli.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') {
         this.fcCli.blur();
+        this.back();
       }
       e.stopPropagation();
     });
@@ -1018,7 +1036,7 @@ export class Ui {
     fcWork.append(this.fcPages, this.fcRates.root, fcBlock.stage, this.fcCli, this.fcAttitude);
     fcBody.append(this.fcTabs, fcWork);
     const fcStatus = el('div', 'fc-status', 'Connected: WASM  ·  Betaflight 4.5.1  ·  PID 1 kHz  ·  Profile 0  ·  Homage of Configurator 10.10, not that app');
-    fc.append(fcHead, fcBody, fcStatus);
+    fc.append(fcHead, fcExit, fcBody, fcStatus);
     this.screens.fc = fc;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
@@ -1085,7 +1103,7 @@ export class Ui {
     const pausedBlock = wrapMenu();
     this.pausedMenu = pausedBlock.menu;
     this.pausedHelp = pausedBlock.help;
-    paused.append(pausedBlock.stage);
+    paused.append(pausedBlock.stage, hintWithKeys(['Esc'], 'Resumes. Resume is also the first row.'));
     this.screens.paused = paused;
 
     const results = el('div', 'screen screen-results');
@@ -1118,7 +1136,7 @@ export class Ui {
     this.resultsMenu = resultsBlock.menu;
     this.resultsHelp = resultsBlock.help;
     const resultsFoot = el('div', 'results-foot');
-    resultsFoot.append(resultsBlock.stage);
+    resultsFoot.append(resultsBlock.stage, hintWithKeys(['Esc'], 'Goes back to the title. Back to title is also a row.'));
     resultsCopy.append(resultsTop, resultsFoot);
     results.append(resultsCopy);
     this.screens.results = results;
@@ -2034,10 +2052,38 @@ export class Ui {
   }
 
   syncFcDirty() {
-    if (!this.fcDirty) {
+    if (this.fcDirty) {
+      this.fcDirty.textContent = this.fc.dirty() ? 'Unsaved' : '';
+    }
+    this.syncFcExit();
+  }
+
+  syncFcExit() {
+    if (!this.fcExit) {
       return;
     }
-    this.fcDirty.textContent = this.fc.dirty() ? 'Unsaved' : '';
+    const on = this.screen === 'fc';
+    const confirm = Boolean(this.fc.confirm);
+    const dirty = this.fc.dirty();
+    this.fcExit.hidden = !on || confirm;
+    if (this.fcSaveExit) {
+      this.fcSaveExit.hidden = !dirty;
+    }
+    if (this.fcLeave) {
+      this.fcLeave.textContent = dirty ? 'Exit without saving' : 'Exit';
+    }
+    if (this.fcExitCopy) {
+      this.fcExitCopy.textContent = dirty ? 'exits without saving' : 'returns';
+    }
+  }
+
+  leaveFc() {
+    this.fc.stopMotors();
+    this.fc.confirm = null;
+    const dest = this.returnTo === 'paused' || this.returnTo === 'settings'
+      ? this.returnTo
+      : 'title';
+    this.show(dest);
   }
 
   afterRatesEdit() {
@@ -3535,6 +3581,7 @@ export class Ui {
       }
       if (this.fc.runActive) {
         this.fc.confirm = 'save-run';
+        this.fc.exitAfterSave = false;
         this.cursor = 0;
         this.renderMenu();
         return;
@@ -3545,7 +3592,26 @@ export class Ui {
       }
       return;
     }
+    if (action === 'fc-save-exit') {
+      if (!this.fc.dirty()) {
+        this.leaveFc();
+        return;
+      }
+      if (this.fc.runActive) {
+        this.fc.confirm = 'save-run';
+        this.fc.exitAfterSave = true;
+        this.cursor = 0;
+        this.renderMenu();
+        return;
+      }
+      this.fc.stopMotors();
+      if (this.onFcSave) {
+        this.onFcSave(this.fc.draft, { restart: false, exit: true, presetId: this.fc.presetId });
+      }
+      return;
+    }
     if (action === 'fc-save-restart') {
+      this.fc.exitAfterSave = false;
       this.fc.confirm = null;
       this.fc.stopMotors();
       if (this.onFcSave) {
@@ -3554,6 +3620,7 @@ export class Ui {
       return;
     }
     if (action === 'fc-wait') {
+      this.fc.exitAfterSave = false;
       this.fc.confirm = null;
       this.cursor = 0;
       this.renderMenu();
@@ -3605,12 +3672,9 @@ export class Ui {
       return;
     }
     if (action === 'fc-back') {
-      this.fc.stopMotors();
+      this.fc.exitAfterSave = false;
       this.fc.discard();
-      const dest = this.returnTo === 'paused' || this.returnTo === 'settings'
-        ? this.returnTo
-        : 'title';
-      this.show(dest);
+      this.leaveFc();
       return;
     }
     /*
@@ -3660,12 +3724,14 @@ export class Ui {
     if (this.screen === 'fc' && this.fcCli && document.activeElement === this.fcCli) {
       if (code === 'Escape') {
         this.fcCli.blur();
+        this.back();
       }
       return true;
     }
     if (this.screen === 'fc' && this.fcRates && this.fcRates.root.contains(document.activeElement)) {
       if (code === 'Escape') {
         document.activeElement.blur();
+        this.back();
       }
       return true;
     }

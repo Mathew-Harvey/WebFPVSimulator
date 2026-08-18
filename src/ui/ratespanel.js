@@ -148,6 +148,11 @@ export function mountRatesPanel(handlers) {
         e.preventDefault();
         input.blur();
         commit();
+        e.stopPropagation();
+        return;
+      }
+      if (e.code === 'Escape') {
+        return;
       }
       e.stopPropagation();
     });

@@ -1447,6 +1447,10 @@ export async function boot({ loading, bootStart, mapId }) {
       introMs = 0;
       return;
     }
+    if (opts && opts.exit) {
+      ui.leaveFc();
+      return;
+    }
     ui.renderMenu();
   };
   ui.onFcImport = (text, name, policy) => {

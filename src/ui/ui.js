@@ -758,6 +758,8 @@ export class Ui {
     packBar.append(this.osdPackBar);
     const packBlock = el('div', 'osd-corner osd-left');
     packBlock.append(el('div', 'osd-label', 'Pack'), this.osdPack, packBar);
+    this.osdHits = el('div', 'osd-sub osd-hits', '');
+    packBlock.append(this.osdHits);
     this.osdSpeed = el('div', 'osd-value', '');
     this.osdFlight = el('div', 'osd-sub osd-mode', '');
     this.osdAlt = el('div', 'osd-sub', '');
@@ -3211,7 +3213,7 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, hitsLeft, hitLives }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -3235,6 +3237,15 @@ export class Ui {
     }
     this.osdAlt.textContent = `${altitude.toFixed(1)} m above the ground`;
     this.osdThrBar.style.width = `${Math.max(0, Math.min(1, throttle)) * 100}%`;
+    if (this.osdHits) {
+      const lives = hitLives != null ? hitLives : 3;
+      if (hitsLeft == null) {
+        this.osdHits.textContent = '';
+      } else {
+        this.osdHits.textContent = `Hits left ${hitsLeft} of ${lives}`;
+        this.osdHits.className = hitsLeft <= 1 ? 'osd-sub osd-hits warn' : 'osd-sub osd-hits';
+      }
+    }
   }
 
   /*

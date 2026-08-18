@@ -10720,6 +10720,54 @@ battery-sag 11.14 percent, diff-passthrough 1.2478 (0.47 percent).
 console-clean, audio-bed, world-scale (craft body 0.1552 m),
 map-isolation green.
 
+### 2026-08-18 | feature | bounce and three-hit damage
+
+Ticket: Le Star, 18 Aug 2026. Every minor hit felt like an instant
+crash. They did manage to clip a gate once. Expected: bounce off and
+resume, about three hits like that before a wreck.
+
+What was wrong. collide.js already classified a graze (gate, obstacle
+or pole, closing under 4 m/s) and main.js called race.recover and
+played clip. Nothing reflected velocity and nothing moved the craft
+out of the solid. The plant kept flying through, the next frames
+re-hit at a higher closing speed, and the graze became a crash. Trees,
+walls, rocks and cliffs crashed at any speed.
+
+Fix. Additive ABI entry point sim_deflect, version still 1, same
+pattern as sim_rest: the plant has no scene geometry, so the shell
+judges the contact and writes the impulse. Unit world-frame normal,
+restitution, tangent keep, rate keep, and an absolute plant position
+at the first contact plus a small outward gap, so a tunneled frame is
+rewound to the entry face. Replays that never call it are
+bit-identical to before. The harness never calls it. tests/lib/simmod.js
+is read-only, so the shell calls the export on the module directly.
+No advisor channel in this session; the ABI reasoning is here.
+
+collide.js now writes a unit outward normal with the hit. hitOutcome:
+train, or closing at or above 18 m/s, is a crash. Everything else
+bounces. Closing under 4 m/s is a free graze. A harder bounce spends
+one of three lives; the third spends the airframe. The same collider
+within 180 ms is one hit, so a stuck overlap cannot drain the budget
+in three frames. Lives reset on crash recovery and on a new run. OSD
+shows Hits left n of 3.
+
+frame.js gained the inverse of simPosToThree, because CLAUDE.md puts
+the basis change at that seam and bounce has to write a plant
+position.
+
+Smoke, not harness: motor override punch to vz 15.7 m/s, deflect on
+(0,0,-1) with e=0.35, vz became -5.5 m/s, which is e times inbound.
+
+Verify: 16 of 16. Hash 6d17d4814bdc Node=Chrome, unchanged, as
+required: the plant step did not change, only a new entry point the
+replay never hits. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5
+deg/s (0.22 percent), yaw-coupling -0.12 deg, battery-sag 11.14
+percent, diff-passthrough 1.2478 (0.47 percent). console-clean,
+audio-bed, world-scale (craft body 0.1552 m), map-isolation green.
+vendor/betaflight diff empty. Flight feel of the bounce is awaiting
+human judgement.
+
 
 
 

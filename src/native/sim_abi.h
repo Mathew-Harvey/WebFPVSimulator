@@ -141,6 +141,26 @@ int sim_motor_override(int motor, double duty);
 int sim_rest(void);
 
 /*
+ * Bounce off a world-frame contact. n is a unit normal pointing out of the
+ * obstacle (from the solid toward the craft). Incoming speed along n is
+ * reflected with the given restitution, the tangent is scaled by
+ * tangent_keep, body rates are scaled by rate_keep, and the craft is placed
+ * at world position p (metres, z up). The shell supplies p at the first
+ * contact plus a small outward separation, already converted into the plant
+ * frame, so a tunneled frame is rewound to the entry face rather than
+ * pushed further through.
+ *
+ * This is the obstacle counterpart of sim_rest: the plant has no scene
+ * geometry, so the shell judges the contact and writes the impulse. Additive
+ * ABI change, version unchanged: no existing entry point moved or changed
+ * meaning. A replay that never calls this is bit-identical to one from
+ * before it existed. The verification harness never calls it.
+ */
+int sim_deflect(double nx, double ny, double nz,
+                double restitution, double tangent_keep, double rate_keep,
+                double px, double py, double pz);
+
+/*
  * Enable or disable Betaflight ANGLE_MODE. Off (0) is acro, the default,
  * and the path every harness replay takes. On (non-zero) feeds the plant
  * attitude into Betaflight's compiled pidLevel and sets ANGLE_MODE, so

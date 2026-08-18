@@ -33,7 +33,9 @@
  * no closure anywhere in hit().
  *
  * Everything here is in Three.js world space, y up, downstream of the
- * physics. Nothing in this file feeds back into the simulation.
+ * physics. The query itself does not write the plant. It reports a unit
+ * outward normal and a closing parameter; the shell may call sim_deflect
+ * with those so a clip bounces instead of tunnelling into a crash.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -209,6 +211,12 @@ export class Colliders {
      * event as arriving at it at 30, and until now they were.
      */
     this.hitNormalDot = 0;
+    /* Unit outward normal at the contact, Three.js world space, pointing
+     * from the solid toward the craft (against inbound travel). Zero when
+     * the last query missed. The shell converts this once, in frame.js. */
+    this.hitNx = 0;
+    this.hitNy = 0;
+    this.hitNz = 0;
     /* Scratch for axisToPoint, written per call, never allocated. */
     this.nx = 0;
     this.ny = 0;
@@ -808,12 +816,55 @@ export class Colliders {
   }
 
   /*
+   * Write hitNx/hitNy/hitNz as a unit vector pointing out of the obstacle,
+   * and hitNormalDot as the absolute cosine against travel (d1x,d1y,d1z).
+   * A degenerate normal falls back to -travel so a bounce still has a
+   * direction. Allocation free.
+   */
+  finishHitNormal(nx, ny, nz, d1x, d1y, d1z) {
+    let nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const tl = Math.sqrt(d1x * d1x + d1y * d1y + d1z * d1z);
+    if (nl <= 1e-9) {
+      if (tl <= 1e-9) {
+        this.hitNx = 0;
+        this.hitNy = 1;
+        this.hitNz = 0;
+        this.hitNormalDot = 1;
+        return;
+      }
+      nx = -d1x;
+      ny = -d1y;
+      nz = -d1z;
+      nl = tl;
+    }
+    const inv = 1 / nl;
+    nx *= inv;
+    ny *= inv;
+    nz *= inv;
+    if (tl > 1e-9) {
+      const along = d1x * nx + d1y * ny + d1z * nz;
+      this.hitNormalDot = along < 0 ? -along / tl : along / tl;
+      if (along > 0) {
+        nx = -nx;
+        ny = -ny;
+        nz = -nz;
+      }
+    } else {
+      this.hitNormalDot = 1;
+    }
+    this.hitNx = nx;
+    this.hitNy = ny;
+    this.hitNz = nz;
+  }
+
+  /*
    * Did the craft, travelling from p to q, touch anything? The craft is an
    * ELLIPSOID: CRAFT_WORLD_R across the props, vh through the body, because a
    * quad is a disc and sweeping a 0.1735 m ball stole 26.7 cm of every
    * vertical window. Callers that think in spheres omit vh and get the old
    * sphere exactly. Returns the kind index of the FIRST CONTACT ALONG THE
-   * TRAVEL, or -1. Also writes hitIndex, hitKind, hitT and hitNormalDot.
+   * TRAVEL, or -1. Also writes hitIndex, hitKind, hitT, hitNormalDot and
+   * a unit outward normal in hitNx/hitNy/hitNz.
    *
    * Exact for boxes (the slab walk is weighted per axis). For capsules the
    * first pass sweeps the conservative CRAFT_WORLD_R sphere, then the reach is
@@ -836,6 +887,9 @@ export class Colliders {
     this.hitKind = -1;
     this.hitNormalDot = 0;
     this.hitT = -1;
+    this.hitNx = 0;
+    this.hitNy = 0;
+    this.hitNz = 0;
     if (!this.built) {
       return -1;
     }
@@ -990,17 +1044,10 @@ export class Colliders {
       const nx = cxp < -hx ? cxp + hx : cxp > hx ? cxp - hx : 0;
       const ny = cyp < -hy ? cyp + hy : cyp > hy ? cyp - hy : 0;
       const nz = czp < -hz ? czp + hz : czp > hz ? czp - hz : 0;
-      const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
-      const tl = Math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz);
       this.hitIndex = -1;
       this.hitKind = this.movingKind[bestMoving];
       this.hitT = bestT;
-      if (nl > 1e-9 && tl > 1e-9) {
-        const dot = (rdx * nx + rdy * ny + rdz * nz) / (nl * tl);
-        this.hitNormalDot = dot < 0 ? -dot : dot;
-      } else {
-        this.hitNormalDot = 1;
-      }
+      this.finishHitNormal(nx, ny, nz, rdx, rdy, rdz);
       return this.hitKind;
     }
     if (bestI < 0) {
@@ -1030,14 +1077,7 @@ export class Colliders {
       ny = this.ny;
       nz = this.nz;
     }
-    const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
-    const tl = Math.sqrt(a);
-    if (nl > 1e-9 && tl > 1e-9) {
-      const dot = (d1x * nx + d1y * ny + d1z * nz) / (nl * tl);
-      this.hitNormalDot = dot < 0 ? -dot : dot;
-    } else {
-      this.hitNormalDot = 1;
-    }
+    this.finishHitNormal(nx, ny, nz, d1x, d1y, d1z);
     return this.hitKind;
   }
 
@@ -1085,10 +1125,9 @@ export class Colliders {
  * The simulator has no ground plane, on purpose: the verification harness
  * measures free air behaviour, so a plant with a floor in it could not be
  * checked against terminal velocity or a step response. That decision means
- * the ground lives here, in the shell, and it also means the shell cannot
- * push back: there is no ABI call that writes a position or a velocity into
- * the physics, so a craft resting on the ground can only be held by not
- * stepping the physics at all.
+ * the ground lives here, in the shell. sim_rest zeroes velocity at a judged
+ * landing; sim_deflect writes a bounce for an obstacle. A craft sitting on
+ * the ground is still held by not stepping, because rest is not a bounce.
  *
  * THE RULE IS A PROP STRIKE, and everything below is a way of asking
  * whether one happened. The owner's words: a careful perch should be fine,
@@ -1131,18 +1170,58 @@ export const LAND_TILT_HARD_DEG = 50;    /* arriving on its side */
 export const LAND_TIP_SPEED_MAX = 3.0;
 
 /*
- * Closing speed, in metres per second, above which touching an obstacle is a
- * crash rather than a graze.
+ * Closing speed, in metres per second, above which a touch costs a hit
+ * rather than counting as a free graze. Below this, the shell bounces the
+ * craft and does not spend one of HIT_LIVES.
  *
  * A MultiGP gate is 1.315 inch PVC with vinyl mesh panels. Brushing an
  * upright bounces you and you carry on; arriving at it at race speed does
  * not. Until this existed every contact at any speed was a full crash with a
- * 1.4 s lockout and a void lap, which is harsher than the physics AND
- * harsher than the MultiGP rulebook, which does not invalidate a lap for
- * obstacle contact. Applies to gate frames, obstacle furniture and flag
- * poles. A tree, a rock or a cliff is a crash at any speed.
+ * 1.4 s lockout, which is harsher than the physics AND harsher than the
+ * MultiGP rulebook, which does not invalidate a lap for obstacle contact.
+ * The graze used to apply only to gate frames, furniture and flag poles, and
+ * it never actually bounced: the plant kept flying through, the next frames
+ * re-hit at a higher closing speed, and every "clip" became a crash. Bounce
+ * is now a real impulse for every solid except a train; this number only
+ * decides whether that impulse spends a life.
  */
 export const GRAZE_SPEED_MAX = 4.0;
+
+/*
+ * Closing speed at or above which a bounce is not offered: the airframe
+ * is spent in one hit. 18 m/s is 65 km/h head-on. A clip at race speed
+ * still bounces because closing is speed times how square the contact was.
+ * A train is always a crash, at any speed: see KINDS.
+ */
+export const BOUNCE_SPEED_MAX = 18.0;
+/* Hit points. The third damaging bounce is a crash. Grazes below
+ * GRAZE_SPEED_MAX bounce without spending one. */
+export const HIT_LIVES = 3;
+/* How long one physical contact is treated as one hit, milliseconds. */
+export const BOUNCE_COOLDOWN_MS = 180;
+/* Coefficient of restitution, PVC / carbon, dimensionless. */
+export const BOUNCE_RESTITUTION = 0.35;
+/* Keep this fraction of the tangent (along-surface) speed. */
+export const BOUNCE_TANGENT_KEEP = 0.65;
+/* Keep this fraction of body rates, so a clip does not keep spinning in. */
+export const BOUNCE_RATE_KEEP = 0.55;
+/* Extra outward push past the contact, metres, so the next sweep is clear. */
+export const BOUNCE_SEPARATION = 0.06;
+
+/*
+ * Classify an obstacle contact. 'crash' is a wreck, 'bounce' is fly on.
+ * Closing is speed times hitNormalDot, metres per second. The shell still
+ * decides whether a bounce spends a life.
+ */
+export function hitOutcome(kindName, closing) {
+  if (kindName === 'train') {
+    return 'crash';
+  }
+  if (!(closing < BOUNCE_SPEED_MAX)) {
+    return 'crash';
+  }
+  return 'bounce';
+}
 
 /*
  * Classify a ground arrival. Pure function, no allocation, so the frame loop

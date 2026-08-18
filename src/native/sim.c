@@ -137,6 +137,61 @@ SIM_EXPORT int sim_rest(void) {
   return SIM_OK;
 }
 
+/* IEEE NaN and Inf without math.h: NaN != NaN, Inf - Inf is NaN. */
+static int sim_finite(double x) {
+  return x == x && x - x == 0.0;
+}
+
+SIM_EXPORT int sim_deflect(double nx, double ny, double nz,
+                           double restitution, double tangent_keep,
+                           double rate_keep, double px, double py, double pz) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!sim_finite(nx) || !sim_finite(ny) || !sim_finite(nz)
+      || !sim_finite(restitution) || !sim_finite(tangent_keep)
+      || !sim_finite(rate_keep) || !sim_finite(px) || !sim_finite(py)
+      || !sim_finite(pz)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(restitution >= 0.0) || !(restitution <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(tangent_keep >= 0.0) || !(tangent_keep <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(rate_keep >= 0.0) || !(rate_keep <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  /* Host passes a unit normal. Slack covers JS float error from collide.js,
+   * not a licence to send an arbitrary vector. */
+  const double n2 = nx * nx + ny * ny + nz * nz;
+  if (!(n2 > 0.97) || !(n2 < 1.03)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const double vn = S.vel[0] * nx + S.vel[1] * ny + S.vel[2] * nz;
+  if (vn < 0.0) {
+    const double bounce = -(1.0 + restitution) * vn;
+    S.vel[0] += bounce * nx;
+    S.vel[1] += bounce * ny;
+    S.vel[2] += bounce * nz;
+    const double vn2 = S.vel[0] * nx + S.vel[1] * ny + S.vel[2] * nz;
+    const double tx = S.vel[0] - vn2 * nx;
+    const double ty = S.vel[1] - vn2 * ny;
+    const double tz = S.vel[2] - vn2 * nz;
+    S.vel[0] = vn2 * nx + tx * tangent_keep;
+    S.vel[1] = vn2 * ny + ty * tangent_keep;
+    S.vel[2] = vn2 * nz + tz * tangent_keep;
+  }
+  S.pos[0] = px;
+  S.pos[1] = py;
+  S.pos[2] = pz;
+  S.omega[0] *= rate_keep;
+  S.omega[1] *= rate_keep;
+  S.omega[2] *= rate_keep;
+  return SIM_OK;
+}
+
 SIM_EXPORT int sim_set_angle_mode(int on) {
   bridge_set_angle_mode(on);
   return SIM_OK;

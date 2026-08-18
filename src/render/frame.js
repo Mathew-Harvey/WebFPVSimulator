@@ -103,3 +103,31 @@ export function simQuatToThree(w, x, y, z, out) {
   out.set(-y, z, -x, w);
   return out;
 }
+
+/*
+ * Inverse of simPosToThree: a Three.js world-metre point (already stripped
+ * of the spawn offset and spawn yaw, those live in the shell) back into
+ * sim metres, z up. Bounce writes a plant position, so the conversion has
+ * to come back through this file, the same seam it left by.
+ *
+ *   x_sim = -z_three * WORLD_SCALE
+ *   y_sim = -x_three * WORLD_SCALE
+ *   z_sim =  y_three * WORLD_SCALE
+ */
+export function threePosToSim(x, y, z, out) {
+  out.x = -z * WORLD_SCALE;
+  out.y = -x * WORLD_SCALE;
+  out.z = y * WORLD_SCALE;
+  return out;
+}
+
+/*
+ * Inverse permutation for a direction. WORLD_SCALE is isotropic, so a unit
+ * vector in the Three.js frame is a unit vector in the plant frame.
+ */
+export function threeDirToSim(x, y, z, out) {
+  out.x = -z;
+  out.y = -x;
+  out.z = y;
+  return out;
+}

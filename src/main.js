@@ -45,14 +45,14 @@ import { applyPixelRatio, normalizeGraphics } from './render/quality.js';
 import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
-import { simPosToThree, simQuatToThree, simLenToWorld, WORLD_SCALE } from './render/frame.js';
+import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
 import { Race } from './game/race.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, GRAZE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, hitOutcome, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, HIT_LIVES, BOUNCE_COOLDOWN_MS, BOUNCE_RESTITUTION, BOUNCE_TANGENT_KEEP, BOUNCE_RATE_KEEP, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, fetchTrackDocument, postTime } from './share/board.js';
 import { inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -399,6 +399,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const sim = await loadSim(await fetchBytes('/dist/sim.wasm', (f, got, total) => {
     loading.progress('sim', f, `${(got / 1024).toFixed(0)} of ${(total / 1024).toFixed(0)} kB`);
   }));
+  if (typeof sim.e.sim_deflect !== 'function') {
+    throw new Error('sim.wasm does not export sim_deflect');
+  }
   /*
    * The flight controller comes entirely from a Betaflight diff, so which
    * diff is chosen IS the tune. The choice is a setting; the boot path and
@@ -529,6 +532,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * craft underground, looking up at the lit underside of the terrain. */
     startY = groundAt(startX, startZ);
     qSpawn.setFromAxisAngle(AXIS_Y, startYaw);
+    qSpawnInv.copy(qSpawn).invert();
   }
 
   /* The race: gate order, lap clock, best lap. On a freestyle map it is a
@@ -714,6 +718,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastHitKind = 'none';
   let lastClosing = 0;
   let speedNow = 0;
+  let hitsLeft = HIT_LIVES;
+  let bounceAtWall = 0;
+  let bounceHitIndex = -1;
+  let bounceHitKind = '';
   /* The craft's tilt-aware vertical half extent, written by the physics
    * branch each frame and read by the obstacle query later in the same
    * frame. Starts level. */
@@ -818,6 +826,7 @@ export async function boot({ loading, bootStart, mapId }) {
       startPitch = 0;
       startY = groundAt(startX, startZ);
       qSpawn.setFromAxisAngle(AXIS_Y, startYaw);
+      qSpawnInv.copy(qSpawn).invert();
     }
     sim.reset();
     sim.setCellVoltage(runVoltage);
@@ -856,6 +865,10 @@ export async function boot({ loading, bootStart, mapId }) {
     input.drain();
     input.resetKeyboardSticks();
     raceHasPrev = false;
+    hitsLeft = HIT_LIVES;
+    bounceAtWall = 0;
+    bounceHitIndex = -1;
+    bounceHitKind = '';
     /* The race interpolates a gate crossing between its own previous sim
      * time and this one. A respawn teleports the craft, so the segment
      * either side of it is not a flight path: leaving prevSimMs behind put
@@ -1784,8 +1797,12 @@ export async function boot({ loading, bootStart, mapId }) {
   const qCurr = new THREE.Quaternion();
   const qTilt = new THREE.Quaternion();
   const qSpawn = new THREE.Quaternion();
+  const qSpawnInv = new THREE.Quaternion();
   const qPad = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
+  const pBounce = new THREE.Vector3();
+  const nSim = { x: 0, y: 0, z: 0 };
+  const pSim = { x: 0, y: 0, z: 0 };
   const camFwd = new THREE.Vector3();
   const camUp = new THREE.Vector3();
   const qShake = new THREE.Quaternion();
@@ -1805,6 +1822,72 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Eased toward PARKED_LIFT while the craft is down and toward zero once it
    * is flying, so the view rises off the pad rather than jumping. */
   let parkedLift = PARKED_LIFT;
+
+  /*
+   * World contact, already spawn-offset, back into plant metres. Inverse of
+   * the render pose path: subtract the start, undo the spawn yaw, then the
+   * frame.js basis change, then SPAWN_ALT. Bounce has to write a plant
+   * position or the next sweep starts inside the solid we just hit.
+   */
+  function worldPosToSim(wx, wy, wz, out) {
+    pBounce.set(wx - startX, wy - startY, wz - startZ);
+    pBounce.applyQuaternion(qSpawnInv);
+    threePosToSim(pBounce.x, pBounce.y, pBounce.z, out);
+    out.z -= SPAWN_ALT;
+    return out;
+  }
+
+  function poseFromState(st, out) {
+    simPosToThree(st[1], st[2], st[3] + SPAWN_ALT, out);
+    out.applyQuaternion(qSpawn);
+    out.x += startX;
+    out.z += startZ;
+    out.y += startY;
+    return out;
+  }
+
+  /*
+   * Reflect the plant off the last collider hit. Places the craft at the
+   * first contact plus a small outward gap, so a tunneled frame is rewound
+   * to the entry face. Returns false if the module refused the write.
+   */
+  function applyBounce() {
+    const col = view.colliders;
+    const nx = col.hitNx;
+    const ny = col.hitNy;
+    const nz = col.hitNz;
+    const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
+    const cx = racePrev.x + (pCurr.x - racePrev.x) * ht;
+    const cy = racePrev.y + (pCurr.y - racePrev.y) * ht;
+    const cz = racePrev.z + (pCurr.z - racePrev.z) * ht;
+    const inward = -((pCurr.x - cx) * nx + (pCurr.y - cy) * ny + (pCurr.z - cz) * nz);
+    const sep = (inward > 0 ? inward : 0) + BOUNCE_SEPARATION;
+    worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
+    threeDirToSim(nx, ny, nz, nSim);
+    const nlen = Math.sqrt(nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z);
+    if (!(nlen > 1e-9)) {
+      return false;
+    }
+    const inv = 1 / nlen;
+    const code = sim.e.sim_deflect(
+      nSim.x * inv, nSim.y * inv, nSim.z * inv,
+      BOUNCE_RESTITUTION, BOUNCE_TANGENT_KEEP, BOUNCE_RATE_KEEP,
+      pSim.x, pSim.y, pSim.z,
+    );
+    if (code !== SIM_OK) {
+      return false;
+    }
+    stateCurr = readState();
+    statePrev = stateCurr;
+    poseFromState(stateCurr, pCurr);
+    shell.quad.position.copy(pCurr);
+    racePrev.copy(pCurr);
+    groundPrev.copy(pCurr);
+    speedNow = Math.sqrt(
+      stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
+    );
+    return true;
+  }
   /*
    * The title screen's camera. It belongs to the MAP, because the shot that
    * shows a map off is the map's business: the race field flies its own
@@ -2193,12 +2276,12 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     } else if (mode === 'flight' && !crashed && landed) {
       /*
-       * Sitting on the ground. The integrator does NOT step: position is
-       * still not writable through the ABI, so the craft is held by not
-       * advancing it. The touchdown descent rate is no longer stored with
-       * it: sim_rest zeroed the velocity at the landing judgement, so a
-       * takeoff resumes from a true rest state and the only dip left is
-       * the real one, the motors spooling up from wherever they idled.
+       * Sitting on the ground. The integrator does NOT step: a landing is
+       * rest, not a bounce, so the craft is held by not advancing it. The
+       * touchdown descent rate is no longer stored with it: sim_rest zeroed
+       * the velocity at the landing judgement, so a takeoff resumes from a
+       * true rest state and the only dip left is the real one, the motors
+       * spooling up from wherever they idled.
        *
        * The lap clock DOES keep running. Landing in the middle of a lap
        * costs you the time it costs you, and a course where you can park for
@@ -2292,9 +2375,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * trunk and canopy, every rock, cliff tier and flag pole is a capsule in
      * view.colliders, and the query is the exact closest distance between
      * the segment the craft travelled and the capsule's axis, so nothing can
-     * tunnel through at any frame rate. Touching any of it is a crash: the
-     * owner asked for the gates to be solid, and a gate you can fly through
-     * the middle of the frame of is not solid.
+     * tunnel through at any frame rate. A train, or a head-on hit faster
+     * than BOUNCE_SPEED_MAX, is a crash. Anything else bounces: the plant
+     * is reflected through sim_deflect and the airframe has HIT_LIVES
+     * damaging hits before the next one is a wreck. A graze below
+     * GRAZE_SPEED_MAX bounces without spending a life.
      */
     /* The craft's speed at this state, needed by the collision test below and
      * by the overlay further down. Read once, from the state block. */
@@ -2311,38 +2396,37 @@ export async function boot({ loading, bootStart, mapId }) {
       );
       if (k >= 0) {
         lastHitKind = view.colliders.kindName(k);
-        /*
-         * A graze is not a crash. The closing speed is the craft's speed times
-         * how square the contact was, and below GRAZE_SPEED_MAX a touch on a
-         * gate frame, its furniture or a flag pole costs the lap and nothing
-         * else. Trees, rocks and cliffs are solid at any speed: they are trunks
-         * and boulders, not PVC tube.
-         */
         const closing = speedNow * view.colliders.hitNormalDot;
         lastClosing = closing;
-        const soft = lastHitKind === 'gate' || lastHitKind === 'obstacle' || lastHitKind === 'pole';
-        if (soft && closing < GRAZE_SPEED_MAX) {
-          /*
-           * A graze costs nothing but the bounce. It used to void the lap,
-           * which under the new crash rule is backwards: a hard hit now
-           * costs only the time it takes to get going again, so punishing a
-           * touch harder than a wreck cannot be right. It is also what the
-           * MultiGP rulebook says, which the note above already observed.
-           *
-           * Using recover rather than voidLap matters for a second reason:
-           * voidLap resets the flying order to the start gate, so a gentle
-           * clip halfway round the course silently sent the pilot's next
-           * target back to the timing line without moving the craft.
-           */
-          race.recover(`Clipped the ${lastHitKind}`, nowWall);
-          view.setNextGate(race.nextSceneIndex());
-          /* 'clip', not 'gate': the graze penalty must not sound like the
-           * pass reward, or the ear learns the wrong lesson at speed. */
-          if (typeof audio.event === 'function') {
-            audio.event('clip');
-          }
-        } else {
+        const outcome = hitOutcome(lastHitKind, closing);
+        const sameContact = nowWall - bounceAtWall < BOUNCE_COOLDOWN_MS
+          && bounceHitIndex === view.colliders.hitIndex
+          && bounceHitKind === lastHitKind;
+        const graze = closing < GRAZE_SPEED_MAX;
+        let wreck = outcome === 'crash';
+        if (!wreck && !sameContact && !graze && hitsLeft <= 1) {
+          wreck = true;
+        }
+        if (wreck && !sameContact) {
           crashInto(`Hit the ${lastHitKind}`, nowWall);
+        } else {
+          if (!applyBounce()) {
+            crashInto(`Hit the ${lastHitKind}`, nowWall);
+          } else {
+            if (!sameContact && !graze) {
+              hitsLeft -= 1;
+              race.recover(`Hit the ${lastHitKind}, ${hitsLeft} left`, nowWall);
+            } else if (!sameContact) {
+              race.recover(`Clipped the ${lastHitKind}`, nowWall);
+            }
+            view.setNextGate(race.nextSceneIndex());
+            if (!sameContact && typeof audio.event === 'function') {
+              audio.event('clip');
+            }
+            bounceAtWall = nowWall;
+            bounceHitIndex = view.colliders.hitIndex;
+            bounceHitKind = lastHitKind;
+          }
         }
       }
     }
@@ -2695,6 +2779,8 @@ export async function boot({ loading, bootStart, mapId }) {
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
         flightMode: angleModeOn ? 'angle' : 'acro',
+        hitsLeft,
+        hitLives: HIT_LIVES,
       });
       const ch = input.channels;
       ui.setStickOverlay({
@@ -2969,6 +3055,9 @@ export async function boot({ loading, bootStart, mapId }) {
     lastHitKind,
     lastClosingSpeed: lastClosing,
     grazeSpeedMax: GRAZE_SPEED_MAX,
+    bounceSpeedMax: BOUNCE_SPEED_MAX,
+    hitsLeft,
+    hitLives: HIT_LIVES,
     groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y),
     thresholds: {
       descentMax: LAND_DESCENT_MAX,

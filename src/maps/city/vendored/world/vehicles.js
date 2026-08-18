@@ -637,10 +637,9 @@ export function parkVehicle(ctx, o) {
   const c = Math.abs(Math.cos(ry)), s = Math.abs(Math.sin(ry));
   const hw = (c * L + s * W) / 2;
   const hd = (s * L + c * W) / 2;
-  // 60 mm in from the sheet metal: the ink outline is what the player reads as
-  // the edge, and a collider on the nominal box makes a car feel 0.7 m bigger
-  // than it looks once the walking radius is added.
-  ctx.collide(o.x - hw + 0.06, o.z - hd + 0.06, o.x + hw - 0.06, o.z + hd - 0.06,
+  // Flush to the sheet metal. The query already Minkowski-sums the craft;
+  // insetting for a walker's radius made every car a hole you could fly into.
+  ctx.collide(o.x - hw, o.z - hd, o.x + hw, o.z + hd,
     (o.y ?? 0) + H - 0.15);
   return g;
 }

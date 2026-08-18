@@ -326,7 +326,7 @@ function buildKoya(ctx, m, gm, shrubs) {
     eave: 0.62, seed: 8921, door: 0, nameVariant: 5, lit: true,
   });
   ctx.add(h);
-  plotCollide(ctx, p, Y + (h.userData.top ?? 4.6), 0.08);
+  plotCollide(ctx, p, Y + (h.userData.top ?? 4.6));
 
   /* 0.75 m between the frontage and the arm, which is a doorstep rather than a
    * garden -- so it is swept concrete with the pots on it and nothing else.
@@ -383,7 +383,7 @@ function buildNagaya(ctx, m, gm, rng, shrubs, petals) {
   const p = plotBox(NAGA);
   const g = makeNagaya({ ...NAGA, y: Y, seed: 8931, h: 2.44 });
   ctx.add(g);
-  plotCollide(ctx, p, Y + (g.userData.top ?? 4.3), 0.08);
+  plotCollide(ctx, p, Y + (g.userData.top ?? 4.3));
 
   const gA = (x, z) => ctx.groundAt(x, z);
   /* The strip in front is the *street*, so everything below is against the wall

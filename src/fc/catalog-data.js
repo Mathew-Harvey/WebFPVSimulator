@@ -3458,7 +3458,7 @@ export const VALUE_TABLE = [
     "min": null,
     "max": null,
     "array": false,
-    "live": false
+    "live": true
   },
   {
     "key": "launch_trigger_allow_reset",
@@ -3468,7 +3468,7 @@ export const VALUE_TABLE = [
     "min": null,
     "max": null,
     "array": false,
-    "live": false
+    "live": true
   },
   {
     "key": "launch_trigger_throttle_percent",
@@ -3478,7 +3478,7 @@ export const VALUE_TABLE = [
     "min": "0",
     "max": "LAUNCH_CONTROL_THROTTLE_TRIGGER_MAX",
     "array": false,
-    "live": false
+    "live": true
   },
   {
     "key": "launch_angle_limit",
@@ -3488,7 +3488,7 @@ export const VALUE_TABLE = [
     "min": "0",
     "max": "80",
     "array": false,
-    "live": false
+    "live": true
   },
   {
     "key": "launch_control_gain",
@@ -3498,7 +3498,7 @@ export const VALUE_TABLE = [
     "min": "0",
     "max": "200",
     "array": false,
-    "live": false
+    "live": true
   },
   {
     "key": "thrust_linear",

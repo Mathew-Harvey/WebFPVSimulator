@@ -498,7 +498,18 @@ function buildApartment(ctx) {
     g.add(mesh);
     if (key === 'wall' || key === 'roof') hullOutline(mesh, { thickness: 0.0032 });
   }
-  ctx.collide(x0 - 0.3, z0 - 1.0, x1 + 0.3, z1 + 0.2, Y + H);
+  ctx.collide(x0, z0, x1, z1 - GAL, Y + H + 0.4);
+  for (let k = 0; k < FLOORS; k += 1) {
+    const y = Y + k * FH;
+    ctx.collide(x0, z1 - GAL, x1, z1, y + 0.22, y);
+    ctx.collide(x0, z1 - 0.12, x1, z1 + 0.04, y + 1.18, y + 0.30);
+    ctx.collide(x0 - 1.5, z1 - GAL - 0.15, x0, z1 + 0.2, y + 0.20, y);
+  }
+  for (let k = 1; k < FLOORS; k += 1) {
+    const y = Y + k * FH;
+    ctx.collide(x0 + 0.3, z0 - 0.90, x1 - 0.3, z0, y + 0.18, y);
+    ctx.collide(x0 + 0.3, z0 - 0.92, x1 - 0.3, z0 - 0.84, y + 1.12, y + 0.18);
+  }
   return g;
 }
 
@@ -682,7 +693,7 @@ function buildTimberHouse(ctx, shrubs) {
     g.add(mesh);
     if (key === 'roof' || key === 'wood') hullOutline(mesh, { thickness: 0.0034 });
   }
-  ctx.collide(x0 - 1.8, z0 - 0.2, x1 + 0.2, z1 + 0.2, Y + 0.44 + WH);
+  ctx.collide(x0 - 1.7, z0 - 0.25, x1 + 0.15, z1 + 0.15, Y + 0.44 + WH);
   return g;
 }
 

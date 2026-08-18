@@ -234,8 +234,8 @@ export function buildWorld(scene, { bake = true } = {}) {
     const y = groundY(d.z);
     const h = makeHouse({ ...d, y });
     ctx.add(h);
-    ctx.collide(d.x - d.w / 2 - 0.1, d.z - d.d / 2 - 0.1, d.x + d.w / 2 + 0.1, d.z + d.d / 2 + 0.1,
-      y + 2.72 * d.floors);
+    ctx.collide(d.x - d.w / 2, d.z - d.d / 2, d.x + d.w / 2, d.z + d.d / 2,
+      y + (h.userData.top ?? 2.72 * d.floors));
   }
 
   /* ---------------------------- outlying districts ----------------------------

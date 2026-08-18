@@ -146,7 +146,6 @@ const INERT_REASONS = [
   [/^board_name/, 'Board identity is the WASM target, not a flashable name'],
   [/^manufacturer_id/, 'Board identity is the WASM target'],
   [/^acro_trainer_/, 'USE_ACRO_TRAINER is not built for this target'],
-  [/^launch_/, 'Launch control needs an arming sequence this build does not have'],
   [/^auto_profile_cell_count/, 'One PID profile, profile 0'],
   [/^runaway_takeoff_deactivate/, 'Runaway takeoff is not driven without fc/core.c'],
   [/^rpm_limit/, 'The RPM limiter needs an ESC current loop this build does not have'],
@@ -351,7 +350,7 @@ export const TABS = [
   { id: 'configuration', label: 'Configuration', grey: false, reason: '' },
   { id: 'pid', label: 'PID Tuning', grey: false, reason: '' },
   { id: 'receiver', label: 'Receiver', grey: false, reason: '' },
-  { id: 'modes', label: 'Modes', grey: false, reason: 'ANGLE is on or off here and in Settings, same sim_set_angle_mode. ARM is always on. No AUX channels' },
+  { id: 'modes', label: 'Modes', grey: false, reason: 'ANGLE and LAUNCH CONTROL are on or off here and in Settings. ARM is always on. No AUX channels' },
   { id: 'adjustments', label: 'Adjustments', grey: true, reason: 'No AUX channels, so in-flight PID adj is not compiled' },
   { id: 'servos', label: 'Servos', grey: true, reason: 'No servos on this airframe' },
   { id: 'motors', label: 'Motors', grey: false, reason: '' },
@@ -479,6 +478,7 @@ export const LOOKUPS = {
   FEEDFORWARD_AVERAGING: ['OFF', '2_POINT', '3_POINT', '4_POINT'],
   CRASH_RECOVERY: ['OFF', 'ON', 'BEEP', 'DISARM'],
   GYRO_HARDWARE_LPF: ['NORMAL', 'OPTION_1', 'OPTION_2', 'EXPERIMENTAL'],
+  LAUNCH_CONTROL_MODE: ['NORMAL', 'PITCHONLY', 'FULL'],
 };
 
 const MACRO_BOUNDS = {
@@ -504,6 +504,7 @@ const MACRO_BOUNDS = {
   PIDSUM_LIMIT_MAX: 1000,
   MOTOR_OUTPUT_LIMIT_PERCENT_MIN: 1,
   MOTOR_OUTPUT_LIMIT_PERCENT_MAX: 100,
+  LAUNCH_CONTROL_THROTTLE_TRIGGER_MAX: 90,
   PWM_RANGE_MIN: 1000,
   PWM_RANGE_MAX: 2000,
   UINT8_MAX: 255,

@@ -58,7 +58,9 @@ const lowVoltageCutoff_t *getLowVoltageCutoff(void) {
 
 void imuQuaternionHeadfreeTransformVectorEarthToBody(t_fp_vector_def *v) { (void)v; }
 
-bool isLaunchControlActive(void) { return false; }
+/* isLaunchControlActive lives in bf_glue.c: pid.c and mixer.c already
+ * compile the launch control path, and the stub that always returned
+ * false was the only thing keeping it dark. */
 
 /* Simulated MICROSECONDS, advanced by the glue each step.
  *
@@ -178,6 +180,12 @@ void schedulerResetTaskStatistics(taskId_e taskId) { (void)taskId; }
 void disarm(flightLogDisarmReason_e reason) { (void)reason; }
 bool isFlipOverAfterCrashActive(void) { return false; }
 bool isAirmodeActivated(void) { return true; }
+
+#ifdef USE_LAUNCH_CONTROL
+const char * const osdLaunchControlModeNames[LAUNCH_CONTROL_MODE_COUNT] = {
+  "NORMAL", "PITCHONLY", "FULL",
+};
+#endif
 
 /* Tricopter servo correction, not a tricopter. */
 void mixerTricopterInit(void) {}

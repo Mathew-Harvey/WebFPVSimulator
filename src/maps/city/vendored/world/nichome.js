@@ -532,7 +532,7 @@ function buildServices(ctx, m, gm, rng) {
       ...FUDOSAN, y: ctx.groundAt(FUDOSAN.x, FUDOSAN.z), kind: 'fudosan', floors: 2,
       seed: 8531, awning: false, shutter: 0, wall: 3, blade: false,
     });
-    plotCollide(ctx, p, 0 + 6.3, 0.1);
+    plotCollide(ctx, p, 0 + 6.3);
     frontApron(ctx, gm, p, 1.1, 'nichomeFudosanApron');
     /* The window cards are the whole character of an estate agent, and this one
      * cannot have any: every card in a real window is a photograph of a room.
@@ -567,7 +567,7 @@ function buildServices(ctx, m, gm, rng) {
       ...CLINIC, y: ctx.groundAt(CLINIC.x, CLINIC.z), kind: 'clinic', floors: 2,
       seed: 8533, awning: false, shutter: 0, wall: 0, blade: false,
     });
-    plotCollide(ctx, p, 0 + 6.4, 0.1);
+    plotCollide(ctx, p, 0 + 6.4);
     frontApron(ctx, gm, p, 1.15, 'nichomeClinicApron');
     /* A clinic's forecourt is the one in this world with a *ramp*, and it is not
      * decoration: it is the single detail that says who comes here.  1:12 over
@@ -637,7 +637,7 @@ function buildServices(ctx, m, gm, rng) {
       ...YAKKYOKU, y: ctx.groundAt(YAKKYOKU.x, YAKKYOKU.z), kind: 'yakkyoku', floors: 2,
       seed: 8535, awning: 1, shutter: 0.18, wall: 1, blade: false,
     });
-    plotCollide(ctx, p, 0 + 6.1, 0.1);
+    plotCollide(ctx, p, 0 + 6.1);
     frontApron(ctx, gm, p, 1.15, 'nichomeYakkyokuApron');
     const [dx, dz] = p.at(0.4, p.halfD + 0.2);
     ctx.add(makeDoormat({ x: dx, z: dz, y: ctx.groundAt(dx, dz), ry: p.outRy }));
@@ -662,7 +662,7 @@ function buildServices(ctx, m, gm, rng) {
       ...LAUNDRY, y: ctx.groundAt(LAUNDRY.x, LAUNDRY.z), kind: 'laundry', floors: 1,
       seed: 8538, awning: false, shutter: 0, wall: 4, blade: false, h1: 3.1,
     });
-    plotCollide(ctx, p, ctx.groundAt(LAUNDRY.x, LAUNDRY.z) + 3.5, 0.1);
+    plotCollide(ctx, p, ctx.groundAt(LAUNDRY.x, LAUNDRY.z) + 3.5);
     frontApron(ctx, gm, p, 1.3, 'nichomeLaundryApron');
     /* A coin laundry is single storey, it is lit at night, and it has a bench
      * and a bin outside because people wait.  It is the one unit here whose
@@ -722,7 +722,7 @@ function buildHeights(ctx, m, gm, shrubs) {
   });
   ctx.add(b);
   const p = plotBox(HEIGHTS);
-  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7), 0.1);
+  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
   /* The open stair, which stands *outside* the mass and therefore outside the
    * plot collider.  Its extent is read off the generator rather than guessed:
    * `makeWalkup` puts it at local x -w/2-1.6 .. -w/2 and local z d/2-1.55 ..
@@ -834,7 +834,7 @@ function buildShido(ctx, m, gm, rng, shrubs, petals) {
     const ty = ctx.groundAt(TERRACE.x, TERRACE.z);
     const t = makeTerrace({ ...TERRACE, y: ty, seed: 8551, wall: 5, roof: 3 });
     ctx.add(t);
-    plotCollide(ctx, p, ty + (t.userData.top ?? 6.0), 0.1);
+    plotCollide(ctx, p, ty + (t.userData.top ?? 6.0));
 
     /* Each unit's own front garden, 1.1 m deep, with a low boundary and its own
      * gate.  The boundary stands 0.25 m off the lane: a fence in the middle of a
@@ -924,7 +924,7 @@ function buildShido(ctx, m, gm, rng, shrubs, petals) {
       seed: 8561, wall: 6, roof: 1, door: 4, nameVariant: 4, lit: true,
     });
     ctx.add(h);
-    plotCollide(ctx, p, hy + (h.userData.top ?? 8.0), 0.08);
+    plotCollide(ctx, p, hy + (h.userData.top ?? 8.0));
     /* the apron the car crosses.  It runs the full frontage and it is *flush*
      * with the lane: a kerb across a garage mouth is the one thing a 狭小住宅
      * plot never has. */

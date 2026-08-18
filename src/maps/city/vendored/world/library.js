@@ -601,7 +601,7 @@ function buildEntrance(ctx, Y, FY, FL) {
       const rm = new THREE.Mesh(bake(parts), m.metal);
       rm.castShadow = true;
       g.add(rm);
-      ctx.collide(rx1, rz - RW / 2 - 0.16, rx0, rz - RW / 2 + 0.02, FY + RISE + RH);
+      ctx.collide(rx1, rz - RW / 2 - 0.16, rx0, rz - RW / 2 + 0.02, FY + RISE + RH, FY);
     }
   }
 

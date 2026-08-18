@@ -112,6 +112,7 @@ static const char *const LUT_SIMPLIFIED_PIDS_MODE[] = { "OFF", "RP", "RPY" };
 static const char *const LUT_FF_AVERAGING[] = { "OFF", "2_POINT", "3_POINT", "4_POINT" };
 /* pid.h pidCrashRecovery_e */
 static const char *const LUT_CRASH_RECOVERY[] = { "OFF", "ON", "BEEP", "DISARM" };
+static const char *const LUT_LAUNCH_CONTROL_MODE[] = { "NORMAL", "PITCHONLY", "FULL" };
 /* gyro.h, the hardware lpf selector. Inert here, no gyro hardware. */
 static const char *const LUT_GYRO_HARDWARE_LPF[] = { "NORMAL", "OPTION_1", "OPTION_2", "EXPERIMENTAL" };
 /* common/axis.h flight_dynamics_index_t plus ALL */
@@ -213,6 +214,14 @@ void bf_settings_build(void) {
   U8(PARAM_NAME_MOTOR_OUTPUT_LIMIT, p->motor_output_limit);
   U8("thrust_linear", p->thrustLinearization);
   U8("transient_throttle_limit", p->transient_throttle_limit);
+
+  /* ---- Launch control, flight/pid.c and mixer.c. The state machine
+   * lives in bf_glue.c because fc/core.c is not compiled. ---- */
+  LUT8("launch_control_mode", p->launchControlMode, LUT_LAUNCH_CONTROL_MODE);
+  LUT8("launch_trigger_allow_reset", p->launchControlAllowTriggerReset, LUT_OFF_ON);
+  U8("launch_trigger_throttle_percent", p->launchControlThrottlePercent);
+  U8("launch_angle_limit", p->launchControlAngleLimit);
+  U8("launch_control_gain", p->launchControlGain);
 
   /* ---- Anti gravity ---- */
   U8(PARAM_NAME_ANTI_GRAVITY_GAIN, p->anti_gravity_gain);
@@ -473,7 +482,6 @@ static const char *const INERT_PREFIX[] = {
   "board_name",
   "manufacturer_id",
   "acro_trainer_", /* USE_ACRO_TRAINER is not built for this target */
-  "launch_",       /* launch control needs an arming sequence */
   "auto_profile_cell_count",
   "runaway_takeoff_deactivate",
   "rpm_limit",     /* the rpm limiter needs an ESC telemetry current loop */

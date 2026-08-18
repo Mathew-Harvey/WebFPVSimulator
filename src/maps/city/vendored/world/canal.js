@@ -835,6 +835,12 @@ function buildFootbridge(ctx) {
       z0: z0 + SPAN * u0, z1: z0 + SPAN * u1,
       top: Y0 + Math.max(y0, y1) + 0.13,
     });
+    /* Slab as itself, floor at the soffit, so the channel under it stays
+     * a gap. */
+    ctx.collide(
+      FOOT_X - W / 2, z0 + SPAN * u0, FOOT_X + W / 2, z0 + SPAN * u1,
+      Y0 + Math.max(y0, y1) + 0.13, Y0 + Math.min(y0, y1) - 0.13);
+
   }
   const dm = new THREE.Mesh(bake(deck), m.concrete);
   dm.castShadow = dm.receiveShadow = true;
@@ -846,10 +852,15 @@ function buildFootbridge(ctx) {
     const ab = box(W + 0.5, 1.1, 0.8, m.concreteMid, FOOT_X, Y0 - 0.45, Z_C + s * (HALF + 0.1));
     ab.castShadow = ab.receiveShadow = true;
     g.add(ab);
+    ctx.collide(
+      FOOT_X - (W + 0.5) / 2, Z_C + s * (HALF + 0.1) - 0.4,
+      FOOT_X + (W + 0.5) / 2, Z_C + s * (HALF + 0.1) + 0.4,
+      Y0 + 0.1, Y0 - 1.0);
   }
   const pier = box(0.5, DEPTH - 0.3, 0.9, m.concreteDark, FOOT_X, Y0 - (DEPTH - 0.3) / 2 - 0.2, Z_C);
   pier.receiveShadow = true;
   g.add(pier);
+  ctx.collide(FOOT_X - 0.28, Z_C - 0.48, FOOT_X + 0.28, Z_C + 0.48, Y0, Y0 - DEPTH);
 
   /* railings following the hump */
   for (const s of [-1, 1]) {
@@ -878,10 +889,15 @@ function buildFootbridge(ctx) {
     const rm = new THREE.Mesh(bake(parts), m.white);
     rm.castShadow = true;
     g.add(rm);
-    ctx.collide(
-      FOOT_X + s * (W / 2 - 0.12) - 0.08, z0,
-      FOOT_X + s * (W / 2 - 0.12) + 0.08, z0 + SPAN, Y0 + RISE + 1.1
-    );
+    /* Parapet on the deck, not a wall through the water. One box for the
+     * whole span with no floor is what sealed the undercroft. */
+    const rx = FOOT_X + s * (W / 2 - 0.12);
+    for (let i = 0; i < n; i++) {
+      const u0 = i / n, u1 = (i + 1) / n;
+      const yLo = Y0 + Math.min(profile(u0), profile(u1));
+      const yHi = Y0 + Math.max(profile(u0), profile(u1)) + 1.1;
+      ctx.collide(rx - 0.08, z0 + SPAN * u0, rx + 0.08, z0 + SPAN * u1, yHi, yLo);
+    }
   }
 
   /* the name plate, and the no-vehicles sign at the south landing */
@@ -978,6 +994,14 @@ function buildRoadBridge(ctx) {
     deck.castShadow = deck.receiveShadow = true;
     deck.name = 'roadBridgeDeck';
     g.add(deck);
+    /* Thin lid at the soffit. Upstands and rails used to have no floor,
+     * which walled the channel. The deck itself had no mass at all. */
+    for (let i = 0; i < 3; i++) {
+      const za = -26.5 + ((-21.5 + 26.5) * i) / 3;
+      const zb = -26.5 + ((-21.5 + 26.5) * (i + 1)) / 3;
+      const zMid = (za + zb) / 2;
+      ctx.collide(RD0, za, RD1, zb, GRADE(zMid), GRADE(zMid) - 0.42);
+    }
   }
 
   /* ------------------------------ the edge upstand ------------------------------ *
@@ -1007,7 +1031,8 @@ function buildRoadBridge(ctx) {
     for (let i = 0; i < 3; i++) {
       const za = P0 + ((P1 - P0) * i) / 3;
       const zb = P0 + ((P1 - P0) * (i + 1)) / 3;
-      ctx.collide(ux - 0.16, za, ux + 0.16, zb, GRADE(Math.min(za, zb)) + 0.6);
+      const g0 = GRADE(Math.min(za, zb));
+      ctx.collide(ux - 0.16, za, ux + 0.16, zb, g0 + 0.6, g0);
     }
   }
 
@@ -1055,7 +1080,8 @@ function buildRoadBridge(ctx) {
       const za = P0 + ((P1 - P0) * i) / 3;
       const zb = P0 + ((P1 - P0) * (i + 1)) / 3;
       const cx = rx((za + zb) / 2);
-      ctx.collide(cx - 0.09, za, cx + 0.09, zb, RY(Math.min(za, zb)) + H);
+      const yLo = RY(Math.min(za, zb));
+      ctx.collide(cx - 0.09, za, cx + 0.09, zb, yLo + H, yLo);
     }
   }
 
@@ -1101,7 +1127,7 @@ function buildRoadBridge(ctx) {
       const za = P0 + ((P1 - P0) * i) / 3;
       const zb = P0 + ((P1 - P0) * (i + 1)) / 3;
       const cx = px((za + zb) / 2);
-      ctx.collide(cx - 0.3, za, cx + 0.3, zb, capBase((za + zb) / 2) + 0.1);
+      ctx.collide(cx - 0.3, za, cx + 0.3, zb, capBase((za + zb) / 2) + 0.1, GRADE((za + zb) / 2));
     }
   }
 
@@ -1196,6 +1222,7 @@ function buildSlabCrossing(ctx) {
   g.add(deck);
   hullOutline(deck, { thickness: 0.0032 });
   ctx.platform({ x0: CROSS_X - W / 2, x1: CROSS_X + W / 2, z0, z1: z0 + SPAN, top: Y0 + 0.21 });
+  ctx.collide(CROSS_X - W / 2, z0, CROSS_X + W / 2, z0 + SPAN, Y0 + 0.21, Y0 - 0.09);
 
   // kerb blocks along both edges, and the pier in the water
   for (const s of [-1, 1]) {
@@ -1206,6 +1233,7 @@ function buildSlabCrossing(ctx) {
   const pier = box(0.45, DEPTH - 0.3, 0.8, m.concreteDark, CROSS_X, Y0 - (DEPTH - 0.3) / 2 - 0.2, Z_C);
   pier.receiveShadow = true;
   g.add(pier);
+  ctx.collide(CROSS_X - 0.25, Z_C - 0.42, CROSS_X + 0.25, Z_C + 0.42, Y0, Y0 - DEPTH);
   for (const s of [-1, 1]) {
     const ab = box(W + 0.4, 0.9, 0.7, m.concreteMid, CROSS_X, Y0 - 0.4, Z_C + s * (HALF + 0.2));
     ab.receiveShadow = true;
@@ -1635,6 +1663,9 @@ function buildSluice(ctx) {
       x0: X - 0.7, x1: X + 0.7,
       z0: Z_C - WALL_IN - 0.35, z1: Z_C + WALL_IN + 0.35, top: Y0 + DECK,
     });
+    ctx.collide(
+      X - 0.7, Z_C - WALL_IN - 0.35, X + 0.7, Z_C + WALL_IN + 0.35,
+      Y0 + DECK, Y0 + DECK - 0.22);
     // grating: a run of dark bars, so it is not a blank lid
     const bars = [];
     for (let i = 0; i < 11; i++) {
@@ -1663,7 +1694,7 @@ function buildSluice(ctx) {
       const rm = new THREE.Mesh(bake(parts), m.white);
       rm.castShadow = true;
       g.add(rm);
-      ctx.collide(rx - 0.09, Z_C - L / 2, rx + 0.09, Z_C + L / 2, Y0 + DECK + 0.95);
+      ctx.collide(rx - 0.09, Z_C - L / 2, rx + 0.09, Z_C + L / 2, Y0 + DECK + 0.95, Y0 + DECK);
     }
   }
 

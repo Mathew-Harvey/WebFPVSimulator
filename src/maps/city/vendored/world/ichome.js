@@ -654,7 +654,7 @@ function buildWalkup(ctx, m, gm, shrubs) {
     floors: 3, units: 4, seed: 8170, wall: 4, roof: 0, door: 5, plate: 2,
   });
   ctx.add(b);
-  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7), 0.15);
+  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
   /* The open stair projects 1.6 m past the -x end and its roof 1.78 m.  Its
    * collider deliberately stops at z = -11.3..-9.1 even though the roof
    * oversails to -9.0: an 8 m canopy over the lane needs no collider, and one
@@ -841,7 +841,7 @@ function buildTerrace(ctx, m, gm, sakura) {
     face: 'z+', seed: 8190, wall: 6, roof: 2,
   });
   ctx.add(t);
-  plotCollide(ctx, p, Y + (t.userData.top ?? 6.34), 0.1);
+  plotCollide(ctx, p, Y + (t.userData.top ?? 6.34));
 
   pad(ctx, {
     x: TERR.x, z: -9.275, w: W, d: 2.25, y: Y, h: 0.07,

@@ -404,6 +404,9 @@ export class InputManager {
      * harness poke via __stick is left alone instead of sprung. */
     this.kbAir = false;
     this.kbThrFromKeys = false;
+    /* While launch control is holding on the pad, rest is idle, never hover,
+     * so a W tap cannot spring to 22 percent and fire the launch. */
+    this.forcePadRest = false;
     this.kbHoldMs = { roll: 0, pitch: 0, yaw: 0, w: 0, s: 0 };
     this.kbHoldDir = { roll: 0, pitch: 0, yaw: 0 };
     this.map = this.loadMap();
@@ -1217,18 +1220,19 @@ export class InputManager {
     const HOVER = 0.22; /* a hair over measured hover 0.2051, so level holds */
     const LIFTOFF = 0.18;
 
+    const air = this.forcePadRest ? false : this.kbAir;
     if (w && !s) {
       this.kbThrFromKeys = true;
       this.kbHoldMs.w += dtHold;
       this.kbHoldMs.s = 0;
       const mag = analogMag(this.kbHoldMs.w);
-      this.kb.throttle = this.kbAir ? HOVER + mag * (1 - HOVER) : mag;
+      this.kb.throttle = air ? HOVER + mag * (1 - HOVER) : mag;
     } else if (s && !w) {
       this.kbThrFromKeys = true;
       this.kbHoldMs.s += dtHold;
       this.kbHoldMs.w = 0;
       const mag = analogMag(this.kbHoldMs.s);
-      const rest = this.kbAir ? HOVER : 0;
+      const rest = air ? HOVER : 0;
       this.kb.throttle = rest * (1 - mag);
       if (this.kb.throttle <= 0.04) {
         this.kbAir = false;
@@ -1238,7 +1242,7 @@ export class InputManager {
       if (w && s) {
         this.kbThrFromKeys = true;
       }
-      if (this.kbHoldMs.w > 0 && this.kb.throttle >= LIFTOFF) {
+      if (!this.forcePadRest && this.kbHoldMs.w > 0 && this.kb.throttle >= LIFTOFF) {
         this.kbAir = true;
       }
       this.kbHoldMs.w = 0;
@@ -1246,7 +1250,7 @@ export class InputManager {
       if (!this.kbThrFromKeys) {
         return;
       }
-      const target = this.kbAir ? HOVER : 0;
+      const target = air ? HOVER : 0;
       if (this.kb.throttle < target) {
         this.kb.throttle = Math.min(target, this.kb.throttle + springStep);
       } else if (this.kb.throttle > target) {
@@ -1264,6 +1268,7 @@ export class InputManager {
     this.kb.throttle = 0;
     this.kbAir = false;
     this.kbThrFromKeys = false;
+    this.forcePadRest = false;
     this.kbHoldMs = { roll: 0, pitch: 0, yaw: 0, w: 0, s: 0 };
     this.kbHoldDir = { roll: 0, pitch: 0, yaw: 0 };
   }

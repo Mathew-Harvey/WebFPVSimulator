@@ -354,7 +354,7 @@ function buildStaffBlock(ctx, m, gm, shrubs) {
   });
   ctx.add(b);
   const p = plotBox(STAFF);
-  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7), 0.1);
+  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
   /* The open stair, at local -x -- world +z for `face: 'x+'`, so the *north*
    * end.  Read off the generator: local x -w/2-1.6..-w/2 and local z
    * d/2-1.55..d/2+0.3, which lands at x -24.65..-22.80, z -33.0..-31.4.
@@ -433,7 +433,7 @@ function buildHouses(ctx, m, gm, rng, shrubs, petals) {
       lit: false, litDormer: true,
     });
     ctx.add(h);
-    plotCollide(ctx, p, Y + (h.userData.top ?? 8.3), 0.08);
+    plotCollide(ctx, p, Y + (h.userData.top ?? 8.3));
 
     /* The boundary 0.3 m off the kerb, with the gate opposite the door.  A fence
      * set back into the middle of a 1.6 m garden leaves less than the 0.68 m of
@@ -510,7 +510,7 @@ function buildHouses(ctx, m, gm, rng, shrubs, petals) {
     const p = plotBox(TERR);
     const t = makeTerrace({ ...TERR, y: Y, seed: 8754, wall: 2, roof: 3 });
     ctx.add(t);
-    plotCollide(ctx, p, Y + (t.userData.top ?? 6.0), 0.1);
+    plotCollide(ctx, p, Y + (t.userData.top ?? 6.0));
     const FX = p.x1 + 1.3;
     for (let i = 0; i < 2; i++) {
       const z0 = p.z0 + i * TERR.unitW, z1 = z0 + TERR.unitW;

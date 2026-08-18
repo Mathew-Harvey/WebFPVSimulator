@@ -946,7 +946,16 @@ function buildApproach(ctx, m, gm, glow, lantern) {
       const cheek = new THREE.Mesh(bake(parts), m.stoneDark);
       cheek.castShadow = cheek.receiveShadow = true;
       ctx.add(cheek);
-      ctx.collide(TER.x1, 48.9 + s * 1.3 - 0.2, TER.x1 + 6.9, 48.9 + s * 1.3 + 0.2, Y + 0.3);
+      /* The cheek is a rising wall, not a 0.3 m stub. Short bands follow
+       * the rake so the air above the lower blocks stays a gap. */
+      const BAND = 2;
+      for (let i = 0; i < N2; i += BAND) {
+        const i1 = Math.min(N2, i + BAND);
+        const xHi = TER.x1 + 6.9 - 0.46 * i;
+        const xLo = TER.x1 + 6.9 - 0.46 * i1;
+        const yHi = base + RISE2 * i1 + 0.2;
+        ctx.collide(xLo, 48.9 + s * 1.3 - 0.2, xHi, 48.9 + s * 1.3 + 0.2, yHi, base);
+      }
     }
     /* A pipe handrail up the north cheek, raked to the flight -- and **it stops
      * 0.6 m short of the head of it**.  `buildTerrace` stands a 0.72 m pier at
@@ -967,6 +976,15 @@ function buildApproach(ctx, m, gm, glow, lantern) {
       for (let i = 0; i <= 4; i++) {
         const t = i / 4;
         ctx.add(cyl(0.03, 0.03, 0.95, 6, m.metalDark, TER.x1 + 6.9 - run * t, base + rise * t + 0.47, 50.2));
+      }
+      const BAND = 2;
+      for (let i = 0; i < N2; i += BAND) {
+        const i1 = Math.min(N2, i + BAND);
+        const xHi = TER.x1 + 6.9 - 0.46 * i;
+        const xLo = TER.x1 + 6.9 - 0.46 * i1;
+        const yLo = base + RISE2 * i;
+        const yHi = base + RISE2 * i1 + 0.95;
+        ctx.collide(xLo, 50.1, xHi, 50.3, yHi, yLo);
       }
     }
   }

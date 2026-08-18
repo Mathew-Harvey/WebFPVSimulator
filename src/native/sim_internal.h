@@ -158,6 +158,21 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
 void bridge_set_angle_mode(int on);
 
 /*
+ * Betaflight BOXLAUNCHCONTROL, captured the way arming captures it.
+ * Off is the default. The harness never calls this, so the acro
+ * trajectory does not enter applyLaunchControl. The plant does not
+ * read this.
+ */
+void bridge_set_launch_control(int on);
+
+/*
+ * 0 off, 1 holding, 2 holding with throttle near the trigger (OSD
+ * blink), 3 launched this arm. Matches fc/core.c's state plus the
+ * 4.2 OSD near-trigger warning.
+ */
+int bridge_launch_control_state(void);
+
+/*
  * Betaflight glue, implemented in bf/bf_glue.c which is compiled against
  * the vendored Betaflight headers. bridge.c stays free of Betaflight
  * includes so the tokenizer compiles standalone.

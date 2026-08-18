@@ -216,6 +216,17 @@ export function steps(ctx, o) {
     ctx.platform(axis === 'z'
       ? { x0: o.x - w / 2, x1: o.x + w / 2, z0: Math.min(o.z + t0, o.z + t1), z1: Math.max(o.z + t0, o.z + t1), top: y + h }
       : { x0: Math.min(o.x + t0, o.x + t1), x1: Math.max(o.x + t0, o.x + t1), z0: o.z - w / 2, z1: o.z + w / 2, top: y + h });
+    /* Each tread is drawn as a solid from the flight's foot up to this
+     * nosing. Collide that box, not one AABB for the whole flight: a
+     * single box would fill the air above the lower treads. */
+    if (o.collide !== false) {
+      const lo = Math.min(o.z + t0, o.z + t1);
+      const hi = Math.max(o.z + t0, o.z + t1);
+      const xa = Math.min(o.x + t0, o.x + t1);
+      const xb = Math.max(o.x + t0, o.x + t1);
+      if (axis === 'z') ctx.collide(o.x - w / 2, lo, o.x + w / 2, hi, y + h, y);
+      else ctx.collide(xa, o.z - w / 2, xb, o.z + w / 2, y + h, y);
+    }
   }
 
   const g = new THREE.Group();
@@ -349,8 +360,10 @@ export function meshFence(ctx, o) {
   g.position.y = y;
   ctx.add(g);
   if (o.collide !== false) {
-    if (axis === 'z') ctx.collide(o.at - 0.1, from, o.at + 0.1, to, y + h);
-    else ctx.collide(from, o.at - 0.1, to, o.at + 0.1, y + h);
+    /* Floor at y so a roof fence is a parapet, not a wall from the
+     * street up through the building. */
+    if (axis === 'z') ctx.collide(o.at - 0.1, from, o.at + 0.1, to, y + h, y);
+    else ctx.collide(from, o.at - 0.1, to, o.at + 0.1, y + h, y);
   }
   return g;
 }
@@ -389,8 +402,9 @@ export function railing(ctx, o) {
   g.position.y = y;
   ctx.add(g);
   if (o.collide !== false) {
-    if (axis === 'z') ctx.collide(o.at - 0.09, from, o.at + 0.09, to, y + h);
-    else ctx.collide(from, o.at - 0.09, to, o.at + 0.09, y + h);
+    /* Floor at y: a deck rail must not fill the undercroft. */
+    if (axis === 'z') ctx.collide(o.at - 0.09, from, o.at + 0.09, to, y + h, y);
+    else ctx.collide(from, o.at - 0.09, to, o.at + 0.09, y + h, y);
   }
   return g;
 }

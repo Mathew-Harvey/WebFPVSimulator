@@ -83,8 +83,13 @@ export function makeHouse(o) {
   const eave = 0.42;
   const rw = w + eave * 2;
   const rd = d + eave * 2;
+  /* Peak above the wall plate. The house collider used to stop at H, so a
+   * gable or hip was a picture you flew through. userData.top is what
+   * plotCollide and the street loop read. */
+  let roofRise = 0.45;
   if (roofKind === 'gable') {
     const rh = 1.15 + rng.range(0, 0.5);
+    roofRise = rh + 0.22;
     // two slabs meeting at a ridge, which runs along the longer axis
     const alongZ = d >= w;
     const span = alongZ ? rw : rd;   // across the slope
@@ -116,6 +121,7 @@ export function makeHouse(o) {
     triGeo.dispose();
   } else if (roofKind === 'hip') {
     const rh = 1.05 + rng.range(0, 0.4);
+    roofRise = rh + 0.22;
     // a four-sided cone rotated 45 degrees is an axis-aligned unit pyramid
     const pyr = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1);
     pyr.rotateY(Math.PI / 4);
@@ -133,6 +139,7 @@ export function makeHouse(o) {
      *
      * `shedDir` picks which side is high; the gable ends close the wedge. */
     const rh = 0.9 + rng.range(0, 0.5);
+    roofRise = rh + 0.22;
     const alongZ = d >= w;
     const span = alongZ ? rw : rd;      // across the slope
     const len = alongZ ? rd : rw;       // along the ridge
@@ -349,6 +356,7 @@ export function makeHouse(o) {
 
   g.position.set(o.x, o.y ?? 0, o.z);
   g.userData.footprint = { w, d, H };
+  g.userData.top = H + roofRise;
   return g;
 }
 

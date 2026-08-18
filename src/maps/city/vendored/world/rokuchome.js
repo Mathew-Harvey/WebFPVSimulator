@@ -818,7 +818,7 @@ function buildNorthLane(ctx, m, gm, PY, shrubs, petals) {
     const p = plotBox(NAGAYA);
     const g = makeNagaya({ ...NAGAYA, y: PY, seed: 9711 });
     ctx.add(g);
-    plotCollide(ctx, p, PY + (g.userData.top ?? 3.7), 0.12);
+    plotCollide(ctx, p, PY + (g.userData.top ?? 3.7));
     dressPlot(ctx, {
       ...NAGAYA, y: PY, seed: 9712, doorAt: g.userData.doorAt ?? 0, gap: 0.9,
       aircon: false, pots: true, umbrella: true, parcel: true, bike: true, mat: true,
@@ -900,7 +900,7 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
       ...CORP, y: PY, floors: 3, units: 3, fh: 2.70, seed: 9731, wall: 4, plate: 6,
     });
     ctx.add(g);
-    plotCollide(ctx, p, PY + (g.userData.top ?? 8.7), 0.14);
+    plotCollide(ctx, p, PY + (g.userData.top ?? 8.7));
     /* The open stair stands outside the mass and needs its own box: treads run
      * local z 1.925 down to -0.155 and the roof reaches 2.90, which for
      * `face: 'z-'` at z = 63.60 is world z 60.70..63.80.  Read off the
@@ -947,7 +947,7 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
       ...MINI, y: PY, floors: 2, units: 2, fh: 2.62, seed: 9741, wall: 1, plate: 8,
     });
     ctx.add(g);
-    plotCollide(ctx, p, PY + (g.userData.top ?? 5.9), 0.14);
+    plotCollide(ctx, p, PY + (g.userData.top ?? 5.9));
     ctx.collide(68.70, 60.30, 70.30, 63.35, PY + 5.9);
 
     pad(ctx, {
@@ -976,7 +976,7 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
     const p = plotBox({ ...TERR, w: TERR.units * TERR.unitW });
     const g = makeTerrace({ ...TERR, y: PY, seed: 9751, wall: 3, roof: 1, door: 1, plate: 7 });
     ctx.add(g);
-    plotCollide(ctx, p, PY + (g.userData.top ?? 6.4), 0.16);
+    plotCollide(ctx, p, PY + (g.userData.top ?? 6.4));
 
     for (let i = 0; i < TERR.units; i++) {
       const x = TERR.x + (i - (TERR.units - 1) / 2) * TERR.unitW;

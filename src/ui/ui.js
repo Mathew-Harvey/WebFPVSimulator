@@ -154,6 +154,9 @@ const DEFAULTS = {
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
+  /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
+   * line holds attitude at idle until you punch throttle. */
+  launchControl: false,
   cameraAngle: CAMERA_ANGLE_DEFAULT,
   cameraFov: CAMERA_FOV_DEFAULT,
   packVoltage: 4.2,
@@ -706,6 +709,15 @@ export class Ui {
       }
       this.renderMenu();
     };
+    this.fc.getLaunchControl = () => Boolean(this.settings.launchControl);
+    this.fc.setLaunchControl = (on) => {
+      this.settings.launchControl = Boolean(on);
+      saveSettings(this.settings);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+      this.renderMenu();
+    };
     this.fc.motorTestAllowed = () => !this.fc.runActive && this.returnTo !== 'paused';
     this.fc.onMotorTest = (motor, duty) => {
       if (this.onFcMotor) {
@@ -762,6 +774,7 @@ export class Ui {
     packBlock.append(this.osdHits);
     this.osdSpeed = el('div', 'osd-value', '');
     this.osdFlight = el('div', 'osd-sub osd-mode', '');
+    this.osdLaunch = el('div', 'osd-launch is-off', '');
     this.osdAlt = el('div', 'osd-sub', '');
     this.osdThrBar = el('div', 'bar-fill warm');
     const thrBar = el('div', 'bar');
@@ -773,7 +786,7 @@ export class Ui {
     this.osdStickRight = makeGimbal('Roll, pitch');
     sticks.append(this.osdStickLeft.box, this.osdStickRight.box);
     this.osdSticks = sticks;
-    this.osd.append(top, packBlock, flightBlock, sticks);
+    this.osd.append(top, packBlock, flightBlock, sticks, this.osdLaunch);
     r.append(this.osd);
 
     /* Centre banner: launch prompt, lap splits, crash notice, and the
@@ -835,7 +848,7 @@ export class Ui {
 
     const howtoTabs = el('div', 'howto-tabs');
     this.howtoTabs = {};
-    for (const [id, label] of [['keyboard', 'Keyboard'], ['radio', 'Radio or gamepad']]) {
+    for (const [id, label] of [['keyboard', 'Keyboard'], ['radio', 'Radio or gamepad'], ['launch', 'Launch control']]) {
       const b = btn('howto-tab', label);
       b.addEventListener('click', () => this.setHowtoSource(id));
       howtoTabs.append(b);
@@ -1730,6 +1743,12 @@ export class Ui {
           s.flightMode === 'angle' ? 'angle' : 'acro',
           (id) => (id === 'angle' ? 'Angle' : 'Acro'),
           (id) => { s.flightMode = id; },
+        ),
+        toggle(
+          'Launch control',
+          'Betaflight race start, off by default. When on, press L on the start line, pitch forward, centre the stick, then punch throttle. The quad holds the angle until you go.',
+          Boolean(s.launchControl),
+          (v) => { s.launchControl = Boolean(v); },
         ),
         { label: 'Camera', section: true },
         stepper(
@@ -2935,7 +2954,7 @@ export class Ui {
    * toggled because it is six lines of type and a switch nobody flips twice.
    */
   setHowtoSource(id) {
-    this.howtoSource = id === 'radio' ? 'radio' : 'keyboard';
+    this.howtoSource = id === 'radio' ? 'radio' : (id === 'launch' ? 'launch' : 'keyboard');
     this.renderHowto();
     if (this.onUiSound) {
       this.onUiSound('adjust');
@@ -2946,12 +2965,12 @@ export class Ui {
     if (!this.howtoKeys) {
       return;
     }
-    const radio = this.howtoSource === 'radio';
+    const source = this.howtoSource;
     for (const [id, b] of Object.entries(this.howtoTabs)) {
-      b.classList.toggle('on', (id === 'radio') === radio);
+      b.classList.toggle('on', id === source);
     }
     this.howtoKeys.textContent = '';
-    const rows = radio
+    const rows = source === 'radio'
       ? [
         ['Left stick', 'Throttle up and down, yaw left and right. Mode 2, as on your radio.'],
         ['Right stick', 'Pitch forward and back, roll left and right.'],
@@ -2959,23 +2978,37 @@ export class Ui {
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
       ]
+      : source === 'launch'
+        ? [
+          ['What it is', 'Betaflight race start. Pitch the quad, let go of the stick, and it holds that angle at idle until you punch throttle. No looping off the blocks.'],
+          ['Turn it on', 'Settings, Launch control, On. It stays off until you do. Then press L on the start line, before you raise throttle.'],
+          ['Set the angle', 'Throttle at idle. Pitch forward until the OSD reads around 30 to 40 degrees. Centre the stick. The motors hold it.'],
+          ['Go', 'Punch throttle past about 20 percent. The hold dumps, the props bite, and you are flying. L again resets it after a launch.'],
+          ['Keyboard', 'Up arrow is pitch forward. W is throttle. Launch control switches you to Acro for the hold, then Angle comes back after you go.'],
+          ['Radio', 'Same sequence as a real board. L is the mode switch. Fine-tune launch_angle_limit and launch_trigger_throttle_percent on the Flight controller screen.'],
+        ]
       : [
         ['W and S', 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.'],
         ['A and D', 'Yaw, left and right on the spot.'],
         ['Up and down', 'Pitch. Up is stick forward, nose down, fly forward.'],
         ['Left and right', 'Roll.'],
+        ['L', 'Launch control, if you turned it on in Settings. Pitch, centre, punch.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
         ['F8', 'Report a bug. Pauses if you are in the air, then opens the form.'],
       ];
     for (const [k, v] of rows) {
       this.howtoKeys.append(el('dt', null, k), el('dd', null, v));
     }
-    this.howtoLive.textContent = radio
+    this.howtoLive.textContent = source === 'radio'
       ? 'Move your sticks. These follow the radio.'
-      : 'Press the keys. These follow your hands.';
-    this.howtoMode.textContent = radio
+      : source === 'launch'
+        ? 'L arms it. Pitch, centre, punch. The gimbals still follow your hands.'
+        : 'Press the keys. These follow your hands.';
+    this.howtoMode.textContent = source === 'radio'
       ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Settings.'
-      : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
+      : source === 'launch'
+        ? 'Off by default, because a punch from a hold is violent and not everyone wants it. Turn it on in Settings, then L on the pad. The green LAUNCH readout is the pitch angle. It blinks when throttle is close to firing.'
+        : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
   }
 
   /* Live channels for the tutorial's gimbals, fed by the shell's loop. */
@@ -3213,7 +3246,7 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, hitsLeft, hitLives }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, hitsLeft, hitLives, launchState, launchPitch }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -3233,7 +3266,24 @@ export class Ui {
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
     this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
     if (this.osdFlight) {
-      this.osdFlight.textContent = flightMode === 'angle' ? 'Angle' : 'Acro';
+      this.osdFlight.textContent = launchState === 1 || launchState === 2
+        ? 'Launch'
+        : (flightMode === 'angle' ? 'Angle' : 'Acro');
+    }
+    if (this.osdLaunch) {
+      const on = launchState > 0;
+      this.osdLaunch.className = 'osd-launch'
+        + (on ? '' : ' is-off')
+        + (launchState === 2 ? ' is-hot' : '')
+        + (launchState === 3 ? ' is-go' : '');
+      if (!on) {
+        this.osdLaunch.textContent = '';
+      } else if (launchState === 3) {
+        this.osdLaunch.textContent = 'GO';
+      } else {
+        const deg = Math.round(launchPitch || 0);
+        this.osdLaunch.textContent = deg > 2 ? `LAUNCH ${deg}` : 'LAUNCH';
+      }
     }
     this.osdAlt.textContent = `${altitude.toFixed(1)} m above the ground`;
     this.osdThrBar.style.width = `${Math.max(0, Math.min(1, throttle)) * 100}%`;

@@ -389,7 +389,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
     const p = plotBox(NAGA);
     const g = makeNagaya({ ...NAGA, y: Y, seed: 9331, h: 2.46 });
     ctx.add(g);
-    plotCollide(ctx, p, Y + (g.userData.top ?? 4.3), 0.08);
+    plotCollide(ctx, p, Y + (g.userData.top ?? 4.3));
     for (let i = 0; i < 3; i++) {
       const u = (i - 1) * NAGA.unitW;
       const [dx, dz] = p.at(u, p.halfD + 0.22);
@@ -463,7 +463,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
       eave: 0.7, seed: 9340, door: 1, nameVariant: 2, lit: true,
     });
     ctx.add(h);
-    plotCollide(ctx, p, Y + (h.userData.top ?? 4.6), 0.08);
+    plotCollide(ctx, p, Y + (h.userData.top ?? 4.6));
     const doorAt = h.userData.doorAt ?? 0;
     plotWall(ctx, {
       x0: p.x0, x1: p.x1, z0: p.z1 + 1.25, z1: p.z1 + 1.5, sides: ['z+'], kind: 'timber',
@@ -487,7 +487,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
     const p = plotBox(TERR);
     const t = makeTerrace({ ...TERR, y: Y, seed: 9346, wall: 6, roof: 1 });
     ctx.add(t);
-    plotCollide(ctx, p, Y + (t.userData.top ?? 6.0), 0.1);
+    plotCollide(ctx, p, Y + (t.userData.top ?? 6.0));
     const FZ = p.z1 + 1.2;
     for (let i = 0; i < 2; i++) {
       const x0 = p.x0 + i * TERR.unitW, x1 = x0 + TERR.unitW;
@@ -533,7 +533,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
       lit: true, litDormer: true,
     });
     ctx.add(h);
-    plotCollide(ctx, p, Y + (h.userData.top ?? 8.3), 0.08);
+    plotCollide(ctx, p, Y + (h.userData.top ?? 8.3));
     const doorAt = h.userData.doorAt ?? (ATT.w / 2 - 1.15);
     plotWall(ctx, {
       x0: p.x0, x1: p.x1, z0: p.z1 + 1.15, z1: p.z1 + 1.4, sides: ['z+'], kind: 'block',
@@ -576,7 +576,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
       eave: 0.78, seed: 9365, door: 3, nameVariant: 1, lit: true,
     });
     ctx.add(h);
-    plotCollide(ctx, p, Y + (h.userData.top ?? 6.8), 0.08);
+    plotCollide(ctx, p, Y + (h.userData.top ?? 6.8));
     const doorAt = h.userData.doorAt ?? 0;
     plotWall(ctx, {
       x0: p.x0, x1: p.x1, z0: p.z1 + 1.2, z1: p.z1 + 1.44, sides: ['z+'], kind: 'timber',

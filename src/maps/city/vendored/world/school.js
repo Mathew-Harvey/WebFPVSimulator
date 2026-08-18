@@ -625,7 +625,7 @@ function buildTeachingBlock(ctx, Y) {
     { axis: 'x', at: BLK.z0 + 0.15, from: BLK.x0, to: BLK.x1 },
     { axis: 'x', at: BLK.z1 - 0.15, from: BLK.x0, to: BLK.x1 },
   ]) {
-    meshFence(ctx, { ...r, y: roofY + 0.46, h: 1.25, spacing: 2.0, collide: false, meshColor: 0xb4bcc8 });
+    meshFence(ctx, { ...r, y: roofY + 0.46, h: 1.25, spacing: 2.0, meshColor: 0xb4bcc8 });
   }
   // water tank on legs
   {
@@ -801,7 +801,7 @@ function buildEntrancePorch(ctx, Y) {
     g.add(mesh);
     if (key === 'wall' || key === 'roof') hullOutline(mesh, { thickness: 0.003 });
   }
-  ctx.collide(x0 - 0.1, z0 - 0.1, x1, z1 + 0.1, Y + H);
+  ctx.collide(x0 - 0.1, z0 - 0.1, x1, z1 + 0.1, Y + H + 0.45);
   return g;
 }
 
@@ -1511,7 +1511,7 @@ function buildSecondBlock(ctx, Y) {
     { axis: 'z', at: x0 + 0.1, from: z0, to: z1 },
     { axis: 'z', at: x1 - 0.1, from: z0, to: z1 },
   ]) {
-    meshFence(ctx, { ...r, y: roofY + 0.44, h: 1.2, spacing: 2.0, collide: false, meshColor: 0xb4bcc8 });
+    meshFence(ctx, { ...r, y: roofY + 0.44, h: 1.2, spacing: 2.0, meshColor: 0xb4bcc8 });
   }
   for (const dx of [-6.0, 4.4]) {
     ctx.add(box(1.5, 0.9, 1.4, cel({ color: 0xb4bac4, bands: 3, tint: 0x655d84 }), cx + dx, roofY + 0.45, cz + 1.0));
@@ -1534,7 +1534,7 @@ function buildSecondBlock(ctx, Y) {
   fm.castShadow = true;
   g.add(fm);
 
-  ctx.collide(x0 - 0.2, z0 - 0.3, x1 + 0.2, z1 + 0.2, Y + H_BLK2);
+  ctx.collide(x0 - 0.2, z0 - 0.3, x1 + 0.2, z1 + 0.2, Y + H_BLK2 + 0.5);
   return g;
 }
 
@@ -1627,7 +1627,7 @@ function buildAnnex(ctx, Y) {
     g.add(mesh);
     if (key === 'wall' || key === 'roof') hullOutline(mesh, { thickness: 0.003 });
   }
-  ctx.collide(x0 - 0.15, z0 - 0.15, x1 + 0.15, z1 + 0.15, Y + H);
+  ctx.collide(x0 - 0.15, z0 - 0.15, x1 + 0.15, z1 + 0.15, Y + H + 0.5);
   return g;
 }
 

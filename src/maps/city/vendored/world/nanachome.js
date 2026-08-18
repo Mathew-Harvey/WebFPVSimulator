@@ -1479,9 +1479,9 @@ function buildDeck(ctx, m, gm, rng) {
 
   /* the safety railing above the parapet on the two edges you can see out over
    * -- 転落防止柵, and it is also what frames every view from up here */
-  railing(ctx, { axis: 'x', at: z1 - 0.14, from: x0 + 0.2, to: x1 - 0.2, y: DECK + PAR_H, h: 0.42, spacing: 2.1, mat: m.metal, collide: false });
-  railing(ctx, { axis: 'z', at: x1 - 0.14, from: z0 + 0.2, to: z1 - 0.2, y: DECK + PAR_H, h: 0.42, spacing: 2.1, mat: m.metal, collide: false });
-  railing(ctx, { axis: 'z', at: x0 + 0.14, from: z0 + 0.2, to: z1 - 0.2, y: DECK + PAR_H, h: 0.42, spacing: 2.1, mat: m.metal, collide: false });
+  railing(ctx, { axis: 'x', at: z1 - 0.14, from: x0 + 0.2, to: x1 - 0.2, y: DECK + PAR_H, h: 0.42, spacing: 2.1, mat: m.metal });
+  railing(ctx, { axis: 'z', at: x1 - 0.14, from: z0 + 0.2, to: z1 - 0.2, y: DECK + PAR_H, h: 0.42, spacing: 2.1, mat: m.metal });
+  railing(ctx, { axis: 'z', at: x0 + 0.14, from: z0 + 0.2, to: z1 - 0.2, y: DECK + PAR_H, h: 0.42, spacing: 2.1, mat: m.metal });
 
   // tyre scrub in the aisle and at the ramp mouth
   tyreMarks(ctx, [

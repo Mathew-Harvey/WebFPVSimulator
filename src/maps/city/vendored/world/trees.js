@@ -111,6 +111,12 @@ export function buildSakura(ctx, spots) {
       yMin = Math.min(yMin, c.y);
       yMax = Math.max(yMax, c.y);
     }
+    let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+    const grow = (px, py, pz, rx, ry, rz) => {
+      bx0 = Math.min(bx0, px - rx); bx1 = Math.max(bx1, px + rx);
+      by0 = Math.min(by0, py - ry); by1 = Math.max(by1, py + ry);
+      bz0 = Math.min(bz0, pz - rz); bz1 = Math.max(bz1, pz + rz);
+    };
     for (let i = 0; i < count; i++) {
       const c = canopyCenters[Math.floor(rng.next() * canopyCenters.length)];
       const r = 0.56 * S * rng.range(0.68, 1.3);
@@ -124,28 +130,40 @@ export function buildSakura(ctx, spots) {
         tone = hi > 0.62 ? 0 : hi < 0.28 ? 2 : 1;
         if (rng.next() < 0.22) tone = (tone + 1) % 3;
       }
+      const ry = r * rng.range(0.68, 0.88);
+      grow(px, py, pz, r, ry, r);
       blobs[tone].push(trs(px, py, pz,
         rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
-        r, r * rng.range(0.68, 0.88), r));
+        r, ry, r));
     }
 
     // a small cluster crowning the silhouette
     for (let i = 0; i < 4; i++) {
       const r = 0.6 * S * rng.range(0.8, 1.15);
+      const px = topX + rng.range(-0.7, 0.7) * S;
+      const py = topY + (1.25 + rng.range(0, 0.5)) * S;
+      const pz = topZ + rng.range(-0.7, 0.7) * S;
+      const ry = r * 0.8;
+      grow(px, py, pz, r, ry, r);
       blobs[0].push(trs(
-        topX + rng.range(-0.7, 0.7) * S,
-        topY + (1.25 + rng.range(0, 0.5)) * S,
-        topZ + rng.range(-0.7, 0.7) * S,
+        px, py, pz,
         rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
-        r, r * 0.8, r
+        r, ry, r
       ));
     }
 
-    /* 1.15 rather than 1.6: the collider was half a metre wider than the trunk
-     * it stands for, and the lineside footpath is only 1.15 m wide -- the tree
-     * on the crossing corner was closing the one route west to the shrine. */
+    /* Trunk is the stem, canopy is the blobs. The last round hung a 3 m
+     * cube from 0.55 of trunk height, which is air under the blossom and
+     * reads as an invisible trunk. Floor the canopy on the lowest blob. */
     if (spot.collide !== false) {
-      ctx.collide(x - trunkR * 1.15, z - trunkR * 1.15, x + trunkR * 1.15, z + trunkR * 1.15, y + trunkH);
+      const mx = (x + topX) * 0.5;
+      const mz = (z + topZ) * 0.5;
+      const tw = trunkR * 1.05;
+      ctx.collide(mx - tw, mz - tw, mx + tw, mz + tw, y + trunkH, y);
+      ctx.collide(x - trunkR * 1.5, z - trunkR * 1.5, x + trunkR * 1.5, z + trunkR * 1.5, y + 0.34 * S, y);
+      if (Number.isFinite(bx0)) {
+        ctx.collide(bx0, bz0, bx1, bz1, by1, by0);
+      }
     }
   }
 
@@ -332,6 +350,12 @@ export function buildGrove(ctx, spots) {
       yMin = Math.min(yMin, c.y);
       yMax = Math.max(yMax, c.y);
     }
+    let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+    const grow = (px, py, pz, rx, ry, rz) => {
+      bx0 = Math.min(bx0, px - rx); bx1 = Math.max(bx1, px + rx);
+      by0 = Math.min(by0, py - ry); by1 = Math.max(by1, py + ry);
+      bz0 = Math.min(bz0, pz - rz); bz1 = Math.max(bz1, pz + rz);
+    };
     for (let i = 0; i < count; i++) {
       const c = centers[Math.floor(rng.next() * centers.length)];
       if (willow) {
@@ -353,9 +377,12 @@ export function buildGrove(ctx, spots) {
          * the whole tree read as one flat area of `PAL.willow`, which is the
          * brightest thing in the palette. */
         const tone = rng.next() < 0.62 ? 3 : 1;
+        const ry = r * rng.range(1.7, 2.6);
+        const rz = r * rng.range(0.85, 1.05);
+        grow(px, py, pz, r, ry, rz);
         blobs[tone].push(trs(px, py, pz,
           0, rng.range(0, 3), rng.range(-0.25, 0.25),
-          r, r * rng.range(1.7, 2.6), r * rng.range(0.85, 1.05)));
+          r, ry, rz));
         continue;
       }
       const r = 0.72 * S * rng.range(0.7, 1.25);
@@ -369,12 +396,23 @@ export function buildGrove(ctx, spots) {
         tone = hi > 0.66 ? 0 : hi < 0.3 ? 2 : 1;
         if (rng.next() < 0.2) tone = (tone + 1) % 3;
       }
+      const ry = r * rng.range(0.7, 0.92);
+      grow(px, py, pz, r, ry, r);
       blobs[tone].push(trs(px, py, pz,
         rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
-        r, r * rng.range(0.7, 0.92), r));
+        r, ry, r));
     }
     if (spot.collide !== false) {
-      ctx.collide(x - trunkR * 1.7, z - trunkR * 1.7, x + trunkR * 1.7, z + trunkR * 1.7, y + trunkH);
+      const mx = (x + topX) * 0.5;
+      const mz = (z + topZ) * 0.5;
+      const tw = trunkR * 1.05;
+      ctx.collide(mx - tw, mz - tw, mx + tw, mz + tw, y + trunkH, y);
+      ctx.collide(x - trunkR * 1.55, z - trunkR * 1.55, x + trunkR * 1.55, z + trunkR * 1.55, y + 0.42 * S, y);
+      /* One mass for the canopy, not a box per blob. Floor on the lowest
+       * frond so the gap under a shade tree stays a gap. */
+      if (Number.isFinite(bx0)) {
+        ctx.collide(bx0, bz0, bx1, bz1, by1, by0);
+      }
     }
   }
 
@@ -581,13 +619,21 @@ export function buildCedar(ctx, spots) {
       ));
     }
 
-    /* A thin trunk gets a thin collider.  At the 4 m planting pitch below that
-     * leaves 3.0 m of clear ground between two stems after the player's own
-     * radius, so a stand is walkable -- which it has to be, because the 遊歩道's
-     * crest walk runs along the edge of one. */
+    /* Thin stem to the pruned height, then a wider crown. Offset along
+     * the lean so the box sits on the wood, not in the air beside it. */
     if (spot.collide !== false) {
-      const r = trunkR * 1.7;
-      ctx.collide(x - r, z - r, x + r, z + r, y + H * 0.9);
+      const neck = at(base);
+      const tipP = at(H);
+      const tw = trunkR * 1.08;
+      ctx.collide(
+        Math.min(x, neck.x) - tw, Math.min(z, neck.z) - tw,
+        Math.max(x, neck.x) + tw, Math.max(z, neck.z) + tw,
+        y + base, y);
+      const cr = rMax * 0.82;
+      ctx.collide(
+        Math.min(neck.x, tipP.x) - cr, Math.min(neck.z, tipP.z) - cr,
+        Math.max(neck.x, tipP.x) + cr, Math.max(neck.z, tipP.z) + cr,
+        y + H, y + base);
     }
   }
 

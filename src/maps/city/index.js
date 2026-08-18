@@ -580,6 +580,12 @@ const FIT_MIN_EXTENT = 0.02;
  * left out.
  */
 const FIT_COVER = 0.6;
+/* Buildings fill their rectangle. A railing does not. Using FIT_COVER on a
+ * house left 0.4 m of pad the fit could have taken; using 0.42 on a railing
+ * is how a 78 m lineside fence collapsed to one post. So bulky boxes get
+ * the lower bar, thin ones keep the guard. */
+const FIT_COVER_BULK = 0.42;
+const FIT_BULK_MIN = 0.35;
 const FIT_MAX_PAD = 2.0;
 
 /*
@@ -612,10 +618,10 @@ const COVER_MAX_LIFT = 1.0;
  * object that fails is left exactly as it was, with no collider, because the
  * status quo is better than a wall across a gap the pilot can see through.
  */
-const COVER_MIN_FILL = 0.25;
-/* Foliage and ground decoration, excluded by name. See the note at the pass
- * itself: this is a judgement about how the town should fly, not a claim that
- * a cherry blossom is not drawn. */
+const COVER_MIN_FILL = 0.4;
+/* Foliage and ground decoration, excluded by name. Tree canopies are
+ * collided as one mass per tree in trees.js. This skip stops 46000
+ * blossom instances each becoming a wall. */
 const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower/i;
 
 /*
@@ -840,7 +846,7 @@ function buildColliders(world) {
     }
   }
   const fit = { x0: 0, x1: 0, z0: 0, z1: 0, y1: 0, seen: new Int32Array(boxes.length), mark: 0 };
-  const fitStats = { fitted: 0, unmatched: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, worst: [] };
+  const fitStats = { fitted: 0, unmatched: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, worst: [] };
 
   for (const c of world.colliders) {
     const y1 = c.top === undefined ? BOX_CEIL : c.top;
@@ -860,7 +866,8 @@ function buildColliders(world) {
     let fz0 = c.z0;
     let fz1 = c.z1;
     let fy1 = y1;
-    if (fitOne(c, boxes, grid, fit)) {
+    const hit = fitOne(c, boxes, grid, fit);
+    if (hit) {
       /* Clamp each face to the drawn extent, then no further than one pad. */
       const nx0 = Math.min(Math.max(fx0, fit.x0), fx0 + FIT_MAX_PAD);
       const nx1 = Math.max(Math.min(fx1, fit.x1), fx1 - FIT_MAX_PAD);
@@ -874,7 +881,9 @@ function buildColliders(world) {
       const area = Math.max(1e-6, (c.x1 - c.x0) * (c.z1 - c.z0));
       const unionArea = Math.max(0, Math.min(fit.x1, c.x1) - Math.max(fit.x0, c.x0))
         * Math.max(0, Math.min(fit.z1, c.z1) - Math.max(fit.z0, c.z0));
-      const covers = unionArea / area >= FIT_COVER && fit.covered / area >= FIT_COVER;
+      const thin = Math.min(c.x1 - c.x0, c.z1 - c.z0);
+      const coverNeed = thin < FIT_BULK_MIN ? FIT_COVER : FIT_COVER_BULK;
+      const covers = unionArea / area >= coverNeed && fit.covered / area >= coverNeed;
       if (covers && nx1 - nx0 >= FIT_MIN_EXTENT && nz1 - nz0 >= FIT_MIN_EXTENT && ny1 > y0) {
         const side = Math.max(nx0 - fx0, fx1 - nx1, nz0 - fz0, fz1 - nz1);
         const topTrim = fy1 - ny1;
@@ -907,6 +916,18 @@ function buildColliders(world) {
       }
     } else {
       fitStats.unmatched += 1;
+    }
+    /*
+     * Fit only shrinks. A house collider that stopped at the wall plate
+     * never grew to the ridge. If drawn mass over a bulky footprint
+     * reaches a little above the box, raise the top to it. Skip a lift
+     * bigger than a roof: that is a tree overhanging the plot, not a
+     * gable.
+     */
+    const footMin = Math.min(fx1 - fx0, fz1 - fz0);
+    if (hit && footMin > 1.0 && fit.anyTop > fy1 + 0.2 && fit.anyTop <= fy1 + 2.8) {
+      fy1 = fit.anyTop;
+      fitStats.roofLifts += 1;
     }
     /*
      * EVERY town collider gets a box, in order, with no gaps. Index alignment
@@ -947,11 +968,10 @@ function buildColliders(world) {
    * hills, roads and the lake by construction, and what is left is furniture,
    * for which its own bounding box IS a fair contact volume.
    *
-   * Foliage is excluded by name, and that is a judgement rather than a
-   * measurement: the town deliberately collides a tree as its trunk, real
-   * canopies are porous, and making every blossom a crash would change how
-   * this town flies far more than it would make it honest. Recorded in
-   * PROGRESS.md as a decision the owner may want reversed.
+   * Foliage is collided as ONE mass per tree (trunk plus a canopy box with
+   * a floor), not as a box per blossom blob. The cover pass still skips
+   * named foliage so 46000 canopy instances do not become walls. The tree
+   * generators in trees.js own the mass.
    */
   for (const child of world.root.children) {
     const b = objectExtent(child);

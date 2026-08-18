@@ -106,11 +106,11 @@ export function plotBox(o) {
 /**
  * Register the collider for a building placed with `plotBox`.
  *
- * `pad` is the slop round the footprint; `top` comes from the generator's
- * `userData.top`.  One function so no block writes `x - w / 2` for a unit whose
- * width runs along z.
+ * `pad` used to be walker slop, 0.1 m outside the walls. The fit pass
+ * already shrinks onto drawn meshes; leaving pad in for a 5 inch quad
+ * made every house 10 cm fatter than it looks. Default is flush.
  */
-export function plotCollide(ctx, p, top, pad = 0.1) {
+export function plotCollide(ctx, p, top, pad = 0) {
   ctx.collide(p.x0 - pad, p.z0 - pad, p.x1 + pad, p.z1 + pad, top);
 }
 
@@ -569,7 +569,12 @@ export function dressPlot(ctx, o) {
     flank(o.shed < 0 ? -1 : 1, -p.halfD * 0.55, (x, z, y, s) => {
       const sh = makeStorageShed({ x, z, y, ry: p.flankRy(s), w: 1.3, d: 0.7, h: 1.62 });
       ctx.add(sh);
-      ctx.collide(x - 0.7, z - 0.7, x + 0.7, z + 0.7, y + (sh.userData.top ?? 1.7));
+      const ry = p.flankRy(s);
+      const ca = Math.abs(Math.cos(ry));
+      const sa = Math.abs(Math.sin(ry));
+      const hw = (ca * 1.3 + sa * 0.7) / 2;
+      const hd = (sa * 1.3 + ca * 0.7) / 2;
+      ctx.collide(x - hw, z - hd, x + hw, z + hd, y + (sh.userData.top ?? 1.7));
     });
   }
   if (o.garden) {

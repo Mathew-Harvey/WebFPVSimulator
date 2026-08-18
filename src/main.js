@@ -17,9 +17,9 @@
  * the shell spawns the quad at altitude and declares a crash when it
  * reaches the ground, then resets. See PROGRESS.md.
  *
- * Keys in flight: Escape pauses, R returns to the start line, F3 toggles
- * the performance readout, F8 reports a bug. Everything else is a menu
- * choice.
+ * Keys in flight: Escape pauses, R returns to the start line, L is launch
+ * control when that setting is on, F3 toggles the performance readout, F8
+ * reports a bug. Everything else is a menu choice.
  * Sticks: radio in joystick mode (Gamepad API) or WASD plus arrows.
  * Drop a Betaflight diff file onto the page to fly your own config.
  *
@@ -402,6 +402,9 @@ export async function boot({ loading, bootStart, mapId }) {
   if (typeof sim.e.sim_deflect !== 'function') {
     throw new Error('sim.wasm does not export sim_deflect');
   }
+  if (typeof sim.e.sim_set_launch_stand !== 'function') {
+    throw new Error('sim.wasm does not export sim_set_launch_stand');
+  }
   /*
    * The flight controller comes entirely from a Betaflight diff, so which
    * diff is chosen IS the tune. The choice is a setting; the boot path and
@@ -502,16 +505,12 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The y component of the craft's own up vector, in world space, clamped
    * into the domain of acos. Rotating world up by q leaves 1 - 2(x^2 + z^2),
    * and the clamp is there because a normalised quaternion can still put
-   * that a bit outside [-1, 1] in floating point. Written out twice, a
-   * hundred lines apart, once for the tilt aware half extent and once for
-   * the landing judgement: two copies of a sign convention is exactly the
-   * kind of thing that gets fixed in one place only.
-   *
-   * Render side, not physics: this reads the RENDERED quaternion, which is
-   * a frame behind the integrator on purpose. */
+   * that a bit outside [-1, 1] in floating point. Reads qCollide, the
+   * attitude the ground query and the hit query both use this frame.
+   */
   function craftUpY() {
-    const qx = shell.quad.quaternion.x;
-    const qz = shell.quad.quaternion.z;
+    const qx = qCollide.x;
+    const qz = qCollide.z;
     const u = 1 - 2 * (qx * qx + qz * qz);
     if (u > 1) {
       return 1;
@@ -848,6 +847,15 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Back on the ground, landed, exactly as at boot. */
     landed = true;
     takingOff = false;
+    launchStaging = false;
+    input.forcePadRest = false;
+    lcPrevState = 0;
+    lcGoUntil = 0;
+    lcBoost = false;
+    lcAcroUntil = 0;
+    if (lcArmed && ui.settings.launchControl) {
+      applyLaunchSwitch(true);
+    }
     /* Parked again, so the takeoff hint is due again. Render only. */
     flownThisRun = false;
     /* startY is that same query, taken a few lines up by adoptSpawn or by
@@ -1067,9 +1075,133 @@ export async function boot({ loading, bootStart, mapId }) {
    * does not re-init the module and does not reset the craft.
    */
   let angleModeOn = false;
+  /* L-switch for launch control. The Settings row only enables the
+   * feature; this is the mode switch, captured at the sitting. */
+  let lcArmed = false;
+  let launchStaging = false;
+  let lcBoost = false;
+  let lcAcroUntil = 0;
+  let lcPrevState = 0;
+  let lcGoUntil = 0;
 
   function wantAngleMode() {
+    if (lcAcroUntil === Infinity || (lcAcroUntil > 0 && performance.now() < lcAcroUntil)) {
+      return false;
+    }
     return input.isKeyboardPrimary() || ui.settings.flightMode === 'angle';
+  }
+
+  function pitchNoseDownDeg(st) {
+    const w = st[7];
+    const x = st[8];
+    const y = st[9];
+    const z = st[10];
+    const ux = 2 * (x * z - w * y);
+    const uy = 2 * (y * z + w * x);
+    const uz = 1 - 2 * (x * x + y * y);
+    const horiz = Math.sqrt(uy * uy + uz * uz);
+    return Math.atan2(-ux, horiz) * (180 / Math.PI);
+  }
+
+  function lcState() {
+    return typeof sim.launchControlState === 'function'
+      ? sim.launchControlState()
+      : 0;
+  }
+
+  function applyLaunchSwitch(on) {
+    lcArmed = Boolean(on);
+    if (typeof sim.setLaunchControl === 'function') {
+      sim.setLaunchControl(lcArmed);
+    }
+  }
+
+  function disableLaunchStand() {
+    sim.e.sim_set_launch_stand(0, 0, 0, 0, 1, 0, 0, 0);
+  }
+
+  /* Seed the plant with the ramp pitch the parked overlay was drawing,
+   * then let the module hold a rear-arm hinge every 1 ms step. Without
+   * that seed, launching off a 28 degree block dropped the craft onto a
+   * level physics pose and walking the stick walked it off the rails. */
+  function enableLaunchStand() {
+    const st = readState();
+    const h = startPitch * 0.5;
+    const code = sim.e.sim_set_launch_stand(
+      1, st[1], st[2], st[3],
+      Math.cos(h), 0, Math.sin(h), 0,
+    );
+    if (code === SIM_OK) {
+      stateCurr = readState();
+      statePrev = stateCurr;
+    }
+  }
+
+  function beginLaunchStaging() {
+    if (!(mode === 'flight' && !crashed && landed)) {
+      return;
+    }
+    landed = false;
+    takingOff = true;
+    launchStaging = true;
+    adoptSimClock();
+    input.forcePadRest = true;
+    enableLaunchStand();
+  }
+
+  function endLaunchStaging(park) {
+    launchStaging = false;
+    input.forcePadRest = false;
+    lcBoost = false;
+    disableLaunchStand();
+    if (park && mode === 'flight' && !crashed) {
+      sim.rest();
+      landed = true;
+      takingOff = false;
+      stateCurr = readState();
+      statePrev = stateCurr;
+      acc = 0;
+    }
+  }
+
+  function syncLaunchControl(nowMs) {
+    if (!ui.settings.launchControl && lcArmed) {
+      applyLaunchSwitch(false);
+      if (launchStaging) {
+        endLaunchStaging(true);
+      }
+      lcAcroUntil = 0;
+    }
+    const st = lcState();
+    if (st === 1 || st === 2) {
+      lcAcroUntil = Infinity;
+      if (landed && !crashed && mode === 'flight') {
+        beginLaunchStaging();
+      }
+    } else if (st === 3) {
+      if (lcPrevState === 1 || lcPrevState === 2) {
+        launchStaging = false;
+        input.forcePadRest = false;
+        disableLaunchStand();
+        lcBoost = true;
+        takingOff = true;
+        flownThisRun = true;
+        lcGoUntil = nowMs + 900;
+        lcAcroUntil = nowMs + 480;
+        if (typeof audio.event === 'function') {
+          audio.event('takeoff');
+        }
+      }
+    } else {
+      if (launchStaging) {
+        endLaunchStaging(true);
+      }
+      if (lcAcroUntil === Infinity) {
+        lcAcroUntil = 0;
+      }
+    }
+    lcPrevState = st;
+    return st;
   }
 
   function syncAngleMode() {
@@ -1733,6 +1865,33 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Flight only keys. */
     if (code === 'KeyR') {
       reset();
+      return;
+    }
+    if (code === 'KeyL' && ui.screen === 'flight') {
+      if (!ui.settings.launchControl) {
+        notice = {
+          text: 'Launch control is off.\nTurn it on in Settings, then press L on the start line.',
+          untilMs: performance.now() + 3200,
+        };
+        return;
+      }
+      if (!landed && !launchStaging) {
+        notice = {
+          text: 'Launch control is for the start line.\nLand, then press L.',
+          untilMs: performance.now() + 2800,
+        };
+        return;
+      }
+      applyLaunchSwitch(!lcArmed);
+      if (lcArmed) {
+        notice = {
+          text: 'LAUNCH CONTROL\nThrottle idle. Pitch forward, centre the stick, punch.',
+          untilMs: performance.now() + 2200,
+        };
+      } else {
+        notice = { text: 'Launch control off', untilMs: performance.now() + 1600 };
+      }
+      return;
     }
   };
   window.addEventListener('pointerdown', wakeAudio);
@@ -1799,6 +1958,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const qSpawn = new THREE.Quaternion();
   const qSpawnInv = new THREE.Quaternion();
   const qPad = new THREE.Quaternion();
+  const qCollide = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
   const pBounce = new THREE.Vector3();
   const nSim = { x: 0, y: 0, z: 0 };
@@ -1944,6 +2104,8 @@ export async function boot({ loading, bootStart, mapId }) {
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
 
     input.poll(nowWall);
+    const launchNow = syncLaunchControl(nowWall);
+    input.forcePadRest = launchStaging;
     syncAngleMode();
     const samples = input.drain();
     for (const smp of samples) {
@@ -2086,6 +2248,7 @@ export async function boot({ loading, bootStart, mapId }) {
         stateCurr = readState();
         simTimeMs += steps * MS_PER_STEP;
         simStepIdx += steps;
+        /* Launch stand constraint runs inside sim_step. */
         /* One row per rendered frame, and only while actually flying. The
          * state and the sticks are read at the same instant, so the row is
          * honest about what the craft was doing and what it was told. */
@@ -2129,16 +2292,16 @@ export async function boot({ loading, bootStart, mapId }) {
        * the aircraft's, and only that is scaled. */
       pProbe.y += startY;
       /*
-       * The craft's vertical half extent at its current tilt. A quad is a
-       * DISC: 0.347 m across the props, 0.080 m through the body, so the
-       * old CRAFT_R sphere met the ground 13 cm before the airframe did
-       * and stole 26.7 cm of every gate window. Level it is 0.040 m; banked
-       * it grows toward CRAFT_R because a banked disc presents its
-       * diameter to the vertical. Computed from last frame's rendered
-       * quaternion, one frame of tilt lag on a 1 ms physics grid.
+       * The craft's vertical half extent at its current tilt. A quad is an
+       * X: 0.347 m on the diagonal, 0.282 m axis to axis, 0.080 m through
+       * the body. Collision uses that X in plan; this number is only the
+       * ground query. Computed from this state's quaternion, not last
+       * frame's render, so a snap roll is judged on the attitude that
+       * produced the travel.
        */
-      const upNow = craftUpY();
-      vHalfFrame = craftVerticalHalf(Math.sqrt(1 - upNow * upNow));
+      simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCollide);
+      qCollide.premultiply(qSpawn);
+      vHalfFrame = craftVerticalHalf(Math.sqrt(1 - craftUpY() * craftUpY()));
       const vHalf = vHalfFrame;
       let touched = false;
       let touchX = pProbe.x;
@@ -2176,7 +2339,11 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       groundPrev.copy(pProbe);
       groundHasPrev = true;
-      if (takingOff) {
+      if (launchStaging) {
+        /* The stand hinge owns the craft. Contact at 30 to 40 degrees of
+         * pitch is the hold, not a crash, and the usual takeoff abort
+         * would dump the attitude every frame. */
+      } else if (takingOff) {
         if (
           !touched &&
           pProbe.y - vHalf > view.height(pProbe.x, pProbe.z, pProbe.y - vHalf - SURFACE_BIAS) + 0.05
@@ -2186,15 +2353,20 @@ export async function boot({ loading, bootStart, mapId }) {
            * judging owns the craft again. Without the margin the hold
            * released on the first frame and the spool dip handed the craft
            * straight back to the landing judgement, which is the chatter
-           * this flag exists to prevent. */
+           * this flag exists to prevent. Launch control skips this whole
+           * branch while the stand hinge is holding. */
           takingOff = false;
+          lcBoost = false;
         } else if (touched) {
           const thrNow = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
           /* Depth of the craft's CENTRE below the surface. With the per
            * frame rest below, this is a backstop that only an upstream
            * regression can reach. */
           const sunk = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS) - touchY;
-          if (thrNow <= TAKEOFF_THROTTLE || sunk > 0.10) {
+          /* Launch control triggers at 20 percent throttle, below
+           * TAKEOFF_THROTTLE, so the usual abort would freeze the punch
+           * on the pad. The pad still holds the sphere while motors spool. */
+          if (!lcBoost && (thrNow <= TAKEOFF_THROTTLE || sunk > 0.10)) {
             /* Aborted. Rest it where it is: arriving at the ground from
              * resting on it is not a crash at any spool speed. */
             takingOff = false;
@@ -2386,13 +2558,14 @@ export async function boot({ loading, bootStart, mapId }) {
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    if (mode === 'flight' && !crashed && !landed && raceHasPrev) {
-      /* The craft the query sweeps is the ellipsoid: CRAFT_R across the
-       * props, vHalfFrame through the body at its current tilt. */
+    if (mode === 'flight' && !crashed && !landed && !launchStaging && raceHasPrev) {
+      /* The craft the query sweeps is the four prop discs: crx/crz from
+       * this attitude, vHalfFrame through the body at its current tilt. */
       const k = view.colliders.hit(
         racePrev.x, racePrev.y, racePrev.z,
         pCurr.x, pCurr.y, pCurr.z,
         vHalfFrame,
+        qCollide.x, qCollide.y, qCollide.z, qCollide.w,
       );
       if (k >= 0) {
         lastHitKind = view.colliders.kindName(k);
@@ -2512,7 +2685,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fpvPos.copy(pCurr)
       .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
       .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
-    const wantLift = (landed || crashed) ? PARKED_LIFT : 0;
+    const wantLift = (landed || crashed || launchStaging) ? PARKED_LIFT : 0;
     parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
@@ -2781,6 +2954,8 @@ export async function boot({ loading, bootStart, mapId }) {
         flightMode: angleModeOn ? 'angle' : 'acro',
         hitsLeft,
         hitLives: HIT_LIVES,
+        launchState: launchNow,
+        launchPitch: pitchNoseDownDeg(st),
       });
       const ch = input.channels;
       ui.setStickOverlay({
@@ -2823,7 +2998,7 @@ export async function boot({ loading, bootStart, mapId }) {
         input.calResult = null;
       }
       ui.setBanner('');
-    } else if (notice && nowWall < notice.untilMs) {
+    } else if (notice && nowWall < notice.untilMs && !(launchNow > 0)) {
       ui.setBanner(notice.text);
     } else if (ui.isModal()) {
       /* A banner is a flight message. Any screen that is up owns the
@@ -2832,10 +3007,23 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setBanner('');
     } else if (crashed) {
       ui.setBanner(ui.guided ? 'Crashed\nPress R to go back to the start line' : 'Crashed');
+    } else if (launchNow === 3 && nowWall < lcGoUntil) {
+      ui.setBanner('GO');
+    } else if (launchNow === 1 || launchNow === 2) {
+      const deg = Math.round(pitchNoseDownDeg(st));
+      ui.setBanner(deg > 8
+        ? (launchNow === 2
+          ? `LAUNCH ${deg}\nPunch throttle`
+          : `LAUNCH ${deg}\nCentre the stick, then punch`)
+        : 'LAUNCH CONTROL\nPitch forward, then centre the stick');
     } else if (!flownThisRun) {
-      ui.setBanner(race.freestyle
-        ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
-        : 'Throttle up to take off\nThe green gate starts your lap');
+      ui.setBanner(ui.settings.launchControl
+        ? (race.freestyle
+          ? 'L for launch control, or throttle up\nNo gates, no clock. Go and find a line.'
+          : 'L for launch control, or throttle up\nThe green gate starts your lap')
+        : (race.freestyle
+          ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
+          : 'Throttle up to take off\nThe green gate starts your lap'));
     } else if (guidedText) {
       ui.setBanner(guidedText);
     } else if (lapFlash) {
@@ -3404,11 +3592,13 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Is anything solid on the segment from p to q? Same call the frame loop
    * makes, so a capture can assert what a quad would hit. */
   window.__hit = (px, py, pz, qx, qy, qz, vh = vHalfFrame) => {
-    /* The frame loop passes its tilt aware half extent to every real
-     * query, so a probe that left it out was asking a different question
-     * from the one the game asks and answering for a craft of another
-     * shape. Defaulted, still overridable. */
-    const k = view.colliders.hit(px, py, pz, qx, qy, qz, vh);
+    /* The frame loop passes its tilt aware half extent and the craft's
+     * world quaternion to every real query. A probe that left those out
+     * was asking a different question from the one the game asks. */
+    const k = view.colliders.hit(
+      px, py, pz, qx, qy, qz, vh,
+      qCollide.x, qCollide.y, qCollide.z, qCollide.w,
+    );
     return { kind: k < 0 ? null : view.colliders.kindName(k), index: view.colliders.hitIndex };
   };
   /* Shadow pass on or off, so the ledger can attribute draw calls between the

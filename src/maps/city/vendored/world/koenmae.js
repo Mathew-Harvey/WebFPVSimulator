@@ -385,7 +385,7 @@ function buildHousePlot(ctx, Y, shrubs, petals) {
   });
   ctx.add(h);
   const p = plotBox(HOUSE);
-  plotCollide(ctx, p, Y + h.userData.top, 0.10);
+  plotCollide(ctx, p, Y + h.userData.top);
 
   /* The 玄関 lands at (43.50, 7.90).  `doorAt` is in the *unit's* frame and this
    * unit is turned a quarter circle, so the offset that reads as "1.05 m west of

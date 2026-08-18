@@ -603,7 +603,7 @@ function buildHall(ctx, Y, m, gm, rng, sakura, shrubs, petals) {
   });
   ctx.add(h);
   const p = plotBox(HALL);
-  plotCollide(ctx, p, Y + (h.userData.top ?? 4.4), 0.12);
+  plotCollide(ctx, p, Y + (h.userData.top ?? 4.4));
 
   /* The porch slab is walked on, so it is a platform and not part of the
    * collider: `makeHall` stands it 0.2 m proud of the forecourt, which is a
@@ -926,7 +926,7 @@ function buildHousing(ctx, Y, m, gm, shrubs, petals) {
     });
     ctx.add(b);
     const p = plotBox(WALK);
-    plotCollide(ctx, p, Y + (b.userData.top ?? 8.7), 0.1);
+    plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
     /* the open stair stands outside the mass at the block's east end once it is
      * turned: `makeWalkup` builds it off local -x, and for `face: 'z-'` local -x
      * is world +x */
@@ -966,7 +966,7 @@ function buildHousing(ctx, Y, m, gm, shrubs, petals) {
     });
     ctx.add(h);
     const p = plotBox(ATT);
-    plotCollide(ctx, p, Y + (h.userData.top ?? 8.3), 0.08);
+    plotCollide(ctx, p, Y + (h.userData.top ?? 8.3));
 
     /* The boundary stands almost on the pavement -- 0.19 m off the kerb -- and
      * that is not carelessness.  A fence set back into the middle of a 1.75 m

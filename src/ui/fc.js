@@ -568,6 +568,18 @@ export class FcSession {
         adjust: () => this.setFlightMode(!angle),
       });
       rows.push({
+        label: 'LAUNCH CONTROL',
+        note: 'On or off, same Launch control in Settings. L on the keyboard is the mode switch on the start line. A real board uses an AUX range.',
+        value: this.getLaunchControl() ? 'On' : 'Off',
+        current: this.getLaunchControl(),
+        options: [
+          { value: true, label: 'On' },
+          { value: false, label: 'Off' },
+        ],
+        pick: (v) => this.setLaunchControl(v === true || v === 'true'),
+        adjust: () => this.setLaunchControl(!this.getLaunchControl()),
+      });
+      rows.push({
         label: 'HORIZON',
         value: 'Unavailable',
         note: 'No AUX channels until they are fed from the gamepad.',

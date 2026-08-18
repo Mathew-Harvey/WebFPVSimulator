@@ -25,6 +25,7 @@
 
 #include "sim_abi.h"
 #include "sim_internal.h"
+#include "libm/sim_math.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -48,6 +49,11 @@ static InputSample g_queue[INPUT_QUEUE_CAP];
 static int g_q_head = 0;
 static int g_q_tail = 0;
 static long long g_last_input_us = -1;
+static int g_stand_on = 0;
+static double g_stand_hinge[3];
+/* Underside of the parked pose, metres below the CG. Matches REST_HEIGHT
+ * in the shell so the hinge sits on the foam, not in the air above it. */
+static const double STAND_HINGE_Z = -0.045;
 
 SIM_EXPORT int sim_abi_version(void) { return SIM_ABI_VERSION; }
 
@@ -63,6 +69,7 @@ static void reset_dynamics(void) {
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     g_override[m] = -1.0;
   }
+  g_stand_on = 0;
 }
 
 SIM_EXPORT int sim_init(const unsigned char *diff_utf8, int len) {
@@ -192,9 +199,132 @@ SIM_EXPORT int sim_deflect(double nx, double ny, double nz,
   return SIM_OK;
 }
 
+static void stand_rotate_body(double bx, double by, double bz, double out[3]) {
+  const double w = S.quat[0];
+  const double x = S.quat[1];
+  const double y = S.quat[2];
+  const double z = S.quat[3];
+  const double ux = 2.0 * (y * bz - z * by);
+  const double uy = 2.0 * (z * bx - x * bz);
+  const double uz = 2.0 * (x * by - y * bx);
+  out[0] = bx + w * ux + (y * uz - z * uy);
+  out[1] = by + w * uy + (z * ux - x * uz);
+  out[2] = bz + w * uz + (x * uy - y * ux);
+}
+
+static void stand_pitch_only(void) {
+  const double w = S.quat[0];
+  const double x = S.quat[1];
+  const double y = S.quat[2];
+  const double z = S.quat[3];
+  /* Body forward in world, then drop the lateral component so yaw and
+   * roll cannot accumulate. Gyroscopic pitch leaks into roll in free
+   * air; a launch block does not allow that. */
+  double fx = 1.0 - 2.0 * (y * y + z * z);
+  double fz = 2.0 * (x * z - w * y);
+  const double f2 = fx * fx + fz * fz;
+  if (f2 < 1e-16) {
+    return;
+  }
+  const double inv = 1.0 / sim_sqrt(f2);
+  fx *= inv;
+  fz *= inv;
+  if (fx > 1.0) {
+    fx = 1.0;
+  }
+  if (fx < -1.0) {
+    fx = -1.0;
+  }
+  double qw = sim_sqrt(0.5 * (1.0 + fx));
+  double qy;
+  if (qw > 1e-12) {
+    qy = -0.5 * fz / qw;
+  } else {
+    qw = 0.0;
+    qy = fz < 0.0 ? 1.0 : -1.0;
+  }
+  const double n2 = qw * qw + qy * qy;
+  const double ninv = 1.0 / sim_sqrt(n2);
+  S.quat[0] = qw * ninv;
+  S.quat[1] = 0.0;
+  S.quat[2] = qy * ninv;
+  S.quat[3] = 0.0;
+}
+
+static void stand_apply(void) {
+  if (!g_stand_on) {
+    return;
+  }
+  stand_pitch_only();
+  S.vel[0] = 0.0;
+  S.vel[1] = 0.0;
+  S.vel[2] = 0.0;
+  S.omega[0] = 0.0;
+  S.omega[2] = 0.0;
+  double hingeb[3];
+  stand_rotate_body(-PLANT.arm_x, 0.0, STAND_HINGE_Z, hingeb);
+  S.pos[0] = g_stand_hinge[0] - hingeb[0];
+  S.pos[1] = g_stand_hinge[1] - hingeb[1];
+  S.pos[2] = g_stand_hinge[2] - hingeb[2];
+}
+
+static void stand_capture_hinge(void) {
+  double hingeb[3];
+  stand_rotate_body(-PLANT.arm_x, 0.0, STAND_HINGE_Z, hingeb);
+  g_stand_hinge[0] = S.pos[0] + hingeb[0];
+  g_stand_hinge[1] = S.pos[1] + hingeb[1];
+  g_stand_hinge[2] = S.pos[2] + hingeb[2];
+}
+
+SIM_EXPORT int sim_set_launch_stand(int on, double px, double py, double pz,
+                                    double qw, double qx, double qy, double qz) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!on) {
+    g_stand_on = 0;
+    return SIM_OK;
+  }
+  if (!sim_finite(px) || !sim_finite(py) || !sim_finite(pz)
+      || !sim_finite(qw) || !sim_finite(qx) || !sim_finite(qy) || !sim_finite(qz)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const double n2 = qw * qw + qx * qx + qy * qy + qz * qz;
+  if (!(n2 > 0.25) || !(n2 < 4.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const double ninv = 1.0 / sim_sqrt(n2);
+  S.pos[0] = px;
+  S.pos[1] = py;
+  S.pos[2] = pz;
+  S.quat[0] = qw * ninv;
+  S.quat[1] = qx * ninv;
+  S.quat[2] = qy * ninv;
+  S.quat[3] = qz * ninv;
+  S.vel[0] = 0.0;
+  S.vel[1] = 0.0;
+  S.vel[2] = 0.0;
+  S.omega[0] = 0.0;
+  S.omega[2] = 0.0;
+  g_stand_on = 1;
+  stand_pitch_only();
+  stand_capture_hinge();
+  stand_apply();
+  return SIM_OK;
+}
+
 SIM_EXPORT int sim_set_angle_mode(int on) {
   bridge_set_angle_mode(on);
   return SIM_OK;
+}
+
+SIM_EXPORT int sim_set_launch_control(int on) {
+  bridge_set_launch_control(on);
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_launch_control_state(void) {
+  return bridge_launch_control_state();
 }
 
 SIM_EXPORT int sim_motor_override(int motor, double duty) {
@@ -249,6 +379,7 @@ SIM_EXPORT int sim_step(int n) {
       }
     }
     plant_step(&S, duty);
+    stand_apply();
     S.step_index += 1;
   }
   return SIM_OK;

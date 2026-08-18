@@ -144,7 +144,7 @@ export function buildShrine(ctx) {
       const cheek = new THREE.Mesh(bake(parts), gm.stoneDark);
       cheek.castShadow = cheek.receiveShadow = true;
       ctx.add(cheek);
-      ctx.collide(AXIS_X + s * 1.85 - 0.2, STEP_Z0, AXIS_X + s * 1.85 + 0.2, STEP_Z0 + RUN * N_STEPS, TOP + 0.3);
+      ctx.collide(AXIS_X + s * 1.85 - 0.2, STEP_Z0, AXIS_X + s * 1.85 + 0.2, STEP_Z0 + RUN * N_STEPS, TOP + (s < 0 ? 0.95 : 0.3));
     }
     {
       const L = RUN * N_STEPS;

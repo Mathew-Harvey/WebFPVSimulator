@@ -82,6 +82,25 @@
       .osd-left { left: 22px; }
       .osd-right { right: 22px; text-align: right; }
       .osd-mode { letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber); }
+      .osd-launch {
+        position: absolute; left: 50%; top: 16%;
+        transform: translate(-50%, 0);
+        font-size: clamp(28px, 4.2vw, 46px); font-weight: 700;
+        letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--amber);
+        text-shadow: 0 3px 14px rgba(0, 0, 0, 0.92);
+        pointer-events: none;
+      }
+      .osd-launch.is-off { display: none; }
+      .osd-launch.is-hot { animation: launch-blink 0.32s step-end infinite; }
+      .osd-launch.is-go {
+        color: #8dffb0;
+        letter-spacing: 0.32em;
+        font-size: clamp(40px, 6vw, 64px);
+      }
+      @keyframes launch-blink {
+        50% { opacity: 0.2; }
+      }
       .bar {
         height: 5px; margin-top: 7px; border-radius: 3px;
         background: rgba(12, 22, 34, 0.65);

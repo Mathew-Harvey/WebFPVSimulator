@@ -91,6 +91,20 @@ function mats() {
   return M;
 }
 
+/* A 0.18 m rail box, same width as ground.js `railing`, with a floor so it
+ * is a parapet on the deck and not a wall from the tracks up. */
+function railCollide(ctx, o) {
+  const a = Math.min(o.from, o.to);
+  const b = Math.max(o.from, o.to);
+  const h = o.h ?? RAIL_H;
+  const y = o.y;
+  if (o.axis === 'z') {
+    ctx.collide(o.at - 0.09, a, o.at + 0.09, b, y + h, y);
+  } else {
+    ctx.collide(a, o.at - 0.09, b, o.at + 0.09, y + h, y);
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Balustrade: posts, a top rail, a mid rail and vertical infill.
  *
@@ -127,6 +141,9 @@ function balustrade(parts, o) {
       geometry: new THREE.BoxGeometry(0.022, h - 0.19, 0.022),
       matrix: alongY(a + (len / nb) * i, y + 0.13 + (h - 0.19) / 2),
     });
+  }
+  if (o.ctx) {
+    railCollide(o.ctx, { axis, at, from: a, to: b, y, h });
   }
 }
 
@@ -182,6 +199,26 @@ function rakeBalustrade(parts, o) {
           ? trs(at, midY + dy, mid, pitch, 0, 0)
           : trs(mid, midY + dy, at, 0, 0, pitch),
       });
+    }
+  }
+  /* Short boxes along the rake. One box for the whole flight would fill
+   * the triangle under the rail and close the undercroft the stair is
+   * supposed to leave open. */
+  if (o.ctx) {
+    const BAND = 2;
+    for (let i = 0; i < n; i += BAND) {
+      const i1 = Math.min(n, i + BAND);
+      const t0 = from + step * i;
+      const t1 = from + step * i1;
+      const a = Math.min(t0, t1);
+      const b = Math.max(t0, t1);
+      const yLo = y0 - RISE * i1;
+      const yHi = y0 - RISE * i + RAIL_H;
+      if (axis === 'z') {
+        o.ctx.collide(at - 0.09, a, at + 0.09, b, yHi, yLo);
+      } else {
+        o.ctx.collide(a, at - 0.09, b, at + 0.09, yHi, yLo);
+      }
     }
   }
 }
@@ -289,8 +326,8 @@ function flight(ctx, o) {
     }
   }
 
-  rakeBalustrade(parts, { axis, at: at - half + 0.05, from, to: from + dir * run, y0, dir, n });
-  rakeBalustrade(parts, { axis, at: at + half - 0.05, from, to: from + dir * run, y0, dir, n });
+  rakeBalustrade(parts, { axis, at: at - half + 0.05, from, to: from + dir * run, y0, dir, n, ctx });
+  rakeBalustrade(parts, { axis, at: at + half - 0.05, from, to: from + dir * run, y0, dir, n, ctx });
 
   const matFor = {
     tread: m.tread, nosing: m.nosing, steel: m.steel,
@@ -303,6 +340,26 @@ function flight(ctx, o) {
     mesh.receiveShadow = true;
     ctx.add(mesh);
     if (key === 'steel') hullOutline(mesh, { thickness: 0.003 });
+  }
+
+  /* The stair body, not a skirt to the ground. Each band is only as deep
+   * as the stringers, so the undercroft under the soffit stays a gap. */
+  {
+    const BAND = 2;
+    for (let i = 0; i < n; i += BAND) {
+      const i1 = Math.min(n, i + BAND);
+      const t0 = from + GOING * dir * i;
+      const t1 = from + GOING * dir * i1;
+      const a = Math.min(t0, t1);
+      const b = Math.max(t0, t1);
+      const yHi = y0 - RISE * i + 0.07;
+      const yLo = y0 - RISE * i1 - 0.42;
+      if (axis === 'z') {
+        ctx.collide(at - half, a, at + half, b, yHi, yLo);
+      } else {
+        ctx.collide(a, at - half, b, at + half, yHi, yLo);
+      }
+    }
   }
 
   /* No skirt collider under the flight.
@@ -332,6 +389,7 @@ function landing(ctx, o) {
   hullOutline(slab, { thickness: 0.003 });
   // padded so it overlaps the flight and deck platforms rather than meeting them
   ctx.platform({ x0: x0 - 0.05, x1: x1 + 0.05, z0: z0 - 0.05, z1: z1 + 0.05, top: y });
+  ctx.collide(x0, z0, x1, z1, y, y - SLAB - 0.34);
 
   const parts = { steel: [], steelDark: [], rail: [], railDark: [] };
   // edge beams all round, and a cross beam under the middle
@@ -358,10 +416,10 @@ function landing(ctx, o) {
     }
   }
   for (const side of rails) {
-    if (side === 'z-') balustrade(parts, { axis: 'x', at: z0 + 0.05, from: x0, to: x1, y });
-    if (side === 'z+') balustrade(parts, { axis: 'x', at: z1 - 0.05, from: x0, to: x1, y });
-    if (side === 'x-') balustrade(parts, { axis: 'z', at: x0 + 0.05, from: z0, to: z1, y });
-    if (side === 'x+') balustrade(parts, { axis: 'z', at: x1 - 0.05, from: z0, to: z1, y });
+    if (side === 'z-') balustrade(parts, { axis: 'x', at: z0 + 0.05, from: x0, to: x1, y, ctx });
+    if (side === 'z+') balustrade(parts, { axis: 'x', at: z1 - 0.05, from: x0, to: x1, y, ctx });
+    if (side === 'x-') balustrade(parts, { axis: 'z', at: x0 + 0.05, from: z0, to: z1, y, ctx });
+    if (side === 'x+') balustrade(parts, { axis: 'z', at: x1 - 0.05, from: z0, to: z1, y, ctx });
   }
 
   const matFor = { steel: m.steel, steelDark: m.steelDark, rail: m.rail, railDark: m.railDark };
@@ -442,6 +500,9 @@ function roof(ctx, o) {
   const mesh = new THREE.Mesh(bake(parts.rib), m.canopyRib);
   mesh.castShadow = true;
   ctx.add(mesh);
+  /* Thin lid at the sheets, not a box down to the deck: the corridor under
+   * the roof is a gap a quad can fly. */
+  ctx.collide(x0, z0, x1, z1, y + camber + 0.1, y - 0.1);
   return mesh;
 }
 
@@ -493,17 +554,23 @@ function deck(ctx) {
     matrix: trs(XD0 + 0.16, DECK_Y - SLAB - 0.3, cz + 1.2),
   });
 
-  balustrade(parts, { axis: 'z', at: XD0 + 0.05, from: Z_F, to: Z_N, y: DECK_Y });
-  balustrade(parts, { axis: 'z', at: XD1 - 0.05, from: Z_F, to: Z_N, y: DECK_Y });
+  balustrade(parts, { axis: 'z', at: XD0 + 0.05, from: Z_F, to: Z_N, y: DECK_Y, ctx });
+  balustrade(parts, { axis: 'z', at: XD1 - 0.05, from: Z_F, to: Z_N, y: DECK_Y, ctx });
+
+  /* The two girders, as themselves, not a wall across the tracks. */
+  for (const s of [-1, 1]) {
+    const gx = X_C + s * (DECK_W / 2 - 0.06);
+    ctx.collide(gx - 0.16, Z_F, gx + 0.16, Z_N, DECK_Y - SLAB, DECK_Y - SLAB - GIRDER);
+  }
 
   /* Piers just outside each lineside fence.  They also close the undercroft:
    * the deck is a platform, so the strip of walkable ground between the fence
    * and the head landing has to be too narrow to stand in. */
   for (const pz of [TRACK_HALF + 1.5, -(TRACK_HALF + 1.5)]) {
     const gy = groundY(pz);
+    const hCol = DECK_Y - SLAB - GIRDER - gy;
     for (const s of [-1, 1]) {
       const px = X_C + s * (DECK_W / 2 - 0.2);
-      const hCol = DECK_Y - SLAB - GIRDER - gy;
       parts.steelDark.push({
         geometry: new THREE.CylinderGeometry(0.15, 0.19, hCol, 10),
         matrix: trs(px, gy + hCol / 2, pz),
@@ -514,7 +581,13 @@ function deck(ctx) {
     const foot = box(DECK_W + 0.5, 0.3, 0.9, m.concreteMid, X_C, gy + 0.15, pz);
     foot.receiveShadow = true;
     ctx.add(foot);
-    ctx.collide(XD0 - 0.3, pz - 0.45, XD1 + 0.3, pz + 0.45, gy + 1.0);
+    /* Columns to the girder, not a 1 m stub you fly through, and not a wall
+     * across the tracks at deck height. */
+    for (const s of [-1, 1]) {
+      const px = X_C + s * (DECK_W / 2 - 0.2);
+      ctx.collide(px - 0.19, pz - 0.19, px + 0.19, pz + 0.19, gy + hCol);
+    }
+    ctx.collide(XD0 - 0.25, pz - 0.45, XD1 + 0.25, pz + 0.45, gy + 0.35);
   }
 
   const matFor = { steel: m.steel, steelDark: m.steelDark, rail: m.rail, railDark: m.railDark };

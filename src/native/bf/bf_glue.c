@@ -76,6 +76,8 @@
 #include "rx/rx.h"
 #include "sensors/gyro.h"
 #include "sensors/gyro_init.h"
+#include "sensors/sensors.h"
+#include "fc/core.h"
 
 extern uint32_t sim_bf_now_us;
 extern uint16_t sim_bf_sag_cell_cv;
@@ -379,6 +381,10 @@ void bf_config_begin(void) {
 
   currentPidProfile = pidProfilesMutable(0);
   currentControlRateProfile = controlRateProfilesMutable(0);
+  /* Race start default: limit forward pitch so a punch does not loop.
+   * 0 is Betaflight's own default (no limit). 40 degrees is a typical
+   * 5 inch launch and is still overridable from the FC screen. */
+  currentPidProfile->launchControlAngleLimit = 40;
 
   /* Simulator posture: quad X, airmode and anti gravity on. RC smoothing is
    * left at the Betaflight default and must stay on: getFeedforward returns
@@ -465,6 +471,12 @@ static void bf_runtime_init(void) {
   gyro.gyroSensor1.gyroDev.readFn = sim_gyro_read;
   gyro.gyroSensor1.calibration.cyclesRemaining = 0;
   gyroInitFilters();
+
+  /* Plant attitude is the accelerometer. pid_init copies
+   * launch_angle_limit only when SENSOR_ACC is set; applyLaunchControl
+   * is still gated on isLaunchControlActive, which stays false unless
+   * the shell asks, so the harness acro path does not change. */
+  sensorsSet(SENSOR_ACC);
 
   pidInit(currentPidProfile);
   pidResetTransientState();
@@ -652,6 +664,65 @@ int sim_bf_get(const char *key, char *out, int cap) {
  */
 static int g_angle_mode = 0;
 
+/*
+ * LAUNCH CONTROL, kept off the acro path the same way.
+ *
+ * pid.c and mixer.c already compiled the hold, the idle-throttle mixer
+ * and the iterm dump. fc/core.c is not compiled, so the state machine
+ * that arms the mode, triggers on throttle and resets on the switch
+ * lives here, copied from core.c rather than rewritten in JavaScript.
+ *
+ * The sim is always armed, so "captured at arm" is the moment the shell
+ * raises the switch, and a reset is a fresh arm. After a trigger the
+ * feature latches until the switch goes off (launch_trigger_allow_reset)
+ * or the module resets. g_launch_switch defaults to 0. The harness never
+ * calls sim_set_launch_control.
+ */
+static int g_launch_switch = 0;
+static launchControlState_e g_launch_state = LAUNCH_CONTROL_DISABLED;
+
+static void bf_apply_launch_control(void) {
+  if (g_launch_switch) {
+    if (g_launch_state == LAUNCH_CONTROL_DISABLED) {
+      g_launch_state = LAUNCH_CONTROL_ACTIVE;
+    }
+  } else if (g_launch_state == LAUNCH_CONTROL_TRIGGERED) {
+    if (currentPidProfile && currentPidProfile->launchControlAllowTriggerReset) {
+      g_launch_state = LAUNCH_CONTROL_DISABLED;
+    }
+  } else {
+    g_launch_state = LAUNCH_CONTROL_DISABLED;
+  }
+}
+
+bool isLaunchControlActive(void) {
+  return g_launch_state == LAUNCH_CONTROL_ACTIVE;
+}
+
+void bridge_set_launch_control(int on) {
+  g_launch_switch = on ? 1 : 0;
+  bf_apply_launch_control();
+}
+
+int bridge_launch_control_state(void) {
+  if (g_launch_state == LAUNCH_CONTROL_DISABLED) {
+    return 0;
+  }
+  if (g_launch_state == LAUNCH_CONTROL_TRIGGERED) {
+    return 3;
+  }
+  if (!currentPidProfile) {
+    return 1;
+  }
+  /* 4.2 OSD: blink when throttle is within 10 percent of the trigger. */
+  const int trig = (int)currentPidProfile->launchControlThrottlePercent;
+  const int pct = (int)calculateThrottlePercentAbs();
+  if (pct + 10 >= trig && trig > 0) {
+    return 2;
+  }
+  return 1;
+}
+
 static int16_t bf_deci_deg(float rad) {
   float d = rad * (1800.0f / M_PIf);
   if (d > 1800.0f) {
@@ -720,8 +791,15 @@ void bridge_reset(void) {
   }
   pidResetIterm();
   /* Reset does not clear the shell's requested mode. Re-apply after the
-   * init chain so a craft that was in angle stays in angle. */
+   * init chain so a craft that was in angle stays in angle, and a launch
+   * control switch that was on is a fresh arm rather than a latched
+   * trigger from the previous sitting. */
   bf_apply_angle_mode_flag();
+  if (g_launch_switch) {
+    g_launch_state = LAUNCH_CONTROL_ACTIVE;
+  } else {
+    g_launch_state = LAUNCH_CONTROL_DISABLED;
+  }
 }
 
 #define SIM_RAD_TO_DEG 57.29577951308232
@@ -793,9 +871,21 @@ void bridge_run(const SimState *s, const double rc[4], int rx_new,
       (timeUs_t)((long long)BF_WARMUP_MS * 1000 + (long long)s->step_index * SIM_US_PER_STEP);
   sim_bf_now_us = (uint32_t)now_us;
 
-  /* Angle mode only. Acro never enters: g_angle_mode stays 0, attitude
-   * stays untouched, pidLevel is not reached. */
-  if (g_angle_mode) {
+  /* Angle mode only, unless launch control is holding. Acro never
+   * enters: both switches stay off, attitude stays untouched, pidLevel
+   * is not reached. Launch control needs attitude for the optional
+   * angle limit and needs ANGLE_MODE down, which is Betaflight's own
+   * canUseLaunchControl rule. */
+  if (g_launch_state == LAUNCH_CONTROL_ACTIVE) {
+    flightModeFlags &= (uint16_t)~ANGLE_MODE;
+    bf_feed_attitude(s);
+    if (currentPidProfile
+        && (int)calculateThrottlePercentAbs()
+            > (int)currentPidProfile->launchControlThrottlePercent) {
+      g_launch_state = LAUNCH_CONTROL_TRIGGERED;
+      pidResetIterm();
+    }
+  } else if (g_angle_mode) {
     bf_apply_angle_mode_flag();
     bf_feed_attitude(s);
   }

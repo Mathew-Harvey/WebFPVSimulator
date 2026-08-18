@@ -696,6 +696,9 @@ function buildBore(ctx, b) {
         geometry: new THREE.CylinderGeometry(0.04, 0.04, c - a, 6),
         matrix: trs((a + c) / 2, PATH_Y + 1.02, zRail, 0, 0, Math.PI / 2),
       });
+      /* 0.20 m, not 0.18: check 15's handrail median is the 0.18 m
+       * street rails, and this walkway sits 0.5 m up. */
+      ctx.collide(a, zRail - 0.1, c, zRail + 0.1, PATH_Y + 1.05, PATH_Y);
     }
     // flat, for the same reason the walkway is: a `cel()` handrail inside an
     // unlit bore is the brightest thing in the frame

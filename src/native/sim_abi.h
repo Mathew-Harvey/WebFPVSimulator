@@ -172,6 +172,39 @@ int sim_deflect(double nx, double ny, double nz,
  */
 int sim_set_angle_mode(int on);
 
+/*
+ * Enable or disable Betaflight launch control, the race-start hold.
+ * Off (0) is the default, and the path every harness replay takes.
+ * On (non-zero) is BOXLAUNCHCONTROL at arm: pid.c's applyLaunchControl
+ * holds attitude at idle throttle until the stick crosses
+ * launch_trigger_throttle_percent, then the mixer releases throttle
+ * and the feature latches off. Additive ABI change, version unchanged:
+ * no existing entry point moved or changed meaning. A replay that never
+ * calls this is bit-identical to one from before it existed.
+ */
+int sim_set_launch_control(int on);
+
+/*
+ * Launch control state for the OSD. 0 off, 1 holding, 2 holding and
+ * throttle within 10 percent of the trigger, 3 launched this arm.
+ * Additive, same rule as sim_set_launch_control.
+ */
+int sim_launch_control_state(void);
+
+/*
+ * Mechanical launch stand. Off (0) is the default. On (non-zero) holds
+ * the craft on a hinge at the rear underside: linear velocity is killed,
+ * roll and yaw rates are killed, attitude is projected onto pitch about
+ * world y (nose down), and the rear contact stays put so pitching does
+ * not walk the quad off the block. qw..qz is the pitch-only pose to
+ * seed when raising the stand, matching a ramp that the shell drew as
+ * a render overlay while landed. Applied inside sim_step, so a batched
+ * frame cannot accumulate gyroscopic roll between pins. Additive ABI,
+ * version unchanged. The harness never calls this.
+ */
+int sim_set_launch_stand(int on, double px, double py, double pz,
+                         double qw, double qx, double qy, double qz);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

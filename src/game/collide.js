@@ -65,8 +65,10 @@ import { simLenToWorld } from '../render/frame.js';
  *
  * A quad is named for its motor to motor diagonal, so a motor sits half of
  * that from the centre, and a 5 inch prop adds half of five inches of blade
- * beyond it. The disc a tumbling quad sweeps is the sum, and it is a sphere
- * because a quad arrives at a tree in whatever attitude it likes.
+ * beyond it. The disc a tumbling quad sweeps is the sum. Check 15
+ * publishes that radius. The query itself is the four prop discs, not a
+ * sphere, because a wall the craft meets square-on sees 0.141 m, not
+ * 0.1735 m.
  *
  * THE OLD NUMBER WAS WRONG BY 8.6 PERCENT AND A SCALE CHECK IS WHAT CAUGHT IT.
  * CRAFT_R was typed as 0.1885, derived in its own comment from a 250 mm class
@@ -82,6 +84,10 @@ import { simLenToWorld } from '../render/frame.js';
 export const CRAFT_ARM = 0.110;      /* motor centre to airframe centre */
 export const CRAFT_PROP_R = 0.0635;  /* half of five inches */
 export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
+/* Per-axis motor offset: the X sits on the diagonals, so a motor is
+ * CRAFT_ARM / sqrt(2) along body x and along body z. The axis-aligned
+ * half-width of one prop disc is this plus CRAFT_PROP_R, 0.1413 m, which
+ * is what a wall actually meets when the quad is square to it. */
 
 /*
  * The same airframe, in the world's metres rather than its own.
@@ -100,20 +106,22 @@ export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
  * one. Only the query is scaled.
  */
 export const CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
+export const CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
+export const CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
 
 /*
  * The craft's vertical semi-extent in level flight, about its own origin.
  *
- * A quad is a DISC, not a ball: 0.347 m across the props and about 0.07 m
- * through the body. The drawn stack in src/render/craft.js runs from the
- * body's underside at -0.017 to the prop discs at +0.034, so 0.040 covers
- * the whole airframe with half a centimetre over the prop plane. Sweeping
- * the full 0.1735 m sphere instead stole 26.7 cm of every vertical window:
- * a 1.524 m gate offered 1.177 m, a low pass met the ground 13 cm before
- * the airframe did, and the pilot read all of it as "the drone is huge".
- * The ellipsoid the queries sweep is the WORLD scaled form of (CRAFT_R,
- * vHalf, CRAFT_R), where vHalf grows from this floor to CRAFT_R as the craft
- * tilts, because a banked disc presents its diameter to the vertical.
+ * A quad is an X, not a ball and not a filled disc. 0.347 m is the
+ * diagonal from centre to a spinning blade tip; a wall the craft meets
+ * square-on sees 0.141 m, the motor's axis offset plus the blade. Sweeping
+ * CRAFT_R in every horizontal direction treated the empty air between the
+ * arms as carbon, so a doorway and a shopfront both felt 3 cm fatter than
+ * the airframe on screen, and the whole machine read as a ball.
+ * Vertically the drawn stack runs from the body's underside at -0.017 to
+ * the prop discs at +0.034, so 0.040 covers it with half a centimetre over
+ * the prop plane. vHalf still grows from that floor toward CRAFT_R as the
+ * craft banks, because a banked X does present a blade tip to the ground.
  */
 export const CRAFT_V_HALF = 0.040;
 export const CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
@@ -170,6 +178,42 @@ function clamp01(v) {
     return 1;
   }
   return v;
+}
+
+function clampRadius(v) {
+  if (v < CRAFT_WORLD_PROP) {
+    return CRAFT_WORLD_PROP;
+  }
+  if (v > CRAFT_WORLD_R) {
+    return CRAFT_WORLD_R;
+  }
+  return v;
+}
+
+/*
+ * Support of the four prop discs along a world direction n. Motors sit at
+ * (±ARM, 0, ±ARM) in the body XZ plane. A thin disc of radius PROP in that
+ * plane supports PROP * |n × up| along n. Check 15 still publishes
+ * CRAFT_WORLD_R (the swept diagonal); this is only the query shape.
+ */
+function discSupport(nx, ny, nz, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz) {
+  const nl2 = nx * nx + ny * ny + nz * nz;
+  if (nl2 < 1e-18) {
+    return CRAFT_WORLD_R;
+  }
+  const inv = 1 / Math.sqrt(nl2);
+  const x = nx * inv;
+  const y = ny * inv;
+  const z = nz * inv;
+  const motor = CRAFT_WORLD_ARM_AXIS * (
+    Math.abs(x * exx + y * exy + z * exz) + Math.abs(x * ezx + y * ezy + z * ezz)
+  );
+  const ndu = x * ux + y * uy + z * uz;
+  let s2 = 1 - ndu * ndu;
+  if (s2 < 0) {
+    s2 = 0;
+  }
+  return motor + CRAFT_WORLD_PROP * Math.sqrt(s2);
 }
 
 export class Colliders {
@@ -529,17 +573,17 @@ export class Colliders {
    * missed. It is used here only as a rejection test, where overstating is
    * safe.
    */
-  boxEarliestT(i, px, py, pz, dx, dy, dz, rx, ry) {
+  boxEarliestT(i, px, py, pz, dx, dy, dz, rx, ry, rz) {
     return this.boxSlabWalk(
       this.fax[i], this.fay[i], this.faz[i],
       this.fbx[i], this.fby[i], this.fbz[i],
-      px, py, pz, dx, dy, dz, rx, ry,
+      px, py, pz, dx, dy, dz, rx, ry, rz,
     );
   }
 
   /* The same walk against extents passed in, so a MOVING box can use it
    * without living in the static arrays the broadphase grid indexes. */
-  boxSlabWalk(lo0, lo1, lo2, hi0, hi1, hi2, px, py, pz, dx, dy, dz, rx, ry) {
+  boxSlabWalk(lo0, lo1, lo2, hi0, hi1, hi2, px, py, pz, dx, dy, dz, rx, ry, rz) {
     const t = this.tBreaks;
     let n = 0;
     t[n] = 0; n += 1;
@@ -589,7 +633,7 @@ export class Colliders {
         const d = axis === 0 ? dx : axis === 1 ? dy : dz;
         const lo = axis === 0 ? lo0 : axis === 1 ? lo1 : lo2;
         const hi = axis === 0 ? hi0 : axis === 1 ? hi1 : hi2;
-        const r = axis === 1 ? ry : rx;
+        const r = axis === 0 ? rx : axis === 1 ? ry : rz;
         const m = p + d * tm;
         let A = 0;
         let B = 0;
@@ -858,17 +902,16 @@ export class Colliders {
   }
 
   /*
-   * Did the craft, travelling from p to q, touch anything? The craft is an
-   * ELLIPSOID: CRAFT_WORLD_R across the props, vh through the body, because a
-   * quad is a disc and sweeping a 0.1735 m ball stole 26.7 cm of every
-   * vertical window. Callers that think in spheres omit vh and get the old
-   * sphere exactly. Returns the kind index of the FIRST CONTACT ALONG THE
-   * TRAVEL, or -1. Also writes hitIndex, hitKind, hitT, hitNormalDot and
-   * a unit outward normal in hitNx/hitNy/hitNz.
+   * Did the craft, travelling from p to q, touch anything? The craft is the
+   * four prop discs at the motors: horizontally an X that yaws with the
+   * airframe, vertically vh through the body. aqX..aqW is that attitude in
+   * world space (Three.js Y-up). Omit it and the query is an identity-yaw
+   * pancake, 0.141 m to a wall the quad meets square-on. CRAFT_WORLD_R stays
+   * the published swept diagonal; check 15 reads that, not this shape.
    *
    * Exact for boxes (the slab walk is weighted per axis). For capsules the
    * first pass sweeps the conservative CRAFT_WORLD_R sphere, then the reach is
-   * re-solved once with the craft's support radius along the contact
+   * re-solved once with the four-disc support along the contact
    * direction, which is exact when the contact direction at the refined
    * parameter matches the first pass and a few millimetres conservative
    * when it rotates between the two, measured in the fuzz harness.
@@ -882,7 +925,7 @@ export class Colliders {
    * decided from the reported collider's kind and normal, the craft flew on
    * through the tree.
    */
-  hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R) {
+  hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R, aqX = 0, aqY = 0, aqZ = 0, aqW = 1) {
     this.hitIndex = -1;
     this.hitKind = -1;
     this.hitNormalDot = 0;
@@ -907,6 +950,29 @@ export class Colliders {
     const d1y = qy - py;
     const d1z = qz - pz;
     const a = d1x * d1x + d1y * d1y + d1z * d1z;
+
+    /* Body axes from the world quaternion. Identity is a level quad
+     * pointing world -Z, motors on the diagonals of XZ. */
+    const qxx = aqX * aqX;
+    const qyy = aqY * aqY;
+    const qzz = aqZ * aqZ;
+    const qxy = aqX * aqY;
+    const qxz = aqX * aqZ;
+    const qyz = aqY * aqZ;
+    const qwx = aqW * aqX;
+    const qwy = aqW * aqY;
+    const qwz = aqW * aqZ;
+    const exx = 1 - 2 * (qyy + qzz);
+    const exy = 2 * (qxy + qwz);
+    const exz = 2 * (qxz - qwy);
+    const ux = 2 * (qxy - qwz);
+    const uy = 1 - 2 * (qxx + qzz);
+    const uz = 2 * (qyz + qwx);
+    const ezx = 2 * (qxz + qwy);
+    const ezy = 2 * (qyz - qwx);
+    const ezz = 1 - 2 * (qxx + qyy);
+    const crx = clampRadius(discSupport(1, 0, 0, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz));
+    const crz = clampRadius(discSupport(0, 0, 1, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz));
 
     let bestT = Infinity;
     let bestI = -1;
@@ -944,7 +1010,7 @@ export class Colliders {
             ) {
               continue;
             }
-            const t = this.boxEarliestT(i, px, py, pz, d1x, d1y, d1z, CRAFT_WORLD_R, vh);
+            const t = this.boxEarliestT(i, px, py, pz, d1x, d1y, d1z, crx, vh, crz);
             if (t >= 0 && t < bestT) {
               bestT = t;
               bestI = i;
@@ -952,19 +1018,14 @@ export class Colliders {
           } else {
             const reach = this.fr[i] + CRAFT_WORLD_R;
             let t = this.capsuleEarliestT(i, px, py, pz, d1x, d1y, d1z, a, reach * reach);
-            if (t >= 0 && vh < CRAFT_WORLD_R - 1e-9) {
+            if (t >= 0) {
               /*
                * Support refinement: the conservative sphere touched; ask
-               * whether the thinner craft does. The direction that predicts
-               * the true contact is the one at the CLOSEST APPROACH between
-               * the travel and the capsule's axis, not at the sphere's
-               * first contact: passing level under a tube, the sphere first
-               * touches while the approach is still mostly horizontal, and
-               * a support radius taken there reads CRAFT_WORLD_R and never
-               * shrinks. At the closest pair the direction is vertical for
-               * exactly the passes this refinement exists for. The support
-               * radius of the ellipsoid along that direction replaces
-               * CRAFT_WORLD_R and the earliest contact is re-solved once.
+               * whether the X does. Closest approach, not first sphere
+               * contact: passing level under a tube, the sphere first
+               * touches while the approach is still mostly horizontal.
+               * Four-disc support along that direction, and vh when the
+               * contact is more vertical than the X is thick.
                */
               const sCA = this.closestApproachS(i, px, py, pz, d1x, d1y, d1z, a);
               this.axisToPoint(i, px + d1x * sCA, py + d1y * sCA, pz + d1z * sCA);
@@ -973,9 +1034,14 @@ export class Colliders {
               const nz = this.nz;
               const nl2 = nx * nx + ny * ny + nz * nz;
               if (nl2 > 1e-18) {
-                const cr = Math.sqrt(
-                  (CRAFT_WORLD_R * CRAFT_WORLD_R * (nx * nx + nz * nz) + vh * vh * ny * ny) / nl2,
-                );
+                let cr = discSupport(nx, ny, nz, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz);
+                const nyAbs = Math.abs(ny) / Math.sqrt(nl2);
+                if (vh * nyAbs > cr) {
+                  cr = vh * nyAbs;
+                }
+                if (cr > CRAFT_WORLD_R) {
+                  cr = CRAFT_WORLD_R;
+                }
                 const reach2 = this.fr[i] + cr;
                 if (reach2 < reach - 1e-9) {
                   t = this.capsuleEarliestT(i, px, py, pz, d1x, d1y, d1z, a, reach2 * reach2);
@@ -1014,7 +1080,7 @@ export class Colliders {
         -hx, -hy, -hz, hx, hy, hz,
         rpx, rpy, rpz,
         rqx - rpx, rqy - rpy, rqz - rpz,
-        CRAFT_WORLD_R, vh,
+        crx, vh, crz,
       );
       if (t >= 0 && t < bestT) {
         bestT = t;

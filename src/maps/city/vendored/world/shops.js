@@ -388,7 +388,8 @@ export function makeShop(ctx, o) {
   const swap = o.face === 'x+' || o.face === 'x-';
   const hw = (swap ? d : w) / 2;
   const hd = (swap ? w : d) / 2;
-  ctx.collide(o.x - hw - 0.05, o.z - hd - 0.05, o.x + hw + 0.05, o.z + hd + 0.05, (o.y ?? 0) + H);
+  const roofAdd = o.roofKind === 'gable' ? (o.roofH ?? 1.25) + 0.22 : 0.4;
+  ctx.collide(o.x - hw - 0.05, o.z - hd - 0.05, o.x + hw + 0.05, o.z + hd + 0.05, (o.y ?? 0) + H + roofAdd);
 
   g.userData.front = front;
   return g;

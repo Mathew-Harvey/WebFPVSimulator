@@ -10768,6 +10768,218 @@ audio-bed, world-scale (craft body 0.1552 m), map-isolation green.
 vendor/betaflight diff empty. Flight feel of the bounce is awaiting
 human judgement.
 
+### 2026-08-18 | feature | city collisions hug the graphics
+
+Ticket: tighten city collisions for freestyle. If a gap is visible it
+is a gap. Missing solids named: all green and pink trees, slanted
+roofs, handrails and stair rails, a lot of the bridge over the train
+track.
+
+Cause. The town collided what a walker walks into. Trees were trunks
+only (COVER_SOFT skipped every canopy blob so 46000 instances would
+not become walls). Street houses stopped at the wall plate,
+2.72 m times floors, so a gable or hip was a picture. The overbridge
+drew balustrades, girders, piers and a polycarbonate roof with no
+mass; deck piers were a 1 m stub. Custom stairs drew pipe rails the
+walker never needed. ground.js `railing` and `meshFence` had no
+floor, so an elevated rail was either a wall from -60 m or
+collide:false.
+
+Fix, authored mass not one box per blossom:
+
+- trees.js: one canopy box per tree with a floor, so the gap under
+  the crown stays flyable. Willow hangs lower. Cedar crown from the
+  first whorl up.
+- buildings.js: `userData.top` includes roof rise. Street loop and
+  tsugakuro read it. shops.js gable and parapet too.
+- overbridge.js: parapet rails with a floor at deck height, short
+  boxes along raking rails and stair bodies so the undercroft stays
+  open, girder boxes, thin roof lid, columns to the girder, landing
+  slab.
+- ground.js: rail and meshFence floor at `y`. steps() collides each
+  tread as drawn.
+- Roof fences, tunnel walkway rails, shrine / onsen / urayama /
+  library / clinic rails that were pictures.
+- Fit: bulky boxes cover at 0.42, thin rails stay at 0.6. After
+  shrink, a bulky footprint whose drawn top is 0.2 to 2.8 m above
+  the box is lifted to that top. A tree overhanging a plot is not
+  a roof.
+
+What went wrong. First overbridge pier loop used `hCol` outside the
+inner `for`, which is a ReferenceError at city load. Fixed by
+computing column height once per pier. Did not add a collider per
+canopy blob, and did not wall the track undercroft with one AABB.
+
+Verify: 16 of 16. Hash 6d17d4814bdc Node=Chrome, unchanged: no plant
+or ABI change. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5
+deg/s (0.22 percent), yaw-coupling -0.12 deg, battery-sag 11.14
+percent, diff-passthrough 1.2478 (0.47 percent). world-scale: kerb
+0.1350 m, doorway 2.0500 m, handrail 1.0600 m (band 0.80 to 1.25),
+boom 1.2400 m. collider fit 2237 fitted of 4657, 598 side trims to
+1.69 m, 19 top trims to 0.67 m, both under the 2.0 m cap.
+map-isolation green. Flight feel of the tighter town is awaiting
+human judgement.
+
+### 2026-08-18 | fix | invisible trunks, canal undercroft
+
+Ticket: crashed into an invisible tree trunk. Cannot fly under the
+canal bridge, and should be able to.
+
+Cause. Last round's canopy box was a 3 m cube hung from 0.55 of
+trunk height. The blossom sits on the limb ends, a couple of metres
+above that, so the box was air and read as a fat invisible trunk.
+Grove trunks were 1.7 times the stem. Canal bridge rails, road
+upstands, the west railing and the east parapet had no floor, so
+each was a wall from -60 m across the channel.
+
+Fix. Canopy mass is the axis aligned box of the blobs themselves,
+floor on the lowest one. Trunk is 1.05 times the stem, centred on
+the lean, plus a short box for the root flare. Cedar stem and crown
+follow the lean instead of sitting in the air beside it. Canal
+footbridge, road bridge, slab crossing and sluice: rails and
+parapets are parapets on the deck, the deck is a thin lid at the
+soffit, piers are columns. The water under the soffit stays a gap.
+
+Verify: 16 of 16. Hash 6d17d4814bdc unchanged. hover-throttle 0.2637,
+punch-out 81.5 m, terminal-velocity 31.1 m/s, motor-step 26 ms,
+rate-tracking 671.5 deg/s (0.22 percent), yaw-coupling -0.12 deg,
+battery-sag 11.14 percent, diff-passthrough 1.2478 (0.47 percent).
+world-scale: kerb 0.1350 m, doorway 2.0500 m, handrail 1.0600 m,
+boom 1.2400 m. collider fit 2223 fitted of 5875, 436 side trims to
+1.71 m, 17 top trims to 0.67 m. map-isolation green. Flight feel
+awaiting human judgement.
+
+### 2026-08-18 | launch control | Betaflight race start, opt-in
+
+Changed: Betaflight launch control, the real one, not a JS PID. pid.c
+and mixer.c already compiled applyLaunchControl, idle-throttle mix and
+the iterm dump. isLaunchControlActive was stubbed false. fc/core.c is
+not compiled, so the arm / trigger / reset state machine lives in
+bf_glue.c, copied from core.c. Additive ABI: sim_set_launch_control and
+sim_launch_control_state, version still 1. The harness never calls them.
+
+Always-armed mapping: raising the switch while DISABLED is ACTIVE, the
+same as arming with BOXLAUNCHCONTROL on. sim_reset is a fresh arm.
+ACTIVE clears ANGLE_MODE (canUseLaunchControl's rule), feeds plant
+attitude for launch_angle_limit, mixer zeros throttle, airmode holds.
+Trigger is calculateThrottlePercentAbs above launch_trigger_throttle_percent,
+then pidResetIterm. sensorsSet(SENSOR_ACC) so pid_init copies the angle
+limit. Sim default launch_angle_limit is 40 degrees (BF default is 0,
+unlimited). Overridable on the FC screen. launch_* CLI keys are LIVE.
+
+Shell: Settings Launch control defaults false. L is the mode switch,
+only with the setting on, only on the pad. How to fly has a Launch
+control tab. OSD reads LAUNCH <deg>, blinks near the trigger, GO on
+punch. Keyboard forcePadRest so W cannot spring to hover (0.22) and
+fire the 20 percent trigger. Pad stand is sim_deflect with rate_keep 1
+so the sphere does not roll off while PID pitches. After GO, acro for
+480 ms so Angle does not level the punch, then keyboard Angle returns.
+A 20 percent trigger is below TAKEOFF_THROTTLE (0.25), so the usual
+spool abort is skipped for that punch.
+
+Advisor: no advisor channel this session. ABI argument recorded here:
+additive exports, default-off, harness path untouched.
+
+Verify: 16 of 16. Hash 6d17d4814bdc unchanged (same as the previous
+run: sensorsSet and the 40 degree default do not reach the acro
+replay). hover-throttle 0.2637, punch-out 81.5 m, terminal-velocity
+31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s (0.22 percent),
+yaw-coupling -0.12 deg, battery-sag 11.14 percent, diff-passthrough
+1.2478 (0.47 percent). world-scale kerb 0.1350 m, doorway 2.0500 m,
+handrail 1.0600 m, boom 1.2400 m, collider fit 2222 fitted of 5888,
+435 side trims to 1.71 m, 45 top trims to 2.00 m. map-isolation green.
+vendor/betaflight diff empty. lint:catalog ok. Flight feel of the
+launch itself is awaiting human judgement.
+
+Wrong: nothing undone this turn. The one trap that would have killed
+it on the pad was TAKEOFF_THROTTLE aborting a legal 20 percent trigger;
+that is skipped only while the launch is boosting off the stand.
+
+### 2026-08-18 | fix | craft X vs ball, graphics vs colliders
+
+Ticket: the quad felt like a ball, too wide, rather than a quad.
+Full review of drawn airframe vs the query, and drawn scenery vs
+authored boxes.
+
+Cause. Two stacked Minkowski errors. The query swept a filled disc
+of radius 0.1735 m, the circumscribed circle of the X. A wall met
+square-on sees 0.141 m (motor axis plus blade). That is 3.2 cm of
+ghost on every shopfront, plus another 8 to 16 cm of walker pad on
+plotCollide, houses, cars (60 mm inset the other way, a hole), and
+COVER boxes that only had to fill 25 percent of their AABB. The
+district apartment was one solid from the balcony to past the
+gallery, so the open walkway was a wall.
+
+Fix. The hit query is the four prop discs at the motors. Horizontal
+semi-axes come from the craft's world quaternion; a level quad
+square to a wall is 0.141 m, yawed 45 degrees it is still 0.1735 m
+on the diagonal. Check 15 still publishes CRAFT_WORLD_R against the
+drawn sweep. Capsules keep a conservative sphere first pass, then
+re-solve with four-disc support. plotCollide default pad is 0.
+Walker pads stripped from district plotCollide call sites. Street
+houses sit on their footprints. Cars are flush to the sheet metal.
+COVER fill bar 0.40 so see-through AABBs stay air. Apartment: wall
+block, gallery slabs and rails, stair landings, balcony slabs and
+rails, not one filled rectangle. Timber house west face matches the
+veranda, 1.70 m. Storage sheds use the yawed AABB of 1.3 by 0.7 m.
+
+Left unmatched, on purpose. Rail colliders stay 0.18 m so check 15
+can find them (drawn pipes are 0.084 m). Diagonal fences still have
+no collider (a fat AABB would be a wall across a gap). School ball
+net still collide false (see-through lattice). Tree canopies are
+still the AABB of the blossom, empty corners included.
+
+Verify: 16 of 16. Hash 6d17d4814bdc Node=Chrome, unchanged: no plant
+or ABI change. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5
+deg/s (0.22 percent), yaw-coupling -0.12 deg, battery-sag 11.14
+percent, diff-passthrough 1.2478 (0.47 percent). world-scale: kerb
+0.1350 m, doorway 2.0500 m, handrail 1.0600 m (band 0.80 to 1.25),
+boom 1.2400 m. collision radius 0.1735 m vs swept 0.1735 m.
+collider fit 2222 fitted of 5885, 435 side trims to 1.71 m, 17 top
+trims to 0.67 m, both under the 2.0 m cap. map-isolation green, 63
+city modules. Flight feel of the thinner X is awaiting human
+judgement.
+
+Wrong: a greedy regex that stripped plotCollide pads also ate the
+top argument. Restored the tops from the pre-edit call sites and
+rewrote without the pad. First craftUpY comment splice broke a
+block comment into `/   *`; fixed before verify.
+
+### 2026-08-18 | launch control | roll leak and walking off the block
+
+The hold was a sphere on a free-air plant, pinned once per rendered
+frame with sim_deflect, physics level, while the start pads are a
+28 degree ramp drawn as a render overlay. Pitching leaked
+gyroscopic roll (omega x h_prop) into the left, and CG rotation on
+a level pose walked the arms off the rails.
+
+Fix: additive sim_set_launch_stand, applied inside each 1 ms step.
+Seeds the plant with the ramp pitch so the overlay can drop without
+a pop. Kills linear velocity, kills roll and yaw rates, projects
+attitude onto pitch about world y, and hinges the rear underside so
+more pitch stays on the lip. FPV parked lift stays up while
+holding. Contact at 40 degrees is the hold, not a crash.
+
+Advisor: no advisor channel. ABI argument: additive, default off,
+harness never calls it.
+
+Verify: 16 of 16. Hash 6d17d4814bdc unchanged. hover-throttle
+0.2637, punch-out 81.5 m, terminal-velocity 31.1 m/s, motor-step
+26 ms, rate-tracking 671.5 deg/s (0.22 percent), yaw-coupling
+-0.12 deg, battery-sag 11.14 percent, diff-passthrough 1.2478
+(0.47 percent). world-scale kerb 0.1350 m, doorway 2.0500 m,
+handrail 1.0600 m, boom 1.2400 m, collider fit 2222 fitted of
+5885, 435 side trims to 1.71 m, 17 top trims to 0.67 m.
+map-isolation green. vendor/betaflight diff empty. Flight feel of
+the hold is awaiting human judgement.
+
+Wrong: first rewrite still ran the landing/crash branch while
+staging (takingOff && !launchStaging left else-if touched live).
+Caught in the same turn: launchStaging now owns that contact.
+
+
 
 
 

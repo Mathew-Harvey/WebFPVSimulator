@@ -433,7 +433,7 @@ function buildBungu(ctx, m, gm, rng, shrubs, petals) {
     ...BUNGU, y: Y, kind: 'bungu', floors: 2, seed: 9131,
     awning: 2, awningOut: 1.1, shutter: 0, wall: 2, blade: false, lit: true,
   });
-  plotCollide(ctx, p, Y + 6.2, 0.1);
+  plotCollide(ctx, p, Y + 6.2);
 
   /* the forecourt: 1.3 m between the frontage and the footway, which is the
    * whole of it, so nothing here is more than 0.55 m deep */
@@ -503,7 +503,7 @@ function buildRingyo(ctx, m, gm, shrubs) {
     ...RINGYO, y: Y, kind: 'ringyo', floors: 1, h1: 3.4, seed: 9141,
     awning: 0, awningOut: 1.4, shutter: 0.22, wall: 4, blade: false, roofKind: 'flat',
   });
-  plotCollide(ctx, p, Y + 3.8, 0.1);
+  plotCollide(ctx, p, Y + 3.8);
 
   /* The apron.  A bicycle shop's whole frontage is the machines standing on it,
    * so it is 1.3 m of concrete with the row *along* the shop rather than nose

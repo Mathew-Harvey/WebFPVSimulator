@@ -10635,3 +10635,61 @@ percent). console-clean, audio-bed, world-scale, map-isolation green.
 Wrong: after No, the same stick returning to rest would have counted
 as a new wiggle and asked again immediately. That stick is now
 blocked until it has been still.
+
+### 2026-08-18 | bugfix | Rateprofile Settings, Actual and Betaflight
+
+Rates felt broken. Check 9 still tracks 671.5 deg/s against the
+fixture ACTUAL 670, so fc/rc.c was never the fault. The product
+editor was.
+
+Cause, three stacked lies. applySettings compared ratesDiff, which
+always writes ACTUAL, shared roll/pitch, and snaps to a coarse list.
+After an FC save of independent axes or BETAFLIGHT, the next Settings
+change that re-inited from those five knobs flattened the profile the
+module was flying. ratesSettingsFromDump always did centre*10 / max*10,
+so a BETAFLIGHT roll_rc_rate of 100 became "1000 deg/s centre" in that
+shadow. And the Rates page was a CLI stepper: ACTUAL rc/srate shown
+times ten, expo still 0-100, Betaflight RC Rate shown as 100 instead
+of 1.00, no graph, no way to type 500/750/1000 per axis.
+
+Fix. ratesCli (full rateprofile) is what boot, applySettings, FC Save
+and import compare and persist. Five knobs fill only from an ACTUAL
+dump. Rateprofile Settings is a Configurator-shaped table: Actual
+(Center Sensitivity, Max Rate, Expo 0.00, Max Vel) or Betaflight
+(RC Rate, Super Rate, Expo, Max Vel), plus Raceflight/KISS/Quick so a
+dump is not silently converted. Graph and Max Vel preview applyRates
+from fc/rc.c in src/fc/ratescurve.js. Display only. The plant still
+runs compiled Betaflight. On the title, leaving a field writes the
+draft through sim_init. During a run, Save still asks to restart.
+
+Not changed: plant, ABI, default ACTUAL 7/67/0, keep-mine vs use-dump.
+Keyboard flight is still Angle, so this curve needs a radio in Acro.
+
+lint:fc 28 of 28, including ratesCli keeps BETAFLIGHT while ratesDiff
+would flatten, and BETAFLIGHT rc_rate 100 is not 1000 centre.
+
+Verify: 15 of 16. Hash 6d17d4814bdc Node=Chrome, 1 hash across 4
+rates. hover-throttle 0.2637, punch-out 81.5 m, terminal-velocity
+31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s (0.22 percent),
+yaw-coupling -0.12 deg, battery-sag 11.14 percent, diff-passthrough
+1.2478 (0.47 percent). console-clean, audio-bed, map-isolation green.
+Check 15 world-scale red: craft body 0.1764 m outside 0.15 to 0.16,
+drawn sweep 0.1760 vs true 0.1735. This turn did not touch herocraft,
+craft.js, collide.js or WORLD_SCALE. Same hash as the last green
+physics run. Not a rates regression and not a threshold change.
+
+Wrong: first silent apply replaced the draft with a module dump and
+stole the focused Max Rate field. Snapshot now equals the draft the
+pilot is typing.
+
+### 2026-08-18 | feature | revert to default rates
+
+Rateprofile Settings now has a yellow Revert to default rates button
+in the table header, labelled with what it writes: Actual 70 centre,
+670 max, no expo. Same CLI keys as configs/rates.js RATE_DEFAULTS, so
+the live title apply and Save see one profile. Type switches back to
+ACTUAL. Throttle cap is left alone; that row is not the rate curve.
+
+Plant, ABI and the default numbers were not changed.
+
+

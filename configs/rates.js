@@ -173,11 +173,13 @@ export function ratesSummary(s) {
       const centre = Number(p.roll_rc_rate) * 10;
       const max = Number(p.roll_srate) * 10;
       const pitch = Number(p.pitch_srate) * 10;
+      const yaw = Number(p.yaw_srate) * 10;
       const expo = Number(p.roll_expo) || 0;
-      const split = Number.isFinite(pitch) && pitch !== max ? `, pitch ${pitch}` : '';
+      const splitPitch = Number.isFinite(pitch) && pitch !== max ? `, pitch ${pitch}` : '';
+      const splitYaw = Number.isFinite(yaw) && yaw !== max ? `, yaw ${yaw}` : '';
       const cap = Number(p.throttle_limit_percent);
       const capNote = Number.isFinite(cap) && cap < 100 ? `, throttle capped at ${cap}` : '';
-      return `${centre} centre, ${max} max${split}, ${expo / 100} expo${capNote}`;
+      return `${centre} centre, ${max} max${splitPitch}${splitYaw}, ${expo / 100} expo${capNote}`;
     }
     const pitch = p.pitch_srate != null ? p.pitch_srate : p.roll_srate;
     return `${type}, roll ${p.roll_srate}, pitch ${pitch}`;

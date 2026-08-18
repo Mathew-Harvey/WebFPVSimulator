@@ -105,6 +105,7 @@ import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { sanitiseRateProfile } from '../fc/dump.js';
 import { cycle, downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
+import { mountRatesPanel } from './ratespanel.js';
 
 /* Exported for scripts/shots.js, which seeds a chosen graphics preset into
  * storage before the page boots so a cost measurement is not taken at
@@ -691,7 +692,7 @@ export class Ui {
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
     this.onFcOpen = null;    /* (page) => void */
-    this.onFcSave = null;    /* (draft, { restart, presetId }) => void */
+    this.onFcSave = null;    /* (draft, { restart, presetId, silent }) => void */
     this.onFcImport = null;  /* (text, name, policy) => void */
     this.onFcAngle = null;   /* (on) => void, same sim_set_angle_mode as Settings */
     this.onFcMotor = null;   /* (motor, duty) => void, sim_motor_override */
@@ -971,6 +972,26 @@ export class Ui {
     this.fcPages = el('div', 'fc-pages');
     this.fcPages.setAttribute('aria-label', 'PID Tuning pages');
     this.fcPages.hidden = true;
+    this.fcRatesStick = { roll: 0, pitch: 0, yaw: 0 };
+    this.fcRates = mountRatesPanel({
+      onType: (type) => {
+        this.fc.setValue('rates_type', type);
+        this.afterRatesEdit();
+      },
+      onField: (key, value) => {
+        this.fc.setValue(key, value);
+        this.afterRatesEdit();
+      },
+      onPaint: () => {
+        if (this.fcRates) {
+          this.fcRates.paint(this.fc, this.fcRatesStick);
+        }
+      },
+      onReset: () => {
+        this.fc.resetRatesToDefault();
+        this.afterRatesEdit();
+      },
+    });
     const fcBlock = wrapMenu();
     this.fcMenu = fcBlock.menu;
     this.fcMenu.classList.add('menu-scroll');
@@ -994,7 +1015,7 @@ export class Ui {
     this.fcAttitude.height = 220;
     this.fcAttitude.setAttribute('aria-label', 'Attitude');
     this.fcAttitude.hidden = true;
-    fcWork.append(this.fcPages, fcBlock.stage, this.fcCli, this.fcAttitude);
+    fcWork.append(this.fcPages, this.fcRates.root, fcBlock.stage, this.fcCli, this.fcAttitude);
     fcBody.append(this.fcTabs, fcWork);
     const fcStatus = el('div', 'fc-status', 'Connected: WASM  ·  Betaflight 4.5.1  ·  PID 1 kHz  ·  Profile 0  ·  Homage of Configurator 10.10, not that app');
     fc.append(fcHead, fcBody, fcStatus);
@@ -1680,7 +1701,7 @@ export class Ui {
           label: 'Rates',
           value: ratesSummary(s),
           action: 'fc-rates',
-          note: 'Pilot rates. Changing a tune does not overwrite them. Opens the Rates page of the flight controller.',
+          note: 'Pilot rates. Actual or Betaflight, per axis. Opens Rateprofile Settings. A radio in Acro uses this curve; keyboard flight is Angle.',
         },
         choice(
           'Flight mode',
@@ -2002,6 +2023,13 @@ export class Ui {
     if (setupOn) {
       drawAttitude(this.fcAttitude, this.fc.attitude);
     }
+    const ratesOn = on && this.fc.tab === 'pid' && this.fc.page === 'rates' && !confirm;
+    if (this.fcRates) {
+      this.fcRates.root.hidden = !ratesOn;
+      if (ratesOn) {
+        this.fcRates.paint(this.fc, this.fcRatesStick);
+      }
+    }
     this.syncFcDirty();
   }
 
@@ -2012,10 +2040,40 @@ export class Ui {
     this.fcDirty.textContent = this.fc.dirty() ? 'Unsaved' : '';
   }
 
+  afterRatesEdit() {
+    this.syncFcDirty();
+    if (this.fcRates) {
+      this.fcRates.paint(this.fc, this.fcRatesStick);
+    }
+    if (this.fc.runActive) {
+      return;
+    }
+    if (this.ratesApplyTimer) {
+      clearTimeout(this.ratesApplyTimer);
+    }
+    this.ratesApplyTimer = setTimeout(() => {
+      this.ratesApplyTimer = null;
+      if (this.fc.runActive || !this.onFcSave) {
+        return;
+      }
+      this.onFcSave(this.fc.draft, { restart: false, silent: true, presetId: this.fc.presetId });
+    }, 140);
+  }
+
   paintFcAttitude() {
     if (this.screen === 'fc' && this.fc.tab === 'setup' && !this.fc.confirm) {
       drawAttitude(this.fcAttitude, this.fc.attitude);
     }
+  }
+
+  paintFcRates(stick) {
+    if (stick) {
+      this.fcRatesStick = stick;
+    }
+    if (!this.fcRates || this.fcRates.root.hidden) {
+      return;
+    }
+    this.fcRates.paintStick(this.fcRatesStick);
   }
 
   helpNode() {
@@ -3602,6 +3660,12 @@ export class Ui {
     if (this.screen === 'fc' && this.fcCli && document.activeElement === this.fcCli) {
       if (code === 'Escape') {
         this.fcCli.blur();
+      }
+      return true;
+    }
+    if (this.screen === 'fc' && this.fcRates && this.fcRates.root.contains(document.activeElement)) {
+      if (code === 'Escape') {
+        document.activeElement.blur();
       }
       return true;
     }

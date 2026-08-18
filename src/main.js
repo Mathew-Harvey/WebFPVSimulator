@@ -68,8 +68,8 @@ import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
-import { ratesDiff, ratesSummary } from '../configs/rates.js';
-import { composeConfig, dumpCarriesRates, moduleDump, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, tuneBody } from './fc/dump.js';
+import { ratesSummary } from '../configs/rates.js';
+import { composeConfig, dumpCarriesRates, moduleDump, ratesCli, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -428,7 +428,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * authority, so the tune could never be judged on its own.
    */
   let tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
-  let ratesText = ratesDiff(ui.settings);
+  let ratesText = ratesCli(ui.settings);
   let configText = composeConfig(tuneText, ui.settings, RATES_KEEP);
   if (sim.init(configText) !== SIM_OK) {
     throw new Error(`sim_init failed on ${configName}`);
@@ -1109,10 +1109,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /*
      * Rates are part of the config text, so changing one re-inits the module
      * and resets the craft, exactly as changing the tune does. Compared as
-     * text rather than field by field so there is one definition of "the
-     * rates changed" and it is the one the firmware sees.
+     * the CLI ratesCli emits (full rateprofile), not the five-knob ratesDiff
+     * shadow, so a split pitch or a BETAFLIGHT save cannot be flattened the
+     * next time the volume changes.
      */
-    const nextRates = ratesDiff(s);
+    const nextRates = ratesCli(s);
     if (nextRates !== ratesText) {
       /*
        * Composed into a LOCAL first. A refused sim_init is not a no-op down
@@ -1397,6 +1398,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   ui.onFcSave = (draft, opts) => {
     bumpConfigGen();
+    const silent = Boolean(opts && opts.silent);
     const ratesPatch = ratesSettingsFromDump(draft);
     Object.assign(ui.settings, ratesPatch);
     ui.persistSettings();
@@ -1411,7 +1413,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     tuneText = tuneBody(draft);
-    ratesText = ratesDiff(ui.settings);
+    ratesText = ratesCli(ui.settings);
     configText = nextText;
     if (opts && opts.presetId) {
       configId = opts.presetId;
@@ -1419,7 +1421,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.settings.tune = opts.presetId;
       menuTune = opts.presetId;
       ui.persistSettings();
-    } else {
+    } else if (!silent) {
       configId = '';
       configName = 'flight-controller.diff';
     }
@@ -1428,6 +1430,13 @@ export async function boot({ loading, bootStart, mapId }) {
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
     reset();
+    if (silent) {
+      /* Keep the draft the pilot is typing. Replacing it with a module dump
+       * would reformat numbers and steal the focused Max Rate field. */
+      ui.fc.snapshot = draft;
+      ui.syncFcDirty();
+      return;
+    }
     const live = moduleDump(sim);
     ui.fc.snapshot = live;
     ui.fc.draft = live;
@@ -1462,7 +1471,7 @@ export async function boot({ loading, bootStart, mapId }) {
     configText = nextText;
     configName = name || 'dropped.diff';
     configId = '';
-    ratesText = ratesDiff(ui.settings);
+    ratesText = ratesCli(ui.settings);
     adoptSimClock();
     sim.setCellVoltage(runVoltage);
     race.setRecordKey(recordKey());
@@ -2763,6 +2772,11 @@ export async function boot({ loading, bootStart, mapId }) {
         z: stateCurr[10],
       };
       ui.paintFcAttitude();
+      ui.paintFcRates({
+        roll: input.channels.roll,
+        pitch: input.channels.pitch,
+        yaw: input.channels.yaw,
+      });
     }
 
     if (ui.settings.readout) {

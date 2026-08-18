@@ -48,11 +48,12 @@ import {
   setCliValue,
   setFeatureLine,
 } from '../fc/dump.js';
+import { RATES_PANEL_KEYS } from '../fc/ratescurve.js';
 
 const PID_PAGES = [
-  { id: 'pid', label: 'PID' },
-  { id: 'filters', label: 'Filters' },
-  { id: 'rates', label: 'Rates' },
+  { id: 'pid', label: 'PID Profile Settings' },
+  { id: 'filters', label: 'Filter Settings' },
+  { id: 'rates', label: 'Rateprofile Settings' },
 ];
 
 /* Step through a list with wraparound. Exported because ui.js had a
@@ -334,6 +335,28 @@ export class FcSession {
     this.presetId = '';
   }
 
+  /*
+   * Betaflight 4.5.1 ACTUAL defaults from configs/rates.js: 70 centre,
+   * 670 max, no expo, all three axes. The table writes CLI, this writes
+   * the same keys, so Save and the live title apply see one profile.
+   */
+  resetRatesToDefault() {
+    const centre = String(RATE_DEFAULTS.rateCentre / 10);
+    const max = String(RATE_DEFAULTS.rateMax / 10);
+    const yaw = String(RATE_DEFAULTS.rateYawMax / 10);
+    const expo = String(RATE_DEFAULTS.rateExpo);
+    this.setValue('rates_type', 'ACTUAL');
+    this.setValue('roll_rc_rate', centre);
+    this.setValue('pitch_rc_rate', centre);
+    this.setValue('yaw_rc_rate', centre);
+    this.setValue('roll_srate', max);
+    this.setValue('pitch_srate', max);
+    this.setValue('yaw_srate', yaw);
+    this.setValue('roll_expo', expo);
+    this.setValue('pitch_expo', expo);
+    this.setValue('yaw_expo', expo);
+  }
+
   setFeature(name, on) {
     const row = FEATURES.find((f) => f.name === name);
     if (!row || row.status !== STATUS.LIVE) {
@@ -433,7 +456,7 @@ export class FcSession {
       const page = PID_PAGES.find((p) => p.id === this.page) ?? PID_PAGES[0];
       rows.push({
         label: 'Page',
-        note: 'PID Tuning in 4.5.1 is PID, Filters, and Rates.',
+        note: 'PID Tuning in 4.5.1 is PID Profile, Filters, and Rateprofile.',
         value: page.label,
         current: page.id,
         options: PID_PAGES.map((p) => ({ value: p.id, label: p.label })),
@@ -468,6 +491,17 @@ export class FcSession {
       rowClass: 'fc-btn',
       note: 'Leaves this screen. Unsaved edits are discarded.',
     });
+
+    if (this.tab === 'pid' && this.page === 'rates') {
+      rows.push({
+        label: 'Curve',
+        value: this.runActive ? 'Save to fly' : 'Applies on edit',
+        note: this.runActive
+          ? 'The table is the Configurator Rateprofile. Save writes it through sim_init and restarts the craft. Keyboard flight is Angle, so this curve needs a radio in Acro.'
+          : 'The table is the Configurator Rateprofile. Leaving a field writes CLI into compiled Betaflight. Keyboard flight is Angle, so this curve needs a radio in Acro.',
+        info: true,
+      });
+    }
 
     if (this.tab === 'cli') {
       rows.push({
@@ -655,6 +689,11 @@ export class FcSession {
     let list = tabFields(this.tab);
     if (this.tab === 'pid') {
       list = list.filter((f) => f.page === this.page);
+      if (this.page === 'rates') {
+        /* The table owns these. Leaving them in the list duplicated the
+         * editor as a CLI stepper with the wrong units. */
+        list = list.filter((f) => !RATES_PANEL_KEYS.has(f.key));
+      }
     }
     if (this.tab === 'cli' || this.tab === 'presets' || this.tab === 'modes') {
       return [];

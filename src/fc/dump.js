@@ -303,23 +303,32 @@ export function exportCli(text) {
 
 export function ratesSettingsFromDump(text) {
   const map = cliMap(text);
+  const type = map.get('rates_type') || 'ACTUAL';
   const centre = Number(map.get('roll_rc_rate'));
   const max = Number(map.get('roll_srate'));
   const yaw = Number(map.get('yaw_srate'));
   const expo = Number(map.get('roll_expo'));
   const cap = Number(map.get('throttle_limit_percent'));
   const out = {};
-  if (Number.isFinite(centre)) {
-    out.rateCentre = centre * 10;
-  }
-  if (Number.isFinite(max)) {
-    out.rateMax = max * 10;
-  }
-  if (Number.isFinite(yaw)) {
-    out.rateYawMax = yaw * 10;
-  }
-  if (Number.isFinite(expo)) {
-    out.rateExpo = expo;
+  /*
+   * The five knobs are ACTUAL units: deg/s and expo hundredths. Only fill
+   * them from an ACTUAL dump. A BETAFLIGHT roll_rc_rate of 100 is RC Rate
+   * 1.00, not 1000 deg/s centre, and writing that through ratesDiff would
+   * replace the profile the firmware is flying.
+   */
+  if (type === 'ACTUAL') {
+    if (Number.isFinite(centre)) {
+      out.rateCentre = centre * 10;
+    }
+    if (Number.isFinite(max)) {
+      out.rateMax = max * 10;
+    }
+    if (Number.isFinite(yaw)) {
+      out.rateYawMax = yaw * 10;
+    }
+    if (Number.isFinite(expo)) {
+      out.rateExpo = expo;
+    }
   }
   if (Number.isFinite(cap)) {
     out.throttleCap = cap;

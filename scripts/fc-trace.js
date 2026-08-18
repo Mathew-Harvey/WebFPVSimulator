@@ -30,8 +30,9 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { RATE_DEFAULTS, ratesSummary } from '../configs/rates.js';
-import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, setCliValue, setFeatureLine } from '../src/fc/dump.js';
+import { RATE_DEFAULTS, ratesDiff, ratesSummary } from '../configs/rates.js';
+import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, ratesCli, ratesSettingsFromDump, setCliValue, setFeatureLine } from '../src/fc/dump.js';
+import { angleRateDeg } from '../src/fc/ratescurve.js';
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { must, sha256Hex } from '../tests/lib/replay.js';
 
@@ -231,6 +232,46 @@ record(
     'F13 summary reads rateProfile',
     summary === 'BETAFLIGHT, roll 67, pitch 42',
     summary,
+  );
+  const cliKeep = ratesCli(mine);
+  const diffFlat = ratesDiff(mine);
+  record(
+    'F7 ratesCli keeps BETAFLIGHT; ratesDiff would flatten to ACTUAL',
+    /set rates_type = BETAFLIGHT/.test(cliKeep)
+      && /set pitch_srate = 42/.test(cliKeep)
+      && /set rates_type = ACTUAL/.test(diffFlat),
+    `cli type ${/rates_type = (\w+)/.exec(cliKeep)?.[1]} diff type ${/rates_type = (\w+)/.exec(diffFlat)?.[1]}`,
+  );
+  record(
+    'F7 BETAFLIGHT dump does not poison ACTUAL centre knob',
+    mine.rateCentre === RATE_DEFAULTS.rateCentre,
+    `rateCentre=${mine.rateCentre}`,
+  );
+  const bfRc = ratesSettingsFromDump([
+    'set rates_type = BETAFLIGHT',
+    'set roll_rc_rate = 100',
+    'set roll_srate = 70',
+    '',
+  ].join('\n'));
+  record(
+    'F7 BETAFLIGHT roll_rc_rate 100 is not 1000 deg/s centre',
+    bfRc.rateCentre == null && bfRc.rateProfile.roll_rc_rate === '100',
+    `rateCentre=${bfRc.rateCentre} profile rc=${bfRc.rateProfile.roll_rc_rate}`,
+  );
+}
+
+{
+  const actualMax = angleRateDeg('ACTUAL', { rcRate: 10, srate: 50, expo: 0, limit: 1998 }, 1);
+  record(
+    'F14 Actual preview max vel is srate times 10',
+    Math.round(actualMax) === 500,
+    `max vel ${actualMax}`,
+  );
+  const origin = angleRateDeg('ACTUAL', { rcRate: 10, srate: 50, expo: 0, limit: 1998 }, 0);
+  record(
+    'F14 Actual preview is zero at centre stick',
+    origin === 0,
+    `centre stick ${origin}`,
   );
 }
 

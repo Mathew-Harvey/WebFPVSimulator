@@ -162,6 +162,22 @@ export function buildShell(canvas, opts) {
     stencil: false,
     powerPreference: options.powerPreference || 'high-performance',
     failIfMajorPerformanceCaveat: false,
+    /*
+     * Opt out of the compositor's frame queue when the caller asks.
+     *
+     * A canvas normally hands its finished frame to the browser compositor,
+     * which may hold one or two more before anything reaches the glass.
+     * That queue is invisible in the frame rate and is felt in the sticks:
+     * it is why a machine can report 45 frames per second and still fly
+     * like a late radio, because the number counts frames produced, not
+     * frames seen. desynchronized lets the canvas present closer to
+     * directly, at the cost of tearing.
+     *
+     * Off unless asked, because the orbit thumbnail page reads its frames
+     * back to record a clip, and a buffer that bypasses the compositor is
+     * exactly the one a reader may find empty.
+     */
+    desynchronized: Boolean(options.desynchronized),
   });
   const pixelRatio = options.pixelRatio != null
     ? options.pixelRatio

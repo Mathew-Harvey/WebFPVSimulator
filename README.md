@@ -53,6 +53,14 @@ Locally it serves at `http://127.0.0.1:3100/`. Fly this course from the
 board opens this simulator in another tab with `?share=` and the course
 document, including the sponsor print on the gates and flags.
 
+## Host it
+
+Three Render resources: this repo as a static site, the board as a Node
+web service, and a Postgres instance behind the board. `render.yaml` here
+is the blueprint for the first. See [DEPLOY.md](DEPLOY.md) for the whole
+walkthrough, including the order to create them in and the one constant in
+`src/share/board.js` that has to name your board.
+
 ## Verify
 
 ```bash

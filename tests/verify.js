@@ -221,6 +221,12 @@ async function main() {
          * regression that is only a window size. */
         '--w=1280',
         '--h=720',
+        /* And the preset the baseline was measured at, for the same reason
+         * as the size above. Headless Chrome rasterises on the CPU, so boot
+         * would otherwise lower a detected preset to Low here and to
+         * nothing at all on a machine with a GPU, and this check would
+         * answer differently depending on who ran it. */
+        '--graphics=high',
         'until:!!window.__boot && window.__boot().frames > 2',
         `eval:${collect}`,
         /* The race field's cost, at two parked cameras so the numbers are

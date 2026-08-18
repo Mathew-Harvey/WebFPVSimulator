@@ -1,0 +1,45 @@
+# Render blueprint for the simulator. One static site, nothing else.
+#
+# The shell is plain ES modules, three.js arrives from the CDN import map in
+# index.html, and dist/sim.wasm is committed, so there is no build to run and
+# no server to keep awake. A static site on Render never sleeps, which is the
+# reason the simulator is not a web service: the board can spin down between
+# visitors, the thing people actually fly should not.
+#
+# The board lives in its own repo and its own blueprint:
+# https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard
+# Deploy that first, then put its URL in PRODUCTION_BOARD_ORIGIN in
+# src/share/board.js and in SIM_ORIGIN on the board's service. See DEPLOY.md.
+
+services:
+  - type: web
+    name: webfpvsimulator
+    runtime: static
+
+    # There is no build. This is the assertion that stands in for one: both
+    # files are fetched by absolute path at boot and a deploy missing either
+    # of them serves a page that dies on a 404 with nothing in the log. Fail
+    # here instead, where it says which file.
+    buildCommand: "test -f dist/sim.wasm && test -f tests/lib/simmod.js"
+
+    # The whole tree, because the page fetches by absolute path from the site
+    # root: /dist/sim.wasm, /src/maps/city/... and /tests/lib/simmod.js, which
+    # src/main.js imports to load the module. Trimming this to src plus dist
+    # breaks boot. The repo is public and GPLv3, so there is nothing here that
+    # publishing the tree gives away.
+    staticPublishPath: .
+
+    headers:
+      # Nothing in the tree is content hashed, so a long cache can serve a
+      # module graph half from the old deploy and half from the new one. That
+      # failure looks like a physics bug, not a caching bug. no-cache still
+      # lets the CDN answer with a 304 off its ETag, so a warm visitor pays a
+      # round trip and no bytes.
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+
+    # No X-Frame-Options and no frame-ancestors here on purpose. The board
+    # renders each course thumbnail by embedding this site's
+    # /src/share/orbit.html in a cross origin iframe. Denying framing turns
+    # every card on the board into an empty box.

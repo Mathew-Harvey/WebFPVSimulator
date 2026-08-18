@@ -56,6 +56,11 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { startServer } from '../tests/lib/server.js';
 import { findChrome } from '../tests/lib/browser.js';
+/* The storage key, from the module that owns it. ui.js is importable in
+ * Node today and this line is what keeps it so: if it ever grows a browser
+ * only top level import, this harness fails loudly at startup rather than
+ * quietly seeding a key nothing reads. */
+import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const CACHE = process.env.SIM_CDN_CACHE || join(tmpdir(), 'webfpv-cdn');
@@ -286,6 +291,34 @@ async function main() {
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width: Number(opts.w), height: Number(opts.h), deviceScaleFactor: 1, mobile: false,
   }, sessionId);
+  /*
+   * --graphics pins the quality preset, for the same reason --w and --h pin
+   * the window: a cost measured at two different presets reports a
+   * regression that is only a setting.
+   *
+   * This became necessary rather than tidy. Boot lowers a DETECTED preset
+   * to Low when the session renderer turns out to be a CPU rasteriser, and
+   * headless Chrome is always one. So without this the field's budget is
+   * measured at Low here and at High on any developer machine with a GPU,
+   * and check 16 would report a different answer depending on who ran it.
+   *
+   * Seeded as a stored setting rather than through a test only hook,
+   * because "a stored choice beats detection" is the real contract and this
+   * is the same door the pilot uses. graphicsAuto false is the half that
+   * matters: it is what marks the value as chosen.
+   */
+  if (opts.graphics) {
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `try {
+        const k = ${JSON.stringify(SETTINGS_KEY)};
+        const s = JSON.parse(localStorage.getItem(k) || '{}');
+        s.graphics = ${JSON.stringify(String(opts.graphics))};
+        s.graphicsAuto = false;
+        localStorage.setItem(k, JSON.stringify(s));
+      } catch (e) { /* Storage refused. The run still boots, at whatever
+                       preset detection picks. */ }`,
+    }, sessionId);
+  }
   await cdp.send('Page.navigate', { url: `${server.origin}${opts.url}` }, sessionId);
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

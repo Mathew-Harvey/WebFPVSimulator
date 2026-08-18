@@ -10351,6 +10351,192 @@ top right on the flight screen too. Click still pauses, then opens the
 form, so typing does not fly the quad. A quieter style on that screen
 only, so the FPV frame still reads. Physics was not touched.
 
+### 2026-08-17 | infrastructure | Render deploy, three resources not two
+
+The shape is a static site for the simulator, a Node web service for the
+board, and a Postgres instance behind the board. The simulator is static
+because it has no server side at all: dist/sim.wasm is committed, the shell
+is plain ES modules, and three.js comes from the CDN import map. That also
+buys the property worth having, which is that a Render static site never
+sleeps, so the page people fly stays warm while a free board naps.
+
+render.yaml added here for the static site. staticPublishPath is the whole
+tree and has to be: the page fetches by absolute path from the site root,
+and src/main.js imports /tests/lib/simmod.js to load the module, so a
+publish path of src plus dist serves a page that dies at boot. There is no
+build, so the build command is the assertion that stands in for one,
+test -f on both files a missing deploy would 404 on. Everything is served
+no-cache, because nothing in the tree is content hashed and a long cache
+can hand a visitor a module graph half from each deploy, which would read
+as a physics bug rather than a caching one. No X-Frame-Options anywhere,
+because the board draws each course thumbnail by framing this site's
+/src/share/orbit.html cross origin.
+
+THE ONE REAL CODE CHANGE. DEFAULT_BOARD_ORIGIN was http://127.0.0.1:3100
+unconditionally, so a deployed simulator asked a laptop's loopback for its
+courses: no list, a Publish dialog offering 127.0.0.1, and bug tickets
+posted into nothing. board.js now names two hosts and picks by
+window.location.hostname, loopback for development and
+PRODUCTION_BOARD_ORIGIN for anything else. A static site has no environment
+to read at run time, so the deployed host has to be a constant somewhere
+and the file's own header already said this was the place. Both escape
+hatches still outrank it, ?board= first and the stored override second,
+which was checked rather than assumed: eleven assertions over the
+precedence chain, both loopback spellings, IPv6, and the same-origin case
+that must not collapse to "/".
+
+The board's blueprint was already most of the way there. Corrected to
+npm ci over npm install (the lockfile is committed and install is free to
+resolve a different pg than the tests ran against), healthCheckPath
+/api/health, region written on both resources because Render's internal
+DATABASE_URL only resolves within one, an empty ipAllowList since the board
+reaches Postgres over the private network, and .node-version pinned to 22.
+
+Checked against a real Postgres 16 rather than the file store, since that
+is the path production takes and the selftest defaults to the other one:
+full suite green, and a second process against the same database confirms
+schema.sql is idempotent and a redeploy loses nothing. The cross origin
+half was checked with the two hosts pretending to be the deployed pair:
+preflight, a posted time, and a filed ticket all pass CORS, and with
+x-forwarded-proto set the board reports an https boardOrigin, which is the
+difference between working Fly links and links a browser refuses as mixed
+content.
+
+Not fixed, because it is Render's and not ours: the free Postgres instance
+is deleted after thirty days, not downgraded. Written down in DEPLOY.md as
+the first thing worth paying for, ahead of the sleeping board, because a
+slow first click is an annoyance and a deleted database is the courses
+gone. The board cannot fall back to its JSON file store there either, since
+Render's disk is ephemeral and that file would be wiped every deploy.
+
+Physics, WASM, input and the module ABI were not changed. verify 15 of 16
+in this container, build-clean red for want of emcc only and every other
+check on the committed binary green. Trackbuilder 225/225, leaderboard
+selftest green on both the file store and Postgres.
+
+### 2026-08-17 | infrastructure | name the real hosts, and the by hand path
+
+The services were created in the dashboard rather than from the
+blueprints, so the names are the owner's: WebFPV-Board and
+WebFPVSimulator, both in Singapore beside the database.
+PRODUCTION_BOARD_ORIGIN now says https://webfpv-board.onrender.com, and
+both render.yaml files were moved to those names and that region so the
+blueprint path stays a valid alternative rather than quietly disagreeing
+with the constant compiled into the page.
+
+DEPLOY.md gained a by hand section, because the dashboard form gets two
+fields wrong on its own and both are silent. It prefills the board's build
+command with yarn, and there is no yarn lockfile here, so yarn resolves the
+tree from scratch and can install a different pg than the tests ran
+against. And the static site's publish directory defaults to blank while
+the form suggests build or dist, when it has to be the repository root: the
+page fetches by absolute path from the site root and src/main.js imports
+/tests/lib/simmod.js, so publishing dist serves a directory holding one
+file.
+
+Written down there too: DATABASE_URL has to be the internal connection
+string, not the external one. store.js builds its pool from a connection
+string and nothing else, and Render's external endpoint requires SSL, so
+the external URL is not a slower option, it is a board that fails to start.
+
+Physics, WASM, input and the module ABI were not changed. verify 15 of 16,
+build-clean red for want of emcc only. The board origin precedence chain
+was re-checked against the new constant, 11 of 11.
+
+### 2026-08-17 | fix | a CPU rasteriser now picks its own preset
+
+Reported as stick lag: high on a GPU-less Linux laptop in Chromium, fine on
+a Windows desktop with a GPU. The sticks were not the problem and the input
+path needed no change. Sampling already runs on its own 2 ms timer at
+main.js startPolling(2), independent of the frame rate, and every sample
+carries the wall clock moment it was taken, which the frame maps onto sim
+time through wallToSim and replays at the right step. A slow frame does not
+delay a stick. It delays the PICTURE, and since the picture is the only
+thing telling a pilot where the quad is, a late picture reads as a late
+radio. At the frame rates a software rasteriser manages, that is most of a
+tenth of a second of felt lag with nothing wrong upstream of it.
+
+The cause was detectDefaultGraphics, which could only read the user agent
+because it runs inside loadSettings before any WebGL context exists. It
+named the Steam Deck and returned high for everything else, so a machine
+with no GPU got the authored look rendered on the CPU. gpuinfo.js could
+already spot SwiftShader and llvmpipe, and its own note even said "Low is
+the preset that will run", but nothing acted on it.
+
+So the decision moved to the first line that can make it honestly. main.js
+already reads readGpuInfo off the session renderer, before applyPixelRatio
+and before loadMap, so lowering the preset there costs no rebuild: the
+world is simply built at Low. No second WebGL context, which gpuinfo.js's
+header rules out and the Deck cannot spare. Measured in headless Chrome,
+which is SwiftShader: software true, stored low, and the field drops from
+313 draw calls to 122, 895639 triangles to 382095, and 69.8 MB of render
+target to 18.6.
+
+A new setting, graphicsAuto, is what makes this safe. It records whether
+the preset was DETECTED or CHOSEN. Boot may lower a detected value and may
+never touch a chosen one, and picking anything in Settings clears the flag
+for good. Verified both ways: auto lands on low, a chosen high survives on
+the same software renderer.
+
+WHAT THIS BROKE, AND WHY THE THRESHOLD DID NOT MOVE. Check 16 went red at
+once: the field budget it pins came out at Low, because the harness browser
+is exactly the machine this change targets. The recorded numbers were not
+wrong and were not touched. The check had quietly become machine dependent,
+answering 122 here and 313 on any developer with a GPU, which is worse than
+a red check. shots.js gained --graphics, which seeds a chosen preset into
+storage before the page boots, and verify pins the cost run to high for the
+same reason it already pins the window to 1280 by 720: a cost measured at
+two presets reports a regression that is only a setting. Seeded through the
+real stored-choice door rather than a test hook, and SETTINGS_KEY is now
+exported from ui.js rather than copied, because a duplicated storage key is
+a harness that silently seeds nothing the day the key changes.
+
+Physics, WASM, the module ABI and the input path were not changed. verify
+15 of 16, build-clean red for want of emcc only and check 16 back at its
+recorded 313 / 895639 / 69.8 MB. Trackbuilder 225/225, link and replay
+selftests passed.
+
+### 2026-08-17 | fix | take the flying view out of the compositor queue
+
+Low fixed the frame rate on the GPU-less laptop, 45 per second, and the
+stick lag survived it. That rules out the previous round's explanation on
+its own: 45 frames per second is 22 ms a frame, which is within sight of a
+60 Hz desktop and nowhere near what was described.
+
+So the frame rate was never the whole latency. A canvas hands its finished
+frame to the browser compositor, which may hold one or two more before
+anything reaches the glass. That queue does not appear in the frame rate,
+because the frame rate counts frames PRODUCED and a pilot only feels frames
+SEEN. Two queued frames at 22 ms is another 44 ms, and it lands on top of
+however long the pad took to refresh.
+
+The flying view now asks for desynchronized, which lets the canvas present
+closer to directly at the cost of tearing. Opt in through buildShell rather
+than on by default, because orbit.js reads its own frames back to record a
+thumbnail clip and a buffer that bypasses the compositor is exactly the one
+a reader may find empty. Checked that the harness still captures a real
+picture rather than a blank one: 117 kB PNG, three sampled patches at
+distinct luminances, zero console errors. verify unchanged at 15 of 16.
+
+THIS IS A CANDIDATE, NOT A PROVEN FIX. It cannot be measured here: this
+container has no GPU, no display and no radio, so the number that would
+settle it has to come off the machine that has the problem.
+
+That number is padHz, and the instrumentation for it was already in the
+tree from an earlier round, unread. window.__stickPath() reports how often
+the browser refreshes the Gamepad object against how often we sample it.
+input.js's own comment states the test: if padHz sits at the frame rate,
+this browser is rAF-locked on gamepad input and no amount of polling will
+move it, only WebHID. On Linux, Chrome reads pads through evdev, which is
+where that is most likely to be true.
+
+Ruled out on the way past: the radio link. Its presets model 3 to 7.5 ms
+and are per browser, so a laptop carrying a different one than the desktop
+was a real candidate for a difference that looks like hardware. 7.5 ms is
+not what was described, and the worst preset is still a real radio.
+
+Physics, WASM, the module ABI and the input path were not changed.
+
 ### 2026-08-18 | bugfix | camera angle 0 to 55 degrees
 
 Ticket: Camera angle, Settings, field. Reported limited to 40 deg,
@@ -10389,3 +10575,12 @@ map-isolation green. vendor diff empty.
 Wrong: first clamp used Number(value), and Number(null) is 0, which
 would have flattened a missing setting instead of keeping 30. Now
 non-numbers return the default.
+
+### 2026-08-18 | chore | merge origin/main into camera-angle work
+
+Local main (camera angle 0 to 55) and origin/main (Render deploy,
+software-rasteriser preset, desynchronized flying view) had diverged.
+PROGRESS.md was the only conflict. Both logs kept, remote 17 Aug
+entries first, camera-angle last. Auto-merged sources still carry
+both: clampCameraAngle and graphicsAuto / desynchronized on boot. No
+physics, ABI or input change. Wrong: none.

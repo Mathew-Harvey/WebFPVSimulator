@@ -10979,6 +10979,20 @@ Wrong: first rewrite still ran the landing/crash branch while
 staging (takingOff && !launchStaging left else-if touched live).
 Caught in the same turn: launchStaging now owns that contact.
 
+### 2026-08-18 | bugfix | launch GO stuck on the OSD
+
+Changed: display only. After a punch, Betaflight latches
+LAUNCH_CONTROL_TRIGGERED (OSD state 3) until L goes off. The centre
+banner already hid GO after 900 ms. setOsd was still handed state 3
+every frame, so the green GO at the top of the goggles never left.
+Expired GO now maps to 0 for the overlay. Native state, mixer and
+the L switch are untouched.
+
+Verify: not run. No native, input, ABI or trace change.
+
+Wrong: nothing this turn. The latch is firmware-correct; the bug
+was treating a latched trigger as a live flash.
+
 
 
 

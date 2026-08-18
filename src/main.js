@@ -2954,7 +2954,10 @@ export async function boot({ loading, bootStart, mapId }) {
         flightMode: angleModeOn ? 'angle' : 'acro',
         hitsLeft,
         hitLives: HIT_LIVES,
-        launchState: launchNow,
+        /* Native state 3 latches until the L switch drops. The GO flash
+         * is 900 ms; after that the overlay has to hide or it sits on
+         * the goggles for the rest of the lap. */
+        launchState: launchNow === 3 && nowWall >= lcGoUntil ? 0 : launchNow,
         launchPitch: pitchNoseDownDeg(st),
       });
       const ch = input.channels;

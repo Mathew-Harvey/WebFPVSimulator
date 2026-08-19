@@ -394,6 +394,24 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   });
   const audio = new MotorAudio();
+  audio.music.onChange = (st) => {
+    ui.setMusicNow(st);
+  };
+  ui.onMusicSkip = (dir) => {
+    wakeAudio();
+    if (typeof audio.skipMusic !== 'function') {
+      return;
+    }
+    audio.skipMusic(dir);
+    const st = audio.musicStatus();
+    if (st && ui.settings.musicTrack !== 'rotation') {
+      ui.settings.musicTrack = st.id;
+      ui.persistSettings();
+    }
+    if (ui.screen === 'settings') {
+      ui.renderMenu();
+    }
+  };
 
   loading.start('sim');
   const sim = await loadSim(await fetchBytes('/dist/sim.wasm', (f, got, total) => {
@@ -1839,6 +1857,9 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (typeof audio.setMusicTrack === 'function') {
       audio.setMusicTrack(s.musicTrack);
+    }
+    if (typeof audio.musicStatus === 'function') {
+      ui.setMusicNow(audio.musicStatus());
     }
     if (typeof audio.setFocusEnabled === 'function') {
       audio.setFocusEnabled(Boolean(s.focusTone));

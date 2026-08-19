@@ -55,7 +55,7 @@ const CAL_LABELS = {
   yaw: 'Yaw',
   confirm: 'Check',
 };
-import { TRACKS, trackById } from '../render/tracks.js';
+import { TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
 import {
   RATE_DEFAULTS,
@@ -173,8 +173,8 @@ const DEFAULTS = {
   windLevel: 5,
   musicLevel: 5,
   /* Which record: 'rotation' walks the whole crate, a track id pins one.
-   * A string so the typeof gate accepts it, and an unknown id falls back
-   * to the first track in src/render/tracks.js. */
+   * A string so the typeof gate accepts it, and an unknown id (including
+   * the old generated-bed ids) falls back to rotation. */
   musicTrack: 'rotation',
   focusTone: false,
   readout: false,
@@ -269,6 +269,7 @@ export function loadSettings() {
     ['cameraFov', CAMERA_FOVS],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
+    ['musicTrack', musicIds()],
   ]) {
     if (!allowed.includes(s[key])) {
       s[key] = DEFAULTS[key];
@@ -766,6 +767,17 @@ export class Ui {
     this.lastCardKey = null;
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
+    this.onMusicSkip = null; /* (dir) => void, -1 previous, +1 next */
+    {
+      const sel = this.settings.musicTrack;
+      const tr = sel === 'rotation' ? TRACKS[0] : trackById(sel);
+      this.musicNow = {
+        id: tr.id,
+        name: tr.name,
+        selection: sel,
+        index: Math.max(0, TRACKS.indexOf(tr)),
+      };
+    }
     this.onFcOpen = null;    /* (page) => void */
     this.onFcSave = null;    /* (draft, { restart, presetId, silent }) => void */
     this.onFcImport = null;  /* (text, name, policy) => void */
@@ -1237,11 +1249,37 @@ export class Ui {
     this.bugChip.title = 'F8 also opens this.';
     this.bugChip.addEventListener('click', () => this.openBugReport());
 
+    this.musicDock = el('div', 'music-dock');
+    this.musicDock.setAttribute('role', 'group');
+    this.musicDock.setAttribute('aria-label', 'Music');
+    this.musicPrev = btn('music-skip', '‹');
+    this.musicPrev.setAttribute('aria-label', 'Previous track');
+    this.musicPrev.tabIndex = -1;
+    this.musicNext = btn('music-skip', '›');
+    this.musicNext.setAttribute('aria-label', 'Next track');
+    this.musicNext.tabIndex = -1;
+    this.musicTitle = el('div', 'music-title', TRACKS[0].name);
+    this.musicTitle.setAttribute('aria-live', 'polite');
+    this.musicDock.append(this.musicPrev, this.musicTitle, this.musicNext);
+    const keepFocusOff = (e) => e.preventDefault();
+    this.musicPrev.addEventListener('mousedown', keepFocusOff);
+    this.musicNext.addEventListener('mousedown', keepFocusOff);
+    this.musicPrev.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.skipMusic(-1);
+    });
+    this.musicNext.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.skipMusic(1);
+    });
+
     for (const s of Object.values(this.screens)) {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.banner, this.readout, this.bugChip, this.nameDialog);
+    r.append(this.banner, this.readout, this.bugChip, this.musicDock, this.nameDialog);
     this.syncBugChip();
   }
 
@@ -1438,6 +1476,40 @@ export class Ui {
     const hide = this.nameDialog && !this.nameDialog.hidden;
     this.bugChip.hidden = hide;
     this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
+    this.syncMusicDock();
+  }
+
+  skipMusic(dir) {
+    if (typeof this.onMusicSkip === 'function') {
+      this.onMusicSkip(dir);
+    }
+  }
+
+  setMusicNow(st) {
+    if (!st) {
+      return;
+    }
+    this.musicNow = st;
+    this.syncMusicDock();
+  }
+
+  syncMusicDock() {
+    if (!this.musicDock) {
+      return;
+    }
+    const dialog = this.nameDialog && !this.nameDialog.hidden;
+    const hide = dialog
+      || this.screen === 'fc'
+      || this.screen === 'calibrate'
+      || this.screen === 'padpick'
+      || !this.settings.sound;
+    this.musicDock.hidden = hide;
+    const flying = this.screen === 'flight' || this.screen === 'paused';
+    this.musicDock.classList.toggle('on-flight', flying);
+    this.musicDock.classList.toggle('is-muted', this.settings.musicLevel <= 0);
+    const name = (this.musicNow && this.musicNow.name) || TRACKS[0].name;
+    this.musicTitle.textContent = name;
+    this.musicTitle.title = name;
   }
 
   bugSnapshot() {
@@ -1789,7 +1861,7 @@ export class Ui {
       return [...cards, ...rows];
     }
     if (this.screen === 'settings') {
-      const musicIds = ['rotation', ...TRACKS.map((t) => t.id)];
+      const ids = musicIds();
       const name = readPilotName();
       /*
        * Twenty rows in one undivided scroll, in an order that grew rather
@@ -1880,16 +1952,16 @@ export class Ui {
         }),
         stepper(
           'Music',
-          'Generated drum and bass and lofi beds. Choose the record below.',
+          'Recorded tracks. Rotation walks the crate. The skip buttons on screen jump a track.',
           s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
           (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
         ),
         choice(
           'Music track',
           s.musicTrack === 'rotation'
-            ? 'Every track in turn, drum and bass and lofi alternating.'
-            : `${trackById(s.musicTrack).genre === 'dnb' ? 'Drum and bass' : 'Lofi'}, ${trackById(s.musicTrack).bpm} beats per minute.`,
-          musicIds,
+            ? 'Every track in turn.'
+            : 'This track loops until you skip or pick another.',
+          ids,
           s.musicTrack,
           (id) => (id === 'rotation' ? 'Rotation' : trackById(id).name),
           (id) => { s.musicTrack = id; },
@@ -1998,6 +2070,7 @@ export class Ui {
   }
 
   renderMenu() {
+    this.syncMusicDock();
     this.closeDrop();
     if (this.screen === 'courses') {
       this.renderMapCards();

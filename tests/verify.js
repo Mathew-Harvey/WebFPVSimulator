@@ -152,11 +152,10 @@ async function main() {
      * than duplicating the plumbing.
      */
     audioBedRun: memo(async () => {
-      /* 4 s, not 1.5. The scheduler advances in lookahead chunks, so a short
-       * window lands mid chunk and the implied tempo is quantisation noise:
-       * 1.5 s windows measured 23 and 20 steps, reporting 230 and 200 BPM on
-       * a 174 BPM bed. Over 4 s it averages to 11.49 steps per second. */
-      const windowMs = 4000;
+      /* 2.5 s of media time, not 4 s of scheduler steps. The generated
+       * sixteenth-note bed is gone; the check is that the chosen mp3 is
+       * actually playing through the live page. */
+      const windowMs = 2500;
       const out = join(root, 'dist/audio-bed');
       const steps = [
         `--out=${out}`,
@@ -164,24 +163,17 @@ async function main() {
         '--h=300',
         'until:!!window.__boot && window.__boot()',
         'tap:KeyZ',
-        /* Settle before taking the baseline. The scheduler runs a lookahead,
-         * so the first window after start counts the playing steps PLUS the
-         * lookahead filling, and reports a rate that is not the tempo:
-         * measured 23 steps in the first 1500 ms against 17 expected. After
-         * a settle it is 46 steps in 4.003 s, 11.49 per second, which is
-         * 172.4 BPM implied against 174 authored and 173.64 measured off the
-         * rendered audio by scripts/audio-probe.js. */
-        'wait:1500',
-        "eval:(()=>{window.__abBase = window.__audio.music.step; window.__abT = window.__audio.ctx.currentTime; return 'ok'})()",
+        /* Wait until the media element has started, not a wall clock guess
+         * at how long a 5 MB mp3 takes to buffer off localhost. */
+        'until:window.__audio && window.__audio.music && window.__audio.music.el && window.__audio.music.el.currentTime > 0.05',
+        "eval:(()=>{window.__abBase = window.__audio.music.el.currentTime; window.__abT = window.__audio.ctx.currentTime; return 'ok'})()",
         `wait:${windowMs}`,
         'eval:JSON.stringify({' +
           "state: window.__audio.ctx ? window.__audio.ctx.state : 'none'," +
           'motorsAttached: Array.isArray(window.__audio.motors) && window.__audio.motors.length === 4,' +
           'musicAttached: !!window.__audio.music.gain,' +
           'musicGain: window.__audio.music.gain ? window.__audio.music.gain.gain.value : 0,' +
-          /* The step counter is a position in a 256 step pattern, so it
-           * wraps. Difference modulo the pattern length, not raw. */
-          'steps: ((window.__audio.music.step - window.__abBase) % 256 + 256) % 256,' +
+          'musicAdvance: window.__audio.music.el ? window.__audio.music.el.currentTime - window.__abBase : 0,' +
           'elapsed: window.__audio.ctx.currentTime - window.__abT,' +
           'nodes: window.__audio.nodeCount()' +
           '})',

@@ -959,7 +959,8 @@ async function main() {
      */
     motors: -1, wind: -1, musiclevel: -1, ambience: -1, music: 0, focus: 0,
     /* Which music track the render plays, by id from src/render/tracks.js.
-     * Empty keeps the player's default, which is the first track. */
+     * Empty keeps the player's default, which is rotation. Offline
+     * renders have no media element, so this only names the selection. */
     track: '',
     /*
      * A7 asks for a cue's level advantage "at the moment it plays" and for a

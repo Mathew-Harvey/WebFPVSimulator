@@ -52,13 +52,9 @@
  * ui(). All of it runs on the two pooled cue voices that already existed:
  * no event creates a node.
  *
- * The rest of the mix is built around the motor band: src/render/music.js
- * and its record crate in tracks.js keep every track's sub bass and kick
- * below 120 Hz, its snare and hats above 1.5 kHz, and its keys between
- * 524 and 1320 Hz, clear of the blade pass fundamental at every throttle
- * setting. The keys used to run to 2 kHz and that is where the owner
- * heard a high pitched annoying overtone; the argument for moving them is
- * in tracks.js, at the band split itself.
+ * Music is recorded mp3s from assets/music, played by src/render/music.js
+ * through one MediaElementSource on this same mix. Cues still duck it.
+ * The generated drum and bass crate is gone.
  *
  * The graph is built by attach(ctx), which takes any BaseAudioContext, and
  * update() takes the time to schedule at. Both exist so that
@@ -204,6 +200,11 @@ export class MotorAudio {
 
   setEnabled(on) {
     this.enabled = Boolean(on) && Boolean(this.ctx);
+    if (!this.enabled) {
+      this.music.pause();
+    } else {
+      this.music.resume();
+    }
   }
 
   /*
@@ -243,6 +244,14 @@ export class MotorAudio {
    * setting, safe before attach: the player object holds it as data. */
   setMusicTrack(sel) {
     this.music.setTrack(sel);
+  }
+
+  skipMusic(dir) {
+    this.music.skip(dir);
+  }
+
+  musicStatus() {
+    return this.music.status();
   }
 
   setFocusEnabled(on) {
@@ -732,6 +741,7 @@ export class MotorAudio {
     const target = this.enabled ? this.level * MASTER_CEILING : 0.0;
     this.master.gain.setTargetAtTime(target, t, 0.05);
     if (!this.enabled) {
+      this.music.pause();
       return;
     }
     let loudest = 0;
@@ -795,9 +805,8 @@ export class MotorAudio {
      */
     const rush = Math.min(1, speed / 32);
     this.noiseGain.gain.setTargetAtTime(0.085 + 0.71 * rush * rush + 0.17 * loudest, t, 0.06);
-    /* The bed's own clock. Ticked from here so the probe, which drives this
-     * exact update, exercises the scheduler too: an instrument that cannot
-     * see the music cannot measure it. */
+    /* The bed. Ticked from here so a paused element is restarted while
+     * the mix is live, and so the probe still exercises the same update. */
     this.music.tick(t);
   }
 }

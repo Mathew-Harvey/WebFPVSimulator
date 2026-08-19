@@ -11700,3 +11700,52 @@ Physics, plant, ABI, CLI, input and the trace were not touched.
 Verify: npm run verify 16 of 16 after the budget re-measure. Track builder
 self test 236 of 236. All fourteen gate positions read and compared
 against the previous commit: identical.
+
+### 2026-08-19 | feature | recorded tracks replace the generated bed
+
+Ticket: level up the music. Remove the old generated crate, play the
+mp3s in assets/music, give the player small on-screen skip controls.
+
+The generated performer is gone. `src/render/mini.js` is deleted.
+`src/render/tracks.js` is now twelve recorded titles and their filenames,
+not pattern strings. `src/render/music.js` plays them through one
+HTMLAudioElement and one MediaElementSource on the existing mix bus
+(level, duck). Cues still duck the bed. OfflineAudioContext still gets
+the gain nodes so the probe can drive motors; it cannot render an mp3
+and does not claim to.
+
+Pace Shift Skyline (1).mp3 is a second copy of that title and is left
+on disk but not listed, so skip does not offer the same song twice.
+Copper Gypsy Run and its take 2 are different files and both play.
+Old generated-bed ids in localStorage (night-circuit and friends) fall
+back to rotation.
+
+The skip dock is previous, title, next. Menus put it under the bug chip
+at the top right, over the world rather than over the list. Flight puts
+it top left, away from the timer, the pack and the bug chip. The buttons
+never take focus, so a click cannot steal Space from throttle. Rotation
+walks the crate; a pinned track loops until you skip or pick another.
+
+Check 14 is the same gate (the live page must actually be playing music)
+measured the way the new bed works. The sixteenth-note step counter was
+a property of the generated scheduler. Replacing it with media
+currentTime is not widening a band to make a red check green; the old
+metric cannot be true of an mp3. min_music_gain stays 0.05.
+min_music_advance_s is 1.0 s on a 2.5 s window.
+
+Wrong, caught in this turn, not shipped: a replace of the resume/tick
+tail dropped `duckNow`, which would have thrown on every gate cue.
+Pause used to skip `el.pause()` while `play()` was still pending, so a
+mute could lose the race and start sounding anyway. An earlier dock
+placement sat on the title menu at the bottom right; it is top right
+now.
+
+Physics, plant, ABI, CLI, input and the trace were not touched. Hash
+still 6d17d4814bdc Node=Chrome.
+
+Verify, this turn: 16 of 16. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s
+(0.22 percent), yaw-coupling -0.12 deg, battery-sag 11.14 percent,
+diff-passthrough 1.2478 (0.47 percent). console-clean errors=0 warnings=0.
+audio-bed: ctx running, music gain 0.300, media 2.52 s in 2.52 s, 41
+nodes. world-scale and map-isolation green. vendor/betaflight diff empty.

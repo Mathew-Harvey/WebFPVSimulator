@@ -40,6 +40,7 @@ const MIME = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
+  ['.mp3', 'audio/mpeg'],
 ]);
 
 http

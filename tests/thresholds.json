@@ -273,14 +273,14 @@
       }
     },
     "audio-bed": {
-      "_about": "The audio bed has to actually start. A user reported that no music played at all, and nothing in tests/ could have caught it: every audio claim in this project was measured by hand with scripts/audio-probe.js against a graph the probe builds itself, so the shell could stop building its own graph entirely and every check would still pass. These bound the live page instead.",
+      "_about": "The audio bed has to actually start. A user reported that no music played at all, and nothing in tests/ could have caught it: every audio claim in this project was measured by hand with scripts/audio-probe.js against a graph the probe builds itself, so the shell could stop building its own graph entirely and every check would still pass. These bound the live page instead. The generated sixteenth-note scheduler is gone; the live check now asserts the recorded mp3 is playing.",
       "min_music_gain": {
         "value": 0.05,
-        "_about": "Music bus gain at the DEFAULT settings, with nothing touched. level 0.5 times the bed's 0.40 is 0.20, so 0.05 is a wide floor that still catches a silent or unattached bed."
+        "_about": "Music bus gain at the DEFAULT settings, with nothing touched. level 0.5 times the recorded bed's 0.60 is 0.30, so 0.05 is a wide floor that still catches a silent or unattached bed."
       },
-      "min_music_steps": {
-        "value": 24,
-        "_about": "Sixteenth note steps the music scheduler must advance across a settled 4 s window. At 174 BPM that is 11.6 per second, so about 46. The window starts after a 1.5 s settle and runs 4 s rather than 1.5 because the scheduler advances in lookahead chunks: 1.5 s windows measured 23 and 20 steps, which imply 230 and 200 BPM on a 174 BPM bed, while 4 s averages to 11.49 per second or 172.4 BPM implied. 24 is a wide floor, about half the expected count, so it catches a stalled or half rate scheduler without asserting a tempo this counter cannot resolve; the tempo itself is measured off the rendered audio by scripts/audio-probe.js, at 173.64 BPM with r=0.4480 against a shuffled null p95 of 0.0378."
+      "min_music_advance_s": {
+        "value": 1.0,
+        "_about": "Seconds of HTMLAudioElement currentTime that must elapse across a 2.5 s window after the file has started. The generated sixteenth-note scheduler is gone; a stalled or never-started media element stays at 0. 1.0 is a wide floor, not a tempo claim."
       },
       "max_nodes": {
         "value": 64,

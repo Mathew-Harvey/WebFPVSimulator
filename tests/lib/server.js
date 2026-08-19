@@ -31,6 +31,7 @@ const MIME = new Map([
   ['.rec', 'application/octet-stream'],
   ['.diff', 'text/plain; charset=utf-8'],
   ['.md', 'text/plain; charset=utf-8'],
+  ['.mp3', 'audio/mpeg'],
 ]);
 
 export async function startServer(rootDir) {

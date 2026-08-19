@@ -278,8 +278,8 @@ export function mountRatesPanel(handlers) {
     );
     const padL = 8;
     const padR = 56;
-    const padT = 10;
-    const padB = 10;
+    const padT = 16;
+    const padB = 14;
     const gw = cssW - padL - padR;
     const gh = cssH - padT - padB;
     const x0 = padL + gw / 2;

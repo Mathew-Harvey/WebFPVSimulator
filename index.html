@@ -671,6 +671,9 @@
         display: flex;
         gap: 0;
         flex: 0 0 auto;
+        position: sticky;
+        top: 0;
+        z-index: 2;
         background: var(--bf-header);
         border-bottom: 1px solid #2a2a2a;
       }
@@ -694,8 +697,8 @@
         background: var(--bf-panel);
       }
       .fc-rates {
-        flex: 0 1 auto;
-        min-height: 0;
+        flex: 0 0 auto;
+        min-height: auto;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -706,6 +709,7 @@
       }
       .fc-rates[hidden] { display: none !important; }
       .fc-rates-head {
+        flex: 0 0 auto;
         display: flex;
         align-items: center;
         gap: 14px;
@@ -777,7 +781,11 @@
       .fc-rates-badge-raceflight { color: #e23b4a; border-color: #e23b4a; }
       .fc-rates-badge-kiss { color: #c084fc; border-color: #c084fc; }
       .fc-rates-badge-quick { color: #3dcc5a; border-color: #3dcc5a; }
-      .fc-rates-table-wrap { overflow-x: auto; }
+      .fc-rates-table-wrap {
+        flex: 0 0 auto;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
       .fc-rates-table {
         width: 100%;
         border-collapse: collapse;
@@ -855,8 +863,10 @@
       .fc-rates-row-pitch .fc-rates-vel { color: #3dcc5a; }
       .fc-rates-row-yaw .fc-rates-vel { color: #3b9cff; }
       .fc-rates-graph-wrap {
+        flex: 0 0 auto;
         height: 200px;
-        min-height: 160px;
+        min-height: 200px;
+        margin-top: 6px;
         background: #2e2e2e;
         border-radius: 3px;
         overflow: hidden;
@@ -870,7 +880,7 @@
         display: grid;
         grid-template-columns: 1fr minmax(14em, 22em);
         align-items: stretch;
-        flex: 1 1 auto;
+        flex: 1 1 0;
         min-height: 0;
         width: 100%;
         margin-top: 0;

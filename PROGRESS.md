@@ -10993,6 +10993,32 @@ Verify: not run. No native, input, ABI or trace change.
 Wrong: nothing this turn. The latch is firmware-correct; the bug
 was treating a latched trigger as a live flash.
 
+### 2026-08-19 | bugfix | Rateprofile labels under the curve graph
+
+Ticket: AsylumFPV, Rateprofile Settings. RC Rate / Super Rate /
+Expo labels cut off at the top of the stick-to-rate graph, and the
+PID Profile / Filter / Rateprofile tabs unusable without a nested
+scroll box.
+
+Cause: `.fc-rates` was `flex: 0 1 auto` with `min-height: 0`, so
+the throttle menu below it (`flex-grow` plus `height: 100%`) ate
+the panel. The table wrap had `overflow-x: auto`, which makes
+`overflow-y` compute to auto as well, so the column headers
+collapsed into a tiny scroll flush with the 200 px canvas.
+
+Fix: rates head and table no longer shrink. Graph stays 200 px
+under the full table. Page tabs stick to the top of the work
+column. Menu stage takes leftover height only (`flex: 1 1 0`).
+Canvas plot padding bumped so the deg/s numbers at the curve
+ends are not clipped.
+
+Plant, ABI, CLI and the rate math were not changed.
+
+Verify: not run. No native, input, ABI or trace change.
+
+Wrong: nothing this turn. The labels were never drawn on the
+canvas; they were the table headers being squeezed.
+
 
 
 

@@ -36,7 +36,7 @@ import {
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
   aperturesOf, toPlain,
 } from './model.js';
-import { applyAutoFaces, clearOverride, defaultYawFor, flipFace } from './faces.js';
+import { applyAutoFaces, clearOverride, defaultYawFor, flipFace, setYaw } from './faces.js';
 import {
   addToSequence, addNextLevel, clampSequenceToApertures, moveInSequence,
   removeElement, removeFromSequence, setApertureIndex,
@@ -460,11 +460,10 @@ export class App {
 
   rotateSelected(yaw) {
     for (const id of this.selection) {
-      const element = elementById(this.doc, id);
-      if (element) {
-        element.yaw = yaw;
-        element.yawOverridden = true;
-      }
+      /* setYaw, not the two fields by hand: turning a gate has to pin which
+       * way its passes are flown as well as which way it points, or the
+       * auto rule takes the direction back the moment the drag ends. */
+      setYaw(this.doc, id, yaw);
     }
     if (this.pathVisible) {
       this.rebuildPath();
@@ -1441,8 +1440,7 @@ export class App {
       for (const id of this.selection) {
         const element = elementById(d, id);
         if (element && kindOf(element) !== KIND.ANNOTATION) {
-          element.yaw += degrees * RAD;
-          element.yawOverridden = true;
+          setYaw(d, id, element.yaw + degrees * RAD);
         }
       }
     });

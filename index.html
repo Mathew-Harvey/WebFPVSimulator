@@ -1318,6 +1318,20 @@
         border-top-color: var(--sakura);
         box-shadow: inset 0 0 0 2px var(--sakura), 0 12px 28px rgba(0, 0, 0, 0.45);
       }
+      /* The card whose actions are showing below the strip. It has to read as
+         chosen even when the cursor has moved off it onto its own list, which
+         is the whole reason the list is not floating free any more. Mint
+         rather than sakura: sakura is the cursor, and two pinks a card apart
+         would be one state drawn twice. */
+      .map-card.chosen {
+        border-top-color: var(--mint);
+        box-shadow: inset 0 0 0 2px var(--mint), 0 12px 28px rgba(0, 0, 0, 0.45);
+      }
+      .map-card.chosen.on {
+        box-shadow: inset 0 0 0 2px var(--sakura), 0 0 0 3px var(--mint),
+          0 12px 28px rgba(0, 0, 0, 0.45);
+      }
+      .map-card.chosen .map-card-name { color: var(--mint); }
       /* 16 by 9, so the thumbnail is the shape of the thing it is a
          thumbnail of. A looping clip of the title shot fills this box. */
       .map-reel {

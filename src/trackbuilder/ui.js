@@ -37,6 +37,7 @@ import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js
 import { elevationProfile } from './path.js';
 import { drawProfile } from './profile.js';
 import { DEG, RAD } from './geometry.js';
+import { setYaw } from './faces.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -371,9 +372,7 @@ export class Panels {
     if (def.kind !== KIND.ANNOTATION) {
       host.append(this.field(`yaw-${element.id}`, 'Yaw', element.yaw * DEG, (val) => {
         this.host.edit('rotate', (d) => {
-          const e2 = elementById(d, element.id);
-          e2.yaw = val * RAD;
-          e2.yawOverridden = true;
+          setYaw(d, element.id, val * RAD);
         });
       }, { suffix: 'deg', step: 5, places: 1 }));
     }

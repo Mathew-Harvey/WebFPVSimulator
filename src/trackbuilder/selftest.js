@@ -32,9 +32,9 @@
 
 import {
   createTrack, createElement, deserialize, elementById, normalize,
-  roundTripsCleanly, serialize, aperturesOf,
+  roundTripsCleanly, serialize, aperturesOf, toPlain,
 } from './model.js';
-import { applyAutoFaces, flipFace } from './faces.js';
+import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
 import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
 import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } from './figures.js';
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
@@ -304,6 +304,95 @@ function suiteFaces() {
   check('on two different levels', refs[0].apertureIndex !== refs[1].apertureIndex,
     `${refs[0].apertureIndex} and ${refs[1].apertureIndex}`);
   check('and each entry carries its own face', refs.every((r) => r.entry === 1 || r.entry === -1));
+
+  /*
+   * TURNING A GATE MUST TURN THE WAY IT IS FLOWN, ALL THE WAY ROUND.
+   *
+   * Reported against WCMRC Round 5 gate 2: rotating a gate to force the
+   * pilot the other way, and the tool putting the direction back. The
+   * direction of travel is entry times the normal, so it follows the gate
+   * until the normal passes square to the chord applyAutoFaces reads the
+   * sign from, and there the sign flips and the direction jumps a half turn
+   * BACK. Small turns never reach that point, which is why it read as
+   * intermittent; a turn meant to reverse a gate always reaches it.
+   *
+   * The sweep is the test, not a single rotation, because a single rotation
+   * of the wrong size passes on a broken build.
+   */
+  const spin = createTrack();
+  const s0 = place(spin, 'gate', 0, 0);
+  const s1 = place(spin, 'gate', 10, 0);
+  const s2 = place(spin, 'gate', 20, 0);
+  for (const e of [s0, s1, s2]) {
+    addToSequence(spin, e.id, 0);
+  }
+  applyAutoFaces(spin);
+  {
+    const seqId = spin.sequence[1].id;
+    const bearing = () => {
+      const t = travelDirection(spin, seqId);
+      return t ? Math.atan2(t.y, t.x) : null;
+    };
+    const wrapTo = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    let prev = bearing();
+    let worst = 0;
+    const STEP = 3 * RAD;
+    for (let i = 0; i < 120; i += 1) {
+      setYaw(spin, s1.id, elementById(spin, s1.id).yaw + STEP);
+      applyAutoFaces(spin);
+      const now = bearing();
+      /* How far the direction moved beyond the turn that was asked for. */
+      worst = Math.max(worst, Math.abs(wrapTo(now - prev - STEP)));
+      prev = now;
+    }
+    check('turning a gate turns the way it is flown, right round the circle',
+      worst < 1e-9, `worst unasked-for swing ${(worst * DEG).toFixed(1)} deg`);
+  }
+
+  /* The same, for a gate flown more than once: its passes share one frame,
+   * so turning the frame has to turn all of them together rather than
+   * letting the chord re-decide each one. */
+  const shared = createTrack();
+  const h0 = place(shared, 'gate', 0, 0);
+  const hub = place(shared, 'gate', 10, 0);
+  const h1 = place(shared, 'gate', 20, 6);
+  const h2 = place(shared, 'gate', 4, 14);
+  addToSequence(shared, h0.id, 0);
+  addToSequence(shared, hub.id, 0);
+  addToSequence(shared, h1.id, 0);
+  addToSequence(shared, hub.id, 0);
+  addToSequence(shared, h2.id, 0);
+  applyAutoFaces(shared);
+  {
+    const ids = shared.sequence.filter((q) => q.elementId === hub.id).map((q) => q.id);
+    check('the shared gate really is flown twice', ids.length === 2, `${ids.length} passes`);
+    const bearings = () => ids.map((id) => {
+      const t = travelDirection(shared, id);
+      return t ? Math.atan2(t.y, t.x) : null;
+    });
+    const wrapTo = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    let prev = bearings();
+    let worst = 0;
+    const STEP = 3 * RAD;
+    for (let i = 0; i < 120; i += 1) {
+      setYaw(shared, hub.id, elementById(shared, hub.id).yaw + STEP);
+      applyAutoFaces(shared);
+      const now = bearings();
+      now.forEach((v, k) => {
+        worst = Math.max(worst, Math.abs(wrapTo(v - prev[k] - STEP)));
+      });
+      prev = now;
+    }
+    check('and turning a gate flown twice turns both of its passes with it',
+      worst < 1e-9, `worst unasked-for swing ${(worst * DEG).toFixed(1)} deg`);
+    check('turning it marks the passes overridden, so the inspector says so',
+      ids.every((id) => shared.sequence.find((q) => q.id === id).overridden));
+    /* And the escape hatch still works: Re-derive hands a pass back. */
+    clearOverride(shared, ids[0]);
+    check('Re-derive hands a turned pass back to the automatic rule',
+      shared.sequence.find((q) => q.id === ids[0]).overridden === false
+      && elementById(shared, hub.id).yawOverridden === false);
+  }
 
   /* A left turn round a flag puts the quad on the flag's right. */
   const turn = createTrack();
@@ -732,11 +821,74 @@ function suiteFigures() {
   check('the two passes stay consecutive in the order',
     dbl.sequence[1].elementId === stack.id && dbl.sequence[2].elementId === stack.id);
 
+  /*
+   * An OLD document's alternating spiral, and the fixture has to be faithful
+   * about one thing: its faces are NOT overridden.
+   *
+   * The old spelling predates applyFigure, which arrived in the same commit
+   * as the upgrade itself, so nothing back then could set the flag on a
+   * stack's passes. They were sequenced with addNextLevel and their faces
+   * were derived by applyAutoFaces, which leaves it false. Flipping an entry
+   * on a run applyFigure has just written leaves the flag TRUE and describes
+   * a document the old build could not produce, which is what this fixture
+   * used to do.
+   */
+  spiral[0].overridden = false;
+  spiral[1].overridden = false;
   spiral[1].entry = -spiral[0].entry;
   check('an old alternating spiral is not the current figure', matchingFigure(dbl, stack) !== 'spiralUp');
   check('upgrading it restores the same face', upgradeStackedFigures(dbl) === true);
   check('and it is a spiral up again', matchingFigure(dbl, stack) === 'spiralUp');
   check('and both holes share a face', spiral[0].entry === spiral[1].entry);
+
+  /*
+   * AND THE UPGRADE MUST KEEP ITS HANDS OFF A FACE THE AUTHOR SET.
+   *
+   * Reported: a triple stack flown as a spiral up with the middle pass
+   * reversed by hand read "enter from the front" in the builder and flew
+   * from the back in the game. The upgrade recognises an old file by its
+   * shape, a stack whose passes alternate, and that is exactly the shape a
+   * hand flipped spiral has. trackdoc.js runs it on every conversion into a
+   * course, so it undid the author on every load.
+   */
+  const hand = createTrack();
+  const hg0 = place(hand, 'gate', 0, 0);
+  const hstack = place(hand, 'ladder', 12, 0);
+  const hg1 = place(hand, 'gate', 24, 0);
+  addToSequence(hand, hg0.id, 0);
+  addToSequence(hand, hstack.id, 0);
+  addToSequence(hand, hg1.id, 0);
+  applyFigure(hand, hstack.id, 'spiralUp');
+  applyAutoFaces(hand);
+  {
+    const passes = () => hand.sequence.filter((q) => q.elementId === hstack.id);
+    check('the stack is flown three times', passes().length === 3, `${passes().length}`);
+    flipFace(hand, passes()[1].id);
+    const wanted = passes().map((q) => q.entry);
+    check('the middle pass is reversed against its neighbours',
+      wanted[1] !== wanted[0] && wanted[1] !== wanted[2], wanted.join(','));
+    check('and the upgrade leaves an authored run alone',
+      upgradeStackedFigures(hand) === false);
+    check('so the faces the author set are still there',
+      passes().map((q) => q.entry).join(',') === wanted.join(','),
+      passes().map((q) => q.entry).join(','));
+    /* And the whole point: it survives the trip into the game. */
+    const flown = courseFromDocument(toPlain(hand))
+      .stations.filter((q) => q.elementId === hstack.id);
+    check('the game flies the middle pass the way the builder drew it',
+      flown.length === 3 && flown[1].entry === wanted[1]
+      && flown[0].entry === wanted[0] && flown[2].entry === wanted[2],
+      flown.map((q) => q.entry).join(','));
+    /* Measured off the station headings, not just the sign, because the sign
+     * is only worth anything if it reaches the direction the gate is built
+     * and scored against. */
+    const sep = Math.abs(Math.atan2(
+      Math.sin(flown[1].yaw - flown[0].yaw),
+      Math.cos(flown[1].yaw - flown[0].yaw),
+    )) * DEG;
+    check('and its station really does point the other way',
+      sep > 179 && sep < 181, `${sep.toFixed(1)} deg from the pass below it`);
+  }
 
   const path = buildPath(dbl);
   const wraps = path.knots.filter((k) => k.role === 'wrap');

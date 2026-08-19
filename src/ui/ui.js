@@ -628,6 +628,73 @@ function editOwnAction(listing) {
   };
 }
 
+/*
+ * A course card's identity, stable across the rebuilds items() does on every
+ * render. The card objects themselves are made fresh each time, so the chosen
+ * card is remembered by this key rather than by reference.
+ */
+function courseCardKey(card) {
+  if (!card || !card.course) {
+    return null;
+  }
+  return card.course.kind === 'board'
+    ? `board:${card.course.track.id}`
+    : 'current';
+}
+
+/*
+ * WHAT ONE COURSE CARD CAN DO, once the player has chosen it.
+ *
+ * The screen used to be a strip of cards over a list of actions, and it read
+ * as though the list acted on the card the cursor was on. It did not. The
+ * list has always acted on the course in the SEAT, the one loaded and flown,
+ * and the only thing choosing a card did was load it and fly it. So the one
+ * question a player actually has about a course on the board, "let me look at
+ * this one in the builder", had no answer that did not involve flying it
+ * first, crashing out, and coming back. Reported exactly that way: I select
+ * it and it opens, I cannot select it then edit it from this menu.
+ *
+ * Choosing a card now names it and lists what can be done with it. Fly it is
+ * first, so the common path is Enter Enter and still one keystroke longer
+ * than it was, which is the price of the card meaning something. The rows
+ * underneath the strip are untouched and still belong to the seat, because
+ * publishing and uploading a time are things you do to the course you are
+ * flying, not to a card you are pointing at.
+ */
+function courseCardRows(subject) {
+  const board = subject.course.kind === 'board';
+  const name = subject.label;
+  const rows = [
+    /* The list says whose it is. The chosen card is marked as well, but a
+     * colour is not a label, and this list sits far enough below the strip
+     * that the two want joining in words. Not a cursor stop. */
+    { label: name, section: true },
+    {
+      label: 'Fly it',
+      action: 'card-fly',
+      note: board
+        ? `Load ${name} from the board and fly it here.`
+        : `Fly ${name} on the race field.`,
+    },
+    {
+      label: 'Open in the track builder',
+      action: 'card-builder',
+      note: board
+        ? `Open ${name} in the builder without flying it. Somebody else's course opens as a copy under your own name.`
+        : `Open ${name} in the builder. Nothing is flown.`,
+    },
+  ];
+  if (board) {
+    rows.push({
+      label: 'Open on the board',
+      action: 'card-board',
+      note: `The public page for ${name}, with its standings. Opens in a new tab.`,
+    });
+  }
+  rows.push({ label: 'Back to the list', action: 'card-back' });
+  return rows;
+}
+
 function tuneItem(s) {
   return choice(
     'Tune',
@@ -692,6 +759,11 @@ export class Ui {
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
     this.screen = 'title';
     this.cursor = 0;
+    /* Which course card the player has chosen, by courseCardKey, and the
+     * last one they were on. The first says whose list is showing; the
+     * second is where Back to the list puts the cursor. */
+    this.cardSubject = null;
+    this.lastCardKey = null;
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
     this.onFcOpen = null;    /* (page) => void */
@@ -1687,6 +1759,14 @@ export class Ui {
           action: `board:${t.id}`,
         });
       }
+      /* A card the player has chosen owns the list until they go back. The
+       * cards themselves stay, so the strip still reads as where they are. */
+      const chosen = this.cardSubject
+        ? cards.find((c) => c.course && courseCardKey(c) === this.cardSubject)
+        : null;
+      if (chosen) {
+        return [...cards, ...courseCardRows(chosen)];
+      }
       const rows = [
         {
           label: loaded ? 'Open in the track builder' : 'Build a course',
@@ -2198,6 +2278,10 @@ export class Ui {
     this.closeDrop();
     this.cursor = i;
     if (this.screen === 'courses') {
+      const here = this.items()[i];
+      if (here && here.course) {
+        this.lastCardKey = courseCardKey(here);
+      }
       const worlds = this.mapCards || [];
       worlds.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
       (this.courseCards || []).forEach((c, j) => {
@@ -2459,13 +2543,16 @@ export class Ui {
           this.select();
         });
         host.append(card);
-        return { card, canvas, tag, kind: it.course.kind };
+        return { card, canvas, tag, kind: it.course.kind, key: courseCardKey(it) };
       });
       this.paintCoursePlans();
     }
     this.courseCards.forEach((c, k) => {
       const i = k + offset;
       c.card.classList.toggle('on', i === this.cursor);
+      /* The list below belongs to one card. Say which, or the screen is back
+       * to looking like a strip of cards over an unrelated menu. */
+      c.card.classList.toggle('chosen', Boolean(this.cardSubject) && c.key === this.cardSubject);
       c.tag.textContent = c.kind === 'current' && this.settings.map === 'custom' ? 'Flying now' : '';
     });
   }
@@ -2892,6 +2979,8 @@ export class Ui {
       this.mapCards = null;
       this.courseCards = null;
       this.courseCardKey = null;
+      this.cardSubject = null;
+      this.lastCardKey = null;
     }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
@@ -2923,6 +3012,71 @@ export class Ui {
    * one fetch and one storage write, which is what adoptShareFromLocation
    * already does for a Fly link, so the screen can simply do it here.
    */
+  /* The card `cardSubject` names, or null. */
+  subjectCard() {
+    if (!this.cardSubject) {
+      return null;
+    }
+    return this.items().find((it) => it.course && courseCardKey(it) === this.cardSubject) || null;
+  }
+
+  /* Where the cursor goes when a chosen card is closed: back onto that card,
+   * so going back leaves the player where they were rather than at the top. */
+  cardCursor() {
+    const items = this.items();
+    const i = items.findIndex((it) => it.course && courseCardKey(it) === this.lastCardKey);
+    return i < 0 ? this.firstStop(items) : i;
+  }
+
+  /*
+   * OPEN A COURSE IN THE BUILDER WITHOUT FLYING IT, which is the whole point
+   * of this list and the thing the screen could not do before.
+   *
+   * A board course has to be fetched first, because the builder reads the
+   * share seat and a course nobody has loaded is not in it. That fetch is the
+   * same one Fly it does; it just stops before the flying. Whose course it is
+   * decides how the builder opens it, and that is read off the seat AFTER the
+   * fetch rather than guessed from the card, so the answer comes from the
+   * same place every other row on this screen reads it from.
+   */
+  openInBuilder(card) {
+    const go = () => {
+      const listing = liveListing('custom');
+      if (listing && listing.kind === 'owned') {
+        writeBuilderIntent({ kind: 'edit' });
+      } else if (listing && listing.canRemix) {
+        writeBuilderIntent({ kind: 'remix' });
+      }
+      window.location.href = 'src/trackbuilder/index.html';
+    };
+    if (card.course.kind !== 'board') {
+      go();
+      return;
+    }
+    const track = card.course.track;
+    if (this.openingBoardCourse) {
+      return;
+    }
+    this.openingBoardCourse = true;
+    this.boardNote.textContent = `Loading ${track.name}`;
+    if (!this.onBoardCourse) {
+      this.openingBoardCourse = false;
+      this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
+      return;
+    }
+    this.onBoardCourse(track).then((ok) => {
+      this.openingBoardCourse = false;
+      if (!ok) {
+        this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
+        return;
+      }
+      go();
+    }).catch((err) => {
+      this.openingBoardCourse = false;
+      this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
+    });
+  }
+
   openBoardCourse(id) {
     const track = (this.boardCourses || []).find((t) => t.id === id);
     if (!track || this.openingBoardCourse) {
@@ -3447,7 +3601,15 @@ export class Ui {
     return Boolean(it) && !it.section;
   }
 
-  firstStop(items) {
+  /* The first row the cursor may land on, at or after `from`. The offset is
+   * what lets a chosen course card put the cursor on its own list rather
+   * than back on the first card in the strip. */
+  firstStop(items, from = 0) {
+    for (let i = Math.max(0, from); i < items.length; i += 1) {
+      if (this.isStop(items[i])) {
+        return i;
+      }
+    }
     const i = items.findIndex((it) => this.isStop(it));
     return i < 0 ? 0 : i;
   }
@@ -3502,6 +3664,27 @@ export class Ui {
       this.adjust(1);
       return;
     }
+    /*
+     * A course card is a thing to choose, not a button to press. Choosing one
+     * names it and shows what can be done with it; the card's own action is
+     * offered there as Fly it. Worlds are left alone: there is exactly one
+     * thing to do with a world, so a list of one would be friction.
+     */
+    /* Always, not only when nothing is chosen yet: with one card's list open,
+     * choosing a different card has to move to that card. Falling through
+     * here would have flown it instead, which is the behaviour this whole
+     * change exists to remove. */
+    if (this.screen === 'courses' && it.course) {
+      this.cardSubject = courseCardKey(it);
+      if (this.onUiSound) {
+        this.onUiSound('select');
+      }
+      this.renderMenu();
+      this.renderCourseCards();
+      /* Land on Fly it, so the quick path stays Enter then Enter. */
+      this.setCursor(this.firstStop(this.items(), this.rowOffset));
+      return;
+    }
     if (this.onUiSound) {
       this.onUiSound('select');
     }
@@ -3532,6 +3715,11 @@ export class Ui {
       } else {
         this.act(this.padPickReason === 'menu' ? 'padpick-cancel' : 'padpick-skip');
       }
+      return;
+    }
+    if (this.screen === 'courses' && this.cardSubject) {
+      /* Escape backs out of the chosen course first, not off the screen. */
+      this.act('card-back');
       return;
     }
     if (this.screen === 'results') {
@@ -3614,6 +3802,36 @@ export class Ui {
       if (this.onAction) {
         this.onAction('fly', this.settings);
       }
+      return;
+    }
+    /*
+     * The rows a chosen course card offers. `cardSubject` says which course
+     * they belong to, so none of them has to guess at the seat.
+     */
+    if (action === 'card-back') {
+      this.cardSubject = null;
+      this.renderMenu();
+      this.renderCourseCards();
+      this.setCursor(this.cardCursor());
+      return;
+    }
+    if (action === 'card-fly' || action === 'card-builder' || action === 'card-board') {
+      const card = this.subjectCard();
+      if (!card) {
+        this.cardSubject = null;
+        this.renderMenu();
+        return;
+      }
+      if (action === 'card-fly') {
+        this.cardSubject = null;
+        this.act(card.action);
+        return;
+      }
+      if (action === 'card-board') {
+        window.open(boardPageUrl(card.course.track.board), '_blank', 'noopener');
+        return;
+      }
+      this.openInBuilder(card);
       return;
     }
     /* A published course, chosen from the grid rather than from another tab. */

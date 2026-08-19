@@ -171,6 +171,27 @@ function plansMatch(seqs, plan) {
  *
  * Spiral down was briefly written as the same face too, which made it a
  * spiral up flown backwards. Those runs are rewritten to alternating faces.
+ *
+ * IT LEAVES A RUN ALONE IF THE AUTHOR HAS TOUCHED ANY OF ITS FACES, and that
+ * is not a nicety, it is the whole difference between a migration and data
+ * loss.
+ *
+ * This recognises an old file by its SHAPE, because the old spelling was
+ * never given a schema version to key off. The trouble is that the shape it
+ * looks for, a stack whose passes alternate faces, is also exactly what an
+ * author gets by building a spiral up and then pressing Flip face on one
+ * pass. Reported: a triple stack with the middle pass reversed by hand read
+ * correctly in the builder, "enter from the front", and flew from the back
+ * in the game. src/game/trackdoc.js runs this on EVERY conversion of a
+ * document into a course, so the rewrite happened again on every single
+ * load and the author could never make it stick.
+ *
+ * `overridden` separates the two cleanly. An old file's stack was sequenced
+ * with addNextLevel and its faces were derived by applyAutoFaces, which
+ * leaves the flag false. Every deliberate face in this build carries it:
+ * applyFigure sets it on every pass it writes, and flipFace sets it on the
+ * pass it turns. So a run with the flag anywhere in it is a statement, not a
+ * spelling, and this leaves it exactly as the author wrote it.
  */
 export function upgradeStackedFigures(doc) {
   let i = 0;
@@ -189,6 +210,11 @@ export function upgradeStackedFigures(doc) {
     }
     const n = aperturesOf(el).length;
     if (n < 2 || run.length < 2) {
+      continue;
+    }
+    /* The author has said which way through at least one of these holes.
+     * Whatever this run looks like, it is not an old file's spelling. */
+    if (run.some((s) => s.overridden)) {
       continue;
     }
     const approach = run[0].entry === -1 ? -1 : 1;

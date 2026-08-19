@@ -372,8 +372,37 @@ export function clearOverride(doc, seqId) {
   return true;
 }
 
-/* Rotating by hand is an override in its own right, because the whole point
- * of turning a gate is that it stops turning itself back. */
+/*
+ * Rotating by hand is an override in its own right, because the whole point
+ * of turning a gate is that it stops turning itself back.
+ *
+ * IT PINS THE SIGN AS WELL AS THE HEADING, and that is the whole of the fix
+ * for a bug reported against WCMRC Round 5 gate 2.
+ *
+ * The direction a quad flies through a hole is `entry` times the aperture
+ * normal, so as a gate is turned the direction follows it. It follows it
+ * right up to the moment the normal passes square to the chord that
+ * applyAutoFaces reads the sign from; there the derived sign flips, and the
+ * direction of travel jumps a HALF TURN BACK. Turning a gate a little never
+ * reaches that point. Turning it round to send the pilot the other way
+ * always does. That is why it was reported as happening only sometimes, and
+ * why it happened every single time the author tried to do the one thing
+ * rotation is for.
+ *
+ * Measured on that course: gate 2 is flown three times, and a 360 degree
+ * sweep in one degree steps reversed a pass without being asked to twenty
+ * times. With the sign pinned it is zero, and the direction of travel tracks
+ * the gate to within a thousandth of a degree the whole way round.
+ *
+ * IT PINS EVERY PASS, because a structure flown more than once has one frame
+ * and turning the frame turns all of them together. Steering one pass of a
+ * shared gate on its own is what Flip face is for, and that pins its own
+ * entry already. Re-derive hands both back to the automatic rule.
+ *
+ * An entry that has never been decided is left alone, so a gate placed and
+ * turned in one gesture still gets its first sign from the course rather
+ * than arriving pinned to nothing.
+ */
 export function setYaw(doc, elementId, yaw) {
   const el = elementById(doc, elementId);
   if (!el) {
@@ -381,6 +410,11 @@ export function setYaw(doc, elementId, yaw) {
   }
   el.yaw = wrapAngle(yaw);
   el.yawOverridden = true;
+  for (const seq of doc.sequence) {
+    if (seq.elementId === elementId && seq.entry !== 0 && seq.entry !== null) {
+      seq.overridden = true;
+    }
+  }
   return true;
 }
 

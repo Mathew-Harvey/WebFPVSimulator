@@ -11241,3 +11241,266 @@ Wrong: the first paint set the attribution and the sub line small
 enough to be shapes rather than words at any distance, and used a
 word space for letter spacing on the sub line, which scattered it.
 Both were caught by looking at the capture rather than at the code.
+
+### 2026-08-19 | bugfix | Turning a gate turned the way it is flown back again
+
+Ticket: owner. In the track builder you can rotate a gate to force a
+direction, but sometimes the UI turns it back around again. WCMRC
+Winter 2026 Round 5 does it on gate 2, trying to send the pilot round
+the back.
+
+**Replicated,** on tracks/json/trk-a75a1bc4.json, gate 2 is el-2 and
+it is flown THREE times, at sequence positions 1, 17 and 26. Rotating
+it a half turn and running what every edit runs left the yaw at the
+new heading and flipped all three entry signs, so all three passes
+were flown on exactly the bearing they started on. The rotation did
+nothing.
+
+**Cause.** The direction of travel through a hole is `entry` times the
+aperture normal. `applyAutoFaces` re-derives `entry` from the sign of
+the dot product between the normal and the chord from the previous
+anchor to the next one. So as a gate is turned the direction follows
+it, right up to the moment the normal passes square to that chord;
+there the derived sign flips and the direction of travel jumps a HALF
+TURN BACK. A small turn never reaches that point. A turn meant to
+reverse a gate always crosses it. That is the whole of why it was
+reported as happening only sometimes and why it happened every time
+the owner tried the one thing rotation is for.
+
+Measured as a sweep rather than as a single rotation, because a single
+rotation of the wrong size looks fine on a broken build: turning gate
+2 through 360 degrees in one degree steps reversed a pass without
+being asked to twenty times. Worst unasked-for swing 180.0 degrees.
+
+**Fixed** in `setYaw`, which now pins the sign as well as the heading:
+every sequence entry referencing the turned element that already has a
+sign is marked `overridden`. All three ways of turning an element in
+the UI, the drag handle in `rotateSelected`, the keyboard in
+`nudgeYaw`, and the inspector's Yaw field, now go through `setYaw`
+instead of setting `yaw` and `yawOverridden` by hand. That is also why
+the bug survived: three call sites, none of them using the function
+written for the job.
+
+It pins EVERY pass of a shared structure, because the passes share one
+frame and turning the frame turns all of them together. Steering one
+pass on its own is what Flip face is for and that pins its own entry
+already. Re-derive hands either back.
+
+After: the same sweep reverses nothing, at 5, 1 and 0.25 degree steps,
+in both directions. Worst unasked-for swing 0.0 degrees.
+
+**The first fix was wrong and the tracks caught it.** It made
+`applyAutoFaces` treat `yawOverridden` as pinning the sign. That reads
+well and it is what the header of faces.js has always claimed, but the
+IMPORTER sets `yawOverridden` on every imported element to mean "the
+.trk file gave this heading, do not rotate it", which is not the same
+statement as "the author pinned which way this is flown". Regenerating
+all ten track documents showed it: a baseline re-import differs from
+what is committed only in the two timestamps, and with that fix in
+place two `entry` values flipped and six `overridden` flags moved. So
+it was quietly rewriting every imported course. Backed out and
+replaced with the version above, after which a re-import is once again
+identical but for the timestamps.
+
+**Also tried and dropped.** A deadband on the dot product, so a sign is
+only re-derived when the gate stands more than 14.5 degrees off square
+to the chord. It is a real improvement in its own right but it treats
+a symptom: it holds the sign for 14.5 degrees and then the sweep
+reverses anyway, 18 times against 20. Not shipped, because the pinning
+fix makes it unnecessary for the reported case and it changes derived
+signs on documents that have not been touched.
+
+**Left alone, measured, and worth knowing.** On that course three
+passes stand nearly square to their own chord: gate 2's second pass at
+a dot product of 0.024, and two others at 0.095 and 0.194. The 0.024
+one is a hairpin, the quad arrives on bearing -56.5 and leaves on
+131.4, a turn of -172 degrees, so the chord across the gate says
+almost nothing about which way through it goes. For an element nobody
+has turned or flipped, the sign there is decided by the last bit of a
+neighbour's coordinate and a small move of that neighbour can reverse
+it. The reported gate is pinned now so it cannot happen to that one.
+The general case is still open and the deadband above is the shape of
+the answer.
+
+Tests: four new in `suiteFaces`, including the 360 degree sweep for a
+gate flown once and for one flown twice, that the passes are marked
+overridden so the inspector says so, and that Re-derive still hands a
+pass back. Against the unfixed build all three of the behavioural ones
+fail, each reporting a 180.0 degree swing.
+
+Physics, plant, ABI, CLI, input and the trace were not touched. The
+simulator does not import the builder's faces.js.
+
+Verify: track builder self test 230 of 230. tracks/check.mjs 3994 of
+3994. Re-import of all ten courses byte identical but for timestamps.
+npm run verify 16 of 16.
+
+Wrong: reached for the rule instead of the caller, and shipping that
+would have rewritten every imported track. What caught it was
+regenerating the track documents and diffing them, which is a check
+that already existed and that the first version of this fix never ran.
+
+### 2026-08-19 | bugfix | A hand flipped stack pass flew the other way in the game
+
+Ticket: owner. Built a triple stack in the builder, reversed the entry
+of one pass with the side tool, and in the game the reversed entry did
+not work. Screenshot shows all three passes marked OVERRIDDEN, top
+"enter from the back", middle "enter from the front", bottom "enter
+from the back".
+
+**Replicated.** Triple stack, spiral up, Flip face on the middle pass,
+then handed to the game the way src/maps/custom.js does. The builder
+holds entry -1 on that pass and says "enter from the front"; the game
+receives entry 1 and a station heading identical to the pass below it,
+-35.5 degrees for all three. The flip is gone by the time anything can
+fly it.
+
+**Cause.** `upgradeStackedFigures` in src/trackbuilder/figures.js, a
+migration for tracks written when spiral up meant alternating faces. It
+recognises an old file by its SHAPE, a stack whose passes alternate
+faces, because the old spelling was never given a schema version to key
+off. That shape is also exactly what an author gets by building a
+spiral up and pressing Flip face on one pass, and the migration cannot
+tell the two apart, so it rewrote the author's run to all-one-face.
+
+It is called from three places and the third is the one that made this
+permanent: src/game/trackdoc.js line 188 runs it on EVERY conversion of
+a document into a course. Not at load, not once, every time. So there
+was no way for the author to make the flip stick; it was undone on the
+way to the track, every load, for ever.
+
+**Fixed** by leaving a run alone when any of its faces is `overridden`.
+That flag separates the two cases cleanly and the separation is a fact
+about the history rather than a guess: the old spelling predates
+`applyFigure`, which arrived in the same commit as the migration
+itself, e469071, so nothing back then could set the flag on a stack's
+passes. Old runs were sequenced with `addNextLevel` and had their faces
+derived by `applyAutoFaces`, which leaves it false. Every deliberate
+face in this build carries it, because `applyFigure` sets it on every
+pass it writes and `flipFace` sets it on the pass it turns. A run with
+the flag anywhere in it is a statement, not a spelling.
+
+After: the game receives entry -1 on the middle pass and a station
+heading 180.0 degrees off the pass below it, with the other two
+untouched.
+
+**The old document test was measuring the wrong document.** It built a
+current spiral with `applyFigure`, which marks every pass overridden,
+then flipped one entry and called the result an old file. The old build
+could not have produced that: nothing set the flag on a stack run
+before the commit that added the upgrade. The fixture now clears
+`overridden` on the run it is pretending is old, which is what an old
+file actually looked like, and the assertions on it are unchanged. This
+is a fixture corrected to be faithful, not an assertion relaxed, and
+the test surface around it got bigger rather than smaller.
+
+**Nearly shipped a worse fix.** The first instinct was to stop
+trackdoc.js calling the migration at all, on the grounds that the game
+should fly the document it is given. That would have left the builder's
+own load-time call free to rewrite the same runs, so opening an
+imported course would still have destroyed it. Guarding the migration
+itself covers all three callers at once.
+
+**Checked against real data.** Two shipped courses carry alternating
+stacked runs, FAI Turkiye 2024 on a double stack and ROX Open 2023 on a
+ladder, both with the faces marked overridden. Measured, the migration
+was not rewriting either of them, but only because their aperture
+indices do not run in the order the old plan expects. They were one
+level ordering away from the same corruption and are now protected on
+purpose rather than by luck.
+
+Tests: five new in `suiteFigures`, covering that an authored run is left
+alone, that the faces survive, that the flip reaches the game, and that
+the station really does point the other way, measured off the heading
+rather than off the sign. Against the unguarded build four of them
+fail, reporting the game receiving 1,1,1 and a separation of 0.0
+degrees.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.
+
+Verify: track builder self test 236 of 236. tracks/check.mjs 3994 of
+3994. Re-import of all ten courses byte identical but for timestamps.
+npm run verify 16 of 16.
+
+Wrong: assumed at first that this was the same bug as the yaw one
+reported the same day and went looking in faces.js. It is a different
+layer with the same symptom, an author's decision being recomputed
+away, which is worth noticing as a pattern: this tool has three places
+that re-derive what somebody set by hand, and two of them had to be
+taught not to on the same day.
+
+### 2026-08-19 | uxfix | A course card you choose now belongs to the list under it
+
+Ticket: owner. If I want to edit a track I cannot really. I select it
+and it opens. I cannot select it then edit it from this menu.
+
+**The screen was two things pretending to be one.** The Courses screen
+is a strip of cards over a list of actions, and it reads as though the
+list acts on the card the cursor is on. It never did. The cursor really
+does span both, one index space, so the pink ring on a card IS the
+cursor and the owner was right to read it as a selection. But every
+row under the strip acted on the course in the SEAT, the one loaded and
+flown, and the only thing choosing a card did was load it and fly it.
+
+So the one question a player has about a course on the board, let me
+open this one in the builder, had no answer that did not go: choose it,
+fly it, crash or quit out, come back, then use the row. There was no
+path from a card to the builder that did not pass through flying.
+
+**Changed.** Choosing a course card now names it and lists what can be
+done with it: Fly it, Open in the track builder, Open on the board for
+a published one, and Back to the list. The list is headed with the
+course's name and the card it belongs to is marked in mint, because a
+colour is not a label and the two want joining in words as well.
+
+Fly it is first and the cursor lands on it, so the quick path is Enter
+then Enter. That is one keystroke more than it was and it is the price
+of the card meaning something.
+
+**Opening a board course in the builder does not fly it.** It has to be
+fetched first, because the builder reads the share seat and a course
+nobody has loaded is not in it, so it runs the same fetch Fly it runs
+and stops before the flying. Whose course it is decides how the builder
+opens it, owned to edit and anybody else's as a copy, and that is read
+off the seat after the fetch rather than guessed from the card, so it
+comes from the same place every other row on this screen reads it from.
+
+**Deliberately not moved.** Publish this course, Upload a time, Edit a
+copy and Edit this course stay under the strip acting on the seat.
+Those are things you do to the course you are flying, not to a card you
+are pointing at, and their notes already say which course they mean.
+Nothing that worked before works differently now; this is additive.
+
+**Worlds are left alone.** Race field and Freestyle city still fly on
+one press. There is exactly one thing to do with a world, and a list of
+one is friction.
+
+**One thing caught by testing rather than by writing it.** The first
+version only opened a card's list when nothing was chosen yet, so with
+one list open, choosing a DIFFERENT card fell through and flew it,
+which is the exact behaviour the change exists to remove. Choosing a
+card now always moves to that card.
+
+Measured by driving the real screen: cursor on a board card, choose it,
+subject becomes that card and the cursor lands on Fly it with the
+screen still on courses; choose the other card, the subject moves and
+still nothing flies; Escape clears the card and puts the cursor back on
+it; Escape again leaves the screen, which is what it did before. On the
+local course card, Open in the track builder took the page from
+/index.html to /src/trackbuilder/index.html with the screen still on
+courses, so nothing was flown to get there.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.
+
+Verify: npm run verify 16 of 16, including check 13, console clean, on a
+screen that gained about two hundred lines. Track builder self test 236
+of 236.
+
+Wrong: went looking for a way to keep one keystroke to fly AND make the
+rows follow the highlighted card, and spent a while on a design where
+the rows re-label as the cursor moves along the strip. It would have
+meant re-rendering the row list on every arrow press and a second kind
+of highlight to say which card the rows belonged to, and it still could
+not have offered publish or upload for a course that is not in the
+seat. The card owning its own short list says the same thing with less
+machinery and no ambiguity left over.

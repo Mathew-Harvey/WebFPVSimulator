@@ -11504,3 +11504,125 @@ of highlight to say which card the rows belonged to, and it still could
 not have offered publish or upload for a course that is not in the
 seat. The card owning its own short list says the same thing with less
 machinery and no ambiguity left over.
+
+### 2026-08-19 | feature | The race field is the club's own ground now
+
+Ticket: owner, with an overhead aerial and a photograph taken from the
+ground at the west end. This is our club flight ground, see the layout
+of field and trees, the map has the club house in it, now copy the rest
+of the surrounds, remove the lake, copy this layout as accurately as
+possible. Then, mid build: put a waist high chain link fence around the
+track area.
+
+**Gone.** The lake, its basin, its bank, its shoreline sand and its
+water surface. The six cliff landmarks, which were a valley's furniture
+and have no equivalent on a graded paddock. The four mountain rings, of
+which more below.
+
+**The paddock.** Its outline is the aerial's, traced as five corners in
+pixels and stored NORMALISED by its own width and by its southern edge,
+which is the line the pavilion stands on. Keeping it normalised is what
+lets one number decide how big the ground is without touching the shape.
+The ground is levelled flat inside the boundary and falls away outside
+it over 40 m, and it carries the aerial's two zones: green where the
+photograph is mown and marked, straw from there north to the fence, and
+bush floor as a band under the front row of gums.
+
+**THE SIZE IS NOT THE PHOTOGRAPH'S AND THE OWNER CHOSE THAT.** Measured
+off the aerial, the clubhouse spans about 61 percent of the paddock's
+width. In here it spans 22, because the pavilion is built at its real
+53 m and the built in circuit is 210 m wide and wants 15 m of scenery
+standoff all round. Both cannot hold: matching the photograph means
+either shrinking the circuit to about 90 m, which moves every gate and
+voids the track record and every time posted against it, or drawing the
+pavilion at 146 m. Asked, and told to keep the shape and lose the scale.
+So the outline is exact in its proportions and scaled up until the
+course fits, and every structure stays its own real size.
+
+The scale factor is not a taste: walked at 2000 points, the circuit's
+closest approach to the boundary is 15.3 m at (64, -42) with the
+paddock 260 m wide. At 240 it is 11.1 and the trees are inside the
+course; at 220, 1.8. Above 260 nothing improves, because the binding
+edge is the southern one and that is pinned to the pavilion.
+
+**EVERY GATE IS WHERE IT WAS.** Read all fourteen positions before and
+after and compared them: identical. The paddock is levelled to the same
+datum the racing corridor already sat on, so the course, its record and
+the board are untouched by any of this. That was the constraint the
+whole shape of this work was chosen around.
+
+**The treeline.** 420 objects used to be thrown at a disc between 30 and
+670 m of the origin, which is parkland: trees in ones and twos with sky
+between them, some of them standing on the course. The club's ground is
+not that and neither photograph allows it. The paddock is empty out to
+the fence and the bush starts at the fence as a wall. The same budget is
+spent along the boundary now, positioned by a walk of the perimeter with
+the distance out cubed so the band is dense at the edge and thins into
+the distance, which is what a bush edge does. Drawn at about twice the
+size, because the gums in the ground level shot are 12 to 18 m and this
+tree topped out near 11.
+
+**The horizon is bush.** The four ridge rings were good, and measured,
+and wrong for this place: the aerial is unbroken canopy to every edge of
+the frame and the ground shot has bare sky straight above the treeline.
+Three rings of far trees replace them, keeping the ladder's job of
+telling the eye how far away the distance is, unlit for the same reason
+the mountains were.
+
+**The fence.** Waist high chain link on the boundary, 1.05 m of fabric
+on posts at 2.6 m centres. The fabric is an alpha tested map rather than
+geometry or a translucent band: chain link is mostly holes, drawn solid
+it reads as smoked glass and drawn as real diamonds it is tens of
+thousands of triangles for something under a pixel wide most of the
+time. Solid in 20 m capsule runs, 53 of them, rather than post by post.
+Drawn at 0.72 m a tile first, which read as decorative lattice; 0.30 m
+now, a 150 mm mesh, coarser than a real 60 mm because at 60 the
+diamonds shimmer as the quad moves.
+
+**Cost, and the trim.** P1 314 to 306, P2 894085 to 1004039, P10 27.4 to
+31.6 MB, P5 unchanged, meshes 172 to 169. Draw calls and meshes FELL:
+the water, the cliffs and one ridge material went, and the fence's two
+new buckets and the horizon's one did not make it back up. P2 is up 12.3
+percent, which is the treeline: a scatter discarded most of what it drew
+and a boundary band discards almost nothing, so the same 420 draws put
+far more trees on screen. It was 1114831 before a trim: the background
+scatter went from 140 to 110, and the far trees and the horizon are now
+drawn WITHOUT the inverted hull outline, which doubles a tree's geometry
+and buys nothing at 300 m where the post pass already inks the
+silhouette from depth. That one flag returned 110792 triangles and
+4.9 MB.
+
+**Two things went wrong, both caught by measuring.**
+
+`for (let i = 0, j = n - 1; i < n; j = i += 1)` is not the ray casting
+idiom it looks like. `j = i += 1` assigns the NEW i, so j equals i on
+every pass and every polygon edge collapses to a point. The ground came
+out uniformly dry because nothing was ever inside the paddock, and the
+treeline came out as one diagonal streak because the perimeter walk had
+one real edge to walk. A numeric probe of siteEdge found it in one run
+after a screenshot had only said something was wrong.
+
+Then the paddock still looked dry from above and it was not: sampled off
+the capture, the ground by the clubhouse is 4f673e and the ground north
+of the mown rectangle is 918560, which is exactly the aerial's green
+south half and dry north half. The eye was reading fog and an oblique
+angle. Nothing was changed on the strength of it.
+
+**Not done, and known.** The car park is still the strip on the
+pavilion's western end where clubhouse.js puts it, not the long run off
+the eastern corner the aerial has. Moving it means taking it out of the
+clubhouse's own frame and placing it against the paddock instead, which
+is a change to src/art/clubhouse.js rather than to the ground.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.
+
+Verify: npm run verify 16 of 16 after the budget re-measure. Track
+builder self test 236 of 236.
+
+Wrong: cut the PITCH block out of scene.js along with the lake, because
+the excision was anchored on two comment banners and the pitch sat
+between them. The page failed to boot with makePitch is not defined, and
+the fix was to read the deleted symbols out of the diff and restore the
+block from HEAD. Deleting by anchor pair is fast and it is exactly this
+careless; the check that caught it was booting the page, which is a
+thing to do after every cut rather than at the end of a series of them.

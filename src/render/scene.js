@@ -254,10 +254,287 @@ function trackCurve() {
   return new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.4);
 }
 
-/* A lake gives the eye somewhere to rest, a hard value contrast against
- * all the green, and a reflection cue for altitude. Basin is carved into
- * the height field so the shoreline is a real intersection, not a decal. */
-export const LAKE = { x: 250, z: -205, r: 96, level: -7.5 };
+/*
+ * THE GROUND, TRACED OFF THE CLUB'S OWN AERIAL.
+ *
+ * The world used to be an invented valley with a lake in it. It is the West
+ * Coast club's flying ground now: an open paddock ringed by native bush, the
+ * pavilion along its southern edge, the car park off its eastern corner, and
+ * nothing else out there. The lake is gone.
+ *
+ * THE SHAPE IS THE PHOTOGRAPH'S, THE SIZE IS NOT, and that is a decision the
+ * owner made rather than an approximation that crept in. Measured off the
+ * aerial, the clubhouse spans about 61 percent of the paddock's width. In
+ * here it spans 22 percent, because the pavilion is built at its real 53 m
+ * and the built in circuit is 210 m wide and needs 15 m of scenery standoff
+ * all round. Both cannot be true at once: matching the photograph's
+ * proportions means either shrinking the circuit to about 90 m, which moves
+ * every gate and voids the track record and every time posted against it, or
+ * drawing the pavilion at 146 m. So the OUTLINE is traced exactly, in the
+ * proportions the aerial gives, and scaled up until the course fits inside
+ * it. Every structure stays its real size.
+ *
+ * The outline below is the paddock's five corners read off the aerial in
+ * pixels, normalised by the paddock's own width and by its southern edge,
+ * which is the line the pavilion stands on. Keeping them normalised is what
+ * lets the one number underneath decide how big the ground is without
+ * touching the shape.
+ */
+const SITE_SHAPE = [
+  [-0.227, 1.222],
+  [0.500, 1.141],
+  [0.500, 0.000],
+  [-0.406, 0.000],
+  [-0.500, 0.234],
+];
+
+/*
+ * How wide the paddock is, in metres.
+ *
+ * 260, and it is solved rather than chosen. Walked at 2000 points, the
+ * circuit's closest approach to the boundary is 15.3 m at (64, -42), which
+ * clears the 15 m the scenery rule keeps between anything solid and the
+ * racing line. At 240 it is 11.1 m and the trees are inside the course; at
+ * 220, 1.8 m. Above 260 nothing improves, because the binding edge is the
+ * southern one and that is pinned to the pavilion rather than scaled.
+ */
+const SITE_W = 260;
+/* The pavilion's front wall, which the aerial's southern boundary runs
+ * along. Shared with clubhouseSite so the two cannot drift. */
+const SITE_SOUTH = -57;
+
+const SITE = SITE_SHAPE.map(([nx, ny]) => ({ x: nx * SITE_W, z: SITE_SOUTH + ny * SITE_W }));
+
+/*
+ * The mown rectangle inside the paddock: the green, marked part of the aerial
+ * with the goals on it, as opposed to the dry ground north of it. Read off
+ * the same photograph in the same normalised units.
+ */
+const SITE_MOWN = {
+  x0: -0.4375 * SITE_W,
+  x1: 0.4219 * SITE_W,
+  z0: SITE_SOUTH + 0.0469 * SITE_W,
+  z1: SITE_SOUTH + 0.6406 * SITE_W,
+};
+
+/*
+ * The car park, off the paddock's eastern corner and running north from the
+ * pavilion, where the aerial has it. Its SIZE is real, about 60 by 16 m for
+ * some twenty five bays, rather than the 190 m the paddock's scaling would
+ * have stretched it to. Structures keep their own size; only the ground is
+ * drawn large.
+ */
+const SITE_CARPARK = { x0: 132, x1: 148, z0: -50, z1: 10 };
+
+/* Distance from a point to one segment, for the boundary tests below. */
+function segDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const len = dx * dx + dz * dz;
+  let t = len > 0 ? ((px - ax) * dx + (pz - az) * dz) / len : 0;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+
+/*
+ * Signed distance to the paddock boundary: NEGATIVE INSIDE, metres outside.
+ * The same sign convention pitchEdge uses, so the two read alike.
+ */
+function siteEdge(x, z) {
+  let d = Infinity;
+  let inPoly = false;
+  /* The previous corner, written out rather than carried in a second loop
+   * variable. `for (let i = 0, j = n - 1; i < n; j = i += 1)` looks like the
+   * usual ray casting idiom and is not it: `j = i += 1` assigns the NEW i, so
+   * j equals i on every pass, every edge collapses to a point, and the whole
+   * polygon reports as a single degenerate segment. It cost a round: the
+   * ground came out uniformly dry because nothing was ever inside, and the
+   * treeline came out as one diagonal streak because the perimeter walk had
+   * one real edge to walk. */
+  for (let i = 0; i < SITE.length; i += 1) {
+    const a = SITE[i];
+    const b = SITE[(i + SITE.length - 1) % SITE.length];
+    d = Math.min(d, segDist(x, z, a.x, a.z, b.x, b.z));
+    if ((a.z > z) !== (b.z > z)
+      && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) {
+      inPoly = !inPoly;
+    }
+  }
+  return inPoly ? -d : d;
+}
+
+/* Inside the mown rectangle, which is where the grass is green. */
+function onMown(x, z) {
+  return x >= SITE_MOWN.x0 && x <= SITE_MOWN.x1 && z >= SITE_MOWN.z0 && z <= SITE_MOWN.z1;
+}
+
+/* Inside the car park, which nothing grows on. */
+function onCarPark(x, z) {
+  return x >= SITE_CARPARK.x0 - 3 && x <= SITE_CARPARK.x1 + 3
+    && z >= SITE_CARPARK.z0 - 3 && z <= SITE_CARPARK.z1 + 3;
+}
+
+/*
+ * THE FENCE.
+ *
+ * Waist high chain link on the paddock boundary, which is where both of the
+ * club's photographs put it: the ground level shot has the wire running dead
+ * straight across the far side of the field with the gums behind it, and the
+ * aerial has the same line closing the paddock off from the bush.
+ *
+ * 1.05 m of fabric on posts at 2.6 m centres, which is a real domestic chain
+ * link run. Waist high means a pilot can see over it from the pits and a quad
+ * has to be low to meet it, so it marks the ground without walling it in.
+ *
+ * THE FABRIC IS A TEXTURE WITH AN ALPHA TEST, not geometry and not a
+ * transparent band. Chain link is mostly holes: drawn as a solid translucent
+ * strip it reads as smoked glass, and drawn as real diamonds it is tens of
+ * thousands of triangles for a thing that is under a pixel wide most of the
+ * time a pilot sees it. An alpha tested map is one draw call, needs no
+ * sorting, and still has holes you can see the bush through when a quad is
+ * hovering a metre off it.
+ */
+const FENCE = {
+  height: 1.05,
+  postH: 1.16,
+  postR: 0.028,
+  postStep: 2.6,
+  /* How far outside the boundary line the fence stands, so it reads as the
+   * paddock's edge rather than as a line drawn on the grass. */
+  out: 0.6,
+};
+
+/*
+ * The fabric, painted once. A diamond mesh: two sets of diagonal wires,
+ * opaque where the wire is and clear everywhere else.
+ *
+ * The canvas is one tile 64 px square and the material repeats it, so the
+ * whole kilometre of fence carries 16 kB of texture rather than a bitmap of
+ * the run. RepeatWrapping in x only, because the fabric is one panel tall.
+ */
+function chainLinkTexture() {
+  const N = 64;
+  const cv = bannerCanvas(N, N);
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, N, N);
+  ctx.strokeStyle = '#c9ced6';
+  ctx.lineWidth = 3.0;
+  ctx.lineCap = 'square';
+  /* Two diagonals, wrapped, so the tile joins itself on every edge. */
+  for (let k = -1; k <= 1; k += 1) {
+    ctx.beginPath();
+    ctx.moveTo(k * N, 0);
+    ctx.lineTo(k * N + N, N);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(k * N, N);
+    ctx.lineTo(k * N + N, 0);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/*
+ * The fence, as one group: a post soup and a fabric strip, both following the
+ * paddock's own boundary so the two cannot drift apart.
+ *
+ * Returns the group and the capsule runs the collider list needs. The fabric
+ * is DOUBLE SIDED because a fence is seen from both sides and a pilot outside
+ * the ground looking back in is a normal thing to be.
+ */
+function siteFence(height, postMat, meshMat) {
+  const g = new THREE.Group();
+  const runs = [];
+  const posts = [];
+  /*
+   * How much fence one tile of the fabric covers. Two diamonds to a tile, so
+   * 0.30 m is a 150 mm mesh: coarser than the 60 mm a real domestic run uses,
+   * because at 60 mm the diamonds are under a pixel from anywhere but a
+   * hover and the fence turns into a grey haze that shimmers as the quad
+   * moves. Drawn at 0.72 first, which read as decorative lattice rather than
+   * as wire.
+   */
+  const TILE = 0.30;
+
+  for (let i = 0; i < SITE.length; i += 1) {
+    const a = SITE[i];
+    const b = SITE[(i + SITE.length - 1) % SITE.length];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) {
+      continue;
+    }
+    const ux = dx / len;
+    const uz = dz / len;
+    /* Outward, so the line stands just off the boundary. */
+    let nx = -uz;
+    let nz = ux;
+    if (siteEdge(a.x + ux * len * 0.5 + nx * 2, a.z + uz * len * 0.5 + nz * 2) < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    const ax = a.x + nx * FENCE.out;
+    const az = a.z + nz * FENCE.out;
+
+    /* The fabric, one quad for the whole run, with the map repeating along
+     * it so a 300 m side is not a stretched smear. */
+    const y0 = height(ax, az);
+    const y1 = height(ax + ux * len, az + uz * len);
+    const geo = new THREE.BufferGeometry();
+    const bx = ax + ux * len;
+    const bz = az + uz * len;
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+      ax, y0, az, bx, y1, bz, bx, y1 + FENCE.height, bz,
+      ax, y0, az, bx, y1 + FENCE.height, bz, ax, y0 + FENCE.height, az,
+    ]), 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([
+      nx, 0, nz, nx, 0, nz, nx, 0, nz,
+      nx, 0, nz, nx, 0, nz, nx, 0, nz,
+    ]), 3));
+    const reps = Math.max(1, Math.round(len / TILE));
+    geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+      0, 0, reps, 0, reps, 1,
+      0, 0, reps, 1, 0, 1,
+    ]), 2));
+    g.add(new THREE.Mesh(geo, meshMat));
+
+    /* Posts, and a collider run every 20 m so the fence is solid without
+     * putting four hundred capsules in the broadphase. */
+    const n = Math.max(1, Math.round(len / FENCE.postStep));
+    for (let k = 0; k <= n; k += 1) {
+      const t = (k / n) * len;
+      posts.push({ x: ax + ux * t, z: az + uz * t });
+    }
+    const chunks = Math.max(1, Math.round(len / 20));
+    for (let k = 0; k < chunks; k += 1) {
+      const t0 = (k / chunks) * len;
+      const t1 = ((k + 1) / chunks) * len;
+      runs.push({
+        ax: ax + ux * t0,
+        az: az + uz * t0,
+        bx: ax + ux * t1,
+        bz: az + uz * t1,
+      });
+    }
+  }
+
+  for (const p of posts) {
+    const y = height(p.x, p.z);
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(FENCE.postR * 2, FENCE.postH, FENCE.postR * 2),
+      postMat,
+    );
+    post.position.set(p.x, y + FENCE.postH * 0.5, p.z);
+    g.add(post);
+  }
+  return { group: g, runs, posts: posts.length };
+}
 
 /*
  * THE PITCH: the mown, marked, level ground a designed course stands on.
@@ -535,6 +812,25 @@ function makeHeightField(samples, pitch, pad) {
     const s2 = flat * flat * (3 - 2 * flat);
     let h = (base + detail) * s2;
 
+    /*
+     * THE PADDOCK IS LEVEL, because a club's flying ground is a paddock that
+     * somebody graded and mows, not a hillside. The aerial shows it flat to
+     * the fence on every side and the ground view confirms it: the far fence
+     * line runs dead straight across the shot.
+     *
+     * Levelled to the same datum as the racing corridor, so no gate moves,
+     * and faded over 40 m outside the boundary so the bush beyond it rises
+     * away rather than ending on a cut line. 40 rather than the pitch's 5
+     * because this edge is bare ground carrying a treeline, not a painted
+     * surface laid over the join: the terrain is 7.4 m a vertex, so a fade
+     * shorter than about five of them cannot draw a bank at all.
+     */
+    {
+      const cover = Math.min(1, Math.max(0, 1 - siteEdge(x, z) / 40));
+      const smooth = cover * cover * (3 - 2 * cover);
+      h *= (1 - smooth);
+    }
+
     /* The pitch is level. Not nearly level: a course author drew a plan on
      * flat paper and set base heights against it, so a rolling metre under a
      * gate would put their dive gate through the ground. */
@@ -559,63 +855,6 @@ function makeHeightField(samples, pitch, pad) {
       h *= (1 - smooth);
     }
 
-    /*
-     * Carve the lake basin: a smooth bowl, deepest at the centre, with a
-     * LOBED depth profile.
-     *
-     * The bowl used to be a pure function of distance from the lake centre,
-     * and the consequence only became visible once the water shader was
-     * rewritten to derive its shoreline from real depth instead of from the
-     * mesh radius: the shoreline came out a perfect ellipse anyway. The
-     * shader was right and the LAND was the circle. A radial bowl has a
-     * radial water line by construction, so no amount of work in the shader
-     * can produce a bay.
-     *
-     * So perturb the depth profile with the same value noise the terrain
-     * uses, at a 118 m feature size, offset off the detail noise's own
-     * coordinates so the two do not correlate. The perturbation is weighted
-     * by k(1-k)*4, which peaks at k = 0.5 and vanishes at both ends: zero at
-     * the bowl's outer rim so the basin still joins the meadow smoothly, and
-     * zero at the very centre so the deepest point stays put. The water line
-     * sits at bowl = 0.577 for a meadow at 0 and a level of -7.5, which is
-     * k = 0.6, right where the weighting is strongest.
-     */
-    const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
-    if (ld < LAKE.r * 1.35) {
-      const k = 1 - Math.min(1, ld / (LAKE.r * 1.35));
-      const lobe = (fbm(x * 0.0085 + 11.3, z * 0.0085 - 7.1) - 0.5) * 0.18;
-      const bowl = Math.max(0, Math.min(1, k * k * (3 - 2 * k) + lobe * k * (1 - k) * 4));
-      h = h * (1 - bowl) + (LAKE.level - 5.5) * bowl;
-    }
-    /*
-     * The bank, and it is the difference between a lake and a disc of blue
-     * paint.
-     *
-     * Measured before this existed: the natural terrain around the lake is a
-     * broad hollow at a mean of -12.3 m, so a water plane at -7.5 was 4.8 m
-     * ABOVE the surrounding ground and the real intersection of plane and
-     * terrain was 149 to 208 m out, in the 33 of 360 radial directions where
-     * there was an intersection at all. The other 327 directions never came
-     * back above the water line inside 220 m. The old water disc stopped at
-     * 119 m over ground that was still 6.7 m under water, and a bright ring
-     * of foam painted at the mesh edge is what hid that. Nothing about the
-     * old shoreline was a shoreline.
-     *
-     * So the basin gets a rim: an additive bank, peaking between the bowl and
-     * 1.6 lake radii, with its amplitude modulated by the same value noise
-     * the terrain uses so the crossing wanders. Additive rather than a blend
-     * toward a profile, because the ground here is 4 to 8 m under the water
-     * line and only a lift can guarantee it comes back out: measured, the
-     * water line now closes in 720 of 720 radial directions at 105.8 to
-     * 119.3 m, a 13.5 m spread, and the top of the bank reaches -0.60 m,
-     * which keeps it below the flat racing corridor at 0.
-     */
-    const u = ld / LAKE.r;
-    if (u > 1.0 && u < 1.6) {
-      const t = (u - 1.0) / 0.6;
-      const amp = 9 * (0.7 + 0.6 * fbm(x * 0.02, z * 0.02));
-      h += amp * 16 * t * t * (1 - t) * (1 - t);
-    }
     return h;
   };
 }
@@ -634,7 +873,15 @@ const GROUND = {
   patchWarm: new THREE.Color(0x7fa84a),
   patchDark: new THREE.Color(0x3f7a3a),
   earth: new THREE.Color(0x9c8f6e),
-  sand: new THREE.Color(0xd8cfa8),
+  /*
+   * The two zones the club's own photographs show, and the reason the ground
+   * is not one green any more. Inside the marked rectangle it is watered and
+   * mown; north of it, out to the fence, it is the straw the ground level
+   * shot is full of; past the fence it is the bush floor, dry sand under the
+   * gums with leaf litter on it.
+   */
+  strawDry: new THREE.Color(0xb8a878),
+  bushFloor: new THREE.Color(0x9c8a63),
 };
 function groundAlbedo(x, z, y, samples, c, pitch) {
   /* Colour by altitude, then three scales of variation: large patches
@@ -664,6 +911,46 @@ function groundAlbedo(x, z, y, samples, c, pitch) {
   const mown = pitchCover(pitch, x, z);
   c.lerp(GROUND.earth, onPath * 0.42 * (0.7 + speck * 0.6) * (1 - mown));
 
+  /*
+   * THE CLUB GROUND'S THREE ZONES, laid over the terrain's own colour.
+   *
+   * Read straight off the two photographs the owner sent. The aerial has a
+   * green, marked rectangle in the southern half of the paddock and dry
+   * ground north of it; the shot from the ground has the same straw running
+   * from the mown edge to the fence, then bush floor under the gums. Blended
+   * rather than stepped, because a mower leaves an edge and a season leaves
+   * a gradient, and the terrain is 7.4 m a vertex so a hard step would be a
+   * staircase anyway.
+   */
+  {
+    const edge = siteEdge(x, z);
+    /*
+     * Out past the fence: the bush floor, but only as a BAND at the edge.
+     *
+     * It rises over the first 30 m and is gone again by 140, because that
+     * litter and sand is what you see under the front row of gums where the
+     * light still reaches. Further out the canopy closes and what the eye
+     * gets is the terrain's own green, which is what the aerial shows: dark
+     * green bush to every edge of the frame. Carrying the dry colour all the
+     * way out turned the whole 1700 m plane tan and made the world a desert
+     * with a paddock in it.
+     */
+    if (edge > -6) {
+      const rise = Math.min(1, Math.max(0, (edge + 6) / 30));
+      const fall = Math.min(1, Math.max(0, (140 - edge) / 90));
+      c.lerp(GROUND.bushFloor, rise * fall * 0.70);
+    }
+    /* Inside the fence but outside the mown rectangle: straw. The margin is
+     * how far the green fades out past the mown edge. */
+    if (edge < 4) {
+      const dx = Math.max(SITE_MOWN.x0 - x, x - SITE_MOWN.x1);
+      const dz = Math.max(SITE_MOWN.z0 - z, z - SITE_MOWN.z1);
+      const outMown = Math.max(dx, dz);
+      const dry = Math.min(1, Math.max(0, outMown / 22));
+      c.lerp(GROUND.strawDry, dry * 0.66 * Math.min(1, Math.max(0, (4 - edge) / 8)));
+    }
+  }
+
   if (mown > 0) {
     /*
      * Stripes across the short axis, so they run the length of the pitch the
@@ -682,11 +969,6 @@ function groundAlbedo(x, z, y, samples, c, pitch) {
     if (inside && onLine <= PITCH.lineW) {
       c.lerp(PITCH.line, 0.9 * mown);
     }
-  }
-  const ld = Math.hypot(x - LAKE.x, z - LAKE.z);
-  const shore = 1 - Math.min(1, Math.abs(y - LAKE.level) / 3.5);
-  if (ld < LAKE.r * 1.5 && shore > 0) {
-    c.lerp(GROUND.sand, shore * 0.8);
   }
   return c;
 }
@@ -730,376 +1012,6 @@ function terrain(height, samples, pitch) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
-}
-
-/*
- * The lake.
- *
- * What was here before, and what each part of it was actually doing, because
- * every one of these was measured off a capture rather than guessed:
- *
- *  - Depth was `1.0 - length(vLocal) / uRadius`, which is distance from the
- *    disc centre. So the "shallow" band was a ring painted at a fixed radius
- *    and the "deep" water was a bullseye in the middle, and neither had any
- *    relation to the ground under the water. In the oblique capture it read
- *    as three concentric rings of flat colour.
- *  - Foam was `smoothstep(0.9, 1.0, r)`, a 12 m wide ring of near white at
- *    the mesh edge. It was not a shoreline. It was there to hide the fact
- *    that the mesh ended over ground still 6.7 m below the water line.
- *  - Crests were `step(0.82, sin(x) * sin(z))`, a product of two low
- *    frequency sines thresholded hard, which is a grid of white polka dots.
- *    They were the loudest thing in the lake.
- *  - No sun term of any kind: no diffuse, no specular, no sky reflection. A
- *    water surface with no reflection has no orientation and no scale, which
- *    is why the lake read as a flat cyan hole in the ground.
- *  - Trees and rocks stood in it, because nothing skipped them.
- *
- * What it is now: one water plane at LAKE.level, and everything about it
- * derived from real depth, `LAKE.level - height(x, z)`, sampled per vertex.
- * The shoreline is where that depth reaches zero, so it follows the bank the
- * height field builds, and the depth test against the terrain trims the
- * silhouette exactly. Sky reflection comes from the shared celSkyColor, so
- * the reflection cannot disagree with the sky above it.
- */
-function water(height) {
-  /*
-   * A radial grid, not a CircleGeometry, because every vertex has to carry
-   * the depth of the ground beneath it and one ring of 72 vertices cannot
-   * describe a shoreline. Rings are packed toward the outside, r = R (1 -
-   * (1 - t)^1.7), because that is where the shallow band and the foam are
-   * and the middle of a lake is 6 m of flat colour.
-   *
-   * 48 by 160 is 7,681 vertices and 15,200 triangles: 92 KB of position and
-   * 31 KB of depth against a 48 MB attribute budget, and about 0.8 percent
-   * of a frame's triangles. The radial step at the shore is 0.4 m and the
-   * arc step is 4.5 m, so the foam band, which is 0.85 m of depth over a
-   * bank of about 1 in 6, is resolved several times over.
-   */
-  const R = LAKE.r * 1.35;
-  const RINGS = 48;
-  const SECTORS = 160;
-  const vcount = 1 + RINGS * SECTORS;
-  const pos = new Float32Array(vcount * 3);
-  const dep = new Float32Array(vcount);
-  const idx = new Uint16Array((SECTORS + (RINGS - 1) * SECTORS * 2) * 3);
-  const depthAt = (lx, lz) => LAKE.level - height(LAKE.x + lx, LAKE.z + lz);
-  pos[0] = 0;
-  pos[1] = 0;
-  pos[2] = 0;
-  dep[0] = depthAt(0, 0);
-  for (let ring = 1; ring <= RINGS; ring += 1) {
-    const t = ring / RINGS;
-    const r = R * (1 - (1 - t) ** 1.7);
-    for (let sct = 0; sct < SECTORS; sct += 1) {
-      const a = (sct / SECTORS) * Math.PI * 2;
-      const vi = ((ring - 1) * SECTORS + sct + 1) * 3;
-      const lx = Math.cos(a) * r;
-      const lz = Math.sin(a) * r;
-      pos[vi] = lx;
-      pos[vi + 1] = 0;
-      pos[vi + 2] = lz;
-      dep[vi / 3] = depthAt(lx, lz);
-    }
-  }
-  /*
-   * Winding, and it cost a capture to find. Looking down the +y axis in this
-   * right handed frame, x runs right and z runs toward the viewer, so a
-   * vertex at angle a of (cos a, sin a) in (x, z) sweeps CLOCKWISE on screen
-   * as a increases. Emitting triangles in increasing a therefore makes every
-   * one of them back facing, and the material is FrontSide, so the lake was
-   * drawn, twice per frame, and culled entirely: 15,200 triangles submitted,
-   * two draw calls, and not one fragment. A forced opaque red output was
-   * still invisible, which is what pointed at the rasteriser rather than at
-   * the shader. So each face is emitted the other way round.
-   */
-  let ii = 0;
-  for (let sct = 0; sct < SECTORS; sct += 1) {
-    idx[ii++] = 0;
-    idx[ii++] = 1 + ((sct + 1) % SECTORS);
-    idx[ii++] = 1 + sct;
-  }
-  for (let ring = 1; ring < RINGS; ring += 1) {
-    for (let sct = 0; sct < SECTORS; sct += 1) {
-      const a0 = 1 + (ring - 1) * SECTORS + sct;
-      const a1 = 1 + (ring - 1) * SECTORS + ((sct + 1) % SECTORS);
-      const b0 = a0 + SECTORS;
-      const b1 = a1 + SECTORS;
-      idx[ii++] = a0; idx[ii++] = b1; idx[ii++] = b0;
-      idx[ii++] = a0; idx[ii++] = a1; idx[ii++] = b1;
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('aDepth', new THREE.BufferAttribute(dep, 1));
-  geo.setIndex(new THREE.BufferAttribute(idx, 1));
-  geo.computeBoundingSphere();
-  const mat = new THREE.ShaderMaterial({
-    transparent: true,
-    uniforms: {
-      uTime: { value: 0 },
-      /* Shallow is a warm green cyan and deep is a cold blue, and both are
-       * darker than the old pair: measured, the old shallow 0x63c6c9 is
-       * 0.480 linear luminance, which put the flat body of the lake in the
-       * same value band as the four mountain ridge rings at 0.250 to 0.430
-       * and above the terrain's far edge at 0.192. Water that reads brighter
-       * than the hills behind it is a hole in the composition. */
-      uShallow: { value: new THREE.Color(0x3f9e9a) },
-      uDeep: { value: new THREE.Color(0x14456b) },
-      uFoam: { value: new THREE.Color(0xdff0f4) },
-      uSpec: { value: new THREE.Color(0xfff4d8) },
-      uSun: { value: SUN_DIR.clone() },
-      uSkyHigh: { value: new THREE.Color(SKY_HIGH) },
-      uSkyHorizon: { value: new THREE.Color(HORIZON) },
-      uFogColor: { value: new THREE.Color(HORIZON) },
-      uFogNear: { value: FOG_NEAR },
-      uFogFar: { value: FOG_FAR },
-    },
-    vertexShader: /* glsl */ `
-      attribute float aDepth;
-      varying float vDepth;
-      varying vec3 vWorld;
-      varying float vFog;
-      uniform float uTime;
-      void main() {
-        vDepth = aDepth;
-        vec3 p = position;
-        /* The surface itself heaves a little, and only where there is water
-         * under it: a swell that lifts the shoreline vertices would push the
-         * plane up through the beach. */
-        float wet = clamp(aDepth * 1.5, 0.0, 1.0);
-        p.y += (sin(p.x * 0.12 + uTime * 1.3) * 0.05 + sin(p.z * 0.17 - uTime * 0.9) * 0.04) * wet;
-        vec4 world = modelMatrix * vec4(p, 1.0);
-        vWorld = world.xyz;
-        vec4 mv = viewMatrix * world;
-        vFog = -mv.z;
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      ${SKY_GLSL}
-      ${CLOUD_SHADOW_GLSL}
-      varying float vDepth;
-      varying vec3 vWorld;
-      varying float vFog;
-      uniform float uTime;
-      uniform vec3 uShallow;
-      uniform vec3 uDeep;
-      uniform vec3 uFoam;
-      uniform vec3 uSpec;
-      uniform vec3 uSun;
-      uniform vec3 uSkyHigh;
-      uniform vec3 uSkyHorizon;
-      uniform vec3 uFogColor;
-      uniform float uFogNear;
-      uniform float uFogFar;
-      void main() {
-        /* Dry ground. The depth test against the terrain already trims the
-         * silhouette to the exact intersection, so this is belt and braces
-         * for the shallow slope near the water line, where a plane and a
-         * bank at 1 in 6 would otherwise fight over the same depth values. */
-        if (vDepth <= 0.0) {
-          discard;
-        }
-        vec2 P = vWorld.xz;
-        /*
-         * Three wave trains, and each one is faded out by its OWN screen
-         * space derivative. fwidth of a phase is radians per pixel, so once
-         * a train turns over more than about a radian inside one pixel it is
-         * past Nyquist and all it can do is alias: at 300 m the old crest
-         * pattern was a field of crawling dots two pixels across. Fading a
-         * train instead of clamping the whole surface keeps the long swell
-         * visible at distance while the chop goes away.
-         */
-        /*
-         * The phases are jittered by a slow noise field, and that is not
-         * decoration. Three pure sine trains are strictly periodic, so any
-         * threshold or any narrow lobe laid over them repeats on their
-         * lattice: measured, that came out first as a grid of pale dots and
-         * then, once the crest was a line, as a net of pale lanes across the
-         * whole lake, which read as a tiled swimming pool. Jittering the
-         * phase by about a radian over 50 m breaks the lattice while leaving
-         * the wave directions and speeds intact.
-         */
-        float jit = celNoise(P * 0.02 + vec2(uTime * 0.03, 0.0)) * 2.0 - 1.0;
-        float a1 = dot(P, vec2(0.31, 0.21)) + uTime * 1.10 + jit * 1.6;
-        float a2 = dot(P, vec2(-0.17, 0.28)) - uTime * 0.85 + jit * 2.1;
-        float a3 = dot(P, vec2(0.90, -0.70)) + uTime * 2.30 - jit * 2.6;
-        float k1 = 1.0 - smoothstep(0.7, 2.2, fwidth(a1));
-        float k2 = 1.0 - smoothstep(0.7, 2.2, fwidth(a2));
-        float k3 = 1.0 - smoothstep(0.7, 2.2, fwidth(a3));
-        /* Analytic normal of the sum of the three trains. No finite
-         * differences: the derivative of a sine is known, and a difference
-         * of a fwidth apart is exactly the thing that aliases. */
-        float dHdx = 0.055 * cos(a1) * 0.31 * k1
-                   + 0.045 * cos(a2) * -0.17 * k2
-                   + 0.016 * cos(a3) * 0.90 * k3;
-        float dHdz = 0.055 * cos(a1) * 0.21 * k1
-                   + 0.045 * cos(a2) * 0.28 * k2
-                   + 0.016 * cos(a3) * -0.70 * k3;
-        /* Shallow water is calmer, and the surface goes flat as it dries. */
-        float wet = clamp(vDepth * 0.8, 0.0, 1.0);
-        /* The slope multiplier was 12.0 in the first capture, which is a
-         * 25 degree surface tilt at the steepest part of the wave: from the
-         * water's own level that read as an ocean swell in a mountain tarn,
-         * and it drove the tight specular into a regular grid of dots
-         * because a narrow lobe on a periodic surface can only fire where
-         * the period puts it. 4.5 is about 9 degrees.
-         *
-         * 4.5 is still too much, and it is not an aliasing problem: from
-         * 150 m the three trains run about 105 px per wave, so fwidth is
-         * 0.06 rad per pixel and k1 to k3 sit at 1.0, doing nothing. The
-         * pattern in the frame IS the swell at its true scale, and at 9
-         * degrees of tilt two crossing trains modulate the fresnel term hard
-         * enough that a high oblique view reads as corduroy rather than
-         * water. 2.4 is about 5 degrees, which is what a sheltered tarn
-         * actually does. */
-        vec3 n = normalize(vec3(-dHdx * 2.4 * wet, 1.0, -dHdz * 2.4 * wet));
-        vec3 V = normalize(cameraPosition - vWorld);
-        vec3 L = normalize(uSun);
-
-        /*
-         * Body colour from REAL depth. Part posterised, part smooth, the
-         * same compromise the sky dome makes: a fully banded ramp reads as
-         * contour lines on a map, and a fully smooth one loses the painted
-         * look the rest of the world is drawn in. Because depth is now the
-         * water column and not the distance from a disc centre, the bands
-         * ARE bathymetry and they follow the shore all the way round.
-         */
-        float t = clamp(vDepth / 4.0, 0.0, 1.0);
-        float band = floor(t * 5.0) / 5.0;
-        vec3 body = mix(uShallow, uDeep, mix(t, band, 0.45));
-        /* A sun term on the body itself, so the lake is lit by the same sun
-         * as the meadow around it rather than being self luminous. */
-        body *= 0.80 + 0.20 * max(dot(n, L), 0.0);
-
-        /*
-         * Fresnel weighted sky reflection, from the shared sky function, so
-         * the water reflects THE sky and not a second one. Weight capped
-         * well below the physical 1.0 at grazing angles: the horizon band of
-         * this sky is 0.888 linear, and letting the far water reach it puts
-         * a sky bright strip across the middle of the frame right where the
-         * mountain ridge ladder lives, which the ladder cannot survive.
-         */
-        vec3 R = reflect(-V, n);
-        R.y = abs(R.y);
-        vec3 sky = celSkyColor(R, uSun, uSkyHorizon, uSkyHigh);
-        float fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
-        vec3 col = mix(body, sky, min(fres, 0.42) * 0.92);
-
-        /* Specular. Blinn, tight, and multiplied by the wave attenuation so
-         * a distant surface does not sparkle at one pixel per frame. */
-        /* Blinn, and deliberately BROAD: exponent 110 with this ripple
-          * field measured as a grid of round pale dots the same spacing as
-          * the waves, which is the same defect the old crest term had by a
-          * different route. 45 spreads the highlight into a glitter path. */
-        float spec = pow(max(dot(n, normalize(L + V)), 0.0), 28.0);
-        col += uSpec * spec * 0.24 * max(k1 * k3, 0.0);
-
-        /* Crest lines along the swell, not the old product of two sines,
-         * which put a dot wherever both happened to peak. */
-        /*
-         * Crest LINES, from one wave train, amplitude modulated by another.
-         * The original was step(0.82, sin(x) * sin(z)) and the first rewrite
-         * was smoothstep on sin(a1) * 0.62 + sin(a3) * 0.38, and both are the
-         * same mistake: a threshold on a combination of two trains only fires
-         * where both peak, which is a lattice of dots and not a crest. Both
-         * captures came out as regular pale polka dots over the whole lake.
-         * A threshold on ONE phase is a line along that swell.
-         *
-         * Then the strength: 0.07 of foam white over a body at about 0.15
-         * linear is a third brighter than the water, and from 60 m up that
-         * read as pale lanes ruled across the lake with the a3 modulation
-         * dashing them into a net. 0.035 at a higher threshold puts light on
-         * the top of the swell only, which is all a lake does at 150 m.
-         */
-        float crest = smoothstep(0.94, 0.999, sin(a1)) * (0.55 + 0.45 * sin(a3));
-        col += uFoam * crest * 0.035 * k1 * wet;
-
-        /*
-         * Foam where the water column runs out, which is now a real
-         * shoreline rather than a ring at the mesh edge. The threshold
-         * breathes with the swell so the line is not a contour, and the band
-         * is 0.55 m of depth, about 3 m of beach on this bank. The mix was
-         * 0.88 of the way to foam white and is 0.55: at 0.88 the lake had a
-         * white rope round it, which is what the old radius foam looked like
-         * and the whole point was to stop looking like that.
-         */
-        float shore = 1.0 - smoothstep(0.0, 0.55, vDepth);
-        float foam = smoothstep(0.34, 0.95, shore + 0.10 * sin(a1 * 1.7) * k1);
-        col = mix(col, uFoam, foam * 0.55);
-
-        float f = clamp((vFog - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
-        col = mix(col, uFogColor, f);
-        /*
-         * The renderer runs with NoToneMapping, so anything over 1.0 clips
-         * flat and an aliased white hole is exactly what the round 13 sun
-         * fix was about. The highlight is capped below full white instead.
-         */
-        col = min(col, vec3(0.96));
-        /* Shallow water is see through, deep water is not, which is what
-         * puts the sand of the bank under the edge of the lake instead of a
-         * painted band. */
-        float alpha = mix(0.58, 0.95, clamp(vDepth / 2.2, 0.0, 1.0));
-        gl_FragColor = vec4(col, max(alpha, foam * 0.94));
-      }
-    `,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(LAKE.x, LAKE.level, LAKE.z);
-  /* No ink outline on water: an edge pass on a flat plane draws a hard
-   * line round the whole lake and it stops reading as a surface. */
-  mesh.layers.set(1);
-  return { mesh, mat };
-}
-
-/*
- * Cliff spires. The valley needs vertical landmarks: something to judge
- * altitude and distance against, and something to break the horizon so
- * the eye has a focal point other than the gates.
- */
-function cliff(rng, height, x, z, caps) {
-  const g = new THREE.Group();
-  const tierCaps = [];
-  const tiers = 2 + Math.floor(rng() * 3);
-  let y = 0;
-  let r = 7 + rng() * 9;
-  for (let i = 0; i < tiers; i += 1) {
-    const h = 9 + rng() * 15;
-    const m = new THREE.Mesh(
-      new THREE.CylinderGeometry(r * 0.72, r, h, 6 + Math.floor(rng() * 3), 1),
-      celMaterial({ color: i % 2 ? 0x8f8a7c : 0x9a9487, rim: 0.24, cloudShadow: 0.3 }),
-    );
-    m.position.y = y + h / 2;
-    m.rotation.y = rng() * 3;
-    m.castShadow = true;
-    m.receiveShadow = true;
-    outlineHull(m, 1.03);
-    g.add(m);
-    if (caps) {
-      /* Collected in the cliff's own frame and pushed once the base height
-       * is known, a few lines below. */
-      tierCaps.push(y, y + h, r);
-    }
-    y += h * 0.92;
-    r *= 0.74;
-  }
-  /* Grass cap so it does not look like bare geology dropped in a field. */
-  const cap = new THREE.Mesh(
-    new THREE.CylinderGeometry(r * 0.78, r * 0.95, 1.6, 7),
-    celMaterial({ color: 0x5fa348, rim: 0.3, cloudShadow: 0.3 }),
-  );
-  cap.position.y = y + 0.8;
-  cap.castShadow = true;
-  outlineHull(cap, 1.04);
-  g.add(cap);
-  const base = height(x, z) - 1;
-  g.position.set(x, base, z);
-  if (caps) {
-    for (let i = 0; i < tierCaps.length; i += 3) {
-      caps.addPost('cliff', x, z, base + tierCaps[i], base + tierCaps[i + 1], tierCaps[i + 2]);
-    }
-  }
-  return g;
 }
 
 /*
@@ -1168,9 +1080,24 @@ function grassField(samples, rng, pitch) {
  * extra rng() value: the whole world hangs off one stream in one order, so
  * an extra draw would move every tree, flower and mountain in the valley.
  */
-function tree(rng, height, x, z, caps) {
+/*
+ * `bigness` multiplies the drawn size. It is 1 for anything scattered and
+ * about 2 for the boundary, because the trees in the club's own ground level
+ * photograph are a wall of mature gums 12 to 18 m tall and this tree at its
+ * own scale tops out near 11. Height is free: it is the same geometry with a
+ * bigger number in front of it, and a taller tree closes the gaps along a
+ * treeline that adding more trunks would have to pay triangles for.
+ */
+/*
+ * `hull` draws the heavy inked outline. It is worth its cost on anything a
+ * pilot flies near and it is pure waste on the background: an inverted hull
+ * DOUBLES a tree's geometry, and a tree three hundred metres away is a
+ * silhouette the post pass already inks from depth. Off for the far scatter
+ * and the horizon, which is where most of the trees are.
+ */
+function tree(rng, height, x, z, caps, bigness = 1, hull = true) {
   const g = new THREE.Group();
-  const scale = 0.85 + rng() * 1.5;
+  const scale = (0.85 + rng() * 1.5) * bigness;
   const trunkH = (1.5 + rng() * 1.3) * scale;
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.13 * scale, 0.24 * scale, trunkH, 6),
@@ -1178,7 +1105,9 @@ function tree(rng, height, x, z, caps) {
   );
   trunk.position.y = trunkH / 2;
   trunk.castShadow = true;
-  outlineHull(trunk, 1.1);
+  if (hull) {
+    outlineHull(trunk, 1.1);
+  }
   g.add(trunk);
 
   /* Rounded, slightly irregular canopy masses rather than cones: the
@@ -1208,7 +1137,9 @@ function tree(rng, height, x, z, caps) {
     );
     blob.rotation.set(rng() * 3, rng() * 3, rng() * 3);
     blob.castShadow = true;
-    outlineHull(blob, 1.055);
+    if (hull) {
+      outlineHull(blob, 1.055);
+    }
     g.add(blob);
   }
   const gy = height(x, z);
@@ -3160,8 +3091,6 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     scene.add(pitchSurface(pitch, course && course.guide));
   }
   const occluders = [];
-  const water0 = water(height);
-  scene.add(water0.mesh);
   /* Walks the world rng so the valley does not move. No mesh. */
   const grass = grassField(samples, rng, pitch);
   const noInkBaker = makeBaker();
@@ -3602,80 +3531,172 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     return d < 15;
   }
 
-  /* Scenery, kept clear of the flight corridor. Baked, not added: the
-   * generation order and rng stream are unchanged, so the world is the
-   * same one, just drawn in a handful of calls. */
-  for (let i = 0; i < 420; i += 1) {
-    const a = rng() * Math.PI * 2;
-    const rad = 30 + rng() * 640;
-    const x = Math.cos(a) * rad;
-    const z = Math.sin(a) * rad;
-    if (onTheCourse(x, z)) {
-      continue;
+  /*
+   * THE TREELINE.
+   *
+   * This used to be 420 objects thrown at a disc between 30 and 670 m of the
+   * origin, which is an even scatter and reads as parkland: trees in ones and
+   * twos, standing on the course, with sky between them. The club's ground is
+   * not that and neither photograph allows it. The paddock is EMPTY, right
+   * out to the fence, and the bush starts at the fence as a wall. The ground
+   * level shot is the whole argument: a solid ragged band of gums across the
+   * far side with nothing in front of it but straw.
+   *
+   * So the same budget of objects is spent along the boundary rather than
+   * over the whole valley. Each one takes a random position along the
+   * perimeter and a random distance out from it, biased hard toward the edge
+   * so the band is dense where it meets the paddock and thins into the
+   * distance, which is what a bush edge does: the trees that get the light
+   * are the ones on the front row.
+   *
+   * COUNT IS UNCHANGED AT 420. Density here is not more trees, it is the same
+   * trees in a band about a fortieth of the area, so the field's triangle and
+   * draw budget barely moves and the frame stays where it was.
+   */
+  const SITE_PERIM = [];
+  {
+    let total = 0;
+    for (let i = 0; i < SITE.length; i += 1) {
+      const a = SITE[i];
+      const b = SITE[(i + SITE.length - 1) % SITE.length];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      SITE_PERIM.push({ a, b, len, at: total });
+      total += len;
     }
-    const isTree = rng() < 0.74;
+    SITE_PERIM.total = total;
+  }
+  /* A point that far along the boundary, and the outward normal there. */
+  function perimAt(u) {
+    const want = u * SITE_PERIM.total;
+    let seg = SITE_PERIM[SITE_PERIM.length - 1];
+    for (const s of SITE_PERIM) {
+      if (want >= s.at && want < s.at + s.len) {
+        seg = s;
+        break;
+      }
+    }
+    const t = seg.len > 0 ? (want - seg.at) / seg.len : 0;
+    const px = seg.a.x + (seg.b.x - seg.a.x) * t;
+    const pz = seg.a.z + (seg.b.z - seg.a.z) * t;
+    /* Outward is whichever side of the edge is not the paddock. */
+    let nx = -(seg.b.z - seg.a.z) / (seg.len || 1);
+    let nz = (seg.b.x - seg.a.x) / (seg.len || 1);
+    if (siteEdge(px + nx * 2, pz + nz * 2) < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    return { px, pz, nx, nz };
+  }
+
+  for (let i = 0; i < 420; i += 1) {
+    const u = rng();
+    const along = rng();
+    const outRoll = rng();
+    const p = perimAt(u);
     /*
-     * Nothing grows under water. The test is the water column at this point,
-     * height() against LAKE.level, INSIDE the lake basin: the shoreline the
-     * bank builds runs from 105.8 to 119.3 m, so a circle at LAKE.r, 96 m,
-     * would leave a rank of trees standing in 4 m of lake, and the depth test
-     * on its own is far too greedy. Measured with a probe on the height
-     * field, 77.9 percent of the valley between 30 and 670 m of the origin
-     * sits below LAKE.level, because the racing corridor is flattened to 0
-     * and the land around it is a broad hollow. The first version of this
-     * test used depth alone and deleted 78 percent of the trees, rocks and
-     * cliffs in the world: P10 fell to 26.2 MB and the draw count to 64,
-     * which is how it was caught. The 0.4 m margin keeps them off the wet
-     * sand as well.
-     *
-     * It is a DISCARD, not a skip. The object is built first, from the same
-     * draws in the same order, and then thrown away, because this loop and
-     * everything after it hangs off one rng stream: skipping the draws would
-     * move every remaining tree, rock, cliff, flower and mountain in the
-     * valley. Same reason the grass keeps building a vertex it does not use.
+     * How far out from the fence. Cubed, so most of them are in the first
+     * few metres and the tail reaches back into the scrub. Two metres inside
+     * the line to start, because the gums in both photographs lean over the
+     * fence rather than standing politely behind it.
      */
-    const drowned = Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.6
-      && height(x, z) < LAKE.level + 0.4;
+    const out = -2 + 150 * outRoll * outRoll * outRoll;
+    /* Jitter along the boundary as well, or a straight edge draws a hedge. */
+    const slide = (along - 0.5) * 26;
+    const x = p.px + p.nx * out - p.nz * slide;
+    const z = p.pz + p.nz * out + p.nx * slide;
+    const isTree = rng() < 0.92;
     /*
-     * And nothing grows on the clubhouse's ground either, for the same
-     * reason and by the same DISCARD. About two of these 420 draws land on
-     * the pad, and a tree standing in the car park is not the problem: the
-     * problem is that skipping the draw would move every remaining tree,
-     * rock, cliff, flower and mountain in the valley, because they all hang
-     * off one rng stream in one order. So it is built and thrown away.
-     *
-     * Two metres of margin, not the whole fade, so the bank around the
-     * terrace keeps its planting and the pavilion sits IN the landscape
-     * rather than in a clearing.
+     * Nothing stands on the paddock, on the pavilion's ground, or in the car
+     * park. It is a DISCARD rather than a skip, the same as it always was:
+     * every object is built first, from the same draws in the same order,
+     * and then thrown away, because everything after this hangs off one rng
+     * stream and skipping a draw would move all of it.
      */
-    const onPad = padEdge(clubPad, x, z) < 2;
-    const cut = drowned || onPad;
+    const cut = siteEdge(x, z) < -1
+      || padEdge(clubPad, x, z) < 2
+      || onCarPark(x, z)
+      || onTheCourse(x, z);
     const obj = isTree
-      ? tree(rng, height, x, z, cut ? null : colliders)
+      ? tree(rng, height, x, z, cut ? null : colliders, 2.05)
       : rock(rng, height, x, z, cut ? null : colliders);
     if (cut) {
       continue;
     }
     baker.bake(obj);
-    occluders.push({ x, z, r: isTree ? 2.2 : 1.4 });
+    occluders.push({ x, z, r: isTree ? 4.2 : 1.4 });
   }
 
-  /* Cliff landmarks, kept off the racing line but inside the valley so
-   * they read as part of the course rather than set dressing. */
-  const cliffSpots = [
-    [-215, 95], [190, 155], [-95, -240], [305, 40], [-320, -80], [60, 280],
-  ];
-  for (const [cx, cz] of cliffSpots) {
-    /* On the built in circuit no cliff is within 169 m of the pad, measured.
-     * A designed course moves the pad, so the same discard the trees use
-     * guards the case rather than a comment claiming it cannot happen. */
-    const cut = padEdge(clubPad, cx, cz) < 14;
-    const made = cliff(rng, height, cx, cz, cut ? null : colliders);
+  /*
+   * And the bush behind the bush. A hundred and ten more, scattered thinly
+   * from the treeline out to 600 m, drawn WITHOUT the inked hull because at
+   * that range it is geometry nobody can see.
+   *
+   * The front row alone left a hedge with daylight behind it and the sky
+   * starting immediately above. Neither photograph has an edge: the aerial is
+   * unbroken canopy to all four sides of the frame and the ground shot has
+   * layers of it going back. These are what the eye reads as depth once the
+   * front row stops.
+   */
+  for (let i = 0; i < 110; i += 1) {
+    const a = rng() * Math.PI * 2;
+    const rad = 150 + rng() * 450;
+    const x = Math.cos(a) * rad;
+    const z = SITE_SOUTH + 120 + Math.sin(a) * rad;
+    const isTree = rng() < 0.9;
+    const cut = siteEdge(x, z) < 25 || onCarPark(x, z);
+    const obj = isTree
+      ? tree(rng, height, x, z, cut ? null : colliders, 1.7, false)
+      : rock(rng, height, x, z, cut ? null : colliders);
     if (cut) {
       continue;
     }
-    baker.bake(made);
-    occluders.push({ x: cx, z: cz, r: 13 });
+    baker.bake(obj);
+    occluders.push({ x, z, r: isTree ? 3.4 : 1.4 });
+  }
+
+  /*
+   * The cliff landmarks are gone with the lake. They were a valley's
+   * furniture, six tiers of rock 9 to 24 m high standing around the course,
+   * and there is nothing like them on a graded paddock in the Perth bush.
+   * Neither photograph has so much as an outcrop in it.
+   */
+
+  /*
+   * THE FENCE on the paddock boundary. Waist high chain link, which is what
+   * both of the club's photographs show closing the ground off from the bush.
+   */
+  {
+    const postMat = celMaterial({ color: 0x9aa1a8, rim: 0.2 });
+    const meshTex = chainLinkTexture();
+    const meshMat = celMaterial({
+      color: 0xffffff,
+      map: meshTex,
+      /* Alpha tested rather than blended: chain link is mostly holes, and a
+       * tested cutout needs no depth sorting and no second pass. */
+      alphaTest: 0.45,
+      transparent: false,
+      side: THREE.DoubleSide,
+      rim: 0.0,
+      key: 'chainlink',
+    });
+    const fence = siteFence(height, postMat, meshMat);
+    fence.group.updateMatrixWorld(true);
+    baker.bake(fence.group);
+    /*
+     * Solid, in 20 m runs rather than post by post. A capsule at half the
+     * fabric's height with a radius that covers it is the honest shape for a
+     * thin wall the collision system has no plane primitive for, and 53 of
+     * them is a broadphase cost worth paying for a fence a pilot will clip.
+     */
+    for (const r of fence.runs) {
+      const y = height((r.ax + r.bx) * 0.5, (r.az + r.bz) * 0.5);
+      colliders.add(
+        'wall',
+        r.ax, y + FENCE.height * 0.5, r.az,
+        r.bx, y + FENCE.height * 0.5, r.bz,
+        FENCE.height * 0.5,
+      );
+    }
   }
 
   /*
@@ -3803,9 +3824,6 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       const r = 6 + rng() * 40;
       const x = s0.x + Math.cos(a) * r;
       const z = s0.z + Math.sin(a) * r;
-      if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.3) {
-        continue;
-      }
       /* Hug the dirt. These used to sit 6 to 16 cm up so they poked out of
        * the grass canopy. Blades are not drawn, so that lift is a field of
        * floating chips. A centimetre or two clears the terrain without
@@ -3962,125 +3980,60 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     sailBaker.flush(scene);
   }
 
-  /* Mountain rings. Cones are centred on their origin, so the base must
-   * sit at y = h/2 or the range floats. Far ring lighter for aerial
-   * perspective, and both sit outside the fog so they stay as flat shapes. */
   /*
-   * Mountain rings. Cones are centred on their origin, so the base must sit
-   * at y = h/2 or the range floats.
+   * THE HORIZON, WHICH IS BUSH AND NOT MOUNTAINS.
    *
-   * These used to be cel shaded with fog off, and the result was measured:
-   * all four rings, the far valley floor and the trees standing on them
-   * came out at 0.079 linear luminance, 34.6 percent of the whole mountain
-   * band at one value, because a cone's facets mostly face away from the
-   * sun and land in the ramp's shadow band. Aerial perspective was
-   * inverted: a ring at 560 m read four times DARKER than fogged ground at
-   * 400 m in front of it.
+   * Four rings of cones used to stand here at 560, 830, 1080 and 1330 m,
+   * 110 to 320 m tall, on a measured aerial perspective ladder. They were
+   * good and they are gone, because the club's ground has nothing like them:
+   * the aerial is unbroken canopy to every edge of the frame and the ground
+   * level shot has bare sky straight above the treeline. A range of alps
+   * behind a Perth flying field was the largest thing left in the picture
+   * that is not there.
    *
-   * They are unlit now, one flat colour each, so the authored value IS the
-   * rendered value. The first set of colours was chosen by arithmetic and
-   * the comment here claimed measured values of 0.15, 0.25, 0.35 and 0.45.
-   * That was wrong, and a reviewer measured it: ring 0 came out at 0.108
-   * and ring 1 at 0.162, which put ring 0 inside the tree canopy band of
-   * 0.094 to 0.107, so a canopy in front of a mountain was a 2.8 percent
-   * luminance step. These colours are measured, not derived.
+   * What replaces them is the same idea one order smaller: rings of TREES,
+   * far enough out to read as a band rather than as individuals, keeping the
+   * ladder's job of telling the eye how far away the distance is. The value
+   * ladder itself is inherited rather than re-derived, so the ordering the
+   * old comment measured still holds, each ring paler and cooler than the one
+   * in front of it and all of them under the sky.
    *
-   * Jitter is 0.16 rad, not 0.05: 34 cones at even 10.6 degree spacing
-   * with 2.9 degrees of jitter read as a picket fence.
+   * They are unlit for the same reason the mountains were: at this distance a
+   * lit canopy lands in the ramp's shadow band and the far ring comes out
+   * darker than the near one, which puts aerial perspective in reverse.
    */
-  const ridgeDist = [560, 830, 1080, 1330];
+  const HORIZON_DIST = [430, 620, 850];
   /*
-   * The aerial perspective ladder, and the one place in the frame where it
-   * is authored rather than computed. Each pair is a sun side and a shadow
-   * side of the SAME luminance, so the ring's rendered value is exactly its
-   * rung and the light model lives entirely in hue: warm sand facing the
-   * sun, cool blue away from it, which is the same warm light cool shadow
-   * rule the ramp follows.
-   *
-   * That equal luminance is not a shortcut, it is the only thing that fits.
-   * The rungs have to clear the fogged ground in front of the nearest ring
-   * and stay clear of the sky behind the furthest one, and between those
-   * two there is 0.353 of luminance for four layers. Splitting each ring's
-   * value by even 0.03 for its light model makes the sun side of one ring
-   * and the shadow side of the next land within 0.035 of each other, and
-   * then a reviewer sampling those two patches measures a ladder that does
-   * not climb. Hue carries the light, value carries the distance, and
-   * neither has to borrow from the other.
-   *
-   * The set before this one laddered 0.483, 0.561, 0.628, 0.698 against a
-   * sky the comment here claimed was 0.781 and fogged ground at 0.428.
-   * Those two anchors were derived from the authored HORIZON colour and the
-   * fog equation. Neither survives to the screen. Sampled off an actual
-   * capture, the sky immediately behind the ridge band is 0.487 and the
-   * terrain's far edge is 0.192, so the ladder was climbing straight past
-   * its own ceiling: rings 2, 3 and 4 rendered BRIGHTER than the sky behind
-   * them, which is why distance made a mountain stand out more instead of
-   * less and the whole range read as cut paper laid on top of the sky. Ring
-   * 1's sun side measured 0.488 against sky at 0.487, a one thousandth
-   * step, so the nearest range was simply invisible.
-   *
-   * These rungs are solved against the two anchors as MEASURED. An unlit
-   * MeshBasicMaterial round trips its hex exactly, verified: the old ring 1
-   * was authored 0.483 and sampled 0.488, so a displayed target can be
-   * authored directly.
-   *
-   *   terrain far edge  0.192   measured
-   *   ring 0 at  560 m  0.250
-   *   ring 1 at  830 m  0.310
-   *   ring 2 at 1080 m  0.370
-   *   ring 3 at 1330 m  0.430
-   *   sky behind them   0.487   measured
-   *
-   * Steps of 0.058, 0.060, 0.060, 0.060, 0.057: an even ladder with the
-   * ground below it and the sky above it, both cleared, and the range now
-   * recedes INTO the sky instead of out of it. The tints also narrow as the
-   * rungs climb, because haze desaturates whatever it covers, so the far
-   * range is nearly neutral while the near one still shows sand and slate.
+   * Measured against the same two anchors the ridge ladder was solved for,
+   * the fogged terrain at 0.192 and the sky behind it at 0.487, and sitting
+   * lower in the band because bush is darker than rock: 0.235, 0.300, 0.365.
+   * The tints narrow as they climb, because haze desaturates what it covers.
    */
-  const RIDGE_SUN = [0x878d63, 0x959a76, 0xa2a689, 0xaeb19a];
-  const RIDGE_SHADE = [0x788aa6, 0x8998b0, 0x99a5b8, 0xa6b0bf];
-  /* One material per ring, created outside the cone loop. The baker buckets
-   * by material, and a material per cone means 136 buckets and 136 draw
-   * calls instead of four: that mistake cost 108 draw calls and was caught
-   * by measuring the count, not by reading the diff. */
-  const ridgeMats = RIDGE_SUN.map(() => {
-    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
-    m.vertexColors = true;
-    return m;
-  });
-  const sunC = new THREE.Color();
-  const shadeC = new THREE.Color();
-  const nrmMat = new THREE.Matrix3();
-  const nrmVec = new THREE.Vector3();
-  for (let ring = 0; ring < 4; ring += 1) {
-    const dist = ridgeDist[ring];
-    sunC.setHex(RIDGE_SUN[ring]);
-    shadeC.setHex(RIDGE_SHADE[ring]);
-    for (let i = 0; i < 34; i += 1) {
-      const a = (i / 34) * Math.PI * 2 + ring * 0.09 + (rng() - 0.5) * 0.16;
-      const h = 110 + rng() * 210;
-      /* Non indexed before colouring: a cone's five side faces share
-       * vertices with the cap in the indexed form, so a per face colour
-       * written into a shared vertex bleeds onto the face next to it. */
-      const geo = new THREE.ConeGeometry(95 + rng() * 90, h, 5).toNonIndexed();
-      const m = new THREE.Mesh(geo, ridgeMats[ring]);
-      m.position.set(Math.cos(a) * dist, h / 2 - 10, Math.sin(a) * dist);
-      m.rotation.y = rng() * 3;
-      m.updateMatrixWorld(true);
-      const nrm = geo.attributes.normal;
-      const col = new Float32Array(nrm.count * 3);
-      nrmMat.getNormalMatrix(m.matrixWorld);
-      for (let v = 0; v < nrm.count; v += 1) {
-        nrmVec.fromBufferAttribute(nrm, v).applyMatrix3(nrmMat).normalize();
-        const c = nrmVec.dot(SUN_DIR) > 0.02 ? sunC : shadeC;
-        col[v * 3 + 0] = c.r;
-        col[v * 3 + 1] = c.g;
-        col[v * 3 + 2] = c.b;
-      }
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const HORIZON_TONE = [0x6f8352, 0x86956d, 0x9ba58b];
+  const horizonMats = HORIZON_TONE.map((hex) => new THREE.MeshBasicMaterial({ color: hex, fog: false }));
+  for (let ring = 0; ring < HORIZON_DIST.length; ring += 1) {
+    const dist = HORIZON_DIST[ring];
+    /* Enough of them that the ring closes at this radius: a gap in a treeline
+     * a kilometre out reads as a hole in the world. */
+    const n = 130 + ring * 40;
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * Math.PI * 2 + ring * 0.31 + (rng() - 0.5) * 0.05;
+      const h = 14 + rng() * 16;
+      const r = 9 + rng() * 9;
+      /* A squashed sphere on no trunk. At 430 m and beyond a trunk is under
+       * a pixel and the canopy is the whole silhouette. */
+      const geo = new THREE.SphereGeometry(r, 6, 4);
+      const m = new THREE.Mesh(geo, horizonMats[ring]);
+      m.position.set(
+        Math.cos(a) * dist,
+        h * 0.45,
+        SITE_SOUTH + 120 + Math.sin(a) * dist,
+      );
+      m.scale.set(1, h / (r * 2), 1);
       baker.bake(m);
     }
   }
+
   baker.flush(scene, 0);
 
   /* The craft is the session's, built once in src/render/shell.js and
@@ -4145,7 +4098,6 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   }
 
   function updateWind(t) {
-    water0.mat.uniforms.uTime.value = t;
     /* This is what flies the flags now. Every sail's wave is a function of
      * this clock and the vertex's own world position, computed in the cel
      * material's vertex shader, so there is no per flag work here at all. */

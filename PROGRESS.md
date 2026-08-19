@@ -11749,3 +11749,145 @@ terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s
 diff-passthrough 1.2478 (0.47 percent). console-clean errors=0 warnings=0.
 audio-bed: ctx running, music gain 0.300, media 2.52 s in 2.52 s, 41
 nodes. world-scale and map-isolation green. vendor/betaflight diff empty.
+
+### 2026-08-19 | uxfix | One obstacle is lit, and it says which way through from the far end of the field
+
+Reported, flying it: "it's easy to lose track of which obstacle comes
+next", and "direction shown a red vs green works well but sometimes you
+can't tell until you are right up to the obstacle". Two complaints, three
+causes, all of them in how the target was dressed.
+
+THE FIRST CAUSE IS THAT EVERY GATE WAS LIT. Fourteen stations each wore a
+ring, a halo and a glow at rest, and the next one was the same three marks
+turned up. A round in an earlier loop already wrote down that three rings
+at three levels of one amber read as a corridor rather than a target, and
+what it did about it was give the next gate a different hue. That fixed
+telling two lit gates apart. It could not fix not knowing where to look,
+because a hue only separates objects a pilot is already looking at.
+
+So the tiers are different KINDS of mark now, not three amounts of one:
+
+  the target        ring, halo, pulsing glow and a coloured pane;
+  the one after it  a ring at 0.42 of its resting colour and nothing else,
+                    so a line can be chosen one gate ahead;
+  everything else   unlit. A PVC frame in printed vinyl, which is what a
+                    gate on a real field looks like when nobody is aiming
+                    at it.
+
+A flag's or a cone's pass square is the one exception and has to be: it is
+a scoring square with no structure at all, so unlit means gone. It rests on
+the middle tier wherever it is not the target. The renderer cannot work out
+which gate is second on its own, because flying order belongs to the race
+and on the built in circuit scene index i is flown as gateCount - i, so
+`race.followSceneIndex()` is new and `setNextGate` takes it.
+
+THE SECOND CAUSE IS THAT ONLY THE QUIETEST PART OF THE GATE KNEW THE
+DIRECTION. Green on the approach face and red on the other was carried by
+two double sided planes choosing on `gl_FrontFacing`: the pane, a 16
+percent wash, and the glow. The RING was one colour on both sides, because
+a ring has no sides: it is four opaque boxes just inside the opening and
+every face a pilot can see is a front face. The ring is also the loudest
+and longest ranged mark on the gate, measured at an earlier round as 3 px
+across at 20 m while the pane does not resolve until the gate is close. The
+answer to "which way through" was therefore carried entirely by the part of
+the target that arrives last, which is the report word for word.
+
+The side is now decided once a frame against the CAMERA's own half space,
+dot(camera - apertureCentre, travel) < 0, and it drives the ring, the halo,
+the glow and the pane together. The answer arrives with the first pixel of
+the target instead of the last. `travel` is `travelAxis(heading, pitch)`,
+race.js's own scoring axis, so the paint and the test that scores cannot
+disagree about which way through a gate goes.
+
+This deletes the comparison against the STRUCTURE's facing axis, and with
+it `meshYaw` and `meshPitch`, which nothing else read. That comparison
+existed only to work out which of a double sided pane's two faces was the
+entry one, and the last bug in this area was a dive gate wearing red on the
+way in because a horizontal aperture has no meaningful front face to pick.
+A half space has no faces at all.
+
+THE THIRD CAUSE IS THAT NOTHING ON SCREEN POINTED AT THE TARGET. A lit gate
+can only be found by a pilot already looking at it; the report is about the
+other case, where the target is behind the clubhouse, off the side of a 117
+degree frame, or one of fourteen structures in a valley. Every racing game
+answers that on the display rather than in the world, because the display
+is the one surface that cannot be occluded. So the OSD grew a target mark:
+a bracket sized to the projected aperture while the gate is in frame, a
+chevron pinned inside the frame edge pointing the shortest way round while
+it is not, and the range under either. It takes its colour from the same
+half space the gate does. It lets go between 13 m and 6 m, where a 1.7526 m
+opening is a fifth of the frame's height and a bracket round it is a box
+drawn on a barn door, and it never fades while it is on the edge, because a
+target you cannot see is exactly when the range matters.
+
+WRONG WAY IS A SHAPE NOW, NOT ONLY A COLOUR. Red against green is the one
+axis a red-green colour vision deficiency cannot read, and this pane
+carries the single most important bit on the course. The wrong face wears a
+bar across the opening, two diagonals in the pane shader; the correct face
+stays clear, because the thing a pilot has to see through it is the line
+beyond it. Clean means go and a bar means no, with no hue in it.
+
+EVIDENCE, and two of the three claims are checks rather than screenshots.
+
+`window.__gateTiers()` is new and reports the tier each gate is dressed in
+off the MATERIALS the renderer drives, not off what the shell believes it
+handed out. Driven across all fourteen stations: exactly one target, one
+follow and twelve dark at every one, and both lit indices match the race's
+own order.
+
+`window.__aimProbe(x, y, z)` is new and returns the PAINT's answer for an
+arbitrary point, straight out of the renderer. Held against race.js's own
+`local()` frame at 1512 points, six offsets by three heights by six
+offsets around all fourteen stations: agreement at every point, no
+exceptions. That is the check that would have caught the dive gate.
+
+Captured at 1600 by 900 and 1920 by 1080, graphics high, parked cameras:
+the target alone lit at 26 m and at 62 m with twelve dark gates and one dim
+follow ring behind it; an overview from 22 m up with most of the course in
+frame and exactly one green thing in it; the wrong side at 22, 24 and 30 m
+with the whole target red and the bar in the opening; the target dead
+behind the camera, chevron on the right edge; and a live flown frame at
+110 m altitude with the chevron pointing down at the bottom edge in red.
+Console errors 0 and warnings 0 on every run.
+
+What could NOT be checked here and is stated rather than glossed: a flown
+gate PASS. `__stick` moves the craft only after about five seconds of held
+W at this container's frame rate, which overshoots the first gate by 200 m,
+and a gentler takeoff never left the pad inside the harness's 20 s `until`
+budget. The pass path is two call sites that now pass a second argument,
+and `setNextGate` itself was driven directly at all fourteen stations, so
+what is unverified is the harness driving, not the logic.
+
+CHECK 16 MOVED AND IT IS A RE-MEASURE, NOT A LOOSENED THRESHOLD. Hiding a
+mark is the one change here that removes drawing: P1 306 to 303 and P2
+1014135 to 1014037 at the spawn camera, 1280 by 720, graphics high. P5, P10
+and the mesh count did not move, because `Material.visible` skips the draw
+and leaves the scene graph and every buffer where they were. The delta is
+accounted for to the digit: the harness set `visible` back to true on every
+material the new dressing hides, 38 of them, and the frame returned to 306
+and 1014135 exactly. 38 is the arithmetic of fourteen stations, 12 times 3
+plus the follow gate's halo and glow. The 3 calls and 98 triangles that
+actually went are one gate's worth inside the frustum there, 48 triangles
+of ring plus 48 of halo plus 2 of glow, one mesh each. The numbers moved
+DOWN, both are still exact equalities at zero tolerance, and the assertion
+the check is named for, that the field costs the same across a round trip
+through the city, is asserted against boot and held exactly: 303 and
+1014037 both times.
+
+Also in this turn: another session was committing to this working tree
+while the work was in progress, and it clobbered index.html, src/main.js
+and src/ui/ui.js twice before its music commit landed. Nothing of that work
+was lost and none of it is in this change; it is recorded because a file
+that reverts under you looks exactly like an editor that did not save, and
+the second diagnosis wastes an hour.
+
+Physics, plant, ABI, the input path and the trace were not touched.
+
+Verify, this turn: 16 of 16. hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s
+(0.22 percent), yaw-coupling -0.12 deg, battery-sag 11.14 percent,
+diff-passthrough 1.2478 (0.47 percent), determinism 6d17d4814bdc with Node
+and Chrome identical across 30, 60, 144 and 240 Hz. console-clean errors=0
+warnings=0. world-scale and map-isolation green. vendor/betaflight diff
+empty. node src/trackbuilder/selftest.js 236 passed, 0 failed. node
+tracks/check.mjs 3994 passed, 0 failed.

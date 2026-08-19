@@ -870,7 +870,7 @@ export class Ui {
     this.osdStickRight = makeGimbal('Roll, pitch');
     sticks.append(this.osdStickLeft.box, this.osdStickRight.box);
     this.osdSticks = sticks;
-    this.osd.append(top, packBlock, flightBlock, sticks, this.osdLaunch);
+    this.osd.append(top, packBlock, flightBlock, sticks, this.osdLaunch, this.buildTargetLock());
     r.append(this.osd);
 
     /* Centre banner: launch prompt, lap splits, crash notice, and the
@@ -3446,6 +3446,103 @@ export class Ui {
     this.banner.textContent = text || '';
     this.banner.style.opacity = text ? '1' : '0';
     this.banner.className = panelled ? 'banner panel' : 'banner';
+  }
+
+  /*
+   * THE TARGET MARK: the answer to "where is the next one".
+   *
+   * A lit gate can only be found by a pilot who is already looking at it.
+   * The report this exists for is the other case: the target is behind a
+   * clubhouse, or off the side of a 117 degree frame, or simply one of
+   * fourteen structures in a valley, and there is nothing on screen that
+   * says which way to turn. Every racing game solves that on the display
+   * rather than in the world, because the display is the one surface that
+   * cannot be occluded.
+   *
+   * Two states, one element. In frame, it is a bracket around the opening,
+   * sized to the aperture, so it reads as a lock on that object rather than
+   * as a dot near it. Out of frame or behind, it is a chevron pinned inside
+   * the edge, pointing the shortest way round. Both carry the range and
+   * both take their colour from the same half space test the gate does, so
+   * the display and the world can never disagree about which way through.
+   *
+   * It lets go inside 6 m. By then the gate is most of the frame and a
+   * bracket around it is a box drawn on a barn door.
+   */
+  buildTargetLock() {
+    this.lock = el('div', 'lock is-off');
+    this.lockBox = el('div', 'lock-box');
+    this.lockBox.append(el('i', 'lc tl'), el('i', 'lc tr'), el('i', 'lc bl'), el('i', 'lc br'));
+    this.lockArrow = el('div', 'lock-arrow');
+    this.lockDist = el('div', 'lock-dist', '');
+    this.lock.append(this.lockBox, this.lockArrow, this.lockDist);
+    /* Last written values. Every one of these is a style write per frame if
+     * it is not cached, and a style write is layout the browser may or may
+     * not be able to skip. The mark is on screen for a whole race. */
+    this.lockLast = { cls: '', tx: '', bx: '', ax: '', dx: '', text: '', op: '' };
+    return this.lock;
+  }
+
+  /*
+   * `x` and `y` are CSS pixels from the top left of the canvas, already
+   * clamped into the frame by the shell, which is the only place that knows
+   * the canvas size. `size` is the projected aperture in CSS pixels, `angle`
+   * the chevron's heading in degrees clockwise from up.
+   */
+  setTargetLock({ show, x, y, size, angle, edge, wrong, distance, fade }) {
+    if (!this.lock) {
+      return;
+    }
+    const last = this.lockLast;
+    const cls = show
+      ? `lock${edge ? ' is-edge' : ''}${wrong ? ' is-wrong' : ''}`
+      : 'lock is-off';
+    if (cls !== last.cls) {
+      this.lock.className = cls;
+      last.cls = cls;
+    }
+    if (!show) {
+      return;
+    }
+    const tx = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+    if (tx !== last.tx) {
+      this.lock.style.transform = tx;
+      last.tx = tx;
+    }
+    const op = fade < 0.995 ? fade.toFixed(2) : '';
+    if (op !== last.op) {
+      this.lock.style.opacity = op;
+      last.op = op;
+    }
+    if (edge) {
+      const ax = `translate(-50%, -50%) rotate(${angle.toFixed(1)}deg)`;
+      if (ax !== last.ax) {
+        this.lockArrow.style.transform = ax;
+        last.ax = ax;
+      }
+    } else {
+      const bx = `${size.toFixed(0)}px`;
+      if (bx !== last.bx) {
+        this.lockBox.style.width = bx;
+        this.lockBox.style.height = bx;
+        last.bx = bx;
+      }
+    }
+    /* The label sits under whichever mark is showing, which are two
+     * different heights, so it is placed rather than laid out. */
+    const drop = (edge ? 15 : size * 0.5) + 11;
+    const dx = `translate(-50%, ${drop.toFixed(0)}px)`;
+    if (dx !== last.dx) {
+      this.lockDist.style.transform = dx;
+      last.dx = dx;
+    }
+    /* Whole metres. A tenth of a metre at 30 m/s is three hundredths of a
+     * second and reads as a smear of digits. */
+    const text = `${Math.round(distance)} m`;
+    if (text !== last.text) {
+      this.lockDist.textContent = text;
+      last.text = text;
+    }
   }
 
   /*

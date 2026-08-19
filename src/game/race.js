@@ -543,6 +543,24 @@ export class Race {
     return this.freestyle ? -1 : this.gates[this.next].idx;
   }
 
+  /*
+   * Scene index of the gate AFTER the one the race wants next, so the
+   * renderer can put it on a quieter tier than the target.
+   *
+   * A pilot needs one gate of lookahead to choose an exit line, and the
+   * built in circuit was given fourteen stations for exactly that reason.
+   * The renderer cannot work this out for itself: flying order is the
+   * race's, not the scene's, and on the built in circuit scene index i is
+   * flown as gateCount - i. Wraps, because the last gate of a lap is
+   * followed by the first gate of the next one.
+   */
+  followSceneIndex() {
+    if (this.freestyle || this.gates.length < 2) {
+      return -1;
+    }
+    return this.gates[(this.next + 1) % this.gates.length].idx;
+  }
+
   flashText(wallMs) {
     if (this.flash && wallMs < this.flash.untilMs) {
       return this.flash.text;

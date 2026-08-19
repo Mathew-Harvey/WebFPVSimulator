@@ -785,7 +785,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * map there is no order to keep, and Race.recover says so for both.
      */
     race.recover(reason, nowWall);
-    view.setNextGate(race.nextSceneIndex());
+    view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     if (typeof audio.event === 'function') {
       audio.event('crash');
     }
@@ -934,7 +934,7 @@ export async function boot({ loading, bootStart, mapId }) {
     resetCraft(null);
     race.reset();
     runLaps = ui.settings.laps;
-    view.setNextGate(race.nextSceneIndex());
+    view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
   }
 
   /*
@@ -969,7 +969,7 @@ export async function boot({ loading, bootStart, mapId }) {
     } else {
       /* Same map, new look. Physics and the lap stay where they were; the
        * new gate meshes just need the current next-gate highlight. */
-      view.setNextGate(race.nextSceneIndex());
+      view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
       ui.setShare(view.share || null);
       ui.setBest(race.bestMs, view.mode);
       mode = stayMode === 'flight' ? 'paused' : stayMode;
@@ -2097,6 +2097,132 @@ export async function boot({ loading, bootStart, mapId }) {
   const camLookAt = new THREE.Vector3();
 
   /*
+   * The target mark's arithmetic. Two scratch vectors and a handful of
+   * constants, hoisted because this runs every frame of every race and the
+   * overlay is not allowed to be the thing that allocates.
+   *
+   * The margins are how far inside the frame the chevron parks, and they
+   * are not one number because the OSD is not one shape. The lap clock
+   * stack runs about 140 px down the top of the frame and the pack and
+   * flight blocks stand 100 px off the bottom, so a chevron pinned 54 px in
+   * from an edge is right on the sides and sits on an instrument top and
+   * bottom.
+   *
+   * AIM_RELEASE and AIM_FADE are the range the lock lets go over. At 6 m a
+   * 1.7526 m opening is a fifth of the frame's height at the default lens,
+   * so a bracket around it is a box drawn on a barn door; at 13 m it is
+   * under a tenth and the bracket is still telling the pilot something. The
+   * mark never fades while it is on the frame edge, because a target you
+   * cannot see is exactly when the range matters.
+   */
+  const AIM_MARGIN = 54;
+  const AIM_MARGIN_TOP = 100;
+  const AIM_MARGIN_BOTTOM = 108;
+  const AIM_RELEASE = 6;
+  const AIM_FADE = 13;
+  /* The bracket stands this much outside the opening, so it frames the gate
+   * instead of covering the ring the pilot aims at. */
+  const AIM_BRACKET = 1.45;
+  const aimNdc = new THREE.Vector3();
+  const aimFwd = new THREE.Vector3();
+  /* One argument object each, refilled in place. */
+  const LOCK_OFF = { show: false };
+  const lockArg = {
+    show: true, x: 0, y: 0, size: 0, angle: 0, edge: false, wrong: false, distance: 0, fade: 1,
+  };
+
+  /*
+   * Put the target mark where the next gate is.
+   *
+   * The map owns which gate that is and which side of it the pilot is on,
+   * because that is the same decision that colours the gate itself; the
+   * shell owns the projection, because the canvas size is the shell's.
+   * Splitting it the other way is how the mark and the gate would end up
+   * disagreeing about which way through.
+   */
+  function updateTargetLock() {
+    const aim = view.targetAim ? view.targetAim() : null;
+    if (!aim || !aim.active) {
+      ui.setTargetLock(LOCK_OFF);
+      return;
+    }
+    const el = shell.renderer.domElement;
+    /* CSS pixels. The overlay is a DOM layer over the canvas, and the
+     * drawing buffer is a different size on any display whose pixel ratio
+     * is above one. */
+    const vw = el.clientWidth;
+    const vh = el.clientHeight;
+    if (vw < 2 || vh < 2) {
+      ui.setTargetLock(LOCK_OFF);
+      return;
+    }
+    aimNdc.copy(aim.centre).project(shell.camera);
+    /*
+     * BEHIND THE CAMERA THE PROJECTION LIES, and it lies plausibly: the
+     * divide is by a negative w, so the point reflects through the centre
+     * of the frame and lands somewhere a reader would believe. Negating
+     * both axes recovers the true bearing.
+     *
+     * A target DEAD behind lands on the centre of the frame either way, and
+     * a chevron at the centre pointing nowhere is worse than none, so a
+     * bearing shorter than a pixel is read as straight up: turn round, and
+     * either way round is as good as the other.
+     */
+    const behind = aimNdc.z <= -1 || aimNdc.z >= 1;
+    const nx = behind ? -aimNdc.x : aimNdc.x;
+    const ny = behind ? -aimNdc.y : aimNdc.y;
+    let sx = (nx * 0.5 + 0.5) * vw;
+    let sy = (1 - (ny * 0.5 + 0.5)) * vh;
+    const midX = vw * 0.5;
+    const midY = vh * 0.5;
+    if (behind) {
+      const ox = sx - midX;
+      const oy = sy - midY;
+      const len = Math.hypot(ox, oy);
+      /* Pushed well outside the frame, so the clamp below always turns it
+       * into a chevron rather than a bracket around empty sky. */
+      sx = len > 1 ? midX + (ox / len) * vw : midX;
+      sy = len > 1 ? midY + (oy / len) * vw : midY - vh;
+    }
+    const minX = AIM_MARGIN;
+    const maxX = vw - AIM_MARGIN;
+    const minY = AIM_MARGIN_TOP;
+    const maxY = vh - AIM_MARGIN_BOTTOM;
+    const edge = behind || sx < minX || sx > maxX || sy < minY || sy > maxY;
+    /* The projected aperture, from the camera space depth rather than the
+     * range: a gate 55 degrees off axis is the same size on screen as one
+     * straight ahead at the same depth, and using the range instead
+     * overstates it by most of half again out at the edge of the frame. */
+    aimFwd.set(0, 0, -1).applyQuaternion(shell.camera.quaternion);
+    const depth = (aim.centre.x - shell.camera.position.x) * aimFwd.x
+      + (aim.centre.y - shell.camera.position.y) * aimFwd.y
+      + (aim.centre.z - shell.camera.position.z) * aimFwd.z;
+    const tanHalf = Math.tan((shell.camera.fov * Math.PI) / 360);
+    const raw = depth > 0.2
+      ? (vh * aim.clearH * AIM_BRACKET) / (2 * depth * tanHalf)
+      : 0;
+    lockArg.show = true;
+    lockArg.edge = edge;
+    lockArg.wrong = !aim.correct;
+    lockArg.distance = aim.distance;
+    lockArg.size = Math.max(34, Math.min(vh * 0.62, raw));
+    lockArg.x = Math.min(maxX, Math.max(minX, sx));
+    lockArg.y = Math.min(maxY, Math.max(minY, sy));
+    /* Clockwise from up, which is how the chevron is drawn. */
+    lockArg.angle = edge
+      ? (Math.atan2(sx - midX, midY - sy) * 180) / Math.PI
+      : 0;
+    lockArg.fade = edge
+      ? 1
+      : Math.max(0, Math.min(1, (aim.distance - AIM_RELEASE) / (AIM_FADE - AIM_RELEASE)));
+    if (lockArg.fade < 0.02) {
+      ui.setTargetLock(LOCK_OFF);
+      return;
+    }
+    ui.setTargetLock(lockArg);
+  }
+
+  /*
    * The city's clock. Everything in the town that a quad can hit is a closed
    * form of an integer fixed step count, so the town has to be handed one.
    *
@@ -2613,7 +2739,7 @@ export async function boot({ loading, bootStart, mapId }) {
             } else if (!sameContact) {
               race.recover(`Clipped the ${lastHitKind}`, nowWall);
             }
-            view.setNextGate(race.nextSceneIndex());
+            view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
             if (!sameContact && typeof audio.event === 'function') {
               audio.event('clip');
             }
@@ -2633,7 +2759,7 @@ export async function boot({ loading, bootStart, mapId }) {
       if (raceHasPrev) {
         const res = race.update(racePrev, pCurr, simNow, nowWall);
         if (res.passed != null) {
-          view.setNextGate(race.nextSceneIndex());
+          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
           if (typeof audio.event === 'function') {
             audio.event('gate');
           }
@@ -2989,8 +3115,10 @@ export async function boot({ loading, bootStart, mapId }) {
         yaw: ch.yaw,
         throttle: ch.throttle,
       });
+      updateTargetLock();
     } else if (mode !== 'paused') {
       ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });
+      ui.setTargetLock(LOCK_OFF);
     }
 
     const cal = input.calibrationView();
@@ -3211,7 +3339,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const was = race.next;
     race.reset();
     race.next = (((raceIndex | 0) % n) + n) % n;
-    view.setNextGate(race.nextSceneIndex());
+    view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     racePrev.copy(shell.quad.position);
     raceHasPrev = true;
     return { raceNext: race.next, sceneIndex: race.nextSceneIndex(), previous: was };
@@ -3466,6 +3594,49 @@ export async function boot({ loading, bootStart, mapId }) {
     };
   };
   /*
+   * WHAT EVERY GATE IS WEARING, so the three tier rule is a check and not
+   * an impression.
+   *
+   * "Only the next obstacle is lit" is a claim about fourteen objects, and
+   * the only way to read that off a screenshot is to find fourteen gates in
+   * the frame first. This reports the tier each one is actually dressed in,
+   * off the materials the renderer drives, so a run can assert that exactly
+   * one gate is lit, exactly one sits on the middle tier, and the rest are
+   * dark. Harness only, called on demand, never per frame.
+   */
+  /*
+   * The PAINT's answer to "is this point on the side the gate is flown
+   * from", straight out of the renderer, so a check can hold it against
+   * race.js's own scoring frame at a grid of points instead of trusting
+   * that two files agree. A dive gate wearing red on the way in was
+   * exactly this disagreement, found by a pilot and not by a check.
+   * Harness only.
+   */
+  window.__aimProbe = (x, y, z) => (view.approachSide ? view.approachSide(x, y, z) : null);
+  window.__gateTiers = () => {
+    const a = view.targetAim ? view.targetAim() : null;
+    return {
+      next: race.freestyle ? -1 : race.nextSceneIndex(),
+      follow: race.freestyle ? -1 : race.followSceneIndex(),
+      aim: a ? { active: a.active, correct: a.correct, distance: a.distance } : null,
+      gates: view.gates.map((gt, i) => ({
+        sceneIndex: i,
+        flyOrder: gt.flyOrder,
+        virtual: Boolean(gt.virtual),
+        /* The tier as the MATERIALS have it, not as the shell believes it
+         * handed out. Reading back what the shell wrote asserts nothing. */
+        tier: !gt.ringMat.visible
+          ? 'dark'
+          : (gt.glowMat.visible ? 'target' : 'follow'),
+        ring: `#${gt.ringMat.color.getHexString()}`,
+        haloOn: gt.haloMat.visible,
+        glowOn: gt.glowMat.visible,
+        cueOn: Boolean(gt.cueGroup && gt.cueGroup.visible),
+        wrong: gt.fillMat ? gt.fillMat.uniforms.uWrong.value : null,
+      })),
+    };
+  };
+  /*
    * The quad on screen, for T6. Reports the projected pixel box of the
    * craft's own world bounding box and, separately, the pixel span a
    * 0.25 m segment subtends at the craft's distance, because a 250 mm quad
@@ -3648,3 +3819,4 @@ boot().catch((e) => {
   p.textContent = `The simulator could not start.\n${e.message}`;
   uiRoot.append(p);
 });
+

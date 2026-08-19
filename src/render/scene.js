@@ -1556,9 +1556,13 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
 }
 
 /*
- * The target mark in an opening. Local +Z is the approach face for a gate
- * whose heading matches the mesh yaw; setNextGate flips the whole group
- * when a pass (a split-S, a reverse) comes the other way.
+ * The target mark in an opening: a pane across the hole, hidden until the
+ * race names this gate as next.
+ *
+ * It is double sided and it does not care which way round it is built. The
+ * colour is written from outside, once a frame, off the camera's own half
+ * space against the direction of travel, so a split-S, a reverse or a dive
+ * all read the same way with no mesh to turn round.
  */
 /*
  * The direction of travel through an opening, in scene axes.
@@ -1584,19 +1588,42 @@ function gateCue(clearW, clearH) {
       uFront: { value: new THREE.Color(NEXT_COLOUR) },
       uBack: { value: new THREE.Color(WRONG_COLOUR) },
       uOpacity: { value: 0.22 },
+      /* 1 when the pilot is on the wrong side of this gate's plane, which
+       * is what draws the bar. Driven per frame from the camera's own half
+       * space, not from gl_FrontFacing: see setTargetSide. */
+      uWrong: { value: 0 },
     },
     vertexShader: /* glsl */ `
+      varying vec2 vUv;
       void main() {
+        vUv = uv;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
+      varying vec2 vUv;
       uniform vec3 uFront;
       uniform vec3 uBack;
       uniform float uOpacity;
+      uniform float uWrong;
       void main() {
         vec3 col = gl_FrontFacing ? uFront : uBack;
-        gl_FragColor = vec4(col, uOpacity);
+        float a = uOpacity;
+        /*
+         * WRONG WAY IS A SHAPE, NOT ONLY A COLOUR.
+         *
+         * Red against green is the one axis about eight percent of men
+         * cannot read, and this pane carries the single most important bit
+         * on the course. So the wrong face also wears a bar across the
+         * opening: two diagonals, thick enough to survive the distance the
+         * pane first resolves at. The correct face stays clear, because
+         * the thing the pilot has to see through it is the line beyond it.
+         */
+        vec2 d = vUv - 0.5;
+        float x = min(abs(d.x - d.y), abs(d.x + d.y)) * 1.41421356;
+        float bar = smoothstep(0.055, 0.028, x) * step(max(abs(d.x), abs(d.y)), 0.44);
+        a = mix(a, min(0.72, a + 0.42 * bar), uWrong);
+        gl_FragColor = vec4(col, a);
       }
     `,
   });
@@ -3412,11 +3439,15 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         glowMesh: made.glowMesh,
         cueGroup: made.cueGroup,
         fillMat: made.fillMat,
-        meshYaw: yaw,
-        /* The STRUCTURE's own tilt, which is not the station's: the station's
-         * pitch has the entry sign folded in and this does not. setNextGate
-         * needs both to work out which face the pilot approaches from. */
-        meshPitch: st.pitch ?? 0,
+        /*
+         * meshYaw and meshPitch used to be carried here, so setNextGate
+         * could compare the station's direction of travel against the
+         * STRUCTURE's own facing and work out which of a double sided
+         * pane's faces the pilot approaches from. Nothing needs that any
+         * more: the side is decided against the camera's half space, which
+         * the mesh's orientation has no part in. Two fields that nothing
+         * reads are two fields that go quietly wrong.
+         */
         aperture: scoring[0],
         apertures: scoring,
         primary: made.primary,
@@ -3488,28 +3519,93 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     }
   }
 
-  /* The gate the race wants next pulses green so the pilot always has a
-   * target. Everything else sits at its resting colour. The green pane,
-   * the tick and the cross live on that gate alone and jump when the race
-   * names a new one. */
+  /*
+   * WHICH OBSTACLE COMES NEXT, AS THREE TIERS AND NOT AS A BRIGHTNESS RAMP.
+   *
+   * Reported by a pilot: "it is easy to lose track of which obstacle comes
+   * next". Every gate used to wear a lit ring, a halo and a glow at rest,
+   * so a fourteen station course was fourteen lit targets and the one that
+   * mattered was only the brightest of them. An earlier round already wrote
+   * down that three rings at three levels of one amber read as a corridor
+   * rather than a target, and the answer it reached then was to give the
+   * next gate a different hue. That was not enough either: a hue separates
+   * two objects a pilot is already looking at, and the report is about not
+   * knowing where to look.
+   *
+   * So the tiers are now different KINDS of mark rather than three amounts
+   * of one:
+   *
+   *   the target        a lit ring, a halo, a pulsing glow and a coloured
+   *                     pane across the opening;
+   *   the one after it  a lit ring and nothing else, at a fraction of the
+   *                     target's strength, so a line can be chosen one gate
+   *                     ahead without a second thing competing for the eye;
+   *   everything else   unlit. A PVC frame in printed vinyl, which is what
+   *                     a gate on a real field looks like when nobody is
+   *                     aiming at it.
+   *
+   * A flag's or a cone's pass square is the exception and has to be: it has
+   * no structure at all, so unlit means gone. It rests on the middle tier
+   * wherever it is not the target.
+   */
+  const FOLLOW_RING = 0.42;
   let nextGateIdx = -1;
-  function setNextGate(i) {
-    for (const gt of gates) {
+  /* Where the target is, and which way round the pilot is to it. One
+   * object, filled in place, read by the frame loop and by the shell's
+   * screen mark, so neither of them allocates per frame. */
+  const aim = {
+    active: false,
+    sceneIndex: -1,
+    centre: new THREE.Vector3(),
+    travel: { x: 0, y: 0, z: 1 },
+    clearH: 0,
+    /* True when the camera is on the side the gate is flown FROM. */
+    correct: true,
+    distance: 0,
+  };
+  function dressGate(gt, tier) {
+    /* Material.visible, not a colour near black: the ring is opaque
+     * geometry just inside the opening, so a dark ring is a dark bar across
+     * the hole rather than an absent one. */
+    gt.ringMat.visible = tier !== 'dark';
+    gt.haloMat.visible = tier === 'target';
+    gt.glowMat.visible = tier === 'target';
+    if (tier === 'follow') {
+      gt.ringMat.color.set(gt.ringColor).multiplyScalar(FOLLOW_RING);
+    } else {
       gt.ringMat.color.set(gt.ringColor);
-      gt.haloMat.color.set(gt.ringColor);
-      gt.glowMat.uniforms.uFront.value.set(gt.ringColor);
-      gt.glowMat.uniforms.uBack.value.set(gt.ringColor);
-      gt.haloMat.opacity = 0.34;
-      gt.glowMat.uniforms.uGain.value = 0.08;
-      if (gt.cueGroup) {
-        gt.cueGroup.visible = Boolean(gt.virtual);
-      }
+    }
+    gt.haloMat.color.set(gt.ringColor);
+    gt.glowMat.uniforms.uFront.value.set(gt.ringColor);
+    gt.glowMat.uniforms.uBack.value.set(gt.ringColor);
+    gt.haloMat.opacity = 0.34;
+    gt.glowMat.uniforms.uGain.value = 0.08;
+    if (gt.cueGroup) {
+      gt.cueGroup.visible = Boolean(gt.virtual) && tier !== 'dark';
+    }
+    if (gt.fillMat) {
+      gt.fillMat.uniforms.uWrong.value = 0;
+      gt.fillMat.uniforms.uOpacity.value = tier === 'target' ? 0.22 : 0.10;
+    }
+  }
+  function setNextGate(i, follow) {
+    for (const gt of gates) {
+      dressGate(gt, gt.virtual ? 'follow' : 'dark');
     }
     nextGateIdx = i;
+    /* The gate after next, one tier down. Never the target itself: a two
+     * station course would otherwise dress the same structure twice and the
+     * quieter pass would be the one that stuck. */
+    if (follow != null && follow >= 0 && follow < gates.length && follow !== i) {
+      dressGate(gates[follow], 'follow');
+    }
     const target = i >= 0 && i < gates.length ? gates[i] : null;
     if (!target) {
+      aim.active = false;
+      aim.sceneIndex = -1;
       return;
     }
+    dressGate(target, 'target');
     target.ringMat.color.set(NEXT_COLOUR);
     target.haloMat.color.set(NEXT_COLOUR);
     target.glowMat.uniforms.uFront.value.set(NEXT_COLOUR);
@@ -3526,39 +3622,105 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       }
     }
     /*
-     * GREEN ON THE FACE THE PILOT COMES FROM, RED ON THE OTHER, and both
-     * halves of this were wrong on a dive gate.
+     * WHERE THE PILOT HAS TO COME FROM, AS A HALF SPACE.
      *
-     * It used to decide the reversal by comparing two YAWS and then turn the
-     * pane half a turn about Y. A yaw comparison cannot see the difference
-     * between flying up through a hoop and flying down through it, and a yaw
-     * rotation cannot reverse one either: a dive gate's aperture is
-     * horizontal, so spinning it about the vertical axis leaves exactly the
-     * same face pointing at the sky. Every dive gate therefore wore whichever
-     * face its mesh happened to build as the front, which is red on the way
-     * in for the usual case of one flown downwards.
+     * The direction of travel through the opening, from race.js's own
+     * aperture frame, so the paint on a gate and the test that scores it
+     * cannot disagree about which way through it goes. The approach side is
+     * the half space BEHIND that direction, and setTargetSide below reads
+     * the camera against it every frame.
      *
-     * So the test is the full direction of travel against the structure's own
-     * facing axis, using race.js's aperture frame so the paint and the
-     * scoring cannot disagree about which way through the gate goes. And the
-     * swap is in the COLOURS, not in a rotation: both shaders already choose
-     * on gl_FrontFacing, so this is orientation independent and reverses a
-     * flat hoop as readily as an upright gate.
+     * This replaces a comparison against the STRUCTURE's facing axis, which
+     * existed only to work out which of a double sided pane's two faces was
+     * the entry one. Deciding the side on the camera instead makes the mesh's
+     * own orientation irrelevant, which is worth saying plainly: the previous
+     * round of this bug was a dive gate wearing red on the way in, because a
+     * horizontal aperture has no meaningful front face to pick. A half space
+     * has no faces at all.
      */
-    const travel = travelAxis(target.heading, target.pitch ?? 0);
-    const facing = travelAxis(target.meshYaw ?? target.heading, target.meshPitch ?? 0);
-    const flip = (travel.x * facing.x + travel.y * facing.y + travel.z * facing.z) < 0;
-    const near = flip ? WRONG_COLOUR : NEXT_COLOUR;
-    const far = flip ? NEXT_COLOUR : WRONG_COLOUR;
-    target.glowMat.uniforms.uFront.value.set(near);
-    target.glowMat.uniforms.uBack.value.set(far);
-    if (target.fillMat) {
-      target.fillMat.uniforms.uFront.value.set(near);
-      target.fillMat.uniforms.uBack.value.set(far);
-    }
+    aim.travel = travelAxis(target.heading, target.pitch ?? 0);
+    aim.centre.set(
+      target.position.x,
+      target.position.y + target.aperture.centreY,
+      target.position.z,
+    );
+    aim.sceneIndex = i;
+    aim.active = true;
+    aim.clearH = target.aperture.clearH;
     if (target.cueGroup) {
       target.cueGroup.visible = true;
     }
+    /* Colour it once here so the first frame after a gate is scored is
+     * already right, rather than carrying the previous target's side for
+     * however long it takes the frame loop to come round. */
+    setTargetSide();
+  }
+
+  /*
+   * The lit target's colour, decided against the camera, every frame.
+   *
+   * WHY THIS IS NOT LEFT TO gl_FrontFacing. The pane and the glow are
+   * double sided planes that already chose green or red per fragment, and
+   * that worked, but only on the pane and the glow. The RING does not have
+   * a front and a back: it is four opaque boxes just inside the opening, so
+   * every face a pilot can see is a front face. The ring is also the loudest
+   * and longest ranged mark on the gate, measured at 3 px across at 20 m
+   * while the pane is a 16 percent wash that does not resolve until the gate
+   * is close. So the answer to "which way through" was carried entirely by
+   * the part of the target that arrives last, which is exactly the report:
+   * "sometimes you can't tell until you are right up to the obstacle".
+   *
+   * Reading the camera's own half space instead lets the ring, the halo, the
+   * glow and the pane all say it, so the answer arrives with the first pixel
+   * of the target rather than with the last.
+   */
+  /*
+   * Is a point on the side the target is flown FROM?
+   *
+   * Its own function because it is the one claim this whole change rests
+   * on, and a check has to be able to hold it against race.js's scoring
+   * frame rather than against a second copy of the formula. Null when
+   * nothing is the target.
+   */
+  function approachSide(x, y, z) {
+    if (!aim.active) {
+      return null;
+    }
+    return (x - aim.centre.x) * aim.travel.x
+      + (y - aim.centre.y) * aim.travel.y
+      + (z - aim.centre.z) * aim.travel.z < 0;
+  }
+  function setTargetSide() {
+    if (!aim.active || nextGateIdx < 0 || nextGateIdx >= gates.length) {
+      return;
+    }
+    const target = gates[nextGateIdx];
+    const dx = camera.position.x - aim.centre.x;
+    const dy = camera.position.y - aim.centre.y;
+    const dz = camera.position.z - aim.centre.z;
+    aim.distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    aim.correct = approachSide(camera.position.x, camera.position.y, camera.position.z);
+    const col = aim.correct ? NEXT_COLOUR : WRONG_COLOUR;
+    target.ringMat.color.set(col);
+    target.haloMat.color.set(col);
+    /* Both faces, because the side is now the camera's and not the
+     * fragment's. A pane seen edge on used to flicker between the two. */
+    target.glowMat.uniforms.uFront.value.set(col);
+    target.glowMat.uniforms.uBack.value.set(col);
+    if (target.fillMat) {
+      target.fillMat.uniforms.uFront.value.set(col);
+      target.fillMat.uniforms.uBack.value.set(col);
+      target.fillMat.uniforms.uWrong.value = aim.correct ? 0 : 1;
+    }
+  }
+
+  /*
+   * Where the target is and which way round the pilot is to it, for the
+   * shell's own screen mark. Returned by reference and never rebuilt, so
+   * reading it every frame allocates nothing.
+   */
+  function targetAim() {
+    return aim;
   }
 
   /*
@@ -4213,6 +4375,10 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
      * this clock and the vertex's own world position, computed in the cel
      * material's vertex shader, so there is no per flag work here at all. */
     updateCelTime(t);
+    /* Which side of the target the pilot is on can change at 30 m/s, and
+     * the whole point of it is that the answer is on the gate before the
+     * gate is close, so it is read every frame rather than on a pass. */
+    setTargetSide();
     if (nextGateIdx >= 0 && nextGateIdx < gates.length) {
       const gt = gates[nextGateIdx];
       const pulse = 0.5 + 0.5 * Math.sin(t * 4.4);
@@ -4332,7 +4498,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         real: '2.4 to 2.7, an Australian pavilion verandah at its outer edge',
       },
     },
-    updateShadowFocus, updateWind, setNextGate,
+    updateShadowFocus, updateWind, setNextGate, targetAim, approachSide,
     graphics: q.id,
     /* Kept as no-ops so the shell has one call shape. The racing line is
      * a planner tool now; the target in the air is the green pane. */

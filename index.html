@@ -2016,6 +2016,66 @@
       @media (max-width: 520px) {
         .music-title { max-width: 6.5em; font-size: 10px; }
       }
+
+      /* The target mark. A bracket on the next gate while it is in frame,
+         a chevron pinned inside the edge while it is not, and the range
+         under either. Green while the pilot is on the side the gate is
+         flown from, red while they are not, which is the same half space
+         the gate itself is coloured by: the display and the world must
+         never disagree about which way through.
+
+         currentColor everywhere, so the side is one class on the root and
+         not four colour writes a frame. Transform only, no width or top,
+         so tracking a gate at 30 m/s costs a composite and not a layout. */
+      .lock {
+        position: absolute; left: 0; top: 0; pointer-events: none;
+        color: #39ff8b;
+        filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
+        will-change: transform;
+      }
+      .lock.is-off { display: none; }
+      .lock.is-wrong { color: #ff5a5a; }
+      .lock-box {
+        position: absolute; left: 0; top: 0;
+        transform: translate(-50%, -50%);
+      }
+      .lock.is-edge .lock-box { display: none; }
+      /* Corner ticks, not a closed rectangle. A box drawn round an opening
+         reads as a second gate; four ticks read as an instrument. */
+      .lock-box .lc {
+        position: absolute; width: 24%; height: 24%;
+        border: 2px solid currentColor;
+      }
+      .lock-box .lc.tl { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+      .lock-box .lc.tr { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+      .lock-box .lc.bl { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+      .lock-box .lc.br { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+      /* The chevron is the state where the pilot cannot see the target at
+         all, so it is the loudest thing this mark ever draws: bigger than
+         the bracket's ticks, and breathing, because a still triangle on the
+         edge of a moving frame is a thing the eye stops reporting. */
+      .lock-arrow {
+        position: absolute; left: 0; top: 0; display: none;
+        width: 0; height: 0;
+        border-left: 15px solid transparent;
+        border-right: 15px solid transparent;
+        border-bottom: 27px solid currentColor;
+        transform-origin: 50% 50%;
+      }
+      .lock.is-edge .lock-arrow { display: block; }
+      /* Shallow on purpose. Deep enough to catch the eye at the edge of the
+         frame, never so deep that the chevron is missing from a frame: a
+         marker that is sometimes absent is a marker a pilot learns to
+         distrust, and a capture of one is evidence of nothing. */
+      .lock.is-edge { animation: lock-hunt 1.15s ease-in-out infinite; }
+      @keyframes lock-hunt {
+        50% { opacity: 0.72; }
+      }
+      .lock-dist {
+        position: absolute; left: 0; top: 0;
+        font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+        color: currentColor; white-space: nowrap;
+      }
     </style>
     <!-- Three.js only, pinned. The addons path is the same package, used
          for the post processing chain; nothing else is on the render

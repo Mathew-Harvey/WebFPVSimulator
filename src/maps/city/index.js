@@ -1365,6 +1365,10 @@ export async function buildMap(shell, onProgress, options) {
    * the shell has one call shape for both maps. */
   function updateWind() {}
 
+  /* One frozen answer, so the shell's per frame read allocates nothing
+   * here either. A town with no gates has no target and never gains one. */
+  const CITY_AIM = { active: false, sceneIndex: -1, correct: true, distance: 0 };
+
   return {
     id: 'city',
     name: 'Freestyle city',
@@ -1400,6 +1404,10 @@ export async function buildMap(shell, onProgress, options) {
      */
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
     setNextGate() {},
+    /* No gates, so nothing is ever the next one. Present so the shell has
+     * one call shape for both maps and the target mark stays off here. */
+    targetAim: () => CITY_AIM,
+    approachSide: () => null,
     /* No gates, so no line to be on or off. Present so the shell has one
      * call shape for both maps. */
     hasRacingLine: false,

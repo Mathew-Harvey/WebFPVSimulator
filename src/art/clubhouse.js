@@ -221,10 +221,6 @@ const D = {
   apronX0: -28.5,
   apronX1: 28.5,
   apronTop: 0.12,
-  carX0: -44.0,
-  carX1: -28.5,
-  carZ0: -6.0,
-  carTop: 0.06,
   /* How far down the slabs skirt. Nothing under here is ever seen; the skirt
    * exists so that a terrace standing on ground the height field has levelled
    * to a tolerance still has no daylight under its edge. */
@@ -233,7 +229,11 @@ const D = {
 
 /* The levelled rectangle the complex needs under it, in the local frame. */
 export const CLUBHOUSE_PAD = {
-  x0: D.carX0 - 2.0,
+  /* The pavilion, its terrace and its apron, and nothing else. It used to
+   * reach out to a car park that lived in this frame; the car park is the
+   * ground's now, with its own levelled patch, so this stops 2 m past the
+   * apron on both sides. */
+  x0: -D.verX1 - 4.0,
   x1: D.apronX1 + 2.5,
   z0: D.terraceZ0 - 1.6,
   z1: D.apronZ1 + 2.4,
@@ -711,15 +711,6 @@ function groundworks(S) {
     S.box(sx - w, D.terraceTop - 0.05, D.terraceZ1 + 0.28, sx + w, D.terraceTop, D.terraceZ1 + 0.34, CLUB.brickDark);
   }
 
-  /* Car park, west of the pavilion, with its bays painted. Nobody flies over
-   * this on purpose; it is here because a building with no way to arrive at
-   * it reads as a model of a building. */
-  S.box(D.carX0, -D.skirt, D.carZ0, D.carX1, D.carTop, D.apronZ1, CLUB.bitumen);
-  for (let i = 0; i <= 5; i += 1) {
-    const bx = D.carX0 + 1.2 + i * 2.6;
-    S.box(bx - 0.06, D.carTop, D.apronZ1 - 5.4, bx + 0.06, D.carTop + 0.006, D.apronZ1 - 0.4, CLUB.line);
-  }
-  S.box(D.carX0 + 0.6, D.carTop, D.apronZ1 - 5.46, D.carX0 + 14.6, D.carTop + 0.006, D.apronZ1 - 5.34, CLUB.line);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1173,7 +1164,6 @@ function decks() {
   const out = [
     { x0: D.verX0, x1: D.verX1, z0: D.terraceZ0, z1: D.terraceZ1, top: D.terraceTop, tag: 'terrace' },
     { x0: D.apronX0, x1: D.apronX1, z0: D.terraceZ1, z1: D.apronZ1, top: D.apronTop },
-    { x0: D.carX0, x1: D.carX1, z0: D.carZ0, z1: D.apronZ1, top: D.carTop },
   ];
   for (const cx of TABLE_X) {
     out.push({
@@ -1185,4 +1175,119 @@ function decks() {
     });
   }
   return out;
+}
+
+/*
+ * THE CAR PARK, AND WHY IT IS NOT PART OF THE PAVILION.
+ *
+ * It used to be a strip on the clubhouse's western end, bolted into the same
+ * local frame as the building, which put it in the wrong place twice over.
+ * The aerial has it off the EASTERN corner of the paddock, a long run going
+ * north from the pavilion with a road looping down to it, and it belongs to
+ * the ground rather than to the building: the paddock's outline decides where
+ * it sits, so it is placed against the paddock like the fence and the
+ * treeline are.
+ *
+ * IT KEEPS ITS OWN REAL SIZE, 60 by 16 m for some twenty five bays. Scaling
+ * it the way the paddock's outline is scaled would have drawn a 190 m car
+ * park, which is a retail centre. Structures are built at life size and only
+ * the ground is drawn large; see the note on SITE in src/render/scene.js.
+ *
+ * LOCAL FRAME, Y up. +X is across the bays, +Z runs the length of it, and
+ * the origin is the middle of the slab at the level of the ground it stands
+ * on. The bays are perpendicular, on the paddock side, which is the side the
+ * aerial marks.
+ */
+export const CAR_PARK = {
+  w: 16,
+  len: 60,
+  top: 0.06,
+  /* One bay per 2.5 m, the Australian standard, and 5.4 m deep. */
+  bayStep: 2.5,
+  bayDepth: 5.4,
+  kerb: 0.3,
+};
+
+/*
+ * The car park, as one mesh wearing the SAME material the pavilion wears.
+ *
+ * That is the whole performance story and it is why this returns a mesh
+ * rather than adding one: the scenery merger buckets by material, so a
+ * second object in the clubhouse's vertex coloured material merges into the
+ * clubhouse's bucket and costs no extra draw call and no extra mesh at all.
+ */
+export function assembleCarPark(THREE, mat) {
+  const S = makeSoup(THREE);
+  const hw = CAR_PARK.w * 0.5;
+  const hl = CAR_PARK.len * 0.5;
+  const t = CAR_PARK.top;
+
+  /* The slab, skirted so no daylight shows under its edge on ground the
+   * height field has levelled only to a tolerance. */
+  S.box(-hw, -1.2, -hl, hw, t, hl, CLUB.bitumen);
+
+  /* Terracotta kerb round it, which is what both photographs edge every
+   * paved thing on this site with. */
+  S.box(-hw - CAR_PARK.kerb, -0.3, -hl - CAR_PARK.kerb, hw + CAR_PARK.kerb, t + 0.12, -hl, CLUB.brick);
+  S.box(-hw - CAR_PARK.kerb, -0.3, hl, hw + CAR_PARK.kerb, t + 0.12, hl + CAR_PARK.kerb, CLUB.brick);
+  S.box(-hw - CAR_PARK.kerb, -0.3, -hl, -hw, t + 0.12, hl, CLUB.brick);
+  S.box(hw, -0.3, -hl, hw + CAR_PARK.kerb, t + 0.12, hl, CLUB.brick);
+
+  /*
+   * Bays down the paddock side, and an aisle beside them. Perpendicular
+   * rather than angled, because that is what the aerial shows and because a
+   * 16 m width is exactly a 5.4 m bay, a 5.2 m aisle and a 5.4 m bay.
+   */
+  const n = Math.floor((CAR_PARK.len - 1) / CAR_PARK.bayStep);
+  for (let i = 0; i <= n; i += 1) {
+    const z = -hl + 0.5 + i * CAR_PARK.bayStep;
+    /* West side, the bays facing the field. */
+    S.box(-hw + 0.1, t, z - 0.06, -hw + CAR_PARK.bayDepth, t + 0.006, z + 0.06, CLUB.line);
+    /* East side, backing onto the bush. */
+    S.box(hw - CAR_PARK.bayDepth, t, z - 0.06, hw - 0.1, t + 0.006, z + 0.06, CLUB.line);
+  }
+
+  const mesh = new THREE.Mesh(S.build(), mat);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  return {
+    mesh,
+    /* Landable, because a quad that parks on the bitumen has landed on it. */
+    deck: { x0: -hw, x1: hw, z0: -hl, z1: hl, top: t },
+    /* The kerb is the only solid part: a quad clips a 0.18 m lip, not a
+     * car park. */
+    kerbs: [
+      { x0: -hw - CAR_PARK.kerb, z0: -hl - CAR_PARK.kerb, x1: hw + CAR_PARK.kerb, z1: -hl, y: t + 0.12 },
+      { x0: -hw - CAR_PARK.kerb, z0: hl, x1: hw + CAR_PARK.kerb, z1: hl + CAR_PARK.kerb, y: t + 0.12 },
+      { x0: -hw - CAR_PARK.kerb, z0: -hl, x1: -hw, z1: hl, y: t + 0.12 },
+      { x0: hw, z0: -hl, x1: hw + CAR_PARK.kerb, z1: hl, y: t + 0.12 },
+    ],
+    triangles: S.triangles(),
+  };
+}
+
+/*
+ * The road from the pavilion to the car park.
+ *
+ * The aerial has one, looping round a roundabout at the pavilion's eastern
+ * end and running out to the parking. In here the pavilion is 53 m of a 260 m
+ * paddock rather than the 61 percent the photograph gives it, so the two are
+ * a hundred metres apart and a road between them is not decoration, it is the
+ * thing that stops the car park reading as a slab dropped in the trees.
+ *
+ * Built in the same frame and material as the car park, as a plain sealed
+ * strip: no markings, because a one lane access road in the bush has none.
+ */
+export function assembleDriveway(THREE, mat, length) {
+  const S = makeSoup(THREE);
+  const HALF = 3.0;
+  /* Built along +X from the origin, so the caller places it at the car park
+   * end and it runs back toward the pavilion. */
+  S.box(0, -1.0, -HALF, length, CAR_PARK.top, HALF, CLUB.bitumen);
+  S.box(0, -0.25, -HALF - 0.25, length, CAR_PARK.top + 0.1, -HALF, CLUB.brick);
+  S.box(0, -0.25, HALF, length, CAR_PARK.top + 0.1, HALF + 0.25, CLUB.brick);
+  const mesh = new THREE.Mesh(S.build(), mat);
+  mesh.castShadow = false;
+  mesh.receiveShadow = true;
+  return { mesh, halfWidth: HALF, triangles: S.triangles() };
 }

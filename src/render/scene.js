@@ -69,7 +69,8 @@ import {
 /* The club's pavilion. Both race maps get one, because a race field is a
  * club's field; the freestyle city is a different world and does not. */
 import {
-  assembleClubhouse, paintPlaque, CLUBHOUSE_PAD, CLUBHOUSE_TOP, PLAQUE_PX,
+  assembleClubhouse, assembleCarPark, assembleDriveway, paintPlaque,
+  CLUBHOUSE_PAD, CLUBHOUSE_TOP, PLAQUE_PX, CAR_PARK,
 } from '../art/clubhouse.js';
 import { Colliders } from '../game/collide.js';
 
@@ -280,12 +281,27 @@ function trackCurve() {
  * lets the one number underneath decide how big the ground is without
  * touching the shape.
  */
+/*
+ * THE X IS NEGATED AGAINST THE AERIAL'S PIXELS, and that is a compass
+ * correction rather than a typo.
+ *
+ * A pilot on the verandah faces +Z, which is the way the pavilion looks out
+ * over the field. In a right handed, Y up world their right hand is
+ * cross(forward, up) = cross((0,0,1),(0,1,0)) = (-1,0,0). So EAST, the side
+ * the aerial puts the car park on, is NEGATIVE X, and +X is the pilot's left.
+ *
+ * Read straight off the photograph's pixels the whole ground came out mirrored:
+ * the diagonal boundary that runs down the west side of the paddock sat on the
+ * pilot's right, and the car park was on the wrong side of the field from
+ * anyone who actually flies there. Negating here fixes the outline, and the
+ * car park and its road are placed against the corrected outline below.
+ */
 const SITE_SHAPE = [
-  [-0.227, 1.222],
-  [0.500, 1.141],
-  [0.500, 0.000],
-  [-0.406, 0.000],
-  [-0.500, 0.234],
+  [0.227, 1.222],
+  [-0.500, 1.141],
+  [-0.500, 0.000],
+  [0.406, 0.000],
+  [0.500, 0.234],
 ];
 
 /*
@@ -311,8 +327,8 @@ const SITE = SITE_SHAPE.map(([nx, ny]) => ({ x: nx * SITE_W, z: SITE_SOUTH + ny 
  * the same photograph in the same normalised units.
  */
 const SITE_MOWN = {
-  x0: -0.4375 * SITE_W,
-  x1: 0.4219 * SITE_W,
+  x0: -0.4219 * SITE_W,
+  x1: 0.4375 * SITE_W,
   z0: SITE_SOUTH + 0.0469 * SITE_W,
   z1: SITE_SOUTH + 0.6406 * SITE_W,
 };
@@ -324,7 +340,30 @@ const SITE_MOWN = {
  * have stretched it to. Structures keep their own size; only the ground is
  * drawn large.
  */
-const SITE_CARPARK = { x0: 132, x1: 148, z0: -50, z1: 10 };
+/*
+ * WHERE THE CAR PARK IS.
+ *
+ * Off the paddock's eastern corner, running north from the pavilion's end,
+ * which is where the aerial has it. Its centre is 10 m outside the boundary
+ * so the bays back onto the bush and the aisle faces the field, and its
+ * SIZE comes from CAR_PARK rather than from the paddock's scaling: 60 by
+ * 16 m, about twenty five bays. Stretching it the way the outline is
+ * stretched would have drawn a 190 m car park.
+ *
+ * The rectangle below is derived from that one size, so the patch of ground
+ * that gets levelled, the trees that get kept off it and the thing that
+ * actually gets drawn cannot drift apart.
+ */
+const CARPARK_AT = { x: SITE[2].x - 10 - CAR_PARK.w * 0.5, z: -20 };
+const SITE_CARPARK = {
+  x0: CARPARK_AT.x - CAR_PARK.w * 0.5 - CAR_PARK.kerb,
+  x1: CARPARK_AT.x + CAR_PARK.w * 0.5 + CAR_PARK.kerb,
+  z0: CARPARK_AT.z - CAR_PARK.len * 0.5 - CAR_PARK.kerb,
+  z1: CARPARK_AT.z + CAR_PARK.len * 0.5 + CAR_PARK.kerb,
+};
+/* The road runs west from the car park's southern end to the pavilion's
+ * apron, along the outside of the paddock's southern boundary. */
+const DRIVE_Z = SITE_SOUTH - 8;
 
 /* Distance from a point to one segment, for the boundary tests below. */
 function segDist(px, pz, ax, az, bx, bz) {
@@ -368,10 +407,13 @@ function onMown(x, z) {
   return x >= SITE_MOWN.x0 && x <= SITE_MOWN.x1 && z >= SITE_MOWN.z0 && z <= SITE_MOWN.z1;
 }
 
-/* Inside the car park, which nothing grows on. */
+/* Inside the car park or on its road, neither of which anything grows on. */
 function onCarPark(x, z) {
-  return x >= SITE_CARPARK.x0 - 3 && x <= SITE_CARPARK.x1 + 3
-    && z >= SITE_CARPARK.z0 - 3 && z <= SITE_CARPARK.z1 + 3;
+  if (x >= SITE_CARPARK.x0 - 3 && x <= SITE_CARPARK.x1 + 3
+    && z >= SITE_CARPARK.z0 - 3 && z <= SITE_CARPARK.z1 + 3) {
+    return true;
+  }
+  return Math.abs(z - DRIVE_Z) < 5.5 && x > SITE_CARPARK.x0 && x < 40;
 }
 
 /*
@@ -851,6 +893,19 @@ function makeHeightField(samples, pitch, pad) {
      */
     if (pad) {
       const cover = padCover(pad, x, z);
+      const smooth = cover * cover * (3 - 2 * cover);
+      h *= (1 - smooth);
+    }
+
+    /* And the car park and its road, for the same reason: a graded sealed
+     * surface is graded. Faded over 14 m, which is short because these are
+     * small and sit in the trees rather than in the open. */
+    {
+      const d = Math.max(
+        Math.max(SITE_CARPARK.x0 - 3 - x, x - SITE_CARPARK.x1 - 3),
+        Math.max(SITE_CARPARK.z0 - 3 - z, z - SITE_CARPARK.z1 - 3),
+      );
+      const cover = Math.min(1, Math.max(0, 1 - d / 14));
       const smooth = cover * cover * (3 - 2 * cover);
       h *= (1 - smooth);
     }
@@ -3778,6 +3833,62 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         top: clubY + d.top,
       });
     }
+    /*
+     * THE CAR PARK AND ITS ROAD, in the SAME material the pavilion wears.
+     *
+     * That is deliberate and it is the whole cost story: the merger buckets
+     * by material, so these bake into the clubhouse's existing bucket and
+     * cost no extra mesh and no extra draw call. They are separate objects
+     * because they belong to the GROUND, placed against the paddock's own
+     * eastern edge, rather than to the building whose frame they used to sit
+     * in and be dragged around by.
+     */
+    {
+      const park = assembleCarPark(THREE, clubMat);
+      const py = height(CARPARK_AT.x, CARPARK_AT.z);
+      park.mesh.position.set(CARPARK_AT.x, py, CARPARK_AT.z);
+      baker.bake(park.mesh);
+      clubDecks.push({
+        x0: CARPARK_AT.x + park.deck.x0,
+        x1: CARPARK_AT.x + park.deck.x1,
+        z0: CARPARK_AT.z + park.deck.z0,
+        z1: CARPARK_AT.z + park.deck.z1,
+        top: py + park.deck.top,
+      });
+      /* The kerb is solid; the bitumen is not, because a quad that meets a
+       * flat surface has landed rather than crashed and height() already
+       * offers it as a deck. */
+      for (const k of park.kerbs) {
+        colliders.addBox(
+          'wall',
+          CARPARK_AT.x + k.x0, py - 0.2, CARPARK_AT.z + k.z0,
+          CARPARK_AT.x + k.x1, py + k.y, CARPARK_AT.z + k.z1,
+        );
+      }
+
+      /*
+       * The road, from the car park's southern end west to the pavilion's
+       * apron. It runs along the OUTSIDE of the paddock's southern boundary,
+       * threading the treeline, which is where the aerial's road goes and
+       * which keeps it off the flying ground entirely.
+       */
+      const driveFrom = CARPARK_AT.x + CAR_PARK.w * 0.5;
+      const driveTo = clubSite.x - 26.0;
+      const drive = assembleDriveway(THREE, clubMat, Math.max(4, driveTo - driveFrom));
+      const dy = height((driveFrom + driveTo) * 0.5, DRIVE_Z);
+      drive.mesh.position.set(driveFrom, dy, DRIVE_Z);
+      baker.bake(drive.mesh);
+      clubDecks.push({
+        x0: driveFrom,
+        x1: driveTo,
+        z0: DRIVE_Z - drive.halfWidth,
+        z1: DRIVE_Z + drive.halfWidth,
+        top: dy + CAR_PARK.top,
+      });
+      /* Nothing grows on the road either. */
+      occluders.push({ x: CARPARK_AT.x, z: CARPARK_AT.z, r: 9 });
+    }
+
     /*
      * Contact shading, as four circles down the building's spine rather than
      * one over the whole complex. The apron and the car park are already

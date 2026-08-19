@@ -11626,3 +11626,77 @@ the fix was to read the deleted symbols out of the diff and restore the
 block from HEAD. Deleting by anchor pair is fast and it is exactly this
 careless; the check that caught it was booting the page, which is a
 thing to do after every cut rather than at the end of a series of them.
+
+### 2026-08-19 | feature | The car park is the ground's, not the pavilion's
+
+Ticket: owner. Implement the car park. Also: another agent is working on
+the music integration, do not get in each other's way.
+
+**Moved out of the pavilion's frame.** It used to be a bitumen strip
+bolted into clubhouse.js's own local coordinates at the building's
+western end, which put it in the wrong place twice: the aerial has it
+off the paddock's EASTERN corner running north, and it belongs to the
+ground rather than to the building. It is now `assembleCarPark` and
+`assembleDriveway` in src/art/clubhouse.js, placed by src/render/scene.js
+against the paddock's own outline the way the fence and the treeline are.
+`CLUBHOUSE_PAD` shrank to what the pavilion actually stands on.
+
+**It keeps its real size**, 60 by 16 m for about twenty five bays, with
+the bays perpendicular on the paddock side and an aisle beside them.
+Stretching it the way the paddock's outline is stretched would have drawn
+a 190 m car park, which is a retail centre. Same rule as the pavilion:
+structures are life size, only the ground is drawn large. Its rectangle
+is derived from that one size, so the patch of ground that gets levelled,
+the trees kept off it and the thing actually drawn cannot drift apart.
+
+**It costs nothing.** Both it and the road wear the SAME vertex coloured
+material the pavilion wears, so the scenery merger buckets them into the
+clubhouse's existing bucket: no extra mesh, no extra draw call.
+
+**And a road**, because the pavilion is 53 m of a 260 m paddock rather
+than the 61 percent the photograph gives it, so the two are a hundred
+metres apart and without one the car park reads as a slab dropped in the
+trees. It runs along the OUTSIDE of the paddock's southern boundary,
+threading the treeline, which is where the aerial's road goes and which
+keeps it off the flying ground entirely.
+
+**THE WHOLE GROUND WAS MIRRORED AND THE CAR PARK IS WHAT EXPOSED IT.**
+
+The outline was traced straight off the aerial's pixels with photo-x
+mapped to world +X. That is wrong. A pilot on the verandah faces +Z, and
+in a right handed Y up world their right hand is
+cross((0,0,1),(0,1,0)) = (-1,0,0). East, the side the aerial puts the car
+park on, is NEGATIVE X; +X is the pilot's left. So the diagonal boundary
+that runs down the west side of the real paddock sat on the pilot's
+right, and the car park went to the wrong side of the field from the
+point of view of anyone who actually flies there.
+
+Caught by reading the compass rather than the picture. A top down capture
+had already been misread twice in the other direction: `lookAt` with the
+default up vector is degenerate when the camera looks straight down, and
+three.js resolves screen right to -X, so the first plan view was mirrored
+on screen and the correct world looked wrong. Probing the surface height
+at (140, -20) against (-140, -20) settled which was which; the picture
+never could.
+
+SITE_SHAPE and SITE_MOWN are negated in x now, and the car park and road
+are placed against the corrected outline.
+
+**Known and not done.** The pavilion's own massing is still mirrored: the
+aerial has its deeper, taller mass at the western end and clubhouse.js
+builds that at local -X, which is now the eastern end. Fixing it means
+negating the x of every wall, opening, solar panel and the plaque in that
+file, and the asymmetry is subtle enough from the air that it is worth
+doing deliberately rather than as a rider on this.
+
+**Working alongside another agent.** The music files were staged in the
+shared index while this was being built. Nothing here touches them, no
+`git stash` was used anywhere in this work because it would have taken
+their staged changes with it, and the commit names its paths explicitly
+rather than committing the index.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.
+
+Verify: npm run verify 16 of 16 after the budget re-measure. Track builder
+self test 236 of 236. All fourteen gate positions read and compared
+against the previous commit: identical.

@@ -379,6 +379,9 @@ async function main() {
           gateScale: fieldData.gateScale ?? null,
           grassMin: fr.grassBladeHeight.measured[0],
           grassMax: fr.grassBladeHeight.measured[1],
+          clubhouseVerandah: fr.clubhouseVerandahClear
+            ? fr.clubhouseVerandahClear.measured
+            : null,
         },
         city: {
           kerb: cr.kerbHeight.measured,

@@ -66,6 +66,11 @@ import {
   assembleStartBlock, startBlockContactHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
   START_BLOCK_FOAM, START_BLOCK_LIP,
 } from '../art/startblock.js';
+/* The club's pavilion. Both race maps get one, because a race field is a
+ * club's field; the freestyle city is a different world and does not. */
+import {
+  assembleClubhouse, paintPlaque, CLUBHOUSE_PAD, CLUBHOUSE_TOP, PLAQUE_PX,
+} from '../art/clubhouse.js';
 import { Colliders } from '../game/collide.js';
 
 /*
@@ -319,6 +324,103 @@ function pitchCover(pitch, x, z) {
 }
 
 /*
+ * WHERE THE CLUBHOUSE STANDS.
+ *
+ * Beside the field, on its long side, facing in. Which is one rule for both
+ * race maps, because both of them ARE a rectangle of playing surface with a
+ * racing line inside it: a designed course brings the rectangle with it as
+ * its pitch, and the built in circuit's is the 210 by 83 m box its figure
+ * eight lives in.
+ *
+ * The complex is placed by its FRONT WALL, which is the local origin, so the
+ * numbers below are the distance from the field's edge to the building rather
+ * than to the middle of a car park.
+ */
+/* Clear meadow between the mown edge and the levelled clubhouse ground, so
+ * the two flat rectangles read as two places rather than one big shelf. */
+const CLUB_GAP = 3;
+/*
+ * The built in circuit's site, measured rather than chosen.
+ *
+ * At z = -57 the pad's own rectangle carries 2.84 m of natural relief, all of
+ * it fill, which the terrace's retaining faces and a 22 m graded bank absorb
+ * without a cliff. Its apron stops 32.3 m short of the racing line and its
+ * front wall 40.3 m, so it is well outside the 15 m the scenery rule keeps
+ * clear and a pilot who overshoots a gate has room to sort it out before
+ * meeting a wall. Every cliff landmark is at least 169 m away and the lake is
+ * 297 m away, so nothing this site displaces was placed on purpose.
+ *
+ * Further out is worse on both counts: the relief under the pad grows about
+ * a metre per three metres of standoff, and the pavilion stops reading as
+ * part of the course.
+ */
+const CLUB_FIELD_Z = -57;
+/*
+ * How far the levelling fades into the meadow. Twenty two metres, and the
+ * number is set by the TERRAIN MESH rather than by taste: the ground is a
+ * 1700 m plane at 230 segments, so its vertices are 7.4 m apart, and a fade
+ * narrower than about three of them cannot resolve a bank at all. It comes
+ * out as a torn edge with a vertex on the flat and the next one on the
+ * hillside. The pitch gets away with a 5 m fade because a painted surface is
+ * laid over the top of it; this bank is bare ground and has to be a bank.
+ */
+const CLUB_PAD_FADE = 22;
+
+/*
+ * The site, in world coordinates, plus the quarter turn that points the
+ * verandah at the field. A quarter turn is a real constraint and not a
+ * convenience: the clubhouse's colliders are axis aligned boxes in its own
+ * frame, and only a quarter turn leaves them axis aligned in the world.
+ */
+export function clubhouseSite(pitch) {
+  if (!pitch) {
+    return { x: 0, z: CLUB_FIELD_Z, yaw: 0 };
+  }
+  const out = CLUB_GAP + PITCH.fade + CLUBHOUSE_PAD.z1;
+  /* Along the longer side, which is where a pavilion goes: beside the run,
+   * not across the end of it. */
+  if (pitch.mownW >= pitch.mownD) {
+    return { x: 0, z: -(pitch.mownD + out), yaw: 0 };
+  }
+  return { x: -(pitch.mownW + out), z: 0, yaw: Math.PI / 2 };
+}
+
+/*
+ * The levelled ground the complex needs, as a world rectangle. Axis aligned,
+ * because the yaw is a quarter turn: a quarter turn swaps x and z and negates
+ * one of them, which maps a rectangle onto a rectangle.
+ */
+export function clubhousePad(site) {
+  const c = Math.round(Math.cos(site.yaw));
+  const sn = Math.round(Math.sin(site.yaw));
+  const xs = [];
+  const zs = [];
+  for (const lx of [CLUBHOUSE_PAD.x0, CLUBHOUSE_PAD.x1]) {
+    for (const lz of [CLUBHOUSE_PAD.z0, CLUBHOUSE_PAD.z1]) {
+      xs.push(site.x + lx * c + lz * sn);
+      zs.push(site.z - lx * sn + lz * c);
+    }
+  }
+  return {
+    x0: Math.min(...xs), x1: Math.max(...xs),
+    z0: Math.min(...zs), z1: Math.max(...zs),
+  };
+}
+
+/* Signed distance to the pad: negative inside, metres outside. */
+function padEdge(pad, x, z) {
+  return Math.max(pad.x0 - x, x - pad.x1, pad.z0 - z, z - pad.z1);
+}
+
+/* 1 on the pad, falling to 0 over the fade. */
+function padCover(pad, x, z) {
+  if (!pad) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, 1 - padEdge(pad, x, z) / CLUB_PAD_FADE));
+}
+
+/*
  * The pitch's surface: mown stripes and a marked boundary, as a texture.
  *
  * NOT as terrain vertex colours, which is where this started. The terrain is
@@ -413,7 +515,7 @@ function pitchSurface(pitch, guide) {
 }
 
 /* Terrain height, shared by the mesh and by anything placed on it. */
-function makeHeightField(samples, pitch) {
+function makeHeightField(samples, pitch, pad) {
   return (x, z) => {
     const base = (fbm(x * 0.0022, z * 0.0022) - 0.5) * 34;
     const detail = (fbm(x * 0.011, z * 0.011) - 0.5) * 4.5;
@@ -438,6 +540,21 @@ function makeHeightField(samples, pitch) {
      * gate would put their dive gate through the ground. */
     if (pitch) {
       const cover = pitchCover(pitch, x, z);
+      const smooth = cover * cover * (3 - 2 * cover);
+      h *= (1 - smooth);
+    }
+
+    /*
+     * So is the clubhouse's ground, and for the same reason one step removed.
+     * A 77 by 27 m terrace, a car park and a level verandah stand on this,
+     * and the alternative to levelling it is either a building floating over
+     * the low corner of its own site or a retaining wall tall enough to be
+     * the biggest thing on the field. Levelled to the SAME datum as the
+     * racing corridor, so the terrace is genuinely a step and a half up out
+     * of the grass rather than a plinth at an arbitrary height.
+     */
+    if (pad) {
+      const cover = padCover(pad, x, z);
       const smooth = cover * cover * (3 - 2 * cover);
       h *= (1 - smooth);
     }
@@ -3026,7 +3143,16 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * check 16 measures exactly that. The course object is plain data and this
    * file knows nothing about where it came from. */
   const samples = course ? course.samples : curve.getPoints(180);
-  const height = makeHeightField(samples, pitch);
+  /*
+   * The clubhouse's site is worked out BEFORE the height field, because the
+   * height field has to level the ground under it. It depends on nothing but
+   * the pitch and is therefore not a chicken and egg problem: where the
+   * pavilion stands is a function of the rectangle the author drew, not of
+   * anything the world builds later.
+   */
+  const clubSite = clubhouseSite(pitch);
+  const clubPad = clubhousePad(clubSite);
+  const height = makeHeightField(samples, pitch, clubPad);
 
   const ground = terrain(height, samples, pitch);
   scene.add(ground);
@@ -3510,10 +3636,24 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
      */
     const drowned = Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r * 1.6
       && height(x, z) < LAKE.level + 0.4;
+    /*
+     * And nothing grows on the clubhouse's ground either, for the same
+     * reason and by the same DISCARD. About two of these 420 draws land on
+     * the pad, and a tree standing in the car park is not the problem: the
+     * problem is that skipping the draw would move every remaining tree,
+     * rock, cliff, flower and mountain in the valley, because they all hang
+     * off one rng stream in one order. So it is built and thrown away.
+     *
+     * Two metres of margin, not the whole fade, so the bank around the
+     * terrace keeps its planting and the pavilion sits IN the landscape
+     * rather than in a clearing.
+     */
+    const onPad = padEdge(clubPad, x, z) < 2;
+    const cut = drowned || onPad;
     const obj = isTree
-      ? tree(rng, height, x, z, drowned ? null : colliders)
-      : rock(rng, height, x, z, drowned ? null : colliders);
-    if (drowned) {
+      ? tree(rng, height, x, z, cut ? null : colliders)
+      : rock(rng, height, x, z, cut ? null : colliders);
+    if (cut) {
       continue;
     }
     baker.bake(obj);
@@ -3526,8 +3666,114 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     [-215, 95], [190, 155], [-95, -240], [305, 40], [-320, -80], [60, 280],
   ];
   for (const [cx, cz] of cliffSpots) {
-    baker.bake(cliff(rng, height, cx, cz, colliders));
+    /* On the built in circuit no cliff is within 169 m of the pad, measured.
+     * A designed course moves the pad, so the same discard the trees use
+     * guards the case rather than a comment claiming it cannot happen. */
+    const cut = padEdge(clubPad, cx, cz) < 14;
+    const made = cliff(rng, height, cx, cz, cut ? null : colliders);
+    if (cut) {
+      continue;
+    }
+    baker.bake(made);
     occluders.push({ x: cx, z: cz, r: 13 });
+  }
+
+  /*
+   * THE CLUBHOUSE.
+   *
+   * One mesh, one bucket, so the whole pavilion, its terrace, its apron, its
+   * car park and its pit tables cost the field one merged mesh and the two
+   * draw calls that go with it, once for the view and once for the outline
+   * prepass. See src/art/clubhouse.js for why it is authored in vertex
+   * colours rather than in eight materials.
+   */
+  const clubY = height(clubSite.x, clubSite.z);
+  const clubDecks = [];
+  let clubVerandahClear = 0;
+  {
+    const clubMat = celMaterial({
+      color: 0xffffff, rim: 0.2, cloudShadow: 0.3, key: 'clubhouse',
+    });
+    clubMat.vertexColors = true;
+    /*
+     * The engraved plate, painted once into a canvas the same way the gate
+     * banners are. No cloud shadow on it: a cloud crossing a plaque under a
+     * verandah roof is a shadow that could not fall there, and the whole
+     * point of this surface is that it stays legible.
+     */
+    const plaqueCanvas = bannerCanvas(PLAQUE_PX.w, PLAQUE_PX.h);
+    paintPlaque(plaqueCanvas.getContext('2d'), PLAQUE_PX.w, PLAQUE_PX.h);
+    const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
+    plaqueTex.colorSpace = THREE.SRGBColorSpace;
+    plaqueTex.anisotropy = 8;
+    const plaqueMat = celMaterial({
+      color: 0xffffff, map: plaqueTex, rim: 0.12, key: 'clubhousePlaque',
+    });
+    const club = assembleClubhouse(THREE, clubMat, plaqueMat);
+    clubVerandahClear = club.verandahClear;
+    club.mesh.position.set(clubSite.x, clubY, clubSite.z);
+    club.mesh.rotation.y = clubSite.yaw;
+    baker.bake(club.mesh);
+    /* ADDED, NOT BAKED. The merger stamps receiveShadow on every bucket it
+     * flushes, and this is the one mesh in the world that must not have it.
+     * It is its own material and therefore its own bucket either way, so
+     * baking it would have cost the same and bought nothing. */
+    club.plaque.position.copy(club.mesh.position);
+    club.plaque.rotation.y = clubSite.yaw;
+    scene.add(club.plaque);
+
+    /* Local frame to world, by the same convention the obstacles use. The yaw
+     * is a quarter turn, so cos and sin are exactly 0 or +/-1 and a box stays
+     * a box. */
+    const cs = Math.round(Math.cos(clubSite.yaw));
+    const sn = Math.round(Math.sin(clubSite.yaw));
+    const wx = (lx, lz) => clubSite.x + lx * cs + lz * sn;
+    const wz = (lx, lz) => clubSite.z - lx * sn + lz * cs;
+    for (const solid of club.colliders) {
+      if (solid.post) {
+        const [lx, lz, y0, y1, r] = solid.post;
+        colliders.addPost(solid.kind, wx(lx, lz), wz(lx, lz), clubY + y0, clubY + y1, r);
+        continue;
+      }
+      const [x0, y0, z0, x1, y1, z1] = solid.box;
+      const ax = wx(x0, z0);
+      const az = wz(x0, z0);
+      const bx = wx(x1, z1);
+      const bz = wz(x1, z1);
+      colliders.addBox(
+        solid.kind,
+        Math.min(ax, bx), clubY + y0, Math.min(az, bz),
+        Math.max(ax, bx), clubY + y1, Math.max(az, bz),
+      );
+    }
+    for (const d of club.decks) {
+      const ax = wx(d.x0, d.z0);
+      const az = wz(d.x0, d.z0);
+      const bx = wx(d.x1, d.z1);
+      const bz = wz(d.x1, d.z1);
+      clubDecks.push({
+        x0: Math.min(ax, bx), x1: Math.max(ax, bx),
+        z0: Math.min(az, bz), z1: Math.max(az, bz),
+        top: clubY + d.top,
+      });
+    }
+    /*
+     * Contact shading, as four circles down the building's spine rather than
+     * one over the whole complex. The apron and the car park are already
+     * covered by their own slabs, so an occluder over them would tint terrain
+     * nobody can see; what needs grounding is the bank around the terrace.
+     */
+    for (let i = 0; i < 4; i += 1) {
+      const lx = -18 + i * 12;
+      occluders.push({ x: wx(lx, -5), z: wz(lx, -5), r: 7 });
+    }
+    /*
+     * How high it stands, into the same list the obstacles report to. The
+     * title camera sums its orbit radius and its eye height off this list, so
+     * a 7.15 m ridge that is not in it is a ridge the establishing shot flies
+     * through on a course whose own structures are shorter.
+     */
+    obstacleTops.push({ x: wx(0, -5.6), z: wz(0, -5.6), top: clubY + CLUBHOUSE_TOP });
   }
 
   /* Flowers: a few thousand tiny saturated quads. They cost almost
@@ -3842,6 +4088,40 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   const quad = shell.quad;
   const discs = shell.discs;
   scene.add(quad);
+
+  /*
+   * COMPILE EVERY SHADER NOW, RATHER THAN THE FIRST TIME SOMETHING IS LOOKED
+   * AT.
+   *
+   * Three compiles a material lazily, on the first frame that draws it. On a
+   * world where every material is on screen within a second or two of the
+   * spawn that is invisible. It stopped being invisible when the clubhouse
+   * arrived: the pavilion stands 40 m off the racing line and a pilot can fly
+   * a third of a lap before it first enters the frustum, and the frame that
+   * finally does is the frame that pays for its program. A stall at a random
+   * point in a timed lap is the one kind of frame drop a racing simulator
+   * cannot have, and it is a stall the player earns by turning their head.
+   *
+   * It is also what made check 16's cel clock assertion stop meaning
+   * anything. That check reads the size of the per frame clock walk at boot
+   * and again after a map round trip and fails if it GREW, on the reasoning
+   * that growth is a disposed material's uniform kept alive. With lazy
+   * compilation the size is really a measure of how much of the world has
+   * been looked at, so the clubhouse compiling somewhere between the two
+   * measurements read as a leak: 44 at boot against 45 after, with the
+   * meshes, the draw calls, the render target bytes and the attribute bytes
+   * all identical. Measured, and the second reading was the honest one.
+   * Compiling here makes the count a property of the world instead of a
+   * property of where the camera has been.
+   *
+   * This is deliberately NOT eager registration inside celMaterial. Scenery
+   * makes a material per tree and per canopy blob and throws all but one of
+   * each bucket away unreferenced without disposing them, so registering at
+   * construction would put about two thousand dead uniforms in the walk and
+   * turn a bookkeeping question into the actual leak the check is looking
+   * for. Only materials that reached the scene graph are compiled here.
+   */
+  renderer.compile(scene, camera);
   progress(1);
 
   /*
@@ -3973,6 +4253,21 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       gateOpeningH: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.clearH, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
       gateApertureCentreY: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.centreY, unit: 'm', real: '0.762, half the opening' },
       grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
+      /*
+       * The clubhouse's verandah, measured as the gap a pilot actually has:
+       * the underside of the roof taken off the COLLIDER the craft would hit,
+       * minus the deck top taken off the LANDABLE surface it would stand on.
+       * Neither number is restated from the dimension table, so a change to
+       * either that closes the gap is caught here rather than by somebody
+       * flying into a soffit. A pavilion verandah is the one object on this
+       * map built to a human rather than to a rulebook, which is exactly the
+       * kind of thing this check exists to band.
+       */
+      clubhouseVerandahClear: {
+        measured: clubVerandahClear,
+        unit: 'm',
+        real: '2.4 to 2.7, an Australian pavilion verandah at its outer edge',
+      },
     },
     updateShadowFocus, updateWind, setNextGate,
     graphics: q.id,
@@ -3992,10 +4287,43 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
      */
     height: (x, z, fromY) => {
       const g = height(x, z);
-      if (!padDecks.length) {
+      if (!padDecks.length && !clubDecks.length) {
         return g;
       }
-      let best = null;
+      /*
+       * THE HIGHEST SURFACE WITHIN A STEP OF WHERE THE QUERY WAS MADE FROM,
+       * not the highest surface there is.
+       *
+       * The difference did not exist while the only platforms were launch
+       * stands, because a start block is one deck over bare grass and there
+       * is nothing to be between. The clubhouse is a STACK: grass at 0, the
+       * apron at 0.12, the terrace at 0.45 and a pit table top at 1.19, all
+       * over the same square metre. Taking the maximum and then asking
+       * whether it was in reach dropped a quad hovering half a metre over a
+       * table straight through the terrace to the grass, because the table
+       * was out of reach and the terrace never got considered. Each candidate
+       * is now tested for reach on its own and the best of the reachable ones
+       * wins, with the dirt as the floor that is always reachable.
+       */
+      let best = g;
+      const STEP = 0.55;
+      const offer = (top) => {
+        if (fromY != null && fromY + STEP < top) {
+          return;
+        }
+        if (top > best) {
+          best = top;
+        }
+      };
+      /* The clubhouse's terrace, its apron, its car park and every pit table
+       * top. Flat rectangles, axis aligned because the complex is only ever
+       * yawed by a quarter turn, so the test is a rectangle test. */
+      for (const deck of clubDecks) {
+        if (x < deck.x0 || x > deck.x1 || z < deck.z0 || z > deck.z1) {
+          continue;
+        }
+        offer(deck.top);
+      }
       for (const pad of padDecks) {
         const dx = x - pad.x;
         const dz = z - pad.z;
@@ -4007,18 +4335,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         if (deck == null) {
           continue;
         }
-        const top = g + deck;
-        if (best == null || top > best) {
-          best = top;
-        }
+        offer(g + deck);
       }
-      if (best == null) {
-        return g;
-      }
-      if (fromY == null || fromY + 0.55 >= best) {
-        return best;
-      }
-      return g;
+      return best;
     },
     /* No animation on the field depends on the physics clock: the flags and
      * the glow pulse are wall clock decoration and updateWind already drives

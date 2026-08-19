@@ -11019,7 +11019,225 @@ Verify: not run. No native, input, ABI or trace change.
 Wrong: nothing this turn. The labels were never drawn on the
 canvas; they were the table headers being squeezed.
 
+### 2026-08-19 | feature | A clubhouse on every race map
 
+Ticket: owner, with two Google Earth captures of the club's pavilion.
+Long low building beside the oval, folded pale roof, solar array,
+terracotta retaining walls, car park. The owner's words: there is a
+verandah around the outside where we set up our pit tables and fly
+from, and in the capture it is closed off because photogrammetry
+makes a solid box of a roof with people under it. Take liberties and
+close the design out.
 
+**Where it went.** src/render/scene.js buildFieldScene, which is the
+one function BOTH race maps go through: src/maps/field.js for the
+built in circuit and src/maps/custom.js for a course somebody built.
+That is the whole of "any race map that exists and is built by users"
+in one place. The freestyle city is a different world and does not
+get one.
 
+**Built.** src/art/clubhouse.js, new, no imports, THREE passed in the
+way startblock.js takes it. 44 m long, three masses of different
+depth so the back wall steps, a hipped ridge over the west mass, TWO
+CROSS GABLES in the middle whose ends face the field and are the fold
+the reference shows from the air, a lower gable ended wing east.
+Fourteen 1.65 by 1.0 m solar modules on the field side plane. A
+verandah wrapping three sides on a level plate, hipped at both front
+corners, on 23 posts at about 3.5 m centres, with six trestle tables
+and three cases on it. Terrace at 0.45, apron at 0.12, mown ground at
+0, held apart by brick. Car park with painted bays.
 
+**One mesh, one material, vertex colours,** and that is the whole
+performance story. The merger buckets by material, so a roof
+material, a wall material, a brick material and a glass material
+would have been four more merged meshes and eight more draw calls,
+each bucket being submitted again in the outline prepass. Counted in
+the page: the material keyed clubhouse is on exactly 1 mesh, 5622
+vertices, 1874 triangles, 198 KB.
+
+**The rng stream is untouched.** Trees and rocks that land on the
+levelled ground are still BUILT and then discarded, the same discard
+the drowned lake planting already uses, because this world hangs off
+one stream in one order and skipping a draw moves every tree, rock,
+cliff, flower and mountain in the valley. Cliffs got the same guard,
+not because one is near the pad on the built in circuit, none is
+within 169 m measured, but because a designed course moves the pad.
+
+**Site, measured not chosen.** Built in circuit: z = -57. The pad
+carries 2.84 m of natural relief there, all fill; the apron stops
+32.3 m short of the racing line and the front wall 40.3 m, against a
+15 m scenery rule; nearest cliff 169 m, lake 297 m. Further out costs
+about a metre of relief per three metres of standoff. A designed
+course places it off the longer side of the author's own pitch, and
+the quarter turn that puts the verandah on the -x side is what keeps
+every collider box axis aligned in the world.
+
+**Three things went wrong, all found by measuring.**
+
+A ray probe over the finished geometry, 87 rays straight up from
+everywhere a pilot can stand, found the roof was INVISIBLE FROM
+UNDERNEATH. Every plane was a single FrontSide quad, so a pilot on
+the deck was looking at sky through the roof. Every plane has a
+soffit now. The same probe found the first verandah cut its two front
+corners off at 45 degrees, which is a chamfer and not a hip, and left
+a triangle of deck at each end with nothing over it. Real hips now:
+the front plane is 44 m wide at the plate and 53 m at the eave.
+
+The palette was solved by arithmetic and the capture disagreed. The
+roof was authored at 0xcfc9b8 on the reasoning that a real Colorbond
+roof is nearly white and authoring white would make the pavilion the
+brightest thing in frame. Sampled, it rendered at 0.266 against the
+nearest mountain ring at 0.263: a building at 40 m was the same value
+as a range at 560, aerial perspective ran backwards across it, and it
+read as one dark mass welded to the horizon. The caution was also
+measurable and also wrong: a sunlit surface renders at about 0.45 of
+its authored linear luminance here, so pure white comes out near 0.48
+and lands UNDER the sky at 0.525. There was never a white roof to be
+afraid of. Authored bright now, 0.403 to 0.417 measured, above every
+ring and below the sky.
+
+height(x, z, fromY) took the highest surface and THEN asked whether
+it was in reach. That was invisible while the only platforms were
+launch stands, because a start block is one deck over bare grass with
+nothing to be between. The clubhouse is a stack: grass 0, apron 0.12,
+terrace 0.45, table top 1.19, all over the same square metre. A quad
+hovering half a metre over a table fell through the terrace to the
+grass, because the table was out of reach and the terrace was never
+considered. Each candidate is tested for reach on its own now.
+Measured on both maps: from 3.0 m over a table 1.19, from 0.6 m 0.45,
+on the apron 0.12, on the car park 0.06.
+
+**The verandah is dark and that is correct.** Traced: the sun sits at
+30 degrees, the verandah is 4.55 m deep, and a ray over the fascia
+reaches the wall 0.52 m BELOW the deck. No geometry change fixes that
+and none should, it is what a verandah is. Measured, the wall reads
+0.034 with shadows and 0.287 without, so the albedo was never the
+problem. What did change is the soffit, which is a pale painted
+lining now rather than the dark of the sheeting above it, because
+that is what these buildings really are and it is the only lever a
+shadowed recess has.
+
+**renderer.compile at the end of the map build.** Check 16's cel
+clock assertion started failing, 44 at boot against 45 after a round
+trip, with meshes, calls, target bytes and attribute bytes all
+identical. It was not a leak. Three compiles lazily, the pavilion
+stands 40 m off the line and is out of frame at the parked camera, so
+the count was really measuring how much of the world had been looked
+at. Confirmed by walking the camera: 44 at the parked camera, 45 the
+moment the clubhouse enters frame. Compiling at build makes the count
+a property of the world, and it is worth doing anyway, a shader stall
+at a random point in a timed lap is the one frame drop a racing
+simulator cannot have. NOT eager registration inside celMaterial:
+scenery makes a material per tree and per canopy blob and drops all
+but one of each bucket without disposing it, so registering at
+construction would put about two thousand dead uniforms in the walk
+and manufacture the leak the check is looking for.
+
+**Check 15 gained a band.** clubhouse_verandah_m, 2.1 to 3.0 m,
+measured 2.42. The pavilion is the race field's only object sized by
+a person rather than by MultiGP or by the airframe, which is the
+class of error check 15 exists for and which nothing on this map
+could previously catch. Measured as the underside of the verandah
+roof COLLIDER less the top of the LANDABLE deck, both from the lists
+scene.js actually consumes, so it bands the clearance a craft meets
+rather than a number in the dimension table.
+
+**Thresholds re-measured, not loosened.** field_budget P1 313 to 314,
+P2 895639 to 894073, meshes 170 to 171, P5 and P10 unchanged. Every
+figure is still an exact equality at zero tolerance. P2 FELL because
+1874 triangles arrived and 3440 of displaced tree and rock went. The
+assertion the check is named for, that the field costs the same after
+a city round trip, is against BOOT rather than these constants and
+held exactly: 314, 894073, 69.8, 27.4, 171 both times. Full reasoning
+in the source field.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.
+
+Verify: 16 of 16 passing.
+
+Wrong: the roof was authored from an argument instead of from a
+capture, and the argument was backwards. Both of the geometry defects
+were the kind that a screenshot at the wrong angle never shows and a
+ray cast finds in one run. The collider probes that looked like
+failures at first were bad test coordinates twice, once a ray that
+stopped 0.55 m short of the wall and once a ray up the valley between
+the two cross gables where there is correctly no roof.
+
+### 2026-08-19 | feature | A readable plaque on the clubhouse wall
+
+Ticket: owner. A plaque on the clubhouse wall, readable in game,
+carrying Clarke's third law.
+
+**Built.** PLAQUE, PLAQUE_PX, paintPlaque and plaqueMesh in
+src/art/clubhouse.js. A brass plate in a dark bronze surround on the
+front wall of the east wing, under the verandah, where a club hangs
+one and where the owner's pilots stand.
+
+**It is an honour board, not a plaque, and that is the readability
+requirement doing the arithmetic.** A real memorial plaque is about
+0.4 m across. At 0.4 m, seen from 3 m, it subtends 7.6 degrees, which
+is about 100 px in a 1600 px frame at this camera's field of view,
+and six lines of type do not survive 100 px. At 2.3 m it is legible
+from 3 m and its shape and colour still read at 10 m, both captured.
+Clubs hang boards this size, so nothing had to be invented to get
+there.
+
+**It needed a wall, and a 44 m frontage of glazing did not have one.**
+Every clear panel on the front elevation was about a metre. The east
+wing's second window and its roller shutter were moved 0.4 m apart to
+leave one panel 3.08 m wide, which is the only place on the building
+a 2.3 m board fits with an even margin either side. Board centred at
+x = 12.36, margins 0.335 m.
+
+**Engraved, not printed.** Every line is drawn twice, a highlight two
+pixels below and the dark on top. The plate is a flat quad with no
+geometry to catch light, so that is the only thing making a cut
+letter read as cut. One type size across all three quote lines,
+solved from the LONGEST of them: sizing each line to its own width
+sets FROM MAGIC in giant type and turns a quote into a ransom note.
+Letter spacing on the sub line is a hair space, not a word space; a
+word space between every letter is about four times too much.
+
+**receiveShadow false on that one quad, and it is the one deliberate
+lie in this building.** Already traced when the pavilion went in: the
+sun sits at 30 degrees, the verandah is 4.55 m deep, and a ray over
+the fascia reaches this wall 0.52 m BELOW the deck, so the wall is in
+cast shadow at every hour this world has. Measured, that wall is
+0.034 luminance against 0.287 out of shadow, a factor of eight, and a
+plate at 0.483 albedo lands at 0.026 there. That is not a readable
+plaque, it is a dark rectangle. Its own diffuse term is already the
+sunlit band, the face points at +Z and the sun is at +X +Z, so
+dropping the shadow map on this one quad lights it exactly as the
+geometry already says it should be lit and changes nothing else. It
+reads as polished brass catching the light on a shaded wall.
+
+That is also why it is ADDED to the scene rather than baked. The
+merger stamps receiveShadow on every bucket it flushes, which is
+exactly what this mesh must not have. It is its own material and
+therefore its own bucket either way, so baking would have cost the
+same and bought nothing.
+
+**Cost, and one honest caveat.** P2 894073 to 894085, meshes 171 to
+172, P1, P5 and P10 unchanged. The +12 triangles are the bronze
+surround, a box in the pavilion's own vertex coloured geometry. The
++1 mesh is the plate, which has to be separate: it carries the only
+uv attribute in the building, and merging it would mean giving five
+and a half thousand vertices a uv they never sample. P1 DID NOT MOVE
+AND THAT IS NOT THE SAME AS FREE: that figure is draw calls at one
+parked camera near gate 0, and the plaque faces +Z on the far side of
+the field, so it is frustum culled there. It costs one draw call on
+any frame that shows it, plus a 1024 by 512 canvas texture that no
+budget in check 16 counts. The gate banners already work that way.
+
+**Spelling.** The owner wrote Clark and 3rd Law. The plate reads
+ARTHUR C. CLARKE and CLARKE'S THIRD LAW, which is the man's name and
+the law's usual title.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.
+
+Verify: 16 of 16 passing.
+
+Wrong: the first paint set the attribution and the sub line small
+enough to be shapes rather than words at any distance, and used a
+word space for letter spacing on the sub line, which scattered it.
+Both were caught by looking at the capture rather than at the code.

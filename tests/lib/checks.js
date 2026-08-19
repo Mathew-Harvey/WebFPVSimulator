@@ -666,6 +666,17 @@ export function buildChecks() {
         band('gate opening H', r.field.gateOpeningH, th.gate_opening_m.min, th.gate_opening_m.max, ' m');
         band('grass blade min', r.field.grassMin, th.grass_blade_m.min, th.grass_blade_m.max, ' m');
         band('grass blade max', r.field.grassMax, th.grass_blade_m.min, th.grass_blade_m.max, ' m');
+        /*
+         * The clubhouse verandah, which is the race field's one object built
+         * to a person rather than to a rulebook. Everything else on this map
+         * is sized by MultiGP or by the airframe, so nothing here could have
+         * caught a human scale error: a verandah a pilot cannot stand under,
+         * or one three storeys tall, would have passed every check in the
+         * file. It is measured as the gap between the roof collider a craft
+         * would hit and the deck it would land on, so it is the clearance
+         * that is asserted rather than a dimension in a table.
+         */
+        band('clubhouse verandah', r.field.clubhouseVerandah, th.clubhouse_verandah_m.min, th.clubhouse_verandah_m.max, ' m');
 
         /* The city, all three measured off the built world by three different
          * routes: the height query, the geometry and the collider list. */

@@ -11891,3 +11891,159 @@ and Chrome identical across 30, 60, 144 and 240 Hz. console-clean errors=0
 warnings=0. world-scale and map-isolation green. vendor/betaflight diff
 empty. node src/trackbuilder/selftest.js 236 passed, 0 failed. node
 tracks/check.mjs 3994 passed, 0 failed.
+
+### 2026-08-20 | city | the collisions hug the graphics, and now there is a number for it
+
+The report was the same one as last time and the words were the same:
+"review the city map and tighten all the collision boxes to match the
+graphics perfectly, currently there is still a lot of phantom crashes,
+freestyle pilots will try to hit all the gaps, they must be perfect".
+
+**The first thing built was the instrument, and the first three versions of
+it were worthless.** There was no committed way to answer "does the solid
+world hug the drawn one". The previous round's evidence was a hand run scan
+that was never kept, so this round could not reproduce it and could not tell
+an improvement from a regression. So src/maps/city/scan.js exists now, off
+unless `globalThis.__CITY_SCAN` is set, with scripts/collider-audit.js to
+drive it in headless Chromium and print both directions:
+
+- **PHANTOM**, solid volume with nothing drawn in it, which is the invisible
+  wall in cubic metres.
+- **HOLES**, drawn objects less than half inside anything solid, which is
+  the failure the other way and the gate on every trim.
+
+Version one rastered each collider at half a metre and asked "how high does
+the drawn world reach in this cell", reading the answer off mesh bounding
+boxes. It reported **162 m3** of phantom across the whole town, which is a
+number that says the problem does not exist. Two errors, both instructive.
+A terrain tile is one mesh spanning hundreds of metres, so its box's top is
+the highest point anywhere on the tile and every cell in the town came back
+justified; the ground is answered by `world.heightAt` now, which is the same
+query the flight loop makes. And a 0.5 m cell straddling a 0.24 m barrier
+finds the barrier's own mesh in it and calls the cell honest, so the step is
+adaptive to the collider's own thinnest extent now.
+
+Version two asked for a single height and was wrong in both directions at
+once. "How high does the drawing reach" counts the whole column under a roof
+as justified, which is right for a house and wrong for a tree: a canopy
+collider eighteen metres up over a stand of cedars read as five metres of
+solid with nothing under it, when what is under it is the rest of the
+canopy. "Where is the lowest and the highest thing here" fixes the tree and
+breaks the barrier, because a post at ground level and a wire at four metres
+would between them justify the air in the middle. The scan cuts each cell
+into 32 slices between the ground and the box top and counts the slices no
+mesh spans. That answers both.
+
+**With the instrument honest, the measurement.** The town is 5885 authored
+rectangles. The fit that stood before this round took the bounding union of
+the meshes that "belonged" to each rectangle, where belonging meant two
+thirds of the mesh's own footprint inside it, and then only believed the
+result if the drawn geometry covered 60 percent of the rectangle, and then
+moved no face further than 2 m. Measured: **3261 rectangles had no owned
+geometry at all**, so the fit could say nothing about them; another 2190 had
+some and were declined by coverage. **87,205 m3 of the city's 383,410 m3 of
+reachable solid had nothing drawn in it. 645 colliders had over five metres
+of clear air above everything drawn under them. 1005 stood on air.**
+
+**THE FIT IS A SLAB CUT NOW, AND IT CUTS AS WELL AS SHRINKS.** A rectangle
+is sliced into strips across one axis; every drawn mesh touching a strip
+writes its own extent into it, so a strip knows how high the drawing reaches,
+how low it starts and how far across it spreads. Runs of adjacent strips
+become one box each, and a box is the union of the mesh boxes assigned to
+it, clipped to the rectangle the town authored. Then each run is cut again
+the other way. The axis order is chosen by measuring both and keeping the
+one that leaves less solid.
+
+Three things follow from that shape and they are the whole argument:
+
+- **It cannot open a hole.** Every mesh is in some strip, every occupied
+  strip is in some run, every run box contains the union of its strips'
+  meshes. It is a hull, not a sample. The 78.9 m lineside railing that an
+  earlier fit collapsed to a single 0.18 m post cannot collapse, because
+  each baluster's box is inside the run covering it. The coverage rule and
+  the 2 m cap are both gone: they existed to guard a fit that could lose the
+  drawing.
+- **It opens the gaps a walker cannot use and a quad can.** A run whose
+  lowest drawn point is 0.6 m clear of the ground is lifted onto it, so a
+  torii becomes two posts and a lintel and a verandah becomes a roof you can
+  fly under. 2151 rectangles cut into 25,928 boxes; 3983 runs lifted off the
+  ground.
+- **It is priced, not counted.** A cut survives if it removes at least 1.5 m3
+  of solid with nothing in it, which is about the craft's own envelope
+  through a gap. That is what tells a shed from a hipped roof: eight boxes
+  are far too many for the first and nowhere near enough for the second.
+
+**And the fit was only ever as good as its picture of the drawing, which was
+one bounding box per mesh.** Under that, a pitched roof is a solid block up
+to its ridge, and after the slab cut landed the worst remaining offenders
+were all 7 to 10 m boxes over houses with the drawing reaching the top over
+4 to 20 percent of the footprint. src/maps/city/drawn.js rasterises a mesh
+worth the trouble from its TRIANGLES, writing each triangle's own plane
+height at the corners of every cell it covers, so a roof slope comes out as
+a staircase that follows it. Bounded hard: only a mesh over 6 m2 in plan and
+0.4 m tall, at most 400 cells, never a cell over 2.5 m, and only if the
+staircase is under 70 percent of the box it replaces. 104,215 meshes become
+345,332 boxes and the fit still runs in under a second.
+
+**Result, same instrument, same drawn picture, old fit against new:**
+
+| | ownership fit | slab cut |
+|---|---|---|
+| phantom | **87,205 m3** | **44,355 m3** |
+| of reachable solid | 383,410 m3 (22.7 pct) | 351,729 m3 (12.6 pct) |
+| over five metres clear above the drawing | 645 | 413 |
+| standing on air | 1005 | 995 |
+| drawn things under half solid | 20,288 | 19,027 |
+| mean cover of a drawn object | 0.452 | 0.486 |
+| collider boxes | 7,102 | 30,879 |
+
+Both directions moved the right way at once, which is the part that matters:
+the invisible wall halved and nothing became less solid.
+
+**What the extra boxes cost.** 30,879 against 7,102, measured over 4000
+segment queries along a street: **22.7 candidates per query** through the 8 m
+broadphase grid, one query per physics frame. The render budget is untouched,
+P1 399 calls and P2 1.83 M triangles from the same parked camera as before,
+because this changes nothing that is drawn.
+
+**Check 15 asserts it now instead of describing it.** The old assertion was a
+2 m cap on how far a face could move, and it has to go, because under the
+slab cut a large trim is evidence of the thing being fixed rather than of a
+fit that misunderstood a collider: the largest is 89.1 m, a rectangle that
+long with nothing drawn in it. Capping it would forbid the fix. So the audit
+runs inside the world-scale harness and check 15 asserts the four numbers
+above as ceilings and a floor, set at the OLD measurement for the two hole
+numbers and at the new one with headroom for the two phantom ones. It fails
+on a regression in either direction and passes on any improvement.
+src/maps/city/scan.js is imported dynamically so no player's load fetches
+it, and check 16 filters it out of the module count for the same reason.
+
+### Owed, and honest about it
+
+- **995 rectangles still stand on air**, almost unchanged. All of them are
+  small, 773 under a square metre and 332 between one and five, and the
+  largest run is a line of 1 m by 5.4 m boxes along x = -60 at the town's
+  edge with nothing drawn in them at all. The fit leaves a rectangle with no
+  geometry exactly as authored on purpose, because a barrier with nothing in
+  it is usually load bearing, and guessing it away would put a quad inside
+  the scenery. Whether the map edge should be an invisible wall at all is a
+  design question, not a fit question.
+- **A tree canopy is a cloud and the fit models it as a height field.** A
+  canopy collider is one box over a cluster of blobs and the slab cut can
+  only tighten it to the blobs' own strips. The scan's slice column stops
+  this being counted as phantom, correctly, but a pilot aiming between two
+  blossom blobs will still meet something. Fixing it needs the canopy
+  collided as blobs, which is trees.js's call, not the fit's.
+- **The subdivision is a height field too.** Anything genuinely overhanging,
+  a balcony soffit or a bridge underside, is a hull from its lowest point up.
+  The slab cut's floor lift recovers the common cases and not the general one.
+
+Physics, plant, ABI, the input path and the trace were not touched.
+
+Verify, this turn: **16 of 16.** hover-throttle 0.2637, punch-out 81.5 m,
+terminal-velocity 31.1 m/s, motor-step 26 ms, rate-tracking 671.5 deg/s
+(0.22 percent), yaw-coupling -0.12 deg, battery-sag 11.14 percent,
+diff-passthrough 1.2478 (0.47 percent), determinism **6d17d4814bdc** with
+Node and Chrome identical across 30, 60, 144 and 240 Hz. console-clean
+errors=0 warnings=0. world-scale green with the collider scan inside it,
+map-isolation green at 64 city modules. vendor/betaflight diff empty.

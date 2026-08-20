@@ -342,9 +342,23 @@
         "value": 1,
         "source": "The world is modelled at 1 times the aircraft's own scale (src/render/frame.js WORLD_SCALE), so a metre in the physics is a metre in the world. It was 1.25 for one round, to answer a report that the drone read too large against the gate and the town. That was the wrong lever: dividing the craft's displacement cannot change the angle a gate subtends, so it made no gate any bigger and it made every course a quarter longer to fly, which is a quarter added to every lap time on the board. Apparent size belongs to the camera and was fixed there, in CAMERA_FOVS. The check divides this back out before banding the airframe, so it is the declared ratio the page has to agree with, not a tolerance."
       },
-      "collider_fit_max_trim_m": {
-        "value": 2.0,
-        "source": "src/maps/city/index.js trims the town's walker keep-out rectangles onto the geometry they stand for, and no face may move further than the largest standoff the town authors, the 1.8 m flank in district.js. An earlier version without this cap chopped a 78.9 m lineside railing to 0.18 m, so the cap is the guard against the fit failing to understand a collider rather than a tuning knob."
+      "collider_scan": {
+        "phantom_m3_max": {
+          "value": 50000,
+          "source": "Solid volume in the city with nothing drawn in it, measured over every collider by src/maps/city/scan.js: each cell of a collider's footprint is cut into 32 slices between the ground and the box top, and a slice no drawn mesh spans is phantom. This is the invisible wall the owner reports, in cubic metres. It is a CEILING at the measured value with headroom, not a target: 87205 m3 under the ownership fit this replaced, 44355 m3 under the slab cut, of 351729 m3 of reachable solid. The cap on how far one face could move, which this replaces, guarded an algorithm that could lose the drawing because it sampled it. The slab cut is a hull over the drawn geometry, so it cannot, and capping the trim would only forbid removing the longest invisible walls."
+        },
+        "over_five_max": {
+          "value": 470,
+          "source": "Colliders with more than five metres of clear air above everything drawn in them. The tail is what gets flown into, so it is bounded separately from the total: a change that halves the volume by shaving every box a little and leaves the outliers alone should not pass. 645 under the ownership fit, 413 under the slab cut."
+        },
+        "holes_max": {
+          "value": 20300,
+          "source": "Drawn objects less than half inside anything solid, of about 39000 probed, foliage and cloth excluded and counted separately. This is the failure the other direction and the gate on every trim: an earlier fit chopped a 78.9 m railing to one post, and that is a hole a quad flies through the scenery. 20288 under the ownership fit, 19027 under the slab cut, so the ceiling is the OLD number: the fit may not trade holes for hugging."
+        },
+        "mean_cover_min": {
+          "value": 0.45,
+          "source": "The share of an average drawn object's own volume that is inside something solid. A count of holes can be held flat while every object gets a little less solid, and this is what sees that. 0.452 under the ownership fit, 0.486 under the slab cut, so the floor is the OLD number for the same reason as the ceiling above."
+        }
       },
       "gate_scale": {
         "value": 1.15,

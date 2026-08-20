@@ -62,6 +62,7 @@ import {
   bakeCity, buildCullGrid, chunkInstanced, thinFoliage,
 } from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
+import { drawnBoxes } from './drawn.js';
 import { yieldToPaint } from '../../ui/loading.js';
 import { qualityFor } from '../../render/quality.js';
 
@@ -514,34 +515,19 @@ const BOX_CEIL = 400;
  * "the collisions need to HUG the graphics, i want to hit gaps but in many
  * places they are actually invisible walls".
  *
- * MEASURED FIRST, BECAUSE THE PADDING IS NOT THE WHOLE STORY. Scanned against
- * the drawn triangles before this existed, the town's 2731 rectangles fit
- * better than the call sites suggest: the mean overhang above the geometry
- * standing in them is 0.04 m. What there is, is a TAIL, and the tail is what
- * gets flown into: 54 boxes reach more than 0.5 m above anything drawn, the
- * worst by 9.07 m, and 106 overhang the drawn footprint by more than 0.35 m,
- * the worst by 2.91 m. Those are the invisible walls, and they are worth
- * removing without touching the 2500 boxes that were already right.
+ * AND THE RECTANGLE IS THE WRONG SHAPE, NOT ONLY THE WRONG SIZE. A walker
+ * cannot go under a torii's lintel, through the gap between two sheds or
+ * beneath a verandah, so the town draws one rectangle around each of those
+ * and is right to. A quad can do all three, and does it on purpose. So the
+ * fit below does not only shrink a rectangle, it CUTS it wherever the drawing
+ * inside it leaves a hole big enough to fly.
  *
- * THE FIT ONLY EVER SHRINKS, AND ONLY ONTO GEOMETRY IT CAN PROVE BELONGS.
- * Each drawn mesh contributes its world bounding box, which OVER states a
- * sloped roof or a rotated shed, so a box fitted to it is conservative in the
- * one direction that matters: the solid volume can never end up inside the
- * picture. A mesh counts toward a collider only if most of its own footprint
- * lies within that collider, so a wall shared between two plots, or the
- * terrain running underneath everything, cannot vote. A collider with nothing
- * that qualifies is left exactly as the town authored it, because a barrier
- * with no geometry in it is usually load bearing (the lake edge, a parked
- * level crossing boom) and guessing it away would put a quad inside the
- * scenery, which is worse than the wall it removes.
+ * The algorithm is the slab fit, and it is documented where it is written,
+ * further down this file. What is here is the vocabulary it works in.
  *
  * It runs before src/maps/city/bake.js for the same reason references.js
  * does: after the merge a wall is anonymous floats in a shared buffer.
  */
-/* A mesh this much of whose own footprint lies inside a collider is standing
- * in that collider rather than passing through it. Two thirds, so a wall
- * shared down the middle of a party boundary votes for neither. */
-const FIT_OWNERSHIP = 0.67;
 /* Footprint above which a mesh is a SURFACE, not an object: the terrain, the
  * road, the canal, the lake. Nothing that large is what a 7 m plot rectangle
  * stands for, and letting one vote would hold every collider it underlies at
@@ -551,42 +537,6 @@ const FIT_MAX_FOOTPRINT = 1400;
 /* Broadphase for the fit itself. Build time only, so a plain Map of arrays is
  * the right shape here where the per frame path would not tolerate it. */
 const FIT_CELL = 4;
-/* A fitted box may not be thinner than this on any axis. Below it the box is
- * unreachable anyway and the distance solver is being asked to answer about a
- * plane, so the authored extent is kept instead. */
-const FIT_MIN_EXTENT = 0.02;
-/*
- * The two rules that keep the fit from opening holes, and they were both
- * written against a measured failure rather than imagined.
- *
- * COVERAGE. The first version of this trimmed on the mere presence of owned
- * geometry, and it destroyed every long thin barrier in the town: a 78.9 m
- * lineside railing 0.24 m thick, drawn as a run of separate balusters, kept
- * whichever single post happened to qualify and collapsed to 0.18 m. Measured
- * across the town it made 675 side trims with a worst case of 74.99 m and a
- * worst top trim of 16.80 m, which is not a fit, it is a hole a quad flies
- * through the scenery. The distinction it was missing: PADDING leaves the
- * object filling its own rectangle and merely standing off the edges, while a
- * sparse barrier does not fill anything. So the drawn geometry has to cover
- * most of the rectangle before any trim is believed.
- *
- * CAP. And no single face moves further than the largest standoff the town
- * actually authors, which is the 1.8 m flank in district.js. Two metres
- * covers every authored pad with margin, and a trim larger than that is not a
- * pad being removed, it is the fit failing to understand the collider. What
- * it costs is the over tall outliers on long barriers, 54 boxes reaching over
- * half a metre above anything drawn: coverage already declines those, and
- * they are recorded in PROGRESS.md as known and unfixed rather than quietly
- * left out.
- */
-const FIT_COVER = 0.6;
-/* Buildings fill their rectangle. A railing does not. Using FIT_COVER on a
- * house left 0.4 m of pad the fit could have taken; using 0.42 on a railing
- * is how a 78 m lineside fence collapsed to one post. So bulky boxes get
- * the lower bar, thin ones keep the guard. */
-const FIT_COVER_BULK = 0.42;
-const FIT_BULK_MIN = 0.35;
-const FIT_MAX_PAD = 2.0;
 
 /*
  * Bounds on the pass that gives a collider to drawn objects that had none.
@@ -696,83 +646,137 @@ function coveredAlready(list, x, z, y) {
   return false;
 }
 
-function drawnBoxes(root) {
-  const out = [];
-  const box = new THREE.Box3();
-  const inst = new THREE.Matrix4();
-  const world = new THREE.Matrix4();
-  root.updateMatrixWorld(true);
-  root.traverse((o) => {
-    if (!o.isMesh || !o.geometry) {
-      return;
-    }
-    const g = o.geometry;
-    if (!g.boundingBox) {
-      g.computeBoundingBox();
-    }
-    if (!g.boundingBox) {
-      return;
-    }
-    const push = (m) => {
-      box.copy(g.boundingBox).applyMatrix4(m);
-      const fx = box.max.x - box.min.x;
-      const fz = box.max.z - box.min.z;
-      if (fx * fz > FIT_MAX_FOOTPRINT) {
-        return;
-      }
-      out.push({
-        x0: box.min.x, x1: box.max.x, y1: box.max.y, z0: box.min.z, z1: box.max.z, area: fx * fz,
-      });
-    };
-    if (o.isInstancedMesh) {
-      for (let i = 0; i < o.count; i += 1) {
-        o.getMatrixAt(i, inst);
-        world.multiplyMatrices(o.matrixWorld, inst);
-        push(world);
-      }
-      return;
-    }
-    push(o.matrixWorld);
-  });
-  return out;
+/* The town's drawn geometry now comes from ./drawn.js, which subdivides a
+ * sloped mesh into a staircase rather than handing the fit one box for it. */
+
+/*
+ * THE SLAB FIT, which is what actually makes the solid world hug the drawn
+ * one, and what replaced the ownership vote above.
+ *
+ * WHAT THE OWNERSHIP VOTE COULD NOT DO, MEASURED. Scanned by ./scan.js
+ * against the town as it stood, 3261 of the 5885 authored rectangles had NO
+ * geometry that passed the two thirds ownership test, so the fit could say
+ * nothing about them and they kept every centimetre of their authored
+ * standoff. Another 2190 had owned geometry and were still declined by the
+ * coverage rule. The result was 55,083 m3 of solid volume with nothing drawn
+ * under it, 1940 boxes reaching over a metre past the drawing, 468 over five
+ * metres, and 935 standing on air outright. That is the invisible wall, and
+ * it is most of the town.
+ *
+ * THE IDEA. A rectangle is cut into SLABS across its long axis, each slab a
+ * strip spanning the whole of its short axis, and every drawn mesh that
+ * touches a slab writes its own extent into it. A slab then knows four
+ * things about the drawing standing in it: how high it reaches, how low it
+ * starts, and how far across the strip it spreads. Runs of adjacent slabs
+ * become one box each, and a box is the UNION of the mesh boxes assigned to
+ * it, clipped to the rectangle the town authored.
+ *
+ * WHY THIS CANNOT OPEN A HOLE, WHICH THE OWNERSHIP VERSION COULD. Every
+ * drawn mesh inside the rectangle is assigned to some slab, and every
+ * occupied slab is inside some run, and every run box contains the union of
+ * its slabs' mesh boxes. So the solid volume always contains the drawn
+ * geometry: it is a hull, not a sample. The 78.9 m lineside railing that an
+ * earlier version collapsed to a single 0.18 m post cannot collapse here,
+ * because each baluster's own box is inside the run that covers it. That is
+ * why the coverage rule and the two metre cap are both gone: they existed to
+ * guard a fit that could lose geometry, and this one cannot.
+ *
+ * WHY A SLAB IS A STRIP AND NOT A COLUMN. A strip crosses the whole
+ * rectangle, so it meets both of a building's side walls whatever is or is
+ * not drawn between them. A column in the middle of a house would see only
+ * the roof, whose underside is the eaves, and lifting the box to the eaves
+ * would hollow the building out. The strip makes enclosure along the short
+ * axis free, and the short axis is split by a second pass over each run, at
+ * which point the run is small enough that the same argument holds again.
+ *
+ * WHAT IS DELIBERATELY LEFT ALONE. A rectangle with nothing drawn in it at
+ * all keeps its authored box exactly. It is usually load bearing: the lake
+ * edge, the map boundary, a parked level crossing boom.
+ */
+/* A slab count per rectangle, and the step that follows from it. The step
+ * has to resolve GAP_MIN or a gap a quad fits through is invisible to the
+ * cut, and it must not be so fine that a 300 m lakeside barrier costs a
+ * thousand slabs. */
+const SLAB_MAX = 160;
+const SLAB_MIN_STEP = 0.12;
+const SLAB_MAX_STEP = 0.5;
+/*
+ * The gap a pilot can actually use.
+ *
+ * The craft sweeps CRAFT_R, 0.1735 m, so it is 0.347 m across its widest
+ * diagonal and a hole has to beat that before anyone can fly it. Half a
+ * metre is that with enough margin that the gap reads as a gap on screen
+ * rather than as a slot. Anything narrower is merged back into one box,
+ * which is why a fence with 0.15 m between its balusters stays a fence and
+ * a torii with 2 m between its posts becomes two posts and a lintel.
+ */
+const GAP_MIN = 0.5;
+/* How far above the ground the drawing has to reach before a slab counts as
+ * occupied. A road patch, a manhole cover and a painted line are all drawn
+ * and none of them is a wall. */
+const SLAB_MIN_SOLID = 0.1;
+/* A change in the profile this large starts a new run. Same number as the
+ * gap, because the question is the same one: is what changed something a
+ * quad could fly through. */
+const SLAB_STEP_TOL = 0.5;
+/* Boxes per authored rectangle, per cut. The cut is greedy and merges the
+ * cheapest pair until it is under this, so a busy rectangle loses its least
+ * useful gap first rather than its most useful one. */
+const MAX_RUNS = 20;
+/* And per rectangle over both cuts, so a rectangle full of detail cannot
+ * turn into a hundred boxes. */
+const MAX_PIECES = 64;
+/*
+ * Solid volume a split has to save before it is worth a second box.
+ *
+ * This is the whole box budget, expressed as a price rather than as a count.
+ * A count cannot tell a shed from a hipped roof: eight boxes are far too many
+ * for the first and nowhere near enough for the second. So a rectangle keeps
+ * cutting for as long as each further cut removes at least this much solid
+ * volume that has nothing drawn under it, and MAX_RUNS is only the backstop
+ * that stops a pathological rectangle running away. A metre and a half is
+ * about the volume of the craft's own flight envelope through a gap, which is
+ * the smallest amount of invisible wall worth a second entry in the
+ * broadphase.
+ */
+const MERGE_TRIVIAL = 1.5;
+/*
+ * The fit only ever shrinks, which leaves one thing undone: a house collider
+ * authored to the wall plate never reached the ridge, and the roof above it
+ * was drawn and not solid. So a run whose footprint is bulky enough to be a
+ * building, and over which the drawing reaches a little above the authored
+ * top, is raised to it. A little, because a metre or two is a gable and five
+ * is a tree overhanging the plot.
+ */
+const ROOF_LIFT_MIN_FOOT = 1.0;
+const ROOF_LIFT_MAX = 2.8;
+/* Before a run's floor is lifted off the ground, the space underneath has to
+ * be worth flying through. */
+const RAISE_MIN_CLEAR = 0.6;
+
+function clampStep(v, lo, hi) {
+  if (v < lo) {
+    return lo;
+  }
+  if (v > hi) {
+    return hi;
+  }
+  return v;
 }
 
 /*
- * The drawn extent standing inside one authored rectangle. Writes into `out`
- * rather than allocating, because this runs 2731 times during a load that
- * already costs seconds.
+ * Every drawn mesh box overlapping one rectangle, gathered once.
  *
- * TWO ANSWERS, BECAUSE THE TOP AND THE SIDES ARE DIFFERENT QUESTIONS.
- *
- * The sides ask "where does the object in this rectangle actually stand", and
- * that needs the ownership filter: a neighbour's wall clipping the corner of
- * this plot must not vote on where this plot's collider ends.
- *
- * The top asks something much simpler, "is anything at all drawn up there",
- * and ownership is wrong for it. A tree is the case that proved it. The town
- * collides a tree as its trunk, a 1.1 m square box up to the trunk's height,
- * and the canopy that sits on top is several metres across, so ownership
- * rejects the canopy and the owned union tops out at the trunk. Trimming to
- * that ate 2 m off nine tree colliders and opened the only twelve holes the
- * safety scan has ever found: the box stopped reaching into a canopy that is
- * drawn, dense and right there on screen. So the top is capped by the tallest
- * drawn thing anywhere over the footprint, owned or not, which is exactly the
- * question "would the pilot see anything where this box still reaches".
+ * `list` is filled with indices into `boxes` and its length returned. The
+ * stamp array is the same duplicate rejection the ownership version used: a
+ * mesh in four grid cells must be counted once.
  */
-function fitOne(c, boxes, grid, out) {
-  let found = false;
-  out.x0 = Infinity; out.x1 = -Infinity;
-  out.z0 = Infinity; out.z1 = -Infinity;
-  out.y1 = -Infinity;
-  out.anyTop = -Infinity;
-  out.covered = 0;
+function gatherBoxes(c, boxes, grid, seen, mark, list) {
+  let n = 0;
   const ca0 = Math.floor(c.x0 / FIT_CELL);
   const ca1 = Math.floor(c.x1 / FIT_CELL);
   const cb0 = Math.floor(c.z0 / FIT_CELL);
   const cb1 = Math.floor(c.z1 / FIT_CELL);
-  const seen = out.seen;
-  out.mark += 1;
-  const mark = out.mark;
   for (let a = ca0; a <= ca1; a += 1) {
     for (let b = cb0; b <= cb1; b += 1) {
       const bucket = grid.get(`${a},${b}`);
@@ -785,37 +789,365 @@ function fitOne(c, boxes, grid, out) {
           continue;
         }
         seen[i] = mark;
-        const g = boxes[i];
-        /* How much of the MESH's own footprint is inside this rectangle. */
-        const ox = Math.min(g.x1, c.x1) - Math.max(g.x0, c.x0);
-        const oz = Math.min(g.z1, c.z1) - Math.max(g.z0, c.z0);
-        if (ox <= 0 || oz <= 0) {
-          continue;
+        list[n] = i;
+        n += 1;
+        if (n >= list.length) {
+          return n;
         }
-        /* Overlapping at all is enough to answer the top question. */
-        if (g.y1 > out.anyTop) {
-          out.anyTop = g.y1;
-        }
-        if (g.area > 0 && (ox * oz) / g.area < FIT_OWNERSHIP) {
-          continue;
-        }
-        found = true;
-        /* Sum of the owned footprints clipped to the rectangle. Overlapping
-         * meshes double count, which can only ever make the coverage look
-         * BETTER than it is, so it is bounded against the rectangle's own
-         * area by the caller and the error is in the direction of trimming
-         * more. That is the wrong direction, so the caller also requires the
-         * union's own footprint to cover, which cannot double count. */
-        out.covered += ox * oz;
-        if (g.x0 < out.x0) { out.x0 = g.x0; }
-        if (g.x1 > out.x1) { out.x1 = g.x1; }
-        if (g.z0 < out.z0) { out.z0 = g.z0; }
-        if (g.z1 > out.z1) { out.z1 = g.z1; }
-        if (g.y1 > out.y1) { out.y1 = g.y1; }
       }
     }
   }
-  return found;
+  return n;
+}
+
+/*
+ * Cut one rectangle along one axis into boxes that hug what is drawn in it.
+ *
+ * `rect` is {x0, y0, z0, x1, y1, z1} in world space and is never grown: every
+ * box returned is inside it. `alongX` picks the axis to cut. `floorAt` is the
+ * bare ground, which is what "reaches above the ground" is measured from and
+ * what a lifted floor is measured against.
+ *
+ * Returns an array of boxes, or null when nothing is drawn in the rectangle,
+ * which the caller reads as "leave this one exactly as the town authored it".
+ */
+function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
+  const L0 = alongX ? rect.x0 : rect.z0;
+  const L1 = alongX ? rect.x1 : rect.z1;
+  const S0 = alongX ? rect.z0 : rect.x0;
+  const S1 = alongX ? rect.z1 : rect.x1;
+  const span = L1 - L0;
+  if (!(span > 0) || !(S1 > S0)) {
+    return null;
+  }
+  let n = Math.ceil(span / clampStep(span / SLAB_MAX, SLAB_MIN_STEP, SLAB_MAX_STEP));
+  if (n < 1) {
+    n = 1;
+  }
+  if (n > SLAB_MAX) {
+    n = SLAB_MAX;
+  }
+  const step = span / n;
+  const {
+    hi, lo, s0, s1, l0, l1,
+  } = scratch;
+  for (let k = 0; k < n; k += 1) {
+    hi[k] = -Infinity;
+    lo[k] = Infinity;
+    s0[k] = Infinity;
+    s1[k] = -Infinity;
+    l0[k] = Infinity;
+    l1[k] = -Infinity;
+  }
+  let any = false;
+  for (let idx = 0; idx < count; idx += 1) {
+    const g = boxes[list[idx]];
+    /* Only what is inside the rectangle, in all three axes. A neighbour's
+     * wall clipping the corner is deliberately allowed to vote: the box that
+     * results still hugs something the pilot can see, which is the whole
+     * point, and the ownership rule that used to exclude it is what left
+     * three thousand rectangles unfitted. */
+    if (g.y1 < rect.y0 || g.y0 > rect.y1) {
+      continue;
+    }
+    const gl0 = Math.max(alongX ? g.x0 : g.z0, L0);
+    const gl1 = Math.min(alongX ? g.x1 : g.z1, L1);
+    const gs0 = Math.max(alongX ? g.z0 : g.x0, S0);
+    const gs1 = Math.min(alongX ? g.z1 : g.x1, S1);
+    if (gl1 <= gl0 || gs1 <= gs0) {
+      continue;
+    }
+    let a = Math.floor((gl0 - L0) / step);
+    let b = Math.ceil((gl1 - L0) / step) - 1;
+    if (a < 0) {
+      a = 0;
+    }
+    if (b > n - 1) {
+      b = n - 1;
+    }
+    if (b < a) {
+      b = a;
+    }
+    const gy1 = Math.min(g.y1, rect.y1);
+    const gy0 = Math.max(g.y0, rect.y0);
+    for (let k = a; k <= b; k += 1) {
+      if (gy1 > hi[k]) {
+        hi[k] = gy1;
+      }
+      if (gy0 < lo[k]) {
+        lo[k] = gy0;
+      }
+      if (gs0 < s0[k]) {
+        s0[k] = gs0;
+      }
+      if (gs1 > s1[k]) {
+        s1[k] = gs1;
+      }
+      /*
+       * CLIPPED TO THE SLAB, not to the rectangle, and this line is the
+       * difference between a cut and a mess. A 20 m mesh writes into every
+       * slab it crosses; if each of those slabs recorded the mesh's whole
+       * extent then two runs at opposite ends of it would both claim the
+       * middle, the boxes would overlap along their whole length, and the
+       * town's solid volume would double. Clipping makes the runs disjoint,
+       * so a cut removes volume rather than adding it.
+       */
+      const sl0 = L0 + k * step;
+      const sl1 = sl0 + step;
+      const cl0 = gl0 > sl0 ? gl0 : sl0;
+      const cl1 = gl1 < sl1 ? gl1 : sl1;
+      if (cl0 < l0[k]) {
+        l0[k] = cl0;
+      }
+      if (cl1 > l1[k]) {
+        l1[k] = cl1;
+      }
+    }
+    any = true;
+  }
+  if (!any) {
+    return null;
+  }
+
+  /* Occupancy, measured against the ground rather than against the box's own
+   * bottom, because a box with no authored bottom starts 60 m down. */
+  const sMid = (S0 + S1) * 0.5;
+  let occupied = 0;
+  for (let k = 0; k < n; k += 1) {
+    const lMid = L0 + (k + 0.5) * step;
+    const ground = alongX ? floorAt(lMid, sMid) : floorAt(sMid, lMid);
+    const base = Math.max(rect.y0, ground);
+    scratch.floor[k] = base;
+    scratch.occ[k] = hi[k] !== -Infinity && hi[k] > base + SLAB_MIN_SOLID ? 1 : 0;
+    occupied += scratch.occ[k];
+  }
+  if (occupied === 0) {
+    return null;
+  }
+
+  /* Segments: a break wherever the strip stops being drawn, starts being
+   * drawn, or changes shape by more than a gap. */
+  const segs = [];
+  let cur = null;
+  for (let k = 0; k < n; k += 1) {
+    if (!scratch.occ[k]) {
+      cur = null;
+      continue;
+    }
+    if (cur !== null
+      && Math.abs(hi[k] - hi[k - 1]) <= SLAB_STEP_TOL
+      && Math.abs(lo[k] - lo[k - 1]) <= SLAB_STEP_TOL) {
+      cur.hi = Math.max(cur.hi, hi[k]);
+      cur.lo = Math.min(cur.lo, lo[k]);
+      cur.s0 = Math.min(cur.s0, s0[k]);
+      cur.s1 = Math.max(cur.s1, s1[k]);
+      cur.l0 = Math.min(cur.l0, l0[k]);
+      cur.l1 = Math.max(cur.l1, l1[k]);
+      cur.floor = Math.min(cur.floor, scratch.floor[k]);
+      continue;
+    }
+    cur = {
+      hi: hi[k],
+      lo: lo[k],
+      s0: s0[k],
+      s1: s1[k],
+      l0: l0[k],
+      l1: l1[k],
+      floor: scratch.floor[k],
+    };
+    segs.push(cur);
+  }
+  if (segs.length === 0) {
+    return null;
+  }
+
+  /*
+   * Merge back everything that is not a gap a quad could fly.
+   *
+   * Two runs stay apart only if what is between them is at least GAP_MIN
+   * across, or one of them starts at least GAP_MIN higher off the ground
+   * than the other. A fence's balusters fail the first, a kerb's dropped
+   * crossing fails the second, and a torii passes. Everything else is
+   * merged cheapest pair first until the rectangle is inside its box budget.
+   */
+  const vol = (a) => (a.l1 - a.l0) * (a.s1 - a.s0) * (a.hi - a.lo);
+  const cost = (a, b) => {
+    const ul0 = Math.min(a.l0, b.l0);
+    const ul1 = Math.max(a.l1, b.l1);
+    const us0 = Math.min(a.s0, b.s0);
+    const us1 = Math.max(a.s1, b.s1);
+    const uy0 = Math.min(a.lo, b.lo);
+    const uy1 = Math.max(a.hi, b.hi);
+    return (ul1 - ul0) * (us1 - us0) * (uy1 - uy0) - vol(a) - vol(b);
+  };
+  const flyable = (a, b) => {
+    /* Side by side with room between them: fly through. */
+    if (b.l0 - a.l1 >= GAP_MIN) {
+      return true;
+    }
+    /* A step down in the top: fly over the lower one. Merging these was the
+     * first version's worst mistake, because the merge takes the taller top
+     * and a 36 m lineside barrier inherited the height of the one pylon
+     * standing at the end of it. */
+    if (Math.abs(a.hi - b.hi) >= GAP_MIN) {
+      return true;
+    }
+    /* A step up in the underside: fly under the higher one. */
+    return Math.abs(a.lo - b.lo) >= GAP_MIN;
+  };
+  const merge = (a, b) => ({
+    hi: Math.max(a.hi, b.hi),
+    lo: Math.min(a.lo, b.lo),
+    s0: Math.min(a.s0, b.s0),
+    s1: Math.max(a.s1, b.s1),
+    l0: Math.min(a.l0, b.l0),
+    l1: Math.max(a.l1, b.l1),
+    floor: Math.min(a.floor, b.floor),
+  });
+  /*
+   * Two tiers. Normally a pair is merged when it is cheap and not a gap a
+   * pilot could use; a gap is never merged for being cheap. Over MAX_RUNS
+   * the budget wins and the cheapest pair goes whatever it is, because an
+   * unbounded cut is a broadphase full of slivers.
+   */
+  for (;;) {
+    let at = -1;
+    let best = Infinity;
+    let atAny = -1;
+    let bestAny = Infinity;
+    for (let i = 0; i + 1 < segs.length; i += 1) {
+      const cc = cost(segs[i], segs[i + 1]);
+      if (cc < bestAny) {
+        bestAny = cc;
+        atAny = i;
+      }
+      if (flyable(segs[i], segs[i + 1])) {
+        continue;
+      }
+      if (cc < best) {
+        best = cc;
+        at = i;
+      }
+    }
+    if (at >= 0 && best < MERGE_TRIVIAL) {
+      segs.splice(at, 2, merge(segs[at], segs[at + 1]));
+      continue;
+    }
+    if (segs.length > MAX_RUNS && atAny >= 0) {
+      segs.splice(atAny, 2, merge(segs[atAny], segs[atAny + 1]));
+      continue;
+    }
+    break;
+  }
+
+  const out = [];
+  for (const g of segs) {
+    /*
+     * The floor. A run whose lowest drawn point is well clear of the ground
+     * is lifted onto it, which is what turns a torii into two posts and a
+     * lintel and a verandah into a roof a quad can fly under. Anything less
+     * than RAISE_MIN_CLEAR stays on the rectangle's own bottom, so a wall
+     * standing on a 5 cm plinth does not float.
+     */
+    const lift = g.lo - g.floor >= RAISE_MIN_CLEAR;
+    const y0 = lift ? g.lo : rect.y0;
+    const y1 = Math.max(y0 + 0.001, Math.min(g.hi, rect.y1));
+    out.push(alongX
+      ? {
+        x0: Math.max(g.l0, rect.x0),
+        y0,
+        z0: Math.max(g.s0, rect.z0),
+        x1: Math.min(g.l1, rect.x1),
+        y1,
+        z1: Math.min(g.s1, rect.z1),
+      }
+      : {
+        x0: Math.max(g.s0, rect.x0),
+        y0,
+        z0: Math.max(g.l0, rect.z0),
+        x1: Math.min(g.s1, rect.x1),
+        y1,
+        z1: Math.min(g.l1, rect.z1),
+      });
+  }
+  return out;
+}
+
+/*
+ * One rectangle, cut along its long axis and then each piece cut again along
+ * the other one.
+ *
+ * The second pass is what opens a courtyard: a plot with a house on one side
+ * and a shed on the other is one run after the first cut, because a strip
+ * across it meets both. Cutting that run the other way separates them. Two
+ * passes and no more, because the third would be cutting pieces already
+ * smaller than the craft.
+ */
+function fitRect(c, y0, y1, boxes, grid, floorAt, scratch) {
+  scratch.mark += 1;
+  const count = gatherBoxes(c, boxes, grid, scratch.seen, scratch.mark, scratch.list);
+  if (count === 0) {
+    return null;
+  }
+  /*
+   * The roof, which a fit that only shrinks could never reach.
+   *
+   * A house collider is authored to the wall plate and the roof above it was
+   * drawn and not solid. Rather than raise a finished box afterwards, which
+   * raises it over its whole footprint including the half with no roof on it,
+   * the rectangle is simply allowed to reach ROOF_LIFT_MAX higher before the
+   * cut runs. The cut then hugs the roof where the roof is and stops at the
+   * plate where it is not. Only for a rectangle bulky enough to be a
+   * building: a kerb does not grow a gable.
+   */
+  const bulky = Math.min(c.x1 - c.x0, c.z1 - c.z0) > ROOF_LIFT_MIN_FOOT;
+  const rect = {
+    x0: c.x0, y0, z0: c.z0, x1: c.x1, y1: bulky ? y1 + ROOF_LIFT_MAX : y1, z1: c.z1,
+  };
+  /*
+   * WHICH WAY TO CUT, MEASURED RATHER THAN GUESSED. The first version cut the
+   * longer axis, which is right for a barrier and arbitrary for a house. A
+   * gable roof is a staircase in one direction and a flat block in the other,
+   * so cutting the wrong way removes nothing. Both are tried and the one that
+   * leaves less solid volume wins. It is two passes over a list already in
+   * cache, against a fit that costs under a second in total.
+   */
+  const solid = (list) => {
+    if (list === null) {
+      return Infinity;
+    }
+    let v = 0;
+    for (const b of list) {
+      v += (b.x1 - b.x0) * (b.z1 - b.z0) * (b.y1 - Math.max(b.y0, y0));
+    }
+    return v;
+  };
+  const byX = cutAxis(rect, true, boxes, scratch.list, count, floorAt, scratch);
+  const byZ = cutAxis(rect, false, boxes, scratch.list, count, floorAt, scratch);
+  if (byX === null && byZ === null) {
+    return null;
+  }
+  const alongX = solid(byX) <= solid(byZ);
+  const first = alongX ? byX : byZ;
+  if (first === null) {
+    return null;
+  }
+  const out = [];
+  for (const r of first) {
+    if (out.length >= MAX_PIECES) {
+      out.push(r);
+      continue;
+    }
+    const second = cutAxis(r, !alongX, boxes, scratch.list, count, floorAt, scratch);
+    if (second === null || second.length === 0) {
+      out.push(r);
+      continue;
+    }
+    for (const q of second) {
+      out.push(q);
+    }
+  }
+  return out;
 }
 
 function buildColliders(world) {
@@ -825,7 +1157,7 @@ function buildColliders(world) {
 
   /* The fit's own index over the drawn meshes. */
   const fitStart = (typeof performance !== 'undefined' ? performance.now() : 0);
-  const boxes = drawnBoxes(world.root);
+  const boxes = drawnBoxes(world.root, { maxFootprint: FIT_MAX_FOOTPRINT });
   const grid = new Map();
   for (let i = 0; i < boxes.length; i += 1) {
     const g = boxes[i];
@@ -845,8 +1177,61 @@ function buildColliders(world) {
       }
     }
   }
-  const fit = { x0: 0, x1: 0, z0: 0, z1: 0, y1: 0, seen: new Int32Array(boxes.length), mark: 0 };
-  const fitStats = { fitted: 0, unmatched: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, worst: [] };
+  /*
+   * The fit's scratch, allocated once for the whole town. Everything the cut
+   * needs per rectangle lives here, so 5885 rectangles do not make 5885 sets
+   * of typed arrays during a load that is already the slow part.
+   */
+  const scratch = {
+    hi: new Float64Array(SLAB_MAX),
+    lo: new Float64Array(SLAB_MAX),
+    s0: new Float64Array(SLAB_MAX),
+    s1: new Float64Array(SLAB_MAX),
+    l0: new Float64Array(SLAB_MAX),
+    l1: new Float64Array(SLAB_MAX),
+    floor: new Float64Array(SLAB_MAX),
+    occ: new Uint8Array(SLAB_MAX),
+    seen: new Int32Array(boxes.length),
+    mark: 0,
+    list: new Int32Array(boxes.length),
+  };
+  /*
+   * The bare ground, cached.
+   *
+   * fromY far below excludes every platform from the query, so this is the
+   * terrain under the town rather than whatever deck happens to be over it,
+   * which is what "does the drawing reach above the ground here" has to be
+   * measured against. Rounded to a decimetre, well under the finest slab.
+   */
+  const groundSeen = new Map();
+  const floorAt = (x, z) => {
+    const k = `${Math.round(x * 10)},${Math.round(z * 10)}`;
+    let v = groundSeen.get(k);
+    if (v === undefined) {
+      v = world.heightAt(x, z, -1000);
+      groundSeen.set(k, v);
+    }
+    return v;
+  };
+  const fitStats = {
+    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, worst: [],
+  };
+  /*
+   * The boxes a split rectangle produced beyond its first.
+   *
+   * EVERY town collider gets exactly one box at its own index, in order, with
+   * no gaps. Index alignment with world.colliders is what lets animation.js
+   * raise and lower the two level crossing booms by index, so a rectangle
+   * that cuts into four contributes its first piece in place and its other
+   * three here, to be added after the whole list has been walked. Nothing
+   * downstream indexes past the authored count.
+   */
+  const extra = [];
+  /*
+   * One row per authored rectangle, and only when the audit asked for it.
+   * See scripts/collider-audit.js.
+   */
+  const diag = globalThis.__CITY_SCAN ? [] : null;
 
   for (const c of world.colliders) {
     const y1 = c.top === undefined ? BOX_CEIL : c.top;
@@ -858,87 +1243,85 @@ function buildColliders(world) {
       noBottom += 1;
     }
     /*
-     * The fit. Shrink only, onto geometry that qualifies, and never past the
-     * point where the box stops being a box.
+     * The fit. A hull over the drawing inside the rectangle, cut where a
+     * quad could fly through, and never grown past what the town authored.
+     * See the slab fit above.
      */
     let fx0 = c.x0;
     let fx1 = c.x1;
     let fz0 = c.z0;
     let fz1 = c.z1;
+    let fy0 = y0;
     let fy1 = y1;
-    const hit = fitOne(c, boxes, grid, fit);
-    if (hit) {
-      /* Clamp each face to the drawn extent, then no further than one pad. */
-      const nx0 = Math.min(Math.max(fx0, fit.x0), fx0 + FIT_MAX_PAD);
-      const nx1 = Math.max(Math.min(fx1, fit.x1), fx1 - FIT_MAX_PAD);
-      const nz0 = Math.min(Math.max(fz0, fit.z0), fz0 + FIT_MAX_PAD);
-      const nz1 = Math.max(Math.min(fz1, fit.z1), fz1 - FIT_MAX_PAD);
-      const ny1 = Math.max(Math.min(fy1, fit.anyTop), fy1 - FIT_MAX_PAD);
-      /* Does the drawn geometry actually fill this rectangle? Both the union
-       * of the owned boxes and the sum of their clipped footprints have to
-       * say yes: the union alone would be fooled by two posts at opposite
-       * corners, and the sum alone by a stack of coincident meshes. */
-      const area = Math.max(1e-6, (c.x1 - c.x0) * (c.z1 - c.z0));
-      const unionArea = Math.max(0, Math.min(fit.x1, c.x1) - Math.max(fit.x0, c.x0))
-        * Math.max(0, Math.min(fit.z1, c.z1) - Math.max(fit.z0, c.z0));
-      const thin = Math.min(c.x1 - c.x0, c.z1 - c.z0);
-      const coverNeed = thin < FIT_BULK_MIN ? FIT_COVER : FIT_COVER_BULK;
-      const covers = unionArea / area >= coverNeed && fit.covered / area >= coverNeed;
-      if (covers && nx1 - nx0 >= FIT_MIN_EXTENT && nz1 - nz0 >= FIT_MIN_EXTENT && ny1 > y0) {
-        const side = Math.max(nx0 - fx0, fx1 - nx1, nz0 - fz0, fz1 - nz1);
-        const topTrim = fy1 - ny1;
-        if (topTrim > 1e-6) {
-          fitStats.topTrims += 1;
-          fitStats.totalTopTrim += topTrim;
-          if (topTrim > fitStats.maxTopTrim) {
-            fitStats.maxTopTrim = topTrim;
+    const pieces = fitRect(c, y0, y1, boxes, grid, floorAt, scratch);
+    if (pieces !== null && pieces.length > 0) {
+      const p = pieces[0];
+      const side = Math.max(p.x0 - c.x0, c.x1 - p.x1, p.z0 - c.z0, c.z1 - p.z1);
+      const topTrim = y1 - p.y1;
+      if (topTrim > 1e-6) {
+        fitStats.topTrims += 1;
+        fitStats.totalTopTrim += topTrim;
+        if (topTrim > fitStats.maxTopTrim) {
+          fitStats.maxTopTrim = topTrim;
+        }
+      }
+      if (side > 1e-6) {
+        fitStats.sideTrims += 1;
+        if (side > fitStats.maxSideTrim) {
+          fitStats.maxSideTrim = side;
+        }
+      }
+      if (side > 0.05 || topTrim > 0.05 || pieces.length > 1) {
+        fitStats.worst.push({
+          side: +side.toFixed(2),
+          topTrim: +topTrim.toFixed(2),
+          pieces: pieces.length,
+          was: { x: +(c.x1 - c.x0).toFixed(2), z: +(c.z1 - c.z0).toFixed(2), top: +y1.toFixed(2) },
+          now: { x: +(p.x1 - p.x0).toFixed(2), z: +(p.z1 - p.z0).toFixed(2), top: +p.y1.toFixed(2) },
+          at: [+((c.x0 + c.x1) / 2).toFixed(1), +((c.z0 + c.z1) / 2).toFixed(1)],
+        });
+      }
+      fx0 = p.x0; fx1 = p.x1; fz0 = p.z0; fz1 = p.z1; fy0 = p.y0; fy1 = p.y1;
+      if (p.y0 > y0 + 1e-6) {
+        fitStats.lifted += 1;
+      }
+      fitStats.fitted += 1;
+      if (pieces.length > 1) {
+        fitStats.split += 1;
+        for (let k = 1; k < pieces.length; k += 1) {
+          extra.push(pieces[k]);
+          if (pieces[k].y0 > y0 + 1e-6) {
+            fitStats.lifted += 1;
           }
         }
-        if (side > 1e-6) {
-          fitStats.sideTrims += 1;
-          if (side > fitStats.maxSideTrim) {
-            fitStats.maxSideTrim = side;
-          }
-        }
-        if (side > 0.05 || topTrim > 0.05) {
-          fitStats.worst.push({
-            side: +side.toFixed(2),
-            topTrim: +topTrim.toFixed(2),
-            was: { x: +(c.x1 - c.x0).toFixed(2), z: +(c.z1 - c.z0).toFixed(2), top: +y1.toFixed(2) },
-            now: { x: +(nx1 - nx0).toFixed(2), z: +(nz1 - nz0).toFixed(2), top: +ny1.toFixed(2) },
-            at: [+((c.x0 + c.x1) / 2).toFixed(1), +((c.z0 + c.z1) / 2).toFixed(1)],
-          });
-        }
-        fx0 = nx0; fx1 = nx1; fz0 = nz0; fz1 = nz1; fy1 = ny1;
-        fitStats.fitted += 1;
-      } else {
-        fitStats.unmatched += 1;
       }
     } else {
+      /* Nothing drawn in it. Left exactly as the town authored it, because a
+       * barrier with no geometry in it is usually load bearing. */
       fitStats.unmatched += 1;
     }
-    /*
-     * Fit only shrinks. A house collider that stopped at the wall plate
-     * never grew to the ridge. If drawn mass over a bulky footprint
-     * reaches a little above the box, raise the top to it. Skip a lift
-     * bigger than a roof: that is a tree overhanging the plot, not a
-     * gable.
-     */
-    const footMin = Math.min(fx1 - fx0, fz1 - fz0);
-    if (hit && footMin > 1.0 && fit.anyTop > fy1 + 0.2 && fit.anyTop <= fy1 + 2.8) {
-      fy1 = fit.anyTop;
-      fitStats.roofLifts += 1;
+    if (diag !== null) {
+      const r2 = (v) => (Number.isFinite(v) ? +v.toFixed(3) : null);
+      diag.push([
+        diag.length,
+        r2(c.x1 - c.x0), r2(c.z1 - c.z0), r2(y1),
+        r2(fx1 - fx0), r2(fz1 - fz0), r2(fy1),
+        pieces === null ? 0 : pieces.length,
+        r2(fy0),
+        r2((c.x0 + c.x1) * 0.5), r2((c.z0 + c.z1) * 0.5),
+      ]);
     }
     /*
-     * EVERY town collider gets a box, in order, with no gaps. Index alignment
-     * with world.colliders is what lets animation.js raise and lower the two
-     * level crossing booms by index, and a `continue` here for a degenerate
-     * box would silently shift every later index by one. A degenerate box is
-     * given a valid paper thin extent instead, which is unreachable and which
-     * the distance solver can answer, where an inverted lo > hi pair would be
-     * a quiet wrong answer.
+     * A degenerate box is given a valid paper thin extent rather than being
+     * dropped, because a `continue` here would silently shift every later
+     * index by one, and an inverted lo > hi pair would be a quiet wrong
+     * answer from the distance solver.
      */
-    colliders.addBox('wall', fx0, y0, fz0, fx1, fy1 > y0 ? fy1 : y0 + 0.001, fz1);
+    colliders.addBox('wall', fx0, fy0, fz0, fx1, fy1 > fy0 ? fy1 : fy0 + 0.001, fz1);
+  }
+  for (const p of extra) {
+    colliders.addBox('wall', p.x0, p.y0, p.z0, p.x1, p.y1 > p.y0 ? p.y1 : p.y0 + 0.001, p.z1);
+    fitStats.extraBoxes += 1;
   }
   fitStats.ms = (typeof performance !== 'undefined' ? performance.now() : 0) - fitStart;
   fitStats.drawnBoxes = boxes.length;
@@ -1020,6 +1403,9 @@ function buildColliders(world) {
       p.x1, p.top - PLATFORM_SLAB_CLEAR, p.z1,
     );
     slabs += 1;
+  }
+  if (diag !== null) {
+    fitStats.rows = diag;
   }
   return { colliders, noTop, noBottom, slabs, fit: fitStats };
 }
@@ -1163,6 +1549,24 @@ export async function buildMap(shell, onProgress, options) {
 
   colliders.build();
   progress(0.9);
+
+  /*
+   * The audit, and only when it is asked for.
+   *
+   * ./scan.js measures the solid world against the drawn one in both
+   * directions: solid volume with nothing drawn under it, which is what a
+   * pilot flying the gaps meets as an invisible wall, and drawn objects with
+   * nothing solid in them, which is scenery a quad passes through. It has to
+   * run here, after the collider set is built and before bakeCity merges the
+   * per mesh geometry away, and it costs seconds, so no ordinary load pays
+   * for it. scripts/collider-audit.js sets the flag.
+   */
+  /* Imported here rather than at the top of the file so an ordinary load
+   * never fetches it: check 16 counts the city's modules and a diagnostic
+   * should not be one of them. */
+  const scan = globalThis.__CITY_SCAN
+    ? (await import('./scan.js')).scanCity(world, colliders)
+    : null;
 
   /*
    * Reference measurements BEFORE the merge. The merge applies each
@@ -1430,6 +1834,9 @@ export async function buildMap(shell, onProgress, options) {
        * claim that the solid world hugs the drawn one is a measurement
        * rather than a comment. */
       colliderFit: fit,
+      /* null unless globalThis.__CITY_SCAN was set before the map was
+       * built. See ./scan.js. */
+      colliderScan: scan,
       trainCarColliders: trainCars.length,
       cullCells: cull.cells.length,
       cullAlways: cull.always.length,

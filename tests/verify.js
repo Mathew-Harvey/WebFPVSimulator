@@ -303,9 +303,18 @@ async function main() {
             'return { bodyLength: Math.max(bs.x, bs.z), bodyWidth: Math.min(bs.x, bs.z), bodyHeight: bs.y, sweepMeasured: maxR, craftR: th.craftRadius, craftRTrue: th.craftRadiusTrue, worldScale: th.worldScale };' +
           '})()' +
         '})',
+        /*
+         * Turn the collider audit on BEFORE the city is built, because it can
+         * only run in the window between the collider set being finished and
+         * bake.js merging the per mesh geometry away. It costs a few seconds
+         * on this one run and it is what lets check 15 assert that the solid
+         * world hugs the drawn one instead of describing it. See
+         * src/maps/city/scan.js and scripts/collider-audit.js.
+         */
+        'eval:JSON.stringify({ tag: "arm", on: (globalThis.__CITY_SCAN = true) })',
         'eval:JSON.stringify({ tag: "swap", started: (window.__setMap("city"), true) })',
         'until:window.__map().id === "city" && window.__map().ready',
-        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading, expectedModules: window.__map().expectedModules, colliderFit: window.__map().colliderFit })',
+        'eval:JSON.stringify({ tag: "city", references: window.__map().references, loading: window.__map().loading, expectedModules: window.__map().expectedModules, colliderFit: (() => { const f = window.__map().colliderFit; const { rows, worst, ...rest } = f; return rest; })(), colliderScan: (() => { const s = window.__map().colliderScan; if (!s) { return null; } return { drawnMeshes: s.drawnMeshes, phantom: { totalPhantom: s.phantom.totalPhantom, solidVolume: s.phantom.solidVolume, overOne: s.phantom.overOne, overFive: s.phantom.overFive, standingOnAir: s.phantom.standingOnAir, boxes: s.phantom.boxes }, holes: { probed: s.holes.probed, count: s.holes.count, meanCovered: s.holes.meanCovered, softProbed: s.holes.softProbed, softCount: s.holes.softCount } }; })() })',
         `eval:${collect}`,
         /*
          * BACK TO THE FIELD, AND MEASURE IT AGAIN. The budget taken at boot
@@ -385,13 +394,24 @@ async function main() {
           doorCount: cr.doorwayHeight.count,
           railCount: cr.handrailHeight.count,
           colliderFit: cityData.colliderFit ?? null,
+          colliderScan: cityData.colliderScan ?? null,
         },
         loading: cityData.loading,
         cityExpectedModules: cityData.expectedModules ?? null,
         fieldBudget: budget,
         fieldBudgetAfterRoundTrip: budgetAfter,
-        cityUrlsWhileFieldSelected: fieldUrls.urls.filter((u) => u.includes('/src/maps/city')),
-        cityUrlsAfterChoosingCity: cityUrls.urls.filter((u) => u.includes('/src/maps/city')),
+        /*
+         * src/maps/city/scan.js is the collider audit, and it is dropped from
+         * both lists on purpose. The city imports it dynamically and only when
+         * globalThis.__CITY_SCAN is set, which no ordinary load does and which
+         * THIS RUN sets a few steps above so check 15 can assert the fit.
+         * Counting it would make check 16 report the harness's own diagnostic
+         * as a module the map costs a player.
+         */
+        cityUrlsWhileFieldSelected: fieldUrls.urls
+          .filter((u) => u.includes('/src/maps/city') && !u.includes('/city/scan.js')),
+        cityUrlsAfterChoosingCity: cityUrls.urls
+          .filter((u) => u.includes('/src/maps/city') && !u.includes('/city/scan.js')),
       };
     }),
     browserRun: memo(async () => {

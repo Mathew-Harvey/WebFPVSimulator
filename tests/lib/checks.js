@@ -679,35 +679,93 @@ export function buildChecks() {
          * noticing, which is the difference between a reference object and a
          * cross check. */
         /*
-         * The city's collider fit, asserted rather than described.
+         * The city's contact model, asserted rather than described.
          *
-         * src/maps/city/index.js trims the town's walker keep-out rectangles
-         * onto the geometry they stand for, and the failure mode is not
-         * subtle: an earlier version without a coverage rule chopped a 78.9 m
-         * lineside railing down to a single 0.18 m post, which is a hole a
-         * quad flies through the scenery. So the caps are checked here, where
-         * a regression that starts chopping shows up as a number instead of
-         * as a report from the pilot. The fit only ever shrinks, so a trim
-         * cannot be negative either.
+         * WHAT THIS USED TO ASSERT AND WHY IT NO LONGER CAN. src/maps/city
+         * used to fit each walker rectangle by taking the bounding union of
+         * the meshes that "belonged" to it, which is a SAMPLE of the drawing
+         * and can therefore lose it: an early version chopped a 78.9 m
+         * lineside railing down to a single 0.18 m post. The guard against
+         * that was a cap on how far any one face could move, two metres, and
+         * it worked because under that algorithm a large trim really was
+         * evidence of a fit that had misunderstood a collider.
+         *
+         * The fit is now a slab cut (src/maps/city/index.js) and every box it
+         * produces is a HULL over the drawn geometry assigned to it, so it
+         * cannot lose the drawing however far a face moves. A large trim is
+         * now evidence of the opposite thing: a rectangle that was 89 m
+         * longer than anything drawn inside it, which is exactly the
+         * invisible wall this work exists to remove. Capping it would forbid
+         * the fix. So the cap is gone and what it stood for is asserted
+         * directly instead, off the audit in src/maps/city/scan.js, which
+         * measures both failure directions over the built town:
+         *
+         *   PHANTOM, solid volume with nothing drawn under it. The invisible
+         *   wall, in cubic metres, over the whole map.
+         *
+         *   HOLES, drawn objects less than half inside anything solid. The
+         *   failure the other way, and the gate on any trim: a fit that
+         *   starts chopping shows up here as a number before it shows up as a
+         *   report from the pilot.
+         *
+         * Both are asserted as ceilings at the measured value with headroom,
+         * so this fails on a regression and does not fail on an improvement.
          */
         const cf = r.city.colliderFit;
         if (!cf) {
           fails.push('the city published no collider fit');
         } else {
-          const cap = th.collider_fit_max_trim_m.value;
           rows.push(
             `collider fit ${cf.fitted} fitted of ${cf.fitted + cf.unmatched}, `
+            + `${cf.split} rectangles cut into ${cf.split + cf.extraBoxes} boxes, `
             + `${cf.sideTrims} side trims to ${cf.maxSideTrim.toFixed(2)} m, `
             + `${cf.topTrims} top trims to ${cf.maxTopTrim.toFixed(2)} m`,
           );
-          if (!(cf.maxSideTrim >= 0 && cf.maxSideTrim <= cap)) {
-            fails.push(`the collider fit moved a face ${cf.maxSideTrim.toFixed(2)} m, past the ${cap} m cap`);
-          }
-          if (!(cf.maxTopTrim >= 0 && cf.maxTopTrim <= cap)) {
-            fails.push(`the collider fit dropped a top ${cf.maxTopTrim.toFixed(2)} m, past the ${cap} m cap`);
+          if (!(cf.maxSideTrim >= 0 && cf.maxTopTrim >= 0)) {
+            fails.push('the collider fit grew a box, and it may only ever shrink or cut');
           }
           if (!(cf.fitted > 0)) {
             fails.push('the collider fit trimmed nothing at all, so it is not running');
+          }
+          if (!(cf.split > 0)) {
+            fails.push('the collider fit cut no rectangle in two, so the gaps are not being opened');
+          }
+        }
+
+        const cs = r.city.colliderScan;
+        if (!cs) {
+          fails.push('the city published no collider scan');
+        } else {
+          const th15 = th.collider_scan;
+          rows.push(
+            `collider scan ${cs.phantom.totalPhantom} m3 phantom of ${cs.phantom.solidVolume} m3 solid `
+            + `over ${cs.phantom.boxes} boxes, ${cs.phantom.overFive} reaching over 5 m past the drawing, `
+            + `${cs.phantom.standingOnAir} on air; ${cs.holes.count} of ${cs.holes.probed} drawn things `
+            + `under half solid, mean cover ${cs.holes.meanCovered}`,
+          );
+          if (!(cs.phantom.totalPhantom <= th15.phantom_m3_max.value)) {
+            fails.push(
+              `${cs.phantom.totalPhantom} m3 of solid has nothing drawn under it, past the `
+              + `${th15.phantom_m3_max.value} m3 ceiling`,
+            );
+          }
+          if (!(cs.phantom.overFive <= th15.over_five_max.value)) {
+            fails.push(
+              `${cs.phantom.overFive} boxes reach over 5 m past anything drawn, past the `
+              + `${th15.over_five_max.value} ceiling`,
+            );
+          }
+          if (!(cs.holes.count <= th15.holes_max.value)) {
+            fails.push(
+              `${cs.holes.count} drawn things are less than half solid, past the `
+              + `${th15.holes_max.value} ceiling`,
+            );
+          }
+          if (!(cs.holes.meanCovered >= th15.mean_cover_min.value)) {
+            fails.push(
+              `the mean drawn object is ${cs.holes.meanCovered} inside something solid, under the `
+              + `${th15.mean_cover_min.value} floor`,
+            );
           }
         }
 

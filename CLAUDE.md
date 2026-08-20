@@ -34,7 +34,14 @@ A browser FPV racing simulator whose only current goal is flight feel indistingu
 
 ## Working rules
 
-- Never report a check as passing without running `npm run verify` in the same turn.
+- **Do not run `npm run verify` unless asked.** It is expensive: it drives headless Chromium through the whole shell and takes minutes of wall clock. Run it when the change is to physics, the plant, the module ABI or the build, or when the request says to.
+- Never report a check as passing without having run it in the same turn. That rule is unchanged by the one above: if verify was not run, say so, say why, and say what was done instead. A check that was not run is not evidence, and neither is a green check that cannot see the thing that changed. Check 13 loads only `tests/browser/harness.html`, so it says nothing about any other page.
+- Prefer the cheap targeted check to the full suite: `npm run lint:fc`, `npm run lint:presets`, `npm run lint:catalog`, `node scripts/shots.js` for anything visual, and a direct fetch for anything about a served file.
 - Never change a threshold to make a check pass. Argue in PROGRESS.md instead.
 - Every turn that changes code appends to PROGRESS.md, including what went wrong.
 - Consult the advisor before any change that alters the physics model's shape, the module ABI, or the build. Not for filling in the next line.
+
+## Review
+
+- **Do not run adversarial review, multi agent review or a review workflow unless directed.** Read your own diff, run the cheap checks, and hand the work over. Fan out only when the request asks for it.
+- When a review does run, its findings go in PROGRESS.md whether or not they were acted on, and a finding that was declined is written down with the reason.

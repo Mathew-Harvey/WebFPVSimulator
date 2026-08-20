@@ -66,7 +66,7 @@ async function start() {
      * pulls in the map registry and the track table, and dragging that
      * graph into boot is the very thing src/maps/build-cost.js exists to
      * prevent. Change it there and change it here. */
-    mapId = JSON.parse(localStorage.getItem('webfpv.settings.v2') || '{}').map || 'field';
+    mapId = JSON.parse(localStorage.getItem('webfpv.settings.v3') || '{}').map || 'field';
   } catch (e) {
     mapId = 'field';
   }

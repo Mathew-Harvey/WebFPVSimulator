@@ -12321,3 +12321,47 @@ by 849. Rates fits every size from 1280 by 620 upward and every laptop and
 desktop size checked, and degrades better than every other page here. The
 general fix is a scrolling page container for `.screen-page`, which is a
 change to every screen and belongs in its own turn.
+
+### The settings key is v3, and that replaces the migration code
+
+The owner's call, with three testers and himself on the build: drop the
+legacy-settings handling rather than carry it.
+
+So `SETTINGS_KEY` is `webfpv.settings.v3` and the bump IS the migration. A v2
+blob could carry a captured rateprofile and rate knobs off the offered lists,
+both written by the flight-controller screen, and neither shape can be
+produced any more. Rather than keep code to repair them, the old blob is not
+read. Everyone starts on the defaults once. Nothing else goes with it: the
+pilot name, course documents, stored best laps and the stick mapping are all
+separate keys, so a tester keeps their courses and their times.
+
+What that let go: the `rateProfile` tombstone comment in `DEFAULTS`, the
+`normaliseRates` call in `loadSettings` and the paragraph explaining why a
+nearest-snap rather than a default, and the archaeology on the `tune`
+allowlist row. Net less code and no history to read.
+
+What replaced the snap: the five rate knobs joined the allowlist loop that
+`link`, `cameraFov`, `laps`, `packVoltage`, `musicTrack` and `tune` already
+go through. Off-list now means back to the default, uniform with every other
+list-picked setting in the file, instead of a bespoke nearest-on-the-list
+call. It matters more for these than for the rest, because the row displays
+the value raw while `ratesDiff` normalises on the way to CLI, so an off-list
+one would print a number the quad is not flying.
+
+`src/boot.js` spells the key out rather than importing it, deliberately, so
+that boot does not pull ui.js's module graph in ahead of the loading screen.
+It was changed in the same breath; its own comment already said to.
+
+The earlier note about orphaned personal bests is superseded. Rates reset to
+the Betaflight defaults, so the composed config goes back to the one a fresh
+install always had, and laps flown on stock rates are reachable again.
+
+Checked in headless Chromium: seed a v2 blob (city map, rateMax 550, a
+BETAFLIGHT rateProfile, volume 2) and a v3 blob with off-list junk (rateMax
+680, rateYawMax 1234, tune 'nope', volume 3), reload. The v2 blob is ignored
+entirely, map falls back to field. The v3 off-list values all go to the
+Betaflight defaults, 670 / 670 / 70 / none / off with tune betaflight-default,
+while the legal volume 3 survives, which is the allowlist doing exactly and
+only its job. The module agrees: ACTUAL 7 / 67, throttle limit OFF. One right
+arrow steps 670 to 700, its neighbour, not to the far end of the list.
+`lint:fc` 28 of 28, `lint:presets` 2 of 2, console errors 0 warnings 0.

@@ -64,7 +64,6 @@ import {
   RATE_MAX_CHOICES,
   THROTTLE_CAP_CHOICES,
   hoverStickPercent,
-  normaliseRates,
   ratesSummary,
 } from '../../configs/rates.js';
 import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
@@ -120,12 +119,25 @@ function cycle(list, value, dir) {
   return list[((i < 0 ? 0 : i) + dir + n) % n];
 }
 
-/* Exported for scripts/shots.js, which seeds a chosen graphics preset into
- * storage before the page boots so a cost measurement is not taken at
- * whatever preset the harness machine happens to detect. The key is
- * exported rather than copied there, because a second copy of a storage key
- * is a harness that silently seeds nothing the day this one changes. */
-export const SETTINGS_KEY = 'webfpv.settings.v2';
+/*
+ * Where the settings live.
+ *
+ * v3, and the bump IS the migration. v2 blobs could carry a whole captured
+ * rateprofile and rate knobs off the offered lists, both written by the
+ * flight-controller screen, and reading one back now would either be ignored
+ * silently or step to the wrong end of a list. Rather than carry code to
+ * repair a shape nothing can produce any more, the old blob is simply not
+ * read. Everyone starts on the defaults once; a handful of testers is
+ * exactly the moment to do that and never again.
+ *
+ * Nothing else is lost with it: the pilot name, course documents, stored
+ * best laps and the stick mapping are all separate keys.
+ *
+ * src/boot.js SPELLS THIS STRING OUT rather than importing it, on purpose,
+ * so that boot does not drag ui.js's module graph in ahead of the loading
+ * screen. Change it there too. scripts/shots.js does import it.
+ */
+export const SETTINGS_KEY = 'webfpv.settings.v3';
 
 export const FLIGHT_MODES = ['acro', 'angle'];
 /* The lens, and the derivation behind it, live in src/render/lens.js. It is
@@ -161,19 +173,6 @@ const DEFAULTS = {
   /* Betaflight's throttle limit, SCALE type. 100 is off, which is what a
    * freshly flashed quad does, so that is where the menu starts. */
   throttleCap: RATE_DEFAULTS.throttleCap,
-  /*
-   * THERE IS NO rateProfile KEY ANY MORE, and its absence is deliberate.
-   *
-   * It held a whole Betaflight rateprofile captured from an FC Save or from
-   * a dropped dump, and configs/rates.js ratesCli() prefers it over the
-   * five knobs above whenever it is not empty. Both of its writers went
-   * with the flight-controller screen, so a stored one would now be a
-   * profile nothing on this page can see or change, quietly outranking
-   * every row on the Rates screen for the rest of that browser's life.
-   * loadSettings only copies keys that exist in DEFAULTS, so dropping it
-   * here is also the migration: an old blob's rateProfile is ignored and
-   * the pilot's knobs take over.
-   */
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -288,40 +287,28 @@ export function loadSettings() {
    * the default rather than being snapped to the nearest survivor.
    */
   for (const [key, allowed] of [
-    /* tune joins the list because the removed presets tab wrote
-     * settings.tune from a preset id, and an id no longer in the registry
-     * would step to the far end of the list on the first arrow key: cycle()
-     * coerces an indexOf miss to index 0. tuneById already falls back for
-     * display, so this only keeps the row and the module agreeing. */
     ['tune', TUNES.map((t) => t.id)],
     ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
+    /* The rate knobs are list rows like the rest, so they are checked like
+     * the rest. It matters more here than anywhere else on this list: the
+     * value is displayed raw but goes through normaliseRates on its way to
+     * CLI, so an off-list one would show a number the quad is not flying,
+     * and cycle() would step it to the far end of the list rather than to
+     * its neighbour. */
+    ['rateMax', RATE_MAX_CHOICES],
+    ['rateYawMax', RATE_MAX_CHOICES],
+    ['rateCentre', RATE_CENTRE_CHOICES],
+    ['rateExpo', RATE_EXPO_CHOICES],
+    ['throttleCap', THROTTLE_CAP_CHOICES],
   ]) {
     if (!allowed.includes(s[key])) {
       s[key] = DEFAULTS[key];
     }
   }
-  /*
-   * The five rate knobs are a list too, and they need SNAPPING rather than
-   * defaulting.
-   *
-   * The flight-controller screen could write any uint8 the firmware accepts
-   * into these, because its rates table edited a CLI dump: a pilot who set
-   * roll_srate to 55 in there has rateMax 550 stored, and 550 is not on
-   * RATE_MAX_CHOICES. The Rates screen steps a list, so an off-list value
-   * would show a number the list cannot reach and, worse, would DISAGREE
-   * with the quad: ratesDiff already normalises before it writes CLI, so
-   * the menu would read 550 while Betaflight flew 500. normaliseRates is
-   * that same nearest-on-the-list function, run once at load, so the two
-   * can never part. Nearest and not default, because 550 is a rate somebody
-   * chose and 500 is what they meant; a stale field of view a screen above
-   * goes back to the default for the opposite reason, it was chosen against
-   * a camera model that no longer exists.
-   */
-  Object.assign(s, normaliseRates(s));
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
    * must survive, a stored 90 must not, and 45 has to be legal now. */
   s.cameraAngle = clampCameraAngle(s.cameraAngle);

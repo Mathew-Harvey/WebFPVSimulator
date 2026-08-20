@@ -12479,3 +12479,48 @@ real index.html driven headless through Settings and the Rates screen with
 the tilt stepped to 40, console errors 0 warnings 0. The change is two menu
 note strings and one import. It touches no physics, no plant, no ABI and no
 build, and `dist/sim.wasm` is untouched.
+
+### Measured answer to the FPV Angle Mix open question: do not wire it
+
+The open question above asked whether raising BOXFPVANGLEMIX would make a
+tilted camera nicer to fly. Measured on `dist/sim.wasm` at 4.2 V, hovering,
+then slamming one axis from centre with the Betaflight default tune and 670
+rates:
+
+|  | peak in 1.2 s | to 200 deg/s | to 431 deg/s | to 670 deg/s |
+|---|---|---|---|---|
+| full pedal, yaw | 716 deg/s | 27 ms | 95 ms | 201 ms |
+| full stick, roll | 702 deg/s | 22 ms | 36 ms | 70 ms |
+
+Yaw gets there. It gets there roughly two and a half times slower, because
+yaw torque is prop drag against rotor inertia while roll is a thrust
+differential across a 12 cm arm. That difference is the whole answer.
+
+FPV Angle Mix rotates the roll and yaw SETPOINTS by the camera angle:
+`roll' = roll cos t - yaw sin t`, `yaw' = yaw cos t + roll sin t`. At 40
+degrees that is a 64 percent cross mix on BOTH axes, so:
+
+- A full roll input stops being a roll input. It commands 513 deg/s of roll
+  AND 431 deg/s of yaw. Roll reaches its share in about 48 ms and yaw reaches
+  its share in 95 ms, so for the first ~50 ms the quad is rotating about the
+  wrong axis and the horizon catches up afterwards.
+- A full yaw input commands 513 deg/s of yaw and MINUS 431 deg/s of roll. The
+  roll half lands in 36 ms and the yaw half in about 130 ms, so a sharp yaw
+  starts with a wrong way roll and only then settles into the clean pan the
+  mix exists to produce.
+
+Held inputs would be exactly what the pilot wants. Sharp ones, which is what
+racing is, would be worse than the honest geometric coupling they have now,
+and it would be worse on the ROLL axis too, which is not currently affected
+at all. That is why the mix is an Angle and Horizon mode feature for line of
+sight flying and why racers leave it off.
+
+Closing the open question as NO. The levers that work are already on the
+menu and cost nothing: camera angle itself (30 degrees is 50 percent
+coupling against 40's 64) and Yaw max rate (500 at 40 degrees drops the
+picture roll from 431 to 321 deg/s). Both are reversible in one keypress,
+which a module ABI change is not.
+
+No code changed this turn. The probe was a scratch script, not committed;
+the numbers above are reproducible from `tests/lib/simmod.js`, `composeConfig`
+and `RATE_DEFAULTS` against `dist/sim.wasm`.

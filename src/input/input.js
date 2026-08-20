@@ -506,9 +506,32 @@ export class InputManager {
     return cloneMap({ ...DEFAULT_MAP, stored: false });
   }
 
+  /*
+   * Guarded, like loadMap above it and like savePadChoice and saveSettings.
+   * It was the one bare localStorage write left in the shell, and setItem
+   * throws in private mode and on a full quota. The throw came out of
+   * acceptCalibration, past main.js's `if (input.acceptCalibration())`, and
+   * stranded the pilot on the calibration screen: the map was already in
+   * memory and worked for that session, but the screen never closed and the
+   * only visible sign was a console error. Failing to PERSIST a mapping is
+   * a disappointment. Failing to leave the wizard is a broken page.
+   */
   saveMap() {
     this.map.stored = true;
-    localStorage.setItem(STORE_KEY, JSON.stringify(this.map));
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(this.map));
+    } catch (e) {
+      /*
+       * Private mode or no quota. `stored` STAYS TRUE, deliberately. It reads
+       * like a fact about localStorage and is used as a fact about the map:
+       * padNav in main.js only lets a radio drive the menus when it is set,
+       * and the readout says "a radio that is not calibrated yet" when it is
+       * not. Clearing it here would take stick navigation away from somebody
+       * who had just finished calibrating, and call their mapping uncalibrated
+       * while it was flying the quad. The map is calibrated. It simply will
+       * not survive a reload in this browser.
+       */
+    }
   }
 
   firstGamepad() {

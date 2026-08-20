@@ -12365,3 +12365,51 @@ while the legal volume 3 survives, which is the allowlist doing exactly and
 only its job. The module agrees: ACTUAL 7 / 67, throttle limit OFF. One right
 arrow steps 670 to 700, its neighbour, not to the far end of the list.
 `lint:fc` 28 of 28, `lint:presets` 2 of 2, console errors 0 warnings 0.
+
+### Rates and the stick mapping already persisted. One unguarded write did not.
+
+The owner asked for rates and the stick mapping to save to localStorage. Both
+already did, and the ask almost certainly came from the settings key bump in
+the entry above resetting the rates once.
+
+Measured rather than asserted. Set 800 max, 600 yaw, 80 centre on the Rates
+screen, read the stored blob, reload: `webfpv.settings.v3` carries every knob
+and the module comes back on ACTUAL `roll_rc_rate 8, roll_srate 80,
+pitch_srate 80, yaw_srate 60`. Seeded a distinctive `webfpv_stick_map_v1` and
+reloaded: byte for byte the same afterwards. Rates go through `saveSettings`
+on every `pick` and `adjust`, the mapping through `saveMap` on
+`acceptCalibration`, and the pad choice through `savePadChoice`.
+
+What was actually wrong: `saveMap` was the only bare `localStorage.setItem`
+left in `src/`. Every other writer, `saveSettings`, `savePadChoice`,
+`writePilotName`, the board origin, the best lap, the track builder autosave,
+sits in a try. `setItem` throws in private mode and on a full quota, and that
+throw came out of `acceptCalibration`, past main.js's
+`if (input.acceptCalibration())`, and stranded the pilot on the calibration
+screen: the map was already in memory and flew fine, but the screen never
+closed and the only visible sign was a console error. Failing to persist a
+mapping is a disappointment; failing to leave the wizard is a broken page.
+
+**The first version of that fix was wrong and is worth recording.** It cleared
+`map.stored` in the catch, which reads like the honest thing to write: the map
+did not reach storage. But `stored` is not used as a fact about localStorage.
+`padNav` in main.js only lets a radio drive the menus when it is set, and the
+input readout says "a radio that is not calibrated yet" when it is not. So the
+tidy-looking version would have taken stick navigation away from somebody who
+had just finished calibrating, and called their mapping uncalibrated while it
+was flying the quad. It stays true. The map is calibrated; it simply will not
+survive a reload in that browser.
+
+RUN LOG. `npm run verify` CANNOT RUN IN THIS CONTAINER and was not run: there
+is no `emcc`, so step 1 of the verify-flight-model procedure, `npm run
+build:wasm`, cannot execute, and `vendor/betaflight` is an empty submodule so
+step 2 has nothing to diff. No measured value from the sixteen checks is
+claimed for this turn. What did run: `lint:fc` 28 of 28, `lint:presets` 2 of 2,
+`link:selftest` all passed, and the real index.html driven in headless
+Chromium through the Rates screen into flight, console errors 0 warnings 0.
+The change is a try/catch around one localStorage write on the calibration
+accept path. It does not touch `src/native/`, the compiled module, the
+integrator, the fixed timestep or input sampling, and `dist/sim.wasm` is
+untouched, so no trace hash can have moved. That is an argument, not a
+measurement, and the harness still owes this change a green table on a machine
+with a toolchain. Flight feel is not verifiable here and is not claimed.

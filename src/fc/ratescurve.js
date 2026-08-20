@@ -1,11 +1,23 @@
 /*
- * ratescurve.js: Configurator-shaped preview of Betaflight 4.5.1 rate
- * curves. Display only. The plant still runs applyRates from fc/rc.c
- * inside the WASM module. These copies exist so the graph can label Max
- * Vel without a second control loop.
+ * ratescurve.js: a preview of Betaflight 4.5.1's rate curves.
+ *
+ * DISPLAY ONLY, and the distinction is the whole reason this file is
+ * allowed to exist next to CLAUDE.md's rule against reimplementing a rates
+ * curve in JavaScript. The plant runs applyRates from fc/rc.c inside the
+ * WASM module and always will. These copies exist so the Rates screen can
+ * DRAW the curve, and so scripts/fc-trace.js can assert that the drawing
+ * agrees with the firmware. Nothing here reaches the integrator.
  *
  * Formulas are applyBetaflightRates, applyRaceFlightRates, applyKissRates,
  * applyActualRates and applyQuickRates in vendor/betaflight/src/main/fc/rc.c.
+ * All five stay, though the menu only writes ACTUAL: gates.config.json P2
+ * checks all four named types against the compiled module, and a preview
+ * that only knew one of them could not be checked at all.
+ *
+ * The Configurator table this used to feed went with the flight-controller
+ * screen: no ratesColumns, no formatDisplay, no per-axis model read out of
+ * a CLI dump. src/ui/ratespanel.js builds its two curves from the pilot's
+ * settings and asks angleRateDeg for points on them.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -23,17 +35,7 @@
  * along with this software. If not, see <https://www.gnu.org/licenses/>.
  */
 
-export const RATES_TYPES = ['ACTUAL', 'BETAFLIGHT', 'RACEFLIGHT', 'KISS', 'QUICK'];
-
 export const ANGLE_RATE_SAMPLES = 80;
-
-export const AXIS_IDS = ['roll', 'pitch', 'yaw'];
-
-export const AXIS_COLOR = {
-  roll: '#e23b4a',
-  pitch: '#3dcc5a',
-  yaw: '#3b9cff',
-};
 
 /* Firmware default, CONTROL_RATE_CONFIG_RATE_LIMIT_MAX. */
 const RATE_LIMIT_DEFAULT = 1998;
@@ -145,214 +147,3 @@ export function angleRateDeg(type, axis, stick) {
   const limit = Number.isFinite(axis.limit) && axis.limit > 0 ? axis.limit : RATE_LIMIT_DEFAULT;
   return constrainf(angleRate, -limit, limit);
 }
-
-export function maxVelDeg(type, axis) {
-  return angleRateDeg(type, axis, 1);
-}
-
-function cliNum(map, key, fallback) {
-  const n = Number(map.get(key));
-  return Number.isFinite(n) ? n : fallback;
-}
-
-export function ratesFromCliMap(map) {
-  const type = map.get('rates_type') || 'ACTUAL';
-  const quick = map.get('quickrates_rc_expo');
-  const axis = (name, rcFallback, sFallback) => ({
-    rcRate: cliNum(map, `${name}_rc_rate`, rcFallback),
-    srate: cliNum(map, `${name}_srate`, sFallback),
-    expo: cliNum(map, `${name}_expo`, 0),
-    limit: cliNum(map, `${name}_rate_limit`, RATE_LIMIT_DEFAULT),
-    quickRcExpo: quick === 'ON' || quick === '1',
-  });
-  /* ACTUAL firmware defaults: rc 7, srate 67. Used only when a dump has
-   * not yet written the key, so the graph is not a blank line. */
-  return {
-    type: RATES_TYPES.includes(type) ? type : 'ACTUAL',
-    roll: axis('roll', 7, 67),
-    pitch: axis('pitch', 7, 67),
-    yaw: axis('yaw', 7, 67),
-  };
-}
-
-/*
- * How Configurator 10.10 shows each field. Display value times `fromDisplay`
- * is the CLI integer. `toDisplay` is the inverse.
- */
-export function ratesColumns(type) {
-  const expo01 = {
-    id: 'expo',
-    label: 'Expo',
-    toDisplay: (cli) => cli / 100,
-    fromDisplay: (d) => Math.round(d * 100),
-    min: 0,
-    max: 1,
-    step: 0.01,
-    decimals: 2,
-  };
-  if (type === 'BETAFLIGHT') {
-    return [
-      {
-        id: 'rc_rate',
-        label: 'RC Rate',
-        toDisplay: (cli) => cli / 100,
-        fromDisplay: (d) => Math.round(d * 100),
-        min: 0.01,
-        max: 2.55,
-        step: 0.01,
-        decimals: 2,
-      },
-      {
-        id: 'srate',
-        label: 'Super Rate',
-        toDisplay: (cli) => cli,
-        fromDisplay: (d) => Math.round(d),
-        min: 0,
-        max: 100,
-        step: 1,
-        decimals: 0,
-      },
-      expo01,
-    ];
-  }
-  if (type === 'KISS') {
-    return [
-      {
-        id: 'rc_rate',
-        label: 'RC Rate',
-        toDisplay: (cli) => cli / 100,
-        fromDisplay: (d) => Math.round(d * 100),
-        min: 0.01,
-        max: 2.55,
-        step: 0.01,
-        decimals: 2,
-      },
-      {
-        id: 'srate',
-        label: 'Rate',
-        toDisplay: (cli) => cli,
-        fromDisplay: (d) => Math.round(d),
-        min: 0,
-        max: 99,
-        step: 1,
-        decimals: 0,
-      },
-      { ...expo01, label: 'RC Curve' },
-    ];
-  }
-  if (type === 'RACEFLIGHT') {
-    return [
-      {
-        id: 'rc_rate',
-        label: 'Rate',
-        toDisplay: (cli) => cli * 10,
-        fromDisplay: (d) => Math.round(d / 10),
-        min: 10,
-        max: 2550,
-        step: 10,
-        decimals: 0,
-      },
-      {
-        id: 'srate',
-        label: 'Acro+',
-        toDisplay: (cli) => cli,
-        fromDisplay: (d) => Math.round(d),
-        min: 0,
-        max: 255,
-        step: 1,
-        decimals: 0,
-      },
-      {
-        id: 'expo',
-        label: 'Expo',
-        toDisplay: (cli) => cli,
-        fromDisplay: (d) => Math.round(d),
-        min: 0,
-        max: 100,
-        step: 1,
-        decimals: 0,
-      },
-    ];
-  }
-  if (type === 'QUICK') {
-    return [
-      {
-        id: 'rc_rate',
-        label: 'RC Rate',
-        toDisplay: (cli) => cli,
-        fromDisplay: (d) => Math.round(d),
-        min: 1,
-        max: 255,
-        step: 1,
-        decimals: 0,
-      },
-      {
-        id: 'srate',
-        label: 'Max Rate',
-        toDisplay: (cli) => cli * 10,
-        fromDisplay: (d) => Math.round(d / 10),
-        min: 0,
-        max: 2550,
-        step: 10,
-        decimals: 0,
-      },
-      expo01,
-    ];
-  }
-  /* ACTUAL, and anything unknown. Max Rate is srate * 10 deg/s. */
-  return [
-    {
-      id: 'rc_rate',
-      label: 'Center Sensitivity',
-      toDisplay: (cli) => cli * 10,
-      fromDisplay: (d) => Math.round(d / 10),
-      min: 10,
-      max: 2550,
-      step: 10,
-      decimals: 0,
-    },
-    {
-      id: 'srate',
-      label: 'Max Rate',
-      toDisplay: (cli) => cli * 10,
-      fromDisplay: (d) => Math.round(d / 10),
-      min: 0,
-      max: 2550,
-      step: 10,
-      decimals: 0,
-    },
-    expo01,
-  ];
-}
-
-export function formatDisplay(col, cli) {
-  const d = col.toDisplay(cli);
-  return col.decimals > 0 ? d.toFixed(col.decimals) : String(Math.round(d));
-}
-
-export function parseDisplay(col, text) {
-  const n = Number(text);
-  if (!Number.isFinite(n)) {
-    return null;
-  }
-  const clamped = Math.min(col.max, Math.max(col.min, n));
-  const stepped = col.step > 0 ? Math.round(clamped / col.step) * col.step : clamped;
-  let cli = col.fromDisplay(stepped);
-  if (col.id === 'rc_rate') {
-    cli = Math.max(1, cli);
-  }
-  return Math.max(0, Math.min(255, cli));
-}
-
-export const RATES_PANEL_KEYS = new Set([
-  'rates_type',
-  'roll_rc_rate',
-  'pitch_rc_rate',
-  'yaw_rc_rate',
-  'roll_srate',
-  'pitch_srate',
-  'yaw_srate',
-  'roll_expo',
-  'pitch_expo',
-  'yaw_expo',
-]);

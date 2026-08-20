@@ -58,7 +58,13 @@ const CAL_LABELS = {
 import { TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
 import {
+  RATE_CENTRE_CHOICES,
   RATE_DEFAULTS,
+  RATE_EXPO_CHOICES,
+  RATE_MAX_CHOICES,
+  THROTTLE_CAP_CHOICES,
+  hoverStickPercent,
+  normaliseRates,
   ratesSummary,
 } from '../../configs/rates.js';
 import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
@@ -103,9 +109,16 @@ import {
 } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { sanitiseRateProfile } from '../fc/dump.js';
-import { cycle, downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip } from './fc.js';
 import { mountRatesPanel } from './ratespanel.js';
+
+/* Step through a list with wraparound. Every value row on every screen
+ * moves through this, so a left arrow at the start of a list lands on its
+ * end rather than doing nothing. */
+function cycle(list, value, dir) {
+  const i = list.indexOf(value);
+  const n = list.length;
+  return list[((i < 0 ? 0 : i) + dir + n) % n];
+}
 
 /* Exported for scripts/shots.js, which seeds a chosen graphics preset into
  * storage before the page boots so a cost measurement is not taken at
@@ -148,9 +161,19 @@ const DEFAULTS = {
   /* Betaflight's throttle limit, SCALE type. 100 is off, which is what a
    * freshly flashed quad does, so that is where the menu starts. */
   throttleCap: RATE_DEFAULTS.throttleCap,
-  /* Full rateprofile from the last FC Save or use-dump import. Empty
-   * means ratesDiff five knobs, which is a first run and Karate keep-mine. */
-  rateProfile: {},
+  /*
+   * THERE IS NO rateProfile KEY ANY MORE, and its absence is deliberate.
+   *
+   * It held a whole Betaflight rateprofile captured from an FC Save or from
+   * a dropped dump, and configs/rates.js ratesCli() prefers it over the
+   * five knobs above whenever it is not empty. Both of its writers went
+   * with the flight-controller screen, so a stored one would now be a
+   * profile nothing on this page can see or change, quietly outranking
+   * every row on the Rates screen for the rest of that browser's life.
+   * loadSettings only copies keys that exist in DEFAULTS, so dropping it
+   * here is also the migration: an old blob's rateProfile is ignored and
+   * the pilot's knobs take over.
+   */
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -275,6 +298,24 @@ export function loadSettings() {
       s[key] = DEFAULTS[key];
     }
   }
+  /*
+   * The five rate knobs are a list too, and they need SNAPPING rather than
+   * defaulting.
+   *
+   * The flight-controller screen could write any uint8 the firmware accepts
+   * into these, because its rates table edited a CLI dump: a pilot who set
+   * roll_srate to 55 in there has rateMax 550 stored, and 550 is not on
+   * RATE_MAX_CHOICES. The Rates screen steps a list, so an off-list value
+   * would show a number the list cannot reach and, worse, would DISAGREE
+   * with the quad: ratesDiff already normalises before it writes CLI, so
+   * the menu would read 550 while Betaflight flew 500. normaliseRates is
+   * that same nearest-on-the-list function, run once at load, so the two
+   * can never part. Nearest and not default, because 550 is a rate somebody
+   * chose and 500 is what they meant; a stale field of view a screen above
+   * goes back to the default for the opposite reason, it was chosen against
+   * a camera model that no longer exists.
+   */
+  Object.assign(s, normaliseRates(s));
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
    * must survive, a stored 90 must not, and 45 has to be legal now. */
   s.cameraAngle = clampCameraAngle(s.cameraAngle);
@@ -287,7 +328,6 @@ export function loadSettings() {
   } else {
     s.graphics = normalizeGraphics(s.graphics);
   }
-  s.rateProfile = sanitiseRateProfile(s.rateProfile);
   return s;
 }
 
@@ -696,15 +736,42 @@ function courseCardRows(subject) {
   return rows;
 }
 
+/*
+ * The tune, as two named choices.
+ *
+ * A tune is P, I, D, feedforward and filtering, and there are exactly two of
+ * them: what a freshly flashed quad flies, and a 6S race tune. Neither
+ * carries rates, which is why switching between them changes how the quad
+ * settles and not how far the sticks go. See configs/registry.js.
+ */
 function tuneItem(s) {
   return choice(
     'Tune',
-    tuneById(s.tune).note,
+    `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.`,
     TUNES.map((t) => t.id),
     s.tune,
     (id) => tuneById(id).name,
     (id) => { s.tune = id; },
   );
+}
+
+/* The five keys the Rates screen owns, in one place, so the Revert row and
+ * the act() that answers it cannot drift apart. */
+const RATE_KNOBS = ['rateMax', 'rateYawMax', 'rateCentre', 'rateExpo', 'throttleCap'];
+
+function ratesChanged(s) {
+  return RATE_KNOBS.some((k) => s[k] !== RATE_DEFAULTS[k]);
+}
+
+/* The way in to the Rates screen, with the whole curve read out on the row
+ * so a pilot can see what they are flying without opening it. */
+function ratesItem(s) {
+  return {
+    label: 'Rates',
+    value: ratesSummary(s),
+    action: 'rates',
+    note: 'How far the sticks go, and how sharply. Yours, not the tune\'s. A radio in Acro flies this curve; keyboard flight is Angle.',
+  };
 }
 
 function graphicsItem(s) {
@@ -778,36 +845,14 @@ export class Ui {
         index: Math.max(0, TRACKS.indexOf(tr)),
       };
     }
-    this.onFcOpen = null;    /* (page) => void */
-    this.onFcSave = null;    /* (draft, { restart, presetId, silent }) => void */
-    this.onFcImport = null;  /* (text, name, policy) => void */
-    this.onFcAngle = null;   /* (on) => void, same sim_set_angle_mode as Settings */
-    this.onFcMotor = null;   /* (motor, duty) => void, sim_motor_override */
-    this.fc = new FcSession();
-    this.fc.getFlightMode = () => (this.settings.flightMode === 'angle' ? 'angle' : 'acro');
-    this.fc.setFlightMode = (on) => {
-      this.settings.flightMode = on ? 'angle' : 'acro';
-      saveSettings(this.settings);
-      if (this.onFcAngle) {
-        this.onFcAngle(Boolean(on));
-      }
-      this.renderMenu();
-    };
-    this.fc.getLaunchControl = () => Boolean(this.settings.launchControl);
-    this.fc.setLaunchControl = (on) => {
-      this.settings.launchControl = Boolean(on);
-      saveSettings(this.settings);
-      if (this.onSettings) {
-        this.onSettings(this.settings);
-      }
-      this.renderMenu();
-    };
-    this.fc.motorTestAllowed = () => !this.fc.runActive && this.returnTo !== 'paused';
-    this.fc.onMotorTest = (motor, duty) => {
-      if (this.onFcMotor) {
-        this.onFcMotor(motor, duty);
-      }
-    };
+    /* Where the live sticks are, for the Rates curve. Written by the frame
+     * loop through paintRates, read by the panel on every redraw. */
+    this.ratesStick = { roll: 0, pitch: 0, yaw: 0 };
+    /* Set when Rates was opened FROM Settings, so Escape lands back on the
+     * list it was a row of. Separate from returnTo on purpose: returnTo is
+     * where Settings itself came from, and overwriting it here would lose a
+     * paused origin two screens up. */
+    this.ratesFrom = null;
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
@@ -1038,105 +1083,43 @@ export class Ui {
     settings.append(settingsBlock.stage, hintWithKeys(['Esc'], 'Goes back. Changes are already stored. Arrow keys still move the menu.'));
     this.screens.settings = settings;
 
-    const fc = el('div', 'screen screen-page screen-fc');
-    const fcHead = el('div', 'fc-head');
-    const fcBrand = el('div', 'fc-brand');
-    fcBrand.append(el('span', 'fc-wordmark', 'BETAFLIGHT'));
-    fcBrand.append(el('span', 'fc-fw', '4.5.1'));
-    fcBrand.append(el('span', 'fc-conn', 'WASM'));
-    this.fcDirty = el('span', 'fc-dirty', '');
-    fcBrand.append(this.fcDirty);
-    fcHead.append(fcBrand);
-    const homage = el('p', 'fc-homage');
-    const cfgLink = el('a', null, 'Betaflight Configurator');
-    cfgLink.href = 'https://github.com/betaflight/betaflight-configurator';
-    cfgLink.target = '_blank';
-    cfgLink.rel = 'noopener noreferrer';
-    const bfLink = el('a', null, 'Betaflight');
-    bfLink.href = 'https://github.com/betaflight/betaflight';
-    bfLink.target = '_blank';
-    bfLink.rel = 'noopener noreferrer';
-    homage.append(
-      document.createTextNode('Homage of '),
-      cfgLink,
-      document.createTextNode(' 10.10 colours and tabs, not that app. No Vue, no MSP, no iframe. Firmware is compiled '),
-      bfLink,
-      document.createTextNode(' 4.5.1. With thanks to the Betaflight developers. GPLv3.'),
+    /*
+     * Rates.
+     *
+     * A PICTURE AND FIVE ROWS, where there used to be a Betaflight
+     * Configurator. The old flight-controller screen offered eight tabs, a
+     * few hundred editable firmware keys, a raw CLI textarea and a file drop
+     * that would flash any dump the pilot could find. It was accurate and it
+     * was unusable, and none of it was the thing a pilot actually changes.
+     * Rates are. So the tune is two named choices on the menus that already
+     * carried it, and everything a pilot sets by hand is here.
+     *
+     * The curve is the point. "670 deg/s" means nothing until you can see
+     * that a quarter of stick is 55 of it; the graph and the readout beside
+     * it are the same numbers Betaflight's own ACTUAL curve will fly, drawn
+     * from src/fc/ratescurve.js. The dots on it are the live sticks.
+     */
+    const rates = el('div', 'screen screen-page screen-rates');
+    rates.append(el('h2', null, 'Rates'));
+    rates.append(el(
+      'p',
+      'rates-lede',
+      'How far the sticks go. Rates belong to you, not to the tune, so they stay put when you switch between the two tunes. A radio in Acro flies this curve; keyboard flight is Angle and ignores it.',
+    ));
+    this.ratesPanel = mountRatesPanel();
+    const ratesBlock = wrapMenu();
+    this.ratesMenu = ratesBlock.menu;
+    this.ratesMenu.classList.add('menu-scroll');
+    this.ratesHelp = ratesBlock.help;
+    /* Into the stage's first column, the same seat the quad takes on
+     * Settings. The three column grid is what keeps the rows in the middle
+     * of the window whatever is beside them. */
+    ratesBlock.stage.prepend(this.ratesPanel.root);
+    rates.append(
+      ratesBlock.stage,
+      hintWithKeys(['↑↓', '←→', 'Esc'], 'Arrow keys move, left and right change a value. Escape goes back. Changes are stored and reach the quad at once.'),
     );
-    fcHead.append(homage);
-    const fcExit = el('div', 'fc-exit');
-    this.fcSaveExit = btn('fc-exit-btn fc-exit-save', 'Save and exit');
-    this.fcSaveExit.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.act('fc-save-exit');
-    });
-    this.fcLeave = btn('fc-exit-btn fc-exit-leave', 'Exit without saving');
-    this.fcLeave.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.act('fc-back');
-    });
-    const fcExitHint = el('div', 'fc-exit-hint');
-    fcExitHint.append(el('kbd', null, 'Esc'));
-    this.fcExitCopy = el('span', 'fc-exit-copy', 'exits without saving');
-    fcExitHint.append(this.fcExitCopy);
-    fcExit.append(this.fcSaveExit, this.fcLeave, fcExitHint);
-    this.fcExit = fcExit;
-    const fcBody = el('div', 'fc-body');
-    this.fcTabs = el('nav', 'fc-tabs');
-    this.fcTabs.setAttribute('aria-label', 'Configurator tabs');
-    const fcWork = el('div', 'fc-work');
-    this.fcPages = el('div', 'fc-pages');
-    this.fcPages.setAttribute('aria-label', 'PID Tuning pages');
-    this.fcPages.hidden = true;
-    this.fcRatesStick = { roll: 0, pitch: 0, yaw: 0 };
-    this.fcRates = mountRatesPanel({
-      onType: (type) => {
-        this.fc.setValue('rates_type', type);
-        this.afterRatesEdit();
-      },
-      onField: (key, value) => {
-        this.fc.setValue(key, value);
-        this.afterRatesEdit();
-      },
-      onPaint: () => {
-        if (this.fcRates) {
-          this.fcRates.paint(this.fc, this.fcRatesStick);
-        }
-      },
-      onReset: () => {
-        this.fc.resetRatesToDefault();
-        this.afterRatesEdit();
-      },
-    });
-    const fcBlock = wrapMenu();
-    this.fcMenu = fcBlock.menu;
-    this.fcMenu.classList.add('menu-scroll');
-    this.fcHelp = fcBlock.help;
-    this.fcCli = el('textarea', 'fc-cli');
-    this.fcCli.spellcheck = false;
-    this.fcCli.setAttribute('aria-label', 'Betaflight CLI dump');
-    this.fcCli.hidden = true;
-    this.fcCli.addEventListener('input', () => {
-      this.fc.setDraft(this.fcCli.value);
-      this.syncFcDirty();
-    });
-    this.fcCli.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape') {
-        this.fcCli.blur();
-        this.back();
-      }
-      e.stopPropagation();
-    });
-    this.fcAttitude = el('canvas', 'fc-attitude');
-    this.fcAttitude.width = 220;
-    this.fcAttitude.height = 220;
-    this.fcAttitude.setAttribute('aria-label', 'Attitude');
-    this.fcAttitude.hidden = true;
-    fcWork.append(this.fcPages, this.fcRates.root, fcBlock.stage, this.fcCli, this.fcAttitude);
-    fcBody.append(this.fcTabs, fcWork);
-    const fcStatus = el('div', 'fc-status', 'Connected: WASM  ·  Betaflight 4.5.1  ·  PID 1 kHz  ·  Profile 0  ·  Homage of Configurator 10.10, not that app');
-    fc.append(fcHead, fcExit, fcBody, fcStatus);
-    this.screens.fc = fc;
+    this.screens.rates = rates;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
     calibrate.append(el('h2', null, 'Calibrate sticks'));
@@ -1499,7 +1482,6 @@ export class Ui {
     }
     const dialog = this.nameDialog && !this.nameDialog.hidden;
     const hide = dialog
-      || this.screen === 'fc'
       || this.screen === 'calibrate'
       || this.screen === 'padpick'
       || !this.settings.sound;
@@ -1761,8 +1743,8 @@ export class Ui {
           note: 'Worlds, your courses and the public board, in one place.',
         },
         tuneItem(s),
+        ratesItem(s),
         { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
-        { label: 'Flight controller', action: 'fc', note: 'Betaflight 4.5.1 settings. Save writes a CLI dump. Grey options are named, not hidden.' },
         { label: 'Settings', action: 'settings' },
         {
           label: 'Leaderboard',
@@ -1881,13 +1863,8 @@ export class Ui {
             : `Needed to publish a course or post a time. ${nameRules()}`,
         },
         { label: 'Flight', section: true },
-        { label: 'Flight controller', action: 'fc', note: 'PID, filters and rates. Save writes a CLI dump into compiled Betaflight 4.5.1.' },
-        {
-          label: 'Rates',
-          value: ratesSummary(s),
-          action: 'fc-rates',
-          note: 'Pilot rates. Actual or Betaflight, per axis. Opens Rateprofile Settings. A radio in Acro uses this curve; keyboard flight is Angle.',
-        },
+        tuneItem(s),
+        ratesItem(s),
         choice(
           'Flight mode',
           'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
@@ -2018,7 +1995,7 @@ export class Ui {
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         tuneItem(s),
-        { label: 'Flight controller', action: 'fc', note: 'PID, filters and rates. Save during a run asks to restart.' },
+        ratesItem(s),
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
@@ -2063,8 +2040,72 @@ export class Ui {
         { label: 'Back to title', action: 'title' },
       ];
     }
-    if (this.screen === 'fc') {
-      return this.fc.items();
+    if (this.screen === 'rates') {
+      /*
+       * ACTUAL rates, in the units the curve's ends actually mean. From
+       * fc/rc.c applyActualRates: at full stick the rate IS Max rate, and
+       * Centre is the SLOPE at the middle, not the rate at half stick. The
+       * notes say so, because the old menu claimed otherwise and the graph
+       * beside these rows is what settles the argument.
+       *
+       * Every value is a step on a list rather than a free number: the
+       * firmware stores rc_rate and srate in TENS of deg/s in a uint8, so
+       * anything not a multiple of ten is a number the quad never sees.
+       */
+      const hover = hoverStickPercent(s.throttleCap);
+      return [
+        choice(
+          'Max rate',
+          'Roll and pitch at full stick, in degrees per second. This is exact: ACTUAL rates put the number you pick at the stop. 670 is the Betaflight default, and most racers live between 600 and 900.',
+          RATE_MAX_CHOICES,
+          s.rateMax,
+          (n) => `${n} deg/s`,
+          (n) => { s.rateMax = n; },
+        ),
+        choice(
+          'Yaw max rate',
+          'Yaw at full pedal. Quads yaw slower than they roll, so many pilots set this below Max rate. 670 matches the Betaflight default.',
+          RATE_MAX_CHOICES,
+          s.rateYawMax,
+          (n) => `${n} deg/s`,
+          (n) => { s.rateYawMax = n; },
+        ),
+        choice(
+          'Centre sensitivity',
+          'How quickly the quad answers a small stick move, as the slope of the curve at the middle. Low is calm for a smooth line, high is twitchy and quick. It is not the rate at half stick: read the curve.',
+          RATE_CENTRE_CHOICES,
+          s.rateCentre,
+          (n) => `${n}`,
+          (n) => { s.rateCentre = n; },
+        ),
+        choice(
+          'Expo',
+          'How much of the travel is spent near the middle. Zero is a straight line from centre to the stop. Higher softens the middle and keeps the same maximum, which is why the ends of the curve do not move when you change it.',
+          RATE_EXPO_CHOICES,
+          s.rateExpo,
+          (n) => (n === 0 ? 'None' : `${(n / 100).toFixed(2)}`),
+          (n) => { s.rateExpo = n; },
+        ),
+        choice(
+          'Throttle limit',
+          s.throttleCap >= 100
+            ? `Off. This quad is nine to one thrust to weight and hovers at ${hover.toFixed(1)} percent of stick, so almost all the travel is above hover. Capping it scales the whole stick down and gives the resolution back.`
+            : `Betaflight SCALE limit: full stick commands ${s.throttleCap} percent, and the whole travel is redistributed under it. Hover moves to about ${hover.toFixed(1)} percent of stick, so the throttle is less touchy.`,
+          THROTTLE_CAP_CHOICES,
+          s.throttleCap,
+          (n) => (n >= 100 ? 'Off' : `${n}%`),
+          (n) => { s.throttleCap = n; },
+        ),
+        {
+          label: 'Revert to defaults',
+          action: 'rates-default',
+          disabled: !ratesChanged(s),
+          note: ratesChanged(s)
+            ? `Back to what a freshly flashed Betaflight 4.5.1 flies: ${RATE_DEFAULTS.rateCentre} centre, ${RATE_DEFAULTS.rateMax} max, no expo, no throttle limit.`
+            : 'Already on the Betaflight 4.5.1 defaults.',
+        },
+        { label: 'Back', action: 'back' },
+      ];
     }
     return [];
   }
@@ -2085,7 +2126,7 @@ export class Ui {
       credits: this.creditsMenu,
       courses: this.coursesMenu,
       settings: this.settingsMenu,
-      fc: this.fcMenu,
+      rates: this.ratesMenu,
       paused: this.pausedMenu,
       results: this.resultsMenu,
     }[this.screen];
@@ -2106,7 +2147,6 @@ export class Ui {
     const offset = items.length - rows.length;
     this.rowOffset = offset;
     this.menuRows = [];
-    let fcBar = null;
     rows.forEach((it, k) => {
       const i = k + offset;
       /* A heading is not a row. It gets no cursor, no hover and no click,
@@ -2163,137 +2203,37 @@ export class Ui {
           this.select();
         }
       });
-      if (this.screen === 'fc' && it.rowClass === 'fc-btn') {
-        if (!fcBar) {
-          fcBar = el('div', 'fc-bar');
-          host.append(fcBar);
-        }
-        fcBar.append(row);
-      } else {
-        host.append(row);
-      }
+      host.append(row);
       this.menuRows.push(row);
     });
     host.scrollTop = scroll;
     this.syncCursor(false);
-    this.syncFcChrome();
+    this.syncRates();
   }
 
-  syncFcChrome() {
-    if (!this.fcTabs) {
+  /* The curve, redrawn from the settings whenever the menu is rebuilt. Every
+   * row on this screen writes a setting and then rebuilds, so this is the one
+   * place the picture has to be kept honest. */
+  syncRates() {
+    if (!this.ratesPanel) {
       return;
     }
-    const on = this.screen === 'fc';
-    if (on) {
-      paintTabStrip(this.fcTabs, this.fc, (id) => {
-        if (this.fc.confirm) {
-          return;
-        }
-        this.fc.setTab(id);
-        this.cursor = 0;
-        this.renderMenu();
-      });
-      if (this.fcPages) {
-        paintPageStrip(this.fcPages, this.fc, (id) => {
-          if (this.fc.confirm) {
-            return;
-          }
-          this.fc.page = id;
-          this.cursor = 0;
-          this.renderMenu();
-        });
-      }
-    }
-    const confirm = Boolean(this.fc.confirm);
-    const cliOn = on && this.fc.tab === 'cli' && !confirm;
-    this.fcCli.hidden = !cliOn;
-    if (cliOn && document.activeElement !== this.fcCli) {
-      this.fcCli.value = this.fc.draft;
-    }
-    const setupOn = on && this.fc.tab === 'setup' && !confirm;
-    this.fcAttitude.hidden = !setupOn;
-    if (setupOn) {
-      drawAttitude(this.fcAttitude, this.fc.attitude);
-    }
-    const ratesOn = on && this.fc.tab === 'pid' && this.fc.page === 'rates' && !confirm;
-    if (this.fcRates) {
-      this.fcRates.root.hidden = !ratesOn;
-      if (ratesOn) {
-        this.fcRates.paint(this.fc, this.fcRatesStick);
-      }
-    }
-    this.syncFcDirty();
-  }
-
-  syncFcDirty() {
-    if (this.fcDirty) {
-      this.fcDirty.textContent = this.fc.dirty() ? 'Unsaved' : '';
-    }
-    this.syncFcExit();
-  }
-
-  syncFcExit() {
-    if (!this.fcExit) {
+    if (this.screen !== 'rates') {
       return;
     }
-    const on = this.screen === 'fc';
-    const confirm = Boolean(this.fc.confirm);
-    const dirty = this.fc.dirty();
-    this.fcExit.hidden = !on || confirm;
-    if (this.fcSaveExit) {
-      this.fcSaveExit.hidden = !dirty;
-    }
-    if (this.fcLeave) {
-      this.fcLeave.textContent = dirty ? 'Exit without saving' : 'Exit';
-    }
-    if (this.fcExitCopy) {
-      this.fcExitCopy.textContent = dirty ? 'exits without saving' : 'returns';
-    }
+    this.ratesPanel.paint(this.settings, this.ratesStick);
   }
 
-  leaveFc() {
-    this.fc.stopMotors();
-    this.fc.confirm = null;
-    const dest = this.returnTo === 'paused' || this.returnTo === 'settings'
-      ? this.returnTo
-      : 'title';
-    this.show(dest);
-  }
-
-  afterRatesEdit() {
-    this.syncFcDirty();
-    if (this.fcRates) {
-      this.fcRates.paint(this.fc, this.fcRatesStick);
-    }
-    if (this.fc.runActive) {
-      return;
-    }
-    if (this.ratesApplyTimer) {
-      clearTimeout(this.ratesApplyTimer);
-    }
-    this.ratesApplyTimer = setTimeout(() => {
-      this.ratesApplyTimer = null;
-      if (this.fc.runActive || !this.onFcSave) {
-        return;
-      }
-      this.onFcSave(this.fc.draft, { restart: false, silent: true, presetId: this.fc.presetId });
-    }, 140);
-  }
-
-  paintFcAttitude() {
-    if (this.screen === 'fc' && this.fc.tab === 'setup' && !this.fc.confirm) {
-      drawAttitude(this.fcAttitude, this.fc.attitude);
-    }
-  }
-
-  paintFcRates(stick) {
+  /* The live sticks, from the frame loop. Only while the screen is up: the
+   * panel draws unconditionally and the caller owns the guard. */
+  paintRates(stick) {
     if (stick) {
-      this.fcRatesStick = stick;
+      this.ratesStick = stick;
     }
-    if (!this.fcRates || this.fcRates.root.hidden) {
+    if (!this.ratesPanel || this.screen !== 'rates') {
       return;
     }
-    this.fcRates.paintStick(this.fcRatesStick);
+    this.ratesPanel.paintStick(this.ratesStick);
   }
 
   helpNode() {
@@ -2303,7 +2243,7 @@ export class Ui {
       credits: this.creditsHelp,
       courses: this.coursesHelp,
       settings: this.settingsHelp,
-      fc: this.fcHelp,
+      rates: this.ratesHelp,
       paused: this.pausedHelp,
       results: this.resultsHelp,
     }[this.screen];
@@ -2496,14 +2436,12 @@ export class Ui {
       return;
     }
     it.pick(value);
-    if (this.screen !== 'fc') {
-      saveSettings(this.settings);
-    }
+    saveSettings(this.settings);
     this.renderMenu();
     if (this.onUiSound) {
       this.onUiSound('adjust');
     }
-    if (this.onSettings && this.screen !== 'fc') {
+    if (this.onSettings) {
       this.onSettings(this.settings);
     }
   }
@@ -3803,14 +3741,12 @@ export class Ui {
     const it = this.items()[this.cursor];
     if (it && it.adjust) {
       it.adjust(dir);
-      if (this.screen !== 'fc') {
-        saveSettings(this.settings);
-      }
+      saveSettings(this.settings);
       this.renderMenu();
       if (this.onUiSound) {
         this.onUiSound('adjust');
       }
-      if (this.onSettings && this.screen !== 'fc') {
+      if (this.onSettings) {
         this.onSettings(this.settings);
       }
     }
@@ -3901,18 +3837,12 @@ export class Ui {
       this.act('resume');
       return;
     }
-    if (this.screen === 'fc') {
-      if (this.fc.confirm === 'import-rates') {
-        this.act('fc-import-cancel');
-        return;
-      }
-      if (this.fc.confirm) {
-        this.fc.confirm = null;
-        this.cursor = 0;
-        this.renderMenu();
-        return;
-      }
-      this.act('fc-back');
+    if (this.screen === 'rates' && this.ratesFrom === 'settings') {
+      /* Settings is a page, not a mode: the shell has nothing to do when it
+       * comes back up, so show() rather than act(), which would rewrite
+       * returnTo and strand a pilot who paused a run to get here. */
+      this.ratesFrom = null;
+      this.show('settings');
       return;
     }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
@@ -4014,116 +3944,27 @@ export class Ui {
       this.show(action);
       return;
     }
-    if (action === 'fc' || action === 'fc-rates') {
-      this.returnTo = this.screen === 'paused'
-        ? 'paused'
-        : (this.screen === 'settings' ? 'settings' : 'title');
-      if (this.onFcOpen) {
-        this.onFcOpen(action === 'fc-rates' ? 'rates' : 'pid');
+    if (action === 'rates') {
+      /* Escape and Back go where the pilot came from, so Rates reached from
+       * the pause menu mid-race does not dump them on the title screen. */
+      if (this.screen === 'settings') {
+        this.ratesFrom = 'settings';
+      } else {
+        this.ratesFrom = null;
+        this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       }
-      this.show('fc');
+      this.show('rates');
       return;
     }
-    if (action === 'fc-save') {
-      if (!this.fc.dirty()) {
-        return;
+    if (action === 'rates-default') {
+      for (const k of RATE_KNOBS) {
+        this.settings[k] = RATE_DEFAULTS[k];
       }
-      if (this.fc.runActive) {
-        this.fc.confirm = 'save-run';
-        this.fc.exitAfterSave = false;
-        this.cursor = 0;
-        this.renderMenu();
-        return;
-      }
-      this.fc.stopMotors();
-      if (this.onFcSave) {
-        this.onFcSave(this.fc.draft, { restart: false, presetId: this.fc.presetId });
-      }
-      return;
-    }
-    if (action === 'fc-save-exit') {
-      if (!this.fc.dirty()) {
-        this.leaveFc();
-        return;
-      }
-      if (this.fc.runActive) {
-        this.fc.confirm = 'save-run';
-        this.fc.exitAfterSave = true;
-        this.cursor = 0;
-        this.renderMenu();
-        return;
-      }
-      this.fc.stopMotors();
-      if (this.onFcSave) {
-        this.onFcSave(this.fc.draft, { restart: false, exit: true, presetId: this.fc.presetId });
-      }
-      return;
-    }
-    if (action === 'fc-save-restart') {
-      this.fc.exitAfterSave = false;
-      this.fc.confirm = null;
-      this.fc.stopMotors();
-      if (this.onFcSave) {
-        this.onFcSave(this.fc.draft, { restart: true, presetId: this.fc.presetId });
-      }
-      return;
-    }
-    if (action === 'fc-wait') {
-      this.fc.exitAfterSave = false;
-      this.fc.confirm = null;
-      this.cursor = 0;
+      saveSettings(this.settings);
       this.renderMenu();
-      return;
-    }
-    if (action === 'fc-import-keep' || action === 'fc-import-dump') {
-      const policy = action === 'fc-import-keep' ? 'keep-mine' : 'use-dump';
-      const text = this.fc.importText;
-      const name = this.fc.importName;
-      this.fc.confirm = null;
-      if (this.onFcImport) {
-        this.onFcImport(text, name, policy);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
       }
-      return;
-    }
-    if (action === 'fc-import-cancel') {
-      this.fc.confirm = null;
-      this.fc.discard();
-      this.act('fc-back');
-      return;
-    }
-    if (action === 'fc-focus-cli') {
-      this.fcCli.hidden = false;
-      this.fcCli.value = this.fc.draft;
-      this.fcCli.focus();
-      return;
-    }
-    if (action === 'fc-motors-stop') {
-      this.fc.stopMotors();
-      this.renderMenu();
-      return;
-    }
-    if (action.startsWith('fc-preset:')) {
-      const id = action.slice('fc-preset:'.length);
-      this.fc.applyPreset(id).then(() => {
-        this.renderMenu();
-      }).catch((err) => {
-        console.error(err);
-      });
-      return;
-    }
-    if (action === 'fc-discard') {
-      this.fc.discard();
-      this.renderMenu();
-      return;
-    }
-    if (action === 'fc-export') {
-      downloadCli('betaflight.diff', this.fc.exportText());
-      return;
-    }
-    if (action === 'fc-back') {
-      this.fc.exitAfterSave = false;
-      this.fc.discard();
-      this.leaveFc();
       return;
     }
     /*
@@ -4168,20 +4009,6 @@ export class Ui {
    * and Escape must not fire again. */
   handleKey(code, repeat = false) {
     if (this.nameDialog && !this.nameDialog.hidden) {
-      return true;
-    }
-    if (this.screen === 'fc' && this.fcCli && document.activeElement === this.fcCli) {
-      if (code === 'Escape') {
-        this.fcCli.blur();
-        this.back();
-      }
-      return true;
-    }
-    if (this.screen === 'fc' && this.fcRates && this.fcRates.root.contains(document.activeElement)) {
-      if (code === 'Escape') {
-        document.activeElement.blur();
-        this.back();
-      }
       return true;
     }
     const nav = code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight'

@@ -42,8 +42,11 @@ Or fly on keyboard: W/S throttle, A/D yaw, arrows are the right stick
 (up arrow pushes the stick forward, nose down).
 
 Keys: R reset, C camera (FPV or chase), M stick calibration, V cycles the
-battery cell voltage between 4.20, 3.80 and 3.50 V. Drop a Betaflight CLI
-diff file anywhere on the page to fly your own rates and PIDs.
+battery cell voltage between 4.20, 3.80 and 3.50 V.
+
+Two tunes, Betaflight default and a 6S karate race tune, on the Tune row of
+the title and pause menus. Rates are yours and stay put across both: the
+Rates screen draws the stick to rate curve with your sticks on it.
 
 Tracks you build stay in this browser. Clearing it, or another device,
 starts you from nothing. Publish a course from the track builder to put

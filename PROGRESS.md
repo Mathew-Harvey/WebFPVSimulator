@@ -12139,3 +12139,103 @@ FIT_MAX_FOOTPRINT, a revetment or a district length of wall, sees only the
 paving at its feet. Leaving those as authored is then exactly right, because
 the fit cannot see the thing they stand for, and the diagnostic now says
 which of the two cases a rectangle is in rather than lumping them together.
+
+## The flight controller screen is gone, and Rates is a screen
+
+The owner's brief was one sentence: the flight controller settings and the
+CLI paste are too complex, offer the Karate tune and the standard Betaflight
+tune, let the pilot set their rates, hide the rest.
+
+**What was there.** `src/ui/fc.js` was a Betaflight Configurator 10.10
+homage: eight tabs, a PID page, a filter page, a rateprofile table, several
+hundred editable firmware keys from `src/fc/catalog.js`, a raw CLI textarea,
+Export, a motor test, an attitude horizon, a presets tab, and a Save that ran
+`sim_init` on whatever text was in the draft. `src/main.js` also flew any
+`.diff` dropped anywhere on the page, with a keep-my-rates / use-dump dialog.
+It was honest about the firmware and nobody could use it.
+
+**What is there now.** Two rows on the menus that already carried one of
+them. `Tune` steps between the two files in `configs/registry.js`. `Rates`
+opens a screen: the stick-to-rate curve drawn from `src/fc/ratescurve.js`
+with the live sticks riding it, a four fact readout under it, and five rows
+beside it, Max rate, Yaw max rate, Centre sensitivity, Expo and Throttle
+limit. Every one of those five is a step on a list from `configs/rates.js`,
+which is where the whole model already lived: `RATE_MAX_CHOICES`,
+`RATE_CENTRE_CHOICES`, `RATE_EXPO_CHOICES`, `THROTTLE_CAP_CHOICES` and the
+measured `HOVER_STICK_PERCENT` table were all still exported and had been
+unused since the Configurator replaced the menu that read them. This is a
+restoration as much as a removal.
+
+**Nothing under `src/fc/` was deleted, and that is deliberate.**
+`scripts/fc-trace.js` drives `dump.js` against the compiled module and
+`scripts/fc-catalog-lint.js` checks `catalog.js` against 4.5.1's valueTable.
+Those 28 traces are the reason a CLI line written by this project can be
+claimed to land in Betaflight, which is the claim the two shipped tunes rest
+on. Deleting the module the UI stopped using would have deleted the evidence
+with it. `lint:fc` is 28 of 28 before and after. What was trimmed from
+`ratescurve.js` is only the Configurator table layer, `ratesColumns`,
+`formatDisplay`, `parseDisplay`, `ratesFromCliMap`, `RATES_PANEL_KEYS`,
+`AXIS_COLOR`; the five rate curve implementations stay because
+`gates.config.json` P2 checks all four named types against the module.
+
+**The bug this could have shipped, and did not.** `settings.rateProfile`
+held a whole rateprofile captured by FC Save or a use-dump import, and
+`ratesCli()` prefers it over the five knobs whenever it is not empty. Both
+writers went with the screen. Left in `DEFAULTS`, a returning pilot would
+have carried a profile nothing on the page could see, silently outranking
+every row on the new screen forever. The key is gone from `DEFAULTS`, and
+because `loadSettings` only copies keys that exist there, that IS the
+migration.
+
+**The second one, which the sweep found and the first fix did not cover.**
+The old rates table wrote arbitrary uint8s into the same five knobs, so a
+returning pilot can have `rateMax` 550, which is not on `RATE_MAX_CHOICES`.
+The rows step a list, and `ratesDiff` normalises before it writes CLI, so the
+menu would have read 550 while Betaflight flew 500. `loadSettings` now runs
+`normaliseRates` over the blob. Nearest, not default, because 550 is a rate
+somebody chose. Checked by seeding 550 / 430 / 95 / 37 / 65 plus a BETAFLIGHT
+`rateProfile` into storage and reloading: menu 500 / 420 / 100 / 0.35 / 70,
+module `roll_srate 50, yaw_srate 42, roll_rc_rate 10, roll_expo 35,
+throttle_limit SCALE 70`. The menu and the module agree exactly.
+
+**Drop is still handled, and does nothing.** Removing the listeners is not
+neutral: without a `preventDefault` the browser navigates to the dropped file
+and the run is gone. It now swallows the drop and says the tune is on the
+menu.
+
+**Two drawing decisions that were wrong the first time.** On the Betaflight
+defaults the roll and the yaw curve are the SAME curve, so two solid lines
+painted one line in whichever colour went last: the screen claimed a sakura
+roll curve and drew a slate yaw one over it. Yaw is dashed and drawn on top
+now, so a coincidence reads as a coincidence. Their max labels stacked on one
+baseline for the same reason and are pushed apart.
+
+**Layout, measured rather than eyeballed, at 900x760, 1280x620, 1366x768,
+1440x700 and 1600x900.** Two findings. The shared `.menu-stage` is
+`min(1600px, 98vw)` while `.screen` spends `6vw` a side on padding, so at
+1440 the stage is 143 px wider than the box holding it and the curve hung off
+the left of the window. Pinned to `100%` for this screen. And, not part of
+this brief but found beside it, `.screen-settings` has no narrow fallback at
+all: below about 1100 px its three columns cannot fit their own minimums, 360
+for the quad plus 540 for the menu, and at 900 the entire settings list was
+off the right edge of the window with only the quad visible. Both screens now
+stack to one column under 1100 px. On every size above, `h2` top and `hint`
+bottom are inside the viewport and nothing in the curve panel overflows it.
+
+**What was checked.** `lint:fc` 28 of 28, `lint:presets` 2 of 2, both
+unchanged from before the turn. `lint:catalog` fails on this container for
+want of the `vendor/betaflight` submodule, and failed the same way before the
+turn. `npm run verify` cannot run here: there is no `emcc`, so `build:wasm`
+cannot execute, and check 1 would fail on the environment rather than on the
+change. Nothing in this turn touches the physics, the plant, the module ABI,
+the patches or the input path; `dist/sim.wasm` is untouched and every rate
+value was read back OUT of the running module through `sim_bf_get` rather
+than off the menu. Driven in headless Chromium through `scripts/shots.js`:
+title, courses, how to fly, credits, settings, the Rates screen, a flown lap,
+pause, a tune switch mid run, and back to flight, **console errors 0,
+warnings 0** on every pass.
+
+**What a pilot lost.** Per axis roll and pitch rates, non-ACTUAL rate types,
+editable PIDs and filters, dump export, motor test, and flying a dropped
+diff. That is the brief. `configs/*.diff` is still the whole tune and a
+pilot who wants a rateprofile of their own has Betaflight for it.

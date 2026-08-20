@@ -1,9 +1,21 @@
 /*
- * ratespanel.js: Configurator-shaped Rateprofile Settings.
+ * ratespanel.js: the stick-to-rate curve, drawn.
  *
- * Table plus graph. Writes CLI keys on the FC draft. Does not run a rate
- * curve of its own in the plant: Max Vel and the plot are previews of
- * fc/rc.c, via src/fc/ratescurve.js.
+ * WHAT THIS IS NOT ANY MORE. It used to be a Configurator Rateprofile
+ * table: five columns, three axes, a rates-type dropdown, and every cell
+ * writing a CLI key straight into a Betaflight dump. That belonged to the
+ * flight-controller screen, and the flight-controller screen is gone. A
+ * pilot who wants to hand-edit a rateprofile has Betaflight for it.
+ *
+ * What is left is the part that was always doing the teaching: a picture of
+ * what the sticks do. It reads the pilot's four rate knobs out of Settings
+ * (configs/rates.js owns them) and previews Betaflight's own ACTUAL curve
+ * through src/fc/ratescurve.js, which is a transcription of fc/rc.c. It
+ * writes nothing. The rows beside it write the settings, the settings become
+ * CLI in configs/rates.js, and Betaflight flies it.
+ *
+ * The live dots are the real sticks, fed from the frame loop, so moving a
+ * stick on this screen moves the dot along the curve it is about to fly.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -21,18 +33,22 @@
  * along with this software. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {
-  ANGLE_RATE_SAMPLES,
-  AXIS_COLOR,
-  AXIS_IDS,
-  RATES_TYPES,
-  angleRateDeg,
-  formatDisplay,
-  maxVelDeg,
-  parseDisplay,
-  ratesColumns,
-  ratesFromCliMap,
-} from '../fc/ratescurve.js';
+import { hoverStickPercent, normaliseRates } from '../../configs/rates.js';
+import { ANGLE_RATE_SAMPLES, angleRateDeg } from '../fc/ratescurve.js';
+
+/* House palette, from the :root block in index.html. Kept as literals
+ * because a canvas cannot read a CSS custom property. */
+const INK = 'rgba(12, 18, 14, 0.55)';
+const GRID = 'rgba(244, 236, 214, 0.10)';
+const AXIS = 'rgba(244, 236, 214, 0.26)';
+const LABEL = 'rgba(235, 230, 215, 0.62)';
+const SAKURA = '#e8a8b8';
+const SLATE = '#9db3c8';
+const AMBER = '#ffd45c';
+
+/* Where the readout takes its samples. A quarter and a half are where a
+ * pilot actually lives; the stop is what the number on the row claims. */
+const SAMPLE_STICKS = [0.25, 0.5, 1];
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -45,274 +61,174 @@ function el(tag, cls, text) {
   return n;
 }
 
-function axisField(axis, col) {
-  if (col.id === 'rc_rate') {
-    return `${axis}_rc_rate`;
-  }
-  if (col.id === 'srate') {
-    return `${axis}_srate`;
-  }
-  return `${axis}_expo`;
+/*
+ * The two curves this screen draws, in the CLI units src/fc/ratescurve.js
+ * expects: rc_rate and srate are TENS of deg/s, expo is hundredths. The
+ * menu holds deg/s and whole expo, so the divide is the boundary.
+ *
+ * Roll and pitch share a curve because the menu gives them one Max rate.
+ * Yaw has its own, because it always did: a quad yaws slower than it rolls.
+ */
+export function ratesCurves(settings) {
+  const r = normaliseRates(settings || {});
+  const shared = { expo: r.rateExpo, rcRate: r.rateCentre / 10 };
+  return [
+    { id: 'rollpitch', label: 'Roll, pitch', color: SAKURA, axis: { ...shared, srate: r.rateMax / 10 } },
+    { id: 'yaw', label: 'Yaw', color: SLATE, dash: [5, 4], axis: { ...shared, srate: r.rateYawMax / 10 } },
+  ];
 }
 
-function typeLabel(type) {
-  if (type === 'ACTUAL') {
-    return 'Actual';
-  }
-  if (type === 'BETAFLIGHT') {
-    return 'Betaflight';
-  }
-  if (type === 'RACEFLIGHT') {
-    return 'Raceflight';
-  }
-  if (type === 'QUICK') {
-    return 'Quick';
-  }
-  return type;
+function degAt(curve, stick) {
+  return angleRateDeg('ACTUAL', curve.axis, stick);
 }
 
-export function mountRatesPanel(handlers) {
-  const root = el('div', 'fc-rates');
-  root.hidden = true;
-
-  const head = el('div', 'fc-rates-head');
-  const typeWrap = el('label', 'fc-rates-type');
-  typeWrap.append(el('span', 'fc-rates-type-lab', 'Rates type'));
-  const typeSel = el('select', 'fc-rates-type-sel');
-  typeSel.setAttribute('aria-label', 'Rates type');
-  for (const t of RATES_TYPES) {
-    const o = document.createElement('option');
-    o.value = t;
-    o.textContent = typeLabel(t);
-    typeSel.append(o);
-  }
-  typeWrap.append(typeSel);
-  const badge = el('span', 'fc-rates-badge', 'ACTUAL');
-  const reset = el('button', 'fc-rates-reset');
-  reset.type = 'button';
-  reset.setAttribute('aria-label', 'Revert to default rates, Actual 70 centre 670 max no expo');
-  reset.append(el('span', 'fc-rates-reset-lab', 'Revert to default rates'));
-  reset.append(el('span', 'fc-rates-reset-note', 'Actual 70 centre, 670 max, no expo'));
-  reset.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (typeof handlers.onReset === 'function') {
-      handlers.onReset();
-    }
+/* One sentence a screen reader can read instead of the picture. */
+function describe(curves) {
+  const parts = curves.map((c) => {
+    const at = SAMPLE_STICKS.map((s) => `${Math.round(degAt(c, s))} at ${s === 1 ? 'the stop' : `${s * 100} percent`}`);
+    return `${c.label}: ${at.join(', ')} degrees per second`;
   });
-  head.append(typeWrap, badge, reset);
+  return `Stick to rate curve. ${parts.join('. ')}.`;
+}
 
-  const tableWrap = el('div', 'fc-rates-table-wrap');
-  const table = document.createElement('table');
-  table.className = 'fc-rates-table';
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  headRow.append(el('th', 'fc-rates-axis', ''));
-  thead.append(headRow);
-  table.append(thead);
-  const tbody = document.createElement('tbody');
-  table.append(tbody);
-  tableWrap.append(table);
+export function mountRatesPanel() {
+  const root = el('div', 'rates-panel');
 
-  const graphWrap = el('div', 'fc-rates-graph-wrap');
+  const graphWrap = el('div', 'rates-graph-wrap');
   const canvas = document.createElement('canvas');
-  canvas.className = 'fc-rates-graph';
-  canvas.setAttribute('aria-label', 'Stick to rate curve');
+  canvas.className = 'rates-graph';
+  canvas.setAttribute('role', 'img');
   graphWrap.append(canvas);
 
-  root.append(head, tableWrap, graphWrap);
-
-  const inputs = new Map();
-  let lastType = '';
-  let lastStick = { roll: 0, pitch: 0, yaw: 0 };
-  let model = null;
-
-  function commitType() {
-    handlers.onType(typeSel.value);
+  const legend = el('div', 'rates-legend');
+  const swatches = new Map();
+  for (const c of ratesCurves(null)) {
+    const key = el('span', 'rates-key');
+    /* A dot for a solid curve, a dashed rule for the dashed one, so the key
+     * matches what is actually on the canvas. */
+    const dot = el('span', c.dash ? 'rates-key-dot rates-key-dash' : 'rates-key-dot');
+    dot.style.background = c.color;
+    const lab = el('span', 'rates-key-lab', c.label);
+    const val = el('span', 'rates-key-val', '');
+    key.append(dot, lab, val);
+    legend.append(key);
+    swatches.set(c.id, val);
   }
 
-  typeSel.addEventListener('change', commitType);
-
-  function bindInput(input, key, col) {
-    const commit = () => {
-      const cli = parseDisplay(col, input.value);
-      if (cli == null) {
-        handlers.onPaint();
-        return;
-      }
-      handlers.onField(key, String(cli));
-    };
-    input.addEventListener('change', commit);
-    input.addEventListener('keydown', (e) => {
-      if (e.code === 'Enter') {
-        e.preventDefault();
-        input.blur();
-        commit();
-        e.stopPropagation();
-        return;
-      }
-      if (e.code === 'Escape') {
-        return;
-      }
-      e.stopPropagation();
-    });
-    input.addEventListener('keyup', (e) => e.stopPropagation());
-    input.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+  /*
+   * The same curve as numbers, at the three places a thumb actually sits.
+   *
+   * Roll and yaw are separate spans in the curves' own colours rather than
+   * one "66 / 44" string, because a slash does not say which half is which
+   * and the legend two lines up already taught the colours.
+   */
+  const readout = el('dl', 'rates-readout');
+  const cells = [];
+  for (const s of SAMPLE_STICKS) {
+    const wrap = el('div', 'rates-cell');
+    wrap.append(el('dt', null, s === 1 ? 'Full stick' : `${s * 100}% stick`));
+    const dd = el('dd', null, '');
+    const rp = el('span', 'rates-num rates-num-rp', '');
+    const sep = el('span', 'rates-num-sep', ' / ');
+    const yaw = el('span', 'rates-num rates-num-yaw', '');
+    const unit = el('span', 'rates-num-unit', ' deg/s');
+    dd.append(rp, sep, yaw, unit);
+    wrap.append(dd);
+    readout.append(wrap);
+    cells.push({ stick: s, rp, sep, yaw });
   }
+  const hoverWrap = el('div', 'rates-cell');
+  hoverWrap.append(el('dt', null, 'Hover sits at'));
+  const hoverDd = el('dd', null, '');
+  hoverWrap.append(hoverDd);
+  readout.append(hoverWrap);
 
-  function rebuildTable(type) {
-    const cols = ratesColumns(type);
-    headRow.textContent = '';
-    headRow.append(el('th', 'fc-rates-axis', ''));
-    for (const col of cols) {
-      headRow.append(el('th', null, col.label));
-    }
-    headRow.append(el('th', null, 'Max Vel [deg/s]'));
-    tbody.textContent = '';
-    inputs.clear();
-    for (const axis of AXIS_IDS) {
-      const tr = document.createElement('tr');
-      tr.className = `fc-rates-row fc-rates-row-${axis}`;
-      const lab = el('th', 'fc-rates-axis', axis.toUpperCase());
-      lab.scope = 'row';
-      tr.append(lab);
-      for (const col of cols) {
-        const td = document.createElement('td');
-        const cell = el('div', 'fc-rates-cell');
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.className = 'fc-rates-input';
-        input.step = String(col.step);
-        input.min = String(col.min);
-        input.max = String(col.max);
-        input.setAttribute('aria-label', `${axis} ${col.label}`);
-        const key = axisField(axis, col);
-        bindInput(input, key, col);
-        const steps = el('span', 'fc-rates-spin');
-        const up = document.createElement('button');
-        up.type = 'button';
-        up.className = 'fc-rates-spin-btn';
-        up.textContent = '▲';
-        up.setAttribute('aria-label', `Increase ${axis} ${col.label}`);
-        const down = document.createElement('button');
-        down.type = 'button';
-        down.className = 'fc-rates-spin-btn';
-        down.textContent = '▼';
-        down.setAttribute('aria-label', `Decrease ${axis} ${col.label}`);
-        const nudge = (dir) => {
-          const cur = Number(input.value);
-          const next = (Number.isFinite(cur) ? cur : col.min) + dir * col.step;
-          const cli = parseDisplay(col, String(next));
-          if (cli == null) {
-            return;
-          }
-          handlers.onField(key, String(cli));
-        };
-        up.addEventListener('click', (e) => {
-          e.preventDefault();
-          nudge(1);
-        });
-        down.addEventListener('click', (e) => {
-          e.preventDefault();
-          nudge(-1);
-        });
-        steps.append(up, down);
-        cell.append(input, steps);
-        td.append(cell);
-        tr.append(td);
-        inputs.set(key, { input, col });
-      }
-      const vel = el('td', 'fc-rates-vel', '');
-      vel.dataset.axis = axis;
-      tr.append(vel);
-      tbody.append(tr);
-    }
-    lastType = type;
-  }
+  root.append(graphWrap, legend, readout);
 
-  function fillValues(next) {
-    const cols = ratesColumns(next.type);
-    for (const axis of AXIS_IDS) {
-      for (const col of cols) {
-        const key = axisField(axis, col);
-        const slot = inputs.get(key);
-        if (!slot) {
-          continue;
-        }
-        if (document.activeElement === slot.input) {
-          continue;
-        }
-        const cli = next[axis][col.id === 'rc_rate' ? 'rcRate' : col.id === 'srate' ? 'srate' : 'expo'];
-        slot.input.value = formatDisplay(col, cli);
-      }
-      const vel = tbody.querySelector(`td.fc-rates-vel[data-axis="${axis}"]`);
-      if (vel) {
-        vel.textContent = String(Math.round(maxVelDeg(next.type, next[axis])));
-      }
-    }
-  }
+  let curves = ratesCurves(null);
+  let stick = { roll: 0, pitch: 0, yaw: 0 };
 
-  function drawGraph(next, stick) {
-    const wrap = graphWrap;
+  function draw() {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const cssW = Math.max(160, wrap.clientWidth || 480);
-    const cssH = Math.max(160, wrap.clientHeight || 220);
+    const cssW = Math.max(200, graphWrap.clientWidth || 520);
+    const cssH = Math.max(150, graphWrap.clientHeight || 240);
     const w = Math.round(cssW * dpr);
     const h = Math.round(cssH * dpr);
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
     }
-    canvas.style.width = `${cssW}px`;
-    canvas.style.height = `${cssH}px`;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       return;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const maxY = Math.max(
-      200,
-      maxVelDeg(next.type, next.roll),
-      maxVelDeg(next.type, next.pitch),
-      maxVelDeg(next.type, next.yaw),
-    );
-    const padL = 8;
-    const padR = 56;
-    const padT = 16;
-    const padB = 14;
-    const gw = cssW - padL - padR;
-    const gh = cssH - padT - padB;
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    /* The vertical scale is the fastest curve, rounded up to a round
+     * hundred, so the drawing does not rescale by a pixel every time a
+     * knob moves one step. */
+    const peak = Math.max(...curves.map((c) => degAt(c, 1)), 100);
+    const maxY = Math.ceil(peak / 100) * 100;
+
+    const padL = 44;
+    const padR = 52;
+    const padT = 14;
+    const padB = 26;
+    const gw = Math.max(20, cssW - padL - padR);
+    const gh = Math.max(20, cssH - padT - padB);
     const x0 = padL + gw / 2;
     const y0 = padT + gh / 2;
-    const xOf = (stickPos) => x0 + stickPos * (gw / 2);
+    const xOf = (s) => x0 + s * (gw / 2);
     const yOf = (deg) => y0 - (deg / maxY) * (gh / 2);
 
-    ctx.fillStyle = '#2e2e2e';
-    ctx.fillRect(0, 0, cssW, cssH);
-    ctx.fillStyle = 'rgba(255, 220, 80, 0.10)';
-    const band = gw * 0.08;
-    ctx.fillRect(padL, padT, band, gh);
-    ctx.fillRect(padL + gw - band, padT, band, gh);
+    ctx.fillStyle = INK;
+    ctx.fillRect(padL, padT, gw, gh);
 
-    ctx.strokeStyle = '#555';
+    /* Quarter-stick gridlines, both sides. A pilot reads the curve against
+     * where their thumb is, not against a number on an axis. */
+    ctx.strokeStyle = GRID;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(padL, y0);
-    ctx.lineTo(padL + gw, y0);
-    ctx.moveTo(x0, padT);
-    ctx.lineTo(x0, padT + gh);
+    for (const s of [-0.75, -0.5, -0.25, 0.25, 0.5, 0.75]) {
+      const x = Math.round(xOf(s)) + 0.5;
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + gh);
+    }
+    for (const frac of [-0.5, 0.5]) {
+      const y = Math.round(y0 - frac * (gh / 2)) + 0.5;
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + gw, y);
+    }
     ctx.stroke();
 
-    const samples = ANGLE_RATE_SAMPLES;
-    for (const axis of AXIS_IDS) {
+    ctx.strokeStyle = AXIS;
+    ctx.beginPath();
+    ctx.moveTo(padL, Math.round(y0) + 0.5);
+    ctx.lineTo(padL + gw, Math.round(y0) + 0.5);
+    ctx.moveTo(Math.round(x0) + 0.5, padT);
+    ctx.lineTo(Math.round(x0) + 0.5, padT + gh);
+    ctx.stroke();
+
+    /*
+     * Yaw is DASHED and drawn LAST, on top of roll and pitch.
+     *
+     * On the Betaflight defaults the two curves are the same curve, and two
+     * solid lines on the same pixels is one line in whichever colour was
+     * painted last: the screen claimed a sakura roll curve and drew a slate
+     * yaw one over it. Dashes on top is the fix that works in both cases.
+     * Where the curves coincide the slate dashes sit in the sakura line and
+     * you can see that both are there; where they part, both read whole.
+     */
+    for (const c of curves) {
       ctx.beginPath();
-      ctx.strokeStyle = AXIS_COLOR[axis];
+      ctx.setLineDash(c.dash || []);
+      ctx.strokeStyle = c.color;
       ctx.lineWidth = 2;
-      for (let i = 0; i <= samples; i += 1) {
-        const s = -1 + (2 * i) / samples;
-        const deg = angleRateDeg(next.type, next[axis], s);
+      for (let i = 0; i <= ANGLE_RATE_SAMPLES; i += 1) {
+        const s = -1 + (2 * i) / ANGLE_RATE_SAMPLES;
         const x = xOf(s);
-        const y = yOf(deg);
+        const y = yOf(degAt(c, s));
         if (i === 0) {
           ctx.moveTo(x, y);
         } else {
@@ -321,57 +237,90 @@ export function mountRatesPanel(handlers) {
       }
       ctx.stroke();
     }
+    ctx.setLineDash([]);
 
-    ctx.fillStyle = '#9ad0ff';
-    ctx.beginPath();
-    ctx.arc(x0, y0, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+    ctx.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#8a8a8a';
+    ctx.fillStyle = LABEL;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${maxY}`, padL - 6, yOf(maxY));
+    ctx.fillText('0', padL - 6, y0);
+    ctx.fillText(`-${maxY}`, padL - 6, yOf(-maxY));
+    ctx.textAlign = 'center';
+    ctx.fillText('centre', x0, padT + gh + 12);
+    ctx.fillText('left', padL + 16, padT + gh + 12);
+    ctx.fillText('right', padL + gw - 16, padT + gh + 12);
+
+    /* Each curve's own maximum, on its own line, in its own colour. Equal
+     * maxima would stack two strings on one baseline, so a label that lands
+     * on top of one already placed is pushed clear of it. */
     ctx.textAlign = 'left';
-    ctx.fillText('0 deg/s', padL + 8, y0 - 12);
-    for (const axis of AXIS_IDS) {
-      const vel = Math.round(maxVelDeg(next.type, next[axis]));
-      ctx.fillStyle = AXIS_COLOR[axis];
-      ctx.fillText(`${vel}`, padL + gw + 6, yOf(vel));
+    const placed = [];
+    for (const c of curves) {
+      const deg = degAt(c, 1);
+      let y = yOf(deg);
+      while (placed.some((p) => Math.abs(p - y) < 12)) {
+        y += 12;
+      }
+      placed.push(y);
+      ctx.fillStyle = c.color;
+      ctx.fillText(`${Math.round(deg)}`, padL + gw + 6, y);
     }
 
-    if (stick) {
-      for (const axis of AXIS_IDS) {
-        const s = Math.max(-1, Math.min(1, stick[axis] || 0));
-        const deg = angleRateDeg(next.type, next[axis], s);
-        ctx.fillStyle = AXIS_COLOR[axis];
-        ctx.beginPath();
-        ctx.arc(xOf(s), yOf(deg), 5, 0, Math.PI * 2);
-        ctx.fill();
+    /* The live sticks. Roll and pitch share a curve, so they share its
+     * colour and the two dots ride the same line. */
+    const dots = [
+      { s: stick.roll, curve: curves[0] },
+      { s: stick.pitch, curve: curves[0] },
+      { s: stick.yaw, curve: curves[1] },
+    ];
+    for (const d of dots) {
+      if (!Number.isFinite(d.s)) {
+        continue;
+      }
+      const s = Math.max(-1, Math.min(1, d.s));
+      ctx.fillStyle = AMBER;
+      ctx.beginPath();
+      ctx.arc(xOf(s), yOf(degAt(d.curve, s)), 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function paint(settings, next) {
+    curves = ratesCurves(settings);
+    if (next) {
+      stick = next;
+    }
+    const r = normaliseRates(settings || {});
+    for (const c of curves) {
+      const val = swatches.get(c.id);
+      if (val) {
+        val.textContent = `${Math.round(degAt(c, 1))} deg/s`;
       }
     }
+    for (const cell of cells) {
+      const rp = Math.round(degAt(curves[0], cell.stick));
+      const yaw = Math.round(degAt(curves[1], cell.stick));
+      const split = rp !== yaw;
+      cell.rp.textContent = String(rp);
+      cell.yaw.textContent = split ? String(yaw) : '';
+      cell.sep.hidden = !split;
+      cell.yaw.hidden = !split;
+    }
+    hoverDd.textContent = `${hoverStickPercent(r.throttleCap).toFixed(1)}% stick`;
+    canvas.setAttribute('aria-label', describe(curves));
+    draw();
   }
 
-  function paint(session, stick) {
-    const next = ratesFromCliMap(session.cliMapCached());
-    model = next;
-    if (typeSel.value !== next.type) {
-      typeSel.value = next.type;
+  /* Called from the frame loop, and only while this screen is up: the caller
+   * owns that check. Redraws the curve, nothing else, because rebuilding the
+   * readout sixty times a second to write the same string is work the pilot
+   * cannot see. */
+  function paintStick(next) {
+    if (next) {
+      stick = next;
     }
-    badge.textContent = next.type;
-    badge.className = `fc-rates-badge fc-rates-badge-${next.type.toLowerCase()}`;
-    if (lastType !== next.type) {
-      rebuildTable(next.type);
-    }
-    fillValues(next);
-    lastStick = stick || lastStick;
-    drawGraph(next, lastStick);
-  }
-
-  function paintStick(stick) {
-    if (!model || root.hidden) {
-      return;
-    }
-    lastStick = stick || lastStick;
-    drawGraph(model, lastStick);
+    draw();
   }
 
   return { root, paint, paintStick };

@@ -2,9 +2,14 @@
  * dump.js: parse and serialize Betaflight CLI text, and the only place
  * a tune and a rate profile are joined.
  *
- * The UI never writes a PID. It edits a dump. Save means sim.init(text),
- * the same call a dropped file already uses. composeConfig is the one
- * join so pause-menu Tune, drop-file, and FC Save cannot diverge.
+ * The UI never writes a PID, and since the flight-controller screen went it
+ * does not write a CLI key of any kind: the menu offers two tunes and the
+ * pilot's rates, and composeConfig is the one join, so boot and the Tune row
+ * cannot diverge. The wider surface here (setCliValue, exportCli, the
+ * use-dump policy, featureEnabled) is no longer reached from the shell. It
+ * stays because scripts/fc-trace.js drives it against the compiled module:
+ * those traces are what prove a CLI line written here actually lands in
+ * Betaflight, which is the claim the two shipped tunes rest on.
  *
  * This file does not talk to WebGL.
  *

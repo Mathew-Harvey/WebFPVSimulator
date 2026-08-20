@@ -69,7 +69,7 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { ratesSummary } from '../configs/rates.js';
-import { composeConfig, dumpCarriesRates, moduleDump, ratesCli, RATES_DUMP, RATES_KEEP, ratesSettingsFromDump, tuneBody } from './fc/dump.js';
+import { composeConfig, moduleGet, ratesCli, RATES_KEEP } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -517,9 +517,6 @@ export async function boot({ loading, bootStart, mapId }) {
     return view.height(x, z, bare);
   }
 
-  /* Is a run under way. Written out twice, once in the FC open handler and
-   * once in the drop handler, which is two places to remember when what
-   * counts as "under way" changes. */
   /* The y component of the craft's own up vector, in world space, clamped
    * into the domain of acos. Rotating world up by q leaves 1 - 2(x^2 + z^2),
    * and the clamp is there because a normalised quaternion can still put
@@ -534,10 +531,6 @@ export async function boot({ loading, bootStart, mapId }) {
       return 1;
     }
     return u < -1 ? -1 : u;
-  }
-
-  function isRunActive() {
-    return (mode === 'flight' || mode === 'paused') && !landed && !crashed;
   }
 
   function adoptSpawn() {
@@ -1554,113 +1547,6 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.setShare(share);
     return true;
   };
-  ui.onFcOpen = (page) => {
-    const dump = moduleDump(sim);
-    const runActive = isRunActive();
-    ui.fc.open(dump, { runActive, page });
-  };
-  ui.onFcSave = (draft, opts) => {
-    bumpConfigGen();
-    const silent = Boolean(opts && opts.silent);
-    const ratesPatch = ratesSettingsFromDump(draft);
-    Object.assign(ui.settings, ratesPatch);
-    ui.persistSettings();
-    const nextText = composeConfig(draft, ui.settings, RATES_DUMP);
-    const code = sim.init(nextText);
-    if (code !== SIM_OK) {
-      notice = { text: `That dump could not be saved.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
-      sim.init(configText);
-      adoptSimClock();
-      reset();
-      ui.renderMenu();
-      return;
-    }
-    tuneText = tuneBody(draft);
-    ratesText = ratesCli(ui.settings);
-    configText = nextText;
-    if (opts && opts.presetId) {
-      configId = opts.presetId;
-      configName = `${opts.presetId}.diff`;
-      ui.settings.tune = opts.presetId;
-      menuTune = opts.presetId;
-      ui.persistSettings();
-    } else if (!silent) {
-      configId = '';
-      configName = 'flight-controller.diff';
-    }
-    adoptSimClock();
-    sim.setCellVoltage(runVoltage);
-    race.setRecordKey(recordKey());
-    ui.setBest(race.bestMs, view.mode);
-    reset();
-    if (silent) {
-      /* Keep the draft the pilot is typing. Replacing it with a module dump
-       * would reformat numbers and steal the focused Max Rate field. */
-      ui.fc.snapshot = draft;
-      ui.syncFcDirty();
-      return;
-    }
-    const live = moduleDump(sim);
-    ui.fc.snapshot = live;
-    ui.fc.draft = live;
-    ui.fc.runActive = false;
-    if (opts && opts.restart) {
-      mode = 'flight';
-      ui.show('flight');
-      introMs = 0;
-      return;
-    }
-    if (opts && opts.exit) {
-      ui.leaveFc();
-      return;
-    }
-    ui.renderMenu();
-  };
-  ui.onFcImport = (text, name, policy) => {
-    bumpConfigGen();
-    const useDump = policy === RATES_DUMP;
-    if (useDump) {
-      Object.assign(ui.settings, ratesSettingsFromDump(text));
-      ui.persistSettings();
-    }
-    const nextText = composeConfig(text, ui.settings, useDump ? RATES_DUMP : RATES_KEEP);
-    const code = sim.init(nextText);
-    if (code !== SIM_OK) {
-      notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
-      sim.init(configText);
-      adoptSimClock();
-      reset();
-      ui.fc.open(moduleDump(sim), { runActive: false, tab: 'cli' });
-      ui.renderMenu();
-      return;
-    }
-    tuneText = text;
-    configText = nextText;
-    configName = name || 'dropped.diff';
-    configId = '';
-    ratesText = ratesCli(ui.settings);
-    adoptSimClock();
-    sim.setCellVoltage(runVoltage);
-    race.setRecordKey(recordKey());
-    ui.setBest(race.bestMs, view.mode);
-    notice = {
-      text: useDump
-        ? `Flying ${configName}\nRates from the dump.`
-        : `Flying ${configName}\nRates from the menu: ${ratesSummary(ui.settings)}`,
-      untilMs: performance.now() + 3200,
-    };
-    reset();
-    const live = moduleDump(sim);
-    ui.fc.open(live, { runActive: false, tab: 'cli' });
-    ui.renderMenu();
-  };
-  ui.onFcAngle = (on) => {
-    ui.settings.flightMode = on ? 'angle' : 'acro';
-    syncAngleMode();
-  };
-  ui.onFcMotor = (motor, duty) => {
-    sim.motorOverride(motor, duty);
-  };
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */
   ui.onUiSound = (kind) => {
@@ -1917,55 +1803,26 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   window.addEventListener('pointerdown', wakeAudio);
 
-  /* Fly your own Betaflight diff: drop the file anywhere on the page. */
+  /*
+   * Swallow a dropped file, and say why nothing happened.
+   *
+   * The page used to fly any Betaflight CLI diff dropped on it, and that is
+   * gone: there are two tunes on the menu and the rates are the pilot's.
+   * The listeners stay because REMOVING them is not neutral. Without a
+   * preventDefault the browser navigates to the dropped file, which tears
+   * down the simulator and loses the run, and a pilot who read the old
+   * README is exactly the person who will try it.
+   */
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', (e) => {
     e.preventDefault();
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) {
+    if (!e.dataTransfer?.files?.length) {
       return;
     }
-    const gen = bumpConfigGen();
-    configLoadWait = (async () => {
-      const text = await file.text();
-      if (!isLiveConfigLoad(gen)) {
-        return;
-      }
-      /* A dropped diff that carries a rateprofile asks. Default is keep
-       * mine, the same policy composeConfig used when there was no dialog.
-       * A file with no rate keys still loads silently keep-mine. */
-      if (dumpCarriesRates(text)) {
-        const dump = moduleDump(sim);
-        const runActive = isRunActive();
-        ui.returnTo = ui.screen === 'paused'
-          ? 'paused'
-          : (ui.screen === 'settings' ? 'settings' : 'title');
-        ui.fc.open(dump, { runActive, tab: 'cli' });
-        ui.fc.openImport(text, file.name);
-        ui.show('fc');
-        return;
-      }
-      const nextText = composeConfig(text, ui.settings, RATES_KEEP);
-      const code = sim.init(nextText);
-      if (code === SIM_OK) {
-        tuneText = text;
-        configText = nextText;
-        configName = file.name;
-        configId = '';
-        adoptSimClock();
-        race.setRecordKey(recordKey());
-        ui.setBest(race.bestMs, view.mode);
-        notice = { text: `Flying ${configName}\nRates from the menu: ${ratesSummary(ui.settings)}`, untilMs: performance.now() + 3200 };
-        reset();
-      } else {
-        notice = { text: `That tune could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
-        sim.init(configText);
-        adoptSimClock();
-        reset();
-      }
-    })().catch((err) => {
-      console.error(err);
-    });
+    notice = {
+      text: 'Dropped tunes are gone.\nChoose a tune on the menu, and set your rates there too.',
+      untilMs: performance.now() + 3600,
+    };
   });
 
   /* Reused, not rebuilt: applySettings runs off a menu keypress, but the
@@ -3194,19 +3051,12 @@ export async function boot({ loading, bootStart, mapId }) {
       });
     }
 
-    if (ui.screen === 'fc' && stateCurr) {
-      ui.fc.attitude = {
-        w: stateCurr[7],
-        x: stateCurr[8],
-        y: stateCurr[9],
-        z: stateCurr[10],
-      };
-      ui.paintFcAttitude();
-      ui.paintFcRates({
-        roll: input.channels.roll,
-        pitch: input.channels.pitch,
-        yaw: input.channels.yaw,
-      });
+    /* Rates draws the curve the sticks are about to fly, with the sticks on
+     * it. Same channels the quad gets, for the same reason How to fly reads
+     * them: a picture of a control you are holding is worth a paragraph. */
+    if (ui.screen === 'rates') {
+      const ch = input.channels;
+      ui.paintRates({ roll: ch.roll, pitch: ch.pitch, yaw: ch.yaw });
     }
 
     if (ui.settings.readout) {
@@ -3278,25 +3128,6 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;
-  window.__fc = () => ({
-    screen: ui.screen,
-    tab: ui.fc.tab,
-    page: ui.fc.page,
-    dirty: ui.fc.dirty(),
-    confirm: ui.fc.confirm,
-    p_roll: (ui.fc.draft.match(/set p_roll = (\S+)/) || [])[1] || null,
-    simplifiedApply: /simplified_tuning apply/.test(ui.fc.draft),
-    cliLen: ui.fc.draft.length,
-    presetId: ui.fc.presetId || '',
-    importName: ui.fc.importName || '',
-    homage: Boolean(document.querySelector('.screen-fc .fc-homage')),
-    chrome: Boolean(document.querySelector('.screen-fc .fc-wordmark')),
-    status: Boolean(document.querySelector('.screen-fc .fc-status')),
-    tabs: document.querySelectorAll('.fc-tab').length,
-    simStepIdx,
-    lastTs,
-    moduleMs: Math.round(readState()[0] * 1000),
-  });
   /* A function, not a snapshot. Every other handle here reads `view` or
    * `race` at call time; this one captured the object identity at boot, so
    * after a map swap it answered with the previous map's race. */
@@ -3465,6 +3296,22 @@ export async function boot({ loading, bootStart, mapId }) {
     dMaxRoll: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(21) : null,
     tpaRate: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(22) : null,
     rollSrate: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(42) : null,
+    /*
+     * The rate profile as the module holds it, not as the menu remembers
+     * it. The Rates screen is now the only way a pilot changes any of
+     * these, so this is where a row that writes nothing would show up: the
+     * menu would read 900 and the module would still say 67.
+     */
+    profile: {
+      rates_type: moduleGet(sim, 'rates_type'),
+      roll_rc_rate: moduleGet(sim, 'roll_rc_rate'),
+      roll_srate: moduleGet(sim, 'roll_srate'),
+      pitch_srate: moduleGet(sim, 'pitch_srate'),
+      yaw_srate: moduleGet(sim, 'yaw_srate'),
+      roll_expo: moduleGet(sim, 'roll_expo'),
+      throttle_limit_type: moduleGet(sim, 'throttle_limit_type'),
+      throttle_limit_percent: moduleGet(sim, 'throttle_limit_percent'),
+    },
   });
   window.__setTune = (id) => {
     ui.settings.tune = id;

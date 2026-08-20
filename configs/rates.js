@@ -161,10 +161,16 @@ export function ratesDiff(s) {
   ].join('\n');
 }
 
-/* One line for the menu, so the pilot can read the whole curve at a glance.
- * When rateProfile is set (FC Save or use-dump), that is the truth, not the
- * five knobs. Otherwise a split pitch or BETAFLIGHT dump would show 670 max
- * while the module flew something else. */
+/*
+ * One line for the menu, so the pilot can read the whole curve at a glance.
+ *
+ * The rateProfile branch is now only reachable from scripts/fc-trace.js,
+ * which hands this function a whole profile to check that a split pitch or
+ * a BETAFLIGHT dump is summarised as what would actually fly rather than as
+ * the five knobs. Nothing in the shell passes one: settings has no
+ * rateProfile key since the flight-controller screen went, so the menu
+ * always takes the second branch. Kept because the trace is the reason the
+ * summary is trustworthy at all. */
 export function ratesSummary(s) {
   const p = s && s.rateProfile;
   if (p && typeof p === 'object' && p.roll_srate != null && p.roll_srate !== '') {

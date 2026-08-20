@@ -308,7 +308,29 @@
         pointer-events: none;
       }
       .screen-settings .menu-stage {
+        width: 100%;
+        max-width: 1600px;
         grid-template-columns: minmax(360px, 1.7fr) auto minmax(0, 0.65fr);
+      }
+      /*
+       * Settings on a laptop. NOT part of the flight-controller removal, but
+       * found by measuring the Rates screen beside it: below about 1100 px
+       * the three columns cannot fit their own minimums (360 for the quad
+       * plus 540 for the menu is already 900 before the note column), so the
+       * stage overflowed and the menu slid off the right of the window
+       * entirely. One column, quad on top, same fallback Rates takes.
+       */
+      @media (max-width: 1100px) {
+        .screen-settings .menu-stage { grid-template-columns: minmax(0, 1fr); }
+        .screen-settings .craft-showcase {
+          grid-column: 1; grid-row: 1;
+          justify-self: center; width: min(100%, 420px); margin: 0 0 12px;
+        }
+        .screen-settings .menu-stage .menu { grid-column: 1; justify-self: center; }
+        .screen-settings .menu-help {
+          grid-column: 1; max-width: none; border-left: 0;
+          padding: 8px 14px 0; margin-top: 6px; text-align: center;
+        }
       }
       .title-foot {
         display: flex;
@@ -491,522 +513,100 @@
       .menu-scroll > .menu-section:first-child { margin-top: 4px; }
 
       /*
-       * Flight controller screen. Palette after Betaflight Configurator
-       * 10.10 (firmware 4.5.1 era): #ffbb00 header, #4d4d4d body, dark
-       * left tabs. Homage: our layout, system fonts, no Vue, no MSP, no
-       * iframe, no copied logo. Title and Settings stay cream and sakura.
+       * Rates. The one flight setting a pilot actually sets by hand, so it
+       * gets a screen and a picture rather than a row buried in a list.
+       *
+       * House palette, not the Betaflight Configurator yellow that used to
+       * live here. The flight-controller screen this replaces painted itself
+       * #ffbb00 on #4d4d4d as a homage to Configurator 10.10, which was
+       * honest about where its several hundred editable firmware keys came
+       * from. There are five knobs now, they are ours, and they look it.
        */
-      .screen-fc {
-        --bf-accent: #ffbb00;
-        --bf-ink: #1a1a1a;
-        --bf-bg: #4d4d4d;
-        --bf-header: #393b3e;
-        --bf-panel: #414141;
-        --bf-box: #3a3a3a;
-        --bf-text: #ffffff;
-        --bf-muted: #c5c5c5;
-        --bf-grey: #9c9c9c;
-        align-items: stretch;
-        justify-content: flex-start;
-        padding: 0;
-        background: var(--bf-bg);
-        color: var(--bf-text);
-        font-family: "Segoe UI", system-ui, sans-serif;
+      .screen-rates { justify-content: center; }
+      .rates-lede {
+        max-width: 48em; margin: 0 auto;
+        color: rgba(235, 230, 215, 0.78);
+        font-size: 15px; line-height: 1.6; text-align: center;
       }
-      .fc-head {
-        flex: 0 0 auto;
-        background: var(--bf-accent);
-        color: var(--bf-ink);
-        padding: 8px 14px 7px;
-        pointer-events: auto;
-      }
-      .fc-brand {
-        display: flex;
-        align-items: baseline;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-      .fc-wordmark {
-        font-size: 22px;
-        font-weight: 800;
-        letter-spacing: 0.14em;
-        line-height: 1;
-      }
-      .fc-fw, .fc-conn {
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-      .fc-dirty {
-        margin-left: auto;
-        color: var(--bf-ink);
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-      }
-      .fc-dirty:empty { display: none; }
-      .fc-homage {
-        margin: 4px 0 0;
-        max-width: 86em;
-        color: #3a3208;
-        font-size: 11px;
-        line-height: 1.4;
-      }
-      .fc-homage a {
-        color: var(--bf-ink);
-        font-weight: 700;
-        pointer-events: auto;
-      }
-      .fc-exit {
-        flex: 0 0 auto;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        padding: 8px 14px;
-        background: #2a2a2a;
-        border-bottom: 1px solid #1a1a1a;
-        pointer-events: auto;
-      }
-      .fc-exit[hidden] { display: none !important; }
-      .fc-exit-btn {
-        border: 0;
-        border-radius: 4px;
-        font: inherit;
-        font-size: 13px;
-        font-weight: 800;
-        letter-spacing: 0.02em;
-        padding: 8px 14px;
-        cursor: pointer;
-      }
-      .fc-exit-save {
-        background: var(--bf-accent);
-        color: var(--bf-ink);
-      }
-      .fc-exit-save:hover,
-      .fc-exit-save:focus-visible {
-        background: #ffd24d;
-        outline: none;
-      }
-      .fc-exit-leave {
-        background: #5c5c5c;
-        color: #fff;
-      }
-      .fc-exit-leave:hover,
-      .fc-exit-leave:focus-visible {
-        background: #6e6e6e;
-        outline: none;
-      }
-      .fc-exit-hint {
-        margin-left: auto;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--bf-muted);
-        font-size: 13px;
-        font-weight: 650;
-      }
-      .fc-exit-hint kbd {
-        display: inline-block;
-        min-width: 1.6em;
-        padding: 2px 6px;
-        border-radius: 3px;
-        background: #1a1a1a;
-        color: var(--bf-accent);
-        font: 700 12px/1.2 ui-monospace, "Cascadia Mono", monospace;
-        text-align: center;
-        box-shadow: 0 1px 0 #000;
-      }
-      .fc-body {
-        display: flex;
-        gap: 0;
-        flex: 1 1 auto;
-        min-height: 0;
+      /*
+       * Column one of .menu-stage, the seat the quad takes on Settings.
+       *
+       * width is pinned to 100% rather than inherited, because the shared
+       * rule is `min(1600px, 98vw)` and .screen already spends 6vw a side on
+       * padding. At 1440 that is a stage 143 px wider than the box holding
+       * it, centred, so the curve hung 70 px off the left of the window.
+       * 100% is the padded content box, which is what the stage meant.
+       */
+      .screen-rates .menu-stage {
         width: 100%;
-        pointer-events: auto;
+        max-width: 1600px;
+        grid-template-columns: minmax(320px, 1.5fr) auto minmax(0, 0.7fr);
       }
-      .fc-tabs {
-        flex: 0 0 12.5em;
-        overflow-y: auto;
-        background: var(--bf-header);
-        padding: 8px 0;
-        pointer-events: auto;
-        scrollbar-width: thin;
-        scrollbar-color: #ffbb00 #2e2e2e;
-      }
-      .fc-tab {
-        display: block;
-        width: 100%;
-        text-align: left;
-        border: 0;
-        background: transparent;
-        color: var(--bf-text);
-        font: inherit;
-        font-size: 13px;
-        padding: 7px 12px 7px 14px;
-        cursor: pointer;
-        border-left: 3px solid transparent;
-      }
-      .fc-tab:hover { background: rgba(255, 187, 0, 0.08); }
-      .fc-tab.on {
-        background: var(--bf-panel);
-        border-left-color: var(--bf-accent);
-        color: var(--bf-accent);
-        font-weight: 650;
-      }
-      .fc-tab.grey { color: var(--bf-grey); }
-      .fc-tab.grey.on { color: var(--bf-muted); border-left-color: var(--bf-grey); }
-      .fc-work {
-        flex: 1 1 auto;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        background: var(--bf-panel);
-        overflow: auto;
-      }
-      .fc-pages {
-        display: flex;
-        gap: 0;
-        flex: 0 0 auto;
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        background: var(--bf-header);
-        border-bottom: 1px solid #2a2a2a;
-      }
-      .fc-pages[hidden] { display: none !important; }
-      .fc-page {
-        border: 0;
-        background: transparent;
-        color: var(--bf-muted);
-        font: inherit;
-        font-size: 13px;
-        font-weight: 650;
-        letter-spacing: 0.03em;
-        text-transform: none;
-        padding: 8px 12px;
-        cursor: pointer;
-        border-bottom: 3px solid transparent;
-      }
-      .fc-page.on {
-        color: var(--bf-accent);
-        border-bottom-color: var(--bf-accent);
-        background: var(--bf-panel);
-      }
-      .fc-rates {
-        flex: 0 0 auto;
-        min-height: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 12px 16px 8px;
-        background: var(--bf-panel);
-        border-bottom: 1px solid #2a2a2a;
-        pointer-events: auto;
-      }
-      .fc-rates[hidden] { display: none !important; }
-      .fc-rates-head {
-        flex: 0 0 auto;
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        flex-wrap: wrap;
-      }
-      .fc-rates-reset {
-        margin-left: auto;
-        flex: 1 1 17em;
-        min-width: 17em;
-        max-width: 28em;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1px;
-        border: 0;
-        border-radius: 4px;
-        background: var(--bf-accent);
-        color: var(--bf-ink);
-        font: inherit;
-        padding: 8px 14px 7px;
-        cursor: pointer;
-        text-align: left;
-        box-shadow: 0 0 0 2px rgba(255, 187, 0, 0.35);
-      }
-      .fc-rates-reset:hover,
-      .fc-rates-reset:focus-visible {
-        background: #ffd24d;
-        outline: none;
-      }
-      .fc-rates-reset-lab {
-        font-size: 14px;
-        font-weight: 800;
-        letter-spacing: 0.03em;
-        line-height: 1.2;
-      }
-      .fc-rates-reset-note {
-        font-size: 11px;
-        font-weight: 650;
-        opacity: 0.78;
-        line-height: 1.2;
-      }
-      .fc-rates-type {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--bf-muted);
-        font-size: 13px;
-      }
-      .fc-rates-type-sel {
-        background: #2e2e2e;
-        color: #fff;
-        border: 1px solid #5a5a5a;
-        border-radius: 3px;
-        font: inherit;
-        font-size: 13px;
-        padding: 4px 8px;
-        min-width: 10em;
-      }
-      .fc-rates-badge {
-        font-size: 13px;
-        font-weight: 800;
-        letter-spacing: 0.18em;
-        color: #3b9cff;
-        border: 2px solid #3b9cff;
-        border-radius: 4px;
-        padding: 3px 10px 2px;
-      }
-      .fc-rates-badge-betaflight { color: #ffbb00; border-color: #ffbb00; }
-      .fc-rates-badge-raceflight { color: #e23b4a; border-color: #e23b4a; }
-      .fc-rates-badge-kiss { color: #c084fc; border-color: #c084fc; }
-      .fc-rates-badge-quick { color: #3dcc5a; border-color: #3dcc5a; }
-      .fc-rates-table-wrap {
-        flex: 0 0 auto;
-        overflow-x: auto;
-        overflow-y: hidden;
-      }
-      .fc-rates-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 12px;
-      }
-      .fc-rates-table th {
-        font-weight: 650;
-        color: var(--bf-muted);
-        text-align: center;
-        padding: 4px 6px 8px;
-      }
-      .fc-rates-table th.fc-rates-axis {
-        text-align: left;
-        width: 4.5em;
-      }
-      .fc-rates-table td {
-        padding: 3px 6px;
-        text-align: center;
-      }
-      .fc-rates-row-roll .fc-rates-axis { color: #e23b4a; }
-      .fc-rates-row-pitch .fc-rates-axis { color: #3dcc5a; }
-      .fc-rates-row-yaw .fc-rates-axis { color: #3b9cff; }
-      .fc-rates-cell {
-        display: inline-flex;
-        align-items: stretch;
-        border: 1px solid #5a5a5a;
-        border-radius: 3px;
-        background: #2a2a2a;
-        overflow: hidden;
-      }
-      .fc-rates-input {
-        width: 5.2em;
-        border: 0;
-        background: transparent;
-        color: #fff;
-        font: inherit;
-        font-size: 13px;
-        text-align: center;
-        padding: 5px 4px;
-        -moz-appearance: textfield;
-        user-select: text;
-        pointer-events: auto;
-      }
-      .fc-rates-input::-webkit-outer-spin-button,
-      .fc-rates-input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-      .fc-rates-input:focus {
-        outline: none;
-        background: #3a3a28;
-      }
-      .fc-rates-spin {
-        display: flex;
-        flex-direction: column;
-        border-left: 1px solid #5a5a5a;
-      }
-      .fc-rates-spin-btn {
-        flex: 1 1 auto;
-        border: 0;
-        background: rgba(255, 187, 0, 0.16);
-        color: var(--bf-accent);
-        font-size: 8px;
-        line-height: 1;
-        padding: 2px 5px;
-        cursor: pointer;
-      }
-      .fc-rates-spin-btn:hover { background: rgba(255, 187, 0, 0.4); }
-      .fc-rates-vel {
-        color: var(--bf-muted);
-        font-variant-numeric: tabular-nums;
-        min-width: 4em;
-      }
-      .fc-rates-row-roll .fc-rates-vel { color: #e23b4a; }
-      .fc-rates-row-pitch .fc-rates-vel { color: #3dcc5a; }
-      .fc-rates-row-yaw .fc-rates-vel { color: #3b9cff; }
-      .fc-rates-graph-wrap {
-        flex: 0 0 auto;
-        height: 200px;
-        min-height: 200px;
-        margin-top: 6px;
-        background: #2e2e2e;
-        border-radius: 3px;
-        overflow: hidden;
-      }
-      .fc-rates-graph {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-      .screen-fc .menu-stage {
-        display: grid;
-        grid-template-columns: 1fr minmax(14em, 22em);
-        align-items: stretch;
-        flex: 1 1 0;
-        min-height: 0;
-        width: 100%;
-        margin-top: 0;
-      }
-      .screen-fc .menu-stage .menu {
+      .rates-panel {
         grid-column: 1;
-        background: var(--bf-box);
-        border-top: 0;
-        border-radius: 0;
-        box-shadow: none;
-        min-width: 0;
-        width: 100%;
-        height: 100%;
-        margin-top: 0;
-        padding: 0 0 12px;
-      }
-      .screen-fc .menu-scroll {
-        max-height: none;
-        height: 100%;
-        scrollbar-color: #ffbb00 #2e2e2e;
-      }
-      .screen-fc .menu-help {
-        grid-column: 2;
-        color: var(--bf-muted);
-        border-left: 1px solid #2a2a2a;
-        background: var(--bf-header);
-        padding: 12px 14px;
-        max-width: none;
-      }
-      .screen-fc .row {
-        gap: 10px;
-        padding: 7px 16px 7px 18px;
-        font-size: 13px;
-        color: var(--bf-text);
-      }
-      .screen-fc .row.on {
-        color: var(--bf-text);
-        border-left-color: var(--bf-accent);
-        background: linear-gradient(90deg, rgba(255, 187, 0, 0.16), rgba(255, 187, 0, 0) 48%);
-      }
-      .screen-fc .row-label {
-        font-family: inherit;
-        font-size: 13px;
-      }
-      .screen-fc .row-value {
-        max-width: none;
-        overflow: visible;
-        text-overflow: clip;
-        color: var(--bf-accent);
-      }
-      .screen-fc .row-grey {
-        color: var(--bf-grey);
-      }
-      .screen-fc .row-grey .row-value { color: var(--bf-grey); }
-      .screen-fc .row-gated .row-value { color: var(--bf-accent); }
-      .screen-fc .fc-section {
-        color: var(--bf-accent);
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        border-bottom: 1px solid #555;
-        margin-top: 8px;
+        justify-self: end;
+        align-self: center;
+        display: flex; flex-direction: column;
+        width: min(100%, 620px);
+        margin-right: 18px;
         pointer-events: none;
       }
-      .screen-fc .fc-bar {
-        display: flex;
-        gap: 8px;
-        padding: 10px 12px 6px;
-        flex-wrap: wrap;
+      /* Same well the menu block sits in, so the two panels read as one
+         surface over a bright world rather than two different glasses. */
+      .rates-graph-wrap {
+        height: clamp(180px, 26vh, 260px);
+        border-radius: 4px;
+        background: rgba(16, 22, 17, 0.72);
+        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.10);
+        overflow: hidden;
       }
-      .screen-fc .fc-btn {
-        background: var(--bf-accent);
-        color: var(--bf-ink);
-        font-weight: 700;
-        margin: 0;
-        border-radius: 3px;
-        border-left: 0;
-        flex: 1 1 6em;
-        justify-content: center;
-        padding: 8px 10px;
+      .rates-graph { display: block; width: 100%; height: 100%; }
+      .rates-legend {
+        display: flex; gap: 20px; flex-wrap: wrap;
+        margin-top: 10px;
       }
-      .screen-fc .fc-btn .row-label { color: var(--bf-ink); font-weight: 700; }
-      .screen-fc .fc-btn.on {
-        background: #ffd24d;
-        color: var(--bf-ink);
-        border-left: 0;
+      .rates-key { display: flex; align-items: baseline; gap: 7px; }
+      .rates-key-dot {
+        width: 9px; height: 9px; border-radius: 50%;
+        align-self: center;
       }
-      .fc-status {
-        flex: 0 0 auto;
-        background: var(--bf-accent);
-        color: var(--bf-ink);
-        font-size: 11px;
-        font-weight: 650;
-        letter-spacing: 0.04em;
-        padding: 5px 14px;
-        pointer-events: auto;
+      /* The dashed curve's key: a rule with gaps in it, not a dot, cut with
+         a mask so it takes the same inline background colour as the dot. */
+      .rates-key-dash {
+        width: 18px; height: 2px; border-radius: 0;
+        -webkit-mask-image: repeating-linear-gradient(to right, #000 0 5px, transparent 5px 9px);
+        mask-image: repeating-linear-gradient(to right, #000 0 5px, transparent 5px 9px);
       }
-      .fc-cli {
-        display: block;
-        width: 100%;
-        flex: 1 1 auto;
-        min-height: 12em;
-        margin: 0;
-        box-sizing: border-box;
-        pointer-events: auto;
-        user-select: text;
-        resize: none;
-        background: #1d1d1d;
-        color: #f0f0f0;
-        border: 0;
-        border-top: 1px solid #6b6b6b;
-        font: 12px/1.45 ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
-        padding: 10px 12px;
+      .rates-key-lab {
+        font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+        color: rgba(235, 230, 215, 0.66);
       }
-      .fc-cli:focus { outline: 1px solid var(--bf-accent); }
-      .fc-cli[hidden], .fc-attitude[hidden] { display: none !important; }
-      .fc-attitude {
-        display: block;
-        margin: 12px 16px;
-        width: 220px;
-        height: 220px;
-        background: #2e2e2e;
-        border: 1px solid #6b6b6b;
-        pointer-events: none;
+      .rates-key-val { font-size: 13px; font-weight: 650; color: var(--cream); }
+      /* Four small facts under the curve. auto-fit rather than a fixed four
+         columns, because this sits in a grid column whose width is a share
+         of the window: at 1366 that column is 451 px, four columns of it are
+         113 px each, and "19.5% stick" is wider than that, so the last cell
+         used to spill out from under the curve and across the menu beside
+         it. A track floor of 140 px wraps instead of overflowing. */
+      .rates-readout {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px 14px; margin: 14px 0 0;
       }
+      .rates-cell { min-width: 0; }
+      .rates-readout dt {
+        font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(157, 179, 200, 0.85);
+      }
+      .rates-readout dd {
+        margin: 3px 0 0; font-size: 14px; font-weight: 650;
+        color: var(--cream); white-space: nowrap;
+      }
+      /* Same two colours as the curves, so a split reading needs no key. */
+      .rates-num-rp { color: var(--sakura); }
+      .rates-num-yaw { color: var(--slate); }
+      .rates-num-sep, .rates-num-unit { color: rgba(235, 230, 215, 0.6); font-weight: 500; }
+      .rates-num-sep[hidden], .rates-num-yaw[hidden] { display: none; }
+      .screen-rates .menu-scroll { max-height: min(52vh, 30em); }
       .row-label { min-width: 0; flex: 1 1 auto; }
       .row.on .row-label { font-weight: 650; }
       .row-value {
@@ -1055,33 +655,42 @@
         padding: 7px 16px; cursor: pointer;
       }
       .drop-opt:hover, .drop-opt.on { color: var(--cream); background: rgba(232, 168, 184, 0.12); }
-      .screen-fc .drop-btn, .screen-fc .step { color: var(--bf-accent); }
-      .screen-fc .step { background: rgba(255, 187, 0, 0.18); }
-      .screen-fc .step:hover { background: rgba(255, 187, 0, 0.4); }
-      .screen-fc .drop-btn::after { border-top-color: var(--bf-accent); }
-      .screen-fc .drop-list {
-        background: #2e2e2e;
-        box-shadow: inset 0 0 0 1px rgba(255, 187, 0, 0.45), 0 14px 32px rgba(0, 0, 0, 0.55);
-        scrollbar-color: #ffbb00 #2e2e2e;
-      }
-      .screen-fc .drop-opt { color: #ddd; }
-      .screen-fc .drop-opt:hover, .screen-fc .drop-opt.on {
-        color: #fff;
-        background: rgba(255, 187, 0, 0.16);
-      }
-      @media (max-width: 860px) {
-        .screen-fc .menu-stage {
-          display: flex;
-          flex-direction: column;
-          width: 100%;
+      /* A narrow window stacks the curve over the rows rather than
+         squeezing both. Same breakpoint the rest of the page uses. */
+      /* One column: the curve stacks over the rows rather than squeezing
+         both, and the note moves under the list where there is width for
+         it. Everything shrinks a little, because a window this size has to
+         hold the curve, seven rows and the hint at once. */
+      @media (max-width: 1100px) {
+        .screen-rates .menu-stage { grid-template-columns: minmax(0, 1fr); }
+        .rates-panel {
+          grid-column: 1; grid-row: 1;
+          justify-self: center; width: min(100%, 620px); margin: 0 0 12px;
         }
-        .screen-fc .menu-help {
-          grid-column: auto;
-          max-width: none;
-          border-left: none;
+        .screen-rates .menu-stage .menu { grid-column: 1; justify-self: center; }
+        .screen-rates .menu-help {
+          grid-column: 1; max-width: none; border-left: 0;
+          padding: 8px 14px 0; margin-top: 6px; text-align: center;
         }
-        .fc-tabs { flex: 0 0 8.5em; }
-        .fc-wordmark { font-size: 16px; }
+        .rates-graph-wrap { height: clamp(140px, 20vh, 200px); }
+        .screen-rates .menu-scroll { max-height: 34vh; }
+        /* Narrow enough to clear the music dock and the bug chip, which are
+           fixed to the top right corner and sit over any screen. At 48em the
+           last words of this sentence went under them. */
+        .rates-lede { max-width: 34em; }
+      }
+      /* A short window spends its height on the curve and the rows: the
+         lede is the one thing here that repeats what the row notes say, and
+         the curve gives up the pixels the list needs to show all seven rows
+         rather than six and a half. */
+      @media (max-height: 820px) {
+        .rates-graph-wrap { height: clamp(118px, 16vh, 160px); }
+        .screen-rates .menu-scroll { max-height: 46vh; }
+      }
+      /* Shorter still, and the lede is the first thing to go: it is the one
+         line here that the row notes already say in more detail. */
+      @media (max-height: 700px) {
+        .rates-lede { display: none; }
       }
       .hint {
         display: flex; align-items: center; gap: 12px;

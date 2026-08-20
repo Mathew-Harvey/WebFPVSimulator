@@ -12047,3 +12047,65 @@ diff-passthrough 1.2478 (0.47 percent), determinism **6d17d4814bdc** with
 Node and Chrome identical across 30, 60, 144 and 240 Hz. console-clean
 errors=0 warnings=0. world-scale green with the collider scan inside it,
 map-isolation green at 64 city modules. vendor/betaflight diff empty.
+
+### 2026-08-20 | city | second pass on the cut, and a way to look at it
+
+Three things came out of measuring the slab cut once it was in.
+
+**The run break was comparing neighbours, and a slope is not a step.** A
+segment started a new run when the strip's height changed by more than
+SLAB_STEP_TOL from the strip before it. Slabs are 0.12 m at the fine end, and
+a 30 degree pitch changes height by 0.07 m between neighbours, so it never
+tripped: a whole roof came out as one run at the height of its ridge. That is
+exactly what the worst boxes left in the town looked like, seven to ten
+metres square with the drawing reaching the top over five percent of the
+footprint and six metres of nothing above the rest. A run breaks against the
+run's own accumulated extent now, so the same slope breaks every time it has
+fallen a tread below what the run has been, which is a staircase down the
+pitch. 44,355 m3 to 40,105.
+
+**And the treads were too deep.** With the break fixed the residual is the
+tread itself, so the tread was cut from 0.5 m to 0.15 m and the price of a
+cut from 1.5 m3 to 0.25. 40,105 m3 to 25,947, and the boxes from 33,950 to
+59,841.
+
+**Which is only affordable because it was measured.** 59,841 boxes against
+the 7,102 this round started with, timed over 20,000 segment queries along a
+street: **0.97 microseconds a query, 36.2 broadphase candidates**, one query
+per frame. Nothing about the render moved, because nothing drawn changed.
+
+**Then the drawn picture was made finer and it was NOT kept.** At a 0.6 m
+raster instead of 1 m the town's drawn picture goes from 345,332 boxes to
+600,744, which is a load every player pays, and the measurement changes with
+it: the scan probes a different population, so 28,846 m3 at 0.6 m is not
+comparable with 25,947 at 1 m and does not mean the world got worse. It is
+recorded here rather than kept because doubling the build's transient memory
+for roughly 0.2 m of tread is not proportionate. Every number in this round is
+at a 1 m raster.
+
+**scripts/collider-overlay.js, because the last question is about a
+picture.** A cubic metre count is the right way to compare two rounds and the
+wrong way to answer "do the collisions hug the graphics", which is seen, not
+counted. It parks the camera at five places, draws every collider within a
+radius as a green wireframe over the frame, and writes the plain and the
+overlaid image side by side. What it shows: the carriageway is clear of
+boxes end to end, the shopfronts and stalls are wrapped to their own faces,
+and the near roofs have no wireframe standing above the tiles. What it also
+shows is the tree canopies, which are still one box over a cluster of blobs
+and are the most visible thing left.
+
+Final, same instrument, same 1 m drawn picture, old fit against new:
+
+| | ownership fit | slab cut |
+|---|---|---|
+| phantom | **87,205 m3** | **25,947 m3** |
+| of reachable solid | 383,410 m3 (22.7 pct) | 324,243 m3 (8.0 pct) |
+| over five metres clear above the drawing | 645 | 314 |
+| drawn things under half solid | 20,288 | 19,027 |
+| mean cover of a drawn object | 0.452 | 0.486 |
+| collider boxes | 7,102 | 59,841 |
+| per query | | 0.97 us, 36.2 candidates |
+
+Verify, this turn: **16 of 16**, determinism 6d17d4814bdc unchanged,
+console-clean errors=0 warnings=0, vendor/betaflight diff empty. Physics,
+plant, ABI, the input path and the trace were not touched.

@@ -3354,6 +3354,33 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /* What is solid, and how well the broadphase is doing. */
   window.__colliders = () => view.colliders.stats();
+  /*
+   * Every solid box within `r` of a point, as plain numbers. Harness only,
+   * and it exists because the collider fit is the one thing in this project
+   * that cannot be checked by a number alone: "the collisions hug the
+   * graphics" is a claim about a picture, and the way to check it is to draw
+   * the boxes over the picture and look. scripts/collider-overlay.js does
+   * exactly that with what this returns.
+   */
+  window.__colliderBoxes = (x, z, r) => {
+    const c = view.colliders;
+    const out = [];
+    if (!c.fbox) {
+      return out;
+    }
+    for (let i = 0; i < c.fbox.length; i += 1) {
+      if (!c.fbox[i]) {
+        continue;
+      }
+      const cx = (c.fax[i] + c.fbx[i]) * 0.5;
+      const cz = (c.faz[i] + c.fbz[i]) * 0.5;
+      if (Math.hypot(cx - x, cz - z) > r) {
+        continue;
+      }
+      out.push([c.fax[i], c.fay[i], c.faz[i], c.fbx[i], c.fby[i], c.fbz[i]]);
+    }
+    return out;
+  };
   /* How many cel materials the per frame clock walk touches. Check 16
    * asserts this returns to its boot value after a map round trip, which is
    * the measurement that catches a dead uniform kept alive forever. */

@@ -718,14 +718,14 @@ const SLAB_MIN_SOLID = 0.1;
 /* A change in the profile this large starts a new run. Same number as the
  * gap, because the question is the same one: is what changed something a
  * quad could fly through. */
-const SLAB_STEP_TOL = 0.5;
+const SLAB_STEP_TOL = 0.15;
 /* Boxes per authored rectangle, per cut. The cut is greedy and merges the
  * cheapest pair until it is under this, so a busy rectangle loses its least
  * useful gap first rather than its most useful one. */
-const MAX_RUNS = 20;
+const MAX_RUNS = 64;
 /* And per rectangle over both cuts, so a rectangle full of detail cannot
  * turn into a hundred boxes. */
-const MAX_PIECES = 64;
+const MAX_PIECES = 160;
 /*
  * Solid volume a split has to save before it is worth a second box.
  *
@@ -739,7 +739,7 @@ const MAX_PIECES = 64;
  * the smallest amount of invisible wall worth a second entry in the
  * broadphase.
  */
-const MERGE_TRIVIAL = 1.5;
+const MERGE_TRIVIAL = 0.25;
 /*
  * The fit only ever shrinks, which leaves one thing undone: a house collider
  * authored to the wall plate never reached the ridge, and the roof above it
@@ -925,8 +925,22 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
     return null;
   }
 
-  /* Segments: a break wherever the strip stops being drawn, starts being
-   * drawn, or changes shape by more than a gap. */
+  /*
+   * Segments: a break wherever the strip stops being drawn, starts being
+   * drawn, or steps away from what the run has been so far.
+   *
+   * AGAINST THE RUN, NOT AGAINST THE PREVIOUS SLAB, and the difference is a
+   * roof. Comparing neighbours only breaks on a STEP, and a slope is not a
+   * step: at a slab every 0.12 m a 30 degree pitch changes height by 0.07 m
+   * between neighbours and never trips any threshold worth having, so the
+   * whole roof came out as one run at the height of its ridge. Measured, the
+   * worst boxes left in the town after the cut first landed were all houses,
+   * seven to ten metres square with the drawing reaching the top of the box
+   * over five percent of its footprint and six metres of nothing above the
+   * rest. Compared against the run's own accumulated extent, the same slope
+   * breaks every time it has fallen SLAB_STEP_TOL below the run, which is a
+   * staircase down the pitch with treads that size.
+   */
   const segs = [];
   let cur = null;
   for (let k = 0; k < n; k += 1) {
@@ -935,8 +949,8 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
       continue;
     }
     if (cur !== null
-      && Math.abs(hi[k] - hi[k - 1]) <= SLAB_STEP_TOL
-      && Math.abs(lo[k] - lo[k - 1]) <= SLAB_STEP_TOL) {
+      && Math.abs(Math.max(cur.hi, hi[k]) - Math.min(cur.hi, hi[k])) <= SLAB_STEP_TOL
+      && Math.abs(Math.max(cur.lo, lo[k]) - Math.min(cur.lo, lo[k])) <= SLAB_STEP_TOL) {
       cur.hi = Math.max(cur.hi, hi[k]);
       cur.lo = Math.min(cur.lo, lo[k]);
       cur.s0 = Math.min(cur.s0, s0[k]);

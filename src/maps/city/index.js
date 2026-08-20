@@ -1101,8 +1101,12 @@ function fitRect(c, y0, y1, boxes, grid, floorAt, scratch, { roof = true } = {})
   scratch.mark += 1;
   const count = gatherBoxes(c, boxes, grid, scratch.seen, scratch.mark, scratch.list);
   if (count === 0) {
+    /* Nothing drawn anywhere near it, as opposed to something drawn that
+     * does not reach above the ground. The audit tells the two apart. */
+    scratch.lastEmpty = 'nothing';
     return null;
   }
+  scratch.lastEmpty = 'below-ground';
   /*
    * The roof, which a fit that only shrinks could never reach.
    *
@@ -1197,6 +1201,7 @@ function buildColliders(world) {
    * of typed arrays during a load that is already the slow part.
    */
   const scratch = {
+    lastEmpty: '',
     hi: new Float64Array(SLAB_MAX),
     lo: new Float64Array(SLAB_MAX),
     s0: new Float64Array(SLAB_MAX),
@@ -1320,7 +1325,7 @@ function buildColliders(world) {
         diag.length,
         r2(c.x1 - c.x0), r2(c.z1 - c.z0), r2(y1),
         r2(fx1 - fx0), r2(fz1 - fz0), r2(fy1),
-        pieces === null ? 0 : pieces.length,
+        pieces === null ? (scratch.lastEmpty === 'nothing' ? -1 : 0) : pieces.length,
         r2(fy0),
         r2((c.x0 + c.x1) * 0.5), r2((c.z0 + c.z1) * 0.5),
       ]);

@@ -12124,3 +12124,18 @@ one code path rather than two.
 
 Verify after it: **16 of 16**, phantom 25,913 m3 of 324,163, holes 19,038 of
 38,860 at mean cover 0.485, determinism 6d17d4814bdc unchanged.
+
+**The 1106 rectangles the fit still leaves alone are not empty, and knowing
+that changes what should be done about them.** The rule that keeps a
+rectangle with no geometry exactly as the town authored it was written on the
+belief that such a rectangle is usually load bearing, the lake edge or a
+parked level crossing boom. Measured by recording WHY the fit declined,
+**none of the 1106 has nothing near it. Every one has drawn geometry inside
+it that does not reach SLAB_MIN_SOLID above the ground.** The town has no
+collider without a `top` and none with its bottom above its top, so it is not
+an authoring fault either. The likely reading is the fit's own footprint cap:
+a rectangle standing against something baked into one mesh larger than
+FIT_MAX_FOOTPRINT, a revetment or a district length of wall, sees only the
+paving at its feet. Leaving those as authored is then exactly right, because
+the fit cannot see the thing they stand for, and the diagnostic now says
+which of the two cases a rectangle is in rather than lumping them together.

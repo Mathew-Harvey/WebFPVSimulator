@@ -288,6 +288,12 @@ export function loadSettings() {
    * the default rather than being snapped to the nearest survivor.
    */
   for (const [key, allowed] of [
+    /* tune joins the list because the removed presets tab wrote
+     * settings.tune from a preset id, and an id no longer in the registry
+     * would step to the far end of the list on the first arrow key: cycle()
+     * coerces an indexOf miss to index 0. tuneById already falls back for
+     * display, so this only keeps the row and the module agreeing. */
+    ['tune', TUNES.map((t) => t.id)],
     ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
     ['laps', LAP_COUNTS],
@@ -744,10 +750,28 @@ function courseCardRows(subject) {
  * carries rates, which is why switching between them changes how the quad
  * settles and not how far the sticks go. See configs/registry.js.
  */
-function tuneItem(s) {
+/*
+ * Changing what the quad flies re-inits the module, and re-initing puts the
+ * craft back on the start line with the lap clock at zero.
+ *
+ * WHY THAT IS RIGHT AND NOT A BUG, even though the deleted flight-controller
+ * screen used to defer it behind a Save and restart the run dialog. A lap
+ * flown half on one rate profile and half on another is not a lap: the
+ * record key in src/main.js hashes the whole composed config precisely so
+ * that a time is only ever compared against times flown on the same one. So
+ * the choice mid-run is between restarting the run and recording a time that
+ * means nothing, and Tune has always taken the first. Rates takes it too.
+ *
+ * What was wrong was doing it in SILENCE, which is what removing the dialog
+ * left behind: an arrow key on the pause menu cost a lap with no warning.
+ * The row says so now, and so does the hint on the screen itself.
+ */
+const MID_RUN_WARNING = ' Changing it during a run puts the quad back on the start line.';
+
+function tuneItem(s, midRun) {
   return choice(
     'Tune',
-    `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.`,
+    `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.${midRun ? MID_RUN_WARNING : ''}`,
     TUNES.map((t) => t.id),
     s.tune,
     (id) => tuneById(id).name,
@@ -765,12 +789,12 @@ function ratesChanged(s) {
 
 /* The way in to the Rates screen, with the whole curve read out on the row
  * so a pilot can see what they are flying without opening it. */
-function ratesItem(s) {
+function ratesItem(s, midRun) {
   return {
     label: 'Rates',
     value: ratesSummary(s),
     action: 'rates',
-    note: 'How far the sticks go, and how sharply. Yours, not the tune\'s. A radio in Acro flies this curve; keyboard flight is Angle.',
+    note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle.${midRun ? MID_RUN_WARNING : ''}`,
   };
 }
 
@@ -1115,10 +1139,9 @@ export class Ui {
      * Settings. The three column grid is what keeps the rows in the middle
      * of the window whatever is beside them. */
     ratesBlock.stage.prepend(this.ratesPanel.root);
-    rates.append(
-      ratesBlock.stage,
-      hintWithKeys(['↑↓', '←→', 'Esc'], 'Arrow keys move, left and right change a value. Escape goes back. Changes are stored and reach the quad at once.'),
-    );
+    const ratesHint = hintWithKeys(['↑↓', '←→', 'Esc'], '');
+    this.ratesHint = ratesHint.querySelector('.hint-copy');
+    rates.append(ratesBlock.stage, ratesHint);
     this.screens.rates = rates;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
@@ -1994,8 +2017,8 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
-        tuneItem(s),
-        ratesItem(s),
+        tuneItem(s, true),
+        ratesItem(s, true),
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
@@ -2220,6 +2243,13 @@ export class Ui {
     }
     if (this.screen !== 'rates') {
       return;
+    }
+    if (this.ratesHint) {
+      /* Same sentence the pause menu's row carries, because a pilot who got
+       * here from a paused run needs it on the screen they are editing. */
+      this.ratesHint.textContent = this.returnTo === 'paused'
+        ? 'Arrow keys move, left and right change a value. Escape goes back. A change reaches the quad at once, and puts it back on the start line.'
+        : 'Arrow keys move, left and right change a value. Escape goes back. Changes are stored and reach the quad at once.';
     }
     this.ratesPanel.paint(this.settings, this.ratesStick);
   }
@@ -2992,6 +3022,14 @@ export class Ui {
       this.courseCardKey = null;
       this.cardSubject = null;
       this.lastCardKey = null;
+    }
+    /* ratesFrom belongs to one visit to the Rates screen. Leaving that screen
+     * for anywhere else drops it, so a later show('rates') that did not come
+     * through act('rates'), a world swap keeping the pilot in place, cannot
+     * inherit a stale origin and send Escape to the wrong list. Re-showing
+     * rates over itself is exactly that case and must NOT clear it. */
+    if (this.screen === 'rates' && screen !== 'rates') {
+      this.ratesFrom = null;
     }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are

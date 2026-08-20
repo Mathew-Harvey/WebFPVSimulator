@@ -12239,3 +12239,76 @@ warnings 0** on every pass.
 editable PIDs and filters, dump export, motor test, and flying a dropped
 diff. That is the brief. `configs/*.diff` is still the whole tune and a
 pilot who wants a rateprofile of their own has Betaflight for it.
+
+### What an adversarial sweep of the removal found afterwards
+
+Five read-only agents were pointed at the finished tree with instructions to
+refute it. Three findings were real and are fixed above; two are consequences
+worth recording rather than fixing.
+
+**Real, fixed. `src/main.js` syncWorld still named the deleted screen.**
+`stayScreen` is the list of pages a world swap puts the pilot back on, and it
+read `'settings' || 'paused' || 'title' || 'fc'`. Nobody added `'rates'`, so a
+same-map swap while the Rates screen was open dropped the pilot on the title
+screen, and the dead `'fc'` would have failed silently rather than loudly:
+`show()` on an unknown name displays no node and leaves the previous screen's
+rows behind. It is a list now, with `'rates'` in it. Proven by forcing a
+keep-place swap (graphics change, same map) from the Rates screen: screen
+stays `rates`, `ratesFrom` still `settings`, Escape still goes rates to
+settings to title.
+
+**Real, fixed. `ratesFrom` could outlive its screen.** It is cleared in
+`back()`, so any other exit left it set. Inert until the `stayScreen` fix
+above created a `show('rates')` caller that does not go through `act('rates')`.
+Cleared in `show()` when leaving the screen for anywhere else, and
+deliberately NOT when re-showing rates over itself, which is exactly the swap
+case.
+
+**Real, fixed but by copy rather than by a guard. An arrow key on the pause
+menu restarts the run.** The deleted screen had two guards: `afterRatesEdit`
+returned early while a run was live, and Save asked "Save and restart the run".
+Both went, and nothing replaced them, so a rate nudge from the pause menu
+zeroed the lap clock and put the craft back on the start line in silence.
+It is not silent now: the paused Tune and Rates rows say so, and the hint on
+the Rates screen changes when it was opened from a paused run. It is not
+guarded because restarting is the correct behaviour, not a bug to suppress: a
+lap flown half on one rate profile and half on another is not a lap, which is
+the whole reason `recordKey` hashes the composed config. The choice mid-run is
+between restarting and recording a meaningless time. Tune has always taken the
+first; Rates takes it too.
+
+**Consequence, accepted. A pilot who ever pressed FC Save loses their personal
+bests.** `recordKey()` hashes `configText`, which ends in `ratesCli(settings)`.
+A stored `rateProfile` made `ratesCli` emit the whole captured profile, and
+`RATE_KEYS` carries six keys `ratesDiff` never writes, so that text differed
+even for stock values. Dropping the key changes the hash, and the old
+`webfpv.best.<hash>` entries become unreachable. They are not deleted, just
+orphaned. Migrating the key would be lying about the record: those laps were
+flown on a different rate profile, which is precisely what the per-config key
+exists to keep apart. Only pilots who used FC Save or a use-dump import are
+affected; everyone else already took the `ratesDiff` branch and their hash is
+unchanged. The same applies, for the same reason, to anyone whose off-list
+knobs were snapped by the new `normaliseRates` on load.
+
+**Consequence, recorded. The rateProfile branches now read as dead code and
+are not.** `ratesCli` below its early return, `sanitiseRateProfile`, the
+`RATES_DUMP` branch of `composeConfig` and the first branch of `ratesSummary`
+are unreachable from the shell and are each asserted by `scripts/fc-trace.js`
+F7, F8 and F13. Deleting any of them takes `lint:fc` from 28 to a failure.
+Each now carries a comment saying so, next to the one already on
+`configs/rates.js`.
+
+**Also fixed while there.** `.row-gated` in index.html had lost its only
+producer with `src/ui/fc.js` and was still shipping to every visitor.
+`loadSettings`' allowlist gained `tune`, which the removed presets tab could
+write and which had the same off-list arrow-jump as the rate knobs.
+
+**And a gap in the check set, stated rather than papered over.** Nothing in
+`npm run verify` ever sim_inits the composed tune plus rates text: check 12
+uses the raw fixtures and check 9 parses the harness config. `grep composeConfig
+tests/` is empty. The composed-config claim in this turn rests on
+`npm run lint:fc`, which is a separate npm script verify never spawns, and on
+reading every rate value back out of the running module through `sim_bf_get`
+in the browser. Wiring `lint:fc` and `lint:presets` into `tests/verify.js` is
+the fix, and per CLAUDE.md that is a change to the check set and needs its own
+argument before it is made.

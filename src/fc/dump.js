@@ -35,11 +35,17 @@ export const RATES_KEEP = 'keep-mine';
 export const RATES_DUMP = 'use-dump';
 
 /*
- * Keys the pilot owns. Switching a registry tune must not overwrite them.
- * A dropped dump that carries a rateprofile is stripped unless the import
- * policy is use-dump, and even then the dump's rate lines are appended
- * last so they win over the menu without leaving a second source of truth
- * in the tune body.
+ * Keys the pilot owns. Switching a registry tune must not overwrite them,
+ * so composeConfig strips every one of these out of the tune body and
+ * appends the pilot's own instead. That is the whole reason the two shipped
+ * tunes can be compared: the Karate diff cannot quietly halve the stick
+ * authority on its way in.
+ *
+ * The use-dump half of that story, where a dropped dump's rate lines were
+ * appended last so they won over the menu, has no caller in the shell any
+ * more: the drop-a-diff import went with the flight-controller screen. It
+ * is still reached by scripts/fc-trace.js F7 and F8, which is what makes
+ * the keep-mine claim above testable rather than asserted.
  */
 export const RATE_KEYS = new Set([
   'rates_type',
@@ -345,6 +351,8 @@ export function ratesSettingsFromDump(text) {
   return out;
 }
 
+/* Reached only through ratesCli's profile branch and ratesSettingsFromDump,
+ * both of which the shell no longer exercises. scripts/fc-trace.js does. */
 export function sanitiseRateProfile(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object') {
@@ -362,10 +370,16 @@ export function sanitiseRateProfile(raw) {
 }
 
 /*
- * KEEP compose must emit the pilot's full rateprofile, not the five-knob
- * Settings shadow. Independent pitch, yaw, rates_type, thr_mid and expo
- * live here. An empty profile falls back to ratesDiff so a first run and
- * Karate keep-mine still write ACTUAL 7 / 67.
+ * The pilot's rate profile as CLI.
+ *
+ * REACHED ONLY BY scripts/fc-trace.js BELOW THE EARLY RETURN, do not prune.
+ * The shell always takes the first branch now: settings carries no
+ * rateProfile key since the flight-controller screen went, so an empty
+ * profile falls back to ratesDiff and a fresh pilot flies ACTUAL 7 / 67.
+ * Everything after that line handles a captured profile with independent
+ * pitch, yaw, rates_type, thr_mid and expo, and it is what F7 and F13 in
+ * fc-trace assert against the compiled module. It reads as dead code from
+ * the app's side and is not.
  */
 export function ratesCli(s) {
   const profile = sanitiseRateProfile(s && s.rateProfile);
@@ -449,6 +463,9 @@ export function composeConfig(tuneText, rates, policy = RATES_KEEP) {
     out += '\n';
   }
   const menuRates = ratesCli(rates);
+  /* The use-dump policy has no caller in the shell; scripts/fc-trace.js F7
+   * is the only one left. Do not prune: it is the control the keep-mine
+   * traces are measured against. */
   if (policy === RATES_DUMP && dumpRateLines.length > 0) {
     return out + menuRates + dumpRateLines.join('\n') + '\n';
   }

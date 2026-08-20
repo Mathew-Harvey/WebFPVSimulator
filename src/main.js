@@ -1012,9 +1012,18 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     const keepPlace = mapReady && wantId === view.id && wantedCourseKey(wantId) === loadedCourseKey(view);
-    const stayScreen = (ui.screen === 'settings' || ui.screen === 'paused' || ui.screen === 'title' || ui.screen === 'fc')
-      ? ui.screen
-      : null;
+    /*
+     * Which menu the pilot goes back to after the swap, or null for the
+     * title. This is a list of PAGE screens, and it has to name every one a
+     * settings change can be made from: 'rates' is here because every arrow
+     * key on that screen runs applySettings, which lands here whenever the
+     * world no longer matches, and without it a rate nudge would bounce the
+     * pilot to the title. The 'fc' it replaces named a screen that no
+     * longer exists, and would have failed silently: show() on an unknown
+     * name displays no node and leaves the previous screen's rows behind.
+     */
+    const STAY_SCREENS = ['settings', 'rates', 'paused', 'title'];
+    const stayScreen = STAY_SCREENS.includes(ui.screen) ? ui.screen : null;
     const stayMode = keepPlace ? mode : 'title';
     swapInFlight = true;
     mapReady = false;
@@ -1820,7 +1829,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     notice = {
-      text: 'Dropped tunes are gone.\nChoose a tune on the menu, and set your rates there too.',
+      text: 'This page does not fly a dropped file any more.\nPick a tune on the menu, and set your rates on Rates.',
       untilMs: performance.now() + 3600,
     };
   });

@@ -12109,3 +12109,18 @@ Final, same instrument, same 1 m drawn picture, old fit against new:
 Verify, this turn: **16 of 16**, determinism 6d17d4814bdc unchanged,
 console-clean errors=0 warnings=0, vendor/betaflight diff empty. Physics,
 plant, ABI, the input path and the trace were not touched.
+
+**And the cover pass goes through the same cut.** The pass that gives a
+collider to drawn things that never had one, 977 lamp posts, bollards, bus
+shelters and vending banks, was adding each object's own bounding box. Its
+bounds already keep it to compact things standing on the ground, for which
+that box is a fair contact volume, but nothing in it could do anything about
+SHAPE: a signpost with an arm, a shed at thirty degrees to the grid, a bench
+under an open frame. They run through fitRect now, with the roof extension
+off because unlike a plot rectangle their envelope was measured off the
+object itself. Obstacle phantom 108 m3 to 74. It is a small number because
+the pass is a small part of the town, and it is worth having because it is
+one code path rather than two.
+
+Verify after it: **16 of 16**, phantom 25,913 m3 of 324,163, holes 19,038 of
+38,860 at mean cover 0.485, determinism 6d17d4814bdc unchanged.

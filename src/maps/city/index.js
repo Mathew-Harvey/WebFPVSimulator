@@ -1097,7 +1097,7 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
  * passes and no more, because the third would be cutting pieces already
  * smaller than the craft.
  */
-function fitRect(c, y0, y1, boxes, grid, floorAt, scratch) {
+function fitRect(c, y0, y1, boxes, grid, floorAt, scratch, { roof = true } = {}) {
   scratch.mark += 1;
   const count = gatherBoxes(c, boxes, grid, scratch.seen, scratch.mark, scratch.list);
   if (count === 0) {
@@ -1114,7 +1114,7 @@ function fitRect(c, y0, y1, boxes, grid, floorAt, scratch) {
    * plate where it is not. Only for a rectangle bulky enough to be a
    * building: a kerb does not grow a gable.
    */
-  const bulky = Math.min(c.x1 - c.x0, c.z1 - c.z0) > ROOF_LIFT_MIN_FOOT;
+  const bulky = roof && Math.min(c.x1 - c.x0, c.z1 - c.z0) > ROOF_LIFT_MIN_FOOT;
   const rect = {
     x0: c.x0, y0, z0: c.z0, x1: c.x1, y1: bulky ? y1 + ROOF_LIFT_MAX : y1, z1: c.z1,
   };
@@ -1228,7 +1228,7 @@ function buildColliders(world) {
     return v;
   };
   const fitStats = {
-    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, worst: [],
+    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, coverSplit: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, worst: [],
   };
   /*
    * The boxes a split rectangle produced beyond its first.
@@ -1396,7 +1396,35 @@ function buildColliders(world) {
     if (coveredAlready(world.colliders, cx, cz, b.y0 + sy * 0.5)) {
       continue;
     }
-    colliders.addBox('obstacle', b.x0, b.y0, b.z0, b.x1, b.y1, b.z1);
+    /*
+     * And through the same cut as everything else, rather than straight in as
+     * a bounding box.
+     *
+     * The bounds above already keep this pass to compact things standing on
+     * the ground, for which a bounding box is a fair contact volume, and
+     * COVER_MIN_FILL already turns away a torii or an archway. What they
+     * cannot do is anything about the shape of what is left: a signpost with
+     * an arm, a shed standing at thirty degrees to the grid, a bus shelter
+     * with a bench under an open frame. The slab cut reads all three off the
+     * drawing and hugs them, so the box only has to be the envelope it starts
+     * from. The roof extension is off here, because unlike a plot rectangle
+     * this envelope was measured off the object itself and there is nothing
+     * above it to reach for.
+     */
+    const rect = {
+      x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1,
+    };
+    const pieces = fitRect(rect, b.y0, b.y1, boxes, grid, floorAt, scratch, { roof: false });
+    if (pieces === null || pieces.length === 0) {
+      colliders.addBox('obstacle', b.x0, b.y0, b.z0, b.x1, b.y1, b.z1);
+    } else {
+      for (const q of pieces) {
+        colliders.addBox('obstacle', q.x0, q.y0, q.z0, q.x1, q.y1 > q.y0 ? q.y1 : q.y0 + 0.001, q.z1);
+      }
+      if (pieces.length > 1) {
+        fitStats.coverSplit += 1;
+      }
+    }
     fitStats.covered += 1;
   }
 

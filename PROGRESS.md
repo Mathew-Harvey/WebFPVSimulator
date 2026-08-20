@@ -12413,3 +12413,69 @@ integrator, the fixed timestep or input sampling, and `dist/sim.wasm` is
 untouched, so no trace hash can have moved. That is an argument, not a
 measurement, and the harness still owes this change a green table on a machine
 with a toolchain. Flight feel is not verifiable here and is not claimed.
+
+### Camera angle 40 and the yaw that rolls the horizon
+
+A pilot reported that at 40 degrees of camera tilt the yaw and roll feel off.
+Traced end to end. Nothing is wrong, and the menu was the thing at fault for
+never saying so.
+
+**The coupling is geometry, and the sim has it exactly right.** A camera
+tilted up by t sees a pure body yaw as sin(t) of image ROLL and cos(t) of
+image YAW. Measured against the composition main.js actually performs, which
+is `fpvQuat = qPrev * qTilt`, a BODY frame tilt about the craft's own X:
+
+| tilt | image roll | image yaw |
+|---|---|---|
+| 0 | 0.0000 | 1.0000 |
+| 15 | 0.2588 | 0.9659 |
+| 30 | 0.5000 | 0.8660 |
+| 40 | 0.6428 | 0.7660 |
+| 55 | 0.8192 | 0.5736 |
+
+Every row is sin(t) and cos(t) to twelve decimal places. At 40 degrees with
+the default 670 yaw, a full pedal rolls the picture at 431 deg/s while the
+quad yaws at 670. That is not a defect, it is what a real tilted camera does,
+and it is why the tilt is applied once, in the body frame, after the attitude
+rather than before it.
+
+**Checked and clean on the way past.** The tilt reaches nothing but the
+render: `camTilt` appears in main.js only in `qTilt`, in the model's own
+camera mount and in the showcase pose. No stick input is rotated by it
+anywhere. The plant integrates `quat_mul(s->quat, dq, qn)`, quaternion times
+increment, so the rate the pilot commands is about the BODY axis, which is
+what Betaflight commands and what a yaw at a pitched attitude requires. The
+tilt sign is right: a positive angle carries the forward axis up. The camera
+mount offset uses the craft's own forward and up, so it rolls with the
+airframe as it should.
+
+**What actually changed.** Both notes now say it, with the pilot's own number
+in them rather than a general warning. Camera angle reads "at 40 degrees, 64
+percent of a yaw shows up as roll in the picture", and Yaw max rate adds "431
+deg/s of picture roll at full pedal" and recomputes as either row moves. The
+lever a real pilot reaches for is a lower yaw rate, and it is now one screen
+away and named in the note.
+
+**OPEN QUESTION for the advisor: Betaflight's own fix is compiled in and
+inert.** `fpv_mix_degrees` is stored in `rxConfig.fpvCamAngleDegrees`
+(`bf_settings.c:403`), `fc/rc.c` is compiled (`build-wasm.sh:96`), and
+`scaleRcCommandToFpvCamAngle` rotates the roll and yaw setpoints by that angle
+so the quad turns about the CAMERA axis instead of the board axis. It never
+runs because `BOXFPVANGLEMIX` is never raised, which `src/fc/catalog.js`
+already documents. Wiring it would mean a `rcModeActivationMask` bit set the
+way `bf_apply_angle_mode_flag` sets `ANGLE_MODE`, a new `sim_` export to
+switch it, and the camera angle written into `fpv_mix_degrees` on every
+config compose. That is a module ABI change and a control path change, it
+moves the trace by design, and `npm run verify` cannot run in this container,
+so it is NOT being done here. It is the right next step if the owner wants
+yaw to spin the view cleanly at high tilt, and it is a deliberate choice
+rather than an oversight: most racers fly with this mix OFF and learn the
+coupling.
+
+RUN LOG. `npm run verify` not run: no `emcc` in this container, so
+`build:wasm` cannot execute and `vendor/betaflight` is an empty submodule.
+No check value is claimed. `lint:fc` 28 of 28, `lint:presets` 2 of 2, and the
+real index.html driven headless through Settings and the Rates screen with
+the tilt stepped to 40, console errors 0 warnings 0. The change is two menu
+note strings and one import. It touches no physics, no plant, no ABI and no
+build, and `dist/sim.wasm` is untouched.

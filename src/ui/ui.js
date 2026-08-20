@@ -104,6 +104,7 @@ import {
   CAMERA_ANGLE_MIN,
   CAMERA_ANGLE_MAX,
   CAMERA_ANGLE_DEFAULT,
+  cameraTiltRad,
   clampCameraAngle,
 } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
@@ -1892,7 +1893,15 @@ export class Ui {
         { label: 'Camera', section: true },
         stepper(
           'Camera angle',
-          `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Left and right step one degree. The quad beside the list shows it.`,
+          /*
+           * The yaw sentence is not a caveat, it is the main thing a pilot
+           * needs to know before they crank this up, and the menu never said
+           * it. A camera tilted up by t sees a pure yaw as sin(t) of image
+           * roll and cos(t) of image yaw, which is geometry and is exactly
+           * what a real tilted camera does. At 30 that is half. At 40 it is
+           * nearly two thirds, which is the tilt a pilot wrote in about.
+           */
+          `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Above about 30, yaw starts to roll the horizon: at ${s.cameraAngle} degrees, ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of a yaw shows up as roll in the picture. That is what a real tilted camera does. Lower Yaw max rate on the Rates screen to tame it.`,
           `${s.cameraAngle} degrees`,
           (d) => {
             s.cameraAngle = clampCameraAngle(s.cameraAngle + d);
@@ -2074,7 +2083,7 @@ export class Ui {
         ),
         choice(
           'Yaw max rate',
-          'Yaw at full pedal. Quads yaw slower than they roll, so many pilots set this below Max rate. 670 matches the Betaflight default.',
+          `Yaw at full pedal. Quads yaw slower than they roll, so many pilots set this below Max rate. 670 matches the Betaflight default. Your camera is tilted up ${s.cameraAngle} degrees, so ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of this rolls the horizon rather than turning it: ${Math.round(s.rateYawMax * Math.sin(cameraTiltRad(s.cameraAngle)))} deg/s of picture roll at full pedal.`,
           RATE_MAX_CHOICES,
           s.rateYawMax,
           (n) => `${n} deg/s`,

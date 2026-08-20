@@ -767,6 +767,16 @@ function tuneItem(s, midRun) {
   );
 }
 
+/*
+ * Where the camera tilt starts costing enough yaw to be worth a word, and
+ * what to offer instead. 40 is where sin(t) passes 0.64, so nearly two
+ * thirds of a yaw becomes picture roll; 500 puts a 40 degree mount back to
+ * roughly what 30 degrees feels like at the stock rate. Both measured, see
+ * PROGRESS.md.
+ */
+const YAW_TIP_TILT = 40;
+const YAW_TIP_RATE = 500;
+
 /* The five keys the Rates screen owns, in one place, so the Revert row and
  * the act() that answers it cannot drift apart. */
 const RATE_KNOBS = ['rateMax', 'rateYawMax', 'rateCentre', 'rateExpo', 'throttleCap'];
@@ -860,6 +870,8 @@ export class Ui {
     /* Where the live sticks are, for the Rates curve. Written by the frame
      * loop through paintRates, read by the panel on every redraw. */
     this.ratesStick = { roll: 0, pitch: 0, yaw: 0 };
+    /* Asked at most once a session, so oscillating across 40 does not nag. */
+    this.yawTipAsked = false;
     /* Set when Rates was opened FROM Settings, so Escape lands back on the
      * list it was a row of. Separate from returnTo on purpose: returnTo is
      * where Settings itself came from, and overwriting it here would lose a
@@ -1420,6 +1432,90 @@ export class Ui {
   }
 
   /*
+   * A yes or no, on the same overlay the name form uses.
+   *
+   * Shares the node deliberately: handleKey already swallows every menu key
+   * while `nameDialog` is open, closeNameDialog already tears down the key
+   * and backdrop listeners, and a second modal with its own copy of that
+   * bookkeeping is how one of them ends up leaking a listener. No field, so
+   * the confirming button takes focus instead. Resolves true or false, and
+   * a backdrop click or Escape is false.
+   */
+  askConfirm({ title, detail, yes, no }) {
+    return new Promise((resolve) => {
+      this.nameWait = resolve;
+      const box = el('div', 'name-dialog-box');
+      box.append(el('h2', null, title));
+      if (detail) {
+        box.append(el('p', 'lede', detail));
+      }
+      const row = el('div', 'name-dialog-row');
+      const yesBtn = btn('name-dialog-btn on', yes || 'Yes');
+      const noBtn = btn('name-dialog-btn', no || 'No');
+      row.append(noBtn, yesBtn);
+      box.append(row);
+      this.nameDialog.textContent = '';
+      this.nameDialog.append(box);
+      this.nameDialog.hidden = false;
+
+      const finish = (v) => this.closeNameDialog(v);
+      const onKey = (e) => {
+        if (e.key === 'Enter' || e.key === 'y' || e.key === 'Y') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(true);
+        } else if (e.key === 'Escape' || e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(false);
+        }
+      };
+      this.nameKeyHandler = onKey;
+      this.nameDialog.addEventListener('keydown', onKey, true);
+      yesBtn.addEventListener('click', () => finish(true));
+      noBtn.addEventListener('click', () => finish(false));
+      this.nameClickHandler = (e) => {
+        if (e.target === this.nameDialog) {
+          finish(false);
+        }
+      };
+      this.nameDialog.addEventListener('click', this.nameClickHandler);
+      yesBtn.focus();
+    });
+  }
+
+  /*
+   * The tip that fires when the camera goes past the angle where yaw starts
+   * to roll the horizon hard. Offered ONCE per session, only on the way UP
+   * across the threshold, and only when the yaw rate is actually above what
+   * would be suggested, so a pilot who has already dealt with it is never
+   * asked. The numbers in it are this pilot's, not an example.
+   */
+  offerYawTip() {
+    const s = this.settings;
+    this.yawTipAsked = true;
+    const pct = Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100);
+    const now = Math.round(s.rateYawMax * Math.sin(cameraTiltRad(s.cameraAngle)));
+    const then = Math.round(YAW_TIP_RATE * Math.sin(cameraTiltRad(s.cameraAngle)));
+    this.askConfirm({
+      title: 'Yaw will roll the horizon',
+      detail: `At ${s.cameraAngle} degrees of tilt, ${pct} percent of a yaw shows up as roll in the picture: ${now} deg/s of it at your ${s.rateYawMax} yaw rate. That is what a real tilted camera does, and the usual answer is a slower yaw. Dropping Yaw max rate to ${YAW_TIP_RATE} brings it back to ${then} deg/s. You can change it any time on the Rates screen.`,
+      yes: `Set yaw to ${YAW_TIP_RATE}`,
+      no: `Leave it at ${s.rateYawMax}`,
+    }).then((ok) => {
+      if (!ok) {
+        return;
+      }
+      this.settings.rateYawMax = YAW_TIP_RATE;
+      saveSettings(this.settings);
+      this.renderMenu();
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+    });
+  }
+
+  /*
    * A name is typed, not flown. The stick menu cannot enter one, so this is
    * a small overlay with a field. Resolves to the stored name, or null if
    * they cancel.
@@ -1904,7 +2000,17 @@ export class Ui {
           `How far the camera tilts up from the airframe. ${CAMERA_ANGLE_MIN} is flat, looking along the nose. ${CAMERA_ANGLE_DEFAULT} is a typical cruise. 45 to ${CAMERA_ANGLE_MAX} is race. Above about 30, yaw starts to roll the horizon: at ${s.cameraAngle} degrees, ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of a yaw shows up as roll in the picture. That is what a real tilted camera does. Lower Yaw max rate on the Rates screen to tame it.`,
           `${s.cameraAngle} degrees`,
           (d) => {
-            s.cameraAngle = clampCameraAngle(s.cameraAngle + d);
+            const before = s.cameraAngle;
+            s.cameraAngle = clampCameraAngle(before + d);
+            /* On the way UP across the threshold only, and only if the yaw
+             * rate is above what would be offered. Stepping back down and up
+             * again inside one session does not ask twice. */
+            if (before < YAW_TIP_TILT
+              && s.cameraAngle >= YAW_TIP_TILT
+              && s.rateYawMax > YAW_TIP_RATE
+              && !this.yawTipAsked) {
+              this.offerYawTip();
+            }
           },
         ),
         choice(

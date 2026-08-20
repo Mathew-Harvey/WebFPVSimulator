@@ -12524,3 +12524,51 @@ which a module ABI change is not.
 No code changed this turn. The probe was a scratch script, not committed;
 the numbers above are reproducible from `tests/lib/simmod.js`, `composeConfig`
 and `RATE_DEFAULTS` against `dist/sim.wasm`.
+
+### A tip when the camera goes past 40, offering the yaw rate that fixes it
+
+The measurement above said the levers were camera angle and Yaw max rate.
+Knowing that and putting it in front of the pilot at the moment it matters
+are different things, so the owner asked for the second one.
+
+Crossing 40 degrees on the Camera angle row now opens a yes or no with this
+pilot's own numbers in it, not an example: "At 40 degrees of tilt, 64 percent
+of a yaw shows up as roll in the picture: 431 deg/s of it at your 670 yaw
+rate ... Dropping Yaw max rate to 500 brings it back to 321 deg/s." Yes sets
+it, no leaves it, and either way it says the Rates screen owns it from here.
+
+FOUR CONDITIONS, and each one is there to stop it being a nag.
+
+- **On the way UP only.** `before < 40 && after >= 40`. Stepping down through
+  40 is a pilot backing away from the problem, and telling them about it then
+  is telling them something they just acted on.
+- **Only when the yaw rate is above what would be offered.** A pilot already
+  on 420 gets nothing. Offering to RAISE somebody's yaw to 500 would be the
+  opposite of the advice.
+- **Once a session.** Oscillating across the threshold asks once.
+- **Nothing persisted.** The trigger is a crossing, so a pilot who is already
+  at 45 on the next boot is never asked, because they never cross. That is
+  the whole reason no `askedYawTip` key was added: the shape of the trigger
+  already does what the key would have done.
+
+It shares the name dialog's node rather than building a second modal.
+handleKey already swallows every menu key while that node is open,
+closeNameDialog already tears down the key and backdrop listeners, and a
+second modal carrying its own copy of that bookkeeping is how one of them
+ends up leaking a listener. `askConfirm` is the name form minus the fields:
+Enter or Y is yes, Escape or N or the backdrop is no, and the confirming
+button takes the focus the text field would have had.
+
+Driven in headless Chromium, every branch: fires at exactly 40 and not at 39;
+Enter sets yaw to 500 and the module comes back `yaw_srate 50`; clicking the
+button does the same; Escape leaves 670 and does not fall through to the menu
+underneath, the screen stays on Settings; re-crossing does not ask again; a
+pilot on 420 crossing 40 is not asked; stepping DOWN through 40 is not asked;
+and both values survive a reload. `lint:fc` 28 of 28, `lint:presets` 2 of 2,
+console errors 0 warnings 0.
+
+RUN LOG. `npm run verify` not run: no `emcc` in this container, so
+`build:wasm` cannot execute. No check value is claimed. The change is menu
+code and one dialog; no physics, no plant, no ABI, no build, and
+`dist/sim.wasm` is untouched. The yaw rate it sets goes through the same
+`saveSettings` and `onSettings` path every Rates row uses.

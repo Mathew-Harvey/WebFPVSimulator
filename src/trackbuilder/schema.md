@@ -78,7 +78,7 @@ the file.
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "trk-1a2b3c4d",
   "name": "Ladder Loop, demo",
   "createdUtc": "2026-01-01T00:00:00Z",
@@ -93,14 +93,14 @@ the file.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `schemaVersion` | integer | The version of THIS document. `1` today. A consumer seeing a HIGHER number reads on a best effort basis, drops what it does not recognise and says so, which is what `normalize()` does and what the Versioning section below states. |
+| `schemaVersion` | integer | The version of THIS document. `2` today. A consumer seeing a HIGHER number reads on a best effort basis, drops what it does not recognise and says so, which is what `normalize()` does and what the Versioning section below states. |
 | `id` | string | Stable identity of the track, `trk-` followed by eight hex digits. Used as the key in local storage. Two identical tracks are still two tracks, so this is not derived from the contents. |
 | `name` | string | What the author calls it. Not unique, not an identifier. |
 | `createdUtc` | string | ISO 8601 UTC, seconds resolution, when the track was first made. |
 | `modifiedUtc` | string | Same format, last edit. The Load list sorts on this. |
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
-| `branding` | object | What the course is dressed in. Optional; see below. |
+| `branding` | object | The sponsors' marks the course is dressed in. Optional; see below. |
 | `elements` | array | Everything standing on the field, in no particular order. |
 | `sequence` | array | The flying order. THIS is the course. |
 
@@ -126,32 +126,64 @@ real thing to draw.
 
 ### `branding`
 
-The event's mark, worn by every gate and every marker flag on the course.
+Up to five sponsors' marks, shared out over the gates, the banners, the flags
+and any paint on the grass.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `logo` | string or null | A `data:` URL of an image, or `null`. Nothing else is accepted. |
-| `logoName` | string | The file the author chose it from. Display only. |
+| `logos` | array | 0 to 5 marks, in the order they are dealt out. |
 
-**The image travels inside the track.** A track is one file a person sends to
+Each entry:
+
+| field | type | meaning |
+| --- | --- | --- |
+| `id` | string | Stable identity of this mark within the document, `logo-` followed by a number. A `groundLogo` element names the mark it wears by this. |
+| `image` | string | A `data:` URL of an image. Nothing else is accepted. |
+| `name` | string | The file the author chose it from. Display only. |
+
+**Which mark goes on which gate is derived, not stored.** The structures in
+the flying order are numbered from zero, counting STRUCTURES rather than passes
+(a ladder flown three times is one frame with one header board, so it counts
+once) and skipping anything that carries no printed vinyl (a flag or a cone is
+scored through a square in the air beside it). Structure *i* wears mark
+*i* mod *n*. Fifteen gates and five marks is three gates each, spread down the
+lap rather than bunched at the start. The rule is `dressOrder()` in
+`model.js`, and both the race field and the builder's own 3D preview read it
+from there so they cannot disagree.
+
+A gate's own header pennants wear THAT GATE'S mark in both accents. The run of
+turn flags down a course cycles through the marks and through the navy and red
+accents at the same time, so it repeats every `lcm(n, 2)` flags.
+
+**The images travel inside the track.** A track is one file a person sends to
 another person, and a branding that lived in a second file beside it would
-arrive stripped every time. So the picture is embedded, which means it has to
-be small enough that a track is still a file rather than a payload:
-`src/trackbuilder/logo.js` re-draws every upload onto a 1200 by 400 canvas, fits
-it without cropping, re-encodes it as a PNG, and steps down through smaller
-boards until the data URL is under **256 kB**. `model.normalize()` drops
-anything larger and says so.
+arrive stripped every time. So the pictures are embedded, which means they have
+to be small enough that a track is still a file rather than a payload:
+`src/trackbuilder/logo.js` re-draws every upload onto a canvas of its OWN
+aspect ratio, scaled to fit inside 1200 by 400 and never enlarged, re-encodes
+it as a PNG, and steps down through smaller boxes until the data URL fits.
+
+Two caps, and the second is the one an author meets. Any single mark is capped
+at **256 kB** of data URL, which is what `isUsableLogo()` will accept whatever
+else is in the document. All the marks together are capped at **384 kB**, which
+is what keeps a published course inside the board's own document cap.
+`model.normalize()` drops anything past either and says so.
 
 **Only a `data:` URL is accepted, and that is a security property rather than a
-validation one.** A document is untrusted input and this string ends up in a
+validation one.** A document is untrusted input and these strings end up in a
 texture loader, so an `http:` URL in there would turn opening somebody's track
-into a request to their server. A logo that is not an embedded image is dropped
+into a request to their server. A mark that is not an embedded image is dropped
 on read with a repair note.
 
-This field is **optional**. A document written before it existed reads
-identically, and `normalize()` fills in `{ "logo": null, "logoName": "" }`.
-Adding an optional field with a documented default is not a version bump; see
-**Versioning**.
+This field is **optional**. `normalize()` fills in `{ "logos": [] }`.
+
+**Reading a version 1 document.** Version 1 spelled this as a single
+`branding.logo` string with a `branding.logoName` beside it. `normalize()`
+promotes that pair into `logos[0]` and says nothing, because it is an upgrade
+rather than damage. Nothing writes the old spelling any more: writing both
+would mean carrying the first mark's bytes twice, which doubles the file for
+the single mark case that is most of them. Dropping a field is what
+`schemaVersion` 2 is for; see **Versioning**.
 
 ---
 
@@ -185,6 +217,7 @@ course; that is what `sequence` is for.
 | `dims` | object | Dimensions, in metres, whose keys depend on `type`. Always complete: a missing key is filled from the default on read. |
 | `text` | string | **Labels only.** The text drawn on the field. |
 | `flagSide` | `"left"`, `"right"` or `"both"` | **Flagged gates and flagged doubles only.** Which end of the top header the pennant sits on, as seen facing the gate. Default `left`. Not a dimension. |
+| `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first mark. Not a dimension. |
 
 ### The element types
 
@@ -205,6 +238,28 @@ Each row's `kind` decides everything the tool does with it.
 | `waypoint` | W | marker | yes, at zero clearance | `height poleRadius clearance` |
 | `startPads` | S | start | **never**, it is the line itself | `pads spacing padSize` |
 | `label` | L | annotation | **never** | `textHeight` |
+| `groundLogo` | O | decal | **never** | `width depth` |
+
+A `groundLogo` is **paint**, which is what the `decal` kind means: it has a
+footprint and a heading and nothing else. No height, so `position.z` is ignored
+and the builder does not offer it; no collider, so a quad flies through where
+it is; never in `sequence`, and the barrier warning pass does not test the line
+against it. `dims.width` runs along the element's own heading and `dims.depth`
+across it, the same reading a `barrier` gets, and the mark named by `logoId` is
+FITTED inside that rectangle without cropping. A mark whose proportions do not
+match the footprint paints smaller with clear turf either side, which is the
+author's cue to resize the footprint rather than a reason to crop somebody's
+artwork.
+
+It is drawn on the pitch's own painted surface rather than as geometry, so it
+costs no draw call and takes the cloud shadows and the cel ramp the grass
+takes. It follows that a course with no pitch has nowhere to paint: the field's
+own built in circuit carries no marks and none of this applies to it.
+
+**A ground logo is dressing, not layout.** It is filtered out of the layout
+fingerprint in `src/share/listing.js` and out of the matching `layoutHash` on
+the board, so selling a sponsor a place on a course people have already flown
+does not clear the times on it.
 
 A `waypoint` is the one element that is **not a thing standing on the field**.
 It says only that the lap passes through this point, at this height, and it is
@@ -461,6 +516,30 @@ A document whose `schemaVersion` is **higher** than the reader understands is
 read on a best effort basis with the unknown parts dropped, and the reader says
 so. A document whose version is lower is migrated on read.
 
+### 1 to 2
+
+Version 2 replaced `branding.logo` and `branding.logoName` with
+`branding.logos`, a list of up to five marks, and added the `groundLogo`
+element type.
+
+The element type alone would not have been a bump: an unknown type is dropped
+on read with a repair note, which is the best effort behaviour above. Removing
+the two old branding fields is the bump. The alternative was to keep writing
+them as a copy of the first mark, and a `data:` URL written twice doubles the
+file for the single mark case that is most of them.
+
+A version 1 document reads without loss: `normalize()` promotes its
+`branding.logo` into `logos[0]`, silently, because it is an upgrade rather than
+damage. A version 1 reader handed a version 2 document reads the course
+correctly and shows no branding, since `field`, `elements` and `sequence` are
+untouched by this change. The two hashes that decide whether a republished
+course keeps its times read only those three keys, so republishing an old
+course from a new builder keeps every time on it.
+
+The public board accepts both versions. **Deploy the board before the
+simulator**, or a course published from a new builder is refused by an old
+board for a version it does not know.
+
 ---
 
 ## Worked example
@@ -485,7 +564,7 @@ Create Path on this document reports a lap of **138.9 m**, a tightest radius of
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "trk-demo0001",
   "name": "Ladder Loop, demo",
   "createdUtc": "2026-01-01T00:00:00Z",
@@ -501,8 +580,7 @@ Create Path on this document reports a lap of **138.9 m**, a tightest radius of
     "samplesPerSegment": 48
   },
   "branding": {
-    "logo": null,
-    "logoName": ""
+    "logos": []
   },
   "elements": [
     {

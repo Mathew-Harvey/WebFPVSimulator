@@ -12889,3 +12889,148 @@ first party text, they are the readable half of the icon set, and an SVG has
 somewhere to put a comment, so `svg()` emits the notice and all four were
 regenerated. The `.ico` and the `.png` still cannot carry one, which is a
 real limit of those formats rather than an exemption anybody chose.
+
+## Five sponsors, and paint on the grass
+
+The owner's brief: one logo per course is not a business. Let an author
+upload up to five, share them out over the gates and the flags properly, and
+let any of them be painted on the grass from the track builder. That is how
+the game is meant to earn: a sponsor buys a track, or a lot of tracks.
+
+**The document grew a list, and that cost a version.** `branding.logo` and
+`branding.logoName` are gone; `branding.logos` is a list of up to five
+`{ id, image, name }`. The two honest options were to keep writing the old
+field as a copy of the first mark, which writes a 256 kB data URL twice for
+the single mark case that is most of them, or to stop writing it. So
+`SCHEMA_VERSION` is 2, `normalize()` promotes a version 1 document's single
+logo into `logos[0]` silently, and nothing writes the old spelling. The
+board accepts 1 and 2, and DEPLOY.md now says the board goes first for the
+schema version as well as for the URL.
+
+**Why five and where the cap really is.** A single mark is still capped at
+`LOGO_MAX_CHARS`, 256 kB, so a course written before this reads unchanged.
+The cap an author meets is the new one: `BRANDING_MAX_CHARS`, 384 kB across
+all five, which is about 96 kB of PNG each. That number is what keeps a
+published document inside the board's own cap, which went from 420,000 to
+560,000 chars: the new branding budget plus exactly the headroom the course
+itself had before. `readBody`'s publish limit in the board's `server.js`
+went to 660,000 to stay above it, because a course that validate.js would
+accept must not be refused before anything reads it.
+
+**Which gate wears which is one rule in one place.** `dressOrder()` in
+`model.js` walks the flying order and numbers the STRUCTURES: a ladder flown
+three times has one header board so it takes one slot, and a flag scored
+through a virtual square carries no vinyl so it takes none. Structure *i*
+wears mark *i* mod *n*. Fifteen gates and five marks is three gates each,
+spread down the lap rather than three in a row. `trackdoc.js` stamps the
+slot onto each structure and the renderer reads it; the builder's 3D preview
+calls the same function. Writing that rule once in each renderer is exactly
+the drift that would have an author dressing a course that flies wearing
+something else.
+
+**The sails alternate two ways at once.** A teardrop flag's sweep is navy or
+red so a run of them reads as a run; now it also has to cycle the sponsors.
+The run is `lcm(n, 2)` sails, mark `i mod n` with accent `i mod 2`. A gate's
+own header pennants are NOT part of that run: both of them wear that gate's
+mark, because a gate flying two sponsors' pennants over one sponsor's board
+is not what a sponsor bought. With no marks at all it is one plain dress,
+two sails, byte for byte what it was.
+
+**Paint is an element, and paint is not layout.** `groundLogo` is a new
+`KIND.DECAL`: a footprint, a heading, and the id of the mark it wears. It
+gets the builder's whole editing apparatus for free, drag, rotate, box
+select, undo, the inspector, because it is an element like everything else,
+and every switch in the tool tests for a kind POSITIVELY so a new one falls
+through safely. It never reaches the sequence, gets no collider, and the
+barrier warning pass never sees it.
+
+The commercial half of that is the layout fingerprint. Selling a place on a
+course people have already flown must not clear their times, so a
+`groundLogo` is filtered out of `layoutFingerprint` in `src/share/listing.js`
+and out of `layoutHash` on the board. Filtering a type no existing document
+contains leaves every already published course's hash bit for bit what it
+was, which is what makes this safe to deploy. The two skip lists are written
+out as literals in both repositories on purpose: the board has no element
+library, and the two have to be edited together.
+
+**The world paints it into the pitch, not as geometry.** `pitchSurface()`
+already draws the mown stripes and the boundary line onto one canvas laid on
+the levelled ground, so a decal is stamped into the same canvas: no draw
+call, and it takes the cloud shadows and the cel ramp the grass takes. The
+canvas to scene mapping is written down in the function, because getting it
+wrong mirrors somebody's logo and nothing else in the scene would show it:
+the plane's uv flip and the CanvasTexture's Y flip cancel, so canvas +x is
+scene +x and canvas +y is scene +z, and the canvas rotation is MINUS the
+yaw. That last sign appears again in the plan view for the same reason.
+
+The repaint after a mark decodes happens ONCE, when the last one has
+settled, rather than once per mark: the banner canvases are a few hundred
+pixels and repainting one is free, but this one is up to 2048 across and
+stamping the edge fade over four million pixels five times would be a
+visible hitch on the frame a course loads. The fade profile is now computed
+once into a `Uint8Array` and re-stamped rather than recomputed.
+
+**The upload changed shape, and it was wrong before.** `logo.js` used to
+paint every upload onto a fixed 1200 by 400 canvas with transparent bars
+either side of anything that was not three by one. Every surface that draws
+a mark FITS it into a space, so those bars were fitted along with the ink
+and a square logo came out about a third of the size it should have been on
+the board its own header comment complained about. Now the canvas is the
+image's own aspect ratio, scaled to fit inside 1200 by 400, and a raster is
+never enlarged past its own pixels because the surfaces scale it anyway and
+a 40 by 20 icon blown up to 1200 wide is a hundred times the bytes for the
+same blur. An SVG is the exception and is rasterised at the full box,
+because scaling a vector up is where its detail comes from.
+
+**What went wrong on the way.** The marks dialog painted its previews before
+the rows were in the document, and both preview painters size their bitmap
+from `clientWidth`, which is zero for a canvas that is not laid out: every
+preview came out at the 300 px fallback and was then stretched by the CSS,
+which is a blurry picture of somebody's logo in the one dialog whose whole
+job is showing it sharply. The row goes in first now. The same dialog's
+image cache only attached its load handler when it created an image, so two
+slots holding the same file left the second one blank until the next redraw.
+And `bannerKit` filtered its url list rather than mapping it, which would
+have renumbered every mark after a bad one while the decals painted on the
+grass index the same list from `trackdoc.js`: gate 3 wearing one sponsor and
+the paint beside it wearing another. It maps now, and a bad slot is an empty
+slot.
+
+Three constants were being written twice and are not any more.
+`GROUND_TURF` moved into `src/art/banners.js` and `PITCH.light` and
+`PITCH.dark` in the renderer are now built from it, because the builder's
+preview of a mark on the grass has to be the same green as the grass. The
+board's three branding caps are named copies of the simulator's three with a
+comment saying to change all three together, which is the arrangement the
+single cap already had.
+
+VERIFY. `node src/trackbuilder/selftest.js`, 260 of 260 including 24 new
+checks: the version 1 migration and its silence, the five slot and 384 kB
+caps, a remote url in the list refused, two marks claiming one id, the
+fifteen gates three each round robin, a stack flown three times taking one
+slot, a ground logo refused from the flying order, the layout fingerprint
+unchanged by paint, a decal naming a removed mark painting nothing rather
+than somebody else's logo, and a decal's scene position and footprint.
+`npm test` in the board, all green, with seven new checks mirroring those.
+`npm run lint:fc` 28 of 28, `npm run lint:presets` 2 of 2. All ten documents
+in `tracks/json/` still normalise with no repairs.
+
+`npm run lint:catalog` could not run: `vendor/betaflight` is not checked out
+in this container, so it fails on a missing `parameter_names.h` before it
+reads anything. It was failing that way before this turn and nothing here
+touches the flight controller catalogue.
+
+`npm run verify` was NOT run. Nothing here goes near the physics, the plant,
+the module ABI or the build: the whole change is the document, the track
+builder's UI and the scenery. What was done instead is the visual check
+CLAUDE.md points at, `node scripts/shots.js`, on a fixture course of fifteen
+gates, five marks of four different aspect ratios and five painted
+footprints at five different headings. Captured and read: the 2D plan with
+every footprint drawn the right way round, the builder's 3D preview, the
+marks dialog and its per course share line, the inspector's mark picker, the
+world's title screen with ACME and CIRRUS painted on the turf and readable
+rather than mirrored, gate headers carrying three different sponsors, and
+the built in race field unchanged with its chequer device and its navy and
+red flags. Console errors 0 on every run. Removing a mark was driven in the
+browser and the orphaned footprint reads "no mark" while its neighbours keep
+theirs, which is the id rather than the index doing its job.

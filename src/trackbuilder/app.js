@@ -34,7 +34,8 @@ import { ELEMENTS, KIND, elementByKey } from './elements.js';
 import {
   createTrack, createElement, deepClone, deserialize, duplicateTrack,
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
-  aperturesOf, toPlain,
+  aperturesOf, toPlain, logosOf, brandingBytes, newLogoId, dressOrder,
+  LOGO_SLOTS, BRANDING_MAX_CHARS,
 } from './model.js';
 import { applyAutoFaces, clearOverride, defaultYawFor, flipFace, setYaw } from './faces.js';
 import {
@@ -49,7 +50,7 @@ import {
   deleteTrack, downloadTrack, listTracks, loadTrack, makeAutosaver,
   readAutosave, readFileText, saveTrack, writeAutosave,
 } from './storage.js';
-import { normaliseLogo, drawBannerPreview } from './logo.js';
+import { normaliseLogo, drawBannerPreview, drawGroundPreview } from './logo.js';
 import { View2D } from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
@@ -787,7 +788,7 @@ export class App {
     } else if (owned) {
       help.textContent = 'This course is already on the board. Updating it keeps the times if the flying layout has not changed.';
     } else {
-      help.textContent = 'The public board keeps a copy of this course, including the logo on the gates and flags. Times people post are stored there.';
+      help.textContent = 'The public board keeps a copy of this course, including every mark on the gates, the flags and the grass. Times people post are stored there.';
     }
     body.append(help);
 
@@ -851,7 +852,7 @@ export class App {
       }
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
-      status.textContent = 'Sending the course, logo included.';
+      status.textContent = 'Sending the course, marks included.';
       const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
@@ -908,106 +909,228 @@ export class App {
     this.modal(owned ? 'Update this course' : (remix ? 'Publish as yours' : 'Publish this course'), body);
   }
 
-  /* ---------------- the event logo ---------------- */
+  /* ---------------- the sponsors' marks ---------------- */
 
   /*
-   * The picture every gate on this course wears.
+   * The pictures this course is dressed in: up to five of them.
    *
-   * A dialog rather than a field in the inspector, and the reason is what it
-   * belongs to: a logo is a property of the TRACK, not of any element on it,
-   * so putting it beside a gate's dimensions would say the opposite. The
-   * inspector's Field section is the other candidate and it is where a field
-   * width lives, but that panel is only reachable with nothing selected,
-   * which is not where somebody who has just placed ten gates is.
+   * A dialog rather than a field in the inspector, and the reason is what
+   * they belong to: a mark is a property of the TRACK, not of any element on
+   * it, so putting them beside a gate's dimensions would say the opposite.
+   * The inspector's Field section is the other candidate and it is where a
+   * field width lives, but that panel is only reachable with nothing
+   * selected, which is not where somebody who has just placed ten gates is.
    *
-   * The preview is the point of the dialog. Uploading an image and then
+   * FIVE SLOTS, NUMBERED, and the numbers are load bearing. Gate 1 wears
+   * mark 1, gate 2 mark 2, round and round, so fifteen gates share five
+   * sponsors three apiece; the inspector's picker for a painted footprint
+   * counts in the same numbers; and the line under the list says what that
+   * works out as for THIS course rather than leaving an author to divide.
+   *
+   * THE PREVIEWS ARE THE POINT OF THE DIALOG. Uploading an image and then
    * having to load a world to find out it came out square, or too small to
-   * read, or half off the board, is the version of this feature nobody
-   * would use twice.
+   * read, or half off the board, is the version of this feature nobody would
+   * use twice. Each slot shows the gate header it lands on and the grass it
+   * lands on, because those are two different shapes and a mark can suit one
+   * and not the other.
    */
   openLogo() {
     const body = document.createElement('div');
     const help = document.createElement('p');
     help.className = 'tb-help';
-    help.textContent = 'Every gate on this course is a white board. The picture sits on the header, beside the gate number, on both faces, and it travels inside the track file so a course you send somebody arrives with its branding on.';
+    help.textContent = 'Up to five marks. They are dealt out round the gates in flying order, so each sponsor gets a share of the boards, the upright banners and the flags, spread down the lap rather than bunched at the start. Any of them can also be painted on the grass: place a Ground logo from the palette and pick its number. They travel inside the track file, so a course you send somebody arrives with its branding on.';
     body.append(help);
 
-    const preview = document.createElement('canvas');
-    preview.className = 'tb-logo-preview';
-    body.append(preview);
+    const list = document.createElement('div');
+    body.append(list);
 
-    const caption = document.createElement('p');
-    caption.className = 'tb-help';
-    body.append(caption);
+    const summary = document.createElement('p');
+    summary.className = 'tb-help';
+    body.append(summary);
 
-    /* One image element, reused, so redrawing the preview after a change
-     * does not start a second decode of the same data URL. */
-    const img = new Image();
-    const redraw = () => {
-      const url = this.doc.branding?.logo ?? null;
-      caption.textContent = url
-        ? `${this.doc.branding.logoName || 'Logo'}, ${Math.round(url.length / 1024)} kB, stored in the track.`
-        : 'No logo yet. The gates carry their number and nothing else.';
-      if (!url) {
-        drawBannerPreview(preview, null, null);
-        return;
-      }
-      if (img.src !== url) {
-        img.onload = () => drawBannerPreview(preview, url, img);
+    /* One image element per data URL, reused across redraws, so repainting
+     * the list after a change does not start five fresh decodes. */
+    const images = new Map();
+    const imageFor = (url, onLoad) => {
+      let img = images.get(url);
+      if (!img) {
+        img = new Image();
+        images.set(url, img);
+        img.addEventListener('load', onLoad);
         img.src = url;
+        return img;
       }
-      drawBannerPreview(preview, url, img);
+      /* Already asked for, but not decoded yet, and this redraw's canvases
+       * still need telling. Two slots holding the same file is the case: one
+       * decode, two previews waiting on it. */
+      if (!img.complete) {
+        img.addEventListener('load', onLoad);
+      }
+      return img;
     };
 
+    /* One file input, pointed at whichever slot asked for it. Five inputs
+     * would be five change handlers disagreeing about which slot they are. */
     const file = document.createElement('input');
     file.type = 'file';
     file.accept = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
     file.style.display = 'none';
+    let target = -1;
+    body.append(file);
+
+    const redraw = () => {
+      list.textContent = '';
+      const logos = logosOf(this.doc);
+      const spent = brandingBytes(this.doc);
+      for (let i = 0; i < LOGO_SLOTS; i += 1) {
+        const mark = logos[i] ?? null;
+        const row = document.createElement('div');
+        row.className = mark ? 'tb-slot' : 'tb-slot empty';
+        const num = document.createElement('span');
+        num.className = 'tb-num';
+        num.textContent = String(i + 1);
+        const slot = document.createElement('div');
+        slot.className = 'tb-slot-body';
+        row.append(num, slot);
+        /*
+         * In the document BEFORE anything is painted into it. Both preview
+         * painters size their bitmap from the canvas's clientWidth, and a
+         * canvas that is not laid out yet reports zero: the previews came
+         * out at the fallback width and were then stretched by the CSS,
+         * which is a blurry picture of somebody's logo in the one dialog
+         * whose whole job is showing it sharply.
+         */
+        list.append(row);
+
+        if (!mark) {
+          const note = document.createElement('p');
+          note.className = 'tb-help';
+          note.textContent = i === logos.length
+            ? 'Empty. Add a mark here and the gates start sharing it.'
+            : 'Empty.';
+          slot.append(note);
+          if (i === logos.length) {
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'tb-btn';
+            add.textContent = 'Add a mark';
+            add.addEventListener('click', () => { target = i; file.click(); });
+            const btns = document.createElement('div');
+            btns.className = 'tb-row-btns';
+            btns.append(add);
+            slot.append(btns);
+          }
+          continue;
+        }
+
+        /* The two places a mark lands, side by side, because they are two
+         * different shapes: a long strip on the gate's header board and a
+         * rectangle on the grass. A mark can suit one and not the other. */
+        const arts = document.createElement('div');
+        arts.className = 'tb-slot-arts';
+        const board = document.createElement('canvas');
+        board.className = 'tb-logo-preview slot';
+        const grass = document.createElement('canvas');
+        grass.className = 'tb-ground-preview';
+        arts.append(board, grass);
+        slot.append(arts);
+        /* The grass preview is drawn at the footprint a Ground logo is
+         * PLACED with, from the element library, so what an author judges
+         * here is the box they will actually get. */
+        const foot = ELEMENTS.groundLogo.dims;
+        const draw = () => {
+          drawBannerPreview(board, mark.image, img);
+          drawGroundPreview(grass, img, foot.width, foot.depth);
+        };
+        const img = imageFor(mark.image, draw);
+        draw();
+
+        const caption = document.createElement('p');
+        caption.className = 'tb-help';
+        caption.textContent = `${mark.name || `Mark ${i + 1}`}, ${Math.round(mark.image.length / 1024)} kB, stored in the track.`;
+        slot.append(caption);
+
+        const btns = document.createElement('div');
+        btns.className = 'tb-row-btns';
+        const swap = document.createElement('button');
+        swap.type = 'button';
+        swap.className = 'tb-btn';
+        swap.textContent = 'Replace';
+        swap.addEventListener('click', () => { target = i; file.click(); });
+        const drop = document.createElement('button');
+        drop.type = 'button';
+        drop.className = 'tb-btn tb-danger';
+        drop.textContent = 'Remove';
+        drop.addEventListener('click', () => {
+          this.edit('remove mark', (d) => {
+            d.branding.logos.splice(i, 1);
+          });
+          redraw();
+          this.toast('Mark removed. Any grass painted with it now shows nothing until you pick another.');
+        });
+        btns.append(swap, drop);
+        slot.append(btns);
+      }
+
+      /*
+       * What the list works out to on THIS course, which is the question an
+       * author actually has: not "how many marks are there" but "how many
+       * gates does each sponsor get".
+       */
+      const gates = dressOrder(this.doc).size;
+      const n = logos.length;
+      const left = Math.max(0, BRANDING_MAX_CHARS - spent);
+      const budget = `${Math.round(spent / 1024)} kB of ${Math.round(BRANDING_MAX_CHARS / 1024)} kB used, ${Math.round(left / 1024)} kB left.`;
+      if (!n) {
+        summary.textContent = `No marks yet. The gates carry a chequered flag device and their number. ${budget}`;
+      } else if (!gates) {
+        summary.textContent = `Nothing is in the flying order yet, so nothing is wearing them. ${budget}`;
+      } else {
+        const base = Math.floor(gates / n);
+        const extra = gates % n;
+        const share = extra === 0
+          ? `${base} gate${base === 1 ? '' : 's'} each`
+          : `${base + 1} gates for the first ${extra}, ${base} for the rest`;
+        summary.textContent = `${gates} gate${gates === 1 ? '' : 's'} in the flying order, ${n} mark${n === 1 ? '' : 's'}: ${share}. ${budget}`;
+      }
+    };
+
     file.addEventListener('change', async () => {
       const chosen = file.files[0];
+      const slot = target;
       file.value = '';
-      if (!chosen) {
+      target = -1;
+      if (!chosen || slot < 0) {
         return;
       }
+      const logos = logosOf(this.doc);
+      /* Replacing a slot gets its own bytes back before it is asked to fit,
+       * so swapping a 90 kB mark for another 90 kB mark is never refused for
+       * a budget the mark it is replacing was spending. */
+      const freed = logos[slot] ? logos[slot].image.length : 0;
+      const budget = BRANDING_MAX_CHARS - brandingBytes(this.doc) + freed;
       try {
-        const logo = await normaliseLogo(chosen);
-        this.edit('set logo', (d) => {
-          d.branding.logo = logo.dataUrl;
-          d.branding.logoName = logo.name;
+        const logo = await normaliseLogo(chosen, budget);
+        this.edit(logos[slot] ? 'replace mark' : 'add mark', (d) => {
+          const list2 = d.branding.logos;
+          if (list2[slot]) {
+            /* The id survives a replacement, so a footprint painted on the
+             * grass keeps pointing at this slot rather than going blank
+             * because the sponsor sent a new file. */
+            list2[slot].image = logo.dataUrl;
+            list2[slot].name = logo.name;
+          } else {
+            list2.push({ id: newLogoId(d), image: logo.dataUrl, name: logo.name });
+          }
         });
         redraw();
-        this.toast(`Logo set from ${logo.name}, fitted to ${logo.width} by ${logo.height}.`);
+        this.toast(`Mark ${slot + 1} set from ${logo.name}, ${logo.width} by ${logo.height}.`);
       } catch (e) {
-        caption.textContent = `Could not use that image: ${e.message}`;
         this.toast(`Could not use that image: ${e.message}`);
       }
     });
-    body.append(file);
 
-    const row = document.createElement('div');
-    row.className = 'tb-row-btns';
-    const choose = document.createElement('button');
-    choose.type = 'button';
-    choose.className = 'tb-btn';
-    choose.textContent = 'Choose an image';
-    choose.addEventListener('click', () => file.click());
-    const clear = document.createElement('button');
-    clear.type = 'button';
-    clear.className = 'tb-btn tb-danger';
-    clear.textContent = 'Remove';
-    clear.addEventListener('click', () => {
-      this.edit('clear logo', (d) => {
-        d.branding.logo = null;
-        d.branding.logoName = '';
-      });
-      img.removeAttribute('src');
-      redraw();
-      this.toast('Logo removed.');
-    });
-    row.append(choose, clear);
-    body.append(row);
-
-    this.modal('Gate logo', body);
+    this.modal('Course marks', body);
     redraw();
   }
 
@@ -1125,7 +1248,7 @@ export class App {
      * fly the wrong track once.
      */
     this.flyBtn = btn('Fly this track', () => this.flyThisTrack(), 'Build the world around this course and fly it', 'tb-btn tb-primary');
-    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, logo and all');
+    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, marks and all');
     this.listingChip = document.createElement('span');
     this.listingChip.className = 'tb-listing';
 
@@ -1192,7 +1315,7 @@ export class App {
       group(
         btn('Fit', () => this.frameAll(), 'Frame the whole field'),
         this.pathBtn,
-        btn('Logo', () => this.openLogo(), 'Put a picture on every gate on this course'),
+        btn('Marks', () => this.openLogo(), 'Up to five sponsors\u2019 marks, shared out over the gates, the flags and the grass'),
       ),
     );
 
@@ -1239,7 +1362,7 @@ export class App {
         this.publishBtn.title = 'Put this copy on the board under a new name. The original stays.';
       } else {
         this.publishBtn.textContent = 'Publish';
-        this.publishBtn.title = 'Put this course on the public board, logo and all';
+        this.publishBtn.title = 'Put this course on the public board, marks and all';
       }
     }
   }

@@ -35,7 +35,7 @@
 
 import { ELEMENTS, KIND, FRAME_TUBE_OD, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
 import {
-  aperturesOf, elementById, kindOf, apertureCenter,
+  aperturesOf, elementById, kindOf, apertureCenter, logoForDecal,
 } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { figureCue } from './figures.js';
@@ -76,6 +76,11 @@ const C = {
   numberBg: '#f7e8cd',
   numberBgSel: '#ffd45c',
   start: '#7dffb4',
+  /* Ground paint. Cream, at the strength printed vinyl reads at on the
+   * plan, because a decal is dressing rather than something to fly: it must
+   * be findable and it must not compete with a gate. */
+  decal: 'rgba(247, 232, 205, 0.7)',
+  decalFill: 'rgba(247, 232, 205, 0.07)',
   ghost: 'rgba(255, 212, 92, 0.45)',
   band: 'rgba(255, 212, 92, 0.14)',
   bandEdge: 'rgba(255, 212, 92, 0.7)',
@@ -199,6 +204,12 @@ export class View2D {
        * supposed to be wrapped around. */
       const span = Math.max(el.dims.padSize, (el.dims.pads - 1) * el.dims.spacing + el.dims.padSize);
       return boxCorners(el.position, el.yaw, el.dims.padSize, span);
+    }
+    if (def.kind === KIND.DECAL) {
+      /* The painted footprint itself, so what a pointer grabs is what the
+       * grass wears. Width along the heading, depth across, the same
+       * reading a barrier's dimensions get. */
+      return boxCorners(el.position, el.yaw, Math.max(0.2, el.dims.width), Math.max(0.2, el.dims.depth));
     }
     if (def.kind === KIND.MARKER) {
       const r = Math.max(def.dims.baseRadius ?? 0.2, 0.22);
@@ -578,7 +589,106 @@ export class View2D {
       this.drawBarrier(ctx, el, selected, hovered);
       return;
     }
+    if (def.kind === KIND.DECAL) {
+      this.drawGroundLogo(ctx, el, selected, hovered);
+      return;
+    }
     this.drawAperture(ctx, el, numbers, selected, hovered);
+  }
+
+  /*
+   * A mark painted on the grass: the footprint, and the mark itself inside
+   * it once it has decoded.
+   *
+   * THE PICTURE IS DRAWN, not a name in a box, because the whole question
+   * an author has about a ground decal is whether it is the right way up,
+   * the right size and in the right place, and a rectangle labelled
+   * "logo-2" answers none of them. It is fitted inside the footprint by the
+   * same rule the world fits it by, so a mark that paints small here paints
+   * small on the field, which is the cue to resize the footprint.
+   *
+   * A footprint with no mark behind it is drawn hollow and said so. That
+   * happens when the course carries no marks yet, or when the one this
+   * decal named has been removed, and both are things to fix rather than
+   * things to hide.
+   */
+  drawGroundLogo(ctx, el, selected, hovered) {
+    const poly = this.planShape(el).map((p) => this.toScreen(p));
+    const c = this.toScreen(el.position);
+    const wpx = Math.max(1, el.dims.width * this.cam.scale);
+    const dpx = Math.max(1, el.dims.depth * this.cam.scale);
+    const mark = logoForDecal(this.host.doc, el);
+    const img = mark ? this.markImage(mark.image) : null;
+
+    ctx.save();
+    ctx.beginPath();
+    poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fillStyle = C.decalFill;
+    ctx.fill();
+    /* Dashed, because paint has no edge you could hit. A barrier is solid
+     * and drawn solid; this is not. */
+    ctx.setLineDash(selected ? [] : [5, 4]);
+    ctx.strokeStyle = selected ? C.selected : (hovered ? '#ffffff' : C.decal);
+    ctx.lineWidth = selected ? 2.4 : 1.2;
+    ctx.stroke();
+    ctx.restore();
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.closePath();
+      ctx.clip();
+      ctx.translate(c.x, c.y);
+      /* MINUS the yaw. toScreen flips Y so the document's +Y runs UP the
+       * plan, and a canvas rotation turns the other way from a document
+       * one. The same sign appears in the world's pitch canvas for the same
+       * reason. Get it wrong and every ground mark is mirrored, which
+       * nothing else on the plan would show. */
+      ctx.rotate(-el.yaw);
+      const k = Math.min(wpx / img.naturalWidth, dpx / img.naturalHeight);
+      const iw = img.naturalWidth * k;
+      const ih = img.naturalHeight * k;
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(img, -iw * 0.5, -ih * 0.5, iw, ih);
+      ctx.restore();
+      return;
+    }
+    if (!mark) {
+      const px = Math.max(8, Math.min(13, dpx * 0.3));
+      ctx.font = `${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = selected ? C.selected : C.decal;
+      ctx.fillText('no mark', c.x, c.y);
+    }
+  }
+
+  /*
+   * A decoded mark, cached on the view by its data URL.
+   *
+   * Cached because drawElement runs on every pointer move over a field that
+   * may carry five decals, and starting a decode per frame is how a plan
+   * that used to pan smoothly stops. Keyed by the data URL rather than by
+   * the mark's id, so replacing a sponsor's artwork under the same id gets
+   * a new decode rather than the old picture.
+   */
+  markImage(url) {
+    if (typeof url !== 'string' || !url) {
+      return null;
+    }
+    if (!this.markImages) {
+      this.markImages = new Map();
+    }
+    let img = this.markImages.get(url);
+    if (!img) {
+      img = new Image();
+      img.onload = () => this.host.requestDraw();
+      img.src = url;
+      this.markImages.set(url, img);
+    }
+    return img;
   }
 
   drawAperture(ctx, el, numbers, selected, hovered) {

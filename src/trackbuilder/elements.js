@@ -53,6 +53,11 @@ export { FRAME_TUBE_OD };
  *              warning pass tests the racing line against it.
  *   start      the lap's start position and heading. Exactly one per track.
  *   annotation text on the field. Not part of the course in any way.
+ *   decal      is PAINTED ON THE GROUND. It has a footprint and a heading
+ *              and nothing else: no height, no collider, never in the
+ *              sequence, and the path warning pass ignores it because a quad
+ *              cannot hit paint. A sponsor's mark on the grass is the only
+ *              one of these today.
  */
 export const KIND = {
   APERTURE: 'aperture',
@@ -60,6 +65,7 @@ export const KIND = {
   OBSTACLE: 'obstacle',
   START: 'start',
   ANNOTATION: 'annotation',
+  DECAL: 'decal',
 };
 
 /*
@@ -360,6 +366,27 @@ export const ELEMENTS = {
      * in metres on the field and so it lives here with the rest. */
     dims: { textHeight: 0.9 },
   },
+  groundLogo: {
+    id: 'groundLogo',
+    label: 'Ground logo',
+    key: 'O',
+    group: 'extra',
+    kind: KIND.DECAL,
+    /* Which of the course's marks this one wears, as the id of an entry in
+     * branding.logos. An element field like a label's text, not a
+     * dimension. Empty means the first mark the course carries, so a decal
+     * dropped on a course with one sponsor needs no further decision. */
+    logoId: '',
+    note: 'A sponsor mark painted on the grass. Pick which of the marks it wears, and its size, in the inspector.',
+    /*
+     * The footprint the mark is fitted inside, width along the element's own
+     * heading and depth across it, the same way a barrier reads. Ten by four
+     * is a wide sponsor board's proportions laid flat, which is the shape
+     * most marks arrive in; the inspector resizes it and a square mark
+     * fitted inside it simply paints square and smaller.
+     */
+    dims: { width: 10, depth: 4 },
+  },
 };
 
 /* Palette order is the order the task specifies, and the order the palette
@@ -368,7 +395,7 @@ export const ELEMENTS = {
 export const PALETTE_ORDER = [
   'gate', 'flaggedGate', 'doubleStack', 'flaggedDoubleStack', 'ladder', 'tower', 'diveGate', 'barrier', 'flag', 'cone', 'waypoint',
 ];
-export const PALETTE_EXTRA = ['startPads', 'label'];
+export const PALETTE_EXTRA = ['startPads', 'label', 'groundLogo'];
 
 /*
  * The path toggle. It is in the palette because the task puts it there, and

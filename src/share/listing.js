@@ -50,9 +50,28 @@ import {
  * board decides when a layout has changed enough to clear a course's times;
  * this is the client's prediction of that answer, used to warn before
  * publishing. They must agree on WHICH KEYS count as the layout, currently
- * field, elements and sequence. Different hashes, same key list: change one
- * and change the other, or the warning and the clearing disagree.
+ * field, elements and sequence, AND on which element types are dressing
+ * rather than layout. Different hashes, same key list and same skip list:
+ * change one and change the other, or the warning and the clearing
+ * disagree.
  */
+/*
+ * Element types that are painted on rather than flown through, so changing
+ * them cannot change a lap.
+ *
+ * THIS IS WHY A SPONSOR DOES NOT WIPE A LEADERBOARD. Selling a place on an
+ * existing course means adding a mark to a track people have already flown,
+ * and if that counted as a layout change every time on the board would be
+ * cleared the moment the deal was signed. Paint has no collider and is not
+ * in the flying order, so a lap flown before it was painted is the same lap.
+ *
+ * Written out as a literal rather than derived from the element library,
+ * because the board has no element library and the two lists have to be
+ * edited together on purpose. MIRRORS LAYOUT_SKIP in the board's
+ * validate.js.
+ */
+const LAYOUT_SKIP = new Set(['groundLogo']);
+
 export function layoutFingerprint(doc) {
   if (!doc || typeof doc !== 'object') {
     return '';
@@ -67,7 +86,7 @@ export function layoutFingerprint(doc) {
   }
   return JSON.stringify({
     field: plain.field ?? {},
-    elements: plain.elements ?? [],
+    elements: (plain.elements ?? []).filter((e) => !LAYOUT_SKIP.has(e?.type)),
     sequence: plain.sequence ?? [],
   });
 }

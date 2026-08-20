@@ -39,6 +39,19 @@ time. Its side of the link is a constant in the source:
 
 So deploy the board first, take its URL, then deploy the simulator.
 
+## The other reason the board goes first
+
+The board decides which `schemaVersion` of a track document it will store,
+and the builder writes the newest one. A simulator deployed ahead of the
+board therefore publishes courses the board refuses, with a message about a
+version rather than about anything the author did.
+
+Today's version is **2**, which is where a course grew from one sponsor's
+mark to five. The board accepts 1 and 2. Whenever
+`SCHEMA_VERSION` in the simulator's `src/trackbuilder/model.js` goes up,
+teach `inspectDocument` in the board's `src/validate.js` the new number and
+deploy the board before the simulator, the same way round as the URL above.
+
 ## By hand, rather than from the blueprints
 
 The blueprints below are the short path. If you would rather create each

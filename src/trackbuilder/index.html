@@ -989,6 +989,85 @@
         background: #dcd6ca;
       }
 
+      /* The same board, for the five slot list where one mark is one row
+         rather than the whole dialog, beside the turf it also lands on. The
+         two are different shapes on purpose: a mark that fills the header
+         strip may sit small in a square footprint, and the point of showing
+         both is that an author sees that before they publish. */
+      .tb-slot-arts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--s2);
+        align-items: start;
+      }
+      .tb-logo-preview.slot { margin: var(--s2) 0; }
+
+      /* A mark on the grass. Green rather than vinyl white, because that is
+         what is under it on the field. */
+      .tb-ground-preview {
+        display: block;
+        width: 100%;
+        margin: var(--s2) 0;
+        border-radius: var(--r-chip);
+        background: #4c8b38;
+      }
+
+      /* One sponsor's slot: the board, what it costs, and the two buttons
+         that fill or empty it. Numbered down the left, because the number
+         is the thing the inspector's picker and the gates both count in. */
+      .tb-slot {
+        display: grid;
+        grid-template-columns: 26px 1fr;
+        gap: var(--s2);
+        align-items: start;
+        padding: var(--s2) 0;
+        border-top: 1px solid var(--rule);
+      }
+      .tb-slot:first-of-type { border-top: 0; }
+      .tb-slot > .tb-num { margin-top: var(--s2); }
+      .tb-slot.empty > .tb-slot-body { opacity: 0.72; }
+      .tb-slot-body { min-width: 0; }
+      .tb-slot-body .tb-help { margin: 0; }
+      .tb-slot-body .tb-row-btns { margin-top: var(--s2); }
+
+      /* The inspector's picker: which of the course's marks a footprint
+         wears, chosen by looking at them. */
+      .tb-mark-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+        gap: var(--s2);
+        margin: var(--s3) 0 var(--s4);
+      }
+      .tb-mark-card {
+        position: relative;
+        background: #dcd6ca;
+        border: 1px solid var(--rule);
+        border-radius: var(--r-ctl);
+        padding: var(--s1);
+        cursor: pointer;
+        font: inherit;
+        transition: border-color var(--quick), box-shadow var(--quick);
+      }
+      .tb-mark-card:hover:not(.on) { border-color: var(--edge); }
+      .tb-mark-card.on {
+        border-color: var(--pick-edge);
+        box-shadow: 0 0 0 2px var(--pick-edge);
+      }
+      .tb-mark-card img {
+        display: block;
+        width: 100%;
+        height: 34px;
+        object-fit: contain;
+      }
+      .tb-mark-card span {
+        position: absolute;
+        top: 1px;
+        right: 4px;
+        font-size: var(--t-small);
+        font-weight: 700;
+        color: #18202f;
+      }
+
       /* ---------------- narrow ---------------- */
 
       /*

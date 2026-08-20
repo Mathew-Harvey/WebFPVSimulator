@@ -58,7 +58,7 @@
 
 import { ELEMENTS, KIND, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
-  normalize, elementById, aperturesOf, startPadsOf,
+  normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
 import { buildPath } from '../trackbuilder/path.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
@@ -194,12 +194,23 @@ export function courseFromDocument(raw) {
    * also score, through a virtual square on the pass side. */
   const structures = [];
   const byElement = new Map();
+  /* Which of the course's marks each dressed structure wears. Read off the
+   * document by the one rule both renderers share, so the world and the
+   * builder's preview cannot disagree about whose logo is on gate 7. */
+  const dress = dressOrder(doc);
   for (const el of doc.elements) {
     const def = ELEMENTS[el.type];
     const kind = def.kind;
     if (kind === KIND.ANNOTATION) {
       /* A label is an authoring note. It is drawn on the plan and in the
        * builder's preview and it has no business standing on a race field. */
+      continue;
+    }
+    if (kind === KIND.DECAL) {
+      /* Paint, not furniture. It is collected below into course.decals,
+       * where the renderer stamps it into the pitch's own surface, so it
+       * never becomes a structure, never gets a collider and never reaches
+       * the warning pass that tests the racing line against solid things. */
       continue;
     }
     const p = toScene(field, el.position);
@@ -222,6 +233,8 @@ export function courseFromDocument(raw) {
       s.flagH = GATE_FLAG_H * GATE_SCALE;
       s.flagPoleR = GATE_FLAG_POLE_R * GATE_SCALE;
     }
+    /* Null for anything that carries no printed vinyl. */
+    s.dress = dress.has(el.id) ? dress.get(el.id) : null;
     structures.push(s);
     byElement.set(el.id, s);
   }
@@ -407,12 +420,15 @@ export function courseFromDocument(raw) {
     name: doc.name,
     documentId: doc.id,
     /*
-     * The event's logo, straight through. normalize() has already refused
-     * anything that is not an embedded image, so what reaches the renderer
-     * is a data URL or nothing, and the renderer never has to decide whether
-     * a string is safe to hand a texture loader.
+     * The course's marks, in the order they are dealt out round the gates,
+     * as bare data URLs. normalize() has already refused anything that is
+     * not an embedded image, so what reaches the renderer is a list of data
+     * URLs and the renderer never has to decide whether a string is safe to
+     * hand a texture loader.
      */
-    logo: doc.branding?.logo ?? null,
+    logos: logosOf(doc).map((l) => l.image),
+    /* The marks painted on the grass, in scene metres. See groundDecals. */
+    decals: groundDecals(doc, field),
     field: { width: field.width, depth: field.depth },
     structures,
     stations,
@@ -426,6 +442,43 @@ export function courseFromDocument(raw) {
     closed: path.closed,
   };
   out.samples = corridorSamples(out);
+  return out;
+}
+
+/*
+ * The marks painted on the grass, converted to the scene's frame.
+ *
+ * WHICH MARK, BY INDEX. The document names it by id so that removing the
+ * second of three sponsors cannot silently repaint somebody's decal; the
+ * renderer wants a position in the list it was handed, because that is what
+ * indexes its decoded images. The translation happens here, once, and a
+ * decal naming a mark the course no longer carries is DROPPED rather than
+ * defaulted: painting the wrong sponsor's logo on a field is worse than
+ * painting none.
+ *
+ * `w` runs along the decal's own heading and `d` across it, which is the
+ * same reading a barrier's dimensions get, so an author who has rotated one
+ * has rotated the other the same way.
+ */
+function groundDecals(doc, field) {
+  const logos = logosOf(doc);
+  const out = [];
+  for (const el of doc.elements) {
+    if (ELEMENTS[el.type]?.kind !== KIND.DECAL) {
+      continue;
+    }
+    const mark = logoForDecal(doc, el);
+    const index = mark ? logos.indexOf(mark) : -1;
+    if (index < 0) {
+      continue;
+    }
+    const w = Math.max(0.1, el.dims.width);
+    const d = Math.max(0.1, el.dims.depth);
+    const p = toScene(field, el.position);
+    out.push({
+      x: p.x, z: p.z, yaw: el.yaw, w, d, logo: index,
+    });
+  }
   return out;
 }
 

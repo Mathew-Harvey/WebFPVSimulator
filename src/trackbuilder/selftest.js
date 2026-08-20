@@ -33,6 +33,7 @@
 import {
   createTrack, createElement, deserialize, elementById, normalize,
   roundTripsCleanly, serialize, aperturesOf, toPlain,
+  logoForDecal, dressOrder, LOGO_SLOTS,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
 import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
@@ -1202,6 +1203,149 @@ function suiteListing() {
   check('an owned handle change is author drift, not layout drift', authorShift.authorDrift === true && authorShift.layoutDrift === false && authorShift.canUpdateListing === true);
 }
 
+/*
+ * FIVE MARKS AND THE PAINT ON THE GRASS.
+ *
+ * The three things that can go quietly wrong here are the migration off the
+ * old single logo field, the round robin that decides whose mark is on which
+ * gate, and whether a decal counts as layout. The last one is the commercial
+ * one: adding a sponsor to a course people have flown must not clear their
+ * times.
+ */
+function suiteBranding() {
+  console.log('branding');
+  const png = (n) => `data:image/png;base64,${'a'.repeat(n)}`;
+
+  /* Migration. A version 1 document's single logo becomes the first mark,
+   * silently: it is an upgrade rather than damage. */
+  const v1 = {
+    schemaVersion: 1,
+    id: 'trk-11111111',
+    name: 'Old',
+    field: { width: 60, depth: 40, gridSize: 1 },
+    branding: { logo: png(120), logoName: 'acme.png' },
+    elements: [],
+    sequence: [],
+  };
+  const migrated = normalize(v1);
+  check('a version 1 logo becomes the first mark',
+    migrated.doc.branding.logos.length === 1
+    && migrated.doc.branding.logos[0].image === png(120)
+    && migrated.doc.branding.logos[0].name === 'acme.png');
+  check('and the migration is silent', migrated.repairs.length === 0, migrated.repairs.join('; '));
+  check('the document is written as version 2', toPlain(migrated.doc).schemaVersion === 2);
+  check('and the old spelling is not written back',
+    !('logo' in toPlain(migrated.doc).branding));
+
+  /* The caps. Five slots, and one shared size budget under them. */
+  const marks = (count, size) => Array.from({ length: count }, (unused, i) => ({
+    id: `logo-${i + 1}`, image: png(size), name: `m${i + 1}`,
+  }));
+  const many = normalize({ ...v1, schemaVersion: 2, branding: { logos: marks(7, 100) } });
+  check('a sixth mark is dropped', many.doc.branding.logos.length === LOGO_SLOTS);
+  check('and it says so', many.repairs.length === 1, many.repairs.join('; '));
+  const fat = normalize({ ...v1, schemaVersion: 2, branding: { logos: marks(3, 200 * 1024) } });
+  check('marks past the shared budget are dropped',
+    fat.doc.branding.logos.length === 1, `${fat.doc.branding.logos.length} kept`);
+  const remote = normalize({
+    ...v1,
+    schemaVersion: 2,
+    branding: { logos: [{ id: 'logo-1', image: 'https://evil.example/x.png', name: 'x' }, { id: 'logo-2', image: png(50), name: 'ok' }] },
+  });
+  check('a remote mark is dropped and the embedded one kept',
+    remote.doc.branding.logos.length === 1 && remote.doc.branding.logos[0].name === 'ok');
+  const clashing = normalize({
+    ...v1,
+    schemaVersion: 2,
+    branding: { logos: [{ id: 'logo-1', image: png(50) }, { id: 'logo-1', image: png(60) }] },
+  });
+  check('two marks cannot share an id',
+    clashing.doc.branding.logos[0].id !== clashing.doc.branding.logos[1].id);
+
+  /*
+   * THE ROUND ROBIN. Fifteen gates and five marks is three gates each, and
+   * they are spread down the lap rather than bunched, which is the whole of
+   * what a sponsor is buying.
+   */
+  const doc = createTrack('Fifteen');
+  doc.branding.logos = marks(5, 60);
+  for (let i = 0; i < 15; i += 1) {
+    const gate = place(doc, 'gate', 4 + i * 3, 20);
+    doc.sequence.push({
+      id: `sq-${i + 1}`, elementId: gate.id, apertureIndex: 0, entry: 1, passSide: null, clearance: null, overridden: false,
+    });
+  }
+  const order = dressOrder(doc);
+  check('every gate in the order gets a slot', order.size === 15);
+  const tally = new Array(5).fill(0);
+  for (const slot of order.values()) {
+    tally[slot % 5] += 1;
+  }
+  check('fifteen gates and five marks is three gates each',
+    tally.every((n) => n === 3), tally.join(','));
+  check('and consecutive gates wear different marks',
+    [...order.values()].every((slot, i) => slot === i));
+
+  /* A ladder flown three times is ONE structure and takes ONE slot: it has
+   * one header board, so it can only carry one sponsor. */
+  const stacked = createTrack('Stack');
+  const first = place(stacked, 'gate', 10, 10);
+  const ladder = place(stacked, 'ladder', 20, 10);
+  const last = place(stacked, 'gate', 30, 10);
+  stacked.sequence.push(
+    { id: 'sq-1', elementId: first.id, apertureIndex: 0, entry: 1 },
+    { id: 'sq-2', elementId: ladder.id, apertureIndex: 0, entry: 1 },
+    { id: 'sq-3', elementId: ladder.id, apertureIndex: 1, entry: -1 },
+    { id: 'sq-4', elementId: ladder.id, apertureIndex: 2, entry: 1 },
+    { id: 'sq-5', elementId: last.id, apertureIndex: 0, entry: 1 },
+  );
+  const stackOrder = dressOrder(stacked);
+  check('a stack flown three times takes one slot',
+    stackOrder.size === 3 && stackOrder.get(ladder.id) === 1 && stackOrder.get(last.id) === 2);
+
+  /*
+   * THE PAINT. A ground logo is an element with a footprint and a heading,
+   * it never reaches the flying order, it becomes a decal on the course, and
+   * it is not part of the layout.
+   */
+  const painted = createTrack('Painted');
+  painted.branding.logos = marks(2, 60);
+  const gate = place(painted, 'gate', 10, 20);
+  painted.sequence.push({ id: 'sq-1', elementId: gate.id, apertureIndex: 0, entry: 1 });
+  const bare = layoutFingerprint(painted);
+  const decal = place(painted, 'groundLogo', 30, 20, { dims: { width: 12, depth: 4 } });
+  decal.logoId = 'logo-2';
+  check('a ground logo cannot be added to the flying order',
+    addToSequence(painted, decal.id) === null);
+  check('paint on the grass is not part of the layout',
+    layoutFingerprint(painted) === bare);
+  check('it round trips', deserialize(serialize(painted)).doc.elements
+    .some((e) => e.type === 'groundLogo' && e.logoId === 'logo-2' && e.dims.width === 12));
+  check('and the mark it names is the one it gets',
+    logoForDecal(painted, decal) === painted.branding.logos[1]);
+  const unnamed = place(painted, 'groundLogo', 40, 20);
+  check('a decal that names nothing wears the first mark',
+    logoForDecal(painted, unnamed) === painted.branding.logos[0]);
+  const orphan = place(painted, 'groundLogo', 50, 20);
+  orphan.logoId = 'logo-9';
+  check('a decal naming a mark that is gone wears nothing, rather than somebody else\u2019s',
+    logoForDecal(painted, orphan) === null);
+
+  const course = courseFromDocument(painted);
+  check('the course carries the marks in order',
+    course.logos.length === 2 && course.logos[0] === painted.branding.logos[0].image);
+  check('a decal is not a structure',
+    course.structures.every((st) => st.type !== 'groundLogo'));
+  check('and the orphan is dropped rather than painted with the wrong mark',
+    course.decals.length === 2, `${course.decals.length} decals`);
+  const placed = course.decals.find((d) => d.logo === 1);
+  /* Document (30, 20) on a 60 by 40 field is the middle of the world. */
+  check('a decal lands where the document put it',
+    placed && Math.abs(placed.x - 0) < 1e-9 && Math.abs(placed.z - 0) < 1e-9,
+    placed ? `${placed.x}, ${placed.z}` : 'missing');
+  check('and it keeps its footprint', placed && placed.w === 12 && placed.d === 4);
+}
+
 function suiteStartBlock() {
   const d = startBlockDims(0.6);
   check('a default stand fits inside its pad cell', d.railLen < 0.6 && d.spanAcross < 0.6,
@@ -1536,6 +1680,7 @@ function main() {
   suiteWaypoint();
   suiteSchemaDoc();
   suiteListing();
+  suiteBranding();
   suiteStartBlock();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;

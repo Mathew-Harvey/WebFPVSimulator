@@ -47,7 +47,9 @@
  */
 
 import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
-import { aperturesOf, elementById, kindOf, apertureCenter } from './model.js';
+import {
+  aperturesOf, elementById, kindOf, apertureCenter, logosOf, logoForDecal, dressOrder,
+} from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { levelName } from './figures.js';
 import { travelDirection, passOffsetSign } from './faces.js';
@@ -61,7 +63,7 @@ import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js
  * builder use it without importing a line of the simulator.
  */
 import {
-  BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H,
+  BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, GROUND_INK,
   paintGateHeader, paintGateSleeve, paintFlagSail,
 } from '../art/banners.js';
 import {
@@ -181,56 +183,125 @@ export class View3D {
    * three canvases per keystroke is the one thing here that would be slow.
    */
   bannerKit() {
-    const logo = this.host.doc.branding?.logo ?? null;
-    if (this.kit && this.kit.logo === logo) {
+    const logos = logosOf(this.host.doc);
+    /*
+     * A cheap signature rather than the images themselves. This runs on
+     * every rebuild, which is every keystroke in the inspector, and
+     * comparing five 256 kB strings that came out of a fresh JSON.parse is
+     * a megabyte of memcmp per keypress. The id says which mark, the length
+     * and the tail of the base64 say which artwork, and two different PNGs
+     * agreeing on both is not a case worth a millisecond a keystroke.
+     */
+    const sig = logos.map((l) => `${l.id}|${l.image.length}|${l.image.slice(-32)}`).join(',');
+    if (this.kit && this.kit.sig === sig) {
       return this.kit;
     }
     if (this.kit) {
-      for (const m of [this.kit.header, this.kit.sleeve, this.kit.sleeveFlipped, ...this.kit.sails]) {
-        m.map.dispose();
+      for (const m of this.kit.owned) {
+        if (m.map) {
+          m.map.dispose();
+        }
         m.dispose();
       }
     }
+    const owned = [];
     const jobs = [];
-    const paint = (size, painter, opts) => {
+    const paint = (slot, size, painter, opts) => {
       const canvas = bannerCanvas(size[0], size[1]);
       const ctx = canvas.getContext('2d');
       painter(ctx, size[0], size[1], opts);
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
-      jobs.push((img) => {
-        painter(ctx, size[0], size[1], { ...opts, logo: img });
-        tex.needsUpdate = true;
-        this.host.requestDraw();
+      jobs.push({
+        slot,
+        run: (img) => {
+          painter(ctx, size[0], size[1], { ...opts, logo: img });
+          tex.needsUpdate = true;
+          this.host.requestDraw();
+        },
       });
       const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
       /* Owned by the kit, not by the scene graph it gets attached to. See
        * disposeContent, which walks the content and frees what it finds. */
       mat.userData.sharedKit = true;
+      owned.push(mat);
       return mat;
     };
-    this.kit = {
-      logo,
-      header: paint(BANNER_SIZE.header, paintGateHeader, {}),
-      sleeve: paint(BANNER_SIZE.sleeve, paintGateSleeve, {}),
-      /* The far leg's sleeve, painted mirrored. A second canvas rather than
-       * a negative scale on the mesh, because a negative scale inverts the
-       * winding and a single sided plane turned inside out disappears. */
-      sleeveFlipped: paint(BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
-      sails: [
-        paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'navy' }),
-        paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'red' }),
-      ],
+    /* One material per mark and accent, shared between the run of turn
+     * flags and the gates' own header pennants. Same arrangement as
+     * src/render/scene.js, and the comment there is the long version. */
+    const sailCache = new Map();
+    const sailOf = (slot, accent) => {
+      const id = `${slot}:${accent}`;
+      let mat = sailCache.get(id);
+      if (!mat) {
+        mat = paint(slot, BANNER_SIZE.sail, paintFlagSail, { accent });
+        sailCache.set(id, mat);
+      }
+      return mat;
     };
-    if (typeof logo === 'string' && logo.startsWith('data:image/')) {
+    const n = Math.max(1, logos.length);
+    const dress = [];
+    for (let i = 0; i < n; i += 1) {
+      dress.push({
+        header: paint(i, BANNER_SIZE.header, paintGateHeader, {}),
+        sleeve: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}),
+        /* The far leg's sleeve, painted mirrored. A second canvas rather
+         * than a negative scale on the mesh, because a negative scale
+         * inverts the winding and a single sided plane turned inside out
+         * disappears. */
+        sleeveFlipped: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+        sails: [sailOf(i, 'navy'), sailOf(i, 'red')],
+      });
+    }
+    const runLength = n % 2 === 0 ? n : n * 2;
+    const sails = [];
+    for (let i = 0; i < runLength; i += 1) {
+      sails.push(sailOf(i % n, i % 2 === 1 ? 'red' : 'navy'));
+    }
+    /*
+     * The ground paint's material, one per mark, made only once its image
+     * has decoded. Until then a decal draws its footprint and nothing else,
+     * which is honest: a plane with an empty texture on it is a white slab
+     * where the author expects their logo.
+     */
+    const groundMats = logos.map(() => null);
+    const groundImages = logos.map(() => null);
+    this.kit = {
+      sig, marks: n, dress, sails, owned, groundMats, groundImages,
+      forGate: (i) => dress[((Math.round(i) % n) + n) % n],
+    };
+    const kit = this.kit;
+    for (let i = 0; i < logos.length; i += 1) {
+      const slot = i;
       const img = new Image();
       img.onload = () => {
-        for (const job of jobs) {
-          job(img);
+        if (this.kit !== kit) {
+          return;
         }
+        kit.groundImages[slot] = img;
+        const tex = new THREE.Texture(img);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        tex.needsUpdate = true;
+        const mat = new THREE.MeshBasicMaterial({
+          map: tex, transparent: true, opacity: GROUND_INK, depthWrite: false,
+        });
+        mat.userData.sharedKit = true;
+        owned.push(mat);
+        kit.groundMats[slot] = mat;
+        for (const job of jobs) {
+          if (job.slot === slot) {
+            job.run(img);
+          }
+        }
+        /* A rebuild rather than a redraw: the ground paint is geometry that
+         * did not exist a moment ago, and only build() makes geometry. */
+        this.markDirty();
+        this.host.requestDraw();
       };
-      img.src = logo;
+      img.src = logos[slot].image;
     }
     return this.kit;
   }
@@ -517,6 +588,10 @@ export class View3D {
     g.add(this.gridLines(doc));
 
     const numbers = sequenceNumbers(doc);
+    /* Which of the course's marks each dressed structure wears, by the same
+     * rule the race field deals them out with. Computed once per rebuild
+     * rather than per element, because it is a walk of the whole sequence. */
+    this.dressSlots = dressOrder(doc);
     for (const el of doc.elements) {
       const node = this.buildElement(el, numbers.get(el.id) ?? []);
       if (node) {
@@ -566,6 +641,94 @@ export class View3D {
     return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: COL.grid }));
   }
 
+  /*
+   * The printed dress this structure wears: its slot in the round robin,
+   * looked up in the map build() read off the document.
+   *
+   * An element that is not in the flying order gets the first mark. It does
+   * not stand on the race field at all, so there is no world behaviour to
+   * agree with, and showing it undressed would read as a bug rather than as
+   * "this gate is not in the course yet", which the plan already says.
+   */
+  dressFor(el) {
+    return this.bannerKit().forGate(this.dressSlots?.get(el.id) ?? 0);
+  }
+
+  /*
+   * The sail a turn flag wears. The world hands its markers out in document
+   * order, one sail after the next round the run, so the preview counts the
+   * same way rather than putting the first sail on every flag: with five
+   * sponsors a line of flags carries all five, and an author has to be able
+   * to see that before they publish.
+   */
+  sailForMarker(el) {
+    const kit = this.bannerKit();
+    let i = 0;
+    for (const other of this.host.doc.elements) {
+      if (other.id === el.id) {
+        break;
+      }
+      if (other.type === 'flag') {
+        i += 1;
+      }
+    }
+    return kit.sails[i % kit.sails.length];
+  }
+
+  /*
+   * A sponsor's mark painted on the grass.
+   *
+   * The footprint is drawn as a faint panel with a cream outline, the way
+   * the plan draws it, so an author can find it and grab it even before the
+   * artwork has decoded and even where the mark itself is transparent. The
+   * mark is a separate plane FITTED inside that footprint, by the same rule
+   * the world fits it by, so a mark that paints small here paints small on
+   * the field and the cue to resize the footprint is the same cue.
+   */
+  buildGroundLogo(group, el, selected) {
+    const w = Math.max(0.2, el.dims.width);
+    const d = Math.max(0.2, el.dims.depth);
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, d),
+      new THREE.MeshBasicMaterial({
+        color: selected ? COL.frameSel : 0xf7e8cd,
+        transparent: true,
+        opacity: selected ? 0.16 : 0.07,
+        depthWrite: false,
+      }),
+    );
+    fill.rotation.z = el.yaw;
+    fill.position.z = 0.004;
+    this.register(fill, el);
+    group.add(fill);
+
+    const edge = new THREE.LineLoop(
+      new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([
+        -w / 2, -d / 2, 0, w / 2, -d / 2, 0, w / 2, d / 2, 0, -w / 2, d / 2, 0,
+      ], 3)),
+      new THREE.LineBasicMaterial({ color: selected ? COL.frameSel : 0xf7e8cd }),
+    );
+    edge.rotation.z = el.yaw;
+    edge.position.z = 0.006;
+    group.add(edge);
+
+    const mark = logoForDecal(this.host.doc, el);
+    const slot = mark ? logosOf(this.host.doc).indexOf(mark) : -1;
+    const mat = slot >= 0 ? this.bannerKit().groundMats[slot] : null;
+    const img = slot >= 0 ? this.bannerKit().groundImages[slot] : null;
+    if (!mat || !img) {
+      return;
+    }
+    const k = Math.min(w / img.naturalWidth, d / img.naturalHeight);
+    const face = new THREE.Mesh(
+      new THREE.PlaneGeometry(img.naturalWidth * k, img.naturalHeight * k),
+      mat,
+    );
+    face.rotation.z = el.yaw;
+    face.position.z = 0.008;
+    group.add(face);
+  }
+
   buildElement(el, numbers) {
     const def = ELEMENTS[el.type];
     const selected = this.host.selection.has(el.id);
@@ -587,6 +750,8 @@ export class View3D {
       this.buildMarker(group, el, selected, numbers);
     } else if (def.kind === KIND.START) {
       this.buildStart(group, el, selected);
+    } else if (def.kind === KIND.DECAL) {
+      this.buildGroundLogo(group, el, selected);
     } else {
       const sprite = textSprite(el.text || 'Label', el.dims.textHeight, selected ? '#ffd45c' : '#9db3c8');
       sprite.position.z = el.dims.textHeight;
@@ -691,7 +856,7 @@ export class View3D {
      * src/render/scene.js builds too.
      */
     if (Math.abs(el.pitch) < Math.PI / 6) {
-      const kit = this.bannerKit();
+      const kit = this.dressFor(el);
       const top = levels[levels.length - 1];
       const bottom = levels[0];
       const across = new THREE.Vector3(f.widthAxis.x, f.widthAxis.y, f.widthAxis.z);
@@ -812,7 +977,7 @@ export class View3D {
     const h = GATE_FLAG_H;
     const poleR = GATE_FLAG_POLE_R;
     const poleMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
-    const kit = this.bannerKit();
+    const kit = this.dressFor(el);
     let i = 0;
     for (const sx of signs) {
       const x = f.widthAxis.x * sx * (headerW / 2);
@@ -897,7 +1062,7 @@ export class View3D {
     const sail = new THREE.Mesh(
       sailPlaneGeometry(el.dims.poleRadius, h),
       selected ? new THREE.MeshLambertMaterial({ color: COL.frameSel, side: THREE.DoubleSide })
-        : this.bannerKit().sails[0],
+        : this.sailForMarker(el),
     );
     /* Authored in XY with x out from the mast and y up, then stood upright
      * and turned to the marker's own heading in this Z up world. */

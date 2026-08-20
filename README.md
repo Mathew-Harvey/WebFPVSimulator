@@ -50,11 +50,21 @@ Rates screen draws the stick to rate curve with your sticks on it.
 
 Tracks you build stay in this browser. Clearing it, or another device,
 starts you from nothing. Publish a course from the track builder to put
-it on the public board, logo and all. The board is a separate site,
+it on the public board, marks and all. The board is a separate site,
 [WebFPVSimulator-LeaderBoard](https://github.com/Mathew-Harvey/WebFPVSimulator-LeaderBoard).
 Locally it serves at `http://127.0.0.1:3100/`. Fly this course from the
 board opens this simulator in another tab with `?share=` and the course
-document, including the sponsor print on the gates and flags.
+document, including the sponsor print on the gates, the flags and the
+grass.
+
+A course carries up to five sponsors' marks. They are dealt out round the
+gates in flying order, so fifteen gates and five marks is three gates each,
+spread down the lap rather than bunched at the start, and each mark also
+takes its share of the upright banners and the teardrop flags. Any of them
+can be painted on the grass as well: the track builder has a **Ground logo**
+in its palette, which is a footprint on the field wearing whichever mark you
+pick. Paint is not layout, so adding a sponsor to a course people have
+already flown does not clear its times.
 
 ## Host it
 

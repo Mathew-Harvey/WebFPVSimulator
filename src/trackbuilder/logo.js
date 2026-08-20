@@ -1,41 +1,45 @@
 /*
- * logo.js: the event logo an author puts on their gates.
+ * logo.js: the sponsors' marks an author puts on their course.
  *
  * WHAT THIS IS FOR. Every gate on a course carries a printed header board,
- * and on a real race that board carries the chapter's or the sponsor's mark.
- * So the builder takes an image and the renderer puts it on every gate. The
- * whole feature is one field in the document and this file is the half that
- * turns a file somebody chose into something that field can hold.
+ * every flag carries a sail, and on a real race those carry the chapter's or
+ * the sponsor's mark. A course can hold five of them, dealt out round the
+ * gates so each sponsor is on a share of them, and any of them can also be
+ * painted on the grass. The whole feature is one list in the document and
+ * this file is the half that turns a file somebody chose into something that
+ * list can hold.
  *
  * THREE THINGS HAPPEN TO AN UPLOAD, and all three are the reason this is a
  * module rather than an input element.
  *
- *   IT IS RE-DRAWN, not stored. Whatever arrives is painted onto a 1200 by
- *   400 canvas and re-encoded as a PNG. That fixes the aspect ratio once,
- *   here, so the renderer can put a fixed three by one plane on the banner
- *   and no upload is ever stretched; it strips whatever metadata the
- *   original carried; and it means a 12 megapixel photograph and a 40 by 20
- *   icon cost the document the same.
+ *   IT IS RE-DRAWN, not stored. Whatever arrives is painted onto a fresh
+ *   canvas and re-encoded as a PNG. That strips whatever metadata the
+ *   original carried, and it means a 12 megapixel photograph and a 40 by 20
+ *   icon cost the document about the same.
  *
- *   THREE BY ONE, because that is the shape of the space. A gate's header
- *   board is 2.74 m wide and 0.58 m tall, and the number roundel takes the
- *   left end of it, so what is left for a picture is a long strip. Fitted to
- *   two by one the picture came out under a third of the board with a metre
- *   of empty printed vinyl beside it, which is not what a sponsor's board
- *   looks like. A square mark still sits centred and full height; a wide one
- *   now fills the strip it was made for.
+ *   IT KEEPS ITS OWN SHAPE. The canvas is the image's own aspect ratio,
+ *   scaled to fit inside a 1200 by 400 box. It used to be that box exactly,
+ *   with transparent bars painted either side of a mark that was not three
+ *   by one, and that was wrong twice over. Every surface that draws a mark
+ *   fits it into a space, so the transparent bars were fitted along with the
+ *   ink and a square logo came out a third of the size it should have been;
+ *   and a mark painted on the grass has a footprint on the field, which is
+ *   its own shape and not the board's.
  *
- *   IT IS FITTED, not cropped. The image is scaled to fit inside the board
- *   with its own aspect ratio kept and transparent space either side. A logo
- *   with a piece cut off it is worse than a small logo.
+ *   IT IS CAPPED. A track is a file people send each other, five marks share
+ *   one budget, and local storage is about 5 MB for the whole origin, so the
+ *   encode steps down through smaller boxes until it fits what is left, and
+ *   says plainly how much that was if it cannot.
  *
- *   IT IS CAPPED. A track is a file people send each other and local storage
- *   is about 5 MB for the whole origin, so the encode steps down through
- *   smaller boards until it fits under model.js's cap, and says so plainly if
- *   it cannot.
+ * A RASTER IS NEVER ENLARGED. Scaling a 40 by 20 icon up to 1200 by 600 buys
+ * no detail and costs a hundred times the bytes: the surfaces that draw it
+ * will scale it anyway, and they will scale it exactly as blurrily from the
+ * small copy. An SVG is the exception, because scaling a vector up is where
+ * its detail comes from, so it is rasterised at the full box.
  *
- * This module imports model.js for the cap and nothing else. No DOM is
- * touched beyond a canvas and an image element it creates and drops.
+ * This module imports model.js for the caps and banners.js for the preview.
+ * No DOM is touched beyond a canvas and an image element it creates and
+ * drops.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -54,14 +58,15 @@
  */
 
 import { LOGO_MAX_CHARS, isUsableLogo } from './model.js';
-import { HEADER_NUMBER_ZONE, paintGateHeader } from '../art/banners.js';
+import { HEADER_NUMBER_ZONE, paintGateHeader, paintGroundLogo } from '../art/banners.js';
 
 /*
- * The board the logo is fitted to, and the sizes the encode steps down
- * through until one lands under the document's cap.
+ * The box a mark is fitted inside, and the boxes the encode steps down
+ * through until one lands under the budget. 1200 by 400 is the gate header's
+ * own proportions at a resolution the header texture never exceeds, so a
+ * wide mark loses nothing and a tall one is still 400 px on its long side.
  */
-export const LOGO_ASPECT = 3;
-const BOARD_SIZES = [400, 256, 180, 128].map((bh) => [bh * LOGO_ASPECT, bh]);
+const BOXES = [[1200, 400], [768, 256], [540, 180], [384, 128]];
 
 /* Refused before it is decoded. A browser will happily try to decode a 40
  * megapixel image and take the tab with it. */
@@ -88,11 +93,20 @@ function loadImage(file) {
  * Turn a chosen file into a data URL the document can hold, or throw with a
  * sentence a person can act on.
  *
+ * `budget` is how many characters this ONE mark may spend, which the caller
+ * works out from what the other marks on the course already cost. It is
+ * never allowed above LOGO_MAX_CHARS, because that is what a reader of the
+ * document will accept for a single mark whatever the total says.
+ *
  * Returns { dataUrl, name, width, height, bytes }.
  */
-export async function normaliseLogo(file) {
+export async function normaliseLogo(file, budget = LOGO_MAX_CHARS) {
+  const cap = Math.max(0, Math.min(LOGO_MAX_CHARS, Math.round(budget)));
   if (!file) {
     throw new Error('no file was chosen');
+  }
+  if (cap < 1024) {
+    throw new Error('the marks on this course have used their whole size budget. Remove one first.');
   }
   if (file.size > MAX_FILE_BYTES) {
     throw new Error(`that file is ${Math.round(file.size / (1024 * 1024))} MB. The limit is ${MAX_FILE_BYTES / (1024 * 1024)} MB.`);
@@ -108,46 +122,48 @@ export async function normaliseLogo(file) {
      * guessing a size for somebody's artwork is worse than asking. */
     throw new Error('that image has no size of its own. Export it at a fixed pixel size and try again.');
   }
+  /* A vector is rasterised at the box; a raster is never enlarged past its
+   * own pixels. See the header. */
+  const vector = file.type === 'image/svg+xml';
 
   let last = null;
-  for (const [bw, bh] of BOARD_SIZES) {
+  for (const [bw, bh] of BOXES) {
+    const scale = Math.min(bw / sw, bh / sh, vector ? Infinity : 1);
+    const w = Math.max(1, Math.round(sw * scale));
+    const h = Math.max(1, Math.round(sh * scale));
     const canvas = document.createElement('canvas');
-    canvas.width = bw;
-    canvas.height = bh;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingQuality = 'high';
-    /* Fit, never fill: the whole mark, centred, with transparent space
-     * wherever its own proportions do not match the board's. */
-    const scale = Math.min(bw / sw, bh / sh);
-    const w = sw * scale;
-    const h = sh * scale;
-    ctx.drawImage(img, (bw - w) * 0.5, (bh - h) * 0.5, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
     let dataUrl;
     try {
       dataUrl = canvas.toDataURL('image/png');
     } catch (e) {
       throw new Error('that image cannot be re-encoded by this browser. Save it as a PNG and try again.');
     }
-    last = { dataUrl, width: bw, height: bh };
-    if (dataUrl.length <= LOGO_MAX_CHARS && isUsableLogo(dataUrl)) {
+    last = { dataUrl, width: w, height: h };
+    if (dataUrl.length <= cap && isUsableLogo(dataUrl)) {
       return {
         dataUrl,
         name: String(file.name || 'logo'),
-        width: bw,
-        height: bh,
+        width: w,
+        height: h,
         bytes: dataUrl.length,
       };
     }
   }
   throw new Error(
-    `that image will not compress under ${Math.round(LOGO_MAX_CHARS / 1024)} kB even at `
-    + `${last.width} by ${last.height}. A flat logo rather than a photograph is what fits.`,
+    `that image will not compress under ${Math.round(cap / 1024)} kB even at `
+    + `${last.width} by ${last.height}. A flat logo rather than a photograph is what fits, `
+    + 'and removing another mark frees more of the budget.',
   );
 }
 
 /*
  * Draw the gate's header board as the renderer builds it, so an author sees
- * where their logo lands before they fly it rather than after.
+ * where their mark lands before they fly it rather than after.
  *
  * The print comes from src/art/banners.js, the same painter the world and
  * the 3D preview use, so this cannot drift into a maroon board while the
@@ -187,4 +203,30 @@ export function drawBannerPreview(canvas, dataUrl, image) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('1', roundelX, h * 0.54);
+}
+
+/*
+ * The same mark as it lands on the grass, on a strip of mown turf, so an
+ * author choosing a mark for a painted footprint sees it the way a pilot
+ * will rather than as a picture on a dark panel.
+ *
+ * `wm` by `dm` is the footprint in metres, so the preview's proportions are
+ * the decal's own and a mark in a box the wrong shape reads small here for
+ * exactly the reason it will read small on the field.
+ */
+export function drawGroundPreview(canvas, image, wm = 10, dm = 4) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth || 300;
+  const shape = Math.max(0.1, Math.min(3, (dm || 1) / Math.max(0.1, wm || 1)));
+  const h = Math.round(w * shape);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.height = `${h}px`;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const logo = image && image.complete && image.naturalWidth > 0 ? image : null;
+  /* Stripes at the preview's own scale: the metres per stripe are the
+   * field's, so a 10 m footprint shows two mower passes across it. */
+  paintGroundLogo(ctx, w, h, { logo, stripePx: (w / Math.max(0.1, wm)) * 5 });
 }

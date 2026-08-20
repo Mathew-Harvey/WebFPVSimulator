@@ -320,6 +320,46 @@ export function paintFlagSail(ctx, w, h, opts = {}) {
 }
 
 /*
+ * A MARK PAINTED ON THE GRASS.
+ *
+ * Athletics grounds, football pitches and race circuits all carry sponsors'
+ * marks painted straight onto the turf, and that is what this is: the mark
+ * fitted inside the footprint its author drew on the field, at an opacity
+ * that lets the mower's stripes show faintly through it. Fully opaque it
+ * reads as a sticker laid on the grass; at 0.93 it reads as paint, which is
+ * a smaller difference on a still frame than it is at 80 km/h.
+ *
+ * FITTED, NEVER CROPPED, like every other surface here, so the footprint is
+ * the space the mark is given and not a window cut into it. A mark whose
+ * proportions do not match the footprint paints smaller with clear turf
+ * either side, which is the author's cue to resize the footprint.
+ *
+ * `stripePx` paints a mown backdrop first and exists for the builder's
+ * preview, which has no pitch under it. The world's pitch already has its
+ * stripes, so it leaves this out and paints straight onto them.
+ */
+export const GROUND_INK = 0.93;
+export const GROUND_TURF = { light: '#63a949', dark: '#4c8b38' };
+
+export function paintGroundLogo(ctx, w, h, opts = {}) {
+  if (opts.stripePx > 0) {
+    ctx.fillStyle = GROUND_TURF.dark;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = GROUND_TURF.light;
+    for (let i = 0; i * opts.stripePx < h; i += 2) {
+      ctx.fillRect(0, i * opts.stripePx, w, opts.stripePx);
+    }
+  }
+  if (!opts.logo) {
+    return;
+  }
+  ctx.save();
+  ctx.globalAlpha = opts.ink ?? GROUND_INK;
+  fit(ctx, opts.logo, 0, 0, w, h);
+  ctx.restore();
+}
+
+/*
  * A canvas, made the same way by both consumers. Kept here so the two cannot
  * disagree about the size of anything.
  */

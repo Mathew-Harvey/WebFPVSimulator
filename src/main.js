@@ -1447,7 +1447,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ? 'The layout changed. Updating the board will clear posted times.'
       : remix
         ? `This is your copy${of}${by}. It goes on the board as a new course. The original stays.`
-        : 'The public board keeps a copy of this course, including the logo on the gates and flags.';
+        : 'The public board keeps a copy of this course, including every mark on the gates, the flags and the grass.';
     const values = await ui.askForm({
       title: updating ? 'Update this course' : 'Publish this course',
       detail,

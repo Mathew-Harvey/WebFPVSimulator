@@ -31,7 +31,9 @@
  */
 
 import { ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType } from './elements.js';
-import { aperturesOf, elementById, kindOf, isSequenceable } from './model.js';
+import {
+  aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
+} from './model.js';
 import { sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
 import { figuresFor, matchingFigure, figureBlurb, levelName } from './figures.js';
 import { elevationProfile } from './path.js';
@@ -355,7 +357,11 @@ export class Panels {
       this.renderFigurePicker(host, doc, element);
     }
 
-    const grid = el('div', 'tb-grid3');
+    /* Paint has no base height: it is on the ground or it is not paint. A
+     * Base field that changed a number nothing reads is a bug report
+     * waiting to be filed, so a decal gets two columns rather than three. */
+    const flat = def.kind === KIND.DECAL;
+    const grid = el('div', flat ? 'tb-grid2' : 'tb-grid3');
     grid.append(
       this.field(`x-${element.id}`, 'X', element.position.x, (val) => {
         this.host.edit('move', (d) => { elementById(d, element.id).position.x = val; });
@@ -363,10 +369,12 @@ export class Panels {
       this.field(`y-${element.id}`, 'Y', element.position.y, (val) => {
         this.host.edit('move', (d) => { elementById(d, element.id).position.y = val; });
       }, { suffix: 'm' }),
-      this.field(`z-${element.id}`, 'Base', element.position.z, (val) => {
-        this.host.edit('height', (d) => { elementById(d, element.id).position.z = val; });
-      }, { suffix: 'm' }),
     );
+    if (!flat) {
+      grid.append(this.field(`z-${element.id}`, 'Base', element.position.z, (val) => {
+        this.host.edit('height', (d) => { elementById(d, element.id).position.z = val; });
+      }, { suffix: 'm' }));
+    }
     host.append(grid);
 
     if (def.kind !== KIND.ANNOTATION) {
@@ -412,6 +420,10 @@ export class Panels {
       }, { suffix: isCount ? '' : 'm', step: isCount ? 1 : 0.05 }));
     }
     host.append(dims);
+
+    if (def.kind === KIND.DECAL) {
+      this.renderDecalMarkPicker(host, doc, element);
+    }
 
     if (def.flagSide) {
       this.renderFlagSidePicker(host, element);
@@ -471,6 +483,53 @@ export class Panels {
     if (blurb) {
       host.append(el('p', 'tb-fig-blurb', blurb));
     }
+  }
+
+  /*
+   * Which of the course's marks a painted footprint wears.
+   *
+   * NAMED BY ID, chosen by clicking a picture. The document holds the id so
+   * that removing one sponsor cannot silently repaint another sponsor's
+   * decal, and the author never sees the id: they see the artwork, at the
+   * footprint's own proportions, which is the only way to answer "is that
+   * the right one and is the box the right shape for it".
+   *
+   * With no marks uploaded there is nothing to pick, and the panel says so
+   * and points at the button that fixes it rather than showing an empty row.
+   */
+  renderDecalMarkPicker(host, doc, element) {
+    host.append(el('h3', null, 'Which mark'));
+    const logos = logosOf(doc);
+    if (!logos.length) {
+      host.append(el('p', 'tb-help', 'This course carries no marks yet. Add one under Marks, and every footprint on the grass can wear it.'));
+      host.append(button('Marks', 'tb-btn', () => this.host.openLogo(),
+        'Upload up to five sponsors\u2019 marks for this course'));
+      return;
+    }
+    const current = logoForDecal(doc, element);
+    const grid = el('div', 'tb-mark-grid');
+    logos.forEach((mark, i) => {
+      const b = el('button', current === mark ? 'tb-mark-card on' : 'tb-mark-card');
+      b.type = 'button';
+      b.title = mark.name || `Mark ${i + 1}`;
+      const img = el('img');
+      img.src = mark.image;
+      img.alt = '';
+      b.append(img, el('span', null, String(i + 1)));
+      b.addEventListener('click', () => {
+        this.host.edit('mark', (d) => {
+          const e2 = elementById(d, element.id);
+          if (e2) {
+            e2.logoId = mark.id;
+          }
+        });
+      });
+      grid.append(b);
+    });
+    host.append(grid);
+    host.append(el('p', 'tb-help', current
+      ? `${current.name || `Mark ${logos.indexOf(current) + 1}`}, fitted inside the ${show(element.dims.width, 1)} by ${show(element.dims.depth, 1)} m footprint above. Resize the footprint to match its shape and it fills more of it.`
+      : 'The mark this footprint named is no longer on the course. Pick one, or the grass stays plain.'));
   }
 
   renderFlagSidePicker(host, element) {

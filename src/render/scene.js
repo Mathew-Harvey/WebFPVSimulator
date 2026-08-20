@@ -60,7 +60,7 @@ import { buildGuideMesh } from './marks.js';
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, HEADER_NUMBER_ZONE,
-  paintGateHeader, paintGateSleeve, paintFlagSail,
+  paintGateHeader, paintGateSleeve, paintFlagSail, paintGroundLogo, GROUND_TURF,
 } from '../art/banners.js';
 import {
   assembleStartBlock, startBlockContactHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
@@ -611,8 +611,11 @@ const PITCH = {
   /* The marking, in metres. Regulation football touchlines are 12 cm; this
    * is wider because it has to survive being seen from 40 m up at speed. */
   lineW: 0.3,
-  light: new THREE.Color(0x63a949),
-  dark: new THREE.Color(0x4c8b38),
+  /* The turf, from src/art/banners.js, because the builder's own preview of
+   * a mark painted on the grass has to show it on the same green. Two copies
+   * of a colour is how a preview drifts away from the thing it previews. */
+  light: new THREE.Color(GROUND_TURF.light),
+  dark: new THREE.Color(GROUND_TURF.dark),
   line: new THREE.Color(0xe6efe2),
 };
 
@@ -753,7 +756,7 @@ function padCover(pad, x, z) {
  * meadow instead of ending on a cut line, and the terrain underneath is
  * tinted the same green so the fade has somewhere to go.
  */
-function pitchSurface(pitch, guide) {
+function pitchSurface(pitch, course) {
   const w = pitch.mownW * 2;
   const d = pitch.mownD * 2;
   /* Pixels per metre, so a 0.3 m marking is four pixels wide whatever size
@@ -766,54 +769,108 @@ function pitchSurface(pitch, guide) {
   cv.width = cw;
   cv.height = ch;
   const ctx = cv.getContext('2d');
-
-  /* Stripes down the long axis, the way a mower drives it. */
-  const stripePx = PITCH.stripe * ppm;
-  const alongX = w >= d;
-  const span = alongX ? ch : cw;
-  for (let i = 0; i * stripePx < span; i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? `#${PITCH.light.getHexString()}` : `#${PITCH.dark.getHexString()}`;
-    if (alongX) {
-      ctx.fillRect(0, i * stripePx, cw, stripePx);
-    } else {
-      ctx.fillRect(i * stripePx, 0, stripePx, ch);
-    }
-  }
-
-  /* The marking, on the boundary the author drew rather than on the mown
-   * edge: the mown ground outside it is run off. */
-  const inset = PITCH.margin * ppm;
-  const lw = Math.max(2, PITCH.lineW * ppm);
-  ctx.strokeStyle = `#${PITCH.line.getHexString()}`;
-  ctx.lineWidth = lw;
-  ctx.strokeRect(inset, inset, cw - inset * 2, ch - inset * 2);
+  ctx.imageSmoothingQuality = 'high';
 
   /*
-   * The racing line is NOT stamped here any more.
+   * The sponsors' marks painted on the turf, and where they land on this
+   * canvas.
    *
-   * It used to be, as a fallback for the raised mesh losing a depth fight.
-   * The mesh has since grown a lift off the terrain, polygonOffset -4 and
-   * depthWrite false, so it does not lose that fight, and the fallback had
-   * become a second copy of every mark: flat where the mesh follows the
-   * ground, and drawn at this canvas's resolution, which is 2048 px across
-   * the whole mown area. On a big field that is about 9 px per metre, so
-   * the 0.16 m arrow shaft came out one and a half pixels wide. A crisp
-   * arrow with a jagged ghost of itself underneath is what "the arrows look
-   * messy" turned out to be. If the mesh ever does lose a depth fight, fix
-   * the fight rather than painting the marks twice.
+   * THE CANVAS IS THE FIELD, unflipped, and that is worth writing down
+   * because getting it wrong mirrors somebody's logo and nothing else in
+   * the scene would show it. The surface is a PlaneGeometry rotated -90
+   * about X, so its uv (0, 0) corner sits at scene (-w/2, +d/2), and a
+   * CanvasTexture flips Y, so uv (0, 0) is the canvas's BOTTOM left. The
+   * two flips cancel: canvas +x runs along scene +x and canvas +y runs
+   * along scene +z, both straight through.
+   *
+   * The heading does not cancel. A Three.js rotation of yaw about Y takes
+   * local +x to scene (cos yaw, -sin yaw) in (x, z), and a canvas rotation
+   * of phi takes +x to (cos phi, sin phi), so phi is MINUS the yaw.
    */
+  const decals = (course && Array.isArray(course.decals)) ? course.decals : [];
+  const logos = (course && Array.isArray(course.logos)) ? course.logos : [];
+  const images = logos.map(() => null);
+  const toPx = (x) => (x / w + 0.5) * cw;
+  const toPy = (z) => (z / d + 0.5) * ch;
 
-  /* Fade the outer edge to nothing so the pitch joins the meadow. */
+  const stripePx = PITCH.stripe * ppm;
+  const inset = PITCH.margin * ppm;
+  const lw = Math.max(2, PITCH.lineW * ppm);
+  const alongX = w >= d;
+  const span = alongX ? ch : cw;
+
+  const paintTurf = () => {
+    /* Stripes down the long axis, the way a mower drives it. */
+    for (let i = 0; i * stripePx < span; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? `#${PITCH.light.getHexString()}` : `#${PITCH.dark.getHexString()}`;
+      if (alongX) {
+        ctx.fillRect(0, i * stripePx, cw, stripePx);
+      } else {
+        ctx.fillRect(i * stripePx, 0, stripePx, ch);
+      }
+    }
+
+    /* The marking, on the boundary the author drew rather than on the mown
+     * edge: the mown ground outside it is run off. */
+    ctx.strokeStyle = `#${PITCH.line.getHexString()}`;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(inset, inset, cw - inset * 2, ch - inset * 2);
+
+    /* The paint, over the stripes and the line the way real ground paint
+     * goes over them. A decal whose mark has not decoded yet is skipped
+     * rather than outlined: an empty box on the grass is worse than turf. */
+    for (const dec of decals) {
+      const mark = images[dec.logo];
+      if (!mark) {
+        continue;
+      }
+      const bw = Math.max(1, dec.w * ppm);
+      const bd = Math.max(1, dec.d * ppm);
+      ctx.save();
+      ctx.translate(toPx(dec.x), toPy(dec.z));
+      ctx.rotate(-dec.yaw);
+      ctx.translate(-bw * 0.5, -bd * 0.5);
+      paintGroundLogo(ctx, bw, bd, { logo: mark });
+      ctx.restore();
+    }
+
+    /*
+     * The racing line is NOT stamped here any more.
+     *
+     * It used to be, as a fallback for the raised mesh losing a depth
+     * fight. The mesh has since grown a lift off the terrain,
+     * polygonOffset -4 and depthWrite false, so it does not lose that
+     * fight, and the fallback had become a second copy of every mark: flat
+     * where the mesh follows the ground, and drawn at this canvas's
+     * resolution, which is 2048 px across the whole mown area. On a big
+     * field that is about 9 px per metre, so the 0.16 m arrow shaft came
+     * out one and a half pixels wide. A crisp arrow with a jagged ghost of
+     * itself underneath is what "the arrows look messy" turned out to be.
+     * If the mesh ever does lose a depth fight, fix the fight rather than
+     * painting the marks twice.
+     */
+
+    /* Fade the outer edge to nothing so the pitch joins the meadow. The
+     * profile is a pure function of the pixel, so it is worked out once and
+     * kept: a repaint after a mark decodes re-stamps it rather than running
+     * four million smoothsteps again. */
+    const img = ctx.getImageData(0, 0, cw, ch);
+    for (let i = 0; i < edgeAlpha.length; i += 1) {
+      img.data[i * 4 + 3] = edgeAlpha[i];
+    }
+    ctx.putImageData(img, 0, 0);
+  };
+
   const fadePx = Math.max(2, PITCH.fade * ppm);
-  const img = ctx.getImageData(0, 0, cw, ch);
+  const edgeAlpha = new Uint8Array(cw * ch);
   for (let y = 0; y < ch; y += 1) {
     for (let x = 0; x < cw; x += 1) {
       const e = Math.min(x, y, cw - 1 - x, ch - 1 - y);
       const a = Math.min(1, e / fadePx);
-      img.data[(y * cw + x) * 4 + 3] = Math.round(255 * a * a * (3 - 2 * a));
+      edgeAlpha[y * cw + x] = Math.round(255 * a * a * (3 - 2 * a));
     }
   }
-  ctx.putImageData(img, 0, 0);
+  paintTurf();
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -830,6 +887,34 @@ function pitchSurface(pitch, guide) {
    * it is under the 7.5 cm the quad parks at. */
   mesh.position.y = 0.02;
   mesh.receiveShadow = true;
+
+  /*
+   * The marks arrive late, the same way the banners' do, and the pitch is
+   * repainted ONCE when the last of them has settled rather than once per
+   * mark. The banner canvases are a few hundred pixels each so repainting
+   * one is free; this one is up to 2048 across, and stamping the edge fade
+   * across four million pixels five times over would be a visible hitch on
+   * the frame a course loads.
+   */
+  const wanted = new Set(decals.map((dec) => dec.logo)
+    .filter((i) => typeof logos[i] === 'string' && logos[i].startsWith('data:image/')));
+  let pending = wanted.size;
+  for (const slot of wanted) {
+    const img = new Image();
+    const settle = (ok) => {
+      if (ok) {
+        images[slot] = img;
+      }
+      pending -= 1;
+      if (pending === 0) {
+        paintTurf();
+        tex.needsUpdate = true;
+      }
+    };
+    img.onload = () => settle(true);
+    img.onerror = () => settle(false);
+    img.src = logos[slot];
+  }
   return mesh;
 }
 
@@ -1306,33 +1391,67 @@ function sharedObstacleMats() {
 
 /*
  * The course's printed dress: the gate header, the upright sleeves and the
- * flag sails, as materials, with the author's logo composited into all of
- * them.
+ * flag sails, as materials, with the author's marks composited into them.
  *
- * ONE KIT PER COURSE, made once. Every gate on a course wears the same
- * print, so the scenery merger folds all fourteen headers into one draw call
- * and all seventy two sails into two. Passing a texture round instead of a
- * material would defeat that, which is why this returns materials.
+ * ONE DRESS PER MARK, made once. A course carries up to five sponsors'
+ * marks, and every gate wearing a given mark wears exactly the same print,
+ * so the scenery merger still folds all the headers that share a sponsor
+ * into one draw call. An unbranded course has one plain dress and is
+ * therefore exactly what it was before any of this: a header, two sleeves
+ * and two sails. Five sponsors cost five headers, ten sleeves and ten
+ * sails, which is twenty draw calls for the whole of a course's dressing
+ * and is the price of the feature.
  *
- * THE LOGO ARRIVES LATE AND THAT IS FINE. It is a data URL out of local
+ * WHICH GATE WEARS WHICH is not decided here. `forGate(i)` is asked for the
+ * dress of the i'th dressed structure in flying order and answers round
+ * robin, so fifteen gates and five marks put each mark on three gates spread
+ * down the lap rather than on three gates in a row.
+ *
+ * THE SAILS ALTERNATE TWO WAYS AT ONCE. A teardrop flag's sweep is navy or
+ * red so a line of them down a course reads as a run rather than a repeat,
+ * and now it also has to cycle through the sponsors. `sails` is the run a
+ * line of flags wears: sail i carries mark i mod n with the accent i mod 2,
+ * which needs lcm(n, 2) entries before it repeats. A gate's own header
+ * pennants are not part of that run: both of them wear THAT GATE'S mark, in
+ * the two accents, because a gate flying two sponsors' pennants over one
+ * sponsor's board is not what a sponsor bought.
+ *
+ * THE MARKS ARRIVE LATE AND THAT IS FINE. They are data URLs out of local
  * storage, so there is no network fetch to fail, but the decode is still
- * asynchronous. The canvases are painted at once WITHOUT it, so the world is
- * complete and correct from the first frame, and repainted with it the
- * moment it decodes. Nothing waits and nothing pops except the mark
+ * asynchronous. Every canvas is painted at once WITHOUT them, so the world
+ * is complete and correct from the first frame, and each is repainted the
+ * moment its own mark decodes. Nothing waits and nothing pops except a mark
  * appearing on vinyl that was already there.
  */
-function bannerKit(logoUrl, key) {
+function bannerKit(logoUrls, key) {
+  /*
+   * Mapped rather than filtered, so a slot that carries something this will
+   * not put in a texture becomes an empty slot and every mark after it keeps
+   * its number. Filtering would renumber them, and the decals painted on the
+   * grass index the same list from src/game/trackdoc.js: a course would come
+   * out with gate 3 wearing one sponsor and the paint beside it wearing
+   * another. normalize() already refuses anything that is not an embedded
+   * image, so this is the belt to that document rule's braces.
+   */
+  const urls = (Array.isArray(logoUrls) ? logoUrls : (logoUrls == null ? [] : [logoUrls]))
+    .map((u) => (typeof u === 'string' && u.startsWith('data:image/') ? u : null));
+  /* One plain slot when the course carries nothing, so every path below is
+   * the same path and the unbranded case is not a special case. */
+  const n = Math.max(1, urls.length);
   const jobs = [];
-  const paint = (size, painter, opts) => {
+  const paint = (slot, size, painter, opts) => {
     const canvas = bannerCanvas(size[0], size[1]);
     const ctx = canvas.getContext('2d');
     painter(ctx, size[0], size[1], opts);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    jobs.push((logo) => {
-      painter(ctx, size[0], size[1], { ...opts, logo });
-      tex.needsUpdate = true;
+    jobs.push({
+      slot,
+      run: (logo) => {
+        painter(ctx, size[0], size[1], { ...opts, logo });
+        tex.needsUpdate = true;
+      },
     });
     return tex;
   };
@@ -1349,26 +1468,57 @@ function bannerKit(logoUrl, key) {
     side: THREE.FrontSide,
     key: `${id}:${key}`,
   });
-  const kit = {
-    header: printed(paint(BANNER_SIZE.header, paintGateHeader, {}), 'hdr'),
-    sleeve: printed(paint(BANNER_SIZE.sleeve, paintGateSleeve, {}), 'slv'),
-    /* The far leg's, painted mirrored rather than scaled onto the mesh. */
-    sleeveFlipped: printed(paint(BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), 'slvf'),
-    /* Two sails, so a run of flags down a course alternates rather than
-     * repeating. Two materials is two draw calls for the whole set. */
-    sails: [
-      sailMaterial(paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'navy' }), `sailA:${key}`),
-      sailMaterial(paint(BANNER_SIZE.sail, paintFlagSail, { accent: 'red' }), `sailB:${key}`),
-    ],
+  /* Memoised, so the run of sails and the gates' own pennants share one
+   * material per mark and accent instead of painting the same canvas twice. */
+  const sailCache = new Map();
+  const sailOf = (slot, accent) => {
+    const id = `${slot}:${accent}`;
+    let mat = sailCache.get(id);
+    if (!mat) {
+      mat = sailMaterial(paint(slot, BANNER_SIZE.sail, paintFlagSail, { accent }), `sail${id}:${key}`);
+      sailCache.set(id, mat);
+    }
+    return mat;
   };
-  if (typeof logoUrl === 'string' && logoUrl.startsWith('data:image/')) {
+
+  const dress = [];
+  for (let i = 0; i < n; i += 1) {
+    dress.push({
+      header: printed(paint(i, BANNER_SIZE.header, paintGateHeader, {}), `hdr${i}`),
+      sleeve: printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}), `slv${i}`),
+      /* The far leg's, painted mirrored rather than scaled onto the mesh. */
+      sleeveFlipped: printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), `slvf${i}`),
+      /* This gate's own header pennants: its mark, both accents. */
+      sails: [sailOf(i, 'navy'), sailOf(i, 'red')],
+    });
+  }
+
+  const runLength = n % 2 === 0 ? n : n * 2;
+  const sails = [];
+  for (let i = 0; i < runLength; i += 1) {
+    sails.push(sailOf(i % n, i % 2 === 1 ? 'red' : 'navy'));
+  }
+
+  const kit = {
+    marks: n,
+    sails,
+    dress,
+    forGate: (i) => dress[((Math.round(i) % n) + n) % n],
+  };
+
+  for (let slot = 0; slot < urls.length; slot += 1) {
+    if (!urls[slot]) {
+      continue;
+    }
     const img = new Image();
     img.onload = () => {
       for (const job of jobs) {
-        job(img);
+        if (job.slot === slot) {
+          job.run(img);
+        }
       }
     };
-    img.src = logoUrl;
+    img.src = urls[slot];
   }
   return kit;
 }
@@ -2240,6 +2390,10 @@ function coursePlacements(course) {
         plateIndex: i,
         primary: st.apertureIndex,
         elementId: st.elementId,
+        /* Which of the course's marks this structure wears, read off the
+         * document by trackdoc rather than counted here, so the builder's
+         * preview and the world deal the sponsors out the same way. */
+        dress: structure.dress,
         flagSigns: structure.flagSigns,
         flagH: structure.flagH,
         flagPoleR: structure.flagPoleR,
@@ -3170,7 +3324,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   const ground = terrain(height, samples, pitch);
   scene.add(ground);
   if (pitch) {
-    scene.add(pitchSurface(pitch, course && course.guide));
+    scene.add(pitchSurface(pitch, course));
   }
   const occluders = [];
   /* Walks the world rng so the valley does not move. No mesh. */
@@ -3301,6 +3455,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
        * gateCount - i. */
       isStart: i === 0,
       plateIndex: i === 0 ? 0 : gateCount - i,
+      /* The field's own circuit carries no marks, so any slot does; the
+       * scene index keeps the rule the same shape as a course's. */
+      dress: i,
       primary: null,
       /* One station per structure, scoring every opening: MultiGP counts a
        * ladder as one gate however high you take it. */
@@ -3309,14 +3466,15 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   });
 
   /*
-   * The course's printed dress, made once and worn by every gate and every
-   * flag on it. The author's logo, if their document carries one, is
-   * composited into all of it.
+   * The course's printed dress, made once and shared out over every gate and
+   * every flag on it: one set of banners per sponsor's mark the document
+   * carries, and one plain set when it carries none.
    */
   const kit = bannerKit(
-    course ? course.logo : null,
+    course ? course.logos : null,
     course ? (course.documentId ?? course.id ?? 'course') : 'field',
   );
+
   /*
    * How high a structure stands, at the point it stands, so the title
    * screen's flythrough can clear it. Filled from each obstacle's own world
@@ -3328,13 +3486,17 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   for (let i = 0; i < placements.length; i += 1) {
     const st = placements[i];
     const flyOrder = st.plateIndex;
+    /* Null for a virtual gate: a scoring square beside a flag has no vinyl
+     * on it at all, and the slot it would have taken belongs to a structure
+     * that actually prints something. */
+    const dress = st.virtual ? null : kit.forGate(st.dress ?? i);
     const made = st.virtual
       ? virtualGate(st.spec.clearW, st.spec.clearH)
       : (Math.abs(st.pitch) > 1e-6
-        ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit })
+        ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit: dress })
         : obstacle(st.spec, flyOrder, st.isStart, {
           primary: st.primary,
-          kit,
+          kit: dress,
           flagSigns: st.flagSigns,
           flagH: st.flagH,
           flagPoleR: st.flagPoleR,

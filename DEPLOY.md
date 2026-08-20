@@ -253,6 +253,56 @@ WASM module is prebuilt and committed. If a static site deploy is slow or
 fails while fetching submodules, nothing in the deployed site depends on
 that tree.
 
+## The site icons
+
+Four pages carry the family mark, one shape with one accent each, so a
+pilot with the simulator, the builder and the board open at once can tell
+three tabs apart without reading them:
+
+| Page | Accent | Where the files live |
+| --- | --- | --- |
+| Landing page | cream | the landing repo's root |
+| Simulator | sakura | this repo's root |
+| Track builder | amber | `src/trackbuilder/` |
+| Board | mint | the board repo's `public/` |
+
+Each set is `icon.svg`, `favicon.ico` at 16, 32 and 48, and
+`apple-touch-icon.png` at 180. `scripts/icons.js` draws all of them from
+one description of the mark, so the accent, the geometry or the sizes are
+changed there and regenerated rather than edited in a paint program. There
+is no build step on any of the three services, so the output is committed.
+
+```bash
+# The two in this repo.
+npm run gen:icons
+
+# The other two, from a checkout of each beside this one.
+node scripts/icons.js cream ../landingpage-WebFPVSimulator-
+node scripts/icons.js mint  ../WebFPVSimulator-LeaderBoard/public
+```
+
+**Every page names its icon, because a file at the site root is not
+enough.** Six of the eight HTML files in the three repositories carried
+`<link rel="icon" href="data:,">`: the simulator, the track builder,
+`orbit.html`, the test harness and both board pages. That is not a missing
+icon, it is an explicitly empty one, and it wins over `/favicon.ico`, so
+committing the files without editing those tags would have changed nothing
+on any of them. The landing page was the exception and already had a real
+mark, drawn inline as a data URI; it now points at the file like the rest.
+The eighth, `scripts/audio-probe.html`, has no icon tag at all and was the
+one page in the project actually requesting `/favicon.ico` and getting a
+404. It now gets the file.
+
+**Two pages keep the empty icon on purpose.** `tests/browser/harness.html`
+suppresses the request so that check 13, which counts every console message,
+never has an icon in its blast radius at all. That is a smaller reason than
+it used to be, and worth being straight about: the reason WAS that the
+request 404ed, and now that `/favicon.ico` exists at the publish root and
+`scripts/serve.js` knows the type, it would return 200. What is left is one
+request saved on a page nobody looks at. `src/share/orbit.html` is only ever
+a course thumbnail inside an iframe on the board, so an icon it would never
+show is a request per card.
+
 ## Local, for comparison
 
 Nothing above changes how this runs on your machine. The simulator picks

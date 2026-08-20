@@ -33,7 +33,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Track Builder, WebFPV</title>
-    <link rel="icon" href="data:," />
+    <!--
+      Amber, because amber is this page's colour: everything armed or selected
+      in the builder is amber, and a tab is where you look to find the builder
+      among the simulator and the board. Relative paths, because the three
+      files sit beside this one rather than at the site root, which belongs to
+      the simulator. Drawn by scripts/icons.js.
+    -->
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#0f150f" />
     <!--
       THE STYLES ARE INLINE, like the simulator's own index.html, and for one
       more reason than convention: the repository's dev server, which this
@@ -48,22 +58,104 @@
       sakura for chrome, amber for the thing you have selected (it has to
       pop on a working canvas), mint for something good, a warm red for
       something wrong.
+
+      ONE COLOUR, ONE JOB, which is a rule the stylesheet below now keeps and
+      did not before. Amber had been doing five things at once: the selected
+      object, every section heading, every numeric readout, a status chip and
+      the hover border on every control. So hovering anything looked like
+      selecting it, and a heading looked like a selection. Amber is now the
+      selected thing and nothing else. Headings recede, hover is a neutral
+      brightening, and the readouts that used to be amber keep it only where
+      they really are instruments: the cursor position and the course's
+      measured numbers.
     -->
     <style>
       :root {
+        /*
+         * INK. What type and marks are made of.
+         */
         --cream: #f3ead4;
+        --slate: #9db3c8;
+        --dim: #8a9a86;
         --sakura: #e8a8b8;
         --amber: #ffd45c;
         --mint: #7dffb4;
-        --slate: #9db3c8;
-        --dim: #8a9a86;
-        --deep: #141c16;
-        --panel: #1a241c;
-        --panel-2: #121a14;
-        --line: rgba(244, 236, 214, 0.12);
         --bad: #ff8f8f;
+
+        /*
+         * GROUND, four steps of one ramp. They used to be two steps a single
+         * point of lightness apart, so a button on the bar was 1.11:1 against
+         * the bar and a card in a panel was 1.11:1 against the panel: nothing
+         * had an edge and everything read as one flat sheet. Far enough apart
+         * now that depth is carried by the fill rather than by a hairline the
+         * eye cannot find.
+         *
+         * --sunk is a well, for a thing you type into and for the trough the
+         * drawing sits in. --raised is a card standing on a panel. They were
+         * the same token before, which is why the inspector's inputs and its
+         * cards looked like the same object.
+         */
+        --deep: #0f150f;
+        --sunk: #141d16;
+        --panel: #1c261e;
+        --raised: #243026;
+
+        /*
+         * EDGES, two of them, because a rule between rows and the border of
+         * a control are not the same job. There was one token at 0.12 doing
+         * both, and it composites to 1.4:1 against the panel, which is not a
+         * visible line, so every button, field and panel in the tool was
+         * edgeless.
+         *
+         * 0.3 measures about 2.4:1 on its own, and a control also carries a
+         * fill one step up the ramp from what it sits on, so the two
+         * together are what makes it read as a control. That is short of the
+         * 3:1 a boundary would need if the boundary were the only signal,
+         * and it is deliberate: on this ground the alpha that reaches 3:1
+         * draws a hairline brighter than the label inside it, which trades
+         * one legibility problem for another.
+         */
+        --rule: rgba(243, 234, 212, 0.09);
+        --edge: rgba(243, 234, 212, 0.3);
+
+        /* Neutral lift, for hover and for a chip's ground. One value each,
+           rather than the four alphas of the same colour that were in here. */
+        --lift: rgba(243, 234, 212, 0.07);
+        --lift-2: rgba(243, 234, 212, 0.13);
+
+        /* Amber, in the two weights selection needs. */
+        --pick: rgba(255, 212, 92, 0.16);
+        --pick-edge: rgba(255, 212, 92, 0.55);
+
+        /*
+         * SCALES. Three radii, five spaces, five sizes. There were seven
+         * radii, sixteen padding pairs and six sizes crowded into a four
+         * pixel band, which is not a scale, it is an accident.
+         */
+        --r-chip: 3px;
+        --r-ctl: 5px;
+        --r-panel: 8px;
+
+        --s1: 4px;
+        --s2: 6px;
+        --s3: 8px;
+        --s4: 12px;
+        --s5: 16px;
+
+        --t-micro: 10px;
+        --t-small: 11px;
+        --t-label: 12px;
+        --t-body: 13px;
+        --t-title: 18px;
+
         --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+        --quick: 0.12s ease;
+
+        /* Native widgets, which means the select popup and the scrollbars,
+           render light on a dark page without this one line. */
+        color-scheme: dark;
       }
 
       * { box-sizing: border-box; }
@@ -75,21 +167,79 @@
         background: var(--deep);
         color: var(--cream);
         font-family: var(--ui-font);
-        font-size: 13px;
+        font-size: var(--t-body);
         font-variant-numeric: tabular-nums;
+      }
+
+      /*
+       * ONE FOCUS RING FOR THE WHOLE TOOL. There was not a single :focus rule
+       * in the file, so a keyboard was flying blind through seventeen top bar
+       * controls, fourteen palette tools and every field in the inspector.
+       * Sakura because it is the one accent that means neither selected nor
+       * good nor wrong, so it never collides with the state underneath it.
+       */
+      :focus-visible {
+        outline: 2px solid var(--sakura);
+        outline-offset: 2px;
+        border-radius: var(--r-chip);
+      }
+
+      /*
+       * Scrollbars. Four panels here scroll and the drawing sits between two
+       * of them, so a default light scrollbar was the brightest vertical line
+       * on the screen. `stable` keeps the gutter reserved, which stops a
+       * panel's contents jumping sideways the moment a warning appears.
+       */
+      .tb-panel, .tb-modal {
+        scrollbar-width: thin;
+        scrollbar-color: var(--lift-2) transparent;
+        scrollbar-gutter: stable;
+      }
+      .tb-panel::-webkit-scrollbar, .tb-modal::-webkit-scrollbar { width: 10px; }
+      .tb-panel::-webkit-scrollbar-track, .tb-modal::-webkit-scrollbar-track { background: transparent; }
+      .tb-panel::-webkit-scrollbar-thumb, .tb-modal::-webkit-scrollbar-thumb {
+        background: var(--lift-2);
+        border: 3px solid transparent;
+        background-clip: padding-box;
+        border-radius: 999px;
+      }
+      .tb-panel::-webkit-scrollbar-thumb:hover, .tb-modal::-webkit-scrollbar-thumb:hover {
+        background: rgba(243, 234, 212, 0.24);
+        background-clip: padding-box;
       }
 
       #tb-app { display: flex; flex-direction: column; height: 100%; }
 
+      /*
+       * The keep notice. It is a standing fact about where tracks live, not
+       * an alert, and it is on the screen for the whole session, so it was
+       * the wrong thing to be the loudest object on the page: full bleed,
+       * twelve pixel type, and its first four words in bold sakura. Now it is
+       * a quiet strip with the theme reduced to one dot, and it is held to a
+       * reading measure instead of running the width of a wide monitor.
+       */
       #tb-keep {
-        padding: 6px 12px;
-        background: rgba(12, 18, 14, 0.92);
-        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: baseline;
+        gap: var(--s3);
+        padding: var(--s2) var(--s4);
+        background: var(--sunk);
+        border-bottom: 1px solid var(--rule);
         color: var(--dim);
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: var(--t-small);
+        line-height: 1.5;
       }
-      #tb-keep strong { color: var(--sakura); font-weight: 650; }
+      #tb-keep::before {
+        content: "";
+        flex: 0 0 auto;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--sakura);
+        transform: translateY(-1px);
+      }
+      #tb-keep p { margin: 0; max-width: 104ch; }
+      #tb-keep strong { color: var(--slate); font-weight: 600; }
 
       /* ---------------- top bar ---------------- */
 
@@ -105,69 +255,118 @@
       #tb-topbar {
         display: flex;
         align-items: center;
-        gap: 16px;
-        padding: 8px 12px;
-        background: var(--panel-2);
-        border-bottom: 1px solid var(--line);
+        gap: var(--s5);
+        padding: var(--s3) var(--s4);
+        background: var(--panel);
+        border-bottom: 1px solid var(--rule);
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
       }
-      .tb-zone { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .tb-zone { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
       .tb-zone-file { flex: 0 1 auto; }
+      /*
+       * The middle zone scrolls rather than clipping. `overflow: hidden` on a
+       * row that is allowed to run out of space cuts the last button through
+       * the middle of a letter and leaves no way to reach it. Scrolling keeps
+       * the zones from wrapping against each other, which is the rule above,
+       * and the mask says there is more to the right without a scrollbar
+       * running through the toolbar.
+       */
       .tb-zone-edit {
         flex: 1 1 auto;
         justify-content: center;
         min-width: 0;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        /* Room for the focus ring, taken back with the margin so the bar's
+           height does not change. A scroll container clips its descendants'
+           outlines, and `overflow-x: auto` forces the y axis to clip too, so
+           without these five pixels the seven controls in this zone were the
+           only ones on the page whose ring came out with its top and bottom
+           sliced off. The ring needs four: two of offset, two of width. */
+        padding: 5px 0;
+        margin: -5px 0;
+        mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
       }
+      .tb-zone-edit::-webkit-scrollbar { display: none; }
       .tb-zone-out { flex: 0 0 auto; margin-left: auto; }
 
       .tb-more { position: relative; }
       .tb-more-menu {
         position: absolute;
-        top: calc(100% + 4px);
+        top: calc(100% + 6px);
         left: 0;
         z-index: 30;
         display: flex;
         flex-direction: column;
-        min-width: 10em;
-        padding: 4px;
-        border-radius: 5px;
-        background: var(--panel);
-        box-shadow: inset 0 0 0 1px var(--line), 0 14px 30px rgba(0, 0, 0, 0.55);
+        min-width: 11em;
+        padding: var(--s1);
+        border-radius: var(--r-ctl);
+        background: var(--raised);
+        box-shadow: inset 0 0 0 1px var(--edge), 0 14px 30px rgba(0, 0, 0, 0.55);
       }
       .tb-more-menu[hidden] { display: none; }
+      /*
+       * These four are the only buttons on the page that do not carry
+       * .tb-btn, because app.js builds their class list from scratch. Without
+       * `font: inherit` and a colour they fall back to the user agent's own
+       * button styling, which is a system font in near black on a dark panel:
+       * Duplicate, Import, Export and Delete were effectively unreadable.
+       */
       .tb-more-item {
         border: 0;
         background: transparent;
-        border-radius: 4px;
+        border-radius: var(--r-chip);
         text-align: left;
+        font: inherit;
+        color: var(--slate);
+        padding: var(--s2) var(--s3);
+        cursor: pointer;
+        transition: background var(--quick), color var(--quick);
       }
-      .tb-more-item:hover:not(:disabled) { background: rgba(157, 179, 200, 0.1); }
+      .tb-more-item:hover:not(:disabled) { background: var(--lift); color: var(--cream); }
+      .tb-more-item:disabled { color: var(--dim); opacity: 0.5; cursor: default; }
+      /* Delete carries tb-danger and nothing was styling it, because the only
+         danger rules were scoped to .tb-btn and .tb-mini. */
+      .tb-more-item.tb-danger { color: var(--bad); }
+      .tb-more-item.tb-danger:hover:not(:disabled) { background: rgba(255, 143, 143, 0.12); color: var(--bad); }
 
       .tb-title {
         font-weight: 800;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        font-size: 12px;
+        font-size: var(--t-label);
         color: var(--sakura);
-        padding-right: 4px;
+        padding-right: var(--s1);
       }
 
+      /*
+       * A FIELD IS NOT A BUTTON. The track name input had the same fill, the
+       * same border, the same radius and the same padding as the buttons
+       * beside it, so the one thing in the bar you can type into looked like
+       * the six things you can press. It is sunk now, and it lights up when
+       * it has the caret.
+       */
       .tb-name {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 5px;
+        background: var(--sunk);
+        border: 1px solid var(--edge);
+        border-radius: var(--r-ctl);
         color: var(--cream);
         font: inherit;
-        padding: 5px 9px;
+        padding: var(--s2) var(--s3);
         min-width: 180px;
+        transition: border-color var(--quick), background var(--quick);
       }
+      .tb-name:hover { border-color: rgba(243, 234, 212, 0.3); }
+      .tb-name:focus { outline: none; border-color: var(--sakura); background: var(--deep); }
+      .tb-name:focus-visible { outline: none; }
 
       .tb-listing {
         flex: 0 0 auto;
-        font-size: 11px;
+        font-size: var(--t-small);
         color: var(--dim);
-        padding: 4px 9px;
-        border: 1px solid var(--line);
+        padding: var(--s1) var(--s3);
+        border: 1px solid var(--rule);
         border-radius: 999px;
         white-space: nowrap;
         max-width: 220px;
@@ -175,71 +374,182 @@
         text-overflow: ellipsis;
       }
       .tb-listing.owned { color: var(--mint); border-color: rgba(125, 255, 180, 0.35); }
-      .tb-listing.remix { color: var(--amber); border-color: rgba(255, 212, 92, 0.35); }
+      .tb-listing.remix { color: var(--sakura); border-color: rgba(232, 168, 184, 0.35); }
 
-      .tb-bargroup { display: flex; gap: 4px; }
+      .tb-bargroup {
+        display: flex;
+        gap: 1px;
+        padding: 1px;
+        border-radius: calc(var(--r-ctl) + 2px);
+        background: var(--sunk);
+        box-shadow: inset 0 0 0 1px var(--rule);
+      }
 
       .tb-btn {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 5px;
+        background: var(--raised);
+        border: 1px solid var(--edge);
+        border-radius: var(--r-ctl);
         color: var(--slate);
         font: inherit;
-        padding: 5px 10px;
+        padding: var(--s2) var(--s4);
         cursor: pointer;
         text-decoration: none;
         white-space: nowrap;
+        transition: background var(--quick), color var(--quick), border-color var(--quick);
       }
-      .tb-btn:hover:not(:disabled) { color: var(--cream); border-color: rgba(255, 212, 92, 0.5); }
-      .tb-btn:disabled { opacity: 0.38; cursor: default; }
+      /*
+       * ORDER AND SPECIFICITY, WRITTEN DOWN, because this one block has now
+       * produced three bugs of the same kind and every one of them looked
+       * like a colour mistake rather than a cascade mistake.
+       *
+       * The original was `.tb-btn:hover:not(:disabled)`, three class level
+       * components, and it beat `.tb-btn.on` and `.tb-btn.tb-primary`, which
+       * are two. Those fill the button with amber or mint and set the label
+       * to the dark ink; the hover rule then put the label back to cream,
+       * which is 1.04:1 on mint, so Publish, Fly this track and every armed
+       * toggle lost their label the moment the pointer touched them.
+       *
+       * Excluding the two states with plain `:not(.on):not(.tb-primary)`
+       * fixed that and broke the next thing along, because each `:not()`
+       * ADDS its argument's weight: the generic hover went to five, past
+       * `.tb-btn.tb-danger:hover:not(:disabled)` at four, and Delete stopped
+       * being red at the moment before the click. `:where()` is the answer,
+       * because its contents weigh nothing. The generic hover is two, every
+       * variant is above it, and nothing needs counting again.
+       *
+       * The layers, in the order they must stay in:
+       *   1. the base
+       *   2. the variants, which are two each
+       *   3. the hovers, which are above the variants they belong to
+       *   4. disabled, LAST, and it has to be. It is two, the same as every
+       *      variant, so anything after it wins on source order. The old
+       *      stylesheet got away with declaring it early because it used
+       *      `opacity`, which no colour rule can override. This one paints
+       *      colours, so it has to be the last word. Every hover above it
+       *      excludes :disabled so that a three cannot reach past a two.
+       */
       .tb-btn.on { color: var(--deep); background: var(--amber); border-color: var(--amber); font-weight: 600; }
       .tb-btn.tb-primary { color: var(--deep); background: var(--mint); border-color: var(--mint); font-weight: 600; }
-      .tb-btn.tb-primary.on { background: var(--amber); border-color: var(--amber); }
       .tb-btn.tb-danger { color: var(--bad); }
-      .tb-btn.tb-danger:hover { border-color: var(--bad); }
-      .tb-btn.tb-quiet { margin-left: auto; color: var(--dim); }
+      .tb-btn.tb-quiet { margin-left: auto; color: var(--dim); background: transparent; border-color: transparent; }
+
+      .tb-btn:hover:not(:where(:disabled, .on, .tb-primary, .tb-danger, .tb-quiet)) {
+        color: var(--cream);
+        background: var(--lift-2);
+        border-color: rgba(243, 234, 212, 0.34);
+      }
+      .tb-btn.on:hover:not(:disabled) { background: #ffdd7a; border-color: #ffdd7a; }
+      .tb-btn.tb-primary:hover:not(:disabled) { background: #99ffc4; border-color: #99ffc4; }
+      .tb-btn.tb-danger:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); background: rgba(255, 143, 143, 0.12); }
+      .tb-btn.tb-quiet:hover:not(:disabled) { color: var(--cream); background: var(--lift); border-color: var(--edge); }
+
+      .tb-btn:active:not(:disabled) { transform: translateY(1px); }
+
+      /* A button in a segmented group drops its own border and fill, so the
+         group reads as one control with a selected segment in it. `:where`
+         again: this is a descendant selector and would otherwise outweigh
+         the variants and paint the armed segment's dark ink onto nothing. */
+      .tb-bargroup .tb-btn:not(:where(.on, .tb-primary)) { border-color: transparent; background: transparent; }
+      .tb-bargroup .tb-btn:hover:not(:where(:disabled, .on, .tb-primary)) { background: var(--lift); border-color: transparent; }
+
+      .tb-btn:disabled { color: var(--dim); background: var(--sunk); border-color: var(--rule); cursor: default; }
 
       /* ---------------- layout ---------------- */
 
-      #tb-main { flex: 1; display: flex; min-height: 0; }
+      #tb-main { flex: 1; display: flex; min-height: 0; gap: var(--s3); padding: var(--s3); }
 
+      /*
+       * The panel padding and the sticky profile foot's negative margin are a
+       * matched pair: see .tb-profile-foot. Change one and change the other.
+       */
       .tb-panel {
         background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 10px;
+        border: 1px solid var(--rule);
+        border-radius: var(--r-panel);
+        padding: var(--s4) var(--s4) var(--s4);
         overflow-y: auto;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
       }
 
-      #tb-palette { width: 152px; margin: 8px 0 8px 8px; flex: none; }
+      /* 178, not 152, and the tool row's gap is tighter to match. The
+         longest tool in the palette is "Flagged double", which wrapped to two
+         lines at 152 and made that one row taller than the thirteen around
+         it. The stable scrollbar gutter is part of the sum. */
+      #tb-palette { width: 178px; flex: none; }
 
-      #tb-stage { flex: 1; position: relative; min-width: 0; margin: 8px; }
-      #tb-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 6px; }
+      /*
+       * THE DRAWING IS A DRAWING, and the trough says so. The 2D view has its
+       * own cool blueprint palette, deliberately: a course plan should read
+       * as a plan and not as a second landscape, which is the same decision
+       * the board's cards make. Against the warm green chrome that only works
+       * if the join is intentional, so the stage is a well with a dark inset
+       * ring rather than a rectangle of foreign colour with no edge at all.
+       */
+      #tb-stage {
+        flex: 1;
+        position: relative;
+        min-width: 0;
+        border-radius: var(--r-panel);
+        background: #0b1119;
+        box-shadow: inset 0 0 0 1px rgba(157, 179, 200, 0.14), 0 1px 2px rgba(0, 0, 0, 0.35);
+      }
+      #tb-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: var(--r-panel); }
       #tb-stage canvas[hidden] { display: none; }
 
+      /*
+       * The status bar carried the cursor readout and then 226 characters of
+       * keyboard hints as one run-on sentence, which wrapped over the drawing
+       * and could not be scanned. Same information, cut into hints, each with
+       * its key set as a key.
+       */
       #tb-status {
         position: absolute;
         left: 0; right: 0; bottom: 0;
         display: flex;
-        gap: 14px;
-        align-items: baseline;
-        padding: 5px 9px;
-        background: rgba(8, 13, 20, 0.82);
-        border-radius: 0 0 6px 6px;
-        font-size: 11px;
+        gap: var(--s4);
+        align-items: center;
+        padding: var(--s2) var(--s3);
+        background: linear-gradient(180deg, rgba(8, 13, 20, 0), rgba(8, 13, 20, 0.9) 40%);
+        border-radius: 0 0 var(--r-panel) var(--r-panel);
+        font-size: var(--t-micro);
         color: var(--dim);
         pointer-events: none;
       }
-      #tb-readout { font-family: var(--mono); color: var(--amber); flex: none; }
-      .tb-keys { line-height: 1.4; }
+      #tb-readout {
+        flex: none;
+        font-family: var(--mono);
+        font-size: var(--t-small);
+        color: var(--amber);
+        align-self: flex-end;
+      }
+      .tb-keys {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px var(--s4);
+        line-height: 1.5;
+        justify-content: flex-end;
+        flex: 1;
+      }
+      .tb-keys kbd {
+        display: inline-block;
+        min-width: 1.4em;
+        margin-right: 5px;
+        padding: 1px 4px;
+        border-radius: var(--r-chip);
+        background: rgba(157, 179, 200, 0.16);
+        color: var(--slate);
+        font-family: var(--mono);
+        font-size: 9.5px;
+        font-weight: 500;
+        text-align: center;
+      }
 
       #tb-side {
         width: 320px;
         flex: none;
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        margin: 8px 8px 8px 0;
+        gap: var(--s3);
         min-height: 0;
       }
       #tb-inspector { flex: 1 1 40%; }
@@ -248,34 +558,50 @@
 
       /* ---------------- palette ---------------- */
 
-      .tb-group { margin-bottom: 12px; }
+      .tb-group { margin-bottom: var(--s4); }
 
+      /*
+       * A HEADING SHOULD NOT BE THE SMALLEST AND LOUDEST TEXT ON THE PAGE.
+       * These were ten pixel amber, under twelve and thirteen pixel body
+       * copy, in the same colour as a selected object. A dense tool is
+       * allowed a small uppercase caption for a heading, but it has to
+       * recede and it has to be separated from what it heads, so it is a
+       * quiet slate caption with a rule under it instead.
+       */
       h3 {
-        margin: 10px 0 6px;
-        font-size: 10px;
+        margin: var(--s4) 0 var(--s2);
+        padding-bottom: 5px;
+        border-bottom: 1px solid var(--rule);
+        font-size: var(--t-small);
         font-weight: 700;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: var(--amber);
+        color: var(--slate);
       }
       h3:first-child { margin-top: 0; }
 
       .tb-tool {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--s2);
         width: 100%;
+        min-height: 26px;
         background: transparent;
         border: 1px solid transparent;
-        border-radius: 5px;
+        border-radius: var(--r-ctl);
         color: var(--slate);
         font: inherit;
-        padding: 5px 6px;
+        padding: var(--s1) var(--s2);
         cursor: pointer;
         text-align: left;
+        transition: background var(--quick), color var(--quick);
       }
-      .tb-tool:hover { color: var(--cream); background: rgba(157, 179, 200, 0.08); }
+      .tb-tool:hover:not(.on) { color: var(--cream); background: var(--lift); }
       .tb-tool.on { color: var(--deep); background: var(--amber); font-weight: 600; }
+
+      /* Had no rule at all, so a two word tool wrapped and the row it was in
+         grew taller than its neighbours. */
+      .tb-tool-label { flex: 1; min-width: 0; font-size: var(--t-label); line-height: 1.25; }
 
       .tb-tool-key {
         flex: none;
@@ -283,18 +609,43 @@
         height: 18px;
         line-height: 18px;
         text-align: center;
-        border-radius: 3px;
-        background: rgba(157, 179, 200, 0.18);
+        border-radius: var(--r-chip);
+        background: var(--lift-2);
         font-family: var(--mono);
-        font-size: 10px;
+        font-size: var(--t-micro);
         color: var(--cream);
       }
-      .tb-tool.on .tb-tool-key { background: rgba(16, 26, 38, 0.25); color: var(--deep); }
+      .tb-tool.on .tb-tool-key { background: rgba(15, 21, 15, 0.28); color: var(--deep); }
 
       /* ---------------- panels ---------------- */
 
-      .tb-help { margin: 6px 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
-      .tb-kind { margin: 2px 0 8px; color: var(--slate); font-size: 11px; line-height: 1.45; }
+      /*
+       * One treatment for body copy in a panel, at one measure. There were
+       * three: .tb-help at eleven dim, .tb-kind at eleven slate and
+       * .tb-fig-blurb at twelve cream, all doing the same job of explaining
+       * the thing above them.
+       */
+      .tb-help, .tb-kind {
+        margin: var(--s2) 0;
+        color: var(--dim);
+        font-size: var(--t-small);
+        line-height: 1.55;
+      }
+      .tb-kind { color: var(--slate); margin-bottom: var(--s3); }
+      /* The palette is 178 px wide, and once the panel's padding, its border
+         and the reserved scrollbar gutter are taken out there are 142 px of
+         column left, which is about a 25 character measure. That makes this
+         paragraph the one place in the tool where a long explanation cannot
+         be read comfortably, so it gets its own quieter, tighter setting and
+         sits under a rule, as a footnote to the palette rather than as prose
+         in it. */
+      #tb-palette .tb-help {
+        margin-top: var(--s4);
+        padding-top: var(--s4);
+        border-top: 1px solid var(--rule);
+        font-size: var(--t-micro);
+        line-height: 1.6;
+      }
 
       /* The label above the input, not beside it. Side by side, a two word
          label ("Sill height") wrapped to two lines inside a 78 px flex
@@ -306,39 +657,63 @@
         flex-direction: column;
         align-items: stretch;
         gap: 2px;
-        margin: 6px 0;
+        margin: var(--s2) 0;
         min-width: 0;
       }
-      .tb-field-label { color: var(--slate); font-size: 11px; line-height: 1.3; }
+      .tb-field-label { color: var(--slate); font-size: var(--t-small); line-height: 1.3; }
+      /*
+       * Sunk, and 24 px tall. These were the panel's own fill with the same
+       * border as a button, at 22 px, which is under the smallest target a
+       * pointer should have to hit and made a field indistinguishable from a
+       * control that does something when you press it.
+       */
       .tb-field input, .tb-field select {
         width: 100%;
         min-width: 0;
-        background: var(--panel-2);
-        border: 1px solid var(--line);
-        border-radius: 4px;
+        min-height: 24px;
+        background: var(--sunk);
+        border: 1px solid var(--edge);
+        border-radius: var(--r-chip);
         color: var(--cream);
         font: inherit;
-        font-size: 12px;
-        padding: 3px 5px;
+        font-size: var(--t-label);
+        padding: 3px var(--s2);
+        transition: border-color var(--quick), background var(--quick);
       }
+      .tb-field input:hover, .tb-field select:hover { border-color: rgba(243, 234, 212, 0.3); }
+      .tb-field input:focus, .tb-field select:focus {
+        outline: none;
+        border-color: var(--sakura);
+        background: var(--deep);
+      }
+      .tb-field input:focus-visible, .tb-field select:focus-visible { outline: none; }
       .tb-field select { max-width: 100%; }
+      /* Emitted on most inspector fields and hidden here, not in JS. Drop
+         this line and a unit prints after every number. */
       .tb-field-suffix { display: none; }
 
-      .tb-grid2, .tb-grid3 { display: grid; gap: 2px 8px; }
+      .tb-grid2, .tb-grid3 { display: grid; gap: 0 var(--s3); align-items: end; }
       .tb-grid2 { grid-template-columns: 1fr 1fr; }
       .tb-grid3 { grid-template-columns: 1fr 1fr 1fr; }
 
       .tb-card {
-        border: 1px solid var(--line);
-        border-radius: 5px;
-        padding: 7px;
-        margin: 6px 0;
-        background: var(--panel-2);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-ctl);
+        padding: var(--s3);
+        margin: var(--s3) 0;
+        background: var(--raised);
       }
-      .tb-card-head { display: flex; align-items: center; gap: 7px; }
-      .tb-card-title { flex: 1; font-size: 12px; color: var(--cream); }
-      .tb-face { margin: 5px 0; color: var(--mint); font-size: 11px; }
+      .tb-card-head { display: flex; align-items: center; gap: var(--s2); }
+      .tb-card-title { flex: 1; min-width: 0; font-size: var(--t-label); color: var(--cream); }
+      /* Which way the gate is flown. A fact about the course, not a call to
+         act, so it is not the primary action's mint. */
+      .tb-face { margin: var(--s2) 0 0; color: var(--slate); font-size: var(--t-small); }
 
+      /*
+       * A numbering chip, not a headline. Filled with cream this was 14.5:1
+       * against the page, the brightest object in the whole tool, so a
+       * sequence index shouted over the name beside it.
+       */
       .tb-num {
         flex: none;
         min-width: 18px;
@@ -346,85 +721,98 @@
         line-height: 18px;
         border-radius: 9px;
         text-align: center;
-        background: var(--cream);
-        color: var(--deep);
-        font-size: 10px;
-        font-weight: 700;
-        padding: 0 4px;
+        background: var(--lift-2);
+        color: var(--cream);
+        font-family: var(--mono);
+        font-size: var(--t-micro);
+        font-weight: 600;
+        padding: 0 var(--s1);
       }
+      .tb-seq-row.sel .tb-num { background: var(--amber); color: var(--deep); }
 
       .tb-badge {
         flex: none;
         font-size: 9px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: var(--amber);
-        border: 1px solid rgba(255, 212, 92, 0.45);
-        border-radius: 3px;
-        padding: 1px 4px;
+        color: var(--sakura);
+        border: 1px solid rgba(232, 168, 184, 0.4);
+        border-radius: var(--r-chip);
+        padding: 1px var(--s1);
       }
 
-      .tb-row-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+      .tb-row-btns { display: flex; gap: var(--s1); flex-wrap: wrap; margin-top: var(--s3); }
 
       .tb-fig-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 6px;
-        margin: 8px 0 10px;
+        gap: var(--s2);
+        margin: var(--s3) 0 var(--s4);
       }
       .tb-fig-card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 6px 6px 8px;
+        background: var(--raised);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-ctl);
+        padding: var(--s2) var(--s2) var(--s3);
         cursor: pointer;
         color: var(--slate);
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        gap: 2px;
+        gap: 3px;
         font: inherit;
         text-align: left;
+        transition: background var(--quick), border-color var(--quick);
       }
-      .tb-fig-card:hover { border-color: rgba(255, 212, 92, 0.55); }
+      .tb-fig-card:hover:not(.on) { border-color: var(--edge); background: var(--lift); }
       .tb-fig-card.on {
-        border-color: var(--amber);
-        background: rgba(255, 212, 92, 0.12);
+        border-color: var(--pick-edge);
+        background: var(--pick);
       }
       .tb-fig-card svg { width: 100%; height: 78px; display: block; }
       .tb-fig-card strong {
-        font-size: 12px;
+        font-size: var(--t-label);
         color: var(--cream);
         font-weight: 650;
       }
       .tb-fig-blurb {
-        margin: 0 0 12px;
-        color: var(--cream);
-        font-size: 12px;
-        line-height: 1.45;
+        margin: 0 0 var(--s4);
+        color: var(--slate);
+        font-size: var(--t-small);
+        line-height: 1.55;
       }
       .tb-side-grid {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
-        gap: 6px;
-        margin: 8px 0 10px;
+        gap: var(--s2);
+        margin: var(--s3) 0 var(--s4);
       }
       .tb-side-grid .tb-fig-card svg { height: 52px; }
 
       .tb-mini {
         flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        min-height: 24px;
         background: transparent;
-        border: 1px solid var(--line);
-        border-radius: 3px;
+        border: 1px solid var(--rule);
+        border-radius: var(--r-chip);
         color: var(--slate);
         font: inherit;
-        font-size: 10px;
+        font-size: var(--t-micro);
         line-height: 1;
-        padding: 4px 6px;
+        padding: var(--s1) var(--s2);
         cursor: pointer;
+        transition: background var(--quick), color var(--quick), border-color var(--quick);
       }
-      .tb-mini:hover { color: var(--cream); border-color: rgba(255, 212, 92, 0.5); }
+      .tb-mini:hover:not(:disabled) { color: var(--cream); background: var(--lift); border-color: var(--edge); }
+      .tb-mini:disabled { color: var(--dim); opacity: 0.5; cursor: default; }
       .tb-mini.tb-danger { color: var(--bad); }
+      /* It used to come up amber, which is the selection colour, so the one
+         control that throws something away looked like the one that picks it. */
+      .tb-mini.tb-danger:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); background: rgba(255, 143, 143, 0.12); }
 
       /* ---------------- sequence ---------------- */
 
@@ -433,79 +821,123 @@
       .tb-seq-row {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 5px 4px;
-        border-bottom: 1px solid var(--line);
+        gap: var(--s2);
+        padding: var(--s2) var(--s1);
+        border-bottom: 1px solid var(--rule);
+        border-left: 2px solid transparent;
         cursor: grab;
+        transition: background var(--quick);
       }
-      .tb-seq-row:hover { background: rgba(157, 179, 200, 0.07); }
-      .tb-seq-row.sel { background: rgba(255, 212, 92, 0.12); }
+      .tb-seq-row:last-child { border-bottom: 0; }
+      .tb-seq-row:hover:not(.sel) { background: var(--lift); }
+      /*
+       * Selection was a 0.12 amber wash, which is a 1.06:1 change against the
+       * panel, and hover was a 0.07 slate wash at 1.03:1. Neither was visible
+       * and they were within three hundredths of each other, so the row you
+       * had chosen and the row the pointer happened to be over looked the
+       * same. Selection now takes the amber rail as well as the wash.
+       */
+      .tb-seq-row.sel { background: var(--pick); border-left-color: var(--amber); }
       .tb-seq-row.dragging { opacity: 0.4; }
       .tb-seq-row.over { box-shadow: inset 0 2px 0 var(--amber); }
       .tb-seq-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-      .tb-seq-name { color: var(--cream); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .tb-seq-face { color: var(--dim); font-size: 10px; }
+      .tb-seq-name { color: var(--cream); font-size: var(--t-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tb-seq-face { color: var(--dim); font-size: var(--t-micro); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* The amber wash under a selected row lifts the ground and drops --dim
+         to 3.48:1, on the one line the row exists to tell you about. Slate
+         over the same wash is 4.79:1. */
+      .tb-seq-row.sel .tb-seq-face { color: var(--slate); }
       .tb-seq-face.bad { color: var(--bad); }
 
-      .tb-spare-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: var(--slate); font-size: 11px; }
-      .tb-spare-row span { flex: 1; }
+      .tb-spare { margin-top: var(--s2); }
+      .tb-spare-row { display: flex; align-items: center; gap: var(--s2); padding: 3px 0; color: var(--slate); font-size: var(--t-small); }
+      .tb-spare-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
       /* ---------------- results ---------------- */
 
-      .tb-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-bottom: 6px; }
-      .tb-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
-      .tb-stat-label { color: var(--slate); font-size: 11px; }
-      .tb-stat-value { color: var(--amber); font-size: 12px; font-weight: 600; }
+      .tb-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 3px var(--s4); margin-bottom: var(--s3); }
+      .tb-stat { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); min-width: 0; }
+      .tb-stat-label { color: var(--slate); font-size: var(--t-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      /* These really are instruments, so they keep amber. */
+      .tb-stat-value { flex: none; color: var(--amber); font-size: var(--t-label); font-weight: 600; }
 
       .tb-warn { list-style: none; margin: 0; padding: 0; }
       .tb-warn li {
-        padding: 5px 6px;
+        padding: var(--s2);
         margin: 3px 0;
-        border-left: 2px solid var(--line);
-        font-size: 11px;
-        line-height: 1.45;
+        border-left: 2px solid var(--rule);
+        border-radius: 0 var(--r-chip) var(--r-chip) 0;
+        font-size: var(--t-small);
+        line-height: 1.5;
         color: var(--slate);
+        transition: background var(--quick);
       }
-      .tb-warn li.warn { border-left-color: var(--bad); color: var(--cream); }
-      .tb-warn li.info { border-left-color: var(--line); }
+      .tb-warn li.warn { border-left-color: var(--bad); color: var(--cream); background: rgba(255, 143, 143, 0.07); }
+      .tb-warn li.info { border-left-color: var(--edge); }
       .tb-warn li.clickable { cursor: pointer; }
-      .tb-warn li.clickable:hover { background: rgba(157, 179, 200, 0.08); }
+      .tb-warn li.clickable:hover { background: var(--lift); }
+      .tb-warn li.warn.clickable:hover { background: rgba(255, 143, 143, 0.14); }
 
       /* Pinned to the foot of the results panel, heading and chart together
          as one block. A track with a dozen warnings scrolls, and the profile
          is the thing an author glances at WHILE reading them, so it must not
-         be the thing that scrolls away. */
+         be the thing that scrolls away.
+
+         The bottom offset and the negative bottom margin cancel .tb-panel's
+         padding, so both numbers move together with it. */
       .tb-profile-foot {
         position: sticky;
-        bottom: -10px;
+        bottom: calc(var(--s4) * -1);
         background: var(--panel);
-        padding: 6px 0 10px;
-        margin: 6px 0 -10px;
-        border-top: 1px solid var(--line);
+        padding: var(--s2) 0 var(--s4);
+        margin: var(--s2) 0 calc(var(--s4) * -1);
+        border-top: 1px solid var(--rule);
       }
-      .tb-profile-foot h3 { margin-top: 4px; }
-      #tb-profile { display: block; width: 100%; height: 92px; border-radius: 4px; }
+      /* The warnings above it used to slide under this block and simply
+         disappear, with nothing to say the list had more in it. */
+      .tb-profile-foot::before {
+        content: "";
+        position: absolute;
+        left: 0; right: 0;
+        bottom: 100%;
+        height: 18px;
+        background: linear-gradient(180deg, rgba(28, 38, 30, 0), var(--panel));
+        pointer-events: none;
+      }
+      .tb-profile-foot h3 { margin-top: var(--s1); }
+      #tb-profile { display: block; width: 100%; height: 92px; border-radius: var(--r-chip); }
 
       /* ---------------- load dialog ---------------- */
 
-      .tb-load-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-      .tb-load-name { flex: 1; color: var(--cream); }
-      .tb-load-meta { color: var(--dim); font-size: 10px; }
+      .tb-load-row { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) 0; border-bottom: 1px solid var(--rule); }
+      .tb-load-row:last-child { border-bottom: 0; }
+      .tb-load-name { flex: 1; min-width: 0; color: var(--cream); overflow: hidden; text-overflow: ellipsis; }
+      .tb-load-meta { color: var(--dim); font-size: var(--t-micro); }
 
       /* ---------------- toast and modal ---------------- */
 
+      /*
+       * Above the modal, and clear of the status bar. It had no z-index at
+       * all, so a toast raised while the publish dialog was open painted
+       * behind the scrim, and at 26 px it sat on top of the keyboard hints.
+       * Both transforms carry the same translateX: drop it from either and
+       * the toast slides in sideways.
+       */
       #tb-toast {
         position: fixed;
         left: 50%;
-        bottom: 26px;
+        bottom: 64px;
+        z-index: 40;
         transform: translateX(-50%) translateY(14px);
-        background: rgba(9, 15, 23, 0.94);
-        border: 1px solid rgba(255, 212, 92, 0.4);
-        border-radius: 6px;
-        padding: 9px 16px;
+        background: var(--raised);
+        border: 1px solid var(--edge);
+        border-left: 3px solid var(--sakura);
+        border-radius: var(--r-ctl);
+        padding: var(--s3) var(--s5);
         color: var(--cream);
-        font-size: 12px;
+        font-size: var(--t-label);
         max-width: 62vw;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.18s ease, transform 0.18s ease;
@@ -523,16 +955,27 @@
       }
       #tb-modal[hidden] { display: none; }
 
+      /* The highest surface in the tool, and it had no shadow while the More
+         dropdown had one, so a transient menu outranked a dialog. */
       .tb-modal {
         background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 18px 20px;
+        border: 1px solid var(--edge);
+        border-radius: var(--r-panel);
+        padding: var(--s5) 20px 20px;
         min-width: min(460px, 86vw);
+        max-width: min(620px, 92vw);
         max-height: 76vh;
         overflow-y: auto;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
       }
-      .tb-modal h2 { margin: 0 0 10px; font-size: 18px; color: var(--cream); }
+      .tb-modal h2 {
+        margin: 0 0 var(--s4);
+        padding-bottom: var(--s3);
+        border-bottom: 1px solid var(--rule);
+        font-size: var(--t-title);
+        font-weight: 700;
+        color: var(--cream);
+      }
 
       /* The gate's header board, drawn at the proportions the renderer
          builds it at, so what an author sees here is where the picture
@@ -541,9 +984,45 @@
       .tb-logo-preview {
         display: block;
         width: 100%;
-        margin: 10px 0 6px;
-        border-radius: 4px;
+        margin: var(--s4) 0 var(--s2);
+        border-radius: var(--r-chip);
         background: #dcd6ca;
+      }
+
+      /* ---------------- narrow ---------------- */
+
+      /*
+       * The builder needs a pointer with a middle button and a keyboard, so
+       * this is not a phone layout and does not pretend to be one. It is the
+       * one width where a laptop stops fitting: the three top bar zones
+       * cannot share a row, so they take two, and the drawing keeps the
+       * space instead of the chrome.
+       */
+      @media (max-width: 1180px) {
+        #tb-topbar { flex-wrap: wrap; gap: var(--s3) var(--s4); }
+        .tb-zone-edit { flex: 1 0 100%; order: 3; justify-content: flex-start; }
+        .tb-zone-out { margin-left: auto; }
+        /* The palette keeps its width. It was 152 before, which is exactly
+           the number the comment above says makes "Flagged double" wrap, so
+           narrowing it here undid that fix at the one width where it was
+           most likely to be seen. The side panel gives up the space
+           instead. */
+        #tb-side { width: 290px; }
+      }
+
+      /* ---------------- reduced motion ---------------- */
+
+      /*
+       * Nothing here carries meaning in its movement: the transitions are a
+       * hover fade and the toast's slide. An author who has asked for less
+       * motion gets the same tool with the changes arriving at once.
+       */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          transition-duration: 0.001ms !important;
+          animation-duration: 0.001ms !important;
+        }
+        .tb-btn:active:not(:disabled) { transform: none; }
       }
     </style>
     <script type="importmap">
@@ -558,8 +1037,10 @@
     <div id="tb-app">
       <header id="tb-topbar"></header>
       <div id="tb-keep">
-        <strong>This browser only.</strong>
-        Tracks you build stay here. Clearing the browser, or opening another device, starts you from nothing. Publish a course to put it on the public board.
+        <p>
+          <strong>This browser only.</strong>
+          Tracks you build stay here. Clearing the browser, or opening another device, starts you from nothing. Publish a course to put it on the public board.
+        </p>
       </div>
       <main id="tb-main">
         <aside id="tb-palette" class="tb-panel"></aside>
@@ -568,10 +1049,23 @@
           <canvas id="tb-3d" hidden></canvas>
           <div id="tb-status">
             <span id="tb-readout">0.00, 0.00 m</span>
+            <!--
+              The same hints that used to be one 226 character sentence. A
+              key set as a key is found by looking rather than by reading,
+              which is what a hint at the foot of a working canvas is for.
+            -->
             <span class="tb-keys">
-              Wheel zooms, middle drag pans. Click to select, shift to add, drag on empty ground to box select.
-              Drag the amber dot to rotate, or Q and E. Alt places off grid. X flips a face. V swaps 2D and 3D.
-              Delete removes. Control Z undoes.
+              <span><kbd>Wheel</kbd>zoom</span>
+              <span><kbd>Mid</kbd>pan</span>
+              <span><kbd>Click</kbd>select</span>
+              <span><kbd>Shift</kbd>add</span>
+              <span><kbd>Drag</kbd>box select</span>
+              <span><kbd>Q E</kbd>rotate</span>
+              <span><kbd>Alt</kbd>off grid</span>
+              <span><kbd>X</kbd>flip face</span>
+              <span><kbd>V</kbd>2D and 3D</span>
+              <span><kbd>Del</kbd>remove</span>
+              <span><kbd>Ctrl Z</kbd>undo</span>
             </span>
           </div>
         </div>

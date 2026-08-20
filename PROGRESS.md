@@ -12616,3 +12616,276 @@ and the probe was wrong.
 RUN LOG. `npm run verify` not run: no `emcc` in this container. No check
 value claimed. Menu code and one dialog; no physics, no plant, no ABI, no
 build, `dist/sim.wasm` untouched.
+
+### Deployment prep: the family mark, and a pass over the builder's chrome
+
+Three things asked for in one turn: a favicon everywhere, a styling tune up
+on the track builder, and links to the other sites at the foot of the landing
+page. The last two live in the other two repositories; this note covers all
+three because the icons are drawn from here.
+
+**THE MARK.** Six of the eight HTML files in the three repositories carried
+`<link rel="icon" href="data:,">`: the simulator, the builder, orbit.html,
+the test harness and both board pages. That is not a missing favicon, it is
+an explicitly empty one, and it beats a `/favicon.ico` at the site root, so
+committing files without editing those tags would have changed nothing on any
+of them. The landing page was the exception, and had the only real mark in
+the project. The eighth, `scripts/audio-probe.html`, has no icon tag at all
+and was the only page actually asking for `/favicon.ico`, and getting a 404.
+
+The one mark the project had was the landing page's data URI: four squares on
+a rounded tile, a quad's motors seen from above. It is now a file, with the X
+frame and the centre plate drawn in as well, and it comes in four accents.
+The accents are not decoration. A pilot ends up with the simulator, the
+builder and the board open at once, and at sixteen pixels a tab is an icon
+and four letters of title, so each page takes the accent it already owns:
+sakura for the simulator, which is the colour of the FPV in its wordmark;
+amber for the builder, where everything armed or selected is amber; mint for
+the board, which is what it paints a record in; cream for the landing page,
+which owns no product's accent and is the wordmark's other half. The
+simulator and the board would both have been sakura on their own use counts,
+which is the one place the rule needed a tiebreak.
+
+`scripts/icons.js` draws all four from one description of the geometry and
+writes `icon.svg`, a 16, 32 and 48 `favicon.ico` and a 180 px
+`apple-touch-icon.png`. It has no dependency: the shapes are signed distance
+fields sampled sixteen times a pixel, a PNG is a length, a tag, the bytes and
+a CRC, and an ICO is a six byte header with the PNGs end to end. An image
+library would have been megabytes bought to avoid a hundred lines, and a
+checked in binary with no source is a thing nobody can change later. Sampling
+the finished picture rather than antialiasing each shape from its own
+distance is deliberate: six overlapping shapes blended pairwise leave seams
+where an arm meets a propeller.
+
+`scripts/serve.js` had no MIME row for `.ico`, so locally the one file being
+tested would have been served as `application/octet-stream` while production
+served it correctly. Added.
+
+Two pages keep the empty icon on purpose, and DEPLOY.md now says why.
+`tests/browser/harness.html` suppresses the request because check 13 counts
+every console message and a favicon 404 is one. `src/share/orbit.html` is
+only ever a course thumbnail inside a cross origin iframe on the board, so an
+icon it can never show would be one request per card.
+
+**THE BUILDER'S CHROME.** A survey of the 621 line page turned up seventy
+findings. Three were bugs rather than taste, and those are the reason this
+was not just a repaint:
+
+`.tb-btn:hover:not(:disabled)` is three class level components and beat both
+`.tb-btn.on` and `.tb-btn.tb-primary`, which are two. Those fill the button
+with amber or mint and set the label to the dark ink; the hover rule then put
+the label back to cream, which is 1.04:1 on mint. Publish, Fly this track and
+every armed toggle lost their label the moment the pointer touched them. The
+hover rule is scoped now. The same trap caught the segmented group rule I
+added to replace it, in the same way, within the hour: `.tb-bargroup .tb-btn`
+is also two components and won on source order, so the 2D toggle went dark
+ink on no background. Both carry the `:not` now and the comment says why.
+
+`.tb-more-item` set no `font` and no `color`, and app.js builds those four
+buttons with a class list that replaces `tb-btn` rather than adding to it, so
+Duplicate, Import, Export and Delete were rendering in the user agent's own
+button styling: a system font in near black on a dark panel. Delete carried
+`tb-danger` and nothing styled it, because the only danger rules were scoped
+to `.tb-btn` and `.tb-mini`.
+
+There was not one `:focus` rule in the file, so a keyboard was blind through
+seventeen top bar controls, fourteen palette tools and every inspector field.
+And `color-scheme` was never declared, so every native select popup and every
+scrollbar rendered light on a dark page.
+
+The rest is a system where there was not one. `--line` at 0.12 alpha
+composites to 1.4:1 and was the border of every button, field, panel, card
+and modal in the tool, which is why nothing had an edge; it is two tokens
+now, a rule and a border. `--panel` and `--panel-2` were one point of
+lightness apart and `--panel-2` was at once the top bar, a recessed input and
+a raised card, so an input and a card were painted the same value; the ramp
+is four steps and the well and the card are different tokens. Amber was doing
+five jobs and is now doing one. Seven radii became three, sixteen padding
+pairs became five, and the section headings, which were the smallest and
+loudest text on the page at ten pixel amber under thirteen pixel body copy,
+recede and take a rule instead.
+
+Two things in the markup rather than the stylesheet. The keep notice was full
+bleed with its first four words in bold sakura, permanently, for a standing
+fact about where tracks live; it is a quiet strip with the theme reduced to
+one dot and held to a reading measure. And the status bar's 226 character
+run on sentence of keyboard hints is now eleven hints with their keys set as
+keys, which is found by looking rather than by reading.
+
+Three inline widths in app.js on the publish dialog's fields beat
+`.tb-field input { width: 100% }` and would have stayed at 220, 180 and 220
+pixels in a restyled modal. Removed; the CSS sizes them.
+
+What did not change, because JS depends on it: the three `[hidden]` guards
+that are the only thing holding the More menu, the second canvas and the
+modal shut; the canvas geometry the 2D and 3D views measure their backing
+stores and their pointer mapping from; `.tb-field-suffix { display: none }`,
+which is the only thing stopping a unit printing after every number field;
+`.tb-btn { text-decoration: none }`, which one anchor shares; the profile
+canvas at 92 px, of which profile.js spends 28 on padding; and the ten ids in
+the page's nodes map. The sticky profile foot's negative margin cancels the
+panel padding, so both moved together and the comment now says so.
+
+Measured after: all fourteen palette rows are 28 px, so nothing wraps, where
+"Flagged double" used to make its row 40. Console errors 0 warnings 0 in the
+builder, loaded, with an element selected, and with the More menu open.
+
+**THE LANDING PAGE FOOT.** A row of the other three sites, above the licence
+line rather than beside it. The footer was `display: flex` with
+`space-between`, so any third child would have re-split the existing row; it
+is a grid of two rows now and the licence keeps the flex it had. Two of the
+three sites bring their own logo and Winmarchy, which is a wordmark rather
+than a picture, is set as one, in its own green. That is the one colour in
+the page that is not in the palette above it, and it is borrowed on purpose:
+these are other people's marks in a block that says so. No `data-dest`, so
+main.js's local origin retargeting does not touch them.
+
+RUN LOG. `npm run verify`: 15 of 16. Check 1 build-clean fails because there
+is no `emcc` in this container, which is the same environmental failure this
+log has recorded before, and the vendor diff is empty. No threshold was
+touched. Check 13 console-clean passes with errors 0 warnings 0.
+
+WHAT CHECK 13 DOES NOT COVER, because a green check is not evidence for a
+thing it cannot see. `browserRun` navigates to exactly one URL,
+`/tests/browser/harness.html`, and that is the page that deliberately keeps
+`data:,`. None of the four pages whose icon tags changed is loaded by any
+check in the suite, so a wrong href in any of them would have left the run
+green. What was actually done instead: every icon path was fetched directly
+against all three servers and returned 200 with the right content type, the
+favicon.ico was decoded with an independent parser and every ICONDIRENTRY,
+PNG chunk and CRC checked, the 180 px raster was sampled and its motors, hub
+and transparent corner match the SVG's colours exactly, and the builder was
+driven in headless Chromium loaded, with an element selected and with the
+More menu open, reporting no console messages and no failed requests.
+
+Nothing in this turn touches physics, the plant, the ABI or the build, and
+`dist/sim.wasm` is untouched.
+
+### What the review pass found, which is the part worth writing down
+
+The entry above was written before the work was reviewed, and the review
+found that two of the three "bugs fixed" claims in it had each grown a new
+bug of exactly the same kind. Recording that, because the pattern is the
+lesson, not the individual fixes.
+
+**`:not()` ADDS WEIGHT, and that is what went wrong twice.** The original
+bug was `.tb-btn:hover:not(:disabled)` at three class level components
+beating `.tb-btn.on` and `.tb-btn.tb-primary` at two. The fix was to exclude
+those two states with `:not(.on):not(.tb-primary)`, which took the generic
+hover to FIVE, past `.tb-btn.tb-danger:hover:not(:disabled)` at four. So
+Delete, Clear, Remove and the Load dialog's per track delete all read red at
+rest and turned neutral the instant the pointer landed, which is the moment
+before the click. `.tb-btn.tb-quiet:hover` went dead the same way, so the
+deliberately quiet Back to the simulator link brightened as hard as a normal
+button. Both rules were unreachable and neither showed up in a screenshot,
+because a screenshot has no pointer in it.
+
+`:where()` is the answer and the whole block is now written around it: its
+contents weigh nothing, so the generic hover is two, every variant is above
+it, and the next person does not have to count. The block carries the
+ordering as a comment now, because this is three bugs from one cause.
+
+**The disabled state was shadowed by the variant it most needed to cover.**
+The old stylesheet declared `.tb-btn:disabled { opacity: 0.38 }`, and got
+away with declaring it early because no colour rule can override an opacity.
+The rewrite replaced it with three colour properties, and `.tb-btn.tb-primary`
+is the same two components and comes later, so it won. The visible failure
+is the publish dialog: app.js disables the mint submit for the duration of
+the POST specifically to stop a double submit, and it stayed full mint with
+dark ink and still brightened on hover, so a slow board round trip gave the
+author no sign anything was happening. Disabled is the last rule in the block
+now and every hover above it excludes `:disabled`.
+
+**The focus ring I added was clipped off the seven controls that needed it
+most.** `.tb-zone-edit` became a scroll container to stop it cutting buttons
+mid glyph, and a scroll container clips its descendants' outlines. Worse,
+`overflow-x: auto` forces the y axis to clip as well, so Undo, Redo, 2D, 3D,
+Fit, Show line and Logo showed the left and right of the sakura ring and
+nothing else. Five pixels of vertical padding, taken back with a negative
+margin so the bar's height does not move.
+
+Three smaller ones, all real. The narrow breakpoint I wrote set the palette
+back to 152px, which is the exact number the comment four hundred lines above
+it identifies as the cause of the wrap the widening was there to fix, so at
+1180px "Flagged double" wrapped again; the side panel gives up the space
+instead. `--dim` on a selected sequence row measures 3.48:1 against the amber
+wash, on the one line the row exists to tell you about, so selection lifts it
+to slate at 4.79:1. And the `--edge` comment claimed the token now cleared
+the 3:1 floor for a control's boundary. It did not: 0.2 is 1.79:1. It is 0.3
+now, which is about 2.4:1, and the comment says the true number and says that
+the fill difference carries the rest, because the alpha that actually reaches
+3:1 on this ground draws a hairline brighter than the label inside it. Better
+to write down the number than to claim one.
+
+**And the icon script accepted `constructor` as an accent.** `!PALETTE[accent]`
+is a property lookup, not a membership test, so every key on
+`Object.prototype` passed validation. `icons.js constructor out/` bound a
+function as the colour, multiplied `undefined` into every channel, and NaN
+stored into a `Uint8Array` is zero, so it wrote three valid, openable,
+entirely black icons and exited 0 saying it had succeeded. A `Set` now. The
+same pass pointed out that the palette was written twice, once as bytes for
+the rasteriser and once as hex for the SVG, with nothing checking they agree,
+which is a favicon and an icon.svg drawing different colours on the same
+page; the bytes are derived from the hex now, and regenerating all four sets
+after the change produced byte identical files, which is the proof the
+derivation is right. `png()` also addressed `px.buffer` rather than the view,
+which ignores `byteOffset` and is correct today only because `raster()`
+happens to return a fresh array.
+
+Not fixed, and worth knowing: nothing regenerates or checks the eight
+committed icon files, so editing the mark without rerunning the script ships
+an SVG and a raster that disagree, silently. None of the sixteen Stage 1
+checks looks at an icon and adding a seventeenth is a change to the check
+table in STAGE1.md, which is a bigger decision than this turn. The script's
+header says so plainly instead.
+
+RUN LOG. `npm run verify` rerun after every fix above: 15 of 16, check 1
+build-clean still failing only on the missing `emcc`, vendor diff empty, no
+threshold touched. Check 13 console-clean errors 0 warnings 0. The cascade
+fixes were then confirmed in the browser rather than by reading: a disabled
+primary computes to `--sunk` on `--dim` where it used to compute to mint, the
+generic hover selector does not match a danger or a quiet button and does
+match a plain one, and the focus ring on the 2D toggle photographs whole on
+all four sides.
+
+One more round of the review, and this one found no code bugs at all: every
+finding was a sentence that did not describe the code under it. Recorded
+because six wrong comments in one turn is a pattern, not luck.
+
+The worst was in `scripts/icons.js`, whose entire reason for existing is to
+be the readable source of truth for four otherwise opaque binaries. Its
+header tabulated mint for the simulator, sakura for the builder and amber for
+the board, which is the landing page's CARD mapping, and the exact opposite
+of what the script, `package.json`, DEPLOY.md and the four committed files
+actually do. Anyone changing the mark and regenerating by following the
+header would have reversed the whole tab strip. The two mappings genuinely
+are different and both are right for their own job, so the header now states
+which one it is and why the other one exists.
+
+Then: this log claimed "seven of the eight" pages carried the empty icon and
+contradicted itself nine lines later by calling the landing page's data URI
+"the one mark the project had". It is six. DEPLOY.md repeated the same error
+with the word "All" about a list that includes the landing page. A CSS
+comment argued from a 168 px palette next to a rule that sets 178. The
+landing page's comment said the foreign logos are held back to 62% above a
+rule that sets 0.7. And DEPLOY.md still gave the harness's `data:,` the
+reason it had before this turn, which this turn falsified: the request 404ed,
+and now that `/favicon.ico` exists at the publish root and serve.js knows the
+type, it would return 200. All corrected, and the harness note now says what
+is actually left of the reason.
+
+The one that matters most: the RUN LOG above offered check 13 as evidence the
+icon hrefs were right. It is not. `browserRun` loads exactly one URL,
+`/tests/browser/harness.html`, and that is the single page in the project
+that deliberately has no favicon request to make. None of the four pages
+whose tags changed is loaded by any check in the suite, so a wrong href would
+have left the run green. The rule here is not to report a check as covering
+something it does not, so the run log now says what check 13 does not see and
+lists what was done instead.
+
+The last one is a rule, not an error of fact: CLAUDE.md says every file gets
+a GPLv3 header, and the four generated `icon.svg` files had none. They are
+first party text, they are the readable half of the icon set, and an SVG has
+somewhere to put a comment, so `svg()` emits the notice and all four were
+regenerated. The `.ico` and the `.png` still cannot carry one, which is a
+real limit of those formats rather than an exemption anybody chose.

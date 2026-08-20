@@ -18,6 +18,7 @@
     "lint:catalog": "node scripts/fc-catalog-lint.js",
     "lint:fc": "node scripts/fc-trace.js",
     "gen:catalog": "node scripts/fc-catalog-gen.js",
+    "gen:icons": "node scripts/icons.js sakura . && node scripts/icons.js amber src/trackbuilder",
     "replay:selftest": "node scripts/replay-log.js --selftest",
     "replay": "node scripts/replay-log.js",
     "link:selftest": "node scripts/link-selftest.js"

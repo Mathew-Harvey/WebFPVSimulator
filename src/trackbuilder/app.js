@@ -800,7 +800,6 @@ export class App {
     courseInput.type = 'text';
     courseInput.maxLength = 80;
     courseInput.value = remix ? suggestRemixName(this.doc.name) : this.doc.name;
-    courseInput.style.width = '220px';
     courseField.append(courseLabel, courseInput);
     body.append(courseField);
 
@@ -813,7 +812,6 @@ export class App {
     nameInput.type = 'text';
     nameInput.maxLength = 24;
     nameInput.value = readPilotName() || '';
-    nameInput.style.width = '180px';
     nameField.append(nameLabel, nameInput);
     body.append(nameField);
     const nameHelp = document.createElement('p');
@@ -829,7 +827,6 @@ export class App {
     const boardInput = document.createElement('input');
     boardInput.type = 'url';
     boardInput.value = boardOrigin();
-    boardInput.style.width = '220px';
     boardField.append(boardLabel, boardInput);
     body.append(boardField);
 

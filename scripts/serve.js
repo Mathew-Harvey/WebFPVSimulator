@@ -40,6 +40,11 @@ const MIME = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
+  /* Render sets this one itself, but without a row here a local visit gets
+     the site icon as application/octet-stream and the tab stays blank, so
+     the one file you are trying to look at is the one that behaves
+     differently on a laptop from in production. */
+  ['.ico', 'image/x-icon'],
   ['.mp3', 'audio/mpeg'],
 ]);
 

@@ -582,9 +582,10 @@
          of the window: at 1366 that column is 451 px, four columns of it are
          113 px each, and "19.5% stick" is wider than that, so the last cell
          used to spill out from under the curve and across the menu beside
-         it. A track floor of 140 px wraps instead of overflowing. */
+         it. A track floor of 126 px wraps instead of overflowing, and is the
+         widest floor that still fits all four across at 1600. */
       .rates-readout {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
         gap: 10px 14px; margin: 14px 0 0;
       }
       .rates-cell { min-width: 0; }
@@ -669,6 +670,10 @@
         }
         .rates-graph-wrap { height: clamp(140px, 20vh, 200px); }
         .screen-rates .menu-scroll { max-height: 34vh; }
+        /* The note moved under the list in this layout, so the hint no
+           longer needs the full gap: at 900 by 760 the longest note pushed
+           it three pixels below the fold. */
+        .screen-rates .hint { margin-top: 12px; }
         /* Narrow enough to clear the music dock and the bug chip, which are
            fixed to the top right corner and sit over any screen. At 48em the
            last words of this sentence went under them. */
@@ -686,6 +691,12 @@
          line here that the row notes already say in more detail. */
       @media (max-height: 700px) {
         .rates-lede { display: none; }
+        /* A 1024 by 700 window is 14 px short with the lede already gone and
+           the longest note showing, so the curve gives up those pixels. It
+           is a shape, not a table: it survives being short far better than
+           the rows survive being cut. */
+        .rates-graph-wrap { height: clamp(100px, 14vh, 140px); }
+        .screen-rates .hint { margin-top: 8px; }
       }
       .hint {
         display: flex; align-items: center; gap: 12px;

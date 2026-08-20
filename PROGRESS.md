@@ -12312,3 +12312,12 @@ reading every rate value back out of the running module through `sim_bf_get`
 in the browser. Wiring `lint:fc` and `lint:presets` into `tests/verify.js` is
 the fix, and per CLAUDE.md that is a change to the check set and needs its own
 argument before it is made.
+
+**One residue, measured and left.** At 1024 by 640, with the longest note
+showing, the Rates screen is about twelve pixels tall for its window at each
+end. Chasing it further is disproportionate: at the same size the Settings
+screen overflows by 186 pixels top and bottom, How to fly by 176, and Credits
+by 849. Rates fits every size from 1280 by 620 upward and every laptop and
+desktop size checked, and degrades better than every other page here. The
+general fix is a scrolling page container for `.screen-page`, which is a
+change to every screen and belongs in its own turn.

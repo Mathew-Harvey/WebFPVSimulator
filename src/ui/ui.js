@@ -777,6 +777,9 @@ function tuneItem(s, midRun) {
 const YAW_TIP_TILT = 40;
 const YAW_TIP_RATE = 500;
 
+/* How long a yes or no refuses to be answered after it opens. See askConfirm. */
+const CONFIRM_DEAF_MS = 300;
+
 /* The five keys the Rates screen owns, in one place, so the Revert row and
  * the act() that answers it cannot drift apart. */
 const RATE_KNOBS = ['rateMax', 'rateYawMax', 'rateCentre', 'rateExpo', 'throttleCap'];
@@ -1458,7 +1461,34 @@ export class Ui {
       this.nameDialog.append(box);
       this.nameDialog.hidden = false;
 
-      const finish = (v) => this.closeNameDialog(v);
+      /*
+       * TWO THINGS THIS DIALOG DOES NOT DO, both reported by a pilot who
+       * spammed the camera angle button past 40 and watched the tip vanish
+       * before they could read it.
+       *
+       * NO BACKDROP DISMISSAL. The backdrop is inset 0 with pointer-events
+       * auto, so it covers the row the pilot was just clicking: the stepper
+       * that opened this sits at x 1183 in a 1600 wide window and the box is
+       * centred, so the very next click of a burst landed on the backdrop
+       * and answered no. The name form can keep click-beside-to-cancel
+       * because a pilot opens it deliberately and it has an obvious Cancel.
+       * A question that appears UNDER THE CURSOR uninvited cannot.
+       *
+       * AND A SHORT DEAF PERIOD. Removing the backdrop handler fixes the
+       * clicks that land beside the box, but at another window size the box
+       * can be under the cursor and the same burst would hit a BUTTON, which
+       * is worse: it would answer for them. Nothing is accepted from any
+       * source for 300 ms, which is under the roughly 250 ms floor for
+       * reacting to something that just appeared, so it can only ever
+       * swallow input that was already queued when the dialog opened.
+       */
+      const openedAt = performance.now();
+      const finish = (v) => {
+        if (performance.now() - openedAt < CONFIRM_DEAF_MS) {
+          return;
+        }
+        this.closeNameDialog(v);
+      };
       const onKey = (e) => {
         if (e.key === 'Enter' || e.key === 'y' || e.key === 'Y') {
           e.preventDefault();
@@ -1474,12 +1504,6 @@ export class Ui {
       this.nameDialog.addEventListener('keydown', onKey, true);
       yesBtn.addEventListener('click', () => finish(true));
       noBtn.addEventListener('click', () => finish(false));
-      this.nameClickHandler = (e) => {
-        if (e.target === this.nameDialog) {
-          finish(false);
-        }
-      };
-      this.nameDialog.addEventListener('click', this.nameClickHandler);
       yesBtn.focus();
     });
   }

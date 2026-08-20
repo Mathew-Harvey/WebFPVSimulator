@@ -12572,3 +12572,47 @@ RUN LOG. `npm run verify` not run: no `emcc` in this container, so
 code and one dialog; no physics, no plant, no ABI, no build, and
 `dist/sim.wasm` is untouched. The yaw rate it sets goes through the same
 `saveSettings` and `onSettings` path every Rates row uses.
+
+### The tip vanished under a spammed button, and why the fix is two things
+
+Reported the moment it shipped: the pilot was clicking the camera angle up
+button in a burst, the tip appeared as they passed 40, and one or two more
+clicks made it disappear before they could read it.
+
+Reproduced exactly. `.name-dialog` is `inset: 0` with `pointer-events: auto`,
+so the backdrop covers the row the pilot was clicking. The stepper that
+opened the dialog sits at x 1183 in a 1600 wide window and the box is centred
+on 800, so the next click of the burst landed on the BACKDROP, and the
+backdrop handler answered no. Measured: dispatch one click at the dialog node
+and it is `open=false yaw=670`.
+
+**Backdrop dismissal is gone from askConfirm.** The name form keeps it, and
+should: a pilot opens that deliberately and it has a visible Cancel. A
+question that appears under the cursor UNINVITED cannot be dismissed by
+clicking beside it, because the pilot did not choose where their cursor was.
+
+**And a 300 ms deaf period, because removing the handler is only half.** At
+another window size the box itself can be under the cursor, and then the same
+burst hits a BUTTON, which is worse than losing the tip: it answers for them,
+possibly yes. So no answer is accepted from any source, key or click, for 300
+ms. That is under the roughly 250 ms floor for reacting to something that has
+just appeared, so it can only swallow input that was already queued when the
+dialog opened. A deliberate answer is never affected.
+
+Driven headless: five backdrop clicks plus both buttons plus Escape, all
+inside the deaf window, leave `open=true yaw=670`. A backdrop click after the
+window also leaves it open, because that handler no longer exists. A
+deliberate Yes after it sets yaw 500 and the module reads `yaw_srate 50`. A
+deliberate Escape closes it, leaves 670, and does not fall through to the
+menu underneath: the screen stays on Settings. `lint:fc` 28 of 28,
+`lint:presets` 2 of 2, console errors 0 warnings 0.
+
+One test artifact worth recording, because it briefly read as a bug: the
+first run reported `yaw 670` right after a successful Yes. The dialog resolves
+a promise and the setter runs in the `.then`, a microtask, so the assertion
+ran before it. Adding a wait showed 500 and `yaw_srate 50`. The code was right
+and the probe was wrong.
+
+RUN LOG. `npm run verify` not run: no `emcc` in this container. No check
+value claimed. Menu code and one dialog; no physics, no plant, no ABI, no
+build, `dist/sim.wasm` untouched.

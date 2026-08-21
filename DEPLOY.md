@@ -107,9 +107,10 @@ rather than in a region.
 
 The publish directory is the field to get right. It defaults to blank and
 the form suggests `build` or `dist`. Both are wrong here. It has to be the
-repository root, because the page fetches by absolute path from the site
-root and `src/main.js` imports `/tests/lib/simmod.js` to load the module.
-Publishing `dist` serves a directory with one file in it.
+repository root, because the page reaches sideways across the tree for the
+things it boots on: `src/main.js` imports `../tests/lib/simmod.js` to load
+the module and fetches `../dist/sim.wasm` for its bytes. Publishing `dist`
+serves a directory with one file in it.
 
 ## 1. The board and its database
 
@@ -155,11 +156,11 @@ SIM_ORIGIN = https://webfpvsimulator.onrender.com
 
 Your `SIM_URL`, no trailing slash. Save, which redeploys the board.
 
-Leave `BOARD_PUBLIC_ORIGIN` unset. The board works out its own public
-origin from the request, and `BOARD_TRUST_PROXY=1` in the blueprint is what
-makes that come out as `https` rather than `http`. Only set
-`BOARD_PUBLIC_ORIGIN` if you put the board behind a custom domain and the
-forwarded headers are not telling it the truth.
+Leave `BOARD_PUBLIC_ORIGIN` unset while the board is the whole site. It
+works its own public origin out of the request, and `BOARD_TRUST_PROXY=1` in
+the blueprint is what makes that come out as `https` rather than `http`. Set
+it when the forwarded headers cannot tell the truth, which is what happens
+behind a mount prefix: see section 5.
 
 `BUGS_TOKEN` is optional. Set it to any random string and listing and
 updating bug tickets will need `Authorization: Bearer <token>`. Testers can
@@ -209,6 +210,261 @@ Then in a browser, in this order:
 5. Press F8 in the simulator and file a test ticket. It should appear at
    `BOARD_URL/bugs`.
 
+## 5. One domain in front of the three
+
+Everything above deploys the three services to three addresses. This section
+puts one domain in front of them, so that a visitor arriving at the front door
+never leaves it:
+
+| Address | What answers | Where it actually comes from |
+| --- | --- | --- |
+| `https://webfpv.org/` | the landing page | GitHub Pages, `Mathew-Harvey/landingpage-WebFPVSimulator-` |
+| `https://webfpv.org/sim/` | the simulator and the track builder | the Render static site |
+| `https://webfpv.org/board/` | the board and the bug inbox | the Render web service |
+
+The thing doing the work is a Cloudflare Worker, `edge/router.js` in this
+repository. It takes the first path segment off and passes the rest to the
+right upstream, so the three services still serve from their own roots and
+none of them has to know it is mounted anywhere. `/sim/dist/sim.wasm` arrives
+at Render as `/dist/sim.wasm`, and `/board/api/tracks` arrives at the board as
+`/api/tracks`.
+
+**Why a Worker rather than a redirect or a rule.** A redirect puts
+`onrender.com` back in the address bar, which is the one thing the domain
+exists to stop. A Cloudflare Origin Rule cannot do it either: taking a prefix
+off needs `regex_replace` in a rewrite rule, which is not on the free plan,
+and both upstreams route by `Host`, so pointing an origin at them without
+changing the Host lands on neither site.
+
+### What changed in the three repositories, and why
+
+The three pages used to fetch their own files from the site root, because each
+one WAS the site root. Under one domain only the landing page still is, so a
+leading slash from the simulator now asks the landing page for the physics and
+gets its 404 page. Every one of those is now resolved against the page or the
+module instead, which is the same URL when the app is served at a root and the
+right one when it is not. Both mounts work, so nothing here is a one way door
+and the onrender.com addresses keep working exactly as before.
+
+| Repository | File | What moved |
+| --- | --- | --- |
+| simulator | `index.html` | the boot script and the three icon links, now relative |
+| simulator | `src/main.js` | `/tests/lib/simmod.js` and `/dist/sim.wasm`, now resolved against the module |
+| simulator | `configs/registry.js` | a tune's `.diff`, now resolved beside `registry.js` |
+| simulator | `src/render/tracks.js` | the music crate, now resolved against the module |
+| simulator | `src/ui/ui.js` | the orbit thumbnail in the Courses reel |
+| simulator | `src/share/board.js` | `PRODUCTION_BOARD_ORIGIN` is now `https://webfpv.org/board` |
+| board | `public/index.html`, `public/bugs.html` | icons, the inbox script, the back link |
+| board | `public/app.js`, `public/bugs.js` | every `/api/...` fetch, now resolved against the page's own directory |
+| board | `public/app.js` | `orbitHref`, which was silently dropping the `/sim` |
+| landing | `src/config.js`, `index.html` | the simulator and board links now name `webfpv.org` |
+
+Two of those deserve a note.
+
+`MAP_MODULE_PREFIX` in `src/main.js` still has leading slashes and is meant
+to. Those strings are never fetched: `moduleCounter` matches them as a
+substring of each performance entry's full URL, and a shell at
+`https://webfpv.org/sim/` still produces names containing `/src/maps/city/`.
+
+`orbitHref` in the board's `public/app.js` is the one that would have been
+hardest to find. It read `new URL('/src/share/orbit.html', config.simOrigin)`,
+and a leading slash in `new URL` throws away everything in the base but the
+scheme and the host. With the simulator at `https://webfpv.org/sim` that
+produced `https://webfpv.org/src/share/orbit.html`, which is the landing page.
+The board would have loaded, listed every course, and drawn an empty box where
+each thumbnail should be. The two links either side of it concatenate rather
+than resolve and were never affected, which is exactly why it was easy to miss.
+
+`tests/` is deliberately untouched. The harness runs at a root on a laptop and
+is not part of the public mount, so leaving it alone keeps the verify surface
+where it was.
+
+### Deploy it
+
+**1. Create the Worker.** In the Cloudflare dashboard: **Compute (Workers)**,
+then **Workers & Pages**, then **Create**, then **Start with Hello World!**,
+then **Deploy**. Name it `webfpv-router`. Open **Edit code**, select
+everything in the editor, paste the whole of `edge/router.js` over it, and
+**Deploy** again.
+
+From a checkout the same thing is one command, and no dependency is added to
+`package.json` to do it:
+
+```bash
+npx wrangler deploy --config edge/wrangler.toml
+```
+
+**2. Give it the domain.** On the Worker: **Settings**, then **Domains &
+Routes**, then **Add**, then **Custom domain**. Enter `webfpv.org` and add it.
+Do it a second time for `www.webfpv.org`.
+
+Custom domain rather than route, and the difference matters here. A route
+needs a DNS record already pointing somewhere for the Worker to intercept, and
+`webfpv.org` has no origin server to point at: the Worker is the origin. A
+custom domain makes Cloudflare create the record and issue the certificate
+itself. The zone's DNS page goes from "no DNS records" to one record per
+hostname, both managed by the Worker.
+
+The Worker sends `www` to the apex on arrival, so the site has one address
+rather than two that both work.
+
+**3. Tell the board where it lives.** On the `webfpv-board` service in Render,
+under **Environment**, set both of these and save, which redeploys:
+
+```
+SIM_ORIGIN            = https://webfpv.org/sim
+BOARD_PUBLIC_ORIGIN   = https://webfpv.org/board
+```
+
+`SIM_ORIGIN` is the same field as step 3 above with a new value, and every
+consumer already treats it as a prefix and concatenates.
+
+`BOARD_PUBLIC_ORIGIN` is the field this page told you to leave alone, and this
+is the situation it exists for. `requestOrigin` works the board's own address
+out of the forwarded headers, which now say `webfpv.org` and cannot say
+`/board`, because a path is not part of a host. Left unset, every Fly link the
+board writes and every `?board=` it hands the simulator would point at the
+landing page. Set, it short circuits the whole calculation and answers with
+the truth.
+
+`BOARD_TRUST_PROXY` stays `1`. It is doing less work than it was, but it is
+still what makes a direct visit to the onrender.com address report `https`.
+
+**4. Deploy the three branches, and the Worker goes first.** This is the one
+ordering that is not a preference. `PRODUCTION_BOARD_ORIGIN` in
+`src/share/board.js` now reads `https://webfpv.org/board`, so a simulator that
+reaches Render before the Worker is live has a board address that nothing is
+answering: Publish, the community course list and the F8 bug reporter would
+all be talking to a domain with no `/board` on it. Worker, then board, then
+simulator, then landing page.
+
+The rest is backwards compatible in both directions. Every path change in the
+three repositories resolves to exactly the URL it used to at a root mount, so
+`webfpvsimulator.onrender.com` and `webfpv-board.onrender.com` keep working
+after the migration, and the mounted copies work before the Render redeploy
+lands.
+
+**Do not add a `CNAME` file to the landing repository.** GitHub Pages answers
+a CNAME by redirecting `github.io` to the custom domain named in it. That
+redirect would arrive back at the Worker, which would fetch `github.io`
+again, and the two would pass it back and forth until Cloudflare gave up. The
+landing page is proxied, not custom domained, and the absence of that file is
+what keeps it that way.
+
+### Things that will bite
+
+**The board's page no longer believes the board about where the board is.**
+`/api/config` returns a `boardOrigin` built from the request headers, and a
+header carries a host, not a path: behind the mount it can only ever say
+`https://webfpv.org`, which is the landing page. `public/app.js` now keeps its
+own `HERE_ORIGIN`, taken from `document.baseURI`, and overrides that field. It
+takes `simOrigin` from the server, because only the server knows it. Setting
+`BOARD_PUBLIC_ORIGIN` is still worth doing so that `/api/config` tells the
+truth to anything else reading it, but the Fly links no longer depend on it.
+
+**A returning pilot carries the old board address around.** The resolved board
+is written to `localStorage` under `webfpv.board.origin`, and a stored value
+outranks the compiled default. Storage is per origin, so anyone arriving at
+`webfpv.org/sim/` starts clean. Anyone who keeps using the onrender address
+keeps the onrender board, which works, and is worth knowing when a bug report
+says the wrong board.
+
+**The three apps now share one origin, so they share one `localStorage`.** No
+key collides today: the simulator writes `webfpv.board.origin`,
+`webfpv.share.import.v1` and `webfpv.share.bind.v1`, the board writes
+`webfpv.bugs.token` into `sessionStorage`. The namespace is shared from here
+on, so every new key needs its prefix. The same is true of the IndexedDB store
+behind the orbit thumbnails and the web lock that guards it: a pilot with the
+board in one tab and the simulator in another now contends on one lock instead
+of two.
+
+**Do not add a Content Security Policy or a framing header at the Worker.**
+There is none anywhere in the three repositories and that is deliberate: the
+board draws every thumbnail by framing the simulator's `orbit.html`, and four
+separate import maps load three.js from `cdn.jsdelivr.net`. A `script-src`
+without jsDelivr would take down the landing page, the simulator, the builder
+and every card on the board in one deploy.
+
+**Do not add a Cloudflare cache rule for `webfpv.org`.** Three cache policies
+now live on one hostname: the simulator's `no-cache` with the music crate
+immutable for a year, the board's `no-store` on everything, and whatever Pages
+does. They still match at the origin because the prefix comes off before the
+request gets there, and the Worker passes the response headers through
+untouched. One rule for the domain would flatten all three.
+
+**The landing page's spelling of its own repository is case sensitive and
+correct.** `edge/router.js` names
+`https://mathew-harvey.github.io/landingpage-WebFPVSimulator-`. The lowercase
+spelling 404s at Pages, checked rather than assumed, so leave the capitals
+where they are.
+
+### Check it
+
+```bash
+# The three mounts answer, and none of them is a redirect.
+curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" -L https://webfpv.org/
+curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" -L https://webfpv.org/sim/
+curl -s -o /dev/null -w "%{http_code} %{url_effective}\n" -L https://webfpv.org/board/
+
+# The prefix comes off before Render sees it.
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://webfpv.org/sim/dist/sim.wasm
+# 200 application/wasm
+
+# The board knows where it lives and where the simulator lives, WITH the paths.
+curl -s https://webfpv.org/board/api/config
+# {"simOrigin":"https://webfpv.org/sim","boardOrigin":"https://webfpv.org/board"}
+
+# The missing slash is a permanent redirect, not a 404. Every relative url on
+# the page below it depends on this.
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://webfpv.org/sim
+# 301 https://webfpv.org/sim/
+
+# www is one site, not two.
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://www.webfpv.org/
+# 301 https://webfpv.org/
+```
+
+Then in a browser, in this order:
+
+1. `https://webfpv.org/` and click **Fly now**. The address bar should read
+   `https://webfpv.org/sim/?map=field` and the simulator should reach the
+   flying menu.
+2. `https://webfpv.org/board/`. Every course card's thumbnail should draw. An
+   empty box is `orbitHref` or the `/sim` mount, not the simulator refusing to
+   be framed, because nothing in this estate sets `X-Frame-Options`.
+3. **Fly this course** from a card. It should land in the simulator with the
+   course loaded and offer to post a time at the end of a lap.
+4. Publish a course from the builder at
+   `https://webfpv.org/sim/src/trackbuilder/index.html` and confirm the
+   Publish dialog offers `https://webfpv.org/board`.
+5. F8 in the simulator, file a test ticket, and find it at
+   `https://webfpv.org/board/bugs`.
+
+`node edge/selftest.js` covers the router's own string handling without an
+account or a network: the three mounts, the trailing slash redirects, a POST
+body surviving, and an upstream `Location` being put back inside the domain.
+It is `npm run test:edge` and it takes a second.
+
+### What the free plan will do to you here
+
+**A Worker on the free plan gets 100,000 requests a day**, and every byte of
+all three sites is now a Worker request. A cold visit to the city map is the
+page, the module graph, `sim.wasm` and its assets, so think in hundreds of
+requests per visitor rather than one. The music is the exception and stays the
+exception: `/assets/music/*` is still immutable for a year, so the CDN answers
+it without waking the Worker after the first time.
+
+**The board still sleeps.** A first visitor after a quiet spell waits for
+Render to wake the service, and the Worker waits with them. Cloudflare gives
+up at around 100 seconds with a 524, which is longer than a Render cold start
+but not by as much as you would like.
+
+**Nothing about the SSL mode matters as much as it looks.** There is no origin
+DNS record for Cloudflare to pull from, so the zone's SSL setting has almost
+nothing to apply to: the Worker terminates the visitor's TLS at the edge and
+opens its own HTTPS connection to Render and to Pages. Set it to **Full
+(strict)** anyway, so that it says something true if a record is ever added.
+
 ## What the free tier will do to you
 
 **The free Postgres instance is deleted after 30 days.** This is the one
@@ -233,15 +489,17 @@ slow first click. A deleted database is the courses gone.
 ## Notes on the two blueprints
 
 **The simulator publishes the whole repo tree.** `staticPublishPath` is
-`.`, and it has to be. The page fetches by absolute path from the site
-root, including `/tests/lib/simmod.js`, which `src/main.js` imports to load
-the WASM module. Trimming the publish path to `src` plus `dist` breaks
+`.`, and it has to be. The page reaches across the whole tree at boot,
+including `../tests/lib/simmod.js`, which `src/main.js` imports to load the
+WASM module. Those are resolved against the module rather than the site root,
+which is what lets one tree serve at a root and under `/sim/`, but they still
+span the repository. Trimming the publish path to `src` plus `dist` breaks
 boot. The repo is public and GPLv3, so serving the tree gives nothing away.
 
 **There is no build step, but there is a build command.** It is
-`test -f dist/sim.wasm && test -f tests/lib/simmod.js`. Both are fetched by
-absolute path at boot, and a deploy missing either serves a page that dies
-on a 404 with nothing useful in the log. Failing the deploy instead is
+`test -f dist/sim.wasm && test -f tests/lib/simmod.js`. Both are fetched at
+boot, and a deploy missing either serves a page that dies on a 404 with
+nothing useful in the log. Failing the deploy instead is
 louder and names the file.
 
 **Everything is served `Cache-Control: no-cache`, except the music.**

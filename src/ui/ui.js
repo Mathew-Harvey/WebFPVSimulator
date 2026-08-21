@@ -3371,7 +3371,7 @@ export class Ui {
           onAbort();
           return;
         }
-        frame.src = `/src/share/orbit.html?map=${encodeURIComponent(c.id)}`;
+        frame.src = new URL(`../share/orbit.html?map=${encodeURIComponent(c.id)}`, import.meta.url).href;
       });
       if (this.reelSession !== session) {
         return;

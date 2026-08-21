@@ -72,7 +72,20 @@ import { ratesDiff, ratesSummary } from '../configs/rates.js';
 import { composeConfig, moduleGet, RATES_KEEP } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
-import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
+import { loadSim, simErrorName, SIM_OK } from '../tests/lib/simmod.js';
+
+/*
+ * The module's bytes, resolved against this file rather than the site root.
+ *
+ * It was '/dist/sim.wasm', which is the same URL as long as the shell is the
+ * whole site. It is not any more: webfpv.org serves the landing page at the
+ * root and this shell under /sim/, so a leading slash asked the landing page
+ * for the physics and got its 404 page back. Every other file the boot path
+ * needs moved the same way and for the same reason. Nothing about the module
+ * changed, only where the page looks for it, and at the root it still
+ * resolves to exactly /dist/sim.wasm.
+ */
+const WASM_URL = new URL('../dist/sim.wasm', import.meta.url).href;
 
 /*
  * Metres between sim z = 0 and the ground plane, which is where the craft
@@ -266,7 +279,12 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
 const MAP_MODULE_COUNT = { field: 1, city: 64, custom: 1 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
- * modules under the city's prefix and the bar sat at zero. */
+ * modules under the city's prefix and the bar sat at zero.
+ *
+ * These stay leading-slash while the rest of the file went relative, and that
+ * is not an oversight. They are never fetched. moduleCounter matches them as a
+ * SUBSTRING of each performance entry's full URL, and a shell mounted at
+ * https://webfpv.org/sim/ still produces names containing /src/maps/city/. */
 const MAP_MODULE_PREFIX = { field: '/src/maps/field', city: '/src/maps/city/', custom: '/src/maps/custom' };
 
 async function loadMap(shell, id, loading, options) {
@@ -414,7 +432,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   loading.start('sim');
-  const sim = await loadSim(await fetchBytes('/dist/sim.wasm', (f, got, total) => {
+  const sim = await loadSim(await fetchBytes(WASM_URL, (f, got, total) => {
     loading.progress('sim', f, `${(got / 1024).toFixed(0)} of ${(total / 1024).toFixed(0)} kB`);
   }));
   if (typeof sim.e.sim_deflect !== 'function') {

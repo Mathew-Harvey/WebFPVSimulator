@@ -51,5 +51,8 @@ export function tuneById(id) {
 }
 
 export function tunePath(id) {
-  return `/configs/${tuneById(id).id}.diff`;
+  /* Beside this file, not at /configs, so that the shell works wherever it
+   * is mounted. webfpv.org serves it under /sim/ and Render serves it at the
+   * root, and neither has to be told which. */
+  return new URL(`./${tuneById(id).id}.diff`, import.meta.url).href;
 }

@@ -13951,3 +13951,136 @@ rather than importing it, and a check that can drift out of agreement with
 what it checks is worse than no check.
 
 Physics, plant, ABI, CLI, input and the trace were not touched.
+
+---
+
+## One domain in front of the three deploys
+
+The three services were three addresses. They are now three mounts on one:
+`webfpv.org` for the landing page, `webfpv.org/sim` for this shell and the
+builder, `webfpv.org/board` for the board. A Cloudflare Worker,
+`edge/router.js`, owns the domain, picks an upstream by the first path
+segment, takes that segment off, and passes the rest to GitHub Pages or to
+one of the two Render services. The upstreams still serve from their own
+roots and none of them was told it had moved.
+
+WHY THIS WAS A CODE CHANGE AND NOT JUST DNS. Each of the three pages used to
+fetch its own files from the site root, because each one WAS the site root.
+Under one domain only the landing page still is, so a leading slash from this
+shell asks the landing page for the physics and gets its 404 page back. Every
+one of those is now resolved against the module or the document instead:
+`index.html` loads `src/boot.js`, `src/main.js` imports
+`../tests/lib/simmod.js` and fetches `new URL('../dist/sim.wasm',
+import.meta.url)`, `configs/registry.js` resolves a tune beside itself,
+`src/render/tracks.js` resolves the crate two levels up, `src/ui/ui.js`
+resolves `../share/orbit.html`. Each of those is the same URL it always was
+when the shell is served at a root, so the onrender.com deploy and
+`npm run serve` are unaffected, and the mounted copy works too. Nothing here
+is a one way door.
+
+`PRODUCTION_BOARD_ORIGIN` is now `https://webfpv.org/board`. That is the one
+line in this repo that is not backwards compatible, and it dictates the
+deploy order: the Worker has to be live before this reaches Render or the
+board is at an address nothing answers.
+
+`MAP_MODULE_PREFIX` in `src/main.js` was deliberately LEFT with its leading
+slashes and now carries a comment saying so. Those strings are never fetched.
+`moduleCounter` matches them as a substring of each performance entry's full
+URL, and a shell at `webfpv.org/sim/` still produces names containing
+`/src/maps/city/`. Rewriting them relative would leave the loading bar at
+zero for the whole module stage and nothing would fail.
+
+`tests/` was left alone on purpose. The harness runs at a root on a laptop
+and is not part of the public mount, so not touching it keeps the verify
+surface exactly where it was.
+
+WHAT WENT WRONG, IN ORDER.
+
+1. The first `edge/router.js` built its upstream request with
+   `new Request(target, { body: request.body })`, which the Workers runtime
+   accepts and Node's fetch refuses without `duplex: 'half'`. That is only
+   visible because `edge/selftest.js` drives the file under Node, which is
+   the argument for having written it.
+2. `rewriteLocation` resolved a relative `Location` against the VISITOR's
+   URL. An upstream writing `/bugs` means its own root, so
+   `https://webfpv.org/board/tickets` plus `/bugs` came out as
+   `https://webfpv.org/bugs`, which is the landing page. It now resolves
+   against the URL the Worker asked for. Caught by the selftest, not by
+   reading.
+3. The end to end harness reported "0 requests, 0 failed" for all six pages
+   and looked green. The proxy under test lives in the same Node process as
+   the harness, and the harness drove Chromium with `spawnSync`, which blocks
+   the event loop, so the browser's requests were never served and the DOM
+   came back empty. A green check that cannot see the thing it is checking is
+   not evidence. Fixed to `spawn`, and only then did it mean anything.
+4. The board's `public/app.js` did `state.config = await getJson('api/config')`,
+   which replaced the whole object and let the server's `boardOrigin` beat the
+   page's own. The server builds that value from request headers, and a header
+   carries a host, not a path, so behind the mount it can only ever answer
+   `https://webfpv.org`. The board would have painted, listed every course,
+   and then sent every Fly link and every thumbnail to the landing page with
+   nothing in the console. Found by the mapping pass, not by any check.
+
+REVIEW. A mapping pass was run over the three repositories, eight readers and
+a synthesis, because this change had to be exhaustive across three codebases
+and one missed leading slash is a silent half break. It was a discovery pass,
+not adversarial review of the diff. Findings acted on: the `state.config`
+replacement above; the `orbitHref` bug below; tightening the board's selftest,
+whose old assertions matched `app.js` and `/app.js` equally and so could not
+see a regression. Findings recorded and DECLINED:
+
+- "The Pages URL casing may be wrong, the remote is lowercase." Checked
+  rather than argued: `https://mathew-harvey.github.io/landingpage-WebFPVSimulator-/`
+  answers 200 and the lowercase spelling answers 404. The constant stays.
+- "Rewrite `tests/browser/harness.*` to relative as well." Declined. See
+  above: the harness is not on the public mount, and the value of the change
+  is zero against a non zero risk to checks 3 and 13.
+- "Make the simulator's landing page links mount aware." Not applicable, the
+  landing page had no root absolute URL to begin with.
+
+THE ONE THAT WOULD HAVE BEEN HARDEST TO FIND, in the board's `public/app.js`:
+`new URL('/src/share/orbit.html', config.simOrigin)`. A leading slash in
+`new URL` throws away everything in the base but the scheme and the host, so
+with the simulator at `https://webfpv.org/sim` it produced
+`https://webfpv.org/src/share/orbit.html`. The board would have loaded and
+listed everything and drawn an empty box on every card. The two links either
+side of it concatenate rather than resolve and were never affected, which is
+exactly why it was easy to miss.
+
+CHECKS, this turn. `npm run test:edge` (new, `edge/selftest.js`) **22 of 22**:
+the three mounts, the two trailing slash redirects, the www redirect, the
+forwarded header rules, a POST body surviving, and the three `Location`
+rewrite cases. `npm run lint:fc` **30 of 30 traces clean**. `npm run
+lint:presets` **2 of 2 clean**. Leaderboard `npm test` all passed, including
+five new checks that the board's pages carry no root absolute reference.
+`git diff --stat vendor/betaflight` empty.
+
+`npm run lint:catalog` FAILS, and it failed before this change for the same
+reason: `vendor/betaflight` is not checked out in this container, so
+`scripts/fc-valuetable.js` cannot open `parameter_names.h`. Not caused here
+and not fixed here.
+
+`npm run verify` was NOT run, and could not be: it starts with
+`npm run build:wasm`, which needs Emscripten and the Betaflight submodule,
+and neither is present here. It would also have been weak evidence. Checks 3
+and 13 load `tests/browser/harness.html`, which this change does not touch,
+so verify cannot see any of it.
+
+What was done instead is stronger than verify would have been for this
+change: all three servers were run locally behind the REAL `edge/router.js`,
+with three.js served through the harness so the module graph actually
+completes, and headless Chromium driven at all six public pages. 143 requests
+across the six, every one 200, none of them a redirect and none of them
+landing on the wrong app. The boot path this change touches is in that log by
+name: `/sim/src/boot.js`, `/sim/tests/lib/simmod.js`, `/sim/dist/sim.wasm`,
+`/sim/configs/betaflight-default.diff`, `/sim/src/maps/field.js`, and on the
+board `/board/api/config`, `/board/api/tracks`, `/board/api/bugs?status=open`.
+`/board/api/config` came back naming `/sim` and `/board` with their paths
+intact, which is the whole coupling in one line. The music crate and the
+Courses reel's orbit iframe were not reached by the browser, because neither
+loads without a user gesture, so those two were checked instead by computing
+their URLs against a mounted base: `.../sim/assets/music/...` and
+`.../sim/src/share/orbit.html`. The harness is scratch and was not kept.
+
+Physics, the plant, the module ABI, the input path and the trace were not
+touched. `dist/sim.wasm` is byte for byte the file that was already committed.

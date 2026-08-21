@@ -17,16 +17,18 @@ services:
     runtime: static
 
     # There is no build. This is the assertion that stands in for one: both
-    # files are fetched by absolute path at boot and a deploy missing either
-    # of them serves a page that dies on a 404 with nothing in the log. Fail
-    # here instead, where it says which file.
+    # files are fetched at boot and a deploy missing either of them serves a
+    # page that dies on a 404 with nothing in the log. Fail here instead,
+    # where it says which file.
     buildCommand: "test -f dist/sim.wasm && test -f tests/lib/simmod.js"
 
-    # The whole tree, because the page fetches by absolute path from the site
-    # root: /dist/sim.wasm, /src/maps/city/... and /tests/lib/simmod.js, which
-    # src/main.js imports to load the module. Trimming this to src plus dist
-    # breaks boot. The repo is public and GPLv3, so there is nothing here that
-    # publishing the tree gives away.
+    # The whole tree, because the page reaches across it at boot:
+    # ../dist/sim.wasm, ./maps/city/... and ../tests/lib/simmod.js, which
+    # src/main.js imports to load the module. Those resolve against the module
+    # rather than the site root, which is what lets this same tree also serve
+    # under webfpv.org/sim/, but they still span the repository. Trimming this
+    # to src plus dist breaks boot. The repo is public and GPLv3, so there is
+    # nothing here that publishing the tree gives away.
     staticPublishPath: .
 
     headers:

@@ -22,6 +22,7 @@
     "gen:icons": "node scripts/icons.js sakura . && node scripts/icons.js amber src/trackbuilder",
     "replay:selftest": "node scripts/replay-log.js --selftest",
     "replay": "node scripts/replay-log.js",
-    "link:selftest": "node scripts/link-selftest.js"
+    "link:selftest": "node scripts/link-selftest.js",
+    "test:edge": "node edge/selftest.js"
   }
 }

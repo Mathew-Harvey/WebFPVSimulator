@@ -1,0 +1,30 @@
+# Wrangler config for the edge router. See DEPLOY.md, "One domain, three deploys".
+#
+# The dashboard can do all of this by hand and the walkthrough in DEPLOY.md
+# says how. This file is here so that the routing is a thing in the repository
+# rather than a thing in somebody's browser tab, and so that a redeploy is one
+# command from a checkout:
+#
+#     npx wrangler deploy --config edge/wrangler.toml
+#
+# There is no wrangler in package.json on purpose. This repo has no build step
+# and no dependencies, and a deploy tool for one of the three services is not a
+# reason to grow node_modules. npx fetches it for the length of the command.
+
+name = "webfpv-router"
+main = "router.js"
+compatibility_date = "2026-08-01"
+
+# A custom domain, not a route pattern. A custom domain makes Cloudflare create
+# the DNS record and issue the certificate for the hostname itself, which is
+# what an apex with no origin server behind it needs: there is no A record to
+# point anywhere, because the Worker IS the origin.
+[[routes]]
+pattern = "webfpv.org"
+custom_domain = true
+
+# www is here so that it reaches the Worker at all. The Worker's own first act
+# is to send it to the apex, so the site has one address rather than two.
+[[routes]]
+pattern = "www.webfpv.org"
+custom_domain = true

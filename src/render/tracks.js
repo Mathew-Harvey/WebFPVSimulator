@@ -75,7 +75,9 @@ export function musicIds() {
 }
 
 export function trackUrl(id, ext) {
-  return `/assets/music/${id}.${ext}?v=${MUSIC_REV}`;
+  /* Resolved against this module rather than the site root, so a shell
+   * mounted under /sim/ still finds the crate. */
+  return new URL(`../../assets/music/${id}.${ext}?v=${MUSIC_REV}`, import.meta.url).href;
 }
 
 if (TRACKS.length === 0) {

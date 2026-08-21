@@ -55,9 +55,15 @@ import { writeShareImport } from './session.js';
  * so a fork can point somewhere else without editing this file: a ?board=
  * query wins over everything, and the Publish dialog's stored override wins
  * over the default.
+ *
+ * "Origin" is now generous: the production value carries a path, because the
+ * board is a mount on webfpv.org rather than a host of its own. Everything
+ * below concatenates onto it and trims a trailing slash, so a prefix works
+ * exactly where a bare origin used to, and the only thing that would not is
+ * `new URL('/some/path', board)`, which is not done anywhere here.
  */
 export const DEFAULT_BOARD_ORIGIN = 'http://127.0.0.1:3100';
-export const PRODUCTION_BOARD_ORIGIN = 'https://webfpv-board.onrender.com';
+export const PRODUCTION_BOARD_ORIGIN = 'https://webfpv.org/board';
 const ORIGIN_KEY = 'webfpv.board.origin';
 
 /* An empty hostname is a file:// open, which is a developer, not a deploy. */

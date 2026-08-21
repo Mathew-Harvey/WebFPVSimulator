@@ -14159,3 +14159,70 @@ their URLs against a mounted base: `.../sim/assets/music/...` and
 
 Physics, the plant, the module ABI, the input path and the trace were not
 touched. `dist/sim.wasm` is byte for byte the file that was already committed.
+
+---
+
+## A share card, drawn by the thing it advertises
+
+Sharing any of the three pages produced a bare URL with no picture: there was
+not one Open Graph tag anywhere in any of the three repositories. There is a
+1200 by 630 card now, on all three, and `scripts/og.js` regenerates it.
+
+The card is a real frame. `scripts/og.js` drives `scripts/shots.js`, which
+drives the actual page in headless Chromium with the real renderer, so the
+picture cannot drift out of agreement with the product the way a mockup would.
+It is the title screen on the race field with `.menu-stage`, the chips and the
+body copy hidden, leaving the wordmark over the world, camera parked at
+(108.5, 1.4, 11) looking at (104.6, 1.4, -6): the lit start gate centre, the
+parked quad in the near left, flags and markers running away behind.
+
+`--graphics=high` is passed on purpose. Headless Chromium rasterises on the
+CPU, so boot would otherwise detect a slow machine, drop the preset, and the
+card would come out at a different quality depending on who regenerated it.
+
+WHAT WAS TRIED AND REJECTED, in order, because the misses are the useful part:
+
+- The title screen as it comes. The menu is six rows of text down the left half
+  and a Report a bug chip in the corner. At the 500 px a feed actually renders,
+  it is mush.
+- The world with the whole overlay hidden. Clean, and anonymous: nothing in the
+  frame says which product it is. The wordmark is the one element that survives
+  the shrink, so it stays and everything else goes.
+- Flying it. Entering flight and holding throttle gives a real in-flight frame
+  with the HUD, and the first attempt looked promising. Two problems. Releasing
+  the throttle key before pitching drops the craft back on the grass, so three
+  runs captured an altitude of 0.0 m; and once it does climb, holding pitch puts
+  the nose down and the camera looks at grass with no gate and no horizon in
+  frame. A frame worth shipping needs level flight at three to five metres on
+  approach to a gate, and hitting that window with keyboard taps through a
+  headless browser took more runs than it was worth.
+- Compositing a designed card. Rejected against the brief: this is a photograph
+  of the product, not a poster about it.
+
+Finding the quad took solving for it rather than hunting. `window.__quadScreen()`
+reports the airframe's projected box and `span250mmPx`, which gives the focal
+length in pixels, and back-projecting the box centre through the camera basis
+put the parked craft at about (104.9, 0.1, 6.95), seven metres in front of gate
+zero. Two runs of guessing had not found it.
+
+NO ANIMATED CARD, and that is a platform fact rather than a choice. Facebook,
+Messenger, X, LinkedIn, WhatsApp, Slack and iMessage all flatten a link preview
+to a still, and X takes frame one of a GIF. Discord is the only place that
+would animate one. Written down in DEPLOY.md so the question does not get asked
+again.
+
+CHECKS, this turn. `node scripts/og.js` run twice produced a byte-identical
+frame, and the second run wrote it into all three repositories. Console errors 0
+and warnings 0 on every shots.js run in this turn, eleven of them. The three
+local servers were started and `og.png` fetched from each: 200, `image/png`,
+464544 bytes at all three, which is what the Worker forwards to. The rendered
+head of each page was fetched and its `og:url` and `og:image` read back, all
+three absolute and all three naming their own mount. Leaderboard `npm test` all
+passed, including the check that the board's page carries no root absolute
+reference, which the new `<link rel="canonical">` had to not trip.
+
+`npm run verify` was NOT run. Nothing here touches physics, the plant, the
+module ABI or the build: it is one generated PNG, one script that drives an
+existing harness, and meta tags in three heads. `npm run lint:catalog` still
+fails on the missing `vendor/betaflight` submodule, as it did before this
+change and for the same reason.

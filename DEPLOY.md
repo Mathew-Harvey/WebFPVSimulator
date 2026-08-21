@@ -552,6 +552,52 @@ WASM module is prebuilt and committed. If a static site deploy is slow or
 fails while fetching submodules, nothing in the deployed site depends on
 that tree.
 
+## The share card
+
+Every link to any of the three pages posted on Facebook, X, Messenger,
+LinkedIn, WhatsApp or iMessage renders a 1200 by 630 card. Before this there
+were no Open Graph tags at all on any of the three, so a shared link was a bare
+URL with no picture.
+
+`og.png` is that card, and it is a frame of the real shell rather than a
+drawing of one: `scripts/og.js` drives `scripts/shots.js`, which drives the
+actual page in headless Chromium, so the card cannot disagree with the product.
+It is the title screen on the race field with the menu, the chips and the body
+copy hidden, leaving the wordmark over the world, a camera parked low and to
+the right of the course, and the lit start gate centre with the parked quad in
+the near left.
+
+Regenerate, do not edit, the same rule as the icons:
+
+```bash
+# This repo.
+npm run gen:og
+
+# All three, from a checkout of each beside this one.
+node scripts/og.js . ../landingpage-WebFPVSimulator- \
+                     ../WebFPVSimulator-LeaderBoard/public
+```
+
+The camera is six numbers at the top of `scripts/og.js`. Change them and the
+card changes, which is why they live in a file rather than in somebody's shell
+history.
+
+**Every `og:image` is an absolute URL.** A crawler does not resolve a relative
+one against the page it found it on, so each page names its own copy in full:
+`https://webfpv.org/og.png`, `https://webfpv.org/sim/og.png`,
+`https://webfpv.org/board/og.png`. Each service therefore carries its own copy
+of the file, exactly as each carries its own icon set.
+
+**No animated card, and it is not for want of trying.** Facebook, Messenger, X,
+LinkedIn, WhatsApp, Slack and iMessage all flatten a link preview to one still
+frame, and X converts an animated GIF to its first frame. Discord is the only
+place that would animate one. A second asset for one platform is not worth the
+drift between them.
+
+**Facebook and X cache what they scraped.** Changing the card does not change
+what a re-share shows until their crawler comes back. Force it with Facebook's
+Sharing Debugger and X's Card Validator, one URL at a time.
+
 ## The site icons
 
 Four pages carry the family mark, one shape with one accent each, so a

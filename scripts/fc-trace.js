@@ -382,6 +382,44 @@ record(
   );
 }
 
+/*
+ * F16: every line the menu writes is a line Betaflight recognises.
+ *
+ * sim_bf_debug(15) counts keys the module could not place. A rate profile
+ * that spells one of its keys the way the STRUCT spells it rather than the
+ * way the CLI does would land here as an unknown and change nothing, and
+ * nothing else in this file would notice: the curve checks above would still
+ * pass, because they would be comparing two profiles that both quietly
+ * missed the same field. That is not hypothetical. scripts/gates.js has been
+ * writing `set rc_smoothing_mode = 0` for exactly that reason, and P2 was red
+ * because of it.
+ *
+ * The throttle cap is set to something other than off so that both of its
+ * lines have to land, and every type is checked because ratesDiff writes the
+ * same key list for all five.
+ */
+{
+  let ok = true;
+  const detail = [];
+  for (const type of RATE_TYPES) {
+    const profile = normaliseRates({ type, throttleCap: 60 });
+    const sim = await newSim();
+    must(sim.init(composeConfig(defaultDiff, profile, RATES_KEEP)), `sim_init ${type}`);
+    const unknown = sim.e.sim_bf_debug(15);
+    const quick = moduleGet(sim, 'quickrates_rc_expo');
+    const limit = `${moduleGet(sim, 'throttle_limit_type')} ${moduleGet(sim, 'throttle_limit_percent')}`;
+    if (unknown !== 0 || quick !== 'OFF' || limit !== 'SCALE 60') {
+      ok = false;
+      detail.push(`${type} unknown=${unknown} quickrates=${quick} limit=${limit}`);
+    }
+  }
+  record(
+    'F16 every key the rates menu writes is recognised',
+    ok,
+    ok ? 'unknown 0, quickrates_rc_expo OFF, throttle limit SCALE 60, on all five types' : detail.join('; '),
+  );
+}
+
 {
   const actualMax = angleRateDeg('ACTUAL', { rcRate: 10, srate: 50, expo: 0, limit: 1998 }, 1);
   record(

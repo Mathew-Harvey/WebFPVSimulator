@@ -13183,3 +13183,103 @@ keyboard only path (arrow, arrow, arrow, Enter, 850, Enter) commits without a
 mouse; the stepper arrows work after typing; Escape cancels an edit and keeps
 the stored value; `pollPad` no longer moves the cursor on this screen; and
 the Settings row and `__tune().rates` both read the new summary.
+
+### RUN LOG: the rates screen, verified
+
+Self verification of the previous entry, at the owner's request, following
+`.claude/skills/verify-flight-model`.
+
+**Step 1, `npm run build:wasm`, COULD NOT RUN.** `emcc` is not installed in
+this container and `vendor/betaflight` is not checked out, so the build stops
+before it reads a source file. `git diff --stat vendor/betaflight` is empty,
+which in this container is true trivially rather than meaningfully. Nothing in
+this change touches `src/native/`, `patches/`, the vendor tree or a build
+flag, so `dist/sim.wasm` is the committed binary and is the same binary every
+check below loaded. Check 1, build-clean, therefore FAILS on `build exit 1`
+and is the one red row. It is environment, not code, and it is not being
+written off: a machine with emsdk has to run it before this is called done.
+
+**Step 3, `npm run verify`, 15 of 16.** Every other row green, and every
+number identical to the last full run recorded in this document:
+
+| check | measured | last recorded |
+|---|---|---|
+| determinism-repeat | 6d17d4814bdc | 6d17d4814bdc |
+| determinism-cross-host | node = chrome = 6d17d4814bdc | same |
+| frame-independence | 1 hash across 30, 60, 144, 240 Hz | same |
+| hover-throttle | 0.2637 | 0.2637 |
+| punch-out | 81.5 m | 81.5 m |
+| terminal-velocity | 31.1 m/s | 31.1 m/s |
+| motor-step-response | 26 ms | 26 ms |
+| rate-tracking | 671.5 deg/s, 0.22 percent off 670 | 671.5, 0.22 percent |
+| yaw-coupling | -0.12 deg | -0.12 deg |
+| battery-sag | 11.14 percent | 11.14 percent |
+| diff-passthrough | 1.2478, 0.47 percent | 1.2478, 0.47 percent |
+| console-clean | errors 0 warnings 0 | same |
+| audio-bed, world-scale, map-isolation | green | green |
+
+A bit identical trace hash is the answer to the only question this change
+could have raised about the physics: whether a rewrite of the rate profile
+model leaked into the integrator. It did not, and could not: the harness
+replays `tests/fixtures/config-baseline.diff` rather than the menu's CLI.
+
+**What the self verify found in the UI, which the harness cannot see.**
+
+Clicking from one typed field straight into another lost the click. The
+browser's own focus move blurs the field being left, that commit rebuilds the
+rows, and the node the click was travelling to is gone before the focus
+lands, so the caret ended up nowhere and the pilot had to click twice. The
+move is taken over now: `mousedown` on a field preventDefaults, blurs the
+field being left so its value is committed, and `renderMenu` puts the caret
+in the freshly built field at the end of the rebuild. A click inside the
+field that already holds the caret is left alone, or the caret could not be
+placed inside a number.
+
+An open dropdown outlived the row it belonged to. A field swallows its own
+clicks, so clicking from the Rates type list into a number field left the
+list floating over the screen with the cursor somewhere else. The field's
+focus handler closes it.
+
+Both were found by reading the diff and then driving the real page, not by a
+check. Both are now driven in `scripts/shots.js`: field to field commits 900
+and lands the caret in the next field holding 670, and the dropdown count
+goes 1 to 0 when a field takes focus.
+
+**A check the self verify turned into a permanent one.** F16 asks the module
+how many keys it did not recognise, `sim_bf_debug(15)`, after each of the five
+types goes in through `composeConfig`. It is zero on all five, with
+`quickrates_rc_expo` reading OFF and the throttle limit reading SCALE 60. The
+reason it is worth its own check rather than a one off: a key spelled the way
+the STRUCT spells it rather than the way the CLI does lands as an unknown and
+changes nothing, and every curve check in this file would still pass, because
+it would be comparing two profiles that both quietly missed the same field.
+That is what had happened to gates.js P2, so it is not a hypothetical failure
+mode.
+
+**Also driven in the browser, because nothing else can see them.** Splitting
+the pitch and giving it 400 deg/s puts three keys in the legend and
+`pitch_srate 40` in the module while roll stays 67; joining it again copies
+roll onto pitch, 67 and 67, and the legend goes back to two. A roll write
+while joined carries pitch with it, 80 and 80. And a genuine pre-change
+settings blob, `{rateMax: 900, rateYawMax: 500, rateCentre: 120, rateExpo: 20,
+throttleCap: 60}`, seeded into localStorage and booted from, comes back as
+Actual 120 deg/s at centre, 900 at the stop, 500 yaw, 0.20 expo, with the
+module flying `roll_rc_rate 12, roll_srate 90, yaw_srate 50, roll_expo 20,
+throttle_limit SCALE 60`. The migration is not a claim in a comment.
+
+**OPEN QUESTION for a human: two bands for one number.** `hover-throttle` is
+0.2637. `tests/thresholds.json` calls that a pass at 0.20 to 0.30 and
+`gates.config.json` P4 calls it a fail at 0.17 to 0.22. Same quantity, same
+measurement, two different bands, one green and one red. One of them is
+wrong and this turn is not the place to decide which: nothing here moved the
+number, and neither band was touched. P4 also wants an 80 percent climb in
+150 to 400 ms and measures 578, so it stays red either way.
+
+VERIFY, this turn: `npm run verify` 15 of 16 with check 1 red for the missing
+toolchain and every other measurement unchanged, run twice, once on the
+committed tree and once again after the two focus fixes; `npm run lint:fc`
+30 of 30 with F16 added;
+`npm run lint:presets` 2 of 2; `npm run gates` P1 and P2 pass; `node
+scripts/shots.js` over the rates screen, console errors 0. `npm run
+lint:catalog` still cannot run without the vendor checkout. Flight feel is
+not verified by any of this and is awaiting the owner flying it.

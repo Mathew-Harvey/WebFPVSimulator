@@ -2487,6 +2487,13 @@ export class Ui {
     host.scrollTop = scroll;
     this.syncCursor(false);
     this.syncRates();
+    /* A click that was travelling from one typed field to another, landing
+     * now that the rows it was aiming at exist again. See makeNumber. */
+    if (this.numberFocusWanted != null) {
+      const want = this.numberFocusWanted;
+      this.numberFocusWanted = null;
+      this.focusNumber(want);
+    }
   }
 
   /* The curve, redrawn from the settings whenever the menu is rebuilt. Every
@@ -2647,11 +2654,41 @@ export class Ui {
     field.value = it.num.text;
     field.setAttribute('aria-label', it.label);
     field.addEventListener('focus', () => {
+      /* An open dropdown belongs to the row it was opened on. Clicking into
+       * a field is leaving that row, and the field swallows its own clicks,
+       * so without this the list stayed on the screen with the caret
+       * somewhere else and the cursor no longer on it. */
+      this.closeDrop();
       this.cursor = i;
       this.syncCursor(false);
       field.select();
     });
     field.addEventListener('click', (e) => e.stopPropagation());
+    /*
+     * Clicking from one field straight into another.
+     *
+     * The browser would do this itself, and it does not survive here: its
+     * focus move blurs the field being left, that commit rebuilds the rows,
+     * and the node the click was travelling to is gone before the focus
+     * lands. So the move is taken over. preventDefault stops the browser
+     * competing, the field being left is blurred deliberately so that its
+     * value is committed, and renderMenu puts the caret in the freshly built
+     * field at the end of the rebuild. A click inside the field that already
+     * has the caret is left alone, or the caret could not be placed.
+     */
+    field.addEventListener('mousedown', (e) => {
+      const live = document.activeElement;
+      if (live === field) {
+        return;
+      }
+      e.preventDefault();
+      if (live && live.classList && live.classList.contains('row-num')) {
+        this.numberFocusWanted = i;
+        live.blur();
+        return;
+      }
+      field.focus();
+    });
     field.addEventListener('input', () => this.previewNumber(it, field.value));
     field.addEventListener('blur', () => {
       /* A field the menu has already rebuilt away has nothing to commit:

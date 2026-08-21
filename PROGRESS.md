@@ -13402,3 +13402,31 @@ committed tree and once again after the two focus fixes; `npm run lint:fc`
 scripts/shots.js` over the rates screen, console errors 0. `npm run
 lint:catalog` still cannot run without the vendor checkout. Flight feel is
 not verified by any of this and is awaiting the owner flying it.
+
+### The merge with main, and a red check that came with it
+
+`main` had moved on by one commit, the feather flags, while this branch was
+being written. Merged, one conflict, both in this document and both entries
+kept in the order they landed. Nothing else overlapped: the flags are
+`src/art/banners.js`, `src/render/scene.js` and the track builder, and the
+rates are `configs/`, `src/fc/`, `src/ui/` and the menu.
+
+The merged tree is 14 of 16 rather than 15, and the extra red is check 16,
+map-isolation: the field now draws 1,043,845 triangles against a recorded
+1,014,037 and carries 33.1 MB of attributes against a recorded 32.
+
+**It is not from this branch, and that is measured rather than argued.**
+`origin/main` was checked out on its own in a worktree and run: 14 of 16,
+build-clean and map-isolation, with the same two figures to the digit.
+The feather flags are 29,808 triangles and 1.1 MB heavier than the budget
+recorded for the field, and the shots run that entry describes cannot see a
+triangle count.
+
+Nothing here touches it. `tests/thresholds.json` is not being edited to make
+it green: re-recording a budget in this project comes with a paragraph
+accounting for where the triangles went, and that accounting belongs to
+whoever built the flags. Two honest ways out, for a human: re-record with
+the accounting, or take the geometry back out of the flag.
+
+Everything else on the merged tree: `npm run verify` 14 of 16 as above,
+`node src/trackbuilder/selftest.js` 278 of 278, `npm run lint:fc` 30 of 30.

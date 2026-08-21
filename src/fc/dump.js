@@ -29,7 +29,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ratesDiff } from '../../configs/rates.js';
+import { normaliseRates, ratesDiff } from '../../configs/rates.js';
 
 export const RATES_KEEP = 'keep-mine';
 export const RATES_DUMP = 'use-dump';
@@ -312,96 +312,34 @@ export function exportCli(text) {
   return `${lines.join('\n').replace(/\n+$/, '')}\n`;
 }
 
-export function ratesSettingsFromDump(text) {
-  const map = cliMap(text);
-  const type = map.get('rates_type') || 'ACTUAL';
-  const centre = Number(map.get('roll_rc_rate'));
-  const max = Number(map.get('roll_srate'));
-  const yaw = Number(map.get('yaw_srate'));
-  const expo = Number(map.get('roll_expo'));
-  const cap = Number(map.get('throttle_limit_percent'));
-  const out = {};
-  /*
-   * The five knobs are ACTUAL units: deg/s and expo hundredths. Only fill
-   * them from an ACTUAL dump. A BETAFLIGHT roll_rc_rate of 100 is RC Rate
-   * 1.00, not 1000 deg/s centre, and writing that through ratesDiff would
-   * replace the profile the firmware is flying.
-   */
-  if (type === 'ACTUAL') {
-    if (Number.isFinite(centre)) {
-      out.rateCentre = centre * 10;
-    }
-    if (Number.isFinite(max)) {
-      out.rateMax = max * 10;
-    }
-    if (Number.isFinite(yaw)) {
-      out.rateYawMax = yaw * 10;
-    }
-    if (Number.isFinite(expo)) {
-      out.rateExpo = expo;
-    }
-  }
-  if (Number.isFinite(cap)) {
-    out.throttleCap = cap;
-  }
-  const rateProfile = sanitiseRateProfile(Object.fromEntries(map));
-  if (Object.keys(rateProfile).length > 0) {
-    out.rateProfile = rateProfile;
-  }
-  return out;
-}
-
-/* Reached only through ratesCli's profile branch and ratesSettingsFromDump,
- * both of which the shell no longer exercises. scripts/fc-trace.js does. */
-export function sanitiseRateProfile(raw) {
-  const out = {};
-  if (!raw || typeof raw !== 'object') {
-    return out;
-  }
-  for (const k of RATE_KEYS) {
-    const v = raw[k];
-    if (typeof v === 'string' && v.length > 0) {
-      out[k] = v;
-    } else if (typeof v === 'number' && Number.isFinite(v)) {
-      out[k] = String(v);
-    }
-  }
-  return out;
-}
-
 /*
- * The pilot's rate profile as CLI.
+ * A dropped dump's rate profile, as the profile the menu holds.
  *
- * REACHED ONLY BY scripts/fc-trace.js BELOW THE EARLY RETURN, do not prune.
- * The shell always takes the first branch now: settings carries no
- * rateProfile key since the flight-controller screen went, so an empty
- * profile falls back to ratesDiff and a fresh pilot flies ACTUAL 7 / 67.
- * Everything after that line handles a captured profile with independent
- * pitch, yaw, rates_type, thr_mid and expo, and it is what F7 and F13 in
- * fc-trace assert against the compiled module. It reads as dead code from
- * the app's side and is not.
+ * EVERY TYPE, not just ACTUAL. The old five knob model could only read an
+ * ACTUAL dump, because a BETAFLIGHT roll_rc_rate of 100 is RC Rate 1.00 and
+ * not 1000 deg/s of centre sensitivity, and writing that through the menu
+ * would have replaced the profile the firmware was flying with a different
+ * one. The menu now holds the same three uint8s per axis the firmware does,
+ * plus the type they are read under, so a dump of any type reads straight
+ * across and nothing has to be reinterpreted.
+ *
+ * Reached by scripts/fc-trace.js rather than by the shell: the drop-a-diff
+ * import went with the flight-controller screen. It is what makes the
+ * keep-mine claim in composeConfig testable rather than asserted.
  */
-export function ratesCli(s) {
-  const profile = sanitiseRateProfile(s && s.rateProfile);
-  if (Object.keys(profile).length === 0) {
-    return ratesDiff(s);
-  }
-  const lines = ['', '# Rates, from the menu. See configs/rates.js.', 'rateprofile 0'];
-  const written = new Set();
-  for (const k of RATE_KEYS) {
-    if (profile[k] != null) {
-      lines.push(`set ${k} = ${profile[k]}`);
-      written.add(k);
-    }
-  }
-  for (const raw of ratesDiff(s).split('\n')) {
-    const t = raw.replace(/\r$/, '').trim();
-    const key = setKey(t);
-    if (key && RATE_KEYS.has(key) && !written.has(key)) {
-      lines.push(t);
-    }
-  }
-  return `${lines.join('\n')}\n`;
+export function ratesFromDump(text) {
+  const map = cliMap(text);
+  const num = (key) => {
+    const v = Number(map.get(key));
+    return Number.isFinite(v) ? v : undefined;
+  };
+  return normaliseRates({
+    type: map.get('rates_type'),
+    roll: { rcRate: num('roll_rc_rate'), srate: num('roll_srate'), expo: num('roll_expo') },
+    pitch: { rcRate: num('pitch_rc_rate'), srate: num('pitch_srate'), expo: num('pitch_expo') },
+    yaw: { rcRate: num('yaw_rc_rate'), srate: num('yaw_srate'), expo: num('yaw_expo') },
+    throttleCap: num('throttle_limit_percent'),
+  });
 }
 
 export function expandRpmWeights(text) {
@@ -462,7 +400,7 @@ export function composeConfig(tuneText, rates, policy = RATES_KEEP) {
   if (out.length && !out.endsWith('\n')) {
     out += '\n';
   }
-  const menuRates = ratesCli(rates);
+  const menuRates = ratesDiff(rates);
   /* The use-dump policy has no caller in the shell; scripts/fc-trace.js F7
    * is the only one left. Do not prune: it is the control the keep-mine
    * traces are measured against. */

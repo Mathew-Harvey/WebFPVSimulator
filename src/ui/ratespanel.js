@@ -8,11 +8,17 @@
  * pilot who wants to hand-edit a rateprofile has Betaflight for it.
  *
  * What is left is the part that was always doing the teaching: a picture of
- * what the sticks do. It reads the pilot's four rate knobs out of Settings
- * (configs/rates.js owns them) and previews Betaflight's own ACTUAL curve
- * through src/fc/ratescurve.js, which is a transcription of fc/rc.c. It
- * writes nothing. The rows beside it write the settings, the settings become
- * CLI in configs/rates.js, and Betaflight flies it.
+ * what the sticks do. It reads the pilot's rate profile out of Settings
+ * (configs/rates.js owns it) and previews Betaflight's own curve for
+ * whichever rates type they chose through src/fc/ratescurve.js, which is a
+ * transcription of fc/rc.c. It writes nothing. The rows beside it write the
+ * settings, the settings become CLI in configs/rates.js, and Betaflight
+ * flies it.
+ *
+ * ONE CURVE PER AXIS THAT DIFFERS. Roll and pitch share a line while they
+ * hold the same three numbers, which is the usual case and the case the menu
+ * defaults to; split the pitch on the rows and a third curve appears rather
+ * than a second colour appearing on top of a line that did not change.
  *
  * The live dots are the real sticks, fed from the frame loop, so moving a
  * stick on this screen moves the dot along the curve it is about to fly.
@@ -33,7 +39,9 @@
  * along with this software. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { hoverStickPercent, normaliseRates } from '../../configs/rates.js';
+import {
+  hoverStickPercent, normaliseRates, pitchMatchesRoll, rateAxis,
+} from '../../configs/rates.js';
 import { ANGLE_RATE_SAMPLES, angleRateDeg } from '../fc/ratescurve.js';
 
 /* House palette, from the :root block in index.html. Kept as literals
@@ -43,6 +51,7 @@ const GRID = 'rgba(244, 236, 214, 0.10)';
 const AXIS = 'rgba(244, 236, 214, 0.26)';
 const LABEL = 'rgba(235, 230, 215, 0.62)';
 const SAKURA = '#e8a8b8';
+const MINT = '#7dffb4';
 const SLATE = '#9db3c8';
 const AMBER = '#ffd45c';
 
@@ -62,24 +71,51 @@ function el(tag, cls, text) {
 }
 
 /*
- * The two curves this screen draws, in the CLI units src/fc/ratescurve.js
- * expects: rc_rate and srate are TENS of deg/s, expo is hundredths. The
- * menu holds deg/s and whole expo, so the divide is the boundary.
+ * The curves this screen draws, in the units src/fc/ratescurve.js expects,
+ * which are the firmware's own uint8s and are exactly what the menu stores.
+ * No conversion happens here at all: the display scaling that turns 67 into
+ * "670 deg/s" belongs to the rows, not to the curve.
  *
- * Roll and pitch share a curve because the menu gives them one Max rate.
- * Yaw has its own, because it always did: a quad yaws slower than it rolls.
+ * Yaw is DASHED and drawn LAST, on top of the others. On the Betaflight
+ * defaults every axis is the same curve, and two solid lines on the same
+ * pixels is one line in whichever colour was painted last: the screen
+ * claimed a sakura roll curve and drew a slate yaw one over it. Dashes on
+ * top is the fix that works in both cases. Where the curves coincide the
+ * slate dashes sit in the sakura line and you can see that both are there;
+ * where they part, both read whole.
  */
-export function ratesCurves(settings) {
-  const r = normaliseRates(settings || {});
-  const shared = { expo: r.rateExpo, rcRate: r.rateCentre / 10 };
+export function ratesCurves(rates) {
+  const r = normaliseRates(rates || {});
+  const yaw = {
+    id: 'yaw', label: 'Yaw', color: SLATE, dash: [5, 4], type: r.type, axis: rateAxis(r, 'yaw'),
+  };
+  if (pitchMatchesRoll(r)) {
+    return [
+      {
+        id: 'rollpitch', label: 'Roll, pitch', color: SAKURA, type: r.type, axis: rateAxis(r, 'roll'),
+      },
+      yaw,
+    ];
+  }
   return [
-    { id: 'rollpitch', label: 'Roll, pitch', color: SAKURA, axis: { ...shared, srate: r.rateMax / 10 } },
-    { id: 'yaw', label: 'Yaw', color: SLATE, dash: [5, 4], axis: { ...shared, srate: r.rateYawMax / 10 } },
+    {
+      id: 'roll', label: 'Roll', color: SAKURA, type: r.type, axis: rateAxis(r, 'roll'),
+    },
+    {
+      id: 'pitch', label: 'Pitch', color: MINT, dash: [2, 3], type: r.type, axis: rateAxis(r, 'pitch'),
+    },
+    yaw,
   ];
 }
 
 function degAt(curve, stick) {
-  return angleRateDeg('ACTUAL', curve.axis, stick);
+  return angleRateDeg(curve.type, curve.axis, stick);
+}
+
+/* Which curve a stick rides. Roll and pitch share one while they are the
+ * same curve, so the dots ride the line that is actually drawn. */
+function curveFor(curves, id) {
+  return curves.find((c) => c.id === id) || curves.find((c) => c.id === 'rollpitch') || curves[0];
 }
 
 /* One sentence a screen reader can read instead of the picture. */
@@ -101,52 +137,75 @@ export function mountRatesPanel() {
   graphWrap.append(canvas);
 
   const legend = el('div', 'rates-legend');
-  const swatches = new Map();
-  for (const c of ratesCurves(null)) {
-    const key = el('span', 'rates-key');
-    /* A dot for a solid curve, a dashed rule for the dashed one, so the key
-     * matches what is actually on the canvas. */
-    const dot = el('span', c.dash ? 'rates-key-dot rates-key-dash' : 'rates-key-dot');
-    dot.style.background = c.color;
-    const lab = el('span', 'rates-key-lab', c.label);
-    const val = el('span', 'rates-key-val', '');
-    key.append(dot, lab, val);
-    legend.append(key);
-    swatches.set(c.id, val);
-  }
-
-  /*
-   * The same curve as numbers, at the three places a thumb actually sits.
-   *
-   * Roll and yaw are separate spans in the curves' own colours rather than
-   * one "66 / 44" string, because a slash does not say which half is which
-   * and the legend two lines up already taught the colours.
-   */
   const readout = el('dl', 'rates-readout');
-  const cells = [];
-  for (const s of SAMPLE_STICKS) {
-    const wrap = el('div', 'rates-cell');
-    wrap.append(el('dt', null, s === 1 ? 'Full stick' : `${s * 100}% stick`));
-    const dd = el('dd', null, '');
-    const rp = el('span', 'rates-num rates-num-rp', '');
-    const sep = el('span', 'rates-num-sep', ' / ');
-    const yaw = el('span', 'rates-num rates-num-yaw', '');
-    const unit = el('span', 'rates-num-unit', ' deg/s');
-    dd.append(rp, sep, yaw, unit);
-    wrap.append(dd);
-    readout.append(wrap);
-    cells.push({ stick: s, rp, sep, yaw });
-  }
-  const hoverWrap = el('div', 'rates-cell');
-  hoverWrap.append(el('dt', null, 'Hover sits at'));
-  const hoverDd = el('dd', null, '');
-  hoverWrap.append(hoverDd);
-  readout.append(hoverWrap);
-
   root.append(graphWrap, legend, readout);
 
   let curves = ratesCurves(null);
   let stick = { roll: 0, pitch: 0, yaw: 0 };
+  /* What the legend and the readout were last built for. Both are rebuilt
+   * when the set of curves changes, which is a pitch being split or joined
+   * and nothing else, so a knob moving one step does not rebuild the DOM. */
+  let shape = '';
+  let cells = [];
+  let swatches = new Map();
+  let hoverDd = null;
+
+  /*
+   * The legend and the three-numbers-per-stick readout, built from whatever
+   * curves there are.
+   *
+   * Roll, pitch and yaw are separate spans in the curves' own colours rather
+   * than one "670 / 670 / 500" string, because a slash does not say which
+   * part is which and the legend two lines up already taught the colours.
+   */
+  function buildRows() {
+    legend.textContent = '';
+    readout.textContent = '';
+    swatches = new Map();
+    cells = [];
+    for (const c of curves) {
+      const key = el('span', 'rates-key');
+      /* A dot for a solid curve, a dashed rule for a dashed one, so the key
+       * matches what is actually on the canvas. */
+      const dot = el('span', c.dash ? 'rates-key-dot rates-key-dash' : 'rates-key-dot');
+      dot.style.background = c.color;
+      const lab = el('span', 'rates-key-lab', c.label);
+      const val = el('span', 'rates-key-val', '');
+      key.append(dot, lab, val);
+      legend.append(key);
+      swatches.set(c.id, val);
+    }
+    for (const s of SAMPLE_STICKS) {
+      const wrap = el('div', 'rates-cell');
+      wrap.append(el('dt', null, s === 1 ? 'Full stick' : `${s * 100}% stick`));
+      const dd = el('dd', null, '');
+      /* The spans only, in curve order. The curve OBJECT is deliberately not
+       * kept: it is rebuilt from the settings on every paint, and a cell
+       * holding the one it was built with went on reading the rate profile
+       * the pilot had before they changed the rates type, so the legend said
+       * 667 and the numbers under it said 670. The order is the guarantee,
+       * and the shape check above is what keeps the order true. */
+      const nums = curves.map((c, i) => {
+        const sep = i === 0 ? null : el('span', 'rates-num-sep', ' / ');
+        const num = el('span', 'rates-num');
+        num.style.color = c.color;
+        if (sep) {
+          dd.append(sep);
+        }
+        dd.append(num);
+        return { num, sep };
+      });
+      dd.append(el('span', 'rates-num-unit', ' deg/s'));
+      wrap.append(dd);
+      readout.append(wrap);
+      cells.push({ stick: s, nums });
+    }
+    const hoverWrap = el('div', 'rates-cell');
+    hoverWrap.append(el('dt', null, 'Hover sits at'));
+    hoverDd = el('dd', null, '');
+    hoverWrap.append(hoverDd);
+    readout.append(hoverWrap);
+  }
 
   function draw() {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -210,16 +269,6 @@ export function mountRatesPanel() {
     ctx.lineTo(Math.round(x0) + 0.5, padT + gh);
     ctx.stroke();
 
-    /*
-     * Yaw is DASHED and drawn LAST, on top of roll and pitch.
-     *
-     * On the Betaflight defaults the two curves are the same curve, and two
-     * solid lines on the same pixels is one line in whichever colour was
-     * painted last: the screen claimed a sakura roll curve and drew a slate
-     * yaw one over it. Dashes on top is the fix that works in both cases.
-     * Where the curves coincide the slate dashes sit in the sakura line and
-     * you can see that both are there; where they part, both read whole.
-     */
     for (const c of curves) {
       ctx.beginPath();
       ctx.setLineDash(c.dash || []);
@@ -267,15 +316,14 @@ export function mountRatesPanel() {
       ctx.fillText(`${Math.round(deg)}`, padL + gw + 6, y);
     }
 
-    /* The live sticks. Roll and pitch share a curve, so they share its
-     * colour and the two dots ride the same line. */
+    /* The live sticks, each on the curve it will actually fly. */
     const dots = [
-      { s: stick.roll, curve: curves[0] },
-      { s: stick.pitch, curve: curves[0] },
-      { s: stick.yaw, curve: curves[1] },
+      { s: stick.roll, curve: curveFor(curves, 'roll') },
+      { s: stick.pitch, curve: curveFor(curves, 'pitch') },
+      { s: stick.yaw, curve: curveFor(curves, 'yaw') },
     ];
     for (const d of dots) {
-      if (!Number.isFinite(d.s)) {
+      if (!Number.isFinite(d.s) || !d.curve) {
         continue;
       }
       const s = Math.max(-1, Math.min(1, d.s));
@@ -286,12 +334,23 @@ export function mountRatesPanel() {
     }
   }
 
-  function paint(settings, next) {
-    curves = ratesCurves(settings);
+  /*
+   * Repaint from a rate profile. The caller hands the profile it wants
+   * DRAWN, which on the Rates screen is the pilot's own settings with any
+   * half-typed number laid over the top: the picture follows the keystroke,
+   * and the quad follows the commit.
+   */
+  function paint(rates, next) {
+    const r = normaliseRates(rates || {});
+    curves = ratesCurves(r);
     if (next) {
       stick = next;
     }
-    const r = normaliseRates(settings || {});
+    const nextShape = curves.map((c) => c.id).join(',');
+    if (nextShape !== shape) {
+      shape = nextShape;
+      buildRows();
+    }
     for (const c of curves) {
       const val = swatches.get(c.id);
       if (val) {
@@ -299,15 +358,24 @@ export function mountRatesPanel() {
       }
     }
     for (const cell of cells) {
-      const rp = Math.round(degAt(curves[0], cell.stick));
-      const yaw = Math.round(degAt(curves[1], cell.stick));
-      const split = rp !== yaw;
-      cell.rp.textContent = String(rp);
-      cell.yaw.textContent = split ? String(yaw) : '';
-      cell.sep.hidden = !split;
-      cell.yaw.hidden = !split;
+      /* A number the same as the one before it is not written twice: on the
+       * defaults every axis reads 670 and "670 / 670 / 670" is three copies
+       * of one fact. The separator hides with the number it precedes. */
+      let last = null;
+      cell.nums.forEach((n, i) => {
+        const deg = Math.round(degAt(curves[i], cell.stick));
+        const dup = last !== null && deg === last;
+        n.num.textContent = dup ? '' : String(deg);
+        n.num.hidden = dup;
+        if (n.sep) {
+          n.sep.hidden = dup;
+        }
+        last = deg;
+      });
     }
-    hoverDd.textContent = `${hoverStickPercent(r.throttleCap).toFixed(1)}% stick`;
+    if (hoverDd) {
+      hoverDd.textContent = `${hoverStickPercent(r.throttleCap).toFixed(1)}% stick`;
+    }
     canvas.setAttribute('aria-label', describe(curves));
     draw();
   }

@@ -58,12 +58,21 @@ const CAL_LABELS = {
 import { TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { TUNES, tuneById } from '../../configs/registry.js';
 import {
-  RATE_CENTRE_CHOICES,
   RATE_DEFAULTS,
-  RATE_EXPO_CHOICES,
-  RATE_MAX_CHOICES,
+  RATE_FIELDS,
+  RATE_TYPES,
+  RATE_TYPE_LABEL,
   THROTTLE_CAP_CHOICES,
+  cliOf,
+  formatRate,
+  fullStickDeg,
   hoverStickPercent,
+  normaliseRates,
+  pitchMatchesRoll,
+  profileForType,
+  rateField,
+  ratesAreDefault,
+  ratesFromLegacy,
   ratesSummary,
 } from '../../configs/rates.js';
 import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
@@ -165,15 +174,24 @@ const DEFAULTS = {
    * matches the default, and an unknown id falls back to the first tune in
    * configs/registry.js rather than throwing. */
   tune: 'betaflight-default',
-  /* ACTUAL rates, owned by the pilot rather than by the tune. Betaflight
-   * 4.5.1's own defaults; see configs/rates.js for why they live here. */
-  rateMax: RATE_DEFAULTS.rateMax,
-  rateYawMax: RATE_DEFAULTS.rateYawMax,
-  rateCentre: RATE_DEFAULTS.rateCentre,
-  rateExpo: RATE_DEFAULTS.rateExpo,
-  /* Betaflight's throttle limit, SCALE type. 100 is off, which is what a
-   * freshly flashed quad does, so that is where the menu starts. */
-  throttleCap: RATE_DEFAULTS.throttleCap,
+  /*
+   * The whole rate profile, owned by the pilot rather than by the tune: a
+   * rates type and three firmware fields per axis, plus Betaflight's
+   * throttle limit, which lives in the same rate profile in the firmware and
+   * so lives in the same object here. Betaflight 4.5.1's own defaults; see
+   * configs/rates.js for the units and for why they live here.
+   *
+   * loadSettings REPLACES this rather than keeping it: the spread that
+   * builds a settings object is shallow, so a stored profile has to be
+   * normalised into a fresh object or a pilot editing their max rate would
+   * be writing through into the frozen defaults above.
+   */
+  rates: RATE_DEFAULTS,
+  /* Whether the rows edit pitch separately from roll. A menu shape rather
+   * than a firmware field, which is why it is out here and not in the
+   * profile: the firmware has always had three axes and this only decides
+   * whether two of them are typed once or twice. */
+  ratesSplitPitch: false,
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -294,17 +312,6 @@ export function loadSettings() {
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
-    /* The rate knobs are list rows like the rest, so they are checked like
-     * the rest. It matters more here than anywhere else on this list: the
-     * value is displayed raw but goes through normaliseRates on its way to
-     * CLI, so an off-list one would show a number the quad is not flying,
-     * and cycle() would step it to the far end of the list rather than to
-     * its neighbour. */
-    ['rateMax', RATE_MAX_CHOICES],
-    ['rateYawMax', RATE_MAX_CHOICES],
-    ['rateCentre', RATE_CENTRE_CHOICES],
-    ['rateExpo', RATE_EXPO_CHOICES],
-    ['throttleCap', THROTTLE_CAP_CHOICES],
   ]) {
     if (!allowed.includes(s[key])) {
       s[key] = DEFAULTS[key];
@@ -313,6 +320,26 @@ export function loadSettings() {
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
    * must survive, a stored 90 must not, and 45 has to be legal now. */
   s.cameraAngle = clampCameraAngle(s.cameraAngle);
+  /*
+   * The rate profile, from whichever shape this blob was written in.
+   *
+   * A save from before the rates screen learned the five Betaflight rate
+   * systems carries five flat numbers instead: Max rate in deg/s, a yaw
+   * copy of it, centre sensitivity, whole expo and the throttle cap. They
+   * are read across rather than discarded, because a pilot who chose 900
+   * deg/s and 20 expo asked for that and should not be quietly put back on
+   * the Betaflight default by an upgrade. Everything else is clamped by
+   * normaliseRates, which is also what makes a hand edited localStorage
+   * blob unable to put an out of range number into a uint8 field.
+   */
+  const legacy = typeof stored.rates === 'object' && stored.rates ? null : ratesFromLegacy(stored);
+  s.rates = normaliseRates(legacy || s.rates);
+  /* A profile whose pitch differs from its roll has to show three axes,
+   * whatever the stored menu shape says, or the rows would be editing a
+   * pitch the pilot cannot see. */
+  if (!pitchMatchesRoll(s.rates)) {
+    s.ratesSplitPitch = true;
+  }
   /* First run, or an older save from before this key existed: pick Low
    * on a Deck so the page is flyable, High everywhere else so the
    * authored look is what a new desktop player sees. A stored choice,
@@ -469,6 +496,43 @@ function choice(label, note, choices, current, format, set) {
 
 function toggle(label, note, on, set) {
   return choice(label, note, [true, false], on, (v) => (v ? 'On' : 'Off'), set);
+}
+
+/*
+ * A TYPED number, in whatever units the row's field is displayed in.
+ *
+ * The one row type on these menus that is not a list, and the reason it
+ * exists is the rates bug: a value a pilot has in their head, 1500 deg/s or
+ * 0.42 of super rate, has to be enterable, and no list of a dozen steps is
+ * ever going to carry it. spec comes from configs/rates.js and knows the
+ * firmware bounds, the display scale and how the number is written.
+ *
+ * The arrows still work, and one press is one firmware unit, so the row is
+ * still drivable from a radio or the keyboard alone. `typed` is what the
+ * text field commits: it clamps rather than refuses, because a pilot who
+ * asks for 5000 deg/s means "as much as it will give me".
+ */
+function number(label, note, spec, cli, set) {
+  const clamp = (v) => Math.max(spec.cliMin, Math.min(spec.cliMax, v));
+  const text = formatRate(spec, cli);
+  return {
+    label,
+    note,
+    /* No `value`: the field IS the value on this row, and renderMenu reads
+     * num before it looks for one. */
+    num: {
+      spec, cli, text, unit: spec.unit,
+    },
+    adjust: (d) => set(clamp(cli + d)),
+    typed: (raw) => {
+      const t = String(raw).trim();
+      if (t === '') {
+        return null;
+      }
+      return cliOf(spec, Number(t));
+    },
+    set,
+  };
 }
 
 function stepper(label, note, value, adjust) {
@@ -777,15 +841,18 @@ function tuneItem(s, midRun) {
 const YAW_TIP_TILT = 40;
 const YAW_TIP_RATE = 500;
 
+/* The rate systems whose Max rate column is the rate at full stick, so
+ * "set yaw to 500" is one number and is exactly true. See offerYawTip. */
+function yawTipFixable(rates) {
+  const type = normaliseRates(rates).type;
+  return type === 'ACTUAL' || type === 'QUICK';
+}
+
 /* How long a yes or no refuses to be answered after it opens. See askConfirm. */
 const CONFIRM_DEAF_MS = 300;
 
-/* The five keys the Rates screen owns, in one place, so the Revert row and
- * the act() that answers it cannot drift apart. */
-const RATE_KNOBS = ['rateMax', 'rateYawMax', 'rateCentre', 'rateExpo', 'throttleCap'];
-
 function ratesChanged(s) {
-  return RATE_KNOBS.some((k) => s[k] !== RATE_DEFAULTS[k]);
+  return !ratesAreDefault(s.rates);
 }
 
 /* The way in to the Rates screen, with the whole curve read out on the row
@@ -793,7 +860,7 @@ function ratesChanged(s) {
 function ratesItem(s, midRun) {
   return {
     label: 'Rates',
-    value: ratesSummary(s),
+    value: ratesSummary(s.rates),
     action: 'rates',
     note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle.${midRun ? MID_RUN_WARNING : ''}`,
   };
@@ -1113,25 +1180,27 @@ export class Ui {
     /*
      * Rates.
      *
-     * A PICTURE AND FIVE ROWS, where there used to be a Betaflight
+     * A PICTURE AND A RATEPROFILE, where there used to be a whole Betaflight
      * Configurator. The old flight-controller screen offered eight tabs, a
      * few hundred editable firmware keys, a raw CLI textarea and a file drop
      * that would flash any dump the pilot could find. It was accurate and it
      * was unusable, and none of it was the thing a pilot actually changes.
      * Rates are. So the tune is two named choices on the menus that already
-     * carried it, and everything a pilot sets by hand is here.
+     * carried it, and everything a pilot sets by hand is here: the rates
+     * type, three numbers per axis, and the throttle limit. That is
+     * Configurator's Rates tab and nothing else from it.
      *
      * The curve is the point. "670 deg/s" means nothing until you can see
      * that a quarter of stick is 55 of it; the graph and the readout beside
-     * it are the same numbers Betaflight's own ACTUAL curve will fly, drawn
-     * from src/fc/ratescurve.js. The dots on it are the live sticks.
+     * it are the same numbers Betaflight's own curve will fly, drawn from
+     * src/fc/ratescurve.js. The dots on it are the live sticks.
      */
     const rates = el('div', 'screen screen-page screen-rates');
     rates.append(el('h2', null, 'Rates'));
     rates.append(el(
       'p',
       'rates-lede',
-      'How far the sticks go. Rates belong to you, not to the tune, so they stay put when you switch between the two tunes. A radio in Acro flies this curve; keyboard flight is Angle and ignores it.',
+      'How far the sticks go. Pick the rate system you think in and type your own numbers: all five of Betaflight\'s are here and the quad flies whichever you choose. Rates belong to you, not to the tune, so they stay put when you switch between the two tunes. A radio in Acro flies this curve; keyboard flight is Angle and ignores it.',
     ));
     this.ratesPanel = mountRatesPanel();
     const ratesBlock = wrapMenu();
@@ -1142,7 +1211,7 @@ export class Ui {
      * Settings. The three column grid is what keeps the rows in the middle
      * of the window whatever is beside them. */
     ratesBlock.stage.prepend(this.ratesPanel.root);
-    const ratesHint = hintWithKeys(['↑↓', '←→', 'Esc'], '');
+    const ratesHint = hintWithKeys(['↑↓', '←→', 'Enter', 'Esc'], '');
     this.ratesHint = ratesHint.querySelector('.hint-copy');
     rates.append(ratesBlock.stage, ratesHint);
     this.screens.rates = rates;
@@ -1514,23 +1583,34 @@ export class Ui {
    * across the threshold, and only when the yaw rate is actually above what
    * would be suggested, so a pilot who has already dealt with it is never
    * asked. The numbers in it are this pilot's, not an example.
+   *
+   * IN DEG/S AT FULL PEDAL, read off the same curve the Rates screen draws,
+   * because that is the only number the five rate systems agree on. The one
+   * press fix is offered on the two systems where it is exact, Actual and
+   * Quick, which are the two whose Max rate column IS the rate at the stop:
+   * on Betaflight or KISS the same 500 deg/s is a pair of numbers with no
+   * single right answer, so those pilots get the sentence and the screen
+   * rather than a button that would have to guess. See yawTipFixable.
    */
   offerYawTip() {
     const s = this.settings;
     this.yawTipAsked = true;
     const pct = Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100);
-    const now = Math.round(s.rateYawMax * Math.sin(cameraTiltRad(s.cameraAngle)));
+    const yawNow = fullStickDeg(s.rates, 'yaw');
+    const now = Math.round(yawNow * Math.sin(cameraTiltRad(s.cameraAngle)));
     const then = Math.round(YAW_TIP_RATE * Math.sin(cameraTiltRad(s.cameraAngle)));
     this.askConfirm({
       title: 'Yaw will roll the horizon',
-      detail: `At ${s.cameraAngle} degrees of tilt, ${pct} percent of a yaw shows up as roll in the picture: ${now} deg/s of it at your ${s.rateYawMax} yaw rate. That is what a real tilted camera does, and the usual answer is a slower yaw. Dropping Yaw max rate to ${YAW_TIP_RATE} brings it back to ${then} deg/s. You can change it any time on the Rates screen.`,
+      detail: `At ${s.cameraAngle} degrees of tilt, ${pct} percent of a yaw shows up as roll in the picture: ${now} deg/s of it at your ${yawNow} deg/s yaw rate. That is what a real tilted camera does, and the usual answer is a slower yaw. Dropping the yaw max rate to ${YAW_TIP_RATE} brings it back to ${then} deg/s. You can change it any time on the Rates screen.`,
       yes: `Set yaw to ${YAW_TIP_RATE}`,
-      no: `Leave it at ${s.rateYawMax}`,
+      no: `Leave it at ${yawNow}`,
     }).then((ok) => {
       if (!ok) {
         return;
       }
-      this.settings.rateYawMax = YAW_TIP_RATE;
+      /* Max rate is srate in tens of deg/s on both systems this is offered
+       * on, which is why the fix is one assignment and not a solver. */
+      this.settings.rates.yaw.srate = YAW_TIP_RATE / 10;
       saveSettings(this.settings);
       this.renderMenu();
       if (this.onSettings) {
@@ -1648,6 +1728,10 @@ export class Ui {
       courseId: (seat && (seat.shareId || (seat.doc && seat.doc.id))) || '',
       courseName: (seat && seat.name) || '',
       flightMode: s.flightMode || '',
+      /* The rate profile, because the report that started this screen's
+       * rewrite was about rates and did not carry them: an agent reading
+       * "cannot set my rates" had no way to see what the pilot was on. */
+      rates: ratesSummary(s.rates || {}),
       graphics: s.graphics || '',
       cameraAngle: s.cameraAngle,
       cameraFov: s.cameraFov,
@@ -2031,7 +2115,8 @@ export class Ui {
              * again inside one session does not ask twice. */
             if (before < YAW_TIP_TILT
               && s.cameraAngle >= YAW_TIP_TILT
-              && s.rateYawMax > YAW_TIP_RATE
+              && fullStickDeg(s.rates, 'yaw') > YAW_TIP_RATE
+              && yawTipFixable(s.rates)
               && !this.yawTipAsked) {
               this.offerYawTip();
             }
@@ -2191,66 +2276,99 @@ export class Ui {
     }
     if (this.screen === 'rates') {
       /*
-       * ACTUAL rates, in the units the curve's ends actually mean. From
-       * fc/rc.c applyActualRates: at full stick the rate IS Max rate, and
-       * Centre is the SLOPE at the middle, not the rate at half stick. The
-       * notes say so, because the old menu claimed otherwise and the graph
-       * beside these rows is what settles the argument.
+       * BETAFLIGHT CONFIGURATOR'S RATES TAB, in a menu.
        *
-       * Every value is a step on a list rather than a free number: the
-       * firmware stores rc_rate and srate in TENS of deg/s in a uint8, so
-       * anything not a multiple of ten is a number the quad never sees.
+       * A rates TYPE and three numbers per axis, typed rather than picked
+       * off a list. The lists were the bug: Max rate stopped at 1400 and
+       * centre sensitivity at 140, so a pilot who flies 1500, or 850, or any
+       * number the list did not happen to carry, could not enter it at all,
+       * and a pilot who thinks in Betaflight RC Rate and Super Rate had no
+       * row to put them in. Every range and every default here is
+       * Configurator 10.10's own; see configs/rates.js.
+       *
+       * The numbers are the firmware's, at the firmware's resolution. One
+       * arrow press is one uint8 step, which is ten deg/s in the deg/s
+       * columns and a hundredth everywhere else, and a typed number that
+       * falls between two of them is rounded to the one the quad can
+       * actually be given rather than shown back as a rate nothing flies.
        */
-      const hover = hoverStickPercent(s.throttleCap);
+      const r = s.rates;
+      const split = Boolean(s.ratesSplitPitch);
+      const hover = hoverStickPercent(r.throttleCap);
+      const tilt = Math.sin(cameraTiltRad(s.cameraAngle));
+      const noteFor = (axis, key) => {
+        const spec = rateField(r.type, key);
+        const bits = [spec.note];
+        if (key !== 'expo') {
+          bits.push(`At full stick this axis is ${fullStickDeg(r, axis)} deg/s.`);
+        }
+        if (axis === 'yaw' && key === 'srate') {
+          bits.push(`Quads yaw slower than they roll, so many pilots set yaw below roll. Your camera is tilted up ${s.cameraAngle} degrees, so ${Math.round(tilt * 100)} percent of a yaw rolls the horizon rather than turning it: ${Math.round(fullStickDeg(r, 'yaw') * tilt)} deg/s of picture roll at full pedal.`);
+        }
+        return bits.join(' ');
+      };
+      /* One editable field. Roll writes pitch too while the two are joined,
+       * which is the only place the joining means anything: the profile
+       * itself always carries three axes, exactly as the firmware does. */
+      const rateRow = (axis, key) => number(
+        rateField(r.type, key).label,
+        noteFor(axis, key),
+        rateField(r.type, key),
+        r[axis][key],
+        (v) => {
+          r[axis][key] = v;
+          if (!split && axis === 'roll') {
+            r.pitch[key] = v;
+          }
+        },
+      );
+      const axisRows = (axis) => RATE_FIELDS.map((key) => rateRow(axis, key));
       return [
         choice(
-          'Max rate',
-          'Roll and pitch at full stick, in degrees per second. This is exact: ACTUAL rates put the number you pick at the stop. 670 is the Betaflight default, and most racers live between 600 and 900.',
-          RATE_MAX_CHOICES,
-          s.rateMax,
-          (n) => `${n} deg/s`,
-          (n) => { s.rateMax = n; },
+          'Rates type',
+          `Which rate system the numbers below are in. All five are Betaflight's own and all five fly: the curve is chosen in fc/rc.c by this one field. Actual is the Betaflight 4.5 default and the one whose Max rate column means exactly what it says at the stop. Changing this loads that system's own defaults, because a Betaflight RC rate of 1.00 and an Actual centre sensitivity of 70 are the same stored number and not the same setting.`,
+          RATE_TYPES,
+          r.type,
+          (t) => RATE_TYPE_LABEL[t],
+          (t) => { s.rates = profileForType(t, r); },
         ),
-        choice(
-          'Yaw max rate',
-          `Yaw at full pedal. Quads yaw slower than they roll, so many pilots set this below Max rate. 670 matches the Betaflight default. Your camera is tilted up ${s.cameraAngle} degrees, so ${Math.round(Math.sin(cameraTiltRad(s.cameraAngle)) * 100)} percent of this rolls the horizon rather than turning it: ${Math.round(s.rateYawMax * Math.sin(cameraTiltRad(s.cameraAngle)))} deg/s of picture roll at full pedal.`,
-          RATE_MAX_CHOICES,
-          s.rateYawMax,
-          (n) => `${n} deg/s`,
-          (n) => { s.rateYawMax = n; },
+        toggle(
+          'Separate pitch',
+          split
+            ? 'On. Pitch has its own three numbers and its own curve on the graph. Turning this off copies roll onto pitch.'
+            : 'Off. Roll and pitch share one set of numbers, which is how most quads are set up and what Betaflight ships. Turn it on to give pitch its own.',
+          split,
+          (on) => {
+            s.ratesSplitPitch = on;
+            if (!on) {
+              for (const key of RATE_FIELDS) {
+                r.pitch[key] = r.roll[key];
+              }
+            }
+          },
         ),
-        choice(
-          'Centre sensitivity',
-          'How quickly the quad answers a small stick move, as the slope of the curve at the middle. Low is calm for a smooth line, high is twitchy and quick. It is not the rate at half stick: read the curve.',
-          RATE_CENTRE_CHOICES,
-          s.rateCentre,
-          (n) => `${n}`,
-          (n) => { s.rateCentre = n; },
-        ),
-        choice(
-          'Expo',
-          'How much of the travel is spent near the middle. Zero is a straight line from centre to the stop. Higher softens the middle and keeps the same maximum, which is why the ends of the curve do not move when you change it.',
-          RATE_EXPO_CHOICES,
-          s.rateExpo,
-          (n) => (n === 0 ? 'None' : `${(n / 100).toFixed(2)}`),
-          (n) => { s.rateExpo = n; },
-        ),
+        { label: split ? 'Roll' : 'Roll and pitch', section: true },
+        ...axisRows('roll'),
+        ...(split ? [{ label: 'Pitch', section: true }, ...axisRows('pitch')] : []),
+        { label: 'Yaw', section: true },
+        ...axisRows('yaw'),
+        { label: 'Throttle', section: true },
         choice(
           'Throttle limit',
-          s.throttleCap >= 100
+          r.throttleCap >= 100
             ? `Off. This quad is nine to one thrust to weight and hovers at ${hover.toFixed(1)} percent of stick, so almost all the travel is above hover. Capping it scales the whole stick down and gives the resolution back.`
-            : `Betaflight SCALE limit: full stick commands ${s.throttleCap} percent, and the whole travel is redistributed under it. Hover moves to about ${hover.toFixed(1)} percent of stick, so the throttle is less touchy.`,
+            : `Betaflight SCALE limit: full stick commands ${r.throttleCap} percent, and the whole travel is redistributed under it. Hover moves to about ${hover.toFixed(1)} percent of stick, so the throttle is less touchy.`,
           THROTTLE_CAP_CHOICES,
-          s.throttleCap,
+          r.throttleCap,
           (n) => (n >= 100 ? 'Off' : `${n}%`),
-          (n) => { s.throttleCap = n; },
+          (n) => { r.throttleCap = n; },
         ),
         {
           label: 'Revert to defaults',
           action: 'rates-default',
           disabled: !ratesChanged(s),
           note: ratesChanged(s)
-            ? `Back to what a freshly flashed Betaflight 4.5.1 flies: ${RATE_DEFAULTS.rateCentre} centre, ${RATE_DEFAULTS.rateMax} max, no expo, no throttle limit.`
+            ? `Back to what a freshly flashed Betaflight 4.5.1 flies: Actual rates, ${formatRate(rateField('ACTUAL', 'rcRate'), RATE_DEFAULTS.roll.rcRate)} deg/s at centre, ${formatRate(rateField('ACTUAL', 'srate'), RATE_DEFAULTS.roll.srate)} deg/s at the stop on every axis, no expo, no throttle limit.`
             : 'Already on the Betaflight 4.5.1 defaults.',
         },
         { label: 'Back', action: 'back' },
@@ -2321,7 +2439,12 @@ export class Ui {
       }
       const row = el('div', cls.join(' '));
       row.append(el('span', 'row-label', it.label));
-      if (it.options) {
+      /* Before the adjust branch: a typed row has arrows too, and the
+       * stepper alone would be the old list row without the field that is
+       * the whole point of it. */
+      if (it.num) {
+        row.append(this.makeNumber(it, i));
+      } else if (it.options) {
         row.append(this.makeDrop(it, i));
       } else if (it.step || it.adjust) {
         row.append(this.makeStepper(it, i));
@@ -2347,7 +2470,13 @@ export class Ui {
         this.cursor = i;
         this.syncCursor(false);
         /* Value rows change through the arrows or the dropdown. Clicking
-         * the label only focuses them. Action rows still fire. */
+         * the label only focuses them, except a typed row, where the label
+         * is the largest thing to aim at and typing is what it is for.
+         * Action rows still fire. */
+        if (it.num) {
+          this.focusNumber(i);
+          return;
+        }
         if (!it.adjust && !it.options && !it.step && !it.info) {
           this.select();
         }
@@ -2374,10 +2503,10 @@ export class Ui {
       /* Same sentence the pause menu's row carries, because a pilot who got
        * here from a paused run needs it on the screen they are editing. */
       this.ratesHint.textContent = this.returnTo === 'paused'
-        ? 'Arrow keys move, left and right change a value. Escape goes back. A change reaches the quad at once, and puts it back on the start line.'
-        : 'Arrow keys move, left and right change a value. Escape goes back. Changes are stored and reach the quad at once.';
+        ? 'Arrow keys move, left and right change a value, Enter types one. Escape leaves a field, then goes back. A change reaches the quad at once, and puts it back on the start line.'
+        : 'Arrow keys move, left and right change a value, Enter types one. Escape leaves a field, then goes back. Changes are stored and reach the quad at once.';
     }
-    this.ratesPanel.paint(this.settings, this.ratesStick);
+    this.ratesPanel.paint(this.settings.rates, this.ratesStick);
   }
 
   /* The live sticks, from the frame loop. Only while the screen is up: the
@@ -2489,6 +2618,177 @@ export class Ui {
     col.append(up, down);
     wrap.append(val, col);
     return wrap;
+  }
+
+  /*
+   * A row with a text field in it.
+   *
+   * THE COMMIT IS ON BLUR OR ENTER, not on every keystroke, and that is a
+   * decision rather than an omission. A field that clamped as you typed
+   * would turn the "1" of 1500 into the minimum and then append to it, and
+   * a field that re-inited the module on every keystroke would put the quad
+   * back on the start line four times for one number. What DOES follow the
+   * keystroke is the picture beside the menu: previewNumber draws the curve
+   * the half-typed number would fly, so the graph answers before the value
+   * is committed.
+   *
+   * The arrows keep their meaning, one firmware step, and take the typed
+   * text as their starting point when there is one, so typing 800 and then
+   * pressing up is 810 rather than one step from whatever was stored.
+   */
+  makeNumber(it, i) {
+    const wrap = el('div', 'row-control');
+    const field = document.createElement('input');
+    field.className = 'row-num';
+    field.type = 'text';
+    field.inputMode = 'decimal';
+    field.autocomplete = 'off';
+    field.spellcheck = false;
+    field.value = it.num.text;
+    field.setAttribute('aria-label', it.label);
+    field.addEventListener('focus', () => {
+      this.cursor = i;
+      this.syncCursor(false);
+      field.select();
+    });
+    field.addEventListener('click', (e) => e.stopPropagation());
+    field.addEventListener('input', () => this.previewNumber(it, field.value));
+    field.addEventListener('blur', () => {
+      /* A field the menu has already rebuilt away has nothing to commit:
+       * removing a focused element fires blur, and the value it carries has
+       * just been written by whatever removed it. */
+      if (!field.isConnected) {
+        return;
+      }
+      this.commitNumber(it, field.value);
+    });
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.commitNumber(it, field.value);
+        return;
+      }
+      if (e.key === 'Escape') {
+        /* Cancel the edit rather than leave the screen. The window listener
+         * in src/input/input.js forwards Escape out of a text field on
+         * purpose, so this one has to stop it, and a second Escape on the
+         * row goes back as it always did. */
+        e.preventDefault();
+        e.stopPropagation();
+        field.value = it.num.text;
+        this.syncRates();
+        field.blur();
+        return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        /* Up and down are the menu's, not the caret's. Without this a pilot
+         * who clicked into a field could not leave it with the keyboard. */
+        e.preventDefault();
+        e.stopPropagation();
+        const dir = e.key === 'ArrowDown' ? 1 : -1;
+        this.commitNumber(it, field.value);
+        this.move(dir);
+      }
+    });
+    const col = el('span', 'step-col');
+    const up = btn('step', '▲');
+    const down = btn('step', '▼');
+    up.setAttribute('aria-label', `Increase ${it.label}`);
+    down.setAttribute('aria-label', `Decrease ${it.label}`);
+    for (const [b, dir] of [[up, 1], [down, -1]]) {
+      /* Keep the focus where it is: a blur here would rebuild the row and
+       * take the button out from under the click that was already on its
+       * way, so the first press after typing would do nothing. */
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.cursor = i;
+        this.stepNumber(it, dir, field.value);
+      });
+    }
+    col.append(up, down);
+    wrap.append(field);
+    if (it.num.unit) {
+      wrap.append(el('span', 'row-num-unit', it.num.unit));
+    }
+    wrap.append(col);
+    return wrap;
+  }
+
+  /* Put the caret in a typed row's field, from a click on the row or from
+   * Enter on the keyboard. */
+  focusNumber(i) {
+    const row = this.menuRows[i - this.rowOffset];
+    const field = row && row.querySelector('.row-num');
+    if (field) {
+      field.focus();
+    }
+  }
+
+  /*
+   * Draw the curve the text in the field would fly, without committing it.
+   *
+   * The write into the settings is REAL and is undone on the next line. It
+   * is done that way because the row's own setter is the only thing that
+   * knows where the value goes and whether roll carries pitch with it, and
+   * nothing can read the settings between these two statements: no save, no
+   * onSettings, no await.
+   */
+  previewNumber(it, raw) {
+    if (!this.ratesPanel || this.screen !== 'rates') {
+      return;
+    }
+    const next = it.typed(raw);
+    if (next == null) {
+      return;
+    }
+    const before = it.num.cli;
+    it.set(next);
+    try {
+      this.ratesPanel.paint(this.settings.rates, this.ratesStick);
+    } finally {
+      it.set(before);
+    }
+  }
+
+  commitNumber(it, raw) {
+    const next = it.typed(raw);
+    if (next == null || next === it.num.cli) {
+      /* Nothing to store, but the field may hold "67x" or a number that
+       * rounds to what is already there, so the row is rebuilt to put the
+       * stored value back on the screen. */
+      this.renderMenu();
+      return;
+    }
+    it.set(next);
+    this.writeSettings();
+  }
+
+  stepNumber(it, dir, raw) {
+    const typed = it.typed(raw);
+    const base = typed == null ? it.num.cli : typed;
+    const spec = it.num.spec;
+    const next = Math.max(spec.cliMin, Math.min(spec.cliMax, base + dir));
+    if (next === it.num.cli) {
+      this.renderMenu();
+      return;
+    }
+    it.set(next);
+    this.writeSettings();
+  }
+
+  /* Store, redraw, tell the shell. The three things every row that changes
+   * a setting does, in one place. */
+  writeSettings() {
+    saveSettings(this.settings);
+    this.renderMenu();
+    if (this.onUiSound) {
+      this.onUiSound('adjust');
+    }
+    if (this.onSettings) {
+      this.onSettings(this.settings);
+    }
   }
 
   makeDrop(it, i) {
@@ -3905,14 +4205,7 @@ export class Ui {
     const it = this.items()[this.cursor];
     if (it && it.adjust) {
       it.adjust(dir);
-      saveSettings(this.settings);
-      this.renderMenu();
-      if (this.onUiSound) {
-        this.onUiSound('adjust');
-      }
-      if (this.onSettings) {
-        this.onSettings(this.settings);
-      }
+      this.writeSettings();
     }
   }
 
@@ -3928,6 +4221,13 @@ export class Ui {
       if (this.onUiSound) {
         this.onUiSound('back');
       }
+      return;
+    }
+    /* A typed row opens for typing. Stepping it with Enter would be the
+     * old list row's behaviour and would put the caret nowhere, which is
+     * the whole complaint this screen exists to answer. */
+    if (it.num) {
+      this.focusNumber(this.cursor);
       return;
     }
     if (it.adjust) {
@@ -4121,9 +4421,11 @@ export class Ui {
       return;
     }
     if (action === 'rates-default') {
-      for (const k of RATE_KNOBS) {
-        this.settings[k] = RATE_DEFAULTS[k];
-      }
+      /* normaliseRates rather than the frozen table itself: the rows write
+       * into this object, and handing them the defaults by reference would
+       * make the first edit change what "revert" means. */
+      this.settings.rates = normaliseRates(RATE_DEFAULTS);
+      this.settings.ratesSplitPitch = false;
       saveSettings(this.settings);
       this.renderMenu();
       if (this.onSettings) {
@@ -4318,13 +4620,16 @@ export class Ui {
       return;
     }
     /*
-     * Title and Settings pose the airframe from the live stick channels.
-     * Pitch and roll that fly it used to step the cursor. Keyboard owns
-     * the rows; a radio switch still selects on the title so Fly is one
-     * flick away. The pad is tracked so a held stick does not fire an
-     * edge the moment the screen closes.
+     * Title, Settings and Rates all draw the live stick channels: the first
+     * two pose the airframe, and Rates rides a dot along the curve the stick
+     * is about to fly. Pitch and roll that fly it used to step the cursor,
+     * which on Rates meant that moving a stick to watch its dot also walked
+     * the menu and, on a value row, edited the number it landed on. Keyboard
+     * and mouse own the rows on these three; a radio switch still selects on
+     * the title so Fly is one flick away. The pad is tracked so a held stick
+     * does not fire an edge the moment the screen closes.
      */
-    if (this.screen === 'settings' || this.screen === 'title') {
+    if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates') {
       if (this.screen === 'title' && now.select && !this.padPrev.select) {
         this.select();
       }

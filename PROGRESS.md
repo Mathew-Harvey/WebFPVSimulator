@@ -13034,3 +13034,152 @@ the built in race field unchanged with its chequer device and its navy and
 red flags. Console errors 0 on every run. Removing a mark was driven in the
 browser and the orphaned footprint reads "no mark" while its neighbours keep
 theirs, which is the id rather than the index doing its job.
+
+## Rates you can type, in whichever rate system you think in
+
+The bug report was flat: the rates cannot be set, because the numbers a pilot
+wants are outside the drop down. That was exactly true. `Max rate` was a list
+of twelve values that stopped at 1400, `Centre sensitivity` a list of nine
+that stopped at 140, expo a list of fourteen, and there was no way to type
+anything at all. A pilot who flies 1500, or 850, or any number the list did
+not happen to carry, had no row to put it in. Worse, the screen only offered
+ACTUAL rates: a pilot who thinks in Betaflight RC Rate and Super Rate, or in
+Raceflight, or in KISS, could not enter their profile in the units they own
+it in.
+
+So the screen is Betaflight Configurator's Rates tab now, in this menu's
+furniture: a rates type, three numbers per axis, typed, and the throttle
+limit. Nothing else from Configurator, because nothing else on that tab is
+rates.
+
+**The model is the firmware's, not a display of it.** `configs/rates.js`
+holds `{ type, roll, pitch, yaw, throttleCap }` where each axis is the three
+CLI uint8s the firmware actually stores, `rcRate`, `srate` and `expo`. The
+five flat knobs are gone. Display is a per type SCALE applied at the row and
+nowhere else: ACTUAL shows `rc_rate` 7 as "70 deg/s", BETAFLIGHT shows
+`rc_rate` 100 as "1.00", and it is the same stored 7 or 100 either way. One
+firmware unit is one arrow press, because there is nothing between two
+uint8s, and a typed number that falls between them is rounded to the one the
+quad can be given: 675 becomes 680 and the field says so rather than showing
+back a rate nothing flies.
+
+**The ranges and the defaults are Configurator's own**, read out of
+`changeRatesSystem` in `tabs/pid_tuning.js` at tag 10.10.0 rather than
+guessed: RC Rate 0.01 to 2.55, Super Rate 0 to 1.00, Actual and Quick 10 to
+2000 deg/s in tens, Raceflight 10 to 2000 with Acro+ 0 to 255 and whole
+expo, KISS capped at 0.99 because 1.00 divides by zero at full stick. The
+deg/s columns stop at 2000 rather than the firmware's 2550 for the reason
+Configurator stops there: `rate_limit` clamps the setpoint at 1998, so the
+last 550 would be a number that cannot happen. Type defaults are
+Configurator's too, and switching type loads them, because a Betaflight RC
+Rate of 1.00 and an Actual centre sensitivity of 70 are the same stored
+number and not the same setting.
+
+**The old five knobs are read across, not dropped.** `ratesFromLegacy` turns
+a pre-existing save's `rateMax`, `rateYawMax`, `rateCentre`, `rateExpo` and
+`throttleCap` into an ACTUAL profile, so a pilot who had chosen 900 and 20
+expo still has them. The settings key stays `v3`: there was no need to reset
+everyone's world, tune and audio to change the shape of one field.
+
+**The typed row.** `number()` in `src/ui/ui.js` is the first menu row that is
+not a list. It commits on blur or Enter, never on the keystroke, for two
+reasons: a field that clamped as you typed would turn the 1 of 1500 into the
+minimum and then append to it, and a field that committed per keystroke
+would re-init the module and put the quad back on the start line four times
+for one number. What does follow the keystroke is the picture: `previewNumber`
+draws the curve the half typed number would fly without storing it. The
+arrows still work and still mean one firmware step, taking the typed text as
+their base, so 800 then up is 810. Escape cancels the edit and leaves the
+field; a second Escape leaves the screen.
+
+**Pitch can be split.** Off by default, which is how most quads are set up
+and what the firmware ships. On, pitch gets its own three rows and its own
+mint curve on the graph. The panel merges roll and pitch into one line
+whenever the two are the same three numbers, so an unsplit profile still
+draws two curves and not three copies of one.
+
+**One rate profile, one CLI path.** `ratesCli` and `sanitiseRateProfile` in
+`src/fc/dump.js` are gone, along with the `settings.rateProfile` shadow they
+existed to carry: the menu's own model now holds a whole rateprofile of any
+type, so there is nothing left for the second path to hold that the first
+cannot. `ratesSettingsFromDump` became `ratesFromDump` and reads a dump of
+any type across, where before it could only read ACTUAL and silently ignored
+the rest. `ratesDiff` writes every line every time, `quickrates_rc_expo`
+included, because a rate profile is not reset between inits and a key left
+unwritten keeps whatever the last profile put there.
+
+**What went wrong on the way.**
+
+The readout under the curve kept the curve OBJECT it was built with, and the
+curves are rebuilt from the settings on every paint. So after a change of
+rates type the legend said 667 and the three numbers under it still said
+670, which is the previous profile. Caught by looking at a 1280 wide capture,
+not by any check. It keeps the spans only and reads `curves[i]` now, and the
+shape check that decides when to rebuild is what makes the index safe.
+
+**P2 was red, and this is why.** `scripts/gates.js` appends
+`set rc_smoothing_mode = 0` to its parity config, and that is not a CLI key:
+the key is `rc_smoothing` and `rc_smoothing_mode` is the struct field behind
+it. So the line set nothing, `getSetpointRate` went on returning the
+SMOOTHED setpoint, and P2 has been comparing a filtered value against an
+unfiltered reference. The first sample of its sweep is a jump from centre to
+the stop, the filter lags it, and the gate failed there at 425 deg/s.
+`.loop/state.json` has been carrying `"P2": "fail", "reason": "exceeds 0.1"`
+for however long that has been true.
+
+The new F15 hit the same wall on its own first sample, 555 deg/s out, which
+is what sent me looking at the key rather than at the curve. Both places say
+`set rc_smoothing = OFF` now. P2 passes at 0.0001 deg/s, measured after the
+fix and again after reverting it to be sure the fix is what moved it. No
+threshold was touched: the check was measuring the wrong signal and now
+measures the one it always meant to.
+
+The stick nav had to come off this screen. Pitch and roll step the menu
+cursor everywhere except Title and Settings, so moving a stick to watch its
+dot ride the curve also walked the cursor and, on a value row, edited the
+number it landed on. Rates joins those two: the sticks are the picture here,
+the keyboard and the mouse own the rows.
+
+The bug report that started this carried no rates. `bugSnapshot` now includes
+the profile summary, so the next one does.
+
+VERIFY. `npm run lint:fc`, 29 of 29, including a new F15 that puts each of
+the five rate systems into the compiled module through the same
+`composeConfig` the shell inits from, sweeps the sticks stop to stop and
+compares all three axis setpoints against what `src/fc/ratescurve.js` drew:
+worst error 0.0001 deg/s across 615 samples. Both sign flips are written
+down in it, the pitch one in `bf_glue.c` and the yaw one in `rc.c`. F13's
+summary check now reads a Betaflight profile back in deg/s, and a new check
+holds the rule that an unknown rates type falls back as a whole profile
+rather than clamping numbers that mean nothing under it. `npm run gates`, P1 and P2 pass, P2 for the first
+time since the dud smoothing key went in; everything else fails exactly as it
+did before this turn. `.loop/state.json` moves with it, and it also picks up
+two numbers that had gone stale in it rather than moved today: P4 now records
+its hover sub-check at 26.3 percent against a 17 to 22 band, and P5's nought
+to a hundred at 0.73 s rather than 0.75. Neither can be from this turn: both
+fly `configs/betaflight-default.diff` straight into the module with no rate
+profile from the menu anywhere near them, and that file, the plant and the
+wasm are untouched here. P4 and P5 were red before and are red now.
+`npm run lint:presets` 2 of 2.
+
+`npm run lint:catalog` could not run: `vendor/betaflight` is not checked out
+in this container, so it fails on a missing `parameter_names.h` before it
+reads anything. Unchanged from the last two turns and nothing here edits the
+catalogue.
+
+`npm run verify` was NOT run. Nothing here touches the plant, the module
+ABI, the build or the integrator: the change is the menu, the CLI text the
+menu writes, and the drawing beside it. What was done instead is
+`node scripts/shots.js` against the real shell, ten runs at 1600x900 and
+1280x800, console errors 0 on every one. Driven and read back from
+`__tune().profile`, which is the module's own rate profile rather than the
+menu's memory: typing 1500 into Max rate lands `roll_srate 150` with pitch
+carried and yaw untouched; 5000 clamps to 2000; 675 rounds to 680; "abc" and
+"-500" leave the module alone or land on the floor; each of the five types
+reaches the module with Configurator's defaults and the right column labels;
+Separate pitch gives three sections, three legend keys and three numbers per
+cell; Revert restores the Betaflight 4.5.1 defaults and rejoins the axes; the
+keyboard only path (arrow, arrow, arrow, Enter, 850, Enter) commits without a
+mouse; the stepper arrows work after typing; Escape cancels an edit and keeps
+the stored value; `pollPad` no longer moves the cursor on this screen; and
+the Settings row and `__tune().rates` both read the new summary.

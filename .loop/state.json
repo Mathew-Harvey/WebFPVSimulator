@@ -415,7 +415,7 @@
   },
   "gates": {
     "P1": "pass",
-    "P2": "fail",
+    "P2": "pass",
     "P3": "fail",
     "P4": "fail",
     "P5": "fail",
@@ -438,20 +438,16 @@
   "last_run": {
     "failing": [
       {
-        "id": "P2",
-        "reason": "exceeds 0.1"
-      },
-      {
         "id": "P3",
         "reason": "BLOCKER: no real blackbox logs. Required coverage: hard cornering, full throttle straight, dive into propwash, Split-S, low proximity pass, tumble or stall recovery. Cannot be fabricated."
       },
       {
         "id": "P4",
-        "reason": "80% climb in 572 ms (band 150,400)"
+        "reason": "hover 26.3% (band 0.17,0.22); 80% climb in 578 ms (band 150,400)"
       },
       {
         "id": "P5",
-        "reason": "0 to 100 in 0.75 s (band 1.3,1.9)"
+        "reason": "0 to 100 in 0.73 s (band 1.3,1.9)"
       },
       {
         "id": "P6",

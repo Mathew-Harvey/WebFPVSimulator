@@ -68,8 +68,8 @@ import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
-import { ratesSummary } from '../configs/rates.js';
-import { composeConfig, moduleGet, ratesCli, RATES_KEEP } from './fc/dump.js';
+import { ratesDiff, ratesSummary } from '../configs/rates.js';
+import { composeConfig, moduleGet, RATES_KEEP } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '/tests/lib/simmod.js';
@@ -452,8 +452,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * authority, so the tune could never be judged on its own.
    */
   let tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
-  let ratesText = ratesCli(ui.settings);
-  let configText = composeConfig(tuneText, ui.settings, RATES_KEEP);
+  let ratesText = ratesDiff(ui.settings.rates);
+  let configText = composeConfig(tuneText, ui.settings.rates, RATES_KEEP);
   if (sim.init(configText) !== SIM_OK) {
     throw new Error(`sim_init failed on ${configName}`);
   }
@@ -1274,11 +1274,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /*
      * Rates are part of the config text, so changing one re-inits the module
      * and resets the craft, exactly as changing the tune does. Compared as
-     * the CLI ratesCli emits (full rateprofile), not the five-knob ratesDiff
-     * shadow, so a split pitch or a BETAFLIGHT save cannot be flattened the
-     * next time the volume changes.
+     * the CLI text the profile emits rather than field by field, so a change
+     * to any of the eleven fields, the rates type included, is one string
+     * comparison and none of them can be forgotten here.
      */
-    const nextRates = ratesCli(s);
+    const nextRates = ratesDiff(s.rates);
     if (nextRates !== ratesText) {
       /*
        * Composed into a LOCAL first. A refused sim_init is not a no-op down
@@ -1290,7 +1290,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * already overwritten configText with the rejected text, so every one
        * of those recoveries would have restored the bad config too.
        */
-      const nextText = composeConfig(tuneText, s, RATES_KEEP);
+      const nextText = composeConfig(tuneText, s.rates, RATES_KEEP);
       if (sim.init(nextText) === SIM_OK) {
         ratesText = nextRates;
         configText = nextText;
@@ -1356,7 +1356,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!isLiveConfigLoad(gen)) {
       return;
     }
-    const nextText = composeConfig(text, ui.settings, RATES_KEEP);
+    const nextText = composeConfig(text, ui.settings.rates, RATES_KEEP);
     const code = sim.init(nextText);
     if (code !== SIM_OK) {
       ui.settings.tune = configId;
@@ -3295,8 +3295,10 @@ export async function boot({ loading, bootStart, mapId }) {
     id: configId,
     name: configName,
     menu: ui.settings.tune,
-    rates: ratesSummary(ui.settings),
-    rollSrateSet: ui.settings.rateMax,
+    rates: ratesSummary(ui.settings.rates),
+    /* The menu's own roll srate, in the firmware's units, so it sits beside
+     * rollSrate below and the two can be compared without converting. */
+    rollSrateSet: ui.settings.rates.roll.srate,
     offered: TUNES.map((t) => t.id),
     applied: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(13) : null,
     inert: sim.e.sim_bf_debug ? sim.e.sim_bf_debug(14) : null,

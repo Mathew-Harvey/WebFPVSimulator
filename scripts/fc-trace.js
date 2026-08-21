@@ -30,8 +30,8 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { RATE_DEFAULTS, ratesDiff, ratesSummary } from '../configs/rates.js';
-import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, ratesCli, ratesSettingsFromDump, setCliValue, setFeatureLine } from '../src/fc/dump.js';
+import { RATE_DEFAULTS, RATE_TYPES, normaliseRates, ratesDiff, ratesSummary } from '../configs/rates.js';
+import { composeConfig, dumpCarriesRates, expandRpmWeights, exportCli, featureEnabled, moduleDump, moduleGet, RATES_DUMP, RATES_KEEP, ratesFromDump, setCliValue, setFeatureLine } from '../src/fc/dump.js';
 import { angleRateDeg } from '../src/fc/ratescurve.js';
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { must, sha256Hex } from '../tests/lib/replay.js';
@@ -210,12 +210,13 @@ record(
   const splitDump = [
     'set p_roll = 45',
     'set rates_type = BETAFLIGHT',
+    'set roll_rc_rate = 100',
     'set roll_srate = 67',
     'set pitch_srate = 42',
     'set yaw_srate = 55',
     '',
   ].join('\n');
-  const mine = { ...RATE_DEFAULTS, ...ratesSettingsFromDump(splitDump) };
+  const mine = ratesFromDump(splitDump);
   const nextTune = composeConfig('set p_roll = 80\n', mine, RATES_KEEP);
   const simSplit = await newSim();
   must(simSplit.init(nextTune), 'sim_init keep-mine split rates');
@@ -227,36 +228,157 @@ record(
     keepPitch === '42' && keepType === 'BETAFLIGHT' && keepRoll === '67',
     `pitch_srate=${keepPitch} rates_type=${keepType} roll_srate=${keepRoll}`,
   );
+  /* The whole point of the profile model: a BETAFLIGHT dump reads across as
+   * BETAFLIGHT and is written back as BETAFLIGHT. The five knob model this
+   * replaced could only hold ACTUAL, so the same dump came back flattened
+   * and the module flew a different curve from the one that was dropped. */
+  const cliMine = ratesDiff(mine);
+  record(
+    'F7 the profile round trips its own type',
+    /set rates_type = BETAFLIGHT/.test(cliMine)
+      && /set pitch_srate = 42/.test(cliMine)
+      && /set roll_rc_rate = 100/.test(cliMine),
+    `type ${/rates_type = (\w+)/.exec(cliMine)?.[1]} pitch ${/pitch_srate = (\d+)/.exec(cliMine)?.[1]}`,
+  );
   const summary = ratesSummary(mine);
   record(
-    'F13 summary reads rateProfile',
-    summary === 'BETAFLIGHT, roll 67, pitch 42',
+    'F13 summary reads the profile in deg/s',
+    summary === 'Betaflight, 606 roll, 345 pitch, 444 yaw deg/s',
     summary,
   );
-  const cliKeep = ratesCli(mine);
-  const diffFlat = ratesDiff(mine);
-  record(
-    'F7 ratesCli keeps BETAFLIGHT; ratesDiff would flatten to ACTUAL',
-    /set rates_type = BETAFLIGHT/.test(cliKeep)
-      && /set pitch_srate = 42/.test(cliKeep)
-      && /set rates_type = ACTUAL/.test(diffFlat),
-    `cli type ${/rates_type = (\w+)/.exec(cliKeep)?.[1]} diff type ${/rates_type = (\w+)/.exec(diffFlat)?.[1]}`,
-  );
-  record(
-    'F7 BETAFLIGHT dump does not poison ACTUAL centre knob',
-    mine.rateCentre === RATE_DEFAULTS.rateCentre,
-    `rateCentre=${mine.rateCentre}`,
-  );
-  const bfRc = ratesSettingsFromDump([
+  /* A BETAFLIGHT roll_rc_rate of 100 is RC Rate 1.00, and it stays the
+   * uint8 100 rather than being read as 1000 deg/s of centre sensitivity,
+   * which is what reinterpreting it under the wrong type would do. */
+  const bfRc = ratesFromDump([
     'set rates_type = BETAFLIGHT',
     'set roll_rc_rate = 100',
     'set roll_srate = 70',
     '',
   ].join('\n'));
   record(
-    'F7 BETAFLIGHT roll_rc_rate 100 is not 1000 deg/s centre',
-    bfRc.rateCentre == null && bfRc.rateProfile.roll_rc_rate === '100',
-    `rateCentre=${bfRc.rateCentre} profile rc=${bfRc.rateProfile.roll_rc_rate}`,
+    'F7 BETAFLIGHT rc_rate stays the firmware uint8',
+    bfRc.type === 'BETAFLIGHT' && bfRc.roll.rcRate === 100 && bfRc.roll.srate === 70,
+    `type=${bfRc.type} rc=${bfRc.roll.rcRate} srate=${bfRc.roll.srate}`,
+  );
+  /* An unknown type cannot be clamped onto, because the three numbers under
+   * it mean nothing: the whole profile goes back to the default rather than
+   * a Betaflight super rate of 250 being flown as an Actual one. */
+  const junk = normaliseRates({ type: 'NONSENSE', roll: { rcRate: 250, srate: 250, expo: 250 } });
+  record(
+    'F7 an unknown rates type falls back whole',
+    junk.type === RATE_DEFAULTS.type && junk.roll.srate === RATE_DEFAULTS.roll.srate,
+    `type=${junk.type} srate=${junk.roll.srate}`,
+  );
+}
+
+/*
+ * F15: the picture against the firmware, for all five rate systems.
+ *
+ * WHY THIS EXISTS. The Rates screen lets a pilot choose a rates type and
+ * type their own numbers, and it draws the curve those numbers produce from
+ * src/fc/ratescurve.js, which is a JavaScript transcription of fc/rc.c. A
+ * transcription is a claim, and this is the check that makes it one worth
+ * believing: the same profile goes into the compiled module through the CLI
+ * the menu writes, the sticks are swept from stop to stop, and every point
+ * of the drawing is compared with the setpoint Betaflight actually produced.
+ *
+ * All three axes, because the menu now writes three, and with a different
+ * profile on each so that a check could not pass by reading the wrong one.
+ *
+ * THE TWO SIGN FLIPS ARE THE POINT OF READING PITCH AND YAW HERE.
+ * src/native/bf/bf_glue.c inverts pitch on its way into rcData, and rc.c
+ * inverts yaw through GET_DIRECTION(yaw_control_reversed), so the curve a
+ * given stick rides on those axes is the mirror of the roll one. Both are
+ * written down here rather than assumed.
+ */
+{
+  const PROFILES = {
+    BETAFLIGHT: {
+      roll: { rcRate: 118, srate: 73, expo: 15 },
+      pitch: { rcRate: 90, srate: 55, expo: 30 },
+      yaw: { rcRate: 130, srate: 40, expo: 0 },
+    },
+    RACEFLIGHT: {
+      roll: { rcRate: 37, srate: 80, expo: 50 },
+      pitch: { rcRate: 45, srate: 60, expo: 25 },
+      yaw: { rcRate: 30, srate: 90, expo: 10 },
+    },
+    KISS: {
+      roll: { rcRate: 110, srate: 70, expo: 20 },
+      pitch: { rcRate: 95, srate: 50, expo: 40 },
+      yaw: { rcRate: 120, srate: 30, expo: 0 },
+    },
+    ACTUAL: {
+      roll: { rcRate: 7, srate: 67, expo: 0 },
+      pitch: { rcRate: 12, srate: 90, expo: 35 },
+      yaw: { rcRate: 5, srate: 45, expo: 20 },
+    },
+    QUICK: {
+      roll: { rcRate: 100, srate: 67, expo: 10 },
+      pitch: { rcRate: 80, srate: 120, expo: 40 },
+      yaw: { rcRate: 60, srate: 50, expo: 0 },
+    },
+  };
+  /* Tenths of a deg/s, the same bar gates.config.json P2 holds the four
+   * types it covers to. The drawing is f64 and the firmware f32, so the
+   * error is arithmetic and not a difference in the curve. */
+  const TOL = 0.1;
+  let worst = 0;
+  let worstAt = '';
+  let ok = true;
+  for (const type of RATE_TYPES) {
+    const profile = normaliseRates({ ...PROFILES[type], type });
+    /* Through the same composeConfig the shell inits from, so this proves
+     * the CLI the menu writes as well as the curve it draws. Smoothing off,
+     * because getSetpointRate is the smoothed setpoint and the drawing is
+     * of the raw one. */
+    const text = withLine(composeConfig(defaultDiff, profile, RATES_KEEP), 'set rc_smoothing = OFF');
+    const sim = await newSim();
+    must(sim.init(text), `sim_init ${type}`);
+    const dbg = sim.e.sim_bf_debug;
+    const gotType = moduleGet(sim, 'rates_type');
+    if (gotType !== type) {
+      ok = false;
+      worstAt = `${type} did not reach the module (${gotType})`;
+      continue;
+    }
+    let tMs = 0;
+    for (let k = -20; k <= 20; k += 1) {
+      const x = k / 20;
+      const rollStick = x;
+      const pitchStick = 0.7 * x;
+      const yawStick = -0.4 * x;
+      /* Held for a few milliseconds rather than stepped straight past. The
+       * setpoint the module reports is read after the RC frame carrying
+       * this stick position has been consumed, and the sweep is not a ramp:
+       * the first sample alone is a jump from centre to the stop. */
+      must(sim.input(tMs / 1000, rollStick, pitchStick, yawStick, 0.3), 'sim_input');
+      must(sim.step(8), 'sim_step');
+      tMs += 8;
+      const axes = [
+        ['roll', 5, rollStick],
+        /* bf_glue.c: rcData[PITCH] = 1500 - 500 * pitch. */
+        ['pitch', 8, -pitchStick],
+        /* rc.c updateRcCommands: rcCommand[YAW] carries -GET_DIRECTION. */
+        ['yaw', 0, -yawStick],
+      ];
+      for (const [axis, slot, stick] of axes) {
+        const want = angleRateDeg(type, { ...profile[axis], limit: 1998 }, stick);
+        const err = Math.abs(dbg(slot) - want);
+        if (err > worst) {
+          worst = err;
+          worstAt = `${type} ${axis} stick ${stick.toFixed(2)} module ${dbg(slot).toFixed(3)} preview ${want.toFixed(3)}`;
+        }
+        if (err > TOL) {
+          ok = false;
+        }
+      }
+    }
+  }
+  record(
+    'F15 preview matches the module on all five rate types',
+    ok,
+    `worst |err| ${worst.toFixed(4)} deg/s at ${worstAt}`,
   );
 }
 

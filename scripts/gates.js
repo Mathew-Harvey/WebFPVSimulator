@@ -176,7 +176,13 @@ async function main() {
         .replace(/set (roll|pitch|yaw)_rc_rate = \d+/g, `set $1_rc_rate = ${rcRate}`)
         .replace(/set (roll|pitch|yaw)_srate = \d+/g, `set $1_srate = ${srate}`)
         .replace(/set (roll|pitch|yaw)_expo = \d+/g, `set $1_expo = ${expo}`)
-        + '\nset rc_smoothing_mode = 0\n';
+        /* rc_smoothing, not rc_smoothing_mode: the CLI key is the former
+         * and the struct field is the latter, so the line this used to
+         * carry set nothing and the setpoint being compared here was the
+         * SMOOTHED one. It passed anyway because this sweep moves the stick
+         * a hundredth at a time and the filter has nothing to lag behind;
+         * scripts/fc-trace.js F15 steps twenty times as far and found it. */
+        + '\nset rc_smoothing = OFF\n';
       const sim = await fresh(diff, wasm);
       const dbg = sim.e.sim_bf_debug;
       let t = 0;

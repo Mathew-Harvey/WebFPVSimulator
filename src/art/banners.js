@@ -263,16 +263,37 @@ function chequerColumn(ctx, x, y, w, h, cells) {
 }
 
 /*
- * THE TEARDROP SAIL.
+ * THE FEATHER SAIL'S PRINT.
  *
  * The canvas maps straight onto the sail's own parameters: u across, from the
  * seam on the mast at 0 to the free edge at 1, and v up the mast. So the
- * LEFT of this canvas is the leading edge, and the navy sweep drawn there is
- * the one on the mast, which is what the reference flags all have.
+ * LEFT of this canvas is the leading edge, and the canvas's TOP is the head,
+ * because a CanvasTexture flips v.
  *
- * `accent` swaps the sweep between navy and red so a run of flags down a
- * course alternates without needing two designs.
+ * WHAT THE SHAPE CHANGED. The panel this lands on is now a tall narrow
+ * rectangle with its mast side corner swept away, about one across to three
+ * and a half up where the teardrop was one to two and three quarters, so
+ * every band here is re-proportioned rather than moved. Two things are new
+ * and both are consequences of the outline rather than taste:
+ *
+ *   THE HEAD IS A SOLID BLOCK OF THE ACCENT. Above FLAG.bend the rows fan
+ *   into the corner the mast's sweep cuts, so anything with structure in it,
+ *   a chequer or a mark, would visibly bend there. One colour cannot. It is
+ *   also what the flag reads as from further away than any print: a coloured
+ *   head over a pale body.
+ *
+ *   THE LEADING BAND IS NARROWER, 0.26 of the width against 0.30 to 0.40.
+ *   On a panel this narrow the old sweep left the mark a strip too thin to
+ *   read at commit range, and the mark is what a sponsor bought.
+ *
+ * `accent` swaps the band and the head between navy and red so a run of
+ * flags down a course alternates without needing two designs.
  */
+/* Where the head block starts, in v. Below FLAG.bend's own share of the
+ * panel, so the block covers the whole swept corner and a little of the
+ * rectangle under it: a join exactly on the fold would show every facet. */
+const SAIL_HEAD_V = 0.70;
+
 export function paintFlagSail(ctx, w, h, opts = {}) {
   const accent = opts.accent === 'red' ? BANNER.red : BANNER.navy;
   const other = opts.accent === 'red' ? BANNER.navy : BANNER.red;
@@ -280,43 +301,66 @@ export function paintFlagSail(ctx, w, h, opts = {}) {
   ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);
 
-  /* The sweep down the leading edge, widening toward the head, which is what
-   * gives a teardrop flag its shape even before it is cut out. */
+  /* v to canvas y. The head is at the top of the canvas and at v = 1. */
+  const vy = (v) => h * (1 - v);
+
+  /* The band down the leading edge, widening a little toward the head the
+   * way a printed sleeve's does. */
   ctx.fillStyle = accent;
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(w * 0.30, 0);
-  ctx.quadraticCurveTo(w * 0.16, h * 0.42, w * 0.34, h * 0.86);
-  ctx.lineTo(w * 0.40, h);
+  ctx.quadraticCurveTo(w * 0.20, h * 0.55, w * 0.26, h);
   ctx.lineTo(0, h);
   ctx.closePath();
   ctx.fill();
 
-  /* A thin rule of the other colour along the sweep, and a chequer band
-   * across the waist. */
+  /* The head block, over the swept corner. */
+  ctx.fillRect(0, 0, w, vy(SAIL_HEAD_V));
+
+  /* A thin rule of the other colour along the band, and one under the head,
+   * which is the seam a two piece printed flag actually carries. */
   ctx.strokeStyle = other;
-  ctx.lineWidth = Math.max(2, w * 0.035);
+  ctx.lineWidth = Math.max(2, w * 0.045);
   ctx.beginPath();
-  ctx.moveTo(w * 0.335, 0);
-  ctx.quadraticCurveTo(w * 0.195, h * 0.42, w * 0.375, h * 0.86);
+  ctx.moveTo(w * 0.30, vy(SAIL_HEAD_V));
+  ctx.quadraticCurveTo(w * 0.20, h * 0.55, w * 0.26, h);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, vy(SAIL_HEAD_V));
+  ctx.lineTo(w, vy(SAIL_HEAD_V));
   ctx.stroke();
 
-  chequer(ctx, w * 0.42, h * 0.60, w * 0.58, h * 0.10, 5);
-  chequer(ctx, w * 0.40, h * 0.14, w * 0.60, h * 0.085, 5);
+  /*
+   * Chequer across the free part, one band under the head and one above the
+   * foot hem. THE CHECK COUNT IS DERIVED, not chosen: a band two checks deep
+   * has square checks only when the count across is twice its width over its
+   * height, and this canvas is narrower than the teardrop's was, so a count
+   * that was square there is three to one here. A chequer whose checks are
+   * not square is not a chequered flag, and the arithmetic is cheaper than
+   * remembering to redo it the next time the panel changes shape.
+   */
+  const bandX = w * 0.28;
+  const bandW = w * 0.72;
+  const bandH = h * 0.06;
+  const cells = Math.max(2, Math.round((2 * bandW) / bandH));
+  chequer(ctx, bandX, vy(0.695), bandW, bandH, cells);
+  chequer(ctx, bandX, vy(0.135), bandW, bandH, cells);
 
+  /* The mark, turned a quarter so it reads up the flag, in the whole of the
+   * panel the band and the two chequers leave: v 0.165 to 0.605, which
+   * clears both bands rather than running under them. */
+  const markW = h * 0.44;
+  const markH = w * 0.60;
+  ctx.save();
+  ctx.translate(w * 0.63, vy(0.385));
+  ctx.rotate(-Math.PI / 2);
   if (opts.logo) {
-    ctx.save();
-    ctx.translate(w * 0.68, h * 0.38);
-    ctx.rotate(-Math.PI / 2);
-    fit(ctx, opts.logo, -h * 0.18, -w * 0.24, h * 0.36, w * 0.48);
-    ctx.restore();
+    fit(ctx, opts.logo, -markW * 0.5, -markH * 0.5, markW, markH);
   } else {
-    ctx.save();
-    ctx.translate(w * 0.68, h * 0.38);
-    ctx.rotate(-Math.PI / 2);
-    chequerDevice(ctx, -h * 0.10, -w * 0.20, h * 0.20, w * 0.40);
-    ctx.restore();
+    chequerDevice(ctx, -markW * 0.28, -markH * 0.5, markW * 0.56, markH);
   }
+  ctx.restore();
 }
 
 /*
@@ -360,6 +404,132 @@ export function paintGroundLogo(ctx, w, h, opts = {}) {
 }
 
 /*
+ * THE FLAG ITSELF: a feather flag, not a teardrop.
+ *
+ * WHAT CHANGED AND WHY. What stood on the course was a teardrop: narrow at
+ * the foot, widest through the middle, drawn to a point at the head, on a
+ * straight mast. That is a real product and it is not the one a race course
+ * is lined with. The reference the owner supplied is a FEATHER flag, and the
+ * difference is structural rather than decorative:
+ *
+ *   THE MAST BENDS. The bottom four fifths is a straight pole and the top
+ *   fifth is a fibreglass whip that sweeps forward through about a hundred
+ *   degrees. That sweep is the whole silhouette. A straight mast cannot make
+ *   this shape whatever outline you cut the cloth to.
+ *
+ *   THE SAIL IS A TALL NARROW PANEL, not a leaf. Its trailing edge is a
+ *   straight vertical line hanging from the mast's TIP, its foot is a
+ *   horizontal hem, and its leading edge is the mast, so the top corner on
+ *   the mast side is swept away by the bend. Width is about 0.23 of the
+ *   flag's height where the teardrop's widest point was 0.30, and it is that
+ *   width for four fifths of its length instead of at one station.
+ *
+ *   THE MAST'S TIP IS NOT ITS HIGHEST POINT. The arc turns past horizontal,
+ *   so it apexes and comes back down a little. The apex is what a pilot's
+ *   eye and the collider both have to treat as the top, which is why the
+ *   numbers below put the APEX at exactly the flag's stated height.
+ *
+ * WHY IT LIVES HERE. Four consumers have to agree about this shape: the
+ * world's mast mesh, the world's sail mesh, the builder preview's two, and
+ * the print, whose canvas has to be the panel's own aspect or a chequer
+ * comes out of square. This module is already the one both renderers draw
+ * from, and this is geometry rather than artwork only in the sense that the
+ * outline and the print are the same decision. It is plain numbers: no
+ * Three.js, no canvas.
+ */
+export const FLAG = {
+  /* Where the straight mast ends, as a fraction of the flag's height. */
+  bend: 0.80,
+  /* How far the whip turns from vertical. A hundred degrees, so it passes
+   * the apex and the tip hangs a little below it, which is what the
+   * reference shows and what puts the trailing edge under the highest
+   * point rather than beyond it. */
+  sweep: (100 * Math.PI) / 180,
+  /* Where the sail's foot hem sits, as a fraction of the height. The mast
+   * below that is bare, which is what holds the cloth clear of the grass. */
+  foot: 0.16,
+  /* Mast radius at the bend and at the tip, as fractions of the butt's. A
+   * feather flag's whip is visibly thinner than its pole. */
+  bendRadius: 0.80,
+  tipRadius: 0.52,
+};
+
+/*
+ * The mast's centreline, from the butt at (0, 0) to the tip, in the sail's
+ * own plane: x forward, y up. `r` on each point is the mast's radius there
+ * as a fraction of the butt's, so one polyline describes the taper too.
+ *
+ * The arc's radius is chosen so the APEX lands at exactly `h`. Everything
+ * that asks how tall a flag is, the collider, the attract camera's clearance
+ * and the builder's elementHeight, keeps the answer it had.
+ */
+export function flagMast(h, steps = 10) {
+  const bendY = h * FLAG.bend;
+  /* Apex at h: the arc rises by R before its tangent turns horizontal. */
+  const R = h * (1 - FLAG.bend);
+  const arcAt = (a) => {
+    const phi = a * FLAG.sweep;
+    return { x: R * (1 - Math.cos(phi)), y: bendY + R * Math.sin(phi) };
+  };
+  const tip = arcAt(1);
+  const points = [
+    { x: 0, y: 0, r: 1 },
+    { x: 0, y: bendY, r: FLAG.bendRadius },
+  ];
+  for (let i = 1; i <= steps; i += 1) {
+    const a = i / steps;
+    const p = arcAt(a);
+    points.push({ x: p.x, y: p.y, r: FLAG.bendRadius + (FLAG.tipRadius - FLAG.bendRadius) * a });
+  }
+  const foot = h * FLAG.foot;
+  return {
+    points,
+    arcAt,
+    bendY,
+    tip,
+    /* The sail's width is the mast's forward reach: the trailing edge hangs
+     * from the tip, so the two are the same number by construction. */
+    width: tip.x,
+    foot,
+    sailH: tip.y - foot,
+  };
+}
+
+/*
+ * The sail's outline, as one leading point and one trailing point per row,
+ * in the same plane and measured from the mast's CENTRELINE. A renderer adds
+ * the mast's radius to both and lofts columns between them.
+ *
+ * TWO BANDS, and the split is what keeps the print square. Below the bend
+ * the rows are horizontal and the panel is a rectangle. Above it the rows
+ * fan from the last horizontal row up to the tip, filling the corner the
+ * mast's sweep cuts out of it. `t` runs 0 to 1 with the SAME metres per
+ * step in both bands, so the artwork is not stretched at the join.
+ */
+export function flagSailProfile(h, bodyRows = 8, headRows = 6) {
+  const m = flagMast(h);
+  const tBend = m.sailH > 1e-6 ? (m.bendY - m.foot) / m.sailH : 1;
+  const rows = [];
+  for (let i = 0; i <= bodyRows; i += 1) {
+    const t = tBend * (i / bodyRows);
+    const y = m.foot + (m.bendY - m.foot) * (i / bodyRows);
+    rows.push({ t, lx: 0, ly: y, tx: m.width, ty: y });
+  }
+  for (let j = 1; j <= headRows; j += 1) {
+    const a = j / headRows;
+    const p = m.arcAt(a);
+    rows.push({
+      t: tBend + (1 - tBend) * a,
+      lx: p.x,
+      ly: p.y,
+      tx: m.width,
+      ty: m.bendY + (m.tip.y - m.bendY) * a,
+    });
+  }
+  return { rows, tBend, mast: m };
+}
+
+/*
  * A canvas, made the same way by both consumers. Kept here so the two cannot
  * disagree about the size of anything.
  */
@@ -387,9 +557,14 @@ export const BANNER_SIZE = {
    * Each one's ASPECT is the aspect of the surface it lands on, because a
    * chequer whose checks are not square is not a chequered flag. The header
    * is 2.74 by 0.58 m of banner, a sleeve is 0.42 by 1.83, and a sail is
-   * 0.87 across by 2.38 up.
+   * 0.68 across by 2.43 up.
+   *
+   * The sail was 192 by 512 when it was a teardrop 0.87 m across. The
+   * feather panel is narrower and taller, and `flagMast` is where those two
+   * numbers come from: 512 times width over sailH is 144, so a check on the
+   * cloth is still square. Change FLAG above and this has to follow.
    */
   header: [512, 112],
   sleeve: [112, 512],
-  sail: [192, 512],
+  sail: [144, 512],
 };

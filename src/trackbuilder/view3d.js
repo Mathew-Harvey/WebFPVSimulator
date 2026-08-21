@@ -64,7 +64,7 @@ import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js
  */
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, GROUND_INK,
-  paintGateHeader, paintGateSleeve, paintFlagSail,
+  paintGateHeader, paintGateSleeve, paintFlagSail, flagMast, flagSailProfile,
 } from '../art/banners.js';
 import {
   assembleStartBlock, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK, START_BLOCK_FOAM, START_BLOCK_LIP,
@@ -110,34 +110,29 @@ async function loadThree() {
 }
 
 /*
- * The teardrop outline, as a plane grid in XY: x out from the mast, y up.
+ * The feather sail's outline, as a plane grid in XY: x out from the mast,
+ * y up, origin at the mast's butt.
  *
- * The same profile src/render/scene.js cuts, so a flag in the preview and a
- * flag in the air are the same shape. The world's version carries a second
- * attribute for the wave in its shader; the preview does not wave, so this
- * is the outline and its uv and nothing else.
+ * The same profile src/render/scene.js lofts, out of the same function in
+ * src/art/banners.js, so a flag in the preview and a flag in the air are the
+ * same shape. The world's version carries a second attribute for the wave in
+ * its shader and a reversed set of faces for its outline prepass; the
+ * preview neither waves nor outlines, so this is the outline and its uv and
+ * nothing else.
  */
 function sailPlaneGeometry(poleR, h) {
-  const rows = 12;
+  const { rows: profile } = flagSailProfile(h);
+  const rows = profile.length;
   const cols = 5;
-  const y0 = h * 0.16;
-  const y1 = h * 0.98;
-  const maxW = h * 0.30;
   const pos = [];
   const uvs = [];
   const idx = [];
-  const smooth = (x) => {
-    const t = Math.max(0, Math.min(1, x));
-    return t * t * (3 - 2 * t);
-  };
   for (let r = 0; r < rows; r += 1) {
-    const t = r / (rows - 1);
-    const w = maxW * (0.42 + 0.58 * smooth(t / 0.45)) * (1 - smooth((t - 0.70) / 0.30) * 0.94);
-    const y = y0 + (y1 - y0) * t;
+    const row = profile[r];
     for (let c = 0; c < cols; c += 1) {
       const u = c / (cols - 1);
-      pos.push(poleR + w * u, y, 0);
-      uvs.push(u, t);
+      pos.push(poleR + row.lx + (row.tx - row.lx) * u, row.ly + (row.ty - row.ly) * u, 0);
+      uvs.push(u, row.t);
     }
   }
   for (let r = 0; r < rows - 1; r += 1) {
@@ -151,6 +146,55 @@ function sailPlaneGeometry(poleR, h) {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/*
+ * The mast that carries it, in the same plane and with the same origin, so
+ * the two take one transform between them and cannot come apart.
+ *
+ * Six sided rather than the world's five, and no cloth: this is a preview,
+ * and a mast a metre from the camera on an orbit control is one of the few
+ * things in it somebody looks at closely.
+ */
+function mastPlaneGeometry(poleR, h) {
+  const { points } = flagMast(h);
+  const radial = 6;
+  const pos = [];
+  const uvs = [];
+  const idx = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    const prev = points[Math.max(0, i - 1)];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    let tx = next.x - prev.x;
+    let ty = next.y - prev.y;
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    const r = poleR * p.r;
+    for (let a = 0; a < radial; a += 1) {
+      const th = (a / radial) * Math.PI * 2;
+      pos.push(p.x + -ty * Math.cos(th) * r, p.y + tx * Math.cos(th) * r, Math.sin(th) * r);
+      /* Nothing samples it. It is here so this mesh carries the same
+       * attributes as every other mesh a merger might fold it in with. */
+      uvs.push(a / radial, i / (points.length - 1));
+    }
+  }
+  for (let i = 0; i < points.length - 1; i += 1) {
+    for (let a = 0; a < radial; a += 1) {
+      const a0 = i * radial + a;
+      const a1 = i * radial + ((a + 1) % radial);
+      idx.push(a0, a0 + radial, a1, a1, a0 + radial, a1 + radial);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  geo.computeBoundingSphere();
   return geo;
 }
 
@@ -982,12 +1026,13 @@ export class View3D {
     for (const sx of signs) {
       const x = f.widthAxis.x * sx * (headerW / 2);
       const y = f.widthAxis.y * sx * (headerW / 2);
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(poleR, poleR, h, 8),
-        poleMat,
-      );
+      /* One transform for the mast and its cloth, so the bend and the sail
+       * both lean outboard off the board's end. */
+      const turn = -Math.atan2(f.widthAxis.y * sx, f.widthAxis.x * sx);
+      const pole = new THREE.Mesh(mastPlaneGeometry(poleR, h), poleMat);
       pole.rotation.x = Math.PI / 2;
-      pole.position.set(x, y, headerTop + h / 2);
+      pole.rotation.y = turn;
+      pole.position.set(x, y, headerTop);
       this.register(pole, el);
       group.add(pole);
       const sail = new THREE.Mesh(
@@ -997,7 +1042,7 @@ export class View3D {
           : kit.sails[i % kit.sails.length],
       );
       sail.rotation.x = Math.PI / 2;
-      sail.rotation.y = -Math.atan2(f.widthAxis.y * sx, f.widthAxis.x * sx);
+      sail.rotation.y = turn;
       sail.position.set(x, y, headerTop);
       group.add(sail);
       i += 1;
@@ -1044,28 +1089,38 @@ export class View3D {
       this.buildVirtualGates(group, el, numbers, selected);
       return;
     }
+    /*
+     * The mast BENDS, so it and the sail take one transform between them:
+     * same origin at the butt, same stand up, same heading. A cylinder at
+     * its own half height could not, and a mast whose top leans one way
+     * while the cloth hangs the other is not a flag.
+     *
+     * Authored in XY with x out from the mast and y up, then turned to the
+     * marker's heading about its own axis and stood upright in this Z up
+     * world. Three applies an XYZ euler in that order, so the heading spins
+     * the flag about its mast before the mast is stood up, which is what
+     * keeps the bend pointing where the cloth hangs.
+     */
+    const h = el.dims.height;
     const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(el.dims.poleRadius, el.dims.poleRadius, el.dims.height, 8),
+      mastPlaneGeometry(el.dims.poleRadius, h),
       new THREE.MeshLambertMaterial({ color: colour }),
     );
     pole.rotation.x = Math.PI / 2;
-    pole.position.z = el.dims.height / 2;
+    pole.rotation.y = -el.yaw;
     this.register(pole, el);
     group.add(pole);
     /*
-     * The teardrop sail, with its LEADING EDGE ON THE MAST, and the same
+     * The feather sail, with its LEADING EDGE ON THE MAST, and the same
      * print the world puts on it. The old preview drew a rectangle whose
      * inner edge happened to touch the pole; this is the outline a race flag
      * actually has, so an author placing markers sees what will stand there.
      */
-    const h = el.dims.height;
     const sail = new THREE.Mesh(
       sailPlaneGeometry(el.dims.poleRadius, h),
       selected ? new THREE.MeshLambertMaterial({ color: COL.frameSel, side: THREE.DoubleSide })
         : this.sailForMarker(el),
     );
-    /* Authored in XY with x out from the mast and y up, then stood upright
-     * and turned to the marker's own heading in this Z up world. */
     sail.rotation.x = Math.PI / 2;
     sail.rotation.y = -el.yaw;
     group.add(sail);

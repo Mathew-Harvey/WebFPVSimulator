@@ -13034,3 +13034,122 @@ the built in race field unchanged with its chequer device and its navy and
 red flags. Console errors 0 on every run. Removing a mark was driven in the
 browser and the orphaned footprint reads "no mark" while its neighbours keep
 theirs, which is the id rather than the index doing its job.
+
+## The flags are feather flags, because that is what the photograph shows
+
+The owner sent a photograph of a flag on a lawn and one sentence: this is
+what a flag looks like, ignore the logo and the colours, notice how it is
+different to the ones in game. It is a FEATHER flag. What stood on the
+course was a teardrop.
+
+**The difference is structural, not decorative, and that is the whole
+turn.** A teardrop is an outline cut into cloth on a straight mast. A
+feather flag's shape comes from the MAST: the bottom four fifths is a
+straight pole and the top fifth is a fibreglass whip that sweeps forward
+through about a hundred degrees. The sail is a tall narrow panel whose
+trailing edge hangs vertically from the whip's TIP, whose foot is a level
+hem, and whose leading edge is the mast, so the corner on the mast side is
+swept away by the bend. No outline cut on a straight mast makes that
+silhouette, which is why this could not be done in the painter.
+
+**One shape, four consumers.** `flagMast` and `flagSailProfile` are new in
+`src/art/banners.js`, which is already the module the world and the builder
+both draw their vinyl from. The world's mast mesh, the world's sail mesh,
+the builder preview's two, and the print's canvas aspect all read the same
+numbers. `FLAG` holds the four that decide it: where the mast bends, how far
+the whip turns, where the foot hem sits, and how the mast tapers.
+
+**The arc's radius is derived so the APEX lands at exactly the flag's
+stated height.** That is not tidiness, it is the no regression condition.
+Three things read a flag's height and all three still get the answer they
+had: the collider a pilot hits, the attract camera's clearance, and
+`elementHeight` in the builder. And the apex is NOT the tip: the arc turns
+past horizontal, so it apexes and comes back down a little, which is what
+the reference shows and what puts the trailing edge under the highest point
+rather than beyond it. Taking the tip for the top would have quietly
+shortened every flag on the field by 0.3 percent, silently.
+
+The sail comes out 0.23 of the flag's height across against the teardrop's
+0.30 at its widest, and it is that width for four fifths of its length
+rather than at one station: 0.68 m across and 2.43 m up on the field's
+2.9 m flag, which is 1 to 3.6 where the teardrop was 1 to 2.7.
+
+**THE MAST NOW COLLIDES ROUND THE BEND.** This is the regression the shape
+change would have caused if it had been left alone. `bannerFlag`'s comment
+already said the mast collides over the whole of what a pilot can see,
+because a quad that clips one is finished. A single vertical post stops
+covering a mast the moment the mast stops being vertical, and the tip is
+0.68 m downwind of the butt: two thirds of a metre of visible aluminium in
+clear air. So every one of the three call sites now adds the straight pole
+AND the whip, and `mastWhipCollider` turns the tip into world space with the
+same yaw the mesh takes, so the two cannot disagree about the sign.
+Measured: `pole` capsules on the race field went from 95 to 167, which is
+exactly one more per flag, with every other kind unchanged.
+
+**The print was re-proportioned rather than redesigned.** The panel is
+narrower and taller, so `BANNER_SIZE.sail` went from 192 by 512 to 144 by
+512, which is what `flagMast` says the panel's aspect is. Two things in the
+design are new and both follow from the outline rather than from taste. The
+head above v 0.70 is a solid block of the accent, because that is where the
+rows fan into the swept corner and anything with structure in it, a chequer
+or a mark, would visibly bend there; it is also what the flag reads as from
+further away than any print. And the leading band is 0.26 of the width
+against 0.30 to 0.40, because on a panel this narrow the old sweep left the
+mark a strip too thin to read at commit range, and the mark is what a
+sponsor bought.
+
+**What went wrong on the way, and it took the frame with it.** The new mast
+mesh is built by hand rather than as a TubeGeometry, because a feather
+flag's whip is visibly thinner than the pole under it and TubeGeometry
+carries one radius. Built by hand it had position and normal and no uv, and
+the scenery merger folds it in with everything sharing its material:
+`BufferGeometryUtils.mergeGeometries` refuses a set whose members do not
+carry the SAME attributes, so a mast with no uv beside a gate tube with one
+dropped the whole bucket and threw on the next frame. Both mast builders
+now emit a uv nothing samples, and say why in a comment.
+
+Two smaller ones, both caught by looking at the render rather than by
+reading. The chequer bands were carried over at 3 checks across, which was
+about square on the teardrop's canvas and 3 to 1 on this one: a chequer
+whose checks are not square is not a chequered flag. The count is now
+DERIVED from the band's own width and height, so it survives the next time
+the panel changes shape. And the mark's box was set from the old canvas and
+ran under the upper chequer; it is now 0.44 of the panel centred at v 0.385,
+which clears both bands.
+
+VERIFY. `node src/trackbuilder/selftest.js`, 278 of 278 including 18 new
+checks on the shape itself, which is pure arithmetic and therefore worth
+more here than in the two renderers that cannot run in Node: the mast starts
+at the butt, apexes at exactly the stated height, nothing on it stands
+higher, the tip hangs below the apex, the sail is a fifth of the height
+across and three and a half times as tall as it is wide, the mast reaches
+forward exactly as far as the sail is wide, the trailing edge is one
+vertical line that only rises, the leading edge is the mast straight below
+the bend and swept above it, the two edges meet at the tip, the print has
+the same metres per row on both sides of the fold, the canvas is the panel
+it lands on, and a header pennant is the same shape at a pennant's size.
+`npm run lint:fc` 28 of 28, `npm run lint:presets` 2 of 2.
+
+`npm run lint:catalog` still cannot run: `vendor/betaflight` is not checked
+out in this container. It was failing that way before this turn.
+
+`npm run verify` was NOT run. This is scenery: no physics, no plant, no
+module ABI, no build. What was done instead is `node scripts/shots.js`, the
+check CLAUDE.md points at for anything visual, and two measurements taken
+through the harness's own hooks with the change stashed and unstashed:
+
+  `window.__colliders().byKind` on the race field, 95 poles to 167, every
+  other kind identical, which is the collider claim above.
+
+  `window.__renderStats()` on the race field, 32 draw calls before and 32
+  after, triangles 412,675 to 422,611. Draw calls are what this file's
+  comments care about and they did not move; the 2.4 percent of triangles is
+  138 per flag, which is the mast's tube against the old five sided cylinder
+  plus three more sail rows, and is what the arithmetic predicts.
+
+Read: the race field at three points on its attract flight, the builder's
+preview of one marker flag alone on a small field, and the same preview of a
+flagged gate with a pennant on each end. The pennants lean outboard in
+opposite directions and carry one mark in two accents; the marker flag's
+mast stands straight, bends, and the cloth hangs off the bend with its head
+swept and its bands square. Console errors 0 on every run.

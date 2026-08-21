@@ -80,6 +80,9 @@ export class App {
     this.doc = createTrack();
     this.selection = new Set();
     this.armed = null;
+    /* Which of the course's logos an armed ground decal will wear. Set only
+     * by armGroundLogo, cleared by everything else that touches `armed`. */
+    this.armedLogoId = '';
     this.mode = '2d';
     this.pathVisible = false;
     this.path = null;
@@ -375,12 +378,34 @@ export class App {
 
   arm(typeId) {
     this.armed = this.armed === typeId ? null : typeId;
+    /* A tool armed from the palette carries no logo with it. The decal it
+     * places falls back to the course's first logo, which is what
+     * createElement has always done. */
+    this.armedLogoId = '';
     this.panels.renderPalette();
     this.requestDraw();
   }
 
+  /*
+   * Arm the ground decal with a logo already chosen, which is what the
+   * Sponsor logos dialog's Paint on the grass button does.
+   *
+   * A separate entry point rather than an argument to arm(), because arm()
+   * TOGGLES: pressing Paint on the grass on two logos in a row would have
+   * disarmed the tool on the second press, and the author plainly wants to
+   * paint the second one.
+   */
+  armGroundLogo(logoId) {
+    this.armed = 'groundLogo';
+    this.armedLogoId = typeof logoId === 'string' ? logoId : '';
+    this.panels.renderPalette();
+    this.requestDraw();
+    this.toast('Click the field where the paint goes. Its size is in the inspector.');
+  }
+
   disarm() {
     this.armed = null;
+    this.armedLogoId = '';
     this.panels.renderPalette();
     this.requestDraw();
   }
@@ -421,6 +446,15 @@ export class App {
     this.edit(`place ${def.label}`, (d) => {
       const yaw = def.kind === KIND.ANNOTATION ? 0 : defaultYawFor(d, world);
       const element = createElement(d, type, world, yaw);
+      /* The logo the Sponsor logos dialog armed this with, if it armed it.
+       * createElement has already put the course's first logo on a decal, so
+       * this only overrides, and only for a logo that is still on the
+       * course: removing one between arming and clicking is a real order of
+       * events and it must not write a dangling id. */
+      if (def.kind === KIND.DECAL && this.armedLogoId
+        && logosOf(d).some((l) => l.id === this.armedLogoId)) {
+        element.logoId = this.armedLogoId;
+      }
       d.elements.push(element);
       newId = element.id;
       if (isSequenceable(element)) {
@@ -788,7 +822,7 @@ export class App {
     } else if (owned) {
       help.textContent = 'This course is already on the board. Updating it keeps the times if the flying layout has not changed.';
     } else {
-      help.textContent = 'The public board keeps a copy of this course, including every mark on the gates, the flags and the grass. Times people post are stored there.';
+      help.textContent = 'The public board keeps a copy of this course, including every sponsor logo on the gates, the flags and the grass. Times people post are stored there.';
     }
     body.append(help);
 
@@ -852,7 +886,7 @@ export class App {
       }
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
-      status.textContent = 'Sending the course, marks included.';
+      status.textContent = 'Sending the course, logos included.';
       const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
@@ -909,20 +943,20 @@ export class App {
     this.modal(owned ? 'Update this course' : (remix ? 'Publish as yours' : 'Publish this course'), body);
   }
 
-  /* ---------------- the sponsors' marks ---------------- */
+  /* ---------------- the sponsors' logos ---------------- */
 
   /*
    * The pictures this course is dressed in: up to five of them.
    *
    * A dialog rather than a field in the inspector, and the reason is what
-   * they belong to: a mark is a property of the TRACK, not of any element on
+   * they belong to: a logo is a property of the TRACK, not of any element on
    * it, so putting them beside a gate's dimensions would say the opposite.
    * The inspector's Field section is the other candidate and it is where a
    * field width lives, but that panel is only reachable with nothing
    * selected, which is not where somebody who has just placed ten gates is.
    *
    * FIVE SLOTS, NUMBERED, and the numbers are load bearing. Gate 1 wears
-   * mark 1, gate 2 mark 2, round and round, so fifteen gates share five
+   * logo 1, gate 2 logo 2, round and round, so fifteen gates share five
    * sponsors three apiece; the inspector's picker for a painted footprint
    * counts in the same numbers; and the line under the list says what that
    * works out as for THIS course rather than leaving an author to divide.
@@ -931,14 +965,23 @@ export class App {
    * having to load a world to find out it came out square, or too small to
    * read, or half off the board, is the version of this feature nobody would
    * use twice. Each slot shows the gate header it lands on and the grass it
-   * lands on, because those are two different shapes and a mark can suit one
+   * lands on, because those are two different shapes and a logo can suit one
    * and not the other.
+   *
+   * PAINT ON THE GRASS IS A BUTTON HERE, and it is here because it was
+   * nowhere. Putting a logo on the turf meant knowing that the palette's
+   * Ground logo was the thing that did it, which is a name you only
+   * recognise once somebody has told you. The grass preview sitting in this
+   * dialog beside every logo made that worse rather than better: it showed
+   * an author what paint would look like and then left them no way to ask
+   * for any. The button arms the same palette tool with this logo already
+   * chosen, so the next click on the field is the decal.
    */
   openLogo() {
     const body = document.createElement('div');
     const help = document.createElement('p');
     help.className = 'tb-help';
-    help.textContent = 'Up to five marks. They are dealt out round the gates in flying order, so each sponsor gets a share of the boards, the upright banners and the flags, spread down the lap rather than bunched at the start. Any of them can also be painted on the grass: place a Ground logo from the palette and pick its number. They travel inside the track file, so a course you send somebody arrives with its branding on.';
+    help.textContent = 'Up to five sponsors\u2019 logos. They are dealt out round the gates in flying order, so each sponsor gets a share of the boards, the upright banners and the flags, spread down the lap rather than bunched at the start. Any of them can also be painted on the grass: press Paint on the grass under it, then click the field. They travel inside the track file, so a course you send somebody arrives with its branding on.';
     body.append(help);
 
     const list = document.createElement('div');
@@ -1006,14 +1049,14 @@ export class App {
           const note = document.createElement('p');
           note.className = 'tb-help';
           note.textContent = i === logos.length
-            ? 'Empty. Add a mark here and the gates start sharing it.'
+            ? 'Empty. Add a logo here and the gates start sharing it.'
             : 'Empty.';
           slot.append(note);
           if (i === logos.length) {
             const add = document.createElement('button');
             add.type = 'button';
             add.className = 'tb-btn';
-            add.textContent = 'Add a mark';
+            add.textContent = 'Add a logo';
             add.addEventListener('click', () => { target = i; file.click(); });
             const btns = document.createElement('div');
             btns.className = 'tb-row-btns';
@@ -1023,9 +1066,9 @@ export class App {
           continue;
         }
 
-        /* The two places a mark lands, side by side, because they are two
+        /* The two places a logo lands, side by side, because they are two
          * different shapes: a long strip on the gate's header board and a
-         * rectangle on the grass. A mark can suit one and not the other. */
+         * rectangle on the grass. A logo can suit one and not the other. */
         const arts = document.createElement('div');
         arts.className = 'tb-slot-arts';
         const board = document.createElement('canvas');
@@ -1047,7 +1090,7 @@ export class App {
 
         const caption = document.createElement('p');
         caption.className = 'tb-help';
-        caption.textContent = `${mark.name || `Mark ${i + 1}`}, ${Math.round(mark.image.length / 1024)} kB, stored in the track.`;
+        caption.textContent = `${mark.name || `Logo ${i + 1}`}, ${Math.round(mark.image.length / 1024)} kB, stored in the track.`;
         slot.append(caption);
 
         const btns = document.createElement('div');
@@ -1057,24 +1100,39 @@ export class App {
         swap.className = 'tb-btn';
         swap.textContent = 'Replace';
         swap.addEventListener('click', () => { target = i; file.click(); });
+        /*
+         * The one route from a logo to paint on the field. It arms the
+         * palette's Ground logo with THIS slot's id and shuts the dialog,
+         * because a modal over the canvas cannot be clicked through and the
+         * next thing an author has to do is click the canvas.
+         */
+        const paint = document.createElement('button');
+        paint.type = 'button';
+        paint.className = 'tb-btn';
+        paint.textContent = 'Paint on the grass';
+        paint.title = 'Put this logo on the turf: click the field where you want it';
+        paint.addEventListener('click', () => {
+          this.armGroundLogo(mark.id);
+          this.closeModal();
+        });
         const drop = document.createElement('button');
         drop.type = 'button';
         drop.className = 'tb-btn tb-danger';
         drop.textContent = 'Remove';
         drop.addEventListener('click', () => {
-          this.edit('remove mark', (d) => {
+          this.edit('remove logo', (d) => {
             d.branding.logos.splice(i, 1);
           });
           redraw();
-          this.toast('Mark removed. Any grass painted with it now shows nothing until you pick another.');
+          this.toast('Logo removed. Any grass painted with it now shows nothing until you pick another.');
         });
-        btns.append(swap, drop);
+        btns.append(swap, paint, drop);
         slot.append(btns);
       }
 
       /*
        * What the list works out to on THIS course, which is the question an
-       * author actually has: not "how many marks are there" but "how many
+       * author actually has: not "how many logos are there" but "how many
        * gates does each sponsor get".
        */
       const gates = dressOrder(this.doc).size;
@@ -1082,7 +1140,7 @@ export class App {
       const left = Math.max(0, BRANDING_MAX_CHARS - spent);
       const budget = `${Math.round(spent / 1024)} kB of ${Math.round(BRANDING_MAX_CHARS / 1024)} kB used, ${Math.round(left / 1024)} kB left.`;
       if (!n) {
-        summary.textContent = `No marks yet. The gates carry a chequered flag device and their number. ${budget}`;
+        summary.textContent = `No logos yet. The gates carry a chequered flag device and their number. ${budget}`;
       } else if (!gates) {
         summary.textContent = `Nothing is in the flying order yet, so nothing is wearing them. ${budget}`;
       } else {
@@ -1091,7 +1149,7 @@ export class App {
         const share = extra === 0
           ? `${base} gate${base === 1 ? '' : 's'} each`
           : `${base + 1} gates for the first ${extra}, ${base} for the rest`;
-        summary.textContent = `${gates} gate${gates === 1 ? '' : 's'} in the flying order, ${n} mark${n === 1 ? '' : 's'}: ${share}. ${budget}`;
+        summary.textContent = `${gates} gate${gates === 1 ? '' : 's'} in the flying order, ${n} logo${n === 1 ? '' : 's'}: ${share}. ${budget}`;
       }
     };
 
@@ -1105,13 +1163,13 @@ export class App {
       }
       const logos = logosOf(this.doc);
       /* Replacing a slot gets its own bytes back before it is asked to fit,
-       * so swapping a 90 kB mark for another 90 kB mark is never refused for
-       * a budget the mark it is replacing was spending. */
+       * so swapping a 90 kB logo for another 90 kB logo is never refused for
+       * a budget the logo it is replacing was spending. */
       const freed = logos[slot] ? logos[slot].image.length : 0;
       const budget = BRANDING_MAX_CHARS - brandingBytes(this.doc) + freed;
       try {
         const logo = await normaliseLogo(chosen, budget);
-        this.edit(logos[slot] ? 'replace mark' : 'add mark', (d) => {
+        this.edit(logos[slot] ? 'replace logo' : 'add logo', (d) => {
           const list2 = d.branding.logos;
           if (list2[slot]) {
             /* The id survives a replacement, so a footprint painted on the
@@ -1124,13 +1182,13 @@ export class App {
           }
         });
         redraw();
-        this.toast(`Mark ${slot + 1} set from ${logo.name}, ${logo.width} by ${logo.height}.`);
+        this.toast(`Logo ${slot + 1} set from ${logo.name}, ${logo.width} by ${logo.height}.`);
       } catch (e) {
         this.toast(`Could not use that image: ${e.message}`);
       }
     });
 
-    this.modal('Course marks', body);
+    this.modal('Sponsor logos', body);
     redraw();
   }
 
@@ -1248,7 +1306,7 @@ export class App {
      * fly the wrong track once.
      */
     this.flyBtn = btn('Fly this track', () => this.flyThisTrack(), 'Build the world around this course and fly it', 'tb-btn tb-primary');
-    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, marks and all');
+    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, logos and all');
     this.listingChip = document.createElement('span');
     this.listingChip.className = 'tb-listing';
 
@@ -1315,7 +1373,7 @@ export class App {
       group(
         btn('Fit', () => this.frameAll(), 'Frame the whole field'),
         this.pathBtn,
-        btn('Marks', () => this.openLogo(), 'Up to five sponsors\u2019 marks, shared out over the gates, the flags and the grass'),
+        btn('Sponsor logos', () => this.openLogo(), 'Up to five sponsors\u2019 logos, shared out over the gates, the flags and the grass'),
       ),
     );
 
@@ -1362,7 +1420,7 @@ export class App {
         this.publishBtn.title = 'Put this copy on the board under a new name. The original stays.';
       } else {
         this.publishBtn.textContent = 'Publish';
-        this.publishBtn.title = 'Put this course on the public board, marks and all';
+        this.publishBtn.title = 'Put this course on the public board, logos and all';
       }
     }
   }

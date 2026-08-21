@@ -56,7 +56,7 @@ export { FRAME_TUBE_OD };
  *   decal      is PAINTED ON THE GROUND. It has a footprint and a heading
  *              and nothing else: no height, no collider, never in the
  *              sequence, and the path warning pass ignores it because a quad
- *              cannot hit paint. A sponsor's mark on the grass is the only
+ *              cannot hit paint. A sponsor's logo on the grass is the only
  *              one of these today.
  */
 export const KIND = {
@@ -372,17 +372,17 @@ export const ELEMENTS = {
     key: 'O',
     group: 'extra',
     kind: KIND.DECAL,
-    /* Which of the course's marks this one wears, as the id of an entry in
+    /* Which of the course's logos this one wears, as the id of an entry in
      * branding.logos. An element field like a label's text, not a
-     * dimension. Empty means the first mark the course carries, so a decal
+     * dimension. Empty means the first logo the course carries, so a decal
      * dropped on a course with one sponsor needs no further decision. */
     logoId: '',
-    note: 'A sponsor mark painted on the grass. Pick which of the marks it wears, and its size, in the inspector.',
+    note: 'A sponsor logo painted on the grass. Pick which of the logos it wears, and its size, in the inspector.',
     /*
-     * The footprint the mark is fitted inside, width along the element's own
+     * The footprint the logo is fitted inside, width along the element's own
      * heading and depth across it, the same way a barrier reads. Ten by four
      * is a wide sponsor board's proportions laid flat, which is the shape
-     * most marks arrive in; the inspector resizes it and a square mark
+     * most logos arrive in; the inspector resizes it and a square logo
      * fitted inside it simply paints square and smaller.
      */
     dims: { width: 10, depth: 4 },

@@ -422,7 +422,7 @@ export class Panels {
     host.append(dims);
 
     if (def.kind === KIND.DECAL) {
-      this.renderDecalMarkPicker(host, doc, element);
+      this.renderDecalLogoPicker(host, doc, element);
     }
 
     if (def.flagSide) {
@@ -486,7 +486,7 @@ export class Panels {
   }
 
   /*
-   * Which of the course's marks a painted footprint wears.
+   * Which of the course's sponsor logos a painted footprint wears.
    *
    * NAMED BY ID, chosen by clicking a picture. The document holds the id so
    * that removing one sponsor cannot silently repaint another sponsor's
@@ -494,33 +494,33 @@ export class Panels {
    * footprint's own proportions, which is the only way to answer "is that
    * the right one and is the box the right shape for it".
    *
-   * With no marks uploaded there is nothing to pick, and the panel says so
+   * With no logos uploaded there is nothing to pick, and the panel says so
    * and points at the button that fixes it rather than showing an empty row.
    */
-  renderDecalMarkPicker(host, doc, element) {
-    host.append(el('h3', null, 'Which mark'));
+  renderDecalLogoPicker(host, doc, element) {
+    host.append(el('h3', null, 'Which logo'));
     const logos = logosOf(doc);
     if (!logos.length) {
-      host.append(el('p', 'tb-help', 'This course carries no marks yet. Add one under Marks, and every footprint on the grass can wear it.'));
-      host.append(button('Marks', 'tb-btn', () => this.host.openLogo(),
-        'Upload up to five sponsors\u2019 marks for this course'));
+      host.append(el('p', 'tb-help', 'This course carries no sponsor logos yet. Add one under Sponsor logos, and every footprint on the grass can wear it.'));
+      host.append(button('Sponsor logos', 'tb-btn', () => this.host.openLogo(),
+        'Upload up to five sponsors\u2019 logos for this course'));
       return;
     }
     const current = logoForDecal(doc, element);
-    const grid = el('div', 'tb-mark-grid');
-    logos.forEach((mark, i) => {
-      const b = el('button', current === mark ? 'tb-mark-card on' : 'tb-mark-card');
+    const grid = el('div', 'tb-logo-grid');
+    logos.forEach((logo, i) => {
+      const b = el('button', current === logo ? 'tb-logo-card on' : 'tb-logo-card');
       b.type = 'button';
-      b.title = mark.name || `Mark ${i + 1}`;
+      b.title = logo.name || `Logo ${i + 1}`;
       const img = el('img');
-      img.src = mark.image;
+      img.src = logo.image;
       img.alt = '';
       b.append(img, el('span', null, String(i + 1)));
       b.addEventListener('click', () => {
-        this.host.edit('mark', (d) => {
+        this.host.edit('logo', (d) => {
           const e2 = elementById(d, element.id);
           if (e2) {
-            e2.logoId = mark.id;
+            e2.logoId = logo.id;
           }
         });
       });
@@ -528,8 +528,8 @@ export class Panels {
     });
     host.append(grid);
     host.append(el('p', 'tb-help', current
-      ? `${current.name || `Mark ${logos.indexOf(current) + 1}`}, fitted inside the ${show(element.dims.width, 1)} by ${show(element.dims.depth, 1)} m footprint above. Resize the footprint to match its shape and it fills more of it.`
-      : 'The mark this footprint named is no longer on the course. Pick one, or the grass stays plain.'));
+      ? `${current.name || `Logo ${logos.indexOf(current) + 1}`}, fitted inside the ${show(element.dims.width, 1)} by ${show(element.dims.depth, 1)} m footprint above. Resize the footprint to match its shape and it fills more of it.`
+      : 'The logo this footprint named is no longer on the course. Pick one, or the grass stays plain.'));
   }
 
   renderFlagSidePicker(host, element) {

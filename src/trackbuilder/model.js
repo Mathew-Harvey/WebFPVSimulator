@@ -48,14 +48,14 @@ import { apertureFrame, wrapAngle } from './geometry.js';
  * default is not a bump; removing or re-meaning a field is.
  *
  * 2, because `branding.logo` is no longer written. A course can carry five
- * marks now, and the only two honest ways to say so were to write the first
+ * logos now, and the only two honest ways to say so were to write the first
  * one twice, once in the old field and once in the new list, or to stop
  * writing the old field. Writing a 256 kB data URL twice doubles the file
- * for the single mark case that is most of them, so the old field went, and
+ * for the single logo case that is most of them, so the old field went, and
  * removing a field is exactly what the rule above says to bump for.
  *
  * A version 1 document still reads: normalize() below promotes its
- * `branding.logo` into the list as the first mark. It is a one way upgrade,
+ * `branding.logo` into the list as the first logo. It is a one way upgrade,
  * which is what a schema version is for.
  */
 export const SCHEMA_VERSION = 2;
@@ -66,7 +66,7 @@ export const SCHEMA_VERSION = 2;
  *
  * WHY THE IMAGE ITSELF IS IN THE DOCUMENT. A track is one file that a person
  * can send to another person, and a branding that lived in a second file
- * beside it would arrive stripped every time. So a mark travels inside the
+ * beside it would arrive stripped every time. So a logo travels inside the
  * track, which means it has to be small enough that a track is still a file
  * rather than a payload.
  *
@@ -95,18 +95,18 @@ export function isUsableLogo(value) {
 /*
  * FIVE MARKS, AND WHY FIVE.
  *
- * A course is sold to sponsors, and a sponsor wants their mark on gates a
- * pilot passes rather than on a board in a corner. So the marks are spread
+ * A course is sold to sponsors, and a sponsor wants their logo on gates a
+ * pilot passes rather than on a board in a corner. So the logos are spread
  * round robin over the structures in flying order: with fifteen gates and
- * five marks each one is on three of them, and each one is on gates spread
+ * five logos each one is on three of them, and each one is on gates spread
  * down the lap rather than on the first three. Five is the number past which
  * a pilot stops being able to tell one sponsor's gate from another's at
  * commit range, and it is also about as many as the size budget below can
  * carry.
  *
- * THE TOTAL IS THE REAL CAP, not the per mark one. LOGO_MAX_CHARS still
- * bounds any single mark, so a course written before this existed, with one
- * mark of 256 kB, still reads. What actually has to hold is the whole
+ * THE TOTAL IS THE REAL CAP, not the per logo one. LOGO_MAX_CHARS still
+ * bounds any single logo, so a course written before this existed, with one
+ * logo of 256 kB, still reads. What actually has to hold is the whole
  * document: it lives in local storage next to every other track an author
  * has, it is posted to the board in one request, and it is a file people
  * send each other. 384 kB of data URL across all five is about 96 kB of PNG
@@ -116,19 +116,19 @@ export function isUsableLogo(value) {
 export const LOGO_SLOTS = 5;
 export const BRANDING_MAX_CHARS = 384 * 1024;
 
-/* Total characters the marks on this document already spend. */
+/* Total characters the logos on this document already spend. */
 export function brandingBytes(doc) {
   return (doc?.branding?.logos ?? []).reduce((n, l) => n + (l?.image?.length ?? 0), 0);
 }
 
-/* The marks, always an array, so no caller has to write the `?? []`. */
+/* The logos, always an array, so no caller has to write the `?? []`. */
 export function logosOf(doc) {
   return doc?.branding?.logos ?? [];
 }
 
 /*
- * The mark a decal wears: the one it names, or the course's first mark when
- * it names nothing. Returns null when the course has no marks at all, or
+ * The logo a decal wears: the one it names, or the course's first logo when
+ * it names nothing. Returns null when the course has no logos at all, or
  * when the one it named has since been removed, and both of those are
  * states the builder draws rather than repairs. Repairing would mean
  * silently moving somebody's sponsor onto a different sponsor's decal.
@@ -209,7 +209,7 @@ export function newSequenceId(doc) {
 }
 
 /*
- * A mark's id. Decals name the mark they wear by id rather than by position,
+ * A logo's id. Decals name the logo they wear by id rather than by position,
  * so removing the second of three sponsors leaves the third one's painted
  * grass wearing the third one's logo instead of quietly repainting it with
  * somebody else's.
@@ -252,7 +252,7 @@ export function createTrack(name = 'Untitled track') {
       samplesPerSegment: TUNING.samplesPerSegment,
     },
     /*
-     * What the course is dressed in: up to five sponsors' marks, in the
+     * What the course is dressed in: up to five sponsors' logos, in the
      * order they are handed out round the gates. Empty by default, so a
      * track costs nothing until somebody uploads something.
      */
@@ -294,8 +294,8 @@ export function createElement(doc, type, position, yaw = 0) {
      * NAMED AT BIRTH where there is anything to name, so a decal dropped on
      * a course that already has sponsors is finished the moment it lands AND
      * stays pointed at that sponsor when the list is reordered around it.
-     * Empty only ever means the course had no marks yet, and then it follows
-     * whichever mark becomes the first one.
+     * Empty only ever means the course had no logos yet, and then it follows
+     * whichever logo becomes the first one.
      */
     el.logoId = logosOf(doc)[0]?.id ?? '';
   }
@@ -361,7 +361,7 @@ export function isSequenceable(el) {
  * WHICH SPONSOR'S MARK EACH STRUCTURE WEARS, as a map from element id to a
  * position in the round robin.
  *
- * ONE RULE, ONE PLACE. The world deals the marks out, the builder's 3D
+ * ONE RULE, ONE PLACE. The world deals the logos out, the builder's 3D
  * preview deals them out, and the two have to agree or an author dresses a
  * course that flies wearing something else. So the rule lives here, on the
  * document, rather than being written once in each renderer.
@@ -373,8 +373,8 @@ export function isSequenceable(el) {
  * is not in the flying order does not stand on the race field, so it is not
  * in here either.
  *
- * The result modulo the number of marks is the mark: fifteen structures and
- * five marks put each mark on three of them, spread down the lap.
+ * The result modulo the number of logos is the logo: fifteen structures and
+ * five logos put each logo on three of them, spread down the lap.
  */
 export function dressOrder(doc) {
   const slots = new Map();
@@ -493,7 +493,7 @@ export function normalize(raw) {
   };
 
   /*
-   * The marks. A version 2 document carries `branding.logos`; a version 1
+   * The logos. A version 2 document carries `branding.logos`; a version 1
    * one carries a single `branding.logo`, and it is promoted to the first
    * entry of the list. Promotion is silent: it is an upgrade, not damage,
    * and a repair note for it would cry wolf on every track written before
@@ -533,17 +533,17 @@ export function normalize(raw) {
       }
       spent += image.length;
       /* Ids are repaired against what is already in the list, so a file with
-       * two marks claiming the same id cannot make a decal ambiguous. */
+       * two logos claiming the same id cannot make a decal ambiguous. */
       const wanted = typeof raw === 'object' && raw ? str(raw.id, '') : '';
       const taken = doc.branding.logos.map((l) => l.id);
       const id = wanted && !taken.includes(wanted) ? wanted : nextId(taken, 'logo');
       doc.branding.logos.push({ id, image, name });
     }
     if (dropped) {
-      repairs.push(`dropped ${dropped} mark${dropped === 1 ? '' : 's'} that ${dropped === 1 ? 'was' : 'were'} not an embedded image under ${Math.round(LOGO_MAX_CHARS / 1024)} kB. A track carries its pictures inside itself, never a link to one.`);
+      repairs.push(`dropped ${dropped} logo${dropped === 1 ? '' : 's'} that ${dropped === 1 ? 'was' : 'were'} not an embedded image under ${Math.round(LOGO_MAX_CHARS / 1024)} kB. A track carries its pictures inside itself, never a link to one.`);
     }
     if (overflowed) {
-      repairs.push(`dropped ${overflowed} mark${overflowed === 1 ? '' : 's'} past the ${LOGO_SLOTS} a course carries or past the ${Math.round(BRANDING_MAX_CHARS / 1024)} kB they share.`);
+      repairs.push(`dropped ${overflowed} logo${overflowed === 1 ? '' : 's'} past the ${LOGO_SLOTS} a course carries or past the ${Math.round(BRANDING_MAX_CHARS / 1024)} kB they share.`);
     }
   }
 
@@ -609,7 +609,7 @@ export function normalize(raw) {
       el.text = str(rawEl.text, 'Label');
     }
     if (def.kind === KIND.DECAL) {
-      /* Kept even when no mark carries this id, because the marks are read
+      /* Kept even when no logo carries this id, because the logos are read
        * above and a decal naming one that was dropped for size should say
        * so in the builder rather than silently repaint itself with the
        * first sponsor's logo. logoForDecal returns null for it. */
@@ -706,7 +706,7 @@ export function toPlain(doc) {
     },
     branding: {
       /*
-       * The marks, in the order they are dealt out round the gates. Filtered
+       * The logos, in the order they are dealt out round the gates. Filtered
        * once more on the way out, so a document that was hand edited between
        * a normalize and a save cannot write a link to somebody's server into
        * a file another person will open.

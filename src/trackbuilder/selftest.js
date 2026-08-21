@@ -1424,6 +1424,17 @@ function suiteFlagShape() {
   check('the sail canvas is the panel it lands on', BANNER_SIZE.sail[0] === want,
     `${BANNER_SIZE.sail[0]} against ${want}`);
 
+  /*
+   * The sheet holds the panel twice, front and reverse, and both renderers
+   * read half of it per sheet of cloth on that assumption. A sheet that is
+   * not exactly twice as wide puts the seam somewhere other than u = 0.5 and
+   * every mark on the course lands half a flag out.
+   */
+  check('the sail sheet is the panel twice over',
+    BANNER_SIZE.sailSheet[0] === BANNER_SIZE.sail[0] * 2
+    && BANNER_SIZE.sailSheet[1] === BANNER_SIZE.sail[1],
+    `${BANNER_SIZE.sailSheet.join(' by ')} against ${BANNER_SIZE.sail.join(' by ')}`);
+
   /* Scale free: a pennant on a gate header is the same flag, smaller. */
   const small = flagMast(GATE_FLAG_H);
   check('a header pennant is the same shape at a pennant size',

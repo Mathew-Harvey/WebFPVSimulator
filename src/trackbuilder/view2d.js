@@ -597,18 +597,18 @@ export class View2D {
   }
 
   /*
-   * A mark painted on the grass: the footprint, and the mark itself inside
-   * it once it has decoded.
+   * A sponsor's logo painted on the grass: the footprint, and the logo
+   * itself inside it once it has decoded.
    *
    * THE PICTURE IS DRAWN, not a name in a box, because the whole question
    * an author has about a ground decal is whether it is the right way up,
    * the right size and in the right place, and a rectangle labelled
    * "logo-2" answers none of them. It is fitted inside the footprint by the
-   * same rule the world fits it by, so a mark that paints small here paints
+   * same rule the world fits it by, so a logo that paints small here paints
    * small on the field, which is the cue to resize the footprint.
    *
-   * A footprint with no mark behind it is drawn hollow and said so. That
-   * happens when the course carries no marks yet, or when the one this
+   * A footprint with no logo behind it is drawn hollow and said so. That
+   * happens when the course carries no logos yet, or when the one this
    * decal named has been removed, and both are things to fix rather than
    * things to hide.
    */
@@ -617,8 +617,8 @@ export class View2D {
     const c = this.toScreen(el.position);
     const wpx = Math.max(1, el.dims.width * this.cam.scale);
     const dpx = Math.max(1, el.dims.depth * this.cam.scale);
-    const mark = logoForDecal(this.host.doc, el);
-    const img = mark ? this.markImage(mark.image) : null;
+    const logo = logoForDecal(this.host.doc, el);
+    const img = logo ? this.logoImage(logo.image) : null;
 
     ctx.save();
     ctx.beginPath();
@@ -644,7 +644,7 @@ export class View2D {
       /* MINUS the yaw. toScreen flips Y so the document's +Y runs UP the
        * plan, and a canvas rotation turns the other way from a document
        * one. The same sign appears in the world's pitch canvas for the same
-       * reason. Get it wrong and every ground mark is mirrored, which
+       * reason. Get it wrong and every ground logo is mirrored, which
        * nothing else on the plan would show. */
       ctx.rotate(-el.yaw);
       const k = Math.min(wpx / img.naturalWidth, dpx / img.naturalHeight);
@@ -655,38 +655,38 @@ export class View2D {
       ctx.restore();
       return;
     }
-    if (!mark) {
+    if (!logo) {
       const px = Math.max(8, Math.min(13, dpx * 0.3));
       ctx.font = `${px}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = selected ? C.selected : C.decal;
-      ctx.fillText('no mark', c.x, c.y);
+      ctx.fillText('no logo', c.x, c.y);
     }
   }
 
   /*
-   * A decoded mark, cached on the view by its data URL.
+   * A decoded logo, cached on the view by its data URL.
    *
    * Cached because drawElement runs on every pointer move over a field that
    * may carry five decals, and starting a decode per frame is how a plan
    * that used to pan smoothly stops. Keyed by the data URL rather than by
-   * the mark's id, so replacing a sponsor's artwork under the same id gets
+   * the logo's id, so replacing a sponsor's artwork under the same id gets
    * a new decode rather than the old picture.
    */
-  markImage(url) {
+  logoImage(url) {
     if (typeof url !== 'string' || !url) {
       return null;
     }
-    if (!this.markImages) {
-      this.markImages = new Map();
+    if (!this.logoImages) {
+      this.logoImages = new Map();
     }
-    let img = this.markImages.get(url);
+    let img = this.logoImages.get(url);
     if (!img) {
       img = new Image();
       img.onload = () => this.host.requestDraw();
       img.src = url;
-      this.markImages.set(url, img);
+      this.logoImages.set(url, img);
     }
     return img;
   }

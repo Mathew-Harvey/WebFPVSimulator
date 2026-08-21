@@ -210,6 +210,15 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
  * the same way up. White vinyl, a chequer column down the outer edge so a
  * white wall still has a silhouette, and the mark turned on its side in the
  * middle, which is exactly what a printed sleeve does with a horizontal logo.
+ *
+ * THE FLIP DOES NOT FLIP THE MARK, and it used to. `flip` exists to put the
+ * chequer column on the outside of the far leg, and mirroring the whole
+ * design is how it does that; but a sponsor's mark reversed is the one thing
+ * on a race course that must never happen, and on every gate the near leg
+ * read forwards while the far one read backwards. So the mark is mirrored a
+ * second time inside the flip, which leaves it the right way round while the
+ * column stays where the flip put it. Same rule as the flag sails: mirror
+ * the LAYOUT, never the ink.
  */
 export function paintGateSleeve(ctx, w, h, opts = {}) {
   ctx.clearRect(0, 0, w, h);
@@ -234,20 +243,21 @@ export function paintGateSleeve(ctx, w, h, opts = {}) {
   const colW = w * 0.18;
   chequerColumn(ctx, 0, 0, colW, h, Math.round(h / (colW * 0.5)));
 
-  if (opts.logo) {
-    /* Turned a quarter, reading up the banner. */
-    ctx.save();
-    ctx.translate(colW + (w - colW) * 0.5, h * 0.48);
-    ctx.rotate(-Math.PI / 2);
-    fit(ctx, opts.logo, -h * 0.34, -(w - colW) * 0.42, h * 0.68, (w - colW) * 0.84);
-    ctx.restore();
-  } else {
-    ctx.save();
-    ctx.translate(colW + (w - colW) * 0.5, h * 0.48);
-    ctx.rotate(-Math.PI / 2);
-    chequerDevice(ctx, -h * 0.16, -(w - colW) * 0.34, h * 0.32, (w - colW) * 0.68);
-    ctx.restore();
+  ctx.save();
+  /* Turned a quarter, reading up the banner. The quarter turn has put the
+   * canvas's x along this frame's y, so undoing the flip for the ink alone
+   * is a negative y here. */
+  ctx.translate(colW + (w - colW) * 0.5, h * 0.48);
+  ctx.rotate(-Math.PI / 2);
+  if (opts.flip) {
+    ctx.scale(1, -1);
   }
+  if (opts.logo) {
+    fit(ctx, opts.logo, -h * 0.34, -(w - colW) * 0.42, h * 0.68, (w - colW) * 0.84);
+  } else {
+    chequerDevice(ctx, -h * 0.16, -(w - colW) * 0.34, h * 0.32, (w - colW) * 0.68);
+  }
+  ctx.restore();
   ctx.restore();
 }
 
@@ -288,6 +298,10 @@ function chequerColumn(ctx, x, y, w, h, cells) {
  *
  * `accent` swaps the band and the head between navy and red so a run of
  * flags down a course alternates without needing two designs.
+ *
+ * `mirrorMark` flips the MARK inside its box and leaves the rest of the
+ * design where it is. On its own that would be vandalism; it exists for the
+ * reverse of the cloth, and paintFlagSailPair below is the only caller.
  */
 /* Where the head block starts, in v. Below FLAG.bend's own share of the
  * panel, so the block covers the whole swept corner and a little of the
@@ -355,11 +369,58 @@ export function paintFlagSail(ctx, w, h, opts = {}) {
   ctx.save();
   ctx.translate(w * 0.63, vy(0.385));
   ctx.rotate(-Math.PI / 2);
+  /* The quarter turn has already put the canvas's x along this frame's y, so
+   * the flip that mirrors the mark ACROSS the flag is a negative y here. */
+  if (opts.mirrorMark) {
+    ctx.scale(1, -1);
+  }
   if (opts.logo) {
     fit(ctx, opts.logo, -markW * 0.5, -markH * 0.5, markW, markH);
   } else {
     chequerDevice(ctx, -markW * 0.28, -markH * 0.5, markW * 0.56, markH);
   }
+  ctx.restore();
+}
+
+/*
+ * BOTH FACES OF ONE SAIL, SIDE BY SIDE ON ONE SHEET.
+ *
+ * WHAT WAS WRONG. A sail is one piece of cloth, so it was drawn as one sheet
+ * of triangles with one set of texture coordinates, and the reverse faces
+ * shared them. Every mark on every flag on the course therefore read in a
+ * mirror from behind, which is the one thing a sponsor's mark must never do.
+ * The gate boards never had this: they are two planes back to back, the
+ * reverse turned a half turn about the upright, which is what a real printed
+ * banner is and what makes it read the right way round from either side.
+ *
+ * WHY THE CLOTH CANNOT JUST DO THAT. A board's design is symmetric enough to
+ * turn round: the mark sits in the middle and both ends are left clear. A
+ * feather flag's is not. The accent band is on the LEADING edge, and the
+ * leading edge is the mast, which is a physical object in the same place for
+ * a viewer on either side. Turn the print round and the band ends up on the
+ * free edge from behind, which no printed flag has ever looked like. What a
+ * double sided flag actually carries is the same layout on both faces with
+ * the ink reversed, so the band stays on the mast and the mark still reads.
+ *
+ * SO THE SHEET IS TWICE AS WIDE and holds the design twice: the front in the
+ * left half, and in the right half the same design mirrored, with the mark
+ * mirrored a second time so it comes back the right way round. The reverse
+ * faces read the right half BACKWARDS, u running from 1 at the mast to 0.5
+ * at the free edge, which is what puts the band back on the mast.
+ *
+ * ONE MATERIAL, ONE DRAW CALL, and that is why it is one sheet rather than
+ * two textures. The world bakes seventy two flags into merged meshes keyed
+ * by material, and a mesh with two materials cannot be merged that way at
+ * all. The seam is at the FREE edge of both halves, so the two sides of it
+ * carry near enough the same texels and no mip level can show a join.
+ */
+export function paintFlagSailPair(ctx, w, h, opts = {}) {
+  const half = w / 2;
+  paintFlagSail(ctx, half, h, opts);
+  ctx.save();
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
+  paintFlagSail(ctx, half, h, { ...opts, mirrorMark: true });
   ctx.restore();
 }
 
@@ -567,4 +628,11 @@ export const BANNER_SIZE = {
   header: [512, 112],
   sleeve: [112, 512],
   sail: [144, 512],
+  /*
+   * The sail's SHEET, which is the panel twice over: front in the left half,
+   * reverse in the right. See paintFlagSailPair. Derived rather than typed,
+   * so the panel above stays the one place the sail's aspect is decided and
+   * a change to it cannot leave this behind at the old width.
+   */
+  sailSheet: [144 * 2, 512],
 };

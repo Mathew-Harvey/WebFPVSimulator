@@ -64,7 +64,7 @@ import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js
  */
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, GROUND_INK,
-  paintGateHeader, paintGateSleeve, paintFlagSail, flagMast, flagSailProfile,
+  paintGateHeader, paintGateSleeve, paintFlagSailPair, flagMast, flagSailProfile,
 } from '../art/banners.js';
 import {
   assembleStartBlock, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK, START_BLOCK_FOAM, START_BLOCK_LIP,
@@ -116,36 +116,62 @@ async function loadThree() {
  * The same profile src/render/scene.js lofts, out of the same function in
  * src/art/banners.js, so a flag in the preview and a flag in the air are the
  * same shape. The world's version carries a second attribute for the wave in
- * its shader and a reversed set of faces for its outline prepass; the
- * preview neither waves nor outlines, so this is the outline and its uv and
- * nothing else.
+ * its shader; the preview does not wave, so this is the outline and its uv
+ * and nothing else.
+ *
+ * TWO SHEETS, NOT ONE DOUBLE SIDED ONE, for the same reason the gate boards
+ * are two planes: a single sheet seen from behind shows its own texels in a
+ * mirror, so the sponsor's mark read backwards from one side of every flag
+ * on the course. The reverse sheet sits on the same vertices and reads the
+ * other half of the printed sheet. paintFlagSailPair in src/art/banners.js
+ * is where the whole of that is written down.
  */
 function sailPlaneGeometry(poleR, h) {
   const { rows: profile } = flagSailProfile(h);
   const rows = profile.length;
   const cols = 5;
   const pos = [];
-  const uvs = [];
+  const uvMinusZ = [];
+  const uvPlusZ = [];
   const idx = [];
   for (let r = 0; r < rows; r += 1) {
     const row = profile[r];
     for (let c = 0; c < cols; c += 1) {
       const u = c / (cols - 1);
       pos.push(poleR + row.lx + (row.tx - row.lx) * u, row.ly + (row.ty - row.ly) * u, 0);
-      uvs.push(u, row.t);
+      /* The right half BACKWARDS on the sheet that faces -z, the left half
+       * straight on the one that faces +z. src/render/scene.js carries the
+       * long version of why that pairing and not the other. */
+      uvMinusZ.push(1 - u * 0.5, row.t);
+      uvPlusZ.push(u * 0.5, row.t);
     }
   }
+  const n = rows * cols;
+  const back = [];
   for (let r = 0; r < rows - 1; r += 1) {
     for (let c = 0; c < cols - 1; c += 1) {
       const a = r * cols + c;
       idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+      back.push(
+        n + a + 1, n + a + cols, n + a,
+        n + a + cols + 1, n + a + cols, n + a + 1,
+      );
     }
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos.concat(pos), 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvMinusZ.concat(uvPlusZ), 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
+  /* The reverse block was not in that index, so it has no normal yet. The
+   * front's, copied: computing over both sheets averages each opposed pair
+   * of faces to nothing and the cloth goes black. */
+  const nrm = geo.getAttribute('normal');
+  for (let i = 0; i < n; i += 1) {
+    nrm.setXYZ(n + i, nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+  }
+  nrm.needsUpdate = true;
+  geo.setIndex(idx.concat(back));
   geo.computeBoundingSphere();
   return geo;
 }
@@ -250,7 +276,7 @@ export class View3D {
     }
     const owned = [];
     const jobs = [];
-    const paint = (slot, size, painter, opts) => {
+    const paint = (slot, size, painter, opts, side = THREE.DoubleSide) => {
       const canvas = bannerCanvas(size[0], size[1]);
       const ctx = canvas.getContext('2d');
       painter(ctx, size[0], size[1], opts);
@@ -265,7 +291,7 @@ export class View3D {
           this.host.requestDraw();
         },
       });
-      const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
+      const mat = new THREE.MeshLambertMaterial({ map: tex, side });
       /* Owned by the kit, not by the scene graph it gets attached to. See
        * disposeContent, which walks the content and frees what it finds. */
       mat.userData.sharedKit = true;
@@ -280,7 +306,11 @@ export class View3D {
       const id = `${slot}:${accent}`;
       let mat = sailCache.get(id);
       if (!mat) {
-        mat = paint(slot, BANNER_SIZE.sail, paintFlagSail, { accent });
+        /* FrontSide, because the sail now carries its own reverse faces.
+         * DoubleSide would draw both sheets from both sides, and two sheets
+         * on the same vertices fighting for the depth buffer is a speckled
+         * flag. */
+        mat = paint(slot, BANNER_SIZE.sailSheet, paintFlagSailPair, { accent }, THREE.FrontSide);
         sailCache.set(id, mat);
       }
       return mat;

@@ -1,9 +1,9 @@
 /*
- * logo.js: the sponsors' marks an author puts on their course.
+ * logo.js: the sponsors' logos an author puts on their course.
  *
  * WHAT THIS IS FOR. Every gate on a course carries a printed header board,
  * every flag carries a sail, and on a real race those carry the chapter's or
- * the sponsor's mark. A course can hold five of them, dealt out round the
+ * the sponsor's logo. A course can hold five of them, dealt out round the
  * gates so each sponsor is on a share of them, and any of them can also be
  * painted on the grass. The whole feature is one list in the document and
  * this file is the half that turns a file somebody chose into something that
@@ -19,14 +19,14 @@
  *
  *   IT KEEPS ITS OWN SHAPE. The canvas is the image's own aspect ratio,
  *   scaled to fit inside a 1200 by 400 box. It used to be that box exactly,
- *   with transparent bars painted either side of a mark that was not three
- *   by one, and that was wrong twice over. Every surface that draws a mark
+ *   with transparent bars painted either side of a logo that was not three
+ *   by one, and that was wrong twice over. Every surface that draws a logo
  *   fits it into a space, so the transparent bars were fitted along with the
  *   ink and a square logo came out a third of the size it should have been;
- *   and a mark painted on the grass has a footprint on the field, which is
+ *   and a logo painted on the grass has a footprint on the field, which is
  *   its own shape and not the board's.
  *
- *   IT IS CAPPED. A track is a file people send each other, five marks share
+ *   IT IS CAPPED. A track is a file people send each other, five logos share
  *   one budget, and local storage is about 5 MB for the whole origin, so the
  *   encode steps down through smaller boxes until it fits what is left, and
  *   says plainly how much that was if it cannot.
@@ -61,10 +61,10 @@ import { LOGO_MAX_CHARS, isUsableLogo } from './model.js';
 import { HEADER_NUMBER_ZONE, paintGateHeader, paintGroundLogo } from '../art/banners.js';
 
 /*
- * The box a mark is fitted inside, and the boxes the encode steps down
+ * The box a logo is fitted inside, and the boxes the encode steps down
  * through until one lands under the budget. 1200 by 400 is the gate header's
  * own proportions at a resolution the header texture never exceeds, so a
- * wide mark loses nothing and a tall one is still 400 px on its long side.
+ * wide logo loses nothing and a tall one is still 400 px on its long side.
  */
 const BOXES = [[1200, 400], [768, 256], [540, 180], [384, 128]];
 
@@ -93,10 +93,10 @@ function loadImage(file) {
  * Turn a chosen file into a data URL the document can hold, or throw with a
  * sentence a person can act on.
  *
- * `budget` is how many characters this ONE mark may spend, which the caller
- * works out from what the other marks on the course already cost. It is
+ * `budget` is how many characters this ONE logo may spend, which the caller
+ * works out from what the other logos on the course already cost. It is
  * never allowed above LOGO_MAX_CHARS, because that is what a reader of the
- * document will accept for a single mark whatever the total says.
+ * document will accept for a single logo whatever the total says.
  *
  * Returns { dataUrl, name, width, height, bytes }.
  */
@@ -106,7 +106,7 @@ export async function normaliseLogo(file, budget = LOGO_MAX_CHARS) {
     throw new Error('no file was chosen');
   }
   if (cap < 1024) {
-    throw new Error('the marks on this course have used their whole size budget. Remove one first.');
+    throw new Error('the logos on this course have used their whole size budget. Remove one first.');
   }
   if (file.size > MAX_FILE_BYTES) {
     throw new Error(`that file is ${Math.round(file.size / (1024 * 1024))} MB. The limit is ${MAX_FILE_BYTES / (1024 * 1024)} MB.`);
@@ -157,13 +157,13 @@ export async function normaliseLogo(file, budget = LOGO_MAX_CHARS) {
   throw new Error(
     `that image will not compress under ${Math.round(cap / 1024)} kB even at `
     + `${last.width} by ${last.height}. A flat logo rather than a photograph is what fits, `
-    + 'and removing another mark frees more of the budget.',
+    + 'and removing another logo frees more of the budget.',
   );
 }
 
 /*
  * Draw the gate's header board as the renderer builds it, so an author sees
- * where their mark lands before they fly it rather than after.
+ * where their logo lands before they fly it rather than after.
  *
  * The print comes from src/art/banners.js, the same painter the world and
  * the 3D preview use, so this cannot drift into a maroon board while the
@@ -206,12 +206,12 @@ export function drawBannerPreview(canvas, dataUrl, image) {
 }
 
 /*
- * The same mark as it lands on the grass, on a strip of mown turf, so an
- * author choosing a mark for a painted footprint sees it the way a pilot
+ * The same logo as it lands on the grass, on a strip of mown turf, so an
+ * author choosing a logo for a painted footprint sees it the way a pilot
  * will rather than as a picture on a dark panel.
  *
  * `wm` by `dm` is the footprint in metres, so the preview's proportions are
- * the decal's own and a mark in a box the wrong shape reads small here for
+ * the decal's own and a logo in a box the wrong shape reads small here for
  * exactly the reason it will read small on the field.
  */
 export function drawGroundPreview(canvas, image, wm = 10, dm = 4) {

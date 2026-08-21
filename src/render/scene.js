@@ -60,7 +60,7 @@ import { buildGuideMesh } from './marks.js';
  * own preview so an author sees the gates they will fly. See src/art/. */
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, HEADER_NUMBER_ZONE,
-  paintGateHeader, paintGateSleeve, paintFlagSail, paintGroundLogo, GROUND_TURF,
+  paintGateHeader, paintGateSleeve, paintFlagSailPair, paintGroundLogo, GROUND_TURF,
   flagMast, flagSailProfile,
 } from '../art/banners.js';
 import {
@@ -1476,7 +1476,7 @@ function bannerKit(logoUrls, key) {
     const id = `${slot}:${accent}`;
     let mat = sailCache.get(id);
     if (!mat) {
-      mat = sailMaterial(paint(slot, BANNER_SIZE.sail, paintFlagSail, { accent }), `sail${id}:${key}`);
+      mat = sailMaterial(paint(slot, BANNER_SIZE.sailSheet, paintFlagSailPair, { accent }), `sail${id}:${key}`);
       sailCache.set(id, mat);
     }
     return mat;
@@ -2982,7 +2982,8 @@ function flagSailGeometry(poleR, h) {
   const rows = profile.length;
   const cols = 5;
   const pos = [];
-  const uvs = [];
+  const uvMinusZ = [];
+  const uvPlusZ = [];
   const cloth = [];
   const idx = [];
   for (let r = 0; r < rows; r += 1) {
@@ -2993,7 +2994,22 @@ function flagSailGeometry(poleR, h) {
       /* The seam is ON the mast, not near it, and it stays there round the
        * bend because the leading point IS a point of the mast's centreline. */
       pos.push(poleR + row.lx + (row.tx - row.lx) * s, row.ly + (row.ty - row.ly) * s, 0);
-      uvs.push(s, t);
+      /*
+       * One half of the printed sheet per sheet of cloth, and WHICH HALF IS
+       * DECIDED BY WHICH WAY THE SHEET FACES. The winding below settles
+       * that: the triangles in `idx` come out clockwise seen from +z, so
+       * they face -z, and it is the ones in `back` that a viewer standing on
+       * the +z side sees. u runs with the sail's own +x, which is to the
+       * RIGHT of that +z viewer, so the +z facing sheet is the one that
+       * reads the sheet's left half straight and the -z facing one reads the
+       * right half BACKWARDS. That is what puts the accent band on the mast
+       * for a viewer on either side and the mark the right way round for
+       * both. Swap this pair and the mark is mirrored on BOTH sides instead
+       * of neither, which is what a capture of it looked like.
+       * See paintFlagSailPair in src/art/banners.js.
+       */
+      uvMinusZ.push(1 - s * 0.5, t);
+      uvPlusZ.push(s * 0.5, t);
       cloth.push(s, t);
     }
   }
@@ -3021,23 +3037,44 @@ function flagSailGeometry(poleR, h) {
    * amplitude and split the flag down the middle. Sharing the normal costs
    * the reverse face its own lighting, which on a flat cel shaded banner is
    * a difference nobody can see.
+   *
+   * THE REVERSE HAS ITS OWN VERTICES NOW, and only because it has to have
+   * its own texture coordinates: it reads the other half of the sheet. It
+   * shares everything else with the front, position, wave and normal alike,
+   * so the two sheets still move as one piece of cloth and the paragraph
+   * above still holds. Fourteen rows of five is seventy vertices; doubling
+   * that is nothing, and it is what stops every mark on the course reading
+   * in a mirror from behind.
    */
+  const n = rows * cols;
   const back = [];
   for (let r = 0; r < rows - 1; r += 1) {
     for (let c = 0; c < cols - 1; c += 1) {
       const a = r * cols + c;
       idx.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
-      back.push(a + 1, a + cols, a, a + cols + 1, a + cols, a + 1);
+      back.push(
+        n + a + 1, n + a + cols, n + a,
+        n + a + cols + 1, n + a + cols, n + a + 1,
+      );
     }
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geo.setAttribute('aCloth', new THREE.Float32BufferAttribute(cloth, 2));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos.concat(pos), 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvMinusZ.concat(uvPlusZ), 2));
+  geo.setAttribute('aCloth', new THREE.Float32BufferAttribute(cloth.concat(cloth), 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  /* The reverse faces are appended AFTER the normals are computed, so they
-   * inherit the front sheet's normals rather than averaging to nothing. */
+  /*
+   * The reverse block is not in that index, so it came out of
+   * computeVertexNormals with no normal at all. Copy the front's across
+   * rather than computing over both sheets, which would average each pair
+   * of opposed faces to nothing.
+   */
+  const nrm = geo.getAttribute('normal');
+  for (let i = 0; i < n; i += 1) {
+    nrm.setXYZ(n + i, nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+  }
+  nrm.needsUpdate = true;
   geo.setIndex(idx.concat(back));
   return geo;
 }

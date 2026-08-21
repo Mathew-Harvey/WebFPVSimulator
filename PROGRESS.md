@@ -13430,3 +13430,137 @@ the accounting, or take the geometry back out of the flag.
 
 Everything else on the merged tree: `npm run verify` 14 of 16 as above,
 `node src/trackbuilder/selftest.js` 278 of 278, `npm run lint:fc` 30 of 30.
+
+### 2026-08-21 | trackbuilder | the feature is called sponsor logos, and the ink stops reading backwards
+
+Ticket: owner, three sentences over two messages. "In the track builder,
+course marks should be add sponsor logos." Then: "also the logos on the back
+side of the flags and gates are reversed, they should be correct on both
+sides. Finally, in the track builder there is no obviouse way to upload a
+ground paint logo."
+
+The first sentence has two readings and they are different pieces of work, so
+it was put back to the owner rather than guessed at: give the course MARKERS,
+the flags and cones, a logo of their own, or rename the feature. The owner
+picked the rename. The button said Marks, the dialog said Course marks, and
+the inspector asked Which mark, while the document, the module and every
+identifier in the code have said `logo` since the day the feature landed.
+Three vocabularies for one thing, and the one the author reads was the odd
+one out.
+
+**The wording, everywhere an author meets it.** Marks is now Sponsor logos on
+the top bar and as the dialog's title; Add a mark is Add a logo; the
+inspector's Which mark is Which logo; the plan draws "no logo" on an orphaned
+footprint. `renderDecalMarkPicker` is `renderDecalLogoPicker`, `.tb-mark-card`
+is `.tb-logo-card`, `markImage` is `logoImage`, and the prose in `model.js`,
+`elements.js`, `logo.js` and `schema.md` follows, so nothing in the builder
+now calls it a mark. `src/art/` keeps the word: there, a mark is the printed
+device on vinyl, which is the artwork's vocabulary and not the author's. The
+leaderboard's three publish errors and its selftest were changed to match,
+because an author who has just used a dialog called Sponsor logos should not
+be told a course carries at most 5 marks. `store.js` and `validate.js` also
+carry a `marks` that is the PLAN's geometry and has nothing to do with
+sponsors, and that one was left alone with a sentence saying so.
+
+**The reversed ink was two separate faults, and only one of them was the one
+in the report.**
+
+THE SAILS. A feather flag's cloth was one sheet of triangles with the reverse
+faces indexed off the same vertices, so both faces sampled the same texels
+and the mark read in a mirror from behind. Every turn flag on a course, every
+pennant on a flagged gate, and all 72 of the field's own flags.
+
+The gate boards never had this, and the fix is the same idea they already
+use. A board is two planes back to back with the reverse turned a half turn,
+which is what a printed banner is. The cloth cannot copy that literally: a
+board's design is symmetric enough to turn round, and a feather flag's is
+not, because the accent band is on the LEADING edge and the leading edge is
+the mast, which is in the same place for a viewer on either side. Turn the
+print round and the band lands on the free edge from behind.
+
+So the sail's texture is now the panel TWICE, side by side, painted by
+`paintFlagSailPair`: the design on the left, the same design mirrored on the
+right with the mark mirrored a second time so it comes back the right way
+round. The front faces read the left half, the reverse faces read the right
+half backwards. Band on the mast from both sides, mark readable from both
+sides. One material and one draw call, which is not a nicety: the world bakes
+its flags into merged meshes keyed by material, and a mesh with a material
+array does not merge at all. The seam is at the free edge of both halves, so
+what sits either side of it is near enough the same texels and no mip level
+shows a join.
+
+THE FAR LEG'S SLEEVE, which is not in the report and is the same bug. `flip`
+on `paintGateSleeve` mirrors the whole design so the chequer column runs down
+the outside of both uprights, and it was mirroring the sponsor's logo along
+with it. Every gate on every course had one leg reading forwards and one
+reading backwards, from either side. The mark is now mirrored a second time
+inside the flip: mirror the layout, never the ink.
+
+**Paint on the grass is a button now.** Putting a logo on the turf meant
+knowing the palette's Ground logo was the thing that did it, which is a name
+you recognise only after somebody tells you, and the dialog made it worse by
+showing a grass preview beside every logo and then offering no way to ask for
+any. Each filled slot has a Paint on the grass button between Replace and
+Remove. It arms the same palette tool with that logo already chosen and
+closes the dialog, because a modal over the canvas cannot be clicked through
+and the next thing to do is click the canvas. `armGroundLogo` is a separate
+entry point rather than an argument to `arm`, because `arm` toggles and
+pressing the button on two logos in a row would otherwise have disarmed it on
+the second. The armed id is cleared by everything else that touches `armed`,
+and `placeAt` only honours it for a logo still on the course, so removing one
+between arming and clicking cannot write a dangling id.
+
+**Wrong, and it cost two captures.** The first version of the sail fix put
+the left half on the sheet indexed by `idx` and the right half on `back`, on
+the assumption that `idx` was the front. It is not: that winding comes out
+clockwise seen from +z, so those faces point at -z, and the pairing was
+exactly backwards. The result was a mark mirrored on BOTH faces instead of
+neither, which is worse than what it replaced and which no amount of reading
+the code was going to settle. The capture settled it in one look. The
+comment in `flagSailGeometry` now names which sheet faces which way and says
+what the wrong pairing looks like.
+
+**A budget this grows, said plainly.** The reverse sheet has its own vertices
+now, because it has to have its own texture coordinates. Triangle count is
+unchanged: both windings were already there. Vertices per sail double, 70 to
+140, at 40 bytes each, so about 2.8 kB a flag and roughly 200 kB across the
+field's 72. Check 16, map-isolation, is a budget check that is ALREADY red on
+`main` for the feather flags, and this adds about 0.6 percent to the
+attribute figure it measures. No threshold was touched. Whoever re-records
+that budget for the flags should fold this in with it.
+
+VERIFY, this turn: `node src/trackbuilder/selftest.js` **279 of 279**,
+including a new check that the sail sheet is exactly the panel twice over,
+which is what both renderers' texture coordinates assume. Leaderboard `npm
+test` all passed. `node --check` on every touched file.
+
+`npm run verify` was NOT run. Nothing here goes near the physics, the plant,
+the module ABI or the build: it is artwork, two geometry builders, the
+builder's UI copy and one button. What was done instead is the visual check
+CLAUDE.md points at, `node scripts/shots.js`, driven six ways against the
+real pages with a deliberately chiral logo, an F and an R and an arrow, so a
+mirror is unmistakable:
+
+- The builder's 3D preview of a flagged gate wearing that logo, captured from
+  theta 0 and theta pi. Header, both sleeves and the pennant read forwards
+  from both sides. The same pair before the fix is what found the sleeve
+  fault, which was not in the report.
+- The world's own renderer, through `src/share/orbit.html` on a custom course
+  seeded into the builder autosave, with two flagged gates placed at opposite
+  yaws so ONE frame carries a front and a back. Both read forwards, header,
+  sleeves and pennant, magnified to be sure.
+- The Sponsor logos dialog, and the Paint on the grass flow driven end to
+  end: press the button, assert the tool is armed with `logo-1` and the modal
+  is gone, click the field, and the document has a `groundLogo` at 42, 19
+  wearing `logo-1`.
+- The simulator's title screen on the built in race field, to confirm the
+  sail geometry change did not black out or hole the 72 flags that carry no
+  logo at all.
+
+Console errors 0 and warnings 0 on every run. The captures were taken with
+three scratch pages under `tests/browser/`, which were deleted afterwards
+rather than kept: they copy the geometry out of `scene.js` and `view3d.js`
+rather than importing it, and a check that can drift out of agreement with
+what it checks is worse than no check.
+
+Physics, plant, ABI, CLI, input and the trace were not touched.

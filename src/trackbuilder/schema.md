@@ -100,7 +100,7 @@ the file.
 | `modifiedUtc` | string | Same format, last edit. The Load list sorts on this. |
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
-| `branding` | object | The sponsors' marks the course is dressed in. Optional; see below. |
+| `branding` | object | The sponsors' logos the course is dressed in. Optional; see below. |
 | `elements` | array | Everything standing on the field, in no particular order. |
 | `sequence` | array | The flying order. THIS is the course. |
 
@@ -126,33 +126,33 @@ real thing to draw.
 
 ### `branding`
 
-Up to five sponsors' marks, shared out over the gates, the banners, the flags
+Up to five sponsors' logos, shared out over the gates, the banners, the flags
 and any paint on the grass.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `logos` | array | 0 to 5 marks, in the order they are dealt out. |
+| `logos` | array | 0 to 5 logos, in the order they are dealt out. |
 
 Each entry:
 
 | field | type | meaning |
 | --- | --- | --- |
-| `id` | string | Stable identity of this mark within the document, `logo-` followed by a number. A `groundLogo` element names the mark it wears by this. |
+| `id` | string | Stable identity of this logo within the document, `logo-` followed by a number. A `groundLogo` element names the logo it wears by this. |
 | `image` | string | A `data:` URL of an image. Nothing else is accepted. |
 | `name` | string | The file the author chose it from. Display only. |
 
-**Which mark goes on which gate is derived, not stored.** The structures in
+**Which logo goes on which gate is derived, not stored.** The structures in
 the flying order are numbered from zero, counting STRUCTURES rather than passes
 (a ladder flown three times is one frame with one header board, so it counts
 once) and skipping anything that carries no printed vinyl (a flag or a cone is
-scored through a square in the air beside it). Structure *i* wears mark
-*i* mod *n*. Fifteen gates and five marks is three gates each, spread down the
+scored through a square in the air beside it). Structure *i* wears logo
+*i* mod *n*. Fifteen gates and five logos is three gates each, spread down the
 lap rather than bunched at the start. The rule is `dressOrder()` in
 `model.js`, and both the race field and the builder's own 3D preview read it
 from there so they cannot disagree.
 
-A gate's own header pennants wear THAT GATE'S mark in both accents. The run of
-turn flags down a course cycles through the marks and through the navy and red
+A gate's own header pennants wear THAT GATE'S logo in both accents. The run of
+turn flags down a course cycles through the logos and through the navy and red
 accents at the same time, so it repeats every `lcm(n, 2)` flags.
 
 **The images travel inside the track.** A track is one file a person sends to
@@ -163,16 +163,16 @@ to be small enough that a track is still a file rather than a payload:
 aspect ratio, scaled to fit inside 1200 by 400 and never enlarged, re-encodes
 it as a PNG, and steps down through smaller boxes until the data URL fits.
 
-Two caps, and the second is the one an author meets. Any single mark is capped
+Two caps, and the second is the one an author meets. Any single logo is capped
 at **256 kB** of data URL, which is what `isUsableLogo()` will accept whatever
-else is in the document. All the marks together are capped at **384 kB**, which
+else is in the document. All the logos together are capped at **384 kB**, which
 is what keeps a published course inside the board's own document cap.
 `model.normalize()` drops anything past either and says so.
 
 **Only a `data:` URL is accepted, and that is a security property rather than a
 validation one.** A document is untrusted input and these strings end up in a
 texture loader, so an `http:` URL in there would turn opening somebody's track
-into a request to their server. A mark that is not an embedded image is dropped
+into a request to their server. A logo that is not an embedded image is dropped
 on read with a repair note.
 
 This field is **optional**. `normalize()` fills in `{ "logos": [] }`.
@@ -181,8 +181,8 @@ This field is **optional**. `normalize()` fills in `{ "logos": [] }`.
 `branding.logo` string with a `branding.logoName` beside it. `normalize()`
 promotes that pair into `logos[0]` and says nothing, because it is an upgrade
 rather than damage. Nothing writes the old spelling any more: writing both
-would mean carrying the first mark's bytes twice, which doubles the file for
-the single mark case that is most of them. Dropping a field is what
+would mean carrying the first logo's bytes twice, which doubles the file for
+the single logo case that is most of them. Dropping a field is what
 `schemaVersion` 2 is for; see **Versioning**.
 
 ---
@@ -217,7 +217,7 @@ course; that is what `sequence` is for.
 | `dims` | object | Dimensions, in metres, whose keys depend on `type`. Always complete: a missing key is filled from the default on read. |
 | `text` | string | **Labels only.** The text drawn on the field. |
 | `flagSide` | `"left"`, `"right"` or `"both"` | **Flagged gates and flagged doubles only.** Which end of the top header the pennant sits on, as seen facing the gate. Default `left`. Not a dimension. |
-| `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first mark. Not a dimension. |
+| `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first logo. Not a dimension. |
 
 ### The element types
 
@@ -245,8 +245,8 @@ footprint and a heading and nothing else. No height, so `position.z` is ignored
 and the builder does not offer it; no collider, so a quad flies through where
 it is; never in `sequence`, and the barrier warning pass does not test the line
 against it. `dims.width` runs along the element's own heading and `dims.depth`
-across it, the same reading a `barrier` gets, and the mark named by `logoId` is
-FITTED inside that rectangle without cropping. A mark whose proportions do not
+across it, the same reading a `barrier` gets, and the logo named by `logoId` is
+FITTED inside that rectangle without cropping. A logo whose proportions do not
 match the footprint paints smaller with clear turf either side, which is the
 author's cue to resize the footprint rather than a reason to crop somebody's
 artwork.
@@ -254,7 +254,7 @@ artwork.
 It is drawn on the pitch's own painted surface rather than as geometry, so it
 costs no draw call and takes the cloud shadows and the cel ramp the grass
 takes. It follows that a course with no pitch has nowhere to paint: the field's
-own built in circuit carries no marks and none of this applies to it.
+own built in circuit carries no logos and none of this applies to it.
 
 **A ground logo is dressing, not layout.** It is filtered out of the layout
 fingerprint in `src/share/listing.js` and out of the matching `layoutHash` on
@@ -519,14 +519,14 @@ so. A document whose version is lower is migrated on read.
 ### 1 to 2
 
 Version 2 replaced `branding.logo` and `branding.logoName` with
-`branding.logos`, a list of up to five marks, and added the `groundLogo`
+`branding.logos`, a list of up to five logos, and added the `groundLogo`
 element type.
 
 The element type alone would not have been a bump: an unknown type is dropped
 on read with a repair note, which is the best effort behaviour above. Removing
 the two old branding fields is the bump. The alternative was to keep writing
-them as a copy of the first mark, and a `data:` URL written twice doubles the
-file for the single mark case that is most of them.
+them as a copy of the first logo, and a `data:` URL written twice doubles the
+file for the single logo case that is most of them.
 
 A version 1 document reads without loss: `normalize()` promotes its
 `branding.logo` into `logos[0]`, silently, because it is an upgrade rather than

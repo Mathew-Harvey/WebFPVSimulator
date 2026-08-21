@@ -61,6 +61,7 @@ import { buildGuideMesh } from './marks.js';
 import {
   BANNER_SIZE, bannerCanvas, bannerHex, GATE_BANNER_H, HEADER_NUMBER_ZONE,
   paintGateHeader, paintGateSleeve, paintFlagSail, paintGroundLogo, GROUND_TURF,
+  flagMast, flagSailProfile,
 } from '../art/banners.js';
 import {
   assembleStartBlock, startBlockContactHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
@@ -2279,7 +2280,13 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       made.group.remove(made.pole);
       made.group.remove(made.foot);
       scene.add(made.group);
-      colliders.add('obstacle', s.x, y, s.z, s.x, y + made.height, s.z, Math.max(0.05, s.dims.poleRadius));
+      const flagR = Math.max(0.05, s.dims.poleRadius);
+      /* The straight pole, then the whip that leans off it. See
+       * mastWhipCollider: one vertical post stops covering the mast the
+       * moment the mast stops being vertical. */
+      colliders.add('obstacle', s.x, y, s.z, s.x, y + made.mast.bendY, s.z, flagR);
+      const whip = mastWhipCollider(made.mast, s.x, y, s.z, s.yaw, flagR);
+      colliders.add('obstacle', whip.ax, whip.ay, whip.az, whip.bx, whip.by, whip.bz, flagR);
       continue;
     }
     if (s.type === 'startPads') {
@@ -2810,14 +2817,19 @@ function attachHeaderFlags(g, opts, layout) {
   const colliders = [];
   const flags = new THREE.Group();
   g.add(flags);
+  const curve = flagMast(flagH);
   let i = 0;
   for (const sx of signs) {
     const x = sx * halfW;
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(mast * 0.72, mast, flagH, 5),
-      mats.frame,
-    );
-    pole.position.set(x, headerTop + flagH * 0.5, 0);
+    /* Outboard, on both ends. The pennant is the same feather flag the
+     * course is lined with at a pennant's size, so the mast bends the way
+     * the big ones do and the whole thing turns as one: the mast and the
+     * sail take the same position and the same half turn, because the
+     * geometry of both starts at the mast's butt. */
+    const turn = sx < 0 ? Math.PI : 0;
+    const pole = new THREE.Mesh(flagMastGeometry(mast, flagH), mats.frame);
+    pole.position.set(x, headerTop, 0);
+    pole.rotation.y = turn;
     pole.castShadow = true;
     flags.add(pole);
     if (kit && kit.sails && kit.sails.length) {
@@ -2826,16 +2838,25 @@ function attachHeaderFlags(g, opts, layout) {
         kit.sails[i % kit.sails.length],
       );
       sail.position.set(x, headerTop, 0);
-      sail.rotation.y = sx < 0 ? Math.PI : 0;
+      sail.rotation.y = turn;
       sail.castShadow = true;
       flags.add(sail);
       animate.push(sail);
     }
+    /* Straight pole, then the whip, in this obstacle's own frame. The whip
+     * leans outboard, which is the same direction the sail hangs. */
+    const r = Math.max(0.05, mast);
     colliders.push({
       kind: 'obstacle',
       ax: x, ay: headerTop, az: 0,
-      bx: x, by: headerTop + flagH, bz: 0,
-      r: Math.max(0.05, mast),
+      bx: x, by: headerTop + curve.bendY, bz: 0,
+      r,
+    });
+    colliders.push({
+      kind: 'obstacle',
+      ax: x, ay: headerTop + curve.bendY, az: 0,
+      bx: x + sx * curve.tip.x, by: headerTop + curve.tip.y, bz: 0,
+      r,
     });
     i += 1;
   }
@@ -2843,7 +2864,7 @@ function attachHeaderFlags(g, opts, layout) {
 }
 
 /*
- * A course marker flag: the teardrop banner that lines a race course.
+ * A course marker flag: the feather banner that lines a race course.
  *
  * WHAT WAS WRONG WITH THE OLD ONE, in the order a pilot notices it. The
  * cloth was a 0.55 m plane whose CENTRE sat 0.58 m out from the pole, so
@@ -2854,11 +2875,20 @@ function attachHeaderFlags(g, opts, layout) {
  * to 1.6 m and agreed with neither. And a rectangle on a stick is not what
  * a race course is lined with.
  *
- * WHAT THIS IS. A ground spike, a straight mast, and a teardrop sail whose
- * LEADING EDGE IS THE MAST: every vertex of the seam sits on the pole's own
- * surface, which is what makes it a flag rather than a poster near a pole.
- * The outline is the shape every event supplier sells: narrow at the foot,
- * full through the middle, drawn to a point at the head.
+ * WHAT WAS WRONG WITH THE ONE AFTER THAT. It was a teardrop on a straight
+ * mast, which is a real product and is not the one the owner's reference
+ * photograph shows. A race course is lined with FEATHER flags: the top of
+ * the mast is a fibreglass whip that sweeps forward, the sail is a tall
+ * narrow panel hanging off it, and the mast side of its head is swept away
+ * by the bend. No outline cut on a straight mast makes that silhouette. The
+ * shape now comes from `flagMast` and `flagSailProfile` in src/art/banners.js,
+ * so the world, the builder's preview and the print cannot disagree about
+ * it.
+ *
+ * WHAT THIS IS. A ground spike, a mast that bends, and a sail whose LEADING
+ * EDGE IS THE MAST: every vertex of the seam sits on the pole's own surface
+ * all the way round the bend, which is what makes it a flag rather than a
+ * poster near a pole.
  *
  * SIZE, and it is a compromise between two things that both matter. On a
  * real course the flags stand over the gates, which is what the reference
@@ -2878,30 +2908,91 @@ function attachHeaderFlags(g, opts, layout) {
  */
 const FLAG_H = 2.9;
 
+/*
+ * The mast, as a tapered tube along the bent centreline.
+ *
+ * NOT a TubeGeometry, and the reason is the taper: a feather flag's whip is
+ * visibly thinner than the pole under it, and TubeGeometry carries one
+ * radius. Building the rings by hand is a dozen lines and gets both.
+ *
+ * The centreline is planar, in xy, so the frame at every point is exact
+ * rather than swept: the in plane normal is the tangent turned a quarter,
+ * and the out of plane one is z. A Frenet frame on a curve this shallow
+ * would twist for no reason.
+ *
+ * The mesh's ORIGIN IS THE BUTT, at y = 0, so a caller positions it where
+ * the mast enters the ground and the sail shares that origin exactly. The
+ * old straight cylinder was centred and every call site carried its own
+ * half height to correct for it.
+ */
+function flagMastGeometry(poleR, h, radial = 5) {
+  const { points } = flagMast(h);
+  const pos = [];
+  const uvs = [];
+  const idx = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    const prev = points[Math.max(0, i - 1)];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    let tx = next.x - prev.x;
+    let ty = next.y - prev.y;
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    /* The tangent turned a quarter, in the flag's own plane. */
+    const nx = -ty;
+    const ny = tx;
+    const r = poleR * p.r;
+    for (let a = 0; a < radial; a += 1) {
+      const th = (a / radial) * Math.PI * 2;
+      const ca = Math.cos(th);
+      const sa = Math.sin(th);
+      pos.push(p.x + nx * ca * r, p.y + ny * ca * r, sa * r);
+      /*
+       * A uv nothing samples, and it is not optional. The scenery merger
+       * folds this mesh in with everything else that shares its material,
+       * and BufferGeometryUtils.mergeGeometries refuses a set whose members
+       * do not carry the SAME attributes: a mast with no uv beside a gate
+       * tube with one drops the whole bucket and takes the frame with it.
+       */
+      uvs.push(a / radial, i / (points.length - 1));
+    }
+  }
+  for (let i = 0; i < points.length - 1; i += 1) {
+    for (let a = 0; a < radial; a += 1) {
+      const a0 = i * radial + a;
+      const a1 = i * radial + ((a + 1) % radial);
+      idx.push(a0, a0 + radial, a1, a1, a0 + radial, a1 + radial);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function flagSailGeometry(poleR, h) {
-  /* Rows up the mast, columns out from it. 12 by 5 is 60 vertices: enough
-   * that the taper reads as a curve and the wave as a wave. */
-  const rows = 12;
+  /* Rows up the mast, columns out from it. The rows come from
+   * flagSailProfile, which splits them across the rectangular body and the
+   * swept corner so the print has the same metres per row in both; five
+   * columns is what the cloth wave needs to read as a wave. */
+  const { rows: profile } = flagSailProfile(h);
+  const rows = profile.length;
   const cols = 5;
-  const y0 = h * 0.16;
-  const y1 = h * 0.98;
-  const maxW = h * 0.30;
   const pos = [];
   const uvs = [];
   const cloth = [];
   const idx = [];
   for (let r = 0; r < rows; r += 1) {
-    const t = r / (rows - 1);
-    /* The teardrop outline. The first factor fills the sail out from the
-     * foot, the second draws it to a point at the head. */
-    const fill = 0.42 + 0.58 * smoothstep01(t / 0.45);
-    const head = 1 - smoothstep01((t - 0.70) / 0.30) * 0.94;
-    const w = maxW * fill * head;
-    const y = y0 + (y1 - y0) * t;
+    const row = profile[r];
+    const t = row.t;
     for (let c = 0; c < cols; c += 1) {
       const s = c / (cols - 1);
-      /* The seam is ON the mast, not near it. */
-      pos.push(poleR + w * s, y, 0);
+      /* The seam is ON the mast, not near it, and it stays there round the
+       * bend because the leading point IS a point of the mast's centreline. */
+      pos.push(poleR + row.lx + (row.tx - row.lx) * s, row.ly + (row.ty - row.ly) * s, 0);
       uvs.push(s, t);
       cloth.push(s, t);
     }
@@ -2951,11 +3042,6 @@ function flagSailGeometry(poleR, h) {
   return geo;
 }
 
-function smoothstep01(x) {
-  const t = Math.max(0, Math.min(1, x));
-  return t * t * (3 - 2 * t);
-}
-
 /*
  * A sail material. Takes the PAINTED TEXTURE rather than a colour, because a
  * race flag is a printed thing and not a coloured one, and one material per
@@ -2984,12 +3070,12 @@ function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018, ba
   const g = new THREE.Group();
   const mast = Math.max(0.008, poleR);
   const pole = new THREE.Mesh(
-    /* Standing ON the ground, from the spike to the finial, so the mesh and
-     * the collider describe the same object. */
-    new THREE.CylinderGeometry(mast * 0.72, mast, h, 5),
+    /* Standing ON the ground, from the spike to the whip's tip, so the mesh
+     * and the collider describe the same object. The geometry's origin is
+     * the butt, so there is no half height to carry here. */
+    flagMastGeometry(mast, h),
     celMaterial({ color: 0xd7dbe0, rim: 0.2 }),
   );
-  pole.position.y = h * 0.5;
   g.add(pole);
   /* The spike plate. Without it a 36 mm mast reads as growing out of the
    * grass rather than as driven into it. */
@@ -3007,8 +3093,38 @@ function bannerFlag(kit, rng, height, x, z, index, h = FLAG_H, poleR = 0.018, ba
   g.add(sail);
   g.position.set(x, height(x, z) + baseY, z);
   g.rotation.y = rng() * Math.PI;
+  const curve = flagMast(h);
   return {
-    group: g, sail, pole, foot, height: h,
+    group: g,
+    sail,
+    pole,
+    foot,
+    height: h,
+    /*
+     * The two segments the mast occupies, in the flag's OWN frame: the
+     * straight pole and then the whip that leans forward off it. A caller
+     * that collides the mast has to collide both, because the tip is most of
+     * a metre downwind of the butt on a 2.9 m flag and a single vertical
+     * post would leave the part a pilot can see standing in clear air. The
+     * caller applies the group's yaw, which it may have replaced.
+     */
+    mast: { bendY: curve.bendY, tipX: curve.tip.x, tipY: curve.tip.y },
+  };
+}
+
+/*
+ * The bent half of a mast as a world space capsule, given where the flag
+ * stands, how high its base sits and which way it is turned. Shared by the
+ * two callers that collide a marker flag so they cannot disagree about the
+ * sign of the yaw.
+ */
+function mastWhipCollider(m, x, y, z, yaw, r) {
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  return {
+    ax: x, ay: y + m.bendY, az: z,
+    bx: x + m.tipX * c, by: y + m.tipY, bz: z - m.tipX * sn,
+    r,
   };
 }
 
@@ -4405,7 +4521,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
        * over the WHOLE mast the pilot can see. The cloth does not: a flag
        * brushing a prop is not a crash. */
       const fy = height(fx, fz);
-      colliders.addPost('pole', fx, fz, fy, fy + f.height, 0.018);
+      colliders.addPost('pole', fx, fz, fy, fy + f.mast.bendY, 0.018);
+      const whip = mastWhipCollider(f.mast, fx, fy, fz, f.group.rotation.y, 0.018);
+      colliders.add('pole', whip.ax, whip.ay, whip.az, whip.bx, whip.by, whip.bz, 0.018);
       f.group.updateMatrixWorld(true);
       poleBaker.bake(f.pole);
       poleBaker.bake(f.foot);

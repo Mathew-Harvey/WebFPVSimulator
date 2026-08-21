@@ -44,6 +44,7 @@ import { History } from './history.js';
 import { RAD, DEG, wrapAngle } from './geometry.js';
 import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight, virtualApertureDims, countElementsByType, formatElementCounts } from './elements.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
+import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE } from '../game/track.js';
@@ -1346,6 +1347,89 @@ function suiteBranding() {
   check('and it keeps its footprint', placed && placed.w === 12 && placed.d === 4);
 }
 
+/*
+ * THE FLAG'S SHAPE.
+ *
+ * It is a feather flag, and the three things that make it one are all
+ * numbers rather than pictures: the mast bends, the sail is a tall narrow
+ * panel hanging off the bend, and the print's canvas is that panel's own
+ * aspect. Four consumers read this out of one module, so a check here is
+ * worth four in the renderers that cannot run in Node.
+ */
+function suiteFlagShape() {
+  console.log('flag shape');
+  const h = 2.9;
+  const m = flagMast(h);
+
+  /* The mast starts at the butt and stands where a flag is planted. */
+  check('the mast starts at the ground on the mast line',
+    m.points[0].x === 0 && m.points[0].y === 0);
+
+  /*
+   * THE APEX IS THE STATED HEIGHT, exactly. Everything that asks how tall a
+   * flag is reads that number: the collider the pilot hits, the attract
+   * camera's clearance and the builder's elementHeight. The arc turns past
+   * horizontal, so the apex is NOT the tip and taking the tip for the top
+   * would quietly shorten every flag on the field.
+   */
+  const apex = Math.max(...m.points.map((p) => p.y));
+  check('the mast apexes at exactly the flag height', Math.abs(apex - h) < 1e-9, String(apex));
+  check('and the tip hangs a little below the apex, which is what bows it',
+    m.tip.y < apex && m.tip.y > apex * 0.98, `${m.tip.y.toFixed(4)} of ${apex}`);
+  check('nothing on the mast stands above the stated height',
+    m.points.every((p) => p.y <= h + 1e-9));
+
+  /* Tall and narrow. The teardrop was 0.30 of its height at its widest. */
+  check('the sail is about a fifth of the height across',
+    m.width > h * 0.20 && m.width < h * 0.26, m.width.toFixed(3));
+  check('and three and a half times as tall as it is wide',
+    m.sailH / m.width > 3.2 && m.sailH / m.width < 3.9, (m.sailH / m.width).toFixed(2));
+  check('the mast reaches forward exactly as far as the sail is wide',
+    Math.abs(m.tip.x - m.width) < 1e-9);
+
+  const { rows, tBend } = flagSailProfile(h);
+  check('the sail hangs clear of the grass', rows[0].ly > h * 0.1 && rows[0].ly < h * 0.2);
+  check('its foot is a level hem', Math.abs(rows[0].ly - rows[0].ty) < 1e-9);
+  check('its trailing edge is one straight vertical line',
+    rows.every((r) => Math.abs(r.tx - m.width) < 1e-9));
+  check('its trailing edge only ever rises',
+    rows.every((r, i) => i === 0 || r.ty >= rows[i - 1].ty - 1e-9));
+  check('its leading edge is the mast, straight below the bend',
+    rows.filter((r) => r.t <= tBend).every((r) => Math.abs(r.lx) < 1e-9));
+  check('and swept forward above it',
+    rows.filter((r) => r.t > tBend).every((r) => r.lx > 0));
+  check('the head closes on the mast tip',
+    Math.abs(rows[rows.length - 1].lx - m.tip.x) < 1e-9
+    && Math.abs(rows[rows.length - 1].ly - m.tip.y) < 1e-9);
+  check('and the two edges meet there, so the corner is a point',
+    Math.abs(rows[rows.length - 1].lx - rows[rows.length - 1].tx) < 1e-9
+    && Math.abs(rows[rows.length - 1].ly - rows[rows.length - 1].ty) < 1e-9);
+  /* t is the print's v. Metres per step have to match across the fold or
+   * the artwork is stretched at the join. */
+  const steps = rows.slice(1).map((r, i) => ({
+    dv: r.t - rows[i].t,
+    dm: Math.hypot(r.ty - rows[i].ty, 0) || (r.ly - rows[i].ly),
+  }));
+  const rate = steps.map((x) => x.dm / x.dv).filter((x) => Number.isFinite(x) && x > 0);
+  check('the print has the same metres per row on both sides of the fold',
+    Math.max(...rate) / Math.min(...rate) < 1.02,
+    `${Math.min(...rate).toFixed(3)} to ${Math.max(...rate).toFixed(3)}`);
+
+  /*
+   * The canvas is the panel's aspect, or a chequer comes out of square. The
+   * shape and the print are one decision, so this is the check that catches
+   * somebody retuning FLAG and forgetting BANNER_SIZE.
+   */
+  const want = Math.round(BANNER_SIZE.sail[1] * (m.width / m.sailH));
+  check('the sail canvas is the panel it lands on', BANNER_SIZE.sail[0] === want,
+    `${BANNER_SIZE.sail[0]} against ${want}`);
+
+  /* Scale free: a pennant on a gate header is the same flag, smaller. */
+  const small = flagMast(GATE_FLAG_H);
+  check('a header pennant is the same shape at a pennant size',
+    Math.abs(small.width / GATE_FLAG_H - m.width / h) < 1e-9);
+}
+
 function suiteStartBlock() {
   const d = startBlockDims(0.6);
   check('a default stand fits inside its pad cell', d.railLen < 0.6 && d.spanAcross < 0.6,
@@ -1681,6 +1765,7 @@ function main() {
   suiteSchemaDoc();
   suiteListing();
   suiteBranding();
+  suiteFlagShape();
   suiteStartBlock();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;

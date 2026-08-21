@@ -13951,3 +13951,79 @@ rather than importing it, and a check that can drift out of agreement with
 what it checks is worse than no check.
 
 Physics, plant, ABI, CLI, input and the trace were not touched.
+
+## One simulator tab and one board tab, not a row of them
+
+Every link between the shell, the builder and the board opened a new tab.
+`target="_blank"` on the board's Fly this course and Remix in the builder,
+`window.open(..., '_blank', 'noopener')` on the shell's Leaderboard and on
+the builder's Open the board after publishing. So a visitor who flew three
+courses off the board finished with three simulators open, three physics
+loops running and three WebGL contexts held, and a pilot who checked the
+times between runs collected a board tab per check. The share/board.js
+comment about "three tabs and two running physics loops" was written about
+one instance of this and fixed only that instance, by teaching the Courses
+screen to load a published course in place.
+
+The general fix is a named browsing context, which is the oldest tool the
+platform has for this: open a URL under a name and the browser navigates
+the tab already carrying that name and focuses it, instead of making
+another. Two names, `webfpv-sim` and `webfpv-board`, live in the new
+`src/share/windows.js` along with the reasoning. The builder shares the
+simulator's name on purpose: the shell navigates to the builder in place
+and the builder navigates back, so they are one tab and have always been
+one tab.
+
+Two things this rests on, both of them quiet failure modes.
+
+**`rel="noopener"` cannot ride along with a name.** The spec resolves a
+noopener link by setting its target to `_blank` BEFORE it looks the name
+up, so a named link that also asks for noopener opens a fresh tab every
+single time while looking entirely correct in the source. Every link that
+now carries a name had its noopener removed, and the board's `npm test`
+asserts that neither half drifts back. The cost is a cross origin
+`window.opener` between our own two sites, which buys the other end
+postMessage, close and a location write. Links that leave the product,
+the credits on both sides, keep their noopener and their `_blank`.
+
+**A tab has to claim its own name to be findable.** A name given by whoever
+opened the tab is not enough, because the simulator opened from a bookmark
+has no name at all, and the board's Fly this course would then open a second
+one beside it. `claimWindowName` is called from `src/boot.js`, the first
+module the shell runs, so the claim is in place while the loading screen is
+still counting, and from the builder's `App` constructor. It refuses to
+claim inside a frame: `orbit.html` is served from this origin and runs
+inside every card on the board, and a thumbnail that called itself the
+simulator would turn every card into a target for these links.
+
+What this does NOT do is reach across browsing context groups. A board and
+a simulator the visitor opened separately, neither one from the other,
+cannot see each other's names, so the first link between them makes one
+more tab. From then on the pair is joined and stays a pair. Closing that
+hole means a same origin channel and one tab closing itself, and a tab the
+user opened by hand cannot be closed by script, so the honest version of
+that fix is "sometimes it works". Not worth the machinery. A modifier click
+still opens a new tab, which is deliberate: "open in a new tab" is the
+visitor's to say, not ours.
+
+VERIFY, this turn: the behaviour was driven in headless Chromium over CDP
+against both real servers, the board on 3100 and the shell on 8000, because
+nothing about tabs is testable in Node. The board tab reports `window.name`
+`webfpv-board` and its Open the simulator link reports target `webfpv-sim`.
+Clicking Open the simulator twice leaves ONE simulator tab. Clicking Build a
+course then navigates that same tab to the builder, still one, with the
+board tab still open behind it. The builder tab reports `window.name`
+`webfpv-sim`, so the constructor's claim survives the navigation. Calling
+`openNamedWindow` from that tab twice, which is what the shell's Leaderboard
+button does, leaves ONE board tab. A ctrl click on the same link opens a
+second simulator, which is the one case where a second simulator is what was
+asked for. Leaderboard `npm test`, 85 checks, all passed, including three new
+ones on the page's fallback anchors and on the links `app.js` builds.
+`node --check` on every touched file.
+
+`npm run verify` was NOT run. Nothing here is within reach of it: no
+physics, no plant, no module ABI, no build, no input path. It is four link
+targets, two `window.open` calls and a name claimed at boot. Check 13 loads
+only `tests/browser/harness.html` and would not see any of it. The CDP run
+above is what was done instead, and it exercises the actual pages rather
+than a copy of them.

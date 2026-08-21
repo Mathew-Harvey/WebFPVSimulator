@@ -56,6 +56,7 @@ import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
 import { RAD } from './geometry.js';
 import { boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation } from '../share/board.js';
+import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
   clearShareImport, readBuilderIntent, readEditKey, readShareImport, takeBuilderIntent,
@@ -76,6 +77,11 @@ import {
 
 export class App {
   constructor(nodes) {
+    /* The builder is the simulator's tab, not a tab of its own: the shell
+     * navigates here in place and Back to the simulator navigates back.
+     * Claiming the same name keeps the board's Fly this course landing on
+     * this tab rather than opening a second simulator beside it. */
+    claimWindowName(SIM_WINDOW);
     this.nodes = nodes;
     this.doc = createTrack();
     this.selection = new Set();
@@ -929,8 +935,9 @@ export class App {
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';
         open.href = boardPageUrl(origin);
-        open.target = '_blank';
-        open.rel = 'noopener';
+        /* The board's own tab, reused if it is already open. No rel here:
+         * noopener would send this to a fresh tab every time. */
+        open.target = BOARD_WINDOW;
         open.textContent = 'Open the board';
         send.replaceWith(open);
       } catch (e) {

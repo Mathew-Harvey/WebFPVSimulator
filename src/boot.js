@@ -30,11 +30,17 @@
 
 import { Loading, planStages } from './ui/loading.js';
 import { MAP_BUILD_MS } from './maps/build-cost.js';
+import { SIM_WINDOW, claimWindowName } from './share/windows.js';
 
 /* P6: navigation to the first interactive frame. Stamped in the first module
  * the page runs so it covers every fetch and every module evaluation, and
  * read back through window.__boot. */
 const BOOT_START = performance.now();
+
+/* This tab is the simulator, and there is only ever one of it. Claimed in
+ * the first module the page runs, so the board's Fly this course finds it
+ * even while the shell is still loading. See share/windows.js. */
+claimWindowName(SIM_WINDOW);
 
 const loading = new Loading(document.getElementById('loading'));
 window.__loading = loading;

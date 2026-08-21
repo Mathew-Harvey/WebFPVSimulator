@@ -76,6 +76,7 @@ import {
   ratesSummary,
 } from '../../configs/rates.js';
 import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
+import { BOARD_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, inspectCourse, isEmptyCanvas } from '../share/listing.js';
@@ -4370,13 +4371,15 @@ export class Ui {
       window.location.href = 'src/trackbuilder/index.html';
       return;
     }
-    /* Leaderboard and Choose new map are the same page. The board's
-     * Fly this course already opens the sim in a new tab, so this tab
-     * has to stay put. Navigating away here left the pilot with no sim
-     * and a second one from Fly. share.board is the board origin when
-     * a published course is loaded, otherwise the default board. */
+    /* Leaderboard and Choose new map are the same page. The board opens
+     * courses in the simulator, so this tab has to stay put. Navigating
+     * away here left the pilot with no sim and a second one from Fly.
+     * The board is a named tab: a pilot who has been to the board once
+     * goes back to that same tab rather than collecting a row of them.
+     * share.board is the board origin when a published course is loaded,
+     * otherwise the default board. */
     if (action === 'leaderboard') {
-      window.open(boardPageUrl(this.share && this.share.board), '_blank', 'noopener');
+      openNamedWindow(boardPageUrl(this.share && this.share.board), BOARD_WINDOW);
       return;
     }
     if (action === 'reportbug') {
@@ -4429,7 +4432,7 @@ export class Ui {
         return;
       }
       if (action === 'card-board') {
-        window.open(boardPageUrl(card.course.track.board), '_blank', 'noopener');
+        openNamedWindow(boardPageUrl(card.course.track.board), BOARD_WINDOW);
         return;
       }
       this.openInBuilder(card);

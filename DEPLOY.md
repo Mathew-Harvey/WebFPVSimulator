@@ -244,11 +244,39 @@ absolute path at boot, and a deploy missing either serves a page that dies
 on a 404 with nothing useful in the log. Failing the deploy instead is
 louder and names the file.
 
-**Everything is served `Cache-Control: no-cache`.** Nothing in the tree is
-content hashed, so a long cache can hand a visitor a module graph that is
-half the old deploy and half the new one. That failure reads like a physics
-bug rather than a caching bug. `no-cache` still lets the CDN answer with a
-304 off its ETag, so a returning visitor pays a round trip and no bytes.
+**Everything is served `Cache-Control: no-cache`, except the music.**
+Nothing in the tree is content hashed, so a long cache can hand a visitor a
+module graph that is half the old deploy and half the new one. That failure
+reads like a physics bug rather than a caching bug. `no-cache` still lets
+the CDN answer with a 304 off its ETag, so a returning visitor pays a round
+trip and no bytes.
+
+**`/assets/music/*` is the exception, and it is served immutable for a
+year.** A track is not part of the module graph: nothing imports it and it
+imports nothing, so a visitor holding last week's copy of one is holding a
+song, not half a program. What `no-cache` costs there is a revalidation
+round trip per track per visit on a two to five megabyte file that never
+changes, which is the wrong trade on a phone. It also matters to the player:
+near the end of a track `src/render/music.js` warms the next one through a
+second element, and the handoff is only free if the browser can serve it out
+of its own disk cache.
+
+This is safe ONLY because of `MUSIC_REV` in `src/render/tracks.js`, which
+goes into every music URL as `?v=N`. **Re-encode the crate, bump
+`MUSIC_REV`.** A deploy that changes the audio without bumping it leaves a
+year of browsers on the old mix with no way to find out. `scripts/serve.js`
+and `tests/lib/server.js` both mirror this policy for the same directory, so
+a re-encode needs the bump locally too, which is the point.
+
+**The crate is on disk in two formats and a visitor pays for one.** Every
+track is `assets/music/<id>.webm` (Opus, about 2.5 MB) and
+`assets/music/<id>.mp3` (LAME V7, about 3.1 MB), written by
+`node scripts/music.js` from masters that are not in the repository. The
+player asks `canPlayType` first and takes the WebM unless the browser cannot
+open one, which is Safari before 14.1 on the desktop and 17.4 on the phone.
+Render serves `.webm` as `video/webm` off its own extension table and that
+is fine for an audio-only file; a browser that disagrees fails the load and
+`music.js` demotes the whole session to mp3 rather than going quiet.
 
 **Neither blueprint sets `X-Frame-Options` on the simulator.** The board
 draws every course thumbnail by embedding the simulator's

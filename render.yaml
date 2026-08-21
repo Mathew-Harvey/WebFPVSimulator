@@ -39,6 +39,23 @@ services:
         name: Cache-Control
         value: no-cache
 
+      # The crate is the exception, and it is an exception because it is not
+      # part of the module graph. Nothing imports a track and no track imports
+      # anything, so a visitor holding last week's Tarmac Pulse next to this
+      # week's src/ is not holding a half updated program, they are holding
+      # the same song. What no-cache costs here is a revalidation round trip
+      # per track per visit on a file that is two to five megabytes and never
+      # changes, which is the wrong trade on a phone.
+      #
+      # This is safe ONLY because src/render/tracks.js puts MUSIC_REV in every
+      # music URL as ?v=N. Re-encode the crate, bump MUSIC_REV. A deploy that
+      # changes the audio without bumping it leaves a year of browsers on the
+      # old mix with no way to find out, and that is the failure this comment
+      # exists to prevent.
+      - path: /assets/music/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
     # No X-Frame-Options and no frame-ancestors here on purpose. The board
     # renders each course thumbnail by embedding this site's
     # /src/share/orbit.html in a cross origin iframe. Denying framing turns

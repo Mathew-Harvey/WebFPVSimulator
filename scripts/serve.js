@@ -20,7 +20,8 @@
  */
 
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { join, normalize, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,7 +47,117 @@ const MIME = new Map([
      differently on a laptop from in production. */
   ['.ico', 'image/x-icon'],
   ['.mp3', 'audio/mpeg'],
+  /* video/webm and not audio/webm, even though every .webm in this tree is
+     an audio-only Opus track. Render serves a static site off its own
+     extension table and that table says video/webm, so saying audio/webm
+     here would make the one thing worth testing, whether a browser will
+     take the crate as served, the one thing localhost cannot tell you. */
+  ['.webm', 'video/webm'],
 ]);
+
+/*
+ * Byte ranges, because a media element asks for them and the answer
+ * changes how much it downloads.
+ *
+ * Chromium's media stack opens a track with Range: bytes=0- and then
+ * closes and reopens the connection as its buffer fills. Against a server
+ * that ignores Range and answers 200 with the whole body it cannot do
+ * that, so it takes the entire three megabyte file at once, at exactly
+ * the moment the map is loading. That is not what production does, and a
+ * local page that behaves worse than the deploy in the one dimension you
+ * are trying to measure is worse than no local page at all.
+ *
+ * Streaming rather than readFile for the same reason from the other end:
+ * a 3 MB response should not be a 3 MB Buffer in this process first.
+ */
+/* pipe() and not .pipe(), because pipe does not forward a read error and an
+   unhandled 'error' on a Readable takes the process with it. A file that
+   goes away mid response should drop one connection, not the server. */
+function pipe(stream, res) {
+  stream.on('error', () => res.destroy());
+  stream.pipe(res);
+}
+
+function parseRange(header, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(header ?? '').trim());
+  if (!m) {
+    return null;
+  }
+  const [, rawStart, rawEnd] = m;
+  if (rawStart === '' && rawEnd === '') {
+    return null;
+  }
+  /* bytes=-500 is the LAST 500 bytes, not the first 500. Getting this
+     backwards serves a header where a browser wanted a trailer. */
+  let start = rawStart === '' ? size - Number(rawEnd) : Number(rawStart);
+  let end = rawStart === '' || rawEnd === '' ? size - 1 : Number(rawEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return null;
+  }
+  start = Math.max(0, start);
+  end = Math.min(size - 1, end);
+  if (start > end) {
+    return { unsatisfiable: true };
+  }
+  return { start, end };
+}
+
+/*
+ * The deploy's cache policy, mirrored for one directory.
+ *
+ * render.yaml serves /assets/music/* immutable for a year and everything
+ * else no-cache, and music.js leans on that: it warms the next track in a
+ * rotation through a second element so the handoff comes out of the disk
+ * cache rather than off the wire again. Under a blanket no-store that warm
+ * is not an optimisation, it is the same track downloaded twice, and a
+ * harness that cannot tell those two apart cannot check the feature.
+ *
+ * The cost is the one the deploy has: re-encode the crate and a browser
+ * that already has it will not notice. Bump MUSIC_REV in
+ * src/render/tracks.js, which is the same lever production needs.
+ */
+function cacheControl(rel) {
+  return rel.startsWith('assets/music/') ? 'public, max-age=31536000, immutable' : 'no-store';
+}
+
+function sendFile(req, res, path, rel) {
+  return stat(path).then((info) => {
+    if (!info.isFile()) {
+      throw new Error('not a file');
+    }
+    const type = MIME.get(extname(path)) ?? 'application/octet-stream';
+    const head = {
+      'content-type': type,
+      'cache-control': cacheControl(rel),
+      'accept-ranges': 'bytes',
+    };
+    const range = req.headers.range ? parseRange(req.headers.range, info.size) : null;
+    if (range && range.unsatisfiable) {
+      res.writeHead(416, { ...head, 'content-range': `bytes */${info.size}` });
+      res.end();
+      return;
+    }
+    if (range) {
+      res.writeHead(206, {
+        ...head,
+        'content-range': `bytes ${range.start}-${range.end}/${info.size}`,
+        'content-length': range.end - range.start + 1,
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      pipe(createReadStream(path, { start: range.start, end: range.end }), res);
+      return;
+    }
+    res.writeHead(200, { ...head, 'content-length': info.size });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    pipe(createReadStream(path), res);
+  });
+}
 
 http
   .createServer(async (req, res) => {
@@ -62,12 +173,7 @@ http
         res.end('forbidden');
         return;
       }
-      const body = await readFile(path);
-      res.writeHead(200, {
-        'content-type': MIME.get(extname(path)) ?? 'application/octet-stream',
-        'cache-control': 'no-store',
-      });
-      res.end(body);
+      await sendFile(req, res, path, rel);
     } catch {
       res.writeHead(404);
       res.end('not found');

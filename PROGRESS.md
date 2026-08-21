@@ -13515,3 +13515,237 @@ drives `MotorAudio` offline from a recorded trace and never reads
 title screen, where the RPM was already zero. No AudioNode is created or
 dropped, so the P12 count is unchanged. Flight feel is not verified by any of
 this and is awaiting the owner flying it.
+
+## The music, delivered for a connection that is not this laptop
+
+The owner: "the music is good, i like it, but its probably not very
+performant, optimise for performance on ordinary internet connection." The
+music stays exactly as it is. What changed is what a visitor pays for it.
+
+**What it cost before, measured rather than guessed.** Thirteen mp3s in
+`assets/music`, 75 MB on disk, averaging 189 kbps VBR at 48 kHz stereo and
+5.7 MB a track. One of the thirteen, `Pace Shift Skyline (1).mp3`, was a
+second copy of a title the crate did not list, so it was 5.79 MB that was
+deployed and could never be played.
+
+### The headline, on the live page at 5 Mbps with 40 ms of latency
+
+Headless Chromium through `scripts/shots.js`, bytes counted at the server
+rather than off `performance.getEntriesByType('resource')`, for reasons
+below. Same page, same map, same throttle, `HEAD` in a worktree against the
+working tree.
+
+| | before | after |
+| --- | --- | --- |
+| first track, bytes on the wire | 4,177,303 | **2,010,494** |
+| whole page, first flight | 5,601,396 | **3,441,835** |
+| gesture to the first sample of music | 2,406 ms | **826 ms** |
+| bytes with the Music slider at 0 | 4,177,303 | **0** |
+| whole page with the slider at 0 | 5,601,396 | **1,431,341** |
+
+That last row is the one worth reading twice. With music turned off the old
+build downloaded a whole track anyway, every visit.
+
+### Four changes, in the order they matter
+
+**One, the crate is encoded for the wire.** `scripts/music.js` writes each
+track twice from the masters: `assets/music/<id>.webm`, Opus at 80 kbps VBR,
+and `assets/music/<id>.mp3`, LAME V7. 68.5 MB of masters becomes 30.6 MB of
+Opus (45 percent) and 37.5 MB of mp3 (55 percent), and a visitor pays for
+one of the two, not both.
+
+Bitrate chosen by measurement, not taste. Band energy against the master on
+`Neon Horizon`, the densest track in the crate, two cascaded second order
+highpasses and `volumedetect`:
+
+| | > 12 kHz | > 16 kHz | bytes |
+| --- | --- | --- | --- |
+| master, 191 kbps mp3 | -42.4 dB | -50.4 dB | 8,610,601 |
+| **Opus 80k** | **-42.3 dB** | **-49.4 dB** | **3,707,628** |
+| mp3 V6 | -43.0 dB | -53.3 dB | 5,464,677 |
+| **mp3 V7, the fallback** | -43.4 dB | -54.5 dB | 4,836,716 |
+| mp3 V8 | -44.1 dB | -56.6 dB | 4,613,973 |
+
+Opus at 80 kbps holds the top two octaves to within 1.0 dB of the master in
+fewer bytes than any mp3 that comes close, which is why it is the primary
+and not a nicety. Nothing is lowpassed: at 72 kbps Opus already matched the
+master to 0.3 dB up to 17 kHz on `Tarmac Pulse`, so 80 is margin on the
+dense tracks rather than a floor. V7 on the fallback rather than V6 costs
+1.2 dB at 16 kHz and saves a further eleven percent, and the fallback is
+only reached by a browser too old for WebM, which is likelier to be an old
+phone on mobile data than a desktop with a spare 400 kB.
+
+**No loudness processing, and the encoder refuses to ship any.** The mix in
+`src/render/audio.js` is balanced against these tracks as they are and
+`MUSIC_BUS` is 0.60 because of how hot they were mastered, so a limiter or a
+`loudnorm` here would silently rebalance the whole mix against the motors.
+`scripts/music.js` measures integrated loudness with `ebur128` on the master
+and on both outputs and fails the encode if either drifts more than 0.5 LU.
+`Tarmac Pulse`: master -13.0 LUFS with 13.7 LU of range, Opus -13.0 / 13.7,
+mp3 -12.9 / 13.8.
+
+True peak is printed and deliberately not gated, and the reason is written
+into the constant. Some of these masters already clip: `Neon Horizon` is
++0.6 dBFS true peak before anything here touches it, Opus takes that to
++1.4 and the mp3 holds +0.5. A codec cannot un-clip a master and a gate
+would fail an encode over a fault it did not cause. It does not reach the
+ears either: the bus is 0.5 times `MUSIC_BUS` 0.60, so +1.4 dBFS of source
+sits about 10 dB below full scale in the graph. Move `MUSIC_BUS` and read
+that column again.
+
+**Running the encoder twice produces the same bytes.** It did not at first.
+Matroska writes a random `SegmentUID` and stamps in the libavformat
+version, so the first version of this script turned every re-encode into a
+30 MB diff with the same audio on both sides. `-fflags +bitexact` and
+`-flags:a +bitexact` on the demuxer, encoder and muxer fix it, and take 62
+bytes of tool version strings off each track while they are there. Checked:
+the whole crate encoded, staged, then `--only=tarmac-pulse` run again, and
+`git status` clean.
+
+**Two, `preload` is `none`.** `attach()` runs on the first gesture, which is
+usually the same click that starts a flight. Probed in the same Chromium,
+three detached elements, one URL each, no `play()` and nothing else touched:
+
+| preload | bytes fetched |
+| --- | --- |
+| none | no request at all |
+| metadata | 300 |
+| auto | 3,026,957, the entire file |
+
+Same three numbers with each element routed through
+`createMediaElementSource`, so being on the Web Audio graph does not change
+it. `auto` was what the element carried, which is where the 4.18 MB for
+silence came from.
+
+**Three, the crate is cached like the asset it is.** `render.yaml` now
+serves `/assets/music/*` `public, max-age=31536000, immutable` while
+everything else stays `no-cache`. A track is not part of the module graph,
+so the argument that keeps `no-cache` everywhere else does not reach it: a
+visitor holding last week's `Tarmac Pulse` next to this week's `src/` is
+holding a song, not half a program. This is safe only because `MUSIC_REV` in
+`src/render/tracks.js` goes into every music URL as `?v=N`. Re-encode the
+crate, bump `MUSIC_REV`. That sentence is in `tracks.js`, `render.yaml` and
+`DEPLOY.md`, because there is no way for a browser a year into an immutable
+cache to find out on its own.
+
+`scripts/serve.js` and `tests/lib/server.js` mirror the policy for that one
+directory. Under a blanket `no-store` the next-track warm below is not an
+optimisation, it is the same track downloaded twice, and a harness that
+cannot tell those two apart cannot check the feature.
+
+**Four, the next track warms out of spare bandwidth.** In rotation only,
+inside the last 25 s, only once the current track is buffered to its own
+end, and never under Save-Data. A second `Audio` element that is never
+played and never connected to the graph, so it costs no AudioNode: the P12
+budget is unchanged at three for music. It is released the moment the real
+element asks for the same URL.
+
+Measured end to end at 5 Mbps: fully buffered but 180 s from the end,
+`warmId` stayed empty, which is the refusal to speculate working. Seeked to
+T minus 12, the warm fired for `neon-horizon`. The track then ended on its
+own, the rotation advanced, and playback was at 4.00 s after a 4 s wait, so
+there was no stall to hear, and the warm element had already been released.
+`neon-horizon.webm` was served **3,707,628 bytes**, which is its exact size
+on disk: downloaded once by the warm and handed to the real element out of
+the browser's disk cache.
+
+### The two supporting changes
+
+**Filenames are the track ids.** `tracks.js` had a filename column beside an
+id that was already the slug of the title, so two facts that could disagree.
+The URL is now `/assets/music/<id>.<ext>?v=N` and there is no percent
+encoding in it, which also retires `Copper Gypsy Run take 2.mp3` and
+`Pace Shift Skyline (1).mp3` as URLs. `tracks.js` asserts every id is
+`[a-z0-9-]+`, because an id is half a URL now and a capital in one would not
+fail until a deploy served a 404 for one track in twelve.
+
+**Both dev servers answer byte ranges and stream from disk.** Chromium's
+media stack opens a track with `Range: bytes=0-` and reopens the connection
+as its buffer fills; against a server that ignores `Range` it takes the
+whole file in one go instead. Production has always supported ranges, so a
+local page that behaves worse than the deploy in the exact dimension being
+measured is worse than no local page. Checked directly: a full-file range
+hashes to the same SHA-256 as the file on disk, `bytes=100-103` matches
+`dd`, `bytes=-10` returns the last ten bytes and not the first ten,
+an out of range start is 416, `/src/render/music.js` is still `no-store`.
+
+### Two formats, and what happens to whoever cannot open a WebM
+
+`canPlayType('audio/webm; codecs="opus"')` picks. Safari before 14.1 on the
+desktop and 17.4 on the phone answers `''` and gets mp3. A browser that
+answers `maybe` and then fails is caught by `onError`, which treats a decode
+or unsupported-source failure on a WebM as a bad FORMAT rather than a bad
+track: it demotes the session to mp3 once and reloads the same track, rather
+than skipping, which would walk the whole crate to silence one file at a
+time.
+
+Exercised on the live page by pointing the player at a track id that 404s:
+it tried the WebM, demoted, tried the same id as mp3, failed again, counted
+that one and skipped to the next track, which played as mp3. The forced mp3
+path was also driven directly and reported a duration of 358.7 s against the
+master's 359, so LAME's Xing header is present and a VBR fallback does not
+have to be scanned to be seekable.
+
+Render serves `.webm` as `video/webm` off its own extension table, and both
+dev servers now say the same thing rather than the more correct
+`audio/webm`, so the one thing worth testing is not the one thing localhost
+cannot tell you. An audio-only WebM served as `video/webm` plays through an
+`<audio>` element and a `MediaElementSource` in Chromium, measured, not
+assumed.
+
+### What went wrong
+
+**The loudness gate passed everything, and looked like it worked.** The
+first version matched the first `I:` line in ffmpeg's output. `ebur128`
+prints a running `I:` on every frame and the first of those is -70 LUFS, the
+gate value for silence, so it compared -70 against -70 and would have waved
+through an encode that halved the bed. Caught only because all twelve rows
+printed "-70 LUFS". It now parses the block after `Summary:`. The first full
+encode ran under the broken gate and is not evidence; the committed crate is
+from the second run, and the fix is written into the comment above
+`measure()` so it does not come back.
+
+**`performance.getEntriesByType('resource')` cannot see a media element.**
+The first attempt to prove the `preload` claim used it, and the old build
+with music off reported no music request at all, which read as the claim
+being wrong. The element said otherwise in the same breath: `readyState` 4,
+`buffered` 182.69 s of a 182.7 s track. Counting bytes at the server showed
+4,177,303 of them. Every byte figure in this entry is from the server.
+
+### Turned down, and why
+
+- **Content hashed filenames** instead of `?v=`. It is the better cache key
+  and it means generating a source file from a script, which is a worse
+  trade in a repository this size than one integer with three signposts.
+- **AAC in an m4a as the fallback.** Better than mp3 at the same rate, but
+  mp3 is the universal floor and a third format buys a browser that has
+  neither WebM nor AAC nothing at all.
+- **Normalising loudness across the crate.** It would make the bed sit more
+  evenly and it would move a mix the owner has already balanced by ear.
+- **Refusing to autoplay under Save-Data.** Save-Data now suppresses the
+  speculative warm, which costs nothing. Suppressing the music itself is a
+  UX decision dressed as an optimisation.
+
+VERIFY, this turn: `npm run verify`, **14 of 16**. Check 14 `audio-bed`
+green on the new crate and the new server, `ctx running, music gain 0.300,
+media 2.49 s in 2.49 s, 41 nodes`. Check 13 `console-clean` green, check 3
+`determinism-cross-host` green, which is the harness server change carrying
+the module fetch. The two reds are both already recorded on this branch and
+neither moved: check 1 `build-clean` because this container has no `emcc`
+and no `vendor/betaflight` checkout, and check 16 `map-isolation` at
+1,043,845 triangles against a recorded 1,014,037 and 33.1 MB against 32,
+which is the feather flags entry above, to the digit. `tests/thresholds.json`
+is untouched. Verify was run rather than skipped because this change edits
+`tests/lib/server.js`, which every browser check runs on, and the standing
+rule about when verify is owed is about risk rather than about the word
+"physics". `npm run lint:fc` and `npm run lint:presets` green;
+`npm run lint:catalog` cannot run here at all and fails identically on
+`HEAD`, because `vendor/betaflight` is not checked out in this container.
+
+NOT verified, and worth saying plainly: no real Safari was involved, so the
+mp3 branch was reached by forcing it and by the demote path, both in
+Chromium. Nothing here proves what Render actually sends as the
+`Content-Type` for a `.webm` or that it honours a scoped `Cache-Control`;
+both are claims about Render's documented behaviour, mirrored locally so
+that they are at least testable in one place. Flight feel is untouched by
+all of this and is not verified by any of it.

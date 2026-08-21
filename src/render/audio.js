@@ -52,9 +52,10 @@
  * ui(). All of it runs on the two pooled cue voices that already existed:
  * no event creates a node.
  *
- * Music is recorded mp3s from assets/music, played by src/render/music.js
- * through one MediaElementSource on this same mix. Cues still duck it.
- * The generated drum and bass crate is gone.
+ * Music is the recorded crate in assets/music, Opus in a WebM with an mp3
+ * fallback, played by src/render/music.js through one MediaElementSource
+ * on this same mix. Cues still duck it. The generated drum and bass crate
+ * is gone.
  *
  * The graph is built by attach(ctx), which takes any BaseAudioContext, and
  * update() takes the time to schedule at. Both exist so that

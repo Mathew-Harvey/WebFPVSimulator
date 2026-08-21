@@ -8,3 +8,8 @@ build/
 tracks/json/edit-keys.json
 # Plan view PNGs written by tracks/plan.mjs while reviewing an import.
 tracks/_review/
+
+# Music masters. The crate is committed as encoded output only, see
+# scripts/music.js. The masters are the mp3s as they stood at commit
+# f9e0804 and weigh 75 MB, which is not a thing to carry twice.
+assets/music-src/

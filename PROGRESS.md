@@ -13430,3 +13430,88 @@ the accounting, or take the geometry back out of the flag.
 
 Everything else on the merged tree: `npm run verify` 14 of 16 as above,
 `node src/trackbuilder/selftest.js` 278 of 278, `npm run lint:fc` 30 of 30.
+
+## The motors droned on after a crash and after the finish line
+
+The owner: "when i crash or finish a race the motor noise currently locks and
+drones, the motor noise should stop".
+
+**The bug is one argument, fed from a state nothing is advancing any more.**
+The mix is driven once a frame from `audio.update(audioRpm, speed)` in
+`src/main.js`, and `audioRpm` was copied straight out of `stateCurr[14..17]`.
+The integrator steps under exactly one condition, `mode === 'flight' &&
+!crashed && !landed`. Everything else freezes it: the title screen, the pause
+menu, the results screen, the crash lockout, and every second the craft sits
+parked. A frozen state still carries the motor RPM of the last step it took,
+so `update()` went on being told, sixty times a second, that four motors were
+turning at exactly the speed they were turning at the instant the world
+stopped. It did what it is supposed to do with that: held the tone.
+
+Three separate ways in, and they were all the same line.
+
+- **The finish.** `mode = 'results'` and no branch steps the plant again on
+  that screen, so the chord the pilot crossed the line on played under the
+  results table for as long as the table was up. Unbounded.
+- **The crash.** The lockout is 1.4 s of frozen state before `resetCraft`
+  fires, and `sim_reset` is the only thing that ever put the RPM back to
+  zero. So a wreck lay on the ground droning on whatever it hit the tree at,
+  and the wind held at the speed of the impact too, because the airspeed
+  argument was gated on the weaker `mode === 'flight'`, which is true right
+  through a lockout.
+- **A mid lap landing**, which the owner did not report and is the same
+  defect. `sim_rest` zeroes velocity and omega and does not touch the
+  motors, so a landing froze the touchdown tone until the next takeoff.
+  Invisible on the start line only because the plant there is freshly reset
+  and the RPM really is zero.
+
+**The fix is to feed the mix from a state the integrator is still advancing,
+or to feed it nothing.** One boolean, `motorsTurning`, spelled the same as
+the condition the physics itself steps under, gating all four RPM values and
+the airspeed. No new law and no new constant: the RPM path already knows what
+a stopped motor is, because below `MOTOR_MUTE_RPM` the stem is faded out
+rather than floored at 20 Hz, which is the same fade the start line has
+always used.
+
+**Measured, on the real page, before and against after.** `node
+scripts/shots.js` drives a takeoff and samples the live graph every 25 ms:
+`motors[0].gain.gain.value`, `motors[0].osc.frequency.value` and
+`noiseGain.gain.value`, read off the running AudioContext rather than
+inferred.
+
+| | before | after |
+| --- | --- | --- |
+| results screen, 2.6 s | gain 0.278 flat, min 0.278, 1291 Hz flat | gain 0.229 to **0**, min 0 |
+| crash lockout, 1.4 s | gain 0.17098 to 0.17095, 103 Hz flat, wind 0.162 to 0.168 | gain 0.171 to **0**, wind back to its 0.085 floor |
+| paused in the air, 1.5 s | gain 0.278 flat, 1291 Hz flat | silent |
+
+Flat to five decimal places over a second and a half is the drone, and it is
+now a fade to zero on the frame the state freezes.
+
+**The same defect from the other end, fixed with it: a hidden tab.** The whole
+mix is scheduled from inside `frame()`, and `requestAnimationFrame` is not
+called for a hidden document, while the AudioContext keeps its own clock. So
+switching tabs mid flight left the motors and the wind running on the last
+values they were handed, for longer than any crash lockout. A
+`visibilitychange` listener pushes one silent update as the page goes away.
+Verified by killing `requestAnimationFrame` outright, which is the real
+mechanism rather than an imitation of it: with the loop dead and the page
+still visible the gain sat at 0.278 and the wind at 0.912, and with the same
+dead loop and `document.hidden` true it went to 0 and 0.085. Coming back, the
+next frame feeds the live state and the mix ramps up on the same 30 ms tau.
+
+This one is scope the owner did not ask for. It is written down here so it can
+be taken back out in one revert if they disagree: it is the listener and
+nothing else.
+
+VERIFY, this turn: `node --check src/main.js`; three `node scripts/shots.js`
+runs, crash and pause, the finish transition, and the hidden tab, each with
+console errors 0, each run once on the committed tree and once on the fix.
+`npm run verify` was NOT run. The change is in the shell's frame loop and
+touches no physics, no plant, no module ABI and no build input, which is the
+standing rule for when it is owed, and the owner said they would fly it. The
+audio probe and check `audio-bed` are untouched by it either way: the probe
+drives `MotorAudio` offline from a recorded trace and never reads
+`src/main.js`, and `audio-bed` measures the bed and the node count on the
+title screen, where the RPM was already zero. No AudioNode is created or
+dropped, so the P12 count is unchanged. Flight feel is not verified by any of
+this and is awaiting the owner flying it.

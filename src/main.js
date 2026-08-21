@@ -2931,11 +2931,40 @@ export async function boot({ loading, bootStart, mapId }) {
      * to allocate nothing. Two scalars written in place, and the rpm array
      * is hoisted out of the loop for the same reason. */
     const audioStart = performance.now();
-    audioRpm[0] = st[14];
-    audioRpm[1] = st[15];
-    audioRpm[2] = st[16];
-    audioRpm[3] = st[17];
-    audio.update(audioRpm, mode === 'flight' ? speed : 0);
+    /*
+     * THE MIX IS FED FROM A STATE THE INTEGRATOR IS STILL ADVANCING, or it is
+     * fed nothing at all.
+     *
+     * The physics steps under exactly one condition, `mode === 'flight' &&
+     * !crashed && !landed`, and every other state freezes it: the title
+     * screen, the pause menu, the results screen, the crash lockout, and
+     * every second the craft sits parked. A frozen state still carries the
+     * motor RPM of the last step it took, and update() reads that as the
+     * honest truth about four turning motors, so the mix went on holding
+     * whatever tone the quad was making at the instant the world stopped.
+     * Crossing the last gate at speed left the results screen droning on a
+     * full throttle chord for as long as the table was up, because nothing
+     * steps the plant again on that screen; a wreck droned for the whole
+     * 1.4 s lockout on whatever RPM it hit the tree at; and a mid lap
+     * landing held the touchdown tone until the pilot took off again,
+     * because sim_rest zeroes velocity and omega and leaves the motors
+     * exactly where they were. None of those is a motor turning. Zero is,
+     * and the RPM path already knows what to do with it: below
+     * MOTOR_MUTE_RPM the stem is faded out rather than floored, which is
+     * the same fade the start line has always used, where the plant is
+     * freshly reset and the RPM really is zero.
+     *
+     * The airspeed argument gets the same test instead of its old bare
+     * `mode === 'flight'`. That was true right through a crash lockout, so
+     * the wind was held at the speed of the impact for the whole of it while
+     * the wreck lay still on the ground.
+     */
+    const motorsTurning = mode === 'flight' && !crashed && !landed;
+    audioRpm[0] = motorsTurning ? st[14] : 0;
+    audioRpm[1] = motorsTurning ? st[15] : 0;
+    audioRpm[2] = motorsTurning ? st[16] : 0;
+    audioRpm[3] = motorsTurning ? st[17] : 0;
+    audio.update(audioRpm, motorsTurning ? speed : 0);
     const audioMs = performance.now() - audioStart;
     if (frames > 2 && audioMs > worstAudioMs) {
       worstAudioMs = audioMs;
@@ -3128,6 +3157,28 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Hoisted: P8 forbids a new array per frame, and this one used to be a
    * literal in the audio.update call. */
   const audioRpm = [0, 0, 0, 0];
+  /*
+   * The other way the mix can be left holding a tone, and it is the same
+   * defect from the other end: the whole mix is driven from inside frame(),
+   * and requestAnimationFrame is not called for a hidden document. The
+   * AudioContext keeps its own clock while the tab is in the background, so
+   * switching away mid flight used to leave the motors and the wind running
+   * on the last values they were handed, for as long as the tab stayed
+   * hidden, which is longer than any crash lockout. One update with the
+   * motors stopped, scheduled the moment the page goes away, and the fade
+   * a parked craft gets takes it down. Coming back, the next frame feeds
+   * the live state again and the mix ramps up on the same 30 ms tau.
+   */
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      return;
+    }
+    audioRpm[0] = 0;
+    audioRpm[1] = 0;
+    audioRpm[2] = 0;
+    audioRpm[3] = 0;
+    audio.update(audioRpm, 0);
+  });
   let firstFrameMs = -1;
   let frames = 0;
   /* Render statistics for the harness and the frame budget gate. */

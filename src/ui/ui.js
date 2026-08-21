@@ -1028,6 +1028,19 @@ export class Ui {
     const brand = el('div', 'brand');
     this.brandSub = el('div', 'brand-sub', '');
     brand.append(wordmark(), this.brandSub);
+    /* Beta notice. The only line on this screen that is about the
+     * software rather than about flying, so it wears the amber an
+     * instrument wears rather than the mint a record does, and it sits
+     * directly under the wordmark: a pilot who is about to meet a bug
+     * should have been told before the lap, not after it. It is not
+     * dismissible, because the thing it warns about has not stopped
+     * being true by the second visit. */
+    const beta = el('p', 'beta-note');
+    beta.append(
+      el('span', 'beta-tag', 'Beta'),
+      el('span', null, 'Expect bugs and rough edges. It is still being built, and it will improve.'),
+    );
+    brand.append(beta);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a course to put it on the public board.');

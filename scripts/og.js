@@ -63,7 +63,7 @@ const H = 630;
  */
 const HIDE = [
   '.menu-stage', '.hint', '.lede', '.title-foot',
-  '.bug-chip', '.brand-best', '.keep-note', '.first-note',
+  '.bug-chip', '.brand-best', '.keep-note', '.first-note', '.beta-note',
 ];
 
 /* Camera, then the point it looks at. Metres, world frame. */

@@ -14226,3 +14226,47 @@ module ABI or the build: it is one generated PNG, one script that drives an
 existing harness, and meta tags in three heads. `npm run lint:catalog` still
 fails on the missing `vendor/betaflight` submodule, as it did before this
 change and for the same reason.
+
+## The title screen says it is beta before the first lap
+
+The shell has carried a Report a bug chip since the bug form landed, which
+tells a pilot what to do about a bug but never told them to expect one. Somebody
+arriving on webfpv.org has no way to know whether the thing under them is
+finished software behaving badly or unfinished software behaving normally, and
+those two readings produce very different reactions to the same stutter. The
+title screen now says which it is: an amber BETA tag and one sentence, "Expect
+bugs and rough edges. It is still being built, and it will improve."
+
+It lives in the brand block, directly under the wordmark and the map line and
+above the track record pill, so it shares the left edge with everything else in
+that column and reads as part of the title rather than as a toast bolted over
+it. Amber, because among the five colours it is the one an instrument reading
+wears: the notice is a status on the software, not a record (mint) and not
+chrome (sakura). It is not dismissible. The condition it reports has not
+stopped being true by the second visit, and a dismissal would need storage,
+which is the one thing the keep note under it already warns is not durable.
+
+Three layouts, three behaviours, and the split is deliberate. Full width shows
+the tag and the sentence. Under 900 px the storage note goes, as it did before,
+and the beta notice stays: a phone meets the same bugs a desktop does, and this
+is one line where that note is four. Under 520 px of height, the layout where
+brand-sub, the record pill, the keep note and the footer hint all already go so
+the menu fits, the sentence goes and the tag stays. The word is the part that
+has to survive and it costs one line.
+
+`.beta-note` joins the HIDE list in `scripts/og.js`. The share card is
+documented as the title screen with the menu, the chips and the body copy
+hidden, and the notice is body copy: without the selector the next regeneration
+would have quietly put it on every share of the site. `og.png` was NOT
+regenerated this turn, because nothing about the card changed, only the recipe
+that would rebuild it.
+
+CHECKS, this turn. Four `scripts/shots.js` runs of the real title screen, all
+console errors 0 and warnings 0: 1600 by 900 first run, 430 by 932, 880 by 480,
+and 1600 by 900 with `is-first` removed and the record pill filled, which is the
+returning pilot's stack and the tightest of the four. Every frame was looked at.
+`npm run verify` was NOT run: this is one paragraph of DOM in `ui.js`, three CSS
+blocks and one selector in a generator script, and nothing here touches physics,
+the plant, the module ABI or the build. `npm run lint:catalog` still fails on
+the missing `vendor/betaflight` submodule, as it did before this change and for
+the same reason.

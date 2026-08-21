@@ -804,7 +804,30 @@ export class MotorAudio {
      * mix gets hissy.
      */
     const rush = Math.min(1, speed / 32);
-    this.noiseGain.gain.setTargetAtTime(0.085 + 0.71 * rush * rush + 0.17 * loudest, t, 0.06);
+    /*
+     * THE 0.085 IS THE AIR A FLYING QUAD SITS IN, NOT A HUM THE PAGE MAKES.
+     *
+     * It was an unconditional term, so the wind bed never went below it, and
+     * with the motors muted it was the ONLY thing left in the graph. Measured
+     * offline through this very class with the motors stopped and the
+     * airspeed zero: -57.77 dBFS RMS at the default volume, and zeroing the
+     * wind stem alone took the render to exact digital silence while zeroing
+     * the motor stem changed nothing at all. So after the round that stopped
+     * the motors droning on the results screen the owner still heard
+     * something, "lower in pitch and quieter", and that is what it was: a
+     * dead flat band of noise under a 900 Hz lowpass, running under the
+     * title screen, under the results table and through every crash lockout,
+     * never changing, which is exactly the kind of sound an ear locks on to.
+     *
+     * Stopped air is silent, for the same reason a stopped motor is. The
+     * floor stays whenever anything is actually moving, which includes a
+     * hover, where `loudest` is what carries the prop wash; it is gone only
+     * when every motor is below MOTOR_MUTE_RPM and the craft is not moving
+     * either. The 0.06 tau takes it down over about 200 ms rather than
+     * cutting, the same way the motor stem goes.
+     */
+    const bed = loudest > 0 || rush > 0 ? 0.085 : 0;
+    this.noiseGain.gain.setTargetAtTime(bed + 0.71 * rush * rush + 0.17 * loudest, t, 0.06);
     /* The bed. Ticked from here so a paused element is restarted while
      * the mix is live, and so the probe still exercises the same update. */
     this.music.tick(t);

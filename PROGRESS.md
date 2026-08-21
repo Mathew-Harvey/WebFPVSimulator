@@ -13515,3 +13515,62 @@ drives `MotorAudio` offline from a recorded trace and never reads
 title screen, where the RPM was already zero. No AudioNode is created or
 dropped, so the P12 count is unchanged. Flight feel is not verified by any of
 this and is awaiting the owner flying it.
+
+### The same report again, one round later: "still noise, just lower in pitch and quieter"
+
+The motors really had stopped. What the owner could still hear was the WIND
+BED'S FLOOR, and stopping the motors is what uncovered it.
+
+**Measured before arguing about it.** The real `MotorAudio` graph, rendered
+offline with the motors stopped and the airspeed zero, the state the results
+screen and the crash lockout now hand it:
+
+| render, motors stopped and speed 0 | RMS | peak |
+| --- | --- | --- |
+| mix at defaults | -57.77 dBFS | -46.33 |
+| wind stem set to 0 | exact digital silence | |
+| motor stem set to 0 | -57.77 dBFS | -46.33 |
+
+Zeroing the wind alone took it to silence and zeroing the motors changed
+nothing, so the residual was the wind stem and only the wind stem. One term
+in one line:
+
+    noiseGain.gain.setTargetAtTime(0.085 + 0.71 * rush * rush + 0.17 * loudest, ...)
+
+`0.085` was unconditional, so the bed never went below it. Broadband noise
+under a 900 Hz lowpass, dead flat, running under the title screen, under the
+results table and through every crash lockout, for the whole time the page
+was open. Lower in pitch than the blade tone and quieter than it, which is
+exactly the report.
+
+**Stopped air is silent, for the same reason a stopped motor is.** The floor
+is the air a FLYING quad sits in, and it now applies when something is
+actually moving: any motor above `MOTOR_MUTE_RPM`, or any airspeed at all.
+Not a new constant and not a new law, one condition on the term that was
+already there. The 0.06 tau takes it down over about 200 ms rather than
+cutting, the same way the motor stem goes.
+
+**What keeps its bed, measured on the same renders.** Hover at 6200 rpm with
+zero airspeed, which is the case that would break if this were gated on
+airspeed alone, -31.90 dBFS. Idle spin at 900 rpm, -32.46. Motors dead but
+falling at 12 m/s, -51.02. Flight at 7000 rpm and 20 m/s, -33.09 RMS and
+-20.49 peak, the same figures to the digit as before the change, so the flying
+mix is untouched.
+
+Live page, through `scripts/shots.js`, sampling `noiseGain.gain.value` beside
+the motor voices every 25 ms: the results screen 0.749 to 0 and the crash
+lockout 0.135 to 0, both alongside their motor stem going to 0; the start
+line, the post crash reset and pause all flat 0 where they used to sit at
+0.085; the hidden tab 0.910 to 0. In flight it rises to 0.907 as before.
+
+VERIFY, this turn: `node --check src/render/audio.js`; four `node
+scripts/shots.js` runs, the offline level table above, the finish transition,
+the crash and pause run, and the hidden tab, console errors 0 on each. `npm
+run verify` was not run: this is one term in the audio mix and touches no
+physics, no plant, no module ABI and no build input, and nothing in
+`tests/thresholds.json` or `gates.config.json` measures the wind stem. Check
+`audio-bed` reads the music element, the node count and whether the graph
+attached, none of which this moves, and no AudioNode is created or dropped so
+the P12 count is unchanged. The audio probe's own A checks drive a flight
+trace, where every motor is turning and the floor therefore applies exactly as
+it did. Whether it is right by ear is the owner's call, again.

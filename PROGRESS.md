@@ -14577,3 +14577,51 @@ CHECKS, this turn, all run and read:
 
 Flight feel on actual glass is awaiting an actual thumb; the harness can
 prove the path, not the pleasure.
+
+## The thumbs got rates cut for thumbs
+
+The first phone flight came back in four words: the rates feel way too
+fast. Correct on both counts, and the fix is two calibrations, one per
+layer, neither of them hidden.
+
+**The transducer.** Full deflection was one plate-half of thumb travel,
+63 px on a phone plate, so a millimetre of shake was tens of degrees a
+second. TRAVEL_FRACTION in touchsticks.js is 0.72 of the plate width now,
+44 percent more glass per degree, measured in the harness: a 63 px drag
+reads 0.69 of a stick where it read full, and 95 px reads the stop.
+Throttle was decoupled onto its own scale first, one plate height for the
+full sweep exactly as before, so tuning the deflection travel cannot push
+full throttle off the glass.
+
+**The rates, visibly.** TOUCH_RATE_DEFAULTS in configs/rates.js: Actual,
+60 at centre, 450 at the stop, 0.25 expo, yaw 400. The stock 670-no-expo
+is a gimbal calibration, 40 mm of sprung travel and a wrist; on glass it
+is unflyable, and hiding a correction curve inside the touch layer would
+have made the Rates screen a liar. So the correction IS rates, in three
+ways with one flag between them: a profile that has never held rates
+boots straight onto the touch profile on a touch device (loadSettings); a
+profile still flying the stock defaults is switched ONCE, at the first
+moment touch actually flies, with a notice saying what changed and that
+the Rates screen is where to change it back (adoptTouchRates in the
+frame loop); and a pilot who ever set their own rates keeps them
+untouched, the flag flipping silently so nothing asks twice. After any
+of the three, they are ordinary rates: on the Rates screen, in the menu
+summary, flown by fc/rc.c like everything else.
+
+CHECKS, this turn. Four headless Chromium runs, console errors 0
+warnings 0 on every one: a fresh touch profile boots on 45/25 straight
+from the module readback with the summary reading 450 roll and pitch,
+400 yaw, flies a thumb climb past 3 m, and full throttle is one plate
+height of drag; a stored stock profile boots on 67, switches to 45 the
+first frame touch flies, and holds 45 with the flag true across a
+reload; a stored 900 deg/s profile keeps its 90 through the same flight
+with the flag flipped; a desktop run changes nothing and the flag stays
+false. The eased-rates notice was looked at on screen. lint:presets 3 of
+3, lint:fc 30 of 30 (the F15 preview sweep covers the expo the touch
+profile turns on), replay, link, edge and trackbuilder selftests green.
+npm run verify ran with the input path touched: **14 of 16**, full table
+read, determinism hashes byte-identical again, the standing two
+environment reds and nothing else.
+
+Whether 450 and 0.72 are the right numbers is a thumb's call, not a
+harness's; the feel dialog is one pause away when they are not.

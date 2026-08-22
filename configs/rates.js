@@ -183,6 +183,35 @@ export const RATE_DEFAULTS = Object.freeze({
   throttleCap: 100,
 });
 
+/*
+ * The rate profile thumb sticks start on, and only start on: it is a
+ * DEFAULT, seeded for a fresh profile on a touch device and offered once
+ * to a stock-rates profile the first time touch flies (src/main.js
+ * adoptTouchRates). A pilot who has set their own rates is never touched,
+ * and after the seed these are ordinary rates on the Rates screen, theirs
+ * to change.
+ *
+ * WHY GENTLER AT ALL. The stock 670 with no expo is calibrated against a
+ * gimbal: 40 mm of sprung travel and a wrist behind it. A thumb on glass
+ * gets about a quarter of that travel and no spring centring it, so the
+ * same profile puts tens of degrees per second inside one millimetre of
+ * shake, which is the "way too fast" the first phone pilot reported.
+ *
+ * THE NUMBERS. Actual rates, 60 deg/s at centre and 450 at the stop for
+ * roll and pitch: 450 is a flyable freestyle rate, quick enough to race
+ * the field's corners, calm enough to hold a line with a thumb. 0.25 expo
+ * spends more of the short travel near the middle without softening the
+ * stop. Yaw 400, a touch under roll, because the default camera sits at
+ * 20 degrees and yaw on glass is mostly small corrections.
+ */
+export const TOUCH_RATE_DEFAULTS = Object.freeze({
+  type: 'ACTUAL',
+  roll: Object.freeze({ rcRate: 6, srate: 45, expo: 25 }),
+  pitch: Object.freeze({ rcRate: 6, srate: 45, expo: 25 }),
+  yaw: Object.freeze({ rcRate: 6, srate: 40, expo: 25 }),
+  throttleCap: 100,
+});
+
 function rateFields(type) {
   return (RATE_SYSTEMS[type] || RATE_SYSTEMS.ACTUAL).fields;
 }

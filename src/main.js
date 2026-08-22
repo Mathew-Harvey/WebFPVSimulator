@@ -69,7 +69,7 @@ import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
-import { ratesDiff, ratesSummary } from '../configs/rates.js';
+import { normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, moduleGet, RATES_KEEP } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
@@ -3167,6 +3167,28 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (touch) {
       const touchOn = mode === 'flight' && ui.screen === 'flight' && !input.firstGamepad();
+      /*
+       * The one-time thumb-rates hand-off, at the first moment touch is
+       * actually about to fly. A fresh touch profile was already seeded
+       * by loadSettings; this catches the OTHER pilot, an existing
+       * profile still on the stock defaults, whose 670-no-expo is a
+       * gimbal calibration and reads as "way too fast" on glass, which
+       * is the report this answers. A pilot who chose their own rates is
+       * respected: the flag still flips so this never asks again, and
+       * their numbers are not touched.
+       */
+      if (touchOn && !ui.settings.touchRatesOffered) {
+        ui.settings.touchRatesOffered = true;
+        if (ratesAreDefault(ui.settings.rates)) {
+          ui.settings.rates = normaliseRates(TOUCH_RATE_DEFAULTS);
+          notice = {
+            text: 'Rates eased for thumb flying.\n450 deg/s with expo. Yours to change on the Rates screen.',
+            untilMs: performance.now() + 4200,
+          };
+        }
+        ui.persistSettings();
+        applySettings(ui.settings);
+      }
       touch.setVisible(touchOn);
       uiRoot.classList.toggle('touch-fly-on', touchOn);
       touch.paint();

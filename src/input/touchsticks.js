@@ -9,11 +9,14 @@
  *
  * RELATIVE FROM TOUCHDOWN, NEVER A JUMP. The thumb lands wherever it
  * lands, and that point is zero: deflection is the drag from there, full
- * deflection one plate-half of travel. The alternative, absolute mapping,
- * spikes the channel to wherever the thumb happened to hit, which on the
- * throttle is a punch the pilot did not fly. Because the mapping is
- * relative, the whole lower corner of the screen is catchment, not just
- * the drawn plate: a thumb that grabs 40 px off the gimbal still flies.
+ * deflection TRAVEL_FRACTION of the plate width. The alternative,
+ * absolute mapping, spikes the channel to wherever the thumb happened to
+ * hit, which on the throttle is a punch the pilot did not fly. Because
+ * the mapping is relative, the whole lower corner of the screen is
+ * catchment, not just the drawn plate: a thumb that grabs 40 px off the
+ * gimbal still flies. Throttle runs on its own scale, one plate height
+ * for the full sweep, a radio's ratio, and stays reachable whatever the
+ * deflection travel is tuned to.
  *
  * THROTTLE IS STICKY, EVERYTHING ELSE SPRINGS. A radio's throttle stays
  * where the thumb left it and so does this one: lift the thumb and the
@@ -56,6 +59,19 @@
  * second. 8 is about 125 ms from the stop, the pace of a real spring,
  * and slow enough that the D term sees a ramp rather than an edge. */
 const SPRING_RATE = 8;
+
+/*
+ * Thumb travel for full deflection, as a fraction of the plate width.
+ * It was one plate-half, 0.5, and the first phone pilot reported the
+ * rates "way too fast": at that scale a 126 px plate put full stick 63 px
+ * from touchdown, so a millimetre of thumb shake was tens of degrees a
+ * second. 0.72 buys 44 percent more glass per degree without pushing the
+ * stop out of a thumb's reach, and it works WITH the gentler touch rate
+ * profile in configs/rates.js rather than instead of it: this constant
+ * calibrates the transducer, the rates stay the pilot's and stay on the
+ * Rates screen.
+ */
+const TRAVEL_FRACTION = 0.72;
 
 /*
  * Whether this device wants thumb sticks at all. Touch points are the
@@ -131,11 +147,15 @@ export function mountTouchSticks({ onPause } = {}) {
   };
   let visible = false;
 
-  /* Full deflection is one plate-half of thumb travel, measured off the
-   * plate actually drawn so the feel follows the size on this screen. */
+  /* Full deflection is TRAVEL_FRACTION of the plate's width of thumb
+   * travel, measured off the plate actually drawn so the feel follows
+   * the size on this screen. The height is the throttle's own scale. */
   function travelOf(plate) {
     const r = plate.getBoundingClientRect();
-    return Math.max(40, r.width / 2);
+    return {
+      deflect: Math.max(40, r.width * TRAVEL_FRACTION),
+      sweep: Math.max(60, r.height),
+    };
   }
 
   function bindZone(side, stick) {
@@ -146,12 +166,14 @@ export function mountTouchSticks({ onPause } = {}) {
       }
       e.preventDefault();
       zone.setPointerCapture(e.pointerId);
+      const t = travelOf(plate);
       grip[side] = {
         id: e.pointerId,
         x: e.clientX,
         y: e.clientY,
         throttle: ch.throttle,
-        travel: travelOf(plate),
+        deflect: t.deflect,
+        sweep: t.sweep,
       };
       plate.classList.add('is-held');
     });
@@ -161,16 +183,17 @@ export function mountTouchSticks({ onPause } = {}) {
         return;
       }
       e.preventDefault();
-      const dx = (e.clientX - g.x) / g.travel;
-      const dy = (g.y - e.clientY) / g.travel;
+      const dx = (e.clientX - g.x) / g.deflect;
+      const dyPx = g.y - e.clientY;
       if (side === 'left') {
         ch.yaw = clamp(dx, -1, 1);
-        /* The plate is two travels tall, so a full-height drag is a full
-         * throttle sweep, exactly a radio's ratio. */
-        ch.throttle = clamp(g.throttle + dy / 2, 0, 1);
+        /* One plate height is one full throttle sweep, a radio's ratio,
+         * on its own scale so tuning the deflection travel cannot push
+         * full throttle off the glass. */
+        ch.throttle = clamp(g.throttle + dyPx / g.sweep, 0, 1);
       } else {
         ch.roll = clamp(dx, -1, 1);
-        ch.pitch = clamp(-dy, -1, 1);
+        ch.pitch = clamp(-(dyPx / g.deflect), -1, 1);
       }
     });
     const drop = (e) => {

@@ -61,6 +61,7 @@ import {
   RATE_DEFAULTS,
   RATE_FIELDS,
   RATE_TYPES,
+  TOUCH_RATE_DEFAULTS,
   RATE_TYPE_LABEL,
   THROTTLE_CAP_CHOICES,
   cliOf,
@@ -226,6 +227,15 @@ const DEFAULTS = {
    * in; an automatic prompt that returns is how feedback dies.
    */
   feelAsked: false,
+  /*
+   * Whether the thumb-rates hand-off has happened. A fresh profile on a
+   * touch device starts on TOUCH_RATE_DEFAULTS directly; an existing
+   * profile still flying the stock defaults is switched ONCE, the first
+   * time touch actually flies, by adoptTouchRates in src/main.js, with a
+   * notice saying where to change them. A pilot with their own rates is
+   * never touched, and this flag is what keeps all of it to one offer.
+   */
+  touchRatesOffered: false,
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -367,7 +377,19 @@ export function loadSettings() {
    * blob unable to put an out of range number into a uint8 field.
    */
   const legacy = typeof stored.rates === 'object' && stored.rates ? null : ratesFromLegacy(stored);
-  s.rates = normaliseRates(legacy || s.rates);
+  /* A profile that has never held rates in any shape, on a device with
+   * thumbs, starts on the touch profile: the stock 670-no-expo default is
+   * calibrated against a gimbal and is unflyable on glass. Only ever a
+   * STARTING POINT for a blank profile; a stored rates object of any age
+   * takes the ordinary path, and the flag records that the hand-off is
+   * done so main.js never re-offers. */
+  const neverHadRates = !legacy && !(stored.rates && typeof stored.rates === 'object');
+  if (neverHadRates && touchWanted()) {
+    s.rates = normaliseRates(TOUCH_RATE_DEFAULTS);
+    s.touchRatesOffered = true;
+  } else {
+    s.rates = normaliseRates(legacy || s.rates);
+  }
   /* The PID adjustment, clamped onto what the firmware and the menu will
    * take. An unknown tune id, an out-of-range slider or a half-complete
    * expert table cannot survive a localStorage edit into the emitter. */

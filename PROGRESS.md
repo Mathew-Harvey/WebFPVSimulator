@@ -14756,3 +14756,172 @@ master 130 and p_roll 58. Both screens screenshotted and looked at.
 lint:presets 3 of 3, lint:fc 30 of 30. UI and stylesheet only; nothing
 near the physics, the plant, the ABI or the build, so the standing
 verify record from the flight-controller restoration holds unchanged.
+
+## A ghost to chase, and feedback that lands where the owner looks
+
+Two asks in one turn. The small one: a pilot describing the flight feel
+must arrive in the bugs board as feedback, and the Report a bug chip now
+reads "Report bug, give feedback". The big one, quoted because it is the
+brief: "i want a ghost drone to chase, you can select the ghost to be
+either someone thats set a time on the leader board or your previous /
+best lap in that session."
+
+**The feedback half was mostly already true and partly invisible.** Feel
+reports have posted kind `feel` through the same transport as bug tickets
+since the feel dialog landed; what was missing was the inbox making them
+readable as feedback. The board's /bugs page is now titled Bugs and
+feedback, grew a Kind filter whose first entry is "Feedback, flight feel"
+(the API already took ?kind=), and paints feel tickets in mint in the
+list and the sheet, because feedback is what the tune work runs on and
+mint is the colour this product pays attention to. The chip, the title
+menu row and the F8 help line say "give feedback" now, and the bug form
+itself carries a door: "Just here to say how it flies? Give flight feel
+feedback instead", which closes the bug form and opens the feel form, so
+an opinion does not have to dress up as a defect. The board's front page
+footer finally links the inbox, which was reachable only by typing /bugs.
+
+**The ghost, designed before built.** One recorded lap flown back as a
+translucent pacer. The decisions, in the order they constrain each other:
+
+- TIMELINE. Zero is the timing gate crossing, for the ghost and for the
+  pilot, so the chase is one subtraction from the lap clock and pauses,
+  hitches and frame rate cannot desynchronise it. Each lap start re-arms
+  the ghost at its own zero: every lap you race the ghost's lap.
+- SPACE. Scene world space, the Three.js frame race.js already scores
+  in, sampled from the same interpolated pose the hero craft renders.
+  Nothing new converts a coordinate; frame.js stays the one seam.
+- DATA. A versioned little-endian format in src/share/ghostdata.js,
+  shaped like recfile.js: magic FPVGHST1, a 30 Hz grid of float32
+  positions and int16-quantised quaternions, gate split times in the
+  header, base64 on the wire. A minute of lap is about 40 KB. The
+  recorder resamples render frames onto the grid streaming, seeded with
+  the frame BEFORE the crossing so the t = 0 keyframe is interpolated
+  across the line; the selftest measured the alternative, half a feed
+  interval of error, 26 cm at 20 fps, concentrated exactly at the start
+  gate where every chase begins.
+- CUTS. A crash recovery teleports the craft with the lap running, and
+  laps are not voided for it any more, so a recorded lap can contain a
+  jump. The recorder is told (cutHere at the recovery) and holds the
+  wreck's pose so the whole jump lands in one grid segment; the replayer
+  flags segments faster than 100 m/s, above any flyable speed and below
+  any teleport, holds the near side, refuses to spline across, and the
+  shell fades the ghost through it. Without the flag the spline swept
+  the ghost through scenery at hundreds of m/s.
+- WHO. Session best and previous lap live in memory per course (the
+  board is where a lap outlives the tab), plus any board time posted
+  with a recording. settings.ghost stores off, best or previous, with
+  best the default: the first finished lap quietly becomes the rival on
+  the second, which is the whole loop. A board pick is session state.
+- RENDER. The same buildHeroCraft the pilot flies, lite build, every
+  material swapped for translucent mint and the originals disposed so
+  the cel clock stays clean; blades removed for the spun discs, a name
+  tag sprite above ("Rival 15.00"), presence fades in off the line, out
+  past its finish, down across a cut. The rig re-parents itself beside
+  the hero craft each frame, so no map swap path can strand it.
+- READOUT. race.js now records split times per lap (crossMs relative to
+  lapStartMs, the finish last; lastSplits carries the finished lap). At
+  each gate the OSD lights "Ghost -0.42" in mint when you are ahead,
+  amber when behind, for 2.8 s; the results screen says how the run went
+  against the ghost that was actually chased. That last clause is a bug
+  that was caught in verification: the finish line re-arms the chase
+  before results show, so a run that just set a best was compared with
+  itself and reported a proud 0.00 every time. ghostChased keeps the
+  right identity.
+- BOARD. times grew public_id (tm- plus hex, minted like bug ids, the
+  serial stays a storage detail) and a ghost column, both added with IF
+  NOT EXISTS so an existing database migrates on start. POST times takes
+  an optional ghost; the header is validated against a mirror of the
+  wire format (the same arrangement as NAME_RE) and refused when it does
+  not match the lap beside it. Lists carry hasGhost, never the blob. GET
+  /api/tracks/:id/times/:timeId/ghost hands it back. The board page
+  shows a mint "chase" link on podium rows and the sheet's table; the
+  link is the Fly link with &ghost=, which the simulator reads at boot
+  and arms once the course loads. Uploading a time attaches the lap's
+  own recording when this session holds it.
+- MENU. A Ghost row on title and pause, race maps only: Off, your best
+  this session, your previous lap, then up to five board rivals with
+  recordings, fetched with the course and degrading to the session modes
+  when the board is down.
+
+**The harness grew a real stick.** __stick used to poke values into the
+keyboard state and the next poll recomputed roll, pitch and yaw from held
+KEYS, so only the throttle survived: a capture could climb and never
+steer, which is the wall the og card round hit. It is now a true override
+at the top of poll()'s ladder (input.harnessChannels), held like a
+radio's gimbals, releasable, nothing in the shell writes it. New capture
+handles: __craftState grew worldX/Y/Z and pitchDeg; __ghost, __ghostLoad,
+__ghostPick, __ghostExport, __ghostGapShow drive and read the whole
+pipeline.
+
+WRONG TURNS, kept because they are the useful part: the first e2e pilots
+flew open loop and missed the gate five ways (full throttle to 32 m, a
+backward dash because positive pitch is stick back, a porpoising P-loop,
+a dash gate that never latched, a barn-door gate crossed at 6 m); mid
+stick pitch is heavily curved so a capture flies full deflection and it
+reaches 60 degrees in about 1.5 s. The two-entry test course exposed the
+frame-rate truth that at 8 fps the craft exits the 0.5 m scoring depth
+inside one frame, so the second entry scores on the next pass, not the
+next frame.
+
+REVIEW. Own diff read end to end in both repositories; the discovery
+sweep's findings on the bug pipeline, acted on: the 413 message that
+blamed a course for an oversized bug report (readBody takes a message per
+route now, and the routes rethrow status errors instead of flattening
+them to 400); the flood map that never pruned strangers; the flood
+counter that charged rejected reports (checked before the body, recorded
+after validation); BUG_CONTEXT_KEYS raised 24 to 32 because feel reports
+already carry 20 top-level keys and four of headroom was a cliff, argued
+in src/validate.js where the number lives. DECLINED, recorded here: a
+public ticket view for reporters (worth its own turn), unifying the two
+dialog implementations in ui.js (mechanical, large, no behaviour change),
+and tightening BUGS_TOKEN-less reads, which is the deployment's
+documented choice.
+
+CHECKS, this turn, all run and all read:
+
+- node scripts/ghost-selftest.js (new, npm run ghost:selftest), 45
+  checks: recorder grid coverage and seeding, replay against an analytic
+  path (worst position error 3.6 cm at 144 Hz, under 5 cm at 20 Hz feed,
+  attitude worst 0.104 deg), cut detection and containment, encode
+  determinism, base64 and float32 round trips, hemisphere alignment even
+  from sign-flipped input, nine tamper refusals, recorder edges, book
+  slots.
+- Board npm test, all passed, including new coverage: inspectGhost
+  accepts its mirror's output and refuses nine malformed shapes, a
+  ghosted time gets a tm- id, lists carry hasGhost and never the blob,
+  the ghost round-trips whole over HTTP, a bare time 404s its ghost, a
+  wrong-lap ghost is refused, a pre-ghost row lists with null id, kind
+  =feel filters the inbox, a 32-key context passes and 33 fails.
+- Race scoring unit-driven in Node: a two-gate course scores crossings,
+  splits land as [1000], lastSplits as [1000, 3000], laps as [3000].
+- Headless Chromium, console errors 0 warnings 0 on every kept run: the
+  field chase with a synthetic rival (lap starts, recorder arms, ghost
+  visible and tracking its path, screenshot shows the mint craft and its
+  name tag mid-air); the full loop on a seeded course against the REAL
+  board service (lap recorded 3.3 s, booked, re-armed as Session best,
+  ghost visible 296 samples, mid-lap gap -1.5 ms, final gap +48 ms, and
+  the results line reading "The ghost, session best at 3.33, stayed 0.05
+  ahead", internally consistent to the millisecond); a real recorded lap
+  POSTed to the live board and fetched back byte-identical; a fresh
+  profile finding that time in the Ghost row, picking it, and arming
+  "Board lap" at 3.208 s; the OSD reading "Ghost -0.42" in mint and
+  clearing after its 2.8 s window; the bug dialog door landing on "How
+  does it fly?". Every screenshot looked at.
+- lint:presets 3 of 3, lint:fc 30 of 30, lint:catalog ok, replay, link,
+  edge and trackbuilder (279 of 279) selftests green.
+- npm run verify: 14 of 16, full table read. Determinism hashes
+  BYTE-IDENTICAL to the recorded 6d17d4814bdc on checks 2 and 3, one
+  hash across four rates on 4, which is the property an input override
+  must hold: the harness feeds the module directly and the override
+  cannot reach the trace. Every physics row inside its band: hover
+  0.2637, punch 81.5 m, terminal 31.1 m/s, step 26 ms, rate 671.5 vs
+  670, yaw -0.12 deg, sag 11.14 percent, diff ratio 0.47 percent off.
+  The two reds are the standing two: check 1 build-clean (no emcc in
+  this container; vendor diff empty, dist/sim.wasm byte-identical) and
+  check 16 map-isolation (P2 1043845, P10 33.1, the same figures the
+  last several entries record as red on main). No threshold touched.
+
+Physics, the plant, patches and the module ABI untouched. The chase feel
+itself is not verifiable here: the harness proves the ghost flies the
+recorded line and the gaps add up, whether chasing it is joy is awaiting
+the pilot who asked for it.

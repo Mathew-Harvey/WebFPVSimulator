@@ -262,6 +262,17 @@ const DEFAULTS = {
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
+  /*
+   * Who the ghost drone chases: 'off', 'best' (your best lap this session)
+   * or 'previous' (the lap before this one). Best is the default because a
+   * pacer you have to discover in a menu is a pacer nobody meets: the first
+   * finished lap quietly becomes the rival on the second, which is the
+   * whole loop. A board rival picked off the leaderboard is session state
+   * in main.js, not stored here, because it belongs to one course and one
+   * visit. Laps record regardless of this setting, so switching it on
+   * mid-session has the session to race.
+   */
+  ghost: 'best',
   cameraAngle: CAMERA_ANGLE_DEFAULT,
   cameraFov: CAMERA_FOV_DEFAULT,
   packVoltage: 4.2,
@@ -376,6 +387,7 @@ export function loadSettings() {
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
+    ['ghost', ['off', 'best', 'previous']],
   ]) {
     if (!allowed.includes(s[key])) {
       s[key] = DEFAULTS[key];
@@ -1017,6 +1029,10 @@ export class Ui {
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
+    /* The Ghost row's contents, pushed by the shell through setGhostRow,
+     * because the shell is the side that knows what can be chased. Null
+     * hides the row, which is every freestyle map. */
+    this.ghostRow = null;
     this.boardLoading = false;
     this.openingBoardCourse = false;
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
@@ -1128,8 +1144,12 @@ export class Ui {
     this.osdGate = el('div', 'osd-gate', '');
     this.osdBest = el('div', 'osd-best', '');
     this.osdLast = el('div', 'osd-best', '');
+    /* The gap to the ghost, lit for a few seconds after each gate. Mint
+     * when you are ahead of it, amber when it is ahead of you, the same
+     * reading as everything else on this overlay: mint is the good news. */
+    this.osdGhost = el('div', 'osd-ghost is-off', '');
     const top = el('div', 'osd-top');
-    top.append(this.osdClockLabel, this.osdTimer, this.osdGate, this.osdLast, this.osdBest);
+    top.append(this.osdClockLabel, this.osdTimer, this.osdGate, this.osdLast, this.osdBest, this.osdGhost);
     this.osdPack = el('div', 'osd-value', '');
     this.osdPackBar = el('div', 'bar-fill');
     const packBar = el('div', 'bar');
@@ -1590,7 +1610,7 @@ export class Ui {
     this.nameDialog.setAttribute('aria-modal', 'true');
     this.nameDialog.setAttribute('role', 'dialog');
 
-    this.bugChip = btn('bug-chip', 'Report a bug');
+    this.bugChip = btn('bug-chip', 'Report bug, give feedback');
     this.bugChip.title = 'F8 also opens this.';
     this.bugChip.addEventListener('click', () => this.openBugReport());
 
@@ -1634,6 +1654,32 @@ export class Ui {
     if (this.screen === 'title' || this.screen === 'courses' || this.screen === 'results') {
       this.renderMenu();
     }
+  }
+
+  setGhostRow(row) {
+    this.ghostRow = row || null;
+    if (this.screen === 'title' || this.screen === 'paused') {
+      this.renderMenu();
+    }
+  }
+
+  /* The Ghost row where the shell has provided one, as an array so the two
+   * menus that carry it can spread it in place. Cycling steps through off,
+   * the session ghosts, and whatever the board holds for this course. */
+  ghostItems() {
+    if (!this.ghostRow) {
+      return [];
+    }
+    return [{
+      label: 'Ghost',
+      value: this.ghostRow.value,
+      note: this.ghostRow.note,
+      adjust: (d) => {
+        if (this.ghostRow) {
+          this.ghostRow.cycle(d);
+        }
+      },
+    }];
   }
 
   markTimePosted(posted) {
@@ -2043,6 +2089,12 @@ export class Ui {
       'lede',
       'Title and what happened are enough. The map, graphics, GPU and browser go with the ticket so you do not have to type those.',
     ));
+    /* The other door. The chip says give feedback as well as report a bug,
+     * and a pilot who came to say how the quad flies should not have to
+     * dress an opinion up as a defect: this hands them to the flight feel
+     * form, which asks the one question they came to answer. */
+    const feelDoor = btn('name-dialog-door', 'Just here to say how it flies? Give flight feel feedback instead.');
+    box.append(feelDoor);
 
     const kindLabel = el('p', 'name-dialog-label', 'Kind');
     const kind = document.createElement('select');
@@ -2138,6 +2190,13 @@ export class Ui {
     };
     this.nameDialog.addEventListener('click', this.nameClickHandler);
     cancel.addEventListener('click', () => finish(null));
+    feelDoor.addEventListener('click', () => {
+      if (sending) {
+        return;
+      }
+      finish(null);
+      this.openFeelReport();
+    });
     send.addEventListener('click', async () => {
       err.textContent = '';
       if (title.value.trim().length < 8) {
@@ -2479,6 +2538,7 @@ export class Ui {
           action: 'courses',
           note: 'Worlds, your courses and the public board, in one place.',
         },
+        ...this.ghostItems(),
         tuneItem(s),
         pidsItem(s),
         ratesItem(s),
@@ -2495,9 +2555,9 @@ export class Ui {
           note: 'Who made this, who flew it, and whose work it stands on.',
         },
         {
-          label: 'Report a bug',
+          label: 'Report bug, give feedback',
           action: 'reportbug',
-          note: 'Opens a short form. The map, graphics and browser go with it. F8 does the same, including from flight.',
+          note: 'A bug ticket or flight feel feedback, both land on the board. The map, graphics and browser go with it. F8 does the same, including from flight.',
         },
       ];
     }
@@ -2760,6 +2820,7 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
+        ...this.ghostItems(),
         tuneItem(s, true),
         pidsItem(s, true),
         ratesItem(s, true),
@@ -4575,7 +4636,7 @@ export class Ui {
         ['Left and right', 'Roll.'],
         ['L', 'Launch control, if you turned it on in Settings. Pitch, centre, punch.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
-        ['F8', 'Report a bug. Pauses if you are in the air, then opens the form.'],
+        ['F8', 'Report a bug or give feedback. Pauses if you are in the air, then opens the form.'],
       ];
     for (const [k, v] of rows) {
       this.howtoKeys.append(el('dt', null, k), el('dd', null, v));
@@ -4670,7 +4731,7 @@ export class Ui {
    * may have moved during the run, and the hero line needs the old
    * figure to say whether this lap beat it.
    */
-  showResults(log, best, recordAtStart) {
+  showResults(log, best, recordAtStart, ghostNote = null) {
     this.resultsBody.textContent = '';
     this.resultsNote.textContent = '';
     const clean = log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
@@ -4746,6 +4807,11 @@ export class Ui {
       main.append(el('span', 'result-time', formatTime(total)));
       row.append(main);
       this.resultsBody.append(row);
+    }
+    /* How the run went against the ghost that was being chased, one line,
+     * written by the shell because only it knows who the ghost was. */
+    if (ghostNote) {
+      this.resultsBody.append(el('p', 'results-ghost', ghostNote));
     }
     /* The note is about the course that was FLOWN. It used to read
      * inspectCourse unconditionally, so a lap on the race field came back
@@ -4931,7 +4997,7 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, hitsLeft, hitLives, launchState, launchPitch }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, hitsLeft, hitLives, launchState, launchPitch, ghostGapMs, ghostFinal }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -4948,6 +5014,19 @@ export class Ui {
     }
     this.osdPack.textContent = `${volts.toFixed(1)} volts`;
     this.osdLast.textContent = !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
+    if (this.osdGhost) {
+      if (ghostGapMs == null || freestyle) {
+        this.osdGhost.className = 'osd-ghost is-off';
+        this.osdGhost.textContent = '';
+      } else {
+        /* Negative is you ahead of the ghost. The sign is spelled out so
+         * the readout cannot be mistaken for a lap time. */
+        const ahead = ghostGapMs <= 0;
+        const gap = `${ahead ? '-' : '+'}${(Math.abs(ghostGapMs) / 1000).toFixed(2)}`;
+        this.osdGhost.textContent = `${ghostFinal ? 'Ghost lap' : 'Ghost'} ${gap}`;
+        this.osdGhost.className = `osd-ghost ${ahead ? 'ahead' : 'behind'}`;
+      }
+    }
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
     this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
     if (this.osdFlight) {

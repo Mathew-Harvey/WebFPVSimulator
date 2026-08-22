@@ -11,7 +11,15 @@
  *   Update listing POST {board}/api/tracks   same, with the edit key from
  *                  the browser that first published. A name-only update
  *                  keeps the times. A layout change clears them.
- *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs }
+ *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs, ghost? }
+ *                  ghost is the base64 lap recording from
+ *                  src/share/ghostdata.js, sent when the lap was recorded
+ *                  in this session, so the board can hand it to a chaser.
+ *   List times     GET {board}/api/tracks/{id}   times[] carry { id,
+ *                  hasGhost } beside name and lapMs; id is the handle a
+ *                  ghost is fetched by.
+ *   Fetch a ghost  GET {board}/api/tracks/{id}/times/{timeId}/ghost
+ *                  { id, name, lapMs, ghost }
  *   File a bug     POST {board}/api/bugs   { kind, title, what, ... }
  *
  * The track document is the only payload. schema.md is the contract. The
@@ -256,13 +264,43 @@ export async function publishTrack({ author, document, editKey, origin }) {
   return readJson(res);
 }
 
-export async function postTime({ trackId, name, lapMs, origin }) {
+export async function postTime({ trackId, name, lapMs, ghost, origin }) {
   const board = trimOrigin(origin || boardOrigin());
   const res = await fetch(`${board}/api/tracks/${encodeURIComponent(trackId)}/times`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, lapMs }),
+    /* ghost only when there is one: an absent key is what an older board
+     * expects, and an explicit null would be a third shape for no gain. */
+    body: JSON.stringify(ghost ? { name, lapMs, ghost } : { name, lapMs }),
   });
+  return readJson(res);
+}
+
+/*
+ * The posted times on one course, for the ghost picker: id, name, lapMs and
+ * whether the board holds a recording, best first, the board's own order.
+ * Same standing as fetchTrackList: a board that is down means an empty
+ * picker, never a broken menu, so callers treat rejection as "no times".
+ */
+export async function fetchTrackTimes(trackId, origin = boardOrigin()) {
+  const res = await fetch(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(trackId)}`);
+  const body = await readJson(res);
+  const times = body && Array.isArray(body.times) ? body.times : [];
+  return times.map((t) => ({
+    id: t.id ? String(t.id) : '',
+    name: String(t.name || ''),
+    lapMs: Number.isFinite(Number(t.lapMs)) ? Number(t.lapMs) : null,
+    hasGhost: Boolean(t.hasGhost),
+  })).filter((t) => t.lapMs != null);
+}
+
+/* One recorded lap off the board, as { id, name, lapMs, ghost } with ghost
+ * still base64; src/share/ghostdata.js decodes it. */
+export async function fetchGhost(trackId, timeId, origin = boardOrigin()) {
+  const board = trimOrigin(origin || boardOrigin());
+  const res = await fetch(
+    `${board}/api/tracks/${encodeURIComponent(trackId)}/times/${encodeURIComponent(timeId)}/ghost`,
+  );
   return readJson(res);
 }
 

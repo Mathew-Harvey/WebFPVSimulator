@@ -411,6 +411,17 @@ export class InputManager {
     /* While launch control is holding on the pad, rest is idle, never hover,
      * so a W tap cannot spring to 22 percent and fire the launch. */
     this.forcePadRest = false;
+    /*
+     * The harness stick, set through window.__stick and nothing else. When
+     * non-null it IS the channels, held like a radio's gimbals until the
+     * next write, above every source in poll()'s ladder. It exists because
+     * the keyboard path recomputes its axes from held KEYS every poll, so a
+     * value written into this.kb evaporated one poll later and a capture
+     * literally could not hold a stick: the og card round measured the
+     * fallout, several runs of a craft that could not leave the grass.
+     * Nothing in the shell writes this; a pilot never meets it.
+     */
+    this.harnessChannels = null;
     this.kbHoldMs = { roll: 0, pitch: 0, yaw: 0, w: 0, s: 0 };
     this.kbHoldDir = { roll: 0, pitch: 0, yaw: 0 };
     this.map = this.loadMap();
@@ -1347,7 +1358,14 @@ export class InputManager {
       this.rateWindowMs = 0;
     }
     let next;
-    if (this.padPick) {
+    if (this.harnessChannels) {
+      /* The harness override, above everything: a capture wrote a stick
+       * and means it. Mirrored into kb.throttle so releasing the override
+       * hands the collective back where it left it rather than springing. */
+      next = { ...this.harnessChannels };
+      this.kb.throttle = next.throttle;
+      this.source = 'the harness override';
+    } else if (this.padPick) {
       this.runPadPick(dtMs);
       next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
       this.source = 'the joystick picker';

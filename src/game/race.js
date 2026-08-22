@@ -256,6 +256,15 @@ export class Race {
     this.lastLapMs = null;
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
+    /*
+     * Gate times inside the RUNNING lap, ms from its start, one per
+     * crossing in flying order, ending with the finish. The ghost chase
+     * reads these: the k-th entry against the ghost's k-th split is the gap
+     * the OSD shows at each gate. lastSplits is the finished lap's list,
+     * which is what a recorded ghost carries.
+     */
+    this.splits = [];
+    this.lastSplits = [];
     /* Every attempt at a lap, in order: { n, ms } for a clean lap and
      * { n, ms: null, reason } for one thrown away. The results screen
      * needs the thrown away ones too, or a run whose second lap was
@@ -327,6 +336,7 @@ export class Race {
       this.log.push({ n: this.lapNumber(), ms: null, reason });
     }
     this.lapStartMs = null;
+    this.splits = [];
     this.next = 0;
     this.flash = { text: reason, untilMs: wallMs + 1800 };
   }
@@ -451,9 +461,15 @@ export class Race {
     const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
+    /* A crossing inside a running lap is a split, timed the same way the
+     * lap is: interpolated on the sim clock. The finish is the last one. */
+    if (this.lapStartMs != null) {
+      this.splits.push(crossMs - this.lapStartMs);
+    }
     if (passed === this.timingIdx) {
       if (this.lapStartMs != null) {
         this.lastLapMs = crossMs - this.lapStartMs;
+        this.lastSplits = this.splits;
         this.lap += 1;
         this.laps.push(this.lastLapMs);
         this.log.push({ n: this.lapNumber(), ms: this.lastLapMs });
@@ -481,6 +497,7 @@ export class Race {
         this.flash = { text: msgText, untilMs: wallMs + 2600 };
       }
       this.lapStartMs = crossMs;
+      this.splits = [];
     }
     return passed;
   }

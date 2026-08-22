@@ -119,6 +119,13 @@
       .osd-sub { font-size: 13px; color: var(--slate); margin-top: 1px; margin-bottom: 8px; }
       .osd-gate { font-size: 15px; color: var(--amber); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
       .osd-best { font-size: 14px; color: var(--slate); margin-top: 3px; }
+      /* The gap to the ghost, lit for a moment after each gate. Mint when
+         the pilot is ahead of it, amber when it is ahead, the same reading
+         the rest of this overlay teaches: mint is the good news. */
+      .osd-ghost { font-size: 15px; font-weight: 600; margin-top: 4px; letter-spacing: 0.04em; }
+      .osd-ghost.is-off { display: none; }
+      .osd-ghost.ahead { color: var(--mint); }
+      .osd-ghost.behind { color: var(--amber); }
       .osd-corner {
         position: absolute; bottom: 20px; width: 190px;
         text-shadow: 0 2px 6px rgba(0,0,0,0.85); font-size: 15px;
@@ -1812,6 +1819,11 @@
         margin: 0; color: var(--slate); font-size: 15px; line-height: 1.55;
         max-width: 34em;
       }
+      /* One line about the ghost that was chased, under the lap rows. Mint
+         for the same reason the ghost itself is: it is a record, flying. */
+      .results-ghost {
+        margin: 10px 0 0; color: var(--mint); font-size: 14px; line-height: 1.5;
+      }
       .result-row {
         padding: 8px 0 10px;
         border-bottom: 1px solid rgba(244, 236, 214, 0.12);
@@ -2002,6 +2014,16 @@
       .name-dialog-err {
         min-height: 1.3em; margin: 0 0 10px; color: #ff8f8f; font-size: 12px;
       }
+      /* The door from the bug form to the flight feel form: a sentence that
+         acts like a link, not a second primary button, because it leaves
+         the form rather than submitting it. */
+      .name-dialog-door {
+        appearance: none; border: 0; background: transparent; padding: 0;
+        margin: 0 0 6px; color: var(--mint); font: inherit; font-size: 13px;
+        text-align: left; cursor: pointer; text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      .name-dialog-door:hover { color: var(--cream); }
       .name-dialog-row { display: flex; gap: 8px; }
       .name-dialog-btn {
         appearance: none; border: 1px solid rgba(244, 236, 214, 0.16);

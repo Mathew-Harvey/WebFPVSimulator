@@ -45,14 +45,18 @@ import {
 import { ANGLE_RATE_SAMPLES, angleRateDeg } from '../fc/ratescurve.js';
 
 /* House palette, from the :root block in index.html. Kept as literals
- * because a canvas cannot read a CSS custom property. */
-const INK = 'rgba(12, 18, 14, 0.55)';
+ * because a canvas cannot read a CSS custom property. EXPORTED for the
+ * PIDs panel, which colours the same three axes: roll is sakura and yaw is
+ * slate on every screen, and one copy of the trio is what keeps that true.
+ * The surface tints travel with them so the two canvases sit on the same
+ * glass. */
+export const INK = 'rgba(12, 18, 14, 0.55)';
 const GRID = 'rgba(244, 236, 214, 0.10)';
-const AXIS = 'rgba(244, 236, 214, 0.26)';
-const LABEL = 'rgba(235, 230, 215, 0.62)';
-const SAKURA = '#e8a8b8';
-const MINT = '#7dffb4';
-const SLATE = '#9db3c8';
+export const AXIS = 'rgba(244, 236, 214, 0.26)';
+export const LABEL = 'rgba(235, 230, 215, 0.62)';
+export const SAKURA = '#e8a8b8';
+export const MINT = '#7dffb4';
+export const SLATE = '#9db3c8';
 const AMBER = '#ffd45c';
 
 /* Where the readout takes its samples. A quarter and a half are where a

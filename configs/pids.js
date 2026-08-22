@@ -123,7 +123,7 @@ export const PID_FIELD_SPECS = {
   d: pidField('D', 250,
     'Damping. This is the CLI’s d_min: the D flown most of the time. Configurator calls it D, the firmware calls it d_min, and both mean this number.'),
   dmax: pidField('D max', 250,
-    'The ceiling D rises to during fast moves and stops. This is the CLI’s d_roll / d_pitch / d_yaw. Set at or below D and the firmware simply flies D constant.'),
+    'The ceiling D rises to during fast moves and stops. This is the CLI’s d_roll / d_pitch / d_yaw. Careful at the bottom: at or below D the firmware turns the D-to-D-max range off and flies THIS value constant (pid_init.c gates on d_min < D), so D max 0 is zero damping, not damping held at D.'),
   f: pidField('Feedforward', 1000,
     'Pushes on stick movement itself, before any error exists. The immediacy knob.'),
 };
@@ -147,6 +147,12 @@ export const STOCK_PIDS = Object.freeze({
 });
 
 function clampTo(spec, value) {
+  /* null and '' are ABSENT, not zero. Number(null) is 0, so without this
+   * a hand-edited blob with "master": null would clamp to the floor and
+   * fly it instead of being dropped. */
+  if (value == null || value === '') {
+    return null;
+  }
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) {
     return null;

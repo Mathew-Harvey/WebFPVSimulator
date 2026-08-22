@@ -217,6 +217,14 @@ const DEFAULTS = {
    * REPLACES this with a normalised fresh object, same as rates.
    */
   pids: {},
+  /*
+   * Whether the flight feel question has been offered. It offers itself
+   * exactly once, after the first finished race, and never again: the
+   * moment the dialog opens this flips and is saved, whatever the pilot
+   * does with it. The rows on Results and the pause menu are the way back
+   * in; an automatic prompt that returns is how feedback dies.
+   */
+  feelAsked: false,
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -892,6 +900,18 @@ function ratesItem(s, midRun) {
     value: ratesSummary(s.rates),
     action: 'rates',
     note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle.${midRun ? MID_RUN_WARNING : ''}`,
+  };
+}
+
+/* The way back into the flight feel question, after its one automatic
+ * offer. On Results and the pause menu only: those are the two places a
+ * pilot has just been flying, which is when a feel report is worth
+ * anything. */
+function feelItem() {
+  return {
+    label: 'Flight feel',
+    action: 'feel',
+    note: 'Tell the tune work how the quad flies. One word is enough; your tune, PID adjustment and rates go with it.',
   };
 }
 
@@ -1934,6 +1954,10 @@ export class Ui {
     this.nameDialog.hidden = false;
     this.syncBugChip();
 
+    /* Same in-flight guard the feel dialog carries: a ticket that is still
+     * POSTing must not lose its dialog to Escape, the backdrop or Cancel,
+     * or it lands twice from a pilot who thought it never left. */
+    let sending = false;
     const finish = (value) => {
       this.closeNameDialog(value);
     };
@@ -1941,14 +1965,16 @@ export class Ui {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        finish(null);
+        if (!sending) {
+          finish(null);
+        }
       }
     };
     this.nameWait = () => {};
     this.nameKeyHandler = onKey;
     this.nameDialog.addEventListener('keydown', onKey, true);
     this.nameClickHandler = (e) => {
-      if (e.target === this.nameDialog) {
+      if (e.target === this.nameDialog && !sending) {
         finish(null);
       }
     };
@@ -1975,10 +2001,13 @@ export class Ui {
         reporter: reporter.value,
         context,
       };
+      sending = true;
       send.disabled = true;
+      cancel.disabled = true;
       send.textContent = 'Sending';
       try {
         const posted = await submitBug(payload);
+        sending = false;
         box.textContent = '';
         box.append(el('h2', null, 'Sent'));
         box.append(el(
@@ -1993,12 +2022,258 @@ export class Ui {
         box.append(doneRow);
         close.focus();
       } catch (e) {
+        sending = false;
         send.disabled = false;
+        cancel.disabled = false;
         send.textContent = 'Send';
         err.textContent = e.message || 'The board could not take that report.';
       }
     });
     title.focus();
+  }
+
+  /*
+   * Everything the tune work needs to read a feel report: the bug context
+   * plus which tune was flown, what the pilot has done to it, and the PID
+   * values the module was actually flying, from the readback rather than
+   * the menu. A feel report without its numbers is a mood; with them it is
+   * a data point.
+   */
+  feelSnapshot() {
+    const s = this.settings || {};
+    return {
+      ...this.bugSnapshot(),
+      tune: s.tune || '',
+      tuneName: tuneById(s.tune).name,
+      pids: pidsSummary(s.pids, s.tune),
+      pidsLive: this.pidsLive,
+      bestLapMs: Number.isFinite(this.resultsFastest) ? this.resultsFastest : null,
+    };
+  }
+
+  /*
+   * The flight feel question. Asks itself ONCE, ever: after the first
+   * finished race, from showResults, and the flag flips the moment the
+   * dialog opens, whatever is done with it. After that it is a row on
+   * Results and on the pause menu, because an automatic prompt that keeps
+   * coming back is how a pilot learns to close dialogs without reading
+   * them.
+   */
+  maybeOfferFeel() {
+    if (this.settings.feelAsked) {
+      return;
+    }
+    /* Let the results screen land first. A record celebration with a form
+     * on top of it is a form remembered as an interruption. */
+    setTimeout(() => {
+      if (this.settings.feelAsked || this.screen !== 'results') {
+        return;
+      }
+      if (this.bugFiling || (this.nameDialog && !this.nameDialog.hidden)) {
+        return;
+      }
+      this.openFeelReport();
+    }, 1400);
+  }
+
+  openFeelReport() {
+    if (this.bugFiling || (this.nameDialog && !this.nameDialog.hidden)) {
+      return;
+    }
+    /* Opened is asked, on either path: the automatic offer never returns,
+     * and a pilot who found the row does not need the popup either. */
+    if (!this.settings.feelAsked) {
+      this.settings.feelAsked = true;
+      saveSettings(this.settings);
+    }
+    /* No pause-first branch like openBugReport's: F8 reaches that one from
+     * flight, while this one is only reachable from the paused and results
+     * menus and its automatic offer requires the results screen. */
+    this.askFeelReport(this.feelSnapshot());
+  }
+
+  askFeelReport(context) {
+    if (this.nameWait) {
+      this.closeNameDialog(null);
+    }
+    const FEELS = [
+      { id: 'floppy', label: 'Floppy' },
+      { id: 'soft', label: 'Soft' },
+      { id: 'right', label: 'About right' },
+      { id: 'stiff', label: 'Stiff' },
+      { id: 'twitchy', label: 'Twitchy' },
+    ];
+    const ISSUES = [
+      { id: 'sluggish', label: 'Slow to answer the stick' },
+      { id: 'bounce', label: 'Bounces back after a stop' },
+      { id: 'propwash', label: 'Wobbles in propwash' },
+      { id: 'drift', label: 'Drifts off attitude' },
+      { id: 'yaw', label: 'Yaw is lazy' },
+      { id: 'throttle', label: 'Throttle is touchy' },
+      { id: 'locked', label: 'Locked in, no complaints' },
+    ];
+
+    const box = el('div', 'name-dialog-box bug feel');
+    box.append(el('h2', null, 'How does it fly?'));
+    box.append(el(
+      'p',
+      'lede',
+      `One honest word steers the tune work more than any telemetry. Only the first row is needed; your tune, PID adjustment and rates travel with the answer so the numbers behind the feel arrive too. You were flying ${context.tuneName}.`,
+    ));
+
+    let feel = null;
+    const issues = new Set();
+    const chipRow = (options, onPick) => {
+      const wrap = el('div', 'feel-chips');
+      const chips = new Map();
+      for (const opt of options) {
+        const chip = btn('feel-chip', opt.label);
+        chip.addEventListener('click', () => {
+          onPick(opt.id, chips);
+        });
+        chips.set(opt.id, chip);
+        wrap.append(chip);
+      }
+      return { wrap, chips };
+    };
+    const feelRow = chipRow(FEELS, (id, chips) => {
+      feel = feel === id ? null : id;
+      for (const [cid, chip] of chips) {
+        chip.classList.toggle('on', cid === feel);
+      }
+    });
+    const issueRow = chipRow(ISSUES, (id, chips) => {
+      if (issues.has(id)) {
+        issues.delete(id);
+      } else {
+        issues.add(id);
+      }
+      chips.get(id).classList.toggle('on', issues.has(id));
+    });
+
+    const wordsLabel = el('p', 'name-dialog-label', 'In your own words (optional)');
+    const words = document.createElement('textarea');
+    words.className = 'name-dialog-input name-dialog-area';
+    words.maxLength = 2000;
+    words.rows = 3;
+    words.placeholder = 'What you would tell the person holding the screwdriver.';
+
+    const nameLabel = el('p', 'name-dialog-label', 'Your name (optional)');
+    const reporter = document.createElement('input');
+    reporter.type = 'text';
+    reporter.className = 'name-dialog-input';
+    reporter.maxLength = 24;
+    reporter.autocomplete = 'nickname';
+    reporter.value = readPilotName() || '';
+    reporter.placeholder = 'Leave blank to stay Anonymous';
+
+    const err = el('p', 'name-dialog-err', '');
+    const row = el('div', 'name-dialog-row');
+    const send = btn('name-dialog-btn on', 'Send');
+    const dismiss = btn('name-dialog-btn', 'Not now');
+    row.append(send, dismiss);
+    box.append(
+      el('p', 'name-dialog-label', 'The quad felt'),
+      feelRow.wrap,
+      el('p', 'name-dialog-label', 'Anything specific (pick any)'),
+      issueRow.wrap,
+      wordsLabel, words,
+      nameLabel, reporter,
+      err, row,
+    );
+    this.nameDialog.textContent = '';
+    this.nameDialog.append(box);
+    this.nameDialog.hidden = false;
+    this.syncBugChip();
+
+    /*
+     * While the POST is in flight, nothing may close the dialog. Escape or
+     * Not now during the await used to leave the report landing on the
+     * board while the pilot watched the form vanish, believed nothing was
+     * sent, and sent it again: a duplicate ticket per impatient click.
+     * Cleared before the Thanks screen so Escape works there again.
+     */
+    let sending = false;
+    const finish = (value) => {
+      this.closeNameDialog(value);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!sending) {
+          finish(null);
+        }
+      }
+    };
+    this.nameWait = () => {};
+    this.nameKeyHandler = onKey;
+    this.nameDialog.addEventListener('keydown', onKey, true);
+    this.nameClickHandler = (e) => {
+      if (e.target === this.nameDialog && !sending) {
+        finish(null);
+      }
+    };
+    this.nameDialog.addEventListener('click', this.nameClickHandler);
+    dismiss.addEventListener('click', () => finish(null));
+    send.addEventListener('click', async () => {
+      err.textContent = '';
+      if (!feel) {
+        err.textContent = 'Pick a word on the first row. One is enough.';
+        return;
+      }
+      const feelLabel = FEELS.find((f) => f.id === feel).label.toLowerCase();
+      const picked = ISSUES.filter((i) => issues.has(i.id)).map((i) => i.label.toLowerCase());
+      const lines = [`The quad felt ${feelLabel} this run.`];
+      if (picked.length) {
+        lines.push(`Noticed: ${picked.join('; ')}.`);
+      }
+      if (words.value.trim()) {
+        lines.push(words.value.trim());
+      }
+      const payload = {
+        kind: 'feel',
+        title: `Flight feel: ${feelLabel}${picked.length ? `, ${picked[0]}` : ''}`,
+        what: lines.join('\n'),
+        reporter: reporter.value,
+        context,
+      };
+      sending = true;
+      send.disabled = true;
+      dismiss.disabled = true;
+      send.textContent = 'Sending';
+      try {
+        const posted = await submitBug(payload);
+        sending = false;
+        box.textContent = '';
+        box.append(el('h2', null, 'Thanks'));
+        box.append(el(
+          'p',
+          'lede',
+          'Landed, with your tune and rates attached. This is exactly what moves the flight model.',
+        ));
+        const doneRow = el('div', 'name-dialog-row');
+        const close = btn('name-dialog-btn on', 'Close');
+        close.addEventListener('click', () => finish(posted));
+        doneRow.append(close);
+        box.append(doneRow);
+        close.focus();
+      } catch (e) {
+        sending = false;
+        send.disabled = false;
+        dismiss.disabled = false;
+        send.textContent = 'Send';
+        err.textContent = e.message || 'The board could not take that report.';
+      }
+    });
+    /* Keyboard first, like every menu here: the first answer chip takes
+     * focus, Tab walks the rest, Enter picks, Escape leaves. Enter cannot
+     * fall through to the menu underneath; handleKey swallows everything
+     * while a dialog is up. */
+    const firstChip = feelRow.chips.values().next().value;
+    if (firstChip) {
+      firstChip.focus();
+    }
   }
 
   /* Menu definitions are rebuilt on show so values read correctly. */
@@ -2313,15 +2588,19 @@ export class Ui {
       ];
     }
     if (this.screen === 'paused') {
-      /* Ten rows, always, and Resume is the button. The conditional Edit a
-       * copy that used to appear here belongs on the Courses screen. Report
-       * a bug is the chip in the corner, or F8, so this list stays put. */
+      /* Eleven rows, always, and Resume is the button. The conditional Edit
+       * a copy that used to appear here belongs on the Courses screen.
+       * Report a bug is the chip in the corner, or F8, so this list stays
+       * put. Flight feel sits by the tuning rows because "this feels off"
+       * is the moment a pilot pauses, and the report carries the tune and
+       * PIDs they are paused on. */
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         tuneItem(s, true),
         pidsItem(s, true),
         ratesItem(s, true),
+        feelItem(),
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'Settings', action: 'settings' },
@@ -2343,6 +2622,7 @@ export class Ui {
       if (this.osdMode === 'freestyle' || !listing) {
         return [
           { label: 'Fly again', action: 'restart', primary: true },
+          feelItem(),
           { label: 'Back to title', action: 'title' },
         ];
       }
@@ -2363,6 +2643,7 @@ export class Ui {
             ? `The public page for ${listing.name}.`
             : 'The public board. A course has to be published before it has a page.',
         },
+        feelItem(),
         { label: 'Back to title', action: 'title' },
       ];
     }
@@ -2490,13 +2771,16 @@ export class Ui {
       const yawNote = live && live.baselineMode === 'RP'
         ? ` ${tuneName} runs the sliders in RP mode, so they reach roll and pitch and leave yaw at its stock values, exactly as Configurator would.`
         : '';
+      /* Only built when `live` is present, per the loading row below, so
+       * the tune's baseline is always real and walking a slider back onto
+       * it always forgets the override. */
       const sliderRow = (k) => {
         const spec = SLIDERS[k];
-        const tuneVal = live ? live.baseline[k] : null;
+        const tuneVal = live.baseline[k];
         const moved = Boolean(entry && entry.sliders && k in entry.sliders);
-        const cur = moved ? entry.sliders[k] : (tuneVal ?? 100);
+        const cur = moved ? entry.sliders[k] : tuneVal;
         const bits = [spec.note];
-        if (moved && tuneVal != null) {
+        if (moved) {
           bits.push(`${tuneName} ships this at ${tuneVal}; setting it back there forgets the change.`);
         }
         if (k === 'master') {
@@ -2526,30 +2810,49 @@ export class Ui {
        * toggle, the guard in renderMenu sent the cursor to the top, and
        * the next arrow press stepped the Tune row instead. A control must
        * stay under the cursor that just used it. */
+      /*
+       * NO ROW EDITS A TUNE THAT IS NOT LOADED YET. Between the Tune row
+       * moving and swapTune's fetch publishing the readback, `live` is
+       * null and every fallback here would be a lie: a slider would show
+       * 100 where Crapshack ships 185, an arrow press would store an
+       * override computed from that wrong base with no tune value to
+       * forget it against, and the expert toggle would seed the table from
+       * stock instead of from what is about to fly. So the window shows
+       * one info row instead of controls. It lasts one local fetch; on a
+       * slow network it is the same honesty the panel caption already has.
+       */
       const rows = [
         tuneItem(s),
-        toggle(
+      ];
+      if (!live) {
+        rows.push({
+          label: `Loading ${tuneName}`,
+          info: true,
+          note: 'The tune is being fetched and applied. Its sliders appear the moment the module reads back.',
+        });
+      } else {
+        rows.push(toggle(
           'Set PIDs directly',
           expert
             ? 'On. The sliders are off (simplified_pids_mode OFF, as Configurator\'s expert mode sets it) and the table below is what flies. Turning this off restores the sliders and remembers the table.'
             : 'Off. The sliders below drive the PIDs through the firmware\'s own simplified tuning. Turn this on to type every value yourself, starting from exactly what is flying now.',
           expert,
           (on) => {
-            setPidsExpert(s.pids, s.tune, on, live ? live.pids : null);
+            setPidsExpert(s.pids, s.tune, on, live.pids);
           },
-        ),
-      ];
-      if (!expert) {
-        rows.push({ label: 'Betaflight\'s tuning sliders', section: true });
-        for (const k of SLIDER_KEYS) {
-          rows.push(sliderRow(k));
+        ));
+        if (!expert) {
+          rows.push({ label: 'Betaflight\'s tuning sliders', section: true });
+          for (const k of SLIDER_KEYS) {
+            rows.push(sliderRow(k));
+          }
         }
-      }
-      if (expert) {
-        for (const axis of PID_AXES) {
-          rows.push({ label: axis === 'roll' ? 'Roll' : axis === 'pitch' ? 'Pitch' : 'Yaw', section: true });
-          for (const f of PID_FIELDS) {
-            rows.push(pidRow(axis, f));
+        if (expert) {
+          for (const axis of PID_AXES) {
+            rows.push({ label: axis === 'roll' ? 'Roll' : axis === 'pitch' ? 'Pitch' : 'Yaw', section: true });
+            for (const f of PID_FIELDS) {
+              rows.push(pidRow(axis, f));
+            }
           }
         }
       }
@@ -4119,6 +4422,9 @@ export class Ui {
     if (plan) {
       requestAnimationFrame(() => drawPlan(this.resultsPlan, plan, { scaleBar: true }));
     }
+    /* The one automatic offer of the flight feel question, because this is
+     * the only place a first race finishes. */
+    this.maybeOfferFeel();
   }
 
   setBanner(text, panelled = false) {
@@ -4631,6 +4937,10 @@ export class Ui {
       this.openBugReport();
       return;
     }
+    if (action === 'feel') {
+      this.openFeelReport();
+      return;
+    }
     /*
      * First run. Choosing the first flight is also the moment the shell stops
      * being a first run, so the full menu is there when the player comes back
@@ -4910,6 +5220,19 @@ export class Ui {
       select: Boolean(nav.select),
       back: Boolean(nav.back),
     };
+    /*
+     * A dialog swallows the pad exactly as handleKey swallows the keys.
+     * Without this, a radio pilot's select flick landed on the MENU UNDER
+     * the dialog: with the feel question auto-opened over Results, the
+     * flick they meant for Fly again restarted the run behind the form and
+     * left it up over a flight it could no longer describe. The edges are
+     * still tracked, so releasing a switch while a dialog closes cannot
+     * fire on the screen that comes back.
+     */
+    if (this.nameDialog && !this.nameDialog.hidden) {
+      this.padPrev = now;
+      return;
+    }
     if (this.screen === 'calibrate') {
       if (now.back && !this.padPrev.back) {
         this.act('calibrate-cancel');

@@ -14395,3 +14395,91 @@ touched; dist/sim.wasm is byte-identical. The harness is green where it
 was green, and flight feel itself is not verifiable here: Crapshack's
 numbers are measured, whether it feels locked in is awaiting the pilot
 who asked for it.
+
+## The feel question, asked once, and the sweep that followed the review
+
+Three asks in one turn: prove the PID adjustment and the rates survive the
+browser, sweep the new work for bugs, and build the flight feel feedback
+loop the tuning rounds have been living off second hand. Plus the standing
+one: do not be annoying.
+
+**Storage, proven rather than assumed.** Both were already stored: the PID
+adjustment and the rate profile live in the one settings blob under
+webfpv.settings.v3, written by writeSettings on every change and clamped
+through normalisePids and normaliseRates on the way back in. This turn
+adds the proof to the harness flow: a headless run sets master 150 and a
+900 deg/s max rate, asserts the raw localStorage JSON holds both, reloads
+the page, and reads both back OUT of the running module (p_roll 67,
+roll_srate 90) rather than off the menu.
+
+**The flight feel question.** A dialog in the house style: five chips for
+the one question that matters (floppy, soft, about right, stiff, twitchy),
+seven optional symptom chips (slow to answer, bounces after a stop,
+propwash wobble, drift, lazy yaw, touchy throttle, locked in), free text,
+optional name. It posts kind `feel` through the same submitBug transport
+and board endpoint the bug tickets use, no new backend, and the context
+carries what a feel report is worthless without: the tune id, the PID
+adjustment summary, the module PID readback (pidsLive), the rates summary
+and the best lap. It offers itself EXACTLY ONCE: after the first finished
+race, 1.4 seconds after the results screen lands so a record celebration
+is not interrupted, and the feelAsked flag flips the moment the dialog
+opens, whatever is done with it. After that it is a row on both Results
+variants and on the pause menu, the three places a pilot has just been
+flying. The first answer chip takes focus so the whole form is two
+keypresses; handleKey already swallows the keyboard while a dialog is up.
+
+**The sweep.** A directed high-effort review of the whole branch diff ran
+(the request asked for a full bug sweep), and its findings, every one
+acted on:
+
+- REAL, FIXED: pollPad had no dialog guard. handleKey swallows the
+  keyboard while a dialog is up; the pad path did not, so a radio pilot's
+  select flick during the auto-opened feel dialog would have fired Fly
+  again on the Results menu UNDER the form and left it floating over a
+  live flight. pollPad now returns, edges tracked, while a dialog is up.
+- REAL, FIXED: the PIDs screen edited a tune that was not loaded yet.
+  Between the Tune row moving and swapTune publishing the readback, the
+  slider rows fell back to 100 (Crapshack ships 185) and the expert
+  toggle would seed the table from stock instead of from what is flying.
+  The window now shows one info row, Loading, and no controls; the rows
+  return the moment the readback lands, and the headless flow asserts the
+  recovery on two tune switches.
+- REAL, FIXED: the D max field's note taught the wrong firmware
+  semantics. pid_init.c line 400 gates d_min scaling on 0 < d_min < D, so
+  at or below D the axis flies the D MAX value constant: D max 0 is zero
+  damping, not damping held at D. Verified against the vendored source
+  and rewritten to say exactly that.
+- REAL, FIXED, twice: both dialogs let Escape, the backdrop or Cancel
+  close the form while the POST was still in flight, so the ticket landed
+  while the pilot watched it vanish, believed it lost, and sent it again.
+  A sending flag now holds the dialog until the request settles, in the
+  new feel dialog and in the bug dialog where the pattern was latent.
+- FIXED, smaller: clampTo read a stored null as Number(null) = 0 and flew
+  the floor instead of dropping the key; the PID bars did not repaint on
+  a window resize (the rates curve repaints every frame, the bars only on
+  a menu rebuild, so a resize stretched the canvas until a keypress); the
+  canvas palette existed in three copies, now exported once from
+  ratespanel.js so roll cannot stop being sakura on one screen; the
+  panel's aria sentence hardcoded the stock numbers it also imports, now
+  formatted from STOCK_PIDS; a dead `multi` parameter and an unreachable
+  pause-first branch copied from openBugReport are gone.
+- The review also confirmed sound: the d/d_min naming mapping end to end,
+  byte-identical composition for untouched tunes, record re-keying at all
+  three init sites, the toggle's stable row index, and cliMap baselines.
+
+Nothing found was declined.
+
+CHECKS, this turn. All selftests: replay (worst gyro error 0.00e+0),
+link, edge router, trackbuilder 279 of 279. lint:presets 3 of 3, lint:fc
+30 of 30. Three headless Chromium runs, console errors 0 warnings 0 on
+the two that matter (the third deliberately POSTs to a board that is not
+running to prove the dialog's failure path renders; the one console line
+is the browser's own connection-refused for that POST): the full PIDs
+regression including expert seeding from Crapshack's own live values and
+the loading-row recovery; the storage round trip above; and the feel
+flow end to end, auto-offer once, chip select, Not now, reopen from the
+Results row, a second race finishing with NO second offer, and the pause
+menu row, with feelAsked asserted in raw localStorage. npm run verify:
+14 of 16, same table as the last entry, the two reds the two already on
+main with the same figures (no emcc here; the feather flag budget).
+dist/sim.wasm untouched, vendor clean.

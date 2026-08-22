@@ -1695,6 +1695,28 @@
         color: var(--deep); font-weight: 600;
       }
       .name-dialog-btn:disabled { opacity: 0.45; cursor: default; }
+      /*
+       * The flight feel question's answers are CHIPS, not a select, because
+       * the whole form is meant to be answered in two clicks and a select
+       * hides its options behind one of them. Same surface treatment as the
+       * dialog inputs; the chosen chip goes mint like the Send button, so
+       * "chosen" and "go" read as the same colour system.
+       */
+      .feel-chips {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        margin: 8px 0 4px;
+      }
+      .feel-chip {
+        appearance: none; border: 1px solid rgba(244, 236, 214, 0.16);
+        background: #121a14; color: var(--cream); font: inherit;
+        font-size: 13px; padding: 6px 11px; border-radius: 999px;
+        cursor: pointer;
+      }
+      .feel-chip:hover { border-color: var(--sakura); }
+      .feel-chip.on {
+        background: var(--mint); border-color: var(--mint);
+        color: var(--deep); font-weight: 600;
+      }
       .bug-chip {
         position: absolute; top: 16px; right: 16px; z-index: 7;
         pointer-events: auto;

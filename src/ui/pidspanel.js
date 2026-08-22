@@ -38,17 +38,12 @@
  */
 
 import { PID_AXES, PID_FIELDS, STOCK_PIDS } from '../../configs/pids.js';
+/* The one copy of the house canvas palette, so roll is sakura and yaw is
+ * slate here exactly as they are on the rates curve. Only the stock notch
+ * is this panel's own. */
+import { AXIS as AXIS_LINE, INK, LABEL, MINT, SAKURA, SLATE } from './ratespanel.js';
 
-/* House palette, from the :root block in index.html, as literals because a
- * canvas cannot read a CSS custom property. Same trio the rates curves
- * use, so an axis keeps its colour from one screen to the next. */
-const INK = 'rgba(12, 18, 14, 0.55)';
-const AXIS_LINE = 'rgba(244, 236, 214, 0.26)';
-const LABEL = 'rgba(235, 230, 215, 0.62)';
 const NOTCH = 'rgba(244, 236, 214, 0.75)';
-const SAKURA = '#e8a8b8';
-const MINT = '#7dffb4';
-const SLATE = '#9db3c8';
 
 const AXIS_COLOR = { roll: SAKURA, pitch: MINT, yaw: SLATE };
 const AXIS_LABEL = { roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw' };
@@ -68,13 +63,13 @@ function el(tag, cls, text) {
   return n;
 }
 
-/* One sentence a screen reader can read instead of the picture. */
+/* One sentence a screen reader can read instead of the picture. The stock
+ * reference is formatted from STOCK_PIDS, the same table the notches are
+ * drawn from, so the spoken numbers cannot drift from the drawn ones. */
 function describe(pids) {
-  const parts = PID_AXES.map((axis) => {
-    const a = pids[axis];
-    return `${AXIS_LABEL[axis]} P ${a.p}, I ${a.i}, D ${a.d}, D max ${a.dmax}, feedforward ${a.f}`;
-  });
-  return `PID values the module is flying. ${parts.join('. ')}. Stock roll is P 45, I 80, D 30, D max 40, feedforward 120.`;
+  const line = (a) => `P ${a.p}, I ${a.i}, D ${a.d}, D max ${a.dmax}, feedforward ${a.f}`;
+  const parts = PID_AXES.map((axis) => `${AXIS_LABEL[axis]} ${line(pids[axis])}`);
+  return `PID values the module is flying. ${parts.join('. ')}. Stock roll is ${line(STOCK_PIDS.roll)}.`;
 }
 
 export function mountPidsPanel() {
@@ -203,6 +198,17 @@ export function mountPidsPanel() {
     );
     draw();
   }
+
+  /* The rates curve is redrawn every frame while its screen is up, so a
+   * window resize fixes itself there. Nothing repaints these bars between
+   * menu rebuilds, so without this a resize stretched the canvas until the
+   * next keypress. Skipped while the screen is hidden: a zero-width wrap
+   * has nothing to size against. */
+  window.addEventListener('resize', () => {
+    if (graphWrap.clientWidth) {
+      draw();
+    }
+  });
 
   return { root, paint };
 }

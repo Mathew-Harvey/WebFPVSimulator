@@ -14270,3 +14270,128 @@ blocks and one selector in a generator script, and nothing here touches physics,
 the plant, the module ABI or the build. `npm run lint:catalog` still fails on
 the missing `vendor/betaflight` submodule, as it did before this change and for
 the same reason.
+
+## The PID control the removal took away, given back as a screen
+
+The flight feel feedback, quoted because it is the whole brief: "The update
+yesterday or the day before that removed custom betaflight configuration ngl
+kinda ruined the experience for me, the default betaflight and karate tune
+is kinda floppy ... I was having a blast on the first couple days but I had
+to push the pids all the way to like 200-300% to make it fly well." The
+update in question is `29babaa`, "Replace the flight controller screen with
+a Rates screen": it replaced eight tabs and a CLI textarea with the Rates
+screen, which was right, and it also removed the only way to move a PID,
+which this round answers twice over.
+
+**A PIDs screen, at the Rates screen's size.** New row on title, Settings
+and pause, between Tune and Rates. `configs/pids.js` owns the model the way
+`configs/rates.js` owns rates; `src/ui/pidspanel.js` draws it. The screen is
+Betaflight Configurator's tuning tab minus the CLI: the eight simplified
+tuning sliders (master multiplier first, because it is the one the feedback
+asked for), and a Set PIDs directly toggle that opens the expert table, P,
+I, D, D max and feedforward per axis. No CLI paste anywhere, per the brief.
+
+**Nothing computes a PID in JavaScript.** A slider adjustment is emitted as
+`set simplified_*` lines plus the real CLI command `simplified_tuning
+apply`, so the slider arithmetic is the firmware's own
+config/simplified_tuning.c, compiled in since the Karate tune started using
+it. The expert table emits `simplified_pids_mode = OFF` and plain `set
+p_roll = ...` lines, which is what Configurator's expert mode writes.
+Probed before building: apply at all-100 reproduces the factory PIDs to the
+digit, re-apply is idempotent, and the module does NOT enforce the
+valueTable's 0 to 200 slider range (it took 250 and flew it), so the menu
+owns the clamp, 200 the firmware max, floored at 30 on the six sliders
+where zero would remove the controller entirely.
+
+**Per tune, not global, and sparse.** The adjustment is keyed by tune id:
+adjust Karate and the default stays stock, which is what keeps the Tune row
+meaningful. Only sliders the pilot actually moved are stored and emitted,
+so Karate's own slider block keeps governing everything untouched, and a
+slider walked back onto the tune's shipped value forgets it was moved. An
+untouched tune composes to byte-identical config text, so every stored
+best-lap record key survives. The tune's own slider baseline is read from
+the tune TEXT (cliMap, last write wins), not from the module, because after
+an override block runs the module's sliders ARE the override.
+
+**Read back, not believed.** After every successful sim_init, main.js reads
+the fifteen PID values and the slider state out of the module through
+sim_bf_get and hands them to the screen. The bars, the numeric readout and
+the slider fallback values have no other source, so a control that stopped
+reaching Betaflight is visible as a control that moves nothing. The panel
+notches every bar with the stock 4.5.1 value so "nearly double stock" is
+readable straight off the picture.
+
+**Crapshack, the third tune.** The same report answered as a preset, named
+by the tester. `configs/crapshack.diff` is the Karate race foundation
+(filters, yaw pidsum 1000, the iterm relax cutoff this plant needs) with
+one slider block: mode RPY, master 185, i 65, d 115, dmax 140, ff 125,
+pitch_pi 105. Swept, not guessed: candidates at master 140, 165, 185 and
+200 with D and feedforward variants, measured with instant steps, 25
+percent small-signal steps, hard stick-release stops and
+scripts/flight-report.js, against both shipped tunes. Roll axis, default
+first, Crapshack second: 25 percent step overshoot 18.3 to 5.7 percent
+with rise90 29 to 22 ms, instant full yaw rise90 172 to 133 ms, stop
+bounce 22 to 16 deg/s, descent-and-catch wobble 19 to 14 deg/s. Master 200
+bought one more point of small-signal overshoot and gave back full-stick
+rise; D at 130/160 slowed the stop and doubled the bounce; both are why
+185/115/140 is where it stopped. Applied result, read back from the
+module: roll P83 I96 D93 Dmin63 F277 against the stock 45/80/40/30/120,
+which is the "200-300%" the tester asked for with the ratios kept sane.
+The tester's own frequency hypothesis is half right for a reason they
+could not see: the plant's gyro has no noise, so the two real-quad tunes
+pay for headroom against noise that does not exist here, and the price
+reads as floppy.
+
+**composeConfig grew a fourth argument.** Tune body, then the pilot's PID
+block, then rates, in that order: the PID block's apply re-runs on top of
+the tune's slider state, exactly what dragging a Configurator slider does
+with a preset loaded, and rates stay the last word on their own keys. The
+argument defaults to empty and empty composes byte-identically, so the
+scripts/fc-trace.js callers and the record keys are all untouched.
+
+**Wrong once, and the harness caught it.** The Set PIDs directly toggle
+first sat below the sliders, so flipping it rebuilt the menu with the
+cursor on an index that no longer held the toggle, renderMenu's guard sent
+the cursor to the top, and the next arrow press stepped the TUNE row
+instead: the second headless run failed exactly there, mid-flow, having
+silently switched to Karate. The toggle now sits directly under Tune, at
+the same index in both shapes, and the rerun asserts the cursor is still
+on it after a flip.
+
+CHECKS, this turn, all run and all read:
+
+- `npm run lint:presets` 3 of 3 clean, crapshack.diff 121 set lines, 113
+  applied, 8 inert by design, 0 unrecognised.
+- `npm run lint:fc` 30 of 30 traces clean.
+- `npm run lint:catalog` ok, after `git submodule update --init --depth 1`
+  brought the pinned betaflight checkout into this container; it was
+  failing on the missing checkout before this change. Slider bounds in
+  configs/pids.js were verified against the real settings.c: PIDS_MIN 0,
+  MAX 200, dmax and ff floored at 0.
+- A scratch compose-to-module suite, 13 checks: untouched compose byte
+  identical, Karate master 150 lands p_roll 57 with yaw untouched (RP),
+  the same settings leave the default tune at 45, default master 150
+  reaches yaw (RPY), expert values land exactly with mode OFF, leaving
+  expert restores the slider override.
+- `scripts/shots.js`, five runs, console errors 0 warnings 0 on every one:
+  the full slider flow with every value asserted through sim_bf_get via a
+  new `window.__pids` hook; a location.reload proving the adjustment
+  survives storage and normalisePids; expert seeding from what was flying,
+  the toggle round trip remembering the table, revert to stock; Escape
+  routing from title, from Settings and from pause; a mid-run change from
+  the pause menu applying and returning to flight; layouts looked at at
+  1600x900, 1280x620 and 900x760, where the screen stacks exactly as
+  Rates does because it wears the same classes.
+- `npm run verify`: **14 of 16**, table read row by row. Every physics,
+  determinism and console check passes with the hashes and measured
+  values unchanged. The two reds are the two already on main, with the
+  same figures to the digit: check 1 build-clean because this container
+  has no emcc (vendor diff empty, dist/sim.wasm untouched by this round),
+  and check 16 map-isolation, the feather-flag budget recorded red on
+  main at P2 1043845 and P10 33.1. No threshold was touched.
+
+Physics, the plant, patches, the module ABI and the input path were not
+touched; dist/sim.wasm is byte-identical. The harness is green where it
+was green, and flight feel itself is not verifiable here: Crapshack's
+numbers are measured, whether it feels locked in is awaiting the pilot
+who asked for it.

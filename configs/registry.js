@@ -44,6 +44,11 @@ export const TUNES = [
     name: 'Karate race 6S',
     note: 'sugarK’s 6S 5 inch race tune. Lower D, sharper feedforward, faster stops.',
   },
+  {
+    id: 'crapshack',
+    name: 'Crapshack',
+    note: 'The stiff one, cut for this sim’s clean gyro: PIDs near double stock, locked in at mid stick, quicker yaw.',
+  },
 ];
 
 export function tuneById(id) {

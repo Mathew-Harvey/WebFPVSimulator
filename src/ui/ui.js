@@ -75,6 +75,20 @@ import {
   ratesFromLegacy,
   ratesSummary,
 } from '../../configs/rates.js';
+import {
+  PID_AXES,
+  PID_FIELDS,
+  PID_FIELD_SPECS,
+  SLIDER_KEYS,
+  SLIDERS,
+  clearPidsFor,
+  normalisePids,
+  pidsAdjusted,
+  pidsEntry,
+  pidsSummary,
+  setPidSlider,
+  setPidsExpert,
+} from '../../configs/pids.js';
 import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
 import { BOARD_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
@@ -120,6 +134,7 @@ import {
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { mountRatesPanel } from './ratespanel.js';
+import { mountPidsPanel } from './pidspanel.js';
 
 /* Step through a list with wraparound. Every value row on every screen
  * moves through this, so a left arrow at the start of a list lands on its
@@ -193,6 +208,15 @@ const DEFAULTS = {
    * profile: the firmware has always had three axes and this only decides
    * whether two of them are typed once or twice. */
   ratesSplitPitch: false,
+  /*
+   * The pilot's PID adjustment, KEYED BY TUNE ID, empty meaning every tune
+   * flies its own numbers. Slider overrides and the expert table both live
+   * here; configs/pids.js owns the shape, the clamps and the CLI it
+   * becomes. Per tune rather than global on purpose: a single override
+   * across tunes would make the Tune row meaningless. loadSettings
+   * REPLACES this with a normalised fresh object, same as rates.
+   */
+  pids: {},
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
@@ -335,6 +359,10 @@ export function loadSettings() {
    */
   const legacy = typeof stored.rates === 'object' && stored.rates ? null : ratesFromLegacy(stored);
   s.rates = normaliseRates(legacy || s.rates);
+  /* The PID adjustment, clamped onto what the firmware and the menu will
+   * take. An unknown tune id, an out-of-range slider or a half-complete
+   * expert table cannot survive a localStorage edit into the emitter. */
+  s.pids = normalisePids(s.pids);
   /* A profile whose pitch differs from its roll has to show three axes,
    * whatever the stored menu shape says, or the rows would be editing a
    * pitch the pilot cannot see. */
@@ -796,12 +824,12 @@ function courseCardRows(subject) {
 }
 
 /*
- * The tune, as two named choices.
+ * The tune, as named choices.
  *
- * A tune is P, I, D, feedforward and filtering, and there are exactly two of
- * them: what a freshly flashed quad flies, and a 6S race tune. Neither
- * carries rates, which is why switching between them changes how the quad
- * settles and not how far the sticks go. See configs/registry.js.
+ * A tune is P, I, D, feedforward and filtering: what a freshly flashed
+ * quad flies, a 6S race tune, and the stiff Crapshack cut for this plant.
+ * None carries rates, which is why switching between them changes how the
+ * quad settles and not how far the sticks go. See configs/registry.js.
  */
 /*
  * Changing what the quad flies re-inits the module, and re-initing puts the
@@ -864,6 +892,17 @@ function ratesItem(s, midRun) {
     value: ratesSummary(s.rates),
     action: 'rates',
     note: `How far the sticks go, and how sharply. Yours, not the tune's. A radio in Acro flies this curve; keyboard flight is Angle.${midRun ? MID_RUN_WARNING : ''}`,
+  };
+}
+
+/* The way in to the PIDs screen, with the adjustment on the row so a stock
+ * tune reads as stock without opening it. */
+function pidsItem(s, midRun) {
+  return {
+    label: 'PIDs',
+    value: pidsSummary(s.pids, s.tune),
+    action: 'pids',
+    note: `How hard the controller holds what the sticks ask. Betaflight's own tuning sliders on the tune above, or every PID by hand. Each tune keeps its own adjustment.${midRun ? MID_RUN_WARNING : ''}`,
   };
 }
 
@@ -948,6 +987,10 @@ export class Ui {
      * where Settings itself came from, and overwriting it here would lose a
      * paused origin two screens up. */
     this.ratesFrom = null;
+    /* Same contract for the PIDs screen. */
+    this.pidsFrom = null;
+    /* The module readback the PIDs screen draws from; see setPidsLive. */
+    this.pidsLive = null;
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
@@ -1214,7 +1257,7 @@ export class Ui {
     rates.append(el(
       'p',
       'rates-lede',
-      'How far the sticks go. Pick the rate system you think in and type your own numbers: all five of Betaflight\'s are here and the quad flies whichever you choose. Rates belong to you, not to the tune, so they stay put when you switch between the two tunes. A radio in Acro flies this curve; keyboard flight is Angle and ignores it.',
+      'How far the sticks go. Pick the rate system you think in and type your own numbers: all five of Betaflight\'s are here and the quad flies whichever you choose. Rates belong to you, not to the tune, so they stay put when you switch tunes. A radio in Acro flies this curve; keyboard flight is Angle and ignores it.',
     ));
     this.ratesPanel = mountRatesPanel();
     const ratesBlock = wrapMenu();
@@ -1229,6 +1272,38 @@ export class Ui {
     this.ratesHint = ratesHint.querySelector('.hint-copy');
     rates.append(ratesBlock.stage, ratesHint);
     this.screens.rates = rates;
+
+    /*
+     * PIDs.
+     *
+     * THE HALF OF THE FLIGHT-CONTROLLER SCREEN THAT WAS MISSED. Removing
+     * the Configurator homage was right, and then a beta tester reported
+     * the two shipped tunes floppy and said they used to push the PIDs to
+     * 200-300 percent, which is exactly the control the removal took away.
+     * So this is that control at the Rates screen's size: Betaflight's own
+     * tuning sliders on whichever tune is loaded, an expert table for
+     * setting PIDs directly, and nowhere to paste a CLI dump. The sliders
+     * are the firmware's simplified_* keys and a real `simplified_tuning
+     * apply`; the panel beside the rows draws the values read back OUT of
+     * the running module, so what is on this screen is what is flying.
+     */
+    const pids = el('div', 'screen screen-page screen-rates screen-pids');
+    pids.append(el('h2', null, 'PIDs'));
+    pids.append(el(
+      'p',
+      'rates-lede',
+      'How hard the flight controller works. The sliders are Betaflight\'s own, applied by the firmware itself, and they adjust the tune you have loaded: 100 is that tune\'s stock, the master multiplier scales everything at once. Each tune keeps its own adjustment. Rates live on their own screen and are untouched by anything here.',
+    ));
+    this.pidsPanel = mountPidsPanel();
+    const pidsBlock = wrapMenu();
+    this.pidsMenu = pidsBlock.menu;
+    this.pidsMenu.classList.add('menu-scroll');
+    this.pidsHelp = pidsBlock.help;
+    pidsBlock.stage.prepend(this.pidsPanel.root);
+    const pidsHint = hintWithKeys(['↑↓', '←→', 'Enter', 'Esc'], '');
+    this.pidsHint = pidsHint.querySelector('.hint-copy');
+    pids.append(pidsBlock.stage, pidsHint);
+    this.screens.pids = pids;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
     calibrate.append(el('h2', null, 'Calibrate sticks'));
@@ -1955,7 +2030,7 @@ export class Ui {
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
       /*
-       * NINE ROWS PLUS REPORT, ALWAYS. The course actions that used to
+       * TEN ROWS PLUS REPORT, ALWAYS. The course actions that used to
        * appear and vanish here live on the Courses screen and on Results,
        * where the course itself is what the player is looking at. Report a
        * bug is a stable last row so testers can send a ticket from title.
@@ -1972,6 +2047,7 @@ export class Ui {
           note: 'Worlds, your courses and the public board, in one place.',
         },
         tuneItem(s),
+        pidsItem(s),
         ratesItem(s),
         { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
         { label: 'Settings', action: 'settings' },
@@ -2093,6 +2169,7 @@ export class Ui {
         },
         { label: 'Flight', section: true },
         tuneItem(s),
+        pidsItem(s),
         ratesItem(s),
         choice(
           'Flight mode',
@@ -2236,13 +2313,14 @@ export class Ui {
       ];
     }
     if (this.screen === 'paused') {
-      /* Nine rows, always, and Resume is the button. The conditional Edit a
+      /* Ten rows, always, and Resume is the button. The conditional Edit a
        * copy that used to appear here belongs on the Courses screen. Report
        * a bug is the chip in the corner, or F8, so this list stays put. */
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         tuneItem(s, true),
+        pidsItem(s, true),
         ratesItem(s, true),
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
@@ -2388,6 +2466,106 @@ export class Ui {
         { label: 'Back', action: 'back' },
       ];
     }
+    if (this.screen === 'pids') {
+      /*
+       * BETAFLIGHT CONFIGURATOR'S PID TUNING TAB, in a menu, minus the CLI.
+       *
+       * Two ways in, the same two Configurator offers. The sliders are the
+       * firmware's simplified_* keys plus a real `simplified_tuning apply`,
+       * so the arithmetic from slider to PID is compiled Betaflight and
+       * nothing else, and 100 always means "this tune's own scale". The
+       * expert table writes the PIDs themselves with the sliders off,
+       * which is Configurator's expert mode. Everything is keyed by the
+       * tune on the row above: adjust Karate and the default stays stock.
+       *
+       * A slider the pilot has not moved shows the TUNE's value and is not
+       * stored, and a slider walked back onto the tune's value forgets it
+       * was ever moved, so stock has one spelling and the best-lap record
+       * key (a hash of the config text) cannot split on a no-op.
+       */
+      const live = this.pidsLive && this.pidsLive.tune === s.tune ? this.pidsLive : null;
+      const entry = pidsEntry(s.pids, s.tune);
+      const expert = Boolean(entry && entry.mode === 'expert' && entry.pids);
+      const tuneName = tuneById(s.tune).name;
+      const yawNote = live && live.baselineMode === 'RP'
+        ? ` ${tuneName} runs the sliders in RP mode, so they reach roll and pitch and leave yaw at its stock values, exactly as Configurator would.`
+        : '';
+      const sliderRow = (k) => {
+        const spec = SLIDERS[k];
+        const tuneVal = live ? live.baseline[k] : null;
+        const moved = Boolean(entry && entry.sliders && k in entry.sliders);
+        const cur = moved ? entry.sliders[k] : (tuneVal ?? 100);
+        const bits = [spec.note];
+        if (moved && tuneVal != null) {
+          bits.push(`${tuneName} ships this at ${tuneVal}; setting it back there forgets the change.`);
+        }
+        if (k === 'master') {
+          bits.push(yawNote.trim());
+        }
+        return number(
+          spec.label,
+          bits.filter(Boolean).join(' '),
+          spec,
+          cur,
+          (v) => { setPidSlider(s.pids, s.tune, k, v, tuneVal); },
+        );
+      };
+      const pidRow = (axis, f) => {
+        const spec = PID_FIELD_SPECS[f];
+        return number(
+          spec.label,
+          spec.note,
+          spec,
+          entry.pids[axis][f],
+          (v) => { entry.pids[axis][f] = v; },
+        );
+      };
+      /* The mode switch sits ABOVE the rows it switches, at the same index
+       * in both shapes. It was below the sliders, so flipping it rebuilt
+       * the menu with the cursor left on an index that no longer held the
+       * toggle, the guard in renderMenu sent the cursor to the top, and
+       * the next arrow press stepped the Tune row instead. A control must
+       * stay under the cursor that just used it. */
+      const rows = [
+        tuneItem(s),
+        toggle(
+          'Set PIDs directly',
+          expert
+            ? 'On. The sliders are off (simplified_pids_mode OFF, as Configurator\'s expert mode sets it) and the table below is what flies. Turning this off restores the sliders and remembers the table.'
+            : 'Off. The sliders below drive the PIDs through the firmware\'s own simplified tuning. Turn this on to type every value yourself, starting from exactly what is flying now.',
+          expert,
+          (on) => {
+            setPidsExpert(s.pids, s.tune, on, live ? live.pids : null);
+          },
+        ),
+      ];
+      if (!expert) {
+        rows.push({ label: 'Betaflight\'s tuning sliders', section: true });
+        for (const k of SLIDER_KEYS) {
+          rows.push(sliderRow(k));
+        }
+      }
+      if (expert) {
+        for (const axis of PID_AXES) {
+          rows.push({ label: axis === 'roll' ? 'Roll' : axis === 'pitch' ? 'Pitch' : 'Yaw', section: true });
+          for (const f of PID_FIELDS) {
+            rows.push(pidRow(axis, f));
+          }
+        }
+      }
+      rows.push(
+        {
+          label: 'Back to the tune\'s own values',
+          action: 'pids-default',
+          disabled: !pidsAdjusted(s.pids, s.tune),
+          note: pidsAdjusted(s.pids, s.tune)
+            ? `Forgets every slider and hand-set PID for ${tuneName} and flies the tune as it ships. Other tunes' adjustments are kept.`
+            : `${tuneName} is already flying its own values.`,
+        },
+        { label: 'Back', action: 'back' },
+      );
+      return rows;
+    }
     return [];
   }
 
@@ -2408,6 +2586,7 @@ export class Ui {
       courses: this.coursesMenu,
       settings: this.settingsMenu,
       rates: this.ratesMenu,
+      pids: this.pidsMenu,
       paused: this.pausedMenu,
       results: this.resultsMenu,
     }[this.screen];
@@ -2501,6 +2680,7 @@ export class Ui {
     host.scrollTop = scroll;
     this.syncCursor(false);
     this.syncRates();
+    this.syncPids();
     /* A click that was travelling from one typed field to another, landing
      * now that the rows it was aiming at exist again. See makeNumber. */
     if (this.numberFocusWanted != null) {
@@ -2542,6 +2722,48 @@ export class Ui {
     this.ratesPanel.paintStick(this.ratesStick);
   }
 
+  /* The PID bars, repainted from the module readback whenever the menu is
+   * rebuilt. Same contract as syncRates: every row on the screen writes a
+   * setting and then rebuilds, so this is where the picture stays honest. */
+  syncPids() {
+    if (!this.pidsPanel || this.screen !== 'pids') {
+      return;
+    }
+    if (this.pidsHint) {
+      this.pidsHint.textContent = this.returnTo === 'paused'
+        ? 'Arrow keys move, left and right change a value, Enter types one. Escape leaves a field, then goes back. A change reaches the quad at once, and puts it back on the start line.'
+        : 'Arrow keys move, left and right change a value, Enter types one. Escape leaves a field, then goes back. Changes are stored and reach the quad at once.';
+    }
+    const s = this.settings;
+    const live = this.pidsLive && this.pidsLive.tune === s.tune ? this.pidsLive : null;
+    const entry = pidsEntry(s.pids, s.tune);
+    const name = tuneById(s.tune).name;
+    let caption;
+    if (!live) {
+      caption = `${name} is loading.`;
+    } else if (entry && entry.mode === 'expert' && entry.pids) {
+      caption = `${name}, PIDs set by hand. Read back from the module.`;
+    } else if (pidsAdjusted(s.pids, s.tune)) {
+      caption = `${name} through your sliders. Read back from the module; the notch is stock 4.5.1.`;
+    } else {
+      caption = `${name}, as it ships. Read back from the module; the notch is stock 4.5.1.`;
+    }
+    this.pidsPanel.paint(live, caption);
+  }
+
+  /*
+   * The module readback, from the shell after every successful sim_init.
+   * The PIDs screen's bars and its slider fallbacks have no other source:
+   * nothing on the screen computes a PID from a slider, so a control that
+   * stopped reaching Betaflight shows up as a control that moves nothing.
+   */
+  setPidsLive(live) {
+    this.pidsLive = live || null;
+    if (this.screen === 'pids') {
+      this.renderMenu();
+    }
+  }
+
   helpNode() {
     return {
       title: this.titleHelp,
@@ -2550,6 +2772,7 @@ export class Ui {
       courses: this.coursesHelp,
       settings: this.settingsHelp,
       rates: this.ratesHelp,
+      pids: this.pidsHelp,
       paused: this.pausedHelp,
       results: this.resultsHelp,
     }[this.screen];
@@ -3508,6 +3731,9 @@ export class Ui {
     if (this.screen === 'rates' && screen !== 'rates') {
       this.ratesFrom = null;
     }
+    if (this.screen === 'pids' && screen !== 'pids') {
+      this.pidsFrom = null;
+    }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
      * going. Settings opens on its first real row rather than on a heading. */
@@ -4360,6 +4586,12 @@ export class Ui {
       this.show('settings');
       return;
     }
+    if (this.screen === 'pids' && this.pidsFrom === 'settings') {
+      /* Same contract as Rates above. */
+      this.pidsFrom = null;
+      this.show('settings');
+      return;
+    }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
   }
 
@@ -4471,6 +4703,28 @@ export class Ui {
         this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       }
       this.show('rates');
+      return;
+    }
+    if (action === 'pids') {
+      /* Same going-back contract as Rates, for the same reason. */
+      if (this.screen === 'settings') {
+        this.pidsFrom = 'settings';
+      } else {
+        this.pidsFrom = null;
+        this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
+      }
+      this.show('pids');
+      return;
+    }
+    if (action === 'pids-default') {
+      /* One tune's adjustment only. The other tunes keep theirs, which is
+       * the whole reason the store is keyed. */
+      clearPidsFor(this.settings.pids, this.settings.tune);
+      saveSettings(this.settings);
+      this.renderMenu();
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
       return;
     }
     if (action === 'rates-default') {
@@ -4673,16 +4927,17 @@ export class Ui {
       return;
     }
     /*
-     * Title, Settings and Rates all draw the live stick channels: the first
-     * two pose the airframe, and Rates rides a dot along the curve the stick
-     * is about to fly. Pitch and roll that fly it used to step the cursor,
-     * which on Rates meant that moving a stick to watch its dot also walked
-     * the menu and, on a value row, edited the number it landed on. Keyboard
-     * and mouse own the rows on these three; a radio switch still selects on
-     * the title so Fly is one flick away. The pad is tracked so a held stick
-     * does not fire an edge the moment the screen closes.
+     * Title, Settings, Rates and PIDs all hold still under a moving stick:
+     * the first two pose the airframe, and Rates rides a dot along the
+     * curve the stick is about to fly. Pitch and roll that fly it used to
+     * step the cursor, which on Rates meant that moving a stick to watch
+     * its dot also walked the menu and, on a value row, edited the number
+     * it landed on; PIDs is all value rows, so it gets the same rule.
+     * Keyboard and mouse own the rows on these four; a radio switch still
+     * selects on the title so Fly is one flick away. The pad is tracked so
+     * a held stick does not fire an edge the moment the screen closes.
      */
-    if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates') {
+    if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids') {
       if (this.screen === 'title' && now.select && !this.padPrev.select) {
         this.select();
       }

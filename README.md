@@ -44,9 +44,13 @@ Or fly on keyboard: W/S throttle, A/D yaw, arrows are the right stick
 Keys: R reset, C camera (FPV or chase), M stick calibration, V cycles the
 battery cell voltage between 4.20, 3.80 and 3.50 V.
 
-Two tunes, Betaflight default and a 6S karate race tune, on the Tune row of
-the title and pause menus. Rates are yours and stay put across both: the
-Rates screen draws the stick to rate curve with your sticks on it.
+Three tunes on the Tune row of the title and pause menus: the Betaflight
+default, a 6S karate race tune, and Crapshack, the stiff one cut for this
+simulator's clean gyro. The PIDs screen adjusts whichever tune is loaded
+with Betaflight's own tuning sliders, or lets you set every PID by hand,
+and each tune keeps its own adjustment. Rates are yours and stay put
+across all of them: the Rates screen draws the stick to rate curve with
+your sticks on it.
 
 Tracks you build stay in this browser. Clearing it, or another device,
 starts you from nothing. Publish a course from the track builder to put

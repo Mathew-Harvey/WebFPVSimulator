@@ -668,6 +668,22 @@
       .rates-num-sep, .rates-num-unit { color: rgba(235, 230, 215, 0.6); font-weight: 500; }
       .rates-num[hidden], .rates-num-sep[hidden] { display: none; }
       .screen-rates .menu-scroll { max-height: min(52vh, 30em); }
+      /*
+       * The PIDs screen wears .screen-rates as well as .screen-pids, ON
+       * PURPOSE: it is the Rates screen's layout with bars where the curve
+       * is, and duplicating every stage, scroll and narrow-window rule for
+       * a second class is how the two screens would drift apart. Only what
+       * differs is named here.
+       */
+      .pids-caption {
+        font-size: 12px; letter-spacing: 0.06em;
+        color: rgba(235, 230, 215, 0.66);
+        margin-bottom: 8px;
+      }
+      /* Three axes of five numbers each: one cell per axis, kept on one
+         line by the shared dd nowrap, so the floor is wider than the rates
+         cells' four-number floor. */
+      .pids-readout { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
       .row-label { min-width: 0; flex: 1 1 auto; }
       .row.on .row-label { font-weight: 650; }
       .row-value {

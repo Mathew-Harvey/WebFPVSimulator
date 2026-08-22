@@ -69,7 +69,8 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { ratesDiff, ratesSummary } from '../configs/rates.js';
-import { composeConfig, moduleGet, RATES_KEEP } from './fc/dump.js';
+import { PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
+import { cliMap, composeConfig, moduleGet, RATES_KEEP } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '../tests/lib/simmod.js';
@@ -461,20 +462,68 @@ export async function boot({ loading, bootStart, mapId }) {
   let configGen = 0;
   let configLoadWait = Promise.resolve();
   /*
-   * A flown config is a TUNE plus the pilot's RATES, joined only by
-   * composeConfig in src/fc/dump.js. No file in configs/ carries a
-   * rateprofile any more, and the rate lines are appended last so that even
-   * a diff the pilot drops on the page flies on the rates in the menu. See
-   * configs/rates.js for why the two were separated: shipping rates inside
-   * the Karate preset meant choosing that tune also halved the stick
-   * authority, so the tune could never be judged on its own.
+   * A flown config is a TUNE plus the pilot's PID ADJUSTMENT plus the
+   * pilot's RATES, joined only by composeConfig in src/fc/dump.js. No file
+   * in configs/ carries a rateprofile any more, and the rate lines are
+   * appended last so that even a diff the pilot drops on the page flies on
+   * the rates in the menu. See configs/rates.js for why rates were
+   * separated: shipping rates inside the Karate preset meant choosing that
+   * tune also halved the stick authority, so the tune could never be
+   * judged on its own. The PID adjustment sits between the two, keyed by
+   * the LOADED tune's id, so each tune keeps its own; see configs/pids.js.
    */
   let tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
   let ratesText = ratesDiff(ui.settings.rates);
-  let configText = composeConfig(tuneText, ui.settings.rates, RATES_KEEP);
+  let pidsText = pidsDiffFor(ui.settings.pids, configId);
+  let configText = composeConfig(tuneText, ui.settings.rates, RATES_KEEP, pidsText);
   if (sim.init(configText) !== SIM_OK) {
     throw new Error(`sim_init failed on ${configName}`);
   }
+  /*
+   * What the controller is actually flying, read back out of the module
+   * after every successful init and handed to the PIDs screen. The screen
+   * never computes a PID from a slider itself: this readback is the only
+   * source its numbers have, so a slider that stopped reaching Betaflight
+   * would be visible as a slider that moves nothing.
+   */
+  function publishPids() {
+    const num = (key) => {
+      const v = Number(moduleGet(sim, key));
+      return Number.isFinite(v) ? v : 0;
+    };
+    /*
+     * The tune's OWN slider positions come from the tune text, not from
+     * the module: once an override block has run, the module's stored
+     * sliders ARE the override, and "the value this tune ships" would be
+     * unrecoverable. The text is the tune, cliMap takes the last write
+     * exactly as the CLI does, and a key the tune never sets is the
+     * firmware default of 100.
+     */
+    const map = cliMap(tuneText);
+    const baseline = {};
+    for (const k of SLIDER_KEYS) {
+      const v = Number(map.get(SLIDERS[k].cli));
+      baseline[k] = Number.isFinite(v) ? v : 100;
+    }
+    const pids = {};
+    for (const axis of PID_AXES) {
+      pids[axis] = {
+        p: num(pidCliKey('p', axis)),
+        i: num(pidCliKey('i', axis)),
+        d: num(pidCliKey('d', axis)),
+        dmax: num(pidCliKey('dmax', axis)),
+        f: num(pidCliKey('f', axis)),
+      };
+    }
+    ui.setPidsLive({
+      tune: configId,
+      mode: moduleGet(sim, 'simplified_pids_mode'),
+      baselineMode: map.get('simplified_pids_mode') || 'RPY',
+      baseline,
+      pids,
+    });
+  }
+  publishPids();
   loading.done('sim');
   loading.detail = '';
 
@@ -1308,7 +1357,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * already overwritten configText with the rejected text, so every one
        * of those recoveries would have restored the bad config too.
        */
-      const nextText = composeConfig(tuneText, s.rates, RATES_KEEP);
+      const nextText = composeConfig(tuneText, s.rates, RATES_KEEP, pidsText);
       if (sim.init(nextText) === SIM_OK) {
         ratesText = nextRates;
         configText = nextText;
@@ -1325,6 +1374,38 @@ export async function boot({ loading, bootStart, mapId }) {
         sim.setCellVoltage(runVoltage);
         reset();
       }
+      publishPids();
+    }
+    /*
+     * The PID adjustment, same contract as rates: part of the config text,
+     * so changing it re-inits the module and resets the craft. Compared as
+     * the CLI text configs/pids.js emits for the LOADED tune, so a slider
+     * moved on the tune that is flying re-inits, and an adjustment stored
+     * for a different tune changes nothing until that tune is chosen.
+     * While a tune swap is in flight configId is still the old tune, this
+     * comparison stays a no-op, and swapTune adopts the new tune's block
+     * itself.
+     */
+    const nextPids = pidsDiffFor(s.pids, configId);
+    if (nextPids !== pidsText) {
+      /* A local first, same reason as rates above: a refused sim_init has
+       * already half-applied the new text, and recovery must restore the
+       * text that worked, not the rejected one. */
+      const nextText = composeConfig(tuneText, s.rates, RATES_KEEP, nextPids);
+      if (sim.init(nextText) === SIM_OK) {
+        pidsText = nextPids;
+        configText = nextText;
+        adoptSimClock();
+        sim.setCellVoltage(runVoltage);
+        race.setRecordKey(recordKey());
+        ui.setBest(race.bestMs, view.mode);
+        reset();
+      } else if (sim.init(configText) === SIM_OK) {
+        adoptSimClock();
+        sim.setCellVoltage(runVoltage);
+        reset();
+      }
+      publishPids();
     }
     /* The radio, and the recorder. Both are re-read here so a change in
      * Settings lands without a restart. setPreset on the same id is a
@@ -1374,24 +1455,31 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!isLiveConfigLoad(gen)) {
       return;
     }
-    const nextText = composeConfig(text, ui.settings.rates, RATES_KEEP);
+    /* The NEW tune's own PID adjustment, not the old one's: the adjustment
+     * is keyed by tune id, and carrying the old block across would fly
+     * Karate with the default tune's sliders. */
+    const nextPids = pidsDiffFor(ui.settings.pids, entry.id);
+    const nextText = composeConfig(text, ui.settings.rates, RATES_KEEP, nextPids);
     const code = sim.init(nextText);
     if (code !== SIM_OK) {
       ui.settings.tune = configId;
       sim.init(configText);
       adoptSimClock();
       reset();
+      publishPids();
       notice = { text: `${entry.name} could not be read.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
       return;
     }
     configId = entry.id;
     tuneText = text;
     configText = nextText;
+    pidsText = nextPids;
     configName = `${entry.id}.diff`;
     adoptSimClock();
     sim.setCellVoltage(runVoltage);
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
+    publishPids();
     notice = { text: `Flying ${entry.name}`, untilMs: performance.now() + 2400 };
     reset();
   }
@@ -1834,7 +1922,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * Swallow a dropped file, and say why nothing happened.
    *
    * The page used to fly any Betaflight CLI diff dropped on it, and that is
-   * gone: there are two tunes on the menu and the rates are the pilot's.
+   * gone: the menu offers the registry tunes, the PIDs screen adjusts them,
+   * and the rates are the pilot's.
    * The listeners stay because REMOVING them is not neutral. Without a
    * preventDefault the browser navigates to the dropped file, which tears
    * down the simulator and loses the run, and a pilot who read the old
@@ -3397,6 +3486,29 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.settings.tune = id;
     applySettings(ui.settings);
   };
+  /*
+   * The PID picture in one read: what the menu stores, what the composed
+   * block says, and what the module is flying, each straight from its own
+   * source so a disagreement between them is visible as a disagreement.
+   * Harness only; scripts/shots.js asserts against this.
+   */
+  window.__pids = () => ({
+    id: configId,
+    menu: JSON.parse(JSON.stringify(ui.settings.pids ?? {})),
+    block: pidsText,
+    module: {
+      mode: moduleGet(sim, 'simplified_pids_mode'),
+      master: moduleGet(sim, 'simplified_master_multiplier'),
+      p_roll: moduleGet(sim, 'p_roll'),
+      i_roll: moduleGet(sim, 'i_roll'),
+      d_roll: moduleGet(sim, 'd_roll'),
+      d_min_roll: moduleGet(sim, 'd_min_roll'),
+      f_roll: moduleGet(sim, 'f_roll'),
+      p_pitch: moduleGet(sim, 'p_pitch'),
+      p_yaw: moduleGet(sim, 'p_yaw'),
+      f_yaw: moduleGet(sim, 'f_yaw'),
+    },
+  });
   /*
    * What the stick path is ACTUALLY doing, measured rather than assumed.
    * padHz is how often the browser refreshes the Gamepad object, sampleHz how

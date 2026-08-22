@@ -1,11 +1,11 @@
 /*
  * dump.js: parse and serialize Betaflight CLI text, and the only place
- * a tune and a rate profile are joined.
+ * a tune, a PID adjustment and a rate profile are joined.
  *
- * The UI never writes a PID, and since the flight-controller screen went it
- * does not write a CLI key of any kind: the menu offers two tunes and the
- * pilot's rates, and composeConfig is the one join, so boot and the Tune row
- * cannot diverge. The wider surface here (setCliValue, exportCli, the
+ * The UI never writes CLI text of its own: the menu offers the registry
+ * tunes, the pilot's PID adjustment (configs/pids.js) and the pilot's
+ * rates (configs/rates.js), and composeConfig is the one join, so boot
+ * and the Tune row cannot diverge. The wider surface here (setCliValue, exportCli, the
  * use-dump policy, featureEnabled) is no longer reached from the shell. It
  * stays because scripts/fc-trace.js drives it against the compiled module:
  * those traces are what prove a CLI line written here actually lands in
@@ -377,7 +377,21 @@ export function expandRpmWeights(text) {
   return `${lines.join('\n').replace(/\n+$/, '')}\n`;
 }
 
-export function composeConfig(tuneText, rates, policy = RATES_KEEP) {
+/*
+ * The one join. Tune body first, then the pilot's PID adjustment, then the
+ * pilot's rates.
+ *
+ * `pidsText` is the CLI block configs/pids.js emits for the loaded tune,
+ * and it is a STRING, already chosen for a tune id, because this module
+ * does not know which tune it is composing: the caller does. It sits
+ * AFTER the tune body so its `simplified_tuning apply` re-runs on top of
+ * whatever slider state the tune set up, which is exactly what dragging a
+ * slider in Configurator does with a preset loaded, and BEFORE the rates
+ * so the rates stay the last word on their own keys. Empty by default, and
+ * an empty block composes byte-identically to the pre-PID-screen text, so
+ * stored best-lap keys survive for anyone who has not touched a slider.
+ */
+export function composeConfig(tuneText, rates, policy = RATES_KEEP, pidsText = '') {
   const kept = [];
   const dumpRateLines = [];
   const src = expandRpmWeights(tuneText ?? '');
@@ -400,6 +414,7 @@ export function composeConfig(tuneText, rates, policy = RATES_KEEP) {
   if (out.length && !out.endsWith('\n')) {
     out += '\n';
   }
+  out += pidsText || '';
   const menuRates = ratesDiff(rates);
   /* The use-dump policy has no caller in the shell; scripts/fc-trace.js F7
    * is the only one left. Do not prune: it is the control the keep-mine

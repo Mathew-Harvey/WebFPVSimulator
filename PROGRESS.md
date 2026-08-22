@@ -14625,3 +14625,29 @@ environment reds and nothing else.
 
 Whether 450 and 0.72 are the right numbers is a thumb's call, not a
 harness's; the feel dialog is one pause away when they are not.
+
+## The plates doubled, and the OSD moved out of their way
+
+Owner's ask after flying the eased rates: make the stick boxes twice as
+big. Done in landscape, where flying happens: 60vmin with a 200 to 300 px
+clamp against the old 30vmin, and since the deflection travel in
+touchsticks.js scales off the drawn plate, a doubled plate is doubled
+glass per degree on top of the last round's easing. The throttle sweep
+doubles with the plate height for the same reason.
+
+Two things had to move with them. The OSD corners no longer fit side by
+side between doubled plates on a common phone (an 800 px landscape
+leaves 264 px of gap for 300 px of blocks), so in touch flight they
+STACK, centred, pack over speed, one 170 px column that every phone has.
+And portrait keeps the single-size plates with the old split-pair OSD,
+because two doubled plates are wider than a portrait phone; portrait
+remains the hinted-away state, tidy rather than primary.
+
+CHECKS. Three headless runs, console 0 and 0 on all: 900x420 measures
+the plate at 252 px, flies a full-sweep thumb climb past 3 m, reads half
+deflection at 91 px of drag (the doubled travel, measured), springs back
+to zero, and the pause chip still lands with the taller plates under it;
+667x375, the smallest common landscape, fits plates and the stacked OSD
+without a collision; 420x900 measures the portrait plate back at 126 px.
+All three frames looked at. CSS only, so the verify battery stands as
+last run; nothing outside index.html changed.

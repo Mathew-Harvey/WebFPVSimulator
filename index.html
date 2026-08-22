@@ -226,9 +226,14 @@
         pointer-events: none;
         padding-bottom: max(12px, env(safe-area-inset-bottom));
       }
+      /* Doubled from 30vmin on the owner's phone report: a bigger box is
+         more glass per degree, because the deflection travel in
+         touchsticks.js scales off the drawn plate's width. Landscape only;
+         the portrait block below keeps the smaller plates, because two
+         doubled plates are wider than a portrait phone. */
       .touch-plate {
-        width: clamp(112px, 30vmin, 168px);
-        height: clamp(112px, 30vmin, 168px);
+        width: clamp(200px, 60vmin, 300px);
+        height: clamp(200px, 60vmin, 300px);
         background: rgba(12, 18, 14, 0.30);
         transition: background 0.15s ease, box-shadow 0.15s ease;
       }
@@ -236,7 +241,7 @@
         background: rgba(12, 18, 14, 0.46);
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.55);
       }
-      .touch-nub { width: 20px; height: 20px; }
+      .touch-nub { width: 24px; height: 24px; }
       /* Under the bug chip, same right edge: the two chips a pilot needs in
          flight on glass, stacked where the right thumb flicks up to. The
          two-class selector is load-bearing: .bug-chip sets top 16px LATER
@@ -260,21 +265,34 @@
         .touch-fly:not([hidden]) .touch-rotate { display: block; }
       }
       /*
-       * While the thumb sticks are up, the OSD corners move in under the
-       * timer: the corners ARE the stick zones now, and a phone in
-       * landscape has no vertical room to stack them above the plates.
-       * The timer drops a size for the same reason.
+       * While the thumb sticks are up, the OSD corners STACK in the centre
+       * column: the doubled plates own both lower corners outright, and
+       * two side-by-side corner blocks no longer fit between them on a
+       * common phone width (an 800 px landscape leaves 264 px of gap).
+       * Stacked and centred they need one column 170 px wide, which every
+       * phone this runs on has. The timer drops a size for the same
+       * reason.
        */
-      .touch-fly-on .osd-corner { bottom: 10px; width: 150px; font-size: 13px; }
-      .touch-fly-on .osd-left { left: calc(50% - 164px); }
-      .touch-fly-on .osd-right { right: calc(50% - 164px); }
+      .touch-fly-on .osd-corner {
+        bottom: 8px; width: 170px; font-size: 13px;
+        text-align: center;
+      }
+      .touch-fly-on .osd-left { left: 50%; transform: translateX(-50%); bottom: 116px; }
+      .touch-fly-on .osd-right { right: auto; left: 50%; transform: translateX(-50%); }
       .touch-fly-on .osd-timer { font-size: 30px; }
       .touch-fly-on .osd-value { font-size: 16px; }
       /* Portrait is the hinted-away state, but it still has to be tidy:
-         at phone widths the moved-in corners land ON the plates, so they
-         ride above them instead. */
+         the plates go back to the single size, because two doubled plates
+         are wider than the screen, and the corners go back to a split pair
+         riding above them. */
       @media (orientation: portrait) {
+        .touch-plate {
+          width: clamp(112px, 30vmin, 168px);
+          height: clamp(112px, 30vmin, 168px);
+        }
         .touch-fly-on .osd-corner { bottom: 186px; }
+        .touch-fly-on .osd-left { left: calc(50% - 164px); transform: none; text-align: left; }
+        .touch-fly-on .osd-right { left: auto; right: calc(50% - 164px); transform: none; text-align: right; }
       }
       /* Eleven pause rows do not fit a phone held sideways. The modal list
          scrolls rather than running off the glass; thumbs already know how. */

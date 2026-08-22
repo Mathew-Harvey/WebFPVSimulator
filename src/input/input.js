@@ -396,6 +396,10 @@ export class InputManager {
     this.channels = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     this.queue = [];
     this.source = 'the keyboard';
+    /* The thumb sticks, when a touch device mounted them: an object with
+     * active(), sample(dtMs) and reset(), from src/input/touchsticks.js.
+     * Sits under a radio and over the keyboard in poll()'s ladder. */
+    this.touchSource = null;
     this.keys = new Set();
     this.kb = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
     /* Keyboard collective, used only when no radio is the stick source.
@@ -1283,7 +1287,10 @@ export class InputManager {
   }
 
   /* Zero the sticks and the collective so a reset or a harness poke
-   * cannot be sprung toward hover on the next poll. */
+   * cannot be sprung toward hover on the next poll. The thumb sticks
+   * reset with the keys and for the same reason, plus one of their own:
+   * their throttle is sticky, and a crash recovery that kept it high
+   * would relaunch the wreck by itself. */
   resetKeyboardSticks() {
     this.kb.roll = 0;
     this.kb.pitch = 0;
@@ -1294,6 +1301,26 @@ export class InputManager {
     this.forcePadRest = false;
     this.kbHoldMs = { roll: 0, pitch: 0, yaw: 0, w: 0, s: 0 };
     this.kbHoldDir = { roll: 0, pitch: 0, yaw: 0 };
+    if (this.touchSource) {
+      this.touchSource.reset();
+    }
+  }
+
+  /* The thumb sticks, mounted by the shell on a touch device. */
+  attachTouch(source) {
+    this.touchSource = source;
+  }
+
+  /*
+   * Whether the thumbs are the stick source right now. Split from
+   * isKeyboardPrimary because the two answer different questions: the
+   * keyboard forces angle mode and draws its ghost gimbals, while the
+   * thumb sticks are a proportional stick like a radio, fly whichever
+   * flight mode the setting says, and draw themselves.
+   */
+  isTouchPrimary() {
+    return this.firstGamepad() === null
+      && Boolean(this.touchSource && this.touchSource.active());
   }
 
   /* Called once per animation frame. Emits one timestamped sample when
@@ -1347,6 +1374,12 @@ export class InputManager {
       } else {
         this.kb.throttle = next.throttle;
       }
+    } else if (this.touchSource && this.touchSource.active()) {
+      /* The thumbs. Sample every poll, not only on events, because the
+       * spring back to centre is time, not touches, and the sticky
+       * throttle has to keep feeding while no finger is down at all. */
+      next = this.touchSource.sample(dtMs);
+      this.source = 'the touch sticks';
     } else {
       next = this.readKeyboard(dtMs, true);
       this.source = 'the keyboard';

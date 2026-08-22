@@ -31,7 +31,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- maximum-scale and viewport-fit are for flight on a phone: a
+         double-tap that zooms the page mid-race is a crash, and the thumb
+         stick margins read the safe-area insets on notched screens. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
     <title>WebFPV, a browser FPV racing simulator</title>
     <meta name="description" content="Fly a five inch quad in a browser, on a real Betaflight control loop compiled to WebAssembly. Build a course, set a lap, put it on the public board." />
     <!--
@@ -85,7 +88,9 @@
         --ink: rgba(12, 18, 14, 0.86);
         --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
-      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--deep); }
+      /* overscroll-behavior is for phones: a drag that starts on the world
+         must not become a pull-to-refresh mid-flight. */
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--deep); overscroll-behavior: none; }
       #view {
         display: block; position: fixed; inset: 0;
         width: 100%; height: 100%;
@@ -189,6 +194,92 @@
         font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
         color: var(--slate); text-align: center;
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      }
+
+      /*
+       * Thumb sticks, src/input/touchsticks.js. The ZONES are the
+       * catchment, most of each lower corner, invisible; the drawn gimbal
+       * is an instrument inside them and takes no pointer events of its
+       * own. The zones stop at 68 percent of the height so the chips and
+       * the music dock along the top stay tappable even on a short phone,
+       * and everything in them refuses text selection, callouts and
+       * browser gestures: a thumb hold is a stick hold.
+       */
+      .touch-fly { position: absolute; inset: 0; pointer-events: none; }
+      .touch-fly[hidden] { display: none; }
+      .touch-zone {
+        position: absolute; bottom: 0; height: 68%; width: 44%;
+        pointer-events: auto; touch-action: none;
+        -webkit-user-select: none; user-select: none;
+        -webkit-touch-callout: none;
+        display: flex; align-items: flex-end;
+      }
+      .touch-zone-left {
+        left: 0; justify-content: flex-start;
+        padding-left: max(16px, env(safe-area-inset-left));
+      }
+      .touch-zone-right {
+        right: 0; justify-content: flex-end;
+        padding-right: max(16px, env(safe-area-inset-right));
+      }
+      .touch-gimbal {
+        pointer-events: none;
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+      }
+      .touch-plate {
+        width: clamp(112px, 30vmin, 168px);
+        height: clamp(112px, 30vmin, 168px);
+        background: rgba(12, 18, 14, 0.30);
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+      }
+      .touch-plate.is-held {
+        background: rgba(12, 18, 14, 0.46);
+        box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.55);
+      }
+      .touch-nub { width: 20px; height: 20px; }
+      /* Under the bug chip, same right edge: the two chips a pilot needs in
+         flight on glass, stacked where the right thumb flicks up to. The
+         two-class selector is load-bearing: .bug-chip sets top 16px LATER
+         in this sheet, and a bare .touch-pause lost to it and stacked the
+         two chips on the same pixels. */
+      .touch-fly .touch-pause { top: 52px; }
+      /* The rotate hint, only while the sticks are up and the phone is
+         tall. It does not block anything: the sticks still work, the hint
+         just says why everything is cramped. */
+      .touch-rotate {
+        display: none;
+        position: absolute; left: 50%; top: 38%;
+        transform: translate(-50%, -50%);
+        padding: 10px 18px; border-radius: 999px;
+        background: rgba(16, 22, 17, 0.85); color: var(--amber);
+        box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.4);
+        font-size: 15px; letter-spacing: 0.06em; white-space: nowrap;
+        pointer-events: none;
+      }
+      @media (orientation: portrait) {
+        .touch-fly:not([hidden]) .touch-rotate { display: block; }
+      }
+      /*
+       * While the thumb sticks are up, the OSD corners move in under the
+       * timer: the corners ARE the stick zones now, and a phone in
+       * landscape has no vertical room to stack them above the plates.
+       * The timer drops a size for the same reason.
+       */
+      .touch-fly-on .osd-corner { bottom: 10px; width: 150px; font-size: 13px; }
+      .touch-fly-on .osd-left { left: calc(50% - 164px); }
+      .touch-fly-on .osd-right { right: calc(50% - 164px); }
+      .touch-fly-on .osd-timer { font-size: 30px; }
+      .touch-fly-on .osd-value { font-size: 16px; }
+      /* Portrait is the hinted-away state, but it still has to be tidy:
+         at phone widths the moved-in corners land ON the plates, so they
+         ride above them instead. */
+      @media (orientation: portrait) {
+        .touch-fly-on .osd-corner { bottom: 186px; }
+      }
+      /* Eleven pause rows do not fit a phone held sideways. The modal list
+         scrolls rather than running off the glass; thumbs already know how. */
+      @media (max-height: 540px) {
+        .screen-modal .menu { max-height: 66vh; overflow-y: auto; }
       }
 
       .banner.panel {

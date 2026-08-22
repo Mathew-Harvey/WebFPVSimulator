@@ -39,7 +39,10 @@ npm run build:wasm
 Sticks: plug in your radio in joystick mode (it enumerates as a gamepad)
 and press M once to run the calibration wizard; the mapping is remembered.
 Or fly on keyboard: W/S throttle, A/D yaw, arrows are the right stick
-(up arrow pushes the stick forward, nose down).
+(up arrow pushes the stick forward, nose down). On a phone or tablet,
+turn it sideways: thumb sticks appear in flight, left thumb yaw and
+throttle (throttle stays where you leave it), right thumb roll and
+pitch, and they fly whichever Flight mode Settings says, Acro included.
 
 Keys: R reset, C camera (FPV or chase), M stick calibration, V cycles the
 battery cell voltage between 4.20, 3.80 and 3.50 V.

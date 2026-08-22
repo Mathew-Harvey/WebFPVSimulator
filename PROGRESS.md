@@ -14483,3 +14483,97 @@ menu row, with feelAsked asserted in raw localStorage. npm run verify:
 14 of 16, same table as the last entry, the two reds the two already on
 main with the same figures (no emcc here; the feather flag budget).
 dist/sim.wasm untouched, vendor clean.
+
+## Thumbs on glass: a phone can fly now
+
+A phone had no stick source at all: the keyboard needs keys, a radio needs
+a radio, and the menus worked by tap while the one thing the site is FOR
+did not. This round adds the third source, virtual thumb gimbals in
+landscape, and it is an input change, so the whole verify battery ran.
+
+**Where it sits.** src/input/touchsticks.js owns the overlay and the
+channel semantics; InputManager takes it as a source UNDER a connected
+radio and OVER the keyboard, the same ladder poll() always ran. The
+overlay mounts only on a device that reports touch points, shows only in
+flight (it is the last child of #ui on purpose, so over a menu it would
+sit on the rows; the frame loop keeps it hidden there), and yields
+entirely when a gamepad enumerates, the same rule the keyboard ghost
+follows.
+
+**The feel decisions, stated because they ARE the feature.**
+
+- RELATIVE FROM TOUCHDOWN. Wherever the thumb lands in the lower corner
+  is zero and deflection is the drag from there, one plate-half of travel
+  to the stop. Absolute mapping was rejected because it spikes the
+  channel to wherever the glass was hit, which on throttle is a punch
+  nobody flew. The corollary is a big catchment: the whole lower corner
+  is the stick, the drawn plate is an instrument.
+- THROTTLE IS STICKY, like the real left stick: lift the thumb and the
+  hover stays trimmed. Yaw, roll and pitch spring back at 8 full-scales
+  per second, a ramp rather than an edge, so feedforward sees a stick and
+  not a step. resetCraft zeroes the sticky throttle along with the
+  keyboard sticks: a crash recovery that kept it high would relaunch the
+  wreck by itself.
+- TOUCH IS A RADIO, NOT A KEYBOARD. wantAngleMode treats the thumbs as a
+  proportional stick: they fly whichever Flight mode Settings says, Acro
+  by default, where the keyboard keeps forcing Angle because bang-bang
+  acro is a crash generator. The nub draws the CHANNEL, springs included,
+  not the finger.
+- The pause chip sits under the bug chip, top right, and hides the
+  overlay the instant it fires rather than a frame later, because on a
+  slow phone that frame is long enough for the next tap to land on a
+  stick zone sitting over the menu it just opened.
+
+**Around it.** The OSD corners move in under the timer while the sticks
+are up (the corners ARE the zones now), and ride above the plates in
+portrait, where an amber pill says to turn the phone sideways; the
+eleven-row pause menu scrolls on screens under 540 px tall; the viewport
+meta pins scale and reads the notch insets, the body refuses
+pull-to-refresh, and the zones refuse selection, callouts and browser
+gestures. How to fly grew a Touch tab, first and default on touch
+devices. detectDefaultGraphics starts phones on Low for the Steam Deck's
+reason (a stored choice still wins); an iPad calling itself a Mac is told
+apart by its touch points. scripts/shots.js learned touch: a --touch flag
+for Chromium's emulation and tstart/tmove/tend steps that maintain the
+active point set the protocol requires.
+
+**What went wrong, twice.** The pause chip's `top: 52px` lost specificity
+to `.bug-chip`'s later `top: 16px` and the two chips stacked on the same
+pixels, found because the harness tap at the documented position hit
+nothing; the selector now carries its parent and a comment saying the
+two-class form is load-bearing. And the first paused-state assertion
+raced the frame loop's visibility toggle, which exposed the real gap the
+instant-hide above closes.
+
+KNOWN EDGE, left open on purpose: launch control staging forces the
+keyboard collective to rest and does not force the touch throttle; LC is
+off by default and a thumb pilot arming it holds their own idle. Noted
+here rather than wired, because the right fix wants a pilot report first.
+
+CHECKS, this turn, all run and read:
+
+- Headless Chromium with touch emulation, landscape 900x420: the craft
+  CLIMBED PAST 3 METRES from a thumb drag on the left pad, in Acro
+  (angle false with the default setting), source reading "the touch
+  sticks", primary true. Sticky throttle held its value after the thumb
+  lifted; the right pad drove roll and pitch negative and sprang back to
+  exactly zero; a touch tap on the pause chip paused with the overlay
+  gone in the same event; results hid the overlay; resume restored it.
+  Console errors 0 warnings 0.
+- Portrait 420x900: the rotate hint renders, the corners stack above the
+  plates, the sticks still work. Desktop run without touch: no overlay
+  node exists at all and the keyboard ghost still shows. Console 0 and 0
+  on both.
+- Screenshots at both orientations looked at, twice after fixes.
+- lint:presets 3 of 3, lint:fc 30 of 30, replay, link, edge and
+  trackbuilder selftests all green (279 of 279).
+- npm run verify: **14 of 16**, full table read. The determinism hashes
+  are BYTE-IDENTICAL to the last recorded run (6d17d4814bdc on checks 2
+  and 3, one hash across four rates on 4), which is the property an input
+  source addition must hold: the trace replays recorded samples and a new
+  live source cannot reach it. Every physics row unchanged to the digit.
+  The two reds are the standing two: no emcc in this container (vendor
+  diff empty, dist/sim.wasm untouched), and the feather-flag map budget.
+
+Flight feel on actual glass is awaiting an actual thumb; the harness can
+prove the path, not the pleasure.

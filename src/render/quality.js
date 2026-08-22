@@ -195,6 +195,15 @@ export function detectDefaultGraphics() {
   if (/Steam Deck|SteamOS/i.test(ua)) {
     return 'low';
   }
+  /* Phones start Low for the Deck's reason: the first flight has to hold
+   * frame rate on the hardware in hand, and a phone GPU driving a 3x
+   * pixel ratio screen does not hold High. An iPad says Macintosh in its
+   * UA, so it is told apart by the touch points a Mac does not report.
+   * Detection only: a stored choice in Settings still wins. */
+  const touchPoints = navigator.maxTouchPoints || 0;
+  if (/Android|iPhone|iPod/i.test(ua) || (touchPoints > 2 && /Mac/i.test(ua))) {
+    return 'low';
+  }
   const plat = navigator.userAgentData && navigator.userAgentData.platform;
   if (plat && /Steam/i.test(String(plat))) {
     return 'low';

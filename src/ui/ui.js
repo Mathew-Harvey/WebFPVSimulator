@@ -135,6 +135,7 @@ import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
+import { touchWanted } from '../input/touchsticks.js';
 
 /* Step through a list with wraparound. Every value row on every screen
  * moves through this, so a left arrow at the start of a list lands on its
@@ -1148,7 +1149,14 @@ export class Ui {
 
     const howtoTabs = el('div', 'howto-tabs');
     this.howtoTabs = {};
-    for (const [id, label] of [['keyboard', 'Keyboard'], ['radio', 'Radio or gamepad'], ['launch', 'Launch control']]) {
+    /* The Touch tab exists only on a device with touch points, first in
+     * the row because on that device it is the way this page's reader is
+     * most likely holding the machine. */
+    const tabList = [
+      ...(touchWanted() ? [['touch', 'Touch']] : []),
+      ['keyboard', 'Keyboard'], ['radio', 'Radio or gamepad'], ['launch', 'Launch control'],
+    ];
+    for (const [id, label] of tabList) {
       const b = btn('howto-tab', label);
       b.addEventListener('click', () => this.setHowtoSource(id));
       howtoTabs.append(b);
@@ -1176,7 +1184,7 @@ export class Ui {
     this.howtoHelp = howtoBlock.help;
     howto.append(howtoBlock.stage, hintWithKeys(['Esc'], 'Goes back. Arrow keys still move the menu.'));
     this.screens.howto = howto;
-    this.howtoSource = 'keyboard';
+    this.howtoSource = touchWanted() ? 'touch' : 'keyboard';
     this.renderHowto();
 
     const credits = el('div', 'screen screen-page screen-credits');
@@ -4163,7 +4171,7 @@ export class Ui {
    * toggled because it is six lines of type and a switch nobody flips twice.
    */
   setHowtoSource(id) {
-    this.howtoSource = id === 'radio' ? 'radio' : (id === 'launch' ? 'launch' : 'keyboard');
+    this.howtoSource = ['radio', 'launch', 'touch'].includes(id) ? id : 'keyboard';
     this.renderHowto();
     if (this.onUiSound) {
       this.onUiSound('adjust');
@@ -4179,7 +4187,15 @@ export class Ui {
       b.classList.toggle('on', id === source);
     }
     this.howtoKeys.textContent = '';
-    const rows = source === 'radio'
+    const rows = source === 'touch'
+      ? [
+        ['Left thumb', 'Yaw and throttle. Throttle STAYS where you leave it, like a real radio: trim a hover, lift the thumb, it holds.'],
+        ['Right thumb', 'Roll and pitch. Forward is nose down, fly forward. Springs back to centre when you let go.'],
+        ['The whole corner', 'The pad is bigger than the drawing: the stick is wherever your thumb lands in the lower corner, and deflection is the drag from there.'],
+        ['Landscape', 'Turn the phone sideways. The pads sit under both thumbs, the way a radio sits in both hands.'],
+        ['Pause', 'The Pause chip, top right. Crashes recover on their own; time is the penalty.'],
+      ]
+      : source === 'radio'
       ? [
         ['Left stick', 'Throttle up and down, yaw left and right. Mode 2, as on your radio.'],
         ['Right stick', 'Pitch forward and back, roll left and right.'],
@@ -4208,16 +4224,20 @@ export class Ui {
     for (const [k, v] of rows) {
       this.howtoKeys.append(el('dt', null, k), el('dd', null, v));
     }
-    this.howtoLive.textContent = source === 'radio'
-      ? 'Move your sticks. These follow the radio.'
-      : source === 'launch'
-        ? 'L arms it. Pitch, centre, punch. The gimbals still follow your hands.'
-        : 'Press the keys. These follow your hands.';
-    this.howtoMode.textContent = source === 'radio'
-      ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Settings.'
-      : source === 'launch'
-        ? 'Off by default, because a punch from a hold is violent and not everyone wants it. Turn it on in Settings, then L on the pad. The green LAUNCH readout is the pitch angle. It blinks when throttle is close to firing.'
-        : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
+    this.howtoLive.textContent = source === 'touch'
+      ? 'The pads appear in flight, under your thumbs.'
+      : source === 'radio'
+        ? 'Move your sticks. These follow the radio.'
+        : source === 'launch'
+          ? 'L arms it. Pitch, centre, punch. The gimbals still follow your hands.'
+          : 'Press the keys. These follow your hands.';
+    this.howtoMode.textContent = source === 'touch'
+      ? 'Thumb sticks are a real proportional stick, so they fly whichever Flight mode is set in Settings: Acro, like a radio, by default. Angle is gentler while you learn: let go of the right pad and the quad levels itself.'
+      : source === 'radio'
+        ? 'A radio flies Acro by default: the sticks ask for a rate of rotation, and letting go asks for none, which holds whatever attitude the quad is in. Change it under Flight mode in Settings.'
+        : source === 'launch'
+          ? 'Off by default, because a punch from a hold is violent and not everyone wants it. Turn it on in Settings, then L on the pad. The green LAUNCH readout is the pitch angle. It blinks when throttle is close to firing.'
+          : 'Keys are on or off, so hold time is the analog: a tap moves the stick a little, a hold sits at a flyable amount, a long hold goes to full. Keyboard flight is Angle, so letting go brings the quad back to level.';
   }
 
   /* Live channels for the tutorial's gimbals, fed by the shell's loop. */

@@ -49,6 +49,7 @@ import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirTo
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
+import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
 import { Race } from './game/race.js';
@@ -326,6 +327,31 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   input.startPolling(2);
   const ui = new Ui(uiRoot);
+  /*
+   * The thumb sticks, on a device that has thumbs to offer. Mounted after
+   * the Ui so the overlay sits ABOVE every screen in the stacking order,
+   * which is exactly why the frame loop below only shows it in flight:
+   * over a menu its catchment zones would swallow the taps. Pause goes
+   * through the same two calls the Escape key makes from flight.
+   */
+  let touch = null;
+  if (touchWanted()) {
+    touch = mountTouchSticks({
+      onPause: () => {
+        if (ui.screen === 'flight') {
+          ui.act('pause');
+          ui.show('paused');
+          /* Hide NOW, not on the next frame: the frame loop confirms this
+           * a beat later, and that beat is long enough on a slow phone for
+           * the pilot's second tap to land on a stick zone that is sitting
+           * over the menu it just opened. */
+          touch.setVisible(false);
+        }
+      },
+    });
+    uiRoot.append(touch.root);
+    input.attachTouch(touch);
+  }
   const gpuInfo = readGpuInfo(shell.renderer);
   ui.setGpuInfo(gpuInfo);
   window.__gpu = gpuInfo;
@@ -1174,6 +1200,13 @@ export async function boot({ loading, bootStart, mapId }) {
   function wantAngleMode() {
     if (lcAcroUntil === Infinity || (lcAcroUntil > 0 && performance.now() < lcAcroUntil)) {
       return false;
+    }
+    /* The thumb sticks are a proportional stick, so they are a RADIO here,
+     * not a keyboard: they fly whichever mode the setting says. Keys keep
+     * forcing angle because a key is a bang-bang input and acro on one is
+     * a crash generator. */
+    if (input.isTouchPrimary()) {
+      return ui.settings.flightMode === 'angle';
     }
     return input.isKeyboardPrimary() || ui.settings.flightMode === 'angle';
   }
@@ -3110,8 +3143,10 @@ export async function boot({ loading, bootStart, mapId }) {
         launchPitch: pitchNoseDownDeg(st),
       });
       const ch = input.channels;
+      /* The centred keyboard ghost yields to the thumb sticks: they are
+       * the same instrument, drawn where the thumbs are. */
       ui.setStickOverlay({
-        show: input.isKeyboardPrimary(),
+        show: input.isKeyboardPrimary() && !input.isTouchPrimary(),
         roll: ch.roll,
         pitch: ch.pitch,
         yaw: ch.yaw,
@@ -3121,6 +3156,20 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (mode !== 'paused') {
       ui.setStickOverlay({ show: false, roll: 0, pitch: 0, yaw: 0, throttle: 0 });
       ui.setTargetLock(LOCK_OFF);
+    }
+    /*
+     * The thumb sticks live in FLIGHT and nowhere else. Over any menu
+     * their catchment would sit on top of the rows (the overlay is the
+     * last child of #ui on purpose, so it beats every screen in flight),
+     * and beside a connected radio they would be a second pair of sticks,
+     * the same rule the keyboard ghost follows. The OSD corners move in
+     * under the timer while they are up; see .touch-fly-on in index.html.
+     */
+    if (touch) {
+      const touchOn = mode === 'flight' && ui.screen === 'flight' && !input.firstGamepad();
+      touch.setVisible(touchOn);
+      uiRoot.classList.toggle('touch-fly-on', touchOn);
+      touch.paint();
     }
 
     const cal = input.calibrationView();
@@ -3509,6 +3558,19 @@ export async function boot({ loading, bootStart, mapId }) {
       f_yaw: moduleGet(sim, 'f_yaw'),
     },
   });
+  /*
+   * The thumb sticks as the overlay believes them, plus what the input
+   * ladder and the module made of it: source, angle mode and altitude, so
+   * one read answers "did the thumb reach the craft". null on a device
+   * with no touch points. Harness only.
+   */
+  window.__touch = () => (touch ? {
+    ...touch.debug(),
+    primary: input.isTouchPrimary(),
+    source: input.stats().source,
+    angle: angleModeOn,
+    alt: readState()[3],
+  } : null);
   /*
    * What the stick path is ACTUALLY doing, measured rather than assumed.
    * padHz is how often the browser refreshes the Gamepad object, sampleHz how

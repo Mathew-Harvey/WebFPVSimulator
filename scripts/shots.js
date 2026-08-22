@@ -21,6 +21,14 @@
  *   eval:EXPR        evaluate in the page and print the value
  *   until:EXPR       poll until EXPR is truthy, fail the run after 20 s
  *   expect:EXPR      fail the run unless EXPR is truthy right now
+ *   tstart:ID,X,Y    put touch point ID down at X,Y (needs --touch=1)
+ *   tmove:ID,X,Y     drag touch point ID to X,Y
+ *   tend:ID          lift touch point ID
+ *
+ * --touch=1 enables Chromium's touch emulation before the page loads, so
+ * navigator.maxTouchPoints reports points and the thumb sticks mount. The
+ * harness keeps the set of down points and sends the WHOLE set on every
+ * event, which is what the protocol requires for multi-touch.
  *
  * until: and expect: exist because a wait in milliseconds is not evidence
  * of anything. On this container's software rasteriser a frame takes
@@ -291,6 +299,15 @@ async function main() {
   await cdp.send('Emulation.setDeviceMetricsOverride', {
     width: Number(opts.w), height: Number(opts.h), deviceScaleFactor: 1, mobile: false,
   }, sessionId);
+  if (opts.touch) {
+    await cdp.send('Emulation.setTouchEmulationEnabled', {
+      enabled: true, maxTouchPoints: 5,
+    }, sessionId);
+  }
+  /* The down touch points, by id. Chromium wants every active point in
+   * every touch event, so the harness is the one that remembers them. */
+  const touches = new Map();
+  const touchPoints = () => [...touches.entries()].map(([id, p]) => ({ x: p.x, y: p.y, id }));
   /*
    * --graphics pins the quality preset, for the same reason --w and --h pin
    * the window: a cost measured at two different presets reports a
@@ -428,6 +445,21 @@ async function main() {
       } else {
         console.log(`eval ${arg} = ${JSON.stringify(r.result.value)}`);
       }
+    } else if (op === 'tstart' || op === 'tmove') {
+      const [id, x, y] = arg.split(',').map(Number);
+      touches.set(id, { x, y });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: op === 'tstart' ? 'touchStart' : 'touchMove',
+        touchPoints: touchPoints(),
+      }, sessionId);
+    } else if (op === 'tend') {
+      const id = Number(arg);
+      touches.delete(id);
+      /* touchEnd carries the points that remain down. */
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: touchPoints(),
+      }, sessionId);
     } else if (op === 'click' || op === 'move') {
       const [x, y] = arg.split(',').map(Number);
       const common = { x, y, button: 'left', clickCount: 1 };

@@ -14730,3 +14730,29 @@ npm run verify: **14 of 16**, full table read, determinism hashes
 byte-identical (6d17d4814bdc), every physics row unchanged to the digit,
 and the two reds the standing two: no emcc in this container (vendor
 diff empty, dist/sim.wasm untouched) and the feather-flag map budget.
+
+## The sliders became sliders
+
+Owner's question: do we have tuning sliders and all the nice UI
+elements? Functionally yes since the PIDs screen landed; visually no,
+they were number rows. Now they are tracks: a native input[type=range]
+restyled to the house (mint thumb, cream track) on the PIDs screen and
+Configurator yellow inside the flight controller, with the typed number
+field kept beside every one, because a slider that cannot be typed at is
+a toy. Drag commits ON RELEASE, one sim_init per gesture, never per
+pixel, so the menu cannot rebuild under a held pointer; the number
+repaints live during the drag. Arrow keys on the unfocused row still
+step one percent through the same adjust path as before. In the flight
+controller only the simplified_* family draws as sliders, because a
+sweep is what they are; a filter cutoff stays a stepper, because it is a
+number you know, not a feel you drag toward.
+
+CHECKS. One headless run, console 0 and 0: the PIDs screen renders
+exactly eight tracks; a drag of the master to 150 lands p_roll 67 in the
+module on release; an arrow press still steps to 151; revert restores
+45. The flight controller renders the simplified family as tracks; a
+drag to 130 marks the draft Unsaved, and Save flies it, module reading
+master 130 and p_roll 58. Both screens screenshotted and looked at.
+lint:presets 3 of 3, lint:fc 30 of 30. UI and stylesheet only; nothing
+near the physics, the plant, the ABI or the build, so the standing
+verify record from the flight-controller restoration holds unchanged.

@@ -1001,6 +1001,53 @@
         font-size: 0.78em; color: rgba(157, 179, 200, 0.9);
         white-space: nowrap;
       }
+      /*
+       * A drag slider, the control Configurator gives its tuning sliders.
+       * Native input[type=range] so drag, touch and focused arrow keys are
+       * the browser's problem, restyled to the house: a thin cream track
+       * with a mint thumb, and the number field beside it stays typable.
+       * The .screen-fc block recolours the same control Configurator
+       * yellow. Track and thumb need the vendor prefixes separately;
+       * a shared rule silently drops the whole selector.
+       */
+      .row-slider { gap: 10px; }
+      .row-range {
+        appearance: none; -webkit-appearance: none;
+        width: clamp(110px, 16vw, 220px); height: 18px;
+        background: transparent; cursor: pointer;
+        pointer-events: auto;
+      }
+      .row-range::-webkit-slider-runnable-track {
+        height: 4px; border-radius: 2px;
+        background: rgba(244, 236, 214, 0.22);
+      }
+      .row-range::-moz-range-track {
+        height: 4px; border-radius: 2px;
+        background: rgba(244, 236, 214, 0.22);
+      }
+      .row-range::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 14px; height: 14px; border-radius: 50%;
+        margin-top: -5px;
+        background: var(--mint); border: 0;
+        box-shadow: 0 0 0 1px rgba(12, 18, 14, 0.6), 0 1px 4px rgba(0, 0, 0, 0.5);
+      }
+      .row-range::-moz-range-thumb {
+        width: 14px; height: 14px; border-radius: 50%;
+        background: var(--mint); border: 0;
+        box-shadow: 0 0 0 1px rgba(12, 18, 14, 0.6), 0 1px 4px rgba(0, 0, 0, 0.5);
+      }
+      .row-range:focus-visible { outline: 1px solid var(--mint); outline-offset: 2px; }
+      .row-range-num { width: 4ch; }
+      .screen-fc .row-range::-webkit-slider-runnable-track { background: #2a2a2a; }
+      .screen-fc .row-range::-moz-range-track { background: #2a2a2a; }
+      .screen-fc .row-range::-webkit-slider-thumb { background: var(--bf-accent); }
+      .screen-fc .row-range::-moz-range-thumb { background: var(--bf-accent); }
+      .screen-fc .row-range:focus-visible { outline-color: var(--bf-accent); }
+      .screen-fc .row-num {
+        background: #2a2a2a; box-shadow: inset 0 0 0 1px #5a5a5a; color: #fff;
+      }
+      .screen-fc .row-num:focus { box-shadow: inset 0 0 0 1px var(--bf-accent); }
       .drop-btn {
         appearance: none; border: 0; background: transparent;
         color: var(--sakura); font: inherit; font-size: 0.86em;

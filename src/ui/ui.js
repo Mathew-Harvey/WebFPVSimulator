@@ -2949,13 +2949,18 @@ export class Ui {
         if (k === 'master') {
           bits.push(yawNote.trim());
         }
-        return number(
+        const it = number(
           spec.label,
           bits.filter(Boolean).join(' '),
           spec,
           cur,
           (v) => { setPidSlider(s.pids, s.tune, k, v, tuneVal); },
         );
+        /* A real track, as Configurator draws these: drag lands on
+         * release, arrows still step one percent, the number still
+         * types. */
+        it.range = { min: spec.cliMin, max: spec.cliMax };
+        return it;
       };
       const pidRow = (axis, f) => {
         const spec = PID_FIELD_SPECS[f];
@@ -3114,7 +3119,9 @@ export class Ui {
       /* Before the adjust branch: a typed row has arrows too, and the
        * stepper alone would be the old list row without the field that is
        * the whole point of it. */
-      if (it.num) {
+      if (it.num && it.range) {
+        row.append(this.makeSliderControl(it, i));
+      } else if (it.num) {
         row.append(this.makeNumber(it, i));
       } else if (it.options) {
         row.append(this.makeDrop(it, i));
@@ -3555,6 +3562,95 @@ export class Ui {
       wrap.append(el('span', 'row-num-unit', it.num.unit));
     }
     wrap.append(col);
+    return wrap;
+  }
+
+  /*
+   * A DRAG SLIDER, the control Betaflight Configurator draws for its
+   * simplified tuning, plus the number beside it so the value is never a
+   * guess. Three ways in, all landing on the same setter: drag the track
+   * (native input[type=range], so touch, mouse and a focused arrow key
+   * all work for free), arrow keys on the unfocused row through the
+   * menu's own adjust path, or click the number and type.
+   *
+   * THE COMMIT IS ON RELEASE ('change'), not per drag pixel ('input').
+   * Every one of these rows re-inits the module when it lands, and a
+   * re-init per pixel would both stutter the drag and rebuild the menu
+   * out from under the pointer mid-drag. 'input' only repaints the
+   * number; letting go applies, exactly one init per gesture.
+   */
+  makeSliderControl(it, i) {
+    const wrap = el('div', 'row-control row-slider');
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.className = 'row-range';
+    range.min = String(it.range.min);
+    range.max = String(it.range.max);
+    range.step = '1';
+    range.value = String(it.num.cli);
+    range.setAttribute('aria-label', it.label);
+    range.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.closeDrop();
+      this.cursor = i;
+      this.syncCursor(false);
+    });
+    range.addEventListener('click', (e) => e.stopPropagation());
+    range.addEventListener('change', () => {
+      const v = Number(range.value);
+      if (!Number.isFinite(v) || v === it.num.cli) {
+        return;
+      }
+      it.set(v);
+      this.writeSettings();
+    });
+    /* The number is typed, same contract as makeNumber: commit on Enter
+     * or blur, Escape restores. Small on purpose; the track is the star. */
+    const field = document.createElement('input');
+    field.className = 'row-num row-range-num';
+    field.type = 'text';
+    field.inputMode = 'decimal';
+    field.autocomplete = 'off';
+    field.spellcheck = false;
+    field.value = it.num.text;
+    field.setAttribute('aria-label', `${it.label} value`);
+    field.addEventListener('click', (e) => e.stopPropagation());
+    field.addEventListener('pointerdown', (e) => e.stopPropagation());
+    field.addEventListener('focus', () => {
+      this.closeDrop();
+      this.cursor = i;
+      this.syncCursor(false);
+      field.select();
+    });
+    field.addEventListener('blur', () => {
+      if (!field.isConnected) {
+        return;
+      }
+      this.commitNumber(it, field.value);
+    });
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.commitNumber(it, field.value);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        field.value = it.num.text;
+        field.blur();
+      }
+    });
+    /* The drag repaints the FIELD, live, so the number is never behind
+     * the thumb; the commit still waits for release. */
+    range.addEventListener('input', () => {
+      field.value = formatRate(it.num.spec, Number(range.value));
+    });
+    wrap.append(range, field);
+    if (it.num.unit) {
+      wrap.append(el('span', 'row-num-unit', it.num.unit));
+    }
     return wrap;
   }
 

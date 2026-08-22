@@ -716,6 +716,44 @@ export class FcSession {
     const { min, max } = fieldBounds(field);
     const n = Number(raw);
     const cur = Number.isFinite(n) ? n : min;
+    /*
+     * The simplified tuning keys draw as REAL SLIDERS, the control
+     * Configurator gives them: they are the one family here whose whole
+     * point is a sweep, and 0 to 200 percent is a track, not twelve arrow
+     * presses. Everything else keeps the stepper; a filter cutoff is a
+     * number you know, not a feel you drag toward.
+     */
+    if (field.key.startsWith('simplified_') && field.key !== 'simplified_pids_mode') {
+      const spec = {
+        cliMin: min, cliMax: max, scale: 1, decimals: 0, unit: '',
+      };
+      return {
+        label: field.key,
+        note,
+        num: {
+          spec, cli: cur, text: String(cur), unit: '',
+        },
+        range: { min, max },
+        adjust: (d) => {
+          this.setValue(field.key, String(clamp(cur + d, min, max)));
+        },
+        typed: (raw2) => {
+          const t = String(raw2).trim();
+          if (t === '') {
+            return null;
+          }
+          const v = Math.round(Number(t));
+          if (!Number.isFinite(v)) {
+            return null;
+          }
+          return clamp(v, min, max);
+        },
+        set: (v) => {
+          this.setValue(field.key, String(v));
+        },
+        rowClass: greyClass,
+      };
+    }
     return {
       label: field.key,
       note,

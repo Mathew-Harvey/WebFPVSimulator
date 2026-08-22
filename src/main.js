@@ -70,8 +70,8 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
-import { PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
-import { cliMap, composeConfig, moduleGet, RATES_KEEP } from './fc/dump.js';
+import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
+import { cliMap, composeConfig, FC_DUMP_KEY, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK } from '../tests/lib/simmod.js';
@@ -498,12 +498,64 @@ export async function boot({ loading, bootStart, mapId }) {
    * judged on its own. The PID adjustment sits between the two, keyed by
    * the LOADED tune's id, so each tune keeps its own; see configs/pids.js.
    */
-  let tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
+  /* The Flight controller screen's saved dump, the body of the pilot's
+   * own "custom" tune. Its rates were stripped on the way in, so it goes
+   * through composeConfig like any file in configs/. */
+  function readFcDump() {
+    try {
+      return localStorage.getItem(FC_DUMP_KEY);
+    } catch (e) {
+      return null;
+    }
+  }
+  function writeFcDump(body) {
+    try {
+      localStorage.setItem(FC_DUMP_KEY, body);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  let tuneText;
+  if (configId === 'custom') {
+    tuneText = readFcDump();
+    if (tuneText == null) {
+      /* A stored choice whose dump is gone. Fall back to the first tune
+       * rather than failing to boot; the stale choice must not stop the
+       * page. */
+      configId = TUNES[0].id;
+      ui.settings.tune = configId;
+      menuTune = configId;
+      configName = `${configId}.diff`;
+      ui.persistSettings();
+    } else {
+      configName = 'your edits';
+    }
+  }
+  if (tuneText == null) {
+    tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
+  }
   let ratesText = ratesDiff(ui.settings.rates);
   let pidsText = pidsDiffFor(ui.settings.pids, configId);
   let configText = composeConfig(tuneText, ui.settings.rates, RATES_KEEP, pidsText);
   if (sim.init(configText) !== SIM_OK) {
-    throw new Error(`sim_init failed on ${configName}`);
+    if (configId !== 'custom') {
+      throw new Error(`sim_init failed on ${configName}`);
+    }
+    /* A saved dump the module refuses must not brick the page: boot the
+     * default tune instead and keep the dump stored for the pilot to
+     * re-edit. */
+    configId = TUNES[0].id;
+    ui.settings.tune = configId;
+    menuTune = configId;
+    configName = `${configId}.diff`;
+    ui.persistSettings();
+    tuneText = new TextDecoder().decode(await fetchBytes(tunePath(configId)));
+    pidsText = pidsDiffFor(ui.settings.pids, configId);
+    configText = composeConfig(tuneText, ui.settings.rates, RATES_KEEP, pidsText);
+    if (sim.init(configText) !== SIM_OK) {
+      throw new Error(`sim_init failed on ${configName}`);
+    }
   }
   /*
    * What the controller is actually flying, read back out of the module
@@ -1474,16 +1526,28 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     let text;
-    try {
-      text = new TextDecoder().decode(await fetchBytes(tunePath(entry.id)));
-    } catch (e) {
-      if (!isLiveConfigLoad(gen)) {
+    if (entry.id === 'custom') {
+      /* The pilot's saved dump, from storage rather than a fetch. The row
+       * only offers it while the dump exists, but a second tab can clear
+       * storage under a first, so absence still has to be survivable. */
+      text = readFcDump();
+      if (text == null) {
+        ui.settings.tune = configId;
+        notice = { text: 'No saved Flight controller edits to fly.', untilMs: performance.now() + 3200 };
         return;
       }
-      ui.settings.tune = configId;
-      notice = { text: `${entry.name} could not be loaded.`, untilMs: performance.now() + 3200 };
-      console.error(e);
-      return;
+    } else {
+      try {
+        text = new TextDecoder().decode(await fetchBytes(tunePath(entry.id)));
+      } catch (e) {
+        if (!isLiveConfigLoad(gen)) {
+          return;
+        }
+        ui.settings.tune = configId;
+        notice = { text: `${entry.name} could not be loaded.`, untilMs: performance.now() + 3200 };
+        console.error(e);
+        return;
+      }
     }
     if (!isLiveConfigLoad(gen)) {
       return;
@@ -1507,7 +1571,7 @@ export async function boot({ loading, bootStart, mapId }) {
     tuneText = text;
     configText = nextText;
     pidsText = nextPids;
-    configName = `${entry.id}.diff`;
+    configName = entry.id === 'custom' ? 'your edits' : `${entry.id}.diff`;
     adoptSimClock();
     sim.setCellVoltage(runVoltage);
     race.setRecordKey(recordKey());
@@ -1645,6 +1709,85 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  function isRunActive() {
+    return (mode === 'flight' || mode === 'paused') && !landed && !crashed;
+  }
+  ui.onFcOpen = (page) => {
+    ui.fc.open(moduleDump(sim), { runActive: isRunActive(), page });
+  };
+  /*
+   * The Flight controller's Save. The draft is a full dump of the module;
+   * what it becomes is three things, each through the store that already
+   * owns it: its rate keys become the pilot's rate profile, its body
+   * becomes the "custom" tune under FC_DUMP_KEY, and the PIDs screen's
+   * adjustment for that tune is cleared because the dump IS the new
+   * baseline. Then one composeConfig and one sim_init, the same join and
+   * the same call every other config change makes. No preset shortcut:
+   * Save always lands as Your edits, and the Tune row flies the pure
+   * registry files.
+   */
+  ui.onFcSave = (draft, opts) => {
+    bumpConfigGen();
+    const nextRates = normaliseRates(ratesFromDump(draft));
+    const body = tuneBody(draft);
+    const nextText = composeConfig(body, nextRates, RATES_KEEP, '');
+    const code = sim.init(nextText);
+    if (code !== SIM_OK) {
+      notice = { text: `That dump could not be saved.\n${configFault(code)}`, untilMs: performance.now() + 3600 };
+      sim.init(configText);
+      adoptSimClock();
+      reset();
+      publishPids();
+      ui.renderMenu();
+      return;
+    }
+    if (!writeFcDump(body)) {
+      /* Storage refused (private mode). The save still FLIES, it just
+       * does not survive a reload, and the pilot is told which. */
+      notice = { text: 'Saved for this session only.\nThis browser would not store the dump.', untilMs: performance.now() + 3600 };
+    } else {
+      notice = { text: 'Saved. Flying your edits.', untilMs: performance.now() + 2400 };
+    }
+    ui.settings.rates = nextRates;
+    clearPidsFor(ui.settings.pids, 'custom');
+    ui.settings.tune = 'custom';
+    menuTune = 'custom';
+    ui.persistSettings();
+    configId = 'custom';
+    configName = 'your edits';
+    tuneText = body;
+    ratesText = ratesDiff(nextRates);
+    pidsText = '';
+    configText = nextText;
+    adoptSimClock();
+    sim.setCellVoltage(runVoltage);
+    race.setRecordKey(recordKey());
+    ui.setBest(race.bestMs, view.mode);
+    reset();
+    publishPids();
+    const live = moduleDump(sim);
+    ui.fc.snapshot = live;
+    ui.fc.draft = live;
+    ui.fc.runActive = false;
+    if (opts && opts.restart) {
+      mode = 'flight';
+      ui.show('flight');
+      introMs = 0;
+      return;
+    }
+    if (opts && opts.exit) {
+      ui.leaveFc();
+      return;
+    }
+    ui.renderMenu();
+  };
+  ui.onFcAngle = (on) => {
+    ui.settings.flightMode = on ? 'angle' : 'acro';
+    syncAngleMode();
+  };
+  ui.onFcMotor = (motor, duty) => {
+    sim.motorOverride(motor, duty);
+  };
   ui.onSettings = applySettings;
   /*
    * The first flight's prompts.
@@ -3165,6 +3308,16 @@ export async function boot({ loading, bootStart, mapId }) {
      * the same rule the keyboard ghost follows. The OSD corners move in
      * under the timer while they are up; see .touch-fly-on in index.html.
      */
+    /* The Setup tab's horizon rides the plant quaternion, live. */
+    if (ui.screen === 'fc' && stateCurr) {
+      ui.fc.attitude = {
+        w: stateCurr[7],
+        x: stateCurr[8],
+        y: stateCurr[9],
+        z: stateCurr[10],
+      };
+      ui.paintFcAttitude();
+    }
     if (touch) {
       const touchOn = mode === 'flight' && ui.screen === 'flight' && !input.firstGamepad();
       /*

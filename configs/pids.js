@@ -62,7 +62,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { TUNES } from './registry.js';
+import { CUSTOM_TUNE, TUNES } from './registry.js';
+
+/* Every id an adjustment may be keyed by: the shipped tunes plus the
+ * pilot's own saved dump, which the PIDs screen adjusts like any other
+ * tune once it exists. */
+const ADJUSTABLE = [...TUNES, CUSTOM_TUNE];
 
 /*
  * One slider, in the shape src/ui/ui.js number() rows read: cliMin and
@@ -174,7 +179,7 @@ export function normalisePids(p) {
   if (!p || typeof p !== 'object') {
     return out;
   }
-  for (const t of TUNES) {
+  for (const t of ADJUSTABLE) {
     const e = p[t.id];
     if (!e || typeof e !== 'object') {
       continue;

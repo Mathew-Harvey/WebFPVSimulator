@@ -14651,3 +14651,82 @@ to zero, and the pause chip still lands with the taller plates under it;
 without a collision; 420x900 measures the portrait plate back at 126 px.
 All three frames looked at. CSS only, so the verify battery stands as
 last run; nothing outside index.html changed.
+
+## The flight controller comes back, and this time it fits
+
+The owner asked for all of it back: every flight controller setting,
+Configurator-shaped, minus exactly one thing, the ability to paste or
+upload CLI. Round one of this screen was removed for being unusable
+rather than wrong, so the restoration's job was to keep everything the
+removal learned while giving the whole surface back.
+
+**What returned.** src/ui/fc.js, rebuilt from the removed file: the
+Configurator 10.10 chrome (yellow header, dark left tab rail, PID Tuning
+pages, status strip), every tab (Setup with the live attitude horizon
+off the plant quaternion, Configuration with features, PID Tuning's
+three pages, Receiver, Modes wired to the same angle and launch state as
+Settings, Motors with sim_motor_override test on the title, Presets over
+the registry tunes, and the grey tabs saying honestly why they are
+grey), several hundred fields off the same catalog.js the lint checks
+against the 4.5.1 valueTable, every edit travelling as CLI through
+setCliValue, and Save as sim_init of the dump. Export still writes a
+diff a real Configurator can read.
+
+**What did not return, on purpose.** The CLI tab, its textarea, and the
+drop-a-diff import. Text leaves; none comes in. That is the owner's one
+exclusion, stated in the screen's own homage line.
+
+**The reconciliation, which is the actual work.** The first version
+fought the simple screens; this one feeds them. Save takes the draft
+dump and gives each part to the store that already owns it: the rate
+keys become the pilot's rate profile through ratesFromDump, so the Rates
+screen keeps telling the truth; the body becomes a real tune identity,
+"custom" alias Your edits, stored under FC_DUMP_KEY and offered on the
+Tune row beside the shipped three only while it exists; and the PIDs
+screen's adjustment for that identity is cleared because the dump IS its
+new baseline. One composeConfig, one sim_init, the same join as every
+other config change, so record keys, pids adjustments and menu rates all
+keep working on top of an edited board. The Rateprofile page inside the
+editor is a signpost to the Rates screen plus the throttle and limit
+leftovers, because two editors for one profile is how the first version
+grew its migration bugs. Boot survives a missing or refused stored dump
+by falling back to the default tune without deleting the pilot's data.
+
+**Navigation kept honest.** The screen has its own origin pointer
+(fcFrom) instead of borrowing returnTo, because returnTo can be carrying
+a paused run: paused, PIDs, flight controller, Escape, Escape now lands
+back exactly where it came from. Found and fixed in the same pass: the
+rates signpost row used to overwrite returnTo and could quit a paused
+run two screens later.
+
+**One behaviour worth naming.** Moving a simplified slider on the PIDs
+screen over a hand-edited custom tune recomputes P I D F from the
+firmware DEFAULTS, not from the hand-set values, because that is what
+config/simplified_tuning.c does and what real Configurator does when
+sliders come back on over expert values. The harness asserts it: p_roll
+46 by hand, master 120, module reads 54, revert reads 46.
+
+CHECKS, this turn. Five headless Chromium runs, console errors 0
+warnings 0 on every one: the full edit and save loop (no CLI tab
+rendered, no textarea in the DOM, p_roll stepped 45 to 46 by arrow,
+Unsaved badge, Save flying 46 as Your edits, storage written, reload
+booting it); tabs driven one by one (motor override spinning and
+stopping rotors, attitude canvas live, rateprofile signpost with no rate
+keys offered, crapshack preset staged into the draft at master 185 then
+discarded); the Tune row cycling all four identities with module p_roll
+read back at each stop (45, 38, 83, 46); the PIDs screen adjusting the
+custom tune and reverting it; Save and exit landing on Settings; Escape
+routing fc to Settings to title, and fc reached from the PIDs screen
+returning to the PIDs screen. Regression flows re-run clean: the PIDs
+sweep, the Rates screen, the feel dialog offering once at results, and
+a thumb-stick climb past 3 m under touch emulation. The Configurator
+look was screenshotted full-bleed at 1600x900 and 900x760 after fixing
+a stylesheet-order fault this pass found (the restored block sat before
+the base .screen rule and lost the tie, so the screen floated centred;
+it now sits after, edge to edge as 10.10 lays out). lint:presets 3 of
+3, lint:fc 30 of 30, lint:catalog ok, replay, link, edge and
+trackbuilder selftests green.
+npm run verify: **14 of 16**, full table read, determinism hashes
+byte-identical (6d17d4814bdc), every physics row unchanged to the digit,
+and the two reds the standing two: no emcc in this container (vendor
+diff empty, dist/sim.wasm untouched) and the feather-flag map budget.

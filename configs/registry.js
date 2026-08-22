@@ -51,7 +51,24 @@ export const TUNES = [
   },
 ];
 
+/*
+ * The one tune that is NOT a file here: the dump the pilot saved from the
+ * Flight controller screen, held in localStorage under FC_DUMP_KEY in
+ * src/fc/dump.js. It exists on the Tune row only while that save exists,
+ * and it is named here so the row, the PIDs screen and the feel report
+ * all call it the same thing. tunePath never serves it; src/main.js loads
+ * it from storage instead of fetching.
+ */
+export const CUSTOM_TUNE = {
+  id: 'custom',
+  name: 'Your edits',
+  note: 'The dump you saved on the Flight controller screen, every field of it.',
+};
+
 export function tuneById(id) {
+  if (id === CUSTOM_TUNE.id) {
+    return CUSTOM_TUNE;
+  }
   return TUNES.find((t) => t.id === id) ?? TUNES[0];
 }
 

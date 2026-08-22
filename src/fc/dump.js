@@ -35,6 +35,16 @@ export const RATES_KEEP = 'keep-mine';
 export const RATES_DUMP = 'use-dump';
 
 /*
+ * Where the Flight controller screen's saved dump lives. Its own key
+ * rather than a field in the settings blob, because it is a 20 kB
+ * document and the settings are read and rewritten on every knob turn.
+ * The value stored is tuneBody(dump): the pilot's rates are stripped on
+ * the way in and appended from the menu on every compose, so the saved
+ * dump can never smuggle a rate profile past the Rates screen.
+ */
+export const FC_DUMP_KEY = 'webfpv.fc.v1';
+
+/*
  * Keys the pilot owns. Switching a registry tune must not overwrite them,
  * so composeConfig strips every one of these out of the tune body and
  * appends the pilot's own instead. That is the whole reason the two shipped

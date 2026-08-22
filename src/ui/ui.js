@@ -56,7 +56,7 @@ const CAL_LABELS = {
   confirm: 'Check',
 };
 import { TRACKS, trackById, musicIds } from '../render/tracks.js';
-import { TUNES, tuneById } from '../../configs/registry.js';
+import { CUSTOM_TUNE, TUNES, tuneById } from '../../configs/registry.js';
 import {
   RATE_DEFAULTS,
   RATE_FIELDS,
@@ -137,6 +137,26 @@ import { fillCredits } from './credits.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
+import {
+  downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
+} from './fc.js';
+import { FC_DUMP_KEY } from '../fc/dump.js';
+
+/* Whether a Flight controller save exists, which is what puts Your edits
+ * on the Tune row. Read fresh each time: the pilot can save one two rows
+ * away from the row that offers it. */
+function hasFcDump() {
+  try {
+    return Boolean(localStorage.getItem(FC_DUMP_KEY));
+  } catch (e) {
+    return false;
+  }
+}
+
+/* The tune ids the row can offer right now. */
+function tuneChoices() {
+  return [...TUNES.map((t) => t.id), ...(hasFcDump() ? [CUSTOM_TUNE.id] : [])];
+}
 
 /* Step through a list with wraparound. Every value row on every screen
  * moves through this, so a left arrow at the start of a list lands on its
@@ -350,7 +370,7 @@ export function loadSettings() {
    * the default rather than being snapped to the nearest survivor.
    */
   for (const [key, allowed] of [
-    ['tune', TUNES.map((t) => t.id)],
+    ['tune', tuneChoices()],
     ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
     ['laps', LAP_COUNTS],
@@ -884,7 +904,7 @@ function tuneItem(s, midRun) {
   return choice(
     'Tune',
     `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.${midRun ? MID_RUN_WARNING : ''}`,
-    TUNES.map((t) => t.id),
+    tuneChoices(),
     s.tune,
     (id) => tuneById(id).name,
     (id) => { s.tune = id; },
@@ -1032,8 +1052,44 @@ export class Ui {
     this.ratesFrom = null;
     /* Same contract for the PIDs screen. */
     this.pidsFrom = null;
+    /* And for the flight controller: which list its row was on, so Escape
+     * lands back there without disturbing the pause chain in returnTo. */
+    this.fcFrom = null;
     /* The module readback the PIDs screen draws from; see setPidsLive. */
     this.pidsLive = null;
+    /*
+     * The flight-controller editor. The session holds the draft dump and
+     * builds the rows; the shell owns what Save means through onFcSave.
+     */
+    this.onFcOpen = null;    /* (page) => void */
+    this.onFcSave = null;    /* (draft, { restart, exit, presetId }) => void */
+    this.onFcAngle = null;   /* (on) => void, same sim_set_angle_mode as Settings */
+    this.onFcMotor = null;   /* (motor, duty) => void, sim_motor_override */
+    this.fc = new FcSession();
+    this.fc.getFlightMode = () => (this.settings.flightMode === 'angle' ? 'angle' : 'acro');
+    this.fc.setFlightMode = (on) => {
+      this.settings.flightMode = on ? 'angle' : 'acro';
+      saveSettings(this.settings);
+      this.renderMenu();
+      if (this.onFcAngle) {
+        this.onFcAngle(Boolean(on));
+      }
+    };
+    this.fc.getLaunchControl = () => Boolean(this.settings.launchControl);
+    this.fc.setLaunchControl = (on) => {
+      this.settings.launchControl = Boolean(on);
+      saveSettings(this.settings);
+      this.renderMenu();
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+    };
+    this.fc.motorTestAllowed = () => !this.fc.runActive && this.fcFrom !== 'paused';
+    this.fc.onMotorTest = (motor, duty) => {
+      if (this.onFcMotor) {
+        this.onFcMotor(motor, duty);
+      }
+    };
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
@@ -1354,6 +1410,78 @@ export class Ui {
     this.pidsHint = pidsHint.querySelector('.hint-copy');
     pids.append(pidsBlock.stage, pidsHint);
     this.screens.pids = pids;
+
+    /*
+     * The flight controller, restored. Configurator 10.10 chrome: yellow
+     * header, dark left tab rail, PID Tuning pages across the top of the
+     * work area, a status strip along the bottom. What did NOT come back
+     * from the first version: the CLI tab, its textarea, and the
+     * drop-a-diff import. Text leaves through Export; none comes in.
+     */
+    const fc = el('div', 'screen screen-page screen-fc');
+    const fcHead = el('div', 'fc-head');
+    const fcBrand = el('div', 'fc-brand');
+    fcBrand.append(el('span', 'fc-wordmark', 'BETAFLIGHT'));
+    fcBrand.append(el('span', 'fc-fw', '4.5.1'));
+    fcBrand.append(el('span', 'fc-conn', 'WASM'));
+    this.fcDirty = el('span', 'fc-dirty', '');
+    fcBrand.append(this.fcDirty);
+    fcHead.append(fcBrand);
+    const homage = el('p', 'fc-homage');
+    const cfgLink = el('a', null, 'Betaflight Configurator');
+    cfgLink.href = 'https://github.com/betaflight/betaflight-configurator';
+    cfgLink.target = '_blank';
+    cfgLink.rel = 'noopener noreferrer';
+    const bfLink = el('a', null, 'Betaflight');
+    bfLink.href = 'https://github.com/betaflight/betaflight';
+    bfLink.target = '_blank';
+    bfLink.rel = 'noopener noreferrer';
+    homage.append(
+      document.createTextNode('Homage of '),
+      cfgLink,
+      document.createTextNode(' 10.10 colours and tabs, not that app. No Vue, no MSP, no iframe, no CLI paste. Firmware is compiled '),
+      bfLink,
+      document.createTextNode(' 4.5.1. With thanks to the Betaflight developers. GPLv3.'),
+    );
+    fcHead.append(homage);
+    const fcExit = el('div', 'fc-exit');
+    this.fcSaveExit = btn('fc-exit-btn fc-exit-save', 'Save and exit');
+    this.fcSaveExit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.act('fc-save-exit');
+    });
+    this.fcLeave = btn('fc-exit-btn fc-exit-leave', 'Exit without saving');
+    this.fcLeave.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.act('fc-back');
+    });
+    const fcExitHint = el('div', 'fc-exit-hint');
+    fcExitHint.append(el('kbd', null, 'Esc'));
+    this.fcExitCopy = el('span', 'fc-exit-copy', 'exits without saving');
+    fcExitHint.append(this.fcExitCopy);
+    fcExit.append(this.fcSaveExit, this.fcLeave, fcExitHint);
+    this.fcExit = fcExit;
+    const fcBody = el('div', 'fc-body');
+    this.fcTabs = el('nav', 'fc-tabs');
+    this.fcTabs.setAttribute('aria-label', 'Configurator tabs');
+    const fcWork = el('div', 'fc-work');
+    this.fcPages = el('div', 'fc-pages');
+    this.fcPages.setAttribute('aria-label', 'PID Tuning pages');
+    this.fcPages.hidden = true;
+    const fcBlock = wrapMenu();
+    this.fcMenu = fcBlock.menu;
+    this.fcMenu.classList.add('menu-scroll');
+    this.fcHelp = fcBlock.help;
+    this.fcAttitude = el('canvas', 'fc-attitude');
+    this.fcAttitude.width = 220;
+    this.fcAttitude.height = 220;
+    this.fcAttitude.setAttribute('aria-label', 'Attitude');
+    this.fcAttitude.hidden = true;
+    fcWork.append(this.fcPages, fcBlock.stage, this.fcAttitude);
+    fcBody.append(this.fcTabs, fcWork);
+    const fcStatus = el('div', 'fc-status', 'Connected: WASM  ·  Betaflight 4.5.1  ·  PID 1 kHz  ·  Profile 0  ·  Homage of Configurator 10.10, not that app');
+    fc.append(fcHead, fcExit, fcBody, fcStatus);
+    this.screens.fc = fc;
 
     const calibrate = el('div', 'screen screen-page screen-calibrate');
     calibrate.append(el('h2', null, 'Calibrate sticks'));
@@ -2476,6 +2604,11 @@ export class Ui {
         tuneItem(s),
         pidsItem(s),
         ratesItem(s),
+        {
+          label: 'Flight controller',
+          action: 'fc',
+          note: 'The whole board, Configurator-shaped: every PID, filter, feature and firmware key the module compiles, tab by tab. Save becomes Your edits on the Tune row. There is no CLI paste.',
+        },
         choice(
           'Flight mode',
           'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
@@ -2888,6 +3021,11 @@ export class Ui {
       }
       rows.push(
         {
+          label: 'Every setting',
+          action: 'fc',
+          note: 'The full Flight controller screen: filters, features and every firmware key, not just the PIDs. Configurator-shaped. No CLI paste.',
+        },
+        {
           label: 'Back to the tune\'s own values',
           action: 'pids-default',
           disabled: !pidsAdjusted(s.pids, s.tune),
@@ -2898,6 +3036,9 @@ export class Ui {
         { label: 'Back', action: 'back' },
       );
       return rows;
+    }
+    if (this.screen === 'fc') {
+      return this.fc.items();
     }
     return [];
   }
@@ -2920,12 +3061,17 @@ export class Ui {
       settings: this.settingsMenu,
       rates: this.ratesMenu,
       pids: this.pidsMenu,
+      fc: this.fcMenu,
       paused: this.pausedMenu,
       results: this.resultsMenu,
     }[this.screen];
     if (!host) {
       return;
     }
+    /* The flight controller's Save, Discard, Export and Exit rows group
+     * into one Configurator-yellow button bar rather than running down
+     * the list. Built on first sight of an fc-btn row. */
+    let fcBar = null;
     const items = this.items();
     if (this.cursor >= items.length || !this.isStop(items[this.cursor])) {
       this.cursor = this.firstStop(items);
@@ -3007,13 +3153,22 @@ export class Ui {
           this.select();
         }
       });
-      host.append(row);
+      if (this.screen === 'fc' && it.rowClass === 'fc-btn') {
+        if (!fcBar) {
+          fcBar = el('div', 'fc-bar');
+          host.append(fcBar);
+        }
+        fcBar.append(row);
+      } else {
+        host.append(row);
+      }
       this.menuRows.push(row);
     });
     host.scrollTop = scroll;
     this.syncCursor(false);
     this.syncRates();
     this.syncPids();
+    this.syncFcChrome();
     /* A click that was travelling from one typed field to another, landing
      * now that the rows it was aiming at exist again. See makeNumber. */
     if (this.numberFocusWanted != null) {
@@ -3085,6 +3240,85 @@ export class Ui {
   }
 
   /*
+   * The flight controller's chrome: tab rail, page strip, attitude canvas
+   * and the dirty flag, all repainted with the menu because every row
+   * edit rebuilds the menu.
+   */
+  syncFcChrome() {
+    if (!this.fcTabs) {
+      return;
+    }
+    const on = this.screen === 'fc';
+    if (on) {
+      paintTabStrip(this.fcTabs, this.fc, (id) => {
+        if (this.fc.confirm) {
+          return;
+        }
+        this.fc.setTab(id);
+        this.cursor = 0;
+        this.renderMenu();
+      });
+      paintPageStrip(this.fcPages, this.fc, (id) => {
+        if (this.fc.confirm) {
+          return;
+        }
+        this.fc.page = id;
+        this.cursor = 0;
+        this.renderMenu();
+      });
+    }
+    const confirm = Boolean(this.fc.confirm);
+    const setupOn = on && this.fc.tab === 'setup' && !confirm;
+    this.fcAttitude.hidden = !setupOn;
+    if (setupOn) {
+      drawAttitude(this.fcAttitude, this.fc.attitude);
+    }
+    this.syncFcDirty();
+  }
+
+  syncFcDirty() {
+    if (this.fcDirty) {
+      this.fcDirty.textContent = this.fc.dirty() ? 'Unsaved' : '';
+    }
+    this.syncFcExit();
+  }
+
+  syncFcExit() {
+    if (!this.fcExit) {
+      return;
+    }
+    const on = this.screen === 'fc';
+    const confirm = Boolean(this.fc.confirm);
+    const dirty = this.fc.dirty();
+    this.fcExit.hidden = !on || confirm;
+    if (this.fcSaveExit) {
+      this.fcSaveExit.hidden = !dirty;
+    }
+    if (this.fcLeave) {
+      this.fcLeave.textContent = dirty ? 'Exit without saving' : 'Exit';
+    }
+    if (this.fcExitCopy) {
+      this.fcExitCopy.textContent = dirty ? 'exits without saving' : 'returns';
+    }
+  }
+
+  leaveFc() {
+    this.fc.stopMotors();
+    this.fc.confirm = null;
+    const dest = ['paused', 'settings', 'pids'].includes(this.fcFrom)
+      ? this.fcFrom
+      : 'title';
+    this.show(dest);
+  }
+
+  /* The horizon on the Setup tab, fed by the shell's frame loop. */
+  paintFcAttitude() {
+    if (this.screen === 'fc' && this.fc.tab === 'setup' && !this.fc.confirm) {
+      drawAttitude(this.fcAttitude, this.fc.attitude);
+    }
+  }
+
+  /*
    * The module readback, from the shell after every successful sim_init.
    * The PIDs screen's bars and its slider fallbacks have no other source:
    * nothing on the screen computes a PID from a slider, so a control that
@@ -3106,6 +3340,7 @@ export class Ui {
       settings: this.settingsHelp,
       rates: this.ratesHelp,
       pids: this.pidsHelp,
+      fc: this.fcHelp,
       paused: this.pausedHelp,
       results: this.resultsHelp,
     }[this.screen];
@@ -4067,6 +4302,9 @@ export class Ui {
     if (this.screen === 'pids' && screen !== 'pids') {
       this.pidsFrom = null;
     }
+    if (this.screen === 'fc' && screen !== 'fc') {
+      this.fcFrom = null;
+    }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
      * going. Settings opens on its first real row rather than on a heading. */
@@ -4926,6 +5164,19 @@ export class Ui {
       this.act('resume');
       return;
     }
+    if (this.screen === 'fc') {
+      /* Escape cancels a confirm before it leaves the screen, so a pilot
+       * asked "restart the run?" is not thrown off the editor for
+       * flinching. */
+      if (this.fc.confirm) {
+        this.fc.confirm = null;
+        this.cursor = 0;
+        this.renderMenu();
+        return;
+      }
+      this.act('fc-back');
+      return;
+    }
     if (this.screen === 'rates' && this.ratesFrom === 'settings') {
       /* Settings is a page, not a mode: the shell has nothing to do when it
        * comes back up, so show() rather than act(), which would rewrite
@@ -5047,12 +5298,17 @@ export class Ui {
     }
     if (action === 'rates') {
       /* Escape and Back go where the pilot came from, so Rates reached from
-       * the pause menu mid-race does not dump them on the title screen. */
+       * the pause menu mid-race does not dump them on the title screen.
+       * From the flight controller's signpost row, returnTo is left alone:
+       * it may be carrying a paused run two screens up, and this row must
+       * not be the reason Escape quits it. */
       if (this.screen === 'settings') {
         this.ratesFrom = 'settings';
       } else {
         this.ratesFrom = null;
-        this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
+        if (this.screen !== 'fc') {
+          this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
+        }
       }
       this.show('rates');
       return;
@@ -5066,6 +5322,100 @@ export class Ui {
         this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       }
       this.show('pids');
+      return;
+    }
+    if (action === 'fc') {
+      /* Its own origin pointer, NOT returnTo: returnTo belongs to the
+       * pause chain, and overwriting it here stranded a pilot who paused
+       * a run, opened PIDs, opened this, and Escaped twice expecting the
+       * pause menu back. */
+      this.fcFrom = ['paused', 'settings', 'pids'].includes(this.screen)
+        ? this.screen
+        : 'title';
+      if (this.onFcOpen) {
+        this.onFcOpen('pid');
+      }
+      this.show('fc');
+      return;
+    }
+    if (action === 'fc-save') {
+      if (!this.fc.dirty()) {
+        return;
+      }
+      if (this.fc.runActive) {
+        this.fc.confirm = 'save-run';
+        this.fc.exitAfterSave = false;
+        this.cursor = 0;
+        this.renderMenu();
+        return;
+      }
+      this.fc.stopMotors();
+      if (this.onFcSave) {
+        this.onFcSave(this.fc.draft, { restart: false, presetId: this.fc.presetId });
+      }
+      return;
+    }
+    if (action === 'fc-save-exit') {
+      if (!this.fc.dirty()) {
+        this.leaveFc();
+        return;
+      }
+      if (this.fc.runActive) {
+        this.fc.confirm = 'save-run';
+        this.fc.exitAfterSave = true;
+        this.cursor = 0;
+        this.renderMenu();
+        return;
+      }
+      this.fc.stopMotors();
+      if (this.onFcSave) {
+        this.onFcSave(this.fc.draft, { restart: false, exit: true, presetId: this.fc.presetId });
+      }
+      return;
+    }
+    if (action === 'fc-save-restart') {
+      this.fc.exitAfterSave = false;
+      this.fc.confirm = null;
+      this.fc.stopMotors();
+      if (this.onFcSave) {
+        this.onFcSave(this.fc.draft, { restart: true, presetId: this.fc.presetId });
+      }
+      return;
+    }
+    if (action === 'fc-wait') {
+      this.fc.exitAfterSave = false;
+      this.fc.confirm = null;
+      this.cursor = 0;
+      this.renderMenu();
+      return;
+    }
+    if (action === 'fc-motors-stop') {
+      this.fc.stopMotors();
+      this.renderMenu();
+      return;
+    }
+    if (action.startsWith('fc-preset:')) {
+      const id = action.slice('fc-preset:'.length);
+      this.fc.applyPreset(id).then(() => {
+        this.renderMenu();
+      }).catch((err) => {
+        console.error(err);
+      });
+      return;
+    }
+    if (action === 'fc-discard') {
+      this.fc.discard();
+      this.renderMenu();
+      return;
+    }
+    if (action === 'fc-export') {
+      downloadCli('betaflight.diff', this.fc.exportText());
+      return;
+    }
+    if (action === 'fc-back') {
+      this.fc.exitAfterSave = false;
+      this.fc.discard();
+      this.leaveFc();
       return;
     }
     if (action === 'pids-default') {
@@ -5302,7 +5652,7 @@ export class Ui {
      * selects on the title so Fly is one flick away. The pad is tracked so
      * a held stick does not fire an edge the moment the screen closes.
      */
-    if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids') {
+    if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids' || this.screen === 'fc') {
       if (this.screen === 'title' && now.select && !this.padPrev.select) {
         this.select();
       }

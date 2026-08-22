@@ -156,6 +156,7 @@
       .osd-hits { margin-top: 10px; margin-bottom: 0; }
       .osd-hits.warn { color: var(--amber); }
 
+
       /* Keyboard stick ghost. Two Mode 2 gimbals: left is yaw and
          throttle, right is roll and pitch. Shown only when the keyboard
          is the stick source, so a radio does not grow a second pair of
@@ -359,6 +360,167 @@
         z-index: 1;
       }
       .screen-page { justify-content: center; }
+
+      /*
+       * The flight-controller screen, restored. Configurator 10.10
+       * (firmware 4.5.1 era): #ffbb00 header, #4d4d4d body, dark left
+       * tabs. Homage: our layout, system fonts, no Vue, no MSP, no
+       * iframe, and no CLI paste anywhere. Title and Settings stay cream
+       * and sakura; this screen alone wears the yellow.
+       */
+      .screen-fc {
+        --bf-accent: #ffbb00;
+        --bf-ink: #1a1a1a;
+        --bf-bg: #4d4d4d;
+        --bf-header: #393b3e;
+        --bf-panel: #414141;
+        --bf-box: #3a3a3a;
+        --bf-text: #ffffff;
+        --bf-muted: #c5c5c5;
+        --bf-grey: #9c9c9c;
+        align-items: stretch;
+        justify-content: flex-start;
+        padding: 0;
+        background: var(--bf-bg);
+        color: var(--bf-text);
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      .fc-head {
+        flex: 0 0 auto;
+        background: var(--bf-accent);
+        color: var(--bf-ink);
+        padding: 8px 14px 7px;
+        pointer-events: auto;
+      }
+      .fc-brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      .fc-wordmark { font-size: 22px; font-weight: 800; letter-spacing: 0.14em; line-height: 1; }
+      .fc-fw, .fc-conn {
+        font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      .fc-dirty {
+        margin-left: auto; color: var(--bf-ink);
+        font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+      }
+      .fc-dirty:empty { display: none; }
+      .fc-homage { margin: 4px 0 0; max-width: 86em; color: #3a3208; font-size: 11px; line-height: 1.4; }
+      .fc-homage a { color: var(--bf-ink); font-weight: 700; pointer-events: auto; }
+      .fc-exit {
+        flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 8px 14px; background: #2a2a2a; border-bottom: 1px solid #1a1a1a;
+        pointer-events: auto;
+      }
+      .fc-exit[hidden] { display: none !important; }
+      .fc-exit-btn {
+        border: 0; border-radius: 4px; font: inherit; font-size: 13px; font-weight: 800;
+        letter-spacing: 0.02em; padding: 8px 14px; cursor: pointer;
+      }
+      .fc-exit-save { background: var(--bf-accent); color: var(--bf-ink); }
+      .fc-exit-save:hover, .fc-exit-save:focus-visible { background: #ffd24d; outline: none; }
+      .fc-exit-save[hidden] { display: none; }
+      .fc-exit-leave { background: #5c5c5c; color: #fff; }
+      .fc-exit-leave:hover, .fc-exit-leave:focus-visible { background: #6e6e6e; outline: none; }
+      .fc-exit-hint {
+        margin-left: auto; display: flex; align-items: center; gap: 8px;
+        color: var(--bf-muted); font-size: 13px; font-weight: 650;
+      }
+      .fc-exit-hint kbd {
+        display: inline-block; min-width: 1.6em; padding: 2px 6px; border-radius: 3px;
+        background: #1a1a1a; color: var(--bf-accent);
+        font: 700 12px/1.2 ui-monospace, "Cascadia Mono", monospace;
+        text-align: center; box-shadow: 0 1px 0 #000;
+      }
+      .fc-body { display: flex; gap: 0; flex: 1 1 auto; min-height: 0; width: 100%; pointer-events: auto; }
+      .fc-tabs {
+        flex: 0 0 12.5em; overflow-y: auto; background: var(--bf-header); padding: 8px 0;
+        pointer-events: auto; scrollbar-width: thin; scrollbar-color: #ffbb00 #2e2e2e;
+      }
+      .fc-tab {
+        display: block; width: 100%; text-align: left; border: 0; background: transparent;
+        color: var(--bf-text); font: inherit; font-size: 13px; padding: 7px 12px 7px 14px;
+        cursor: pointer; border-left: 3px solid transparent;
+      }
+      .fc-tab:hover { background: rgba(255, 187, 0, 0.08); }
+      .fc-tab.on {
+        background: var(--bf-panel); border-left-color: var(--bf-accent);
+        color: var(--bf-accent); font-weight: 650;
+      }
+      .fc-tab.grey { color: var(--bf-grey); }
+      .fc-tab.grey.on { color: var(--bf-muted); border-left-color: var(--bf-grey); }
+      .fc-work {
+        flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+        min-height: 0; background: var(--bf-panel); overflow: auto;
+      }
+      .fc-pages {
+        display: flex; gap: 0; flex: 0 0 auto; position: sticky; top: 0; z-index: 2;
+        background: var(--bf-header); border-bottom: 1px solid #2a2a2a;
+      }
+      .fc-pages[hidden] { display: none !important; }
+      .fc-page {
+        border: 0; background: transparent; color: var(--bf-muted); font: inherit;
+        font-size: 13px; font-weight: 650; letter-spacing: 0.03em;
+        padding: 8px 12px; cursor: pointer; border-bottom: 3px solid transparent;
+      }
+      .fc-page.on { color: var(--bf-accent); border-bottom-color: var(--bf-accent); background: var(--bf-panel); }
+      .screen-fc .menu-stage {
+        display: grid;
+        grid-template-columns: 1fr minmax(14em, 22em);
+        align-items: stretch;
+        flex: 1 1 0;
+        min-height: 0;
+        width: 100%;
+        margin-top: 0;
+      }
+      .screen-fc .menu-stage .menu {
+        grid-column: 1; background: var(--bf-box); border-top: 0; border-radius: 0;
+        box-shadow: none; min-width: 0; width: 100%; height: 100%; margin-top: 0;
+        padding: 0 0 12px;
+      }
+      .screen-fc .menu-scroll { max-height: none; height: 100%; scrollbar-color: #ffbb00 #2e2e2e; }
+      .screen-fc .menu-help {
+        grid-column: 2; color: var(--bf-muted); border-left: 1px solid #2a2a2a;
+        background: var(--bf-header); padding: 12px 14px; max-width: none;
+      }
+      .screen-fc .row { gap: 10px; padding: 7px 16px 7px 18px; font-size: 13px; color: var(--bf-text); }
+      .screen-fc .row.on {
+        color: var(--bf-text); border-left-color: var(--bf-accent);
+        background: linear-gradient(90deg, rgba(255, 187, 0, 0.16), rgba(255, 187, 0, 0) 48%);
+      }
+      .screen-fc .row-label { font-family: inherit; font-size: 13px; }
+      .screen-fc .row-value {
+        max-width: none; overflow: visible; text-overflow: clip; color: var(--bf-accent);
+      }
+      .screen-fc .row-grey { color: var(--bf-grey); }
+      .screen-fc .row-grey .row-value { color: var(--bf-grey); }
+      .screen-fc .row-gated .row-value { color: var(--bf-accent); }
+      .screen-fc .fc-section {
+        color: var(--bf-accent); font-size: 11px; font-weight: 800;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        border-bottom: 1px solid #555; margin-top: 8px; pointer-events: none;
+      }
+      .screen-fc .fc-bar { display: flex; gap: 8px; padding: 10px 12px 6px; flex-wrap: wrap; }
+      .screen-fc .fc-btn {
+        background: var(--bf-accent); color: var(--bf-ink); font-weight: 700; margin: 0;
+        border-radius: 3px; border-left: 0; flex: 1 1 6em; justify-content: center;
+        padding: 8px 10px;
+      }
+      .screen-fc .fc-btn .row-label { color: var(--bf-ink); font-weight: 700; }
+      .screen-fc .fc-btn.on { background: #ffd24d; color: var(--bf-ink); border-left: 0; }
+      .fc-status {
+        flex: 0 0 auto; background: var(--bf-accent); color: var(--bf-ink);
+        font-size: 11px; font-weight: 650; letter-spacing: 0.04em; padding: 5px 14px;
+        pointer-events: auto;
+      }
+      .fc-attitude {
+        display: block; margin: 12px 16px; width: 220px; height: 220px;
+        background: #2e2e2e; border: 1px solid #6b6b6b; pointer-events: none;
+      }
+      .fc-attitude[hidden] { display: none !important; }
+      @media (max-width: 900px) {
+        .screen-fc .menu-stage { grid-template-columns: minmax(0, 1fr); }
+        .screen-fc .menu-help { grid-column: auto; max-width: none; border-left: none; }
+        .fc-tabs { flex: 0 0 8.5em; }
+        .fc-wordmark { font-size: 16px; }
+      }
       .screen-maps {
         justify-content: flex-start;
         padding-top: 7vh;

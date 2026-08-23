@@ -49,6 +49,11 @@ export const TUNES = [
     name: 'Crapshack',
     note: 'The stiff one, cut for this sim’s clean gyro: PIDs near double stock, locked in at mid stick, quicker yaw.',
   },
+  {
+    id: 'precision',
+    name: 'Precision',
+    note: 'Crapshack’s PIDs with the factory’s feedforward. Corrections moved at thumb speed land on your aim rather than a quarter past it.',
+  },
 ];
 
 /*

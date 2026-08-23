@@ -1,0 +1,249 @@
+# diff
+# Betaflight / SITL (SITL) 4.5.1
+
+# PRECISION. The tune for landing on your aim instead of past it, built
+# from a flight feel report: "The quad felt soft this run. Noticed: drifts
+# off attitude", flown on a technical custom course at 350 deg/s Actual
+# rates, in acro, on the factory tune.
+#
+# NO RATES, same rule as every file here. Rates are the pilot's, chosen in
+# Settings and appended to whichever tune is loaded; see configs/rates.js.
+#
+# WHAT THE MEASUREMENT ACTUALLY FOUND, because it was not what the words
+# suggested. The attitude does not drift: with the sticks centred after a
+# pulse, every shipped tune holds to within 0.2 to 0.4 degrees over 2.2
+# seconds, with residual body rates under 2.3 deg/s. There is no wander to
+# remove. What there is, on every tune including Crapshack, is OVERSHOOT
+# ON A SMALL INPUT MOVED AT THUMB SPEED, and a correction that arrives a
+# quarter past where it was aimed and settles back is exactly what a pilot
+# reports as soft, and as not holding the line they asked for.
+#
+# THE MEASUREMENT THE LAST ROUND DID NOT TAKE. Crapshack was swept on
+# INSTANT steps, and on those it is a clear win: 25 percent instant step
+# overshoot 15.6 percent on the factory tune against 7.0 percent on
+# Crapshack, which reproduces its own recorded 18.3 against 5.7. Ramp the
+# same 25 percent in over 60 ms, which is what a thumb does and an
+# instant step never is, and the ranking inverts:
+#
+#   roll, 25% stick, ramped in over 60 ms, overshoot
+#     betaflight-default  23.3%
+#     karate-race         28.0%
+#     crapshack           25.7%     <- the stiff tune is the worst of them
+#
+# FEEDFORWARD IS THE WHOLE CAUSE, and the sweep says so cleanly. Holding
+# Crapshack's master, I and D fixed and moving only the feedforward
+# slider, roll, 25 percent ramped:
+#
+#   ff 125 (crapshack)  25.7%  rise90 61 ms
+#   ff 100              19.3%  rise90 63 ms
+#   ff  75              13.5%  rise90 66 ms
+#   ff  50               9.3%  rise90 69 ms   <- this file
+#   ff  25               8.1%  rise90 72 ms
+#
+# Below 50 the curve flattens and the rise keeps paying, so 50 is the knee
+# rather than a compromise. Feedforward answers stick MOVEMENT, and a
+# thumb moves at the same speed whatever the gyro is doing: Crapshack
+# doubled it along with everything else, and that is the one gain the
+# clean gyro does not buy. Read back out of the module, this file is
+# Crapshack's PIDs with the factory's feedforward:
+#
+#   roll  P83 I96 D93 F111      crapshack F277, stock F120
+#   pitch P91 I106 D108 F121    crapshack F303, stock F125
+#   yaw   P83 I96 F111
+#
+# D STAYS AT CRAPSHACK'S CEILING. A d_gain of 130 takes the ramped
+# overshoot to 6.7 percent and 145 takes it to 5.6, but the hard stop
+# bounce goes 13 to 16 to 20 deg/s with them, which is the same wall the
+# Crapshack sweep hit and wrote down. A precision tune that cannot stop
+# cleanly is not one, so 115 is the ceiling here for the same reason.
+# dmax 165 bought 0.2 of a point and cost 2 deg/s of bounce; i 80 made
+# both worse. Neither is in this file.
+#
+# PROVENANCE. Base is crapshack.diff, which is karate-race.diff plus one
+# slider block, so the filter foundation is still sugarK's. Nothing here
+# is a hand-typed PID: the block below runs through the firmware's own
+# config/simplified_tuning.c, exactly what dragging Configurator's
+# sliders does.
+batch start
+
+board_name SITL
+
+# ---- airframe, read by the plant ----
+set motor_kv = 1900
+set motor_poles = 14
+set vbat_max_cell_voltage = 420
+set vbat_min_cell_voltage = 350
+set vbat_warning_cell_voltage = 350
+set battery_capacity = 1300
+set small_angle = 180
+
+# ---- presets/4.5/filters/defaults.txt ----
+set gyro_hardware_lpf = NORMAL
+set gyro_lpf1_type = PT1
+set gyro_lpf1_static_hz = 250
+set gyro_lpf2_type = PT1
+set gyro_lpf2_static_hz = 500
+set gyro_notch1_hz = 0
+set gyro_notch1_cutoff = 0
+set gyro_notch2_hz = 0
+set gyro_notch2_cutoff = 0
+set gyro_lpf1_dyn_min_hz = 250
+set gyro_lpf1_dyn_max_hz = 500
+set gyro_lpf1_dyn_expo = 5
+set gyro_filter_debug_axis = ROLL
+set dshot_bidir = OFF
+set simplified_gyro_filter = ON
+set simplified_gyro_filter_multiplier = 100
+
+# ---- presets/4.5/tune/defaults.txt, master half ----
+set yaw_spin_recovery = AUTO
+set dshot_idle_value = 550
+set mixer_type = LEGACY
+set yaw_motors_reversed = OFF
+
+# ---- karate-race.diff, gyro lowpass filters ----
+set gyro_lpf1_static_hz = 0
+set gyro_lpf1_dyn_min_hz = 500
+set gyro_lpf1_dyn_max_hz = 1000
+set simplified_gyro_filter = OFF
+
+# ---- karate-race.diff, gyro dynamic notches ----
+set dyn_notch_count = 2
+set dyn_notch_q = 450
+set dyn_notch_min_hz = 125
+set dyn_notch_max_hz = 650
+
+# ---- karate-race.diff, RPM filtering and DShot600 ----
+set dshot_bidir = ON
+set rpm_filter_fade_range_hz = 100
+set motor_pwm_protocol = DSHOT600
+
+# ---- profile 0 ----
+profile 0
+
+# presets/4.5/tune/defaults.txt, profile half
+set pid_at_min_throttle = ON
+set anti_gravity_gain = 80
+set anti_gravity_cutoff_hz = 5
+set anti_gravity_p_gain = 100
+set acc_limit_yaw = 0
+set acc_limit = 0
+set iterm_rotation = OFF
+set iterm_relax = RP
+set iterm_relax_type = SETPOINT
+set iterm_relax_cutoff = 15
+set iterm_windup = 85
+set iterm_limit = 400
+set pidsum_limit = 500
+set pidsum_limit_yaw = 400
+set throttle_boost = 5
+set throttle_boost_cutoff = 15
+set p_roll = 45
+set i_roll = 80
+set d_roll = 40
+set f_roll = 120
+set p_pitch = 47
+set i_pitch = 84
+set d_pitch = 46
+set f_pitch = 125
+set p_yaw = 45
+set i_yaw = 80
+set d_yaw = 0
+set f_yaw = 120
+set d_min_roll = 30
+set d_min_pitch = 34
+set d_min_yaw = 0
+set d_max_gain = 37
+set d_max_advance = 20
+set abs_control_gain = 0
+set use_integrated_yaw = OFF
+set thrust_linear = 0
+set transient_throttle_limit = 0
+set feedforward_transition = 0
+set feedforward_max_rate_limit = 90
+set dyn_idle_min_rpm = 0
+set tpa_mode = D
+set tpa_rate = 65
+set tpa_breakpoint = 1350
+set tpa_low_rate = 20
+set tpa_low_breakpoint = 1050
+set tpa_low_always = OFF
+set ez_landing_threshold = 25
+set ez_landing_limit = 5
+
+# presets/4.5/filters/defaults.txt, profile half
+set dterm_lpf1_dyn_min_hz = 75
+set dterm_lpf1_dyn_max_hz = 150
+set dterm_lpf1_dyn_expo = 5
+set dterm_lpf1_type = PT1
+set dterm_lpf1_static_hz = 75
+set dterm_lpf2_type = PT1
+set dterm_lpf2_static_hz = 150
+set dterm_notch_hz = 0
+set dterm_notch_cutoff = 0
+set yaw_lowpass_hz = 100
+set simplified_dterm_filter = ON
+set simplified_dterm_filter_multiplier = 100
+
+# ---- karate-race.diff, D term filtering ----
+set dterm_lpf1_dyn_expo = 7
+
+# ---- karate-race.diff, misc ----
+set thrust_linear = 0
+set throttle_boost = 2
+
+# ---- karate-race.diff, I term and PID sum limits ----
+#
+# Both carried across unchanged, with karate-race.diff's own reasoning:
+# iterm_relax_cutoff 15 is what keeps a wound I term from dumping as
+# reverse rate when the stick centres on this plant, and pidsum_limit_yaw
+# 1000 is what lets Betaflight's anti windup actually engage on a saturated
+# yaw axis. Both matter MORE here, because I and P are higher.
+set iterm_limit = 500
+set pidsum_limit_yaw = 1000
+
+# ---- the slider block, inherited from crapshack with one value moved ----
+#
+# RPY, not karate's RP, and the difference is the yaw column of every
+# measurement above. The sliders leave yaw alone in RP mode, so karate's
+# yaw is the stock 45/80/120 and it answers a full pedal in 131 ms. In RPY
+# the master multiplier reaches yaw too, and the same step lands in 133 ms
+# from a 172 ms default with a third of the overshoot. Yaw D stays zero,
+# as Betaflight ships it.
+#
+# simplified_i_gain 65: I must NOT ride the master all the way up. I is
+# multiplied by the master like everything else, so 65 at master 185 is
+# still I 96 against the stock 80, and that is as far as it can go before
+# the wind-and-dump bounce karate-race.diff documents at its own I block
+# comes back. 75 was measured at 7 deg/s more stop bounce; 65 matches the
+# best bounce of the sweep.
+set simplified_pids_mode = RPY
+set simplified_master_multiplier = 185
+set simplified_pi_gain = 100
+set simplified_i_gain = 65
+set simplified_d_gain = 115
+set simplified_dmax_gain = 140
+set simplified_feedforward_gain = 50
+set simplified_pitch_pi_gain = 105
+set simplified_pitch_d_gain = 100
+simplified_tuning apply
+
+# ---- karate-race.diff, feedforward ----
+set feedforward_max_rate_limit = 100
+
+# ---- karate-race.diff, TPA ----
+set tpa_rate = 70
+set tpa_breakpoint = 1250
+
+# ---- presets/4.3/rc_link/generic/250hz_race.txt, as karate-race.diff
+# carries it: feedforward_boost 10 rather than the published 18, for the
+# stick-release kick documented there. Boosts of 12 and 15 were both in
+# the sweep and neither moved a single probe number this tune's way. ----
+set feedforward_averaging = 2_POINT
+set feedforward_smooth_factor = 35
+set feedforward_jitter_factor = 4
+set feedforward_boost = 10
+set rc_smoothing_auto_factor = 25
+set rc_smoothing_auto_factor_throttle = 25
+
+batch end

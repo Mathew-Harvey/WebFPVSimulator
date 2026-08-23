@@ -15090,3 +15090,134 @@ so the menu the scroll rule touches is not in the frame.
 STILL OPEN on the board after this: nothing that is a defect. Two feel
 reports remain, which are feedback rather than bugs, and one of them is
 the owner's own test.
+
+## Precision, the tune a feel report asked for, and the measurement the last round missed
+
+`bug-a03354fb` off the live board, Le Star: "The quad felt soft this run.
+Noticed: drifts off attitude." Flown on Corkscrew, a technical custom
+course, in acro, at Actual 350 deg/s roll and pitch and 300 yaw, on the
+factory tune with no PID adjustment, 45 degree camera, best lap 33.29 s.
+This is the first round the feel dialog paid for itself: the tune, the
+rates, the live PID readback and the lap all arrived with the sentence,
+so none of it had to be asked for.
+
+WHAT THE WORDS SAID AND WHAT THE PLANT SAID ARE DIFFERENT THINGS, and the
+difference is the whole entry. A probe was built for the literal
+complaint: pulse an axis, centre the sticks, and measure how far the
+attitude wanders afterwards. It does not wander. Every shipped tune holds
+to within 0.21 to 0.42 degrees over 2.2 seconds with residual body rates
+under 2.3 deg/s. There is no drift to remove, and no tune change could
+have removed it.
+
+What there is, on every tune, is overshoot on a small input moved at
+thumb speed. A correction that arrives a quarter past where it was aimed
+and settles back is what a pilot reports as soft, and as a quad that does
+not hold the line they asked for.
+
+THE MEASUREMENT THE CRAPSHACK ROUND DID NOT TAKE. That round swept
+INSTANT steps and its file records 25 percent instant overshoot 18.3 to
+5.7 percent. This probe reproduces that result closely, 15.6 against 7.0,
+which is what validated it before anything was tuned. Ramp the same 25
+percent in over 60 ms, which is what a thumb does and an instant step
+never is, and the ranking inverts:
+
+    roll, 25 percent, ramped over 60 ms      overshoot   rise90
+      betaflight-default                        23.3%      65 ms
+      karate-race                               28.0%      66 ms
+      crapshack                                 25.7%      61 ms
+
+The stiff tune is the worst of the three at the one thing the report is
+about. It was never measured this way, so nobody knew.
+
+FEEDFORWARD IS THE ENTIRE CAUSE. Holding Crapshack's master, I and D
+fixed and moving only the feedforward slider:
+
+      ff 125 (crapshack)  25.7%   rise90 61 ms
+      ff 100              19.3%   rise90 63 ms
+      ff  75              13.5%   rise90 66 ms
+      ff  50               9.3%   rise90 69 ms   <- configs/precision.diff
+      ff  25               8.1%   rise90 72 ms
+
+Below 50 the curve flattens while the rise keeps paying, so 50 is a knee
+rather than a compromise. The reason is physical and worth writing down:
+feedforward answers stick MOVEMENT, and a thumb moves at the same speed
+whatever the gyro is doing. Crapshack's insight was that a noiseless gyro
+buys free damping, and it was right, but it doubled feedforward along
+with everything else and that is the one gain the clean gyro does not
+buy. Read back out of the module, the new file is Crapshack's PIDs with
+the factory's feedforward: roll P83 I96 D93 F111 against Crapshack's F277
+and stock's F120.
+
+D STAYS AT CRAPSHACK'S CEILING, and the sweep agrees with the reason
+already written in that file. d_gain 130 takes the ramped overshoot to
+6.7 percent and 145 to 5.6, but the hard stop bounce goes 13 to 16 to 20
+deg/s with them. A precision tune that cannot stop cleanly is not one.
+dmax 165 bought 0.2 of a point for 2 deg/s of bounce and i 80 made both
+worse; neither is in the file.
+
+THE FINISHED TUNE, measured against the two it sits between:
+
+                              default   crapshack   precision
+    roll 25% ramped over        23.3%      25.7%       9.3%
+    roll 25% instant over       15.6%       7.0%       5.0%
+    roll full step over          1.0%       0.2%       0.5%
+    roll full rise90            78 ms      72 ms      85 ms
+    reverse after release      5 deg/s    7 deg/s    0 deg/s
+    yaw full rise90            196 ms     155 ms     158 ms
+    yaw reverse               51 deg/s   22 deg/s   22 deg/s
+    descent and catch         19 deg/s   14 deg/s   14 deg/s
+    hover lateral drift        0.030 m    0.013 m    0.013 m
+
+It is the best of the three at both step shapes and has the cleanest stop
+of any tune in the project. It pays 13 ms of full stick rise against
+Crapshack, which is the honest price of less feedforward and the reason
+this is offered as a fourth tune rather than a change to the third: a
+race tune and a precision tune want opposite sides of that trade.
+
+THE PROBE LIED FIRST, and the lesson is the useful part. Its initial
+version reported zero body rate at every stick position and zero attitude
+drift, which read as a clean bill of health. It was passing `sim.input`
+a timestamp in MILLISECONDS when the ABI takes SECONDS, so every sample
+landed a thousand seconds in the future and the craft flew with the
+sticks at rest. A probe reporting all zeros is indistinguishable from a
+perfect aircraft. The probe now self-checks before it reports anything:
+full roll stick must reach the configured rate or it throws, and the run
+that validated it against Crapshack's own recorded numbers is what made
+the later results trustworthy.
+
+THE OTHER TWO THINGS IN THE SAME REPORT, answered rather than tuned:
+
+- "Are gates 1.5 or 2m spec? They feel small." Corkscrew's gates are
+  authored at clearW 1.524 m, which is MultiGP's 5 foot spec, and
+  `GATE_SCALE` in src/game/track.js already draws and scores every gate
+  15 percent larger, so they fly at 1.75 m. They are bigger than spec,
+  not smaller. The instinct behind the question is the reason that
+  constant exists.
+- "This course highlights the increased difficulty to stay on course than
+  in real life but I find all Sims like this." Not answered here. It is
+  the right observation and it is about depth cues and the camera, not
+  the tune, so it is left for a round that can measure it.
+
+CHECKS, this turn, all run and all read:
+
+- `npm run lint:presets` 4 of 4 clean, precision.diff 121 set lines, 113
+  applied, 8 inert by design, 0 unrecognised.
+- The probe, self-check passing on every tune (full roll 671 to 672
+  deg/s), across all three axes for hold and both step shapes.
+- `scripts/flight-report.js` on all four tunes, table above.
+- PID readback through `sim_bf_get` in Node and again in the browser
+  through `window.__pids`: mode RPY, master 185, p_roll 83, i_roll 96,
+  d_roll 93, d_min_roll 63, f_roll 111, p_pitch 91, p_yaw 83, f_yaw 111.
+- Headless Chromium, console errors 0 warnings 0: the Tune row reads
+  Precision, the module boots on it, and it flies, climbing to 1.96 m and
+  holding forward flight without a crash.
+
+`npm run verify` was NOT run. No physics, plant, ABI, patch or build file
+was touched: this is one new CLI diff in configs/ and one row in the
+registry, and the module parses that diff through exactly the path a
+pilot's own dropped file takes. dist/sim.wasm is byte identical.
+
+Whether it FEELS right is not settled here and cannot be. The overshoot
+that the report describes is measured and two thirds of it is gone; the
+pilot who reported it is the one who gets to say whether that is what
+they meant.

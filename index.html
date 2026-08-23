@@ -677,13 +677,36 @@
         width: 100%;
         margin-top: auto;
         position: relative;
+        /* Shrinkable, so the menu inside it can be. Without this the
+         * column keeps its content height and the overflow just moves
+         * up a level. */
+        min-height: 0;
       }
+      /*
+       * ELEVEN ROWS AND A SHORT WINDOW. The title menu is taller than a
+       * laptop window can hold: measured at 1536 by 776 the menu ran to
+       * 914 px, so Leaderboard, Credits and the report row sat below the
+       * fold, invisible and unreachable by mouse. The column above it is
+       * fixed copy, so the menu is the part that yields: it shrinks and
+       * scrolls rather than running off the bottom. On a window with room
+       * for all of it nothing here changes anything, because a flex item
+       * only shrinks once it has to.
+       */
       .screen-title .menu-stage {
-        display: block;
+        display: flex;
+        flex-direction: column;
         position: static;
         width: 100%;
         margin-top: 0;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        min-height: 0;
+      }
+      .screen-title .menu {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
       }
       .menu {
         min-width: min(540px, 82vw);
@@ -736,6 +759,21 @@
       }
       .screen-title .menu-help:empty {
         padding: 0;
+      }
+      /*
+       * The handoff between the two blocks of body copy in this column.
+       * The note above grows upward out of flow and used to be painted on
+       * top of the keep note; see syncCursor in src/ui/ui.js for the
+       * measurement. Opacity, not display, so nothing moves while it
+       * happens and the text stays where a screen reader can find it.
+       */
+      .screen-title .keep-note,
+      .screen-title .first-note {
+        transition: opacity 140ms ease;
+      }
+      .screen-title.has-help .keep-note,
+      .screen-title.has-help .first-note {
+        opacity: 0;
       }
       .craft-showcase {
         grid-column: 1;

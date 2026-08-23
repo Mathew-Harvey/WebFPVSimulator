@@ -15012,3 +15012,81 @@ the build: it is one method in ui.js, the close wiring of two dialogs,
 and two CSS rules. The standing verify record from the ghost round holds,
 and check 13 loads only the harness page, which this change cannot
 reach. The evidence is the thirteen driven behaviours above.
+
+## Overlapping text on the title screen, and the menu that ran off the bottom
+
+Second ticket off the live board, `bug-cb256cb0` from Le Star: "Text
+overlaps other text when hovering over menu items in the Custome Map
+Time Trial menu", with the repro naming the paragraph it lands on, the
+one commencing "Tracks you build stay in this browser". Reproduced
+against the reporter's own course, `trk-b3583898` Corkscrew, fetched
+from the production board, at the reporter's own viewport, 1536 by 776.
+
+MEASURED RATHER THAN GUESSED. With the cursor on Course the note spans
+312 to 344 and the keep note spans 279 to 344: the same band, drawn on
+top of each other. On Ghost, whose note is longer, the note reaches 290.
+The cause is one rule:
+
+    .screen-title .menu-help { position: absolute; bottom: 100%; }
+
+On the title the row note is taken out of flow and pinned above the
+footer, so it grows UPWARD as it gets longer and paints over whatever
+the brand block has there. Nothing pushed anything, because absolute
+elements do not push. Every other screen puts the note in the stage's
+third column where it cannot collide with anything, which is why this
+was only ever a title screen bug.
+
+THE FIX IS A HANDOFF, not a nudge. The two are both body copy in one
+column and only one of them is ever being read: the keep note is
+ambient and always true, the row note is about the row under the cursor
+right now. So `syncCursor` marks the title screen `has-help` whenever
+the note has text and the ambient copy fades out, on opacity rather
+than display so nothing moves while it happens and the sentence stays
+where a screen reader can still reach it. The first-run note is covered
+by the same rule, because it is the same paragraph in the same place.
+
+FOUND WHILE MEASURING THE FIRST ONE, and worth its own fix: at 1536 by
+776 the menu ran to 914 px in a 776 px window. Leaderboard, Credits and
+the report row were below the fold, invisible and unreachable by mouse.
+It is not new, ten rows already overflowed a short window, but the Ghost
+row this branch added made it one row worse, so it is this branch's to
+fix. `.title-foot` and the title's `.menu-stage` can shrink now and the
+menu scrolls inside them, which is the same answer the pause menu got.
+A flex item only shrinks once it has to, so a window with room for all
+eleven rows is untouched: measured 1048 of 1080 with no scroller, 753
+of 776 with one, 621 of 640 with one, all eleven rows reachable in every
+case.
+
+WHAT COST THE MOST TIME, recorded because it will happen again:
+`getComputedStyle(node).opacity` in the headless harness read 1 on a
+node the CSSOM agreed was matched only by an `opacity: 0` rule, and read
+the previous state's value after the class flipped. Two runs were spent
+believing the fix had not applied. `node.matches(selector)` and a walk
+of `document.styleSheets` both said it had, and the screenshot settled
+it: the keep note is gone and the row note sits alone. The picture is
+the ground truth on a rendering question, not the computed style.
+
+CHECKS, this turn, all run and all read. Console errors 0 and warnings 0
+on every run:
+
+- The overlap, before and after, on the reporter's course and viewport,
+  measured as rectangles and then looked at.
+- Three viewport heights, 1536 by 776, 1536 by 1080 and 1536 by 640:
+  menu off screen false in all three, scroller present only where it is
+  needed, eleven rows counted in all three.
+- A tall desktop window, 1600 by 1000, screenshotted and looked at: all
+  eleven rows visible, no scroller, note clean, no regression.
+- The unsaved guard from the previous entry re-checked after touching
+  `syncCursor`: still asks, still keeps the text.
+- `npm run ghost:selftest` 45 of 45, `npm run lint:presets` 3 of 3.
+
+`npm run verify` was NOT run and is not the check for this. It is one
+class toggle in ui.js and four CSS rules, nowhere near physics, the
+plant, the module ABI, the input path or the build, and check 13 loads
+only the harness page, which has no title screen in it. The share card
+is unaffected: `scripts/og.js` hides `.menu-stage` before it captures,
+so the menu the scroll rule touches is not in the frame.
+
+STILL OPEN on the board after this: nothing that is a defect. Two feel
+reports remain, which are feedback rather than bugs, and one of them is
+the owner's own test.

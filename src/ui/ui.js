@@ -3551,7 +3551,29 @@ export class Ui {
     });
     const help = this.helpNode();
     if (help) {
-      help.textContent = items[this.cursor]?.note || '';
+      const note = items[this.cursor]?.note || '';
+      help.textContent = note;
+      /*
+       * THE TITLE'S NOTE DRAWS OVER THE BRAND COPY, so the brand copy
+       * gets out of its way.
+       *
+       * On the title screen the note is absolutely positioned above the
+       * menu and grows UPWARD, out of flow, which means a long note is
+       * painted straight on top of the keep note sitting above it. A
+       * tester reported it as overlapping text and they were right: at
+       * 1536 by 776 the note for the Course row spans 312 to 344 and the
+       * keep note spans 279 to 344, so the two are drawn in the same
+       * band. Nothing pushed anything because absolute elements do not.
+       *
+       * Only one of the two is ever being read. The keep note is ambient
+       * and always true; the row note is about the thing under the
+       * cursor right now. So the ambient one yields, on opacity rather
+       * than display, which keeps the layout still and cannot itself
+       * shift anything.
+       */
+      if (this.screens.title) {
+        this.screens.title.classList.toggle('has-help', help === this.titleHelp && Boolean(note));
+      }
     }
     const on = this.menuRows[this.cursor - this.rowOffset];
     if (scroll && on && typeof on.scrollIntoView === 'function') {

@@ -14925,3 +14925,90 @@ Physics, the plant, patches and the module ABI untouched. The chase feel
 itself is not verifiable here: the harness proves the ghost flies the
 recorded line and the gaps add up, whether chasing it is joy is awaiting
 the pilot who asked for it.
+
+## The report form stopped eating reports
+
+Owner's report, and it is a bug in the thing built to collect bugs: "we
+have a bug where the user has entered a few bug reports several times as
+it closes out back to the previous screen without warning, expect is a
+close without saving should give a prompt, are you sure, save?"
+
+WHAT WAS ACTUALLY HAPPENING. Three paths closed the form instantly and
+destroyed everything typed: Escape, a click on the backdrop, and Cancel.
+The backdrop is the one that did the damage. The dialog box sits in the
+middle of a full screen overlay, so reaching for a field and missing it
+by a few pixels registered on the overlay, and `e.target ===
+this.nameDialog` closed the form with no warning and nothing to undo.
+Somebody retyping a ticket three times would never guess that was it.
+
+Checked before fixing, because "closes out back to the previous screen"
+could equally have been something closing the dialog on its own: it is
+not. `handleKey` returns early while a dialog is up, `pollPad` does the
+same for a radio, `openBugReport`, `openFeelReport` and the automatic
+feel offer all refuse to open over an existing dialog, and `show()` never
+touches the dialog. The three user paths were the whole of it.
+
+THE GUARD. `Ui.confirmDiscard` asks "Keep this report?" with three
+answers: Send it, Keep editing, Discard. Decisions inside it:
+
+- THE FORM IS HIDDEN, NOT REBUILT. `box.style.display = 'none'` and the
+  panel appends beside it, so every node and every value survives
+  untouched. Keep editing is `panel.remove()` and the display back, which
+  puts the pilot back mid sentence rather than in front of a form that
+  looks the same and is not.
+- SEND IT RESTORES FIRST, THEN SUBMITS. The submit path was extracted
+  from the button's listener into a `submit` const both callers share. A
+  draft that fails validation therefore lands on the form's own error
+  line, visible, rather than failing behind a confirmation panel. Proven:
+  a five character title sent from the guard comes back to the form
+  reading "A title needs at least eight characters."
+- AN UNTOUCHED FORM CLOSES SILENTLY. Asking somebody who typed nothing
+  whether they meant it is how a guard teaches people to click through
+  guards. The prefilled pilot name is not dirt either.
+- ESCAPE OVER THE GUARD IS KEEP EDITING, and the backdrop over the guard
+  does nothing at all. A stray backdrop click is what got them there, so
+  it must not also be an answer to the question about it.
+- BOTH FORMS. The feel form had the identical hole, and one picked chip
+  is a real answer to lose on a form designed to be answered in two
+  clicks, so a chip alone arms the guard.
+
+CAUGHT WHILE BUILDING IT, and it would have shipped as a new bug: the
+success screen replaces the box's children, but the input nodes survive
+detached with their values intact, so `isDirty` still read true and
+Escape on the Sent screen would have asked whether to keep a report
+already on the board. A `sent` flag retires the guard the moment the
+ticket lands, in both forms.
+
+DECLINED, recorded with the reason: the same guard on `askForm`, the
+publish dialog. Its two fields are prefilled and re-derived on the next
+open, so the most a close can cost is a rename, and the publish flow is
+not what the report was about.
+
+CHECKS, this turn, all run and all read. Thirteen behaviours driven in
+headless Chromium, console errors 0 and warnings 0 on every run, DOM
+asserted rather than described:
+
+- empty form plus Escape closes silently; dirty form plus Escape asks,
+  with the form hidden and the title still in the node.
+- Keep editing restores the form with the text intact; Cancel and a
+  backdrop click both ask; a backdrop click while the guard is up is
+  inert; Escape while it is up is Keep editing.
+- Discard really closes, and the next open is blank with nothing leaked.
+- Send it on an invalid draft returns to the form carrying its error.
+- Send it on a good draft POSTed to a real local board, reached the Sent
+  screen, and the ticket was read back off `/api/bugs?status=open` as
+  `bug-e5d27d4e | wrong | Ghost tag clips the horizon`. Escape on that
+  Sent screen closed without a second question.
+- The feel form: the door opens it from a clean bug form, one chip arms
+  the guard, Keep editing returns to it.
+- Regression after touching ui.js: the Ghost row still renders on the
+  title menu, `__ghostPick("previous")` still sticks, guard still asks.
+- The panel was screenshotted and looked at: mint Send it, focused Keep
+  editing, Discard the only warning coloured button in the product.
+
+`npm run verify` was NOT run and is not the check for this. Nothing here
+is within reach of physics, the plant, the module ABI, the input path or
+the build: it is one method in ui.js, the close wiring of two dialogs,
+and two CSS rules. The standing verify record from the ghost round holds,
+and check 13 loads only the harness page, which this change cannot
+reach. The evidence is the thirteen driven behaviours above.

@@ -1955,6 +1955,72 @@ export class Ui {
     }).then((values) => (values ? values.name : null));
   }
 
+  /*
+   * THE UNSAVED GUARD on a report form.
+   *
+   * Escape, a click on the backdrop and Cancel all used to throw a typed
+   * report away the instant they were touched. The backdrop is the one
+   * that actually hurt: reaching for a field and missing it by a few
+   * pixels destroyed everything the pilot had written, with no warning
+   * and nothing to undo. It was reported by somebody who had retyped the
+   * same ticket several times before they worked out what was eating it.
+   *
+   * So a form with anything in it asks first. The form is HIDDEN rather
+   * than rebuilt, so its nodes and every value in them stay alive: Keep
+   * editing puts the pilot back exactly where they were, mid sentence,
+   * with the caret in the field they left. Send it hands them back to the
+   * form and then submits, so a draft that fails validation lands on the
+   * form's own error line instead of vanishing behind a confirmation.
+   * Discard is the only path that loses anything and it takes a
+   * deliberate click on a button that says so.
+   *
+   * An untouched form closes silently. Asking somebody who typed nothing
+   * whether they really meant it is how a guard teaches people to click
+   * through guards without reading them.
+   *
+   * Returns true when it asked, false when it let the close through.
+   */
+  confirmDiscard(box, { dirty, submit, discard }) {
+    if (!dirty()) {
+      discard();
+      return false;
+    }
+    const panel = el('div', 'name-dialog-box bug');
+    panel.append(el('h2', null, 'Keep this report?'));
+    panel.append(el(
+      'p',
+      'lede',
+      'You have written something that has not been sent. Nothing here keeps a draft, so closing now loses it.',
+    ));
+    const row = el('div', 'name-dialog-row');
+    const send = btn('name-dialog-btn on', 'Send it');
+    const keep = btn('name-dialog-btn', 'Keep editing');
+    const drop = btn('name-dialog-btn danger', 'Discard');
+    row.append(send, keep, drop);
+    panel.append(row);
+    /* Back to the form, untouched. Also what Escape means while this is
+     * up: the least destructive reading of "not that". */
+    const restore = () => {
+      panel.remove();
+      box.style.display = '';
+      this.discarding = null;
+    };
+    this.discarding = restore;
+    send.addEventListener('click', () => {
+      restore();
+      submit();
+    });
+    keep.addEventListener('click', restore);
+    drop.addEventListener('click', () => {
+      this.discarding = null;
+      discard();
+    });
+    box.style.display = 'none';
+    this.nameDialog.append(panel);
+    keep.focus();
+    return true;
+  }
+
   closeNameDialog(value) {
     if (this.nameKeyHandler) {
       this.nameDialog.removeEventListener('keydown', this.nameKeyHandler, true);
@@ -1966,6 +2032,10 @@ export class Ui {
     }
     this.nameDialog.hidden = true;
     this.nameDialog.textContent = '';
+    /* Any route out of the dialog retires the unsaved guard with it, or a
+     * stale restore would hide the next form behind a panel that is no
+     * longer in the document. */
+    this.discarding = null;
     const done = this.nameWait;
     this.nameWait = null;
     this.bugFiling = false;
@@ -2171,33 +2241,66 @@ export class Ui {
     const finish = (value) => {
       this.closeNameDialog(value);
     };
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!sending) {
-          finish(null);
-        }
+    /* Anything the pilot actually wrote. The name is not in this list: it
+     * is prefilled from the stored pilot name, so a form carrying only
+     * that is an untouched form.
+     *
+     * `sent` retires the guard the moment the ticket lands. The success
+     * screen replaces the form's children but the input nodes survive
+     * detached, values and all, so without this Escape on the Sent screen
+     * would ask whether to keep a report that is already on the board. */
+    let sent = false;
+    const isDirty = () => !sent && Boolean(
+      title.value.trim() || what.value.trim() || expected.value.trim() || steps.value.trim(),
+    );
+    /* Every close a pilot can trip goes through the guard, and the guard
+     * lets an empty form straight through. See confirmDiscard. */
+    const tryClose = (after) => {
+      if (sending || this.discarding) {
+        return;
       }
+      this.confirmDiscard(box, {
+        dirty: isDirty,
+        submit: () => submit(),
+        discard: after,
+      });
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (sending) {
+        return;
+      }
+      /* Escape over the guard is Keep editing, not a second answer to a
+       * question about losing work. */
+      if (this.discarding) {
+        this.discarding();
+        return;
+      }
+      tryClose(() => finish(null));
     };
     this.nameWait = () => {};
     this.nameKeyHandler = onKey;
     this.nameDialog.addEventListener('keydown', onKey, true);
     this.nameClickHandler = (e) => {
-      if (e.target === this.nameDialog && !sending) {
-        finish(null);
+      /* A stray backdrop click is what loses a report in the first place,
+       * so while the guard is up the backdrop does nothing at all. */
+      if (e.target === this.nameDialog && !sending && !this.discarding) {
+        tryClose(() => finish(null));
       }
     };
     this.nameDialog.addEventListener('click', this.nameClickHandler);
-    cancel.addEventListener('click', () => finish(null));
+    cancel.addEventListener('click', () => tryClose(() => finish(null)));
     feelDoor.addEventListener('click', () => {
-      if (sending) {
-        return;
-      }
-      finish(null);
-      this.openFeelReport();
+      tryClose(() => {
+        finish(null);
+        this.openFeelReport();
+      });
     });
-    send.addEventListener('click', async () => {
+    const submit = async () => {
       err.textContent = '';
       if (title.value.trim().length < 8) {
         err.textContent = 'A title needs at least eight characters.';
@@ -2225,6 +2328,7 @@ export class Ui {
       try {
         const posted = await submitBug(payload);
         sending = false;
+        sent = true;
         box.textContent = '';
         box.append(el('h2', null, 'Sent'));
         box.append(el(
@@ -2245,7 +2349,8 @@ export class Ui {
         send.textContent = 'Send';
         err.textContent = e.message || 'The board could not take that report.';
       }
-    });
+    };
+    send.addEventListener('click', submit);
     title.focus();
   }
 
@@ -2414,26 +2519,48 @@ export class Ui {
     const finish = (value) => {
       this.closeNameDialog(value);
     };
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!sending) {
-          finish(null);
-        }
+    /* A picked chip counts as much as a typed sentence here: this form is
+     * meant to be answered in two clicks, so two clicks is a real answer
+     * to lose. The name is prefilled and does not count. `sent` retires
+     * the guard once it has landed, for the reason the bug form gives. */
+    let sent = false;
+    const isDirty = () => !sent && Boolean(feel || issues.size || words.value.trim());
+    const tryClose = (after) => {
+      if (sending || this.discarding) {
+        return;
       }
+      this.confirmDiscard(box, {
+        dirty: isDirty,
+        submit: () => submit(),
+        discard: after,
+      });
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (sending) {
+        return;
+      }
+      if (this.discarding) {
+        this.discarding();
+        return;
+      }
+      tryClose(() => finish(null));
     };
     this.nameWait = () => {};
     this.nameKeyHandler = onKey;
     this.nameDialog.addEventListener('keydown', onKey, true);
     this.nameClickHandler = (e) => {
-      if (e.target === this.nameDialog && !sending) {
-        finish(null);
+      if (e.target === this.nameDialog && !sending && !this.discarding) {
+        tryClose(() => finish(null));
       }
     };
     this.nameDialog.addEventListener('click', this.nameClickHandler);
-    dismiss.addEventListener('click', () => finish(null));
-    send.addEventListener('click', async () => {
+    dismiss.addEventListener('click', () => tryClose(() => finish(null)));
+    const submit = async () => {
       err.textContent = '';
       if (!feel) {
         err.textContent = 'Pick a word on the first row. One is enough.';
@@ -2462,6 +2589,7 @@ export class Ui {
       try {
         const posted = await submitBug(payload);
         sending = false;
+        sent = true;
         box.textContent = '';
         box.append(el('h2', null, 'Thanks'));
         box.append(el(
@@ -2482,7 +2610,8 @@ export class Ui {
         send.textContent = 'Send';
         err.textContent = e.message || 'The board could not take that report.';
       }
-    });
+    };
+    send.addEventListener('click', submit);
     /* Keyboard first, like every menu here: the first answer chip takes
      * focus, Tab walks the rest, Enter picks, Escape leaves. Enter cannot
      * fall through to the menu underneath; handleKey swallows everything

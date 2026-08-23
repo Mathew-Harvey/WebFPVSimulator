@@ -2024,7 +2024,7 @@
         text-underline-offset: 3px;
       }
       .name-dialog-door:hover { color: var(--cream); }
-      .name-dialog-row { display: flex; gap: 8px; }
+      .name-dialog-row { display: flex; flex-wrap: wrap; gap: 8px; }
       .name-dialog-btn {
         appearance: none; border: 1px solid rgba(244, 236, 214, 0.16);
         background: #121a14; color: var(--slate); font: inherit;
@@ -2035,6 +2035,11 @@
         color: var(--deep); font-weight: 600;
       }
       .name-dialog-btn:disabled { opacity: 0.45; cursor: default; }
+      /* Discard, on the unsaved guard. The only button in this product
+         that throws work away, so it is the only one wearing a warning
+         colour: quiet until the pointer is on it, and never the default. */
+      .name-dialog-btn.danger { color: #ff8f8f; border-color: rgba(255, 143, 143, 0.35); }
+      .name-dialog-btn.danger:hover { color: var(--deep); background: #ff8f8f; border-color: #ff8f8f; }
       /*
        * The flight feel question's answers are CHIPS, not a select, because
        * the whole form is meant to be answered in two clicks and a select

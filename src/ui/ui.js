@@ -207,6 +207,9 @@ export const LAP_COUNTS = [1, 3, 5];
  * poll and the physics never see either: the cap skips only the draw. */
 export const RENDER_SCALES = [100, 85, 70, 55];
 export const FPS_CAPS = [0, 90, 60, 30];
+/* Expert is the full model and the default; arcade switches the
+ * imperfection terms off in the module via sim_set_flight_style. */
+export const FLIGHT_STYLES = ['expert', 'arcade'];
 
 const DEFAULTS = {
   /* Which world. 'field' is the MultiGP circuit and 'city' is the freestyle
@@ -267,6 +270,7 @@ const DEFAULTS = {
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
+  flightStyle: 'expert',
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -396,6 +400,7 @@ export function loadSettings() {
     ['cameraFov', CAMERA_FOVS],
     ['renderScale', RENDER_SCALES],
     ['fpsCap', FPS_CAPS],
+    ['flightStyle', FLIGHT_STYLES],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
@@ -2802,6 +2807,16 @@ export class Ui {
             : `Needed to publish a course or post a time. ${nameRules()}`,
         },
         { label: 'Flight', section: true },
+        choice(
+          'Flight style',
+          s.flightStyle === 'arcade'
+            ? 'Arcade: the ideal quad. No propwash shake, no gyro noise, no build asymmetry, so any tune flies glass smooth. Times flown here stay off the public board. Takes effect from the next run.'
+            : 'Expert: the full physics, propwash, gyro noise and build tolerance included, which is what every board time is flown on. Arcade turns the imperfections off for a friendlier machine.',
+          FLIGHT_STYLES,
+          s.flightStyle === 'arcade' ? 'arcade' : 'expert',
+          (id) => (id === 'arcade' ? 'Arcade' : 'Expert'),
+          (id) => { s.flightStyle = id; },
+        ),
         tuneItem(s),
         pidsItem(s),
         ratesItem(s),

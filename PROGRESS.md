@@ -15763,3 +15763,56 @@ dynamic notch and RPM filter have more line to eat. If a pilot reports
 new shake in normal flight on the stock tunes, this commit is the one
 to revert, and the three constants at GYRO_VIB in bf_glue.c are the
 dials.
+
+## Arcade and expert, one flag in the module and one row in Flight
+
+The mode the triage designed, built to that design. sim_set_flight_style
+is an additive ABI entry, version unchanged, same contract as
+sim_set_angle_mode: expert is zero, the default, the full model and the
+path every harness replay takes; arcade switches off the imperfection
+terms and nothing else. What arcade removes: the propwash turbulence
+application, the per rotor ring state asymmetry, both motor cant tables
+(thrust axes exactly vertical, so the build tolerance yaw coupling and
+its hover trim go with them), and the gyro vibration with its noise
+floor. What arcade keeps, deliberately: advance ratio, ring state thrust
+loss, rotor drag, translational lift, body side lift and the torque
+inflow coupling, because those are physics, not imperfections, and a
+quad with no aerodynamics is a camera on rails. The wash and vibration
+channels still advance every step with only the injection gated, so
+flipping the style cannot cold start a filter, the same rule the wash
+already followed. The flag survives reset and init like angle mode; no
+advisor channel this session, the ABI argument is recorded here.
+
+THE SHELL. A Flight style row at the top of Flight in Settings, expert
+default, applied between runs only, the same rule as the pack voltage,
+so a mid run settings visit cannot change the physics under a lap. The
+record key gains a .arcade suffix for arcade laps and stays byte
+identical for expert, so every existing best lap sits exactly where it
+was. The board is gated: submitBoardTime refuses an arcade lap with a
+notice that says why, because a leaderboard where the two aircraft mix
+is not a leaderboard.
+
+MEASURED. Expert against arcade on the same build, five second hover:
+filtered gyro noise RMS 0.233 against 0.000 deg/s, hover lateral drift
+0.042 against 0.000 m. The ideal frame flies like one. Neutrality when
+off is measured, not assumed: the fc-trace hash is 004737b921ea both
+before and after the plumbing, bit identical, which is what additive
+must mean.
+
+RUN LOG. build:wasm exit 0, vendor diff empty, node --check clean on
+main.js and ui.js. npm run verify 15 of 16, check 16 at the recorded
+feather flag budget as always, and the strongest line in the table is
+the hash: f790bd32811f, BYTE IDENTICAL to the previous commit's trace,
+with every band number identical to the digit, hover 0.2637, punch
+83.9, terminal 32.0, step 26 ms, rate 671.7, yaw -0.11, sag 11.25,
+ratio 1.2473. The harness never calls the flag and the trace proves it
+cannot feel it. A shots.js run flipped the style to arcade and back
+through writeSettings in the real shell, console errors 0 warnings 0.
+
+Possible effect if this breaks something: the flag itself is inert
+until touched, so suspicion lands on the shell wiring: the Flight
+section gained a row (cursor map shifted by one on that screen), the
+record key path has a new branch, and the board upload has a new gate.
+If expert records misfile or an upload is refused unexpectedly, this
+commit is the one. Physics under the default style is measured
+unchanged.

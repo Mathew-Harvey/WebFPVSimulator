@@ -1117,13 +1117,17 @@ export async function boot({ loading, bootStart, mapId }) {
     return null;
   }
 
-  /* Best laps are only comparable on the same config and pack voltage. */
+  /* Best laps are only comparable on the same config, pack voltage and
+   * flight style: an arcade lap is flown on a different aircraft and
+   * must not sit in an expert record. Expert keeps the bare key so every
+   * record set before the style existed stays exactly where it was. */
   function recordKey() {
     let h = 5381;
     for (let i = 0; i < configText.length; i += 1) {
       h = ((h * 33) ^ configText.charCodeAt(i)) >>> 0;
     }
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}`;
+    const style = runStyle === 'arcade' ? '.arcade' : '';
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -1306,6 +1310,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
+  /* The flight style the CURRENT run is flown on. Applied only between
+   * runs, same rule as the pack voltage, so a mid run settings visit
+   * cannot change the physics under a lap in progress. */
+  let runStyle = ui.settings.flightStyle === 'arcade' ? 'arcade' : 'expert';
   let notice = null; /* { text, untilMs } for one off shell messages */
   let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
@@ -1857,6 +1865,13 @@ export async function boot({ loading, bootStart, mapId }) {
        * the pack it was flown on. */
       runVoltage = s.packVoltage;
       sim.setCellVoltage(runVoltage);
+      /* Flight style rides the same rule: the record and the physics a
+       * run is flown on are decided when it starts, not mid lap. Guarded
+       * because an older dist/sim.wasm predates the export. */
+      runStyle = s.flightStyle === 'arcade' ? 'arcade' : 'expert';
+      if (typeof sim.e.sim_set_flight_style === 'function') {
+        sim.e.sim_set_flight_style(runStyle === 'arcade' ? 1 : 0);
+      }
     }
     race.setRecordKey(recordKey());
     ui.setBest(race.bestMs, view.mode);
@@ -2033,6 +2048,16 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   async function submitBoardTime() {
+    /* The board is flown on the full model only. An arcade lap is real
+     * practice but a different aircraft, and a leaderboard where the two
+     * mix is not a leaderboard. */
+    if (runStyle === 'arcade') {
+      notice = {
+        text: 'Arcade laps stay off the public board.\nSwitch Flight style to Expert and fly it again.',
+        untilMs: performance.now() + 3600,
+      };
+      return;
+    }
     const listing = inspectCourse();
     const trackId = listing && listing.shareId;
     if (!trackId || !listing.canPostTime) {

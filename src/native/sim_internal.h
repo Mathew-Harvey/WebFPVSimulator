@@ -109,6 +109,15 @@ typedef struct {
 
 extern const PlantParams PLANT;
 
+/*
+ * Flight style, set by sim_set_flight_style: 0 expert, 1 arcade. Owned by
+ * sim.c, read by plant.c (wash application, inflow asymmetry, cant tables)
+ * and bf_glue.c (gyro vibration). Deliberately NOT part of SimState: it is
+ * a mode like angle mode, it survives reset and init, and the shell owns
+ * asserting it.
+ */
+extern int SIM_ARCADE;
+
 /* Motor spin direction about body z, +1 CCW seen from above, -1 CW.
  * Betaflight props-in (normal): RR and FL clockwise, FR and RL counter
  * clockwise. */

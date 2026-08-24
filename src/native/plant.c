@@ -281,6 +281,13 @@ static const double PLANT_CANT_TANGENT_DEG[SIM_MOTOR_COUNT] = { -0.9, 1.4, 0.6, 
 static double PLANT_AXIS[SIM_MOTOR_COUNT][3];
 static int plant_axis_ready = 0;
 
+/* The arcade airframe's axes: four thrust lines exactly vertical, the
+ * frame no factory ever shipped. Selected per step by SIM_ARCADE so the
+ * flag can flip between runs without a rebuild of anything. */
+static const double PLANT_AXIS_FLAT[SIM_MOTOR_COUNT][3] = {
+  { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 },
+};
+
 static void plant_build_axes(void) {
   const double deg = 0.017453292519943295;
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
@@ -623,6 +630,11 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   if (!plant_axis_ready) {
     plant_build_axes();
   }
+  /* Arcade flies the ideal frame: no cant, no wash application, no ring
+   * state asymmetry, chosen once per step so the branch cost is one load.
+   * The wash and vibration CHANNELS still advance every step below, so
+   * flipping the style between runs cannot move any other run's trace. */
+  const double (*AXIS)[3] = SIM_ARCADE ? PLANT_AXIS_FLAT : PLANT_AXIS;
   double thrust[SIM_MOTOR_COUNT];
   double stator_torque[3] = { 0.0, 0.0, 0.0 }; /* reaction on the frame */
   double h_prop[3] = { 0.0, 0.0, 0.0 };        /* net prop angular momentum */
@@ -824,7 +836,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * does nothing in normal flight.
      */
     axial += axial_gain;
-    if (axial < 1.0) {
+    if (axial < 1.0 && !SIM_ARCADE) {
       const double depth = 1.0 - axial;
       axial += depth * PLANT_INFLOW_ASYM[m];
     }
@@ -837,7 +849,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      */
     s->wash_fast[m] += PLANT_WASH_A_FAST * (plant_wash_noise(s) - s->wash_fast[m]);
     s->wash_slow[m] += PLANT_WASH_A_SLOW * (s->wash_fast[m] - s->wash_slow[m]);
-    if (wash_depth > 0.0) {
+    if (wash_depth > 0.0 && !SIM_ARCADE) {
       double wash = (s->wash_fast[m] - s->wash_slow[m]) / PLANT_WASH_RMS;
       /* Bounded at 3 sigma. The band passed signal reaches 4.0 sigma, and at
        * the old gain of 0.60 that was a 240 percent thrust excursion on one
@@ -913,13 +925,13 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     /* Frame feels minus the stator drive torque, about the MOTOR's axis
      * rather than about body z, because the axes are not parallel. */
     const double st = -PLANT_SPIN[m] * PLANT.ke * i;
-    stator_torque[0] += st * PLANT_AXIS[m][0];
-    stator_torque[1] += st * PLANT_AXIS[m][1];
-    stator_torque[2] += st * PLANT_AXIS[m][2];
+    stator_torque[0] += st * AXIS[m][0];
+    stator_torque[1] += st * AXIS[m][1];
+    stator_torque[2] += st * AXIS[m][2];
     const double hm = PLANT_SPIN[m] * PLANT.j_rotor * w_next;
-    h_prop[0] += hm * PLANT_AXIS[m][0];
-    h_prop[1] += hm * PLANT_AXIS[m][1];
-    h_prop[2] += hm * PLANT_AXIS[m][2];
+    h_prop[0] += hm * AXIS[m][0];
+    h_prop[1] += hm * AXIS[m][1];
+    h_prop[2] += hm * AXIS[m][2];
     const double draw = d * i;
     if (draw > 0.0) {
       pack_current += draw;
@@ -941,9 +953,9 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     f_body[1] -= 0.5 * PLANT.rho * PLANT.k_body_lift * v_xy * v_body[1];
   }
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    f_body[0] += thrust[m] * PLANT_AXIS[m][0];
-    f_body[1] += thrust[m] * PLANT_AXIS[m][1];
-    f_body[2] += thrust[m] * PLANT_AXIS[m][2];
+    f_body[0] += thrust[m] * AXIS[m][0];
+    f_body[1] += thrust[m] * AXIS[m][1];
+    f_body[2] += thrust[m] * AXIS[m][2];
   }
 
   /*
@@ -1072,9 +1084,9 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
                     stator_torque[1] + rotor_drag_tau[1],
                     stator_torque[2] + rotor_drag_tau[2] };
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const double fx = thrust[m] * PLANT_AXIS[m][0];
-    const double fy = thrust[m] * PLANT_AXIS[m][1];
-    const double fz = thrust[m] * PLANT_AXIS[m][2];
+    const double fx = thrust[m] * AXIS[m][0];
+    const double fy = thrust[m] * AXIS[m][1];
+    const double fz = thrust[m] * AXIS[m][2];
     /* Full r x F with r = (x, y, z). The z arm contributes nothing for a
      * purely vertical thrust, which is why the hover and punch checks cannot
      * move; it only picks up the small in plane components the motor cant

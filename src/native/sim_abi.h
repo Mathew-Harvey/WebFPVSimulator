@@ -205,6 +205,24 @@ int sim_launch_control_state(void);
 int sim_set_launch_stand(int on, double px, double py, double pz,
                          double qw, double qx, double qy, double qz);
 
+/*
+ * Flight style. 0 is expert, the default and the full model, the path
+ * every harness replay takes. Non-zero is arcade: the imperfection terms
+ * are switched off so the craft flies as the symmetric ideal it is drawn
+ * as. Arcade removes the propwash turbulence application, the per rotor
+ * ring state asymmetry, the motor cant tables (thrust axes become exactly
+ * vertical, so the build tolerance yaw coupling and its hover trim go),
+ * and the gyro vibration and noise floor. The smooth aerodynamics stay:
+ * advance ratio, ring state thrust loss, rotor drag, translational lift,
+ * body side lift and the torque inflow coupling are physics, not
+ * imperfections. Survives sim_reset and sim_init, exactly as the angle
+ * mode flag does, so a shell that set it before a tune swap still has it
+ * after. Additive ABI change, version unchanged: a replay that never
+ * calls this is bit-identical to one from before it existed, which is
+ * what keeps every recorded check honest.
+ */
+int sim_set_flight_style(int arcade);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

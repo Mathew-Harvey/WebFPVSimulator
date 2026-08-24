@@ -251,7 +251,12 @@ static void sim_gyro_add_vibration(const SimState *s) {
     g_vib_slow[a] += GYRO_VIB_A_LO * (g_vib_fast[a] - g_vib_slow[a]);
     const double band = (g_vib_fast[a] - g_vib_slow[a]) / GYRO_VIB_RMS;
     const double axis = (a == FD_YAW) ? GYRO_VIB_YAW_SHARE : 1.0;
-    g_gyro_dps[a] += (float)(band * (amp * axis + GYRO_NOISE_FLOOR_DPS));
+    /* Arcade reads a perfect gyro. The channel and the seed still advance
+     * above, same rule as the propwash field: only the injection is gated,
+     * so flipping the style between runs cannot cold start a filter. */
+    if (!SIM_ARCADE) {
+      g_gyro_dps[a] += (float)(band * (amp * axis + GYRO_NOISE_FLOOR_DPS));
+    }
   }
   /* One imbalance line per rotor, at that rotor's own frequency. Phase is
    * integrated rather than derived from a step count so it stays correct
@@ -268,7 +273,7 @@ static void sim_gyro_add_vibration(const SimState *s) {
     g_vib_phase[m] = p;
     const double r = w / GYRO_VIB_REF_W;
     const double a_line = GYRO_VIB_LINE_DPS * r * r * GYRO_VIB_IMBALANCE[m];
-    if (a_line < 1e-4) {
+    if (a_line < 1e-4 || SIM_ARCADE) {
       continue;
     }
     /* sin_approx wraps to -PI..PI itself and is Betaflight's own compiled

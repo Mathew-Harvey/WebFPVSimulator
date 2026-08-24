@@ -198,10 +198,13 @@ const PlantParams PLANT = {
    * stood here said raise it if the wash disappears, do not put it back at
    * 0.30 without a pilot saying so. A pilot has now said it disappeared:
    * the same tester who called 0.30 too hot asked for very light prop wash
-   * to come back. 0.12 is the value the RMS derivation originally landed
-   * on, still less than half of 0.30, with the wider descent window kept.
+   * to come back. 0.12 was the value the RMS derivation originally landed
+   * on; the owner then flew it and asked for a tiny bit more, so 0.15,
+   * which is half of the 0.30 that was too hot, with the wider descent
+   * window kept. The ladder so far: 0.60, 0.12, 0.30, 0.08, 0.12, 0.15,
+   * every rung a pilot's word, which is what a FEEL constant means.
    */
-  .k_propwash = 0.12,
+  .k_propwash = 0.15,
   .prop_r = 0.0635,
   .k_rotor_drag = 0.43842,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.

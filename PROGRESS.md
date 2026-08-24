@@ -15887,3 +15887,19 @@ sim_init of its text.
 Possible effect if this breaks something: a pilot who had Crapshack
 selected boots onto Betaflight default and their Crapshack PBs stop
 showing. Revert restores the row and the file.
+
+## The wash steps up to 0.15
+
+The owner flew 0.12 and asked for a tiny bit more. k_propwash 0.15,
+half of the 0.30 the same tester once called too hot, the ladder
+recorded at the constant. One number, nothing else.
+
+RUN LOG. build:wasm exit 0, vendor diff empty, npm run verify 15 of 16
+with check 16 at the recorded feather flag budget: hover 0.2705, punch
+83.0, terminal 31.9, step 26 ms, rate 671.7, yaw -0.11, sag 11.25,
+ratio 1.2472. Trace hash ed98d4bd00d4, moved as a wash change must,
+every band identical to the digit but the last of diff-passthrough.
+
+Possible effect: descents through own wake shake a quarter harder than
+0.12. Arcade cannot see it, the wash application is gated off there.
+Revert this one constant if it reads as too much.

@@ -15552,3 +15552,26 @@ composed config or keys off its hash. If tunes refuse to load, or the
 Rates screen misdraws, this commit is the one. The two rows sit at the
 bottom of the Throttle section, so the menu cursor map shifted by two
 rows on that screen.
+
+## A fifth stop on the lens
+
+The FOV report quoted the HDZero nano 90's 162 diagonal and asked for
+wider. The lens.js derivation stands: that figure is fisheye coverage
+and a rectilinear camera cannot hold it. What it can hold is one more
+honest stop: 115 vertical, about 141 degrees horizontal on 16:9, past
+the nano's own 132 horizontal coverage figure, at the recorded price of
+the frame centre falling to 0.58 of the default's magnification. The
+argument is appended at CAMERA_FOVS rather than replacing the one that
+was already there; anything closer to the real lens is a fisheye shader
+and its own round. The menu note now names the trade. loadSettings
+accepts new list members by construction and resets absentees, so an
+existing stored choice is untouched.
+
+CHECKS: node --check on both files. Verify NOT run: a list entry and
+two prose notes, no physics, no build, and check 13 loads only the
+harness page. The orbit clip pins CAMERA_FOV_DEFAULT, which is
+unchanged, so shared course clips do not move.
+
+Possible effect if this breaks something: only pilots who select 115.
+If gates feel far away or edges smear, that is the recorded price of
+the stop, not a defect; revert reinstates the four stop list.

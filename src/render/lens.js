@@ -64,8 +64,19 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Vertical field of view, degrees, for a rectilinear projection. */
-export const CAMERA_FOVS = [75, 85, 95, 105];
+/*
+ * 115 exists because a pilot asked for wider, naming the HDZero nano's
+ * published 162 diagonal. The derivation above still stands: that 162 is
+ * fisheye COVERAGE, and typing it into this rectilinear camera would need
+ * tan(v/2) at angles no projection plane can hold. 115 on a 16:9 panel is
+ * about 141 degrees of horizontal coverage, past the nano's own 132
+ * horizontal figure, and it pays the honest price the comment describes,
+ * the middle of the frame at 0.58 of the default's magnification. It is
+ * the widest stop this projection can offer without the periphery turning
+ * to smear; anything closer to the real lens is a fisheye shader, which is
+ * a different round.
+ */
+export const CAMERA_FOVS = [75, 85, 95, 105, 115];
 
 export const CAMERA_FOV_DEFAULT = 85;
 

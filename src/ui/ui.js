@@ -2843,7 +2843,7 @@ export class Ui {
         ),
         choice(
           'Field of view',
-          'Wider sees more, narrower magnifies. 75 matches what an FPV lens does to the middle of the frame; 85 gives some of that back for width.',
+          'Wider sees more, narrower magnifies. 75 matches what an FPV lens does to the middle of the frame; 85 gives some of that back for width; 115 is the widest this projection can honestly offer, about 145 degrees corner to corner, and the gates will look smaller for it.',
           CAMERA_FOVS,
           s.cameraFov,
           (n) => `${n} degrees vertical`,

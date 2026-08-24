@@ -2292,7 +2292,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return '';
     }
     if (race.next === 0) {
-      return 'Tip forward with the up arrow, then throttle\nThe magenta gate starts your lap';
+      return 'Tip forward with the up arrow, then throttle\nThe green gate starts your lap';
     }
     if (race.next === 1) {
       return 'Through. The next gate turns green\nRed is the same gate, wrong side';
@@ -3927,10 +3927,10 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.setBanner(ui.settings.launchControl
         ? (race.freestyle
           ? 'L for launch control, or throttle up\nNo gates, no clock. Go and find a line.'
-          : 'L for launch control, or throttle up\nThe magenta gate starts your lap')
+          : 'L for launch control, or throttle up\nThe green gate starts your lap')
         : (race.freestyle
           ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
-          : 'Throttle up to take off\nThe magenta gate starts your lap'));
+          : 'Throttle up to take off\nThe green gate starts your lap'));
     } else if (guidedText) {
       ui.setBanner(guidedText);
     } else if (lapFlash) {

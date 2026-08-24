@@ -285,6 +285,11 @@ export function courseFromDocument(raw) {
         flyOrder: stations.length,
         x: pos.x,
         z: pos.z,
+        /* The pole itself, scene coordinates, so the renderer can put the
+         * pass side glow against the flag rather than guessing which edge
+         * of the corridor the structure is on. */
+        poleX: structure.x,
+        poleZ: structure.z,
         baseY: knot.pos.z,
         centreY: dims.centerH,
         clearW: dims.clearW,

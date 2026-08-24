@@ -15932,3 +15932,62 @@ Possible effect if this breaks something: the same list as the first
 thirty grams, a touch stronger. Hover near 28 percent of stick, punch
 a metre lower again, more momentum in every corner. Revert one
 constant and its paperwork if it feels sluggish.
+
+## The flag carries its own light, and only the target is lit at all
+
+Two owner decisions in one round.
+
+FIRST, the virtual flag gate is gone as a drawn thing. A flag or cone
+marker used to score through a virtual square that was ALSO drawn: the
+same ring, halo, glow and pane a PVC opening wears, floating beside the
+pole. The scoring is untouched, the same swept test through the same
+aperture at the knot, because moving the scoring would change what
+every posted lap time means. The paint moved onto the flag: a slim lit
+bar tight against the pole on the pass side, a soft aura around it, and
+a low additive wash leaning half a metre into the corridor, brightest
+at the pole and gone by the outer edge, subtle but directional. The
+renderer measures which local side the pole is on with the inverse of
+the placement rotation, fed by poleX and poleZ that trackdoc now
+carries on the marker station, and virtualGate.setPole mirrors the
+meshes once at build. The station math was probed rather than trusted:
+on the demo course both markers put the pole at exactly plus or minus
+clearW over two in the station frame, opposite signs for the two
+markers, which is the inner-edge-on-the-pole contract holding. The one
+residual risk is a global mirror, both flags lit on the wrong side; if
+a tester reports that, the fix is one sign in setPole's caller.
+
+SECOND, the tiers collapsed to two. The target is lit, a subtle green
+glow again by the owner's word, red from the wrong side exactly as
+before; and everything else carries no markings at all. The follow
+tier's dim ring is gone, and the old rule that a virtual square must
+rest on the middle tier because unlit means gone retires with the
+square itself: the flag is furniture and stays visible dark. The
+magenta round's calmed gain levels are kept; only the hue went back,
+and every piece of prose that said magenta says green again. There is
+exactly one lit thing on a course at a time now, which is the cleanest
+answer yet to the report that started the colour question.
+
+The existing tier machinery drives the flag unmodified: the bar is
+ringMat, the aura is haloMat, the wash is glowMat with the same
+uFront, uBack and uGain the pane had, so dressGate, setNextGate,
+setTargetSide, the pulse in updateWind and the harness readback all
+work on a flag without a branch.
+
+CHECKS: node --check on the four touched files; trackbuilder selftest
+279 of 279; the marker geometry probe above; a shots.js run through the
+real shell: exactly one non dark gate, tier target, ring 39ff8b, glow
+sampled 0.55 rising to 0.73 through the pulse, console errors 0
+warnings 0, and the takeoff hint reads green again in the screenshot.
+Verify NOT run: render, prose and course-document plumbing only, no
+physics, no module, no build file, and check 13 loads only the harness
+page. Flag markers do not exist on the built in circuits, so the
+virtualGate path itself was exercised through the trackdoc probe and
+code reading rather than a rendered course; the first custom course
+with a flag is the real test, named here honestly.
+
+Possible effect if this breaks something: custom courses with flag or
+cone markers are the whole surface. If a marker station crashes on
+load, misdraws, or glows on the wrong side of the pole, this commit is
+the one. Gates are visual only: if pilots lose track of the course
+without the follow ring, the one-line revert is the dressGate call in
+setNextGate. Scoring cannot have moved, race.js was not touched.

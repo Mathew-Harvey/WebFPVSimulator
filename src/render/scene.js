@@ -1552,18 +1552,18 @@ const DIGITS = {
  * pulsing. WRONG_COLOUR is the same pane seen from the other face, so the
  * hole reads on line one way and not the other.
  *
- * NEXT_COLOUR was a signal green, and a board report called it confusing:
- * the start line is already green, the grass is green, and a green target
- * over a green field asks the eye to grade greens at 30 m/s. Magenta is
- * the choice an earlier round of this file already argued for and later
- * lost: the one strong hue neither world contains, now that the gates are
- * navy, red and off white vinyl on grass under a blue sky. It cannot be
- * mistaken for the mint start line, and the wrong face stays red, which
- * reads as red against it rather than as a darker shade of the same thing.
+ * NEXT_COLOUR went green to magenta and back to green, and both moves
+ * were the owner's. The magenta round answered a report that three greens
+ * (start, grass, target) were being graded at 30 m/s. The owner then
+ * settled it differently: the target stays a SUBTLE green glow with red
+ * for the wrong direction, and every other gate carries no markings at
+ * all, which removes the ambiguity at its root, there is exactly one lit
+ * thing on the course at a time. The calmed gain levels from the magenta
+ * round are kept; only the hue went back.
  */
 const GATE_COLOUR = 0xffd45c;
 const START_COLOUR = 0x7dffb4;
-const NEXT_COLOUR = 0xff4fd8;
+const NEXT_COLOUR = 0x39ff8b;
 const WRONG_COLOUR = 0xff5a5a;
 
 /*
@@ -1796,32 +1796,123 @@ function gateCue(clearW, clearH) {
 }
 
 /*
- * A scoring square with no PVC: the pass side of a flag or a cone.
+ * THE FLAG GLOWS ON THE SIDE YOU PASS. There is no drawn square any more.
  *
- * Same lit outline, halo, glow and lit pane a real opening wears, so the
- * next-gate paint and the race test cannot disagree about where the hole
- * is. Resting colour is the start green rather than the cream of a PVC
- * gate, because this square is the thing the pilot has to fly through and
- * it has no frame to read it against.
+ * This used to build the same ring, halo, glow and pane a PVC opening
+ * wears, floating in the air beside the pole, and the owner asked for it
+ * to go: the flag is the furniture, so the flag should carry the light.
+ * What scores is untouched, the swept test still runs through the same
+ * virtual aperture at the knot, because moving the SCORING would change
+ * what every posted lap time means. Only the paint moved.
+ *
+ * Three live meshes, all hugging the pole's corridor edge:
+ *
+ *   the bar    a slim lit strip the height of the corridor, tight against
+ *              the pole on the pass side. ringMat, so the existing tier
+ *              and side machinery drives it unchanged.
+ *   the aura   a soft additive shell around the bar. haloMat, target only,
+ *              its opacity rides the same pulse the gates ride.
+ *   the wash   two crossed additive planes leaning into the corridor,
+ *              brightest at the pole and gone by half a metre out, which
+ *              is the "glows on the side you pass" of the request, subtle
+ *              but directional. glowMat with uFront/uBack/uGain, so
+ *              setTargetSide turns the whole set red from the wrong side
+ *              exactly as it turns a gate's pane.
+ *
+ * The meshes are built at the +x edge and setPole() flips them once the
+ * placement code has measured which local side the pole is actually on,
+ * with the group's own transform rather than a second copy of the yaw
+ * convention.
  */
 function virtualGate(clearW, clearH) {
   const g = new THREE.Group();
-  const marks = apertureMarkers(g, [0], clearW, clearH, 1, true, 0);
-  /* A real gate hides this pane until it is next. A flag's square IS the
-   * thing the pilot has to fly through, so it stays up. */
-  marks.cue.visible = true;
+  const edgeX = clearW * 0.5;
+  const midY = clearH * 0.5;
+
+  const barMat = new THREE.MeshBasicMaterial({ color: NEXT_COLOUR });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.045, clearH, 0.045), barMat);
+  bar.position.set(edgeX, midY, 0);
+  bar.layers.set(1);
+  g.add(bar);
+
+  const auraMat = new THREE.MeshBasicMaterial({
+    color: NEXT_COLOUR,
+    transparent: true,
+    opacity: 0.34,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const aura = new THREE.Mesh(new THREE.BoxGeometry(0.16, clearH, 0.16), auraMat);
+  aura.position.copy(bar.position);
+  aura.layers.set(1);
+  g.add(aura);
+
+  const washMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uFront: { value: new THREE.Color(NEXT_COLOUR) },
+      uBack: { value: new THREE.Color(NEXT_COLOUR) },
+      uGain: { value: 0.0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    /* u runs across the plane: 0 at the pole edge, 1 half a metre into the
+     * corridor. Quadratic falloff from the pole, soft fade at top and
+     * bottom so the column does not end in a hard line. */
+    fragmentShader: `
+      uniform vec3 uFront;
+      uniform float uGain;
+      varying vec2 vUv;
+      void main() {
+        float across = 1.0 - vUv.x;
+        float fall = across * across;
+        float ends = smoothstep(0.0, 0.12, vUv.y) * (1.0 - smoothstep(0.88, 1.0, vUv.y));
+        gl_FragColor = vec4(uFront, 1.0) * (uGain * fall * ends);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  /* One plane, facing the direction of travel, which is the approach on
+   * which the side has to be read. Seen from beside the flag it thins to
+   * nothing and the bar and aura carry the mark instead; a crossed second
+   * plane was tried and dropped, its gradient runs in a direction that
+   * means nothing once the plane is turned. */
+  const washW = Math.min(0.5, clearW * 0.5);
+  const wash = new THREE.Mesh(new THREE.PlaneGeometry(washW, clearH), washMat);
+  wash.position.set(edgeX - washW * 0.5, midY, 0);
+  g.add(wash);
+
+  const setPole = (localX) => {
+    const s = localX >= 0 ? 1 : -1;
+    bar.position.x = s * edgeX;
+    aura.position.x = s * edgeX;
+    wash.position.x = s * (edgeX - washW * 0.5);
+    /* The wash gradient must stay brightest at the pole: mirror the plane
+     * rather than re-uv it. */
+    wash.scale.x = s;
+  };
+
   return {
     group: g,
     kindName: 'virtualGate',
     top: clearH,
-    animate: [marks.ring, marks.halo, marks.glow, marks.cue],
-    ringMat: marks.ring.material,
-    haloMat: marks.halo.material,
-    glowMat: marks.glow.material,
-    glowMesh: marks.glow,
-    cueGroup: marks.cue,
-    fillMat: marks.fillMat,
-    ringColor: marks.ringColor,
+    animate: [bar, aura, wash],
+    ringMat: barMat,
+    haloMat: auraMat,
+    glowMat: washMat,
+    glowMesh: wash,
+    cueGroup: null,
+    fillMat: null,
+    ringColor: NEXT_COLOUR,
+    setPole,
     apertures: [{
       shape: 'square', index: 0, sillH: 0, centreY: clearH * 0.5, clearW, clearH,
     }],
@@ -2359,6 +2450,8 @@ function coursePlacements(course) {
         },
         x: st.x,
         z: st.z,
+        poleX: st.poleX,
+        poleZ: st.poleZ,
         baseY: st.baseY,
         yaw: st.yaw,
         pitch: 0,
@@ -3667,6 +3760,14 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     const p = { x: st.x, z: st.z };
     g.position.set(st.x, y, st.z);
     g.rotation.y = yaw;
+    if (st.virtual && made.setPole && st.poleX != null) {
+      /* Which local side of the corridor the pole is on, measured with the
+       * inverse of the rotation just applied rather than a second copy of
+       * the yaw convention. */
+      const dx = st.poleX - st.x;
+      const dz = st.poleZ - st.z;
+      made.setPole(Math.cos(yaw) * dx - Math.sin(yaw) * dz);
+    }
     const scored = st.stations.filter((s) => s.apertureIndex != null);
     if (scored.length > 1) {
       /* One number per hole that is a gate, so a spiral reads 4 then 5 then
@@ -3854,21 +3955,15 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * two objects a pilot is already looking at, and the report is about not
    * knowing where to look.
    *
-   * So the tiers are now different KINDS of mark rather than three amounts
-   * of one:
-   *
-   *   the target        a lit ring, a halo, a pulsing glow and a coloured
-   *                     pane across the opening;
-   *   the one after it  a lit ring and nothing else, at a fraction of the
-   *                     target's strength, so a line can be chosen one gate
-   *                     ahead without a second thing competing for the eye;
-   *   everything else   unlit. A PVC frame in printed vinyl, which is what
-   *                     a gate on a real field looks like when nobody is
-   *                     aiming at it.
-   *
-   * A flag's or a cone's pass square is the exception and has to be: it has
-   * no structure at all, so unlit means gone. It rests on the middle tier
-   * wherever it is not the target.
+   * The tiers then collapsed to two, owner's call: the TARGET is lit, a
+   * subtle green glow that turns red from the wrong side, and EVERY other
+   * obstacle carries no markings at all. A PVC frame in printed vinyl is
+   * what a gate on a real field looks like when nobody is aiming at it,
+   * and the follow tier's dim ring turned out to be one more thing
+   * competing for the eye. A flag's pass side glow follows the same rule:
+   * lit as the target, dark otherwise, and the flag itself stays visible
+   * because it is furniture, which is what retired the old always-on
+   * virtual square.
    */
   const FOLLOW_RING = 0.42;
   let nextGateIdx = -1;
@@ -3912,15 +4007,14 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   }
   function setNextGate(i, follow) {
     for (const gt of gates) {
-      dressGate(gt, gt.virtual ? 'follow' : 'dark');
+      dressGate(gt, 'dark');
     }
     nextGateIdx = i;
-    /* The gate after next, one tier down. Never the target itself: a two
-     * station course would otherwise dress the same structure twice and the
-     * quieter pass would be the one that stuck. */
-    if (follow != null && follow >= 0 && follow < gates.length && follow !== i) {
-      dressGate(gates[follow], 'follow');
-    }
+    /* follow still arrives from race.js and is deliberately unused: the
+     * owner asked for no markings on anything but the target. The
+     * parameter stays so the callers and the harness readback keep their
+     * shape while the decision is fresh enough to be reversed cheaply. */
+    void follow;
     const target = i >= 0 && i < gates.length ? gates[i] : null;
     if (!target) {
       aim.active = false;
@@ -4833,7 +4927,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     updateShadowFocus, updateWind, setNextGate, targetAim, approachSide,
     graphics: q.id,
     /* Kept as no-ops so the shell has one call shape. The racing line is
-     * a planner tool now; the target in the air is the magenta pane. */
+     * a planner tool now; the target in the air is the green glow. */
     setRacingLine() {},
     hasRacingLine: false,
     updateRacingLine() { return null; },

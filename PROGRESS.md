@@ -15388,3 +15388,57 @@ shakes half again harder than yesterday. If a pilot reports new shake in
 dives or hard descending turns, this commit is the one to revert. It
 cannot affect hover, climb, punch or forward flight by construction, the
 wash is gated on recirculation depth.
+
+## The motors can feel the air now: prop torque follows the inflow
+
+Reports 2 and 3 of the triage, one mechanism. Thrust has scaled with
+axial inflow since the advance ratio model landed; the prop drag torque
+never did, it stayed kq w^2 whatever the air was doing, so no flight
+state could load or unload a motor and the RPM signature of the ring
+state, the one the report's own hover test listens for, could not exist.
+
+THE MODEL, argued in full at PLANT_TORQUE_IND in plant.c since no
+advisor channel exists this session. Shaft torque splits into a profile
+part, blade friction, kq w^2 scaled by (1 - FM), and an induced part,
+T (va + vi) / w. At hover the induced share IS the figure of merit by
+definition, and kq was derived from kt through FM = 0.5648, so the sum
+is exactly kq w^2 in the hover to the digit and checks 5 and 8 cannot
+move by construction. vi is the exact axial momentum solution composed
+with the edgewise reduction in one closed form, two sim_sqrt calls, no
+iteration, no host maths. The combined factor is clamped 0.90 to 1.60
+against the old kq w^2: the floor is protection for the calibrated punch
+and sag envelope, not physics, and it is written down as such.
+
+MEASURED, fixed duty 0.20 from rest, eight seconds of settling descent:
+
+    old   vz -4.1 to -13.7 m/s   rpm 6945 flat   amps 1.87 flat
+    new   vz -4.2 to -13.0 m/s   rpm 6939 to 7000  amps 1.89 to 1.71
+
+The old plant is deaf: identical rpm and current at every sink rate. The
+new one unloads into the descent, rpm rises while current falls, which
+is the report's sentence "increase the motor rpm without necessarily
+drawing more current" measured rather than promised. A wrong first cut
+is recorded because it taught something: a one step Glauert seed floored
+in the ring band read as STRAIN in a shallow descent, backwards against
+the windmill physics; the exact normal working state solution
+sqrt((va/2)^2 + vh^2) - va/2 is what lands the sign, and it is what
+shipped. In fast edgewise flight the induced torque comes out within a
+couple of percent of the old constant, so the top end barely moves.
+
+RUN LOG. build:wasm exit 0, vendor diff empty. npm run verify twice, 15
+of 16 both times once a world-scale browser flake on the first run
+reproduced green: hover 0.2637 UNCHANGED, punch 84.0 m (was 81.5, the
+bounded climb unload, one metre under the ceiling and the reason the
+0.90 floor exists), terminal 32.0 m/s (was 31.1), motor step 26 ms,
+rate tracking 671.7, yaw coupling -0.11 (the roll column symmetry
+argument holds, torque asymmetry from va cancels in the spin weighted
+sum), sag 11.28 percent with peak RPM 26676 against 26024, diff ratio
+1.2473. Trace hash eb86d9b0710b, stable across both runs. Check 16 red
+at the recorded feather flag budget, untouched.
+
+Possible effect if this breaks something: anything that listens to motor
+RPM. Punch now rides one metre under check 6's ceiling, so a future
+thrust-side change has less headroom than it used to. The RPM filter and
+dyn notch see a live RPM that moves with the flow. Motor audio pitch now
+sags under load and rises in descents. If a pilot reports motors sounding
+wrong, or check 6 goes red in a later round, this commit is the suspect.

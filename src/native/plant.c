@@ -327,6 +327,61 @@ const double PLANT_POS_Z[SIM_MOTOR_COUNT] = { 0.020, 0.020, 0.020, 0.020 };
 #define PLANT_VRS_FULL 1.20
 #define PLANT_VRS_FLOOR 0.75
 
+/*
+ * TORQUE FOLLOWS THE FLOW NOW, WHICH IS WHAT MOTOR STRAIN IS.
+ *
+ * Thrust has scaled with axial inflow since the advance ratio model landed;
+ * the prop drag torque never did, it stayed kq w^2 whatever the air was
+ * doing. So no flight state could load or unload a motor: RPM could not sag
+ * when a prop was driven into opposing flow, could not rise when a descent
+ * into the ring state unloaded the disc, and the audible motor split a
+ * pilot listens for in a botched descent could not exist, because the load
+ * side of the model was deaf to the flow. A board report asked for exactly
+ * this, and named the RPM rise without a matching current rise as the
+ * signature of the ring state.
+ *
+ * The split of the torque into a part that follows the flow and a part that
+ * does not is not a new knob. Blade element theory divides shaft torque
+ * into induced torque, which is thrust times inflow over shaft speed, and
+ * profile torque, which is blade friction and follows w^2 only. At hover
+ * the induced share IS the figure of merit: FM is defined as ideal induced
+ * power over shaft power, and kq was derived from kt through FM = 0.5648
+ * (kt^1.5 / (kq sqrt(2 rho A)), the pair the P5 gate asserts). So
+ *
+ *   Q = (1 - FM) kq w |w|  +  T (va + vi) / w
+ *
+ * is exactly kq w^2 in the hover, to the digit, because the second term is
+ * T vh / w there and that equals FM kq w^2 by the derivation of kq itself.
+ * Checks 5 and 8 cannot move by construction.
+ *
+ * vi is the axial momentum solution composed with the edgewise reduction:
+ *
+ *   vi = vh^2 / sqrt(vperp^2 + (va/2 + sqrt((va/2)^2 + vh^2))^2)
+ *
+ * With no edgewise flow this is ALGEBRAICALLY the exact normal working
+ * state solution of vi (vi + va) = vh^2 for every va, climb and descent
+ * alike: rationalise and it is sqrt((va/2)^2 + vh^2) - va/2. So a descent
+ * unloads the disc progressively, (va + vi) falls toward zero from above
+ * and never crosses it, which is the windmill side easing the load and the
+ * reason RPM audibly rises at fixed duty on the way down, the exact
+ * signature the report describes. With edgewise flow it tracks Glauert's
+ * quartic to a few percent (0.447 against 0.486 at two vh) and costs one
+ * extra sim_sqrt instead of an iteration.
+ *
+ * THE AUTHORED BOUND. The combined factor against the old kq w^2 is
+ * clamped to 0.90 below and 1.60 above. The lower bound is not physics, it
+ * is protection: an uncapped climb unload spins the motors up enough to
+ * push the punch check over its 85 m ceiling, and hover throttle, punch
+ * and the battery sag band were all calibrated against the old load. The
+ * strain side, which is what the report is about, has the room it needs
+ * inside 1.60. Same posture as the 0.35 bound on axial_gain: a bound
+ * costs a little truth at one edge and stops a model term from rewriting
+ * the calibrated envelope.
+ */
+#define PLANT_TORQUE_IND 0.5648
+#define PLANT_TORQUE_QMIN 0.90
+#define PLANT_TORQUE_QMAX 1.60
+
 /* Per motor share of the ring state loss. The four values sum to zero, but
  * note what that does and does not buy: the correction is gated on each
  * rotor's OWN axial, so when only some of the four are in the loss the applied
@@ -779,7 +834,50 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
         axial = 0.0;
       }
     }
-    const double drag_mag = PLANT.kq * w_rel * (w_rel < 0.0 ? -w_rel : w_rel);
+    /*
+     * Prop drag torque, profile part plus induced part. See the block at
+     * PLANT_TORQUE_IND: exactly kq w^2 in the hover, follows the flow
+     * everywhere else, clamped so the calibrated envelope stays put. The
+     * load is computed from the current w and the final axial factor, wash
+     * included, so a rotor fluttering in its own wake flutters its load
+     * too, which is the audible half of the ring state.
+     */
+    /* The sign convention: drag_mag is signed by w_rel, the rotor equation
+     * multiplies by spin. The flow work is done on the magnitude and the
+     * sign restored at the end, so a clockwise motor's induced load does
+     * not accelerate it. */
+    const double q_sign = (w_rel < 0.0 ? -1.0 : 1.0);
+    const double qb_mag = PLANT.kq * w_rel * w_rel;
+    double q_mag = (1.0 - PLANT_TORQUE_IND) * qb_mag;
+    {
+      const double t_load = PLANT.kt * w * w * axial;
+      if (t_load > 1e-6) {
+        const double vh2 = t_load / (2.0 * PLANT.rho * 3.14159265358979323846 *
+                                     PLANT.prop_r * PLANT.prop_r);
+        const double vx_q = v_body[0] - r * PLANT_POS_Y[m];
+        const double vy_q = v_body[1] + r * PLANT_POS_X[m];
+        const double half = 0.5 * va;
+        const double az = half + sim_sqrt(half * half + vh2);
+        double denom = sim_sqrt(vx_q * vx_q + vy_q * vy_q + az * az);
+        if (denom < 1e-6) {
+          denom = 1e-6;
+        }
+        const double vi = vh2 / denom;
+        const double w_guard = (w < 60.0 ? 60.0 : w);
+        double q_ind = t_load * (va + vi) / w_guard;
+        if (q_ind < 0.0) {
+          q_ind = 0.0;
+        }
+        q_mag += q_ind;
+      }
+      if (q_mag < PLANT_TORQUE_QMIN * qb_mag) {
+        q_mag = PLANT_TORQUE_QMIN * qb_mag;
+      }
+      if (q_mag > PLANT_TORQUE_QMAX * qb_mag) {
+        q_mag = PLANT_TORQUE_QMAX * qb_mag;
+      }
+    }
+    const double drag_mag = q_sign * q_mag;
     const double i = (d * v_load - PLANT.ke * w) / PLANT.r_motor;
     /* Rotor sees the drag torque resisting its own spin direction. */
     const double torque = PLANT.ke * i - PLANT_SPIN[m] * drag_mag;

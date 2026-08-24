@@ -175,11 +175,25 @@ static float g_gyro_dps[XYZ_AXIS_COUNT];
  * 55 percent throttle and 7.35 at full. 5.0 of hump plus 3.0 of line still
  * read as a loose, unbalanced machine at full throttle on the sticks, which
  * a pilot flying this build named as too much shake rather than as a tight
- * race quad. 1.5 of hump and 0.8 of line is about a third of that energy:
+ * race quad. 1.5 of hump and 0.8 of line was about a third of that energy:
  * the spectrum is still there for the filters to work on, the pad is still
  * not silent, and the video no longer swims on a punch. A tired set of
- * props runs several times either figure. On top sits a 0.2 deg/s floor for
- * the sensor itself, roughly an ICM-42688 over a 500 Hz bandwidth.
+ * props runs several times either figure. On top sits a floor for the
+ * sensor itself; 0.2 deg/s is roughly an ICM-42688 over a 500 Hz bandwidth.
+ *
+ * RAISED ONE SUBTLE STEP, owner's request, 2026-08-24. The Crapshack tune
+ * entry recorded why maxed sliders feel too perfect here: the tunes real
+ * quads fly pay for headroom against noise this gyro barely has. Measured
+ * on the build before this change, filtered gyro noise RMS with the body
+ * truth subtracted read 0.16 deg/s in the hover, 0.45 at 55 percent and
+ * 1.03 at full throttle, a fifth to a sixth of the real quad band above.
+ * The step is 1.5 to 2.0 of hump, 0.8 to 1.0 of line and 0.20 to 0.30 of
+ * floor, about forty percent more energy, chosen deliberately small: the
+ * last time these numbers moved it was DOWN, from a pilot calling 5.0 and
+ * 3.0 too much shake, and the instruction here is to start subtle and let
+ * the pilot say more. The floor matters most of the three at low stick,
+ * where the D term lives; 0.30 is still inside what a 42688 reads at its
+ * wider bandwidth settings on a warm board.
  *
  * The RMS divisor is MEASURED, not estimated: 0.340474 over eight million
  * samples of this exact recursion, peak 2.92 sigma, so unlike the propwash
@@ -192,12 +206,12 @@ static float g_gyro_dps[XYZ_AXIS_COUNT];
 #define GYRO_VIB_A_HI 0.889099
 #define GYRO_VIB_A_LO 0.395077
 #define GYRO_VIB_RMS 0.340474
-#define GYRO_VIB_FULL_DPS 1.5
-#define GYRO_VIB_LINE_DPS 0.8
+#define GYRO_VIB_FULL_DPS 2.0
+#define GYRO_VIB_LINE_DPS 1.0
 #define GYRO_VIB_REF_W 2700.0
 #define GYRO_VIB_YAW_SHARE 0.6
 #define GYRO_VIB_LINE_YAW_SHARE 0.5
-#define GYRO_NOISE_FLOOR_DPS 0.20
+#define GYRO_NOISE_FLOOR_DPS 0.30
 
 /* Per rotor imbalance, as a multiple of the nominal line amplitude. No two
  * props are balanced alike and identical values would put four lines exactly

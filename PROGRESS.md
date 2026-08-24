@@ -15726,3 +15726,40 @@ body side lift; yaw and latency answered with measurements; throttle
 mid and expo; 115 degree stop; magenta target gate; typed FC fields;
 render scale and frame cap. The known red is check 16, the feather flag
 budget, carried from main and untouched by all ten.
+
+## The gyro noise comes up one subtle step
+
+The owner picked up the declined motor latency report's real cause and
+asked for the gyro noise round, starting subtle. The model was already
+here, imbalance lines plus a frame hump plus a sensor floor in
+bf_glue.c, tuned down two rounds ago from a pilot calling 5.0 and 3.0
+too much shake. What was missing was energy at the quiet end, which is
+exactly where a maxed D term gets its free lunch: measured with the
+body truth subtracted, the filtered gyro read 0.16 deg/s RMS in the
+hover, 0.45 at 55 percent and 1.03 at full throttle, a fifth to a
+sixth of the 1 to 3 cruise and 3 to 6 on-the-power band a real 5 inch
+logs.
+
+One step: hump 1.5 to 2.0, line 0.8 to 1.0, floor 0.20 to 0.30.
+Measured after: 0.23 in the hover, 0.62 at 55 percent, 1.40 at full
+throttle, about forty percent more energy and still well under the
+real band, deliberately, because the last move of these constants was
+DOWN from a shake complaint and the instruction was to start subtle
+and let the pilot ask for more. The next step, if the feel asks for
+it, is another notch of the same three numbers, not a new mechanism.
+
+RUN LOG. build:wasm exit 0, vendor diff empty. npm run verify 15 of
+16, the one red being check 16 at the recorded feather flag budget,
+carried from main. hover 0.2637 unchanged, punch 83.9 m (84.0 last
+commit, the noise brushes the punch trim), terminal 32.0, motor step
+26 ms, rate 671.7, yaw coupling -0.11, sag 11.25 percent, diff ratio
+1.2473. Trace hash f790bd32811f, moved as a controller visible noise
+change must.
+
+Possible effect if this breaks something: everything downstream of the
+gyro by a whisker. Maxed D tunes buzz slightly where they were silent,
+which is the point; motor audio carries a little more texture; the
+dynamic notch and RPM filter have more line to eat. If a pilot reports
+new shake in normal flight on the stock tunes, this commit is the one
+to revert, and the three constants at GYRO_VIB in bf_glue.c are the
+dials.

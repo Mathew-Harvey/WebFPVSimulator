@@ -15857,3 +15857,11 @@ stays on its old key, so records are comparable only against laps from
 this build onward in spirit; the keys do not change because the config
 text does not. If the craft suddenly feels sluggish beyond a tiny bit,
 this commit is the one to revert, one constant and its paperwork.
+
+## The radio is ditched
+
+The owner closed the internet radio item: too hard for what it gives,
+between the mixed content wall on the https deploy and a station
+loudness the encoder's discipline cannot reach. The design stays
+recorded two entries up in case it ever comes back; nothing is built
+and nothing is owed.

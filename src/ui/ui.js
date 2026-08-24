@@ -3125,7 +3125,7 @@ export class Ui {
         choice(
           'Throttle limit',
           r.throttleCap >= 100
-            ? `Off. This quad is nine to one thrust to weight and hovers at ${hover.toFixed(1)} percent of stick, so almost all the travel is above hover. Capping it scales the whole stick down and gives the resolution back.`
+            ? `Off. This quad is almost nine to one thrust to weight and hovers at ${hover.toFixed(1)} percent of stick, so most of the travel is above hover. Capping it scales the whole stick down and gives the resolution back.`
             : `Betaflight SCALE limit: full stick commands ${r.throttleCap} percent, and the whole travel is redistributed under it. Hover moves to about ${hover.toFixed(1)} percent of stick, so the throttle is less touchy.`,
           THROTTLE_CAP_CHOICES,
           r.throttleCap,

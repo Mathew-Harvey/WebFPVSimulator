@@ -15816,3 +15816,44 @@ record key path has a new branch, and the board upload has a new gate.
 If expert records misfile or an upload is refused unexpectedly, this
 commit is the one. Physics under the default style is measured
 unchanged.
+
+## Thirty grams on the scales
+
+The report asked for the race tune with more gravity or a heavier quad,
+and the owner said make it a tiny bit heavier. mass_kg 0.65 to 0.68,
+thrust untouched, so thrust to weight goes 9.21 to 8.80, still inside
+the P4 band and inside what a 680 g 5 inch on 6S really is. Inertia
+stays: thirty grams of pack at the CG moves Iyy by under half a
+percent, below what the model resolves. STAGE1.md's reference airframe
+lines are corrected to what the plant now builds, with the history kept,
+and MASS in flightcheck.js and gates.js follows.
+
+WHAT THE REGENERATION FOUND, and it is worth more than the mass change:
+the HOVER_STICK_PERCENT table in configs/rates.js was STALE, and not
+from this round. It said hover at 19.5 percent of stick, which was true
+of the electrical set two re-derivations ago; measured on the build
+before this change, hover already sat at 25.0 percent, so every hover
+figure the throttle limit menu quoted has been five points low for that
+long. Nobody re-ran flightcheck when the electrical set moved. The
+table now reads the freshly measured column: 25.6 at cap 100, 27.8 at
+90, 30.7 at 80, 34.4 at 70, 39.2 at 60, 46.1 at 50, 56.3 at 40, of
+which 0.6 of a point is the new mass and the rest was owed.
+
+RUN LOG. build:wasm exit 0, vendor diff empty, node --check clean.
+npm run verify 15 of 16, check 16 at the recorded feather flag budget:
+hover 0.2705 (was 0.2637, the mass arriving), punch 83.0 m (was 83.9,
+a metre more headroom under the 85 ceiling), terminal 31.9, motor step
+26 ms, rate 671.7, yaw coupling -0.11, sag 11.25, ratio 1.2473. Trace
+hash e95d49a63cfd. The standing hover band dispute is noted again:
+tests/thresholds.json passes 0.2705 in 0.20 to 0.30 while
+gates.config.json P4 wants 0.17 to 0.22; the conflict predates this
+round, is recorded in the log, and neither number was touched.
+
+Possible effect if this breaks something: everything, faintly. The quad
+hovers two points higher up the stick, punches a metre lower, and
+carries more momentum into every corner, which is the feel that was
+asked for. Every existing best lap was flown thirty grams lighter and
+stays on its old key, so records are comparable only against laps from
+this build onward in spirit; the keys do not change because the config
+text does not. If the craft suddenly feels sluggish beyond a tiny bit,
+this commit is the one to revert, one constant and its paperwork.

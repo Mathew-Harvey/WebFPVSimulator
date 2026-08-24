@@ -391,10 +391,10 @@ export function pitchMatchesRoll(r) {
 /*
  * The throttle cap, as a percentage of full throttle.
  *
- * WHY A RACE QUAD NEEDS ONE. This airframe is 9.2 : 1 static thrust to
- * weight, which is what a 650 g 5 inch on 6S with 1900 kV motors really is,
- * and it hovers at 19.5 percent of stick (scripts/flightcheck.js measures
- * both). So four fifths of the throttle travel is above hover, the useful
+ * WHY A RACE QUAD NEEDS ONE. This airframe is 8.8 : 1 static thrust to
+ * weight, which is what a 680 g 5 inch on 6S with 1900 kV motors really is,
+ * and it hovers at 25.6 percent of stick (scripts/flightcheck.js measures
+ * both). So three quarters of the throttle travel is above hover, the useful
  * band around it is a couple of percent of stick, and ten percent of stick
  * takes you from holding altitude to climbing at 9 m/s. That is not a bug in
  * the model, it is what the aircraft is, and it is exactly why the throttle
@@ -410,8 +410,8 @@ export function pitchMatchesRoll(r) {
  *           `cap` as much throttle and the resolution improves by 1/cap.
  *
  * SCALE is the one that gives resolution back. At 60 percent, hover moves
- * from 19.5 to 32 percent of stick and the stick is two thirds as touchy; at
- * 40 percent, hover sits at half stick, which is the classic setup.
+ * from 25.6 to 39 percent of stick and the stick is two thirds as touchy; at
+ * 40 percent, hover sits past half stick, which is the classic setup.
  *
  * The cap is NOT reimplemented here. These two lines go into the rate profile
  * and Betaflight's own mixer does the work, per CLAUDE.md: if a Betaflight
@@ -532,9 +532,9 @@ export function ratesSummary(r) {
  * pilot and "hover near a third of the stick" means everything.
  */
 const HOVER_STICK_PERCENT = new Map([
-  [100, 19.5], [90, 21.1], [80, 23.1], [70, 25.8], [60, 29.2], [50, 33.9], [40, 41.1],
+  [100, 25.6], [90, 27.8], [80, 30.7], [70, 34.4], [60, 39.2], [50, 46.1], [40, 56.3],
 ]);
 
 export function hoverStickPercent(cap) {
-  return HOVER_STICK_PERCENT.get(nearest(THROTTLE_CAP_CHOICES, cap)) ?? 19.5;
+  return HOVER_STICK_PERCENT.get(nearest(THROTTLE_CAP_CHOICES, cap)) ?? 25.6;
 }

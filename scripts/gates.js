@@ -38,7 +38,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const DEG = 180 / Math.PI;
 const results = [];
 const G = 9.80665;
-const MASS = 0.65;
+const MASS = 0.68;
 
 function report(id, pass, measured, reason = '') {
   results.push({ id, pass, measured, reason });

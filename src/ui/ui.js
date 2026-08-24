@@ -200,6 +200,13 @@ export {
 };
 export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
 export const LAP_COUNTS = [1, 3, 5];
+/* Render scale, percent of the preset's resolution, and the frame cap in
+ * Hz, 0 meaning uncapped. Both from a board report about lower end
+ * machines: fewer pixels is the one lever that always helps a starved
+ * GPU, and a steady 30 or 60 reads better than a heaving 47. The input
+ * poll and the physics never see either: the cap skips only the draw. */
+export const RENDER_SCALES = [100, 85, 70, 55];
+export const FPS_CAPS = [0, 90, 60, 30];
 
 const DEFAULTS = {
   /* Which world. 'field' is the MultiGP circuit and 'city' is the freestyle
@@ -276,6 +283,8 @@ const DEFAULTS = {
   ghost: 'best',
   cameraAngle: CAMERA_ANGLE_DEFAULT,
   cameraFov: CAMERA_FOV_DEFAULT,
+  renderScale: 100,
+  fpsCap: 0,
   packVoltage: 4.2,
   laps: 3,
   sound: true,
@@ -385,6 +394,8 @@ export function loadSettings() {
     ['tune', tuneChoices()],
     ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
+    ['renderScale', RENDER_SCALES],
+    ['fpsCap', FPS_CAPS],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
@@ -2852,6 +2863,22 @@ export class Ui {
         { label: 'Graphics', section: true },
         graphicsItem(s),
         gpuItem(this.gpuInfo),
+        choice(
+          'Render scale',
+          'Fewer pixels, then stretched to fit. The one lever that always helps a starved GPU, at the price of sharpness. 100 is native for the preset.',
+          RENDER_SCALES,
+          s.renderScale,
+          (n) => (n >= 100 ? 'Native' : `${n}%`),
+          (n) => { s.renderScale = n; },
+        ),
+        choice(
+          'Frame cap',
+          'Caps how often the world is drawn. A steady 60 reads better than a heaving 90, and it spares the battery. Sticks are still read and the physics still steps every frame; only the picture waits.',
+          FPS_CAPS,
+          s.fpsCap,
+          (n) => (n === 0 ? 'Uncapped' : `${n} fps`),
+          (n) => { s.fpsCap = n; },
+        ),
         { label: 'Race', section: true },
         choice(
           'Pack charge',

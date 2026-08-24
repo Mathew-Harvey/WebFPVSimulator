@@ -41,7 +41,7 @@
 
 import * as THREE from 'three';
 import { buildShell } from './render/shell.js';
-import { applyPixelRatio, normalizeGraphics } from './render/quality.js';
+import { applyPixelRatio, normalizeGraphics, pixelRatioFor } from './render/quality.js';
 import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
@@ -623,7 +623,7 @@ export async function boot({ loading, bootStart, mapId }) {
   loading.done('sim');
   loading.detail = '';
 
-  applyPixelRatio(shell, ui.settings.graphics);
+  applyPixelRatio(shell, ui.settings.graphics, renderScaleOf(ui.settings));
   /*
    * The swap path has fallen back to the previous map on a failed load for
    * a while; boot had nothing, so one map that would not build (a bad
@@ -1625,7 +1625,7 @@ export async function boot({ loading, bootStart, mapId }) {
     } catch (e) {
       /* Already gone, or the last swap never produced a world. */
     }
-    applyPixelRatio(shell, wantQ);
+    applyPixelRatio(shell, wantQ, renderScaleOf(ui.settings));
     try {
       view = await loadMap(shell, wantId, loading, { quality: wantQ });
       loading.start('frame');
@@ -1641,7 +1641,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.settings.map = previous;
       ui.settings.graphics = previousGraphics;
       try {
-        applyPixelRatio(shell, previousGraphics);
+        applyPixelRatio(shell, previousGraphics, renderScaleOf(ui.settings));
         view = await loadMap(shell, previous, loading, { quality: previousGraphics });
         loading.start('frame');
         adoptLoadedView(keepPlace, stayMode, stayScreen);
@@ -1825,6 +1825,11 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /* The pilot's render scale as a multiplier, 100 percent being native. */
+  function renderScaleOf(s) {
+    return (Number(s.renderScale) || 100) / 100;
+  }
+
   function applySettings(s) {
     camTilt = clampCameraAngle(s.cameraAngle);
     s.cameraAngle = camTilt;
@@ -1835,6 +1840,16 @@ export async function boot({ loading, bootStart, mapId }) {
     if (shell.camera.fov !== s.cameraFov) {
       shell.camera.fov = s.cameraFov;
       shell.camera.updateProjectionMatrix();
+    }
+    /* Render scale changes are free, no world rebuild: set the ratio and
+     * walk the same guarded resize path a window resize takes, so the
+     * composer and every prepass target follow in one place. */
+    if (shell.pixelRatio !== pixelRatioFor(s.graphics, renderScaleOf(s))) {
+      applyPixelRatio(shell, s.graphics, renderScaleOf(s));
+      const d = shell.resize();
+      if (view && view.post && mapReady) {
+        view.post.setSize(d.w, d.h);
+      }
     }
     if (mode === 'title') {
       /* Between runs the choice takes effect at once. During a run it
@@ -2831,6 +2846,8 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let titleAcc = 0;
   let titleStepMs = 0;
+  /* Wall time of the last frame the cap let through. */
+  let capLastDraw = -1e9;
 
   function frame(nowWall) {
     requestAnimationFrame(frame);
@@ -3629,15 +3646,34 @@ export async function boot({ loading, bootStart, mapId }) {
      * composer passes) and read back through __renderStats. */
     shell.renderer.info.reset();
     const renderStart = performance.now();
-    if (worldLive) {
+    /*
+     * The frame cap skips only this draw. Input was polled above, the
+     * physics accumulator has already stepped, and the interpolation is
+     * ready for whenever the next drawn frame comes, so a capped frame
+     * costs the pilot nothing but the picture it deliberately skips. The
+     * one millisecond of slack keeps a 60 cap from beating against a
+     * 60 Hz display and drawing every other frame.
+     */
+    const capHz = Number(ui.settings.fpsCap) || 0;
+    let drawThis = true;
+    if (capHz > 0 && worldLive) {
+      if (nowWall - capLastDraw < 1000 / capHz - 1.0) {
+        drawThis = false;
+      } else {
+        capLastDraw = nowWall;
+      }
+    }
+    if (worldLive && drawThis) {
       view.post.render();
     }
     if (ui.screen === 'courses') {
       ui.paintMapThumbs(shell.canvas);
     }
     const renderMs = performance.now() - renderStart;
-    renderStats.calls = shell.renderer.info.render.calls;
-    renderStats.triangles = shell.renderer.info.render.triangles;
+    if (drawThis) {
+      renderStats.calls = shell.renderer.info.render.calls;
+      renderStats.triangles = shell.renderer.info.render.triangles;
+    }
 
     /*
      * Settings studio. Own renderer, so the field's draw budget cannot

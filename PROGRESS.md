@@ -15646,3 +15646,46 @@ press already took.
 Possible effect if this breaks something: the flight controller screen
 only. If a field commits garbage or the cursor misbehaves on that
 screen, revert this. Nothing outside src/ui/fc.js moved.
+
+## Two levers for a starved GPU
+
+The low end report asked for a smaller draw window scaled up, a fixed
+frame rate, and a latency budget matched to real FPV gear. The first
+two are built; the third is declined with the reason below.
+
+Render scale: a Graphics row, 100/85/70/55 percent, multiplied into
+pixelRatioFor on top of the preset's own resolutionScale, floored at
+the same 0.5 below which world text stops being text. Changing it costs
+no world rebuild: applySettings sets the ratio and walks the same
+guarded resize path a window resize takes. Measured live in headless
+Chromium: backing store 1360x765 to 800x450 on a 1600 css canvas, which
+is the 0.85 low preset times 0.55 hitting the 0.5 floor exactly.
+
+Frame cap: uncapped, 90, 60, or 30. The cap skips ONLY view.post.render:
+the input poll, the RC queue, the accumulator and the interpolation all
+run every rAF exactly as before, so a capped frame costs the picture
+and nothing else. That ordering is the whole trap the report's own
+sims-that-feel-terrible fall into, and it is written at the skip. One
+millisecond of slack keeps a 60 cap from beating against a 60 Hz
+display.
+
+DECLINED from the same report: measuring input to draw latency and
+padding it to a constant to mimic a given goggle stack. The P7 gate
+already measures input to photon against a 16 ms budget, the compositor
+work recorded in the log shows the browser adds queue depth this page
+cannot even observe, and padding to a constant on top of an unmeasured
+queue is a number wearing a lab coat. If real gear emulation is wanted
+it starts with a measurement channel, not a delay loop.
+
+CHECKS: node --check on the three files, one shots.js run flipping both
+settings live through writeSettings, console errors 0 warnings 0, the
+canvas readback above. Verify NOT run: no physics, no module change;
+check 4 frame independence is the standing proof that render pacing
+cannot reach the trace, and nothing here touches the sim clock.
+
+Possible effect if this breaks something: anything that reads the
+canvas or the pixel ratio: the share card capture, map thumbnails, the
+city map's own pixel budget clamp (it composes with the preset scale
+it already had). If captures come out soft, check renderScale is 100
+before suspecting the capture path. The frame cap is default off and
+cannot affect the harness, which never sets it.

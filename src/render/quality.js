@@ -211,15 +211,23 @@ export function detectDefaultGraphics() {
   return 'high';
 }
 
-export function pixelRatioFor(id) {
+/*
+ * scale is the pilot's own render scale on top of the preset, 1 for
+ * native. It multiplies rather than replaces the preset's resolutionScale
+ * because the two answer different questions: the preset knows what a
+ * class of machine can afford, the setting is one pilot saying theirs
+ * cannot afford that. The 0.5 floor still holds, below it text in the
+ * world stops being text.
+ */
+export function pixelRatioFor(id, scale = 1) {
   const q = qualityFor(id);
   const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-  const pr = Math.min(dpr, q.pixelRatioCap) * q.resolutionScale;
+  const pr = Math.min(dpr, q.pixelRatioCap) * q.resolutionScale * scale;
   return Math.max(0.5, pr);
 }
 
-export function applyPixelRatio(shell, id) {
-  const pr = pixelRatioFor(id);
+export function applyPixelRatio(shell, id, scale = 1) {
+  const pr = pixelRatioFor(id, scale);
   shell.pixelRatio = pr;
   shell.renderer.setPixelRatio(pr);
   return pr;

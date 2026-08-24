@@ -15689,3 +15689,40 @@ city map's own pixel budget clamp (it composes with the preset scale
 it already had). If captures come out soft, check renderScale is 100
 before suspecting the capture path. The frame cap is default off and
 cannot affect the harness, which never sets it.
+
+## What this round leaves open, so nothing is dropped silently
+
+Three accepted items were not built in the two hours, and each has its
+design recorded so the next session starts from a plan instead of a
+blank page.
+
+Internet radio: the seam is mapped. loadCurrent in src/render/music.js
+is the only writer of el.src; a stream is a TRACKS adjacent record with
+an absolute URL, loop off, warmNext already self-disables outside
+rotation, onError needs a guard so a dead stream does not walk the
+crate, and the id must join musicIds() or loadSettings resets it. The
+node budget has five spares and reusing the element costs none. Two
+honest caveats to ship with it: a station's loudness is not ours, the
+encoder's 0.5 LU discipline cannot reach a stream, and the reported
+http://live.rtrfm.com.au:8000/stream1 is plain http, which the https
+deploy's browser will upgrade and block unless the station serves TLS;
+the row must say so rather than fail quietly.
+
+Arcade against expert: an additive ABI flag in the plant, default
+expert, arcade zeroing the imperfection terms (wash amplitude, inflow
+asymmetry, both cant tables), UI toggle in Flight, and arcade laps
+kept off the public board. Additive like sim_set_angle_mode: a replay
+that never calls it is bit identical, so the harness cannot see it.
+
+The heavier quad: a mass scale through an additive ABI entry, stock
+default, inertia left alone as the first cut for pack mass at the CG,
+the record key carrying the weight so a heavy lap cannot sit in a
+stock record, and the full verify battery plus a fresh look at the
+hover stick table before it ships.
+
+The round's ten commits, each a rollback point with its possible effect
+written in the message: triage; wash to 0.12; torque follows the flow;
+body side lift; yaw and latency answered with measurements; throttle
+mid and expo; 115 degree stop; magenta target gate; typed FC fields;
+render scale and frame cap. The known red is check 16, the feather flag
+budget, carried from main and untouched by all ten.

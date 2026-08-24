@@ -37,7 +37,7 @@ import { THROTTLE_CAP_CHOICES } from '../configs/rates.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = 9.80665;
-const MASS = 0.68;
+const MASS = 0.71;
 
 /* State indices, sim_abi.h. */
 const ST = { T: 0, Z: 3, VX: 4, VZ: 6, P: 11, RPM0: 14, V: 18, I: 19 };

@@ -15903,3 +15903,32 @@ every band identical to the digit but the last of diff-passthrough.
 Possible effect: descents through own wake shake a quarter harder than
 0.12. Arcade cannot see it, the wash application is gated off there.
 Revert this one constant if it reads as too much.
+
+## Thirty grams more, 0.71 on the scales
+
+The owner flew 0.68 and asked again: a tiny bit heavier. mass_kg 0.71,
+thrust untouched, thrust to weight 8.43, which is a 710 g 5 inch on 6S
+and still comfortably inside the P4 band. Inertia unchanged, same
+argument as the last step. STAGE1.md, the flightcheck and gates MASS
+constants and the throttle limit prose follow, and the hover stick
+table is re-measured: 26.2 at cap 100 down to 58.0 at cap 40.
+
+RUN LOG. Two verify runs, because the first taught something worth a
+line: run one reported check 1 red with build exit 1, and the cause was
+the shell, not the tree: that invocation did not source the emsdk env
+and build-wasm.sh probes $HOME, which is not where emsdk lives in this
+container, so emcc was absent for the child build while every other
+check measured the freshly hand built module honestly. Sourced and re
+run: 15 of 16, build exit 0, vendor diff empty, check 16 at the
+recorded feather flag budget. hover 0.2773 (0.2705 before, the mass
+arriving), punch 82.1 m (83.0, three metres under the ceiling now),
+terminal 31.7, step 26 ms, rate 671.7, yaw -0.11, sag 11.25, ratio
+1.2472. Trace hash f1a9f1c72a1b, identical across both runs. The
+standing hover band dispute, thresholds 0.20 to 0.30 green against
+gates P4 0.17 to 0.22, moves another point away and stays recorded,
+untouched.
+
+Possible effect if this breaks something: the same list as the first
+thirty grams, a touch stronger. Hover near 28 percent of stick, punch
+a metre lower again, more momentum in every corner. Revert one
+constant and its paperwork if it feels sluggish.

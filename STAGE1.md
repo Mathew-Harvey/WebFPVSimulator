@@ -8,11 +8,11 @@ A grey ground plane, a horizon reference, a quad, and a stick input. You can hov
 
 One preset only in Stage 1. A 5 inch freestyle quad:
 
-- All-up mass 0.68 kg
+- All-up mass 0.71 kg
 - Battery 6S, 1300 mAh, nominal 22.2 V, 4.20 V per cell charged, 3.50 V per cell empty
 - Four motors, 1900 kV, at the corners of a 220 mm diagonal
 - 5 x 4.3 x 3 propellers
-- Thrust-to-weight 8.8 to 1 at full charge, measured
+- Thrust-to-weight 8.4 to 1 at full charge, measured
 - Inertia tensor diagonal, roll 0.0035, pitch 0.0038, yaw 0.0068 kg m squared
 
 The last two lines used to read 4.5 to 1 and 0.0055 / 0.0060 / 0.0110, and
@@ -24,9 +24,10 @@ every band in the check table below was fitted against them. The old figures
 also do not describe this aircraft. A 650 g 5 inch on 6S with 1900 kV motors
 and tri-blades is 9 to 12 to 1 in the real world; 4.5 to 1 is a heavy 7 inch,
 and 0.0055 / 0.0060 / 0.0110 is a 7 inch's inertia too. See PROGRESS.md.
-The mass then moved once more, 0.65 to 0.68 kg on the owner's request after
-a pilot asked for the same quad a little heavier, which is where 8.8 to 1
-comes from: thrust unchanged, thirty grams more to carry.
+The mass then moved twice more, 0.65 to 0.68 and then 0.71 kg on the
+owner's request after a pilot asked for the same quad a little heavier,
+which is where 8.4 to 1 comes from: thrust unchanged, sixty grams more
+to carry.
 
 ## Architecture
 

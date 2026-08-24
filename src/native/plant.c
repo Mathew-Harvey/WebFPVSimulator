@@ -115,20 +115,20 @@
  */
 const PlantParams PLANT = {
   /*
-   * 0.68, up from 0.65, owner's request off a board report that asked for
-   * the race tune "with more gravity or a heavier quad". Thirty grams is a
-   * real change at a real scale: the difference of a bigger pack or an HD
-   * camera strapped on. Thrust is untouched, so thrust to weight goes
-   * 9.21 to 8.80, hover climbs a couple of points up the stick, and a
-   * punch tops out lower, which regains margin under check 6's ceiling.
-   * The inertia stays: the extra mass is pack, strapped at the CG, and a
-   * 30 g slab there moves Iyy by under half a percent, below what this
-   * model resolves. The kt derivation comment below still says 650 g
-   * because that is the airframe kt was derived AGAINST, a historical
-   * fact; the constant it produced is a property of the prop and motor,
-   * not of the pack flown that day.
+   * 0.71, in two owner steps from 0.65, off a board report that asked for
+   * the race tune "with more gravity or a heavier quad": 0.68 flew, the
+   * owner asked for a tiny bit more, and sixty grams total is a bigger
+   * pack AND the HD camera. Thrust is untouched, so thrust to weight goes
+   * 9.21 to 8.43, hover climbs a few points up the stick, and a punch
+   * tops out lower, which regains margin under check 6's ceiling. The
+   * inertia stays: the extra mass sits at the CG and a slab there moves
+   * Iyy by under a percent, below what this model resolves. The kt
+   * derivation comment below still says 650 g because that is the
+   * airframe kt was derived AGAINST, a historical fact; the constant it
+   * produced is a property of the prop and motor, not of the pack flown
+   * that day.
    */
-  .mass_kg = 0.68,
+  .mass_kg = 0.71,
   .inertia = { 0.0035, 0.0038, 0.0068 },
   .gravity = 9.80665,
   .arm_x = 0.0777817459305202, /* 0.110 / sqrt(2) */

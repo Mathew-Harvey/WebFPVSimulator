@@ -15477,3 +15477,40 @@ slightly faster, and any manoeuvre flown with the tail hanging out picks
 up a gentle nose-ward drift. If corners suddenly feel like they pull, or
 knife edge drops drift oddly, this commit is the one to revert. It
 cannot affect hover, vertical flight or straight line speed.
+
+## Two reports answered with measurements instead of code
+
+Report 5, "the quad is too laggy at low/high throttle, account for the
+rotational inertia of the motors, which should speed up the yaw axis."
+The mechanism the report asks for is already in the plant and has been
+since the electrical model landed: the frame's yaw torque is the stator
+reaction ke i, and i carries the full j dw/dt of every spool, so the
+inertial reaction of accelerating a rotor arrives on the frame in the
+same millisecond as the current. Measured this build, full yaw step on
+the stock tune at three throttles:
+
+    throttle 0.15   200 deg/s in 28 ms   63 pct of max in 96 ms   peak 712
+    throttle 0.45   200 deg/s in 27 ms   63 pct of max in 89 ms   peak 714
+    throttle 0.85   200 deg/s in 27 ms   63 pct of max in 81 ms   peak 722
+
+The first bite is 27 to 28 ms at every stick, and the spread across the
+whole throttle range is 15 ms at the 63 percent point. There is no low
+or high throttle lag cliff to remove, and the log already records yaw
+reaching its rate two and a half times slower than roll as the physics
+of drag torque against a 12 cm thrust arm, on a real quad as here. No
+change made. If the feel persists for the pilot, the next measurement
+wanted is a blackbox trace from their real quad's yaw axis to compare
+rise shapes against, not a plant edit on memory.
+
+Report 6, "add 3 to 8 ms of motor latency so maxed PIDs are not
+perfect." Declined, and the log already holds the argument: ESC
+transport delay was measured against the step size in an earlier round
+and refused, the real figure is 0.2 to 0.3 ms against a 1 ms step, so
+the smallest representable delay is three to five times too large and
+would make the model less like a real quad, not more. The honest cause
+of maxed PIDs being too perfect here is the noiseless gyro, written
+down when the Crapshack tune was built: real tunes pay for headroom
+against noise that does not exist in this plant. The fix that matches
+the cause is a gyro noise model, which changes every tune's feel at
+once and needs a pilot on the other end of it; that is its own round,
+not a line in this one.

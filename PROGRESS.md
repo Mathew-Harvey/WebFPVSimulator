@@ -15575,3 +15575,48 @@ unchanged, so shared course clips do not move.
 Possible effect if this breaks something: only pilots who select 115.
 If gates feel far away or edges smear, that is the recorded price of
 the stop, not a defect; revert reinstates the four stop list.
+
+## The target gate calms down and stops being green
+
+The gate report, three asks and one deferral. The active gate is no
+longer green: NEXT_COLOUR goes 0x39ff8b to 0xff4fd8, which is the
+magenta an earlier round of scene.js argued for and later lost, the one
+strong hue neither world contains. The report's confusion was real and
+structural: the start line is mint, the grass is green, and the target
+was a third green graded against both at 30 m/s. The wrong face stays
+red. Every piece of prose that said "the green gate" was found and now
+says magenta: the two takeoff hints, the launch stand hint, the howto
+lede, and two comments.
+
+The glow is calmed to a gradient rather than a floodlight: rest gain
+0.55 against 0.95, pulse peak 0.73 against 1.25, halo 0.40 to 0.62
+against 0.55 to 0.90, pane 0.12 to 0.20 against 0.16 to 0.28. The edge
+band that outlines the opening survives; what goes is the interior
+bloom that painted over the gate's own dressing, which is what made a
+flag gate read as a glowing box with the pennant washed out.
+
+Hiding non target gates was already built: the three tier system rests
+every unlit gate dark with only the printed structure visible, by
+recorded design. Not rebuilt here.
+
+DEFERRED, with the reason written down: the report also asked for wider
+scoring tolerance when turning around flag pylons. Flag markers already
+score as virtual stations twice the clearance wide, and widening them
+further changes what a lap time means, so every posted time and ghost
+on those courses stops being comparable. That is a course fairness
+decision for the owner, not a visual tweak, and it is left on the
+board.
+
+CHECKS: three shots.js runs through the real shell, console errors 0
+warnings 0 harness faults 0 on each. Material readback through
+__gateTiers: target ring #ff4fd8, follow #ad8f3c, all others dark; live
+glow sampled 0.55 at rest and 0.65 to 0.73 through the pulse, against
+0.95 to 1.25 before. Screenshot confirms the retitled takeoff hint.
+Verify NOT run: render and prose only, no physics, and check 13 loads
+only the harness page.
+
+Possible effect if this breaks something: gate legibility. If pilots
+report losing the target against sunset light or the city map, the gain
+numbers in updateWind and setNextGate are the dials, and this commit is
+the rollback point. The scoring, the tiers and the wrong side test are
+untouched.

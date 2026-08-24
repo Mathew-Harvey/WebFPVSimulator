@@ -1244,7 +1244,7 @@ export class Ui {
      */
     const howto = el('div', 'screen screen-page screen-howto');
     howto.append(el('h2', null, 'How to fly'));
-    howto.append(el('p', 'howto-lede', 'A quad has no brakes and no wings. Throttle only sets how hard the props push, so the way to slow down or turn is to point the quad somewhere else and push. Fly the pulsing gate: green is the way through, red is its wrong face.'));
+    howto.append(el('p', 'howto-lede', 'A quad has no brakes and no wings. Throttle only sets how hard the props push, so the way to slow down or turn is to point the quad somewhere else and push. Fly the pulsing gate: magenta is the way through, red is its wrong face.'));
 
     const howtoTabs = el('div', 'howto-tabs');
     this.howtoTabs = {};

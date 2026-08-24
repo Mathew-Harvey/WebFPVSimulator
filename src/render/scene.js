@@ -1548,15 +1548,22 @@ const DIGITS = {
  *
  * GATE_COLOUR is every gate at rest, START_COLOUR is the start and finish
  * line so the timing plane is identifiable before anything is lit, and
- * NEXT_COLOUR is THE ONE THE RACE WANTS NEXT: a neon green pane in the
- * opening, pulsing. WRONG_COLOUR is the same pane seen from the other
- * face, so the hole is green when you are on line and red when you are
- * not. Grass is also green, so the front is a signal green that sits
- * above the turf rather than in it.
+ * NEXT_COLOUR is THE ONE THE RACE WANTS NEXT: a lit pane in the opening,
+ * pulsing. WRONG_COLOUR is the same pane seen from the other face, so the
+ * hole reads on line one way and not the other.
+ *
+ * NEXT_COLOUR was a signal green, and a board report called it confusing:
+ * the start line is already green, the grass is green, and a green target
+ * over a green field asks the eye to grade greens at 30 m/s. Magenta is
+ * the choice an earlier round of this file already argued for and later
+ * lost: the one strong hue neither world contains, now that the gates are
+ * navy, red and off white vinyl on grass under a blue sky. It cannot be
+ * mistaken for the mint start line, and the wrong face stays red, which
+ * reads as red against it rather than as a darker shade of the same thing.
  */
 const GATE_COLOUR = 0xffd45c;
 const START_COLOUR = 0x7dffb4;
-const NEXT_COLOUR = 0x39ff8b;
+const NEXT_COLOUR = 0xff4fd8;
 const WRONG_COLOUR = 0xff5a5a;
 
 /*
@@ -1791,7 +1798,7 @@ function gateCue(clearW, clearH) {
 /*
  * A scoring square with no PVC: the pass side of a flag or a cone.
  *
- * Same lit outline, halo, glow and green pane a real opening wears, so the
+ * Same lit outline, halo, glow and lit pane a real opening wears, so the
  * next-gate paint and the race test cannot disagree about where the hole
  * is. Resting colour is the start green rather than the cream of a PVC
  * gate, because this square is the thing the pilot has to fly through and
@@ -3925,7 +3932,11 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     target.haloMat.color.set(NEXT_COLOUR);
     target.glowMat.uniforms.uFront.value.set(NEXT_COLOUR);
     target.glowMat.uniforms.uBack.value.set(WRONG_COLOUR);
-    target.glowMat.uniforms.uGain.value = 0.95;
+    /* 0.55, down from 0.95. The report: the target glow was bright enough
+     * to obscure the gate's own dressing, a flag gate read as a glowing
+     * box with the pennant washed out. The edge band stays legible at
+     * 0.55; what goes is the interior bloom that painted over the frame. */
+    target.glowMat.uniforms.uGain.value = 0.55;
     /* A stacked figure shares one glow across its openings. Put that
      * glow, and the pane, on the hole this station names. */
     if (target.trackGlow && target.aperture) {
@@ -4700,11 +4711,15 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       const gt = gates[nextGateIdx];
       const pulse = 0.5 + 0.5 * Math.sin(t * 4.4);
       /* Pulse the glow, not the ring's hue. Lerping the ring toward white
-       * made the target lose the one colour that identifies it. */
-      gt.glowMat.uniforms.uGain.value = 0.95 + 0.30 * pulse;
-      gt.haloMat.opacity = 0.55 + 0.35 * pulse;
+       * made the target lose the one colour that identifies it. The levels
+       * came down with the board report about the glow obscuring the gate:
+       * rest 0.55 peak 0.73 against the old 0.95 to 1.25, halo 0.40 to
+       * 0.62, pane 0.12 to 0.20, a transparency gradient rather than a
+       * floodlight, and the flag above the header stays visible. */
+      gt.glowMat.uniforms.uGain.value = 0.55 + 0.18 * pulse;
+      gt.haloMat.opacity = 0.40 + 0.22 * pulse;
       if (gt.fillMat && gt.fillMat.uniforms && gt.fillMat.uniforms.uOpacity) {
-        gt.fillMat.uniforms.uOpacity.value = 0.16 + 0.12 * pulse;
+        gt.fillMat.uniforms.uOpacity.value = 0.12 + 0.08 * pulse;
       }
     }
   }
@@ -4818,7 +4833,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     updateShadowFocus, updateWind, setNextGate, targetAim, approachSide,
     graphics: q.id,
     /* Kept as no-ops so the shell has one call shape. The racing line is
-     * a planner tool now; the target in the air is the green pane. */
+     * a planner tool now; the target in the air is the magenta pane. */
     setRacingLine() {},
     hasRacingLine: false,
     updateRacingLine() { return null; },

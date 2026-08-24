@@ -15620,3 +15620,29 @@ report losing the target against sunset light or the city map, the gain
 numbers in updateWind and setNextGate are the dials, and this commit is
 the rollback point. The scoring, the tiers and the wrong side test are
 untouched.
+
+## Every flight controller number can be typed now
+
+The CLI report, resolved the way this project already resolved it once.
+The report: only up and down arrows are available, and the best
+alternative would be editing the CLI directly. The second half is the
+owner's one recorded exclusion, text leaves this simulator and none
+comes in, and it stays excluded. The first half is exactly the bug the
+Rates screen had when its lists could not hold a pilot's numbers, and
+it gets the same cure: every stepper row on the flight controller
+screen is now a typed number field with the arrows kept, one firmware
+unit each, commit on blur or Enter, clamped to the firmware bounds the
+catalog already carries. A filter cutoff spanning a thousand units is
+one typed number instead of a thousand presses. Lookup dropdowns and
+the simplified sliders are untouched; they were already the right
+control.
+
+CHECKS: node --check, then a shots.js run driving the real screen: 130
+rows render with 80 typed fields where there were none, console errors
+0 warnings 0. Verify NOT run: one row factory in fc.js, no physics, no
+module text change; the value path is the same setValue every arrow
+press already took.
+
+Possible effect if this breaks something: the flight controller screen
+only. If a field commits garbage or the cursor misbehaves on that
+screen, revert this. Nothing outside src/ui/fc.js moved.

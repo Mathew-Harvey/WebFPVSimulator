@@ -754,13 +754,43 @@ export class FcSession {
         rowClass: greyClass,
       };
     }
+    /*
+     * Every remaining field is a TYPED number row, the same control the
+     * Rates screen earned when its lists could not hold a pilot's own
+     * numbers. These were arrow steppers, and a board report made the
+     * arithmetic plain: a filter cutoff spanning 1000 at one press per
+     * unit is not a control, it is a punishment, and the alternative the
+     * report reached for was pasting CLI, which is the one door this
+     * screen does not have. The arrows stay, one firmware unit each,
+     * taking the typed text as their base; the field takes the number a
+     * pilot already knows. Commit is on blur or Enter, exactly as the
+     * Rates screen argues.
+     */
+    const spec = {
+      cliMin: min, cliMax: max, scale: 1, decimals: 0, unit: '',
+    };
     return {
       label: field.key,
       note,
-      value: formatField(field, String(cur)),
-      step: true,
+      num: {
+        spec, cli: cur, text: String(cur), unit: '',
+      },
       adjust: (d) => {
         this.setValue(field.key, String(clamp(cur + d, min, max)));
+      },
+      typed: (raw2) => {
+        const t = String(raw2).trim();
+        if (t === '') {
+          return null;
+        }
+        const v = Math.round(Number(t));
+        if (!Number.isFinite(v)) {
+          return null;
+        }
+        return clamp(v, min, max);
+      },
+      set: (v) => {
+        this.setValue(field.key, String(v));
       },
       rowClass: greyClass,
     };

@@ -181,6 +181,27 @@ export const RATE_DEFAULTS = Object.freeze({
   yaw: Object.freeze({ rcRate: 7, srate: 67, expo: 0 }),
   /* 100 is off, which is what a freshly flashed quad does. */
   throttleCap: 100,
+  /* Betaflight's throttle curve, thr_mid and thr_expo, stored as the
+   * firmware's uint8s exactly like the axis fields above. 50 and 0 are the
+   * factory values: mid at half stick, no bend. A board report asked for
+   * these by name; they were compiled and live all along, reachable by
+   * nothing. */
+  thrMid: 50,
+  thrExpo: 0,
+});
+
+/*
+ * The throttle curve fields, same shape as an axis field so the same number
+ * row can edit them. The firmware stores hundredths: thr_mid 50 is
+ * Configurator's 0.50, thr_expo 0 is no bend. The curve itself is
+ * fc/rc.c's rcLookupThrottle over the table generateThrottleCurve builds,
+ * nothing is transcribed here.
+ */
+export const THROTTLE_CURVE_FIELDS = Object.freeze({
+  thrMid: field('Throttle mid', 0, 100, 0.01, 2, '',
+    'Where the curve pivots. 0.50 is the factory middle; pilots who hover low often bring it down toward their hover stick so the expo softens the right part of the travel.'),
+  thrExpo: field('Throttle expo', 0, 100, 0.01, 2, '',
+    'Flattens the throttle around the mid point and steepens the ends, exactly Betaflight\'s thr_expo. 0 is the factory straight line.'),
 });
 
 /*
@@ -210,6 +231,8 @@ export const TOUCH_RATE_DEFAULTS = Object.freeze({
   pitch: Object.freeze({ rcRate: 6, srate: 45, expo: 25 }),
   yaw: Object.freeze({ rcRate: 6, srate: 40, expo: 25 }),
   throttleCap: 100,
+  thrMid: 50,
+  thrExpo: 0,
 });
 
 function rateFields(type) {
@@ -273,10 +296,19 @@ export function normaliseRates(r) {
    * Clamping the given ones onto it would be reading a Betaflight super rate
    * of 250 as an Actual max rate and flying it. The throttle limit is not
    * part of the rates system, so it survives either way. */
-  const src = known ? given : { throttleCap: given.throttleCap };
+  const src = known ? given : {
+    throttleCap: given.throttleCap, thrMid: given.thrMid, thrExpo: given.thrExpo,
+  };
   const fields = rateFields(type);
   const fallback = typeDefaults(type);
-  const out = { type, throttleCap: nearest(THROTTLE_CAP_CHOICES, src.throttleCap ?? RATE_DEFAULTS.throttleCap) };
+  const out = {
+    type,
+    throttleCap: nearest(THROTTLE_CAP_CHOICES, src.throttleCap ?? RATE_DEFAULTS.throttleCap),
+    /* The throttle curve is not part of the rates system either, so it
+     * survives a type change the same way the limit does. */
+    thrMid: clampField(THROTTLE_CURVE_FIELDS.thrMid, src.thrMid, RATE_DEFAULTS.thrMid),
+    thrExpo: clampField(THROTTLE_CURVE_FIELDS.thrExpo, src.thrExpo, RATE_DEFAULTS.thrExpo),
+  };
   for (const axis of RATE_AXES) {
     const a = src[axis] && typeof src[axis] === 'object' ? src[axis] : {};
     out[axis] = {
@@ -301,6 +333,8 @@ export function profileForType(type, r) {
     pitch: { ...d },
     yaw: { ...d },
     throttleCap: keep.throttleCap,
+    thrMid: keep.thrMid,
+    thrExpo: keep.thrExpo,
   });
 }
 
@@ -342,7 +376,8 @@ export function ratesFromLegacy(s) {
 export function ratesAreDefault(r) {
   const a = normaliseRates(r);
   const b = normaliseRates(RATE_DEFAULTS);
-  if (a.type !== b.type || a.throttleCap !== b.throttleCap) {
+  if (a.type !== b.type || a.throttleCap !== b.throttleCap
+      || a.thrMid !== b.thrMid || a.thrExpo !== b.thrExpo) {
     return false;
   }
   return RATE_AXES.every((axis) => RATE_FIELDS.every((k) => a[axis][k] === b[axis][k]));
@@ -431,6 +466,8 @@ export function ratesDiff(r) {
     'set quickrates_rc_expo = OFF',
     `set throttle_limit_type = ${p.throttleCap < 100 ? 'SCALE' : 'OFF'}`,
     `set throttle_limit_percent = ${p.throttleCap}`,
+    `set thr_mid = ${p.thrMid}`,
+    `set thr_expo = ${p.thrExpo}`,
     '',
   ].join('\n');
 }

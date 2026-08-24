@@ -64,6 +64,7 @@ import {
   TOUCH_RATE_DEFAULTS,
   RATE_TYPE_LABEL,
   THROTTLE_CAP_CHOICES,
+  THROTTLE_CURVE_FIELDS,
   cliOf,
   formatRate,
   fullStickDeg,
@@ -3088,6 +3089,25 @@ export class Ui {
           r.throttleCap,
           (n) => (n >= 100 ? 'Off' : `${n}%`),
           (n) => { r.throttleCap = n; },
+        ),
+        /* Betaflight's own throttle curve, thr_mid and thr_expo, the two
+         * uint8s fc/rc.c bends the throttle stick with. Compiled and live
+         * all along; a board report asked where they were. The hover figure
+         * quoted by the limit row above is measured on the straight factory
+         * curve, so a bent curve moves where hover sits on the stick. */
+        number(
+          THROTTLE_CURVE_FIELDS.thrMid.label,
+          `${THROTTLE_CURVE_FIELDS.thrMid.note} This quad hovers near ${hover.toFixed(1)} percent of stick on the factory curve.`,
+          THROTTLE_CURVE_FIELDS.thrMid,
+          r.thrMid,
+          (v) => { r.thrMid = v; },
+        ),
+        number(
+          THROTTLE_CURVE_FIELDS.thrExpo.label,
+          THROTTLE_CURVE_FIELDS.thrExpo.note,
+          THROTTLE_CURVE_FIELDS.thrExpo,
+          r.thrExpo,
+          (v) => { r.thrExpo = v; },
         ),
         {
           label: 'Revert to defaults',

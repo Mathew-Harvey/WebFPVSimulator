@@ -15514,3 +15514,41 @@ against noise that does not exist in this plant. The fix that matches
 the cause is a gyro noise model, which changes every tune's feel at
 once and needs a pilot on the other end of it; that is its own round,
 not a line in this one.
+
+## The throttle curve gets its rows
+
+Report 1 of the triage: no throttle rates or expo option anywhere.
+thr_mid and thr_expo were compiled, live, catalogued and reachable by
+nothing: the FC screen's rateprofile page drops every RATE_KEYS member
+by design and the Rates screen never grew rows for them. They are Rates
+screen citizens now, two typed number rows under Throttle next to the
+limit, stored as the firmware's uint8s like every other rate field,
+emitted by ratesDiff EVERY LINE EVERY TIME per that file's own rule so a
+value switched back to factory cannot linger from the profile before.
+profileForType and ratesAreDefault carry them, ratesFromDump reads them
+back, and the touch defaults hold the factory 50 and 0.
+
+MEASURED, not assumed: composed config with thr_mid 40 and thr_expo 35
+reads back 40 and 35 through sim_bf_get, and the curve flies, at 40
+percent stick with mid 50, expo 60 climbs at 14.1 m/s against 10.6 on
+the straight line, which is Betaflight's own semantics: expo pulls the
+neighbourhood of mid toward the mid output. Nothing is transcribed in
+JS; fc/rc.c bends the stick.
+
+CHECKS run this turn: node --check on the three touched files, lint:fc
+30 of 30 (F16 covers the two new ratesDiff lines for free), lint:presets
+4 of 4, ghost selftest 45 of 45. npm run verify was NOT run: no plant,
+module, patch or build file is touched, the module text path is the same
+one every preset already takes and lint:fc exercises it against the real
+module. The share card and harness pages do not read rates.
+
+KNOWN COST, deliberate: the composed config text gains two lines for
+everyone, so the djb2 record key changes and every stored local best lap
+and its ghost resets once. They were records for a config that no longer
+exists; the board is unaffected.
+
+Possible effect if this breaks something: anything that parses the
+composed config or keys off its hash. If tunes refuse to load, or the
+Rates screen misdraws, this commit is the one. The two rows sit at the
+bottom of the Throttle section, so the menu cursor map shifted by two
+rows on that screen.

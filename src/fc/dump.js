@@ -349,6 +349,8 @@ export function ratesFromDump(text) {
     pitch: { rcRate: num('pitch_rc_rate'), srate: num('pitch_srate'), expo: num('pitch_expo') },
     yaw: { rcRate: num('yaw_rc_rate'), srate: num('yaw_srate'), expo: num('yaw_expo') },
     throttleCap: num('throttle_limit_percent'),
+    thrMid: num('thr_mid'),
+    thrExpo: num('thr_expo'),
   });
 }
 

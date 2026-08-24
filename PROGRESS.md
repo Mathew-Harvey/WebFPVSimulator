@@ -15221,3 +15221,145 @@ Whether it FEELS right is not settled here and cannot be. The overshoot
 that the report describes is measured and two thirds of it is gone; the
 pilot who reported it is the one who gets to say whether that is what
 they meant.
+
+## Ten reports off the board, triaged before anything moved
+
+A batch from the live board, nine from Crapshack flown over one evening
+and one from Le Star already part answered by the Precision entry. The
+owner's brief for this round: appreciate the goal behind each report
+before deciding the approach, some of the suggestions are not the right
+mechanism even where the itch is real; land every accepted change as its
+own commit so any one of them can be rolled back alone; and write next to
+each commit what it could plausibly break, so a regression hunt starts
+from a list instead of a bisect.
+
+No advisor channel exists in this session; per the standing convention
+the model shape and ABI reasoning for anything physical is recorded here
+instead.
+
+TOOLCHAIN, because it is load bearing for everything below. This
+container had no Emscripten and, it turns out, no vendor/betaflight
+checkout at all: the submodule was never initialised here, which is
+exactly why the last several recorded verify runs carry check 1 red with
+"emcc not found". emsdk 6.0.8 is now installed and the submodule is
+checked out at the pinned 77d01ba3. The rebuilt module is byte different
+from the committed dist/sim.wasm, as a different compiler version will
+be, and the thing that matters was measured rather than assumed: the
+fc-trace hash of the rebuilt module is 0cfec5939c86, identical to the
+committed module's. The toolchain change is trace neutral. The first
+commit that touches plant.c ships a dist/sim.wasm carrying both the
+compiler difference and the physics difference; the hash is the evidence
+that separates them.
+
+THE TRIAGE, one verdict per report.
+
+1. "No throttle rates/expo option available." Real gap, accept. thr_mid
+   and thr_expo are already compiled, live, catalogued and reachable by
+   nothing: visibleFields drops every RATE_KEYS member from the FC
+   screen's rateprofile page and the Rates screen never grew rows for
+   them. The fix is rows on the Rates screen next to the throttle limit,
+   emitted from ratesDiff EVERY LINE EVERY TIME per that file's own rule.
+   Known cost, deliberate: two new lines in the composed config text
+   change the record key, so stored local best laps and their ghosts
+   reset once. They are records for a config that no longer exists.
+
+2. "Motor strain against opposing airflow isn't available." Correct, and
+   it is the most consequential physics gap in the batch. Thrust already
+   scales with axial inflow; prop drag torque does not, it is kq w^2
+   whatever the air is doing. So no flight state ever loads or unloads a
+   motor: RPM cannot sag when a prop is driven into opposing flow and
+   cannot rise when a climb unloads it, and the audible motor split the
+   vortex ring report describes cannot exist because the load side of the
+   physics is deaf to the flow. Accept: scale the drag torque by the
+   induced fraction of the same axial factor the thrust uses. Blade
+   element says torque carries an induced part that follows the inflow
+   and a profile part that does not; the split lands near the figure of
+   merit, so the induced fraction is what moves.
+
+3. "Vortex ring state isn't present in the sim." The loss model is
+   present and its shape is right, onset at a quarter of the induced
+   velocity, floor at 0.75, per motor asymmetry. What is genuinely
+   missing is what the report's own hover test listens for: the motor
+   RPM split. That is report 2's fix, not a second VRS model. The fixed
+   PLANT_INFLOW_ASYM table also gets a direction term so the deeper
+   rotor is the downwind one rather than always the same one. Partial
+   accept, via the torque coupling.
+
+4. "Re-implement very light prop wash." The wash exists and was turned
+   down to 0.08 after the same tester called 0.30 too hot, and the
+   constant carries a standing instruction in plant.c: raise it if the
+   wash disappears, do not put it back at 0.30 without a pilot saying
+   so. A pilot is now saying it disappeared. Accept: 0.08 to 0.12, the
+   value the gain was originally derived at, still a quarter of 0.30.
+
+5. "Quad too laggy at low/high throttle, account for rotational inertia
+   of the motors." The mechanism the report asks for is already in the
+   model: the stator reaction is ke i, and i carries j dw/dt, so the
+   inertial reaction torque of every spool up already acts on the frame,
+   and the log records motor lag rejected as non limiting with
+   measurements. What the report may actually be feeling at the stick
+   extremes is duty saturation, which is real on a real quad too. Verdict:
+   measure before believing, with a yaw step probe at low, middle and
+   high throttle. No change unless the probe contradicts the log.
+
+6. "Add 3 to 8 ms motor latency so maxed PIDs are not too perfect."
+   Decline the mechanism. ESC transport delay was measured against the
+   step size and refused already: the real figure is 0.2 to 0.3 ms and
+   the smallest representable step is 1 ms, three to five times too
+   big, it would make the model less like a real quad. The honest cause
+   of too perfect maxed PIDs is the noiseless gyro, recorded in the
+   Crapshack tune entry. A gyro noise model is the right fix and is its
+   own round with a pilot on the other end; declined here, not built.
+
+7. "Side body lift when yawing without banking." Real effect, absent
+   from the model, accept. Per axis quadratic drag gives a lateral force
+   that goes as sin^2 of the sideslip, near nothing at 15 to 30 degrees.
+   A body in cross flow carries a side force linear in the sideslip
+   component at flight speed, which is what turns the velocity vector
+   toward the nose when the tail swings out. One term: a cross flow side
+   force proportional to in plane speed times lateral velocity, applied
+   in the body frame alongside the existing quadratic drag. Small by
+   construction at the reported angles, zero in pure forward flight, so
+   check 7 cannot see it.
+
+8. "Karate 6s but heavier." Accept as a craft weight option through an
+   additive ABI entry, default stock. Mass is a compile time const; a
+   runtime scale on mass with inertia left alone is the honest first cut
+   for a heavier pack strapped to the same frame, most of an extra
+   pack's mass sits at the CG. Harness never calls it, so every check
+   and the baseline trace are untouched by construction. The record key
+   must carry the weight so a heavy lap does not sit in a stock record.
+
+9. "Arcade vs expert mode." Accept the goal, scope the mechanism: an
+   additive sim flag that zeroes the imperfection terms (wash amplitude,
+   inflow asymmetry, motor cant tables) for a frame that flies like the
+   symmetric ideal. Expert is the current model and stays the default;
+   arcade laps must not publish to the board. If the clock runs out this
+   round, the design ships as words here rather than half a mechanism.
+
+10. "Wider FOV," "render at lower resolution," "fixed framerate,"
+    "match input latency," "internet radio," "gate visuals," "CLI
+    editing." All shell, all accepted in reduced honest form: one wider
+    rectilinear stop rather than a fisheye's 162 diagonal typed into a
+    perspective camera (the lens.js derivation stands); a render scale
+    option and an optional frame cap with the input poll hoisted above
+    the skip, but no latency padding loop, the P7 gate already measures
+    input to photon and padding to a constant is a speculation the log
+    has no measurement for; a radio stream option that plays through
+    the existing element and mix bus with the loudness caveat written
+    down (station loudness is not ours, and an http stream will be
+    blocked on the https deploy by the browser, not by us); active gate
+    recoloured off green and its glow calmed so the flag it wraps stays
+    visible, non target gates already rest dark by design; and typed
+    number fields on the FC screen's stepper rows, the same treatment
+    the Rates screen got, NOT the CLI textarea, which is the owner's
+    one recorded exclusion and stays excluded.
+
+Le Star's gate size question was answered in the Precision entry: gates
+fly 15 percent over MultiGP spec. Nothing to change.
+
+ORDER OF WORK: physics first while the verify battery is fresh, then the
+config surface, then render and shell. Each physics commit gets its own
+build and full verify; the known red is check 16, the feather flag
+budget, recorded red on main to the digit before this round started and
+not touched by it.

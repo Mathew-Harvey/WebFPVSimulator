@@ -15363,3 +15363,28 @@ config surface, then render and shell. Each physics commit gets its own
 build and full verify; the known red is check 16, the feather flag
 budget, recorded red on main to the digit before this round started and
 not touched by it.
+
+## The wash comes back to 0.12, the pilot asked
+
+Report 4 of the triage: "re implement very light prop wash". The wash was
+never removed, it was turned down to 0.08 after the same tester called
+0.30 too hot, and the constant carried the standing instruction to raise
+it when a pilot says it disappeared. That happened, so k_propwash goes
+0.08 to 0.12, the value the RMS derivation originally produced, still
+under half of the 0.30 that was too much. One constant, nothing else.
+
+RUN LOG. build:wasm exit 0, vendor diff empty. npm run verify 15 of 16:
+hover 0.2637, punch 81.5 m, terminal 31.1 m/s, motor step 26 ms, rate
+tracking 671.6 deg/s (was 671.5, the wash brushes the tail of that run),
+yaw coupling -0.12 deg, sag 11.14 percent, diff ratio 1.2476 (was
+1.2478), console clean, audio bed alive. The trace hash moved
+6d17d4814bdc to 8899b2b35b94, which is the change telling the truth:
+baseline.rec contains a low throttle descent into the wash. Check 16,
+map isolation, stays red at the feather flag budget it has carried on
+main since before this round; untouched here.
+
+Possible effect if this breaks something: any descent through own wake
+shakes half again harder than yesterday. If a pilot reports new shake in
+dives or hard descending turns, this commit is the one to revert. It
+cannot affect hover, climb, punch or forward flight by construction, the
+wash is gated on recirculation depth.

@@ -160,12 +160,15 @@ const PlantParams PLANT = {
    * worst point of a props level descent. 0.30 put it near 45 to 59 deg/s,
    * which is inside the published 50 to 150 band and was still too much on
    * the sticks: a pilot flying this build called the full throttle shake
-   * and the wash both too hot. 0.08 is about a quarter of that, back under
-   * the original 0.12, with the wider descent window still in place so a
-   * fast fall is not glass. This is a FEEL constant. Raise it if the wash
-   * disappears; do not put it back at 0.30 without a pilot saying so.
+   * and the wash both too hot. 0.08 was about a quarter of that, back under
+   * the original 0.12. This is a FEEL constant, and the instruction that
+   * stood here said raise it if the wash disappears, do not put it back at
+   * 0.30 without a pilot saying so. A pilot has now said it disappeared:
+   * the same tester who called 0.30 too hot asked for very light prop wash
+   * to come back. 0.12 is the value the RMS derivation originally landed
+   * on, still less than half of 0.30, with the wider descent window kept.
    */
-  .k_propwash = 0.08,
+  .k_propwash = 0.12,
   .prop_r = 0.0635,
   .k_rotor_drag = 0.43842,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.

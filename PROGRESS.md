@@ -15442,3 +15442,38 @@ thrust-side change has less headroom than it used to. The RPM filter and
 dyn notch see a live RPM that moves with the flow. Motor audio pitch now
 sags under load and rises in descents. If a pilot reports motors sounding
 wrong, or check 6 goes red in a later round, this commit is the suspect.
+
+## A body in sideslip carries lift now
+
+Report 7 of the triage: yaw the quad 15 to 30 degrees without banking
+and nothing drifts, where a real frame with a broadside pack pushes
+gently toward where the nose points. The reason it was silent: the per
+axis quadratic drag goes as the SQUARE of the lateral component, near
+nothing at those angles, while the real slender body effect is LINEAR
+in sideslip at flight speed. One term added in the body frame,
+F = -0.5 rho k_body_lift |v_xy| vy, applied at the CG with no moment so
+the yaw dynamics and every rate check are untouched. k_body_lift 0.010
+m^2, the body and pack side silhouette at a lift slope of order one:
+0.8 N at 20 m/s and 20 degrees, a tenth of a g of drift. Derivation at
+the constant in plant.c; no advisor channel, reasoning recorded here.
+
+MEASURED, same gentle rudder input held from the same forward flight:
+the course turns 169.6 degrees where it turned 165.6, and the sideslip
+carried is 46.2 degrees where it was 50.2. Four degrees of slip became
+four degrees of turn, which is the report's sentence about a long frame
+turning on a breath of yaw, at the subtle scale it described.
+
+RUN LOG. build:wasm exit 0, vendor diff empty. npm run verify 15 of 16:
+hover 0.2637, punch 84.0, terminal 32.0, step 26 ms, rate 671.7, yaw
+coupling -0.11, sag 11.28, diff ratio 1.2473, every number identical to
+the previous commit's run except the trace hash, 213f3f799bf7, which
+moved because the baseline replay carries lateral velocity through its
+turns. Pure forward flight has vy = 0, so checks 7 and the P5 top speed
+cannot see the term by construction. Check 16 red at the recorded
+feather flag budget, untouched.
+
+Possible effect if this breaks something: sideways slides wash out
+slightly faster, and any manoeuvre flown with the tail hanging out picks
+up a gentle nose-ward drift. If corners suddenly feel like they pull, or
+knife edge drops drift oddly, this commit is the one to revert. It
+cannot affect hover, vertical flight or straight line speed.

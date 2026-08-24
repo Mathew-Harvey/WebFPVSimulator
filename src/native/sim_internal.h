@@ -67,6 +67,9 @@ typedef struct {
   double cda_plan;   /* drag area top, m^2, along body z */
   double cda_front;  /* drag area front, m^2, along body x */
   double cda_side;   /* drag area side, m^2, along body y */
+  double k_body_lift; /* cross flow side lift area, m^2. Side force linear in
+                      * the lateral velocity component at flight speed, the
+                      * body and pack as a lifting slab; see plant.c. */
   double rho;        /* air density */
   double k_propwash; /* unsteady inflow amplitude, fraction of thrust at full
                       * recirculation depth. See plant.c. */

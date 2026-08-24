@@ -153,6 +153,25 @@ const PlantParams PLANT = {
    * the nose without rudder. See PROGRESS.md.
    */
   .cda_side = 0.0147,
+  /*
+   * Cross flow side lift area. A body at a small sideslip carries a side
+   * force LINEAR in the sideslip component at flight speed, the slender
+   * body result, while the per axis quadratic drag above goes as the
+   * SQUARE of the lateral component and is therefore near silent at the
+   * 15 to 30 degrees a pilot actually yaws through a turn. A board report
+   * called the missing effect precisely: yaw the quad a little without
+   * banking and the fuselage and the pack should push it gently toward
+   * where the nose points, which is what lets a long frame turn on a
+   * breath of rudder. The force is F = -0.5 rho k |v_xy| vy in the body
+   * frame, applied at the CG with no moment, so it turns the velocity
+   * vector without touching the yaw dynamics or any rate check. 0.010 m^2
+   * is the body and battery side silhouette at a lift slope of order one:
+   * at 20 m/s and 20 degrees of sideslip it is 0.8 N, about a tenth of a
+   * g of gentle drift, which is the "subtle but noticible" of the report.
+   * Zero in pure forward flight by construction, so the terminal velocity
+   * and max level speed checks cannot see it.
+   */
+  .k_body_lift = 0.010,
   .rho = 1.225,
   /*
    * Unsteady wash amplitude as a fraction of a rotor's thrust at full
@@ -913,6 +932,13 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
   double f_body[3];
   for (int a = 0; a < 3; a += 1) {
     f_body[a] = -0.5 * PLANT.rho * cda[a] * v_body[a] * sim_fabs(v_body[a]);
+  }
+  /* Body side lift in sideslip: linear in vy at flight speed, see the
+   * derivation at k_body_lift. Turns the velocity vector toward the nose
+   * when the tail swings out; no moment, so yaw dynamics are untouched. */
+  {
+    const double v_xy = sim_sqrt(v_body[0] * v_body[0] + v_body[1] * v_body[1]);
+    f_body[1] -= 0.5 * PLANT.rho * PLANT.k_body_lift * v_xy * v_body[1];
   }
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     f_body[0] += thrust[m] * PLANT_AXIS[m][0];

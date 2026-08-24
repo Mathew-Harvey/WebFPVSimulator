@@ -15865,3 +15865,25 @@ between the mixed content wall on the https deploy and a station
 loudness the encoder's discipline cannot reach. The design stays
 recorded two entries up in case it ever comes back; nothing is built
 and nothing is owed.
+
+## Crapshack retires from the tune row
+
+Owner's call. The tune did its job: it proved the clean gyro thesis,
+its sweep produced the numbers, and Precision is its PIDs with the
+factory's feedforward, which the same round measured as better at the
+thing pilots kept reporting. Three tunes remain: Betaflight default,
+Karate race 6S, Precision, plus Your edits when a dump exists. The
+registry row and configs/crapshack.diff are gone; the file's derivation
+lives on in this log and in Precision's own diff comments. A stored
+settings tune of crapshack falls back to the default through the
+loadSettings whitelist, which is what that whitelist is for; its local
+best laps keep their keys and simply stop being offered.
+
+CHECKS: lint:presets 3 of 3, lint:fc 30 of 30, node --check clean.
+Verify NOT run: no physics, no module, no build file touched; a
+registry row and a config file the module only ever met through
+sim_init of its text.
+
+Possible effect if this breaks something: a pilot who had Crapshack
+selected boots onto Betaflight default and their Crapshack PBs stop
+showing. Revert restores the row and the file.

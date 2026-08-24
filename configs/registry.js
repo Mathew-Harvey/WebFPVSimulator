@@ -45,14 +45,9 @@ export const TUNES = [
     note: 'sugarK’s 6S 5 inch race tune. Lower D, sharper feedforward, faster stops.',
   },
   {
-    id: 'crapshack',
-    name: 'Crapshack',
-    note: 'The stiff one, cut for this sim’s clean gyro: PIDs near double stock, locked in at mid stick, quicker yaw.',
-  },
-  {
     id: 'precision',
     name: 'Precision',
-    note: 'Crapshack’s PIDs with the factory’s feedforward. Corrections moved at thumb speed land on your aim rather than a quarter past it.',
+    note: 'The stiff tune’s PIDs, near double stock, with the factory’s feedforward. Corrections moved at thumb speed land on your aim rather than a quarter past it.',
   },
 ];
 

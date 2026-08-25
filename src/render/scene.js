@@ -2549,6 +2549,7 @@ function coursePlacements(course) {
          * preview and the world deal the sponsors out the same way. */
         dress: structure.dress,
         flagSigns: structure.flagSigns,
+        flagLeans: structure.flagLeans,
         flagH: structure.flagH,
         flagPoleR: structure.flagPoleR,
         stations: [],
@@ -2951,10 +2952,12 @@ function obstacle(spec, index, isStart, opts = {}) {
 }
 
 /*
- * Pennants on a gate header. Left is local -X, right is +X, as seen facing
- * the gate. The mast stands on the board; the sail extends outboard so it
- * does not cover the opening or the number roundel. Poles bake with the
- * frame; sails stay live because they carry the cloth attribute.
+ * Pennants on a gate header. Left is local -X, right is +X and TOP is 0, the
+ * centre of the board, as seen facing the gate. The mast stands on the
+ * board; the sail extends outboard so it does not cover the opening or the
+ * number roundel, and a centre mast hangs its cloth to the right, which is
+ * where a single flag hangs by convention. Poles bake with the frame; sails
+ * stay live because they carry the cloth attribute.
  */
 function attachHeaderFlags(g, opts, layout) {
   const signs = opts.flagSigns;
@@ -2975,12 +2978,15 @@ function attachHeaderFlags(g, opts, layout) {
   let i = 0;
   for (const sx of signs) {
     const x = sx * halfW;
-    /* Outboard, on both ends. The pennant is the same feather flag the
-     * course is lined with at a pennant's size, so the mast bends the way
-     * the big ones do and the whole thing turns as one: the mast and the
-     * sail take the same position and the same half turn, because the
-     * geometry of both starts at the mast's butt. */
-    const turn = sx < 0 ? Math.PI : 0;
+    /* Outboard, on both ends, and to the right from the centre. The pennant
+     * is the same feather flag the course is lined with at a pennant's
+     * size, so the mast bends the way the big ones do and the whole thing
+     * turns as one: the mast and the sail take the same position and the
+     * same half turn, because the geometry of both starts at the mast's
+     * butt. The LEAN is a separate reading of the sign, because zero means
+     * the middle of the board rather than no offset at all. */
+    const lean = opts.flagLeans && opts.flagLeans[i] ? opts.flagLeans[i] : (sx < 0 ? -1 : 1);
+    const turn = lean < 0 ? Math.PI : 0;
     const pole = new THREE.Mesh(flagMastGeometry(mast, flagH), mats.frame);
     pole.position.set(x, headerTop, 0);
     pole.rotation.y = turn;
@@ -3009,7 +3015,7 @@ function attachHeaderFlags(g, opts, layout) {
     colliders.push({
       kind: 'obstacle',
       ax: x, ay: headerTop + curve.bendY, az: 0,
-      bx: x + sx * curve.tip.x, by: headerTop + curve.tip.y, bz: 0,
+      bx: x + lean * curve.tip.x, by: headerTop + curve.tip.y, bz: 0,
       r,
     });
     i += 1;
@@ -3805,6 +3811,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
           primary: st.primary,
           kit: dress,
           flagSigns: st.flagSigns,
+          flagLeans: st.flagLeans,
           flagH: st.flagH,
           flagPoleR: st.flagPoleR,
         }));

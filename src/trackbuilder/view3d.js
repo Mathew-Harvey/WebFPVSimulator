@@ -46,7 +46,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, virtualApertureDims } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logosOf, logoForDecal, dressOrder,
 } from './model.js';
@@ -1032,9 +1032,10 @@ export class View3D {
   }
 
   /*
-   * Pennants on the header corners of a flagged gate. Same teardrop as a
-   * turn flag, stood on the board rather than spiked in the grass, sails
-   * pointing outboard so they do not cover the opening.
+   * Pennants on a flagged gate's header: the ends, or the centre for a mast
+   * set on top. Same teardrop as a turn flag, stood on the board rather than
+   * spiked in the grass, sails pointing outboard so they do not cover the
+   * opening, and to the right from a centre mast which has no outboard.
    */
   buildHeaderFlags(group, el, selected) {
     const signs = flagSideSigns(flagSideOf(el));
@@ -1048,7 +1049,7 @@ export class View3D {
     const headerW = 2 * (top.clearW / 2 + tube + sleeveW);
     const headerTop = top.sillH + top.clearH + tube * 2 + BANNER_H + 0.03;
     const f = apertureFrame(el.yaw, el.pitch);
-    const h = GATE_FLAG_H;
+    const h = gateFlagHeight(el.dims);
     const poleR = GATE_FLAG_POLE_R;
     const poleMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
     const kit = this.dressFor(el);
@@ -1057,8 +1058,11 @@ export class View3D {
       const x = f.widthAxis.x * sx * (headerW / 2);
       const y = f.widthAxis.y * sx * (headerW / 2);
       /* One transform for the mast and its cloth, so the bend and the sail
-       * both lean outboard off the board's end. */
-      const turn = -Math.atan2(f.widthAxis.y * sx, f.widthAxis.x * sx);
+       * both lean outboard off the board's end. A CENTRE mast has sx zero,
+       * which is a position and not a direction, so the lean is read
+       * separately and the atan2 is fed a real vector rather than (0, 0). */
+      const lean = flagLeanSign(sx);
+      const turn = -Math.atan2(f.widthAxis.y * lean, f.widthAxis.x * lean);
       const pole = new THREE.Mesh(mastPlaneGeometry(poleR, h), poleMat);
       pole.rotation.x = Math.PI / 2;
       pole.rotation.y = turn;

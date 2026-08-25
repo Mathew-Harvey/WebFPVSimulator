@@ -216,7 +216,7 @@ course; that is what `sequence` is for.
 | `yawOverridden` | boolean | `true` when the AUTHOR set the heading, which stops the tool re-deriving it. See **Faces and pass sides**. |
 | `dims` | object | Dimensions, in metres, whose keys depend on `type`. Always complete: a missing key is filled from the default on read. |
 | `text` | string | **Labels only.** The text drawn on the field. |
-| `flagSide` | `"left"`, `"right"` or `"both"` | **Flagged gates and flagged doubles only.** Which end of the top header the pennant sits on, as seen facing the gate. Default `left`. Not a dimension. |
+| `flagSide` | `"left"`, `"right"`, `"both"` or `"top"` | **Flagged gates and flagged doubles only.** Where the pennant stands on the top header, as seen facing the gate. `top` is one mast on the CENTRE of the board, over the opening. Default `left`. Not a dimension; the mast's height is, and it is `dims.flagH`. |
 | `logoId` | string | **Ground logos only.** The `id` of the entry in `branding.logos` this footprint is painted with. Empty means the course's first logo. Not a dimension. |
 
 ### The element types
@@ -226,9 +226,9 @@ Each row's `kind` decides everything the tool does with it.
 | `type` | key | kind | in the course? | `dims` keys |
 | --- | --- | --- | --- | --- |
 | `gate` | G | aperture | yes, once per opening | `levels sillH clearW clearH levelPitch` |
-| `flaggedGate` | A | aperture | yes, once per opening | same. A 5x5 with a pennant on the header. `flagSide` chooses left, right or both. The palette calls it Flagged gate. |
+| `flaggedGate` | A | aperture | yes, once per opening | `levels sillH clearW clearH levelPitch flagH`. A 5x5 with a pennant on the header. `flagSide` chooses left, right, both or top, and `flagH` is how tall the mast is above the board, default 1.45. The palette calls it Flagged gate. |
 | `doubleStack` | 2 | aperture | yes, once per opening | same |
-| `flaggedDoubleStack` | H | aperture | yes, once per opening | same. A two hole 5x5 with a pennant on the top header. `flagSide` chooses left, right or both. The palette calls it Flagged double. |
+| `flaggedDoubleStack` | H | aperture | yes, once per opening | `levels sillH clearW clearH levelPitch flagH`. A two hole 5x5 with a pennant on the top header. `flagSide` chooses left, right, both or top, and `flagH` is the mast height. The palette calls it Flagged double. |
 | `ladder` | R | aperture | yes, once per opening | same. Three stacked 5x5s. The palette calls it Triple stack. |
 | `tower` | T | aperture | yes, once per opening | same |
 | `diveGate` | D | aperture | yes, once per opening | same |

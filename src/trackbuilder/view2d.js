@@ -33,7 +33,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, flagLeanSign, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logoForDecal,
 } from './model.js';
@@ -733,9 +733,9 @@ export class View2D {
   }
 
   /*
-   * Tiny pennants at the header ends, so a flagged gate is not a plain gate
-   * on the plan. Left and right are the width-axis ends as seen facing the
-   * gate, matching the inspector cards.
+   * Tiny pennants on the header, so a flagged gate is not a plain gate on
+   * the plan. Left and right are the width-axis ends as seen facing the
+   * gate and top is the centre, matching the inspector cards.
    */
   drawHeaderFlags(ctx, el, selected) {
     const signs = flagSideSigns(flagSideOf(el));
@@ -746,13 +746,17 @@ export class View2D {
     const half = el.dims.clearW * 0.5;
     ctx.fillStyle = selected ? C.selected : C.marker;
     for (const sx of signs) {
+      const lean = flagLeanSign(sx);
       const base = {
         x: el.position.x + u.x * sx * half,
         y: el.position.y + u.y * sx * half,
       };
+      /* The cloth hangs along the LEAN, which a centre mast has and a sign
+       * of zero does not: without this a top pennant drew as a zero length
+       * stroke and vanished from the plan. */
       const tip = {
-        x: base.x + u.x * sx * 0.55,
-        y: base.y + u.y * sx * 0.55,
+        x: base.x + u.x * lean * 0.55,
+        y: base.y + u.y * lean * 0.55,
       };
       const p = this.toScreen(base);
       const q = this.toScreen(tip);

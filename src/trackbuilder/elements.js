@@ -81,23 +81,47 @@ export const KIND = {
 
 /*
  * Header pennant on a flagged gate. The mast stands on the header board, it
- * does not spike the ground, and this is the only place its length is
- * written. Pole radius is the tube a teardrop sail sleeves onto, not the
- * gate's own PVC.
+ * does not spike the ground, and this is the DEFAULT length: a flagged gate
+ * carries `flagH` in its own dims so an author can set it. Pole radius is
+ * the tube a teardrop sail sleeves onto, not the gate's own PVC.
  */
 export const GATE_FLAG_H = 1.45;
 export const GATE_FLAG_POLE_R = 0.012;
 
-export const FLAG_SIDES = ['left', 'right', 'both'];
+/*
+ * WHERE ON THE HEADER THE MAST STANDS.
+ *
+ * The owner's report: "a flagged gate should allow me to set the flag gate
+ * on top of the actual gate, currently the flag is just ornamental". The
+ * three old choices were all at the header's ENDS, so the flag was a corner
+ * decoration with no way to put it over the gate at all, and `top` is the
+ * missing placement: one mast on the centre of the header board, standing
+ * directly over the opening.
+ *
+ * It is not decoration in the physical sense either, and it is worth saying
+ * because the report reads as though it might be: the mast and its whip are
+ * both colliders on the race field, so a pennant over the gate is something
+ * a pilot can hit while diving onto the top rail. Putting it on top is a
+ * course design decision with a consequence, which is what makes it worth
+ * offering.
+ */
+export const FLAG_SIDES = ['left', 'right', 'both', 'top'];
 
 export function normalizeFlagSide(value, fallback = 'left') {
-  if (value === 'left' || value === 'right' || value === 'both') {
+  if (value === 'left' || value === 'right' || value === 'both' || value === 'top') {
     return value;
   }
   return fallback;
 }
 
-/* Which header ends carry a pennant. Left is local -X when facing the gate. */
+/*
+ * Which header positions carry a pennant, as a fraction of the header's own
+ * half width. Left is local -X when facing the gate, right is +X, and TOP is
+ * ZERO: dead centre, over the opening. Reading these as a fraction rather
+ * than as a bare sign is what lets 0 mean the middle instead of meaning
+ * nothing; every drawer multiplies by the half width, so the arithmetic did
+ * not have to change to gain a third place to stand.
+ */
 export function flagSideSigns(side) {
   if (side === 'right') {
     return [1];
@@ -108,7 +132,22 @@ export function flagSideSigns(side) {
   if (side === 'left') {
     return [-1];
   }
+  if (side === 'top') {
+    return [0];
+  }
   return [];
+}
+
+/*
+ * Which way a pennant's sail and whip LEAN, given where its mast stands.
+ * Outboard from the header on an end mast, and a centre one has no outboard
+ * so it takes the right, which is where a single flag hangs by convention.
+ * One function because the mesh, the collider and both previews all have to
+ * agree: a mast whose cloth hangs one way and whose collider leans the other
+ * is the class of bug that only shows up as an invisible wall.
+ */
+export function flagLeanSign(sign) {
+  return sign < 0 ? -1 : 1;
 }
 
 export function flagSideOf(el) {
@@ -214,14 +253,17 @@ export const ELEMENTS = {
      * inspector offers left, right or both; this is the default a newly
      * placed one gets. */
     flagSide: 'left',
-    note: 'Standard square gate with a pennant on the header. Pick left, right or both in the inspector.',
+    note: 'Standard square gate with a pennant on the header. Put it left, right, both ends or on top, and set how tall the mast is.',
     /* Same 5 ft opening as `gate`. The pennant is dress on the header, not
      * a second sequence marker: the hole is still one gate.
      * VERIFY: nothing on multigp.com dimensions a header flag. 1.45 m of
      * mast above the board is the tool's own length, written once as
-     * GATE_FLAG_H. */
+     * GATE_FLAG_H and offered here as an editable default. */
     pitch: 0,
-    dims: { levels: 1, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
+    dims: {
+      levels: 1, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD,
+      flagH: GATE_FLAG_H,
+    },
   },
   doubleStack: {
     id: 'doubleStack',
@@ -245,9 +287,12 @@ export const ELEMENTS = {
     /* Same header pennant as `flaggedGate`, stood on the top board of a
      * two hole stack. The flags are dress: the holes are still two gates. */
     flagSide: 'left',
-    note: 'Two standard gates stacked, with a pennant on the top header. Pick left, right or both in the inspector.',
+    note: 'Two standard gates stacked, with a pennant on the top header. Put it left, right, both ends or on top, and set how tall the mast is.',
     pitch: 0,
-    dims: { levels: 2, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD },
+    dims: {
+      levels: 2, sillH: 0, clearW: 5 * FT, clearH: 5 * FT, levelPitch: 5 * FT + FRAME_TUBE_OD,
+      flagH: GATE_FLAG_H,
+    },
   },
   ladder: {
     id: 'ladder',
@@ -584,6 +629,14 @@ export function elementByKey(letter) {
  * world centre is the element's position raised by centerH, and the tilt
  * rotates the opening about that centre.
  */
+/* The mast height an element actually carries, with the default for a
+ * document written before flagH existed. One reader, so the mesh, the
+ * collider, the preview and the height cannot disagree. */
+export function gateFlagHeight(dims) {
+  const h = dims?.flagH;
+  return Number.isFinite(h) && h > 0 ? h : GATE_FLAG_H;
+}
+
 export function apertureLevels(dims) {
   const out = [];
   const n = Math.max(1, Math.round(dims.levels));
@@ -607,7 +660,9 @@ export function elementHeight(def, dims) {
     const levels = apertureLevels(dims);
     const top = levels[levels.length - 1];
     const h = top.sillH + top.clearH + FRAME_TUBE_OD;
-    return def.flagSide ? h + GATE_FLAG_H : h;
+    /* The author's own mast, not the default, so raising a pennant raises
+     * the height the 3D view's drag limits and the plan's labels use. */
+    return def.flagSide ? h + gateFlagHeight(dims) : h;
   }
   if (def.kind === KIND.OBSTACLE) {
     return dims.height;

@@ -1098,6 +1098,55 @@ function suiteFlaggedGate() {
     st ? st.flagSigns.join(',') : 'missing');
   check('and the mast height is scaled', st && Math.abs(st.flagH - GATE_FLAG_H * GATE_SCALE) < 1e-9,
     st ? String(st.flagH) : 'missing');
+  check('and both pennants lean outboard', st && st.flagLeans.join(',') === '-1,1',
+    st ? st.flagLeans.join(',') : 'missing');
+
+  /*
+   * ON TOP: one mast on the CENTRE of the header, which is the placement
+   * the three end choices had no way to say. The sign is zero, a position
+   * and not a direction, so the lean is carried separately or the cloth and
+   * the collider disagree about which way the flag hangs.
+   */
+  const topDoc = createTrack();
+  const topG = place(topDoc, 'flaggedGate', 10, 10);
+  topG.flagSide = 'top';
+  addToSequence(topDoc, topG.id, 0);
+  check('top is one mast', flagSideSigns(flagSideOf(topG)).join(',') === '0');
+  check('and it stands on the centre of the header',
+    flagSideSigns(flagSideOf(topG))[0] === 0);
+  check('top round trips',
+    deserialize(serialize(topDoc)).doc.elements[0].flagSide === 'top');
+  const topSt = courseFromDocument(topDoc).structures.find((x) => x.type === 'flaggedGate');
+  check('the field builds the centre mast', topSt && topSt.flagSigns.join(',') === '0',
+    topSt ? topSt.flagSigns.join(',') : 'missing');
+  check('and it leans to the right, not nowhere', topSt && topSt.flagLeans.join(',') === '1',
+    topSt ? topSt.flagLeans.join(',') : 'missing');
+
+  /* The mast height is the author's now, not a constant. */
+  const tallDoc = createTrack();
+  const tall = place(tallDoc, 'flaggedGate', 4, 4, { dims: { flagH: 2.6 } });
+  addToSequence(tallDoc, tall.id, 0);
+  const tallSt = courseFromDocument(tallDoc).structures.find((x) => x.type === 'flaggedGate');
+  check('an authored mast height reaches the field',
+    tallSt && Math.abs(tallSt.flagH - 2.6 * GATE_SCALE) < 1e-6,
+    tallSt ? String(tallSt.flagH) : 'missing');
+  check('and it raises the element height by the same amount',
+    Math.abs(elementHeight(ELEMENTS.flaggedGate, tall.dims)
+      - elementHeight(ELEMENTS.flaggedGate, { ...tall.dims, flagH: GATE_FLAG_H })
+      - (2.6 - GATE_FLAG_H)) < 1e-6);
+  /* A document written before flagH existed still builds a 1.45 m mast. */
+  const oldDoc = normalize({
+    schemaVersion: 2,
+    elements: [{
+      id: 'el-1', type: 'flaggedGate', position: { x: 5, y: 5, z: 0 }, flagSide: 'top',
+      dims: { levels: 1, sillH: 0, clearW: 1.524, clearH: 1.524, levelPitch: 1.5574 },
+    }],
+    sequence: [{ id: 'sq-1', elementId: 'el-1', apertureIndex: 0, entry: 1 }],
+  });
+  const oldSt = courseFromDocument(oldDoc.doc).structures.find((x) => x.type === 'flaggedGate');
+  check('a document with no flagH still gets the default mast',
+    oldSt && Math.abs(oldSt.flagH - GATE_FLAG_H * GATE_SCALE) < 1e-6,
+    oldSt ? String(oldSt.flagH) : 'missing');
 }
 
 function suiteFlaggedDoubleStack() {

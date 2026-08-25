@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_H, GATE_FLAG_POLE_R, flagSideOf, flagSideSigns, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
@@ -230,7 +230,19 @@ export function courseFromDocument(raw) {
     };
     if (def.flagSide) {
       s.flagSigns = flagSideSigns(flagSideOf(el));
-      s.flagH = GATE_FLAG_H * GATE_SCALE;
+      /*
+       * Which way each pennant's cloth and whip lean, alongside where its
+       * mast stands. It is carried rather than re-derived in the renderer
+       * because a mast on the CENTRE of the header has a sign of zero,
+       * which says where it is and cannot say which way it hangs, and a
+       * sail that hangs one way with a collider leaning the other is an
+       * invisible wall. The rule lives in elements.js with the sides.
+       */
+      s.flagLeans = s.flagSigns.map(flagLeanSign);
+      /* The author's mast, through the same obstacle scale every other
+       * length on the structure goes through, so the flag grows with the
+       * gate it stands on rather than shrinking against it. */
+      s.flagH = gateFlagHeight(el.dims) * GATE_SCALE;
       s.flagPoleR = GATE_FLAG_POLE_R * GATE_SCALE;
     }
     /* Null for anything that carries no printed vinyl. */

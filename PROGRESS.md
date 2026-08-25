@@ -16662,3 +16662,61 @@ ABI, no build file, and check 13 loads only the harness page.
 Possible effect if this breaks something: stacked structures only. If a
 stack ever goes completely dark when targeted, litApertures did not
 match the aperture list, and the readback above names the fault directly.
+
+## The header flag can stand on top of the gate, and it is a real object
+
+Owner's report, item 5 of eight: "a flagged gate should allow me to set
+the flag gate on top of the actual gate, currently the flag is just
+ornamental fix that."
+
+TWO THINGS WERE TRUE AND ONE WAS NOT. The mast was never ornamental in
+the physical sense: attachHeaderFlags has always pushed two capsules per
+pennant, the straight pole and the whip, so a pilot diving onto the top
+rail could always hit it. What WAS ornamental was the author's control of
+it. flagSide offered left, right and both, all three of them at the ENDS
+of the header board, so there was no way to put a flag over the gate at
+all and no way to say how tall it was. A choice between three corners is
+decoration; a placement with a consequence is not.
+
+So two changes, both in elements.js where the dimensions live:
+
+  flagSide 'top'   one mast on the CENTRE of the header, over the opening.
+                   flagSideSigns now reads as a FRACTION of the header's
+                   half width rather than as a bare sign, so 0 means the
+                   middle instead of meaning nothing, and every drawer
+                   already multiplied by the half width.
+  dims.flagH       how tall the mast is above the board, default the old
+                   GATE_FLAG_H of 1.45. normalize() walks the def's own
+                   dims keys, so this serialises, round trips and appears
+                   in the inspector with no further plumbing, and a
+                   document written before it existed gets the default.
+
+THE ZERO IS THE TRAP, and it is worth naming because it cost a rewrite.
+A sign of zero says where the mast STANDS and cannot say which way its
+cloth HANGS, and the mesh, the collider and both previews all derived the
+lean from the sign. A centre mast would have had a sail hanging one way
+and an invisible collider leaning nowhere. flagLeanSign is the one rule
+now, the course carries `flagLeans` beside `flagSigns` so the renderer
+does not have to re-derive it, and the plan's pennant stroke no longer
+comes out zero length and invisible.
+
+CHECKS: trackbuilder selftest 302 of 302, nine of them new: top is one
+centre mast, it round trips, the field builds it, it leans right rather
+than nowhere, an authored mast height reaches the field through
+GATE_SCALE and raises elementHeight by the same amount, and a document
+with no flagH still gets 1.45. Then a probe course through
+scripts/shots.js with three flagged structures: the capture shows the
+pennant standing dead centre on the header board directly over the
+opening, at the authored 2.2 m. Console errors 0, warnings 0, harness
+faults 0.
+
+schema.md's element table and its flagSide row are updated: it is the
+format's documentation and a new enum value that is not in it is a trap
+for the next reader.
+
+npm run verify NOT run: element library, document schema, renderer and
+two previews. No physics, no plant, no module ABI, no build file.
+
+Possible effect if this breaks something: flagged gates only. A course
+that had none is untouched, and an existing flagged gate keeps its side
+and gets the default mast.

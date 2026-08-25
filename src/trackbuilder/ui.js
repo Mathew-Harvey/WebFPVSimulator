@@ -167,7 +167,9 @@ function figureIcon(figId, levels) {
   return svg;
 }
 
-const FLAG_SIDE_LABEL = { left: 'Left', right: 'Right', both: 'Both' };
+const FLAG_SIDE_LABEL = {
+  left: 'Left', right: 'Right', both: 'Both', top: 'On top',
+};
 
 function flagSideIcon(side) {
   const svg = svgEl('svg', { viewBox: '0 0 72 56', 'aria-hidden': 'true' });
@@ -192,6 +194,11 @@ function flagSideIcon(side) {
   }
   if (side === 'right' || side === 'both') {
     pennant(56, 1);
+  }
+  /* On top is one mast on the middle of the board, over the opening, which
+   * is the placement the three end choices had no way to say. */
+  if (side === 'top') {
+    pennant(36, 1);
   }
   return svg;
 }
@@ -407,6 +414,7 @@ export class Panels {
     const LABELS = {
       levels: 'Levels', sillH: 'Sill height', clearW: 'Opening width', clearH: 'Opening height',
       levelPitch: 'Level spacing', width: 'Width', depth: 'Depth', height: 'Height',
+      flagH: 'Flag height',
       poleRadius: 'Pole radius', baseRadius: 'Base radius', clearance: 'Clearance',
       pads: 'Pads', spacing: 'Pad spacing', padSize: 'Pad size', textHeight: 'Text height',
     };
@@ -535,7 +543,7 @@ export class Panels {
   renderFlagSidePicker(host, element) {
     const current = flagSideOf(element);
     host.append(el('h3', null, 'Header flag'));
-    host.append(el('p', 'tb-help', 'Pennant on the header, as seen facing the gate.'));
+    host.append(el('p', 'tb-help', 'Where the pennant stands on the header, as seen facing the gate. On top puts one mast in the middle of the board, directly over the opening. Mast height is the flag height in the dimensions above, and the mast is solid: a pilot diving onto the top rail can hit it.'));
     const grid = el('div', 'tb-side-grid');
     for (const side of FLAG_SIDES) {
       const b = el('button', current === side ? 'tb-fig-card on' : 'tb-fig-card');

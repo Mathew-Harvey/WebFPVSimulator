@@ -16514,3 +16514,46 @@ flag or a cone in its order gets a wider hole, so a lap that used to
 miss a marker may now score. Times already on the board were flown
 through the narrower square and are not invalidated by a wider one:
 nothing that scored before stops scoring.
+
+## A cone is a flag now, in the one way it was not
+
+Owner's report, item 6 of eight: "cones in the track editor should
+function the same as a flag, a larger gate around the cone to trigger a
+pass."
+
+Almost all of that was already true and worth saying plainly, because it
+is the reason this fix is one number. A cone is a MARKER: path.js gives
+it a knot at its clearance radius, faces.js puts it on the outside of the
+turn, trackdoc.js turns it into a virtual station, the race scores it
+through the same swept box a flag uses, and both previews draw the same
+green square. Nothing about that was cone specific.
+
+What WAS cone specific was the clearance: 1.0 m against a flag's 1.5. So
+a cone's square came out 2.0 m wide where a flag's came out 3.0, and a
+course that mixed the two flew them differently for no reason its author
+could see. The default is now 1.5 for both, which with this round's
+MARKER_GATE_PAD makes it 3.5 m against a flag's 4.5, the difference being
+the marker's own size and nothing else. An existing track keeps whatever
+clearance it was authored with: this is a default, not a migration.
+
+The cone being SHORT does not shrink its gate. virtualApertureDims floors
+the square's height at its own width, so a 0.71 m cone is scored by a
+3.5 m square and not by a knee-high slot.
+
+WHAT ELSE MOVED, and this is the part worth the paperwork. The worked
+example in schema.md IS the emitted default track, and it carries a cone,
+so its lap length and tightest radius both changed: 138.9 m and 2.73 m
+became 139.7 m and 2.68 m. Both are quoted in schema.md's prose and
+asserted in the selftest, and both were updated to the measured figures
+with the reason written beside them. The TOLERANCES are untouched, 0.05 m
+and 0.005 m, and the tightest radius is still clear of minCurveRadius, so
+the example still raises no warnings. This is a changed fact, not a moved
+threshold.
+
+CHECKS: trackbuilder selftest 281 of 281, including the schema.md round
+trip that caught the drift in the first place.
+
+Possible effect if this breaks something: newly placed cones sit their
+racing line half a metre further off the cone than before, so a course
+authored today has a slightly wider line than the same layout authored
+yesterday. Existing documents are untouched.

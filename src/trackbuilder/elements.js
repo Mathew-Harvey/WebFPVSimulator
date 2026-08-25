@@ -316,7 +316,7 @@ export const ELEMENTS = {
     key: 'F',
     group: 'track',
     kind: KIND.MARKER,
-    note: 'Turn marker. The pass side is a virtual gate: a green square beside the pole that has to be flown through.',
+    note: 'Turn marker. The pass side is a virtual gate: a green square beside the pole that has to be flown through. Its inner edge is on the pole and it reaches past the clearance, so you do not have to shave the flag.',
     /* "Split-S Gate: flag placement 1.5 ft behind and to the side of the
      * gate" is the only flag dimension MultiGP publishes, and it is an
      * offset rather than a flag. A turn flag on a course is a pole with a
@@ -331,11 +331,22 @@ export const ELEMENTS = {
     key: 'C',
     group: 'track',
     kind: KIND.MARKER,
-    note: 'Ground marker. The pass side is a virtual gate, the same as a flag.',
+    note: 'Ground marker. The pass side is a virtual gate, exactly the same as a flag: same clearance, same square, same scoring.',
     /* A standard traffic cone: 28 in tall on a 14 in square base. Not a
      * MultiGP dimension, a highway one, and near enough for a ground marker.
-     * VERIFY: nothing on multigp.com, this is a road cone. */
-    dims: { height: 28 * IN, baseRadius: 7 * IN, clearance: 1 },
+     * VERIFY: nothing on multigp.com, this is a road cone.
+     *
+     * THE CLEARANCE IS THE FLAG'S, 1.5 m, and it used to be 1.0. The owner
+     * asked for cones to "function the same as a flag, a larger gate around
+     * the cone to trigger a pass", and the machinery was already identical:
+     * a cone is a MARKER, it takes a knot at the clearance radius and it
+     * scores through the same virtual square. What was not the same was
+     * this number, so a cone gave a 2.0 m hole where a flag gave 3.0 and
+     * the two markers a course mixes flew differently for no reason an
+     * author could see. The cone is SHORTER than a flag and that is fine:
+     * virtualApertureDims floors the height at the square's own width, so
+     * a 0.71 m cone is not scored by a knee-high slot. */
+    dims: { height: 28 * IN, baseRadius: 7 * IN, clearance: 1.5 },
   },
   waypoint: {
     id: 'waypoint',

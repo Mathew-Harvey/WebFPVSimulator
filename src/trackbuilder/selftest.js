@@ -1149,9 +1149,12 @@ function suiteSchemaDoc() {
 
   /* The numbers schema.md quotes in prose. */
   const path = buildPath(doc);
-  check('schema.md quotes the right lap length', Math.abs(path.length - 138.9) < 0.05, `${path.length.toFixed(2)} m`);
+  /* 138.9 and 2.73 until the cone's default clearance became the flag's
+   * 1.5 m. A marker's knot sits at that radius, so moving it moves the lap
+   * these two numbers measure; the tolerances are untouched. */
+  check('schema.md quotes the right lap length', Math.abs(path.length - 139.7) < 0.05, `${path.length.toFixed(2)} m`);
   check('schema.md quotes the right tightest radius',
-    Math.abs(path.tightest.radius - 2.73) < 0.005, `${path.tightest.radius.toFixed(3)} m`);
+    Math.abs(path.tightest.radius - 2.68) < 0.005, `${path.tightest.radius.toFixed(3)} m`);
   check('and the worked example really does raise no warnings',
     collectWarnings(doc, path).filter((w) => w.level === 'warn').length === 0);
 }

@@ -559,8 +559,13 @@ awkward the schema has to express:
   rotate a structure that is flown twice and the author chose the heading that
   splits the difference between the two passes.
 
-Create Path on this document reports a lap of **138.9 m**, a tightest radius of
-**2.73 m**, and no warnings.
+Create Path on this document reports a lap of **139.7 m**, a tightest radius of
+**2.68 m**, and no warnings.
+
+Both figures moved when the cone's default clearance went from 1.0 m to the
+flag's 1.5 m, because the knot a marker contributes sits at that radius and
+the whole lap is measured through it. The document above is the emitted
+default track, so it follows the defaults.
 
 ```json
 {
@@ -616,7 +621,7 @@ Create Path on this document reports a lap of **138.9 m**, a tightest radius of
       "dims": {
         "height": 0.7112,
         "baseRadius": 0.1778,
-        "clearance": 1
+        "clearance": 1.5
       }
     },
     {
@@ -820,7 +825,7 @@ Create Path on this document reports a lap of **138.9 m**, a tightest radius of
       "apertureIndex": null,
       "entry": null,
       "passSide": "left",
-      "clearance": 1,
+      "clearance": 1.5,
       "overridden": false
     },
     {

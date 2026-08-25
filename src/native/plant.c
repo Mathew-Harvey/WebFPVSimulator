@@ -53,6 +53,29 @@
  * kt from the real prop: 1900 kV on 6S under a 5x4.3x3 hovers a 650 g
  * quad near 8750 RPM (916 rad/s), so kt = (mg/4) / w^2 = 1.90e-6.
  *
+ * THE FIGURE OF MERIT WAS 0.565 AND THAT IS AN OPTIMISTIC ROTOR. It is now
+ * 0.520, and the reason is a board report about the craft gaining altitude
+ * on a yaw input. kq is the whole of this airframe's yaw authority, because
+ * yaw torque is prop drag reacting through the stator, so an optimistic kq
+ * is a quad that has to move more air to turn its nose than it should.
+ *
+ * The number was not chosen to fix the report, it was checked against an
+ * independent measurement and found wrong. Published thrust stand data for
+ * a 2207 1900 kV on 6S with a 5x4.3x3 gives about 1.5 kgf and roughly 600 W
+ * of shaft power at 26,000 RPM, so shaft torque is P / w = 600 / 2723 =
+ * 0.22 N m against 14.7 N of thrust, and the ratio a rotor actually holds
+ * is Q / T = 0.0150 m. That ratio is kq / kt and nothing else. At FM 0.565
+ * this plant held 0.01414, seven percent light; at 0.520 it holds 0.01536,
+ * which is the closest any value in the P5 band gets to the stand.
+ *
+ * 0.565 was always the top of the 0.4 to 0.6 band, and the top of that band
+ * is a clean two blade rotor. A five inch TRIBLADE is not one: the third
+ * blade buys thrust in a smaller disc and pays for it in profile drag, and
+ * 0.50 to 0.53 is where they measure. PLANT_TORQUE_IND below is the same
+ * number and has to move with it, because the induced share of shaft torque
+ * IS the figure of merit at hover; that identity is what keeps this pair
+ * exactly kq w^2 in the hover and is why checks 5 and 8 do not move.
+ *
  * kq from kt through momentum theory with an ENFORCED figure of merit:
  * kq = kt^1.5 / (FM * sqrt(2 rho A)), A = pi 0.0635^2. The two are a
  * physical pair, never two free knobs; sim_bf_debug case 12 recomputes
@@ -134,7 +157,7 @@ const PlantParams PLANT = {
   .arm_x = 0.0777817459305202, /* 0.110 / sqrt(2) */
   .arm_y = 0.0777817459305202,
   .kt = 1.98e-6,
-  .kq = 2.80e-8,   /* figure of merit 0.565, inside the 0.4 to 0.6 band */
+  .kq = 3.04e-8,   /* figure of merit 0.520, see the triblade note below */
   .ke = 0.006336,  /* loaded torque constant, 1507 kV; see the note above */
   .r_motor = 0.1825,
   .j_rotor = 8.0e-6,
@@ -421,7 +444,7 @@ const double PLANT_POS_Z[SIM_MOTOR_COUNT] = { 0.020, 0.020, 0.020, 0.020 };
  * costs a little truth at one edge and stops a model term from rewriting
  * the calibrated envelope.
  */
-#define PLANT_TORQUE_IND 0.5648
+#define PLANT_TORQUE_IND 0.520
 #define PLANT_TORQUE_QMIN 0.90
 #define PLANT_TORQUE_QMAX 1.60
 

@@ -15991,3 +15991,124 @@ load, misdraws, or glows on the wrong side of the pole, this commit is
 the one. Gates are visual only: if pilots lose track of the course
 without the follow ring, the one-line revert is the dressGate call in
 setNextGate. Scoring cannot have moved, race.js was not touched.
+
+## The quad gains altitude when it yaws, measured and decomposed
+
+Owner's report, with the reaction wheel physics attached: yawing should
+accelerate and decelerate the nose fast WITHOUT the craft climbing, and
+the rotating mass of four motors and props is a substantial fraction of
+the airframe so the reaction torque is real. The report is correct that
+the climb is a defect, correct about the mechanism it names, and the
+previous round's answer to the yaw item was incomplete: it measured
+yaw RISE TIME, said it was fine, and never measured ALTITUDE. Rise time
+was never the complaint.
+
+WHAT IT ACTUALLY DOES, hover trimmed, full yaw stick, 1.5 s:
+climbs 5.36 m, peak thrust to weight 3.46, peak climb rate 4.99 m/s.
+That is not subtle and it is a real defect.
+
+THE DECOMPOSITION, which is the useful part. At the worst point, 150 ms
+in, the two rotor pairs sit at 23241 and 2362 RPM:
+
+  mean RPM 9015 to 13400, worth +7.2 N   Betaflight's airmode shifting
+                                          the throttle up to make room
+                                          for the yaw mix
+  the split itself, worth  +9.5 N         4 kt Delta^2, the quadratic
+                                          term the report describes
+
+Both are stock Betaflight and correct plant. LEGACY mixer does
+throttle = constrain(throttle, -motorMixMin, 1 - motorMixMax), so a
+saturated yaw demand of plus or minus 0.4 forces a hover throttle of
+0.26 up to 0.40 and the motors to [0.0, 0.8]. Two motors at 0.8 duty on
+a nine to one airframe is 2.9 g of thrust with the craft still level,
+so all of it goes straight up.
+
+THE REACTION WHEEL TERM IS PRESENT AND CORRECT, and this was verified
+rather than asserted. The frame torque is the stator reaction -SPIN ke i,
+and multiplying the rotor equation by SPIN gives SPIN ke i = dH/dt +
+SPIN Q_drag, so the frame receives -dH/dt exactly. Predicted from
+rotor speeds at 25 ms: 4 J dDelta/dt = 0.82 N m, over Izz 0.0068 that is
+172 deg/s by 25 ms. Measured: 187 deg/s. The term is doing the early
+work and the initial bite, 28 ms to 200 deg/s, is as quick as roll's 22.
+So the axis is NOT slow, and j_rotor 8.0e-6 is right: a 2207 bell is
+about 3.1e-6 and a five inch triblade about 5.0e-6.
+
+WHAT WAS TRIED AND FAILED, recorded because the negatives cost the most
+time:
+
+- ESC CURRENT CEILING, the documented missing piece. Built at 55 A per
+  motor. It does NOT fix this: the sustained yaw state draws about 33 A,
+  well under any real ceiling, so the limit never bites and the climb
+  went 5.36 to 5.34 m. It also broke check 8 outright, NaN rather than a
+  number, because limiting duty against LAST step's pack voltage
+  reintroduces exactly the algebraic loop with gain above one that the
+  closed form battery solve exists to avoid. Reverted. If it is ever
+  wanted for its own sake it has to be solved inside that closed form.
+- mixer_type LINEAR and DYNAMIC, Betaflight's own alternatives to the
+  LEGACY throttle shift. Both made it WORSE, 6.35 and 6.37 m against
+  4.88, because they scale mix authority by throttle and the yaw demand
+  then holds longer. EZLANDING is identical to LEGACY here.
+- yaw_lowpass_hz 70 and 40, f_yaw halved, f_yaw zero, d_yaw 20: not one
+  of them moved the climb by a centimetre. The yaw PID is so deeply
+  saturated on a full stick input that its gains are irrelevant; only
+  the pidsum limit itself is. Worth knowing before anyone tunes at it.
+- A first sweep of pidsum_limit_yaw appeared to do nothing, which was a
+  probe bug rather than a finding: the key is pidsum_limit_yaw and the
+  probe wrote yaw_pidsum_limit. It was caught only because the probe
+  asserts sim_bf_debug(15), the unrecognised key count, is zero. A probe
+  that does not check its own writes landed is a probe that lies.
+
+WHAT WAS CHANGED, and it is a correctness fix rather than a tuning one.
+The figure of merit goes 0.565 to 0.520. kq is the whole of this
+airframe's yaw authority and it is derived from kt through FM, so an
+optimistic FM is a quad that must move more air to turn its nose. The
+number was checked against something independent of this report: a 2207
+on 6S with a 5x4.3x3 holds Q / T = 0.0150 m on a thrust stand, that
+ratio IS kq / kt, and this plant held 0.01414 at FM 0.565 against
+0.01536 at 0.520. 0.565 was always the top of the 0.4 to 0.6 band and
+the top of that band is a clean two blade rotor; a five inch triblade
+measures 0.50 to 0.53. PLANT_TORQUE_IND moves with it by identity.
+
+It helps both halves of the report at once, which nothing else tried
+did: climb 5.36 to 4.88 m and yaw to 90 percent of rate 175 to 168 ms.
+It is not a cure. It is the part that was actually WRONG.
+
+THE REST IS FAITHFUL BETAFLIGHT AND IS THE OWNER'S CALL, with the trade
+measured so the choice can be made on numbers. pidsum_limit_yaw is the
+only lever that bites, and it buys altitude with yaw speed:
+
+    limit 400 (stock)   climb 4.88 m   T/W 3.33   200 deg/s in  28 ms
+    limit 250           climb 3.12 m   T/W 1.71   200 deg/s in  54 ms
+    limit 170           climb 1.74 m   T/W 1.25   200 deg/s in 115 ms
+    limit 120           climb 1.08 m   T/W 1.13   200 deg/s in 221 ms
+    airmode off         climb 3.81 m   T/W 2.12   200 deg/s in  42 ms
+
+AND THE PRACTICAL POINT, which may matter more than any of it: this only
+appears at extreme yaw commands. Climb over 1.5 s against yaw stick is
+0.11 m at 0.15 stick, 0.18 at 0.30, 0.40 at 0.50, 1.83 at 0.75 and 5.36
+at full. The default yaw rate is 670 deg/s, which is a very high yaw
+rate that few pilots run, and half stick on it is 162 deg/s with 0.42 m
+of climb and T/W 1.22. A pilot flying a normal yaw rate never meets
+this. Lowering the shipped yaw rate default would change every stored
+lap, so it is not done here without a decision.
+
+RUN LOG. build:wasm exit 0, vendor diff empty. npm run verify 15 of 16,
+the one red being check 16 at the recorded feather flag budget carried
+from main: hover 0.2793 (0.2773 before, the extra drag torque), punch
+80.0 m (82.1, three more metres of margin under the 85 ceiling),
+terminal 31.0 (31.7), motor step 26 ms unchanged, rate tracking 671.7,
+yaw coupling -0.10, sag 11.14 percent, diff ratio 1.2472, console clean,
+determinism identical in Node and Chrome at de0401cd4266 and across all
+four render rates. FM read back out of the compiled constants through
+sim_bf_debug(12): 0.5202, inside the P5 gate's 0.40 to 0.60. lint:fc 30
+of 30, lint:presets 3 of 3. The standing hover band dispute, thresholds
+0.20 to 0.30 green against gates P4 0.17 to 0.22, widens by another two
+points and stays recorded and untouched.
+
+Possible effect if this breaks something: kq is in every torque in the
+model, so this touches yaw authority, hover throttle, top speed and
+motor load together. Hover sits nearly two points higher on the stick
+and punch is two metres shorter. If the quad now feels like it has to
+work harder, or yaw feels different in a way nobody asked for, this
+commit is the one to revert, and it is one constant plus its matching
+PLANT_TORQUE_IND.

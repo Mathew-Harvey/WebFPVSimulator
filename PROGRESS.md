@@ -16253,3 +16253,68 @@ only it. If the pad shot now looks too high, too level, or clips a gate
 it used to swing past, this commit is the one, and the three dials are
 INTRO_ORBIT_HEIGHT, INTRO_APPROACH_HEIGHT and INTRO_FLOOR_CLEAR. The
 attract camera, the finish camera and the FPV view are untouched.
+
+## Motor strain is in the model and it is about twenty times too quiet
+
+Crapshack's report 2 came back: motor strain against opposing airflow
+still is not felt. It IS built and on main, commit 45a9747, and the
+mechanism is right, so this round measured how LOUD it is rather than
+whether it exists. Reported in semitones because that is how the report
+describes it: 12 log2 of an RPM ratio, which is what a pilot hears.
+
+MEASURED on the shipped build:
+
+  fixed duty 0.55, vertical punch, first 1.4 s while attitude is still
+  level:  rpm 16576 to 16816, pack 31.3 to 29.5 A, 0.25 semitones.
+  Note the SIGN: climbing UNLOADS the disc here, rpm up and current
+  down, which is correct prop behaviour, thrust and torque both fall as
+  the advance ratio rises toward the pitch speed.
+
+  fixed duty 0.20, settling descent:  0.08 semitones.
+
+  FC in the loop, 25.9 m/s then a hard pitch back flare:  mean rpm
+  16883 to a minimum of 16561, 0.33 semitones, while pack current
+  spikes 30 to 50 A.
+
+  front against rear during that same flare:  9.97 semitones.
+
+TWO THINGS FALL OUT OF THAT. First, the DIFFERENTIAL is already there
+and then some: 9.97 semitones front to rear against the 5 the report
+says it hears on a real quad. That is the flight controller's pitch
+authority, not aero, and it is well represented. Second, the COMMON
+MODE strain, all four bogging together against opposing air, is 0.25 to
+0.33 semitones, which is inaudible, and it is the thing being asked for.
+
+WHY IT IS QUIET, and it is not the clamp. The load IS reaching the
+motor: current moves 30 to 50 A through the flare, so the model feels
+the air. What does not move is RPM, for two compounding reasons. A
+brushed-DC-equivalent motor at fixed duty is electrically STIFF, since
+omega is roughly (d V - i R) / ke and R is 0.1825, so even 20 A of extra
+load is about 3.6 V of back EMF, and the flight controller then adds
+duty to hold attitude and takes most of what is left.
+
+WHAT IS ACTUALLY MISSING, named for the next round: BLADE STALL. The
+profile half of the shaft torque in this plant is (1 - FM) kq w^2, a
+constant coefficient that does not care about the inflow ANGLE. Real
+blades driven into oncoming air at a high angle of attack stall, and
+their profile drag multiplies several fold. Momentum theory alone, which
+is all this plant has, says a disc driven axially UNLOADS, and that is
+exactly what measurement A shows. Reality says the blade stalls first
+and the motor bogs. That gap is the report, and no amount of tuning the
+existing terms closes it, because the existing terms have the sign the
+theory demands.
+
+THE DATA THAT WOULD CLOSE IT was offered by the reporter: blackbox plus
+GoPro audio off a XILO Stealth 2207 1800 kV. Worth taking, and the kV
+mismatch against this plant's 2207 1900 kV matters less than it looks:
+what is wanted is the SHAPE, how far RPM sags per unit of inflow at a
+held throttle, and that is a property of the blade and the air rather
+than of the winding. kV is a scale on ke and this plant already runs a
+LOADED ke equivalent to about 1507 kV against a 1900 kV nameplate, for
+reasons written at the constant. The absolute current and the winding
+resistance are the parts that do not transfer, and they are not what the
+stall term needs. What must NOT happen is re-fitting kt or kq to another
+airframe: that would move the whole calibrated envelope, checks 5
+through 12, to match a motor nobody else here flies.
+
+No code changed this turn.

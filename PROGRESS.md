@@ -16112,3 +16112,48 @@ and punch is two metres shorter. If the quad now feels like it has to
 work harder, or yaw feels different in a way nobody asked for, this
 commit is the one to revert, and it is one constant plus its matching
 PLANT_TORQUE_IND.
+
+## Correction: 670 deg/s of yaw IS standard Betaflight
+
+The previous entry ended by offering a lower shipped yaw rate as a way
+out of the yaw altitude gain, and described 670 deg/s as "a very high
+yaw rate that few pilots run". The owner asked for the shipped default
+to be made the same as standard Betaflight rates. It already is, and
+the framing in that entry was misleading enough to correct here rather
+than leave standing.
+
+Betaflight 4.5.1's own rate profile, read out of the vendored source at
+vendor/betaflight/src/main/fc/controlrate_profile.c:
+
+    .rates_type    = RATES_TYPE_ACTUAL
+    .rcRates[R/P/Y] = 7, 7, 7
+    .rates[R/P/Y]   = 67, 67, 67
+    .rcExpo[R/P/Y]  = 0, 0, 0
+
+configs/rates.js RATE_DEFAULTS holds exactly that, and the composed
+config was read back THROUGH the module rather than compared by eye:
+rates_type ACTUAL, every rc_rate 7, every srate 67, every expo 0, which
+is 670 deg/s on all three axes. There is no change to make.
+
+WHAT THAT MEANS FOR THE REPORT, and it is not comfortable. 670 deg/s of
+yaw is not this project's choice, it is what a freshly flashed quad
+flies, so a real quad on stock rates carries the same yaw rate, the same
+pidsum_limit_yaw of 400 and the same LEGACY mixer. The "nobody flies a
+yaw rate that high" line does not let the model off the hook, and the
+suggestion to drop the default to about 400 would have been a DEPARTURE
+from Betaflight rather than a return to it. rates.js's whole argument is
+that the menu starts where the firmware starts, and that argument still
+holds.
+
+WHAT IS LEFT, honestly. The remaining difference between this model and
+a real quad on the same settings is not the rate and not the flight
+controller, both of which are now known to be stock. It is somewhere in
+the plant or in what a pilot actually does with the stick, and the
+candidate worth measuring next is thrust to weight: this airframe is
+8.43 to 1 and hovers at 27.9 percent of stick, and the airmode throttle
+shift is the gap between hover and the 40 percent the mixer needs, so a
+punchier quad gets a BIGGER shift. A 6 to 1 machine hovering near 40
+percent would see almost none of it. That is a measurement for its own
+round, not a constant to move today.
+
+No code changed this turn.

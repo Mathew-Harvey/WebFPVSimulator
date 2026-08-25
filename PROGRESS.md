@@ -16399,3 +16399,29 @@ now painted rather than set, so on a display or font where text-shadow
 renders differently it could read lighter than 650 did. Nothing else
 uses it, the rule is one declaration, and reverting restores the old
 weight along with the old jitter.
+
+## The menu jitter fix, checked again through the paths a pilot uses
+
+The entry above proved 0.00 px by stepping the cursor programmatically
+with scrolling switched off, which is a synthetic path. Asked whether it
+was really fixed, and the honest answer was that three real paths had
+not been checked. They have now, all on Settings, all reading the menu's
+own bounding box:
+
+    cursor sweep, no scroll        0.00 v  0.00 h  0.00 w
+    cursor sweep, scrollIntoView   0.00 v  0.00 h  0.00 w
+    every value on all 16 option
+      rows, committed through
+      writeSettings               0.00 v  0.00 h
+    14 real ArrowDown keypresses,
+      sampled after each           0.00 v  0.00 h  0.00 w
+
+The value case was the one worth worrying about, because committing a
+value re-renders the menu and a longer value could have widened a row
+the same way a bolder label did. It cannot: .row-value is capped at
+max-width 52 percent with nowrap and an ellipsis, so the value's text
+length has no way to reach the track sizing. That is by existing design
+rather than by anything this round did, and it is written down because
+the next person to touch that rule needs to know it is load bearing.
+
+No code changed this turn.

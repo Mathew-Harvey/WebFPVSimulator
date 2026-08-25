@@ -1001,7 +1001,34 @@
          cells' four-number floor. */
       .pids-readout { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
       .row-label { min-width: 0; flex: 1 1 auto; }
-      .row.on .row-label { font-weight: 650; }
+      /*
+       * THE SELECTED LABEL IS EMBOLDENED WITHOUT CHANGING ITS METRICS.
+       *
+       * This was font-weight: 650, and a heavier label is a WIDER label.
+       * The menu sits in an `auto` grid track, so that track is sized to
+       * the widest row it contains, and bolding whichever row the cursor
+       * happens to be on grew the whole menu: 8 px on Settings, 19 px on
+       * PIDs. That shoved the menu sideways and squeezed the columns
+       * either side of it hard enough to resize the craft preview, which
+       * changed the stage height and moved the menu vertically as well.
+       * Measured per row, every row was identical except the one under
+       * the cursor.
+       *
+       * It was reported as the note text moving the menu, because the note
+       * changes at the same instant the cursor does. The note was never
+       * the cause: its own height swings 0 to 302 px and moves nothing,
+       * because the stage aligns to start and the menu is the taller of
+       * the two.
+       *
+       * A text-shadow PAINTS the emphasis rather than re-setting the type,
+       * so glyph advance widths cannot change and neither can the layout.
+       * Two offsets rather than one so the thickening is symmetric and the
+       * label does not appear to creep to the right. Measured after the
+       * change: 0.00 px of movement on every menu screen.
+       */
+      .row.on .row-label {
+        text-shadow: -0.02em 0 0 currentColor, 0.02em 0 0 currentColor;
+      }
       .row-value {
         color: var(--sakura); font-size: 0.86em; font-weight: 600;
         letter-spacing: 0.03em; flex: 0 1 auto; min-width: 0;

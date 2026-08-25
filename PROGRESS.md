@@ -16318,3 +16318,84 @@ airframe: that would move the whole calibrated envelope, checks 5
 through 12, to match a motor nobody else here flies.
 
 No code changed this turn.
+
+## The menus jittered on every keypress, and it was not the note
+
+Owner: the tooltip text in Settings and the other menus moves and
+resizes the menu slightly, and the UX needs to be right rather than
+worked around. It does move, it is measurable, and the cause is not the
+tooltip.
+
+MEASURED FIRST, per row, by stepping the cursor through every item and
+reading the menu's own bounding box. Settings moved 2.91 px vertically
+and 5.81 px horizontally; PIDs moved 19.31 px horizontally, which is the
+worst on the board and the one most likely to have prompted this.
+
+THE CONTROL THAT MATTERED. Sampling the same rectangle over 30 frames
+with the cursor untouched gave exactly 0.00 of jitter on all four
+numbers, which ruled out the live craft preview on the Settings screen
+and proved the movement is caused by the selection changing rather than
+by anything animating.
+
+THE CAUSE IS ONE CSS LINE, `.row.on .row-label { font-weight: 650 }`.
+A heavier label is a WIDER label. The menu sits in an `auto` grid track,
+so the track is sized to the widest row it holds, and bolding whichever
+row the cursor is on grew the whole menu. The per row dump is
+unambiguous: on Settings every one of the 37 rows measured 567.8 px wide
+at 703.8 px from the left except row 6, which measured 575.8 at 698.0.
+The row's innerHTML is byte identical selected and unselected; only the
+weight differs. On the widest screens that 8 px then squeezed the two
+columns either side, which resized the craft preview, which changed the
+stage height, which moved the menu VERTICALLY as well. One line of CSS,
+four symptoms.
+
+THE NOTE WAS NEVER IT, and this is worth writing down because it is
+where the report pointed and where an hour could have gone. The note
+changes at the same instant the cursor does, so it looks guilty. Its
+height swings from 0, on a section header with no note, to 301.9 px on
+the Camera angle row, and that swing moves NOTHING: the stage aligns to
+start and the menu is the taller of the two. Proved by injecting
+`.menu-help { height: 0 }` and re-measuring, which changed the numbers
+not at all. Two other candidate fixes aimed at the note, a fixed help
+column and a fixed help width, were also tried; the fixed column removed
+the vertical shift by accident, by stabilising the column widths, and
+made the horizontal shift WORSE, 5.81 to 8.03. All three were discarded
+once the real cause was found, and none of them is in the diff.
+
+THE FIX paints the emphasis instead of re-setting the type:
+
+    .row.on .row-label {
+      text-shadow: -0.02em 0 0 currentColor, 0.02em 0 0 currentColor;
+    }
+
+Glyph advance widths cannot change, so the layout cannot. Two offsets
+rather than one so the thickening is symmetric and the label does not
+appear to creep right. The selected row still reads as selected: it
+keeps the cream, the sakura bar and the background gradient, and a
+screenshot with the cursor on Rates was looked at to confirm the
+emphasis survives.
+
+MEASURED AFTER, the same sweep on every screen that has a menu:
+
+    settings  0.00 v  0.00 h  0.00 stage   (was 2.91 / 5.81 / 5.81)
+    pids      0.00 v  0.00 h  0.00 stage   (was 0 / 19.31 / 0)
+    rates     0.00 v  0.00 h  0.00 stage
+    courses   0.00 v  0.00 h  0.00 stage
+    howto     0.00 v  0.00 h  0.00 stage
+    credits   0.00 v  0.00 h  0.00 stage
+    fc        0.00 v  0.00 h  0.00 menu width, over 40 rows
+
+Zero, not small. Console errors 0 and warnings 0 on every run.
+
+npm run verify was NOT run and is not the check for this: one CSS
+declaration, no JS, no physics, no module, no build. dist/sim.wasm is
+untouched. Check 13 loads only the harness page, which has no menu in
+it, so it could not see this either way; the per row sweep above is the
+check, and it is a better one because it asserts a number rather than
+looking at a picture.
+
+Possible effect if this breaks something: the selected row's emphasis is
+now painted rather than set, so on a display or font where text-shadow
+renders differently it could read lighter than 650 did. Nothing else
+uses it, the rule is one declaration, and reverting restores the old
+weight along with the old jitter.

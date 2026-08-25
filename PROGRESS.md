@@ -16803,3 +16803,105 @@ Possible effect if this breaks something: the inspector. If a dimension
 stops committing, the arrow handler's preventDefault is the suspect; if a
 stack's spacing starts moving when the author did not ask, the
 follow-the-height rule's "is it still derived" test is.
+
+## The props end a run, and nothing else does
+
+Owner's report, item 7 of eight: "improve the crashing mechanism, i should
+be able to bounce off stuff as much as i like, a crash should be only if i
+plow my props into the ground or an object, if i hit with the base of the
+quad i should bounce or perch if speed is correct. Way less crashing
+please."
+
+TWO THINGS WERE ENDING RUNS THAT ARE NOT PROP STRIKES.
+
+FIRST, THE AIRFRAME HAD THREE LIVES. hitOutcome bounced anything under
+BOUNCE_SPEED_MAX, and then the shell spent a life on every non graze
+contact and wrecked the craft on the third. That is a DURABILITY model,
+not a prop strike model: it does not ask what part of the quad met the
+obstacle or at what angle, only how many times. Three honest bumps ended
+a lap. HIT_LIVES is gone, the OSD's "Hits left 2 of 3" row with it, and
+there is no damage model at all any more. "As much as i like" is a
+requirement and it is met literally.
+
+SECOND, A FLAT ARRIVAL ON THE GROUND WAS A WRECK. isLanding has always
+been a prop strike test and its tilt gates are right, but it answered a
+two way question: inside the perch envelope you land, outside it you die.
+A quad meeting grass flat at 8 m/s of sink has not put a blade into
+anything. It has hit with its underside, hard, and a real one skips.
+
+SO THERE ARE THREE ANSWERS NOW, and one rule behind all of them.
+
+  groundOutcome   GROUND_LAND inside the perch envelope, unchanged;
+                  GROUND_BOUNCE props up outside it, which is new;
+                  GROUND_CRASH only from the tilt gates, which is the
+                  blade actually meeting the ground.
+  hitOutcome      takes upDot, the absolute cosine between the contact
+                  normal and the craft's own up axis. Near 1 the surface
+                  is under or over the craft, the frame takes it, bounce
+                  at any speed. Near 0 it is edge on to the disc plane
+                  and a crash needs BOUNCE_SPEED_MAX of closing behind
+                  it. PROP_PLANE_MAX_UP_DOT is 0.5, generous on purpose.
+                  A train is still a crash however you meet it.
+
+The perch envelope did not move. 3 m/s still settles and 5 m/s still does
+not; what changed is that 5 m/s now skips instead of ending the run.
+
+applyBounce was split into deflectOff(normal, contact point, position) so
+the ground can use the same reflection an upright gives, off a normal of
+straight up. One implementation, so the two cannot drift apart on
+restitution or separation. The position is passed in rather than read off
+pCurr because the ground branch runs inside the physics stepping, before
+the frame's render position exists, and works from the probe.
+
+The OSD row that counted down now counts up: "3 bounces", neutral colour,
+and nothing at all until there is something to say.
+
+CHECKS. Nineteen new pure checks in the builder's selftest, which is the
+only Node runnable suite here and which collide.js imports cleanly into:
+belly on bounces at 1, 10, 25 and 60 m/s; edge on bounces up to
+BOUNCE_SPEED_MAX and crashes at it; fifty firm contacts in a row give
+fifty bounces; a flat arrival at 30 m/s down and 30 m/s across is still
+not a crash; a blade down with speed behind it still is; on its side
+still is. 338 of 338 pass.
+
+Then the real shell through scripts/shots.js, twice, because a pure
+function is not evidence that sim_deflect writes the plant:
+
+  GROUND. Climbed, cut the throttle, and arrived at 16.5 m/s of descent
+  with 0.007 degrees of tilt. Result: bounced, bounced, bounced, then
+  landed. crashed false throughout. Under the old rule that arrival was
+  a certain wreck at the first contact, four times over the descent gate.
+
+  OBSTACLE. A probe course with a slab overhead, flown straight up into
+  it. First contact: closing 23.6 m/s, upDot 1.000, which is belly on and
+  ABOVE BOUNCE_SPEED_MAX, so the old rule would have wrecked it on the
+  spot. Result: bounce. Nine bounces later, still crashed false.
+
+  Console errors 0, warnings 0, harness faults 0 on both.
+
+WHAT WAS NOT CAPTURED, said plainly: a prop plane obstacle crash. Driving
+the quad into a vertical face at a chosen attitude through the keyboard
+at this container's frame rate was not reliable, and three attempts
+produced a ground tumble instead. That path is covered by the pure checks
+and by the unchanged crashInto call, and it is the one behaviour in this
+round with no capture behind it.
+
+npm run verify was NOT run. This is the SHELL's contact rules, not the
+plant: nothing in src/native, patches, vendor/betaflight, the input path
+or the Emscripten build is touched, dist/sim.wasm is untouched, and the
+trajectory between contacts is bit for bit what it was. sim_deflect is
+called in more situations than before, which changes where the craft goes
+after a ground arrival, and that is the intended change rather than a
+side effect.
+
+Possible effect if this breaks something: a course where the intended
+challenge WAS the risk of a crash is now easier, deliberately. If a craft
+ever gets stuck bouncing on the ground rather than settling, the suspect
+is the perch envelope being unreachable after a skip, and the fix is the
+envelope rather than putting the wreck back.
+
+CORRECTION to the cone entry above: it says a cone's square goes "2.0 m
+to 3.5 m". Wrong. The clearance went 1.0 to 1.5 AND the pad added 1.5, so
+it is 2.0 m to 4.5 m, the same as a flag's, which is what "function the
+same as a flag" asked for. Measured on the built course, both markers
+report clearW 4.50.

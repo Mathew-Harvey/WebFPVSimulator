@@ -53,6 +53,12 @@ import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
+import {
+  hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
+  PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
+  LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
+  LAND_TIP_SPEED_MAX,
+} from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 
 import { readFileSync } from 'node:fs';
@@ -1265,6 +1271,71 @@ function suitePresets() {
   }
 }
 
+/*
+ * WHAT ENDS A RUN. The rule is a prop strike and nothing else, so these
+ * checks are written as the owner's sentences rather than as coverage of
+ * the branches: bounce off stuff as much as you like, crash only on the
+ * props, hit with the base and bounce or perch.
+ *
+ * This lives in the builder's selftest because it is the only Node runnable
+ * suite in the repository and collide.js imports cleanly here. The flight
+ * harness is the plant's and this is not plant.
+ */
+function suiteCrashRule() {
+  console.log('\ncrash rule');
+
+  /* Belly on, at any speed at all. The frame takes it. */
+  for (const closing of [1, 10, 25, 60]) {
+    check(`belly on at ${closing} m/s bounces`,
+      hitOutcome('gate', closing, 1.0) === 'bounce');
+  }
+  check('and so does a contact just off the belly',
+    hitOutcome('gate', 40, PROP_PLANE_MAX_UP_DOT) === 'bounce');
+
+  /* Edge on, in the disc plane. Bounces until there is real speed behind
+   * the blades. */
+  check('edge on at a racing clip still bounces',
+    hitOutcome('gate', BOUNCE_SPEED_MAX - 0.1, 0) === 'bounce');
+  check('edge on at the strike speed is a crash',
+    hitOutcome('gate', BOUNCE_SPEED_MAX, 0) === 'crash');
+  check('a train is a crash however you meet it',
+    hitOutcome('train', 1, 1.0) === 'crash');
+  check('and an untaught caller gets the strict reading',
+    hitOutcome('gate', BOUNCE_SPEED_MAX + 5) === 'crash');
+
+  /* THE HIT COUNT IS GONE. Fifty firm contacts in a row, none of them a
+   * strike, and every one of them still flies on: "as much as i like". */
+  let bounced = 0;
+  for (let i = 0; i < 50; i += 1) {
+    if (hitOutcome('gate', 12, 0) === 'bounce') {
+      bounced += 1;
+    }
+  }
+  check('fifty firm contacts, fifty bounces', bounced === 50, `${bounced}`);
+
+  /* The ground. Perch, skip, strike. */
+  check('a gentle arrival perches',
+    groundOutcome(1.0, 1.0, 0) === GROUND_LAND);
+  check('the perch envelope is unchanged at its edge',
+    groundOutcome(LAND_DESCENT_MAX - 0.01, 0, 0) === GROUND_LAND
+    && groundOutcome(0, LAND_HORIZONTAL_MAX - 0.01, 0) === GROUND_LAND);
+  check('arriving flat and hard SKIPS rather than wrecking',
+    groundOutcome(LAND_DESCENT_MAX + 2, 0, 0) === GROUND_BOUNCE);
+  check('and so does arriving flat and fast across the ground',
+    groundOutcome(0, LAND_HORIZONTAL_MAX + 5, 0) === GROUND_BOUNCE);
+  check('a blade down with speed behind it is a crash',
+    groundOutcome(0, LAND_TIP_SPEED_MAX + 1, LAND_TILT_MAX_DEG + 1) === GROUND_CRASH);
+  check('a blade down while crawling is still a perch',
+    groundOutcome(0.2, 0.2, LAND_TILT_MAX_DEG + 1) === GROUND_LAND);
+  check('arriving on its side is a crash at any speed',
+    groundOutcome(0, 0, LAND_TILT_HARD_DEG + 1) === GROUND_CRASH);
+  check('a very hard flat arrival is STILL not a crash',
+    groundOutcome(30, 30, 0) === GROUND_BOUNCE);
+
+  check('the graze threshold is below the strike threshold',
+    GRAZE_SPEED_MAX < BOUNCE_SPEED_MAX);
+}
+
 function suiteSchemaDoc() {
   console.log('\nschema.md');
   const here = dirname(fileURLToPath(import.meta.url));
@@ -1923,6 +1994,7 @@ function main() {
   suiteRoundTrip();
   suiteElementCounts();
   suitePresets();
+  suiteCrashRule();
   suiteFaces();
   suitePath();
   suiteGuide();

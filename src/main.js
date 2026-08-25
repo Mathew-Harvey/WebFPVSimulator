@@ -56,7 +56,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, isLanding, hitOutcome, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, HIT_LIVES, BOUNCE_COOLDOWN_MS, BOUNCE_RESTITUTION, BOUNCE_TANGENT_KEEP, BOUNCE_RATE_KEEP, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, groundOutcome, GROUND_LAND, GROUND_BOUNCE, hitOutcome, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_RESTITUTION, BOUNCE_TANGENT_KEEP, BOUNCE_RATE_KEEP, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -1302,9 +1302,18 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastTiltDeg = 0;
   let lastHitKind = 'none';
   let lastClosing = 0;
+  /* How square the last contact was to the craft's disc plane, 0 edge on
+   * and 1 belly on. Readback only; hitOutcome is the decision. */
+  let lastUpDot = 0;
   let speedNow = 0;
-  let hitsLeft = HIT_LIVES;
+  /* How many contacts this run has bounced off, for the readback and for
+   * nothing else. It used to be a count DOWN from three lives; there is no
+   * damage model any more, so it counts up and costs nothing. */
+  let bounceCount = 0;
   let bounceAtWall = 0;
+  /* The last ground skip, so a craft sliding along the grass reports one
+   * bounce rather than one a frame. */
+  let groundBounceAtWall = 0;
   let bounceHitIndex = -1;
   let bounceHitKind = '';
   /* The craft's tilt-aware vertical half extent, written by the physics
@@ -1458,13 +1467,15 @@ export async function boot({ loading, bootStart, mapId }) {
     lastDescent = 0;
     lastTiltDeg = 0;
     lastClosing = 0;
+    lastUpDot = 0;
     lastHitKind = 'none';
     input.keys.clear();
     input.drain();
     input.resetKeyboardSticks();
     raceHasPrev = false;
-    hitsLeft = HIT_LIVES;
+    bounceCount = 0;
     bounceAtWall = 0;
+    groundBounceAtWall = 0;
     bounceHitIndex = -1;
     bounceHitKind = '';
     /* The race interpolates a gate crossing between its own previous sim
@@ -2619,6 +2630,10 @@ export async function boot({ loading, bootStart, mapId }) {
   const qCollide = new THREE.Quaternion();
   const pProbe = new THREE.Vector3();
   const pBounce = new THREE.Vector3();
+  /* The craft's own up axis in world space, for the prop plane test. Hoisted
+   * because it is written on every contact and budget P8 says the frame loop
+   * does not allocate. */
+  const upAxis = new THREE.Vector3();
   const nSim = { x: 0, y: 0, z: 0 };
   const pSim = { x: 0, y: 0, z: 0 };
   const camFwd = new THREE.Vector3();
@@ -2668,20 +2683,22 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * Reflect the plant off the last collider hit. Places the craft at the
-   * first contact plus a small outward gap, so a tunneled frame is rewound
-   * to the entry face. Returns false if the module refused the write.
+   * Reflect the plant off a surface: a unit outward normal and the world
+   * point the contact happened at. Places the craft at that point plus a
+   * small outward gap, so a tunneled frame is rewound to the entry face.
+   * Returns false if the module refused the write.
+   *
+   * SPLIT OUT OF applyBounce so the GROUND can use it. A flat arrival too
+   * fast to perch is a skip off the grass now rather than a wreck, and a
+   * skip is the same reflection an upright gives, off a normal of straight
+   * up. One implementation, so the two cannot drift into disagreeing about
+   * restitution or separation.
    */
-  function applyBounce() {
-    const col = view.colliders;
-    const nx = col.hitNx;
-    const ny = col.hitNy;
-    const nz = col.hitNz;
-    const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
-    const cx = racePrev.x + (pCurr.x - racePrev.x) * ht;
-    const cy = racePrev.y + (pCurr.y - racePrev.y) * ht;
-    const cz = racePrev.z + (pCurr.z - racePrev.z) * ht;
-    const inward = -((pCurr.x - cx) * nx + (pCurr.y - cy) * ny + (pCurr.z - cz) * nz);
+  function deflectOff(nx, ny, nz, cx, cy, cz, px, py, pz) {
+    /* Where the craft IS is passed in rather than read off pCurr, because
+     * the ground branch runs inside the physics stepping, before the frame's
+     * render position has been interpolated. It works from the probe. */
+    const inward = -((px - cx) * nx + (py - cy) * ny + (pz - cz) * nz);
     const sep = (inward > 0 ? inward : 0) + BOUNCE_SEPARATION;
     worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
     threeDirToSim(nx, ny, nz, nSim);
@@ -2708,6 +2725,20 @@ export async function boot({ loading, bootStart, mapId }) {
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
     return true;
+  }
+
+  /* The obstacle case: the normal and the contact point come off the last
+   * collider query. */
+  function applyBounce() {
+    const col = view.colliders;
+    const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
+    return deflectOff(
+      col.hitNx, col.hitNy, col.hitNz,
+      racePrev.x + (pCurr.x - racePrev.x) * ht,
+      racePrev.y + (pCurr.y - racePrev.y) * ht,
+      racePrev.z + (pCurr.z - racePrev.z) * ht,
+      pCurr.x, pCurr.y, pCurr.z,
+    );
   }
   /*
    * The title screen's camera. It belongs to the MAP, because the shot that
@@ -3205,7 +3236,8 @@ export async function boot({ loading, bootStart, mapId }) {
         const tiltDeg = (Math.acos(upY) * 180) / Math.PI;
         lastDescent = descent;
         lastTiltDeg = tiltDeg;
-        if (isLanding(descent, horiz, tiltDeg)) {
+        const arrival = groundOutcome(descent, horiz, tiltDeg);
+        if (arrival === GROUND_LAND) {
           landed = true;
           /*
            * THE GROUND HOLDS THE CRAFT. sim_rest zeroes the velocity and
@@ -3233,6 +3265,35 @@ export async function boot({ loading, bootStart, mapId }) {
           acc = 0;
           if (typeof audio.event === 'function') {
             audio.event('land');
+          }
+        } else if (arrival === GROUND_BOUNCE) {
+          /*
+           * PROPS UP, ARRIVING TOO HARD TO SIT DOWN. It skips. A quad that
+           * meets grass with its underside at 6 m/s does not stop flying,
+           * and treating that as a wreck is most of what the owner meant by
+           * "way less crashing please".
+           *
+           * The reflection is the same one an upright gives, off a normal
+           * of straight up, at the contact height the perch would have
+           * rested at. If the module refuses the write there is nothing
+           * left to do but end the run, exactly as on an obstacle.
+           */
+          const surf = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS);
+          if (!deflectOff(0, 1, 0, touchX, surf + vHalf, touchZ, pProbe.x, pProbe.y, pProbe.z)) {
+            crashInto('Crashed', nowWall);
+          } else {
+            acc = 0;
+            /* One announcement per skip, not one per frame while the craft
+             * slides along the grass. */
+            if (nowWall - groundBounceAtWall > BOUNCE_COOLDOWN_MS) {
+              bounceCount += 1;
+              race.recover('Bounced off the ground', nowWall);
+              view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+              if (typeof audio.event === 'function') {
+                audio.event('clip');
+              }
+            }
+            groundBounceAtWall = nowWall;
           }
         } else {
           crashInto('Crashed', nowWall);
@@ -3340,11 +3401,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * trunk and canopy, every rock, cliff tier and flag pole is a capsule in
      * view.colliders, and the query is the exact closest distance between
      * the segment the craft travelled and the capsule's axis, so nothing can
-     * tunnel through at any frame rate. A train, or a head-on hit faster
-     * than BOUNCE_SPEED_MAX, is a crash. Anything else bounces: the plant
-     * is reflected through sim_deflect and the airframe has HIT_LIVES
-     * damaging hits before the next one is a wreck. A graze below
-     * GRAZE_SPEED_MAX bounces without spending a life.
+     * tunnel through at any frame rate.
+     *
+     * WHAT ENDS A RUN: a train, or the PROPS going into something with
+     * speed behind them. Everything else bounces, however many times, which
+     * is the owner's "as much as i like". hitOutcome owns the rule; this
+     * code's only job is to hand it the two things it needs, the closing
+     * speed and how square the contact was to the craft's own disc plane.
+     * A graze below GRAZE_SPEED_MAX bounces silently.
      */
     /* The craft's speed at this state, needed by the collision test below and
      * by the overlay further down. Read once, from the state block. */
@@ -3364,35 +3428,46 @@ export async function boot({ loading, bootStart, mapId }) {
         lastHitKind = view.colliders.kindName(k);
         const closing = speedNow * view.colliders.hitNormalDot;
         lastClosing = closing;
-        const outcome = hitOutcome(lastHitKind, closing);
+        /*
+         * HOW SQUARE THE CONTACT WAS TO THE DISC PLANE, as the absolute
+         * cosine between the obstacle's outward normal and the craft's own
+         * up axis. craftUpY is only the world Y of that axis; the whole
+         * vector is needed here, and it is the same rotation of (0, 1, 0)
+         * by the collision quaternion that craftUpY takes one component of.
+         */
+        upAxis.set(0, 1, 0).applyQuaternion(qCollide);
+        const upDot = Math.abs(
+          view.colliders.hitNx * upAxis.x
+          + view.colliders.hitNy * upAxis.y
+          + view.colliders.hitNz * upAxis.z,
+        );
+        lastUpDot = upDot;
+        const outcome = hitOutcome(lastHitKind, closing, upDot);
         const sameContact = nowWall - bounceAtWall < BOUNCE_COOLDOWN_MS
           && bounceHitIndex === view.colliders.hitIndex
           && bounceHitKind === lastHitKind;
         const graze = closing < GRAZE_SPEED_MAX;
-        let wreck = outcome === 'crash';
-        if (!wreck && !sameContact && !graze && hitsLeft <= 1) {
-          wreck = true;
-        }
-        if (wreck && !sameContact) {
+        if (outcome === 'crash' && !sameContact) {
+          crashInto(`Hit the ${lastHitKind}`, nowWall);
+        } else if (!applyBounce()) {
+          /* The module refused the write, so the plant is still inside the
+           * solid and the next sweep would hit it harder. Nothing to do but
+           * end the run. */
           crashInto(`Hit the ${lastHitKind}`, nowWall);
         } else {
-          if (!applyBounce()) {
-            crashInto(`Hit the ${lastHitKind}`, nowWall);
-          } else {
-            if (!sameContact && !graze) {
-              hitsLeft -= 1;
-              race.recover(`Hit the ${lastHitKind}, ${hitsLeft} left`, nowWall);
-            } else if (!sameContact) {
-              race.recover(`Clipped the ${lastHitKind}`, nowWall);
-            }
-            view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-            if (!sameContact && typeof audio.event === 'function') {
-              audio.event('clip');
-            }
-            bounceAtWall = nowWall;
-            bounceHitIndex = view.colliders.hitIndex;
-            bounceHitKind = lastHitKind;
+          if (!sameContact && !graze) {
+            bounceCount += 1;
+            race.recover(`Bounced off the ${lastHitKind}`, nowWall);
+          } else if (!sameContact) {
+            race.recover(`Clipped the ${lastHitKind}`, nowWall);
           }
+          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+          if (!sameContact && typeof audio.event === 'function') {
+            audio.event('clip');
+          }
+          bounceAtWall = nowWall;
+          bounceHitIndex = view.colliders.hitIndex;
+          bounceHitKind = lastHitKind;
         }
       }
     }
@@ -3854,8 +3929,10 @@ export async function boot({ loading, bootStart, mapId }) {
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
         flightMode: angleModeOn ? 'angle' : 'acro',
-        hitsLeft,
-        hitLives: HIT_LIVES,
+        /* No damage model, so nothing to count down. How much this run has
+         * bounced is still worth telling a pilot, and the OSD says nothing
+         * at all until there is something to say. */
+        bounces: bounceCount,
         /* Native state 3 latches until the L switch drops. The GO flash
          * is 900 ms; after that the overlay has to hide or it sits on
          * the goggles for the rest of the lap. */
@@ -4287,10 +4364,11 @@ export async function boot({ loading, bootStart, mapId }) {
     tiltDeg: lastTiltDeg,
     lastHitKind,
     lastClosingSpeed: lastClosing,
+    lastUpDot,
     grazeSpeedMax: GRAZE_SPEED_MAX,
     bounceSpeedMax: BOUNCE_SPEED_MAX,
-    hitsLeft,
-    hitLives: HIT_LIVES,
+    bounceCount,
+    propPlaneMaxUpDot: PROP_PLANE_MAX_UP_DOT,
     groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y),
     thresholds: {
       descentMax: LAND_DESCENT_MAX,

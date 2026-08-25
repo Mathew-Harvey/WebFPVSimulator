@@ -5210,7 +5210,7 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, hitsLeft, hitLives, launchState, launchPitch, ghostGapMs, ghostFinal }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -5265,12 +5265,22 @@ export class Ui {
     this.osdAlt.textContent = `${altitude.toFixed(1)} m above the ground`;
     this.osdThrBar.style.width = `${Math.max(0, Math.min(1, throttle)) * 100}%`;
     if (this.osdHits) {
-      const lives = hitLives != null ? hitLives : 3;
-      if (hitsLeft == null) {
+      /*
+       * IT COUNTS UP NOW, AND IT COSTS NOTHING.
+       *
+       * This row used to read "Hits left 2 of 3" and it was a durability
+       * model: the third firm contact of a lap ended the run. The rule is a
+       * prop strike now, an airframe cannot be spent, and a countdown to a
+       * thing that no longer happens is worse than no row at all. What is
+       * still worth telling a pilot is how much they are bouncing, so the
+       * row says that, in the neutral colour, and it says nothing at all
+       * until there is something to say.
+       */
+      if (!bounces) {
         this.osdHits.textContent = '';
       } else {
-        this.osdHits.textContent = `Hits left ${hitsLeft} of ${lives}`;
-        this.osdHits.className = hitsLeft <= 1 ? 'osd-sub osd-hits warn' : 'osd-sub osd-hits';
+        this.osdHits.textContent = bounces === 1 ? '1 bounce' : `${bounces} bounces`;
+        this.osdHits.className = 'osd-sub osd-hits';
       }
     }
   }

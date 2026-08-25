@@ -120,17 +120,43 @@ export function flagSideOf(el) {
 }
 
 /*
+ * How much wider than the clearance corridor a marker's scoring square is,
+ * metres, and the narrowest one that may ever be built.
+ *
+ * THE PAD IS ADDED ENTIRELY ON THE OUTER SIDE. The square's inner edge is
+ * on the pole and it has to stay there: an inner edge past the pole would
+ * score a pass flown on the wrong side of the flag, which is the one thing
+ * a turn marker exists to prevent. So the width grows away from the
+ * obstacle, and virtualApertureDims reports how far the square's centre
+ * therefore sits beyond the racing-line knot.
+ *
+ * The owner's words: "extend the virtual gate width of a flag, so the user
+ * doesn't have to fly so close to the flag". A 1.5 m clearance used to
+ * yield a 3.0 m square whose far edge was 3.0 m off the pole; it now
+ * yields 4.5 m and 4.5 m, so the same line flown a metre and a half wide of
+ * the flag still scores. Nothing about which SIDE is passed has moved.
+ */
+export const MARKER_GATE_PAD = 1.5;
+export const MARKER_GATE_MIN_W = 3.0;
+
+/*
  * The scoring square a flag or a cone assigns on its pass side.
  *
- * Width is twice the clearance, so the inner edge sits on the pole and the
- * outer edge is one clearance past the racing line. Height is at least that
- * wide, and at least as tall as the marker, so a 2.5 m flag is not scored
- * by a waist-high slot. Waypoints keep a clearance of zero and do not get
- * one of these: they pin the line, they are not a hole.
+ * Width is the clearance corridor plus MARKER_GATE_PAD, never less than
+ * MARKER_GATE_MIN_W, with the inner edge still on the pole. Height is at
+ * least that wide, and at least as tall as the marker, so a 2.5 m flag is
+ * not scored by a waist-high slot. Waypoints keep a clearance of zero and
+ * do not get one of these: they pin the line, they are not a hole.
+ *
+ * `outward` is how far the square's CENTRE sits beyond the racing line
+ * knot, along the pass direction, which is what keeps the inner edge on the
+ * pole while the width grows. Every drawer and the game read it, so the
+ * plan, the preview and the race field cannot disagree about where the
+ * square is.
  */
 export function virtualApertureDims(el, seq) {
   const clearance = Math.max(0, seq?.clearance ?? el?.dims?.clearance ?? 0);
-  const clearW = Math.max(0.8, clearance * 2);
+  const clearW = Math.max(MARKER_GATE_MIN_W, clearance * 2 + MARKER_GATE_PAD);
   const poleH = Math.max(0, el?.dims?.height ?? 0);
   const clearH = Math.max(clearW, poleH);
   return {
@@ -138,6 +164,7 @@ export function virtualApertureDims(el, seq) {
     clearH,
     sillH: 0,
     centerH: clearH * 0.5,
+    outward: clearW * 0.5 - clearance,
   };
 }
 

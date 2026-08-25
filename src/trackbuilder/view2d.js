@@ -921,14 +921,17 @@ export class View2D {
       const dims = virtualApertureDims(el, seq);
       /* The virtual gate, in plan: a green bar the width of the scoring
        * square, sitting on the pass side. A vertical square collapses to a
-       * bar the same way a real gate does. */
+       * bar the same way a real gate does. Its centre is `outward` past the
+       * racing line knot, which is what holds the inner edge on the pole
+       * now that the square is wider than the clearance corridor. */
       const hw = dims.clearW / 2;
       const hd = 0.18;
+      const gateAt = add(at, scale(left, dims.outward * passOffsetSign(seq.passSide)));
       const corners = [
-        add(at, add(scale(left, -hw), scale(u, -hd))),
-        add(at, add(scale(left, hw), scale(u, -hd))),
-        add(at, add(scale(left, hw), scale(u, hd))),
-        add(at, add(scale(left, -hw), scale(u, hd))),
+        add(gateAt, add(scale(left, -hw), scale(u, -hd))),
+        add(gateAt, add(scale(left, hw), scale(u, -hd))),
+        add(gateAt, add(scale(left, hw), scale(u, hd))),
+        add(gateAt, add(scale(left, -hw), scale(u, hd))),
       ].map((q) => this.toScreen(q));
       ctx.beginPath();
       corners.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));

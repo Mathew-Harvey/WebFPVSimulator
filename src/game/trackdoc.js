@@ -278,13 +278,36 @@ export function courseFromDocument(raw) {
       const travel = { x: t.x, y: t.z, z: -t.y };
       const heading = headingForTravel(travel.x, travel.z);
       const pos = toScene(field, knot.pos);
+      /*
+       * THE SQUARE'S CENTRE IS NOT THE KNOT ANY MORE.
+       *
+       * It was, while the square was exactly twice the clearance wide: the
+       * inner edge landed on the pole and the centre landed on the racing
+       * line by arithmetic. Now that the width carries MARKER_GATE_PAD on
+       * top, the two have to be told apart, and the contract elements.js
+       * states is that the INNER EDGE stays on the pole. So the centre is
+       * pushed `outward` further along the pass direction, which is the
+       * direction from the pole to the knot. The racing line does not move:
+       * it still runs through the knot, now nearer the inner edge of a
+       * wider hole, which is the whole point of widening it.
+       */
+      let ox = pos.x - structure.x;
+      let oz = pos.z - structure.z;
+      const on = Math.hypot(ox, oz);
+      if (on > 1e-6) {
+        ox /= on;
+        oz /= on;
+      } else {
+        ox = 0;
+        oz = 0;
+      }
       stations.push({
         elementId: el.id,
         structure,
         apertureIndex: 0,
         flyOrder: stations.length,
-        x: pos.x,
-        z: pos.z,
+        x: pos.x + ox * dims.outward,
+        z: pos.z + oz * dims.outward,
         /* The pole itself, scene coordinates, so the renderer can put the
          * pass side glow against the flag rather than guessing which edge
          * of the corridor the structure is on. */

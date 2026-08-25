@@ -1536,8 +1536,19 @@ function suiteScoring() {
   const flagSt = flagCourse.stations.find((s) => s.type === 'flag');
   check('a flag in the order is a virtual gate', Boolean(flagSt && flagSt.virtual));
   const dims = virtualApertureDims(fl, turn.sequence[1]);
-  check('the square is twice the clearance wide', flagSt && Math.abs(flagSt.clearW - dims.clearW) < 1e-9,
+  check('the square is the clearance corridor plus the pad', flagSt && Math.abs(flagSt.clearW - dims.clearW) < 1e-9,
     flagSt ? `${flagSt.clearW}` : 'missing');
+  check('the pad is real, so the square is wider than the corridor',
+    dims.clearW > (turn.sequence[1].clearance ?? 0) * 2 + 1e-9,
+    `${dims.clearW} vs ${(turn.sequence[1].clearance ?? 0) * 2}`);
+  /* The contract the pad rests on: the inner edge is still ON the pole, so
+   * the square grew away from the flag and not around it. Measured in the
+   * station's own across axis rather than restated from elements.js. */
+  const flagPole = flagCourse.structures.find((s) => s.type === 'flag');
+  const acrossPole = Math.hypot(flagSt.x - flagPole.x, flagSt.z - flagPole.z);
+  check('and its inner edge is still on the pole',
+    Math.abs(acrossPole - dims.clearW / 2) < 1e-6,
+    `${acrossPole.toFixed(4)} vs ${(dims.clearW / 2).toFixed(4)}`);
   const flagRace = raceFromCourse(flagCourse);
   const flagG = flagRace.gates.find((g) => g.virtual);
   check('the race scores the flag square', Boolean(flagG && flagG.virtual));

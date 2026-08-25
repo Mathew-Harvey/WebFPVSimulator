@@ -1178,7 +1178,11 @@ export class View3D {
       const dims = virtualApertureDims(el, seq);
       const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
       const left = leftOf(u);
-      const off = scale(left, seq.clearance * passOffsetSign(seq.passSide));
+      /* Inner edge on the pole: half the square's width out along the pass
+       * side, which is the clearance plus whatever elements.js padded the
+       * width by. Reading `outward` rather than adding the pad again here
+       * is what keeps the preview and the race field the same square. */
+      const off = scale(left, (seq.clearance + dims.outward) * passOffsetSign(seq.passSide));
       const f = {
         widthAxis: left,
         heightAxis: { x: 0, y: 0, z: 1 },

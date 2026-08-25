@@ -16470,3 +16470,47 @@ the first flown course with a flag on it is the real look.
 Possible effect if this breaks something: markers only. If the lit edge
 now reads as being on the wrong side of the corridor, the sign to revert
 is the two minus signs in setPole.
+
+## The flag's scoring square grew, away from the flag
+
+Owner's report, item 2 of eight: "extend the virtual gate width of a flag,
+so the user doesn't have to fly so close to the flag."
+
+The square used to be exactly twice the clearance, so its inner edge sat
+on the pole and its centre landed on the racing line knot by arithmetic.
+A 1.5 m clearance therefore gave a 3.0 m hole whose far edge was 3.0 m
+off the pole, and a line flown wide of that missed the marker entirely.
+
+WHICH WAY IT GROWS IS THE WHOLE DESIGN. Widening it symmetrically would
+push the inner edge PAST the pole, and a square that reaches across the
+flag scores a pass flown on the wrong side of it, which is the one thing
+a turn marker exists to prevent. So MARKER_GATE_PAD, 1.5 m, is added
+entirely on the outer side, the inner edge stays on the pole, and
+virtualApertureDims now also reports `outward`, how far the square's
+CENTRE therefore sits beyond the knot. A flag goes 3.0 m to 4.5 m wide, a
+cone 2.0 m to 3.5 m, and MARKER_GATE_MIN_W keeps a tiny clearance from
+producing a slot.
+
+The racing line did not move. It still runs through the knot, which is
+now nearer the inner edge of a wider hole, and that is exactly the
+request: the same line, plus a metre and a half of room on the outside.
+
+Three readers had the old centre written out and all three now read
+`outward` from elements.js rather than adding the pad again:
+game/trackdoc.js for the race field, view3d.js for the preview,
+view2d.js for the plan.
+
+CHECKS: trackbuilder selftest 281 of 281, two of them new. The new ones
+assert the pad is real and, more importantly, measure the built station
+against the built structure to show the inner edge is still on the pole
+to within a micrometre. The existing "flying the other side of the pole
+does not register the flag" check still passes, which is the same
+contract from the scoring side. npm run verify NOT run: no physics, no
+plant, no module ABI, no build file, and check 13 cannot see a course
+document.
+
+Possible effect if this breaks something: every published course with a
+flag or a cone in its order gets a wider hole, so a lap that used to
+miss a marker may now score. Times already on the board were flown
+through the narrower square and are not invalidated by a wider one:
+nothing that scored before stops scoring.

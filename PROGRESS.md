@@ -16425,3 +16425,48 @@ rather than by anything this round did, and it is written down because
 the next person to touch that rule needs to know it is load bearing.
 
 No code changed this turn.
+
+## The flag's light runs away from the pole now, not into it
+
+Owner's report, item 1 of eight: "the flag gradient should be going the
+other way, darker near the pole, lighter towards the edge."
+
+WHAT WAS ACTUALLY BRIGHT AT THE POLE. The wash shader was already dark on
+the pole edge and brightest away from it, which is not what its own
+comment claimed and not what the round that built it wrote down either.
+The brightness a pilot sees at the pole was never the wash: it was the
+BAR and the AURA, an opaque strip and an additive shell, both parked
+tight against the mast at plus edgeX. Those two are far louder than a
+0.55 gain additive plane, so the marker read as a lamp on the flag with
+the light falling off outward, which is the report exactly.
+
+So the fix is where the loud parts stand, not the sign in the shader:
+
+  bar and aura   moved to MINUS edgeX, the outer edge of the pass square,
+                 the far side of the space the pilot may use. setPole
+                 flips them against the pole rather than onto it.
+  the wash       widened from a 0.5 m strip off the pole to the WHOLE
+                 square, so the ramp reads over the distance the pilot is
+                 actually choosing between. Same quadratic, same ends
+                 fade, same uFront/uBack/uGain, so dressGate, setNextGate,
+                 setTargetSide and the pulse all still drive it with no
+                 branch.
+  WASH_TEMPER    0.55 in the fragment shader. The plane is about nine
+                 times the area it was and an additive wash pays for
+                 area; without this a marker hangs a green pane across
+                 the course instead of hinting at the grass.
+
+The comments that said "brightest at the pole" are gone rather than
+edited, because they described an intention the code never had.
+
+CHECKS: node --check on scene.js, trackbuilder selftest 279 of 279.
+npm run verify NOT run: this is three mesh positions and a shader
+constant in the renderer, no physics, no plant, no module ABI, no build
+file, and check 13 loads only tests/browser/harness.html which has no
+course markers in it. No rendered capture was taken this turn, so the
+appearance is argued from the geometry and the shader rather than shown;
+the first flown course with a flag on it is the real look.
+
+Possible effect if this breaks something: markers only. If the lit edge
+now reads as being on the wrong side of the corridor, the sign to revert
+is the two minus signs in setPole.

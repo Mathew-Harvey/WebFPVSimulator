@@ -1796,7 +1796,7 @@ function gateCue(clearW, clearH) {
 }
 
 /*
- * THE FLAG GLOWS ON THE SIDE YOU PASS. There is no drawn square any more.
+ * THE FLAG GLOWS ON THE SIDE YOU PASS, AND IT GLOWS AWAY FROM THE POLE.
  *
  * This used to build the same ring, halo, glow and pane a PVC opening
  * wears, floating in the air beside the pole, and the owner asked for it
@@ -1805,24 +1805,35 @@ function gateCue(clearW, clearH) {
  * virtual aperture at the knot, because moving the SCORING would change
  * what every posted lap time means. Only the paint moved.
  *
- * Three live meshes, all hugging the pole's corridor edge:
+ * WHICH WAY THE LIGHT RUNS, and this is the round that turned it round.
+ * The bar and its aura used to sit tight against the POLE, so the
+ * brightest thing on a marker was the one point a pilot must not fly
+ * into, and the report was exactly that: "darker near the pole, lighter
+ * towards the edge". A mark that pulls the eye onto the obstacle is
+ * telling the pilot to shave it. So the lit edge is now the OUTER edge of
+ * the square, the far side of the space you are allowed to use, and the
+ * wash ramps from nothing at the pole up to that edge. The flag stays
+ * visible on its own account: it is furniture, in full colour, lit or not.
  *
- *   the bar    a slim lit strip the height of the corridor, tight against
- *              the pole on the pass side. ringMat, so the existing tier
- *              and side machinery drives it unchanged.
+ * Three live meshes:
+ *
+ *   the bar    a slim lit strip the height of the corridor, standing on
+ *              the OUTER edge of the pass square, away from the pole.
+ *              ringMat, so the existing tier and side machinery drives it
+ *              unchanged.
  *   the aura   a soft additive shell around the bar. haloMat, target only,
  *              its opacity rides the same pulse the gates ride.
- *   the wash   two crossed additive planes leaning into the corridor,
- *              brightest at the pole and gone by half a metre out, which
- *              is the "glows on the side you pass" of the request, subtle
- *              but directional. glowMat with uFront/uBack/uGain, so
+ *   the wash   one additive plane across the whole pass square, dark on
+ *              the pole edge and brightest at the outer edge, which is the
+ *              "glows on the side you pass" of the request pointed the way
+ *              the owner asked for. glowMat with uFront/uBack/uGain, so
  *              setTargetSide turns the whole set red from the wrong side
  *              exactly as it turns a gate's pane.
  *
- * The meshes are built at the +x edge and setPole() flips them once the
- * placement code has measured which local side the pole is actually on,
- * with the group's own transform rather than a second copy of the yaw
- * convention.
+ * The meshes are built with the pole assumed at +x and setPole() flips
+ * them once the placement code has measured which local side the pole is
+ * actually on, with the group's own transform rather than a second copy of
+ * the yaw convention.
  */
 function virtualGate(clearW, clearH) {
   const g = new THREE.Group();
@@ -1831,7 +1842,9 @@ function virtualGate(clearW, clearH) {
 
   const barMat = new THREE.MeshBasicMaterial({ color: NEXT_COLOUR });
   const bar = new THREE.Mesh(new THREE.BoxGeometry(0.045, clearH, 0.045), barMat);
-  bar.position.set(edgeX, midY, 0);
+  /* Built at MINUS edgeX, because the pole is assumed at plus edgeX and the
+   * lit edge is the one away from it. setPole flips the pair together. */
+  bar.position.set(-edgeX, midY, 0);
   bar.layers.set(1);
   g.add(bar);
 
@@ -1860,18 +1873,26 @@ function virtualGate(clearW, clearH) {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
-    /* u runs across the plane: 0 at the pole edge, 1 half a metre into the
-     * corridor. Quadratic falloff from the pole, soft fade at top and
-     * bottom so the column does not end in a hard line. */
+    /* u runs across the plane, and the plane is the whole pass square: u = 1
+     * is the POLE edge and u = 0 is the outer edge. So the ramp is dark
+     * against the flag and brightest at the far side of the space, which is
+     * the direction of the request. Quadratic, so the near half of the
+     * square stays genuinely dim rather than merely dimmer, with a soft
+     * fade at top and bottom so the column does not end in a hard line. */
     fragmentShader: `
       uniform vec3 uFront;
       uniform float uGain;
       varying vec2 vUv;
+      /* The plane got about nine times wider when it went from a half metre
+       * strip to the whole square, and an additive wash pays for area. This
+       * is the peak brought back down so a marker is a hint on the grass
+       * rather than a green pane hanging across the course. */
+      const float WASH_TEMPER = 0.55;
       void main() {
-        float across = 1.0 - vUv.x;
-        float fall = across * across;
+        float outward = 1.0 - vUv.x;
+        float fall = outward * outward;
         float ends = smoothstep(0.0, 0.12, vUv.y) * (1.0 - smoothstep(0.88, 1.0, vUv.y));
-        gl_FragColor = vec4(uFront, 1.0) * (uGain * fall * ends);
+        gl_FragColor = vec4(uFront, 1.0) * (uGain * fall * ends * WASH_TEMPER);
       }
     `,
     transparent: true,
@@ -1884,19 +1905,22 @@ function virtualGate(clearW, clearH) {
    * which the side has to be read. Seen from beside the flag it thins to
    * nothing and the bar and aura carry the mark instead; a crossed second
    * plane was tried and dropped, its gradient runs in a direction that
-   * means nothing once the plane is turned. */
-  const washW = Math.min(0.5, clearW * 0.5);
-  const wash = new THREE.Mesh(new THREE.PlaneGeometry(washW, clearH), washMat);
-  wash.position.set(edgeX - washW * 0.5, midY, 0);
+   * means nothing once the plane is turned.
+   *
+   * IT SPANS THE WHOLE SQUARE NOW, not half a metre off the pole. A ramp
+   * only reads as a ramp over the distance the pilot is choosing between,
+   * and that distance is the width of the space they may use. */
+  const wash = new THREE.Mesh(new THREE.PlaneGeometry(clearW, clearH), washMat);
+  wash.position.set(0, midY, 0);
   g.add(wash);
 
   const setPole = (localX) => {
     const s = localX >= 0 ? 1 : -1;
-    bar.position.x = s * edgeX;
-    aura.position.x = s * edgeX;
-    wash.position.x = s * (edgeX - washW * 0.5);
-    /* The wash gradient must stay brightest at the pole: mirror the plane
-     * rather than re-uv it. */
+    /* The lit edge is opposite the pole. */
+    bar.position.x = -s * edgeX;
+    aura.position.x = -s * edgeX;
+    /* The wash must stay dark on the pole edge: mirror the plane rather
+     * than re-uv it, so u = 1 lands on the pole whichever side it is. */
     wash.scale.x = s;
   };
 

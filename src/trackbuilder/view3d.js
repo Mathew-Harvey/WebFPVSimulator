@@ -52,7 +52,7 @@ import {
 } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { levelName } from './figures.js';
-import { travelDirection, passOffsetSign } from './faces.js';
+import { travelDirection, markerPassDir } from './faces.js';
 import { apertureFrame, clamp, leftOf, normalize, scale } from './geometry.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 
@@ -1177,14 +1177,21 @@ export class View3D {
       }
       const dims = virtualApertureDims(el, seq);
       const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
-      const left = leftOf(u);
+      /* Which way off the pole the pass is, shared with path.js so the
+       * preview and the racing line agree, all the way round a turned
+       * marker. */
+      const side = markerPassDir(el, seq, u);
       /* Inner edge on the pole: half the square's width out along the pass
        * side, which is the clearance plus whatever elements.js padded the
        * width by. Reading `outward` rather than adding the pad again here
        * is what keeps the preview and the race field the same square. */
-      const off = scale(left, (seq.clearance + dims.outward) * passOffsetSign(seq.passSide));
+      const off = scale(side, seq.clearance + dims.outward);
+      /* WHERE it sits follows the pass direction; WHICH WAY IT FACES is
+       * always square to travel, because that is the frame race.js scores
+       * in. A basis built from a turned pass direction would not even be
+       * orthonormal, and it would draw a hole nothing scores. */
       const f = {
-        widthAxis: left,
+        widthAxis: leftOf(u),
         heightAxis: { x: 0, y: 0, z: 1 },
         normal: { x: u.x, y: u.y, z: 0 },
       };

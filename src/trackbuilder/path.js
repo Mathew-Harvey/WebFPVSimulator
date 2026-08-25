@@ -46,10 +46,10 @@ import { KIND } from './elements.js';
 import {
   elementById, kindOf, entryAnchor, elementNormal, startPadsOf,
 } from './model.js';
-import { nearbyApertureTravel, passOffsetSign } from './faces.js';
+import { nearbyApertureTravel, markerPassDir } from './faces.js';
 import { wrapBetween } from './figures.js';
 import {
-  add, cross, dist, dot, leftOf, length, normalize, scale, sub, yawVector,
+  add, cross, dist, dot, length, normalize, scale, sub, yawVector,
 } from './geometry.js';
 
 /*
@@ -130,15 +130,15 @@ export function buildKnots(doc) {
       continue;
     }
 
-    /* Marker. Push the knot off the pole by the clearance radius, to the
-     * left or the right of the direction of travel. Keep the tangent on
-     * the plan: a flag has no vertical face, and a z component here is
-     * what sends the Hermite between two ground markers underground.
+    /* Marker. Push the knot off the pole by the clearance radius, in the
+     * pass direction: square to travel on the derived side, or wherever the
+     * author has turned the marker to. Keep the tangent on the plan: a flag
+     * has no vertical face, and a z component here is what sends the
+     * Hermite between two ground markers underground.
      * A pole on a gate stile takes that gate's travel, or the square
      * stands along the PVC and a pass through the opening never hits it. */
     const travel = nearbyApertureTravel(doc, el) || chainDir;
-    const left = leftOf(travel);
-    const off = scale(left, (k.seq.clearance ?? 0) * passOffsetSign(k.seq.passSide));
+    const off = scale(markerPassDir(el, k.seq, travel), k.seq.clearance ?? 0);
     const flat = normalize({ x: travel.x, y: travel.y, z: 0 }, { x: 1, y: 0, z: 0 });
     knots.push({
       pos: add(k.pos, off),

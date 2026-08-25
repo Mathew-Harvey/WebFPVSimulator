@@ -417,6 +417,46 @@ function suiteFaces() {
   check('a right turn passes the flag on its left', turnR.sequence[1].passSide === 'left',
     turnR.sequence[1].passSide);
 
+  /*
+   * TURNING A MARKER BY HAND SWINGS ITS SQUARE ROUND THE POLE, all the way
+   * round and not to one of two sides. The knot is measured off the built
+   * path rather than off markerPassDir, because the claim is about where
+   * the racing line goes and not about what one helper returns.
+   */
+  {
+    const before = buildPath(turn).knots.find((k) => k.elementId === fl.id);
+    const bearing = (k) => Math.atan2(k.pos.y - fl.position.y, k.pos.x - fl.position.x);
+    /* Whatever the automatic rule chose here, recorded rather than
+     * asserted: the claim under test is that a hand turn overrides it and
+     * that re-derive gives it back, not what the rule picks on this
+     * particular corner, which the two checks above already own. */
+    const autoBearing = bearing(before);
+    for (const want of [0, 40, 135, -100, 179]) {
+      setYaw(turn, fl.id, want * RAD);
+      const k = buildPath(turn).knots.find((q) => q.elementId === fl.id);
+      const got = bearing(k) * DEG;
+      check(`a flag turned to ${want} deg puts its square there`,
+        Math.abs(wrapAngle((got - want) * RAD)) < 1e-3, `${got.toFixed(2)} deg`);
+      check('and the knot is still exactly one clearance off the pole',
+        Math.abs(Math.hypot(k.pos.x - fl.position.x, k.pos.y - fl.position.y)
+          - (k.seq.clearance ?? 0)) < 1e-6);
+    }
+    /* Flip side has to turn a hand turned marker, or it toggles a field
+     * nothing is reading. */
+    setYaw(turn, fl.id, 40 * RAD);
+    flipFace(turn, turn.sequence[1].id);
+    const flipped = buildPath(turn).knots.find((q) => q.elementId === fl.id);
+    check('flip side turns a hand turned marker a half turn',
+      Math.abs(wrapAngle(bearing(flipped) - (40 + 180) * RAD)) < 1e-3,
+      `${(bearing(flipped) * DEG).toFixed(2)} deg`);
+    /* And re-derive hands it back to the automatic rule. */
+    clearOverride(turn, turn.sequence[1].id);
+    const back = buildPath(turn).knots.find((q) => q.elementId === fl.id);
+    check('re-derive puts it back on the automatic side',
+      Math.abs(wrapAngle(bearing(back) - autoBearing)) < 1e-3,
+      `${(bearing(back) * DEG).toFixed(2)} vs ${(autoBearing * DEG).toFixed(2)} deg`);
+  }
+
   /* A dive gate between a high gate and a low one is flown downward. */
   const dv = createTrack();
   const high = place(dv, 'tower', 0, 0);

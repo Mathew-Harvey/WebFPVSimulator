@@ -589,7 +589,7 @@ export class Panels {
     card.append(el('p', 'tb-face', faceLabel(doc, seq)));
 
     if (kindOf(element) === KIND.MARKER) {
-      card.append(el('p', 'tb-help', 'The green square is the space you have to fly through. Flip side moves it to the other side of the pole.'));
+      card.append(el('p', 'tb-help', 'The green square is the space you have to fly through. Drag the round handle on the plan to swing it anywhere round the marker, all the way round. Flip side sends it to the opposite side, and Re-derive hands it back to the automatic rule, which is the outside of the turn.'));
       card.append(this.field(`clr-${seq.id}`, 'Clearance', seq.clearance ?? 0, (val) => {
         this.host.edit('clearance', (d) => {
           const s2 = d.sequence.find((x) => x.id === seq.id);

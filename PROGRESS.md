@@ -16557,3 +16557,53 @@ Possible effect if this breaks something: newly placed cones sit their
 racing line half a metre further off the cone than before, so a course
 authored today has a slightly wider line than the same layout authored
 yesterday. Existing documents are untouched.
+
+## Turning a flag now turns its gate round the flag
+
+Owner's report, item 8 of eight: "the rotational thing in the track
+builder should allow the gate to move around the flag completely as the
+user wants, currently it doesn't."
+
+It did not, and the handle was never the problem. A marker's square was
+always square to the direction of travel on one of exactly TWO sides,
+left or right, so the rotation handle could only reach the flag's own
+mesh: the pole turned, the sail swung round with it, and the green square
+did not move a degree. There was nothing between left and right to reach.
+
+So markerPassDir in faces.js is now the one place that answers "which way
+off the pole is the pass", and it answers it from the marker's OWN YAW as
+soon as the author has turned it by hand. yawOverridden is the flag setYaw
+already raises and Re-derive already clears, and it already means exactly
+this everywhere else in the tool: the author has decided, stop deriving.
+An untouched marker keeps the automatic rule, the outside of the turn.
+
+WHERE IT SITS MOVED, WHICH WAY IT FACES DID NOT, and that distinction is
+the one thing this could have got wrong. race.js builds every scoring
+frame from the heading alone, so a virtual gate's width is across the
+direction of travel and its plane is square to it, whatever the marker's
+yaw. The first cut of this drew the square with its width along the pass
+direction, which on a turned marker is not even an orthonormal basis and
+would have drawn a hole nothing scores. Both previews now offset the
+CENTRE by the pass direction and build the FRAME from travel, which is
+what game/trackdoc.js was already doing.
+
+Flip side had to learn the same thing: on a hand turned marker it now
+turns the marker a half turn, because toggling passSide alone would have
+toggled a field nothing was reading.
+
+Per element and not per pass, deliberately, and it is the same trade an
+aperture makes: a marker flown twice has one pole, and turning the pole
+turns both passes. Steering one pass on its own is what Flip side is for.
+
+CHECKS: trackbuilder selftest 293 of 293, twelve of them new. The new
+ones sweep a flag to 0, 40, 135, -100 and 179 degrees and measure the
+BUILT PATH's knot bearing off the pole each time, rather than asking the
+helper what it would return, so the claim under test is where the racing
+line actually goes. They also hold the knot at exactly one clearance from
+the pole through the whole sweep, and cover flip and re-derive.
+
+Possible effect if this breaks something: markers on courses whose
+authors had already rotated a flag by hand. Their yawOverridden flag was
+previously only about the flag's mesh, and it now moves the pass square
+too, so such a course's line will change. Re-derive on the marker puts it
+back on the automatic side.

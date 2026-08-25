@@ -54,7 +54,7 @@ import { KIND } from './elements.js';
 import {
   elementById, kindOf, entryAnchor, elementNormal, startPadsOf, sequenceRefCount,
 } from './model.js';
-import { apertureFrame, cross, dot, normalize, sub, yawVector, wrapAngle } from './geometry.js';
+import { apertureFrame, cross, dot, leftOf, normalize, scale, sub, yawVector, wrapAngle } from './geometry.js';
 
 /*
  * A flag parked on a gate stile has neighbours along the PVC, so the chain
@@ -352,6 +352,12 @@ export function flipFace(doc, seqId) {
   if (kindOf(el) === KIND.MARKER) {
     seq.passSide = seq.passSide === 'left' ? 'right' : 'left';
     seq.overridden = true;
+    /* A hand turned marker reads its side off its own yaw, so flipping the
+     * side has to turn the marker. Without this, Flip side on a rotated
+     * flag toggled a field nothing was reading and the square sat still. */
+    if (el.yawOverridden) {
+      el.yaw = wrapAngle(el.yaw + Math.PI);
+    }
     return true;
   }
   return false;
@@ -452,6 +458,45 @@ export function defaultYawFor(doc, position) {
  * the quad passes, and for path.js, which offsets the knot there. */
 export function passOffsetSign(passSide) {
   return passSide === 'right' ? -1 : 1;
+}
+
+/*
+ * WHICH WAY OFF THE MARKER THE PASS IS, as a unit vector in the plan.
+ *
+ * The owner's report: "the rotational thing in the track builder should
+ * allow the gate to move around the flag completely as the user wants,
+ * currently it doesn't." It did not, and the reason is worth stating
+ * because it was not a bug in the handle. A marker's square was ALWAYS
+ * square to the direction of travel, on one of exactly two sides, so the
+ * only thing the rotation handle could reach was the flag's own mesh: the
+ * pole turned, the sail swung round with it, and the green square did not
+ * move a degree. There was nothing between "left" and "right".
+ *
+ * So the marker's OWN YAW is the offset direction once the author has
+ * turned it by hand. yawOverridden is already the flag setYaw raises and
+ * the flag "Re-derive" clears, and it already means exactly this
+ * everywhere else: the author has decided, stop deriving. A turned flag
+ * therefore puts its square wherever the handle points, all the way round,
+ * and an untouched one keeps the automatic rule, which is the outside of
+ * the turn and the thing an author should almost never have to set.
+ *
+ * IT IS PER ELEMENT, NOT PER PASS, and that is the same trade an aperture
+ * makes: a structure flown twice has one frame, and turning the frame
+ * turns both passes together. Steering one pass of a shared marker on its
+ * own is what Flip side is for.
+ *
+ * `travel` is the local direction of travel, needed only for the automatic
+ * case. The vector comes back in the plan, z zero, because a marker has no
+ * vertical face and a z component here is what sends a Hermite between two
+ * ground markers underground.
+ */
+export function markerPassDir(el, seq, travel) {
+  if (el && el.yawOverridden) {
+    const d = yawVector(el.yaw);
+    return { x: d.x, y: d.y, z: 0 };
+  }
+  const flat = normalize({ x: travel?.x ?? 1, y: travel?.y ?? 0, z: 0 }, { x: 1, y: 0, z: 0 });
+  return scale(leftOf(flat), passOffsetSign(seq?.passSide));
 }
 
 export function faceAxis(el) {

@@ -39,7 +39,7 @@ import {
 } from './model.js';
 import { sequenceNumbers } from './sequence.js';
 import { figureCue } from './figures.js';
-import { travelDirection, passOffsetSign } from './faces.js';
+import { travelDirection, markerPassDir } from './faces.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import {
   add, apertureCorners, clamp, dist, leftOf, normalize, pointSegment, scale, sub, yawVector,
@@ -912,8 +912,12 @@ export class View2D {
       return;
     }
     const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
-    const left = leftOf(u);
-    const at = add(el.position, scale(left, (seq.clearance ?? 0) * passOffsetSign(seq.passSide)));
+    /* Which way off the pole the pass is: square to travel on the derived
+     * side, or the marker's own heading once the author has turned it. One
+     * function, shared with path.js and the 3D preview, so the plan cannot
+     * draw the square somewhere the racing line does not go. */
+    const side = markerPassDir(el, seq, u);
+    const at = add(el.position, scale(side, seq.clearance ?? 0));
     const p = this.toScreen(at);
     const ang = Math.atan2(-u.y, u.x);
 
@@ -926,7 +930,14 @@ export class View2D {
        * now that the square is wider than the clearance corridor. */
       const hw = dims.clearW / 2;
       const hd = 0.18;
-      const gateAt = add(at, scale(left, dims.outward * passOffsetSign(seq.passSide)));
+      /* WHERE it sits follows the pass direction, all the way round a
+       * turned marker. WHICH WAY IT FACES does not: race.js builds every
+       * scoring frame from the heading alone, so the square's width is
+       * always across the direction of travel and its plane always square
+       * to it. Drawing it any other way would draw a hole that is not the
+       * hole being scored. */
+      const left = leftOf(u);
+      const gateAt = add(at, scale(side, dims.outward));
       const corners = [
         add(gateAt, add(scale(left, -hw), scale(u, -hd))),
         add(gateAt, add(scale(left, hw), scale(u, -hd))),

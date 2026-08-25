@@ -1595,9 +1595,30 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
   const primary = primaryWanted == null
     ? Math.floor(stack / 2)
     : Math.max(0, Math.min(stack - 1, Math.round(primaryWanted)));
-  const outlineGeos = [];
-  const haloGeos = [];
+  /*
+   * ONE MESH PER OPENING, NOT ONE PER STRUCTURE, and that is this round's
+   * change. The four bars of every level used to merge into a single ring
+   * mesh, so a double or a triple stack lit ALL of its holes the moment the
+   * race named any one of them and the pilot had to read a badge to find
+   * out which. The owner's words: "for double and triple stacked gates only
+   * the next gate you go through should be highlighted." A merged mesh
+   * cannot say that; separate meshes can, by being hidden.
+   *
+   * The MATERIAL is still one per structure. Colour, the target hue and the
+   * wrong side red all drive the material, so keeping one of it means
+   * dressGate, setTargetSide and the pulse are unchanged; only visibility
+   * is per opening. The cost is one draw call per level instead of one per
+   * structure, which on a three hole ladder is two more.
+   */
+  const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, fog: true });
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: ringColor, transparent: true, opacity: 0.5, fog: true,
+  });
+  const rings = [];
+  const halos = [];
   for (let k = 0; k < stack; k += 1) {
+    const outlineGeos = [];
+    const haloGeos = [];
     const cy = sills[k] + clearH * 0.5;
     /*
      * The lit bar's thickness, and it is a LEGIBILITY number.
@@ -1632,22 +1653,20 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
       hg.translate(px, py, 0);
       haloGeos.push(hg);
     }
+    const lvlRing = new THREE.Mesh(mergeGeometries(outlineGeos, false), ringMat);
+    /* No ink on the emissive outline: the depth edge pass draws a ghost line
+     * inside it, which reads as a rendering defect on the one prop the pilot
+     * stares at all lap. Layer 1 skips the prepass. */
+    lvlRing.layers.set(1);
+    group.add(lvlRing);
+    rings.push(lvlRing);
+    const lvlHalo = new THREE.Mesh(mergeGeometries(haloGeos, false), haloMat);
+    lvlHalo.layers.set(1);
+    group.add(lvlHalo);
+    halos.push(lvlHalo);
   }
-  const ring = new THREE.Mesh(
-    mergeGeometries(outlineGeos, false),
-    new THREE.MeshBasicMaterial({ color: ringColor, fog: true }),
-  );
-  /* No ink on the emissive outline: the depth edge pass draws a ghost line
-   * inside it, which reads as a rendering defect on the one prop the pilot
-   * stares at all lap. Layer 1 skips the prepass. */
-  ring.layers.set(1);
-  group.add(ring);
-  const halo = new THREE.Mesh(
-    mergeGeometries(haloGeos, false),
-    new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.5, fog: true }),
-  );
-  halo.layers.set(1);
-  group.add(halo);
+  const ring = rings[0];
+  const halo = halos[0];
 
   /* Additive glow across the primary opening. Additive so it reads as light
    * rather than paint, in the gate plane so it does not need to billboard,
@@ -1710,7 +1729,9 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
   const cue = gateCue(clearW, clearH);
   cue.position.y = sills[primary] + clearH * 0.5;
   group.add(cue);
-  return { ring, halo, glow, cue, fillMat: cue.userData.fillMat, ringColor, primary };
+  return {
+    ring, halo, rings, halos, glow, cue, fillMat: cue.userData.fillMat, ringColor, primary,
+  };
 }
 
 /*
@@ -1931,6 +1952,8 @@ function virtualGate(clearW, clearH) {
     animate: [bar, aura, wash],
     ringMat: barMat,
     haloMat: auraMat,
+    ringMeshes: [bar],
+    haloMeshes: [aura],
     glowMat: washMat,
     glowMesh: wash,
     cueGroup: null,
@@ -2697,6 +2720,9 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     animate: [pivot],
     ringMat: marks.ring.material,
     haloMat: marks.halo.material,
+    /* A dive gate is one opening, so the per opening lists are one long. */
+    ringMeshes: marks.rings,
+    haloMeshes: marks.halos,
     glowMat: marks.glow.material,
     glowMesh: marks.glow,
     cueGroup: marks.cue,
@@ -2905,9 +2931,13 @@ function obstacle(spec, index, isStart, opts = {}) {
     /* The lit parts have per obstacle materials driven every frame, so they
      * stay live; everything else bakes. Header sails wave, so they stay live
      * too. */
-    animate: [ring, halo, glow, cue, ...flags.animate],
+    animate: [...marks.rings, ...marks.halos, glow, cue, ...flags.animate],
     ringMat: ring.material,
     haloMat: halo.material,
+    /* One per opening, so a stack can light the hole the race wants and
+     * leave the others dark. The material above is still shared. */
+    ringMeshes: marks.rings,
+    haloMeshes: marks.halos,
     glowMat: glow.material,
     glowMesh: glow,
     cueGroup: cue,
@@ -3869,9 +3899,22 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
      * on a three hole frame.
      */
     for (const station of st.stations) {
-      const scoring = station.apertureIndex == null
+      const named = station.apertureIndex == null
+        ? null
+        : Math.min(made.apertures.length - 1, Math.max(0, station.apertureIndex));
+      const scoring = named == null
         ? made.apertures
-        : [made.apertures[Math.min(made.apertures.length - 1, Math.max(0, station.apertureIndex))]];
+        : [made.apertures[named]];
+      /*
+       * Which openings LIGHT UP when this station is the target. A designed
+       * stack names its hole, so exactly one lights and the pilot can see
+       * which of a ladder's three they are being sent through; the built in
+       * circuit offers all of a stack's openings and any of them scores, so
+       * all of them light, which is still the honest picture of the rule.
+       */
+      const litApertures = named == null
+        ? made.apertures.map((_, k) => k)
+        : [named];
       gates.push({
         position: new THREE.Vector3(p.x, y, p.z),
         heading: station.yaw,
@@ -3881,6 +3924,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         pitch: station.pitch ?? st.pitch,
         ringMat: made.ringMat,
         haloMat: made.haloMat,
+        ringMeshes: made.ringMeshes,
+        haloMeshes: made.haloMeshes,
+        litApertures,
         ringColor: made.ringColor,
         glowMat: made.glowMat,
         glowMesh: made.glowMesh,
@@ -4011,6 +4057,22 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     gt.ringMat.visible = tier !== 'dark';
     gt.haloMat.visible = tier === 'target';
     gt.glowMat.visible = tier === 'target';
+    /*
+     * WHICH OPENING OF A STACK, and it is the mesh that says so rather than
+     * the material, because every opening on one structure shares the
+     * material that carries the colour. A ladder used to light all three
+     * holes at once and leave the pilot to read a badge for the one they
+     * were actually being sent through. Now only the named hole lights.
+     */
+    if (gt.ringMeshes) {
+      for (let k = 0; k < gt.ringMeshes.length; k += 1) {
+        const lit = tier !== 'dark' && gt.litApertures.indexOf(k) >= 0;
+        gt.ringMeshes[k].visible = lit;
+        if (gt.haloMeshes && gt.haloMeshes[k]) {
+          gt.haloMeshes[k].visible = lit && tier === 'target';
+        }
+      }
+    }
     if (tier === 'follow') {
       gt.ringMat.color.set(gt.ringColor).multiplyScalar(FOLLOW_RING);
     } else {

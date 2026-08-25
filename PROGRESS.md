@@ -16607,3 +16607,58 @@ authors had already rotated a flag by hand. Their yawOverridden flag was
 previously only about the flag's mesh, and it now moves the pass square
 too, so such a course's line will change. Re-derive on the marker puts it
 back on the automatic side.
+
+## Only the hole you are being sent through lights up
+
+Owner's report, item 3 of eight: "for double and triple stacked gates only
+the next gate you go through should be highlighted."
+
+It could not, and the reason was one word in apertureMarkers: merge. The
+four lit bars of EVERY opening on a structure went into one merged
+geometry, so a ladder was one ring mesh and a ring mesh is lit or it is
+not. A designed stack names its hole, the glow and the pane already
+jumped to it, and the badge said 5 or 6 or 7 beside it, but all three
+holes still wore the lit outline, so the pilot had to read a number to
+find out which hole the green was about.
+
+One mesh per opening now, one material for the structure. The material is
+what carries the colour, the target hue and the wrong side red, so
+dressGate, setTargetSide and the pulse are all unchanged and know nothing
+about this; only VISIBILITY is per opening, from a litApertures list the
+build loop derives the same way it derives the scoring apertures. A
+designed station names one hole and lights one; the built in circuit's
+stations name none, because MultiGP counts a ladder as one gate however
+high you take it and any opening scores, so all of them light, which is
+still the honest picture of that rule.
+
+Cost: one draw call per level instead of one per structure, so a triple
+stack is two more.
+
+CHECKS, and this one was measured in the real shell rather than argued.
+A probe course with a triple stack, a flag and a cone was built through
+the builder's own model, then driven through scripts/shots.js with
+window.__gateTiers extended to report which openings are actually
+VISIBLE, read off the meshes rather than off what the shell asked for:
+
+    setRaceNext(1)   lit [0]      bottom hole
+    setRaceNext(2)   lit [1]      middle hole
+    setRaceNext(3)   lit [2]      top hole
+    setRaceNext(4)   lit [0]      the flag's single square
+
+Three captures of the same ladder at the three targets confirm it by eye:
+one lit opening in each, at the right height. Console errors 0, warnings
+0, harness faults 0 on every run. Trackbuilder selftest 293 of 293.
+
+THE SAME RUN SETTLED ITEM 1, which had been argued from the code rather
+than seen. A before and after pair of the same flag from the same camera:
+before, the lit bar and the whole glow sit tight against the mast and the
+flag is invisible behind them; after, the bar stands on the outer edge of
+the pass square and the wash ramps up to it from nothing at the pole. The
+flag is legible in the after shot and was not in the before one.
+
+npm run verify NOT run: renderer only, no physics, no plant, no module
+ABI, no build file, and check 13 loads only the harness page.
+
+Possible effect if this breaks something: stacked structures only. If a
+stack ever goes completely dark when targeted, litApertures did not
+match the aperture list, and the readback above names the fault directly.

@@ -4578,6 +4578,12 @@ export async function boot({ loading, bootStart, mapId }) {
         ring: `#${gt.ringMat.color.getHexString()}`,
         haloOn: gt.haloMat.visible,
         glowOn: gt.glowMat.visible,
+        /* Which of a stacked structure's openings is actually lit, read off
+         * the meshes rather than off what the shell asked for. A designed
+         * stack names one hole and must light exactly that one. */
+        litOpenings: gt.ringMeshes
+          ? gt.ringMeshes.map((m, k) => (m.visible ? k : -1)).filter((k) => k >= 0)
+          : null,
         cueOn: Boolean(gt.cueGroup && gt.cueGroup.visible),
         wrong: gt.fillMat ? gt.fillMat.uniforms.uWrong.value : null,
       })),

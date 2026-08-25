@@ -16157,3 +16157,99 @@ percent would see almost none of it. That is a measurement for its own
 round, not a constant to move today.
 
 No code changed this turn.
+
+## The intro camera orbited on the ramp's plane, not the world's
+
+AsylumFPV off the board: "As camera pans into launch blocks, disappears
+into ground. You end up launching from below ground level." Reproduced,
+root caused and fixed, and the root cause is a one word bug with a
+geometric consequence.
+
+THE CHAIN. A craft parked on a launch block is pitched up the ramp by
+startBlockDims().tilt, 28 degrees, and the shell applies that to qPrev
+while it is landed so the arms rest on the foam. camFwd is derived from
+qPrev, so while parked camFwd is NOT horizontal: it carries the full 28
+degrees. The intro orbit built its basis out of camFwd:
+
+    introFrom = pCurr + right*cos(theta)*radius
+                      + camFwd*(-sin(theta)*radius)
+                      + up*height
+
+so the whole orbit PLANE was tilted 28 degrees with the ramp, and the
+camera dived below the craft for the half of the sweep where the sine
+term goes the wrong way. camFwd.y is -sin(28) = -0.469, and at the orbit
+radius of 0.72 that is 0.338 m of vertical error against a height offset
+of only 0.30. On flat ground camFwd is horizontal, the term is exactly
+zero, and nothing ever showed: the bug needed a ramp to exist, and the
+only ramp in the game is the launch block the report names.
+
+MEASURED, on 2022 AU Nationals, a shipped course with a start pad row.
+The terrain there is at 0, the block's deck at the spawn is 0.146 and
+its top is 0.247, and the craft sits at 0.186.
+
+    before   camera y 0.192 mid pan, 0.823, 0.522   swings 0.63 m
+    after    camera y 0.486,          0.486, 0.332   steady
+
+0.192 is UNDER the deck top, which is the lens inside the block, and the
+screenshots say it plainly: the old frame is grass edge to edge with no
+horizon and no sky, the new one has the treeline, the start gate and the
+blocks under the quad.
+
+THE FIX, two parts, the first being the actual cause. introFwd is the
+craft's heading FLATTENED onto the ground plane, and the orbit and the
+approach look both use it, so the shot keeps its shape and loses the
+ramp. introRight now comes from introFwd cross introUp instead of from
+qPrev, so the basis is orthonormal and level by construction and a
+rolled craft cannot tilt it either. Second, the intro gets the same
+floor the finish camera has carried all along, at 0.12 m rather than
+that camera's 0.42 because the pad shot is deliberately intimate; it is
+belt and braces for terrain the orbit passes over, not the fix.
+
+WHAT WAS NOT THE CAUSE, checked and cleared. The spawn seating is
+correct: groundAt returns terrain plus deck and the module readback puts
+the craft at 0.146, on the block, not in it. The craft never went below
+ground; only the camera did, and the report's second sentence is what a
+buried camera looks like from the pilot's seat.
+
+A LATENT HAZARD FOUND ON THE WAY, not fixed, because no shipped course
+can reach it. view.height offers a deck only if it is within STEP, 0.55
+m, of the surface it is reached from, and a start block's deck is
+0.247 * padSize / 0.6. So a pad authored above about 1.34 would have its
+deck refused by the ground query and the craft WOULD then spawn inside
+the block. Every shipped course uses the default 0.6 and the builder has
+no obvious way to reach 1.34, so this is written down rather than
+patched; if a pilot ever reports spawning inside a block, this is where
+to look.
+
+TOOLING. shots.js gained --course=FILE, which seeds a track document as
+the builder's autosave and selects the custom map before the first line
+of the app runs, through the same door the builder uses. Without it
+there is no way to capture a launch block at all, which is exactly how a
+camera that ended its pan inside one reached a pilot instead of a check.
+main.js gained window.__camGround(), which reports the camera's position
+and its clearance over the surface as a number, because the alternative
+was looking at a screenshot and arguing about it. First attempt at the
+seed wrote {doc: ...} and the course came back as "Untitled track" with
+0 gates: writeAutosave stores the BARE document and normalize returns
+the {doc} wrapper, so the wrapper was one level too deep. The probe
+caught it because it asserted the map was ready and named, not because
+the picture looked wrong.
+
+CHECKS. node --check on both touched files. shots.js against the custom
+course, before and after, numbers above, console errors 0 warnings 0
+harness faults 0 on every run. shots.js against the default field map as
+the regression: spawn y 0, camera 0.345 and 0.191, console clean, and
+the field shot is unchanged by construction, startPitch is 0 there so
+introFwd equals camFwd and the clamp never fires.
+
+npm run verify was NOT run and is not the check for this. Nothing in the
+plant, the module, the ABI, the patches or the build is touched, this is
+render camera arithmetic and two harness hooks, and check 13 loads only
+the harness page which has no intro camera in it. dist/sim.wasm is
+untouched.
+
+Possible effect if this breaks something: the run start cutscene, and
+only it. If the pad shot now looks too high, too level, or clips a gate
+it used to swing past, this commit is the one, and the three dials are
+INTRO_ORBIT_HEIGHT, INTRO_APPROACH_HEIGHT and INTRO_FLOOR_CLEAR. The
+attract camera, the finish camera and the FPV view are untouched.

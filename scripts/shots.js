@@ -336,6 +336,31 @@ async function main() {
                        preset detection picks. */ }`,
     }, sessionId);
   }
+  /*
+   * --course=FILE seeds a track document as the builder's autosave and
+   * selects the custom map, before the first line of the app runs. The
+   * launch block only exists on an authored course, so without this there
+   * is no way to capture the pad shot at all, which is exactly how a camera
+   * that ended its pan inside the block reached a pilot instead of a check.
+   * Same door the builder uses, seeded the same way --graphics is.
+   */
+  if (opts.course) {
+    const docText = await readFile(
+      isAbsolute(String(opts.course)) ? String(opts.course)
+        : join(root, String(opts.course)),
+      'utf8',
+    );
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `try {
+        localStorage.setItem('webfpv.trackbuilder.autosave.v1',
+          JSON.stringify(${docText}));
+        const k = ${JSON.stringify(SETTINGS_KEY)};
+        const s = JSON.parse(localStorage.getItem(k) || '{}');
+        s.map = 'custom';
+        localStorage.setItem(k, JSON.stringify(s));
+      } catch (e) { /* Storage refused; the run boots on the default map. */ }`,
+    }, sessionId);
+  }
   await cdp.send('Page.navigate', { url: `${server.origin}${opts.url}` }, sessionId);
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

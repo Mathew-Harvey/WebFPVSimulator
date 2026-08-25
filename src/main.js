@@ -180,6 +180,11 @@ const INTRO_ORBIT_HEIGHT = 0.30;
 const INTRO_APPROACH_RADIUS = 0.40;
 const INTRO_APPROACH_HEIGHT = 0.14;
 const INTRO_FOV = 40;
+/* How far the intro camera stays above whatever is under it. Smaller than
+ * the finish camera's 0.42 because the pad shot is an intimate one and a
+ * big clearance would throw it into the air; enough to clear a launch
+ * block's deck, which is the thing it was actually falling into. */
+const INTRO_FLOOR_CLEAR = 0.12;
 /* Finish shot. Pulls off the FPV lens onto a three-quarter of the
  * frozen craft, then sways. Radii in world metres. */
 const FINISH_FOV = 46;
@@ -2625,6 +2630,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const introLook = new THREE.Vector3();
   const introRight = new THREE.Vector3();
   const introUp = new THREE.Vector3(0, 1, 0);
+  /* The orbit's own forward: the craft's heading FLATTENED onto the ground
+   * plane. See the note where it is filled. */
+  const introFwd = new THREE.Vector3();
   const introQuat = new THREE.Quaternion();
     const fpvPos = new THREE.Vector3();
     const fpvQuat = new THREE.Quaternion();
@@ -3577,16 +3585,60 @@ export async function boot({ loading, bootStart, mapId }) {
       const height = INTRO_ORBIT_HEIGHT
         + (INTRO_APPROACH_HEIGHT - INTRO_ORBIT_HEIGHT) * approachU;
 
-      introRight.set(1, 0, 0).applyQuaternion(qPrev);
+      /*
+       * THE ORBIT PLANE HAS TO BE LEVEL, AND IT USED TO INHERIT THE RAMP.
+       *
+       * This built its basis from camFwd, which is the CRAFT's forward, and
+       * a craft parked on a launch block is pitched up the ramp by
+       * startBlockDims().tilt, 28 degrees. So the whole orbit plane tilted
+       * 28 degrees with it, and the camera dived below the craft for the
+       * half of the sweep where sin(theta) is positive. The sweep ENDS at
+       * theta = INTRO_THETA0 - 300 degrees, which is almost exactly where
+       * sin(theta) = +1, so it ended at its lowest point every single time:
+       * the camera finished the pan 0.138 m above the dirt with the block's
+       * own deck at 0.247 m, which is inside the launch block, and the zoom
+       * then dollied to the FPV lens from in there. That is the report,
+       * "as camera pans into launch blocks, disappears into ground". On
+       * flat ground camFwd is level, the term is zero and nothing showed.
+       *
+       * introFwd is the same heading flattened onto the ground plane, so
+       * the shot keeps its shape and loses the ramp. introRight comes from
+       * it by cross product rather than from qPrev, so the basis is
+       * orthonormal and level by construction and a rolled craft cannot
+       * tilt it either. On flat ground this is identical to what it was.
+       */
+      introFwd.copy(camFwd);
+      introFwd.y = 0;
+      if (introFwd.lengthSq() < 1e-6) {
+        /* Nose straight up or down: no heading to flatten, so take the
+         * spawn's. */
+        introFwd.set(0, 0, -1).applyQuaternion(qSpawn);
+        introFwd.y = 0;
+      }
+      introFwd.normalize();
+      introRight.copy(introFwd).cross(introUp);
       introFrom.copy(pCurr)
         .addScaledVector(introRight, Math.cos(theta) * radius)
-        .addScaledVector(camFwd, -Math.sin(theta) * radius)
+        .addScaledVector(introFwd, -Math.sin(theta) * radius)
         .addScaledVector(introUp, height);
+      /* And the same floor the finish camera keeps, for the same reason:
+       * the pad shot is deliberately low and the ground under it is not
+       * flat, so a berm, a kerb or the block itself can still swallow the
+       * lens. Queried the way every other ground test here is, so the
+       * camera and the contact test cannot disagree about where the
+       * surface is. */
+      const introFloor = view.height(introFrom.x, introFrom.z, introFrom.y)
+        + INTRO_FLOOR_CLEAR;
+      if (introFrom.y < introFloor) {
+        introFrom.y = introFloor;
+      }
       /* Orbit looks at the airframe. Approach turns the look down the
-       * course so the zoom is a dolly into the FPV camera, not a snap. */
+       * course so the zoom is a dolly into the FPV camera, not a snap.
+       * Level forward here too: aimed along the ramp it pointed at the sky
+       * instead of at the course. */
       introLook.copy(pCurr)
         .addScaledVector(introUp, 0.04 + 0.04 * approachU)
-        .addScaledVector(camFwd, 0.08 + 1.4 * approachU);
+        .addScaledVector(introFwd, 0.08 + 1.4 * approachU);
       shell.camera.up.set(0, 1, 0);
       shell.camera.position.copy(introFrom);
       shell.camera.lookAt(introLook);
@@ -4655,6 +4707,22 @@ export async function boot({ loading, bootStart, mapId }) {
    * `fromY` is what makes a deck climbable from above and transparent from
    * below, so a capture can assert that rather than describe it. */
   window.__surface = (x, z, fromY) => view.height(x, z, fromY);
+  /*
+   * Where the camera is, and what is directly under it. The intro camera
+   * once ended its pan INSIDE a launch block and the only way to see it was
+   * to look at a screenshot and argue about it; this reports the clearance
+   * as a number so a capture can assert it. Harness only.
+   */
+  window.__camGround = () => ({
+    x: shell.camera.position.x,
+    y: shell.camera.position.y,
+    z: shell.camera.position.z,
+    ground: view.height(shell.camera.position.x, shell.camera.position.z,
+                        shell.camera.position.y),
+    clearance: shell.camera.position.y
+      - view.height(shell.camera.position.x, shell.camera.position.z,
+                    shell.camera.position.y),
+  });
   /*
    * Set the sticks directly, bypassing the keyboard ramp.
    *

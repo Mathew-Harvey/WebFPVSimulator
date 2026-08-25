@@ -775,15 +775,25 @@
         color: var(--cream);
         font-weight: 650;
       }
+      /* The second line of a card that has no picture: the opening size
+         under the preset's name, reading as a caption rather than as a
+         second title. */
+      .tb-fig-card span {
+        font-size: var(--t-small);
+        color: var(--slate);
+      }
       .tb-fig-blurb {
         margin: 0 0 var(--s4);
         color: var(--slate);
         font-size: var(--t-small);
         line-height: 1.55;
       }
+      /* Two by two. It was three across while there were three places a
+         header pennant could stand; there are four now, and a 3 plus 1
+         row reads as one option having been left over. */
       .tb-side-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: 1fr 1fr;
         gap: var(--s2);
         margin: var(--s3) 0 var(--s4);
       }

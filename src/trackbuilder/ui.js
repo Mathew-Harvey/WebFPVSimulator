@@ -30,7 +30,11 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType } from './elements.js';
+import {
+  ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType,
+  GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, apertureLevels,
+  elementHeight,
+} from './elements.js';
 import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
 } from './model.js';
@@ -171,6 +175,23 @@ const FLAG_SIDE_LABEL = {
   left: 'Left', right: 'Right', both: 'Both', top: 'On top',
 };
 
+/*
+ * What each dimension is called in the panel. Module level, because the
+ * multi selection preset row and the single element grid both name them and
+ * a label that differs between two panels is a label an author cannot trust.
+ *
+ * "Level spacing" is spelled out rather than abbreviated, and it gets a
+ * sentence of its own under the grid, because it was the one field somebody
+ * had to ask about: "what is level spacing".
+ */
+const DIM_LABELS = {
+  levels: 'Levels', sillH: 'Sill height', clearW: 'Opening width', clearH: 'Opening height',
+  levelPitch: 'Level spacing', width: 'Width', depth: 'Depth', height: 'Height',
+  flagH: 'Flag height',
+  poleRadius: 'Pole radius', baseRadius: 'Base radius', clearance: 'Clearance',
+  pads: 'Pads', spacing: 'Pad spacing', padSize: 'Pad size', textHeight: 'Text height',
+};
+
 function flagSideIcon(side) {
   const svg = svgEl('svg', { viewBox: '0 0 72 56', 'aria-hidden': 'true' });
   svg.append(svgEl('rect', {
@@ -299,8 +320,24 @@ export class Panels {
     row.append(el('span', 'tb-field-label', label));
     const input = el('input');
     input.type = opts.text ? 'text' : 'number';
+    const nudge = opts.step ?? 0.1;
     if (!opts.text) {
-      input.step = opts.step ?? 0.1;
+      /*
+       * STEP IS "any", AND THE ARROWS ARE OURS.
+       *
+       * A number input with step 0.05 refuses every value that is not a
+       * multiple of it, and a MultiGP opening is 1.524 m and a level
+       * spacing is 1.557401. So the field showed a number the browser
+       * then called invalid, and editing it raised "please select a valid
+       * value, the two nearest valid values are 1.55 and 1.6" and threw
+       * the edit away. Reported with a screenshot of exactly that.
+       *
+       * These are real lengths in metres and any of them is legal, so the
+       * constraint is simply wrong and it is gone. What the step was
+       * really for is the spinner, so the arrows are handled below and
+       * nudge by the field's own increment, ten times that with shift.
+       */
+      input.step = 'any';
       if (opts.min != null) {
         input.min = opts.min;
       }
@@ -322,6 +359,22 @@ export class Panels {
       if (e.key === 'Enter') {
         commit();
         input.blur();
+      } else if (!opts.text && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        /* The spinner the step used to provide, without the validation the
+         * step also provided. Shift is a coarse nudge, the same modifier
+         * the plan uses for a coarse drag. */
+        e.preventDefault();
+        const by = nudge * (e.shiftKey ? 10 : 1);
+        const at = Number(input.value);
+        let next = (Number.isFinite(at) ? at : 0) + (e.key === 'ArrowUp' ? by : -by);
+        if (opts.min != null) {
+          next = Math.max(opts.min, next);
+        }
+        if (opts.max != null) {
+          next = Math.min(opts.max, next);
+        }
+        input.value = show(next, opts.places ?? 3);
+        commit();
       }
       e.stopPropagation();
     });
@@ -346,6 +399,18 @@ export class Panels {
     }
     if (ids.length > 1) {
       host.append(el('p', 'tb-help', 'Drag to move them together. Delete removes them. Select one to edit its dimensions.'));
+      /*
+       * A PRESET APPLIES TO THE WHOLE SELECTION, and this is the half of
+       * the request the single element picker does not answer. "So the
+       * user doesn't have to customise each gate placement" means box
+       * select the course and click once, not open ten inspectors.
+       */
+      const apertures = ids
+        .map((id) => elementById(doc, id))
+        .filter((e2) => e2 && ELEMENTS[e2.type]?.kind === KIND.APERTURE);
+      if (apertures.length) {
+        this.renderGatePresets(host, apertures);
+      }
       return;
     }
 
@@ -362,6 +427,9 @@ export class Panels {
 
     if (def.kind === KIND.APERTURE && aperturesOf(element).length > 1) {
       this.renderFigurePicker(host, doc, element);
+    }
+    if (def.kind === KIND.APERTURE) {
+      this.renderGatePresets(host, [element]);
     }
 
     /* Paint has no base height: it is on the ground or it is not paint. A
@@ -411,23 +479,41 @@ export class Panels {
 
     /* Dimensions, all of them, named the way elements.js names them. */
     const dims = el('div', 'tb-grid2');
-    const LABELS = {
-      levels: 'Levels', sillH: 'Sill height', clearW: 'Opening width', clearH: 'Opening height',
-      levelPitch: 'Level spacing', width: 'Width', depth: 'Depth', height: 'Height',
-      flagH: 'Flag height',
-      poleRadius: 'Pole radius', baseRadius: 'Base radius', clearance: 'Clearance',
-      pads: 'Pads', spacing: 'Pad spacing', padSize: 'Pad size', textHeight: 'Text height',
-    };
     for (const key of Object.keys(def.dims)) {
+      /*
+       * LEVEL SPACING ON A ONE LEVEL ELEMENT IS A FIELD THAT DOES NOTHING,
+       * and a field that does nothing is the reason somebody has to ask
+       * what it is. It appears only once there are two openings for it to
+       * sit between. Same reading for a hidden field everywhere else in
+       * this panel: a decal has no Base because paint has no height.
+       */
+      if (key === 'levelPitch' && Math.round(element.dims.levels) < 2) {
+        continue;
+      }
       const isCount = key === 'levels' || key === 'pads';
-      dims.append(this.field(`dim-${element.id}-${key}`, LABELS[key] ?? key, element.dims[key], (val) => {
+      dims.append(this.field(`dim-${element.id}-${key}`, DIM_LABELS[key] ?? key, element.dims[key], (val) => {
         this.host.edit('resize', (d) => {
           const e2 = elementById(d, element.id);
           e2.dims[key] = isCount ? Math.max(1, Math.round(val)) : Math.max(0, val);
+          /*
+           * Changing the opening height of a stack whose spacing is still
+           * the one the OLD height implied leaves the frames overlapping
+           * or a gap of nothing between them, and the author has to work
+           * out the arithmetic to fix it. So the spacing follows, but only
+           * while it is still the derived one: an author who has typed
+           * their own spacing has said they mean it.
+           */
+          if (key === 'clearH' && e2.dims.levelPitch != null
+            && Math.abs(e2.dims.levelPitch - levelPitchFor(element.dims.clearH)) < 1e-6) {
+            e2.dims.levelPitch = levelPitchFor(e2.dims.clearH);
+          }
         });
       }, { suffix: isCount ? '' : 'm', step: isCount ? 1 : 0.05 }));
     }
     host.append(dims);
+    if (def.kind === KIND.APERTURE) {
+      this.renderApertureReadout(host, def, element);
+    }
 
     if (def.kind === KIND.DECAL) {
       this.renderDecalLogoPicker(host, doc, element);
@@ -538,6 +624,76 @@ export class Panels {
     host.append(el('p', 'tb-help', current
       ? `${current.name || `Logo ${logos.indexOf(current) + 1}`}, fitted inside the ${show(element.dims.width, 1)} by ${show(element.dims.depth, 1)} m footprint above. Resize the footprint to match its shape and it fills more of it.`
       : 'The logo this footprint named is no longer on the course. Pick one, or the grass stays plain.'));
+  }
+
+  /*
+   * The named opening sizes. One click sets width, height and level
+   * spacing together, on one element or on every aperture in the
+   * selection, so a course is sized in one gesture rather than in two
+   * fields per gate.
+   *
+   * The row also SAYS WHICH ONE IS ON, including saying "custom" when the
+   * answer is none of them, because an author who has typed their own size
+   * should be able to see that they have.
+   */
+  renderGatePresets(host, elements) {
+    const first = elements[0];
+    const all = elements.every((e2) => {
+      const m = matchingGatePreset(e2.dims);
+      const f = matchingGatePreset(first.dims);
+      return m && f && m.id === f.id;
+    });
+    const current = all ? matchingGatePreset(first.dims) : null;
+    host.append(el('h3', null, elements.length > 1 ? `Opening size, ${elements.length} gates` : 'Opening size'));
+    const grid = el('div', 'tb-fig-grid');
+    for (const preset of GATE_PRESETS) {
+      const b = el('button', current && current.id === preset.id ? 'tb-fig-card on' : 'tb-fig-card');
+      b.type = 'button';
+      b.title = preset.hint;
+      b.append(el('strong', null, preset.label));
+      b.append(el('span', null, preset.size));
+      grid.append(b);
+      b.addEventListener('click', () => {
+        this.host.edit(elements.length > 1 ? `size ${elements.length} gates` : 'gate size', (d) => {
+          for (const e2 of elements) {
+            const live = elementById(d, e2.id);
+            if (live) {
+              applyGatePreset(live.dims, preset);
+            }
+          }
+        });
+      });
+    }
+    host.append(grid);
+    host.append(el('p', 'tb-help', current
+      ? `${current.label}, ${current.size}. ${current.hint}`
+      : (elements.length > 1
+        ? 'These gates are not all the same size. Pick one to set them all.'
+        : 'A size of your own. Pick a preset to go back to a standard one, or type the opening below.')));
+  }
+
+  /*
+   * WHAT THIS STRUCTURE ACTUALLY IS, in the units the author is thinking
+   * in, derived from the dimensions above rather than typed alongside them.
+   *
+   * This is the answer to "what is level spacing": one sentence naming it,
+   * and then the sills it produces, so the number in the field and the
+   * frame on the field are visibly the same thing.
+   */
+  renderApertureReadout(host, def, element) {
+    const levels = apertureLevels(element.dims);
+    const base = element.position.z;
+    const top = base + elementHeight(def, element.dims);
+    if (levels.length > 1) {
+      host.append(el('p', 'tb-help', 'Level spacing is the rise from one opening to the next, sill to sill. Two openings share one frame tube, so the natural spacing is the opening height plus the tube, which is what a preset sets.'));
+    }
+    const sills = levels
+      .map((ap, i) => `${i + 1}: sill ${show(base + ap.sillH, 2)} m, centre ${show(base + ap.centerH, 2)} m`)
+      .join('. ');
+    const what = levels.length > 1
+      ? `${levels.length} openings of ${show(element.dims.clearW, 2)} by ${show(element.dims.clearH, 2)} m. ${sills}.`
+      : `One opening ${show(element.dims.clearW, 2)} by ${show(element.dims.clearH, 2)} m, centre ${show(base + levels[0].centerH, 2)} m above the ground.`;
+    host.append(el('p', 'tb-fig-blurb', `${what} Top of the structure ${show(top, 2)} m.`));
   }
 
   renderFlagSidePicker(host, element) {

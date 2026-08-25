@@ -16720,3 +16720,86 @@ two previews. No physics, no plant, no module ABI, no build file.
 Possible effect if this breaks something: flagged gates only. A course
 that had none is untouched, and an existing flagged gate keeps its side
 and gets the default mast.
+
+## Preset gate sizes, and an answer to "what is level spacing"
+
+Owner's report, item 4 of eight: "for the track editor, include preset gate
+sizes so the user doesn't have to customise each gate placement, also what
+is level spacing, make the ui ux more intuitive and communicative."
+
+Four things, and the third one is a real bug with a screenshot attached.
+
+PRESET SIZES. GATE_PRESETS in elements.js: Standard 5 x 5, Championship
+7 x 6, Whoop 19 in and Trainer 10 x 8. Three are MultiGP's own openings,
+quoted from the page the rest of the file quotes and carrying the same
+VERIFY caveat; the Trainer is not and says so in its own hint, because a
+first course needs a hole a beginner can hit and pretending an oversize
+gate is in a rulebook would be worse than offering it honestly. Applying
+one sets the opening AND the level spacing and leaves everything else
+alone, so a three level ladder resized to championship is still a three
+level ladder.
+
+The picker appears on a single aperture AND on a multiple selection,
+which is the half of the request the single element panel does not
+answer: "doesn't have to customise each gate placement" means box select
+the course and click once. It also names the current size, including
+saying it is one of your own when it matches no preset, and says "these
+gates are not all the same size" when a selection is mixed.
+
+WHAT LEVEL SPACING IS. Three changes rather than a tooltip.
+  It is HIDDEN on a one level element, because a field that does nothing
+  is the reason somebody has to ask what it is.
+  It gets a sentence when there are two openings for it to sit between:
+  the rise from one opening to the next, sill to sill, naturally the
+  opening height plus the shared frame tube.
+  And every aperture now prints what it actually IS underneath its
+  dimensions: "3 openings of 1.52 by 1.52 m. 1: sill 0 m, centre 0.76 m.
+  2: sill 1.56 m, centre 2.32 m. 3: sill 3.11 m, centre 3.88 m. Top of
+  the structure 4.67 m." Derived from the dimensions above, so the number
+  in the field and the frame on the field are visibly the same thing.
+
+It also FOLLOWS the opening height now, but only while it is still the
+derived value. Change a stack's opening height and its spacing was left
+at whatever the old height implied, which overlaps the frames or leaves a
+gap of nothing between them and makes the author do the arithmetic. An
+author who has typed their own spacing has said they mean it, and it is
+left alone.
+
+THE NUMBER FIELDS REFUSED THEIR OWN VALUES, which is the screenshot. Every
+dimension input carried step 0.05 or 0.1, and a MultiGP opening is 1.524
+and a level spacing is 1.557401, so the browser called the value already
+in the field invalid and editing it raised "please select a valid value,
+the two nearest valid values are 1.55 and 1.6" and threw the edit away.
+These are lengths in metres and any of them is legal, so the constraint
+was simply wrong. step is "any" now, and the arrow keys are handled here
+instead, nudging by the field's own increment and by ten times it with
+shift, which is what the step was really providing.
+
+CHECKS: trackbuilder selftest 319 of 319, seventeen of them new. They
+hold the presets against the library rather than against a second copy of
+1.524: standard IS the default gate's opening, championship IS the dive
+gate's, applying one leaves levels and sill alone, the tool can name the
+size it just set and reports null for one somebody typed, and every
+library default's level spacing is the derived one, which is what makes
+the follow-the-height rule safe.
+
+Then the real builder in headless Chromium through scripts/shots.js,
+because a panel is a thing you have to look at:
+  the preset row renders as four cards, Championship highlighted after a
+  click, blurb reading its hint, and the lap length moved 94.7 to 95.1 m
+  as the gate resized;
+  the level spacing field reports step "any" and checkValidity() true on
+  1.557, the exact value from the report, and the edit commits;
+  ArrowUp on the opening width takes 1.524 to 1.574, so the spinner still
+  works at the field's own increment;
+  the readout prints the three sills and the structure top.
+Console errors 0, warnings 0 on every run.
+
+npm run verify NOT run: the track builder's panels and its element
+library. No physics, no plant, no module ABI, no build file, and the
+builder is not on the verify harness at all.
+
+Possible effect if this breaks something: the inspector. If a dimension
+stops committing, the arrow handler's preventDefault is the suspect; if a
+stack's spacing starts moving when the author did not ask, the
+follow-the-height rule's "is it still derived" test is.

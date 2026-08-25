@@ -472,6 +472,110 @@ export const ELEMENTS = {
   },
 };
 
+/*
+ * THE SPACING BETWEEN TWO OPENINGS OF A STACK, derived rather than typed.
+ *
+ * Two openings share ONE cross member, so the distance from one sill to the
+ * next is one clear height plus one tube diameter. Every default in the
+ * library above is this expression, and the inspector uses it to keep a
+ * resized stack sensible: change a gate's opening height and its levels
+ * would otherwise stay at whatever spacing the old height implied, which
+ * either overlaps the frames or leaves a gap of nothing between them.
+ *
+ * An author can still type any spacing they like. This is the number the
+ * tool offers, not a number it enforces.
+ */
+export function levelPitchFor(clearH) {
+  return clearH + FRAME_TUBE_OD;
+}
+
+/*
+ * NAMED OPENING SIZES, so an author does not have to type 1.524 twice per
+ * gate.
+ *
+ * The owner's report: "for the track editor, include preset gate sizes so
+ * the user doesn't have to customise each gate placement." Three of these
+ * four are MultiGP's own published openings, quoted from the same page
+ * src/game/track.js quotes and carrying the same VERIFY caveat as the rest
+ * of this file. The fourth is not, and says so: a course for somebody's
+ * first hour needs a hole a beginner can hit, and pretending an oversize
+ * gate is in a rulebook would be worse than offering it honestly.
+ *
+ * Applying one sets the opening AND the level spacing, because a stack
+ * whose spacing does not follow its opening height is a stack with its
+ * frames overlapping or with a metre of air between them.
+ */
+export const GATE_PRESETS = [
+  {
+    id: 'standard',
+    label: 'Standard',
+    size: '5 x 5 ft',
+    published: true,
+    hint: 'The MultiGP chapter gate, 5 ft by 5 ft. The size the whole world is scaled against.',
+    clearW: 5 * FT,
+    clearH: 5 * FT,
+  },
+  {
+    id: 'championship',
+    label: 'Championship',
+    size: '7 x 6 ft',
+    published: true,
+    hint: 'MultiGP championship size, 7 ft wide by 6 ft high. What a dive gate and a launch gate are built at.',
+    clearW: 7 * FT,
+    clearH: 6 * FT,
+  },
+  {
+    id: 'whoop',
+    label: 'Whoop',
+    size: '19 x 19 in',
+    published: true,
+    hint: 'Tiny whoop size, 19 in square. For an indoor scale course flown on a 65 mm machine.',
+    clearW: 19 * IN,
+    clearH: 19 * IN,
+  },
+  {
+    id: 'trainer',
+    label: 'Trainer',
+    size: '10 x 8 ft',
+    published: false,
+    hint: 'Not a MultiGP size. A deliberately forgiving hole for a first course or a first pilot.',
+    clearW: 10 * FT,
+    clearH: 8 * FT,
+  },
+];
+
+/* Within a millimetre, which is finer than anything an author types and
+ * coarser than the six decimal places the document rounds to. */
+const PRESET_TOL = 0.001;
+
+/* Which preset a set of dimensions IS, or null for a size somebody typed.
+ * The inspector shows the answer, so "custom" is a state an author can see
+ * rather than a silent one. */
+export function matchingGatePreset(dims) {
+  if (!dims) {
+    return null;
+  }
+  return GATE_PRESETS.find((p) => Math.abs(dims.clearW - p.clearW) < PRESET_TOL
+    && Math.abs(dims.clearH - p.clearH) < PRESET_TOL) || null;
+}
+
+/*
+ * Put a preset's opening on a set of dimensions, in place.
+ *
+ * Levels, sill height and everything else the element carries are LEFT
+ * ALONE: a preset is an opening size, not a new element. A three level
+ * ladder resized to championship is still a three level ladder.
+ */
+export function applyGatePreset(dims, preset) {
+  if (!dims || !preset) {
+    return dims;
+  }
+  dims.clearW = preset.clearW;
+  dims.clearH = preset.clearH;
+  dims.levelPitch = levelPitchFor(preset.clearH);
+  return dims;
+}
+
 /* Palette order is the order the task specifies, and the order the palette
  * draws. It is written out rather than derived from Object.keys so a future
  * reorder is one obvious edit. */

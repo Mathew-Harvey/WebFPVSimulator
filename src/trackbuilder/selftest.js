@@ -42,7 +42,11 @@ import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
 import { RAD, DEG, wrapAngle } from './geometry.js';
-import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight, virtualApertureDims, countElementsByType, formatElementCounts } from './elements.js';
+import {
+  ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
+  virtualApertureDims, countElementsByType, formatElementCounts,
+  GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor,
+} from './elements.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
@@ -1208,6 +1212,59 @@ function suiteFlaggedDoubleStack() {
  * track it claims to, is worse than no example at all, so the two are checked
  * against each other rather than trusted to stay in step.
  */
+/*
+ * The named opening sizes. They exist so an author does not type 1.524
+ * twice per gate, so what has to hold is that they ARE the library's own
+ * numbers, that applying one leaves the element otherwise alone, and that
+ * the tool can tell which one a set of dimensions is.
+ */
+function suitePresets() {
+  console.log('\ngate presets');
+  const ids = GATE_PRESETS.map((p) => p.id).join(',');
+  check('four presets, standard first', ids === 'standard,championship,whoop,trainer', ids);
+  check('every preset carries a size and a hint',
+    GATE_PRESETS.every((p) => p.label && p.size && p.hint));
+  check('three of them claim to be published, the trainer does not',
+    GATE_PRESETS.filter((p) => p.published).length === 3
+    && GATE_PRESETS.find((p) => p.id === 'trainer').published === false);
+
+  /* The standard preset IS the library's default gate, not a second copy
+   * of 1.524 that could drift from it. */
+  check('standard matches the default gate exactly',
+    matchingGatePreset(ELEMENTS.gate.dims)?.id === 'standard');
+  check('championship matches the default dive gate',
+    matchingGatePreset(ELEMENTS.diveGate.dims)?.id === 'championship');
+
+  const doc = createTrack();
+  const lad = place(doc, 'ladder', 5, 5);
+  const wasLevels = lad.dims.levels;
+  const wasSill = lad.dims.sillH;
+  const champ = GATE_PRESETS.find((p) => p.id === 'championship');
+  applyGatePreset(lad.dims, champ);
+  check('a preset sets the opening', Math.abs(lad.dims.clearW - champ.clearW) < 1e-9
+    && Math.abs(lad.dims.clearH - champ.clearH) < 1e-9);
+  check('and the level spacing follows the opening height',
+    Math.abs(lad.dims.levelPitch - levelPitchFor(champ.clearH)) < 1e-9,
+    `${lad.dims.levelPitch} vs ${levelPitchFor(champ.clearH)}`);
+  check('and it leaves the stack a stack',
+    lad.dims.levels === wasLevels && lad.dims.sillH === wasSill);
+  check('the tool can name the size it just set',
+    matchingGatePreset(lad.dims)?.id === 'championship');
+  lad.dims.clearW += 0.4;
+  check('a size somebody typed is not a preset', matchingGatePreset(lad.dims) === null);
+
+  /* Every library default sits on a derived spacing, which is what makes
+   * the inspector's follow-the-height rule safe to apply. */
+  for (const def of Object.values(ELEMENTS)) {
+    if (def.dims.levelPitch == null) {
+      continue;
+    }
+    check(`${def.id} has a derived level spacing`,
+      Math.abs(def.dims.levelPitch - levelPitchFor(def.dims.clearH)) < 1e-6,
+      `${def.dims.levelPitch} vs ${levelPitchFor(def.dims.clearH)}`);
+  }
+}
+
 function suiteSchemaDoc() {
   console.log('\nschema.md');
   const here = dirname(fileURLToPath(import.meta.url));
@@ -1865,6 +1922,7 @@ function main() {
   console.log('track builder self test');
   suiteRoundTrip();
   suiteElementCounts();
+  suitePresets();
   suiteFaces();
   suitePath();
   suiteGuide();

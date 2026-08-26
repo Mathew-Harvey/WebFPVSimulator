@@ -639,8 +639,11 @@ export function parkVehicle(ctx, o) {
   const hd = (s * L + c * W) / 2;
   // Flush to the sheet metal. The query already Minkowski-sums the craft;
   // insetting for a walker's radius made every car a hole you could fly into.
+  // skipFit so a stair or carport drawn above the bay cannot grow this box
+  // up through that air. The 公園前 kei under the 跨線橋 was a 4.4 m wall
+  // up the last five treads for exactly that reason.
   ctx.collide(o.x - hw, o.z - hd, o.x + hw, o.z + hd,
-    (o.y ?? 0) + H - 0.15);
+    (o.y ?? 0) + H - 0.15, undefined, true);
   return g;
 }
 

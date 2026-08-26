@@ -17059,3 +17059,24 @@ plus Credits). After I have flown before, FPV wiki and How to fly are
 on the title. 390x844 stacks the wiki to one column. Console exceptions
 0. `npm run verify` was not run: no plant, ABI, build or threshold
 change. The FC jump from a LIVE page was not driven in that Chrome pass.
+
+### 2026-08-26 | ui | board #credits points at the simulator's roll
+
+Changed: the simulator credits screen is now a real address, `#credits`,
+the same way the wiki is `#wiki/<id>`. Opening Credits writes that hash.
+Leaving it, including Back, clears it. `https://webfpv.org/board/#credits`
+and the board's three Credits links now go to
+`https://webfpv.org/sim/#credits` rather than painting a second copy of
+the roll. CrapShack is on the board's leftover overlay too, so a cached
+board page that still opens the sheet is not missing the name.
+
+What went wrong: the two `credits.js` files had already drifted, which
+PROGRESS noted on 2026-08-17. Copying CrapShack into the board copy
+alone would have done it again the next time the roll changed.
+
+Verify: read-through of `src/ui/ui.js` `applyLocationHash` / `show`,
+board `creditsHref` and `route`. Browser pass of the live board overlay
+was the old copy, which is why this turn exists. `npm run verify` was
+not run: no plant, ABI, build, input path or threshold change. The
+board change deploys from WebFPVSimulator-LeaderBoard, not this repo.
+

@@ -4730,6 +4730,13 @@ export class Ui {
         history.replaceState(null, '', url);
       }
     }
+    if (this.screen === 'credits' && screen !== 'credits') {
+      const url = new URL(window.location.href);
+      if ((url.hash || '') === '#credits') {
+        url.hash = '';
+        history.replaceState(null, '', url);
+      }
+    }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
      * going. Settings opens on its first real row rather than on a heading. */
@@ -4742,6 +4749,13 @@ export class Ui {
     }
     if (screen === 'wiki' && this.wiki) {
       this.wiki.openDefault();
+    }
+    if (screen === 'credits') {
+      const url = new URL(window.location.href);
+      if ((url.hash || '') !== '#credits') {
+        url.hash = 'credits';
+        history.replaceState(null, '', url);
+      }
     }
     for (const [name, node] of Object.entries(this.screens)) {
       node.style.display = name === screen ? '' : 'none';
@@ -4763,20 +4777,29 @@ export class Ui {
   }
 
   bindWikiHash() {
-    if ((window.location.hash || '').startsWith('#wiki/')) {
-      this.act('wiki');
-    }
-    window.addEventListener('hashchange', () => {
-      const h = (window.location.hash || '').replace(/^#/, '');
-      if (!h.startsWith('wiki/')) {
-        return;
+    this.applyLocationHash();
+    window.addEventListener('hashchange', () => this.applyLocationHash());
+  }
+
+  applyLocationHash() {
+    const h = (window.location.hash || '').replace(/^#/, '');
+    if (h === 'credits') {
+      if (this.screen !== 'credits' && this.screen !== 'flight' && this.screen !== 'paused') {
+        this.act('credits');
       }
+      return;
+    }
+    if (h.startsWith('wiki/')) {
       if (this.screen !== 'wiki') {
         this.act('wiki');
       } else if (this.wiki) {
         this.wiki.openDefault();
       }
-    });
+      return;
+    }
+    if (this.screen === 'credits') {
+      this.back();
+    }
   }
 
   /*

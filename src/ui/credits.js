@@ -2,8 +2,10 @@
  * credits.js: who made this, who flew it, and whose work it stands on.
  *
  * Built as a DOM tree so the simulator overlay and the public board can
- * share the same roll. Logos live in assets/credits (sim) or credits/
- * (board). They are the official marks, used only to name the work:
+ * share the same roll. The live address is this page at #credits. The
+ * board points there rather than keeping a second copy. Logos live in
+ * assets/credits (sim) or credits/ (board). They are the official marks,
+ * used only to name the work:
  * Betaflight's dark wordmark, TrackDraw's dark-background colour mark,
  * Grok's 2025 wordmark, Claude's starburst.
  *

@@ -943,16 +943,14 @@ function buildDeck(ctx, rng, out) {
         const py = gy + H * t;
         g.add(box(0.09, 1.0, 0.09, m.timber, sx + s * 0.8, py + 0.48, pz));
       }
-      /* Short boxes along the rake. One triangle-filling wall would close
-       * the gap under the stair. */
-      const BAND = 2;
-      for (let k = 0; k < n; k += BAND) {
-        const k1 = Math.min(n, k + BAND);
+      /* One box per tread at that tread's rail. A band of two fills air
+       * above the lower handrail. */
+      for (let k = 0; k < n; k++) {
         const zA = zTop - (n - 1 - k) * run;
-        const zB = zTop - (n - 1 - (k1 - 1)) * run;
-        const yLo = gy + rise * k;
-        const yHi = gy + rise * k1 + 0.95;
-        ctx.collide(sx + s * 0.8 - 0.1, Math.min(zA, zB), sx + s * 0.8 + 0.1, Math.max(zA, zB), yHi, yLo);
+        const zB = k + 1 < n ? zTop - (n - 1 - (k + 1)) * run : zA - run;
+        const yTread = gy + rise * (k + 1);
+        ctx.collide(sx + s * 0.8 - 0.1, Math.min(zA, zB), sx + s * 0.8 + 0.1, Math.max(zA, zB),
+          yTread + 0.95, yTread);
       }
     }
     // the gravel landing at the bottom, where the spur arrives

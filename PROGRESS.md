@@ -18126,3 +18126,28 @@ judgement.
 Kept both sides of PROGRESS.md. Incoming main log first (cage
 hoops), then this branch's unglue takeoff, verify, and review
 entries. Only PROGRESS.md conflicted.
+
+## Stair rake collides hug each tread
+
+Flying up the overbridge stairs still snagged, then the pose
+glitched. Hoops were already gone. The remaining snag was the
+stair body: a band of two treads authored as one AABB, whose
+top is the higher pan. That box fills 0.36 m of air above the
+lower tread, full flight width. Contact against the next band
+is what reads as a glitch.
+
+Fix:
+
+- One collider per pan, 7 cm above that tread and 42 cm of
+  stringer below. Same rule as `steps()` in ground.js.
+- Rake rails one box per step at that step's rail height, not
+  a band that stands air above the lower handrail.
+- Landing canopies pad eaves over railed sides only, so a
+  gutter and its posts do not hang 16 cm into a flight.
+- Same per-step rails on the urayama 展望台 stair and the
+  onsen stone-flight pipe rail.
+
+Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays
+63. `node --check` on the edited files. Headless probes and
+overlay shots follow this commit. `npm run verify` was not
+run: city map, not the plant.

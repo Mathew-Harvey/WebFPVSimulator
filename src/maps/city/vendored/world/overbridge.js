@@ -205,20 +205,19 @@ function rakeBalustrade(parts, o) {
       });
     }
   }
-  /* Short boxes along the rake. One box for the whole flight would fill
-   * the triangle under the rail and close the undercroft the stair is
-   * supposed to leave open. */
+  /* One box per step, at that step's rail. A band of two is an AABB
+   * that stands 0.36 m of air above the lower handrail; contact then
+   * walks the craft into the next band and the pose glitches. */
   if (o.ctx) {
-    const BAND = 2;
-    for (let i = 0; i < n; i += BAND) {
-      const i1 = Math.min(n, i + BAND);
+    const hw = 0.05;
+    for (let i = 0; i < n; i++) {
       const t0 = from + step * i;
-      const t1 = from + step * i1;
+      const t1 = from + step * (i + 1);
       const a = Math.min(t0, t1);
       const b = Math.max(t0, t1);
-      const yLo = y0 - RISE * i1;
-      const yHi = y0 - RISE * i + RAIL_H;
-      const hw = 0.05;
+      const yTread = y0 - RISE * (i + 1);
+      const yLo = yTread;
+      const yHi = yTread + RAIL_H;
       if (axis === 'z') {
         o.ctx.collide(at - hw, a, at + hw, b, yHi, yLo);
       } else {
@@ -347,18 +346,18 @@ function flight(ctx, o) {
     if (key === 'steel') hullOutline(mesh, { thickness: 0.003 });
   }
 
-  /* The stair body, not a skirt to the ground. Each band is only as deep
-   * as the stringers, so the undercroft under the soffit stays a gap. */
+  /* One collider per pan, as deep as the stringers. A band of two treads
+   * is the AABB that fills the air above the lower one: `steps()` in
+   * ground.js already refuses that box, and it is the snag up this flight. */
   {
-    const BAND = 2;
-    for (let i = 0; i < n; i += BAND) {
-      const i1 = Math.min(n, i + BAND);
+    for (let i = 0; i < n; i++) {
       const t0 = from + GOING * dir * i;
-      const t1 = from + GOING * dir * i1;
+      const t1 = from + GOING * dir * (i + 1);
       const a = Math.min(t0, t1);
       const b = Math.max(t0, t1);
-      const yHi = y0 - RISE * i + 0.07;
-      const yLo = y0 - RISE * i1 - 0.42;
+      const yTread = y0 - RISE * (i + 1);
+      const yHi = yTread + 0.07;
+      const yLo = yTread - 0.42;
       if (axis === 'z') {
         ctx.collide(at - half, a, at + half, b, yHi, yLo);
       } else {
@@ -436,7 +435,20 @@ function landing(ctx, o) {
   }
   /* The undercroft is deliberately left open -- see the note in `flight()`.
    * Only the columns above are solid. */
-  if (canopy) roof(ctx, { x0: x0 - 0.16, x1: x1 + 0.16, z0: z0 - 0.16, z1: z1 + 0.16, y: y + CANOPY_H });
+  if (canopy) {
+    /* Pad eaves over railed sides only. An opening is a flight or the
+     * deck: hanging the roof AABB 16 cm into it put a gutter, and its
+     * corner posts, in the throat. */
+    const pad = 0.16;
+    const closed = (side) => rails.indexOf(side) >= 0;
+    roof(ctx, {
+      x0: closed('x-') ? x0 - pad : x0,
+      x1: closed('x+') ? x1 + pad : x1,
+      z0: closed('z-') ? z0 - pad : z0,
+      z1: closed('z+') ? z1 + pad : z1,
+      y: y + CANOPY_H,
+    });
+  }
   return slab;
 }
 

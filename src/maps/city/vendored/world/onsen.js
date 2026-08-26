@@ -977,14 +977,11 @@ function buildApproach(ctx, m, gm, glow, lantern) {
         const t = i / 4;
         ctx.add(cyl(0.03, 0.03, 0.95, 6, m.metalDark, TER.x1 + 6.9 - run * t, base + rise * t + 0.47, 50.2));
       }
-      const BAND = 2;
-      for (let i = 0; i < N2; i += BAND) {
-        const i1 = Math.min(N2, i + BAND);
+      for (let i = 0; i < N2; i++) {
         const xHi = TER.x1 + 6.9 - 0.46 * i;
-        const xLo = TER.x1 + 6.9 - 0.46 * i1;
-        const yLo = base + RISE2 * i;
-        const yHi = base + RISE2 * i1 + 0.95;
-        ctx.collide(xLo, 50.1, xHi, 50.3, yHi, yLo);
+        const xLo = TER.x1 + 6.9 - 0.46 * (i + 1);
+        const yTread = base + RISE2 * (i + 1);
+        ctx.collide(xLo, 50.1, xHi, 50.3, yTread + 0.95, yTread);
       }
     }
   }

@@ -25,6 +25,7 @@ Anything the loop could not resolve on its own, or a threshold it believes is wr
 - Check 10, yaw-coupling, Loop B evidence and argument. Measured 0.00 degrees exactly, against a floor of 2.0. This is not a missing feature switch; it is structural. Every Stage 1 mechanism cancels pairwise on a symmetric quad X because each mixer group (left, right, front, rear) contains exactly one clockwise and one counter clockwise motor: RPM squared drag torque deltas cancel between the rising pair (RL counter clockwise, FL clockwise), stator reaction to spin up and spin down cancels the same way, net prop angular momentum stays zero under any left right differential, and with q = r = 0 the Euler coupling terms vanish. The measured 0.00 is exact because the floating point trajectories are bitwise symmetric. The real world coupling comes from inflow and advance ratio asymmetry across the rolling disc, which STAGE1.md explicitly defers to Stage 2, and Betaflight's yaw PID would suppress most of any small drift anyway. Faking an asymmetry to buy the sign would violate the project's own rule that yaw coupling falls out of the physics rather than being scripted. Options for the human: accept the check as a Stage 2 gate and re band it when inflow lands, or re specify it as a yaw damping check (prop drag torque computed against air relative rotation speed, spin plus body yaw rate, gives real damping and is Stage 1 sized). Loop B continues with the check honestly red.
 - Check 10, yaw-coupling, third round of evidence, 2026-08-15. Now measured at -0.07 deg against the 2.0 floor, so the SIGN is right and has been right since the motor cant landed; only the magnitude is short, and it is short by a factor of about 28. Two things were tested this turn and neither moved it. Turning airmode on (see the run log below) was expected to help, because a saturated roll at throttle 0.5 now drives the motors to their stops and leaves the yaw axis no mixer headroom to correct with; it changed the reading from -0.08 to -0.07. And the rotor plane was lifted to its real height above the CG, which adds pitch and roll moments from rotor drag but cannot add yaw, because a force in the xy plane applied at (x, y, z) has a z moment that does not involve z at all. The algebra in plant.c stands: the only Stage 1 mechanism that can yaw a symmetric quad X during a roll is build tolerance in the motor mounting, and the yaw PID cancels most of what the current tolerance produces. Reaching 2.0 deg through the cant table alone needs a tangential misalignment sum near 30 deg against the roll column, which is not a build tolerance, it is a broken frame. Recommendation for the human, unchanged in substance: re band this against a measured figure from a real machine, or re specify it as a yaw DAMPING check, which the plant does have honestly. The threshold has not been touched.
 - Check 10, yaw-coupling, expected sign. STAGE1.md asks for "non-zero, correct sign" but does not name the sign, so Loop A had to fix one in `tests/thresholds.json` (`expected_sign: -1`, meaning nose-right body yaw accumulation during a full right roll, with the sim_abi.h convention that positive r yaws nose left). Loop A could not derive this sign from first principles: for an ideal symmetric X quad, the roll mixer moves one CW and one CCW motor up and one of each down, so RPM squared drag torque deltas, prop spin-up inertia reactions, and net prop angular momentum all cancel pairwise, giving exactly zero roll-to-yaw coupling at this modelling order. The real-world coupling pilots feel comes from effects that may or may not emerge from the Stage 1 plant. The sign, and whether the 2.0 degree floor is reachable at all in Stage 1, are provisional Loop A choices. If Loop B's model robustly produces the opposite sign, or near zero, write the measured value here and let a human re-set `expected_sign` or the floor. Loop B must not edit thresholds.json.
+- Check 16, map-isolation field budget, 2026-08-26, contact branch. Measured P1 301 vs recorded 303, P2 1043749 vs 1014037, P10 33.1 vs 32.0, meshes 177 vs 169. The leak detector held: after a city round trip those four numbers were identical to boot. This branch added one scratch Vector3, no meshes, no scenery. tests/ is read-only so the recorded constants were not moved. A human should re-record the field budget against this machine's draw, or accept the leak detector as the check.
 
 ---
 
@@ -17459,4 +17460,87 @@ threshold change.
 Kept both sides of PROGRESS.md. Incoming city-simplify merge note
 first, then the local `#credits` and random-rotation entries.
 
+### 2026-08-26 | merge | contact branch onto origin/main
+
+Kept both sides of PROGRESS.md. Incoming main log first, then the
+contact, turtle, and inbound-closing OSD entries.
+
+### 2026-08-26 | Loop B | remove crash lockout, rigid-body contact, turtle
+Changed: the crash lockout is gone. Hits bounce, slide or roll, relative to the impact, with a rigid-body hull in the plant. If the craft ends up inverted, Betaflight crashflip (turtle) is the way out, then takeoff.
+
+ABI. Additive, version still 1. No advisor channel in this session; the argument is here instead. The harness never calls the new entry points, so a free-air replay is the same path it always was. New exports:
+
+  sim_contact(n, e, mu, p, vs)   rigid impulse at the OBB support in -n
+  sim_set_ground(on, n, p, mu, e) persistent plane after every plant_step
+  sim_ground_contacts()          how many hull points were in the band
+  sim_set_crashflip / sim_crashflip_active
+  sim_set_pose                   for the contact self-test (and the shell if it needs a still pose)
+
+sim_deflect stays as a wrapper: range-checks tangent_keep and rate_keep, then calls sim_contact with mu=0.35 and vs=0.
+
+Solver. Sequential Coulomb, Baraff form. Normal impulse uses angular effective mass, so an arm hit spins instead of a point-mass bounce. Restitution falls with closing speed (CONTACT_E_SPEED=14, rest vn 0.25). Friction is mu * jn, a slide when it saturates and a stick when it does not. Hull is CONTACT_HX/HY=0.094, CONTACT_HZ_DOWN=0.045 (REST_HEIGHT), CONTACT_HZ_UP=0.038.
+
+Upright (upz >= 0.5): all penetrating corners, a table, which is how a belly landing perches.
+
+Not upright: one support. Inverted rest is the camera/vtx bump through the CG so the mixer couple is free to pitch. Four coplanar top corners at 1 kHz locked pitch and turtle could not rotate (about 1 rad/s vs 90 in free air). If the bump is clear, the supporting vertex of the OBB: a tumble on an arm, a side arrival, a roll.
+
+Turtle. isFlipOverAfterCrashActive is implemented in bf_glue.c, the same pattern as isLaunchControlActive. mixer.c already compiled applyFlipOverAfterCrashModeToMotors; the stub that returned false left it unreachable. crashflip_expo and crashflip_motor_percent are LIVE (removed from APPLIED_INERT). Latch when inverted AND slow (v<4, w<8) AND (in contact or clearance < 0.15). Drop when upz > 0.35. I-term dumped on both edges: pidController still runs during turtle, so a wound integrator would yank the instant mixTable returns to the PID. Pitch -1 is the mixer sign that raises this airframe. DShot reverse is not modelled, same stub as the other DShot commands: turtle is mixer differential against the hull, which is enough to flip. Real hardware also reverses the props; that is a plant-shape change and is not in this turn.
+
+Shell. sim_set_ground every 1 ms step (slope resampled every 8 ms, finite differences, no JS trig). Off during launch stand. Obstacles: sim_contact with contactMaterial (grass 0.28/0.55, PVC 0.38/0.28, tree 0.22/0.45, wall 0.32/0.38, train 0.12/0.35 plus surface velocity). Up to 4 overlap retries. Cooldown is OSD and audio only. Perch freeze only if canPerch (upright, |v|<2, |w|<2.5) and in contact and not turtle. crashed on __craftState stays false so old captures do not throw.
+
+Wrong, this turn:
+  1. Drop tests without motorOverride(-1, 0) are not drops: airmode at stick-idle holds. Fixed by killing motors in the settle tests.
+  2. Tilted drop from 1.2 m needs about 700 ms, not 350: 350 never reached the plane.
+  3. Four-corner inverted table cancelled turtle. Bump support (and single-vertex when the bump is clear) is the fix.
+  4. groundOutcome treated extra tilt while crawling as SLIDE. The builder selftest (and the original collide comments) want LAND: a blade down while crawling is still a perch classification, canPerch still refuses the freeze. 344 passed, 1 failed, then 345/0 after that gate.
+  5. sim_deflect at rest with vs=0 applies nothing, which is correct (vn>=0, pen=0). The wrapper test had to impart inbound speed first.
+
+CHECKS this turn, not npm run verify yet:
+  npm run build:wasm exit 0. git diff --stat vendor/betaflight empty.
+  npm run contact:selftest: all checks passed, including settle, tilted spin, hard drop finite, wall offset spin, turtle flip, free-air bit-identical and falling, set_ground(0) bit-identical, distant plane unused, grounded drops bit-identical, ground slide with friction, wall bounce along the normal with energy dump, side arrival rolls, inverted airmode settles below turtle latch speed, turtle then throttle is flight again, sim_deflect wrapper, ABI rejects.
+  node src/trackbuilder/selftest.js: 345 passed, 0 failed.
+  npm run lint:catalog: ok, crashflip keys LIVE and in bf_settings.c.
+  node --check on the changed JS: ok.
+
+npm run verify is required (plant, ABI, build) and runs after this commit. Flight feel is not claimed as verified.
+
+Possible effect if this breaks something: a course whose intended challenge WAS the wreck is now a bounce. That is the request. If turtle feels weak compared to a real board, the suspect is the missing DShot reverse, not the mixer.
+
+VERIFY, this turn, `npm run verify` against the contact wasm. 15 of 16 passing. Full table:
+
+  1  build-clean            PASS  build exit 0, vendor diff empty, abi 1, init OK
+  2  determinism-repeat     PASS  a=de0401cd4266 b=de0401cd4266
+  3  determinism-cross-host PASS  node=de0401cd4266 chrome=de0401cd4266
+  4  frame-independence     PASS  1 distinct hash across 30, 60, 144, 240 Hz
+  5  hover-throttle         PASS  0.2793 in 0.20 to 0.30
+  6  punch-out              PASS  80.0 m in 55 to 85
+  7  terminal-velocity      PASS  31.0 m/s in 30 to 40
+  8  motor-step-response    PASS  26 ms in 10 to 30
+  9  rate-tracking          PASS  671.7 deg/s vs 670 (0.25 percent)
+  10 yaw-coupling           PASS  -0.10 deg, band |drift| 0.04 to 0.60, sign negative
+  11 battery-sag            PASS  11.14 percent (26157 vs 23242 RPM)
+  12 diff-passthrough       PASS  ratio 1.2472 vs 1.2537 (0.52 percent)
+  13 console-clean          PASS  errors=0 warnings=0 run=ok
+  14 audio-bed              PASS  ctx running, music gain 0.300, 41 nodes
+  15 world-scale            PASS  craft sweep 0.1735 m, collider scan as recorded
+  16 map-isolation          FAIL  field P1 301 vs recorded 303, P2 1043749 vs 1014037, P10 33.1 vs 32.0, meshes 177 vs 169. City modules: 0 with the field selected, 64 after choosing it.
+
+Check 16's leak detector, the thing it is named for, held: after a city round trip P1 301, P2 1043749, P10 33.1, meshes 177, identical to boot. The miss is the recorded field-budget constants, which this change did not touch and must not be edited (tests/ is read-only). This branch added one scratch Vector3 in the shell, no meshes, no scenery. The delta (minus 2 draw calls, plus 8 meshes and about 30k triangles) is the field as this machine draws it versus a baseline last re-measured after next-obstacle tiers, not a contact leak. Thresholds were not moved.
+
+Physics path: checks 1 through 12 are the ones that can see the module. All green. Flight feel is awaiting human judgement.
+
+OSD inbound closing, this turn. A bounce that finishes inside one render batch left lastDescent negative and sim_ground_contacts() at 0, so the shell never announced a hit that the plant had already resolved. Inbound closing and speed are now sampled before each 1 ms step, and the OSD fires if the frame saw a ground hit even when the hull has already left the plane. Cheap check: node --check src/main.js. Plant, ABI and wasm were not touched, so npm run verify was not re-run.
+
+Shell, scripts/shots.js, first flight, KeyS held through a drop:
+
+  parked: landed, crashed false, 0.0 m, 0 km/h, takeoff prompt live.
+  ground: until y=0.223 m at 11.6 m/s down, crashed false. After contact: bounceCount 1, OSD "Bounced off the ground", 18 km/h, 1.0 m, still flight.
+  canopy: lastHitKind canopy, closing 26.2 m/s, bounceCount 2 then 3, flash "Hit the canopy" then "Bounced off the canopy", 59 km/h, 16.8 m, tilt 77 deg, crashed false.
+
+npm run contact:selftest this turn: all checks passed. Turtle: pitch -1 raises upz from -1 to +0.98 in 200 ms, then throttle climbs 0.79 m to 5.63 m. Wall bounce: inbound vx -7.34, outbound +0.14 plus 22.6 rad/s of spin. Grass slide: 4.98 m/s to 2.84 m/s in 700 ms, still on the plane. Side arrival rolls instead of locking attitude.
+
+node src/trackbuilder/selftest.js: 345 passed, 0 failed.
+npm run lint:catalog: ok, LIVE 161, crashflip keys in bf_settings.c.
+
+Flight feel is still awaiting human judgement.
 

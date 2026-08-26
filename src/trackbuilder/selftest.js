@@ -55,9 +55,10 @@ import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import {
   hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
+  GROUND_TUMBLE, GROUND_SLIDE, canPerch, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
-  LAND_TIP_SPEED_MAX,
+  LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE,
 } from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 
@@ -1287,24 +1288,26 @@ function suiteCrashRule() {
   /* Belly on, at any speed at all. The frame takes it. */
   for (const closing of [1, 10, 25, 60]) {
     check(`belly on at ${closing} m/s bounces`,
-      hitOutcome('gate', closing, 1.0) === 'bounce');
+      hitOutcome('gate', closing, 1.0) === 'bounce' || hitOutcome('gate', closing, 1.0) === 'hard');
   }
   check('and so does a contact just off the belly',
-    hitOutcome('gate', 40, PROP_PLANE_MAX_UP_DOT) === 'bounce');
+    hitOutcome('gate', 40, PROP_PLANE_MAX_UP_DOT) === 'hard'
+    || hitOutcome('gate', 40, PROP_PLANE_MAX_UP_DOT) === 'bounce');
 
-  /* Edge on, in the disc plane. Bounces until there is real speed behind
-   * the blades. */
+  /* Edge on, in the disc plane. Every hit is a bounce. 'hard' is OSD. */
   check('edge on at a racing clip still bounces',
     hitOutcome('gate', BOUNCE_SPEED_MAX - 0.1, 0) === 'bounce');
-  check('edge on at the strike speed is a crash',
-    hitOutcome('gate', BOUNCE_SPEED_MAX, 0) === 'crash');
-  check('a train is a crash however you meet it',
-    hitOutcome('train', 1, 1.0) === 'crash');
-  check('and an untaught caller gets the strict reading',
-    hitOutcome('gate', BOUNCE_SPEED_MAX + 5) === 'crash');
+  check('edge on at the strike speed is a hard bounce, not a wreck',
+    hitOutcome('gate', BOUNCE_SPEED_MAX, 0) === 'hard');
+  check('a train is a hard bounce however you meet it',
+    hitOutcome('train', 1, 1.0) === 'hard');
+  check('and an untaught caller gets the hard reading past the threshold',
+    hitOutcome('gate', BOUNCE_SPEED_MAX + 5) === 'hard');
+  check('nothing returns crash any more',
+    hitOutcome('gate', 80, 0) !== 'crash' && hitOutcome('train', 40, 0) !== 'crash');
 
   /* THE HIT COUNT IS GONE. Fifty firm contacts in a row, none of them a
-   * strike, and every one of them still flies on: "as much as i like". */
+   * wreck, and every one of them still flies on: "as much as i like". */
   let bounced = 0;
   for (let i = 0; i < 50; i += 1) {
     if (hitOutcome('gate', 12, 0) === 'bounce') {
@@ -1313,27 +1316,47 @@ function suiteCrashRule() {
   }
   check('fifty firm contacts, fifty bounces', bounced === 50, `${bounced}`);
 
-  /* The ground. Perch, skip, strike. */
+  /* The ground. Perch, skip, tumble. None of them is a lockout. */
   check('a gentle arrival perches',
     groundOutcome(1.0, 1.0, 0) === GROUND_LAND);
-  check('the perch envelope is unchanged at its edge',
-    groundOutcome(LAND_DESCENT_MAX - 0.01, 0, 0) === GROUND_LAND
-    && groundOutcome(0, LAND_HORIZONTAL_MAX - 0.01, 0) === GROUND_LAND);
-  check('arriving flat and hard SKIPS rather than wrecking',
-    groundOutcome(LAND_DESCENT_MAX + 2, 0, 0) === GROUND_BOUNCE);
+  check('the perch envelope is the slow, upright one',
+    groundOutcome(PERCH_SPEED - 0.01, 0, 0) === GROUND_LAND
+    && groundOutcome(PERCH_SPEED + 0.01, 0, 0) === GROUND_SLIDE);
+  check('arriving flat and hard SLIDES rather than wrecking',
+    groundOutcome(LAND_DESCENT_MAX + 2, 0, 0) === GROUND_BOUNCE
+    && GROUND_BOUNCE === GROUND_SLIDE);
   check('and so does arriving flat and fast across the ground',
     groundOutcome(0, LAND_HORIZONTAL_MAX + 5, 0) === GROUND_BOUNCE);
-  check('a blade down with speed behind it is a crash',
-    groundOutcome(0, LAND_TIP_SPEED_MAX + 1, LAND_TILT_MAX_DEG + 1) === GROUND_CRASH);
+  check('a blade down with speed behind it is a tumble you fly out of',
+    groundOutcome(0, LAND_TIP_SPEED_MAX + 1, LAND_TILT_MAX_DEG + 1) === GROUND_CRASH
+    && GROUND_CRASH === GROUND_TUMBLE);
   check('a blade down while crawling is still a perch',
     groundOutcome(0.2, 0.2, LAND_TILT_MAX_DEG + 1) === GROUND_LAND);
-  check('arriving on its side is a crash at any speed',
+  check('arriving on its side is a tumble at any speed',
     groundOutcome(0, 0, LAND_TILT_HARD_DEG + 1) === GROUND_CRASH);
-  check('a very hard flat arrival is STILL not a crash',
+  check('a very hard flat arrival is STILL not a wreck',
     groundOutcome(30, 30, 0) === GROUND_BOUNCE);
 
   check('the graze threshold is below the strike threshold',
     GRAZE_SPEED_MAX < BOUNCE_SPEED_MAX);
+
+  check('canPerch is upright, slow, and quiet',
+    canPerch(0, 0.5, 0.5) === true);
+  check('canPerch refuses a bank past the blade-touch tilt',
+    canPerch(LAND_TILT_MAX_DEG + 0.1, 0, 0) === false);
+  check('canPerch refuses leftover bounce speed',
+    canPerch(0, PERCH_SPEED + 0.01, 0) === false);
+  check('canPerch refuses leftover rate',
+    canPerch(0, 0, PERCH_RATE + 0.01) === false);
+
+  const grass = contactMaterial('none');
+  const pvc = contactMaterial('gate');
+  const bark = contactMaterial('tree');
+  const train = contactMaterial('train');
+  check('PVC is bouncier and slicker than bark',
+    pvc.e > bark.e && pvc.mu < bark.mu);
+  check('a train is the least bouncy solid',
+    train.e < pvc.e && train.e < grass.e);
 }
 
 function suiteSchemaDoc() {

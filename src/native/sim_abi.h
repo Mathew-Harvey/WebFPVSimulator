@@ -161,6 +161,76 @@ int sim_deflect(double nx, double ny, double nz,
                 double px, double py, double pz);
 
 /*
+ * Rigid-body contact against a world-frame surface. n is a unit normal
+ * pointing out of the solid. The impulse is applied at the airframe hull
+ * support in the -n direction, so an offset hit produces spin: a wall tap
+ * yaws, a side arrival rolls. Coulomb friction with coefficient mu kills
+ * or limits the tangent speed at that point, which is what a ground slide
+ * and a tumbling crash both are. vs is the surface velocity (zero for a
+ * static wall, the train's velocity for a moving car). The craft is placed
+ * at p, already converted into the plant frame, so a tunneled frame is
+ * rewound to the entry face.
+ *
+ * Restitution falls with closing speed inside the solver, so a 20 m/s
+ * arrival dumps energy instead of bouncing like a ball, and a slow skip
+ * still skips. Additive ABI, version unchanged. The harness never calls
+ * this: a replay that never touches a surface is bit-identical to one
+ * from before it existed.
+ */
+int sim_contact(double nx, double ny, double nz,
+                double restitution, double mu,
+                double px, double py, double pz,
+                double vsx, double vsy, double vsz);
+
+/*
+ * Persistent ground plane, applied after every 1 ms plant_step, the same
+ * way the launch stand is. n is a unit normal pointing out of the ground,
+ * (px,py,pz) is a point on the plane, both plant frame. mu and restitution
+ * are Coulomb friction and the low-speed coefficient of restitution.
+ * Off (0) is the default, and the path every harness replay takes, so
+ * free-air checks cannot see a floor. Additive ABI, version unchanged.
+ */
+int sim_set_ground(int on,
+                   double nx, double ny, double nz,
+                   double px, double py, double pz,
+                   double mu, double restitution);
+
+/*
+ * How many hull points took a ground contact on the last step. Belly
+ * landings count penetrating corners. A roll or a turtle is a single
+ * support, so this is 0 or 1. The shell uses it to know whether the
+ * craft is in contact (turtle, perch) without re-deriving the hull.
+ * Zero when the ground plane is off.
+ */
+int sim_ground_contacts(void);
+
+/*
+ * Enable or disable Betaflight crashflip (turtle mode). Off (0) is the
+ * default and the path every harness replay takes. On (non-zero) makes
+ * mixTable take applyFlipOverAfterCrashModeToMotors, which is already
+ * compiled in from mixer.c: pitch and roll sticks spin the high motors
+ * to flip the craft over. I-term is dumped on both edges so a wound PID
+ * cannot yank the craft when turtle latches or drops. The plant does not
+ * read this, and DShot reverse is not modelled (the same stub as other
+ * DShot commands). Additive ABI, version unchanged.
+ */
+int sim_set_crashflip(int on);
+
+/* 1 when crashflip is latched, 0 otherwise. */
+int sim_crashflip_active(void);
+
+/*
+ * Write plant pose. Quaternion is normalised. Velocity and rates are
+ * untouched; call sim_rest after if the host wants a still pose. Additive
+ * ABI, version unchanged. The harness never calls this. Used by the
+ * contact self-test to seat an inverted hull for turtle, and available
+ * to the shell if a future path needs to place the craft without the
+ * launch-stand constraint.
+ */
+int sim_set_pose(double px, double py, double pz,
+                 double qw, double qx, double qy, double qz);
+
+/*
  * Enable or disable Betaflight ANGLE_MODE. Off (0) is acro, the default,
  * and the path every harness replay takes. On (non-zero) feeds the plant
  * attitude into Betaflight's compiled pidLevel and sets ANGLE_MODE, so

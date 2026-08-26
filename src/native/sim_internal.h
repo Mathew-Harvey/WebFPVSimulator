@@ -185,6 +185,14 @@ void bridge_set_launch_control(int on);
 int bridge_launch_control_state(void);
 
 /*
+ * Betaflight crashflip, the mixer path in mixer.c. Off is the default.
+ * The harness never calls this. isFlipOverAfterCrashActive lives in
+ * bf_glue.c, the same pattern as isLaunchControlActive.
+ */
+void bridge_set_crashflip(int on);
+int bridge_crashflip_active(void);
+
+/*
  * Betaflight glue, implemented in bf/bf_glue.c which is compiled against
  * the vendored Betaflight headers. bridge.c stays free of Betaflight
  * includes so the tokenizer compiles standalone.

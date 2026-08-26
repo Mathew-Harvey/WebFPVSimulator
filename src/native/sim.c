@@ -55,6 +55,48 @@ static double g_stand_hinge[3];
  * in the shell so the hinge sits on the foam, not in the air above it. */
 static const double STAND_HINGE_Z = -0.045;
 
+/*
+ * Ground plane, plant frame. Off unless the shell raises it, so a harness
+ * replay that never calls sim_set_ground cannot see a floor.
+ *
+ * The hull is an OBB around the 5 inch airframe. Half extents in x and y
+ * are the motor offset plus a motor-bell radius, so a side arrival contacts
+ * an arm, not empty air. Down is REST_HEIGHT so a level craft at plant z = 0
+ * sits on a plane at z = -0.045, matching the parked pose. Up is the prop
+ * disc / camera stack, which is what an inverted craft rests on.
+ */
+static int g_ground_on = 0;
+static double g_ground_n[3] = { 0.0, 0.0, 1.0 };
+static double g_ground_d = STAND_HINGE_Z;
+static double g_ground_mu = 0.55;
+static double g_ground_e = 0.28;
+static int g_ground_hits = 0;
+
+#define CONTACT_HX 0.094
+#define CONTACT_HY 0.094
+#define CONTACT_HZ_DOWN 0.045
+#define CONTACT_HZ_UP 0.038
+#define CONTACT_CORNERS 8
+#define CONTACT_ITERS 4
+#define CONTACT_SLOP 0.002
+#define CONTACT_BAUMGARTE 0.15
+#define CONTACT_REST_VN 0.25
+#define CONTACT_E_SPEED 14.0
+#define CONTACT_STATIC_VT 0.08
+#define CONTACT_BIAS_MAX 1.2
+#define CONTACT_POS_PUSH 0.20
+
+static const double CONTACT_CORNER[CONTACT_CORNERS][3] = {
+  { -CONTACT_HX, -CONTACT_HY, -CONTACT_HZ_DOWN },
+  {  CONTACT_HX, -CONTACT_HY, -CONTACT_HZ_DOWN },
+  { -CONTACT_HX,  CONTACT_HY, -CONTACT_HZ_DOWN },
+  {  CONTACT_HX,  CONTACT_HY, -CONTACT_HZ_DOWN },
+  { -CONTACT_HX, -CONTACT_HY,  CONTACT_HZ_UP },
+  {  CONTACT_HX, -CONTACT_HY,  CONTACT_HZ_UP },
+  { -CONTACT_HX,  CONTACT_HY,  CONTACT_HZ_UP },
+  {  CONTACT_HX,  CONTACT_HY,  CONTACT_HZ_UP },
+};
+
 SIM_EXPORT int sim_abi_version(void) { return SIM_ABI_VERSION; }
 
 static void reset_dynamics(void) {
@@ -70,6 +112,8 @@ static void reset_dynamics(void) {
     g_override[m] = -1.0;
   }
   g_stand_on = 0;
+  g_ground_on = 0;
+  g_ground_hits = 0;
 }
 
 SIM_EXPORT int sim_init(const unsigned char *diff_utf8, int len) {
@@ -149,19 +193,410 @@ static int sim_finite(double x) {
   return x == x && x - x == 0.0;
 }
 
-SIM_EXPORT int sim_deflect(double nx, double ny, double nz,
-                           double restitution, double tangent_keep,
-                           double rate_keep, double px, double py, double pz) {
+/* Body vector to world, plant quaternion. */
+static void contact_rotate(const double v[3], double out[3]) {
+  const double w = S.quat[0];
+  const double x = S.quat[1];
+  const double y = S.quat[2];
+  const double z = S.quat[3];
+  const double ux = 2.0 * (y * v[2] - z * v[1]);
+  const double uy = 2.0 * (z * v[0] - x * v[2]);
+  const double uz = 2.0 * (x * v[1] - y * v[0]);
+  out[0] = v[0] + w * ux + (y * uz - z * uy);
+  out[1] = v[1] + w * uy + (z * ux - x * uz);
+  out[2] = v[2] + w * uz + (x * uy - y * ux);
+}
+
+/* World vector to body: conjugate rotation. */
+static void contact_rotate_inv(const double v[3], double out[3]) {
+  const double w = S.quat[0];
+  const double x = -S.quat[1];
+  const double y = -S.quat[2];
+  const double z = -S.quat[3];
+  const double ux = 2.0 * (y * v[2] - z * v[1]);
+  const double uy = 2.0 * (z * v[0] - x * v[2]);
+  const double uz = 2.0 * (x * v[1] - y * v[0]);
+  out[0] = v[0] + w * ux + (y * uz - z * uy);
+  out[1] = v[1] + w * uy + (z * ux - x * uz);
+  out[2] = v[2] + w * uz + (x * uy - y * ux);
+}
+
+/* I_world^{-1} * v, diagonal inertia in the body frame. */
+static void contact_iinv(const double v_world[3], double out[3]) {
+  double b[3];
+  contact_rotate_inv(v_world, b);
+  b[0] /= PLANT.inertia[0];
+  b[1] /= PLANT.inertia[1];
+  b[2] /= PLANT.inertia[2];
+  contact_rotate(b, out);
+}
+
+/*
+ * One rigid-body impulse at offset r from the CG, against unit normal n
+ * (out of the solid) and surface velocity vs. pen is positive penetration.
+ * Returns 1 if an impulse was applied.
+ *
+ * Sequential Coulomb, Baraff's form: the normal impulse uses the effective
+ * mass along n including the angular term, so a hit on an arm produces
+ * spin instead of a point-mass bounce. Restitution falls with closing
+ * speed so a crash dumps energy and a skip still skips. Friction cancels
+ * as much tangent speed as mu * jn allows, which is a slide when it
+ * saturates and a stick when it does not.
+ */
+static int contact_impulse(const double n[3], const double r[3], const double vs[3],
+                           double e, double mu, double pen) {
+  double w_world[3];
+  contact_rotate(S.omega, w_world);
+
+  double vp[3];
+  vp[0] = S.vel[0] + (w_world[1] * r[2] - w_world[2] * r[1]) - vs[0];
+  vp[1] = S.vel[1] + (w_world[2] * r[0] - w_world[0] * r[2]) - vs[1];
+  vp[2] = S.vel[2] + (w_world[0] * r[1] - w_world[1] * r[0]) - vs[2];
+
+  const double vn = vp[0] * n[0] + vp[1] * n[1] + vp[2] * n[2];
+  if (vn >= 0.0 && !(pen > CONTACT_SLOP)) {
+    return 0;
+  }
+
+  double rn[3];
+  rn[0] = r[1] * n[2] - r[2] * n[1];
+  rn[1] = r[2] * n[0] - r[0] * n[2];
+  rn[2] = r[0] * n[1] - r[1] * n[0];
+  double irn[3];
+  contact_iinv(rn, irn);
+  const double kn = 1.0 / PLANT.mass_kg
+      + (rn[0] * irn[0] + rn[1] * irn[1] + rn[2] * irn[2]);
+  if (kn < 1e-12) {
+    return 0;
+  }
+
+  double e_used = e;
+  if (vn > -CONTACT_REST_VN) {
+    e_used = 0.0;
+  } else {
+    double fall = 1.0 + vn / CONTACT_E_SPEED;
+    if (fall < 0.05) {
+      fall = 0.05;
+    }
+    if (fall > 1.0) {
+      fall = 1.0;
+    }
+    e_used = e * fall;
+  }
+
+  double bias = 0.0;
+  if (pen > CONTACT_SLOP) {
+    bias = CONTACT_BAUMGARTE * (pen - CONTACT_SLOP) / SIM_DT;
+    if (bias > CONTACT_BIAS_MAX) {
+      bias = CONTACT_BIAS_MAX;
+    }
+  }
+
+  const double vn_in = vn < 0.0 ? vn : 0.0;
+  const double vn_target = -e_used * vn_in + bias;
+  double jn = (vn_target - vn) / kn;
+  if (jn < 0.0) {
+    return 0;
+  }
+
+  double jt[3] = { 0.0, 0.0, 0.0 };
+  const double vtx = vp[0] - vn * n[0];
+  const double vty = vp[1] - vn * n[1];
+  const double vtz = vp[2] - vn * n[2];
+  const double vt2 = vtx * vtx + vty * vty + vtz * vtz;
+  if (vt2 > 1e-16 && mu > 0.0) {
+    const double vtm = sim_sqrt(vt2);
+    const double tx = vtx / vtm;
+    const double ty = vty / vtm;
+    const double tz = vtz / vtm;
+    double rt[3];
+    rt[0] = r[1] * tz - r[2] * ty;
+    rt[1] = r[2] * tx - r[0] * tz;
+    rt[2] = r[0] * ty - r[1] * tx;
+    double irt[3];
+    contact_iinv(rt, irt);
+    const double kt = 1.0 / PLANT.mass_kg
+        + (rt[0] * irt[0] + rt[1] * irt[1] + rt[2] * irt[2]);
+    if (kt > 1e-12) {
+      double jtm = -vtm / kt;
+      const double mu_use = (vtm < CONTACT_STATIC_VT) ? mu * 1.15 : mu;
+      const double jmax = mu_use * jn;
+      if (jtm < -jmax) {
+        jtm = -jmax;
+      }
+      if (jtm > jmax) {
+        jtm = jmax;
+      }
+      jt[0] = jtm * tx;
+      jt[1] = jtm * ty;
+      jt[2] = jtm * tz;
+    }
+  }
+
+  const double Jx = jn * n[0] + jt[0];
+  const double Jy = jn * n[1] + jt[1];
+  const double Jz = jn * n[2] + jt[2];
+  const double invm = 1.0 / PLANT.mass_kg;
+  S.vel[0] += Jx * invm;
+  S.vel[1] += Jy * invm;
+  S.vel[2] += Jz * invm;
+
+  double tau[3];
+  tau[0] = r[1] * Jz - r[2] * Jy;
+  tau[1] = r[2] * Jx - r[0] * Jz;
+  tau[2] = r[0] * Jy - r[1] * Jx;
+  double dw[3];
+  contact_iinv(tau, dw);
+  w_world[0] += dw[0];
+  w_world[1] += dw[1];
+  w_world[2] += dw[2];
+  contact_rotate_inv(w_world, S.omega);
+  return 1;
+}
+
+static void contact_support_neg_n(const double n[3], double r[3]) {
+  /* Supporting vertex of the OBB in the -n direction: the hull point that
+   * meets a surface with outward normal n. */
+  double nb[3];
+  const double inn[3] = { -n[0], -n[1], -n[2] };
+  contact_rotate_inv(inn, nb);
+  double b[3];
+  b[0] = nb[0] >= 0.0 ? CONTACT_HX : -CONTACT_HX;
+  b[1] = nb[1] >= 0.0 ? CONTACT_HY : -CONTACT_HY;
+  b[2] = nb[2] >= 0.0 ? CONTACT_HZ_UP : -CONTACT_HZ_DOWN;
+  contact_rotate(b, r);
+}
+
+static int contact_unit3(double nx, double ny, double nz, double n[3]) {
+  const double n2 = nx * nx + ny * ny + nz * nz;
+  if (!(n2 > 0.97) || !(n2 < 1.03)) {
+    return 0;
+  }
+  const double inv = 1.0 / sim_sqrt(n2);
+  n[0] = nx * inv;
+  n[1] = ny * inv;
+  n[2] = nz * inv;
+  return 1;
+}
+
+/* One hull point against the ground plane. Returns 1 if that point is in
+ * the contact band (impulse may or may not have been applied). */
+static int ground_hit_at(const double r[3], const double vs[3]) {
+  const double px = S.pos[0] + r[0];
+  const double py = S.pos[1] + r[1];
+  const double pz = S.pos[2] + r[2];
+  const double side = g_ground_n[0] * px + g_ground_n[1] * py + g_ground_n[2] * pz;
+  const double pen = g_ground_d - side;
+  if (!(pen > -CONTACT_SLOP)) {
+    return 0;
+  }
+  const double use_p = pen > 0.0 ? pen : 0.0;
+  contact_impulse(g_ground_n, r, vs, g_ground_e, g_ground_mu, use_p);
+  if (pen > CONTACT_SLOP) {
+    const double push = (pen - CONTACT_SLOP) * CONTACT_POS_PUSH;
+    S.pos[0] += g_ground_n[0] * push;
+    S.pos[1] += g_ground_n[1] * push;
+    S.pos[2] += g_ground_n[2] * push;
+  }
+  return 1;
+}
+
+static void ground_apply(void) {
+  g_ground_hits = 0;
+  if (!g_ground_on || g_stand_on) {
+    return;
+  }
+  const double vs[3] = { 0.0, 0.0, 0.0 };
+  /* World-z of body up. A belly landing wants a four-leg table. Anything
+   * past about 60 deg is a roll, a turtle or a side arrival: one support
+   * so the contact cannot cancel the motor couple. Four coplanar contacts
+   * at 1 kHz locked pitch and turtle could not rotate. */
+  const double qx = S.quat[1];
+  const double qy = S.quat[2];
+  const double upz = 1.0 - 2.0 * (qx * qx + qy * qy);
+
+  if (upz < 0.5) {
+    int hits = 0;
+    if (upz < 0.0) {
+      /* Inverted rest is the camera / vtx bump, through the CG, so the
+       * mixer couple is free to pitch. */
+      double r[3];
+      const double bump[3] = { 0.0, 0.0, CONTACT_HZ_UP };
+      contact_rotate(bump, r);
+      if (ground_hit_at(r, vs)) {
+        hits = 1;
+        for (int iter = 1; iter < CONTACT_ITERS; iter += 1) {
+          if (!ground_hit_at(r, vs)) {
+            break;
+          }
+        }
+      }
+    }
+    if (!hits) {
+      /* Tumble on an arm, or on its side: the supporting vertex only. */
+      double r[3];
+      contact_support_neg_n(g_ground_n, r);
+      for (int iter = 0; iter < CONTACT_ITERS; iter += 1) {
+        if (!ground_hit_at(r, vs)) {
+          break;
+        }
+        hits = 1;
+      }
+    }
+    g_ground_hits = hits;
+    return;
+  }
+
+  int hit_mask = 0;
+  for (int iter = 0; iter < CONTACT_ITERS; iter += 1) {
+    int nuse = 0;
+    for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+      double r[3];
+      contact_rotate(CONTACT_CORNER[c], r);
+      if (ground_hit_at(r, vs)) {
+        nuse += 1;
+        hit_mask |= (1 << c);
+      }
+    }
+    if (nuse == 0) {
+      break;
+    }
+  }
+  int hits = 0;
+  int m = hit_mask;
+  while (m) {
+    hits += m & 1;
+    m >>= 1;
+  }
+  g_ground_hits = hits;
+}
+
+SIM_EXPORT int sim_contact(double nx, double ny, double nz,
+                           double restitution, double mu,
+                           double px, double py, double pz,
+                           double vsx, double vsy, double vsz) {
   if (!g_initialised) {
     return SIM_ERR_BAD_STATE;
   }
   if (!sim_finite(nx) || !sim_finite(ny) || !sim_finite(nz)
-      || !sim_finite(restitution) || !sim_finite(tangent_keep)
-      || !sim_finite(rate_keep) || !sim_finite(px) || !sim_finite(py)
-      || !sim_finite(pz)) {
+      || !sim_finite(restitution) || !sim_finite(mu)
+      || !sim_finite(px) || !sim_finite(py) || !sim_finite(pz)
+      || !sim_finite(vsx) || !sim_finite(vsy) || !sim_finite(vsz)) {
     return SIM_ERR_BAD_ARG;
   }
   if (!(restitution >= 0.0) || !(restitution <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(mu >= 0.0) || !(mu <= 2.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  double n[3];
+  if (!contact_unit3(nx, ny, nz, n)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  S.pos[0] = px;
+  S.pos[1] = py;
+  S.pos[2] = pz;
+  double r[3];
+  contact_support_neg_n(n, r);
+  const double vs[3] = { vsx, vsy, vsz };
+  /* Penetration is already resolved by the host placing p on the free
+   * side of the face. The impulse still sees the inbound velocity. */
+  contact_impulse(n, r, vs, restitution, mu, 0.0);
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_set_ground(int on,
+                              double nx, double ny, double nz,
+                              double px, double py, double pz,
+                              double mu, double restitution) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!on) {
+    g_ground_on = 0;
+    g_ground_hits = 0;
+    return SIM_OK;
+  }
+  if (!sim_finite(nx) || !sim_finite(ny) || !sim_finite(nz)
+      || !sim_finite(px) || !sim_finite(py) || !sim_finite(pz)
+      || !sim_finite(mu) || !sim_finite(restitution)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(mu >= 0.0) || !(mu <= 2.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(restitution >= 0.0) || !(restitution <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  double n[3];
+  if (!contact_unit3(nx, ny, nz, n)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  g_ground_n[0] = n[0];
+  g_ground_n[1] = n[1];
+  g_ground_n[2] = n[2];
+  g_ground_d = n[0] * px + n[1] * py + n[2] * pz;
+  g_ground_mu = mu;
+  g_ground_e = restitution;
+  g_ground_on = 1;
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_ground_contacts(void) {
+  return g_ground_hits;
+}
+
+SIM_EXPORT int sim_set_crashflip(int on) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  bridge_set_crashflip(on);
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_crashflip_active(void) {
+  if (!g_initialised) {
+    return 0;
+  }
+  return bridge_crashflip_active();
+}
+
+SIM_EXPORT int sim_set_pose(double px, double py, double pz,
+                            double qw, double qx, double qy, double qz) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!sim_finite(px) || !sim_finite(py) || !sim_finite(pz)
+      || !sim_finite(qw) || !sim_finite(qx) || !sim_finite(qy) || !sim_finite(qz)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const double n2 = qw * qw + qx * qx + qy * qy + qz * qz;
+  if (!(n2 > 0.25) || !(n2 < 4.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const double ninv = 1.0 / sim_sqrt(n2);
+  S.pos[0] = px;
+  S.pos[1] = py;
+  S.pos[2] = pz;
+  S.quat[0] = qw * ninv;
+  S.quat[1] = qx * ninv;
+  S.quat[2] = qy * ninv;
+  S.quat[3] = qz * ninv;
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_deflect(double nx, double ny, double nz,
+                           double restitution, double tangent_keep,
+                           double rate_keep, double px, double py, double pz) {
+  /* Kept so an old caller still compiles. The impulse is the rigid-body
+   * one; tangent_keep and rate_keep are range-checked so the ABI does not
+   * change meaning of the arguments, then ignored because Coulomb friction
+   * and the angular term replace those two scale factors. */
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!sim_finite(tangent_keep) || !sim_finite(rate_keep)) {
     return SIM_ERR_BAD_ARG;
   }
   if (!(tangent_keep >= 0.0) || !(tangent_keep <= 1.0)) {
@@ -170,33 +605,7 @@ SIM_EXPORT int sim_deflect(double nx, double ny, double nz,
   if (!(rate_keep >= 0.0) || !(rate_keep <= 1.0)) {
     return SIM_ERR_BAD_ARG;
   }
-  /* Host passes a unit normal. Slack covers JS float error from collide.js,
-   * not a licence to send an arbitrary vector. */
-  const double n2 = nx * nx + ny * ny + nz * nz;
-  if (!(n2 > 0.97) || !(n2 < 1.03)) {
-    return SIM_ERR_BAD_ARG;
-  }
-  const double vn = S.vel[0] * nx + S.vel[1] * ny + S.vel[2] * nz;
-  if (vn < 0.0) {
-    const double bounce = -(1.0 + restitution) * vn;
-    S.vel[0] += bounce * nx;
-    S.vel[1] += bounce * ny;
-    S.vel[2] += bounce * nz;
-    const double vn2 = S.vel[0] * nx + S.vel[1] * ny + S.vel[2] * nz;
-    const double tx = S.vel[0] - vn2 * nx;
-    const double ty = S.vel[1] - vn2 * ny;
-    const double tz = S.vel[2] - vn2 * nz;
-    S.vel[0] = vn2 * nx + tx * tangent_keep;
-    S.vel[1] = vn2 * ny + ty * tangent_keep;
-    S.vel[2] = vn2 * nz + tz * tangent_keep;
-  }
-  S.pos[0] = px;
-  S.pos[1] = py;
-  S.pos[2] = pz;
-  S.omega[0] *= rate_keep;
-  S.omega[1] *= rate_keep;
-  S.omega[2] *= rate_keep;
-  return SIM_OK;
+  return sim_contact(nx, ny, nz, restitution, 0.35, px, py, pz, 0.0, 0.0, 0.0);
 }
 
 static void stand_rotate_body(double bx, double by, double bz, double out[3]) {
@@ -388,6 +797,7 @@ SIM_EXPORT int sim_step(int n) {
       }
     }
     plant_step(&S, duty);
+    ground_apply();
     stand_apply();
     S.step_index += 1;
   }

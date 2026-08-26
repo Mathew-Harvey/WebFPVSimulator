@@ -17648,5 +17648,124 @@ first-flight click was not driven in a tab. `npm run verify` was not
 run: no plant, ABI, build or threshold change. Check 16's round trip
 now swaps back to `custom` rather than `field`; its absolute field
 budget constants were measured on the 14-station circuit and will need
-a re-measure if that check is run.
+a re-measure if that check is run.## Open overbridge cage, bell housing, and the same class of frames
 
+The overpass roof and the school bell were invisible walls. Same cause as
+the torii: posts and beams bake into one mesh whose AABB is the opening,
+and COVER_MIN_FILL reads that AABB as solid fill. The overbridge also had
+an authored lid across the polycarbonate bays.
+
+Fix, same pattern as the torii:
+
+- Name the baked cage `overbridgeCage`, drop the lid, author skipFit
+  posts, ridge, eaves and hoop ribs. The sheets stay air: those
+  rectangles are the line.
+- Name the bell posts `schoolBell`, author the four posts, the cap and
+  a small bell body. The mouth is air.
+- COVER_SOFT gains overbridgeCage, schoolBell, openFrame, temizuya,
+  haiden.
+- Same class, swept: water-tank legs, 東屋 and 炊事棚, onsen porch /
+  足湯 shelter / viewing-deck posts, rest-corner lean-to (and the sheet
+  now actually lands in the scene: ctx.add took one argument), shrine
+  haiden front bay and 手水舎 posts+roof, bike shelters and carports
+  (posts and a roof slab, not the bay), station canopy posts, urayama
+  deck posts and the small torii.
+
+Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays 63.
+No extras at top === -1.
+
+Verify this turn: `node --check` on the edited city files. Headless
+city load with scan, flight-line probes and overlay shots follow this
+commit. `npm run verify` was not run: city map, not the plant.
+
+What could go wrong: hoop-rib cards that are too fat would close a bay.
+Shrink the skipFit slab, do not put the lid back. If phantom climbs, it
+is new authored beams, not a reason to restore the cover pass on these
+names.
+
+## Open-frame gaps: roof-lift through named frames
+
+The first pass named the overbridge cage and the bell posts and put
+them in COVER_SOFT. That stopped the cover pass walling the opening.
+It did not stop the slab fit. The teaching-block rectangle still
+owns the bell and the tank in plan. Roof-lift lets that rectangle
+reach ROOF_LIFT_MAX above the wall plate, the cap and tank body vote
+as occupancy, and the cut unions them with the walls: one column
+from BOX_FLOOR through the mouth.
+
+Same class at the haiden: the plinth collide is the hall footprint
+without skipFit, so the timber walls lift a solid through the open
+front bay.
+
+Fix:
+
+- The fit's drawnBoxes call skips COVER_SOFT names (the scan does
+  not). A named frame is occupancy only for its own authored members.
+- Bell housing is one schoolBell group, cap included, so the cap
+  cannot vote on the teaching block.
+- Water tank is one openFrame group plus a skipFit body box, so the
+  tank is solid and the air between the legs is not.
+- Haiden plinth is skipFit. Temizuya trough and the 渡り廊下 span are
+  skipFit so skipping those names cannot unmatched-drop them under
+  the compact empty rule.
+
+Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays 63.
+
+What went wrong last turn: probes at the bell used heightAt, which
+returns the terrain (1.05), not the roof (11.85). The mouth is at
+13.05. The building column was still there after that was noticed.
+
+Verify this turn: `node --check` on the edited files. Headless city
+load, flight-line probes and overlay shots follow this commit.
+`npm run verify` was not run: city map, not the plant.
+
+## Open-frame gaps: measured
+
+Headless city load with `__CITY_SCAN`, probes with a 40 m search so a
+teaching-block box cannot hide by having its centre far from the
+mouth. Overlay shots in `/opt/cursor/artifacts/frames_gap_*.png`.
+
+Flight lines (Three.js Y-up), empty unless noted:
+
+- street `(0, 2.0, 12)` empty
+- overbridge undercroft `(41, 3.0, 0)` empty
+- cage tunnel `(41, 8.4, 0)` empty
+- roof bay `(41.5, 9.95, -0.5)` empty
+- ridge `(41, 10.0, 0)` HIT 0.14 x 0.12 x 10
+- eave post `(42.25, 8.4, -5.5)` HIT 0.12 x 2.55 x 0.12
+- bell mouth `(29.25, 13.05, -48.6)` empty
+- bell post `(28.43, 13.05, -49.3)` HIT 0.2 x 2.5 x 0.2
+- tank gap `(30.85, 12.45, -63.6)` empty
+- tank body `(30.85, 13.8, -63.6)` HIT 2.9 x 1.62 x 2.5
+- torii `( -27.9, 1.8, 19.9 )` empty
+- nuki `( -27.9, 2.45, 19.9 )` HIT 4.00 x 0.15 x 0.23
+- goal `(39.9, 1.0, -56.5)` empty
+- haiden bay `( -27.9, 4.1, 34.2 )` empty
+- 渡り廊下 `(28.5, 1.6, -73.75)` empty
+
+Scan vs check 15 (ceilings not edited): phantom 2177 / 29000,
+overFive 114 / 350, holes 10626 / 20300, meanCover 0.578 / 0.45.
+`expectedModules` 63. city colliders 10684, total boxes 12815.
+Console 0.
+
+What went wrong this turn:
+
+- First probe used `heightAt` for the bell, which is terrain (1.05),
+  not the roof (11.85). The mouth is at 13.05.
+- Naming the posts COVER_SOFT stopped the cover pass and did not
+  stop roof-lift: the teaching-block rectangle still owned the cap
+  and tank body in plan.
+- After skipping COVER_SOFT in the fit, the roof chain-link ring
+  still voted on every slab, so the block stayed one prism to
+  parapet height (13.56) and walled the tank legs. `chainLink` is
+  now COVER_SOFT. Authored parapet boxes stay, and they are tight.
+- `__colliderBoxes` filters by box centre, so a 22 m teaching-block
+  prism can contain the bell mouth and still be omitted from an
+  8 m dump. Probes now use 40 m.
+
+`npm run verify` was not run: city map, not the plant.
+## Merge cursor/open-frame-gaps-13e4 onto origin/main
+
+Kept both sides of PROGRESS.md. Incoming main log first (credits,
+rotation, contact, first-flight), then this branch's open-frame
+entries. Only PROGRESS.md conflicted.

@@ -1287,8 +1287,14 @@ function buildRyokan(ctx, m, gm, rng, sakura, shrubs, bamboo, glow, lantern) {
       posts.push({ geometry: new THREE.BoxGeometry(0.17, 2.7, 0.17), matrix: trs(px + s * (W / 2 - 0.1), Y + 1.35, FRONT_Z - D + 0.1) });
     }
     const pm = new THREE.Mesh(bake(posts), m.woodDark);
+    pm.name = 'openFrame';
     pm.castShadow = true;
     ctx.add(pm);
+    for (const s of [-1, 1]) {
+      const ppx = px + s * (W / 2 - 0.1);
+      const ppz = FRONT_Z - D + 0.1;
+      ctx.collide(ppx - 0.12, ppz - 0.12, ppx + 0.12, ppz + 0.12, Y + 2.7);
+    }
     // the porch roof: a small hipped tile canopy of its own
     ctx.add(box(W + 0.7, 0.14, D + 0.5, m.tile, px, Y + 2.78, FRONT_Z - D / 2 - 0.1));
     ctx.add(box(W + 0.8, 0.16, 0.18, m.tileEdge, px, Y + 2.72, FRONT_Z - D - 0.34));
@@ -1624,6 +1630,7 @@ function buildAshiyu(ctx, m, gm, rng, glow) {
       });
     }
     const pm = new THREE.Mesh(bake(posts), m.woodDark);
+    pm.name = 'openFrame';
     pm.position.y = Y + 0.05;
     pm.castShadow = true;
     ctx.add(pm);
@@ -1639,6 +1646,8 @@ function buildAshiyu(ctx, m, gm, rng, glow) {
     roof.castShadow = true;
     ctx.add(roof);
     ctx.add(box(W + 0.8, 0.14, 0.14, m.tileEdge, cx, Y + H + 0.24 - Math.sin(tilt) * (D + 0.8) / 2 - 0.04, cz + (D + 0.8) / 2));
+    ctx.collide(cx - (W + 0.7) / 2, cz - (D + 0.8) / 2, cx + (W + 0.7) / 2, cz + (D + 0.8) / 2,
+      Y + H + 0.42, Y + H + 0.08, true);
     const lamp = makeDoorLamp({ x: cx - 0.9, y: Y + H - 0.05, z: cz - D / 2 + 0.14, ry: 0, out: 0.0 });
     glow(lamp.userData.glow, -cx);
     ctx.add(lamp);
@@ -1846,6 +1855,7 @@ function buildDeck(ctx, m, gm, lantern, sakura) {
     });
   }
   const pm = new THREE.Mesh(bake(posts), m.woodDark);
+  pm.name = 'openFrame';
   pm.castShadow = pm.receiveShadow = true;
   ctx.add(pm);
 

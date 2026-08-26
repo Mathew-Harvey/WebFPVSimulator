@@ -377,7 +377,7 @@ function buildStaffBlock(ctx, m, gm, shrubs) {
     w: 1.2, h: 0.8, y0: 0.95, wood: 0x8a6f52,
     sheets: [{ map: hallNotice(1), x: 0, w: 0.38, h: 0.52, tilt: 0.014 }],
   }));
-  ctx.add(makeBikeShelter({ x: fx + 0.7, z: STAFF.z - 2.2, y: Y + 0.08, ry: Math.PI / 2, w: 3.0, d: 1.4, h: 2.0 }));
+  ctx.add(makeBikeShelter({ ctx, x: fx + 0.7, z: STAFF.z - 2.2, y: Y + 0.08, ry: Math.PI / 2, w: 3.0, d: 1.4, h: 2.0 }));
   ctx.add(makeBikeRack({ x: fx + 0.7, z: STAFF.z - 2.2, y: Y + 0.08, n: 4, spacing: 0.6, ry: Math.PI / 2, seed: 208 }));
   refusePoint(ctx, {
     kind: 'bins', x: fx + 0.55, z: p.z0 - 0.7, y: gA(fx + 0.55, p.z0 - 0.7), ry: Math.PI / 2, plate: 1,
@@ -485,7 +485,7 @@ function buildHouses(ctx, m, gm, rng, shrubs, petals) {
       x: fx + 0.9, z: HOUSE.z + HOUSE.d / 2 + 1.5, w: 4.6, d: 2.7, y: Y, h: 0.07,
       mat: gm.concrete, name: 'tsugakuroCarBay', ry: 0,
     });
-    ctx.add(makeCarport({ x: fx - 1.0, z: HOUSE.z + HOUSE.d / 2 + 1.5, y: Y + 0.07, ry: Math.PI / 2, w: 2.7, d: 4.6, h: 2.3 }));
+    ctx.add(makeCarport({ ctx, x: fx - 1.0, z: HOUSE.z + HOUSE.d / 2 + 1.5, y: Y + 0.07, ry: Math.PI / 2, w: 2.7, d: 4.6, h: 2.3 }));
     makeChalkMarks(ctx, [
       { x: fx + 1.4, z: HOUSE.z + HOUSE.d / 2 + 1.1, y: Y + 0.09, ry: 0.2 },
       { x: fx + 2.2, z: HOUSE.z + HOUSE.d / 2 + 2.0, y: Y + 0.09, ry: -0.5 },

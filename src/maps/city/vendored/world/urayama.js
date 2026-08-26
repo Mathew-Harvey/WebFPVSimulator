@@ -802,6 +802,7 @@ function buildDeck(ctx, rng, out) {
     fm.castShadow = fm.receiveShadow = true;
     g.add(fm);
     const pm = new THREE.Mesh(bake(posts), m.timberDark);
+    pm.name = 'openFrame';
     pm.castShadow = pm.receiveShadow = true;
     g.add(pm);
     hullOutline(pm, { thickness: 0.003 });
@@ -1098,6 +1099,7 @@ function buildHokora(ctx, rng, out) {
     parts.push({ geometry: new THREE.BoxGeometry(0.2, 0.07, TW + 0.72), matrix: trs(0, TH + 0.1, 0) });
     parts.push({ geometry: new THREE.BoxGeometry(0.1, 0.2, 0.13), matrix: trs(0, TH - 0.16, 0) });
     const tm = new THREE.Mesh(bake(parts), m.torii);
+    tm.name = 'torii';
     tm.position.set(tx, py, V.z);
     tm.castShadow = tm.receiveShadow = true;
     g.add(tm);

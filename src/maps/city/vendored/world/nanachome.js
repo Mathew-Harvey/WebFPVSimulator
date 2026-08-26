@@ -1570,7 +1570,7 @@ function buildCourt(ctx, m, gm, rng, sakura, shrubs, petals) {
      * 82.25..87.05: clear of the glazing by 0.10 and of the apron's north edge
      * (87.20) by 0.15. */
     const bx = -46.4, bz = 84.65;
-    ctx.add(makeBikeShelter({ x: bx, z: bz, y: CY, ry: Math.PI / 2, w: 4.8, d: 2.4, h: 2.30 }));
+    ctx.add(makeBikeShelter({ ctx, x: bx, z: bz, y: CY, ry: Math.PI / 2, w: 4.8, d: 2.4, h: 2.30 }));
     const rail = [];
     for (const s of [-1, 1]) {
       /* The guide rail runs **along** the bay, so the cylinder needs `rx = PI/2`

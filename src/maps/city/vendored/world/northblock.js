@@ -198,7 +198,7 @@ export function buildNorthBlock(ctx) {
     /* everything a block of four flats keeps outside its own front door */
     ctx.add(makeMailboxBank({ x: x1 + 0.55, z: z0 + 1.2, y: Y, ry: -Math.PI / 2, cols: 4, rows: 2 }));
     ctx.collide(x1 + 0.4, z0 + 0.7, x1 + 0.75, z0 + 1.7, Y + 1.3);
-    ctx.add(makeBikeShelter({ x: x1 + 1.2, z: z0 + 4.6, y: Y, ry: Math.PI / 2, w: 4.0, d: 1.8, h: 2.05 }));
+    ctx.add(makeBikeShelter({ ctx, x: x1 + 1.2, z: z0 + 4.6, y: Y, ry: Math.PI / 2, w: 4.0, d: 1.8, h: 2.05 }));
     // Keep the first three bicycles in place.  The fourth reached the utility
     // pole at the end of the shelter, so the shortened row is re-centred to
     // preserve the three clear instance positions exactly.
@@ -266,7 +266,7 @@ export function buildNorthBlock(ctx) {
       const bz = z0 + TERR.unitW * (i + 0.5);
       ctx.add(box(0.16, 0.11, 1.3, m.concreteMid, x0 - 0.7, Y + 0.12, bz));
     }
-    ctx.add(makeCarport({ x: x0 - 2.6, z: z0 + TERR.unitW * 1.5, y: Y, ry: Math.PI / 2, w: 2.7, d: 4.6, h: 2.3 }));
+    ctx.add(makeCarport({ ctx, x: x0 - 2.6, z: z0 + TERR.unitW * 1.5, y: Y, ry: Math.PI / 2, w: 2.7, d: 4.6, h: 2.3 }));
     for (const s of [0, 2]) {
       const bz = z0 + TERR.unitW * (s + 0.5);
       const bikeX = x0 - 1.0;

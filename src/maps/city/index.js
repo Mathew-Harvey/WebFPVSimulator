@@ -566,10 +566,15 @@ const COVER_MAX_LIFT = 1.0;
 const COVER_MIN_FILL = 0.4;
 /* Foliage, ground decoration, and see-through frames, excluded by
  * name. Tree leaves are collided as one box per blob in trees.js.
- * A torii and a 渡り廊下 bake posts and lintel into one mesh whose
- * AABB is a wall across the opening; COVER_MIN_FILL cannot save
- * them because that AABB is the fill. Authored posts and beams stay. */
-const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink/i;
+ * A torii, a 渡り廊下, the overbridge cage and a bell housing bake
+ * posts and beams into one mesh whose AABB is a wall across the
+ * opening; COVER_MIN_FILL cannot save them because that AABB is
+ * the fill. The slab fit skips the same names, because a named
+ * frame sitting on a building is still inside that building's
+ * rectangle and roof-lift would fill the opening from the floor
+ * to the cap. A chain-link ring around a roof votes on every slab
+ * of that block the same way. Authored posts and beams stay. */
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink/i;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.
@@ -1178,7 +1183,10 @@ function buildColliders(world) {
 
   /* The fit's own index over the drawn meshes. */
   const fitStart = (typeof performance !== 'undefined' ? performance.now() : 0);
-  const boxes = drawnBoxes(world.root, { maxFootprint: FIT_MAX_FOOTPRINT });
+  const boxes = drawnBoxes(world.root, {
+    maxFootprint: FIT_MAX_FOOTPRINT,
+    skip: (o) => COVER_SOFT.test(o.name || ''),
+  });
   const grid = new Map();
   for (let i = 0; i < boxes.length; i += 1) {
     const g = boxes[i];
@@ -1396,9 +1404,10 @@ function buildColliders(world) {
    *
  * Foliage is collided as one box per leaf blob in trees.js. The
  * cover pass still skips named foliage so canopy instances do not
- * become walls, and skips named frames (torii, schoolLink) whose
- * baked AABB is a wall across a gap the pilot can see. The tree
- * generators own the mass.
+ * become walls, and skips named frames (torii, schoolLink,
+ * overbridgeCage, schoolBell, openFrame) whose baked AABB is a
+ * wall across a gap the pilot can see. The tree generators own
+ * the mass.
    */
   for (const child of world.root.children) {
     const b = objectExtent(child);

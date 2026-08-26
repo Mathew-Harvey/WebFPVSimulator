@@ -336,7 +336,9 @@ export function meshFence(ctx, o) {
   }
 
   const g = new THREE.Group();
+  g.name = 'chainLink';
   const frame = new THREE.Mesh(bake(parts), o.mat ?? m.metal);
+  frame.name = 'chainLink';
   frame.castShadow = true;
   g.add(frame);
 

@@ -18151,3 +18151,28 @@ Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays
 63. `node --check` on the edited files. Headless probes and
 overlay shots follow this commit. `npm run verify` was not
 run: city map, not the plant.
+
+## Stair rake collides: measured
+
+Headless city load with `__CITY_SCAN`. Overlay shots in
+`/opt/cursor/artifacts/stair_rake_*.png`.
+
+The line up the flight, 0.3 m and 0.4 m above the second pan,
+is empty. The pan itself still hits, 0.23 m thick. Mid-flight
+air, stair throat, cage, undercroft, bell mouth empty. Ridge
+HIT 0.12 x 0.12 x 10.
+
+Two probes at the old hoop-era stations still graze: the
+landing eave at z 6.80 is a 0.12 m gutter and the craft
+radius reaches z 6.96; the corner post moved in to 39.92,
+6.58 on the landing. Neither is a box in the channel.
+
+Scan vs check 15 (ceilings not edited): phantom 2178 / 29000,
+overFive 114 / 350, holes 10702 / 20300, meanCover 0.576 /
+0.45. `expectedModules` 63. city colliders 10781, total boxes
+12912. More boxes than the hoop run because each pan is its
+own rectangle.
+
+`shots.js` exited 1 on `ERR_CONNECTION_REFUSED`. Probes and
+PNGs still wrote. `npm run verify` was not run: city map, not
+the plant.

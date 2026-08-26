@@ -17026,3 +17026,36 @@ Back returns to first-run with Credits still there. Node is not on PATH
 in this shell, so `node --check` and `npm run verify` were not run. This
 turn does not touch src/native, the WASM build, the input path or the
 simulation trace.
+
+### 2026-08-26 | ui | FPV wiki, catalog complete, title and pause linked
+
+Changed: an FPV wiki screen, over the live title world, with a chapter
+rail, search, SVG figures, and a dual voice (in the air / in the lab /
+in this simulator, then raise and lower). The journey starts as
+"Simulating FPV, for nerds" on the returning title (clickable teaser plus
+a menu row), on How to fly, and on pause. Deep links are `#wiki/<id>`.
+Every Betaflight 4.5.1 catalog field has a page. LIVE, GATED and
+APPLIED_INERT keys have authored copy. INERT/ABSENT keys use a family
+template so an OSD coordinate is not described as a PID, and a grey key
+never claims to fly. `npm run lint:wiki` is the coverage ruler.
+
+What went wrong: an import patch into ui.js missed on the first pass
+because the file had grown Rates, PIDs and Flight feel rows since the
+draft. Authored `angle_ff_smoothing_ms` was not a catalog key; the real
+4.5.1 name is `angle_feedforward_smoothing_ms`. lint:wiki caught it.
+Cursor's browser MCP was down this turn, so the interactive pass used
+headless Chrome over CDP against `http://127.0.0.1:8765/` instead of the
+IDE browser tab.
+
+Verify: `node --check` on the wiki modules, ui.js, fc.js and wiki-lint.
+`npm run lint:wiki`: 35 articles, 696 catalog fields, 706 cli/feature
+pages, 180 authored keys, 159 LIVE / 5 GATED / 16 APPLIED_INERT, exit 0.
+Headless Chrome: `#wiki/physics-vrs` opens Vortex ring state with figure,
+In the air, In the lab, and animation classes. Search `p_roll` ranks
+P roll first, LIVE, raise/lower, FC link. `dyn_notch_count` is GATED with
+the 1 kHz SDFT reason. `osd_tim1` is INERT and says the FPV view is not
+Betaflight OSD. Back clears the hash onto first-run (still two choices
+plus Credits). After I have flown before, FPV wiki and How to fly are
+on the title. 390x844 stacks the wiki to one column. Console exceptions
+0. `npm run verify` was not run: no plant, ABI, build or threshold
+change. The FC jump from a LIVE page was not driven in that Chrome pass.

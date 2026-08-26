@@ -156,6 +156,7 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
     pilotCard('Asylum', 'Beta test. Put laps on it and said when it did not feel like a radio.'),
     pilotCard('Jannes', 'Beta test. The kind of flying that finds the hole in a tune.'),
     pilotCard('LeStar', 'Beta test. Kept flying it after the novelty wore off.'),
+    pilotCard('CrapShack', 'Beta test. Aviation scientist. Said when the air did not behave like air.'),
   );
   pilots.append(row);
   host.append(pilots);

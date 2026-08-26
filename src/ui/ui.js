@@ -344,7 +344,7 @@ const DEFAULTS = {
  * TWO SIGNALS, BOTH HAVE TO BE COLD. A saved settings blob means somebody
  * changed something, and a stored best means somebody finished a lap. Either
  * one is enough to say this is not a first run, because getting one of them
- * wrong in the other direction would put the two row screen in front of a
+ * wrong in the other direction would put the first-run screen in front of a
  * returning pilot, which is far worse than missing it once.
  */
 function detectFirstRun() {
@@ -2644,11 +2644,13 @@ export class Ui {
     const s = this.settings;
     if (this.screen === 'title') {
       /*
-       * FIRST RUN IS TWO ROWS, not nine. Nothing here used to tell visit one
-       * from visit one hundred, so a pilot who had never held a stick got the
-       * same list as somebody coming back for a personal best, with the one
-       * thing they needed sitting seventh. isFirstRun is a signal the product
-       * already had and threw away: no stored settings, no lap on record.
+       * FIRST RUN IS TWO CHOICES AND CREDITS, not nine. Nothing here used
+       * to tell visit one from visit one hundred, so a pilot who had never
+       * held a stick got the same list as somebody coming back for a personal
+       * best, with the one thing they needed sitting seventh. isFirstRun is a
+       * signal the product already had and threw away: no stored settings, no
+       * lap on record. Credits sits with the two choices so who made this is
+       * readable before a lap is flown.
        */
       if (this.firstRun) {
         return [
@@ -2662,6 +2664,11 @@ export class Ui {
             label: 'I have flown before',
             action: 'skipfirst',
             note: 'Straight to the full menu.',
+          },
+          {
+            label: 'Credits',
+            action: 'credits',
+            note: 'Who made this, who flew it, and whose work it stands on.',
           },
         ];
       }

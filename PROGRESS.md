@@ -17005,3 +17005,24 @@ npm run verify was not run: render and HUD only, no physics, no
 module, no build file, check 13 loads only the harness page.
 
 
+
+### 2026-08-26 | ui | CrapShack on credits, credits on first-run title
+
+Changed: CrapShack joins the beta test pilots on the credits roll, named
+as an aviation scientist. The first-run title (the landing a new visitor
+sees) now has Credits as a third row next to First flight and I have
+flown before, so who made this is readable before a lap is flown. The
+full title menu already had Credits. The pilots grid is two columns so
+four names sit as a pair of pairs rather than three plus an orphan.
+
+What went wrong: nothing this turn. First run used to be two rows on
+purpose, because Credits used to sit seventh in a nine row list and
+buried Fly. Putting it back as a third first-run row is a smaller list
+than that, and First flight stays the green button.
+
+Verify: browser pass on the first-run title at `http://127.0.0.1:8000/`:
+Credits is the third row, opening it shows CrapShack as aviation scientist,
+Back returns to first-run with Credits still there. Node is not on PATH
+in this shell, so `node --check` and `npm run verify` were not run. This
+turn does not touch src/native, the WASM build, the input path or the
+simulation trace.

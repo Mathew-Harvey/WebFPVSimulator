@@ -11,13 +11,18 @@
  *   2. a tilted drop produces a moment of spin, then the belly settles
  *   3. a wall with surface velocity spins the craft
  *   4. inverted plus crashflip plus pitch stick still flips the hull
- *      (ABI proof; the shell snaps instead of driving crashflip)
+ *      past inverted (ABI proof; the shell snaps instead of driving
+ *      crashflip). Peak attitude, not the leftover tumble in free air.
  *   5. a harness-style replay that never calls the new entry points
  *      still falls in free air, so the additive ABI does not leak a
  *      floor into checks 2 through 12
  *   6. inverted rest, slam, and full throttle into the dirt leave no
  *      hull corner or camera glass below the plane
  *   7. belly slide is short then sticks; props-down stops at once
+ *   8. a seated punch leaves the pad immediately; settle must not
+ *      cancel climb (motors at the stops, hull glued to the slop)
+ *   9. an inverted flip or leftover roll in free air must not freeze
+ *      vel or omega just because a ground plane exists metres below
  *
  * Run: node scripts/contact-selftest.js   (npm run contact:selftest)
  * Exit code is the failure count.
@@ -92,6 +97,34 @@ function hold(sim, ms, sticks) {
     sim.step(1);
   }
   return sim.readState().state;
+}
+
+/* Crashflip is a couple, not a pose hold. Measure the peak attitude
+ * and the deepest corner during the hold, not just the final sample:
+ * once the hull leaves the grass an honest near flag will not damp
+ * leftover rate in free air. */
+function turtleHold(sim, ms, sticks) {
+  const s = { roll: 0, pitch: 0, yaw: 0, throttle: 0, ...sticks };
+  let t = sim.readState().state[ST.T];
+  let peakUp = upZ(sim.readState().state);
+  let worstCorner = Infinity;
+  let peakState = sim.readState().state;
+  for (let i = 0; i < ms; i += 1) {
+    t += 0.001;
+    sim.input(t, s.roll, s.pitch, s.yaw, s.throttle);
+    sim.step(1);
+    const st = sim.readState().state;
+    const u = upZ(st);
+    if (u > peakUp) {
+      peakUp = u;
+      peakState = st;
+    }
+    const corner = deepestHullCorner(st);
+    if (corner < worstCorner) {
+      worstCorner = corner;
+    }
+  }
+  return { peakUp, worstCorner, state: peakState, end: sim.readState().state };
 }
 
 function upZ(st) {
@@ -306,23 +339,22 @@ function sameState(a, b) {
   hold(simB, 250, { throttle: 0 });
   simB.e.sim_set_crashflip(1);
   const startUp = upZ(simB.readState().state);
-  const pos = hold(simB, 1800, { pitch: -1 });
+  const pos = turtleHold(simB, 1800, { pitch: -1 });
   const simC = await fresh();
   simC.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
   simC.rest();
   simC.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
   hold(simC, 250, { throttle: 0 });
   simC.e.sim_set_crashflip(1);
-  const neg = hold(simC, 1800, { pitch: 1 });
-  const best = upZ(pos) > upZ(neg) ? pos : neg;
-  const bestUp = upZ(best);
+  const neg = turtleHold(simC, 1800, { pitch: 1 });
+  const best = pos.peakUp > neg.peakUp ? pos : neg;
   check('turtle pitch raises the hull toward upright',
-    bestUp > startUp + 0.35, `start=${startUp.toFixed(3)} best=${bestUp.toFixed(3)}`);
-  check('and it is no longer inverted',
-    bestUp > 0, `upz=${bestUp.toFixed(3)}`);
+    best.peakUp > startUp + 0.35, `start=${startUp.toFixed(3)} peak=${best.peakUp.toFixed(3)}`);
+  check('and it crosses out of inverted',
+    best.peakUp > 0, `peak=${best.peakUp.toFixed(3)}`);
   check('turtle does not clip the hull through the plane',
-    deepestHullCorner(best) > -HULL_SLOP - 0.001,
-    `corner=${deepestHullCorner(best).toFixed(4)}`);
+    best.worstCorner > -HULL_SLOP - 0.001,
+    `corner=${best.worstCorner.toFixed(4)}`);
 }
 
 {
@@ -474,13 +506,18 @@ function sameState(a, b) {
   grass(sim);
   hold(sim, 250, { throttle: 0 });
   sim.e.sim_set_crashflip(1);
-  let st = hold(sim, 1800, { pitch: -1 });
-  if (!(upZ(st) > 0)) {
-    st = hold(sim, 1800, { pitch: 1 });
+  let flip = turtleHold(sim, 1800, { pitch: -1 });
+  if (!(flip.peakUp > 0)) {
+    flip = turtleHold(sim, 1800, { pitch: 1 });
   }
   check('turtle reached a non-inverted pose before takeoff',
-    upZ(st) > 0, `upz=${upZ(st).toFixed(3)}`);
+    flip.peakUp > 0, `peak=${flip.peakUp.toFixed(3)}`);
+  /* Crashflip off, seat upright on the pad. The mixer couple is allowed
+   * to keep tumbling once the hull leaves the grass; the old "near"
+   * flag damped that in free air and left a lucky upright pose. */
   sim.e.sim_set_crashflip(0);
+  sim.e.sim_set_pose(0, 0, 0.045, 1, 0, 0, 0);
+  sim.rest();
   const z0 = sim.readState().state[ST.Z];
   const up0 = upZ(sim.readState().state);
   const flown = hold(sim, 700, { throttle: 1 });
@@ -693,6 +730,79 @@ function sameState(a, b) {
   check('a camera-down rest never puts the lens through the plane',
     worstCam > -HULL_SLOP - 0.001,
     `worstCam=${worstCam.toFixed(4)} z=${st[ST.Z].toFixed(4)} cam=${cameraPlantZ(st).toFixed(4)}`);
+}
+
+{
+  const sim = await fresh();
+  /* Seated on the pad, motors live, full throttle. The old settle killed
+   * every outbound normal while the hull was in the contact band, so a
+   * punch crawled a fraction of a millimetre per step with the motors
+   * at the stops. */
+  sim.e.sim_set_pose(0, 0, 0.045, 1, 0, 0, 0);
+  sim.rest();
+  grass(sim);
+  let leftAt = -1;
+  let t = sim.readState().state[ST.T];
+  let st = sim.readState().state;
+  for (let i = 0; i < 500; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 1);
+    sim.step(1);
+    st = sim.readState().state;
+    if (leftAt < 0 && st[ST.Z] > 0.12) {
+      leftAt = i + 1;
+    }
+  }
+  check('a seated punch leaves the pad instead of crawling',
+    leftAt > 0 && leftAt < 200,
+    `leftAt=${leftAt}ms z=${st[ST.Z].toFixed(3)} vz=${st[ST.VZ].toFixed(3)}`);
+  check('and is climbing after half a second',
+    st[ST.Z] > 0.5 && st[ST.VZ] > 1.0,
+    `z=${st[ST.Z].toFixed(3)} vz=${st[ST.VZ].toFixed(3)} leftAt=${leftAt}ms`);
+  check('the takeoff hull is still upright',
+    upZ(st) > 0.7, `upz=${upZ(st).toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* Inverted four metres up, plane at z = 0. The old projector started
+   * worst at 0, so every airborne hull looked "near" and invert-stop
+   * zeroed vel and omega the moment body-up went negative. */
+  sim.e.sim_set_pose(0, 0, 4.0, 0, 1, 0, 0);
+  sim.rest();
+  grass(sim);
+  const seated = sim.readState().state;
+  sim.e.sim_contact(1, 0, 0, 0.0, 0.0, seated[ST.X], seated[ST.Y], seated[ST.Z], 6, 0, 0);
+  const launched = sim.readState().state;
+  check('the air invert starts with a horizontal shove',
+    launched[ST.VX] > 2 && upZ(launched) < -0.7,
+    `vx=${launched[ST.VX].toFixed(3)} upz=${upZ(launched).toFixed(3)}`);
+  const st = hold(sim, 40, { throttle: 0 });
+  check('an inverted flip in free air does not freeze',
+    speedMag(st) > 1.5 && st[ST.Z] > 3.5,
+    `v=${speedMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)} vz=${st[ST.VZ].toFixed(3)}`);
+  check('and the distant plane reports no contact',
+    sim.e.sim_ground_contacts() === 0,
+    `hits=${sim.e.sim_ground_contacts()} z=${st[ST.Z].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* Upright leftover roll, same distant plane. Belly omega damp must
+   * not run just because a floor exists. */
+  sim.e.sim_set_pose(0, 0, 4.0, 1, 0, 0, 0);
+  sim.rest();
+  grass(sim);
+  const seated = sim.readState().state;
+  sim.e.sim_contact(1, 0, 0, 0.32, 0.38, seated[ST.X], seated[ST.Y], seated[ST.Z], 8, 0, 0);
+  const spun = sim.readState().state;
+  const w0 = omegaMag(spun);
+  check('the air roll starts with leftover rate',
+    w0 > 0.8, `w0=${w0.toFixed(3)}`);
+  const st = hold(sim, 40, { throttle: 0 });
+  check('a roll in free air does not kill leftover omega',
+    omegaMag(st) > 0.4 && st[ST.Z] > 3.5,
+    `w=${omegaMag(st).toFixed(3)} w0=${w0.toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
 }
 
 {

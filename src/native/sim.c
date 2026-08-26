@@ -100,6 +100,10 @@ static int g_ground_near = 0;
 #define CONTACT_SLIDE_STOP 0.12
 #define CONTACT_OMEGA_STOP 0.35
 #define CONTACT_NEAR 0.008
+/* Deepest-pen sentinel. Must be a large negative: starting at 0 made
+ * every airborne hull look "near" the plane (worst stayed 0), so an
+ * inverted flip in free air ran invert-stop and froze the craft. */
+#define CONTACT_PEN_NONE (-1.0e9)
 
 static const double CONTACT_CORNER[CONTACT_CORNERS][3] = {
   { -CONTACT_HX, -CONTACT_HY, -CONTACT_HZ_DOWN },
@@ -443,7 +447,7 @@ static void ground_project_sample(const double body[3], double *worst) {
 }
 
 static void ground_project_hull(void) {
-  double worst = 0.0;
+  double worst = CONTACT_PEN_NONE;
   const double cam[3] = { CAMERA_BODY_X, CAMERA_BODY_Y, CAMERA_BODY_Z };
   for (int c = 0; c < CONTACT_CORNERS; c += 1) {
     ground_project_sample(CONTACT_CORNER[c], &worst);
@@ -489,10 +493,13 @@ static void ground_project_hull(void) {
  * path is still compiled, and the contact self-test still drives it, so
  * settle must not cancel that couple while crashflip is latched.
  */
-static void ground_settle(double upz) {
+static void ground_settle(double upz, double vn_plant) {
   if (!g_ground_hits && !g_ground_projected) {
     /* Inverted rest can sit on the slop with no impulse and no
-     * push, which used to skip settle and leave a props-down slide. */
+     * push, which used to skip settle and leave a props-down slide.
+     * near is only true within CONTACT_NEAR of the plane. Starting
+     * the projector's worst pen at 0 made every airborne hull look
+     * near, and invert-stop froze a flip in free air. */
     if (!(upz < CONTACT_INVERT_UPZ && g_ground_near)) {
       return;
     }
@@ -501,15 +508,23 @@ static void ground_settle(double upz) {
     return;
   }
 
-  const double vn = S.vel[0] * g_ground_n[0]
-      + S.vel[1] * g_ground_n[1]
-      + S.vel[2] * g_ground_n[2];
-  if (vn > 0.0) {
-    S.vel[0] -= g_ground_n[0] * vn;
-    S.vel[1] -= g_ground_n[1] * vn;
-    S.vel[2] -= g_ground_n[2] * vn;
+  const double nx = g_ground_n[0];
+  const double ny = g_ground_n[1];
+  const double nz = g_ground_n[2];
+  double vn = S.vel[0] * nx + S.vel[1] * ny + S.vel[2] * nz;
+
+  /* Strip an outbound kick the contact just invented (Baumgarte, a
+   * residual bounce). Leave a climb the plant already had: killing
+   * that every step glued a punch to the pad. */
+  if (vn > 0.0 && !(vn_plant > 0.0)) {
+    S.vel[0] -= nx * vn;
+    S.vel[1] -= ny * vn;
+    S.vel[2] -= nz * vn;
+    vn = 0.0;
   }
 
+  /* Props-down on grass: stop immediately. Free-air invert is not
+   * near, so it never reaches here. */
   if (upz < CONTACT_INVERT_UPZ) {
     S.vel[0] = 0.0;
     S.vel[1] = 0.0;
@@ -520,14 +535,25 @@ static void ground_settle(double upz) {
     return;
   }
 
-  S.vel[0] *= CONTACT_SLIDE_KEEP;
-  S.vel[1] *= CONTACT_SLIDE_KEEP;
-  S.vel[2] *= CONTACT_SLIDE_KEEP;
-  const double v2 = S.vel[0] * S.vel[0] + S.vel[1] * S.vel[1] + S.vel[2] * S.vel[2];
-  if (v2 < CONTACT_SLIDE_STOP * CONTACT_SLIDE_STOP) {
-    S.vel[0] = 0.0;
-    S.vel[1] = 0.0;
-    S.vel[2] = 0.0;
+  /* Tangent only. Scaling the whole velocity damped the punch while
+   * the hull was still in the contact band. */
+  const double vtx = (S.vel[0] - nx * vn) * CONTACT_SLIDE_KEEP;
+  const double vty = (S.vel[1] - ny * vn) * CONTACT_SLIDE_KEEP;
+  const double vtz = (S.vel[2] - nz * vn) * CONTACT_SLIDE_KEEP;
+  const double vt2 = vtx * vtx + vty * vty + vtz * vtz;
+  if (vt2 < CONTACT_SLIDE_STOP * CONTACT_SLIDE_STOP) {
+    S.vel[0] = nx * vn;
+    S.vel[1] = ny * vn;
+    S.vel[2] = nz * vn;
+    if (!(vn > 0.0)) {
+      S.vel[0] = 0.0;
+      S.vel[1] = 0.0;
+      S.vel[2] = 0.0;
+    }
+  } else {
+    S.vel[0] = nx * vn + vtx;
+    S.vel[1] = ny * vn + vty;
+    S.vel[2] = nz * vn + vtz;
   }
 
   if (upz >= 0.5) {
@@ -552,6 +578,9 @@ static void ground_apply(void) {
   if (!g_ground_on || g_stand_on) {
     return;
   }
+  const double vn_plant = S.vel[0] * g_ground_n[0]
+      + S.vel[1] * g_ground_n[1]
+      + S.vel[2] * g_ground_n[2];
   const double vs[3] = { 0.0, 0.0, 0.0 };
   /* World-z of body up. A belly landing wants a four-leg table. Anything
    * past about 60 deg is a roll, a turtle or a side arrival: one support
@@ -593,7 +622,7 @@ static void ground_apply(void) {
     }
     g_ground_hits = hits;
     ground_project_hull();
-    ground_settle(upz);
+    ground_settle(upz, vn_plant);
     return;
   }
 
@@ -620,7 +649,7 @@ static void ground_apply(void) {
   }
   g_ground_hits = hits;
   ground_project_hull();
-  ground_settle(upz);
+  ground_settle(upz, vn_plant);
 }
 
 SIM_EXPORT int sim_contact(double nx, double ny, double nz,

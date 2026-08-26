@@ -17858,3 +17858,64 @@ What went wrong after the first commit:
 
 Harness is green on the flight checks. Feel is awaiting human
 judgement.
+
+## Unglue takeoff and stop free-air flip lock
+
+Owner report: punch sticks to the grass with motors at the stops,
+then lags and sticks again. A flip or roll in the air locks the
+craft.
+
+No advisor channel. ABI unchanged. Plant shape unchanged (same
+OBB, same 1 kHz contact). No crashflip in the shell.
+
+Two bugs in `ground_project_hull` / `ground_settle`:
+
+1. The projector started `worst` at 0. Every airborne hull has
+   negative penetration, so `worst` stayed 0, `g_ground_near`
+   was always true, and invert-stop zeroed vel and omega the
+   moment body-up went past -0.5. Repro: inverted at z = 4,
+   plane at z = 0, 20 ms later v = 0 and w = 0.
+2. Settle killed every outbound normal, every step, while the
+   hull was in the contact band. A punch adds about 0.03 m/s,
+   settle cancelled it, and the hull crawled a fraction of a
+   millimetre per ms out of the 2 mm slop. About 70 ms of
+   glued full throttle, then a flicker with `canPerch`.
+
+Fix:
+
+- `worst` starts at `CONTACT_PEN_NONE` (-1e9). Near is only
+  true when a hull sample is within 8 mm of the plane.
+- Strip outbound vn only when the plant did not already have
+  it (`vn_plant <= 0`). That is the Baumgarte / residual
+  bounce. A climb the integrator already produced is left
+  alone.
+- Slide damp is tangent-only, so a punch in the slop band
+  keeps vz.
+
+Measured on `dist/sim.wasm` after the rebuild:
+
+- Seated punch, throttle 1: leaves z = 0.12 at 87 ms, z = 5.58
+  and vz = 21.1 at 500 ms.
+- Inverted at z = 4 with a 6 m/s shove: after 40 ms still
+  v = 3.06, z = 3.99, hits = 0.
+- Existing: dead thump, short belly slide, props-down stop,
+  camera-down lens, crashflip still crosses inverted.
+
+What went wrong:
+
+- First pass returned from settle on any `vn > 0`. That skipped
+  slide damp (belly skated, vx still 2.2 after 180 ms) and left
+  the thump at peakOut = 0.294 against 0.25. Also dropped
+  Baumgarte (`pen = 0`), which starved the crashflip couple.
+- Restored `use_p` and only cancel contact-invented outbound.
+- Turtle self-test used the final pose after 1800 ms. With an
+  honest near flag the mixer couple is free in the air and the
+  hull can tumble past upright. The proof is now peak upz
+  during the hold. The shell still snaps turtle; this is ABI
+  only.
+
+Checks this turn: `npm run build:wasm` 0. `git diff --stat
+vendor/betaflight` empty. `npm run contact:selftest` all
+passed. `node src/trackbuilder/selftest.js` 382 passed.
+`node --check` on the edited JS. `npm run verify` follows
+the commit: this is the plant.

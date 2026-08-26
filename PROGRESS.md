@@ -17067,4 +17067,55 @@ and a triangle mesh. If phantom climbs, it is those corners, not a
 reason to rasterise again. If the torii nuki is too fat, shrink the
 authored slab, do not put the cover pass back on the group.
 
+## Freestyle city: measured after the per-blob revert
+
+Headless Chromium, high, 1280x720, __CITY_SCAN on. World 6705 ms,
+ready 8899 ms (was 25082 ms under the occupancy flood). Authored
+colliders 22488, fitted 25083 (was 462154). Overlay of the street
+within 28 m: 815 boxes, not 40k.
+
+Planting, unchanged: sakura 302 to 112, grove 943 to 361, cedar 396
+to 157, trees 1641 to 630 (38.4 percent kept). Shrubs 779 to 224.
+Bamboo 17 to 4. petalNames []. expectedModules 63. Console 0.
+
+Collider scan against check 15, ceilings untouched:
+
+- phantom 3143 / 29000
+- overFive 128 / 350
+- holes 10572 / 20300
+- meanCover 0.585 / 0.45 min
+- tight 21808, droppedEmpty 63, unmatched 65, fitted 615, covered 361,
+  seeThrough 227, drawnBoxes 160020, fit 426 ms
+
+Flight-line probes (Three.js Y-up). empty = flyable.
+
+- street (0, 2.0, 12) empty
+- overbridge undercroft (41, 3.0, 0) empty
+- shotengai (22.2, 2.0, 28) empty
+- alley (13.4, 1.6, 20) empty
+- school pedestrian gate (10.6, 1.6, -47.6) empty
+- school forecourt (14.2, 1.6, -49.5) empty
+- school 渡り廊下 (28.5, 1.6, -73.75) empty
+- outer torii (-27.9, 1.8, 19.9) empty (was a 4.66 x 3.78 x 0.53 wall)
+- outer 貫 (-27.9, 2.45, 19.9) HIT 4.00 x 0.15 x 0.23, the beam
+- inner torii (-27.9, 3.2, 26.9) empty
+- canal deck (0, 1.6, -24) empty
+- canal undercroft (0, 0.15, -24) empty
+- goal mouth (39.9, 1.0, -56.5) empty
+- under a street cherry (-5.3, 1.5, 5.8) empty
+
+Canal water has no pink cards. Goal posts were first authored without
+a bottom, so BOX_FLOOR -60 made a 63 m spike. They now sit on the
+pitch (Y + 0.06 to GH). A re-probe of the mouth is still empty; the
+torii nuki is still the 0.15 m beam.
+
+npm run verify was NOT run. City map, not the plant. Cheap evidence
+is this headless load, the scan numbers, the probes, and the overlay
+shots.
+
+Possible effect if this breaks something: a blob AABB still has the
+four corners of the icosahedron's box as air, which is the remaining
+honest gap between "hug the leaves" and a triangle mesh. Do not go
+back to a 0.55 m flood for that.
+
 

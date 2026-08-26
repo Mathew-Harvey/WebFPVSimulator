@@ -1231,10 +1231,10 @@ function buildPlayground(ctx, Y, rng) {
       const lx = (side * GW) / 2;
       const px = gx + ca * lx;
       const pz = gz - sa * lx;
-      ctx.collide(px - pr, pz - pr, px + pr, pz + pr, gy + GH);
+      ctx.collide(px - pr, pz - pr, px + pr, pz + pr, gy + GH, gy);
       const bx = gx + ca * lx - sa * 0.5;
       const bz = gz - sa * lx - ca * 0.5;
-      ctx.collide(bx - pr, bz - pr, bx + pr, bz + pr, gy + GH * 0.8);
+      ctx.collide(bx - pr, bz - pr, bx + pr, bz + pr, gy + GH * 0.8, gy);
     }
     const half = GW / 2 + pr;
     const wx = Math.abs(ca) * half + Math.abs(sa) * pr;

@@ -18305,3 +18305,60 @@ boxes 12912.
 `shots.js` exited 1 on `ERR_CONNECTION_REFUSED`. Probes and
 PNGs still wrote. `npm run verify` was not run: city map, not
 the plant.
+
+## Undercroft poles: cover walls baked posts
+
+The owner flew under the 公園前 overbridge and hit a wall
+between the landing columns. The columns are 0.11 to 0.13 m
+radius with authored 0.24 m boxes. Cover walks
+`world.root.children`. Several posts baked into one unnamed
+mesh have a union AABB and fill of 1, so cover adds that AABB
+as a wall across the gaps. Authored per-post boxes do not stop
+it: `coveredAlready` tests the union centre, which is the gap.
+
+Same class, found by walking every bake of ground-reaching
+posts that `ctx.add`s at the town root:
+
+1. Overbridge `landing()` steel / steelDark. Four columns, or
+   edge beams plus pad footings, unnamed. AABB is the landing
+   in plan from the ground up. Deck steelDark already skips by
+   span (about 9.8 m).
+2. `timberDeck()` in kohan. Every pile in a bay is one mesh.
+   Pier walk bays about 4 x 2.4 m, hide boardwalk about 1.6 x
+   2.6 m. No per-pile collides. Camp decks sit 0.24 m off the
+   ground, not a gap.
+3. Super さかえ height bar. Two posts, a 2.1 m bar, seven
+   flaps, one bake, no name, no authored collides.
+4. 六丁目 bus shelter. Unnamed group, 2.9 x 1.4 x 2.2. Cover
+   recreates the whole-shelter box the first flood fill found.
+
+Already COVER_SOFT, not redone: flight/roof `overbridgeCage`,
+bike shed, station canopy, carports, lean-tos, viewing decks,
+rest-corner canopy, azumaya, torii / haiden / temizuya,
+schoolLink / bell / tank, chainLink.
+
+Skipped by size, not the current wall: deck piers, nanachome
+rampLanding piers, ichome masking-wall piers, catenary masts
+inside the `railway` group, library porch columns as separate
+meshes.
+
+Fix, round 1:
+
+- Landing and deck bakes named `overbridgeCage`. Column boxes
+  skipFit so a slab cannot grow them.
+- `timberDeck` group named `openFrame`. Per-pile skipFit
+  boxes, 0.13 m half-width on round piles, 0.09 m on square.
+  Platform stays. Decks more than 0.6 m off the ground still
+  get a soffit slab.
+- Height bar named `openFrame`. Posts and the bar collide.
+  Mouth under 2.1 m is air. Flaps stay air.
+- Bus shelter named `openFrame`. Posts, cheeks, back panel,
+  roof slab. Mouth facing the bus is air. The old back-panel
+  box is replaced with one on the actual boarded face after
+  the half-turn.
+
+Chain-link stays a screen. MAP_MODULE_COUNT.city stays 63.
+Check 15 ceilings were not edited. `node --check` on the four
+edited files. Headless probes and overlay shots follow.
+`npm run verify` was not run: city map, not the plant.
+

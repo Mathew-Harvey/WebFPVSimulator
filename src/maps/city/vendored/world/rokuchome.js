@@ -567,6 +567,7 @@ function buildTurnaround(ctx, m, gm, PY, petals) {
   {
     const SW = 2.9, SD = 1.4, H = 2.20, FALL = 0.18;
     const g = new THREE.Group();
+    g.name = 'openFrame';
     const parts = { post: [], roof: [], board: [] };
     const push = (k, geo, mx) => parts[k].push({ geometry: geo, matrix: mx });
     for (const sx of [-1, 1]) {
@@ -610,16 +611,38 @@ function buildTurnaround(ctx, m, gm, PY, petals) {
      * roof, so a shelter left at ry = 0 has its back to the vehicle it is a
      * shelter for.  Nothing about that shows in a frame taken from the north.
      *
-     * **Only the back panel carries a collider.**  A box round the whole
-     * shelter is a bus shelter you cannot stand in, which is what the first
-     * flood-fill run found -- the waiting island read 1.05 m unreachable and
-     * the shelter looked perfect.  The two 0.06 m cheeks and the four 0.09 m
-     * posts go without one, the same call `traffic.js` makes for the stop pole
-     * and the delineators. */
-    g.position.set(ISLE.x + 0.15, IY, ISLE.z + 0.35);
+     * COVER_SOFT on the group: four posts plus cheeks plus a roof bake to
+     * a 2.9 x 1.4 x 2.2 AABB that cover would fill, which is the waiting
+     * island wall the first flood fill found. Posts, cheeks, back panel
+     * and the roof slab stay; the mouth facing the bus is air. skipFit
+     * so the island slab cannot grow a post into that opening. */
+    const gx = ISLE.x + 0.15;
+    const gz = ISLE.z + 0.35;
+    g.position.set(gx, IY, gz);
     g.rotation.y = Math.PI;
     ctx.add(g);
-    ctx.collide(ISLE.x - 1.30, ISLE.z + 0.90, ISLE.x + 1.60, ISLE.z + 1.06, IY + 1.62);
+    const postHw = 0.06;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const lx = sx * (SW / 2 - 0.08);
+        const lz = sz * (SD / 2 - 0.07);
+        const px = gx - lx;
+        const pz = gz - lz;
+        const h = H + (sz > 0 ? FALL : 0);
+        ctx.collide(px - postHw, pz - postHw, px + postHw, pz + postHw, IY + h, IY, true);
+      }
+    }
+    const backZ = gz + (SD / 2 - 0.07);
+    ctx.collide(gx - (SW / 2 - 0.04), backZ - 0.05, gx + (SW / 2 - 0.04), backZ + 0.05,
+      IY + 1.54, IY, true);
+    for (const sx of [-1, 1]) {
+      const px = gx - sx * (SW / 2 - 0.08);
+      const halfD = (SD - 0.2) / 2;
+      ctx.collide(px - 0.04, gz - halfD, px + 0.04, gz + halfD, IY + 1.50, IY, true);
+    }
+    ctx.collide(gx - (SW + 0.26) / 2, gz - (SD + 0.28) / 2,
+      gx + (SW + 0.26) / 2, gz + (SD + 0.28) / 2,
+      IY + H + FALL + 0.14, IY + H - 0.04, true);
   }
   // the bench inside it, facing the bus, and one on the sunny end of the island
   ctx.add(makeBench({ x: ISLE.x + 0.15, z: ISLE.z + 0.66, y: IY, ry: Math.PI, len: 1.5 }));

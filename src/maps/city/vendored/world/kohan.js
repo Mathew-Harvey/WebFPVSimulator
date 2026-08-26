@@ -120,6 +120,10 @@ function mats() {
 export function timberDeck(ctx, o) {
   const m = mats();
   const g = new THREE.Group();
+  /* COVER_SOFT. Every pile in a bay is one bake; the union AABB is
+   * the deck in plan and the bed-to-plank height, which cover would
+   * fill as a wall across the water. Authored pile boxes stay. */
+  g.name = 'openFrame';
   const { x, z, w, d, y } = o;
   const ry = o.ry ?? 0;
   const c = Math.cos(ry), s = Math.sin(ry);
@@ -141,6 +145,8 @@ export function timberDeck(ctx, o) {
           : new THREE.CylinderGeometry(0.1, 0.12, H, 7),
         matrix: trs(px, y - H / 2 + 0.06, pz),
       });
+      const phw = o.round === false ? 0.09 : 0.13;
+      ctx.collide(px - phw, pz - phw, px + phw, pz + phw, y + 0.06, fy, true);
     }
   }
   for (let i = 0; i <= nu; i++) {

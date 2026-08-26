@@ -451,7 +451,7 @@ function landing(ctx, o) {
         geometry: new THREE.BoxGeometry(0.44, 0.16, 0.44),
         matrix: trs(px, gy + 0.08, pz),
       });
-      ctx.collide(px - 0.12, pz - 0.12, px + 0.12, pz + 0.12, gy + hCol);
+      ctx.collide(px - 0.12, pz - 0.12, px + 0.12, pz + 0.12, gy + hCol, undefined, true);
     }
   }
   for (const side of rails) {
@@ -466,6 +466,11 @@ function landing(ctx, o) {
     if (!parts[key].length) continue;
     const mesh = new THREE.Mesh(bake(parts[key]), matFor[key]);
     mesh.castShadow = mesh.receiveShadow = true;
+    /* Same COVER_SOFT name as the flight stringers. Four columns, or
+     * edge beams plus the pad footings, baked into one mesh have a
+     * union AABB that fills the undercroft; cover would put a wall
+     * in the gaps. Authored column boxes stay. */
+    mesh.name = 'overbridgeCage';
     ctx.add(mesh);
   }
   /* The undercroft is deliberately left open -- see the note in `flight()`.
@@ -665,6 +670,9 @@ function deck(ctx) {
     if (!parts[key].length) continue;
     const mesh = new THREE.Mesh(bake(parts[key]), matFor[key]);
     mesh.castShadow = mesh.receiveShadow = true;
+    /* Piers in the steelDark bake reach the ground. Naming the
+     * girder bake keeps FIT from owning a wall across the tracks. */
+    mesh.name = 'overbridgeCage';
     ctx.add(mesh);
     if (key === 'steel') hullOutline(mesh, { thickness: 0.003 });
   }

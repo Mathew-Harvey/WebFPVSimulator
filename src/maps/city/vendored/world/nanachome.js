@@ -1171,10 +1171,21 @@ function buildRamp(ctx, m, gm) {
       parts.push({ geometry: new THREE.BoxGeometry(0.34, 0.22, 0.03), matrix: trs(EX - RW / 2 + 0.5 + i * 0.6, Y + 1.93, BZ - 0.06) });
     }
     const mesh = new THREE.Mesh(bake(parts), m.metalDark);
+    mesh.name = 'openFrame';
     mesh.castShadow = true;
     ctx.add(mesh);
     const bar = box(RW - 0.6, 0.12, 0.13, flat({ color: PAL.yellow }), EX, Y + 2.10, BZ - 0.06);
     ctx.add(bar);
+    /* Posts and the 2.1 m bar, not the mouth. Two posts plus a
+     * crossbar baked together have a union AABB that walls the
+     * apron; cover would fill it. The flaps are air. */
+    const postHw = 0.09;
+    for (const s of [-1, 1]) {
+      const px = EX + s * (RW / 2 - 0.10);
+      ctx.collide(px - postHw, BZ - postHw, px + postHw, BZ + postHw, Y + 2.62, Y, true);
+    }
+    ctx.collide(EX - (RW - 0.1) / 2, BZ - 0.08, EX + (RW - 0.1) / 2, BZ + 0.08,
+      Y + 2.63, Y + 2.04, true);
   }
   /* The mouth's signage faces **+z**.  `makeSignPost` puts its plate on local
    * +z, so `ry = 0` is a face read by somebody coming *from* the road -- which

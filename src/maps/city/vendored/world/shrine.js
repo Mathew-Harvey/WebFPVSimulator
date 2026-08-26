@@ -636,13 +636,15 @@ function buildHaiden(ctx, o) {
   g.rotation.y = Math.PI;
   ctx.add(g);
   /* Plinth, boarded sides, back wall and the roof. The front middle bay
-   * is the opening: a box round the hall is a wall across it. Local +Z
-   * is the front, then the group turns PI, so world XZ is flipped. */
+   * is the opening: a box round the hall is a wall across it. skipFit
+   * on the plinth so the timber walls cannot roof-lift a solid through
+   * the mouth. Local +Z is the front, then the group turns PI, so world
+   * XZ is flipped. */
   const y0 = o.y ?? 0;
   const loc = (lx0, lz0, lx1, lz1, top, bot, skip) => {
     ctx.collide(o.x - lx1, o.z - lz1, o.x - lx0, o.z - lz0, top, bot, skip === true);
   };
-  loc(-(W + 0.9) / 2, -(D + 0.9) / 2, (W + 0.9) / 2, (D + 0.9) / 2, y0 + PH);
+  loc(-(W + 0.9) / 2, -(D + 0.9) / 2, (W + 0.9) / 2, (D + 0.9) / 2, y0 + PH, undefined, true);
   const wallT = 0.2;
   loc(-W / 2, -D / 2, W / 2, -D / 2 + wallT, y0 + yb + WH, y0 + yb, true);
   loc(-W / 2, -D / 2, -W / 2 + wallT, D / 2, y0 + yb + WH, y0 + yb, true);
@@ -752,7 +754,7 @@ function buildTemizuya(ctx, o) {
   g.rotation.y = o.ry ?? 0;
   ctx.add(g);
   const y0 = o.y ?? 0;
-  ctx.collide(o.x - W / 2 - 0.2, o.z - D / 2 - 0.2, o.x + W / 2 + 0.2, o.z + D / 2 + 0.2, y0 + 0.8);
+  ctx.collide(o.x - W / 2 - 0.2, o.z - D / 2 - 0.2, o.x + W / 2 + 0.2, o.z + D / 2 + 0.2, y0 + 0.8, undefined, true);
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       const px = o.x + sx * (W / 2), pz = o.z + sz * (D / 2);

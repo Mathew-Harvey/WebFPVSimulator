@@ -254,8 +254,16 @@ function subdivide(geometry, matrix, box, name, out) {
  * passes Infinity because for it the road under a barrier is exactly the
  * answer it wants. The cap is applied to the WHOLE mesh, before subdivision,
  * so a terrain tile is dropped rather than turned into a thousand cells.
+ *
+ * `skip(object)` drops a mesh when it or an ancestor matches. The fit uses
+ * this for COVER_SOFT names so a building rectangle cannot roof-lift
+ * through a frame drawn on it. The scan does not pass skip.
  */
-export function drawnBoxes(root, { maxFootprint = Infinity, subdivide: allowSubdiv = true } = {}) {
+export function drawnBoxes(root, {
+  maxFootprint = Infinity,
+  subdivide: allowSubdiv = true,
+  skip = null,
+} = {}) {
   const out = [];
   let subdivided = 0;
   let plain = 0;
@@ -263,6 +271,20 @@ export function drawnBoxes(root, { maxFootprint = Infinity, subdivide: allowSubd
   root.traverse((o) => {
     if (!o.isMesh || !o.geometry || o.visible === false) {
       return;
+    }
+    /*
+     * The fit must not use a named see-through frame as occupancy inside
+     * a larger rectangle. A bell housing on a school roof is drawn inside
+     * the teaching-block collider; if those posts vote, roof-lift fills
+     * the mouth from the floor to the cap. The scan still walks every
+     * mesh, so authored members are not counted as phantom.
+     */
+    if (skip) {
+      for (let p = o; p && p !== root.parent; p = p.parent) {
+        if (skip(p)) {
+          return;
+        }
+      }
     }
     const g = o.geometry;
     if (!g.boundingBox) {

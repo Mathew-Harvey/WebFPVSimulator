@@ -17444,3 +17444,39 @@ Shrink the skipFit slab, do not put the lid back. If phantom climbs, it
 is new authored beams, not a reason to restore the cover pass on these
 names.
 
+## Open-frame gaps: roof-lift through named frames
+
+The first pass named the overbridge cage and the bell posts and put
+them in COVER_SOFT. That stopped the cover pass walling the opening.
+It did not stop the slab fit. The teaching-block rectangle still
+owns the bell and the tank in plan. Roof-lift lets that rectangle
+reach ROOF_LIFT_MAX above the wall plate, the cap and tank body vote
+as occupancy, and the cut unions them with the walls: one column
+from BOX_FLOOR through the mouth.
+
+Same class at the haiden: the plinth collide is the hall footprint
+without skipFit, so the timber walls lift a solid through the open
+front bay.
+
+Fix:
+
+- The fit's drawnBoxes call skips COVER_SOFT names (the scan does
+  not). A named frame is occupancy only for its own authored members.
+- Bell housing is one schoolBell group, cap included, so the cap
+  cannot vote on the teaching block.
+- Water tank is one openFrame group plus a skipFit body box, so the
+  tank is solid and the air between the legs is not.
+- Haiden plinth is skipFit. Temizuya trough and the 渡り廊下 span are
+  skipFit so skipping those names cannot unmatched-drop them under
+  the compact empty rule.
+
+Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays 63.
+
+What went wrong last turn: probes at the bell used heightAt, which
+returns the terrain (1.05), not the roof (11.85). The mouth is at
+13.05. The building column was still there after that was noticed.
+
+Verify this turn: `node --check` on the edited files. Headless city
+load, flight-line probes and overlay shots follow this commit.
+`npm run verify` was not run: city map, not the plant.
+

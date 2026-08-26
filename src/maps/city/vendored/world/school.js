@@ -633,6 +633,8 @@ function buildTeachingBlock(ctx, Y) {
   // water tank on legs
   {
     const tx = cx + 1.6, tz = BLK.z0 + 4.4;
+    const tankG = new THREE.Group();
+    tankG.name = 'openFrame';
     const legs = [];
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
@@ -640,9 +642,8 @@ function buildTeachingBlock(ctx, Y) {
       }
     }
     const lm = new THREE.Mesh(bake(legs), m.metalDark);
-    lm.name = 'openFrame';
     lm.castShadow = true;
-    ctx.add(lm);
+    tankG.add(lm);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const px = tx + sx * 1.1, pz = tz + sz * 0.9;
@@ -651,10 +652,15 @@ function buildTeachingBlock(ctx, Y) {
     }
     const tank = box(2.8, 1.5, 2.4, cel({ color: 0xdcdce4, bands: 3, tint: 0x6a6288 }), tx, roofY + 1.95, tz);
     tank.castShadow = tank.receiveShadow = true;
-    ctx.add(tank);
+    tankG.add(tank);
     hullOutline(tank, { thickness: 0.0032 });
-    ctx.add(box(2.9, 0.1, 2.5, m.metal, tx, roofY + 2.75, tz));
-    ctx.add(cyl(0.12, 0.12, 1.9, 6, m.metal, tx - 1.5, roofY + 0.95, tz + 1.3));
+    tankG.add(box(2.9, 0.1, 2.5, m.metal, tx, roofY + 2.75, tz));
+    tankG.add(cyl(0.12, 0.12, 1.9, 6, m.metal, tx - 1.5, roofY + 0.95, tz + 1.3));
+    ctx.add(tankG);
+    /* The tank is solid. The air under it is not: a box from the
+     * teaching-block floor through this footprint is a wall between
+     * the legs. skipFit so the building fit cannot own it. */
+    ctx.collide(tx - 1.45, tz - 1.25, tx + 1.45, tz + 1.25, roofY + 2.82, roofY + 1.2, true);
   }
   // vent stacks
   for (const dz of [-2.0, 5.6, 8.6]) {
@@ -668,6 +674,8 @@ function buildTeachingBlock(ctx, Y) {
   {
     const bx = cx, bz = BLK.z1 - 2.6;
     const BH = 2.5;
+    const housing = new THREE.Group();
+    housing.name = 'schoolBell';
     const post = [];
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
@@ -675,21 +683,21 @@ function buildTeachingBlock(ctx, Y) {
       }
     }
     const pm = new THREE.Mesh(bake(post), m.wood);
-    pm.name = 'schoolBell';
     pm.castShadow = true;
-    ctx.add(pm);
-    /* Posts and the cap, not the mouth. Four posts baked together are one
-     * AABB the size of the housing, and the cover pass reads that AABB as
-     * solid fill. */
+    housing.add(pm);
+    /* Posts, the cap and the bell, not the mouth. The whole housing sits
+     * inside the teaching-block rectangle. Unnamed, the cap still votes
+     * on that rectangle and roof-lift fills the opening from the floor
+     * to the ridge. */
     // a shallow hipped cap
     const cap = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1), m.roof);
     cap.rotation.y = Math.PI / 4;
     cap.scale.set(2.5, 0.85, 2.3);
     cap.position.set(bx, roofY + BH + 0.42, bz);
     cap.castShadow = true;
-    ctx.add(cap);
+    housing.add(cap);
     hullOutline(cap, { thickness: 0.0034 });
-    ctx.add(box(2.4, 0.12, 2.2, m.roof, bx, roofY + BH + 0.06, bz));
+    housing.add(box(2.4, 0.12, 2.2, m.roof, bx, roofY + BH + 0.06, bz));
     // the bell
     const bell = new THREE.Mesh(
       new THREE.CylinderGeometry(0.2, 0.34, 0.56, 12, 1, true),
@@ -697,15 +705,16 @@ function buildTeachingBlock(ctx, Y) {
     );
     bell.position.set(bx, roofY + BH - 0.62, bz);
     bell.castShadow = true;
-    ctx.add(bell);
+    housing.add(bell);
     hullOutline(bell, { thickness: 0.0034 });
     const crown = new THREE.Mesh(
       new THREE.SphereGeometry(0.2, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
       m.bronze
     );
     crown.position.set(bx, roofY + BH - 0.34, bz);
-    ctx.add(crown);
-    ctx.add(cyl(0.035, 0.035, 0.4, 5, m.metalDark, bx, roofY + BH - 0.14, bz));
+    housing.add(crown);
+    housing.add(cyl(0.035, 0.035, 0.4, 5, m.metalDark, bx, roofY + BH - 0.14, bz));
+    ctx.add(housing);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const px = bx + sx * 0.82, pz = bz + sz * 0.7;
@@ -1728,7 +1737,7 @@ function buildLink(ctx, Y) {
       ctx.collide(px - 0.13, pz - 0.13, px + 0.13, pz + 0.13, Y + 2.7);
     }
   }
-  ctx.collide(x0 - 0.1, z0, x1 + 0.1, z1, FY + 3.0, FY - 0.3);
+  ctx.collide(x0 - 0.1, z0, x1 + 0.1, z1, FY + 3.0, FY - 0.3, true);
   return g;
 }
 

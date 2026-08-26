@@ -569,7 +569,10 @@ const COVER_MIN_FILL = 0.4;
  * A torii, a 渡り廊下, the overbridge cage and a bell housing bake
  * posts and beams into one mesh whose AABB is a wall across the
  * opening; COVER_MIN_FILL cannot save them because that AABB is
- * the fill. Authored posts and beams stay. */
+ * the fill. The slab fit skips the same names, because a named
+ * frame sitting on a building is still inside that building's
+ * rectangle and roof-lift would fill the opening from the floor
+ * to the cap. Authored posts and beams stay. */
 const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden/i;
 
 /*
@@ -1179,7 +1182,10 @@ function buildColliders(world) {
 
   /* The fit's own index over the drawn meshes. */
   const fitStart = (typeof performance !== 'undefined' ? performance.now() : 0);
-  const boxes = drawnBoxes(world.root, { maxFootprint: FIT_MAX_FOOTPRINT });
+  const boxes = drawnBoxes(world.root, {
+    maxFootprint: FIT_MAX_FOOTPRINT,
+    skip: (o) => COVER_SOFT.test(o.name || ''),
+  });
   const grid = new Map();
   for (let i = 0; i < boxes.length; i += 1) {
     const g = boxes[i];

@@ -1,5 +1,5 @@
 /*
- * ui.js: the product shell. Title, how to fly, FPV wiki, credits, settings, pause,
+ * ui.js: the product shell. Title, how to fly, credits, settings, pause,
  * results, stick calibration, the flight overlay, and the flight-controller screen.
  *
  * Why this exists: the page used to load straight into a falling quad with
@@ -91,8 +91,8 @@ import {
   setPidSlider,
   setPidsExpert,
 } from '../../configs/pids.js';
-import { boardPageUrl, fetchTrackList, pickFeaturedTracks } from '../share/board.js';
-import { BOARD_WINDOW, openNamedWindow } from '../share/windows.js';
+import { boardPageUrl, fetchTrackList, pickFeaturedTracks, wikiPageUrl } from '../share/board.js';
+import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, inspectCourse, isEmptyCanvas } from '../share/listing.js';
@@ -135,7 +135,6 @@ import {
 } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { mountWiki } from '../wiki/wiki.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -1039,6 +1038,32 @@ function padChooseNote(info) {
   return `${n} devices are plugged in. Move the one you want. Windows lists them in Game Controllers order; this screen is how you pick.`;
 }
 
+/*
+ * `#credits` and `#wiki/...` are real addresses. World load, a map swap
+ * and the constructor all call show('title'). If those calls are allowed
+ * to win, the hash is stripped (replaceState does not fire hashchange) and
+ * the visitor lands on Fly. The hash wins until the pilot backs off it.
+ */
+function locationHashScreen() {
+  const h = (window.location.hash || '').replace(/^#/, '');
+  if (h === 'credits') {
+    return 'credits';
+  }
+  if (h.startsWith('wiki/')) {
+    return 'wiki';
+  }
+  return null;
+}
+
+function clearLocationHash() {
+  const url = new URL(window.location.href);
+  if (!url.hash) {
+    return;
+  }
+  url.hash = '';
+  history.replaceState(null, '', url);
+}
+
 export class Ui {
   constructor(root) {
     this.root = root;
@@ -1324,27 +1349,6 @@ export class Ui {
       hintWithKeys(['Esc'], 'Goes back. Arrow keys still move the menu.'),
     );
     this.screens.credits = credits;
-
-    const wiki = el('div', 'screen screen-page screen-wiki');
-    this.wikiHost = el('div', 'wiki-root');
-    this.wiki = mountWiki(this.wikiHost);
-    this.wiki.onOpenFc = (key) => {
-      this.fcFrom = 'wiki';
-      if (this.onFcOpen) {
-        this.onFcOpen('pid');
-      }
-      this.fc.focusField(key);
-      this.show('fc');
-    };
-    const wikiBlock = wrapMenu();
-    this.wikiMenu = wikiBlock.menu;
-    this.wikiHelp = wikiBlock.help;
-    wiki.append(
-      this.wikiHost,
-      wikiBlock.stage,
-      hintWithKeys(['Esc'], 'Goes back. Search, or follow the path. Arrow keys still move the menu.'),
-    );
-    this.screens.wiki = wiki;
 
     /*
      * The map screen. Cards rather than a row of text, and each card plays a
@@ -2707,7 +2711,7 @@ export class Ui {
       /*
        * The course actions that used to appear and vanish here live on the
        * Courses screen and on Results, where the course itself is what the
-       * player is looking at. FPV wiki sits with How to fly. Report a bug
+       * player is looking at. FPV wiki opens the landing-site wiki. Report a bug
        * is a stable last row so testers can send a ticket from title.
        */
       return [
@@ -2729,7 +2733,7 @@ export class Ui {
         {
           label: 'FPV wiki',
           action: 'wiki',
-          note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. For curious pilots and for people who want the equation.',
+          note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. Opens the wiki on webfpv.org.',
         },
         { label: 'Settings', action: 'settings' },
         {
@@ -2753,9 +2757,6 @@ export class Ui {
       return [{ label: 'Back', action: 'back' }];
     }
     if (this.screen === 'credits') {
-      return [{ label: 'Back', action: 'back' }];
-    }
-    if (this.screen === 'wiki') {
       return [{ label: 'Back', action: 'back' }];
     }
     /*
@@ -3033,8 +3034,8 @@ export class Ui {
        * chip in the corner, or F8, so this list stays put. Flight feel
        * sits by the tuning rows because "this feels off" is the moment a
        * pilot pauses, and the report carries the tune and PIDs they are
-       * paused on. FPV wiki is here so a mid-flight "why did that happen"
-       * does not have to quit the run. */
+       * paused on. FPV wiki opens the landing-site wiki so a mid-flight
+       * "why did that happen" does not have to quit the run. */
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
@@ -3045,7 +3046,7 @@ export class Ui {
         feelItem(),
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
-        { label: 'FPV wiki', action: 'wiki', note: 'The plant, the compiled controller, and every catalog key.' },
+        { label: 'FPV wiki', action: 'wiki', note: 'The plant, the compiled controller, and every catalog key. Opens the wiki on webfpv.org.' },
         { label: 'Settings', action: 'settings' },
         { label: 'Credits', action: 'credits', note: 'Who made this, who flew it, and whose work it stands on.' },
         { label: 'Quit to title', action: 'title' },
@@ -3361,7 +3362,6 @@ export class Ui {
       title: this.titleMenu,
       howto: this.howtoMenu,
       credits: this.creditsMenu,
-      wiki: this.wikiMenu,
       courses: this.coursesMenu,
       settings: this.settingsMenu,
       rates: this.ratesMenu,
@@ -3612,7 +3612,7 @@ export class Ui {
   leaveFc() {
     this.fc.stopMotors();
     this.fc.confirm = null;
-    const dest = ['paused', 'settings', 'pids', 'wiki'].includes(this.fcFrom)
+    const dest = ['paused', 'settings', 'pids'].includes(this.fcFrom)
       ? this.fcFrom
       : 'title';
     this.show(dest);
@@ -4700,6 +4700,13 @@ export class Ui {
 
   show(screen) {
     this.closeDrop();
+    const pinned = locationHashScreen();
+    if (pinned && screen === 'title') {
+      screen = pinned;
+      if (!this.returnTo) {
+        this.returnTo = 'title';
+      }
+    }
     if (this.screen === 'courses' && screen !== 'courses') {
       /* Nothing draws a thumbnail for a screen nobody is looking at. */
       this.stopReels();
@@ -4723,13 +4730,6 @@ export class Ui {
     if (this.screen === 'fc' && screen !== 'fc') {
       this.fcFrom = null;
     }
-    if (this.screen === 'wiki' && screen !== 'wiki' && screen !== 'fc') {
-      const url = new URL(window.location.href);
-      if ((url.hash || '').startsWith('#wiki/')) {
-        url.hash = '';
-        history.replaceState(null, '', url);
-      }
-    }
     if (this.screen === 'credits' && screen !== 'credits') {
       const url = new URL(window.location.href);
       if ((url.hash || '') === '#credits') {
@@ -4747,9 +4747,6 @@ export class Ui {
     if (screen === 'howto') {
       this.renderHowto();
     }
-    if (screen === 'wiki' && this.wiki) {
-      this.wiki.openDefault();
-    }
     if (screen === 'credits') {
       const url = new URL(window.location.href);
       if ((url.hash || '') !== '#credits') {
@@ -4765,14 +4762,6 @@ export class Ui {
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
-    if (screen === 'fc' && this.fc.highlightKey) {
-      const items = this.items();
-      const i = items.findIndex((it) => it.label === this.fc.highlightKey);
-      if (i >= 0) {
-        this.cursor = i;
-        this.syncCursor();
-      }
-    }
     this.syncBugChip();
   }
 
@@ -4790,11 +4779,7 @@ export class Ui {
       return;
     }
     if (h.startsWith('wiki/')) {
-      if (this.screen !== 'wiki') {
-        this.act('wiki');
-      } else if (this.wiki) {
-        this.wiki.openDefault();
-      }
+      window.location.replace(wikiPageUrl(h));
       return;
     }
     if (this.screen === 'credits') {
@@ -5695,6 +5680,11 @@ export class Ui {
       this.show('settings');
       return;
     }
+    /* Drop the pin before title, or show() would remap title back onto
+     * credits or the wiki and Back would do nothing. */
+    if (this.screen === 'credits' || this.screen === 'wiki') {
+      clearLocationHash();
+    }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
   }
 
@@ -5795,7 +5785,11 @@ export class Ui {
       this.openBoardCourse(action.slice('board:'.length));
       return;
     }
-    if (action === 'howto' || action === 'settings' || action === 'courses' || action === 'credits' || action === 'wiki') {
+    if (action === 'wiki') {
+      openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
+      return;
+    }
+    if (action === 'howto' || action === 'settings' || action === 'courses' || action === 'credits') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
@@ -6037,13 +6031,6 @@ export class Ui {
           this.onUiSound('select');
         }
         this.act('padpick-yes');
-        return true;
-      }
-      return true;
-    }
-    if (this.screen === 'wiki' && this.wiki && this.wiki.typing()) {
-      if (code === 'Escape') {
-        this.wiki.search.blur();
         return true;
       }
       return true;

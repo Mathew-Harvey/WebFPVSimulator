@@ -16,7 +16,6 @@
     "gates": "node scripts/gates.js",
     "lint:presets": "node scripts/preset-lint.js",
     "lint:catalog": "node scripts/fc-catalog-lint.js",
-    "lint:wiki": "node scripts/wiki-lint.js",
     "lint:fc": "node scripts/fc-trace.js",
     "gen:catalog": "node scripts/fc-catalog-gen.js",
     "gen:music": "node scripts/music.js",

@@ -18270,3 +18270,38 @@ cannot grow the car into that air. The kei is still the kei.
 
 `node --check` on `vehicles.js`. Headless probes follow.
 `npm run verify` was not run: city map, not the plant.
+
+## Overbridge stair fly channel: measured
+
+Headless city load with `__CITY_SCAN`. Overlay shots in
+`/opt/cursor/artifacts/stair_fly_channel_*.png`. Probes use
+vh 0.12, the pitched climb envelope.
+
+Climb and descent along the north upper flight, 0.10 m and
+0.08 m above every pan, empty (0 of 20). Lower flight 0.10 m
+above every pan, empty. Named probes:
+
+- old hook `(41, 6.92, 7.22)` empty
+- landing lip `(41, 7.10, 6.90)` empty
+- landing floor `(41, 7.25, 5.6)` empty
+- throat `(41, 8.0, 6.9)` empty
+- cage `(41, 8.4, 0)` empty
+- undercroft `(41, 3.0, 0)` empty
+- stringer `(39.85, 6.84, 7.22)` HIT rail 0.10 x 1.15 x 0.28
+  and stringer 0.12 x 0.45 x 0.28
+- ridge `(41, 10.0, 0)` HIT 0.12 x 0.12 x 10
+- bell mouth `(29.25, 13.05, -48.6)` empty
+- tank `(30.85, 13.8, -63.6)` HIT 2.9 x 1.62 x 2.5
+- haiden `(-27.9, 4.1, 34.2)` empty
+- torii `(-27.9, 1.8, 19.9)` empty
+- lower pan `(43.02, 3.34, 13.65)` empty
+
+Scan vs check 15 (ceilings not edited): phantom 2159 / 29000,
+overFive 114 / 350, holes 10821 / 20300, meanCover 0.571 /
+0.45. `expectedModules` 63. city colliders 10941, total boxes
+12926. Previous stair-rake run: phantom 2178, holes 10702,
+boxes 12912.
+
+`shots.js` exited 1 on `ERR_CONNECTION_REFUSED`. Probes and
+PNGs still wrote. `npm run verify` was not run: city map, not
+the plant.

@@ -70,6 +70,12 @@ export function trackById(id) {
   return TRACKS.find((t) => t.id === id) ?? TRACKS[0];
 }
 
+/* Rotation's first record of a visit. Math.random is fine: this is the
+ * crate, not the plant. */
+export function pickTrack() {
+  return TRACKS[Math.floor(Math.random() * TRACKS.length)];
+}
+
 export function musicIds() {
   return ['rotation', ...TRACKS.map((t) => t.id)];
 }

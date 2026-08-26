@@ -241,8 +241,9 @@ export class MotorAudio {
     this.music.setEnabled(on);
   }
 
-  /* Which music track, or 'rotation' for the whole crate in order. A
-   * setting, safe before attach: the player object holds it as data. */
+  /* Which music track, or 'rotation' for a random start then the crate
+   * in order. A setting, safe before attach: the player object holds it
+   * as data. */
   setMusicTrack(sel) {
     this.music.setTrack(sel);
   }

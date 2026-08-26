@@ -33,6 +33,8 @@
  * bandwidth: rotation only, only inside the last WARM_LEAD_S seconds, and
  * only once the current track is buffered to its own end, so the warm
  * never competes with the thing playing. Save-Data turns it off.
+ * Rotation's first track of a visit is a random pick, then the crate
+ * walks in order, so the warm is still the next index, not a shuffle.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -50,7 +52,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { TRACKS, trackById, trackUrl } from './tracks.js';
+import { TRACKS, pickTrack, trackById, trackUrl } from './tracks.js';
 
 /*
  * Bus gain at a Music setting of ten. Recorded tracks are mastered hotter
@@ -84,8 +86,11 @@ export class Music {
     this.enabled = false;
     this.level = 0.5;
     this.selection = 'rotation';
-    this.trackIndex = 0;
-    this.track = TRACKS[0];
+    /* A visit used to always open on TRACKS[0]. Rotation now starts on a
+     * random record, then walks the crate in order. A pinned id still
+     * lands on that track when setTrack runs. */
+    this.track = pickTrack();
+    this.trackIndex = TRACKS.indexOf(this.track);
     this.el = null;
     this.src = null;
     this.gain = null;
@@ -203,9 +208,11 @@ export class Music {
   }
 
   /*
-   * Which track. 'rotation' walks the whole crate in order, a track id
-   * pins that track and loops it. Selection is a SETTING, so this can
-   * arrive before attach; the constructor defaults cover the gap.
+   * Which track. 'rotation' starts on a random record each visit and
+   * walks the crate in order from there. A track id pins that track and
+   * loops it. Selection is a SETTING, so this can arrive before attach;
+   * the constructor defaults cover the gap. Calling rotation again is a
+   * no-op, so applyMix does not re-roll every settings write.
    */
   setTrack(sel) {
     const next = sel === 'rotation' || TRACKS.some((t) => t.id === sel) ? sel : 'rotation';

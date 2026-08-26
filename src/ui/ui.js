@@ -302,9 +302,10 @@ const DEFAULTS = {
   motorLevel: 5,
   windLevel: 5,
   musicLevel: 5,
-  /* Which record: 'rotation' walks the whole crate, a track id pins one.
-   * A string so the typeof gate accepts it, and an unknown id (including
-   * the old generated-bed ids) falls back to rotation. */
+  /* Which record: 'rotation' starts on a random track each visit then
+   * walks the crate, a track id pins one. A string so the typeof gate
+   * accepts it, and an unknown id (including the old generated-bed ids)
+   * falls back to rotation. */
   musicTrack: 'rotation',
   focusTone: false,
   readout: false,
@@ -1085,6 +1086,9 @@ export class Ui {
     this.onMusicSkip = null; /* (dir) => void, -1 previous, +1 next */
     {
       const sel = this.settings.musicTrack;
+      /* Rotation's real first track is a random pick on the player.
+       * TRACKS[0] is only the placeholder until main.js pushes that
+       * pick onto this.musicNow. A pinned id is already the record. */
       const tr = sel === 'rotation' ? TRACKS[0] : trackById(sel);
       this.musicNow = {
         id: tr.id,
@@ -1668,7 +1672,7 @@ export class Ui {
     this.musicNext = btn('music-skip', '›');
     this.musicNext.setAttribute('aria-label', 'Next track');
     this.musicNext.tabIndex = -1;
-    this.musicTitle = el('div', 'music-title', TRACKS[0].name);
+    this.musicTitle = el('div', 'music-title', this.musicNow.name);
     this.musicTitle.setAttribute('aria-live', 'polite');
     this.musicDock.append(this.musicPrev, this.musicTitle, this.musicNext);
     const keepFocusOff = (e) => e.preventDefault();
@@ -2964,14 +2968,14 @@ export class Ui {
         }),
         stepper(
           'Music',
-          'Recorded tracks. Rotation walks the crate. The skip buttons on screen jump a track.',
+          'Recorded tracks. Rotation starts on a random track each visit, then walks the crate. The skip buttons on screen jump a track.',
           s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
           (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
         ),
         choice(
           'Music track',
           s.musicTrack === 'rotation'
-            ? 'Every track in turn.'
+            ? 'A random start, then every track in turn.'
             : 'This track loops until you skip or pick another.',
           ids,
           s.musicTrack,

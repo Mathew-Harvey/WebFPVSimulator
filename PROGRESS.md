@@ -17124,3 +17124,26 @@ with CrapShack. Console errors 0. The same state on
 title hidden, CrapShack on the roll. `npm run verify` was not run: no
 plant, ABI, build, input path or threshold change.
 
+### 2026-08-26 | ui | rotation starts on a random track
+
+Changed: opening the sim on Music track Rotation no longer always
+starts on Tarmac Pulse. `Music` picks a random crate record at
+construct, then walks in order. `setTrack('rotation')` is still a
+no-op when already rotating, so applyMix does not re-roll. A pinned
+track id still loops that track. The dock title is pushed from the
+player as soon as it exists, so the name on screen is the record that
+will play.
+
+What went wrong: nothing yet. The UI constructor still placeholders
+TRACKS[0] for a beat before main.js overwrites it, which is only
+visible if the dock paints before MotorAudio is constructed.
+
+Verify: Cursor's bundled node `--check` on tracks.js, music.js,
+audio.js, ui.js, main.js. 1200 `new Music()` constructions hit all
+twelve ids (85 to 115 each), `setTrack('rotation')` did not re-roll,
+and a pinned `neon-horizon` stuck. `node scripts/shots.js` against a
+fresh profile: first boot Barnstorm Break on the dock, second boot
+Subway Rattle, both with selection rotation. Console errors 0.
+`npm run verify` was not run: no plant, ABI, build, input path or
+threshold change.
+

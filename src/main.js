@@ -465,6 +465,13 @@ export async function boot({ loading, bootStart, mapId }) {
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
   };
+  /* Rotation's first name is a random pick on the player, not TRACKS[0].
+   * Push it onto the dock before the first gesture so the title is the
+   * record that will actually play. A pinned setting still wins when
+   * applyMix runs. */
+  if (ui.settings.musicTrack === 'rotation' && typeof audio.musicStatus === 'function') {
+    ui.setMusicNow(audio.musicStatus());
+  }
   ui.onMusicSkip = (dir) => {
     wakeAudio();
     if (typeof audio.skipMusic !== 'function') {

@@ -1563,6 +1563,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ghostCourseChanged();
       mode = 'title';
       ui.show('title');
+      ui.applyLocationHash();
       showCourseNotes();
     } else {
       /* Same map, new look. Physics and the lap stay where they were; the
@@ -1627,7 +1628,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * longer exists, and would have failed silently: show() on an unknown
      * name displays no node and leaves the previous screen's rows behind.
      */
-    const STAY_SCREENS = ['settings', 'rates', 'paused', 'title'];
+    const STAY_SCREENS = ['settings', 'rates', 'paused', 'title', 'credits'];
     const stayScreen = STAY_SCREENS.includes(ui.screen) ? ui.screen : null;
     const stayMode = keepPlace ? mode : 'title';
     swapInFlight = true;

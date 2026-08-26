@@ -17080,3 +17080,25 @@ was the old copy, which is why this turn exists. `npm run verify` was
 not run: no plant, ABI, build, input path or threshold change. The
 board change deploys from WebFPVSimulator-LeaderBoard, not this repo.
 
+### 2026-08-26 | ui | wiki moved to the landing site
+
+Changed: the FPV wiki is no longer a screen in this shell. The articles,
+CLI pages, figures and catalog snapshot live in
+`landingpage-WebFPVSimulator-` at `wiki/`. Title, How to fly and pause
+still offer FPV wiki, and that row opens `https://webfpv.org/wiki/` (or
+`http://127.0.0.1:8080/wiki/` on a loopback). Old `#wiki/<id>` addresses
+on this origin rewrite to the landing wiki so a bookmark does not die.
+`npm run lint:wiki` left with the wiki.
+
+What went wrong: the wiki shipped in this repo first because that is
+where the catalog lives. It belongs on the front door, not over the
+title world. The catalog in the landing tree is a snapshot; if the two
+disagree, this repo wins and the copy should be replaced.
+
+Verify: `node --check` on ui.js, fc.js, board.js, windows.js. Wiki
+modules deleted from this tree. Landing `npm run lint:wiki`: 35
+articles, 696 keys, 706 cli/feature pages. Local wiki
+`#wiki/physics-vrs` opened Vortex ring state. `#wiki/` hashes rewrite
+via `wikiPageUrl`. `npm run verify` was not run: no plant, ABI, build,
+input path or threshold change.
+

@@ -242,7 +242,6 @@ export class FcSession {
     this.motorTestAllowed = () => false;
     this.onMotorTest = () => {};
     this.exitAfterSave = false;
-    this.highlightKey = null;
   }
 
   open(dumpText, opts = {}) {
@@ -253,21 +252,8 @@ export class FcSession {
     this.runActive = Boolean(opts.runActive);
     this.confirm = null;
     this.presetId = '';
-    this.highlightKey = null;
     this.exitAfterSave = false;
     this.motorDuty = [0, 0, 0, 0];
-  }
-
-  focusField(key) {
-    const f = FIELDS.find((row) => row.key === key);
-    if (!f) {
-      return false;
-    }
-    const shown = TABS_SHOWN.some((t) => t.id === f.tab);
-    this.tab = shown ? f.tab : 'pid';
-    this.page = f.page || 'pid';
-    this.highlightKey = f.key;
-    return true;
   }
 
   /*
@@ -702,8 +688,7 @@ export class FcSession {
       && Number(this.cliValue('gyro_lpf1_dyn_min_hz')) > 0;
     const enabled = !tabGrey && fieldEnabled(field) && !dynMinOn;
     const note = fieldNote(field, this);
-    const jump = this.highlightKey === field.key ? ' row-wiki-jump' : '';
-    const greyClass = (enabled ? (field.status === STATUS.GATED ? 'row-gated' : '') : 'row-grey') + jump;
+    const greyClass = enabled ? (field.status === STATUS.GATED ? 'row-gated' : '') : 'row-grey';
     if (!enabled) {
       return {
         label: field.key,

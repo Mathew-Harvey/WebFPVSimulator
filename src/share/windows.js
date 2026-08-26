@@ -64,6 +64,7 @@
  * it cannot import from here. They have to agree. */
 export const SIM_WINDOW = 'webfpv-sim';
 export const BOARD_WINDOW = 'webfpv-board';
+export const WIKI_WINDOW = 'webfpv-wiki';
 
 /*
  * Say which of the two tabs this page is. Returns the name it took, or ''

@@ -682,7 +682,7 @@ function collideLeanTo(ctx, o, w, d, h, fall) {
       const lz = sz * (d / 2 - 0.1);
       const px = o.x + ca * lx - sa * lz;
       const pz = o.z + sa * lx + ca * lz;
-      ctx.collide(px - 0.08, pz - 0.08, px + 0.08, pz + 0.08, y + h + (sz > 0 ? 0 : fall));
+      ctx.collide(px - 0.055, pz - 0.055, px + 0.055, pz + 0.055, y + h + (sz > 0 ? 0 : fall));
     }
   }
   const hw = (Math.abs(ca) * w + Math.abs(sa) * d) / 2;

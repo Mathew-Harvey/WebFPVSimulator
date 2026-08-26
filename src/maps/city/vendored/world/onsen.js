@@ -1293,7 +1293,7 @@ function buildRyokan(ctx, m, gm, rng, sakura, shrubs, bamboo, glow, lantern) {
     for (const s of [-1, 1]) {
       const ppx = px + s * (W / 2 - 0.1);
       const ppz = FRONT_Z - D + 0.1;
-      ctx.collide(ppx - 0.12, ppz - 0.12, ppx + 0.12, ppz + 0.12, Y + 2.7);
+      ctx.collide(ppx - 0.09, ppz - 0.09, ppx + 0.09, ppz + 0.09, Y + 2.7);
     }
     // the porch roof: a small hipped tile canopy of its own
     ctx.add(box(W + 0.7, 0.14, D + 0.5, m.tile, px, Y + 2.78, FRONT_Z - D / 2 - 0.1));
@@ -1636,8 +1636,8 @@ function buildAshiyu(ctx, m, gm, rng, glow) {
     ctx.add(pm);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        ctx.collide(cx + sx * (W / 2 - 0.1) - 0.12, cz + sz * (D / 2 - 0.1) - 0.12,
-          cx + sx * (W / 2 - 0.1) + 0.12, cz + sz * (D / 2 - 0.1) + 0.12, Y + H);
+        ctx.collide(cx + sx * (W / 2 - 0.1) - 0.08, cz + sz * (D / 2 - 0.1) - 0.08,
+          cx + sx * (W / 2 - 0.1) + 0.08, cz + sz * (D / 2 - 0.1) + 0.08, Y + H);
       }
     }
     const tilt = 0.2;
@@ -1836,7 +1836,7 @@ function buildDeck(ctx, m, gm, lantern, sakura) {
     for (const sz of [-1, 1]) {
       const px = DX + sx * (W / 2 - 0.22), pz = DZ + sz * (D / 2 - 0.22);
       posts.push({ geometry: new THREE.BoxGeometry(0.22, DY - Y, 0.22), matrix: trs(px, (DY - Y) / 2 + Y, pz) });
-      ctx.collide(px - 0.16, pz - 0.16, px + 0.16, pz + 0.16, DY);
+      ctx.collide(px - 0.12, pz - 0.12, px + 0.12, pz + 0.12, DY);
     }
     posts.push({
       geometry: new THREE.BoxGeometry(0.12, 0.12, D - 0.44),

@@ -1734,7 +1734,7 @@ function buildLink(ctx, Y) {
     for (const sz of [-1, 1]) {
       const px = cx + sx * (W / 2 - 0.16);
       const pz = cz + sz * (D / 2 - 0.16);
-      ctx.collide(px - 0.13, pz - 0.13, px + 0.13, pz + 0.13, Y + 2.7);
+      ctx.collide(px - 0.09, pz - 0.09, px + 0.09, pz + 0.09, Y + 2.7);
     }
   }
   ctx.collide(x0 - 0.1, z0, x1 + 0.1, z1, FY + 3.0, FY - 0.3, true);
@@ -2202,8 +2202,8 @@ function buildBikeShed(ctx, Y, rng) {
 
   for (let i = 0; i <= 4; i++) {
     const px = x0 + ((x1 - x0) / 4) * i;
-    ctx.collide(px - 0.13, z0 + 0.27, px + 0.13, z0 + 0.53, Y + H);
-    ctx.collide(px - 0.13, z1 - 0.53, px + 0.13, z1 - 0.27, Y + H);
+    ctx.collide(px - 0.09, z0 + 0.31, px + 0.09, z0 + 0.49, Y + H);
+    ctx.collide(px - 0.09, z1 - 0.49, px + 0.09, z1 - 0.31, Y + H);
   }
   ctx.collide(x0 - 0.2, z0 - 0.3, x1 + 0.2, z1 + 0.3, Y + H + 0.22, Y + H - 0.04, true);
   return g;

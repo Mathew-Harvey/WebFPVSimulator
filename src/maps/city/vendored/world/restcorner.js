@@ -241,8 +241,8 @@ export function buildRestCorner(ctx) {
     ctx.add(dp);
     ctx.add(box(0.16, 0.06, 0.16, m.metalDark, xLow - 0.12, Y + 0.13, zA - 0.18));
     for (const pz of [zA, zB]) {
-      ctx.collide(xLow - 0.14, pz - 0.12, xLow + 0.1, pz + 0.12, yLow);
-      ctx.collide(xHigh - 0.1, pz - 0.12, xHigh + 0.1, pz + 0.12, yHigh);
+      ctx.collide(xLow - 0.06, pz - 0.06, xLow + 0.06, pz + 0.06, yLow);
+      ctx.collide(xHigh - 0.06, pz - 0.06, xHigh + 0.06, pz + 0.06, yHigh);
     }
     ctx.collide(xLow - 0.05, zA - 0.2, xHigh + 0.05, zB + 0.2, yHigh + 0.12, yLow - 0.08, true);
   }

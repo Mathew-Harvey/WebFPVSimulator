@@ -808,7 +808,7 @@ function buildMiharashi(ctx, rng, out) {
   finger(ctx, 125.8, -109.2, 2.0, [0, 2], { h: 2.25 });
   finger(ctx, 144.2, -107.4, 1.2, [7, 1], { h: 2.25 });
 
-  /* --- the platform.  1.1 m, on six posts, with the rail on the side it looks
+  /* --- the platform.  1.1 m, on four corner posts, with the rail on the side it looks
    * *at* -- the north-east, over the water.  `makeBench`'s back is at local -z,
    * so a bench facing the lake from here needs `ry` derived from where it stands
    * and not written as a constant: both of the 展望台's benches faced away from
@@ -824,8 +824,8 @@ function buildMiharashi(ctx, rng, out) {
 
     const posts = [];
     const foot = [];
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j += 2) {
+    for (const i of [-1, 1]) {
+      for (const j of [-1, 1]) {
         const px = V.x + i * (W / 2 - 0.35);
         const pz = V.z + j * (Dd / 2 - 0.35);
         const py = hillMeshY(px, pz);
@@ -834,6 +834,7 @@ function buildMiharashi(ctx, rng, out) {
           geometry: new THREE.BoxGeometry(0.19, DY - py - 0.1, 0.19),
           matrix: trs(px, (DY + py + 0.1) / 2 - 0.05, pz),
         });
+        ctx.collide(px - 0.10, pz - 0.10, px + 0.10, pz + 0.10, DY, py, true);
       }
     }
     const fm = new THREE.Mesh(bake(foot), m.concreteMid);

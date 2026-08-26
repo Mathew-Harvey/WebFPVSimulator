@@ -17544,3 +17544,41 @@ npm run lint:catalog: ok, LIVE 161, crashflip keys in bf_settings.c.
 
 Flight feel is still awaiting human judgement.
 
+
+Inverted clip-through plus phantom finish, this turn. Report: landed upside down, clipped through the ground, track jumped to the finished-track screen.
+
+Reproduced against the then-current dist/sim.wasm, before this projection shipped:
+
+  1. Turtle sweep, inverted rest then crashflip pitch -1 for 1.8 s: deepest OBB corner at z = -0.0957 m (9.6 cm through the plane). That is the camera-in-the-dirt picture.
+  2. Angled inverted rest (180 about x then 35 deg about y): worst corner -0.0072 m.
+  3. Seated 1 m underground, one step: CG to z = -0.388, not recovered.
+  4. Race.update with the old default allow=true: first air pass starts the clock, inverted dirt through the same timing hole completes lap 1. Results fire only when race.lap >= runLaps in src/main.js. A 1-lap run, or the last lap of 3, is the finished-track screen. No other production path sets mode = 'results'.
+
+Pure inverted rest and inverted WOT on a horizontal plane already sat near CONTACT_SLOP (CG z = 0.036). The clip is the free corners of a single-support hull, not the CG falling through a flat floor.
+
+Fix, two layers. ABI unchanged. No advisor channel existed; the plant-shape reasoning is here.
+
+  Plant, src/native/sim.c. ground_project_hull after the impulses: translation along the plane normal so the deepest of the 8 OBB corners sits on CONTACT_SLOP. No torque. Inbound vn is zeroed only when worst pen > 0.02 m (a real burial). Inverted (upz < 0) uses the vtx bump through the CG only; the support-vertex fallback is skipped, because an arm impulse plus projection is a 1 kHz weld.
+
+  Scoring, src/game/collide.js. shouldScorePass rejects a dirt tumble or a belly slide (clearance < 0.22 m and (in contact or upz < 0.5)), and rejects a CG path that goes more than 0.10 m under view.height. Inverted air punches still score. Race.update(prev, curr, simMs, wallMs, allow=true): allow false advances prevSimMs only, so the next legal pass is not timed across the burial. src/main.js passes shouldScorePass into that fifth argument, skips scoring during launchStaging, resamples the ground normal every 1 ms while tumbling, and clamps the FPV lens to view.height + 0.012 m (render only).
+
+Wrong, this turn:
+  1. First projection killed inbound vn every step. Turtle could not flip (best upz -0.785, then -0.999). The linear part of the mixer couple is the CG riding an arc about the support; zeroing vn cancelled it. Threshold 0.02 m is the fix.
+  2. Inverted support-vertex fallback plus projection parked an arm on the plane and impulse-welded it. Turtle stayed inverted. Bump-only when inverted, project the rest.
+  3. upsetOnDirt required hits > 0. A bounce frame with hits = 0 while inverted on the grass would still have scored. Clearance plus attitude is the dirt test now; hits are optional.
+
+Fan-out (explore, before the last plant revision). Acted on: hits=0 bounce hole, upright belly-slide through the timing hole, FPV camera floor, stale normal while tumbling, skip race.update during launchStaging, do not use deepest-corner impulses when inverted (that would fight turtle). Declined: new ABI export for corner penetration (harness must not see contact), CCD substeps, tightening BURIED_MARGIN (the upset path covers shallow clips; 0.10 m stays so a deck step cannot false-positive).
+
+Post-fix, same probes against the new wasm:
+  angled inverted worst corner -0.0020 (slop)
+  turtle worst -0.0020, best upz +0.898
+  buried one step: z = 0.0360, corner -0.0020
+  race after start + inverted dirt: lap 0, allow false, 1-lap results would not fire
+
+CHECKS this turn:
+  npm run build:wasm exit 0. git diff --stat vendor/betaflight empty.
+  npm run contact:selftest: all checks passed, including the new hull-on-plane cases (inverted rest, slam, WOT into dirt, angled rest, one-step burial, turtle sweep) and the existing turtle-then-fly case.
+  node src/trackbuilder/selftest.js: 358 passed, 0 failed. New crash-rule cases: inverted hits=0, side tumble, belly slide, mid-segment dip, under-bridge pass still scores, Race allow=false does not complete a lap, a later flown pass still does.
+  node --check on the changed JS: ok.
+
+npm run verify is required (plant) and runs after this commit. Flight feel is not claimed as verified.

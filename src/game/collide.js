@@ -1269,6 +1269,60 @@ export function hitOutcome(kindName, closing, _upDot = 0) {
   return 'bounce';
 }
 
+/*
+ * A pass through a gate is a flown opening, not a tumble on the dirt
+ * and not a clip through the terrain. Inverted in the air still scores
+ * (people punch gates inverted). Inverted, a few centimetres off the
+ * grass, or a belly slide through the hole, does not: that is the
+ * crash that used to walk through the timing gate and throw the
+ * results screen. A bounce can drop the plant hit flag for a frame,
+ * so dirt is judged by clearance and attitude, not by hits alone.
+ *
+ * heightAt(x, z, y) is the surface under that sample, same contract as
+ * view.height. margin is how far below that surface counts as buried.
+ */
+export const DIRT_UPZ = 0.50;
+export const DIRT_CLEARANCE = 0.22;
+export const BURIED_MARGIN = 0.10;
+
+export function upsetOnDirt(upz, clearance, inContact) {
+  /* Near the dirt, a tumble or a belly slide is not a flown opening.
+   * Contact is not required: a bounce can drop the hit flag for a
+   * frame while the camera is still in the grass. The upz band matches
+   * the plant's single-support split (upz < 0.5), so a side arrival is
+   * treated the same as inverted. */
+  if (!(clearance < DIRT_CLEARANCE)) {
+    return false;
+  }
+  return Boolean(inContact) || upz < DIRT_UPZ;
+}
+
+export function shouldScorePass(prev, curr, opts) {
+  const heightAt = opts.heightAt;
+  let minClear = opts.clearance;
+  if (typeof heightAt === 'function') {
+    const n = 5;
+    for (let i = 0; i <= n; i += 1) {
+      const t = i / n;
+      const x = prev.x + (curr.x - prev.x) * t;
+      const y = prev.y + (curr.y - prev.y) * t;
+      const z = prev.z + (curr.z - prev.z) * t;
+      const hy = heightAt(x, z, y);
+      const c = y - hy;
+      if (c < minClear) {
+        minClear = c;
+      }
+      if (y < hy - BURIED_MARGIN) {
+        return false;
+      }
+    }
+  }
+  if (upsetOnDirt(opts.upz, minClear, opts.hits > 0)) {
+    return false;
+  }
+  return true;
+}
+
 export function canPerch(tiltDeg, speed, rateMag) {
   if (tiltDeg > LAND_TILT_MAX_DEG) {
     return false;

@@ -57,7 +57,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -186,6 +186,11 @@ const INTRO_FOV = 40;
  * big clearance would throw it into the air; enough to clear a launch
  * block's deck, which is the thing it was actually falling into. */
 const INTRO_FLOOR_CLEAR = 0.12;
+/* FPV lens floor, metres above the queried surface. Intro and finish
+ * already keep their cameras out of the dirt. The flight lens did not,
+ * so an inverted rest or a turtle put the picture under the grass.
+ * Render only: the plant is unchanged. */
+const FPV_FLOOR_CLEAR = 0.012;
 /* Finish shot. Pulls off the FPV lens onto a three-quarter of the
  * frozen craft, then sways. Radii in world metres. */
 const FINISH_FOV = 46;
@@ -1313,6 +1318,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastDescent = 0;
   let lastTiltDeg = 0;
   let lastHitKind = 'none';
+  let lastGroundHits = 0;
+  let lastClearance = 1;
+  let lastUpz = 1;
   let lastClosing = 0;
   /* How square the last contact was to the craft's disc plane, 0 edge on
    * and 1 belly on. Readback only; hitOutcome is the decision. */
@@ -3144,7 +3152,7 @@ export async function boot({ loading, bootStart, mapId }) {
           peakGroundSpeed = 0;
           sawGroundHit = false;
           for (let i = 0; i < steps; i += 1) {
-            if (i === 0 || (i & 7) === 0) {
+            if (i === 0 || (i & 7) === 0 || plantUpZ(stNow) < 0.5) {
               sampleGroundNormalFromState(stNow);
             }
             const vzBefore = stNow[6];
@@ -3207,6 +3215,9 @@ export async function boot({ loading, bootStart, mapId }) {
       const rate = plantRateMag(stateCurr);
       lastDescent = -stateCurr[6];
       lastTiltDeg = tiltDeg;
+      lastGroundHits = hits;
+      lastClearance = clearance;
+      lastUpz = upz;
       speedNow = speed;
       if (takingOff) {
         if (clearance - REST_HEIGHT > 0.05) {
@@ -3400,14 +3411,20 @@ export async function boot({ loading, bootStart, mapId }) {
      * clock at that state: gate crossings are swept over the frame's
      * travel, so speed cannot tunnel a gate. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
-    if (mode === 'flight') {
+    if (mode === 'flight' && !launchStaging) {
       if (raceHasPrev) {
         /* The race's state from before this frame's travel is scored, so
          * the ghost bookkeeping can see a lap boundary without the race
          * having to announce one. */
         const lapStartBefore = race.lapStartMs;
         const lapsBefore = race.laps.length;
-        const res = race.update(racePrev, pCurr, simNow, nowWall);
+        const allowPass = shouldScorePass(racePrev, pCurr, {
+          upz: lastUpz,
+          clearance: lastClearance,
+          hits: lastGroundHits,
+          heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS),
+        });
+        const res = race.update(racePrev, pCurr, simNow, nowWall, allowPass);
         if (res.passed != null) {
           view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
           if (typeof audio.event === 'function') {
@@ -3494,6 +3511,13 @@ export async function boot({ loading, bootStart, mapId }) {
     fpvPos.copy(pCurr)
       .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
       .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
+    {
+      const camFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS)
+        + FPV_FLOOR_CLEAR;
+      if (fpvPos.y < camFloor) {
+        fpvPos.y = camFloor;
+      }
+    }
     const wantLift = (landed || launchStaging) ? PARKED_LIFT : 0;
     parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
     if (parkedLift > 0.001) {

@@ -488,8 +488,18 @@ export class Race {
    * wallMs the wall clock (flash expiry only). Returns
    * { passed: gateIndex|null, hitFrame: bool }; a frame hit voids the
    * running lap, it does not crash the craft. */
-  update(prev, curr, simMs, wallMs) {
+  update(prev, curr, simMs, wallMs, allow = true) {
     if (this.freestyle) {
+      return { passed: null, hitFrame: false };
+    }
+    /*
+     * allow is the shell's judgement that this travel was flown, not a
+     * clip through the dirt or an inverted tumble on the grass. False
+     * still advances the clock so the next legal pass is not timed
+     * across the burial.
+     */
+    if (!allow) {
+      this.prevSimMs = simMs;
       return { passed: null, hitFrame: false };
     }
     const prevSimMs = this.prevSimMs ?? simMs;

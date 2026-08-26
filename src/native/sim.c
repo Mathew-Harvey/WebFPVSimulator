@@ -401,6 +401,54 @@ static int ground_hit_at(const double r[3], const double vs[3]) {
   return 1;
 }
 
+/*
+ * After the impulses, no hull sample may stay below the plane. A single
+ * support (turtle, a roll) leaves the other seven corners free, and
+ * those sweep through the dirt as the hull rotates. Motors inverted
+ * also push along world -z. Without this, the camera clips through the
+ * grass and a tumble through a gate opening can score a phantom lap.
+ *
+ * Translation only: no torque, so the mixer couple that flips the hull
+ * is not cancelled. The deepest corner is parked on the slop band; as
+ * the craft rotates, a new corner becomes deepest and the CG rises.
+ */
+static void ground_project_hull(void) {
+  double worst = 0.0;
+  for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+    double r[3];
+    contact_rotate(CONTACT_CORNER[c], r);
+    const double px = S.pos[0] + r[0];
+    const double py = S.pos[1] + r[1];
+    const double pz = S.pos[2] + r[2];
+    const double side = g_ground_n[0] * px + g_ground_n[1] * py + g_ground_n[2] * pz;
+    const double pen = g_ground_d - side;
+    if (pen > worst) {
+      worst = pen;
+    }
+  }
+  if (!(worst > CONTACT_SLOP)) {
+    return;
+  }
+  const double push = worst - CONTACT_SLOP;
+  S.pos[0] += g_ground_n[0] * push;
+  S.pos[1] += g_ground_n[1] * push;
+  S.pos[2] += g_ground_n[2] * push;
+  /* Only kill inbound speed when the hull was truly buried. A turtle
+   * or a roll drives a corner a few millimetres through as it rotates
+   * about the support; zeroing vn there cancelled the linear part of
+   * the mixer couple and the hull could not flip. */
+  if (worst > 0.02) {
+    const double vn = S.vel[0] * g_ground_n[0]
+        + S.vel[1] * g_ground_n[1]
+        + S.vel[2] * g_ground_n[2];
+    if (vn < 0.0) {
+      S.vel[0] -= g_ground_n[0] * vn;
+      S.vel[1] -= g_ground_n[1] * vn;
+      S.vel[2] -= g_ground_n[2] * vn;
+    }
+  }
+}
+
 static void ground_apply(void) {
   g_ground_hits = 0;
   if (!g_ground_on || g_stand_on) {
@@ -419,7 +467,10 @@ static void ground_apply(void) {
     int hits = 0;
     if (upz < 0.0) {
       /* Inverted rest is the camera / vtx bump, through the CG, so the
-       * mixer couple is free to pitch. */
+       * mixer couple is free to pitch. Projection, not an arm contact,
+       * keeps the free corners out of the dirt. An arm impulse here
+       * became a 1 kHz weld once the hull was parked on that vertex,
+       * and turtle could not rotate. */
       double r[3];
       const double bump[3] = { 0.0, 0.0, CONTACT_HZ_UP };
       contact_rotate(bump, r);
@@ -431,8 +482,7 @@ static void ground_apply(void) {
           }
         }
       }
-    }
-    if (!hits) {
+    } else {
       /* Tumble on an arm, or on its side: the supporting vertex only. */
       double r[3];
       contact_support_neg_n(g_ground_n, r);
@@ -444,6 +494,7 @@ static void ground_apply(void) {
       }
     }
     g_ground_hits = hits;
+    ground_project_hull();
     return;
   }
 
@@ -469,6 +520,7 @@ static void ground_apply(void) {
     m >>= 1;
   }
   g_ground_hits = hits;
+  ground_project_hull();
 }
 
 SIM_EXPORT int sim_contact(double nx, double ny, double nz,

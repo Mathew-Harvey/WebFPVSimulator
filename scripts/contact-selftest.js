@@ -14,6 +14,9 @@
  *   5. a harness-style replay that never calls the new entry points
  *      still falls in free air, so the additive ABI does not leak a
  *      floor into checks 2 through 12
+ *   6. inverted rest, slam, and full throttle into the dirt leave no
+ *      hull corner below the plane (the clip-through that used to walk
+ *      a crash through the timing gate)
  *
  * Run: node scripts/contact-selftest.js   (npm run contact:selftest)
  * Exit code is the failure count.
@@ -104,6 +107,50 @@ function omegaMag(st) {
 
 function speedMag(st) {
   return Math.sqrt(st[ST.VX] * st[ST.VX] + st[ST.VY] * st[ST.VY] + st[ST.VZ] * st[ST.VZ]);
+}
+
+/* Plant OBB, same numbers as CONTACT_* in src/native/sim.c. Used to
+ * prove the hull stays on the plane, not just the CG. */
+const HULL_HX = 0.094;
+const HULL_HY = 0.094;
+const HULL_HZ_DOWN = 0.045;
+const HULL_HZ_UP = 0.038;
+const HULL_SLOP = 0.002;
+const HULL_CORNERS = [
+  [-HULL_HX, -HULL_HY, -HULL_HZ_DOWN],
+  [HULL_HX, -HULL_HY, -HULL_HZ_DOWN],
+  [-HULL_HX, HULL_HY, -HULL_HZ_DOWN],
+  [HULL_HX, HULL_HY, -HULL_HZ_DOWN],
+  [-HULL_HX, -HULL_HY, HULL_HZ_UP],
+  [HULL_HX, -HULL_HY, HULL_HZ_UP],
+  [-HULL_HX, HULL_HY, HULL_HZ_UP],
+  [HULL_HX, HULL_HY, HULL_HZ_UP],
+];
+
+function rotateByQuat(qw, qx, qy, qz, vx, vy, vz) {
+  const uvx = qy * vz - qz * vy;
+  const uvy = qz * vx - qx * vz;
+  const uvz = qx * vy - qy * vx;
+  const uuvx = qy * uvz - qz * uvy;
+  const uuvy = qz * uvx - qx * uvz;
+  const uuvz = qx * uvy - qy * uvx;
+  return {
+    x: vx + 2 * (qw * uvx + uuvx),
+    y: vy + 2 * (qw * uvy + uuvy),
+    z: vz + 2 * (qw * uvz + uuvz),
+  };
+}
+
+function deepestHullCorner(st) {
+  let worst = Infinity;
+  for (const c of HULL_CORNERS) {
+    const r = rotateByQuat(st[ST.QW], st[ST.QX], st[ST.QY], st[ST.QZ], c[0], c[1], c[2]);
+    const z = st[ST.Z] + r.z;
+    if (z < worst) {
+      worst = z;
+    }
+  }
+  return worst;
 }
 
 function sameState(a, b) {
@@ -243,6 +290,9 @@ function sameState(a, b) {
     bestUp > startUp + 0.35, `start=${startUp.toFixed(3)} best=${bestUp.toFixed(3)}`);
   check('and it is no longer inverted',
     bestUp > 0, `upz=${bestUp.toFixed(3)}`);
+  check('turtle does not clip the hull through the plane',
+    deepestHullCorner(best) > -HULL_SLOP - 0.001,
+    `corner=${deepestHullCorner(best).toFixed(4)}`);
 }
 
 {
@@ -371,6 +421,9 @@ function sameState(a, b) {
   const st = hold(sim, 1800, { throttle: 0 });
   check('inverted on the grass with airmode still settles enough to turtle',
     speedMag(st) < 4 && upZ(st) < 0, `v=${speedMag(st).toFixed(3)} upz=${upZ(st).toFixed(3)}`);
+  check('inverted rest leaves no hull corner under the plane',
+    deepestHullCorner(st) > -HULL_SLOP - 0.001,
+    `corner=${deepestHullCorner(st).toFixed(4)} z=${st[ST.Z].toFixed(4)}`);
 }
 
 {
@@ -394,6 +447,117 @@ function sameState(a, b) {
   check('after turtle, throttle is flight again',
     flown[ST.Z] > z0 + 0.15 || speedMag(flown) > 1.5,
     `z0=${z0.toFixed(3)} z=${flown[ST.Z].toFixed(3)} v=${speedMag(flown).toFixed(3)} up0=${up0.toFixed(3)} up=${upZ(flown).toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 1.5, 0, 1, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  let worst = Infinity;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 2000; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 0);
+    sim.step(1);
+    const corner = deepestHullCorner(sim.readState().state);
+    if (corner < worst) {
+      worst = corner;
+    }
+  }
+  const st = sim.readState().state;
+  check('an inverted slam CG stays above the plane',
+    st[ST.Z] > -0.02, `z=${st[ST.Z].toFixed(4)}`);
+  check('an inverted slam never puts a hull corner through the plane',
+    worst > -HULL_SLOP - 0.001, `worst=${worst.toFixed(4)} z=${st[ST.Z].toFixed(4)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  sim.rest();
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(sim, 200, { throttle: 0 });
+  let worst = Infinity;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 800; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 1);
+    sim.step(1);
+    const corner = deepestHullCorner(sim.readState().state);
+    if (corner < worst) {
+      worst = corner;
+    }
+  }
+  const st = sim.readState().state;
+  check('inverted full throttle does not punch the CG through the plane',
+    st[ST.Z] > -0.02, `z=${st[ST.Z].toFixed(4)}`);
+  check('inverted full throttle leaves no hull corner under the plane',
+    worst > -HULL_SLOP - 0.001, `worst=${worst.toFixed(4)} z=${st[ST.Z].toFixed(4)}`);
+}
+
+{
+  const sim = await fresh();
+  /* 180 about x then 35 deg about y: bump contact holds the CG, the
+   * free corners used to sit under the plane. */
+  const a = 35 * Math.PI / 360;
+  const qw2 = Math.cos(a);
+  const qy2 = Math.sin(a);
+  sim.e.sim_set_pose(0, 0, 0.12, 0, qw2, 0, -qy2);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  let worst = Infinity;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 800; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 0);
+    sim.step(1);
+    const corner = deepestHullCorner(sim.readState().state);
+    if (corner < worst) {
+      worst = corner;
+    }
+  }
+  const st = sim.readState().state;
+  check('an angled inverted rest never puts a hull corner through the plane',
+    worst > -HULL_SLOP - 0.001, `worst=${worst.toFixed(4)} z=${st[ST.Z].toFixed(4)}`);
+}
+
+{
+  const sim = await fresh();
+  /* Already underground: the plant must lift the hull in one step. */
+  sim.e.sim_set_pose(0, 0, -1.0, 0, 1, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  sim.step(1);
+  const st = sim.readState().state;
+  check('a hull seated a metre underground is projected onto the plane in one step',
+    st[ST.Z] > -0.02 && deepestHullCorner(st) > -HULL_SLOP - 0.001,
+    `z=${st[ST.Z].toFixed(4)} corner=${deepestHullCorner(st).toFixed(4)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  sim.rest();
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(sim, 250, { throttle: 0 });
+  sim.e.sim_set_crashflip(1);
+  let worst = Infinity;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 1800; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, -1, 0, 0);
+    sim.step(1);
+    const corner = deepestHullCorner(sim.readState().state);
+    if (corner < worst) {
+      worst = corner;
+    }
+  }
+  check('turtle rotation never sweeps a corner through the plane',
+    worst > -HULL_SLOP - 0.001, `worst=${worst.toFixed(4)}`);
 }
 
 {

@@ -55,7 +55,7 @@ import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import {
   hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
-  GROUND_TUMBLE, GROUND_SLIDE, canPerch, contactMaterial,
+  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
   LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE,
@@ -1357,6 +1357,73 @@ function suiteCrashRule() {
     pvc.e > bark.e && pvc.mu < bark.mu);
   check('a train is the least bouncy solid',
     train.e < pvc.e && train.e < grass.e);
+
+  const flat = () => 0;
+  const airPass = {
+    prev: { x: 0, y: 0.9, z: 2 },
+    curr: { x: 0, y: 0.9, z: -2 },
+  };
+  check('a flown opening in the air still scores',
+    shouldScorePass(airPass.prev, airPass.curr, {
+      upz: 1, clearance: 0.9, hits: 0, heightAt: flat,
+    }) === true);
+  check('an inverted punch in the air still scores',
+    shouldScorePass(airPass.prev, airPass.curr, {
+      upz: -0.8, clearance: 5, hits: 0, heightAt: flat,
+    }) === true);
+  check('inverted on the grass in a gate opening does not score',
+    shouldScorePass({ x: 0, y: 0.08, z: 1.2 }, { x: 0, y: 0.04, z: -1.2 }, {
+      upz: -1, clearance: 0.05, hits: 1, heightAt: flat,
+    }) === false);
+  check('inverted on the grass with no hit flag still does not score',
+    shouldScorePass({ x: 0, y: 0.08, z: 1.2 }, { x: 0, y: 0.04, z: -1.2 }, {
+      upz: -1, clearance: 0.08, hits: 0, heightAt: flat,
+    }) === false);
+  check('a side tumble on the dirt does not score',
+    shouldScorePass({ x: 0, y: 0.10, z: 1.2 }, { x: 0, y: 0.06, z: -1.2 }, {
+      upz: 0.35, clearance: 0.06, hits: 1, heightAt: flat,
+    }) === false);
+  check('an upright belly slide through the hole does not score',
+    shouldScorePass({ x: 0, y: 0.05, z: 1.2 }, { x: 0, y: 0.045, z: -1.2 }, {
+      upz: 1, clearance: 0.045, hits: 1, heightAt: flat,
+    }) === false);
+  check('falling through the opening into the dirt does not score',
+    shouldScorePass({ x: 0, y: 0.9, z: 1.2 }, { x: 0, y: -2, z: -1.2 }, {
+      upz: -0.4, clearance: -2, hits: 0, heightAt: flat,
+    }) === false);
+  check('a dip onto the dirt mid segment does not score',
+    shouldScorePass({ x: 0, y: 0.9, z: 1.2 }, { x: 0, y: 0.04, z: -1.2 }, {
+      upz: -0.8, clearance: 0.9, hits: 0, heightAt: flat,
+    }) === false);
+  check('under a bridge the street is the floor and a flown pass still scores',
+    shouldScorePass({ x: 0, y: 1.0, z: 1.2 }, { x: 0, y: 1.0, z: -1.2 }, {
+      upz: 1, clearance: 1.0, hits: 0, heightAt: () => 0,
+    }) === true);
+
+  const timing = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  const airSeg = { prev: { x: 0, y: 0.9, z: 2 }, curr: { x: 0, y: 0.9, z: -2 } };
+  const dirtSeg = { prev: { x: 0, y: 0.08, z: 2 }, curr: { x: 0, y: 0.04, z: -2 } };
+  timing.update(airSeg.prev, airSeg.curr, 10, 10);
+  check('the first flown pass starts the clock, it does not finish a lap',
+    timing.lap === 0 && timing.lapStartMs != null);
+  const dirtAllow = shouldScorePass(dirtSeg.prev, dirtSeg.curr, {
+    upz: -1, clearance: 0.05, hits: 1, heightAt: flat,
+  });
+  const dirtRes = timing.update(dirtSeg.prev, dirtSeg.curr, 20, 20, dirtAllow);
+  check('inverted dirt through the timing hole is not a pass',
+    dirtAllow === false && dirtRes.passed == null && timing.lap === 0);
+  const later = timing.update(airSeg.prev, airSeg.curr, 30, 30, true);
+  check('a later flown pass still completes the lap',
+    later.passed != null && timing.lap === 1);
+  check('one completed lap is what a 1-lap run would finish on, and only after a flown pass',
+    timing.lap === 1 && timing.log.length === 1 && timing.log[0].ms != null);
 }
 
 function suiteSchemaDoc() {

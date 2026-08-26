@@ -16905,3 +16905,44 @@ to 3.5 m". Wrong. The clearance went 1.0 to 1.5 AND the pad added 1.5, so
 it is 2.0 m to 4.5 m, the same as a flag's, which is what "function the
 same as a flag" asked for. Measured on the built course, both markers
 report clearW 4.50.
+
+### 2026-08-26 | Loop B | remove crash lockout, rigid-body contact, turtle
+Changed: the crash lockout is gone. Hits bounce, slide or roll, relative to the impact, with a rigid-body hull in the plant. If the craft ends up inverted, Betaflight crashflip (turtle) is the way out, then takeoff.
+
+ABI. Additive, version still 1. No advisor channel in this session; the argument is here instead. The harness never calls the new entry points, so a free-air replay is the same path it always was. New exports:
+
+  sim_contact(n, e, mu, p, vs)   rigid impulse at the OBB support in -n
+  sim_set_ground(on, n, p, mu, e) persistent plane after every plant_step
+  sim_ground_contacts()          how many hull points were in the band
+  sim_set_crashflip / sim_crashflip_active
+  sim_set_pose                   for the contact self-test (and the shell if it needs a still pose)
+
+sim_deflect stays as a wrapper: range-checks tangent_keep and rate_keep, then calls sim_contact with mu=0.35 and vs=0.
+
+Solver. Sequential Coulomb, Baraff form. Normal impulse uses angular effective mass, so an arm hit spins instead of a point-mass bounce. Restitution falls with closing speed (CONTACT_E_SPEED=14, rest vn 0.25). Friction is mu * jn, a slide when it saturates and a stick when it does not. Hull is CONTACT_HX/HY=0.094, CONTACT_HZ_DOWN=0.045 (REST_HEIGHT), CONTACT_HZ_UP=0.038.
+
+Upright (upz >= 0.5): all penetrating corners, a table, which is how a belly landing perches.
+
+Not upright: one support. Inverted rest is the camera/vtx bump through the CG so the mixer couple is free to pitch. Four coplanar top corners at 1 kHz locked pitch and turtle could not rotate (about 1 rad/s vs 90 in free air). If the bump is clear, the supporting vertex of the OBB: a tumble on an arm, a side arrival, a roll.
+
+Turtle. isFlipOverAfterCrashActive is implemented in bf_glue.c, the same pattern as isLaunchControlActive. mixer.c already compiled applyFlipOverAfterCrashModeToMotors; the stub that returned false left it unreachable. crashflip_expo and crashflip_motor_percent are LIVE (removed from APPLIED_INERT). Latch when inverted AND slow (v<4, w<8) AND (in contact or clearance < 0.15). Drop when upz > 0.35. I-term dumped on both edges: pidController still runs during turtle, so a wound integrator would yank the instant mixTable returns to the PID. Pitch -1 is the mixer sign that raises this airframe. DShot reverse is not modelled, same stub as the other DShot commands: turtle is mixer differential against the hull, which is enough to flip. Real hardware also reverses the props; that is a plant-shape change and is not in this turn.
+
+Shell. sim_set_ground every 1 ms step (slope resampled every 8 ms, finite differences, no JS trig). Off during launch stand. Obstacles: sim_contact with contactMaterial (grass 0.28/0.55, PVC 0.38/0.28, tree 0.22/0.45, wall 0.32/0.38, train 0.12/0.35 plus surface velocity). Up to 4 overlap retries. Cooldown is OSD and audio only. Perch freeze only if canPerch (upright, |v|<2, |w|<2.5) and in contact and not turtle. crashed on __craftState stays false so old captures do not throw.
+
+Wrong, this turn:
+  1. Drop tests without motorOverride(-1, 0) are not drops: airmode at stick-idle holds. Fixed by killing motors in the settle tests.
+  2. Tilted drop from 1.2 m needs about 700 ms, not 350: 350 never reached the plane.
+  3. Four-corner inverted table cancelled turtle. Bump support (and single-vertex when the bump is clear) is the fix.
+  4. groundOutcome treated extra tilt while crawling as SLIDE. The builder selftest (and the original collide comments) want LAND: a blade down while crawling is still a perch classification, canPerch still refuses the freeze. 344 passed, 1 failed, then 345/0 after that gate.
+  5. sim_deflect at rest with vs=0 applies nothing, which is correct (vn>=0, pen=0). The wrapper test had to impart inbound speed first.
+
+CHECKS this turn, not npm run verify yet:
+  npm run build:wasm exit 0. git diff --stat vendor/betaflight empty.
+  npm run contact:selftest: all checks passed, including settle, tilted spin, hard drop finite, wall offset spin, turtle flip, free-air bit-identical and falling, set_ground(0) bit-identical, distant plane unused, grounded drops bit-identical, ground slide with friction, wall bounce along the normal with energy dump, side arrival rolls, inverted airmode settles below turtle latch speed, turtle then throttle is flight again, sim_deflect wrapper, ABI rejects.
+  node src/trackbuilder/selftest.js: 345 passed, 0 failed.
+  npm run lint:catalog: ok, crashflip keys LIVE and in bf_settings.c.
+  node --check on the changed JS: ok.
+
+npm run verify is required (plant, ABI, build) and runs after this commit. Flight feel is not claimed as verified.
+
+Possible effect if this breaks something: a course whose intended challenge WAS the wreck is now a bounce. That is the request. If turtle feels weak compared to a real board, the suspect is the missing DShot reverse, not the mixer.

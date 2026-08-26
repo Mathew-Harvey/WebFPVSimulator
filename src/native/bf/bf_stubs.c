@@ -172,13 +172,14 @@ void beeperConfirmationBeeps(uint8_t beepCount) { (void)beepCount; }
 void beeperSilence(void) {}
 void schedulerResetTaskStatistics(taskId_e taskId) { (void)taskId; }
 
-/* Core state: never crashed, never disarming.
+/* Core state: never disarming. Crashflip is owned by bf_glue.c, the
+ * same pattern as isLaunchControlActive: mixer.c already compiled the
+ * turtle mix, and a stub that returned false left it unreachable.
  *
  * isAirmodeActivated is core.c's throttle latch, not the airmode feature.
  * The feature itself is airmodeIsEnabled() in rc_modes.c, which this file
  * once claimed to cover and did not: bf_glue.c raises it now. */
 void disarm(flightLogDisarmReason_e reason) { (void)reason; }
-bool isFlipOverAfterCrashActive(void) { return false; }
 bool isAirmodeActivated(void) { return true; }
 
 #ifdef USE_LAUNCH_CONTROL

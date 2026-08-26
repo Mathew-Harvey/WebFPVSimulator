@@ -71,10 +71,6 @@ const APPLIED_INERT = {
     'Stored in motorConfig.mincommand. Glue motorInitEndpoints uses DShot constants, not this PWM field.',
   motor_poles:
     'Stored in motorConfig.motorPoleCount. Rotor Hz is injected from the plant; the RPM filter does not convert eRPM via poles.',
-  crashflip_expo:
-    'Stored. isFlipOverAfterCrashActive is stubbed false, so mixer crashflip never runs.',
-  crashflip_motor_percent:
-    'Stored. isFlipOverAfterCrashActive is stubbed false, so mixer crashflip never runs.',
   fpv_mix_degrees:
     'Stored in rxConfig.fpvCamAngleDegrees. BOXFPVANGLEMIX is never raised, so rc.c never mixes it.',
   runaway_takeoff_prevention:

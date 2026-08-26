@@ -1,0 +1,434 @@
+/*
+ * contact-selftest.js: the rigid-body ground plane, offset impulses, and
+ * Betaflight crashflip (turtle), proven in Node against dist/sim.wasm.
+ *
+ * The verification harness never raises sim_set_ground or sim_contact, so
+ * npm run verify cannot see a floor, a wall tap, a tumble or a turtle.
+ * This file is that missing proof. It loads the same baseline diff the
+ * harness uses, then:
+ *
+ *   1. a drop onto a plane settles instead of bouncing forever
+ *   2. a tilted drop produces spin (the hull support is offset)
+ *   3. a wall with surface velocity spins the craft
+ *   4. inverted plus crashflip plus pitch stick flips the hull
+ *   5. a harness-style replay that never calls the new entry points
+ *      still falls in free air, so the additive ABI does not leak a
+ *      floor into checks 2 through 12
+ *
+ * Run: node scripts/contact-selftest.js   (npm run contact:selftest)
+ * Exit code is the failure count.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const ST = {
+  T: 0, X: 1, Y: 2, Z: 3, VX: 4, VY: 5, VZ: 6,
+  QW: 7, QX: 8, QY: 9, QZ: 10, OX: 11, OY: 12, OZ: 13,
+  RPM0: 14,
+};
+
+const wasm = await readFile(join(root, 'dist/sim.wasm'));
+const config = await readFile(join(root, 'tests/fixtures/config-baseline.diff'), 'utf8');
+
+let failures = 0;
+
+function check(name, cond, detail) {
+  if (cond) {
+    console.log(`  pass  ${name}`);
+  } else {
+    failures += 1;
+    console.log(`  FAIL  ${name}${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+async function fresh() {
+  const sim = await loadSim(wasm);
+  if (sim.init(config) !== SIM_OK) {
+    throw new Error('sim_init failed');
+  }
+  sim.reset();
+  sim.setCellVoltage(4.2);
+  return sim;
+}
+
+function need(sim, name) {
+  if (typeof sim.e[name] !== 'function') {
+    throw new Error(`sim.wasm does not export ${name}`);
+  }
+}
+
+function hold(sim, ms, sticks) {
+  const s = { roll: 0, pitch: 0, yaw: 0, throttle: 0, ...sticks };
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < ms; i += 1) {
+    t += 0.001;
+    sim.input(t, s.roll, s.pitch, s.yaw, s.throttle);
+    sim.step(1);
+  }
+  return sim.readState().state;
+}
+
+function upZ(st) {
+  const x = st[ST.QX];
+  const y = st[ST.QY];
+  const u = 1 - 2 * (x * x + y * y);
+  if (u > 1) {
+    return 1;
+  }
+  return u < -1 ? -1 : u;
+}
+
+function omegaMag(st) {
+  return Math.sqrt(st[ST.OX] * st[ST.OX] + st[ST.OY] * st[ST.OY] + st[ST.OZ] * st[ST.OZ]);
+}
+
+function speedMag(st) {
+  return Math.sqrt(st[ST.VX] * st[ST.VX] + st[ST.VY] * st[ST.VY] + st[ST.VZ] * st[ST.VZ]);
+}
+
+function sameState(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+{
+  const sim = await fresh();
+  need(sim, 'sim_contact');
+  need(sim, 'sim_set_ground');
+  need(sim, 'sim_ground_contacts');
+  need(sim, 'sim_set_crashflip');
+  need(sim, 'sim_crashflip_active');
+  need(sim, 'sim_set_pose');
+  console.log('contact selftest');
+  check('exports are present', true);
+}
+
+{
+  const sim = await fresh();
+  /* Seat 1.5 m up, identity quat, then a grass plane through z = 0.
+   * Motors off: airmode at stick-idle is not a drop. */
+  check('sim_set_pose seats the drop',
+    sim.e.sim_set_pose(0, 0, 1.5, 1, 0, 0, 0) === SIM_OK);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  check('sim_set_ground raises the plane',
+    sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28) === SIM_OK);
+  const mid = hold(sim, 400, { throttle: 0 });
+  check('the drop has left the start height',
+    mid[ST.Z] < 1.2, `z=${mid[ST.Z].toFixed(3)}`);
+  const st = hold(sim, 1600, { throttle: 0 });
+  const hits = sim.e.sim_ground_contacts();
+  check('a 2 s drop has met the plane',
+    hits > 0 || st[ST.Z] < 0.12, `z=${st[ST.Z].toFixed(3)} hits=${hits}`);
+  check('it settles instead of bouncing forever',
+    Math.abs(st[ST.VZ]) < 0.35 && omegaMag(st) < 2.5,
+    `vz=${st[ST.VZ].toFixed(3)} w=${omegaMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+  check('the hull sits near REST_HEIGHT, not underground',
+    st[ST.Z] > 0.02 && st[ST.Z] < 0.12, `z=${st[ST.Z].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* 25 deg roll about body x: qw = cos(12.5 deg), qx = sin(12.5 deg). */
+  const h = 25 * Math.PI / 360;
+  const qw = Math.cos(h);
+  const qx = Math.sin(h);
+  sim.e.sim_set_pose(0, 0, 1.2, qw, qx, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(sim, 700, { throttle: 0 });
+  const st = sim.readState().state;
+  check('a tilted drop produces spin',
+    omegaMag(st) > 0.4, `w=${omegaMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 4.0, 1, 0, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  const st = hold(sim, 2500, { throttle: 0 });
+  check('a hard drop stays finite',
+    Number.isFinite(st[ST.Z]) && Number.isFinite(st[ST.VZ]) && Number.isFinite(omegaMag(st)));
+  check('and has dumped most of the fall',
+    Math.abs(st[ST.VZ]) < 2.0, `vz=${st[ST.VZ].toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.5, 1, 0, 0, 0);
+  sim.rest();
+  /* Wall at -x, outward n = +x, surface coming at +8 m/s. Support vertex
+   * is a hull corner, so the impulse has a lever arm. */
+  const code = sim.e.sim_contact(1, 0, 0, 0.32, 0.38, 0, 0, 0.5, 8, 0, 0);
+  check('sim_contact accepts a unit wall', code === SIM_OK);
+  const st = sim.readState().state;
+  check('an offset wall hit produces spin',
+    omegaMag(st) > 0.5, `w=${omegaMag(st).toFixed(3)}`);
+  check('and shoves the hull along the normal',
+    st[ST.VX] > 0.5, `vx=${st[ST.VX].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* Inverted: 180 deg about x. Rest the hull just above a plane. */
+  sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  sim.rest();
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(sim, 200, { throttle: 0 });
+  const before = sim.readState().state;
+  check('the seated hull is inverted',
+    upZ(before) < -0.7, `upz=${upZ(before).toFixed(3)}`);
+  check('crashflip latches',
+    sim.e.sim_set_crashflip(1) === SIM_OK && sim.e.sim_crashflip_active() === 1);
+  hold(sim, 80, { pitch: 1 });
+  const rpmA = sim.readState().state;
+  const rpms = [rpmA[ST.RPM0], rpmA[ST.RPM0 + 1], rpmA[ST.RPM0 + 2], rpmA[ST.RPM0 + 3]];
+  const rpmMax = Math.max(...rpms);
+  const rpmMin = Math.min(...rpms);
+  check('crashflip with pitch splits the motors',
+    rpmMax > rpmMin + 200, `rpm=${rpms.map((n) => n.toFixed(0)).join(',')}`);
+
+  /* Fresh inverted pose on the plane, then a long pitch hold. Pitch
+   * negative is the mixer sign that raises this airframe; the other
+   * sign is still tried so a mixer-table change cannot silently skip
+   * the proof. */
+  const simB = await fresh();
+  simB.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  simB.rest();
+  simB.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(simB, 250, { throttle: 0 });
+  simB.e.sim_set_crashflip(1);
+  const startUp = upZ(simB.readState().state);
+  const pos = hold(simB, 1800, { pitch: -1 });
+  const simC = await fresh();
+  simC.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  simC.rest();
+  simC.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(simC, 250, { throttle: 0 });
+  simC.e.sim_set_crashflip(1);
+  const neg = hold(simC, 1800, { pitch: 1 });
+  const best = upZ(pos) > upZ(neg) ? pos : neg;
+  const bestUp = upZ(best);
+  check('turtle pitch raises the hull toward upright',
+    bestUp > startUp + 0.35, `start=${startUp.toFixed(3)} best=${bestUp.toFixed(3)}`);
+  check('and it is no longer inverted',
+    bestUp > 0, `upz=${bestUp.toFixed(3)}`);
+}
+
+{
+  const a = await fresh();
+  const b = await fresh();
+  /* Neither calls sim_set_ground. Identical free-air drop. */
+  hold(a, 500, { throttle: 0 });
+  hold(b, 500, { throttle: 0 });
+  const sa = a.readState().state;
+  const sb = b.readState().state;
+  let same = true;
+  for (let i = 0; i < sa.length; i += 1) {
+    if (sa[i] !== sb[i]) {
+      same = false;
+      break;
+    }
+  }
+  check('two free-air drops match bit for bit', same);
+  check('free air has no floor: the craft has fallen',
+    sa[ST.Z] < -0.5, `z=${sa[ST.Z].toFixed(3)}`);
+  /* Calling set_ground(0) must not introduce a plane. */
+  const c = await fresh();
+  check('sim_set_ground(0) is a no-op',
+    c.e.sim_set_ground(0, 0, 0, 1, 0, 0, 0, 0, 0) === SIM_OK);
+  hold(c, 500, { throttle: 0 });
+  const sc = c.readState().state;
+  let sameOff = true;
+  for (let i = 0; i < sa.length; i += 1) {
+    if (sa[i] !== sc[i]) {
+      sameOff = false;
+      break;
+    }
+  }
+  check('set_ground(0) matches a replay that never called it', sameOff);
+  /* A plane 100 m below must not touch a 0.5 s drop from the origin. */
+  const d = await fresh();
+  d.e.sim_set_ground(1, 0, 0, 1, 0, 0, -100, 0.55, 0.28);
+  hold(d, 500, { throttle: 0 });
+  const sd = d.readState().state;
+  check('a distant plane does not change a short free-air drop',
+    Math.abs(sd[ST.Z] - sa[ST.Z]) < 1e-9 && d.e.sim_ground_contacts() === 0,
+    `z=${sd[ST.Z].toFixed(6)} vs ${sa[ST.Z].toFixed(6)} hits=${d.e.sim_ground_contacts()}`);
+}
+
+{
+  const a = await fresh();
+  const b = await fresh();
+  a.e.sim_set_pose(0, 0, 1.2, 1, 0, 0, 0);
+  b.e.sim_set_pose(0, 0, 1.2, 1, 0, 0, 0);
+  a.rest();
+  b.rest();
+  a.motorOverride(-1, 0);
+  b.motorOverride(-1, 0);
+  a.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  b.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(a, 900, { throttle: 0 });
+  hold(b, 900, { throttle: 0 });
+  check('two grounded drops match bit for bit',
+    sameState(a.readState().state, b.readState().state));
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.4, 1, 0, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  /* Surface coming at +x imparts a shove and spin, then the grass takes it. */
+  sim.e.sim_contact(1, 0, 0, 0.32, 0.38, 0, 0, 0.4, 10, 0, 0);
+  const launched = sim.readState().state;
+  const vx0 = launched[ST.VX];
+  check('a wall shove leaves the hull with speed along the normal',
+    vx0 > 2, `vx=${vx0.toFixed(3)}`);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  const st = hold(sim, 700, { throttle: 0 });
+  check('a ground slide keeps going instead of freezing',
+    st[ST.VX] > 0.4, `vx=${st[ST.VX].toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+  check('friction on grass dumps some of the slide',
+    st[ST.VX] < vx0 - 0.3, `vx0=${vx0.toFixed(3)} vx=${st[ST.VX].toFixed(3)}`);
+  check('the sliding hull stays on the plane',
+    st[ST.Z] > 0.02 && st[ST.Z] < 0.16, `z=${st[ST.Z].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.5, 1, 0, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  /* Impart inbound speed toward -x, then hit a wall whose outward normal
+   * is +x: the bounce has to reverse the closing component. */
+  sim.e.sim_contact(-1, 0, 0, 0.12, 0.20, 0, 0, 0.5, -16, 0, 0);
+  const inbound = sim.readState().state;
+  check('the inbound shove is toward the wall',
+    inbound[ST.VX] < -4, `vx=${inbound[ST.VX].toFixed(3)}`);
+  sim.e.sim_contact(1, 0, 0, 0.38, 0.28, 0, 0, 0.5, 0, 0, 0);
+  const out = sim.readState().state;
+  check('the bounce is relative to the wall normal',
+    out[ST.VX] > 0, `vx=${out[ST.VX].toFixed(3)} in=${inbound[ST.VX].toFixed(3)}`);
+  check('a racing-speed hit dumps energy instead of pinballing',
+    Math.abs(out[ST.VX]) < Math.abs(inbound[ST.VX]) * 0.85,
+    `in=${inbound[ST.VX].toFixed(3)} out=${out[ST.VX].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* 90 deg roll: on its side. Single-support, not a four-leg table. */
+  const h = Math.PI / 4;
+  const qw = Math.cos(h);
+  const qx = Math.sin(h);
+  sim.e.sim_set_pose(0, 0, 0.35, qw, qx, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(sim, 350, { throttle: 0 });
+  const st = sim.readState().state;
+  check('a side arrival rolls instead of locking attitude',
+    omegaMag(st) > 0.5, `w=${omegaMag(st).toFixed(3)} upz=${upZ(st).toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+  check('and stays finite while it rolls',
+    Number.isFinite(st[ST.Z]) && Number.isFinite(omegaMag(st)) && Math.abs(st[ST.Z]) < 2);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  sim.rest();
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  const st = hold(sim, 1800, { throttle: 0 });
+  check('inverted on the grass with airmode still settles enough to turtle',
+    speedMag(st) < 4 && upZ(st) < 0, `v=${speedMag(st).toFixed(3)} upz=${upZ(st).toFixed(3)}`);
+}
+
+{
+  /* Continue from a completed turtle: drop crashflip, punch, climb. */
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
+  sim.rest();
+  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  hold(sim, 250, { throttle: 0 });
+  sim.e.sim_set_crashflip(1);
+  let st = hold(sim, 1800, { pitch: -1 });
+  if (!(upZ(st) > 0)) {
+    st = hold(sim, 1800, { pitch: 1 });
+  }
+  check('turtle reached a non-inverted pose before takeoff',
+    upZ(st) > 0, `upz=${upZ(st).toFixed(3)}`);
+  sim.e.sim_set_crashflip(0);
+  const z0 = sim.readState().state[ST.Z];
+  const up0 = upZ(sim.readState().state);
+  const flown = hold(sim, 700, { throttle: 1 });
+  check('after turtle, throttle is flight again',
+    flown[ST.Z] > z0 + 0.15 || speedMag(flown) > 1.5,
+    `z0=${z0.toFixed(3)} z=${flown[ST.Z].toFixed(3)} v=${speedMag(flown).toFixed(3)} up0=${up0.toFixed(3)} up=${upZ(flown).toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.5, 1, 0, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  sim.e.sim_contact(-1, 0, 0, 0.12, 0.20, 0, 0, 0.5, -10, 0, 0);
+  const inbound = sim.readState().state;
+  const code = sim.e.sim_deflect(1, 0, 0, 0.35, 0.5, 0.5, 0, 0, 0.5);
+  check('sim_deflect still exists as a wrapper', code === SIM_OK);
+  const st = sim.readState().state;
+  check('and still produces an offset impulse',
+    omegaMag(st) > 0.2 && st[ST.VX] > inbound[ST.VX],
+    `w=${omegaMag(st).toFixed(3)} vx=${st[ST.VX].toFixed(3)} in=${inbound[ST.VX].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  check('sim_contact rejects a non-unit normal',
+    sim.e.sim_contact(2, 0, 0, 0.3, 0.3, 0, 0, 0, 0, 0, 0) !== SIM_OK);
+  check('sim_contact rejects mu out of range',
+    sim.e.sim_contact(1, 0, 0, 0.3, 3, 0, 0, 0, 0, 0, 0) !== SIM_OK);
+  check('sim_set_ground rejects a zero normal',
+    sim.e.sim_set_ground(1, 0, 0, 0, 0, 0, 0, 0.5, 0.3) !== SIM_OK);
+}
+
+{
+  const sim = await loadSim(wasm);
+  check('sim_set_crashflip refuses a module that was never inited',
+    sim.e.sim_set_crashflip(1) !== SIM_OK);
+}
+
+if (failures) {
+  console.log(`\n${failures} failed`);
+  process.exit(1);
+}
+console.log('\nall contact checks passed');

@@ -562,6 +562,8 @@ int bf_config_finish(void) {
 
 /* Debug window into the Betaflight side, exported for harness free
  * inspection from scratch scripts. Not part of the ABI contract. */
+static int g_crashflip = 0;
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 EMSCRIPTEN_KEEPALIVE
@@ -631,6 +633,7 @@ double sim_bf_debug(int what) {
   case 46: return PLANT_DBG_WASH_DEPTH;
   case 47: return PLANT_DBG_WASH_RATIO;
   case 48: return PLANT_DBG_VA;
+  case 49: return g_crashflip;
   default: return 0.0;
   }
 }
@@ -742,6 +745,35 @@ int bridge_launch_control_state(void) {
   return 1;
 }
 
+/*
+ * CRASHFLIP / TURTLE. mixer.c already compiled applyFlipOverAfterCrashModeToMotors
+ * and mixTable takes that path when isFlipOverAfterCrashActive is true. The
+ * stub used to return false forever, so the mixer was dead code. The shell
+ * raises this when the craft is inverted and in contact; pitch and roll
+ * then spin the high motors, which is Betaflight's own turtle, not a
+ * reimplementation. I-term is dumped on both edges so a wound PID cannot
+ * yank the craft when turtle latches or when mixTable returns to the PID.
+ */
+bool isFlipOverAfterCrashActive(void) {
+  return g_crashflip != 0;
+}
+
+void bridge_set_crashflip(int on) {
+  const int next = on ? 1 : 0;
+  /* Dump I on both edges. pidController still runs during turtle (the
+   * mixer just ignores it), so a wound integrator would yank the craft
+   * the instant mixTable returns to the PID. Real hardware leaves
+   * crashflip by disarming, which resets the same state. */
+  if (next != g_crashflip) {
+    pidResetIterm();
+  }
+  g_crashflip = next;
+}
+
+int bridge_crashflip_active(void) {
+  return g_crashflip;
+}
+
 static int16_t bf_deci_deg(float rad) {
   float d = rad * (1800.0f / M_PIf);
   if (d > 1800.0f) {
@@ -819,6 +851,7 @@ void bridge_reset(void) {
   } else {
     g_launch_state = LAUNCH_CONTROL_DISABLED;
   }
+  g_crashflip = 0;
 }
 
 #define SIM_RAD_TO_DEG 57.29577951308232

@@ -34,8 +34,8 @@
  *
  * Everything here is in Three.js world space, y up, downstream of the
  * physics. The query itself does not write the plant. It reports a unit
- * outward normal and a closing parameter; the shell may call sim_deflect
- * with those so a clip bounces instead of tunnelling into a crash.
+ * outward normal and a closing parameter; the shell may call sim_contact
+ * with those so a clip bounces, slides or rolls instead of tunnelling.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -261,6 +261,7 @@ export class Colliders {
     this.hitNx = 0;
     this.hitNy = 0;
     this.hitNz = 0;
+    this.hitMoving = -1;
     /* Scratch for axisToPoint, written per call, never allocated. */
     this.nx = 0;
     this.ny = 0;
@@ -933,6 +934,7 @@ export class Colliders {
     this.hitNx = 0;
     this.hitNy = 0;
     this.hitNz = 0;
+    this.hitMoving = -1;
     if (!this.built) {
       return -1;
     }
@@ -1113,6 +1115,7 @@ export class Colliders {
       this.hitIndex = -1;
       this.hitKind = this.movingKind[bestMoving];
       this.hitT = bestT;
+      this.hitMoving = bestMoving;
       this.finishHitNormal(nx, ny, nz, rdx, rdy, rdz);
       return this.hitKind;
     }
@@ -1123,6 +1126,7 @@ export class Colliders {
     this.hitIndex = bestI;
     this.hitKind = this.fkind[bestI];
     this.hitT = bestT;
+    this.hitMoving = -1;
     /* Contact normal at the earliest contact point. For a box it is the per
      * axis overhang; for a capsule it is the vector from the axis's closest
      * point to the contact point. A degenerate zero length contact counts as
@@ -1186,218 +1190,124 @@ export class Colliders {
 }
 
 /*
- * Ground contact, and whether it is a landing or a crash.
+ * Ground contact, and whether the craft can perch.
  *
- * The simulator has no ground plane, on purpose: the verification harness
+ * The simulator has no ground plane of its own: the verification harness
  * measures free air behaviour, so a plant with a floor in it could not be
- * checked against terminal velocity or a step response. That decision means
- * the ground lives here, in the shell. sim_rest zeroes velocity at a judged
- * landing; sim_deflect writes a bounce for an obstacle. A craft sitting on
- * the ground is still held by not stepping, because rest is not a bounce.
+ * checked against terminal velocity or a step response. The ground lives
+ * in the shell, which raises sim_set_ground; the plant then applies a
+ * rigid-body contact against the airframe hull every 1 ms step.
  *
- * THE RULE IS A PROP STRIKE, and everything below is a way of asking
- * whether one happened. The owner's words: a careful perch should be fine,
- * and you should only lose the craft when the props hit the ground.
- *
- * WHERE A PROP TOUCHES, derived rather than chosen. The craft rests with its
- * centre 0.045 m over the surface, a prop disc sits 0.032 m above that
- * centre, and the swept radius is 0.1735 m (src/render/craft.js). Roll by
- * theta and the low prop's tip is at 0.032 cos(theta) minus 0.1735
- * sin(theta) above the centre; it reaches the ground when that equals
- * -0.045, which solves to 24.9 degrees. So LAND_TILT_MAX_DEG is where a
- * blade first TOUCHES down.
- *
- * A TOUCH IS NOT A STRIKE, and that distinction is the whole of what was
- * wrong. A prop tip meeting grass at walking pace skips off it; every pilot
- * has landed a little wing low and rolled level. Treating first contact as a
- * destroyed aircraft is what made a deliberate landing feel like a coin
- * toss. So past LAND_TILT_MAX_DEG the arrival is still a landing while the
- * craft is barely moving, and only becomes a crash once there is speed
- * behind the blade.
- *
- * PAST LAND_TILT_HARD_DEG there is no reading under which the props are up:
- * the craft is arriving on its side, and that is a crash at any speed.
- *
- * WITH THE PROPS UP, the numbers are deliberately generous, because a level
- * quad simply cannot put a blade into the ground. The frame and the arms
- * take the arrival. 4 m/s of descent is a drop of 0.8 m, well past any
- * perch and short of any fall, and 10 m/s across the ground is a skid rather
- * than a tumble; a tumble raises the tilt and is caught a frame later by the
- * gates above. The horizontal figure was 3 m/s to begin with, a brisk walk,
- * and it was the gate that was actually ending the owner's runs: landing
- * with drift on is a normal thing to do.
+ * There is no crash lockout. A blade into the grass, a side arrival, a
+ * wall tap: all of them bounce, slide or roll, and the pilot flies out.
+ * The only special case is a PERCH: upright, slow, on the ground, which
+ * is when the shell freezes the integrator so a takeoff starts from rest
+ * rather than from leftover bounce. Everything else stays in the 1 kHz
+ * loop, which is what lets a tumble become a turtle.
  */
-export const LAND_DESCENT_MAX = 4.0;    /* m/s downward, props up */
-export const LAND_HORIZONTAL_MAX = 10.0; /* m/s, props up */
+export const LAND_DESCENT_MAX = 4.0;    /* m/s downward, props up, perch envelope */
+export const LAND_HORIZONTAL_MAX = 10.0; /* m/s, props up, historical skip gate */
 export const LAND_TILT_MAX_DEG = 25;     /* where a blade first touches */
-export const LAND_TILT_HARD_DEG = 50;    /* arriving on its side */
-/* How fast a touching blade may be travelling and still skip rather than
- * dig in. Walking pace: past it the tip has enough behind it to catch. */
+export const LAND_TILT_HARD_DEG = 50;    /* on its side, a roll not a perch */
 export const LAND_TIP_SPEED_MAX = 3.0;
 
-/*
- * THE THIRD ANSWER, AND IT IS THE ONE THAT WAS MISSING.
- *
- * The numbers above are the envelope for a PERCH: arrive inside it and the
- * ground holds the craft. Outside it there was one other answer, a wreck,
- * and that is what the owner's "way less crashing please" is about. A quad
- * arriving flat at 8 m/s of sink has not put a blade into anything: it has
- * hit the grass with its underside, hard, and a real one bounces, skips and
- * flies away. Only the props ending the flight is the rule; this is the
- * ground half of it.
- *
- * So a ground arrival is three ways now:
- *
- *   land    inside the perch envelope. sim_rest, the craft sits down.
- *   bounce  props up, outside it. Reflected off the surface and flown on.
- *   crash   a blade meeting the ground with speed behind it, which is the
- *           tilt gates below and nothing else.
- *
- * The perch envelope itself did not move. Arriving at 3 m/s still settles
- * and 5 m/s still does not; what changed is that 5 m/s now skips instead of
- * ending the run.
- */
-export const GROUND_CRASH = 0;
+export const GROUND_TUMBLE = 0;
 export const GROUND_LAND = 1;
-export const GROUND_BOUNCE = 2;
+export const GROUND_SLIDE = 2;
+/* Aliases so a caller that still says CRASH or BOUNCE reads the new
+ * meanings: a "crash" is a tumble you fly out of, a "bounce" is a slide. */
+export const GROUND_CRASH = GROUND_TUMBLE;
+export const GROUND_BOUNCE = GROUND_SLIDE;
 
-/*
- * Closing speed, in metres per second, below which a touch is not even
- * announced. The craft bounces either way; this only decides whether the
- * OSD says "clipped the gate" or says nothing at all.
- *
- * A MultiGP gate is 1.315 inch PVC with vinyl mesh panels. Brushing an
- * upright bounces you and you carry on; it used to be that arriving at it
- * at race speed did not. Until the bounce existed every contact at any
- * speed was a full crash with a 1.4 s lockout, which is harsher than the
- * physics AND harsher than the MultiGP rulebook, which does not invalidate
- * a lap for obstacle contact.
- */
+/* Closing speed below which a touch is not announced on the OSD. */
 export const GRAZE_SPEED_MAX = 4.0;
-
-/*
- * THE ONE RULE FOR LOSING AN AIRCRAFT: PUT THE PROPS INTO SOMETHING.
- *
- * The owner's words, and this round is written to them: "improve the
- * crashing mechanism, i should be able to bounce off stuff as much as i
- * like, a crash should be only if i plow my props into the ground or an
- * object, if i hit with the base of the quad i should bounce or perch if
- * speed is correct. Way less crashing please."
- *
- * The ground already worked that way. groundOutcome below has asked "did a
- * blade touch down" since the round that fixed landings, and everything in
- * it is a way of asking that. Obstacles did not: they had an airframe with
- * three hit points, so the third firm contact of a lap was a wreck whatever
- * part of the quad met the wall and whatever angle it met it at. That is a
- * durability model, not a prop strike model, and it is why a lap could end
- * from three honest bumps.
- *
- * WHAT DECIDES IT NOW. A quad is an X of four discs in ONE plane. Meeting
- * something edge on, in that plane, is the blades meeting it. Meeting the
- * same thing with the belly or the top plate is the FRAME meeting it, and a
- * frame bounces off PVC at any speed a pilot can generate. So the question
- * is where the contact sits relative to the craft's own up axis:
- *
- *   |n . up| near 1   the surface is under or over the craft. Belly, back,
- *                     landing gear. Never a strike, at any speed.
- *   |n . up| near 0   the surface is beside the craft, in the disc plane.
- *                     A strike if there is speed behind it.
- *
- * PROP_PLANE_MAX_UP_DOT is where the two meet, and it is 0.5 rather than
- * something tighter because a contact 60 degrees off the disc plane still
- * has a blade tip nearest the surface on a machine this shape. Being
- * generous here bounces off things that could arguably have been strikes,
- * which is the direction the request points.
- */
 export const PROP_PLANE_MAX_UP_DOT = 0.5;
-
-/*
- * Closing speed at or above which a contact IN THE PROP PLANE is a wreck.
- * 18 m/s is 65 km/h of closing, which on a 250 g airframe against PVC is
- * the blades through the tube rather than off it. Below it the craft
- * bounces, however many times: there is no damage model any more, and "as
- * much as i like" is the requirement it was removed to satisfy.
- *
- * Closing is speed times how square the contact was, so a glance off an
- * upright at race speed is still well under this.
- *
- * A train is always a crash, at any speed and at any angle: see KINDS.
- */
+/* Historical strike speed. Hits above this used to wreck the craft; they
+ * now tumble, and the number is only an OSD / audio threshold. */
 export const BOUNCE_SPEED_MAX = 18.0;
-/* How long one physical contact is treated as one hit, milliseconds. */
 export const BOUNCE_COOLDOWN_MS = 180;
-/* Coefficient of restitution, PVC / carbon, dimensionless. */
-export const BOUNCE_RESTITUTION = 0.35;
-/* Keep this fraction of the tangent (along-surface) speed. */
-export const BOUNCE_TANGENT_KEEP = 0.65;
-/* Keep this fraction of body rates, so a clip does not keep spinning in. */
-export const BOUNCE_RATE_KEEP = 0.55;
-/* Extra outward push past the contact, metres, so the next sweep is clear. */
-export const BOUNCE_SEPARATION = 0.06;
+export const BOUNCE_SEPARATION = 0.008;
+
+/* Perch: freeze only when the hull is settled enough that a takeoff from
+ * leftover bounce would be a lie. */
+export const PERCH_SPEED = 2.0;   /* m/s, linear */
+export const PERCH_RATE = 2.5;    /* rad/s */
+
+/* Grass / dirt. High enough to kill a slide without turning the ground
+ * into ice, low enough that a tumble still rolls. */
+export const GROUND_MU = 0.55;
+export const GROUND_E = 0.28;
 
 /*
- * Classify an obstacle contact. 'crash' is a wreck, 'bounce' is fly on.
- *
- * Closing is speed times hitNormalDot, metres per second. upDot is the
- * ABSOLUTE cosine between the contact normal and the craft's own up axis:
- * 0 when the surface is edge on to the discs and 1 when it is under the
- * belly. A caller that passes nothing gets 0, the prop plane, which is the
- * strict reading: an untaught caller keeps the old behaviour rather than
- * being handed a silent free pass.
+ * Obstacle materials. PVC, carbon, masonry, bark: enough difference that
+ * a gate tap and a tree are not the same event, not a damage model.
  */
-export function hitOutcome(kindName, closing, upDot = 0) {
+export function contactMaterial(kindName) {
   if (kindName === 'train') {
-    return 'crash';
+    return { e: 0.12, mu: 0.35 };
   }
-  /* Belly, back or landing gear. The frame takes it, at any speed. */
-  if (!(upDot < PROP_PLANE_MAX_UP_DOT)) {
-    return 'bounce';
+  if (kindName === 'gate' || kindName === 'pole') {
+    return { e: 0.38, mu: 0.28 };
   }
-  if (!(closing < BOUNCE_SPEED_MAX)) {
-    return 'crash';
+  if (kindName === 'tree' || kindName === 'canopy') {
+    return { e: 0.22, mu: 0.45 };
+  }
+  if (kindName === 'wall' || kindName === 'boom' || kindName === 'cliff' || kindName === 'rock') {
+    return { e: 0.32, mu: 0.38 };
+  }
+  return { e: 0.30, mu: 0.35 };
+}
+
+/*
+ * Classify an obstacle contact. Every hit is a bounce: there is no wreck.
+ * 'hard' is an OSD / audio distinction, not a lockout.
+ */
+export function hitOutcome(kindName, closing, _upDot = 0) {
+  if (kindName === 'train' || !(closing < BOUNCE_SPEED_MAX)) {
+    return 'hard';
   }
   return 'bounce';
 }
 
+export function canPerch(tiltDeg, speed, rateMag) {
+  if (tiltDeg > LAND_TILT_MAX_DEG) {
+    return false;
+  }
+  if (speed > PERCH_SPEED) {
+    return false;
+  }
+  if (rateMag > PERCH_RATE) {
+    return false;
+  }
+  return true;
+}
+
 /*
- * Classify a ground arrival. Pure function, no allocation, so the frame loop
- * can call it every frame.
+ * Classify a ground arrival. Pure function, no allocation.
  *
- *   descentRate  positive downward, m/s
- *   horizontal   horizontal speed, m/s
- *   tiltDeg      angle between the craft's own up axis and world up
- *
- * Returns GROUND_LAND, GROUND_BOUNCE or GROUND_CRASH. Integers rather than
- * strings because this is on the per frame path and a string comparison
- * chain is not free.
- *
- * THE CRASH TESTS COME FIRST and they are only about blades. Past
- * LAND_TILT_HARD_DEG the craft is arriving on its side and there is no
- * reading under which the props are up. Between LAND_TILT_MAX_DEG and that,
- * a blade is touching: a skip while crawling, a strike once there is speed
- * behind it. Everything else is the frame arriving, and the frame either
- * settles or skips.
+ *   land    perch envelope: upright, slow. The shell may freeze.
+ *   slide   props up, moving. Friction on the hull, no freeze.
+ *   tumble  on its side or a blade down with speed. Roll it out.
  */
 export function groundOutcome(descentRate, horizontal, tiltDeg) {
-  /* On its side. No reading of this has the props up. */
   if (tiltDeg > LAND_TILT_HARD_DEG) {
-    return GROUND_CRASH;
+    return GROUND_TUMBLE;
   }
-  /* Wing low enough that a blade is touching. Negative descent is a climb
-   * and must not subtract from the speed a blade would meet the ground
-   * with. */
+  const up = descentRate > 0 ? descentRate : 0;
+  const speed = Math.sqrt(up * up + horizontal * horizontal);
   if (tiltDeg > LAND_TILT_MAX_DEG) {
-    const up = descentRate > 0 ? descentRate : 0;
-    if (Math.sqrt(up * up + horizontal * horizontal) > LAND_TIP_SPEED_MAX) {
-      return GROUND_CRASH;
+    /* Blade down. Speed behind it is a tumble you fly out of. Crawling
+     * is still a perch classification: the shell will not freeze
+     * (canPerch refuses extra tilt) so the integrator keeps running
+     * and a turtle or a power-out can happen. */
+    if (speed > LAND_TIP_SPEED_MAX) {
+      return GROUND_TUMBLE;
     }
+    return GROUND_LAND;
   }
-  /* Props up. Inside the perch envelope it sits down, outside it it skips. */
-  if (descentRate > LAND_DESCENT_MAX) {
-    return GROUND_BOUNCE;
-  }
-  if (horizontal > LAND_HORIZONTAL_MAX) {
-    return GROUND_BOUNCE;
+  if (descentRate > LAND_DESCENT_MAX || horizontal > LAND_HORIZONTAL_MAX
+      || speed > PERCH_SPEED) {
+    return GROUND_SLIDE;
   }
   return GROUND_LAND;
 }

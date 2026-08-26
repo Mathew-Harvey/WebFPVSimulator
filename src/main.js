@@ -12,10 +12,11 @@
  * second scene. Settings still has its own cheap studio context, created
  * when that screen opens and torn down when flight starts.
  *
- * Ground handling is deliberately shell side: the physics module has no
- * ground plane (the verification harness measures free air behaviour), so
- * the shell spawns the quad at altitude and declares a crash when it
- * reaches the ground, then resets. See PROGRESS.md.
+ * Ground handling is shell side: the physics module has no ground plane
+ * (the verification harness measures free air behaviour), so the shell
+ * raises sim_set_ground and the plant applies a rigid-body contact every
+ * 1 ms step. A hit bounces, slides or rolls. There is no crash lockout.
+ * See PROGRESS.md.
  *
  * Keys in flight: Escape pauses, R returns to the start line, L is launch
  * control when that setting is on, F3 toggles the performance readout, F8
@@ -56,7 +57,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, groundOutcome, GROUND_LAND, GROUND_BOUNCE, hitOutcome, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_RESTITUTION, BOUNCE_TANGENT_KEEP, BOUNCE_RATE_KEEP, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -201,14 +202,6 @@ function introEase(t) {
   }
   return t * t * (3 - 2 * t);
 }
-/*
- * How far behind the next gate a crashed craft is put back on the ground, in
- * metres along that gate's own approach. The same figure the race field
- * stands its quad back from the timing gate with, so a respawn is framed
- * exactly like a start: the gate ahead, square on, at a distance that gives
- * the motors somewhere to spool before the opening arrives.
- */
-const RECOVER_BACK = 7;
 /* The controller consumes each input sample as one RC frame, so the shell
  * must feed it at a radio's rate rather than the display's. 250 Hz is a
  * typical ELRS link and matches the harness recording rate. */
@@ -487,6 +480,18 @@ export async function boot({ loading, bootStart, mapId }) {
   }));
   if (typeof sim.e.sim_deflect !== 'function') {
     throw new Error('sim.wasm does not export sim_deflect');
+  }
+  if (typeof sim.e.sim_contact !== 'function') {
+    throw new Error('sim.wasm does not export sim_contact');
+  }
+  if (typeof sim.e.sim_set_ground !== 'function') {
+    throw new Error('sim.wasm does not export sim_set_ground');
+  }
+  if (typeof sim.e.sim_set_crashflip !== 'function') {
+    throw new Error('sim.wasm does not export sim_set_crashflip');
+  }
+  if (typeof sim.e.sim_ground_contacts !== 'function') {
+    throw new Error('sim.wasm does not export sim_ground_contacts');
   }
   if (typeof sim.e.sim_set_launch_stand !== 'function') {
     throw new Error('sim.wasm does not export sim_set_launch_stand');
@@ -1238,8 +1243,8 @@ export async function boot({ loading, bootStart, mapId }) {
       fn();
     });
   }
-  let crashed = false;
-  let crashedAtWall = 0;
+  let crashed = false; /* always false: kept on __craftState so captures that still read it do not throw */
+  let crashflipOn = false;
   /* -1: FPV. 0..INTRO_TOTAL: orbit, approach, then zoom at the start of a run. */
   let introMs = -1;
   /*
@@ -1344,31 +1349,47 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   showCourseNotes();
 
+  function plantUpZ(st) {
+    const x = st[8];
+    const y = st[9];
+    const u = 1 - 2 * (x * x + y * y);
+    if (u > 1) {
+      return 1;
+    }
+    return u < -1 ? -1 : u;
+  }
+
+  function plantRateMag(st) {
+    return Math.sqrt(st[11] * st[11] + st[12] * st[12] + st[13] * st[13]);
+  }
+
+  function setCrashflip(on) {
+    const next = Boolean(on);
+    if (next === crashflipOn) {
+      return;
+    }
+    crashflipOn = next;
+    sim.e.sim_set_crashflip(next ? 1 : 0);
+  }
+
   /*
-   * One way into the crash path, because there are now three things that can
-   * cause one: arriving at the ground too fast, arriving at it too far from
-   * upright, and touching anything solid. The run continues. Time is the
-   * penalty.
+   * Turtle is Betaflight crashflip, latched when inverted and in contact
+   * (or inverted, slow, and a few centimetres off the grass). It stays on
+   * until the hull is upright enough that the acro PID can take over, so a
+   * flip that briefly leaves the ground does not drop back into airmode
+   * thrusting into the dirt.
    */
-  function crashInto(reason, nowWall) {
-    crashed = true;
-    landed = false;
-    takingOff = false;
-    crashedAtWall = nowWall;
-    /* The intro camera is a run-start cutscene. Leaving it running through
-     * a wreck kept the orbit going over a locked-out craft, then recovery
-     * landed inside the remaining shot. */
-    introMs = -1;
-    /*
-     * A crash is flown out of, not restarted from. The race keeps its place
-     * in the flying order and its lap clock; resetCraft puts the craft back
-     * on the ground in front of the gate it was heading for. On a freestyle
-     * map there is no order to keep, and Race.recover says so for both.
-     */
-    race.recover(reason, nowWall);
-    view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-    if (typeof audio.event === 'function') {
-      audio.event('crash');
+  function syncCrashflip(st, inContact, clearance) {
+    const upz = plantUpZ(st);
+    const inverted = upz < 0;
+    const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
+    const slow = speed < 4 && plantRateMag(st) < 8;
+    if (crashflipOn) {
+      if (upz > 0.35) {
+        setCrashflip(false);
+      }
+    } else if (inverted && slow && (inContact || clearance < 0.15)) {
+      setCrashflip(true);
     }
   }
 
@@ -1381,40 +1402,9 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * Where a crashed craft comes back, in world space: on the ground, behind
-   * the gate the race still wants, facing it.
-   *
-   * The offset is along +(sin heading, cos heading) and the craft's own yaw
-   * is the heading, which is the SAME arrangement the race field uses to
-   * stand its quad back from the timing gate. It is not an accident that one
-   * formula serves both: a gate's heading is the direction a craft at that
-   * yaw is flown THROUGH it, so stepping the other way along it is always
-   * the approach side, for any gate on any course.
-   *
-   * Returns null when there is no gate to come back to, which is a freestyle
-   * map and an empty custom course. Those go back to the spawn, as before.
-   */
-  function recoverySpawn() {
-    const i = race.nextSceneIndex();
-    const gt = view.gates && view.gates[i];
-    if (!gt) {
-      return null;
-    }
-    return {
-      x: gt.position.x + Math.sin(gt.heading) * RECOVER_BACK,
-      z: gt.position.z + Math.cos(gt.heading) * RECOVER_BACK,
-      yaw: gt.heading,
-    };
-  }
-
-  /*
-   * Put the craft back into the run without ending it. A crash costs the
-   * lap it happens on, not the laps already flown: erasing three clean laps
-   * because of one clipped tree is not how a race works.
-   *
-   * `at` is where to come back, and the default is the start line. A crash
-   * passes the recovery point instead, which is what lets a pilot fly out of
-   * one rather than restart from the timing gate.
+   * Put the craft back at the start line. Hits no longer teleport the
+   * craft: R is the pilot asking for a restart, not a recovery from a
+   * lockout. `at` reseats the spawn when the map itself moved.
    */
   function resetCraft(at) {
     if (at) {
@@ -1443,6 +1433,7 @@ export async function boot({ loading, bootStart, mapId }) {
     rcPending.length = 0;
     adoptSimClock();
     crashed = false;
+    setCrashflip(false);
     /* Back on the ground, landed, exactly as at boot. */
     landed = true;
     takingOff = false;
@@ -1770,7 +1761,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function beginLaunchStaging() {
-    if (!(mode === 'flight' && !crashed && landed)) {
+    if (!(mode === 'flight' && landed)) {
       return;
     }
     landed = false;
@@ -1786,7 +1777,7 @@ export async function boot({ loading, bootStart, mapId }) {
     input.forcePadRest = false;
     lcBoost = false;
     disableLaunchStand();
-    if (park && mode === 'flight' && !crashed) {
+    if (park && mode === 'flight') {
       sim.rest();
       landed = true;
       takingOff = false;
@@ -1807,7 +1798,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const st = lcState();
     if (st === 1 || st === 2) {
       lcAcroUntil = Infinity;
-      if (landed && !crashed && mode === 'flight') {
+      if (landed && mode === 'flight') {
         beginLaunchStaging();
       }
     } else if (st === 3) {
@@ -2209,7 +2200,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function isRunActive() {
-    return (mode === 'flight' || mode === 'paused') && !landed && !crashed;
+    return (mode === 'flight' || mode === 'paused') && !landed;
   }
   ui.onFcOpen = (page) => {
     ui.fc.open(moduleDump(sim), { runActive: isRunActive(), page });
@@ -2636,6 +2627,8 @@ export async function boot({ loading, bootStart, mapId }) {
   const upAxis = new THREE.Vector3();
   const nSim = { x: 0, y: 0, z: 0 };
   const pSim = { x: 0, y: 0, z: 0 };
+  const vsSim = { x: 0, y: 0, z: 0 };
+  const groundNWorld = new THREE.Vector3(0, 1, 0);
   const camFwd = new THREE.Vector3();
   const camUp = new THREE.Vector3();
   const qShake = new THREE.Quaternion();
@@ -2683,21 +2676,64 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * Reflect the plant off a surface: a unit outward normal and the world
+   * Terrain slope at (x, z), Three.js world space, unit, pointing up.
+   * Finite differences, no trig: the physics path may not call JS Math.sin
+   * or Math.cos. Sampled a few times per frame, not every 1 ms, because a
+   * 35 cm stencil barely moves in 8 ms.
+   */
+  function sampleGroundNormal(wx, wz, fromY, out) {
+    const eps = 0.35;
+    const h0 = view.height(wx, wz, fromY);
+    const hx = view.height(wx + eps, wz, fromY);
+    const hz = view.height(wx, wz + eps, fromY);
+    const nx = h0 - hx;
+    const ny = eps;
+    const nz = h0 - hz;
+    const n2 = nx * nx + ny * ny + nz * nz;
+    if (!(n2 > 1e-12)) {
+      out.set(0, 1, 0);
+      return h0;
+    }
+    const inv = 1 / Math.sqrt(n2);
+    out.set(nx * inv, ny * inv, nz * inv);
+    return h0;
+  }
+
+  function sampleGroundNormalFromState(st) {
+    poseFromState(st, pProbe);
+    sampleGroundNormal(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, groundNWorld);
+  }
+
+  function raiseGroundFromState(st) {
+    poseFromState(st, pProbe);
+    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    worldPosToSim(pProbe.x, hy, pProbe.z, pSim);
+    threeDirToSim(groundNWorld.x, groundNWorld.y, groundNWorld.z, nSim);
+    const n2 = nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z;
+    if (!(n2 > 0.97) || !(n2 < 1.03)) {
+      nSim.x = 0;
+      nSim.y = 0;
+      nSim.z = 1;
+    } else {
+      const inv = 1 / Math.sqrt(n2);
+      nSim.x *= inv;
+      nSim.y *= inv;
+      nSim.z *= inv;
+    }
+    return sim.e.sim_set_ground(
+      1, nSim.x, nSim.y, nSim.z, pSim.x, pSim.y, pSim.z, GROUND_MU, GROUND_E,
+    );
+  }
+
+  /*
+   * Rigid-body contact off a surface: unit outward normal and the world
    * point the contact happened at. Places the craft at that point plus a
    * small outward gap, so a tunneled frame is rewound to the entry face.
-   * Returns false if the module refused the write.
-   *
-   * SPLIT OUT OF applyBounce so the GROUND can use it. A flat arrival too
-   * fast to perch is a skip off the grass now rather than a wreck, and a
-   * skip is the same reflection an upright gives, off a normal of straight
-   * up. One implementation, so the two cannot drift into disagreeing about
-   * restitution or separation.
+   * The impulse is sim_contact: angular effective mass, Coulomb friction,
+   * restitution that falls with closing speed. vs is the surface velocity
+   * in the plant frame (the train, otherwise zero).
    */
-  function deflectOff(nx, ny, nz, cx, cy, cz, px, py, pz) {
-    /* Where the craft IS is passed in rather than read off pCurr, because
-     * the ground branch runs inside the physics stepping, before the frame's
-     * render position has been interpolated. It works from the probe. */
+  function deflectOff(nx, ny, nz, cx, cy, cz, px, py, pz, e, mu, vsx, vsy, vsz) {
     const inward = -((px - cx) * nx + (py - cy) * ny + (pz - cz) * nz);
     const sep = (inward > 0 ? inward : 0) + BOUNCE_SEPARATION;
     worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
@@ -2707,10 +2743,11 @@ export async function boot({ loading, bootStart, mapId }) {
       return false;
     }
     const inv = 1 / nlen;
-    const code = sim.e.sim_deflect(
+    const code = sim.e.sim_contact(
       nSim.x * inv, nSim.y * inv, nSim.z * inv,
-      BOUNCE_RESTITUTION, BOUNCE_TANGENT_KEEP, BOUNCE_RATE_KEEP,
+      e, mu,
       pSim.x, pSim.y, pSim.z,
+      vsx, vsy, vsz,
     );
     if (code !== SIM_OK) {
       return false;
@@ -2729,7 +2766,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /* The obstacle case: the normal and the contact point come off the last
    * collider query. */
-  function applyBounce() {
+  function applyBounce(e, mu, vsx, vsy, vsz) {
     const col = view.colliders;
     const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
     return deflectOff(
@@ -2738,6 +2775,7 @@ export async function boot({ loading, bootStart, mapId }) {
       racePrev.y + (pCurr.y - racePrev.y) * ht,
       racePrev.z + (pCurr.z - racePrev.z) * ht,
       pCurr.x, pCurr.y, pCurr.z,
+      e, mu, vsx, vsy, vsz,
     );
   }
   /*
@@ -2926,6 +2964,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const dt = Math.min(nowWall - prevWall, 100);
     prevWall = nowWall;
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
+    let frameSteps = 0;
 
     input.poll(nowWall);
     const launchNow = syncLaunchControl(nowWall);
@@ -2937,13 +2976,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /*
      * A sample taken while the integrator is not running has no RC slot to
-     * land in: the title screen, a crash lockout, and every second the craft
-     * sits landed. Keep the newest, so the first flying frame starts from
+     * land in: the title screen, a pause, and every second the craft sits
+     * perched. Keep the newest, so the first flying frame starts from
      * where the sticks actually are, and drop the rest. Without this the
      * queue grew for as long as the page was open, at the 100 ms heartbeat
      * alone, and the first frame of flight had to walk all of it.
      */
-    if (!(mode === 'flight' && !crashed && !landed) && rcPending.length > 1) {
+    if (!(mode === 'flight' && !landed) && rcPending.length > 1) {
       rcPending.splice(0, rcPending.length - 1);
     }
     /* Hard bound, whatever else happens. */
@@ -2954,7 +2993,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.pollPad(padNav());
     }
 
-    if (mode === 'flight' && !crashed && landed) {
+    if (mode === 'flight' && landed) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
       if (landed && thr > TAKEOFF_THROTTLE) {
         /* Off again. The RC frame grid rides the SIM's own clock, which
@@ -2972,7 +3011,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
-    if (mode === 'flight' && !crashed && !landed) {
+    if (mode === 'flight' && !landed) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
        * into the future. Snap the shell to step_index instead. */
@@ -2983,6 +3022,7 @@ export async function boot({ loading, bootStart, mapId }) {
         pinRcGrid();
         landed = true;
         takingOff = false;
+        setCrashflip(false);
         sim.rest();
         stateCurr = readState();
         statePrev = stateCurr;
@@ -3062,256 +3102,122 @@ export async function boot({ loading, bootStart, mapId }) {
         rcNextMs = rcLink.nextMs;
       }
       if (steps >= 1) {
-        if (steps > 1) {
-          sim.step(steps - 1);
-          statePrev = readState();
+        if (launchStaging) {
+          sim.e.sim_set_ground(0, 0, 0, 1, 0, 0, 0, 0, 0);
+          if (steps > 1) {
+            sim.step(steps - 1);
+            statePrev = readState();
+          } else {
+            statePrev = stateCurr;
+          }
+          sim.step(1);
+          stateCurr = readState();
         } else {
-          statePrev = stateCurr;
+          let stNow = stateCurr;
+          sampleGroundNormalFromState(stNow);
+          for (let i = 0; i < steps; i += 1) {
+            if (i === 0 || (i & 7) === 0) {
+              sampleGroundNormalFromState(stNow);
+            }
+            raiseGroundFromState(stNow);
+            sim.step(1);
+            if (i === steps - 2) {
+              statePrev = readState();
+              stNow = statePrev;
+            } else if (i < steps - 1) {
+              stNow = readState();
+            }
+          }
+          if (steps === 1) {
+            statePrev = stateCurr;
+          }
+          stateCurr = readState();
         }
-        sim.step(1);
-        stateCurr = readState();
         simTimeMs += steps * MS_PER_STEP;
         simStepIdx += steps;
-        /* Launch stand constraint runs inside sim_step. */
-        /* One row per rendered frame, and only while actually flying. The
-         * state and the sticks are read at the same instant, so the row is
-         * honest about what the craft was doing and what it was told. */
+        frameSteps = steps;
+        /* Launch stand constraint runs inside sim_step. Ground contact
+         * runs after plant_step at 1 kHz when the plane is raised. */
         flightLog.push(stateCurr, rcHeld, FULL_THROTTLE_RPM);
       }
       /*
-       * Ground contact, and whether it is a landing or a crash. This is the
-       * owner's headline request: "i should be able to land on the ground
-       * safetly but crashing will result in a crash".
-       *
-       * The test is the craft's SPHERE against the terrain, not its centre
-       * point, and it is swept along the frame's travel rather than sampled
-       * once at the end of it.
-       *
-       * THE SURFACE QUERY IS MADE FROM THE CRAFT'S LOWEST POINT, not from its
-       * centre, and the difference is a real defect that a review caught.
-       * `height(x, z, fromY)` offers a platform when its top is within a
-       * walker's step, 0.55 m, of fromY. Querying from the CENTRE made the
-       * overbridge deck at 7.20 m eligible from a centre height of 6.65 m,
-       * which is a craft flying UNDER the bridge with its sphere top still
-       * 5 cm clear of the deck's underside. `sy - CRAFT_R <= 7.20` is then
-       * trivially true, so a quad taking the line under the bridge either
-       * crashed into nothing or was declared landed and teleported onto the
-       * deck above it. Querying from `sy - CRAFT_R` makes the deck eligible
-       * only from a centre of 6.82 m, by which point the deck's own underside
-       * slab collider has already fired at 6.78 m and correctly called it a
-       * crash. Landing on top is unaffected: the ground test still fires at
-       * deck + CRAFT_R, 2 cm before the slab, so the landing judgement wins. A point test with no radius let the craft
-       * bury a prop before anything noticed, and at this container's frame
-       * rate the craft moves metres per frame, so a single sample can step
-       * clean over a ridge.
+       * Ground is a plane in the plant, not a sphere test after the
+       * frame. height() still picks the deck vs the street (fromY is the
+       * craft centre minus SURFACE_BIAS, the same rule that stopped the
+       * overbridge from becoming a floor for a quad flying under it).
+       * Perch freezes the integrator only when the hull is upright, slow
+       * and in contact. Everything else keeps stepping: a skip, a slide,
+       * a tumble, a turtle.
        */
-      simPosToThree(stateCurr[1], stateCurr[2], stateCurr[3] + SPAWN_ALT, pProbe);
-      pProbe.applyQuaternion(qSpawn);
-      pProbe.x += startX;
-      pProbe.z += startZ;
-      /* startY is a WORLD height read off the terrain, so it is added after
-       * the conversion. Folding it into the sim z, which is what this used to
-       * do, would divide the ground itself by WORLD_SCALE and sink the whole
-       * course. Only the craft's own displacement about the sim origin is
-       * the aircraft's, and only that is scaled. */
-      pProbe.y += startY;
-      /*
-       * The craft's vertical half extent at its current tilt. A quad is an
-       * X: 0.347 m on the diagonal, 0.282 m axis to axis, 0.080 m through
-       * the body. Collision uses that X in plan; this number is only the
-       * ground query. Computed from this state's quaternion, not last
-       * frame's render, so a snap roll is judged on the attitude that
-       * produced the travel.
-       */
+      poseFromState(stateCurr, pProbe);
+      groundPrev.copy(pProbe);
+      groundHasPrev = true;
       simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCollide);
       qCollide.premultiply(qSpawn);
       vHalfFrame = craftVerticalHalf(Math.sqrt(1 - craftUpY() * craftUpY()));
-      const vHalf = vHalfFrame;
-      let touched = false;
-      let touchX = pProbe.x;
-      let touchZ = pProbe.z;
-      /* The height the contact was judged AT, not where the frame ended.
-       * Resolving the resting height from the end of the travel let a landing
-       * on a deck fall through to the ground under it: at this container's
-       * frame rate the craft descends about a metre a frame, so by the end of
-       * the frame the deck is more than a step above the query and heightAt
-       * drops it. */
-      let touchY = pProbe.y;
-      if (simTimeMs > 50) {
-        if (groundHasPrev) {
-          /* Sixteen samples over the travel. At 30 m/s and 60 frames per
-           * second that is one sample every 3 cm, and even at this
-           * container's two frames per second it is one per metre, which no
-           * ridge in this terrain can hide inside. */
-          const gsteps = 16;
-          for (let gi = 1; gi <= gsteps; gi += 1) {
-            const gt = gi / gsteps;
-            const sx = groundPrev.x + (pProbe.x - groundPrev.x) * gt;
-            const sy = groundPrev.y + (pProbe.y - groundPrev.y) * gt;
-            const sz = groundPrev.z + (pProbe.z - groundPrev.z) * gt;
-            if (sy - vHalf <= view.height(sx, sz, sy - vHalf - SURFACE_BIAS)) {
-              touched = true;
-              touchX = sx;
-              touchZ = sz;
-              touchY = sy;
-              break;
-            }
-          }
-        } else if (pProbe.y - vHalf <= view.height(pProbe.x, pProbe.z, pProbe.y - vHalf - SURFACE_BIAS)) {
-          touched = true;
-        }
-      }
-      groundPrev.copy(pProbe);
-      groundHasPrev = true;
-      if (launchStaging) {
-        /* The stand hinge owns the craft. Contact at 30 to 40 degrees of
-         * pitch is the hold, not a crash, and the usual takeoff abort
-         * would dump the attitude every frame. */
-      } else if (takingOff) {
-        if (
-          !touched &&
-          pProbe.y - vHalf > view.height(pProbe.x, pProbe.z, pProbe.y - vHalf - SURFACE_BIAS) + 0.05
-        ) {
-          /* Clear of the surface by a real margin, not just by the parked
-           * pose's few millimetres: the takeoff is real and normal contact
-           * judging owns the craft again. Without the margin the hold
-           * released on the first frame and the spool dip handed the craft
-           * straight back to the landing judgement, which is the chatter
-           * this flag exists to prevent. Launch control skips this whole
-           * branch while the stand hinge is holding. */
+      const surf = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+      const clearance = pProbe.y - surf;
+      const hits = launchStaging ? 0 : sim.e.sim_ground_contacts();
+      const upz = plantUpZ(stateCurr);
+      const uClamp = upz > 1 ? 1 : upz < -1 ? -1 : upz;
+      const tiltDeg = (Math.acos(uClamp) * 180) / Math.PI;
+      const speed = Math.sqrt(
+        stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
+      );
+      const rate = plantRateMag(stateCurr);
+      lastDescent = -stateCurr[6];
+      lastTiltDeg = tiltDeg;
+      speedNow = speed;
+      if (takingOff) {
+        if (clearance - REST_HEIGHT > 0.05) {
           takingOff = false;
           lcBoost = false;
-        } else if (touched) {
+        } else if (!lcBoost) {
           const thrNow = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
-          /* Depth of the craft's CENTRE below the surface. With the per
-           * frame rest below, this is a backstop that only an upstream
-           * regression can reach. */
-          const sunk = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS) - touchY;
-          /* Launch control triggers at 20 percent throttle, below
-           * TAKEOFF_THROTTLE, so the usual abort would freeze the punch
-           * on the pad. The pad still holds the sphere while motors spool. */
-          if (!lcBoost && (thrNow <= TAKEOFF_THROTTLE || sunk > 0.10)) {
-            /* Aborted. Rest it where it is: arriving at the ground from
-             * resting on it is not a crash at any spool speed. */
+          if (thrNow <= TAKEOFF_THROTTLE && hits > 0 && canPerch(tiltDeg, speed, rate)) {
             takingOff = false;
-            landed = true;
-            sim.rest();
-            stateCurr = readState();
-            statePrev = stateCurr;
-            acc = 0;
-            groundY = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS);
-            if (typeof audio.event === 'function') {
-              audio.event('land');
-            }
-          } else if (stateCurr[6] <= 0) {
-            /*
-             * Still spooling off the pad and the frame ended descending:
-             * THE GROUND HOLDS THE CRAFT WHILE THE MOTORS SPOOL, exactly
-             * as a launch pad holds a real quad, by zeroing the sink each
-             * frame while gravity still beats thrust. Without this the
-             * craft free-falls through its own takeoff: measured at
-             * 60 fps, a throttle crossing the gate at 0.26 spends about
-             * 150 ms spooling from rest and the craft plunges 20 cm into
-             * the ground in that time, because it spawns only 7.5 cm up.
-             * The first frame that ends ascending is the spool won;
-             * from there it climbs out of contact and takingOff clears.
-             */
-            sim.rest();
-            stateCurr = readState();
-            statePrev = stateCurr;
           }
         }
-      } else if (touched) {
-        /* Descent rate and horizontal speed come straight out of the state
-         * block. frame.js maps sim z to world up, so state[6] IS the
-         * vertical velocity and the other two are the horizontal pair; a
-         * yaw about the vertical cannot change either magnitude, so the
-         * spawn rotation does not enter into it. */
-        const descent = -stateCurr[6];
-        const horiz = Math.hypot(stateCurr[4], stateCurr[5]);
-        /* Tilt from vertical, from the quaternion directly: rotating world
-         * up by q gives a y component of 1 - 2(x^2 + z^2), and the angle to
-         * vertical is its arc cosine. */
-        const upY = craftUpY();
-        const tiltDeg = (Math.acos(upY) * 180) / Math.PI;
-        lastDescent = descent;
-        lastTiltDeg = tiltDeg;
-        const arrival = groundOutcome(descent, horiz, tiltDeg);
-        if (arrival === GROUND_LAND) {
-          landed = true;
-          /*
-           * THE GROUND HOLDS THE CRAFT. sim_rest zeroes the velocity and
-           * body rates at the judged touchdown, which is what a normal
-           * force does and what this free-air model cannot do on its own.
-           * Without it the frozen state kept its touchdown descent rate,
-           * and a slow takeoff at 60 fps chattered between landed and
-           * flying while the motors spooled from zero, RESUMING and
-           * GROWING that stored descent on every cycle: measured, a
-           * gentle throttle ramp accumulated 2.13 m/s of phantom descent
-           * in fourteen freeze cycles and was judged a crash the pilot
-           * never flew. A punch spooled fast enough to win the race,
-           * which is why "wiggle and punch" worked and a normal takeoff
-           * did not. Invisible in this container, whose 100 ms frames
-           * hide the whole dip inside one frame's endpoints.
-           */
-          sim.rest();
-          stateCurr = readState();
-          groundY = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS);
-          /* The two states are made identical so the render interpolation
-           * has nothing to interpolate: with the integrator frozen, an
-           * accumulator left mid step would otherwise slide the craft
-           * between two stale poses forever. */
-          statePrev = stateCurr;
-          acc = 0;
+      }
+      syncCrashflip(stateCurr, hits > 0, clearance);
+      if (
+        !launchStaging
+        && !takingOff
+        && hits > 0
+        && canPerch(tiltDeg, speed, rate)
+        && !crashflipOn
+      ) {
+        sim.rest();
+        landed = true;
+        takingOff = false;
+        adoptSimClock();
+        groundY = surf;
+        stateCurr = readState();
+        statePrev = stateCurr;
+        acc = 0;
+        if (typeof audio.event === 'function') {
+          audio.event('land');
+        }
+      } else if (hits > 0 && nowWall - groundBounceAtWall > BOUNCE_COOLDOWN_MS) {
+        const closing = lastDescent > 0 ? lastDescent : 0;
+        if (closing >= GRAZE_SPEED_MAX || speed >= GRAZE_SPEED_MAX) {
+          bounceCount += 1;
+          const hard = closing >= BOUNCE_SPEED_MAX || speed >= BOUNCE_SPEED_MAX;
+          race.recover(hard ? 'Hit the ground' : 'Bounced off the ground', nowWall);
+          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
           if (typeof audio.event === 'function') {
-            audio.event('land');
+            audio.event(hard ? 'crash' : 'clip');
           }
-        } else if (arrival === GROUND_BOUNCE) {
-          /*
-           * PROPS UP, ARRIVING TOO HARD TO SIT DOWN. It skips. A quad that
-           * meets grass with its underside at 6 m/s does not stop flying,
-           * and treating that as a wreck is most of what the owner meant by
-           * "way less crashing please".
-           *
-           * The reflection is the same one an upright gives, off a normal
-           * of straight up, at the contact height the perch would have
-           * rested at. If the module refuses the write there is nothing
-           * left to do but end the run, exactly as on an obstacle.
-           */
-          const surf = view.height(touchX, touchZ, touchY - vHalf - SURFACE_BIAS);
-          if (!deflectOff(0, 1, 0, touchX, surf + vHalf, touchZ, pProbe.x, pProbe.y, pProbe.z)) {
-            crashInto('Crashed', nowWall);
-          } else {
-            acc = 0;
-            /* One announcement per skip, not one per frame while the craft
-             * slides along the grass. */
-            if (nowWall - groundBounceAtWall > BOUNCE_COOLDOWN_MS) {
-              bounceCount += 1;
-              race.recover('Bounced off the ground', nowWall);
-              view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-              if (typeof audio.event === 'function') {
-                audio.event('clip');
-              }
-            }
-            groundBounceAtWall = nowWall;
-          }
-        } else {
-          crashInto('Crashed', nowWall);
         }
+        groundBounceAtWall = nowWall;
       }
       }
-    } else if (mode === 'flight' && !crashed && landed) {
+    } else if (mode === 'flight' && landed) {
       /*
-       * Sitting on the ground. The integrator does NOT step: a landing is
-       * rest, not a bounce, so the craft is held by not advancing it. The
-       * touchdown descent rate is no longer stored with it: sim_rest zeroed
-       * the velocity at the landing judgement, so a takeoff resumes from a
-       * true rest state and the only dip left is the real one, the motors
-       * spooling up from wherever they idled.
-       *
-       * The lap clock DOES keep running. Landing in the middle of a lap
-       * costs you the time it costs you, and a course where you can park for
-       * free is not a race.
+       * Sitting on the ground. The integrator does NOT step: a perch is
+       * rest, so the craft is held by not advancing it. sim_rest zeroed
+       * velocity at the judgement, so a takeoff resumes from a true rest
+       * state. The lap clock DOES keep running.
        */
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
@@ -3319,29 +3225,6 @@ export async function boot({ loading, bootStart, mapId }) {
       simTimeMs += steps * MS_PER_STEP;
       adoptSimClock();
       statePrev = stateCurr;
-    } else if (mode === 'flight' && crashed) {
-      /*
-       * THE CLOCK DOES NOT STOP FOR A CRASH. That is the whole of what makes
-       * the new penalty a penalty: the lap is not thrown away, so the only
-       * thing a crash costs is the lockout and the standing start, and if
-       * neither of those were on the clock a crash would cost nothing at
-       * all. The integrator is NOT stepped, exactly as it is not while the
-       * craft sits landed; only the lap clock advances.
-       *
-       * The two states are made identical for the same reason the landing
-       * branch does it: with the integrator frozen, the render would
-       * otherwise slide the wreck between the last two stale poses forever.
-       */
-      acc += dt;
-      let steps = Math.floor(acc / MS_PER_STEP);
-      acc -= steps * MS_PER_STEP;
-      simTimeMs += steps * MS_PER_STEP;
-      statePrev = stateCurr;
-      if (nowWall - crashedAtWall > 1400) {
-        /* Short lockout, then back on the COURSE: on the ground in front of
-         * the gate the race still wants, with the clock still running. */
-        resetCraft(recoverySpawn());
-      }
     }
 
     /* Render: interpolate the two most recent physics states. The sim
@@ -3378,20 +3261,6 @@ export async function boot({ loading, bootStart, mapId }) {
         qPad.setFromAxisAngle(AXIS_X, -startPitch);
         qPrev.multiply(qPad);
       }
-    } else if (crashed) {
-      /*
-       * A WRECK DOES NOT SINK. The integrator has no ground plane, so a
-       * crashed craft keeps whatever velocity it hit with for the whole
-       * lockout and drives itself under the surface, taking the camera with
-       * it: the frame fills with the inside of the terrain until the reset
-       * fires. Clamped on the render only, the same way a landing is, and
-       * against the same query the contact test uses so the two agree.
-       */
-      const floor = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS)
-        + simLenToWorld(REST_HEIGHT);
-      if (pCurr.y < floor) {
-        pCurr.y = floor;
-      }
     }
     shell.quad.position.copy(pCurr);
     shell.quad.quaternion.copy(qPrev);
@@ -3403,38 +3272,31 @@ export async function boot({ loading, bootStart, mapId }) {
      * the segment the craft travelled and the capsule's axis, so nothing can
      * tunnel through at any frame rate.
      *
-     * WHAT ENDS A RUN: a train, or the PROPS going into something with
-     * speed behind them. Everything else bounces, however many times, which
-     * is the owner's "as much as i like". hitOutcome owns the rule; this
-     * code's only job is to hand it the two things it needs, the closing
-     * speed and how square the contact was to the craft's own disc plane.
-     * A graze below GRAZE_SPEED_MAX bounces silently.
+     * Nothing here ends a run. A hit is sim_contact: bounce, slide or roll
+     * relative to the impact, with the obstacle's material and, for a
+     * train, its surface velocity. Cooldown is OSD and audio only.
      */
-    /* The craft's speed at this state, needed by the collision test below and
-     * by the overlay further down. Read once, from the state block. */
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    if (mode === 'flight' && !crashed && !landed && !launchStaging && raceHasPrev) {
+    if (mode === 'flight' && !landed && !launchStaging && raceHasPrev) {
       /* The craft the query sweeps is the four prop discs: crx/crz from
        * this attitude, vHalfFrame through the body at its current tilt. */
-      const k = view.colliders.hit(
-        racePrev.x, racePrev.y, racePrev.z,
-        pCurr.x, pCurr.y, pCurr.z,
-        vHalfFrame,
-        qCollide.x, qCollide.y, qCollide.z, qCollide.w,
-      );
-      if (k >= 0) {
+      let obstacleHit = false;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const k = view.colliders.hit(
+          racePrev.x, racePrev.y, racePrev.z,
+          pCurr.x, pCurr.y, pCurr.z,
+          vHalfFrame,
+          qCollide.x, qCollide.y, qCollide.z, qCollide.w,
+        );
+        if (k < 0) {
+          break;
+        }
+        obstacleHit = true;
         lastHitKind = view.colliders.kindName(k);
         const closing = speedNow * view.colliders.hitNormalDot;
         lastClosing = closing;
-        /*
-         * HOW SQUARE THE CONTACT WAS TO THE DISC PLANE, as the absolute
-         * cosine between the obstacle's outward normal and the craft's own
-         * up axis. craftUpY is only the world Y of that axis; the whole
-         * vector is needed here, and it is the same rotation of (0, 1, 0)
-         * by the collision quaternion that craftUpY takes one component of.
-         */
         upAxis.set(0, 1, 0).applyQuaternion(qCollide);
         const upDot = Math.abs(
           view.colliders.hitNx * upAxis.x
@@ -3443,32 +3305,50 @@ export async function boot({ loading, bootStart, mapId }) {
         );
         lastUpDot = upDot;
         const outcome = hitOutcome(lastHitKind, closing, upDot);
+        const mat = contactMaterial(lastHitKind);
+        let vsx = 0;
+        let vsy = 0;
+        let vsz = 0;
+        const moving = view.colliders.hitMoving;
+        if (moving >= 0 && frameSteps > 0) {
+          const dtSim = frameSteps * 0.001;
+          threeDirToSim(
+            (view.colliders.movingCx[moving] - view.colliders.movingPx[moving]) / dtSim,
+            (view.colliders.movingCy[moving] - view.colliders.movingPy[moving]) / dtSim,
+            (view.colliders.movingCz[moving] - view.colliders.movingPz[moving]) / dtSim,
+            vsSim,
+          );
+          vsx = vsSim.x;
+          vsy = vsSim.y;
+          vsz = vsSim.z;
+        }
         const sameContact = nowWall - bounceAtWall < BOUNCE_COOLDOWN_MS
           && bounceHitIndex === view.colliders.hitIndex
           && bounceHitKind === lastHitKind;
         const graze = closing < GRAZE_SPEED_MAX;
-        if (outcome === 'crash' && !sameContact) {
-          crashInto(`Hit the ${lastHitKind}`, nowWall);
-        } else if (!applyBounce()) {
-          /* The module refused the write, so the plant is still inside the
-           * solid and the next sweep would hit it harder. Nothing to do but
-           * end the run. */
-          crashInto(`Hit the ${lastHitKind}`, nowWall);
-        } else {
-          if (!sameContact && !graze) {
-            bounceCount += 1;
-            race.recover(`Bounced off the ${lastHitKind}`, nowWall);
-          } else if (!sameContact) {
-            race.recover(`Clipped the ${lastHitKind}`, nowWall);
-          }
-          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-          if (!sameContact && typeof audio.event === 'function') {
-            audio.event('clip');
-          }
-          bounceAtWall = nowWall;
-          bounceHitIndex = view.colliders.hitIndex;
-          bounceHitKind = lastHitKind;
+        if (!applyBounce(mat.e, mat.mu, vsx, vsy, vsz)) {
+          break;
         }
+        if (!sameContact && !graze) {
+          bounceCount += 1;
+          race.recover(outcome === 'hard'
+            ? `Hit the ${lastHitKind}`
+            : `Bounced off the ${lastHitKind}`, nowWall);
+          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+          if (typeof audio.event === 'function') {
+            audio.event(outcome === 'hard' ? 'crash' : 'clip');
+          }
+        } else if (!sameContact) {
+          race.recover(`Clipped the ${lastHitKind}`, nowWall);
+          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+        }
+        bounceAtWall = nowWall;
+        bounceHitIndex = view.colliders.hitIndex;
+        bounceHitKind = lastHitKind;
+      }
+      if (obstacleHit) {
+        const surf2 = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
+        syncCrashflip(stateCurr, true, pCurr.y - surf2);
       }
     }
 
@@ -3476,7 +3356,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * clock at that state: gate crossings are swept over the frame's
      * travel, so speed cannot tunnel a gate. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
-    if (mode === 'flight' && !crashed) {
+    if (mode === 'flight') {
       if (raceHasPrev) {
         /* The race's state from before this frame's travel is scored, so
          * the ghost bookkeeping can see a lap boundary without the race
@@ -3570,7 +3450,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fpvPos.copy(pCurr)
       .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
       .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
-    const wantLift = (landed || crashed || launchStaging) ? PARKED_LIFT : 0;
+    const wantLift = (landed || launchStaging) ? PARKED_LIFT : 0;
     parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
@@ -3871,9 +3751,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * fed nothing at all.
      *
      * The physics steps under exactly one condition, `mode === 'flight' &&
-     * !crashed && !landed`, and every other state freezes it: the title
-     * screen, the pause menu, the results screen, the crash lockout, and
-     * every second the craft sits parked. A frozen state still carries the
+     * !landed`, and every other state freezes it: the title
+     * screen, the pause menu, the results screen, and
+     * every second the craft sits perched. A frozen state still carries the
      * motor RPM of the last step it took, and update() reads that as the
      * honest truth about four turning motors, so the mix went on holding
      * whatever tone the quad was making at the instant the world stopped.
@@ -3894,7 +3774,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * the wind was held at the speed of the impact for the whole of it while
      * the wreck lay still on the ground.
      */
-    const motorsTurning = mode === 'flight' && !crashed && !landed;
+    const motorsTurning = mode === 'flight' && !landed;
     audioRpm[0] = motorsTurning ? st[14] : 0;
     audioRpm[1] = motorsTurning ? st[15] : 0;
     audioRpm[2] = motorsTurning ? st[16] : 0;
@@ -4041,8 +3921,8 @@ export async function boot({ loading, bootStart, mapId }) {
        * frame, and a launch prompt printed across a results table is how
        * you find that out. */
       ui.setBanner('');
-    } else if (crashed) {
-      ui.setBanner(ui.guided ? 'Crashed\nPress R to go back to the start line' : 'Crashed');
+    } else if (crashflipOn) {
+      ui.setBanner('Turtle\nPitch or roll to flip over');
     } else if (launchNow === 3 && nowWall < lcGoUntil) {
       ui.setBanner('GO');
     } else if (launchNow === 1 || launchNow === 2) {
@@ -4351,6 +4231,7 @@ export async function boot({ loading, bootStart, mapId }) {
     flownThisRun,
     landed,
     crashed,
+    turtle: crashflipOn,
     /* Where the craft IS, world space, so a capture can steer toward a
      * gate instead of describing where it hoped to be. */
     worldX: shell.quad.position.x,

@@ -4823,7 +4823,7 @@ export class Ui {
         ['Right thumb', 'Roll and pitch. Forward is nose down, fly forward. Springs back to centre when you let go.'],
         ['The whole corner', 'The pad is bigger than the drawing: the stick is wherever your thumb lands in the lower corner, and deflection is the drag from there.'],
         ['Landscape', 'Turn the phone sideways. The pads sit under both thumbs, the way a radio sits in both hands.'],
-        ['Pause', 'The Pause chip, top right. Crashes recover on their own; time is the penalty.'],
+        ['Pause', 'The Pause chip, top right. Hits bounce. Time is the penalty. If you land inverted, pitch or roll to turtle back over.'],
       ]
       : source === 'radio'
       ? [
@@ -4832,6 +4832,7 @@ export class Ui {
         ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
+        ['Turtle', 'If you end up inverted on the ground, pitch or roll. The high motors spin and the craft flips over, then you take off.'],
       ]
       : source === 'launch'
         ? [
@@ -4849,6 +4850,7 @@ export class Ui {
         ['Left and right', 'Roll.'],
         ['L', 'Launch control, if you turned it on in Settings. Pitch, centre, punch.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
+        ['Turtle', 'If you end up inverted on the ground, pitch or roll. The high motors spin and the craft flips over, then you take off.'],
         ['F8', 'Report a bug or give feedback. Pauses if you are in the air, then opens the form.'],
       ];
     for (const [k, v] of rows) {
@@ -5269,8 +5271,8 @@ export class Ui {
        * IT COUNTS UP NOW, AND IT COSTS NOTHING.
        *
        * This row used to read "Hits left 2 of 3" and it was a durability
-       * model: the third firm contact of a lap ended the run. The rule is a
-       * prop strike now, an airframe cannot be spent, and a countdown to a
+       * model: the third firm contact of a lap ended the run. There is no
+       * wreck any more, an airframe cannot be spent, and a countdown to a
        * thing that no longer happens is worse than no row at all. What is
        * still worth telling a pilot is how much they are bouncing, so the
        * row says that, in the neutral colour, and it says nothing at all

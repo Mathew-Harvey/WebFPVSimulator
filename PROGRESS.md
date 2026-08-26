@@ -18362,3 +18362,75 @@ Check 15 ceilings were not edited. `node --check` on the four
 edited files. Headless probes and overlay shots follow.
 `npm run verify` was not run: city map, not the plant.
 
+## Undercroft poles: FPV-pilot rounds
+
+Adversarial review from a freestyle line, three rounds.
+vh 0.12. Overlay shots in
+`/opt/cursor/artifacts/fpv_*.png`.
+
+Round 1, the four named gaps:
+
+- north landing mid `(41, 3.0, 5.6)` empty
+- north landing grid 11 of 56 hits, all at the four
+  column corners, not a bay wall
+- deck undercroft `(41, 3.0, 0)` empty
+- far landing mid `(41, 3.0, -6.6)` empty
+- gantry mouth `( -24.7, 1.5, 85.6 )` empty
+- gantry post HIT 0.18 x 2.62 x 0.18
+- shelter interior empty, back panel HIT 2.82 x 1.54 x 0.10
+- pier bay mid `(151, 2.2, -80)` empty
+- stair climb 0 of 20, same named regression probes as
+  the fly-channel run (lip, throat, cage, bell, haiden,
+  torii empty; stringer, ridge, tank HIT thin or solid)
+
+Round 2, members and the other towers:
+
+- gantry bar `( -24.7, 2.58, 85.6 )` HIT 4.5 x 0.59 x 0.16
+  from y 2.49, which is the 2.1 m 制限高
+- far landing columns HIT 0.24 x 6.58 x 0.24
+- onsen viewing-deck bay empty, post HIT 0.24 (already
+  `openFrame`, not this change)
+- hide boardwalk bay empty
+- standing-on-ground fat boxes (y0 in -0.4..1.2, min
+  span over 0.85 m, height over 2.4 m, footprint under
+  12) at the five sites: none
+
+Round 3, the same standing-fat filter over the whole
+town on a 10 m grid. 14 boxes. All of them are solid
+furniture, not a gap between poles:
+
+- school stair towers, 1.1 x 2 x 8 m, y0 1.05
+- chimneys 0.87 to 0.96 m square, 6 to 10 m tall
+- shrine stone lanterns 1.52 x 1.12 x 3.56
+- one 3.6 x 1.52 x 2.48 shed or van at (35.2, 20.6)
+
+Declined, with reason:
+
+- Chain-link stays a screen. BAR_GAP is 0.11 m. A 5 inch
+  quad does not fit. Same call as the last gap round.
+- Height-bar flaps stay air. They are rubber plates that
+  tell a driver where 2.1 m is, not a member.
+- The 公園前 kei under the flight stays. It is a car.
+  skipFit already stops it roof-lifting into the climb.
+- Bike-shed interior at y 1.2. The only nearby box is
+  the 0.26 m roof slab at y 3.36. A hit there is a bike
+  or the teaching-block wall, not a cover wall. The shed
+  group is already named and over the cover footprint.
+- Shrine lantern fire-box openings. 0.1 m posts. Not a
+  quad line.
+- Gully plank bridges. The V is 0.4 m. Cover filling it
+  is the same as the trough.
+
+Scan vs check 15 (ceilings not edited): phantom 2159 /
+29000, overFive 114 / 350, holes 10876 / 20300,
+meanCover 0.569 / 0.45. `expectedModules` 63. city
+colliders 11155, total boxes 13070. Previous fly-channel
+run: phantom 2159, holes 10821, boxes 12926. Phantom
+unchanged. Holes up 55 from the extra pile boxes, still
+inside the ceiling.
+
+`shots.js` exited 1 on `ERR_CONNECTION_REFUSED`. Probes
+and PNGs still wrote. `npm run verify` was not run: city
+map, not the plant.
+
+

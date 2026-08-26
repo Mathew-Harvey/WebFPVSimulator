@@ -72,7 +72,7 @@ export function buildShotengai(ctx) {
    * and it is what staggers the ramp at the bottom of this file. */
   const lanterns = [];
   const lantern = (o, along) => {
-    const g = makePaperLantern({ ...o, lit: false });
+    const g = makePaperLantern({ ...o, lit: false, ctx });
     lanterns.push({ mat: g.userData.glow, along, at: 0 });
     return g;
   };
@@ -469,7 +469,7 @@ export function buildShotengai(ctx) {
         x: wEdge + 0.42, z: 19.2 + i * 0.62, y: g0(19.2), r: 0.24, flower: true, seed: 410 + i, n: 5,
       }));
     }
-    ctx.add(makeShopFlag({ x: wEdge + 0.5, z: 21.6, y: g0(21.6), variant: 1, ry: -Math.PI / 2 }));
+    ctx.add(makeShopFlag({ ctx, x: wEdge + 0.5, z: 21.6, y: g0(21.6), variant: 1, ry: -Math.PI / 2 }));
 
     // 古本: crates of books out front, and a bicycle against the shutter guide
     ctx.add(makeCrates({ x: wEdge + 0.5, z: 23.2, y: g0(23.2), n: 3, seed: 402, ry: -0.3 }));
@@ -504,7 +504,7 @@ export function buildShotengai(ctx) {
      * and a gachapon bank showing the street three blank coloured panels. */
     ctx.add(makeMenuBoard({ x: eEdge - 0.55, z: 18.0, y: g0(18.0), ry: -Math.PI / 2 - 0.25 }));
     ctx.add(makeCrates({ x: eEdge - 0.5, z: 21.4, y: g0(21.4), n: 4, seed: 405, ry: 0.25 }));
-    ctx.add(makeShopFlag({ x: eEdge - 0.5, z: 16.9, y: g0(16.9), variant: 3, ry: -Math.PI / 2 }));
+    ctx.add(makeShopFlag({ ctx, x: eEdge - 0.5, z: 16.9, y: g0(16.9), variant: 3, ry: -Math.PI / 2 }));
 
     // 和菓子: a freezer and a bench, the two things that make a shop inviting
     ctx.add(makeFreezer({ x: eEdge - 0.6, z: 23.6, y: g0(23.6), ry: -Math.PI / 2 }));
@@ -514,7 +514,7 @@ export function buildShotengai(ctx) {
     // 文具とゲーム: three gachapon machines, the loudest thing on the street
     ctx.add(makeGachapon({ x: eEdge - 0.5, z: 31.4, y: g0(31.4), ry: -Math.PI / 2, n: 3 }));
     ctx.collide(eEdge - 0.85, 30.7, eEdge - 0.15, 32.1, g0(31.4) + 1.5);
-    ctx.add(makeShopFlag({ x: eEdge - 0.5, z: 33.6, y: g0(33.6), variant: 2, ry: -Math.PI / 2 }));
+    ctx.add(makeShopFlag({ ctx, x: eEdge - 0.5, z: 33.6, y: g0(33.6), variant: 2, ry: -Math.PI / 2 }));
 
     /* Machines on the *west* side, in front of the laundry.  They were on the
      * east side at z 28 and 29.3, which is exactly where the lane out to the
@@ -525,7 +525,7 @@ export function buildShotengai(ctx) {
     ctx.add(makeVendBin({ x: wEdge + 0.6, z: 31.4, y: g0(31.4), ry: Math.PI / 2, color: PAL.bin }));
 
     // そうざい: a crate of empties and the flag that says what it sells
-    ctx.add(makeShopFlag({ x: wEdge + 0.5, z: 32.7, y: g0(32.7), variant: 3, ry: -Math.PI / 2 }));
+    ctx.add(makeShopFlag({ ctx, x: wEdge + 0.5, z: 32.7, y: g0(32.7), variant: 3, ry: -Math.PI / 2 }));
     ctx.add(makeCrates({ x: wEdge + 0.48, z: 34.4, y: g0(34.4), n: 3, seed: 407, ry: -0.18 }));
 
     // and the wind's work: paper against the kerbs

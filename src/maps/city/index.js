@@ -1256,7 +1256,9 @@ function buildColliders(world) {
    * One row per authored rectangle, and only when the audit asked for it.
    * See scripts/collider-audit.js.
    */
-  const diag = globalThis.__CITY_SCAN ? [] : null;
+  /* Rows are the per-rectangle dump. The scan itself does not need them,
+   * and stringifying thousands of them is what used to drown the audit. */
+  const diag = globalThis.__CITY_SCAN_ROWS ? [] : null;
 
   for (const c of world.colliders) {
     const y1 = c.top === undefined ? BOX_CEIL : c.top;

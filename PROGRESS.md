@@ -16985,3 +16985,50 @@ not catch (those have to be dropped, not the ceiling widened). Check
 leaf cells explode the authored collider count; FIT_TIGHT is the lever.
 Flight feel itself is not verifiable here.
 
+## Freestyle city: hug the leaves, strip leftover ornaments
+
+Follow-up on the thin-the-town pass. First headless load (high, city
+scan on) measured tree keep 0.384 (1641 to 630, 61.6 percent cut),
+shrubs 779 to 224, bamboo 17 to 4, no live petal meshes, world build
+7580 ms, fit 664 ms, 18105 tight boxes, 63 compact unmatched parked
+below ground. The stats dump included colliderFit.rows and truncated
+the log before phantom, holes and the flight-line probes, so those
+numbers were not yet evidence. The school camera was also pointed at
+the south fence (z -41) instead of the west pedestrian gate.
+
+WHAT CHANGED this round.
+
+Leaf cells. collideLeaves now rasterises each blob onto every 0.55 m
+cell it overlaps and writes the intersection, not the blob AABB parked
+on the centre cell. A 1.2 m lump no longer writes a 2.4 m wall of air
+in the corners. Same function for sakura, grove, cedar, shrubs, bamboo.
+
+Shop ornaments. makeProduceStack and makeMenuBoard go through
+skipClutter, so the trestles and chalk boards that sat in the
+shotengai, approach and north-block pavements are gone. Freezers,
+gachapon, vending, bike racks, benches, hanging cloth and lanterns
+stay: those are splits.
+
+Lanterns and flags. Hung paper lanterns sit more than a metre off the
+ground, so the cover pass never saw them. makePaperLantern writes a
+tight cylinder on the paper body when given ctx (shotengai wrapper and
+matsuri strings). makeShopFlag writes a pole plus a cloth slab: a pole
+and a plane fail COVER_MIN_FILL, which is how a flag you can see became
+air.
+
+Audit dump. fit.rows only fills when __CITY_SCAN_ROWS is set. The scan
+still runs under __CITY_SCAN. collider-audit.js no longer has to
+stringify thousands of rectangles to print phantom and holes.
+
+npm run verify was NOT run. City map, not the plant. Cheap check this
+turn: node --check on every edited file. collider-audit.js and a
+targeted shots.js pass (school gate, canal undercroft, torii, probes)
+run after this commit.
+
+Possible effect if this breaks something: more leaf cells than 18105
+because a blob now occupies every cell it overlaps, not one. That is
+the cost of hugging. If holes_max climbs, leftover ornament colliders
+have to drop, not the ceiling. Lantern boxes that miss the drawing
+would add phantom: they are sized to the paper body (r and 2.2 r of
+drop), not the wire.
+

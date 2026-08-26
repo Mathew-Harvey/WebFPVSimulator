@@ -698,7 +698,7 @@ function buildLighting(ctx, Y, stage, rng) {
   wires.forEach((g) => g.dispose());
   for (const l of lanterns) {
     ctx.add(makePaperLantern({
-      x: l.p.x, y: l.p.y - 0.16, z: l.p.z, variant: l.variant, r: 0.17, drop: 0.26, lit: false,
+      x: l.p.x, y: l.p.y - 0.16, z: l.p.z, variant: l.variant, r: 0.17, drop: 0.26, lit: false, ctx,
     }));
   }
 

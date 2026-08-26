@@ -1298,7 +1298,7 @@ function buildCafe(ctx, rng, out) {
     ctx.add(cyl(0.05, 0.06, 0.6, 7, m.metalDark, lx, ly + 0.3, lz));
     ctx.collide(lx - 0.2, lz - 0.2, lx + 0.2, lz + 0.2, ly + 1.7);
   }
-  ctx.add(makeShopFlag({ x: V.x - 5.2, z: V.z + 2.6, y: FY, ry: -0.2, variant: 1 }));
+  ctx.add(makeShopFlag({ ctx, x: V.x - 5.2, z: V.z + 2.6, y: FY, ry: -0.2, variant: 1 }));
   ctx.add(makeUmbrellaStand({ x: V.x + 4.3, z: V.z + D / 2 + 1.2, y: FY, ry: Math.PI }));
   for (const [px, pz, r] of [[V.x - 5.1, V.z + 4.0, 0.26], [V.x - 5.3, V.z + 3.1, 0.22]]) {
     ctx.add(makePlanter({ x: px, z: pz, y: ctx.groundAt(px, pz), r, flower: true, seed: 9951 + r * 10, n: 5 }));

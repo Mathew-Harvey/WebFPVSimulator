@@ -47,83 +47,28 @@ export function thinSpots(spots, keep, salt = 1) {
 }
 
 /*
- * One collider per occupied leaf cell, not one AABB around the tree.
+ * One collider per leaf blob, not one AABB around the tree and not a
+ * flood of occupancy cells.
  *
- * The old canopy box was the axis aligned hull of every blob, empty
- * corners included: a 4 m cube of air a pilot met as an invisible
- * trunk. Parking the whole blob on the cell of its centre did the
- * same at smaller scale: a 1.2 m lump wrote a 2.4 m box. Each blob
- * is rasterised onto the 0.55 m grid and each cell keeps only the
- * intersection, so the solid volume is the leaves and the air
- * between them is a gap.
+ * The old canopy box was the hull of every blob, empty corners included:
+ * a 4 m cube of air a pilot met as an invisible trunk. Rasterising each
+ * blob onto a 0.55 m grid then wrote hundreds of thousands of boxes and
+ * a 25 s load, which an average machine cannot hold. The blob's own
+ * box is the drawing: an icosahedron or a cone already has an AABB, and
+ * that is the contact volume. skipFit so a 4 m 御神木 blob is not slab
+ * cut against a neighbouring wall.
  */
-const LEAF_CELL = 0.55;
-const LEAF_MIN = 0.04;
-
 function collideLeaves(ctx, parts) {
   if (!parts.length) return 0;
-  const cells = new Map();
-  const cell = LEAF_CELL;
-  const min = LEAF_MIN;
   for (let i = 0; i < parts.length; i += 1) {
     const p = parts[i];
     const rz = p.rz ?? p.rx;
-    const x0 = p.x - p.rx;
-    const x1 = p.x + p.rx;
-    const y0 = p.y - p.ry;
-    const y1 = p.y + p.ry;
-    const z0 = p.z - rz;
-    const z1 = p.z + rz;
-    const ix0 = Math.floor(x0 / cell);
-    const ix1 = Math.floor((x1 - 1e-9) / cell);
-    const iy0 = Math.floor(y0 / cell);
-    const iy1 = Math.floor((y1 - 1e-9) / cell);
-    const iz0 = Math.floor(z0 / cell);
-    const iz1 = Math.floor((z1 - 1e-9) / cell);
-    for (let ix = ix0; ix <= ix1; ix += 1) {
-      const cx0 = ix * cell;
-      const cx1 = cx0 + cell;
-      const bx0 = x0 > cx0 ? x0 : cx0;
-      const bx1 = x1 < cx1 ? x1 : cx1;
-      if (bx1 - bx0 < min) continue;
-      for (let iy = iy0; iy <= iy1; iy += 1) {
-        const cy0 = iy * cell;
-        const cy1 = cy0 + cell;
-        const by0 = y0 > cy0 ? y0 : cy0;
-        const by1 = y1 < cy1 ? y1 : cy1;
-        if (by1 - by0 < min) continue;
-        for (let iz = iz0; iz <= iz1; iz += 1) {
-          const cz0 = iz * cell;
-          const cz1 = cz0 + cell;
-          const bz0 = z0 > cz0 ? z0 : cz0;
-          const bz1 = z1 < cz1 ? z1 : cz1;
-          if (bz1 - bz0 < min) continue;
-          const key = `${ix},${iy},${iz}`;
-          let c = cells.get(key);
-          if (!c) {
-            c = {
-              x0: Infinity, x1: -Infinity,
-              y0: Infinity, y1: -Infinity,
-              z0: Infinity, z1: -Infinity,
-            };
-            cells.set(key, c);
-          }
-          if (bx0 < c.x0) c.x0 = bx0;
-          if (bx1 > c.x1) c.x1 = bx1;
-          if (by0 < c.y0) c.y0 = by0;
-          if (by1 > c.y1) c.y1 = by1;
-          if (bz0 < c.z0) c.z0 = bz0;
-          if (bz1 > c.z1) c.z1 = bz1;
-        }
-      }
-    }
+    ctx.collide(
+      p.x - p.rx, p.z - rz, p.x + p.rx, p.z + rz,
+      p.y + p.ry, p.y - p.ry, true,
+    );
   }
-  let n = 0;
-  cells.forEach((c) => {
-    ctx.collide(c.x0, c.z0, c.x1, c.z1, c.y1, c.y0);
-    n += 1;
-  });
-  return n;
+  return parts.length;
 }
 
 /* ------------------------------------------------------------------ *
@@ -273,7 +218,7 @@ export function buildSakura(ctx, spots) {
       ));
     }
 
-    /* Trunk is the stem. Canopy is the blobs, one cell per cluster, so
+    /* Trunk is the stem. Canopy is the blobs, one box per blob, so
      * the air in the corners of the old AABB is a gap again. */
     if (spot.collide !== false) {
       const mx = (x + topX) * 0.5;
@@ -869,6 +814,7 @@ export function buildBamboo(ctx, clumps) {
       leafGeo, cel({ color: i ? PAL.bambooDeep : 0xa6c078, bands: 3, tint: 0x5b6f8c }), list.length);
     list.forEach((mx, k) => inst.setMatrixAt(k, mx));
     inst.castShadow = true;
+    inst.name = 'bambooCanopy' + i;
     ctx.add(inst);
   });
   // culmGeo / nodeGeo / leafGeo belong to the instanced meshes; not disposable

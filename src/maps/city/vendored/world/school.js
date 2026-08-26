@@ -1221,6 +1221,25 @@ function buildPlayground(ctx, Y, rng) {
     goal.position.set(gx, Y + 0.06, gz);
     goal.rotation.y = ry;
     g.add(goal);
+    /* Posts and crossbar, not the mouth. A baked frame AABB is a wall
+     * across the one gap a quad wants. The net is air. */
+    const gy = Y + 0.06;
+    const pr = 0.08;
+    const ca = Math.cos(ry);
+    const sa = Math.sin(ry);
+    for (const side of [-1, 1]) {
+      const lx = (side * GW) / 2;
+      const px = gx + ca * lx;
+      const pz = gz - sa * lx;
+      ctx.collide(px - pr, pz - pr, px + pr, pz + pr, gy + GH);
+      const bx = gx + ca * lx - sa * 0.5;
+      const bz = gz - sa * lx - ca * 0.5;
+      ctx.collide(bx - pr, bz - pr, bx + pr, bz + pr, gy + GH * 0.8);
+    }
+    const half = GW / 2 + pr;
+    const wx = Math.abs(ca) * half + Math.abs(sa) * pr;
+    const wz = Math.abs(sa) * half + Math.abs(ca) * pr;
+    ctx.collide(gx - wx, gz - wz, gx + wx, gz + wz, gy + GH + pr, gy + GH - pr, true);
   }
 
   /* 百葉箱 -- the louvred weather box on legs, and the equipment left out.

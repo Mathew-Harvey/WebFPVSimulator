@@ -569,10 +569,12 @@ const COVER_MAX_LIFT = 1.0;
  * status quo is better than a wall across a gap the pilot can see through.
  */
 const COVER_MIN_FILL = 0.4;
-/* Foliage and ground decoration, excluded by name. Tree leaves are
- * collided as one box per occupied cell in trees.js. This skip stops
- * every blossom instance becoming a wall of its own. */
-const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter/i;
+/* Foliage, ground decoration, and see-through frames, excluded by
+ * name. Tree leaves are collided as one box per blob in trees.js.
+ * A torii and a 渡り廊下 bake posts and lintel into one mesh whose
+ * AABB is a wall across the opening; COVER_MIN_FILL cannot save
+ * them because that AABB is the fill. Authored posts and beams stay. */
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink/i;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.
@@ -1280,7 +1282,8 @@ function buildColliders(world) {
     let fz1 = c.z1;
     let fy0 = y0;
     let fy1 = y1;
-    const tight = (c.x1 - c.x0) <= FIT_TIGHT && (c.z1 - c.z0) <= FIT_TIGHT;
+    const tight = c.skipFit === true
+      || ((c.x1 - c.x0) <= FIT_TIGHT && (c.z1 - c.z0) <= FIT_TIGHT);
     const pieces = tight ? null : fitRect(c, y0, y1, boxes, grid, floorAt, scratch);
     if (tight) {
       fitStats.tight += 1;
@@ -1396,9 +1399,11 @@ function buildColliders(world) {
    * hills, roads and the lake by construction, and what is left is furniture,
    * for which its own bounding box IS a fair contact volume.
    *
- * Foliage is collided as leaf clusters in trees.js, not as a box per
- * blossom blob. The cover pass still skips named foliage so canopy
- * instances do not become walls. The tree generators own the mass.
+ * Foliage is collided as one box per leaf blob in trees.js. The
+ * cover pass still skips named foliage so canopy instances do not
+ * become walls, and skips named frames (torii, schoolLink) whose
+ * baked AABB is a wall across a gap the pilot can see. The tree
+ * generators own the mass.
    */
   for (const child of world.root.children) {
     const b = objectExtent(child);

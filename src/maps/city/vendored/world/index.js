@@ -100,11 +100,12 @@ export function buildWorld(scene, { bake = true } = {}) {
      * parapet is the case: it has to stop a walker on the deck and must not be a
      * wall across the shop doorway five metres below it.  Leave it undefined and
      * the behaviour is exactly what it always was. */
-    collide: (x0, z0, x1, z1, top, bottom) => {
+    collide: (x0, z0, x1, z1, top, bottom, skipFit) => {
       colliders.push({
         x0: Math.min(x0, x1), x1: Math.max(x0, x1),
         z0: Math.min(z0, z1), z1: Math.max(z0, z1),
         top, bottom,
+        skipFit: skipFit === true,
       });
     },
     platform: (p) => platforms.push(p),

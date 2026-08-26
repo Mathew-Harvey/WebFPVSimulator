@@ -17032,3 +17032,39 @@ have to drop, not the ceiling. Lantern boxes that miss the drawing
 would add phantom: they are sized to the paper body (r and 2.2 r of
 drop), not the wire.
 
+## Freestyle city: one box per leaf, open the torii, drop canal blossom
+
+The occupancy flood in collideLeaves was a miss. Headless high scan after
+the last commit measured tight 458876, colliders.count 462154, world
+build 25082 ms, city ready 30695 ms. That will not run on an average
+machine. The 0.55 m raster wrote a cell for every overlap instead of
+one box per blob. Reverted to the blob AABB, with skipFit so a 4 m
+御神木 lump is not slab cut against a neighbouring wall.
+
+The outer torii at (-27.9, 1.8, 19.9) was a HIT: a 4.66 x 3.78 x 0.53
+box filling the opening. Cause: bake() merged posts and kasagi into one
+mesh whose AABB IS the gate, so COVER_MIN_FILL saw ~100 percent fill
+and the cover pass walled the gap. Fix: name the group torii, bake
+posts / nuki / lintel apart, skip the cover pass on torii and
+schoolLink (the 渡り廊下 is the same merged-mesh trap), and author a
+thin nuki and lintel so the line is under the 貫, not through a wall.
+
+Canal water still had 290 pink cards riding the surface. Those are
+gone. Lake surface blossom was already off.
+
+Football goals on the school ground now collide posts and crossbar,
+not the mouth. Playground is one large group so the cover pass never
+saw them, which left the frame as air.
+
+Cheap check this turn: node --check on trees.js, index.js (city and
+world), shrine.js, canal.js, school.js. collider-audit and flight-line
+probes run after this commit. npm run verify was NOT run: city map,
+not the plant.
+
+Possible effect if this breaks something: per-blob AABBs still have
+sphere-corner air, which is the remaining gap between "hug the leaves"
+and a triangle mesh. If phantom climbs, it is those corners, not a
+reason to rasterise again. If the torii nuki is too fat, shrink the
+authored slab, do not put the cover pass back on the group.
+
+

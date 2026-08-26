@@ -16905,3 +16905,45 @@ to 3.5 m". Wrong. The clearance went 1.0 to 1.5 AND the pad added 1.5, so
 it is 2.0 m to 4.5 m, the same as a flag's, which is what "function the
 same as a flag" asked for. Measured on the built course, both markers
 report clearW 4.50.
+
+## The next flag glows on the flag, and the scoring square is not drawn
+
+Owner's report: no gate box around a flag that is next on the track, but
+that box is still the volume you fly through; the next flag itself should
+glow green, brightest on the pole, fading out away from the flag, with
+the logo and the print still readable.
+
+WHAT WAS DRAWN. virtualGate had become a scoring-square illustration: a
+wash plane the width of the aperture (4.5 m on a stock flag), a bar and
+aura on the OUTER edge, and the wash sat on the default layer so the
+outline prepass inked it as a black wireframe. That is the green prism
+and the wireframe box in the report. A previous round had moved the
+bright edge away from the pole because an earlier note said "darker near
+the pole, lighter towards the edge"; the owner's picture of what they
+meant is the opposite, light on the mast fading across the cloth.
+
+WHAT CHANGED. Scoring is untouched. race.js is untouched. The virtual
+aperture is still the same square with its inner edge on the pole. Only
+the paint moved:
+
+  no bar, no aura box, no wash the size of the square
+  additive mast core and halo, on the pole, layer 1 so they take no ink
+  two additive washes the SIZE OF THE FLAG (~1.3 m by 2.5 m, not 4.5 m
+    square), peaking at the pole and falling to nothing before their own
+    edge: one in the sail's plane, one facing travel
+  the in-frame HUD lock box is off for virtual markers (it was the same
+    scoring square drawn on the display); the off-screen chevron stays
+  aim.centre sits on the flag, not on the hole beside it
+
+CHECKS still to run this turn: shots.js against a real authored course
+with flags, looking at a next flag, a dark flag, and a PVC gate, plus
+node --check. npm run verify will not run: render and HUD only, no
+physics, no module, no build file, and check 13 loads only the harness
+page.
+
+Possible effect if this breaks something: custom courses with flag or
+cone markers. If a next flag has no light, or glows as a rectangle again,
+or the print washes out, this commit is the one. Gates are visual only
+for PVC openings; their ring, pane and glow did not move. Scoring cannot
+have moved, race.js was not touched.
+

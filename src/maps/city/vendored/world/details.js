@@ -6,10 +6,10 @@ import {
 } from '../core/textures.js';
 import { box } from '../core/util.js';
 import { hullOutline } from '../core/outline.js';
-import { groundY, WALK_H } from './street.js';
+import { groundY } from './street.js';
 import {
-  makeNoticeBoard, makeCrow, makeCatBox, makeLoosePaper, makeUmbrellaStand,
-  makeBucket, makeCrates, makeSignPost, makeBicycle, makePetBowl,
+  makeNoticeBoard, makeCrow, makeLoosePaper, makeUmbrellaStand,
+  makeCrates, makeSignPost,
 } from './props.js';
 
 /* ------------------------------------------------------------------ *
@@ -155,6 +155,19 @@ export function buildDetails(ctx) {
       g.rotation.y = o.ry ?? 0;
       g.userData.planetRigid = true;
       ctx.add(g);
+      /* Thin slab on the hanging cloth. A plane has no thickness, so the
+       * cover pass never sees it, and a doorway curtain you can split is
+       * the whole point of hanging it. */
+      {
+        const hw = o.w * 0.5;
+        const t = 0.05;
+        const ry = o.ry ?? 0;
+        const c = Math.cos(ry);
+        const s = Math.sin(ry);
+        const wx = Math.abs(c) * hw + Math.abs(s) * t;
+        const wz = Math.abs(s) * hw + Math.abs(c) * t;
+        ctx.collide(o.x - wx, o.z - wz, o.x + wx, o.z + wz, o.y, o.y - o.h);
+      }
       cloths.push({ obj: piv, base: 0, amp: o.amp ?? 0.09, rate: o.rate ?? 0.7, phase: o.phase ?? 0 });
       return g;
     };
@@ -189,22 +202,8 @@ export function buildDetails(ctx) {
    * Odds and ends, each in a place the eye already goes.
    * ------------------------------------------------------------------ */
   {
-    // a page off the school notice board, blown across the crossing
-    makeLoosePaper(ctx, [
-      { x: -1.4, z: 1.9, y: 0.34, ry: 0.9 },
-      { x: -0.6, z: -2.2, y: 0.34, ry: -0.5 },
-      { x: 2.2, z: 6.4, y: groundY(6.4), ry: 1.4 },
-    ]);
-    // a cat asleep in a box on the shady side of the crossing shop
-    ctx.add(makeCatBox({ x: 4.3, z: 4.0, y: groundY(4.0) + WALK_H, ry: -0.8, cat: 0xc7b49c }));
-    ctx.add(makePetBowl({ x: 4.9, z: 3.4, y: groundY(3.4) + WALK_H, ry: 0.5 }));
-    // a bucket left out at the shrine steps, and a bike dumped at the alley
-    ctx.add(makeBucket({ x: -26.3, z: 18.9, y: groundY(18.9), ry: 0.4, tilt: 0.05 }));
-    ctx.add(makeBicycle({
-      x: -26.85, z: 6.4, y: ctx.groundAt(-26.85, 6.4) + 0.04,
-      ry: Math.PI / 2 + 0.15, lean: 0.08, color: 0x4f8f6a,
-    }));
-    // and the 徐行 plate on the near-side lineside path, facing the walk
+    /* Odds and ends that used to sit in the street: paper, a cat in a box,
+     * a bucket, a dumped bike. They closed the gaps. The 徐行 plate stays. */
     ctx.add(makeSignPost({
       x: -9.8, z: 5.5, y: 0, ry: Math.PI, h: 1.7, postMat: m.metal,
       plates: [{ map: warningPlate(0), w: 0.3, h: 0.6, y: 1.35 }],

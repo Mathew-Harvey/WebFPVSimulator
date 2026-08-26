@@ -10,8 +10,7 @@ import { buildRailway } from './railway.js';
 import { buildTrain } from './train.js';
 import { buildShop } from './shop.js';
 import { makeHouse, makeWall, makeTimberFence, makeBlockFence } from './buildings.js';
-import { buildSakura, buildShrubs, buildGrove, buildBamboo, buildCedar } from './trees.js';
-import { buildPetals, buildFallenPatches } from './petals.js';
+import { buildSakura, buildShrubs, buildGrove, buildBamboo, buildCedar, thinSpots, TREE_KEEP, SHRUB_KEEP, BAMBOO_KEEP } from './trees.js';
 import { buildPlanet, bakeToPlanet, wrapX, reliefAt, CIRCUMFERENCE } from './planet.js';
 /* The hills are a *third* ground surface, over both the graded terrain grid and
  * the planet sphere, and they are added to the height queries here rather than
@@ -57,9 +56,8 @@ import { buildNanachome } from './nanachome.js';
 import { buildTraffic } from './traffic.js';
 import { buildDetails } from './details.js';
 import {
-  makePole, makeWires, makeKeiTruck, makeBicycle, makeMirror, makePostBox,
-  makeShrine, makeCat, makeCone, makeBarrier, makeGuardrail, makePlanter,
-  makeUmbrella, makeBins, makeCrates,
+  makePole, makeWires, makeKeiTruck, makeMirror, makePostBox,
+  makeShrine, makeBarrier, makeGuardrail, makeBins,
 } from './props.js';
 
 /* ------------------------------------------------------------------ *
@@ -328,13 +326,29 @@ export function buildWorld(scene, { bake = true } = {}) {
   for (const d of districts) if (d.update) ctx.update(d.update);
   const extraSakura = districts.flatMap((d) => d.sakura ?? []);
   const extraShrubs = districts.flatMap((d) => d.shrubs ?? []);
-  buildGrove(ctx, districts.flatMap((d) => d.grove ?? []));
+  const groveAll = districts.flatMap((d) => d.grove ?? []);
+  const cedarAll = districts.flatMap((d) => d.cedar ?? []);
+  const bambooAll = districts.flatMap((d) => d.bamboo ?? []);
+  const planting = {
+    groveBefore: groveAll.length,
+    cedarBefore: cedarAll.length,
+    bambooBefore: bambooAll.length,
+    shrubsBefore: extraShrubs.length,
+  };
+  const groveKept = thinSpots(groveAll, TREE_KEEP, 11);
+  const cedarKept = thinSpots(cedarAll, TREE_KEEP, 13);
+  const bambooKept = thinSpots(bambooAll, BAMBOO_KEEP, 17);
+  planting.groveAfter = groveKept.length;
+  planting.cedarAfter = cedarKept.length;
+  planting.bambooAfter = bambooKept.length;
+  buildGrove(ctx, groveKept);
   /* The 杉林 merges the same way the grove does -- one baked stem mesh and three
    * instanced crowns for every plantation in the world -- so it has to run here
    * and not inside `hills.js`, which is also where its spots come from. */
-  buildCedar(ctx, districts.flatMap((d) => d.cedar ?? []));
-  buildBamboo(ctx, districts.flatMap((d) => d.bamboo ?? []));
-  buildFallenPatches(ctx, districts.flatMap((d) => d.petals ?? []));
+  buildCedar(ctx, cedarKept);
+  buildBamboo(ctx, bambooKept);
+  /* Fallen blossom is off. A freestyle line does not want a carpet of cards
+   * in every gap, and the live field was 980 of them in the corridor. */
 
   /* The distant town, hills and far tree line are gone: on a 160 m planet
    * anything that used to sit 60-330 m away is now over the horizon or on
@@ -436,11 +450,6 @@ export function buildWorld(scene, { bake = true } = {}) {
     shed.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     ctx.add(shed);
     ctx.collide(-13.3, 5.95, -10.5, 8.05, 2.1);
-
-    ctx.add(makeCrates({ x: -9.6, z: 5.0, y: 0, n: 3, seed: 71, ry: 0.2 }));
-    ctx.add(makePlanter({ x: -7.4, z: 4.9, y: 0, r: 0.24, flower: true, seed: 72, n: 5 }));
-    ctx.add(makePlanter({ x: -8.3, z: 5.5, y: 0, r: 0.2, flower: false, seed: 73, n: 4 }));
-    ctx.add(makeBicycle({ x: -13.9, z: 4.9, y: 0, ry: -0.1, lean: 0.06, color: 0x8f6fb5 }));
   }
 
   /* ------------------------------ cherry trees ------------------------------ */
@@ -451,9 +460,9 @@ export function buildWorld(scene, { bake = true } = {}) {
     // 0.7 m further back than it was: at z = 5.1 its trunk left only 0.66 m
     // between itself and the lineside fence, and that gap is the whole route
     // west to the shrine.  At 9 m from the opening camera the move is invisible.
-    { x: -7.1, z: 5.8, scale: 1.22, seed: 101, lean: 0.13, leanDir: 1.9 },
-    { x: 6.3, z: 2.5, scale: 1.06, seed: 102, lean: 0.1, leanDir: 4.4 },
-    { x: -5.9, z: 17.9, scale: 1.16, seed: 128, lean: 0.14, leanDir: 1.6 },
+    { x: -7.1, z: 5.8, scale: 1.22, seed: 101, lean: 0.13, leanDir: 1.9, keep: true },
+    { x: 6.3, z: 2.5, scale: 1.06, seed: 102, lean: 0.1, leanDir: 4.4, keep: true },
+    { x: -5.9, z: 17.9, scale: 1.16, seed: 128, lean: 0.14, leanDir: 1.6, keep: true },
     { x: -5.6, z: 25.4, scale: 1.04, seed: 129, lean: 0.1, leanDir: 2.1 },
     // lineside, near side -- the train comes out from behind these
     { x: -12.5, z: 3.9, scale: 1.0, seed: 103, lean: 0.08 },
@@ -506,10 +515,13 @@ export function buildWorld(scene, { bake = true } = {}) {
   ]
     .map((s) => ({ ...s, y: groundY(s.z) }))
     .concat(extraSakura);
-  buildSakura(ctx, sakuraSpots);
+  planting.sakuraBefore = sakuraSpots.length;
+  const sakuraKept = thinSpots(sakuraSpots, TREE_KEEP, 7);
+  planting.sakuraAfter = sakuraKept.length;
+  buildSakura(ctx, sakuraKept);
 
   /* -------------------------------- shrubbery -------------------------------- */
-  buildShrubs(ctx, [
+  const shrubSpots = [
     { x: -6.4, z: 6.6, r: 0.5, count: 4, spread: 1.2, seed: 201, y: groundY(6.6) },
     { x: -5.7, z: 12.4, r: 0.45, count: 3, spread: 1.0, seed: 202, y: groundY(12.4) },
     { x: -15.5, z: 4.6, r: 0.5, count: 4, spread: 1.6, seed: 211, y: 0 },
@@ -522,7 +534,11 @@ export function buildWorld(scene, { bake = true } = {}) {
     { x: 30.0, z: -9.0, r: 0.6, count: 5, spread: 2.2, seed: 208, y: 0 },
     { x: -16.0, z: 6.0, r: 0.55, count: 4, spread: 1.8, seed: 209, y: 0 },
     { x: 24.0, z: 6.5, r: 0.55, count: 4, spread: 1.8, seed: 210, y: 0 },
-  ].concat(extraShrubs));
+  ].concat(extraShrubs);
+  planting.shrubsBefore = shrubSpots.length;
+  const shrubKept = thinSpots(shrubSpots, SHRUB_KEEP, 19);
+  planting.shrubsAfter = shrubKept.length;
+  buildShrubs(ctx, shrubKept);
 
   /* ------------------------------ utility poles ------------------------------ */
   const poleDefs = [
@@ -605,10 +621,7 @@ export function buildWorld(scene, { bake = true } = {}) {
   ctx.collide(3.3, 4.25, 3.95, 4.85, walkY(4.55) + 1.3);
 
   // cones and a barrier where the kerb is broken up
-  ctx.add(makeCone({ x: 2.62, z: 4.15, y: groundY(4.15), ry: 0.4 }));
-  ctx.add(makeCone({ x: 2.42, z: 5.05, y: groundY(5.05), ry: -0.7, tilt: 0.06 }));
   ctx.add(makeBarrier({ x: 2.62, z: 6.2, y: groundY(6.2), ry: 0.06, len: 1.7 }));
-  ctx.add(makeCone({ x: -2.3, z: -4.3, y: groundY(-4.3), ry: 0.2 }));
 
   // The kei truck parks beyond the crossing, on the left-hand kerb.  Close to
   // the camera it masked the railway; from there it instead fills the far side
@@ -617,22 +630,13 @@ export function buildWorld(scene, { bake = true } = {}) {
   ctx.add(truck);
   ctx.collide(-3.0, -9.2, -1.05, -5.6, groundY(-7.4) + 1.9);
 
-  /* Bicycles -- the first one is the near-foreground anchor on the left kerb.
-   *
-   * All four lie *along* the footway.  They used to be turned across it, which
-   * on a 1.55 m walk puts a 1.73 m wheelbase half in the garden fence behind
-   * and half over the kerb in front -- so the back wheel was inside the render
-   * and the front wheel hung 0.14 m above the carriageway.  The last one is
-   * also 0.9 m clear of the alley arch's north post, which it used to share. */
-  ctx.add(makeBicycle({ x: -4.3, z: 8.4, y: walkY(8.4), ry: Math.PI / 2 + 0.08, lean: -0.10, color: 0x3f6f9c }));
-  ctx.add(makeBicycle({ x: -4.3, z: 12.2, y: walkY(12.2), ry: -Math.PI / 2 + 0.06, lean: 0.08, color: 0xd8a03c }));
-  ctx.add(makeBicycle({ x: 4.3, z: 13.4, y: walkY(13.4), ry: Math.PI / 2 + 0.06, lean: 0.08, color: 0x9c5a4a }));
-  ctx.add(makeBicycle({ x: 5.7, z: 15.7, y: walkY(15.7), ry: -Math.PI / 2 - 0.14, lean: 0.07, color: 0x4f8f6a }));
+  /* Bicycles, planters, crates and the cat used to dress the kerb. They
+   * closed the gaps a quad flies. The wall stays: it is a line. */
+  ctx.add(makeWall({ x: -5.05, z: 8.9, len: 3.4, axis: 'z', h: 0.62, fence: false, y: groundY(8.9) }));
+  ctx.collide(-5.3, 7.2, -4.8, 10.6, groundY(8.9) + 0.7);
 
-  // a leaning vinyl umbrella and the rubbish net
-  ctx.add(makeUmbrella({ x: -4.62, z: 9.9, y: walkY(9.9), ry: 0.5 }));
+  // a rubbish net against the kerb: a real volume, not an ornament
   ctx.add(makeBins({ x: -4.65, z: 15.0, y: walkY(15.0) - 0.02, ry: -Math.PI / 2 }));
-  ctx.add(makeCrates({ x: 5.55, z: 22.0, y: walkY(22.0), n: 3, seed: 41 }));
 
   // guardrails
   ctx.add(makeGuardrail({ x: 4.5, z: 15.4, y: walkY(15.4), ry: Math.PI / 2, len: 4.2 }));
@@ -641,51 +645,10 @@ export function buildWorld(scene, { bake = true } = {}) {
    * fenced-off carriageway rather than as a crossing. */
   ctx.add(makeGuardrail({ x: centerX(-16.4) - ROAD_HALF - 0.25, z: -16.4, y: groundY(-16.4), ry: Math.PI / 2, len: 6.2 }));
 
-  // planters, the small ones that make a street feel inhabited
-  const planterSpots = [
-    [-4.6, 7.9, 0.22, true], [-4.5, 8.6, 0.18, false], [-4.7, 12.6, 0.2, true],
-    [4.45, 14.5, 0.19, false], [-4.5, 22.0, 0.21, true], [4.4, 24.5, 0.2, true],
-    [-4.6, -8.5, 0.22, false], [5.2, -7.4, 0.2, true], [4.5, 30.0, 0.19, true],
-  ];
-  planterSpots.forEach(([x, z, r, flower], i) => {
-    ctx.add(makePlanter({ x, z, y: walkY(z), r, flower, seed: 300 + i, n: 4 }));
-  });
-
-  /* ---------------------------------- cat ----------------------------------
-   * The cat needs something to sit on, so it gets its own stretch of garden
-   * wall on the left kerb -- which doubles as a foreground edge for the shot. */
-  ctx.add(makeWall({ x: -5.05, z: 8.9, len: 3.4, axis: 'z', h: 0.62, fence: false, y: groundY(8.9) }));
-  ctx.collide(-5.3, 7.2, -4.8, 10.6, groundY(8.9) + 0.7);
-  const cat = makeCat({ x: -5.05, z: 8.3, y: groundY(8.3) + 0.7, ry: 1.35 });
-  ctx.add(cat);
-  {
-    const hit = box(0.8, 0.9, 0.9, flat({ color: 0xff0000, cache: false }), -5.05, groundY(8.3) + 1.05, 8.3);
-    hit.visible = false;
-    ctx.add(hit);
-    let stretch = 0;
-    let target = 0;
-    ctx.interact({
-      hitbox: hit,
-      label: 'ねこ  ·  say hello',
-      action: () => { target = 1; },
-    });
-    let t = 0;
-    ctx.update((dt) => {
-      t += dt;
-      stretch += (target - stretch) * (1 - Math.exp(-dt * 3.5));
-      if (stretch > 0.94) target = 0;
-      const head = cat.userData.head;
-      const tail = cat.userData.tail;
-      head.position.y = 0.38 + Math.sin(t * 1.6) * 0.006 + stretch * 0.07;
-      head.rotation.z = stretch * 0.3;
-      head.rotation.x = -stretch * 0.25;
-      tail.rotation.y = Math.sin(t * 0.9) * 0.22 + stretch * 0.5;
-      cat.userData.body.scale.y = 0.92 + Math.sin(t * 1.6) * 0.008;
-    });
-  }
+  /* The cat, the planters and the kerb bikes are gone. The wall is the line. */
 
   /* --------------------------------- petals --------------------------------- */
-  const petals = buildPetals(ctx);
+  const petals = { update() {}, meshes: [] };
 
   /* No outer boundary any more -- the world has no edge to fall off. */
 
@@ -751,6 +714,7 @@ export function buildWorld(scene, { bake = true } = {}) {
     crossing,
     shop,
     petals,
+    planting,
     planet,
     bakeStats,
     // the world wraps in x, so only latitude is bounded (short of the poles)

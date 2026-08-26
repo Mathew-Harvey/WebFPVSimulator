@@ -4,7 +4,7 @@ import { cel, flat } from '../core/toon.js';
 import { chainLinkTex, platePlate } from '../core/textures.js';
 import { box, cyl, bake, trs, rngKit, sagCurve } from '../core/util.js';
 import { hullOutline } from '../core/outline.js';
-import { makeBicycle } from './props.js';
+import { makeBicycle, skipClutter, strippedGroup } from './props.js';
 
 /* ------------------------------------------------------------------ *
  * Furniture for the residential blocks.
@@ -372,6 +372,7 @@ export function makeLockerBank(o = {}) {
  * round headlamp, the mirrors up on stalks, and the rear carrier.
  */
 export function makeScooter(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const inner = new THREE.Group();
@@ -593,6 +594,7 @@ export function makeScooter(o = {}) {
  * measurably draw-call bound, and a single flat green reads as moss.
  */
 export function makeKitchenGarden(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 131);
   const g = new THREE.Group();
@@ -731,6 +733,7 @@ export function makeKitchenGarden(o = {}) {
  * stands square, which is also why `lean` defaults to nothing.
  */
 export function makeKidBike(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const k = o.scale ?? 0.62;
@@ -786,6 +789,7 @@ export function makeKidBike(o = {}) {
  * draw, and the twist is what stops the row reading as a picket fence.
  */
 export function makeDryingRack(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 137);
   const g = new THREE.Group();
@@ -937,6 +941,7 @@ export function makeBallBox(o = {}) {
  * **+z**, so the stake plates face the approach.
  */
 export function makeWheelStops(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const n = o.n ?? 2;
@@ -1007,6 +1012,7 @@ export function makeWheelStops(o = {}) {
  * a metre of clearance that is not there.
  */
 export function makeGasMeter(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const W = 0.34, HH = 0.46, D = 0.2;
@@ -1095,6 +1101,7 @@ export function makeGasMeter(o = {}) {
  * is a paving block, and a box cannot have a recess cut into it.
  */
 export function makeWaterMeter(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const W = o.w ?? 0.32, D = o.d ?? 0.24;

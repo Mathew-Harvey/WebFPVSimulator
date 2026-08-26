@@ -381,7 +381,10 @@ export function buildSchool(ctx) {
    * the whole school the moment you step through the gate, so the west row
    * hugs the wall and skips the two bays either side of the opening. */
   [-44.4, -54.0, -58.0, -62.0].forEach((z, i) => {
-    sakura.push({ x: 12.4, z, y: Y, scale: 1.14 + (i % 2) * 0.1, seed: 620 + i, lean: 0.12, leanDir: 1.2 });
+    sakura.push({
+      x: 12.4, z, y: Y, scale: 1.14 + (i % 2) * 0.1, seed: 620 + i, lean: 0.12, leanDir: 1.2,
+      keep: i === 0,
+    });
   });
   // hard against the south wall, not in the path that squeezes past the block's
   // south end -- that path is the only way through to the playground

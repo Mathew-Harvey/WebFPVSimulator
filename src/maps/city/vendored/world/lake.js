@@ -892,7 +892,9 @@ export function buildLake(ctx) {
   const lilies = buildLilies(ctx, rng);
   const birds = buildBirds(ctx, rng);
   buildFlotsam(ctx, rng);
-  const petals = buildPetals(ctx, rng);
+  /* Surface blossom is off. A freestyle line over the lake does not want
+   * 620 cards on the water. */
+  const petals = 0;
   buildOutfall(ctx);
   /* Last, so its 130 boxes land at the end of a list that already has the reeds
    * standing in front of them. */

@@ -16905,3 +16905,83 @@ to 3.5 m". Wrong. The clearance went 1.0 to 1.5 AND the pad added 1.5, so
 it is 2.0 m to 4.5 m, the same as a flag's, which is what "function the
 same as a flag" asked for. Measured on the built course, both markers
 report clearW 4.50.
+
+## Freestyle city: thin the town, map collision to the drawing
+
+Owner ask: refine the freestyle city so the collision mesh matches the
+graphics, remove falling cherry blossom, cut dressing that closed
+flyable gaps, drop most furniture and ornaments, keep epic objects and
+real flight lines, thin trees by at least half, and map remaining tree
+collision to the leaves. The scene has to stay fun to fly and cheap
+enough for an average machine.
+
+WHAT CHANGED.
+
+Petals are off. world/index.js no longer builds the live field or the
+fallen patches (980 cards in the corridor). quality.js has petals:
+false on low, medium and high. lake.js no longer scatters 620 cards on
+the water. petals.js is out of the import graph, so MAP_MODULE_COUNT.city
+is 63 (was 64). Measured after load.
+
+Trees. TREE_KEEP 0.40, SHRUB_KEEP 0.30, BAMBOO_KEEP 0.40, a Knuth hash
+so a row thins evenly. Landmark spots keep: true (the three street
+cherries that frame the opening shot, the shrine 御神木, the cherry
+leaning over the terrace, the first school-gate cherry, the two
+overbridge near-foot cherries). Remaining canopies are NOT thinned in
+bake.js: their collision is authored per leaf cluster, and stripping
+blobs after that would put a wall where the drawing no longer is. Hill
+tufts, moss, rocks and lake reeds still thin.
+
+Leaf collision. collideLeaves clusters blobs or cedar cones onto a
+0.55 m grid and writes one box per occupied cell, plus a thin trunk.
+The old canopy AABB was the axis aligned hull of every blob, empty
+corners included: a 4 m cube of air a pilot met as an invisible trunk.
+The gap under the crown is a gap again. Bamboo had no collision at all
+after the first pass; culms now have a thin stem box and the leaf spray
+goes through the same cluster.
+
+Clutter. skipClutter in props.js returns an empty strippedClutter group
+unless keep: true, on bikes, cats, cones, planters, umbrellas, vend
+bins, aircon, laundry, cat boxes, hose boxes, flower beds, buckets,
+brooms, crates, ivy, doormats, taps, pots, mailboxes, delivery boxes,
+pet bowls, recycle boxes, and the matching streetprops (scooters, kid
+bikes, gardens, drying racks, wheel stops, meters). plots.js
+DRESS_CLUTTER is false. dressHousing keeps name plate, post box and a
+lit window. Kerb bikes, planters, crates and the cat are gone from
+world/index.js. Hanging noren and shop doorway curtains stay: they are
+a split, and they now have a 5 cm slab so a plane the cover pass could
+not see is actually hittable.
+
+Fit. FIT_TIGHT 2.4 skips the slab cut on boxes already that small, so
+thousands of leaf cells are not merged into fatter neighbours. Compact
+unmatched boxes (stripped dressing whose drawing is gone) park 1 mm
+below ground; they are not written as top === -1, because that slot is
+the two level-crossing booms.
+
+KEEPERS. Overbridge, tunnel, canal bridges, shotengai, school,
+shrine/torii, railway/train, onsen, library, poles/wires, parked cars,
+vending machines, benches, bike racks, sheds, hanging cloth, barriers,
+guardrails, playground, phone booth.
+
+WHAT WENT WRONG on the way. skipClutter as first written was a type
+list that never ran, because every maker already returned. The keep:
+true opt-in is the one that actually strips. Bamboo was left with no
+collision after the canopy AABB came out: a grove of sticks you flew
+through. MAP_MODULE_COUNT would have stayed 64 with petals.js unused
+and failed check 16. A comment edit in index.js briefly broke the
+COVER_SOFT regex (a space inside the opening /*); caught by node
+--check before commit.
+
+npm run verify was NOT run. This is the city map, not the plant:
+nothing in src/native, patches, vendor/betaflight, the input path or
+the Emscripten build is touched. Cheap checks this turn: node --check
+on every edited file. collider-audit.js and shots.js run after this
+commit.
+
+Possible effect if this breaks something: holes_max if stripped
+graphics still have leftover colliders the compact-unmatched path did
+not catch (those have to be dropped, not the ceiling widened). Check
+16 if the browser still fetches petals.js from somewhere. Load time if
+leaf cells explode the authored collider count; FIT_TIGHT is the lever.
+Flight feel itself is not verifiable here.
+

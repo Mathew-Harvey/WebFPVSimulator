@@ -37,6 +37,21 @@ function mats() {
   return M;
 }
 
+/*
+ * Freestyle strip. Ornaments that closed gaps a quad should fly: planters,
+ * crates, buckets, bikes against a wall, cones, laundry. Pass keep: true
+ * to opt one instance back in. Empty group so every call site still
+ * compiles and the cover pass sees no mesh, so no phantom box.
+ */
+export function skipClutter(o) {
+  return !o || o.keep !== true;
+}
+export function strippedGroup() {
+  const g = new THREE.Group();
+  g.name = 'strippedClutter';
+  return g;
+}
+
 /* ------------------------------- utility pole ------------------------------- */
 
 export function makePole(o = {}) {
@@ -418,6 +433,7 @@ export function bicycleGeometry() {
  * bicycle nose-up instead of leaning it over.
  */
 export function makeBicycle(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const geo = bicycleGeometry();
   const g = new THREE.Group();
@@ -596,6 +612,7 @@ export function makeShrine(o = {}) {
 /* ----------------------------------- cat ----------------------------------- */
 
 export function makeCat(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const g = new THREE.Group();
   g.userData.planetRigid = true;   // idle animation drives its head and tail
   const fur = cel({ color: PAL.cat, bands: 3, tint: 0x7a6f96 });
@@ -662,6 +679,7 @@ export function makeCat(o = {}) {
 /* ------------------------------ smaller props ------------------------------ */
 
 export function makeCone(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const orange = cel({ color: PAL.orange, bands: 3, tint: 0x8f6050 });
@@ -724,6 +742,7 @@ export function makeGuardrail(o = {}) {
 }
 
 export function makePlanter(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 3);
   const g = new THREE.Group();
@@ -756,6 +775,7 @@ export function makePlanter(o = {}) {
 }
 
 export function makeUmbrella(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const canopy = new THREE.Mesh(
@@ -1018,6 +1038,7 @@ export function makeSignPost(o = {}) {
 
 /** The wire recycling cage that stands beside every vending machine. */
 export function makeVendBin(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.22, 0.86, 10, 1, true),
@@ -1060,6 +1081,7 @@ export function makeVendBin(o = {}) {
  *    unit is a box hanging in the air with its own shadow on the wall behind it.
  */
 export function makeAircon(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const w = o.w ?? 0.82;
@@ -1102,6 +1124,7 @@ export function makeAircon(o = {}) {
 
 /** Laundry pole with washing on it -- the fastest way to say "lived in". */
 export function makeLaundryPole(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 31);
   const g = new THREE.Group();
@@ -1205,6 +1228,7 @@ export function makeCrow(o = {}) {
 
 /** A cardboard box someone left out, with a cat asleep in it. */
 export function makeCatBox(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const g = new THREE.Group();
   const card = cel({ color: 0xc9a878, bands: 3, tint: 0x6f6790 });
   const cardIn = cel({ color: 0xb08f62, bands: 3, tint: 0x6a6288 });
@@ -1248,6 +1272,7 @@ export function makeCatBox(o = {}) {
 
 /** Loose printed sheets, blown off a board and pinned against a kerb. */
 export function makeLoosePaper(ctx, spots) {
+  return null;
   const geo = new THREE.PlaneGeometry(0.21, 0.29);
   geo.rotateX(-Math.PI / 2);
   const mat = flat({ color: 0xfbfaf4, map: paperSheet(), cache: false });
@@ -1267,6 +1292,7 @@ export function makeLoosePaper(ctx, spots) {
 
 /** Umbrella stand with a few clear vinyl umbrellas left to dry. */
 export function makeUmbrellaStand(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 51);
   const g = new THREE.Group();
@@ -1302,6 +1328,7 @@ export function makeUmbrellaStand(o = {}) {
 
 /** Wall-mounted fire hose box, red and small and everywhere in Japan. */
 export function makeHoseBox(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const red = cel({ color: PAL.redDeep, bands: 3, tint: 0x7a4060 });
@@ -1317,6 +1344,7 @@ export function makeHoseBox(o = {}) {
 
 /** Planting bed with a timber edge, soil and a scatter of flowers. */
 export function makeFlowerBed(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 61);
   const g = new THREE.Group();
@@ -1358,6 +1386,7 @@ export function makeFlowerBed(o = {}) {
 
 /** Galvanised bucket, on its own or upended. */
 export function makeBucket(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.24, 10, 1, true),
@@ -1384,6 +1413,7 @@ export function makeBucket(o = {}) {
 
 /** Bamboo broom leaning where it was left. */
 export function makeBroom(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const handle = cyl(0.022, 0.026, 1.5, 6, cel({ color: 0xc2a874, bands: 3, tint: 0x6f6790 }), 0, 0.75, 0);
@@ -1407,6 +1437,7 @@ export function makeBroom(o = {}) {
 
 /** A stack of milk crates, and the bottle box outside a bathhouse. */
 export function makeMilkCrate(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const g = new THREE.Group();
   const crate = cel({ color: o.color ?? 0xd8d4dc, bands: 3, tint: 0x6a6288 });
   const n = o.n ?? 2;
@@ -1444,6 +1475,7 @@ export function makeMilkCrate(o = {}) {
  * The dish is what makes it read: a tap on a pipe is a pipe.
  */
 export function makeTapPost(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const H = o.h ?? 0.86;
@@ -1534,6 +1566,7 @@ export function makeStorageShed(o = {}) {
 
 /** A two-tier steel shelf of plant pots, the alley's window box. */
 export function makePotShelf(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 91);
   const g = new THREE.Group();
@@ -1594,6 +1627,7 @@ export function makePotShelf(o = {}) {
 
 /** A bank of apartment letterboxes on a stand, with the newspaper slots. */
 export function makeMailboxBank(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const cols = o.cols ?? 4;
@@ -1632,6 +1666,7 @@ export function makeMailboxBank(o = {}) {
 
 /** 宅配ボックス -- the parcel locker beside a front door. */
 export function makeDeliveryBox(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const w = 0.44, d = 0.4, h = 0.6;
@@ -1655,6 +1690,7 @@ export function makeDeliveryBox(o = {}) {
 
 /** The coir mat at a front door, and the two bricks holding its corner down. */
 export function makeDoormat(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const g = new THREE.Group();
   const w = o.w ?? 0.6, d = o.d ?? 0.36;
   const mat0 = box(w, 0.022, d, cel({ color: o.color ?? 0x8a7f6a, bands: 2, tint: 0x615a80 }), 0, 0.011, 0);
@@ -1674,6 +1710,7 @@ export function makeDoormat(o = {}) {
  * point, is what stops a long low wall reading as an extruded rectangle.
  */
 export function makeIvy(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const rng = rngKit(o.seed ?? 77);
   const g = new THREE.Group();
   const len = o.len ?? 3.0;
@@ -1741,6 +1778,7 @@ export function makeReturnPost(o = {}) {
 
 /** A pet bowl and a saucer of water, left by a wall. */
 export function makePetBowl(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const g = new THREE.Group();
   for (const [dx, c] of [[0, 0xe0574a], [0.22, 0x4a7fae]]) {
     const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.06, 0.05, 10),
@@ -2066,6 +2104,7 @@ export function makeGuideBoard(o = {}) {
 
 /** The lidded resource box a neighbourhood keeps on its corner. */
 export function makeRecycleBox(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const w = o.w ?? 0.86, d = o.d ?? 0.54, h = o.h ?? 0.66;
@@ -2096,6 +2135,7 @@ export function makeRecycleBox(o = {}) {
 
 /** Vending-machine-style crate stack, used to dress dead corners. */
 export function makeCrates(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const rng = rngKit(o.seed ?? 4);
   const g = new THREE.Group();
   const n = o.n ?? 4;

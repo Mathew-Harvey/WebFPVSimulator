@@ -242,7 +242,7 @@ export function buildShrine(ctx) {
    * 御神木 first: the tallest thing here by a long way, on the axis behind
    * the hall, with its own rope round the trunk further down. */
   const GOSHIN = { x: -20.8, z: 43.2 };
-  grove.push({ ...GOSHIN, y: groundY(GOSHIN.z), scale: 2.5, seed: 801, spread: 1.35, lean: 0.05, leanDir: 2.0 });
+  grove.push({ ...GOSHIN, y: groundY(GOSHIN.z), scale: 2.5, seed: 801, spread: 1.35, lean: 0.05, leanDir: 2.0, keep: true });
   /* A backing wood behind the hall, every trunk *outside* the north wall.
    * A grove tree at this scale carries a canopy ten metres across, so one
    * standing on the terrace covers half of it -- which is how the precinct
@@ -267,7 +267,7 @@ export function buildShrine(ctx) {
   bamboo.push({ x: -34.4, z: 27.4, y: TOP, n: 8, spread: 1.1, scale: 1.0, seed: 825 });
 
   // one cherry, leaning in over the terrace wall: the shrine's name earns it
-  sakura.push({ x: -19.2, z: 30.0, y: groundY(30), scale: 1.5, seed: 815, lean: 0.16, leanDir: 4.7 });
+  sakura.push({ x: -19.2, z: 30.0, y: groundY(30), scale: 1.5, seed: 815, lean: 0.16, leanDir: 4.7, keep: true });
   sakura.push({ x: -37.6, z: 19.6, y: groundY(19.6), scale: 1.25, seed: 816, lean: 0.12, leanDir: 1.8 });
 
   for (let i = 0; i < 6; i++) {

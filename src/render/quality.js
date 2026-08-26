@@ -127,7 +127,7 @@ const PRESETS = {
       preferScale: null,
       ink: true,
       fxaa: false,
-      petals: true,
+      petals: false,
     },
   },
   high: {
@@ -160,7 +160,7 @@ const PRESETS = {
       preferScale: null,
       ink: true,
       fxaa: true,
-      petals: true,
+      petals: false,
     },
   },
 };

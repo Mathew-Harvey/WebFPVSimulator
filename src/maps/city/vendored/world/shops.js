@@ -391,6 +391,29 @@ export function makeShop(ctx, o) {
   const roofAdd = o.roofKind === 'gable' ? (o.roofH ?? 1.25) + 0.22 : 0.4;
   ctx.collide(o.x - hw - 0.05, o.z - hd - 0.05, o.x + hw + 0.05, o.z + hd + 0.05, (o.y ?? 0) + H + roofAdd);
 
+  /* Doorway curtain, a thin slab in world axes. The shop rectangle is the
+   * whole unit; slab fit opens the recess, and this is the cloth in it. */
+  if (o.noren) {
+    const nw = Math.min(2.4, openW * 0.7);
+    const nx = o.norenX ?? 0;
+    const lz = front - 0.22;
+    const y0 = (o.y ?? 0) + 1.70;
+    const y1 = (o.y ?? 0) + 2.42;
+    const t = 0.05;
+    const face = o.face ?? 'z+';
+    if (face === 'z+' || face === 'z-') {
+      const s = face === 'z+' ? 1 : -1;
+      const cx = o.x + s * nx;
+      const cz = o.z + s * lz;
+      ctx.collide(cx - nw / 2, cz - t, cx + nw / 2, cz + t, y1, y0);
+    } else {
+      const s = face === 'x+' ? 1 : -1;
+      const cx = o.x + s * lz;
+      const cz = o.z - s * nx;
+      ctx.collide(cx - t, cz - nw / 2, cx + t, cz + nw / 2, y1, y0);
+    }
+  }
+
   g.userData.front = front;
   return g;
 }

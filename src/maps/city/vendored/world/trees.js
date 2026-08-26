@@ -4,6 +4,93 @@ import { cel, flat } from '../core/toon.js';
 import { bake, trs, rngKit } from '../core/util.js';
 
 /* ------------------------------------------------------------------ *
+ * Freestyle planting.
+ *
+ * The town used to plant for a walker: a cloud of blossom, a fat AABB
+ * around the cloud, and a street full of trees. A quad flies the GAPS,
+ * so the planting is thinner and the solid world is the leaves, not
+ * the box they sit in.
+ *
+ * TREE_KEEP is the fraction of spots that survive. It is a hash of the
+ * seed, not a stride, so a row thins evenly instead of going bald then
+ * dense. A spot marked `keep: true` is a landmark (the two cherries that
+ * frame the crossing) and always survives.
+ * ------------------------------------------------------------------ */
+
+export const TREE_KEEP = 0.40;
+export const SHRUB_KEEP = 0.30;
+export const BAMBOO_KEEP = 0.40;
+
+/**
+ * Keep a fraction of planted spots, deterministically.
+ *
+ * Integer hash, same as bake.js thinFoliage, so Node and the browser
+ * agree. `keep: true` is a landmark and is not rolled.
+ */
+export function thinSpots(spots, keep, salt = 1) {
+  if (!spots || !spots.length) return spots || [];
+  if (!(keep < 1)) return spots;
+  const cut = Math.round(keep * 4294967295);
+  const out = [];
+  for (let i = 0; i < spots.length; i += 1) {
+    const s = spots[i];
+    if (s.keep === true) {
+      out.push(s);
+      continue;
+    }
+    const seed = ((s.seed ?? 1) + salt * 17 + i * 13) | 0;
+    const h = (Math.imul(seed, 2654435761) ^ 0x9e3779b9) >>> 0;
+    if (h <= cut) out.push(s);
+  }
+  if (out.length === 0 && spots.length) out.push(spots[0]);
+  return out;
+}
+
+/*
+ * One collider per occupied leaf cell, not one AABB around the tree.
+ *
+ * The old canopy box was the axis aligned hull of every blob, empty
+ * corners included: a 4 m cube of air a pilot met as an invisible
+ * trunk. Clustering the blobs (or cedar cones) onto a 0.55 m grid
+ * keeps the solid volume inside the drawing. The gap under the crown
+ * stays a gap because nothing is written there.
+ */
+const LEAF_CELL = 0.55;
+
+function collideLeaves(ctx, parts) {
+  if (!parts.length) return 0;
+  const cells = new Map();
+  for (let i = 0; i < parts.length; i += 1) {
+    const p = parts[i];
+    const ix = Math.round(p.x / LEAF_CELL);
+    const iy = Math.round(p.y / LEAF_CELL);
+    const iz = Math.round(p.z / LEAF_CELL);
+    const key = `${ix},${iy},${iz}`;
+    let c = cells.get(key);
+    if (!c) {
+      c = {
+        x0: Infinity, x1: -Infinity,
+        y0: Infinity, y1: -Infinity,
+        z0: Infinity, z1: -Infinity,
+      };
+      cells.set(key, c);
+    }
+    c.x0 = Math.min(c.x0, p.x - p.rx);
+    c.x1 = Math.max(c.x1, p.x + p.rx);
+    c.y0 = Math.min(c.y0, p.y - p.ry);
+    c.y1 = Math.max(c.y1, p.y + p.ry);
+    c.z0 = Math.min(c.z0, p.z - p.rz);
+    c.z1 = Math.max(c.z1, p.z + p.rz);
+  }
+  let n = 0;
+  cells.forEach((c) => {
+    ctx.collide(c.x0, c.z0, c.x1, c.z1, c.y1, c.y0);
+    n += 1;
+  });
+  return n;
+}
+
+/* ------------------------------------------------------------------ *
  * Cherry trees.
  *
  * Trunks and branches are merged into a single mesh; the canopy is three
@@ -111,11 +198,9 @@ export function buildSakura(ctx, spots) {
       yMin = Math.min(yMin, c.y);
       yMax = Math.max(yMax, c.y);
     }
-    let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+    const leaves = [];
     const grow = (px, py, pz, rx, ry, rz) => {
-      bx0 = Math.min(bx0, px - rx); bx1 = Math.max(bx1, px + rx);
-      by0 = Math.min(by0, py - ry); by1 = Math.max(by1, py + ry);
-      bz0 = Math.min(bz0, pz - rz); bz1 = Math.max(bz1, pz + rz);
+      leaves.push({ x: px, y: py, z: pz, rx, ry, rz: rz ?? rx });
     };
     for (let i = 0; i < count; i++) {
       const c = canopyCenters[Math.floor(rng.next() * canopyCenters.length)];
@@ -152,18 +237,15 @@ export function buildSakura(ctx, spots) {
       ));
     }
 
-    /* Trunk is the stem, canopy is the blobs. The last round hung a 3 m
-     * cube from 0.55 of trunk height, which is air under the blossom and
-     * reads as an invisible trunk. Floor the canopy on the lowest blob. */
+    /* Trunk is the stem. Canopy is the blobs, one cell per cluster, so
+     * the air in the corners of the old AABB is a gap again. */
     if (spot.collide !== false) {
       const mx = (x + topX) * 0.5;
       const mz = (z + topZ) * 0.5;
       const tw = trunkR * 1.05;
       ctx.collide(mx - tw, mz - tw, mx + tw, mz + tw, y + trunkH, y);
       ctx.collide(x - trunkR * 1.5, z - trunkR * 1.5, x + trunkR * 1.5, z + trunkR * 1.5, y + 0.34 * S, y);
-      if (Number.isFinite(bx0)) {
-        ctx.collide(bx0, bz0, bx1, bz1, by1, by0);
-      }
+      collideLeaves(ctx, leaves);
     }
   }
 
@@ -350,11 +432,9 @@ export function buildGrove(ctx, spots) {
       yMin = Math.min(yMin, c.y);
       yMax = Math.max(yMax, c.y);
     }
-    let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+    const leaves = [];
     const grow = (px, py, pz, rx, ry, rz) => {
-      bx0 = Math.min(bx0, px - rx); bx1 = Math.max(bx1, px + rx);
-      by0 = Math.min(by0, py - ry); by1 = Math.max(by1, py + ry);
-      bz0 = Math.min(bz0, pz - rz); bz1 = Math.max(bz1, pz + rz);
+      leaves.push({ x: px, y: py, z: pz, rx, ry, rz: rz ?? rx });
     };
     for (let i = 0; i < count; i++) {
       const c = centers[Math.floor(rng.next() * centers.length)];
@@ -408,11 +488,7 @@ export function buildGrove(ctx, spots) {
       const tw = trunkR * 1.05;
       ctx.collide(mx - tw, mz - tw, mx + tw, mz + tw, y + trunkH, y);
       ctx.collide(x - trunkR * 1.55, z - trunkR * 1.55, x + trunkR * 1.55, z + trunkR * 1.55, y + 0.42 * S, y);
-      /* One mass for the canopy, not a box per blob. Floor on the lowest
-       * frond so the gap under a shade tree stays a gap. */
-      if (Number.isFinite(bx0)) {
-        ctx.collide(bx0, bz0, bx1, bz1, by1, by0);
-      }
+      collideLeaves(ctx, leaves);
     }
   }
 
@@ -570,6 +646,7 @@ export function buildCedar(ctx, spots) {
     const n = 6 + rng.int(0, 2);
     const rMax = H * 0.150 * rng.range(0.86, 1.14);
 
+    const leaves = [];
     for (let k = 0; k < n; k++) {
       const u = k / n;
       const hk = base + crown * (u + rng.range(-0.03, 0.03));
@@ -594,46 +671,67 @@ export function buildCedar(ctx, spots) {
        * no texture on it can have. */
       let tone = u > 0.62 ? 0 : u < 0.26 ? 2 : 1;
       if (rng.chance(0.18)) tone = (tone + 1) % 3;
+      const cx = p.x + Math.cos(off) * wob;
+      const cz = p.z + Math.sin(off) * wob;
       tiers[tone].push(trs(
-        p.x + Math.cos(off) * wob, p.y, p.z + Math.sin(off) * wob,
+        cx, p.y, cz,
         tx, rng.range(0, 6.28), tz,
         rk, ck, rk * ell
       ));
+      /* Two stacked boxes follow the cone: wide at the skirt, narrow at the
+       * point. One cylinder around the whole crown was empty air a quad met
+       * as a wall. */
+      leaves.push({
+        x: cx, y: p.y + ck * 0.28, z: cz,
+        rx: rk * 0.78, ry: ck * 0.30, rz: rk * ell * 0.78,
+      });
+      leaves.push({
+        x: cx, y: p.y + ck * 0.68, z: cz,
+        rx: rk * 0.42, ry: ck * 0.28, rz: rk * ell * 0.42,
+      });
     }
     // the leader: a slim cone finishing the point, so the top is a spike
     {
       const p = at(base + crown * 0.86);
+      const ck = crown * 0.30 * rng.range(0.9, 1.25);
+      const rk = rMax * 0.30;
       tiers[0].push(trs(p.x, p.y, p.z, eul.x, rng.range(0, 6.28), eul.z,
-        rMax * 0.30, crown * 0.30 * rng.range(0.9, 1.25), rMax * 0.30));
+        rk, ck, rk));
+      leaves.push({
+        x: p.x, y: p.y + ck * 0.45, z: p.z,
+        rx: rk * 0.7, ry: ck * 0.45, rz: rk * 0.7,
+      });
     }
     // two sprigs, so no two crowns have the same outline
     for (let k = 0; k < 2; k++) {
       const u = rng.range(0.15, 0.8);
       const p = at(base + crown * u);
       const rk = rMax * (1 - u) * rng.range(0.45, 0.8);
+      const ck = rk * rng.range(1.3, 2.0);
       const a = rng.range(0, 6.28);
+      const cx = p.x + Math.cos(a) * rk * 0.55;
+      const cz = p.z + Math.sin(a) * rk * 0.55;
       tiers[rng.chance(0.5) ? 1 : 2].push(trs(
-        p.x + Math.cos(a) * rk * 0.55, p.y, p.z + Math.sin(a) * rk * 0.55,
+        cx, p.y, cz,
         eul.x, rng.range(0, 6.28), eul.z,
-        rk, rk * rng.range(1.3, 2.0), rk
+        rk, ck, rk
       ));
+      leaves.push({
+        x: cx, y: p.y + ck * 0.4, z: cz,
+        rx: rk * 0.72, ry: ck * 0.4, rz: rk * 0.72,
+      });
     }
 
-    /* Thin stem to the pruned height, then a wider crown. Offset along
-     * the lean so the box sits on the wood, not in the air beside it. */
+    /* Thin stem to the pruned height. Crown is the cones, clustered so
+     * the square around the wedge is not a wall. */
     if (spot.collide !== false) {
       const neck = at(base);
-      const tipP = at(H);
       const tw = trunkR * 1.08;
       ctx.collide(
         Math.min(x, neck.x) - tw, Math.min(z, neck.z) - tw,
         Math.max(x, neck.x) + tw, Math.max(z, neck.z) + tw,
         y + base, y);
-      const cr = rMax * 0.82;
-      ctx.collide(
-        Math.min(neck.x, tipP.x) - cr, Math.min(neck.z, tipP.z) - cr,
-        Math.max(neck.x, tipP.x) + cr, Math.max(neck.z, tipP.z) + cr,
-        y + H, y + base);
+      collideLeaves(ctx, leaves);
     }
   }
 
@@ -692,13 +790,23 @@ export function buildBamboo(ctx, clumps) {
           0, 0, 0, r, 0.035 * S, r));
       }
       // leaf spray: a few flattened blobs high on the culm
+      const leafParts = [];
       for (let k = 0; k < 4; k++) {
         const ly = (c.y ?? 0) + h * rng.range(0.66, 1.0);
         const rr = 0.34 * S * rng.range(0.7, 1.2);
+        const lx = px + rng.range(-0.5, 0.5) * S;
+        const lz = pz + rng.range(-0.5, 0.5) * S;
         leaves[k % 2].push(trs(
-          px + rng.range(-0.5, 0.5) * S, ly, pz + rng.range(-0.5, 0.5) * S,
+          lx, ly, lz,
           rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
           rr, rr * 0.42, rr * 1.25));
+        leafParts.push({ x: lx, y: ly, z: lz, rx: rr, ry: rr * 0.42, rz: rr * 1.25 });
+      }
+      if (c.collide !== false) {
+        const tw = Math.max(0.055, r * 1.4);
+        const y0 = c.y ?? 0;
+        ctx.collide(px - tw, pz - tw, px + tw, pz + tw, y0 + h, y0);
+        collideLeaves(ctx, leafParts);
       }
     }
   }
@@ -736,26 +844,34 @@ export function buildShrubs(ctx, spots) {
   const geo = new THREE.IcosahedronGeometry(1, 1);
   const tones = [PAL.leaf, PAL.leafDeep, PAL.leafPale];
   const lists = [[], [], []];
+  const leaves = [];
   for (const s of spots) {
     const rng = rngKit(s.seed ?? 11);
     const n = s.count ?? 3;
     for (let i = 0; i < n; i++) {
       const r = (s.r ?? 0.55) * rng.range(0.75, 1.2);
+      const px = s.x + rng.range(-0.5, 0.5) * (s.spread ?? 1);
+      const py = (s.y ?? 0) + r * 0.72;
+      const pz = s.z + rng.range(-0.5, 0.5) * (s.spread ?? 1);
+      const ry = r * 0.8;
       lists[i % 3].push(trs(
-        s.x + rng.range(-0.5, 0.5) * (s.spread ?? 1),
-        (s.y ?? 0) + r * 0.72,
-        s.z + rng.range(-0.5, 0.5) * (s.spread ?? 1),
+        px, py, pz,
         rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
-        r, r * 0.8, r
+        r, ry, r
       ));
+      if (s.collide !== false) {
+        leaves.push({ x: px, y: py, z: pz, rx: r, ry, rz: r });
+      }
     }
   }
+  collideLeaves(ctx, leaves);
   lists.forEach((list, i) => {
     if (!list.length) return;
     const inst = new THREE.InstancedMesh(geo, cel({ color: tones[i], bands: 3, tint: 0x5b6f8c }), list.length);
     list.forEach((m, k) => inst.setMatrixAt(k, m));
     inst.castShadow = true;
     inst.receiveShadow = true;
+    inst.name = 'shrubCanopy' + i;
     ctx.add(inst);
   });
 }

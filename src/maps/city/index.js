@@ -569,10 +569,10 @@ const COVER_MAX_LIFT = 1.0;
  * status quo is better than a wall across a gap the pilot can see through.
  */
 const COVER_MIN_FILL = 0.4;
-/* Foliage and ground decoration, excluded by name. Tree canopies are
- * collided as one mass per tree in trees.js. This skip stops 46000
- * blossom instances each becoming a wall. */
-const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower/i;
+/* Foliage and ground decoration, excluded by name. Tree leaves are
+ * collided as one box per occupied cell in trees.js. This skip stops
+ * every blossom instance becoming a wall of its own. */
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter/i;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.
@@ -740,6 +740,12 @@ const MAX_PIECES = 160;
  * broadphase.
  */
 const MERGE_TRIVIAL = 0.25;
+/*
+ * A box this small is already a leaf cluster, a trunk or a post. Running
+ * the slab cut on thousands of them costs load time and can merge two
+ * neighbouring leaves into one fatter box. Leave them as authored.
+ */
+const FIT_TIGHT = 2.4;
 /*
  * The fit only ever shrinks, which leaves one thing undone: a house collider
  * authored to the wall plate never reached the ridge, and the roof above it
@@ -1233,7 +1239,7 @@ function buildColliders(world) {
     return v;
   };
   const fitStats = {
-    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, coverSplit: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, worst: [],
+    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, coverSplit: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, droppedEmpty: 0, tight: 0, worst: [],
   };
   /*
    * The boxes a split rectangle produced beyond its first.
@@ -1272,8 +1278,11 @@ function buildColliders(world) {
     let fz1 = c.z1;
     let fy0 = y0;
     let fy1 = y1;
-    const pieces = fitRect(c, y0, y1, boxes, grid, floorAt, scratch);
-    if (pieces !== null && pieces.length > 0) {
+    const tight = (c.x1 - c.x0) <= FIT_TIGHT && (c.z1 - c.z0) <= FIT_TIGHT;
+    const pieces = tight ? null : fitRect(c, y0, y1, boxes, grid, floorAt, scratch);
+    if (tight) {
+      fitStats.tight += 1;
+    } else if (pieces !== null && pieces.length > 0) {
       const p = pieces[0];
       const side = Math.max(p.x0 - c.x0, c.x1 - p.x1, p.z0 - c.z0, c.z1 - p.z1);
       const topTrim = y1 - p.y1;
@@ -1315,9 +1324,24 @@ function buildColliders(world) {
         }
       }
     } else {
-      /* Nothing drawn in it. Left exactly as the town authored it, because a
-       * barrier with no geometry in it is usually load bearing. */
+      /* Nothing drawn in it. A large barrier with no geometry is usually
+       * load bearing (lake edge, map bound). A compact one is dressing
+       * whose drawing we stripped: park it below ground, not as a boom
+       * (booms are the only two authored at top === -1). */
       fitStats.unmatched += 1;
+      const sx = c.x1 - c.x0;
+      const sz = c.z1 - c.z0;
+      if (c.top !== -1 && sx <= 6 && sz <= 6 && sx * sz <= 12 && y1 < 10) {
+        const mx = (c.x0 + c.x1) * 0.5;
+        const mz = (c.z0 + c.z1) * 0.5;
+        fx0 = mx;
+        fx1 = mx + 0.001;
+        fz0 = mz;
+        fz1 = mz + 0.001;
+        fy0 = -2;
+        fy1 = -1.999;
+        fitStats.droppedEmpty += 1;
+      }
     }
     if (diag !== null) {
       const r2 = (v) => (Number.isFinite(v) ? +v.toFixed(3) : null);
@@ -1370,10 +1394,9 @@ function buildColliders(world) {
    * hills, roads and the lake by construction, and what is left is furniture,
    * for which its own bounding box IS a fair contact volume.
    *
-   * Foliage is collided as ONE mass per tree (trunk plus a canopy box with
-   * a floor), not as a box per blossom blob. The cover pass still skips
-   * named foliage so 46000 canopy instances do not become walls. The tree
-   * generators in trees.js own the mass.
+ * Foliage is collided as leaf clusters in trees.js, not as a box per
+ * blossom blob. The cover pass still skips named foliage so canopy
+ * instances do not become walls. The tree generators own the mass.
    */
   for (const child of world.root.children) {
     const b = objectExtent(child);
@@ -1889,6 +1912,7 @@ export async function buildMap(shell, onProgress, options) {
       cullAlways: cull.always.length,
       cullRadius,
       foliageKeep,
+      planting: world.planting ?? null,
       ...thinned,
       ...baked.stats,
       ...chunked,

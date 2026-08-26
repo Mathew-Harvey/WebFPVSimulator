@@ -1387,7 +1387,6 @@ export function bakeCity(world, {
  * costs almost nothing.
  */
 const FOLIAGE = [
-  'groveCanopy', 'sakuraCanopy', 'cedarCanopy',
   'hillTuft', 'hillMoss', 'hillRock',
   'lakeReed', 'lakeReedHead', 'lakePetals',
 ];
@@ -1407,13 +1406,10 @@ function isFoliage(name) {
 /*
  * Keep a fraction of the instances in every plant and rock set.
  *
- * WHY THIN AT ALL, WHEN AN INSTANCED SET IS ALREADY ONE DRAW CALL. Because it
- * is 4.5 M triangles, three quarters of everything the town draws, and the
- * budget has two numbers in it. Round 24 bought draw calls by paying
- * triangles; this is where the triangles come back from. A grove of 15,616
- * eighty triangle blobs reads as a grove at 8,000 as well: the blobs are
- * scattered through the canopy volume, so removing some of them makes the tree
- * airier rather than smaller, and a quad passing at 20 m/s cannot count them.
+ * Tree canopies are NOT in this list. Remaining trees have their
+ * collision authored per leaf cluster, so thinning the blobs after
+ * that would put a wall where the drawing no longer is. Hill tufts,
+ * moss, rocks and lake reeds are decoration and still thin.
  *
  * WHICH ONES GO IS A HASH, NOT A STRIDE. Keeping every other index would thin
  * whatever spatial order the town happened to generate them in, which for the

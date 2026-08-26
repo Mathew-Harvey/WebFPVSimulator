@@ -713,7 +713,6 @@ const DIRS = { 'x-': [-1, 0], 'x+': [1, 0], 'z-': [0, -1], 'z+': [0, 1] };
 function dressHousing(ctx, houses) {
   const m = mats();
   const rng = rngKit(8801);
-  let gomi = 0;
 
   for (const h of houses) {
     const [fx, fz] = DIRS[h.face] ?? DIRS['x-'];
@@ -761,86 +760,9 @@ function dressHousing(ctx, houses) {
       put(makePostBox({ x: bx, z: bz, y: gy(bx, bz) - (h.postBoxSink ?? 0), ry: rng.range(-0.4, 0.4) }), bx, bz);
     }
 
-    // planters and a bicycle
-    if (rng.chance(0.8)) {
-      const t = rng.range(-sideHalf * 0.5, sideHalf * 0.5) + (h.planterAlong ?? 0);
-      const planterOut = h.planterOut ?? -0.15;
-      const planterSpacing = h.planterSpacing ?? 0.65;
-      const [ax, az] = at(t, planterOut);
-      put(makePlanter({ x: ax, z: az, y: gy(ax, az) - (h.planterSink ?? 0), r: rng.range(0.18, 0.26), flower: rng.chance(0.6), seed: 8810 + h.seed, n: 5 }), ax, az);
-      const [cx2, cz2] = at(t + planterSpacing, planterOut);
-      put(makePlanter({ x: cx2, z: cz2, y: gy(cx2, cz2) - (h.planterSink ?? 0), r: 0.19, flower: false, seed: 8820 + h.seed, n: 4 }), cx2, cz2);
-    }
-    /* A bicycle stands *along* the frontage, not nose-on to it.  `ry` was the
-     * wrong way round -- `frontIsX ? 0 : PI/2` points the wheelbase straight at
-     * the wall, and a bicycle is 1.73 m long about its own origin, so at the
-     * 0.80 m standoff this uses every one of them had its back wheel and half
-     * its rack inside the render.  Twelve houses, none of it visible in a
-     * screenshot because the tail was behind the wall it was buried in. */
-    const hasBike = rng.chance(0.55);
-    if (hasBike && !h.skipBike) {
-      const [ix, iz] = at(rng.range(-sideHalf * 0.7, sideHalf * 0.7), h.bikeOut ?? 0.25);
-      put(makeBicycle({
-        x: ix, z: iz, y: gy(ix, iz) + (h.bikeLift ?? 0),
-        ry: (frontIsX ? Math.PI / 2 : 0) + rng.range(-0.3, 0.3),
-        lean: rng.range(-0.1, 0.1),
-        color: rng.pick([0x3f6f9c, 0xd8a03c, 0x9c5a4a, 0x4f8f6a, 0x8f6fb5]),
-      }), ix, iz);
-    }
-
-    // washing, on the side away from the street
-    if (h.floors === 2 && rng.chance(0.7)) {
-      const s = rng.sign();
-      const wx = h.x + (frontIsX ? -fx * 0.6 : s * (sideHalf - 1.2));
-      const wz = h.z + (frontIsX ? s * (sideHalf - 1.2) : -fz * 0.6);
-      ctx.add(makeLaundryPole({
-        x: wx, z: wz, y: gy(wx, wz), ry: frontIsX ? 0 : Math.PI / 2,
-        len: 2.2, n: 3, seed: 8830 + h.seed,
-      }));
-    }
-
-    /* An air-conditioning unit and an umbrella stand.
-     *
-     * `ry` is the same expression the name plate above uses, and for the same
-     * reason: the grille is on the unit's +z face, so it has to be turned to the
-     * wall's *outward* normal.  `frontIsX ? PI/2 : 0` is only right for the
-     * houses that face +x and +z -- every one facing -x or -z had its fan
-     * pointing into the render.  0.28 rather than 0.42 off the wall, too: an
-     * outdoor unit stands a hand's width off a house, not half a metre. */
-    if (rng.chance(0.6)) {
-      const s = rng.sign();
-      const ax = h.x + (frontIsX ? fx * (frontHalf + 0.28) : s * (sideHalf - 0.9));
-      const az = h.z + (frontIsX ? s * (sideHalf - 0.9) : fz * (frontHalf + 0.28));
-      put(makeAircon({
-        x: ax, z: az, y: gy(ax, az), w: 0.78, h: 0.56,
-        ry: frontIsX ? fx * Math.PI / 2 : (fz > 0 ? 0 : Math.PI),
-      }), ax, az);
-    }
-    if (rng.chance(0.35)) {
-      const [ux, uz] = at(Math.min(sideHalf - 0.9, 1.2), -0.1);
-      put(makeUmbrellaStand({ x: ux, z: uz, y: gy(ux, uz) - (h.umbrellaSink ?? 0), n: rng.int(2, 4), seed: 8840 + h.seed }), ux, uz);
-    }
-    if (rng.chance(0.28)) {
-      const [px2, pz2] = at(-Math.min(sideHalf - 1.1, 1.1), -0.1);
-      put(makePetBowl({ x: px2, z: pz2, y: gy(px2, pz2), ry: rng.range(0, 3) }), px2, pz2);
-    }
-
-    /* Refuse points are a neighbourhood thing, not a per-house one: three of
-     * them, on corners, each with the collection-day plate. */
-    if (gomi < 3 && rng.chance(0.22)) {
-      const [rx, rz] = at(sideHalf + 0.4, h.gomiOut ?? -0.4);
-      if (clear(rx, rz)) {
-        gomi++;
-        ctx.add(makeBins({ x: rx, z: rz, y: gy(rx, rz) - (h.gomiSink ?? 0), ry: frontIsX ? Math.PI / 2 : 0 }));
-        ctx.add(makeSignPost({
-          x: rx + (frontIsX ? 0 : -0.9),
-          z: rz + (frontIsX ? (h.gomiSignAlong ?? -0.9) : 0),
-          y: gy(rx, rz),
-          ry: frontIsX ? Math.PI / 2 : 0, h: 1.5, postMat: m.metal,
-          plates: [{ map: gomiPlate(), w: 0.44, h: 0.34, y: 1.25 }],
-        }));
-      }
-    }
+    /* Planters, bikes, laundry, aircon, umbrellas, bowls and gomi used to
+     * dress every frontage. They closed the gaps a quad flies. Name plate
+     * and post box stay: they sit on the wall. */
 
     /* A warm window on about a third of them.  Nothing behind the glass but
      * shelves and a lampshade -- there is nobody in this world. */

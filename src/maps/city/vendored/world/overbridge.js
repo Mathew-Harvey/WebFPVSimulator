@@ -232,8 +232,10 @@ function rakeBalustrade(parts, o) {
  *
  * Closed risers on a pair of raking stringers -- a steel pan stair with a
  * concrete fill, which is what these are built from.  Every tread registers
- * a platform, and the flight's own footprint gets a collider skirt so the
- * player cannot stand underneath it and be lifted onto it.
+ * a platform so a walker stays on the pans.  The fly colliders are the
+ * stringers at the edges and a soffit under the pans: a box the width of
+ * the flight on every going is taller than the going, so consecutive pans
+ * overlap and a craft on the climb line hits the next pan in empty air.
  *
  * `axis` is the direction of travel, `dir` its sign, and the flight always
  * descends: `y0` is the level of the *top* landing.
@@ -343,25 +345,42 @@ function flight(ctx, o) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     ctx.add(mesh);
-    if (key === 'steel') hullOutline(mesh, { thickness: 0.003 });
+    if (key === 'steel') {
+      /* Same COVER_SOFT name as the roof cage: a baked stringer-plus-soffit
+       * AABB is a wall across the flight if the fit is allowed to own it. */
+      mesh.name = 'overbridgeCage';
+      hullOutline(mesh, { thickness: 0.003 });
+    }
   }
 
-  /* One collider per pan, as deep as the stringers. A band of two treads
-   * is the AABB that fills the air above the lower one: `steps()` in
-   * ground.js already refuses that box, and it is the snag up this flight. */
+  /* Stringers at the rake rails, soffit under the pans. skipFit so a
+   * 2.4 m tread envelope cannot grow back into the channel. */
   {
+    const stringerHw = 0.06;
+    const soffitPad = 0.16;
     for (let i = 0; i < n; i++) {
       const t0 = from + GOING * dir * i;
       const t1 = from + GOING * dir * (i + 1);
       const a = Math.min(t0, t1);
       const b = Math.max(t0, t1);
       const yTread = y0 - RISE * (i + 1);
-      const yHi = yTread + 0.07;
       const yLo = yTread - 0.42;
       if (axis === 'z') {
-        ctx.collide(at - half, a, at + half, b, yHi, yLo);
+        ctx.collide(at - half + soffitPad, a, at + half - soffitPad, b,
+          yTread - 0.08, yLo, true);
       } else {
-        ctx.collide(a, at - half, b, at + half, yHi, yLo);
+        ctx.collide(a, at - half + soffitPad, b, at + half - soffitPad,
+          yTread - 0.08, yLo, true);
+      }
+      for (const s of [-1, 1]) {
+        const edge = at + s * (half - 0.05);
+        if (axis === 'z') {
+          ctx.collide(edge - stringerHw, a, edge + stringerHw, b,
+            yTread + 0.03, yLo, true);
+        } else {
+          ctx.collide(a, edge - stringerHw, b, edge + stringerHw,
+            yTread + 0.03, yLo, true);
+        }
       }
     }
   }
@@ -393,7 +412,20 @@ function landing(ctx, o) {
   hullOutline(slab, { thickness: 0.003 });
   // padded so it overlaps the flight and deck platforms rather than meeting them
   ctx.platform({ x0: x0 - 0.05, x1: x1 + 0.05, z0: z0 - 0.05, z1: z1 + 0.05, top: y });
-  ctx.collide(x0, z0, x1, z1, y, y - SLAB - 0.34);
+  /* Underside only, and pulled back from sides that are not railed.
+   * A prism to the walking surface is a lip: the first pan is GOING/2
+   * (0.14 m) from the edge and the craft is 0.17 m across, so a descent
+   * always overlaps the landing in plan. Open sides are flights or the
+   * deck. skipFit so the slab mesh cannot roof-lift this back to `y`. */
+  {
+    const lip = 0.32;
+    const closed = (side) => rails.indexOf(side) >= 0;
+    const cx0 = closed('x-') ? x0 : x0 + lip;
+    const cx1 = closed('x+') ? x1 : x1 - lip;
+    const cz0 = closed('z-') ? z0 : z0 + lip;
+    const cz1 = closed('z+') ? z1 : z1 - lip;
+    ctx.collide(cx0, cz0, cx1, cz1, y - SLAB, y - SLAB - 0.34, true);
+  }
 
   const parts = { steel: [], steelDark: [], rail: [], railDark: [] };
   // edge beams all round, and a cross beam under the middle

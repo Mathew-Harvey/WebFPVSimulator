@@ -18176,3 +18176,44 @@ own rectangle.
 `shots.js` exited 1 on `ERR_CONNECTION_REFUSED`. Probes and
 PNGs still wrote. `npm run verify` was not run: city map, not
 the plant.
+
+## Overbridge stair fly channel
+
+Climbing and descending the 跨線橋 stairs still hooked on
+invisible boxes after the per-pan pass. The going is 0.28 m.
+The craft is 0.1735 m in radius, 0.347 m across. A full-width
+box on every pan always overlaps its neighbours, so a craft
+centred on a step hits the uphill pan in empty air. Pitch on
+the 33 degree rake grows vHalf and makes that worse. Thinning
+the pan box does not help: the next surface is 0.18 m higher
+and still inside the horizontal sweep.
+
+`ground.js` `steps()` is masonry from the foot up and is meant
+to be solid. These are steel pans. Walking stays on
+`ctx.platform` per tread.
+
+In `overbridge.js` `flight()`:
+
+- No fly collider on the pans.
+- Stringers at the rake-rail stations, 0.12 m across, 3 cm
+  proud of the tread, stringer depth below, skipFit.
+- Soffit under the pans, inset from the stringers, top 8 cm
+  below the walking surface, skipFit.
+- Baked steel mesh named `overbridgeCage` so COVER_SOFT cannot
+  roof-lift the stringer-plus-soffit AABB into a wall.
+
+In `landing()` the old prism ran from the walking surface down
+0.62 m. A craft leaving the landing still overlaps it in plan
+by the craft radius, then hits the lip as soon as it drops.
+The deck already has no floor box. Landings now collide from
+the slab underside only, inset 0.32 m from sides that are not
+railed (flights and the deck), skipFit so the slab mesh cannot
+grow the box back to walking height. Columns stay.
+
+Urayama already has no full-width tread fly boxes. Onsen
+stone-flight and `ground.js` `steps()` are unchanged.
+
+Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays
+63. `node --check` on the edited file. Headless probes and
+overlay shots follow this commit. `npm run verify` was not
+run: city map, not the plant.

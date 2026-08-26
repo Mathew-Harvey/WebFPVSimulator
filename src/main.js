@@ -3027,6 +3027,9 @@ export async function boot({ loading, bootStart, mapId }) {
         stateCurr = readState();
         statePrev = stateCurr;
       } else {
+      let peakGroundClosing = 0;
+      let peakGroundSpeed = 0;
+      let sawGroundHit = false;
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
@@ -3115,23 +3118,45 @@ export async function boot({ loading, bootStart, mapId }) {
         } else {
           let stNow = stateCurr;
           sampleGroundNormalFromState(stNow);
+          /*
+           * Inbound closing has to be sampled BEFORE sim_step. Ground
+           * contact runs inside the 1 ms step, so by the time the frame
+           * ends the hull has already bounced and vz is upward. Using
+           * end-of-frame descent for the OSD meant a real hit never
+           * announced: the bounce finished inside the same batch.
+           */
+          peakGroundClosing = 0;
+          peakGroundSpeed = 0;
+          sawGroundHit = false;
           for (let i = 0; i < steps; i += 1) {
             if (i === 0 || (i & 7) === 0) {
               sampleGroundNormalFromState(stNow);
             }
+            const vzBefore = stNow[6];
+            const spdBefore = Math.sqrt(
+              stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6],
+            );
             raiseGroundFromState(stNow);
             sim.step(1);
+            stNow = readState();
             if (i === steps - 2) {
-              statePrev = readState();
-              stNow = statePrev;
-            } else if (i < steps - 1) {
-              stNow = readState();
+              statePrev = stNow;
+            }
+            if (sim.e.sim_ground_contacts() > 0) {
+              sawGroundHit = true;
+              const inbound = -vzBefore;
+              if (inbound > peakGroundClosing) {
+                peakGroundClosing = inbound;
+              }
+              if (spdBefore > peakGroundSpeed) {
+                peakGroundSpeed = spdBefore;
+              }
             }
           }
           if (steps === 1) {
             statePrev = stateCurr;
           }
-          stateCurr = readState();
+          stateCurr = stNow;
         }
         simTimeMs += steps * MS_PER_STEP;
         simStepIdx += steps;
@@ -3198,11 +3223,15 @@ export async function boot({ loading, bootStart, mapId }) {
         if (typeof audio.event === 'function') {
           audio.event('land');
         }
-      } else if (hits > 0 && nowWall - groundBounceAtWall > BOUNCE_COOLDOWN_MS) {
-        const closing = lastDescent > 0 ? lastDescent : 0;
-        if (closing >= GRAZE_SPEED_MAX || speed >= GRAZE_SPEED_MAX) {
+      } else if (
+        (hits > 0 || sawGroundHit)
+        && nowWall - groundBounceAtWall > BOUNCE_COOLDOWN_MS
+      ) {
+        const closing = peakGroundClosing;
+        const hitSpeed = peakGroundSpeed > speed ? peakGroundSpeed : speed;
+        if (closing >= GRAZE_SPEED_MAX || hitSpeed >= GRAZE_SPEED_MAX) {
           bounceCount += 1;
-          const hard = closing >= BOUNCE_SPEED_MAX || speed >= BOUNCE_SPEED_MAX;
+          const hard = closing >= BOUNCE_SPEED_MAX || hitSpeed >= BOUNCE_SPEED_MAX;
           race.recover(hard ? 'Hit the ground' : 'Bounced off the ground', nowWall);
           view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
           if (typeof audio.event === 'function') {

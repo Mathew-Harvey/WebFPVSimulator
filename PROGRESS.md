@@ -16971,3 +16971,18 @@ Check 16's leak detector, the thing it is named for, held: after a city round tr
 
 Physics path: checks 1 through 12 are the ones that can see the module. All green. Flight feel is awaiting human judgement.
 
+OSD inbound closing, this turn. A bounce that finishes inside one render batch left lastDescent negative and sim_ground_contacts() at 0, so the shell never announced a hit that the plant had already resolved. Inbound closing and speed are now sampled before each 1 ms step, and the OSD fires if the frame saw a ground hit even when the hull has already left the plane. Cheap check: node --check src/main.js. Plant, ABI and wasm were not touched, so npm run verify was not re-run.
+
+Shell, scripts/shots.js, first flight, KeyS held through a drop:
+
+  parked: landed, crashed false, 0.0 m, 0 km/h, takeoff prompt live.
+  ground: until y=0.223 m at 11.6 m/s down, crashed false. After contact: bounceCount 1, OSD "Bounced off the ground", 18 km/h, 1.0 m, still flight.
+  canopy: lastHitKind canopy, closing 26.2 m/s, bounceCount 2 then 3, flash "Hit the canopy" then "Bounced off the canopy", 59 km/h, 16.8 m, tilt 77 deg, crashed false.
+
+npm run contact:selftest this turn: all checks passed. Turtle: pitch -1 raises upz from -1 to +0.98 in 200 ms, then throttle climbs 0.79 m to 5.63 m. Wall bounce: inbound vx -7.34, outbound +0.14 plus 22.6 rad/s of spin. Grass slide: 4.98 m/s to 2.84 m/s in 700 ms, still on the plane. Side arrival rolls instead of locking attitude.
+
+node src/trackbuilder/selftest.js: 345 passed, 0 failed.
+npm run lint:catalog: ok, LIVE 161, crashflip keys in bf_settings.c.
+
+Flight feel is still awaiting human judgement.
+

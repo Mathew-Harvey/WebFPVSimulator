@@ -17582,3 +17582,34 @@ CHECKS this turn:
   node --check on the changed JS: ok.
 
 npm run verify is required (plant) and runs after this commit. Flight feel is not claimed as verified.
+
+Fan-out review after e26857e. Two explore agents. Should-fix: upright belly slide with hits=0 (bounce frame) could still score, the symmetric hole of the inverted hits=0 case. Acted on: upsetOnDirt is now clearance < DIRT_CLEARANCE only, attitude and hits are unused. Added selftests for upright hits=0, the 0.219 / 0.221 band, a 3-lap run that dirt cannot steal, freestyle never scores, dirt through a dive-height opening. 367 passed, 0 failed.
+
+Declined from the coverage list: sloped WASM plane (shell already resamples every 1 ms while tumbling; adding a slope fixture is the next plant session, not this scoring hole), CAMERA_MOUNT visual shot (render clamp is in, browser proof follows), CCD substeps, new ABI.
+
+VERIFY, this turn, `npm run verify` against the projection wasm (commit e26857e). 15 of 16 passing. Full table:
+
+  1  build-clean            PASS  build exit 0, vendor diff empty, abi 1, init OK
+  2  determinism-repeat     PASS  a=de0401cd4266 b=de0401cd4266
+  3  determinism-cross-host PASS  node=de0401cd4266 chrome=de0401cd4266
+  4  frame-independence     PASS  1 distinct hash across 30, 60, 144, 240 Hz
+  5  hover-throttle         PASS  0.2793 in 0.20 to 0.30
+  6  punch-out              PASS  80.0 m in 55 to 85
+  7  terminal-velocity      PASS  31.0 m/s in 30 to 40
+  8  motor-step-response    PASS  26 ms in 10 to 30
+  9  rate-tracking          PASS  671.7 deg/s vs 670 (0.25 percent)
+  10 yaw-coupling           PASS  -0.10 deg, band |drift| 0.04 to 0.60, sign negative
+  11 battery-sag            PASS  11.14 percent (26157 vs 23242 RPM)
+  12 diff-passthrough       PASS  ratio 1.2472 vs 1.2537 (0.52 percent)
+  13 console-clean          PASS  errors=0 warnings=0 run=ok
+  14 audio-bed              PASS  ctx running, music gain 0.300, 41 nodes
+  15 world-scale            PASS  craft sweep 0.1735 m, collider scan as recorded
+  16 map-isolation          FAIL  field P1 301 vs recorded 303, P2 1043749 vs 1014037, P10 33.1 vs 32.0, meshes 177 vs 169. City modules: 0 with the field selected, 63 after choosing it.
+
+The harness never calls sim_set_ground, so ground_project_hull is unreachable on this path. The trace hash is de0401cd4266, identical to the last contact-branch verify. That is the additive-ABI proof: a floor that the harness does not raise cannot change checks 2 through 12. The hash staying put is required, not a missed physics edit.
+
+Check 16 leak detector held: after a city round trip P1 301, P2 1043749, P10 33.1, meshes 177, identical to boot. Same recorded-budget miss as the OPEN QUESTION. Thresholds were not moved.
+
+Physics path: checks 1 through 12 green, values unchanged from the previous contact verify. Flight feel is awaiting human judgement.
+
+Scoring tighten after the review is JS only. The plant and wasm did not move, so verify was not re-run for that follow-up. node src/trackbuilder/selftest.js: 367 passed, 0 failed.

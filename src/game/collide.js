@@ -1276,7 +1276,7 @@ export function hitOutcome(kindName, closing, _upDot = 0) {
  * grass, or a belly slide through the hole, does not: that is the
  * crash that used to walk through the timing gate and throw the
  * results screen. A bounce can drop the plant hit flag for a frame,
- * so dirt is judged by clearance and attitude, not by hits alone.
+ * so dirt is judged by clearance, not by hits or attitude.
  *
  * heightAt(x, z, y) is the surface under that sample, same contract as
  * view.height. margin is how far below that surface counts as buried.
@@ -1286,15 +1286,14 @@ export const DIRT_CLEARANCE = 0.22;
 export const BURIED_MARGIN = 0.10;
 
 export function upsetOnDirt(upz, clearance, inContact) {
-  /* Near the dirt, a tumble or a belly slide is not a flown opening.
-   * Contact is not required: a bounce can drop the hit flag for a
-   * frame while the camera is still in the grass. The upz band matches
-   * the plant's single-support split (upz < 0.5), so a side arrival is
-   * treated the same as inverted. */
-  if (!(clearance < DIRT_CLEARANCE)) {
-    return false;
-  }
-  return Boolean(inContact) || upz < DIRT_UPZ;
+  /* A path this close to the dirt is a crash, not a flown opening.
+   * Attitude and the plant hit flag are not required: a bounce can
+   * drop hits for a frame, and an upright slide is the same class of
+   * accident as an inverted one. upz is kept so callers and tests can
+   * still name a tumble; the clearance band is the decision. */
+  void upz;
+  void inContact;
+  return clearance < DIRT_CLEARANCE;
 }
 
 export function shouldScorePass(prev, curr, opts) {

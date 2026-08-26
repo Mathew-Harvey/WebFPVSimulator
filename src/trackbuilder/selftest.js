@@ -1387,6 +1387,18 @@ function suiteCrashRule() {
     shouldScorePass({ x: 0, y: 0.05, z: 1.2 }, { x: 0, y: 0.045, z: -1.2 }, {
       upz: 1, clearance: 0.045, hits: 1, heightAt: flat,
     }) === false);
+  check('an upright bounce frame with no hit flag still does not score',
+    shouldScorePass({ x: 0, y: 0.05, z: 1.2 }, { x: 0, y: 0.045, z: -1.2 }, {
+      upz: 1, clearance: 0.045, hits: 0, heightAt: flat,
+    }) === false);
+  check('clearance just under the dirt band does not score',
+    shouldScorePass(airPass.prev, airPass.curr, {
+      upz: 1, clearance: 0.219, hits: 0, heightAt: flat,
+    }) === false);
+  check('clearance just above the dirt band still scores',
+    shouldScorePass(airPass.prev, airPass.curr, {
+      upz: 1, clearance: 0.221, hits: 0, heightAt: flat,
+    }) === true);
   check('falling through the opening into the dirt does not score',
     shouldScorePass({ x: 0, y: 0.9, z: 1.2 }, { x: 0, y: -2, z: -1.2 }, {
       upz: -0.4, clearance: -2, hits: 0, heightAt: flat,
@@ -1424,6 +1436,44 @@ function suiteCrashRule() {
     later.passed != null && timing.lap === 1);
   check('one completed lap is what a 1-lap run would finish on, and only after a flown pass',
     timing.lap === 1 && timing.log.length === 1 && timing.log[0].ms != null);
+
+  const three = new Race([{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }]);
+  const runLaps = 3;
+  three.update(airSeg.prev, airSeg.curr, 10, 10);
+  three.update(airSeg.prev, airSeg.curr, 20, 20);
+  check('lap 1 of 3 is not the finished-track screen',
+    three.lap === 1 && !(three.lap >= runLaps));
+  const midDirt = shouldScorePass(dirtSeg.prev, dirtSeg.curr, {
+    upz: -1, clearance: 0.05, hits: 0, heightAt: flat,
+  });
+  three.update(dirtSeg.prev, dirtSeg.curr, 30, 30, midDirt);
+  check('inverted dirt mid run does not steal a lap on a 3-lap race',
+    midDirt === false && three.lap === 1 && !(three.lap >= runLaps));
+  three.update(airSeg.prev, airSeg.curr, 40, 40);
+  check('lap 2 of 3 is still not the results screen',
+    three.lap === 2 && !(three.lap >= runLaps));
+  three.update(airSeg.prev, airSeg.curr, 50, 50);
+  check('only the third flown lap would finish a 3-lap run',
+    three.lap === 3 && three.lap >= runLaps);
+
+  const free = new Race([]);
+  const freeRes = free.update(airSeg.prev, airSeg.curr, 10, 10);
+  check('a freestyle map never scores a gate',
+    free.freestyle === true && freeRes.passed == null && free.lap === 0);
+
+  const diveDirt = shouldScorePass(
+    { x: 0, y: 0.08, z: 1.2 }, { x: 0, y: 0.04, z: -1.2 },
+    { upz: -0.6, clearance: 0.04, hits: 0, heightAt: flat },
+  );
+  check('dirt through a dive-height opening still does not score',
+    diveDirt === false);
 }
 
 function suiteSchemaDoc() {

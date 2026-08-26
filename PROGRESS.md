@@ -18253,3 +18253,20 @@ the bay between them.
 `node --check` on `src/maps/city/index.js` and
 `overbridge.js`. Headless probes follow. `npm run verify` was
 not run: city map, not the plant.
+
+## Overbridge stair fly channel: the kei under the flight
+
+After the platform slabs were gone, the climb line was empty
+for the first fifteen pans and hit a 1.475 x 64 x 3.4 m wall
+on the last five. That is the 公園前 kei parked at (41.45,
+10.5) under the flight. `parkVehicle` authors a box to the
+roof and no floor, which is 1.6 m tall. The body is 3.4 m
+long, so the fit ran, the treads above the bay voted as
+occupancy, and roof-lift took the box to 4.41 m, through the
+climb line.
+
+`parkVehicle` now skipFits. A carport or a soffit above a bay
+cannot grow the car into that air. The kei is still the kei.
+
+`node --check` on `vehicles.js`. Headless probes follow.
+`npm run verify` was not run: city map, not the plant.

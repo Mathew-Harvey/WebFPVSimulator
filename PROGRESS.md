@@ -17942,3 +17942,72 @@ passed. `node src/trackbuilder/selftest.js` 382 passed.
 
 Harness is green on the flight checks. Feel is awaiting human
 judgement.
+
+## Adversarial review: unglue takeoff (owner asked)
+
+Three review agents, directed this turn. Findings go here
+whether acted on or not. No advisor channel. ABI unchanged.
+Plant, mixer, Betaflight, `src/main.js`, and `src/game/collide.js`
+are empty vs `8daa450`. Scope is still grass settle only.
+
+### Scope / determinism (acted as confirmed)
+
+- Files vs `8daa450`: `src/native/sim.c`, `dist/sim.wasm`,
+  `scripts/contact-selftest.js`, `PROGRESS.md` only.
+- `ground_apply` is a no-op when `g_ground_on == 0`. Harness
+  never raises the plane.
+- `sim_contact` and `contact_impulse` are byte-identical to
+  `8daa450`. Walls are not this change.
+- Isolation vs `8daa450` wasm, run this turn: free-air 500 ms
+  drop, `set_ground(0)`, distant plane at z = -100, wall impulse,
+  wall then 40 ms free-air, and baseline replay hash
+  `de0401cd4266` are all bit-identical. Seated punch and
+  inverted z = 4 are the expected diffs (that is the fix).
+- Wasm +166 bytes in the code section only. Same 62 exports.
+
+### Ground physics (H1 acted on)
+
+P0 from the physics agent: invert-stop still fired in the 8 mm
+halo with `hits = 0`. A 135 deg flip froze at ~79 ms with the
+deepest corner 6 mm above the plane and the CG still ~10 cm up.
+That is crashing physics, not free-air, but it is the same
+lock the owner felt on a low flip.
+
+Acted: halo invert-stop now requires props-down
+(`upz < CONTACT_INVERT_HALO_UPZ`, -0.90) and not a dive
+(`vn_plant` not faster inbound than 0.20 m/s). Actual contact
+(`hits` or projected) still stops immediately at any inverted
+attitude. Props-down slop shove still stops in 5 ms. After the
+change the 135 deg case keeps rate until the hull is on the
+slop (corner -0.002 m), then stops.
+
+### Declined
+
+- H7, shell `canPerch` has no throttle check. Pre-existing in
+  `src/main.js`. A clean punch leaves the hit band before
+  `takingOff` clears. Changing perch policy is not crashing
+  plant physics. Left alone.
+- H2, keep Baumgarte when `vn_plant > 0`. Not seen on a level
+  punch (slop means bias = 0). Tightening it would re-glue the
+  first milliseconds of climb.
+- H5, first 14 ms of punch `vz = 0`. Thrust still below weight.
+  Not glue.
+- Turtle peak-upz vs final pose. Honest metric. The couple still
+  reaches ~0.99. End pose is a leftover tumble in free air now
+  that near is honest. Shell snaps turtle.
+- Upright air-roll selftest would have passed on `8daa450`. The
+  invert-at-z=4 test is the one that sees the old bug. Kept
+  both.
+- `g_ground_n` leftovers after `set_ground(0)`. Pre-existing.
+  Unread while ground is off.
+
+### Other hypotheses, not bugs after the fix
+
+H3 belly hop, H4 on-grass projection, H8 props-down slop miss,
+H9 drop first-contact, H10 JS libm / ABI: not confirmed.
+
+Checks this turn before verify: `npm run build:wasm` 0. vendor
+diff empty. `npm run contact:selftest` all passed, including
+the new 135 deg halo case. isolation vs `8daa450` wasm clean
+on free-air and walls. `node src/trackbuilder/selftest.js` 382
+passed. `npm run verify` follows the commit.

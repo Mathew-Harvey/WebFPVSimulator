@@ -23,6 +23,8 @@
  *      cancel climb (motors at the stops, hull glued to the slop)
  *   9. an inverted flip or leftover roll in free air must not freeze
  *      vel or omega just because a ground plane exists metres below
+ *  10. a 135 deg flip must not freeze in the 8 mm near halo before
+ *      the hull actually hits
  *
  * Run: node scripts/contact-selftest.js   (npm run contact:selftest)
  * Exit code is the failure count.
@@ -803,6 +805,40 @@ function sameState(a, b) {
   check('a roll in free air does not kill leftover omega',
     omegaMag(st) > 0.4 && st[ST.Z] > 3.5,
     `w=${omegaMag(st).toFixed(3)} w0=${w0.toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* 135 deg roll, CG ~18 cm up: a corner enters the 8 mm halo before
+   * any hit. Invert-stop used to zero vel and omega there, with the
+   * CG still a decimetre off the grass. */
+  const h = 135 * Math.PI / 360;
+  sim.e.sim_set_pose(0, 0, 0.18, Math.cos(h), Math.sin(h), 0, 0);
+  sim.rest();
+  grass(sim);
+  const seated = sim.readState().state;
+  sim.e.sim_contact(1, 0, 0, 0.32, 0.38, seated[ST.X], seated[ST.Y], seated[ST.Z], 8, 0, 0);
+  const spun = sim.readState().state;
+  const w0 = omegaMag(spun);
+  let haloFreeze = false;
+  let t = spun[ST.T];
+  let st = spun;
+  for (let i = 0; i < 120; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 0);
+    sim.step(1);
+    st = sim.readState().state;
+    const corner = deepestHullCorner(st);
+    if (speedMag(st) < 0.05 && omegaMag(st) < 0.05 && corner > HULL_SLOP + 0.001) {
+      haloFreeze = true;
+      break;
+    }
+  }
+  check('a 135 deg flip starts with leftover rate',
+    w0 > 8, `w0=${w0.toFixed(3)}`);
+  check('and does not freeze in the 8 mm halo before the hull meets the plane',
+    !haloFreeze,
+    `haloFreeze=${haloFreeze} w=${omegaMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)} corner=${deepestHullCorner(st).toFixed(4)} upz=${upZ(st).toFixed(3)}`);
 }
 
 {

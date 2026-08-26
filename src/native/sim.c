@@ -95,11 +95,20 @@ static int g_ground_near = 0;
 #define CAMERA_BODY_Y 0.0
 #define CAMERA_BODY_Z 0.018
 #define CONTACT_INVERT_UPZ -0.50
+/* Halo invert-stop is props-down only. A roll or flip that is only
+ * partly inverted can put a corner in the 8 mm slab with the CG still
+ * a decimetre up; that must not freeze. */
+#define CONTACT_INVERT_HALO_UPZ -0.90
 #define CONTACT_SLIDE_KEEP 0.970
 #define CONTACT_OMEGA_KEEP 0.920
 #define CONTACT_SLIDE_STOP 0.12
 #define CONTACT_OMEGA_STOP 0.35
 #define CONTACT_NEAR 0.008
+/* Inbound normal faster than this in the 8 mm halo is a live arrival,
+ * not a seated props-down slide. Invert-stop on near-only used to
+ * freeze a flip the moment a corner entered that slab, with the CG
+ * still a decimetre up and hits still 0. */
+#define CONTACT_INVERT_DIVE 0.20
 /* Deepest-pen sentinel. Must be a large negative: starting at 0 made
  * every airborne hull look "near" the plane (worst stayed 0), so an
  * inverted flip in free air ran invert-stop and froze the craft. */
@@ -523,15 +532,23 @@ static void ground_settle(double upz, double vn_plant) {
     vn = 0.0;
   }
 
-  /* Props-down on grass: stop immediately. Free-air invert is not
-   * near, so it never reaches here. */
+  /* Props-down on grass: stop immediately when the hull is on the
+   * plane, or when it is only in the 8 mm halo and not diving in.
+   * A live flip whose lowest corner just entered that halo must keep
+   * vel and omega until it actually hits. */
   if (upz < CONTACT_INVERT_UPZ) {
-    S.vel[0] = 0.0;
-    S.vel[1] = 0.0;
-    S.vel[2] = 0.0;
-    S.omega[0] = 0.0;
-    S.omega[1] = 0.0;
-    S.omega[2] = 0.0;
+    const int touching = g_ground_hits || g_ground_projected;
+    const int seated_halo = g_ground_near
+        && upz < CONTACT_INVERT_HALO_UPZ
+        && !(vn_plant < -CONTACT_INVERT_DIVE);
+    if (touching || seated_halo) {
+      S.vel[0] = 0.0;
+      S.vel[1] = 0.0;
+      S.vel[2] = 0.0;
+      S.omega[0] = 0.0;
+      S.omega[1] = 0.0;
+      S.omega[2] = 0.0;
+    }
     return;
   }
 

@@ -649,7 +649,7 @@ function buildHall(ctx, Y, m, gm, rng, sakura, shrubs, petals) {
    * `makeBikeRack` at `ry = PI/2` runs its row along x with every nose pointing
    * -z, so what has to clear the hall's frontage is half a wheelbase (0.95 m)
    * and not half a handlebar. */
-  ctx.add(makeBikeShelter({ x: 15.0, z: 66.9, y: FY, ry: 0, w: 4.0, d: 1.8, h: 2.05 }));
+  ctx.add(makeBikeShelter({ ctx, x: 15.0, z: 66.9, y: FY, ry: 0, w: 4.0, d: 1.8, h: 2.05 }));
   ctx.add(makeBikeRack({ x: 15.0, z: 66.7, y: FY, n: 6, spacing: 0.64, ry: Math.PI / 2, seed: 83 }));
   /* **One loose bicycle east of the rack, not two.**  Both stood on x = 17.4 at
    * `ry ≈ PI/2`, which runs a 1.73 m machine along z -- and they were 0.8 m apart
@@ -832,7 +832,7 @@ function buildPark(ctx, Y, m, gm, rng, sakura, grove, shrubs, petals) {
    * and the sandpit's timber edge started at 2.83: its north-east post stood *in*
    * the sand, and the green kid's bike at (3.4, 76.5) was sunk to its axles in it
    * -- the sand's surface is 0.11 m above the `PY` everything here is seated on. */
-  ctx.add(makeBikeShelter({ x: 2.6, z: 76.6, y: PY, ry: 0, w: 1.8, d: 1.7, h: 1.92 }));
+  ctx.add(makeBikeShelter({ ctx, x: 2.6, z: 76.6, y: PY, ry: 0, w: 1.8, d: 1.7, h: 1.92 }));
   ctx.add(makeKidBike({ x: 2.4, z: 76.8, y: PY, ry: -Math.PI / 2 + 0.12 }));
   ctx.add(makeKidBike({ x: 3.0, z: 76.5, y: PY, ry: Math.PI / 2 - 0.2, color: 0x4f8f6a }));
   ctx.add(makeBicycle({ x: 6.7, z: 72.3, y: PY, ry: 0.06, lean: 0.07, color: 0x3f6f9c }));
@@ -953,7 +953,7 @@ function buildHousing(ctx, Y, m, gm, shrubs, petals) {
     /* the block's two bicycles live down its west side under a lean-to, which is
      * what a walk-up on a 1.3 m setback actually does with them.  The slot is
      * 1.55 m wide, so the row runs *across* it and the machines lie along it. */
-    ctx.add(makeBikeShelter({ x: 10.6, z: 76.0, y: Y, ry: 0, w: 1.4, d: 2.4, h: 2.0 }));
+    ctx.add(makeBikeShelter({ ctx, x: 10.6, z: 76.0, y: Y, ry: 0, w: 1.4, d: 2.4, h: 2.0 }));
     ctx.add(makeBikeRack({ x: 10.6, z: 76.0, y: Y, n: 2, spacing: 0.62, ry: -Math.PI / 2, seed: 84 }));
     shrubs.push({ x: 10.5, z: 78.6, y: Y, r: 0.44, count: 3, spread: 1.1, seed: 8332 });
   }
@@ -1018,7 +1018,7 @@ function buildHousing(ctx, Y, m, gm, shrubs, petals) {
   });
   laneLine(ctx, { axis: 'z', at: CARBAY.x - CARBAY.w / 2 + 0.1, from: 72.1, to: 76.7, y: Y + 0.09 });
   laneLine(ctx, { axis: 'z', at: CARBAY.x + CARBAY.w / 2 - 0.1, from: 72.1, to: 76.7, y: Y + 0.09 });
-  ctx.add(makeCarport({ x: CARBAY.x, z: CARBAY.z + 0.2, y: Y + 0.07, ry: 0, w: 2.7, d: 4.6, h: 2.3 }));
+  ctx.add(makeCarport({ ctx, x: CARBAY.x, z: CARBAY.z + 0.2, y: Y + 0.07, ry: 0, w: 2.7, d: 4.6, h: 2.3 }));
 
   /* the back of the row: one big green mass in the slot behind the two
    * buildings, which is what stops the roof line running out into bare sky */

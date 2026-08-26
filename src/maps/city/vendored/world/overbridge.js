@@ -458,6 +458,7 @@ function roof(ctx, o) {
       alongZ ? sheetLen : runLen, 0.035, alongZ ? runLen : sheetLen
     );
     const sheet = new THREE.Mesh(geo, m.canopy);
+    sheet.name = 'overbridgeCanopy';
     sheet.position.set(alongZ ? cx + s * span / 4 : cx, y + camber / 2, alongZ ? cz : cz + s * span / 4);
     if (alongZ) sheet.rotation.z = -s * slope;
     else sheet.rotation.x = s * slope;
@@ -498,11 +499,47 @@ function roof(ctx, o) {
     }
   }
   const mesh = new THREE.Mesh(bake(parts.rib), m.canopyRib);
+  mesh.name = 'overbridgeCage';
   mesh.castShadow = true;
   ctx.add(mesh);
-  /* Thin lid at the sheets, not a box down to the deck: the corridor under
-   * the roof is a gap a quad can fly. */
-  ctx.collide(x0, z0, x1, z1, y + camber + 0.1, y - 0.1);
+  /* Posts, ridge, eaves and hoop ribs, not a lid. Baked together the rib
+   * mesh AABB is the cage, so the cover pass would wall every bay a quad
+   * can see through. skipFit keeps a 10 m beam from growing to the
+   * envelope. The polycarbonate is air: those rectangles are the line. */
+  const hit = (ax, az, bx, bz, top, bot) => {
+    ctx.collide(ax, az, bx, bz, top, bot, true);
+  };
+  const hw = 0.07;
+  if (alongZ) {
+    hit(cx - hw, z0, cx + hw, z1, y + camber + 0.08, y + camber - 0.04);
+    for (const s of [-1, 1]) {
+      const ex = cx + s * span / 2;
+      hit(ex - hw, z0, ex + hw, z1, y + 0.06, y - 0.08);
+    }
+  } else {
+    hit(x0, cz - hw, x1, cz + hw, y + camber + 0.08, y + camber - 0.04);
+    for (const s of [-1, 1]) {
+      const ez = cz + s * span / 2;
+      hit(x0, ez - hw, x1, ez + hw, y + 0.06, y - 0.08);
+    }
+  }
+  for (let i = 0; i <= nr; i++) {
+    const t = (alongZ ? z0 : x0) + (runLen / nr) * i;
+    for (const s of [-1, 1]) {
+      const px = alongZ ? cx + s * (span / 2 - 0.08) : t;
+      const pz = alongZ ? t : cz + s * (span / 2 - 0.08);
+      hit(px - 0.06, pz - 0.06, px + 0.06, pz + 0.06, y, y - CANOPY_H);
+      if (alongZ) {
+        const hx0 = Math.min(cx, cx + s * span / 2);
+        const hx1 = Math.max(cx, cx + s * span / 2);
+        hit(hx0, t - 0.05, hx1, t + 0.05, y + camber + 0.04, y - 0.08);
+      } else {
+        const hz0 = Math.min(cz, cz + s * span / 2);
+        const hz1 = Math.max(cz, cz + s * span / 2);
+        hit(t - 0.05, hz0, t + 0.05, hz1, y + camber + 0.04, y - 0.08);
+      }
+    }
+  }
   return mesh;
 }
 

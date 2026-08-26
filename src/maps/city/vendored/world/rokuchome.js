@@ -837,7 +837,7 @@ function buildNorthLane(ctx, m, gm, PY, shrubs, petals) {
   refusePoint(ctx, {
     kind: 'house', x: 48.55, z: 57.40, y: PY, ry: Math.PI / 2, plate: 0, seed: 9714,
   });
-  ctx.add(makeBikeShelter({ x: 46.70, z: 56.30, y: PY, ry: 0, w: 2.2, d: 1.8, h: 2.0 }));
+  ctx.add(makeBikeShelter({ ctx, x: 46.70, z: 56.30, y: PY, ry: 0, w: 2.2, d: 1.8, h: 2.0 }));
   ctx.add(makeBikeRack({ x: 46.70, z: 56.35, y: PY, ry: Math.PI / 2, n: 3, seed: 9715 }));
   ctx.add(makeTapPost({ x: 48.60, z: 59.20, y: PY, ry: Math.PI / 2 }));
   ctx.add(makeBicycle({ x: 49.90, z: 59.60, y: PY, ry: -Math.PI / 2 - 0.05, lean: 0.07, color: 0x8f6fb5 }));

@@ -839,6 +839,7 @@ function buildMiharashi(ctx, rng, out) {
     const fm = new THREE.Mesh(bake(foot), m.concreteMid);
     g.add(fm);
     const pm = new THREE.Mesh(bake(posts), m.timberDark);
+    pm.name = 'openFrame';
     g.add(pm);
 
     const boards = [];

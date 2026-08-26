@@ -641,11 +641,13 @@ function leanTo(g, { w, d, h, fall, mat, sheetColor, opacity }) {
   parts.push({ geometry: new THREE.BoxGeometry(w, 0.07, 0.09), matrix: trs(0, h + 0.02, d / 2 - 0.08) });
   parts.push({ geometry: new THREE.BoxGeometry(w, 0.09, 0.11), matrix: trs(0, h + fall - 0.02, -d / 2 + 0.06) });
   const fm = new THREE.Mesh(bake(parts), mat ?? m.metalDark);
+  fm.name = 'openFrame';
   fm.castShadow = true;
   g.add(fm);
 
   const sheet = new THREE.Mesh(new THREE.BoxGeometry(w + 0.16, 0.03, d / Math.cos(tilt) + 0.2),
     flat({ color: sheetColor ?? 0xa8c0d4, transparent: true, opacity: opacity ?? 0.6, depthWrite: false, cache: false }));
+  sheet.name = 'canopy';
   sheet.position.set(0, h + fall / 2 + 0.07, 0);
   sheet.rotation.x = tilt;
   sheet.userData.noOutline = true;
@@ -662,27 +664,55 @@ function leanTo(g, { w, d, h, fall, mat, sheetColor, opacity }) {
       });
     }
     const rm = new THREE.Mesh(bake(ribs), m.metal);
+    rm.name = 'canopy';
     g.add(rm);
   }
   return g;
+}
+
+function collideLeanTo(ctx, o, w, d, h, fall) {
+  if (!ctx || o.x == null || o.z == null) return;
+  const ry = o.ry ?? 0;
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const y = o.y ?? 0;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const lx = sx * (w / 2 - 0.12);
+      const lz = sz * (d / 2 - 0.1);
+      const px = o.x + ca * lx - sa * lz;
+      const pz = o.z + sa * lx + ca * lz;
+      ctx.collide(px - 0.08, pz - 0.08, px + 0.08, pz + 0.08, y + h + (sz > 0 ? 0 : fall));
+    }
+  }
+  const hw = (Math.abs(ca) * w + Math.abs(sa) * d) / 2;
+  const hd = (Math.abs(sa) * w + Math.abs(ca) * d) / 2;
+  ctx.collide(o.x - hw - 0.08, o.z - hd - 0.08, o.x + hw + 0.08, o.z + hd + 0.08,
+    y + h + fall + 0.14, y + h - 0.04, true);
 }
 
 /** A carport: the lean-to over a bay, plus the wheel stop under it. */
 export function makeCarport(o = {}) {
   const m = mats();
   const g = new THREE.Group();
-  leanTo(g, { w: o.w ?? 2.7, d: o.d ?? 5.0, h: o.h ?? 2.25, fall: 0.22, sheetColor: 0x9cb8d0, opacity: 0.62 });
-  g.add(box((o.w ?? 2.7) - 0.9, 0.11, 0.16, m.concreteMid, 0, 0.055, -(o.d ?? 5.0) / 2 + 0.7));
+  g.name = 'openFrame';
+  const w = o.w ?? 2.7, d = o.d ?? 5.0, h = o.h ?? 2.25, fall = 0.22;
+  leanTo(g, { w, d, h, fall, sheetColor: 0x9cb8d0, opacity: 0.62 });
+  g.add(box(w - 0.9, 0.11, 0.16, m.concreteMid, 0, 0.055, -d / 2 + 0.7));
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  collideLeanTo(o.ctx, o, w, d, h, fall);
   return g;
 }
 
 /** A bicycle shelter: the same lean-to, lower and shallower. */
 export function makeBikeShelter(o = {}) {
   const g = new THREE.Group();
-  leanTo(g, { w: o.w ?? 4.2, d: o.d ?? 1.9, h: o.h ?? 2.05, fall: 0.18, sheetColor: 0xb0c4d0, opacity: 0.58 });
+  g.name = 'openFrame';
+  const w = o.w ?? 4.2, d = o.d ?? 1.9, h = o.h ?? 2.05, fall = 0.18;
+  leanTo(g, { w, d, h, fall, sheetColor: 0xb0c4d0, opacity: 0.58 });
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  collideLeanTo(o.ctx, o, w, d, h, fall);
   return g;
 }

@@ -676,8 +676,16 @@ function buildStation(ctx, parent, rng) {
       }
     }
     const pm = new THREE.Mesh(bake(posts), cel({ color: PAL.metalDark, bands: 3 }));
+    pm.name = 'openFrame';
     pm.castShadow = true;
     g.add(pm);
+    for (const px of [cx - roofW / 2 + 0.6, cx + roofW / 2 - 0.6]) {
+      for (const pz of [zf - 0.9, zb + 0.7]) {
+        ctx.collide(px - 0.1, pz - 0.1, px + 0.1, pz + 0.1, H + 2.6, H);
+      }
+    }
+    ctx.collide(cx - roofW / 2, Math.min(zf - 0.9, zb + 0.7) - 0.8, cx + roofW / 2,
+      Math.max(zf - 0.9, zb + 0.7) + 0.8, H + 2.8, H + 2.5, true);
     const roof = box(roofW, 0.16, roofD, cel({ color: PAL.roofTeal, bands: 3, tint: 0x4a4468 }), cx, H + 2.66, (zf + zb) / 2 - 0.1);
     roof.castShadow = roof.receiveShadow = true;
     g.add(roof);

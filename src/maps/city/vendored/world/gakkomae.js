@@ -350,7 +350,7 @@ function buildSchoolVerge(ctx, m, gm, rng, shrubs, petals) {
    * short of the wall face.  That fills the verge, and it is meant to: the
    * road's own 1.55 m footway is the route past it. */
   for (const sz of [-56.4, -61.4]) {
-    ctx.add(makeBikeShelter({ x: 9.35, z: sz, y: Y + 0.07, ry: Math.PI / 2, w: 4.6, d: 2.1, h: 2.15 }));
+    ctx.add(makeBikeShelter({ ctx, x: 9.35, z: sz, y: Y + 0.07, ry: Math.PI / 2, w: 4.6, d: 2.1, h: 2.15 }));
   }
   for (const rz of [-54.9, -57.9, -60.0, -62.9]) {
     ctx.add(makeBikeRack({ x: 9.55, z: rz, y: Y + 0.07, n: 4, spacing: 0.58, ry: Math.PI / 2, seed: 220 + Math.round(-rz) }));

@@ -17409,3 +17409,38 @@ wiki-moved-to-landing-site note. src/main.js auto-merged: MAP_MODULE_COUNT.city
 stays 63, and main's applyLocationHash after a graphics rebuild plus
 credits in STAY_SCREENS stay on.
 
+## Open overbridge cage, bell housing, and the same class of frames
+
+The overpass roof and the school bell were invisible walls. Same cause as
+the torii: posts and beams bake into one mesh whose AABB is the opening,
+and COVER_MIN_FILL reads that AABB as solid fill. The overbridge also had
+an authored lid across the polycarbonate bays.
+
+Fix, same pattern as the torii:
+
+- Name the baked cage `overbridgeCage`, drop the lid, author skipFit
+  posts, ridge, eaves and hoop ribs. The sheets stay air: those
+  rectangles are the line.
+- Name the bell posts `schoolBell`, author the four posts, the cap and
+  a small bell body. The mouth is air.
+- COVER_SOFT gains overbridgeCage, schoolBell, openFrame, temizuya,
+  haiden.
+- Same class, swept: water-tank legs, 東屋 and 炊事棚, onsen porch /
+  足湯 shelter / viewing-deck posts, rest-corner lean-to (and the sheet
+  now actually lands in the scene: ctx.add took one argument), shrine
+  haiden front bay and 手水舎 posts+roof, bike shelters and carports
+  (posts and a roof slab, not the bay), station canopy posts, urayama
+  deck posts and the small torii.
+
+Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays 63.
+No extras at top === -1.
+
+Verify this turn: `node --check` on the edited city files. Headless
+city load with scan, flight-line probes and overlay shots follow this
+commit. `npm run verify` was not run: city map, not the plant.
+
+What could go wrong: hoop-rib cards that are too fat would close a bay.
+Shrink the skipFit slab, do not put the lid back. If phantom climbs, it
+is new authored beams, not a reason to restore the cover pass on these
+names.
+

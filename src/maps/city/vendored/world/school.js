@@ -640,8 +640,15 @@ function buildTeachingBlock(ctx, Y) {
       }
     }
     const lm = new THREE.Mesh(bake(legs), m.metalDark);
+    lm.name = 'openFrame';
     lm.castShadow = true;
     ctx.add(lm);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const px = tx + sx * 1.1, pz = tz + sz * 0.9;
+        ctx.collide(px - 0.1, pz - 0.1, px + 0.1, pz + 0.1, roofY + 1.2, roofY, true);
+      }
+    }
     const tank = box(2.8, 1.5, 2.4, cel({ color: 0xdcdce4, bands: 3, tint: 0x6a6288 }), tx, roofY + 1.95, tz);
     tank.castShadow = tank.receiveShadow = true;
     ctx.add(tank);
@@ -668,8 +675,12 @@ function buildTeachingBlock(ctx, Y) {
       }
     }
     const pm = new THREE.Mesh(bake(post), m.wood);
+    pm.name = 'schoolBell';
     pm.castShadow = true;
     ctx.add(pm);
+    /* Posts and the cap, not the mouth. Four posts baked together are one
+     * AABB the size of the housing, and the cover pass reads that AABB as
+     * solid fill. */
     // a shallow hipped cap
     const cap = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1), m.roof);
     cap.rotation.y = Math.PI / 4;
@@ -695,6 +706,14 @@ function buildTeachingBlock(ctx, Y) {
     crown.position.set(bx, roofY + BH - 0.34, bz);
     ctx.add(crown);
     ctx.add(cyl(0.035, 0.035, 0.4, 5, m.metalDark, bx, roofY + BH - 0.14, bz));
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const px = bx + sx * 0.82, pz = bz + sz * 0.7;
+        ctx.collide(px - 0.1, pz - 0.1, px + 0.1, pz + 0.1, roofY + BH, roofY, true);
+      }
+    }
+    ctx.collide(bx - 1.25, bz - 1.15, bx + 1.25, bz + 1.15, roofY + BH + 0.9, roofY + BH, true);
+    ctx.collide(bx - 0.36, bz - 0.36, bx + 0.36, bz + 0.36, roofY + BH - 0.3, roofY + BH - 0.92, true);
   }
 
   return g;
@@ -2134,6 +2153,7 @@ function buildBikeShed(ctx, Y, rng) {
     posts.push({ geometry: new THREE.BoxGeometry(0.09, 0.09, z1 - z0 - 0.8), matrix: trs(px, H - 0.1, cz) });
   }
   const pm = new THREE.Mesh(bake(posts), m.metalDark);
+  pm.name = 'openFrame';
   pm.castShadow = true;
   pm.position.y = Y;
   g.add(pm);
@@ -2176,5 +2196,6 @@ function buildBikeShed(ctx, Y, rng) {
     ctx.collide(px - 0.13, z0 + 0.27, px + 0.13, z0 + 0.53, Y + H);
     ctx.collide(px - 0.13, z1 - 0.53, px + 0.13, z1 - 0.27, Y + H);
   }
+  ctx.collide(x0 - 0.2, z0 - 0.3, x1 + 0.2, z1 + 0.3, Y + H + 0.22, Y + H - 0.04, true);
   return g;
 }

@@ -561,7 +561,7 @@ function buildSquare(ctx, sakura, shrubs, petals) {
   /* the flats' bicycle shelter.  No collider on it -- four 0.09 m posts inflated
    * by the player's radius would take 1.5 m out of a 3.6 m square, and the same
    * decision is already made for the one on the north block's lane. */
-  ctx.add(makeBikeShelter({ x: 33.60, z: 33.95, y: gy(33.60, 33.95), ry: 0, w: 2.8, d: 1.8, h: 2.05 }));
+  ctx.add(makeBikeShelter({ ctx, x: 33.60, z: 33.95, y: gy(33.60, 33.95), ry: 0, w: 2.8, d: 1.8, h: 2.05 }));
 
   /* the machine by the park the brief asks for, facing -z so it is read from the
    * paving and from the park beyond it.  Its glow is what carries the square at

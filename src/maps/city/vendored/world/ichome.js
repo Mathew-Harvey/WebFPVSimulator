@@ -707,7 +707,7 @@ function buildWalkup(ctx, m, gm, shrubs) {
       x: cx, z: -10.75, w: GAP_A.x1 - GAP_A.x0, d: 5.2, y, h: 0.06,
       mat: gm.gravel, name: 'ichomeBikeYard',
     });
-    ctx.add(makeBikeShelter({ x: -66.5, z: -11.0, y: ctx.groundAt(-66.5, -11.0), ry: Math.PI / 2, w: 3.4, d: 1.9, h: 2.05 }));
+    ctx.add(makeBikeShelter({ ctx, x: -66.5, z: -11.0, y: ctx.groundAt(-66.5, -11.0), ry: Math.PI / 2, w: 3.4, d: 1.9, h: 2.05 }));
     ctx.add(makeBikeRack({ x: -66.4, z: -11.0, y: ctx.groundAt(-66.4, -11.0), n: 4, spacing: 0.66, ry: 0, seed: 81 }));
     ctx.add(makeTapPost({ x: -64.85, z: -9.9, y: ctx.groundAt(-64.85, -9.9), ry: -Math.PI / 2 }));
     ctx.add(makeLaundryPole({

@@ -591,6 +591,7 @@ function buildPark(ctx, rng, out) {
     const px = 132.0, pz = -70.6;
     const py = ctx.groundAt(px, pz);
     const g = new THREE.Group();
+    g.name = 'openFrame';
     const W = 4.0, D = 3.4, H = 2.35;
     pad(ctx, { x: px, z: pz, w: W + 0.5, d: D + 0.5, y: py - 0.09, h: 0.09, mat: m.stone, name: 'azumayaPad' });
     for (const sx of [-1, 1]) {
@@ -625,15 +626,18 @@ function buildPark(ctx, rng, out) {
     shadowify(g, true, true);
     ctx.add(g);
     hullOutline(g.children[g.children.length - 1], { thickness: 0.003 });
-    /* Colliders on the **posts only**.  A box round an open pavilion is a pavilion
-     * you cannot stand in -- the 六丁目 bus shelter found that, and the flood fill
-     * read its waiting island as unreachable. */
+    /* Colliders on the **posts and the roof**, not a box round the bay.
+     * A box round an open pavilion is a pavilion you cannot stand in -- the
+     * 六丁目 bus shelter found that, and the flood fill read its waiting
+     * island as unreachable. */
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const cx = px + sx * (W / 2 - 0.2), cz = pz + sz * (D / 2 - 0.2);
         ctx.collide(cx - 0.12, cz - 0.12, cx + 0.12, cz + 0.12, py + H);
       }
     }
+    ctx.collide(px - (W + 0.9) / 2, pz - (D + 0.9) / 2, px + (W + 0.9) / 2, pz + (D + 0.9) / 2,
+      py + H + RH + 0.12, py + H - 0.04, true);
   }
 
   /* --- the lawn's furniture: picnic tables, tree pits, beds, a drinking point and
@@ -1506,6 +1510,7 @@ function buildCamp(ctx, rng, out) {
     const W = 4.6, D = 2.8, H = 2.3;
     pad(ctx, { x: kx, z: kz, w: W + 0.6, d: D + 0.6, y: ky - 0.08, h: 0.08, mat: m.concrete, name: 'campKitchenPad' });
     const k = new THREE.Group();
+    k.name = 'openFrame';
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         k.add(box(0.14, H + (sz > 0 ? 0.35 : 0), 0.14, m.timberDark,
@@ -1531,6 +1536,8 @@ function buildCamp(ctx, rng, out) {
       }
     }
     ctx.collide(kx - W / 2, kz - D / 2 + 0.2, kx + W / 2, kz - D / 2 + 0.95, ky + 0.9);
+    ctx.collide(kx - (W + 0.8) / 2, kz - (D + 0.9) / 2, kx + (W + 0.8) / 2, kz + (D + 0.9) / 2,
+      ky + H + 0.5, ky + H, true);
     ctx.add(makeBucket({ x: kx + 2.6, z: kz + 0.8, y: ky, ry: 0.5 }));
     ctx.add(makeCrates({ x: kx - 2.9, z: kz - 0.4, y: ky, n: 2, seed: 10101, ry: 0.3 }));
   }

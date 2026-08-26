@@ -333,7 +333,7 @@ function buildShopBackAlley(ctx, shrubs, petals) {
     ctx.collide(cx - 1.7, 40.8, cx - 0.3, 41.7, y + 1.75);
     ctx.add(makeStorageShed({ x: cx + 0.6, z: 41.3, y, ry: 0.06, w: 1.0, d: 0.66, h: 1.42, color: 0xc4c8c0 }));
     ctx.collide(cx + 0.05, 40.9, cx + 1.15, 41.7, y + 1.55);
-    ctx.add(makeBikeShelter({ x: cx + 0.1, z: 35.6, y, ry: 0, w: 3.0, d: 1.7, h: 2.0 }));
+    ctx.add(makeBikeShelter({ ctx, x: cx + 0.1, z: 35.6, y, ry: 0, w: 3.0, d: 1.7, h: 2.0 }));
     /* Two bikes under the shelter, side by side down its 3 m width -- not nose
      * to nose along it.  At ry ~ 0 both wheelbases ran along x and the two of
      * them were 0.8 m apart, which is inside each other for most of a metre. */

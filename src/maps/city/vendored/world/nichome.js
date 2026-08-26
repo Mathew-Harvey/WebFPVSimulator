@@ -753,7 +753,7 @@ function buildHeights(ctx, m, gm, shrubs) {
       { map: hallNotice(2), x: 0.28, y: -0.01, w: 0.38, h: 0.52 },
     ],
   }));
-  ctx.add(makeBikeShelter({ x: fx - 1.05, z: HEIGHTS.z + 2.8, y: Y + 0.09, ry: Math.PI / 2, w: 3.2, d: 1.9, h: 2.05 }));
+  ctx.add(makeBikeShelter({ ctx, x: fx - 1.05, z: HEIGHTS.z + 2.8, y: Y + 0.09, ry: Math.PI / 2, w: 3.2, d: 1.9, h: 2.05 }));
   // Keep the three clear bicycles in their original bays.  The fourth blue
   // bicycle entered the planter; move the remaining row forward until the
   // front tyres meet the step, while the slight pitch keeps the rear tyres up.

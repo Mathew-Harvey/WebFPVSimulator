@@ -17807,3 +17807,51 @@ MAP_MODULE_COUNT.city stays 63.
 Verify this turn: `node --check` on the edited files. Headless
 city load, flight-line probes and overlay shots follow this
 commit. `npm run verify` was not run: city map, not the plant.
+
+## Clear cage hoops: measured
+
+Headless city load with `__CITY_SCAN`. Overlay shots in
+`/opt/cursor/artifacts/cage_hoops_*.png`.
+
+Flight lines (Three.js Y-up), empty unless noted. failed none.
+
+- street `(0, 2.0, 12)` empty
+- overbridge undercroft `(41, 3.0, 0)` empty
+- cage tunnel `(41, 8.4, 0)` empty
+- roof bay `(41.5, 9.95, -0.5)` empty
+- former hoop card `(41.5, 9.95, 2.5)` empty
+- former hoop card `(41.5, 9.95, -1.5)` empty
+- ridge `(41, 10.0, 0)` HIT 0.12 x 0.12 x 10
+- stair throat `(41, 8.0, 6.9)` empty
+- landing centre `(41, 8.4, 5.6)` empty
+- old landing centre post `(41, 8.4, 6.88)` empty
+- deck corner post `(39.89, 8.4, 4.28)` HIT 0.08 x 2.55 x 0.08
+- landing corner post `(39.76, 8.4, 6.74)` HIT 0.08 x 2.55 x 0.08
+- bell mouth `(29.25, 13.05, -48.6)` empty
+- bell post `(28.43, 13.05, -49.3)` HIT 0.2 x 2.5 x 0.2
+- tank gap `(30.85, 12.45, -63.6)` empty
+- tank body `(30.85, 13.8, -63.6)` HIT 2.9 x 1.62 x 2.5
+- torii `(-27.9, 1.8, 19.9)` empty
+- nuki `(-27.9, 2.45, 19.9)` HIT 4.00 x 0.15 x 0.23
+- goal `(39.9, 1.0, -56.5)` empty
+- haiden bay `(-27.9, 4.1, 34.2)` empty
+- 渡り廊下 `(28.5, 1.6, -73.75)` empty
+
+Center line at cage height has ridge and eaves only. No
+vertical post at x = 41. The landing north eave still sits at
+z = 6.96, which is the 16 cm roof lip over the first steps, at
+canopy height (9.67 to 9.81). The stair throat at 8.0 m is air.
+
+Scan vs check 15 (ceilings not edited): phantom 2179 / 29000,
+overFive 114 / 350, holes 10604 / 20300, meanCover 0.578 / 0.45.
+`expectedModules` 63. city colliders 10640, total boxes 12771.
+Previous open-frame run: phantom 2177, holes 10626, boxes 12815.
+
+What went wrong this turn:
+
+- `shots.js` exited 1 because Chromium logged
+  `ERR_CONNECTION_REFUSED`. Probes and PNGs still wrote.
+- The urayama undercroft camera was parked at y = 4.2. The
+  deck sits on hill height 17.3. That shot is not evidence.
+
+`npm run verify` was not run: city map, not the plant.

@@ -17769,3 +17769,41 @@ What went wrong this turn:
 Kept both sides of PROGRESS.md. Incoming main log first (credits,
 rotation, contact, first-flight), then this branch's open-frame
 entries. Only PROGRESS.md conflicted.
+
+## Clear cage hoops and tighten frame collides
+
+The overbridge tunnel still had hoop ribs every ~2.1 m. Each hoop
+was an A-frame in the line of flight, plus a skipFit card from
+ridge to eave that walled the roof bays. A hoop at each end of the
+landing roof AABB sat 16 cm onto the stair, which is the
+stuck-on-nothing at the staircase.
+
+Fix:
+
+- Roof is ridge, eaves and four corner posts. No intermediate
+  hoops, no ridge-to-eave cards. Posts inset 0.22 m from the roof
+  AABB so they stand on the deck, not in the stair throat.
+- Balustrade collide half-width 0.09 to 0.05 (capping rail is
+  0.10). Rake the same. Landing undercroft columns 0.22 to 0.12
+  (visual cylinder 0.11 to 0.13). Post collide half-width 0.04,
+  ridge/eave 0.06.
+- Same class elsewhere: drop the pole that splits a flyable
+  volume, keep the members that only bound it, and shrink fat
+  post boxes to the mesh.
+  - urayama 展望台: 3 by 3 posts to four corners. skipFit 0.10.
+  - lakeroad 展望台: six posts to four corners. skipFit 0.10.
+  - housing lean-to 0.08 to 0.055, restcorner 0.12 to 0.06,
+    station canopy 0.10 to 0.08, onsen porch 0.12 to 0.09,
+    足湯 0.12 to 0.08, onsen deck 0.16 to 0.12, temizuya 0.14
+    to 0.12, bike-shed posts 0.13 to 0.09 (five eave frames
+    kept: they sit on the long edges, not in the aisle),
+    schoolLink posts 0.13 to 0.09, kohan 東屋 0.12 to 0.09,
+    炊事棚 0.11 to 0.08.
+
+Chain-link and dense balustrades stay screens. Deck girder
+collide stays at the flange. Check 15 ceilings were not edited.
+MAP_MODULE_COUNT.city stays 63.
+
+Verify this turn: `node --check` on the edited files. Headless
+city load, flight-line probes and overlay shots follow this
+commit. `npm run verify` was not run: city map, not the plant.

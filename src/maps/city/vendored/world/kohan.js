@@ -633,7 +633,7 @@ function buildPark(ctx, rng, out) {
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const cx = px + sx * (W / 2 - 0.2), cz = pz + sz * (D / 2 - 0.2);
-        ctx.collide(cx - 0.12, cz - 0.12, cx + 0.12, cz + 0.12, py + H);
+        ctx.collide(cx - 0.09, cz - 0.09, cx + 0.09, cz + 0.09, py + H);
       }
     }
     ctx.collide(px - (W + 0.9) / 2, pz - (D + 0.9) / 2, px + (W + 0.9) / 2, pz + (D + 0.9) / 2,
@@ -1532,7 +1532,7 @@ function buildCamp(ctx, rng, out) {
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         const cx = kx + sx * (W / 2 - 0.2), cz = kz + sz * (D / 2 - 0.2);
-        ctx.collide(cx - 0.11, cz - 0.11, cx + 0.11, cz + 0.11, ky + H);
+        ctx.collide(cx - 0.08, cz - 0.08, cx + 0.08, cz + 0.08, ky + H);
       }
     }
     ctx.collide(kx - W / 2, kz - D / 2 + 0.2, kx + W / 2, kz - D / 2 + 0.95, ky + 0.9);

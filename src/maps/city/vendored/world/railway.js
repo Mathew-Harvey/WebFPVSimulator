@@ -681,7 +681,7 @@ function buildStation(ctx, parent, rng) {
     g.add(pm);
     for (const px of [cx - roofW / 2 + 0.6, cx + roofW / 2 - 0.6]) {
       for (const pz of [zf - 0.9, zb + 0.7]) {
-        ctx.collide(px - 0.1, pz - 0.1, px + 0.1, pz + 0.1, H + 2.6, H);
+        ctx.collide(px - 0.08, pz - 0.08, px + 0.08, pz + 0.08, H + 2.6, H);
       }
     }
     ctx.collide(cx - roofW / 2, Math.min(zf - 0.9, zb + 0.7) - 0.8, cx + roofW / 2,

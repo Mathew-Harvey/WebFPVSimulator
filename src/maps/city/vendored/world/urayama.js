@@ -756,12 +756,13 @@ function buildDeck(ctx, rng, out) {
   const H = 2.8;
   const DY = gy + H;
 
-  /* --- the frame: nine posts on pad footings, and the beams they carry --- */
+  /* --- the frame: four corner posts on pad footings, and the beams they carry.
+   * A 3 by 3 grid put a pole in the middle of the undercroft. --- */
   {
     const posts = [];
     const foot = [];
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
+    for (const i of [-1, 1]) {
+      for (const j of [-1, 1]) {
         const px = V.x + i * (W / 2 - 0.35);
         const pz = V.z + j * (D / 2 - 0.35);
         const py = hillMeshY(px, pz);
@@ -770,32 +771,25 @@ function buildDeck(ctx, rng, out) {
           geometry: new THREE.BoxGeometry(0.2, DY - py - 0.1, 0.2),
           matrix: trs(px, (DY + py + 0.1) / 2 - 0.05, pz),
         });
+        ctx.collide(px - 0.10, pz - 0.10, px + 0.10, pz + 0.10, DY, py, true);
       }
     }
-    /* Cross ties rather than raking braces.  The first version put a diagonal on
-     * each long face by hand-deriving its angle from half the post spacing, and
-     * got it wrong in the way the trap table warns about -- the members splayed at
-     * unrelated angles and read as a pile of poles under the deck.  Two horizontal
-     * ties at a third and two thirds of the height do the same structural reading
-     * and are drawn *between two points*, so a shared end is shared by
-     * construction. */
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j < 1; j++) {
-        const px = V.x + i * (W / 2 - 0.35);
-        const za = V.z + j * (D / 2 - 0.35);
-        const zb = V.z + (j + 1) * (D / 2 - 0.35);
-        const ya = hillMeshY(px, za), yb = hillMeshY(px, zb);
-        for (const f of [0.36, 0.7]) {
-          const y0 = ya + (DY - ya) * f, y1 = yb + (DY - yb) * f;
-          const L = Math.hypot(zb - za, y1 - y0);
-          const q = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, y1 - y0, zb - za).normalize());
-          posts.push({
-            geometry: new THREE.BoxGeometry(0.1, L, 0.1),
-            matrix: new THREE.Matrix4().compose(
-              new THREE.Vector3(px, (y0 + y1) / 2, (za + zb) / 2), q, new THREE.Vector3(1, 1, 1)),
-          });
-        }
+    /* Cross ties on the four faces, between the remaining corners. */
+    for (const i of [-1, 1]) {
+      const px = V.x + i * (W / 2 - 0.35);
+      const za = V.z + -1 * (D / 2 - 0.35);
+      const zb = V.z + 1 * (D / 2 - 0.35);
+      const ya = hillMeshY(px, za), yb = hillMeshY(px, zb);
+      for (const f of [0.36, 0.7]) {
+        const y0 = ya + (DY - ya) * f, y1 = yb + (DY - yb) * f;
+        const L = Math.hypot(zb - za, y1 - y0);
+        const q = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, y1 - y0, zb - za).normalize());
+        posts.push({
+          geometry: new THREE.BoxGeometry(0.1, L, 0.1),
+          matrix: new THREE.Matrix4().compose(
+            new THREE.Vector3(px, (y0 + y1) / 2, (za + zb) / 2), q, new THREE.Vector3(1, 1, 1)),
+        });
       }
     }
     const fm = new THREE.Mesh(bake(foot), gm.concreteMid);

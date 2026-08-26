@@ -91,17 +91,21 @@ function mats() {
   return M;
 }
 
-/* A 0.18 m rail box, same width as ground.js `railing`, with a floor so it
- * is a parapet on the deck and not a wall from the tracks up. */
+/* A rail box as wide as the capping (0.10), with a floor so it is a
+ * parapet on the deck and not a wall from the tracks up. */
 function railCollide(ctx, o) {
   const a = Math.min(o.from, o.to);
   const b = Math.max(o.from, o.to);
   const h = o.h ?? RAIL_H;
   const y = o.y;
+  /* Half-width of the capping rail (0.10), not a 0.18 m wall the
+   * bars do not fill. The stair throat is where a fatter box reads
+   * as stuck-on-nothing. */
+  const hw = 0.05;
   if (o.axis === 'z') {
-    ctx.collide(o.at - 0.09, a, o.at + 0.09, b, y + h, y);
+    ctx.collide(o.at - hw, a, o.at + hw, b, y + h, y);
   } else {
-    ctx.collide(a, o.at - 0.09, b, o.at + 0.09, y + h, y);
+    ctx.collide(a, o.at - hw, b, o.at + hw, y + h, y);
   }
 }
 
@@ -214,10 +218,11 @@ function rakeBalustrade(parts, o) {
       const b = Math.max(t0, t1);
       const yLo = y0 - RISE * i1;
       const yHi = y0 - RISE * i + RAIL_H;
+      const hw = 0.05;
       if (axis === 'z') {
-        o.ctx.collide(at - 0.09, a, at + 0.09, b, yHi, yLo);
+        o.ctx.collide(at - hw, a, at + hw, b, yHi, yLo);
       } else {
-        o.ctx.collide(a, at - 0.09, b, at + 0.09, yHi, yLo);
+        o.ctx.collide(a, at - hw, b, at + hw, yHi, yLo);
       }
     }
   }
@@ -412,7 +417,7 @@ function landing(ctx, o) {
         geometry: new THREE.BoxGeometry(0.44, 0.16, 0.44),
         matrix: trs(px, gy + 0.08, pz),
       });
-      ctx.collide(px - 0.22, pz - 0.22, px + 0.22, pz + 0.22, gy + hCol);
+      ctx.collide(px - 0.12, pz - 0.12, px + 0.12, pz + 0.12, gy + hCol);
     }
   }
   for (const side of rails) {
@@ -436,8 +441,9 @@ function landing(ctx, o) {
 }
 
 /* ------------------------------------------------------------------ *
- * The translucent roof.  A shallow double pitch on hoop ribs, which is what
- * a polycarbonate 跨線橋 roof is; a flat sheet reads as a lid.
+ * The translucent roof. A shallow double pitch. Intermediate hoop
+ * ribs used to stand in the tunnel every two metres; they are gone
+ * because that is the line. Ridge, eaves and four corner posts stay.
  * ------------------------------------------------------------------ */
 function roof(ctx, o) {
   const m = mats();
@@ -466,7 +472,7 @@ function roof(ctx, o) {
     sheet.userData.noShadow = true;
     ctx.add(sheet);
   }
-  // ridge, eaves gutters and the hoop ribs under them
+  // ridge and eaves gutters
   parts.rib.push({
     geometry: new THREE.BoxGeometry(alongZ ? 0.12 : runLen, 0.1, alongZ ? runLen : 0.12),
     matrix: trs(cx, y + camber + 0.03, cz),
@@ -477,21 +483,14 @@ function roof(ctx, o) {
       matrix: alongZ ? trs(cx + s * span / 2, y - 0.02, cz) : trs(cx, y - 0.02, cz + s * span / 2),
     });
   }
-  const nr = Math.max(2, Math.round(runLen / 2.1));
-  for (let i = 0; i <= nr; i++) {
-    const t = (alongZ ? z0 : x0) + (runLen / nr) * i;
-    for (const s of [-1, 1]) {
-      parts.rib.push({
-        geometry: new THREE.BoxGeometry(alongZ ? sheetLen : 0.07, 0.07, alongZ ? 0.07 : sheetLen),
-        matrix: alongZ
-          ? trs(cx + s * span / 4, y + camber / 2 - 0.05, t, 0, 0, -s * slope)
-          : trs(t, y + camber / 2 - 0.05, cz + s * span / 4, s * slope, 0, 0),
-      });
-    }
-    // and the post that carries the rib down to the balustrade
-    for (const s of [-1, 1]) {
-      const px = alongZ ? cx + s * (span / 2 - 0.08) : t;
-      const pz = alongZ ? t : cz + s * (span / 2 - 0.08);
+  /* Corner posts only, inset from the roof AABB so they stand on the
+   * deck rather than in the stair throat. A hoop at each end of the
+   * AABB used to sit 16 cm onto the flight. */
+  const inset = 0.22;
+  const cpx0 = x0 + inset, cpx1 = x1 - inset;
+  const cpz0 = z0 + inset, cpz1 = z1 - inset;
+  for (const px of [cpx0, cpx1]) {
+    for (const pz of [cpz0, cpz1]) {
       parts.rib.push({
         geometry: new THREE.BoxGeometry(0.075, CANOPY_H - 0.02, 0.075),
         matrix: trs(px, y - CANOPY_H / 2, pz),
@@ -502,14 +501,12 @@ function roof(ctx, o) {
   mesh.name = 'overbridgeCage';
   mesh.castShadow = true;
   ctx.add(mesh);
-  /* Posts, ridge, eaves and hoop ribs, not a lid. Baked together the rib
-   * mesh AABB is the cage, so the cover pass would wall every bay a quad
-   * can see through. skipFit keeps a 10 m beam from growing to the
-   * envelope. The polycarbonate is air: those rectangles are the line. */
+  /* Ridge, eaves and the four posts, not a lid and not a hoop. skipFit
+   * keeps a 10 m beam from growing to the envelope. The sheets are air. */
   const hit = (ax, az, bx, bz, top, bot) => {
     ctx.collide(ax, az, bx, bz, top, bot, true);
   };
-  const hw = 0.07;
+  const hw = 0.06;
   if (alongZ) {
     hit(cx - hw, z0, cx + hw, z1, y + camber + 0.08, y + camber - 0.04);
     for (const s of [-1, 1]) {
@@ -523,21 +520,10 @@ function roof(ctx, o) {
       hit(x0, ez - hw, x1, ez + hw, y + 0.06, y - 0.08);
     }
   }
-  for (let i = 0; i <= nr; i++) {
-    const t = (alongZ ? z0 : x0) + (runLen / nr) * i;
-    for (const s of [-1, 1]) {
-      const px = alongZ ? cx + s * (span / 2 - 0.08) : t;
-      const pz = alongZ ? t : cz + s * (span / 2 - 0.08);
-      hit(px - 0.06, pz - 0.06, px + 0.06, pz + 0.06, y, y - CANOPY_H);
-      if (alongZ) {
-        const hx0 = Math.min(cx, cx + s * span / 2);
-        const hx1 = Math.max(cx, cx + s * span / 2);
-        hit(hx0, t - 0.05, hx1, t + 0.05, y + camber + 0.04, y - 0.08);
-      } else {
-        const hz0 = Math.min(cz, cz + s * span / 2);
-        const hz1 = Math.max(cz, cz + s * span / 2);
-        hit(t - 0.05, hz0, t + 0.05, hz1, y + camber + 0.04, y - 0.08);
-      }
+  const ph = 0.04;
+  for (const px of [cpx0, cpx1]) {
+    for (const pz of [cpz0, cpz1]) {
+      hit(px - ph, pz - ph, px + ph, pz + ph, y, y - CANOPY_H);
     }
   }
   return mesh;

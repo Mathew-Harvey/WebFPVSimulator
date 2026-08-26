@@ -16982,4 +16982,26 @@ Possible effect if this breaks something: custom courses with flag or
 cone markers. If a next flag has no light, or the overlay drifts off
 the cloth, or a PVC gate loses its pane, this commit is the one.
 
+## Next-flag glow, captured on 2023 AU NATS 5 inch
+
+shots.js, High, 1600 by 900, course trk-c7f88673. Console errors 0,
+warnings 0, harness faults 0. node --check on scene.js, celmat.js,
+main.js.
+
+  __setRaceNext(1): scene 1 is the only target, glowOn true, cueOn
+    false, ring #39ff8b. Every other gate is dark. Aperture still
+    4.50 by 4.50. HUD lock class is-off in frame.
+  approach and three-quarter: green light on the flag, brightest on
+    the pole, fading across the sail, chequers and logo readable, no
+    scoring-square graphic.
+  close: neon mid-row span 40 px against a 775 px aperture chord, so
+    the light is the flag, not a 4.5 m box. Fill of the neon bbox
+    0.039.
+  far side: red on the flag, not a red box. Same falloff.
+  PVC gate 0: pane and ring still in the opening, unchanged.
+  flag 2 while next is 1: print visible, no glow, no box.
+
+npm run verify was not run: render and HUD only, no physics, no
+module, no build file, check 13 loads only the harness page.
+
 

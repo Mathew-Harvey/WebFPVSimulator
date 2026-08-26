@@ -1039,20 +1039,14 @@ function padChooseNote(info) {
 }
 
 /*
- * `#credits` and `#wiki/...` are real addresses. World load, a map swap
- * and the constructor all call show('title'). If those calls are allowed
- * to win, the hash is stripped (replaceState does not fire hashchange) and
- * the visitor lands on Fly. The hash wins until the pilot backs off it.
+ * `#credits` is a real address. World load, a map swap and the constructor
+ * all call show('title'). If those calls are allowed to win, the hash is
+ * stripped (replaceState does not fire hashchange) and the visitor lands
+ * on Fly. The hash wins until the pilot backs off it.
  */
 function locationHashScreen() {
   const h = (window.location.hash || '').replace(/^#/, '');
-  if (h === 'credits') {
-    return 'credits';
-  }
-  if (h.startsWith('wiki/')) {
-    return 'wiki';
-  }
-  return null;
+  return h === 'credits' ? 'credits' : null;
 }
 
 function clearLocationHash() {
@@ -5681,8 +5675,8 @@ export class Ui {
       return;
     }
     /* Drop the pin before title, or show() would remap title back onto
-     * credits or the wiki and Back would do nothing. */
-    if (this.screen === 'credits' || this.screen === 'wiki') {
+     * credits and Back would do nothing. */
+    if (this.screen === 'credits') {
       clearLocationHash();
     }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');

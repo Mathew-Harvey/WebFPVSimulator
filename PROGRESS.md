@@ -17102,3 +17102,25 @@ articles, 696 keys, 706 cli/feature pages. Local wiki
 via `wikiPageUrl`. `npm run verify` was not run: no plant, ABI, build,
 input path or threshold change.
 
+### 2026-08-26 | ui | #credits survives world load, CrapShack on the roll
+
+Changed: `show('title')` no longer strips `#credits`. World load and
+map swap were calling title after the hash had already opened Credits,
+and `replaceState` does not fire hashchange, so the visitor landed on
+Fly. The hash now wins until Back or Escape clears it. `#wiki/` is not
+a screen in this shell any more, so it is not remapped here.
+
+What went wrong: the first `#credits` commit set the hash and opened
+the screen, then `adoptLoadedView` asked for title and wiped it. A
+credits screenshot with only Asylum, Jannes and LeStar was that dump,
+or an old cached module: the roll already named CrapShack.
+
+Verify: local `scripts/shots.js` on `/index.html#credits` after the
+world was up: screen credits, hash `#credits`, pilots Asylum, Jannes,
+LeStar, CrapShack. Escape returned to the first-run title with Credits
+as a row and an empty hash. Clicking Credits opened the roll again
+with CrapShack. Console errors 0. The same state on
+`https://webfpv.org/sim/#credits` after load: hash still `#credits`,
+title hidden, CrapShack on the roll. `npm run verify` was not run: no
+plant, ABI, build, input path or threshold change.
+

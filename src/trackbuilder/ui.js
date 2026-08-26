@@ -540,10 +540,10 @@ export class Panels {
       const named = fig && fig !== 'single';
       host.append(el('h3', null, named
         ? `Passes, ${entries.length}`
-        : (entries.length > 1 ? 'In the course, twice or more' : 'In the course')));
+        : (entries.length > 1 ? 'In the track, twice or more' : 'In the track')));
       if (!entries.length) {
         host.append(el('p', 'tb-help', 'Not in the flying order.'));
-        host.append(button('Add to the course', 'tb-btn', () => this.host.addToSequence(element.id)));
+        host.append(button('Add to the track', 'tb-btn', () => this.host.addToSequence(element.id)));
       }
       for (const { s, i } of entries) {
         host.append(this.sequenceCard(doc, element, s, i, named));
@@ -595,9 +595,9 @@ export class Panels {
     host.append(el('h3', null, 'Which logo'));
     const logos = logosOf(doc);
     if (!logos.length) {
-      host.append(el('p', 'tb-help', 'This course carries no sponsor logos yet. Add one under Sponsor logos, and every footprint on the grass can wear it.'));
+      host.append(el('p', 'tb-help', 'This track carries no sponsor logos yet. Add one under Sponsor logos, and every footprint on the grass can wear it.'));
       host.append(button('Sponsor logos', 'tb-btn', () => this.host.openLogo(),
-        'Upload up to five sponsors\u2019 logos for this course'));
+        'Upload up to five sponsors\u2019 logos for this track'));
       return;
     }
     const current = logoForDecal(doc, element);
@@ -623,7 +623,7 @@ export class Panels {
     host.append(grid);
     host.append(el('p', 'tb-help', current
       ? `${current.name || `Logo ${logos.indexOf(current) + 1}`}, fitted inside the ${show(element.dims.width, 1)} by ${show(element.dims.depth, 1)} m footprint above. Resize the footprint to match its shape and it fills more of it.`
-      : 'The logo this footprint named is no longer on the course. Pick one, or the grass stays plain.'));
+      : 'The logo this footprint named is no longer on the track. Pick one, or the grass stays plain.'));
   }
 
   /*
@@ -873,7 +873,7 @@ export class Panels {
 
     const spare = unsequencedElements(doc);
     if (spare.length) {
-      host.append(el('h3', null, 'Not in the course'));
+      host.append(el('h3', null, 'Not in the track'));
       const ul = el('div', 'tb-spare');
       for (const element of spare) {
         const row = el('div', 'tb-spare-row');

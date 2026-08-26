@@ -5056,7 +5056,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
 
   return {
     id: course ? 'custom' : 'field',
-    name: course ? course.name : 'Race field',
+    name: course ? course.name : 'Track',
     /* A designed course with no stations is freestyle: no lap, no gate
      * HUD. The built in field always has a circuit, so it stays a race. */
     mode: course && !(course.stations && course.stations.length) ? 'freestyle' : 'race',

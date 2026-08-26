@@ -323,8 +323,8 @@ async function main() {
          * the field is measured on the far side of a round trip. A review
          * pointed this out and it was right.
          */
-        'eval:JSON.stringify({ tag: "back", started: (window.__setMap("field"), true) })',
-        'until:window.__map().id === "field" && window.__map().ready',
+        'eval:JSON.stringify({ tag: "back", started: (window.__setMap("custom"), true) })',
+        'until:window.__map().id === "custom" && window.__map().ready',
         'eval:JSON.stringify((() => {' +
           'window.__setCam(104.99, 1.6, 14.0, 104.99, 1.2, -30);' +
           'window.__camFrame2 = window.__boot().frames;' +

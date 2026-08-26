@@ -1,12 +1,12 @@
 /*
- * field.js: the race field, packaged as a map.
+ * field.js: the track world's composer wrap.
  *
  * The world itself is still src/render/scene.js and its post chain is still
- * src/render/post.js; nothing about either changed when the second map
- * arrived. This file is the join, and it is deliberately thin: it hands the
- * scene builder the session's renderer, camera and airframe, wraps the
- * composer so the two maps present the same `post` object, and adds a dispose
- * that frees the composer's render targets as well as the scene graph.
+ * src/render/post.js. This file is the join: it hands the scene builder the
+ * session's renderer, camera and airframe, wraps the composer so maps
+ * present the same `post` object, and adds a dispose that frees the
+ * composer's render targets as well as the scene graph. custom.js is the
+ * map the player flies; this file is the shared wrap.
  *
  * This file is part of WebFPVSimulator.
  *

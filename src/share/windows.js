@@ -30,7 +30,7 @@
  *
  * A tab has to claim its name to be found. A name set by whoever opened
  * the tab is not enough: the simulator opened from a bookmark has no name,
- * so the board's Fly this course would not find it and would open a second
+ * so the board's Fly this track would not find it and would open a second
  * one. Every page that is one of the two tabs calls claimWindowName as
  * early as it can. window.name survives same origin navigation, so the
  * simulator keeps the claim when it goes to the builder.

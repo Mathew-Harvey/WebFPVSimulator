@@ -81,7 +81,8 @@ function clipKey() {
   if (shareId) {
     return clipKeyForSeatedShare(shareId);
   }
-  return clipKeyForMap(params.get('map') || 'field');
+  const mapId = params.get('map') === 'field' ? 'custom' : (params.get('map') || 'custom');
+  return clipKeyForMap(mapId);
 }
 
 function post(type, extra) {
@@ -327,9 +328,12 @@ async function renderAndCapture(mapId, shareId, key) {
 }
 
 async function boot() {
-  let mapId = params.get('map') || 'field';
+  let mapId = params.get('map') || 'custom';
   const shareId = params.get('share') || '';
   if (shareId) {
+    mapId = 'custom';
+  }
+  if (mapId === 'field') {
     mapId = 'custom';
   }
   const key = clipKey();

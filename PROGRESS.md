@@ -17613,3 +17613,40 @@ Check 16 leak detector held: after a city round trip P1 301, P2 1043749, P10 33.
 Physics path: checks 1 through 12 green, values unchanged from the previous contact verify. Flight feel is awaiting human judgement.
 
 Scoring tighten after the review is JS only. The plant and wasm did not move, so verify was not re-run for that follow-up. node src/trackbuilder/selftest.js: 367 passed, 0 failed.
+
+### 2026-08-26 | bugfix | First flight dropped the board track, race field removed
+
+Asked: go to the leaderboard, pick a track, Fly this track, then First
+flight. The sim dropped that track and put the pilot on the race field.
+Also: remove the race field from the game. A cold load should open a
+track (the word was Course), specifically the most flown listing on the
+board.
+
+Cause: `firstflight` and `skipfirst` both wrote `settings.map = 'field'`
+and then flew. A `?share=` link from the board had already adopted a
+custom track. First flight swapped it for the built-in MultiGP circuit.
+
+Changed:
+- First flight and I have flown before leave the seated map alone.
+- Race field is no longer a map. `MAPS` is Track (`custom`) and
+  Freestyle city. A stored or bookmarked `field` becomes `custom`.
+- Cold boot with nothing seated fetches the board's most flown track
+  (4 s timeout, fail soft) and builds that. A Fly this track link, an
+  already seated share, a local canvas, or a stored city choice still
+  win.
+- User-facing Course is Track: title row, Tracks screen, publish and
+  upload copy, builder labels, chips, results, meta tags.
+
+What went wrong: the first-run menu had no Leaderboard row, so the
+repro is the board's Fly this track opening a first-run sim. The
+forced field write was older than that link and nobody re-read it.
+
+Verify: Cursor helper `node --check` on the edited modules, all ok.
+`pickMostFlownTrack` ranks by times then gates. The served
+`registry.js` has no field id. Browser MCP did not re-register, so the
+first-flight click was not driven in a tab. `npm run verify` was not
+run: no plant, ABI, build or threshold change. Check 16's round trip
+now swaps back to `custom` rather than `field`; its absolute field
+budget constants were measured on the 14-station circuit and will need
+a re-measure if that check is run.
+

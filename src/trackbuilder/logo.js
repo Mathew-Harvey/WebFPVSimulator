@@ -106,7 +106,7 @@ export async function normaliseLogo(file, budget = LOGO_MAX_CHARS) {
     throw new Error('no file was chosen');
   }
   if (cap < 1024) {
-    throw new Error('the logos on this course have used their whole size budget. Remove one first.');
+    throw new Error('the logos on this track have used their whole size budget. Remove one first.');
   }
   if (file.size > MAX_FILE_BYTES) {
     throw new Error(`that file is ${Math.round(file.size / (1024 * 1024))} MB. The limit is ${MAX_FILE_BYTES / (1024 * 1024)} MB.`);

@@ -280,6 +280,15 @@ export function inspectCourse(parts = {}) {
   });
 }
 
+export function hasFlyableTrack() {
+  try {
+    const listing = inspectCourse();
+    return Boolean(listing && listing.doc && !isEmptyCanvas(listing.doc));
+  } catch (e) {
+    return false;
+  }
+}
+
 /*
  * How a course relates to the board, in three words.
  *
@@ -297,7 +306,7 @@ export function inspectCourse(parts = {}) {
  */
 export function courseChip(listing) {
   if (!listing || listing.kind === 'none') {
-    return { label: 'No course', tone: 'none', note: 'Nothing loaded to fly.' };
+    return { label: 'No track', tone: 'none', note: 'Nothing loaded to fly.' };
   }
   if (listing.kind === 'owned') {
     if (listing.layoutDrift) {

@@ -148,7 +148,7 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
   made.append(card({
     mark: makerMark,
     title: 'andAgainFPV',
-    body: 'Built this simulator, the course builder, and the public board. Orchestrated a horde of Grok and Claude along the way.',
+    body: 'Built this simulator, the track builder, and the public board. Orchestrated a horde of Grok and Claude along the way.',
   }));
   host.append(made);
 

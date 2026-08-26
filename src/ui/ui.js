@@ -95,7 +95,7 @@ import { boardPageUrl, fetchTrackList, pickFeaturedTracks, wikiPageUrl } from '.
 import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
-import { courseChip, inspectCourse, isEmptyCanvas } from '../share/listing.js';
+import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
@@ -212,12 +212,13 @@ export const FPS_CAPS = [0, 90, 60, 30];
 export const FLIGHT_STYLES = ['expert', 'arcade'];
 
 const DEFAULTS = {
-  /* Which world. 'field' is the MultiGP circuit and 'city' is the freestyle
-   * town. It is a string so loadSettings' typeof gate accepts it, and an
-   * unknown value falls back to the field in src/maps/registry.js rather than
-   * throwing, because a stale localStorage entry must not be able to stop the
-   * page booting. */
-  map: 'field',
+  /* Which world. 'custom' is a track from the board or the builder, and
+   * 'city' is the freestyle town. It is a string so loadSettings' typeof
+   * gate accepts it, and an unknown value falls back to the track in
+   * src/maps/registry.js rather than throwing, because a stale localStorage
+   * entry must not be able to stop the page booting. A stored 'field' from
+   * before the race field was removed is the track world. */
+  map: 'custom',
   /* Which Betaflight diff the module is initialised from. A string for the
    * same reason map is: loadSettings only accepts a stored key whose typeof
    * matches the default, and an unknown id falls back to the first tune in
@@ -444,6 +445,11 @@ export function loadSettings() {
    * take. An unknown tune id, an out-of-range slider or a half-complete
    * expert table cannot survive a localStorage edit into the emitter. */
   s.pids = normalisePids(s.pids);
+  /* The race field is gone. A stored 'field', or an id no map has, flies
+   * the track world. City is left alone. */
+  if (s.map === 'field' || !MAPS.some((m) => m.id === s.map)) {
+    s.map = 'custom';
+  }
   /* A profile whose pitch differs from its roll has to show three axes,
    * whatever the stored menu shape says, or the rows would be editing a
    * pitch the pilot cannot see. */
@@ -650,8 +656,7 @@ function stepper(label, note, value, adjust) {
 }
 
 function hasLoadedTrack() {
-  const seat = activeCourseSummary();
-  return Boolean(seat && seat.doc && !isEmptyCanvas(seat.doc));
+  return hasFlyableTrack();
 }
 
 /* Screens whose choices are drawn as cards above the row list. The rows
@@ -718,7 +723,7 @@ function uploadAction(listing, { fastestMs, timePosted }) {
       label: 'Upload a time',
       action: 'posttime',
       disabled: true,
-      note: 'Only a course on the board can hold a time. Publish this one first.',
+      note: 'Only a track on the board can hold a time. Publish this one first.',
     };
   }
   if (!listing.canPostTime) {
@@ -726,7 +731,7 @@ function uploadAction(listing, { fastestMs, timePosted }) {
       label: 'Upload a time',
       action: 'posttime',
       disabled: true,
-      note: 'The layout has changed since it was published. Update the course on the board first.',
+      note: 'The layout has changed since it was published. Update the track on the board first.',
     };
   }
   if (ms == null) {
@@ -734,7 +739,7 @@ function uploadAction(listing, { fastestMs, timePosted }) {
       label: 'Upload a time',
       action: 'posttime',
       disabled: true,
-      note: 'Fly a clean lap on this course and the lap appears here.',
+      note: 'Fly a clean lap on this track and the lap appears here.',
     };
   }
   const best = readPostedBest(shareId);
@@ -753,30 +758,30 @@ function publishAction(listing, published) {
     return {
       label: 'Published',
       action: 'leaderboard',
-      note: 'This course is on the public board. Opens its page.',
+      note: 'This track is on the public board. Opens its page.',
     };
   }
   if (listing && listing.canPublishNew) {
     const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
     const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
     return {
-      label: 'Publish this course',
+      label: 'Publish this track',
       action: 'publishcourse',
       note: listing.remix
         ? `Your copy${of}${by}. Goes on the board under a new name. Then you can upload a time.`
-        : 'Put this course on the public board. Then you can upload a time.',
+        : 'Put this track on the public board. Then you can upload a time.',
     };
   }
   if (listing && listing.canUpdateListing && listing.layoutDrift) {
     return {
-      label: 'Update this course',
+      label: 'Update this track',
       action: 'publishcourse',
       note: 'The layout changed. Updating the board will clear posted times, then you can upload a time.',
     };
   }
   if (listing && listing.kind === 'owned') {
     return {
-      label: 'Publish this course',
+      label: 'Publish this track',
       action: 'publishcourse',
       disabled: true,
       note: 'Already on the board, and nothing has changed since.',
@@ -784,19 +789,19 @@ function publishAction(listing, published) {
   }
   if (listing && listing.kind === 'community') {
     return {
-      label: 'Publish this course',
+      label: 'Publish this track',
       action: 'publishcourse',
       disabled: true,
       note: 'Somebody else published this one. Edit a copy to put your own version on the board.',
     };
   }
   return {
-    label: 'Publish this course',
+    label: 'Publish this track',
     action: 'publishcourse',
     disabled: true,
     note: listing && listing.kind === 'local'
-      ? 'A course needs a flying order before it can be published. Set one in the track builder.'
-      : 'Nothing to publish. Build a course, or pick one from the board.',
+      ? 'A track needs a flying order before it can be published. Set one in the track builder.'
+      : 'Nothing to publish. Build a track, or pick one from the board.',
   };
 }
 
@@ -806,7 +811,7 @@ function remixAction(listing) {
     return {
       label: 'Edit a copy',
       action: 'remix',
-      note: `Open ${listing.name}${by} in the track builder as your own course, under a new name.`,
+      note: `Open ${listing.name}${by} in the track builder as your own track, under a new name.`,
     };
   }
   return {
@@ -814,21 +819,21 @@ function remixAction(listing) {
     action: 'remix',
     disabled: true,
     note: listing && listing.kind === 'owned'
-      ? 'This one is already yours. Edit this course instead.'
-      : 'Only a published course by somebody else can be copied.',
+      ? 'This one is already yours. Edit this track instead.'
+      : 'Only a published track by somebody else can be copied.',
   };
 }
 
 function editOwnAction(listing) {
   if (listing && listing.kind === 'owned') {
     return {
-      label: 'Edit this course',
+      label: 'Edit this track',
       action: 'editown',
-      note: 'Open this course in the track builder. A rename updates the name on the board. A layout change asks before clearing times.',
+      note: 'Open this track in the track builder. A rename updates the name on the board. A layout change asks before clearing times.',
     };
   }
   return {
-    label: 'Edit this course',
+    label: 'Edit this track',
     action: 'editown',
     disabled: true,
     note: listing && listing.kind === 'community'
@@ -883,13 +888,13 @@ function courseCardRows(subject) {
       action: 'card-fly',
       note: board
         ? `Load ${name} from the board and fly it here.`
-        : `Fly ${name} on the race field.`,
+        : `Fly ${name}.`,
     },
     {
       label: 'Open in the track builder',
       action: 'card-builder',
       note: board
-        ? `Open ${name} in the builder without flying it. Somebody else's course opens as a copy under your own name.`
+        ? `Open ${name} in the builder without flying it. Somebody else's track opens as a copy under your own name.`
         : `Open ${name} in the builder. Nothing is flown.`,
     },
   ];
@@ -1247,7 +1252,7 @@ export class Ui {
     brand.append(beta);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
-    this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a course to put it on the public board.');
+    this.keepNote = el('p', 'keep-note', 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.');
     brand.append(this.keepNote);
     /* First run only. Replaced by the keep note once a lap has been flown. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
@@ -1372,7 +1377,7 @@ export class Ui {
      * new one, then the track builder page itself.
      */
     const courses = el('div', 'screen screen-page screen-maps screen-courses');
-    courses.append(el('h2', null, 'Courses'));
+    courses.append(el('h2', null, 'Tracks'));
     this.worldStrip = el('div', 'card-strip');
     this.worldStrip.append(el('div', 'strip-label', 'Worlds'));
     this.mapCardHost = el('div', 'map-cards');
@@ -1642,7 +1647,7 @@ export class Ui {
      * builder draw it. A result read on a screen that never shows the shape
      * of the course is a number without its subject. */
     this.resultsPlanWrap = el('div', 'results-plan');
-    this.resultsPlan = planCanvas(null, 'Course plan');
+    this.resultsPlan = planCanvas(null, 'Track plan');
     this.resultsPlanWrap.append(this.resultsPlan);
     resultsTop.append(this.resultsPlanWrap);
     const resultsBlock = wrapMenu();
@@ -1989,7 +1994,7 @@ export class Ui {
   askName({ title, detail } = {}) {
     return this.askForm({
       title: title || 'Your name',
-      detail: detail || 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.',
+      detail: detail || 'Posted times and published tracks carry this name. Changing it updates the board for tracks you published from this browser.',
       confirmLabel: 'Save',
       fields: [{
         key: 'name',
@@ -2685,12 +2690,16 @@ export class Ui {
        * readable before a lap is flown.
        */
       if (this.firstRun) {
+        const seat = activeCourseSummary();
+        const trackName = seat && seat.name ? seat.name : null;
         return [
           {
             label: 'First flight',
             action: 'firstflight',
             primary: true,
-            note: 'The race field, levelled off, with the sticks drawn on screen and a prompt at each step.',
+            note: trackName
+              ? `${trackName}, levelled off, with the sticks drawn on screen and a prompt at each step.`
+              : 'A track, levelled off, with the sticks drawn on screen and a prompt at each step.',
           },
           {
             label: 'I have flown before',
@@ -2715,13 +2724,13 @@ export class Ui {
       return [
         { label: 'Fly', action: 'fly', primary: true },
         {
-          label: 'Course',
+          label: 'Track',
           value: seat ? seat.name : m.name,
           /* An action, not a value to step through. Choosing the map loads
            * one, which takes seconds, so stepping past a world with the
            * arrow key used to start building it. */
           action: 'courses',
-          note: 'Worlds, your courses and the public board, in one place.',
+          note: 'Worlds, your tracks and the public board, in one place.',
         },
         ...this.ghostItems(),
         tuneItem(s),
@@ -2737,7 +2746,7 @@ export class Ui {
         {
           label: 'Leaderboard',
           action: 'leaderboard',
-          note: 'The public board, with every course and its times. Opens in a new tab.',
+          note: 'The public board, with every track and its times. Opens in a new tab.',
         },
         {
           label: 'Credits',
@@ -2795,8 +2804,8 @@ export class Ui {
         cards.push({
           label: t.name,
           note: t.author
-            ? `Published by ${t.author}. Choosing it loads the course and flies it here.`
-            : 'A published course. Choosing it loads the course and flies it here.',
+            ? `Published by ${t.author}. Choosing it loads the track and flies it here.`
+            : 'A published track. Choosing it loads the track and flies it here.',
           course: { kind: 'board', track: t },
           action: `board:${t.id}`,
         });
@@ -2811,10 +2820,10 @@ export class Ui {
       }
       const rows = [
         {
-          label: loaded ? 'Open in the track builder' : 'Build a course',
+          label: loaded ? 'Open in the track builder' : 'Build a track',
           action: 'trackbuilder',
           note: loaded
-            ? 'Opens the track builder on the course above. New in there starts a blank one.'
+            ? 'Opens the track builder on the track above. New in there starts a blank one.'
             : 'Opens the track builder on an empty field.',
         },
         publishAction(listing, this.coursePublished),
@@ -2847,8 +2856,8 @@ export class Ui {
           value: name || 'Not set',
           action: 'setname',
           note: name
-            ? 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.'
-            : `Needed to publish a course or post a time. ${nameRules()}`,
+            ? 'Posted times and published tracks carry this name. Changing it updates the board for tracks you published from this browser.'
+            : `Needed to publish a track or post a time. ${nameRules()}`,
         },
         { label: 'Flight', section: true },
         choice(
@@ -3083,7 +3092,7 @@ export class Ui {
           disabled: !(listing && (listing.published || listing.shareId || this.coursePublished)),
           note: listing && listing.name
             ? `The public page for ${listing.name}.`
-            : 'The public board. A course has to be published before it has a page.',
+            : 'The public board. A track has to be published before it has a page.',
         },
         feelItem(),
         { label: 'Back to title', action: 'title' },
@@ -4329,13 +4338,13 @@ export class Ui {
         this.boardCourses = pickFeaturedTracks(rest, 5);
         if (this.boardCourses.length) {
           this.boardNote.textContent = rest.length > this.boardCourses.length
-            ? 'Five from the board. Open the board for every course.'
+            ? 'Five from the board. Open the board for every track.'
             : '';
         } else if (list.length) {
-          /* The only listing is the course already on a card above. */
+          /* The only listing is the track already on a card above. */
           this.boardNote.textContent = '';
         } else {
-          this.boardNote.textContent = 'No published courses on the board yet. Build one and publish it.';
+          this.boardNote.textContent = 'No published tracks on the board yet. Build one and publish it.';
         }
         if (this.screen === 'courses') {
           this.renderMenu();
@@ -4344,7 +4353,7 @@ export class Ui {
       .catch(() => {
         this.boardLoading = false;
         this.boardCourses = [];
-        this.boardNote.textContent = 'The board is not answering, so only your own courses are listed.';
+        this.boardNote.textContent = 'The board is not answering, so only your own tracks are listed.';
         if (this.screen === 'courses') {
           this.renderMenu();
         }
@@ -4990,8 +4999,10 @@ export class Ui {
     }
     const freestyle = this.osdMode === 'freestyle';
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
+    const seat = this.settings.map === 'custom' ? activeCourseSummary() : null;
+    const worldName = (seat && seat.name) || m.name;
     if (this.brandSub) {
-      this.brandSub.textContent = freestyle ? `${m.name}, free flight` : `${m.name}, time trial`;
+      this.brandSub.textContent = freestyle ? `${worldName}, free flight` : `${worldName}, time trial`;
     }
     this.titleBest.textContent = '';
     if (freestyle) {
@@ -5068,7 +5079,7 @@ export class Ui {
         this.resultsHeroMeta.textContent = `${formatDelta(fastest - recordAtStart)}  previous ${formatTime(recordAtStart)}`;
         this.resultsHeroMeta.className = 'results-hero-meta gain';
       } else if (isRecord) {
-        this.resultsHeroMeta.textContent = 'First record on this course';
+        this.resultsHeroMeta.textContent = 'First record on this track';
         this.resultsHeroMeta.className = 'results-hero-meta gain';
       } else if (matched) {
         this.resultsHeroMeta.textContent = `Equals the record  ${formatTime(best)}`;
@@ -5125,7 +5136,7 @@ export class Ui {
       this.resultsNote.textContent = '';
     } else if (this.share && this.share.id) {
       const by = this.share.author ? ` by ${this.share.author}` : '';
-      this.resultsNote.textContent = `${this.share.name || 'This course'}${by} is on the public board. Upload a time under your name to appear on it.`;
+      this.resultsNote.textContent = `${this.share.name || 'This track'}${by} is on the public board. Upload a time under your name to appear on it.`;
     } else {
       try {
         const listing = inspectCourse();
@@ -5135,7 +5146,7 @@ export class Ui {
         } else if (listing && listing.kind === 'local' && listing.canPublishNew) {
           this.resultsNote.textContent = `${listing.name} lives in this browser. Publish it to put it on the board, then you can upload a time.`;
         } else if (listing && listing.kind === 'owned' && listing.layoutDrift) {
-          this.resultsNote.textContent = `${listing.name} has a layout that is not on the board yet. Update the course before uploading a time.`;
+          this.resultsNote.textContent = `${listing.name} has a layout that is not on the board yet. Update the track before uploading a time.`;
         }
       } catch (e) {
         /* A summary failure must not hide the times. */
@@ -5729,13 +5740,14 @@ export class Ui {
       return;
     }
     /*
-     * First run. Choosing the first flight is also the moment the shell stops
+     * First run. Choosing first flight is also the moment the shell stops
      * being a first run, so the full menu is there when the player comes back
-     * from the field, whatever happened out there.
+     * from the track, whatever happened out there. The map is left alone:
+     * a Fly this track link, or the most flown track loaded at boot, is
+     * already seated, and forcing the old race field dropped it.
      */
     if (action === 'firstflight' || action === 'skipfirst') {
       this.firstRun = false;
-      this.settings.map = 'field';
       saveSettings(this.settings);
       this.renderMenu();
       if (action === 'skipfirst') {

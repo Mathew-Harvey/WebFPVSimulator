@@ -59,8 +59,8 @@ import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
-import { adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
-import { inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
+import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
+import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
   clearPendingTime,
@@ -410,13 +410,19 @@ export async function boot({ loading, bootStart, mapId }) {
    * draft sitting in the builder's autosave.
    */
   try {
-    const adopted = await adoptShareFromLocation();
-    if (adopted) {
+    const fromUrl = await adoptShareFromLocation();
+    if (fromUrl) {
       ui.settings.map = 'custom';
       ui.renderMenu();
+    } else if (ui.settings.map !== 'city' && !hasFlyableTrack()) {
+      const featured = await adoptMostFlownTrack();
+      if (featured) {
+        ui.settings.map = 'custom';
+        ui.renderMenu();
+      }
     }
   } catch (e) {
-    ui.setBanner(`Could not open that published course.\n${e.message ?? e}`, true);
+    ui.setBanner(`Could not open that published track.\n${e.message ?? e}`, true);
   }
   /*
    * A board chase link arrives as ?ghost=tm-xxxxxxxx beside the ?share=.
@@ -651,25 +657,25 @@ export async function boot({ loading, bootStart, mapId }) {
    * a while; boot had nothing, so one map that would not build (a bad
    * asset, a WebGL context the city cannot have, a course the custom map
    * chokes on) took the whole session down before the title screen. The
-   * field is the floor: it is the default map and the smallest world here,
-   * so if it cannot build there is nothing to fall back TO and the throw is
-   * honest.
+   * track world is the floor: it is the default map and the smallest world
+   * here, so if it cannot build there is nothing to fall back TO and the
+   * throw is honest.
    */
   try {
     view = await loadMap(shell, ui.settings.map, loading, { quality: ui.settings.graphics });
   } catch (e) {
-    if (ui.settings.map === 'field') {
+    if (ui.settings.map === 'custom') {
       throw e;
     }
     console.error(e);
     const failed = mapById(ui.settings.map).name;
-    ui.settings.map = 'field';
+    ui.settings.map = 'custom';
     ui.renderMenu();
-    view = await loadMap(shell, 'field', loading, { quality: ui.settings.graphics });
+    view = await loadMap(shell, 'custom', loading, { quality: ui.settings.graphics });
     /* The banner, not `notice`: that is declared with the frame loop's own
      * state further down and does not exist yet. This is the same way the
      * share adoption above reports a boot failure. */
-    ui.setBanner(`${failed} could not be loaded.\nThe race field was loaded instead.`, true);
+    ui.setBanner(`${failed} could not be loaded.\nThe track was loaded instead.`, true);
   }
   ui.setShare(view.share || null);
   loading.start('frame');
@@ -1611,7 +1617,7 @@ export async function boot({ loading, bootStart, mapId }) {
   async function syncWorld() {
     /* Normalised, not raw. Every loader path runs the id through mapById,
      * which falls back to the first map for an id no map has, so a raw
-     * setting of 'bogus' would leave view.id as 'field' and the tail guard
+     * setting of 'bogus' would leave view.id as 'custom' and the tail guard
      * below would see a mismatch that can never clear: dispose, rebuild,
      * re-enter, forever. ?map= is taken verbatim in boot.js, so an unknown
      * id is reachable from a stale bookmark. */
@@ -2085,8 +2091,8 @@ export async function boot({ loading, bootStart, mapId }) {
     const trackId = listing && listing.shareId;
     if (!trackId || !listing.canPostTime) {
       notice = { text: listing && listing.layoutDrift
-        ? 'Update this course on the board before uploading a time.'
-        : 'This course is not on the public board yet.', untilMs: performance.now() + 2800 };
+        ? 'Update this track on the board before uploading a time.'
+        : 'This track is not on the public board yet.', untilMs: performance.now() + 2800 };
       return;
     }
     /* race owns what a record lap is. This used to re-filter and re-min
@@ -2145,7 +2151,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     if (!listing.canPublishNew && !listing.canUpdateListing) {
-      notice = { text: 'This course is already on the public board.', untilMs: performance.now() + 2800 };
+      notice = { text: 'This track is already on the public board.', untilMs: performance.now() + 2800 };
       return;
     }
     const remix = listing.kind === 'remix';
@@ -2155,19 +2161,19 @@ export async function boot({ loading, bootStart, mapId }) {
     const detail = updating
       ? 'The layout changed. Updating the board will clear posted times.'
       : remix
-        ? `This is your copy${of}${by}. It goes on the board as a new course. The original stays.`
-        : 'The public board keeps a copy of this course, including every mark on the gates, the flags and the grass.';
+        ? `This is your copy${of}${by}. It goes on the board as a new track. The original stays.`
+        : 'The public board keeps a copy of this track, including every mark on the gates, the flags and the grass.';
     const values = await ui.askForm({
-      title: updating ? 'Update this course' : 'Publish this course',
+      title: updating ? 'Update this track' : 'Publish this track',
       detail,
       confirmLabel: updating ? 'Update the board' : 'Publish',
       fields: [
         {
           key: 'course',
-          label: 'Course name',
+          label: 'Track name',
           value: remix ? suggestRemixName(listing.name) : listing.name,
           maxLength: 80,
-          placeholder: 'Course name',
+          placeholder: 'Track name',
         },
         {
           key: 'author',
@@ -2194,7 +2200,7 @@ export async function boot({ loading, bootStart, mapId }) {
       const cleared = result.posted.timesCleared
         ? ' Old times were cleared because the layout changed.'
         : '';
-      const forked = result.forked ? ' Published as a new course.' : '';
+      const forked = result.forked ? ' Published as a new track.' : '';
       notice = { text: `Published "${result.posted.name}".${forked}${cleared}`, untilMs: performance.now() + 4000 };
       ui.setShare({
         id: result.posted.id,
@@ -2211,7 +2217,7 @@ export async function boot({ loading, bootStart, mapId }) {
         writePendingTime({ trackId: result.posted.id, lapMs: ui.resultsFastest });
       }
     } catch (e) {
-      notice = { text: `Could not publish that course.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+      notice = { text: `Could not publish that track.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
     }
   }
 
@@ -2339,7 +2345,7 @@ export async function boot({ loading, bootStart, mapId }) {
       document: doc,
     };
     if (!writeShareImport(share)) {
-      throw new Error('This browser would not store that course.');
+      throw new Error('This browser would not store that track.');
     }
     ui.setShare(share);
     return true;

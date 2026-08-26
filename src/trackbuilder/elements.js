@@ -399,7 +399,7 @@ export const ELEMENTS = {
     key: 'W',
     group: 'track',
     kind: KIND.MARKER,
-    note: 'Nothing is standing here. The line is required to pass through this point, at this height. Not drawn on the race field.',
+    note: 'Nothing is standing here. The line is required to pass through this point, at this height. Not drawn on the track.',
     /*
      * NOT AN OBSTACLE, AND THAT IS THE WHOLE POINT.
      *
@@ -444,7 +444,7 @@ export const ELEMENTS = {
     key: 'L',
     group: 'extra',
     kind: KIND.ANNOTATION,
-    note: 'Text annotation on the field. Not part of the course.',
+    note: 'Text annotation on the field. Not part of the track.',
     /* Text height is a drawing size, not a course size, but it is a length
      * in metres on the field and so it lives here with the rest. */
     dims: { textHeight: 0.9 },

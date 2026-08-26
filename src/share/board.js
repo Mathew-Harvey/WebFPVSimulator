@@ -5,7 +5,7 @@
  *
  *   Board page     {board}/
  *   Board API      {board}/api/tracks
- *   Fly a course   {sim}/?map=custom&share={id}&board={board}
+ *   Fly a track    {sim}/?map=custom&share={id}&board={board}
  *   Orbit thumb    {sim}/src/share/orbit.html?map=custom&share={id}&board={board}
  *   Publish        POST {board}/api/tracks   { author, document, editKey? }
  *   Update listing POST {board}/api/tracks   same, with the edit key from
@@ -47,7 +47,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { writeShareImport } from './session.js';
+import { readShareImport, writeShareImport } from './session.js';
 
 /*
  * Two named hosts, because this page is served from two kinds of place and
@@ -279,6 +279,61 @@ export function pickFeaturedTracks(tracks, limit = FEATURED_LIMIT) {
   return [...flown, ...rest.slice(0, Math.max(0, limit - flown.length))];
 }
 
+export function pickMostFlownTrack(tracks) {
+  const list = (tracks || []).filter((t) => t && t.id);
+  if (!list.length) {
+    return null;
+  }
+  return list.slice().sort(byMostFlown)[0];
+}
+
+/*
+ * The track a cold sim should open on: the board's most flown listing,
+ * written into the share seat so the custom map builds it. A share that
+ * is already seated, including a Fly this track link, is left alone.
+ * A board that is down or empty returns null and the world still boots.
+ */
+export async function adoptMostFlownTrack() {
+  if (readShareImport()) {
+    return null;
+  }
+  try {
+    const signal = AbortSignal.timeout(4000);
+    const origin = boardOrigin();
+    const res = await fetch(`${trimOrigin(origin)}/api/tracks`, { signal });
+    const body = await readJson(res);
+    const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
+    const list = tracks.map((t) => ({
+      id: String(t.id || ''),
+      name: String(t.name || 'Untitled track'),
+      author: String(t.author || ''),
+      gates: Number(t.gates) || 0,
+      times: Number(t.times) || 0,
+      publishedUtc: t.publishedUtc ? String(t.publishedUtc) : '',
+      board: trimOrigin(origin),
+    })).filter((t) => t.id);
+    const top = pickMostFlownTrack(list);
+    if (!top) {
+      return null;
+    }
+    const payload = await fetchTrackDocument(top.id, top.board);
+    const document = payload.document || payload;
+    const share = {
+      id: payload.id || top.id,
+      name: payload.name || top.name || document.name,
+      author: payload.author || top.author || '',
+      board: top.board,
+      document,
+    };
+    if (!writeShareImport(share)) {
+      return null;
+    }
+    return share;
+  } catch (e) {
+    return null;
+  }
+}
+
 export async function fetchTrackDocument(id, origin = boardOrigin()) {
   const res = await fetch(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(id)}/document`);
   return readJson(res);
@@ -374,7 +429,7 @@ export async function adoptShareFromLocation() {
    * puts the message on the banner.
    */
   if (!writeShareImport(share)) {
-    throw new Error('This browser would not store that course, so it cannot be flown here.');
+    throw new Error('This browser would not store that track, so it cannot be flown here.');
   }
   return share;
 }

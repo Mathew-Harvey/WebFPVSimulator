@@ -79,7 +79,7 @@ export class App {
   constructor(nodes) {
     /* The builder is the simulator's tab, not a tab of its own: the shell
      * navigates here in place and Back to the simulator navigates back.
-     * Claiming the same name keeps the board's Fly this course landing on
+     * Claiming the same name keeps the board's Fly this track landing on
      * this tab rather than opening a second simulator beside it. */
     claimWindowName(SIM_WINDOW);
     this.nodes = nodes;
@@ -177,8 +177,8 @@ export class App {
         };
         if (!isEmptyCanvas(this.doc) && this.doc.id !== incoming.id) {
           this.confirm(
-            'Replace the course on the canvas?',
-            'Your current canvas will be replaced with this published course. Save it first if you still need it.',
+            'Replace the track on the canvas?',
+            'Your current canvas will be replaced with this published track. Save it first if you still need it.',
             load,
           );
         } else {
@@ -203,7 +203,7 @@ export class App {
       if (!isEmptyCanvas(this.doc) && this.doc.id !== share.id) {
         this.confirm(
           `Open a copy of "${share.name || incoming.name}"?`,
-          'The course on your canvas will be replaced. Save it first if you still need it.',
+          'The track on your canvas will be replaced. Save it first if you still need it.',
           load,
         );
       } else {
@@ -809,7 +809,7 @@ export class App {
       this.doc.name = this.nameInput.value.trim() || 'Untitled track';
     }
     if (!this.doc.sequence.length) {
-      this.toast('A published course needs at least one gate in the flying order.');
+      this.toast('A published track needs at least one gate in the flying order.');
       return;
     }
     this.autosaver.flush();
@@ -822,13 +822,13 @@ export class App {
     if (remix) {
       const of = listing.sourceName ? ` of ${listing.sourceName}` : '';
       const by = listing.sourceAuthor ? ` by ${listing.sourceAuthor}` : '';
-      help.textContent = `This is your copy${of}${by}. It goes on the board as a new course under the name below. The original stays.`;
+      help.textContent = `This is your copy${of}${by}. It goes on the board as a new track under the name below. The original stays.`;
     } else if (owned && listing.layoutDrift) {
       help.textContent = 'The layout changed. Updating the board will clear posted times. A rename alone would have kept them.';
     } else if (owned) {
-      help.textContent = 'This course is already on the board. Updating it keeps the times if the flying layout has not changed.';
+      help.textContent = 'This track is already on the board. Updating it keeps the times if the flying layout has not changed.';
     } else {
-      help.textContent = 'The public board keeps a copy of this course, including every sponsor logo on the gates, the flags and the grass. Times people post are stored there.';
+      help.textContent = 'The public board keeps a copy of this track, including every sponsor logo on the gates, the flags and the grass. Times people post are stored there.';
     }
     body.append(help);
 
@@ -836,7 +836,7 @@ export class App {
     courseField.className = 'tb-field';
     const courseLabel = document.createElement('label');
     courseLabel.className = 'tb-field-label';
-    courseLabel.textContent = 'Course name';
+    courseLabel.textContent = 'Track name';
     const courseInput = document.createElement('input');
     courseInput.type = 'text';
     courseInput.maxLength = 80;
@@ -878,7 +878,7 @@ export class App {
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'tb-btn tb-primary';
-    send.textContent = owned ? 'Update the board' : (remix ? 'Publish as yours' : 'Publish this course');
+    send.textContent = owned ? 'Update the board' : (remix ? 'Publish as yours' : 'Publish this track');
     send.addEventListener('click', async () => {
       const author = writePilotName(nameInput.value);
       if (!author) {
@@ -892,7 +892,7 @@ export class App {
       }
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
-      status.textContent = 'Sending the course, logos included.';
+      status.textContent = 'Sending the track, logos included.';
       const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
@@ -942,12 +942,12 @@ export class App {
         send.replaceWith(open);
       } catch (e) {
         send.disabled = false;
-        status.textContent = e.message || 'The board could not take that course.';
+        status.textContent = e.message || 'The board could not take that track.';
         this.toast(`Could not publish: ${e.message || e}`);
       }
     });
     body.append(send);
-    this.modal(owned ? 'Update this course' : (remix ? 'Publish as yours' : 'Publish this course'), body);
+    this.modal(owned ? 'Update this track' : (remix ? 'Publish as yours' : 'Publish this track'), body);
   }
 
   /* ---------------- the sponsors' logos ---------------- */
@@ -988,7 +988,7 @@ export class App {
     const body = document.createElement('div');
     const help = document.createElement('p');
     help.className = 'tb-help';
-    help.textContent = 'Up to five sponsors\u2019 logos. They are dealt out round the gates in flying order, so each sponsor gets a share of the boards, the upright banners and the flags, spread down the lap rather than bunched at the start. Any of them can also be painted on the grass: press Paint on the grass under it, then click the field. They travel inside the track file, so a course you send somebody arrives with its branding on.';
+    help.textContent = 'Up to five sponsors\u2019 logos. They are dealt out round the gates in flying order, so each sponsor gets a share of the boards, the upright banners and the flags, spread down the lap rather than bunched at the start. Any of them can also be painted on the grass: press Paint on the grass under it, then click the field. They travel inside the track file, so a track you send somebody arrives with its branding on.';
     body.append(help);
 
     const list = document.createElement('div');
@@ -1312,8 +1312,8 @@ export class App {
      * somebody to remember to press Save before they fly is asking them to
      * fly the wrong track once.
      */
-    this.flyBtn = btn('Fly this track', () => this.flyThisTrack(), 'Build the world around this course and fly it', 'tb-btn tb-primary');
-    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this course on the public board, logos and all');
+    this.flyBtn = btn('Fly this track', () => this.flyThisTrack(), 'Build the world around this track and fly it', 'tb-btn tb-primary');
+    this.publishBtn = btn('Publish', () => this.openPublish(), 'Put this track on the public board, logos and all');
     this.listingChip = document.createElement('span');
     this.listingChip.className = 'tb-listing';
 
@@ -1343,10 +1343,10 @@ export class App {
     this.moreMenu.className = 'tb-more-menu';
     this.moreMenu.hidden = true;
     for (const [label, fn, title, cls] of [
-      ['Duplicate', () => this.duplicate(), 'Copy this course under a new name', ''],
+      ['Duplicate', () => this.duplicate(), 'Copy this track under a new name', ''],
       ['Import', () => file.click(), 'Read a .json track file', ''],
       ['Export', () => this.exportFile(), 'Write a .json track file', ''],
-      ['Delete', () => this.confirmRemove(), 'Remove this course from this browser', 'tb-danger'],
+      ['Delete', () => this.confirmRemove(), 'Remove this track from this browser', 'tb-danger'],
     ]) {
       const b = btn(label, () => { this.closeMore(); fn(); }, title, `tb-more-item ${cls}`.trim());
       this.moreMenu.append(b);
@@ -1365,7 +1365,7 @@ export class App {
       name,
       this.listingChip,
       group(
-        btn('New', () => this.newTrack(), 'Start a blank course'),
+        btn('New', () => this.newTrack(), 'Start a blank track'),
         btn('Save', () => this.save(), 'Control S'),
         btn('Load', () => this.openLoad()),
       ),
@@ -1421,13 +1421,13 @@ export class App {
         this.publishBtn.textContent = listing.canUpdateListing ? 'Update board' : 'On the board';
         this.publishBtn.title = listing.layoutDrift
           ? 'The layout changed. Updating the board will clear posted times.'
-          : 'This course is on the public board. A rename updates the listing.';
+          : 'This track is on the public board. A rename updates the listing.';
       } else if (listing.kind === 'remix') {
         this.publishBtn.textContent = 'Publish as yours';
         this.publishBtn.title = 'Put this copy on the board under a new name. The original stays.';
       } else {
         this.publishBtn.textContent = 'Publish';
-        this.publishBtn.title = 'Put this course on the public board, logos and all';
+        this.publishBtn.title = 'Put this track on the public board, logos and all';
       }
     }
   }

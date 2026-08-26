@@ -38,7 +38,7 @@ import { SIM_WINDOW, claimWindowName } from './share/windows.js';
 const BOOT_START = performance.now();
 
 /* This tab is the simulator, and there is only ever one of it. Claimed in
- * the first module the page runs, so the board's Fly this course finds it
+ * the first module the page runs, so the board's Fly this track finds it
  * even while the shell is still loading. See share/windows.js. */
 claimWindowName(SIM_WINDOW);
 
@@ -64,17 +64,17 @@ async function start() {
   /* The initial map is a setting, so its build cost has to be known before
    * the stage weights are computed. Reading it here rather than in main.js
    * keeps the whole plan in one place; ui.js owns the schema and the default,
-   * and a stored value that is not a known map falls back to the field. */
-  let mapId = 'field';
+   * and a stored value that is not a known map falls back to the track. */
+  let mapId = 'custom';
   try {
     /* SETTINGS_KEY in src/ui/ui.js owns this string; ui.js is the only
      * writer. It is spelled out rather than imported ON PURPOSE: ui.js
      * pulls in the map registry and the track table, and dragging that
      * graph into boot is the very thing src/maps/build-cost.js exists to
      * prevent. Change it there and change it here. */
-    mapId = JSON.parse(localStorage.getItem('webfpv.settings.v3') || '{}').map || 'field';
+    mapId = JSON.parse(localStorage.getItem('webfpv.settings.v3') || '{}').map || 'custom';
   } catch (e) {
-    mapId = 'field';
+    mapId = 'custom';
   }
   /*
    * A map named in the URL wins over the stored setting, and this is the one
@@ -109,10 +109,12 @@ async function start() {
    * anyway, so the check does not drag the registry, and its loader thunks,
    * into the boot graph.
    */
-  if (!Object.hasOwn(MAP_BUILD_MS, mapId)) {
-    mapId = 'field';
+  /* The race field is gone. A stored or bookmarked field id is the track
+   * world, which is the same terrain with a designed layout in it. */
+  if (mapId === 'field' || !Object.hasOwn(MAP_BUILD_MS, mapId)) {
+    mapId = 'custom';
   }
-  const worldMs = MAP_BUILD_MS[mapId] ?? MAP_BUILD_MS.field;
+  const worldMs = MAP_BUILD_MS[mapId] ?? MAP_BUILD_MS.custom;
 
   loading.run(planStages(['three', 'sim', 'module', 'world', 'frame'], worldMs));
 

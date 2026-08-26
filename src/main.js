@@ -1299,6 +1299,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * sim_rest zeroes the velocity at each judged touchdown so the frozen
    * state is a true rest state rather than a falling one. */
   let landed = true;
+  /* Capture hold: keep the plant pose and FPV lens as seated, without
+   * the parked overlay or the intro orbit. Used by __seatCraft so a
+   * camera-down crash can be photographed before the hull tumbles. */
+  let poseLock = false;
   /*
    * Between committing to a takeoff and getting the collision sphere clear
    * of the surface. While this is set, ground contact does not re-land the
@@ -1328,6 +1332,11 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastGroundHits = 0;
   let lastClearance = 1;
   let lastUpz = 1;
+  let lastFpvY = 0;
+  let lastCamFloor = 0;
+  let lastCamClear = 0;
+  let lastCamFwdY = 0;
+  let lastCamUpY = 0;
   let lastClosing = 0;
   /* How square the last contact was to the craft's disc plane, 0 edge on
    * and 1 belly on. Readback only; hitOutcome is the decision. */
@@ -1417,12 +1426,19 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.rest();
     landed = true;
     takingOff = false;
+    poseLock = false;
     adoptSimClock();
     acc = 0;
     groundY = hy;
     const next = readState();
     stateCurr = next;
     statePrev = next;
+    lastUpz = plantUpZ(next);
+    {
+      const uClamp = lastUpz > 1 ? 1 : lastUpz < -1 ? -1 : lastUpz;
+      lastTiltDeg = (Math.acos(uClamp) * 180) / Math.PI;
+    }
+    lastClearance = REST_HEIGHT;
     if (typeof audio.event === 'function') {
       audio.event('land');
     }
@@ -3055,7 +3071,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
-    if (mode === 'flight' && !landed) {
+    if (mode === 'flight' && !landed && !poseLock) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
        * into the future. Snap the shell to step_index instead. */
@@ -3320,7 +3336,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * same reason as the probe above. */
     pCurr.y += startY;
     qPrev.premultiply(qSpawn);
-    if (landed) {
+    if (landed && !poseLock) {
       /* The frozen state's centre is at the surface plus the craft's tilt
        * aware vertical half extent, within millimetres of REST_HEIGHT, but
        * the terrain under it may differ from where contact tripped. Seat
@@ -3546,8 +3562,13 @@ export async function boot({ loading, bootStart, mapId }) {
       if (fpvPos.y < camFloor) {
         fpvPos.y = camFloor;
       }
+      lastFpvY = fpvPos.y;
+      lastCamFloor = camFloor;
+      lastCamClear = fpvLensClear(camFwd.y, camUp.y);
+      lastCamFwdY = camFwd.y;
+      lastCamUpY = camUp.y;
     }
-    const wantLift = (landed || launchStaging) ? PARKED_LIFT : 0;
+    const wantLift = (landed || launchStaging) && !poseLock ? PARKED_LIFT : 0;
     parkedLift += (wantLift - parkedLift) * Math.min(1, dt * 0.006);
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
@@ -4346,6 +4367,12 @@ export async function boot({ loading, bootStart, mapId }) {
     bounceCount,
     propPlaneMaxUpDot: PROP_PLANE_MAX_UP_DOT,
     groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y),
+    fpvY: lastFpvY,
+    camFloor: lastCamFloor,
+    camClear: lastCamClear,
+    camFwdY: lastCamFwdY,
+    camUpY: lastCamUpY,
+    lastUpz,
     thresholds: {
       descentMax: LAND_DESCENT_MAX,
       horizontalMax: LAND_HORIZONTAL_MAX,
@@ -4364,6 +4391,83 @@ export async function boot({ loading, bootStart, mapId }) {
     bestLapMs: race.bestLapMs ? race.bestLapMs() : null,
     bestThreeMs: race.bestThreeMs ? race.bestThreeMs() : null,
   });
+  /* Capture hook: seat the plant on the grass under the current xz.
+   * cameraDown keeps the integrator running so parked lift cannot hide
+   * a lens-in-dirt picture. inverted is the turtle path: next frame
+   * snaps upright. */
+  window.__seatCraft = (kind) => {
+    if (!stateCurr) {
+      return null;
+    }
+    poseFromState(stateCurr, pProbe);
+    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    worldPosToSim(pProbe.x, hy + REST_HEIGHT, pProbe.z, pSim);
+    let qw = 1;
+    let qx = 0;
+    let qy = 0;
+    let qz = 0;
+    if (kind === 'inverted' || kind === 'invertedHold') {
+      qw = 0;
+      qx = 1;
+    } else if (kind === 'cameraDown') {
+      const h = Math.PI / 4;
+      qw = Math.cos(h);
+      qy = Math.sin(h);
+    }
+    const code = sim.e.sim_set_pose(pSim.x, pSim.y, pSim.z, qw, qx, qy, qz);
+    if (code !== SIM_OK) {
+      return { ok: false, code };
+    }
+    sim.rest();
+    setCrashflip(false);
+    introMs = -1;
+    camOverride = null;
+    poseLock = kind === 'cameraDown' || kind === 'invertedHold';
+    landed = kind !== 'cameraDown' && kind !== 'inverted' && kind !== 'invertedHold';
+    takingOff = false;
+    parkedLift = 0;
+    adoptSimClock();
+    acc = 0;
+    groundY = hy;
+    stateCurr = readState();
+    statePrev = stateCurr;
+    raiseGroundFromState(stateCurr);
+    lastUpz = plantUpZ(stateCurr);
+    {
+      const uClamp = lastUpz > 1 ? 1 : lastUpz < -1 ? -1 : lastUpz;
+      lastTiltDeg = (Math.acos(uClamp) * 180) / Math.PI;
+    }
+    lastClearance = REST_HEIGHT;
+    simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qPrev);
+    qPrev.premultiply(qSpawn);
+    poseFromState(stateCurr, pCurr);
+    camFwd.set(0, 0, -1).applyQuaternion(qPrev);
+    camUp.set(0, 1, 0).applyQuaternion(qPrev);
+    fpvPos.copy(pCurr)
+      .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
+      .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
+    lastCamFwdY = camFwd.y;
+    lastCamUpY = camUp.y;
+    lastCamClear = fpvLensClear(camFwd.y, camUp.y);
+    lastCamFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS) + lastCamClear;
+    if (fpvPos.y < lastCamFloor) {
+      fpvPos.y = lastCamFloor;
+    }
+    lastFpvY = fpvPos.y;
+    shell.quad.position.copy(pCurr);
+    shell.quad.quaternion.copy(qPrev);
+    shell.quad.visible = false;
+    fpvQuat.copy(qPrev).multiply(qTilt);
+    shell.camera.position.copy(fpvPos);
+    shell.camera.quaternion.copy(fpvQuat);
+    shell.camera.fov = ui.settings.cameraFov;
+    shell.camera.updateProjectionMatrix();
+    return window.__craftState();
+  };
+  window.__releasePose = () => {
+    poseLock = false;
+    return true;
+  };
   /*
    * Which tune the module is actually running, read back from the module
    * rather than from the menu, plus the config coverage counters from

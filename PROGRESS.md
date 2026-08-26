@@ -17817,3 +17817,44 @@ vendor/betaflight` empty. `npm run contact:selftest` all passed.
 `node src/trackbuilder/selftest.js` 382 passed. `node --check` on
 the edited JS. `npm run verify` follows the commit: this is the
 plant.
+
+## Ground thump: verify, shots, and the capture hook
+
+`npm run verify` this turn, after the plant commit:
+
+- Checks 1 to 14 PASS. Trace hash `de0401cd4266` on 2, 3 and 4,
+  unchanged from the last plant run. Ground contact did not leak
+  into free air.
+- Check 5 hover 0.2793. Check 6 punch 80.0 m. Check 7 terminal
+  31.0 m/s. Check 8 motor 26 ms. Check 9 671.7 deg/s (0.25 percent
+  off 670). Check 10 yaw -0.10 deg. Check 11 sag 11.14 percent.
+  Check 12 ratio 1.2472 (0.52 percent off). Check 13 console clean.
+  Check 14 audio-bed ok.
+- Check 15 FAIL: gate opening W/H 0.0000 and grass blade min
+  0.0060. The boot map is custom empty (First flight / builder
+  seat). Clubhouse, city kerb, doorway, handrail and boom still
+  match. Thresholds not moved.
+- Check 16 FAIL: field budget 93 / 913063 / 29 MB / 101 meshes
+  against recorded 303 / 1014037 / 32 / 169. Round trip is
+  identical, so the leak detector held. Same OPEN QUESTION as
+  before, now on the custom empty boot map rather than the old
+  race field.
+
+What went wrong after the first commit:
+
+- Slide and invert selftests first measured air time after a
+  shove. Almost all of a 1.3 m "slide" was flight. Rewrote from a
+  seated pose: belly 4.2 cm in 52 ms, props-down 3.6 mm in 5 ms.
+- Inverted rest on the slop band had hits=0 and no projection, so
+  settle skipped. Near-plane inverted settle covers that 8 mm band.
+- First shots.js captures were the intro orbit, not FPV. The
+  camera-down pose then tumbled before the shutter. `__seatCraft`
+  now skips the intro, locks the pose for a crash still, and
+  `__releasePose` lets turtle snap. Three expects then passed:
+  camera-down camClear 0.22 with camFwdY -1, inverted crash
+  camClear 0.22 with camUpY -1, turtle tilt 0 and lastUpz > 0.7.
+- shots.js still reports one `ERR_CONNECTION_REFUSED` (CDN). The
+  three camera expects are independent of that.
+
+Harness is green on the flight checks. Feel is awaiting human
+judgement.

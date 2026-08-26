@@ -17301,3 +17301,34 @@ entries. src/main.js auto-merged: MAP_MODULE_COUNT.city stays 63
 (petals.js is out of the import graph) and main's next-flag HUD lock
 stays off in frame.
 
+## Thin again for load and flyable corridors
+
+The first cut left 630 trees, 22488 city colliders, benches and bike
+racks in the shotengai and canal, and 80-triangle icosahedra on every
+leaf. That still cost an average machine, and the corridors were still
+dressed. Second cut, same rules: one box per blob, no canopy thin in
+bake.js, no extras at top === -1, check 15 ceilings untouched,
+MAP_MODULE_COUNT.city stays 63.
+
+Changed:
+
+- TREE_KEEP 0.40 to 0.28, SHRUB_KEEP 0.30 to 0.18, BAMBOO_KEEP 0.40 to
+  0.28. Landmark keep: true spots still always survive.
+- Blobs per remaining tree: sakura 16+6 and 3 crown (was 26+10 and 4),
+  grove 16+6 (was 30+12), willow 48+8 (was 120+12). Same blob size, so
+  the AABB still hugs the leaf instead of growing into air.
+- Cedar 5-6 tiers and one sprig (was 6-8 and two). Bamboo leaf spray 3
+  (was 4). Shrub default 2 blobs (was 3).
+- Canopy icosahedra at detail 0, matching bamboo and distant trees.
+  Collision is the blob AABB, not the mesh, so this is GPU only.
+- makeBench, makeBikeRack, makeBins now skipClutter. School bike shed
+  racks pass keep: true. Corridor furniture that closed gaps is gone.
+- High foliageKeep 0.65 to 0.48, Medium 0.42 to 0.30. This only thins
+  hill tufts, moss, rocks and lake reeds. Canopies stay out of FOLIAGE.
+
+Verify: not yet. Headless city load with scan, planting counts, probes
+and overlay shots follow this commit. npm run verify is not the check:
+city map, not the plant.
+
+Wrong: nothing undone this turn. The 0.55 m leaf flood stays off.
+

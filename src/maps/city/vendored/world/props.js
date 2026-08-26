@@ -39,8 +39,10 @@ function mats() {
 
 /*
  * Freestyle strip. Ornaments that closed gaps a quad should fly: planters,
- * crates, buckets, bikes against a wall, cones, laundry. Pass keep: true
- * to opt one instance back in. Empty group so every call site still
+ * crates, buckets, bikes against a wall, cones, laundry, kerb benches,
+ * bike racks and recycle bins. A corridor with furniture in it is a
+ * corridor you cannot thread. Pass keep: true to opt one instance back
+ * in (the school bike shed). Empty group so every call site still
  * compiles and the cover pass sees no mesh, so no phantom box.
  */
 export function skipClutter(o) {
@@ -805,6 +807,7 @@ export function makeUmbrella(o = {}) {
 }
 
 export function makeBins(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const colors = [PAL.bin, 0x7fae6a, 0xd8c34a];
@@ -862,6 +865,7 @@ export function makeBins(o = {}) {
  * varies per instance, which is what stops the row reading as a copy-paste.
  */
 export function makeBikeRack(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 17);
   const g = new THREE.Group();
@@ -962,6 +966,7 @@ export function makeNoticeBoard(o = {}) {
 
 /** Timber slat bench. Park, canal bank, station forecourt. */
 export function makeBench(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const len = o.len ?? 1.7;

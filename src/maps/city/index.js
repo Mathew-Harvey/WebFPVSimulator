@@ -302,17 +302,12 @@ const CULL_CELL = 40;
  */
 
 /*
- * How much of the town's planting survives.
+ * How much of the town's hill decoration survives at bake time.
  *
- * Set from the budget rather than from taste. The town draws 4.54 M triangles
- * of instanced plants against a whole frame budget of 1.20 M, and no amount of
- * merging or culling touches that: an instanced grove is already one draw call
- * and the triangles are simply there. The only lever is fewer of them.
- *
- * It reads as thinning rather than deletion because a canopy here is a few
- * dozen blobs scattered through the tree's volume, so removing some of them
- * makes the tree airier and not smaller, and every trunk is untouched. Swept
- * numbers are in PROGRESS.md. High keeps 0.65; Medium and Low keep less.
+ * Tree canopies are not in this list. Remaining trees have their
+ * collision authored per leaf, so thinning the blobs after that would
+ * put a wall where the drawing no longer is. Hill tufts, moss, rocks
+ * and lake reeds still thin. High keeps 0.48; Medium and Low keep less.
  * The live value is src/render/quality.js.
  */
 

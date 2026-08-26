@@ -14,12 +14,14 @@ import { bake, trs, rngKit } from '../core/util.js';
  * TREE_KEEP is the fraction of spots that survive. It is a hash of the
  * seed, not a stride, so a row thins evenly instead of going bald then
  * dense. A spot marked `keep: true` is a landmark (the two cherries that
- * frame the crossing) and always survives.
+ * frame the crossing) and always survives. 0.28 is a second cut after
+ * the original half: fewer trunks in the corridors, fewer blobs to
+ * draw and to collide, load and frame both cheaper.
  * ------------------------------------------------------------------ */
 
-export const TREE_KEEP = 0.40;
-export const SHRUB_KEEP = 0.30;
-export const BAMBOO_KEEP = 0.40;
+export const TREE_KEEP = 0.28;
+export const SHRUB_KEEP = 0.18;
+export const BAMBOO_KEEP = 0.28;
 
 /**
  * Keep a fraction of planted spots, deterministically.
@@ -173,7 +175,7 @@ export function buildSakura(ctx, spots) {
      * spheres read as boulders; a dense cluster of small faceted lumps
      * reads as painted blossom.  Tone is biased by height so the top of
      * the canopy catches the light and the underside stays deeper. */
-    const count = 26 + Math.floor(rng.next() * 10);
+    const count = 16 + Math.floor(rng.next() * 6);
     let yMin = Infinity, yMax = -Infinity;
     for (const c of canopyCenters) {
       yMin = Math.min(yMin, c.y);
@@ -204,7 +206,7 @@ export function buildSakura(ctx, spots) {
     }
 
     // a small cluster crowning the silhouette
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       const r = 0.6 * S * rng.range(0.8, 1.15);
       const px = topX + rng.range(-0.7, 0.7) * S;
       const py = topY + (1.25 + rng.range(0, 0.5)) * S;
@@ -236,7 +238,7 @@ export function buildSakura(ctx, spots) {
   wood.name = 'sakuraWood';
   ctx.add(wood);
 
-  const blobGeo = new THREE.IcosahedronGeometry(1, 1);
+  const blobGeo = new THREE.IcosahedronGeometry(1, 0);
   const canopies = [];
   // Blossom keeps a pink cast even in shade: a violet tint turns it grey, and
   // a normal ramp makes the away-facing side of the canopy read as mauve rock,
@@ -391,23 +393,14 @@ export function buildGrove(ctx, spots) {
     }
 
     /* Denser and rounder than blossom: a shade tree is a single mass with a
-     * lit crown, not a cloud of separate puffs. */
-    /**
-     * **A willow needs three times the blobs at a third of the size, and the first
-     * version proved it.**
+     * lit crown, not a cloud of separate puffs.
      *
-     * Written with 40 blobs at `0.5·S` -- the same order as the grove's -- it came
-     * out as six pale lozenges a metre across hanging in the air: at that size a
-     * blob is a *canopy*, so a curtain of them is a cloud, and in `PAL.willow` (the
-     * palest green in the world) it was the loudest thing in the park.
-     *
-     * A frond has to be small enough that the eye reads the mass rather than the
-     * unit, which at four metres is about 0.3 m -- and to fill the same volume with
-     * 0.3 m units instead of 0.9 m ones takes an order of magnitude more of them.
-     * 120 is what it takes; it costs nothing, because every one of them is an
-     * instance in a mesh that already exists.
-     */
-    const count = (willow ? 120 : 30) + Math.floor(rng.next() * 12);
+     * A willow still uses small fronds. 40 blobs at 0.5 S read as pale
+     * lozenges a metre across. 120 at 0.185 S was a curtain from the bank
+     * and a thousand boxes a quad paid whether it flew the lake or not.
+     * 48 keeps the small unit. The grove's 16 is the same cut: airier
+     * canopy, same blob size, so the box still hugs the leaf. */
+    const count = (willow ? 48 : 16) + Math.floor(rng.next() * (willow ? 8 : 6));
     let yMin = Infinity, yMax = -Infinity;
     for (const c of centers) {
       yMin = Math.min(yMin, c.y);
@@ -478,7 +471,7 @@ export function buildGrove(ctx, spots) {
   wood.name = 'groveWood';
   ctx.add(wood);
 
-  const blobGeo = new THREE.IcosahedronGeometry(1, 1);
+  const blobGeo = new THREE.IcosahedronGeometry(1, 0);
   blobs.forEach((list, i) => {
     if (!list.length) return;
     const inst = new THREE.InstancedMesh(
@@ -624,7 +617,7 @@ export function buildCedar(ctx, spots) {
      * is here for. */
     const base = H * rng.range(0.30, 0.42);
     const crown = H - base;
-    const n = 6 + rng.int(0, 2);
+    const n = 5 + rng.int(0, 1);
     const rMax = H * 0.150 * rng.range(0.86, 1.14);
 
     const leaves = [];
@@ -683,8 +676,8 @@ export function buildCedar(ctx, spots) {
         rx: rk * 0.7, ry: ck * 0.45, rz: rk * 0.7,
       });
     }
-    // two sprigs, so no two crowns have the same outline
-    for (let k = 0; k < 2; k++) {
+    // one sprig, so no two crowns have the same outline
+    {
       const u = rng.range(0.15, 0.8);
       const p = at(base + crown * u);
       const rk = rMax * (1 - u) * rng.range(0.45, 0.8);
@@ -772,7 +765,7 @@ export function buildBamboo(ctx, clumps) {
       }
       // leaf spray: a few flattened blobs high on the culm
       const leafParts = [];
-      for (let k = 0; k < 4; k++) {
+      for (let k = 0; k < 3; k++) {
         const ly = (c.y ?? 0) + h * rng.range(0.66, 1.0);
         const rr = 0.34 * S * rng.range(0.7, 1.2);
         const lx = px + rng.range(-0.5, 0.5) * S;
@@ -823,13 +816,13 @@ export function buildBamboo(ctx, clumps) {
 
 /** Rounded low-poly shrubs, in a slightly teal green. */
 export function buildShrubs(ctx, spots) {
-  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const geo = new THREE.IcosahedronGeometry(1, 0);
   const tones = [PAL.leaf, PAL.leafDeep, PAL.leafPale];
   const lists = [[], [], []];
   const leaves = [];
   for (const s of spots) {
     const rng = rngKit(s.seed ?? 11);
-    const n = s.count ?? 3;
+    const n = s.count ?? 2;
     for (let i = 0; i < n; i++) {
       const r = (s.r ?? 0.55) * rng.range(0.75, 1.2);
       const px = s.x + rng.range(-0.5, 0.5) * (s.spread ?? 1);
@@ -852,7 +845,7 @@ export function buildShrubs(ctx, spots) {
     const inst = new THREE.InstancedMesh(geo, cel({ color: tones[i], bands: 3, tint: 0x5b6f8c }), list.length);
     list.forEach((m, k) => inst.setMatrixAt(k, m));
     inst.castShadow = true;
-    inst.receiveShadow = true;
+    inst.receiveShadow = false;
     inst.name = 'shrubCanopy' + i;
     ctx.add(inst);
   });

@@ -728,27 +728,8 @@ function buildWater(ctx, train) {
     ctx.add(sky);
   }
 
-  /* petals riding the surface */
-  {
-    const N = 290;
-    const geo = new THREE.PlaneGeometry(0.16, 0.12);
-    geo.rotateX(-Math.PI / 2);
-    const inst = new THREE.InstancedMesh(geo, flat({
-      color: PAL.waterPetal, transparent: true, opacity: 0.9, depthWrite: false, cache: false,
-    }), N);
-    const d = new THREE.Object3D();
-    for (let i = 0; i < N; i++) {
-      d.position.set(D_W + 1 + rng.range(0, DL - 2), WATER_Y + 0.022, Z_C + rng.range(-1.5, 1.5));
-      d.rotation.set(0, rng.range(0, 6.28), 0);
-      const s = rng.range(0.8, 1.4);
-      d.scale.set(s, 1, s);
-      d.updateMatrix();
-      inst.setMatrixAt(i, d.matrix);
-    }
-    inst.userData.noOutline = true;
-    inst.renderOrder = 4;
-    ctx.add(inst);
-  }
+  /* Surface blossom is off. A freestyle line under the bridges does
+   * not want a carpet of pink cards on the water. */
 
   /* the train streak: cream body, blue stripe, sliding and fading */
   const streakMat = flat({

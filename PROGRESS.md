@@ -17080,6 +17080,305 @@ was the old copy, which is why this turn exists. `npm run verify` was
 not run: no plant, ABI, build, input path or threshold change. The
 board change deploys from WebFPVSimulator-LeaderBoard, not this repo.
 
+## Freestyle city: thin the town, map collision to the drawing
+
+Owner ask: refine the freestyle city so the collision mesh matches the
+graphics, remove falling cherry blossom, cut dressing that closed
+flyable gaps, drop most furniture and ornaments, keep epic objects and
+real flight lines, thin trees by at least half, and map remaining tree
+collision to the leaves. The scene has to stay fun to fly and cheap
+enough for an average machine.
+
+WHAT CHANGED.
+
+Petals are off. world/index.js no longer builds the live field or the
+fallen patches (980 cards in the corridor). quality.js has petals:
+false on low, medium and high. lake.js no longer scatters 620 cards on
+the water. petals.js is out of the import graph, so MAP_MODULE_COUNT.city
+is 63 (was 64). Measured after load.
+
+Trees. TREE_KEEP 0.40, SHRUB_KEEP 0.30, BAMBOO_KEEP 0.40, a Knuth hash
+so a row thins evenly. Landmark spots keep: true (the three street
+cherries that frame the opening shot, the shrine 御神木, the cherry
+leaning over the terrace, the first school-gate cherry, the two
+overbridge near-foot cherries). Remaining canopies are NOT thinned in
+bake.js: their collision is authored per leaf cluster, and stripping
+blobs after that would put a wall where the drawing no longer is. Hill
+tufts, moss, rocks and lake reeds still thin.
+
+Leaf collision. collideLeaves clusters blobs or cedar cones onto a
+0.55 m grid and writes one box per occupied cell, plus a thin trunk.
+The old canopy AABB was the axis aligned hull of every blob, empty
+corners included: a 4 m cube of air a pilot met as an invisible trunk.
+The gap under the crown is a gap again. Bamboo had no collision at all
+after the first pass; culms now have a thin stem box and the leaf spray
+goes through the same cluster.
+
+Clutter. skipClutter in props.js returns an empty strippedClutter group
+unless keep: true, on bikes, cats, cones, planters, umbrellas, vend
+bins, aircon, laundry, cat boxes, hose boxes, flower beds, buckets,
+brooms, crates, ivy, doormats, taps, pots, mailboxes, delivery boxes,
+pet bowls, recycle boxes, and the matching streetprops (scooters, kid
+bikes, gardens, drying racks, wheel stops, meters). plots.js
+DRESS_CLUTTER is false. dressHousing keeps name plate, post box and a
+lit window. Kerb bikes, planters, crates and the cat are gone from
+world/index.js. Hanging noren and shop doorway curtains stay: they are
+a split, and they now have a 5 cm slab so a plane the cover pass could
+not see is actually hittable.
+
+Fit. FIT_TIGHT 2.4 skips the slab cut on boxes already that small, so
+thousands of leaf cells are not merged into fatter neighbours. Compact
+unmatched boxes (stripped dressing whose drawing is gone) park 1 mm
+below ground; they are not written as top === -1, because that slot is
+the two level-crossing booms.
+
+KEEPERS. Overbridge, tunnel, canal bridges, shotengai, school,
+shrine/torii, railway/train, onsen, library, poles/wires, parked cars,
+vending machines, benches, bike racks, sheds, hanging cloth, barriers,
+guardrails, playground, phone booth.
+
+WHAT WENT WRONG on the way. skipClutter as first written was a type
+list that never ran, because every maker already returned. The keep:
+true opt-in is the one that actually strips. Bamboo was left with no
+collision after the canopy AABB came out: a grove of sticks you flew
+through. MAP_MODULE_COUNT would have stayed 64 with petals.js unused
+and failed check 16. A comment edit in index.js briefly broke the
+COVER_SOFT regex (a space inside the opening /*); caught by node
+--check before commit.
+
+npm run verify was NOT run. This is the city map, not the plant:
+nothing in src/native, patches, vendor/betaflight, the input path or
+the Emscripten build is touched. Cheap checks this turn: node --check
+on every edited file. collider-audit.js and shots.js run after this
+commit.
+
+Possible effect if this breaks something: holes_max if stripped
+graphics still have leftover colliders the compact-unmatched path did
+not catch (those have to be dropped, not the ceiling widened). Check
+16 if the browser still fetches petals.js from somewhere. Load time if
+leaf cells explode the authored collider count; FIT_TIGHT is the lever.
+Flight feel itself is not verifiable here.
+
+## Freestyle city: hug the leaves, strip leftover ornaments
+
+Follow-up on the thin-the-town pass. First headless load (high, city
+scan on) measured tree keep 0.384 (1641 to 630, 61.6 percent cut),
+shrubs 779 to 224, bamboo 17 to 4, no live petal meshes, world build
+7580 ms, fit 664 ms, 18105 tight boxes, 63 compact unmatched parked
+below ground. The stats dump included colliderFit.rows and truncated
+the log before phantom, holes and the flight-line probes, so those
+numbers were not yet evidence. The school camera was also pointed at
+the south fence (z -41) instead of the west pedestrian gate.
+
+WHAT CHANGED this round.
+
+Leaf cells. collideLeaves now rasterises each blob onto every 0.55 m
+cell it overlaps and writes the intersection, not the blob AABB parked
+on the centre cell. A 1.2 m lump no longer writes a 2.4 m wall of air
+in the corners. Same function for sakura, grove, cedar, shrubs, bamboo.
+
+Shop ornaments. makeProduceStack and makeMenuBoard go through
+skipClutter, so the trestles and chalk boards that sat in the
+shotengai, approach and north-block pavements are gone. Freezers,
+gachapon, vending, bike racks, benches, hanging cloth and lanterns
+stay: those are splits.
+
+Lanterns and flags. Hung paper lanterns sit more than a metre off the
+ground, so the cover pass never saw them. makePaperLantern writes a
+tight cylinder on the paper body when given ctx (shotengai wrapper and
+matsuri strings). makeShopFlag writes a pole plus a cloth slab: a pole
+and a plane fail COVER_MIN_FILL, which is how a flag you can see became
+air.
+
+Audit dump. fit.rows only fills when __CITY_SCAN_ROWS is set. The scan
+still runs under __CITY_SCAN. collider-audit.js no longer has to
+stringify thousands of rectangles to print phantom and holes.
+
+npm run verify was NOT run. City map, not the plant. Cheap check this
+turn: node --check on every edited file. collider-audit.js and a
+targeted shots.js pass (school gate, canal undercroft, torii, probes)
+run after this commit.
+
+Possible effect if this breaks something: more leaf cells than 18105
+because a blob now occupies every cell it overlaps, not one. That is
+the cost of hugging. If holes_max climbs, leftover ornament colliders
+have to drop, not the ceiling. Lantern boxes that miss the drawing
+would add phantom: they are sized to the paper body (r and 2.2 r of
+drop), not the wire.
+
+## Freestyle city: one box per leaf, open the torii, drop canal blossom
+
+The occupancy flood in collideLeaves was a miss. Headless high scan after
+the last commit measured tight 458876, colliders.count 462154, world
+build 25082 ms, city ready 30695 ms. That will not run on an average
+machine. The 0.55 m raster wrote a cell for every overlap instead of
+one box per blob. Reverted to the blob AABB, with skipFit so a 4 m
+御神木 lump is not slab cut against a neighbouring wall.
+
+The outer torii at (-27.9, 1.8, 19.9) was a HIT: a 4.66 x 3.78 x 0.53
+box filling the opening. Cause: bake() merged posts and kasagi into one
+mesh whose AABB IS the gate, so COVER_MIN_FILL saw ~100 percent fill
+and the cover pass walled the gap. Fix: name the group torii, bake
+posts / nuki / lintel apart, skip the cover pass on torii and
+schoolLink (the 渡り廊下 is the same merged-mesh trap), and author a
+thin nuki and lintel so the line is under the 貫, not through a wall.
+
+Canal water still had 290 pink cards riding the surface. Those are
+gone. Lake surface blossom was already off.
+
+Football goals on the school ground now collide posts and crossbar,
+not the mouth. Playground is one large group so the cover pass never
+saw them, which left the frame as air.
+
+Cheap check this turn: node --check on trees.js, index.js (city and
+world), shrine.js, canal.js, school.js. collider-audit and flight-line
+probes run after this commit. npm run verify was NOT run: city map,
+not the plant.
+
+Possible effect if this breaks something: per-blob AABBs still have
+sphere-corner air, which is the remaining gap between "hug the leaves"
+and a triangle mesh. If phantom climbs, it is those corners, not a
+reason to rasterise again. If the torii nuki is too fat, shrink the
+authored slab, do not put the cover pass back on the group.
+
+## Freestyle city: measured after the per-blob revert
+
+Headless Chromium, high, 1280x720, __CITY_SCAN on. World 6705 ms,
+ready 8899 ms (was 25082 ms under the occupancy flood). Authored
+colliders 22488, fitted 25083 (was 462154). Overlay of the street
+within 28 m: 815 boxes, not 40k.
+
+Planting, unchanged: sakura 302 to 112, grove 943 to 361, cedar 396
+to 157, trees 1641 to 630 (38.4 percent kept). Shrubs 779 to 224.
+Bamboo 17 to 4. petalNames []. expectedModules 63. Console 0.
+
+Collider scan against check 15, ceilings untouched:
+
+- phantom 3143 / 29000
+- overFive 128 / 350
+- holes 10572 / 20300
+- meanCover 0.585 / 0.45 min
+- tight 21808, droppedEmpty 63, unmatched 65, fitted 615, covered 361,
+  seeThrough 227, drawnBoxes 160020, fit 426 ms
+
+Flight-line probes (Three.js Y-up). empty = flyable.
+
+- street (0, 2.0, 12) empty
+- overbridge undercroft (41, 3.0, 0) empty
+- shotengai (22.2, 2.0, 28) empty
+- alley (13.4, 1.6, 20) empty
+- school pedestrian gate (10.6, 1.6, -47.6) empty
+- school forecourt (14.2, 1.6, -49.5) empty
+- school 渡り廊下 (28.5, 1.6, -73.75) empty
+- outer torii (-27.9, 1.8, 19.9) empty (was a 4.66 x 3.78 x 0.53 wall)
+- outer 貫 (-27.9, 2.45, 19.9) HIT 4.00 x 0.15 x 0.23, the beam
+- inner torii (-27.9, 3.2, 26.9) empty
+- canal deck (0, 1.6, -24) empty
+- canal undercroft (0, 0.15, -24) empty
+- goal mouth (39.9, 1.0, -56.5) empty
+- under a street cherry (-5.3, 1.5, 5.8) empty
+
+Canal water has no pink cards. Goal posts were first authored without
+a bottom, so BOX_FLOOR -60 made a 63 m spike. They now sit on the
+pitch (Y + 0.06 to GH). A re-probe of the mouth is still empty; the
+torii nuki is still the 0.15 m beam.
+
+npm run verify was NOT run. City map, not the plant. Cheap evidence
+is this headless load, the scan numbers, the probes, and the overlay
+shots.
+
+Possible effect if this breaks something: a blob AABB still has the
+four corners of the icosahedron's box as air, which is the remaining
+honest gap between "hug the leaves" and a triangle mesh. Do not go
+back to a 0.55 m flood for that.
+
+## Merge origin/main into the city-simplify branch
+
+Simple conflict, one file. PROGRESS.md is append-only and both sides
+wrote after the cone-clearance correction. origin/main's flag-glow,
+wiki and credits entries are kept first, then this branch's city
+entries. src/main.js auto-merged: MAP_MODULE_COUNT.city stays 63
+(petals.js is out of the import graph) and main's next-flag HUD lock
+stays off in frame.
+
+## Thin again for load and flyable corridors
+
+The first cut left 630 trees, 22488 city colliders, benches and bike
+racks in the shotengai and canal, and 80-triangle icosahedra on every
+leaf. That still cost an average machine, and the corridors were still
+dressed. Second cut, same rules: one box per blob, no canopy thin in
+bake.js, no extras at top === -1, check 15 ceilings untouched,
+MAP_MODULE_COUNT.city stays 63.
+
+Changed:
+
+- TREE_KEEP 0.40 to 0.28, SHRUB_KEEP 0.30 to 0.18, BAMBOO_KEEP 0.40 to
+  0.28. Landmark keep: true spots still always survive.
+- Blobs per remaining tree: sakura 16+6 and 3 crown (was 26+10 and 4),
+  grove 16+6 (was 30+12), willow 48+8 (was 120+12). Same blob size, so
+  the AABB still hugs the leaf instead of growing into air.
+- Cedar 5-6 tiers and one sprig (was 6-8 and two). Bamboo leaf spray 3
+  (was 4). Shrub default 2 blobs (was 3).
+- Canopy icosahedra at detail 0, matching bamboo and distant trees.
+  Collision is the blob AABB, not the mesh, so this is GPU only.
+- makeBench, makeBikeRack, makeBins now skipClutter. School bike shed
+  racks pass keep: true. Corridor furniture that closed gaps is gone.
+- High foliageKeep 0.65 to 0.48, Medium 0.42 to 0.30. This only thins
+  hill tufts, moss, rocks and lake reeds. Canopies stay out of FOLIAGE.
+
+Verify: not yet. Headless city load with scan, planting counts, probes
+and overlay shots follow this commit. npm run verify is not the check:
+city map, not the plant.
+
+Wrong: nothing undone this turn. The 0.55 m leaf flood stays off.
+
+## Second cut, measured
+
+Headless Chromium, 1280 by 720, graphics high, city scan on.
+Check 15 ceilings were not edited. npm run verify was not run:
+city map, not the plant.
+
+Load. World 4482 ms (was 6705). Total 7396 ms (was 8899).
+expectedModules 63. foliageKeep 0.48. petalNames none. Console 0.
+
+Planting kept of authored:
+
+- sakura 79 of 302
+- grove 249 of 943
+- cedar 111 of 396
+- trees 439 of 1641, 26.8 percent kept
+- bamboo 3 of 17
+- shrubs 130 of 779
+
+Colliders. city 10488 (was 22488). total 12868 (was 25083).
+tight 9808, unmatched 65, droppedEmpty 63, fitted 615, covered 321,
+extraBoxes 1636, drawnBoxes 79968 (was 160020), fit 234 ms.
+
+Street budget: 626 calls, 1.14 M triangles, 87 MB targets, 2013 meshes.
+
+Scan vs check 15:
+
+- phantom 2728 / 29000
+- overFive 126 / 350
+- holes 10556 / 20300
+- meanCover 0.581 / 0.45 min
+
+Flight-line probes. empty = flyable.
+
+- street, shotengai, shotengai kerb rack, school gate, outer torii empty
+- outer 貫 HIT 4.00 x 0.15 x 0.23, the beam
+- canal bench site, goal mouth, under a street cherry empty
+- school bike frame HIT 0.40 x 1.02 x 1.40, one bike
+- over the bike frames under the roof empty
+
+The first overlay pass found the school bikes drawing with no
+contact. Corridor racks stay stripped. The shed is the keeper, so each
+frame now has its own box. Holes fell 10606 to 10556 on that pass.
+A merged row box would have walled the aisle; the 0.40 by 1.40 box is
+the drawing.
+
+Wrong: nothing else. Do not put remaining canopies back into FOLIAGE.
+
 ### 2026-08-26 | ui | wiki moved to the landing site
 
 Changed: the FPV wiki is no longer a screen in this shell. The articles,
@@ -17101,6 +17400,14 @@ articles, 696 keys, 706 cli/feature pages. Local wiki
 `#wiki/physics-vrs` opened Vortex ring state. `#wiki/` hashes rewrite
 via `wikiPageUrl`. `npm run verify` was not run: no plant, ABI, build,
 input path or threshold change.
+
+## Merge origin/main (wiki off this shell) into the city-simplify branch
+
+Simple conflict, one file. PROGRESS.md is append-only. This branch's
+city entries stay in the order they were written, then origin/main's
+wiki-moved-to-landing-site note. src/main.js auto-merged: MAP_MODULE_COUNT.city
+stays 63, and main's applyLocationHash after a graphics rebuild plus
+credits in STAY_SCREENS stay on.
 
 ### 2026-08-26 | ui | #credits survives world load, CrapShack on the roll
 
@@ -17146,4 +17453,10 @@ fresh profile: first boot Barnstorm Break on the dock, second boot
 Subway Rattle, both with selection rotation. Console errors 0.
 `npm run verify` was not run: no plant, ABI, build, input path or
 threshold change.
+
+### 2026-08-26 | merge | origin/main into local main
+
+Kept both sides of PROGRESS.md. Incoming city-simplify merge note
+first, then the local `#credits` and random-rotation entries.
+
 

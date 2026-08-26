@@ -7,6 +7,7 @@ import {
 } from '../core/textures.js';
 import { box, cyl, bake, trs, rngKit } from '../core/util.js';
 import { hullOutline } from '../core/outline.js';
+import { skipClutter, strippedGroup } from './props.js';
 
 /* ------------------------------------------------------------------ *
  * One shop generator, nine tenants.
@@ -391,6 +392,29 @@ export function makeShop(ctx, o) {
   const roofAdd = o.roofKind === 'gable' ? (o.roofH ?? 1.25) + 0.22 : 0.4;
   ctx.collide(o.x - hw - 0.05, o.z - hd - 0.05, o.x + hw + 0.05, o.z + hd + 0.05, (o.y ?? 0) + H + roofAdd);
 
+  /* Doorway curtain, a thin slab in world axes. The shop rectangle is the
+   * whole unit; slab fit opens the recess, and this is the cloth in it. */
+  if (o.noren) {
+    const nw = Math.min(2.4, openW * 0.7);
+    const nx = o.norenX ?? 0;
+    const lz = front - 0.22;
+    const y0 = (o.y ?? 0) + 1.70;
+    const y1 = (o.y ?? 0) + 2.42;
+    const t = 0.05;
+    const face = o.face ?? 'z+';
+    if (face === 'z+' || face === 'z-') {
+      const s = face === 'z+' ? 1 : -1;
+      const cx = o.x + s * nx;
+      const cz = o.z + s * lz;
+      ctx.collide(cx - nw / 2, cz - t, cx + nw / 2, cz + t, y1, y0);
+    } else {
+      const s = face === 'x+' ? 1 : -1;
+      const cx = o.x + s * lz;
+      const cz = o.z - s * nx;
+      ctx.collide(cx - t, cz - nw / 2, cx + t, cz + nw / 2, y1, y0);
+    }
+  }
+
   g.userData.front = front;
   return g;
 }
@@ -405,6 +429,7 @@ export function makePaperLantern(o = {}) {
   const m = mats();
   const g = new THREE.Group();
   const r = o.r ?? 0.16;
+  const drop = o.drop ?? 0.3;
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(r, r, r * 2.1, 12, 1, true),
     flat({ color: o.lit ? PAL.lanternLit : 0xffffff, map: lanternTex(o.variant ?? 0), side: THREE.DoubleSide, cache: false })
@@ -418,14 +443,21 @@ export function makePaperLantern(o = {}) {
   for (const s of [-1, 1]) {
     g.add(cyl(r * 0.45, r * 0.45, 0.04, 10, m.metalDark, 0, s * r * 2.1, 0));
   }
-  g.add(cyl(0.012, 0.012, o.drop ?? 0.3, 4, m.metalDark, 0, (o.drop ?? 0.3) / 2, 0));
+  g.add(cyl(0.012, 0.012, drop, 4, m.metalDark, 0, drop / 2, 0));
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  /* Hung lanterns sit more than a metre off the ground, so the cover
+   * pass never sees them. The paper body is the hit. */
+  if (o.ctx) {
+    const y1 = o.y ?? 0;
+    o.ctx.collide(o.x - r, o.z - r, o.x + r, o.z + r, y1, y1 - r * 2.2);
+  }
   return g;
 }
 
 /** Chalked menu board, leaned against the frontage. */
 export function makeMenuBoard(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
   const board = new THREE.Mesh(
@@ -516,6 +548,7 @@ export function makeGachapon(o = {}) {
 
 /** Stack of plastic crates and produce baskets outside a greengrocer. */
 export function makeProduceStack(o = {}) {
+  if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const rng = rngKit(o.seed ?? 21);
   const g = new THREE.Group();
@@ -564,5 +597,20 @@ export function makeShopFlag(o = {}) {
   g.add(cloth);
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  /* Pole plus a plane fails the cover fill test, so a kerbside flag
+   * you can split has to be authored. Tight column on the pole and
+   * the cloth, not the air beside it. */
+  if (o.ctx) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    const c = Math.cos(ry);
+    const s = Math.sin(ry);
+    o.ctx.collide(o.x - 0.04, o.z - 0.04, o.x + 0.04, o.z + 0.04, y + 1.9, y);
+    const cx = o.x + c * 0.2 - s * 0.02;
+    const cz = o.z + s * 0.2 + c * 0.02;
+    const wx = Math.abs(c) * 0.22 + Math.abs(s) * 0.04;
+    const wz = Math.abs(s) * 0.22 + Math.abs(c) * 0.04;
+    o.ctx.collide(cx - wx, cz - wz, cx + wx, cz + wz, y + 1.78, y + 0.78);
+  }
   return g;
 }

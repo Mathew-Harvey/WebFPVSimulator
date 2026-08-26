@@ -1024,7 +1024,7 @@ function buildShops(ctx, m, gm, PY, cloths, petals) {
     ...BENTO, y: PY, kind: 'bento', floors: 1, h1: 3.05, seed: 9761,
     wall: 1, roof: 2, awning: 3, shutter: 0, openW: 2.5, recess: 0.85,
   });
-  ctx.add(makeShopFlag({ x: 57.05, z: 48.86, y: PY, ry: 0, variant: 0 }));
+  ctx.add(makeShopFlag({ ctx, x: 57.05, z: 48.86, y: PY, ry: 0, variant: 0 }));
   ctx.add(makeMilkCrate({ x: 59.95, z: 48.90, y: PY, ry: 0.2, n: 2, seed: 9762 }));
   ctx.add(makeRecycleBox({ x: 60.35, z: 46.20, y: PY, ry: Math.PI / 2 }));
   /* the noren over its doorway, hung 0.16 m clear of the header.  Two coplanar

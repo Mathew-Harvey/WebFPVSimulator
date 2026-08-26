@@ -420,11 +420,16 @@ export function dressPlot(ctx, o) {
     return true;
   };
 
+  /* Freestyle: skip ornaments that close a gap. Aircon, pots, bikes,
+   * laundry, taps and crates used to stand in the flight line. A shed is
+   * a volume and stays. A lit window sits on the wall. */
+  const DRESS_CLUTTER = false;
+
   /* --------------------------- against the frontage --------------------------- *
    * The wall items are the ones that were wrong everywhere: `ry` has to be the
    * wall's outward normal (`atan2(nx, nz)`, which for a unit authored facing +z
    * is simply its own `ry`), and the back of the unit has to touch the wall. */
-  if (o.aircon !== false) {
+  if (DRESS_CLUTTER && o.aircon !== false) {
     const side = rng.sign();
     const u = o.airconAt ?? side * (p.halfW - 0.75);
     const AC_D = 0.3;                        // makeAircon's depth
@@ -436,7 +441,7 @@ export function dressPlot(ctx, o) {
       used.push([u - 0.5, u + 0.5]);
     }
   }
-  if (o.gas) {
+  if (DRESS_CLUTTER && o.gas) {
     const u = -Math.sign(doorAt || 1) * (p.halfW - 0.45);
     // 0.16 = half the cabinet's 0.2 m depth plus the 0.06 m standoff its bracket
     // arms span, so the back of it touches the wall.  Seated on the ground: the
@@ -459,12 +464,12 @@ export function dressPlot(ctx, o) {
   }
 
   /* ------------------------------ the front garden ------------------------------ */
-  if (o.mat !== false) {
+  if (DRESS_CLUTTER && o.mat !== false) {
     const [x, z] = p.at(doorAt, p.halfD + 0.55);
     if (clear(x, z)) ctx.add(makeDoormat({ x, z, y: gy(x, z), ry: p.outRy, w: 0.58, d: 0.35 }));
     used.push([doorAt - 0.4, doorAt + 0.4]);
   }
-  if (o.pots !== false) {
+  if (DRESS_CLUTTER && o.pots !== false) {
     const u = take(0.3, doorAt + (rng.chance(0.5) ? 0.95 : -0.95));
     if (u !== null) {
       const placedU = u + (o.potShift ?? 0);
@@ -476,21 +481,21 @@ export function dressPlot(ctx, o) {
       }
     }
   }
-  if (o.umbrella) {
+  if (DRESS_CLUTTER && o.umbrella) {
     const u = take(0.28, doorAt - 1.05);
     if (u !== null) {
       const [x, z] = p.at(u, p.halfD + 0.4);
       if (clear(x, z)) ctx.add(makeUmbrellaStand({ x, z, y: gy(x, z), n: rng.int(2, 4), seed: (o.seed ?? 1) + 13 }));
     }
   }
-  if (o.parcel) {
+  if (DRESS_CLUTTER && o.parcel) {
     const u = take(0.3, doorAt + 1.15);
     if (u !== null) {
       const [x, z] = p.at(u, p.halfD + 0.42);
       if (clear(x, z)) ctx.add(makeDeliveryBox({ x, z, y: gy(x, z), ry: p.outRy }));
     }
   }
-  if (o.shelf) {
+  if (DRESS_CLUTTER && o.shelf) {
     const u = take(0.7, -p.halfW * 0.55);
     if (u !== null) {
       const [x, z] = p.at(u, p.halfD + 0.32);
@@ -512,7 +517,7 @@ export function dressPlot(ctx, o) {
    * inside the render.  That was true of thirty-seven of the eighty-seven
    * bicycles in the world and none of it shows in a frame, because the buried
    * half is behind the wall it is buried in. */
-  if (o.bike !== false) {
+  if (DRESS_CLUTTER && o.bike !== false) {
     const u = take(0.95, rng.range(-p.halfW * 0.5, p.halfW * 0.5));
     if (u !== null && GAP > 0.8) {
       const [x, z] = p.at(u, p.halfD + 0.42);
@@ -525,14 +530,14 @@ export function dressPlot(ctx, o) {
       }
     }
   }
-  if (o.kidBike) {
+  if (DRESS_CLUTTER && o.kidBike) {
     const u = take(0.65, p.halfW * 0.5);
     if (u !== null) {
       const [x, z] = p.at(u, p.halfD + 0.38);
       if (clear(x, z)) ctx.add(makeKidBike({ x, z, y: gy(x, z), ry: p.ry + rng.range(-0.3, 0.3) }));
     }
   }
-  if (o.scooter) {
+  if (DRESS_CLUTTER && o.scooter) {
     const u = take(0.9, -p.halfW * 0.45);
     if (u !== null) {
       const [x, z] = p.at(u, p.halfD + 0.48);
@@ -550,7 +555,7 @@ export function dressPlot(ctx, o) {
   /* A drying pole's bar runs along **x**, so on a flank it wants `p.ry + PI/2`
    * to lie parallel to the wall it is beside.  At `p.ry` the bar points straight
    * out of the flank and a 2.2 m run of washing crosses whatever is next door. */
-  if (o.laundry !== false) {
+  if (DRESS_CLUTTER && o.laundry !== false) {
     const s = rng.sign();
     flank(s, rng.range(-p.halfD * 0.3, p.halfD * 0.5), (x, z, y) => {
       ctx.add(makeLaundryPole({
@@ -558,7 +563,7 @@ export function dressPlot(ctx, o) {
       }));
     });
   }
-  if (o.rack) {
+  if (DRESS_CLUTTER && o.rack) {
     flank(o.rack < 0 ? -1 : 1, -p.halfD * 0.1, (x, z, y) => {
       // authored facing +z with its bars along x, so the same quarter turn the
       // drying pole needs puts it parallel to the flank
@@ -577,14 +582,14 @@ export function dressPlot(ctx, o) {
       ctx.collide(x - hw, z - hd, x + hw, z + hd, y + (sh.userData.top ?? 1.7));
     });
   }
-  if (o.garden) {
+  if (DRESS_CLUTTER && o.garden) {
     flank(o.garden < 0 ? -1 : 1, -p.halfD * 0.05, (x, z, y) => {
       // the bed runs along the flank, so its 0.9 m depth is what stands off the
       // wall -- at `p.ry` its 1.5 m length points out of the plot instead
       ctx.add(makeKitchenGarden({ x, z, y, ry: p.ry + Math.PI / 2, w: 1.5, d: 0.9, seed: (o.seed ?? 1) + 18 }));
     });
   }
-  if (o.tap) {
+  if (DRESS_CLUTTER && o.tap) {
     flank(o.tap < 0 ? -1 : 1, p.halfD * 0.55, (x, z, y, s) => {
       ctx.add(makeTapPost({ x, z, y, ry: p.flankRy(s) }));
       const [du, dv] = o.tapBucketOffset ?? [0.34, 0];
@@ -595,12 +600,12 @@ export function dressPlot(ctx, o) {
       }));
     });
   }
-  if (o.crates) {
+  if (DRESS_CLUTTER && o.crates) {
     flank(o.crates < 0 ? -1 : 1, -p.halfD * 0.75, (x, z, y) => {
       ctx.add(makeCrates({ x, z, y, n: rng.int(2, 3), seed: (o.seed ?? 1) + 19, ry: rng.range(-0.3, 0.3) }));
     });
   }
-  if (o.meterLid) {
+  if (DRESS_CLUTTER && o.meterLid) {
     const [x, z] = p.at(doorAt + 1.5, p.halfD + 0.7);
     if (clear(x, z)) ctx.add(makeWaterMeter({ x, z, y: gy(x, z), ry: p.outRy }));
   }

@@ -242,7 +242,7 @@ export function buildShrine(ctx) {
    * 御神木 first: the tallest thing here by a long way, on the axis behind
    * the hall, with its own rope round the trunk further down. */
   const GOSHIN = { x: -20.8, z: 43.2 };
-  grove.push({ ...GOSHIN, y: groundY(GOSHIN.z), scale: 2.5, seed: 801, spread: 1.35, lean: 0.05, leanDir: 2.0 });
+  grove.push({ ...GOSHIN, y: groundY(GOSHIN.z), scale: 2.5, seed: 801, spread: 1.35, lean: 0.05, leanDir: 2.0, keep: true });
   /* A backing wood behind the hall, every trunk *outside* the north wall.
    * A grove tree at this scale carries a canopy ten metres across, so one
    * standing on the terrace covers half of it -- which is how the precinct
@@ -267,7 +267,7 @@ export function buildShrine(ctx) {
   bamboo.push({ x: -34.4, z: 27.4, y: TOP, n: 8, spread: 1.1, scale: 1.0, seed: 825 });
 
   // one cherry, leaning in over the terrace wall: the shrine's name earns it
-  sakura.push({ x: -19.2, z: 30.0, y: groundY(30), scale: 1.5, seed: 815, lean: 0.16, leanDir: 4.7 });
+  sakura.push({ x: -19.2, z: 30.0, y: groundY(30), scale: 1.5, seed: 815, lean: 0.16, leanDir: 4.7, keep: true });
   sakura.push({ x: -37.6, z: 19.6, y: groundY(19.6), scale: 1.25, seed: 816, lean: 0.12, leanDir: 1.8 });
 
   for (let i = 0; i < 6; i++) {
@@ -335,52 +335,74 @@ export function buildShrine(ctx) {
 function buildTorii(ctx, o) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'torii';
   const W = o.w ?? 3.4;
   const H = o.h ?? 3.3;
   const pr = 0.15 * (W / 3.4);
   const red = o.plain ? m.toriiDeep : m.torii;
-  const parts = { red: [], deep: [], stone: [] };
-  const push = (k, geo, mx) => parts[k].push({ geometry: geo, matrix: mx });
+  const yBase = o.y ?? 0;
+  /* Posts, nuki and lintel are separate meshes. Baked together, the red
+   * parts become one AABB the size of the whole gate: a wall across the
+   * opening. The cover pass then treats that AABB as solid fill. */
+  const posts = { red: [], stone: [] };
+  const nuki = [];
+  const lintel = { red: [], deep: [] };
+  const push = (bag, k, geo, mx) => bag[k].push({ geometry: geo, matrix: mx });
 
   // pillars, leaning very slightly inward the way a real torii does
   for (const s of [-1, 1]) {
-    push('red', new THREE.CylinderGeometry(pr * 0.9, pr, H, 10), trs(s * W / 2, H / 2, 0, 0, 0, s * 0.018));
-    push('stone', new THREE.CylinderGeometry(pr * 1.5, pr * 1.7, 0.24, 10), trs(s * W / 2, 0.12, 0));
+    push(posts, 'red', new THREE.CylinderGeometry(pr * 0.9, pr, H, 10), trs(s * W / 2, H / 2, 0, 0, 0, s * 0.018));
+    push(posts, 'stone', new THREE.CylinderGeometry(pr * 1.5, pr * 1.7, 0.24, 10), trs(s * W / 2, 0.12, 0));
   }
   // 貫 -- the lower tie beam, passing through the pillars
-  push('deep', new THREE.BoxGeometry(W + 0.5, 0.15, pr * 1.5), trs(0, H * 0.72, 0));
+  nuki.push({ geometry: new THREE.BoxGeometry(W + 0.5, 0.15, pr * 1.5), matrix: trs(0, H * 0.72, 0) });
   // 島木 -- the flat beam under the sweeping lintel
-  push('deep', new THREE.BoxGeometry(W + 1.0, 0.19, pr * 2.1), trs(0, H - 0.16, 0));
+  push(lintel, 'deep', new THREE.BoxGeometry(W + 1.0, 0.19, pr * 2.1), trs(0, H - 0.16, 0));
   // 笠木 -- three segments, the outer two tipped up
-  push('red', new THREE.BoxGeometry(W * 0.6, 0.2, pr * 2.5), trs(0, H + 0.04, 0));
+  push(lintel, 'red', new THREE.BoxGeometry(W * 0.6, 0.2, pr * 2.5), trs(0, H + 0.04, 0));
   for (const s of [-1, 1]) {
     const seg = (W + 1.15 - W * 0.6) / 2;
-    push('red', new THREE.BoxGeometry(seg, 0.2, pr * 2.5),
+    push(lintel, 'red', new THREE.BoxGeometry(seg, 0.2, pr * 2.5),
       trs(s * (W * 0.3 + seg / 2), H + 0.04 + seg * 0.09, 0, 0, 0, -s * 0.19));
   }
   // 額束 -- the block between the two beams
-  push('red', new THREE.BoxGeometry(0.28, H * 0.24, pr * 1.7), trs(0, H * 0.85, 0));
+  push(lintel, 'red', new THREE.BoxGeometry(0.28, H * 0.24, pr * 1.7), trs(0, H * 0.85, 0));
 
-  const matFor = { red, deep: m.toriiDeep, stone: m.stoneDark };
-  for (const key of Object.keys(parts)) {
-    if (!parts[key].length) continue;
-    const mesh = new THREE.Mesh(bake(parts[key]), matFor[key]);
+  const addBake = (parts, mat) => {
+    if (!parts.length) return;
+    const mesh = new THREE.Mesh(bake(parts), mat);
     mesh.castShadow = mesh.receiveShadow = true;
     g.add(mesh);
     hullOutline(mesh, { thickness: 0.0036 });
-  }
+  };
+  addBake(posts.red, red);
+  addBake(posts.stone, m.stoneDark);
+  addBake(nuki, m.toriiDeep);
+  addBake(lintel.deep, m.toriiDeep);
+  addBake(lintel.red, red);
 
   // 注連縄 with paper streamers, on the outer torii only
   if (!o.plain) {
     shimenawa(g, { y: H * 0.62, w: W - 0.3, z: pr * 1.6, thick: 0.09, n: 4 });
   }
 
-  g.position.set(o.x, o.y ?? 0, o.z);
+  g.position.set(o.x, yBase, o.z);
   g.rotation.y = o.ry ?? 0;
   ctx.add(g);
   for (const s of [-1, 1]) {
-    ctx.collide(o.x + s * W / 2 - pr * 1.5, o.z - pr * 1.5, o.x + s * W / 2 + pr * 1.5, o.z + pr * 1.5, (o.y ?? 0) + H);
+    ctx.collide(o.x + s * W / 2 - pr * 1.5, o.z - pr * 1.5, o.x + s * W / 2 + pr * 1.5, o.z + pr * 1.5, yBase + H);
   }
+  /* Nuki and lintel are the line: under the 貫, not through a wall.
+   * skipFit so a 4 m beam is not grown to the baked envelope. */
+  const nukiHalf = (W + 0.5) / 2;
+  const nukiD = pr * 1.5 / 2;
+  const nukiY = yBase + H * 0.72;
+  ctx.collide(o.x - nukiHalf, o.z - nukiD, o.x + nukiHalf, o.z + nukiD, nukiY + 0.075, nukiY - 0.075, true);
+  const lintelHalf = (W + 1.15) / 2;
+  const lintelD = pr * 2.5 / 2;
+  const lintelY0 = yBase + H - 0.16 - 0.095;
+  const lintelY1 = yBase + H + 0.14;
+  ctx.collide(o.x - lintelHalf, o.z - lintelD, o.x + lintelHalf, o.z + lintelD, lintelY1, lintelY0, true);
   return g;
 }
 

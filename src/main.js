@@ -286,7 +286,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
  * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 1, city: 64, custom: 1 };
+const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.

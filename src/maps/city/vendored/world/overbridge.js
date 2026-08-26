@@ -765,8 +765,8 @@ export function buildOverbridge(ctx) {
    * Two cherries at the near foot so the stair is seen through blossom, and a
    * dark grove ring behind the far foot -- from the deck you look straight out
    * over it, and without something tall the view east is bare sky. */
-  sakura.push({ x: nFootX + 3.6, z: nMidZ + 4.4, y: groundY(nMidZ + 4.4), scale: 1.2, seed: 7721, lean: 0.11, leanDir: 2.2 });
-  sakura.push({ x: XD0 - 3.2, z: 8.6, y: groundY(8.6), scale: 1.14, seed: 7722, lean: 0.09, leanDir: 4.6 });
+  sakura.push({ x: nFootX + 3.6, z: nMidZ + 4.4, y: groundY(nMidZ + 4.4), scale: 1.2, seed: 7721, lean: 0.11, leanDir: 2.2, keep: true });
+  sakura.push({ x: XD0 - 3.2, z: 8.6, y: groundY(8.6), scale: 1.14, seed: 7722, lean: 0.09, leanDir: 4.6, keep: true });
   sakura.push({ x: fMidX + 4.2, z: fFootZ + 2.2, y: groundY(fFootZ), scale: 1.1, seed: 7723, lean: 0.1, leanDir: 1.4 });
   for (let i = 0; i < 5; i++) {
     grove.push({

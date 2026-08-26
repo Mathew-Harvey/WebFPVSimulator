@@ -440,7 +440,7 @@ function buildCornerShop(ctx, Y, rng) {
   });
   ctx.add(makeProduceStack({ x: fx - 0.75, z: SHOP.z - 1.7, y: y + 0.07, ry: -Math.PI / 2, seed: 7782 }));
   ctx.add(makeCrates({ x: fx - 0.55, z: SHOP.z + 1.9, y: y + 0.07, n: 3, seed: 7783, ry: -0.2 }));
-  ctx.add(makeShopFlag({ x: fx - 0.7, z: SHOP.z - 2.4, y: y + 0.07, variant: 1, ry: -Math.PI / 2 }));
+  ctx.add(makeShopFlag({ ctx, x: fx - 0.7, z: SHOP.z - 2.4, y: y + 0.07, variant: 1, ry: -Math.PI / 2 }));
   addVending(ctx, { x: fx - 0.72, z: SHOP.z + 0.9, y: y + 0.07, ry: -Math.PI / 2, variant: 1, seed: 77 });
   ctx.add(makeVendBin({ x: fx - 0.7, z: SHOP.z + 0.05, y: y + 0.07, ry: -Math.PI / 2 }));
   // The lean takes the tyre a little below the group's authored ground plane,

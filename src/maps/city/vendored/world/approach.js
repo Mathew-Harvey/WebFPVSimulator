@@ -202,8 +202,8 @@ export function buildApproach(ctx) {
     const fx = -7.5;
     ctx.add(makeFreezer({ x: fx, z: czB + 2.5, y: groundY(czB), ry: Math.PI / 2 }));
     ctx.collide(fx - 0.4, czB + 1.9, fx + 0.4, czB + 3.1, groundY(czB) + 0.9);
-    ctx.add(makeShopFlag({ x: fx - 0.1, z: czB + 3.6, y: groundY(czB), variant: 2, ry: Math.PI / 2 }));
-    ctx.add(makeShopFlag({ x: fx - 0.1, z: czB - 3.9, y: groundY(czB), variant: 3, ry: Math.PI / 2 }));
+    ctx.add(makeShopFlag({ ctx, x: fx - 0.1, z: czB + 3.6, y: groundY(czB), variant: 2, ry: Math.PI / 2 }));
+    ctx.add(makeShopFlag({ ctx, x: fx - 0.1, z: czB - 3.9, y: groundY(czB), variant: 3, ry: Math.PI / 2 }));
     ctx.add(makeProduceStack({ x: fx - 0.2, z: czB - 3.0, y: groundY(czB), ry: Math.PI / 2, seed: 44 }));
     addVending(ctx, { x: fx - 0.15, z: czB - 1.4, y: groundY(czB), ry: Math.PI / 2, variant: 1, seed: 11 });
     addVending(ctx, { x: fx - 0.15, z: czB - 0.15, y: groundY(czB), ry: Math.PI / 2, variant: 2, seed: 12 });

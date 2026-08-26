@@ -381,7 +381,10 @@ export function buildSchool(ctx) {
    * the whole school the moment you step through the gate, so the west row
    * hugs the wall and skips the two bays either side of the opening. */
   [-44.4, -54.0, -58.0, -62.0].forEach((z, i) => {
-    sakura.push({ x: 12.4, z, y: Y, scale: 1.14 + (i % 2) * 0.1, seed: 620 + i, lean: 0.12, leanDir: 1.2 });
+    sakura.push({
+      x: 12.4, z, y: Y, scale: 1.14 + (i % 2) * 0.1, seed: 620 + i, lean: 0.12, leanDir: 1.2,
+      keep: i === 0,
+    });
   });
   // hard against the south wall, not in the path that squeezes past the block's
   // south end -- that path is the only way through to the playground
@@ -1218,6 +1221,25 @@ function buildPlayground(ctx, Y, rng) {
     goal.position.set(gx, Y + 0.06, gz);
     goal.rotation.y = ry;
     g.add(goal);
+    /* Posts and crossbar, not the mouth. A baked frame AABB is a wall
+     * across the one gap a quad wants. The net is air. */
+    const gy = Y + 0.06;
+    const pr = 0.08;
+    const ca = Math.cos(ry);
+    const sa = Math.sin(ry);
+    for (const side of [-1, 1]) {
+      const lx = (side * GW) / 2;
+      const px = gx + ca * lx;
+      const pz = gz - sa * lx;
+      ctx.collide(px - pr, pz - pr, px + pr, pz + pr, gy + GH, gy);
+      const bx = gx + ca * lx - sa * 0.5;
+      const bz = gz - sa * lx - ca * 0.5;
+      ctx.collide(bx - pr, bz - pr, bx + pr, bz + pr, gy + GH * 0.8, gy);
+    }
+    const half = GW / 2 + pr;
+    const wx = Math.abs(ca) * half + Math.abs(sa) * pr;
+    const wz = Math.abs(sa) * half + Math.abs(ca) * pr;
+    ctx.collide(gx - wx, gz - wz, gx + wx, gz + wz, gy + GH + pr, gy + GH - pr, true);
   }
 
   /* 百葉箱 -- the louvred weather box on legs, and the equipment left out.
@@ -2146,8 +2168,8 @@ function buildBikeShed(ctx, Y, rng) {
   for (const rz of [z0 + 1.55, z1 - 1.55]) {
     g.add(box(x1 - x0 - 0.6, 0.09, 0.16, m.concreteMid, cx, F + 0.045, rz));
   }
-  ctx.add(makeBikeRack({ x: cx - 0.4, z: z0 + 1.55, y: F, n: 13, spacing: 0.7, ry: Math.PI / 2, seed: 3 }));
-  ctx.add(makeBikeRack({ x: cx - 0.4, z: z1 - 1.55, y: F, n: 12, spacing: 0.7, ry: -Math.PI / 2, seed: 6 }));
+  ctx.add(makeBikeRack({ x: cx - 0.4, z: z0 + 1.55, y: F, n: 13, spacing: 0.7, ry: Math.PI / 2, seed: 3, keep: true, ctx }));
+  ctx.add(makeBikeRack({ x: cx - 0.4, z: z1 - 1.55, y: F, n: 12, spacing: 0.7, ry: -Math.PI / 2, seed: 6, keep: true, ctx }));
 
   for (let i = 0; i <= 4; i++) {
     const px = x0 + ((x1 - x0) / 4) * i;

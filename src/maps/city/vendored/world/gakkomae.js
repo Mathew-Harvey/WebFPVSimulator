@@ -451,7 +451,7 @@ function buildBungu(ctx, m, gm, rng, shrubs, petals) {
   ctx.add(makeDoormat({ x: dx, z: dz, y: gA(dx, dz), ry: p.outRy }));
   const [bx, bz] = p.at(-1.5, p.halfD + 0.55);
   ctx.add(makeMenuBoard({ x: bx, z: bz, y: gA(bx, bz), ry: p.outRy + 0.25 }));
-  ctx.add(makeShopFlag({ x: p.x1 + 0.12, z: BUNGU.z - 1.45, y: Y, ry: p.outRy, variant: 1 }));
+  ctx.add(makeShopFlag({ ctx, x: p.x1 + 0.12, z: BUNGU.z - 1.45, y: Y, ry: p.outRy, variant: 1 }));
   /* the bike rack, on the footway side of the apron and running *along* the
    * frontage so the machines lie parallel to it */
   const [rx, rz] = p.at(-2.35, p.halfD + 0.85);
@@ -594,7 +594,7 @@ function buildStreetFurniture(ctx, m, gm, rng, petals) {
    * bicycles that are always outside a bakery at eight in the morning.  This is
    * the brief's 面包店 and it has been on this street since the school went in;
    * what it did not have is a frontage. */
-  ctx.add(makeShopFlag({ x: -4.82, z: -56.4, y: Y, ry: Math.PI / 2, variant: 0 }));
+  ctx.add(makeShopFlag({ ctx, x: -4.82, z: -56.4, y: Y, ry: Math.PI / 2, variant: 0 }));
   ctx.add(makeCrates({ x: -4.5, z: -59.6, y: gA(-4.5, -59.6), n: 3, seed: 9153, ry: -0.12 }));
   ctx.add(makeBench({ x: -2.6, z: -58.4, y: gA(-2.6, -58.4), ry: -Math.PI / 2, len: 1.5 }));
   ctx.add(makePlanter({ x: -4.6, z: -55.6, y: gA(-4.6, -55.6), r: 0.26, flower: true, seed: 9154, n: 5 }));

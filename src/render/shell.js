@@ -1,8 +1,8 @@
 /*
  * shell.js: everything that outlives a map.
  *
- * There are two maps now, a race field and a freestyle city, and they are
- * built by different code with different render pipelines. What they share is
+ * There are several maps now: tracks, a freestyle city, and a kiln yard.
+ * They are built by different code with different render pipelines. What they share is
  * a renderer, a canvas, a camera and an airframe, and none of those may be
  * rebuilt when the player changes map: a WebGL context is expensive, the
  * camera's layer mask is a contract the post chains read, and re-creating the

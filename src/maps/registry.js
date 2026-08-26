@@ -1,5 +1,5 @@
 /*
- * registry.js: the two maps, and the only place either one is named.
+ * registry.js: the maps, and the only place any of them is named.
  *
  * THE LOADERS ARE DYNAMIC IMPORTS AND THAT IS THE POINT. The freestyle city
  * is 59 vendored source files, about nineteen thousand meshes and a few
@@ -10,6 +10,11 @@
  * nothing calls that thunk until a map is chosen. tests/lib/checks.js
  * measures that, by recording every request the page makes with a track
  * selected and asserting none of them is under src/maps/city.
+ *
+ * The kiln is the same kind of isolation: it copies the cel kit into
+ * src/maps/bando/cel rather than importing the city's, so choosing The Kiln
+ * does not fetch a single city module, and choosing the city does not fetch
+ * the kiln.
  *
  * The track world is loaded the same way, for symmetry and because the loading
  * screen then has one shape to report. It is loaded at boot because the title
@@ -49,6 +54,14 @@ export const MAPS = [
     note: 'A whole town. No gates, no lap, no clock. Roofs, alleys and a level crossing.',
     buildMs: MAP_BUILD_MS.city,
     load: () => import('./city/index.js'),
+  },
+  {
+    id: 'bando',
+    name: 'The Kiln',
+    mode: 'freestyle',
+    note: 'A cement works. Dive the stack, fly the kiln. No gates, no lap, no clock.',
+    buildMs: MAP_BUILD_MS.bando,
+    load: () => import('./bando/index.js'),
   },
 ];
 

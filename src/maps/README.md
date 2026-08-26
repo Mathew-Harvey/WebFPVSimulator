@@ -1,15 +1,16 @@
 # Maps
 
-Two worlds, one shell. `src/render/shell.js` owns everything that outlives a
+Three worlds, one shell. `src/render/shell.js` owns everything that outlives a
 map: the renderer, the canvas, the camera and the airframe. A map owns its
 scene, its post chain, its colliders and its contact data, and disposes all of
 it when it is swapped out. That split is what keeps only one map's render
 targets alive at a time, which is what keeps P5's 120 MB budget meaningful.
 
-`registry.js` is the only place either map is named, and both of its loaders
-are dynamic `import()`. That is not style: a static import of the city would
-fetch 59 vendored files at boot for a player who only ever flies the race
-field. `tests/lib/checks.js` check 16 measures it.
+`registry.js` is the only place a map is named, and its loaders are dynamic
+`import()`. That is not style: a static import of the city would fetch 59
+vendored files at boot for a player who only ever flies the race field.
+`tests/lib/checks.js` check 16 measures it. The kiln copies its cel kit into
+`src/maps/bando/cel` so choosing it does not fetch the city either.
 
 ## The contract a map module must satisfy
 
@@ -24,7 +25,7 @@ id.
 
 A MapInstance is:
 
-    id            'field' | 'city' | 'custom'
+    id            'field' | 'city' | 'custom' | 'bando'
     name          what the menu shows
     mode          'race' | 'freestyle'
     graphics      'low' | 'medium' | 'high'
@@ -34,7 +35,7 @@ A MapInstance is:
     gates         array, EMPTY on a freestyle map and that is a real state
     curve         the racing line, or null
     spawn         { x, z, yaw }
-    attract       { x, y, z, radius, eye, aim } for the title camera
+    attract       { path, speed, lookAhead, aimDrop } for the title camera
     references    measured reference objects, for check 15
     height(x, z, fromY)   the contact surface
     setNextGate(sceneIndex)

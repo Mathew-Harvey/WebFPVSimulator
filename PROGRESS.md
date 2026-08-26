@@ -18434,3 +18434,58 @@ and PNGs still wrote. `npm run verify` was not run: city
 map, not the plant.
 
 
+### 2026-08-26 | map | The Kiln, second freestyle world
+
+Asked: a second freestyle map to sit next to the city. Bando, cel
+shaded, simple and epic. Design, research Velocidrone bandos, fan out
+adversarial review, implement, review again, loop until it is a real
+second world. Then push to main.
+
+Design lock after round 1 (FPV, art, engine, creative): id `bando`,
+name The Kiln. One fused cement works, not a courtyard campus. Square
+stack inner 2.8 m by 58 m, kiln tube y 8 to 11.5 through a mint
+packhouse, preheater north, three bins east with 1.4 m splits, gantry
+on a split, hopper pit, south spawn mouth. Palette bone / ochre / mint
+/ rust as trim. Cel kit copied into `src/maps/bando/cel` so check 16
+stays city-isolation. No city imports.
+
+Round 1 refused to ship: attract clipped the kiln wall and a hall
+column, hopper was a sealed pit under a solid apron, gantry dead-ended
+in the middle bin, hall was a mint shoebox, roof holes read as black
+voids, title never showed the stack.
+
+Round 2 (after the first build): FPV said SHIP as a flyable bando but
+refused the attract PR. `heightAt(x,z,-1000)` lifted the kiln line
+onto the pack roof (16+2.8). Tech agreed the centripetal climb stabbed
+the gantry deck. Art said not a peer hero yet: unframed mouth,
+sun-pool paint on the approach, window ribbon with no sill.
+
+Fixes that landed: attract now lifts against `groundHeight` only,
+descends to kiln height in the shaft, pins z=0 through the tube, climbs
+at z=0, then dwells at y=17.3 on the bin-split gantry. lookAhead 6 so
+the title overlay's 0.17*dist lateral shift stays inside the 2.8 m
+shaft. Hopper pit punched, height -7.65, 1.15 m lip. Gantry on the
+south 1.4 m split. Door 5 m with steel lintel and jambs. Hall wainscot,
+window ribbon, sills, rust drips, inner lining, light wells, boneSun
+pools. Stack cap (open top), inner dark lip, south safety stripe.
+Preheater hazard bands. Point lights in hall and shaft. Pit inset
+aligned 0.45 m. Browser after reload: 249 boxes, 19 meshes, 4228 tris,
+world stage ~80 ms. Isolation holds, 12 modules, MIT cel in NOTICE.
+
+What went wrong: the first attract was a south-door cruise that looked
+into walls. The second flew the kiln on paper and then `fromY=-1000`
+put it on the roof. Overlay framing was mistaken for spline bulge until
+samples showed a ~1.8 m camera-left shift at lookAhead 11, which is
+wider than the shaft. Title still cannot thread the 1.4 m gantry hoop
+(the same shift parks the eye south of the deck); the playable line is
+the hoop, the title line is the plant silhouette.
+
+Verify: loaded `?map=bando` in the Cursor browser, map ready, pit
+height -7.65, kiln floor 8 from y=9.7, spawn (0,18). Did not run
+`npm run verify`: no plant, ABI, build or threshold change. Check 16
+was not re-run; the kiln copies cel instead of importing city.
+
+Remaining nits, not blockers: 8-gon bins vs two-box hull still has
+soft diagonal corners; title overlay will never sit inside a 1.4 m
+corridor; Low fog was raised so the 58 m stack still reads.
+

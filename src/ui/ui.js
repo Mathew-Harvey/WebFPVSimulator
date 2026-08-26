@@ -1361,7 +1361,7 @@ export class Ui {
      * player makes and it takes seconds to honour, and until now it was a
      * name on a menu row that you stepped through with the arrow keys: a
      * player who had never flown either one was choosing between the strings
-     * "Race field" and "Freestyle city". What a world is like is not
+     * "Track" and "Freestyle city". What a world is like is not
      * something a sentence gets across, so the cards show it.
      *
      * The thumbnail is a recorded loop of the title shot, not a live world.

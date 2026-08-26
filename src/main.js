@@ -282,7 +282,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
  * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1 };
+const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 12 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -291,7 +291,12 @@ const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1 };
  * is not an oversight. They are never fetched. moduleCounter matches them as a
  * SUBSTRING of each performance entry's full URL, and a shell mounted at
  * https://webfpv.org/sim/ still produces names containing /src/maps/city/. */
-const MAP_MODULE_PREFIX = { field: '/src/maps/field', city: '/src/maps/city/', custom: '/src/maps/custom' };
+const MAP_MODULE_PREFIX = {
+  field: '/src/maps/field',
+  city: '/src/maps/city/',
+  custom: '/src/maps/custom',
+  bando: '/src/maps/bando/',
+};
 
 async function loadMap(shell, id, loading, options) {
   const entry = mapById(id);

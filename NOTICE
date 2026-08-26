@@ -27,8 +27,21 @@ is on that path, so no upstream music, walker, interface or entry point is
 incorporated, and the 3.9 MB music mp3 in the upstream repository is not
 vendored.
 
-Fifty eight of the 59 files are byte identical to upstream. The exception is
-`world/index.js`, which carries a four line change recorded in full at
+## sakura-crossing, kiln cel kit
+
+    Upstream    https://github.com/kenton-gmi/sakura-crossing
+    Licence     MIT, Copyright (c) 2026 Kenton Wang
+    Copied at   src/maps/bando/cel/
+    Files       toon.js, post.js, util.js, plus LICENSE
+
+Copied so The Kiln can use the same toon materials and ink pipeline without
+fetching anything under src/maps/city (check 16). The copies import this
+map's palette.js instead of the city's. toon.js also exports
+releaseMaterials(), which clears the material caches on dispose. Licence
+text travels with them at src/maps/bando/cel/LICENSE.
+
+Fifty eight of the 59 city files are byte identical to upstream. The exception
+is `world/index.js`, which carries a four line change recorded in full at
 `src/maps/city/vendored/PATCH-world-index.diff`: it makes the planet bake
 optional so the city can be taken in its flat authoring. The change adds a
 parameter with the upstream behaviour as its default, so calling

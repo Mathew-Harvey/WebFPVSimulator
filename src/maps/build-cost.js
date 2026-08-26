@@ -41,4 +41,6 @@ export const MAP_BUILD_MS = {
    * have. */
   custom: 2964,
   city: 7994,
+  /* Compact cement works. Measured on the first kiln load in this session. */
+  bando: 4046,
 };

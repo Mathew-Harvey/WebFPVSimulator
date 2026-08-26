@@ -17332,3 +17332,50 @@ city map, not the plant.
 
 Wrong: nothing undone this turn. The 0.55 m leaf flood stays off.
 
+## Second cut, measured
+
+Headless Chromium, 1280 by 720, graphics high, city scan on.
+Check 15 ceilings were not edited. npm run verify was not run:
+city map, not the plant.
+
+Load. World 4482 ms (was 6705). Total 7396 ms (was 8899).
+expectedModules 63. foliageKeep 0.48. petalNames none. Console 0.
+
+Planting kept of authored:
+
+- sakura 79 of 302
+- grove 249 of 943
+- cedar 111 of 396
+- trees 439 of 1641, 26.8 percent kept
+- bamboo 3 of 17
+- shrubs 130 of 779
+
+Colliders. city 10488 (was 22488). total 12868 (was 25083).
+tight 9808, unmatched 65, droppedEmpty 63, fitted 615, covered 321,
+extraBoxes 1636, drawnBoxes 79968 (was 160020), fit 234 ms.
+
+Street budget: 626 calls, 1.14 M triangles, 87 MB targets, 2013 meshes.
+
+Scan vs check 15:
+
+- phantom 2728 / 29000
+- overFive 126 / 350
+- holes 10556 / 20300
+- meanCover 0.581 / 0.45 min
+
+Flight-line probes. empty = flyable.
+
+- street, shotengai, shotengai kerb rack, school gate, outer torii empty
+- outer 貫 HIT 4.00 x 0.15 x 0.23, the beam
+- canal bench site, goal mouth, under a street cherry empty
+- school bike frame HIT 0.40 x 1.02 x 1.40, one bike
+- over the bike frames under the roof empty
+
+The first overlay pass found the school bikes drawing with no
+contact. Corridor racks stay stripped. The shed is the keeper, so each
+frame now has its own box. Holes fell 10606 to 10556 on that pass.
+A merged row box would have walled the aisle; the 0.40 by 1.40 box is
+the drawing.
+
+Wrong: nothing else. Do not put remaining canopies back into FOLIAGE.
+

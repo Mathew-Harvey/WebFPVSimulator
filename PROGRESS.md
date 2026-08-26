@@ -25,6 +25,7 @@ Anything the loop could not resolve on its own, or a threshold it believes is wr
 - Check 10, yaw-coupling, Loop B evidence and argument. Measured 0.00 degrees exactly, against a floor of 2.0. This is not a missing feature switch; it is structural. Every Stage 1 mechanism cancels pairwise on a symmetric quad X because each mixer group (left, right, front, rear) contains exactly one clockwise and one counter clockwise motor: RPM squared drag torque deltas cancel between the rising pair (RL counter clockwise, FL clockwise), stator reaction to spin up and spin down cancels the same way, net prop angular momentum stays zero under any left right differential, and with q = r = 0 the Euler coupling terms vanish. The measured 0.00 is exact because the floating point trajectories are bitwise symmetric. The real world coupling comes from inflow and advance ratio asymmetry across the rolling disc, which STAGE1.md explicitly defers to Stage 2, and Betaflight's yaw PID would suppress most of any small drift anyway. Faking an asymmetry to buy the sign would violate the project's own rule that yaw coupling falls out of the physics rather than being scripted. Options for the human: accept the check as a Stage 2 gate and re band it when inflow lands, or re specify it as a yaw damping check (prop drag torque computed against air relative rotation speed, spin plus body yaw rate, gives real damping and is Stage 1 sized). Loop B continues with the check honestly red.
 - Check 10, yaw-coupling, third round of evidence, 2026-08-15. Now measured at -0.07 deg against the 2.0 floor, so the SIGN is right and has been right since the motor cant landed; only the magnitude is short, and it is short by a factor of about 28. Two things were tested this turn and neither moved it. Turning airmode on (see the run log below) was expected to help, because a saturated roll at throttle 0.5 now drives the motors to their stops and leaves the yaw axis no mixer headroom to correct with; it changed the reading from -0.08 to -0.07. And the rotor plane was lifted to its real height above the CG, which adds pitch and roll moments from rotor drag but cannot add yaw, because a force in the xy plane applied at (x, y, z) has a z moment that does not involve z at all. The algebra in plant.c stands: the only Stage 1 mechanism that can yaw a symmetric quad X during a roll is build tolerance in the motor mounting, and the yaw PID cancels most of what the current tolerance produces. Reaching 2.0 deg through the cant table alone needs a tangential misalignment sum near 30 deg against the roll column, which is not a build tolerance, it is a broken frame. Recommendation for the human, unchanged in substance: re band this against a measured figure from a real machine, or re specify it as a yaw DAMPING check, which the plant does have honestly. The threshold has not been touched.
 - Check 10, yaw-coupling, expected sign. STAGE1.md asks for "non-zero, correct sign" but does not name the sign, so Loop A had to fix one in `tests/thresholds.json` (`expected_sign: -1`, meaning nose-right body yaw accumulation during a full right roll, with the sim_abi.h convention that positive r yaws nose left). Loop A could not derive this sign from first principles: for an ideal symmetric X quad, the roll mixer moves one CW and one CCW motor up and one of each down, so RPM squared drag torque deltas, prop spin-up inertia reactions, and net prop angular momentum all cancel pairwise, giving exactly zero roll-to-yaw coupling at this modelling order. The real-world coupling pilots feel comes from effects that may or may not emerge from the Stage 1 plant. The sign, and whether the 2.0 degree floor is reachable at all in Stage 1, are provisional Loop A choices. If Loop B's model robustly produces the opposite sign, or near zero, write the measured value here and let a human re-set `expected_sign` or the floor. Loop B must not edit thresholds.json.
+- Check 16, map-isolation field budget, 2026-08-26, contact branch. Measured P1 301 vs recorded 303, P2 1043749 vs 1014037, P10 33.1 vs 32.0, meshes 177 vs 169. The leak detector held: after a city round trip those four numbers were identical to boot. This branch added one scratch Vector3, no meshes, no scenery. tests/ is read-only so the recorded constants were not moved. A human should re-record the field budget against this machine's draw, or accept the leak detector as the check.
 
 ---
 
@@ -16946,3 +16947,27 @@ CHECKS this turn, not npm run verify yet:
 npm run verify is required (plant, ABI, build) and runs after this commit. Flight feel is not claimed as verified.
 
 Possible effect if this breaks something: a course whose intended challenge WAS the wreck is now a bounce. That is the request. If turtle feels weak compared to a real board, the suspect is the missing DShot reverse, not the mixer.
+
+VERIFY, this turn, `npm run verify` against the contact wasm. 15 of 16 passing. Full table:
+
+  1  build-clean            PASS  build exit 0, vendor diff empty, abi 1, init OK
+  2  determinism-repeat     PASS  a=de0401cd4266 b=de0401cd4266
+  3  determinism-cross-host PASS  node=de0401cd4266 chrome=de0401cd4266
+  4  frame-independence     PASS  1 distinct hash across 30, 60, 144, 240 Hz
+  5  hover-throttle         PASS  0.2793 in 0.20 to 0.30
+  6  punch-out              PASS  80.0 m in 55 to 85
+  7  terminal-velocity      PASS  31.0 m/s in 30 to 40
+  8  motor-step-response    PASS  26 ms in 10 to 30
+  9  rate-tracking          PASS  671.7 deg/s vs 670 (0.25 percent)
+  10 yaw-coupling           PASS  -0.10 deg, band |drift| 0.04 to 0.60, sign negative
+  11 battery-sag            PASS  11.14 percent (26157 vs 23242 RPM)
+  12 diff-passthrough       PASS  ratio 1.2472 vs 1.2537 (0.52 percent)
+  13 console-clean          PASS  errors=0 warnings=0 run=ok
+  14 audio-bed              PASS  ctx running, music gain 0.300, 41 nodes
+  15 world-scale            PASS  craft sweep 0.1735 m, collider scan as recorded
+  16 map-isolation          FAIL  field P1 301 vs recorded 303, P2 1043749 vs 1014037, P10 33.1 vs 32.0, meshes 177 vs 169. City modules: 0 with the field selected, 64 after choosing it.
+
+Check 16's leak detector, the thing it is named for, held: after a city round trip P1 301, P2 1043749, P10 33.1, meshes 177, identical to boot. The miss is the recorded field-budget constants, which this change did not touch and must not be edited (tests/ is read-only). This branch added one scratch Vector3 in the shell, no meshes, no scenery. The delta (minus 2 draw calls, plus 8 meshes and about 30k triangles) is the field as this machine draws it versus a baseline last re-measured after next-obstacle tiers, not a contact leak. Thresholds were not moved.
+
+Physics path: checks 1 through 12 are the ones that can see the module. All green. Flight feel is awaiting human judgement.
+

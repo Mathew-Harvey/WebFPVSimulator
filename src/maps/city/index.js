@@ -572,8 +572,9 @@ const COVER_MIN_FILL = 0.4;
  * the fill. The slab fit skips the same names, because a named
  * frame sitting on a building is still inside that building's
  * rectangle and roof-lift would fill the opening from the floor
- * to the cap. Authored posts and beams stay. */
-const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden/i;
+ * to the cap. A chain-link ring around a roof votes on every slab
+ * of that block the same way. Authored posts and beams stay. */
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink/i;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.

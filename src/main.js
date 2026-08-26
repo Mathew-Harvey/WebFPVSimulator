@@ -15,8 +15,9 @@
  * Ground handling is shell side: the physics module has no ground plane
  * (the verification harness measures free air behaviour), so the shell
  * raises sim_set_ground and the plant applies a rigid-body contact every
- * 1 ms step. A hit bounces, slides or rolls. There is no crash lockout.
- * See PROGRESS.md.
+ * 1 ms step. Grass is a dead thump with a short belly slide. Turtle is
+ * a heading-preserving snap, not Betaflight crashflip. There is no
+ * crash lockout. See PROGRESS.md.
  *
  * Keys in flight: Escape pauses, R returns to the start line, L is launch
  * control when that setting is on, F3 toggles the performance readout, F8
@@ -47,7 +48,7 @@ import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
-import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake } from './render/lens.js';
+import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
@@ -57,7 +58,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldSnapUpright, uprightPlantQuat, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -186,11 +187,8 @@ const INTRO_FOV = 40;
  * big clearance would throw it into the air; enough to clear a launch
  * block's deck, which is the thing it was actually falling into. */
 const INTRO_FLOOR_CLEAR = 0.12;
-/* FPV lens floor, metres above the queried surface. Intro and finish
- * already keep their cameras out of the dirt. The flight lens did not,
- * so an inverted rest or a turtle put the picture under the grass.
- * Render only: the plant is unchanged. */
-const FPV_FLOOR_CLEAR = 0.012;
+/* FPV lens floor lives in lens.js (fpvLensClear). Intro and finish
+ * already keep their cameras out of the dirt. */
 /* Finish shot. Pulls off the FPV lens onto a three-quarter of the
  * frozen craft, then sways. Radii in world metres. */
 const FINISH_FOV = 46;
@@ -507,6 +505,9 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   if (typeof sim.e.sim_set_crashflip !== 'function') {
     throw new Error('sim.wasm does not export sim_set_crashflip');
+  }
+  if (typeof sim.e.sim_set_pose !== 'function') {
+    throw new Error('sim.wasm does not export sim_set_pose');
   }
   if (typeof sim.e.sim_ground_contacts !== 'function') {
     throw new Error('sim.wasm does not export sim_ground_contacts');
@@ -1394,24 +1395,38 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * Turtle is Betaflight crashflip, latched when inverted and in contact
-   * (or inverted, slow, and a few centimetres off the grass). It stays on
-   * until the hull is upright enough that the acro PID can take over, so a
-   * flip that briefly leaves the ground does not drop back into airmode
-   * thrusting into the dirt.
+   * Turtle is a heading-preserving snap, not a mixer flip. Inverted,
+   * slow, and on the grass (or a few centimetres off it) writes an
+   * upright pose at the same xz and rests. Crashflip stays off.
    */
-  function syncCrashflip(st, inContact, clearance) {
+  function trySnapUpright(st, inContact, clearance) {
     const upz = plantUpZ(st);
-    const inverted = upz < 0;
     const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
-    const slow = speed < 4 && plantRateMag(st) < 8;
-    if (crashflipOn) {
-      if (upz > 0.35) {
-        setCrashflip(false);
-      }
-    } else if (inverted && slow && (inContact || clearance < 0.15)) {
-      setCrashflip(true);
+    if (!shouldSnapUpright(upz, speed, plantRateMag(st), inContact, clearance, launchStaging)) {
+      return st;
     }
+    setCrashflip(false);
+    poseFromState(st, pProbe);
+    const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    worldPosToSim(pProbe.x, hy + REST_HEIGHT, pProbe.z, pSim);
+    const q = uprightPlantQuat(st[7], st[8], st[9], st[10]);
+    const code = sim.e.sim_set_pose(pSim.x, pSim.y, pSim.z, q[0], q[1], q[2], q[3]);
+    if (code !== SIM_OK) {
+      return st;
+    }
+    sim.rest();
+    landed = true;
+    takingOff = false;
+    adoptSimClock();
+    acc = 0;
+    groundY = hy;
+    const next = readState();
+    stateCurr = next;
+    statePrev = next;
+    if (typeof audio.event === 'function') {
+      audio.event('land');
+    }
+    return next;
   }
 
   function readState() {
@@ -3201,7 +3216,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * overbridge from becoming a floor for a quad flying under it).
        * Perch freezes the integrator only when the hull is upright, slow
        * and in contact. Everything else keeps stepping: a skip, a slide,
-       * a tumble, a turtle.
+       * a tumble. Turtle is a snap, not a mixer flip.
        */
       poseFromState(stateCurr, pProbe);
       groundPrev.copy(pProbe);
@@ -3236,7 +3251,7 @@ export async function boot({ loading, bootStart, mapId }) {
           }
         }
       }
-      syncCrashflip(stateCurr, hits > 0, clearance);
+      stateCurr = trySnapUpright(stateCurr, hits > 0, clearance);
       if (
         !launchStaging
         && !takingOff
@@ -3409,7 +3424,11 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       if (obstacleHit) {
         const surf2 = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
-        syncCrashflip(stateCurr, true, pCurr.y - surf2);
+        stateCurr = trySnapUpright(
+          stateCurr,
+          sim.e.sim_ground_contacts() > 0,
+          pCurr.y - surf2,
+        );
       }
     }
 
@@ -3518,8 +3537,12 @@ export async function boot({ loading, bootStart, mapId }) {
       .addScaledVector(camFwd, simLenToWorld(CAMERA_MOUNT_FORWARD))
       .addScaledVector(camUp, simLenToWorld(CAMERA_MOUNT_UP));
     {
+      /* Near plane is 0.2 m. Camera-down or inverted on the grass puts
+       * the lens inside that band, so the terrain is clipped even when
+       * the mount is a centimetre above the mesh. Lift only when the
+       * picture looks into the dirt; a high inverted pass stays put. */
       const camFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS)
-        + FPV_FLOOR_CLEAR;
+        + fpvLensClear(camFwd.y, camUp.y);
       if (fpvPos.y < camFloor) {
         fpvPos.y = camFloor;
       }
@@ -3995,8 +4018,6 @@ export async function boot({ loading, bootStart, mapId }) {
        * frame, and a launch prompt printed across a results table is how
        * you find that out. */
       ui.setBanner('');
-    } else if (crashflipOn) {
-      ui.setBanner('Turtle\nPitch or roll to flip over');
     } else if (launchNow === 3 && nowWall < lcGoUntil) {
       ui.setBanner('GO');
     } else if (launchNow === 1 || launchNow === 2) {

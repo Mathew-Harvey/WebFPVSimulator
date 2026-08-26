@@ -7,16 +7,17 @@
  * This file is that missing proof. It loads the same baseline diff the
  * harness uses, then:
  *
- *   1. a drop onto a plane settles instead of bouncing forever
- *   2. a tilted drop produces spin (the hull support is offset)
+ *   1. a drop onto a plane is a dead thump, not a bounce
+ *   2. a tilted drop produces a moment of spin, then the belly settles
  *   3. a wall with surface velocity spins the craft
- *   4. inverted plus crashflip plus pitch stick flips the hull
+ *   4. inverted plus crashflip plus pitch stick still flips the hull
+ *      (ABI proof; the shell snaps instead of driving crashflip)
  *   5. a harness-style replay that never calls the new entry points
  *      still falls in free air, so the additive ABI does not leak a
  *      floor into checks 2 through 12
  *   6. inverted rest, slam, and full throttle into the dirt leave no
- *      hull corner below the plane (the clip-through that used to walk
- *      a crash through the timing gate)
+ *      hull corner or camera glass below the plane
+ *   7. belly slide is short then sticks; props-down stops at once
  *
  * Run: node scripts/contact-selftest.js   (npm run contact:selftest)
  * Exit code is the failure count.
@@ -42,6 +43,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
+import { GROUND_E, GROUND_MU } from '../src/game/collide.js';
+import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP } from '../src/render/lens.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const ST = {
@@ -141,6 +144,20 @@ function rotateByQuat(qw, qx, qy, qz, vx, vy, vz) {
   };
 }
 
+const CAMERA_BODY = [CAMERA_LENS_FORWARD, 0.0, CAMERA_LENS_UP];
+
+function cameraPlantZ(st) {
+  const r = rotateByQuat(
+    st[ST.QW], st[ST.QX], st[ST.QY], st[ST.QZ],
+    CAMERA_BODY[0], CAMERA_BODY[1], CAMERA_BODY[2],
+  );
+  return st[ST.Z] + r.z;
+}
+
+function grass(sim) {
+  return sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, GROUND_MU, GROUND_E);
+}
+
 function deepestHullCorner(st) {
   let worst = Infinity;
   for (const c of HULL_CORNERS) {
@@ -186,7 +203,7 @@ function sameState(a, b) {
   sim.rest();
   sim.motorOverride(-1, 0);
   check('sim_set_ground raises the plane',
-    sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28) === SIM_OK);
+    grass(sim) === SIM_OK);
   const mid = hold(sim, 400, { throttle: 0 });
   check('the drop has left the start height',
     mid[ST.Z] < 1.2, `z=${mid[ST.Z].toFixed(3)}`);
@@ -195,7 +212,7 @@ function sameState(a, b) {
   check('a 2 s drop has met the plane',
     hits > 0 || st[ST.Z] < 0.12, `z=${st[ST.Z].toFixed(3)} hits=${hits}`);
   check('it settles instead of bouncing forever',
-    Math.abs(st[ST.VZ]) < 0.35 && omegaMag(st) < 2.5,
+    Math.abs(st[ST.VZ]) < 0.15 && omegaMag(st) < 0.4,
     `vz=${st[ST.VZ].toFixed(3)} w=${omegaMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
   check('the hull sits near REST_HEIGHT, not underground',
     st[ST.Z] > 0.02 && st[ST.Z] < 0.12, `z=${st[ST.Z].toFixed(3)}`);
@@ -210,11 +227,24 @@ function sameState(a, b) {
   sim.e.sim_set_pose(0, 0, 1.2, qw, qx, 0, 0);
   sim.rest();
   sim.motorOverride(-1, 0);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
-  hold(sim, 700, { throttle: 0 });
+  grass(sim);
+  let peakW = 0;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 700; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 0);
+    sim.step(1);
+    const w = omegaMag(sim.readState().state);
+    if (w > peakW) {
+      peakW = w;
+    }
+  }
   const st = sim.readState().state;
-  check('a tilted drop produces spin',
-    omegaMag(st) > 0.4, `w=${omegaMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+  check('a tilted drop produces spin on first contact',
+    peakW > 0.4, `peakW=${peakW.toFixed(3)}`);
+  check('then the belly settles instead of keeping the tumble',
+    omegaMag(st) < 1.5 && Math.abs(st[ST.VZ]) < 0.25,
+    `w=${omegaMag(st).toFixed(3)} vz=${st[ST.VZ].toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
 }
 
 {
@@ -222,12 +252,12 @@ function sameState(a, b) {
   sim.e.sim_set_pose(0, 0, 4.0, 1, 0, 0, 0);
   sim.rest();
   sim.motorOverride(-1, 0);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   const st = hold(sim, 2500, { throttle: 0 });
   check('a hard drop stays finite',
     Number.isFinite(st[ST.Z]) && Number.isFinite(st[ST.VZ]) && Number.isFinite(omegaMag(st)));
   check('and has dumped most of the fall',
-    Math.abs(st[ST.VZ]) < 2.0, `vz=${st[ST.VZ].toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
+    Math.abs(st[ST.VZ]) < 0.25, `vz=${st[ST.VZ].toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
 }
 
 {
@@ -250,7 +280,7 @@ function sameState(a, b) {
   /* Inverted: 180 deg about x. Rest the hull just above a plane. */
   sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
   sim.rest();
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   hold(sim, 200, { throttle: 0 });
   const before = sim.readState().state;
   check('the seated hull is inverted',
@@ -329,7 +359,7 @@ function sameState(a, b) {
   check('set_ground(0) matches a replay that never called it', sameOff);
   /* A plane 100 m below must not touch a 0.5 s drop from the origin. */
   const d = await fresh();
-  d.e.sim_set_ground(1, 0, 0, 1, 0, 0, -100, 0.55, 0.28);
+  d.e.sim_set_ground(1, 0, 0, 1, 0, 0, -100, GROUND_MU, GROUND_E);
   hold(d, 500, { throttle: 0 });
   const sd = d.readState().state;
   check('a distant plane does not change a short free-air drop',
@@ -346,8 +376,8 @@ function sameState(a, b) {
   b.rest();
   a.motorOverride(-1, 0);
   b.motorOverride(-1, 0);
-  a.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
-  b.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(a);
+  grass(b);
   hold(a, 900, { throttle: 0 });
   hold(b, 900, { throttle: 0 });
   check('two grounded drops match bit for bit',
@@ -356,21 +386,28 @@ function sameState(a, b) {
 
 {
   const sim = await fresh();
-  sim.e.sim_set_pose(0, 0, 0.4, 1, 0, 0, 0);
+  /* Seat first, then shove, so the slide is on the grass, not in the air. */
+  sim.e.sim_set_pose(0, 0, 0.045, 1, 0, 0, 0);
   sim.rest();
   sim.motorOverride(-1, 0);
-  /* Surface coming at +x imparts a shove and spin, then the grass takes it. */
-  sim.e.sim_contact(1, 0, 0, 0.32, 0.38, 0, 0, 0.4, 10, 0, 0);
+  grass(sim);
+  hold(sim, 20, { throttle: 0 });
+  const seated = sim.readState().state;
+  sim.e.sim_contact(1, 0, 0, 0.0, 0.0, seated[ST.X], seated[ST.Y], seated[ST.Z], 8, 0, 0);
   const launched = sim.readState().state;
   const vx0 = launched[ST.VX];
-  check('a wall shove leaves the hull with speed along the normal',
+  const x0 = launched[ST.X];
+  check('a seated shove leaves the hull with speed along the grass',
     vx0 > 2, `vx=${vx0.toFixed(3)}`);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
-  const st = hold(sim, 700, { throttle: 0 });
-  check('a ground slide keeps going instead of freezing',
-    st[ST.VX] > 0.4, `vx=${st[ST.VX].toFixed(3)} z=${st[ST.Z].toFixed(3)}`);
-  check('friction on grass dumps some of the slide',
-    st[ST.VX] < vx0 - 0.3, `vx0=${vx0.toFixed(3)} vx=${st[ST.VX].toFixed(3)}`);
+  grass(sim);
+  const early = hold(sim, 20, { throttle: 0 });
+  check('a belly landing still slides a little at first',
+    early[ST.VX] > 0.15, `vx=${early[ST.VX].toFixed(3)} z=${early[ST.Z].toFixed(3)}`);
+  const st = hold(sim, 180, { throttle: 0 });
+  check('then grass dumps the slide instead of skating',
+    Math.abs(st[ST.VX]) < 0.15, `vx0=${vx0.toFixed(3)} vx=${st[ST.VX].toFixed(3)}`);
+  check('the belly slide is short',
+    Math.abs(st[ST.X] - x0) < 0.40, `dx=${(st[ST.X] - x0).toFixed(3)}`);
   check('the sliding hull stays on the plane',
     st[ST.Z] > 0.02 && st[ST.Z] < 0.16, `z=${st[ST.Z].toFixed(3)}`);
 }
@@ -404,7 +441,7 @@ function sameState(a, b) {
   sim.e.sim_set_pose(0, 0, 0.35, qw, qx, 0, 0);
   sim.rest();
   sim.motorOverride(-1, 0);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   hold(sim, 350, { throttle: 0 });
   const st = sim.readState().state;
   check('a side arrival rolls instead of locking attitude',
@@ -417,13 +454,16 @@ function sameState(a, b) {
   const sim = await fresh();
   sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
   sim.rest();
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   const st = hold(sim, 1800, { throttle: 0 });
   check('inverted on the grass with airmode still settles enough to turtle',
     speedMag(st) < 4 && upZ(st) < 0, `v=${speedMag(st).toFixed(3)} upz=${upZ(st).toFixed(3)}`);
   check('inverted rest leaves no hull corner under the plane',
     deepestHullCorner(st) > -HULL_SLOP - 0.001,
     `corner=${deepestHullCorner(st).toFixed(4)} z=${st[ST.Z].toFixed(4)}`);
+  check('inverted rest leaves the camera glass on the plane',
+    cameraPlantZ(st) > -HULL_SLOP - 0.001,
+    `cam=${cameraPlantZ(st).toFixed(4)} z=${st[ST.Z].toFixed(4)}`);
 }
 
 {
@@ -431,7 +471,7 @@ function sameState(a, b) {
   const sim = await fresh();
   sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
   sim.rest();
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   hold(sim, 250, { throttle: 0 });
   sim.e.sim_set_crashflip(1);
   let st = hold(sim, 1800, { pitch: -1 });
@@ -454,7 +494,7 @@ function sameState(a, b) {
   sim.e.sim_set_pose(0, 0, 1.5, 0, 1, 0, 0);
   sim.rest();
   sim.motorOverride(-1, 0);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   let worst = Infinity;
   let t = sim.readState().state[ST.T];
   for (let i = 0; i < 2000; i += 1) {
@@ -477,7 +517,7 @@ function sameState(a, b) {
   const sim = await fresh();
   sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
   sim.rest();
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   hold(sim, 200, { throttle: 0 });
   let worst = Infinity;
   let t = sim.readState().state[ST.T];
@@ -507,7 +547,7 @@ function sameState(a, b) {
   sim.e.sim_set_pose(0, 0, 0.12, 0, qw2, 0, -qy2);
   sim.rest();
   sim.motorOverride(-1, 0);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   let worst = Infinity;
   let t = sim.readState().state[ST.T];
   for (let i = 0; i < 800; i += 1) {
@@ -530,7 +570,7 @@ function sameState(a, b) {
   sim.e.sim_set_pose(0, 0, -1.0, 0, 1, 0, 0);
   sim.rest();
   sim.motorOverride(-1, 0);
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   sim.step(1);
   const st = sim.readState().state;
   check('a hull seated a metre underground is projected onto the plane in one step',
@@ -542,7 +582,7 @@ function sameState(a, b) {
   const sim = await fresh();
   sim.e.sim_set_pose(0, 0, 0.08, 0, 1, 0, 0);
   sim.rest();
-  sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, 0.55, 0.28);
+  grass(sim);
   hold(sim, 250, { throttle: 0 });
   sim.e.sim_set_crashflip(1);
   let worst = Infinity;
@@ -573,6 +613,86 @@ function sameState(a, b) {
   check('and still produces an offset impulse',
     omegaMag(st) > 0.2 && st[ST.VX] > inbound[ST.VX],
     `w=${omegaMag(st).toFixed(3)} vx=${st[ST.VX].toFixed(3)} in=${inbound[ST.VX].toFixed(3)}`);
+}
+
+{
+  const sim = await fresh();
+  /* Drop, motors off, record outbound vz after first contact. */
+  sim.e.sim_set_pose(0, 0, 1.5, 1, 0, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  grass(sim);
+  let hit = false;
+  let peakOut = 0;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 2000; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 0);
+    sim.step(1);
+    const stNow = sim.readState().state;
+    if (sim.e.sim_ground_contacts() > 0) {
+      hit = true;
+    }
+    if (hit && stNow[ST.VZ] > peakOut) {
+      peakOut = stNow[ST.VZ];
+    }
+  }
+  check('an upright drop is a dead thump, not a bounce',
+    hit && peakOut < 0.25, `peakOut=${peakOut.toFixed(3)} hit=${hit}`);
+}
+
+{
+  const sim = await fresh();
+  sim.e.sim_set_pose(0, 0, 0.02, 0, 1, 0, 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  grass(sim);
+  hold(sim, 10, { throttle: 0 });
+  const seated = sim.readState().state;
+  check('the inverted seat is on the grass before the shove',
+    upZ(seated) < -0.7 && deepestHullCorner(seated) > -HULL_SLOP - 0.001
+      && deepestHullCorner(seated) < 0.01,
+    `upz=${upZ(seated).toFixed(3)} corner=${deepestHullCorner(seated).toFixed(4)} hits=${sim.e.sim_ground_contacts()}`);
+  sim.e.sim_contact(1, 0, 0, 0.0, 0.0, seated[ST.X], seated[ST.Y], seated[ST.Z], 8, 0, 0);
+  const vx0 = sim.readState().state[ST.VX];
+  const x0 = sim.readState().state[ST.X];
+  grass(sim);
+  const st = hold(sim, 5, { throttle: 0 });
+  check('props-down keeps the inbound shove long enough to prove it',
+    vx0 > 2, `vx0=${vx0.toFixed(3)}`);
+  check('props-down stops immediately instead of sliding',
+    speedMag(st) < 0.12, `v=${speedMag(st).toFixed(3)} vx0=${vx0.toFixed(3)}`);
+  check('and it does not travel',
+    Math.abs(st[ST.X] - x0) < 0.03, `dx=${(st[ST.X] - x0).toFixed(4)}`);
+  check('and the inverted hull stays on the plane',
+    deepestHullCorner(st) > -HULL_SLOP - 0.001
+      && cameraPlantZ(st) > -HULL_SLOP - 0.001,
+    `corner=${deepestHullCorner(st).toFixed(4)} cam=${cameraPlantZ(st).toFixed(4)}`);
+}
+
+{
+  const sim = await fresh();
+  /* 90 deg nose down about plant y: the lens sits 10 cm below the CG. */
+  const h = Math.PI / 4;
+  sim.e.sim_set_pose(0, 0, 0.20, Math.cos(h), 0, Math.sin(h), 0);
+  sim.rest();
+  sim.motorOverride(-1, 0);
+  grass(sim);
+  let worstCam = Infinity;
+  let t = sim.readState().state[ST.T];
+  for (let i = 0; i < 800; i += 1) {
+    t += 0.001;
+    sim.input(t, 0, 0, 0, 0);
+    sim.step(1);
+    const cam = cameraPlantZ(sim.readState().state);
+    if (cam < worstCam) {
+      worstCam = cam;
+    }
+  }
+  const st = sim.readState().state;
+  check('a camera-down rest never puts the lens through the plane',
+    worstCam > -HULL_SLOP - 0.001,
+    `worstCam=${worstCam.toFixed(4)} z=${st[ST.Z].toFixed(4)} cam=${cameraPlantZ(st).toFixed(4)}`);
 }
 
 {

@@ -68,9 +68,11 @@ static const double STAND_HINGE_Z = -0.045;
 static int g_ground_on = 0;
 static double g_ground_n[3] = { 0.0, 0.0, 1.0 };
 static double g_ground_d = STAND_HINGE_Z;
-static double g_ground_mu = 0.55;
-static double g_ground_e = 0.28;
+static double g_ground_mu = 1.40;
+static double g_ground_e = 0.0;
 static int g_ground_hits = 0;
+static int g_ground_projected = 0;
+static int g_ground_near = 0;
 
 #define CONTACT_HX 0.094
 #define CONTACT_HY 0.094
@@ -85,6 +87,19 @@ static int g_ground_hits = 0;
 #define CONTACT_STATIC_VT 0.08
 #define CONTACT_BIAS_MAX 1.2
 #define CONTACT_POS_PUSH 0.20
+/* Lens glass, plant body metres. Mount is 0.080 forward and 0.018 up;
+ * herocraft.js puts the glass another 0.024 past the mount. The hull
+ * OBB stops at 0.094, so a nose-down arrival used to park the lens
+ * under the plane. Projection samples this point too. */
+#define CAMERA_BODY_X 0.104
+#define CAMERA_BODY_Y 0.0
+#define CAMERA_BODY_Z 0.018
+#define CONTACT_INVERT_UPZ -0.50
+#define CONTACT_SLIDE_KEEP 0.970
+#define CONTACT_OMEGA_KEEP 0.920
+#define CONTACT_SLIDE_STOP 0.12
+#define CONTACT_OMEGA_STOP 0.35
+#define CONTACT_NEAR 0.008
 
 static const double CONTACT_CORNER[CONTACT_CORNERS][3] = {
   { -CONTACT_HX, -CONTACT_HY, -CONTACT_HZ_DOWN },
@@ -114,6 +129,8 @@ static void reset_dynamics(void) {
   g_stand_on = 0;
   g_ground_on = 0;
   g_ground_hits = 0;
+  g_ground_projected = 0;
+  g_ground_near = 0;
 }
 
 SIM_EXPORT int sim_init(const unsigned char *diff_utf8, int len) {
@@ -412,31 +429,41 @@ static int ground_hit_at(const double r[3], const double vs[3]) {
  * is not cancelled. The deepest corner is parked on the slop band; as
  * the craft rotates, a new corner becomes deepest and the CG rises.
  */
+static void ground_project_sample(const double body[3], double *worst) {
+  double r[3];
+  contact_rotate(body, r);
+  const double px = S.pos[0] + r[0];
+  const double py = S.pos[1] + r[1];
+  const double pz = S.pos[2] + r[2];
+  const double side = g_ground_n[0] * px + g_ground_n[1] * py + g_ground_n[2] * pz;
+  const double pen = g_ground_d - side;
+  if (pen > *worst) {
+    *worst = pen;
+  }
+}
+
 static void ground_project_hull(void) {
   double worst = 0.0;
+  const double cam[3] = { CAMERA_BODY_X, CAMERA_BODY_Y, CAMERA_BODY_Z };
   for (int c = 0; c < CONTACT_CORNERS; c += 1) {
-    double r[3];
-    contact_rotate(CONTACT_CORNER[c], r);
-    const double px = S.pos[0] + r[0];
-    const double py = S.pos[1] + r[1];
-    const double pz = S.pos[2] + r[2];
-    const double side = g_ground_n[0] * px + g_ground_n[1] * py + g_ground_n[2] * pz;
-    const double pen = g_ground_d - side;
-    if (pen > worst) {
-      worst = pen;
-    }
+    ground_project_sample(CONTACT_CORNER[c], &worst);
   }
+  ground_project_sample(cam, &worst);
+  g_ground_projected = 0;
+  g_ground_near = (worst > -CONTACT_NEAR) ? 1 : 0;
   if (!(worst > CONTACT_SLOP)) {
     return;
   }
+  g_ground_projected = 1;
   const double push = worst - CONTACT_SLOP;
   S.pos[0] += g_ground_n[0] * push;
   S.pos[1] += g_ground_n[1] * push;
   S.pos[2] += g_ground_n[2] * push;
-  /* Only kill inbound speed when the hull was truly buried. A turtle
-   * or a roll drives a corner a few millimetres through as it rotates
-   * about the support; zeroing vn there cancelled the linear part of
-   * the mixer couple and the hull could not flip. */
+  /* Only kill inbound speed when the hull was truly buried. A roll
+   * drives a corner a few millimetres through as it rotates about the
+   * support; zeroing vn there cancelled the linear part of a couple.
+   * Turtle is a host snap now, not a mixer flip, but the ABI self-test
+   * still proves crashflip against this plane. */
   if (worst > 0.02) {
     const double vn = S.vel[0] * g_ground_n[0]
         + S.vel[1] * g_ground_n[1]
@@ -449,8 +476,79 @@ static void ground_project_hull(void) {
   }
 }
 
+/*
+ * Grass is a dead thump, not a trampoline. Baumgarte can leave a 1.2 m/s
+ * outbound kick even with e = 0; this removes it once the hull is seated.
+ *
+ * Props down (upz clearly negative): the discs grab and the hull stops
+ * in place. Props up: a short slide, then stick. A side tumble still
+ * rolls; extra omega damping is belly-only so a 90 deg arrival can
+ * fall over instead of welding on an arm.
+ *
+ * Crashflip stays off in the shell (turtle is a pose snap). The mixer
+ * path is still compiled, and the contact self-test still drives it, so
+ * settle must not cancel that couple while crashflip is latched.
+ */
+static void ground_settle(double upz) {
+  if (!g_ground_hits && !g_ground_projected) {
+    /* Inverted rest can sit on the slop with no impulse and no
+     * push, which used to skip settle and leave a props-down slide. */
+    if (!(upz < CONTACT_INVERT_UPZ && g_ground_near)) {
+      return;
+    }
+  }
+  if (bridge_crashflip_active()) {
+    return;
+  }
+
+  const double vn = S.vel[0] * g_ground_n[0]
+      + S.vel[1] * g_ground_n[1]
+      + S.vel[2] * g_ground_n[2];
+  if (vn > 0.0) {
+    S.vel[0] -= g_ground_n[0] * vn;
+    S.vel[1] -= g_ground_n[1] * vn;
+    S.vel[2] -= g_ground_n[2] * vn;
+  }
+
+  if (upz < CONTACT_INVERT_UPZ) {
+    S.vel[0] = 0.0;
+    S.vel[1] = 0.0;
+    S.vel[2] = 0.0;
+    S.omega[0] = 0.0;
+    S.omega[1] = 0.0;
+    S.omega[2] = 0.0;
+    return;
+  }
+
+  S.vel[0] *= CONTACT_SLIDE_KEEP;
+  S.vel[1] *= CONTACT_SLIDE_KEEP;
+  S.vel[2] *= CONTACT_SLIDE_KEEP;
+  const double v2 = S.vel[0] * S.vel[0] + S.vel[1] * S.vel[1] + S.vel[2] * S.vel[2];
+  if (v2 < CONTACT_SLIDE_STOP * CONTACT_SLIDE_STOP) {
+    S.vel[0] = 0.0;
+    S.vel[1] = 0.0;
+    S.vel[2] = 0.0;
+  }
+
+  if (upz >= 0.5) {
+    S.omega[0] *= CONTACT_OMEGA_KEEP;
+    S.omega[1] *= CONTACT_OMEGA_KEEP;
+    S.omega[2] *= CONTACT_OMEGA_KEEP;
+    const double w2 = S.omega[0] * S.omega[0]
+        + S.omega[1] * S.omega[1]
+        + S.omega[2] * S.omega[2];
+    if (w2 < CONTACT_OMEGA_STOP * CONTACT_OMEGA_STOP) {
+      S.omega[0] = 0.0;
+      S.omega[1] = 0.0;
+      S.omega[2] = 0.0;
+    }
+  }
+}
+
 static void ground_apply(void) {
   g_ground_hits = 0;
+  g_ground_projected = 0;
+  g_ground_near = 0;
   if (!g_ground_on || g_stand_on) {
     return;
   }
@@ -495,6 +593,7 @@ static void ground_apply(void) {
     }
     g_ground_hits = hits;
     ground_project_hull();
+    ground_settle(upz);
     return;
   }
 
@@ -521,6 +620,7 @@ static void ground_apply(void) {
   }
   g_ground_hits = hits;
   ground_project_hull();
+  ground_settle(upz);
 }
 
 SIM_EXPORT int sim_contact(double nx, double ny, double nz,
@@ -568,6 +668,8 @@ SIM_EXPORT int sim_set_ground(int on,
   if (!on) {
     g_ground_on = 0;
     g_ground_hits = 0;
+    g_ground_projected = 0;
+    g_ground_near = 0;
     return SIM_OK;
   }
   if (!sim_finite(nx) || !sim_finite(ny) || !sim_finite(nz)

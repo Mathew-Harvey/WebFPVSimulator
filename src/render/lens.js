@@ -137,6 +137,27 @@ export function cameraTiltRad(degrees) {
  */
 export const CAMERA_MOUNT_FORWARD = 0.080;
 export const CAMERA_MOUNT_UP = 0.018;
+/* Lens glass past the mount, plant/body metres. herocraft.js puts the
+ * glass 0.0242 past the mount along the look axis. The plant samples
+ * this so a nose-down crash cannot put the picture under the plane. */
+export const CAMERA_LENS_FORWARD = 0.104;
+export const CAMERA_LENS_UP = 0.018;
+
+/*
+ * FPV lens floor. The session near plane is 0.2 m. A centimetre above
+ * the mesh still lets that near plane eat the terrain when the lens
+ * looks into the dirt (camera down or inverted). Level flight keeps
+ * the small gap. Render only.
+ */
+export const FPV_FLOOR_CLEAR = 0.012;
+export const FPV_NEAR_CLEAR = 0.22;
+
+export function fpvLensClear(camFwdY, camUpY) {
+  if (camFwdY < -0.12 || camUpY < 0.35) {
+    return FPV_NEAR_CLEAR;
+  }
+  return FPV_FLOOR_CLEAR;
+}
 
 /*
  * LENS SHAKE.

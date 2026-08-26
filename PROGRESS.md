@@ -17769,3 +17769,51 @@ What went wrong this turn:
 Kept both sides of PROGRESS.md. Incoming main log first (credits,
 rotation, contact, first-flight), then this branch's open-frame
 entries. Only PROGRESS.md conflicted.
+
+## Ground thump, short slide, camera floor, turtle snap
+
+Owner report: grass still felt icy and springy, the FPV lens still
+ate the terrain on a camera-down or inverted crash, and turtle was
+a simulated mixer flip.
+
+No advisor channel. The plant shape is unchanged (same OBB, same
+1 kHz plane, same `sim_contact` ABI). Added a seated settle after
+projection, and one extra projection sample at the lens glass
+(0.104, 0, 0.018). Crashflip stays exported; the shell never
+latches it.
+
+Feel, measured on `dist/sim.wasm` from a seated pose:
+
+- Belly shove 3.65 m/s: stop in 52 ms, 4.2 cm of slide.
+- Props-down shove 3.65 m/s: stop in 5 ms, 3.6 mm of travel.
+- 2 m motors-off drop: peak outbound vz = 0. Dead thump.
+- Camera-down 90 deg: lens stays on the slop band.
+- Turtle: `shouldSnapUpright` plus `uprightPlantQuat`. 180 about x
+  becomes identity. Shell writes `sim_set_pose` at the same xz,
+  `REST_HEIGHT` up, then `sim_rest`. No crashflip banner.
+
+Grass constants: `GROUND_E = 0`, `GROUND_MU = 1.40`. Walls and
+gates are unchanged.
+
+Render: `fpvLensClear` uses 0.012 m in level flight and 0.22 m
+(session near plane plus a centimetre) when the look is into the
+dirt. A high inverted pass is already above that floor, so it
+does not lift.
+
+What went wrong:
+
+- First slide and invert proofs shoved in the air and timed the
+  fall. Almost all of the 1.3 m "slide" was flight. Rewrote both
+  from a seated pose.
+- Inverted rest can sit on the slop with `hits = 0` and no
+  projection push, so settle never ran and a props-down shove
+  kept its speed. Settle now also runs when inverted and the
+  hull is within 8 mm of the plane.
+- Crashflip self-tests still have to flip. Settle returns
+  immediately while crashflip is latched.
+
+Checks this turn: `npm run build:wasm` 0. `git diff --stat
+vendor/betaflight` empty. `npm run contact:selftest` all passed.
+`node src/trackbuilder/selftest.js` 382 passed. `node --check` on
+the edited JS. `npm run verify` follows the commit: this is the
+plant.

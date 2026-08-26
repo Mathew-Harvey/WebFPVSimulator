@@ -55,12 +55,14 @@ import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import {
   hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
-  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, contactMaterial,
+  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldSnapUpright,
+  uprightPlantQuat, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
-  LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE,
+  LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, SNAP_SPEED, SNAP_RATE,
 } from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
+import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -1348,6 +1350,46 @@ function suiteCrashRule() {
     canPerch(0, PERCH_SPEED + 0.01, 0) === false);
   check('canPerch refuses leftover rate',
     canPerch(0, 0, PERCH_RATE + 0.01) === false);
+
+  check('turtle snaps when inverted, slow, and on the grass',
+    shouldSnapUpright(-0.9, 0.4, 0.4, true, 0.05, false) === true);
+  check('turtle does not snap while still sliding fast',
+    shouldSnapUpright(-1, SNAP_SPEED, 0, true, 0.05, false) === false);
+  check('turtle does not snap while tumbling at rate',
+    shouldSnapUpright(-1, 0, SNAP_RATE, true, 0.05, false) === false);
+  check('turtle does not snap in the air with clearance',
+    shouldSnapUpright(-0.8, 0.2, 0.2, false, 1.2, false) === false);
+  check('turtle does snap inverted, slow, a few centimetres off the grass',
+    shouldSnapUpright(-0.8, 0.2, 0.2, false, 0.10, false) === true);
+  check('turtle does not snap during launch staging',
+    shouldSnapUpright(-1, 0, 0, true, 0.05, true) === false);
+  check('turtle does not snap once the hull is upright',
+    shouldSnapUpright(0.2, 0, 0, true, 0.05, false) === false);
+
+  const qId = uprightPlantQuat(1, 0, 0, 0);
+  check('an already upright pose stays identity',
+    Math.abs(qId[0] - 1) < 1e-12 && qId[1] === 0 && qId[2] === 0 && qId[3] === 0);
+  const qInv = uprightPlantQuat(0, 1, 0, 0);
+  check('180 about x flattens to identity, not a degenerate heading',
+    Math.abs(qInv[0] - 1) < 1e-9 && Math.abs(qInv[1]) < 1e-12
+      && Math.abs(qInv[2]) < 1e-12 && Math.abs(qInv[3]) < 1e-12);
+  const qYaw = uprightPlantQuat(Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+  check('a pure yaw is kept',
+    Math.abs(qYaw[0] - Math.SQRT1_2) < 1e-9 && Math.abs(qYaw[3] - Math.SQRT1_2) < 1e-9
+      && qYaw[1] === 0 && qYaw[2] === 0);
+  const qFlip = uprightPlantQuat(0, 0, 1, 0);
+  check('180 about y keeps the flipped heading',
+    Math.abs(qFlip[0]) < 1e-9 && Math.abs(Math.abs(qFlip[3]) - 1) < 1e-9
+      && qFlip[1] === 0 && qFlip[2] === 0);
+
+  check('level flight keeps the small lens floor',
+    fpvLensClear(0, 1) === FPV_FLOOR_CLEAR);
+  check('camera down uses the near-plane band',
+    fpvLensClear(-0.5, 0.8) === FPV_NEAR_CLEAR);
+  check('inverted uses the near-plane band',
+    fpvLensClear(0, -1) === FPV_NEAR_CLEAR);
+  check('a high inverted look at the sky still names the near-plane band',
+    fpvLensClear(0.4, -0.9) === FPV_NEAR_CLEAR);
 
   const grass = contactMaterial('none');
   const pvc = contactMaterial('gate');

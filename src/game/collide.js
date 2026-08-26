@@ -1233,10 +1233,13 @@ export const BOUNCE_SEPARATION = 0.008;
 export const PERCH_SPEED = 2.0;   /* m/s, linear */
 export const PERCH_RATE = 2.5;    /* rad/s */
 
-/* Grass / dirt. High enough to kill a slide without turning the ground
- * into ice, low enough that a tumble still rolls. */
-export const GROUND_MU = 0.55;
-export const GROUND_E = 0.28;
+/* Grass / dirt. Restitution is zero: a real 5 inch on turf is a dead
+ * thump, not a bounce. Mu is high enough that a belly landing dumps
+ * the slide in a few tens of centimetres; the plant also damps leftover
+ * tangent speed once the hull is seated. A props-down arrival is a
+ * full stop, not a slide. */
+export const GROUND_MU = 1.40;
+export const GROUND_E = 0.0;
 
 /*
  * Obstacle materials. PVC, carbon, masonry, bark: enough difference that
@@ -1333,6 +1336,40 @@ export function canPerch(tiltDeg, speed, rateMag) {
     return false;
   }
   return true;
+}
+
+/*
+ * Turtle is a pose snap, not Betaflight crashflip. The mixer path is
+ * still compiled and the contact self-test still drives it. The shell
+ * does not: inverted, slow, and on the grass (or a few centimetres
+ * off it) writes an upright heading-preserving pose and rests.
+ */
+export const SNAP_SPEED = 4.0;
+export const SNAP_RATE = 8.0;
+export const SNAP_CLEARANCE = 0.15;
+
+export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, skip) {
+  if (skip) {
+    return false;
+  }
+  if (!(upz < 0)) {
+    return false;
+  }
+  if (speed >= SNAP_SPEED || rateMag >= SNAP_RATE) {
+    return false;
+  }
+  return inContact || clearance < SNAP_CLEARANCE;
+}
+
+/* Flatten roll and pitch. Keep the body-x projection on the plant
+ * xy plane as heading. 180 about x leaves +x alone, so (0,1,0,0)
+ * becomes identity rather than a degenerate w/z flatten. */
+export function uprightPlantQuat(qw, qx, qy, qz) {
+  const fx = 1 - 2 * (qy * qy + qz * qz);
+  const fy = 2 * (qx * qy + qw * qz);
+  const heading = (fx * fx + fy * fy) > 1e-12 ? Math.atan2(fy, fx) : 0;
+  const h = 0.5 * heading;
+  return [Math.cos(h), 0, 0, Math.sin(h)];
 }
 
 /*

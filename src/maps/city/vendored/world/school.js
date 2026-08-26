@@ -2168,8 +2168,8 @@ function buildBikeShed(ctx, Y, rng) {
   for (const rz of [z0 + 1.55, z1 - 1.55]) {
     g.add(box(x1 - x0 - 0.6, 0.09, 0.16, m.concreteMid, cx, F + 0.045, rz));
   }
-  ctx.add(makeBikeRack({ x: cx - 0.4, z: z0 + 1.55, y: F, n: 13, spacing: 0.7, ry: Math.PI / 2, seed: 3, keep: true }));
-  ctx.add(makeBikeRack({ x: cx - 0.4, z: z1 - 1.55, y: F, n: 12, spacing: 0.7, ry: -Math.PI / 2, seed: 6, keep: true }));
+  ctx.add(makeBikeRack({ x: cx - 0.4, z: z0 + 1.55, y: F, n: 13, spacing: 0.7, ry: Math.PI / 2, seed: 3, keep: true, ctx }));
+  ctx.add(makeBikeRack({ x: cx - 0.4, z: z1 - 1.55, y: F, n: 12, spacing: 0.7, ry: -Math.PI / 2, seed: 6, keep: true, ctx }));
 
   for (let i = 0; i <= 4; i++) {
     const px = x0 + ((x1 - x0) / 4) * i;

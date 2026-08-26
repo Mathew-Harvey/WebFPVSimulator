@@ -902,6 +902,23 @@ export function makeBikeRack(o = {}) {
     instMesh.setMatrixAt(i, d.matrix);
     col.set(FRAMES[(i * 3 + (o.seed ?? 0)) % FRAMES.length]);
     instFrame.setColorAt(i, col);
+    /* One box per bike on the school shed. Corridor racks are
+     * skipClutter, so this only runs where keep: true passed a ctx.
+     * A merged row AABB would wall the aisle; each frame is 1.4 m by
+     * 0.4 m, which is the drawing. */
+    if (o.ctx && o.keep === true) {
+      const hx = 0.70;
+      const hz = 0.20;
+      const y0 = o.y ?? 0;
+      const y1 = y0 + 1.02;
+      const c = Math.cos(ry);
+      const s = Math.sin(ry);
+      const px = (o.x ?? 0) - s * t;
+      const pz = (o.z ?? 0) + c * t;
+      const lx = Math.abs(c) * hx + Math.abs(s) * hz;
+      const lz = Math.abs(s) * hx + Math.abs(c) * hz;
+      o.ctx.collide(px - lx, pz - lz, px + lx, pz + lz, y1, y0, true);
+    }
   }
   instFrame.instanceColor.needsUpdate = true;
   for (const inst of [instDark, instFrame, instBrite, instMesh]) {

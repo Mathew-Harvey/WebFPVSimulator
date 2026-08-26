@@ -2,8 +2,10 @@
  * credits.js: who made this, who flew it, and whose work it stands on.
  *
  * Built as a DOM tree so the simulator overlay and the public board can
- * share the same roll. Logos live in assets/credits (sim) or credits/
- * (board). They are the official marks, used only to name the work:
+ * share the same roll. The live address is this page at #credits. The
+ * board points there rather than keeping a second copy. Logos live in
+ * assets/credits (sim) or credits/ (board). They are the official marks,
+ * used only to name the work:
  * Betaflight's dark wordmark, TrackDraw's dark-background colour mark,
  * Grok's 2025 wordmark, Claude's starburst.
  *
@@ -156,6 +158,7 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
     pilotCard('Asylum', 'Beta test. Put laps on it and said when it did not feel like a radio.'),
     pilotCard('Jannes', 'Beta test. The kind of flying that finds the hole in a tune.'),
     pilotCard('LeStar', 'Beta test. Kept flying it after the novelty wore off.'),
+    pilotCard('CrapShack', 'Beta test. Aviation scientist. Said when the air did not behave like air.'),
   );
   pilots.append(row);
   host.append(pilots);

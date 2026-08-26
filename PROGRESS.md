@@ -16906,6 +16906,180 @@ it is 2.0 m to 4.5 m, the same as a flag's, which is what "function the
 same as a flag" asked for. Measured on the built course, both markers
 report clearW 4.50.
 
+## The next flag glows on the flag, and the scoring square is not drawn
+
+Owner's report: no gate box around a flag that is next on the track, but
+that box is still the volume you fly through; the next flag itself should
+glow green, brightest on the pole, fading out away from the flag, with
+the logo and the print still readable.
+
+WHAT WAS DRAWN. virtualGate had become a scoring-square illustration: a
+wash plane the width of the aperture (4.5 m on a stock flag), a bar and
+aura on the OUTER edge, and the wash sat on the default layer so the
+outline prepass inked it as a black wireframe. That is the green prism
+and the wireframe box in the report. A previous round had moved the
+bright edge away from the pole because an earlier note said "darker near
+the pole, lighter towards the edge"; the owner's picture of what they
+meant is the opposite, light on the mast fading across the cloth.
+
+WHAT CHANGED. Scoring is untouched. race.js is untouched. The virtual
+aperture is still the same square with its inner edge on the pole. Only
+the paint moved:
+
+  no bar, no aura box, no wash the size of the square
+  additive mast core and halo, on the pole, layer 1 so they take no ink
+  two additive washes the SIZE OF THE FLAG (~1.3 m by 2.5 m, not 4.5 m
+    square), peaking at the pole and falling to nothing before their own
+    edge: one in the sail's plane, one facing travel
+  the in-frame HUD lock box is off for virtual markers (it was the same
+    scoring square drawn on the display); the off-screen chevron stays
+  aim.centre sits on the flag, not on the hole beside it
+
+CHECKS still to run this turn: shots.js against a real authored course
+with flags, looking at a next flag, a dark flag, and a PVC gate, plus
+node --check. npm run verify will not run: render and HUD only, no
+physics, no module, no build file, and check 13 loads only the harness
+page.
+
+Possible effect if this breaks something: custom courses with flag or
+cone markers. If a next flag has no light, or glows as a rectangle again,
+or the print washes out, this commit is the one. Gates are visual only
+for PVC openings; their ring, pane and glow did not move. Scoring cannot
+have moved, race.js was not touched.
+
+## Two planes still read as a box; the glow is now the flag's own mesh
+
+The first pass of "glow the flag" replaced the 4.5 m scoring square with
+two additive planes the size of the flag, one in the sail's plane and
+one facing travel. Captures still showed a translucent rectangular
+volume, green from the approach and red from the other side, because two
+planes at right angles ARE a box, just a smaller one. The HUD lock box
+was already off. That was not what the owner drew.
+
+WHAT CHANGED.
+
+  the wash planes are gone, both of them
+  the sail glow is flagSailGeometry, the same mesh as the print, with
+    aCloth.x as distance from the pole so the light is brightest on the
+    mast and falls off across the cloth
+  the cloth wave is CLOTH_CHUNK at FLAG_SAIL_CLOTH, the same numbers the
+    print uses, so the overlay is not a stiff sheet in front of a waving
+    flag
+  the holder is parented onto the live flag (or a cone host at the
+    cone's base), so origin and yaw match the object the pilot can see
+    rather than a copy aimed from the scoring square
+  mast core and halo stay, modest, on layer 1; they are the bright
+    column on the pole, not a frame around a hole
+  scoring, race.js, the aperture width and the inner-edge-on-the-pole
+    contract are untouched
+
+CHECKS still to run this turn: shots.js against 2023 AU NATS 5 inch,
+next flag close and from the approach, a dark flag, a PVC gate, and the
+wrong side of a flag. node --check on the touched files. npm run verify
+will not run: render only, no physics, no module, no build file.
+
+Possible effect if this breaks something: custom courses with flag or
+cone markers. If a next flag has no light, or the overlay drifts off
+the cloth, or a PVC gate loses its pane, this commit is the one.
+
+## Next-flag glow, captured on 2023 AU NATS 5 inch
+
+shots.js, High, 1600 by 900, course trk-c7f88673. Console errors 0,
+warnings 0, harness faults 0. node --check on scene.js, celmat.js,
+main.js.
+
+  __setRaceNext(1): scene 1 is the only target, glowOn true, cueOn
+    false, ring #39ff8b. Every other gate is dark. Aperture still
+    4.50 by 4.50. HUD lock class is-off in frame.
+  approach and three-quarter: green light on the flag, brightest on
+    the pole, fading across the sail, chequers and logo readable, no
+    scoring-square graphic.
+  close: neon mid-row span 40 px against a 775 px aperture chord, so
+    the light is the flag, not a 4.5 m box. Fill of the neon bbox
+    0.039.
+  far side: red on the flag, not a red box. Same falloff.
+  PVC gate 0: pane and ring still in the opening, unchanged.
+  flag 2 while next is 1: print visible, no glow, no box.
+
+npm run verify was not run: render and HUD only, no physics, no
+module, no build file, check 13 loads only the harness page.
+
+
+
+### 2026-08-26 | ui | CrapShack on credits, credits on first-run title
+
+Changed: CrapShack joins the beta test pilots on the credits roll, named
+as an aviation scientist. The first-run title (the landing a new visitor
+sees) now has Credits as a third row next to First flight and I have
+flown before, so who made this is readable before a lap is flown. The
+full title menu already had Credits. The pilots grid is two columns so
+four names sit as a pair of pairs rather than three plus an orphan.
+
+What went wrong: nothing this turn. First run used to be two rows on
+purpose, because Credits used to sit seventh in a nine row list and
+buried Fly. Putting it back as a third first-run row is a smaller list
+than that, and First flight stays the green button.
+
+Verify: browser pass on the first-run title at `http://127.0.0.1:8000/`:
+Credits is the third row, opening it shows CrapShack as aviation scientist,
+Back returns to first-run with Credits still there. Node is not on PATH
+in this shell, so `node --check` and `npm run verify` were not run. This
+turn does not touch src/native, the WASM build, the input path or the
+simulation trace.
+
+### 2026-08-26 | ui | FPV wiki, catalog complete, title and pause linked
+
+Changed: an FPV wiki screen, over the live title world, with a chapter
+rail, search, SVG figures, and a dual voice (in the air / in the lab /
+in this simulator, then raise and lower). The journey starts as
+"Simulating FPV, for nerds" on the returning title (clickable teaser plus
+a menu row), on How to fly, and on pause. Deep links are `#wiki/<id>`.
+Every Betaflight 4.5.1 catalog field has a page. LIVE, GATED and
+APPLIED_INERT keys have authored copy. INERT/ABSENT keys use a family
+template so an OSD coordinate is not described as a PID, and a grey key
+never claims to fly. `npm run lint:wiki` is the coverage ruler.
+
+What went wrong: an import patch into ui.js missed on the first pass
+because the file had grown Rates, PIDs and Flight feel rows since the
+draft. Authored `angle_ff_smoothing_ms` was not a catalog key; the real
+4.5.1 name is `angle_feedforward_smoothing_ms`. lint:wiki caught it.
+Cursor's browser MCP was down this turn, so the interactive pass used
+headless Chrome over CDP against `http://127.0.0.1:8765/` instead of the
+IDE browser tab.
+
+Verify: `node --check` on the wiki modules, ui.js, fc.js and wiki-lint.
+`npm run lint:wiki`: 35 articles, 696 catalog fields, 706 cli/feature
+pages, 180 authored keys, 159 LIVE / 5 GATED / 16 APPLIED_INERT, exit 0.
+Headless Chrome: `#wiki/physics-vrs` opens Vortex ring state with figure,
+In the air, In the lab, and animation classes. Search `p_roll` ranks
+P roll first, LIVE, raise/lower, FC link. `dyn_notch_count` is GATED with
+the 1 kHz SDFT reason. `osd_tim1` is INERT and says the FPV view is not
+Betaflight OSD. Back clears the hash onto first-run (still two choices
+plus Credits). After I have flown before, FPV wiki and How to fly are
+on the title. 390x844 stacks the wiki to one column. Console exceptions
+0. `npm run verify` was not run: no plant, ABI, build or threshold
+change. The FC jump from a LIVE page was not driven in that Chrome pass.
+
+### 2026-08-26 | ui | board #credits points at the simulator's roll
+
+Changed: the simulator credits screen is now a real address, `#credits`,
+the same way the wiki is `#wiki/<id>`. Opening Credits writes that hash.
+Leaving it, including Back, clears it. `https://webfpv.org/board/#credits`
+and the board's three Credits links now go to
+`https://webfpv.org/sim/#credits` rather than painting a second copy of
+the roll. CrapShack is on the board's leftover overlay too, so a cached
+board page that still opens the sheet is not missing the name.
+
+What went wrong: the two `credits.js` files had already drifted, which
+PROGRESS noted on 2026-08-17. Copying CrapShack into the board copy
+alone would have done it again the next time the roll changed.
+
+Verify: read-through of `src/ui/ui.js` `applyLocationHash` / `show`,
+board `creditsHref` and `route`. Browser pass of the live board overlay
+was the old copy, which is why this turn exists. `npm run verify` was
+not run: no plant, ABI, build, input path or threshold change. The
+board change deploys from WebFPVSimulator-LeaderBoard, not this repo.
+
 ## Freestyle city: thin the town, map collision to the drawing
 
 Owner ask: refine the freestyle city so the collision mesh matches the
@@ -17117,5 +17291,4 @@ Possible effect if this breaks something: a blob AABB still has the
 four corners of the icosahedron's box as air, which is the remaining
 honest gap between "hug the leaves" and a triangle mesh. Do not go
 back to a 0.55 m flood for that.
-
 

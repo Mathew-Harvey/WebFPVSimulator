@@ -1,6 +1,6 @@
 /*
- * ui.js: the product shell. Title, how to fly, credits, settings, pause, results,
- * stick calibration, the flight overlay, and the flight-controller screen.
+ * ui.js: the product shell. Title, how to fly, FPV wiki, credits, settings, pause,
+ * results, stick calibration, the flight overlay, and the flight-controller screen.
  *
  * Why this exists: the page used to load straight into a falling quad with
  * a monospace debug dump in the corner. That reads as a tech demo. A
@@ -135,6 +135,7 @@ import {
 } from '../render/lens.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
+import { mountWiki } from '../wiki/wiki.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -344,7 +345,7 @@ const DEFAULTS = {
  * TWO SIGNALS, BOTH HAVE TO BE COLD. A saved settings blob means somebody
  * changed something, and a stored best means somebody finished a lap. Either
  * one is enough to say this is not a first run, because getting one of them
- * wrong in the other direction would put the two row screen in front of a
+ * wrong in the other direction would put the first-run screen in front of a
  * returning pilot, which is far worse than missing it once.
  */
 function detectFirstRun() {
@@ -1145,6 +1146,7 @@ export class Ui {
       }
     });
     this.show('title');
+    this.bindWikiHash();
   }
 
   build() {
@@ -1227,6 +1229,10 @@ export class Ui {
     /* First run only. Replaced by the keep note once a lap has been flown. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
     brand.append(this.firstNote);
+    this.wikiTeaser = btn('wiki-teaser', 'Simulating FPV, for nerds');
+    this.wikiTeaser.setAttribute('aria-label', 'Open the FPV wiki');
+    this.wikiTeaser.addEventListener('click', () => this.act('wiki'));
+    brand.append(this.wikiTeaser);
     const titleBlock = wrapMenu();
     this.titleMenu = titleBlock.menu;
     this.titleHelp = titleBlock.help;
@@ -1293,6 +1299,9 @@ export class Ui {
 
     this.howtoMode = el('p', 'howto-mode', '');
     howto.append(this.howtoMode);
+    const howtoWiki = btn('howto-wiki', 'Why this works: the FPV wiki');
+    howtoWiki.addEventListener('click', () => this.act('wiki'));
+    howto.append(howtoWiki);
 
     const howtoBlock = wrapMenu();
     this.howtoMenu = howtoBlock.menu;
@@ -1315,6 +1324,27 @@ export class Ui {
       hintWithKeys(['Esc'], 'Goes back. Arrow keys still move the menu.'),
     );
     this.screens.credits = credits;
+
+    const wiki = el('div', 'screen screen-page screen-wiki');
+    this.wikiHost = el('div', 'wiki-root');
+    this.wiki = mountWiki(this.wikiHost);
+    this.wiki.onOpenFc = (key) => {
+      this.fcFrom = 'wiki';
+      if (this.onFcOpen) {
+        this.onFcOpen('pid');
+      }
+      this.fc.focusField(key);
+      this.show('fc');
+    };
+    const wikiBlock = wrapMenu();
+    this.wikiMenu = wikiBlock.menu;
+    this.wikiHelp = wikiBlock.help;
+    wiki.append(
+      this.wikiHost,
+      wikiBlock.stage,
+      hintWithKeys(['Esc'], 'Goes back. Search, or follow the path. Arrow keys still move the menu.'),
+    );
+    this.screens.wiki = wiki;
 
     /*
      * The map screen. Cards rather than a row of text, and each card plays a
@@ -2644,11 +2674,13 @@ export class Ui {
     const s = this.settings;
     if (this.screen === 'title') {
       /*
-       * FIRST RUN IS TWO ROWS, not nine. Nothing here used to tell visit one
-       * from visit one hundred, so a pilot who had never held a stick got the
-       * same list as somebody coming back for a personal best, with the one
-       * thing they needed sitting seventh. isFirstRun is a signal the product
-       * already had and threw away: no stored settings, no lap on record.
+       * FIRST RUN IS TWO CHOICES AND CREDITS, not nine. Nothing here used
+       * to tell visit one from visit one hundred, so a pilot who had never
+       * held a stick got the same list as somebody coming back for a personal
+       * best, with the one thing they needed sitting seventh. isFirstRun is a
+       * signal the product already had and threw away: no stored settings, no
+       * lap on record. Credits sits with the two choices so who made this is
+       * readable before a lap is flown.
        */
       if (this.firstRun) {
         return [
@@ -2663,15 +2695,20 @@ export class Ui {
             action: 'skipfirst',
             note: 'Straight to the full menu.',
           },
+          {
+            label: 'Credits',
+            action: 'credits',
+            note: 'Who made this, who flew it, and whose work it stands on.',
+          },
         ];
       }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
       /*
-       * TEN ROWS PLUS REPORT, ALWAYS. The course actions that used to
-       * appear and vanish here live on the Courses screen and on Results,
-       * where the course itself is what the player is looking at. Report a
-       * bug is a stable last row so testers can send a ticket from title.
+       * The course actions that used to appear and vanish here live on the
+       * Courses screen and on Results, where the course itself is what the
+       * player is looking at. FPV wiki sits with How to fly. Report a bug
+       * is a stable last row so testers can send a ticket from title.
        */
       return [
         { label: 'Fly', action: 'fly', primary: true },
@@ -2689,6 +2726,11 @@ export class Ui {
         pidsItem(s),
         ratesItem(s),
         { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
+        {
+          label: 'FPV wiki',
+          action: 'wiki',
+          note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. For curious pilots and for people who want the equation.',
+        },
         { label: 'Settings', action: 'settings' },
         {
           label: 'Leaderboard',
@@ -2711,6 +2753,9 @@ export class Ui {
       return [{ label: 'Back', action: 'back' }];
     }
     if (this.screen === 'credits') {
+      return [{ label: 'Back', action: 'back' }];
+    }
+    if (this.screen === 'wiki') {
       return [{ label: 'Back', action: 'back' }];
     }
     /*
@@ -2983,12 +3028,13 @@ export class Ui {
       ];
     }
     if (this.screen === 'paused') {
-      /* Eleven rows, always, and Resume is the button. The conditional Edit
-       * a copy that used to appear here belongs on the Courses screen.
-       * Report a bug is the chip in the corner, or F8, so this list stays
-       * put. Flight feel sits by the tuning rows because "this feels off"
-       * is the moment a pilot pauses, and the report carries the tune and
-       * PIDs they are paused on. */
+      /* Resume is the button. The conditional Edit a copy that used to
+       * appear here belongs on the Courses screen. Report a bug is the
+       * chip in the corner, or F8, so this list stays put. Flight feel
+       * sits by the tuning rows because "this feels off" is the moment a
+       * pilot pauses, and the report carries the tune and PIDs they are
+       * paused on. FPV wiki is here so a mid-flight "why did that happen"
+       * does not have to quit the run. */
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
@@ -2999,6 +3045,7 @@ export class Ui {
         feelItem(),
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
+        { label: 'FPV wiki', action: 'wiki', note: 'The plant, the compiled controller, and every catalog key.' },
         { label: 'Settings', action: 'settings' },
         { label: 'Credits', action: 'credits', note: 'Who made this, who flew it, and whose work it stands on.' },
         { label: 'Quit to title', action: 'title' },
@@ -3314,6 +3361,7 @@ export class Ui {
       title: this.titleMenu,
       howto: this.howtoMenu,
       credits: this.creditsMenu,
+      wiki: this.wikiMenu,
       courses: this.coursesMenu,
       settings: this.settingsMenu,
       rates: this.ratesMenu,
@@ -3564,7 +3612,7 @@ export class Ui {
   leaveFc() {
     this.fc.stopMotors();
     this.fc.confirm = null;
-    const dest = ['paused', 'settings', 'pids'].includes(this.fcFrom)
+    const dest = ['paused', 'settings', 'pids', 'wiki'].includes(this.fcFrom)
       ? this.fcFrom
       : 'title';
     this.show(dest);
@@ -4675,6 +4723,20 @@ export class Ui {
     if (this.screen === 'fc' && screen !== 'fc') {
       this.fcFrom = null;
     }
+    if (this.screen === 'wiki' && screen !== 'wiki' && screen !== 'fc') {
+      const url = new URL(window.location.href);
+      if ((url.hash || '').startsWith('#wiki/')) {
+        url.hash = '';
+        history.replaceState(null, '', url);
+      }
+    }
+    if (this.screen === 'credits' && screen !== 'credits') {
+      const url = new URL(window.location.href);
+      if ((url.hash || '') === '#credits') {
+        url.hash = '';
+        history.replaceState(null, '', url);
+      }
+    }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
      * going. Settings opens on its first real row rather than on a heading. */
@@ -4685,6 +4747,16 @@ export class Ui {
     if (screen === 'howto') {
       this.renderHowto();
     }
+    if (screen === 'wiki' && this.wiki) {
+      this.wiki.openDefault();
+    }
+    if (screen === 'credits') {
+      const url = new URL(window.location.href);
+      if ((url.hash || '') !== '#credits') {
+        url.hash = 'credits';
+        history.replaceState(null, '', url);
+      }
+    }
     for (const [name, node] of Object.entries(this.screens)) {
       node.style.display = name === screen ? '' : 'none';
     }
@@ -4693,7 +4765,41 @@ export class Ui {
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
+    if (screen === 'fc' && this.fc.highlightKey) {
+      const items = this.items();
+      const i = items.findIndex((it) => it.label === this.fc.highlightKey);
+      if (i >= 0) {
+        this.cursor = i;
+        this.syncCursor();
+      }
+    }
     this.syncBugChip();
+  }
+
+  bindWikiHash() {
+    this.applyLocationHash();
+    window.addEventListener('hashchange', () => this.applyLocationHash());
+  }
+
+  applyLocationHash() {
+    const h = (window.location.hash || '').replace(/^#/, '');
+    if (h === 'credits') {
+      if (this.screen !== 'credits' && this.screen !== 'flight' && this.screen !== 'paused') {
+        this.act('credits');
+      }
+      return;
+    }
+    if (h.startsWith('wiki/')) {
+      if (this.screen !== 'wiki') {
+        this.act('wiki');
+      } else if (this.wiki) {
+        this.wiki.openDefault();
+      }
+      return;
+    }
+    if (this.screen === 'credits') {
+      this.back();
+    }
   }
 
   /*
@@ -5689,7 +5795,7 @@ export class Ui {
       this.openBoardCourse(action.slice('board:'.length));
       return;
     }
-    if (action === 'howto' || action === 'settings' || action === 'courses' || action === 'credits') {
+    if (action === 'howto' || action === 'settings' || action === 'courses' || action === 'credits' || action === 'wiki') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
@@ -5931,6 +6037,13 @@ export class Ui {
           this.onUiSound('select');
         }
         this.act('padpick-yes');
+        return true;
+      }
+      return true;
+    }
+    if (this.screen === 'wiki' && this.wiki && this.wiki.typing()) {
+      if (code === 'Escape') {
+        this.wiki.search.blur();
         return true;
       }
       return true;

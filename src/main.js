@@ -2864,6 +2864,13 @@ export async function boot({ loading, bootStart, mapId }) {
     const minY = AIM_MARGIN_TOP;
     const maxY = vh - AIM_MARGIN_BOTTOM;
     const edge = behind || sx < minX || sx > maxX || sy < minY || sy > maxY;
+    /* A flag or cone already carries its own light. The in-frame bracket
+     * was sized to the scoring square, which is the gate box the owner
+     * asked not to draw. Off screen the chevron still points the way. */
+    if (aim.virtual && !edge) {
+      ui.setTargetLock(LOCK_OFF);
+      return;
+    }
     /* The projected aperture, from the camera space depth rather than the
      * range: a gate 55 degrees off axis is the same size on screen as one
      * straight ahead at the same depth, and using the range instead

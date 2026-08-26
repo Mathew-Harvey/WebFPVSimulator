@@ -216,7 +216,7 @@ export function celTimeCount() {
  * apart are out of step with each other without carrying a per flag uniform,
  * and the merge stays legal.
  */
-const CLOTH_CHUNK = /* glsl */ `
+export const CLOTH_CHUNK = /* glsl */ `
   {
     vec3 clothWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
     float clothPh = uCelTime * 2.9 + clothWorld.x * 0.55 + clothWorld.z * 0.41;
@@ -231,6 +231,11 @@ const CLOTH_CHUNK = /* glsl */ `
     transformed.y += clothFlap * clothAmt * uCloth * 0.22;
   }
 `;
+
+/* Amplitude the field's sails actually use. The next-flag glow overlay
+ * has to use this same number or it sits as a stiff sheet in front of
+ * the cloth. */
+export const FLAG_SAIL_CLOTH = 0.085;
 
 /*
  * opts: color, rim (0..1), rimColor, spec (0..1), specWidth, cloudShadow,

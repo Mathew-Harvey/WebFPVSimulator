@@ -16947,3 +16947,39 @@ or the print washes out, this commit is the one. Gates are visual only
 for PVC openings; their ring, pane and glow did not move. Scoring cannot
 have moved, race.js was not touched.
 
+## Two planes still read as a box; the glow is now the flag's own mesh
+
+The first pass of "glow the flag" replaced the 4.5 m scoring square with
+two additive planes the size of the flag, one in the sail's plane and
+one facing travel. Captures still showed a translucent rectangular
+volume, green from the approach and red from the other side, because two
+planes at right angles ARE a box, just a smaller one. The HUD lock box
+was already off. That was not what the owner drew.
+
+WHAT CHANGED.
+
+  the wash planes are gone, both of them
+  the sail glow is flagSailGeometry, the same mesh as the print, with
+    aCloth.x as distance from the pole so the light is brightest on the
+    mast and falls off across the cloth
+  the cloth wave is CLOTH_CHUNK at FLAG_SAIL_CLOTH, the same numbers the
+    print uses, so the overlay is not a stiff sheet in front of a waving
+    flag
+  the holder is parented onto the live flag (or a cone host at the
+    cone's base), so origin and yaw match the object the pilot can see
+    rather than a copy aimed from the scoring square
+  mast core and halo stay, modest, on layer 1; they are the bright
+    column on the pole, not a frame around a hole
+  scoring, race.js, the aperture width and the inner-edge-on-the-pole
+    contract are untouched
+
+CHECKS still to run this turn: shots.js against 2023 AU NATS 5 inch,
+next flag close and from the approach, a dark flag, a PVC gate, and the
+wrong side of a flag. node --check on the touched files. npm run verify
+will not run: render only, no physics, no module, no build file.
+
+Possible effect if this breaks something: custom courses with flag or
+cone markers. If a next flag has no light, or the overlay drifts off
+the cloth, or a PVC gate loses its pane, this commit is the one.
+
+

@@ -41,7 +41,10 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { celMaterial, outlineHull, updateCelTime, CLOUD_SHADOW_GLSL } from './celmat.js';
+import {
+  celMaterial, outlineHull, updateCelTime, CLOUD_SHADOW_GLSL,
+  CLOTH_CHUNK, FLAG_SAIL_CLOTH,
+} from './celmat.js';
 import { disposeSceneGraph } from './shell.js';
 import { SESSION_TEXTURES } from './session-textures.js';
 /* The obstacle dimensions come from the track module, which holds MultiGP's
@@ -1823,106 +1826,91 @@ function gateCue(clearW, clearH) {
  * the swept test, the width, the inner edge on the pole, none of that
  * moves, because moving the scoring would change what every posted lap
  * time means. What used to be painted was a box the size of that
- * aperture: a wash across the whole square, a bar on the far edge, and
- * because the wash sat on the default layer the outline prepass inked
- * it as a wireframe. The owner asked for that graphic to go, and for
- * the NEXT flag itself to glow, brightest on the pole, fading out away
- * from the fabric, with the print still readable.
+ * aperture. Shrinking the box still left a box: two additive planes at
+ * right angles read as a volume. The owner asked for the graphic to go,
+ * and for the NEXT flag itself to glow, brightest on the pole, fading
+ * out across the cloth, with the print still readable.
  *
  * Three live meshes, all on layer 1 so they take no ink:
  *
  *   the core   an additive copy of the mast (or the cone), the bright
  *              column on the pole. ringMat, so dressGate and
  *              setTargetSide drive it with every other target.
- *   the halo   a fatter additive shell around the same centreline.
+ *   the halo   a modest additive shell around the same centreline.
  *              haloMat, target only, opacity rides the pulse.
- *   the wash   two additive planes the SIZE OF THE FLAG, not the
- *              scoring square: one in the sail's plane so the glow
- *              sits on the cloth, one facing travel so the approach
- *              still reads when the sail is edge on. Both peak at the
- *              pole and fall to nothing before their own edge, which
- *              is what stops them reading as a rectangle. glowMat
- *              with uFront/uBack/uGain, so the wrong side turns red
- *              exactly as a gate's pane does.
+ *   the sail   an additive copy of the FLAG'S OWN MESH, not a rectangle.
+ *              aCloth.x is distance from the pole, the cloth wave is
+ *              the same chunk the print uses, and the same glowMat a
+ *              gate uses (uFront/uBack/uGain) drives it, so the wrong
+ *              side turns red exactly as a gate's pane does. A cone has
+ *              no sail; the cone meshes carry the light.
  *
- * setPole() puts the holder on the pole and yaws it to the marker,
- * measured from the placement rotation rather than a second copy of
- * the yaw convention.
+ * The holder is parented onto the flag or cone the pilot can see, so
+ * the overlay shares that object's origin and yaw. setPole() is the
+ * fallback when that host is missing: it puts the holder on the pole
+ * in the scoring square's frame.
  */
-const MARKER_GLOW_POLE_U = 0.10;
-
-function markerWashGeometry(width, height) {
-  const geo = new THREE.PlaneGeometry(width, height);
-  /* u = 0 is the left edge. Shift so MARKER_GLOW_POLE_U lands on x = 0,
-   * which is the pole in the holder's frame. */
-  geo.translate(width * (0.5 - MARKER_GLOW_POLE_U), height * 0.5, 0);
-  return geo;
-}
-
 function markerGlowMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: {
       uFront: { value: new THREE.Color(NEXT_COLOUR) },
       uBack: { value: new THREE.Color(NEXT_COLOUR) },
       uGain: { value: 0.0 },
+      uCelTime: { value: 0.0 },
+      uCloth: { value: FLAG_SAIL_CLOTH },
     },
-    vertexShader: `
-      varying vec2 vUv;
+    vertexShader: /* glsl */ `
+      attribute vec2 aCloth;
+      uniform float uCelTime;
+      uniform float uCloth;
+      varying float vFromPole;
       void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec3 transformed = position;
+        ${CLOTH_CHUNK}
+        vFromPole = aCloth.x;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
       }
     `,
-    fragmentShader: `
+    fragmentShader: /* glsl */ `
       uniform vec3 uFront;
       uniform float uGain;
-      varying vec2 vUv;
-      const float POLE_U = ${MARKER_GLOW_POLE_U.toFixed(3)};
+      varying float vFromPole;
       /* Modest: additive light on top of an opaque print. High enough to
        * read as the target at thirty metres, low enough that a chequer
        * and a logo still hold their own colour. */
       const float WASH_TEMPER = 0.42;
       void main() {
-        float fromPole = abs(vUv.x - POLE_U);
-        /* k = 9: about 0.6 at mid-sail, 0.3 at the trailing edge, gone
-         * before the plane's own border so the wash has no rectangle. */
-        float fall = exp(-fromPole * fromPole * 9.0);
-        float ends = smoothstep(0.0, 0.10, vUv.y) * (1.0 - smoothstep(0.90, 1.0, vUv.y));
-        float rim = smoothstep(0.0, 0.05, vUv.x) * (1.0 - smoothstep(0.82, 1.0, vUv.x));
-        gl_FragColor = vec4(uFront, 1.0) * (uGain * fall * ends * rim * WASH_TEMPER);
+        /* Bright on the mast, about a fifth at the trailing edge, and
+         * the mesh IS the sail so there is no rectangle to read. */
+        float fall = exp(-vFromPole * vFromPole * 2.8);
+        gl_FragColor = vec4(uFront, 1.0) * (uGain * fall * WASH_TEMPER);
       }
     `,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    side: THREE.DoubleSide,
+    /* FrontSide: the sail geometry already emits both windings, and
+     * DoubleSide on that would paint the glow twice. */
+    side: THREE.FrontSide,
     fog: false,
     polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
   });
 }
 
 function virtualGate(clearW, clearH, marker = {}) {
   const g = new THREE.Group();
-  const edgeX = clearW * 0.5;
   const isCone = marker.type === 'cone';
   const flagH = Math.max(0.4, marker.height ?? clearH);
   const poleR = Math.max(0.008, marker.poleRadius ?? 0.02);
   const coneR = Math.max(0.05, marker.baseRadius ?? 0.18);
   const markerYaw = marker.yaw ?? 0;
-  const mast = flagMast(flagH);
-  /* The wash is the FLAG's width, plus a little air past the trailing
-   * edge so the falloff has somewhere to die. A 2.5 m feather is about
-   * 0.6 m of cloth; the scoring square is 4.5 m. Painting the square
-   * was the box. */
-  const washW = Math.max(0.7, mast.width * 2.2 + 0.28);
-  const washH = flagH * 1.04;
 
   const ringMat = new THREE.MeshBasicMaterial({
     color: NEXT_COLOUR,
     transparent: true,
-    opacity: 0.72,
+    opacity: 0.62,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     fog: false,
@@ -1933,7 +1921,7 @@ function virtualGate(clearW, clearH, marker = {}) {
   const haloMat = new THREE.MeshBasicMaterial({
     color: NEXT_COLOUR,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.22,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     fog: false,
@@ -1954,32 +1942,24 @@ function virtualGate(clearW, clearH, marker = {}) {
     halo = new THREE.Mesh(new THREE.ConeGeometry(coneR * 1.45, flagH * 1.06, 10), haloMat);
     halo.position.y = flagH * 0.5;
   } else {
-    core = new THREE.Mesh(flagMastGeometry(poleR * 2.4, flagH), ringMat);
-    halo = new THREE.Mesh(flagMastGeometry(poleR * 7.2, flagH), haloMat);
+    core = new THREE.Mesh(flagMastGeometry(poleR * 2.2, flagH), ringMat);
+    halo = new THREE.Mesh(flagMastGeometry(poleR * 4.6, flagH), haloMat);
   }
   core.layers.set(1);
   halo.layers.set(1);
   holder.add(core);
   holder.add(halo);
 
-  const flagWash = new THREE.Mesh(markerWashGeometry(washW, washH), glowMat);
-  flagWash.layers.set(1);
-  holder.add(flagWash);
+  let sailGlow = null;
+  if (!isCone) {
+    sailGlow = new THREE.Mesh(flagSailGeometry(poleR, flagH), glowMat);
+    sailGlow.layers.set(1);
+    holder.add(sailGlow);
+  }
 
-  const travelWash = new THREE.Mesh(markerWashGeometry(washW, washH), glowMat);
-  travelWash.layers.set(1);
-  g.add(travelWash);
-
-  const setPole = (localX, gateYaw = 0) => {
-    const s = localX >= 0 ? 1 : -1;
-    holder.position.x = s * edgeX;
+  const setPole = (localX, localZ, localY, gateYaw = 0) => {
+    holder.position.set(localX, localY, localZ);
     holder.rotation.y = markerYaw - gateYaw;
-    travelWash.position.x = s * edgeX;
-    /* u = 0 is the pole. The pass side of the square is toward the
-     * origin, so the travel wash has to run that way: scale.x flips
-     * the plane rather than re-uving it. The flag wash lives on the
-     * holder and follows the sail, which may not be the pass side. */
-    travelWash.scale.x = -s;
   };
 
   return {
@@ -1987,13 +1967,14 @@ function virtualGate(clearW, clearH, marker = {}) {
     kindName: 'virtualGate',
     top: clearH,
     markerH: flagH,
-    animate: [holder, travelWash],
+    animate: [holder],
+    holder,
     ringMat,
     haloMat,
     ringMeshes: [core],
     haloMeshes: [halo],
     glowMat,
-    glowMesh: travelWash,
+    glowMesh: sailGlow,
     cueGroup: null,
     fillMat: null,
     ringColor: NEXT_COLOUR,
@@ -2375,6 +2356,10 @@ function circuitGuideCues(placements) {
  */
 function courseProps(course, height, scene, colliders, baker, kit, padDecks = []) {
   const mats = sharedObstacleMats();
+  /* Live groups the next-flag glow can parent onto, keyed by element id.
+   * A glow that lives on the scoring square, even a small one, is still
+   * a box beside the flag. The overlay has to share the flag's origin. */
+  const markerHosts = new Map();
   /* Which sail print each marker gets, so a course's flags alternate the
    * way the field's do rather than all being the same one. */
   let markerIndex = 0;
@@ -2437,6 +2422,10 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       cone.castShadow = true;
       baker.bake(cone);
       colliders.add('obstacle', s.x, y, s.z, s.x, y + h, s.z, r);
+      const host = new THREE.Group();
+      host.position.set(s.x, y, s.z);
+      scene.add(host);
+      markerHosts.set(s.id, host);
       continue;
     }
     if (s.type === 'flag') {
@@ -2463,6 +2452,7 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       made.group.remove(made.pole);
       made.group.remove(made.foot);
       scene.add(made.group);
+      markerHosts.set(s.id, made.group);
       const flagR = Math.max(0.05, s.dims.poleRadius);
       /* The straight pole, then the whip that leans off it. See
        * mastWhipCollider: one vertical post stops covering the mast the
@@ -2502,6 +2492,7 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       }
     }
   }
+  return markerHosts;
 }
 
 /*
@@ -3304,7 +3295,7 @@ function sailMaterial(tex, key) {
      * flagSailGeometry: DoubleSide is invisible to the outline prepass's
      * override material and made half the flags transparent. */
     side: THREE.FrontSide,
-    cloth: 0.085,
+    cloth: FLAG_SAIL_CLOTH,
     key,
   });
 }
@@ -3835,6 +3826,17 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   );
 
   /*
+   * Flags and cones have to exist before their scoring stations, because
+   * the next-flag glow is parented onto the marker the pilot can see.
+   * Building the glow on the scoring square, even a small one, is how
+   * the last round still drew a box.
+   */
+  const padDecks = [];
+  const markerHosts = course
+    ? courseProps(course, height, scene, colliders, baker, kit, padDecks)
+    : new Map();
+
+  /*
    * How high a structure stands, at the point it stands, so the title
    * screen's flythrough can clear it. Filled from each obstacle's own world
    * bounding box rather than from its spec, because a tilted gate on a mast
@@ -3867,15 +3869,26 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     const p = { x: st.x, z: st.z };
     g.position.set(st.x, y, st.z);
     g.rotation.y = yaw;
-    if (st.virtual && made.setPole && st.poleX != null) {
-      /* Which local side of the corridor the pole is on, measured with the
-       * inverse of the rotation just applied rather than a second copy of
-       * the yaw convention. The marker yaw is the FLAG's heading, which is
-       * not the travel heading, so setPole also needs the gate yaw to put
-       * the sail wash on the cloth rather than across the scoring square. */
+    const host = st.virtual && st.elementId ? markerHosts.get(st.elementId) : null;
+    if (host && made.holder) {
+      /* Same origin and yaw as the flag or cone. The overlay is then the
+       * marker's own mesh, not a copy aimed from the scoring square. */
+      made.holder.removeFromParent();
+      made.holder.position.set(0, 0, 0);
+      made.holder.rotation.set(0, 0, 0);
+      host.add(made.holder);
+      made.animate.length = 0;
+    } else if (st.virtual && made.setPole && st.poleX != null) {
+      /* Fallback when the marker has no live host: put the holder on the
+       * pole in the scoring square's frame, including the ground-height
+       * difference so a slope does not leave the glow hanging. */
       const dx = st.poleX - st.x;
       const dz = st.poleZ - st.z;
-      made.setPole(Math.cos(yaw) * dx - Math.sin(yaw) * dz, yaw);
+      const cs = Math.cos(yaw);
+      const sn = Math.sin(yaw);
+      const poleY = height(st.poleX, st.poleZ)
+        + ((st.structure && st.structure.baseY != null) ? st.structure.baseY : st.baseY);
+      made.setPole(cs * dx - sn * dz, sn * dx + cs * dz, poleY - y, yaw);
     }
     const scored = st.stations.filter((s) => s.apertureIndex != null);
     if (scored.length > 1) {
@@ -4020,14 +4033,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     }
   }
 
-  /* Barriers, flags, cones and the start pads a designed course carries. */
-  const padDecks = [];
-  if (course) {
-    courseProps(course, height, scene, colliders, baker, kit, padDecks);
-  }
-
-  /*
-   * Athletic paint on the ground: a dashed taut-string line, arrows only
+  /* Athletic paint on the ground: a dashed taut-string line, arrows only
    * at a height decision (two side by side: go up, one: stay low), and a
    * wrap on an isolated flag. Designed courses bring the guide already
    * converted; the built in circuit samples its own curve in the direction
@@ -4972,6 +4978,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
        * 0.62, pane 0.12 to 0.20, a transparency gradient rather than a
        * floodlight, and the flag above the header stays visible. */
       gt.glowMat.uniforms.uGain.value = 0.55 + 0.18 * pulse;
+      if (gt.glowMat.uniforms.uCelTime) {
+        gt.glowMat.uniforms.uCelTime.value = t;
+      }
       gt.haloMat.opacity = 0.40 + 0.22 * pulse;
       if (gt.ringMat.transparent) {
         gt.ringMat.opacity = 0.58 + 0.22 * pulse;

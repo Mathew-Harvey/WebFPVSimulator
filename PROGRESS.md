@@ -18010,4 +18010,21 @@ Checks this turn before verify: `npm run build:wasm` 0. vendor
 diff empty. `npm run contact:selftest` all passed, including
 the new 135 deg halo case. isolation vs `8daa450` wasm clean
 on free-air and walls. `node src/trackbuilder/selftest.js` 382
-passed. `npm run verify` follows the commit.
+passed.
+
+## Adversarial review: verify after the halo fix
+
+`npm run verify` this turn, after `e54243c`:
+
+- Checks 1 to 14 PASS. Trace hash `de0401cd4266` on 2, 3 and 4,
+  unchanged from `8daa450` and from the first unglue commit.
+  Every numeric flight check matches the previous plant run
+  (hover 0.2793, punch 80.0 m, terminal 31.0 m/s, motor 26 ms,
+  rate 671.7, yaw -0.10, sag 11.14, ratio 1.2472). Ground
+  settle did not leak into free air.
+- Check 15 FAIL and check 16 FAIL: same custom-empty boot map
+  as before (gate opening 0, field budget 93 / 913063 / 29 /
+  101). Thresholds not moved.
+
+Harness is green on the flight checks. Feel is awaiting human
+judgement.

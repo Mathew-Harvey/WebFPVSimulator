@@ -17292,3 +17292,12 @@ four corners of the icosahedron's box as air, which is the remaining
 honest gap between "hug the leaves" and a triangle mesh. Do not go
 back to a 0.55 m flood for that.
 
+## Merge origin/main into the city-simplify branch
+
+Simple conflict, one file. PROGRESS.md is append-only and both sides
+wrote after the cone-clearance correction. origin/main's flag-glow,
+wiki and credits entries are kept first, then this branch's city
+entries. src/main.js auto-merged: MAP_MODULE_COUNT.city stays 63
+(petals.js is out of the import graph) and main's next-flag HUD lock
+stays off in frame.
+

@@ -17480,3 +17480,49 @@ Verify this turn: `node --check` on the edited files. Headless city
 load, flight-line probes and overlay shots follow this commit.
 `npm run verify` was not run: city map, not the plant.
 
+## Open-frame gaps: measured
+
+Headless city load with `__CITY_SCAN`, probes with a 40 m search so a
+teaching-block box cannot hide by having its centre far from the
+mouth. Overlay shots in `/opt/cursor/artifacts/frames_gap_*.png`.
+
+Flight lines (Three.js Y-up), empty unless noted:
+
+- street `(0, 2.0, 12)` empty
+- overbridge undercroft `(41, 3.0, 0)` empty
+- cage tunnel `(41, 8.4, 0)` empty
+- roof bay `(41.5, 9.95, -0.5)` empty
+- ridge `(41, 10.0, 0)` HIT 0.14 x 0.12 x 10
+- eave post `(42.25, 8.4, -5.5)` HIT 0.12 x 2.55 x 0.12
+- bell mouth `(29.25, 13.05, -48.6)` empty
+- bell post `(28.43, 13.05, -49.3)` HIT 0.2 x 2.5 x 0.2
+- tank gap `(30.85, 12.45, -63.6)` empty
+- tank body `(30.85, 13.8, -63.6)` HIT 2.9 x 1.62 x 2.5
+- torii `( -27.9, 1.8, 19.9 )` empty
+- nuki `( -27.9, 2.45, 19.9 )` HIT 4.00 x 0.15 x 0.23
+- goal `(39.9, 1.0, -56.5)` empty
+- haiden bay `( -27.9, 4.1, 34.2 )` empty
+- 渡り廊下 `(28.5, 1.6, -73.75)` empty
+
+Scan vs check 15 (ceilings not edited): phantom 2177 / 29000,
+overFive 114 / 350, holes 10626 / 20300, meanCover 0.578 / 0.45.
+`expectedModules` 63. city colliders 10684, total boxes 12815.
+Console 0.
+
+What went wrong this turn:
+
+- First probe used `heightAt` for the bell, which is terrain (1.05),
+  not the roof (11.85). The mouth is at 13.05.
+- Naming the posts COVER_SOFT stopped the cover pass and did not
+  stop roof-lift: the teaching-block rectangle still owned the cap
+  and tank body in plan.
+- After skipping COVER_SOFT in the fit, the roof chain-link ring
+  still voted on every slab, so the block stayed one prism to
+  parapet height (13.56) and walled the tank legs. `chainLink` is
+  now COVER_SOFT. Authored parapet boxes stay, and they are tight.
+- `__colliderBoxes` filters by box centre, so a 22 m teaching-block
+  prism can contain the bell mouth and still be omitted from an
+  8 m dump. Probes now use 40 m.
+
+`npm run verify` was not run: city map, not the plant.
+

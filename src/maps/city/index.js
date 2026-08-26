@@ -485,6 +485,10 @@ class CityPipeline extends Pipeline {
  * 2 cm below the deck so that a craft descending onto it meets the landing
  * judgement first and the slab only ever catches something arriving from
  * below.
+ *
+ * `solid: false` keeps the platform for walking (`heightAt`) and skips the
+ * slab. Stair treads are the case: the going is narrower than the craft, so
+ * consecutive slabs overlap in plan and the climb line hits the next pan.
  */
 const PLATFORM_SOLID_MIN = 0.6;
 const PLATFORM_SLAB_THICK = 0.25;
@@ -1472,6 +1476,9 @@ function buildColliders(world) {
     /* fromY far below excludes every platform from the query, so this is the
      * bare ground under the platform: exactly what "how high is this deck"
      * has to be measured against. */
+    if (p.solid === false) {
+      continue;
+    }
     const cx = (p.x0 + p.x1) * 0.5;
     const cz = (p.z0 + p.z1) * 0.5;
     const bare = world.heightAt(cx, cz, -1000);

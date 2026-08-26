@@ -268,8 +268,8 @@ function flight(ctx, o) {
      * treads is a hole the player drops through. */
     const p0 = t - GOING / 2 - 0.03, p1 = t + GOING / 2 + 0.03;
     ctx.platform(axis === 'z'
-      ? { x0: at - half, x1: at + half, z0: Math.min(p0, p1), z1: Math.max(p0, p1), top: y }
-      : { x0: Math.min(p0, p1), x1: Math.max(p0, p1), z0: at - half, z1: at + half, top: y });
+      ? { x0: at - half, x1: at + half, z0: Math.min(p0, p1), z1: Math.max(p0, p1), top: y, solid: false }
+      : { x0: Math.min(p0, p1), x1: Math.max(p0, p1), z0: at - half, z1: at + half, top: y, solid: false });
   }
 
   /* Stringers: one sloping plate each side, built as a sheared box.  A
@@ -365,12 +365,15 @@ function flight(ctx, o) {
       const b = Math.max(t0, t1);
       const yTread = y0 - RISE * (i + 1);
       const yLo = yTread - 0.42;
+      /* Top 0.28 m under the pan, below a neighbour-step craft (rise 0.18,
+       * 0.10 m fly height, 0.12 m pitched vHalf). A soffit to -0.08 m is
+       * still inside that envelope, and the going is only 0.28 m. */
       if (axis === 'z') {
         ctx.collide(at - half + soffitPad, a, at + half - soffitPad, b,
-          yTread - 0.08, yLo, true);
+          yTread - 0.28, yLo, true);
       } else {
         ctx.collide(a, at - half + soffitPad, b, at + half - soffitPad,
-          yTread - 0.08, yLo, true);
+          yTread - 0.28, yLo, true);
       }
       for (const s of [-1, 1]) {
         const edge = at + s * (half - 0.05);
@@ -411,7 +414,7 @@ function landing(ctx, o) {
   ctx.add(slab);
   hullOutline(slab, { thickness: 0.003 });
   // padded so it overlaps the flight and deck platforms rather than meeting them
-  ctx.platform({ x0: x0 - 0.05, x1: x1 + 0.05, z0: z0 - 0.05, z1: z1 + 0.05, top: y });
+  ctx.platform({ x0: x0 - 0.05, x1: x1 + 0.05, z0: z0 - 0.05, z1: z1 + 0.05, top: y, solid: false });
   /* Underside only, and pulled back from sides that are not railed.
    * A prism to the walking surface is a lip: the first pan is GOING/2
    * (0.14 m) from the edge and the craft is 0.17 m across, so a descent

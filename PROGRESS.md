@@ -18217,3 +18217,39 @@ Check 15 ceilings were not edited. MAP_MODULE_COUNT.city stays
 63. `node --check` on the edited file. Headless probes and
 overlay shots follow this commit. `npm run verify` was not
 run: city map, not the plant.
+
+## Overbridge stair fly channel: platform slabs
+
+The first fly-channel commit was not enough. Headless probes
+with vh 0.12 still hit every pan on the climb and descent
+line. The boxes were 2.4 x 0.23 x 0.34: `buildColliders`
+turns every platform more than 0.6 m off the ground into a
+0.25 m slab whose top is 2 cm below the walking surface.
+
+That slab is meant to catch a craft arriving from below a
+deck. On these pans it is the same overlapping going problem
+as the authored pan boxes. Consecutive treads overlap in plan
+by the craft radius, the rise is 0.18 m, and the slab is
+0.23 m thick, so a craft on one step is inside the next
+step's floor.
+
+Landing platforms did the same at the lip: a 2.7 x 0.23 x
+2.5 m floor 2 cm under the walking surface.
+
+Fix:
+
+- `solid: false` on overbridge tread and landing platforms.
+  `heightAt` still walks them. `buildColliders` skips the
+  slab.
+- Soffit top dropped from 8 cm under the pan to 28 cm, below
+  a neighbour-step craft at 0.10 m fly height with 0.12 m
+  pitched vHalf. The 8 cm soffit was still inside that
+  envelope.
+
+Stringers, landing underside collide, and COVER_SOFT naming
+stay. Deck platform still emits a slab: girders do not fill
+the bay between them.
+
+`node --check` on `src/maps/city/index.js` and
+`overbridge.js`. Headless probes follow. `npm run verify` was
+not run: city map, not the plant.

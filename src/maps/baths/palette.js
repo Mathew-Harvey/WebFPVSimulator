@@ -21,7 +21,7 @@
  */
 
 export const PAL = {
-  skyTop: 0x6a7898,
+  skyTop: 0x4a5480,
   skyMid: 0xd0a888,
   skyHaze: 0xf0c090,
   cloud: 0xf8f0e0,

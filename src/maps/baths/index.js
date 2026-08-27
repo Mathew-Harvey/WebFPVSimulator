@@ -143,7 +143,7 @@ export async function buildMap(shell, onProgress, options) {
   });
   pipeline.enabled.ink = bq.ink;
   pipeline.enabled.fxaa = bq.fxaa;
-  pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0xc4a890);
+  pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0xb8a8c8);
   pipeline.grade.mat.uniforms.uLightTint.value.setHex(0xffe8d0);
   pipeline.grade.mat.uniforms.uWarmth.value = 0.07;
   pipeline.grade.mat.uniforms.uSaturation.value = 1.08;

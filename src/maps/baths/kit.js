@@ -61,17 +61,20 @@ export const L = {
     thick: 0.22,
   },
   plant: {
-    x0: 25.4, x1: 30.55, z0: -12.4, z1: -4.2, y0: -3.6, lip: 1.15,
+    x0: 25.4, x1: 30.55, z0: -12.55, z1: -4.2, y0: -3.6, lip: 1.15,
   },
   lockers: {
-    x0: 29.15, x1: 30.55, z0: 8.4, z1: 12.55,
+    x0: 30.05, x1: 30.55, z0: 3.6, z1: 6.7,
+  },
+  hopper: {
+    z0: -6.25, z1: -4.2,
   },
   wells: [
     { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
     { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
   ],
   sw: {
-    x0: -29.5, x1: -24.2, z0: -13.5, z1: -8.2, h: 20,
+    x0: -31.5, x1: -26.2, z0: 8.2, z1: 13.5, h: 20,
   },
   ne: {
     x0: 26.2, x1: 31.5, z0: 8.2, z1: 13.5, h: 20,
@@ -91,19 +94,14 @@ export function materials() {
     hillShade: cel({ color: PAL.hillShade, bands: 2, tint: t }),
     tile: cel({ color: PAL.tile, bands: 3, tint: t }),
     tileDeep: cel({ color: PAL.tileDeep, bands: 3, tint: t }),
-    steel: cel({ color: PAL.steel, bands: 2, tint: t }),
     steelDark: cel({ color: PAL.steelDark, bands: 2, tint: t }),
     litter: cel({ color: PAL.litter, bands: 2, tint: t }),
     orange: flat({ color: PAL.orange }),
-    navy: flat({ color: PAL.navy }),
     white: flat({ color: PAL.bandWhite }),
-    safety: flat({ color: PAL.safety }),
-    bandRed: flat({ color: PAL.bandRed }),
     pane: flat({ color: PAL.glassDark }),
     tileLine: flat({ color: PAL.tileLine }),
     hill: flat({ color: PAL.hill, fog: true }),
     hillFar: flat({ color: PAL.hillFar, fog: true }),
-    well: flat({ color: PAL.creamSun }),
   };
 }
 

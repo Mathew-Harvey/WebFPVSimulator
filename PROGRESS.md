@@ -18542,6 +18542,67 @@ stay registered. `npm run verify` was not run: no plant, ABI, build
 or threshold change. Check 16 was not re-run; bando still copies cel
 and does not import city.
 
+## Turtle mode: mixer latch, prompt, stick flip
+
+Owner report: landing props down auto-snapped the hull upright. Wanted
+a TURTLE MODE prompt and pitch or roll to flip back over.
+
+No advisor channel. Plant shape unchanged. ABI unchanged. DShot reverse
+is still not modelled. The compiled Betaflight 4.5.1 crashflip mixer
+(`applyFlipOverAfterCrashModeToMotors`) is the flip, not a JS reimplementation.
+
+Quicksilver (BossHobby/QUICKSILVER `turtle_mode.c`, docs.bosshobby.com):
+arm while inverted, pitch/roll poke, 1 s assisted burst, DShot reverse,
+auto-exit at gravity-z > 0.5, then forced disarm. Whoop-oriented. This
+sim is a 5 inch and already compiled BF 4.5.1 mixer crashflip, so the
+shell copies QS UX (inverted gate, prompt, auto-drop, no extra aux) and
+BF's hold-to-spin mix. It does not copy the 1 s 100 percent burst.
+
+Shell:
+
+- `trySnapUpright` is gone. Same enter gate (`shouldEnterTurtle`: inverted,
+  v < 4, w < 8, contact or clearance < 0.15, not launch staging) now
+  latches `sim_set_crashflip(1)`. Drop at `upz > 0.35`.
+- Banner `TURTLE MODE / Pitch or roll to flip over` while latched, after
+  launch prompts, before the takeoff hint / guided / lap flash.
+- OSD mode reads Turtle while latched.
+- Waiting inverted with sticks centered freezes the integrator
+  (`isTurtleParked`). Plant settle is skipped while crashflip is on, and
+  rest-after-the-frame still walked attitude (~33 deg in 20 frames before
+  the freeze). Pitch or roll, or leftover rate, unfreezes it.
+- After drop, pitch/roll are ignored until the stick recentres
+  (`turtleRecover`). Otherwise airmode inherits the turtle throw. Roll
+  without this gate fell back to ~85 deg after a 0.79 peak.
+
+Feel, measured in the live shell against `dist/sim.wasm`:
+
+- Idle inverted 45 frames: upz -1.000, tilt 179.95, turtle latched,
+  banner and OSD Turtle. No snap.
+- Pitch -1: crosses 0.35 at ~184 ms, peak upz 0.77 to 0.83, hull upright.
+- Roll +1: crosses 0.35 at ~200 ms, after recover-gate perch at tilt 20.5,
+  upz 0.937.
+
+Wrong this turn:
+
+- First wait used `sim.rest()` after each flying frame. Pose still walked
+  because settle is skipped during the 1 ms steps. Freeze is the fix.
+- Roll with the stick held through drop was an airmode yank. Recover gate.
+- `__seatCraft('inverted')` used to promise a snap next frame. It now
+  latches turtle.
+
+Checks: `node --check` on the edited JS. `node src/trackbuilder/selftest.js`
+387 passed, 0 failed. `npm run contact:selftest` all passed (plant path
+unchanged). Live shell: invert, prompt, idle hold, pitch flip, roll flip.
+
+`npm run verify` was not run: JS shell and comments only, no plant, ABI,
+build or threshold change. Free-air traces cannot see crashflip or ground.
+
+Possible effect: a props-down arrival no longer teleports upright. The
+pilot has to turtle. Missing DShot reverse still means the couple is
+mixer differential against the inverted bump, not reverse thrust. The
+flip wobbles near 90 deg then completes. If that feels weak on a board,
+reverse is the plant-shape change, not a mixer rewrite.
+
 ### 2026-08-27 | plant | Turtle is Betaflight crashflip
 
 Asked: inverted hulls should turtle like a real quad, not snap upright.
@@ -18582,5 +18643,120 @@ kiln, roof hole, preheater, gantry, pit.
 Verify: syntax of the new modules was not node-checked here (node not
 on PATH). `npm run verify` was not run: commit request, no ABI shape
 change beyond the turtle latch already in sim.c comments.
+
+### 2026-08-27 | map | Municipal baths, collision and AAA pass
+
+Asked: a third freestyle map unique to what FPV pilots fly, cel shaded,
+adversarial design then implement, leftover pass, then furniture and
+paint so it reads as a finished game.
+
+Westgate car park was the first draft. Four adversarial reviews killed
+it. AABB cannot land a ramp, the city already has roof decks and a
+supermarket, stacked grey slabs cannot peer the kiln. Lock is Municipal
+baths, id `baths`. Empty 50 m pool is the kiln tube. 10 m diving tower
+is the vertical. No landable ramps. Stairs sealed. Golden hour. One
+toon accent: cyan tile. Orange is unlit trim.
+
+Round 1 on the first hall: BLOCK on shared-volume corners, door steel
+inside the lintel, plant hopper that did not punch the pool wall, start
+block leftovers, audit reading `colliders.ax` after `build()`, yellow
+plaza architecture, sign dump. Art: REVISE the spawn still. Creative:
+keep baths, strip supermarket language.
+
+What changed:
+- Long walls own corners. Door steel is paint. Mouth 12.4 x 5.8 m.
+- Both mouth towers are L-colliders plus a visual prism. Roof is holed
+  over the plugs so they do not share volume with the deck.
+- Plant pit hopper punches the deep-end east wall on z -6.25 to -4.2.
+  Floor inset, lips match wall thickness 0.4 m.
+- One start kerb flush to the pool west outer. Lockers on the east
+  inner, 1.5 m from the NE plug.
+- Three-sided dive shaft, landable boards, FINA heights, canvas 3 / 5 /
+  7.5 / 10 facing the pool, extra 10 on the far wall for the title still.
+- Dress: CIVIC BATHS fascia, crest, CLOSED FOR FLYING, waterline, life
+  rings on the piers, mural, two banners, plaza stamp. No FPV blob, no
+  scoreboard, no GALLERY / CHANGING / PLANT, no yellow jerseys.
+- `leftoverScan` ignores a pairwise slot if a third box occupies it
+  (wall thickness sitting between two faces). After the lip flush,
+  leftoverDeath 0, leftoverOverlap 0.
+
+Isolation: cel kit copied to `src/maps/baths/cel`, palette local, no
+city or bando import. MAP_MODULE_COUNT.baths is 14. Cold fetch listed
+those 14. World stage measured 324 to 369 ms; MAP_BUILD_MS.baths is 370.
+
+Live shell at `?map=baths`: audit poolOk 600, poolWrong 0, wellGhost 0,
+galleryMiss 0, leftoverDeath 0, leftoverOverlap 0, 94 boxes, 14 meshes,
+2688 triangles. Spawn look reads cream hall, cyan pool, navy fascia,
+orange trim. Interior look reads the 10 m tower numerals.
+
+Wrong this turn: first leftover scan counted hall `t` as a death band.
+Camera parked in a 556 x 1574 portrait tab, so the title still is a
+tall crop, not a 16:9 poster. HttpListener on :8000 was dead; the map
+was served from :8799.
+
+`npm run verify` was not run: map and canvas only, no plant, ABI, build
+or threshold change. Check 16 was not re-run; baths still copies cel
+and does not import city.
+
+### 2026-08-27 | shell | Turtle mode, mixer latch, no snap
+
+Asked: land props-down, prompt TURTLE MODE, pitch or roll to flip.
+No auto-snap. Do not break flight feel. Research Quicksilver, fan out,
+adversarial review, loop until it is done.
+
+Decision: copy Quicksilver UX (inverted gate, prompt, auto-drop, no
+extra aux) and Betaflight 4.5.1 hold-to-spin mixer. Do not copy the
+1 s 100 percent DShot reverse burst. Plant and ABI unchanged.
+
+`trySnapUpright` is gone. Enter (inverted or on its side, slow, in
+contact) latches `sim_set_crashflip`. Drop at `upz > 0.5` with
+`sim.rest()` on that edge so leftover couple cannot carry them inverted
+again. Waiting hulls freeze the integrator. Pitch or roll past 0.15
+unfreezes. After drop, raw stick is ignored until it recentres, and
+angle mode stays off until then.
+
+Two review passes. First pass killed clearance-only latch (mid-air
+freeze), parked only while `upz < 0` (90 deg stall hole), and recover
+that never cleared while perched. Second pass killed sticky
+`turtleOnSupport` (obstacle graze froze the hull in world space),
+pause still saying "arrow keys" while those keys drove the menu,
+launch/GO/target-lock stealing the prompt, and keyboard angle
+self-levelling through recover.
+
+Tried and reverted: drop at 0.85, ease the stick as they upright, wait
+for rate to die before dropping. Holding full stick through that band
+was a backflip. Rest at 0.5 is the drop that actually perches.
+
+Live shell, `http://127.0.0.1:8799/?turtle=fix7`:
+
+- Idle inverted 45 frames: upz -1.000, tilt 180, parked, panel
+  `TURTLE MODE / Arrow keys / Hold pitch or roll to flip over`, OSD
+  Turtle. No snap, no drift.
+- Pitch -1: crosses 0.5 at 200 ms. Centre stick. 40 frames later:
+  landed, tilt 12.2, upz 0.977.
+- Roll +1: crosses 0.5 at 200 ms. Centre stick. 40 frames later:
+  landed, tilt 1.75, upz 1.000.
+- Recover banner: `Let go of the arrows, then fly`.
+- Pause while inverted: `TURTLE MODE / Resume, then flip over`.
+
+Wrong this turn: first wait used `sim.rest()` after flying frames and
+the pose still walked (settle is skipped during crashflip steps).
+Freeze is the fix. A 25 ms motor-override spindown taxed the lap clock
+and was removed. Exit at 0.85 overshot. DShot reverse is still not
+modelled; the flip wobbles near 90 deg then rest-stops at 0.5.
+
+Declined: `audio.event('turtle')` (no cue exists), hiding the throttle
+bar, zeroing `motor_omega` inside `sim_rest` (plant change, advisor).
+Snap aliases stay for old collide tests.
+
+Checks: `node --check` on edited JS. `node src/trackbuilder/selftest.js`
+393 passed. `npm run contact:selftest` all passed (plant path
+unchanged). Live shell as above.
+
+`npm run verify` was not run: JS shell and comments only, no plant,
+ABI, build or threshold change. Free-air traces cannot see crashflip
+or ground.
+
+
 
 

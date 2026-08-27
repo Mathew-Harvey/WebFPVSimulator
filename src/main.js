@@ -59,7 +59,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, shouldExitTurtle, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, shouldExitTurtle, shouldParkTurtle, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, TURTLE_EXIT_UPZ, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -1274,6 +1274,12 @@ export async function boot({ loading, bootStart, mapId }) {
   /* After crashflip drops, ignore pitch/roll until the stick recentres.
    * Otherwise airmode inherits the turtle throw and yanks the hull back. */
   let turtleRecover = false;
+  /* Obstacle roofs (train, etc.) are not sim_ground_contacts. Remember
+   * that the hull is sitting on one so park and latch still work. */
+  let turtleOnSupport = false;
+  /* sim_motor_override(all, 0) while parked, cleared on unpark. rest()
+   * does not zero motor_omega, and hot rotors yank when the wait ends. */
+  let turtleParkMotors = false;
   /* -1: FPV. 0..INTRO_TOTAL: orbit, approach, then zoom at the start of a run. */
   let introMs = -1;
   /*
@@ -1410,7 +1416,13 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     if (crashflipOn && !next) {
-      turtleRecover = true;
+      const ch = input.channels;
+      const raw = Math.sqrt(ch.roll * ch.roll + ch.pitch * ch.pitch);
+      const keysHeld = input.keys.has('ArrowUp')
+        || input.keys.has('ArrowDown')
+        || input.keys.has('ArrowLeft')
+        || input.keys.has('ArrowRight');
+      turtleRecover = raw >= TURTLE_STICK_MIN || keysHeld;
     } else if (next) {
       turtleRecover = false;
     }
@@ -1418,8 +1430,60 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.e.sim_set_crashflip(next ? 1 : 0);
   }
 
+  function setTurtleParkMotors(on) {
+    const next = Boolean(on);
+    if (next === turtleParkMotors) {
+      return;
+    }
+    turtleParkMotors = next;
+    /* Override only. rest() while crashflip is on still leaves motor
+     * omega; the mixer overwrites duty on the first unparked step.
+     * Do not step 25 ms here: that taxed the lap clock and walked
+     * contact with settle skipped. */
+    sim.motorOverride(-1, next ? 0 : -1);
+  }
+
+  const turtleRcOut = [0, 0];
+  function turtleAxes(roll, pitch) {
+    /* Keyboard analogMag takes ~85 ms to clear the mixer deadband.
+     * While crashflip is on, a held arrow is a full poke, same as a
+     * radio stick slammed to the stop. Touch gets the same once the
+     * pad has moved, so a timid thumb still turtles. */
+    if (crashflipOn) {
+      if (input.keys.has('ArrowRight')) {
+        roll = 1;
+      } else if (input.keys.has('ArrowLeft')) {
+        roll = -1;
+      } else if (input.isTouchPrimary() && roll > 0.08) {
+        roll = 1;
+      } else if (input.isTouchPrimary() && roll < -0.08) {
+        roll = -1;
+      }
+      if (input.keys.has('ArrowDown')) {
+        pitch = 1;
+      } else if (input.keys.has('ArrowUp')) {
+        pitch = -1;
+      } else if (input.isTouchPrimary() && pitch > 0.08) {
+        pitch = 1;
+      } else if (input.isTouchPrimary() && pitch < -0.08) {
+        pitch = -1;
+      }
+    }
+    turtleRcOut[0] = roll;
+    turtleRcOut[1] = pitch;
+    return turtleRcOut;
+  }
+
   function turtleHoldStick(roll, pitch) {
     if (!turtleRecover) {
+      return false;
+    }
+    /* Recover is only for a hull that already cleared 0.5. In the
+     * exit band, crashflip re-latches and must see the stick. Never
+     * clear recover onto a held stick while still upright enough
+     * that airmode would inherit the throw. */
+    if (stateCurr && plantUpZ(stateCurr) <= TURTLE_EXIT_UPZ) {
+      turtleRecover = false;
       return false;
     }
     if ((roll * roll + pitch * pitch) < TURTLE_STICK_MIN * TURTLE_STICK_MIN) {
@@ -1429,27 +1493,119 @@ export async function boot({ loading, bootStart, mapId }) {
     return true;
   }
 
+  function applyTurtleRc(roll, pitch) {
+    const ax = turtleAxes(roll, pitch);
+    if (turtleHoldStick(ax[0], ax[1])) {
+      turtleRcOut[0] = 0;
+      turtleRcOut[1] = 0;
+    }
+    return turtleRcOut;
+  }
+
   function turtleStickMag() {
-    const ch = input.channels;
-    return Math.sqrt(ch.roll * ch.roll + ch.pitch * ch.pitch);
+    const smp = rcPending.length ? rcPending[rcPending.length - 1] : null;
+    const roll = smp ? smp.roll : input.channels.roll;
+    const pitch = smp ? smp.pitch : input.channels.pitch;
+    const ax = turtleAxes(roll, pitch);
+    return Math.sqrt(ax[0] * ax[0] + ax[1] * ax[1]);
+  }
+
+  function turtleInContact() {
+    if (lastGroundHits > 0 || turtleOnSupport) {
+      return true;
+    }
+    /* Invert-stop can weld a props-down hull with hits 0 in the 8 mm
+     * halo. Count that as seated, not as air. */
+    return Boolean(stateCurr)
+      && plantUpZ(stateCurr) < 0
+      && lastClearance < REST_HEIGHT + 0.02;
+  }
+
+  function turtleCueSource() {
+    if (
+      input.keys.has('ArrowUp')
+      || input.keys.has('ArrowDown')
+      || input.keys.has('ArrowLeft')
+      || input.keys.has('ArrowRight')
+    ) {
+      return 'keys';
+    }
+    if (input.isTouchPrimary()) {
+      return 'touch';
+    }
+    if (input.firstGamepad()) {
+      return 'radio';
+    }
+    return 'keys';
+  }
+
+  function turtleBannerText() {
+    if (ui.screen === 'paused' && (crashflipOn || turtleRecover)) {
+      return 'TURTLE MODE\nResume, then flip over';
+    }
+    if (turtleRecover && !crashflipOn) {
+      const src = turtleCueSource();
+      if (src === 'touch') {
+        return 'Let go of the right pad, then fly';
+      }
+      if (src === 'radio') {
+        return 'Centre the right stick, then fly';
+      }
+      return 'Let go of the arrows, then fly';
+    }
+    const src = turtleCueSource();
+    if (src === 'touch') {
+      return 'TURTLE MODE\nRight pad\nHold pitch or roll to flip over';
+    }
+    if (src === 'radio') {
+      return 'TURTLE MODE\nRight stick\nHold pitch or roll to flip over';
+    }
+    return 'TURTLE MODE\nArrow keys\nHold pitch or roll to flip over';
+  }
+
+  function pollTurtleSupport() {
+    if (!stateCurr || launchStaging) {
+      turtleOnSupport = false;
+      return;
+    }
+    poseFromState(stateCurr, pProbe);
+    lastClearance = pProbe.y - view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
+    raiseGroundFromState(stateCurr);
+    lastGroundHits = sim.e.sim_ground_contacts();
+    turtleOnSupport = false;
+    if (!view.colliders) {
+      return;
+    }
+    simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qCollide);
+    qCollide.premultiply(qSpawn);
+    const k = view.colliders.hit(
+      pProbe.x, pProbe.y, pProbe.z,
+      pProbe.x, pProbe.y, pProbe.z,
+      vHalfFrame,
+      qCollide.x, qCollide.y, qCollide.z, qCollide.w,
+    );
+    if (k >= 0 && view.colliders.hitNy > 0.5) {
+      turtleOnSupport = true;
+    }
   }
 
   /*
-   * Waiting inverted with sticks centered: freeze the integrator so
-   * skipped plant settle cannot walk the pose. Pitch or roll, or leftover
-   * rate from a live couple, unfreezes it.
+   * Waiting with crashflip latched, sticks centered, in contact: freeze
+   * the integrator so skipped plant settle cannot walk the pose. Any
+   * attitude: the 0 to 0.5 band is still turtle, not airmode. Pitch or
+   * roll, or leftover rate from a live couple, unfreezes it. No contact
+   * means they are falling, so do not freeze.
    */
   function isTurtleParked() {
-    if (!crashflipOn || !stateCurr) {
+    if (!stateCurr) {
       return false;
     }
-    if (turtleStickMag() >= TURTLE_STICK_MIN) {
-      return false;
-    }
-    if (plantRateMag(stateCurr) >= TURTLE_WAIT_RATE) {
-      return false;
-    }
-    return plantUpZ(stateCurr) < 0;
+    return shouldParkTurtle(
+      crashflipOn,
+      turtleStickMag(),
+      plantRateMag(stateCurr),
+      turtleInContact(),
+    );
   }
 
   function noteTurtleState(st) {
@@ -1460,14 +1616,46 @@ export async function boot({ loading, bootStart, mapId }) {
     return st;
   }
 
+  function plantSpeed(st) {
+    return Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
+  }
+
+  function turtleEnterFromState(st) {
+    if (crashflipOn || launchStaging) {
+      return;
+    }
+    if (shouldEnterTurtle(
+      plantUpZ(st),
+      plantSpeed(st),
+      plantRateMag(st),
+      turtleInContact() || sim.e.sim_ground_contacts() > 0,
+      0,
+      launchStaging,
+    )) {
+      setCrashflip(true);
+      takingOff = false;
+    }
+  }
+
+  function turtleExitFromState(st) {
+    if (!crashflipOn || !shouldExitTurtle(plantUpZ(st))) {
+      return;
+    }
+    sim.rest();
+    setCrashflip(false);
+  }
+
   /*
-   * Keep a waiting inverted hull seated. Plant settle is skipped while
-   * crashflip is latched so the mixer couple is free; with sticks
-   * centered the motors are at disarm, and without this the Baumgarte
-   * bias jitters the hull. Once the stick is past the mixer deadband,
-   * or the couple has already built rate, do not rest.
+   * Keep a waiting hull seated. Plant settle is skipped while crashflip
+   * is latched so the mixer couple is free; with sticks centered the
+   * motors are at disarm, and without this the Baumgarte bias jitters
+   * the hull. In the air, let them fall. Once the stick is past the
+   * mixer deadband, or the couple has already built rate, do not rest.
    */
-  function seatTurtleWait(st) {
+  function seatTurtleWait(st, inContact) {
+    if (!inContact) {
+      return noteTurtleState(st);
+    }
     if (turtleStickMag() >= TURTLE_STICK_MIN || plantRateMag(st) >= TURTLE_WAIT_RATE) {
       return noteTurtleState(st);
     }
@@ -1480,26 +1668,28 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /*
    * Turtle is Betaflight crashflip, not a pose snap. Inverted, slow,
-   * and on the grass (or a few centimetres off it) latches the mixer.
-   * Pitch or roll then spins the high motors. Drop when the hull is
-   * past TURTLE_EXIT_UPZ. The integrator keeps running; perch stays
-   * blocked while crashflip is on.
+   * and in contact latches the mixer. Pitch or roll then spins the
+   * high motors. Drop when the hull is past TURTLE_EXIT_UPZ. Perch
+   * stays blocked while crashflip is on.
    */
-  function updateTurtle(st, inContact, clearance) {
+  function updateTurtle(st, inContact, clearance, mayRest) {
+    const rest = mayRest !== false;
     const upz = plantUpZ(st);
-    const speed = Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]);
+    const speed = plantSpeed(st);
     if (crashflipOn) {
       if (shouldExitTurtle(upz)) {
+        sim.rest();
         setCrashflip(false);
-        return noteTurtleState(st);
+        return noteTurtleState(readState());
       }
-      return seatTurtleWait(st);
+      return rest ? seatTurtleWait(st, inContact) : noteTurtleState(st);
     }
     if (!shouldEnterTurtle(upz, speed, plantRateMag(st), inContact, clearance, launchStaging)) {
       return st;
     }
     setCrashflip(true);
-    return seatTurtleWait(st);
+    takingOff = false;
+    return rest ? seatTurtleWait(st, inContact) : noteTurtleState(st);
   }
 
   function readState() {
@@ -1544,6 +1734,9 @@ export async function boot({ loading, bootStart, mapId }) {
     crashed = false;
     setCrashflip(false);
     turtleRecover = false;
+    turtleOnSupport = false;
+    setTurtleParkMotors(false);
+    poseLock = false;
     /* Back on the ground, landed, exactly as at boot. */
     landed = true;
     takingOff = false;
@@ -1812,6 +2005,9 @@ export async function boot({ loading, bootStart, mapId }) {
   let lcGoUntil = 0;
 
   function wantAngleMode() {
+    if (crashflipOn || turtleRecover) {
+      return false;
+    }
     if (lcAcroUntil === Infinity || (lcAcroUntil > 0 && performance.now() < lcAcroUntil)) {
       return false;
     }
@@ -1873,6 +2069,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function beginLaunchStaging() {
     if (!(mode === 'flight' && landed)) {
+      return;
+    }
+    if (stateCurr && plantUpZ(stateCurr) < 0) {
       return;
     }
     landed = false;
@@ -2965,6 +3164,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * disagreeing about which way through.
    */
   function updateTargetLock() {
+    if (crashflipOn || turtleRecover) {
+      ui.setTargetLock(LOCK_OFF);
+      return;
+    }
     const aim = view.targetAim ? view.targetAim() : null;
     if (!aim || !aim.active) {
       ui.setTargetLock(LOCK_OFF);
@@ -3092,6 +3295,19 @@ export async function boot({ loading, bootStart, mapId }) {
     for (const smp of samples) {
       rcPending.push(smp);
     }
+    /* Recover must see a centred stick even while perched: sim.input
+     * does not run when landed, and the banner would stick forever. */
+    if (turtleRecover && !crashflipOn) {
+      const ch = samples.length ? samples[samples.length - 1] : input.channels;
+      turtleHoldStick(ch.roll, ch.pitch);
+    }
+    if (
+      mode === 'flight'
+      && stateCurr
+      && (crashflipOn || plantUpZ(stateCurr) < TURTLE_EXIT_UPZ)
+    ) {
+      pollTurtleSupport();
+    }
     /*
      * A sample taken while the integrator is not running has no RC slot to
      * land in: the title screen, a pause, every second the craft sits
@@ -3101,8 +3317,19 @@ export async function boot({ loading, bootStart, mapId }) {
      * open, at the 100 ms heartbeat alone, and the first frame of flight
      * had to walk all of it.
      */
-    const turtleParked = isTurtleParked();
-    if (!(mode === 'flight' && !landed && !turtleParked) && rcPending.length > 1) {
+    const turtleParkedNow = (() => {
+      let parked = isTurtleParked();
+      if (parked && stateCurr && shouldExitTurtle(plantUpZ(stateCurr))) {
+        sim.rest();
+        setCrashflip(false);
+        parked = false;
+      }
+      return parked;
+    })();
+    if (mode === 'flight' && !poseLock) {
+      setTurtleParkMotors(turtleParkedNow);
+    }
+    if (!(mode === 'flight' && !landed && !turtleParkedNow) && rcPending.length > 1) {
       rcPending.splice(0, rcPending.length - 1);
     }
     /* Hard bound, whatever else happens. */
@@ -3116,26 +3343,35 @@ export async function boot({ loading, bootStart, mapId }) {
     if (mode === 'flight' && landed) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
       if (landed && thr > TAKEOFF_THROTTLE) {
-        /* Off again. The RC frame grid rides the SIM's own clock, which
-         * froze with the integrator, so it is already seated; this re-pin
-         * is belt and braces against any future path that moves rcNextMs
-         * while the craft is down. Stamping the grid from the lap clock
-         * here is the bug that made every second spent parked into a
-         * second of stick lag. */
-        landed = false;
-        takingOff = true;
-        flownThisRun = true;
-        adoptSimClock();
-        if (typeof audio.event === 'function') {
-          audio.event('takeoff');
+        if (stateCurr && plantUpZ(stateCurr) < 0) {
+          /* Props down: throttle is not takeoff. Unfreeze into turtle. */
+          landed = false;
+          takingOff = false;
+          flownThisRun = true;
+          adoptSimClock();
+        } else {
+          /* Off again. The RC frame grid rides the SIM's own clock, which
+           * froze with the integrator, so it is already seated; this re-pin
+           * is belt and braces against any future path that moves rcNextMs
+           * while the craft is down. Stamping the grid from the lap clock
+           * here is the bug that made every second spent parked into a
+           * second of stick lag. */
+          landed = false;
+          takingOff = true;
+          flownThisRun = true;
+          adoptSimClock();
+          if (typeof audio.event === 'function') {
+            audio.event('takeoff');
+          }
         }
       }
     }
-    if (mode === 'flight' && turtleParked && !poseLock) {
-      /* Inverted, crashflip latched, sticks centered. Do not step: plant
-       * settle is skipped while crashflip is on, and a 1 kHz couple-free
-       * wait walks the pose. Pitch or roll unfreezes this the same way
-       * throttle unfreezes a perch. The lap clock still runs. */
+    if (mode === 'flight' && turtleParkedNow && !poseLock) {
+      /* Crashflip latched, sticks centered, in contact. Do not step:
+       * plant settle is skipped while crashflip is on, and a 1 kHz
+       * couple-free wait walks the pose. Pitch or roll unfreezes this
+       * the same way throttle unfreezes a perch. The lap clock still
+       * runs. */
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
@@ -3145,6 +3381,8 @@ export async function boot({ loading, bootStart, mapId }) {
       stateCurr = readState();
       statePrev = stateCurr;
       noteTurtleState(stateCurr);
+      poseFromState(stateCurr, pProbe);
+      lastClearance = pProbe.y - view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
     } else if (mode === 'flight' && !landed && !poseLock) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
@@ -3154,17 +3392,27 @@ export async function boot({ loading, bootStart, mapId }) {
         acc = 0;
         simStepIdx = moduleIdx;
         pinRcGrid();
-        landed = true;
         takingOff = false;
-        setCrashflip(false);
         turtleRecover = false;
         sim.rest();
         stateCurr = readState();
         statePrev = stateCurr;
+        if (plantUpZ(stateCurr) < TURTLE_EXIT_UPZ) {
+          /* Stay flying and re-latch turtle. Never freeze in the
+           * 0 to 0.5 band without crashflip. */
+          landed = false;
+          setCrashflip(false);
+        } else {
+          landed = true;
+          setCrashflip(false);
+        }
       } else {
       let peakGroundClosing = 0;
       let peakGroundSpeed = 0;
       let sawGroundHit = false;
+      if (stateCurr && !launchStaging) {
+        turtleEnterFromState(stateCurr);
+      }
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
@@ -3208,8 +3456,8 @@ export async function boot({ loading, bootStart, mapId }) {
            * timestamp. */
           const ts = rcNextMs / 1000;
           lastTs = ts;
-          const hold = turtleHoldStick(held.roll, held.pitch);
-          const inCode = sim.input(ts, hold ? 0 : held.roll, hold ? 0 : held.pitch, held.yaw, held.throttle);
+          const ax = applyTurtleRc(held.roll, held.pitch);
+          const inCode = sim.input(ts, ax[0], ax[1], held.yaw, held.throttle);
           if (inCode !== SIM_OK) {
             adoptSimClock();
             break;
@@ -3232,8 +3480,8 @@ export async function boot({ loading, bootStart, mapId }) {
             continue;
           }
           lastTs = ts;
-          const hold = turtleHoldStick(pkt.rc.roll, pkt.rc.pitch);
-          const inCode = sim.input(ts, hold ? 0 : pkt.rc.roll, hold ? 0 : pkt.rc.pitch, pkt.rc.yaw, pkt.rc.throttle);
+          const ax = applyTurtleRc(pkt.rc.roll, pkt.rc.pitch);
+          const inCode = sim.input(ts, ax[0], ax[1], pkt.rc.yaw, pkt.rc.throttle);
           if (inCode !== SIM_OK) {
             adoptSimClock();
             break;
@@ -3252,6 +3500,11 @@ export async function boot({ loading, bootStart, mapId }) {
           }
           sim.step(1);
           stateCurr = readState();
+          if (plantUpZ(stateCurr) < TURTLE_EXIT_UPZ) {
+            endLaunchStaging(false);
+            takingOff = false;
+            turtleEnterFromState(stateCurr);
+          }
         } else {
           let stNow = stateCurr;
           sampleGroundNormalFromState(stNow);
@@ -3274,8 +3527,11 @@ export async function boot({ loading, bootStart, mapId }) {
               stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6],
             );
             raiseGroundFromState(stNow);
+            turtleEnterFromState(stNow);
             sim.step(1);
             stNow = readState();
+            turtleEnterFromState(stNow);
+            turtleExitFromState(stNow);
             if (i === steps - 2) {
               statePrev = stNow;
             }
@@ -3333,6 +3589,7 @@ export async function boot({ loading, bootStart, mapId }) {
       lastClearance = clearance;
       lastUpz = upz;
       speedNow = speed;
+      turtleOnSupport = hits > 0;
       if (takingOff) {
         if (clearance - REST_HEIGHT > 0.05) {
           takingOff = false;
@@ -3448,7 +3705,7 @@ export async function boot({ loading, bootStart, mapId }) {
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    if (mode === 'flight' && !landed && !launchStaging && raceHasPrev) {
+    if (mode === 'flight' && !landed && !launchStaging && !turtleParkedNow && raceHasPrev) {
       /* The craft the query sweeps is the four prop discs: crx/crz from
        * this attitude, vHalfFrame through the body at its current tilt. */
       let obstacleHit = false;
@@ -3516,11 +3773,13 @@ export async function boot({ loading, bootStart, mapId }) {
         bounceHitKind = lastHitKind;
       }
       if (obstacleHit) {
+        turtleOnSupport = true;
         const surf2 = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
         stateCurr = updateTurtle(
           stateCurr,
-          sim.e.sim_ground_contacts() > 0,
+          true,
           pCurr.y - surf2,
+          false,
         );
       }
     }
@@ -3552,6 +3811,11 @@ export async function boot({ loading, bootStart, mapId }) {
         ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
         if (!race.freestyle && race.lap >= runLaps) {
           mode = 'results';
+          setCrashflip(false);
+          turtleRecover = false;
+          turtleOnSupport = false;
+          setTurtleParkMotors(false);
+          poseLock = false;
           ui.setBest(race.bestMs, view.mode);
           ui.showResults(race.log, race.bestMs, race.recordAtStart, ghostResultNote());
         }
@@ -4003,7 +4267,7 @@ export async function boot({ loading, bootStart, mapId }) {
         altitude: p.y - view.height(p.x, p.z, p.y),
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
-        flightMode: crashflipOn ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
+        flightMode: (crashflipOn || turtleRecover) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has
          * bounced is still worth telling a pilot, and the OSD says nothing
          * at all until there is something to say. */
@@ -4011,7 +4275,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Native state 3 latches until the L switch drops. The GO flash
          * is 900 ms; after that the overlay has to hide or it sits on
          * the goggles for the rest of the lap. */
-        launchState: launchNow === 3 && nowWall >= lcGoUntil ? 0 : launchNow,
+        launchState: (crashflipOn || turtleRecover) ? 0 : (launchNow === 3 && nowWall >= lcGoUntil ? 0 : launchNow),
         launchPitch: pitchNoseDownDeg(st),
         /* The gap to the ghost at the last gate, while its readout lives.
          * Null the rest of the time, which is how the OSD knows to clear. */
@@ -4019,12 +4283,11 @@ export async function boot({ loading, bootStart, mapId }) {
         ghostFinal: Boolean(ghostGap && ghostGap.final),
       });
       const ch = input.channels;
-      /* The centred keyboard ghost yields to the thumb sticks: they are
-       * the same instrument, drawn where the thumbs are. */
+      const vis = turtleAxes(ch.roll, ch.pitch);
       ui.setStickOverlay({
         show: input.isKeyboardPrimary() && !input.isTouchPrimary(),
-        roll: ch.roll,
-        pitch: ch.pitch,
+        roll: vis[0],
+        pitch: vis[1],
         yaw: ch.yaw,
         throttle: ch.throttle,
       });
@@ -4079,12 +4342,18 @@ export async function boot({ loading, bootStart, mapId }) {
       uiRoot.classList.toggle('touch-fly-on', touchOn);
       touch.paint();
     }
+    uiRoot.classList.toggle('turtle-on', crashflipOn || turtleRecover);
 
     const cal = input.calibrationView();
     const lapFlash = race.flashText(nowWall);
     /* Computed once: guidedPrompt retires the guided flag as a side effect,
      * so calling it in a condition and again in the body would consume it. */
-    const guidedText = ui.guided ? guidedPrompt(race) : '';
+    const guidedText = (
+      ui.guided
+      && !crashflipOn
+      && !turtleRecover
+      && lastUpz >= TURTLE_EXIT_UPZ
+    ) ? guidedPrompt(race) : '';
     ui.setPadInfo(input.padSummary());
     const queuedPick = input.takePadPickQueue();
     if (queuedPick) {
@@ -4109,6 +4378,8 @@ export async function boot({ loading, bootStart, mapId }) {
         input.calResult = null;
       }
       ui.setBanner('');
+    } else if ((crashflipOn || turtleRecover) && (ui.screen === 'flight' || ui.screen === 'paused')) {
+      ui.setBanner(turtleBannerText(), true);
     } else if (notice && nowWall < notice.untilMs && !(launchNow > 0) && !crashflipOn) {
       ui.setBanner(notice.text);
     } else if (ui.isModal()) {
@@ -4125,8 +4396,8 @@ export async function boot({ loading, bootStart, mapId }) {
           ? `LAUNCH ${deg}\nPunch throttle`
           : `LAUNCH ${deg}\nCentre the stick, then punch`)
         : 'LAUNCH CONTROL\nPitch forward, then centre the stick');
-    } else if (crashflipOn) {
-      ui.setBanner('TURTLE MODE\nPitch or roll to flip over');
+    } else if (st && !landed && lastUpz < 0) {
+      ui.setBanner('TURTLE MODE\nWait until you stop, then hold pitch or roll', true);
     } else if (!flownThisRun) {
       ui.setBanner(ui.settings.launchControl
         ? (race.freestyle
@@ -4427,6 +4698,8 @@ export async function boot({ loading, bootStart, mapId }) {
     landed,
     crashed,
     turtle: crashflipOn,
+    turtleParked: isTurtleParked(),
+    turtleRecover,
     /* Where the craft IS, world space, so a capture can steer toward a
      * gate instead of describing where it hoped to be. */
     worldX: shell.quad.position.x,
@@ -4471,9 +4744,10 @@ export async function boot({ loading, bootStart, mapId }) {
     bestThreeMs: race.bestThreeMs ? race.bestThreeMs() : null,
   });
   /* Capture hook: seat the plant on the grass under the current xz.
-   * cameraDown keeps the integrator running so parked lift cannot hide
-   * a lens-in-dirt picture. inverted is the turtle path: next frame
-   * latches crashflip and waits for pitch or roll. */
+   * cameraDown and invertedHold freeze the integrator (poseLock) so a
+   * capture can photograph the lens before the hull tumbles. inverted
+   * is the turtle path: latches crashflip immediately and waits for
+   * pitch or roll. */
   window.__seatCraft = (kind) => {
     if (!stateCurr) {
       return null;
@@ -4512,12 +4786,17 @@ export async function boot({ loading, bootStart, mapId }) {
     stateCurr = readState();
     statePrev = stateCurr;
     raiseGroundFromState(stateCurr);
+    lastGroundHits = sim.e.sim_ground_contacts();
+    lastClearance = REST_HEIGHT;
+    turtleOnSupport = lastGroundHits > 0;
+    if (kind === 'inverted' && turtleInContact()) {
+      setCrashflip(true);
+    }
     lastUpz = plantUpZ(stateCurr);
     {
       const uClamp = lastUpz > 1 ? 1 : lastUpz < -1 ? -1 : lastUpz;
       lastTiltDeg = (Math.acos(uClamp) * 180) / Math.PI;
     }
-    lastClearance = REST_HEIGHT;
     simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qPrev);
     qPrev.premultiply(qSpawn);
     poseFromState(stateCurr, pCurr);

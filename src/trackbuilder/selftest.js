@@ -56,7 +56,7 @@ import { Race } from '../game/race.js';
 import {
   hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
-  shouldExitTurtle, uprightPlantQuat, contactMaterial,
+  shouldExitTurtle, shouldParkTurtle, uprightPlantQuat, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
   LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, TURTLE_SPEED, TURTLE_RATE,
@@ -1360,12 +1360,24 @@ function suiteCrashRule() {
     shouldEnterTurtle(-1, 0, TURTLE_RATE, true, 0.05, false) === false);
   check('turtle does not latch in the air with clearance',
     shouldEnterTurtle(-0.8, 0.2, 0.2, false, 1.2, false) === false);
-  check('turtle does latch inverted, slow, a few centimetres off the grass',
-    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === true);
+  check('turtle does not latch in the air even a few centimetres off the grass',
+    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === false);
+  check('turtle parks while crashflip is on, sticks centered, and in contact',
+    shouldParkTurtle(true, 0, 0.2, true) === true);
+  check('turtle does not park without contact',
+    shouldParkTurtle(true, 0, 0, false) === false);
+  check('turtle does not park while the stick is past the mixer deadband',
+    shouldParkTurtle(true, TURTLE_STICK_MIN, 0, true) === false);
+  check('turtle parks in the exit band so a stall on its side still waits',
+    shouldParkTurtle(true, 0, 0.2, true) === true);
+  check('turtle does not drop at 0.5, only past it',
+    shouldExitTurtle(0.5) === false && shouldExitTurtle(0.51) === true);
   check('turtle does not latch during launch staging',
     shouldEnterTurtle(-1, 0, 0, true, 0.05, true) === false);
   check('turtle does not latch once the hull is upright',
-    shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === false);
+    shouldEnterTurtle(0.9, 0, 0, true, 0.05, false) === false);
+  check('turtle re-latches on its side so a stalled flip is still turtle',
+    shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === true);
   check('turtle exits once the hull is past the mixer drop attitude',
     shouldExitTurtle(TURTLE_EXIT_UPZ + 0.01) === true);
   check('turtle stays latched while still inverted',

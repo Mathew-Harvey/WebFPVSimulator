@@ -1341,17 +1341,19 @@ export function canPerch(tiltDeg, speed, rateMag) {
 
 /*
  * Turtle is Betaflight crashflip, latched by the shell. Inverted, slow,
- * and on the grass (or a few centimetres off it) raises the mixer path.
- * Pitch and roll then spin the high motors. The hull does not snap.
- * TURTLE_STICK_MIN matches mixer.c CRASH_FLIP_STICK_MINF: motors stay
- * at disarm until the stick is past that deadband. TURTLE_WAIT_RATE is
- * the shell seating gate: below it, a waiting inverted hull may rest
- * so skipped plant settle cannot jitter; above it the couple is live.
+ * and in contact raises the mixer path. Pitch and roll then spin the
+ * high motors. The hull does not snap. TURTLE_STICK_MIN matches mixer.c
+ * CRASH_FLIP_STICK_MINF: motors stay at disarm until the stick is past
+ * that deadband. TURTLE_WAIT_RATE is the shell seating gate: below it,
+ * a waiting hull in contact may rest so skipped plant settle cannot
+ * jitter; above it the couple is live. TURTLE_EXIT_UPZ is 0.5 (about
+ * 60 deg from upright), matching Quicksilver. The shell rests the hull
+ * on that edge so leftover mixer rate cannot carry them inverted again.
  */
 export const TURTLE_SPEED = 4.0;
 export const TURTLE_RATE = 8.0;
 export const TURTLE_CLEARANCE = 0.15;
-export const TURTLE_EXIT_UPZ = 0.35;
+export const TURTLE_EXIT_UPZ = 0.5;
 export const TURTLE_STICK_MIN = 0.15;
 export const TURTLE_WAIT_RATE = 1.0;
 export const SNAP_SPEED = TURTLE_SPEED;
@@ -1362,13 +1364,20 @@ export function shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, ski
   if (skip) {
     return false;
   }
-  if (!(upz < 0)) {
+  /* Re-latch while upz is below TURTLE_EXIT_UPZ so a flip that
+   * drops back onto its side stays turtle, not airmode. Exit is
+   * strictly greater than TURTLE_EXIT_UPZ, so equality is hysteresis. */
+  if (!(upz < TURTLE_EXIT_UPZ)) {
     return false;
   }
   if (speed >= TURTLE_SPEED || rateMag >= TURTLE_RATE) {
     return false;
   }
-  return inContact || clearance < TURTLE_CLEARANCE;
+  /* Contact only. A clearance-only latch froze inverted hulls a few
+   * centimetres up, which is a hover, not a turtle. They fall onto the
+   * grass and latch there. */
+  void clearance;
+  return inContact;
 }
 
 export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, skip) {
@@ -1377,6 +1386,22 @@ export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, ski
 
 export function shouldExitTurtle(upz) {
   return upz > TURTLE_EXIT_UPZ;
+}
+
+export function shouldParkTurtle(crashflip, stickMag, rateMag, inContact) {
+  if (!crashflip) {
+    return false;
+  }
+  if (!inContact) {
+    return false;
+  }
+  if (stickMag >= TURTLE_STICK_MIN) {
+    return false;
+  }
+  if (rateMag >= TURTLE_WAIT_RATE) {
+    return false;
+  }
+  return true;
 }
 
 /* Flatten roll and pitch. Keep the body-x projection on the plant

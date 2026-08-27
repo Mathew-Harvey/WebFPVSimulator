@@ -1,9 +1,11 @@
 /*
- * hall.js: cream hall, south mouth, galleries, clerestory, corner towers.
+ * hall.js: cream hall, mouth at z1, galleries, clerestory, corner towers.
  *
- * One barn, not a second map. Missing south wall is the spawn mouth.
- * Missing roof bays light the empty pool as graphic wells. Stairs in the
- * towers are sealed: a 5 inch flies the volume, it does not thread treads.
+ * One barn, not a second map. The mouth wall is missing a door; that is
+ * the spawn opening. Long walls own the corners. End walls stop at
+ * x0+t / x1-t so a shared volume cannot flip a contact normal. Missing
+ * roof bays light the empty pool as graphic wells. Stairs in the towers
+ * are sealed plugs that share faces with the hall, not volumes.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -21,7 +23,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { L, slab, deck, decal, fillAround } from './kit.js';
+import { L, slab, deck, decal, fillAround, hit } from './kit.js';
 
 export function buildHall(root, colliders, platforms, M) {
   const { x0, x1, z0, z1, h, t } = L.hall;
@@ -30,20 +32,36 @@ export function buildHall(root, colliders, platforms, M) {
 
   slab(root, colliders, M.cream, x0, 0, z0, x0 + t, h, z1);
   slab(root, colliders, M.cream, x1 - t, 0, z0, x1, h, z1);
-  slab(root, colliders, M.cream, x0, 0, z0, x1, h, z0 + t);
-  slab(root, colliders, M.cream, x0, 0, z1 - t, -door, h, z1);
-  slab(root, colliders, M.cream, door, 0, z1 - t, x1, h, z1);
+  slab(root, colliders, M.cream, x0 + t, 0, z0, x1 - t, h, z0 + t);
+  slab(root, colliders, M.cream, x0 + t, 0, z1 - t, -door, h, z1);
+  slab(root, colliders, M.cream, door, 0, z1 - t, x1 - t, h, z1);
   slab(root, colliders, M.cream, -door, doorH, z1 - t, door, h, z1);
 
-  slab(root, colliders, M.steelDark, -door, doorH - 0.28, z1 - t - 0.1, door, doorH + 0.38, z1 + 0.12);
-  slab(root, colliders, M.steelDark, -door - 0.4, 0, z1 - t - 0.1, -door, doorH, z1 + 0.12);
-  slab(root, colliders, M.steelDark, door, 0, z1 - t - 0.1, door + 0.4, doorH, z1 + 0.12);
+  slab(root, colliders, M.steelDark, -door, doorH - 0.28, z1 - t - 0.1, door, doorH + 0.38, z1 + 0.12, {
+    solid: false,
+  });
+  slab(root, colliders, M.steelDark, -door - 0.4, 0, z1 - t - 0.1, -door, doorH, z1 + 0.12, {
+    solid: false,
+  });
+  slab(root, colliders, M.steelDark, door, 0, z1 - t - 0.1, door + 0.4, doorH, z1 + 0.12, {
+    solid: false,
+  });
 
-  const holes = [
-    { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
-    { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
-  ];
-  roofWithHoles(root, colliders, platforms, M, x0 + t, x1 - t, z0 + t, z1 - t, h, holes);
+  roofWithHoles(root, colliders, platforms, M, x0 + t, x1 - t, z0 + t, z1 - t, h, [
+    ...L.wells,
+    {
+      x0: x0 + t,
+      x1: L.sw.x1,
+      z0: Math.max(L.sw.z0, z0 + t),
+      z1: z1 - t,
+    },
+    {
+      x0: L.ne.x0,
+      x1: x1 - t,
+      z0: Math.max(L.ne.z0, z0 + t),
+      z1: z1 - t,
+    },
+  ]);
 
   lineHall(root, colliders, M, x0, x1, z0, z1, h, t, door, doorH);
   windowBand(root, colliders, M, x0 + 2.2, z0 - 0.06, x1 - 2.2, 10.2, 13.4);
@@ -53,7 +71,8 @@ export function buildHall(root, colliders, platforms, M) {
   buildGalleries(root, colliders, platforms, M);
   buildCornerTowers(root, colliders, M);
   buildPosts(root, colliders, M);
-  lightWells(root, colliders, M, holes, h);
+  lightWells(root, colliders, M, L.wells, h);
+  civicBand(root, colliders, M, x0, x1, z0, z1, t, door);
 }
 
 function roofWithHoles(root, colliders, platforms, M, x0, x1, z0, z1, top, holes) {
@@ -81,7 +100,7 @@ function roofWithHoles(root, colliders, platforms, M, x0, x1, z0, z1, top, holes
       }
       const mx = (xa + xb) * 0.5;
       const mz = (za + zb) * 0.5;
-      if (holes.some((h) => mx > h.x0 && mx < h.x1 && mz > h.z0 && mz < h.z1)) {
+      if (holes.some((hole) => mx > hole.x0 && mx < hole.x1 && mz > hole.z0 && mz < hole.z1)) {
         continue;
       }
       platforms.push({
@@ -91,11 +110,13 @@ function roofWithHoles(root, colliders, platforms, M, x0, x1, z0, z1, top, holes
     }
   }
   for (const hole of holes) {
-    const lip = 0.5;
-    decal(root, colliders, M.tile, hole.x0, top, hole.z0, hole.x1, top + lip, hole.z0 + 0.22);
-    decal(root, colliders, M.tile, hole.x0, top, hole.z1 - 0.22, hole.x1, top + lip, hole.z1);
-    decal(root, colliders, M.tile, hole.x0, top, hole.z0, hole.x0 + 0.22, top + lip, hole.z1);
-    decal(root, colliders, M.tile, hole.x1 - 0.22, top, hole.z0, hole.x1, top + lip, hole.z1);
+    if (hole.x1 - hole.x0 > 8) {
+      const lip = 0.5;
+      decal(root, colliders, M.tile, hole.x0, top, hole.z0, hole.x1, top + lip, hole.z0 + 0.22);
+      decal(root, colliders, M.tile, hole.x0, top, hole.z1 - 0.22, hole.x1, top + lip, hole.z1);
+      decal(root, colliders, M.tile, hole.x0, top, hole.z0, hole.x0 + 0.22, top + lip, hole.z1);
+      decal(root, colliders, M.tile, hole.x1 - 0.22, top, hole.z0, hole.x1, top + lip, hole.z1);
+    }
   }
 }
 
@@ -137,26 +158,34 @@ function lightWells(root, colliders, M, holes, top) {
   }
 }
 
+function civicBand(root, colliders, M, x0, x1, z0, z1, t, door) {
+  const y0 = 2.15;
+  const y1 = 2.55;
+  const o = 0.06;
+  decal(root, colliders, M.orange, x0 - o, y0, z0 - o, x0 + 0.08, y1, z1 + o);
+  decal(root, colliders, M.orange, x1 - 0.08, y0, z0 - o, x1 + o, y1, z1 + o);
+  decal(root, colliders, M.orange, x0, y0, z0 - o, x1, y1, z0 + 0.08);
+  decal(root, colliders, M.orange, x0, y0, z1 - 0.08, -door, y1, z1 + o);
+  decal(root, colliders, M.orange, door, y0, z1 - 0.08, x1, y1, z1 + o);
+  void t;
+}
+
 function buildGalleries(root, colliders, platforms, M) {
   const g = L.gallery;
   const h = L.hall;
   const t = h.t;
-  const door = L.door.half;
   const y = g.y;
-  const northZ0 = h.z1 - t - g.w;
-  const northZ1 = h.z1 - t;
-  deck(root, colliders, platforms, M.creamSun, h.x0 + t, northZ0, h.x1 - t, northZ1, y, g.thick);
-  parapet(root, colliders, M, h.x0 + t, northZ0, h.x1 - t, northZ0 + 0.18, y);
+  const mouthZ0 = h.z1 - t - g.w;
+  const mouthZ1 = h.z1 - t;
+  const west = L.sw.x1;
+  const east = L.ne.x0;
+  deck(root, colliders, platforms, M.creamSun, west, mouthZ0, east, mouthZ1, y, g.thick);
+  parapet(root, colliders, M, west, mouthZ0, east, mouthZ0 + 0.18, y);
 
-  const southZ0 = h.z0 + t;
-  const southZ1 = h.z0 + t + g.w;
-  const gap = door + 0.8;
-  deck(root, colliders, platforms, M.creamSun, h.x0 + t, southZ0, -gap, southZ1, y, g.thick);
-  deck(root, colliders, platforms, M.creamSun, gap, southZ0, h.x1 - t, southZ1, y, g.thick);
-  parapet(root, colliders, M, h.x0 + t, southZ1 - 0.18, -gap, southZ1, y);
-  parapet(root, colliders, M, gap, southZ1 - 0.18, h.x1 - t, southZ1, y);
-  slab(root, colliders, M.steelDark, -gap, y, southZ0, -gap + 0.28, y + 1.05, southZ1);
-  slab(root, colliders, M.steelDark, gap - 0.28, y, southZ0, gap, y + 1.05, southZ1);
+  const farZ0 = h.z0 + t;
+  const farZ1 = h.z0 + t + g.w;
+  deck(root, colliders, platforms, M.creamSun, h.x0 + t, farZ0, h.x1 - t, farZ1, y, g.thick);
+  parapet(root, colliders, M, h.x0 + t, farZ1 - 0.18, h.x1 - t, farZ1, y);
 }
 
 function parapet(root, colliders, M, x0, z0, x1, z1, y) {
@@ -171,7 +200,7 @@ function buildCornerTowers(root, colliders, M) {
 }
 
 function raiseTower(root, colliders, M, tw) {
-  slab(root, colliders, M.cream, tw.x0, 0, tw.z0, tw.x1, tw.h, tw.z1);
+  slab(root, colliders, M.cream, tw.x0, 0, tw.z0, tw.x1, tw.h, tw.z1, { solid: false });
   const bands = [
     { y0: 8.2, y1: 9.1, mat: M.white },
     { y0: 9.1, y1: 10.0, mat: M.orange },
@@ -192,15 +221,40 @@ function raiseTower(root, colliders, M, tw) {
       solid: false, noMerge: true, cast: false,
     });
   }
+
+  const hall = L.hall;
+  const t = hall.t;
+  const ix0 = Math.max(tw.x0, hall.x0 + t);
+  const ix1 = Math.min(tw.x1, hall.x1 - t);
+  const iz0 = Math.max(tw.z0, hall.z0 + t);
+  const iz1 = Math.min(tw.z1, hall.z1 - t);
+  if (ix1 > ix0 + 0.05 && iz1 > iz0 + 0.05) {
+    hit(colliders, ix0, 0, iz0, ix1, tw.h, iz1);
+  }
+  if (tw.x0 < hall.x0) {
+    hit(colliders, tw.x0, 0, tw.z0, hall.x0, tw.h, tw.z1);
+  }
+  if (tw.x1 > hall.x1) {
+    hit(colliders, hall.x1, 0, tw.z0, tw.x1, tw.h, tw.z1);
+  }
+  if (tw.z0 < hall.z0) {
+    hit(colliders, Math.max(tw.x0, hall.x0), 0, tw.z0, Math.min(tw.x1, hall.x1), tw.h, hall.z0);
+  }
+  if (tw.z1 > hall.z1) {
+    hit(colliders, Math.max(tw.x0, hall.x0), 0, hall.z1, Math.min(tw.x1, hall.x1), tw.h, tw.z1);
+  }
 }
 
 function buildPosts(root, colliders, M) {
-  const innerN = L.hall.z1 - L.hall.t - L.gallery.w;
-  const innerS = L.hall.z0 + L.hall.t + L.gallery.w;
-  for (let x = -20; x <= 16; x += 8) {
-    slab(root, colliders, M.creamShade, x - 0.22, 0, innerN - 0.22, x + 0.22, L.gallery.y - 0.02, innerN + 0.22);
-    if (x < -L.door.half - 2 || x > L.door.half + 2) {
-      slab(root, colliders, M.creamShade, x - 0.22, 0, innerS - 0.22, x + 0.22, L.gallery.y - 0.02, innerS + 0.22);
+  const mouthZ = L.hall.z1 - L.hall.t - L.gallery.w * 0.5;
+  const farZ = L.hall.z0 + L.hall.t + L.gallery.w * 0.5;
+  const y1 = L.gallery.y - L.gallery.thick;
+  for (let x = -18; x <= 18; x += 8) {
+    if (x > L.sw.x1 + 0.8 && x < L.ne.x0 - 0.8) {
+      slab(root, colliders, M.creamShade, x - 0.22, 0, mouthZ - 0.22, x + 0.22, y1, mouthZ + 0.22);
+    }
+    if (x > -16) {
+      slab(root, colliders, M.creamShade, x - 0.22, 0, farZ - 0.22, x + 0.22, y1, farZ + 0.22);
     }
   }
 }

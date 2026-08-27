@@ -25,16 +25,17 @@ import { buildDistantHills } from './sky.js';
 
 const CUT = 6;
 const FLOOR_Y = 0;
+const TREAD = 0.4;
 
 export function poolFloor(x, z) {
   const p = L.pool;
   if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) {
     return null;
   }
-  if (x < p.shallowX) {
+  if (x < p.shallowX + TREAD) {
     return p.shallowY;
   }
-  if (x < p.midX) {
+  if (x < p.midX + TREAD) {
     return p.midY;
   }
   return p.deepY;
@@ -42,7 +43,14 @@ export function poolFloor(x, z) {
 
 export function groundHeight(x, z) {
   const pit = L.plant;
-  if (x > pit.x0 + 0.45 && x < pit.x1 - 0.45 && z > pit.z0 + 0.45 && z < pit.z1 - 0.45) {
+  const hop = L.hopper;
+  if (x >= L.pool.x1 && x < pit.x0 && z > hop.z0 && z < hop.z1) {
+    return pit.y0;
+  }
+  if (x >= pit.x0 && x <= pit.x0 + 0.4 && z > hop.z0 && z < hop.z1) {
+    return pit.y0 + 0.35;
+  }
+  if (x > pit.x0 + 0.4 && x < pit.x1 - 0.4 && z > pit.z0 + 0.4 && z < pit.z1 - 0.4) {
     return pit.y0 + 0.35;
   }
   const floor = poolFloor(x, z);
@@ -59,13 +67,19 @@ export function buildGround(root, colliders, M) {
   const { x0, x1, z0, z1 } = L.site;
   const p = L.pool;
   const pit = {
-    x0: L.plant.x0 + 0.45,
-    x1: L.plant.x1 - 0.45,
-    z0: L.plant.z0 + 0.45,
-    z1: L.plant.z1 - 0.45,
+    x0: L.plant.x0 + 0.4,
+    x1: L.plant.x1 - 0.4,
+    z0: L.plant.z0 + 0.4,
+    z1: L.plant.z1 - 0.4,
   };
   const poolHole = { x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1 };
-  fillAround(root, colliders, M.plaza, x0, z0, x1, z1, -0.35, 0.02, [poolHole, pit], {
+  const hopperHole = {
+    x0: p.x1,
+    x1: pit.x0,
+    z0: L.hopper.z0,
+    z1: L.hopper.z1,
+  };
+  fillAround(root, colliders, M.plaza, x0, z0, x1, z1, -0.35, 0.02, [poolHole, pit, hopperHole], {
     solid: false, cast: false, receive: true,
   });
 
@@ -89,11 +103,13 @@ export function buildGround(root, colliders, M) {
   });
 
   decal(root, colliders, M.white, -2.4, 0.03, 13.2, 2.4, 0.07, 21.6);
-  decal(root, colliders, M.safety, -2.65, 0.04, 13.2, -2.35, 0.08, 21.6);
-  decal(root, colliders, M.safety, 2.35, 0.04, 13.2, 2.65, 0.08, 21.6);
+  decal(root, colliders, M.orange, -2.65, 0.04, 13.2, -2.35, 0.08, 21.6);
+  decal(root, colliders, M.orange, 2.35, 0.04, 13.2, 2.65, 0.08, 21.6);
 
-  slab(root, colliders, M.safety, -10.2, 0, 20.6, -6.6, 1.15, 21.5, { kind: 'obstacle' });
-  slab(root, colliders, M.safety, 6.6, 0, 20.6, 10.2, 1.15, 21.5, { kind: 'obstacle' });
+  slab(root, colliders, M.cream, -10.4, 0, 20.6, -9.2, 1.05, 21.8, { kind: 'obstacle' });
+  slab(root, colliders, M.cream, 9.2, 0, 20.6, 10.4, 1.05, 21.8, { kind: 'obstacle' });
+  decal(root, colliders, M.dry, -10.4, 1.05, 20.6, -9.2, 1.12, 21.8);
+  decal(root, colliders, M.dry, 9.2, 1.05, 20.6, 10.4, 1.12, 21.8);
 
   buildDistantHills(root, M);
 }

@@ -19,7 +19,7 @@
 
 import * as THREE from 'three';
 import { Colliders } from '../../game/collide.js';
-import { L, STEP, materials, mergeStatic } from './kit.js';
+import { L, STEP, CLEAR, materials, mergeStatic } from './kit.js';
 import { buildGround, groundHeight, poolFloor } from './ground.js';
 import { buildHall } from './hall.js';
 import { buildPool } from './pool.js';
@@ -87,6 +87,107 @@ export function attractPath(world) {
   });
 }
 
+function overlapLen(a0, a1, b0, b1) {
+  return Math.min(a1, b1) - Math.max(a0, b0);
+}
+
+function occupies(ax, ay, az, bx, by, bz, isBox, k, x0, y0, z0, x1, y1, z1) {
+  if (!isBox[k]) {
+    return false;
+  }
+  return overlapLen(ax[k], bx[k], x0, x1) > 0.02
+    && overlapLen(ay[k], by[k], y0, y1) > 0.02
+    && overlapLen(az[k], bz[k], z0, z1) > 0.02;
+}
+
+function leftoverScan(colliders) {
+  const n = colliders.count;
+  const ax = colliders.fax;
+  const ay = colliders.fay;
+  const az = colliders.faz;
+  const bx = colliders.fbx;
+  const by = colliders.fby;
+  const bz = colliders.fbz;
+  const isBox = colliders.fbox;
+  let death = 0;
+  let overlap = 0;
+  const samples = [];
+  for (let i = 0; i < n; i += 1) {
+    if (!isBox[i]) {
+      continue;
+    }
+    for (let j = i + 1; j < n; j += 1) {
+      if (!isBox[j]) {
+        continue;
+      }
+      const ox = overlapLen(ax[i], bx[i], ax[j], bx[j]);
+      const oy = overlapLen(ay[i], by[i], ay[j], by[j]);
+      const oz = overlapLen(az[i], bz[i], az[j], bz[j]);
+      if (ox > 0.02 && oy > 0.02 && oz > 0.02) {
+        overlap += 1;
+        if (samples.length < 8) {
+          samples.push({ kind: 'overlap', i, j, ox, oy, oz });
+        }
+        continue;
+      }
+      const slot = (overA, overB, gap) => overA > 0.25 && overB > 0.25 && gap > 0.08 && gap < CLEAR;
+      let axis = null;
+      let gx0 = 0;
+      let gy0 = 0;
+      let gz0 = 0;
+      let gx1 = 0;
+      let gy1 = 0;
+      let gz1 = 0;
+      if (ox > 0.25 && oy > 0.25 && slot(ox, oy, -oz)) {
+        axis = 'z';
+        gx0 = Math.max(ax[i], ax[j]);
+        gx1 = Math.min(bx[i], bx[j]);
+        gy0 = Math.max(ay[i], ay[j]);
+        gy1 = Math.min(by[i], by[j]);
+        gz0 = Math.min(bz[i], bz[j]);
+        gz1 = Math.max(az[i], az[j]);
+      } else if (ox > 0.25 && oz > 0.25 && slot(ox, oz, -oy)) {
+        axis = 'y';
+        gx0 = Math.max(ax[i], ax[j]);
+        gx1 = Math.min(bx[i], bx[j]);
+        gz0 = Math.max(az[i], az[j]);
+        gz1 = Math.min(bz[i], bz[j]);
+        gy0 = Math.min(by[i], by[j]);
+        gy1 = Math.max(ay[i], ay[j]);
+      } else if (oy > 0.25 && oz > 0.25 && slot(oy, oz, -ox)) {
+        axis = 'x';
+        gy0 = Math.max(ay[i], ay[j]);
+        gy1 = Math.min(by[i], by[j]);
+        gz0 = Math.max(az[i], az[j]);
+        gz1 = Math.min(bz[i], bz[j]);
+        gx0 = Math.min(bx[i], bx[j]);
+        gx1 = Math.max(ax[i], ax[j]);
+      }
+      if (!axis) {
+        continue;
+      }
+      let filled = false;
+      for (let k = 0; k < n; k += 1) {
+        if (k === i || k === j) {
+          continue;
+        }
+        if (occupies(ax, ay, az, bx, by, bz, isBox, k, gx0, gy0, gz0, gx1, gy1, gz1)) {
+          filled = true;
+          break;
+        }
+      }
+      if (filled) {
+        continue;
+      }
+      death += 1;
+      if (samples.length < 8) {
+        samples.push({ kind: axis, i, j, gap: axis === 'x' ? -ox : axis === 'y' ? -oy : -oz });
+      }
+    }
+  }
+  return { death, overlap, samples };
+}
+
 function auditWorld(heightAt, colliders, platforms) {
   const p = L.pool;
   let poolWrong = 0;
@@ -106,11 +207,7 @@ function auditWorld(heightAt, colliders, platforms) {
     }
   }
   let wellGhost = 0;
-  const wells = [
-    { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
-    { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
-  ];
-  for (const w of wells) {
+  for (const w of L.wells) {
     for (let x = w.x0 + 0.4; x < w.x1; x += 0.8) {
       for (let z = w.z0 + 0.4; z < w.z1; z += 0.8) {
         const h = heightAt(x, z, 16.2);
@@ -122,18 +219,22 @@ function auditWorld(heightAt, colliders, platforms) {
   }
   let galleryMiss = 0;
   const gy = L.gallery.y;
-  for (let x = -20; x <= 20; x += 2) {
+  for (let x = -18; x <= 18; x += 2) {
     const h = heightAt(x, 10.4, gy + 0.2);
     if (Math.abs(h - gy) > 0.08) {
       galleryMiss += 1;
     }
   }
+  const leftover = leftoverScan(colliders);
   return {
     poolOk,
     poolWrong,
     wellGhost,
     galleryMiss,
+    leftoverDeath: leftover.death,
+    leftoverOverlap: leftover.overlap,
+    leftoverSamples: leftover.samples,
     platforms: platforms.length,
-    boxes: colliders.ax.length,
+    boxes: colliders.count,
   };
 }

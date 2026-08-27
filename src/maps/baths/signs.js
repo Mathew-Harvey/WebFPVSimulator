@@ -49,7 +49,7 @@ export function sticker(root, tex, x, y, z, w, h, yaw, pitch) {
     map: tex,
     transparent: true,
     alphaTest: 0.12,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     fog: true,
     cache: false,
     depthWrite: true,
@@ -88,21 +88,22 @@ export function makeSigns() {
   const ink = hex(PAL.ink);
   const white = hex(PAL.bandWhite);
   const tile = hex(PAL.tile);
-  const safety = hex(PAL.safety);
-  const red = hex(PAL.bandRed);
 
   const fascia = paint(1024, 256, (c, w, h) => {
     c.fillStyle = navy;
     c.fillRect(0, 0, w, h);
     c.fillStyle = orange;
-    c.fillRect(0, h - 28, w, 28);
+    c.fillRect(0, 0, w, 18);
+    c.fillRect(0, h - 22, w, 22);
     c.fillStyle = white;
     c.font = 'bold 92px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
-    c.fillText('CIVIC BATHS', w * 0.5, 118);
-    c.font = 'bold 36px Arial, sans-serif';
+    c.letterSpacing = '8px';
+    c.fillText('CIVIC BATHS', w * 0.5, 128);
+    c.letterSpacing = '0px';
+    c.font = 'bold 44px Arial, sans-serif';
     c.fillStyle = tile;
-    c.fillText('EST. 1974   50 m   6 LANE', w * 0.5, 178);
+    c.fillText('EST. 1974    50 m', w * 0.5, 186);
   });
 
   const crest = paint(512, 512, (c, w, h) => {
@@ -126,14 +127,14 @@ export function makeSigns() {
   });
 
   const noDive = paint(512, 256, (c, w, h) => {
-    c.fillStyle = safety;
+    c.fillStyle = navy;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = ink;
-    c.font = 'bold 72px Impact, Arial Black, sans-serif';
+    c.fillStyle = white;
+    c.font = 'bold 64px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
-    c.fillText('NO DIVING', w * 0.5, 110);
-    c.font = 'bold 40px Arial, sans-serif';
-    c.fillText('SHALLOW  1.4 m', w * 0.5, 180);
+    c.fillText('NO DIVING', w * 0.5, 108);
+    c.font = 'bold 36px Arial, sans-serif';
+    c.fillText('SHALLOW  1.4 m', w * 0.5, 178);
   });
 
   const depth = (label) => paint(256, 128, (c, w, h) => {
@@ -145,152 +146,119 @@ export function makeSigns() {
     c.fillText(label, w * 0.5, 86);
   });
 
-  const clock = paint(256, 256, (c, w, h) => {
+  const numeral = (label) => paint(256, 256, (c, w, h) => {
+    c.fillStyle = navy;
+    c.beginPath();
+    c.arc(w * 0.5, h * 0.5, 118, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = orange;
+    c.font = 'bold 140px Impact, Arial Black, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(label, w * 0.5, h * 0.52);
+  });
+
+  const mural = paint(1024, 384, (c, w, h) => {
     c.fillStyle = cream;
-    c.beginPath();
-    c.arc(128, 128, 118, 0, Math.PI * 2);
-    c.fill();
-    c.strokeStyle = navy;
-    c.lineWidth = 10;
-    c.stroke();
-    c.strokeStyle = ink;
-    c.lineWidth = 8;
-    c.beginPath();
-    c.moveTo(128, 128);
-    c.lineTo(128, 48);
-    c.moveTo(128, 128);
-    c.lineTo(188, 128);
-    c.stroke();
-    c.fillStyle = orange;
-    c.beginPath();
-    c.arc(128, 128, 10, 0, Math.PI * 2);
-    c.fill();
-  });
-
-  const board = paint(768, 256, (c, w, h) => {
-    c.fillStyle = navy;
     c.fillRect(0, 0, w, h);
     c.fillStyle = orange;
-    c.fillRect(16, 16, w - 32, 8);
+    c.fillRect(0, 0, w, 16);
+    c.fillRect(0, h - 16, w, 16);
     c.fillStyle = tile;
-    c.font = 'bold 48px Impact, Arial Black, sans-serif';
-    c.textAlign = 'left';
-    c.fillText('LANE', 40, 90);
-    c.fillText('TIME', 400, 90);
+    c.fillRect(48, 210, w - 96, 110);
+    c.fillStyle = cream;
+    for (let i = 1; i < 6; i += 1) {
+      const x = 48 + ((w - 96) * i) / 6;
+      c.fillRect(x - 3, 214, 6, 102);
+    }
+    c.fillStyle = navy;
+    c.beginPath();
+    c.ellipse(320, 160, 70, 22, -0.4, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.arc(390, 148, 16, 0, Math.PI * 2);
+    c.fill();
     c.fillStyle = white;
-    c.font = 'bold 40px Consolas, monospace';
-    c.fillText('1   28.41', 40, 150);
-    c.fillText('2   28.66', 40, 200);
-    c.fillText('3   29.02', 400, 150);
-    c.fillText('4   29.18', 400, 200);
-  });
-
-  const gallery = paint(512, 128, (c, w, h) => {
-    c.fillStyle = orange;
-    c.fillRect(0, 0, w, h);
-    c.fillStyle = white;
-    c.font = 'bold 64px Impact, Arial Black, sans-serif';
+    c.font = 'bold 84px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
-    c.fillText('GALLERY', w * 0.5, 88);
+    c.fillText('1974', 700, 150);
+    c.fillStyle = ink;
+    c.font = 'bold 28px Arial, sans-serif';
+    c.fillText('MUNICIPAL  SWIMMING  HALL', w * 0.5, 360);
   });
 
-  const changing = paint(512, 128, (c, w, h) => {
+  const ring = paint(256, 256, (c) => {
+    c.strokeStyle = orange;
+    c.lineWidth = 28;
+    c.beginPath();
+    c.arc(128, 128, 96, 0, Math.PI * 2);
+    c.stroke();
+    c.strokeStyle = white;
+    c.lineWidth = 12;
+    c.beginPath();
+    c.arc(128, 128, 96, 0, Math.PI * 2);
+    c.stroke();
+    c.fillStyle = navy;
+    c.font = 'bold 28px Impact, Arial Black, sans-serif';
+    c.textAlign = 'center';
+    c.fillText('CIVIC', 128, 138);
+  });
+
+  const banner = paint(256, 1024, (c, w, h) => {
     c.fillStyle = navy;
     c.fillRect(0, 0, w, h);
+    c.fillStyle = orange;
+    c.fillRect(0, h - 48, w, 48);
+    c.save();
+    c.translate(w * 0.5, h * 0.48);
+    c.rotate(-Math.PI * 0.5);
     c.fillStyle = white;
-    c.font = 'bold 52px Impact, Arial Black, sans-serif';
+    c.font = 'bold 72px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
-    c.fillText('CHANGING', w * 0.5, 88);
+    c.fillText('CIVIC', 0, 24);
+    c.restore();
   });
 
-  const plant = paint(384, 128, (c, w, h) => {
-    c.fillStyle = ink;
+  const plaza = paint(1024, 256, (c, w, h) => {
+    c.fillStyle = orange;
+    c.font = 'bold 140px Impact, Arial Black, sans-serif';
+    c.textAlign = 'center';
+    c.fillText('CIVIC', w * 0.5, 180);
+  });
+
+  const closed = paint(512, 160, (c, w, h) => {
+    c.fillStyle = navy;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = safety;
-    c.font = 'bold 48px Impact, Arial Black, sans-serif';
+    c.fillStyle = orange;
+    c.fillRect(0, 0, w, 10);
+    c.fillRect(0, h - 10, w, 10);
+    c.fillStyle = cream;
+    c.font = 'bold 42px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
-    c.fillText('PLANT', w * 0.5, 86);
+    c.fillText('CLOSED  FOR  FLYING', w * 0.5, 96);
+    drips(c, 40, 118, 420, 36, orange, 5);
   });
 
-  const exit = paint(256, 128, (c, w, h) => {
-    c.fillStyle = red;
-    c.fillRect(0, 0, w, h);
-    c.fillStyle = white;
-    c.font = 'bold 64px Impact, Arial Black, sans-serif';
-    c.textAlign = 'center';
-    c.fillText('EXIT', w * 0.5, 90);
-  });
-
-  const laneNo = (n) => paint(128, 128, (c, w, h) => {
-    c.fillStyle = white;
+  const laneNo = (n) => paint(128, 128, (c) => {
+    c.fillStyle = navy;
     c.beginPath();
     c.arc(64, 64, 54, 0, Math.PI * 2);
     c.fill();
-    c.fillStyle = navy;
+    c.fillStyle = white;
     c.font = 'bold 72px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.fillText(String(n), 64, 88);
   });
 
-  const roof = paint(1024, 256, (c, w, h) => {
-    c.fillStyle = orange;
-    c.font = 'bold 160px Impact, Arial Black, sans-serif';
-    c.textAlign = 'center';
-    c.fillText('BATHS', w * 0.5, 190);
-  });
-
-  const fpv = paint(384, 256, (c) => {
-    c.fillStyle = tile;
-    c.beginPath();
-    c.moveTo(40, 150);
-    c.quadraticCurveTo(30, 40, 120, 50);
-    c.quadraticCurveTo(200, 20, 280, 60);
-    c.quadraticCurveTo(360, 90, 340, 170);
-    c.quadraticCurveTo(300, 230, 180, 220);
-    c.quadraticCurveTo(70, 230, 40, 150);
-    c.fill();
-    c.strokeStyle = ink;
-    c.lineWidth = 10;
-    c.stroke();
-    c.fillStyle = ink;
-    c.font = 'bold 96px Impact, Arial Black, sans-serif';
-    c.textAlign = 'center';
-    c.fillText('FPV', 190, 165);
-  });
-
-  const wet = paint(256, 256, (c) => {
-    c.fillStyle = safety;
-    c.beginPath();
-    c.moveTo(128, 18);
-    c.lineTo(238, 228);
-    c.lineTo(18, 228);
-    c.closePath();
-    c.fill();
-    c.fillStyle = ink;
-    c.font = 'bold 28px Impact, Arial Black, sans-serif';
-    c.textAlign = 'center';
-    c.fillText('WET', 128, 150);
-    c.fillText('FLOOR', 128, 184);
-  });
-
-  const closed = paint(512, 160, (c, w, h) => {
-    c.fillStyle = cream;
-    c.fillRect(0, 0, w, h);
-    c.strokeStyle = orange;
-    c.lineWidth = 10;
-    c.strokeRect(8, 8, w - 16, h - 16);
-    c.fillStyle = ink;
-    c.font = 'bold 48px Impact, Arial Black, sans-serif';
-    c.textAlign = 'center';
-    c.fillText('CLOSED  FOR  FLYING', w * 0.5, 100);
-    drips(c, 40, 118, 420, 36, orange, 5);
-  });
-
   return {
-    fascia, crest, noDive, clock, board, gallery, changing, plant, exit, roof, fpv, wet, closed,
+    fascia, crest, noDive, mural, ring, banner, plaza, closed,
     d14: depth('1.4 m'),
     d22: depth('2.2 m'),
     d50: depth('5.0 m'),
+    n3: numeral('3'),
+    n5: numeral('5'),
+    n75: numeral('7.5'),
+    n10: numeral('10'),
     lanes: [1, 2, 3, 4, 5, 6].map(laneNo),
   };
 }

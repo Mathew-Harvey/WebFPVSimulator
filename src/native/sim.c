@@ -475,8 +475,8 @@ static void ground_project_hull(void) {
   /* Only kill inbound speed when the hull was truly buried. A roll
    * drives a corner a few millimetres through as it rotates about the
    * support; zeroing vn there cancelled the linear part of a couple.
-   * Turtle is a host snap now, not a mixer flip, but the ABI self-test
-   * still proves crashflip against this plane. */
+   * Turtle is the host-latched mixer path; the ABI self-test still
+   * proves crashflip against this plane. */
   if (worst > 0.02) {
     const double vn = S.vel[0] * g_ground_n[0]
         + S.vel[1] * g_ground_n[1]

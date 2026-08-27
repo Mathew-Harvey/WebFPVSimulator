@@ -4921,7 +4921,8 @@ export class Ui {
         ['Right thumb', 'Roll and pitch. Forward is nose down, fly forward. Springs back to centre when you let go.'],
         ['The whole corner', 'The pad is bigger than the drawing: the stick is wherever your thumb lands in the lower corner, and deflection is the drag from there.'],
         ['Landscape', 'Turn the phone sideways. The pads sit under both thumbs, the way a radio sits in both hands.'],
-        ['Pause', 'The Pause chip, top right. Hits bounce. Time is the penalty. If you land inverted, pitch or roll to turtle back over.'],
+        ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Hold pitch or roll on the right pad. Throttle does nothing until you are upright. Let go, then take off.'],
+        ['Pause', 'The Pause chip, top right. Hits bounce. Time is the penalty. Resume before you turtle.'],
       ]
       : source === 'radio'
       ? [
@@ -4930,7 +4931,7 @@ export class Ui {
         ['Before you fly', 'Put the radio in joystick mode before loading this page, then run Calibrate sticks in Settings.'],
         ['In the menus', 'Pitch moves the cursor, roll right selects, roll left goes back.'],
         ['Acro', 'Hands off holds the attitude you left it in. Every turn has to be flown back out again.'],
-        ['Turtle', 'If you end up inverted on the ground, pitch or roll. The high motors spin and the craft flips over, then you take off.'],
+        ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Hold pitch or roll with the right stick. Throttle does nothing until you are upright. Centre the stick, then take off.'],
       ]
       : source === 'launch'
         ? [
@@ -4940,6 +4941,7 @@ export class Ui {
           ['Go', 'Punch throttle past about 20 percent. The hold dumps, the props bite, and you are flying. L again resets it after a launch.'],
           ['Keyboard', 'Up arrow is pitch forward. W is throttle. Launch control switches you to Acro for the hold, then Angle comes back after you go.'],
           ['Radio', 'Same sequence as a real board. L is the mode switch. Fine-tune launch_angle_limit and launch_trigger_throttle_percent on the Flight controller screen.'],
+          ['Turtle', 'If you tip over on the blocks, TURTLE MODE takes over. Hold pitch or roll to flip, then launch again.'],
         ]
       : [
         ['W and S', 'Throttle. Tap for a nudge, hold to climb, long hold to punch. Let go and it holds height.'],
@@ -4948,7 +4950,7 @@ export class Ui {
         ['Left and right', 'Roll.'],
         ['L', 'Launch control, if you turned it on in Settings. Pitch, centre, punch.'],
         ['R, then Escape', 'Back to the start line, and pause.'],
-        ['Turtle', 'If you end up inverted on the ground, pitch or roll. The high motors spin and the craft flips over, then you take off.'],
+        ['Turtle', 'If you end up inverted on the ground, a TURTLE MODE prompt appears. Hold pitch or roll with the arrow keys. Throttle does nothing until you are upright. Let go, then take off.'],
         ['F8', 'Report a bug or give feedback. Pauses if you are in the air, then opens the form.'],
       ];
     for (const [k, v] of rows) {
@@ -5345,9 +5347,11 @@ export class Ui {
     this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
     this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
     if (this.osdFlight) {
-      this.osdFlight.textContent = launchState === 1 || launchState === 2
-        ? 'Launch'
-        : (flightMode === 'turtle' ? 'Turtle' : (flightMode === 'angle' ? 'Angle' : 'Acro'));
+      this.osdFlight.textContent = flightMode === 'turtle'
+        ? 'Turtle'
+        : (launchState === 1 || launchState === 2
+          ? 'Launch'
+          : (flightMode === 'angle' ? 'Angle' : 'Acro'));
     }
     if (this.osdLaunch) {
       const on = launchState > 0;

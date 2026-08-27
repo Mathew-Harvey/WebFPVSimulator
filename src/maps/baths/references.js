@@ -37,7 +37,7 @@ export function bathsReferences(root, colliders, platforms) {
     deepEnd: { measured: -deep, unit: 'm', real: 'dive pit 4.5 to 5.0 m' },
     doorWidth: { measured: doorW, unit: 'm', real: 'south mouth a 5 inch can leave, 8 m+' },
     towerDecks: { measured: towerTop, unit: 'count', real: 'one 10 m board deck' },
-    galleryPieces: { measured: gallery, unit: 'count', real: 'north run plus two south runs' },
+    galleryPieces: { measured: gallery, unit: 'count', real: 'mouth run plus far run' },
     colliderBoxes: { measured: colliders.ax.length, unit: 'count', real: 'authored with the mesh' },
   };
 }

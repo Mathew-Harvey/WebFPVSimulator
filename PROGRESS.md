@@ -20437,3 +20437,77 @@ contact-selftest 72 pass, including the offset wall shove that uses
 e 0.32 against an 8 m/s surface velocity. trackbuilder 473 pass. Live
 in the city: contact registers, no banner, no crash, no stick, console
 clean.
+
+---
+
+### 2026-08-27 | physics | A wall tap is a small bounce you fly out of
+
+Ticket, owner, correcting the previous entry on two counts. The case is
+not base-first into a wall: bottom-side-down means UPRIGHT, an ordinary
+quad flying into a wall and meeting it with the leading prop discs. And
+a wall tap is not a run-ender. It bounces the quad off a little and a
+skilled pilot flies away cleanly.
+
+The proposed follow-up in the previous entry, making a hard hit snap
+into a tumble through prop bite, is DECLINED by the owner and struck.
+It was my invention and it was wrong about the sport: a tap you cannot
+fly out of is not realism, it is a punish.
+
+The geometry costs nothing to correct, because contactPatch already
+gets it right. An upright craft square into a wall reports an arm of
+0.141 m, the two leading discs plus a blade radius, lying along the
+normal: lever zero, so it stops square without inventing spin, and an
+off-centre one still spins. Same answer as the belly case, arrived at
+from the other side.
+
+The curve did NOT cost nothing, and the correction exposed a defect
+shipped an hour ago. Dropping CONTACT_E_SPEED from 14 to 6 killed the
+spring-back, but the falloff is clamped at the bottom, so the rebound
+speed e * v was not monotonic:
+
+    0.5 m/s  0.069      5.5 m/s  0.069
+    2.0 m/s  0.200      5.7 m/s  0.043   <- cliff, the clamp bites
+    3.0 m/s  0.225      8.0 m/s  0.060
+    4.0 m/s  0.200     20.0 m/s  0.150   <- climbing again
+
+A 5 m/s tap came off three times harder than a 6 m/s one, and past the
+cliff harder hits bounced more again. Nothing behaves like that, and a
+pilot who is meant to fly out of a tap cannot learn a control that
+reverses twice across the speeds they actually fly.
+
+Replaced with a saturating bound, which is what a structure does: below
+the knee the contact is elastic at the material's coefficient, above it
+the compliant part of the airframe has bottomed out and the rest goes
+into deformation.
+
+    e_used = e * min(1, CONTACT_E_KNEE / closing)
+
+so the separation speed is e * closing while slow and e * 1.7 for ever
+after. Monotonic, no cliff, bounded, and bounded PER MATERIAL so they do
+not collapse together at speed. Measured, upright square into a face,
+rebound in m/s at 0.5 / 1 / 2 / 4 / 8 / 20 m/s closing:
+
+    wall  e 0.15   0.075  0.150  0.255  0.255  0.255  0.255
+    gate  e 0.22   0.110  0.220  0.374  0.374  0.374  0.374
+    tree  e 0.12   0.060  0.120  0.204  0.204  0.204  0.204
+    train e 0.06   0.030  0.060  0.102  0.102  0.102  0.102
+
+A quarter of a metre a second off a wall, at any speed you meet it,
+with the tangential component kept: that is a tap that pushes you off
+and leaves you flying. CONTACT_E_SPEED is gone.
+
+The low-speed floor is untouched for the third time running. A light
+tap welding on was the first half of this ticket and trading it away to
+fix the second half would just swap one report for the other.
+
+Verify: 14 of 16, the same two pre-existing failures, every numeric
+value and the determinism hash de0401cd4266 unchanged. contact-selftest
+72 pass, including the offset wall shove at e 0.32 against an 8 m/s
+surface velocity. trackbuilder 473 pass, lint:presets and lint:fc
+clean. Live in the city: contact registers, no banner, no crash, still
+flying, console clean.
+
+What went wrong: I fixed the reported symptom without plotting the
+function I had changed. The cliff is visible in four lines of
+arithmetic and I did not look until the owner's correction sent me
+back. Measuring the endpoints of a curve is not measuring the curve.

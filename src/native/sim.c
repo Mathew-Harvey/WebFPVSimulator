@@ -84,26 +84,40 @@ static int g_ground_near = 0;
 #define CONTACT_BAUMGARTE 0.15
 #define CONTACT_REST_VN 0.25
 /*
- * Closing speed at which restitution has collapsed, metres per second.
+ * The knee in the restitution curve, metres per second.
  *
- * This is the plastic-deformation scale, and 14 was a steel number on a
- * machine made of nylon, carbon plate and a strapped-on lithium brick.
- * The owner's report was a fast base-first tap on a wall bouncing far
- * more than a real quad does, and the reason it showed up now rather
- * than before is the contact patch: a flat belly contact has its impulse
- * arm along the normal, so the angular term is zero and the effective
- * mass is the whole 0.71 kg. That is the LOWEST it can be, so a flat hit
- * converts more of the impulse into rebound than any other attitude.
- * Every joule that used to disappear into a spurious corner-strike spin
- * now has to be accounted for honestly, and the honest place is here:
- * an airframe that meets a wall at speed deforms, and deformation does
- * not give the energy back. Measured peak rebound falls from 0.51 m/s to
- * 0.20 m/s, and anything past 6 m/s is dead.
+ * A wall tap should push the quad off a little and let a pilot fly out
+ * of it, and it should do that the SAME WAY at every speed. Two shapes
+ * have been tried here and both were wrong in the way a pilot notices.
  *
- * The low-speed end is untouched: a gentle tap still leaves the surface,
- * which was the first half of the same ticket.
+ * 14 m/s of linear falloff was a steel number on a machine made of
+ * nylon, carbon plate and a strapped-on lithium brick: a fast hit sprang
+ * back. Dropping it to 6 fixed that and broke something worse. The
+ * falloff is clamped at the bottom, so the product e * v rose to 0.225
+ * m/s at 3 m/s, fell off a cliff to 0.043 by 5.7 m/s where the clamp
+ * bites, and then CLIMBED again with speed. A 5 m/s tap came off three
+ * times harder than a 6 m/s one. Nothing in the world behaves like that
+ * and a pilot cannot learn it.
+ *
+ * What a structure actually does is store a bounded amount of elastic
+ * energy. Below the knee the contact is elastic at the material's own
+ * coefficient. Above it the compliant part of the airframe, the skin,
+ * the arms, the battery strap, has bottomed out, and everything past
+ * that goes into deformation and does not come back. So the SEPARATION
+ * SPEED saturates while the impact keeps growing:
+ *
+ *   e_used = e * min(1, CONTACT_E_KNEE / closing)
+ *
+ * which is e * closing while slow, and e * CONTACT_E_KNEE for ever
+ * after. Monotonic, no cliff, and bounded by the material: a wall caps
+ * at 0.26 m/s, PVC at 0.37, bark at 0.20, the train at 0.10, so the
+ * materials still differ at speed instead of collapsing together.
+ *
+ * The low-speed end is untouched. CONTACT_E_FLOOR still holds a gentle
+ * touch off the surface: a light tap welding on was the first half of
+ * this ticket and must not come back to fix the second half.
  */
-#define CONTACT_E_SPEED 6.0
+#define CONTACT_E_KNEE 1.7
 #define CONTACT_STATIC_VT 0.08
 #define CONTACT_BIAS_MAX 1.2
 #define CONTACT_POS_PUSH 0.20
@@ -351,16 +365,14 @@ static int contact_impulse(const double n[3], const double r[3], const double vs
    * normal impulse cancelled the approach exactly, and friction held
    * what was left. A hard face keeps a fraction of its own e all the
    * way down, so the hull leaves. Grass has e = 0 and is unaffected. */
-  double fall = 1.0 + vn / CONTACT_E_SPEED;
-  if (fall < 0.05) {
-    fall = 0.05;
+  const double vin = vn < 0.0 ? -vn : 0.0;
+  double e_used = e;
+  if (vin > CONTACT_E_KNEE) {
+    /* Saturated: the separation speed stops growing with the impact. */
+    e_used = e * CONTACT_E_KNEE / vin;
   }
-  if (fall > 1.0) {
-    fall = 1.0;
-  }
-  double e_used = e * fall;
   if (vn > -CONTACT_REST_VN) {
-    const double soft = (-vn) / CONTACT_REST_VN;
+    const double soft = vin / CONTACT_REST_VN;
     e_used *= CONTACT_E_FLOOR + (1.0 - CONTACT_E_FLOOR) * (soft > 0.0 ? soft : 0.0);
   }
 

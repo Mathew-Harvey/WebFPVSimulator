@@ -19269,3 +19269,93 @@ Possible effect if this breaks something: an inverted hull hanging under
 plant that state is a landing in progress, not a manoeuvre. A turtle
 seated on a low collider now waits at its own height instead of the
 terrain's.
+
+---
+
+### 2026-08-27 | ui | the credits roll gets faces, tickets and a start list
+
+Ticket: owner. The credits page is plain and drab, the pilots should
+link to their YouTube channels with their own logos on the cards, and
+none of it should read or look like it was generated.
+
+Changed. `src/ui/credits.js` is rebuilt around two card builders
+instead of one. A person card puts a channel picture and a slot number
+in a left rail with the copy beside it, and the heading anchor's
+`::after` is stretched over the whole card so a click anywhere on it
+opens that channel. A project card keeps its mark across the top and is
+not a link itself, because its copy already carries two or three links
+and a stretched hit target would swallow every one of them.
+
+The beta roll is now one panel of ruled rows rather than four floating
+cards. A start list is a list, and four identical boxes down a page say
+nothing about what they hold. Each row's affordance is a sakura bar
+down its leading edge instead of a lift, because a row has nowhere to
+lift to without breaking the rules above and below it. The maker card
+above keeps the lift and takes the brighter top edge, as the one hero
+on the page.
+
+Every pilot now carries a ticket, quoted from this file: Asylum's
+Rateprofile Settings report of 19 Aug, Jannes's Chrome 151 title screen
+report of 18 Aug (which correctly changed nothing, and that is written
+on the card), LeStar's two of 18 Aug, and the Precision tune, which is
+Crapshack's PIDs with the factory feedforward. This is the part that
+stops the page reading as generated. A credits page that only says
+thank you is a credits page nobody believes.
+
+Channels, confirmed by the owner before anything was linked:
+andAgainFPV, Asylum at @AsylumFpv, LeStar at @lestarfpv, CrapShack at
+@Z_CrapShack. Jannes has no channel to link, so his row keeps the same
+slot, the same ticket and the same weight with initials where a face
+would be. Four channel pictures are added to `assets/credits` and
+mirrored into the board's `public/credits`, at the 240 px YouTube
+serves. The legal line now says the pictures belong to the pilots.
+
+Two marks were repaired on the way through. `claude.svg` had a stray
+double quote seven characters into its path data, so it has never
+parsed and the card has been showing the text fallback since the roll
+was written. `betaflight.svg` carried an Illustrator viewBox with the
+artwork sitting in the middle 52 percent of it, which is why that
+wordmark rendered at half the optical size of Track Draw's next to it.
+The viewBox is now the artwork's own bounding box plus four units. The
+mark itself is untouched, and it has no strokes, so nothing can clip.
+
+The wordmark is the card's heading now. Betaflight's mark says
+Betaflight, so a card that showed the mark and then wrote the name
+underneath said it twice, which is what the roll used to do. Claude's
+starburst does not spell anything, so that one card takes the symbol
+plus the word, with the symbol marked decorative so the link is not
+announced as "Claude Claude".
+
+Mirrored to the board: `public/credits.js` regenerated from this file
+with the four board-side differences, the credits CSS rewritten against
+the board's own tokens, and `.jpg` and `.jpeg` added to `src/server.js`
+MIME map. Without those two rows the faces would have gone out as
+application/octet-stream and the one page that shows a person's face
+would have shown four broken images.
+
+What went wrong. The first pass had the pilots as a two column card
+grid, which is the default shape and looked it. It became a ruled start
+list on the second look. The first search for the pilots' channels
+found nothing: the plain web results have no CrapShack, no LeStar and
+no Jannes, and the handles only resolved by probing youtube.com/@handle
+directly and reading the og tags. @crapshack turned out to be an empty
+five subscriber channel and the real one is @Z_CrapShack, a second
+channel whose own description says aviation simulation and FPV, which
+is what the card already said about him. Jannes did not resolve at all
+and was left unlinked rather than guessed at.
+
+Verify: `npm run verify` not run. No native, plant, ABI, input, build
+or trace change. `npm run lint:presets` 3 of 3 clean, `npm run lint:fc`
+30 of 30 clean. `npm run lint:catalog` cannot run in this container:
+`vendor/betaflight` is not checked out, so `parameter_names.h` is
+missing. Nothing in this turn touches the catalog. Headless Chromium
+`scripts/shots.js` on the real `/index.html#credits`: screen display
+flex, roll 7 blocks, all four faces complete, all four marks inlined as
+svg, console clean apart from the board API refusing a connection at
+127.0.0.1:3100, which is not running here. Captured at 1400 wide top
+and bottom, and the roll's own preview at 1200 and 430 wide, plus a
+programmatic focus on the first pilot row to check the ring, the bar,
+the face ring and the handle all light together. The board's
+`npm test` passes, and its credits sheet was captured through a symlink
+into this repo's static server, since the board has no shot harness of
+its own.

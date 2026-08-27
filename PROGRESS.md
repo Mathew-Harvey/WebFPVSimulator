@@ -19565,3 +19565,184 @@ is not checked out. Headless Chromium `scripts/shots.js` on the real
 the four rows read "01 Asylum youtube.com/@AsylumFpv", "JA 02 Jannes",
 "03 LeStar youtube.com/@lestarfpv", "04 CrapShack
 youtube.com/@Z_CrapShack". Board `npm test` passes.
+
+---
+
+### 2026-08-27 | map | Bardwell's yard review follow-up
+
+Asked: apply the four adversarial reviews to the rebuilt
+homestead, then keep the loop until a hostile art director
+would ship. The reviews scored the old fridge-and-cubes
+yard. This tick only took findings that still hold.
+
+Hay shed moved to the backyard, sharing the stable's north
+face, open east toward the deck, roof stopped short of the
+north fence so the leftover to the posts is 1.4 m. Extra
+bales sit flush west of the west wall. Fence gap is one
+2.4 m bay. Deck north rail is a solid panel (three-rail
+paint) so the 0.82 m slot is gone. Stairs climb down off
+the north edge, top tread sharing the deck's north face
+and the west post. Garage is four walls with a punched
+east mouth. Car body sits on the grass at y=0. Loft covers
+stalls 0 and 2, with a stall-1 well plus the stair cut.
+Attract goes around the mailbox, under the deck at z=6.4,
+into the hay from the east, no sky pop through the house.
+Trees added on the spawn and gap looks. Gate has a lintel.
+Basement door paint sits by the parking pad.
+
+Declined: hanging the swing under the porch slab (drawn
+gap is a leftover), organic trees, importing city, solid
+Dutch doors on stall mouths.
+
+Live `scripts/shots.js` on `?map=yard`: leftoverDeath 0,
+leftoverOverlap 0, 485 boxes, spawn `(-1.6, 1.28, 6.9)`.
+Named `__hit` CLEAR on fenceGap, underDeck, porch,
+carport, gate, stall0, aisle, hayAisle, underTree, drive.
+Stills in `.loop/yard-shot/`. What still wants a tick:
+the title still from the deck does not yet sell the
+backyard (hay behind the barn, grove as a silhouette),
+the swing is a high-backed bench because it cannot hang
+through the floor, and distant trees still read as lumpy
+clusters. Cel boxes for buildings stay. CLEAR unchanged.
+
+What went wrong: first leftover pass after the move was
+the swing back through the porch slab, stairs overlapping
+the deck and corner posts, grill 1.34 m from the new north
+rail, and compost 0.30 m off the stable north wall. Float
+left the grill-to-rail gap at 1.399999, which still
+counts as death. Seat back shares the slab top, stairs
+share the deck north and west post, grill shortened, compost
+flush.
+
+`npm run verify` was not run: map dress only, no plant,
+ABI, WASM or threshold change. Shots exit 1 is the known
+CDN `ERR_CONNECTION_REFUSED`. Geometry still captured.
+
+---
+
+### 2026-08-27 | map | Bardwell's yard title still and grove
+
+The deck north rail is a leftover-legal solid, so a camera
+at deck height looks into a panel, not the backyard. Title
+and deck stills have to sit above the rail (y 2.48) or they
+are a fence. Spawn look +Z is now open: the trees that sat
+on (0, 18) and (0, 24.6) moved to the sides at (12, 18)
+and (-8, 25).
+
+Canopies are city grove language copied, not imported:
+many small blobs pulled toward the crown, plus a twig,
+instead of a few boulder icosahedrons. Garage mouth gets
+an asphalt floor and steel jambs so the punch reads as a
+hole. Swing is a high-backed slat seat with four chains
+sharing the porch slab; it still cannot hang through the
+floor. Hay has a yellow stack on the open east lip so the
+shed reads from the deck.
+
+Live leftoverDeath 0, leftoverOverlap 0, 491 boxes, named
+`__hit` CLEAR. First plant of the side trees overlapped
+hulls at 0.16 m; they moved onto leftover-legal centres.
+What still wants a tick: judge the above-rail title still,
+whether the grove reads as trees at distance, and whether
+the garage mouth and basement door sell from the drive.
+Cel boxes for buildings stay. CLEAR unchanged.
+
+`npm run verify` was not run: map dress only. Shots exit 1
+is the known CDN refuse.
+
+---
+
+### 2026-08-27 | map | Bardwell's yard drive door and grove mass
+
+The walk-out door sat on grass south of the garage, so a
+drive still could not sell a basement next to a car. The
+parking pad now runs to the garage south face. A stoop and
+a pent share that face and the walk-out east. Steel jambs,
+tracks and a rolled curtain paint the garage mouth, with
+asphalt on the interior walls and ceiling so the punch is a
+room, not a hole in a slab.
+
+Grove: thicker trunks, more smaller blobs filling the hull,
+skirt blobs on the stem, canopies cast and do not receive.
+The drive tree moved off the SE look to (15.4, -22). The
+tree on spawn +Z at (-8, 25) moved to (2, 28) so the title
+look over the north rail can see hay. Swing seat is white.
+CLEAR unchanged.
+
+Live leftoverDeath 0, leftoverOverlap 0, 493 boxes, spawn
+on the deck. Named `__hit` CLEAR on fenceGap, underDeck,
+porch, carport, gate, stall0, aisle, hayAisle, underTree,
+drive, splitLook, doorPad, garageMouth. Title camera is
+above the rail looking at hay. Drive camera is on the pad
+looking at the mouth, the door and the car.
+
+What still wants a tick: a hostile art director on the
+title still (hay vs the near tree), whether the distant
+row reads as trees rather than lumpy clusters, and the
+swing still cannot hang through the porch slab. Cel boxes
+for buildings stay.
+
+What went wrong: thicker trunks ate the old underTree
+probe at x=-15.5. The line moved to x=-14.4, still under
+the canopy, still leftover-legal. The first porch recapture
+sat in the slab edge; the wide porch still is the one in
+`.loop/yard-shot/porch.png`.
+
+`npm run verify` was not run: map dress only, no plant,
+ABI, WASM or threshold change. `scripts/shots.js` exit 1
+is the known CDN `ERR_CONNECTION_REFUSED`. Geometry still
+captured.
+
+---
+
+### 2026-08-27 | map | Compact freestyle maps, laptop cost and crash glitch
+
+Industrial bando, Municipal baths and Bardwell's yard were
+over the fill rate a laptop iGPU can spend, and a crash
+that tunneled the hull glitched the pose. Hardware proxies
+were already under P1 400 / P2 1.2M / P5 120 MB. The real
+bill was 1.34x internal resolution (pipeline ignored
+preferScale), eight/six/four PointLights on MeshToon, a
+static 80 m shadow box, and ~55 yard trees of ~50 blobs
+each, all casting, plus canopy AABBs a 5 inch could not
+leave.
+
+Fixes: `src/maps/compact-perf.js` (restrictCasters then
+merge per material), quality lamps 0, preferScale 1 on
+High/Medium, following shadow half 36 to 40 m, yard
+foliage ~10 blobs and no canopy shadow, sky 16x10, cloud
+planes merged. Pipeline constructor now reads minScale and
+preferScale (Low can go below 1). Buried hits report
+hitPen, keep the outward nearest-face, and `sim_set_pose`
+out instead of another `sim_contact`. Canopy hulls are
+spheres sitting on the trunk box.
+
+High 1600x900 SwiftShader, `.loop/freestyle-perf/`:
+
+| map | P1 | P2 | P5 | P5@1080p | scale | meshes |
+| bando | 86 -> 166 | 26.6k -> 26.5k | 101.7 -> 73.9 | 91.6 | 1.34 -> 1.0 | 217 -> 165 |
+| baths | 104 -> 114 | 13.4k -> 11.1k | 101.7 -> 73.9 | 91.6 | 1.34 -> 1.0 | 189 -> 152 |
+| yard | 171 -> 110 | 190k -> 120k | 101.7 -> 73.9 | 91.6 | 1.34 -> 1.0 | 147 -> 138 |
+
+PointLights 0. leftoverDeath 0, leftoverOverlap 0.
+Yard `__hit` canopyInside reports pen 2.12 m up.
+underTree / fenceGap / underDeck CLEAR. Contact selftest
+and trackbuilder clip tests passed (446).
+
+MAP_MODULE_COUNT is bando 14, baths 16, yard 15 for the
+new shared module.
+
+What went wrong: constructor param `opts` collided with
+the render-target `const opts` and the maps failed to
+parse. A 20 m merge cell made 209 kiln meshes and P1 276.
+The first after-measure ran against the custom/city leftover
+because swap never finished. Spatial cells are the wrong
+split for a plant that is usually on screen; mergeCell is
+Infinity. P1 on the kiln is higher than the old 86 because
+merged bounds no longer cull, but 166 is still under 400
+and the fill-rate cut is the one a laptop feels.
+
+`npm run verify` was not run: maps, collide.js host path
+and quality, no plant/ABI/WASM. `scripts/shots.js` exit 1
+is the known CDN refuse. `npm run contact:selftest` and
+`src/trackbuilder/selftest.js` were run.
+

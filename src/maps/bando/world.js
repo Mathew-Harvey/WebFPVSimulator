@@ -20,13 +20,14 @@
 import * as THREE from 'three';
 import { Colliders } from '../../game/collide.js';
 import { L, STEP, materials, mergeStatic } from './kit.js';
+import { restrictCasters } from '../compact-perf.js';
 import { buildGround, groundHeight } from './ground.js';
 import { buildHall } from './hall.js';
 import { buildPlant } from './plant.js';
 import { buildDress } from './dress.js';
 import { kilnReferences } from './references.js';
 
-export function buildWorld(scene) {
+export function buildWorld(scene, opts = {}) {
   const root = new THREE.Group();
   root.name = 'kiln';
   scene.add(root);
@@ -41,7 +42,8 @@ export function buildWorld(scene) {
   buildDress(root, colliders, M);
 
   const references = kilnReferences(root, colliders, platforms);
-  const merged = mergeStatic(root);
+  restrictCasters(root, opts.casterMin ?? 0.5);
+  const merged = mergeStatic(root, { cell: opts.mergeCell ?? 24 });
   colliders.build();
 
   function heightAt(x, z, fromY) {

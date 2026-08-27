@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { PAL } from './palette.js';
 import { flat } from './cel/toon.js';
 import { rngKit } from './cel/util.js';
+import { mergeStatic } from '../compact-perf.js';
 
 function cloudTex() {
   const cv = document.createElement('canvas');
@@ -50,7 +51,7 @@ function cloudTex() {
 }
 
 export function buildSky(scene, radius = 420) {
-  const geo = new THREE.SphereGeometry(radius, 32, 20);
+  const geo = new THREE.SphereGeometry(radius, 16, 10);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: true,
@@ -114,15 +115,14 @@ export function buildSky(scene, radius = 420) {
     const g = new THREE.Group();
     const back = new THREE.Mesh(new THREE.PlaneGeometry(w, h), matB);
     back.position.set(2, -h * 0.1, -1.5);
-    back.userData.noMerge = true;
     const front = new THREE.Mesh(new THREE.PlaneGeometry(w, h), matA);
-    front.userData.noMerge = true;
     g.add(back, front);
     g.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
     g.lookAt(0, y * 0.55, 0);
     g.renderOrder = -9;
     clouds.add(g);
   }
+  mergeStatic(clouds, { cell: Infinity, transparent: true });
   clouds.frustumCulled = false;
   scene.add(clouds);
   return { dome, clouds };

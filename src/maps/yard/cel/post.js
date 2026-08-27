@@ -201,11 +201,13 @@ function makeQuad(def) {
 }
 
 export class Pipeline {
-  constructor(renderer, scene, camera, { pixelBudget = 4.6e6 } = {}) {
+  constructor(renderer, scene, camera, cfg = {}) {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
-    this.pixelBudget = pixelBudget;
+    this.pixelBudget = cfg.pixelBudget != null ? cfg.pixelBudget : 4.6e6;
+    this.minScale = cfg.minScale != null ? cfg.minScale : 1;
+    this.preferScale = cfg.preferScale != null ? cfg.preferScale : null;
     this.size = new THREE.Vector2(1, 1);
 
     const opts = {
@@ -242,9 +244,11 @@ export class Pipeline {
   /** Resolution scale: supersample a little on low-DPI screens for clean ink. */
   setSize(w, h) {
     const dpr = window.devicePixelRatio || 1;
-    let scale = this.forceScale || (dpr < 1.5 ? 1.5 : Math.min(dpr, 2));
+    let scale = this.forceScale
+      || this.preferScale
+      || (dpr < 1.5 ? 1.5 : Math.min(dpr, 2));
     if (w * h * scale * scale > this.pixelBudget) {
-      scale = Math.max(1, Math.sqrt(this.pixelBudget / (w * h)));
+      scale = Math.max(this.minScale, Math.sqrt(this.pixelBudget / (w * h)));
     }
     this.scale = scale;
     const rw = Math.max(2, Math.floor(w * scale));

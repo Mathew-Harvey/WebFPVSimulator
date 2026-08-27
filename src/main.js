@@ -17,8 +17,10 @@
  * raises sim_set_ground and the plant applies a rigid-body contact every
  * 1 ms step. Grass is a dead thump with a short belly slide. Turtle is
  * a scripted recovery: inverted, seated and still shows TURTLE MODE, and
- * any pitch or roll poke flips the hull upright. There is no crash
- * lockout. See PROGRESS.md.
+ * any pitch or roll poke flips the hull upright. Hits bounce. The one
+ * exception is a clip-through or a leftover overlap bounce cannot leave:
+ * the shell freezes, says Crashed, and puts the quad back on the line.
+ * See PROGRESS.md.
  *
  * Keys in flight: Escape pauses, R returns to the start line, L is launch
  * control when that setting is on, F3 toggles the performance readout, F8
@@ -59,7 +61,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -283,7 +285,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
  * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 13, baths: 15, yard: 14 };
+const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 14, baths: 16, yard: 15 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -1273,7 +1275,11 @@ export async function boot({ loading, bootStart, mapId }) {
       fn();
     });
   }
-  let crashed = false; /* always false: kept on __craftState so captures that still read it do not throw */
+  let crashed = false;
+  let clipCrashUntil = 0;
+  let clipCrashKind = '';
+  let clipGraceUntil = 0;
+  const clipWatch = makeClipWatch();
   /* Turtle is a shell pose flip, not the crashflip mixer. crashflipOn
    * is true while waiting inverted or while the flip is playing, so OSD
    * and the banner can keep saying Turtle. The mixer stays off. */
@@ -1862,6 +1868,10 @@ export async function boot({ loading, bootStart, mapId }) {
     rcPending.length = 0;
     adoptSimClock();
     crashed = false;
+    clipCrashUntil = 0;
+    clipCrashKind = '';
+    clipGraceUntil = performance.now() + CLIP_SPAWN_GRACE_MS;
+    resetClipWatch(clipWatch);
     setCrashflip(false);
     turtleRecover = false;
     turtleOnSupport = false;
@@ -1919,6 +1929,40 @@ export async function boot({ loading, bootStart, mapId }) {
     groundHasPrev = false;
     statePrev = readState();
     stateCurr = statePrev;
+  }
+
+  /*
+   * Clip-through catch. Freeze on the glitch pose so the banner can say
+   * Crashed, then hand the run back to reset() the same way R does.
+   */
+  function beginClipCrash(kind, nowWall) {
+    if (crashed) {
+      return;
+    }
+    crashed = true;
+    clipCrashKind = kind;
+    clipCrashUntil = nowWall + CLIP_CRASH_HOLD_MS;
+    setCrashflip(false);
+    turtleRecover = false;
+    turtleOnSupport = false;
+    setTurtleParkMotors(false);
+    sim.rest();
+    stateCurr = readState();
+    statePrev = stateCurr;
+    acc = 0;
+    race.recover('Crashed', nowWall);
+    view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
+    if (typeof audio.event === 'function') {
+      audio.event('crash');
+    }
+  }
+
+  function finishClipCrash() {
+    clipCrashUntil = 0;
+    clipCrashKind = '';
+    crashed = false;
+    resetClipWatch(clipWatch);
+    reset();
   }
 
   function reset() {
@@ -2249,6 +2293,7 @@ export async function boot({ loading, bootStart, mapId }) {
         lcBoost = true;
         takingOff = true;
         flownThisRun = true;
+        raceHasPrev = false;
         lcGoUntil = nowMs + 900;
         lcAcroUntil = nowMs + 480;
         if (typeof audio.event === 'function') {
@@ -3168,17 +3213,26 @@ export async function boot({ loading, bootStart, mapId }) {
     );
   }
 
+  function contactSeparation(nx, ny, nz, cx, cy, cz, px, py, pz) {
+    const inward = -((px - cx) * nx + (py - cy) * ny + (pz - cz) * nz);
+    if (view.colliders.hitT <= 1e-6 && view.colliders.hitPen > 0) {
+      return view.colliders.hitPen + BOUNCE_SEPARATION;
+    }
+    return (inward > 0 ? inward : 0) + BOUNCE_SEPARATION;
+  }
+
   /*
    * Rigid-body contact off a surface: unit outward normal and the world
    * point the contact happened at. Places the craft at that point plus a
    * small outward gap, so a tunneled frame is rewound to the entry face.
+   * Already-inside hits (hitT = 0) also add hitPen, the nearest-face
+   * exit, because 8 mm along -travel does not leave a tree hull.
    * The impulse is sim_contact: angular effective mass, Coulomb friction,
    * restitution that falls with closing speed. vs is the surface velocity
    * in the plant frame (the train, otherwise zero).
    */
   function deflectOff(nx, ny, nz, cx, cy, cz, px, py, pz, e, mu, vsx, vsy, vsz) {
-    const inward = -((px - cx) * nx + (py - cy) * ny + (pz - cz) * nz);
-    const sep = (inward > 0 ? inward : 0) + BOUNCE_SEPARATION;
+    const sep = contactSeparation(nx, ny, nz, cx, cy, cz, px, py, pz);
     worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
     threeDirToSim(nx, ny, nz, nSim);
     const nlen = Math.sqrt(nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z);
@@ -3207,6 +3261,27 @@ export async function boot({ loading, bootStart, mapId }) {
     return true;
   }
 
+  /* Second and later contacts in the same frame that are already inside:
+   * move onto the free side without stacking another impulse. */
+  function separateOff(nx, ny, nz, cx, cy, cz, px, py, pz) {
+    const sep = contactSeparation(nx, ny, nz, cx, cy, cz, px, py, pz);
+    worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
+    const st = stateCurr;
+    const code = sim.e.sim_set_pose(
+      pSim.x, pSim.y, pSim.z, st[7], st[8], st[9], st[10],
+    );
+    if (code !== SIM_OK) {
+      return false;
+    }
+    stateCurr = readState();
+    statePrev = stateCurr;
+    poseFromState(stateCurr, pCurr);
+    shell.quad.position.copy(pCurr);
+    racePrev.copy(pCurr);
+    groundPrev.copy(pCurr);
+    return true;
+  }
+
   /* The obstacle case: the normal and the contact point come off the last
    * collider query. */
   function applyBounce(e, mu, vsx, vsy, vsz) {
@@ -3219,6 +3294,18 @@ export async function boot({ loading, bootStart, mapId }) {
       racePrev.z + (pCurr.z - racePrev.z) * ht,
       pCurr.x, pCurr.y, pCurr.z,
       e, mu, vsx, vsy, vsz,
+    );
+  }
+
+  function applySeparate() {
+    const col = view.colliders;
+    const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
+    return separateOff(
+      col.hitNx, col.hitNy, col.hitNz,
+      racePrev.x + (pCurr.x - racePrev.x) * ht,
+      racePrev.y + (pCurr.y - racePrev.y) * ht,
+      racePrev.z + (pCurr.z - racePrev.z) * ht,
+      pCurr.x, pCurr.y, pCurr.z,
     );
   }
   /*
@@ -3436,6 +3523,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (
       mode === 'flight'
+      && !crashed
       && stateCurr
       && !turtleFlip.active
       && (turtleWait
@@ -3450,6 +3538,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (
       mode === 'flight'
       && !poseLock
+      && !crashed
       && stateCurr
       && !turtleWait
       && !turtleFlip.active
@@ -3469,7 +3558,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (mode === 'flight' && !poseLock) {
       setTurtleParkMotors(turtleParkedNow || turtleRecover);
     }
-    if (!(mode === 'flight' && !landed && !turtleParkedNow) && rcPending.length > 1) {
+    if (!(mode === 'flight' && !landed && !turtleParkedNow && !crashed) && rcPending.length > 1) {
       rcPending.splice(0, rcPending.length - 1);
     }
     /* Hard bound, whatever else happens. */
@@ -3480,7 +3569,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.pollPad(padNav());
     }
 
-    if (mode === 'flight' && landed) {
+    if (mode === 'flight' && landed && !crashed) {
       const thr = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
       if (landed && thr > TAKEOFF_THROTTLE) {
         if (turtleRecover) {
@@ -3514,7 +3603,15 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
-    if (mode === 'flight' && ui.screen === 'flight' && turtleParkedNow && !poseLock) {
+    if (mode === 'flight' && crashed && nowWall >= clipCrashUntil) {
+      finishClipCrash();
+    }
+    if (mode === 'flight' && crashed) {
+      /* Hold the glitch pose so Crashed can be read, then reset(). */
+      acc += dt;
+      const holdSteps = Math.floor(acc / MS_PER_STEP);
+      acc -= holdSteps * MS_PER_STEP;
+    } else if (mode === 'flight' && ui.screen === 'flight' && turtleParkedNow && !poseLock) {
       /* Inverted wait or the scripted flip: do not step the plant.
        * The lap clock still runs. Pause freezes the flip where it is. */
       stepTurtleFrozen(dt);
@@ -3825,18 +3922,23 @@ export async function boot({ loading, bootStart, mapId }) {
      * the segment the craft travelled and the capsule's axis, so nothing can
      * tunnel through at any frame rate.
      *
-     * Nothing here ends a run. A hit is sim_contact: bounce, slide or roll
-     * relative to the impact, with the obstacle's material and, for a
-     * train, its surface velocity. Cooldown is OSD and audio only.
+     * Bounce is still the rule. The leftover after this loop is what the
+     * clip-through watch reads: a hull that bounce could not eject, or a
+     * centre that has gone through a face. Cooldown is OSD and audio only
+     * until that watch fires, at which point the shell says Crashed.
      */
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    if (mode === 'flight' && !landed && !launchStaging && !turtleParkedNow && raceHasPrev) {
+    let leftoverOverlap = false;
+    let interiorDepth = 0;
+    let roofContact = false;
+    if (mode === 'flight' && !landed && !launchStaging && !turtleParkedNow && !crashed && raceHasPrev) {
       /* The craft the query sweeps is the four prop discs: crx/crz from
        * this attitude, vHalfFrame through the body at its current tilt. */
       let obstacleRoof = false;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+      let attempts = 0;
+      for (; attempts < 4; attempts += 1) {
         const k = view.colliders.hit(
           racePrev.x, racePrev.y, racePrev.z,
           pCurr.x, pCurr.y, pCurr.z,
@@ -3881,7 +3983,17 @@ export async function boot({ loading, bootStart, mapId }) {
           && bounceHitIndex === view.colliders.hitIndex
           && bounceHitKind === lastHitKind;
         const graze = closing < GRAZE_SPEED_MAX;
+        const buried = view.colliders.hitT <= 1e-6 && view.colliders.hitPen > 0.05;
+        const stuck = attempts > 0 && view.colliders.hitT <= 1e-6;
+        if (buried || stuck) {
+          if (!applySeparate()) {
+            leftoverOverlap = true;
+            break;
+          }
+          continue;
+        }
         if (!applyBounce(mat.e, mat.mu, vsx, vsy, vsz)) {
+          leftoverOverlap = true;
           break;
         }
         if (!sameContact && !graze) {
@@ -3901,8 +4013,69 @@ export async function boot({ loading, bootStart, mapId }) {
         bounceHitIndex = view.colliders.hitIndex;
         bounceHitKind = lastHitKind;
       }
+      if (!leftoverOverlap && attempts === 4) {
+        const rest = view.colliders.hit(
+          pCurr.x, pCurr.y, pCurr.z,
+          pCurr.x, pCurr.y, pCurr.z,
+          vHalfFrame,
+          qCollide.x, qCollide.y, qCollide.z, qCollide.w,
+        );
+        leftoverOverlap = rest >= 0;
+      }
+      if (leftoverOverlap) {
+        interiorDepth = view.colliders.interiorOfHit(pCurr.x, pCurr.y, pCurr.z);
+        if (!(interiorDepth > CLIP_CENTER_EPS) && view.colliders.hitNy > 0.5) {
+          roofContact = true;
+        }
+      }
       if (obstacleRoof) {
         turtleOnSupport = true;
+      }
+    } else if (
+      mode === 'flight'
+      && !launchStaging
+      && !crashed
+      && (landed || turtleParkedNow)
+    ) {
+      /* A perch or turtle freeze skips the bounce loop, so a hull that
+       * sat down inside a wall would never be measured. Level pancake:
+       * the last flying vHalfFrame can be a banked fat query. */
+      const rest = view.colliders.hit(
+        pCurr.x, pCurr.y, pCurr.z,
+        pCurr.x, pCurr.y, pCurr.z,
+        craftVerticalHalf(0),
+        qPrev.x, qPrev.y, qPrev.z, qPrev.w,
+      );
+      if (rest >= 0) {
+        leftoverOverlap = true;
+        interiorDepth = view.colliders.interiorOfHit(pCurr.x, pCurr.y, pCurr.z);
+        if (!(interiorDepth > CLIP_CENTER_EPS) && view.colliders.hitNy > 0.5) {
+          roofContact = true;
+        }
+      }
+    }
+
+    if (mode === 'flight' && !poseLock) {
+      const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
+      const buriedDepth = hy > pCurr.y ? hy - pCurr.y : 0;
+      const clipKind = clipWatchTick(clipWatch, {
+        landed,
+        turtle: turtleWait || turtleFlip.active,
+        launchStaging,
+        hold: crashed,
+        poseLock,
+        spawnGrace: nowWall < clipGraceUntil,
+        takingOff,
+        unresolved: leftoverOverlap,
+        roofContact,
+        interiorDepth,
+        buriedDepth,
+        x: pCurr.x,
+        y: pCurr.y,
+        z: pCurr.z,
+      }, dt);
+      if (clipKind) {
+        beginClipCrash(clipKind, nowWall);
       }
     }
 
@@ -3910,6 +4083,7 @@ export async function boot({ loading, bootStart, mapId }) {
       mode === 'flight'
       && !poseLock
       && !launchStaging
+      && !crashed
       && stateCurr
       && !turtleWait
       && !turtleFlip.active
@@ -3924,7 +4098,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * clock at that state: gate crossings are swept over the frame's
      * travel, so speed cannot tunnel a gate. */
     const simNow = simTimeMs > 0 ? simTimeMs - 1 + a : 0;
-    if (mode === 'flight' && !launchStaging) {
+    if (mode === 'flight' && !launchStaging && !crashed) {
       if (raceHasPrev) {
         /* The race's state from before this frame's travel is scored, so
          * the ghost bookkeeping can see a lap boundary without the race
@@ -4377,7 +4551,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * the wind was held at the speed of the impact for the whole of it while
      * the wreck lay still on the ground.
      */
-    const motorsTurning = mode === 'flight' && !landed && !isTurtleParked();
+    const motorsTurning = mode === 'flight' && !landed && !crashed && !isTurtleParked();
     audioRpm[0] = motorsTurning ? st[14] : 0;
     audioRpm[1] = motorsTurning ? st[15] : 0;
     audioRpm[2] = motorsTurning ? st[16] : 0;
@@ -4419,7 +4593,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Native state 3 latches until the L switch drops. The GO flash
          * is 900 ms; after that the overlay has to hide or it sits on
          * the goggles for the rest of the lap. */
-        launchState: (crashflipOn || turtleRecover) ? 0 : (launchNow === 3 && nowWall >= lcGoUntil ? 0 : launchNow),
+        launchState: (crashflipOn || turtleRecover || crashed) ? 0 : (launchNow === 3 && nowWall >= lcGoUntil ? 0 : launchNow),
         launchPitch: pitchNoseDownDeg(st),
         /* The gap to the ghost at the last gate, while its readout lives.
          * Null the rest of the time, which is how the OSD knows to clear. */
@@ -4522,6 +4696,8 @@ export async function boot({ loading, bootStart, mapId }) {
         input.calResult = null;
       }
       ui.setBanner('');
+    } else if (crashed && ui.screen === 'flight') {
+      ui.setBanner('Crashed', true);
     } else if (
       (turtleWait || turtleRecover || turtleFlip.active)
       && ui.screen === 'flight'
@@ -4842,6 +5018,8 @@ export async function boot({ loading, bootStart, mapId }) {
     flownThisRun,
     landed,
     crashed,
+    clipCrash: crashed,
+    clipCrashKind,
     turtle: crashflipOn,
     turtleWait,
     turtleFlip: turtleFlip.active,
@@ -5442,7 +5620,15 @@ export async function boot({ loading, bootStart, mapId }) {
       px, py, pz, qx, qy, qz, vh,
       qCollide.x, qCollide.y, qCollide.z, qCollide.w,
     );
-    return { kind: k < 0 ? null : view.colliders.kindName(k), index: view.colliders.hitIndex };
+    return {
+      kind: k < 0 ? null : view.colliders.kindName(k),
+      index: view.colliders.hitIndex,
+      t: view.colliders.hitT,
+      pen: view.colliders.hitPen,
+      nx: view.colliders.hitNx,
+      ny: view.colliders.hitNy,
+      nz: view.colliders.hitNz,
+    };
   };
   /* Shadow pass on or off, so the ledger can attribute draw calls between the
    * colour pass and the shadow pass rather than guessing at the split.

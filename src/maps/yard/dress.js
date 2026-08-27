@@ -154,11 +154,14 @@ function ironGate(root, colliders, M) {
     decal(root, colliders, M.steelDark, g.x0 - 0.07, y, g.z + 0.12, g.x0 + 0.07, y + 0.08, g.z + 3.6);
     decal(root, colliders, M.steelDark, g.x1 - 0.07, y, g.z + 0.12, g.x1 + 0.07, y + 0.08, g.z + 3.6);
   }
+  slab(root, colliders, M.steelDark, g.x0 + 0.08, 1.37, g.z - 0.08, g.x1 - 0.08, 1.52, g.z + 0.08, {
+    kind: 'pole',
+  });
 }
 
 function car(root, colliders, M) {
   const c = L.car;
-  slab(root, colliders, M.creamSun, c.x0, 0.18, c.z0, c.x1, 0.92, c.z1, { kind: 'obstacle' });
+  slab(root, colliders, M.creamSun, c.x0, 0, c.z0, c.x1, 0.92, c.z1, { kind: 'obstacle' });
   slab(root, colliders, M.creamShade, c.x0 + 0.08, 0.92, c.z0 + 0.85, c.x1 - 0.08, c.h, c.z1 - 0.7, {
     kind: 'obstacle',
   });
@@ -185,15 +188,27 @@ function car(root, colliders, M) {
 function swing(root, colliders, M) {
   const p = L.porch;
   const z = -6.64;
-  slab(root, colliders, M.creamSun, -2.45, 1.00, z - 0.32, -0.55, 1.12, z + 0.32, { kind: 'obstacle' });
-  slab(root, colliders, M.creamSun, -2.45, 1.00, z - 0.42, -0.55, 1.12, z - 0.32, { kind: 'obstacle' });
-  slab(root, colliders, M.creamSun, -2.45, 1.00, z + 0.32, -0.55, 1.12, z + 0.42, { kind: 'obstacle' });
-  slab(root, colliders, M.steelDark, -2.38, 1.26, z - 0.40, -2.32, p.roof - 0.16, z - 0.34, {
-    kind: 'pole',
-  });
-  slab(root, colliders, M.steelDark, -0.68, 1.26, z - 0.40, -0.62, p.roof - 0.16, z - 0.34, {
-    kind: 'pole',
-  });
+  slab(root, colliders, M.white, -2.45, 1.00, z - 0.32, -0.55, 1.12, z + 0.32, { kind: 'obstacle' });
+  slab(root, colliders, M.white, -2.45, 1.00, z - 0.42, -0.55, 1.12, z - 0.32, { kind: 'obstacle' });
+  slab(root, colliders, M.white, -2.45, 1.00, z + 0.32, -0.55, 1.12, z + 0.42, { kind: 'obstacle' });
+  slab(root, colliders, M.white, -2.45, 1.26, z + 0.32, -0.55, 1.62, z + 0.42, { kind: 'obstacle' });
+  slab(root, colliders, M.white, -2.45, 1.26, z - 0.32, -2.33, 1.46, z + 0.32, { kind: 'obstacle' });
+  slab(root, colliders, M.white, -0.67, 1.26, z - 0.32, -0.55, 1.46, z + 0.32, { kind: 'obstacle' });
+  const slats = [-0.22, -0.08, 0.06, 0.20];
+  for (const dz of slats) {
+    decal(root, colliders, M.white, -2.40, 1.12, z + dz - 0.04, -0.60, 1.16, z + dz + 0.04);
+  }
+  const chains = [
+    [-2.40, z - 0.40],
+    [-0.64, z - 0.40],
+    [-2.40, z + 0.44],
+    [-0.64, z + 0.44],
+  ];
+  for (const [cx, cz] of chains) {
+    slab(root, colliders, M.steelDark, cx, 1.26, cz, cx + 0.06, p.roof - 0.16, cz + 0.06, {
+      kind: 'pole',
+    });
+  }
 }
 
 function junk(root, colliders, M) {
@@ -204,11 +219,10 @@ function junk(root, colliders, M) {
     kind: 'obstacle',
   });
   const hx = L.hay.x1;
-  const hz = L.hay.z0;
-  slab(root, colliders, M.woodDark, hx - 1.2, 0, hz + 0.35 - 0.85, hx, 0.42, hz + 0.35, {
+  slab(root, colliders, M.woodDark, hx, 0, 26.15, hx + 1.2, 0.42, 27.35, {
     kind: 'obstacle',
   });
-  slab(root, colliders, M.wood, hx - 1.12, 0.42, hz + 0.35 - 0.78, hx - 0.08, 0.78, hz + 0.35, {
+  slab(root, colliders, M.wood, hx + 0.08, 0.42, 26.22, hx + 1.12, 0.78, 27.28, {
     kind: 'obstacle',
   });
   slab(root, colliders, M.steelDark, L.stable.x1, 0, 20.0, L.stable.x1 + 1.35, 0.52, 21.5, {
@@ -222,8 +236,8 @@ function junk(root, colliders, M) {
     kind: 'obstacle',
   });
 
-  slab(root, colliders, M.steelDark, -5.40, L.deck.y, 7.23, -4.60, 2.02, 8.03, { kind: 'obstacle' });
-  slab(root, colliders, M.tire, -5.32, 2.02, 7.33, -4.68, 2.14, 7.93, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, -5.40, L.deck.y, 7.23, -4.60, 2.02, 7.94, { kind: 'obstacle' });
+  slab(root, colliders, M.tire, -5.32, 2.02, 7.33, -4.68, 2.14, 7.84, { kind: 'obstacle' });
 
   slab(root, colliders, M.wood, L.porch.x0, 0, L.porch.z0 - 0.38, L.porch.x0 + 0.76, 0.38, L.porch.z0 + 0.04, {
     kind: 'obstacle',
@@ -238,14 +252,11 @@ function junk(root, colliders, M) {
     kind: 'obstacle',
   });
 
-  slab(root, colliders, M.steel, L.hay.x0 - 1.1, 0.18, -21.4, L.hay.x0, 0.48, -20.3, {
+  slab(root, colliders, M.steel, L.hay.x0 - 1.1, 0.18, 25.25, L.hay.x0, 0.48, 26.35, {
     kind: 'obstacle',
   });
-  slab(root, colliders, M.woodDark, L.hay.x0 - 1.05, 0.32, -21.55, L.hay.x0 - 0.15, 0.42, -21.4, {
-    kind: 'pole',
-  });
 
-  slab(root, colliders, M.steelDark, 9.7, 0, L.garage.z1, 10.55, 0.42, L.garage.z1 + 0.7, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, 9.7, 0, L.garage.z1, 10.6, 0.42, L.garage.z1 + 0.7, { kind: 'obstacle' });
   slab(root, colliders, M.tire, 9.75, 0, L.garage.z1 + 0.05, 10.15, 0.28, L.garage.z1 + 0.35, {
     solid: false, cast: false,
   });
@@ -256,13 +267,13 @@ function junk(root, colliders, M) {
     kind: 'obstacle',
   });
 
-  slab(root, colliders, M.litter, -28.2, 0, L.stable.z1, -26.6, 0.78, L.stable.z1 + 0.95, {
+  slab(root, colliders, M.litter, L.hay.x0 - 1.9, 0, 24.0, L.hay.x0, 0.78, 25.25, {
     kind: 'obstacle',
   });
 
-  slab(root, colliders, M.woodDark, -4.55, 0, -38.12, -4.41, 1.05, -37.98, { kind: 'pole' });
-  slab(root, colliders, M.woodDark, -3.25, 0, -38.12, -3.11, 1.05, -37.98, { kind: 'pole' });
-  slab(root, colliders, M.wood, -4.41, 0.52, -38.08, -3.25, 0.66, -38.02, { kind: 'pole' });
+  slab(root, colliders, M.woodDark, -6.05, 0, -38.12, -5.91, 1.05, -37.98, { kind: 'pole' });
+  slab(root, colliders, M.woodDark, -4.95, 0, -38.12, -4.81, 1.05, -37.98, { kind: 'pole' });
+  slab(root, colliders, M.wood, -5.91, 0.52, -38.08, -4.95, 0.66, -38.02, { kind: 'pole' });
 }
 
 function mailbox(root, colliders, M) {

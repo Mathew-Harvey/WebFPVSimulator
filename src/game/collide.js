@@ -180,6 +180,28 @@ function clamp01(v) {
   return v;
 }
 
+/*
+ * Signed depth of a point against an AABB. Positive is the distance to
+ * the nearest face while the point is inside; zero is on a face; negative
+ * is the Euclidean distance to the box while outside. No allocation.
+ */
+function boxPointInterior(x0, y0, z0, x1, y1, z1, x, y, z) {
+  const dx = x < x0 ? x0 - x : x > x1 ? x - x1 : 0;
+  const dy = y < y0 ? y0 - y : y > y1 ? y - y1 : 0;
+  const dz = z < z0 ? z0 - z : z > z1 ? z - z1 : 0;
+  if (dx === 0 && dy === 0 && dz === 0) {
+    const ix = x - x0 < x1 - x ? x - x0 : x1 - x;
+    const iy = y - y0 < y1 - y ? y - y0 : y1 - y;
+    const iz = z - z0 < z1 - z ? z - z0 : z1 - z;
+    let m = ix < iy ? ix : iy;
+    if (iz < m) {
+      m = iz;
+    }
+    return m;
+  }
+  return -Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 function clampRadius(v) {
   if (v < CRAFT_WORLD_PROP) {
     return CRAFT_WORLD_PROP;
@@ -889,7 +911,9 @@ export class Colliders {
     if (tl > 1e-9) {
       const along = d1x * nx + d1y * ny + d1z * nz;
       this.hitNormalDot = along < 0 ? -along / tl : along / tl;
-      if (along > 0) {
+      /* A buried centre already has an outward nearest-face. Flipping that
+       * to oppose travel pushes the hull deeper and is the pose glitch. */
+      if (along > 0 && this.hitPen <= 0) {
         nx = -nx;
         ny = -ny;
         nz = -nz;
@@ -934,6 +958,7 @@ export class Colliders {
     this.hitNx = 0;
     this.hitNy = 0;
     this.hitNz = 0;
+    this.hitPen = 0;
     this.hitMoving = -1;
     if (!this.built) {
       return -1;
@@ -1130,25 +1155,142 @@ export class Colliders {
     /* Contact normal at the earliest contact point. For a box it is the per
      * axis overhang; for a capsule it is the vector from the axis's closest
      * point to the contact point. A degenerate zero length contact counts as
-     * head on, so it can never soften a real crash. */
+     * head on, so it can never soften a real crash.
+     *
+     * INSIDE A BOX the overhang is zero on every axis, and the old path
+     * fell back to -travel plus 8 mm of gap. That does not exit a tree
+     * hull the craft has already tunneled into, so the next frame is
+     * still inside, the fallback normal flips, and the pose glitches.
+     * Nearest-face plus the ellipsoid semi-axis is the actual way out,
+     * reported as hitPen so the host can depenetrate in one step. */
     const cxp = px + d1x * bestT;
     const cyp = py + d1y * bestT;
     const czp = pz + d1z * bestT;
     let nx;
     let ny;
     let nz;
+    this.hitPen = 0;
     if (this.fbox[bestI]) {
       nx = cxp < this.fax[bestI] ? cxp - this.fax[bestI] : cxp > this.fbx[bestI] ? cxp - this.fbx[bestI] : 0;
       ny = cyp < this.fay[bestI] ? cyp - this.fay[bestI] : cyp > this.fby[bestI] ? cyp - this.fby[bestI] : 0;
       nz = czp < this.faz[bestI] ? czp - this.faz[bestI] : czp > this.fbz[bestI] ? czp - this.fbz[bestI] : 0;
+      if (nx === 0 && ny === 0 && nz === 0) {
+        const dx0 = cxp - this.fax[bestI];
+        const dx1 = this.fbx[bestI] - cxp;
+        const dy0 = cyp - this.fay[bestI];
+        const dy1 = this.fby[bestI] - cyp;
+        const dz0 = czp - this.faz[bestI];
+        const dz1 = this.fbz[bestI] - czp;
+        let best = dx0;
+        nx = -1;
+        ny = 0;
+        nz = 0;
+        let rAxis = crx;
+        if (dx1 < best) {
+          best = dx1;
+          nx = 1;
+          ny = 0;
+          nz = 0;
+          rAxis = crx;
+        }
+        if (dy0 < best) {
+          best = dy0;
+          nx = 0;
+          ny = -1;
+          nz = 0;
+          rAxis = vh;
+        }
+        if (dy1 < best) {
+          best = dy1;
+          nx = 0;
+          ny = 1;
+          nz = 0;
+          rAxis = vh;
+        }
+        if (dz0 < best) {
+          best = dz0;
+          nx = 0;
+          ny = 0;
+          nz = -1;
+          rAxis = crz;
+        }
+        if (dz1 < best) {
+          best = dz1;
+          nx = 0;
+          ny = 0;
+          nz = 1;
+          rAxis = crz;
+        }
+        this.hitPen = best + rAxis;
+        if (this.hitPen > 8) {
+          this.hitPen = 8;
+        }
+      }
     } else {
       this.axisToPoint(bestI, cxp, cyp, czp);
       nx = this.nx;
       ny = this.ny;
       nz = this.nz;
+      const dist = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      let cr = discSupport(nx, ny, nz, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz);
+      const nyAbs = dist > 1e-18 ? Math.abs(ny) / dist : 1;
+      if (vh * nyAbs > cr) {
+        cr = vh * nyAbs;
+      }
+      if (cr > CRAFT_WORLD_R) {
+        cr = CRAFT_WORLD_R;
+      }
+      const reach = this.fr[bestI] + cr;
+      if (dist < reach) {
+        this.hitPen = reach - dist;
+        if (this.hitPen > 8) {
+          this.hitPen = 8;
+        }
+      }
     }
     this.finishHitNormal(nx, ny, nz, d1x, d1y, d1z);
     return this.hitKind;
+  }
+
+  /*
+   * Signed depth of (x, y, z) into collider i. Positive means the POINT,
+   * not the hull, is inside the solid. A surface bounce has the craft
+   * centre outside (negative or zero) even while the props overlap.
+   */
+  interiorAt(i, x, y, z) {
+    if (!this.built || i < 0 || i >= this.count) {
+      return 0;
+    }
+    if (this.fbox[i]) {
+      return boxPointInterior(
+        this.fax[i], this.fay[i], this.faz[i],
+        this.fbx[i], this.fby[i], this.fbz[i],
+        x, y, z,
+      );
+    }
+    this.axisToPoint(i, x, y, z);
+    const d = Math.sqrt(this.nx * this.nx + this.ny * this.ny + this.nz * this.nz);
+    return this.fr[i] - d;
+  }
+
+  /* Same number for whatever hit() last reported, static or moving. */
+  interiorOfHit(x, y, z) {
+    if (this.hitMoving >= 0) {
+      const i = this.hitMoving;
+      return boxPointInterior(
+        this.movingCx[i] - this.movingHx[i],
+        this.movingCy[i] - this.movingHy[i],
+        this.movingCz[i] - this.movingHz[i],
+        this.movingCx[i] + this.movingHx[i],
+        this.movingCy[i] + this.movingHy[i],
+        this.movingCz[i] + this.movingHz[i],
+        x, y, z,
+      );
+    }
+    if (this.hitIndex < 0) {
+      return 0;
+    }
+    return this.interiorAt(this.hitIndex, x, y, z);
   }
 
   kindName(k) {
@@ -1506,5 +1648,154 @@ export function groundOutcome(descentRate, horizontal, tiltDeg) {
     return GROUND_SLIDE;
   }
   return GROUND_LAND;
+}
+
+/*
+ * Clip-through / stuck catch.
+ *
+ * Bounce is still the rule. This is the exception for the one state
+ * bounce cannot leave: the hull's CENTRE is inside a solid, the bounce
+ * loop failed to eject and the craft is jittering in place, or the
+ * craft has fallen through the terrain. The shell freezes, says
+ * Crashed, and puts the quad back on the line.
+ *
+ * It must not fire on a bounce that clears, a perch, a turtle, a slide
+ * along a wall, a roof sit, a graze, leftover hull overlap with the
+ * centre still outside, or a single tunneled frame that the next bounce
+ * rewinds. Deep centre-inside (CLIP_DEEP) fires on the first frame:
+ * that is already through a face, not slop. The tests in suiteClipCatch
+ * are the contract.
+ *
+ * CLIP_CENTER_EPS is a hair over BOUNCE_SEPARATION: start-inside only
+ * nudges that far, so a centre more than that inside is not leftover
+ * slop, it is through the face.
+ */
+export const CLIP_CENTER_EPS = 0.010;
+export const CLIP_DEEP = 0.08;
+export const CLIP_CONFIRM_MS = 180;
+export const STUCK_UNRESOLVED_MS = 350;
+export const STUCK_TRAVEL_MAX = 0.40;
+export const BURIED_DEPTH = 0.22;
+export const BURIED_CONFIRM_MS = 180;
+export const CLIP_CRASH_HOLD_MS = 800;
+export const CLIP_SPAWN_GRACE_MS = 500;
+
+export function makeClipWatch() {
+  return {
+    insideMs: 0,
+    stuckMs: 0,
+    buriedMs: 0,
+    ax: 0,
+    ay: 0,
+    az: 0,
+    haveAnchor: false,
+  };
+}
+
+export function resetClipWatch(watch) {
+  watch.insideMs = 0;
+  watch.stuckMs = 0;
+  watch.buriedMs = 0;
+  watch.ax = 0;
+  watch.ay = 0;
+  watch.az = 0;
+  watch.haveAnchor = false;
+  return watch;
+}
+
+function clipWatchExempt(sample) {
+  return Boolean(
+    sample.launchStaging
+    || sample.hold
+    || sample.poseLock
+    || sample.spawnGrace,
+  );
+}
+
+function clipWatchSoft(sample) {
+  return Boolean(sample.landed || sample.turtle);
+}
+
+/*
+ * Advance the watch by one frame. sample:
+ *   skip fields via clipWatchExempt (launch, hold, harness lock)
+ *   landed / turtle still allow an INSIDE crash: a perch frozen
+ *   inside a wall is the glitch, not a landing
+ *   spawnGrace     just respawned; ignore leftover pad overlap
+ *   interiorDepth  centre vs the last leftover solid, metres, signed
+ *   unresolved     bounce loop ended still overlapping
+ *   roofContact    leftover overlap, outward normal mostly up, centre
+ *                  not inside. A deck sit, not a clip.
+ *   buriedDepth    metres below height(), 0 if above
+ *   x, y, z        world position, for the stuck travel gate
+ * Returns 'inside' | 'stuck' | 'buried' | null.
+ */
+export function clipWatchTick(watch, sample, dtMs) {
+  if (clipWatchExempt(sample)) {
+    resetClipWatch(watch);
+    return null;
+  }
+  const dt = dtMs > 0 ? dtMs : 0;
+
+  /* Through a face, not 8 mm of bounce slop. One frame is enough. */
+  if (sample.interiorDepth >= CLIP_DEEP) {
+    return 'inside';
+  }
+
+  if (sample.interiorDepth > CLIP_CENTER_EPS) {
+    watch.insideMs += dt;
+  } else {
+    watch.insideMs = 0;
+  }
+
+  const soft = clipWatchSoft(sample);
+  /* Centre on or inside the face. Hull overlap with the centre still
+   * outside is a bounce leftover, not a stuck crash. */
+  const stuckCandidate = !soft
+    && sample.unresolved
+    && !sample.roofContact
+    && sample.interiorDepth >= 0;
+  if (stuckCandidate) {
+    if (!watch.haveAnchor) {
+      watch.ax = sample.x;
+      watch.ay = sample.y;
+      watch.az = sample.z;
+      watch.haveAnchor = true;
+      watch.stuckMs = 0;
+    }
+    watch.stuckMs += dt;
+  } else {
+    watch.haveAnchor = false;
+    watch.stuckMs = 0;
+  }
+
+  if (!soft && sample.buriedDepth >= BURIED_DEPTH) {
+    watch.buriedMs += dt;
+  } else {
+    watch.buriedMs = 0;
+  }
+
+  if (watch.insideMs >= CLIP_CONFIRM_MS) {
+    return 'inside';
+  }
+
+  if (watch.haveAnchor && watch.stuckMs >= STUCK_UNRESOLVED_MS) {
+    const dx = sample.x - watch.ax;
+    const dy = sample.y - watch.ay;
+    const dz = sample.z - watch.az;
+    const travel = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (travel < STUCK_TRAVEL_MAX) {
+      return 'stuck';
+    }
+    watch.ax = sample.x;
+    watch.ay = sample.y;
+    watch.az = sample.z;
+    watch.stuckMs = 0;
+  }
+
+  if (watch.buriedMs >= BURIED_CONFIRM_MS) {
+    return 'buried';
+  }
+  return null;
 }
 

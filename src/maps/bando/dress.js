@@ -151,7 +151,6 @@ function junkPiles(root, colliders, M) {
     tire.rotation.x = Math.PI * 0.5;
     tire.position.set(24.6, 0.22 + i * 0.24, 8.8);
     tire.castShadow = false;
-    tire.userData.noMerge = true;
     root.add(tire);
   }
   slab(root, colliders, M.steelDark, 24.1, 0, 8.3, 25.1, 1.25, 9.3, { kind: 'obstacle' });

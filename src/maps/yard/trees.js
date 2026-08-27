@@ -2,8 +2,9 @@
  * trees.js: shade trees, not hedge walls and not cubes.
  *
  * City grove language, copied not imported: a baked cylinder trunk and
- * limbs, instanced icosahedron blobs in three greens. Canopies do not
- * receive shadow (a ramp in shade is a black circle in the sky).
+ * limbs, instanced icosahedron blobs in three greens. Canopies still
+ * cast, but they do not receive shadow (a ramp in shade is a black
+ * circle in the sky).
  *
  * Leftover law still applies. Blobs overlap, so they cannot each be a
  * collider. One hull per tree, from UNDER so a 5 inch fits under, half
@@ -42,7 +43,7 @@ const LIMB = [
   [0.72, 0.5, -0.72],
 ];
 
-export function buildTrees(root, colliders, M) {
+export function buildTrees(root, colliders, M, keep = 1) {
   const spots = plant();
   const woodParts = [];
   const blobs = [[], [], []];
@@ -51,12 +52,13 @@ export function buildTrees(root, colliders, M) {
   const blobGeo = new THREE.IcosahedronGeometry(1, 0);
 
   for (const spot of spots) {
-    grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders);
+    grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep);
   }
 
   const wood = new THREE.Mesh(bake(woodParts), M.woodDark);
   wood.castShadow = true;
   wood.receiveShadow = true;
+  wood.userData.keepShadow = true;
   wood.name = 'yardWood';
   root.add(wood);
 
@@ -72,7 +74,8 @@ export function buildTrees(root, colliders, M) {
     inst.receiveShadow = false;
     inst.userData.noMerge = true;
     inst.name = 'yardCanopy' + i;
-    inst.frustumCulled = false;
+    inst.computeBoundingSphere();
+    inst.frustumCulled = true;
     root.add(inst);
   });
 
@@ -88,38 +91,42 @@ function plant() {
     spots.push({ x, z, scale, seed });
   };
   for (let x = -40; x <= 37; x += 7) {
-    add(x, 39, 0.92);
+    add(x, 39, 1.18);
   }
   for (let z = -35; z <= 32; z += 7) {
-    add(-44, z, 0.88);
+    add(-44, z, 1.12);
   }
   for (let z = -35; z <= 28; z += 7) {
-    add(23, z, 0.9);
+    add(23, z, 1.14);
   }
   const south = [-38, -31, -24, -17, -3, 4, 18, 25, 32];
   for (const x of south) {
-    add(x, -44, 0.86);
+    add(x, -44, 1.1);
   }
   add(-16, 8, 1.05);
   add(-11, 18, 1.12);
   add(6, 20, 0.98);
-  add(3, 13.4, 0.9);
-  add(15.4, -10, 1.0);
+  add(3, 12, 0.9);
+  add(15.4, -22, 1.0);
   add(15.4, 12, 1.08);
   add(-14, -12, 0.94);
   add(-22, 5, 1.02);
   add(-8, -22, 0.88);
   add(8, 26, 0.95);
+  add(12, 18, 1.04);
+  add(2, 28, 1.02);
+  add(-2.4, -18, 0.92);
+  add(-2.4, -27, 0.9);
   return spots;
 }
 
-function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders) {
+function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
   const rng = rngKit(spot.seed);
   const S = spot.scale;
   const x = spot.x;
   const z = spot.z;
-  const trunkH = 3.55 * S * rng.range(0.92, 1.12);
-  const trunkR = 0.22 * S;
+  const trunkH = 3.85 * S * rng.range(0.92, 1.12);
+  const trunkR = 0.36 * S;
   woodParts.push({
     geometry: trunkGeo,
     matrix: trs(x, trunkH * 0.5, z, 0, 0, 0, trunkR, trunkH, trunkR),
@@ -159,39 +166,87 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders) {
       ),
     });
     centers.push({ x: ex, y: ey, z: ez });
+    if (rng.next() < 0.7) {
+      const tw = len * rng.range(0.42, 0.62);
+      const tx = ex + d[0] * tw * 0.35;
+      const ty = ey + 0.22 * tw;
+      const tz = ez + d[2] * tw * 0.35;
+      const mx2 = (ex + tx) * 0.5;
+      const my2 = (ey + ty) * 0.5;
+      const mz2 = (ez + tz) * 0.5;
+      const dx2 = tx - ex;
+      const dy2 = ty - ey;
+      const dz2 = tz - ez;
+      const L2 = Math.sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2) || 1;
+      const q2 = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(dx2 / L2, dy2 / L2, dz2 / L2),
+      );
+      woodParts.push({
+        geometry: branchGeo,
+        matrix: new THREE.Matrix4().compose(
+          new THREE.Vector3(mx2, my2, mz2),
+          q2,
+          new THREE.Vector3(0.08 * S, L2, 0.08 * S),
+        ),
+      });
+      centers.push({ x: tx, y: ty, z: tz });
+    }
   }
 
-  const count = 24 + Math.floor(rng.next() * 8);
-  const yTop = UNDER + 4.6 * S;
-  for (let i = 0; i < count; i += 1) {
-    const c = centers[Math.floor(rng.next() * centers.length)];
-    const r = 0.62 * S * rng.range(0.72, 1.18);
-    const ry = r * rng.range(0.7, 0.9);
-    const px = clamp(c.x + rng.range(-1.05, 1.05) * S, x - (HALF - r), x + (HALF - r));
-    const pz = clamp(c.z + rng.range(-1.05, 1.05) * S, z - (HALF - r), z + (HALF - r));
-    const py = clamp(c.y + rng.range(-0.45, 1.15) * S, UNDER + ry, yTop - ry);
-    const hi = (py - UNDER) / Math.max(0.8, yTop - UNDER);
-    let tone = hi > 0.66 ? 0 : hi < 0.32 ? 2 : 1;
-    if (rng.next() < 0.18) {
-      tone = (tone + 1) % 3;
-    }
+  /* Many small blobs, city grove language: large lumps read as boulders
+   * against the sky. keep is the quality lever. Clamped to the hull. */
+  const count = Math.max(10, Math.round((24 + Math.floor(rng.next() * 8)) * keep));
+  const yTop = UNDER + 4.2 * S;
+  const cx = x;
+  const cy = UNDER + 2.05 * S;
+  const cz = z;
+  const put = (px0, py0, pz0, r, ry, tone) => {
+    const px = clamp(px0, x - (HALF - r), x + (HALF - r));
+    const pz = clamp(pz0, z - (HALF - r), z + (HALF - r));
+    const py = clamp(py0, UNDER + ry, yTop - ry);
     blobs[tone].push(trs(
       px, py, pz,
       rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
       r, ry, r,
     ));
+  };
+  for (let i = 0; i < count; i += 1) {
+    const c = centers[Math.floor(rng.next() * centers.length)];
+    const r = 0.34 * S * rng.range(0.72, 1.12);
+    const ry = r * rng.range(0.70, 0.88);
+    let px = c.x + rng.range(-0.85, 0.85) * S;
+    let pz = c.z + rng.range(-0.85, 0.85) * S;
+    let py = c.y + rng.range(-0.35, 0.85) * S;
+    px = cx + (px - cx) * 0.90;
+    pz = cz + (pz - cz) * 0.90;
+    py = cy + (py - cy) * 0.82;
+    const hi = (py - UNDER) / Math.max(0.8, yTop - UNDER);
+    let tone = hi > 0.66 ? 0 : hi < 0.32 ? 2 : 1;
+    if (rng.next() < 0.18) {
+      tone = (tone + 1) % 3;
+    }
+    put(px, py, pz, r, ry, tone);
   }
   for (let i = 0; i < 4; i += 1) {
-    const r = 0.55 * S * rng.range(0.8, 1.1);
+    const r = 0.30 * S * rng.range(0.85, 1.12);
     const ry = r * 0.78;
-    const px = clamp(x + rng.range(-0.7, 0.7) * S, x - (HALF - r), x + (HALF - r));
-    const pz = clamp(z + rng.range(-0.7, 0.7) * S, z - (HALF - r), z + (HALF - r));
-    const py = yTop - ry - rng.range(0.05, 0.45);
-    blobs[0].push(trs(px, py, pz, rng.range(0, 3), rng.range(0, 3), rng.range(0, 3), r, ry, r));
+    put(
+      x + rng.range(-0.55, 0.55) * S,
+      yTop - ry - rng.range(0.04, 0.28),
+      z + rng.range(-0.55, 0.55) * S,
+      r, ry, 0,
+    );
+  }
+  for (let i = 0; i < 4; i += 1) {
+    const d = LIMB[i * 2];
+    const r = 0.28 * S * rng.range(0.8, 1.05);
+    const ry = r * 0.72;
+    put(x + d[0] * 0.55 * S, UNDER + ry + 0.1, z + d[2] * 0.55 * S, r, ry, 2);
   }
 
   colliders.addBox('tree', x - trunkR, 0, z - trunkR, x + trunkR, UNDER, z + trunkR);
-  colliders.addBox('canopy', x - HALF, UNDER, z - HALF, x + HALF, yTop, z + HALF);
+  colliders.addSphere('canopy', x, UNDER + HALF, z, HALF);
 }
 
 function clamp(v, a, b) {

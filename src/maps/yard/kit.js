@@ -29,9 +29,9 @@
  */
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PAL } from './palette.js';
 import { cel, flat } from './cel/toon.js';
+export { mergeStatic } from '../compact-perf.js';
 
 export const STEP = 0.55;
 export const SLAB_THICK = 0.3;
@@ -71,7 +71,7 @@ export const L = {
     x0: -36.0, x1: 18.0, z0: -36.0, z1: 32.0,
   },
   gap: {
-    x0: -4.8, x1: 0.0, z: -36.0,
+    x0: -4.8, x1: -2.4, z: -36.0,
   },
   stable: {
     x0: -34.0, x1: -19.0, z0: 12.0, z1: 24.0, h: 5.8, t: 0.28, loft: 2.88,
@@ -83,7 +83,7 @@ export const L = {
   ],
   aisle: { z0: 16.2, z1: 18.4 },
   hay: {
-    x0: -26.0, x1: -14.0, z0: -24.5, z1: -16.2, h: 3.62, t: 0.22,
+    x0: -32.0, x1: -20.0, z0: 24.0, z1: 30.5, h: 3.62, t: 0.22,
   },
   car: {
     x0: 12.3, x1: 14.2, z0: -6.0, z1: -1.5, h: 1.48,
@@ -319,59 +319,4 @@ export function punchedX(root, colliders, mat, z0, y0, z1, y1, x0, x1, holes, op
       slab(root, colliders, mat, x0, ya, za, x1, yb, zb, o);
     }
   }
-}
-
-export function mergeStatic(root) {
-  const groups = new Map();
-  const remove = [];
-  root.updateMatrixWorld(true);
-  root.traverse((o) => {
-    if (!o.isMesh || !o.geometry || o.userData.noMerge) {
-      return;
-    }
-    const mat = o.material;
-    if (!mat || mat.transparent) {
-      return;
-    }
-    let g = groups.get(mat.uuid);
-    if (!g) {
-      g = { mat, geos: [], cast: false, receive: false };
-      groups.set(mat.uuid, g);
-    }
-    const geo = o.geometry.clone();
-    geo.applyMatrix4(o.matrixWorld);
-    g.geos.push(geo);
-    g.cast = g.cast || o.castShadow;
-    g.receive = g.receive || o.receiveShadow;
-    remove.push(o);
-  });
-  for (const o of remove) {
-    if (o.parent) {
-      o.parent.remove(o);
-    }
-    o.geometry.dispose();
-  }
-  let meshes = 0;
-  let triangles = 0;
-  for (const g of groups.values()) {
-    if (g.geos.length === 0) {
-      continue;
-    }
-    const merged = mergeGeometries(g.geos, false);
-    for (const geo of g.geos) {
-      geo.dispose();
-    }
-    if (!merged) {
-      continue;
-    }
-    const mesh = new THREE.Mesh(merged, g.mat);
-    mesh.castShadow = g.cast;
-    mesh.receiveShadow = g.receive;
-    mesh.frustumCulled = true;
-    root.add(mesh);
-    meshes += 1;
-    const idx = merged.index;
-    triangles += idx ? idx.count / 3 : merged.attributes.position.count / 3;
-  }
-  return { meshes, triangles };
 }

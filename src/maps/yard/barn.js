@@ -2,7 +2,8 @@
  * barn.js: horse stable with loft stairs, and the open hay shed.
  *
  * Three stall mouths on the south, an east aisle, a loft you can land.
- * The hay shed is three walls and a roof. Bales leave a 1.6 m aisle.
+ * The hay shed is three walls and a roof, open east, sharing the
+ * stable's north face. Bales leave a 1.6 m aisle.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -41,16 +42,22 @@ function stable(root, colliders, platforms, M) {
     { z0: L.aisle.z0, z1: L.aisle.z1, y0: 0, y1: stallH },
   ]);
 
-  const well = {
-    x0: s.x0 + t + 0.4,
+  const wellStair = {
+    x0: s.x1 - t - 1.2,
     x1: s.x1 - t,
     z0: s.z0 + t + 0.15,
+    z1: s.z0 + 4.6,
+  };
+  const wellMid = {
+    x0: L.stalls[1].x0,
+    x1: L.stalls[1].x1,
+    z0: s.z0 + t + 1.8,
     z1: s.z0 + 4.6,
   };
   deckAround(
     root, colliders, platforms, M.wood,
     s.x0 + t, s.z0 + t, s.x1 - t, s.z1 - t,
-    s.loft, 0.2, [well],
+    s.loft, 0.2, [wellStair, wellMid],
   );
 
   const n = 7;
@@ -58,7 +65,7 @@ function stable(root, colliders, platforms, M) {
   const run = 0.32;
   const sx1 = s.x1 - t;
   const sx0 = sx1 - 1.2;
-  const zEdge = well.z1;
+  const zEdge = wellStair.z1;
   for (let i = 0; i < n; i += 1) {
     const y0 = i * rise;
     const y1 = (i + 1) * rise + 0.08;
@@ -78,6 +85,8 @@ function stable(root, colliders, platforms, M) {
     decal(root, colliders, M.woodDark, st.x0 - 0.08, 0, s.z0 - 0.04, st.x0, stallH, s.z0);
     decal(root, colliders, M.woodDark, st.x1, 0, s.z0 - 0.04, st.x1 + 0.08, stallH, s.z0);
     decal(root, colliders, M.woodDark, st.x0, stallH - 0.08, s.z0 - 0.04, st.x1, stallH, s.z0);
+    decal(root, colliders, M.wood, st.x0 + 0.04, 0.04, s.z0 - 0.03, st.x1 - 0.04, 1.12, s.z0);
+    decal(root, colliders, M.woodSun, st.x0 + 0.08, 1.12, s.z0 - 0.03, st.x1 - 0.08, 1.22, s.z0);
   }
   decal(root, colliders, M.pane, -31.2, 3.35, s.z0 - 0.04, -29.4, 4.55, s.z0);
   decal(root, colliders, M.pane, -23.6, 3.35, s.z0 - 0.04, -21.8, 4.55, s.z0);
@@ -97,18 +106,17 @@ function stable(root, colliders, platforms, M) {
 function hayShed(root, colliders, platforms, M) {
   const h = L.hay;
   const t = h.t;
+  slab(root, colliders, M.woodDark, h.x0, 0, h.z0, h.x0 + t, h.h - 0.18, h.z1 - t);
   slab(root, colliders, M.wood, h.x0, 0, h.z1 - t, h.x1, h.h - 0.18, h.z1);
-  slab(root, colliders, M.woodDark, h.x0, 0, h.z0 + 0.35, h.x0 + t, h.h - 0.18, h.z1 - t);
-  slab(root, colliders, M.woodDark, h.x1 - t, 0, h.z0 + 0.35, h.x1, h.h - 0.18, h.z1 - t);
-  deck(root, colliders, platforms, M.woodSun, h.x0 - 0.55, h.z0 - 0.2, h.x1 + 0.55, h.z1 + 0.25, h.h, 0.18);
-  slab(root, colliders, M.woodDark, h.x0 + t, h.h - 0.30, h.z0 + 0.4, h.x1 - t, h.h - 0.18, h.z1 - t, {
+  deck(root, colliders, platforms, M.woodSun, h.x0 - 0.4, h.z0, h.x1 + 0.55, h.z1, h.h, 0.18);
+  slab(root, colliders, M.woodDark, h.x0 + t, h.h - 0.30, h.z0, h.x1 - 0.05, h.h - 0.18, h.z1 - t, {
     kind: 'pole',
   });
 
   stack(root, colliders, M, h.x0 + t, h.z1 - t - 1.2);
   stack(root, colliders, M, h.x0 + t + 1.2 + 1.6, h.z1 - t - 1.2);
+  stack(root, colliders, M, h.x1 - 1.2, h.z1 - t - 1.2);
   stack(root, colliders, M, h.x0 - 1.2, h.z1 - t - 1.2);
-  stack(root, colliders, M, h.x0 - 1.2, h.z0 + 0.35);
 }
 
 function stack(root, colliders, M, x, z) {

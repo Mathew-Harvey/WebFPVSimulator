@@ -115,16 +115,16 @@ function buildStack(root, colliders, platforms, M) {
   for (const b of bands) {
     const o = ho + lip;
     slab(root, colliders, b.mat, cx - o, b.y0, cz + ho, cx + o, b.y1, cz + o, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, cx - o, b.y0, cz - o, cx + o, b.y1, cz - ho, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, cx + ho, b.y0, cz - ho, cx + o, b.y1, cz + ho, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, cx - o, b.y0, cz - ho, cx - ho, b.y1, cz + ho, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
   }
 
@@ -261,7 +261,6 @@ function buildKiln(root, colliders, platforms, M) {
     ring.rotation.z = Math.PI * 0.5;
     ring.position.set(x, (y0 + y1) * 0.5, 0);
     ring.castShadow = false;
-    ring.userData.noMerge = true;
     root.add(ring);
   }
 
@@ -343,10 +342,10 @@ function buildPreheater(root, colliders, platforms, M) {
   ];
   for (const b of bands) {
     slab(root, colliders, b.mat, x0 - 0.06, b.y0, z0 - 0.06, x1 + 0.06, b.y1, z0 + 0.08, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, x0 - 0.06, b.y0, z1 - 0.08, x1 + 0.06, b.y1, z1 + 0.06, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
   }
 
@@ -429,7 +428,6 @@ function buildCyclones(root, colliders, platforms, M) {
     shell.position.set(cx, yBody0 + bodyH * 0.5, cz);
     shell.castShadow = true;
     shell.receiveShadow = true;
-    shell.userData.noMerge = true;
     root.add(shell);
     const cone = new THREE.Mesh(
       new THREE.CylinderGeometry(0.38, 1.32, 2.4, 8),
@@ -437,7 +435,6 @@ function buildCyclones(root, colliders, platforms, M) {
     );
     cone.position.set(cx, 1.5, cz);
     cone.castShadow = true;
-    cone.userData.noMerge = true;
     root.add(cone);
     const band = new THREE.Mesh(
       new THREE.CylinderGeometry(CYC_R + 0.1, CYC_R + 0.1, 0.42, 8, 1, true),
@@ -445,7 +442,6 @@ function buildCyclones(root, colliders, platforms, M) {
     );
     band.position.set(cx, 7.2, cz);
     band.castShadow = false;
-    band.userData.noMerge = true;
     root.add(band);
   }
 
@@ -493,7 +489,6 @@ function buildBins(root, colliders, platforms, M) {
     cyl.position.set(cx, h * 0.5, cz);
     cyl.castShadow = true;
     cyl.receiveShadow = true;
-    cyl.userData.noMerge = true;
     root.add(cyl);
 
     const half = R;
@@ -541,7 +536,6 @@ function buildBins(root, colliders, platforms, M) {
       );
       band.position.set(cx, h * 0.62, cz);
       band.castShadow = false;
-      band.userData.noMerge = true;
       root.add(band);
     }
     if (h > 16.5) {
@@ -769,7 +763,7 @@ function riser(root, colliders, M, x, z, y0, y1) {
 
 function kilnStripe(root, colliders, M, xa, xb, y0, y1, ho) {
   const o = ho + 0.09;
-  const opt = { solid: false, noMerge: true, cast: false };
+  const opt = { solid: false, cast: false };
   slab(root, colliders, M.bandWhite, xa, y0 - 0.1, ho, xb, y0 + 0.45, o, opt);
   slab(root, colliders, M.bandRed, xa, y0 + 0.45, ho, xb, y1 - 0.45, o, opt);
   slab(root, colliders, M.bandWhite, xa, y1 - 0.45, ho, xb, y1 + 0.1, o, opt);

@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 import { Colliders } from '../../game/collide.js';
 import { L, STEP, CLEAR, materials, mergeStatic } from './kit.js';
+import { restrictCasters } from '../compact-perf.js';
 import { buildGround, groundHeight } from './ground.js';
 import { buildHouse } from './house.js';
 import { buildBarn } from './barn.js';
@@ -27,7 +28,7 @@ import { buildTrees } from './trees.js';
 import { buildDress } from './dress.js';
 import { yardReferences } from './references.js';
 
-export function buildWorld(scene) {
+export function buildWorld(scene, opts = {}) {
   const root = new THREE.Group();
   root.name = 'yard';
   scene.add(root);
@@ -39,11 +40,12 @@ export function buildWorld(scene) {
   buildGround(root, colliders, M);
   buildHouse(root, colliders, platforms, M);
   buildBarn(root, colliders, platforms, M);
-  buildTrees(root, colliders, M);
+  buildTrees(root, colliders, M, opts.foliageKeep ?? 1);
   buildDress(root, colliders, M);
 
   const references = yardReferences(root, colliders, platforms);
-  const merged = mergeStatic(root);
+  restrictCasters(root, opts.casterMin ?? 0.5);
+  const merged = mergeStatic(root, { cell: opts.mergeCell ?? 24 });
   colliders.build();
 
   function heightAt(x, z, fromY) {
@@ -78,16 +80,18 @@ export function attractPath(world) {
     { x: -1.6, y: 2.4, z: 6.9 },
     { x: -1.6, y: 2.2, z: 16 },
     { x: -10, y: 1.6, z: 12 },
-    { x: -8.4, y: 0.55, z: 7.2 },
-    { x: -3.0, y: 0.55, z: 7.2 },
-    { x: 0.6, y: 0.55, z: 7.2 },
-    { x: 8.4, y: 0.7, z: 7.2 },
+    { x: -8.4, y: 0.55, z: 6.4 },
+    { x: -3.0, y: 0.55, z: 6.4 },
+    { x: 0.6, y: 0.55, z: 6.4 },
+    { x: 8.4, y: 0.7, z: 6.4 },
     { x: 11.4, y: 1.4, z: 6.2 },
     { x: 11.4, y: 1.4, z: -8 },
     { x: 11.4, y: 1.4, z: -36 },
+    { x: 13, y: 1.4, z: -36 },
     { x: 13, y: 1.4, z: -44 },
-    { x: -2.4, y: 0.7, z: -38 },
-    { x: -2.4, y: 0.7, z: -34 },
+    { x: 13, y: 1.4, z: -38 },
+    { x: -3.6, y: 0.7, z: -38 },
+    { x: -3.6, y: 0.7, z: -34 },
     { x: -10, y: 1.4, z: -12 },
     { x: 0.15, y: 1.7, z: -6.6 },
     { x: -10, y: 1.5, z: -6.6 },
@@ -103,14 +107,11 @@ export function attractPath(world) {
     { x: -18.6, y: 3.5, z: 17.3 },
     { x: -18.6, y: 1.2, z: 17.3 },
     { x: -18.4, y: 1.2, z: 17.3 },
-    { x: -12, y: 1.5, z: 8 },
-    { x: -10.4, y: 1.5, z: -26 },
-    { x: -23.78, y: 1.3, z: -26 },
-    { x: -23.78, y: 1.3, z: -20.8 },
-    { x: -23.78, y: 1.3, z: -26 },
-    { x: -10.4, y: 1.4, z: -26 },
-    { x: -10.0, y: 1.4, z: 6 },
-    { x: -1.6, y: 8.4, z: 14 },
+    { x: -18.4, y: 1.3, z: 27.2 },
+    { x: -22.0, y: 1.3, z: 27.2 },
+    { x: -18.4, y: 1.3, z: 27.2 },
+    { x: -12, y: 1.5, z: 16 },
+    { x: -1.6, y: 2.4, z: 16 },
     { x: -1.6, y: 2.4, z: 6.9 },
   ];
   return pts.map((p) => {

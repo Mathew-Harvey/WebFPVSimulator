@@ -238,16 +238,16 @@ function raiseTower(root, colliders, M, tw) {
   const o = 0.06;
   for (const b of bands) {
     slab(root, colliders, b.mat, tw.x0 - o, b.y0, tw.z0 - o, tw.x1 + o, b.y1, tw.z0 + 0.08, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, tw.x0 - o, b.y0, tw.z1 - 0.08, tw.x1 + o, b.y1, tw.z1 + o, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, tw.x0 - o, b.y0, tw.z0, tw.x0 + 0.08, b.y1, tw.z1, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
     slab(root, colliders, b.mat, tw.x1 - 0.08, b.y0, tw.z0, tw.x1 + o, b.y1, tw.z1, {
-      solid: false, noMerge: true, cast: false,
+      solid: false, cast: false,
     });
   }
 

@@ -130,15 +130,24 @@ export async function buildMap(shell, onProgress, options) {
   progress(0.12);
   await yieldToPaint();
 
-  const world = buildWorld(scene);
-  addLamp(0, 10.2, 0, 0xffe0b0, 2.6, 34);
-  addLamp(-12, 10, 0, 0xffe8c0, 1.7, 22);
-  addLamp(12, 10, 0, 0xffe8c0, 1.7, 22);
-  addLamp(-24, 10.1, 0, 0xff7a40, 1.35, 16);
-  addLamp(-46, 30, 0, 0xd4c4e8, 2.1, 42);
-  addLamp(38, 8, 4.3, 0xffd0a0, 1.4, 18);
-  addLamp(-13, 8.8, -27.8, 0xff8a48, 1.5, 16);
-  addLamp(38, -4.2, 0, 0xc8a070, 1.1, 14);
+  const world = buildWorld(scene, {
+    mergeCell: bq.mergeCell,
+    casterMin: bq.casterMin,
+  });
+  const lamps = [
+    [0, 10.2, 0, 0xffe0b0, 2.6, 34],
+    [-12, 10, 0, 0xffe8c0, 1.7, 22],
+    [12, 10, 0, 0xffe8c0, 1.7, 22],
+    [-24, 10.1, 0, 0xff7a40, 1.35, 16],
+    [-46, 30, 0, 0xd4c4e8, 2.1, 42],
+    [38, 8, 4.3, 0xffd0a0, 1.4, 18],
+    [-13, 8.8, -27.8, 0xff8a48, 1.5, 16],
+    [38, -4.2, 0, 0xc8a070, 1.1, 14],
+  ];
+  const lampN = bq.lamps || 0;
+  for (let i = 0; i < lampN && i < lamps.length; i += 1) {
+    addLamp(...lamps[i]);
+  }
   progress(0.88);
   await yieldToPaint();
 
@@ -164,14 +173,16 @@ export async function buildMap(shell, onProgress, options) {
   scene.add(shell.quad);
   progress(1);
 
-  function seat(light, offset) {
-    light.target.position.copy(LIGHT_ORIGIN);
-    light.position.copy(LIGHT_ORIGIN).add(offset);
+  const shadowTarget = new THREE.Vector3();
+  function seat(light, offset, origin) {
+    const at = origin || LIGHT_ORIGIN;
+    light.target.position.copy(at);
+    light.position.copy(at).add(offset);
     light.target.updateMatrixWorld();
   }
-  seat(sun, SUN_OFFSET);
-  seat(fill, FILL_OFFSET);
-  seat(bounce, BOUNCE_OFFSET);
+  seat(sun, SUN_OFFSET, LIGHT_ORIGIN);
+  seat(fill, FILL_OFFSET, LIGHT_ORIGIN);
+  seat(bounce, BOUNCE_OFFSET, LIGHT_ORIGIN);
 
   const BANDO_AIM = { active: false, sceneIndex: -1, correct: true, distance: 0 };
 
@@ -202,19 +213,43 @@ export async function buildMap(shell, onProgress, options) {
     updateShadowFocus(target) {
       sky.dome.position.copy(camera.position);
       sky.clouds.position.copy(camera.position);
-      void target;
+      if (!sun.castShadow) {
+        return;
+      }
+      shadowTarget.set(
+        Math.round(target.x * 2) / 2,
+        Math.round(target.y * 2) / 2,
+        Math.round(target.z * 2) / 2,
+      );
+      seat(sun, SUN_OFFSET, shadowTarget);
+      seat(fill, FILL_OFFSET, shadowTarget);
+      seat(bounce, BOUNCE_OFFSET, shadowTarget);
     },
     updateWind() {},
     updateAnim() {},
     references: world.references,
     world,
-    stats: () => ({
-      colliders: world.colliders.stats(),
-      platforms: world.platforms.length,
-      ...world.merged,
-      pipelineScale: pipeline.scale,
-      pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
-    }),
+    stats: () => {
+      let pointLights = 0;
+      let casters = 0;
+      scene.traverse((o) => {
+        if (o.isPointLight) {
+          pointLights += 1;
+        }
+        if (o.isMesh && o.castShadow) {
+          casters += 1;
+        }
+      });
+      return {
+        colliders: world.colliders.stats(),
+        platforms: world.platforms.length,
+        ...world.merged,
+        pipelineScale: pipeline.scale,
+        pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
+        pointLights,
+        casters,
+      };
+    },
     dispose() {
       scene.remove(shell.quad);
       pipeline.dispose();

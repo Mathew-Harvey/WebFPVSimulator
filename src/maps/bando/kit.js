@@ -23,9 +23,9 @@
  */
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PAL } from './palette.js';
 import { cel, flat } from './cel/toon.js';
+export { mergeStatic } from '../compact-perf.js';
 
 export const STEP = 0.55;
 export const SLAB_THICK = 0.3;
@@ -205,59 +205,4 @@ export function ductZ(root, colliders, platforms, mat, z0, z1, y0, xMid, inner, 
   if (platforms) {
     platforms.push({ x0, z0: za, x1, z1: zb, top: y0 });
   }
-}
-
-export function mergeStatic(root) {
-  const groups = new Map();
-  const remove = [];
-  root.updateMatrixWorld(true);
-  root.traverse((o) => {
-    if (!o.isMesh || !o.geometry || o.userData.noMerge) {
-      return;
-    }
-    const mat = o.material;
-    if (!mat || mat.transparent) {
-      return;
-    }
-    let g = groups.get(mat.uuid);
-    if (!g) {
-      g = { mat, geos: [], cast: false, receive: false };
-      groups.set(mat.uuid, g);
-    }
-    const geo = o.geometry.clone();
-    geo.applyMatrix4(o.matrixWorld);
-    g.geos.push(geo);
-    g.cast = g.cast || o.castShadow;
-    g.receive = g.receive || o.receiveShadow;
-    remove.push(o);
-  });
-  for (const o of remove) {
-    if (o.parent) {
-      o.parent.remove(o);
-    }
-    o.geometry.dispose();
-  }
-  let meshes = 0;
-  let triangles = 0;
-  for (const g of groups.values()) {
-    if (g.geos.length === 0) {
-      continue;
-    }
-    const merged = mergeGeometries(g.geos, false);
-    for (const geo of g.geos) {
-      geo.dispose();
-    }
-    if (!merged) {
-      continue;
-    }
-    const mesh = new THREE.Mesh(merged, g.mat);
-    mesh.castShadow = g.cast;
-    mesh.receiveShadow = g.receive;
-    mesh.frustumCulled = true;
-    root.add(mesh);
-    meshes += 1;
-    const idx = merged.index;
-    triangles += idx ? idx.count / 3 : merged.attributes.position.count / 3;
-  }
-  return { meshes, triangles };
 }

@@ -54,7 +54,7 @@ import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/g
 import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import {
-  hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
+  Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
   shouldExitTurtle, shouldParkTurtle, uprightPlantQuat, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
@@ -62,6 +62,9 @@ import {
   LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, TURTLE_SPEED, TURTLE_RATE,
   TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, TURTLE_FLIP_MS, TURTLE_LIFT,
   TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, turtleFlipEase, turtleFlipLift, turtleSlerpQuat,
+  makeClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_CONFIRM_MS, CLIP_DEEP,
+  STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
+  CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
 } from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
@@ -1567,6 +1570,357 @@ function suiteCrashRule() {
     diveDirt === false);
 }
 
+/*
+ * Clip-through catch. The adversarial cases are the point: a bounce, a
+ * perch, a turtle, a wall scrape and a roof sit must never reset the
+ * craft. Only a centre inside a solid, a leftover overlap that is not
+ * travelling, or a fall through the terrain.
+ */
+function clipSample(over) {
+  return {
+    landed: false,
+    turtle: false,
+    launchStaging: false,
+    hold: false,
+    poseLock: false,
+    spawnGrace: false,
+    takingOff: false,
+    unresolved: false,
+    roofContact: false,
+    interiorDepth: 0,
+    buriedDepth: 0,
+    x: 0,
+    y: 1,
+    z: 0,
+    ...over,
+  };
+}
+
+function tickClip(watch, sample, ms, dt = 16) {
+  let last = null;
+  let t = 0;
+  while (t < ms) {
+    last = clipWatchTick(watch, sample, dt);
+    t += dt;
+    if (last) {
+      return last;
+    }
+  }
+  return last;
+}
+
+function suiteClipCatch() {
+  console.log('\nclip catch');
+
+  check('confirm is longer than one hitch plus a leftover frame',
+    CLIP_CONFIRM_MS > 100 + 32);
+  check('deep inside is thicker than bounce slop and thinner than a wall',
+    CLIP_DEEP > CLIP_CENTER_EPS && CLIP_DEEP < 0.20);
+  check('spawn grace is shorter than a hang, longer than one bounce',
+    CLIP_SPAWN_GRACE_MS > 100 && CLIP_SPAWN_GRACE_MS < CLIP_CRASH_HOLD_MS);
+  check('stuck wait is longer than a violent bounce',
+    STUCK_UNRESOLVED_MS > CLIP_CONFIRM_MS);
+  check('centre epsilon sits past the bounce gap',
+    CLIP_CENTER_EPS > BOUNCE_SEPARATION);
+  check('the hold is a beat, not the old 1.4 s lockout',
+    CLIP_CRASH_HOLD_MS >= 400 && CLIP_CRASH_HOLD_MS < 1400);
+
+  const box = new Colliders();
+  box.addBox('wall', 0, 0, 0, 2, 2, 2);
+  box.build();
+  box.hit(1, 1, 1, 1, 1, 1, 0.04);
+  check('the centre of a wall box is inside',
+    box.interiorOfHit(1, 1, 1) > 0.99);
+  check('a point on the face is not inside',
+    Math.abs(box.interiorOfHit(2, 1, 1)) < 1e-9);
+  check('a point outside is negative',
+    box.interiorOfHit(3, 1, 1) < -0.99 && box.interiorOfHit(3, 1, 1) > -1.01);
+  check('a hull-overlap centre 5 cm outside is still outside',
+    box.interiorOfHit(2.05, 1, 1) < -0.04);
+
+  const post = new Colliders();
+  post.addPost('pole', 0, 0, 0, 2, 0.05);
+  post.build();
+  post.hit(0, 1, 0, 0, 1, 0, 0.04);
+  check('the axis of a thin post is inside',
+    post.interiorOfHit(0, 1, 0) > 0.049);
+  check('a centimetre off a 5 cm post is still inside',
+    post.interiorOfHit(0.01, 1, 0) > 0.03);
+  check('past the bark is outside',
+    post.interiorOfHit(0.08, 1, 0) < 0);
+
+  const train = new Colliders();
+  train.build();
+  const car = train.addMoving('train', 1, 0.5, 2);
+  train.seatMoving(car, 10, 1, 0);
+  train.hit(10, 1, 0, 10, 1, 0, 0.04);
+  check('the centre of a train car is inside',
+    train.interiorOfHit(10, 1, 0) > 0.49);
+
+  const air = makeClipWatch();
+  check('open air never fires',
+    tickClip(air, clipSample({}), 1000) === null);
+
+  const bounce = makeClipWatch();
+  check('one leftover frame does not fire',
+    clipWatchTick(bounce, clipSample({ unresolved: true, x: 0, y: 1, z: 0 }), 16) === null);
+  check('and a bounce that then clears stays quiet',
+    tickClip(bounce, clipSample({ unresolved: false }), 1000) === null);
+
+  const graze = makeClipWatch();
+  check('a 50 ms graze leftover does not fire',
+    tickClip(graze, clipSample({ unresolved: true }), 50) === null);
+
+  const hull = makeClipWatch();
+  check('props overlapping with the centre outside is not a clip',
+    tickClip(hull, clipSample({
+      unresolved: false,
+      interiorDepth: -0.05,
+    }), CLIP_CONFIRM_MS + 80) === null);
+
+  const perch = makeClipWatch();
+  check('a perch leftover on the grass is not stuck',
+    tickClip(perch, clipSample({
+      landed: true,
+      unresolved: true,
+      interiorDepth: 0,
+    }), STUCK_UNRESOLVED_MS + 200) === null);
+  check('and a perch 40 cm in the dirt is not buried',
+    tickClip(perch, clipSample({
+      landed: true,
+      buriedDepth: 0.4,
+    }), BURIED_CONFIRM_MS + 80) === null);
+  check('but a perch whose centre is inside a wall still crashes',
+    tickClip(makeClipWatch(), clipSample({
+      landed: true,
+      interiorDepth: 0.2,
+    }), CLIP_CONFIRM_MS) === 'inside');
+
+  const turtle = makeClipWatch();
+  check('turtle leftover on the grass is not stuck',
+    tickClip(turtle, clipSample({
+      turtle: true,
+      unresolved: true,
+      interiorDepth: 0,
+    }), STUCK_UNRESOLVED_MS + 200) === null);
+  check('but turtle whose centre is inside a solid still crashes',
+    tickClip(makeClipWatch(), clipSample({
+      turtle: true,
+      interiorDepth: 0.2,
+    }), CLIP_CONFIRM_MS) === 'inside');
+
+  const launch = makeClipWatch();
+  check('launch staging skip never fires',
+    tickClip(launch, clipSample({
+      launchStaging: true,
+      interiorDepth: 0.3,
+      unresolved: true,
+    }), 2000) === null);
+
+  const lock = makeClipWatch();
+  check('a harness pose lock skip never fires',
+    tickClip(lock, clipSample({
+      poseLock: true,
+      interiorDepth: 0.5,
+    }), 2000) === null);
+
+  const hold = makeClipWatch();
+  check('already holding a crash skip never fires again',
+    tickClip(hold, clipSample({
+      hold: true,
+      interiorDepth: 0.5,
+      unresolved: true,
+    }), 2000) === null);
+
+  const roof = makeClipWatch();
+  check('sitting on a roof leftover is not stuck',
+    tickClip(roof, clipSample({
+      unresolved: true,
+      roofContact: true,
+      interiorDepth: 0,
+    }), STUCK_UNRESOLVED_MS + 200) === null);
+  check('falling through a roof, centre inside, is still a clip',
+    tickClip(makeClipWatch(), clipSample({
+      unresolved: true,
+      roofContact: false,
+      interiorDepth: 0.12,
+    }), CLIP_CONFIRM_MS) === 'inside');
+
+  const scrape = makeClipWatch();
+  let scrapeHit = null;
+  const scrapeDt = 16;
+  const scrapeMs = STUCK_UNRESOLVED_MS + 80;
+  let sx = 0;
+  for (let t = 0; t < scrapeMs; t += scrapeDt) {
+    sx += 10 * (scrapeDt / 1000);
+    scrapeHit = clipWatchTick(scrape, clipSample({
+      unresolved: true,
+      x: sx,
+      y: 1,
+      z: 0,
+    }), scrapeDt);
+    if (scrapeHit) {
+      break;
+    }
+  }
+  check('a 10 m/s wall scrape does not fire',
+    scrapeHit === null, scrapeHit);
+
+  const slowSlide = makeClipWatch();
+  let slowHit = null;
+  let slx = 0;
+  const slowDt = 16;
+  for (let t = 0; t < STUCK_UNRESOLVED_MS + 80; t += slowDt) {
+    slx += 5 * (slowDt / 1000);
+    slowHit = clipWatchTick(slowSlide, clipSample({
+      unresolved: true,
+      x: slx,
+      y: 1,
+      z: 0,
+    }), slowDt);
+    if (slowHit) {
+      break;
+    }
+  }
+  check('a 5 m/s leftover slide still travels past the stuck gate',
+    slowHit === null, slowHit);
+
+  const takeoff = makeClipWatch();
+  check('a takeoff 5 cm in the grass is not buried',
+    tickClip(takeoff, clipSample({
+      takingOff: true,
+      buriedDepth: 0.05,
+    }), BURIED_CONFIRM_MS + 80) === null);
+
+  const shallow = makeClipWatch();
+  check('10 cm below the terrain is not buried',
+    tickClip(shallow, clipSample({ buriedDepth: 0.10 }), BURIED_CONFIRM_MS + 80) === null);
+
+  const oneFrame = makeClipWatch();
+  check('a single 16 ms shallow clip-through frame does not fire',
+    clipWatchTick(oneFrame, clipSample({ interiorDepth: 0.04 }), 16) === null);
+
+  const hitch = makeClipWatch();
+  check('one 100 ms hitch shallow-inside still needs more time',
+    clipWatchTick(hitch, clipSample({ interiorDepth: 0.04 }), 100) === null);
+  check('a leftover 32 ms plus a hitch still sits under confirm',
+    clipWatchTick(hitch, clipSample({ interiorDepth: 0.04 }), 32) === null);
+
+  const deep = makeClipWatch();
+  check('a centre 10 cm inside fires on the first frame',
+    clipWatchTick(deep, clipSample({ interiorDepth: 0.10 }), 16) === 'inside');
+
+  const inside = makeClipWatch();
+  check('a centre 4 cm inside for the confirm window is a crash',
+    tickClip(inside, clipSample({ interiorDepth: 0.04 }), CLIP_CONFIRM_MS) === 'inside');
+
+  const thin = makeClipWatch();
+  check('a centimetre inside a post past epsilon is a crash',
+    tickClip(thin, clipSample({ interiorDepth: CLIP_CENTER_EPS + 0.002 }), CLIP_CONFIRM_MS + 16) === 'inside');
+
+  const jammed = makeClipWatch();
+  check('leftover overlap that is not travelling is stuck',
+    tickClip(jammed, clipSample({
+      unresolved: true,
+      x: 0,
+      y: 1,
+      z: 0,
+    }), STUCK_UNRESOLVED_MS) === 'stuck');
+
+  const jitter = makeClipWatch();
+  let jitterHit = null;
+  for (let t = 0, n = 0; t < STUCK_UNRESOLVED_MS + 16; t += 16, n += 1) {
+    jitterHit = clipWatchTick(jitter, clipSample({
+      unresolved: true,
+      x: (n % 2) * 0.04,
+      y: 1,
+      z: 0,
+    }), 16);
+    if (jitterHit) {
+      break;
+    }
+  }
+  check('centimetre jitter in a corner is stuck',
+    jitterHit === 'stuck', jitterHit);
+
+  const buried = makeClipWatch();
+  check('22 cm under the terrain for the bury window is a crash',
+    tickClip(buried, clipSample({ buriedDepth: BURIED_DEPTH }), BURIED_CONFIRM_MS) === 'buried');
+
+  const both = makeClipWatch();
+  check('inside wins when both inside and stuck apply',
+    tickClip(both, clipSample({
+      interiorDepth: 0.2,
+      unresolved: true,
+    }), CLIP_CONFIRM_MS) === 'inside');
+
+  const recover = makeClipWatch();
+  tickClip(recover, clipSample({ interiorDepth: 0.04 }), CLIP_CONFIRM_MS - 32);
+  check('leaving the solid mid-window forgets the count',
+    clipWatchTick(recover, clipSample({ interiorDepth: 0 }), 16) === null);
+  check('and the next clip has to confirm again',
+    tickClip(recover, clipSample({ interiorDepth: 0.04 }), CLIP_CONFIRM_MS - 16) === null);
+
+  const hullStuck = makeClipWatch();
+  check('leftover hull overlap with the centre 5 cm outside is not stuck',
+    tickClip(hullStuck, clipSample({
+      unresolved: true,
+      interiorDepth: -0.05,
+      x: 0,
+      y: 1,
+      z: 0,
+    }), STUCK_UNRESOLVED_MS + 80) === null);
+
+  const crawl = makeClipWatch();
+  let crawlHit = null;
+  let cx = 0;
+  for (let t = 0; t < STUCK_UNRESOLVED_MS + 80; t += 16) {
+    cx += 1.0 * (16 / 1000);
+    crawlHit = clipWatchTick(crawl, clipSample({
+      unresolved: true,
+      interiorDepth: -0.05,
+      x: cx,
+      y: 1,
+      z: 0,
+    }), 16);
+    if (crawlHit) {
+      break;
+    }
+  }
+  check('a 1 m/s leftover crawl with the centre outside is not stuck',
+    crawlHit === null, crawlHit);
+
+  const fall = makeClipWatch();
+  check('falling through the world still buries even if takingOff is latched',
+    tickClip(fall, clipSample({
+      takingOff: true,
+      buriedDepth: 2.0,
+    }), BURIED_CONFIRM_MS) === 'buried');
+
+  const grace = makeClipWatch();
+  check('spawn grace ignores a centre inside a pad leftover',
+    tickClip(grace, clipSample({
+      spawnGrace: true,
+      interiorDepth: 0.2,
+      unresolved: true,
+      buriedDepth: 0.4,
+    }), 2000) === null);
+
+  const fifty = makeClipWatch();
+  let bounceFires = 0;
+  for (let i = 0; i < 50; i += 1) {
+    if (clipWatchTick(fifty, clipSample({ unresolved: true }), 16)) {
+      bounceFires += 1;
+    }
+    clipWatchTick(fifty, clipSample({ unresolved: false }), 16);
+  }
+  check('fifty firm contacts that each clear, fifty not-crashes',
+    bounceFires === 0, `${bounceFires}`);
+
+  check('stuck travel max is under a slow crawl along a wall',
+    STUCK_TRAVEL_MAX < 5 * (STUCK_UNRESOLVED_MS / 1000));
+}
+
 function suiteSchemaDoc() {
   console.log('\nschema.md');
   const here = dirname(fileURLToPath(import.meta.url));
@@ -2226,6 +2580,7 @@ function main() {
   suiteElementCounts();
   suitePresets();
   suiteCrashRule();
+  suiteClipCatch();
   suiteFaces();
   suitePath();
   suiteGuide();

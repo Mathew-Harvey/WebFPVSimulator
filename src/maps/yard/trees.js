@@ -219,7 +219,7 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
   /* Shade mass, not a cloud of puffs: fewer larger overlapping blobs,
    * city grove size, still clamped inside the one hull. keep is the
    * quality lever. */
-  const count = Math.max(10, Math.round((16 + Math.floor(rng.next() * 6)) * keep));
+  const count = Math.max(12, Math.round((20 + Math.floor(rng.next() * 6)) * keep));
   const yTop = UNDER + 4.2 * S;
   const cx = x;
   const cy = UNDER + 2.05 * S;
@@ -241,9 +241,9 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
     let px = c.x + rng.range(-0.7, 0.7) * S;
     let pz = c.z + rng.range(-0.7, 0.7) * S;
     let py = c.y + rng.range(-0.45, 1.05) * S;
-    px = cx + (px - cx) * 0.72;
-    pz = cz + (pz - cz) * 0.72;
-    py = cy + (py - cy) * 0.78;
+    px = cx + (px - cx) * 0.86;
+    pz = cz + (pz - cz) * 0.86;
+    py = cy + (py - cy) * 0.84;
     const hi = (py - UNDER) / Math.max(0.8, yTop - UNDER);
     let tone = hi > 0.66 ? 0 : hi < 0.32 ? 2 : 1;
     if (rng.next() < 0.16) {

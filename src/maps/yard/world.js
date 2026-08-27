@@ -77,6 +77,10 @@ export function buildWorld(scene, opts = {}) {
 
 export function attractPath(world) {
   const pts = [
+    /* Title beat: backyard north of the deck, hay on the left, cream
+     * house and deck ahead. A look at the stable wall does not sell. */
+    { x: -12.4, y: 3.15, z: 22.8 },
+    { x: -8.2, y: 2.7, z: 16.4 },
     { x: -1.6, y: 2.4, z: 6.9 },
     { x: -1.6, y: 2.2, z: 16 },
     { x: -10, y: 1.6, z: 12 },
@@ -113,6 +117,7 @@ export function attractPath(world) {
     { x: -12, y: 1.5, z: 16 },
     { x: -1.6, y: 2.4, z: 16 },
     { x: -1.6, y: 2.4, z: 6.9 },
+    { x: -8.2, y: 2.7, z: 16.4 },
   ];
   return pts.map((p) => {
     const floor = world.heightAt(p.x, p.z, p.y);

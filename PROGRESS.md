@@ -19525,3 +19525,43 @@ the face ring and the handle all light together. The board's
 `npm test` passes, and its credits sheet was captured through a symlink
 into this repo's static server, since the board has no shot harness of
 its own.
+
+### 2026-08-27 | ui | the pilot rows stop describing the pilots
+
+Ticket: owner, on the roll shipped earlier today. The writing about the
+beta pilots is slop. Better to say nothing.
+
+Changed. A pilot row now carries a face, a slot number, a name and a
+link out, and nothing else. Both blocks of prose are gone: the ticket
+paragraph added this morning, and the one line character note that had
+been under each name since the roll was written. `PILOTS` is four rows
+of five fields, `personCard` no longer takes `ticket` or `found`, and
+the ticket styling is out of both stylesheets. The row's copy is now
+centred against the face rather than starting level with the top of it,
+because there is no paragraph left to hang under the name.
+
+The reasoning is on the card in the file header, and it is not a style
+preference. Anything written under one of these names is somebody
+describing a person who is not in the room to be asked, and none of it
+is worth as much as the name being spelled right and the link going to
+the right place. The maker card keeps its note, because that one is the
+owner writing about his own work.
+
+The tickets themselves are not lost. They are where they were already,
+in the entries above, which is the place for them.
+
+What went wrong. The ticket idea was mine and I argued for it in the
+previous entry as the thing that stopped the page reading as generated.
+It did the opposite: three of the four read as digs at the tester, one
+for not finding the Escape key and one for filing a report that turned
+out to be Chrome's autoplay rule. Writing a person up from a bug
+tracker is not a credit.
+
+Verify: `npm run verify` not run. No native, plant, ABI, input, build
+or trace change. `npm run lint:presets` 3 of 3 clean, `npm run lint:fc`
+30 of 30 clean. `lint:catalog` still cannot run here: `vendor/betaflight`
+is not checked out. Headless Chromium `scripts/shots.js` on the real
+`/index.html#credits`: 0 paragraphs on pilot rows, 4 faces, 4 marks, and
+the four rows read "01 Asylum youtube.com/@AsylumFpv", "JA 02 Jannes",
+"03 LeStar youtube.com/@lestarfpv", "04 CrapShack
+youtube.com/@Z_CrapShack". Board `npm test` passes.

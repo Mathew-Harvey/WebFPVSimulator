@@ -312,7 +312,7 @@ function buildGap(ctx, Y, shrubs, petals) {
    * through both boundaries at once. */
   ctx.add(makeDryingRack({ x: 36.30, z: 12.10, y: gy(36.30, 12.10), ry: Math.PI / 2, n: 5, seed: 8614 }));
   ctx.add(makeDryingRack({ x: 36.40, z: 13.90, y: gy(36.40, 13.90), ry: Math.PI / 2 + 0.22, n: 4, seed: 8615 }));
-  ctx.add(makeLaundryPole({
+  ctx.add(makeLaundryPole({ ctx,
     x: 35.60, z: 14.55, y: gy(35.60, 14.55), ry: Math.PI / 2, len: 2.0, n: 4, h: 1.7, seed: 8616,
   }));
 
@@ -452,7 +452,7 @@ function buildHousePlot(ctx, Y, shrubs, petals) {
   /* The 縁側 side.  This is the only elevation of the house anybody sees from a
    * distance -- from the lineside path and from the bridge deck 7 m up -- so it
    * gets the washing and the pots rather than the back door. */
-  ctx.add(makeLaundryPole({ x: 45.90, z: 4.90, y: gy(45.90, 4.90), ry: 0, len: 2.2, n: 4, seed: 8634 }));
+  ctx.add(makeLaundryPole({ ctx, x: 45.90, z: 4.90, y: gy(45.90, 4.90), ry: 0, len: 2.2, n: 4, seed: 8634 }));
   ctx.add(makePlanter({ x: 44.30, z: 4.80, y: gy(44.30, 4.80), r: 0.24, flower: true, seed: 8635, n: 5 }));
   ctx.add(makeBucket({ x: 43.85, z: 5.20, y: gy(43.85, 5.20), ry: 1.2 }));
   shrubs.push({ x: 47.00, z: 5.30, y: gy(47.00, 5.30), r: 0.46, count: 3, spread: 1.1, seed: 8636 });
@@ -600,7 +600,7 @@ function buildSquare(ctx, sakura, shrubs, petals) {
    * mistake from the last round, one metre further along. */
   {
     const nx = 41.70, nz = 34.30;
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: nx, z: nz, y: gy(nx, nz), ry: Math.PI, w: 1.8, h: 1.2, y0: 0.85,
       sheets: [
         { map: hallNotice(0), x: -0.52, y: 0.02, w: 0.42, h: 0.58, tilt: 0.02 },
@@ -608,7 +608,6 @@ function buildSquare(ctx, sakura, shrubs, petals) {
         { map: hallNotice(2), x: 0.56, y: 0.01, w: 0.42, h: 0.58 },
       ],
     }));
-    ctx.collide(nx - 1.00, nz - 0.16, nx + 1.00, nz + 0.16, gy(nx, nz) + 2.2);
   }
 
   /* ------------------------- the park verge: nothing tall ------------------------- */
@@ -679,7 +678,7 @@ function buildService(ctx, sakura, shrubs, petals) {
   /* the drying line: two airers and a pole, all parallel to the flank */
   ctx.add(makeDryingRack({ x: 43.95, z: 37.60, y: gy(43.95, 37.60), ry: Math.PI / 2, n: 5, seed: 8671 }));
   ctx.add(makeDryingRack({ x: 46.20, z: 38.60, y: gy(46.20, 38.60), ry: Math.PI / 2 + 0.18, n: 4, seed: 8672 }));
-  ctx.add(makeLaundryPole({
+  ctx.add(makeLaundryPole({ ctx,
     x: 46.30, z: 36.60, y: gy(46.30, 36.60), ry: Math.PI / 2, len: 2.2, n: 4, seed: 8673,
   }));
 

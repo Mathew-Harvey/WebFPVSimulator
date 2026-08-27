@@ -535,7 +535,7 @@ export function buildShotengai(ctx) {
       { x: CX + 1.2, z: 37.0, y: groundY(37) + 0.06, ry: 1.3 },
     ]);
     // laundry over the flat-roofed unit above 文具
-    ctx.add(makeLaundryPole({ x: 27.4, z: 34.2, y: groundY(34.2) + 3.3, ry: 0, len: 2.2, n: 3, seed: 406 }));
+    ctx.add(makeLaundryPole({ ctx, x: 27.4, z: 34.2, y: groundY(34.2) + 3.3, ry: 0, len: 2.2, n: 3, seed: 406 }));
   }
 
   /* ------------------------ the wall that closes the street ------------------------

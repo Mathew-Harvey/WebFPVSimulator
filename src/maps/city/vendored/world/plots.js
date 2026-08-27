@@ -180,7 +180,9 @@ export function plotWall(ctx, o) {
       });
       ctx.add(g);
       const t = 0.14;
-      const top = y + (g.userData.top ?? 0.9);
+      /* Block 透かし voids are ~0.23 m, over GAP_MIN. Collide the solid
+       * coursing only so a knife-edge can thread the pierced course. */
+      const top = y + (kind === 'block' ? (o.h ?? 0.62) : (g.userData.top ?? 0.9));
       if (axis === 'z') ctx.collide(at - t, a, at + t, b, top);
       else ctx.collide(a, at - t, b, at + t, top);
       out.push(g);
@@ -329,12 +331,8 @@ export function refusePoint(ctx, o) {
   const m = mats();
   const y = o.y ?? 0;
   if ((o.kind ?? 'bins') === 'house') {
-    const gh = makeGomiHouse({ x: o.x, z: o.z, y, ry: o.ry ?? 0, plateMap: gomiPlate(o.plate ?? 0), seed: o.seed });
+    const gh = makeGomiHouse({ ctx, x: o.x, z: o.z, y, ry: o.ry ?? 0, plateMap: gomiPlate(o.plate ?? 0), seed: o.seed });
     ctx.add(gh);
-    // the enclosure is 1.9 x 1.1; the collider follows it whichever way it faces
-    const c = Math.abs(Math.cos(o.ry ?? 0)), s = Math.abs(Math.sin(o.ry ?? 0));
-    const hx = c * 0.95 + s * 0.55, hz = s * 0.95 + c * 0.55;
-    ctx.collide(o.x - hx, o.z - hz, o.x + hx, o.z + hz, y + (gh.userData.top ?? 1.4));
     return gh;
   }
   ctx.add(makeBins({ x: o.x, z: o.z, y, ry: o.ry ?? 0 }));
@@ -558,7 +556,7 @@ export function dressPlot(ctx, o) {
   if (DRESS_CLUTTER && o.laundry !== false) {
     const s = rng.sign();
     flank(s, rng.range(-p.halfD * 0.3, p.halfD * 0.5), (x, z, y) => {
-      ctx.add(makeLaundryPole({
+      ctx.add(makeLaundryPole({ ctx,
         x, z, y, ry: p.ry + Math.PI / 2, len: 2.2, n: rng.int(3, 4), seed: (o.seed ?? 1) + 16,
       }));
     });

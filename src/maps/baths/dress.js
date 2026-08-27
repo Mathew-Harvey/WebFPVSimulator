@@ -26,7 +26,6 @@ import { makeSigns, sticker } from './signs.js';
 export function buildDress(root, colliders, M) {
   const S = makeSigns();
   placeSigns(root, S);
-  startBlock(root, colliders, M);
   lockers(root, colliders, M);
   reception(root, colliders, M);
   galleryBenches(root, colliders, M);
@@ -56,23 +55,17 @@ function placeSigns(root, S) {
   sticker(root, S.n10, 18, 8.9, h.z0 + L.hall.t + 0.08, 2.2, 2.5, 0);
   sticker(root, S.banner, -12, 12.2, 0, 1.0, 6.5, 0);
   sticker(root, S.banner, 12, 12.2, 0, 1.0, 6.5, 0);
+  sticker(root, S.banner, -4, 12.2, -8.2, 0.8, 5.2, 0);
+  sticker(root, S.banner, 4, 12.2, 8.2, 0.8, 5.2, Math.PI);
   sticker(root, S.ring, -8.3, 2.8, h.z1 + 0.07, 1.1, 1.1, 0);
   sticker(root, S.ring, 8.3, 2.8, h.z1 + 0.07, 1.1, 1.1, 0);
+  sticker(root, S.fascia, 0, 7.12, L.hall.z1 - L.hall.t - L.gallery.w, 12.0, 1.15, 0);
   sticker(root, S.plaza, 0, 0.06, 17.4, 8.0, 2.4, 0, -Math.PI * 0.5);
   const lane = (p.z1 - p.z0) / 6;
   for (let i = 0; i < 6; i += 1) {
     const z = p.z0 + lane * (i + 0.5);
     sticker(root, S.lanes[i], p.x0 - p.wall + 0.04, 0.36, z, 0.5, 0.5, Math.PI * 0.5);
   }
-}
-
-function startBlock(root, colliders, M) {
-  const p = L.pool;
-  const wall = p.x0 - p.wall;
-  slab(root, colliders, M.white, wall - 0.8, 0, p.z0 + 0.15, wall, 0.70, p.z1 - 0.15, {
-    kind: 'obstacle',
-  });
-  decal(root, colliders, M.orange, wall - 0.08, 0.70, p.z0 + 0.15, wall, 0.78, p.z1 - 0.15);
 }
 
 function lockers(root, colliders, M) {
@@ -83,12 +76,23 @@ function lockers(root, colliders, M) {
   for (let z = Lck.z0 + 0.12; z < Lck.z1 - 0.2; z += 0.85) {
     decal(root, colliders, M.steelDark, Lck.x0, 0.12, z, Lck.x0 + 0.06, 1.72, z + 0.72);
   }
+  narthexLockers(root, colliders, M);
+}
+
+function narthexLockers(root, colliders, M) {
+  const z0 = 12.10;
+  const z1 = L.hall.z1 - L.hall.t;
+  const y1 = 1.85;
+  slab(root, colliders, M.navy, -11.5, 0, z0, -7.65, y1, z1, { kind: 'obstacle' });
+  slab(root, colliders, M.navy, 7.65, 0, z0, 11.5, y1, z1, { kind: 'obstacle' });
+  decal(root, colliders, M.lemon, -11.5, y1, z0, -7.65, y1 + 0.06, z1);
+  decal(root, colliders, M.coral, 7.65, y1, z0, 11.5, y1 + 0.06, z1);
 }
 
 function reception(root, colliders, M) {
   const zBack = L.hall.z0 + L.hall.t;
   slab(root, colliders, M.creamSun, -22.4, 0, zBack, -18.2, 1.12, -11.2, { kind: 'obstacle' });
-  decal(root, colliders, M.orange, -22.4, 1.12, zBack, -18.2, 1.20, -11.2);
+  decal(root, colliders, M.coral, -22.4, 1.12, zBack, -18.2, 1.20, -11.2);
 }
 
 function galleryBenches(root, colliders, M) {
@@ -96,6 +100,9 @@ function galleryBenches(root, colliders, M) {
   const zBack = L.hall.z1 - L.hall.t;
   for (let x = -18; x <= 14; x += 8) {
     if (x < L.sw.x1 + 0.4 || x + 3.2 > L.ne.x0 - 0.4) {
+      continue;
+    }
+    if (x < L.door.half && x + 3.2 > -L.door.half) {
       continue;
     }
     slab(root, colliders, M.creamShade, x, y, zBack - 0.5, x + 3.2, y + 0.48, zBack, {

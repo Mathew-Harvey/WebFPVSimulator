@@ -327,8 +327,8 @@ function buildShopBackAlley(ctx, shrubs, petals) {
       x: cx - 0.2, z: 38.4, w: A2.w - 0.2, d: 3.4, y: y - 0.02, h: 0.06,
       mat: groundMats().gravel, name: 'alleyYard', platform: false,
     });
-    ctx.add(makeLaundryPole({ x: cx - 0.5, z: 37.4, y, ry: 0, len: 2.4, n: 4, seed: 8831 }));
-    ctx.add(makeLaundryPole({ x: cx - 0.5, z: 39.4, y, ry: 0, len: 2.4, n: 3, seed: 8832 }));
+    ctx.add(makeLaundryPole({ ctx, x: cx - 0.5, z: 37.4, y, ry: 0, len: 2.4, n: 4, seed: 8831 }));
+    ctx.add(makeLaundryPole({ ctx, x: cx - 0.5, z: 39.4, y, ry: 0, len: 2.4, n: 3, seed: 8832 }));
     ctx.add(makeStorageShed({ x: cx - 1.0, z: 41.2, y, ry: 0, w: 1.3, d: 0.72, h: 1.62 }));
     ctx.collide(cx - 1.7, 40.8, cx - 0.3, 41.7, y + 1.75);
     ctx.add(makeStorageShed({ x: cx + 0.6, z: 41.3, y, ry: 0.06, w: 1.0, d: 0.66, h: 1.42, color: 0xc4c8c0 }));

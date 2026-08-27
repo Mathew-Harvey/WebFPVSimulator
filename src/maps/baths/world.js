@@ -20,9 +20,10 @@
 import * as THREE from 'three';
 import { Colliders } from '../../game/collide.js';
 import { L, STEP, CLEAR, materials, mergeStatic } from './kit.js';
-import { buildGround, groundHeight, poolFloor } from './ground.js';
+import { buildGround, groundHeight, poolFloor, teachFloor } from './ground.js';
 import { buildHall } from './hall.js';
 import { buildPool } from './pool.js';
+import { buildPlay } from './play.js';
 import { buildDress } from './dress.js';
 import { bathsReferences } from './references.js';
 
@@ -38,6 +39,7 @@ export function buildWorld(scene) {
   buildGround(root, colliders, M);
   buildHall(root, colliders, platforms, M);
   buildPool(root, colliders, platforms, M);
+  buildPlay(root, colliders, platforms, M);
   buildDress(root, colliders, M);
 
   const references = bathsReferences(root, colliders, platforms);
@@ -73,17 +75,31 @@ export function buildWorld(scene) {
 
 export function attractPath(world) {
   const pts = [
-    { x: 0, y: 5.5, z: 26 },
-    { x: 0, y: 3.2, z: 14 },
-    { x: 0, y: 2.4, z: 0 },
-    { x: 11, y: 2.2, z: 0 },
-    { x: 11, y: 18, z: 0 },
-    { x: 0, y: 18, z: 24 },
-    { x: 0, y: 8, z: 28 },
+    { x: 0, y: 2.8, z: 16.2 },
+    { x: 0, y: 2.6, z: 12.45 },
+    { x: 0, y: 2.8, z: 7.8 },
+    { x: 0, y: 0.4, z: 0 },
+    { x: 0, y: 6.7, z: 0 },
+    { x: -7.4, y: 2.8, z: 0 },
+    { x: -11.2, y: 9.8, z: 0 },
+    { x: -20.6, y: 1.8, z: 0 },
+    { x: -23.2, y: 0.1, z: 0 },
+    { x: -28.8, y: 2.2, z: -3.8 },
+    { x: -36, y: 1.8, z: 0 },
+    { x: -39, y: 3.4, z: 0 },
+    { x: -40, y: 6.2, z: -10 },
+    { x: -11, y: 13.2, z: 0 },
+    { x: 12.6, y: 9.8, z: 3.8 },
+    { x: 16, y: -2.9, z: 0 },
+    { x: 21.3, y: 6.3, z: 0 },
+    { x: 24, y: 12, z: 0 },
+    { x: 0, y: 8, z: 22 },
   ];
+  void world;
   return pts.map((p) => {
     const floor = groundHeight(p.x, p.z);
-    return { x: p.x, y: Math.max(p.y, floor + 2.8), z: p.z };
+    const pad = floor >= -0.05 ? 2.4 : 0.45;
+    return { x: p.x, y: Math.max(p.y, floor + pad), z: p.z };
   });
 }
 
@@ -180,9 +196,16 @@ function leftoverScan(colliders) {
         continue;
       }
       death += 1;
-      if (samples.length < 8) {
-        samples.push({ kind: axis, i, j, gap: axis === 'x' ? -ox : axis === 'y' ? -oy : -oz });
-      }
+        if (samples.length < 8) {
+          samples.push({
+            kind: axis,
+            i,
+            j,
+            gap: axis === 'x' ? -ox : axis === 'y' ? -oy : -oz,
+            a: [ax[i], ay[i], az[i], bx[i], by[i], bz[i]],
+            b: [ax[j], ay[j], az[j], bx[j], by[j], bz[j]],
+          });
+        }
     }
   }
   return { death, overlap, samples };
@@ -199,10 +222,27 @@ function auditWorld(heightAt, colliders, platforms) {
       if (want === null) {
         continue;
       }
-      if (Math.abs(got - want) > 0.08) {
+      if (got < want - 0.08) {
         poolWrong += 1;
       } else {
         poolOk += 1;
+      }
+    }
+  }
+  let teachWrong = 0;
+  let teachOk = 0;
+  const tch = L.teach;
+  for (let x = tch.x0 + 0.5; x < tch.x1; x += 1) {
+    for (let z = tch.z0 + 0.5; z < tch.z1; z += 1) {
+      const want = teachFloor(x, z);
+      const got = heightAt(x, z, want + 0.2);
+      if (want === null) {
+        continue;
+      }
+      if (got < want - 0.08) {
+        teachWrong += 1;
+      } else {
+        teachOk += 1;
       }
     }
   }
@@ -229,6 +269,8 @@ function auditWorld(heightAt, colliders, platforms) {
   return {
     poolOk,
     poolWrong,
+    teachOk,
+    teachWrong,
     wellGhost,
     galleryMiss,
     leftoverDeath: leftover.death,

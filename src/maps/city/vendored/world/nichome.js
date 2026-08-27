@@ -287,10 +287,9 @@ function buildSpine(ctx, m, gm) {
    * stand on a street and the railway is a *blank* -- 2.2 m of concrete with the
    * catenary over it and the train going past behind -- and that is worth having
    * once.  A wall ends in a pier; this one already does, at x 45.47..46.09. */
-  ctx.add(makeGuardrail({
+  ctx.add(makeGuardrail({ ctx,
     x: SP_X, z: MASK_Z + 1.0, y: ctx.groundAt(SP_X, MASK_Z + 1.0), len: 4.6, ry: 0,
   }));
-  ctx.collide(SP_WK - 0.4, MASK_Z + 0.86, SP_E + 0.4, MASK_Z + 1.14, 0.86);
   ctx.add(makeSignPost({
     x: SP_E + 0.5, z: MASK_Z + 1.5, y: ctx.groundAt(SP_E + 0.5, MASK_Z + 1.5), ry: -Math.PI / 2,
     h: 2.0, postMat: m.metal,
@@ -348,7 +347,7 @@ function buildWestSide(ctx, m, gm, sakura, shrubs, petals) {
    * The pocket between 公園前's 木造 boundary (z 12.19) and the park's south-east
    * corner (z 17.4) is too small for a roof.  The board sits just north of it,
    * against the park edge, leaving the overbridge stair approach unobstructed. */
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: 44.25, z: 18.0, y: ctx.groundAt(44.25, 18.0), ry: -Math.PI / 2,
     w: 1.8, h: 1.2, y0: 0.85,
     sheets: [
@@ -357,7 +356,6 @@ function buildWestSide(ctx, m, gm, sakura, shrubs, petals) {
       { map: hallNotice(2), x: 0.56, y: 0.01, w: 0.42, h: 0.58 },
     ],
   }));
-  ctx.collide(44.09, 17.0, 44.41, 19.0, ctx.groundAt(44.25, 18.0) + 2.2);
   ctx.add(makeRecycleBox({ x: 44.5, z: 15.6, y: ctx.groundAt(44.5, 15.6), ry: -Math.PI / 2 }));
   /* **No bench here.**  One stood at (45.0, 11.9) turned along the frontage, and
    * the 木造二階建's own veranda and its railing are at x 44.6..45.4 over exactly
@@ -532,21 +530,19 @@ function buildServices(ctx, m, gm, rng) {
       ...FUDOSAN, y: ctx.groundAt(FUDOSAN.x, FUDOSAN.z), kind: 'fudosan', floors: 2,
       seed: 8531, awning: false, shutter: 0, wall: 3, blade: false,
     });
-    plotCollide(ctx, p, 0 + 6.3);
     frontApron(ctx, gm, p, 1.1, 'nichomeFudosanApron');
     /* The window cards are the whole character of an estate agent, and this one
      * cannot have any: every card in a real window is a photograph of a room.
      * So the frontage carries the boards and the plants instead, and the notion
      * that somebody works here is left to the bicycle and the swept step. */
     const [bx, bz] = p.at(-1.2, p.halfD + 0.72);
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: bx, z: bz, y: ctx.groundAt(bx, bz), ry: p.outRy, w: 1.5, h: 1.05, y0: 0.8, wood: 0x8a6f52,
       sheets: [
         { map: hallNotice(2), x: -0.42, w: 0.4, h: 0.55, tilt: 0.02 },
         { map: hallNotice(0), x: 0.14, y: -0.02, w: 0.4, h: 0.55, tilt: -0.012 },
       ],
     }));
-    ctx.collide(bx - 0.16, bz - 0.78, bx + 0.16, bz + 0.78, ctx.groundAt(bx, bz) + 1.9);
     const [px, pz] = p.at(0.7, p.halfD + 0.42);
     ctx.add(makePlanter({ x: px, z: pz, y: ctx.groundAt(px, pz), r: 0.28, flower: true, seed: 8532, n: 6 }));
     const [dx, dz] = p.at(0.2, p.halfD + 0.18);
@@ -567,7 +563,6 @@ function buildServices(ctx, m, gm, rng) {
       ...CLINIC, y: ctx.groundAt(CLINIC.x, CLINIC.z), kind: 'clinic', floors: 2,
       seed: 8533, awning: false, shutter: 0, wall: 0, blade: false,
     });
-    plotCollide(ctx, p, 0 + 6.4);
     frontApron(ctx, gm, p, 1.15, 'nichomeClinicApron');
     /* A clinic's forecourt is the one in this world with a *ramp*, and it is not
      * decoration: it is the single detail that says who comes here.  1:12 over
@@ -637,7 +632,6 @@ function buildServices(ctx, m, gm, rng) {
       ...YAKKYOKU, y: ctx.groundAt(YAKKYOKU.x, YAKKYOKU.z), kind: 'yakkyoku', floors: 2,
       seed: 8535, awning: 1, shutter: 0.18, wall: 1, blade: false,
     });
-    plotCollide(ctx, p, 0 + 6.1);
     frontApron(ctx, gm, p, 1.15, 'nichomeYakkyokuApron');
     const [dx, dz] = p.at(0.4, p.halfD + 0.2);
     ctx.add(makeDoormat({ x: dx, z: dz, y: ctx.groundAt(dx, dz), ry: p.outRy }));
@@ -662,7 +656,6 @@ function buildServices(ctx, m, gm, rng) {
       ...LAUNDRY, y: ctx.groundAt(LAUNDRY.x, LAUNDRY.z), kind: 'laundry', floors: 1,
       seed: 8538, awning: false, shutter: 0, wall: 4, blade: false, h1: 3.1,
     });
-    plotCollide(ctx, p, ctx.groundAt(LAUNDRY.x, LAUNDRY.z) + 3.5);
     frontApron(ctx, gm, p, 1.3, 'nichomeLaundryApron');
     /* A coin laundry is single storey, it is lit at night, and it has a bench
      * and a bin outside because people wait.  It is the one unit here whose
@@ -717,19 +710,10 @@ function frontApron(ctx, gm, p, depth, name) {
 
 function buildHeights(ctx, m, gm, shrubs) {
   const Y = ctx.groundAt(HEIGHTS.x, HEIGHTS.z);
-  const b = makeWalkup({
-    ...HEIGHTS, y: Y, floors: 3, units: 3, seed: 8541, wall: 4, roof: 0, door: 2, plate: 3,
-  });
-  ctx.add(b);
-  const p = plotBox(HEIGHTS);
-  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
-  /* The open stair, which stands *outside* the mass and therefore outside the
-   * plot collider.  Its extent is read off the generator rather than guessed:
-   * `makeWalkup` puts it at local x -w/2-1.6 .. -w/2 and local z d/2-1.55 ..
-   * d/2+0.3, so for `face: 'x-'` that is world x 52.80..54.65, z p.z0-1.6..p.z0.
-   * The draft's box was five metres wide and swallowed the whole forecourt. */
-  ctx.collide(HEIGHTS.x - HEIGHTS.d / 2 - 0.35, p.z0 - 1.7,
-    HEIGHTS.x - HEIGHTS.d / 2 + 1.60, p.z0 + 0.05, Y + 8.3);
+    const b = makeWalkup({
+      ...HEIGHTS, y: Y, floors: 3, units: 3, seed: 8541, wall: 4, roof: 0, door: 2, plate: 3, ctx,
+    });
+    ctx.add(b);
 
   /* The forecourt: 2.1 m between the gallery and the kerb, stopping short of
    * the refuse enclosure so its own slab remains on the natural ground. */
@@ -742,10 +726,9 @@ function buildHeights(ctx, m, gm, shrubs) {
   /* Nine flats, so nine boxes: 3 x 3.  A mailbox bank with the wrong number of
    * doors on it is the one detail on a block like this that anybody checks. */
   ctx.add(makeMailboxBank({ x: fx - 0.55, z: HEIGHTS.z - 2.6, y: gA(fx - 0.55, HEIGHTS.z - 2.6), ry: -Math.PI / 2, cols: 3, rows: 3 }));
-  ctx.collide(fx - 0.75, HEIGHTS.z - 2.95, fx - 0.4, HEIGHTS.z - 2.25, Y + 1.55);
   ctx.add(makeLockerBank({ x: fx - 0.6, z: HEIGHTS.z - 1.3, y: gA(fx - 0.6, HEIGHTS.z - 1.3), ry: -Math.PI / 2 }));
   ctx.collide(fx - 0.9, HEIGHTS.z - 2.0, fx - 0.3, HEIGHTS.z - 0.6, Y + 1.85);
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: fx - 0.42, z: HEIGHTS.z + 0.6, y: gA(fx - 0.42, HEIGHTS.z + 0.6), ry: -Math.PI / 2,
     w: 1.3, h: 0.9, y0: 0.95, wood: 0x8a6f52,
     sheets: [
@@ -791,7 +774,7 @@ function buildHeights(ctx, m, gm, shrubs) {
       x: bx, z: HEIGHTS.z - 2.0 + i * 3.4, y: Y + 2.85 + i * 2.7, ry: -Math.PI / 2, n: 4, seed: 8544 + i,
     }));
   }
-  ctx.add(makeLaundryPole({ x: bx + 0.3, z: HEIGHTS.z + 0.4, y: Y, ry: 0, len: 2.4, n: 4, seed: 8546 }));
+  ctx.add(makeLaundryPole({ ctx, x: bx + 0.3, z: HEIGHTS.z + 0.4, y: Y, ry: 0, len: 2.4, n: 4, seed: 8546 }));
   ctx.add(makeStorageShed({ x: bx + 0.5, z: p.z1 - 1.2, y: gA(bx + 0.5, p.z1 - 1.2), ry: -Math.PI / 2, w: 1.4, d: 0.8, h: 1.7 }));
   ctx.collide(bx - 0.05, p.z1 - 1.9, bx + 1.05, p.z1 - 0.5, Y + 1.74);
   shrubs.push({ x: 60.6, z: 41.4, y: gA(60.6, 41.4), r: 0.46, count: 3, spread: 1.1, seed: 8547 });
@@ -905,7 +888,7 @@ function buildShido(ctx, m, gm, rng, shrubs, petals) {
       const [x, z] = p.at(u, -p.halfD - 0.16);
       ctx.add(makeGasMeter({ x, z, y: gA(x, z), ry: p.outRy + Math.PI }));
     }
-    ctx.add(makeLaundryPole({ x: TERRACE.x - 1.4, z: p.z0 - 1.1, y: gA(TERRACE.x - 1.4, p.z0 - 1.1), ry: Math.PI / 2, len: 2.6, n: 5, seed: 8559 }));
+    ctx.add(makeLaundryPole({ ctx, x: TERRACE.x - 1.4, z: p.z0 - 1.1, y: gA(TERRACE.x - 1.4, p.z0 - 1.1), ry: Math.PI / 2, len: 2.6, n: 5, seed: 8559 }));
     ctx.add(makeKitchenGarden({ x: TERRACE.x + 2.6, z: p.z0 - 1.2, y: gA(TERRACE.x + 2.6, p.z0 - 1.2), ry: 0, w: 2.0, d: 1.1, seed: 8560 }));
     ctx.add(makeTapPost({ x: TERRACE.x + 0.4, z: p.z0 - 0.32, y: gA(TERRACE.x + 0.4, p.z0 - 0.32), ry: Math.PI }));
     petals.push({ x: TERRACE.x, z: p.z1 + 0.9, w: 8.4, d: 1.6, y: ty + 0.02, n: 60 });
@@ -921,10 +904,9 @@ function buildShido(ctx, m, gm, rng, shrubs, petals) {
     const hy = ctx.groundAt(GARAGE.x, GARAGE.z);
     const h = makeGarageHouse({
       ...GARAGE, y: hy, floors: 2, garage: 0.28, doorSide: 1,
-      seed: 8561, wall: 6, roof: 1, door: 4, nameVariant: 4, lit: true,
+      seed: 8561, wall: 6, roof: 1, door: 4, nameVariant: 4, lit: true, ctx,
     });
     ctx.add(h);
-    plotCollide(ctx, p, hy + (h.userData.top ?? 8.0));
     /* the apron the car crosses.  It runs the full frontage and it is *flush*
      * with the lane: a kerb across a garage mouth is the one thing a 狭小住宅
      * plot never has. */

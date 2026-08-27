@@ -45,4 +45,6 @@ export const MAP_BUILD_MS = {
   bando: 4046,
   /* Empty 50 m hall. Measured 369 ms world stage on this machine. */
   baths: 370,
+  /* 2.5 acre homestead. First load estimate, replace after measurement. */
+  yard: 900,
 };

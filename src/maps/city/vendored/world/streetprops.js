@@ -146,6 +146,7 @@ function latticePanel(w, h, cell = 0.13, color = 0xc2c8d0) {
 export function makeGomiHouse(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const W = o.w ?? 1.9;                  // plan, x
   const D = o.d ?? 1.1;                  // plan, z
   const H = o.h ?? 1.05;                 // block height above the slab
@@ -243,6 +244,28 @@ export function makeGomiHouse(o = {}) {
   // local height, the way `buildings.js` and `housing.js` report it: callers
   // add their own ground Y when they size the collider
   g.userData.top = TOP + 0.14;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ca = Math.cos(o.ry ?? 0);
+    const sa = Math.sin(o.ry ?? 0);
+    const put = (lx, lz, hw, hd, top, bot, skip) => {
+      const px = o.x + ca * lx - sa * lz;
+      const pz = o.z + sa * lx + ca * lz;
+      const hx = Math.abs(ca) * hw + Math.abs(sa) * hd;
+      const hz = Math.abs(sa) * hw + Math.abs(ca) * hd;
+      ctx.collide(px - hx, pz - hz, px + hx, pz + hz, y + top, y + bot, skip);
+    };
+    put(0, 0, (W + 0.12) / 2, (D + 0.12) / 2, SLAB, 0, true);
+    put(0, -(D / 2 - T / 2), W / 2, T / 2 + 0.02, TOP, SLAB, true);
+    for (const sx of [-1, 1]) {
+      put(sx * (W / 2 - T / 2), 0, T / 2 + 0.02, D / 2, TOP, SLAB, true);
+    }
+    put(0, 0, (W + 0.14) / 2, (D + 0.22) / 2, TOP + 0.14, TOP - 0.02, true);
+    for (const bx of [-0.52, 0, 0.52]) {
+      put(bx, -0.06, 0.24, 0.22, SLAB + 0.66, SLAB, true);
+    }
+  }
   return g;
 }
 

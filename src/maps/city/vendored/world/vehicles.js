@@ -225,8 +225,8 @@ export const SPEC = {
 /** Overall footprint of a kind, for sizing a collider. */
 export function vehicleSize(kind) {
   const s = SPEC[kind];
-  if (!s) return { L: 3.32, W: 1.46, H: 1.90 };            // the kei truck
-  return { L: s.L, W: s.box ? s.W + 0.06 : s.W, H: s.box ? s.box.y1 : s.roof };
+  if (!s) return { L: 3.32, W: 1.46, H: 1.90, sill: 0.16 };            // the kei truck
+  return { L: s.L, W: s.box ? s.W + 0.06 : s.W, H: s.box ? s.box.y1 : s.roof, sill: s.sill ?? 0.16 };
 }
 
 /* ------------------------------ small helpers ------------------------------ */
@@ -632,7 +632,7 @@ export function makeVehicle(o = {}) {
 export function parkVehicle(ctx, o) {
   const g = makeVehicle(o);
   ctx.add(g);
-  const { L, W, H } = vehicleSize(o.kind);
+  const { L, W, H, sill } = vehicleSize(o.kind);
   const ry = (o.ry ?? 0) + (o.skew ?? 0);
   const c = Math.abs(Math.cos(ry)), s = Math.abs(Math.sin(ry));
   const hw = (c * L + s * W) / 2;
@@ -641,9 +641,10 @@ export function parkVehicle(ctx, o) {
   // insetting for a walker's radius made every car a hole you could fly into.
   // skipFit so a stair or carport drawn above the bay cannot grow this box
   // up through that air. The 公園前 kei under the 跨線橋 was a 4.4 m wall
-  // up the last five treads for exactly that reason.
+  // up the last five treads for exactly that reason. Bottom at the sill so
+  // the undercroft stays a knife-edge line.
   ctx.collide(o.x - hw, o.z - hd, o.x + hw, o.z + hd,
-    (o.y ?? 0) + H - 0.15, undefined, true);
+    (o.y ?? 0) + H - 0.15, (o.y ?? 0) + (sill ?? 0.16), true);
   return g;
 }
 

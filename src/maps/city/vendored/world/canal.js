@@ -371,13 +371,9 @@ export function buildCanal(ctx, train) {
      * past the end of the railings there was nothing there at all -- and
      * `heightAt` answers with the bank level over the whole footprint, so
      * stepping off the coping put you standing on air above the water rather
-     * than in it.  It is a proper 0.95 m barrier now, broken only where the two
-     * bridges cross. */
-    for (const s of [-1, 1]) {
-      for (const [x0, x1] of runsExcept(OPENINGS)) {
-        ctx.collide(x0, Z_C + s * (HALF - 0.4), x1, Z_C + s * (HALF + 0.2), Y0 + 0.95);
-      }
-    }
+     * than in it.  The pipe `railing()` on the dressed bank is the barrier now.
+     * A 0.95 m wall under those rails filled every bay a knife-edge line is
+     * aimed at. */
   }
 
   /* ------------------------------- the water ------------------------------- */
@@ -521,17 +517,25 @@ export function buildCanal(ctx, train) {
     const pipes = [];
     for (let i = 0; i < 5; i++) {
       const r = 0.21;
+      const px = wx - 1.6 + (i % 3) * 0.46;
+      const py = Y0 + 0.09 + r + ((i / 3) | 0) * 0.42;
+      const pz = wz + (((i / 3) | 0) ? 0.06 : -0.06);
       pipes.push({
         geometry: new THREE.CylinderGeometry(r, r, 1.1, 9, 1, true),
-        matrix: trs(wx - 1.6 + (i % 3) * 0.46, Y0 + 0.09 + r + ((i / 3) | 0) * 0.42,
-          wz + (((i / 3) | 0) ? 0.06 : -0.06), 0, 0, Math.PI / 2),
+        matrix: trs(px, py, pz, 0, 0, Math.PI / 2),
       });
+      const t = 0.05;
+      const halfL = 0.55;
+      ctx.collide(px - halfL, pz - r, px + halfL, pz + r, py - r + t, py - r, true);
+      ctx.collide(px - halfL, pz - r, px + halfL, pz + r, py + r, py + r - t, true);
+      ctx.collide(px - halfL, pz - r, px + halfL, pz - r + t, py + r, py - r, true);
+      ctx.collide(px - halfL, pz + r - t, px + halfL, pz + r, py + r, py - r, true);
     }
     const pm = new THREE.Mesh(bake(pipes),
       cel({ color: PAL.concreteMid, bands: 3, side: THREE.DoubleSide, tint: 0x6a6288 }));
     pm.castShadow = pm.receiveShadow = true;
+    pm.name = 'openFrame';
     ctx.add(pm);
-    ctx.collide(wx - 2.0, wz - 0.5, wx - 0.9, wz + 0.5, Y0 + 0.9);
     ctx.add(makeCrates({ x: wx + 1.5, z: wz - 0.1, y: Y0 + 0.07, n: 3, seed: 3382, ry: 0.22 }));
     ctx.add(makeSignPost({
       x: wx + 2.4, z: wz + 0.5, y: Y0 + 0.02, ry: 2.6, h: 1.7,
@@ -875,9 +879,16 @@ function buildFootbridge(ctx) {
     const rx = FOOT_X + s * (W / 2 - 0.12);
     for (let i = 0; i < n; i++) {
       const u0 = i / n, u1 = (i + 1) / n;
-      const yLo = Y0 + Math.min(profile(u0), profile(u1));
-      const yHi = Y0 + Math.max(profile(u0), profile(u1)) + 1.1;
-      ctx.collide(rx - 0.08, z0 + SPAN * u0, rx + 0.08, z0 + SPAN * u1, yHi, yLo);
+      const y0 = Y0 + profile(u0);
+      const y1 = Y0 + profile(u1);
+      const zA = z0 + SPAN * u0;
+      const zB = z0 + SPAN * u1;
+      ctx.collide(rx - 0.05, zA - 0.05, rx + 0.05, zA + 0.05, y0 + 1.05, y0, true);
+      const yMid = (y0 + y1) / 2;
+      ctx.collide(rx - 0.05, Math.min(zA, zB), rx + 0.05, Math.max(zA, zB),
+        yMid + 1.05, yMid + 0.95, true);
+      ctx.collide(rx - 0.05, Math.min(zA, zB), rx + 0.05, Math.max(zA, zB),
+        yMid + 0.55, yMid + 0.45, true);
     }
   }
 
@@ -1057,12 +1068,22 @@ function buildRoadBridge(ctx) {
     const rm = new THREE.Mesh(bake(parts), cel({ color: PAL.lineWhite, bands: 2, tint: 0x8e86ad }));
     rm.castShadow = true;
     g.add(rm);
+    for (let i = 0; i <= 3; i++) {
+      const za = P0 + ((P1 - P0) * i) / 3;
+      const cx = rx(za);
+      const yLo = RY(za);
+      ctx.collide(cx - 0.05, za - 0.05, cx + 0.05, za + 0.05, yLo + H, yLo, true);
+    }
     for (let i = 0; i < 3; i++) {
       const za = P0 + ((P1 - P0) * i) / 3;
-      const zb = P0 + ((P1 - P0) * (i + 1)) / 3;
+      const zb = P0 + ((P1 - P0) * (i + 1) / 3);
       const cx = rx((za + zb) / 2);
       const yLo = RY(Math.min(za, zb));
-      ctx.collide(cx - 0.09, za, cx + 0.09, zb, yLo + H, yLo);
+      const yMid = (RY(za) + RY(zb)) / 2;
+      ctx.collide(cx - 0.05, Math.min(za, zb), cx + 0.05, Math.max(za, zb),
+        yMid + H, yMid + H - 0.10, true);
+      ctx.collide(cx - 0.05, Math.min(za, zb), cx + 0.05, Math.max(za, zb),
+        yMid + H * 0.5 + 0.05, yMid + H * 0.5 - 0.05, true);
     }
   }
 
@@ -1675,7 +1696,12 @@ function buildSluice(ctx) {
       const rm = new THREE.Mesh(bake(parts), m.white);
       rm.castShadow = true;
       g.add(rm);
-      ctx.collide(rx - 0.09, Z_C - L / 2, rx + 0.09, Z_C + L / 2, Y0 + DECK + 0.95, Y0 + DECK);
+      for (let i = 0; i <= 4; i++) {
+        const pz = Z_C - L / 2 + (L / 4) * i;
+        ctx.collide(rx - 0.05, pz - 0.05, rx + 0.05, pz + 0.05, Y0 + DECK + 0.95, Y0 + DECK, true);
+      }
+      ctx.collide(rx - 0.05, Z_C - L / 2, rx + 0.05, Z_C + L / 2, Y0 + DECK + 0.98, Y0 + DECK + 0.88, true);
+      ctx.collide(rx - 0.05, Z_C - L / 2, rx + 0.05, Z_C + L / 2, Y0 + DECK + 0.55, Y0 + DECK + 0.45, true);
     }
   }
 

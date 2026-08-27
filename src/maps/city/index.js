@@ -570,7 +570,7 @@ const COVER_MAX_LIFT = 1.0;
 const COVER_MIN_FILL = 0.4;
 /* Foliage, ground decoration, and see-through frames, excluded by
  * name. Tree leaves are collided as one box per blob in trees.js.
- * A torii, a 渡り廊下, the overbridge cage and a bell housing bake
+ * A torii, a 渡り廊下, a walk-up gallery, a 狭小住宅 bay, the overbridge cage and a bell housing bake
  * posts and beams into one mesh whose AABB is a wall across the
  * opening; COVER_MIN_FILL cannot save them because that AABB is
  * the fill. The slab fit skips the same names, because a named
@@ -578,7 +578,7 @@ const COVER_MIN_FILL = 0.4;
  * rectangle and roof-lift would fill the opening from the floor
  * to the cap. A chain-link ring around a roof votes on every slab
  * of that block the same way. Authored posts and beams stay. */
-const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink/i;
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink|walkup|garageHouse/i;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.
@@ -709,14 +709,12 @@ const SLAB_MAX_STEP = 0.5;
 /*
  * The gap a pilot can actually use.
  *
- * The craft sweeps CRAFT_R, 0.1735 m, so it is 0.347 m across its widest
- * diagonal and a hole has to beat that before anyone can fly it. Half a
- * metre is that with enough margin that the gap reads as a gap on screen
- * rather than as a slot. Anything narrower is merged back into one box,
- * which is why a fence with 0.15 m between its balusters stays a fence and
- * a torii with 2 m between its posts becomes two posts and a lintel.
+ * The craft is 0.347 m on its diagonal, 0.282 m square-on, and about 0.08 m
+ * thick in level flight. A knife-edge line uses the thin axis, so a visual
+ * gap of a quarter metre has to stay a gap in the solid world. Fence
+ * balusters at 0.15 m stay merged. A torii still splits.
  */
-const GAP_MIN = 0.5;
+const GAP_MIN = 0.22;
 /* How far above the ground the drawing has to reach before a slab counts as
  * occupied. A road patch, a manhole cover and a painted line are all drawn
  * and none of them is a wall. */
@@ -747,11 +745,12 @@ const MAX_PIECES = 160;
  */
 const MERGE_TRIVIAL = 0.25;
 /*
- * A box this small is already a leaf cluster, a trunk or a post. Running
- * the slab cut on thousands of them costs load time and can merge two
- * neighbouring leaves into one fatter box. Leave them as authored.
+ * A box this small in BOTH plan axes is a post, a bollard or a trunk.
+ * Leaf clusters skipFit themselves. A 1.4 m slide used to sit under a
+ * 2.4 m cap and never got cut, which is how a playground frame became a
+ * van. Only a square this tight stays as authored.
  */
-const FIT_TIGHT = 2.4;
+const FIT_TIGHT = 0.55;
 /*
  * The fit only ever shrinks, which leaves one thing undone: a house collider
  * authored to the wall plate never reached the ridge, and the roof above it
@@ -764,7 +763,7 @@ const ROOF_LIFT_MIN_FOOT = 1.0;
 const ROOF_LIFT_MAX = 2.8;
 /* Before a run's floor is lifted off the ground, the space underneath has to
  * be worth flying through. */
-const RAISE_MIN_CLEAR = 0.6;
+const RAISE_MIN_CLEAR = 0.16;
 
 function clampStep(v, lo, hi) {
   if (v < lo) {
@@ -1018,8 +1017,9 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
     if (Math.abs(a.hi - b.hi) >= GAP_MIN) {
       return true;
     }
-    /* A step up in the underside: fly under the higher one. */
-    return Math.abs(a.lo - b.lo) >= GAP_MIN;
+    /* A step up in the underside: fly under the higher one. Under-roof
+     * clearances use the same 0.16 m the raise pass already keeps. */
+    return Math.abs(a.lo - b.lo) >= RAISE_MIN_CLEAR;
   };
   const merge = (a, b) => ({
     hi: Math.max(a.hi, b.hi),
@@ -1033,23 +1033,18 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
   /*
    * Two tiers. Normally a pair is merged when it is cheap and not a gap a
    * pilot could use; a gap is never merged for being cheap. Over MAX_RUNS
-   * the budget wins and the cheapest pair goes whatever it is, because an
-   * unbounded cut is a broadphase full of slivers.
+   * the cheapest NON-flyable pair still goes, so a fence of slivers can
+   * collapse. A flyable gap is never the pair that is spent, even over
+   * budget: extra boxes beat a wall across a knife-edge line.
    */
   for (;;) {
     let at = -1;
     let best = Infinity;
-    let atAny = -1;
-    let bestAny = Infinity;
     for (let i = 0; i + 1 < segs.length; i += 1) {
-      const cc = cost(segs[i], segs[i + 1]);
-      if (cc < bestAny) {
-        bestAny = cc;
-        atAny = i;
-      }
       if (flyable(segs[i], segs[i + 1])) {
         continue;
       }
+      const cc = cost(segs[i], segs[i + 1]);
       if (cc < best) {
         best = cc;
         at = i;
@@ -1059,8 +1054,8 @@ function cutAxis(rect, alongX, boxes, list, count, floorAt, scratch) {
       segs.splice(at, 2, merge(segs[at], segs[at + 1]));
       continue;
     }
-    if (segs.length > MAX_RUNS && atAny >= 0) {
-      segs.splice(atAny, 2, merge(segs[atAny], segs[atAny + 1]));
+    if (segs.length > MAX_RUNS && at >= 0) {
+      segs.splice(at, 2, merge(segs[at], segs[at + 1]));
       continue;
     }
     break;
@@ -1459,7 +1454,11 @@ function buildColliders(world) {
     };
     const pieces = fitRect(rect, b.y0, b.y1, boxes, grid, floorAt, scratch, { roof: false });
     if (pieces === null || pieces.length === 0) {
-      colliders.addBox('obstacle', b.x0, b.y0, b.z0, b.x1, b.y1, b.z1);
+      /* A hull we could not cut is a wall across whatever gap the drawing
+       * left. Skip it: a ghost prop is the status quo, a filled AABB is
+       * the bus-shelter complaint. */
+      fitStats.seeThrough += 1;
+      continue;
     } else {
       for (const q of pieces) {
         colliders.addBox('obstacle', q.x0, q.y0, q.z0, q.x1, q.y1 > q.y0 ? q.y1 : q.y0 + 0.001, q.z1);

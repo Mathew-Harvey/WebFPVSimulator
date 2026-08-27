@@ -69,6 +69,9 @@ export const L = {
   hopper: {
     z0: -6.25, z1: -4.2,
   },
+  teach: {
+    x0: -44, x1: -34, z0: -6.25, z1: 6.25, y: -1.15, wall: 0.4,
+  },
   wells: [
     { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
     { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
@@ -79,7 +82,8 @@ export const L = {
   ne: {
     x0: 26.2, x1: 31.5, z0: 8.2, z1: 13.5, h: 20,
   },
-  spawn: { x: 0, z: 22, yaw: Math.PI },
+  spawn: { x: 0, z: 16.2, yaw: Math.PI },
+  westDoor: { z0: -5.4, z1: -2.2, y1: 4.4 },
   site: { x0: -52, x1: 48, z0: -32, z1: 36 },
 };
 
@@ -95,10 +99,14 @@ export function materials() {
     tile: cel({ color: PAL.tile, bands: 3, tint: t }),
     tileDeep: cel({ color: PAL.tileDeep, bands: 3, tint: t }),
     steelDark: cel({ color: PAL.steelDark, bands: 2, tint: t }),
+    chrome: cel({ color: PAL.chrome, bands: 2, tint: t }),
+    navy: cel({ color: PAL.navy, bands: 2, tint: t }),
     litter: cel({ color: PAL.litter, bands: 2, tint: t }),
-    orange: flat({ color: PAL.orange }),
+    orange: flat({ color: PAL.coral }),
+    coral: flat({ color: PAL.coral }),
+    lemon: flat({ color: PAL.lemon }),
     white: flat({ color: PAL.bandWhite }),
-    pane: flat({ color: PAL.glassDark }),
+    pane: flat({ color: PAL.glassAqua }),
     tileLine: flat({ color: PAL.tileLine }),
     hill: flat({ color: PAL.hill, fog: true }),
     hillFar: flat({ color: PAL.hillFar, fog: true }),
@@ -160,6 +168,46 @@ export function deck(root, colliders, platforms, mat, x0, z0, x1, z1, top, thick
   platforms.push({
     x0: xa, z0: za, x1: xb, z1: zb, top, thick,
   });
+}
+
+/* Axis-aligned pipe. r is the half-width of the box that stands in for
+ * the tube. Graphics equal solid: a drawn pipe is a hit. */
+export function pipe(root, colliders, mat, axis, a0, a1, p, q, r, opts = {}) {
+  const kind = opts.kind || 'pole';
+  if (axis === 'x') {
+    return slab(root, colliders, mat, a0, p - r, q - r, a1, p + r, q + r, { ...opts, kind });
+  }
+  if (axis === 'y') {
+    return slab(root, colliders, mat, p - r, a0, q - r, p + r, a1, q + r, { ...opts, kind });
+  }
+  return slab(root, colliders, mat, p - r, q - r, a0, p + r, q + r, a1, { ...opts, kind });
+}
+
+/* Square hoop, opening along X. Posts take the full height. Lintel and
+ * sill sit between them so a shared face is leftover 0, not an overlap. */
+export function hoopX(root, colliders, mat, x, y0, z0, y1, z1, t = 0.18, opts = {}) {
+  const kind = opts.kind || 'obstacle';
+  slab(root, colliders, mat, x, y0, z0, x + t, y1, z0 + t, { ...opts, kind });
+  slab(root, colliders, mat, x, y0, z1 - t, x + t, y1, z1, { ...opts, kind });
+  slab(root, colliders, mat, x, y1 - t, z0 + t, x + t, y1, z1 - t, { ...opts, kind });
+  slab(root, colliders, mat, x, y0, z0 + t, x + t, y0 + t, z1 - t, { ...opts, kind });
+}
+
+export function hoopZ(root, colliders, mat, z, x0, y0, x1, y1, t = 0.18, opts = {}) {
+  const kind = opts.kind || 'obstacle';
+  slab(root, colliders, mat, x0, y0, z, x0 + t, y1, z + t, { ...opts, kind });
+  slab(root, colliders, mat, x1 - t, y0, z, x1, y1, z + t, { ...opts, kind });
+  slab(root, colliders, mat, x0 + t, y1 - t, z, x1 - t, y1, z + t, { ...opts, kind });
+  slab(root, colliders, mat, x0 + t, y0, z, x1 - t, y0 + t, z + t, { ...opts, kind });
+}
+
+/* Portal, opening along X. Posts and lintel, no sill, so deck height is a
+ * fly-through. */
+export function portalX(root, colliders, mat, x, y0, z0, y1, z1, t = 0.22, opts = {}) {
+  const kind = opts.kind || 'obstacle';
+  slab(root, colliders, mat, x, y0, z0, x + t, y1, z0 + t, { ...opts, kind });
+  slab(root, colliders, mat, x, y0, z1 - t, x + t, y1, z1, { ...opts, kind });
+  slab(root, colliders, mat, x, y1 - t, z0 + t, x + t, y1, z1 - t, { ...opts, kind });
 }
 
 export function fillAround(root, colliders, mat, x0, z0, x1, z1, y0, y1, holes, opts) {

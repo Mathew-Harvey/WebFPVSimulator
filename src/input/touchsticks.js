@@ -255,6 +255,12 @@ export function mountTouchSticks({ onPause } = {}) {
         grip.right = null;
         left.plate.classList.remove('is-held');
         right.plate.classList.remove('is-held');
+        /* Pointer capture dies with the overlay. Leaving roll and pitch
+         * where they were made Resume inherit a poke the thumb was no
+         * longer making. Throttle stays: it is sticky on a radio too. */
+        ch.roll = 0;
+        ch.pitch = 0;
+        ch.yaw = 0;
       }
     },
 

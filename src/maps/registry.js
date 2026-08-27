@@ -14,7 +14,7 @@
  * Industrial bando is the same kind of isolation: it copies the cel kit into
  * src/maps/bando/cel rather than importing the city's, so choosing that world
  * does not fetch a single city module, and choosing the city does not fetch
- * the bando. Municipal baths copies the cel kit the same way.
+ * the bando. Municipal baths and Bardwell's yard copy the cel kit the same way.
  *
  * The track world is loaded the same way, for symmetry and because the loading
  * screen then has one shape to report. It is loaded at boot because the title
@@ -67,9 +67,17 @@ export const MAPS = [
     id: 'baths',
     name: 'Municipal baths',
     mode: 'freestyle',
-    note: 'An empty 50 m hall. Dive the pit, fly the gallery. No gates, no lap, no clock.',
+    note: 'A 50 m hall and a lido. Loop the bars, split-S the bulkhead. No gates, no lap, no clock.',
     buildMs: MAP_BUILD_MS.baths,
     load: () => import('./baths/index.js'),
+  },
+  {
+    id: 'yard',
+    name: "Bardwell's yard",
+    mode: 'freestyle',
+    note: 'A 2.5 acre homestead. Deck, barn, missing fence rail. No gates, no lap, no clock.',
+    buildMs: MAP_BUILD_MS.yard,
+    load: () => import('./yard/index.js'),
   },
 ];
 

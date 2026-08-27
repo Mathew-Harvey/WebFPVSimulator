@@ -1203,8 +1203,9 @@ export class Colliders {
  * The only special case is a PERCH: upright, slow, on the ground, which
  * is when the shell freezes the integrator so a takeoff starts from rest
  * rather than from leftover bounce. Everything else stays in the 1 kHz
- * loop, which is what lets a tumble become a turtle: the shell latches
- * Betaflight crashflip and the pilot pitches or rolls to flip over.
+ * loop, which is what lets a tumble become a turtle: inverted, seated
+ * and still, the shell waits for a pitch or roll poke, then plays a
+ * guaranteed flip back to upright.
  */
 export const LAND_DESCENT_MAX = 4.0;    /* m/s downward, props up, perch envelope */
 export const LAND_HORIZONTAL_MAX = 10.0; /* m/s, props up, historical skip gate */
@@ -1340,22 +1341,27 @@ export function canPerch(tiltDeg, speed, rateMag) {
 }
 
 /*
- * Turtle is Betaflight crashflip, latched by the shell. Inverted, slow,
- * and in contact raises the mixer path. Pitch and roll then spin the
- * high motors. The hull does not snap. TURTLE_STICK_MIN matches mixer.c
- * CRASH_FLIP_STICK_MINF: motors stay at disarm until the stick is past
- * that deadband. TURTLE_WAIT_RATE is the shell seating gate: below it,
- * a waiting hull in contact may rest so skipped plant settle cannot
- * jitter; above it the couple is live. TURTLE_EXIT_UPZ is 0.5 (about
- * 60 deg from upright), matching Quicksilver. The shell rests the hull
- * on that edge so leftover mixer rate cannot carry them inverted again.
+ * Turtle is a shell recovery, not Betaflight crashflip. The mixer couple
+ * fought the inverted bump and flickered. Any pitch or roll poke now
+ * plays a fixed flip to heading-preserving upright. The plant does not
+ * step during the wait or the flip.
+ *
+ * Enter only when truly inverted (body +z pointing down past about
+ * 110 deg), seated on grass or a roof, and still. On-side is a tumble
+ * you fly out of. An invert in the air is still flight. TURTLE_STICK_MIN
+ * is a poke gate, not the mixer deadband: any throw past it starts the
+ * flip, and the flip always finishes. TURTLE_LIFT is the extra centre
+ * height at mid-flip so the arms and the lens stay above the surface.
  */
-export const TURTLE_SPEED = 4.0;
+export const TURTLE_SPEED = 1.0;
 export const TURTLE_RATE = 8.0;
 export const TURTLE_CLEARANCE = 0.15;
 export const TURTLE_EXIT_UPZ = 0.5;
-export const TURTLE_STICK_MIN = 0.15;
+export const TURTLE_INVERT_UPZ = -0.35;
+export const TURTLE_STICK_MIN = 0.08;
 export const TURTLE_WAIT_RATE = 1.0;
+export const TURTLE_FLIP_MS = 380;
+export const TURTLE_LIFT = 0.18;
 export const SNAP_SPEED = TURTLE_SPEED;
 export const SNAP_RATE = TURTLE_RATE;
 export const SNAP_CLEARANCE = TURTLE_CLEARANCE;
@@ -1364,18 +1370,15 @@ export function shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, ski
   if (skip) {
     return false;
   }
-  /* Re-latch while upz is below TURTLE_EXIT_UPZ so a flip that
-   * drops back onto its side stays turtle, not airmode. Exit is
-   * strictly greater than TURTLE_EXIT_UPZ, so equality is hysteresis. */
-  if (!(upz < TURTLE_EXIT_UPZ)) {
+  /* Upside down, not on its side. A 60 deg bank is still flight. */
+  if (!(upz < TURTLE_INVERT_UPZ)) {
     return false;
   }
   if (speed >= TURTLE_SPEED || rateMag >= TURTLE_RATE) {
     return false;
   }
-  /* Contact only. A clearance-only latch froze inverted hulls a few
-   * centimetres up, which is a hover, not a turtle. They fall onto the
-   * grass and latch there. */
+  /* Contact only. Clearance is not a floor: a few centimetres of air
+   * under an inverted hull is a fall, not a turtle. */
   void clearance;
   return inContact;
 }
@@ -1388,8 +1391,8 @@ export function shouldExitTurtle(upz) {
   return upz > TURTLE_EXIT_UPZ;
 }
 
-export function shouldParkTurtle(crashflip, stickMag, rateMag, inContact) {
-  if (!crashflip) {
+export function shouldParkTurtle(waiting, stickMag, rateMag, inContact) {
+  if (!waiting) {
     return false;
   }
   if (!inContact) {
@@ -1402,6 +1405,61 @@ export function shouldParkTurtle(crashflip, stickMag, rateMag, inContact) {
     return false;
   }
   return true;
+}
+
+export function turtleFlipEase(u) {
+  if (u <= 0) {
+    return 0;
+  }
+  if (u >= 1) {
+    return 1;
+  }
+  return u * u * (3 - 2 * u);
+}
+
+export function turtleFlipLift(u) {
+  if (u <= 0 || u >= 1) {
+    return 0;
+  }
+  return 4 * u * (1 - u) * TURTLE_LIFT;
+}
+
+export function turtleSlerpQuat(aw, ax, ay, az, bw, bx, by, bz, t, out) {
+  const q = out || [0, 0, 0, 0];
+  let dot = aw * bw + ax * bx + ay * by + az * bz;
+  if (dot < 0) {
+    bw = -bw;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+    dot = -dot;
+  }
+  let ow;
+  let ox;
+  let oy;
+  let oz;
+  if (dot > 0.9995) {
+    ow = aw + (bw - aw) * t;
+    ox = ax + (bx - ax) * t;
+    oy = ay + (by - ay) * t;
+    oz = az + (bz - az) * t;
+  } else {
+    const theta = Math.acos(dot > 1 ? 1 : dot);
+    const s = Math.sin(theta);
+    const wa = Math.sin((1 - t) * theta) / s;
+    const wb = Math.sin(t * theta) / s;
+    ow = wa * aw + wb * bw;
+    ox = wa * ax + wb * bx;
+    oy = wa * ay + wb * by;
+    oz = wa * az + wb * bz;
+  }
+  const n2 = ow * ow + ox * ox + oy * oy + oz * oz;
+  const inv = n2 > 0 ? 1 / Math.sqrt(n2) : 1;
+  q[0] = ow * inv;
+  q[1] = ox * inv;
+  q[2] = oy * inv;
+  q[3] = oz * inv;
+  return q;
 }
 
 /* Flatten roll and pitch. Keep the body-x projection on the plant

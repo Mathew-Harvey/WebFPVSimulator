@@ -170,6 +170,7 @@ function buildEntrance(ctx, Y, rng) {
     board.position.set(px, Y + 1.35, pz);
     board.rotation.y = -0.22;
     board.castShadow = true;
+    board.name = 'openFrame';
     ctx.add(board);
     hullOutline(board, { thickness: 0.003 });
     for (const s of [-1, 1]) {
@@ -179,9 +180,10 @@ function buildEntrance(ctx, Y, rng) {
       const brace = box(0.08, 1.1, 0.08, m.woodDark, px + 0.42, Y + 0.55, pz + s * 0.44);
       brace.rotation.z = 0.5;
       ctx.add(brace);
+      ctx.collide(px + 0.08, pz + s * 0.44 - 0.08, px + 0.16, pz + s * 0.44 + 0.08, Y + 1.7, Y, true);
     }
     ctx.add(box(0.1, 0.1, 1.1, m.woodDark, px + 0.12, Y + 1.98, pz));
-    ctx.collide(px - 0.2, pz - 0.6, px + 0.6, pz + 0.6, Y + 2.0);
+    ctx.collide(px - 0.12, pz - 0.55, px + 0.12, pz + 0.55, Y + 2.05, Y + 0.65, true);
   }
 }
 
@@ -201,8 +203,21 @@ function buildStalls(ctx, Y, rng) {
     { x: -35.8, z: 15.4, ry: 0, sign: 4, rolled: true, sides: false, extra: 'none' },
   ];
   for (const s of SET) {
-    ctx.add(makeStall({ ...s, y: Y }));
-    ctx.collide(s.x - 1.3, s.z - 0.6, s.x + 1.3, s.z + 0.6, Y + 1.1);
+    ctx.add(makeStall({ ...s, y: Y, ctx }));
+    const W = 2.6, D = 1.1, CH = 0.9;
+    const ca = Math.cos(s.ry), sa = Math.sin(s.ry);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const lx = sx * (W / 2 - 0.08);
+        const lz = sz * (D / 2 - 0.06);
+        const px = s.x + ca * lx - sa * lz;
+        const pz = s.z + sa * lx + ca * lz;
+        ctx.collide(px - 0.05, pz - 0.05, px + 0.05, pz + 0.05, Y + 2.15, Y, true);
+      }
+    }
+    const hw = (Math.abs(ca) * W + Math.abs(sa) * D) / 2;
+    const hd = (Math.abs(sa) * W + Math.abs(ca) * D) / 2;
+    ctx.collide(s.x - hw, s.z - hd, s.x + hw, s.z + hd, Y + CH + 0.08, Y + CH - 0.04, true);
     const fz = s.z + (s.ry ? -1 : 1) * 1.1;      // just in front of the counter
     if (s.extra === 'takoyaki') buildGriddle(ctx, s.x + 0.6, s.z, Y, s.ry);
     if (s.extra === 'kakigori') buildShaver(ctx, s.x - 0.5, s.z, Y, s.ry);
@@ -228,6 +243,7 @@ function buildStalls(ctx, Y, rng) {
 function makeStall(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const W = o.w ?? 2.6;
   const D = o.d ?? 1.1;
   const H = 2.15;

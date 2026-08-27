@@ -1205,13 +1205,12 @@ function buildRamp(ctx, m, gm) {
   }));
   // the guide board at the foot, which is the section drawing of the whole idea
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: R_EX0 - 2.4, z: 86.40, y: Y + 0.09, ry: 0, w: 1.35, h: 1.02, y0: 0.92,
       wood: 0x8a8496,
       sheets: [{ map: parkGuide(), x: 0, w: 1.06, h: 0.78, tilt: 0.0 }],
     });
     ctx.add(nb);
-    ctx.collide(R_EX0 - 3.1, 86.26, R_EX0 - 1.7, 86.54, Y + 2.0);
   }
   for (const [cx, cz] of [[R_EX0 - 0.5, 84.6], [R_EX1 + 0.4, 83.4]]) {
     ctx.add(makeCone({ x: cx, z: cz, y: Y + 0.09, ry: rng0(cx) }));
@@ -1463,8 +1462,13 @@ function buildDeck(ctx, m, gm, rng) {
     rail.push({ geometry: new THREE.BoxGeometry(1.56, 0.10, 0.10), matrix: trs(cx, DECK + 0.92, cz - 1.24) });
     const rm = new THREE.Mesh(bake(rail), m.metal);
     rm.castShadow = true;
+    rm.name = 'openFrame';
     ctx.add(rm);
-    ctx.collide(cx - 0.82, cz - 1.32, cx + 0.82, cz + 1.32, DECK + 0.95);
+    for (const s of [-1, 1]) {
+      ctx.collide(cx + s * 0.72 - 0.05, cz - 1.20, cx + s * 0.72 + 0.05, cz + 1.20,
+        DECK + 0.95, DECK, true);
+    }
+    ctx.collide(cx - 0.78, cz - 1.29, cx + 0.78, cz - 1.19, DECK + 0.97, DECK + 0.85, true);
     addTrolleys(ctx, m, cx, cz + 0.2, DECK, 0, 4);
     ctx.add(makeSignPost({
       x: cx + 1.4, z: cz + 2.0, y: DECK, ry: Math.PI / 2, h: 2.0, postMat: m.metal,
@@ -1528,7 +1532,16 @@ function addTrolleys(ctx, m, x, z, y, ry, n) {
   g.add(bm);
   g.position.set(x, y, z);
   g.rotation.y = ry;
+  g.name = 'openFrame';
   ctx.add(g);
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  for (let i = 0; i < n; i++) {
+    const dz = i * 0.30;
+    const px = x - sa * dz;
+    const pz = z + ca * dz;
+    ctx.collide(px - 0.26, pz - 0.32, px + 0.26, pz + 0.32, y + 0.80, y, true);
+  }
   return g;
 }
 
@@ -1596,8 +1609,11 @@ function buildCourt(ctx, m, gm, rng, sakura, shrubs, petals) {
     const rm = new THREE.Mesh(bake(rail.map((p) => ({ geometry: p.geometry, matrix: p.matrix }))), m.metal);
     rm.position.set(0, CY, 0);
     rm.castShadow = true;
+    rm.name = 'openFrame';
     ctx.add(rm);
-    ctx.collide(bx - 0.88, bz - 2.3, bx + 0.88, bz + 2.3, CY + 0.95);
+    for (const s of [-1, 1]) {
+      ctx.collide(bx + s * 0.78 - 0.08, bz - 2.2, bx + s * 0.78 + 0.08, bz + 2.2, CY + 0.95, CY, true);
+    }
     addTrolleys(ctx, m, bx, bz - 1.5, CY, 0, 6);
     addTrolleys(ctx, m, bx, bz + 0.7, CY, 0, 4);
     ctx.add(makeSignPost({
@@ -2003,7 +2019,7 @@ function buildYard(ctx, m, gm, rng) {
     ctx.collide(-55.8, 78.9, -54.6, 79.9, YY + 1.6);
   }
   ctx.add(makeBins({ x: -51.0, z: 67.0, y: YY, ry: 0 }));
-  ctx.add(makeGomiHouse({ x: -53.4, z: 67.0, y: YY, ry: 0, w: 2.2, d: 1.5, seed: 7795 }));
+  ctx.add(makeGomiHouse({ ctx, x: -53.4, z: 67.0, y: YY, ry: 0, w: 2.2, d: 1.5, seed: 7795 }));
   // the cold-store plant against the store's gable, and the extract fans
   {
     const parts = [];
@@ -2139,7 +2155,7 @@ function buildRoad(ctx, m, gm, rng, sakura, shrubs, petals) {
     x: -50.0, z: RD_Z0 - 0.7, y: Y + 0.135, ry: Math.PI, h: 2.4, postMat: m.metal,
     plates: [{ map: parkPlate(5), w: 0.50, h: 0.74, y: 1.86 }],
   }));
-  ctx.add(makeGuardrail({ x: -23.0, z: RD_Z1 + 0.55, y: Y + 0.135, ry: 0, len: 5.0 }));
+  ctx.add(makeGuardrail({ ctx, x: -23.0, z: RD_Z1 + 0.55, y: Y + 0.135, ry: 0, len: 5.0 }));
   /* **4.2 m, ending at z = 83.40, not 5.6 ending at 84.86.**  Both ends of this
    * run were inside something.  It is the boundary between the spur's east footway
    * and コーポ さかえ's forecourt, and its north end died 0.30 m into the side of
@@ -2147,7 +2163,7 @@ function buildRoad(ctx, m, gm, rng, sakura, shrubs, petals) {
    * Pulled back, the boundary reads as one line: rail, then the bank, then the
    * parcel locker.  (Its old length also skewered the four-bike rack that used to
    * stand at (-12.6, 80.4); see the note by the forecourt run.) */
-  ctx.add(makeGuardrail({ x: -12.4, z: 81.30, y: Y + 0.10, ry: Math.PI / 2, len: 4.2 }));
+  ctx.add(makeGuardrail({ ctx, x: -12.4, z: 81.30, y: Y + 0.10, ry: Math.PI / 2, len: 4.2 }));
   for (const dx of [-1.2, 1.2]) {
     ctx.add(makeDelineator({
       x: -15.2 + dx, z: SP_Z0 - 0.8, y: ctx.groundAt(-15.2 + dx, SP_Z0 - 0.8),
@@ -2233,14 +2249,9 @@ function buildSpur(ctx, m, gm, rng, sakura, shrubs, petals) {
   {
     const g = makeWalkup({
       x: CORP.x, z: CORP.z, y: Y, w: CORP.w, d: CORP.d, face: CORP.face,
-      floors: 3, units: 3, seed: 7811, wall: 4, plate: 9,
+      floors: 3, units: 3, seed: 7811, wall: 4, plate: 9, ctx,
     });
     ctx.add(g);
-    ctx.collide(CORP.x - CORP.d / 2 - 0.1, CORP.z - CORP.w / 2 - 0.1,
-      CORP.x + CORP.d / 2 + 0.1, CORP.z + CORP.w / 2 + 0.1, Y + 8.4);
-    // the open stair, off the block's south end
-    ctx.collide(CORP.x - CORP.d / 2 - 0.3, CORP.z - CORP.w / 2 - 1.6,
-      CORP.x - CORP.d / 2 + 1.55, CORP.z - CORP.w / 2, Y + 8.4);
   }
   pad(ctx, { x: -12.9, z: CORP.z, w: 2.2, d: CORP.w + 1.0, y: Y, h: 0.07, mat: gm.concrete, name: 'nanaCorpFore' });
   /* The forecourt run, measured rather than spaced by eye -- three of the five

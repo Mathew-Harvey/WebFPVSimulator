@@ -400,13 +400,26 @@ export function railing(ctx, o) {
   const g = new THREE.Group();
   const mesh = new THREE.Mesh(bake(parts), o.mat ?? m.white);
   mesh.castShadow = true;
+  mesh.name = 'openFrame';
   g.add(mesh);
   g.position.y = y;
   ctx.add(g);
   if (o.collide !== false) {
-    /* Floor at y: a deck rail must not fill the undercroft. */
-    if (axis === 'z') ctx.collide(o.at - 0.09, from, o.at + 0.09, to, y + h, y);
-    else ctx.collide(from, o.at - 0.09, to, o.at + 0.09, y + h, y);
+    /* Posts and the two pipes, not a slab. A slab fills the bays a
+     * knife-edge line is aimed at. Floor at y so a deck rail does not
+     * fill the undercroft. */
+    for (let i = 0; i <= n; i++) {
+      const c = from + (len / n) * i;
+      if (axis === 'z') ctx.collide(o.at - 0.05, c - 0.05, o.at + 0.05, c + 0.05, y + h, y, true);
+      else ctx.collide(c - 0.05, o.at - 0.05, c + 0.05, o.at + 0.05, y + h, y, true);
+    }
+    for (const ry of [h - 0.02, h * 0.52]) {
+      if (axis === 'z') {
+        ctx.collide(o.at - 0.05, from, o.at + 0.05, to, y + ry + 0.05, y + ry - 0.05, true);
+      } else {
+        ctx.collide(from, o.at - 0.05, to, o.at + 0.05, y + ry + 0.05, y + ry - 0.05, true);
+      }
+    }
   }
   return g;
 }

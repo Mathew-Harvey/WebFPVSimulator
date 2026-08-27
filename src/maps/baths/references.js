@@ -39,5 +39,7 @@ export function bathsReferences(root, colliders, platforms) {
     towerDecks: { measured: towerTop, unit: 'count', real: 'one 10 m board deck' },
     galleryPieces: { measured: gallery, unit: 'count', real: 'mouth run plus far run' },
     colliderBoxes: { measured: colliders.ax.length, unit: 'count', real: 'authored with the mesh' },
+    teachLen: { measured: L.teach.x1 - L.teach.x0, unit: 'm', real: 'teaching pool about 10 m' },
+    bulkheadTop: { measured: platforms.reduce((n, d) => (d.top > 2.5 && d.top < 2.7 ? n + 1 : n), 0), unit: 'count', real: 'one bulkhead deck' },
   };
 }

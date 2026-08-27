@@ -229,19 +229,20 @@ export function buildRailway(ctx) {
       const mid = (x0 + x1) / 2;
       for (const yy of [0.55, 1.02]) {
         parts.push({ geometry: railGeoH, matrix: trs(mid, yy, zf, 0, 0, 0, len, 1, 1) });
+        ctx.collide(x0, zf - 0.04, x1, zf + 0.04, yy + 0.05, yy - 0.05, true);
       }
       for (let x = x0; x <= x1; x += 2.4) {
         parts.push({ geometry: postGeo, matrix: trs(x, 0.56, zf) });
+        ctx.collide(x - 0.05, zf - 0.05, x + 0.05, zf + 0.05, 1.12, 0, true);
       }
       // vertical infill bars, sparse enough to stay graphic
       for (let x = x0 + 0.3; x <= x1; x += 0.32) {
         parts.push({ geometry: barGeo, matrix: trs(x, 0.78, zf) });
       }
-      ctx.collide(x0, zf - 0.12, x1, zf + 0.12, 1.2);
     }
     const m = new THREE.Mesh(bake(parts), matMetal());
     m.castShadow = true;
-    m.name = 'linesideFence';
+    m.name = 'openFrame';
     g.add(m);
     [railGeoH, postGeo, barGeo].forEach((x) => x.dispose());
   }

@@ -102,7 +102,7 @@ export function buildApproach(ctx) {
     const runs = [[-30.5, -38.0], [-53.2, -54.6], [-61.0, Z_TOP + 0.5]];
     for (const [z0, z1] of runs) {
       const zc = (z0 + z1) / 2;
-      ctx.add(makeGuardrail({
+      ctx.add(makeGuardrail({ ctx,
         x: centerX(zc) - ROAD_HALF - 0.28, z: zc, y: groundY(zc),
         ry: Math.PI / 2, len: Math.abs(z1 - z0),
       }));
@@ -110,7 +110,7 @@ export function buildApproach(ctx) {
     // and a short length on the school side, either side of the gate crossing
     for (const [z0, z1] of [[-40.0, -46.4], [-52.6, -60.0]]) {
       const zc = (z0 + z1) / 2;
-      ctx.add(makeGuardrail({
+      ctx.add(makeGuardrail({ ctx,
         x: centerX(zc) + ROAD_HALF + 0.28, z: zc, y: groundY(zc),
         ry: Math.PI / 2, len: Math.abs(z1 - z0),
       }));

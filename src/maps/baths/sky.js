@@ -1,7 +1,7 @@
 /*
  * sky.js: painted dome and flat cel clouds for the baths.
  *
- * Same three-stop quantised dome as the city, retinted to golden haze so the cream hall reads against a warm sky.
+ * Same three-stop quantised dome as the city, retinted to chlorine daylight so the grey-white hall reads against a cyan noon.
  *
  * This file is part of WebFPVSimulator.
  *

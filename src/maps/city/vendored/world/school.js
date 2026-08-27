@@ -308,7 +308,7 @@ export function buildSchool(ctx) {
     }));
     ctx.collide(8.2, GATE_Z + 4.4, 8.6, GATE_Z + 4.8, Y + 2.5);
 
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: X_W - 0.42, z: GATE_Z + 6.4, y: Y, ry: -Math.PI / 2, w: 2.3, h: 1.3, y0: 0.9,
       sheets: [
         { map: clubPoster(0), x: -0.72, y: 0.06, w: 0.44, h: 0.6, tilt: 0.02 },
@@ -317,10 +317,9 @@ export function buildSchool(ctx) {
         { map: gateNotice(), x: 0.78, y: -0.04, w: 0.4, h: 0.54, tilt: -0.02 },
       ],
     }));
-    ctx.collide(X_W - 0.6, GATE_Z + 5.3, X_W - 0.25, GATE_Z + 7.5, Y + 2.2);
 
     // a second board just inside, angled to the approach
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: 13.4, z: GATE_Z - 4.6, y: Y, ry: -Math.PI / 2 + 0.4, w: 1.9, h: 1.15, y0: 0.85,
       sheets: [
         { map: clubPoster(2), x: -0.5, y: 0.02, w: 0.42, h: 0.56, tilt: 0.02 },
@@ -1878,7 +1877,7 @@ function buildCourtyard(ctx, Y, rng, sakura, shrubs) {
   /* the boards.  Two, and they face different ways on purpose: the club board
    * looks at the second block's door, the notice board at the passage in from the
    * forecourt, because those are the two directions anybody arrives from. */
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: YARD.x0 + 0.5, z: cz - 1.2, y: Y, ry: Math.PI / 2, w: 2.0, h: 1.2, y0: 0.9,
     sheets: [
       { map: clubPoster(1), x: -0.58, y: 0.04, w: 0.44, h: 0.6, tilt: 0.02 },
@@ -1886,8 +1885,7 @@ function buildCourtyard(ctx, Y, rng, sakura, shrubs) {
       { map: clubPoster(2), x: 0.5, y: 0.05, w: 0.44, h: 0.6, tilt: 0.015 },
     ],
   }));
-  ctx.collide(YARD.x0 + 0.32, cz - 2.3, YARD.x0 + 0.68, cz - 0.1, Y + 2.2);
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: cx + 2.2, z: YARD.z0 + 0.5, y: Y, ry: 0, w: 1.7, h: 1.1, y0: 0.88,
     wood: 0x8a7a5c,
     sheets: [
@@ -1895,7 +1893,6 @@ function buildCourtyard(ctx, Y, rng, sakura, shrubs) {
       { map: clubPoster(5), x: 0.16, y: 0.03, w: 0.44, h: 0.58, tilt: 0.02 },
     ],
   }));
-  ctx.collide(cx + 1.4, YARD.z0 + 0.32, cx + 3.0, YARD.z0 + 0.68, Y + 2.1);
 
   /* the 記念碑: a small block of stone on a plinth with a bronze plate on it.
    * Every school has one and nobody remembers what it says. */
@@ -1943,7 +1940,7 @@ function buildCourtyard(ctx, Y, rng, sakura, shrubs) {
   // square to the wall it stands against, not angled: a board turned a few
   // degrees off its neighbours reads as one that has been knocked, not as one
   // aimed at anybody
-  ctx.add(makeGuideBoard({ x: YARD.x0 + 1.1, z: YARD.z1 - 2.6, y: Y + 0.07, ry: Math.PI / 2 }));
+  ctx.add(makeGuideBoard({ ctx, x: YARD.x0 + 1.1, z: YARD.z1 - 2.6, y: Y + 0.07, ry: Math.PI / 2 }));
   {
     const px = cx + 3.4, pz = cz + 2.2;
     const pole = cyl(0.06, 0.075, 4.6, 8, m.metal, px, Y + 2.3, pz);
@@ -2022,8 +2019,7 @@ function buildBackYard(ctx, Y, rng, shrubs) {
     ctx.add(makeAircon({ x: sx, z: sz - 1.6, y: Y + 1.5, ry: Math.PI, w: 0.8, h: 0.56 }));
   }
   // the refuse point, the tap and the clutter of a working yard
-  ctx.add(makeGomiHouse({ x: 16.8, z: -82.0, y: Y, ry: Math.PI, w: 2.6, d: 1.6, seed: 7782 }));
-  ctx.collide(15.4, -82.9, 18.2, -81.1, Y + 2.0);
+  ctx.add(makeGomiHouse({ ctx, x: 16.8, z: -82.0, y: Y, ry: Math.PI, w: 2.6, d: 1.6, seed: 7782 }));
   ctx.add(makeTapPost({ x: 22.4, z: -81.2, y: Y, ry: Math.PI, h: 0.88 }));
   ctx.add(makeCrates({ x: 12.6, z: -81.4, y: Y, n: 4, seed: 7783, ry: -0.22 }));
   ctx.add(makeMilkCrate({ x: 14.0, z: -82.2, y: Y, ry: 0.4, n: 3 }));
@@ -2068,11 +2064,10 @@ function buildBackYard(ctx, Y, rng, shrubs) {
     hullOutline(lm, { thickness: 0.003 });
     // the apron through the opening, and the plate that says when it is locked
     pad(ctx, { x: gx, z: Z_N + 1.1, w: 3.4, d: 3.0, y: Y, mat: gm.concrete, name: 'backGateApron' });
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: gx - 2.5, z: Z_N + 1.6, y: Y, ry: 0.5, w: 1.4, h: 1.0, y0: 0.9, wood: 0x8a6f52,
       sheets: [{ map: trailNotice(3), x: 0, y: 0, w: 0.72, h: 0.56, tilt: 0.0 }],
     }));
-    ctx.collide(gx - 3.2, Z_N + 1.42, gx - 1.8, Z_N + 1.78, Y + 2.0);
     const np = new THREE.Mesh(
       new THREE.BoxGeometry(0.06, 0.3, 0.9),
       [flat({ color: 0xffffff, map: schoolBlockPlate(4), cache: false }),

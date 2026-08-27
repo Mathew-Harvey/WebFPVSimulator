@@ -166,6 +166,9 @@ export function groundRail(ctx, pts, o = {}) {
       geometry: new THREE.CylinderGeometry(0.045, 0.055, h + 0.3, o.round === false ? 4 : 7),
       matrix: trs(px, y + (h + 0.3) / 2 - 0.3, pz),
     });
+    if (o.collide !== false) {
+      ctx.collide(px - 0.06, pz - 0.06, px + 0.06, pz + 0.06, y + h, y, true);
+    }
     if (k === line.length - 1) break;
     const [qx, qz] = line[k + 1];
     const qy = yAt(qx, qz);
@@ -180,15 +183,25 @@ export function groundRail(ctx, pts, o = {}) {
           new THREE.Vector3((px + qx) / 2, (y + qy) / 2 + hy, (pz + qz) / 2),
           q, new THREE.Vector3(1, 1, 1)),
       });
-    }
-    if (o.collide !== false) {
-      ctx.collide(Math.min(px, qx) - 0.1, Math.min(pz, qz) - 0.1,
-        Math.max(px, qx) + 0.1, Math.max(pz, qz) + 0.1, Math.min(y, qy) + h);
+      if (o.collide !== false) {
+        const span = Math.hypot(dx, dz);
+        const n = Math.max(1, Math.ceil(span / 0.16));
+        for (let s = 0; s < n; s++) {
+          const t0 = s / n;
+          const t1 = (s + 1) / n;
+          const ax = px + dx * t0, az = pz + dz * t0;
+          const bx = px + dx * t1, bz = pz + dz * t1;
+          const ySeg = y + dy * ((t0 + t1) / 2);
+          ctx.collide(Math.min(ax, bx) - 0.06, Math.min(az, bz) - 0.06,
+            Math.max(ax, bx) + 0.06, Math.max(az, bz) + 0.06,
+            ySeg + hy + 0.05, ySeg + hy - 0.05, true);
+        }
+      }
     }
   }
   const mesh = new THREE.Mesh(bake(parts), o.mat ?? m.white);
   mesh.castShadow = true;
-  mesh.name = o.name ?? 'lakeRail';
+  mesh.name = 'openFrame';
   ctx.add(mesh);
   return mesh;
 }
@@ -370,11 +383,10 @@ function buildRoad(ctx, rng, out) {
       ctx.add(box(1.5, 0.14, 0.16, m.concreteDark, px + s * 1.6, y + 0.07, pz - 1.7));
     }
     ctx.add(makeBench({ x: px + 1.2, z: pz - 1.0, y, ry: Math.PI, len: 1.7 }));
-    ctx.add(makeGuideBoard({
+    ctx.add(makeGuideBoard({ ctx,
       x: px - 1.8, z: pz - 1.9, y, ry: Math.PI, w: 2.0, h: 1.3,
       map: lakeMap(), post: m.metalDark,
     }));
-    ctx.collide(px - 2.8, pz - 2.1, px - 0.8, pz - 1.7, y + 2.4);
     out.grove.push({ x: px + 4.6, z: pz + 1.4, y: ctx.groundAt(px + 4.6, pz + 1.4), scale: 1.4, seed: 9101, spread: 1.1 });
   }
 
@@ -638,7 +650,10 @@ function buildDam(ctx, rng, out) {
       ch.rotation.set(0, Math.atan2(ux, uz), Math.PI / 2);
       ch.position.set(rootX, gy + 0.62, rootZ);
       g.add(ch);
-      ctx.collide(rootX - 0.7, rootZ - 0.7, rootX + 0.7, rootZ + 0.7, gy + 1.0);
+      ctx.collide(rootX + ux * 0.6 - 0.06, rootZ + uz * 0.6 - 0.06,
+        rootX + ux * 0.6 + 0.06, rootZ + uz * 0.6 + 0.06, gy + 1.0, gy, true);
+      ctx.collide(rootX - ux * 0.6 - 0.06, rootZ - uz * 0.6 - 0.06,
+        rootX - ux * 0.6 + 0.06, rootZ - uz * 0.6 + 0.06, gy + 1.0, gy, true);
       const p = makeSignPost({
         x: rootX - ux * 1.4, z: rootZ - uz * 1.4, y: gy, ry: Math.atan2(-nx, -nz), h: 1.6,
         postMat: m.metalDark,
@@ -717,11 +732,10 @@ function buildDam(ctx, rng, out) {
       x: hx + 2.3, z: hz + 1.5, y: yy, ry: Math.PI, h: 1.7, postMat: m.metalDark,
       plates: [{ map: damPlate(4), w: 0.9, h: 0.23, y: 1.34, double: false }],
     }));
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: Y.x + 2.4, z: Y.z + 2.2, y: yy, ry: Math.PI, w: 1.9, h: 1.25, y0: 0.95, wood: 0x8a6f52,
       sheets: [{ map: lakeNotice(5), x: 0, y: 0, w: 0.82, h: 0.62, tilt: 0 }],
     }));
-    ctx.collide(Y.x + 1.4, Y.z + 2.0, Y.x + 3.4, Y.z + 2.4, yy + 2.3);
     ctx.add(makeCrates({ x: Y.x + 3.6, z: Y.z - 1.6, y: yy, n: 3, seed: 9211, ry: 0.2 }));
     ctx.add(makeMilkCrate({ x: Y.x + 4.2, z: Y.z - 2.6, y: yy, ry: -0.3, n: 2 }));
     ctx.add(makeBucket({ x: hx + 2.1, z: hz - 1.4, y: yy, ry: 0.4 }));
@@ -874,10 +888,13 @@ function buildMiharashi(ctx, rng, out) {
       for (let k = 0; k <= nn; k++) {
         const t = k / nn;
         if (gap && t > gap[0] && t < gap[1]) continue;
+        const px = ax + (bx - ax) * t;
+        const pz = az + (bz - az) * t;
         rp.push({
           geometry: new THREE.BoxGeometry(0.1, RH, 0.1),
-          matrix: trs(ax + (bx - ax) * t, DY + RH / 2, az + (bz - az) * t),
+          matrix: trs(px, DY + RH / 2, pz),
         });
+        ctx.collide(px - 0.06, pz - 0.06, px + 0.06, pz + 0.06, DY + RH, DY, true);
       }
       for (const hy of [RH - 0.05, RH * 0.5]) {
         if (gap) {
@@ -889,12 +906,18 @@ function buildMiharashi(ctx, rng, out) {
               geometry: new THREE.BoxGeometry(0.075, 0.075, Math.hypot(ex - sx, ez - sz)),
               matrix: trs((sx + ex) / 2, DY + hy, (sz + ez) / 2, 0, ry, 0),
             });
+            ctx.collide(Math.min(sx, ex) - 0.06, Math.min(sz, ez) - 0.06,
+              Math.max(sx, ex) + 0.06, Math.max(sz, ez) + 0.06,
+              DY + hy + 0.05, DY + hy - 0.05, true);
           }
         } else {
           rp.push({
             geometry: new THREE.BoxGeometry(0.075, 0.075, len),
             matrix: trs((ax + bx) / 2, DY + hy, (az + bz) / 2, 0, ry, 0),
           });
+          ctx.collide(Math.min(ax, bx) - 0.06, Math.min(az, bz) - 0.06,
+            Math.max(ax, bx) + 0.06, Math.max(az, bz) + 0.06,
+            DY + hy + 0.05, DY + hy - 0.05, true);
         }
       }
     };
@@ -914,16 +937,9 @@ function buildMiharashi(ctx, rng, out) {
      * taught this project, at the top of a five-tread flight. */
     rail(x0, z0, x1, z0, [0.32, 0.78]);    // south: the way in
     const rm = new THREE.Mesh(bake(rp), m.timber);
+    rm.name = 'openFrame';
     rm.castShadow = true;
     g.add(rm);
-    const gapA = x0 + (x1 - x0) * 0.32, gapB = x0 + (x1 - x0) * 0.78;
-    for (const [cx0, cz0, cx1, cz1] of [
-      [x1 - 0.1, z0, x1 + 0.1, z1],
-      [x0 - 0.1, z1 - 0.1, x1 + 0.1, z1 + 0.1],
-      [x0 - 0.1, z0, x0 + 0.1, z1],
-      [x0 - 0.1, z0 - 0.1, gapA, z0 + 0.1],
-      [gapB, z0 - 0.1, x1 + 0.1, z0 + 0.1],
-    ]) ctx.collide(cx0, cz0, cx1, cz1, DY + RH, DY - 0.6);
 
     /* the flight up from the 遊歩道, in the gap in the south rail.  Five treads
      * along z, so `dir` is +1 and the top tread lands on the deck's own edge. */
@@ -963,8 +979,7 @@ function buildMiharashi(ctx, rng, out) {
     /* the map board at the foot of the steps, and the name plate */
     const bx = V.x - 4.4, bz = V.z + 1.6;
     const by = hillMeshY(bx, bz);
-    ctx.add(makeGuideBoard({ x: bx, z: bz, y: by, ry: -1.3, w: 2.0, h: 1.3, map: lakeMap(), post: m.timber }));
-    ctx.collide(bx - 0.9, bz - 0.4, bx + 0.9, bz + 0.4, by + 2.4);
+    ctx.add(makeGuideBoard({ ctx, x: bx, z: bz, y: by, ry: -1.3, w: 2.0, h: 1.3, map: lakeMap(), post: m.timber }));
     finger(ctx, V.x - 3.2, V.z - 2.4, -1.9, [lakePlate(7)], { h: 2.2 });
 
     /* planting: a frame, and **all of it west and on the flanks**.  East is the

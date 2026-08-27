@@ -62,7 +62,13 @@ export function buildShop(ctx) {
     // string course between floors
     g.add(box(depth + 0.06, 0.18, zFar - zNear + 0.06, matRoof, xFront + depth / 2, y0 + H1 + 0.05, zMid));
 
-    ctx.collide(xFront - 0.05, zNear, xFront + depth, zFar, y0 + H1 + H2);
+    const zc = zNear + 4.35;
+    const bay = 1.5;
+    const rec = 0.45;
+    ctx.collide(xFront - 0.05, zNear, xFront + depth, zc - bay, y0 + H1 + H2);
+    ctx.collide(xFront - 0.05, zc + bay, xFront + depth, zFar, y0 + H1 + H2);
+    ctx.collide(xFront + rec, zc - bay, xFront + depth, zc + bay, y0 + H1 + H2);
+    ctx.collide(xFront - 0.05, zc - bay, xFront + rec, zc + bay, y0 + H1 + H2, y0 + H1 - 0.55, true);
   }
 
   /* ------------------------- tiled base along the front ------------------------- */
@@ -386,8 +392,10 @@ export function buildShop(ctx) {
     g.add(box(0.6, 0.05, 1.7, cel({ color: PAL.metalWarm, bands: 3 }), xFront - 0.68, walkY + 0.28, zFar - 2.4));
     for (const dz of [-0.7, 0.7]) {
       g.add(box(0.05, 0.28, 0.05, matMetalDark, xFront - 0.68, walkY + 0.14, zFar - 2.4 + dz));
+      ctx.collide(xFront - 0.74, zFar - 2.4 + dz - 0.04, xFront - 0.62, zFar - 2.4 + dz + 0.04,
+        walkY + 0.30, walkY, true);
     }
-    ctx.collide(xFront - 1.0, zFar - 3.3, xFront - 0.35, zFar - 1.5, walkY + 0.4);
+    ctx.collide(xFront - 1.00, zFar - 3.3, xFront - 0.36, zFar - 1.5, walkY + 0.32, walkY + 0.24, true);
 
     // bin beside the shutter
     const binZ = zNear + 0.12;

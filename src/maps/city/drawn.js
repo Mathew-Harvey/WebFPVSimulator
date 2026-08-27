@@ -47,20 +47,22 @@
 
 import * as THREE from 'three';
 
-/* A mesh smaller than this in plan is its own bounding box for every purpose
- * the fit has: nothing about a 1 m2 object is a slope a quad can use. */
-const SUBDIV_MIN_AREA = 6;
+/* A mesh smaller than this in plan is its own bounding box. A bus shelter
+ * is about 4 m2 of posts and a lid; that has to subdivide or the cover
+ * pass sees one AABB and walls the mouth. */
+const SUBDIV_MIN_AREA = 0.35;
 /* And a flat thing has no wedge over it to remove. */
-const SUBDIV_MIN_HEIGHT = 0.4;
+const SUBDIV_MIN_HEIGHT = 0.12;
 /*
- * The raster cell, and it is a compromise measured rather than chosen. At
- * 0.5 m the town's drawn picture is 1.09 million boxes, which is ten times
- * the mesh count and a hundred megabytes of build time objects for a wedge
- * over a roof that is two or three metres deep. At 1 m it is a quarter of
- * that and the staircase still follows a roof slope to within one course of
- * tiles, which is finer than anything the fit does with it.
+ * The raster cell. Houses keep a 1 m staircase, which is a course of
+ * tiles. Compact frames (a shelter, a swing, a stall) need a cell finer
+ * than the craft, or a post and the air beside it share a cell and the
+ * hull fills the gap a knife-edge line is aimed at.
  */
 const SUBDIV_CELL = 1;
+const SUBDIV_FINE_CELL = 0.16;
+const SUBDIV_FINE_SPAN = 8;
+const SUBDIV_FINE_AREA = 40;
 /*
  * Caps, and the first one was set far too low to begin with.
  *
@@ -120,8 +122,10 @@ function subdivide(geometry, matrix, box, name, out) {
   if (sx * sz < SUBDIV_MIN_AREA || sy < SUBDIV_MIN_HEIGHT) {
     return false;
   }
-  let nx = Math.max(1, Math.ceil(sx / SUBDIV_CELL));
-  let nz = Math.max(1, Math.ceil(sz / SUBDIV_CELL));
+  const fine = Math.max(sx, sz) <= SUBDIV_FINE_SPAN && sx * sz <= SUBDIV_FINE_AREA;
+  const cell = fine ? SUBDIV_FINE_CELL : SUBDIV_CELL;
+  let nx = Math.max(1, Math.ceil(sx / cell));
+  let nz = Math.max(1, Math.ceil(sz / cell));
   while (nx * nz > SUBDIV_MAX_CELLS) {
     nx = Math.max(1, nx >> 1);
     nz = Math.max(1, nz >> 1);

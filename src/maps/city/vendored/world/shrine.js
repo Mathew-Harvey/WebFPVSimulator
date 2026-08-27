@@ -754,7 +754,9 @@ function buildTemizuya(ctx, o) {
   g.rotation.y = o.ry ?? 0;
   ctx.add(g);
   const y0 = o.y ?? 0;
-  ctx.collide(o.x - W / 2 - 0.2, o.z - D / 2 - 0.2, o.x + W / 2 + 0.2, o.z + D / 2 + 0.2, y0 + 0.8, undefined, true);
+  ctx.collide(o.x - (W + 0.6) / 2, o.z - (D + 0.6) / 2, o.x + (W + 0.6) / 2, o.z + (D + 0.6) / 2,
+    y0 + 0.16, y0, true);
+  ctx.collide(o.x - 0.85, o.z - 0.50, o.x + 0.85, o.z + 0.50, y0 + 0.87, y0 + 0.16, true);
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       const px = o.x + sx * (W / 2), pz = o.z + sz * (D / 2);

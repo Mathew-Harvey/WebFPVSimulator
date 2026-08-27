@@ -154,6 +154,7 @@ function buildChildrensPark(ctx, sakura, shrubs, petals) {
     }
     parts.push({ geometry: new THREE.CylinderGeometry(0.06, 0.06, SPAN + 0.4, 8), matrix: trs(sx, H, sz, 0, 0, Math.PI / 2) });
     const frame = new THREE.Mesh(bake(parts), m.paint[1]);
+    frame.name = 'openFrame';
     frame.position.y = Y + 0.06;
     frame.castShadow = true;
     ctx.add(frame);
@@ -170,8 +171,13 @@ function buildChildrensPark(ctx, sakura, shrubs, petals) {
       ctx.add(seat);
     }
     for (const s of [-1, 1]) {
-      ctx.collide(sx + s * (SPAN / 2) - 0.14, sz - 0.9, sx + s * (SPAN / 2) + 0.14, sz + 0.9, Y + H);
+      for (const t of [-1, 1]) {
+        const lx = sx + s * (SPAN / 2);
+        const lz = sz + t * LEG_OFFSET;
+        ctx.collide(lx - 0.07, lz - 0.07, lx + 0.07, lz + 0.07, Y + H, Y, true);
+      }
     }
+    ctx.collide(sx - SPAN / 2 - 0.1, sz - 0.08, sx + SPAN / 2 + 0.1, sz + 0.08, Y + H + 0.08, Y + H - 0.08, true);
   }
 
   /* -------------------------------- the slide -------------------------------- */
@@ -216,6 +222,7 @@ function buildChildrensPark(ctx, sakura, shrubs, petals) {
       });
     }
     const frame = new THREE.Mesh(bake(parts), m.paint[3]);
+    frame.name = 'openFrame';
     frame.position.y = Y + 0.06;
     frame.castShadow = true;
     ctx.add(frame);
@@ -236,7 +243,13 @@ function buildChildrensPark(ctx, sakura, shrubs, petals) {
       lip.rotation.x = -0.52;
       ctx.add(lip);
     }
-    ctx.collide(px - 0.7, pz - 0.7, px + 0.7, pz + 0.7, Y + PH);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        ctx.collide(px + sx * 0.52 - 0.07, pz + sz * 0.52 - 0.07,
+          px + sx * 0.52 + 0.07, pz + sz * 0.52 + 0.07, Y + PH, Y, true);
+      }
+    }
+    ctx.collide(px - 0.58, pz - 0.58, px + 0.58, pz + 0.58, Y + PH + 0.12, Y + PH - 0.04, true);
   }
 
   /* ------------------------------- the sandpit ------------------------------- */
@@ -444,7 +457,7 @@ function buildApartment(ctx) {
       cur.userData.noOutline = true;
       g.add(cur);
     }
-    ctx.add(makeLaundryPole({
+    ctx.add(makeLaundryPole({ ctx,
       x: cx + (k === 1 ? -1.6 : 1.4), z: z0 - 0.7, y: y + 0.18, ry: Math.PI / 2,
       len: 2.2, n: 3, h: 1.5, seed: 6310 + k,
     }));
@@ -693,7 +706,12 @@ function buildTimberHouse(ctx, shrubs) {
     g.add(mesh);
     if (key === 'roof' || key === 'wood') hullOutline(mesh, { thickness: 0.0034 });
   }
-  ctx.collide(x0 - 1.7, z0 - 0.25, x1 + 0.15, z1 + 0.15, Y + 0.44 + WH);
+  ctx.collide(x0, z0 - 0.25, x1 + 0.15, z1 + 0.15, Y + 0.44 + WH);
+  ctx.collide(x0 - 1.7, z0 + 0.5, x0, z1 - 0.5, Y + 0.58, Y + 0.42, true);
+  for (const sz of [-1, 1]) {
+    ctx.collide(x0 - 1.62, cz + sz * (D / 2 - 0.7) - 0.08, x0 - 0.08, cz + sz * (D / 2 - 0.7) + 0.08,
+      Y + 0.50, Y, true);
+  }
   return g;
 }
 

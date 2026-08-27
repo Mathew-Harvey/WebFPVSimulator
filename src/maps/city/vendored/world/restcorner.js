@@ -254,6 +254,7 @@ export function buildRestCorner(ctx) {
   {
     const bx = X0 + 0.62, bz = Z0 + 3.4;
     const g = new THREE.Group();
+    g.name = 'openFrame';
     // three seat boards with a gap, which is what a slatted bench actually is
     for (let i = 0; i < 3; i++) {
       const s = box(0.42, 0.05, 1.86, i === 1 ? m.woodWorn : m.wood, 0, 0.44, 0);
@@ -277,7 +278,10 @@ export function buildRestCorner(ctx) {
     g.position.set(bx, Y + 0.08, bz);
     ctx.add(g);
     hullOutline(g.children[1], { thickness: 0.003 });
-    ctx.collide(bx - 0.3, bz - 1.0, bx + 0.3, bz + 1.0, Y + 0.5);
+    for (const s of [-1, 1]) {
+      ctx.collide(bx - 0.28, bz + s * 0.82 - 0.06, bx + 0.28, bz + s * 0.82 + 0.06, Y + 0.52, Y + 0.08, true);
+    }
+    ctx.collide(bx - 0.24, bz - 0.95, bx + 0.24, bz + 0.95, Y + 0.55, Y + 0.47, true);
   }
 
   /* ------------------------------- the lamp -------------------------------

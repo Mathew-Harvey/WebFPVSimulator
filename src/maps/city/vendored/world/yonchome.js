@@ -385,13 +385,15 @@ function buildRoadHead(ctx, Y, m, gm, sakura, grove, shrubs, petals) {
     for (let i = 0; i <= 4; i++) {
       const x = x0 + ((x1 - x0) * i) / 4;
       push('post', new THREE.CylinderGeometry(0.055, 0.055, 0.98, 8), trs(x, Y + 0.49, RD_Z1 - 0.22));
+      ctx.collide(x - 0.06, RD_Z1 - 0.28, x + 0.06, RD_Z1 - 0.16, Y + 0.98, Y, true);
     }
+    ctx.collide(x0, RD_Z1 - 0.28, x1, RD_Z1 - 0.16, Y + 0.91, Y + 0.81, true);
+    ctx.collide(x0, RD_Z1 - 0.28, x1, RD_Z1 - 0.16, Y + 0.57, Y + 0.47, true);
     for (const [k, mat] of [['rail', m.metal], ['post', m.metalDark]]) {
       const mesh = new THREE.Mesh(bake(parts[k]), mat);
       mesh.castShadow = mesh.receiveShadow = true;
       ctx.add(mesh);
     }
-    ctx.collide(x0 - 0.1, RD_Z1 - 0.32, x1 + 0.1, RD_Z1 - 0.12, Y + 0.98);
   }
   ctx.add(makeSignPost({
     x: RD_C + 2.35, z: RD_Z1 - 0.75, y: Y, ry: 0, h: 2.0, postMat: m.metal,
@@ -683,7 +685,7 @@ function buildHall(ctx, Y, m, gm, rng, sakura, shrubs, petals) {
    * before the porch swings into view round the corner. */
   {
     const bx = HALL.x - HALL.w / 2 - 0.3;
-    const board = makeNoticeBoard({
+    const board = makeNoticeBoard({ ctx,
       x: bx, z: HALL.z, y: Y, ry: -Math.PI / 2, w: 2.0, h: 1.05, y0: 0.9,
       wood: 0x8a6f52,
       sheets: [
@@ -693,7 +695,6 @@ function buildHall(ctx, Y, m, gm, rng, sakura, shrubs, petals) {
       ],
     });
     ctx.add(board);
-    ctx.collide(bx - 0.14, HALL.z - 1.0, bx + 0.14, HALL.z + 1.0, Y + 2.05);
   }
   // the service door's own clutter, on the same flank
   ctx.add(makeBroom({ x: HALL.x - HALL.w / 2 - 0.28, z: 60.0, y: Y, tilt: -0.05, roll: 0.14, ry: 1.4 }));
@@ -749,7 +750,7 @@ function buildDryingGround(ctx, Y, m, gm) {
 
   ctx.add(makeDryingRack({ x: 24.4, z: 65.4, y: GY, ry: Math.PI / 2, seed: 8342 }));
   ctx.add(makeDryingRack({ x: 26.2, z: 65.2, y: GY, ry: Math.PI / 2 + 0.12, seed: 8343 }));
-  ctx.add(makeLaundryPole({ x: 27.9, z: 66.4, y: GY, ry: Math.PI / 2, len: 2.6, n: 4, seed: 8344 }));
+  ctx.add(makeLaundryPole({ ctx, x: 27.9, z: 66.4, y: GY, ry: Math.PI / 2, len: 2.6, n: 4, seed: 8344 }));
   ctx.add(makeTapPost({ x: 23.5, z: 67.2, y: GY, ry: Math.PI }));
   ctx.add(makeBucket({ x: 23.9, z: 67.3, y: GY, ry: 0.4, water: true }));
   ctx.add(makeKitchenGarden({ x: 28.4, z: 64.8, y: GY, ry: Math.PI / 2, w: 1.6, d: 1.0, seed: 8345 }));
@@ -870,12 +871,11 @@ function buildPark(ctx, Y, m, gm, rng, sakura, grove, shrubs, petals) {
    * tells everybody to assemble in the park, which is the cheapest possible way
    * to tie the two halves of the district together. */
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: 8.3, z: 72.5, y: PY, ry: Math.PI, w: 1.25, h: 0.8, y0: 0.85, wood: 0x8a6f52,
       sheets: [{ map: hallNotice(1), x: 0, w: 0.4, h: 0.55, tilt: 0.012 }],
     });
     ctx.add(nb);
-    ctx.collide(7.6, 72.36, 9.0, 72.64, PY + 1.75);
   }
 
   /* Chalk on the apron and again inside the gate.  `makeChalkMarks` must be
@@ -922,20 +922,13 @@ function buildHousing(ctx, Y, m, gm, shrubs, petals) {
    * anybody checks. */
   {
     const b = makeWalkup({
-      ...WALK, y: Y, floors: 3, units: 2, seed: 8330, wall: 0, roof: 1, door: 1, plate: 2,
+      ...WALK, y: Y, floors: 3, units: 2, seed: 8330, wall: 0, roof: 1, door: 1, plate: 2, ctx,
     });
     ctx.add(b);
-    const p = plotBox(WALK);
-    plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
-    /* the open stair stands outside the mass at the block's east end once it is
-     * turned: `makeWalkup` builds it off local -x, and for `face: 'z-'` local -x
-     * is world +x */
-    ctx.collide(p.x1 - 0.05, WALK.z - 3.8, p.x1 + 1.7, WALK.z - 1.8, Y + 8.2);
 
     const fz = WALK.z - WALK.d / 2;            // the gallery frontage, facing -z
     const gA = (x, z) => ctx.groundAt(x, z);
     ctx.add(makeMailboxBank({ x: 12.2, z: fz - 0.6, y: gA(12.2, fz - 0.6), ry: Math.PI, cols: 3, rows: 2 }));
-    ctx.collide(11.85, fz - 0.75, 12.55, fz - 0.48, Y + 1.3);
     ctx.add(makePlanter({ x: 13.0, z: fz - 0.4, y: gA(13.0, fz - 0.4), r: 0.24, flower: true, seed: 8331, n: 5 }));
     /* propped along the frontage and not pointed at it: a bicycle is 1.73 m
      * long and 0.55 m wide, so parallel to the wall with half a handlebar of
@@ -1003,7 +996,7 @@ function buildHousing(ctx, Y, m, gm, shrubs, petals) {
       airconUp: 1.5,
       bike: true, kidBike: true, laundry: false, garden: 1, tap: 1, flank: 0.85,
     });
-    ctx.add(makeLaundryPole({ x: 20.25, z: 74.4, y: ctx.groundAt(20.25, 74.4), ry: Math.PI / 2, len: 2.2, n: 4, seed: 8337 }));
+    ctx.add(makeLaundryPole({ ctx, x: 20.25, z: 74.4, y: ctx.groundAt(20.25, 74.4), ry: Math.PI / 2, len: 2.2, n: 4, seed: 8337 }));
     ctx.add(makeCrates({ x: 20.4, z: 79.0, y: Y, n: 2, seed: 8338, ry: 0.3 }));
     shrubs.push({ x: 26.4, z: 72.6, y: Y, r: 0.42, count: 3, spread: 1.0, seed: 8339 });
   }

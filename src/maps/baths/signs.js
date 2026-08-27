@@ -82,43 +82,45 @@ function drips(ctx, x, y, w, h, color, n) {
 }
 
 export function makeSigns() {
-  const orange = hex(PAL.orange);
+  const coral = hex(PAL.coral);
   const navy = hex(PAL.navy);
   const cream = hex(PAL.creamSun);
   const ink = hex(PAL.ink);
   const white = hex(PAL.bandWhite);
   const tile = hex(PAL.tile);
+  const lemon = hex(PAL.lemon);
 
   const fascia = paint(1024, 256, (c, w, h) => {
-    c.fillStyle = navy;
+    c.fillStyle = tile;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = orange;
-    c.fillRect(0, 0, w, 18);
-    c.fillRect(0, h - 22, w, 22);
-    c.fillStyle = white;
+    c.fillStyle = lemon;
+    c.fillRect(0, 0, w, 36);
+    c.fillStyle = coral;
+    c.fillRect(0, h - 44, w, 44);
+    c.fillStyle = navy;
     c.font = 'bold 92px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.letterSpacing = '8px';
     c.fillText('CIVIC BATHS', w * 0.5, 128);
     c.letterSpacing = '0px';
     c.font = 'bold 44px Arial, sans-serif';
-    c.fillStyle = tile;
+    c.fillStyle = white;
     c.fillText('EST. 1974    50 m', w * 0.5, 186);
   });
 
   const crest = paint(512, 512, (c, w, h) => {
-    c.fillStyle = navy;
+    c.fillStyle = tile;
     c.beginPath();
     c.arc(w * 0.5, h * 0.5, 220, 0, Math.PI * 2);
     c.fill();
-    c.strokeStyle = orange;
+    c.strokeStyle = lemon;
     c.lineWidth = 18;
     c.stroke();
-    c.fillStyle = tile;
+    c.fillStyle = cream;
     c.beginPath();
     c.ellipse(w * 0.5, h * 0.52, 140, 70, 0, 0, Math.PI * 2);
     c.fill();
-    c.fillStyle = white;
+    c.fillStyle = navy;
     c.font = 'bold 48px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.fillText('CIVIC', w * 0.5, 200);
@@ -151,7 +153,7 @@ export function makeSigns() {
     c.beginPath();
     c.arc(w * 0.5, h * 0.5, 118, 0, Math.PI * 2);
     c.fill();
-    c.fillStyle = orange;
+    c.fillStyle = lemon;
     c.font = 'bold 140px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -161,8 +163,9 @@ export function makeSigns() {
   const mural = paint(1024, 384, (c, w, h) => {
     c.fillStyle = cream;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = orange;
+    c.fillStyle = lemon;
     c.fillRect(0, 0, w, 16);
+    c.fillStyle = coral;
     c.fillRect(0, h - 16, w, 16);
     c.fillStyle = tile;
     c.fillRect(48, 210, w - 96, 110);
@@ -178,7 +181,7 @@ export function makeSigns() {
     c.beginPath();
     c.arc(390, 148, 16, 0, Math.PI * 2);
     c.fill();
-    c.fillStyle = white;
+    c.fillStyle = coral;
     c.font = 'bold 84px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.fillText('1974', 700, 150);
@@ -188,7 +191,7 @@ export function makeSigns() {
   });
 
   const ring = paint(256, 256, (c) => {
-    c.strokeStyle = orange;
+    c.strokeStyle = coral;
     c.lineWidth = 28;
     c.beginPath();
     c.arc(128, 128, 96, 0, Math.PI * 2);
@@ -205,14 +208,16 @@ export function makeSigns() {
   });
 
   const banner = paint(256, 1024, (c, w, h) => {
-    c.fillStyle = navy;
+    c.fillStyle = tile;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = orange;
+    c.fillStyle = coral;
     c.fillRect(0, h - 48, w, 48);
+    c.fillStyle = lemon;
+    c.fillRect(0, 0, w, 36);
     c.save();
     c.translate(w * 0.5, h * 0.48);
     c.rotate(-Math.PI * 0.5);
-    c.fillStyle = white;
+    c.fillStyle = navy;
     c.font = 'bold 72px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.fillText('CIVIC', 0, 24);
@@ -220,7 +225,7 @@ export function makeSigns() {
   });
 
   const plaza = paint(1024, 256, (c, w, h) => {
-    c.fillStyle = orange;
+    c.fillStyle = coral;
     c.font = 'bold 140px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.fillText('CIVIC', w * 0.5, 180);
@@ -229,14 +234,15 @@ export function makeSigns() {
   const closed = paint(512, 160, (c, w, h) => {
     c.fillStyle = navy;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = orange;
+    c.fillStyle = lemon;
     c.fillRect(0, 0, w, 10);
+    c.fillStyle = coral;
     c.fillRect(0, h - 10, w, 10);
     c.fillStyle = cream;
     c.font = 'bold 42px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
     c.fillText('CLOSED  FOR  FLYING', w * 0.5, 96);
-    drips(c, 40, 118, 420, 36, orange, 5);
+    drips(c, 40, 118, 420, 36, coral, 5);
   });
 
   const laneNo = (n) => paint(128, 128, (c) => {

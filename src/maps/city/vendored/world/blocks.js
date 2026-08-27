@@ -176,15 +176,54 @@ function tileRibs(g, mat, { x, y, z, w, len, pitch = 0.3, rx = 0, rz = 0 }) {
  * ------------------------------------------------------------------ */
 
 /**
- * @param o.w,o.d    frontage width and depth. 4.6-5.6 is the type; wider and
- *                   it stops reading as a plot somebody squeezed a car into.
- * @param o.floors   living storeys *above* the garage: 1 or 2
- * @param o.garage   0 (shutter up, bay open) .. 1 (shut). ~0.25 is the useful
- *                   state -- it says a car lives here without needing one.
- * @param o.doorSide -1 puts the front door on the -x side of the frontage, +1
- *                   on the +x side. The garage takes whatever is left.
+ * Mass minus the open bay, then the header, the shutter curtain, the
+ * jamb, and the living floors over the mouth. A plot prism fills a
+ * bay the drawing leaves as a hole.
  */
+function collideGarageHouse(ctx, o) {
+  if (!ctx || o.x == null || o.z == null) return;
+  const w = o.w ?? 5.2;
+  const d = o.d ?? 7.6;
+  const FLOORS = o.floors ?? 2;
+  const H1 = 2.62;
+  const FH = 2.66;
+  const H = H1 + FH * FLOORS;
+  const ENTRY = 1.85;
+  const BAY = w - ENTRY;
+  const GD = Math.min(d - 1.6, 4.6);
+  const side = (o.doorSide ?? -1) < 0 ? -1 : 1;
+  const ex = side * (w / 2 - ENTRY / 2);
+  const bx = -side * (w / 2 - BAY / 2);
+  const zf = d / 2;
+  const SH = 2.35 * (o.garage ?? 0.25);
+  const y = o.y ?? 0;
+  const ry = FACE_RY[o.face ?? 'z+'];
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const put = (lx, lz, hw, hd, top, bot, skip) => {
+    const px = o.x + ca * lx - sa * lz;
+    const pz = o.z + sa * lx + ca * lz;
+    const hx = Math.abs(ca) * hw + Math.abs(sa) * hd;
+    const hz = Math.abs(sa) * hw + Math.abs(ca) * hd;
+    ctx.collide(px - hx, pz - hz, px + hx, pz + hz,
+      y + top, bot == null ? undefined : y + bot, skip);
+  };
+  put(0, 0, w / 2 + 0.16, d / 2 + 0.16, 0.3 + H + 0.65, 0.3 + H1, true);
+  put(ex, 0, ENTRY / 2 + 0.12, d / 2 + 0.12, 0.3 + H1);
+  put(bx, -GD / 2, BAY / 2 + 0.08, (d - GD) / 2 + 0.12, 0.3 + H1);
+  put(bx - side * (BAY / 2 - 0.09), zf - GD / 2, 0.12, GD / 2 + 0.06, 0.3 + H1);
+  put(bx, zf - GD / 2, BAY / 2, GD / 2, 0.3 + H1, 0.3 + 2.35, true);
+  put(bx, zf - GD / 2 + 0.25, BAY / 2, (GD + 0.5) / 2, 0.16, 0, true);
+  if (SH > 0.02) {
+    put(bx, zf - 0.2, BAY / 2, 0.08, 2.35, 2.35 - SH, true);
+  }
+}
+
 export function makeGarageHouse(o = {}) {
+  /* o.w, o.d: frontage. 4.6-5.6 is the type.
+   * o.floors: living storeys above the garage, 1 or 2.
+   * o.garage: 0 shutter up .. 1 shut. ~0.25 is the useful state.
+   * o.doorSide: -1 door on -x of the frontage, +1 on +x. Garage takes the rest. */
   const m = mats();
   const rng = rngKit(o.seed ?? 91);
   const g = new THREE.Group();
@@ -409,6 +448,7 @@ export function makeGarageHouse(o = {}) {
    * change sign in world space, which is exactly the bug that put a ryokan's
    * whole porch 1.4 m off its own doorway. */
   g.userData.doorAt = ex;
+  collideGarageHouse(o.ctx, o);
   return g;
 }
 

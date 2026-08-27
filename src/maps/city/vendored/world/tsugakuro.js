@@ -296,7 +296,7 @@ function buildLinks(ctx, m, gm, shrubs) {
     plates: [{ map: roadSignTex('tsugakuro'), w: 0.56, h: 0.56, y: 1.72, double: true }],
   }));
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: DROP.x + 0.4, z: DROP.z - 1.75, y: Y, ry: 0, w: 1.6, h: 1.05, y0: 0.85, wood: 0x8a6f52,
       sheets: [
         { map: hallNotice(0), x: -0.44, w: 0.4, h: 0.55, tilt: 0.018 },
@@ -304,7 +304,6 @@ function buildLinks(ctx, m, gm, shrubs) {
       ],
     });
     ctx.add(nb);
-    ctx.collide(DROP.x - 0.4, DROP.z - 1.9, DROP.x + 1.2, DROP.z - 1.6, Y + 2.0);
   }
   ctx.add(makePlanter({ x: DROP.x + 2.7, z: DROP.z - 1.4, y: Y, r: 0.26, flower: true, seed: 8721, n: 5 }));
   shrubs.push({ x: DROP.x - 2.6, z: DROP.z - 1.6, y: Y, r: 0.42, count: 3, spread: 1.0, seed: 8722 });
@@ -349,19 +348,11 @@ function buildLinks(ctx, m, gm, shrubs) {
  * ------------------------------------------------------------------ */
 
 function buildStaffBlock(ctx, m, gm, shrubs) {
+  const p = plotBox(STAFF);
   const b = makeWalkup({
-    ...STAFF, y: Y, floors: 3, units: 2, seed: 8731, wall: 1, roof: 0, door: 0, plate: 4,
+    ...STAFF, y: Y, floors: 3, units: 2, seed: 8731, wall: 1, roof: 0, door: 0, plate: 4, ctx,
   });
   ctx.add(b);
-  const p = plotBox(STAFF);
-  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
-  /* The open stair, at local -x -- world +z for `face: 'x+'`, so the *north*
-   * end.  Read off the generator: local x -w/2-1.6..-w/2 and local z
-   * d/2-1.55..d/2+0.3, which lands at x -24.65..-22.80, z -33.0..-31.4.
-   * That is 0.6 m clear of the lane's west kerb, which is the tightest thing in
-   * the block and the reason STAFF.z is -36.6 and not -35.0. */
-  ctx.collide(STAFF.x + STAFF.d / 2 - 1.60, p.z1 - 0.05,
-    STAFF.x + STAFF.d / 2 + 0.35, p.z1 + 1.7, Y + 8.3);
 
   /* the forecourt, 1.4 m between the gallery and the lane */
   pad(ctx, {
@@ -371,8 +362,7 @@ function buildStaffBlock(ctx, m, gm, shrubs) {
   const gA = (x, z) => ctx.groundAt(x, z);
   const fx = p.x1;                       // -24.8, the gallery frontage
   ctx.add(makeMailboxBank({ x: fx + 0.5, z: STAFF.z + 2.2, y: gA(fx + 0.5, STAFF.z + 2.2), ry: Math.PI / 2, cols: 3, rows: 2 }));
-  ctx.collide(fx + 0.35, STAFF.z + 1.85, fx + 0.7, STAFF.z + 2.55, Y + 1.35);
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: fx + 0.4, z: STAFF.z + 0.9, y: gA(fx + 0.4, STAFF.z + 0.9), ry: Math.PI / 2,
     w: 1.2, h: 0.8, y0: 0.95, wood: 0x8a6f52,
     sheets: [{ map: hallNotice(1), x: 0, w: 0.38, h: 0.52, tilt: 0.014 }],
@@ -405,7 +395,7 @@ function buildStaffBlock(ctx, m, gm, shrubs) {
       x: p.x0 - 0.5, z: STAFF.z + 1.4 - i * 3.0, y: Y + 2.85 + i * 2.7, ry: -Math.PI / 2, n: 4, seed: 8733 + i,
     }));
   }
-  ctx.add(makeLaundryPole({ x: p.x0 - 0.8, z: STAFF.z - 2.6, y: gA(p.x0 - 0.8, STAFF.z - 2.6), ry: Math.PI / 2, len: 2.4, n: 4, seed: 8735 }));
+  ctx.add(makeLaundryPole({ ctx, x: p.x0 - 0.8, z: STAFF.z - 2.6, y: gA(p.x0 - 0.8, STAFF.z - 2.6), ry: Math.PI / 2, len: 2.4, n: 4, seed: 8735 }));
   ctx.add(makeStorageShed({ x: p.x0 - 0.85, z: p.z1 - 1.2, y: gA(p.x0 - 0.85, p.z1 - 1.2), ry: -Math.PI / 2, w: 1.4, d: 0.8, h: 1.7 }));
   ctx.collide(p.x0 - 1.3, p.z1 - 1.9, p.x0 - 0.4, p.z1 - 0.5, Y + 1.74);
   shrubs.push({ x: p.x0 - 1.2, z: p.z0 + 1.0, y: Y, r: 0.44, count: 3, spread: 1.05, seed: 8736 });
@@ -455,7 +445,7 @@ function buildHouses(ctx, m, gm, rng, shrubs, petals) {
       bike: true, kidBike: true, laundry: false, garden: 1, tap: 1, flank: 0.85,
     });
     ctx.add(makeBallBox({ x: p.x1 + 0.7, z: p.z0 + 0.8, y: gA(p.x1 + 0.7, p.z0 + 0.8), ry: Math.PI / 2, seed: 8745 }));
-    ctx.add(makeLaundryPole({ x: p.x0 - 0.7, z: ATTIC.z, y: gA(p.x0 - 0.7, ATTIC.z), ry: Math.PI / 2, len: 2.4, n: 4, seed: 8746 }));
+    ctx.add(makeLaundryPole({ ctx, x: p.x0 - 0.7, z: ATTIC.z, y: gA(p.x0 - 0.7, ATTIC.z), ry: Math.PI / 2, len: 2.4, n: 4, seed: 8746 }));
     shrubs.push({ x: p.x1 + 0.9, z: p.z1 - 0.9, y: Y, r: 0.4, count: 3, spread: 0.95, seed: 8747 });
     petals.push({ x: p.x1 + 0.9, z: ATTIC.z, w: 1.8, d: 5.2, y: Y + 0.02, n: 40 });
   }
@@ -548,7 +538,7 @@ function buildHouses(ctx, m, gm, rng, shrubs, petals) {
       const [x, z] = p.at((i - 0.5) * TERR.unitW + 0.9, -p.halfD - 0.16);
       ctx.add(makeGasMeter({ x, z, y: gA(x, z), ry: p.outRy + Math.PI }));
     }
-    ctx.add(makeLaundryPole({ x: p.x0 - 1.0, z: TERR.z + 0.6, y: gA(p.x0 - 1.0, TERR.z + 0.6), ry: Math.PI / 2, len: 2.4, n: 4, seed: 8761 }));
+    ctx.add(makeLaundryPole({ ctx, x: p.x0 - 1.0, z: TERR.z + 0.6, y: gA(p.x0 - 1.0, TERR.z + 0.6), ry: Math.PI / 2, len: 2.4, n: 4, seed: 8761 }));
     ctx.add(makeCatBox({ x: p.x1 + 0.5, z: p.z0 - 0.5, y: gA(p.x1 + 0.5, p.z0 - 0.5), ry: 1.1 }));
     shrubs.push({ x: p.x0 - 1.1, z: p.z0 + 1.2, y: Y, r: 0.44, count: 3, spread: 1.05, seed: 8762 });
     petals.push({ x: p.x1 + 0.8, z: TERR.z, w: 1.8, d: 5.4, y: Y + 0.02, n: 40 });

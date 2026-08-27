@@ -408,13 +408,13 @@ function buildRoad(ctx, rng) {
   }));
   ctx.collide(RD.wx + 3.24, RD.z + 3.04, RD.wx + 3.56, RD.z + 3.36, Y0 + 2.3);
   for (const [mx, mz, mry] of [[RD.wx + 3.6, RD.z - 2.6, 0.9], [RD.ex - 3.4, RD.z - 2.6, -0.9]]) {
-    ctx.add(makeGuardrail({ x: mx, z: mz, y: Y0, ry: 0, len: 3.0 }));
+    ctx.add(makeGuardrail({ ctx, x: mx, z: mz, y: Y0, ry: 0, len: 3.0 }));
   }
   /* Guardrail along the south side where the road runs closest to the hill's toe
    * -- the two stretches where the ground beyond it starts to fall toward the
    * gully rather than run level away. */
   for (const [a, b] of [[30.0, 42.0], [62.0, 76.0]]) {
-    ctx.add(makeGuardrail({
+    ctx.add(makeGuardrail({ ctx,
       x: (a + b) / 2, z: RD.z - RD.w / 2 - 0.75, y: Y0, ry: 0, len: b - a,
     }));
   }
@@ -556,14 +556,13 @@ function buildTrailHead(ctx, rng, out) {
   }
 
   // the safety notice and the fingerpost at the head
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: 15.4, z: -93.0, y: Y0, ry: 0.28, w: 1.9, h: 1.3, y0: 0.95, wood: 0x8a6f52,
     sheets: [
       { map: trailNotice(0), x: -0.42, y: 0.0, w: 0.78, h: 0.6, tilt: 0.0 },
       { map: trailNotice(1), x: 0.46, y: 0.02, w: 0.66, h: 0.5, tilt: -0.02 },
     ],
   }));
-  ctx.collide(14.4, -93.2, 16.4, -92.8, Y0 + 2.3);
   finger(ctx, 20.2, -94.4, 0.35, [0, 1]);
 
   /* --- the maintenance compound, 6 m up the slope --- */
@@ -708,7 +707,6 @@ function buildTrails(ctx, rng, out) {
   ]) {
     const y = hillMeshY(bx, bz);
     ctx.add(makeBench({ x: bx, z: bz, y, ry: bry, len: 1.7 }));
-    ctx.collide(bx - 0.9, bz - 0.35, bx + 0.9, bz + 0.35, y + 0.5);
   }
 
   /* the rest platform on the shelf: a slab, two benches and a waste bin, which is
@@ -843,10 +841,13 @@ function buildDeck(ctx, rng, out) {
       for (let k = 0; k <= n; k++) {
         const t = k / n;
         if (gap && t > gap[0] && t < gap[1]) continue;
+        const px = x0 + (x1 - x0) * t;
+        const pz = z0 + (z1 - z0) * t;
         parts.push({
           geometry: new THREE.BoxGeometry(0.11, RH, 0.11),
-          matrix: trs(x0 + (x1 - x0) * t, DY + RH / 2, z0 + (z1 - z0) * t),
+          matrix: trs(px, DY + RH / 2, pz),
         });
+        ctx.collide(px - 0.06, pz - 0.06, px + 0.06, pz + 0.06, DY + RH, DY, true);
       }
       for (const hy of [RH - 0.05, RH * 0.5]) {
         if (gap) {
@@ -858,12 +859,18 @@ function buildDeck(ctx, rng, out) {
               geometry: new THREE.BoxGeometry(0.08, 0.08, Math.hypot(ex - sx, ez - sz)),
               matrix: trs((sx + ex) / 2, DY + hy, (sz + ez) / 2, 0, ry, 0),
             });
+            ctx.collide(Math.min(sx, ex) - 0.06, Math.min(sz, ez) - 0.06,
+              Math.max(sx, ex) + 0.06, Math.max(sz, ez) + 0.06,
+              DY + hy + 0.05, DY + hy - 0.05, true);
           }
         } else {
           parts.push({
             geometry: new THREE.BoxGeometry(0.08, 0.08, len),
             matrix: trs((x0 + x1) / 2, DY + hy, (z0 + z1) / 2, 0, ry, 0),
           });
+          ctx.collide(Math.min(x0, x1) - 0.06, Math.min(z0, z1) - 0.06,
+            Math.max(x0, x1) + 0.06, Math.max(z0, z1) + 0.06,
+            DY + hy + 0.05, DY + hy - 0.05, true);
         }
       }
     };
@@ -879,17 +886,9 @@ function buildDeck(ctx, rng, out) {
     rail(x0, z0, x0, z1);
     rail(x1, z0, x1, z1);
     const rm = new THREE.Mesh(bake(parts), m.timber);
+    rm.name = 'openFrame';
     rm.castShadow = true;
     g.add(rm);
-    for (const [cx0, cz0, cx1, cz1] of [
-      [x0 - 0.1, z1 - 0.1, x1 + 0.1, z1 + 0.1],
-      [x0 - 0.1, z0, x0 + 0.1, z1],
-      [x1 - 0.1, z0, x1 + 0.1, z1],
-      [x0 - 0.1, z0 - 0.1, V.x + 0.15, z0 + 0.1],
-      [V.x + 1.7, z0 - 0.1, x1 + 0.1, z0 + 0.1],
-    ]) {
-      ctx.collide(cx0, cz0, cx1, cz1, DY + RH, DY - 0.6);
-    }
   }
 
   /* --- the stair up the south side.  Treads on stringers with a platform each,
@@ -998,11 +997,10 @@ function buildDeck(ctx, rng, out) {
   {
     const bx = V.x - 1.4, bz = V.z - D / 2 - 6.2;
     const y = hillMeshY(bx, bz);
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: bx, z: bz, y, ry: 0, w: 1.7, h: 1.1, y0: 0.95, wood: 0x8a6f52,
       sheets: [{ map: trailNotice(1), x: 0, y: 0, w: 0.76, h: 0.58, tilt: 0.0 }],
     }));
-    ctx.collide(bx - 0.9, bz - 0.2, bx + 0.9, bz + 0.2, y + 2.2);
   }
 
   /* Planting: the corridor north of the deck is kept clear by `hills.js`, so what
@@ -1170,11 +1168,10 @@ function buildHokora(ctx, rng, out) {
   }
 
   /* the notice board, and the 御神木's rope on the tree beside the pad */
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: V.x - 0.4, z: V.z - 1.9, y: py - 0.08, ry: 0, w: 1.3, h: 0.9, y0: 0.85, wood: 0x8a6f52,
     sheets: [{ map: trailNotice(2), x: 0, y: 0, w: 0.62, h: 0.5, tilt: 0.0 }],
   }));
-  ctx.collide(V.x - 1.1, V.z - 2.1, V.x + 0.3, V.z - 1.7, py + 1.9);
   {
     const tx = V.x - 2.9, tz = V.z + 1.6;
     const ty = hillMeshY(tx, tz);
@@ -1232,14 +1229,14 @@ function buildGlades(ctx, rng, out) {
     /* the interpretation board -- the 自然観察 one, which is the reason the
      * clearing exists: this is where the biology club's observation records come
      * from, and the board quotes them. */
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: V.x - 1.2, z: V.z - 3.1, y, ry: 0, w: 2.2, h: 1.4, y0: 0.95, wood: 0x8a6f52,
       sheets: [
         { map: trailNotice(1), x: -0.5, y: 0.0, w: 0.84, h: 0.64, tilt: 0.0 },
         { map: trailNotice(0), x: 0.56, y: 0.02, w: 0.66, h: 0.5, tilt: -0.02 },
       ],
     }));
-    ctx.collide(V.x - 2.4, V.z - 3.3, V.x, V.z - 2.9, y + 2.4);
+
 
     /* log seats round a stone table.  Cut rings of trunk, which is what a school
      * puts in a clearing because it costs nothing and lasts. */
@@ -1250,7 +1247,8 @@ function buildGlades(ctx, rng, out) {
       slab.castShadow = slab.receiveShadow = true;
       ctx.add(slab);
       ctx.add(cyl(0.28, 0.34, 0.44, 8, gm.stoneDark, tx, y + 0.22, tz));
-      ctx.collide(tx - 0.8, tz - 0.8, tx + 0.8, tz + 0.8, y + 0.62);
+      ctx.collide(tx - 0.32, tz - 0.32, tx + 0.32, tz + 0.32, y + 0.44, y, true);
+      ctx.collide(tx - 0.78, tz - 0.78, tx + 0.78, tz + 0.78, y + 0.58, y + 0.42, true);
       const logs = [];
       for (let k = 0; k < 5; k++) {
         const a = (k / 5) * Math.PI * 2 + 0.6;

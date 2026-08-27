@@ -18881,4 +18881,300 @@ x=-16. Colliders 858, platforms 186. `npm run verify` was not run:
 map merge, no plant, ABI, WASM or threshold change. Check 16 not
 re-run: no city import was added.
 
+---
+
+## 2026-08-27 | shell | scripted turtle, no air prompt
+
+Asked: TURTLE MODE was popping up on any air invert, and the crashflip
+mixer flip was glitchy (back and forth, camera through the grass).
+Replace with a guaranteed pitch-or-roll flip that only appears when
+inverted, seated and still.
+
+Decision: turtle is now a shell pose animation, not Betaflight
+crashflip. The mixer couple fought the inverted bump and flickered.
+`sim_set_crashflip` stays exported and compiled; the shell keeps it
+off. Any pitch or roll past 0.12 starts a 380 ms slerp to
+heading-preserving upright, with a 0.18 m mid-flip lift so the arms
+clear the grass. The plant does not step during the wait or the flip.
+This is not a plant-shape, ABI or build change. Advisor not consulted
+for filling in the next line of an already decided shell recovery.
+
+Enter: `upz < 0` (truly inverted, not a 60 deg bank), translational
+speed under 2 m/s, and contact (ground hits, a roof with world-up
+normal, or invert-stop within 3 cm of the surface). An invert in the
+air is still flight. The old `lastUpz < 0` air banner is gone.
+
+What went wrong on the first harness pass: `__seatCraft('inverted')`
+after an air invert did not latch, because `sim_ground_contacts()` is
+stale until the next step, so the hull sat inverted at 0 km/h in ACRO
+with the empty-track notice instead of TURTLE MODE. A 3 cm seated
+halo plus forcing wait from the inverted seat hook fixed it. Mid-flip
+then showed "Throttle up to take off" because `flownThisRun` was
+still false; entering turtle now marks the run flown and the flip
+frame swallows other banners.
+
+Harness (`scripts/shots.js`, custom map, low graphics): inverted 4 m
+up, no turtle, no TURTLE banner. Seated inverted: TURTLE MODE, OSD
+Turtle, fpvY 0.52 over camFloor 0.22. Pitch 0.2 and timid roll 0.13
+both finished at lastUpz 1, camera above the floor, recover gate
+until the stick centres. Selftest 398 passed. `npm run verify` was
+not run: shell only, no plant, ABI, WASM or threshold change.
+
+Possible effect if this breaks something: a mid-air invert no longer
+prompts. A flip no longer depends on holding the stick through 90
+deg. Crashflip mixer tests in `scripts/contact-selftest.js` still
+describe the compiled path, which the shell no longer drives.
+
+### 2026-08-27 | map | Municipal baths director review (shots 11-16)
+
+Adversarial AAA level-design pass on `src/maps/baths/` against spawn
+still, interior density, lido join, roof wells, dress, attract path
+and lighting. Cel box is the style. Test: does a player at south
+mouth believe this is a finished civic pool they can fly.
+
+VERDICT: REVISE. Parti stays (50 m hall, tower, wells, mouth). Do not
+ship the title still. Not BLOCK: collision grammar and the kiln-tube
+read are locked. Not SHIP: spawn faces the short axis into a hoop
+then a wall, cruise-height dead thirds, lido is a second map behind
+a solid west wall, wells are holes in a lid, interior dress is a
+sign pack, attract path teleports, lights are cyan soup.
+
+Spawn `{x:0,z:22,yaw:PI}` looks -Z. Mouth at z=13 (9 m). `mouthHoop`
+at z=7.8 (14.2 m). Bulkhead south pier at x=0, z=6.25 plugs the hoop.
+15 m of spawn only reaches z>=7, which is narthex plus one hoop.
+Cruise-height centerline at y=2, z=0 is empty from x=-14.4 (island)
+to x=0 (bulkhead) and from x=0.6 to x=18 (cage). Teach pool
+x=-44..-34 sits 5 m west of a solid hall wall at x=-29. Attract
+jumps (11,18,0) to (-39,3.4,0). Grade warmth -0.05, fill 0x7ec8e6
+at 1.15, fog 0xd4ecec near 32, six cyan point lamps.
+
+Must-fix AABBs (leftover 0 or >= CLEAR 1.4) are in the director
+note this turn, not built. No code change. `npm run verify` not run.
+
+---
+
+## 2026-08-27 | shell | turtle review round 1, guaranteed flip
+
+Asked: fan out adversarial review and loop until turtle is AAA, it
+just works. Round 1 three agents (gate, flip, UX). This turn
+addresses that list, then re-harnesses.
+
+Gate, now: enter only if `upz < TURTLE_INVERT_UPZ` (-0.35, about
+110 deg), speed under 1 m/s, rate under 8 rad/s, and contact
+(ground hits or a roof with world-up normal). No clearance halo.
+An invert in the air is still flight. On-side is a tumble.
+
+Flip, now: any pitch or roll past 0.08 starts a 380 ms slerp to
+heading-preserving upright. Keyboard arrows and a timid touch pad
+are boosted to full throw so the poke cannot miss. The plant does
+not step. Pause freezes the pose (`ui.screen === 'flight'` is
+required to advance the slerp). Resume from wait sets
+`turtleResumeGate` so a leftover pause-menu stick does not flip.
+
+Acted on: drop the 3 cm halo; invert gate -0.35; speed 1.0; stick
+0.08; seat Y from collider not street height; I-term dump pulse;
+motors stay overridden through recover; pause does not finish the
+flip; resume gate; hide turtle banner on pause; thin TURTLE MODE
+during flip; introMs -1 on wait; startPitch 0 on finish; clip/land
+audio; tryEnter can end launch staging if inverted past the gate;
+80 ms lost-contact grace with 0.5 m terrain hysteresis (frozen
+`sim_ground_contacts` is stale); touch recover 0.08; cue source is
+the live stick, not "any pad exists"; block takeoff while recover;
+OSD Turtle only during wait/flip; `.turtle-on` without recover;
+tryEnter before sampling parked; results snap upright; howto copy.
+
+Declined, with reason: wait camera rewrite (inverted FPV is honest;
+PARKED_LIFT 0.30 m plus the near-plane floor already keep the
+lens out of the mesh); slerp axis from the stick (shortest path
+to upright is the "always works" contract); zero `motor_omega` in
+`sim_rest` (plant-shape change, shell override instead); parent
+turtle to a moving train (out of scope; collider seating plus
+abort when both contact and terrain clearance are gone).
+
+What went wrong this pass: a seated invert aborted after 80 ms
+because `sim_ground_contacts` does not refresh while frozen. Stay
+put if the hull is still within 0.5 m of terrain. Pause-during-flip
+harness first failed because `Page.captureScreenshot` ran for
+longer than the remaining 380 ms; the product freeze was fine,
+the test paused too late. `__seatCraft('inverted')` after a live
+harness stick started the flip on the same eval because
+`rcPending` still held the poke; the capture hook now holds the
+wait, and `__stick()` with no args zeroes channels and the queue.
+
+Harness (`scripts/shots.js`, empty custom track, low graphics):
+air invert, no turtle, no TURTLE banner. Seated wait: TURTLE MODE
+panel, OSD Turtle, fpvY 0.52 over camFloor 0.22, still waiting
+250 ms later. Timid roll 0.13 finishes upright, camera above the
+floor. Mid-flip pause keeps turtleFlip and lastUpz under 0.5 for
+400 ms, resume finishes upright. Pause with stick held, resume
+stays waiting until the stick recentres, then a poke flips.
+Selftest 402 passed. `npm run verify` was not run: shell only.
+Shots exit 1 is `ERR_CONNECTION_REFUSED` on a board fetch, not a
+turtle fail.
+
+Possible effect if this breaks something: a 95 deg bank on the
+grass no longer turtles. A poke during pause-menu navigation no
+longer flips on resume. Crashflip mixer tests still describe the
+compiled path the shell no longer drives.
+
+### 2026-08-27 | map | Bardwell's yard director review
+
+Adversarial AAA freestyle pass on `src/maps/yard/` against spawn
+still, first 15 m, named gaps, attract path, leftover CLEAR 1.4,
+dead lawn, fence panel and stall mouths. Cel box is the style.
+Test: would a good pilot stay and session, and is every drawn gap
+a line they would actually take.
+
+VERDICT: REVISE. Parti stays (cream house as filled mass, north
+deck undercroft, porch, carport, stall mouths, hay shed, missing
+panel). Do not ship the title still. Not BLOCK: the named holes
+that are punched are flyable, windows are paint, house mass is
+honest. Not SHIP: Fly seats under the deck, first 15 m dumps into
+empty north lawn, attract punches the house, loft and hay, deck
+rail is a 0.82 m leftover the scan cannot see, loft well is a
+missing ceiling, fence gap is two bays.
+
+Spawn `L.spawn {x:0,z:7.7,yaw:PI}` looks +Z. `groundAt` uses
+`height(x,z,-1000)` then `height(x,z,bare)`. Deck top 1.36 is
+above STEP 0.55, so startY is grass 0. Craft sits in the
+undercroft (lid 1.18) not on the deck. Attract starts (0, 2.6,
+7.8) above the deck. Title and Fly disagree.
+
+Attract `world.js` clips: (3.2, 0.55, 7.8) to (9, 1.4, 2) through
+house NE; (0, 1.3, -7.2) to (-31.3, 1.2, 10) through house south;
+(-31.3, 1.2, 14) to (-26.5, 3.4, 18) and back through loft y
+2.68 to 2.86; (-20.2, 1.2, 17.3) to (-20, 1.4, -20.8) through hay
+north wall at z=-16.2; (-14, 1.4, 6) inside the trunk; (0, 8.4, 0)
+empty cruise then through house north face back to spawn.
+
+Must-fix AABBs (leftover 0 or >= CLEAR 1.4) are in the director
+note this turn, not built. No code change. Live `__hit` probes
+did not return this turn. `npm run verify` not run: review only.
+
+---
+
+### 2026-08-27 | map | Sakura City graphic-gap collisions
+
+Asked: fly every obstacle on the Freestyle city map and close
+places that look flyable (bus shelters, knife-edge gaps) but
+were a solid collider. Loop review until agents report no
+unexpected fills. GAP_MIN 0.22 m, under-roof 0.16 m. Chain-link
+~0.11 m, timber slat ~0.15 m, school bars and wall-top bars
+~0.19 m stay screens.
+
+This turn closed the leftover FILLs from the previous city
+pass, then a second review, then a third that returned none.
+
+First-pass leftovers, now member collide or deleted:
+- `blocks.js` `collideGarageHouse` plus COVER_SOFT `garageHouse`.
+  nichome dropped `plotCollide` on the bay.
+- `railway.js` lineside fence: posts and height-only rails,
+  mesh `openFrame`. Pickets ~0.285 m air.
+- `makeBlockFence` named `openFrame`. `plotWall`, garden walls
+  in `world/index.js`, and `northblock.js` `makeBlockGarden`
+  collide solid coursing only, not the 透かし course (~0.23 m).
+- onsen yunosaka board, ashiyu notice: posts, panel, hood.
+  Viewing-deck flight 1 rail now steps its top like flight 2.
+- `tunnel.js` maintenance gate: posts and two rail heights.
+- `canal.js` spare pipes: four wall slabs per tube, bore open.
+- nichome four shops and gakkomae 文具 / 輪業: `plotCollide`
+  removed. `makeShop` already authors the recess.
+- `lakeroad.js` `groundRail`: rail AABBs subdivided every
+  0.16 m so a diagonal does not fill the bay in plan.
+- dam catwalk chain: 1.3 m height slab deleted. Posts stay.
+  The 3 cm chain is a ghost.
+
+Second review FILLs that this also closed: northblock 透かし,
+shop mouths, diagonal `groundRail`, dam chain, ashiyu board,
+flight 1 rail wall.
+
+Third pass, two agents, UNEXPECTED: none. Declined still:
+chain-link, timber slats, school / wall-top bars, bamboo
+pickets.
+
+What went wrong: a search-replace on nichome 不動産 deleted
+`makeShop` and left `plotCollide`. Restored in the same turn.
+Node is not on PATH and not at the usual install paths, so
+`node --check` and `scripts/gap-scan.js` did not run. `npm run
+verify` was not run: city colliders only, not the plant, ABI
+or WASM. Check 15 ceilings were not remeasured.
+
+Possible effect: shop mouths and the garage bay now depend on
+authored members, not a plot prism. A closed shutter is still
+the cloth `makeShop` already collides. A 3 cm chain no longer
+blocks the dam catwalk mouth.
+
+### 2026-08-27 | map | Municipal baths, title still is the door
+
+Asked: fan out adversarial review and loop until baths is a
+freestyle map a player would pick. Round 2: art SHIP, FPV SHIP,
+AAA REVISE on the title still.
+
+Must-fix from AAA: shot 11 was a 3 m lemon picture-frame filling
+the lens (hoopZ x=-1.5..1.5 at z=12.35, spawn 3.85 m out). The
+mouth hoop is now the door: x=-6.2..6.2, y=0..5.8, leftover 0
+with jambs and lintel. Coral hoop at z=7.8 stays the first
+fly-through. Attract starts at spawn (0, 2.8, 16.2) into the
+door, no plaza cruise at z=24, no roof sample at y=18. Narthex
+lockers pulled to x=±7.65. Gallery benches skip the door x.
+
+Live: leftoverDeath 0, leftoverOverlap 0, 232 boxes, door and
+mouth `__hit` CLEAR. Shot 11 center patch rgb 10 179 184, the
+pool through the door, not a lemon slab. `npm run verify` was
+not run: map dress only. Shots exit 1 is CDN
+`ERR_CONNECTION_REFUSED` on some runs, geometry still captured.
+
+Collision review had not returned this turn. AAA recheck is in
+flight on the new stills.
+
+Collision then returned REVISE: two scan-blind 1.20 m inners.
+Mouth hoop sill vs plaza was the old 3 m frame (y0=1.2); the door
+frame already sits on the plaza (y0=0, leftover 0). Catch hoop
+inner Y is now 1.62 (y 5.70..7.72, t=0.2). leftoverDeath 0,
+catch and door `__hit` CLEAR. Recheck in flight.
+
+Collision recheck SHIP: mouth vs plaza leftover 0, catch inner Y
+1.62, drop tower bay 0 underside 1.43. Must-fix none. Round 2
+closed: art SHIP, FPV SHIP, AAA title-still SHIP, collision SHIP.
+Nits declined: warm sun `#fff2c8`, east-end taxiway, attract last
+beat at (0, 8, 22), drop tower 1.43 vs 1.40. `npm run verify` was
+not run: map only, no plant, ABI, WASM or threshold change.
+
+---
+
+## 2026-08-27 | shell | turtle review round 2, CLEAN
+
+Round 2 three agents (gate, flip, UX) against the round 1 fixes.
+All three returned CLEAN. BLOCKs from round 2, acted on:
+
+- Object wait (car, hay, any collider roof) aborted after 80 ms
+  because stay used terrain clearance. Lost-contact abort is
+  gone: the wait stays frozen until poke or reset. A moving
+  train is still not parented; they sit in space until they
+  flip. That is the accepted cost of not parenting.
+- Touch pause/resume restored leftover pad deflection. Hiding
+  the pads now zeros roll, pitch and yaw (throttle stays).
+  Resume gate waits on the overlay being live, not on
+  `isTouchPrimary` (that already required the overlay, so it
+  never waited).
+- Portrait "Turn your phone sideways" came back during recover.
+  `.turtle-on` stays on through recover.
+- Launch control re-staged after a turtle on the blocks.
+  `beginTurtleWait` disarms L. Staging will not start while
+  waiting, flipping or recovering. Howto: centre, press L,
+  launch again.
+
+NITs declined: stale OSD TURTLE on the pause overlay (pause
+does not rewrite OSD); dead `shouldParkTurtle` (tests still
+call it); FPV height step when `fpvLensClear` drops at the
+end of the flip (`PARKED_LIFT` still clears the mesh).
+
+Harness after the round 2 fixes: air invert does not turtle;
+seated wait holds; timid roll 0.13 finishes upright; pause
+freezes a mid-flip; leftover stick on resume does not flip
+until recentre then poke. Selftest 402 passed earlier this
+turn. `node --check` on the touched JS after the tautology
+fix. `npm run verify` was not run: shell only. Shots exit 1
+is still a board `ERR_CONNECTION_REFUSED`, not a turtle fail.
+
 

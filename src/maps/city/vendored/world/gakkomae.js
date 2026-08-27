@@ -7,7 +7,7 @@ import { hullOutline } from '../core/outline.js';
 import { groundY, centerX, ROAD_HALF, WALK_W } from './street.js';
 import { pad, lane, laneLine, steps, railing, groundMats } from './ground.js';
 import {
-  plotBox, plotCollide, plotWall, hedgeRun, stepStones, refusePoint,
+  plotBox, plotWall, hedgeRun, stepStones, refusePoint,
   laneGutter, bollardRow, laneSign, poleRun,
 } from './plots.js';
 import { makeShop, makeGachapon, makeMenuBoard, makeShopFlag } from './shops.js';
@@ -266,8 +266,7 @@ function buildBridgeHead(ctx, m, gm, sakura, shrubs, petals) {
     // placement spanned the whole pavement and read as a barrier across it.
     const gx = 7.3, gz = -31.6, len = 1.4;
     const gy = ctx.groundAt(gx, gz);
-    ctx.add(makeGuardrail({ x: gx, z: gz, y: gy, len, ry: Math.PI / 2 }));
-    ctx.collide(gx - 0.12, gz - len / 2, gx + 0.12, gz + len / 2, gy + 0.82);
+    ctx.add(makeGuardrail({ ctx, x: gx, z: gz, y: gy, len, ry: Math.PI / 2 }));
   }
 
   /* ------------------------------ the furniture ------------------------------ *
@@ -364,7 +363,7 @@ function buildSchoolVerge(ctx, m, gm, rng, shrubs, petals) {
    * The association board and the school's own, on the two lengths of verge the
    * bicycles do not take: north of the gate and right at the corner. */
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: 9.5, z: -43.4, y: gA(9.5, -43.4), ry: -Math.PI / 2, w: 1.9, h: 1.2, y0: 0.9, wood: 0x8a6f52,
       sheets: [
         { map: hallNotice(0), x: -0.56, y: 0.02, w: 0.42, h: 0.58, tilt: 0.02 },
@@ -373,15 +372,13 @@ function buildSchoolVerge(ctx, m, gm, rng, shrubs, petals) {
       ],
     });
     ctx.add(nb);
-    ctx.collide(9.35, -44.4, 9.65, -42.4, Y + 2.2);
   }
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: 9.85, z: -65.0, y: gA(9.85, -65.0), ry: -Math.PI / 2, w: 1.3, h: 0.9, y0: 0.95, wood: 0x7d6146,
       sheets: [{ map: hallNotice(2), x: 0, w: 0.4, h: 0.55, tilt: 0.016 }],
     });
     ctx.add(nb);
-    ctx.collide(9.7, -65.7, 10.0, -64.3, Y + 1.9);
   }
 
   /* ------------------------------- the signs -------------------------------
@@ -433,7 +430,6 @@ function buildBungu(ctx, m, gm, rng, shrubs, petals) {
     ...BUNGU, y: Y, kind: 'bungu', floors: 2, seed: 9131,
     awning: 2, awningOut: 1.1, shutter: 0, wall: 2, blade: false, lit: true,
   });
-  plotCollide(ctx, p, Y + 6.2);
 
   /* the forecourt: 1.3 m between the frontage and the footway, which is the
    * whole of it, so nothing here is more than 0.55 m deep */
@@ -503,7 +499,6 @@ function buildRingyo(ctx, m, gm, shrubs) {
     ...RINGYO, y: Y, kind: 'ringyo', floors: 1, h1: 3.4, seed: 9141,
     awning: 0, awningOut: 1.4, shutter: 0.22, wall: 4, blade: false, roofKind: 'flat',
   });
-  plotCollide(ctx, p, Y + 3.8);
 
   /* The apron.  A bicycle shop's whole frontage is the machines standing on it,
    * so it is 1.3 m of concrete with the row *along* the shop rather than nose
@@ -626,7 +621,7 @@ function buildStreetFurniture(ctx, m, gm, rng, petals) {
     /* No collider on the board: it is 0.15 m of timber bolted flat to a wall the
      * house's own collider already blocks to -0.96, and a second box in front of
      * it would take the walkable footway down to 0.71 m. */
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: -1.31, z: -34.9, y: gA(-1.31, -34.9), ry: Math.PI / 2, w: 1.2, h: 0.82, y0: 0.98, wood: 0x7d6146,
       sheets: [{ map: hallNotice(0), x: 0, w: 0.38, h: 0.52, tilt: -0.014 }],
     });

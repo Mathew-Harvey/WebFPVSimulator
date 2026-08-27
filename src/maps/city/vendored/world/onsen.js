@@ -920,7 +920,11 @@ function buildApproach(ctx, m, gm, glow, lantern) {
     hood.rotation.x = 0.2;
     hood.castShadow = true;
     ctx.add(hood);
-    ctx.collide(bx - 0.7, bz - 0.16, bx + 0.7, bz + 0.16, Y + 1.9);
+    for (const s of [-1, 1]) {
+      ctx.collide(bx + s * 0.5 - 0.06, bz - 0.06, bx + s * 0.5 + 0.06, bz + 0.06, Y + 1.5, Y, true);
+    }
+    ctx.collide(bx - 0.64, bz - 0.08, bx + 0.64, bz + 0.08, Y + 1.8, Y + 1.0, true);
+    ctx.collide(bx - 0.75, bz - 0.22, bx + 0.75, bz + 0.12, Y + 1.95, Y + 1.78, true);
   }
 
   /* ---------------------- the long flight down the east end ---------------------- *
@@ -1680,7 +1684,11 @@ function buildAshiyu(ctx, m, gm, rng, glow) {
     ctx.add(plate);
     ctx.add(box(0.1, 0.9, 0.72, m.woodPale, bx, Y + 1.28, bz));
     ctx.add(box(0.16, 0.08, 0.86, m.tileEdge, bx, Y + 1.76, bz));
-    ctx.collide(bx - 0.14, bz - 0.44, bx + 0.14, bz + 0.44, Y + 1.8);
+    for (const s of [-1, 1]) {
+      ctx.collide(bx - 0.06, bz + s * 0.28 - 0.06, bx + 0.06, bz + s * 0.28 + 0.06, Y + 1.3, Y, true);
+    }
+    ctx.collide(bx - 0.08, bz - 0.36, bx + 0.08, bz + 0.36, Y + 1.73, Y + 0.83, true);
+    ctx.collide(bx - 0.10, bz - 0.43, bx + 0.10, bz + 0.43, Y + 1.80, Y + 1.72, true);
   }
 
   /* two very small puffs, and no more: this is 2 m from the player's face and
@@ -1779,7 +1787,9 @@ function buildShops(ctx, m, gm, rng, glow, lantern) {
       for (const s of [-1, 1]) {
         ctx.add(box(0.09, 0.78, 0.09, m.woodDark, tx + s * 1.35, Y + 0.39, tz - 0.26));
         ctx.add(box(0.09, 0.78, 0.09, m.woodDark, tx + s * 1.35, Y + 0.39, tz + 0.26));
+        ctx.collide(tx + s * 1.35 - 0.07, tz - 0.32, tx + s * 1.35 + 0.07, tz + 0.32, Y + 0.78, Y, true);
       }
+      ctx.collide(tx - 1.55, tz - 0.40, tx + 1.55, tz + 0.40, Y + 0.84, Y + 0.72, true);
       const goods = [];
       const COL = [0xb5322f, 0xf4c033, 0x2c3a52, 0xefe2c8, 0x8a4a62, 0x4f8f6a];
       for (let i = 0; i < 11; i++) {
@@ -1803,7 +1813,6 @@ function buildShops(ctx, m, gm, rng, glow, lantern) {
         head.position.y += 0.11;
         ctx.add(head);
       }
-      ctx.collide(tx - 1.6, tz - 0.45, tx + 1.6, tz + 0.45, Y + 0.9);
     }
     ctx.add(lantern({ x: X0 + 0.35, y: Y + 2.5, z: ST.z0 + 0.4, r: 0.15, drop: 0.24, variant: 1 }, -cx));
     /* The refuse point goes on the *north* side at the east end.  At X1 + 1.2
@@ -1890,17 +1899,20 @@ function buildDeck(ctx, m, gm, lantern, sakura) {
           geometry: new THREE.BoxGeometry(0.06, 0.94, 0.06),
           matrix: s.axis === 'z' ? trs(s.at, 0.47, c) : trs(c, 0.47, s.at),
         });
+        if (s.axis === 'z') ctx.collide(s.at - 0.05, c - 0.05, s.at + 0.05, c + 0.05, DY + 0.95, DY, true);
+        else ctx.collide(c - 0.05, s.at - 0.05, c + 0.05, s.at + 0.05, DY + 0.95, DY, true);
       }
       for (const yy of [0.92, 0.5]) {
         rails.push({
           geometry: new THREE.BoxGeometry(s.axis === 'z' ? 0.08 : len, 0.07, s.axis === 'z' ? len : 0.08),
           matrix: s.axis === 'z' ? trs(s.at, yy, (s.from + s.to) / 2) : trs((s.from + s.to) / 2, yy, s.at),
         });
+        if (s.axis === 'z') ctx.collide(s.at - 0.05, s.from, s.at + 0.05, s.to, DY + yy + 0.05, DY + yy - 0.05, true);
+        else ctx.collide(s.from, s.at - 0.05, s.to, s.at + 0.05, DY + yy + 0.05, DY + yy - 0.05, true);
       }
-      if (s.axis === 'z') ctx.collide(s.at - 0.1, s.from, s.at + 0.1, s.to, DY + 0.95);
-      else ctx.collide(s.from, s.at - 0.1, s.to, s.at + 0.1, DY + 0.95);
     }
     const rm = new THREE.Mesh(bake(rails), m.woodPale);
+    rm.name = 'openFrame';
     rm.position.y = DY;
     rm.castShadow = true;
     ctx.add(rm);
@@ -2027,7 +2039,11 @@ function buildDeck(ctx, m, gm, lantern, sakura) {
     rm.castShadow = true;
     ctx.add(rm);
 
-    ctx.collide(F1X - 0.82, F1Z0 - 0.2, F1X - 0.62, LZ0, MID + 1.0);
+    for (let i = 0; i < N1; i += 2) {
+      const z0 = F1Z0 + i * RUN1;
+      const z1 = F1Z0 + Math.min(i + 2, N1) * RUN1;
+      ctx.collide(F1X - 0.82, z0, F1X - 0.62, z1, Y + RISE * i + 0.95);
+    }
     // flight 2's outer edge, topped at its own low end so it is a barrier the
     // whole way up rather than a step you walk over at the bottom
     for (let i = 0; i < N2; i += 2) {

@@ -453,8 +453,7 @@ function buildWalk(ctx, rng, out) {
   for (const i of [4, 7, 10, 14, 18, 20, 24]) {
     const [bx, bz, ry] = side(i, 1.9);
     const by = ctx.groundAt(bx, bz);
-    ctx.add(makeBench({ x: bx, z: bz, y: by, ry: ry + Math.PI, len: 1.8 }));
-    ctx.collide(bx - 0.8, bz - 0.4, bx + 0.8, bz + 0.4, by + 0.45);
+    ctx.add(makeBench({ ctx, x: bx, z: bz, y: by, ry: ry + Math.PI, len: 1.8 }));
   }
   // lamps: low, sparse, and only on the developed half
   for (const i of [3, 6, 9, 12, 15, 19]) {
@@ -511,8 +510,7 @@ function buildWalk(ctx, rng, out) {
     ctx.add(makeBench({ x: rx - 1.4, z: rz - 1.3, y: ry0, ry: 0.2, len: 1.7 }));
     ctx.add(makeBench({ x: rx + 1.5, z: rz - 1.2, y: ry0, ry: -0.2, len: 1.7 }));
     ctx.add(makeFlowerBed({ x: rx, z: rz - 1.9, y: ry0, w: 2.4, d: 0.9, seed: 9511 }));
-    ctx.add(makeGuideBoard({ x: rx + 2.0, z: rz + 1.5, y: ry0, ry: 0.35, w: 1.8, h: 1.2, map: lakeMap(), post: m.timber }));
-    ctx.collide(rx + 1.2, rz + 1.3, rx + 2.8, rz + 1.7, ry0 + 2.3);
+    ctx.add(makeGuideBoard({ ctx, x: rx + 2.0, z: rz + 1.5, y: ry0, ry: 0.35, w: 1.8, h: 1.2, map: lakeMap(), post: m.timber }));
     dapple(ctx, { x: rx, z: rz, y: ry0, r: 1.6, spread: 2.8, n: 6, rng });
     out.sakura.push({ x: rx - 3.4, z: rz + 1.6, y: ctx.groundAt(rx - 3.4, rz + 1.6), scale: 1.2, seed: 9521, lean: 0.13, leanDir: 0.6 });
     out.petals.push({ x: rx - 2.4, z: rz + 0.4, y: ry0, r: 2.0, seed: 9531 });
@@ -652,6 +650,7 @@ function buildPark(ctx, rng, out) {
   for (const [tx, tz, ry] of [[135.6, -83.4, 0.3], [136.8, -87.6, -0.2]]) {
     const ty = ctx.groundAt(tx, tz);
     const g = new THREE.Group();
+    g.name = 'openFrame';
     g.add(box(1.9, 0.08, 0.86, m.timber, 0, 0.72, 0));
     for (const s of [-1, 1]) {
       g.add(box(1.9, 0.07, 0.32, m.timber, 0, 0.44, s * 0.72));
@@ -661,7 +660,19 @@ function buildPark(ctx, rng, out) {
     g.rotation.y = ry;
     shadowify(g, true, true);
     ctx.add(g);
-    ctx.collide(tx - 1.1, tz - 0.9, tx + 1.1, tz + 0.9, ty + 0.78);
+    const ca = Math.cos(ry), sa = Math.sin(ry);
+    const slab = (lx, lz, alongX, alongZ, top, bot) => {
+      const px = tx + ca * lx - sa * lz;
+      const pz = tz + sa * lx + ca * lz;
+      const hw = Math.abs(ca) * alongX + Math.abs(sa) * alongZ;
+      const hd = Math.abs(sa) * alongX + Math.abs(ca) * alongZ;
+      ctx.collide(px - hw, pz - hd, px + hw, pz + hd, ty + top, ty + bot, true);
+    };
+    slab(0, 0, 0.95, 0.43, 0.76, 0.68);
+    for (const s of [-1, 1]) {
+      slab(s * 0.78, 0, 0.08, 0.85, 0.72, 0);
+      slab(0, s * 0.72, 0.95, 0.16, 0.48, 0.40);
+    }
   }
   ctx.add(makeTapPost({ x: 134.0, z: -80.4, y: ctx.groundAt(134.0, -80.4), ry: -1.5 }));
   ctx.add(makeFlowerBed({ x: 131.6, z: -80.8, y: ctx.groundAt(131.6, -80.8), w: 3.2, d: 1.1, seed: 9601 }));
@@ -716,13 +727,12 @@ function buildPark(ctx, rng, out) {
   /* --- the guide board and the name plate at the plaza's head, where the road
    * arrives.  Bolted where they are read from: the board faces the car, the plate
    * faces the walk. --- */
-  ctx.add(makeGuideBoard({
+  ctx.add(makeGuideBoard({ ctx,
     x: 130.2, z: -70.4, y: ctx.groundAt(130.2, -70.4), ry: -1.4, w: 2.2, h: 1.4,
     map: lakeMap(), post: m.metalDark,
   }));
-  ctx.collide(129.4, -71.2, 131.0, -69.6, ctx.groundAt(130.2, -70.4) + 2.5);
   finger(ctx, 131.4, -67.6, -1.2, [lakePlate(1), lakeSign(1)], { h: 2.5, yAt: ctx.groundAt });
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: 136.0, z: -69.4, y: ctx.groundAt(136.0, -69.4), ry: Math.PI, w: 2.2, h: 1.4, y0: 0.95,
     wood: 0x8a6f52,
     sheets: [
@@ -730,7 +740,6 @@ function buildPark(ctx, rng, out) {
       { map: lakeNotice(1), x: 0.56, y: 0.02, w: 0.66, h: 0.5, tilt: -0.02 },
     ],
   }));
-  ctx.collide(134.8, -69.6, 137.2, -69.2, ctx.groundAt(136.0, -69.4) + 2.4);
 
   /* --- the ground's own marks: dapple under the trees, chalk on the plaza,
    * fallen blossom.  The last two are what stop a new slab reading as new. --- */
@@ -833,22 +842,27 @@ function buildPier(ctx, rng, out) {
     const ry = Math.atan2(bx - ax, bz - az);
     for (let k = 0; k <= n; k++) {
       const t = k / n;
+      const px = ax + (bx - ax) * t;
+      const pz = az + (bz - az) * t;
       parts.push({
         geometry: new THREE.BoxGeometry(0.1, 1.05, 0.1),
-        matrix: trs(ax + (bx - ax) * t, DY + 0.55, az + (bz - az) * t),
+        matrix: trs(px, DY + 0.55, pz),
       });
+      ctx.collide(px - 0.06, pz - 0.06, px + 0.06, pz + 0.06, DY + 1.05, DY, true);
     }
     for (const hy of [1.0, 0.52]) {
       parts.push({
         geometry: new THREE.BoxGeometry(0.07, 0.07, len),
         matrix: trs((ax + bx) / 2, DY + hy, (az + bz) / 2, 0, ry, 0),
       });
+      ctx.collide(Math.min(ax, bx) - 0.06, Math.min(az, bz) - 0.06,
+        Math.max(ax, bx) + 0.06, Math.max(az, bz) + 0.06,
+        DY + hy + 0.05, DY + hy - 0.05, true);
     }
     const mesh = new THREE.Mesh(bake(parts), m.timber);
+    mesh.name = 'openFrame';
     mesh.castShadow = true;
     ctx.add(mesh);
-    ctx.collide(Math.min(ax, bx) - 0.1, Math.min(az, bz) - 0.1,
-      Math.max(ax, bx) + 0.1, Math.max(az, bz) + 0.1, DY + 1.05, DY - 0.7);
   };
   for (const s of [-1, 1]) rail(rootX, Z + s * (W / 2), endX - 3.6, Z + s * (W / 2));
   rail(HX - 2.8, Z - 2.4, HX + 2.8, Z - 2.4);
@@ -877,7 +891,7 @@ function buildPier(ctx, rng, out) {
   }
   // the life ring and the rules board, at the head where they are needed
   ctx.add(lifeRing({ x: HX - 2.5, z: Z + 1.9, y: DY + 0.06, ry: -1.4, h: 1.1 }));
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: HX - 1.0, z: Z + 2.15, y: DY + 0.06, ry: 0, w: 1.5, h: 1.0, y0: 0.9, wood: 0x8a6f52,
     sheets: [{ map: lakeNotice(0), x: 0, y: 0, w: 0.7, h: 0.54, tilt: 0 }],
   }));
@@ -997,11 +1011,10 @@ function buildBoatStation(ctx, rng, out) {
     }
     // the price board and the rules board on the north wall, where the queue is
     ctx.add(makeMenuBoard({ x: sx + 1.2, z: sz - W / 2 - 0.45, y: ay, ry: Math.PI, w: 0.72, h: 1.0 }));
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: sx - 1.4, z: sz - W / 2 - 0.5, y: ay, ry: Math.PI, w: 1.6, h: 1.05, y0: 0.9, wood: 0x8a6f52,
       sheets: [{ map: lakeNotice(2), x: 0, y: 0, w: 0.74, h: 0.56, tilt: 0 }],
     }));
-    ctx.collide(sx - 2.2, sz - W / 2 - 0.7, sx - 0.6, sz - W / 2 - 0.3, ay + 2.3);
   }
 
   /* --- the store shed and the racks: oars up on the wall, life jackets on a rail,
@@ -1039,7 +1052,11 @@ function buildBoatStation(ctx, rng, out) {
     const om = new THREE.Mesh(bake(oars), m.timberPale);
     om.castShadow = true;
     g.add(om);
-    ctx.collide(ox - 0.3, oz - 1.3, ox + 0.4, oz + 1.3, oy + 1.7);
+    for (const s of [-1, 1]) {
+      ctx.collide(ox - 0.06, oz + s * 1.1 - 0.06, ox + 0.06, oz + s * 1.1 + 0.06, oy + 1.7, oy, true);
+    }
+    ctx.collide(ox - 0.06, oz - 1.15, ox + 0.06, oz + 1.15, oy + 1.55, oy + 1.45, true);
+    ctx.collide(ox - 0.06, oz - 1.15, ox + 0.06, oz + 1.15, oy + 0.55, oy + 0.45, true);
     // the life-jacket rail
     const jx = V.x - 6.0, jz = V.z + 2.2;
     const jy = ctx.groundAt(jx, jz);
@@ -1060,7 +1077,9 @@ function buildBoatStation(ctx, rng, out) {
     const jm = new THREE.Mesh(bake(jackets), m.orange);
     jm.castShadow = true;
     g.add(jm);
-    ctx.collide(jx - 0.2, jz - 1.1, jx + 0.2, jz + 1.1, jy + 1.55);
+    ctx.collide(jx - 0.06, jz - 0.95 - 0.06, jx + 0.06, jz - 0.95 + 0.06, jy + 1.55, jy, true);
+    ctx.collide(jx - 0.06, jz + 0.95 - 0.06, jx + 0.06, jz + 0.95 + 0.06, jy + 1.55, jy, true);
+    ctx.collide(jx - 0.05, jz - 1.0, jx + 0.05, jz + 1.0, jy + 1.54, jy + 1.46, true);
     ctx.add(makeMilkCrate({ x: V.x - 5.2, z: V.z + 3.4, y: ctx.groundAt(V.x - 5.2, V.z + 3.4), ry: 0.4, n: 2 }));
     ctx.add(makeBucket({ x: V.x - 4.4, z: V.z + 3.8, y: ctx.groundAt(V.x - 4.4, V.z + 3.8), ry: -0.3 }));
   }
@@ -1109,9 +1128,10 @@ function buildBoatStation(ctx, rng, out) {
     const by = ctx.groundAt(bx, bz);
     for (const s of [-1, 1]) {
       ctx.add(box(0.9, 0.42, 0.12, m.timberDark, bx + s * 0.9, by + 0.21, bz));
+      ctx.collide(bx + s * 0.9 - 0.48, bz - 0.10, bx + s * 0.9 + 0.48, bz + 0.10, by + 0.42, by, true);
     }
     ctx.add(makeBoat({ x: bx, z: bz, y: by + 0.42, ry: 0.15, color: PAL.boatTeal, number: 5, oars: false }));
-    ctx.collide(bx - 1.7, bz - 0.8, bx + 1.7, bz + 0.8, by + 0.9);
+    ctx.collide(bx - 1.2, bz - 0.55, bx + 1.2, bz + 0.55, by + 0.72, by + 0.40, true);
     ctx.add(makeBucket({ x: bx + 2.1, z: bz - 0.7, y: by, ry: 0.6 }));
     ctx.add(makeBroom({ x: bx - 2.2, z: bz + 0.6, y: by, ry: 1.1, lean: 0.2 }));
   }
@@ -1266,6 +1286,7 @@ function buildCafe(ctx, rng, out) {
   ], { h: 0.92, spacing: 1.5, mat: m.timber, yAt: () => TY + 0.06, name: 'cafeTerraceRail' });
   for (const [tx, tz] of [[V.x - 3.2, V.z + 8.6], [V.x - 0.4, V.z + 8.6], [V.x + 2.4, V.z + 8.6]]) {
     const tg = new THREE.Group();
+    tg.name = 'openFrame';
     tg.add(cyl(0.42, 0.42, 0.06, 10, m.timberPale, 0, 0.72, 0));
     tg.add(cyl(0.06, 0.09, 0.72, 7, m.metalDark, 0, 0.36, 0));
     tg.add(box(0.5, 0.05, 0.5, m.metalDark, 0, 0.02, 0));
@@ -1285,7 +1306,8 @@ function buildCafe(ctx, rng, out) {
     tg.rotation.y = rng.range(-0.2, 0.2);
     shadowify(tg, true, true);
     ctx.add(tg);
-    ctx.collide(tx - 0.5, tz - 0.5, tx + 0.5, tz + 0.5, TY + 0.78);
+    ctx.collide(tx - 0.08, tz - 0.08, tx + 0.08, tz + 0.08, TY + 0.72, TY, true);
+    ctx.collide(tx - 0.42, tz - 0.42, tx + 0.42, tz + 0.42, TY + 0.75, TY + 0.69, true);
   }
 
   /* --- the street furniture, and every piece of it faces the way it is used: the
@@ -1499,11 +1521,10 @@ function buildCamp(ctx, rng, out) {
     shadowify(h, true, true);
     g.add(h);
     ctx.collide(hx - 2.1, hz - 1.7, hx + 2.1, hz + 1.7, hy + 2.6);
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: hx - 2.0, z: hz + 2.2, y: hy, ry: Math.PI, w: 2.0, h: 1.3, y0: 0.95, wood: 0x8a6f52,
       sheets: [{ map: lakeNotice(3), x: 0, y: 0, w: 0.82, h: 0.62, tilt: 0 }],
     }));
-    ctx.collide(hx - 3.0, hz + 2.0, hx - 1.0, hz + 2.4, hy + 2.4);
     finger(ctx, hx - 3.6, hz - 1.6, -1.3, [lakePlate(4), lakeSign(4)], { h: 2.4, yAt: ctx.groundAt });
   }
 
@@ -1580,6 +1601,7 @@ function buildCamp(ctx, rng, out) {
     const sx = V.x + 6.4, sz = V.z - 3.2;
     const sy = ctx.groundAt(sx, sz);
     const s = new THREE.Group();
+    s.name = 'openFrame';
     s.add(box(2.8, 1.9, 0.12, m.timber, 0, 0.95, -0.8));
     for (const t of [-1, 1]) s.add(box(0.12, 1.9, 1.6, m.timber, t * 1.34, 0.95, 0));
     const roof = box(3.2, 0.1, 2.0, m.roof, 0, 2.05, 0.1);
@@ -1600,7 +1622,11 @@ function buildCamp(ctx, rng, out) {
     s.rotation.y = -0.1;
     shadowify(s, true, true);
     g.add(s);
-    ctx.collide(sx - 1.6, sz - 1.1, sx + 1.6, sz + 1.0, sy + 2.0);
+    ctx.collide(sx - 1.5, sz - 1.0, sx + 1.5, sz - 0.55, sy + 1.95, sy, true);
+    ctx.collide(sx - 1.55, sz - 0.9, sx - 1.15, sz + 0.85, sy + 1.95, sy, true);
+    ctx.collide(sx + 1.15, sz - 0.9, sx + 1.55, sz + 0.85, sy + 1.95, sy, true);
+    ctx.collide(sx - 1.4, sz - 0.8, sx + 1.4, sz + 0.75, sy + 0.95, sy, true);
+    ctx.collide(sx - 1.7, sz - 1.15, sx + 1.7, sz + 1.05, sy + 2.20, sy + 1.85, true);
   }
   ctx.add(makeRecycleBox({ x: V.x + 9.0, z: V.z + 1.0, y: ctx.groundAt(V.x + 9.0, V.z + 1.0), ry: -0.5 }));
   ctx.add(makeVendBin({ x: V.x + 8.2, z: V.z + 2.2, y: ctx.groundAt(V.x + 8.2, V.z + 2.2), ry: -0.5 }));
@@ -1713,6 +1739,7 @@ function buildHide(ctx, rng, out) {
     // the bench along the back wall
     h.add(box(W - 0.6, 0.07, 0.36, m.timber, 0, 0.46, -D / 2 + 0.34));
     for (const s of [-1, 1]) h.add(box(0.09, 0.44, 0.09, m.timberDark, s * (W / 2 - 0.7), 0.22, -D / 2 + 0.34));
+    h.name = 'openFrame';
     h.position.set(V.x, DY + 0.06, V.z);
     h.rotation.y = -0.5;              // the slots look north-west
     shadowify(h, true, true);
@@ -1726,16 +1753,20 @@ function buildHide(ctx, rng, out) {
     const [bx, bz] = at(0, -D / 2);
     ctx.collide(bx - 2.3, bz - 0.5, bx + 2.3, bz + 0.5, DY + H);
     const [fx, fz] = at(0, D / 2);
-    ctx.collide(fx - 2.3, fz - 0.5, fx + 2.3, fz + 0.5, DY + H);
+    for (const [y0, y1] of [[0, 1.02], [1.30, 1.62], [1.90, H]]) {
+      ctx.collide(fx - 2.3, fz - 0.5, fx + 2.3, fz + 0.5, DY + y1, DY + y0, true);
+    }
     const [wx2, wz2] = at(-W / 2, 0);
     ctx.collide(wx2 - 0.5, wz2 - 1.6, wx2 + 0.5, wz2 + 1.6, DY + H);
+    const [wxE, wzE] = at(W / 2, 0);
+    ctx.collide(wxE - 0.5, wzE - 1.6, wxE + 0.5, wzE + 1.6, DY + H);
   }
   /* the two boards, on the inside of the back wall where you read them */
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: V.x - 0.9, z: V.z - 1.2, y: DY + 0.06, ry: -0.5, w: 1.4, h: 0.95, y0: 0.95, wood: 0x8a6f52,
     sheets: [{ map: birdChart(0), x: 0, y: 0, w: 0.66, h: 0.5, tilt: 0 }],
   }));
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: V.x + 0.9, z: V.z - 1.6, y: DY + 0.06, ry: -0.5, w: 1.3, h: 0.9, y0: 0.95, wood: 0x8a6f52,
     sheets: [{ map: birdChart(1), x: 0, y: 0, w: 0.6, h: 0.46, tilt: 0 }],
   }));
@@ -1749,7 +1780,7 @@ function buildHide(ctx, rng, out) {
     for (const s of [-1, 1]) ctx.add(box(0.06, 0.24, 0.06, m.metal, tx + s * 0.1, DY + 1.28, tz));
   }
   finger(ctx, 217.6, -144.6, 2.2, [lakePlate(5), lakeSign(6)], { h: 2.3, yAt: ctx.groundAt });
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: 218.6, z: -145.6, y: ctx.groundAt(218.6, -145.6), ry: 2.3, w: 1.8, h: 1.2, y0: 0.95, wood: 0x8a6f52,
     sheets: [{ map: lakeNotice(4), x: 0, y: 0, w: 0.78, h: 0.6, tilt: 0 }],
   }));
@@ -1816,13 +1847,16 @@ function buildSuijin(ctx, rng, out) {
     parts.push({ geometry: new THREE.BoxGeometry(TW + 0.78, 0.08, 0.22), matrix: trs(0, TH + 0.1, 0) });
     parts.push({ geometry: new THREE.BoxGeometry(0.14, 0.22, 0.11), matrix: trs(0, TH - 0.18, 0) });
     const tm = new THREE.Mesh(bake(parts), m.stone);
+    tm.name = 'torii';
     tm.position.set(tx, py, tz);
     tm.castShadow = tm.receiveShadow = true;
     g.add(tm);
     hullOutline(tm, { thickness: 0.0032 });
     for (const s of [-1, 1]) {
-      ctx.collide(tx + s * TW / 2 - 0.13, tz - 0.13, tx + s * TW / 2 + 0.13, tz + 0.13, py + TH);
+      ctx.collide(tx + s * TW / 2 - 0.13, tz - 0.13, tx + s * TW / 2 + 0.13, tz + 0.13, py + TH, py, true);
     }
+    ctx.collide(tx - (TW + 0.78) / 2, tz - 0.14, tx + (TW + 0.78) / 2, tz + 0.14,
+      py + TH + 0.16, py + TH - 0.36, true);
   }
 
   /* --- the 祠 itself, its plinth, its niche and its roof --- */
@@ -1914,7 +1948,7 @@ function buildSuijin(ctx, rng, out) {
   /* --- the notice board, moss, leaves and blossom.  A shrine nobody sweeps is a
    * shrine nobody visits, so the leaves are *in the corners* and the pad is
    * clear. --- */
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: V.x + 1.5, z: V.z - 1.4, y: py, ry: -1.9, w: 1.2, h: 0.85, y0: 0.85, wood: 0x8a6f52,
     sheets: [{ map: lakeNotice(1), x: 0, y: 0, w: 0.56, h: 0.44, tilt: 0 }],
   }));

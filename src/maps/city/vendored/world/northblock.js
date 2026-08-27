@@ -186,18 +186,14 @@ export function buildNorthBlock(ctx) {
   {
     const b = makeWalkup({
       x: WALK.x, z: WALK.z, y: Y, w: WALK.w, d: WALK.d, face: 'x+',
-      floors: 3, units: 4, seed: 7721, wall: 4, roof: 0, door: 4, plate: 0,
+      floors: 3, units: 4, seed: 7721, wall: 4, roof: 0, door: 4, plate: 0, ctx,
     });
     ctx.add(b);
     const x0 = WALK.x - WALK.d / 2, x1 = WALK.x + WALK.d / 2;
     const z0 = WALK.z - WALK.w / 2, z1 = WALK.z + WALK.w / 2;
-    ctx.collide(x0 - 0.3, z0 - 0.2, x1 + 0.2, z1 + 0.2, Y + b.userData.top);
-    // the open stair sticks out past the +z end once the block is turned
-    ctx.collide(x0 - 0.2, z1 + 0.1, x1 + 0.2, z1 + 1.8, Y + 1.2);
 
     /* everything a block of four flats keeps outside its own front door */
     ctx.add(makeMailboxBank({ x: x1 + 0.55, z: z0 + 1.2, y: Y, ry: -Math.PI / 2, cols: 4, rows: 2 }));
-    ctx.collide(x1 + 0.4, z0 + 0.7, x1 + 0.75, z0 + 1.7, Y + 1.3);
     ctx.add(makeBikeShelter({ ctx, x: x1 + 1.2, z: z0 + 4.6, y: Y, ry: Math.PI / 2, w: 4.0, d: 1.8, h: 2.05 }));
     // Keep the first three bicycles in place.  The fourth reached the utility
     // pole at the end of the shelter, so the shortened row is re-centred to
@@ -316,7 +312,7 @@ export function buildNorthBlock(ctx) {
     ctx.add(makeDeliveryBox({ x: SHED.x + 2.6, z: fz - 1.5, y: Y, ry: -0.3 }));
     ctx.add(makePlanter({ x: SHED.x - 1.9, z: fz - 0.6, y: Y, r: 0.26, flower: true, seed: 7743, n: 5 }));
     ctx.add(makePlanter({ x: SHED.x - 1.3, z: fz - 0.7, y: Y, r: 0.21, flower: false, seed: 7744, n: 4 }));
-    ctx.add(makeLaundryPole({ x: SHED.x + 0.6, z: SHED.z + SHED.d / 2 + 0.9, y: Y, ry: 0, len: 2.4, n: 4, seed: 7745 }));
+    ctx.add(makeLaundryPole({ ctx, x: SHED.x + 0.6, z: SHED.z + SHED.d / 2 + 0.9, y: Y, ry: 0, len: 2.4, n: 4, seed: 7745 }));
     // west flank: outward normal is -x, so the grille turns -PI/2
     ctx.add(makeAircon({ x: SHED.x - SHED.w / 2 - 0.25, z: SHED.z + 0.6, y: Y, ry: -Math.PI / 2, w: 0.8, h: 0.58 }));
     /* **No cherry east of this house.**  It stood at (50.5, fz - 1.2), which was
@@ -489,7 +485,7 @@ function buildCornerShop(ctx, Y, rng) {
     rm.position.y = y;
     rm.castShadow = true;
     ctx.add(rm);
-    ctx.add(makeLaundryPole({ x: SHOP.x + 0.4, z: sz + 1.0, y, ry: 0, len: 2.2, n: 3, seed: 7784 }));
+    ctx.add(makeLaundryPole({ ctx, x: SHOP.x + 0.4, z: sz + 1.0, y, ry: 0, len: 2.2, n: 3, seed: 7784 }));
     ctx.add(makePotShelf({ x: SHOP.x + 1.6, z: sz + 0.3, y, ry: 0, w: 1.0, n: 5, seed: 7785 }));
   }
   ctx.add(makeAircon({ x: SHOP.x + SHOP.d / 2 + 0.24, z: SHOP.z - 1.4, y: y + 0.3, ry: Math.PI / 2, w: 0.86, h: 0.6 }));
@@ -612,7 +608,7 @@ function makeBlockGarden(ctx, o) {
       len: Math.abs(r.to - r.from), axis: r.axis, h: 0.62, blockH: 0.4, y: o.y,
     });
     ctx.add(g);
-    if (r.axis === 'z') ctx.collide(r.at - 0.14, r.from, r.at + 0.14, r.to, o.y + g.userData.top);
-    else ctx.collide(r.from, r.at - 0.14, r.to, r.at + 0.14, o.y + g.userData.top);
+    if (r.axis === 'z') ctx.collide(r.at - 0.14, r.from, r.at + 0.14, r.to, o.y + 0.62);
+    else ctx.collide(r.from, r.at - 0.14, r.to, r.at + 0.14, o.y + 0.62);
   }
 }

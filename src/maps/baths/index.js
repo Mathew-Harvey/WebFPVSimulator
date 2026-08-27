@@ -1,5 +1,5 @@
 /*
- * index.js: Municipal baths. A 50 m empty hall, cel shaded, freestyle.
+ * index.js: Municipal baths. A 50 m hall and lido, cel shaded, freestyle.
  *
  * The toon kit under ./cel is sakura-crossing's, MIT, retargeted at this
  * map's palette. Everything else in this folder is ours, GPLv3. The hall is authored as boxes with their colliders, so a gap in the drawing is a gap in the solid world.
@@ -92,7 +92,7 @@ export async function buildMap(shell, onProgress, options) {
   camera.far = CAMERA_FAR;
   camera.updateProjectionMatrix();
 
-  const sun = new THREE.DirectionalLight(PAL.sun, 2.05);
+  const sun = new THREE.DirectionalLight(PAL.sun, 2.28);
   sun.castShadow = q.shadows;
   const shadowMap = bq.shadowMap || 2048;
   sun.shadow.mapSize.set(shadowMap, shadowMap);
@@ -111,10 +111,10 @@ export async function buildMap(shell, onProgress, options) {
   const fill = new THREE.DirectionalLight(PAL.fill, 1.15);
   scene.add(fill);
   scene.add(fill.target);
-  const bounce = new THREE.DirectionalLight(0xe8d0b8, 0.38);
+  const bounce = new THREE.DirectionalLight(0xd0d8dc, 0.38);
   scene.add(bounce);
   scene.add(bounce.target);
-  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.2));
+  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.05));
 
   function addLamp(x, y, z, color, intensity, distance) {
     const lamp = new THREE.PointLight(color, intensity, distance, 1.35);
@@ -129,10 +129,12 @@ export async function buildMap(shell, onProgress, options) {
   await yieldToPaint();
 
   const world = buildWorld(scene);
-  addLamp(0, 12.2, 0, 0xffe8d0, 2.2, 36);
-  addLamp(-16, 11.5, 0, 0xffe0c0, 1.35, 22);
-  addLamp(16, 11.5, 0, 0xffe0c0, 1.35, 22);
-  addLamp(24, 11, 0, 0xffe0c0, 1.5, 16);
+  addLamp(0, 12.2, 0, 0xf0f4f8, 2.1, 36);
+  addLamp(-16, 11.5, 0, 0xe4eef2, 1.25, 22);
+  addLamp(16, 11.5, 0, 0xe4eef2, 1.25, 22);
+  addLamp(24, 11, 0, 0xe4eef2, 1.35, 16);
+  addLamp(-39, 6.2, 0, 0xf0f4f8, 1.4, 14);
+  addLamp(0, 4.2, 0, 0x7ec8e0, 0.85, 18);
   progress(0.88);
   await yieldToPaint();
 
@@ -143,11 +145,11 @@ export async function buildMap(shell, onProgress, options) {
   });
   pipeline.enabled.ink = bq.ink;
   pipeline.enabled.fxaa = bq.fxaa;
-  pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0xb8a8c8);
-  pipeline.grade.mat.uniforms.uLightTint.value.setHex(0xffe8d0);
-  pipeline.grade.mat.uniforms.uWarmth.value = 0.07;
-  pipeline.grade.mat.uniforms.uSaturation.value = 1.08;
-  pipeline.grade.mat.uniforms.uLift.value = 0.05;
+  pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0x7a8c98);
+  pipeline.grade.mat.uniforms.uLightTint.value.setHex(0xf2f4f8);
+  pipeline.grade.mat.uniforms.uWarmth.value = 0.0;
+  pipeline.grade.mat.uniforms.uSaturation.value = 1.06;
+  pipeline.grade.mat.uniforms.uLift.value = 0.03;
   pipeline.ink.mat.uniforms.uFadeStart.value = 50;
   pipeline.ink.mat.uniforms.uFadeEnd.value = 140;
   pipeline.ink.mat.uniforms.uSkyDepth.value = 360;
@@ -182,7 +184,7 @@ export async function buildMap(shell, onProgress, options) {
     spawn: world.spawn,
     attract: {
       path: attractPath(world),
-      speed: 10,
+      speed: 12,
       lookAhead: 6,
       aimDrop: 2.0,
     },

@@ -349,7 +349,7 @@ function buildCanalEdge(ctx, m, gm, sakura, shrubs, petals) {
 
   /* the board that tells you the two things this lane joins */
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: 34.4, z: -30.85, y: gA(34.4, -30.85), ry: Math.PI, w: 1.5, h: 1.0, y0: 0.9, wood: 0x8a6f52,
       sheets: [
         { map: hallNotice(1), x: -0.4, w: 0.4, h: 0.55, tilt: 0.018 },
@@ -357,7 +357,6 @@ function buildCanalEdge(ctx, m, gm, sakura, shrubs, petals) {
       ],
     });
     ctx.add(nb);
-    ctx.collide(33.65, -31.0, 35.15, -30.7, Y + 2.0);
   }
   ctx.add(makeSignPost({
     x: 19.9, z: -30.9, y: gA(19.9, -30.9), ry: -Math.PI / 2, h: 2.2, postMat: m.metal,
@@ -423,7 +422,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
       ctx.add(makeMilkCrate({ x: x2, z: z2, y: gA(x2, z2), n: 2, ry: p.outRy - 0.3 }));
     }
     // the backs, in the 0.4 m against the school wall
-    ctx.add(makeLaundryPole({ x: NAGA.x - 1.6, z: p.z0 - 0.34, y: gA(NAGA.x - 1.6, p.z0 - 0.34), ry: 0, len: 2.4, n: 4, seed: 9335 }));
+    ctx.add(makeLaundryPole({ ctx, x: NAGA.x - 1.6, z: p.z0 - 0.34, y: gA(NAGA.x - 1.6, p.z0 - 0.34), ry: 0, len: 2.4, n: 4, seed: 9335 }));
     ctx.add(makeAircon({ x: NAGA.x + 1.8, z: p.z0 - 0.24, y: gA(NAGA.x + 1.8, p.z0 - 0.24), ry: Math.PI, w: 0.72, h: 0.52 }));
     ctx.add(makeBicycle({ x: p.x1 + 0.5, z: NAGA.z + 0.4, y: gA(p.x1 + 0.5, NAGA.z + 0.4), ry: Math.PI / 2, lean: 0.06, color: 0x8f6fb5 }));
     petals.push({ x: NAGA.x, z: p.z1 + 0.8, w: 7.6, d: 1.4, y: Y + 0.02, n: 45 });
@@ -517,7 +516,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
       const [x, z] = p.at((i - 0.5) * TERR.unitW + 0.9, -p.halfD - 0.16);
       ctx.add(makeGasMeter({ x, z, y: gA(x, z), ry: p.outRy + Math.PI }));
     }
-    ctx.add(makeLaundryPole({ x: TERR.x - 0.6, z: p.z0 - 0.36, y: gA(TERR.x - 0.6, p.z0 - 0.36), ry: 0, len: 2.4, n: 4, seed: 9353 }));
+    ctx.add(makeLaundryPole({ ctx, x: TERR.x - 0.6, z: p.z0 - 0.36, y: gA(TERR.x - 0.6, p.z0 - 0.36), ry: 0, len: 2.4, n: 4, seed: 9353 }));
     ctx.add(makeCatBox({ x: p.x1 + 0.5, z: p.z1 - 0.6, y: gA(p.x1 + 0.5, p.z1 - 0.6), ry: 1.1 }));
     petals.push({ x: TERR.x, z: p.z1 + 0.8, w: 5.8, d: 1.4, y: Y + 0.02, n: 40 });
   }
@@ -592,7 +591,7 @@ function buildRow(ctx, m, gm, rng, shrubs, petals) {
       bike: true, kidBike: false, laundry: false, garden: 1, tap: 1, flank: 0.75,
     });
     ctx.add(makeMilkCrate({ x: p.x0 + 0.6, z: p.z1 + 0.5, y: gA(p.x0 + 0.6, p.z1 + 0.5), n: 2, ry: 0.3 }));
-    ctx.add(makeLaundryPole({ x: TIMB.x, z: p.z0 - 0.36, y: gA(TIMB.x, p.z0 - 0.36), ry: 0, len: 2.6, n: 5, seed: 9369 }));
+    ctx.add(makeLaundryPole({ ctx, x: TIMB.x, z: p.z0 - 0.36, y: gA(TIMB.x, p.z0 - 0.36), ry: 0, len: 2.6, n: 5, seed: 9369 }));
     ctx.add(makeStorageShed({ x: p.x1 + 0.55, z: p.z0 + 1.0, y: gA(p.x1 + 0.55, p.z0 + 1.0), ry: -Math.PI / 2, w: 1.4, d: 0.8, h: 1.7 }));
     ctx.collide(p.x1 + 0.15, p.z0 + 0.3, p.x1 + 0.95, p.z0 + 1.7, Y + 1.74);
     ctx.add(makeIvy({ x: p.x1 + 0.04, z: TIMB.z - 1.0, y: Y, ry: Math.PI / 2, len: 2.2, top: 1.9, drop: 0.9, seed: 9370 }));
@@ -622,12 +621,11 @@ function buildEastEnd(ctx, m, gm, shrubs, grove) {
   /* the school's corner board -- the one piece of the school that addresses this
    * side of it, and the reason the walk down here ends at something */
   {
-    const nb = makeNoticeBoard({
+    const nb = makeNoticeBoard({ ctx,
       x: 54.0, z: -40.35, y: gA(54.0, -40.35), ry: 0, w: 1.4, h: 0.95, y0: 0.92, wood: 0x7d6146,
       sheets: [{ map: hallNotice(0), x: 0, w: 0.4, h: 0.55, tilt: 0.015 }],
     });
     ctx.add(nb);
-    ctx.collide(53.3, -40.5, 54.7, -40.2, Y + 1.95);
   }
   /* the hedge that turns the corner north of the wall, and the mass behind it:
    * past x = 56 there is nothing at all, so this is the edge of the built world

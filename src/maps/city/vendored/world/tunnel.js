@@ -691,6 +691,7 @@ function buildBore(ctx, b) {
       if (c - a < 0.8) continue;
       for (let x = a; x <= c + 1e-6; x += 2.6) {
         parts.push({ geometry: new THREE.CylinderGeometry(0.035, 0.035, 1.05, 6), matrix: trs(x, PATH_Y + 0.52, zRail) });
+        ctx.collide(x - 0.05, zRail - 0.05, x + 0.05, zRail + 0.05, PATH_Y + 1.05, PATH_Y, true);
       }
       parts.push({
         geometry: new THREE.CylinderGeometry(0.04, 0.04, c - a, 6),
@@ -698,7 +699,7 @@ function buildBore(ctx, b) {
       });
       /* 0.20 m, not 0.18: check 15's handrail median is the 0.18 m
        * street rails, and this walkway sits 0.5 m up. */
-      ctx.collide(a, zRail - 0.1, c, zRail + 0.1, PATH_Y + 1.05, PATH_Y);
+      ctx.collide(a, zRail - 0.05, c, zRail + 0.05, PATH_Y + 1.07, PATH_Y + 0.97, true);
     }
     // flat, for the same reason the walkway is: a `cel()` handrail inside an
     // unlit bore is the brightest thing in the frame
@@ -1229,14 +1230,15 @@ function buildCuttings(ctx, b) {
     for (const zf of [TRACK_HALF + 1.05, -(TRACK_HALF + 1.05)]) {
       for (let x = from; x <= to; x += 2.4) {
         parts.push({ geometry: new THREE.BoxGeometry(0.07, 1.12, 0.07), matrix: trs(x, 0.56, zf) });
+        ctx.collide(x - 0.05, zf - 0.05, x + 0.05, zf + 0.05, 1.12, 0, true);
       }
       for (const yy of [0.55, 1.02]) {
         parts.push({ geometry: new THREE.BoxGeometry(to - from, 0.06, 0.06), matrix: trs((from + to) / 2, yy, zf) });
+        ctx.collide(from, zf - 0.04, to, zf + 0.04, yy + 0.05, yy - 0.05, true);
       }
       for (let x = from + 0.3; x <= to; x += 0.32) {
         parts.push({ geometry: new THREE.BoxGeometry(0.035, 0.5, 0.035), matrix: trs(x, 0.78, zf) });
       }
-      ctx.collide(from, zf - 0.12, to, zf + 0.12, 1.2);
     }
     const f = new THREE.Mesh(bake(parts), m.metal);
     f.castShadow = true;
@@ -1981,13 +1983,23 @@ function buildAccess(ctx, b) {
   }
   const gate = new THREE.Mesh(bake(parts), m.metal);
   gate.castShadow = true;
-  gate.name = 'tunnelGate' + T.id;
+  gate.name = 'openFrame';
   ctx.add(gate);
-  /* The leaf's collider stops 0.15 m *short* of the opening's edge.  The opening
-   * `railway.js` leaves is exactly `gateX ± 0.9`, so a leaf collider that reached
-   * `leafX` would eat into it and leave 0.27 m of walkable ground -- a gate you
-   * can see through and not walk through, which is the `plotWall` lesson. */
-  ctx.collide(leafX - 1.6, zf - 0.2, leafX - 0.15, zf + 0.2, y + 1.2);
+  for (const dx of [-0.9, 0.9]) {
+    ctx.collide(gx + dx - 0.07, zf - 0.07, gx + dx + 0.07, zf + 0.07, y + 1.5, y, true);
+  }
+  {
+    const leafCx = leafX - 0.75;
+    const leafCz = zf + s * 0.18;
+    const ca = Math.cos(0.22);
+    const sa = Math.sin(0.22);
+    const hw = Math.abs(ca) * 0.75 + Math.abs(sa) * 0.04;
+    const hd = Math.abs(sa) * 0.75 + Math.abs(ca) * 0.04;
+    for (const yy of [0.42, 1.06]) {
+      ctx.collide(leafCx - hw, leafCz - hd, leafCx + hw, leafCz + hd,
+        y + yy + 0.05, y + yy - 0.05, true);
+    }
+  }
 
   // the plate on the leaf, facing whoever is walking up to it
   const map = maintGatePlate();
@@ -2230,7 +2242,7 @@ function buildViewpoints(ctx, b) {
     }
     // the bench sits on the *back* of the deck and faces the view across it
     ctx.add(makeBench({ x: V.x, z: V.z - look * 0.7, y: dy + 0.22, ry: look > 0 ? 0 : Math.PI, len: 1.6 }));
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: V.x + 2.9, z: V.z - look * 0.4, y: dy, ry: -Math.PI / 2 - 0.25, w: 1.3, h: 0.9, y0: 0.9,
       wood: 0x8a6f52,
       sheets: [{ map: railPlate(1), x: 0, y: 0, w: 0.5, h: 0.38, tilt: 0.02 }],

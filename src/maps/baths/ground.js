@@ -1,7 +1,7 @@
 /*
  * ground.js: cream plaza, retaining cut, and the pool as a hole in the floor.
  *
- * Ground height is the plaza, then the stepped pool, then the plant pit.
+ * Ground height is the plaza, then the stepped pool, the lido, then the plant pit.
  * Hills are painted flats.
  *
  * This file is part of WebFPVSimulator.
@@ -41,9 +41,21 @@ export function poolFloor(x, z) {
   return p.deepY;
 }
 
+export function teachFloor(x, z) {
+  const tch = L.teach;
+  if (x <= tch.x0 || x >= tch.x1 || z <= tch.z0 || z >= tch.z1) {
+    return null;
+  }
+  return tch.y;
+}
+
 export function groundHeight(x, z) {
   const pit = L.plant;
   const hop = L.hopper;
+  const teach = teachFloor(x, z);
+  if (teach !== null) {
+    return teach;
+  }
   if (x >= L.pool.x1 && x < pit.x0 && z > hop.z0 && z < hop.z1) {
     return pit.y0;
   }
@@ -79,7 +91,13 @@ export function buildGround(root, colliders, M) {
     z0: L.hopper.z0,
     z1: L.hopper.z1,
   };
-  fillAround(root, colliders, M.plaza, x0, z0, x1, z1, -0.35, 0.02, [poolHole, pit, hopperHole], {
+  const teachHole = {
+    x0: L.teach.x0,
+    x1: L.teach.x1,
+    z0: L.teach.z0,
+    z1: L.teach.z1,
+  };
+  fillAround(root, colliders, M.plaza, x0, z0, x1, z1, -0.35, 0.02, [poolHole, pit, hopperHole, teachHole], {
     solid: false, cast: false, receive: true,
   });
 
@@ -103,8 +121,8 @@ export function buildGround(root, colliders, M) {
   });
 
   decal(root, colliders, M.white, -2.4, 0.03, 13.2, 2.4, 0.07, 21.6);
-  decal(root, colliders, M.orange, -2.65, 0.04, 13.2, -2.35, 0.08, 21.6);
-  decal(root, colliders, M.orange, 2.35, 0.04, 13.2, 2.65, 0.08, 21.6);
+  decal(root, colliders, M.coral, -2.65, 0.04, 13.2, -2.35, 0.08, 21.6);
+  decal(root, colliders, M.lemon, 2.35, 0.04, 13.2, 2.65, 0.08, 21.6);
 
   slab(root, colliders, M.cream, -10.4, 0, 20.6, -9.2, 1.05, 21.8, { kind: 'obstacle' });
   slab(root, colliders, M.cream, 9.2, 0, 20.6, 10.4, 1.05, 21.8, { kind: 'obstacle' });

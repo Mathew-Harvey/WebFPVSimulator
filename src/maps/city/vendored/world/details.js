@@ -51,7 +51,7 @@ export function buildDetails(ctx) {
   {
     const H = 0.98;                 // platform deck height, from railway.js
     const zb = -5.62;               // back edge of the deck
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: 22.4, z: zb + 0.42, y: H, ry: 0, w: 2.4, h: 1.28, y0: 0.75,
       sheets: [
         { map: clubPoster(0), x: -0.78, y: 0.05, w: 0.46, h: 0.62, tilt: 0.02 },
@@ -60,7 +60,6 @@ export function buildDetails(ctx) {
         { map: poster(1), x: 0.78, y: -0.02, w: 0.42, h: 0.56, tilt: -0.02 },
       ],
     }));
-    ctx.collide(21.2, zb + 0.2, 23.6, zb + 0.7, H + 2.1);
 
     // somebody's umbrella, left against the fence after the rain
     ctx.add(makeUmbrellaStand({ x: 30.4, z: zb + 0.5, y: H, n: 2, seed: 9901 }));

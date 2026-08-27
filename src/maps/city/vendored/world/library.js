@@ -599,9 +599,20 @@ function buildEntrance(ctx, Y, FY, FL) {
         });
       }
       const rm = new THREE.Mesh(bake(parts), m.metal);
+      rm.name = 'openFrame';
       rm.castShadow = true;
       g.add(rm);
-      ctx.collide(rx1, rz - RW / 2 - 0.16, rx0, rz - RW / 2 + 0.02, FY + RISE + RH, FY);
+      const zRail = rz - RW / 2 - 0.07;
+      for (let i = 0; i <= 4; i++) {
+        const t = i / 4;
+        const x = rx0 - len * t;
+        const y = FY + RISE * t;
+        ctx.collide(x - 0.05, zRail - 0.05, x + 0.05, zRail + 0.05, y + RH, y, true);
+      }
+      for (const dy of [RH - 0.02, RH * 0.52]) {
+        ctx.collide(rx1, zRail - 0.05, rx0, zRail + 0.05,
+          FY + RISE / 2 + dy + 0.05, FY + RISE / 2 + dy - 0.05, true);
+      }
     }
   }
 
@@ -681,7 +692,7 @@ function dressForecourt(ctx, Y, FY, rng, shrubs, petals) {
   ctx.collide(11.0, 49.85, 11.7, 50.4, FY + 1.2);
 
   /* the notice board, turned into the forecourt's north-west corner */
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: 10.0, z: 49.8, y: FY, ry: 2.6, w: 2.0, h: 1.15, y0: 0.85,
     sheets: [
       { map: poster(1), x: -0.62, y: 0.02, w: 0.42, h: 0.58, tilt: -0.02 },
@@ -689,7 +700,7 @@ function dressForecourt(ctx, Y, FY, rng, shrubs, petals) {
       { map: poster(3), x: 0.6, y: 0.0, w: 0.4, h: 0.55, tilt: 0.02 },
     ],
   }));
-  ctx.collide(9.3, 49.15, 10.8, 50.5, FY + 2.1);
+
 
   /* bicycle parking against the west edge, marked out on the paving the way it
    * always is.  Four stands, not eight: the point is that somebody rides here,
@@ -794,17 +805,15 @@ function buildCorner(ctx, rng) {
     ctx.add(gully);
   }
 
-  ctx.add(makePhoneBooth({ x: 3.5, z: 48.6, y: FY, ry: 0.34 }));
-  ctx.collide(2.85, 47.95, 4.15, 49.25, FY + 2.7);
+  ctx.add(makePhoneBooth({ ctx, x: 3.5, z: 48.6, y: FY, ry: 0.34 }));
 
-  ctx.add(makeGuideBoard({ x: 5.8, z: 48.9, y: FY, ry: Math.PI, w: 1.5, h: 1.05 }));
-  ctx.collide(4.9, 48.75, 6.7, 49.05, FY + 2.1);
+  ctx.add(makeGuideBoard({ ctx, x: 5.8, z: 48.9, y: FY, ry: Math.PI, w: 1.5, h: 1.05 }));
 
   ctx.add(makeRecycleBox({ x: 6.3, z: 47.5, y: FY, ry: Math.PI - 0.31 }));
   ctx.collide(5.85, 47.2, 6.75, 47.8, FY + 0.7);
 
   /* a short length of guardrail on the road edge, and the lamp above it */
-  ctx.add(makeGuardrail({ x: 2.0, z: 48.4, y: FY, ry: Math.PI / 2, len: 3.4 }));
+  ctx.add(makeGuardrail({ ctx, x: 2.0, z: 48.4, y: FY, ry: Math.PI / 2, len: 3.4 }));
   {
     const lx = 6.9, lz = 46.9;
     const post = cyl(0.05, 0.065, 3.6, 8, m.metalDark, lx, FY + 1.8, lz);

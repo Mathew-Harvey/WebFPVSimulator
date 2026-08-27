@@ -384,13 +384,44 @@ export function makeShop(ctx, o) {
   g.rotation.y = FACE_RY[o.face ?? 'z+'];
   ctx.add(g);
 
-  /* Collider in world axes.  The unit was authored facing +Z, so a quarter
-   * turn swaps its width and depth. */
+  /* Collider in world axes. The unit was authored facing +Z. The solid
+   * volume stops REC short of the frontage; piers and a header keep the
+   * mouth, and the recess itself is air so a knife-edge line can use it. */
   const swap = o.face === 'x+' || o.face === 'x-';
   const hw = (swap ? d : w) / 2;
   const hd = (swap ? w : d) / 2;
   const roofAdd = o.roofKind === 'gable' ? (o.roofH ?? 1.25) + 0.22 : 0.4;
-  ctx.collide(o.x - hw - 0.05, o.z - hd - 0.05, o.x + hw + 0.05, o.z + hd + 0.05, (o.y ?? 0) + H + roofAdd);
+  const yBase = o.y ?? 0;
+  const yTop = yBase + H + roofAdd;
+  const pierW = (w - openW) / 2;
+  const face = o.face ?? 'z+';
+  if (face === 'z+' || face === 'z-') {
+    const s = face === 'z+' ? 1 : -1;
+    const back = o.z - s * hd;
+    const mouth = o.z + s * (hd - REC);
+    const front = o.z + s * hd;
+    ctx.collide(o.x - hw - 0.05, Math.min(back, mouth) - 0.05,
+      o.x + hw + 0.05, Math.max(back, mouth) + 0.05, yTop);
+    ctx.collide(o.x - hw - 0.05, Math.min(mouth, front),
+      o.x - hw + pierW, Math.max(mouth, front), yBase + H1);
+    ctx.collide(o.x + hw - pierW, Math.min(mouth, front),
+      o.x + hw + 0.05, Math.max(mouth, front), yBase + H1);
+    ctx.collide(o.x - openW / 2, Math.min(mouth, front),
+      o.x + openW / 2, Math.max(mouth, front), yBase + H1, yBase + 2.50, true);
+  } else {
+    const s = face === 'x+' ? 1 : -1;
+    const back = o.x - s * hw;
+    const mouth = o.x + s * (hw - REC);
+    const front = o.x + s * hw;
+    ctx.collide(Math.min(back, mouth) - 0.05, o.z - hd - 0.05,
+      Math.max(back, mouth) + 0.05, o.z + hd + 0.05, yTop);
+    ctx.collide(Math.min(mouth, front), o.z - hd - 0.05,
+      Math.max(mouth, front), o.z - hd + pierW, yBase + H1);
+    ctx.collide(Math.min(mouth, front), o.z + hd - pierW,
+      Math.max(mouth, front), o.z + hd + 0.05, yBase + H1);
+    ctx.collide(Math.min(mouth, front), o.z - openW / 2,
+      Math.max(mouth, front), o.z + openW / 2, yBase + H1, yBase + 2.50, true);
+  }
 
   /* Doorway curtain, a thin slab in world axes. The shop rectangle is the
    * whole unit; slab fit opens the recess, and this is the cloth in it. */

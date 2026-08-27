@@ -538,7 +538,7 @@ function buildAlleys(ctx, m, gm, shrubs) {
     ctx.add(sh);
     ctx.collide(-32.65, -13.76, -31.45, -13.04, y + (sh.userData.top ?? 1.63));
     ctx.add(makeCrates({ x: -32.1, z: -12.4, y: ctx.groundAt(-32.1, -12.4), n: 3, seed: 8161, ry: 0.1 }));
-    ctx.add(makeLaundryPole({
+    ctx.add(makeLaundryPole({ ctx,
       x: -32.05, z: -11.5, y: ctx.groundAt(-32.05, -11.5), ry: Math.PI / 2,
       len: 1.6, n: 3, seed: 8162,
     }));
@@ -651,16 +651,9 @@ function buildWalkup(ctx, m, gm, shrubs) {
 
   const b = makeWalkup({
     x: WALK.x, z: WALK.z, y: Y, w: WALK.w, d: WALK.d, face: 'z+',
-    floors: 3, units: 4, seed: 8170, wall: 4, roof: 0, door: 5, plate: 2,
+    floors: 3, units: 4, seed: 8170, wall: 4, roof: 0, door: 5, plate: 2, ctx,
   });
   ctx.add(b);
-  plotCollide(ctx, p, Y + (b.userData.top ?? 8.7));
-  /* The open stair projects 1.6 m past the -x end and its roof 1.78 m.  Its
-   * collider deliberately stops at z = -11.3..-9.1 even though the roof
-   * oversails to -9.0: an 8 m canopy over the lane needs no collider, and one
-   * that reached the carriageway would take a quarter of a metre off the only
-   * walkable width at the far end of the street. */
-  ctx.collide(p.x0 - 1.9, -11.3, p.x0 + 0.1, -9.1, Y + 8.2);
 
   /* the forecourt: 1.55 m of concrete between the gallery and the lane */
   pad(ctx, {
@@ -674,7 +667,6 @@ function buildWalkup(ctx, m, gm, shrubs) {
    * mailbox bank turned to address the building it belongs to is the mistake
    * that had half the outdoor units in the world blowing into their own walls. */
   ctx.add(makeMailboxBank({ x: -74.4, z: -8.8, y: gy(-74.4, -8.8), ry: 0, cols: 4, rows: 2 }));
-  ctx.collide(-74.75, -9.0, -74.05, -8.6, Y + 1.3);
   ctx.add(makeDeliveryBox({ x: -73.4, z: -8.85, y: gy(-73.4, -8.85), ry: 0 }));
   ctx.add(makeWaterMeter({ x: -72.4, z: -8.55, y: gy(-72.4, -8.55), ry: 0 }));
   /* the bin point: three bins and the collection plate, not the built
@@ -710,7 +702,7 @@ function buildWalkup(ctx, m, gm, shrubs) {
     ctx.add(makeBikeShelter({ ctx, x: -66.5, z: -11.0, y: ctx.groundAt(-66.5, -11.0), ry: Math.PI / 2, w: 3.4, d: 1.9, h: 2.05 }));
     ctx.add(makeBikeRack({ x: -66.4, z: -11.0, y: ctx.groundAt(-66.4, -11.0), n: 4, spacing: 0.66, ry: 0, seed: 81 }));
     ctx.add(makeTapPost({ x: -64.85, z: -9.9, y: ctx.groundAt(-64.85, -9.9), ry: -Math.PI / 2 }));
-    ctx.add(makeLaundryPole({
+    ctx.add(makeLaundryPole({ ctx,
       x: -65.15, z: -12.4, y: ctx.groundAt(-65.15, -12.4), ry: Math.PI / 2,
       len: 2.1, n: 4, seed: 8173,
     }));

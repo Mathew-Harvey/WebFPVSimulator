@@ -683,18 +683,7 @@ function buildTurnaround(ctx, m, gm, PY, petals) {
     for (const p of [-0.5, 0, 0.5]) {
       const x = BULB_X + RK * Math.cos(p), z = BULB_Z + RK * Math.sin(p);
       const ry = -(Math.PI / 2 + p);
-      ctx.add(makeGuardrail({ x, z, y: PY, ry, len: LEN }));
-      /* One collider per run, derived from the rotated box rather than one fat
-       * AABB along the chord: a single box round all three would be 1.3 x 8 m
-       * and would take the whole east third of the circle out of the walk.  The
-       * first draft ran five sections from -1.0 to +1.0 rad, which put the top
-       * one 0.8 m in front of the 連棟's aprons -- a terrace fenced off from its
-       * own street, and the fill did *not* find it because the collider and the
-       * geometry did not agree.  Three sections, and they stop well short of
-       * both the aprons and the house's gate. */
-      const c = Math.abs(Math.cos(ry)), si = Math.abs(Math.sin(ry));
-      const hw = (c * LEN + si * 0.2) / 2, hd = (si * LEN + c * 0.2) / 2;
-      ctx.collide(x - hw, z - hd, x + hw, z + hd, PY + 0.86);
+      ctx.add(makeGuardrail({ ctx, x, z, y: PY, ry, len: LEN }));
     }
   }
   /* Keep the north throat's frangible sight-line delineator. */
@@ -768,7 +757,7 @@ function buildCorner(ctx, m, gm, PY, sakura, petals) {
     label: '自動販売機  ·  buy a drink',
   });
   ctx.add(makeVendBin({ x: 62.30, z: 48.15, y: PY, ry: 0.18 }));
-  ctx.add(makeNoticeBoard({
+  ctx.add(makeNoticeBoard({ ctx,
     x: 60.95, z: 47.15, y: PY, ry: 0.1, w: 1.6, h: 1.05, y0: 0.82,
     sheets: [
       { map: hallNotice(2), x: -0.4, y: 0.02, w: 0.4, h: 0.54, tilt: 0.02 },
@@ -776,7 +765,6 @@ function buildCorner(ctx, m, gm, PY, sakura, petals) {
       { map: gomiPlate(1), x: 0.56, y: 0.0, w: 0.42, h: 0.32 },
     ],
   }));
-  ctx.collide(60.15, 46.99, 61.75, 47.31, PY + 2.1);
   ctx.add(makeBench({ x: 63.55, z: 48.30, y: PY, ry: 2.85, len: 1.5 }));
   ctx.add(makeFlowerBed({ x: 62.75, z: 47.05, y: PY, w: 1.5, d: 0.8, seed: 9781 }));
   /* the cherry stands in the paving in a proper tree pit, the way the library's
@@ -920,16 +908,9 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
   {
     const p = plotBox(CORP);
     const g = makeWalkup({
-      ...CORP, y: PY, floors: 3, units: 3, fh: 2.70, seed: 9731, wall: 4, plate: 6,
+      ...CORP, y: PY, floors: 3, units: 3, fh: 2.70, seed: 9731, wall: 4, plate: 6, ctx,
     });
     ctx.add(g);
-    plotCollide(ctx, p, PY + (g.userData.top ?? 8.7));
-    /* The open stair stands outside the mass and needs its own box: treads run
-     * local z 1.925 down to -0.155 and the roof reaches 2.90, which for
-     * `face: 'z-'` at z = 63.60 is world z 60.70..63.80.  Read off the
-     * generator rather than guessed, which is the whole point of writing it in
-     * the header. */
-    ctx.collide(60.80, 60.70, 62.40, 63.80, PY + 8.7);
 
     /* the forecourt: 2.1 m between the car park's back wall and the block, and
      * that number is the reason the block is 4.4 m deep and not 4.8.  At 4.8 it
@@ -944,12 +925,11 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
     ctx.add(makeLockerBank({ x: 56.30, z: 61.02, y: PY, ry: Math.PI, seed: 9732 }));
     ctx.add(makeBicycle({ x: 59.40, z: 61.00, y: PY, ry: 0.04, lean: 0.07, color: 0x4f8f6a }));
     ctx.add(makeBicycle({ x: 60.30, z: 59.90, y: PY, ry: -0.03, lean: -0.06, color: 0x9c5a4a }));
-    ctx.add(makeNoticeBoard({
+    ctx.add(makeNoticeBoard({ ctx,
       x: 58.20, z: 59.72, y: PY, ry: 0, w: 1.1, h: 0.8, y0: 0.9,
       sheets: [{ map: hallNotice(1), x: -0.22, y: 0.0, w: 0.34, h: 0.48, tilt: 0.02 },
         { map: paperSheet(), x: 0.24, y: -0.02, w: 0.3, h: 0.42, tilt: -0.03 }],
     }));
-    ctx.collide(57.65, 59.64, 58.75, 59.80, PY + 2.0);
     ctx.add(makeGasMeter({ x: 53.86, z: 62.80, y: PY, ry: -Math.PI / 2 }));
     ctx.add(makeStorageShed({ x: 55.00, z: 66.40, y: PY, ry: Math.PI, seed: 9734 }));
     ctx.add(makeDryingRack({ x: 57.60, z: 66.50, y: PY, ry: Math.PI / 2, seed: 9735 }));
@@ -967,11 +947,9 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
   {
     const p = plotBox(MINI);
     const g = makeWalkup({
-      ...MINI, y: PY, floors: 2, units: 2, fh: 2.62, seed: 9741, wall: 1, plate: 8,
+      ...MINI, y: PY, floors: 2, units: 2, fh: 2.62, seed: 9741, wall: 1, plate: 8, ctx,
     });
     ctx.add(g);
-    plotCollide(ctx, p, PY + (g.userData.top ?? 5.9));
-    ctx.collide(68.70, 60.30, 70.30, 63.35, PY + 5.9);
 
     pad(ctx, {
       x: 65.80, z: 60.10, w: 6.2, d: 1.4, y: PY - 0.07, h: 0.07,
@@ -979,7 +957,7 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
     });
     ctx.add(makeMailboxBank({ x: 63.30, z: 60.62, y: PY, ry: Math.PI, cols: 2, rows: 2 }));
     ctx.add(makeBins({ x: 68.30, z: 59.30, y: PY, ry: 0 }));
-    ctx.add(makeLaundryPole({ x: 65.80, z: 66.30, y: PY, ry: 0, len: 3.0, seed: 9743 }));
+    ctx.add(makeLaundryPole({ ctx, x: 65.80, z: 66.30, y: PY, ry: 0, len: 3.0, seed: 9743 }));
     ctx.add(makeAircon({ x: 63.60, z: 65.84, y: PY, ry: 0, w: 0.8, h: 0.56 }));
     ctx.add(makePlanter({ x: 62.65, z: 60.30, y: PY, r: 0.24, flower: true, seed: 9744, n: 5 }));
     /* The block's bicycles are on the *island* side of its forecourt, parked
@@ -1020,7 +998,7 @@ function buildBlocks(ctx, m, gm, PY, shrubs, petals) {
       }
       ctx.add(makeAircon({ x, z: 65.44, y: PY, ry: 0, w: 0.78, h: 0.56 }));
     }
-    ctx.add(makeLaundryPole({ x: 72.60, z: 66.30, y: PY, ry: Math.PI / 2, len: 3.2, seed: 9756 }));
+    ctx.add(makeLaundryPole({ ctx, x: 72.60, z: 66.30, y: PY, ry: Math.PI / 2, len: 3.2, seed: 9756 }));
     ctx.add(makeKitchenGarden({ x: 76.80, z: 66.40, y: PY, ry: 0, w: 2.2, d: 1.1, seed: 9757 }));
     ctx.add(makeGasMeter({ x: 70.14, z: 62.60, y: PY, ry: -Math.PI / 2 }));
     petals.push({ x: 74.40, z: 59.40, w: 7.8, d: 1.3, y: PY + 0.02, n: 40 });

@@ -499,6 +499,7 @@ export function makeTimberFence(o) {
 export function makeBlockFence(o) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const len = o.len;
   const h = o.h ?? 0.72;                      // solid coursing
   const bh = o.blockH ?? 0.4;                 // the pierced course on top

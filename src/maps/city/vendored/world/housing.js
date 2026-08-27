@@ -300,6 +300,58 @@ export function makeAtticHouse(o = {}) {
  * The walk-up block.
  * ------------------------------------------------------------------ */
 
+/**
+ * Mass, then per-floor gallery slab / outer rail / soffit, then the open
+ * stair as landings and treads, then rear balcony slabs. A single prism
+ * through the plot is a gallery you cannot fly.
+ */
+function collideWalkup(ctx, o) {
+  if (!ctx || o.x == null || o.z == null) return;
+  const w = o.w ?? 8.0;
+  const d = o.d ?? 7.0;
+  const FLOORS = o.floors ?? 3;
+  const FH = o.fh ?? 2.7;
+  const H = FH * FLOORS;
+  const GAL = 1.35;
+  const y = o.y ?? 0;
+  const ry = FACE_RY[o.face ?? 'z+'];
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const put = (lx, lz, hw, hd, top, bot, skip) => {
+    const px = o.x + ca * lx - sa * lz;
+    const pz = o.z + sa * lx + ca * lz;
+    const hx = Math.abs(ca) * hw + Math.abs(sa) * hd;
+    const hz = Math.abs(sa) * hw + Math.abs(ca) * hd;
+    ctx.collide(px - hx, pz - hz, px + hx, pz + hz,
+      y + top, bot == null ? undefined : y + bot, skip);
+  };
+  put(0, -GAL / 2, w / 2 + 0.08, (d - GAL) / 2 + 0.08, H + 0.5, undefined, true);
+  const gz = d / 2;
+  for (let k = 0; k < FLOORS; k++) {
+    const fy = k * FH;
+    put(0, gz - GAL / 2, w / 2, GAL / 2, fy + 0.22, fy, true);
+    put(0, gz - 0.07, w / 2, 0.08, fy + 1.18, fy + 0.30, true);
+    put(0, gz - GAL / 2, w / 2, GAL / 2 + 0.05, fy + FH, fy + FH - 0.12, true);
+  }
+  const sx = -w / 2 - 1.6;
+  for (let k = 0; k < FLOORS; k++) {
+    const fy = k * FH;
+    put(sx + 0.8, gz - GAL / 2 + 0.2, 0.8, (GAL + 0.4) / 2, fy + 0.20, fy, true);
+    for (let i = 0; i < 9; i++) {
+      put(sx + 0.8, gz - GAL / 2 + 0.4 - i * 0.26, 0.68, 0.16,
+        fy + 0.26 + (i * FH) / 9 + 0.08, fy + 0.26 + (i * FH) / 9, true);
+    }
+    put(sx + 0.04, gz - GAL / 2 + 0.2, 0.05, (GAL + 0.4) / 2, fy + 1.20, fy + 1.12, true);
+  }
+  put(sx + 0.8, gz - GAL / 2 + 0.3, 0.98, (GAL + 0.8) / 2, H + 0.16, H, true);
+  for (let k = 1; k < FLOORS; k++) {
+    const fy = k * FH;
+    const bz = -d / 2;
+    put(0, bz - 0.48, (w - 0.7) / 2, 0.48, fy + 0.18, fy, true);
+    put(0, bz - 0.94, (w - 0.7) / 2, 0.06, fy + 1.12, fy + 0.18, true);
+  }
+}
+
 export function makeWalkup(o = {}) {
   const m = mats();
   const rng = rngKit(o.seed ?? 61);
@@ -462,6 +514,7 @@ export function makeWalkup(o = {}) {
   g.rotation.y = FACE_RY[o.face ?? 'z+'];
   g.userData.top = H + 0.62;
   g.userData.stairOut = 1.6;
+  collideWalkup(o.ctx, o);
   return g;
 }
 
@@ -682,13 +735,14 @@ function collideLeanTo(ctx, o, w, d, h, fall) {
       const lz = sz * (d / 2 - 0.1);
       const px = o.x + ca * lx - sa * lz;
       const pz = o.z + sa * lx + ca * lz;
-      ctx.collide(px - 0.055, pz - 0.055, px + 0.055, pz + 0.055, y + h + (sz > 0 ? 0 : fall));
+      ctx.collide(px - 0.055, pz - 0.055, px + 0.055, pz + 0.055,
+        y + h + (sz > 0 ? 0 : fall), y, true);
     }
   }
   const hw = (Math.abs(ca) * w + Math.abs(sa) * d) / 2;
   const hd = (Math.abs(sa) * w + Math.abs(ca) * d) / 2;
   ctx.collide(o.x - hw - 0.08, o.z - hd - 0.08, o.x + hw + 0.08, o.z + hd + 0.08,
-    y + h + fall + 0.14, y + h - 0.04, true);
+    y + h + fall + 0.14, y + h + fall - 0.08, true);
 }
 
 /** A carport: the lean-to over a bay, plus the wheel stop under it. */

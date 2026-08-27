@@ -60,7 +60,8 @@ import {
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
   LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, TURTLE_SPEED, TURTLE_RATE,
-  TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE,
+  TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, TURTLE_FLIP_MS, TURTLE_LIFT,
+  TURTLE_INVERT_UPZ, turtleFlipEase, turtleFlipLift, turtleSlerpQuat,
 } from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
@@ -1362,32 +1363,55 @@ function suiteCrashRule() {
     shouldEnterTurtle(-0.8, 0.2, 0.2, false, 1.2, false) === false);
   check('turtle does not latch in the air even a few centimetres off the grass',
     shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === false);
-  check('turtle parks while crashflip is on, sticks centered, and in contact',
+  check('turtle does not latch on its side: that is still a tumble',
+    shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === false);
+  check('turtle does not latch at a 60 degree bank',
+    shouldEnterTurtle(0.49, 0, 0, true, 0.05, false) === false);
+  check('just past vertical is still a tumble, not turtle',
+    shouldEnterTurtle(-0.2, 0, 0, true, 0.05, false) === false);
+  check('a belly-up hull past the invert gate does latch',
+    shouldEnterTurtle(TURTLE_INVERT_UPZ - 0.01, 0, 0, true, 0.05, false) === true);
+  check('a hull shy of the invert gate does not latch',
+    shouldEnterTurtle(TURTLE_INVERT_UPZ, 0, 0, true, 0.05, false) === false);
+  check('the invert gate is past vertical, about 110 degrees',
+    TURTLE_INVERT_UPZ < -0.3 && TURTLE_INVERT_UPZ > -0.5);
+  check('turtle parks while waiting, sticks centered, and in contact',
     shouldParkTurtle(true, 0, 0.2, true) === true);
   check('turtle does not park without contact',
     shouldParkTurtle(true, 0, 0, false) === false);
-  check('turtle does not park while the stick is past the mixer deadband',
+  check('turtle does not park while the stick is past the poke gate',
     shouldParkTurtle(true, TURTLE_STICK_MIN, 0, true) === false);
-  check('turtle parks in the exit band so a stall on its side still waits',
-    shouldParkTurtle(true, 0, 0.2, true) === true);
-  check('turtle does not drop at 0.5, only past it',
-    shouldExitTurtle(0.5) === false && shouldExitTurtle(0.51) === true);
   check('turtle does not latch during launch staging',
     shouldEnterTurtle(-1, 0, 0, true, 0.05, true) === false);
   check('turtle does not latch once the hull is upright',
     shouldEnterTurtle(0.9, 0, 0, true, 0.05, false) === false);
-  check('turtle re-latches on its side so a stalled flip is still turtle',
-    shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === true);
-  check('turtle exits once the hull is past the mixer drop attitude',
-    shouldExitTurtle(TURTLE_EXIT_UPZ + 0.01) === true);
-  check('turtle stays latched while still inverted',
+  check('turtle stays waiting while still inverted',
     shouldExitTurtle(-0.9) === false);
-  check('turtle stays latched on its side below the drop attitude',
-    shouldExitTurtle(TURTLE_EXIT_UPZ) === false);
-  check('turtle stick deadband matches the mixer',
-    TURTLE_STICK_MIN === 0.15);
-  check('turtle wait-rate is below the enter-rate so a live couple is not seated',
+  check('a poke past the gate is enough, it does not have to match the mixer',
+    TURTLE_STICK_MIN <= 0.08);
+  check('turtle wait-rate is below the enter-rate so leftover tumble is not seated',
     TURTLE_WAIT_RATE < TURTLE_RATE);
+  check('the scripted flip has a duration',
+    TURTLE_FLIP_MS > 200 && TURTLE_FLIP_MS < 800);
+  check('turtle flip ease is 0 at the start and 1 at the end',
+    turtleFlipEase(0) === 0 && turtleFlipEase(1) === 1);
+  check('turtle flip ease is a midpoint at half',
+    Math.abs(turtleFlipEase(0.5) - 0.5) < 1e-12);
+  check('turtle lift is zero at the ends so the hull sits on the grass',
+    turtleFlipLift(0) === 0 && turtleFlipLift(1) === 0);
+  check('turtle lift peaks at mid-flip above the arm radius',
+    turtleFlipLift(0.5) === TURTLE_LIFT && TURTLE_LIFT > 0.15);
+  const qS0 = turtleSlerpQuat(0, 1, 0, 0, 1, 0, 0, 0, 0);
+  check('turtle slerp starts at the inverted pose',
+    Math.abs(qS0[0]) < 1e-12 && Math.abs(qS0[1] - 1) < 1e-12);
+  const qS1 = turtleSlerpQuat(0, 1, 0, 0, 1, 0, 0, 0, 1);
+  check('turtle slerp ends upright',
+    Math.abs(qS1[0] - 1) < 1e-12 && Math.abs(qS1[1]) < 1e-12);
+  const qSMid = turtleSlerpQuat(0, 1, 0, 0, 1, 0, 0, 0, 0.5);
+  check('turtle slerp midpoint is 90 degrees about x',
+    Math.abs(Math.abs(qSMid[0]) - Math.SQRT1_2) < 1e-9
+      && Math.abs(Math.abs(qSMid[1]) - Math.SQRT1_2) < 1e-9
+      && Math.abs(qSMid[2]) < 1e-12 && Math.abs(qSMid[3]) < 1e-12);
 
   const qId = uprightPlantQuat(1, 0, 0, 0);
   check('an already upright pose stays identity',

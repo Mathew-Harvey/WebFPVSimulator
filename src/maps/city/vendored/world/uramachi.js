@@ -298,8 +298,7 @@ function buildStreets(ctx, m, gm) {
     const base = box(1.0, 0.22, 0.9, m.stone, sx, Y + 0.11, sz);
     base.receiveShadow = base.castShadow = true;
     ctx.add(base);
-    ctx.add(makeShrine({ x: sx, z: sz, y: Y + 0.22, ry: Math.PI / 2 }));
-    ctx.collide(sx - 0.55, sz - 0.5, sx + 0.55, sz + 0.5, Y + 1.5);
+    ctx.add(makeShrine({ ctx, x: sx, z: sz, y: Y + 0.22, ry: Math.PI / 2 }));
     ctx.add(makePlanter({ x: sx + 0.05, z: sz - 0.8, y: Y, r: 0.2, flower: true, seed: 8912, n: 5 }));
     ctx.add(makeBucket({ x: sx - 0.55, z: sz + 0.7, y: Y, ry: 0.6, water: true }));
     // the moss the north face of a stone base grows, and nothing else
@@ -362,7 +361,7 @@ function buildKoya(ctx, m, gm, shrubs) {
 
   /* the back, which is a field: the pole, the tap and the vegetable box that go
    * with a house whose whole plot is 4 x 3 */
-  ctx.add(makeLaundryPole({ x: KOYA.x - 0.4, z: p.z1 + 1.1, y: gA(KOYA.x - 0.4, p.z1 + 1.1), ry: Math.PI / 2, len: 2.2, n: 4, seed: 8928 }));
+  ctx.add(makeLaundryPole({ ctx, x: KOYA.x - 0.4, z: p.z1 + 1.1, y: gA(KOYA.x - 0.4, p.z1 + 1.1), ry: Math.PI / 2, len: 2.2, n: 4, seed: 8928 }));
   ctx.add(makeKitchenGarden({ x: KOYA.x + 1.2, z: p.z1 + 1.0, y: gA(KOYA.x + 1.2, p.z1 + 1.0), ry: 0, w: 1.8, d: 1.0, seed: 8929 }));
   ctx.add(makeTapPost({ x: KOYA.x - 1.5, z: p.z1 + 0.3, y: gA(KOYA.x - 1.5, p.z1 + 0.3), ry: 0 }));
   shrubs.push({ x: p.x0 - 1.1, z: KOYA.z + 1.6, y: Y, r: 0.4, count: 3, spread: 0.95, seed: 8927 });
@@ -441,7 +440,7 @@ function buildNagaya(ctx, m, gm, rng, shrubs, petals) {
   /* the backs: the whole of life that does not fit in a 2.6 m unit goes behind,
    * where there is a field */
   const bz = p.z1 + 0.9;
-  ctx.add(makeLaundryPole({ x: NAGA.x - 3.4, z: bz, y: gA(NAGA.x - 3.4, bz), ry: 0, len: 2.6, n: 5, seed: 8936 }));
+  ctx.add(makeLaundryPole({ ctx, x: NAGA.x - 3.4, z: bz, y: gA(NAGA.x - 3.4, bz), ry: 0, len: 2.6, n: 5, seed: 8936 }));
   ctx.add(makeDryingRack({ x: NAGA.x + 0.4, z: bz - 0.2, y: gA(NAGA.x + 0.4, bz - 0.2), ry: 0, n: 4, seed: 8937 }));
   ctx.add(makeKitchenGarden({ x: NAGA.x + 3.6, z: bz + 0.3, y: gA(NAGA.x + 3.6, bz + 0.3), ry: 0, w: 2.2, d: 1.1, seed: 8938 }));
   {
@@ -482,8 +481,8 @@ function buildBackLand(ctx, m, gm, shrubs) {
     x: -14.4, z: 61.4, w: 5.4, d: 5.0, y: Y, h: 0.05,
     mat: gm.gravel, name: 'uramachiDryYard',
   });
-  ctx.add(makeLaundryPole({ x: -15.6, z: 60.4, y: Y + 0.05, ry: Math.PI / 2, len: 2.6, n: 5, seed: 8951 }));
-  ctx.add(makeLaundryPole({ x: -15.6, z: 62.6, y: Y + 0.05, ry: Math.PI / 2, len: 2.4, n: 4, seed: 8952 }));
+  ctx.add(makeLaundryPole({ ctx, x: -15.6, z: 60.4, y: Y + 0.05, ry: Math.PI / 2, len: 2.6, n: 5, seed: 8951 }));
+  ctx.add(makeLaundryPole({ ctx, x: -15.6, z: 62.6, y: Y + 0.05, ry: Math.PI / 2, len: 2.4, n: 4, seed: 8952 }));
   ctx.add(makeDryingRack({ x: -13.4, z: 61.6, y: Y + 0.05, ry: -Math.PI / 2, n: 4, seed: 8953 }));
   ctx.add(makeTapPost({ x: -16.7, z: 59.9, y: Y + 0.05, ry: Math.PI / 2 }));
   ctx.add(makeBucket({ x: -16.3, z: 60.4, y: Y + 0.05, ry: 0.7, water: true }));

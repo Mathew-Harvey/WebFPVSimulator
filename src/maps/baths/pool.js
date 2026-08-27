@@ -1,5 +1,5 @@
 /*
- * pool.js: empty 50 m basin, depth steps, diving tower, plant hopper.
+ * pool.js: 50 m basin, depth steps, diving tower, plant hopper.
  *
  * The pool is the kiln tube of this map: a flyable well you can see from
  * the mouth. Depth is three slabs. The tower is a three-sided shaft with
@@ -63,8 +63,8 @@ function buildSteps(root, colliders, M) {
   const t = 0.4;
   slab(root, colliders, M.tile, p.shallowX, p.midY, p.z0, p.shallowX + t, p.shallowY, p.z1);
   slab(root, colliders, M.tileDeep, p.midX, p.deepY, p.z0, p.midX + t, p.midY, p.z1);
-  decal(root, colliders, M.orange, p.shallowX, p.shallowY - 0.02, p.z0, p.shallowX + t, p.shallowY + 0.04, p.z1);
-  decal(root, colliders, M.orange, p.midX, p.midY - 0.02, p.z0, p.midX + t, p.midY + 0.04, p.z1);
+  decal(root, colliders, M.lemon, p.shallowX, p.shallowY - 0.02, p.z0, p.shallowX + t, p.shallowY + 0.04, p.z1);
+  decal(root, colliders, M.coral, p.midX, p.midY - 0.02, p.z0, p.midX + t, p.midY + 0.04, p.z1);
 }
 
 function buildCoping(root, colliders, M) {
@@ -96,7 +96,7 @@ function buildTower(root, colliders, platforms, M) {
 
   for (const y of tw.ys) {
     deck(root, colliders, platforms, M.steelDark, tw.boardX, tw.z0 + wall, tw.x1 - wall, tw.z1 - wall, y, tw.thick);
-    decal(root, colliders, M.orange, tw.boardX - 0.04, y + 0.02, tw.z0 + wall + 0.08, tw.boardX + 0.08, y + 0.08, tw.z1 - wall - 0.08);
+    decal(root, colliders, M.lemon, tw.boardX - 0.04, y + 0.02, tw.z0 + wall + 0.08, tw.boardX + 0.08, y + 0.08, tw.z1 - wall - 0.08);
   }
 }
 

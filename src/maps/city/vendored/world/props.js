@@ -37,6 +37,24 @@ function mats() {
   return M;
 }
 
+/** A local member after yaw. skipFit so a post cannot grow into a bay. */
+function yawCollide(ctx, ox, oz, y, ry, lx, lz, hw, hh, top, bot) {
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const px = ox + ca * lx - sa * lz;
+  const pz = oz + sa * lx + ca * lz;
+  ctx.collide(px - hw, pz - hh, px + hw, pz + hh, y + top, y + bot, true);
+}
+
+/** World AABB of a local-x slab after yaw. Height-only so the bay under it stays air. */
+function yawSlab(ctx, ox, oz, y, ry, halfAlong, halfThick, top, bot) {
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const hw = Math.abs(ca) * halfAlong + Math.abs(sa) * halfThick;
+  const hd = Math.abs(sa) * halfAlong + Math.abs(ca) * halfThick;
+  ctx.collide(ox - hw, oz - hd, ox + hw, oz + hd, y + top, y + bot, true);
+}
+
 /*
  * Freestyle strip. Ornaments that closed gaps a quad should fly: planters,
  * crates, buckets, bikes against a wall, cones, laundry, kerb benches,
@@ -542,6 +560,7 @@ export function makePostBox(o = {}) {
 export function makeShrine(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   // Mid-tone grey stone rather than near-white: a pale figure against a pale
   // plinth reads as one blank block from any distance.
   const stone = cel({ color: 0xada7b6, bands: 3, tint: 0x655d80 });
@@ -608,6 +627,24 @@ export function makeShrine(o = {}) {
 
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ca = Math.cos(o.ry ?? 0);
+    const sa = Math.sin(o.ry ?? 0);
+    const put = (lx, lz, hw, hh, top, bot, skip) => {
+      const px = o.x + ca * lx - sa * lz;
+      const pz = o.z + sa * lx + ca * lz;
+      ctx.collide(px - hw, pz - hh, px + hw, pz + hh, y + top, y + bot, skip);
+    };
+    put(0, 0, 0.54, 0.44, 0.48, 0, true);
+    for (const sx of [-0.42, 0.42]) {
+      for (const sz of [-0.3, 0.3]) {
+        put(sx, sz, 0.05, 0.05, 1.26, 0, true);
+      }
+    }
+    put(0, 0, 0.55, 0.48, 1.48, 1.22, true);
+  }
   return g;
 }
 
@@ -701,6 +738,7 @@ export function makeCone(o = {}) {
 export function makeBarrier(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const red = cel({ color: PAL.red, bands: 3, tint: 0x7a4060 });
   const len = o.len ?? 1.6;
   for (const s of [-1, 1]) {
@@ -718,12 +756,29 @@ export function makeBarrier(o = {}) {
   g.add(box(len - 0.1, 0.07, 0.04, m.white, 0, 0.62, 0));
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ca = Math.cos(o.ry ?? 0);
+    const sa = Math.sin(o.ry ?? 0);
+    const put = (lx, lz, hw, hh, top, bot, skip) => {
+      const px = o.x + ca * lx - sa * lz;
+      const pz = o.z + sa * lx + ca * lz;
+      ctx.collide(px - hw, pz - hh, px + hw, pz + hh, y + top, y + bot, skip);
+    };
+    const half = (o.len ?? 1.6) / 2;
+    put(-half, 0, 0.06, 0.06, 1.0, 0, true);
+    put(half, 0, 0.06, 0.06, 1.0, 0, true);
+    put(0, 0, half + 0.04, 0.05, 0.92, 0.80, true);
+    put(0, 0, half, 0.04, 0.68, 0.56, true);
+  }
   return g;
 }
 
 export function makeGuardrail(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const len = o.len ?? 6;
   const n = Math.max(2, Math.round(len / 2.0));
   const parts = [];
@@ -740,6 +795,16 @@ export function makeGuardrail(o = {}) {
   g.add(box(len, 0.05, 0.1, m.metal, 0, 0.72, 0.01));
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    for (let i = 0; i <= n; i++) {
+      const t = -len / 2 + (len / n) * i;
+      yawCollide(ctx, o.x, o.z, y, ry, t, 0, 0.07, 0.07, 0.82, 0);
+    }
+    yawSlab(ctx, o.x, o.z, y, ry, len / 2 + 0.04, 0.06, 0.86, 0.58);
+  }
   return g;
 }
 
@@ -938,6 +1003,7 @@ export function makeBikeRack(o = {}) {
 export function makeNoticeBoard(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const w = o.w ?? 2.2;
   const h = o.h ?? 1.25;
   const y0 = o.y0 ?? 0.85;
@@ -978,6 +1044,16 @@ export function makeNoticeBoard(o = {}) {
 
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    for (const s of [-1, 1]) {
+      yawCollide(ctx, o.x, o.z, y, ry, (s * (w - 0.2)) / 2, 0, 0.07, 0.07, y0 + h + 0.12, 0);
+    }
+    yawSlab(ctx, o.x, o.z, y, ry, w / 2 + 0.06, 0.08, y0 + h + 0.08, y0);
+    yawSlab(ctx, o.x, o.z, y, ry, w / 2 + 0.14, 0.16, y0 + h + 0.22, y0 + h + 0.06);
+  }
   return g;
 }
 
@@ -986,6 +1062,7 @@ export function makeBench(o = {}) {
   if (skipClutter(o)) return strippedGroup();
   const m = mats();
   const g = new THREE.Group();
+  if (o.ctx) g.name = 'openFrame';
   const len = o.len ?? 1.7;
   const slat = cel({ color: o.wood ?? 0xc0a582, bands: 3, tint: 0x6f6790 });
   const leg = o.legMat ?? m.metalDark;
@@ -1010,6 +1087,15 @@ export function makeBench(o = {}) {
   g.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    for (const s of [-1, 1]) {
+      yawCollide(ctx, o.x, o.z, y, ry, (s * (len - 0.3)) / 2, -0.04, 0.06, 0.22, 0.44, 0);
+    }
+    yawSlab(ctx, o.x, o.z, y, ry, len / 2, 0.22, 0.48, 0.40);
+  }
   return g;
 }
 
@@ -1150,6 +1236,7 @@ export function makeLaundryPole(o = {}) {
   const m = mats();
   const rng = rngKit(o.seed ?? 31);
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const len = o.len ?? 2.4;
   const H = o.h ?? 1.75;
   for (const s of [-1, 1]) {
@@ -1176,6 +1263,15 @@ export function makeLaundryPole(o = {}) {
   }
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    for (const s of [-1, 1]) {
+      yawCollide(ctx, o.x, o.z, y, ry, (s * len) / 2, 0, 0.05, 0.05, H, 0);
+    }
+    yawSlab(ctx, o.x, o.z, y, ry, len / 2 + 0.08, 0.04, H + 0.04, H - 0.04);
+  }
   return g;
 }
 
@@ -1847,6 +1943,7 @@ export function makePetBowl(o = {}) {
 export function makePhoneBooth(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const W = o.w ?? 1.0;                  // plan, x
   const D = o.d ?? 1.0;                  // plan, z
   const H = 2.30;                        // head of the glazing
@@ -2080,6 +2177,28 @@ export function makePhoneBooth(o = {}) {
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
   g.userData.top = H + 0.37;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ca = Math.cos(o.ry ?? 0);
+    const sa = Math.sin(o.ry ?? 0);
+    const put = (lx, lz, hw, hh, top, bot, skip) => {
+      const px = o.x + ca * lx - sa * lz;
+      const pz = o.z + sa * lx + ca * lz;
+      ctx.collide(px - hw, pz - hh, px + hw, pz + hh, y + top, y + bot, skip);
+    };
+    put(0, 0, W / 2 + 0.08, D / 2 + 0.08, PLINTH + 0.04, 0, true);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        put(sx * (W / 2 - POST / 2), sz * (D / 2 - POST / 2), 0.06, 0.06, H, PLINTH, true);
+      }
+    }
+    put(0, 0, W / 2 + 0.08, D / 2 + 0.08, H + 0.38, H - 0.04, true);
+    put(0, D / 2 - 0.04, W / 2 - 0.02, 0.05, SILL, PLINTH, true);
+    put(0, -(D / 2 - 0.04), W / 2 - 0.02, 0.05, SILL, PLINTH, true);
+    put(W / 2 - 0.04, 0, 0.05, D / 2 - 0.02, SILL, PLINTH, true);
+    put(-(W / 2 - 0.04), 0, 0.05, D / 2 - 0.02, SILL, PLINTH, true);
+  }
   return g;
 }
 
@@ -2087,6 +2206,7 @@ export function makePhoneBooth(o = {}) {
 export function makeGuideBoard(o = {}) {
   const m = mats();
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const w = o.w ?? 1.5;
   const h = o.h ?? 1.05;
   const y0 = o.y0 ?? 0.95;
@@ -2121,6 +2241,16 @@ export function makeGuideBoard(o = {}) {
   g.add(box(w + 0.06, 0.07, 0.14, frame, 0, y0 - 0.03, 0.07));
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    for (const s of [-1, 1]) {
+      yawCollide(ctx, o.x, o.z, y, ry, s * (w / 2 - 0.12), 0, 0.07, 0.07, y0 + h + 0.12, 0);
+    }
+    yawSlab(ctx, o.x, o.z, y, ry, w / 2 + 0.08, 0.1, y0 + h + 0.08, y0);
+    yawSlab(ctx, o.x, o.z, y, ry, w / 2 + 0.1, 0.16, y0 + h + 0.18, y0 + h + 0.04);
+  }
   return g;
 }
 

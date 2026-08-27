@@ -376,7 +376,10 @@ export function buildWorld(scene, { bake = true } = {}) {
     const g = (FENCE_KIND[w.kind] ?? makeWall)({ ...w, y: groundY(w.z) });
     ctx.add(g);
     const half = w.len / 2;
-    ctx.collide(w.x - 0.2, w.z - half, w.x + 0.2, w.z + half, groundY(w.z) + g.userData.top);
+    const top = w.kind === 'block'
+      ? groundY(w.z) + (w.h ?? 0.72)
+      : groundY(w.z) + g.userData.top;
+    ctx.collide(w.x - 0.2, w.z - half, w.x + 0.2, w.z + half, top);
   }
 
   /* ----- retaining wall on the left where the road climbs past the crossing ----- *
@@ -614,22 +617,21 @@ export function buildWorld(scene, { bake = true } = {}) {
   ctx.add(makeMirror({ x: -3.62, z: 3.72, y: walkY(3.72), ry: 2.5 }));
 
   // shrine tucked under the big tree
-  ctx.add(makeShrine({ x: -5.45, z: 6.7, y: walkY(6.7), ry: 1.15 }));
-  ctx.collide(-6.0, 6.2, -4.9, 7.2, walkY(6.7) + 1.4);
+  ctx.add(makeShrine({ ctx, x: -5.45, z: 6.7, y: walkY(6.7), ry: 1.15 }));
 
   // post box on the shop side
   ctx.add(makePostBox({ x: 3.62, z: 4.55, y: walkY(4.55), ry: -1.4 }));
   ctx.collide(3.3, 4.25, 3.95, 4.85, walkY(4.55) + 1.3);
 
   // cones and a barrier where the kerb is broken up
-  ctx.add(makeBarrier({ x: 2.62, z: 6.2, y: groundY(6.2), ry: 0.06, len: 1.7 }));
+  ctx.add(makeBarrier({ ctx, x: 2.62, z: 6.2, y: groundY(6.2), ry: 0.06, len: 1.7 }));
 
   // The kei truck parks beyond the crossing, on the left-hand kerb.  Close to
   // the camera it masked the railway; from there it instead fills the far side
   // of the tracks with a warm accent and gives the street scale.
   const truck = makeKeiTruck({ x: -2.02, z: -7.4, y: groundY(-7.4), ry: Math.PI / 2 });
   ctx.add(truck);
-  ctx.collide(-3.0, -9.2, -1.05, -5.6, groundY(-7.4) + 1.9);
+  ctx.collide(-3.0, -9.2, -1.05, -5.6, groundY(-7.4) + 1.9, groundY(-7.4) + 0.16, true);
 
   /* Bicycles, planters, crates and the cat used to dress the kerb. They
    * closed the gaps a quad flies. The wall stays: it is a line. */
@@ -640,11 +642,11 @@ export function buildWorld(scene, { bake = true } = {}) {
   ctx.add(makeBins({ x: -4.65, z: 15.0, y: walkY(15.0) - 0.02, ry: -Math.PI / 2 }));
 
   // guardrails
-  ctx.add(makeGuardrail({ x: 4.5, z: 15.4, y: walkY(15.4), ry: Math.PI / 2, len: 4.2 }));
+  ctx.add(makeGuardrail({ ctx, x: 4.5, z: 15.4, y: walkY(15.4), ry: Math.PI / 2, len: 4.2 }));
   /* The run at z = -25 is gone: that is こばと橋 now, and a bridge's parapet is
    * its guardrail.  Two of them side by side on a nine-metre deck read as a
    * fenced-off carriageway rather than as a crossing. */
-  ctx.add(makeGuardrail({ x: centerX(-16.4) - ROAD_HALF - 0.25, z: -16.4, y: groundY(-16.4), ry: Math.PI / 2, len: 6.2 }));
+  ctx.add(makeGuardrail({ ctx, x: centerX(-16.4) - ROAD_HALF - 0.25, z: -16.4, y: groundY(-16.4), ry: Math.PI / 2, len: 6.2 }));
 
   /* The cat, the planters and the kerb bikes are gone. The wall is the line. */
 

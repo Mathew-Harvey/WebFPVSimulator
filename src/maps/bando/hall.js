@@ -220,6 +220,7 @@ function furnishHall(root, colliders, platforms, M, x0, x1, z0, z1, t) {
   deck(root, colliders, platforms, M.mint, -5.4, z1, 5.4, z1 + 3.8, porY, 0.18);
   pipe(root, colliders, M.steelDark, 'y', 0, porY, -5.15, z1 + 3.55, 0.1);
   pipe(root, colliders, M.steelDark, 'y', 0, porY, 5.15, z1 + 3.55, 0.1);
+  slab(root, colliders, M.steel, x0 + t, 8.15, z0 - 0.18, -10.2, 8.95, z0);
 }
 
 function addPool(root, M, x, z, w, d) {

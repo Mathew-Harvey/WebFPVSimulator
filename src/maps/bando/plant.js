@@ -71,7 +71,7 @@ function buildStack(root, colliders, platforms, M) {
   slab(root, colliders, M.stackSun, cx - hi, 0, cz - hi, cx + hi, 0.45, cz + hi);
 
   const walks = [14, 28, 42, 54];
-  const deep = 1.15;
+  const deep = 1.35;
   const rail = 0.11;
   const rh = 0.78;
   for (const y of walks) {

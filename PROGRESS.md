@@ -18561,6 +18561,10 @@ cyclone train, then cuts back south over the mouth. Stack walks
 the hall north wall, proud 0.18 m, points at the preheater without
 filling the 1 m slot between hall and tower.
 
+Round 3: cyclone cardinal walls were full-width squares, so the
+north view read as three pillars. Faces are octagon-narrow now,
+corners fill the facets, rust shells sit 0.10 m proud of the hull.
+
 Verify: `node --check` on the kiln files. Headless shots and hit
 probes follow. `npm run verify` was not run: kiln map, not the plant,
 ABI or WASM build. Check 16 not re-run: no city import was added.

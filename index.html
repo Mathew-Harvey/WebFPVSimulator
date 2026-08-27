@@ -1670,8 +1670,17 @@
         font-size: 15px; line-height: 1.65; text-align: center;
       }
 
-      /* Credits. A racing programme over the live world, not a second
-         landscape. Logos sit in a well; cream type; sakura kickers. */
+      /* Credits. A race programme over the live world, not a second
+         landscape. Sections are ruled like a printed page, the beta roll
+         is a start list with a slot number under each face, and every
+         card that names a person opens that person's channel.
+
+         WHY THE CARD CARRIES THE HOVER AND NOT THE HEADING. credits.js
+         stretches the heading anchor's ::after over the whole card, so
+         the pointer is over a live target anywhere on it. If only the
+         heading lit up, most of that target would look dead. Hover is
+         therefore a card state, and :focus-within is the same state
+         arriving by keyboard. */
       .screen-credits {
         justify-content: flex-start;
         align-items: stretch;
@@ -1692,35 +1701,49 @@
         margin: 10px auto 0;
       }
       .credits-roll {
-        width: min(720px, 94vw);
+        width: min(760px, 94vw);
         margin: 0 auto;
         pointer-events: auto;
       }
       .credits-lede {
-        margin: 10px 0 22px;
+        max-width: 46em;
+        margin: 10px auto 26px;
         color: var(--slate);
         font-size: 15px;
-        line-height: 1.6;
+        line-height: 1.65;
         text-align: center;
       }
-      .credit-block { margin: 0 0 22px; }
+      .credit-block { margin: 0 0 26px; }
+      /* The kicker's rule runs out to the margin and fades there, so a
+         section reads as a band across the page rather than a label
+         floating above a box. */
       .credit-kicker {
+        display: flex;
+        align-items: center;
+        gap: 12px;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.18em;
         text-transform: uppercase;
         color: var(--sakura);
-        margin-bottom: 8px;
+        margin-bottom: 10px;
+      }
+      .credit-kicker::after {
+        content: "";
+        flex: 1 1 auto;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(232, 168, 184, 0.42), rgba(232, 168, 184, 0));
       }
       .credit-block h3 {
-        margin: 0 0 12px;
-        font-size: 15px;
+        margin: 0 0 14px;
+        font-size: 17px;
         font-weight: 600;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.01em;
         text-transform: none;
         color: var(--cream);
       }
       .credit {
+        position: relative;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -1731,6 +1754,92 @@
         border-top: 2px solid rgba(232, 168, 184, 0.28);
         box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.10);
       }
+      /* A person card puts the face and the slot number in a left rail
+         with the copy beside it. A project card keeps its mark across
+         the top, because a wordmark wants the width. */
+      .credit.person {
+        display: grid;
+        grid-template-columns: 64px 1fr;
+        gap: 16px;
+        align-items: start;
+        padding: 16px;
+      }
+      /* The maker card is the one hero on the page, so it takes the
+         brighter edge and the wider rail. */
+      .credit.maker {
+        grid-template-columns: 84px 1fr;
+        padding: 20px;
+        border-top-color: rgba(232, 168, 184, 0.55);
+      }
+      .credit.is-link {
+        transition:
+          transform 0.16s ease,
+          border-top-color 0.16s ease,
+          box-shadow 0.16s ease;
+      }
+      .credit.is-link:hover,
+      .credit.is-link:focus-within {
+        transform: translateY(-2px);
+        border-top-color: var(--sakura);
+        box-shadow:
+          inset 0 0 0 1px rgba(244, 236, 214, 0.20),
+          0 8px 20px rgba(6, 10, 7, 0.55);
+      }
+      .credit.is-link:focus-within {
+        outline: 1px solid var(--sakura);
+        outline-offset: 3px;
+      }
+      .credit.is-link h4 a { color: var(--cream); text-decoration: none; }
+      /* The stretched anchor. Everything it covers is text, so nothing
+         is buried that wanted a click of its own. The ring is on the
+         card above, which is why the anchor drops its own. */
+      .credit.is-link h4 a::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 4px;
+      }
+      .credit.is-link h4 a:focus-visible { outline: none; }
+      .credit-stack {
+        display: grid;
+        justify-items: center;
+        gap: 7px;
+      }
+      .credit-face {
+        display: block;
+        width: 64px;
+        height: 64px;
+        border-radius: 4px;
+        overflow: hidden;
+        background: rgba(12, 18, 14, 0.55);
+        box-shadow: 0 0 0 1px rgba(244, 236, 214, 0.16);
+        transition: box-shadow 0.16s ease;
+      }
+      .credit.maker .credit-face { width: 84px; height: 84px; }
+      .credit-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .credit-face.is-blank {
+        display: grid;
+        place-items: center;
+        box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.45);
+      }
+      .credit-face-mark {
+        color: var(--sakura);
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+      .credit.is-link:hover .credit-face,
+      .credit.is-link:focus-within .credit-face {
+        box-shadow: 0 0 0 1px var(--sakura);
+      }
+      /* The slot number is a start list's: the order they turned up, not
+         a ranking. Amber because it is a reading off the page rather
+         than a piece of chrome. */
+      .credit-slot {
+        font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.14em;
+        color: var(--amber);
+      }
       .credit-row {
         display: grid;
         grid-template-columns: 1fr;
@@ -1738,11 +1847,54 @@
       }
       @media (min-width: 640px) {
         .credit-row.pair { grid-template-columns: 1fr 1fr; }
-        .credit-row.pilots { grid-template-columns: 1fr 1fr; }
       }
-      @media (max-width: 639px) {
-        .credit-row.pilots { grid-template-columns: 1fr; }
+      /* The beta roll is one panel of ruled rows rather than four
+         floating cards, because a start list is a list. Four identical
+         boxes down a page say nothing about what they hold; four rows
+         under one edge say these are the same kind of thing. */
+      .credit-row.pilots {
+        gap: 0;
+        background: rgba(16, 22, 17, 0.72);
+        border-radius: 4px;
+        border-top: 2px solid rgba(232, 168, 184, 0.28);
+        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.10);
+        overflow: hidden;
       }
+      .credit.pilot {
+        margin: 0;
+        padding: 18px 18px 18px 16px;
+        background: none;
+        border-top: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .credit.pilot + .credit.pilot { border-top: 1px solid rgba(244, 236, 214, 0.09); }
+      /* A row's affordance is a bar down its leading edge, not a lift: a
+         row in a list has nowhere to lift to without breaking the rules
+         above and below it. */
+      .credit.pilot::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--sakura);
+        transform: scaleY(0);
+        transform-origin: 50% 0;
+        transition: transform 0.16s ease;
+      }
+      .credit.pilot.is-link:hover,
+      .credit.pilot.is-link:focus-within {
+        transform: none;
+        background: rgba(232, 168, 184, 0.055);
+        border-top-color: rgba(244, 236, 214, 0.09);
+        box-shadow: none;
+      }
+      .credit.pilot.is-link:hover::before,
+      .credit.pilot.is-link:focus-within::before { transform: scaleY(1); }
+      /* The panel clips, so the focus ring has to be drawn inside it. */
+      .credit.pilot.is-link:focus-within { outline-offset: -3px; }
       .credit-logo {
         display: flex;
         align-items: center;
@@ -1761,18 +1913,53 @@
         border-radius: 4px;
         padding: 10px 14px;
         min-height: 0;
+        align-self: flex-start;
       }
       .credit-logo.light img, .credit-logo.light svg { height: 32px; }
+      /* The mark is the card's title, so when the fetch fails the words
+         that replace it have to carry a title's weight. */
       .credit-logo-fallback {
         color: var(--cream);
-        font-size: 14px;
+        font-size: 18px;
         font-weight: 700;
+        letter-spacing: 0.02em;
       }
-      .credit-logo.plate {
-        min-height: 0;
+      .credit-title {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin: 0;
+        font-size: inherit;
+        font-weight: inherit;
+      }
+      .credit.project { gap: 14px; }
+      .credit-title a {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        text-decoration: none;
+        border-radius: 4px;
+      }
+      /* Only for a mark that is a symbol rather than a name. Claude's
+         starburst does not spell anything, so the word sits beside it. */
+      .credit-title-text {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--cream);
+      }
+      .credit-title .credit-logo {
+        opacity: 0.92;
+        transition: opacity 0.16s ease;
+      }
+      .credit-title a:hover .credit-logo,
+      .credit-title a:focus-visible .credit-logo { opacity: 1; }
+      .credit-title a:focus-visible {
+        outline: 1px solid var(--sakura);
+        outline-offset: 4px;
       }
       .maker-mark {
-        font-size: 28px;
+        font-size: 30px;
         font-weight: 800;
         letter-spacing: 0.06em;
         color: var(--cream);
@@ -1780,47 +1967,103 @@
         text-shadow: 2px 2px 0 rgba(20, 28, 20, 0.82);
       }
       .maker-mark .fpv { color: var(--sakura); }
-      .pilot-chip {
-        display: grid;
-        place-items: center;
-        width: 44px;
-        height: 44px;
-        border-radius: 4px;
-        background: rgba(12, 18, 14, 0.55);
-        box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.45);
-        color: var(--sakura);
-        font-size: 13px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-      }
       .credit-copy h4 {
-        margin: 0 0 6px;
-        font-size: 17px;
+        margin: 0 0 7px;
+        font-size: 18px;
         font-weight: 700;
         letter-spacing: 0.02em;
         color: var(--cream);
       }
+      .credit.maker .credit-copy h4 { margin-bottom: 10px; }
       .credit-copy p {
         margin: 0;
         color: var(--slate);
         font-size: 14px;
         line-height: 1.55;
       }
+      /* The ticket. An amber rule down the left because this is the one
+         line on a pilot's card that is a reading out of PROGRESS.md
+         rather than a description of a person. */
+      .credit-copy .credit-ticket {
+        margin-top: 11px;
+        padding-left: 11px;
+        border-left: 1px solid rgba(255, 212, 92, 0.45);
+        font-size: 13px;
+        line-height: 1.5;
+        color: rgba(157, 179, 200, 0.82);
+      }
+      .credit-ticket-label {
+        display: block;
+        margin-bottom: 3px;
+        font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      /* Where the card goes. The play triangle is drawn here rather than
+         fetched, so the line can say video without borrowing anybody's
+         mark to do it. */
+      .credit-handle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--slate);
+        transition: color 0.16s ease;
+      }
+      .credit-handle::before {
+        content: "";
+        width: 0;
+        height: 0;
+        border-left: 8px solid currentColor;
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+      }
+      .credit.is-link:hover .credit-handle,
+      .credit.is-link:focus-within .credit-handle { color: var(--sakura); }
       .credit-copy a, .credits-legal a {
         color: var(--sakura);
         text-decoration: none;
       }
       .credit-copy a:hover, .credits-legal a:hover { color: var(--cream); }
       .credits-legal {
-        margin: 8px 0 6px;
+        margin: 14px 0 6px;
         color: rgba(235, 230, 215, 0.55);
         font-size: 12px;
         line-height: 1.55;
         text-align: center;
       }
+      /* Reduced motion drops the travel, never the state: the lift, the
+         bar and the ring all still say the card is live, they just
+         arrive without moving. */
+      @media (prefers-reduced-motion: reduce) {
+        .credit.is-link,
+        .credit.is-link:hover,
+        .credit.is-link:focus-within {
+          transition: none;
+          transform: none;
+        }
+        .credit.pilot::before { transition: none; }
+      }
+      /* Under about 560 the left rail costs more than the face is worth,
+         so both shrink rather than the copy going to four words a line. */
+      @media (max-width: 560px) {
+        .credit.person {
+          grid-template-columns: 52px 1fr;
+          gap: 12px;
+          padding: 14px;
+        }
+        .credit.maker { grid-template-columns: 64px 1fr; }
+        .credit-face { width: 52px; height: 52px; }
+        .credit.maker .credit-face { width: 64px; height: 64px; }
+        .credit-face-mark { font-size: 15px; }
+        .maker-mark { font-size: 24px; }
+        .credit-copy h4 { font-size: 17px; }
+      }
       .screen-credits .menu-stage {
-        width: min(720px, 94vw);
-        margin: 8px auto 0;
+        width: min(760px, 94vw);
+        margin: 12px auto 0;
         display: block;
       }
       .screen-credits .menu {

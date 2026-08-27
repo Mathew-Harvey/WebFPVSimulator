@@ -85,6 +85,9 @@ export function materials() {
     stackSun: cel({ color: PAL.boneSun, bands: 3, tint: t }),
     silo: cel({ color: PAL.boneSun, bands: 3, tint: t }),
     siloDark: cel({ color: PAL.boneViolet, bands: 3, tint: t }),
+    siloShell: cel({ color: PAL.boneSun, bands: 3, tint: t, side: THREE.DoubleSide }),
+    siloShellDark: cel({ color: PAL.boneViolet, bands: 3, tint: t, side: THREE.DoubleSide }),
+    cyclone: cel({ color: PAL.rust, bands: 3, tint: t, side: THREE.DoubleSide }),
     kiln: cel({ color: PAL.steel, bands: 3, tint: t, side: THREE.DoubleSide }),
     kilnDrum: cel({ color: PAL.kilnShell, bands: 3, tint: t, side: THREE.DoubleSide }),
     glassDark: flat({ color: PAL.glassDark }),
@@ -157,6 +160,51 @@ export function deck(root, colliders, platforms, mat, x0, z0, x1, z1, top, thick
   platforms.push({
     x0: xa, z0: za, x1: xb, z1: zb, top, thick,
   });
+}
+
+/* Axis-aligned pipe. r is the half-width of the box that stands in for
+ * the tube. Graphics equal solid: a drawn pipe is a hit. */
+export function pipe(root, colliders, mat, axis, a0, a1, p, q, r, opts = {}) {
+  const kind = opts.kind || 'pole';
+  if (axis === 'x') {
+    return slab(root, colliders, mat, a0, p - r, q - r, a1, p + r, q + r, { ...opts, kind });
+  }
+  if (axis === 'y') {
+    return slab(root, colliders, mat, p - r, a0, q - r, p + r, a1, q + r, { ...opts, kind });
+  }
+  return slab(root, colliders, mat, p - r, q - r, a0, p + r, q + r, a1, { ...opts, kind });
+}
+
+/* Square fly-through duct along X. Inner clear is `inner`. Floor is a
+ * deck so it is landable. Ends stay open. */
+export function ductX(root, colliders, platforms, mat, x0, x1, y0, zMid, inner, t = 0.26) {
+  const y1 = y0 + inner;
+  const z0 = zMid - inner * 0.5;
+  const z1 = zMid + inner * 0.5;
+  const xa = Math.min(x0, x1);
+  const xb = Math.max(x0, x1);
+  slab(root, colliders, mat, xa, y0 - t, z0, xb, y0, z1);
+  slab(root, colliders, mat, xa, y1, z0, xb, y1 + t, z1);
+  slab(root, colliders, mat, xa, y0, z1, xb, y1, z1 + t);
+  slab(root, colliders, mat, xa, y0, z0 - t, xb, y1, z0);
+  if (platforms) {
+    platforms.push({ x0: xa, z0, x1: xb, z1, top: y0 });
+  }
+}
+
+export function ductZ(root, colliders, platforms, mat, z0, z1, y0, xMid, inner, t = 0.26) {
+  const y1 = y0 + inner;
+  const x0 = xMid - inner * 0.5;
+  const x1 = xMid + inner * 0.5;
+  const za = Math.min(z0, z1);
+  const zb = Math.max(z0, z1);
+  slab(root, colliders, mat, x0, y0 - t, za, x1, y0, zb);
+  slab(root, colliders, mat, x0, y1, za, x1, y1 + t, zb);
+  slab(root, colliders, mat, x1, y0, za, x1 + t, y1, zb);
+  slab(root, colliders, mat, x0 - t, y0, za, x0, y1, zb);
+  if (platforms) {
+    platforms.push({ x0, z0: za, x1, z1: zb, top: y0 });
+  }
 }
 
 export function mergeStatic(root) {

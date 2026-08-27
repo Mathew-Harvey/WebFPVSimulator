@@ -1,10 +1,11 @@
 /*
- * plant.js: stack, kiln, preheater, bins, gantry, hopper.
+ * plant.js: stack, kiln, preheater, cyclones, bins, gantry, hopper.
  *
  * One machine. The stack shaft opens east into the kiln at 8 m. Miss that
  * mouth and the shaft floor is the miss. Gantry portals are AABB holes
- * that match the mesh. Bins are faceted drums with a two-box hull so the
- * 1.4 m split is the gap you see.
+ * that match the mesh. Bins are hollow drums: the 1.4 m split is the gap
+ * you see, the roof hatch is the drop. Cyclones sit on the preheater, not
+ * as a second campus. Yard scatter stays out of this file on purpose.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -23,14 +24,26 @@
  */
 
 import * as THREE from 'three';
-import { L, slab, deck, hit, decal } from './kit.js';
+import { L, slab, deck, hit, decal, pipe, ductX, ductZ } from './kit.js';
 import { PAL } from './palette.js';
 import { flat } from './cel/toon.js';
+
+const CYC = [
+  { cx: -19.5, cz: -27.8 },
+  { cx: -13.0, cz: -27.8 },
+  { cx: -6.5, cz: -27.8 },
+];
+const CYC_R = 1.42;
+const CYC_T = 0.30;
+const DUCT_Y = 8.05;
+const DUCT_IN = 1.55;
 
 export function buildPlant(root, colliders, platforms, M) {
   buildStack(root, colliders, platforms, M);
   buildKiln(root, colliders, platforms, M);
   buildPreheater(root, colliders, platforms, M);
+  buildCyclones(root, colliders, platforms, M);
+  buildSkybridge(root, colliders, platforms, M);
   buildBins(root, colliders, platforms, M);
   buildGantry(root, colliders, platforms, M);
   buildHopper(root, colliders, platforms, M);
@@ -70,12 +83,27 @@ function buildStack(root, colliders, platforms, M) {
   decal(root, colliders, M.inkFlat, cx - 1.1, 0.5, cz - ho - 0.08, cx + 1.1, 3.1, cz - ho);
   decal(root, colliders, M.safety, cx - 0.55, 2.1, cz + ho, cx + 0.55, 5.8, cz + ho + 0.08);
 
-  const walks = [15.85, 31.85, 47.85, 54];
+  const walks = [15.85, 31.85, 42, 47.85, 54];
+  const deep = 1.2;
+  const rail = 0.10;
+  const rh = 0.85;
   for (const y of walks) {
-    deck(root, colliders, platforms, M.steel, cx - 3.4, cz + ho, cx + 3.4, cz + ho + 1.2, y, 0.18);
-    slab(root, colliders, M.steelDark, cx - 3.4, y, cz + ho + 1.12, cx + 3.4, y + 0.85, cz + ho + 1.22);
-    deck(root, colliders, platforms, M.steel, cx - 3.4, cz - ho - 1.2, cx + 3.4, cz - ho, y, 0.18);
-    slab(root, colliders, M.steelDark, cx - 3.4, y, cz - ho - 1.22, cx + 3.4, y + 0.85, cz - ho - 1.12);
+    deck(root, colliders, platforms, M.steel, cx - 3.4, cz + ho, cx + 3.4, cz + ho + deep, y, 0.18);
+    slab(root, colliders, M.steelDark, cx - 3.4, y, cz + ho + deep - rail, cx + 3.4, y + rh, cz + ho + deep);
+    deck(root, colliders, platforms, M.steel, cx - 3.4, cz - ho - deep, cx + 3.4, cz - ho, y, 0.18);
+    slab(root, colliders, M.steelDark, cx - 3.4, y, cz - ho - deep, cx + 3.4, y + rh, cz - ho - deep + rail);
+    deck(root, colliders, platforms, M.steel, cx + ho, cz - 3.4, cx + ho + deep, cz + 3.4, y, 0.18);
+    slab(root, colliders, M.steelDark, cx + ho + deep - rail, y, cz - 3.4, cx + ho + deep, y + rh, cz + 3.4);
+    deck(root, colliders, platforms, M.steel, cx - ho - deep, cz - 3.4, cx - ho, cz + 3.4, y, 0.18);
+    slab(root, colliders, M.steelDark, cx - ho - deep, y, cz - 3.4, cx - ho - deep + rail, y + rh, cz + 3.4);
+  }
+
+  pipe(root, colliders, M.steelDark, 'y', 0, 54.2, cx - 0.42, cz + ho + deep + 0.14, 0.07);
+  pipe(root, colliders, M.steelDark, 'y', 0, 54.2, cx + 0.42, cz + ho + deep + 0.14, 0.07);
+
+  for (const y of [16, 32, 48]) {
+    deck(root, colliders, platforms, M.steelDark, cx - 1.0, cz + hi - 0.42, cx + 1.0, cz + hi, y, 0.12);
+    deck(root, colliders, platforms, M.steelDark, cx - 1.0, cz - hi, cx + 1.0, cz - hi + 0.42, y, 0.12);
   }
 
   const bands = [
@@ -143,6 +171,39 @@ function slottedFace(root, colliders, mat, x0, y0, z0, x1, y1, z1, slots, axis, 
   }
 }
 
+function wallWithHolesX(root, colliders, mat, x0, x1, y0, y1, z0, z1, holes) {
+  const xs = [x0, x1];
+  const ys = [y0, y1];
+  for (const hole of holes) {
+    xs.push(hole.x0, hole.x1);
+    ys.push(hole.y0, hole.y1);
+  }
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  const ux = uniqueSorted(xs);
+  const uy = uniqueSorted(ys);
+  for (let i = 0; i < ux.length - 1; i += 1) {
+    for (let j = 0; j < uy.length - 1; j += 1) {
+      const xa = ux[i];
+      const xb = ux[i + 1];
+      const ya = uy[j];
+      const yb = uy[j + 1];
+      if (xb - xa < 0.04 || yb - ya < 0.04) {
+        continue;
+      }
+      const mx = (xa + xb) * 0.5;
+      const my = (ya + yb) * 0.5;
+      if (mx < x0 || mx > x1 || my < y0 || my > y1) {
+        continue;
+      }
+      if (holes.some((h) => mx > h.x0 && mx < h.x1 && my > h.y0 && my < h.y1)) {
+        continue;
+      }
+      slab(root, colliders, mat, xa, ya, z0, xb, yb, z1);
+    }
+  }
+}
+
 function buildKiln(root, colliders, platforms, M) {
   const inner = L.kiln.inner;
   const wall = L.kiln.wall;
@@ -155,9 +216,14 @@ function buildKiln(root, colliders, platforms, M) {
 
   slab(root, colliders, M.kiln, x0, y0 - wall, -hi, x1, y0, hi);
   slab(root, colliders, M.kiln, x0, y1, -hi, x1, y1 + wall, hi);
-  slab(root, colliders, M.kiln, x0, y0, hi, x1, y1, ho);
-  slab(root, colliders, M.kiln, x0, y0, -ho, x1, y1, -hi);
   platforms.push({ x0, z0: -hi, x1, z1: hi, top: y0, thick: wall });
+
+  const hatches = [
+    { x0: -20.7, x1: -19.2, y0: 9.05, y1: 10.65 },
+    { x0: 3.2, x1: 4.7, y0: 9.05, y1: 10.65 },
+  ];
+  wallWithHolesX(root, colliders, M.kiln, x0, x1, y0, y1, hi, ho, hatches);
+  wallWithHolesX(root, colliders, M.kiln, x0, x1, y0, y1, -ho, -hi, [hatches[0]]);
 
   /* East mouth is the bore, not a framed window. A sill and a 2.2 m
    * choke were a crash you could not see from inside the tube. */
@@ -170,6 +236,8 @@ function buildKiln(root, colliders, platforms, M) {
     }
     slab(root, colliders, M.bone, x - 0.55, 0, ho + 0.15, x + 0.55, y0 - wall, ho + 1.15);
     slab(root, colliders, M.bone, x - 0.55, 0, -ho - 1.15, x + 0.55, y0 - wall, -ho - 0.15);
+    slab(root, colliders, M.rust, x - 0.7, 7.32, ho + 0.08, x + 0.7, 7.92, ho + 0.62);
+    slab(root, colliders, M.rust, x - 0.7, 7.32, -ho - 0.62, x + 0.7, 7.92, -ho - 0.08);
   }
 
   const drum = new THREE.Mesh(
@@ -203,6 +271,8 @@ function buildKiln(root, colliders, platforms, M) {
   }
 
   decal(root, colliders, M.rust, x0 + 0.4, y0, -0.45, x1 - 0.2, y0 + 0.08, 0.45);
+  decal(root, colliders, M.safety, -20.75, 9.0, ho, -19.15, 9.12, ho + 0.06);
+  decal(root, colliders, M.safety, 3.15, 9.0, ho, 4.75, 9.12, ho + 0.06);
 
   const lip = x1 + wall;
   slab(root, colliders, M.steel, lip, y0 - 0.28, -ho, lip + 0.42, y1 + 0.28, -hi);
@@ -237,7 +307,10 @@ function buildPreheater(root, colliders, platforms, M) {
     { z0: -18.4, z1: -15.2, y0: 18.2, y1: 21.4 },
     { z0: -13.6, z1: -10.6, y0: 30.2, y1: 33.4 },
   ]);
-  slab(root, colliders, M.boneViolet, x0, 0, z0, x1, h, z0 + t);
+  const ductHalf = DUCT_IN * 0.5;
+  wallWithHolesX(root, colliders, M.boneViolet, x0, x1, 0, h, z0, z0 + t, [
+    { x0: CYC[1].cx - ductHalf, x1: CYC[1].cx + ductHalf, y0: DUCT_Y, y1: DUCT_Y + DUCT_IN },
+  ]);
 
   let yCursor = 0;
   const southOpen = 3.4;
@@ -277,8 +350,8 @@ function buildPreheater(root, colliders, platforms, M) {
     });
   }
 
-  pipe(root, colliders, M, -9.72, -20.2, 3.2, 36.4);
-  pipe(root, colliders, M, -9.72, -14.4, 8.0, 28.6);
+  riser(root, colliders, M, -9.72, -20.2, 3.2, 36.4);
+  riser(root, colliders, M, -9.72, -14.4, 8.0, 28.6);
   slab(root, colliders, M.steelDark, -43.7, 27.85, -16.25, -22.05, 28.25, -15.95, { kind: 'pole' });
 }
 
@@ -304,28 +377,163 @@ function roofRect(root, colliders, platforms, mat, x0, z0, x1, z1, top, hx0, hz0
   }
 }
 
+function buildCyclones(root, colliders, platforms, M) {
+  const yBody0 = 2.7;
+  const yBody1 = 9.9;
+  const half = CYC_R;
+  const t = CYC_T;
+  const ductZ0 = DUCT_Y;
+  const ductZ1 = DUCT_Y + DUCT_IN;
+  const hole = DUCT_IN * 0.5;
+  const card = CYC_R * 0.74;
+
+  for (let i = 0; i < CYC.length; i += 1) {
+    const { cx, cz } = CYC[i];
+    const east = { z0: cz - hole, z1: cz + hole, y0: ductZ0, y1: ductZ1 };
+    const west = { z0: cz - hole, z1: cz + hole, y0: ductZ0, y1: ductZ1 };
+    const south = i === 1
+      ? { x0: cx - hole, x1: cx + hole, y0: ductZ0, y1: ductZ1 }
+      : { x0: cx - 0.7, x1: cx + 0.7, y0: 3.05, y1: 4.65 };
+
+    slab(root, colliders, M.boneViolet, cx - card, yBody0, cz - half, cx + card, yBody1, cz - half + t);
+    wallWithHolesX(root, colliders, M.boneViolet, cx - card, cx + card, yBody0, yBody1, cz + half - t, cz + half, [
+      { x0: south.x0, x1: south.x1, y0: south.y0, y1: south.y1 },
+    ]);
+    hatchWall(root, colliders, M.boneViolet, cx + half - t, yBody0, cz - card, cx + half, yBody1, cz + card, [
+      { z0: east.z0, z1: east.z1, y0: east.y0, y1: east.y1 },
+    ]);
+    hatchWall(root, colliders, M.boneViolet, cx - half, yBody0, cz - card, cx - half + t, yBody1, cz + card, [
+      { z0: west.z0, z1: west.z1, y0: west.y0, y1: west.y1 },
+    ]);
+    const d = CYC_R * 0.62;
+    const s = 0.42;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        slab(
+          root, colliders, M.boneViolet,
+          cx + sx * d - s * 0.5, yBody0, cz + sz * d - s * 0.5,
+          cx + sx * d + s * 0.5, yBody1, cz + sz * d + s * 0.5,
+        );
+      }
+    }
+
+    slab(root, colliders, M.rust, cx - 0.45, 0.2, cz - 0.45, cx + 0.45, 1.15, cz + 0.45);
+    slab(root, colliders, M.rust, cx - 0.85, 1.15, cz - 0.85, cx + 0.85, 1.95, cz + 0.85);
+    slab(root, colliders, M.rust, cx - 1.2, 1.95, cz - 1.2, cx + 1.2, yBody0, cz + 1.2);
+
+    const bodyH = yBody1 - yBody0;
+    const shell = new THREE.Mesh(
+      new THREE.CylinderGeometry(CYC_R + 0.10, CYC_R * 0.98, bodyH, 8, 1, true),
+      M.cyclone,
+    );
+    shell.position.set(cx, yBody0 + bodyH * 0.5, cz);
+    shell.castShadow = true;
+    shell.receiveShadow = true;
+    shell.userData.noMerge = true;
+    root.add(shell);
+    const cone = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.38, 1.32, 2.4, 8),
+      M.cyclone,
+    );
+    cone.position.set(cx, 1.5, cz);
+    cone.castShadow = true;
+    cone.userData.noMerge = true;
+    root.add(cone);
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(CYC_R + 0.1, CYC_R + 0.1, 0.42, 8, 1, true),
+      M.bandRed,
+    );
+    band.position.set(cx, 7.2, cz);
+    band.castShadow = false;
+    band.userData.noMerge = true;
+    root.add(band);
+  }
+
+  const r = CYC_R;
+  ductX(root, colliders, platforms, M.steel, CYC[0].cx + r, CYC[1].cx - r, DUCT_Y, CYC[0].cz, DUCT_IN);
+  ductX(root, colliders, platforms, M.steel, CYC[1].cx + r, CYC[2].cx - r, DUCT_Y, CYC[0].cz, DUCT_IN);
+  ductZ(root, colliders, platforms, M.steel, CYC[1].cz + r, L.pre.z0, DUCT_Y, CYC[1].cx, DUCT_IN);
+}
+
+function buildSkybridge(root, colliders, platforms, M) {
+  const y = 42;
+  const w = 1.22;
+  const zA = -15.55;
+  const zB = zA + w;
+  const xE = -22.0;
+  const xW = L.stack.cx + L.stack.inner * 0.5 + L.stack.wall + 1.2;
+  deck(root, colliders, platforms, M.steel, xW, zA, xE, zB, y, 0.18);
+  slab(root, colliders, M.steelDark, xW, y, zA, xE, y + 0.74, zA + 0.1);
+  slab(root, colliders, M.steelDark, xW, y, zB - 0.1, xE, y + 0.74, zB);
+  deck(root, colliders, platforms, M.steel, xW, zA, xW + w, 2.25, y, 0.18);
+  slab(root, colliders, M.steelDark, xW, y, zA, xW + 0.1, y + 0.74, 2.25);
+  slab(root, colliders, M.steelDark, xW + w - 0.1, y, zA, xW + w, y + 0.74, 2.25);
+  const posts = [
+    [xE - 0.45, -14.94],
+    [-32.4, -14.94],
+    [xW + 0.6, -14.94],
+    [xW + 0.6, -6.2],
+    [xW + 0.6, 0.4],
+  ];
+  for (const [px, pz] of posts) {
+    pipe(root, colliders, M.steelDark, 'y', 16, y, px, pz, 0.11);
+  }
+}
+
 function buildBins(root, colliders, platforms, M) {
   const { cx, zs, w, hs } = L.bins;
+  const R = w * 0.5;
+  const t = 0.36;
+  const hatch = 1.8;
   for (let i = 0; i < zs.length; i += 1) {
     const cz = zs[i];
     const h = hs[i];
-    const R = w * 0.5;
-    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.96, h, 8), i === 1 ? M.siloDark : M.silo);
+    const mat = i === 1 ? M.siloShellDark : M.siloShell;
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.03, R * 0.97, h, 8, 1, true), mat);
     cyl.position.set(cx, h * 0.5, cz);
     cyl.castShadow = true;
     cyl.receiveShadow = true;
+    cyl.userData.noMerge = true;
     root.add(cyl);
-    const halfA = R * 0.92;
-    const halfB = Math.sqrt(R * R - halfA * halfA);
-    const halfS = R * 0.70;
-    hit(colliders, cx - halfA, 0, cz - halfB, cx + halfA, h, cz + halfB);
-    hit(colliders, cx - halfB, 0, cz - halfA, cx + halfB, h, cz + halfA);
-    hit(colliders, cx - halfS, 0, cz - halfS, cx + halfS, h, cz + halfS);
-    deck(root, colliders, platforms, M.boneSun, cx - 2.5, cz - 2.5, cx + 2.5, cz + 2.5, h);
-    decal(root, colliders, M.rust, cx - 2.6, h, cz - 2.6, cx + 2.6, h + 0.08, cz + 2.6);
-    slab(root, colliders, M.ochre, cx - 2.2, 0, cz + R - 0.2, cx + 0.4, 1.5, cz + R + 1.4, {
-      kind: 'obstacle',
-    });
+
+    const half = R;
+    const face = 1.48 * R * 0.5;
+    const groundDoor = { z0: cz - 0.75, z1: cz + 0.75, y0: 0.4, y1: 2.35 };
+    const galleryDoor = h > 16.5
+      ? { z0: cz - 0.7, z1: cz + 0.7, y0: 15.25, y1: 17.05 }
+      : null;
+    const eastHoles = [groundDoor];
+    if (galleryDoor) {
+      eastHoles.push(galleryDoor);
+    }
+
+    slab(root, colliders, M.silo, cx - face, 0.02, cz + half - t, cx + face, h, cz + half);
+    slab(root, colliders, M.silo, cx - face, 0.02, cz - half, cx + face, h, cz - half + t);
+    slab(root, colliders, M.silo, cx - half, 0.02, cz - face, cx - half + t, h, cz + face);
+    hatchWall(root, colliders, M.silo, cx + half - t, 0.02, cz - face, cx + half, h, cz + face, eastHoles);
+
+    const d = R * 0.64;
+    const s = 0.42;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        slab(
+          root, colliders, M.silo,
+          cx + sx * d - s * 0.5, 0.02, cz + sz * d - s * 0.5,
+          cx + sx * d + s * 0.5, h, cz + sz * d + s * 0.5,
+        );
+      }
+    }
+
+    slab(root, colliders, M.bone, cx - R + t + 0.05, 0, cz - R + t + 0.05, cx + R - t - 0.05, 0.38, cz + R - t - 0.05);
+    pipe(root, colliders, M.steelDark, 'y', 0.38, h - 0.4, cx, cz, 0.22);
+
+    const hh = hatch * 0.5;
+    roofRect(
+      root, colliders, platforms, M.boneSun,
+      cx - 2.55, cz - 2.55, cx + 2.55, cz + 2.55, h,
+      cx + 0.55, cz - hh, cx + 0.55 + hatch, cz + hh,
+    );
+
     if (i !== 1) {
       const band = new THREE.Mesh(
         new THREE.CylinderGeometry(R + 0.08, R + 0.08, 0.55, 8, 1, true),
@@ -336,15 +544,20 @@ function buildBins(root, colliders, platforms, M) {
       band.userData.noMerge = true;
       root.add(band);
     }
+    if (h > 16.5) {
+      pipe(root, colliders, M.steel, 'y', 16, h + 0.15, 42.85, cz, 0.16);
+    }
+    slab(root, colliders, M.ochre, cx - 2.2, 0, cz + R - 0.2, cx + 0.4, 1.5, cz + R + 1.4, {
+      kind: 'obstacle',
+    });
     binLadder(root, colliders, M, cx, cz, R, h);
     binDigit(root, i + 1, cx, cz, R, h * 0.55);
   }
-  deck(root, colliders, platforms, M.steel, 41.75, -5.05, 43.55, 5.05, 16, 0.2);
 }
 
 function binLadder(root, colliders, M, cx, cz, R, h) {
-  const x0 = cx - R - 0.32;
-  const x1 = cx - R + 0.05;
+  const x0 = cx - R - 0.40;
+  const x1 = cx - R - 0.08;
   slab(root, colliders, M.steelDark, x0, 0, cz - 0.22, x0 + 0.08, h - 0.4, cz + 0.22, { kind: 'pole' });
   slab(root, colliders, M.steelDark, x1 - 0.08, 0, cz - 0.22, x1, h - 0.4, cz + 0.22, { kind: 'pole' });
   for (let y = 0.4; y < h - 0.6; y += 0.5) {
@@ -396,12 +609,36 @@ function binDigit(root, n, cx, cz, R, y) {
 }
 
 function buildGantry(root, colliders, platforms, M) {
+  const rt = 0.10;
+  const rh = 0.82;
+  const gx0 = 41.7;
+  const gx1 = 43.05;
   for (const g of [L.gantry, L.gantrySouth]) {
     deck(root, colliders, platforms, M.steel, g.x0, g.z0, g.x1, g.z1, g.y, 0.22);
     for (const x of [30.2, 34.4, 38.4]) {
       hoop(root, colliders, M.steelDark, x, g.y, g.z0, g.y + 2.2, g.z1);
     }
+    slab(root, colliders, M.steelDark, g.x0, g.y, g.z0, g.x1, g.y + rh, g.z0 + rt);
+    slab(root, colliders, M.steelDark, g.x0, g.y, g.z1 - rt, g.x1, g.y + rh, g.z1);
+    decal(root, colliders, M.safety, g.x0 + 0.4, g.y + 0.01, g.z0 + 0.12, g.x1 - 0.4, g.y + 0.05, g.z0 + 0.28);
+    decal(root, colliders, M.safety, g.x0 + 0.4, g.y + 0.01, g.z1 - 0.28, g.x1 - 0.4, g.y + 0.05, g.z1 - 0.12);
+    deck(root, colliders, platforms, M.steel, g.x1, g.z0, gx0, g.z1, g.y, 0.22);
+    slab(root, colliders, M.steelDark, g.x1, g.y, g.z0, gx0, g.y + rh, g.z0 + rt);
+    slab(root, colliders, M.steelDark, g.x1, g.y, g.z1 - rt, gx0, g.y + rh, g.z1);
+    hoop(root, colliders, M.steelDark, 42.35, g.y, g.z0, g.y + 2.2, g.z1);
   }
+
+  const gy = L.gantry.y;
+  deck(root, colliders, platforms, M.steel, gx0, -10.2, gx1, 10.2, gy, 0.22);
+  const westGaps = [
+    { z0: L.gantrySouth.z0, z1: L.gantrySouth.z1, y0: gy, y1: gy + rh },
+    { z0: L.gantry.z0, z1: L.gantry.z1, y0: gy, y1: gy + rh },
+  ];
+  hatchWall(root, colliders, M.steelDark, gx0, gy, -10.2, gx0 + rt, gy + rh, 10.2, westGaps);
+  slab(root, colliders, M.steelDark, gx1 - rt, gy, -10.2, gx1, gy + rh, 10.2);
+  pipe(root, colliders, M.steelDark, 'y', 1.15, gy, 43.72, 10.0, 0.12);
+  pipe(root, colliders, M.steelDark, 'y', 1.15, gy, 43.72, -10.0, 0.12);
+  pipe(root, colliders, M.steelDark, 'y', 1.15, gy, 43.72, 0.0, 0.12);
 }
 
 function hoop(root, colliders, mat, x, y0, z0, y1, z1) {
@@ -440,10 +677,16 @@ function buildHopper(root, colliders, platforms, M) {
   decal(root, colliders, M.rust, h.x0, lip - 0.1, h.z0 - 0.05, h.x1, lip + 0.05, h.z0 + 0.5);
   decal(root, colliders, M.rust, h.x0, lip - 0.1, h.z1 - 0.5, h.x1, lip + 0.05, h.z1 + 0.05);
   decal(root, colliders, M.rust, h.x1 - 0.5, lip - 0.1, h.z0, h.x1 + 0.05, lip + 0.05, h.z1);
+  decal(root, colliders, M.safety, h.x0 + 0.5, lip + 0.01, h.z1 - 0.42, h.x1 - 0.5, lip + 0.05, h.z1 - 0.08);
 
   slab(root, colliders, M.rust, h.x0 - 3.2, 0.15, -0.9, h.x0 + 0.05, 1.35, -0.55);
   slab(root, colliders, M.rust, h.x0 - 3.2, 0.15, 0.55, h.x0 + 0.05, 1.35, 0.9);
   slab(root, colliders, M.rust, h.x0 - 3.2, 0.15, -0.9, h.x0 - 2.85, 1.35, 0.9);
+
+  deck(root, colliders, platforms, M.steel, h.x0 + 0.5, 9.15, h.x1 - 0.5, 11.35, -3.15, 0.18);
+  slab(root, colliders, M.steelDark, h.x0 + 0.5, -3.15, 11.25, h.x0 + 2.1, 1.15, 11.55);
+  slab(root, colliders, M.steelDark, h.x0 + 0.5, -1.1, 10.55, h.x0 + 2.1, -0.55, 11.25);
+  slab(root, colliders, M.steelDark, h.x0 + 0.5, 0.05, 9.85, h.x0 + 2.1, 0.55, 10.55);
 }
 
 function buildDock(root, colliders, platforms, M) {
@@ -494,6 +737,9 @@ function hatchWall(root, colliders, mat, x0, y0, z0, x1, y1, z1, holes) {
       }
       const mz = (za + zb) * 0.5;
       const my = (ya + yb) * 0.5;
+      if (mz < z0 || mz > z1 || my < y0 || my > y1) {
+        continue;
+      }
       if (holes.some((hole) => mz > hole.z0 && mz < hole.z1 && my > hole.y0 && my < hole.y1)) {
         continue;
       }
@@ -512,7 +758,7 @@ function uniqueSorted(arr) {
   return out;
 }
 
-function pipe(root, colliders, M, x, z, y0, y1) {
+function riser(root, colliders, M, x, z, y0, y1) {
   const r = 0.22;
   const cyl = new THREE.Mesh(new THREE.CylinderGeometry(r, r, y1 - y0, 6), M.steelDark);
   cyl.position.set(x, (y0 + y1) * 0.5, z);

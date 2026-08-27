@@ -170,6 +170,26 @@ const CELL = 8;
 const GRID_HALF = 512;
 const GRID_SPAN = GRID_HALF * 2;
 
+/*
+ * Fold a cell index into the range the packing above can address.
+ *
+ * build() keys a cell as (cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF), so
+ * no collider was ever registered outside +/-GRID_HALF and a query there can
+ * only miss. Clamping rather than skipping keeps the walk one shape, and it
+ * bounds the walk by the GRID instead of by how far from the origin the
+ * craft happens to be: a query 1e12 m out asks about one edge cell and gets
+ * the same answer, where the unclamped walk asked about 1e11 of them.
+ */
+function clampCell(c) {
+  if (c < -GRID_HALF) {
+    return -GRID_HALF;
+  }
+  if (c > GRID_HALF - 1) {
+    return GRID_HALF - 1;
+  }
+  return c;
+}
+
 function clamp01(v) {
   if (v < 0) {
     return 0;
@@ -1050,13 +1070,29 @@ export class Colliders {
     if (!this.built) {
       return -1;
     }
+    /*
+     * A query that is not a number cannot touch anything, and asking costs
+     * the tab. Math.floor(Infinity / CELL) is Infinity, and `cx += 1` never
+     * advances past it, so the cell walk below would spin forever with the
+     * main thread in it: the page stops responding and the browser offers
+     * to kill it. That is not a hypothetical. A quad handed an unbounded
+     * impulse reaches 1e266 in six 1 ms steps and NaN in seven, so the
+     * frame that catches it is holding either the infinity or the number
+     * just short of it. Both are answered here.
+     */
+    if (
+      !Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)
+      || !Number.isFinite(qx) || !Number.isFinite(qy) || !Number.isFinite(qz)
+    ) {
+      return -1;
+    }
     this.queryId += 1;
     const id = this.queryId;
     const pad = CRAFT_WORLD_R + this.maxR;
-    const cx0 = Math.floor((Math.min(px, qx) - pad) / CELL);
-    const cx1 = Math.floor((Math.max(px, qx) + pad) / CELL);
-    const cz0 = Math.floor((Math.min(pz, qz) - pad) / CELL);
-    const cz1 = Math.floor((Math.max(pz, qz) + pad) / CELL);
+    const cx0 = clampCell(Math.floor((Math.min(px, qx) - pad) / CELL));
+    const cx1 = clampCell(Math.floor((Math.max(px, qx) + pad) / CELL));
+    const cz0 = clampCell(Math.floor((Math.min(pz, qz) - pad) / CELL));
+    const cz1 = clampCell(Math.floor((Math.max(pz, qz) + pad) / CELL));
     let candidates = 0;
 
     /* The travel segment, as d1 = q - p. */
@@ -1523,6 +1559,22 @@ export const PROP_PLANE_MAX_UP_DOT = 0.5;
 export const BOUNCE_SPEED_MAX = 18.0;
 export const BOUNCE_COOLDOWN_MS = 180;
 export const BOUNCE_SEPARATION = 0.008;
+
+/*
+ * The fastest a SOLID SURFACE may be moving, in m/s, before the shell stops
+ * calling it a speed.
+ *
+ * A moving box's surface velocity is differenced from its two centres, so it
+ * is only a velocity while those centres are one frame of travel apart. A
+ * collider that jumps instead, and the city's train does exactly that once a
+ * lap when its wrapped coordinate folds, reports a number with the units of
+ * a velocity and none of the meaning: 60 km/s, straight into the impulse
+ * solver, which cheerfully launches the quad out of the world at 25 km/s and
+ * into a plant divergence. The city's train is 23.5 m/s and it is the only
+ * thing in either world that moves at all, so this is not a tuning knob: it
+ * is the line between a train and a teleport.
+ */
+export const SURFACE_SPEED_MAX = 60.0;
 
 /* Perch: freeze only when the hull is settled enough that a takeoff from
  * leftover bounce would be a lie. */

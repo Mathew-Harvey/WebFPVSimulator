@@ -19886,3 +19886,134 @@ exit 1 is the known CDN `ERR_CONNECTION_REFUSED`.
 Geometry still captured.
 
 
+
+---
+
+### 2026-08-27 | city | The train's wrap was a 60 km/s teleport
+
+Reported: in the city, when the train hits you, the
+browser crashes. Reproduced in headless Chromium against
+the real shell, and it is not the ordinary hit.
+
+WHAT HAPPENS. `setMovingCentre` keeps the previous centre
+because the collision query is solved in the box's own
+frame: the pair of centres IS one frame of travel, for
+the sweep AND for the surface velocity the impulse reads.
+animation.js fed it `state.offset`, which is a WRAPPED
+coordinate. Once a lap, 39.47 s in and every 42.78 s
+after, the fold steps that offset by a whole
+circumference while the train has actually moved 0.39 m.
+That one call turns into a 1005.31 m box sweeping the
+length of the town in a single frame, and a surface
+velocity of 59,110 m/s handed to sim_contact.
+
+Measured, Node against dist/sim.wasm at 60 Hz with the
+city's own car extents: the quad leaves at 25,490 m/s,
+and the next frame's 16 steps take the plant through
+9.2e11, 2.7e36, 6.3e133, -1.1e266 and then NaN, in six
+steps. Nothing catches it. Every comparison against NaN
+is false, so the clip watch, the ground sweep and the
+bounce loop all agree there is nothing wrong. Live in
+Chromium the shell sat there with `worldX` null, no
+banner and no reset, for as long as the page was open.
+On a display fast enough that the frame boundary lands
+before the seventh step the state is FINITE and about
+1e36 instead, and then hit() walks 1.25e35 broadphase
+cells with `cx += 1` a no-op at that magnitude, which
+is the main thread gone for good.
+
+So both halves of the report are real: it is the train,
+and the page does die. What a pilot sees is the train
+hitting them from nowhere, because at |offset| near 500
+the drawn set is past VISIBLE_RANGE and not drawn at all.
+
+THREE FIXES, at three different seams.
+
+1. src/maps/city/animation.js. A wrap is not motion, it
+   is the same train re-entering the flat map at the
+   other end, and there is no continuous path between
+   the two. The centres may only be MOVED by the
+   distance the train actually covered since the last
+   update; anything else SEATS, which is a teleport with
+   no sweep and no surface velocity. Swept 3 laps at
+   4, 16, 17, 100 and 250 ms steps: exactly 3 seats
+   (one per wrap) at every rate, worst continuous frame
+   error 4.4e-13 m against a TELEPORT_EPS of 1e-6 and a
+   wrap of 1005.31 m. Nine orders of margin either side.
+   The same rule catches the two other clock breaks this
+   turn exposed: boomExtentDown seeks to step 14125 and
+   back, and `updateAnim` is called with titleStepMs on
+   the title screen and simTimeMs in flight, so the
+   title-to-flight swap and every reset() (which zeroes
+   simTimeMs) also teleported the collider. Measured on
+   the old code: a __placeCraft straight from the title
+   jumped the cars 25.4 m in one frame and reported a
+   115 m/s closing speed off a 23.5 m/s train.
+
+2. src/game/collide.js, hit(). A query that is not
+   finite returns -1, and the broadphase cell walk is
+   clamped to the grid's own +/-GRID_HALF. build() keys
+   a cell as (cx + GRID_HALF) * GRID_SPAN + (cz +
+   GRID_HALF), so nothing was ever registered outside
+   that and a query there can only miss. This bounds the
+   walk by the GRID rather than by how far from the
+   origin the craft happens to be. It is defence, not
+   the fix: with 1 in place nothing should reach it.
+
+3. src/main.js, where the surface velocity is
+   differenced off the two centres. A collider that
+   jumped has no surface velocity and the difference
+   does not know that. Past SURFACE_SPEED_MAX (60 m/s,
+   against a 23.5 m/s train, the only thing in either
+   world that moves) it is zero, not clamped: a teleport
+   is not slow motion, it is no motion.
+
+FOUND AND NOT FIXED, written down rather than done:
+
+- A craft inside a car takes a FULL contact impulse on
+  each of the 4 bounce attempts. The moving-box branch
+  of hit() never writes hitPen, so `buried` is never
+  true and applySeparate never runs; contactSeparation
+  then moves the craft 8 mm off a contact point that is
+  interpolated along the craft's ABSOLUTE travel at a
+  parameter solved in the box's RELATIVE frame, which
+  does not leave a 20 m box. Measured: a 23.5 m/s train
+  leaves the quad at ~115 m/s in one frame, and the clip
+  watch calls it Crashed the frame after, so it is a
+  wrong-feeling hit rather than a dead page. Giving the
+  moving branch the static branch's nearest-face hitPen
+  is the fix and it changes contact response, so it is
+  the advisor's call, not this turn's.
+- The train is solid past VISIBLE_RANGE. Beyond 200 m of
+  offset the drawn set is hidden and the three boxes are
+  not, so a pilot 300 m down the rail is hit by nothing
+  visible. The old comment claimed a car that is not on
+  screen is not in the town either; it is on the rail,
+  and the rail is authored the whole way round.
+
+Checks. `npm run verify` WAS run, both with the change
+and, stashed, without it: 13 of 16 both times, and the
+three failures are byte-identical in the two runs.
+1 build-clean is emcc not installed in this container
+(the betaflight submodule is not checked out either,
+which is also why lint:catalog cannot run). 15
+world-scale and 16 map-isolation are recorded numbers
+this container's rasteriser does not reproduce. None of
+the three can see collide.js, animation.js or the bounce
+loop, and none of them moved.
+
+Also run: contact-selftest all passed (this is the file
+that exercises sim_contact, the seam fix 3 sits on),
+lint:fc 30 of 30, lint:presets 3 of 3, ghost, replay and
+link selftests all passed.
+
+Live, headless Chromium, city, quad hovering at
+(-300, 2.6, 0) across the wrap. Before: trainOffset
+501.2 then -499, kind train, worldX/Y/Z null from then
+on. After: 501.2 then -499, kind NONE, worldX -300 and
+the quad flies on. Ordinary train hit, quad dropped 45 m
+ahead of the set: banner Crashed, kind train, then reset
+to the spawn with the takeoff prompt, unchanged. Boom
+collider still 1.045 to 1.325 at step 14125, 3 solid
+cars, console clean apart from the known CDN
+ERR_CONNECTION_REFUSED.

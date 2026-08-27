@@ -18583,4 +18583,121 @@ Verify: syntax of the new modules was not node-checked here (node not
 on PATH). `npm run verify` was not run: commit request, no ABI shape
 change beyond the turtle latch already in sim.c comments.
 
+### 2026-08-27 | map | The Kiln, plant kit, not yard clutter
+
+Asked: keep going from a design and FPV freestyle view until the kiln
+is a map you would be proud to see in a game like Borderlands. Then
+implement every finding. Loop. Do not stop at good enough. Follow-up:
+do not clutter the map again, and do not change the sakura city's
+vibe.
+
+The city was not opened. No file under `src/maps/city` moved. The kiln
+still copies its cel kit. Palette, fog and grade on the city are
+untouched.
+
+Round 1 (source, before this build): the plant was a silhouette.
+Stack, mint barn, three drums, a pit. That is the 50 m read. Borderlands
+and a Velocidrone bando both need the 20 m read, the ducts and
+catwalks that make the machine one thing, and they both die if the
+yard fills with barrels. The ochre apron staying empty is the point.
+The missing kit was on the plant, not in the dirt.
+
+Acted, all of it on the machine:
+
+- Stack wrap: catwalks on four faces at 14 / 28 / 42 / 54 m, outer
+  rails, two ladder posts on the south, inner ledges at the 16 / 32 /
+  48 m slots so a punch-out has a lip.
+- Kiln: two south hatches and one north through-window, rollers on
+  the piers, floor stain and hatch sills. The tube is still the tube.
+- Cyclones: three rust bodies north of the preheater, open tops,
+  bead ducts between them, one duct into the preheater north wall.
+  This is the missing FPV toy and the missing silhouette.
+- Skybridge at 42 m from the preheater roof to the stack wrap. Five
+  posts. One line, not a pipe rack.
+- Bins hollow: 8-gon shell, floor, offset roof hatch, centre fill
+  pipe, east doors at ground and at gallery height on the tall two.
+  The 1.4 m splits stay. Ochre footings restored.
+- Gantry: rails, one spur hoop over the pit, east gallery with a
+  gap in the west rail at the T so the hoop line does not hit a wall.
+- Hopper: south landing at -3.15 m, stair boxes, safety on the lip.
+  No grate.
+- Dock canopy. Hall: north mezzanine, one conveyor along the kiln,
+  south porch that frames the spawn mouth without a beam across it.
+- Two warm lamps in the tube, one on the cyclones, one in the pit.
+  Kiln grade saturation 1.06 to 1.10. City grade not touched.
+
+Declined, with the reason:
+
+- Yard barrels, pallets, trucks, extra jersey barriers, berms,
+  lamp posts, bag stacks, hanging-lamp forest: that is the clutter
+  the city already taught us not to add. The apron stays ochre.
+- `dress.js` and a 13th kiln module: the kit belongs in plant.js
+  and hall.js. MAP_MODULE_COUNT.bando stays 12.
+- Guy wires: an AABB along a diagonal is a phantom wall.
+- Downcomer from cyclones into the kiln roof, extra sky pipes:
+  the cyclones already connect to the preheater. More ducts across
+  open air would read as spaghetti.
+- Interior silo rings, hopper grate bars: those are props inside
+  a volume that should fly as a room or a pit.
+- Title overlay in the 1.4 m hoop: the lookAhead shift still
+  cannot sit there. Playable line is the hoop.
+- Touching sakura city fog, palette, planting or props.
+
+What went wrong: the first draft of this pass wanted a dress file
+and a truck. That is how the city got noisy. The follow-up killed
+it before it landed. The first shot pass aimed the cyclone view from
+z=-10, which is inside the tower, and the south three-quarter hid
+the cyclones behind the hall.
+
+Round 2: attract peels north after the gantry so the title sees the
+cyclone train, then cuts back south over the mouth. Stack walks
+1.15 m to 1.35 m so the wrap reads at distance. One fascia pipe on
+the hall north wall, proud 0.18 m, points at the preheater without
+filling the 1 m slot between hall and tower.
+
+Round 3: cyclone cardinal walls were full-width squares, so the
+north view read as three pillars. Faces are octagon-narrow now,
+corners fill the facets, rust shells sit 0.10 m proud of the hull.
+
+Verify: `node --check` on the kiln files. Headless shots and hit
+probes follow. `npm run verify` was not run: kiln map, not the plant,
+ABI or WASM build. Check 16 not re-run: no city import was added.
+
+### 2026-08-27 | map | Merge plant kit onto Industrial bando
+
+Asked: commit, pull, merge and push to main. origin/main had moved
+(turtle, Municipal baths, Industrial bando rename, packhouse collision
+rewrite, dress.js). Fast-forward was impossible.
+
+Kept from main: 12 m mouths, no hall lintel/jambs/columns, kiln x0 at
+the stack outer face, full-bore east mouth, dock skirts under the
+deck, both gantries, pit beams, dress.js, MAP_MODULE_COUNT.bando 13,
+baths, turtle. Hall.js is main's: no mezzanine, conveyor or porch.
+Those overlapping AABBs were the spaz.
+
+Ported from the plant-kit branch onto that plant: four-face stack
+wrap plus a 42 m ring for the skybridge (slot-sill walks at 15.85 /
+31.85 / 47.85 / 54 stay), inner slot ledges, kiln N/S hatches,
+cyclones with bead ducts, skybridge, hollow octagon bins with
+outside ladders and digits, gantry rails, spur hoops, east gallery
+with T-gaps on both decks. Attract peels north of the preheater so
+the cyclone train is a silhouette, not a 1.4 m thread.
+
+Fixed while merging: the plant-kit north-wall duct hole sat at
+x=-16.8 to -15.2 while the duct is centred on the middle cyclone at
+x=-13. The hole now matches the duct, and the duct ends on the
+preheater north face instead of sharing volume with the wall. Bin
+ladders sit west of the hollow shell so they do not share volume
+with the west wall. Skybridge west end meets the 42 m east walk at
+a shared face, not an overlapping deck.
+
+Declined from the plant-kit side: hall furnish, dock canopy (skirts
+would have overlapped the deck again), replacing dress.js, dropping
+MAP_MODULE_COUNT.bando to 12.
+
+Verify: `node --check` on the kiln files. Headless shots and __hit
+probes follow after the merge commit. `npm run verify` was not run:
+map merge, no plant, ABI, WASM or threshold change. Check 16 not
+re-run: no city import was added.
+
 

@@ -18695,8 +18695,15 @@ Declined from the plant-kit side: hall furnish, dock canopy (skirts
 would have overlapped the deck again), replacing dress.js, dropping
 MAP_MODULE_COUNT.bando to 12.
 
-Verify: `node --check` on the kiln files. Headless shots and __hit
-probes follow after the merge commit. `npm run verify` was not run:
+Verify: `node --check` on plant.js, world.js, kit.js, index.js, hall.js,
+dress.js. Headless Chromium `scripts/shots.js` loaded
+`/index.html?map=bando`. Map ready, name Industrial bando,
+expectedModules 13. `__hit` vh 0.12: sixteen clear lines empty
+(stack shaft, kiln bore, full-bore east mouth, kiln hatch, cyclone
+interior, bead duct, duct into the preheater, both gantry hoops, T,
+bin interior, 1.4 m split, 12 m mouth, skybridge, 42 m stack walk).
+Five walls still walls, including the old misaligned duct hole at
+x=-16. Colliders 858, platforms 186. `npm run verify` was not run:
 map merge, no plant, ABI, WASM or threshold change. Check 16 not
 re-run: no city import was added.
 

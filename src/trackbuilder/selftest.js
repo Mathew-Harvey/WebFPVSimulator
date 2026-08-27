@@ -1657,6 +1657,54 @@ function suiteClipCatch() {
   check('the centre of a train car is inside',
     train.interiorOfHit(10, 1, 0) > 0.49);
 
+  const wall = new Colliders();
+  wall.addBox('wall', -0.1, 0, 0, 0.1, 2, 4);
+  wall.build();
+  wall.hit(-1, 1, 2, 1, 1, 2, 0.04);
+  check('a chord through a wall is a far-face cross',
+    wall.crossedHit(-1, 1, 2, 1, 1, 2) === true);
+  check('a bounce that stays on the entry side is not a cross',
+    wall.crossedHit(-1, 1, 2, -0.12, 1, 2) === false);
+  check('a far-side eject after that chord is still a cross',
+    wall.crossedHit(-1, 1, 2, 0.12, 1, 2) === true);
+  check('a fly-by along the wall is not a cross',
+    wall.crossedHit(-1, 1, -1, -1, 1, 5) === false);
+  check('flying over a wall is not a cross',
+    wall.crossedHit(-1, 3, 2, 1, 3, 2) === false);
+  check('going around a wall corner is not a cross',
+    wall.crossedHit(-1, 1, -0.5, 0.5, 1, -1) === false);
+
+  const deck = new Colliders();
+  deck.addBox('wall', -2, 0.50, -2, 2, 0.64, 2);
+  deck.build();
+  deck.hit(0, 3, 0, 0, -1, 0, 0.04);
+  check('a long drop through a 14 cm deck is a far-face cross',
+    deck.crossedHit(0, 3, 0, 0, -1, 0) === true);
+  check('and the midpoint of that drop is not inside the slab',
+    deck.interiorOfHit(0, 1, 0) < 0);
+  check('landing on that deck is not a cross',
+    deck.crossedHit(0, 3, 0, 0, 0.72, 0) === false);
+  check('flying over that deck is not a cross',
+    deck.crossedHit(-3, 2, 0, 3, 2, 0) === false);
+  check('flying under that deck is not a cross',
+    deck.crossedHit(-3, 0.3, 0, 3, 0.3, 0) === false);
+
+  post.hit(-1, 1, 0, 1, 1, 0, 0.04);
+  check('a chord through a post is a cross',
+    post.crossedHit(-1, 1, 0, 1, 1, 0) === true);
+  check('a bounce that stays on the entry side of a post is not a cross',
+    post.crossedHit(-1, 1, 0, -0.08, 1, 0) === false);
+  check('a far-side eject off a post after a long approach is a cross',
+    post.crossedHit(-10, 1, 0, 0.08, 1, 0) === true);
+  check('a fly-by 20 cm off a post is not a cross',
+    post.crossedHit(-1, 1, 0.20, 1, 1, 0.20) === false);
+
+  train.hit(8, 1, 0, 12, 1, 0, 0.04);
+  check('a chord through a train car is a far-face cross',
+    train.crossedHit(8, 1, 0, 12, 1, 0) === true);
+  check('a scrape along the outside of a train car is not a cross',
+    train.crossedHit(12.2, 1, -4, 12.2, 1, 4) === false);
+
   const air = makeClipWatch();
   check('open air never fires',
     tickClip(air, clipSample({}), 1000) === null);
@@ -1745,6 +1793,12 @@ function suiteClipCatch() {
       roofContact: false,
       interiorDepth: 0.12,
     }), CLIP_CONFIRM_MS) === 'inside');
+  check('a roof flag does not mute a centre already through the slab',
+    clipWatchTick(makeClipWatch(), clipSample({
+      roofContact: true,
+      unresolved: true,
+      interiorDepth: CLIP_DEEP,
+    }), 16) === 'inside');
 
   const scrape = makeClipWatch();
   let scrapeHit = null;
@@ -1901,10 +1955,17 @@ function suiteClipCatch() {
   check('spawn grace ignores a centre inside a pad leftover',
     tickClip(grace, clipSample({
       spawnGrace: true,
+      landed: true,
       interiorDepth: 0.2,
       unresolved: true,
       buriedDepth: 0.4,
     }), 2000) === null);
+  check('spawn grace does not mute a deep clip once airborne',
+    clipWatchTick(makeClipWatch(), clipSample({
+      spawnGrace: false,
+      landed: false,
+      interiorDepth: 0.10,
+    }), 16) === 'inside');
 
   const fifty = makeClipWatch();
   let bounceFires = 0;

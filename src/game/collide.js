@@ -208,6 +208,87 @@ function boxOppositeSides(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz) {
     || (az < z0 && bz > z1) || (az > z1 && bz < z0);
 }
 
+/*
+ * Closed segment vs AABB, slab method. Opposite-face ends of a long
+ * drop through a 14 cm deck have their midpoint above the slab, so a
+ * midpoint-inside test misses the punch the bounce then ejects the
+ * wrong way on. This is the actual intersection.
+ */
+function segmentHitsAabb(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz) {
+  let tmin = 0;
+  let tmax = 1;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const dz = bz - az;
+  if (dx > -1e-18 && dx < 1e-18) {
+    if (ax < x0 || ax > x1) {
+      return false;
+    }
+  } else {
+    let u0 = (x0 - ax) / dx;
+    let u1 = (x1 - ax) / dx;
+    if (u0 > u1) {
+      const tmp = u0;
+      u0 = u1;
+      u1 = tmp;
+    }
+    if (u0 > tmin) {
+      tmin = u0;
+    }
+    if (u1 < tmax) {
+      tmax = u1;
+    }
+    if (tmin > tmax) {
+      return false;
+    }
+  }
+  if (dy > -1e-18 && dy < 1e-18) {
+    if (ay < y0 || ay > y1) {
+      return false;
+    }
+  } else {
+    let u0 = (y0 - ay) / dy;
+    let u1 = (y1 - ay) / dy;
+    if (u0 > u1) {
+      const tmp = u0;
+      u0 = u1;
+      u1 = tmp;
+    }
+    if (u0 > tmin) {
+      tmin = u0;
+    }
+    if (u1 < tmax) {
+      tmax = u1;
+    }
+    if (tmin > tmax) {
+      return false;
+    }
+  }
+  if (dz > -1e-18 && dz < 1e-18) {
+    if (az < z0 || az > z1) {
+      return false;
+    }
+  } else {
+    let u0 = (z0 - az) / dz;
+    let u1 = (z1 - az) / dz;
+    if (u0 > u1) {
+      const tmp = u0;
+      u0 = u1;
+      u1 = tmp;
+    }
+    if (u0 > tmin) {
+      tmin = u0;
+    }
+    if (u1 < tmax) {
+      tmax = u1;
+    }
+    if (tmin > tmax) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function clampRadius(v) {
   if (v < CRAFT_WORLD_PROP) {
     return CRAFT_WORLD_PROP;
@@ -1300,30 +1381,45 @@ export class Colliders {
   }
 
   /*
-   * Did the segment from a to b go in one face of collider i and out
-   * the opposite face? A bounce from outside has both ends on the SAME
-   * side. A pole fly-by does not put the midpoint inside the bark.
-   * Used after bounce: if the craft is still on the far side, the eject
-   * went the wrong way.
+   * Did the segment from a to b go in one face and out the opposite?
+   * A bounce from outside has both ends on the SAME side. Flying over
+   * a wall, along it, or past a pole does not count: opposite-face
+   * ends still have to actually hit the solid, because a long chord's
+   * midpoint often misses a thin slab. Used after bounce: if the craft
+   * is still on the far side, the eject went the wrong way.
    */
   crossedStatic(i, ax, ay, az, bx, by, bz) {
     if (!this.built || i < 0 || i >= this.count) {
       return false;
     }
-    const mx = (ax + bx) * 0.5;
-    const my = (ay + by) * 0.5;
-    const mz = (az + bz) * 0.5;
-    if (this.interiorAt(i, mx, my, mz) <= CLIP_CENTER_EPS) {
-      return false;
-    }
     if (this.fbox[i]) {
-      return boxOppositeSides(
+      if (!boxOppositeSides(
+        this.fax[i], this.fay[i], this.faz[i],
+        this.fbx[i], this.fby[i], this.fbz[i],
+        ax, ay, az, bx, by, bz,
+      )) {
+        return false;
+      }
+      return segmentHitsAabb(
         this.fax[i], this.fay[i], this.faz[i],
         this.fbx[i], this.fby[i], this.fbz[i],
         ax, ay, az, bx, by, bz,
       );
     }
-    return this.interiorAt(i, ax, ay, az) < 0 && this.interiorAt(i, bx, by, bz) < 0;
+    if (this.interiorAt(i, ax, ay, az) >= 0 || this.interiorAt(i, bx, by, bz) >= 0) {
+      return false;
+    }
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const a = dx * dx + dy * dy + dz * dz;
+    if (a <= 1e-18) {
+      return false;
+    }
+    const s = this.closestApproachS(i, ax, ay, az, dx, dy, dz, a);
+    this.axisToPoint(i, ax + dx * s, ay + dy * s, az + dz * s);
+    const d = Math.sqrt(this.nx * this.nx + this.ny * this.ny + this.nz * this.nz);
+    return this.fr[i] - d > CLIP_CENTER_EPS;
   }
 
   crossedMoving(i, ax, ay, az, bx, by, bz) {
@@ -1336,13 +1432,10 @@ export class Colliders {
     const x1 = this.movingCx[i] + this.movingHx[i];
     const y1 = this.movingCy[i] + this.movingHy[i];
     const z1 = this.movingCz[i] + this.movingHz[i];
-    const mx = (ax + bx) * 0.5;
-    const my = (ay + by) * 0.5;
-    const mz = (az + bz) * 0.5;
-    if (boxPointInterior(x0, y0, z0, x1, y1, z1, mx, my, mz) <= CLIP_CENTER_EPS) {
+    if (!boxOppositeSides(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz)) {
       return false;
     }
-    return boxOppositeSides(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz);
+    return segmentHitsAabb(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz);
   }
 
   crossedHit(ax, ay, az, bx, by, bz) {

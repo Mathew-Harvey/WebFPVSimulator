@@ -19794,4 +19794,67 @@ through the porch slab.
 is the known CDN `ERR_CONNECTION_REFUSED`. Geometry still
 captured.
 
+---
+
+### 2026-08-27 | shell | Clip-through catch, Crashed then reset
+
+Bounce is still the rule. When the hull's centre is inside
+a solid, leftover overlap that is not travelling, or the
+craft has fallen through the terrain, the shell freezes
+800 ms, the banner says Crashed, then reset() like R.
+
+Detector is pure in collide.js (clipWatchTick). Deep
+centre-inside (8 cm) fires on the first frame. Shallow
+inside confirms for 180 ms. Stuck leftover needs 350 ms
+and travel under 0.40 m, and only if the centre is on or
+inside the face: hull overlap with the centre still
+outside is bounce slop. Buried is 22 cm under height()
+for 180 ms. Launch, hold, pose lock and spawn grace skip.
+Landed and turtle skip stuck/buried but still crash if
+the centre is inside a wall.
+
+Punch-through: if this frame's travel went in one face
+and out the opposite, and bounce left the craft on the
+far side, that is treated as CLIP_DEEP even when the
+centre is already outside. A midpoint-inside test missed
+a long drop through a 14 cm deck (midpoint sits above the
+slab). Opposite faces plus a segment-AABB hit (capsules:
+closest approach in the bark) is the actual test. Flying
+over, under, along, or around a corner does not count. A
+bounce that stays on the entry side does not count.
+
+Adversarial review (declined or accepted):
+
+- Bounce, perch, turtle leftover, roof sit, graze, 10 m/s
+  scrape, 5 m/s leftover slide, 50 firm contacts that
+  clear: must not fire. Tests cover them. Live city: 12
+  near-side wall clips, 0 crashes. Open air above spawn:
+  no crash. Pad wait: no crash. A punch that bounce
+  rewound to the entry side: banner said Clipped the
+  wall, not Crashed.
+- Roof flag does not mute a centre already through the
+  slab (inside is first).
+- Spawn grace only while landed. Airborne deep clip still
+  fires.
+- takingOff no longer blocks buried.
+- First-hit graze then a later punch: record the first
+  travel that actually crossed, not only attempt 0.
+- Accepted miss: a multi-hit frame whose punched solid is
+  not the one we kept. Bounce leftover / interior still
+  covers being stuck in the second solid.
+- Accepted miss: 1 m/s leftover with the centre on the
+  face would trip stuck. Bounce has already failed there.
+
+Live (city, `__placeCraft`): drop the hull in a fat wall
+volume -> banner Crashed, kind inside, pose held, then
+reset to spawn (0, 0.045, 24), landed, takeoff prompt.
+`__placeCraft` now enters flight, otherwise the bounce
+loop never runs from the title screen.
+
+`src/trackbuilder/selftest.js` 473 passed, 0 failed.
+
+`npm run verify` was not run: shell and collide host
+path, no plant/ABI/WASM. Contact selftest was not run
+for the same reason.
+
 

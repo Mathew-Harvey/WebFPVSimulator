@@ -3958,10 +3958,10 @@ export async function boot({ loading, bootStart, mapId }) {
         if (k < 0) {
           break;
         }
-        if (attempts === 0) {
+        if (!punchTravel && view.colliders.crossedHit(fromX, fromY, fromZ, origX, origY, origZ)) {
           punchIndex = view.colliders.hitIndex;
           punchMoving = view.colliders.hitMoving;
-          punchTravel = view.colliders.crossedHit(fromX, fromY, fromZ, origX, origY, origZ);
+          punchTravel = true;
         }
         if (view.colliders.hitNy > 0.5) {
           obstacleRoof = true;
@@ -5179,6 +5179,56 @@ export async function boot({ loading, bootStart, mapId }) {
     shell.camera.quaternion.copy(fpvQuat);
     shell.camera.fov = ui.settings.cameraFov;
     shell.camera.updateProjectionMatrix();
+    return window.__craftState();
+  };
+  /* Harness: drop the plant at a world point, airborne, so a capture can
+   * prove a clip-through crash without flying there. fromX/Y/Z is last
+   * frame's pose when the test is a punch-through chord. */
+  window.__placeCraft = (x, y, z, fromX, fromY, fromZ) => {
+    if (!stateCurr) {
+      return null;
+    }
+    worldPosToSim(x, y, z, pSim);
+    const code = sim.e.sim_set_pose(pSim.x, pSim.y, pSim.z, 1, 0, 0, 0);
+    if (code !== SIM_OK) {
+      return { ok: false, code };
+    }
+    sim.rest();
+    setCrashflip(false);
+    turtleRecover = false;
+    turtleWait = false;
+    setTurtleParkMotors(false);
+    introMs = -1;
+    camOverride = null;
+    poseLock = false;
+    landed = false;
+    takingOff = false;
+    launchStaging = false;
+    flownThisRun = true;
+    crashed = false;
+    clipCrashKind = '';
+    clipCrashUntil = 0;
+    clipGraceUntil = 0;
+    mode = 'flight';
+    ui.show('flight');
+    resetClipWatch(clipWatch);
+    adoptSimClock();
+    acc = 0;
+    stateCurr = readState();
+    statePrev = stateCurr;
+    poseFromState(stateCurr, pCurr);
+    simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], qPrev);
+    qPrev.premultiply(qSpawn);
+    shell.quad.position.copy(pCurr);
+    shell.quad.quaternion.copy(qPrev);
+    if (fromX == null) {
+      racePrev.copy(pCurr);
+    } else {
+      racePrev.set(fromX, fromY, fromZ);
+    }
+    raceHasPrev = true;
+    groundHasPrev = true;
+    groundPrev.copy(racePrev);
     return window.__craftState();
   };
   window.__releasePose = () => {

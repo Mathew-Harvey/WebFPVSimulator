@@ -18551,11 +18551,18 @@ Declined, with the reason:
 
 What went wrong: the first draft of this pass wanted a dress file
 and a truck. That is how the city got noisy. The follow-up killed
-it before it landed.
+it before it landed. The first shot pass aimed the cyclone view from
+z=-10, which is inside the tower, and the south three-quarter hid
+the cyclones behind the hall.
 
-Verify: `node --check` on the four kiln files. Headless shots and
-hit probes follow this commit. `npm run verify` was not run: kiln
-map, not the plant, ABI or WASM build. Check 16 not re-run: no
-city import was added.
+Round 2: attract peels north after the gantry so the title sees the
+cyclone train, then cuts back south over the mouth. Stack walks
+1.15 m to 1.35 m so the wrap reads at distance. One fascia pipe on
+the hall north wall, proud 0.18 m, points at the preheater without
+filling the 1 m slot between hall and tower.
+
+Verify: `node --check` on the kiln files. Headless shots and hit
+probes follow. `npm run verify` was not run: kiln map, not the plant,
+ABI or WASM build. Check 16 not re-run: no city import was added.
 
 

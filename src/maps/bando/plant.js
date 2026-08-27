@@ -333,26 +333,38 @@ function buildCyclones(root, colliders, platforms, M) {
   const t = CYC_T;
   const ductZ0 = DUCT_Y;
   const ductZ1 = DUCT_Y + DUCT_IN;
-  const face = 0.78;
+  const hole = DUCT_IN * 0.5;
+  const card = CYC_R * 0.74;
 
   for (let i = 0; i < CYC.length; i += 1) {
     const { cx, cz } = CYC[i];
-    const east = { x0: cx + half - t, x1: cx + half, z0: cz - face, z1: cz + face, y0: ductZ0, y1: ductZ1 };
-    const west = { x0: cx - half, x1: cx - half + t, z0: cz - face, z1: cz + face, y0: ductZ0, y1: ductZ1 };
+    const east = { z0: cz - hole, z1: cz + hole, y0: ductZ0, y1: ductZ1 };
+    const west = { z0: cz - hole, z1: cz + hole, y0: ductZ0, y1: ductZ1 };
     const south = i === 1
-      ? { x0: cx - face, x1: cx + face, z0: cz + half - t, z1: cz + half, y0: ductZ0, y1: ductZ1 }
-      : { x0: cx - 0.7, x1: cx + 0.7, z0: cz + half - t, z1: cz + half, y0: 3.05, y1: 4.65 };
+      ? { x0: cx - hole, x1: cx + hole, y0: ductZ0, y1: ductZ1 }
+      : { x0: cx - 0.7, x1: cx + 0.7, y0: 3.05, y1: 4.65 };
 
-    slab(root, colliders, M.boneViolet, cx - half, yBody0, cz - half, cx + half, yBody1, cz - half + t);
-    wallWithHolesX(root, colliders, M.boneViolet, cx - half, cx + half, yBody0, yBody1, cz + half - t, cz + half, [
+    slab(root, colliders, M.boneViolet, cx - card, yBody0, cz - half, cx + card, yBody1, cz - half + t);
+    wallWithHolesX(root, colliders, M.boneViolet, cx - card, cx + card, yBody0, yBody1, cz + half - t, cz + half, [
       { x0: south.x0, x1: south.x1, y0: south.y0, y1: south.y1 },
     ]);
-    wallWithHolesZ(root, colliders, M.boneViolet, cz - half, cz + half, yBody0, yBody1, cx + half - t, cx + half, [
+    wallWithHolesZ(root, colliders, M.boneViolet, cz - card, cz + card, yBody0, yBody1, cx + half - t, cx + half, [
       { z0: east.z0, z1: east.z1, y0: east.y0, y1: east.y1 },
     ]);
-    wallWithHolesZ(root, colliders, M.boneViolet, cz - half, cz + half, yBody0, yBody1, cx - half, cx - half + t, [
+    wallWithHolesZ(root, colliders, M.boneViolet, cz - card, cz + card, yBody0, yBody1, cx - half, cx - half + t, [
       { z0: west.z0, z1: west.z1, y0: west.y0, y1: west.y1 },
     ]);
+    const d = CYC_R * 0.62;
+    const s = 0.42;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        slab(
+          root, colliders, M.boneViolet,
+          cx + sx * d - s * 0.5, yBody0, cz + sz * d - s * 0.5,
+          cx + sx * d + s * 0.5, yBody1, cz + sz * d + s * 0.5,
+        );
+      }
+    }
 
     slab(root, colliders, M.rust, cx - 0.45, 0.2, cz - 0.45, cx + 0.45, 1.15, cz + 0.45);
     slab(root, colliders, M.rust, cx - 0.85, 1.15, cz - 0.85, cx + 0.85, 1.95, cz + 0.85);
@@ -360,7 +372,7 @@ function buildCyclones(root, colliders, platforms, M) {
 
     const h = yBody1 - yBody0;
     const shell = new THREE.Mesh(
-      new THREE.CylinderGeometry(CYC_R + 0.04, CYC_R * 0.98, h, 8, 1, true),
+      new THREE.CylinderGeometry(CYC_R + 0.10, CYC_R * 0.98, h, 8, 1, true),
       M.cyclone,
     );
     shell.position.set(cx, yBody0 + h * 0.5, cz);

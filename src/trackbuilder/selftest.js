@@ -61,7 +61,7 @@ import {
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
   LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, TURTLE_SPEED, TURTLE_RATE,
   TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE, TURTLE_FLIP_MS, TURTLE_LIFT,
-  TURTLE_INVERT_UPZ, turtleFlipEase, turtleFlipLift, turtleSlerpQuat,
+  TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, turtleFlipEase, turtleFlipLift, turtleSlerpQuat,
 } from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
@@ -1361,8 +1361,10 @@ function suiteCrashRule() {
     shouldEnterTurtle(-1, 0, TURTLE_RATE, true, 0.05, false) === false);
   check('turtle does not latch in the air with clearance',
     shouldEnterTurtle(-0.8, 0.2, 0.2, false, 1.2, false) === false);
-  check('turtle does not latch in the air even a few centimetres off the grass',
-    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === false);
+  check('turtle latches from the seated halo: an inverted rest reports no contact',
+    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === true);
+  check('turtle does not latch at the halo edge without contact',
+    shouldEnterTurtle(-0.8, 0.2, 0.2, false, TURTLE_CLEARANCE, false) === false);
   check('turtle does not latch on its side: that is still a tumble',
     shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === false);
   check('turtle does not latch at a 60 degree bank',

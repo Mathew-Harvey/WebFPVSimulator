@@ -19345,6 +19345,99 @@ captured.
 
 
 
+---
+
+## 2026-08-27 | shell | turtle entry: seated halo restored, natural crashes latch again
+
+Asked: turtle mode is buggy, it does not work correctly at all. Understand
+the goal, fix it, then adversarial review.
+
+Reproduced in the live shell (scripts/shots.js, custom map, low graphics,
+a scripted radio flying acro): take off, half roll, cut throttle. The hull
+falls inverted, settles on the grass at upz -0.93, speed 0, height 0.069,
+and turtle never latches. No banner, no flip, the pilot is stranded
+upside down until reset. Every prior harness pass entered through
+__seatCraft('inverted'), which force-calls beginTurtleWait, so the
+natural entry path was never actually exercised.
+
+Root cause: review round 1 dropped the clearance halo and made the enter
+gate contact-only. The plant's inverted rest sits in ground_settle's
+seated_halo (sim.c, "Inverted rest can sit on the slop with no impulse
+and no push"): velocity is zeroed with no contact impulse, so
+sim_ground_contacts() reads 0 for the whole rest. A contact-only gate can
+never see a settled turtle.
+
+Fix, shell only, three sites:
+- shouldEnterTurtle returns inContact OR clearance < TURTLE_CLEARANCE
+  (0.15 m, the constant that already existed for this). The speed gate
+  (1 m/s) already refuses anything that has fallen more than a few
+  centimetres, so an invert in the air still never prompts.
+- tryEnterTurtle passes the live lastClearance instead of a hardcoded 0.
+  It is fresh at both call sites: pollTurtleSupport's gate mirrors the
+  entry gates exactly, and the flying branch resamples every frame.
+- turtleSupportY seats a halo entry on the terrain so the wait does not
+  freeze on a sliver of air. Guarded by !turtleOnSupport so an obstacle
+  rest (car roof, kerb-height box) keeps its own height rather than
+  being buried in the collider it rests on (review finding, below).
+
+Selftest: the round 1 case "does not latch a few centimetres off the
+grass" asserted the broken gate and is replaced by two cases: latches at
+0.10 m without contact, does not latch at the halo edge. node
+src/trackbuilder/selftest.js: 403 passed. node --check on the touched
+files. This is a behaviour correction argued here, not a threshold moved
+to pass a check: the old expectation certified the exact line that
+stranded the pilot.
+
+Live after the fix, same harness: the natural crash latches TURTLE MODE
+with the right-stick cue, a pitch poke flips upright in 380 ms, the
+recover banner holds until the stick centres, throttle climbs away.
+Keyboard: seat, arrow poke, flip, takeoff all pass. invertedAir drop
+still shows no air banner. Re-ran after the review guard: same result.
+npm run verify was not run: shell gate only, no plant, ABI, WASM or
+threshold change. Shots exit 1 is the known board ERR_CONNECTION_REFUSED,
+not a turtle fail.
+
+Adversarial review, as directed: four finders (gate, flip machine, input,
+integration) with two-skeptic verification per finding. The first launch
+lost all four finders to the account session limit; the relaunch
+completed the find phase (five findings) and one verification pair before
+the owner asked to wrap up, so the remaining verdicts were walked inline.
+Acted on:
+- turtleSupportY halo branch would seat a low-obstacle turtle on the
+  terrain, sinking the hull into any collider whose top sits within
+  15 cm of the grass, then popping a phantom Clip on takeoff. Fixed with
+  the !turtleOnSupport guard: entry on an obstacle arrives through the
+  roof-contact path, so support true means the terrain is not the seat.
+Declined, with reasons:
+- __seatCraft('invertedAir') can latch turtle at 4 m through a stale
+  g_ground_hits carried across the teleport (skeptics split). The plant
+  only recomputes the counter inside a step and nothing steps between
+  the seat and the gate. Debug hook only, zero callers in the repo, no
+  pilot path can reach it (in flight the plant steps at 1 kHz and the
+  counter is fresh); a real fix needs the staleness cleared plant-side,
+  which is an ABI change this turn does not make.
+- shouldParkTurtle, shouldSnapUpright, shouldExitTurtle and the SNAP_*
+  aliases are dead exports whose selftests still certify the contact-only
+  rule this turn disproved (flagged independently by two finders). Round
+  2 already decided to keep them for the tests; deleting or rewriting
+  them at wrap-up risks more than it buys. A future turn should delete
+  them with their checks, or give shouldParkTurtle the same halo seat
+  test, so the suite stops defending a regression path.
+- The scripted flip writes JS-trig poses (turtleSlerpQuat, uprightPlantQuat)
+  through sim_set_pose, so a cross-engine replay that spans a turtle is
+  not bit-identical from the input stream alone. Pre-existing, same class
+  as the qSpawn trig on the bounce path, plant frozen throughout the
+  flip; recorded, not changed. The honest fix is a module-side upright
+  pose helper against the fixed libm.
+
+Possible effect if this breaks something: an inverted hull hanging under
+15 cm of centre clearance at under 1 m/s now latches turtle. On this
+plant that state is a landing in progress, not a manoeuvre. A turtle
+seated on a low collider now waits at its own height instead of the
+terrain's.
+
+---
+
 ### 2026-08-27 | ui | the credits roll gets faces, tickets and a start list
 
 Ticket: owner. The credits page is plain and drab, the pilots should

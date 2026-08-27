@@ -1377,10 +1377,15 @@ export function shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, ski
   if (speed >= TURTLE_SPEED || rateMag >= TURTLE_RATE) {
     return false;
   }
-  /* Contact only. Clearance is not a floor: a few centimetres of air
-   * under an inverted hull is a fall, not a turtle. */
-  void clearance;
-  return inContact;
+  /* Contact, or seated within the clearance halo. Contact alone cannot
+   * latch a settled turtle: the plant's inverted rest sits on the
+   * contact slop with no impulse (ground_settle's seated_halo zeroes
+   * velocity without a hit), so sim_ground_contacts() reads 0 for the
+   * whole rest and a real crash never prompted. An invert in the air is
+   * still flight: the speed gate has already refused anything that has
+   * fallen more than a few centimetres, and TURTLE_CLEARANCE is
+   * centimetres, not metres. */
+  return inContact || clearance < TURTLE_CLEARANCE;
 }
 
 export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, skip) {

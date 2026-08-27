@@ -59,7 +59,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -1449,8 +1449,15 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function turtleSupportY(wx, wy, wz) {
-    if (lastGroundHits > 0) {
-      return view.height(wx, wz, wy - SURFACE_BIAS);
+    /* Terrain when the hull is on it or within the clearance halo, so a
+     * halo entry seats on the grass instead of freezing on a sliver of
+     * air. An obstacle rest (car roof, kerb-height box, deck the height
+     * query cannot see) keeps its own height: the street below is not
+     * its support, and seating a low-obstacle turtle on the terrain
+     * would bury the hull inside the collider it rests on. */
+    const hy = view.height(wx, wz, wy - SURFACE_BIAS);
+    if (lastGroundHits > 0 || (!turtleOnSupport && wy - hy < TURTLE_CLEARANCE)) {
+      return hy;
     }
     return wy - REST_HEIGHT;
   }
@@ -1764,7 +1771,7 @@ export async function boot({ loading, bootStart, mapId }) {
       plantSpeed(st),
       plantRateMag(st),
       inContact,
-      0,
+      lastClearance,
       false,
     )) {
       beginTurtleWait();

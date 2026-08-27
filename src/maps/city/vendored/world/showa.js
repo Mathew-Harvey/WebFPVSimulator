@@ -129,8 +129,7 @@ function buildRecord(ctx, m, rng, fx, edge, u) {
   ctx.add(makeLpCrate({ x: edge + 0.93, z: u.z1 - 1.9, y, ry: Math.PI / 2 + 0.08, seed: 9322 }));
 
   // the glazed case with three sleeves propped in it, at eye height
-  ctx.add(makeDisplayCase({ x: edge + 0.44, z: u.z0 + 1.1, y, ry: Math.PI / 2, seed: 9323 }));
-  ctx.collide(edge - 0.05, u.z0 + 0.5, edge + 0.7, u.z0 + 1.7, y + 1.3);
+  ctx.add(makeDisplayCase({ ctx, x: edge + 0.44, z: u.z0 + 1.1, y, ry: Math.PI / 2, seed: 9323 }));
 
   ctx.add(makeChalkBoard({ x: edge + 0.5, z: u.z0 + 0.34, y, ry: Math.PI / 2 - 0.14, variant: 0 }));
   ctx.add(makePlanter({ x: edge + 0.97, z: u.z1 - 2.6, y, r: 0.23, flower: false, seed: 9324, n: 4 }));
@@ -366,6 +365,7 @@ function makeDisplayCase(o = {}) {
   const m = mats();
   const rng = rngKit(o.seed ?? 41);
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const W = 1.0, D = 0.44, H = 0.62, LEG = 0.5;
   const frame = cel({ color: 0x7a6a58, bands: 3, tint: 0x5c5680 });
   for (const sx of [-1, 1]) {
@@ -403,6 +403,26 @@ function makeDisplayCase(o = {}) {
   g.add(box(W - 0.16, 0.03, 0.03, frame, 0, LEG + 0.08, 0.06));
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
+  const ctx = o.ctx;
+  if (ctx && o.x != null && o.z != null) {
+    const y = o.y ?? 0;
+    const ry = o.ry ?? 0;
+    const ca = Math.cos(ry);
+    const sa = Math.sin(ry);
+    const put = (lx, lz, hw, hd, top, bot) => {
+      const px = o.x + ca * lx - sa * lz;
+      const pz = o.z + sa * lx + ca * lz;
+      const hx = Math.abs(ca) * hw + Math.abs(sa) * hd;
+      const hz = Math.abs(sa) * hw + Math.abs(ca) * hd;
+      ctx.collide(px - hx, pz - hz, px + hx, pz + hz, y + top, y + bot, true);
+    };
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        put(sx * (W / 2 - 0.06), sz * (D / 2 - 0.06), 0.04, 0.04, LEG, 0);
+      }
+    }
+    put(0, 0, W / 2, D / 2, LEG + H + 0.06, LEG);
+  }
   return g;
 }
 

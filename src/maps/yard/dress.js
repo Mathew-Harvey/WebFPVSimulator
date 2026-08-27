@@ -184,14 +184,14 @@ function car(root, colliders, M) {
 
 function swing(root, colliders, M) {
   const p = L.porch;
-  const z = (p.z0 + p.z1) * 0.5 - 0.22;
-  slab(root, colliders, M.woodSun, -0.95, 0.48, z - 0.32, 0.95, 0.58, z + 0.32, { kind: 'obstacle' });
-  slab(root, colliders, M.woodSun, -0.95, 0.48, z - 0.42, 0.95, 1.12, z - 0.32, { kind: 'obstacle' });
-  slab(root, colliders, M.woodSun, -0.95, 0.48, z + 0.32, 0.95, 1.12, z + 0.42, { kind: 'obstacle' });
-  slab(root, colliders, M.steelDark, -0.88, 1.12, z - 0.40, -0.82, p.roof - 0.16, z - 0.34, {
+  const z = -6.64;
+  slab(root, colliders, M.creamSun, -2.45, 1.00, z - 0.32, -0.55, 1.12, z + 0.32, { kind: 'obstacle' });
+  slab(root, colliders, M.creamSun, -2.45, 1.00, z - 0.42, -0.55, 1.12, z - 0.32, { kind: 'obstacle' });
+  slab(root, colliders, M.creamSun, -2.45, 1.00, z + 0.32, -0.55, 1.12, z + 0.42, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, -2.38, 1.26, z - 0.40, -2.32, p.roof - 0.16, z - 0.34, {
     kind: 'pole',
   });
-  slab(root, colliders, M.steelDark, 0.82, 1.12, z - 0.40, 0.88, p.roof - 0.16, z - 0.34, {
+  slab(root, colliders, M.steelDark, -0.68, 1.26, z - 0.40, -0.62, p.roof - 0.16, z - 0.34, {
     kind: 'pole',
   });
 }
@@ -200,7 +200,7 @@ function junk(root, colliders, M) {
   const x = L.pad.x1 + POST * 0.5;
   slab(root, colliders, M.tire, x, 0, -8.05, x + 0.72, 0.7, -7.33, { kind: 'obstacle' });
   slab(root, colliders, M.tire, x, 0, -7.33, x + 0.72, 0.7, -6.61, { kind: 'obstacle' });
-  slab(root, colliders, M.steelDark, L.house.x1, 0, 4.4, L.house.x1 + 0.7, 1.05, 5.25, {
+  slab(root, colliders, M.steelDark, L.garage.x1, 0, 3.95, L.garage.x1 + 0.7, 1.05, 4.8, {
     kind: 'obstacle',
   });
   const hx = L.hay.x1;
@@ -215,22 +215,26 @@ function junk(root, colliders, M) {
     kind: 'obstacle',
   });
 
-  slab(root, colliders, M.steelDark, 7.9, 0, 4.4, 8.4, 0.95, 4.9, { kind: 'obstacle' });
-  slab(root, colliders, M.steel, 8.4, 0, 4.4, 8.9, 0.95, 4.9, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, L.garage.x1 + 0.7, 0, 3.95, L.garage.x1 + 1.2, 0.95, 4.45, {
+    kind: 'obstacle',
+  });
+  slab(root, colliders, M.steel, L.garage.x1 + 1.2, 0, 3.95, L.garage.x1 + 1.7, 0.95, 4.45, {
+    kind: 'obstacle',
+  });
 
-  slab(root, colliders, M.steelDark, 3.52, L.deck.y, 6.9, 4.32, 2.02, 7.75, { kind: 'obstacle' });
-  slab(root, colliders, M.tire, 3.6, 2.02, 7.0, 4.24, 2.14, 7.65, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, -5.40, L.deck.y, 7.23, -4.60, 2.02, 8.03, { kind: 'obstacle' });
+  slab(root, colliders, M.tire, -5.32, 2.02, 7.33, -4.68, 2.14, 7.93, { kind: 'obstacle' });
 
-  slab(root, colliders, M.wood, -5.16, 0, L.porch.z0 - 0.38, -4.4, 0.38, L.porch.z0, {
+  slab(root, colliders, M.wood, L.porch.x0, 0, L.porch.z0 - 0.38, L.porch.x0 + 0.76, 0.38, L.porch.z0 + 0.04, {
     kind: 'obstacle',
   });
-  slab(root, colliders, M.leaf, -5.08, 0.38, L.porch.z0 - 0.30, -4.48, 0.52, L.porch.z0, {
+  slab(root, colliders, M.leaf, L.porch.x0 + 0.08, 0.38, L.porch.z0 - 0.30, L.porch.x0 + 0.68, 0.52, L.porch.z0 + 0.04, {
     kind: 'obstacle',
   });
-  slab(root, colliders, M.wood, 4.4, 0, L.porch.z0 - 0.38, 5.16, 0.38, L.porch.z0, {
+  slab(root, colliders, M.wood, L.porch.x1 - 0.76, 0, L.porch.z0 - 0.38, L.porch.x1, 0.38, L.porch.z0 + 0.04, {
     kind: 'obstacle',
   });
-  slab(root, colliders, M.leaf, 4.48, 0.38, L.porch.z0 - 0.30, 5.08, 0.52, L.porch.z0, {
+  slab(root, colliders, M.leaf, L.porch.x1 - 0.68, 0.38, L.porch.z0 - 0.30, L.porch.x1 - 0.08, 0.52, L.porch.z0 + 0.04, {
     kind: 'obstacle',
   });
 
@@ -241,12 +245,12 @@ function junk(root, colliders, M) {
     kind: 'pole',
   });
 
-  slab(root, colliders, M.steelDark, 9.6, 0, 5.85, 10.45, 0.42, 6.55, { kind: 'obstacle' });
-  slab(root, colliders, M.tire, 9.65, 0, 5.88, 10.05, 0.28, 6.18, {
+  slab(root, colliders, M.steelDark, 9.7, 0, L.garage.z1, 10.55, 0.42, L.garage.z1 + 0.7, { kind: 'obstacle' });
+  slab(root, colliders, M.tire, 9.75, 0, L.garage.z1 + 0.05, 10.15, 0.28, L.garage.z1 + 0.35, {
     solid: false, cast: false,
   });
 
-  slab(root, colliders, M.woodDark, -2.08, 0, 5.4, -1.2, 0.35, 5.54, { kind: 'obstacle' });
+  slab(root, colliders, M.woodDark, -2.32, 0, 4.8, -1.44, 0.35, 4.94, { kind: 'obstacle' });
 
   slab(root, colliders, M.steel, L.house.x0 - 0.72, 0, L.house.z0, L.house.x0, 0.95, L.house.z0 + 0.72, {
     kind: 'obstacle',

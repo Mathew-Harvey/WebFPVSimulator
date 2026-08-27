@@ -1506,6 +1506,16 @@ function buildDeck(ctx, m, gm, rng) {
   ], { opacity: 0.085 });
 }
 
+function yawMember(ctx, ox, oz, y, ry, lx, lz, hw, hd, top, bot) {
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const px = ox + ca * lx - sa * lz;
+  const pz = oz + sa * lx + ca * lz;
+  const hx = Math.abs(ca) * hw + Math.abs(sa) * hd;
+  const hz = Math.abs(sa) * hw + Math.abs(ca) * hd;
+  ctx.collide(px - hx, pz - hz, px + hx, pz + hz, y + top, y + bot, true);
+}
+
 /** A short rank of nested trolleys. */
 function addTrolleys(ctx, m, x, z, y, ry, n) {
   const parts = { metal: [], basket: [] };
@@ -1540,7 +1550,14 @@ function addTrolleys(ctx, m, x, z, y, ry, n) {
     const dz = i * 0.30;
     const px = x - sa * dz;
     const pz = z + ca * dz;
-    ctx.collide(px - 0.26, pz - 0.32, px + 0.26, pz + 0.32, y + 0.80, y, true);
+    ctx.collide(px - 0.26, pz - 0.32, px + 0.26, pz + 0.32, y + 0.80, y + 0.45, true);
+    for (const t of [-0.24, 0.24]) {
+      for (const s of [-1, 1]) {
+        const wx = px + ca * (s * 0.20) - sa * t;
+        const wz = pz + sa * (s * 0.20) + ca * t;
+        ctx.collide(wx - 0.06, wz - 0.06, wx + 0.06, wz + 0.06, y + 0.08, y, true);
+      }
+    }
   }
   return g;
 }
@@ -1658,6 +1675,7 @@ function buildCourt(ctx, m, gm, rng, sakura, shrubs, petals) {
       parts.basket.push({ geometry: new THREE.BoxGeometry(0.44, 0.10, 0.32), matrix: trs(0, 0.38 + i * 0.075, 0) });
     }
     const g = new THREE.Group();
+    g.name = 'openFrame';
     const fm = new THREE.Mesh(bake(parts.frame), m.metal);
     fm.castShadow = true;
     g.add(fm);
@@ -1668,18 +1686,29 @@ function buildCourt(ctx, m, gm, rng, sakura, shrubs, petals) {
     ctx.add(g);
     // a second, shorter stack in red beside it
     const g2 = new THREE.Group();
+    g2.name = 'openFrame';
     const bm2 = new THREE.Mesh(bake(parts.basket.slice(0, 6)), cel({ color: 0xc4574c, bands: 3, tint: 0x6f6790 }));
     bm2.castShadow = true;
     g2.add(bm2);
     g2.add(new THREE.Mesh(bake(parts.frame), m.metal));
     g2.position.set(bx + 0.76, Y + 0.17, bz);
     ctx.add(g2);
-    ctx.collide(bx - 0.40, bz - 0.30, bx + 1.16, bz + 0.30, Y + 1.25);
+    const y0 = Y + 0.17;
+    for (const ox of [bx, bx + 0.76]) {
+      for (const s of [-1, 1]) {
+        for (const t of [-1, 1]) {
+          ctx.collide(ox + s * 0.30 - 0.03, bz + t * 0.20 - 0.03,
+            ox + s * 0.30 + 0.03, bz + t * 0.20 + 0.03, y0 + 0.30, y0, true);
+        }
+      }
+      ctx.collide(ox - 0.36, bz - 0.26, ox + 0.36, bz + 0.26, y0 + 1.10, y0 + 0.27, true);
+    }
   }
   // the A-board out on the apron, angled to the road
   {
     const ax = REC_X0 - 1.7, az = SZ1 + 1.9;
     const g = new THREE.Group();
+    g.name = 'openFrame';
     const face = flat({ color: 0xffffff, map: superDeal(), cache: false });
     const side = cel({ color: 0x53504a, bands: 3, tint: 0x5c5680 });
     /* **The lean is `-s`, not `s`.**  A box rotated by `+t` about X sends its
@@ -1703,7 +1732,14 @@ function buildCourt(ctx, m, gm, rng, sakura, shrubs, petals) {
     g.position.set(ax, Y + 0.09, az);
     g.rotation.y = 0.42;
     ctx.add(g);
-    ctx.collide(ax - 0.42, az - 0.34, ax + 0.42, az + 0.34, Y + 1.1);
+    const y0 = Y + 0.09;
+    /* World-axis slabs, not yawed AABBs: a 24 deg slab's world box ate the
+     * 0.24 m mouth. Inner faces stay 0.30 m apart. */
+    for (const s of [-1, 1]) {
+      ctx.collide(ax - 0.30, az + s * 0.175 - 0.025, ax + 0.30, az + s * 0.175 + 0.025,
+        y0 + 0.98, y0 + 0.06, true);
+    }
+    ctx.collide(ax - 0.04, az - LEG, ax + 0.04, az + LEG, y0 + 0.13, y0 + 0.07, true);
   }
   ctx.add(makeUmbrellaStand({ x: REC_X0 - 0.75, z: SZ1 + 0.35, y: Y + 0.09, ry: 0, seed: 7742 }));
 
@@ -1997,10 +2033,24 @@ function buildYard(ctx, m, gm, rng) {
     }
     const mm = new THREE.Mesh(bake(parts), m.metal);
     mm.castShadow = true;
-    mm.position.set(cx, YY, cz);
-    mm.rotation.y = ry;
-    ctx.add(mm);
-    ctx.collide(cx - 0.42, cz - 0.42, cx + 0.42, cz + 0.42, YY + 1.55);
+    const g = new THREE.Group();
+    g.name = 'openFrame';
+    g.add(mm);
+    g.position.set(cx, YY, cz);
+    g.rotation.y = ry;
+    ctx.add(g);
+    for (const s of [-1, 1]) {
+      yawMember(ctx, cx, cz, YY, ry, s * 0.34, 0, 0.03, 0.36, 1.55, 0.08);
+    }
+    yawMember(ctx, cx, cz, YY, ry, 0, -0.36, 0.36, 0.03, 1.55, 0.08);
+    for (const hy of [0.24, 0.68, 1.12]) {
+      yawMember(ctx, cx, cz, YY, ry, 0, 0, 0.34, 0.35, hy + 0.03, hy - 0.03);
+    }
+    for (const s of [-1, 1]) {
+      for (const t of [-1, 1]) {
+        yawMember(ctx, cx, cz, YY, ry, s * 0.30, t * 0.30, 0.06, 0.06, 0.08, 0);
+      }
+    }
   }
   ctx.add(makeCrates({ x: -55.4, z: 72.4, y: YY, n: 5, seed: 7791, ry: -0.1 }));
   ctx.add(makeMilkCrate({ x: -54.4, z: 80.6, y: YY, ry: 0.3, n: 4 }));

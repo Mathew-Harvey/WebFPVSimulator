@@ -131,10 +131,10 @@ export async function buildMap(shell, onProgress, options) {
   await yieldToPaint();
 
   const world = buildWorld(scene);
-  addLamp(0, 2.52, -7.0, 0xffe0b0, 0.75, 6);
-  addLamp(0, 2.42, 5.55, 0xffe8c0, 0.7, 5);
+  addLamp(-1.5, 2.72, -6.7, 0xffe0b0, 0.75, 6);
+  addLamp(-1.6, 2.42, 4.85, 0xffe8c0, 0.7, 5);
   addLamp(-26.5, 2.7, 17.3, 0xffc070, 0.9, 7);
-  addLamp(9.2, 2.45, 1.2, 0xffe0b0, 0.65, 6);
+  addLamp(8.7, 2.54, 1.4, 0xffe0b0, 0.65, 6);
   progress(0.88);
   await yieldToPaint();
 

@@ -1,9 +1,14 @@
 /*
- * trees.js: trunks you weave, canopies you fly under.
+ * trees.js: shade trees, not hedge walls and not cubes.
  *
- * Trunks are poles. A canopy starts at 2.5 m so a 5 inch fits under.
- * Tree lines share one canopy slab so neighbouring crowns are not a
- * leftover slot. Yard trees sit 6 m apart. Extra crown boxes are paint.
+ * City grove language, copied not imported: a baked cylinder trunk and
+ * limbs, instanced icosahedron blobs in three greens. Canopies do not
+ * receive shadow (a ramp in shade is a black circle in the sky).
+ *
+ * Leftover law still applies. Blobs overlap, so they cannot each be a
+ * collider. One hull per tree, from UNDER so a 5 inch fits under, half
+ * extent HALF so neighbours at 7 m have a 1.4 m+ slot. Blobs are
+ * clamped inside that hull. No perimeter slab.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -21,68 +26,174 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { slab } from './kit.js';
+import * as THREE from 'three';
+import { bake, rngKit, trs } from './cel/util.js';
 
 const UNDER = 2.52;
+const HALF = 2.08;
+const LIMB = [
+  [1, 0.42, 0],
+  [0.72, 0.5, 0.72],
+  [0, 0.46, 1],
+  [-0.72, 0.5, 0.72],
+  [-1, 0.42, 0],
+  [-0.72, 0.5, -0.72],
+  [0, 0.46, -1],
+  [0.72, 0.5, -0.72],
+];
 
 export function buildTrees(root, colliders, M) {
-  northLine(root, colliders, M);
-  westLine(root, colliders, M);
-  eastLine(root, colliders, M);
-  yardTrees(root, colliders, M);
-}
+  const spots = plant();
+  const woodParts = [];
+  const blobs = [[], [], []];
+  const trunkGeo = new THREE.CylinderGeometry(0.62, 1.0, 1, 7, 1);
+  const branchGeo = new THREE.CylinderGeometry(0.28, 0.6, 1, 5, 1);
+  const blobGeo = new THREE.IcosahedronGeometry(1, 0);
 
-function trunk(root, colliders, M, x, z, r, h) {
-  slab(root, colliders, M.woodDark, x - r, 0, z - r, x + r, h, z + r, { kind: 'tree' });
-}
-
-function canopy(root, colliders, M, x0, z0, x1, z1, y1, mat) {
-  slab(root, colliders, mat, x0, UNDER, z0, x1, y1, z1, { kind: 'canopy' });
-}
-
-function northLine(root, colliders, M) {
-  for (let x = -42; x <= 40; x += 5) {
-    trunk(root, colliders, M, x, 38.4, 0.28, UNDER);
+  for (const spot of spots) {
+    grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders);
   }
-  canopy(root, colliders, M, -44.2, 35.8, -10.0, 41.2, 9.4, M.leafDark);
-  canopy(root, colliders, M, -10.0, 35.8, 16.0, 41.2, 9.4, M.leaf);
-  canopy(root, colliders, M, 16.0, 35.8, 42.2, 41.2, 9.4, M.leafSun);
+
+  const wood = new THREE.Mesh(bake(woodParts), M.woodDark);
+  wood.castShadow = true;
+  wood.receiveShadow = true;
+  wood.name = 'yardWood';
+  root.add(wood);
+
+  const mats = [M.leafSun, M.leaf, M.leafDark];
+  blobs.forEach((list, i) => {
+    if (!list.length) {
+      return;
+    }
+    const inst = new THREE.InstancedMesh(blobGeo, mats[i], list.length);
+    list.forEach((mx, k) => inst.setMatrixAt(k, mx));
+    inst.instanceMatrix.needsUpdate = true;
+    inst.castShadow = true;
+    inst.receiveShadow = false;
+    inst.userData.noMerge = true;
+    inst.name = 'yardCanopy' + i;
+    inst.frustumCulled = false;
+    root.add(inst);
+  });
+
+  trunkGeo.dispose();
+  branchGeo.dispose();
 }
 
-function westLine(root, colliders, M) {
-  for (let z = -38; z <= 34; z += 5) {
-    trunk(root, colliders, M, -42.2, z, 0.28, UNDER);
+function plant() {
+  const spots = [];
+  let seed = 11;
+  const add = (x, z, scale) => {
+    seed += 17;
+    spots.push({ x, z, scale, seed });
+  };
+  for (let x = -40; x <= 37; x += 7) {
+    add(x, 39, 0.92);
   }
-  canopy(root, colliders, M, -45.0, -40.2, -39.2, -2.0, 9.1, M.leafDark);
-  canopy(root, colliders, M, -45.0, -2.0, -39.2, 18.0, 9.1, M.leaf);
-  canopy(root, colliders, M, -45.0, 18.0, -39.2, 35.8, 9.1, M.leafDark);
-}
-
-function eastLine(root, colliders, M) {
-  for (let z = -22; z <= 28; z += 6) {
-    trunk(root, colliders, M, 22.4, z, 0.26, UNDER);
+  for (let z = -35; z <= 32; z += 7) {
+    add(-44, z, 0.88);
   }
-  canopy(root, colliders, M, 19.6, -24.4, 25.2, 4.0, 8.6, M.leaf);
-  canopy(root, colliders, M, 19.6, 4.0, 25.2, 30.4, 8.6, M.leafSun);
+  for (let z = -35; z <= 28; z += 7) {
+    add(23, z, 0.9);
+  }
+  const south = [-38, -31, -24, -17, -3, 4, 18, 25, 32];
+  for (const x of south) {
+    add(x, -44, 0.86);
+  }
+  add(-16, 8, 1.05);
+  add(-11, 18, 1.12);
+  add(6, 20, 0.98);
+  add(3, 13.4, 0.9);
+  add(15.4, -10, 1.0);
+  add(15.4, 12, 1.08);
+  add(-14, -12, 0.94);
+  add(-22, 5, 1.02);
+  add(-8, -22, 0.88);
+  add(8, 26, 0.95);
+  return spots;
 }
 
-function yardTrees(root, colliders, M) {
-  const spots = [
-    { x: -14.0, z: 6.0, h: 8.2 },
-    { x: -8.0, z: 14.0, h: 9.0 },
-    { x: 8.5, z: 18.0, h: 7.4 },
-    { x: 16.0, z: -8.4, h: 8.2 },
-    { x: 15.8, z: 8.2, h: 9.0 },
-    { x: -12.2, z: -12.0, h: 7.4 },
-  ];
-  for (const s of spots) {
-    trunk(root, colliders, M, s.x, s.z, 0.32, UNDER);
-    canopy(root, colliders, M, s.x - 2.0, s.z - 2.0, s.x + 2.0, s.z + 2.0, s.h, M.leaf);
-    slab(root, colliders, M.leafSun, s.x - 1.1, UNDER + 2.2, s.z - 1.3, s.x + 1.5, s.h + 0.4, s.z + 1.1, {
-      solid: false, cast: true,
+function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders) {
+  const rng = rngKit(spot.seed);
+  const S = spot.scale;
+  const x = spot.x;
+  const z = spot.z;
+  const trunkH = 3.55 * S * rng.range(0.92, 1.12);
+  const trunkR = 0.22 * S;
+  woodParts.push({
+    geometry: trunkGeo,
+    matrix: trs(x, trunkH * 0.5, z, 0, 0, 0, trunkR, trunkH, trunkR),
+  });
+  woodParts.push({
+    geometry: trunkGeo,
+    matrix: trs(x, 0.18 * S, z, 0, 0, 0, trunkR * 1.55, 0.38 * S, trunkR * 1.55),
+  });
+
+  const topY = trunkH;
+  const nLimb = 4 + (rng.next() < 0.5 ? 1 : 0);
+  const centers = [];
+  for (let i = 0; i < nLimb; i += 1) {
+    const d = LIMB[(i * 2 + (rng.next() < 0.5 ? 1 : 0)) % LIMB.length];
+    const len = 1.35 * S * rng.range(0.82, 1.18);
+    const reach = Math.min(HALF * 0.72, len);
+    const ex = x + d[0] * reach;
+    const ey = topY + d[1] * len;
+    const ez = z + d[2] * reach;
+    const mx = (x + ex) * 0.5;
+    const my = (topY + ey) * 0.5;
+    const mz = (z + ez) * 0.5;
+    const dx = ex - x;
+    const dy = ey - topY;
+    const dz = ez - z;
+    const L = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    const q = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(dx / L, dy / L, dz / L),
+    );
+    woodParts.push({
+      geometry: branchGeo,
+      matrix: new THREE.Matrix4().compose(
+        new THREE.Vector3(mx, my, mz),
+        q,
+        new THREE.Vector3(0.14 * S, L, 0.14 * S),
+      ),
     });
-    slab(root, colliders, M.leafDark, s.x - 1.8, UNDER + 0.4, s.z + 0.6, s.x + 0.4, UNDER + 2.0, s.z + 2.0, {
-      solid: false, cast: false,
-    });
+    centers.push({ x: ex, y: ey, z: ez });
   }
+
+  const count = 24 + Math.floor(rng.next() * 8);
+  const yTop = UNDER + 4.6 * S;
+  for (let i = 0; i < count; i += 1) {
+    const c = centers[Math.floor(rng.next() * centers.length)];
+    const r = 0.62 * S * rng.range(0.72, 1.18);
+    const ry = r * rng.range(0.7, 0.9);
+    const px = clamp(c.x + rng.range(-1.05, 1.05) * S, x - (HALF - r), x + (HALF - r));
+    const pz = clamp(c.z + rng.range(-1.05, 1.05) * S, z - (HALF - r), z + (HALF - r));
+    const py = clamp(c.y + rng.range(-0.45, 1.15) * S, UNDER + ry, yTop - ry);
+    const hi = (py - UNDER) / Math.max(0.8, yTop - UNDER);
+    let tone = hi > 0.66 ? 0 : hi < 0.32 ? 2 : 1;
+    if (rng.next() < 0.18) {
+      tone = (tone + 1) % 3;
+    }
+    blobs[tone].push(trs(
+      px, py, pz,
+      rng.range(0, 3), rng.range(0, 3), rng.range(0, 3),
+      r, ry, r,
+    ));
+  }
+  for (let i = 0; i < 4; i += 1) {
+    const r = 0.55 * S * rng.range(0.8, 1.1);
+    const ry = r * 0.78;
+    const px = clamp(x + rng.range(-0.7, 0.7) * S, x - (HALF - r), x + (HALF - r));
+    const pz = clamp(z + rng.range(-0.7, 0.7) * S, z - (HALF - r), z + (HALF - r));
+    const py = yTop - ry - rng.range(0.05, 0.45);
+    blobs[0].push(trs(px, py, pz, rng.range(0, 3), rng.range(0, 3), rng.range(0, 3), r, ry, r));
+  }
+
+  colliders.addBox('tree', x - trunkR, 0, z - trunkR, x + trunkR, UNDER, z + trunkR);
+  colliders.addBox('canopy', x - HALF, UNDER, z - HALF, x + HALF, yTop, z + HALF);
+}
+
+function clamp(v, a, b) {
+  return v < a ? a : v > b ? b : v;
 }

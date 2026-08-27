@@ -41,6 +41,8 @@ export function buildGround(root, colliders, M) {
   decal(root, colliders, M.gravel, 5.4, 0.03, -9.2, 10.7, 0.055, -8.1);
   decal(root, colliders, M.gravel, -19.2, 0.03, 4.4, -7.4, 0.055, 6.2);
   decal(root, colliders, M.gravel, -20.4, 0.03, 6.2, -18.6, 0.055, 12.2);
+  decal(root, colliders, M.gravel, -10.8, 0.03, -8.8, -6.6, 0.055, -4.8);
+  decal(root, colliders, M.asphalt, 6.8, 0.03, -8.4, 10.6, 0.055, -4.6);
   decal(root, colliders, M.gravel, -26.2, 0.03, -24.5, -13.8, 0.05, -16.2);
 
   decal(root, colliders, M.dry, -18, 0.03, -14, -8, 0.055, -6);

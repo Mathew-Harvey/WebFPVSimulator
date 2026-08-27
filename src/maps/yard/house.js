@@ -1,8 +1,9 @@
 /*
- * house.js: cream split-level, south porch, north deck, east carport.
+ * house.js: cream split-level, south porch, north deck, east garage.
  *
- * The house is a filled mass. Windows are paint. The porch, the deck
- * undercroft, the carport and the missing fence panel are the lines.
+ * Two masses sharing a face at the split: main living west, walk-out
+ * basement east. Windows are paint. The porch, deck undercroft, carport
+ * and the missing fence panel are the lines.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -20,51 +21,38 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { L, slab, decal, deck } from './kit.js';
+import { L, slab, decal, deck, gableX } from './kit.js';
 
 export function buildHouse(root, colliders, platforms, M) {
-  const h = L.house;
-  slab(root, colliders, M.cream, h.x0, 0, h.z0, h.x1, h.h, h.z1);
-  decal(root, colliders, M.creamSun, h.x0, 0, h.z0 - 0.04, h.x1, h.h, h.z0);
-  decal(root, colliders, M.creamSun, h.x0 - 0.04, 0, h.z0, h.x0, h.h, h.z1);
-  decal(root, colliders, M.creamShade, h.x0, 0, h.z1, h.x1, h.h, h.z1 + 0.04);
+  const m = L.main;
+  const b = L.base;
+  slab(root, colliders, M.cream, m.x0, m.y0, m.z0, m.x1, m.y1, m.z1);
+  slab(root, colliders, M.cream, m.x0, 0, m.z0, m.x1, m.y0, m.z1);
+  slab(root, colliders, M.creamShade, b.x0, 0, b.z0, b.x1, b.h, b.z1);
 
-  /* Walk-out block, cooler than the vinyl so the split reads from the drive. */
-  decal(root, colliders, M.asphalt, h.x0 - 0.04, 0, h.z0 - 0.04, h.x1 + 0.04, 1.36, h.z0);
-  decal(root, colliders, M.asphalt, h.x0 - 0.04, 0, h.z1, h.x1 + 0.04, 1.36, h.z1 + 0.04);
-  decal(root, colliders, M.asphalt, h.x0 - 0.04, 0, h.z0, h.x0, 1.36, h.z1);
-  decal(root, colliders, M.asphalt, h.x1, 0, h.z0, h.x1 + 0.04, 1.36, h.z1);
+  decal(root, colliders, M.creamSun, m.x0, m.y0, m.z0 - 0.04, m.x1, m.y1, m.z0);
+  decal(root, colliders, M.creamSun, m.x0 - 0.04, m.y0, m.z0, m.x0, m.y1, m.z1);
+  decal(root, colliders, M.asphalt, b.x0, 0, b.z0 - 0.04, b.x1, b.h, b.z0);
+  decal(root, colliders, M.asphalt, b.x1, 0, b.z0, b.x1 + 0.04, b.h, b.z1);
+  decal(root, colliders, M.creamShade, m.x0, m.y0, m.z1, m.x1, m.y1, m.z1 + 0.04);
 
-  const over = 0.85;
-  deck(root, colliders, platforms, M.roof, h.x0 - over, h.z0 - over, h.x1 + over, h.z1 + over, h.h + 0.38, 0.38);
-  fascia(root, colliders, M, h.x0 - over, h.z0 - over, h.x1 + over, h.z1 + over, h.h);
-  slab(root, colliders, M.roofSun, h.x0 + 0.6, h.h + 0.38, -0.55, h.x1 - 0.6, h.h + 0.82, 0.55, {
-    solid: false,
-  });
-  slab(root, colliders, M.steelDark, 2.2, h.h + 0.38, 1.4, 3.0, h.h + 1.85, 2.2);
+  gableX(root, colliders, platforms, M.roof, m.x0 - 0.55, m.z0 - 0.55, m.x1, m.z1 + 0.55, m.y1, m.y1 + 1.55, 3);
+  gableX(root, colliders, platforms, M.roof, b.x0, b.z0 - 0.4, b.x1, b.z1 + 0.4, b.h, b.h + 0.95, 3);
+  slab(root, colliders, M.steelDark, -1.1, m.y1 + 1.55, 0.4, -0.3, m.y1 + 2.85, 1.2);
+  decal(root, colliders, M.woodDark, m.x0, m.y1 - 0.12, m.z0 - 0.06, m.x1, m.y1, m.z0);
 
-  decal(root, colliders, M.steel, h.x1, 0, h.z0, h.x1 + 0.05, h.h, h.z0 + 0.05);
-  decal(root, colliders, M.steel, h.x0 - 0.05, 0, h.z0, h.x0, h.h, h.z0 + 0.05);
-
-  eastCarport(root, colliders, platforms, M);
+  eastGarage(root, colliders, platforms, M);
   southPorch(root, colliders, platforms, M);
   northDeck(root, colliders, platforms, M);
   panes(root, colliders, M);
   doors(root, colliders, M);
 }
 
-function fascia(root, colliders, M, x0, z0, x1, z1, y) {
-  decal(root, colliders, M.woodDark, x0, y, z0, x1, y + 0.18, z0 + 0.12);
-  decal(root, colliders, M.woodDark, x0, y, z1 - 0.12, x1, y + 0.18, z1);
-  decal(root, colliders, M.woodDark, x0, y, z0, x0 + 0.12, y + 0.18, z1);
-  decal(root, colliders, M.woodDark, x1 - 0.12, y, z0, x1, y + 0.18, z1);
-}
-
-function eastCarport(root, colliders, platforms, M) {
+function eastGarage(root, colliders, platforms, M) {
   const g = L.garage;
   slab(root, colliders, M.cream, g.x0, 0, g.z1 - 0.22, g.x1, g.h - 0.22, g.z1);
-  deck(root, colliders, platforms, M.roof, g.x0, g.z0, g.x1, g.z1, g.h, 0.22);
-  fascia(root, colliders, M, g.x0, g.z0, g.x1, g.z1, g.h - 0.22);
+  gableX(root, colliders, platforms, M.roof, g.x0, g.z0 - 0.15, g.x1 + 0.2, g.z1 + 0.2, g.h, g.h + 0.82, 3);
+  /* North wall already shares z with the house. Posts share the south lintel. */
   slab(root, colliders, M.woodDark, g.x1 - 0.12, 0, g.z0, g.x1, 0.14, g.z1 - 0.22, {
     kind: 'obstacle',
   });
@@ -74,46 +62,55 @@ function eastCarport(root, colliders, platforms, M) {
   slab(root, colliders, M.wood, g.x1 - 0.28, 0, g.z1 - 0.46, g.x1 - 0.12, g.h - 0.22, g.z1 - 0.22, {
     kind: 'pole',
   });
-  slab(root, colliders, M.steelDark, g.x1 - 0.22, g.h - 0.28, g.z0 + 0.08, g.x1 - 0.12, g.h - 0.22, g.z1 - 0.22, {
-    solid: false, cast: false,
-  });
-  lampBox(root, colliders, M, 9.2, g.h - 0.22, 1.2);
+  lampBox(root, colliders, M, 8.7, g.h - 0.18, 1.4);
 }
 
 function southPorch(root, colliders, platforms, M) {
   const p = L.porch;
-  slab(root, colliders, M.woodSun, p.x0, 0, p.z0, p.x1, p.y, p.z1, {
+  slab(root, colliders, M.woodSun, p.x0, p.y - 0.16, p.z0, p.x1, p.y, p.z1, {
     solid: false, receive: true,
   });
   platforms.push({
-    x0: p.x0, z0: p.z0, x1: p.x1, z1: p.z1, top: p.y, thick: p.y,
+    x0: p.x0, z0: p.z0, x1: p.x1, z1: p.z1, top: p.y, thick: 0.16,
   });
-  deck(root, colliders, platforms, M.wood, p.x0 - 0.18, p.z0 - 0.18, p.x1 + 0.18, p.z1, p.roof, 0.16);
+  colliders.addBox('wall', p.x0, p.y - 0.16, p.z0, p.x1, p.y - 0.02, p.z1);
+  deck(root, colliders, platforms, M.wood, p.x0 - 0.2, p.z0 - 0.22, p.x1, p.z1, p.roof, 0.16);
 
-  const posts = [
-    [p.x0 + 0.12, p.z0 + 0.12],
-    [p.x1 - 0.12, p.z0 + 0.12],
-    [-2.6, p.z0 + 0.12],
-    [2.6, p.z0 + 0.12],
-  ];
-  for (const [x, z] of posts) {
-    slab(root, colliders, M.wood, x - 0.08, 0, z - 0.08, x + 0.08, p.roof - 0.16, z + 0.08, {
+  const posts = [p.x0 + 0.12, -3.93, 0.95, p.x1 - 0.12];
+  const zPost = p.z0 + 0.12;
+  for (const x of posts) {
+    slab(root, colliders, M.wood, x - 0.08, 0, zPost - 0.08, x + 0.08, p.y - 0.16, zPost + 0.08, {
+      kind: 'pole',
+    });
+    slab(root, colliders, M.wood, x - 0.08, p.y, zPost - 0.08, x + 0.08, p.roof - 0.16, zPost + 0.08, {
       kind: 'pole',
     });
   }
-  /* Outer bays only. The middle span is the swing, 1.4 m from these rails. */
-  const z = p.z0 + 0.12;
-  slab(root, colliders, M.wood, p.x0 + 0.22, 0.96, z - 0.06, -2.69, 1.08, z + 0.06, { kind: 'pole' });
-  slab(root, colliders, M.wood, 2.69, 0.96, z - 0.06, p.x1 - 0.22, 1.08, z + 0.06, { kind: 'pole' });
-  lampBox(root, colliders, M, 0, p.roof - 0.16, -7.0);
+  const zRail = zPost;
+  slab(root, colliders, M.wood, posts[0] + 0.09, 0.96, zRail - 0.06, posts[1] - 0.09, 1.08, zRail + 0.06, {
+    kind: 'pole',
+  });
+  slab(root, colliders, M.wood, posts[2] + 0.09, 0.96, zRail - 0.06, posts[3] - 0.09, 1.08, zRail + 0.06, {
+    kind: 'pole',
+  });
+
+  const rise = p.y / 5;
+  const run = 0.32;
+  for (let i = 0; i < 5; i += 1) {
+    const y1 = (i + 1) * rise + 0.08;
+    const z0 = p.z0 - (i + 1) * run;
+    const z1 = p.z0 - i * run;
+    deck(root, colliders, platforms, M.wood, 0.64, z0, 1.44, z1, y1, y1 - i * rise);
+  }
+  lampBox(root, colliders, M, -1.5, p.roof - 0.16, (p.z0 + p.z1) * 0.5);
 }
 
 function northDeck(root, colliders, platforms, M) {
   const d = L.deck;
   deck(root, colliders, platforms, M.woodSun, d.x0, d.z0, d.x1, d.z1, d.y, d.thick);
 
-  const xs = [d.x0 + 0.1, -2.0, 2.0, d.x1 - 0.1];
-  const zs = [d.z0 + 0.22, (d.z0 + d.z1) * 0.5, d.z1 - 0.1];
+  const xs = [d.x0 + 0.12, -2.4, -0.2, d.x1 - 0.12];
+  const zs = [d.z0 + 0.08, (d.z0 + d.z1) * 0.5, d.z1 - 0.08];
   for (const x of xs) {
     for (const z of zs) {
       slab(root, colliders, M.woodDark, x - 0.08, 0, z - 0.08, x + 0.08, d.y - d.thick, z + 0.08, {
@@ -132,7 +129,6 @@ function northDeck(root, colliders, platforms, M) {
     const b = xs[i + 1] - 0.09;
     slab(root, colliders, M.wood, a, ry0, zs[2] - 0.06, b, ry1, zs[2] + 0.06, { kind: 'pole' });
     decal(root, colliders, M.wood, a, d.y + 0.38, zs[2] - 0.05, b, d.y + 0.48, zs[2] + 0.05);
-    decal(root, colliders, M.woodDark, a, d.y, zs[2] - 0.05, b, d.y + 0.12, zs[2] + 0.05);
   }
   for (let i = 0; i < zs.length - 1; i += 1) {
     const a = zs[i] + 0.09;
@@ -141,8 +137,6 @@ function northDeck(root, colliders, platforms, M) {
     slab(root, colliders, M.wood, xs[3] - 0.06, ry0, a, xs[3] + 0.06, ry1, b, { kind: 'pole' });
     decal(root, colliders, M.wood, xs[0] - 0.05, d.y + 0.38, a, xs[0] + 0.05, d.y + 0.48, b);
     decal(root, colliders, M.wood, xs[3] - 0.05, d.y + 0.38, a, xs[3] + 0.05, d.y + 0.48, b);
-    decal(root, colliders, M.woodDark, xs[0] - 0.05, d.y, a, xs[0] + 0.05, d.y + 0.12, b);
-    decal(root, colliders, M.woodDark, xs[3] - 0.05, d.y, a, xs[3] + 0.05, d.y + 0.12, b);
   }
 
   const rise = d.y / 6;
@@ -152,10 +146,9 @@ function northDeck(root, colliders, platforms, M) {
     const y1 = (i + 1) * rise + 0.08;
     const z0 = d.z1 + i * run;
     const z1 = d.z1 + (i + 1) * run;
-    deck(root, colliders, platforms, M.wood, d.x0, z0, d.x0 + 1.2, z1, y1, y1 - y0);
+    deck(root, colliders, platforms, M.wood, d.x0, z0, d.x0 + 1.15, z1, y1, y1 - y0);
   }
-
-  lampBox(root, colliders, M, 0, 2.48, L.house.z1);
+  lampBox(root, colliders, M, -1.6, 2.42, L.main.z1);
 }
 
 function lampBox(root, colliders, M, x, y, z) {
@@ -168,7 +161,8 @@ function lampBox(root, colliders, M, x, y, z) {
 }
 
 function panes(root, colliders, M) {
-  const h = L.house;
+  const m = L.main;
+  const b = L.base;
   const win = (x0, y0, z0, x1, y1, z1) => {
     decal(root, colliders, M.pane, x0, y0, z0, x1, y1, z1);
     decal(root, colliders, M.woodDark, x0 - 0.05, y0 - 0.06, z0, x1 + 0.05, y0, z1);
@@ -176,45 +170,43 @@ function panes(root, colliders, M) {
     decal(root, colliders, M.woodDark, x0 - 0.05, y0, z0, x0, y1, z1);
     decal(root, colliders, M.woodDark, x1, y0, z0, x1 + 0.05, y1, z1);
   };
-  win(-5.4, 1.7, h.z0 - 0.04, -3.6, 3.15, h.z0);
-  win(-2.0, 1.7, h.z0 - 0.04, -0.2, 3.15, h.z0);
-  win(3.4, 1.7, h.z0 - 0.04, 5.4, 3.15, h.z0);
-  win(-5.4, 4.05, h.z0 - 0.04, -3.6, 5.4, h.z0);
-  win(3.4, 4.05, h.z0 - 0.04, 5.4, 5.4, h.z0);
-
-  win(-5.6, 1.7, h.z1, -3.8, 3.15, h.z1 + 0.04);
-  win(3.8, 1.7, h.z1, 5.6, 3.15, h.z1 + 0.04);
-  win(-5.6, 4.05, h.z1, -3.8, 5.4, h.z1 + 0.04);
-  win(3.8, 4.05, h.z1, 5.6, 5.4, h.z1 + 0.04);
-
-  win(h.x0 - 0.04, 1.7, -3.6, h.x0, 3.15, -1.8);
-  win(h.x0 - 0.04, 1.7, 1.8, h.x0, 3.15, 3.6);
-  win(h.x0 - 0.04, 4.05, -1.2, h.x0, 5.4, 1.2);
-
-  win(h.x1, 3.2, -4.6, h.x1 + 0.04, 4.6, -3.0);
-  win(h.x1, 0.45, -4.8, h.x1 + 0.04, 1.15, -4.0);
-
   const shutter = (x0, y0, z0, x1, y1, z1) => {
     decal(root, colliders, M.barn, x0, y0, z0, x1, y1, z1);
   };
-  shutter(-5.62, 1.7, h.z0 - 0.05, -5.42, 3.15, h.z0);
-  shutter(-3.58, 1.7, h.z0 - 0.05, -3.38, 3.15, h.z0);
-  shutter(-2.22, 1.7, h.z0 - 0.05, -2.02, 3.15, h.z0);
-  shutter(-0.18, 1.7, h.z0 - 0.05, 0.02, 3.15, h.z0);
-  shutter(3.18, 1.7, h.z0 - 0.05, 3.38, 3.15, h.z0);
-  shutter(5.42, 1.7, h.z0 - 0.05, 5.62, 3.15, h.z0);
-  shutter(-5.82, 1.7, h.z1, -5.62, 3.15, h.z1 + 0.05);
-  shutter(-3.78, 1.7, h.z1, -3.58, 3.15, h.z1 + 0.05);
-  shutter(3.58, 1.7, h.z1, 3.78, 3.15, h.z1 + 0.05);
-  shutter(5.62, 1.7, h.z1, 5.82, 3.15, h.z1 + 0.05);
+
+  win(-5.4, 1.7, m.z0 - 0.04, -3.8, 3.05, m.z0);
+  win(-2.4, 1.7, m.z0 - 0.04, -0.6, 3.05, m.z0);
+  win(-5.4, 3.35, m.z0 - 0.04, -3.8, 4.55, m.z0);
+  win(-2.4, 3.35, m.z0 - 0.04, -0.6, 4.55, m.z0);
+  shutter(-5.62, 1.7, m.z0 - 0.05, -5.42, 3.05, m.z0);
+  shutter(-3.78, 1.7, m.z0 - 0.05, -3.58, 3.05, m.z0);
+  shutter(-2.62, 1.7, m.z0 - 0.05, -2.42, 3.05, m.z0);
+  shutter(-0.58, 1.7, m.z0 - 0.05, -0.38, 3.05, m.z0);
+
+  win(-5.5, 1.7, m.z1, -3.7, 3.05, m.z1 + 0.04);
+  win(0.2, 1.7, m.z1, 1.8, 3.05, m.z1 + 0.04);
+  win(-5.5, 3.35, m.z1, -3.7, 4.55, m.z1 + 0.04);
+  shutter(-5.7, 1.7, m.z1, -5.5, 3.05, m.z1 + 0.05);
+  shutter(-3.68, 1.7, m.z1, -3.48, 3.05, m.z1 + 0.05);
+
+  win(m.x0 - 0.04, 1.7, -3.2, m.x0, 3.05, -1.4);
+  win(m.x0 - 0.04, 1.7, 1.4, m.x0, 3.05, 3.2);
+  win(m.x0 - 0.04, 3.35, -0.8, m.x0, 4.55, 1.0);
+
+  win(b.x1, 0.42, -4.2, b.x1 + 0.04, 1.15, -3.3);
+  win(b.x1, 1.55, -0.4, b.x1 + 0.04, 2.35, 1.2);
+  win(3.0, 0.42, b.z0 - 0.04, 4.4, 1.35, b.z0);
+  win(5.1, 0.42, b.z0 - 0.04, 6.4, 1.35, b.z0);
+  win(3.0, 1.55, b.z0 - 0.04, 4.4, 2.45, b.z0);
 }
 
 function doors(root, colliders, M) {
-  const h = L.house;
-  decal(root, colliders, M.woodDark, -0.7, 0.16, h.z0 - 0.05, 0.7, 2.35, h.z0);
-  decal(root, colliders, M.pane, 0.22, 1.15, h.z0 - 0.06, 0.48, 1.95, h.z0 - 0.01);
-  decal(root, colliders, M.wood, -1.05, L.deck.y, h.z1, 1.05, L.deck.y + 2.15, h.z1 + 0.06);
-  decal(root, colliders, M.pane, -0.85, L.deck.y + 0.28, h.z1 + 0.01, 0.85, L.deck.y + 1.95, h.z1 + 0.07);
-  decal(root, colliders, M.woodDark, h.x1, 0.02, -5.22, h.x1 + 0.06, 2.08, -4.22);
-  decal(root, colliders, M.pane, h.x1 + 0.01, 0.95, -4.72, h.x1 + 0.07, 1.72, -4.42);
+  const m = L.main;
+  const b = L.base;
+  decal(root, colliders, M.woodDark, -1.35, m.y0, m.z0 - 0.05, -0.15, m.y0 + 2.15, m.z0);
+  decal(root, colliders, M.pane, -0.45, m.y0 + 0.9, m.z0 - 0.06, -0.22, m.y0 + 1.7, m.z0 - 0.01);
+  decal(root, colliders, M.wood, -2.5, m.y0, m.z1, -0.5, m.y0 + 2.15, m.z1 + 0.06);
+  decal(root, colliders, M.pane, -2.3, m.y0 + 0.3, m.z1 + 0.01, -0.7, m.y0 + 1.9, m.z1 + 0.07);
+  decal(root, colliders, M.woodDark, b.x1, 0.02, -4.55, b.x1 + 0.06, 2.15, -3.55);
+  decal(root, colliders, M.pane, b.x1 + 0.01, 0.9, -4.15, b.x1 + 0.07, 1.7, -3.85);
 }

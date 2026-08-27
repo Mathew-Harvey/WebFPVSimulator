@@ -885,6 +885,7 @@ function emaRack(ctx, o) {
   const m = mats();
   const rng = rngKit(o.seed ?? 9);
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const len = o.len ?? 3.0;
   const H = 1.85;
 
@@ -940,11 +941,27 @@ function emaRack(ctx, o) {
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
   ctx.add(g);
-  const swap = Math.abs(Math.abs(o.ry ?? 0) - Math.PI / 2) < 0.5;
-  ctx.collide(
-    o.x - (swap ? 0.3 : len / 2), o.z - (swap ? len / 2 : 0.3),
-    o.x + (swap ? 0.3 : len / 2), o.z + (swap ? len / 2 : 0.3), (o.y ?? 0) + H
-  );
+  const y = o.y ?? 0;
+  const ry = o.ry ?? 0;
+  const ca = Math.cos(ry);
+  const sa = Math.sin(ry);
+  const put = (lx, lz, hw, hd, top, bot) => {
+    const px = o.x + ca * lx - sa * lz;
+    const pz = o.z + sa * lx + ca * lz;
+    const hx = Math.abs(ca) * hw + Math.abs(sa) * hd;
+    const hz = Math.abs(sa) * hw + Math.abs(ca) * hd;
+    ctx.collide(px - hx, pz - hz, px + hx, pz + hz, y + top, y + bot, true);
+  };
+  for (const s of [-1, 1]) {
+    put((s * len) / 2, 0, 0.08, 0.08, H, 0.16);
+    put((s * len) / 2, 0, 0.12, 0.26, 0.16, 0);
+  }
+  /* Two height-only screens: each rail plus the plaques that hang from it.
+   * The bay under the lower row and the gap between rows stay air. skipFit
+   * so the hood cannot grow a wall through that mouth. */
+  put(0, 0.06, len / 2 + 0.15, 0.05, H - 0.02, H - 0.32);
+  put(0, 0.06, len / 2 + 0.15, 0.05, H * 0.55 + 0.06, H * 0.55 - 0.32);
+  put(0, 0.06, len / 2 + 0.25, 0.32, H + 0.16, H + 0.08);
   return g;
 }
 
@@ -953,6 +970,7 @@ function omikujiStand(ctx, o) {
   const m = mats();
   const rng = rngKit(15);
   const g = new THREE.Group();
+  g.name = 'openFrame';
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(0.56, 0.72, 0.42),
     [m.wood, m.wood, m.wood, m.wood,
@@ -1002,6 +1020,6 @@ function omikujiStand(ctx, o) {
   g.position.set(o.x, o.y ?? 0, o.z);
   g.rotation.y = o.ry ?? 0;
   ctx.add(g);
-  ctx.collide(o.x - 0.4, o.z - 0.4, o.x + 0.4, o.z + 0.4, (o.y ?? 0) + 1.6);
+  ctx.collide(o.x - 0.4, o.z - 0.4, o.x + 0.4, o.z + 0.4, (o.y ?? 0) + 1.6, o.y ?? 0, true);
   return g;
 }

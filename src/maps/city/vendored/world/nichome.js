@@ -710,6 +710,7 @@ function frontApron(ctx, gm, p, depth, name) {
 
 function buildHeights(ctx, m, gm, shrubs) {
   const Y = ctx.groundAt(HEIGHTS.x, HEIGHTS.z);
+  const p = plotBox(HEIGHTS);
     const b = makeWalkup({
       ...HEIGHTS, y: Y, floors: 3, units: 3, seed: 8541, wall: 4, roof: 0, door: 2, plate: 3, ctx,
     });

@@ -20,7 +20,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { L, slab, decal, deck, punchedZ, punchedX, deckAround } from './kit.js';
+import { L, slab, decal, deck, punchedZ, punchedX, deckAround, gableX } from './kit.js';
 
 export function buildBarn(root, colliders, platforms, M) {
   stable(root, colliders, platforms, M);
@@ -67,8 +67,8 @@ function stable(root, colliders, platforms, M) {
     slab(root, colliders, M.woodDark, sx0, y0, z0, sx1, y1, z1, { kind: 'obstacle' });
   }
 
-  deck(root, colliders, platforms, M.roof, s.x0 - 0.7, s.z0 - 0.7, s.x1 + 0.7, s.z1 + 0.7, s.h + 0.32, 0.32);
-  slab(root, colliders, M.roofSun, s.x0 + 1.2, s.h + 0.32, s.z0 + 4, s.x1 - 1.2, s.h + 0.7, s.z1 - 4, {
+  gableX(root, colliders, platforms, M.roof, s.x0 - 0.7, s.z0 - 0.7, s.x1 + 0.7, s.z1 + 0.7, s.h, s.h + 1.45, 3);
+  slab(root, colliders, M.roofSun, s.x0 + 1.2, s.h + 1.45, s.z0 + 4.6, s.x1 - 1.2, s.h + 1.7, s.z1 - 4.6, {
     solid: false,
   });
   decal(root, colliders, M.woodDark, s.x0 - 0.7, s.h, s.z0 - 0.7, s.x1 + 0.7, s.h + 0.16, s.z0 - 0.58);

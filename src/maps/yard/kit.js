@@ -41,23 +41,31 @@ export const CLEAR = 1.4;
 
 export const L = {
   site: { x0: -50, x1: 50, z0: -50, z1: 50 },
+  /* Main living west of the split, floor at deck height. */
+  main: {
+    x0: -6.6, x1: 2.2, z0: -4.6, z1: 4.8, y0: 1.28, y1: 4.92,
+  },
+  /* Basement / walk-out, driveway side. Shares x=2.2 with main. */
+  base: {
+    x0: 2.2, x1: 6.8, z0: -4.6, z1: 4.8, h: 2.72,
+  },
   house: {
-    x0: -7.2, x1: 7.2, z0: -5.4, z1: 5.4, h: 6.4, t: 0.28,
+    x0: -6.6, x1: 6.8, z0: -4.6, z1: 4.8, h: 4.92, t: 0.28,
   },
   porch: {
-    x0: -5.2, x1: 5.2, z0: -8.8, z1: -5.4, y: 0.16, roof: 2.72,
+    x0: -5.2, x1: 2.2, z0: -8.8, z1: -4.6, y: 1.28, roof: 2.88,
   },
   deck: {
-    x0: -6.0, x1: 6.0, z0: 5.4, z1: 10.5, y: 1.36, thick: 0.18,
+    x0: -5.6, x1: 1.8, z0: 4.8, z1: 9.5, y: 1.28, thick: 0.18,
   },
   garage: {
-    x0: 7.2, x1: 10.7, z0: -1.6, z1: 4.4, h: 2.68,
+    x0: 6.8, x1: 10.6, z0: -1.2, z1: 4.8, h: 2.72,
   },
   drive: {
-    x0: 10.7, x1: 15.4, z0: -44.0, z1: 6.8,
+    x0: 10.6, x1: 15.2, z0: -44.0, z1: 6.5,
   },
   gate: {
-    x0: 10.5, x1: 15.6, z: -42.0,
+    x0: 10.4, x1: 15.4, z: -42.0,
   },
   pad: {
     x0: -36.0, x1: 18.0, z0: -36.0, z1: 32.0,
@@ -78,9 +86,9 @@ export const L = {
     x0: -26.0, x1: -14.0, z0: -24.5, z1: -16.2, h: 3.62, t: 0.22,
   },
   car: {
-    x0: 12.5, x1: 14.4, z0: -6.2, z1: -1.8, h: 1.48,
+    x0: 12.3, x1: 14.2, z0: -6.0, z1: -1.5, h: 1.48,
   },
-  spawn: { x: 0, z: 7.7, y: 1.36, yaw: 0 },
+  spawn: { x: -1.6, z: 6.9, y: 1.28, yaw: 0 },
 };
 
 export function materials() {
@@ -164,6 +172,23 @@ export function deck(root, colliders, platforms, mat, x0, z0, x1, z1, top, thick
   platforms.push({
     x0: xa, z0: za, x1: xb, z1: zb, top, thick,
   });
+}
+
+/* Stepped gable along X. Each tread shares a Y face with the one below.
+ * Inset is on Z so the ridge reads as a roof, not a second storey. */
+export function gableX(root, colliders, platforms, mat, x0, z0, x1, z1, eave, ridge, steps = 3) {
+  const za = Math.min(z0, z1);
+  const zb = Math.max(z0, z1);
+  const mid = (za + zb) * 0.5;
+  const half = (zb - za) * 0.5;
+  const dh = (ridge - eave) / steps;
+  for (let i = 0; i < steps; i += 1) {
+    const t = i / steps;
+    const inset = half * t * 0.72;
+    const top = eave + (i + 1) * dh;
+    const thick = dh;
+    deck(root, colliders, platforms, mat, x0, mid - half + inset, x1, mid + half - inset, top, thick);
+  }
 }
 
 export function fillAround(root, colliders, mat, x0, z0, x1, z1, y0, y1, holes, opts) {

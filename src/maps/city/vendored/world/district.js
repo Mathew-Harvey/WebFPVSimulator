@@ -363,7 +363,7 @@ function buildApartment(ctx) {
   const m = mats();
   const rng = rngKit(6301);
   const g = new THREE.Group();
-  g.name = 'apartment';
+  g.name = 'walkup';
   ctx.add(g);
 
   const x0 = 34.4, x1 = 42.4, z0 = 36.0, z1 = 43.4;
@@ -511,17 +511,17 @@ function buildApartment(ctx) {
     g.add(mesh);
     if (key === 'wall' || key === 'roof') hullOutline(mesh, { thickness: 0.0032 });
   }
-  ctx.collide(x0, z0, x1, z1 - GAL, Y + H + 0.4);
+  ctx.collide(x0, z0, x1, z1 - GAL, Y + H + 0.4, undefined, true);
   for (let k = 0; k < FLOORS; k += 1) {
     const y = Y + k * FH;
-    ctx.collide(x0, z1 - GAL, x1, z1, y + 0.22, y);
-    ctx.collide(x0, z1 - 0.12, x1, z1 + 0.04, y + 1.18, y + 0.30);
-    ctx.collide(x0 - 1.5, z1 - GAL - 0.15, x0, z1 + 0.2, y + 0.20, y);
+    ctx.collide(x0, z1 - GAL, x1, z1, y + 0.22, y, true);
+    ctx.collide(x0, z1 - 0.12, x1, z1 + 0.04, y + 1.18, y + 0.30, true);
+    ctx.collide(x0 - 1.5, z1 - GAL - 0.15, x0, z1 + 0.2, y + 0.20, y, true);
   }
   for (let k = 1; k < FLOORS; k += 1) {
     const y = Y + k * FH;
-    ctx.collide(x0 + 0.3, z0 - 0.90, x1 - 0.3, z0, y + 0.18, y);
-    ctx.collide(x0 + 0.3, z0 - 0.92, x1 - 0.3, z0 - 0.84, y + 1.12, y + 0.18);
+    ctx.collide(x0 + 0.3, z0 - 0.90, x1 - 0.3, z0, y + 0.18, y, true);
+    ctx.collide(x0 + 0.3, z0 - 0.92, x1 - 0.3, z0 - 0.84, y + 1.12, y + 0.18, true);
   }
   return g;
 }

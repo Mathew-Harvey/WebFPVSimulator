@@ -19177,4 +19177,170 @@ turn. `node --check` on the touched JS after the tautology
 fix. `npm run verify` was not run: shell only. Shots exit 1
 is still a board `ERR_CONNECTION_REFUSED`, not a turtle fail.
 
+---
+
+### 2026-08-27 | map | Sakura City occupancy, city would not boot
+
+The live occupancy probe was blocked because Freestyle city
+never loaded. `?map=city` fell back to the empty track:
+`ReferenceError: p is not defined` in nichome `buildHeights`
+(line 765). Dropping `plotCollide` on コーポ みなみ also
+dropped `const p = plotBox(HEIGHTS)`, which the south-flank
+aircon and the shed still used. Restored `plotBox` only, no
+plot prism.
+
+A first CDP swap hung because `await window.__setMap("city")`
+inside one `Runtime.evaluate` deadlocks `yieldToPaint` (two
+rAFs). Fire the swap, then poll. A console hook on a fresh
+document is what caught the ReferenceError; the title banner
+had already been overwritten by the empty-track note.
+
+Live after the load fix, headless Chrome on the RTX 5080,
+`http://127.0.0.1:8766/?map=city`:
+
+Named `__hit` (vh 0.04):
+- bus shelter mouth (65.95, 1.15, 58.45) air
+- bus shelter roof (65.95, 3.15, 58.45) wall
+- garage bay, 不動産 / ランドリー / 内科 recesses, spawn,
+  青空商店 mouth: air
+- ひばり荘 gallery (38.40, 1.50, 42.75) air
+- ひばり荘 mass (38.40, 1.50, 39.50) wall
+
+The gallery was a 8 x 1.3 x 3 m fill on the first scan.
+`buildApartment` was named `apartment`, so COVER_SOFT did not
+skip it, and the gallery slabs had no `skipFit`. Named the
+group `walkup` and skip-fit the slabs, rail, stair and
+balconies. Naming it `walkup` then dropped the mass: fit
+cannot see COVER_SOFT meshes, empty fit does not keep the
+union, and the mass had no `skipFit`. Mass is now skip-fit
+too, same as `collideWalkup`.
+
+Occupancy scan (compact interiors, inset 0.36, frac >= 0.28):
+93 remaining. Top hits are the parked minibus at the turning
+circle (69.2, 54.6), the stone plinth under the onsen gate
+stair, then kei / van AABBs from `parkVehicle`. Those are
+drawn solids. Not the bus-shelter class.
+
+`node --check` and `scripts/gap-scan.js` still did not run:
+node is not on PATH. `npm run verify` was not run: city
+colliders only. Check 15 ceilings were not remeasured.
+
+---
+
+### 2026-08-27 | map | Sakura City graphic-gap colliders, ema and apron
+
+The occupancy scan still could not see the 絵馬掛け: its old
+fat box was 0.6 x 3.2 m, under the 0.70 m plan floor. A
+cover-pass hunt flagged it. The bay under the lower plaques
+and the gap between rows are both well above 0.22 m. Named
+the group `openFrame` and replaced the prism with skip-fit
+posts, two height-only screens (rail plus hanging plaques)
+and the hood slab. Live: under and between-rows air, lower
+row / post / hood wall.
+
+The record shop display case had a leftover ground prism
+under 0.50 m legs. Member legs plus cabinet with a bottom.
+Live: under air, cabinet wall.
+
+おみくじ: named `openFrame` and skip-fit the cabinet so the
+wire rack cannot cover-fill. Slips are a 0.035 m screen,
+declined.
+
+スーパー さかえ apron, same class:
+- Nested trolleys had a skip-fit plan prism from the
+  ground. Basket now starts at y+0.45, wheels separate.
+  Under air, basket wall.
+- Basket dollies: fat prism over both stacks. Legs plus
+  nest with a bottom. Under air.
+- A-board: fat prism, then a yawed leaf AABB that still
+  ate the 0.24 m mouth (a 24 deg 0.66 x 0.045 slab grows
+  to a 0.65 x 0.35 world box). Two world-axis leaf slabs,
+  inner faces 0.30 m apart. Gap air, leaf wall.
+- Service-yard roll cages: fat prism through 0.40 m shelf
+  bays. Sides, back, shelves, wheels. Bay air, shelf wall.
+
+The drinks-crate cage stays a filled volume (crates behind
+the rails). Phone booth door is shut. Occupancy's other 93
+compact interiors are parked vehicles, tree obstacles,
+lantern cubes, the onsen gate plinth, the library notice
+board panel (under-board already member-collided), and
+solid sheds. A thin-plan pass (0.45 to 0.70 m) found shrine
+steps and retaining walls, not another ema wall.
+
+Named `__hit` after the fixes (vh 0.04), city booted ready
+on `http://127.0.0.1:8766/?map=city`:
+- bus shelter mouth, garage bay, 不動産 / ランドリー /
+  内科 recesses, spawn, 青空商店, ひばり荘 gallery: air
+- ひばり荘 mass, shelter roof: wall
+- ema under / between: air. ema row / post / hood: wall
+- case under: air. case cabinet: wall
+- school bike-shed bay (y 2.60): air
+- A-board gap: air. leaf: wall
+- trolley under, roll-cage bay, basket under: air
+
+Four hunts after the last fill (cover-pass, shelter mouths,
+apron furniture, a final leftover pass) reported
+UNEXPECTED: none. Occupancy still cannot see hollow
+interiors of large footprints (it skips sx*sz > 18). Those
+recesses were authored and live-probed instead. Feel still
+needs a human.
+
+`npm run verify` was not run: city colliders only. Check 15
+ceilings were not remeasured.
+
+---
+
+### 2026-08-27 | map | Bardwell's yard homestead rebuild
+
+Asked: the yard was a poor copy, trees were blocks, layout
+wrong, house a fridge. Design a loop prompt and run until
+the public homestead is recognisable. No address.
+
+This turn rebuilt the plant, not the probe. Trees are city
+grove language copied into `src/maps/yard/trees.js`, not
+imported: baked cylinder trunks and limbs, instanced
+icosahedron blobs in three greens, canopies do not receive
+shadow. One hull per tree from UNDER 2.52, half extent
+2.08, planted on 7 m centres so neighbours are leftover
+legal. The 86 m canopy slab is gone.
+
+House is two masses sharing x=2.2: main living west on a
+1.28 m floor, walk-out basement east at grade, attached
+east carport. Stepped gable colliders on main, basement
+and garage. South porch at main-floor height with a cream
+swing, north deck off the main, basement door on the east
+by the car. Dress (AC, cans, grill, planters, mower)
+rewritten against the new AABBs. Attract goes around the
+house, under the deck between posts, through the east
+aisle onto the loft, into the hay from the open south.
+
+Live `scripts/shots.js` on `?map=yard`: leftoverDeath 0,
+leftoverOverlap 0, 466 boxes, spawn on the deck
+`(-1.6, 1.28, 6.9)`. Named `__hit` CLEAR on fenceGap,
+porch, carport, gate, stall0, aisle, underTree, drive.
+underDeck is CLEAR at z=6.4 between posts (z=7.2 is a
+post). hayAisle is CLEAR if it stops short of the north
+wall (z=-16.5 was punching the wall, the old false alarm).
+
+Stills in `.loop/yard-shot/` with `#ui` hidden. Loop prompt
+is `.loop/yard-shot/loop-prompt.txt`. What still wants a
+tick: tree blobs read as a grove of lumps from far away,
+the swing sits at porch-floor height so it is a bench more
+than a hanging seat, and the title still should be judged
+on the new aerial. Cel boxes for buildings stay. CLEAR is
+unchanged.
+
+What went wrong: first leftover pass was swing seat 0.54 m
+under the porch slab plus chains overlapping the slab, and
+two driveway trees 0.94 to 1.26 m from the east fence
+fill. Seat shares Y with the porch floor, chains start at
+the slab top, those two trees moved to x=15.4.
+
+`npm run verify` was not run: map dress only, no plant,
+ABI, WASM or threshold change. Shots exit 1 is a CDN
+`ERR_CONNECTION_REFUSED` on the run, geometry still
+captured.
+
+
+
 

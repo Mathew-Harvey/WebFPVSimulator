@@ -5,20 +5,18 @@
  * share the same roll. The live address is this page at #credits. The
  * board points there rather than keeping a second copy.
  *
- * WHY EVERY PILOT CARRIES A TICKET. A credits page that only says thank
- * you is a credits page nobody believes, and it reads like it was
- * generated rather than earned. Every line under a pilot's name here is
- * a real entry in PROGRESS.md: the date, what they reported, and what it
- * changed. One of them changed nothing on purpose, and that is written
- * down too, because a report that stops a bad fix is worth as much as
- * one that starts a good one.
+ * WHY A PILOT ROW SAYS NOTHING ABOUT THE PILOT. It carries a name, a
+ * slot and a link out, and that is all. Anything written under one of
+ * these names is somebody describing a person who is not in the room to
+ * be asked, and no line of it is worth as much as the name being spelled
+ * right and the link going to the right place.
  *
  * WHY THE CARD IS THE HIT TARGET BUT THE NAME IS THE LINK. A pilot card
  * is one thing about one person, so a click anywhere on it should land
  * on their channel. Wrapping the whole card in an <a> would make the
- * accessible name of that link the entire card, note and ticket and all,
- * which is a paragraph read out where a name should be. So the heading
- * holds the anchor and the anchor's ::after is stretched over the card.
+ * accessible name of that link the whole card rather than the name on
+ * it. So the heading holds the anchor and the anchor's ::after is
+ * stretched over the card.
  * The project cards below could not be wrapped anyway: their copy
  * already carries links, and an <a> inside an <a> is not a document.
  *
@@ -46,13 +44,12 @@
 
 /*
  * The beta roll. Slot numbers are a start list's: the order they turned
- * up, not a ranking. `ticket` and `found` quote PROGRESS.md down to a
- * sentence, so a reader can go and check any of them.
+ * up, not a ranking.
  *
- * Jannes has no channel to link. His card carries the same slot, the
- * same ticket and the same weight as the other three, with initials
- * where a face would be, because the roll is a record of who flew it
- * and not a list of who posts about it.
+ * Jannes has no channel to link. His row carries the same slot and the
+ * same weight as the other three, with initials where a face would be,
+ * because the roll is a record of who flew it and not a list of who
+ * posts about it.
  */
 const PILOTS = [
   {
@@ -61,9 +58,6 @@ const PILOTS = [
     face: 'asylum.jpg',
     channel: 'https://www.youtube.com/@AsylumFpv',
     handle: 'youtube.com/@AsylumFpv',
-    note: 'Put laps on it and said when it did not feel like a radio.',
-    ticket: 'Ticket, 19 Aug',
-    found: 'Rateprofile Settings. RC Rate, Super Rate and Expo cut off the top of the stick to rate graph, and three tabs you could not read without a scroll box inside a scroll box.',
   },
   {
     slot: '02',
@@ -71,9 +65,6 @@ const PILOTS = [
     face: null,
     channel: null,
     handle: null,
-    note: 'The kind of flying that finds the hole in a tune.',
-    ticket: 'Ticket, 18 Aug',
-    found: 'Title screen, Chrome 151. Refresh, touch nothing, hear nothing. It is Chrome holding the audio graph until a real gesture, not a broken bed, so the answer was to leave it alone rather than bodge a splash screen in front of the title.',
   },
   {
     slot: '03',
@@ -81,9 +72,6 @@ const PILOTS = [
     face: 'lestar.jpg',
     channel: 'https://www.youtube.com/@lestarfpv',
     handle: 'youtube.com/@lestarfpv',
-    note: 'Kept flying it after the novelty wore off.',
-    ticket: 'Two tickets, 18 Aug',
-    found: 'Stuck in the flight controller until they found Escape. Every graze reading as an instant crash. There is an exit bar under the yellow header now, and a quad bounces and takes three hits before it wrecks.',
   },
   {
     slot: '04',
@@ -91,9 +79,6 @@ const PILOTS = [
     face: 'crapshack.jpg',
     channel: 'https://www.youtube.com/@Z_CrapShack',
     handle: 'youtube.com/@Z_CrapShack',
-    note: 'Aviation scientist. Said when the air did not behave like air.',
-    ticket: 'The Precision tune',
-    found: 'Asked for stiffer and got it swept rather than guessed. The preset ships his PIDs with the factory feedforward, because feedforward answers stick movement and that is the one gain a clean gyro does not buy.',
   },
 ];
 
@@ -251,12 +236,13 @@ function projectCard({ src, alt, well, title, href, body, wordmark = true }) {
 }
 
 /*
- * A person card: face and slot number down the left, copy down the
- * right, and the whole card is the hit target when there is a channel to
- * open. `nameNode` lets the maker keep the andAgainFPV wordmark as its
- * own heading instead of plain text.
+ * A person card: face and slot number down the left, name and link down
+ * the right, and the whole card is the hit target when there is a
+ * channel to open. `nameNode` lets the maker keep the andAgainFPV
+ * wordmark as its own heading instead of plain text, and `note` is the
+ * maker's line about what was built. A pilot row passes neither.
  */
-function personCard({ cls, src, slot, name, nameNode, note, ticket, found, channel, handle }) {
+function personCard({ cls, src, slot, name, nameNode, note, channel, handle }) {
   const n = el('article', cls ? `credit person ${cls}` : 'credit person');
   const stack = el('div', 'credit-stack');
   stack.append(face(src, name));
@@ -281,14 +267,6 @@ function personCard({ cls, src, slot, name, nameNode, note, ticket, found, chann
   copy.append(h);
   if (note) {
     copy.append(el('p', null, note));
-  }
-  if (found) {
-    const box = el('p', 'credit-ticket');
-    if (ticket) {
-      box.append(el('span', 'credit-ticket-label', ticket));
-    }
-    box.append(document.createTextNode(found));
-    copy.append(box);
   }
   if (handle) {
     copy.append(handleLine(handle));
@@ -341,9 +319,6 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
       src: p.face ? src(p.face) : null,
       slot: p.slot,
       name: p.name,
-      note: p.note,
-      ticket: p.ticket,
-      found: p.found,
       channel: p.channel,
       handle: p.handle,
     }));

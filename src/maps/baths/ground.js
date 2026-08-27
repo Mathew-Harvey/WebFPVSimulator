@@ -1,0 +1,99 @@
+/*
+ * ground.js: cream plaza, retaining cut, and the pool as a hole in the floor.
+ *
+ * Ground height is the plaza, then the stepped pool, then the plant pit.
+ * Hills are painted flats.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { L, slab, decal, fillAround } from './kit.js';
+import { buildDistantHills } from './sky.js';
+
+const CUT = 6;
+const FLOOR_Y = 0;
+
+export function poolFloor(x, z) {
+  const p = L.pool;
+  if (x <= p.x0 || x >= p.x1 || z <= p.z0 || z >= p.z1) {
+    return null;
+  }
+  if (x < p.shallowX) {
+    return p.shallowY;
+  }
+  if (x < p.midX) {
+    return p.midY;
+  }
+  return p.deepY;
+}
+
+export function groundHeight(x, z) {
+  const pit = L.plant;
+  if (x > pit.x0 + 0.45 && x < pit.x1 - 0.45 && z > pit.z0 + 0.45 && z < pit.z1 - 0.45) {
+    return pit.y0 + 0.35;
+  }
+  const floor = poolFloor(x, z);
+  if (floor !== null) {
+    return floor;
+  }
+  if (x > L.site.x0 && x < L.site.x1 && z > L.site.z0 && z < L.site.z1) {
+    return FLOOR_Y;
+  }
+  return CUT;
+}
+
+export function buildGround(root, colliders, M) {
+  const { x0, x1, z0, z1 } = L.site;
+  const p = L.pool;
+  const pit = {
+    x0: L.plant.x0 + 0.45,
+    x1: L.plant.x1 - 0.45,
+    z0: L.plant.z0 + 0.45,
+    z1: L.plant.z1 - 0.45,
+  };
+  const poolHole = { x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1 };
+  fillAround(root, colliders, M.plaza, x0, z0, x1, z1, -0.35, 0.02, [poolHole, pit], {
+    solid: false, cast: false, receive: true,
+  });
+
+  const t = 1.4;
+  slab(root, colliders, M.cream, x0 - t, 0, z0 - t, x0, CUT, z1 + t);
+  slab(root, colliders, M.cream, x1, 0, z0 - t, x1 + t, CUT, z1 + t);
+  slab(root, colliders, M.cream, x0, 0, z0 - t, x1, CUT, z0);
+  slab(root, colliders, M.hillShade, x0, 0, z1, x1, CUT, z1 + t);
+
+  slab(root, colliders, M.dry, x0 - 16, CUT - 0.2, z0 - 14, x1 + 14, CUT + 0.05, z0 - t, {
+    solid: false, cast: false, receive: true,
+  });
+  slab(root, colliders, M.dry, x0 - 16, CUT - 0.2, z1 + t, x1 + 14, CUT + 0.05, z1 + 16, {
+    solid: false, cast: false, receive: true,
+  });
+  slab(root, colliders, M.dry, x0 - 16, CUT - 0.2, z0 - 14, x0 - t, CUT + 0.05, z1 + 16, {
+    solid: false, cast: false, receive: true,
+  });
+  slab(root, colliders, M.dry, x1 + t, CUT - 0.2, z0 - 14, x1 + 14, CUT + 0.05, z1 + 16, {
+    solid: false, cast: false, receive: true,
+  });
+
+  decal(root, colliders, M.white, -2.4, 0.03, 13.2, 2.4, 0.07, 21.6);
+  decal(root, colliders, M.safety, -2.65, 0.04, 13.2, -2.35, 0.08, 21.6);
+  decal(root, colliders, M.safety, 2.35, 0.04, 13.2, 2.65, 0.08, 21.6);
+
+  slab(root, colliders, M.safety, -10.2, 0, 20.6, -6.6, 1.15, 21.5, { kind: 'obstacle' });
+  slab(root, colliders, M.safety, 6.6, 0, 20.6, 10.2, 1.15, 21.5, { kind: 'obstacle' });
+
+  buildDistantHills(root, M);
+}

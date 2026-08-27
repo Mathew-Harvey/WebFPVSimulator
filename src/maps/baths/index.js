@@ -1,10 +1,8 @@
 /*
- * index.js: Industrial bando. A compact cement works, cel shaded, freestyle.
+ * index.js: Municipal baths. A 50 m empty hall, cel shaded, freestyle.
  *
  * The toon kit under ./cel is sakura-crossing's, MIT, retargeted at this
- * map's palette. Everything else in this folder is ours, GPLv3. The plant
- * is authored as boxes with their colliders, so a gap in the drawing is a
- * gap in the solid world.
+ * map's palette. Everything else in this folder is ours, GPLv3. The hall is authored as boxes with their colliders, so a gap in the drawing is a gap in the solid world.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -34,12 +32,12 @@ import { yieldToPaint } from '../../ui/loading.js';
 import { qualityFor } from '../../render/quality.js';
 
 const CAMERA_FAR = 520;
-const SUN_OFFSET = new THREE.Vector3(-72, 40, 18);
-const FILL_OFFSET = new THREE.Vector3(48, 22, -36);
-const BOUNCE_OFFSET = new THREE.Vector3(12, -14, 28);
-const LIGHT_ORIGIN = new THREE.Vector3(-8, 8, 0);
+const SUN_OFFSET = new THREE.Vector3(-58, 24, 26);
+const FILL_OFFSET = new THREE.Vector3(42, 18, -28);
+const BOUNCE_OFFSET = new THREE.Vector3(10, -12, 22);
+const LIGHT_ORIGIN = new THREE.Vector3(0, 8, 0);
 
-class KilnPipeline extends Pipeline {
+class BathsPipeline extends Pipeline {
   constructor(renderer, scene, camera, opts) {
     super(renderer, scene, camera, opts);
     this.shellPixelRatio = renderer.getPixelRatio();
@@ -83,7 +81,7 @@ export async function buildMap(shell, onProgress, options) {
   const camera = shell.camera;
   const progress = onProgress ?? (() => {});
   const q = qualityFor(options && options.quality);
-  const bq = q.bando;
+  const bq = q.baths;
 
   renderer.shadowMap.enabled = q.shadows;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -94,7 +92,7 @@ export async function buildMap(shell, onProgress, options) {
   camera.far = CAMERA_FAR;
   camera.updateProjectionMatrix();
 
-  const sun = new THREE.DirectionalLight(PAL.sun, 2.0);
+  const sun = new THREE.DirectionalLight(PAL.sun, 2.05);
   sun.castShadow = q.shadows;
   const shadowMap = bq.shadowMap || 2048;
   sun.shadow.mapSize.set(shadowMap, shadowMap);
@@ -110,13 +108,13 @@ export async function buildMap(shell, onProgress, options) {
   scene.add(sun);
   scene.add(sun.target);
 
-  const fill = new THREE.DirectionalLight(PAL.fill, 1.22);
+  const fill = new THREE.DirectionalLight(PAL.fill, 1.15);
   scene.add(fill);
   scene.add(fill.target);
-  const bounce = new THREE.DirectionalLight(0xd8c4a8, 0.42);
+  const bounce = new THREE.DirectionalLight(0xe8d0b8, 0.38);
   scene.add(bounce);
   scene.add(bounce.target);
-  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.34));
+  scene.add(new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 1.2));
 
   function addLamp(x, y, z, color, intensity, distance) {
     const lamp = new THREE.PointLight(color, intensity, distance, 1.35);
@@ -131,28 +129,27 @@ export async function buildMap(shell, onProgress, options) {
   await yieldToPaint();
 
   const world = buildWorld(scene);
-  addLamp(0, 10.2, 0, 0xffe0b0, 2.6, 34);
-  addLamp(-12, 10, 0, 0xffe8c0, 1.7, 22);
-  addLamp(12, 10, 0, 0xffe8c0, 1.7, 22);
-  addLamp(-46, 30, 0, 0xd4c4e8, 2.1, 42);
-  addLamp(38, 8, 4.3, 0xffd0a0, 1.4, 18);
+  addLamp(0, 12.2, 0, 0xffe8d0, 2.2, 36);
+  addLamp(-16, 11.5, 0, 0xffe0c0, 1.35, 22);
+  addLamp(16, 11.5, 0, 0xffe0c0, 1.35, 22);
+  addLamp(24, 11, 0, 0xffe0c0, 1.5, 16);
   progress(0.88);
   await yieldToPaint();
 
-  const pipeline = new KilnPipeline(renderer, scene, camera, {
+  const pipeline = new BathsPipeline(renderer, scene, camera, {
     pixelBudget: bq.pixelBudget,
     minScale: bq.minScale,
     preferScale: bq.preferScale,
   });
   pipeline.enabled.ink = bq.ink;
   pipeline.enabled.fxaa = bq.fxaa;
-  pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0xb8a8c8);
-  pipeline.grade.mat.uniforms.uLightTint.value.setHex(0xffe8c8);
-  pipeline.grade.mat.uniforms.uWarmth.value = 0.08;
-  pipeline.grade.mat.uniforms.uSaturation.value = 1.06;
-  pipeline.grade.mat.uniforms.uLift.value = 0.045;
-  pipeline.ink.mat.uniforms.uFadeStart.value = 56;
-  pipeline.ink.mat.uniforms.uFadeEnd.value = 170;
+  pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0xc4a890);
+  pipeline.grade.mat.uniforms.uLightTint.value.setHex(0xffe8d0);
+  pipeline.grade.mat.uniforms.uWarmth.value = 0.07;
+  pipeline.grade.mat.uniforms.uSaturation.value = 1.08;
+  pipeline.grade.mat.uniforms.uLift.value = 0.05;
+  pipeline.ink.mat.uniforms.uFadeStart.value = 50;
+  pipeline.ink.mat.uniforms.uFadeEnd.value = 140;
   pipeline.ink.mat.uniforms.uSkyDepth.value = 360;
 
   const d = shell.resize();
@@ -170,11 +167,11 @@ export async function buildMap(shell, onProgress, options) {
   seat(fill, FILL_OFFSET);
   seat(bounce, BOUNCE_OFFSET);
 
-  const BANDO_AIM = { active: false, sceneIndex: -1, correct: true, distance: 0 };
+  const BATHS_AIM = { active: false, sceneIndex: -1, correct: true, distance: 0 };
 
   return {
-    id: 'bando',
-    name: 'Industrial bando',
+    id: 'baths',
+    name: 'Municipal baths',
     mode: 'freestyle',
     graphics: q.id,
     scene,
@@ -185,13 +182,13 @@ export async function buildMap(shell, onProgress, options) {
     spawn: world.spawn,
     attract: {
       path: attractPath(world),
-      speed: 11,
+      speed: 10,
       lookAhead: 6,
-      aimDrop: 0.8,
+      aimDrop: 2.0,
     },
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
     setNextGate() {},
-    targetAim: () => BANDO_AIM,
+    targetAim: () => BATHS_AIM,
     approachSide: () => null,
     hasRacingLine: false,
     setRacingLine() {},
@@ -208,6 +205,7 @@ export async function buildMap(shell, onProgress, options) {
     stats: () => ({
       colliders: world.colliders.stats(),
       platforms: world.platforms.length,
+      audit: world.audit(),
       ...world.merged,
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },

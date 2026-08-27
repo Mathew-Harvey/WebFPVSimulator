@@ -1,10 +1,8 @@
 /*
  * kit.js: one box is a mesh and a collider, written together.
  *
- * The city's invisible walls were walker rectangles standing off the
- * drawing. This map never gets that far: a wall is one call, and a gap is
- * the absence of a call. Platforms are the other half, so a roof is
- * landable from above and solid from below.
+ * A wall is one call, and a gap is the absence of a call. Platforms are
+ * the other half, so a gallery is landable from above and solid from below.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -31,74 +29,81 @@ export const STEP = 0.55;
 export const SLAB_THICK = 0.3;
 export const SLAB_CLEAR = 0.02;
 export const PLATFORM_MIN = 0.6;
+export const CLEAR = 1.4;
 
 /*
- * Plan of the plant. X along the kiln, west stack to east bins. Z across
- * the yard, south dock to north preheater. Metres, Three.js Y up.
+ * Plan of the hall. X along the 50 m pool, west shallow to east deep.
+ * Z across the hall, south mouth to north gallery. Metres, Three.js Y up.
+ *
+ * A leftover between solids is 0 (flush or a shared face) or at least
+ * CLEAR. Anything in between eats a 5 inch.
  */
 export const L = {
-  pack: {
-    x0: -28, x1: 28, z0: -7, z1: 7, h: 16, t: 0.45, door: 6,
+  hall: {
+    x0: -29, x1: 31, z0: -13, z1: 13, h: 16, t: 0.45,
   },
-  stack: {
-    cx: -46, cz: 0, inner: 2.8, wall: 0.8, h: 58,
+  door: {
+    half: 6.2, h: 5.8,
   },
-  kiln: {
-    y0: 8, inner: 3.5, wall: 0.5, x0: -43.8, x1: 24,
+  pool: {
+    x0: -25, x1: 25, z0: -6.25, z1: 6.25, wall: 0.4,
+    shallowX: -5, shallowY: -1.35,
+    midX: 10, midY: -2.2,
+    deepY: -5,
   },
-  pre: {
-    x0: -22, x1: -10, z0: -22, z1: -8, h: 42, rise: 6,
+  gallery: {
+    y: 6.5, w: 4.2, thick: 0.28, parapet: 1.15,
   },
-  bins: {
-    cx: 38, zs: [-8.6, 0, 8.6], w: 7.2, hs: [16, 22, 28],
+  tower: {
+    x0: 25.0, x1: 30.55, z0: -1.8, z1: 1.8,
+    boardX: 23.5,
+    ys: [3.0, 5.2, 7.6, 10.0],
+    thick: 0.22,
   },
-  gantry: {
-    x0: 28, x1: 40.6, z0: 3.62, z1: 4.98, y: 16,
+  plant: {
+    x0: 25.4, x1: 30.55, z0: -12.4, z1: -4.2, y0: -3.6, lip: 1.15,
   },
-  gantrySouth: {
-    x0: 28, x1: 40.6, z0: -4.98, z1: -3.62, y: 16,
+  lockers: {
+    x0: 29.15, x1: 30.55, z0: 8.4, z1: 12.55,
   },
-  hopper: {
-    x0: 32, x1: 44, z0: -12, z1: 12, y0: -8, y1: 0,
+  wells: [
+    { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
+    { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
+  ],
+  sw: {
+    x0: -29.5, x1: -24.2, z0: -13.5, z1: -8.2, h: 20,
   },
-  dock: {
-    x0: 10, x1: 26, z0: 7, z1: 15, h: 2.2,
+  ne: {
+    x0: 26.2, x1: 31.5, z0: 8.2, z1: 13.5, h: 20,
   },
-  spawn: { x: 4.8, z: 19.2, yaw: Math.PI + 0.28 },
+  spawn: { x: 0, z: 22, yaw: Math.PI },
+  site: { x0: -52, x1: 48, z0: -32, z1: 36 },
 };
 
 export function materials() {
   const t = PAL.shadowTint;
   return {
-    boneSun: cel({ color: PAL.boneSun, bands: 2, tint: t }),
-    bone: cel({ color: PAL.bone, bands: 2, tint: t }),
-    boneViolet: cel({ color: PAL.boneViolet, bands: 2, tint: t }),
-    mint: cel({ color: PAL.mint, bands: 2, tint: t }),
-    ochre: cel({ color: PAL.ochre, bands: 2, tint: t }),
-    ochreShade: cel({ color: PAL.ochreShade, bands: 2, tint: t }),
+    creamSun: cel({ color: PAL.creamSun, bands: 3, tint: t }),
+    cream: cel({ color: PAL.cream, bands: 2, tint: t }),
+    creamShade: cel({ color: PAL.creamShade, bands: 2, tint: t }),
+    plaza: cel({ color: PAL.plaza, bands: 2, tint: t }),
     dry: cel({ color: PAL.dryGrass, bands: 2, tint: t }),
     hillShade: cel({ color: PAL.hillShade, bands: 2, tint: t }),
-    rust: cel({ color: PAL.rust, bands: 2, tint: t }),
+    tile: cel({ color: PAL.tile, bands: 3, tint: t }),
+    tileDeep: cel({ color: PAL.tileDeep, bands: 3, tint: t }),
     steel: cel({ color: PAL.steel, bands: 2, tint: t }),
     steelDark: cel({ color: PAL.steelDark, bands: 2, tint: t }),
     litter: cel({ color: PAL.litter, bands: 2, tint: t }),
-    stackSun: cel({ color: PAL.boneSun, bands: 3, tint: t }),
-    silo: cel({ color: PAL.boneSun, bands: 3, tint: t }),
-    siloDark: cel({ color: PAL.boneViolet, bands: 3, tint: t }),
-    kiln: cel({ color: PAL.steel, bands: 3, tint: t, side: THREE.DoubleSide }),
-    kilnDrum: cel({ color: PAL.kilnShell, bands: 3, tint: t, side: THREE.DoubleSide }),
-    glassDark: flat({ color: PAL.glassDark }),
-    mintShell: cel({ color: PAL.mint, bands: 2, tint: t, side: THREE.DoubleSide }),
-    stack: cel({ color: PAL.bone, bands: 3, tint: t, side: THREE.DoubleSide }),
+    orange: flat({ color: PAL.orange }),
+    navy: flat({ color: PAL.navy }),
+    white: flat({ color: PAL.bandWhite }),
     safety: flat({ color: PAL.safety }),
     bandRed: flat({ color: PAL.bandRed }),
-    bandWhite: flat({ color: PAL.bandWhite }),
-    pane: flat({ color: PAL.boneViolet }),
-    inkFlat: flat({ color: PAL.ink }),
-    well: flat({ color: PAL.boneSun }),
-    pool: flat({ color: PAL.boneSun, fog: true }),
+    pane: flat({ color: PAL.glassDark }),
+    tileLine: flat({ color: PAL.tileLine }),
     hill: flat({ color: PAL.hill, fog: true }),
     hillFar: flat({ color: PAL.hillFar, fog: true }),
+    well: flat({ color: PAL.creamSun }),
   };
 }
 
@@ -157,6 +162,36 @@ export function deck(root, colliders, platforms, mat, x0, z0, x1, z1, top, thick
   platforms.push({
     x0: xa, z0: za, x1: xb, z1: zb, top, thick,
   });
+}
+
+export function fillAround(root, colliders, mat, x0, z0, x1, z1, y0, y1, holes, opts) {
+  const xs = [x0];
+  const zs = [z0];
+  for (const h of holes) {
+    xs.push(h.x0, h.x1);
+    zs.push(h.z0, h.z1);
+  }
+  xs.push(x1);
+  zs.push(z1);
+  xs.sort((a, b) => a - b);
+  zs.sort((a, b) => a - b);
+  for (let i = 0; i < xs.length - 1; i += 1) {
+    for (let j = 0; j < zs.length - 1; j += 1) {
+      const xa = xs[i];
+      const xb = xs[i + 1];
+      const za = zs[j];
+      const zb = zs[j + 1];
+      if (xb - xa < 0.05 || zb - za < 0.05) {
+        continue;
+      }
+      const mx = (xa + xb) * 0.5;
+      const mz = (za + zb) * 0.5;
+      if (holes.some((h) => mx > h.x0 && mx < h.x1 && mz > h.z0 && mz < h.z1)) {
+        continue;
+      }
+      slab(root, colliders, mat, xa, y0, za, xb, y1, zb, opts);
+    }
+  }
 }
 
 export function mergeStatic(root) {

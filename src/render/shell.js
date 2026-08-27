@@ -1,7 +1,7 @@
 /*
  * shell.js: everything that outlives a map.
  *
- * There are several maps now: tracks, a freestyle city, and a kiln yard.
+ * There are several maps now: tracks, a freestyle city, industrial bando, and municipal baths.
  * They are built by different code with different render pipelines. What they share is
  * a renderer, a canvas, a camera and an airframe, and none of those may be
  * rebuilt when the player changes map: a WebGL context is expensive, the

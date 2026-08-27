@@ -498,9 +498,11 @@ static void ground_project_hull(void) {
  * rolls; extra omega damping is belly-only so a 90 deg arrival can
  * fall over instead of welding on an arm.
  *
- * Crashflip stays off in the shell (turtle is a pose snap). The mixer
- * path is still compiled, and the contact self-test still drives it, so
- * settle must not cancel that couple while crashflip is latched.
+ * Crashflip is latched by the shell when the hull is inverted and
+ * settled. The mixer path is compiled, and the contact self-test still
+ * drives it, so settle must not cancel that couple while crashflip is
+ * latched. A waiting inverted hull with centered sticks is seated by
+ * the shell (sim_rest), not here.
  */
 static void ground_settle(double upz, double vn_plant) {
   if (!g_ground_hits && !g_ground_projected) {

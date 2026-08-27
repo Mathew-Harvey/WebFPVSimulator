@@ -34,7 +34,7 @@ vendored.
     Copied at   src/maps/bando/cel/
     Files       toon.js, post.js, util.js, plus LICENSE
 
-Copied so The Kiln can use the same toon materials and ink pipeline without
+Copied so Industrial bando can use the same toon materials and ink pipeline without
 fetching anything under src/maps/city (check 16). The copies import this
 map's palette.js instead of the city's. toon.js also exports
 releaseMaterials(), which clears the material caches on dispose. Licence
@@ -65,3 +65,16 @@ patch rather than a merge.
     Licence     GPLv3
     Vendored as a git submodule at vendor/betaflight, unmodified; every
     change is a patch file in patches/ applied at build time.
+
+
+## sakura-crossing, baths cel kit
+
+    Upstream    https://github.com/kenton-gmi/sakura-crossing
+    Licence     MIT, Copyright (c) 2026 Kenton Wang
+    Copied at   src/maps/baths/cel/
+    Files       toon.js, post.js, util.js, plus LICENSE
+
+Copied so Municipal baths can use the same toon materials and ink pipeline without
+fetching anything under src/maps/city (check 16). The copies import this
+map's palette.js instead of the city's. Licence text travels with them at
+src/maps/baths/cel/LICENSE.

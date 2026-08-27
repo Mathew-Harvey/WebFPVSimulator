@@ -1203,7 +1203,8 @@ export class Colliders {
  * The only special case is a PERCH: upright, slow, on the ground, which
  * is when the shell freezes the integrator so a takeoff starts from rest
  * rather than from leftover bounce. Everything else stays in the 1 kHz
- * loop, which is what lets a tumble become a turtle.
+ * loop, which is what lets a tumble become a turtle: the shell latches
+ * Betaflight crashflip and the pilot pitches or rolls to flip over.
  */
 export const LAND_DESCENT_MAX = 4.0;    /* m/s downward, props up, perch envelope */
 export const LAND_HORIZONTAL_MAX = 10.0; /* m/s, props up, historical skip gate */
@@ -1339,26 +1340,43 @@ export function canPerch(tiltDeg, speed, rateMag) {
 }
 
 /*
- * Turtle is a pose snap, not Betaflight crashflip. The mixer path is
- * still compiled and the contact self-test still drives it. The shell
- * does not: inverted, slow, and on the grass (or a few centimetres
- * off it) writes an upright heading-preserving pose and rests.
+ * Turtle is Betaflight crashflip, latched by the shell. Inverted, slow,
+ * and on the grass (or a few centimetres off it) raises the mixer path.
+ * Pitch and roll then spin the high motors. The hull does not snap.
+ * TURTLE_STICK_MIN matches mixer.c CRASH_FLIP_STICK_MINF: motors stay
+ * at disarm until the stick is past that deadband. TURTLE_WAIT_RATE is
+ * the shell seating gate: below it, a waiting inverted hull may rest
+ * so skipped plant settle cannot jitter; above it the couple is live.
  */
-export const SNAP_SPEED = 4.0;
-export const SNAP_RATE = 8.0;
-export const SNAP_CLEARANCE = 0.15;
+export const TURTLE_SPEED = 4.0;
+export const TURTLE_RATE = 8.0;
+export const TURTLE_CLEARANCE = 0.15;
+export const TURTLE_EXIT_UPZ = 0.35;
+export const TURTLE_STICK_MIN = 0.15;
+export const TURTLE_WAIT_RATE = 1.0;
+export const SNAP_SPEED = TURTLE_SPEED;
+export const SNAP_RATE = TURTLE_RATE;
+export const SNAP_CLEARANCE = TURTLE_CLEARANCE;
 
-export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, skip) {
+export function shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, skip) {
   if (skip) {
     return false;
   }
   if (!(upz < 0)) {
     return false;
   }
-  if (speed >= SNAP_SPEED || rateMag >= SNAP_RATE) {
+  if (speed >= TURTLE_SPEED || rateMag >= TURTLE_RATE) {
     return false;
   }
-  return inContact || clearance < SNAP_CLEARANCE;
+  return inContact || clearance < TURTLE_CLEARANCE;
+}
+
+export function shouldSnapUpright(upz, speed, rateMag, inContact, clearance, skip) {
+  return shouldEnterTurtle(upz, speed, rateMag, inContact, clearance, skip);
+}
+
+export function shouldExitTurtle(upz) {
+  return upz > TURTLE_EXIT_UPZ;
 }
 
 /* Flatten roll and pitch. Keep the body-x projection on the plant

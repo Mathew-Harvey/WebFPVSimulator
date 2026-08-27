@@ -1,5 +1,5 @@
 /*
- * world.js: assemble the kiln yard and answer height queries.
+ * world.js: assemble the baths and answer height queries.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -20,15 +20,15 @@
 import * as THREE from 'three';
 import { Colliders } from '../../game/collide.js';
 import { L, STEP, materials, mergeStatic } from './kit.js';
-import { buildGround, groundHeight } from './ground.js';
+import { buildGround, groundHeight, poolFloor } from './ground.js';
 import { buildHall } from './hall.js';
-import { buildPlant } from './plant.js';
+import { buildPool } from './pool.js';
 import { buildDress } from './dress.js';
-import { kilnReferences } from './references.js';
+import { bathsReferences } from './references.js';
 
 export function buildWorld(scene) {
   const root = new THREE.Group();
-  root.name = 'kiln';
+  root.name = 'baths';
   scene.add(root);
 
   const colliders = new Colliders();
@@ -37,10 +37,10 @@ export function buildWorld(scene) {
 
   buildGround(root, colliders, M);
   buildHall(root, colliders, platforms, M);
-  buildPlant(root, colliders, platforms, M);
+  buildPool(root, colliders, platforms, M);
   buildDress(root, colliders, M);
 
-  const references = kilnReferences(root, colliders, platforms);
+  const references = bathsReferences(root, colliders, platforms);
   const merged = mergeStatic(root);
   colliders.build();
 
@@ -67,39 +67,73 @@ export function buildWorld(scene) {
     merged,
     heightAt,
     references,
+    audit: () => auditWorld(heightAt, colliders, platforms),
   };
 }
 
 export function attractPath(world) {
   const pts = [
-    { x: 4.6, y: 3.2, z: 18.4 },
-    { x: 0.2, y: 3.2, z: 10.5 },
-    { x: 0.2, y: 3.2, z: 4.8 },
-    { x: -14, y: 3.2, z: 0 },
-    { x: -32, y: 3.2, z: 0 },
-    { x: -46, y: 3.2, z: 0 },
-    { x: -46, y: 17.2, z: 0 },
-    { x: -46, y: 17.2, z: 2.9 },
-    { x: -46, y: 17.2, z: 0 },
-    { x: -40, y: 9.7, z: 0 },
-    { x: -18, y: 9.7, z: 0 },
-    { x: -12.4, y: 9.7, z: 4.2 },
-    { x: -12.4, y: 18.6, z: 4.4 },
-    { x: -16, y: 20.4, z: -12.4 },
-    { x: -16, y: 8.4, z: -9.2 },
-    { x: 8, y: 12.4, z: -4.4 },
-    { x: 24.8, y: 12.2, z: -4.3 },
-    { x: 30.4, y: 17.2, z: -4.3 },
-    { x: 37.6, y: 17.2, z: -4.3 },
-    { x: 38, y: 3.4, z: 0 },
-    { x: 38, y: -4.8, z: 0 },
-    { x: 22, y: 6, z: 16 },
-    { x: -18, y: 28, z: 22 },
-    { x: -46, y: 64, z: 14 },
+    { x: 0, y: 5.5, z: 26 },
+    { x: 0, y: 3.2, z: 14 },
+    { x: 0, y: 2.4, z: 0 },
+    { x: 11, y: 2.2, z: 0 },
+    { x: 11, y: 18, z: 0 },
+    { x: 0, y: 18, z: 24 },
+    { x: 0, y: 8, z: 28 },
   ];
-  void world;
   return pts.map((p) => {
     const floor = groundHeight(p.x, p.z);
     return { x: p.x, y: Math.max(p.y, floor + 2.8), z: p.z };
   });
+}
+
+function auditWorld(heightAt, colliders, platforms) {
+  const p = L.pool;
+  let poolWrong = 0;
+  let poolOk = 0;
+  for (let x = p.x0 + 0.5; x < p.x1; x += 1) {
+    for (let z = p.z0 + 0.5; z < p.z1; z += 1) {
+      const want = poolFloor(x, z);
+      const got = heightAt(x, z, want + 0.2);
+      if (want === null) {
+        continue;
+      }
+      if (Math.abs(got - want) > 0.08) {
+        poolWrong += 1;
+      } else {
+        poolOk += 1;
+      }
+    }
+  }
+  let wellGhost = 0;
+  const wells = [
+    { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
+    { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
+  ];
+  for (const w of wells) {
+    for (let x = w.x0 + 0.4; x < w.x1; x += 0.8) {
+      for (let z = w.z0 + 0.4; z < w.z1; z += 0.8) {
+        const h = heightAt(x, z, 16.2);
+        if (h > 14) {
+          wellGhost += 1;
+        }
+      }
+    }
+  }
+  let galleryMiss = 0;
+  const gy = L.gallery.y;
+  for (let x = -20; x <= 20; x += 2) {
+    const h = heightAt(x, 10.4, gy + 0.2);
+    if (Math.abs(h - gy) > 0.08) {
+      galleryMiss += 1;
+    }
+  }
+  return {
+    poolOk,
+    poolWrong,
+    wellGhost,
+    galleryMiss,
+    platforms: platforms.length,
+    boxes: colliders.ax.length,
+  };
 }

@@ -55,11 +55,12 @@ import { GATE_SCALE } from '../game/track.js';
 import { Race } from '../game/race.js';
 import {
   hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
-  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldSnapUpright,
-  uprightPlantQuat, contactMaterial,
+  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
+  shouldExitTurtle, uprightPlantQuat, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
-  LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, SNAP_SPEED, SNAP_RATE,
+  LAND_TIP_SPEED_MAX, PERCH_SPEED, PERCH_RATE, TURTLE_SPEED, TURTLE_RATE,
+  TURTLE_EXIT_UPZ, TURTLE_STICK_MIN, TURTLE_WAIT_RATE,
 } from '../game/collide.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
@@ -1351,20 +1352,30 @@ function suiteCrashRule() {
   check('canPerch refuses leftover rate',
     canPerch(0, 0, PERCH_RATE + 0.01) === false);
 
-  check('turtle snaps when inverted, slow, and on the grass',
-    shouldSnapUpright(-0.9, 0.4, 0.4, true, 0.05, false) === true);
-  check('turtle does not snap while still sliding fast',
-    shouldSnapUpright(-1, SNAP_SPEED, 0, true, 0.05, false) === false);
-  check('turtle does not snap while tumbling at rate',
-    shouldSnapUpright(-1, 0, SNAP_RATE, true, 0.05, false) === false);
-  check('turtle does not snap in the air with clearance',
-    shouldSnapUpright(-0.8, 0.2, 0.2, false, 1.2, false) === false);
-  check('turtle does snap inverted, slow, a few centimetres off the grass',
-    shouldSnapUpright(-0.8, 0.2, 0.2, false, 0.10, false) === true);
-  check('turtle does not snap during launch staging',
-    shouldSnapUpright(-1, 0, 0, true, 0.05, true) === false);
-  check('turtle does not snap once the hull is upright',
-    shouldSnapUpright(0.2, 0, 0, true, 0.05, false) === false);
+  check('turtle latches when inverted, slow, and on the grass',
+    shouldEnterTurtle(-0.9, 0.4, 0.4, true, 0.05, false) === true);
+  check('turtle does not latch while still sliding fast',
+    shouldEnterTurtle(-1, TURTLE_SPEED, 0, true, 0.05, false) === false);
+  check('turtle does not latch while tumbling at rate',
+    shouldEnterTurtle(-1, 0, TURTLE_RATE, true, 0.05, false) === false);
+  check('turtle does not latch in the air with clearance',
+    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 1.2, false) === false);
+  check('turtle does latch inverted, slow, a few centimetres off the grass',
+    shouldEnterTurtle(-0.8, 0.2, 0.2, false, 0.10, false) === true);
+  check('turtle does not latch during launch staging',
+    shouldEnterTurtle(-1, 0, 0, true, 0.05, true) === false);
+  check('turtle does not latch once the hull is upright',
+    shouldEnterTurtle(0.2, 0, 0, true, 0.05, false) === false);
+  check('turtle exits once the hull is past the mixer drop attitude',
+    shouldExitTurtle(TURTLE_EXIT_UPZ + 0.01) === true);
+  check('turtle stays latched while still inverted',
+    shouldExitTurtle(-0.9) === false);
+  check('turtle stays latched on its side below the drop attitude',
+    shouldExitTurtle(TURTLE_EXIT_UPZ) === false);
+  check('turtle stick deadband matches the mixer',
+    TURTLE_STICK_MIN === 0.15);
+  check('turtle wait-rate is below the enter-rate so a live couple is not seated',
+    TURTLE_WAIT_RATE < TURTLE_RATE);
 
   const qId = uprightPlantQuat(1, 0, 0, 0);
   check('an already upright pose stays identity',

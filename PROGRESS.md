@@ -18489,3 +18489,98 @@ Remaining nits, not blockers: 8-gon bins vs two-box hull still has
 soft diagonal corners; title overlay will never sit inside a 1.4 m
 corridor; Low fog was raised so the 58 m stack still reads.
 
+### 2026-08-27 | map | Rename The Kiln to Industrial bando
+
+Asked: change the name to industrial bando. Player-facing name is now
+Industrial bando. Internal id stays `bando` so saves, `?map=bando`, and
+the module prefix do not move.
+
+Verify: name is set in registry.js and buildMap. `npm run verify` was
+not run: display string only.
+
+### 2026-08-27 | map | Packhouse collisions, mouths, graffiti
+
+Asked: inside the horizontal building, crash into clutter and spaz on
+entry. Review all collisions against the drawing, enlarge entries and
+exits, adversarial loop until glitchy surfaces are gone, then graffiti.
+
+What was wrong: the south mouth was 5 m with a steel lintel at 5.5 m
+and jambs, six interior columns (including a pair on the door
+centerline), rafters overlapping the roof underside, roof-hole lips as
+solid curbs, kiln piers in the aisles, a 2.2 m kiln east choke with
+sill and header, and wall boxes that shared volume at the corners.
+Overlapping AABBs flip contact normals. That is the spaz.
+
+What changed:
+- South and north mouths are 12 m, full height, no lintel, no jambs,
+  no columns. Approach stripe tracks the new door.
+- West and east walls open from the floor through the kiln envelope
+  so the undercroft and the bore are one slot. Long walls own the
+  corners; end walls stop at z0+t.
+- Rafters sit 0.18 m under the roof collider. Hole lips and light
+  wells are rust paint, not curbs.
+- Kiln east mouth is the full bore. In-hall piers are gone. Kiln
+  slabs start at the stack outer face so they no longer occupy the
+  stack east wall. Drum and rings sit on ho, not proud of the hull.
+- Dock skirts stop under the deck; preheater E/W walls stop at z1-t
+  and south bands share faces instead of 0.02 m slits.
+- Graffiti is local canvas throws (block bars, drips, a crown),
+  visual only, no city import. MAP_MODULE_COUNT.bando stays 12.
+
+A first heightAt skip of platforms from under the slab was reverted.
+SURFACE_BIAS already turns the 0.55 m step into a 0.15 m landable
+depth; the extra skip refused the roof when landing.
+
+Adversarial loop: FPV, overlap-math, and art agents on the first
+pass; a re-review after the fixes. Remaining MUST-FIX in/near the
+packhouse: none. Stack/kiln double-solid was the last SHOULD-FIX and
+was closed by moving kiln x0 to cx+ho.
+
+Verify: hall.js and index.html serve 200 from localhost. Live flight
+in the Cursor browser was not run this turn, the browser MCP did not
+stay registered. `npm run verify` was not run: no plant, ABI, build
+or threshold change. Check 16 was not re-run; bando still copies cel
+and does not import city.
+
+### 2026-08-27 | plant | Turtle is Betaflight crashflip
+
+Asked: inverted hulls should turtle like a real quad, not snap upright.
+
+The shell latches `sim_set_crashflip` when inverted, slow, and in
+contact. Pitch or roll past the mixer deadband spins the high motors.
+A waiting inverted hull with sticks centred is seated (`sim_rest`) so
+skipped plant settle cannot jitter. After crashflip drops, pitch and
+roll stay ignored until the stick recentres, otherwise airmode inherits
+the throw. OSD and the flight banner say turtle. Pose-snap aliases stay
+for old tests.
+
+Verify: contact and trackbuilder selftests were edited with the latch.
+`npm run verify` was not run this turn: the user asked to commit.
+
+### 2026-08-27 | map | Municipal baths
+
+A third freestyle map, id `baths`. Empty 50 m hall, own cel copy under
+`src/maps/baths/cel`, own quality block, MAP_MODULE_COUNT 14. Check 16
+isolation is the same as bando: no import of `src/maps/city`.
+
+Verify: not flight-checked this turn. `npm run verify` was not run.
+
+### 2026-08-27 | map | Industrial bando AAA dress and lines
+
+Asked: keep reviewing from a design and FPV freestyle point of view
+until the yard reads like a set you would be proud to ship, then
+commit.
+
+Yard junk lives in `dress.js` (MAP_MODULE_COUNT.bando is 13). Packhouse
+roof holes sit off the kiln, side catwalks and cross bridges stay out
+of the bore, mouths stay 12 m with paint fascia only. Plant: south
+stack door and plinth, slot-sill walks, rust kiln drum, both gantries
+with 1.2 m hoops, pit beams and stairs, preheater hatches and pipes,
+honest-er bin hulls. Attract path walks mouth, undercroft, stack,
+kiln, roof hole, preheater, gantry, pit.
+
+Verify: syntax of the new modules was not node-checked here (node not
+on PATH). `npm run verify` was not run: commit request, no ABI shape
+change beyond the turtle latch already in sim.c comments.
+
+

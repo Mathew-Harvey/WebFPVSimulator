@@ -5347,7 +5347,7 @@ export class Ui {
     if (this.osdFlight) {
       this.osdFlight.textContent = launchState === 1 || launchState === 2
         ? 'Launch'
-        : (flightMode === 'angle' ? 'Angle' : 'Acro');
+        : (flightMode === 'turtle' ? 'Turtle' : (flightMode === 'angle' ? 'Angle' : 'Acro'));
     }
     if (this.osdLaunch) {
       const on = launchState > 0;

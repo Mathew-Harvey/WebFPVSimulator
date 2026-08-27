@@ -11,10 +11,10 @@
  * measures that, by recording every request the page makes with a track
  * selected and asserting none of them is under src/maps/city.
  *
- * The kiln is the same kind of isolation: it copies the cel kit into
- * src/maps/bando/cel rather than importing the city's, so choosing The Kiln
+ * Industrial bando is the same kind of isolation: it copies the cel kit into
+ * src/maps/bando/cel rather than importing the city's, so choosing that world
  * does not fetch a single city module, and choosing the city does not fetch
- * the kiln.
+ * the bando. Municipal baths copies the cel kit the same way.
  *
  * The track world is loaded the same way, for symmetry and because the loading
  * screen then has one shape to report. It is loaded at boot because the title
@@ -57,11 +57,19 @@ export const MAPS = [
   },
   {
     id: 'bando',
-    name: 'The Kiln',
+    name: 'Industrial bando',
     mode: 'freestyle',
     note: 'A cement works. Dive the stack, fly the kiln. No gates, no lap, no clock.',
     buildMs: MAP_BUILD_MS.bando,
     load: () => import('./bando/index.js'),
+  },
+  {
+    id: 'baths',
+    name: 'Municipal baths',
+    mode: 'freestyle',
+    note: 'An empty 50 m hall. Dive the pit, fly the gallery. No gates, no lap, no clock.',
+    buildMs: MAP_BUILD_MS.baths,
+    load: () => import('./baths/index.js'),
   },
 ];
 

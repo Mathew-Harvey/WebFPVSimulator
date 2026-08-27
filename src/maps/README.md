@@ -9,8 +9,8 @@ targets alive at a time, which is what keeps P5's 120 MB budget meaningful.
 `registry.js` is the only place a map is named, and its loaders are dynamic
 `import()`. That is not style: a static import of the city would fetch 59
 vendored files at boot for a player who only ever flies the race field.
-`tests/lib/checks.js` check 16 measures it. The kiln copies its cel kit into
-`src/maps/bando/cel` so choosing it does not fetch the city either.
+`tests/lib/checks.js` check 16 measures it. Industrial bando and Municipal baths copy their cel kits
+into `src/maps/bando/cel` and `src/maps/baths/cel` so choosing them does not fetch the city.
 
 ## The contract a map module must satisfy
 
@@ -25,7 +25,7 @@ id.
 
 A MapInstance is:
 
-    id            'field' | 'city' | 'custom' | 'bando'
+    id            'field' | 'city' | 'custom' | 'bando' | 'baths'
     name          what the menu shows
     mode          'race' | 'freestyle'
     graphics      'low' | 'medium' | 'high'

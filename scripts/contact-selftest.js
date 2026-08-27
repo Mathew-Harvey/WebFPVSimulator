@@ -11,8 +11,9 @@
  *   2. a tilted drop produces a moment of spin, then the belly settles
  *   3. a wall with surface velocity spins the craft
  *   4. inverted plus crashflip plus pitch stick still flips the hull
- *      past inverted (ABI proof; the shell snaps instead of driving
- *      crashflip). Peak attitude, not the leftover tumble in free air.
+ *      past inverted (ABI proof; the shell now drives the same mixer
+ *      path: latch, prompt, pitch or roll). Peak attitude, not the
+ *      leftover tumble in free air.
  *   5. a harness-style replay that never calls the new entry points
  *      still falls in free air, so the additive ABI does not leak a
  *      floor into checks 2 through 12

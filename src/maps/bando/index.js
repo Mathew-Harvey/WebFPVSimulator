@@ -134,8 +134,11 @@ export async function buildMap(shell, onProgress, options) {
   addLamp(0, 10.2, 0, 0xffe0b0, 2.6, 34);
   addLamp(-12, 10, 0, 0xffe8c0, 1.7, 22);
   addLamp(12, 10, 0, 0xffe8c0, 1.7, 22);
+  addLamp(-24, 10.1, 0, 0xff7a40, 1.35, 16);
   addLamp(-46, 30, 0, 0xd4c4e8, 2.1, 42);
   addLamp(38, 8, 4.3, 0xffd0a0, 1.4, 18);
+  addLamp(-13, 8.8, -27.8, 0xff8a48, 1.5, 16);
+  addLamp(38, -4.2, 0, 0xc8a070, 1.1, 14);
   progress(0.88);
   await yieldToPaint();
 
@@ -149,7 +152,7 @@ export async function buildMap(shell, onProgress, options) {
   pipeline.grade.mat.uniforms.uShadowTint.value.setHex(0xb8a8c8);
   pipeline.grade.mat.uniforms.uLightTint.value.setHex(0xffe8c8);
   pipeline.grade.mat.uniforms.uWarmth.value = 0.08;
-  pipeline.grade.mat.uniforms.uSaturation.value = 1.06;
+  pipeline.grade.mat.uniforms.uSaturation.value = 1.10;
   pipeline.grade.mat.uniforms.uLift.value = 0.045;
   pipeline.ink.mat.uniforms.uFadeStart.value = 56;
   pipeline.ink.mat.uniforms.uFadeEnd.value = 170;

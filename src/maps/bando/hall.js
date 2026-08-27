@@ -22,7 +22,7 @@
  */
 
 import * as THREE from 'three';
-import { L, slab, deck, decal } from './kit.js';
+import { L, slab, deck, decal, pipe } from './kit.js';
 
 export function buildHall(root, colliders, platforms, M) {
   const { x0, x1, z0, z1, h } = L.pack;
@@ -76,6 +76,8 @@ export function buildHall(root, colliders, platforms, M) {
 
   addPool(root, M, -12, 0, 6.2, 3.6);
   addPool(root, M, 12, 0, 6.2, 3.6);
+
+  furnishHall(root, colliders, platforms, M, x0, x1, z0, z1, t);
 }
 
 function kilnWall(root, colliders, mat, xa, xb, z0, z1, h, kilnZ, kilnY0, kilnY1, opts) {
@@ -194,6 +196,30 @@ function roofWithHoles(root, colliders, platforms, M, x0, x1, z0, z1, top, holes
     slab(root, colliders, M.mint, hole.x0, top, hole.z0, hole.x0 + 0.22, top + lip, hole.z1);
     slab(root, colliders, M.mint, hole.x1 - 0.22, top, hole.z0, hole.x1, top + lip, hole.z1);
   }
+}
+
+function furnishHall(root, colliders, platforms, M, x0, x1, z0, z1, t) {
+  const mezY = 3.7;
+  const mezZ0 = z0 + t + 0.08;
+  const mezZ1 = z0 + t + 1.72;
+  deck(root, colliders, platforms, M.bone, x0 + t + 0.4, mezZ0, x1 - t - 0.4, mezZ1, mezY, 0.16);
+  slab(root, colliders, M.steelDark, x0 + t + 0.4, mezY, mezZ1 - 0.1, x1 - t - 0.4, mezY + 0.72, mezZ1);
+  slab(root, colliders, M.bone, x1 - t - 2.4, 0, mezZ0, x1 - t - 0.6, 1.28, mezZ1);
+  slab(root, colliders, M.bone, x1 - t - 2.4, 1.28, mezZ0, x1 - t - 0.6, 2.48, mezZ1 - 0.45);
+  slab(root, colliders, M.bone, x1 - t - 2.4, 2.48, mezZ0, x1 - t - 0.6, mezY, mezZ1 - 0.9);
+
+  const beltZ0 = 2.28;
+  const beltZ1 = 2.98;
+  const beltY = 2.52;
+  slab(root, colliders, M.steelDark, x0 + 4.5, beltY, beltZ0, x1 - 4.5, beltY + 0.18, beltZ1);
+  for (const x of [-18, -6, 6, 18]) {
+    pipe(root, colliders, M.steelDark, 'y', 0, beltY, x, (beltZ0 + beltZ1) * 0.5, 0.08);
+  }
+
+  const porY = 4.45;
+  deck(root, colliders, platforms, M.mint, -5.4, z1, 5.4, z1 + 3.8, porY, 0.18);
+  pipe(root, colliders, M.steelDark, 'y', 0, porY, -5.15, z1 + 3.55, 0.1);
+  pipe(root, colliders, M.steelDark, 'y', 0, porY, 5.15, z1 + 3.55, 0.1);
 }
 
 function addPool(root, M, x, z, w, d) {

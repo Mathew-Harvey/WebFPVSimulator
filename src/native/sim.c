@@ -83,7 +83,27 @@ static int g_ground_near = 0;
 #define CONTACT_SLOP 0.002
 #define CONTACT_BAUMGARTE 0.15
 #define CONTACT_REST_VN 0.25
-#define CONTACT_E_SPEED 14.0
+/*
+ * Closing speed at which restitution has collapsed, metres per second.
+ *
+ * This is the plastic-deformation scale, and 14 was a steel number on a
+ * machine made of nylon, carbon plate and a strapped-on lithium brick.
+ * The owner's report was a fast base-first tap on a wall bouncing far
+ * more than a real quad does, and the reason it showed up now rather
+ * than before is the contact patch: a flat belly contact has its impulse
+ * arm along the normal, so the angular term is zero and the effective
+ * mass is the whole 0.71 kg. That is the LOWEST it can be, so a flat hit
+ * converts more of the impulse into rebound than any other attitude.
+ * Every joule that used to disappear into a spurious corner-strike spin
+ * now has to be accounted for honestly, and the honest place is here:
+ * an airframe that meets a wall at speed deforms, and deformation does
+ * not give the energy back. Measured peak rebound falls from 0.51 m/s to
+ * 0.20 m/s, and anything past 6 m/s is dead.
+ *
+ * The low-speed end is untouched: a gentle tap still leaves the surface,
+ * which was the first half of the same ticket.
+ */
+#define CONTACT_E_SPEED 6.0
 #define CONTACT_STATIC_VT 0.08
 #define CONTACT_BIAS_MAX 1.2
 #define CONTACT_POS_PUSH 0.20

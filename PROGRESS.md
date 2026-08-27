@@ -20372,3 +20372,68 @@ every numeric value and the determinism hash de0401cd4266 unchanged.
 contact-selftest 72 pass, trackbuilder 473 pass, ghost, replay and link
 pass, all three lints clean. Live in the city: 1.5 M samples of craft
 position across four seconds, zero non-finite, console clean.
+
+---
+
+### 2026-08-27 | physics | A hard base-first tap should not spring back
+
+Ticket, owner, on the rebuilt contact: the collision is much better, but
+hitting a wall fast bottom-side-down bounces far more than a real quad
+would.
+
+Correct, and it is the contact patch's own doing. A flat belly contact
+puts the impulse arm along the normal, so the angular term is exactly
+zero and the effective mass is the whole 0.71 kg. That is the LOWEST
+the effective mass can be, which makes a base-first hit the single
+attitude that converts the most impulse into linear rebound. Before the
+patch existed every hit solved as a corner strike with an effective
+mass of about 4.3, so two thirds of every impulse vanished into a spin
+the craft should never have had. That spin was hiding the restitution.
+Removing it did not add energy, it stopped hiding it, and the number
+underneath turned out to be a steel one.
+
+CONTACT_E_SPEED, the closing speed at which restitution has collapsed,
+was 14 m/s. That is a plausible scale for something that rings. This
+machine is nylon, carbon plate and a strapped-on lithium brick, and it
+deforms. 6.0 m/s.
+
+Measured, base-first onto a hard face (wall, e 0.15), pure free fall so
+there is no spin going in:
+
+| arrival | rebound before | rebound after |
+| 0.15 m/s | 0.021 | 0.016 |
+| 1.0 m/s | 0.140 | 0.125 |
+| 2.0 m/s | 0.258 | 0.200 |
+| 4.0 m/s | 0.429 | 0.202 |
+| 6.0 m/s | 0.514 | 0.044 |
+| 8.0 m/s | 0.514 | 0.058 |
+| 10.0 m/s | 0.428 | 0.070 |
+| 16.0 m/s | 0.135 | 0.120 |
+
+Peak rebound falls from 0.51 m/s to 0.20 m/s and moves down to 2 m/s,
+where a small push-off is what a tap should do. Past 6 m/s the hit is
+dead: 7 cm/s off a 9.4 m/s arrival is a slap and a drop, which is what
+the airframe does.
+
+The low-speed end is deliberately untouched. CONTACT_E_FLOOR still
+holds a gentle touch off the surface, because a light tap sticking was
+the first half of this same ticket and undoing it to fix the second
+half would be trading one report for the other.
+
+Not done, and worth writing down as the next thing to look at if it
+still reads wrong. A real 5 inch meeting a wall base-first at speed
+does not stop cleanly and fly on: the props are spinning, they bite,
+and the whole thing snaps into a tumble. This model kills the normal
+velocity, keeps the tangential, and leaves the craft level. Restitution
+is the honest lever for how much comes BACK; it is not the lever for
+whether a hard hit should end the pilot's line. sim_prop_strike takes
+rotor speed but no translational energy and no attitude. If the feel is
+still wrong it will be that, not the bounce.
+
+Verify: 14 of 16, the same two pre-existing failures, every numeric
+value and the determinism hash de0401cd4266 unchanged (the harness
+replay never calls a contact entry point, so it cannot see this).
+contact-selftest 72 pass, including the offset wall shove that uses
+e 0.32 against an 8 m/s surface velocity. trackbuilder 473 pass. Live
+in the city: contact registers, no banner, no crash, no stick, console
+clean.

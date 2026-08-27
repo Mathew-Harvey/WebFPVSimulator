@@ -19857,4 +19857,32 @@ loop never runs from the title screen.
 path, no plant/ABI/WASM. Contact selftest was not run
 for the same reason.
 
+---
+
+### 2026-08-27 | map | Bardwell grove mass, title trunk off the lens
+
+The title still was a deck rail and a trunk. The tree at
+(-8, 10) moved to (-28, 6), west of the stable, behind
+the camera. Canopies went from many 0.30 blobs to fewer
+overlapping 0.62 blobs so they read as one shade mass,
+city grove size, still inside the HALF hull. Perimeter
+rows stagger and skip two bays so the skyline is trees,
+not a hedge.
+
+Live leftoverDeath 0, leftoverOverlap 0, 487 boxes
+(eight fewer hulls from the windbreak gaps). Named
+`__hit` CLEAR. Spawn on the deck. Pairwise canopy gaps
+all 0 or >= CLEAR.
+
+Title still now shows hay in the backyard shed. Distant
+row has trunks. What still wants a tick: a hostile art
+director on whether that backyard still would make a
+pilot stay, and whether the icosahedron masses read as
+leaves rather than stacked rocks. Swing still cannot
+hang through the porch slab.
+
+`npm run verify` was not run: map dress only. Shots
+exit 1 is the known CDN `ERR_CONNECTION_REFUSED`.
+Geometry still captured.
+
 

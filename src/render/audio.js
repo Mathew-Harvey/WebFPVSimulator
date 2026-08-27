@@ -543,16 +543,34 @@ export class MotorAudio {
   /*
    * A one shot cue. kind is 'crash', 'gate', 'clip', 'land' or 'takeoff'.
    * Safe to call before attach, and it creates no nodes: every cue is an
-   * envelope on a voice that already exists.
+   * envelope on a voice that already exists. `level` is optional and only
+   * the contact cues read it; see the note in the body.
    *
    * A cue also ducks the bed, which is what keeps it audible with everything
    * else at maximum.
    */
-  event(kind, atTime) {
+  event(kind, atTime, level) {
     if (!this.ctx || !this.cueGain) {
       return;
     }
     const t = atTime == null ? this.ctx.currentTime : atTime;
+    /*
+     * `level` is how hard the thing that caused this cue actually was, 0
+     * to 1, and it exists because the on-screen hit text is gone: the
+     * sound is now the whole of what a pilot is told about a contact, so
+     * it has to say how hard as well as that it happened. Absent, every
+     * cue plays at its written level, which is what every caller outside
+     * the contact path wants: a gate is a gate.
+     *
+     * The floor is deliberate. A cue scaled to nothing is a cue the
+     * player will swear did not fire, and this one is carrying the
+     * message on its own.
+     */
+    let lv = 1;
+    if (level != null && level === level) {
+      lv = level < 0 ? 0 : level > 1 ? 1 : level;
+      lv = 0.42 + 0.58 * lv;
+    }
     if (kind === 'crash') {
       const g = this.crashGain.gain;
       g.cancelScheduledValues(t);
@@ -566,11 +584,13 @@ export class MotorAudio {
        * level itself. The soft clip and MASTER_CEILING bound what this can do
        * to the true peak.
        */
-      g.exponentialRampToValueAtTime(2.6, t + 0.006);
+      g.exponentialRampToValueAtTime(2.6 * lv, t + 0.006);
       g.exponentialRampToValueAtTime(0.0001, t + 0.42);
       const f = this.crashLp.frequency;
       f.cancelScheduledValues(t);
-      f.setValueAtTime(1800, t);
+      /* A harder hit is brighter as well as louder, and it rings longer.
+       * Level alone reads as a volume knob rather than as a bigger event. */
+      f.setValueAtTime(900 + 900 * lv, t);
       f.exponentialRampToValueAtTime(220, t + 0.4);
       /* The click cues lean on this filter's Q, so a crash states its own
        * rather than inheriting whatever the last click left. */
@@ -606,7 +626,7 @@ export class MotorAudio {
       const ng = this.crashGain.gain;
       ng.cancelScheduledValues(t);
       ng.setValueAtTime(0.0001, t);
-      ng.exponentialRampToValueAtTime(gate ? 1.35 : 1.1, t + 0.002);
+      ng.exponentialRampToValueAtTime((gate ? 1.35 : 1.1) * (gate ? 1 : lv), t + 0.002);
       ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.045 : 0.11));
       const f = this.cueOsc.frequency;
       f.cancelScheduledValues(t);
@@ -615,7 +635,7 @@ export class MotorAudio {
       const g = this.cueGain.gain;
       g.cancelScheduledValues(t);
       g.setValueAtTime(0.0001, t);
-      g.exponentialRampToValueAtTime(gate ? 0.75 : 0.6, t + 0.003);
+      g.exponentialRampToValueAtTime((gate ? 0.75 : 0.6) * (gate ? 1 : lv), t + 0.003);
       g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.075 : 0.12));
       this.duckFlight(t, gate ? 0.55 : 0.5, gate ? 0.22 : 0.3);
       this.music.duckNow(t, gate ? 0.5 : 0.45, gate ? 0.25 : 0.3);

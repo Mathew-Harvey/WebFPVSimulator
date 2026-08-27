@@ -325,6 +325,144 @@ function discSupport(nx, ny, nz, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz) {
   return motor + CRAFT_WORLD_PROP * Math.sqrt(s2);
 }
 
+/*
+ * THE CONTACT PATCH, and why a wall tap used to spin the quad up.
+ *
+ * The plant resolves an obstacle contact with one impulse at one point.
+ * Which point decides how much of that impulse becomes rotation: the
+ * angular term is about two thirds of the effective mass at a full arm,
+ * so the arm is not a detail, it is most of the answer. sim_contact
+ * picked the hull OBB's support in the -n direction, and that support is
+ * always an extreme corner, every half extent at once. A belly slapped
+ * flat on a wall therefore solved as a corner strike, came out still
+ * moving into the face, and picked up tens of radians a second of spin
+ * out of a contact that should have produced none. Measured before this
+ * existed: a 6 m/s flat arrival left at -4.4 m/s, still inbound, with
+ * 41 rad/s of spin it did not arrive with.
+ *
+ * A real airframe meets a flat face on a patch, not a point. The shape
+ * this file sweeps is already the four prop discs, so the patch is the
+ * discs that are actually against the surface, and its centroid is the
+ * honest place to put the impulse:
+ *
+ *   belly flat on a wall   four discs tied      centroid under the CG,
+ *                                               no moment, it pushes off
+ *   square into a wall     two discs tied       centroid on the centreline,
+ *                                               no moment, it stops square
+ *   one arm catches        one disc deepest     full moment, it spins
+ *
+ * which is what those three contacts do in the world.
+ *
+ * This is a patch CENTROID, not a support function, and the two differ on
+ * purpose. Along the body axis the term is scaled by d . u rather than
+ * its sign, so a craft that meets a wall edge on (d perpendicular to u)
+ * contributes nothing there instead of half the body depth: taking the
+ * sign would put the impulse a body half-height off the centreline and
+ * invent exactly the moment this function exists to remove.
+ *
+ * Returns the offset from the craft centre to that centroid, in world
+ * metres, written into out. Allocation free: called from the contact
+ * pass, which runs on the sim clock.
+ */
+/* How close to the deepest disc another disc must be to count as sharing
+ * the patch. A 220 mm airframe on a flat face ties all four inside a few
+ * millimetres; a bank of more than about six degrees breaks the tie and
+ * the contact becomes the offset hit it really is. */
+export const CONTACT_PATCH_BAND = 0.015;
+
+export function contactPatch(nx, ny, nz, qx, qy, qz, qw, out) {
+  const r = out || { x: 0, y: 0, z: 0 };
+  /* Into the solid. The patch is on the side of the hull facing that. */
+  const dx = -nx;
+  const dy = -ny;
+  const dz = -nz;
+
+  /* Body axes in world, from the attitude quaternion. Written out rather
+   * than routed through Three.js because this file has no renderer in it
+   * and must not grow one. */
+  const xx = qx * qx;
+  const yy = qy * qy;
+  const zz = qz * qz;
+  const xy = qx * qy;
+  const xz = qx * qz;
+  const yz = qy * qz;
+  const wx = qw * qx;
+  const wy = qw * qy;
+  const wz = qw * qz;
+  const exx = 1 - 2 * (yy + zz);
+  const exy = 2 * (xy + wz);
+  const exz = 2 * (xz - wy);
+  const ux = 2 * (xy - wz);
+  const uy = 1 - 2 * (xx + zz);
+  const uz = 2 * (yz + wx);
+  const ezx = 2 * (xz + wy);
+  const ezy = 2 * (yz - wx);
+  const ezz = 1 - 2 * (xx + yy);
+
+  /* The four motors, on the diagonals of the body xz plane. */
+  const A = CRAFT_WORLD_ARM_AXIS;
+  let bestDepth = -Infinity;
+  for (let i = 0; i < 4; i += 1) {
+    const sx = (i & 1) ? A : -A;
+    const sz = (i & 2) ? A : -A;
+    const mx = exx * sx + ezx * sz;
+    const my = exy * sx + ezy * sz;
+    const mz = exz * sx + ezz * sz;
+    const depth = mx * dx + my * dy + mz * dz;
+    if (depth > bestDepth) {
+      bestDepth = depth;
+    }
+  }
+  let sumX = 0;
+  let sumY = 0;
+  let sumZ = 0;
+  let n = 0;
+  for (let i = 0; i < 4; i += 1) {
+    const sx = (i & 1) ? A : -A;
+    const sz = (i & 2) ? A : -A;
+    const mx = exx * sx + ezx * sz;
+    const my = exy * sx + ezy * sz;
+    const mz = exz * sx + ezz * sz;
+    const depth = mx * dx + my * dy + mz * dz;
+    if (depth >= bestDepth - CONTACT_PATCH_BAND) {
+      sumX += mx;
+      sumY += my;
+      sumZ += mz;
+      n += 1;
+    }
+  }
+  if (n > 0) {
+    sumX /= n;
+    sumY /= n;
+    sumZ /= n;
+  }
+
+  /* Out to the blade, in the plane of the discs. A disc meeting the face
+   * edge on reaches a full prop radius; one lying flat against it reaches
+   * nothing, because the contact is already the disc itself. */
+  const du = dx * ux + dy * uy + dz * uz;
+  const px = dx - du * ux;
+  const py = dy - du * uy;
+  const pz = dz - du * uz;
+  const p2 = px * px + py * py + pz * pz;
+  if (p2 > 1e-12) {
+    const inv = CRAFT_WORLD_PROP / Math.sqrt(p2);
+    sumX += px * inv;
+    sumY += py * inv;
+    sumZ += pz * inv;
+  }
+
+  /* And along the body axis, toward whichever face is against the wall. */
+  sumX += CRAFT_WORLD_V_HALF * du * ux;
+  sumY += CRAFT_WORLD_V_HALF * du * uy;
+  sumZ += CRAFT_WORLD_V_HALF * du * uz;
+
+  r.x = sumX;
+  r.y = sumY;
+  r.z = sumZ;
+  return r;
+}
+
 export class Colliders {
   constructor() {
     /* Construction time storage. Plain arrays here on purpose: this runs
@@ -1541,20 +1679,30 @@ export const GROUND_E = 0.0;
  * Obstacle materials. PVC, carbon, masonry, bark: enough difference that
  * a gate tap and a tree are not the same event, not a damage model.
  */
+/*
+ * These fell when the contact patch landed. They were set while every hit
+ * solved as a corner strike, which threw most of the impulse into spin, so
+ * the numbers had been walked up to get any push-off at all and were well
+ * past what the materials do: carbon and nylon on masonry is nearer 0.15
+ * than 0.32. Now that a flat contact spends its impulse on separation the
+ * old values read as a trampoline. The ORDER is unchanged and is what the
+ * self-test pins: PVC bounces more and grips less than bark, and a train
+ * is the deadest thing in either world.
+ */
 export function contactMaterial(kindName) {
   if (kindName === 'train') {
-    return { e: 0.12, mu: 0.35 };
+    return { e: 0.06, mu: 0.40 };
   }
   if (kindName === 'gate' || kindName === 'pole') {
-    return { e: 0.38, mu: 0.28 };
+    return { e: 0.22, mu: 0.30 };
   }
   if (kindName === 'tree' || kindName === 'canopy') {
-    return { e: 0.22, mu: 0.45 };
+    return { e: 0.12, mu: 0.50 };
   }
   if (kindName === 'wall' || kindName === 'boom' || kindName === 'cliff' || kindName === 'rock') {
-    return { e: 0.32, mu: 0.38 };
+    return { e: 0.15, mu: 0.42 };
   }
-  return { e: 0.30, mu: 0.35 };
+  return { e: 0.15, mu: 0.40 };
 }
 
 /*
@@ -1723,6 +1871,35 @@ export function turtleFlipLift(u) {
   return 4 * u * (1 - u) * TURTLE_LIFT;
 }
 
+/*
+ * Spherical interpolation without a single transcendental.
+ *
+ * This writes a plant pose through sim_set_pose, so it is in the physics
+ * path, and CLAUDE.md is explicit that JS Math.sin, Math.cos and friends
+ * may not be: they are not specified to bit precision and V8 and
+ * SpiderMonkey disagree in the last places. The old body used Math.acos
+ * and Math.sin, which is a determinism hole PROGRESS.md has carried as
+ * known since the flip was written: a replay that spanned a turtle was
+ * engine dependent. There is no sin or cos in the compiled libm to route
+ * it through either, because the plant does not own one: sim_sqrt is the
+ * whole of it.
+ *
+ * So do it with square roots. The square root of a unit quaternion is the
+ * half rotation, and it is sqrt-only:
+ *
+ *   sqrt(q) = normalise(q.w + 1, q.x, q.y, q.z)
+ *
+ * Halve the relative rotation N times to get d^(1/2^N), and any dyadic
+ * power d^(k/2^N) is the product of the halvings named by the set bits of
+ * k. Quantising t onto that grid costs 1/1024 of the flip, which is a
+ * third of a millisecond of a 380 ms animation, and buys an interpolation
+ * that is bit-identical on every engine.
+ *
+ * It is a real slerp, not an nlerp standing in for one: constant angular
+ * velocity, so the flip does not rush its own middle.
+ */
+const SLERP_BITS = 10;
+
 export function turtleSlerpQuat(aw, ax, ay, az, bw, bx, by, bz, t, out) {
   const q = out || [0, 0, 0, 0];
   let dot = aw * bw + ax * bx + ay * by + az * bz;
@@ -1733,25 +1910,89 @@ export function turtleSlerpQuat(aw, ax, ay, az, bw, bx, by, bz, t, out) {
     bz = -bz;
     dot = -dot;
   }
-  let ow;
-  let ox;
-  let oy;
-  let oz;
-  if (dot > 0.9995) {
-    ow = aw + (bw - aw) * t;
-    ox = ax + (bx - ax) * t;
-    oy = ay + (by - ay) * t;
-    oz = az + (bz - az) * t;
-  } else {
-    const theta = Math.acos(dot > 1 ? 1 : dot);
-    const s = Math.sin(theta);
-    const wa = Math.sin((1 - t) * theta) / s;
-    const wb = Math.sin(t * theta) / s;
-    ow = wa * aw + wb * bw;
-    ox = wa * ax + wb * bx;
-    oy = wa * ay + wb * by;
-    oz = wa * az + wb * bz;
+  if (!(t > 0)) {
+    q[0] = aw;
+    q[1] = ax;
+    q[2] = ay;
+    q[3] = az;
+    return q;
   }
+  if (t >= 1) {
+    q[0] = bw;
+    q[1] = bx;
+    q[2] = by;
+    q[3] = bz;
+    return q;
+  }
+  const steps = 1 << SLERP_BITS;
+  const k = Math.round(t * steps);
+  if (k <= 0) {
+    q[0] = aw;
+    q[1] = ax;
+    q[2] = ay;
+    q[3] = az;
+    return q;
+  }
+  if (k >= steps) {
+    q[0] = bw;
+    q[1] = bx;
+    q[2] = by;
+    q[3] = bz;
+    return q;
+  }
+
+  /* d = a^-1 * b, the rotation the flip has to travel. dot >= 0 above, so
+   * d.w >= 0 and this is the short way round. */
+  let dw = aw * bw + ax * bx + ay * by + az * bz;
+  let dx = aw * bx - ax * bw - ay * bz + az * by;
+  let dy = aw * by - ay * bw - az * bx + ax * bz;
+  let dz = aw * bz - az * bw - ax * by + ay * bx;
+
+  /* Accumulate d^(k/2^N) from the set bits of k, halving as we go. Bit i
+   * of k is worth d^(1/2^(N-i)), so walk the bits from the top down and
+   * halve once per step. */
+  let rw = 1;
+  let rx = 0;
+  let ry = 0;
+  let rz = 0;
+  for (let bit = SLERP_BITS - 1; bit >= 0; bit -= 1) {
+    /* Halve FIRST. Bit i is worth d^(2^i / 2^N), which is d^(1/2^(N-i)),
+     * so the top bit wants one halving and the bottom bit wants N. Doing
+     * the multiply before the halving is off by exactly one and lands the
+     * midpoint of a flip on its endpoint. */
+    const hw = dw + 1;
+    const h2 = hw * hw + dx * dx + dy * dy + dz * dz;
+    if (h2 > 1e-18) {
+      const inv = 1 / Math.sqrt(h2);
+      dw = hw * inv;
+      dx *= inv;
+      dy *= inv;
+      dz *= inv;
+    } else {
+      /* d.w = -1: a full turn, which has no unique half. Unreachable from
+       * a real attitude, and the identity is the honest answer. */
+      dw = 1;
+      dx = 0;
+      dy = 0;
+      dz = 0;
+    }
+    if ((k >> bit) & 1) {
+      const nw = rw * dw - rx * dx - ry * dy - rz * dz;
+      const nx = rw * dx + rx * dw + ry * dz - rz * dy;
+      const ny = rw * dy + ry * dw + rz * dx - rx * dz;
+      const nz = rw * dz + rz * dw + rx * dy - ry * dx;
+      rw = nw;
+      rx = nx;
+      ry = ny;
+      rz = nz;
+    }
+  }
+
+  /* out = a * d^t. */
+  const ow = aw * rw - ax * rx - ay * ry - az * rz;
+  const ox = aw * rx + ax * rw + ay * rz - az * ry;
+  const oy = aw * ry + ay * rw + az * rx - ax * rz;
+  const oz = aw * rz + az * rw + ax * ry - ay * rx;
   const n2 = ow * ow + ox * ox + oy * oy + oz * oz;
   const inv = n2 > 0 ? 1 / Math.sqrt(n2) : 1;
   q[0] = ow * inv;
@@ -1761,15 +2002,42 @@ export function turtleSlerpQuat(aw, ax, ay, az, bw, bx, by, bz, t, out) {
   return q;
 }
 
-/* Flatten roll and pitch. Keep the body-x projection on the plant
+/*
+ * Flatten roll and pitch. Keep the body-x projection on the plant
  * xy plane as heading. 180 about x leaves +x alone, so (0,1,0,0)
- * becomes identity rather than a degenerate w/z flatten. */
+ * becomes identity rather than a degenerate w/z flatten.
+ *
+ * Sqrt only, for the reason turtleSlerpQuat is: this lands in the plant.
+ * The old body went through Math.atan2 to get the heading and Math.cos
+ * and Math.sin to halve it, three transcendentals to produce a
+ * quaternion that the half-angle identities give exactly. cos h and
+ * sin h are the normalised forward vector already, and
+ *
+ *   cos(h/2) = sqrt((1 + cos h) / 2),  sin(h/2) = sin h / (2 cos(h/2))
+ *
+ * closes it. cos(h/2) is zero only at h = 180 degrees, where the
+ * quaternion is a half turn about z and is written down directly.
+ */
 export function uprightPlantQuat(qw, qx, qy, qz) {
   const fx = 1 - 2 * (qy * qy + qz * qz);
   const fy = 2 * (qx * qy + qw * qz);
-  const heading = (fx * fx + fy * fy) > 1e-12 ? Math.atan2(fy, fx) : 0;
-  const h = 0.5 * heading;
-  return [Math.cos(h), 0, 0, Math.sin(h)];
+  const m2 = fx * fx + fy * fy;
+  if (!(m2 > 1e-12)) {
+    return [1, 0, 0, 0];
+  }
+  const inv = 1 / Math.sqrt(m2);
+  const c = fx * inv;
+  const sn = fy * inv;
+  let half = 0.5 * (1 + c);
+  if (half < 0) {
+    half = 0;
+  }
+  const ch = Math.sqrt(half);
+  if (ch < 1e-9) {
+    /* Pointing at exactly minus x: a half turn about z. */
+    return [0, 0, 0, 1];
+  }
+  return [ch, 0, 0, sn / (2 * ch)];
 }
 
 /*
@@ -1832,6 +2100,46 @@ export const BURIED_CONFIRM_MS = 180;
 export const CLIP_CRASH_HOLD_MS = 800;
 export const CLIP_SPAWN_GRACE_MS = 500;
 
+/*
+ * THE THRASH CATCH: the state none of the three above can see.
+ *
+ * The owner's report was "when i start glitching and flipping around when
+ * stuck on an obstacle or mesh and i can't turtle out nor can i right it".
+ * Walk the three detectors against that and every one of them declines:
+ *
+ *   inside   the centre is not in a solid, it is wedged against one
+ *   stuck    needs `unresolved`, and the bounce loop IS resolving, once
+ *            per contact, over and over
+ *   buried   the terrain is not above it
+ *
+ * and turtle declines too, because shouldEnterTurtle wants the craft
+ * still (under TURTLE_RATE) and genuinely inverted, and a quad winding
+ * itself up against a wall is neither. So the pilot has no way out. That
+ * is the hole.
+ *
+ * What the state actually looks like from here is simple: the craft is in
+ * contact, it is either spinning hard or the pilot is holding real
+ * throttle, and it has gone nowhere for most of a second. Any one of
+ * those alone is ordinary flying. Together they are not: a quad that has
+ * been touching something and burning throttle for 700 ms without
+ * covering 60 cm is not flying, whatever the attitude says.
+ *
+ * The travel gate is what keeps honest flying out of it. Sixty centimetres
+ * is under two frames of a slow crawl and far under any scrape, so a wall
+ * ride, a bounce that clears, a gate rub and a hard flip all leave.
+ */
+export const THRASH_RATE = 12.0;      /* rad/s, about 690 deg/s */
+/*
+ * Hover measures 0.28 on this plant (verify check 5). At 0.55 the rotors
+ * are asking for close to four times hover thrust, so a craft that has not
+ * covered 60 cm in 700 ms of that is being held, not underpowered. The
+ * first draft used 0.35, which is barely above hover and fires on a pilot
+ * sitting on a roof deciding what to do next.
+ */
+export const THRASH_THROTTLE = 0.55;
+export const THRASH_MS = 700;
+export const THRASH_TRAVEL = 0.60;
+
 export function makeClipWatch() {
   return {
     insideMs: 0,
@@ -1841,6 +2149,11 @@ export function makeClipWatch() {
     ay: 0,
     az: 0,
     haveAnchor: false,
+    thrashMs: 0,
+    tx: 0,
+    ty: 0,
+    tz: 0,
+    haveThrash: false,
   };
 }
 
@@ -1852,6 +2165,11 @@ export function resetClipWatch(watch) {
   watch.ay = 0;
   watch.az = 0;
   watch.haveAnchor = false;
+  watch.thrashMs = 0;
+  watch.tx = 0;
+  watch.ty = 0;
+  watch.tz = 0;
+  watch.haveThrash = false;
   return watch;
 }
 
@@ -1880,7 +2198,10 @@ function clipWatchSoft(sample) {
  *                  not inside. A deck sit, not a clip.
  *   buriedDepth    metres below height(), 0 if above
  *   x, y, z        world position, for the stuck travel gate
- * Returns 'inside' | 'stuck' | 'buried' | null.
+ *   contact        a solid contact was resolved this tick
+ *   rateMag        body rate magnitude, rad/s
+ *   throttle       throttle channel, 0 to 1
+ * Returns 'inside' | 'stuck' | 'buried' | 'thrash' | null.
  */
 export function clipWatchTick(watch, sample, dtMs) {
   if (clipWatchExempt(sample)) {
@@ -1948,6 +2269,48 @@ export function clipWatchTick(watch, sample, dtMs) {
   if (watch.buriedMs >= BURIED_CONFIRM_MS) {
     return 'buried';
   }
+
+  /* Thrash: in contact, spinning hard or under real throttle, and going
+   * nowhere. Ordered last because it is the slowest to confirm and the
+   * three above name the cause more precisely when they apply. */
+  /* `contact` is an OBSTACLE contact, never a ground one. A quad on the
+   * grass has its own ways out (fly off it, turtle, or the ground model's
+   * own settle), and counting the ground here fired on two ordinary
+   * states: a slow takeoff, which touches the plane at full throttle by
+   * definition, and a hover low enough to brush it. takingOff is refused
+   * outright for the same reason. */
+  const thrashCandidate = !soft
+    && !sample.takingOff
+    && Boolean(sample.contact)
+    && (sample.rateMag >= THRASH_RATE || sample.throttle >= THRASH_THROTTLE);
+  if (thrashCandidate) {
+    if (!watch.haveThrash) {
+      watch.tx = sample.x;
+      watch.ty = sample.y;
+      watch.tz = sample.z;
+      watch.haveThrash = true;
+      watch.thrashMs = 0;
+    }
+    watch.thrashMs += dt;
+    if (watch.thrashMs >= THRASH_MS) {
+      const dx = sample.x - watch.tx;
+      const dy = sample.y - watch.ty;
+      const dz = sample.z - watch.tz;
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) < THRASH_TRAVEL) {
+        return 'thrash';
+      }
+      /* It IS covering ground. Re-anchor and keep watching rather than
+       * latching, the same way the stuck gate does. */
+      watch.tx = sample.x;
+      watch.ty = sample.y;
+      watch.tz = sample.z;
+      watch.thrashMs = 0;
+    }
+  } else {
+    watch.haveThrash = false;
+    watch.thrashMs = 0;
+  }
+
   return null;
 }
 

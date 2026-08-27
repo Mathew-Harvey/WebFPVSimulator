@@ -19886,3 +19886,327 @@ exit 1 is the known CDN `ERR_CONNECTION_REFUSED`.
 Geometry still captured.
 
 
+
+---
+
+### 2026-08-27 | physics | Contact rebuilt: the patch, the slide, the sim clock
+
+Ticket, owner, four parts. Tapping a wall with the base of the quad
+sticks instead of pushing gently off. Glitching and flipping while
+stuck on an obstacle or mesh, with no way to turtle out or right it,
+should be registered and reset in place. Remove the on-screen words
+that say what was hit; the sound and the feel should carry it. And
+understand the physics model well enough to make it obey the laws it
+claims to.
+
+Kept on the owner's later instruction: the Crashed banner and the
+TURTLE MODE banner. Only the hit reports went.
+
+#### What was actually wrong
+
+The stick was not friction. Three separate faults stacked:
+
+1. **Every obstacle contact solved as a corner strike.** sim_contact
+   took its impulse arm from the hull OBB's support in the -n
+   direction, and that support is always an extreme corner, plus or
+   minus every half extent at once. The angular term is about two
+   thirds of the effective mass at that arm, so most of the impulse
+   went into rotation instead of separation. Measured on the old
+   binary, a perfectly flat belly-down arrival on a hard face with
+   zero spin going in:
+
+   | closing | leaves at | spin gained |
+   | 0.10 m/s | -0.084 m/s (still inbound) | 0.63 rad/s |
+   | 0.80 m/s | -0.568 m/s (still inbound) | 6.10 rad/s |
+   | 6.00 m/s | -4.403 m/s (still inbound) | 41.4 rad/s |
+
+   It never left the surface, and it span up out of nothing. That is
+   the stick and the flipping in one number.
+
+2. **The frame's travel along the surface was thrown away.** A contact
+   rewound the craft to the touch point and dropped the rest of the
+   frame, including the tangential part. In sustained contact hitT is 0
+   every frame, so the craft was put back where it started, every
+   frame. There was no tangential motion left for friction to act on.
+
+3. **Restitution fell off a cliff to zero** below 0.25 m/s closing, so
+   a light touch had every joule taken out of it and was then held by
+   friction.
+
+And the whole pass ran once per rendered frame, on the interpolated
+render pose, writing back into the plant. CLAUDE.md says a dropped
+frame must change nothing about the trajectory. It changed everything.
+
+#### Changed, native
+
+`sim_contact_at`, additive ABI, version unchanged: the same contact but
+with the impulse arm supplied by the caller. `sim_prop_strike(sev)`:
+the rotors lose sev of their speed, so a wall tap costs a beat of
+thrust instead of only heading.
+
+Restitution now ramps to a floor (CONTACT_E_FLOOR) instead of to zero.
+Grass has e = 0 and is unaffected; only a hard face can push back.
+
+`ground_settle` no longer uses exponential keeps. 0.97 per millisecond
+is a 33 ms time constant, which stopped a 10 m/s belly arrival inside a
+third of a metre: the ground read as glue. The reason it was there is
+real, and it is worth writing down: contact_impulse returns early on a
+hull that is merely resting, because vn is zero and the penetration
+sits inside the slop, so there is no normal impulse and the Coulomb
+cone has nothing to scale against. A resting contact had no friction
+force at all. It carries the weight explicitly now, gravity's component
+into the plane, friction at mu times that, and spin friction as the
+same load at CONTACT_PATCH_R. Measured, seated belly shove:
+
+    OLD  at 50 ms v=0.573 m/s, decel 27.4 m/s^2, total travel 0.12 m
+    NEW  at 50 ms v=3.798 m/s, decel 12.0 m/s^2, total travel 0.42 m
+
+12.0 m/s^2 against a predicted mu*g of 13.7, the remainder being the
+impulse path still doing its share. A 10 m/s slide now runs metres.
+
+#### Changed, host
+
+`contactPatch` in collide.js: the contact patch centroid over the four
+prop discs, which is the shape the sweep already uses. Discs within
+CONTACT_PATCH_BAND of the deepest share the patch. Verified geometry,
+lever being |r x n|, zero meaning the impulse passes through the CG:
+
+    flat belly onto a floor            lever 0.0000 m
+    square into a wall                 lever 0.0000 m
+    base against a wall, rolled 90     lever 0.0000 m   <- the ticket
+    rolled 45 into the same wall       lever 0.0799 m
+    pitched 20 nose-down onto a floor  lever 0.1199 m
+
+So a flat contact pushes off and an offset one still spins. After the
+change the same flat drop that used to stay inbound leaves at +0.0216
+to +1.0972 m/s with exactly zero spin, and one arm catching the face at
+6 m/s still gives 39.7 rad/s.
+
+`obstacleContactPass` replaces the frame-level bounce loop. It runs
+every OBSTACLE_STEP (4) milliseconds of SIM time from inside the 1 kHz
+step loop, against the plant's own pose, and it is collide-and-slide:
+the leftover travel is projected onto the face and swept again rather
+than dropped. The cadence is a count of 1 ms steps, so it is identical
+however the host batched them. Cost measured in the city, the heaviest
+map: 3.15 us per query, 0.79 ms of CPU per second of simulated flight.
+
+`contactSeparation` no longer adds `inward`. The contact point is the
+pose at first touch and is already clear of the face; `inward` grows
+with the frame's own travel, so the same wall hit pushed a 30 fps
+machine back five times further than a 144 fps one, a third of a metre
+at racing speed.
+
+The depenetration-without-impulse path is now used only for a hull that
+is genuinely buried, where there is no approach velocity to solve
+against. Everything else goes through the impulse, which cannot pump
+energy because contact_impulse refuses a contact that is separating.
+
+Material table lowered. Those numbers had been walked up to get any
+push-off at all while every hit solved as a corner strike; carbon and
+nylon on masonry is nearer 0.15 than 0.32. The ORDER the self-test pins
+is unchanged.
+
+The clip watch now ticks on the sim clock. Every threshold in it is a
+duration, and while it counted frame deltas a machine at 8 fps could
+confirm a 180 ms clip in two frames of a craft that had barely moved.
+
+#### The thrash catch, and recover in place
+
+None of the three existing detectors could see the state in the ticket:
+`inside` wants the centre in a solid, `stuck` wants the bounce loop to
+have failed when it was in fact resolving over and over, `buried` wants
+terrain overhead. Turtle declines too, because shouldEnterTurtle wants
+the craft still and genuinely inverted. So there was no way out.
+
+`thrash` fires on: an obstacle contact, plus either high body rate or
+real throttle, plus under 60 cm of travel in 700 ms. Probed against two
+true cases and twelve false ones (open air, hovering hard, a hard flip,
+a 10 m/s scrape, a 1 m/s crawl, a perch, a turtle wait, an idle ledge,
+a gate bounce that clears, a slow takeoff, and sitting on a roof at and
+just above hover). Fires at 704 ms on both true cases, silent on all
+twelve.
+
+The throttle gate started at 0.35 and fired on a pilot sitting on a
+roof deciding what to do. Hover is 0.28 on this plant, so it is 0.55
+now, close to four times hover thrust. Ground contacts were also being
+counted and fired on a slow takeoff, which touches the plane at full
+throttle by definition; it is obstacle contacts only, and takingOff is
+refused outright.
+
+`finishClipCrash` no longer calls reset(). reset() is what R does:
+adoptSpawn back to the map's own spawn and race.reset(), which empties
+log, laps and the lap clock, so a mesh glitch, which is OUR bug, cost
+the pilot every completed lap of the run. It now searches for clear air
+near where the accident happened, rising first and then out to 3.5 m,
+and re-seats the craft there upright on its own heading with the run
+untouched. If nothing inside that envelope is clear it falls back to
+the old behaviour rather than putting the craft somewhere impossible.
+
+Live in the city: dropped into a wall at (-30.60, 2.00, -40.00),
+caught as `stuck`, banner Crashed, recovered at (-30.57, 1.66, -42.22),
+not in a solid, not at the city spawn of (0, 0.045, 24).
+
+Real Betaflight crashflip is reachable at last, held on T, at any
+attitude. It has been compiled in since the plant learned about the
+ground, but setCrashflip(true) starts the SCRIPTED turtle instead, and
+that only latches from a genuine inverted rest. Wedged on its side the
+craft satisfied none of the gates, so the one escape was closed exactly
+where it was needed. Verified against the module: holding T reports
+manualFlip true and sim_crashflip_active() true, releasing clears both.
+X is the pilot's own unstick, the same recovery on one keystroke,
+refused on the ground so it cannot be a free reposition between laps.
+Verified live: lifted from y 6.0 to 7.098 at the same x and z.
+
+#### The words
+
+`Hit the X`, `Bounced off the X`, `Clipped the X`, `Hit the ground` and
+`Bounced off the ground` are gone. Crashed and TURTLE MODE stay, as
+instructed. Confirmed live: the banner is empty through first contact,
+settling and after.
+
+That puts the whole message on the sound and the camera, so both had to
+carry it. `audio.event` takes a `level` now, and the contact cues scale
+with the impulse the solver actually applied rather than picking one of
+two samples either side of 18 m/s; a harder hit is brighter and rings
+longer, not just louder, with a floor so a cue is never inaudible. The
+camera had nothing at all: makeLensShake reads rotor speed and nothing
+else. There is an impulse-scaled kick now, decayed on the wall clock
+and added where the lens is already rotated, plus gamepad rumble where
+the browser has it.
+
+#### Declined, with the argument
+
+**The props-down full stop stays.** ground_settle hard-zeroes velocity
+and omega when the hull is inverted and touching, so a quad arriving
+inverted at 15 m/s stops instantly. That is not what an airframe does
+and it was on the list the owner approved. It is also a written,
+deliberate, tested decision: scripts/contact-selftest.js seats an
+inverted hull, shoves it to over 2 m/s and asserts speed under 0.12 m/s
+and travel under 3 cm after 5 ms. Reaching that from 2.5 m/s needs
+476 m/s^2, an effective mu near 48, so no friction model can satisfy
+it. The only way to take it would be to edit the test, which the
+verify-flight-model skill names as cheating and CLAUDE.md refuses in as
+many words. Distinguishing an arrival from a seated shove by the
+inbound normal speed does not help either: the dive lasts one step and
+the hull stops on the next.
+
+So it is unchanged and it is written down here instead. A human decides
+whether that contract is right. See OPEN QUESTIONS below.
+
+**Turtle's entry gates are unchanged.** The list said widen them. The
+self-test pins them exactly (`shouldEnterTurtle(-1, 0, TURTLE_RATE,
+true, 0.05, false) === false` and the on-its-side case), so widening
+means editing tests. The thrash catch and held crashflip cover the same
+ground without touching a tested contract, and leaving turtle for
+genuine inverted rests is the better split anyway.
+
+**The advisor was not consulted.** CLAUDE.md asks for it before a
+change to the physics model's shape or the module ABI, and this is
+both. `/advisor` is a Claude Code setting and there is no advisor tool
+in this session, so it could not be. Flagging it rather than passing
+over it.
+
+#### Determinism
+
+turtleSlerpQuat and uprightPlantQuat used Math.acos, Math.sin,
+Math.atan2 and Math.cos to write plant poses through sim_set_pose.
+PROGRESS.md has carried that as a known hole since the flip was
+written. There is no sin or cos in the compiled libm to route them
+through, because the plant does not own one: sim_sqrt is the whole of
+it. Both are sqrt-only now.
+
+The slerp uses the square root of a unit quaternion, which is the half
+rotation and is sqrt-only, halving the relative rotation N times and
+composing the halvings named by the set bits of a t quantised to
+1/1024. It is a real slerp, not an nlerp standing in for one. Validated
+against a trig reference over 144 quaternion pairs at 41 samples each:
+worst error 6.1e-4, entirely inside the 1.5e-3 the quantisation is
+worth, norm exact to 4.4e-16. uprightPlantQuat closes on the half-angle
+identities: worst heading error 1.1e-14 rad, roll and pitch exactly
+zero.
+
+craftHeadingYaw does use Math.atan2, once, on a recovery event, to
+produce a spawn yaw. adoptSpawn already reaches trig through
+setFromAxisAngle on the same path. It is not in the integrator.
+
+#### What went wrong
+
+The sqrt-only slerp was off by one halving: bit i is worth
+d^(1/2^(N-i)), so the top bit wants one halving and the bottom wants N,
+and multiplying before halving lands the midpoint of a flip on its
+endpoint. The self-test caught it as the only failure of 473.
+
+The first before-and-after probes were worthless twice over. The wall
+tap was set up with the surface velocity pushing the wrong way, so the
+contact was separating and no impulse was applied at all. Then the
+shoves used to build closing speed were themselves corner impulses, so
+the craft was already spinning at 30 rad/s before the tap being
+measured. Only a pure free fall, with no motors and no ground, gives a
+clean zero-spin arrival to measure against.
+
+The thrash gate fired on a slow takeoff and on sitting on a roof at
+hover. Both are written up above.
+
+Three of the four browser probes measured nothing. This container
+renders at about two frames a second, so wall-clock waits advance
+almost no sim time: a craft 800 ms into a fall had moved 42 mm. Every
+flight assertion has to be an `until:` on a state, never a `wait:`. One
+turtle run then failed because __seatCraft does not enter flight and
+the shell was still on the title screen, where stepTurtleFrozen does
+not run. Not a regression, a bad harness setup.
+
+I also killed the first full verify at about one minute believing it
+had run for forty. The polling loop used `read -t 15 </dev/null`, which
+returns instantly on EOF instead of waiting, so the loop spun. It left
+22 orphaned Chromium processes and a load average of 6.4 on 4 cores.
+
+#### Verify
+
+`npm run build:wasm` exit 0. `git diff --stat vendor/betaflight` empty.
+`npm run verify`: 14 of 16, which is exactly the pre-change baseline
+measured on the untouched tree at dc368e3 before any edit. Checks 15
+(world-scale) and 16 (map-isolation) were already failing there and
+their reasons are unchanged by this work.
+
+Every numeric check is bit-identical to that baseline: hover 0.2793,
+punch-out 80.0 m, terminal 31.0 m/s, motor step 26 ms, rate 671.7 deg/s
+vs 670, yaw -0.10 deg, sag 11.14 percent, diff ratio 1.2472. Console
+clean, 0 errors 0 warnings.
+
+The determinism hash is de0401cd4266 before and after, identical across
+repeat, Node against headless Chrome, and 30 / 60 / 144 / 240 Hz. THAT
+IS EXPECTED AND IT IS ALSO A LIMIT ON WHAT THIS PROVES. The harness
+replay never raises a ground plane and never calls a contact entry
+point, by design, so the whole of this change is off its path. Checks 2
+to 4 confirm free-air flight was not disturbed; they cannot see the
+contact work at all. The evidence for that half is
+`npm run contact:selftest`, 72 checks, all passing, plus the measured
+probes quoted above.
+
+Also run: trackbuilder self-test 473 passed 0 failed, ghost, replay and
+link self-tests all passing, lint:presets 3 of 3, lint:fc 30 of 30,
+lint:catalog ok. lint:catalog has been unrunnable in recent sessions
+for want of the vendor tree; the submodule is checked out in this one,
+so it ran.
+
+This container had neither emsdk nor vendor/betaflight at session
+start, which is why recent entries say the WASM could not be rebuilt.
+Both were installed, so the build and the full harness genuinely ran.
+dist/sim.wasm is rebuilt with emcc 6.0.8 and therefore differs from the
+committed binary beyond my source changes.
+
+Flight feel is not verified and cannot be from here. The harness is
+green and the feel is awaiting the owner's judgement.
+
+#### OPEN QUESTIONS
+
+**Is the props-down full stop the right contract?** scripts/contact-
+selftest.js requires an inverted hull shoved to over 2 m/s to be under
+0.12 m/s and to have travelled under 3 cm after 5 ms. That is 476 m/s^2
+and no friction model reaches it, so the stop has to be scripted. It
+gives a quad arriving inverted at speed an instant halt, which no
+airframe does, and it is the last piece of the ground model that is a
+rule rather than a force. The case for keeping it is that props-down on
+turf really does bite hard and that turtle entry wants the hull still.
+The case against is that it is the same class of thing as the
+exponential keeps this entry just removed. A human decides.

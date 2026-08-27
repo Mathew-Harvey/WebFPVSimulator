@@ -87,6 +87,33 @@ static int g_ground_near = 0;
 #define CONTACT_STATIC_VT 0.08
 #define CONTACT_BIAS_MAX 1.2
 #define CONTACT_POS_PUSH 0.20
+/*
+ * A light tap must not weld.
+ *
+ * Restitution used to fall off a cliff to zero below CONTACT_REST_VN,
+ * which took every joule out of a 20 cm/s touch and left Coulomb
+ * friction holding the hull on the face. The owner's report was that
+ * tapping a wall with the base of the quad sticks. It ramps to a floor
+ * now instead of to nothing, so a slow touch still leaves the surface.
+ * The floor is a fraction of the material's own coefficient, so grass
+ * (e = 0) still cannot bounce and only a hard face can push back.
+ */
+#define CONTACT_E_FLOOR 0.35
+/*
+ * Contact patch radius for resting spin friction, metres.
+ *
+ * A belly on the ground is not a point. The plane carries the weight
+ * over the area between the arms, and a yaw about the normal has to
+ * drag the whole of that patch. Half the motor offset is the honest
+ * lever for a four-arm footprint.
+ */
+#define CONTACT_PATCH_R 0.060
+/*
+ * Largest impulse arm a caller may hand sim_contact_at, metres. The
+ * craft sweeps 0.1735 m to a blade tip, so anything past that is not a
+ * point on this airframe and must not become a moment.
+ */
+#define CONTACT_ARM_MAX 0.20
 /* Lens glass, plant body metres. Mount is 0.080 forward and 0.018 up;
  * herocraft.js puts the glass another 0.024 past the mount. The hull
  * OBB stops at 0.094, so a nose-down arrival used to park the lens
@@ -99,8 +126,6 @@ static int g_ground_near = 0;
  * partly inverted can put a corner in the 8 mm slab with the CG still
  * a decimetre up; that must not freeze. */
 #define CONTACT_INVERT_HALO_UPZ -0.90
-#define CONTACT_SLIDE_KEEP 0.970
-#define CONTACT_OMEGA_KEEP 0.920
 #define CONTACT_SLIDE_STOP 0.12
 #define CONTACT_OMEGA_STOP 0.35
 #define CONTACT_NEAR 0.008
@@ -300,18 +325,23 @@ static int contact_impulse(const double n[3], const double r[3], const double vs
     return 0;
   }
 
-  double e_used = e;
+  /* Restitution falls with closing speed, then ramps to a floor rather
+   * than to zero at the bottom. The cliff at CONTACT_REST_VN is what
+   * made a gentle wall tap stick: the coefficient went to nothing, the
+   * normal impulse cancelled the approach exactly, and friction held
+   * what was left. A hard face keeps a fraction of its own e all the
+   * way down, so the hull leaves. Grass has e = 0 and is unaffected. */
+  double fall = 1.0 + vn / CONTACT_E_SPEED;
+  if (fall < 0.05) {
+    fall = 0.05;
+  }
+  if (fall > 1.0) {
+    fall = 1.0;
+  }
+  double e_used = e * fall;
   if (vn > -CONTACT_REST_VN) {
-    e_used = 0.0;
-  } else {
-    double fall = 1.0 + vn / CONTACT_E_SPEED;
-    if (fall < 0.05) {
-      fall = 0.05;
-    }
-    if (fall > 1.0) {
-      fall = 1.0;
-    }
-    e_used = e * fall;
+    const double soft = (-vn) / CONTACT_REST_VN;
+    e_used *= CONTACT_E_FLOOR + (1.0 - CONTACT_E_FLOOR) * (soft > 0.0 ? soft : 0.0);
   }
 
   double bias = 0.0;
@@ -494,9 +524,10 @@ static void ground_project_hull(void) {
  * outbound kick even with e = 0; this removes it once the hull is seated.
  *
  * Props down (upz clearly negative): the discs grab and the hull stops
- * in place. Props up: a short slide, then stick. A side tumble still
- * rolls; extra omega damping is belly-only so a 90 deg arrival can
- * fall over instead of welding on an arm.
+ * in place. Props up: Coulomb friction against the weight the plane is
+ * carrying, which is the block's real work and is derived where it is
+ * applied below. A side tumble still rolls; spin friction is belly-only
+ * so a 90 deg arrival can fall over instead of welding on an arm.
  *
  * Crashflip is latched by the shell when the hull is inverted and
  * settled. The mixer path is compiled, and the contact self-test still
@@ -554,11 +585,28 @@ static void ground_settle(double upz, double vn_plant) {
     return;
   }
 
-  /* Tangent only. Scaling the whole velocity damped the punch while
-   * the hull was still in the contact band. */
-  const double vtx = (S.vel[0] - nx * vn) * CONTACT_SLIDE_KEEP;
-  const double vty = (S.vel[1] - ny * vn) * CONTACT_SLIDE_KEEP;
-  const double vtz = (S.vel[2] - nz * vn) * CONTACT_SLIDE_KEEP;
+  /*
+   * Tangent only. Scaling the whole velocity damped the punch while
+   * the hull was still in the contact band.
+   *
+   * THE FRICTION HERE IS COULOMB, NOT AN EXPONENTIAL, AND THAT IS THE
+   * WHOLE POINT OF THIS BLOCK. contact_impulse returns early on a hull
+   * that is merely resting: vn is zero and the penetration sits inside
+   * the slop, so there is no normal impulse, so the friction cone up
+   * there has nothing to scale against and a belly slide had no force
+   * on it at all. What used to stand in for that was a 0.97 per
+   * millisecond keep, which is a 33 ms time constant: a 10 m/s belly
+   * arrival stopped inside a third of a metre and the ground read as
+   * glue. Carry the weight explicitly instead. The normal load a
+   * resting contact supplies is the component of gravity into the
+   * plane, friction is mu times that, and it can slow a slide to a
+   * stop but never reverse it. At mu 1.40 on the level that is 13.7
+   * m/s^2, so a 10 m/s slide runs 3.6 m and takes 0.73 s, which is
+   * what a 5 inch on turf actually does.
+   */
+  double vtx = S.vel[0] - nx * vn;
+  double vty = S.vel[1] - ny * vn;
+  double vtz = S.vel[2] - nz * vn;
   const double vt2 = vtx * vtx + vty * vty + vtz * vtz;
   if (vt2 < CONTACT_SLIDE_STOP * CONTACT_SLIDE_STOP) {
     S.vel[0] = nx * vn;
@@ -570,15 +618,24 @@ static void ground_settle(double upz, double vn_plant) {
       S.vel[2] = 0.0;
     }
   } else {
-    S.vel[0] = nx * vn + vtx;
-    S.vel[1] = ny * vn + vty;
-    S.vel[2] = nz * vn + vtz;
+    const double load = PLANT.gravity * (nz > 0.0 ? nz : 0.0);
+    double dv = g_ground_mu * load * SIM_DT;
+    const double vtm = sim_sqrt(vt2);
+    if (dv > vtm) {
+      dv = vtm;
+    }
+    const double keep = (vtm - dv) / vtm;
+    S.vel[0] = nx * vn + vtx * keep;
+    S.vel[1] = ny * vn + vty * keep;
+    S.vel[2] = nz * vn + vtz * keep;
   }
 
   if (upz >= 0.5) {
-    S.omega[0] *= CONTACT_OMEGA_KEEP;
-    S.omega[1] *= CONTACT_OMEGA_KEEP;
-    S.omega[2] *= CONTACT_OMEGA_KEEP;
+    /* Spin friction, the same load acting at the patch radius. A yaw
+     * about the normal has no tangent velocity at the impulse point,
+     * so the cone above cannot see it: a belly on the grass would spin
+     * freely for ever. Torque is mu * N * r, resisted by the inertia
+     * along the spin axis, and like the slide it cannot reverse. */
     const double w2 = S.omega[0] * S.omega[0]
         + S.omega[1] * S.omega[1]
         + S.omega[2] * S.omega[2];
@@ -586,6 +643,24 @@ static void ground_settle(double upz, double vn_plant) {
       S.omega[0] = 0.0;
       S.omega[1] = 0.0;
       S.omega[2] = 0.0;
+    } else {
+      const double wm = sim_sqrt(w2);
+      const double ux = S.omega[0] / wm;
+      const double uy = S.omega[1] / wm;
+      const double uz = S.omega[2] / wm;
+      const double i_eff = ux * ux * PLANT.inertia[0]
+          + uy * uy * PLANT.inertia[1]
+          + uz * uz * PLANT.inertia[2];
+      const double load = PLANT.gravity * PLANT.mass_kg * (nz > 0.0 ? nz : 0.0);
+      const double tau = g_ground_mu * load * CONTACT_PATCH_R;
+      double dw = (i_eff > 1e-12) ? (tau / i_eff) * SIM_DT : wm;
+      if (dw > wm) {
+        dw = wm;
+      }
+      const double keep = (wm - dw) / wm;
+      S.omega[0] *= keep;
+      S.omega[1] *= keep;
+      S.omega[2] *= keep;
     }
   }
 }
@@ -703,6 +778,104 @@ SIM_EXPORT int sim_contact(double nx, double ny, double nz,
   /* Penetration is already resolved by the host placing p on the free
    * side of the face. The impulse still sees the inbound velocity. */
   contact_impulse(n, r, vs, restitution, mu, 0.0);
+  return SIM_OK;
+}
+
+/*
+ * Rigid-body contact with the contact point supplied by the caller.
+ *
+ * sim_contact derives the impulse arm from the plant's own OBB support
+ * in the -n direction, and that support is always an extreme corner:
+ * plus or minus every half extent at once. So a belly slapped flat on a
+ * wall came out of the solver as a corner strike. The angular term is
+ * about two thirds of the effective mass at that arm, so a 5 m/s tap
+ * produced something near 1900 deg/s of spin, the hull rotated, another
+ * corner went in on the next contact, and the craft wound itself up
+ * against the surface. That is the owner's "glitching and flipping
+ * around", and it is a modelling error rather than a tuning one.
+ *
+ * The shell knows better, because the shape it sweeps is the four prop
+ * discs and it can average the ones actually in the patch: one arm in
+ * gives one point and the full moment, a belly flat on the face gives
+ * four and almost none. (rx, ry, rz) is the vector from the CG to that
+ * point, plant frame, world axes. Everything else matches sim_contact.
+ *
+ * The arm is clamped to CONTACT_ARM_MAX so a host that reports nonsense
+ * cannot inject an unbounded moment. Additive ABI, version unchanged:
+ * no existing entry point moved or changed meaning, and a replay that
+ * never calls this is bit-identical to one from before it existed.
+ */
+SIM_EXPORT int sim_contact_at(double nx, double ny, double nz,
+                              double restitution, double mu,
+                              double px, double py, double pz,
+                              double vsx, double vsy, double vsz,
+                              double rx, double ry, double rz) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!sim_finite(nx) || !sim_finite(ny) || !sim_finite(nz)
+      || !sim_finite(restitution) || !sim_finite(mu)
+      || !sim_finite(px) || !sim_finite(py) || !sim_finite(pz)
+      || !sim_finite(vsx) || !sim_finite(vsy) || !sim_finite(vsz)
+      || !sim_finite(rx) || !sim_finite(ry) || !sim_finite(rz)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(restitution >= 0.0) || !(restitution <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(mu >= 0.0) || !(mu <= 2.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  double n[3];
+  if (!contact_unit3(nx, ny, nz, n)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  S.pos[0] = px;
+  S.pos[1] = py;
+  S.pos[2] = pz;
+  double r[3] = { rx, ry, rz };
+  const double r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+  if (r2 > CONTACT_ARM_MAX * CONTACT_ARM_MAX) {
+    const double scale = CONTACT_ARM_MAX / sim_sqrt(r2);
+    r[0] *= scale;
+    r[1] *= scale;
+    r[2] *= scale;
+  }
+  const double vs[3] = { vsx, vsy, vsz };
+  /* Penetration is already resolved by the host placing p on the free
+   * side of the face. The impulse still sees the inbound velocity. */
+  contact_impulse(n, r, vs, restitution, mu, 0.0);
+  return SIM_OK;
+}
+
+/*
+ * Blade strike: the rotors lose sev of their speed, 0 to 1.
+ *
+ * A 5 inch that meets a wall with the discs spinning does not carry its
+ * tank through the contact. Without this a wall tap changed the craft's
+ * direction and nothing else, so the pilot could scrub along a surface
+ * at full tilt and pay only in heading. Applied to all four rotors: the
+ * mixer is already asking for whatever it wants and will spin them back
+ * up at the motor's own time constant, which is the part that is felt.
+ *
+ * The plant is untouched otherwise. No damage model, no desync: this is
+ * energy leaving through the blades, not a broken machine. Additive ABI,
+ * version unchanged, and the harness never calls it.
+ */
+SIM_EXPORT int sim_prop_strike(double sev) {
+  if (!g_initialised) {
+    return SIM_ERR_BAD_STATE;
+  }
+  if (!sim_finite(sev)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (!(sev >= 0.0) || !(sev <= 1.0)) {
+    return SIM_ERR_BAD_ARG;
+  }
+  const double keep = 1.0 - sev;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    S.motor_omega[m] *= keep;
+  }
   return SIM_OK;
 }
 

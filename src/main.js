@@ -61,7 +61,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -1377,7 +1377,8 @@ export async function boot({ loading, bootStart, mapId }) {
   let lastCamUpY = 0;
   let lastClosing = 0;
   /* How square the last contact was to the craft's disc plane, 0 edge on
-   * and 1 belly on. Readback only; hitOutcome is the decision. */
+   * and 1 belly on. Readback only: the impulse the solver applied is what
+   * sizes the sound and the shake now, not a speed threshold. */
   let lastUpDot = 0;
   let speedNow = 0;
   /* How many contacts this run has bounced off, for the readback and for
@@ -1385,6 +1386,47 @@ export async function boot({ loading, bootStart, mapId }) {
    * damage model any more, so it counts up and costs nothing. */
   let bounceCount = 0;
   let bounceAtWall = 0;
+  /* Real Betaflight crashflip, held by the pilot. Distinct from
+   * crashflipOn, which belongs to the scripted turtle. */
+  let manualFlip = false;
+  /*
+   * How often the solid world is resolved, in SIM milliseconds.
+   *
+   * Four is 250 Hz. It is a count of 1 ms plant steps and never a frame
+   * delta, so the cadence, and therefore the trajectory, is the same
+   * whether the host delivered those steps in one batch of sixteen or in
+   * four batches of four. That is the whole point: CLAUDE.md says a
+   * dropped frame must change nothing about the trajectory, and while
+   * contact ran per frame it changed everything about it.
+   *
+   * Four rather than one because the query is not free and one buys
+   * nothing: the sweep is exact, so it cannot tunnel at 250 Hz any more
+   * than at 1000 Hz, and 4 ms of travel at racing speed is 12 cm, well
+   * inside the swept test. Four rather than sixteen because the slide
+   * continuation and the depenetration both get finer as the step
+   * shrinks, and 250 Hz is where that stopped being visible.
+   */
+  const OBSTACLE_STEP = 4;
+  let obsPhase = 0;
+  /* Facts the contact pass accumulates for the frame that contains it:
+   * the shell reads these once, after stepping, for the clip watch, the
+   * sound and the shake. */
+  let obsResolved = false;
+  let obsContact = false;
+  let obsLeftover = false;
+  let obsInterior = 0;
+  let obsRoof = false;
+  let obsImpulse = 0;
+  let obsImpulseKind = '';
+  let obsHasPrev = false;
+  /* The last impulse announced, so a harder hit inside the cooldown is
+   * still heard: a graze followed by the wall behind it is two events. */
+  let lastImpulse = 0;
+  /* Previous frame's sim clock, for anything measured in sim milliseconds
+   * rather than wall ones. See the clip watch. */
+  let simClockPrevMs = 0;
+  /* Wall clock until which a recover-in-place is allowed to settle. */
+  let recoverGraceUntil = 0;
   /* The last ground skip, so a craft sliding along the grass reports one
    * bounce rather than one a frame. */
   let groundBounceAtWall = 0;
@@ -1543,12 +1585,174 @@ export async function boot({ loading, bootStart, mapId }) {
     return turtleRcOut;
   }
 
+  /*
+   * REAL CRASHFLIP, HELD, at any attitude.
+   *
+   * Betaflight's flip-over-after-crash is compiled in and the ABI has
+   * driven it since the plant learned about the ground, but the pilot has
+   * never been able to reach it: setCrashflip(true) starts the SCRIPTED
+   * turtle instead, and that only latches from a genuine inverted rest
+   * (shouldEnterTurtle wants upz past -0.35, under 1 m/s and under
+   * TURTLE_RATE). Wedged on its side, or winding itself up against a
+   * wall, the craft satisfies none of those, so the one escape the pilot
+   * had was closed exactly where it was needed. That is the second half
+   * of the owner's "i can't turtle out nor can i right it".
+   *
+   * So this is the real thing, on a held key: the mixer path from
+   * mixer.c, driven by the pitch and roll sticks, spinning the high
+   * motors to walk the machine out of wherever it is. It is not a
+   * scripted animation and it does not choose an attitude for you; it is
+   * the same control a pilot has on a real quad, and like the real one it
+   * does nothing useful in the air.
+   *
+   * The scripted turtle keeps the ground it already holds: while a wait
+   * or a flip is running it owns crashflipOn, and this stays out.
+   */
+  function setManualFlip(on) {
+    if (on === manualFlip) {
+      return;
+    }
+    if (on) {
+      if (turtleWait || turtleFlip.active || landed || launchStaging || poseLock || crashed) {
+        return;
+      }
+      manualFlip = true;
+      /* I-term is dumped on both edges for the reason the scripted path
+       * dumps it: a PID wound up against a wall yanks the craft the
+       * moment the mixer hands control back. */
+      dumpTurtleIterm();
+      sim.e.sim_set_crashflip(1);
+      return;
+    }
+    manualFlip = false;
+    sim.e.sim_set_crashflip(0);
+    dumpTurtleIterm();
+  }
+
+  /* Polled rather than edge-triggered so the key behaves as a hold, and so
+   * that letting go during a pause or a menu cannot leave the mixer
+   * latched. */
+  function pollManualFlip() {
+    const want = mode === 'flight'
+      && ui.screen === 'flight'
+      && !turtleWait
+      && !turtleFlip.active
+      && !landed
+      && !launchStaging
+      && !poseLock
+      && !crashed
+      && input.keys.has('KeyT');
+    setManualFlip(want);
+  }
+
   function turtleStickMag() {
     const smp = rcPending.length ? rcPending[rcPending.length - 1] : null;
     const roll = smp ? smp.roll : input.channels.roll;
     const pitch = smp ? smp.pitch : input.channels.pitch;
     const ax = turtleAxes(roll, pitch);
     return Math.sqrt(ax[0] * ax[0] + ax[1] * ax[1]);
+  }
+
+  /*
+   * WHAT A HIT IS NOW, instead of a line of text.
+   *
+   * The banners are gone on the owner's instruction: "remove all the words
+   * on screen that tell me i've hit something, the sound should be enough
+   * as well as the feeling of impact." That puts the whole message on the
+   * sound and the camera, so both have to carry it, and neither did.
+   *
+   * The sound was a two-way switch, 'crash' over 18 m/s and 'clip' under
+   * it, with everything below 4 m/s silent. As the only channel left that
+   * is a poor instrument: a gate brush and a wall at speed picked one of
+   * two samples. It is continuous now, from the same number the physics
+   * used, so a hard hit sounds hard.
+   *
+   * The camera did nothing at all. There was no impact kick anywhere in
+   * the shell: makeLensShake reads rotor speed and nothing else. A real
+   * hit throws the whole airframe, and the FPV camera is bolted to it, so
+   * the picture moves. That is `impactKick`, decayed per frame and added
+   * to the lens shake where it already lands on the camera.
+   *
+   * And the blades: a spinning 5 inch that meets a wall does not carry
+   * its rotor speed through the contact. sim_prop_strike takes it out, so
+   * a wall tap costs a beat of thrust and the pilot feels the sag while
+   * the motors spin back up. That is a physics consequence rather than an
+   * effect, which is why it is here and not in the renderer.
+   *
+   * `scale` is metres per second: for an obstacle it is the impulse the
+   * solver actually applied, for the ground it is the arrival speed.
+   */
+  const IMPACT_FULL = 12.0;     /* m/s of impulse that reads as a full hit */
+  const IMPACT_KICK_RAD = 0.075;
+  const IMPACT_DECAY_HZ = 9;
+  const IMPACT_PROP_MAX = 0.28; /* most of the rotor speed a hit can take */
+  const impactKick = { x: 0, y: 0, z: 0 };
+  let impactSeed = 0;
+
+  function feelImpact(scale, kind) {
+    if (!(scale > 0)) {
+      return;
+    }
+    let u = scale / IMPACT_FULL;
+    if (u > 1) {
+      u = 1;
+    }
+    if (typeof audio.event === 'function') {
+      /* Still two cues, because there are two samples, but the level and
+       * the choice now come off the impulse rather than off a speed the
+       * contact may never have had. */
+      audio.event(u > 0.45 ? 'crash' : 'clip', null, u);
+    }
+    /* A kick about all three camera axes. The sign walks so two hits in a
+     * row do not throw the picture the same way; it is a render effect and
+     * touches nothing the plant reads. */
+    impactSeed = (impactSeed + 1) & 3;
+    const s0 = (impactSeed & 1) ? 1 : -1;
+    const s1 = (impactSeed & 2) ? 1 : -1;
+    const a = IMPACT_KICK_RAD * u;
+    impactKick.x += a * s0;
+    impactKick.y += a * 0.7 * s1;
+    impactKick.z += a * 0.8 * s0 * s1;
+    /* Blades only: the ground already has its own contact model and a
+     * belly landing does not spin the props down. */
+    if (kind !== 'ground' && typeof sim.e.sim_prop_strike === 'function') {
+      sim.e.sim_prop_strike(IMPACT_PROP_MAX * u);
+      stateCurr = readState();
+    }
+    if (u > 0.25) {
+      padRumble(u);
+    }
+  }
+
+  /* Gamepad haptics, where the browser has them. Guarded to the point of
+   * paranoia: vibrationActuator is not in every engine, the shapes differ,
+   * and a rejected promise here would take the frame loop with it. */
+  function padRumble(u) {
+    try {
+      const pad = input.firstGamepad();
+      const act = pad && pad.vibrationActuator;
+      if (!act || typeof act.playEffect !== 'function') {
+        return;
+      }
+      const p = act.playEffect('dual-rumble', {
+        startDelay: 0,
+        duration: Math.round(60 + 140 * u),
+        weakMagnitude: Math.min(1, 0.3 + 0.7 * u),
+        strongMagnitude: Math.min(1, u),
+      });
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {});
+      }
+    } catch (err) {
+      void err;
+    }
+  }
+
+  function decayImpactKick(dtMs) {
+    const k = Math.exp(-(dtMs > 0 ? dtMs : 0) / 1000 * 2 * Math.PI * IMPACT_DECAY_HZ);
+    impactKick.x *= k;
+    impactKick.y *= k;
+    impactKick.z *= k;
   }
 
   function turtleInContact() {
@@ -1873,10 +2077,24 @@ export async function boot({ loading, bootStart, mapId }) {
     clipGraceUntil = performance.now() + CLIP_SPAWN_GRACE_MS;
     resetClipWatch(clipWatch);
     setCrashflip(false);
+    manualFlip = false;
+    sim.e.sim_set_crashflip(0);
     turtleRecover = false;
     turtleOnSupport = false;
     setTurtleParkMotors(false);
     poseLock = false;
+    obsHasPrev = false;
+    obsContact = false;
+    obsLeftover = false;
+    obsInterior = 0;
+    obsRoof = false;
+    obsImpulse = 0;
+    obsImpulseKind = '';
+    obsPhase = 0;
+    lastImpulse = 0;
+    impactKick.x = 0;
+    impactKick.y = 0;
+    impactKick.z = 0;
     /* Back on the ground, landed, exactly as at boot. */
     landed = true;
     takingOff = false;
@@ -1932,8 +2150,8 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
-   * Clip-through catch. Freeze on the glitch pose so the banner can say
-   * Crashed, then hand the run back to reset() the same way R does.
+   * Clip-through and thrash catch. Freeze on the glitch pose so the banner
+   * can say Crashed, then re-seat the craft in place: see finishClipCrash.
    */
   function beginClipCrash(kind, nowWall) {
     if (crashed) {
@@ -1957,12 +2175,139 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /*
+   * RECOVER IN PLACE, rather than back on the start line.
+   *
+   * This used to call reset(), which is what R does: adoptSpawn() back to
+   * the map's own spawn and race.reset(), which empties `log`, `laps` and
+   * the lap clock. So a mesh glitch, which is OUR bug and not a thing the
+   * pilot did, cost them every completed lap of the run. The owner's
+   * instruction is the other way round: "the system should register this
+   * state and just reset the quad in place."
+   *
+   * So: pick the nearest clear air to where the accident happened, put the
+   * craft there upright on its own heading, and leave the run alone. The
+   * lap being flown keeps running, which is the right price. Nothing about
+   * the race is touched, so `next`, the splits and the clock all carry on.
+   *
+   * Finding clear air is the whole of the work. Reseating inside the wall
+   * the craft was stuck in would trip the same detector on the next frame
+   * and put the pilot in a loop, which is worse than the glitch. Rise
+   * first, because up is where a quad came from and where it wants to go,
+   * and only then try the compass. A point is clear when the collider
+   * sweep says so at a level attitude and it is above the terrain.
+   */
+  const RECOVER_RISE = [0.6, 1.2, 2.0, 3.0, 4.5];
+  const RECOVER_OUT = [0, 1.0, 2.0, 3.5];
+  const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+
+  function recoverSpotClear(x, y, z) {
+    const surf = view.height(x, z, y - SURFACE_BIAS);
+    if (!(y - surf > REST_HEIGHT)) {
+      return false;
+    }
+    if (!view.colliders) {
+      return true;
+    }
+    return view.colliders.hit(
+      x, y, z, x, y, z,
+      craftVerticalHalf(0),
+      0, 0, 0, 1,
+    ) < 0;
+  }
+
+  function findRecoverSpot(x, y, z, out) {
+    for (let ri = 0; ri < RECOVER_OUT.length; ri += 1) {
+      const out_r = RECOVER_OUT[ri];
+      for (let li = 0; li < RECOVER_RISE.length; li += 1) {
+        const lift = RECOVER_RISE[li];
+        if (out_r === 0) {
+          if (recoverSpotClear(x, y + lift, z)) {
+            out.set(x, y + lift, z);
+            return true;
+          }
+          continue;
+        }
+        for (let di = 0; di < RECOVER_DIR.length; di += 1) {
+          const px = x + RECOVER_DIR[di][0] * out_r;
+          const pz = z + RECOVER_DIR[di][1] * out_r;
+          if (recoverSpotClear(px, y + lift, pz)) {
+            out.set(px, y + lift, pz);
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   function finishClipCrash() {
     clipCrashUntil = 0;
     clipCrashKind = '';
     crashed = false;
     resetClipWatch(clipWatch);
-    reset();
+    if (!findRecoverSpot(pCurr.x, pCurr.y, pCurr.z, pProbe)) {
+      /* Nowhere within four and a half metres is clear. That is not a
+       * glitch any more, it is a craft somewhere it cannot be put back,
+       * so fall through to the old behaviour and give them the line. */
+      reset();
+      return;
+    }
+    /* Heading is kept: being spun to face north because a wall grabbed an
+     * arm is its own disorientation, and the pilot was flying somewhere. */
+    const yaw = craftHeadingYaw();
+    const spotY = pProbe.y;
+    resetCraft({ x: pProbe.x, z: pProbe.z, y: spotY, yaw });
+    /*
+     * resetCraft seats the spawn frame on the SURFACE under the point and
+     * parks the craft on it, which is right on the start line and wrong
+     * here: the clear air we found may be a storey above that surface, and
+     * the surface itself may be inside whatever the craft was stuck in.
+     * Lift the plant to the point that was actually checked. startY is the
+     * surface, SPAWN_ALT is the parked offset the spawn already carries,
+     * so the plant owes the difference.
+     */
+    const lift = (spotY - startY) - SPAWN_ALT;
+    if (lift > 0) {
+      const code = sim.e.sim_set_pose(0, 0, lift, 1, 0, 0, 0);
+      if (code !== SIM_OK) {
+        throw new Error(`sim_set_pose: ${simErrorName(code)}`);
+      }
+      sim.rest();
+    }
+    stateCurr = readState();
+    statePrev = stateCurr;
+    poseFromState(stateCurr, pCurr);
+    /* Airborne, level, at rest, and the pilot has the sticks. */
+    landed = false;
+    takingOff = false;
+    flownThisRun = true;
+    groundY = startY;
+    obsHasPrev = false;
+    raceHasPrev = false;
+    simClockPrevMs = simTimeMs;
+    /* The watch has to be allowed to settle before it can fire again. The
+     * spot was checked clear, but the terrain query and the collider sweep
+     * are not the same test, and a recovery that instantly re-triggers is
+     * a loop the pilot cannot leave, which is worse than the glitch. */
+    recoverGraceUntil = performance.now() + CLIP_SPAWN_GRACE_MS;
+    if (typeof audio.event === 'function') {
+      audio.event('takeoff');
+    }
+  }
+
+  /* The craft's heading, flattened onto the ground plane, as a spawn yaw.
+   * Taken off the rendered attitude so it is the direction the pilot was
+   * looking, not a plant axis. */
+  function craftHeadingYaw() {
+    if (!stateCurr) {
+      return startYaw;
+    }
+    upAxis.set(0, 0, -1).applyQuaternion(qPrev);
+    if (Math.abs(upAxis.x) < 1e-6 && Math.abs(upAxis.z) < 1e-6) {
+      return startYaw;
+    }
+    return Math.atan2(-upAxis.x, -upAxis.z);
   }
 
   function reset() {
@@ -3044,6 +3389,24 @@ export async function boot({ loading, bootStart, mapId }) {
       reset();
       return;
     }
+    /*
+     * The pilot's own unstick. The thrash watch catches the states we
+     * could name, and it needs 700 ms to be sure; this is the backstop for
+     * whatever it did not name, at the cost of one keystroke. Same
+     * recovery: clear air near where you are, upright, run untouched. It
+     * refuses on the ground so it cannot be used as a free reposition
+     * between laps.
+     */
+    if (code === 'KeyX' && ui.screen === 'flight' && mode === 'flight') {
+      if (landed || launchStaging || poseLock || crashed) {
+        return;
+      }
+      setManualFlip(false);
+      setCrashflip(false);
+      turtleRecover = false;
+      finishClipCrash();
+      return;
+    }
     if (code === 'KeyL' && ui.screen === 'flight') {
       if (!ui.settings.launchControl) {
         notice = {
@@ -3117,6 +3480,15 @@ export async function boot({ loading, bootStart, mapId }) {
   const nSim = { x: 0, y: 0, z: 0 };
   const pSim = { x: 0, y: 0, z: 0 };
   const vsSim = { x: 0, y: 0, z: 0 };
+  /* The contact pass runs on the sim clock, several times a frame, so its
+   * working set is hoisted for the same reason upAxis is. */
+  const rPatch = { x: 0, y: 0, z: 0 };
+  const rSim = { x: 0, y: 0, z: 0 };
+  const obsPrev = new THREE.Vector3();
+  const obsFrom = new THREE.Vector3();
+  const obsTo = new THREE.Vector3();
+  const obsPlace = new THREE.Vector3();
+  const qObs = new THREE.Quaternion();
   const groundNWorld = new THREE.Vector3(0, 1, 0);
   const camFwd = new THREE.Vector3();
   const camUp = new THREE.Vector3();
@@ -3214,59 +3586,84 @@ export async function boot({ loading, bootStart, mapId }) {
     );
   }
 
-  function contactSeparation(nx, ny, nz, cx, cy, cz, px, py, pz) {
-    const inward = -((px - cx) * nx + (py - cy) * ny + (pz - cz) * nz);
+  /*
+   * How far out of the face to place the craft.
+   *
+   * This used to add `inward`, the distance the frame's END position had
+   * gone past the contact plane, on top of the gap. That is wrong twice
+   * over. The contact point is by definition the pose at first touch, so
+   * it is already clear of the face and the only thing owing is the gap;
+   * and `inward` grows with the frame's own travel, so the same wall hit
+   * pushed a 30 fps machine back five times further than a 144 fps one.
+   * At 20 m/s that was a third of a metre of teleport away from the wall.
+   * An already-inside hit is the one case with real depth to undo, and
+   * hitPen is the collider's own nearest-face exit for it.
+   */
+  function contactSeparation() {
     if (view.colliders.hitT <= 1e-6 && view.colliders.hitPen > 0) {
       return view.colliders.hitPen + BOUNCE_SEPARATION;
     }
-    return (inward > 0 ? inward : 0) + BOUNCE_SEPARATION;
+    return BOUNCE_SEPARATION;
   }
 
   /*
-   * Rigid-body contact off a surface: unit outward normal and the world
-   * point the contact happened at. Places the craft at that point plus a
-   * small outward gap, so a tunneled frame is rewound to the entry face.
-   * Already-inside hits (hitT = 0) also add hitPen, the nearest-face
-   * exit, because 8 mm along -travel does not leave a tree hull.
-   * The impulse is sim_contact: angular effective mass, Coulomb friction,
-   * restitution that falls with closing speed. vs is the surface velocity
-   * in the plant frame (the train, otherwise zero).
+   * ONE CONTACT: place the craft on the free side of the face and apply
+   * the impulse there.
+   *
+   * The impulse arm is the four-disc contact patch, not the plant's own
+   * hull corner, which is the whole of the difference between a belly slap
+   * that pushes off and one that spins the craft up. See contactPatch in
+   * collide.js for the measurements that forced this.
+   *
+   * Returns the impulse's own scale, in metres per second of centre of
+   * mass velocity change, so the caller can size the sound and the shake
+   * from what actually happened rather than from a speed threshold. Zero
+   * means the module refused the contact.
    */
-  function deflectOff(nx, ny, nz, cx, cy, cz, px, py, pz, e, mu, vsx, vsy, vsz) {
-    const sep = contactSeparation(nx, ny, nz, cx, cy, cz, px, py, pz);
-    worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
+  function resolveContactAt(nx, ny, nz, cx, cy, cz, e, mu, vsx, vsy, vsz) {
+    const sep = contactSeparation();
     threeDirToSim(nx, ny, nz, nSim);
     const nlen = Math.sqrt(nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z);
     if (!(nlen > 1e-9)) {
-      return false;
+      return 0;
     }
     const inv = 1 / nlen;
-    const code = sim.e.sim_contact(
+    obsPlace.set(cx + nx * sep, cy + ny * sep, cz + nz * sep);
+    worldPosToSim(obsPlace.x, obsPlace.y, obsPlace.z, pSim);
+    contactPatch(nx, ny, nz, qObs.x, qObs.y, qObs.z, qObs.w, rPatch);
+    threeDirToSim(rPatch.x, rPatch.y, rPatch.z, rSim);
+    const before = stateCurr;
+    const vx0 = before[4];
+    const vy0 = before[5];
+    const vz0 = before[6];
+    const code = sim.e.sim_contact_at(
       nSim.x * inv, nSim.y * inv, nSim.z * inv,
       e, mu,
       pSim.x, pSim.y, pSim.z,
       vsx, vsy, vsz,
+      rSim.x, rSim.y, rSim.z,
     );
     if (code !== SIM_OK) {
-      return false;
+      return 0;
     }
     stateCurr = readState();
-    statePrev = stateCurr;
-    poseFromState(stateCurr, pCurr);
-    shell.quad.position.copy(pCurr);
-    racePrev.copy(pCurr);
-    groundPrev.copy(pCurr);
+    const dvx = stateCurr[4] - vx0;
+    const dvy = stateCurr[5] - vy0;
+    const dvz = stateCurr[6] - vz0;
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    return true;
+    return Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
   }
 
-  /* Second and later contacts in the same frame that are already inside:
-   * move onto the free side without stacking another impulse. */
-  function separateOff(nx, ny, nz, cx, cy, cz, px, py, pz) {
-    const sep = contactSeparation(nx, ny, nz, cx, cy, cz, px, py, pz);
-    worldPosToSim(cx + nx * sep, cy + ny * sep, cz + nz * sep, pSim);
+  /* Move onto the free side without an impulse. Only for a hull that is
+   * already buried: there is no approach velocity left to solve against,
+   * and stacking a second impulse on a depenetration is how a corner
+   * starts pumping energy into the craft. */
+  function separateAt(nx, ny, nz, cx, cy, cz) {
+    const sep = contactSeparation();
+    obsPlace.set(cx + nx * sep, cy + ny * sep, cz + nz * sep);
+    worldPosToSim(obsPlace.x, obsPlace.y, obsPlace.z, pSim);
     const st = stateCurr;
     const code = sim.e.sim_set_pose(
       pSim.x, pSim.y, pSim.z, st[7], st[8], st[9], st[10],
@@ -3275,40 +3672,215 @@ export async function boot({ loading, bootStart, mapId }) {
       return false;
     }
     stateCurr = readState();
-    statePrev = stateCurr;
-    poseFromState(stateCurr, pCurr);
-    shell.quad.position.copy(pCurr);
-    racePrev.copy(pCurr);
-    groundPrev.copy(pCurr);
     return true;
   }
 
-  /* The obstacle case: the normal and the contact point come off the last
-   * collider query. */
-  function applyBounce(e, mu, vsx, vsy, vsz) {
-    const col = view.colliders;
-    const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
-    return deflectOff(
-      col.hitNx, col.hitNy, col.hitNz,
-      racePrev.x + (pCurr.x - racePrev.x) * ht,
-      racePrev.y + (pCurr.y - racePrev.y) * ht,
-      racePrev.z + (pCurr.z - racePrev.z) * ht,
-      pCurr.x, pCurr.y, pCurr.z,
-      e, mu, vsx, vsy, vsz,
-    );
+  /*
+   * THE SOLID WORLD, ON THE SIM CLOCK.
+   *
+   * Every gate member, tree, rock, cliff tier and city wall is a capsule
+   * or a box in view.colliders, and the query is the exact closest
+   * distance between the segment the craft travelled and the collider, so
+   * nothing tunnels at any frame rate.
+   *
+   * THIS USED TO RUN ONCE PER RENDERED FRAME, ON THE INTERPOLATED RENDER
+   * POSE, AND WRITE THE RESULT BACK INTO THE PLANT. Three things followed
+   * from that and all three were felt:
+   *
+   *   1. the trajectory depended on the frame rate, which CLAUDE.md
+   *      forbids in as many words: a dropped frame must change nothing.
+   *      Two machines at 60 and 144 fps took different lines off the same
+   *      wall, and the leaderboard is scored on that.
+   *   2. the pose it solved against was a lerp between two physics states,
+   *      so the contact was never resolved against a state the plant had
+   *      actually been in.
+   *   3. a contact rewound the craft to the touch point and threw away
+   *      the rest of the frame's travel, INCLUDING the part along the
+   *      surface. In sustained contact hitT is 0 every frame, so the craft
+   *      was put back where it started, every frame, and could not slide.
+   *      That is the "it sticks a bit" in the owner's report, and it is
+   *      not a friction problem: there was no tangential motion left to
+   *      apply friction to.
+   *
+   * So it runs here instead, every OBSTACLE_STEP milliseconds of SIM time,
+   * against the plant's own pose, and the leftover travel is projected
+   * onto the face and swept again rather than dropped. The cadence is a
+   * count of 1 ms steps, so it is identical however the host batched them.
+   *
+   * Collide and slide, four passes: hit, place on the face, impulse there,
+   * carry the remaining travel along the surface, sweep that too. Four is
+   * enough for a corner (two faces) with slack; anything still overlapping
+   * after that is what the clip watch reads.
+   */
+  function obstacleContactPass(st) {
+    obsResolved = false;
+    if (!view.colliders || mode !== 'flight' || crashed || poseLock || launchStaging) {
+      obsHasPrev = false;
+      return st;
+    }
+    poseFromState(st, obsTo);
+    simQuatToThree(st[7], st[8], st[9], st[10], qObs);
+    qObs.premultiply(qSpawn);
+    if (!obsHasPrev) {
+      obsPrev.copy(obsTo);
+      obsHasPrev = true;
+      return st;
+    }
+    obsFrom.copy(obsPrev);
+    /* Seed the next pass from where this one actually arrived, whatever
+     * the contacts below do to it. */
+    obsPrev.copy(obsTo);
+
+    upAxis.set(0, 1, 0).applyQuaternion(qObs);
+    const vh = craftVerticalHalf(Math.sqrt(Math.max(0, 1 - upAxis.y * upAxis.y)));
+
+    const origX = obsFrom.x;
+    const origY = obsFrom.y;
+    const origZ = obsFrom.z;
+    const endX = obsTo.x;
+    const endY = obsTo.y;
+    const endZ = obsTo.z;
+    let punchIndex = -1;
+    let punchMoving = -1;
+    let punchTravel = false;
+    let clean = true;
+    let attempts = 0;
+
+    for (; attempts < 4; attempts += 1) {
+      const k = view.colliders.hit(
+        obsFrom.x, obsFrom.y, obsFrom.z,
+        obsTo.x, obsTo.y, obsTo.z,
+        vh, qObs.x, qObs.y, qObs.z, qObs.w,
+      );
+      if (k < 0) {
+        clean = true;
+        break;
+      }
+      clean = false;
+      if (!punchTravel
+        && view.colliders.crossedHit(origX, origY, origZ, endX, endY, endZ)) {
+        punchIndex = view.colliders.hitIndex;
+        punchMoving = view.colliders.hitMoving;
+        punchTravel = true;
+      }
+      const col = view.colliders;
+      const nx = col.hitNx;
+      const ny = col.hitNy;
+      const nz = col.hitNz;
+      if (ny > 0.5) {
+        obsRoof = true;
+      }
+      lastHitKind = col.kindName(k);
+      lastClosing = speedNow * col.hitNormalDot;
+      lastUpDot = Math.abs(nx * upAxis.x + ny * upAxis.y + nz * upAxis.z);
+
+      const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
+      const cx = obsFrom.x + (obsTo.x - obsFrom.x) * ht;
+      const cy = obsFrom.y + (obsTo.y - obsFrom.y) * ht;
+      const cz = obsFrom.z + (obsTo.z - obsFrom.z) * ht;
+
+      /* Buried: no approach left to solve, just get out. */
+      if (col.hitT <= 1e-6 && col.hitPen > 0.05) {
+        if (!separateAt(nx, ny, nz, cx, cy, cz)) {
+          break;
+        }
+        poseFromState(stateCurr, obsFrom);
+        obsTo.copy(obsFrom);
+        continue;
+      }
+
+      const mat = contactMaterial(lastHitKind);
+      let vsx = 0;
+      let vsy = 0;
+      let vsz = 0;
+      const moving = col.hitMoving;
+      if (moving >= 0) {
+        const dtSim = OBSTACLE_STEP * 0.001;
+        threeDirToSim(
+          (col.movingCx[moving] - col.movingPx[moving]) / dtSim,
+          (col.movingCy[moving] - col.movingPy[moving]) / dtSim,
+          (col.movingCz[moving] - col.movingPz[moving]) / dtSim,
+          vsSim,
+        );
+        vsx = vsSim.x;
+        vsy = vsSim.y;
+        vsz = vsSim.z;
+      }
+
+      /* Leftover travel, with the part that goes into the face removed.
+       * What is left is the slide, and it is swept on the next pass so a
+       * slide into a second solid cannot tunnel. */
+      let rx = (obsTo.x - obsFrom.x) * (1 - ht);
+      let ry = (obsTo.y - obsFrom.y) * (1 - ht);
+      let rz = (obsTo.z - obsFrom.z) * (1 - ht);
+      const dn = rx * nx + ry * ny + rz * nz;
+      if (dn < 0) {
+        rx -= nx * dn;
+        ry -= ny * dn;
+        rz -= nz * dn;
+      }
+
+      const dv = resolveContactAt(nx, ny, nz, cx, cy, cz, mat.e, mat.mu, vsx, vsy, vsz);
+      if (dv <= 0) {
+        break;
+      }
+      obsResolved = true;
+      obsContact = true;
+      if (dv > obsImpulse) {
+        obsImpulse = dv;
+        obsImpulseKind = lastHitKind;
+      }
+      poseFromState(stateCurr, obsFrom);
+      obsTo.set(obsFrom.x + rx, obsFrom.y + ry, obsFrom.z + rz);
+    }
+
+    if (clean && attempts > 0
+      && (obsTo.x !== obsFrom.x || obsTo.y !== obsFrom.y || obsTo.z !== obsFrom.z)) {
+      /* The slide is free. Commit it: this is the frame's own travel being
+       * carried along the surface, which is exactly what used to be lost.
+       * Position only, so no momentum is invented. */
+      worldPosToSim(obsTo.x, obsTo.y, obsTo.z, pSim);
+      if (sim.e.sim_set_pose(
+        pSim.x, pSim.y, pSim.z, stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10],
+      ) === SIM_OK) {
+        stateCurr = readState();
+      }
+    }
+
+    poseFromState(stateCurr, obsPrev);
+
+    if (!clean) {
+      obsLeftover = true;
+    } else if (attempts >= 4) {
+      obsLeftover = view.colliders.hit(
+        obsPrev.x, obsPrev.y, obsPrev.z,
+        obsPrev.x, obsPrev.y, obsPrev.z,
+        vh, qObs.x, qObs.y, qObs.z, qObs.w,
+      ) >= 0;
+    }
+    if (obsLeftover) {
+      const depth = view.colliders.interiorOfHit(obsPrev.x, obsPrev.y, obsPrev.z);
+      if (depth > obsInterior) {
+        obsInterior = depth;
+      }
+      if (!(depth > CLIP_CENTER_EPS) && view.colliders.hitNy > 0.5) {
+        obsRoof = true;
+      }
+    }
+    if (punchTravel) {
+      const stillThrough = punchMoving >= 0
+        ? view.colliders.crossedMoving(punchMoving, origX, origY, origZ, obsPrev.x, obsPrev.y, obsPrev.z)
+        : view.colliders.crossedStatic(punchIndex, origX, origY, origZ, obsPrev.x, obsPrev.y, obsPrev.z);
+      if (stillThrough) {
+        obsLeftover = true;
+        if (!(obsInterior >= CLIP_DEEP)) {
+          obsInterior = CLIP_DEEP;
+        }
+      }
+    }
+    return stateCurr;
   }
 
-  function applySeparate() {
-    const col = view.colliders;
-    const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
-    return separateOff(
-      col.hitNx, col.hitNy, col.hitNz,
-      racePrev.x + (pCurr.x - racePrev.x) * ht,
-      racePrev.y + (pCurr.y - racePrev.y) * ht,
-      racePrev.z + (pCurr.z - racePrev.z) * ht,
-      pCurr.x, pCurr.y, pCurr.z,
-    );
-  }
   /*
    * The title screen's camera. It belongs to the MAP, because the shot that
    * shows a map off is the map's business: the race field flies its own
@@ -3509,6 +4081,7 @@ export async function boot({ loading, bootStart, mapId }) {
     let frameSteps = 0;
 
     input.poll(nowWall);
+    pollManualFlip();
     const launchNow = syncLaunchControl(nowWall);
     input.forcePadRest = launchStaging;
     syncAngleMode();
@@ -3756,6 +4329,21 @@ export async function boot({ loading, bootStart, mapId }) {
             raiseGroundFromState(stNow);
             sim.step(1);
             stNow = readState();
+            /* The solid world, on the sim clock. stateCurr is what the
+             * pass reads and writes, so it is kept level with stNow
+             * across the call. */
+            obsPhase += 1;
+            if (obsPhase >= OBSTACLE_STEP) {
+              obsPhase = 0;
+              stateCurr = stNow;
+              stNow = obstacleContactPass(stNow);
+              if (obsResolved) {
+                /* The pose moved under the interpolator. Collapse it
+                 * rather than lerping the craft back through the wall
+                 * it was just taken out of. */
+                statePrev = stNow;
+              }
+            }
             if (i === steps - 2) {
               statePrev = stNow;
             }
@@ -3853,12 +4441,11 @@ export async function boot({ loading, bootStart, mapId }) {
         const hitSpeed = peakGroundSpeed > speed ? peakGroundSpeed : speed;
         if (closing >= GRAZE_SPEED_MAX || hitSpeed >= GRAZE_SPEED_MAX) {
           bounceCount += 1;
-          const hard = closing >= BOUNCE_SPEED_MAX || hitSpeed >= BOUNCE_SPEED_MAX;
-          race.recover(hard ? 'Hit the ground' : 'Bounced off the ground', nowWall);
-          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-          if (typeof audio.event === 'function') {
-            audio.event(hard ? 'crash' : 'clip');
-          }
+          /* No banner. The owner's instruction: the sound is enough, and
+           * so is the feel. Naming the thing you just hit on screen tells
+           * a pilot what they already watched happen, and it does it over
+           * the top of the next gate. */
+          feelImpact(closing > hitSpeed ? closing : hitSpeed, 'ground');
         }
         groundBounceAtWall = nowWall;
       }
@@ -3917,155 +4504,55 @@ export async function boot({ loading, bootStart, mapId }) {
     shell.quad.quaternion.copy(qPrev);
 
     /*
-     * The solid world. Every gate frame member, panel and foot, every tree
-     * trunk and canopy, every rock, cliff tier and flag pole is a capsule in
-     * view.colliders, and the query is the exact closest distance between
-     * the segment the craft travelled and the capsule's axis, so nothing can
-     * tunnel through at any frame rate.
+     * The solid world was resolved inside the step loop above, on the sim
+     * clock, once every OBSTACLE_STEP milliseconds. See
+     * obstacleContactPass. What is left here is reading what it found.
      *
-     * Bounce is still the rule. The leftover after this loop is what the
-     * clip-through watch reads: a hull that bounce could not eject, or a
-     * centre that has gone through a face. Cooldown is OSD and audio only
-     * until that watch fires, at which point the shell says Crashed.
+     * A perch or a turtle freeze does not step the plant, so the pass
+     * never runs in those states and a hull that sat down inside a wall
+     * would go unmeasured. That one case is still queried at frame rate,
+     * below, because there is no sim clock advancing to hang it on.
      */
     speedNow = Math.sqrt(
       stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5] + stateCurr[6] * stateCurr[6],
     );
-    let leftoverOverlap = false;
-    let interiorDepth = 0;
-    let roofContact = false;
-    if (mode === 'flight' && !landed && !launchStaging && !turtleParkedNow && !crashed && raceHasPrev) {
-      /* The craft the query sweeps is the four prop discs: crx/crz from
-       * this attitude, vHalfFrame through the body at its current tilt. */
-      let obstacleRoof = false;
-      let attempts = 0;
-      const fromX = racePrev.x;
-      const fromY = racePrev.y;
-      const fromZ = racePrev.z;
-      const origX = pCurr.x;
-      const origY = pCurr.y;
-      const origZ = pCurr.z;
-      let punchIndex = -1;
-      let punchMoving = -1;
-      let punchTravel = false;
-      for (; attempts < 4; attempts += 1) {
-        const k = view.colliders.hit(
-          racePrev.x, racePrev.y, racePrev.z,
-          pCurr.x, pCurr.y, pCurr.z,
-          vHalfFrame,
-          qCollide.x, qCollide.y, qCollide.z, qCollide.w,
-        );
-        if (k < 0) {
-          break;
-        }
-        if (!punchTravel && view.colliders.crossedHit(fromX, fromY, fromZ, origX, origY, origZ)) {
-          punchIndex = view.colliders.hitIndex;
-          punchMoving = view.colliders.hitMoving;
-          punchTravel = true;
-        }
-        if (view.colliders.hitNy > 0.5) {
-          obstacleRoof = true;
-        }
-        lastHitKind = view.colliders.kindName(k);
-        const closing = speedNow * view.colliders.hitNormalDot;
-        lastClosing = closing;
-        upAxis.set(0, 1, 0).applyQuaternion(qCollide);
-        const upDot = Math.abs(
-          view.colliders.hitNx * upAxis.x
-          + view.colliders.hitNy * upAxis.y
-          + view.colliders.hitNz * upAxis.z,
-        );
-        lastUpDot = upDot;
-        const outcome = hitOutcome(lastHitKind, closing, upDot);
-        const mat = contactMaterial(lastHitKind);
-        let vsx = 0;
-        let vsy = 0;
-        let vsz = 0;
-        const moving = view.colliders.hitMoving;
-        if (moving >= 0 && frameSteps > 0) {
-          const dtSim = frameSteps * 0.001;
-          threeDirToSim(
-            (view.colliders.movingCx[moving] - view.colliders.movingPx[moving]) / dtSim,
-            (view.colliders.movingCy[moving] - view.colliders.movingPy[moving]) / dtSim,
-            (view.colliders.movingCz[moving] - view.colliders.movingPz[moving]) / dtSim,
-            vsSim,
-          );
-          vsx = vsSim.x;
-          vsy = vsSim.y;
-          vsz = vsSim.z;
-        }
-        const sameContact = nowWall - bounceAtWall < BOUNCE_COOLDOWN_MS
-          && bounceHitIndex === view.colliders.hitIndex
-          && bounceHitKind === lastHitKind;
-        const graze = closing < GRAZE_SPEED_MAX;
-        const buried = view.colliders.hitT <= 1e-6 && view.colliders.hitPen > 0.05;
-        const stuck = attempts > 0 && view.colliders.hitT <= 1e-6;
-        if (buried || stuck) {
-          if (!applySeparate()) {
-            leftoverOverlap = true;
-            break;
-          }
-          continue;
-        }
-        if (!applyBounce(mat.e, mat.mu, vsx, vsy, vsz)) {
-          leftoverOverlap = true;
-          break;
-        }
-        if (!sameContact && !graze) {
-          bounceCount += 1;
-          race.recover(outcome === 'hard'
-            ? `Hit the ${lastHitKind}`
-            : `Bounced off the ${lastHitKind}`, nowWall);
-          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-          if (typeof audio.event === 'function') {
-            audio.event(outcome === 'hard' ? 'crash' : 'clip');
-          }
-        } else if (!sameContact) {
-          race.recover(`Clipped the ${lastHitKind}`, nowWall);
-          view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-        }
+    let leftoverOverlap = obsLeftover;
+    let interiorDepth = obsInterior;
+    let roofContact = obsRoof;
+    const frameContact = obsContact;
+    if (obsRoof) {
+      turtleOnSupport = true;
+    }
+    if (obsImpulse > 0) {
+      /* One cue per frame at the hardest impulse the pass applied, not one
+       * per contact: a corner is two faces in the same millisecond and
+       * firing twice reads as a stutter rather than as a harder hit. The
+       * cooldown that used to gate this is gone with the banner it was
+       * really protecting. */
+      if (nowWall - bounceAtWall >= BOUNCE_COOLDOWN_MS || obsImpulse > lastImpulse * 1.6) {
+        bounceCount += 1;
+        feelImpact(obsImpulse, obsImpulseKind);
         bounceAtWall = nowWall;
-        bounceHitIndex = view.colliders.hitIndex;
-        bounceHitKind = lastHitKind;
+        view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
       }
-      if (!leftoverOverlap && attempts === 4) {
-        const rest = view.colliders.hit(
-          pCurr.x, pCurr.y, pCurr.z,
-          pCurr.x, pCurr.y, pCurr.z,
-          vHalfFrame,
-          qCollide.x, qCollide.y, qCollide.z, qCollide.w,
-        );
-        leftoverOverlap = rest >= 0;
-      }
-      if (leftoverOverlap) {
-        interiorDepth = view.colliders.interiorOfHit(pCurr.x, pCurr.y, pCurr.z);
-        if (!(interiorDepth > CLIP_CENTER_EPS) && view.colliders.hitNy > 0.5) {
-          roofContact = true;
-        }
-      }
-      if (punchTravel) {
-        const stillThrough = punchMoving >= 0
-          ? view.colliders.crossedMoving(punchMoving, fromX, fromY, fromZ, pCurr.x, pCurr.y, pCurr.z)
-          : view.colliders.crossedStatic(punchIndex, fromX, fromY, fromZ, pCurr.x, pCurr.y, pCurr.z);
-        if (stillThrough) {
-          leftoverOverlap = true;
-          if (!(interiorDepth >= CLIP_DEEP)) {
-            interiorDepth = CLIP_DEEP;
-          }
-        }
-      }
-      if (obstacleRoof) {
-        turtleOnSupport = true;
-      }
-    } else if (
+      lastImpulse = obsImpulse;
+    } else if (nowWall - bounceAtWall > BOUNCE_COOLDOWN_MS) {
+      lastImpulse = 0;
+    }
+    obsContact = false;
+    obsLeftover = false;
+    obsInterior = 0;
+    obsRoof = false;
+    obsImpulse = 0;
+    obsImpulseKind = '';
+    if (
       mode === 'flight'
       && !launchStaging
       && !crashed
       && (landed || turtleParkedNow)
     ) {
-      /* A perch or turtle freeze skips the bounce loop, so a hull that
-       * sat down inside a wall would never be measured. Level pancake:
-       * the last flying vHalfFrame can be a banked fat query. */
+      /* Level pancake: the last flying vHalfFrame can be a banked fat
+       * query. */
       const rest = view.colliders.hit(
         pCurr.x, pCurr.y, pCurr.z,
         pCurr.x, pCurr.y, pCurr.z,
@@ -4081,25 +4568,48 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
 
+    /* Sim milliseconds elapsed since the last frame. Clamped the same way
+     * the wall delta is, and never negative, so a reset that puts the lap
+     * clock back to zero cannot hand a watch a negative age. */
+    let simStepMs = simTimeMs - simClockPrevMs;
+    if (!(simStepMs > 0)) {
+      simStepMs = 0;
+    } else if (simStepMs > 100) {
+      simStepMs = 100;
+    }
+    simClockPrevMs = simTimeMs;
+
     if (mode === 'flight' && !poseLock) {
       const hy = view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS);
       const buriedDepth = hy > pCurr.y ? hy - pCurr.y : 0;
+      /* Ticked on the SIM clock, not the wall clock. Every threshold in
+       * the watch is a duration, and while it counted frame deltas a
+       * stutter aged it as fast as real time did: a machine that dropped
+       * to 8 fps could confirm a 180 ms clip in two frames of a craft that
+       * had barely moved. frameSteps is the milliseconds the plant
+       * actually advanced, which is what those thresholds meant all along.
+       * On a perch or a turtle the plant is frozen but the lap clock still
+       * runs, and simTimeMs advances with it, so this stays honest there
+       * too. */
       const clipKind = clipWatchTick(clipWatch, {
         landed,
         turtle: turtleWait || turtleFlip.active,
         launchStaging,
         hold: crashed,
         poseLock,
-        spawnGrace: nowWall < clipGraceUntil && landed,
+        spawnGrace: (nowWall < clipGraceUntil && landed) || nowWall < recoverGraceUntil,
         takingOff,
         unresolved: leftoverOverlap,
         roofContact,
         interiorDepth,
         buriedDepth,
+        contact: frameContact,
+        rateMag: plantRateMag(stateCurr),
+        throttle: input.channels.throttle,
         x: pCurr.x,
         y: pCurr.y,
         z: pCurr.z,
-      }, dt);
+      }, simStepMs);
       if (clipKind) {
         beginClipCrash(clipKind, nowWall);
       }
@@ -4268,7 +4778,19 @@ export async function boot({ loading, bootStart, mapId }) {
     {
       const rpmMean = (stateCurr[14] + stateCurr[15] + stateCurr[16] + stateCurr[17]) * 0.25;
       const shake = lensShake.update(dt, rpmMean / FULL_THROTTLE_RPM);
-      qShake.setFromEuler(shakeEuler.set(shake.x, shake.y, shake.z, 'XYZ'));
+      /* Plus whatever the last contact threw the airframe by. The camera
+       * is bolted to the frame, so a hit moves the picture; with the hit
+       * banners gone this and the sound are the whole of what the pilot is
+       * told. Decayed on the wall clock and added here, at the one place
+       * that already rotates the lens, so it is render only and no
+       * trajectory can depend on it. */
+      decayImpactKick(dt);
+      qShake.setFromEuler(shakeEuler.set(
+        shake.x + impactKick.x,
+        shake.y + impactKick.y,
+        shake.z + impactKick.z,
+        'XYZ',
+      ));
       fpvQuat.multiply(qShake);
     }
 
@@ -5047,6 +5569,11 @@ export async function boot({ loading, bootStart, mapId }) {
     clipCrash: crashed,
     clipCrashKind,
     turtle: crashflipOn,
+    /* Real Betaflight crashflip held by the pilot, as distinct from the
+     * scripted turtle above. Published so a capture can tell the two
+     * apart: they drive the same mixer path and look alike from outside. */
+    manualFlip,
+    crashflipActive: sim.e.sim_crashflip_active() !== 0,
     turtleWait,
     turtleFlip: turtleFlip.active,
     turtleParked: isTurtleParked(),
@@ -5133,6 +5660,9 @@ export async function boot({ loading, bootStart, mapId }) {
     landed = kind !== 'cameraDown' && kind !== 'inverted' && kind !== 'invertedHold'
       && kind !== 'invertedAir';
     takingOff = false;
+    /* Same reason as __placeCraft: a seat is a teleport. */
+    obsHasPrev = false;
+    obsPhase = 0;
     parkedLift = 0;
     adoptSimClock();
     acc = 0;
@@ -5212,6 +5742,12 @@ export async function boot({ loading, bootStart, mapId }) {
     mode = 'flight';
     ui.show('flight');
     resetClipWatch(clipWatch);
+    /* A place is a teleport. Re-seed the contact pass or its next sweep is
+     * the segment from wherever the craft used to be to here, which is a
+     * line through half the map and reads as a punch through every solid
+     * on it. */
+    obsHasPrev = false;
+    obsPhase = 0;
     adoptSimClock();
     acc = 0;
     stateCurr = readState();

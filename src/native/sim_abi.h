@@ -183,6 +183,38 @@ int sim_contact(double nx, double ny, double nz,
                 double vsx, double vsy, double vsz);
 
 /*
+ * Rigid-body contact with the contact point supplied by the caller.
+ *
+ * sim_contact takes its impulse arm from the hull's own support in the
+ * -n direction, which is always an extreme corner, so a belly slapped
+ * flat on a wall solved as a corner strike and produced the largest
+ * moment the geometry allows. The shell sweeps the four prop discs and
+ * knows which of them are actually in the patch, so it passes the arm
+ * in: (rx, ry, rz) is the vector from the CG to the contact point,
+ * plant frame, world axes, clamped inside the airframe. One disc in
+ * gives a full moment, four gives almost none, which is the difference
+ * between an arm catching a wall and a belly meeting it.
+ *
+ * Everything else matches sim_contact. Additive ABI, version unchanged.
+ * The harness never calls this.
+ */
+int sim_contact_at(double nx, double ny, double nz,
+                   double restitution, double mu,
+                   double px, double py, double pz,
+                   double vsx, double vsy, double vsz,
+                   double rx, double ry, double rz);
+
+/*
+ * Blade strike: every rotor loses sev of its speed, sev in 0 to 1.
+ *
+ * A spinning 5 inch does not carry its rotor energy through a wall.
+ * The mixer spins them back up at the motor's own time constant, which
+ * is the part the pilot feels. No damage model and no desync. Additive
+ * ABI, version unchanged. The harness never calls this.
+ */
+int sim_prop_strike(double sev);
+
+/*
  * Persistent ground plane, applied after every 1 ms plant_step, the same
  * way the launch stand is. n is a unit normal pointing out of the ground,
  * (px,py,pz) is a point on the plane, both plant frame. mu and restitution

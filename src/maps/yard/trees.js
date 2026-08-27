@@ -90,21 +90,43 @@ function plant() {
     seed += 17;
     spots.push({ x, z, scale, seed });
   };
+  /* Windbreak, not a hedge: stagger depth, skip two bays, vary height
+   * so the skyline is trees instead of one lumpy wall. */
+  let n = 0;
   for (let x = -40; x <= 37; x += 7) {
-    add(x, 39, 1.18);
+    if (x === -12 || x === 16) {
+      n += 1;
+      continue;
+    }
+    add(x, 39 + (n % 2) * 2.4, 0.96 + (n % 3) * 0.12);
+    n += 1;
   }
+  n = 0;
   for (let z = -35; z <= 32; z += 7) {
-    add(-44, z, 1.12);
+    if (z === -7) {
+      n += 1;
+      continue;
+    }
+    add(-44 - (n % 2) * 2.2, z, 0.94 + (n % 3) * 0.11);
+    n += 1;
   }
+  n = 0;
   for (let z = -35; z <= 28; z += 7) {
-    add(23, z, 1.14);
+    if (z === 7) {
+      n += 1;
+      continue;
+    }
+    add(23 + (n % 2) * 2.3, z, 0.95 + (n % 3) * 0.12);
+    n += 1;
   }
   const south = [-38, -31, -24, -17, -3, 4, 18, 25, 32];
-  for (const x of south) {
-    add(x, -44, 1.1);
+  for (let i = 0; i < south.length; i += 1) {
+    add(south[i], -44 - (i % 2) * 2.1, 0.94 + (i % 3) * 0.1);
   }
   add(-16, 8, 1.05);
-  add(-8, 10, 1.08);
+  /* Was (-8, 10): sat in the title lens as a trunk. West of the stable
+   * keeps the backyard look on hay, not bark. */
+  add(-28, 6, 1.08);
   add(6, 20, 0.98);
   add(3, 12, 0.9);
   add(15.4, -22, 1.0);
@@ -194,9 +216,10 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
     }
   }
 
-  /* Many small blobs, city grove language: large lumps read as boulders
-   * against the sky. keep is the quality lever. Clamped to the hull. */
-  const count = Math.max(12, Math.round((30 + Math.floor(rng.next() * 8)) * keep));
+  /* Shade mass, not a cloud of puffs: fewer larger overlapping blobs,
+   * city grove size, still clamped inside the one hull. keep is the
+   * quality lever. */
+  const count = Math.max(10, Math.round((16 + Math.floor(rng.next() * 6)) * keep));
   const yTop = UNDER + 4.2 * S;
   const cx = x;
   const cy = UNDER + 2.05 * S;
@@ -213,36 +236,36 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
   };
   for (let i = 0; i < count; i += 1) {
     const c = centers[Math.floor(rng.next() * centers.length)];
-    const r = 0.30 * S * rng.range(0.72, 1.08);
-    const ry = r * rng.range(0.70, 0.88);
-    let px = c.x + rng.range(-0.85, 0.85) * S;
-    let pz = c.z + rng.range(-0.85, 0.85) * S;
-    let py = c.y + rng.range(-0.35, 0.85) * S;
-    px = cx + (px - cx) * 0.90;
-    pz = cz + (pz - cz) * 0.90;
-    py = cy + (py - cy) * 0.82;
+    const r = 0.62 * S * rng.range(0.82, 1.12);
+    const ry = r * rng.range(0.72, 0.92);
+    let px = c.x + rng.range(-0.7, 0.7) * S;
+    let pz = c.z + rng.range(-0.7, 0.7) * S;
+    let py = c.y + rng.range(-0.45, 1.05) * S;
+    px = cx + (px - cx) * 0.72;
+    pz = cz + (pz - cz) * 0.72;
+    py = cy + (py - cy) * 0.78;
     const hi = (py - UNDER) / Math.max(0.8, yTop - UNDER);
     let tone = hi > 0.66 ? 0 : hi < 0.32 ? 2 : 1;
-    if (rng.next() < 0.18) {
+    if (rng.next() < 0.16) {
       tone = (tone + 1) % 3;
     }
     put(px, py, pz, r, ry, tone);
   }
-  for (let i = 0; i < 4; i += 1) {
-    const r = 0.30 * S * rng.range(0.85, 1.12);
-    const ry = r * 0.78;
+  for (let i = 0; i < 3; i += 1) {
+    const r = 0.68 * S * rng.range(0.88, 1.08);
+    const ry = r * 0.8;
     put(
-      x + rng.range(-0.55, 0.55) * S,
-      yTop - ry - rng.range(0.04, 0.28),
-      z + rng.range(-0.55, 0.55) * S,
+      x + rng.range(-0.4, 0.4) * S,
+      yTop - ry - rng.range(0.02, 0.18),
+      z + rng.range(-0.4, 0.4) * S,
       r, ry, 0,
     );
   }
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < 3; i += 1) {
     const d = LIMB[i * 2];
-    const r = 0.28 * S * rng.range(0.8, 1.05);
-    const ry = r * 0.72;
-    put(x + d[0] * 0.55 * S, UNDER + ry + 0.1, z + d[2] * 0.55 * S, r, ry, 2);
+    const r = 0.42 * S * rng.range(0.85, 1.08);
+    const ry = r * 0.74;
+    put(x + d[0] * 0.42 * S, UNDER + ry + 0.08, z + d[2] * 0.42 * S, r, ry, 2);
   }
 
   colliders.addBox('tree', x - trunkR, 0, z - trunkR, x + trunkR, UNDER, z + trunkR);

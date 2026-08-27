@@ -103,6 +103,19 @@ export const CITY_ANIM = {
 };
 
 export const CIRCUMFERENCE = 2 * Math.PI * CITY_ANIM.R;
+/*
+ * How far the solid train's centres may disagree with the distance the train
+ * covered before the move is read as a teleport, in metres.
+ *
+ * Both quantities come out of the same closed form a few lines apart, so on
+ * a continuous frame they agree to about 1e-12 m: the offset is `x` itself
+ * while |x| is under half a circumference and `x - CIRCUMFERENCE` after,
+ * both one subtraction deep. The three things this is meant to catch are
+ * 1005.31 m (the wrap), hundreds of metres (a clock seek) and whatever a
+ * clock swap lands on, so there is a factor of a billion of daylight either
+ * side of this number and it is not a tuning knob.
+ */
+export const TELEPORT_EPS = 1e-6;
 /* Seconds the crossing spends closed, which is how far apart the two arm
  * ramps are. (APPROACH + CLEAR) metres at SPEED. */
 export const CLOSED_S = (CITY_ANIM.APPROACH + CITY_ANIM.CLEAR) / CITY_ANIM.SPEED;
@@ -238,8 +251,12 @@ export function cityAnimation(world, colliders, boomIndices, trainCars) {
   let lastStep = 0;
   let armDown = null;
   let state = crossingState(0);
+  /* Where the solid cars were last put, so this file can tell one frame of
+   * travel from a jump. See the note above the car loop in update(). */
+  let lastOffset = state.offset;
 
   function update(step) {
+    const prevStep = lastStep;
     /* The town's own decoration, on frame time, because none of it is solid.
      * The delta is taken from the fixed step count rather than from
      * requestAnimationFrame so a paused shell does not hand it a one second
@@ -269,13 +286,47 @@ export function cityAnimation(world, colliders, boomIndices, trainCars) {
      * translation and the boxes were measured in the group's frame, so a car
      * that is not on screen is not in the town either, and nothing can crash
      * into a train that is nowhere near.
+     *
+     * MOVE OR SEAT, and the difference is the whole reason this block is not
+     * one line.
+     *
+     * setMovingCentre keeps the previous centre, because the collision query
+     * is solved in the box's own frame: the pair of centres IS one frame of
+     * travel, both for the sweep and for the surface velocity the impulse
+     * reads. `offset` is a WRAPPED coordinate, so once a lap it steps by a
+     * whole circumference while the train has actually travelled 0.39 m, and
+     * the same clock can be seeked (boomExtentDown, __animTo) or swapped for
+     * another (title to flight). Fed to setMovingCentre any of those becomes
+     * a 1005 m box sweeping the length of the town in one frame, and a
+     * surface velocity of 60 km/s handed to the contact solver. Measured:
+     * the quad left at 25 km/s, the plant reached 1e266 in six 1 ms steps
+     * and NaN in the seventh, and the shell then had an invisible craft it
+     * could neither crash nor reset. What a pilot saw was the train hitting
+     * them from nowhere and the page dying.
+     *
+     * A wrap is not motion, it is the same train re-entering the flat map at
+     * the other end, and there is no continuous path between the two. So the
+     * rule is: the centres may only be MOVED by the distance the train
+     * actually covered since the last update, and anything else SEATS, which
+     * is a teleport with no sweep and no surface velocity.
      */
     if (cars) {
+      const dStep = step - prevStep;
+      const travelled = CITY_ANIM.SPEED * dStep * 0.001;
+      /* 250 is the same quarter second the decoration clock above is clamped
+       * to: past that this was not a frame, whatever the arithmetic says. */
+      const continuous = dStep >= 0 && dStep <= 250
+        && Math.abs((state.offset - lastOffset) - travelled) < TELEPORT_EPS;
       for (let i = 0; i < cars.length; i += 1) {
         const c = cars[i];
-        colliders.setMovingCentre(c.index, c.x + state.offset, c.y, c.z);
+        if (continuous) {
+          colliders.setMovingCentre(c.index, c.x + state.offset, c.y, c.z);
+        } else {
+          colliders.seatMoving(c.index, c.x + state.offset, c.y, c.z);
+        }
       }
     }
+    lastOffset = state.offset;
 
     crossing.setArms(state.armT);
     crossing.setLamps(state.closing || state.armT > 0.02, state.blink);

@@ -61,7 +61,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -3712,7 +3712,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * enough for a corner (two faces) with slack; anything still overlapping
    * after that is what the clip watch reads.
    */
-  function obstacleContactPass(st) {
+  function obstacleContactPass(st, dtSurface) {
     obsResolved = false;
     if (!view.colliders || mode !== 'flight' || crashed || poseLock || launchStaging) {
       obsHasPrev = false;
@@ -3794,17 +3794,35 @@ export async function boot({ loading, bootStart, mapId }) {
       let vsy = 0;
       let vsz = 0;
       const moving = col.hitMoving;
-      if (moving >= 0) {
-        const dtSim = OBSTACLE_STEP * 0.001;
-        threeDirToSim(
-          (col.movingCx[moving] - col.movingPx[moving]) / dtSim,
-          (col.movingCy[moving] - col.movingPy[moving]) / dtSim,
-          (col.movingCz[moving] - col.movingPz[moving]) / dtSim,
-          vsSim,
-        );
-        vsx = vsSim.x;
-        vsy = vsSim.y;
-        vsz = vsSim.z;
+      if (moving >= 0 && dtSurface > 0) {
+        /*
+         * The moving centres are a pair one FRAME apart, because that is
+         * how often the map animates them, so the difference has to be
+         * divided by the frame's own sim duration and not by this pass's
+         * 4 ms cadence. Dividing by the cadence overstated the city's
+         * 23.5 m/s train by the ratio of the two, four times over at
+         * 60 fps, which pushes it past SURFACE_SPEED_MAX and the guard
+         * below then zeroes it: the train would have hit like a wall.
+         */
+        const msx = (col.movingCx[moving] - col.movingPx[moving]) / dtSurface;
+        const msy = (col.movingCy[moving] - col.movingPy[moving]) / dtSurface;
+        const msz = (col.movingCz[moving] - col.movingPz[moving]) / dtSurface;
+        /*
+         * A collider that JUMPED has no surface velocity, and the
+         * difference of its two centres does not know that: it reports the
+         * jump divided by a frame. The map owns not jumping (the city's
+         * train seats rather than sweeps across its wrap, see
+         * src/maps/city/animation.js) and this is the seam that owns not
+         * handing the plant an impulse it cannot survive. Zero, not a
+         * clamp: a teleport is not slow motion, it is no motion.
+         */
+        if (msx * msx + msy * msy + msz * msz
+          <= SURFACE_SPEED_MAX * SURFACE_SPEED_MAX) {
+          threeDirToSim(msx, msy, msz, vsSim);
+          vsx = vsSim.x;
+          vsy = vsSim.y;
+          vsz = vsSim.z;
+        }
       }
 
       /* Leftover travel, with the part that goes into the face removed.
@@ -4336,7 +4354,7 @@ export async function boot({ loading, bootStart, mapId }) {
             if (obsPhase >= OBSTACLE_STEP) {
               obsPhase = 0;
               stateCurr = stNow;
-              stNow = obstacleContactPass(stNow);
+              stNow = obstacleContactPass(stNow, steps * 0.001);
               if (obsResolved) {
                 /* The pose moved under the interpolator. Collapse it
                  * rather than lerping the craft back through the wall

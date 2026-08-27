@@ -19746,3 +19746,52 @@ and quality, no plant/ABI/WASM. `scripts/shots.js` exit 1
 is the known CDN refuse. `npm run contact:selftest` and
 `src/trackbuilder/selftest.js` were run.
 
+---
+
+### 2026-08-27 | map | Compact maps Medium budget, loop stop
+
+Medium 1600x900, same harness as High. Swap reached the
+three maps (not the city leftover). P5 is 42.9 MB, 58.2 at
+1080p. Scale 1.0. PointLights 0.
+
+| map | P1 title / fly | P2 | leftover |
+| bando | 137 / 74 | 26k | n/a |
+| baths | 91 / 84 (aerial 171) | 11k | 0 / 0 |
+| yard | 93 / 104 | 91k | 0 / 0 |
+
+Yard canopyInside still reports pen 2.12 m up.
+underTree, fenceGap, underDeck CLEAR. Bando spawn CLEAR.
+All under P1 400, P2 1.2M, P5 120 MB, so the review loop
+stops. Low was not measured: Medium already has headroom.
+
+`npm run verify` was not run: measure only. Shots exit 1
+is the known CDN refuse.
+
+---
+
+### 2026-08-27 | map | Bardwell title still, hay in the backyard
+
+The tree at (-11, 18) sat on the deck look, so the title
+still was a fence, a red wall and a grove, with no hay.
+It moved to (-8, 10). Title camera looks over the north
+rail at the hay east mouth. A yellow stack sits flush on
+the stable's north face at the shed's east lip. More,
+smaller canopy blobs. CLEAR unchanged.
+
+Live leftoverDeath 0, leftoverOverlap 0, 495 boxes, spawn
+on the deck. Named `__hit` CLEAR including hayAisle,
+doorPad and garageMouth. Title still now shows the open
+hay shed and bales. Aerial is from the north so the
+house, deck, drive and hay sit in one frame.
+
+What still wants a tick: a hostile art director on whether
+that title still would make a pilot stay, and whether the
+distant row reads as trees rather than lumpy clusters.
+Cel boxes for buildings stay. The swing still cannot hang
+through the porch slab.
+
+`npm run verify` was not run: map dress only. Shots exit 1
+is the known CDN `ERR_CONNECTION_REFUSED`. Geometry still
+captured.
+
+

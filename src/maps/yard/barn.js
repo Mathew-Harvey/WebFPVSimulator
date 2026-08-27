@@ -116,6 +116,7 @@ function hayShed(root, colliders, platforms, M) {
   stack(root, colliders, M, h.x0 + t, h.z1 - t - 1.2);
   stack(root, colliders, M, h.x0 + t + 1.2 + 1.6, h.z1 - t - 1.2);
   stack(root, colliders, M, h.x1 - 1.2, h.z1 - t - 1.2);
+  stack(root, colliders, M, h.x1 - 1.2, h.z0);
   stack(root, colliders, M, h.x0 - 1.2, h.z1 - t - 1.2);
 }
 

@@ -61,7 +61,7 @@ import { Race } from './game/race.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
+import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, hitOutcome, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
@@ -2293,7 +2293,8 @@ export async function boot({ loading, bootStart, mapId }) {
         lcBoost = true;
         takingOff = true;
         flownThisRun = true;
-        raceHasPrev = false;
+        racePrev.copy(shell.quad.position);
+        raceHasPrev = true;
         lcGoUntil = nowMs + 900;
         lcAcroUntil = nowMs + 480;
         if (typeof audio.event === 'function') {
@@ -3938,6 +3939,15 @@ export async function boot({ loading, bootStart, mapId }) {
        * this attitude, vHalfFrame through the body at its current tilt. */
       let obstacleRoof = false;
       let attempts = 0;
+      const fromX = racePrev.x;
+      const fromY = racePrev.y;
+      const fromZ = racePrev.z;
+      const origX = pCurr.x;
+      const origY = pCurr.y;
+      const origZ = pCurr.z;
+      let punchIndex = -1;
+      let punchMoving = -1;
+      let punchTravel = false;
       for (; attempts < 4; attempts += 1) {
         const k = view.colliders.hit(
           racePrev.x, racePrev.y, racePrev.z,
@@ -3947,6 +3957,11 @@ export async function boot({ loading, bootStart, mapId }) {
         );
         if (k < 0) {
           break;
+        }
+        if (attempts === 0) {
+          punchIndex = view.colliders.hitIndex;
+          punchMoving = view.colliders.hitMoving;
+          punchTravel = view.colliders.crossedHit(fromX, fromY, fromZ, origX, origY, origZ);
         }
         if (view.colliders.hitNy > 0.5) {
           obstacleRoof = true;
@@ -4028,6 +4043,17 @@ export async function boot({ loading, bootStart, mapId }) {
           roofContact = true;
         }
       }
+      if (punchTravel) {
+        const stillThrough = punchMoving >= 0
+          ? view.colliders.crossedMoving(punchMoving, fromX, fromY, fromZ, pCurr.x, pCurr.y, pCurr.z)
+          : view.colliders.crossedStatic(punchIndex, fromX, fromY, fromZ, pCurr.x, pCurr.y, pCurr.z);
+        if (stillThrough) {
+          leftoverOverlap = true;
+          if (!(interiorDepth >= CLIP_DEEP)) {
+            interiorDepth = CLIP_DEEP;
+          }
+        }
+      }
       if (obstacleRoof) {
         turtleOnSupport = true;
       }
@@ -4064,7 +4090,7 @@ export async function boot({ loading, bootStart, mapId }) {
         launchStaging,
         hold: crashed,
         poseLock,
-        spawnGrace: nowWall < clipGraceUntil,
+        spawnGrace: nowWall < clipGraceUntil && landed,
         takingOff,
         unresolved: leftoverOverlap,
         roofContact,

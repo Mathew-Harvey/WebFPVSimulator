@@ -202,6 +202,12 @@ function boxPointInterior(x0, y0, z0, x1, y1, z1, x, y, z) {
   return -Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+function boxOppositeSides(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz) {
+  return (ax < x0 && bx > x1) || (ax > x1 && bx < x0)
+    || (ay < y0 && by > y1) || (ay > y1 && by < y0)
+    || (az < z0 && bz > z1) || (az > z1 && bz < z0);
+}
+
 function clampRadius(v) {
   if (v < CRAFT_WORLD_PROP) {
     return CRAFT_WORLD_PROP;
@@ -1291,6 +1297,59 @@ export class Colliders {
       return 0;
     }
     return this.interiorAt(this.hitIndex, x, y, z);
+  }
+
+  /*
+   * Did the segment from a to b go in one face of collider i and out
+   * the opposite face? A bounce from outside has both ends on the SAME
+   * side. A pole fly-by does not put the midpoint inside the bark.
+   * Used after bounce: if the craft is still on the far side, the eject
+   * went the wrong way.
+   */
+  crossedStatic(i, ax, ay, az, bx, by, bz) {
+    if (!this.built || i < 0 || i >= this.count) {
+      return false;
+    }
+    const mx = (ax + bx) * 0.5;
+    const my = (ay + by) * 0.5;
+    const mz = (az + bz) * 0.5;
+    if (this.interiorAt(i, mx, my, mz) <= CLIP_CENTER_EPS) {
+      return false;
+    }
+    if (this.fbox[i]) {
+      return boxOppositeSides(
+        this.fax[i], this.fay[i], this.faz[i],
+        this.fbx[i], this.fby[i], this.fbz[i],
+        ax, ay, az, bx, by, bz,
+      );
+    }
+    return this.interiorAt(i, ax, ay, az) < 0 && this.interiorAt(i, bx, by, bz) < 0;
+  }
+
+  crossedMoving(i, ax, ay, az, bx, by, bz) {
+    if (i < 0 || i >= this.movingCount) {
+      return false;
+    }
+    const x0 = this.movingCx[i] - this.movingHx[i];
+    const y0 = this.movingCy[i] - this.movingHy[i];
+    const z0 = this.movingCz[i] - this.movingHz[i];
+    const x1 = this.movingCx[i] + this.movingHx[i];
+    const y1 = this.movingCy[i] + this.movingHy[i];
+    const z1 = this.movingCz[i] + this.movingHz[i];
+    const mx = (ax + bx) * 0.5;
+    const my = (ay + by) * 0.5;
+    const mz = (az + bz) * 0.5;
+    if (boxPointInterior(x0, y0, z0, x1, y1, z1, mx, my, mz) <= CLIP_CENTER_EPS) {
+      return false;
+    }
+    return boxOppositeSides(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz);
+  }
+
+  crossedHit(ax, ay, az, bx, by, bz) {
+    if (this.hitMoving >= 0) {
+      return this.crossedMoving(this.hitMoving, ax, ay, az, bx, by, bz);
+    }
+    return this.crossedStatic(this.hitIndex, ax, ay, az, bx, by, bz);
   }
 
   kindName(k) {

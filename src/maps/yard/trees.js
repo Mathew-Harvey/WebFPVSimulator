@@ -104,7 +104,7 @@ function plant() {
     add(x, -44, 1.1);
   }
   add(-16, 8, 1.05);
-  add(-11, 18, 1.12);
+  add(-8, 10, 1.08);
   add(6, 20, 0.98);
   add(3, 12, 0.9);
   add(15.4, -22, 1.0);
@@ -196,7 +196,7 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
 
   /* Many small blobs, city grove language: large lumps read as boulders
    * against the sky. keep is the quality lever. Clamped to the hull. */
-  const count = Math.max(10, Math.round((24 + Math.floor(rng.next() * 8)) * keep));
+  const count = Math.max(12, Math.round((30 + Math.floor(rng.next() * 8)) * keep));
   const yTop = UNDER + 4.2 * S;
   const cx = x;
   const cy = UNDER + 2.05 * S;
@@ -213,7 +213,7 @@ function grow(spot, woodParts, blobs, trunkGeo, branchGeo, colliders, keep) {
   };
   for (let i = 0; i < count; i += 1) {
     const c = centers[Math.floor(rng.next() * centers.length)];
-    const r = 0.34 * S * rng.range(0.72, 1.12);
+    const r = 0.30 * S * rng.range(0.72, 1.08);
     const ry = r * rng.range(0.70, 0.88);
     let px = c.x + rng.range(-0.85, 0.85) * S;
     let pz = c.z + rng.range(-0.85, 0.85) * S;

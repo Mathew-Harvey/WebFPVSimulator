@@ -165,6 +165,21 @@ const SCREEN_ACTIONS = new Set([
 /* What the breadcrumb says, per screen. A room is a navigation parent, so a
  * trail rather than a single word: Escape then has one obvious destination
  * instead of the four the return chain currently chooses between. */
+/*
+ * Screens a room can be opened FROM and returned to. The launch card and
+ * both track rooms carry doors into Quad and Pilot; the title is not here
+ * because it is where Back goes when there is nowhere else to go.
+ */
+/*
+ * How long the room has to be untouched before a world preview is allowed
+ * to record. Long enough that arrowing down four cards never triggers one,
+ * short enough that a pilot who stops to read a note gets their previews.
+ * See noteInteraction.
+ */
+const REEL_QUIET_MS = 900;
+
+const ROOM_PARENTS = new Set(['courses', 'freestyle', 'launch', 'quad', 'pilot']);
+
 const SCREEN_TITLES = {
   title: 'WebFPV',
   courses: 'Race',
@@ -1414,6 +1429,20 @@ export class Ui {
     this.ratesStick = { roll: 0, pitch: 0, yaw: 0 };
     /* Asked at most once a session, so oscillating across 40 does not nag. */
     this.yawTipAsked = false;
+    /*
+     * Which room a ROOM was opened from, so Escape goes back to it.
+     *
+     * Same contract as ratesFrom below, and needed for the same reason: the
+     * Race and Freestyle rooms both carry a Tune row that is a door into
+     * Quad, and act('quad') set returnTo to 'title' from anywhere that was
+     * not paused. So changing a tune from Freestyle and pressing Back
+     * landed on the title rather than the room you were standing in, which
+     * is a one way door dressed as a signpost.
+     *
+     * Separate from returnTo on purpose: returnTo is where the pause chain
+     * came from, and overwriting it here strands a paused run.
+     */
+    this.roomFrom = null;
     /* Set when Rates was opened FROM Settings, so Escape lands back on the
      * list it was a row of. Separate from returnTo on purpose: returnTo is
      * where Settings itself came from, and overwriting it here would lose a
@@ -3371,7 +3400,6 @@ export class Ui {
         map: x,
         action: `map:${x.id}`,
       }));
-      const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Full physics';
       return [
         ...cards,
         /* A DOOR, not a copy. This was one of the four screens the same
@@ -3384,12 +3412,32 @@ export class Ui {
           action: 'quad',
           note: `${tuneById(s.tune).note} Change it under ${SCREEN_TITLES.quad}, which is where the machine lives.`,
         },
-        {
-          label: 'Physics model',
-          value: style,
-          info: true,
-          note: `Arcade turns propwash, gyro noise and build asymmetry off. It is a plant flag, so it changes a freestyle flight exactly as much as it changes a race. Set it under ${SCREEN_TITLES.launch}.`,
-        },
+        /*
+         * SETTABLE HERE, because there is nowhere else a freestyle pilot
+         * can reach it.
+         *
+         * It was an info row pointing at the launch card, and freestyle
+         * deliberately has no launch card: no clock, no lap, no board, so
+         * nothing to declare. That left the one flag which DOES change a
+         * freestyle flight as a read-only line naming a screen the pilot
+         * could not get to. Reported as "physics model doesn't do
+         * anything", and it did not.
+         *
+         * It is the same setting the launch card carries, so a race pilot
+         * still meets it in the moment before a run where it decides what
+         * the time counts as. This copy is not a duplicate of a value with
+         * a home elsewhere: freestyle IS the other home.
+         */
+        choice(
+          'Physics model',
+          s.flightStyle === 'arcade'
+            ? 'Arcade: the ideal quad. No propwash shake, no gyro noise, no build asymmetry. It is a plant flag, so it changes a freestyle flight exactly as much as it changes a race.'
+            : 'Expert: the full physics, propwash, gyro noise and build tolerance included. Arcade turns the imperfections off for a friendlier machine. Takes effect on the next flight.',
+          FLIGHT_STYLES,
+          s.flightStyle === 'arcade' ? 'arcade' : 'expert',
+          (id) => (id === 'arcade' ? 'Arcade' : 'Expert'),
+          (id) => { s.flightStyle = id; },
+        ),
         { label: 'Back', action: 'back' },
       ];
     }
@@ -4589,10 +4637,27 @@ export class Ui {
     if (!this.pointerMoved(e) || this.cursor === i) {
       return;
     }
-    this.setCursor(i);
+    this.setCursor(i, true);
   }
 
-  setCursor(i) {
+  /*
+   * Move the cursor. `pointer` says the MOUSE did it, and two things that
+   * are right for a key press are wrong for a hover.
+   *
+   * SCROLLING. syncCursor brings the cursor's row into view, which is the
+   * whole point when Down walks off the bottom of a scroller. On a hover
+   * the row is already in view, by definition: the pointer is on it. Worse,
+   * near the ends of a scroller `block: 'nearest'` still shifts the list a
+   * few pixels, which slides a DIFFERENT row under a stationary pointer,
+   * which fires another mousemove, which moves the cursor again. That
+   * feedback loop is what "the menu is laggy following the mouse" is: not
+   * slow code, the list moving under the hand.
+   *
+   * THE CLICK. A move cue per row is right for one key press and is a
+   * machine-gun when a mouse sweeps down twenty rows in a third of a second.
+   */
+  setCursor(i, pointer = false) {
+    this.noteInteraction();
     if (i === this.cursor) {
       return;
     }
@@ -4609,8 +4674,8 @@ export class Ui {
         c.card.classList.toggle('on', j + worlds.length === this.cursor);
       });
     }
-    this.syncCursor();
-    if (this.onUiSound) {
+    this.syncCursor(!pointer);
+    if (this.onUiSound && !pointer) {
       this.onUiSound('move');
     }
   }
@@ -5503,17 +5568,39 @@ export class Ui {
       }
       const currentMiss = misses.filter((c) => c.id === current);
       const otherMiss = misses.filter((c) => c.id !== current);
+      /*
+       * ONE AT A TIME, AND ONLY WHILE NOBODY IS USING THE ROOM.
+       *
+       * Each capture builds a Three.js scene in a same origin iframe, on
+       * this thread, and blocks it for seconds. The cached clips above are
+       * already attached by now, so what is left is only ever the first
+       * visit in a given browser. Waiting for quiet before EACH one means
+       * a pilot who arrives and immediately picks a world never pays for
+       * any of it, and a pilot who stops to read gets them one by one.
+       */
       for (const c of currentMiss) {
         if (this.reelSession !== session) {
           return;
         }
-        await this.captureCurrentCard(c, session);
+        await this.whenQuiet(session);
+        this.reelCapturing = true;
+        try {
+          await this.captureCurrentCard(c, session);
+        } finally {
+          this.reelCapturing = false;
+        }
       }
       for (const c of otherMiss) {
         if (this.reelSession !== session) {
           return;
         }
-        await this.captureRemoteCard(c, session);
+        await this.whenQuiet(session);
+        this.reelCapturing = true;
+        try {
+          await this.captureRemoteCard(c, session);
+        } finally {
+          this.reelCapturing = false;
+        }
       }
     };
     run().catch((e) => {
@@ -5747,8 +5834,90 @@ export class Ui {
     }
   }
 
+  /*
+   * Any input at all, noted so the preview recorder can get out of the way.
+   *
+   * Recording a world preview loads orbit.html in a same origin iframe,
+   * which builds a whole Three.js scene ON THIS THREAD. Measured on arrival
+   * at the Freestyle room with a cold cache: 23 frames in 10.4 seconds and
+   * a single gap of 5155 ms with no paint at all. Reported as "the
+   * freestyle page is unresponsive when I get to it, becomes responsive
+   * after a time", which is exactly what four of those in a row is.
+   *
+   * The recording is worth having: it is cached per browser, so the cost is
+   * paid once and every later visit is instant. What is not worth having is
+   * paying it WHILE somebody is trying to use the room. So input wins:
+   * every cursor move and every key press pushes the recorder back, and it
+   * only runs after the room has been quiet.
+   */
+  noteInteraction() {
+    this.lastInteractionAt = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    /*
+     * A capture already running is TORN DOWN, not merely delayed.
+     *
+     * Waiting for quiet before starting one is not enough on its own: a
+     * pilot who arrives, reads a card for a second and then reaches for the
+     * arrow keys walks straight into the middle of a 4.6 second block that
+     * has already begun. Removing the iframe ends its browsing context, so
+     * the scene it was building stops there.
+     *
+     * The work is not lost for good. The room re-arms itself below and the
+     * capture starts again the next time the room is quiet, and once it
+     * finishes the clip is cached for every later visit.
+     */
+    if (this.reelCapturing && this.reelSession) {
+      this.stopReels();
+      this.armReels();
+    }
+  }
+
+  /* Re-arm the preview recorder after an interaction tore it down. One
+   * timer, replaced rather than stacked, so a pilot arrowing down four
+   * cards schedules one restart and not four. */
+  armReels() {
+    if (this.reelRestart != null) {
+      clearTimeout(this.reelRestart);
+    }
+    this.reelRestart = setTimeout(() => {
+      this.reelRestart = null;
+      if (this.screen === 'courses' || this.screen === 'freestyle') {
+        this.startReels();
+      }
+    }, REEL_QUIET_MS);
+  }
+
+  /*
+   * Resolve once the room has been untouched for REEL_QUIET_MS, or reject
+   * if the session was torn down while waiting. Polled rather than driven
+   * by an event, because the thing being waited for is an ABSENCE.
+   */
+  whenQuiet(session) {
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        if (!session || this.reelSession !== session || session.ac.signal.aborted) {
+          reject(new DOMException('aborted', 'AbortError'));
+          return;
+        }
+        const now = (typeof performance !== 'undefined' && performance.now)
+          ? performance.now() : Date.now();
+        const since = now - (this.lastInteractionAt || 0);
+        if (since >= REEL_QUIET_MS) {
+          resolve();
+          return;
+        }
+        session.quietTimer = setTimeout(check, Math.max(80, REEL_QUIET_MS - since));
+      };
+      check();
+    });
+  }
+
   stopReels() {
     this.reelFreezeWorld = false;
+    this.reelCapturing = false;
+    if (this.reelSession && this.reelSession.quietTimer) {
+      clearTimeout(this.reelSession.quietTimer);
+    }
     if (this.reelSession) {
       try {
         this.reelSession.ac.abort();
@@ -5805,6 +5974,15 @@ export class Ui {
      * through act('rates'), a world swap keeping the pilot in place, cannot
      * inherit a stale origin and send Escape to the wrong list. Re-showing
      * rates over itself is exactly that case and must NOT clear it. */
+    /*
+     * roomFrom belongs to one visit. Landing on the title, or on the room
+     * it points at, means the trip it described is over; anything else is
+     * still inside the same trip and keeps it, which is what lets Quad's
+     * Rates signpost come back through Quad to Freestyle.
+     */
+    if (this.roomFrom && (screen === 'title' || screen === this.roomFrom)) {
+      this.roomFrom = null;
+    }
     if (this.screen === 'rates' && screen !== 'rates') {
       this.ratesFrom = null;
     }
@@ -5850,6 +6028,9 @@ export class Ui {
     if (this.screen !== screen) {
       this.focusId = null;
     }
+    /* Arriving somewhere is interaction: it stops a preview recorder from
+     * starting into the same frame that is still painting the room. */
+    this.noteInteraction();
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
      * going. Settings opens on its first real row rather than on a heading. */
@@ -7169,6 +7350,19 @@ export class Ui {
     if (this.screen === 'credits') {
       clearLocationHash();
     }
+    /*
+     * The room this one was opened from, if it was opened from one. A
+     * paused run still wins: returnTo is the pause chain and losing it
+     * strands a flight. Cleared as it is used, so a second Back from the
+     * room we just returned to goes on to the title rather than bouncing
+     * between the two.
+     */
+    if (this.returnTo !== 'paused' && this.roomFrom) {
+      const from = this.roomFrom;
+      this.roomFrom = null;
+      this.show(from);
+      return;
+    }
     this.act(this.returnTo === 'paused' ? 'paused' : 'title');
   }
 
@@ -7276,6 +7470,14 @@ export class Ui {
     }
     if (action === 'howto' || action === 'pilot' || action === 'quad'
       || action === 'courses' || action === 'freestyle' || action === 'credits') {
+      /*
+       * A room opened FROM another room remembers which, so Back is the way
+       * you came rather than a jump to the title. Only from a real room,
+       * and never from the pause chain, which returnTo already owns.
+       */
+      this.roomFrom = ROOM_PARENTS.has(this.screen) && this.screen !== action
+        ? this.screen
+        : null;
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
@@ -7514,6 +7716,9 @@ export class Ui {
    * flag: a held or quickly tapped arrow must step the cursor, but Enter
    * and Escape must not fire again. */
   handleKey(code, repeat = false) {
+    /* Any key is somebody using the room, so the preview recorder waits.
+     * See noteInteraction. */
+    this.noteInteraction();
     if (this.nameDialog && !this.nameDialog.hidden) {
       return true;
     }

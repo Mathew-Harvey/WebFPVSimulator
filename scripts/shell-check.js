@@ -637,6 +637,117 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
+   * THE LIST DOES NOT MOVE UNDER THE POINTER.
+   *
+   * Reported as "the menu is a bit laggy throughout, following the mouse",
+   * and it was not slow code. setCursor called syncCursor with scrolling
+   * ON, so hovering a row scrolled that row into view. The row is already
+   * in view, by definition, and near the ends of a scroller a nearest
+   * block scroll still shifts the list a few pixels, sliding a
+   * DIFFERENT row under a stationary pointer, which fires another mousemove
+   * and moves the cursor again.
+   *
+   * Measured by sweeping the pointer down the rows and summing every
+   * scrollTop change: 750 px of travel on the Pilot room before the fix.
+   */
+  try {
+    const out2 = {};
+    for (const name of ['pilot', 'fc']) {
+      ui.show(name);
+      const host = ui.menuRows[0].parentElement;
+      host.scrollTop = 0;
+      let jump = 0;
+      let last = host.scrollTop;
+      let x = 0;
+      const rows = ui.menuRows.filter((r) => r.classList.contains('row'));
+      for (const r of rows.slice(0, 25)) {
+        const b = r.getBoundingClientRect();
+        if (b.height === 0) { continue; }
+        for (let k = 0; k < 3; k += 1) {
+          x += 1;
+          /* The clientX has to CHANGE or pointerMoved rejects the event as
+           * a rebuilt row appearing under a still pointer, which is a real
+           * guard and would make this check measure nothing. */
+          r.dispatchEvent(new MouseEvent('mousemove', {
+            bubbles: true,
+            clientX: 200 + (x % 3),
+            clientY: Math.round(b.top + (b.height / 2)),
+          }));
+          jump += Math.abs(host.scrollTop - last);
+          last = host.scrollTop;
+        }
+      }
+      out2[name] = jump;
+    }
+    ui.show('title');
+    out.hoverScroll = out2;
+  } catch (e) {
+    out.hoverScroll = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * A DOOR IS NOT A ONE WAY DOOR.
+   *
+   * The Race and Freestyle rooms and the launch card all carry a Tune row
+   * that is a door into Quad, and act() set returnTo to 'title' from
+   * anywhere that was not paused. So a pilot who changed a tune from the
+   * Freestyle room and pressed Back landed on the title instead of the room
+   * they were standing in. Reported exactly that way.
+   *
+   * Asserted on the trip, not on the pointer: walk in through the door,
+   * press Back, and check where you are.
+   */
+  try {
+    const trips = {};
+    const go = (id) => {
+      const i = ui.items().findIndex((it) => it && it.id === id);
+      if (i < 0) { return false; }
+      ui.setCursor(i);
+      ui.select();
+      return true;
+    };
+    const reset = (room) => {
+      ui.show('title');
+      ui.roomFrom = null;
+      ui.returnTo = null;
+      ui.show(room);
+    };
+
+    for (const room of ['freestyle', 'launch', 'pilot']) {
+      reset(room);
+      trips[room] = go(room + ':a-quad')
+        ? (() => { const at = ui.screen; ui.back(); return { at, back: ui.screen }; })()
+        : { missing: true };
+    }
+
+    /* Two hops. Quad's Rates row is a signpost into Pilot's screen, so the
+     * way back out is Quad and then the room Quad was opened from. */
+    reset('freestyle');
+    go('freestyle:a-quad');
+    go('quad:a-rates');
+    const deep = [ui.screen];
+    ui.back(); deep.push(ui.screen);
+    ui.back(); deep.push(ui.screen);
+    trips.deep = deep;
+
+    /* A paused run still wins. returnTo is the pause chain and losing it
+     * strands a flight. */
+    ui.show('title');
+    ui.returnTo = 'paused';
+    ui.roomFrom = 'freestyle';
+    ui.show('quad');
+    ui.back();
+    trips.paused = ui.screen;
+
+    ui.returnTo = null;
+    ui.roomFrom = null;
+    ui.show('title');
+    out.roomReturn = trips;
+  } catch (e) {
+    out.roomReturn = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
    * THE LAUNCH CARD IS FOR A MEASURED RUN, and only for one.
    *
    * Freestyle has no clock, no lap, no ghost and no board, so a card asking
@@ -1246,6 +1357,42 @@ async function main() {
       }
       if (!bm.discardClears) {
         failures.push('bench modified: discarding the draft leaves keys reported as modified');
+      }
+    }
+
+    if (!b.hoverScroll || b.hoverScroll.error) {
+      failures.push(`hover scroll: ${b.hoverScroll ? b.hoverScroll.error : 'no result'}`);
+    } else {
+      for (const [name, px] of Object.entries(b.hoverScroll)) {
+        if (px > 0) {
+          failures.push(`hover scroll: the ${name} list moved ${px}px under the pointer during a sweep`);
+        }
+      }
+    }
+
+    if (!b.roomReturn || b.roomReturn.error) {
+      failures.push(`room return: ${b.roomReturn ? b.roomReturn.error : 'no result'}`);
+    } else {
+      const rr = b.roomReturn;
+      for (const room of ['freestyle', 'launch', 'pilot']) {
+        const t = rr[room];
+        if (!t || t.missing) {
+          failures.push(`room return: ${room} has no door into Quad, so nothing was exercised`);
+          continue;
+        }
+        if (t.at !== 'quad') {
+          failures.push(`room return: the Quad door on ${room} opened "${t.at}"`);
+        }
+        if (t.back !== room) {
+          failures.push(`room return: Back from Quad opened from ${room} landed on "${t.back}"`);
+        }
+      }
+      const d = rr.deep || [];
+      if (d.join(' -> ') !== 'rates -> quad -> freestyle') {
+        failures.push(`room return: freestyle to quad to rates and back twice went "${d.join(' -> ')}"`);
+      }
+      if (rr.paused !== 'paused') {
+        failures.push(`room return: a paused run lost its pause chain, Back landed on "${rr.paused}"`);
       }
     }
 

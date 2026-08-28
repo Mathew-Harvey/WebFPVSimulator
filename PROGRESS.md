@@ -21455,3 +21455,85 @@ PASS, `npm run lint:fc` 30 of 30, `npm run lint:presets` 3 of 3,
 the four deliberate breaks above. `npm run verify` not run: nothing here touches
 physics, the plant, the module ABI or the build, and it was run in full earlier in
 this session.
+
+---
+
+## 2026-08-28, shell: four reported defects, measured before and after
+
+Changed: a door that was one way, a setting that could not be reached, a list
+that ran away from the mouse, and a room that locked up on arrival. All four
+reported from playing the build, all four measured rather than guessed at.
+
+**A door was a one way door.** The Race and Freestyle rooms and the launch card
+all carry a Tune row that is a DOOR into Quad, and `act()` set `returnTo` to
+'title' from anywhere that was not paused. So changing a tune from the Freestyle
+room and pressing Back landed on the title rather than the room you were standing
+in. `roomFrom` is the fix, the same contract `ratesFrom` and `pidsFrom` already
+had, and a paused run still wins because `returnTo` is the pause chain and losing
+it strands a flight. The check walks the trip and reads where it ends up: with the
+fix removed it reports Back landing on "title" from all three rooms and the two
+hop trip going `rates -> quad -> title`.
+
+**The physics model could not be changed where it mattered.** Reported as "physics
+model doesn't do anything", and it took three separate checks to pull apart what
+was true. The plant reads `SIM_ARCADE` in four places, so the model is real.
+`dist/sim.wasm` does export `sim_set_flight_style`, so the call lands. But the
+Freestyle room's row was INFO ONLY and pointed at the launch card, which freestyle
+deliberately never shows, so on the one path a freestyle pilot would take, the
+setting was a read-only line naming a screen they could not reach. It is a real
+control there now, because freestyle is its other home.
+
+`scripts/arcade-check.js` proves the flag is worth writing: a pure hover, no stick
+demand, three seconds. Arcade drifts 0.000e+0 m sideways because it is the ideal
+quad, `PLANT_AXIS_FLAT` and no build tolerance; Expert drifts 2.665e-2 m because a
+real frame cannot hang still. `npm run verify` cannot see this: its determinism
+checks run one style and assert the trace is STABLE, which is exactly what would
+still hold if the flag did nothing.
+
+The first draft of that check commanded a hard roll, on the theory that asymmetry
+needs a sustained demand. It does not, and the roll ruined the measurement: a
+rolled quad flies sideways because that is what rolling does, so both styles
+drifted four metres and the number said nothing about either.
+
+**The list ran away from the mouse.** Reported as "the menu is a bit laggy
+throughout, following the mouse", and it was not slow code: `setCursor` is 0.26 ms
+on Pilot and 0.98 ms on the bench. `setCursor` called `syncCursor` with SCROLLING
+ON, so hovering a row scrolled that row into view. The row is already in view, by
+definition, and near the ends of a scroller a nearest-block scroll still shifts
+the list a few pixels, sliding a different row under a stationary pointer, which
+fires another mousemove and moves the cursor again.
+
+Measured by sweeping the pointer down the rows and summing every `scrollTop`
+change: **646 px of list travelling under the pointer on the Pilot room, and 137
+on the bench. Both are 0 now.** A pointer move also no longer fires the move cue,
+which was a machine gun when a mouse crosses twenty rows in a third of a second.
+
+**The Freestyle room locked up on arrival.** Each world card's preview loads
+`src/share/orbit.html` in a SAME ORIGIN iframe, which builds a whole Three.js
+scene on this thread. Measured on arrival with a cold clip cache: 23 frames in
+10.4 seconds and a single gap of 5155 ms with no paint at all.
+
+The clip is cached per browser, so this is a first visit cost and it is worth
+paying. It is not worth paying while somebody is trying to use the room. So input
+wins twice over: a capture will not START until the room has been quiet for 900 ms,
+and a capture already RUNNING is torn down the moment a key is pressed or the
+cursor moves. Removing the iframe ends its browsing context, so the scene it was
+building stops there, and the room re-arms itself so the clip is still recorded
+the next time the pilot pauses to read.
+
+Driving the room the way a person would, a key press every 400 ms for seven
+seconds: **10 frames and a 4321 ms worst gap before, 331 frames and 909 ms after.**
+
+`scripts/responsive-check.js` measures that, and it deliberately drives ONLY the
+Freestyle room. The Race room keeps the 3D world live behind its cards by design,
+and on this container's software rasteriser a world frame costs about 200 ms, so
+driving it reports 33 frames in seven seconds: identical to a lock-up, and really
+a missing GPU. A check that cannot tell those apart would fail on every machine
+without a graphics card and teach whoever runs it to ignore the result.
+
+Checks run this turn: `npm run lint:arcade` PASS, `npm run lint:responsive` PASS,
+`npm run lint:shell` PASS, `npm run lint:nouns` PASS, `npm run lint:devices` PASS,
+`npm run lint:fc` 30 of 30, and each of the four new assertions exercised by
+reverting the fix it covers. `npm run verify` not run: nothing here touches
+physics, the plant, the module ABI or the build. `arcade-check.js` reads
+`dist/sim.wasm` but does not change it.

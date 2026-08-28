@@ -3212,6 +3212,20 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.show('padpick');
   }
 
+  /*
+   * A ghost armed from the in-game standings screen.
+   *
+   * It parks the time id exactly where a ?ghost= chase link parks it, so
+   * one code path arms both: the lap is downloaded when the seated track's
+   * times are read, which the seat change is about to trigger anyway.
+   */
+  ui.onStandingsGhost = (track, time) => {
+    if (!time || !time.id) {
+      return;
+    }
+    ghostQueryId = time.id;
+  };
+
   ui.onAction = (action, s) => {
     if (s) {
       applySettings(s);

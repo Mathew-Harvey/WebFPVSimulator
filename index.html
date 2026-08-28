@@ -1043,6 +1043,49 @@
         color: var(--cream); border-left-color: var(--sakura);
         background: linear-gradient(90deg, rgba(232, 168, 184, 0.12), rgba(232, 168, 184, 0) 48%);
       }
+      /*
+       * THE STANDINGS TABLE. Drawn above the actions, not as menu rows: a
+       * leaderboard is read, and forty times as forty rows would make the
+       * cursor walk all of them to reach Back. Three columns, because rank,
+       * pilot and lap is what a standings table is.
+       */
+      .standings-table {
+        grid-column: 1 / -1; justify-self: center;
+        width: min(100%, 560px); margin: 0 0 14px;
+        max-height: min(38vh, 20em); overflow-y: auto;
+        pointer-events: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
+      }
+      .standings-row {
+        display: grid; grid-template-columns: 2.4em 1fr auto;
+        align-items: baseline; gap: 12px;
+        padding: 6px 14px;
+        font-size: 15px; color: rgba(238, 232, 216, 0.82);
+      }
+      .standings-head {
+        font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--slate); padding-bottom: 2px;
+      }
+      .standings-rank { color: var(--slate); font-variant-numeric: tabular-nums; }
+      .standings-pilot { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .standings-lap { font-variant-numeric: tabular-nums; color: var(--cream); font-weight: 600; }
+      /* Mint is what this product paints a record in, on the board and here. */
+      .standings-row.is-record .standings-lap { color: var(--mint); }
+      /* The one row a person looks for in a leaderboard is their own. */
+      .standings-row.is-me {
+        background: linear-gradient(90deg, rgba(232, 168, 184, 0.14), rgba(232, 168, 184, 0) 70%);
+        box-shadow: inset 3px 0 0 var(--sakura);
+      }
+      .standings-row.is-me .standings-pilot { color: var(--cream); }
+      .standings-ghost {
+        margin-left: 8px; padding: 1px 6px; border-radius: 2px;
+        font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+        background: rgba(157, 179, 200, 0.18); color: var(--slate);
+      }
+      .standings-note {
+        padding: 10px 14px; color: var(--slate); font-size: 14px;
+      }
       .row-info { cursor: default; }
       /*
        * The browser's focus ring is redundant with the cursor bar and lands

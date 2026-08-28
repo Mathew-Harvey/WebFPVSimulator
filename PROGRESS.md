@@ -21537,3 +21537,88 @@ Checks run this turn: `npm run lint:arcade` PASS, `npm run lint:responsive` PASS
 reverting the fix it covers. `npm run verify` not run: nothing here touches
 physics, the plant, the module ABI or the build. `arcade-check.js` reads
 `dist/sim.wasm` but does not change it.
+
+---
+
+## 2026-08-28, shell: every track, and the board as a screen rather than a destination
+
+Changed: the Race room lists every published track instead of five, and the
+leaderboard is a screen in the game.
+
+**Two complaints, one cause.** "The tracks page should scroll through all tracks,
+not just the top 6", and "the leaderboard should be completely integrated into the
+game from the pov of the user, currently hitting the open the board (what does
+this mean to a new user) opens a new screen that has back to simulator that
+reloads the sim back at the start page, its a bit jarring".
+
+They are the same defect twice: a room called Race that declined to list the
+races, and then sent the player somewhere else to see them, and that somewhere
+else could only send them back by reloading the simulator at the title and
+throwing away whatever was seated.
+
+**Every track.** `pickFeaturedTracks(rest, 5)` became `pickFeaturedTracks(rest,
+rest.length)`. The ordering is kept, most flown first, so the tracks somebody has
+actually raced are at the top and the long tail is underneath rather than shuffled
+through it. The screen already scrolled and the cards are cheap: a plan drawing on
+a 2D canvas, no WebGL. The note telling the pilot to leave for the rest is gone.
+
+**The audit's opening example outlived its own fix by one element.** The Race room
+still appended a card strip labelled WORLDS. The worlds moved to the Freestyle
+room in an earlier turn and the strip stayed, empty, with its label still drawn:
+a screen headed Tracks saying WORLDS above its tracks, over nothing at all. It is
+gone, and the remaining strip says what it now holds, "Every track, most flown
+first". `mapCardHost` is still built, because the Freestyle room draws into it
+through the same `renderMapCards`; it is simply not appended here.
+
+**Standings, in the game.** A `standings` screen: the track's name, gates and
+author, then every posted time, fastest first, with the record in mint and the
+pilot's own row marked, because the one row a person looks for in a leaderboard is
+their own. A time carrying a ghost is tagged as carrying one, and offers "Race the
+record", which arms it through exactly the path a `?ghost=` chase link uses so
+there is one code path for both.
+
+The rows are the ACTIONS and the table is drawn above them. Forty times as forty
+menu rows would make the cursor walk all of them to reach Back, and a leaderboard
+is a thing you read.
+
+Nothing new is fetched: `fetchTrackTimes` is the endpoint the ghost picker has
+always called. The web page survives as one honest row, "Open on the web", for
+sending somebody a link, rather than as the only way to see a time.
+
+**What went wrong.** `showStandings` first navigated through `act('standings')`,
+and `standings` is also the name of the ROW that opens the screen for the seated
+track. So act() matched the row's handler, which calls back into
+`showStandings`: one name doing two jobs and the second of them a loop. It
+navigates directly now, recording `roomFrom` the same way act() does so Back is
+the track list rather than the title.
+
+**The check brings its own board.** `scripts/board-check.js`, `npm run
+lint:board`. None of this can be checked without one: `shell-check.js` runs with
+no board on purpose and reports the refused fetches as a note. So this one spawns
+the real server from the sibling repository against a scratch file, publishes
+eight tracks, times and a ghosted lap into it, points the simulator at it through
+the same `webfpv.board.origin` key a player would, and drives the whole journey.
+If the sibling repository is not checked out it says so and skips, because a
+missing sibling is not a defect in this one.
+
+Both failure modes were exercised: capping the list back at five reports "the Race
+room lists 6 of 8 published tracks", and putting the old jargon row back reports
+"the Race room still offers Open the board, which means nothing to a new player".
+
+**One thing the noun lint caught in itself.** It flagged `board-check.js`, which
+drives the shell by its internal screen ids and carries that code inside template
+literals handed to `page.evaluate`, where it is indistinguishable from prose to
+anything reading strings. Screen ids are deliberately not policed by that lint, so
+the `-check.js` harnesses that quote them are now skipped alongside the selftests.
+Anything under `scripts/` that generates player-visible output, `icons.js` and
+`og.js` among them, is still scanned.
+
+Checks run this turn: `npm run lint:board` PASS, `npm run lint:shell` PASS,
+`npm run lint:nouns` PASS, `npm run lint:devices` PASS, `npm run lint:arcade`
+PASS, `npm run lint:responsive` PASS, `npm run lint:fc` 30 of 30,
+`npm run lint:presets` 3 of 3, `npm run link:selftest` all passed,
+`node src/trackbuilder/selftest.js` 473 passed, plus the two deliberate breaks
+above. Also driven and looked at against a live board at 1280x720: the Race room
+with twelve tracks in a scrolling grid, and the standings table with its record,
+its ghost tag and the pilot's own row. `npm run verify` not run: nothing here
+touches physics, the plant, the module ABI or the build.

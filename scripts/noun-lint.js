@@ -169,8 +169,20 @@ async function main() {
     if (rel === 'scripts/noun-lint.js') {
       continue;
     }
-    /* A selftest's own check names describe code, not a player. */
-    if (/selftest\.js$/.test(rel)) {
+    /*
+     * A selftest's own check names describe code, not a player. So do the
+     * check harnesses under scripts/: they drive the shell by its INTERNAL
+     * screen ids, `ui.show('courses')`, and they carry that code inside
+     * template literals handed to page.evaluate, where it is indistinguishable
+     * from prose to anything reading strings. Those ids are deliberately
+     * not policed by this lint, so the harnesses that quote them are not
+     * either.
+     *
+     * Anything under scripts/ that GENERATES player-visible output, icons.js
+     * and og.js among them, is still scanned: only the -check.js harnesses
+     * are skipped, and only because their whole job is to name internals.
+     */
+    if (/selftest\.js$/.test(rel) || /^scripts\/[a-z-]+-check\.js$/.test(rel)) {
       continue;
     }
     const raw = await readFile(file, 'utf8');

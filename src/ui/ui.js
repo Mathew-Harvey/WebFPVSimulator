@@ -94,7 +94,9 @@ import {
   setPidSlider,
   setPidsExpert,
 } from '../../configs/pids.js';
-import { boardPageUrl, fetchTrackList, pickFeaturedTracks, wikiPageUrl } from '../share/board.js';
+import {
+  boardPageUrl, fetchTrackList, fetchTrackTimes, pickFeaturedTracks, wikiPageUrl,
+} from '../share/board.js';
 import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
@@ -157,7 +159,7 @@ import { FC_DUMP_KEY } from '../fc/dump.js';
  */
 const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
 const SCREEN_ACTIONS = new Set([
-  'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'rates', 'pids', 'fc',
+  'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'standings', 'rates', 'pids', 'fc',
   'howto', 'credits', 'trackbuilder', 'remix', 'editown', 'choosepad',
   'calibrate',
 ]);
@@ -187,6 +189,7 @@ const SCREEN_TITLES = {
   pilot: 'Pilot',
   quad: 'Quad',
   launch: 'Before you fly',
+  standings: 'Standings',
   rates: 'Rates',
   pids: 'PIDs',
   fc: 'Firmware bench',
@@ -201,6 +204,7 @@ const CRUMBS = {
   pilot: ['Pilot'],
   quad: ['Quad'],
   launch: ['Before you fly'],
+  standings: ['Race', 'Standings'],
   rates: ['Pilot', 'Rates'],
   pids: ['Quad', 'PIDs'],
   fc: ['Quad', 'Firmware bench'],
@@ -1212,9 +1216,14 @@ function courseCardRows(subject) {
   ];
   if (board) {
     rows.push({
-      label: 'Open on the board',
+      label: 'Standings',
+      action: 'card-standings',
+      note: `Every time posted on ${name}, fastest first, and who flew them. Opens here, not on another site.`,
+    });
+    rows.push({
+      label: 'Open on the web',
       action: 'card-board',
-      note: `The public page for ${name}, with its standings. Opens in a new tab.`,
+      note: `The public page for ${name}. A link to send somebody. Opens in a new tab.`,
     });
   }
   rows.push({ label: 'Back to the list', action: 'card-back' });
@@ -1384,6 +1393,12 @@ export class Ui {
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
+    /* The standings screen's subject and its times. null means "not asked
+     * yet", which paintStandings draws as Reading the board; an empty array
+     * means the board answered and there are none. */
+    this.standingsFor = null;
+    this.standingsTimes = null;
+    this.standingsError = '';
     /* The Ghost row's contents, pushed by the shell through setGhostRow,
      * because the shell is the side that knows what can be chased. Null
      * hides the row, which is every freestyle map. */
@@ -1762,12 +1777,25 @@ export class Ui {
      */
     const courses = el('div', 'screen screen-page screen-maps screen-courses');
     courses.append(el('h2', null, 'Tracks'));
-    this.worldStrip = el('div', 'card-strip');
-    this.worldStrip.append(el('div', 'strip-label', 'Worlds'));
+    /*
+     * NO WORLD STRIP HERE, and the label is the reason.
+     *
+     * The audit's opening example was this screen: titled Tracks, opening
+     * with a heading that said WORLDS, over four things that were not
+     * tracks. The worlds moved to the Freestyle room and the strip stayed,
+     * empty, with its label still drawn. So the complaint outlived the fix
+     * by one element: a screen headed Tracks still said WORLDS above its
+     * tracks, over nothing at all.
+     *
+     * mapCardHost is still built because the Freestyle room draws its cards
+     * into it through the same renderMapCards; it just is not appended to
+     * this screen.
+     */
     this.mapCardHost = el('div', 'map-cards');
-    this.worldStrip.append(this.mapCardHost);
     this.courseStrip = el('div', 'card-strip');
-    this.courseStrip.append(el('div', 'strip-label', 'Most flown'));
+    /* Most flown first, and all of them, which is what the strip holds now
+     * that it is not capped at five. */
+    this.courseStrip.append(el('div', 'strip-label', 'Every track, most flown first'));
     this.courseCardHost = el('div', 'map-cards course-cards');
     this.boardNote = el('div', 'board-note', '');
     this.courseStrip.append(this.courseCardHost, this.boardNote);
@@ -1776,7 +1804,6 @@ export class Ui {
     this.coursesMenu.classList.add('menu-scroll');
     this.coursesHelp = coursesBlock.help;
     courses.append(
-      this.worldStrip,
       this.courseStrip,
       coursesBlock.stage,
       hintWithKeys(['↑↓', 'Enter', 'Esc'], 'Arrow keys move, Enter chooses. Escape goes back. On a radio: pitch to move, roll right to choose.'),
@@ -1842,6 +1869,33 @@ export class Ui {
     this.pilotHelp = pilotBlock.help;
     pilot.append(pilotBlock.stage, hintWithKeys(['Esc'], 'Goes back. Changes are already stored. Arrow keys still move the menu.'));
     this.screens.pilot = pilot;
+
+    /*
+     * STANDINGS: the board, in the game.
+     *
+     * "Open the board" was two problems in one row. It is jargon, so it
+     * meant nothing to somebody who had never seen the board; and it LEFT,
+     * to a page whose own way back reloads the simulator at the title and
+     * throws away whatever was seated. A player who wanted to know what the
+     * record was had to quit the game to find out.
+     *
+     * Everything that page shows about a track, the times and who flew
+     * them, comes from an endpoint this shell already calls for the ghost
+     * picker. So it is a screen here, and the web page stays as one honest
+     * link for sending somebody rather than as the only way to see a time.
+     */
+    const standings = el('div', 'screen screen-page screen-standings');
+    standings.append(el('h2', null, 'Standings'));
+    this.standingsLede = el('p', 'rates-lede', '');
+    standings.append(this.standingsLede);
+    this.standingsTable = el('div', 'standings-table');
+    const standingsBlock = wrapMenu();
+    this.standingsMenu = standingsBlock.menu;
+    this.standingsMenu.classList.add('menu-scroll');
+    this.standingsHelp = standingsBlock.help;
+    standingsBlock.stage.prepend(this.standingsTable);
+    standings.append(standingsBlock.stage, hintWithKeys(['Esc'], 'Goes back to the track list.'));
+    this.screens.standings = standings;
 
     /*
      * THE LAUNCH CARD: the room the first design of this was missing.
@@ -3373,10 +3427,25 @@ export class Ui {
         uploadAction(listing, { timePosted: this.timePosted }),
         remixAction(listing),
         editOwnAction(listing),
+        /*
+         * "Open the board" meant nothing to somebody who had never seen the
+         * board, and it left the game: the page it opened has its own
+         * link back, which reloads the simulator at the title and throws
+         * away whatever was seated. Standings is what a player wanted from
+         * it, and it is a screen in here now.
+         */
         {
-          label: 'Open the board',
+          label: 'Standings',
+          action: 'standings',
+          note: seat
+            ? `Every time posted on ${seat.name}, fastest first. Opens here.`
+            : 'Every time posted on the track you are flying. Load one first.',
+          disabled: !listing || !listing.shareId,
+        },
+        {
+          label: 'The board on the web',
           action: 'leaderboard',
-          note: 'The public page, with standings and every posted time. Opens in a new tab.',
+          note: 'The public page, for sending somebody a link. Everything on it is in here too. Opens in a new tab.',
         },
         { label: 'Back', action: 'back' },
       ];
@@ -3654,6 +3723,61 @@ export class Ui {
         },
         { label: 'Back', action: 'back' },
       ];
+    }
+
+    /*
+     * STANDINGS. What the board knows about one track.
+     *
+     * The rows are the ACTIONS. The table itself is drawn above them by
+     * paintStandings, because a leaderboard is a table and pretending forty
+     * times are forty menu rows would make the cursor walk them one press at
+     * a time to reach Back.
+     */
+    if (this.screen === 'standings') {
+      const t = this.standingsFor;
+      if (!t) {
+        return [
+          {
+            label: 'No track chosen',
+            info: true,
+            disabled: true,
+            note: 'Pick a track in the Race room and open its standings from there.',
+          },
+          { label: 'Back', action: 'back' },
+        ];
+      }
+      const rows = [];
+      const times = this.standingsTimes || [];
+      const best = times.length ? times[0] : null;
+      rows.push({
+        label: 'Fly this track',
+        action: 'standings-fly',
+        primary: true,
+        note: best
+          ? `Loads ${t.name} and takes you to the launch card. The time to beat is ${formatTime(best.lapMs)} by ${best.name || 'an unnamed pilot'}.`
+          : `Loads ${t.name} and takes you to the launch card. Nobody has posted a time yet, so the first one is yours.`,
+      });
+      /*
+       * Racing a recorded lap is the one thing a standings table is FOR
+       * that reading it cannot give you. Only offered on a time that
+       * actually carries a ghost: the board stores them per lap and older
+       * ones predate the feature.
+       */
+      const ghosts = times.filter((x) => x.hasGhost && x.id);
+      if (ghosts.length) {
+        rows.push({
+          label: 'Race the record',
+          action: 'standings-ghost',
+          note: `${ghosts[0].name || 'An unnamed pilot'}'s ${formatTime(ghosts[0].lapMs)} flown as a ghost beside you. Arms it for the next run on this track.`,
+        });
+      }
+      rows.push({
+        label: 'Open on the web',
+        action: 'card-board',
+        note: `The public page for ${t.name}. A link to send somebody. Opens in a new tab.`,
+      });
+      rows.push({ label: 'Back', action: 'back' });
+      return rows;
     }
 
     /*
@@ -4097,6 +4221,9 @@ export class Ui {
 
   renderMenu() {
     this.syncMusicDock();
+    if (this.screen === 'standings') {
+      this.paintStandings();
+    }
     if (this.screen === 'launch' && this.launchLede) {
       const seat = activeCourseSummary();
       const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
@@ -4125,6 +4252,7 @@ export class Ui {
       pilot: this.pilotMenu,
       quad: this.quadMenu,
       launch: this.launchMenu,
+      standings: this.standingsMenu,
       rates: this.ratesMenu,
       pids: this.pidsMenu,
       fc: this.fcMenu,
@@ -4476,6 +4604,7 @@ export class Ui {
       pilot: this.pilotHelp,
       quad: this.quadHelp,
       launch: this.launchHelp,
+      standings: this.standingsHelp,
       rates: this.ratesHelp,
       pids: this.pidsHelp,
       fc: this.fcHelp,
@@ -5477,11 +5606,23 @@ export class Ui {
           }
         })();
         const rest = list.filter((t) => t.id !== seatId);
-        this.boardCourses = pickFeaturedTracks(rest, 5);
+        /*
+         * EVERY TRACK, not five.
+         *
+         * It used to take the five most flown and tell the pilot to leave
+         * for the board if they wanted the rest, which is the whole
+         * complaint: the room says Race and then declines to list the
+         * races. The screen scrolls, the cards are cheap (a plan drawing
+         * on a canvas, no WebGL), and a board with more tracks than fit is
+         * a board doing well.
+         *
+         * Ordered the way pickFeaturedTracks ordered its five, most flown
+         * first, so the tracks somebody has actually raced are at the top
+         * and the long tail is underneath rather than shuffled through it.
+         */
+        this.boardCourses = pickFeaturedTracks(rest, rest.length);
         if (this.boardCourses.length) {
-          this.boardNote.textContent = rest.length > this.boardCourses.length
-            ? 'Five from the board. Open the board for every track.'
-            : '';
+          this.boardNote.textContent = '';
         } else if (list.length) {
           /* The only listing is the track already on a card above. */
           this.boardNote.textContent = '';
@@ -5500,6 +5641,126 @@ export class Ui {
           this.renderMenu();
         }
       });
+  }
+
+  /*
+   * Open the standings for one track, and go and get them.
+   *
+   * `track` is a board listing, the same shape loadBoardCourses holds: it
+   * already carries the name, the author and the gate count, so the screen
+   * has something to draw before the network answers. Only the times need
+   * fetching, from the endpoint the ghost picker already calls.
+   */
+  showStandings(track) {
+    if (!track || !track.id) {
+      return;
+    }
+    this.standingsFor = track;
+    this.standingsTimes = null;
+    this.standingsError = '';
+    /*
+     * The navigation is done HERE rather than through act('standings').
+     *
+     * `standings` is also the name of the row that opens this screen for the
+     * seated track, and act() would have matched that row's handler, which
+     * calls back into here: one name doing two jobs, and the second of them
+     * a loop. The screen still records where it was opened from, the same
+     * way act() does for a room, so Back is the track list rather than the
+     * title.
+     */
+    this.roomFrom = ROOM_PARENTS.has(this.screen) ? this.screen : null;
+    this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
+    this.show('standings');
+    const key = track.id;
+    this.standingsLoading = key;
+    fetchTrackTimes(track.id, track.board)
+      .then((times) => {
+        if (this.standingsLoading !== key) {
+          return;
+        }
+        this.standingsLoading = null;
+        /* Fastest first. The board returns them in posting order. */
+        this.standingsTimes = times.slice().sort((a, b) => a.lapMs - b.lapMs);
+        if (this.screen === 'standings') {
+          this.paintStandings();
+          this.renderMenu();
+        }
+      })
+      .catch(() => {
+        if (this.standingsLoading !== key) {
+          return;
+        }
+        this.standingsLoading = null;
+        this.standingsTimes = [];
+        this.standingsError = 'The board is not answering, so its times cannot be shown.';
+        if (this.screen === 'standings') {
+          this.paintStandings();
+          this.renderMenu();
+        }
+      });
+  }
+
+  /*
+   * The table. Drawn rather than listed, for the reason in items(): forty
+   * times as forty menu rows would make the cursor walk them all to reach
+   * Back, and a leaderboard is a thing you read, not a thing you traverse.
+   *
+   * The pilot's own name is marked, because the one row a person looks for
+   * in a leaderboard is their own.
+   */
+  paintStandings() {
+    if (!this.standingsTable) {
+      return;
+    }
+    const t = this.standingsFor;
+    const table = this.standingsTable;
+    table.textContent = '';
+    if (this.standingsLede) {
+      this.standingsLede.textContent = t
+        ? [t.name, t.gates ? `${t.gates} gates` : '', t.author ? `by ${t.author}` : '']
+          .filter(Boolean).join(' \u00b7 ')
+        : '';
+    }
+    if (!t) {
+      return;
+    }
+    if (this.standingsTimes == null) {
+      table.append(el('div', 'standings-note', 'Reading the board'));
+      return;
+    }
+    if (this.standingsError) {
+      table.append(el('div', 'standings-note', this.standingsError));
+      return;
+    }
+    if (!this.standingsTimes.length) {
+      table.append(el('div', 'standings-note', 'No times posted on this track yet. The first one is yours.'));
+      return;
+    }
+    const me = (readPilotName() || '').trim().toLowerCase();
+    const head = el('div', 'standings-row standings-head');
+    head.append(el('span', 'standings-rank', ''));
+    head.append(el('span', 'standings-pilot', 'Pilot'));
+    head.append(el('span', 'standings-lap', 'Lap'));
+    table.append(head);
+    this.standingsTimes.forEach((row, i) => {
+      const line = el('div', 'standings-row');
+      if (me && String(row.name || '').trim().toLowerCase() === me) {
+        line.classList.add('is-me');
+      }
+      if (i === 0) {
+        line.classList.add('is-record');
+      }
+      line.append(el('span', 'standings-rank', String(i + 1)));
+      const who = el('span', 'standings-pilot', row.name || 'Unnamed pilot');
+      if (row.hasGhost) {
+        /* A ghost is the difference between reading a time and racing it,
+         * so the rows that carry one say so. */
+        who.append(el('span', 'standings-ghost', 'ghost'));
+      }
+      line.append(who);
+      line.append(el('span', 'standings-lap', formatTime(row.lapMs)));
+      table.append(line);
+    });
   }
 
   /*
@@ -6156,8 +6417,9 @@ export class Ui {
     });
   }
 
-  openBoardCourse(id) {
-    const track = (this.boardCourses || []).find((t) => t.id === id);
+  openBoardCourse(id, then = null) {
+    const track = (this.boardCourses || []).find((t) => t.id === id)
+      || (this.standingsFor && this.standingsFor.id === id ? this.standingsFor : null);
     if (!track || this.openingBoardCourse) {
       return;
     }
@@ -6176,6 +6438,9 @@ export class Ui {
       }
       this.boardNote.textContent = '';
       this.act('map:custom');
+      if (then) {
+        then();
+      }
     }).catch((err) => {
       this.openingBoardCourse = false;
       this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
@@ -7438,6 +7703,86 @@ export class Ui {
       this.renderMenu();
       this.renderCourseCards();
       this.setCursor(this.cardCursor());
+      return;
+    }
+    /*
+     * Standings, from the chosen card. Reads the board listing off the card
+     * rather than the seat, because the point is to look at a track WITHOUT
+     * loading it: the seat is whatever you are flying.
+     */
+    if (action === 'card-standings') {
+      const card = this.subjectCard();
+      if (card && card.course && card.course.kind === 'board') {
+        this.showStandings(card.course.track);
+      }
+      return;
+    }
+    /*
+     * Standings for the seated track. Its listing carries the share id and
+     * the board it came from, which is all fetchTrackTimes needs; the name
+     * and gates come off the seat so the screen has something to draw
+     * before the network answers.
+     */
+    if (action === 'standings') {
+      const listing = liveListing('custom');
+      const seat = activeCourseSummary();
+      if (!listing || !listing.shareId) {
+        return;
+      }
+      this.showStandings({
+        id: listing.shareId,
+        name: (seat && seat.name) || listing.name || 'This track',
+        author: listing.author || '',
+        gates: (seat && seat.gates) || 0,
+        board: listing.board || '',
+      });
+      return;
+    }
+    if (action === 'standings-fly') {
+      /* Seat it, then go on to the launch card, which is what the row
+       * promises. openBoardCourse on its own lands on the title, which is
+       * right when the track was picked from the list and wrong here. */
+      const t = this.standingsFor;
+      if (t && t.id) {
+        this.openBoardCourse(t.id, () => {
+          if (seatIsRace(this.settings)) {
+            this.act('fly');
+          }
+        });
+      }
+      return;
+    }
+    /*
+     * Race the record: arm the ghost, seat the track, go to the launch card.
+     *
+     * Arming happens FIRST and through main.js, which parks the id the same
+     * way a ?ghost= chase link does. The lap itself is fetched when the
+     * track's times are read at seat time, so there is one code path for a
+     * ghost picked here and a ghost picked from a shared link.
+     */
+    if (action === 'standings-ghost') {
+      const times = this.standingsTimes || [];
+      const top = times.find((x) => x.hasGhost && x.id);
+      const t = this.standingsFor;
+      if (!top || !t || !t.id) {
+        return;
+      }
+      if (this.onStandingsGhost) {
+        this.onStandingsGhost(t, top);
+      }
+      this.openBoardCourse(t.id, () => {
+        if (seatIsRace(this.settings)) {
+          this.act('fly');
+        }
+      });
+      return;
+    }
+    /* The standings screen offers the same row and has no card behind it:
+     * the track it is showing is the subject. */
+    if (action === 'card-board' && this.screen === 'standings') {
+      if (this.standingsFor) {
+        openNamedWindow(boardPageUrl(this.standingsFor.board), BOARD_WINDOW);
+      }
       return;
     }
     if (action === 'card-fly' || action === 'card-builder' || action === 'card-board') {

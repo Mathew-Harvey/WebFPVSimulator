@@ -21358,3 +21358,100 @@ Checks run this turn: `npm run lint:nouns` PASS in all three repositories,
 the front door's `npm run lint:wiki` ok, and the five deliberate breaks above.
 `npm run verify` not run: nothing here touches physics, the plant, the module ABI
 or the build.
+
+---
+
+## 2026-08-28, shell: the menus work on a phone and a tablet
+
+Changed: five layout defects that were all invisible at 1600 by 900, and a check
+that measures five real devices in both orientations so they stay fixed.
+
+**Why nothing had caught them.** `shell-check.js` measures ONE window, records a
+per screen overflow budget and fails when a budget grows. That is the right shape
+for "did this change cost list" and it is blind to this entire class, because
+every one of these defects only exists at a size it never looks at.
+
+**What was actually wrong, all of it measured rather than guessed.**
+
+- **The Race room's rows sat 8 px off the right of every phone and tablet.** A
+  stage sized in `vw` is wider than the padded box holding it: `.screen` already
+  spends 6vw a side, so `min(1200px, 96vw)` at 390 px is 8 px too wide, and there
+  is no horizontal scrollbar on a phone to find the missing edge with. The Rates
+  screen had been pinned to `100%` for exactly this reason and its comment says
+  so; the shared rule and the two room rules had not. Worse, the room rule sat
+  LATER in the sheet than the narrow window override, so its `vw` width won that
+  fight.
+- **The help column was entirely below the fold on a phone.** Measured at 390 by
+  844: the airframe took 372 px, the list 434, and the help ran 853 to 926 in a
+  window 844 tall. The one column everybody praises about this product was not on
+  screen at all, on Quad, on Pilot and on Paused.
+- **The title's row list had no height cap on a narrow window, ever.**
+  `index.html` carries two `.screen-title .menu-scroll` rules, one for a narrow
+  window and one for a short one, and neither had applied to anything: the title's
+  menu never carried that class. Every other menu in the shell adds it on the line
+  after it is built. So at 844 by 390 the list grew to 614 px inside a 318 px box
+  and Report bug could not be reached by any amount of scrolling.
+- **The pause menu could not be quit from.** `.screen-modal` had no scroller above
+  540 px of height and no cap, so at 1280 by 720, an ordinary laptop, Quit to
+  title sat 242 px below the window with no way to reach it.
+- **The bug chip and the status bar shared a corner.** At 390 px the chip spanned
+  x 151 to 374 and the bar's context chips 275 to 376.
+
+**And one I made.** Renaming `.screen-settings` to `.screen-pilot` moved the
+three-column stage rules and their showcase sizing onto Pilot while the showcase
+itself moved to Quad. Pilot got a 360 px first column with nothing in it, which is
+why its menu sat right of centre, and Quad got no column for the quad.
+
+**The shape of the fix.** Three ideas, applied consistently.
+
+`width: 100%` and a `max-width`, never a `vw`, for anything inside `.screen`.
+
+A stacked stage FITS ITS BOX: flex column, capped at the box, with the LIST as the
+part that shrinks and scrolls and the help keeping its natural height up to a
+third. `min-height: 0` is the property that makes a flex child shrink instead of
+overflow, and it is the whole defect in one line. Two floors were needed and both
+were found by the check rather than by thinking: the list needs a minimum or it
+collapses to 22 px behind a curve or a body, and the stage must not be shrunk by a
+SIBLING or How to fly's body squeezed it to zero and took the only row with it.
+
+And a page or a modal SCROLLS rather than losing what it cannot fit, with
+`justify-content: safe center` so the overflow does not go off the top where it
+cannot be scrolled back to. A 844 by 390 phone in landscape has 294 px of usable
+height and the Rates screen is a curve, thirteen rows and a note: it cannot fit,
+and the honest answer is to let it scroll, which is what the Race and Freestyle
+rooms already did.
+
+**The check, and what it asserts.** `scripts/device-check.js`, `npm run
+lint:devices`. Five devices in both orientations, touch emulation on so `pointer:
+coarse` actually matches and the 44 px rule is exercised rather than assumed. It
+asserts REACHABILITY, not position: every assertion scrolls the thing into view
+the way a person would and then asks whether it is visible, because a screen is
+allowed to put content below the fold as long as it can be scrolled to. The
+Freestyle room's four world cards do exactly that and are correct.
+
+Four deliberate breaks, all read back: restoring the `vw` stage reports rows off
+the side on two devices; making screens stop scrolling reports 27 problems;
+forcing dense rows reports 48 tap targets at 39 px. A fifth attempt, lowering the
+`pointer: coarse` `min-height` from 44 to 30, changed nothing and is recorded
+here as a non-result: those rows are already taller than 44 px from their own
+padding, so that rule is a floor nothing currently stands on.
+
+**What went wrong.** Twice, the same way: a CSS override placed EARLIER in the
+sheet than the rule it overrides, with equal specificity, so source order silently
+discarded it. The bench's search field came out five characters wide for this
+reason last turn, and this turn the floating chip rule did nothing at all until it
+was moved below the two rules it overrides. Both now carry a comment saying they
+have to stay where they are.
+
+Also: two probe results that looked like defects and were not. Freestyle's help
+"below the fold" is a screen that scrolls, and Quad's getting worse after a fix
+was the same thing. The criterion was wrong, not the layout, and it was the
+criterion that got fixed.
+
+Checks run this turn: `npm run lint:devices` PASS on all five devices,
+`npm run lint:shell` PASS with the desktop baseline unmoved, `npm run lint:nouns`
+PASS, `npm run lint:fc` 30 of 30, `npm run lint:presets` 3 of 3,
+`npm run lint:memory` PASS, `node src/trackbuilder/selftest.js` 473 passed, and
+the four deliberate breaks above. `npm run verify` not run: nothing here touches
+physics, the plant, the module ABI or the build, and it was run in full earlier in
+this session.

@@ -324,10 +324,28 @@
         .screen-modal .menu { max-height: calc(66vh - var(--bars)); overflow-y: auto; }
       }
 
+      /*
+       * THE BANNER SCALES WITH THE WINDOW.
+       *
+       * It was a flat 30 px with a 92vw cap, which is right on a laptop and
+       * absurd on a phone: at 390 px "Nothing has been built yet. Open the
+       * track builder from the title screen, place some gates, then come
+       * back." wrapped to TEN lines of 30 px type, centred, covering the
+       * status bar, the airframe and half the list underneath it. The
+       * launch card was unreadable behind it.
+       *
+       * One token, used by both the plain banner and the panelled one, so
+       * the flight-time uses (the launch prompt, lap splits, a crash
+       * notice) shrink on a phone by the same rule rather than needing
+       * their own. 22 characters of 22em is still the line length cap; this
+       * only decides how big those characters are.
+       */
+      :root { --banner-size: clamp(17px, 4.4vw, 30px); }
+
       .banner.panel {
         background: rgba(16, 22, 17, 0.92); border-radius: 4px;
         padding: 18px 24px; box-shadow: inset 0 0 0 1px rgba(255, 212, 92, 0.45);
-        font-size: 30px; color: var(--cream); line-height: 1.35;
+        font-size: var(--banner-size); color: var(--cream); line-height: 1.35;
         max-width: min(92vw, 22em); white-space: pre-wrap; transition: none;
       }
       .banner {
@@ -336,7 +354,7 @@
            the frame, and a pilot found the launch banner drawn directly over
            the one thing they need to find. */
         position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%);
-        text-align: center; white-space: pre-wrap; font-size: 30px; font-weight: 600;
+        text-align: center; white-space: pre-wrap; font-size: var(--banner-size); font-weight: 600;
         letter-spacing: 0.04em; color: var(--amber); opacity: 0;
         transition: opacity 0.18s ease; text-shadow: 0 3px 10px rgba(0,0,0,0.9);
         max-width: min(92vw, 22em);
@@ -352,7 +370,18 @@
       /* Screens. */
       .screen {
         position: absolute; inset: 0; pointer-events: none;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        display: flex; flex-direction: column; align-items: center;
+        /*
+         * SAFE CENTRE, not centre.
+         *
+         * A centred flex column whose content is taller than the box
+         * overflows in BOTH directions, and the half that goes off the top
+         * cannot be scrolled back to: that is the classic centring bug, and
+         * on a 390 px phone it is most of a screen. `safe` falls back to
+         * flex-start the moment the content stops fitting, which is the
+         * only time the difference is visible.
+         */
+        justify-content: safe center;
         padding: calc(2vh + var(--bar-top)) 6vw calc(2vh + var(--bar-bot));
         box-sizing: border-box;
         /* Enough scrim to read type over a bright valley, not enough to
@@ -385,7 +414,36 @@
         min-height: 0;
         z-index: 1;
       }
-      .screen-page { justify-content: center; }
+      /*
+       * A PAGE SCREEN SCROLLS RATHER THAN LOSING WHAT IT CANNOT FIT.
+       *
+       * The flex fitting above and in the breakpoints keeps almost every
+       * window from needing this. `Almost` is the problem: a 844 by 390
+       * phone in landscape has 294 px of usable height, and the Rates
+       * screen is a live curve, thirteen rows and a note. It cannot fit,
+       * and before this the part that did not fit was simply gone, with no
+       * scrollbar and no way to reach it.
+       *
+       * The Race and Freestyle rooms already scrolled, which is why their
+       * card grids are usable on a phone. This is that, for every page.
+       * `safe center` on .screen is the other half: without it the overflow
+       * goes off the top as well and cannot be scrolled back to.
+       *
+       * overscroll-behavior stops a flick at the end of the list turning
+       * into a pull-to-refresh on the page behind it.
+       */
+      .screen-page,
+      .screen-modal {
+        justify-content: safe center;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      /*
+       * The pause menu is a modal, not a page, and it had neither a
+       * scroller of its own above 540 px of height nor a height cap. At
+       * 1280 by 720 that put Quit to title 242 px below the window with no
+       * way to reach it: a pilot who paused a run could not quit it.
+       */
 
       /*
        * The flight-controller screen, restored. Configurator 10.10
@@ -688,32 +746,73 @@
       .menu-stage {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-        width: min(1600px, 98vw);
+        /*
+         * 100% of the PADDED BOX, not a slice of the viewport.
+         *
+         * .screen already spends 6vw a side on padding, so a stage sized in
+         * vw is wider than the box holding it and hangs off the edge: at
+         * 390 px that is 8 px of the row list past the right of the window,
+         * on a device with no horizontal scrollbar to find it with. The
+         * Rates screen was pinned to 100% for exactly this reason and the
+         * comment there says so; the rest of the screens were not.
+         */
+        width: 100%;
+        max-width: 1600px;
         align-items: start;
         margin-top: 22px;
         pointer-events: none;
       }
-      .screen-pilot .menu-stage {
+      /*
+       * QUAD, not Pilot. These two rules and the block under them size the
+       * airframe showcase's column, and the showcase moved to the Quad room
+       * with the machine it is a picture of. Left on .screen-pilot they gave
+       * Pilot a 360 px first column with nothing in it, which is why its
+       * menu sat right of centre, and gave Quad no column for the quad.
+       */
+      .screen-quad .menu-stage {
         width: 100%;
         max-width: 1600px;
-        grid-template-columns: minmax(360px, 1.7fr) auto minmax(0, 0.65fr);
+        /*
+         * The help column has a MINIMUM. At 1180 by 820 the first two
+         * columns took 360 and 628 and left it 50 px, so the note wrapped
+         * to one word per line and grew to 1451 px tall: the column that
+         * exists to explain the row became the reason the row was off the
+         * screen. A column that cannot do its job should push the layout to
+         * stack instead, which is what a minimum makes it do.
+         */
+        grid-template-columns: minmax(360px, 1.7fr) auto minmax(210px, 0.65fr);
       }
       /*
-       * Settings on a laptop. NOT part of the flight-controller removal, but
-       * found by measuring the Rates screen beside it: below about 1100 px
-       * the three columns cannot fit their own minimums (360 for the quad
-       * plus 540 for the menu is already 900 before the note column), so the
-       * stage overflowed and the menu slid off the right of the window
-       * entirely. One column, quad on top, same fallback Rates takes.
+       * The airframe is sized by the column's WIDTH and drawn square, so a
+       * wide short window makes it taller than the window. At 1180 by 820
+       * the first column is about 600 px, so the quad was 600 px tall in a
+       * box 700 px high and pushed the help column 373 px past the bottom.
+       * A height cap costs nothing on a tall window and is the whole fix on
+       * a short one.
        */
-      @media (max-width: 1100px) {
-        .screen-pilot .menu-stage { grid-template-columns: minmax(0, 1fr); }
-        .screen-pilot .craft-showcase {
+      .screen-quad .craft-showcase-frame { max-height: min(46vh, 420px); }
+      /*
+       * The quad room on a laptop. Found by measuring the Rates screen
+       * beside it: below about 1100 px the three columns cannot fit their
+       * own minimums (360 for the quad plus 540 for the menu is already 900
+       * before the note column), so the stage overflowed and the menu slid
+       * off the right of the window entirely. One column, quad on top, same
+       * fallback Rates takes.
+       */
+      /*
+       * 1280, not 1100. Three columns need 360 for the quad, about 540 for
+       * the list and 210 for the note, plus the gaps: a shade over 1150
+       * before anything is comfortable. Stacking at 1100 meant a 1180 px
+       * tablet in landscape got three columns that did not fit.
+       */
+      @media (max-width: 1280px) {
+        .screen-quad .menu-stage { grid-template-columns: minmax(0, 1fr); }
+        .screen-quad .craft-showcase {
           grid-column: 1; grid-row: 1;
           justify-self: center; width: min(100%, 420px); margin: 0 0 12px;
         }
-        .screen-pilot .menu-stage .menu { grid-column: 1; justify-self: center; }
-        .screen-pilot .menu-help {
+        .screen-quad .menu-stage .menu { grid-column: 1; justify-self: center; }
+        .screen-quad .menu-help {
           grid-column: 1; max-width: none; border-left: 0;
           padding: 8px 14px 0; margin-top: 6px; text-align: center;
         }
@@ -1077,7 +1176,8 @@
       .screen-rates .menu-stage {
         width: 100%;
         max-width: 1600px;
-        grid-template-columns: minmax(320px, 1.5fr) auto minmax(0, 0.7fr);
+        /* A real minimum, for the reason on .screen-quad .menu-stage. */
+        grid-template-columns: minmax(320px, 1.5fr) auto minmax(210px, 0.7fr);
       }
       .rates-panel {
         grid-column: 1;
@@ -1368,7 +1468,52 @@
          both, and the note moves under the list where there is width for
          it. Everything shrinks a little, because a window this size has to
          hold the curve, seven rows and the hint at once. */
-      @media (max-width: 1100px) {
+      /*
+       * A STACKED STAGE FITS ITS BOX, wherever it stacks.
+       *
+       * The two blocks above turn the Quad and Rates stages into one column
+       * below 1100 px, and a one column GRID grows to its content: the
+       * screen is a centred flex column with no scroller of its own, so
+       * anything past the padded box is simply lost. Measured at 1180 by
+       * 820 the Quad room's help column ran 373 px past the bottom of the
+       * window, and the PIDs screen 105.
+       *
+       * The same three rules the narrow-window block uses, applied here:
+       * the stage is a flex column capped at the box, the LIST is the part
+       * that shrinks and scrolls, and the help keeps its natural height up
+       * to a third. `max-height: none` on the list is what lets that
+       * happen: the hand tuned vh caps above are a good guess for the
+       * common window and the wrong answer for a short one, and flex knows
+       * the real number.
+       *
+       * min-height: 0 on both is the half that makes a flex child shrink
+       * instead of overflowing, which is the whole defect in one property.
+       */
+      @media (max-width: 1280px) {
+        .screen-quad .menu-stage,
+        .screen-rates .menu-stage {
+          display: flex; flex-direction: column; align-items: stretch;
+          max-height: 100%; min-height: 0;
+        }
+        .screen-quad .craft-showcase,
+        .screen-rates .rates-panel {
+          flex: 0 0 auto;
+        }
+        .screen-quad .menu-stage > .menu,
+        .screen-rates .menu-stage > .menu {
+          /* Three rows' worth of floor, for the reason on the narrow
+           * window rule: the airframe and the curve are both `flex: 0 0
+           * auto` and will otherwise take the whole box. */
+          flex: 1 1 auto; min-height: min(200px, 100%);
+          max-height: none; overflow-y: auto;
+        }
+        .screen-quad .menu-help,
+        .screen-rates .menu-help {
+          flex: 0 0 auto; max-height: 33%; overflow-y: auto;
+        }
+      }
+
+      @media (max-width: 1280px) {
         .screen-rates .menu-stage { grid-template-columns: minmax(0, 1fr); }
         .rates-panel {
           grid-column: 1; grid-row: 1;
@@ -1522,14 +1667,73 @@
         .menu-stage {
           display: flex; flex-direction: column; align-items: stretch;
           position: relative;
-          width: min(540px, 90vw);
+          width: 100%;
+          max-width: 540px;
+          /*
+           * THE STAGE FITS ITS BOX, so the help column survives a phone.
+           *
+           * Measured at 390 by 844: the airframe took 372 px, the list took
+           * 434, and the help ran from 853 to 926, which is to say entirely
+           * below a window 844 tall. The one column everybody praises about
+           * this product, the plain English explanation beside the row, was
+           * not on screen at all on a phone, and the command bar was drawn
+           * over the bottom of the list.
+           *
+           * .screen is a centred flex column whose padding already reserves
+           * both bars, so the fix is to stop the stage growing past that
+           * box: cap it, let the LIST be the part that shrinks, and let the
+           * help keep its natural height. min-height: 0 is the half that
+           * makes a flex child actually shrink rather than overflow.
+           */
+          max-height: 100%;
+          min-height: 0;
+          /*
+           * The stage is not squeezed by a SIBLING. max-height still caps
+           * it against the box, which is the fix above; this stops How to
+           * fly's body, which is the tall thing on that screen, from
+           * shrinking the stage to nothing. It went to zero height and took
+           * the Back row with it, and the row was the only one there.
+           * The screen scrolls, so the body keeps everything it needs.
+           */
+          flex: 0 0 auto;
         }
-        .menu { min-width: 0; width: 100%; }
+        .menu {
+          min-width: 0; width: 100%;
+          /*
+           * A FLOOR, or the list disappears entirely.
+           *
+           * `min-height: 0` is what lets a flex child shrink past its
+           * content, and it shrinks all the way: on How to fly the body
+           * took the box and left the menu 22 px, one third of one row, so
+           * Back could not be scrolled to. Same on Rates in landscape,
+           * where the curve took it.
+           *
+           * Three rows' worth is the floor. The screen scrolls now, so
+           * whatever does not fit above the list is still reachable, which
+           * is the trade: the LIST is the thing you came for and it is the
+           * thing that keeps its space.
+           */
+          flex: 1 1 auto; min-height: min(200px, 100%);
+          max-height: none; overflow-y: auto;
+        }
         .menu-help {
           max-width: none; margin-top: 10px;
           padding: 8px 16px 0; border-left: none;
+          /* Never squeezed to nothing, and never more than a third of the
+           * stage: a note is sometimes four lines and the list is what the
+           * pilot came for. */
+          flex: 0 0 auto; max-height: 33%; overflow-y: auto;
         }
         .menu-help:empty { padding: 8px 16px 0; }
+        /*
+         * The airframe stops being a square as wide as the phone. At 390 px
+         * a 1:1 frame is 344 px tall, 44 percent of the window, above a
+         * six row list. It is a nice thing to look at and it is not what
+         * the screen is for.
+         */
+        .craft-showcase { flex: 0 0 auto; width: min(100%, 340px); align-self: center; }
+        .craft-showcase-frame { aspect-ratio: auto; height: clamp(110px, 21vh, 210px); }
+        .craft-showcase-cap { padding-bottom: 8px; }
         .screen-title {
           padding: 2.6vh 4.5vw 2vh;
           background:
@@ -1579,7 +1783,8 @@
         .screen-maps .menu-stage {
           display: block;
           position: relative;
-          width: min(540px, 90vw);
+          width: 100%;
+          max-width: 540px;
         }
         .screen-maps .menu { grid-column: auto; }
         .howto-body { gap: 18px; }
@@ -1635,7 +1840,12 @@
          rather than pushed right by a help column with no counterweight. */
       .screen-maps .menu-stage {
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-        width: min(1200px, 96vw);
+        /* 100%, not 96vw, for the reason on the shared rule above. This one
+         * also sits LATER in the sheet than the narrow-window override, so
+         * a vw width here won that fight and put the Race room's rows off
+         * the right of every phone and tablet. */
+        width: 100%;
+        max-width: 1200px;
         margin: 10px auto 0;
       }
       .screen-maps .menu { grid-column: 2; min-width: min(320px, 86vw); }
@@ -2656,6 +2866,30 @@
         box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.16);
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
       }
+
+      /*
+       * THE FLOATING CHIPS CLEAR THE STATUS BAR ON A NARROW WINDOW.
+       *
+       * The bug chip is fixed 16 px from the top right and the status bar's
+       * context chips sit in the same corner. On a laptop there is room for
+       * both; at 390 px the chip spanned x 151 to 374 and the chips 275 to
+       * 376, which is to say almost entirely on top of each other, and what
+       * the pilot could read was neither.
+       *
+       * Nothing is hidden. The bar keeps the corner, because what you are
+       * flying is worth more than a button that has a row on the title and
+       * a key of its own, and the two floating chips drop below it. That
+       * costs about 36 px of a phone's height and loses no function.
+       *
+       * It has to sit AFTER the two rules it overrides. Both are one class
+       * deep, so source order decides, and the first draft of this lived
+       * two thousand lines earlier and did nothing at all.
+       */
+      @media (max-width: 860px) {
+        .bug-chip { top: calc(var(--bar-top) + 8px); }
+        .music-dock { top: calc(var(--bar-top) + 44px); }
+      }
+
       .music-dock.on-flight {
         right: auto; left: 16px; top: 16px;
         background: rgba(16, 22, 17, 0.38);

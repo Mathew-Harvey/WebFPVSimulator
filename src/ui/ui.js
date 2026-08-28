@@ -1606,6 +1606,18 @@ export class Ui {
     brand.append(this.wikiTeaser);
     const titleBlock = wrapMenu();
     this.titleMenu = titleBlock.menu;
+    /*
+     * The title's row list scrolls like every other list.
+     *
+     * index.html carries two `.screen-title .menu-scroll` height caps, one
+     * for a narrow window and one for a short one, and neither had ever
+     * applied to anything: this element never carried the class. So on a
+     * 844 by 390 phone in landscape the list grew to 614 px inside a 318 px
+     * box and Report bug, the last row, could not be reached by any amount
+     * of scrolling. Every other menu in the shell adds this on the line
+     * after it is built.
+     */
+    this.titleMenu.classList.add('menu-scroll');
     this.titleHelp = titleBlock.help;
     const titleFoot = el('div', 'title-foot');
     titleFoot.append(

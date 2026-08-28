@@ -6,7 +6,7 @@
   },
   "screens": {
     "title": {
-      "overflow": 25
+      "overflow": 0
     },
     "courses": {
       "overflow": 0

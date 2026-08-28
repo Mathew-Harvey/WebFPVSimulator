@@ -11,11 +11,10 @@
  *
  * Usage:
  *   node scripts/shots.js --out=DIR [--w=1600] [--h=900] [--url=/index.html]
- *                         [--format=jpeg] [--quality=82]
  *                         step step step
  * Steps:
  *   wait:MS          advance wall time
- *   shot:NAME        write DIR/NAME.png, or DIR/NAME.jpg with --format=jpeg
+ *   shot:NAME        write DIR/NAME.png, or DIR/NAME.jpg under --jpeg=Q
  *   tap:CODE         key down then up, e.g. tap:Enter
  *   down:CODE        key down, held
  *   up:CODE          key up
@@ -69,9 +68,7 @@ import { SETTINGS_KEY } from '../src/ui/ui.js';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 async function main() {
   const args = process.argv.slice(2);
-  const opts = {
-    out: '.loop/shots', w: 1600, h: 900, url: '/index.html', format: 'png', quality: 82,
-  };
+  const opts = { out: '.loop/shots', w: 1600, h: 900, url: '/index.html' };
   const steps = [];
   for (const a of args) {
     const m = a.match(/^--([a-z]+)=(.*)$/);
@@ -177,16 +174,19 @@ async function main() {
       console.log(`throttle ${kbps > 0 ? `${kbps} kbps, 40 ms latency` : 'off'}`);
     } else if (op === 'shot') {
       /*
-       * PNG for looking at a frame, JPEG for a frame that ships. A capture
-       * that is going into the tree as art is read at 340 px wide on a card
-       * and a lossless copy of it is four times the bytes for a difference
-       * nobody can see at that size, so scripts/posters.js asks for
-       * --format=jpeg. Chromium does the encoding: this repo has no
-       * dependencies and is not about to grow one to write a JPEG.
+       * PNG by default, because a capture that is being LOOKED AT for a
+       * rendering bug must not have compression artefacts in it.
+       *
+       * --jpeg=Q switches the whole run to JPEG at that quality, for the
+       * generators that ship a frame into the repository rather than
+       * inspecting it: og.js, gatecards.js and posters.js. A cel shaded
+       * frame is a photograph as far as PNG is concerned, and the same frame
+       * is four to six times smaller as a JPEG. The extension follows the
+       * format so a run cannot write a JPEG called .png.
        */
-      const jpeg = String(opts.format) === 'jpeg';
+      const jpeg = opts.jpeg ? Number(opts.jpeg) : 0;
       const { data } = await cdp.send('Page.captureScreenshot', jpeg
-        ? { format: 'jpeg', quality: Number(opts.quality) }
+        ? { format: 'jpeg', quality: jpeg }
         : { format: 'png' }, sessionId);
       const path = join(outDir, `${arg}.${jpeg ? 'jpg' : 'png'}`);
       await writeFile(path, Buffer.from(data, 'base64'));

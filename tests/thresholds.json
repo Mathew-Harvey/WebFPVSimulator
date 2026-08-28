@@ -276,7 +276,7 @@
       "_about": "The audio bed has to actually start. A user reported that no music played at all, and nothing in tests/ could have caught it: every audio claim in this project was measured by hand with scripts/audio-probe.js against a graph the probe builds itself, so the shell could stop building its own graph entirely and every check would still pass. These bound the live page instead. The generated sixteenth-note scheduler is gone; the live check now asserts the recorded mp3 is playing.",
       "min_music_gain": {
         "value": 0.05,
-        "_about": "Music bus gain at the DEFAULT settings, with nothing touched. level 0.5 times the recorded bed's 0.60 is 0.30, so 0.05 is a wide floor that still catches a silent or unattached bed."
+        "_about": "Music bus gain at the DEFAULT settings, with nothing touched. The run taps a key on the TITLE screen, which is a menu, so what it reads is the menu bed: level 0.5 times MENU_BUS 0.20 is 0.10. The flight bed is level 0.5 times MUSIC_BUS 0.60, so 0.30. 0.05 is a wide floor under the quieter of the two that still catches a silent or unattached bed. The value has not moved; the arithmetic behind it has, because the menu bed did not exist when it was written."
       },
       "min_music_advance_s": {
         "value": 1.0,
@@ -284,7 +284,7 @@
       },
       "max_nodes": {
         "value": 64,
-        "_about": "Web Audio nodes in the live graph. The budget is 64 and the graph builds 59, so this catches an unbounded voice pool without arguing about the exact count."
+        "_about": "Web Audio nodes in the live graph. The budget is 64, so this catches an unbounded voice pool without arguing about the exact count. The 59 recorded here before is older than the graph it described: a live run driven the same way this check drives one reads 42 on the title screen, and one of those 42 is the swap gain the music bus gained for the crossfade between the flight and menu crates, so it was 41. The budget is what is asserted, not the count."
       }
     },
     "world-scale": {

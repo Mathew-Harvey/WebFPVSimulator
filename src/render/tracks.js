@@ -1,9 +1,21 @@
 /*
- * tracks.js: the record crate. Recorded tracks as data, no audio code.
+ * tracks.js: the record crates. Recorded tracks as data, no audio code.
  *
  * The bed used to be a generated drum and bass and lofi performer. That
  * crate is gone. These are the files in assets/music, played by
  * src/render/music.js through one MediaElementSource on the mix bus.
+ *
+ * There are TWO crates and they are not interchangeable. TRACKS is the
+ * flight crate, what plays while the pilot is flying, and it is the crate
+ * the Music track setting picks from. MENU_TRACKS is the menu bed, what
+ * plays on every screen that is not a flight, quieter, chosen at random
+ * each time the menus come back. A menu is a place where somebody is
+ * reading rows and deciding something, and twelve tracks written to be
+ * flown to are the wrong thing to read over.
+ *
+ * Both crates live in the same assets/music directory and share one id
+ * namespace, checked below, because they share one URL space and one
+ * cache rule in render.yaml.
  *
  * There is no filename column any more. Every track is
  * assets/music/<id>.webm and assets/music/<id>.mp3, written by
@@ -66,6 +78,24 @@ export const TRACKS = [
   rec('copper-gypsy-run-take-2', 'Copper Gypsy Run Take 2'),
 ];
 
+/*
+ * The menu bed. Two takes of the same piece, which is why they are named
+ * the way Copper Gypsy Run and its take 2 are named: they came out of one
+ * sitting and they are meant to sit behind a list of rows without asking
+ * for anything.
+ *
+ * These are NOT quiet files. They measure -14.2 and -13.6 LUFS
+ * integrated, which lands them mid crate against the flight records'
+ * -12.9 to -17.1. The quiet is a mix decision and it is made once, in
+ * MENU_BUS in src/render/music.js, for the same reason scripts/music.js
+ * refuses to put a gain in the encode: a loudness that lives in the file
+ * is a loudness nobody can find later.
+ */
+export const MENU_TRACKS = [
+  rec('neon-gate', 'Neon Gate'),
+  rec('neon-gate-take-2', 'Neon Gate Take 2'),
+];
+
 export function trackById(id) {
   return TRACKS.find((t) => t.id === id) ?? TRACKS[0];
 }
@@ -76,6 +106,17 @@ export function pickTrack() {
   return TRACKS[Math.floor(Math.random() * TRACKS.length)];
 }
 
+/* Which menu record. Rolled every time the menus come back rather than
+ * once a visit, because a menu visit is thirty seconds and a once a visit
+ * pick would mean hearing the same thirty seconds of the same intro every
+ * time. music.js resumes each menu track where it left off, so a re-roll
+ * is a change of record, not a restart. */
+export function pickMenuTrack() {
+  return MENU_TRACKS[Math.floor(Math.random() * MENU_TRACKS.length)];
+}
+
+/* The Music track setting picks from the flight crate only. The menu bed
+ * is not a choice, it is furniture. */
 export function musicIds() {
   return ['rotation', ...TRACKS.map((t) => t.id)];
 }
@@ -87,16 +128,23 @@ export function trackUrl(id, ext) {
 }
 
 if (TRACKS.length === 0) {
-  throw new Error('tracks: crate is empty');
+  throw new Error('tracks: flight crate is empty');
 }
+if (MENU_TRACKS.length === 0) {
+  throw new Error('tracks: menu crate is empty');
+}
+/* One namespace across both crates, because both write into
+ * assets/music/<id>.<ext>. A menu id that collided with a flight id would
+ * not fail here, it would fail as one file overwriting another at encode
+ * time and a menu bed that is quietly the wrong song. */
 const seen = new Set();
-for (const t of TRACKS) {
+for (const t of [...TRACKS, ...MENU_TRACKS]) {
   if (seen.has(t.id)) {
     throw new Error(`tracks: duplicate id ${t.id}`);
   }
   if (!/^[a-z0-9-]+$/.test(t.id)) {
     /* The id is half a URL now. A capital or a space here would not fail
-     * until a deploy served a 404 for one track in twelve. */
+     * until a deploy served a 404 for one track in fourteen. */
     throw new Error(`tracks: id ${t.id} is not a slug`);
   }
   seen.add(t.id);

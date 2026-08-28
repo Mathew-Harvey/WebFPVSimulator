@@ -210,7 +210,9 @@ async function main() {
     await page.until('!!window.__ui', 10000);
     await page.evaluate(`(() => {
       const ui = window.__ui;
-      if (ui.firstRun) { ui.act('skipfirst'); }
+      /* Race, which is the mode every track in this check belongs to. */
+      ui.firstRun = false;
+      if (!ui.mode) { ui.mode = 'race'; }
       ui.show('courses');
       return 1;
     })()`);

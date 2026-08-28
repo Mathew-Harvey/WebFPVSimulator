@@ -61,6 +61,9 @@ import { CLIP_W, CLIP_H } from '../src/share/orbitcache.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
+/* The same number og.js and gatecards.js ship at. */
+const QUALITY = 82;
+
 /*
  * Camera, then the point it looks at. Metres, world frame, Y up, which is
  * the render frame rather than the physics frame; see CLAUDE.md.
@@ -133,9 +136,11 @@ try {
       `--w=${CLIP_W}`,
       `--h=${CLIP_H}`,
       /* JPEG, because this ships. A card is 340 px wide and the lossless
-       * copy is four times the bytes for a difference nobody can see. */
-      '--format=jpeg',
-      '--quality=82',
+       * copy is four times the bytes for a difference nobody can see. The
+       * quality is the one og.js and gatecards.js use, so the three
+       * generators that put a rendered frame in the tree all put the same
+       * kind of frame in it. */
+      `--jpeg=${QUALITY}`,
       /* Headless Chromium rasterises on the CPU, so boot would otherwise
        * detect a slow machine and drop the preset, and the poster would
        * come out at whatever quality the machine that made it happened to

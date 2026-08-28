@@ -52,10 +52,13 @@
  * ui(). All of it runs on the two pooled cue voices that already existed:
  * no event creates a node.
  *
- * Music is the recorded crate in assets/music, Opus in a WebM with an mp3
+ * Music is the recorded crates in assets/music, Opus in a WebM with an mp3
  * fallback, played by src/render/music.js through one MediaElementSource
  * on this same mix. Cues still duck it. The generated drum and bass crate
- * is gone.
+ * is gone. There are two crates and setMusicContext says which one is
+ * wanted: the flight records while the pilot is flying, a quieter two
+ * record bed everywhere else. Cues only ever fire in flight, so the duck
+ * is a flight thing and the menu bed never sees it.
  *
  * The graph is built by attach(ctx), which takes any BaseAudioContext, and
  * update() takes the time to schedule at. Both exist so that
@@ -243,9 +246,19 @@ export class MotorAudio {
 
   /* Which music track, or 'rotation' for a random start then the crate
    * in order. A setting, safe before attach: the player object holds it
-   * as data. */
+   * as data. This is the FLIGHT crate. The menu bed is not selectable. */
   setMusicTrack(sel) {
     this.music.setTrack(sel);
+  }
+
+  /*
+   * 'flight' or 'menu': which crate the bed should be playing. Driven off
+   * the screen by the shell, because the shell is the only side that
+   * knows what is on screen, and safe before attach for the same reason
+   * setMusicTrack is.
+   */
+  setMusicContext(name) {
+    this.music.setContext(name);
   }
 
   skipMusic(dir) {

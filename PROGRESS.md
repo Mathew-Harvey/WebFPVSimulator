@@ -21623,6 +21623,393 @@ with twelve tracks in a scrolling grid, and the standings table with its record,
 its ghost tag and the pilot's own row. `npm run verify` not run: nothing here
 touches physics, the plant, the module ABI or the build.
 
+## 2026-08-28, shell: one question first, then a menu about the place
+
+Changed: a visit opens on Race or Freestyle, and the menu behind that answer
+carries a Track row or a Map row instead of both a Race row and a Freestyle row.
+
+**The request, and what was wrong underneath it.** "The menu when i first log in
+should be 2 options race or freestyle. Then the current menu however there should
+not be a race or freestyle option in the next menu, just track for race or map
+for freestyle."
+
+The title carried Race and Freestyle side by side, each of them a location picker
+wearing a mode's name, so the same question was asked twice and a pilot who had
+decided which one they wanted still had to read the other to get past it. Worse,
+the two rows disagreed about the seat: Race named the loaded track, which is what
+Fly would launch, while Freestyle named a remembered world that was not seated and
+would not be flown. Two rows, one of them lying, and no screen anywhere that just
+asked the question.
+
+**The gate.** `Ui.mode` is 'race', 'freestyle', or null for not asked yet, and
+null is what the title draws as two rows. It is deliberately NOT in the settings
+blob and is not remembered: racing and messing about are not a preference, they
+are what this session is for, and a remembered answer would put Tuesday's choice
+in front of Wednesday's pilot as a fact rather than a question. It costs one
+keypress a visit.
+
+A link that already names what to fly answers it without asking, because that
+decision was made on another page: `?share=id` and `?ghost=id` are a race,
+`?map=` is whichever the registry says that world is. That is the builder's Fly
+this track button and every link the board hands out.
+
+**Answering it seats something.** Setting a flag would have kept the old defect
+and moved it: a Fly row over a seat that belongs to the other mode. So Race seats
+the loaded track, Freestyle seats the world the pilot last flew there, and either
+of them with nothing to seat opens its own picker, because choosing a place IS the
+question that was just asked. `seatMap` is the one implementation, and the `map:`
+rows now go through it too.
+
+**One row, and it names what Fly would launch.** Track in Race, Map in Freestyle,
+valued from the SEAT rather than from what was picked last, and reading "Choose
+one" when the seat is the other mode's. That state is reachable: answer Freestyle
+with no world of your own, then press Escape in the picker instead of choosing.
+Fly there opens the picker rather than launching whatever was still seated, which
+is the same answer the row gives, as a verb.
+
+**Escape on the title is the way back to the gate**, and the only way to change
+mode without reloading. The command bar names it "Race or Freestyle" rather than
+"Back", because Back on a front page reads like it leaves the game, and because a
+pilot looking for the other mode is looking for those two words. Not offered on
+the gate itself or on the first run split: neither has anything behind it, and a
+legend offering a key that does nothing is worse than no legend.
+
+**A dead setting, found on the way.** `freestyleMap` was written on every pick in
+the Freestyle room and had no entry in DEFAULTS, and `loadSettings` copies stored
+keys by walking DEFAULTS. So it was dropped on every reload and the row that named
+it went back to the first world in the registry however many times the pilot flew
+another. It has a default now, `''` for never chosen, which is also the signal the
+gate uses to send a first time freestyle pilot to the picker instead of seating a
+world on their behalf. Driven and confirmed: stored city, reloaded, answered
+Freestyle, landed on the title seated in the city.
+
+**What the check learned.** `shell-check.js` now walks past the gate, because the
+measurements are of the menus behind it, and asserts the gate itself through
+`act()`: a fresh visit offers Race and Freestyle and no Fly, answering one either
+seats something or opens the picker for what it could not seat, and neither title
+carries a mode row beside its Track or Map row. The launch card case pairs the
+mode with the seat it sets, which is the pairing the new Fly guard enforces, and
+that is what caught the guard the first time it ran.
+
+The title's overflow baseline was re-recorded, 25 px to 0 px, because the screen
+has one row fewer and got BETTER. That is the deliberate re-record the check asks
+for by note, not a threshold moved to make a failure go away.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:board` PASS,
+`npm run lint:devices` PASS, `npm run lint:responsive` PASS, `npm run lint:nouns`
+PASS. Also driven and looked at with `scripts/shots.js` at 1280x800, with a track
+seeded into the builder autosave so the journey is a real one: the gate, Race to a
+title reading "Track, Copper Gully", Escape back to the gate, Freestyle to the
+world picker, a world chosen, and the title reading "Map, Freestyle city" over the
+city itself. `npm run verify` not run: nothing here touches physics, the plant,
+the module ABI or the build.
+
+## 2026-08-28, audio: a menu bed, and the flight crate stays in flight
+
+Two tracks arrived for the menus. They play on every screen that is not a flight,
+quieter, and the twelve recorded tracks now play only while the pilot is actually
+flying. Before this the flight crate played everywhere, including under the title
+screen and the settings list, which is a bed written to be flown to sitting on top
+of somebody reading rows.
+
+**Two crates, in `src/render/tracks.js`.** `TRACKS` is unchanged and is what
+flies. `MENU_TRACKS` is the new pair. They are `neon-gate` and
+`neon-gate-take-2`, named the way `copper-gypsy-run` and its take 2 are named,
+because that is what they are: both masters carried the ID3 title "Neon Gate" and
+were made ninety seconds apart in one sitting. Both crates share one directory,
+one id namespace and one cache rule, so the slug and duplicate checks at the
+bottom of that file now run across both. A collision there would not have failed
+in the browser, it would have failed as one encode overwriting another and a menu
+bed that was quietly the wrong song.
+
+**The quiet is a mix decision, not a property of the files.** Measured with
+ebur128: the two menu masters are -14.2 and -13.6 LUFS integrated, which is mid
+crate against the flight records' -12.9 to -17.1. Nothing about them is quiet.
+`MENU_BUS` in `src/render/music.js` is 0.20 against `MUSIC_BUS` 0.60, so the menu
+bed runs 9.5 dB under the flight bed.
+
+The number is not a taste. In flight the music sits under four motors and a wind
+stem and is already about 10 dB below the motor stem, which is the balance
+`audio.js` was tuned at. In the menus it plays against nothing at all, so the same
+bus gain puts it perceptually far further forward than it ever is in flight, on
+the one screen where somebody is trying to read. A third puts it back roughly
+where it sits under the motors. `scripts/music.js` is still forbidden from putting
+a gain in the encode, for the reason its own header gives: a loudness that lives
+in the file is a loudness nobody can find later.
+
+**One media element, two crates, and a fade between them.** A second element and a
+second `MediaElementSource` would have been two more nodes and two more things to
+keep paused, and the two beds are never wanted at once. So `setContext('menu' |
+'flight')` arms a swap rather than doing one: the swap gain ramps to zero over
+0.25 s, `tick()` changes the crate once that ramp has run, and it ramps back up
+over 0.7 s. Setting `src` is instant and the audio that comes out of it is not, so
+a swap done in the same call as the decision is a cut into silence into a cold
+start.
+
+That is one more `GainNode`, and it is a separate node rather than automation on
+the existing level gain on purpose. `gain` holds exactly what the settings ask
+for, which is what check 14 reads; `swap` is the crate change; `duck` is a cue. A
+cue landing mid swap has to leave the swap where it is, and one curve cannot do
+that.
+
+**Every record remembers where it was.** A menu visit is thirty seconds. Without a
+resume, a player who flies eight races has heard the first thirty seconds of the
+menu bed eight times and the rest of it never, which is the definition of the
+thing that was asked to be unobtrusive. Positions are kept by track id and spent
+in `loadedmetadata`, because `currentTime` cannot be written before the element
+knows its duration and `preload` is still `none`. A resume that would land inside
+the last 15 s is refused: a track that ends the moment it starts reads as a fault.
+
+**The menu record is re-rolled on every return to the menus**, not once a visit.
+"Played randomly when the user is in the menus" is the request, and with two
+records and a thirty second visit a once-a-visit pick would mean one of them for
+the first eight visits. The resume is what makes the re-roll cheap: it changes the
+record, it does not restart one. If the feel is wrong, moving the
+`pickMenuTrack()` call out of `commitSwap` and into the constructor makes it once
+a visit, and that is the whole change.
+
+**Paused counts as flying.** The pause screen keeps the flight display, the lap
+clock and the pack up behind it. Swapping the bed out and back every time somebody
+taps Escape mid race would be the most obtrusive thing in the mix. `ui.flying()`
+is now one predicate used by both the music dock and the music context, so the
+dock cannot say flying while the bed says menus.
+
+**The menus buy the flight track.** This change had a regression in it that the
+request did not ask about: the old shell had the flight track playing from the
+title screen, so by the time anyone flew it was buffered. With a menu bed in front
+of it, the first flight of a visit would open on a cold 2.5 MB download at exactly
+the moment the map is loading. So the warm, which used to fire only near the end
+of a rotation track, now has a menu case: while the menus are up it fetches the
+FLIGHT track, gated on the menu bed being 20 s buffered ahead of itself, which is
+the connection saying it has room. Save-Data still turns all of it off. Confirmed
+live: `warm: "pace-shift-skyline"` while the title screen bed played.
+
+**A skip in the menus does not write the Music track setting.** The dock's skip
+buttons skip whatever is playing. `status()` now carries which crate that came
+from, and `main.js` pins the setting only for a flight record. Without it a menu
+id lands in a setting whose list is flight ids, showing as the first flight track
+and silently coerced back to rotation on the next read.
+
+**`scripts/audio-probe.js` now asks for the flight context explicitly.** The
+player opens on the menu context, because a visit does, and the probe exists to
+measure the mix a pilot flies in. It changes no rendered sample, since an
+`OfflineAudioContext` has no media element, but the bus gain is a number that file
+publishes and it should not depend on which screen the player happens to default
+to.
+
+**`npm run music:selftest`, `scripts/music-selftest.js`.** This is a state machine
+that lives entirely inside a browser and nothing in `tests/` could see any of it.
+Check 14 taps one key and reads three numbers: it can say the bed is playing and
+cannot say WHICH bed, at WHICH level, or whether a settings write in the menus
+just cut the menu record off mid bar. Every failure this change could have had is
+a quiet one. So the real class is driven against a fake element and a fake
+context, 39 assertions, about a second, no browser.
+
+It was mutation tested rather than trusted. Six deliberate breaks, each reverted:
+menu bus equal to the flight bus, `crate()` always returning the flight crate, a
+`tick()` that never lands the swap, a menu skip that rewrites the flight
+selection, the menus warming the wrong track, and the flight bed running at the
+menu level. All six were caught. Two more were not, and the check was extended
+until they were: the old `el.loop` rule, which only differs when a pinned flight
+track is set AND the menus are up, and dropping the resume entirely, which the
+first version only half tested because it asserted the position was REMEMBERED and
+never that it was restored. There is now an end to end resume that leaves a record
+part way through, returns until the roll lands on it again, and reads the seek.
+
+**What went wrong.** A seventh mutation, deleting the `context !== 'flight'` guard
+in `setTrack`, changed nothing and was caught by nothing, because
+`loadCurrent` builds its URL from the record `applyCrate` put on the element and
+in the menus that is a menu record. The guard is kept, because it makes the
+property belong to the function rather than to a coincidence in two other methods,
+but its comment claimed to prevent a bug it does not currently prevent and now
+says what is true.
+
+**`min_music_gain` and `max_nodes` prose corrected, values untouched.**
+`min_music_gain` said the check measures level 0.5 times 0.60. It does not and now
+did not before either: the run taps a key on the TITLE screen, which is a menu, so
+what it reads is 0.5 times `MENU_BUS`, 0.10, still twice the 0.05 floor.
+`max_nodes` claimed the graph builds 59; a live run driven the way that check
+drives one reads 42, one of which is the new swap gain. The budget of 64 is what
+is asserted and neither value moved.
+
+**No `MUSIC_REV` bump, deliberately.** The rule is about a URL whose content
+changed. Two new ids are two URLs nobody holds, and bumping would throw away a
+year of correctly cached copies of the twelve that did not change. `DEPLOY.md` now
+says so, along with where the masters are: the twelve flight masters come back
+from commit `f9e0804`, and the two menu masters are not in this repository's
+history at all and would have to be supplied again.
+
+Checks run this turn: `npm run music:selftest` all passed, `npm run lint:shell`
+PASS, `npm run lint:nouns` PASS, and both encodes passed the LUFS gate in
+`scripts/music.js` (2.48 and 3.09 MB webm, 2.63 and 3.69 MB mp3, from 5.52 and
+7.06 MB masters). Driven live through `scripts/shots.js` at 400x300 on the real
+page: the title screen plays `neon-gate.webm?v=1` at gain 0.10, advancing 2.5 s of
+media in a 2.5 s window, 42 nodes; `show('flight')` swaps to
+`subway-rattle.webm?v=1` at gain 0.30 with the dock following;
+`show('results')` swaps back to a menu record at 0.10 and `resumeAt` holds a
+position for both crates. `npm run verify` not run: nothing here touches physics,
+the plant, the module ABI or the build, and check 14's inputs were measured
+directly instead.
+
+**Merged onto main.** `origin/main` had moved on by one commit, the Race or
+Freestyle gate, which rewrote 374 lines of `src/ui/ui.js`. The only conflict was
+this file, where both entries had been appended at the end; both are kept, in the
+order they landed. `ui.js` merged cleanly: the gate draws as the title screen in a
+two row mode rather than as a new screen, so it is a menu by `ui.flying()`, and
+`this.screen` is still written in exactly two places.
+
+Re-checked on the merged tree, not assumed: `npm run music:selftest` all passed,
+`npm run lint:shell` PASS at 151 rows across 13 screens, and the same live
+`scripts/shots.js` journey again. On the merged shell with `firstRun: true` the
+gate plays `neon-gate-take-2.webm?v=1` at gain 0.10, advancing 2.5 s of media in a
+2.5 s window over 42 nodes, warming `gypsy-breaks`; `show('flight')` swaps to
+`gypsy-breaks.webm?v=1`, the track the warm had already bought, at gain 0.30;
+`show('results')` swaps back at 0.10 with a remembered position on both crates.
+## 2026-08-28, shell: the first page is two pictures
+
+Changed: the first screen is the Race or Freestyle question and nothing else,
+asked with two illustrated cards, and the first run split in front of it is
+gone.
+
+**The request.** "Now design the first page, i should not see first flight, i
+have flown before. I should just see two options, race and freestyle, they
+should not be small menu items rather 2 boxes that are beautifully designed
+using game assets to convey the 2 types of play."
+
+**Two questions became one.** A new pilot met First flight / I have flown before
+/ Credits, answered it, and then met Race or Freestyle. The first of those is a
+question about the product rather than about flying, and it stood in front of
+the one this shell actually needs answered. It is deleted. The guided flight it
+existed to offer is now the primary row on the menu behind the gate: same
+action, same three prompts, one screen later and behind a choice the pilot has
+already made. Race only, and only with a track seated, because the guide is
+three lines that talk about gates and `guidedPrompt` in src/main.js retires
+itself on the first frame of a gateless world. Offering it in Freestyle would be
+a row that promises a tutorial and delivers silence.
+
+`skipfirst` went with the screen: nothing dispatches it now, and an action with
+no row is dead code. The flag it used to clear is cleared by `flown()` instead,
+called from the two places a flight actually starts, so "this is your first
+visit" stops being true when they fly rather than when they dismiss a screen.
+
+**Why cards.** The difference between these two is a difference between PLACES,
+and a place is the thing a sentence is worst at. Two rows reading "Race" and
+"Freestyle" ask somebody who has never flown either to choose between two words.
+The picker screens learned this already, which is why the worlds are cards
+there. This is the same lesson one screen earlier, where it matters most.
+
+**The pictures are frames of this renderer**, written by `scripts/gatecards.js`
+into `assets/gate/`, `npm run gen:gatecards`. Same rule as og.js and the icons:
+regenerate, do not edit.
+
+They cannot be the shell's own recorded clips. Those are recorded from the world
+the pilot is IN, so the world nobody has visited yet, which is exactly the one
+this screen has to show, never has one: a cold first visit would get the card
+picker's "loading" placeholder and a joke, on the front door. A file is the only
+thing that is there on the first frame with no network.
+
+Race is the lit start gate at eleven metres with the course running out of frame
+past it, over `tracks/json/trk-0870b164.json`, the 2022 AU Nationals layout,
+because a real published track is the honest thing to photograph. Freestyle is
+the town from twelve metres up: roofs, wires, sakura, and no gate anywhere in
+it. The camera is parked with `__setCam` and the animation clock with
+`__animTo`, so a regeneration is the same picture and not a different frame of a
+moving one. JPEG at 82: the same frame is 33 kB and 67 kB here against about
+300 kB each as PNG, and this is the one screen that has to paint before anything
+else has loaded. `shots.js` grew a `--jpeg=Q` flag for it; PNG is still the
+default, because a capture being LOOKED AT for a rendering bug must not have
+compression artefacts in it.
+
+**What the card machinery already had, and what it did not.** A card is not a
+widget in this shell: it is an items() entry that carries a marker, which
+renderMenu splits out of the row list and a per-screen renderer draws. The gate's
+two entries carry `card`, and `Ui.cardScreen()` is the predicate that says the
+title is one of those screens WHILE THE GATE IS UP, which `isCardScreen` could
+not say on its own: the menu behind the gate carries a Ghost row whose left and
+right arrows have to keep adjusting rather than moving.
+
+Three things had to be built or moved rather than reused:
+
+- The lit card is a class, and the render pass that sets it only runs on a full
+  rebuild, which a cursor move deliberately is not. That repaint lived inside an
+  `if (this.screen === 'courses')` branch, so the Freestyle room's four world
+  cards never followed the arrow keys at all: the highlight moved only when
+  something else forced a render. `markCards()` is the one pass now and every
+  card screen goes through it. Found by reading, then reproduced and fixed:
+  `lit=true,false,false,false` becomes `lit=false,true,false,false` on one press.
+- The gate is a `div` with `role=button`, not a `<button>`. handleKey already
+  answers Enter for whatever the cursor is on, and a real button would ALSO fire
+  a click for the same keypress: the gate answered twice and the world swapped
+  twice.
+- Neither card is `primary`. The command bar paints the primary item as its
+  button, and a bar reading "Race" under a card reading "Race" is the same
+  choice drawn twice.
+
+**The pad gets the sticks back, on the gate only.** pollPad holds the sticks out
+of the title because they pose the airframe there. That rule is written for a
+screen where the choice is one switch press away, and it is not true of two
+cards: a radio that cannot move the cursor can only ever choose the one it
+starts on. On the gate the sticks fall through to the ordinary card walk. While
+fixing that, the card legend was found to be lying: it printed Roll for Move on
+a pad, and pollPad walks a card screen with PITCH and treats roll right as
+choose, which is what the Race room's own hint line has always said.
+
+**The row offset is arithmetic, so the trouble row moved.** renderMenu computes
+`items.length - rows.length`, so every card has to come before every row or the
+cursor and the row list disagree by one. The pad trouble row sits under the two
+cards now rather than over them.
+
+**A note that was answering a question nobody had asked.** The world's own notes
+print as a banner at boot, and on a browser with nothing built that reads
+"Nothing has been built yet, open the track builder" across the two cards,
+before the pilot has said they want to race at all. It is HELD now rather than
+dropped: `heldNotes` is released by the frame loop on the first frame after the
+gate is answered, so the pilot who is about to fly that world still gets it.
+
+**The layout, measured rather than guessed.** The title is a two child column
+pinned to the left 36em of the window with the menu at the bottom, and it does
+not scroll: anything that does not fit is simply gone. So the gate takes the
+width back (`min(64em, 92vw)`), the cards sit where the menu sits, and the card
+host is a third child that is `display: none` in every other state, which keeps
+the two child `space-between` contract the menu states depend on. An empty menu
+still paints its plate and its sakura top line, so the gate hides it.
+
+Two phone shapes, both driven and looked at. Portrait stacks the cards and lies
+each one on its side, picture left, words right: two upright cards would be
+taller than the window. Landscape (844x390) matches BOTH media blocks, so the
+later one puts them side by side again and drops the sentence, keeping the name
+and the three words under it. One real bug came out of that: `flex: 1 1 0` is a
+basis on the MAIN axis, so turning the stack vertical made every card start from
+a zero height and collapse to the two pixels of its own border, measured at
+355x2. And under 860 px the title stops reserving the command bar in its
+padding, which a scrolling menu survives and a block pinned to the bottom does
+not, so the gate puts it back.
+
+**A finding recorded and not acted on.** `--bars` on `:root` is
+`calc(var(--bar-top) + var(--bar-bot))` and resolves to 80 px, while ui.js
+overrides the two bars to 48 and 52 as inline style on `#ui` and never updates
+`--bars`. Every `calc(NNvh - var(--bars))` cap in the sheet is therefore 20 px
+optimistic. Nothing here is built on it, and correcting it moves every menu
+height cap in the product at once, so it is written down rather than changed on
+the way past.
+
+**How the shape was mapped.** Five parallel readers over the card renderers, the
+card screen interaction model, the title stylesheet and the first run path,
+because the answer spanned four files and 11,000 lines and the measurements
+wanted a browser. That is a read, not a review; findings above are theirs where
+they are marked as found by reading, and each was reproduced before it was
+fixed.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:devices` PASS,
+`npm run lint:responsive` PASS, `npm run lint:board` PASS, `npm run lint:nouns`
+PASS. shell-check now asserts the gate is CARDS as well as two labels: two cards
+drawn, both with art, and no stop on that screen that is not one. Driven and
+looked at with `scripts/shots.js` at 1280x800, 390x844 and 844x390: the gate,
+Race to a menu reading "Track, Copper Gully", Escape back to the gate, arrow
+right and Enter into the world picker, a click on the second card, and the
+guided First flight row appearing and then not. `npm run verify` not run:
+nothing here touches physics, the plant, the module ABI or the build.
+
 ## 2026-08-28, shell and maps: a photograph on every world card, and four shots that show the world
 
 Reported, in one line: use these pictures as the placeholder before the Three.js
@@ -21801,3 +22188,44 @@ clock landed on.
 or the build. `npm run lint:shell`, `lint:responsive`, `lint:devices` and
 `lint:board` not run either; they walk menus and rooms and nothing here changes
 an item list, a screen id or a row.
+
+## 2026-08-28, merge: the posters meet the gate, and there is one JPEG flag
+
+Merging main back in after the world cards landed. Three conflicts, and one of
+them was worth thinking about.
+
+**`shots.js` had grown a JPEG mode twice.** Main added `--jpeg=Q`, one flag, for
+`og.js` and the new `gatecards.js`; this branch added `--format=jpeg
+--quality=N`, two. Main's is the one two generators already use, so it wins and
+`scripts/posters.js` now asks for `--jpeg=82`, which is the number `og.js` and
+`gatecards.js` ship at. Three generators put a rendered frame in the tree and
+they all put the same kind of frame in it. The only edit left in `shots.js` on
+this side is a comment naming the third one.
+
+**`package.json`** wanted both new scripts, `gen:posters` and `gen:gatecards`,
+and got both. **`PROGRESS.md`** was two entries appended in the same place and
+kept both, in order.
+
+**The gate and the posters are siblings, not rivals.** Main's first screen asks
+Race or Freestyle with two pictures, `assets/gate/*.jpg` from
+`scripts/gatecards.js`; this branch puts a picture on each of the four world
+cards behind that door, `assets/posters/*.jpg` from `scripts/posters.js`. Same
+argument in both files, a frame of the real renderer rather than a drawing, and
+the same rule: regenerate, do not edit. The freestyle gate card is the town from
+twelve metres and the town's poster is its high street, so they are not the same
+photograph twice.
+
+**One thing seen and left alone.** On an empty browser the shell raises "Nothing
+has been built yet. Open the track builder from the title screen" and it is
+drawn over the Freestyle picker. It reproduces on `origin/main` with the same
+keystrokes and with none of this branch checked out, so it is main's and it is
+not this turn's to fix.
+
+Checks run on the merged tree: `npm run lint:shell` PASS, which is the one that
+covers both sides here since main extended it to assert the gate's cards.
+`npm run lint:attract` PASS, 0 of 320 in all four worlds and every reading
+unchanged from before the merge. `npm run lint:nouns` PASS.
+`npm run lint:presets` 3 of 3. Driven and looked at at 1440x900: the gate with
+its two cards, and Freestyle reached from it with four posters behind their
+loading scrims. `npm run verify` not run: nothing here touches physics, the
+plant, the module ABI or the build.

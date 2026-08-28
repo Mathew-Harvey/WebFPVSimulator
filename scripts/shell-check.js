@@ -320,6 +320,100 @@ const BEHAVIOUR = `(() => {
     out.freshOpen = { error: String(e && e.message ? e.message : e) };
   }
 
+  /*
+   * ENTER MUST NOT CHANGE A LONG VALUE LIST.
+   *
+   * This is the bug the row grammar exists to make unrepresentable: driving
+   * the shipped build, one Enter one row below where it was meant changed
+   * the flight tune from Betaflight default to Karate race 6S, with nothing
+   * confirming it and nothing announcing it. select() called adjust(1) on
+   * any row that had an adjust.
+   *
+   * Asserted on the value, not on the code path: press Enter on the row and
+   * the tune must be the tune it was.
+   */
+  try {
+    ui.show('title');
+    const i = ui.items().findIndex((it) => it && it.id === 'title:tune');
+    ui.setCursor(i);
+    const before = ui.items()[i].value;
+    ui.select();
+    const after = ui.items()[i].value;
+    out.enterOnList = {
+      found: i >= 0,
+      before,
+      after,
+      unchanged: before === after,
+      opened: Boolean(ui.dropEl),
+    };
+    ui.closeDrop();
+  } catch (e) {
+    out.enterOnList = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * A SWITCH IS A SWITCH: Enter flips it, and Enter again puts it back.
+   * Left sets it off and Right sets it on, rather than both cycling, which
+   * is what a two item popup's adjust used to do.
+   */
+  try {
+    ui.show('settings');
+    /* By ID, not by label. Settings carries a Sound HEADING and a Sound
+     * SWITCH, and looking up the label found the heading, which is the
+     * exact collision stable ids were added to remove. */
+    const i = ui.items().findIndex((it) => it && it.id === 'settings:sound');
+    ui.setCursor(i);
+    const start = ui.items()[i].on;
+    ui.select();
+    const flipped = ui.items()[i].on;
+    ui.select();
+    const back = ui.items()[i].on;
+    ui.adjust(-1);
+    const off = ui.items()[i].on;
+    ui.adjust(-1);
+    const stillOff = ui.items()[i].on;
+    ui.adjust(1);
+    const on = ui.items()[i].on;
+    /* Put it back the way it was found. */
+    ui.adjust(start ? 1 : -1);
+    out.switchRow = {
+      found: i >= 0,
+      isSwitch: Boolean(ui.items()[i] && ui.items()[i].sw),
+      flips: flipped === !start,
+      flipsBack: back === start,
+      leftIsOff: off === false && stillOff === false,
+      rightIsOn: on === true,
+      noPopup: !(ui.items()[i] && ui.items()[i].options),
+    };
+  } catch (e) {
+    out.switchRow = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * NO TWO ITEM POPUP SURVIVES ANYWHERE. The complaint was not about one
+   * row, it was that every on and off in the product opened a menu to
+   * answer a yes or no, so the assertion sweeps every screen rather than
+   * naming the rows that used to do it.
+   */
+  try {
+    const offenders = [];
+    for (const name of ${JSON.stringify(SCREENS)}) {
+      ui.show(name);
+      for (const it of ui.items()) {
+        /* The renderer's OWN predicate, so this cannot drift from what is
+         * actually drawn. A two option row that fits on the row is a
+         * segment strip and is the fix; a two option row that does not is
+         * still a menu opened to answer yes or no. */
+        if (it && it.options && it.options.length === 2 && !ui.fitsAsSegments(it)) {
+          offenders.push(name + ':' + it.label);
+        }
+      }
+    }
+    out.noTinyPopups = { offenders };
+  } catch (e) {
+    out.noTinyPopups = { error: String(e && e.message ? e.message : e) };
+  }
+
   /* Escape on the firmware bench with unsaved edits must not discard.
    * Dirty the draft through the same setter the rows use. */
   try {
@@ -519,6 +613,62 @@ async function main() {
     if (!b.freshOpen || b.freshOpen.error || !b.freshOpen.ok) {
       failures.push(`fresh open: ${b.freshOpen && b.freshOpen.error ? b.freshOpen.error : 'did not land on a stop'}`);
     }
+    if (!b.enterOnList || b.enterOnList.error) {
+      failures.push(`Enter on a list: ${b.enterOnList ? b.enterOnList.error : 'no result'}`);
+    } else {
+      const e2 = b.enterOnList;
+      if (!e2.found) {
+        failures.push('Enter on a list: the Tune row was not found, so nothing was exercised');
+      }
+      if (!e2.unchanged) {
+        failures.push(
+          `Enter on a list: Enter changed the tune from "${e2.before}" to "${e2.after}"`,
+        );
+      }
+      if (!e2.opened) {
+        failures.push('Enter on a list: Enter did not open the picker either, so the row is dead');
+      }
+    }
+
+    if (!b.switchRow || b.switchRow.error) {
+      failures.push(`switch row: ${b.switchRow ? b.switchRow.error : 'no result'}`);
+    } else {
+      const sw = b.switchRow;
+      if (!sw.found) {
+        failures.push('switch row: the Sound row was not found, so nothing was exercised');
+      }
+      if (!sw.isSwitch) {
+        failures.push('switch row: Sound is not a switch');
+      }
+      if (sw.options) {
+        failures.push('switch row: Sound still carries an option list');
+      }
+      if (!sw.flips) {
+        failures.push('switch row: Enter did not flip it');
+      }
+      if (!sw.flipsBack) {
+        failures.push('switch row: Enter again did not put it back');
+      }
+      if (!sw.leftIsOff) {
+        failures.push('switch row: Left does not set it off, it cycles');
+      }
+      if (!sw.rightIsOn) {
+        failures.push('switch row: Right does not set it on');
+      }
+      if (!sw.noPopup) {
+        failures.push('switch row: it would still open a popup');
+      }
+    }
+
+    if (!b.noTinyPopups || b.noTinyPopups.error) {
+      failures.push(`two item popups: ${b.noTinyPopups ? b.noTinyPopups.error : 'no result'}`);
+    } else if (b.noTinyPopups.offenders.length) {
+      failures.push(
+        `two item popups: ${b.noTinyPopups.offenders.length} row(s) still open a menu to answer`
+        + ` yes or no: ${b.noTinyPopups.offenders.slice(0, 5).join(', ')}`,
+      );
+    }
+
     if (!b.discardGuard || b.discardGuard.error) {
       failures.push(`discard guard: ${b.discardGuard ? b.discardGuard.error : 'no result'}`);
     } else {

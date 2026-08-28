@@ -465,12 +465,14 @@ export class FcSession {
     const skipped = this.skippedOnTab();
     if (skipped > 0) {
       rows.push({
+        /* A switch, not a two item popup. See toggle() in ui.js. */
         label: 'Walk every key',
+        sw: true,
+        on: this.walkAll,
         value: this.walkAll ? 'On' : 'Off',
         current: this.walkAll,
-        options: [{ value: true, label: 'On' }, { value: false, label: 'Off' }],
-        pick: (v) => { this.walkAll = Boolean(v); },
-        adjust: () => { this.walkAll = !this.walkAll; },
+        adjust: (d) => { this.walkAll = d > 0; },
+        flip: () => { this.walkAll = !this.walkAll; },
         note: this.walkAll
           ? `Up and Down stop on all ${skipped} key(s) this build does not implement, so their reason can be read. Off makes the arrows travel only the live rows.`
           : `Up and Down skip the ${skipped} key(s) this build does not implement. Turn this on to walk them and read why each one is missing. They are still on screen either way.`,
@@ -575,26 +577,22 @@ export class FcSession {
       rows.push({
         label: 'ANGLE',
         note: 'On or off, same sim_set_angle_mode as Flight mode in Settings. A real board uses an AUX range. Keyboard flight always uses Angle.',
+        sw: true,
+        on: angle,
         value: angle ? 'On' : 'Off',
         current: angle,
-        options: [
-          { value: true, label: 'On' },
-          { value: false, label: 'Off' },
-        ],
-        pick: (v) => this.setFlightMode(v === true || v === 'true'),
-        adjust: () => this.setFlightMode(!angle),
+        adjust: (d) => this.setFlightMode(d > 0),
+        flip: () => this.setFlightMode(!angle),
       });
       rows.push({
         label: 'LAUNCH CONTROL',
         note: 'On or off, same Launch control in Settings. L on the keyboard is the mode switch on the start line. A real board uses an AUX range.',
+        sw: true,
+        on: this.getLaunchControl(),
         value: this.getLaunchControl() ? 'On' : 'Off',
         current: this.getLaunchControl(),
-        options: [
-          { value: true, label: 'On' },
-          { value: false, label: 'Off' },
-        ],
-        pick: (v) => this.setLaunchControl(v === true || v === 'true'),
-        adjust: () => this.setLaunchControl(!this.getLaunchControl()),
+        adjust: (d) => this.setLaunchControl(d > 0),
+        flip: () => this.setLaunchControl(!this.getLaunchControl()),
       });
       rows.push({
         label: 'HORIZON',
@@ -650,15 +648,14 @@ export class FcSession {
         const current = Boolean(on);
         rows.push({
           label: `feature ${feat.name}`,
+          key: `feature ${feat.name}`,
           note: feat.reason,
+          sw: true,
+          on: current,
           value: current ? 'On' : 'Off',
           current,
-          options: [
-            { value: true, label: 'On' },
-            { value: false, label: 'Off' },
-          ],
-          pick: (v) => this.setFeature(feat.name, v === true || v === 'true'),
-          adjust: () => this.setFeature(feat.name, !current),
+          adjust: (d) => this.setFeature(feat.name, d > 0),
+          flip: () => this.setFeature(feat.name, !current),
         });
       }
     }

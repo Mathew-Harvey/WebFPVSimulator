@@ -648,6 +648,41 @@ function wrapMenu() {
 }
 
 /*
+ * HOW MANY CHOICES FIT ON THE ROW ITSELF.
+ *
+ * Up to four, the whole set is drawn inline as segments and the pilot can
+ * see every option and which one is live without pressing anything. Above
+ * four there is no width for it, so the row keeps its button and Enter
+ * opens the list.
+ *
+ * The count is not enough on its own, and the shell check said so: the Tune
+ * row has three presets, so it drew as a strip, and its labels are things
+ * like "Betaflight default" and "Karate race 6S", which wrapped to two lines
+ * and took the title screen 18 px further past the fold. So the rule is
+ * count AND fit, and both are measured rather than guessed. Twenty four
+ * characters of labels all told is what a row's control holds at 1280 px
+ * beside a label of its own: Off/On is five, Acro/Angle is nine,
+ * Low/High/Ultra is twelve, Arcade/Expert is twelve, and the three tunes
+ * are forty.
+ *
+ * The line also decides what Enter does, and that is the more important
+ * half. See select().
+ */
+const SEGMENT_MAX = 4;
+const SEGMENT_CHARS = 24;
+
+/* Whether a choice row draws its whole set on the row, or keeps a button
+ * and opens a list. One predicate, so the renderer and select() cannot
+ * disagree about which kind of row this is. */
+function fitsAsSegments(it) {
+  if (!it || !it.options || !it.options.length || it.options.length > SEGMENT_MAX) {
+    return false;
+  }
+  const chars = it.options.reduce((n, o) => n + String(o.label || '').length, 0);
+  return chars <= SEGMENT_CHARS;
+}
+
+/*
  * Slug a label down to something that survives being written into a DOM id
  * and read back. Anything that is not a letter or a digit becomes a hyphen,
  * because a label is prose: it has apostrophes, degrees signs and commas.
@@ -714,8 +749,39 @@ function choice(label, note, choices, current, format, set) {
   };
 }
 
+/*
+ * A BOOLEAN IS A SWITCH, not a list of two things.
+ *
+ * This used to be choice() over [true, false], which meant a two item popup
+ * opened for every on and off in the product: Sound, Launch control, Flight
+ * log, Performance readout, Binaural tone, and every feature row on the
+ * bench. Twelve of them. A popup is the control for "which of these many",
+ * and a popup listing On and Off asks a pilot to travel to a menu to answer
+ * a question the row itself could have answered in place.
+ *
+ * `sw` is the flag, and there are no `options`, which is what keeps the
+ * dropdown from ever opening on one of these. Left, Right and Enter all
+ * flip it: a switch is one bit, the same key puts it back, and it is the
+ * one value row where Enter changing something is the idiom rather than
+ * the accident. See select().
+ */
 function toggle(label, note, on, set) {
-  return choice(label, note, [true, false], on, (v) => (v ? 'On' : 'Off'), set);
+  const current = Boolean(on);
+  return {
+    label,
+    note,
+    sw: true,
+    on: current,
+    value: current ? 'On' : 'Off',
+    current,
+    /* Left and Right SET a switch rather than cycling it: Right is On,
+     * Left is Off. Cycling means a held Right on a radio makes the row
+     * blink, and it means the two keys are the same key, which is a waste
+     * of the only spatial handle a two state control has. */
+    adjust: (d) => set(d > 0),
+    /* Enter flips. See select(). */
+    flip: () => set(!current),
+  };
 }
 
 /*
@@ -3683,6 +3749,10 @@ export class Ui {
         row.append(this.makeSliderControl(it, i));
       } else if (it.num) {
         row.append(this.makeNumber(it, i));
+      } else if (it.sw) {
+        row.append(this.makeSwitch(it, i));
+      } else if (fitsAsSegments(it)) {
+        row.append(this.makeSegments(it, i));
       } else if (it.options) {
         row.append(this.makeDrop(it, i));
       } else if (it.step || it.adjust) {
@@ -4007,6 +4077,85 @@ export class Ui {
     if (this.onUiSound) {
       this.onUiSound('move');
     }
+  }
+
+  /*
+   * Two segments, Off and On, with the live one lit. Not a popup, and not a
+   * checkbox either: a checkbox says nothing about what the other state is
+   * called, and half of these are not really on and off in the pilot's head,
+   * they are two named behaviours.
+   *
+   * Both segments are clickable and both are labelled, so a mouse can go
+   * straight to the state it wants rather than pressing a thing to find out.
+   */
+  makeSwitch(it, i) {
+    const wrap = el('div', 'row-control row-switch');
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', it.label);
+    for (const seg of [false, true]) {
+      const b = btn(`sw-seg${it.on === seg ? ' on' : ''}`, seg ? 'On' : 'Off');
+      b.setAttribute('aria-pressed', String(it.on === seg));
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.cursor = i;
+        this.syncCursor(false);
+        /* Clicking the segment already lit is not a flip. A switch that
+         * toggles on any click is a button wearing a switch's clothes. */
+        if (it.on === seg) {
+          return;
+        }
+        this.setSwitch(it, seg);
+      });
+      wrap.append(b);
+    }
+    return wrap;
+  }
+
+  /*
+   * The same strip, for a row with a handful of NAMED choices rather than
+   * two states. Flight mode is Acro or Angle, Flight model is Arcade or
+   * Expert, Graphics is Low, High or Ultra. None of those is an on and an
+   * off, and all of them fit on the row.
+   *
+   * Drawing them inline is worth more than the width it costs: a popup
+   * hides every option a pilot has not chosen, so the row said "Acro" and
+   * nothing said what the alternative was called or that there was one.
+   */
+  makeSegments(it, i) {
+    const wrap = el('div', 'row-control row-switch');
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', it.label);
+    for (const opt of it.options) {
+      const live = String(opt.value) === String(it.current);
+      const b = btn(`sw-seg${live ? ' on' : ''}`, opt.label);
+      b.setAttribute('aria-pressed', String(live));
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.cursor = i;
+        this.syncCursor(false);
+        if (live || it.disabled || it.info) {
+          return;
+        }
+        this.pick(opt.value);
+      });
+      wrap.append(b);
+    }
+    return wrap;
+  }
+
+  /* One place that writes a switch, so the sound, the repaint and the
+   * disabled guard cannot drift between the mouse and the keys. */
+  setSwitch(it, on) {
+    if (!it || !it.sw || it.disabled || it.info) {
+      return;
+    }
+    if (it.on === Boolean(on)) {
+      return;
+    }
+    it.adjust(on ? 1 : -1);
+    /* The same path a Left or Right press takes: save, repaint, sound, and
+     * hand the settings to whoever is listening. */
+    this.writeSettings();
   }
 
   makeStepper(it, i) {
@@ -4342,6 +4491,28 @@ export class Ui {
     });
     wrap.append(b);
     return wrap;
+  }
+
+  /*
+   * Open the list on the row the cursor is on, from the keyboard.
+   *
+   * openDrop needs an element to hang the list under and the mouse path
+   * hands it the button that was clicked. From the keys there is no such
+   * event, so the button is looked up on the row. If the row has no button,
+   * which is every row rendered before this list existed, the row itself is
+   * a perfectly good thing to hang a list under.
+   */
+  openDropForCursor() {
+    const i = this.cursor;
+    const it = this.items()[i];
+    const row = this.menuRows && this.menuRows[i - this.rowOffset];
+    if (!it || !it.options || !it.options.length || !row) {
+      return;
+    }
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
+    this.openDrop(i, row.querySelector('.drop-btn') || row, it);
   }
 
   openDrop(i, anchor, it) {
@@ -5903,6 +6074,12 @@ export class Ui {
    *   link        leaves for a named tab. An arrow glyph says so.
    *   action      does a thing. Everything else.
    */
+  /* The module predicate, reachable from the shell check, so the check and
+   * the renderer cannot disagree about which rows draw as a strip. */
+  fitsAsSegments(it) {
+    return fitsAsSegments(it);
+  }
+
   rowKind(it) {
     if (!it) {
       return 'action';
@@ -6136,6 +6313,12 @@ export class Ui {
     if (!it) {
       return;
     }
+    /* A heading is not a row. move() already never lands on one, but
+     * setCursor is public and act() dereferences the action, so a cursor
+     * put on a heading by anything else threw rather than doing nothing. */
+    if (!this.isStop(it)) {
+      return;
+    }
     if (it.info) {
       return;
     }
@@ -6152,8 +6335,60 @@ export class Ui {
       this.focusNumber(this.cursor);
       return;
     }
-    if (it.adjust) {
+    /*
+     * A SWITCH FLIPS ON ENTER. It is the one value row where that is the
+     * idiom rather than the accident: one bit, visibly changed, and the
+     * same key puts it back. A radio whose axes are held out of the menus
+     * on this screen has nothing but select, so a switch that ignored
+     * Enter would be a switch that radio could never throw.
+     */
+    if (it.sw) {
+      if (it.flip) {
+        it.flip();
+        this.writeSettings();
+      }
+      return;
+    }
+    /*
+     * EVERY OTHER VALUE ROW: Enter opens the picker, it does not step the
+     * value.
+     *
+     * Enter used to call adjust(1) on any row with an adjust, which is how
+     * one press one row below where it was meant silently changed a flight
+     * tune from Betaflight default to Karate race 6S, with nothing
+     * confirming it and nothing announcing it. Stepping a thirty item list
+     * by one is not a thing anybody means to do; picking from it is. A row
+     * with a list opens the list, and a row with no list, a stepper or a
+     * typed number, keeps the arrows and does nothing on Enter, because
+     * there is nothing to open and stepping it is what Left and Right are
+     * already for.
+     */
+    if (it.options && it.options.length && !fitsAsSegments(it)) {
+      this.openDropForCursor();
+      return;
+    }
+    /*
+     * A SEGMENTED ROW CYCLES ON ENTER, and that is safe for the reason the
+     * long list is not: every choice is on screen, so a press moves between
+     * things the pilot can already see, and one more press comes back
+     * round. The tune row, thirty presets deep, is the one that bit
+     * somebody, and it is above the line and opens a list.
+     *
+     * It also has to work: a radio's axes are deliberately held out of the
+     * menus on the title, Settings, Rates, PIDs and the bench, so on those
+     * screens select is the only thing a pad has. A segmented row that
+     * ignored Enter would be a row that radio could never change.
+     */
+    if (it.options && it.options.length) {
       this.adjust(1);
+      return;
+    }
+    if (it.adjust || it.step) {
+      /* Nothing to open and nothing to fire. Say so rather than silently
+       * doing nothing, which reads as a dead key. */
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
       return;
     }
     /*

@@ -20821,3 +20821,79 @@ stable.
 Checks run this turn: `npm run lint:shell` PASS, and the three deliberate breaks
 above. `npm run verify` not run: nothing here touches physics, the plant, the
 module ABI or the build.
+
+---
+
+## 2026-08-28, shell: a switch is a switch, and Enter stops editing values
+
+Changed: every boolean is a real switch, a short choice list draws its whole set
+on the row, and Enter no longer steps a value.
+
+**Enter was still editing values, and that is the bug the row grammar exists to
+prevent.** `select()` ended in `if (it.adjust) { this.adjust(1); }`, so Enter on
+any adjustable row stepped it. That is how one press one row below where it was
+meant changed a flight tune from Betaflight default to Karate race 6S with
+nothing confirming it and nothing announcing it. The row grammar landed last turn
+without this, and said so.
+
+Enter now sorts by what the row can honestly do:
+
+- a SWITCH flips, and Enter again puts it back. One bit, visibly changed. It is
+  the one value row where Enter changing something is the idiom rather than the
+  accident, and it has to work: a radio's axes are deliberately held out of the
+  menus on the title, Settings, Rates, PIDs and the bench, so select is the only
+  thing a pad has there.
+- a row whose whole option set is ON SCREEN cycles, because a press moves between
+  things the pilot can already see and one more comes back round.
+- anything longer OPENS THE LIST rather than stepping it. The tune row, thirty
+  presets deep, is the one that bit somebody.
+- a stepper or a typed number does nothing on Enter and says so with the back
+  cue, because there is nothing to open and Left and Right already step it.
+
+**A boolean is a switch.** `toggle()` was `choice()` over `[true, false]`, so a
+two item popup opened for every on and off in the product: twelve of them, plus
+every feature row on the bench. It now returns `sw: true` and no `options`, which
+is what keeps the dropdown from ever opening on one. Left sets it off, Right sets
+it on, rather than both cycling, so a held Right on a radio does not make the row
+blink.
+
+**And the same strip generalises.** Flight mode is Acro or Angle, Flight model is
+Arcade or Expert, Graphics is Low, High or Ultra. A popup hid every option the
+pilot had not chosen, so the row said Acro and nothing said what the alternative
+was called. Up to four options that fit, the whole set draws inline.
+
+**What "fits" means, and how the check found it.** The first cut was a count
+alone, four options. The shell check immediately reported the title 18 px worse:
+the Tune row has three presets and its labels are things like "Betaflight
+default", so the strip wrapped to two lines. The rule is now count AND fit, both
+measured: 24 characters of labels all told. Off/On is five, Acro/Angle is nine,
+Low/High/Ultra is twelve, and the three tunes are forty. One predicate,
+`fitsAsSegments`, decides both what is drawn and what Enter does, and the shell
+check calls that same predicate rather than re-deriving it.
+
+**What it cost.** Nothing, and then some. Title is unchanged at 116 px, and the
+strips are shorter than the buttons they replaced: settings 1154 to 1133, rates
+321 to 319, pids 248 to 246, the bench 3630 to 3613. Baseline re-recorded at the
+better numbers.
+
+**A collision the new ids caught, in the check's own code.** The first draft
+looked the Sound row up by label and crashed. Settings carries a Sound HEADING
+and a Sound SWITCH, and the label found the heading. The check now looks up
+`settings:sound`, which is what the ids are for. `select()` also gained a
+`isStop` guard, because a cursor put on a heading by anything other than `move()`
+reached `act(undefined)` and threw.
+
+**The checks, and the proof they can fail.** Three new behaviours, each asserted
+against the thing it prevents rather than against its own code path. All three
+were exercised by breaking them:
+
+- reinstating `if (it.adjust) { this.adjust(1); }` reported, verbatim, "Enter
+  changed the tune from Betaflight default to Karate race 6S".
+- the same break reported "Enter did not flip it" on the switch.
+- restoring `toggle()` to a two item popup reported nine rows still opening a
+  menu to answer yes or no.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
+`npm run lint:presets` 3 of 3, and the three deliberate breaks above.
+`npm run verify` not run: nothing here touches physics, the plant, the module ABI
+or the build.

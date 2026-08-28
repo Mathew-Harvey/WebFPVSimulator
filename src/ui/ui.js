@@ -58,7 +58,7 @@ const CAL_LABELS = {
   select: 'Menu switch',
   confirm: 'Check',
 };
-import { TRACKS, trackById, musicIds } from '../render/tracks.js';
+import { MENU_TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { CUSTOM_TUNE, TUNES, tuneById } from '../../configs/registry.js';
 import {
   RATE_DEFAULTS,
@@ -1506,17 +1506,29 @@ export class Ui {
     this.onAction = null;    /* (action, settings) => void */
     this.onSettings = null;  /* (settings) => void */
     this.onMusicSkip = null; /* (dir) => void, -1 previous, +1 next */
+    /* (screen) => void, fired by show(). The shell hangs the music
+     * context off this: the flight crate plays on a flight, the menu bed
+     * everywhere else, and this file is the only side that knows which of
+     * those is up. */
+    this.onScreenChange = null;
     {
-      const sel = this.settings.musicTrack;
-      /* Rotation's real first track is a random pick on the player.
-       * TRACKS[0] is only the placeholder until main.js pushes that
-       * pick onto this.musicNow. A pinned id is already the record. */
-      const tr = sel === 'rotation' ? TRACKS[0] : trackById(sel);
+      /*
+       * A placeholder for the dock until main.js pushes the player's real
+       * status, which it does before the first gesture. It is a MENU
+       * record because a visit opens in the menus and the menu bed is
+       * what will be playing; the Music track setting names a flight
+       * record, so it is not the answer to this question even when it is
+       * pinned. Which of the two is a roll on the player, so this is
+       * MENU_TRACKS[0] rather than a second roll that would disagree with
+       * it for one frame.
+       */
+      const tr = MENU_TRACKS[0];
       this.musicNow = {
         id: tr.id,
         name: tr.name,
-        selection: sel,
-        index: Math.max(0, TRACKS.indexOf(tr)),
+        selection: this.settings.musicTrack,
+        index: 0,
+        context: 'menu',
       };
     }
     /* Where the live sticks are, for the Rates curve. Written by the frame
@@ -2720,6 +2732,19 @@ export class Ui {
     this.syncMusicDock();
   }
 
+  /*
+   * Is a flight up. Paused counts, and that is the decision in this
+   * predicate rather than an oversight: the pause screen keeps the flight
+   * display, the lap clock and the pack on screen behind it, the flight is
+   * still there to go back to, and swapping the bed out and back every
+   * time somebody taps Escape mid race would be the most obtrusive thing
+   * in the mix. One predicate, used by the dock and by the music context,
+   * so the dock cannot say flying while the bed says menus.
+   */
+  flying() {
+    return this.screen === 'flight' || this.screen === 'paused';
+  }
+
   skipMusic(dir) {
     if (typeof this.onMusicSkip === 'function') {
       this.onMusicSkip(dir);
@@ -2744,10 +2769,9 @@ export class Ui {
       || this.screen === 'padpick'
       || !this.settings.sound;
     this.musicDock.hidden = hide;
-    const flying = this.screen === 'flight' || this.screen === 'paused';
-    this.musicDock.classList.toggle('on-flight', flying);
+    this.musicDock.classList.toggle('on-flight', this.flying());
     this.musicDock.classList.toggle('is-muted', this.settings.musicLevel <= 0);
-    const name = (this.musicNow && this.musicNow.name) || TRACKS[0].name;
+    const name = (this.musicNow && this.musicNow.name) || MENU_TRACKS[0].name;
     this.musicTitle.textContent = name;
     this.musicTitle.title = name;
   }
@@ -3862,15 +3886,15 @@ export class Ui {
         }),
         stepper(
           'Music',
-          'Recorded tracks. Rotation starts on a random track each visit, then walks the crate. The skip buttons on screen jump a track.',
+          'Recorded tracks in flight, and a quieter bed in the menus. One level for both. The skip buttons on screen jump a track.',
           s.musicLevel > 0 ? `${s.musicLevel}` : 'Off',
           (d) => { s.musicLevel = Math.max(0, Math.min(10, s.musicLevel + d)); },
         ),
         choice(
           'Music track',
           s.musicTrack === 'rotation'
-            ? 'A random start, then every track in turn.'
-            : 'This track loops until you skip or pick another.',
+            ? 'What flies. A random start, then every track in turn.'
+            : 'What flies. This track loops until you skip or pick another.',
           ids,
           s.musicTrack,
           (id) => (id === 'rotation' ? 'Rotation' : trackById(id).name),
@@ -6593,6 +6617,13 @@ export class Ui {
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
     this.syncBugChip();
+    /* Last, and unconditionally. Last because a listener is entitled to
+     * read a settled screen; unconditionally because show() is also how
+     * a screen is re-entered, and the shell side of this is idempotent by
+     * construction rather than by this file guessing what changed. */
+    if (typeof this.onScreenChange === 'function') {
+      this.onScreenChange(screen);
+    }
   }
 
   bindWikiHash() {

@@ -29,6 +29,7 @@
     "replay:selftest": "node scripts/replay-log.js --selftest",
     "replay": "node scripts/replay-log.js",
     "link:selftest": "node scripts/link-selftest.js",
+    "music:selftest": "node scripts/music-selftest.js",
     "test:edge": "node edge/selftest.js",
     "lint:nouns": "node scripts/noun-lint.js",
     "lint:devices": "node scripts/device-check.js",

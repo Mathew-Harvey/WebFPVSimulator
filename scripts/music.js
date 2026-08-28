@@ -13,7 +13,11 @@
  *   assets/music/<id>.mp3    LAME V7, ~110 kbps VBR, the fallback
  *
  * <id> is the track id from src/render/tracks.js, so the crate needs no
- * filename column and the URL needs no percent encoding.
+ * filename column and the URL needs no percent encoding. Both crates are
+ * encoded: the flight records in TRACKS and the menu bed in MENU_TRACKS,
+ * into the same directory, on the same settings, because the difference
+ * between them is where they are played and how loud the mix runs them,
+ * not how they are encoded.
  *
  * Two formats and not one because Opus at 80 kbps is roughly half the
  * bytes of the smallest mp3 anyone would ship and loses nothing measurable
@@ -32,9 +36,16 @@
  * Usage:
  *   node scripts/music.js [--src=DIR] [--only=id] [--dry]
  *
- * DIR defaults to assets/music-src, which is not in the repository: the
- * masters are the mp3s as they stood at commit f9e0804 and come back with
+ * DIR defaults to assets/music-src, which is not in the repository. The
+ * flight masters are the mp3s as they stood at commit f9e0804 and come
+ * back with
  *   git show f9e0804:"assets/music/Tarmac Pulse.mp3" > out.mp3
+ * The two menu masters do NOT come back that way: they never existed in
+ * this repository as anything but the encoded output below. They arrived
+ * as 'Neon Gate.mp3' and 'Neon Gate take 2.mp3', 5.5 and 7.1 MB, 48 kHz
+ * stereo mp3 at about 195 kbps with cover art attached, and if they are
+ * needed again they have to be supplied again. That is worth knowing
+ * before anyone bumps MUSIC_REV expecting a re-encode to be free.
  * Needs ffmpeg with libopus and libmp3lame on PATH, the same way
  * scripts/build-wasm.sh needs emcc. It is not an npm dependency and the
  * page does not need it: the output is committed.
@@ -60,7 +71,7 @@ import { existsSync, readdirSync, statSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { TRACKS } from '../src/render/tracks.js';
+import { TRACKS, MENU_TRACKS } from '../src/render/tracks.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const out = join(root, 'assets/music');
@@ -199,7 +210,8 @@ function main() {
     masters.set(slug(f), join(src, f));
   }
 
-  const work = TRACKS.filter((t) => !only || t.id === only);
+  const crate = [...TRACKS, ...MENU_TRACKS];
+  const work = crate.filter((t) => !only || t.id === only);
   if (work.length === 0) {
     console.error(`music: no track matches --only=${only}`);
     process.exit(1);

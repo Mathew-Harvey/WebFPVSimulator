@@ -796,6 +796,18 @@ const DRIVER = `async (spec) => {
   if (typeof a.setMusicEnabled === 'function') {
     a.setMusicEnabled(spec.music !== 0);
   }
+  /*
+   * The FLIGHT bed, explicitly. The player defaults to the menu context,
+   * because a visit opens in the menus, and the menu context runs the bus
+   * 9.5 dB down. This probe exists to measure the mix a pilot flies in, so
+   * it says which mix it wants rather than inheriting whichever one the
+   * player happens to open on. It changes no rendered sample today, since
+   * an OfflineAudioContext has no media element and the bed is silent
+   * here, but the bus gain it sets is a number this file publishes.
+   */
+  if (typeof a.setMusicContext === 'function') {
+    a.setMusicContext('flight');
+  }
   if (spec.track && typeof a.setMusicTrack === 'function') {
     a.setMusicTrack(spec.track);
   }
@@ -958,9 +970,12 @@ async function main() {
      * possible with a fixed mix, so the mix is an argument.
      */
     motors: -1, wind: -1, musiclevel: -1, ambience: -1, music: 0, focus: 0,
-    /* Which music track the render plays, by id from src/render/tracks.js.
-     * Empty keeps the player's default, which is rotation. Offline
-     * renders have no media element, so this only names the selection. */
+    /* Which music track the render plays, by id from TRACKS in
+     * src/render/tracks.js. The FLIGHT crate: this probe pins the flight
+     * context above, and a menu id here would be refused and fall back to
+     * rotation. Empty keeps the player's default, which is rotation.
+     * Offline renders have no media element, so this only names the
+     * selection. */
     track: '',
     /*
      * A7 asks for a cue's level advantage "at the moment it plays" and for a

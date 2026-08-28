@@ -87,19 +87,73 @@ function applyFov(camera, overlay) {
 
 /*
  * Slide the subject into the hole the overlay leaves. Wide: the menu owns
- * the left third, so the camera steps left and the quad sits on the right.
- * Narrow: the menu owns the bottom, so the camera steps down and the quad
- * sits in the upper sky. Applied AFTER lookAt, and lookAt is not called
- * again, or the shift would cancel.
+ * the left third, so the picture steps right and the quad sits clear of it.
+ * Narrow: the menu owns the bottom, so the picture steps up and the quad
+ * sits in the open sky above it.
+ *
+ * THIS USED TO MOVE THE CAMERA, AND THAT IS WHAT PUT THE TITLE SHOT UNDER
+ * THE GROUND ON A PHONE. It translated the eye by a FRACTION OF THE
+ * DISTANCE TO THE SUBJECT, sixteen percent of it downwards on a narrow
+ * frame, which is a screen space intent expressed as a world space move.
+ * The two only agree when the subject is a couple of metres away. The map
+ * hands over a shot framed from the course's own bounds, so on a track that
+ * covers a field the orbit sits 15.6 m up and 60 m out, and sixteen percent
+ * of that is a TWELVE METRE drop: the eye ended at 2.8 m over a shot
+ * designed for 15.6, and on a wider orbit with a lower eye it ended below
+ * the dirt, which is what a portrait phone was showing. Nothing clamped it,
+ * because the clearance every map computes for this line is a property of
+ * the line, and the eye had left the line.
+ *
+ * So the eye no longer moves. The offset is a LENS SHIFT: the projection
+ * renders a window of the frustum offset from centre, the same trick a
+ * shift lens plays, which is exactly the screen space quantity the overlay
+ * asks for. The camera stays on the cleared line at every aspect, the shift
+ * is the same fraction of the frame whether the subject is two metres away
+ * or eighty, and scripts/attract-check.js, which probes this camera with no
+ * overlay, is now telling the truth about where the shot actually goes.
+ *
+ * The fractions below reproduce what the old translation framed on a 16:9
+ * desktop, where the subject sat about a look ahead away and the move was
+ * small enough to be honest. They are fractions of the rendered frame:
+ * positive Y lifts the picture, negative X pushes it right.
  */
-function frameOverlay(camera, lookAt, overlay) {
-  if (!overlay) {
+const SHIFT_X_WIDE = -0.118;
+const SHIFT_Y_WIDE = 0.062;
+const SHIFT_Y_NARROW = 0.172;
+
+function frameOverlay(camera, overlay) {
+  /*
+   * THE FULL FRAME IS THE ASPECT BY ONE, AND IT HAS TO BE. three.js's
+   * setViewOffset opens with `this.aspect = fullWidth / fullHeight`, so the
+   * obvious unit frame, setViewOffset(1, 1, ...), silently reshapes the
+   * camera to a square and every later read of camera.aspect answers 1. The
+   * first draft of this did exactly that, and the tell was the narrow branch
+   * below never firing again on a phone: one frame of shift set the aspect
+   * to 1, and 1 is not less than 0.95. So the frame is the camera's own
+   * aspect wide and one high, which hands setViewOffset back the aspect it
+   * already had, and X offsets are in those same units.
+   */
+  const aspect = camera.aspect;
+  const narrow = aspect < 0.95;
+  const ox = overlay && !narrow ? SHIFT_X_WIDE * aspect : 0;
+  const oy = overlay ? (narrow ? SHIFT_Y_NARROW : SHIFT_Y_WIDE) : 0;
+  const view = camera.view;
+  if (!ox && !oy) {
+    /* Off, not zeroed: the shell shares one camera with the flight lens,
+     * and a disabled view is what every other reader of it expects. */
+    if (view && view.enabled) {
+      camera.clearViewOffset();
+    }
     return;
   }
-  const narrow = camera.aspect < 0.95;
-  const dist = Math.max(0.8, camera.position.distanceTo(lookAt));
-  camera.translateX((narrow ? 0 : -0.17) * dist);
-  camera.translateY((narrow ? -0.16 : -0.05) * dist);
+  /* Rebuilt when the window is resized as well as when the shift changes,
+   * because fullWidth carries the aspect and a stale one would scale the
+   * horizontal offset against a frame the page no longer has. */
+  if (view && view.enabled && view.fullWidth === aspect
+      && view.offsetX === ox && view.offsetY === oy) {
+    return;
+  }
+  camera.setViewOffset(aspect, 1, ox, oy, aspect, 1);
 }
 
 /*
@@ -200,7 +254,7 @@ export function makeAttractCamera(view) {
           target.set(at.x, at.y + at.aim, at.z);
         }
         camera.lookAt(target);
-        frameOverlay(camera, target, overlay);
+        frameOverlay(camera, overlay);
       },
     };
   }
@@ -304,7 +358,7 @@ export function makeAttractCamera(view) {
       camera.lookAt(aim);
       camera.rotateZ(bank);
       poseCraft(craft, craftPos, craftAim, bank, opts);
-      frameOverlay(camera, aim, overlay);
+      frameOverlay(camera, overlay);
     },
   };
 }

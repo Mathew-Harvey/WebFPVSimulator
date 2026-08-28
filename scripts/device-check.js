@@ -79,11 +79,12 @@ const MIN_TAP = 44;
 
 const PROBE = `(() => {
   const ui = window.__ui;
-  if (ui.firstRun) { ui.act('skipfirst'); }
-  /* And answer the Race or Freestyle gate, because this check is about the
-   * returning pilot's menus rather than the one question in front of them.
-   * Set rather than pressed: act() would navigate, and this walk shows every
-   * screen itself. */
+  /* Answer the Race or Freestyle gate, because this check is about the
+   * returning pilot's menus rather than the one question in front of them,
+   * and clear the first run so the primary row is Fly rather than the guided
+   * First flight. Set rather than pressed: act() would navigate, and this
+   * walk shows every screen itself. */
+  ui.firstRun = false;
   if (!ui.mode) { ui.mode = 'race'; }
   const W = window.innerWidth;
   const H = window.innerHeight;

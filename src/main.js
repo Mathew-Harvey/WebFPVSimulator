@@ -1445,6 +1445,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * cannot change the physics under a lap in progress. */
   let runStyle = ui.settings.flightStyle === 'arcade' ? 'arcade' : 'expert';
   let notice = null; /* { text, untilMs } for one off shell messages */
+  /* A course note that arrived while the Race or Freestyle gate was up. See
+   * showCourseNotes: it is shown once the gate has been answered. */
+  let heldNotes = null;
   let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
    * reading it live used to end a 5 lap run the moment someone dropped the
@@ -1453,9 +1456,27 @@ export async function boot({ loading, bootStart, mapId }) {
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs, view.mode);
 
+  /*
+   * The world's own notes, as a timed banner.
+   *
+   * NOT OVER THE GATE. The first screen asks Race or Freestyle and nothing
+   * else, and a note about whatever happens to be seated is an answer to a
+   * question the pilot has not been asked yet: on a browser with nothing
+   * built it prints "Nothing has been built yet, open the track builder"
+   * across the two cards before they have chosen to race at all.
+   *
+   * It is HELD rather than dropped, because the note is worth saying to the
+   * pilot who is about to fly that world. The frame loop releases it on the
+   * first frame after the gate is answered.
+   */
   function showCourseNotes() {
     if (view.notes && view.notes.length) {
-      notice = { text: view.notes.join('\n'), untilMs: performance.now() + 5600 };
+      const text = view.notes.join('\n');
+      if (ui.onGate()) {
+        heldNotes = text;
+        return;
+      }
+      notice = { text, untilMs: performance.now() + 5600 };
     }
   }
   showCourseNotes();
@@ -4111,6 +4132,14 @@ export async function boot({ loading, bootStart, mapId }) {
     prevWall = nowWall;
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
     let frameSteps = 0;
+
+    /* A course note that waited for the gate to be answered. Its clock
+     * starts here rather than when the world loaded, so it is read rather
+     * than expiring behind the two cards. See showCourseNotes. */
+    if (heldNotes && !ui.onGate()) {
+      notice = { text: heldNotes, untilMs: nowWall + 5600 };
+      heldNotes = null;
+    }
 
     input.poll(nowWall);
     pollManualFlip();

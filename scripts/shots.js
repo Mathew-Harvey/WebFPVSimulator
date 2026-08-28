@@ -14,7 +14,7 @@
  *                         step step step
  * Steps:
  *   wait:MS          advance wall time
- *   shot:NAME        write DIR/NAME.png
+ *   shot:NAME        write DIR/NAME.png, or DIR/NAME.jpg under --jpeg=Q
  *   tap:CODE         key down then up, e.g. tap:Enter
  *   down:CODE        key down, held
  *   up:CODE          key up
@@ -173,8 +173,22 @@ async function main() {
       }, sessionId);
       console.log(`throttle ${kbps > 0 ? `${kbps} kbps, 40 ms latency` : 'off'}`);
     } else if (op === 'shot') {
-      const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
-      const path = join(outDir, `${arg}.png`);
+      /*
+       * PNG by default, because a capture that is being LOOKED AT for a
+       * rendering bug must not have compression artefacts in it.
+       *
+       * --jpeg=Q switches the whole run to JPEG at that quality, for the
+       * generators that ship a frame into the repository rather than
+       * inspecting it: og.js and gatecards.js. A cel shaded frame is a
+       * photograph as far as PNG is concerned, and the same frame is four
+       * to six times smaller as a JPEG. The extension follows the format so
+       * a run cannot write a JPEG called .png.
+       */
+      const jpeg = opts.jpeg ? Number(opts.jpeg) : 0;
+      const { data } = await cdp.send('Page.captureScreenshot', jpeg
+        ? { format: 'jpeg', quality: jpeg }
+        : { format: 'png' }, sessionId);
+      const path = join(outDir, `${arg}.${jpeg ? 'jpg' : 'png'}`);
       await writeFile(path, Buffer.from(data, 'base64'));
       console.log(`shot ${path}`);
       /* Every capture records which gate the race actually wants and where

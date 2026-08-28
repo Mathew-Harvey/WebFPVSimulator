@@ -90,13 +90,14 @@ const SCREENS = [
 /*
  * Every walk below starts PAST the Race or Freestyle gate.
  *
- * A fresh load opens on that gate: two rows, and the menu these checks are
+ * A fresh load opens on that gate: two cards, and the menu these checks are
  * about is behind it. The mode is set rather than pressed, because act()
  * would also navigate to a picker when there is nothing seated, and each
- * walk drives its own navigation. The gate itself is checked in BEHAVIOUR,
- * through act(), which is the way a pilot answers it.
+ * walk drives its own navigation. The first run flag goes with it, so the
+ * primary row is Fly rather than the guided First flight. The gate itself is
+ * checked in BEHAVIOUR, through act(), which is the way a pilot answers it.
  */
-const PAST_GATE = "if (!ui.mode) { ui.mode = 'race'; }";
+const PAST_GATE = "ui.firstRun = false; if (!ui.mode) { ui.mode = 'race'; }";
 
 const WALK = `(() => {
   const ui = window.__ui;
@@ -1060,19 +1061,25 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
-   * THE GATE. A visit opens on one question, Race or Freestyle, and the
-   * menu behind it names a track or a map, never a mode: that is the whole
-   * change, and the thing that would quietly come back is a Race row and a
-   * Freestyle row reappearing on the front page beside it.
+   * THE GATE. A visit opens on one question, Race or Freestyle, drawn as two
+   * cards, and the menu behind it names a track or a map, never a mode. Two
+   * things would quietly come back: a Race row and a Freestyle row on the
+   * front page, or the cards turning back into plain rows.
    *
    * Answered through act(), which is what a keypress calls, so the seat has
    * to follow the answer as well as the flag.
    */
   try {
     const held = ui.mode;
+    const heldFirst = ui.firstRun;
+    ui.firstRun = false;
     ui.mode = null;
     ui.show('title');
-    const gate = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
+    const gateItems = ui.items().filter((it) => ui.isStop(it));
+    const gate = gateItems.map((it) => it.label);
+    const drawn = ui.root.querySelectorAll('.screen-title .gate-card').length;
+    const art = [...ui.root.querySelectorAll('.screen-title .gate-card-shot')]
+      .map((n) => n.getAttribute('src'));
     /*
      * Race is pressed for real. Freestyle is only set, because answering it
      * can seat a world, and seating a world hands main.js a swap: the city
@@ -1087,10 +1094,17 @@ const BEHAVIOUR = `(() => {
     ui.mode = 'freestyle';
     const free = ui.items().map((it) => it.label);
     ui.mode = held;
+    ui.firstRun = heldFirst;
     ui.show('title');
     out.modeGate = {
       gate,
+      drawn,
+      art,
       asksTwo: gate.includes('Race') && gate.includes('Freestyle') && !gate.includes('Fly'),
+      /* Two cards drawn, both with a picture, and neither of them a row:
+       * the whole point of the screen is that it is not a menu. */
+      asCards: drawn === 2 && art.length === 2 && art.every(Boolean)
+        && gateItems.filter((it) => !it.card).length === 0,
       /* Answering it either seats something to fly or opens the picker for
        * the thing it could not seat. Landing on a menu with neither is the
        * failure: a Fly row over an empty seat. */
@@ -1335,6 +1349,11 @@ async function main() {
       const g = b.modeGate;
       if (!g.asksTwo) {
         failures.push(`the gate: a fresh visit opens on ${g.gate.join(', ') || 'nothing'}, not on Race or Freestyle`);
+      }
+      if (!g.asCards) {
+        failures.push(
+          `the gate: ${g.drawn} card(s) drawn with art ${JSON.stringify(g.art)}, so the question is a menu again`,
+        );
       }
       if (!g.answered) {
         failures.push(`the gate: answering Race left nothing seated and stayed on ${g.landed}`);

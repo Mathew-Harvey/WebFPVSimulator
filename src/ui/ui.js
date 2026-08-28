@@ -993,7 +993,12 @@ function hasLoadedTrack() {
 }
 
 /* Screens whose choices are drawn as cards above the row list. The rows
- * that remain are whatever is not a card. */
+ * that remain are whatever is not a card.
+ *
+ * The title is not in here because it is a card screen only SOMETIMES: the
+ * gate draws two, the menu behind it draws none and carries a Ghost row
+ * whose left and right arrows have to keep adjusting rather than moving.
+ * Ui.cardScreen() is the predicate that knows both. */
 function isCardScreen(screen) {
   /* Both pickers lay their choices out in a row. */
   return screen === 'courses' || screen === 'freestyle';
@@ -1719,10 +1724,6 @@ export class Ui {
     /* First run only. Replaced by the keep note once a lap has been flown. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
     brand.append(this.firstNote);
-    /* The gate only. The storage warning and the track record belong to a
-     * seat, and the pilot has not said yet whether they are flying it. */
-    this.gateNote = el('p', 'keep-note gate-note', 'Two ways to fly. Race is a gated track against the clock, and every lap flown there goes to the public board. Freestyle is a place with no gates and nothing measured. Escape from the menu comes back here.');
-    brand.append(this.gateNote);
     this.wikiTeaser = btn('wiki-teaser', 'Simulating FPV, for nerds');
     this.wikiTeaser.setAttribute('aria-label', 'Open the FPV wiki');
     this.wikiTeaser.addEventListener('click', () => this.act('wiki'));
@@ -1751,7 +1752,18 @@ export class Ui {
       this.titleHint,
       titleBlock.stage,
     );
-    copy.append(brand, titleFoot);
+    /*
+     * The gate's two cards.
+     *
+     * A third child of the copy column, and it is display:none in every
+     * state but the gate, so the two child space-between contract the
+     * other states rely on is untouched. It sits between the brand and the
+     * foot because that is the middle of the column, which is the only
+     * part of this screen with room in it: see the measurements in
+     * PROGRESS.md.
+     */
+    this.gateCards = el('div', 'gate-cards');
+    copy.append(brand, this.gateCards, titleFoot);
     this.craftCanvas = el('canvas', 'craft-view');
     this.craftCanvas.setAttribute('aria-hidden', 'true');
     title.append(copy);
@@ -3315,68 +3327,70 @@ export class Ui {
        * lap on record. Credits sits with the two choices so who made this is
        * readable before a lap is flown.
        */
-      /* Above BOTH title states, and first. A pilot on their first visit
-       * with a radio that cannot press anything is the person this row is
-       * most for, and the first-run split is the screen they are looking
-       * at. */
-      const trouble = padTroubleItem(this.padInfo);
-      if (this.firstRun) {
-        const seat = activeCourseSummary();
-        const trackName = seat && seat.name ? seat.name : null;
-        return [
-          ...(trouble ? [trouble] : []),
-          {
-            label: 'First flight',
-            action: 'firstflight',
-            primary: true,
-            note: trackName
-              ? `${trackName}, levelled off, with the sticks drawn on screen and a prompt at each step.`
-              : 'A track, levelled off, with the sticks drawn on screen and a prompt at each step.',
-          },
-          {
-            label: 'I have flown before',
-            action: 'skipfirst',
-            note: 'Straight to the full menu.',
-          },
-          {
-            label: 'Credits',
-            action: 'credits',
-            note: 'Who made this, who flew it, and whose work it stands on.',
-          },
-        ];
-      }
       /*
-       * THE GATE. TWO ROWS, AND NOTHING ELSE ON THE PAGE TO ANSWER.
+       * The pad trouble row, above whichever title state is up. A pilot
+       * whose radio cannot press anything is the person this row is most
+       * for, and the first screen is where they are looking.
        *
-       * A pilot arriving does not open the menu wanting "Quad" or "Pilot".
+       * On the gate it sits UNDER the two cards rather than over them, and
+       * that is arithmetic rather than taste: renderMenu computes the row
+       * offset as `items.length - rows.length`, so every card has to come
+       * before every row or the cursor and the row list disagree by one.
+       */
+      const trouble = padTroubleItem(this.padInfo);
+      /*
+       * THE GATE. TWO PICTURES, AND NOTHING ELSE ON THE PAGE TO ANSWER.
+       *
+       * A pilot arriving does not open a menu wanting "Quad" or "Pilot".
        * They want to race or they want to mess about, and until that is
        * answered every other row on this screen is furniture. It used to be
        * answered halfway down a list of eleven, twice: once by the Race row
        * and once by the Freestyle row, each of which was really a location
-       * picker wearing a mode's name.
+       * picker wearing a mode's name. Before that there was a first run
+       * split in front of it, so a new pilot answered two questions to
+       * reach a third.
        *
-       * So it is asked first, on its own, and the answer decides what the
-       * rest of the menu is. Escape from that menu comes back here, which is
-       * the only way to change mode and is why the answer is cheap to give.
+       * WHY CARDS AND NOT ROWS. The difference between these two is a
+       * difference between PLACES, and a place is the thing a sentence is
+       * worst at. Two menu rows reading "Race" and "Freestyle" ask somebody
+       * who has never flown either to choose between two words. The picker
+       * screens learned this already, which is why the worlds are cards
+       * there; this is the same lesson one screen earlier, where it matters
+       * most because it is the first thing anybody sees.
        *
-       * The pad trouble row still sits above it: a pilot whose radio cannot
-       * press anything needs to be told that on whatever screen they are
-       * looking at, and this is now the first one.
+       * The pictures are frames of the real renderer, shipped as files by
+       * scripts/gatecards.js. They cannot be the shell's own recorded clips:
+       * those are recorded from the world the pilot is in, so the world
+       * nobody has visited yet, which is exactly the one this screen has to
+       * show, never has one.
+       *
+       * Neither card is `primary`. The bottom bar's button paints the
+       * primary item, and a bar reading "Race" under a card reading "Race"
+       * is the same choice drawn twice.
+       *
+       * No `note` either: the help column would print it floating over the
+       * cards, and every word of it is already on the card in a place that
+       * says which of the two it belongs to.
        */
       if (!this.mode) {
         return [
-          ...(trouble ? [trouble] : []),
           {
             label: 'Race',
+            card: 'race',
+            art: 'assets/gate/race.jpg',
+            blurb: 'A gated track against the clock. Yours and the board\u2019s, flown gate by gate, and every lap you finish goes to the public leaderboard.',
+            facts: ['Gates', 'A lap clock', 'The board'],
             action: 'mode-race',
-            primary: true,
-            note: 'A gated track against the clock. Your tracks and the board\u2019s, and every time flown here goes to the leaderboard.',
           },
           {
             label: 'Freestyle',
+            card: 'freestyle',
+            art: 'assets/gate/freestyle.jpg',
+            blurb: 'A town to fly around, and three more places like it. Roofs, alleys and a level crossing, and nothing measured.',
+            facts: ['No gates', 'No clock', 'Four places'],
             action: 'mode-freestyle',
-            note: 'A place with no gates. No clock, no lap, no board. Four of them, and nothing measured.',
           },
+          ...(trouble ? [trouble] : []),
         ];
       }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
@@ -3446,9 +3460,39 @@ export class Ui {
        * an unsaved firmware edit is the failure that rule exists to
        * prevent.
        */
+      /*
+       * THE FIRST FLIGHT, WHICH IS NOW A VERB AND NOT A SCREEN.
+       *
+       * A pilot's first visit used to be met by its own three row menu:
+       * First flight, I have flown before, Credits. That screen asked
+       * whether they had flown before in order to decide what to show them,
+       * which is a question about the product rather than about flying, and
+       * it stood between them and the one question this shell actually
+       * needs answered.
+       *
+       * So it is gone, and the guided flight it existed to offer is the
+       * primary row here instead: same action, same three prompts, one
+       * screen later and behind a choice they have already made.
+       *
+       * Race only, and only with a track under them, because the guide is
+       * three lines that talk about gates and src/main.js retires it on the
+       * first frame of a gateless world. Offering it in Freestyle would be
+       * a row that promises a tutorial and delivers silence.
+       */
+      const guide = this.firstRun && this.mode === 'race' && this.seatMatchesMode();
+      const flyRow = guide
+        ? {
+          label: 'First flight',
+          action: 'firstflight',
+          primary: true,
+          note: seat && seat.name
+            ? `${seat.name}, levelled off, with the sticks drawn on screen and a prompt at each step.`
+            : 'Levelled off, with the sticks drawn on screen and a prompt at each step.',
+        }
+        : { label: 'Fly', action: 'fly', primary: true };
       return [
         ...(trouble ? [trouble] : []),
-        { label: 'Fly', action: 'fly', primary: true },
+        flyRow,
         modeRow,
         {
           label: 'Quad',
@@ -4369,8 +4413,11 @@ export class Ui {
     if (this.screen === 'freestyle') {
       this.renderMapCards();
     }
+    if (this.screen === 'title') {
+      this.renderTitleCards();
+    }
     if (this.screens && this.screens.title) {
-      const gate = !this.firstRun && !this.mode;
+      const gate = !this.mode;
       this.screens.title.classList.toggle('is-first', Boolean(this.firstRun));
       /* The gate is one question, so the lines that describe a seat the
        * pilot has not chosen to fly yet come off the screen behind it. */
@@ -4408,8 +4455,8 @@ export class Ui {
     host.textContent = '';
     /* The Courses screen draws its choices as cards above this menu, so the
      * rows here are only what is left over. */
-    const rows = isCardScreen(this.screen)
-      ? items.filter((it) => !it.map && !it.course)
+    const rows = this.cardScreen()
+      ? items.filter((it) => !it.map && !it.course && !it.card)
       : items;
     const offset = items.length - rows.length;
     this.rowOffset = offset;
@@ -4931,11 +4978,19 @@ export class Ui {
       if (here && here.course) {
         this.lastCardKey = courseCardKey(here);
       }
-      const worlds = this.mapCards || [];
-      worlds.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
-      (this.courseCards || []).forEach((c, j) => {
-        c.card.classList.toggle('on', j + worlds.length === this.cursor);
-      });
+    }
+    /*
+     * A card is lit by a class and by nothing else, and the render pass that
+     * sets it only runs when the whole menu is rebuilt, which a cursor move
+     * deliberately does not do. So the cursor repaints the cards itself.
+     *
+     * This used to be inside the `courses` branch above, which is why the
+     * Freestyle room's four world cards did not follow the arrow keys at
+     * all: the highlight only moved when something else forced a full
+     * render. Every card screen goes through markCards now.
+     */
+    if (this.cardScreen()) {
+      this.markCards();
     }
     this.syncCursor(!pointer);
     if (this.onUiSound && !pointer) {
@@ -5580,6 +5635,91 @@ export class Ui {
    * doing that here would throw away three live shots twenty times a
    * second as somebody arrowed along the row.
    */
+  /*
+   * Which card the cursor is on, painted. One pass for all three card
+   * screens, because a card's lit state is a class on an element the render
+   * pass built and the cursor moves far more often than the list changes.
+   */
+  markCards() {
+    if (this.screen === 'title') {
+      for (const [i, c] of (this.titleCards || []).entries()) {
+        const on = i === this.cursor;
+        c.card.classList.toggle('on', on);
+        /* Roving tab stop, the same shape the rows use. A card is a real
+         * control here rather than a picture: it is the only thing on the
+         * first screen, so Tab and a screen reader have to find it. */
+        c.card.tabIndex = on ? 0 : -1;
+        c.card.setAttribute('aria-current', String(on));
+      }
+      return;
+    }
+    const worlds = this.mapCards || [];
+    worlds.forEach((c, j) => c.card.classList.toggle('on', j === this.cursor));
+    (this.courseCards || []).forEach((c, j) => {
+      c.card.classList.toggle('on', j + worlds.length === this.cursor);
+    });
+  }
+
+  /*
+   * The gate's two cards.
+   *
+   * Built from the same items() the rows come from, so there is one list and
+   * one cursor over the whole screen, and rebuilt only when the set of cards
+   * changes rather than on every cursor move.
+   *
+   * A div with role=button rather than a real <button>: Enter is already
+   * handled by handleKey for whatever the cursor is on, and a native button
+   * would ALSO fire a click for the same keypress, which would answer the
+   * gate twice and swap the world twice.
+   */
+  renderTitleCards() {
+    const host = this.gateCards;
+    if (!host) {
+      return;
+    }
+    const items = this.items().filter((it) => it.card);
+    const key = items.map((it) => it.card).join('|');
+    if (!this.titleCards || this.titleCardKey !== key) {
+      this.titleCardKey = key;
+      host.textContent = '';
+      this.titleCards = items.map((it, i) => {
+        const card = el('div', `gate-card gate-card-${it.card}`);
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', it.label);
+        const art = el('div', 'gate-card-art');
+        const img = el('img', 'gate-card-shot');
+        img.src = it.art;
+        /* The name is right underneath it, so the picture is decoration to
+         * anything reading the page aloud. */
+        img.alt = '';
+        img.decoding = 'async';
+        art.append(img);
+        const body = el('div', 'gate-card-body');
+        const name = el('div', 'gate-card-name', it.label);
+        const blurb = el('p', 'gate-card-blurb', it.blurb);
+        const facts = el('div', 'gate-card-facts');
+        for (const f of it.facts || []) {
+          facts.append(el('span', 'gate-card-fact', f));
+        }
+        body.append(name, blurb, facts);
+        card.append(art, body);
+        card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
+        card.addEventListener('focus', () => {
+          if (this.cursor !== i) {
+            this.setCursor(i);
+          }
+        });
+        card.addEventListener('click', () => {
+          this.cursor = i;
+          this.select();
+        });
+        host.append(card);
+        return { card };
+      });
+    }
+    this.markCards();
+  }
+
   renderMapCards() {
     /* Whichever picker is up. Race holds no world cards any more, so on that
      * screen this paints an empty strip and costs nothing. */
@@ -6677,6 +6817,19 @@ export class Ui {
     return this.screen !== 'flight';
   }
 
+  /* The title while the Race or Freestyle question is still open. Three
+   * things behave differently there and nowhere else on this screen: the
+   * two choices are cards, the left and right arrows move between them,
+   * and a radio's sticks walk them instead of posing the airframe. */
+  onGate() {
+    return this.screen === 'title' && !this.mode;
+  }
+
+  /* Every screen that draws some of its choices as cards. */
+  cardScreen() {
+    return isCardScreen(this.screen) || this.onGate();
+  }
+
   /*
    * The title's hint line, which is different on the two states this screen
    * has. Escape is on it once there is a gate behind the menu to go back
@@ -6692,7 +6845,7 @@ export class Ui {
     if (!keys || !copy) {
       return;
     }
-    const want = gate ? ['↑↓', 'Enter'] : ['↑↓', 'Enter', 'Esc'];
+    const want = gate ? ['←→', 'Enter'] : ['↑↓', 'Enter', 'Esc'];
     const have = [...keys.children].map((k) => k.textContent);
     if (have.length !== want.length || want.some((k, i) => have[i] !== k)) {
       keys.textContent = '';
@@ -6701,7 +6854,7 @@ export class Ui {
       }
     }
     copy.textContent = gate
-      ? 'Arrow keys move, Enter selects. A radio banks the quad. Any switch selects.'
+      ? 'Left and right choose, Enter opens it. On a radio: pitch to move, roll right to choose.'
       : 'Arrow keys move, Enter selects, Escape goes back to Race or Freestyle. A radio banks the quad. Any switch selects.';
   }
 
@@ -7441,8 +7594,12 @@ export class Ui {
   legendFor() {
     const pad = this.lastInput === 'pad';
     const out = [];
-    if (isCardScreen(this.screen)) {
-      out.push({ keys: pad ? ['Roll'] : ['\u2190', '\u2192'], text: 'Move' });
+    if (this.cardScreen()) {
+      /* Pitch, not roll. pollPad walks a card screen with the pitch axis and
+       * treats roll right as choose and roll left as back, which is what the
+       * Race room's own hint line has always said; this legend claimed Roll
+       * and was simply wrong. */
+      out.push({ keys: pad ? ['Pitch'] : ['\u2190', '\u2192'], text: 'Move' });
     } else {
       out.push({ keys: pad ? ['Pitch'] : ['\u2191', '\u2193'], text: 'Move' });
       const it = this.items()[this.cursor];
@@ -7453,7 +7610,7 @@ export class Ui {
     out.push({ keys: [pad ? 'A' : 'Enter'], text: 'Choose' });
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
-    } else if (this.mode && !this.firstRun) {
+    } else if (this.mode) {
       /*
        * The title answers Escape now: it reopens the Race or Freestyle
        * gate, which is the only way to change mode without reloading. It is
@@ -7461,9 +7618,8 @@ export class Ui {
        * like it leaves the game, and because a pilot looking for the other
        * mode is looking for those two words.
        *
-       * Not on the gate itself and not on the first run split: neither has
-       * anything behind it, and a legend offering a key that does nothing
-       * is worse than no legend.
+       * Not on the gate itself, which has nothing behind it: a legend
+       * offering a key that does nothing is worse than no legend.
        */
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Race or Freestyle' });
     }
@@ -7710,6 +7866,24 @@ export class Ui {
     }
   }
 
+  /*
+   * They have flown, so this is not a first visit any more.
+   *
+   * The moment is the LAUNCH rather than the dismissal of a screen, because
+   * the screen that used to carry that meaning is gone. Written to storage
+   * as well as to the flag: detectFirstRun reads a stored settings blob as
+   * its first signal, so without the write the guided flight would be
+   * offered again on the next load to somebody who has already taken it.
+   */
+  flown() {
+    if (!this.firstRun) {
+      return;
+    }
+    this.firstRun = false;
+    saveSettings(this.settings);
+    this.renderMenu();
+  }
+
   /* Whether the seat is the kind of place the chosen mode flies in. Race
    * needs a loaded track, freestyle needs one of the gateless worlds. A null
    * mode is the gate itself, which has no Fly row to guard. */
@@ -7735,9 +7909,8 @@ export class Ui {
       /* Escape from the menu is the way back to Race or Freestyle, and the
        * only way to change mode without reloading the page, which is what
        * makes the gate cheap to answer. The gate itself has nothing behind
-       * it, so Escape there stays the no-op the title has always been, and
-       * so does the first run split, which is a different question. */
-      if (this.mode && !this.firstRun) {
+       * it, so Escape there stays the no-op the title has always been. */
+      if (this.mode) {
         this.mode = null;
         if (this.onUiSound) {
           this.onUiSound('back');
@@ -7901,23 +8074,19 @@ export class Ui {
       return;
     }
     /*
-     * First run. Choosing first flight is also the moment the shell stops
-     * being a first run, so the full menu is there when the player comes back
-     * from the track, whatever happened out there. The map is left alone:
-     * a Fly this track link, or the most flown track loaded at boot, is
-     * already seated, and forcing the old race field dropped it.
+     * The guided first flight.
+     *
+     * It launches DIRECTLY rather than through act('fly'), so it skips the
+     * launch card: a pilot who has never held a stick does not need to be
+     * asked what their lap will count as. The seat is left alone, because
+     * the row only appears when there is already a track under it.
+     *
+     * `skipfirst` was its other half, the row that said "I have flown
+     * before" on a screen that no longer exists. Nothing dispatches it now,
+     * so it is gone rather than kept as an action with no row.
      */
-    if (action === 'firstflight' || action === 'skipfirst') {
-      this.firstRun = false;
-      saveSettings(this.settings);
-      /* The list under the cursor is about to be a different list: the gate,
-       * or the menu if a link already answered it. Two rows in, on a row
-       * that means something else now, is not where a pilot left it. */
-      this.setCursor(this.firstStop(this.items()));
-      this.renderMenu();
-      if (action === 'skipfirst') {
-        return;
-      }
+    if (action === 'firstflight') {
+      this.flown();
       this.guided = true;
       if (this.onSettings) {
         this.onSettings(this.settings);
@@ -8139,6 +8308,7 @@ export class Ui {
       /* The card's own button. It falls through to onAction as `fly`,
        * which is the action main.js has always launched on: the card is a
        * screen in front of the verb, not a second verb. */
+      this.flown();
       if (this.onAction) {
         this.onAction('fly', this.settings);
       }
@@ -8335,6 +8505,11 @@ export class Ui {
     if (action === 'title' || action === 'paused') {
       this.show(action);
     }
+    /* Freestyle reaches the air through here rather than through the launch
+     * card, so this is the other end of the same event. See flown(). */
+    if (action === 'fly') {
+      this.flown();
+    }
     if (this.onAction) {
       this.onAction(action, this.settings);
     }
@@ -8432,7 +8607,7 @@ export class Ui {
     if (code === 'ArrowLeft' || code === 'KeyA') {
       /* The map screens lay their cards out in a row, so left and right are
        * what a player reaches for. Nothing on them has a value to adjust. */
-      if (isCardScreen(this.screen)) {
+      if (this.cardScreen()) {
         this.move(-1);
       } else {
         this.adjust(-1);
@@ -8440,7 +8615,7 @@ export class Ui {
       return true;
     }
     if (code === 'ArrowRight' || code === 'KeyD') {
-      if (isCardScreen(this.screen)) {
+      if (this.cardScreen()) {
         this.move(1);
       } else {
         this.adjust(1);
@@ -8563,7 +8738,19 @@ export class Ui {
      * the screen whose sticks pose a quad is the one that has a quad on it.
      * Pilot has no showcase and its sticks are free to drive the cursor,
      * which is the whole point of a room a radio pilot has to reach. */
-    if (this.screen === 'quad' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids' || this.screen === 'fc') {
+    /*
+     * The GATE is the one part of the title where the sticks drive.
+     *
+     * The rule above is written for a screen where every choice is one
+     * switch press away, and that is true of the title's menu, where Fly is
+     * the primary and the bar's button flies it. It is not true of the
+     * gate: there are two cards and a radio that cannot move between them
+     * can only ever choose the one the cursor happens to be on. Posing the
+     * airframe is worth less than being able to answer the question, so on
+     * the gate the sticks fall through to the ordinary card walk, pitch to
+     * move and roll right to choose, which is what the hint under it says.
+     */
+    if (this.screen === 'quad' || (this.screen === 'title' && !this.onGate()) || this.screen === 'rates' || this.screen === 'pids' || this.screen === 'fc') {
       /*
        * The STICKS stay out, for the reasons above. The BUTTONS do not.
        *

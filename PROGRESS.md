@@ -21703,3 +21703,148 @@ title reading "Track, Copper Gully", Escape back to the gate, Freestyle to the
 world picker, a world chosen, and the title reading "Map, Freestyle city" over the
 city itself. `npm run verify` not run: nothing here touches physics, the plant,
 the module ABI or the build.
+
+## 2026-08-28, shell: the first page is two pictures
+
+Changed: the first screen is the Race or Freestyle question and nothing else,
+asked with two illustrated cards, and the first run split in front of it is
+gone.
+
+**The request.** "Now design the first page, i should not see first flight, i
+have flown before. I should just see two options, race and freestyle, they
+should not be small menu items rather 2 boxes that are beautifully designed
+using game assets to convey the 2 types of play."
+
+**Two questions became one.** A new pilot met First flight / I have flown before
+/ Credits, answered it, and then met Race or Freestyle. The first of those is a
+question about the product rather than about flying, and it stood in front of
+the one this shell actually needs answered. It is deleted. The guided flight it
+existed to offer is now the primary row on the menu behind the gate: same
+action, same three prompts, one screen later and behind a choice the pilot has
+already made. Race only, and only with a track seated, because the guide is
+three lines that talk about gates and `guidedPrompt` in src/main.js retires
+itself on the first frame of a gateless world. Offering it in Freestyle would be
+a row that promises a tutorial and delivers silence.
+
+`skipfirst` went with the screen: nothing dispatches it now, and an action with
+no row is dead code. The flag it used to clear is cleared by `flown()` instead,
+called from the two places a flight actually starts, so "this is your first
+visit" stops being true when they fly rather than when they dismiss a screen.
+
+**Why cards.** The difference between these two is a difference between PLACES,
+and a place is the thing a sentence is worst at. Two rows reading "Race" and
+"Freestyle" ask somebody who has never flown either to choose between two words.
+The picker screens learned this already, which is why the worlds are cards
+there. This is the same lesson one screen earlier, where it matters most.
+
+**The pictures are frames of this renderer**, written by `scripts/gatecards.js`
+into `assets/gate/`, `npm run gen:gatecards`. Same rule as og.js and the icons:
+regenerate, do not edit.
+
+They cannot be the shell's own recorded clips. Those are recorded from the world
+the pilot is IN, so the world nobody has visited yet, which is exactly the one
+this screen has to show, never has one: a cold first visit would get the card
+picker's "loading" placeholder and a joke, on the front door. A file is the only
+thing that is there on the first frame with no network.
+
+Race is the lit start gate at eleven metres with the course running out of frame
+past it, over `tracks/json/trk-0870b164.json`, the 2022 AU Nationals layout,
+because a real published track is the honest thing to photograph. Freestyle is
+the town from twelve metres up: roofs, wires, sakura, and no gate anywhere in
+it. The camera is parked with `__setCam` and the animation clock with
+`__animTo`, so a regeneration is the same picture and not a different frame of a
+moving one. JPEG at 82: the same frame is 33 kB and 67 kB here against about
+300 kB each as PNG, and this is the one screen that has to paint before anything
+else has loaded. `shots.js` grew a `--jpeg=Q` flag for it; PNG is still the
+default, because a capture being LOOKED AT for a rendering bug must not have
+compression artefacts in it.
+
+**What the card machinery already had, and what it did not.** A card is not a
+widget in this shell: it is an items() entry that carries a marker, which
+renderMenu splits out of the row list and a per-screen renderer draws. The gate's
+two entries carry `card`, and `Ui.cardScreen()` is the predicate that says the
+title is one of those screens WHILE THE GATE IS UP, which `isCardScreen` could
+not say on its own: the menu behind the gate carries a Ghost row whose left and
+right arrows have to keep adjusting rather than moving.
+
+Three things had to be built or moved rather than reused:
+
+- The lit card is a class, and the render pass that sets it only runs on a full
+  rebuild, which a cursor move deliberately is not. That repaint lived inside an
+  `if (this.screen === 'courses')` branch, so the Freestyle room's four world
+  cards never followed the arrow keys at all: the highlight moved only when
+  something else forced a render. `markCards()` is the one pass now and every
+  card screen goes through it. Found by reading, then reproduced and fixed:
+  `lit=true,false,false,false` becomes `lit=false,true,false,false` on one press.
+- The gate is a `div` with `role=button`, not a `<button>`. handleKey already
+  answers Enter for whatever the cursor is on, and a real button would ALSO fire
+  a click for the same keypress: the gate answered twice and the world swapped
+  twice.
+- Neither card is `primary`. The command bar paints the primary item as its
+  button, and a bar reading "Race" under a card reading "Race" is the same
+  choice drawn twice.
+
+**The pad gets the sticks back, on the gate only.** pollPad holds the sticks out
+of the title because they pose the airframe there. That rule is written for a
+screen where the choice is one switch press away, and it is not true of two
+cards: a radio that cannot move the cursor can only ever choose the one it
+starts on. On the gate the sticks fall through to the ordinary card walk. While
+fixing that, the card legend was found to be lying: it printed Roll for Move on
+a pad, and pollPad walks a card screen with PITCH and treats roll right as
+choose, which is what the Race room's own hint line has always said.
+
+**The row offset is arithmetic, so the trouble row moved.** renderMenu computes
+`items.length - rows.length`, so every card has to come before every row or the
+cursor and the row list disagree by one. The pad trouble row sits under the two
+cards now rather than over them.
+
+**A note that was answering a question nobody had asked.** The world's own notes
+print as a banner at boot, and on a browser with nothing built that reads
+"Nothing has been built yet, open the track builder" across the two cards,
+before the pilot has said they want to race at all. It is HELD now rather than
+dropped: `heldNotes` is released by the frame loop on the first frame after the
+gate is answered, so the pilot who is about to fly that world still gets it.
+
+**The layout, measured rather than guessed.** The title is a two child column
+pinned to the left 36em of the window with the menu at the bottom, and it does
+not scroll: anything that does not fit is simply gone. So the gate takes the
+width back (`min(64em, 92vw)`), the cards sit where the menu sits, and the card
+host is a third child that is `display: none` in every other state, which keeps
+the two child `space-between` contract the menu states depend on. An empty menu
+still paints its plate and its sakura top line, so the gate hides it.
+
+Two phone shapes, both driven and looked at. Portrait stacks the cards and lies
+each one on its side, picture left, words right: two upright cards would be
+taller than the window. Landscape (844x390) matches BOTH media blocks, so the
+later one puts them side by side again and drops the sentence, keeping the name
+and the three words under it. One real bug came out of that: `flex: 1 1 0` is a
+basis on the MAIN axis, so turning the stack vertical made every card start from
+a zero height and collapse to the two pixels of its own border, measured at
+355x2. And under 860 px the title stops reserving the command bar in its
+padding, which a scrolling menu survives and a block pinned to the bottom does
+not, so the gate puts it back.
+
+**A finding recorded and not acted on.** `--bars` on `:root` is
+`calc(var(--bar-top) + var(--bar-bot))` and resolves to 80 px, while ui.js
+overrides the two bars to 48 and 52 as inline style on `#ui` and never updates
+`--bars`. Every `calc(NNvh - var(--bars))` cap in the sheet is therefore 20 px
+optimistic. Nothing here is built on it, and correcting it moves every menu
+height cap in the product at once, so it is written down rather than changed on
+the way past.
+
+**How the shape was mapped.** Five parallel readers over the card renderers, the
+card screen interaction model, the title stylesheet and the first run path,
+because the answer spanned four files and 11,000 lines and the measurements
+wanted a browser. That is a read, not a review; findings above are theirs where
+they are marked as found by reading, and each was reproduced before it was
+fixed.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:devices` PASS,
+`npm run lint:responsive` PASS, `npm run lint:board` PASS, `npm run lint:nouns`
+PASS. shell-check now asserts the gate is CARDS as well as two labels: two cards
+drawn, both with art, and no stop on that screen that is not one. Driven and
+looked at with `scripts/shots.js` at 1280x800, 390x844 and 844x390: the gate,
+Race to a menu reading "Track, Copper Gully", Escape back to the gate, arrow
+right and Enter into the world picker, a click on the second card, and the
+guided First flight row appearing and then not. `npm run verify` not run:
+nothing here touches physics, the plant, the module ABI or the build.

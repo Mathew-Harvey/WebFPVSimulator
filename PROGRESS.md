@@ -22229,3 +22229,64 @@ unchanged from before the merge. `npm run lint:nouns` PASS.
 its two cards, and Freestyle reached from it with four posters behind their
 loading scrims. `npm run verify` not run: nothing here touches physics, the
 plant, the module ABI or the build.
+
+## 2026-08-28, shell: a banner is a flight message, and the world's note is one
+
+Reported twice with a screenshot each: amber text across the Freestyle picker,
+over the four world cards, and the same text across the title menu. "No start
+pads in the track, so the quad is parked behind the first gate."
+
+**One thing was jumping the queue.** The frame loop already holds the rule. It
+reads, in order: the crash and turtle banners, which are guarded on
+`ui.screen === 'flight'`; the pad picker and the stick calibration, which blank
+it; then `notice`; then `ui.isModal()`, which blanks it with the comment "A
+banner is a flight message. Any screen that is up owns the frame, and a launch
+prompt printed across a results table is how you find that out." That guard is
+right and it was already there. `notice` sits one branch above it, so anything
+in `notice` is drawn over whatever screen is up.
+
+**That is correct for every notice but one.** Every other thing that reaches
+`notice` is raised BY a pilot doing something on the screen they are looking at:
+a publish, an upload, a tune that would not load, a stick mapping saved, an
+arcade lap that will not go on the board. Those belong on that screen and are the
+only confirmation the shell gives, so blanking them would be a straight loss.
+The world's own note is the exception: it is raised when a WORLD LOADS, which is
+nobody asking a question.
+
+**Second go at this rule, and the first one is why.** The first said not over the
+GATE, because on an empty browser the note printed "Nothing has been built yet,
+open the track builder" across the two cards before the pilot had chosen to race
+at all. Holding it until the gate was answered moved the problem one screen along
+instead of fixing it: it landed on whatever came next, which is the title menu or
+the Freestyle picker. Screenshots of both are what came back.
+
+So `showCourseNotes` now only ever holds, and the frame loop releases on the
+first frame where `ui.screen === 'flight'`. The clock starts then rather than
+when the world loaded, so the note is read rather than expired. Held rather than
+dropped: it is worth saying to the pilot about to fly that world and worth
+nothing to the one reading a menu.
+
+**What it costs.** The note now precedes the launch prompt instead of missing it.
+A pilot entering a defective track reads "No start pads in the track, so the quad
+is parked behind the first gate" for 5.6 s and then "Throttle up to take off".
+That sequence is where you are, then what to do, which is the right order, but it
+does put 5.6 s in front of the prompt a first-time pilot needs. The duration is
+unchanged from what the note always had; it is written down here rather than
+quietly shortened, because shortening it is a separate judgement about the note
+and not about where it belongs.
+
+**What is NOT fixed, and it is the same shape.** A notice raised on one menu
+follows the pilot to the next one for the rest of its window: publish a track,
+then press Escape inside four seconds, and "Published X" is drawn over the title.
+A notice belongs on the screen that raised it, and nothing records which screen
+that was. Left alone: it needs a home for menu feedback that is not the flight
+banner, which is a bigger change than the one reported.
+
+Checks run: driven with `scripts/shots.js` at 1280x800 on a copy of
+`tracks/json/trk-0870b164.json` with its start pads removed, which is what raises
+this exact note. Banner text and opacity read out of the DOM at every step rather
+than eyeballed: empty and 0 on the gate, on the title menu, on the Freestyle
+picker and on the launch card; on the first frame of flight it is the note at
+opacity 1; 6.5 s later it is "Throttle up to take off / The green gate starts
+your lap". `npm run lint:shell` PASS. `npm run verify` not run: nothing here
+touches physics, the plant, the module ABI or the build.

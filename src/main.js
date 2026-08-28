@@ -1463,8 +1463,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * cannot change the physics under a lap in progress. */
   let runStyle = ui.settings.flightStyle === 'arcade' ? 'arcade' : 'expert';
   let notice = null; /* { text, untilMs } for one off shell messages */
-  /* A course note that arrived while the Race or Freestyle gate was up. See
-   * showCourseNotes: it is shown once the gate has been answered. */
+  /* The seated world's own note, waiting for a flight to be said over. See
+   * showCourseNotes. */
   let heldNotes = null;
   let padPickReturn = 'title';
   /* How many laps THIS run lasts. Settings.laps can change from pause, and
@@ -1475,27 +1475,30 @@ export async function boot({ loading, bootStart, mapId }) {
   ui.setBest(race.bestMs, view.mode);
 
   /*
-   * The world's own notes, as a timed banner.
+   * The world's own note, as a timed banner, and NOT OVER A MENU.
    *
-   * NOT OVER THE GATE. The first screen asks Race or Freestyle and nothing
-   * else, and a note about whatever happens to be seated is an answer to a
-   * question the pilot has not been asked yet: on a browser with nothing
-   * built it prints "Nothing has been built yet, open the track builder"
-   * across the two cards before they have chosen to race at all.
+   * This is the second go at that rule. The first said not over the GATE,
+   * because on a browser with nothing built the note printed "Nothing has
+   * been built yet, open the track builder" across the two cards before the
+   * pilot had chosen to race at all. Holding it until the gate was answered
+   * moved the problem one screen along rather than fixing it: it landed on
+   * the title menu, and on the Freestyle picker, in amber, across four world
+   * cards. Reported twice, with a screenshot of each.
    *
-   * It is HELD rather than dropped, because the note is worth saying to the
-   * pilot who is about to fly that world. The frame loop releases it on the
-   * first frame after the gate is answered.
+   * A BANNER IS A FLIGHT MESSAGE. The frame loop already says so and blanks
+   * the banner on any screen that is up. Every other thing that reaches the
+   * banner is raised BY a pilot doing something on the screen they are
+   * looking at, and belongs there: a publish, an upload, a tune that would
+   * not load. This one is raised when a WORLD LOADS, which is nobody asking
+   * a question, and it was the only thing jumping that queue.
+   *
+   * So it is held until there is a flight to say it over, and its clock
+   * starts then rather than when the world loaded. Held rather than dropped,
+   * because the note is worth saying to the pilot about to fly that world
+   * and worth nothing at all to the one reading a menu.
    */
   function showCourseNotes() {
-    if (view.notes && view.notes.length) {
-      const text = view.notes.join('\n');
-      if (ui.onGate()) {
-        heldNotes = text;
-        return;
-      }
-      notice = { text, untilMs: performance.now() + 5600 };
-    }
+    heldNotes = view.notes && view.notes.length ? view.notes.join('\n') : null;
   }
   showCourseNotes();
 
@@ -4158,10 +4161,9 @@ export async function boot({ loading, bootStart, mapId }) {
     fps = fps * 0.95 + (dt > 0 ? 1000 / dt : 0) * 0.05;
     let frameSteps = 0;
 
-    /* A course note that waited for the gate to be answered. Its clock
-     * starts here rather than when the world loaded, so it is read rather
-     * than expiring behind the two cards. See showCourseNotes. */
-    if (heldNotes && !ui.onGate()) {
+    /* The seated world's note, released on the first frame of a flight and
+     * not one frame earlier. See showCourseNotes. */
+    if (heldNotes && ui.screen === 'flight') {
       notice = { text: heldNotes, untilMs: nowWall + 5600 };
       heldNotes = null;
     }

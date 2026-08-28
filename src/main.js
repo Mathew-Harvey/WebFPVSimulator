@@ -3290,7 +3290,7 @@ export async function boot({ loading, bootStart, mapId }) {
       (async () => {
         const name = await ui.askName({
           title: 'Your name',
-          detail: 'Posted times and published courses carry this name. Changing it updates the board for courses you published from this browser.',
+          detail: 'Posted times and published tracks carry this name. Changing it updates the board for tracks you published from this browser.',
         });
         if (!name) {
           return;

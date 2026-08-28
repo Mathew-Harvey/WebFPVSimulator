@@ -21279,3 +21279,82 @@ Wrong: one thing worth writing down. Undoing a two line experiment with
 `git checkout src/ui/ui.js` reverted every uncommitted change in that file, not
 the experiment. Restored from a scratch copy and the last edit re-applied by
 hand, then re-verified. A whole-file checkout is not an undo.
+
+---
+
+## 2026-08-28, all three: the player only ever sees a track
+
+Changed: every player-visible "course" became "track", in this repository, the
+board and the front door, and a lint in each one stops it coming back.
+
+**Why it was worth doing at all.** "Track" was a map id, a menu row, a screen
+title and a mode, and the same object was a "course" on the board and through the
+builder's prose. The board's own empty state used both nouns in one sentence. A
+player cannot be expected to work out that the thing they built, the thing they
+published and the thing they are racing are one object when the product calls it
+two things.
+
+**What moved and what did not.** Player-visible text only: string literals that
+reach the DOM, HTML text nodes, and the attributes that render. Identifiers,
+screen ids, CSS class names, storage keys and API routes are untouched.
+`activeCourseSummary`, `.course-card` and `/api/tracks` are ours, not the
+player's, and renaming a stored key would orphan every track already sitting in
+somebody's browser.
+
+The board's server, store and validate error strings ARE player-visible: they come
+back as `{error}` and are painted in the publish dialog. All of them moved. One
+came out reading "That track is not a track document", which is worse than what it
+replaced, so it says "That file is not a track document" instead.
+
+**The URL kept both spellings.** The board's sheet link was `#course=trk-...`, and
+that is the address bar, so it is player-visible and it moved to `#track=`. But
+the board's whole point is that a track is a URL somebody can send to somebody
+else, and a rename that quietly broke the links already sent would be the worst
+possible way to fix a noun. `route()` reads both and writes one: an old link
+resolves, and then `history.replaceState` puts the canonical spelling in the bar
+without adding a history entry, so Back still goes where it went.
+
+**One exception, argued rather than silent.** `src/maps/baths/references.js` says
+"FINA 50 m course", which is the swimming term, long course as against short
+course, and it is the real-world reference the world-scale check measures the
+baths pool against. "50 m track" would be wrong. It is in the lint's `ALLOWED`
+list with that reason next to it.
+
+**The lint, and what it took to make it trustworthy.** `scripts/noun-lint.js`,
+`npm run lint:nouns`, mirrored into the board and the front door the way
+`credits.js` already is. Its first run produced twelve findings and ELEVEN were
+false. That matters more than the one: a lint that cries wolf gets switched off
+rather than obeyed. The three causes, each now handled and commented:
+
+- `<style>` and `<script>` blocks came back as HTML text, so the whole palette
+  and every inline module read as prose. Both are blanked, keeping the line
+  count; a `<script>`'s literals go through the same scanner as any other file's.
+- `${...}` inside a template literal is CODE. `board:${card.course.track.id}` put
+  the word in front of the lint while putting nothing in front of a player.
+  Interpolations are blanked before the word is looked for.
+- A class list is machinery, not a sentence. `screen screen-page screen-courses`
+  now passes the machine-text test, which checks every space separated token
+  rather than rejecting anything with a space in it.
+
+Five deliberate breaks, all read back: a JS string, an HTML text node and a
+rendered `aria-label` each fail; a `data-x` attribute and a class list each pass,
+which is the half that says it is not just matching everything.
+
+**What went wrong.** Two things, and the second is the one worth remembering.
+
+- A first attempt rewrote the board with a regex over "string literals" found by
+  a plain quote-matching pattern. An apostrophe in a comment starts a fake string,
+  so it replaced some occurrences and missed most: 13 of 33 in `validate.js`. It
+  was reverted and redone with a scanner that strips comments properly.
+- That scanner then rewrote `${state.courses.length}` into `${state.tracks.length}`
+  inside a template literal, which is a real code change to an undefined property
+  and would have broken the board's own count line. Every `${...}` expression in
+  every touched file was diffed before and after; exactly one had changed, and it
+  is fixed. This is why the lint blanks interpolations rather than reading them.
+
+Checks run this turn: `npm run lint:nouns` PASS in all three repositories,
+`npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
+`node src/trackbuilder/selftest.js` 473 passed, the board's `npm test` all passed,
+the front door's `npm run lint:wiki` ok, and the five deliberate breaks above.
+`npm run verify` not run: nothing here touches physics, the plant, the module ABI
+or the build.

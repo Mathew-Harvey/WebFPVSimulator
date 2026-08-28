@@ -543,7 +543,7 @@ export function normalize(raw) {
       repairs.push(`dropped ${dropped} logo${dropped === 1 ? '' : 's'} that ${dropped === 1 ? 'was' : 'were'} not an embedded image under ${Math.round(LOGO_MAX_CHARS / 1024)} kB. A track carries its pictures inside itself, never a link to one.`);
     }
     if (overflowed) {
-      repairs.push(`dropped ${overflowed} logo${overflowed === 1 ? '' : 's'} past the ${LOGO_SLOTS} a course carries or past the ${Math.round(BRANDING_MAX_CHARS / 1024)} kB they share.`);
+      repairs.push(`dropped ${overflowed} logo${overflowed === 1 ? '' : 's'} past the ${LOGO_SLOTS} a track carries or past the ${Math.round(BRANDING_MAX_CHARS / 1024)} kB they share.`);
     }
   }
 
@@ -631,7 +631,7 @@ export function normalize(raw) {
     }
     const def = ELEMENTS[el.type];
     if (def.kind !== KIND.APERTURE && def.kind !== KIND.MARKER) {
-      repairs.push(`dropped a sequence entry for a ${def.label}, which is never part of the course.`);
+      repairs.push(`dropped a sequence entry for a ${def.label}, which is never part of the track.`);
       continue;
     }
     let id = str(rawSeq.id);

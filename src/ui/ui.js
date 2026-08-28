@@ -3218,7 +3218,7 @@ export class Ui {
           label: 'Race',
           value: seat ? seat.name : m.name,
           action: 'courses',
-          note: 'A gated course against the clock. Your tracks and the board\u2019s. Every time here goes to the leaderboard.',
+          note: 'A gated track against the clock. Your tracks and the board\u2019s. Every time here goes to the leaderboard.',
         },
         {
           label: 'Freestyle',

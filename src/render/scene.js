@@ -1796,7 +1796,7 @@ function gateCue(clearW, clearH) {
          *
          * Red against green is the one axis about eight percent of men
          * cannot read, and this pane carries the single most important bit
-         * on the course. So the wrong face also wears a bar across the
+         * on the track. So the wrong face also wears a bar across the
          * opening: two diagonals, thick enough to survive the distance the
          * pane first resolves at. The correct face stays clear, because
          * the thing the pilot has to see through it is the line beyond it.

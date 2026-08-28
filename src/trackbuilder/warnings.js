@@ -114,7 +114,7 @@ export function collectWarnings(doc, path) {
     }
     if (hasFace(a) && reversed(a.tangent, a.pos, b.pos)) {
       out.push(warn('reversal', a.role === 'start'
-        ? `The lap sets off away from ${describe(doc, b)}. Turn the start pads, or reorder the course.`
+        ? `The lap sets off away from ${describe(doc, b)}. Turn the start pads, or reorder the track.`
         : `${describe(doc, a)} faces away from ${describe(doc, b)}. The line leaves it backwards. Press X to flip the face.`, {
         seqId: a.seq?.id ?? null,
         elementId: a.elementId,

@@ -294,7 +294,7 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
   const src = (name) => new URL(`${assetBase}/${name}`, document.baseURI).href;
   host.textContent = '';
 
-  const lede = el('p', 'credits-lede', 'A browser FPV racing simulator. The controller is Betaflight. The course language comes from Track Draw. The rest is one pilot and the people who flew it until it felt right.');
+  const lede = el('p', 'credits-lede', 'A browser FPV racing simulator. The controller is Betaflight. The track language comes from Track Draw. The rest is one pilot and the people who flew it until it felt right.');
   host.append(lede);
 
   const made = section('Made by', '');
@@ -347,7 +347,7 @@ export function fillCredits(host, { assetBase = 'assets/credits' } = {}) {
   const tracks = section('The track language', '');
   const tdBody = el('p');
   tdBody.append(
-    document.createTextNode('The course builder is inspired by '),
+    document.createTextNode('The track builder is inspired by '),
     link('https://trackdraw.app/', 'Track Draw'),
     document.createTextNode(', from the Dutch drone gods at '),
     link('https://dutchdronesquad.nl/', 'Dutch Drone Squad'),

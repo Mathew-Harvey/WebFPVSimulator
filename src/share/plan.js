@@ -526,7 +526,7 @@ export function planCanvas(plan, label) {
   canvas.className = 'plan';
   canvas.planData = plan || null;
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', label || 'Course plan');
+  canvas.setAttribute('aria-label', label || 'Track plan');
   return canvas;
 }
 

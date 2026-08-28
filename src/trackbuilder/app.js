@@ -153,7 +153,7 @@ export class App {
         try {
           share = await adoptShareFromLocation();
         } catch (e) {
-          this.toast(`Could not open that published course. ${e.message || e}`);
+          this.toast(`Could not open that published track. ${e.message || e}`);
           return;
         }
       }
@@ -576,7 +576,7 @@ export class App {
   }
 
   addToSequence(elementId) {
-    this.edit('add to the course', (d) => { addToSequence(d, elementId, 0); });
+    this.edit('add to the track', (d) => { addToSequence(d, elementId, 0); });
   }
 
   addLevel(elementId) {
@@ -591,7 +591,7 @@ export class App {
   }
 
   removeSequenceEntry(seqId) {
-    this.edit('remove from the course', (d) => { removeFromSequence(d, seqId); });
+    this.edit('remove from the track', (d) => { removeFromSequence(d, seqId); });
   }
 
   setSequenceAperture(seqId, index) {
@@ -922,7 +922,7 @@ export class App {
           commit();
           this.loadDocument(copy, '');
           posted = await sendDoc(this.doc);
-          status.textContent = `This id was already on the board, so it went up as a new course, "${posted.name}".`;
+          status.textContent = `This id was already on the board, so it went up as a new track, "${posted.name}".`;
         }
         const cleared = posted.timesCleared
           ? ' The flying layout changed, so the old times were cleared.'

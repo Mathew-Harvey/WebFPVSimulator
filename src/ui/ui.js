@@ -649,6 +649,9 @@ function wordmark() {
 function wrapMenu() {
   const stage = el('div', 'menu-stage');
   const menu = el('div', 'menu');
+  /* The rows inside are options, so the box around them has to be the
+   * listbox or the role means nothing to a reader. See renderMenu. */
+  menu.setAttribute('role', 'listbox');
   const help = el('div', 'menu-help');
   stage.append(menu, help);
   return { stage, menu, help };
@@ -1380,6 +1383,10 @@ export class Ui {
     this.lastInput = 'key';
     /* Screen id to the label of the row the cursor was on. See restoreCursor. */
     this.cursorMemory = {};
+    /* The id of the row the cursor is on. The durable half of the cursor:
+     * the index says where the row is right now, this says which row it is.
+     * See syncCursor and restoreFocusRow. */
+    this.focusId = null;
     this.cursor = 0;
     /* Which course card the player has chosen, by courseCardKey, and the
      * last one they were on. The first says whose list is showing; the
@@ -4118,6 +4125,40 @@ export class Ui {
         cls.push(it.rowClass);
       }
       const row = el('div', cls.join(' '));
+      /*
+       * ROVING TABINDEX. Exactly one row in the list is reachable by Tab,
+       * the one under the cursor, and the rest are focusable only by
+       * script. That is the standard listbox contract and it is what makes
+       * document.activeElement and this.cursor the same thing rather than
+       * two authorities that agree by accident.
+       *
+       * What it buys, concretely: Tab lands on the row a pilot was last
+       * looking at rather than skipping the menu entirely, a screen reader
+       * follows the cursor because the cursor IS the focus, and the
+       * browser's own focus ring appears exactly where the painted bar is.
+       *
+       * The role is option-in-a-listbox rather than button-per-row: a row
+       * is a thing selected from a set, and calling each one a button would
+       * have a reader announce nine buttons with no relationship.
+       */
+      row.tabIndex = i === this.cursor ? 0 : -1;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(i === this.cursor));
+      if (it.id) {
+        row.dataset.rowId = it.id;
+      }
+      /*
+       * Focus arriving from anywhere the shell did not drive it: Tab,
+       * shift-Tab, a screen reader's own navigation, a click. The cursor
+       * follows, because a focused row that is not the cursor is the two
+       * authorities problem again with the roles reversed.
+       */
+      row.addEventListener('focus', () => {
+        if (this.cursor !== i) {
+          this.cursor = i;
+          this.syncCursor(false);
+        }
+      });
       row.append(el('span', 'row-label', it.label));
       /* Before the adjust branch: a typed row has arrows too, and the
        * stepper alone would be the old list row without the field that is
@@ -4188,6 +4229,9 @@ export class Ui {
      * Anything shorter than the box gets the top.
      */
     host.scrollTop = host.scrollHeight > host.clientHeight ? scroll : 0;
+    /* Before syncCursor paints anything: the cursor belongs to a row, not
+     * to an index, and this list may have changed length. */
+    this.restoreFocusRow();
     this.syncFrame();
     this.syncCursor(false);
     this.syncRates();
@@ -4382,9 +4426,28 @@ export class Ui {
 
   syncCursor(scroll = true) {
     const items = this.items();
+    /*
+     * The id of the row the cursor is on, kept so that a REBUILD can put
+     * the cursor back on the same row rather than the same index. The
+     * bench has four filters now, tab, page, search and only-what-I-
+     * changed, and every one of them changes the list's length underneath
+     * a cursor that would otherwise stay at 27 and land somewhere else.
+     * See restoreFocusRow.
+     */
+    const here = items[this.cursor];
+    if (here && here.id) {
+      this.focusId = here.id;
+    }
     this.menuRows.forEach((row, k) => {
       const i = k + this.rowOffset;
-      row.classList.toggle('on', i === this.cursor);
+      const on = i === this.cursor;
+      row.classList.toggle('on', on);
+      /* Roving tabindex: see renderMenu. Headings are in menuRows too and
+       * are not focusable, so they are left alone. */
+      if (row.classList.contains('row')) {
+        row.tabIndex = on ? 0 : -1;
+        row.setAttribute('aria-selected', String(on));
+      }
     });
     const help = this.helpNode();
     if (help) {
@@ -4415,6 +4478,86 @@ export class Ui {
     const on = this.menuRows[this.cursor - this.rowOffset];
     if (scroll && on && typeof on.scrollIntoView === 'function') {
       on.scrollIntoView({ block: 'nearest' });
+    }
+    /*
+     * Move the browser's focus to match, but ONLY if focus is already
+     * inside this menu. Two reasons, both learned the hard way elsewhere in
+     * this file: a menu that grabs focus on every cursor move takes the
+     * caret out of the bench's search field mid-word, and a screen the
+     * pilot has not touched yet should not steal focus from the page.
+     *
+     * preventScroll, because scrollIntoView above has already put the row
+     * where it belongs and the browser's own focus scroll would fight it.
+     */
+    if (on && on !== document.activeElement && this.focusInMenu()) {
+      try {
+        on.focus({ preventScroll: true });
+      } catch (e) {
+        /* Older engines take no options. The class is what paints it. */
+        on.focus();
+      }
+    }
+  }
+
+  /*
+   * Put the browser's focus on the cursor's row whether or not it is
+   * already in the menu.
+   *
+   * syncCursor deliberately will not steal focus from a field, which is
+   * what keeps the bench's search typeable. But leaving that field with
+   * Down is the one case where the field is being abandoned ON PURPOSE:
+   * without this the blur dropped focus to the body and the cursor bar
+   * walked the results with nothing focused, so a screen reader followed
+   * none of it and Tab restarted from the top of the page.
+   */
+  focusCursorRow() {
+    const on = this.menuRows && this.menuRows[this.cursor - this.rowOffset];
+    if (!on || !on.classList.contains('row')) {
+      return;
+    }
+    try {
+      on.focus({ preventScroll: true });
+    } catch (e) {
+      on.focus();
+    }
+  }
+
+  /* Is the browser's focus on something inside the menu the cursor drives?
+   * A row, or a control inside a row. Anything else, a field, the bug chip,
+   * the page itself, is left alone. */
+  focusInMenu() {
+    const live = document.activeElement;
+    if (!live || live === document.body) {
+      return false;
+    }
+    /* A typed field or a search field owns its own caret. */
+    if (live.tagName === 'INPUT' || live.tagName === 'TEXTAREA') {
+      return false;
+    }
+    return this.menuRows.some((row) => row === live || row.contains(live));
+  }
+
+  /*
+   * After a rebuild, put the cursor back on the ROW it was on rather than
+   * the index it was at.
+   *
+   * A filter that removes rows above the cursor slides everything up under
+   * it, so the cursor stays at 27 and is now pointing at a different key.
+   * The bench grew four filters in the same turn this landed, and the
+   * launch card and the rooms change length with the seat and the board, so
+   * this is not hypothetical.
+   *
+   * Silent when the row is gone: falling back to the index is the least
+   * surprising thing left, and the caller has already clamped it.
+   */
+  restoreFocusRow() {
+    if (!this.focusId) {
+      return;
+    }
+    const items = this.items();
+    const at = items.findIndex((it) => it && it.id === this.focusId && this.isStop(it));
+    if (at >= 0 && at !== this.cursor) {
+      this.cursor = at;
     }
   }
 
@@ -4524,6 +4667,7 @@ export class Ui {
         e.stopPropagation();
         field.blur();
         this.move(e.key === 'ArrowDown' ? 1 : -1);
+        this.focusCursorRow();
         return;
       }
       if (e.key === 'Enter') {
@@ -4532,6 +4676,7 @@ export class Ui {
         e.stopPropagation();
         field.blur();
         this.move(1);
+        this.focusCursorRow();
         return;
       }
       if (e.key === 'Escape') {
@@ -5685,6 +5830,13 @@ export class Ui {
     const leaving = this.items()[this.cursor];
     if (this.screen && leaving && leaving.id) {
       this.cursorMemory[this.screen] = leaving.id;
+    }
+    /* Entering a different screen drops the remembered row: its id belongs
+     * to the screen being left. Ids are screen prefixed so a stale one
+     * could not match anyway, and clearing it says that on purpose rather
+     * than relying on the prefix. */
+    if (this.screen !== screen) {
+      this.focusId = null;
     }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are

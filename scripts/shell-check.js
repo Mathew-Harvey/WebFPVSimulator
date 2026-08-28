@@ -417,6 +417,92 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
+   * ONE FOCUS AUTHORITY.
+   *
+   * Xbox Accessibility Guideline 112: exactly one element is focused,
+   * always, and focus is application state rather than a CSS pseudo-class.
+   * The shell painted a cursor bar with a class while document.activeElement
+   * was somewhere else entirely, which is two authorities that agree only by
+   * not being asked. Asserted three ways.
+   */
+  try {
+    ui.show('pilot');
+    ui.setCursor(ui.firstStop(ui.items(), ui.rowOffset));
+    /* Put focus in the menu, the way Tab would. */
+    const first = ui.menuRows.find((r) => r.classList.contains('row'));
+    if (first) { first.focus(); }
+    ui.move(1);
+    ui.move(1);
+    const painted = ui.menuRows.filter((r) => r.classList.contains('on')).length;
+    const at = ui.menuRows[ui.cursor - ui.rowOffset];
+    const focusFollows = at === document.activeElement;
+    /* Exactly one row is Tab reachable, and it is that one. */
+    const tabbable = ui.menuRows.filter((r) => r.classList.contains('row') && r.tabIndex === 0);
+    const selected = ui.menuRows.filter((r) => r.getAttribute('aria-selected') === 'true');
+
+    /*
+     * And focus arriving from OUTSIDE the shell moves the cursor: a screen
+     * reader or a Tab press lands on a row, and the cursor has to be there
+     * too or the next arrow press jumps somewhere else.
+     */
+    const rows = ui.menuRows.filter((r) => r.classList.contains('row'));
+    const target = rows[rows.length - 1];
+    let cursorFollowedFocus = false;
+    if (target) {
+      target.focus();
+      cursorFollowedFocus = ui.menuRows[ui.cursor - ui.rowOffset] === target;
+    }
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    out.focusAuthority = {
+      painted,
+      focusFollows,
+      tabbable: tabbable.length,
+      selected: selected.length,
+      cursorFollowedFocus,
+    };
+  } catch (e) {
+    out.focusAuthority = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * THE CURSOR BELONGS TO A ROW, NOT AN INDEX.
+   *
+   * A filter that removes rows above the cursor slides everything up under
+   * it, so an index-based cursor stays at 27 and is now pointing at a
+   * different key. The bench has four filters, so this is the screen that
+   * proves it: land on a key, turn on show-only-modified, and the cursor
+   * must still be on a row rather than at the same number.
+   */
+  try {
+    ui.show('fc');
+    const wasTab = ui.fc.tab;
+    ui.fc.setTab('pid');
+    ui.fc.discard();
+    ui.fc.setValue('p_roll', String(Number(ui.fc.cliValue('p_roll') || 0) + 3));
+    ui.renderMenu();
+    const i = ui.items().findIndex((it) => it && it.key === 'p_roll');
+    ui.setCursor(i);
+    const before = ui.items()[ui.cursor].key;
+    const beforeIndex = ui.cursor;
+    /* The filter drops every row above it. */
+    ui.fc.onlyModified = true;
+    ui.renderMenu();
+    const after = ui.items()[ui.cursor] ? ui.items()[ui.cursor].key : null;
+    const movedIndex = ui.cursor !== beforeIndex;
+    ui.fc.onlyModified = false;
+    ui.fc.discard();
+    ui.fc.setTab(wasTab);
+    ui.renderMenu();
+    out.stickyCursor = {
+      before, after, sameRow: before === after, movedIndex,
+    };
+  } catch (e) {
+    out.stickyCursor = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
    * THE BENCH CAN BE SEARCHED, AND THE HELP SAYS SOMETHING.
    *
    * 696 keys across 23 flat tabs with no grouping and no cross-tab search
@@ -452,9 +538,32 @@ const BEHAVIOUR = `(() => {
     rows = ui.items();
     const missLine = rows.find((it) => it && /No key contains/.test(String(it.label || '')));
 
+    /*
+     * Leaving the field with Down must take the FOCUS into the results, not
+     * only the painted bar. The first cut blurred the field and let focus
+     * fall to the body, so the cursor walked the results with nothing
+     * focused: a screen reader followed none of it and Tab restarted from
+     * the top of the page.
+     */
+    ui.fc.search = 'gyro';
+    ui.renderMenu();
+    ui.setCursor(ui.firstStop(ui.items(), ui.rowOffset));
+    ui.focusCursorRow();
+    const fieldRow = ui.menuRows[ui.cursor - ui.rowOffset];
+    const input = fieldRow && fieldRow.querySelector('.row-textfield');
+    let focusLeftTheField = false;
+    if (input) {
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      focusLeftTheField = document.activeElement
+        === ui.menuRows[ui.cursor - ui.rowOffset]
+        && document.activeElement !== input;
+    }
+
     ui.fc.search = null;
     ui.items();
     out.benchSearch = {
+      focusLeftTheField,
       foundAcrossTabs,
       firstIsPrefix,
       capped: Boolean(moreLine) && shown <= 60,
@@ -1052,6 +1161,41 @@ async function main() {
       );
     }
 
+    if (!b.focusAuthority || b.focusAuthority.error) {
+      failures.push(`focus authority: ${b.focusAuthority ? b.focusAuthority.error : 'no result'}`);
+    } else {
+      const fa = b.focusAuthority;
+      if (fa.painted !== 1) {
+        failures.push(`focus authority: ${fa.painted} rows look selected, not 1`);
+      }
+      if (!fa.focusFollows) {
+        failures.push('focus authority: the browser focus is not on the row the cursor is on');
+      }
+      if (fa.tabbable !== 1) {
+        failures.push(`focus authority: ${fa.tabbable} rows are Tab reachable, not 1`);
+      }
+      if (fa.selected !== 1) {
+        failures.push(`focus authority: ${fa.selected} rows report aria-selected, not 1`);
+      }
+      if (!fa.cursorFollowedFocus) {
+        failures.push('focus authority: focus arriving from Tab or a screen reader does not move the cursor');
+      }
+    }
+
+    if (!b.stickyCursor || b.stickyCursor.error) {
+      failures.push(`sticky cursor: ${b.stickyCursor ? b.stickyCursor.error : 'no result'}`);
+    } else {
+      const sc = b.stickyCursor;
+      if (!sc.movedIndex) {
+        failures.push('sticky cursor: the filter did not change the row index, so nothing was exercised');
+      }
+      if (!sc.sameRow) {
+        failures.push(
+          `sticky cursor: a filter moved the cursor from "${sc.before}" to "${sc.after}"`,
+        );
+      }
+    }
+
     if (!b.benchSearch || b.benchSearch.error) {
       failures.push(`bench search: ${b.benchSearch ? b.benchSearch.error : 'no result'}`);
     } else {
@@ -1070,6 +1214,9 @@ async function main() {
       }
       if (!bs.tabRestored) {
         failures.push('bench search: leaving search moved the pilot to a different tab');
+      }
+      if (!bs.focusLeftTheField) {
+        failures.push('bench search: Down out of the search field leaves the focus behind, on nothing');
       }
     }
 

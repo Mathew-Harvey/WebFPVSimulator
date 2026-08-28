@@ -946,6 +946,18 @@
       }
       .row-info { cursor: default; }
       /*
+       * The browser's focus ring is redundant with the cursor bar and lands
+       * in the same place, so it is suppressed for a POINTER focus and kept
+       * for a keyboard one. :focus-visible is exactly that distinction, and
+       * a row focused by script during arrow travel is not focus-visible,
+       * so arrow keys keep the bar alone and Tab gets the ring as well.
+       */
+      .row:focus { outline: none; }
+      .row:focus-visible {
+        outline: 2px solid var(--sakura); outline-offset: -2px;
+      }
+      .screen-fc .row:focus-visible { outline-color: var(--bf-accent); }
+      /*
        * AMBER, which is the instrument colour, because this row is a reading
        * off the hardware rather than a thing the product wants you to do.
        * It is a row and not a floating panel so that it gets the cursor, the

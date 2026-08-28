@@ -21165,3 +21165,70 @@ Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
 `npm run lint:presets` 3 of 3, and the two deliberate breaks above.
 `npm run verify` not run: nothing here touches physics, the plant, the module ABI
 or the build.
+
+---
+
+## 2026-08-28, shell: one focus authority, and a cursor that belongs to a row
+
+Changed: exactly one row is focusable at a time and it is the one under the
+cursor, and the cursor now sticks to a ROW across a rebuild rather than to an
+index.
+
+**Two authorities that agreed by not being asked.** The shell painted a cursor bar
+with a class while `document.activeElement` was somewhere else entirely, usually
+the body. Xbox Accessibility Guideline 112 is explicit that exactly one element is
+focused, always, and that focus is application state rather than a CSS
+pseudo-class. Roving tabindex is the standard answer: the cursor's row carries
+`tabindex="0"` and every other row `-1`, so Tab lands on the row the pilot was
+last looking at instead of skipping the menu, a screen reader follows the cursor
+because the cursor IS the focus, and the browser's own ring appears exactly where
+the painted bar is.
+
+Rows are `role="option"` inside a `role="listbox"` rather than a button each: a
+row is a thing selected from a set, and nine independent buttons is what a reader
+would otherwise announce.
+
+Focus arriving from outside the shell moves the cursor, not just the other way
+round. A Tab press or a reader's own navigation lands on a row, and without the
+`focus` listener the next arrow press would jump from wherever the cursor still
+was.
+
+**syncCursor will not steal a caret, and that is deliberate.** It moves the
+browser focus only when focus is ALREADY inside the menu. A menu that grabs focus
+on every cursor move takes the caret out of the bench's search field mid-word,
+which is exactly the bug the search commit had to avoid. `focusCursorRow` is the
+explicit override, used by the one case where the field is being abandoned on
+purpose: Down out of the search field. Without it the blur dropped focus to the
+body and the cursor bar walked the results with nothing focused, so a reader
+followed none of it and Tab restarted from the top of the page. That is now
+asserted.
+
+**The cursor belongs to a row, not an index.** `focusId` is the durable half: the
+index says where the row is right now, the id says which row it is. After every
+rebuild `restoreFocusRow` puts the cursor back on the same row. A filter that
+removes rows above the cursor slides everything up under it, so an index-based
+cursor stays at 27 and points at a different key, and the bench grew four filters
+this session. The deliberate break is unambiguous: with `restoreFocusRow` removed
+the check reports the cursor moving from `p_roll` to `undefined`, which is to say
+it was left pointing past the end of the list.
+
+**What went wrong.** I ran `git checkout src/ui/ui.js` to undo one two-line
+experiment and reverted every uncommitted change in the file with it. Restored
+from a scratch copy taken before the last edit and the last edit re-applied by
+hand; `npm run lint:shell` and the new checks confirm the restored file is the one
+that was passing. The lesson is the obvious one: a whole-file checkout is not an
+undo.
+
+**Deliberate breaks, read back.** Giving every row `tabIndex = 0` reports "21 rows
+are Tab reachable, not 1". Removing `restoreFocusRow` reports the cursor moving
+off its row. Dropping `focusCursorRow` from the search field's Down handler
+reports "Down out of the search field leaves the focus behind, on nothing".
+
+Also driven end to end in headless Chromium: `/`, then g y r o, then Down twice,
+lands on `gyro_lpf1_type` and then `gyro_lpf2_type` with `document.activeElement`
+equal to the cursor's row, and Escape leaves search without leaving the bench.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
+`npm run lint:presets` 3 of 3, and the three deliberate breaks above.
+`npm run verify` not run: nothing here touches physics, the plant, the module ABI
+or the build.

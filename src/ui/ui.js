@@ -647,6 +647,54 @@ function wrapMenu() {
   return { stage, menu, help };
 }
 
+/*
+ * Slug a label down to something that survives being written into a DOM id
+ * and read back. Anything that is not a letter or a digit becomes a hyphen,
+ * because a label is prose: it has apostrophes, degrees signs and commas.
+ */
+function slugify(text) {
+  return String(text == null ? '' : text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'row';
+}
+
+/*
+ * Stamp a stable id onto every row of a freshly built list. See items().
+ *
+ * The list is mutated in place rather than copied: these objects are made
+ * fresh on every render and thrown away on the next one, and the callers
+ * that hold on to one, the drop-down and the typed field, are holding the
+ * same object this is stamping.
+ */
+function stampIds(items, screen) {
+  const seen = new Map();
+  const prefix = screen ? `${screen}:` : '';
+  for (const it of items) {
+    if (!it || typeof it !== 'object') {
+      continue;
+    }
+    if (it.id) {
+      continue;
+    }
+    let base;
+    if (it.action) {
+      base = `a-${it.action}`;
+    } else if (it.key) {
+      base = `k-${it.key}`;
+    } else if (it.section) {
+      base = `s-${slugify(it.label)}`;
+    } else {
+      base = slugify(it.label);
+    }
+    const n = (seen.get(base) || 0) + 1;
+    seen.set(base, n);
+    it.id = n === 1 ? `${prefix}${base}` : `${prefix}${base}~${n}`;
+  }
+  return items;
+}
+
 /* Step a value through a list, wrapping. */
 function choice(label, note, choices, current, format, set) {
   const fmt = format || ((v) => String(v));
@@ -2789,7 +2837,35 @@ export class Ui {
   }
 
   /* Menu definitions are rebuilt on show so values read correctly. */
+  /*
+   * A STABLE NAME FOR EVERY ROW, so that nothing has to remember an index.
+   *
+   * items() is rebuilt from scratch on every render, and the lists change
+   * length as they go: rows appear and vanish with the loaded track, the
+   * board, the dirty flag and, on the bench, four filters. An index means
+   * nothing across two of those rebuilds. Focus memory already learned this
+   * the expensive way and started storing a label instead, which works until
+   * two rows share one, and Save on the bench shares a label with nothing
+   * while Back shares it with every screen in the product.
+   *
+   * The id is DERIVED rather than typed into seven hundred object literals,
+   * for the same reason the palette is not repeated in seven hundred places:
+   * one rule in one function is checkable, and a hand-stamped id is a thing
+   * that can be forgotten on the next row somebody adds. Anything that
+   * genuinely needs to name itself can still set `id` and win.
+   *
+   * The order is what the row already carries, most stable first. `action`
+   * is a verb the shell already dispatches on and is stable by construction.
+   * `key` is a firmware key on the bench and is unique in the catalog. Only
+   * then the label, slugged. A collision gets a counter, which is stable as
+   * long as the colliding rows keep their order, and rows that collide are
+   * repeated section headings and Back, which do.
+   */
   items() {
+    return stampIds(this.buildItems(), this.screen);
+  }
+
+  buildItems() {
     const s = this.settings;
     if (this.screen === 'title') {
       /*
@@ -4947,13 +5023,19 @@ export class Ui {
      * cursor on every transition including a return. A pilot tuning rates
      * makes that trip dozens of times in a session.
      *
-     * The label is stored, not the index, because the index means nothing
-     * once a list changes length, and these lists do: rows appear and
-     * vanish with the loaded track, the board and the dirty flag.
+     * The ID is stored, not the index, because the index means nothing once
+     * a list changes length, and these lists do: rows appear and vanish
+     * with the loaded track, the board and the dirty flag.
+     *
+     * It used to store the label, which is the same idea done with the only
+     * handle a row had at the time. A label is not unique: Back is on nine
+     * screens, every section heading repeats, and the bench prints the same
+     * `feature` prefix a dozen times, so a restore could land on the first
+     * row that happened to read the same. See stampIds.
      */
     const leaving = this.items()[this.cursor];
-    if (this.screen && leaving && leaving.label) {
-      this.cursorMemory[this.screen] = leaving.label;
+    if (this.screen && leaving && leaving.id) {
+      this.cursorMemory[this.screen] = leaving.id;
     }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
@@ -5954,7 +6036,7 @@ export class Ui {
     const items = this.items();
     const want = this.cursorMemory[this.screen];
     if (want) {
-      const i = items.findIndex((it) => it && it.label === want && this.isStop(it));
+      const i = items.findIndex((it) => it && it.id === want && this.isStop(it));
       if (i >= 0) {
         return i;
       }

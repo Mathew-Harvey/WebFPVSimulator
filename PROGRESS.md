@@ -20775,3 +20775,49 @@ identically with these changes stashed, wanting a vendor header not checked out 
 authority with roving tabindex, and stable ids on every item. The row grammar landed without them,
 which means Enter on a value row still calls `adjust(1)`. That is the reason the launch card is not
 here: five record-key rows above a green button under that rule is a trap.
+
+---
+
+## 2026-08-28, shell: a stable name for every row
+
+Changed: every row items() returns now carries an id, focus memory keys on it
+instead of on the label, and the shell check asserts the three properties that
+make an id worth having.
+
+**Why an id at all.** Focus memory, the launch card, one focus authority and the
+bench's filters all want to name a row across two rebuilds of the list. items()
+runs the whole builder again on every render and the lists change length as they
+go, so an index names nothing. Focus memory had already learned this and started
+storing a LABEL, which works until two rows share one. They do: Back is on nine
+screens, every section heading repeats, and the Rates screen carries Centre
+sensitivity, Max rate and Expo three times over, once per axis. Leaving Rates
+from the yaw block and coming back put the cursor on the roll block, silently.
+
+**Derived, not typed in.** `stampIds` in `ui.js` gives every row an id from what
+it already carries: `action` first, which is a verb the shell dispatches on and
+is stable by construction, then `key`, which is a firmware key and unique in the
+catalog, then the slugged label. A collision gets a counter. Seven hundred object
+literals do not each gain a hand-typed id, for the same reason the palette is not
+repeated in seven hundred places: one rule in one function is checkable, and a
+hand-stamped id is a thing that gets forgotten on the next row somebody adds.
+Anything that genuinely needs to name itself can still set `id` and win.
+
+`fc.js`'s four `fieldItem` shapes now set `key: field.key` so a bench row's id is
+the firmware key itself, unslugged, which is also what search will want.
+
+**The check, and the proof it can fail.** Three properties, none visible from the
+walk: every row HAS an id, they are UNIQUE within a screen, and they are STABLE
+across a rebuild that changed nothing. The third is the one a derived id fails
+quietly, so it is asserted by calling items() twice and comparing. All three were
+exercised by breaking them deliberately and reading the failure back:
+
+- an id carrying a counter that moves between rebuilds: 13 failures, every screen.
+- the collision counter removed: caught the three real Rates duplicates.
+- section headings skipped: 11 rows across three screens reported as unnamed.
+
+Restored, the check reports 142 rows across 11 screens, all named, unique and
+stable.
+
+Checks run this turn: `npm run lint:shell` PASS, and the three deliberate breaks
+above. `npm run verify` not run: nothing here touches physics, the plant, the
+module ABI or the build.

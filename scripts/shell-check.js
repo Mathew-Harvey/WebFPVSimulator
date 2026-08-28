@@ -233,6 +233,61 @@ const FC_TABS = `(() => {
 })()`;
 
 /*
+ * STABLE IDS. Focus memory, and everything that comes after it, is built on
+ * the claim that a row can be named across two rebuilds of the list. Three
+ * things have to hold for that to be worth anything, and none of them is
+ * visible from the walk:
+ *
+ *   every row HAS one, or the rows without are invisible to focus memory;
+ *   they are UNIQUE within a screen, or a restore lands on the wrong row;
+ *   they are STABLE across a rebuild that changed nothing, or every id is
+ *   a fresh one and the memory never hits.
+ *
+ * The third is the one a derived id can quietly fail: items() runs the
+ * whole builder again on every render, so an id that came from anything
+ * that moves, an index, a counter, a value, would differ between two calls
+ * a microsecond apart with the pilot having touched nothing.
+ */
+const IDS = `(() => {
+  const ui = window.__ui;
+  const out = {};
+  for (const name of ${JSON.stringify(SCREENS)}) {
+    try {
+      ui.show(name);
+      const first = ui.items();
+      const second = ui.items();
+      const ids = first.map((it) => (it ? it.id : null));
+      const missing = [];
+      for (let i = 0; i < first.length; i += 1) {
+        if (!ids[i]) { missing.push(first[i] && first[i].label ? first[i].label : 'row ' + i); }
+      }
+      const seen = new Map();
+      const dupes = [];
+      for (const id of ids) {
+        if (!id) { continue; }
+        if (seen.has(id)) { dupes.push(id); } else { seen.set(id, 1); }
+      }
+      const unstable = [];
+      for (let i = 0; i < Math.min(first.length, second.length); i += 1) {
+        const a = first[i] ? first[i].id : null;
+        const b = second[i] ? second[i].id : null;
+        if (a !== b) { unstable.push(a + ' -> ' + b); }
+      }
+      out[name] = {
+        rows: first.length,
+        missing,
+        dupes,
+        unstable,
+        lengthChanged: first.length !== second.length,
+      };
+    } catch (e) {
+      out[name] = { error: String(e && e.message ? e.message : e) };
+    }
+  }
+  return JSON.stringify(out);
+})()`;
+
+/*
  * Behaviours the walk cannot see, each asserted against the thing it is
  * meant to prevent rather than against its own implementation.
  */
@@ -357,6 +412,7 @@ async function main() {
     const escape = JSON.parse(await page.evaluate(ESCAPE));
     const fcTabs = JSON.parse(await page.evaluate(FC_TABS));
     const behaviour = JSON.parse(await page.evaluate(BEHAVIOUR));
+    const ids = JSON.parse(await page.evaluate(IDS));
     /* Leave the shell where it started, so a failing run does not also
      * leave a half torn down screen behind it. */
     await page.evaluate('window.__ui.show("title")');
@@ -422,6 +478,35 @@ async function main() {
         `  escape -> ${e && e.to ? e.to : '?'}`,
       );
     }
+
+    let idRows = 0;
+    for (const name of SCREENS) {
+      const r = ids[name];
+      if (!r || r.error) {
+        failures.push(`ids on ${name}: ${r ? r.error : 'no result'}`);
+        continue;
+      }
+      idRows += r.rows;
+      if (r.missing.length) {
+        failures.push(
+          `ids on ${name}: ${r.missing.length} row(s) carry no id: ${r.missing.slice(0, 4).join(', ')}`,
+        );
+      }
+      if (r.dupes.length) {
+        failures.push(
+          `ids on ${name}: ${r.dupes.length} duplicate id(s): ${r.dupes.slice(0, 4).join(', ')}`,
+        );
+      }
+      if (r.lengthChanged) {
+        failures.push(`ids on ${name}: two calls to items() returned different lengths`);
+      }
+      if (r.unstable.length) {
+        failures.push(
+          `ids on ${name}: ${r.unstable.length} id(s) changed between two rebuilds: ${r.unstable.slice(0, 4).join(', ')}`,
+        );
+      }
+    }
+    notes.push(`ids: ${idRows} rows across ${SCREENS.length} screens, all named, unique and stable`);
 
     const b = behaviour;
     if (!b.focusMemory || b.focusMemory.error) {

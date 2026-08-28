@@ -770,6 +770,10 @@ export class FcSession {
     if (!enabled) {
       return {
         label: field.key,
+        /* The firmware key, unslugged, is this row's stable id. See
+         * stampIds in ui.js: a key is unique in the catalog by
+         * construction, and search is about to want to match on it. */
+        key: field.key,
         value: formatField(field, raw),
         note,
         info: true,
@@ -790,6 +794,7 @@ export class FcSession {
       const current = lut.includes(raw) ? raw : (raw ?? lut[0]);
       return {
         label: field.key,
+        key: field.key,
         note,
         value: formatField(field, current),
         current,
@@ -815,6 +820,7 @@ export class FcSession {
       };
       return {
         label: field.key,
+        key: field.key,
         note,
         num: {
           spec, cli: cur, text: String(cur), unit: '',
@@ -857,6 +863,7 @@ export class FcSession {
     };
     return {
       label: field.key,
+      key: field.key,
       note,
       num: {
         spec, cli: cur, text: String(cur), unit: '',

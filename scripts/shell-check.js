@@ -75,7 +75,7 @@ const BASELINE = join(root, 'tests', 'shell-baseline.json');
  * Everything else in this.screens is here.
  */
 const SCREENS = [
-  'title', 'courses', 'freestyle', 'settings', 'rates', 'pids', 'fc',
+  'title', 'courses', 'freestyle', 'quad', 'pilot', 'launch', 'rates', 'pids', 'fc',
   'paused', 'results', 'howto', 'credits',
 ];
 
@@ -298,11 +298,11 @@ const BEHAVIOUR = `(() => {
   /* Focus memory. Settings, move down a few rows, leave, come back: the
    * cursor belongs on the row it was on, not on row 0 of 30. */
   try {
-    ui.show('settings');
+    ui.show('pilot');
     ui.move(1); ui.move(1); ui.move(1);
     const want = ui.items()[ui.cursor].label;
     ui.show('rates');
-    ui.show('settings');
+    ui.show('pilot');
     const got = ui.items()[ui.cursor].label;
     out.focusMemory = { want, got, ok: want === got };
   } catch (e) {
@@ -313,7 +313,7 @@ const BEHAVIOUR = `(() => {
    * throwing or landing on a heading. */
   try {
     ui.cursorMemory = {};
-    ui.show('settings');
+    ui.show('pilot');
     const it = ui.items()[ui.cursor];
     out.freshOpen = { label: it && it.label, ok: ui.isStop(it) };
   } catch (e) {
@@ -333,8 +333,10 @@ const BEHAVIOUR = `(() => {
    * the tune must be the tune it was.
    */
   try {
-    ui.show('title');
-    const i = ui.items().findIndex((it) => it && it.id === 'title:tune');
+    /* The Tune row lives in the Quad room now: it is the machine's, and
+     * the title carries a Quad row that names it rather than a copy of it. */
+    ui.show('quad');
+    const i = ui.items().findIndex((it) => it && it.id === 'quad:tune');
     ui.setCursor(i);
     const before = ui.items()[i].value;
     ui.select();
@@ -357,11 +359,11 @@ const BEHAVIOUR = `(() => {
    * is what a two item popup's adjust used to do.
    */
   try {
-    ui.show('settings');
-    /* By ID, not by label. Settings carries a Sound HEADING and a Sound
+    ui.show('pilot');
+    /* By ID, not by label. Pilot carries a Sound HEADING and a Sound
      * SWITCH, and looking up the label found the heading, which is the
      * exact collision stable ids were added to remove. */
-    const i = ui.items().findIndex((it) => it && it.id === 'settings:sound');
+    const i = ui.items().findIndex((it) => it && it.id === 'pilot:sound');
     ui.setCursor(i);
     const start = ui.items()[i].on;
     ui.select();
@@ -412,6 +414,126 @@ const BEHAVIOUR = `(() => {
     out.noTinyPopups = { offenders };
   } catch (e) {
     out.noTinyPopups = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * THE LAUNCH CARD IS FOR A MEASURED RUN, and only for one.
+   *
+   * Freestyle has no clock, no lap, no ghost and no board, so a card asking
+   * what the run counts as would be ceremony in front of a flight that
+   * counts as nothing. Fly must go straight to the air there, and must stop
+   * at the card when there is a time to be set.
+   */
+  try {
+    const seen = [];
+    const tryFly = (map) => {
+      const before = ui.settings.map;
+      ui.settings.map = map;
+      ui.show('title');
+      /* onAction is what launches. Stub it so the check does not start a
+       * run it would then have to get out of. */
+      const realAction = ui.onAction;
+      let launched = false;
+      ui.onAction = (a) => { if (a === 'fly') { launched = true; } };
+      try {
+        ui.act('fly');
+      } finally {
+        ui.onAction = realAction;
+      }
+      const landed = ui.screen;
+      ui.settings.map = before;
+      ui.show('title');
+      return { map, landed, launched };
+    };
+    /* A dressed world is freestyle by MAPS[].mode and must fly straight. */
+    seen.push(tryFly('city'));
+    seen.push(tryFly('bando'));
+    out.launchGate = { seen };
+  } catch (e) {
+    out.launchGate = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * ONE ROOM PER THING.
+   *
+   * Tune, PIDs and Rates were built once and spread onto four screens, so
+   * "where do I change my rates" had four correct answers with different
+   * surrounding context. This asserts the fix on the shipped lists rather
+   * than on the intent: an EDITABLE copy, one that changes the value in
+   * place, may exist on at most one screen. A DOOR, a navigation row that
+   * opens the room where the real one lives, may exist anywhere, because a
+   * signpost is not a second answer.
+   *
+   * Tune is allowed two: its room, and the pause menu, where "does this
+   * feel wrong" is the question being asked and the row is the answer.
+   */
+  try {
+    const homes = { tune: [], pids: [], rates: [] };
+    const doors = { tune: [], pids: [], rates: [] };
+    const which = (it) => {
+      if (!it || !it.label) { return null; }
+      if (it.label === 'Tune') { return 'tune'; }
+      if (it.label === 'PIDs') { return 'pids'; }
+      if (it.label === 'Rates') { return 'rates'; }
+      return null;
+    };
+    for (const name of ${JSON.stringify(SCREENS)}) {
+      ui.show(name);
+      for (const it of ui.items()) {
+        const k = which(it);
+        if (!k) { continue; }
+        /* Editable means it changes the value where it stands. */
+        if (it.options || it.sw || it.num || it.step) {
+          homes[k].push(name);
+        } else if (it.action) {
+          doors[k].push(name);
+        }
+      }
+    }
+    out.oneHome = {
+      tune: homes.tune,
+      pids: homes.pids,
+      rates: homes.rates,
+      tuneDoors: doors.tune,
+      pidsDoors: doors.pids,
+      ratesDoors: doors.rates,
+    };
+  } catch (e) {
+    out.oneHome = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * THE MID-RUN WARNING CANNOT BE LOST BY ROUTE.
+   *
+   * Changing a tune, a PID or a rate during a run puts the quad back on the
+   * start line, and only the pause menu's own copies said so. Pause reached
+   * Settings by a route that showed the same rows without it, so whether a
+   * pilot was told depended on which of four doors they came through. The
+   * warning belongs to the ROOM being entered from a paused run, not to one
+   * screen's copy of a row.
+   */
+  try {
+    const warn = 'back on the start line';
+    const scan = (screen, returnTo) => {
+      ui.returnTo = returnTo;
+      ui.show(screen);
+      const rows = ui.items().filter((it) => it && (it.label === 'Tune' || it.label === 'PIDs' || it.label === 'Rates'));
+      return {
+        rows: rows.length,
+        warned: rows.filter((it) => String(it.note || '').includes(warn)).length,
+      };
+    };
+    const quadPaused = scan('quad', 'paused');
+    const pilotPaused = scan('pilot', 'paused');
+    const quadTitle = scan('quad', 'title');
+    const pilotTitle = scan('pilot', 'title');
+    ui.returnTo = 'title';
+    ui.show('title');
+    out.midRun = {
+      quadPaused, pilotPaused, quadTitle, pilotTitle,
+    };
+  } catch (e) {
+    out.midRun = { error: String(e && e.message ? e.message : e) };
   }
 
   /*
@@ -817,6 +939,67 @@ async function main() {
         `two item popups: ${b.noTinyPopups.offenders.length} row(s) still open a menu to answer`
         + ` yes or no: ${b.noTinyPopups.offenders.slice(0, 5).join(', ')}`,
       );
+    }
+
+    if (!b.launchGate || b.launchGate.error) {
+      failures.push(`launch gate: ${b.launchGate ? b.launchGate.error : 'no result'}`);
+    } else {
+      for (const r of b.launchGate.seen) {
+        if (r.landed === 'launch') {
+          failures.push(`launch gate: Fly on the freestyle world "${r.map}" stopped at the launch card`);
+        }
+        if (!r.launched) {
+          failures.push(`launch gate: Fly on the freestyle world "${r.map}" did not launch at all`);
+        }
+      }
+    }
+
+    if (!b.oneHome || b.oneHome.error) {
+      failures.push(`one room per thing: ${b.oneHome ? b.oneHome.error : 'no result'}`);
+    } else {
+      const oh = b.oneHome;
+      /* Tune is allowed its room and the pause menu, and nowhere else. */
+      if (oh.tune.length > 2) {
+        failures.push(`one room per thing: Tune is editable on ${oh.tune.length} screens: ${oh.tune.join(', ')}`);
+      }
+      if (oh.pids.length > 1) {
+        failures.push(`one room per thing: PIDs is editable on ${oh.pids.length} screens: ${oh.pids.join(', ')}`);
+      }
+      if (oh.rates.length > 1) {
+        failures.push(`one room per thing: Rates is editable on ${oh.rates.length} screens: ${oh.rates.join(', ')}`);
+      }
+      /* And each still has to exist SOMEWHERE, or the split deleted it. */
+      if (!oh.tune.length) {
+        failures.push('one room per thing: Tune cannot be changed anywhere');
+      }
+      if (!oh.pids.length && !oh.pidsDoors.length) {
+        failures.push('one room per thing: PIDs is not reachable from anywhere');
+      }
+      if (!oh.ratesDoors.length) {
+        failures.push('one room per thing: Rates is not reachable from anywhere');
+      }
+    }
+
+    if (!b.midRun || b.midRun.error) {
+      failures.push(`mid-run warning: ${b.midRun ? b.midRun.error : 'no result'}`);
+    } else {
+      const mr = b.midRun;
+      for (const [name, r] of [['Quad', mr.quadPaused], ['Pilot', mr.pilotPaused]]) {
+        if (!r.rows) {
+          failures.push(`mid-run warning: ${name} entered from a paused run has no tuning row to warn about`);
+        } else if (r.warned < r.rows) {
+          failures.push(
+            `mid-run warning: ${name} entered from a paused run warns on ${r.warned} of ${r.rows} tuning rows`,
+          );
+        }
+      }
+      /* And it is NOT shown from the title, where it is not true and would
+       * be the kind of always-on warning nobody reads. */
+      for (const [name, r] of [['Quad', mr.quadTitle], ['Pilot', mr.pilotTitle]]) {
+        if (r.warned) {
+          failures.push(`mid-run warning: ${name} warns about a run that is not happening`);
+        }
+      }
     }
 
     if (!b.padBanner || b.padBanner.error) {

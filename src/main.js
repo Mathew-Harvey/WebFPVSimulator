@@ -495,7 +495,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.settings.musicTrack = st.id;
       ui.persistSettings();
     }
-    if (ui.screen === 'settings') {
+    if (ui.screen === 'pilot') {
       ui.renderMenu();
     }
   };
@@ -2441,7 +2441,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * longer exists, and would have failed silently: show() on an unknown
      * name displays no node and leaves the previous screen's rows behind.
      */
-    const STAY_SCREENS = ['settings', 'rates', 'paused', 'title', 'credits'];
+    const STAY_SCREENS = ['pilot', 'quad', 'launch', 'rates', 'paused', 'title', 'credits'];
     const stayScreen = STAY_SCREENS.includes(ui.screen) ? ui.screen : null;
     const stayMode = keepPlace ? mode : 'title';
     swapInFlight = true;
@@ -3251,10 +3251,10 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     } else if (action === 'calibrate-cancel') {
       input.cancelCalibration();
-      ui.show('settings');
+      ui.show('pilot');
     } else if (action === 'calibrate-save') {
       if (input.acceptCalibration()) {
-        ui.show('settings');
+        ui.show('pilot');
         notice = { text: 'Stick mapping saved.', untilMs: performance.now() + 2800 };
       }
     } else if (action === 'choosepad') {
@@ -4721,7 +4721,7 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     const freezeWorld = Boolean(ui.reelFreezeWorld);
     const attractOn = !freezeWorld && mode === 'title' && ui.screen === 'title';
-    const studioOn = ui.screen === 'settings';
+    const studioOn = ui.screen === 'quad';
     const worldLive = !freezeWorld && (
       Boolean(finishLoadingOnFrame)
       || mode === 'flight'
@@ -5255,7 +5255,7 @@ export async function boot({ loading, bootStart, mapId }) {
       if (cal) {
         ui.setCalibration(cal);
       } else {
-        ui.show('settings');
+        ui.show('pilot');
         if (input.calResult === 'saved') {
           notice = { text: 'Stick mapping saved.', untilMs: nowWall + 2800 };
         }

@@ -157,9 +157,9 @@ import { FC_DUMP_KEY } from '../fc/dump.js';
  */
 const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
 const SCREEN_ACTIONS = new Set([
-  'courses', 'race', 'freestyle', 'settings', 'rates', 'pids', 'fc',
+  'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'rates', 'pids', 'fc',
   'howto', 'credits', 'trackbuilder', 'remix', 'editown', 'choosepad',
-  'calibrate', 'quad', 'pilot',
+  'calibrate',
 ]);
 
 /* What the breadcrumb says, per screen. A room is a navigation parent, so a
@@ -169,7 +169,9 @@ const SCREEN_TITLES = {
   title: 'WebFPV',
   courses: 'Race',
   freestyle: 'Freestyle',
-  settings: 'Pilot',
+  pilot: 'Pilot',
+  quad: 'Quad',
+  launch: 'Before you fly',
   rates: 'Rates',
   pids: 'PIDs',
   fc: 'Firmware bench',
@@ -181,7 +183,9 @@ const SCREEN_TITLES = {
 const CRUMBS = {
   courses: ['Race'],
   freestyle: ['Freestyle'],
-  settings: ['Pilot'],
+  pilot: ['Pilot'],
+  quad: ['Quad'],
+  launch: ['Before you fly'],
   rates: ['Pilot', 'Rates'],
   pids: ['Quad', 'PIDs'],
   fc: ['Quad', 'Firmware bench'],
@@ -648,6 +652,63 @@ function wrapMenu() {
   const help = el('div', 'menu-help');
   stage.append(menu, help);
   return { stage, menu, help };
+}
+
+/*
+ * IS THE THING IN THE SEAT A RACE?
+ *
+ * The launch card is for a measured run: it exists to say what a lap time
+ * counts as. Freestyle has no clock, no lap, no ghost and no board, so a
+ * card in front of it would be ceremony, and the Freestyle room was built
+ * without one for exactly that reason.
+ *
+ * The predicate is GATE COUNT, which is the same signal the Race and
+ * Freestyle rooms split on and the same one the renderer uses: a designed
+ * course with no stations is a freestyle flight, no lap and no gate HUD.
+ * Not MAPS[].mode, which nothing but a debug hook reads and which would
+ * file a gateless published track under Race and then promise it a clock it
+ * cannot deliver.
+ */
+function seatIsRace(s) {
+  const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
+  if (m.mode === 'freestyle') {
+    return false;
+  }
+  if (m.id !== 'custom') {
+    return true;
+  }
+  const seat = activeCourseSummary();
+  return Boolean(seat && seat.gates > 0);
+}
+
+/*
+ * THE RECORD KEY, IN ENGLISH.
+ *
+ * main.js builds a personal-best key by hashing the config text with the
+ * pack voltage and the flight style, and latches the lap count at run start.
+ * So a best time is not filed under a track: it is filed under a track AND a
+ * tune AND a pack AND a physics model AND a lap count, and change any one of
+ * them and you are on a different board. Nothing ever said that out loud, so
+ * a pilot who nudged pack charge lost their record without being told why.
+ *
+ * This is that key, written as the sentence a pilot would say. It goes in the
+ * help column under the Fly button, which is the last thing read before a
+ * run and the only place it can still change anything.
+ */
+function recordSentence(s, trackName) {
+  const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Expert';
+  const link = s.link === 'perfect' ? 'a perfect link' : LINK_PRESETS[s.link].label;
+  const bits = [
+    `${style} physics`,
+    `${s.packVoltage.toFixed(2)} V per cell`,
+    `${s.laps} lap${s.laps === 1 ? '' : 's'}`,
+    `the ${tuneById(s.tune).name} tune`,
+  ];
+  return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
+    + ' Change any part of it and you are on a different board.'
+    + (s.flightStyle === 'arcade'
+      ? ' Arcade times stay off the public board, so this run will not count there.'
+      : ` This run is on ${link}.`);
 }
 
 /*
@@ -1681,20 +1742,84 @@ export class Ui {
     freestyle.append(this.freestyleCards, freestyleBlock.stage);
     this.screens.freestyle = freestyle;
 
-    const settings = el('div', 'screen screen-page screen-settings');
-    settings.append(el('h2', null, 'Settings'));
-    const settingsBlock = wrapMenu();
-    this.settingsMenu = settingsBlock.menu;
-    this.settingsMenu.classList.add('menu-scroll');
-    this.settingsHelp = settingsBlock.help;
-    this.craftSettingsFrame = el('div', 'craft-showcase-frame');
-    this.craftSettingsFrame.append(this.craftCanvas);
+    /*
+     * QUAD, and PILOT, which were one screen called Settings.
+     *
+     * Thirty rows in one undivided scroll, in an order that grew rather
+     * than was chosen: a pilot's name next to a PID editor next to a
+     * binaural tone. Headings helped and did not fix it, because the list
+     * was two lists. The rule that separates them is what a change
+     * SURVIVES. Rates survive changing the quad but are the pilot's, so
+     * they are Pilot. The tune, the PIDs and the firmware survive changing
+     * the pilot, so they are Quad. Graphics and sound survive both, so they
+     * are neither and sit at the bottom of Pilot as a leaf. Laps, pack
+     * charge and flight model survive nothing, they define the run, so they
+     * are the launch card below.
+     *
+     * Camera is the one deliberate exception to the rule: it survives both,
+     * and it stays in Quad anyway because it is bolted to the airframe and
+     * changes what a yaw does to the picture.
+     *
+     * The airframe showcase moves here with the machine. It was posing a
+     * quad above a list of the pilot's sound levels.
+     */
+    const quad = el('div', 'screen screen-page screen-quad');
+    quad.append(el('h2', null, 'Quad'));
+    quad.append(el('p', 'rates-lede', 'Everything about the machine. Carried with every time you post.'));
+    const quadBlock = wrapMenu();
+    this.quadMenu = quadBlock.menu;
+    this.quadMenu.classList.add('menu-scroll');
+    this.quadHelp = quadBlock.help;
+    this.craftQuadFrame = el('div', 'craft-showcase-frame');
+    this.craftQuadFrame.append(this.craftCanvas);
     this.craftCaption = el('div', 'craft-showcase-cap', 'Acro. Sticks are rates. Hands off holds.');
-    const showcase = el('div', 'craft-showcase');
-    showcase.append(this.craftSettingsFrame, this.craftCaption);
-    settingsBlock.stage.prepend(showcase);
-    settings.append(settingsBlock.stage, hintWithKeys(['Esc'], 'Goes back. Changes are already stored. Arrow keys still move the menu.'));
-    this.screens.settings = settings;
+    const quadShowcase = el('div', 'craft-showcase');
+    quadShowcase.append(this.craftQuadFrame, this.craftCaption);
+    quadBlock.stage.prepend(quadShowcase);
+    quad.append(quadBlock.stage, hintWithKeys(['Esc'], 'Goes back. Changes are already stored. Arrow keys still move the menu.'));
+    this.screens.quad = quad;
+
+    const pilot = el('div', 'screen screen-page screen-pilot');
+    pilot.append(el('h2', null, 'Pilot'));
+    pilot.append(el('p', 'rates-lede', 'You and your sticks. Rates are here because they are yours: they stay put when you switch tunes.'));
+    const pilotBlock = wrapMenu();
+    this.pilotMenu = pilotBlock.menu;
+    this.pilotMenu.classList.add('menu-scroll');
+    this.pilotHelp = pilotBlock.help;
+    pilot.append(pilotBlock.stage, hintWithKeys(['Esc'], 'Goes back. Changes are already stored. Arrow keys still move the menu.'));
+    this.screens.pilot = pilot;
+
+    /*
+     * THE LAUNCH CARD: the room the first design of this was missing.
+     *
+     * main.js latches runVoltage, runStyle and runLaps at run start, and
+     * recordKey() hashes the config text, the pack voltage and the flight
+     * style into one personal-best key. So laps, pack charge and flight
+     * model are not settings a pilot carries around, they are properties of
+     * the RUN: they are what a lap time means. Filing them under Quad or
+     * Pilot put them in a room where neither was true, and produced a
+     * concrete failure: a pilot sets Arcade because "the ideal quad" reads
+     * like a better quad, beats their best by two seconds, and only the
+     * results screen tells them it does not count.
+     *
+     * They are not a fifth room. They are the content of the moment before
+     * you launch, which is exactly where a pilot wants to see them, and the
+     * sentence in the help column is the record key rendered in English.
+     *
+     * Racing only. Freestyle has no clock, no lap, no ghost and no board,
+     * so asking would be ceremony, and it already carries its own arcade
+     * readout for the one flag that does change a freestyle flight.
+     */
+    const launch = el('div', 'screen screen-page screen-launch');
+    launch.append(el('h2', null, 'Before you fly'));
+    this.launchLede = el('p', 'rates-lede', '');
+    launch.append(this.launchLede);
+    const launchBlock = wrapMenu();
+    this.launchMenu = launchBlock.menu;
+    this.launchMenu.classList.add('menu-scroll');
+    this.launchHelp = launchBlock.help;
+    launch.append(launchBlock.stage, hintWithKeys(['Enter', 'Esc'], 'Enter flies it. Escape goes back without flying.'));
+    this.screens.launch = launch;
 
     /*
      * Rates.
@@ -3053,6 +3178,26 @@ export class Ui {
        * a launch out of an unsaved firmware edit is the failure that rule
        * exists to prevent.
        */
+      /*
+       * THREE ROOMS AND A VERB, in place of twelve typographic equals.
+       *
+       * Tune, PIDs and Rates were built once and spread onto four screens,
+       * so "where do I change my rates" had four correct answers with
+       * different surrounding context, and only the Pause copies carried
+       * the warning that changing mid-run resets you to the start line.
+       * They are in exactly one room each now.
+       *
+       * Each room row carries a MANIFEST of what is inside it. The flat
+       * list this replaces was an inventory, and a row of closed doors
+       * would be a downgrade: the word "rates" still has to appear on the
+       * front page or a pilot who knows what they want cannot see where to
+       * go.
+       *
+       * Fly is the verb and stays first and stays the primary. It is never
+       * a room, because overshooting a shoulder detent into a launch out of
+       * an unsaved firmware edit is the failure that rule exists to
+       * prevent.
+       */
       return [
         ...(trouble ? [trouble] : []),
         { label: 'Fly', action: 'fly', primary: true },
@@ -3068,17 +3213,24 @@ export class Ui {
           action: 'freestyle',
           note: 'A place with no gates. No clock, no lap, no board. Four worlds, and any track built without gates.',
         },
-        ...this.ghostItems(),
-        tuneItem(s),
-        pidsItem(s),
-        ratesItem(s),
+        {
+          label: 'Quad',
+          value: tuneById(s.tune).name,
+          action: 'quad',
+          note: 'The machine. Tune, PIDs, camera angle, field of view, flight mode and the firmware bench, which is every Betaflight key the module compiles.',
+        },
+        {
+          label: 'Pilot',
+          value: readPilotName() || 'Not set',
+          action: 'pilot',
+          note: 'You. Your name, your radio, calibration, rates, graphics, sound and the flight log.',
+        },
         { label: 'How to fly', action: 'howto', note: 'The sticks, live, and what the keys do.' },
         {
           label: 'FPV wiki',
           action: 'wiki',
           note: 'The closed loop, the plant, and every Betaflight 4.5.1 key. Opens the wiki on webfpv.org.',
         },
-        { label: 'Settings', action: 'settings' },
         {
           label: 'Leaderboard',
           action: 'leaderboard',
@@ -3197,70 +3349,55 @@ export class Ui {
       const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Full physics';
       return [
         ...cards,
-        tuneItem(s),
+        /* A DOOR, not a copy. This was one of the four screens the same
+         * Tune row was built onto, and Quad is one press away. It still
+         * NAMES the tune, because what you are about to fly is worth
+         * knowing before you pick a world. */
+        {
+          label: 'Tune',
+          value: tuneById(s.tune).name,
+          action: 'quad',
+          note: `${tuneById(s.tune).note} Change it under ${SCREEN_TITLES.quad}, which is where the machine lives.`,
+        },
         {
           label: 'Physics model',
           value: style,
           info: true,
-          note: `Arcade turns propwash, gyro noise and build asymmetry off. It is a plant flag, so it changes a freestyle flight exactly as much as it changes a race. Set it under ${SCREEN_TITLES.settings}.`,
+          note: `Arcade turns propwash, gyro noise and build asymmetry off. It is a plant flag, so it changes a freestyle flight exactly as much as it changes a race. Set it under ${SCREEN_TITLES.launch}.`,
         },
         { label: 'Back', action: 'back' },
       ];
     }
 
-    if (this.screen === 'settings') {
-      const ids = musicIds();
-      const name = readPilotName();
+    /*
+     * QUAD: the machine. Everything that is carried with a posted time.
+     *
+     * A DEPTH LADDER, not a flat list, and the rungs are numbered on screen
+     * because the whole point is that a pilot can stop at the first one. A
+     * beginner never leaves rung 1, one choice that sets a whole tune. A
+     * tuner lives on rung 2, Betaflight's own simplified sliders. An expert
+     * takes the door to rung 3, and it is visibly a door rather than a row
+     * in a list.
+     */
+    if (this.screen === 'quad') {
       /*
-       * Twenty rows in one undivided scroll, in an order that grew rather
-       * than was chosen: a pilot's name sat next to a PID editor sat next to
-       * a binaural tone. The headings are the groups the list already had.
-       * `section: true` rows are not cursor stops, so arrowing down still
-       * lands only on things that do something.
+       * The mid-run warning travels with the ROOM, not with one screen's
+       * copy of a row. Pause used to reach Settings by a route that showed
+       * the same Tune row WITHOUT the warning, so whether a pilot was told
+       * that changing it resets them to the start line depended on which
+       * of four doors they came through. A room reached from a paused run
+       * says it, every row, every time.
        */
+      const midRun = this.returnTo === 'paused';
       return [
-        { label: 'Pilot', section: true },
+        { label: 'The tune', section: true },
+        tuneItem(s, midRun),
+        pidsItem(s, midRun),
         {
-          label: 'Your name',
-          value: name || 'Not set',
-          action: 'setname',
-          note: name
-            ? 'Posted times and published tracks carry this name. Changing it updates the board for tracks you published from this browser.'
-            : `Needed to publish a track or post a time. ${nameRules()}`,
-        },
-        { label: 'Flight', section: true },
-        choice(
-          'Flight style',
-          s.flightStyle === 'arcade'
-            ? 'Arcade: the ideal quad. No propwash shake, no gyro noise, no build asymmetry, so any tune flies glass smooth. Times flown here stay off the public board. Takes effect from the next run.'
-            : 'Expert: the full physics, propwash, gyro noise and build tolerance included, which is what every board time is flown on. Arcade turns the imperfections off for a friendlier machine.',
-          FLIGHT_STYLES,
-          s.flightStyle === 'arcade' ? 'arcade' : 'expert',
-          (id) => (id === 'arcade' ? 'Arcade' : 'Expert'),
-          (id) => { s.flightStyle = id; },
-        ),
-        tuneItem(s),
-        pidsItem(s),
-        ratesItem(s),
-        {
-          label: 'Flight controller',
+          label: 'Firmware bench',
           action: 'fc',
-          note: 'The whole board, Configurator-shaped: every PID, filter, feature and firmware key the module compiles, tab by tab. Save becomes Your edits on the Tune row. There is no CLI paste.',
+          note: 'Every Betaflight 4.5.1 key the module compiles, tab by tab, in Configurator’s own colours. Opens as a tool, in its own frame. Save becomes Your edits on the Tune row above. There is no CLI paste.',
         },
-        choice(
-          'Flight mode',
-          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
-          FLIGHT_MODES,
-          s.flightMode === 'angle' ? 'angle' : 'acro',
-          (id) => (id === 'angle' ? 'Angle' : 'Acro'),
-          (id) => { s.flightMode = id; },
-        ),
-        toggle(
-          'Launch control',
-          'Betaflight race start, off by default. When on, press L on the start line, pitch forward, centre the stick, then punch throttle. The quad holds the angle until you go.',
-          Boolean(s.launchControl),
-          (v) => { s.launchControl = Boolean(v); },
-        ),
         { label: 'Camera', section: true },
         stepper(
           'Camera angle',
@@ -3297,7 +3434,82 @@ export class Ui {
           (n) => `${n} degrees vertical`,
           (n) => { s.cameraFov = n; },
         ),
-        { label: 'Graphics', section: true },
+        { label: 'Flight', section: true },
+        choice(
+          'Flight mode',
+          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
+          FLIGHT_MODES,
+          s.flightMode === 'angle' ? 'angle' : 'acro',
+          (id) => (id === 'angle' ? 'Angle' : 'Acro'),
+          (id) => { s.flightMode = id; },
+        ),
+        toggle(
+          'Launch control',
+          'Betaflight race start, off by default. When on, press L on the start line, pitch forward, centre the stick, then punch throttle. The quad holds the angle until you go.',
+          Boolean(s.launchControl),
+          (v) => { s.launchControl = Boolean(v); },
+        ),
+        /*
+         * A SIGNPOST, not a copy. Rates are the pilot's, and configs/registry.js
+         * says so in capitals: no tune here sets rates. Putting the real row
+         * here would be the four-copies-of-Tune problem starting again, so
+         * this row says where they are and what they are, and goes there.
+         */
+        {
+          label: 'Rates',
+          value: ratesSummary(s.rates),
+          action: 'rates',
+          note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. This row goes there.${midRun ? MID_RUN_WARNING : ''}`,
+        },
+        { label: 'Back', action: 'back' },
+      ];
+    }
+
+    /*
+     * PILOT: you and your sticks. What survives changing the quad.
+     */
+    if (this.screen === 'pilot') {
+      const ids = musicIds();
+      const name = readPilotName();
+      /* Same contract as Quad above. */
+      const midRun = this.returnTo === 'paused';
+      return [
+        { label: 'You', section: true },
+        {
+          label: 'Your name',
+          value: name || 'Not set',
+          action: 'setname',
+          note: name
+            ? 'Posted times and published tracks carry this name. Changing it updates the board for tracks you published from this browser.'
+            : `Needed to publish a track or post a time. ${nameRules()}`,
+        },
+        { label: 'Sticks', section: true },
+        {
+          label: 'Choose joystick',
+          value: (this.padInfo && this.padInfo.using) || 'Keyboard',
+          action: 'choosepad',
+          note: padChooseNote(this.padInfo),
+        },
+        { label: 'Calibrate sticks', action: 'calibrate', note: 'Centre, full range, then one named move per stick. Saved after you check it.' },
+        ratesItem(s, midRun),
+        choice(
+          'Radio link',
+          s.link === 'perfect'
+            ? 'No radio: every frame arrives, exactly on time. Feedforward and RC smoothing read that cadence, so this is sharper than any real link.'
+            : `${LINK_PRESETS[s.link].hz} Hz, ${LINK_PRESETS[s.link].delayMs} ms delay, ${LINK_PRESETS[s.link].jitterMs} ms jitter. Records set on a perfect link are not comparable.`,
+          Object.keys(LINK_PRESETS),
+          s.link,
+          (id) => LINK_PRESETS[id].label,
+          (id) => { s.link = id; },
+        ),
+        /* The other half of the split, signposted. When you cut a list in
+         * two you owe the reader a line saying where the rest went. */
+        {
+          label: 'Tune, PIDs and the firmware',
+          action: 'quad',
+          note: `Those belong to the machine, not to you, so they are one room over under ${SCREEN_TITLES.quad}. Camera angle and flight mode are there too.`,
+        },
+        { label: 'Screen', section: true },
         graphicsItem(s),
         gpuItem(this.gpuInfo),
         choice(
@@ -3316,22 +3528,11 @@ export class Ui {
           (n) => (n === 0 ? 'Uncapped' : `${n} fps`),
           (n) => { s.fpsCap = n; },
         ),
-        { label: 'Race', section: true },
-        choice(
-          'Pack charge',
-          'A tired pack sags harder and gives less punch. Best laps are kept per charge level.',
-          PACK_VOLTAGES,
-          s.packVoltage,
-          (n) => `${n.toFixed(2)} volts per cell`,
-          (n) => { s.packVoltage = n; },
-        ),
-        choice(
-          'Laps per run',
-          'How many laps a run lasts before the result screen.',
-          LAP_COUNTS,
-          s.laps,
-          (n) => `${n}`,
-          (n) => { s.laps = n; },
+        toggle(
+          'Performance readout',
+          'Frame rate and draw counts, for tuning your machine.',
+          s.readout,
+          (v) => { s.readout = v; },
         ),
         { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
@@ -3366,30 +3567,7 @@ export class Ui {
           s.focusTone,
           (v) => { s.focusTone = v; },
         ),
-        { label: 'Sticks and diagnostics', section: true },
-        {
-          label: 'Choose joystick',
-          value: (this.padInfo && this.padInfo.using) || 'Keyboard',
-          action: 'choosepad',
-          note: padChooseNote(this.padInfo),
-        },
-        toggle(
-          'Performance readout',
-          'Frame rate and draw counts, for tuning your machine.',
-          s.readout,
-          (v) => { s.readout = v; },
-        ),
-        { label: 'Calibrate sticks', action: 'calibrate', note: 'Centre, full range, then one named move per stick. Saved after you check it.' },
-        choice(
-          'Radio link',
-          s.link === 'perfect'
-            ? 'No radio: every frame arrives, exactly on time. Feedforward and RC smoothing read that cadence, so this is sharper than any real link.'
-            : `${LINK_PRESETS[s.link].hz} Hz, ${LINK_PRESETS[s.link].delayMs} ms delay, ${LINK_PRESETS[s.link].jitterMs} ms jitter. Records set on a perfect link are not comparable.`,
-          Object.keys(LINK_PRESETS),
-          s.link,
-          (id) => LINK_PRESETS[id].label,
-          (id) => { s.link = id; },
-        ),
+        { label: 'Diagnostics', section: true },
         toggle(
           'Flight log',
           'Record the run for download as a Betaflight blackbox CSV. Holds the whole flight in memory.',
@@ -3404,6 +3582,85 @@ export class Ui {
         { label: 'Back', action: 'back' },
       ];
     }
+
+    /*
+     * THE LAUNCH CARD. What this run counts as, before it is flown.
+     *
+     * Five rows, and every one of them is latched by main.js at run start or
+     * hashed into recordKey(). The help column's first sentence is that key
+     * rendered in English, because "your personal best is filed under
+     * exactly this sentence" is the thing nobody was ever told.
+     */
+    if (this.screen === 'launch') {
+      const seat = activeCourseSummary();
+      const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
+      const trackName = seat && seat.name ? seat.name : m.name;
+      return [
+        {
+          label: 'Track',
+          value: trackName,
+          info: true,
+          note: seat && seat.gates
+            ? `${seat.gates} gates. This is what your time will be measured on.`
+            : 'This is what your time will be measured on.',
+        },
+        {
+          label: 'Quad',
+          value: tuneById(s.tune).name,
+          action: 'quad',
+          note: `The tune, the PIDs, the camera and the firmware. Opens ${SCREEN_TITLES.quad}. Whatever is loaded there is what this run flies, and it goes to the board with the time.`,
+        },
+        { label: 'What this run counts as', section: true },
+        choice(
+          'Laps',
+          'How many laps a run lasts before the result screen. Latched when you launch, so changing it mid-run does nothing until the next one.',
+          LAP_COUNTS,
+          s.laps,
+          (n) => `${n}`,
+          (n) => { s.laps = n; },
+        ),
+        choice(
+          'Pack charge',
+          'A tired pack sags harder and gives less punch. Best laps are kept per charge level, so a time set on a fresh pack and a time set on a tired one are two different records.',
+          PACK_VOLTAGES,
+          s.packVoltage,
+          (n) => `${n.toFixed(2)} volts per cell`,
+          (n) => { s.packVoltage = n; },
+        ),
+        choice(
+          'Flight model',
+          s.flightStyle === 'arcade'
+            ? 'Arcade: the ideal quad. No propwash shake, no gyro noise, no build asymmetry, so any tune flies glass smooth. Times flown here stay off the public board.'
+            : 'Expert: the full physics, propwash, gyro noise and build tolerance included, which is what every board time is flown on. Arcade turns the imperfections off for a friendlier machine.',
+          FLIGHT_STYLES,
+          s.flightStyle === 'arcade' ? 'arcade' : 'expert',
+          (id) => (id === 'arcade' ? 'Arcade' : 'Expert'),
+          (id) => { s.flightStyle = id; },
+        ),
+        choice(
+          'Radio link',
+          s.link === 'perfect'
+            ? 'A perfect link is sharper than any real radio: every frame arrives, exactly on time. Times set on it are marked on the board.'
+            : `${LINK_PRESETS[s.link].hz} Hz, ${LINK_PRESETS[s.link].delayMs} ms delay, ${LINK_PRESETS[s.link].jitterMs} ms jitter.`,
+          Object.keys(LINK_PRESETS),
+          s.link,
+          (id) => LINK_PRESETS[id].label,
+          (id) => { s.link = id; },
+        ),
+        /* The ghost is a property of the run too: it is armed for this
+         * launch and it is what you are racing. It was on the title, which
+         * is the one screen with no run in front of it. */
+        ...this.ghostItems(),
+        {
+          label: 'Fly',
+          action: 'launch-go',
+          primary: true,
+          note: recordSentence(s, trackName),
+        },
+        { label: 'Back', action: 'back' },
+      ];
+    }
+
     if (this.screen === 'paused') {
       /* Resume is the button. The conditional Edit a copy that used to
        * appear here belongs on the Courses screen. Report a bug is the
@@ -3412,18 +3669,44 @@ export class Ui {
        * pilot pauses, and the report carries the tune and PIDs they are
        * paused on. FPV wiki opens the landing-site wiki so a mid-flight
        * "why did that happen" does not have to quit the run. */
+      /*
+       * THE ONE COPY THAT EARNS ITS PLACE, and doors for the rest.
+       *
+       * The pause menu's job is not to be a second Settings screen. It is
+       * to answer "what just happened, and does it feel wrong", so the
+       * tuning a pilot pauses in order to reach stays one row away and
+       * everything else becomes a door to a room rather than a copy of it.
+       *
+       * Tune keeps its row here because that IS the question, and because
+       * this copy carries the mid-run warning that changing it puts the
+       * quad back on the start line. PIDs and Rates are doors now: they
+       * were the two of the four scattered copies whose surrounding
+       * context differed, and the rooms carry the same warning through
+       * MID_RUN_WARNING on the way in.
+       */
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         ...this.ghostItems(),
+        { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
-        pidsItem(s, true),
-        ratesItem(s, true),
         feelItem(),
+        { label: 'Elsewhere', section: true },
+        {
+          label: 'Quad',
+          value: tuneById(s.tune).name,
+          action: 'quad',
+          note: `PIDs, camera, flight mode and the firmware bench.${MID_RUN_WARNING}`,
+        },
+        {
+          label: 'Pilot',
+          value: ratesSummary(s.rates),
+          action: 'pilot',
+          note: `Rates, your radio, graphics and sound.${MID_RUN_WARNING}`,
+        },
         graphicsItem(s),
         { label: 'How to fly', action: 'howto' },
         { label: 'FPV wiki', action: 'wiki', note: 'The plant, the compiled controller, and every catalog key. Opens the wiki on webfpv.org.' },
-        { label: 'Settings', action: 'settings' },
         { label: 'Credits', action: 'credits', note: 'Who made this, who flew it, and whose work it stands on.' },
         { label: 'Quit to title', action: 'title' },
       ];
@@ -3666,7 +3949,22 @@ export class Ui {
        * slow network it is the same honesty the panel caption already has.
        */
       const rows = [
-        tuneItem(s),
+        /*
+         * A DOOR, and it was the fourth copy the audit named: title,
+         * Settings, Pause and the top of this screen. Everything below
+         * belongs to whichever tune is loaded, so the row has to SAY which
+         * one, but it is not a fourth place to change it.
+         *
+         * The loading branch below is still reachable and still needed: a
+         * swap made in Quad and then followed in here arrives with `live`
+         * null exactly as a swap made from this row used to.
+         */
+        {
+          label: 'Tune',
+          value: tuneName,
+          action: 'quad',
+          note: `These are ${tuneName}'s PIDs. Each tune keeps its own adjustment. Load a different one under ${SCREEN_TITLES.quad}.`,
+        },
       ];
       if (!live) {
         rows.push({
@@ -3726,6 +4024,14 @@ export class Ui {
 
   renderMenu() {
     this.syncMusicDock();
+    if (this.screen === 'launch' && this.launchLede) {
+      const seat = activeCourseSummary();
+      const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
+      const name = seat && seat.name ? seat.name : m.name;
+      const gates = seat && seat.gates ? `${seat.gates} gates` : '';
+      const by = seat && seat.author ? `by ${seat.author}` : '';
+      this.launchLede.textContent = [name, gates, by].filter(Boolean).join(' \u00b7 ');
+    }
     this.closeDrop();
     if (this.screen === 'courses') {
       this.renderMapCards();
@@ -3743,7 +4049,9 @@ export class Ui {
       credits: this.creditsMenu,
       courses: this.coursesMenu,
       freestyle: this.freestyleMenu,
-      settings: this.settingsMenu,
+      pilot: this.pilotMenu,
+      quad: this.quadMenu,
+      launch: this.launchMenu,
       rates: this.ratesMenu,
       pids: this.pidsMenu,
       fc: this.fcMenu,
@@ -4020,7 +4328,7 @@ export class Ui {
   leaveFc() {
     this.fc.stopMotors();
     this.fc.confirm = null;
-    const dest = ['paused', 'settings', 'pids'].includes(this.fcFrom)
+    const dest = ['paused', 'quad', 'pids'].includes(this.fcFrom)
       ? this.fcFrom
       : 'title';
     this.show(dest);
@@ -4053,7 +4361,9 @@ export class Ui {
       credits: this.creditsHelp,
       courses: this.coursesHelp,
       freestyle: this.freestyleHelp,
-      settings: this.settingsHelp,
+      pilot: this.pilotHelp,
+      quad: this.quadHelp,
+      launch: this.launchHelp,
       rates: this.ratesHelp,
       pids: this.pidsHelp,
       fc: this.fcHelp,
@@ -6045,7 +6355,7 @@ export class Ui {
 
   setGpuInfo(info) {
     this.gpuInfo = info || null;
-    if (this.screen === 'settings') {
+    if (this.screen === 'pilot') {
       this.renderMenu();
     }
   }
@@ -6559,18 +6869,20 @@ export class Ui {
       this.act('fc-back');
       return;
     }
-    if (this.screen === 'rates' && this.ratesFrom === 'settings') {
+    if (this.screen === 'rates' && this.ratesFrom) {
       /* Settings is a page, not a mode: the shell has nothing to do when it
        * comes back up, so show() rather than act(), which would rewrite
        * returnTo and strand a pilot who paused a run to get here. */
+      const from = this.ratesFrom;
       this.ratesFrom = null;
-      this.show('settings');
+      this.show(from);
       return;
     }
-    if (this.screen === 'pids' && this.pidsFrom === 'settings') {
+    if (this.screen === 'pids' && this.pidsFrom) {
       /* Same contract as Rates above. */
+      const from = this.pidsFrom;
       this.pidsFrom = null;
-      this.show('settings');
+      this.show(from);
       return;
     }
     /* Drop the pin before title, or show() would remap title back onto
@@ -6683,10 +6995,33 @@ export class Ui {
       openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
       return;
     }
-    if (action === 'howto' || action === 'settings' || action === 'courses'
-      || action === 'freestyle' || action === 'credits') {
+    if (action === 'howto' || action === 'pilot' || action === 'quad'
+      || action === 'courses' || action === 'freestyle' || action === 'credits') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
+      return;
+    }
+    /*
+     * THE LAUNCH CARD, and the one thing on it that is not a setting.
+     *
+     * `fly` used to launch. It now opens the card, and `launch-go` is what
+     * launches, so the verb that starts a run is a different word from the
+     * verb that shows you what the run will be. Freestyle keeps the old
+     * behaviour and launches directly: it has no clock, no lap, no ghost
+     * and no board, so a card in front of it would be ceremony.
+     */
+    if (action === 'fly' && seatIsRace(this.settings)) {
+      this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
+      this.show('launch');
+      return;
+    }
+    if (action === 'launch-go') {
+      /* The card's own button. It falls through to onAction as `fly`,
+       * which is the action main.js has always launched on: the card is a
+       * screen in front of the verb, not a second verb. */
+      if (this.onAction) {
+        this.onAction('fly', this.settings);
+      }
       return;
     }
     if (action === 'rates') {
@@ -6695,8 +7030,11 @@ export class Ui {
        * From the flight controller's signpost row, returnTo is left alone:
        * it may be carrying a paused run two screens up, and this row must
        * not be the reason Escape quits it. */
-      if (this.screen === 'settings') {
-        this.ratesFrom = 'settings';
+      if (this.screen === 'pilot' || this.screen === 'quad') {
+        /* Both rooms carry a Rates row: Pilot has the real one, Quad has a
+         * signpost saying rates are not the machine's. Escape goes back to
+         * whichever one was used, or the signpost is a one way door. */
+        this.ratesFrom = this.screen;
       } else {
         this.ratesFrom = null;
         if (this.screen !== 'fc') {
@@ -6708,8 +7046,8 @@ export class Ui {
     }
     if (action === 'pids') {
       /* Same going-back contract as Rates, for the same reason. */
-      if (this.screen === 'settings') {
-        this.pidsFrom = 'settings';
+      if (this.screen === 'quad') {
+        this.pidsFrom = 'quad';
       } else {
         this.pidsFrom = null;
         this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
@@ -6722,7 +7060,7 @@ export class Ui {
        * pause chain, and overwriting it here stranded a pilot who paused
        * a run, opened PIDs, opened this, and Escaped twice expecting the
        * pause menu back. */
-      this.fcFrom = ['paused', 'settings', 'pids'].includes(this.screen)
+      this.fcFrom = ['paused', 'quad', 'pids'].includes(this.screen)
         ? this.screen
         : 'title';
       if (this.onFcOpen) {
@@ -7086,7 +7424,11 @@ export class Ui {
      * selects on the title so Fly is one flick away. The pad is tracked so
      * a held stick does not fire an edge the moment the screen closes.
      */
-    if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids' || this.screen === 'fc') {
+    /* Quad, not Pilot: the airframe showcase moved with the machine, so
+     * the screen whose sticks pose a quad is the one that has a quad on it.
+     * Pilot has no showcase and its sticks are free to drive the cursor,
+     * which is the whole point of a room a radio pilot has to reach. */
+    if (this.screen === 'quad' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids' || this.screen === 'fc') {
       /*
        * The STICKS stay out, for the reasons above. The BUTTONS do not.
        *

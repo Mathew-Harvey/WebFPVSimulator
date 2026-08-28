@@ -693,7 +693,7 @@
         margin-top: 22px;
         pointer-events: none;
       }
-      .screen-settings .menu-stage {
+      .screen-pilot .menu-stage {
         width: 100%;
         max-width: 1600px;
         grid-template-columns: minmax(360px, 1.7fr) auto minmax(0, 0.65fr);
@@ -707,13 +707,13 @@
        * entirely. One column, quad on top, same fallback Rates takes.
        */
       @media (max-width: 1100px) {
-        .screen-settings .menu-stage { grid-template-columns: minmax(0, 1fr); }
-        .screen-settings .craft-showcase {
+        .screen-pilot .menu-stage { grid-template-columns: minmax(0, 1fr); }
+        .screen-pilot .craft-showcase {
           grid-column: 1; grid-row: 1;
           justify-self: center; width: min(100%, 420px); margin: 0 0 12px;
         }
-        .screen-settings .menu-stage .menu { grid-column: 1; justify-self: center; }
-        .screen-settings .menu-help {
+        .screen-pilot .menu-stage .menu { grid-column: 1; justify-self: center; }
+        .screen-pilot .menu-help {
           grid-column: 1; max-width: none; border-left: 0;
           padding: 8px 14px 0; margin-top: 6px; text-align: center;
         }

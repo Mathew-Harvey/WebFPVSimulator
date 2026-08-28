@@ -6,7 +6,7 @@
   },
   "screens": {
     "title": {
-      "overflow": 116
+      "overflow": 25
     },
     "courses": {
       "overflow": 0
@@ -14,14 +14,20 @@
     "freestyle": {
       "overflow": 0
     },
-    "settings": {
-      "overflow": 1133
+    "quad": {
+      "overflow": 55
+    },
+    "pilot": {
+      "overflow": 658
+    },
+    "launch": {
+      "overflow": 0
     },
     "rates": {
       "overflow": 319
     },
     "pids": {
-      "overflow": 246
+      "overflow": 243
     },
     "fc": {
       "overflow": 3613

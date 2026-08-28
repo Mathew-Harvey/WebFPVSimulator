@@ -20987,3 +20987,93 @@ the 700 ms hold and the "not yet" case fired. It drives the page's own clock now
 
 Other checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
 `npm run link:selftest` all passed, `git diff --stat vendor/betaflight` empty.
+
+---
+
+## 2026-08-28, shell: three rooms, a verb, and the card in front of it
+
+Changed: Settings became Quad and Pilot, the title became three rooms and a verb,
+and a launch card stands between Fly and a measured run.
+
+**The split, and the rule that decides it.** Thirty rows in one undivided scroll,
+in an order that grew rather than was chosen: a pilot's name next to a PID editor
+next to a binaural tone. Headings helped and did not fix it, because the list was
+two lists. What separates them is what a change SURVIVES. Rates survive changing
+the quad but are the pilot's, so they are Pilot. The tune, the PIDs and the
+firmware survive changing the pilot, so they are Quad. Graphics and sound survive
+both, so they are neither and sit at the bottom of Pilot. Laps, pack charge and
+flight model survive nothing, they define the run, so they are the launch card.
+
+Camera is the one deliberate exception: it survives both by the rule and stays in
+Quad anyway, because it is bolted to the airframe and changes what a yaw does to
+the picture.
+
+The airframe showcase moved with the machine. It had been posing a quad above a
+list of the pilot's sound levels.
+
+**One room per thing, and the check found two I had missed.** Tune, PIDs and Rates
+were built once and spread onto four screens, so "where do I change my rates" had
+four correct answers with different surrounding context. The new assertion sweeps
+every screen and separates an EDITABLE copy, one that changes the value where it
+stands, from a DOOR, a navigation row that opens the room where the real one
+lives. A signpost is not a second answer. It reported Tune editable on four
+screens: freestyle, quad, pids and paused. Freestyle and the top of the PIDs
+screen are now doors, and both still NAME the tune, because what you are about to
+fly is worth knowing and everything on the PIDs screen belongs to whichever tune
+is loaded. The PIDs screen's tune-swap loading branch is still reachable and still
+needed: a swap made in Quad and then followed in arrives with `live` null exactly
+as a swap made from that row used to.
+
+Tune keeps two homes, its room and the pause menu, and that is argued rather than
+overlooked: "does this feel wrong" is the question a pause is asking, and the row
+is the answer.
+
+**The mid-run warning cannot be lost by route.** Only the pause menu's own copies
+said that changing a tune mid-run puts the quad back on the start line. Pause
+reached Settings by a route that showed the same rows without it, so whether a
+pilot was told depended on which of four doors they came through. The warning now
+belongs to the ROOM: Quad and Pilot entered with `returnTo === 'paused'` carry it
+on every tuning row, and entered from the title carry it on none, because a
+warning about a run that is not happening is the kind nobody reads. Both halves
+are asserted.
+
+**The launch card.** `main.js` latches runVoltage, runStyle and runLaps at run
+start, and `recordKey()` hashes the config text with the pack voltage and the
+flight style. So laps, pack charge and flight model are not settings a pilot
+carries around, they are what a lap time MEANS. The help column under the Fly
+button is that key rendered in English: "your best is filed under exactly this",
+and the list. Nobody was ever told, so a pilot who nudged pack charge lost their
+record without knowing why.
+
+The ghost moved here from the title, which is the one screen with no run in front
+of it.
+
+Freestyle gets no card, and that is asserted rather than assumed: a card asking
+what a run counts as, in front of a flight that counts as nothing, is ceremony.
+`seatIsRace` splits on GATE COUNT, the same signal the Race and Freestyle rooms
+already use, not on `MAPS[].mode`, which nothing but a debug hook reads.
+
+**Escape has one destination again.** `ratesFrom` and `pidsFrom` carry the room
+rather than the string 'settings', so Rates reached from Quad's signpost goes back
+to Quad and Rates reached from Pilot goes back to Pilot. It was a one way door in
+the first draft.
+
+**What it cost.** The title went from 116 px past the fold to 25, and the pause
+menu from twelve stops to eleven. Pilot is 658 px where the old Settings was 1133,
+and Quad is 55. The pids screen improved 3 px from the door replacing the picker.
+Baseline re-recorded.
+
+**Deliberate breaks, all read back.** Putting the fourth Tune copy back on the
+PIDs screen reports "Tune is editable on 3 screens: quad, pids, paused". Pinning
+`midRun` to false reports "Quad entered from a paused run warns on 0 of 3 tuning
+rows". Removing the `seatIsRace` guard reports "Fly on the freestyle world city
+stopped at the launch card".
+
+Also looked at, at 1600x900 in headless Chromium: the title, Quad, Pilot and the
+launch card, through `node scripts/shots.js` with `expect:` on each screen so a
+capture cannot be named after a state it is not in.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
+`npm run lint:presets` 3 of 3, and the three deliberate breaks above.
+`npm run verify` not run: nothing here touches physics, the plant, the module ABI
+or the build, and it was run in full on the previous commit in this session.

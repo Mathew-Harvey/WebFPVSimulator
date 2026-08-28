@@ -21622,3 +21622,150 @@ above. Also driven and looked at against a live board at 1280x720: the Race room
 with twelve tracks in a scrolling grid, and the standings table with its record,
 its ghost tag and the pilot's own row. `npm run verify` not run: nothing here
 touches physics, the plant, the module ABI or the build.
+
+## 2026-08-28, audio: a menu bed, and the flight crate stays in flight
+
+Two tracks arrived for the menus. They play on every screen that is not a flight,
+quieter, and the twelve recorded tracks now play only while the pilot is actually
+flying. Before this the flight crate played everywhere, including under the title
+screen and the settings list, which is a bed written to be flown to sitting on top
+of somebody reading rows.
+
+**Two crates, in `src/render/tracks.js`.** `TRACKS` is unchanged and is what
+flies. `MENU_TRACKS` is the new pair. They are `neon-gate` and
+`neon-gate-take-2`, named the way `copper-gypsy-run` and its take 2 are named,
+because that is what they are: both masters carried the ID3 title "Neon Gate" and
+were made ninety seconds apart in one sitting. Both crates share one directory,
+one id namespace and one cache rule, so the slug and duplicate checks at the
+bottom of that file now run across both. A collision there would not have failed
+in the browser, it would have failed as one encode overwriting another and a menu
+bed that was quietly the wrong song.
+
+**The quiet is a mix decision, not a property of the files.** Measured with
+ebur128: the two menu masters are -14.2 and -13.6 LUFS integrated, which is mid
+crate against the flight records' -12.9 to -17.1. Nothing about them is quiet.
+`MENU_BUS` in `src/render/music.js` is 0.20 against `MUSIC_BUS` 0.60, so the menu
+bed runs 9.5 dB under the flight bed.
+
+The number is not a taste. In flight the music sits under four motors and a wind
+stem and is already about 10 dB below the motor stem, which is the balance
+`audio.js` was tuned at. In the menus it plays against nothing at all, so the same
+bus gain puts it perceptually far further forward than it ever is in flight, on
+the one screen where somebody is trying to read. A third puts it back roughly
+where it sits under the motors. `scripts/music.js` is still forbidden from putting
+a gain in the encode, for the reason its own header gives: a loudness that lives
+in the file is a loudness nobody can find later.
+
+**One media element, two crates, and a fade between them.** A second element and a
+second `MediaElementSource` would have been two more nodes and two more things to
+keep paused, and the two beds are never wanted at once. So `setContext('menu' |
+'flight')` arms a swap rather than doing one: the swap gain ramps to zero over
+0.25 s, `tick()` changes the crate once that ramp has run, and it ramps back up
+over 0.7 s. Setting `src` is instant and the audio that comes out of it is not, so
+a swap done in the same call as the decision is a cut into silence into a cold
+start.
+
+That is one more `GainNode`, and it is a separate node rather than automation on
+the existing level gain on purpose. `gain` holds exactly what the settings ask
+for, which is what check 14 reads; `swap` is the crate change; `duck` is a cue. A
+cue landing mid swap has to leave the swap where it is, and one curve cannot do
+that.
+
+**Every record remembers where it was.** A menu visit is thirty seconds. Without a
+resume, a player who flies eight races has heard the first thirty seconds of the
+menu bed eight times and the rest of it never, which is the definition of the
+thing that was asked to be unobtrusive. Positions are kept by track id and spent
+in `loadedmetadata`, because `currentTime` cannot be written before the element
+knows its duration and `preload` is still `none`. A resume that would land inside
+the last 15 s is refused: a track that ends the moment it starts reads as a fault.
+
+**The menu record is re-rolled on every return to the menus**, not once a visit.
+"Played randomly when the user is in the menus" is the request, and with two
+records and a thirty second visit a once-a-visit pick would mean one of them for
+the first eight visits. The resume is what makes the re-roll cheap: it changes the
+record, it does not restart one. If the feel is wrong, moving the
+`pickMenuTrack()` call out of `commitSwap` and into the constructor makes it once
+a visit, and that is the whole change.
+
+**Paused counts as flying.** The pause screen keeps the flight display, the lap
+clock and the pack up behind it. Swapping the bed out and back every time somebody
+taps Escape mid race would be the most obtrusive thing in the mix. `ui.flying()`
+is now one predicate used by both the music dock and the music context, so the
+dock cannot say flying while the bed says menus.
+
+**The menus buy the flight track.** This change had a regression in it that the
+request did not ask about: the old shell had the flight track playing from the
+title screen, so by the time anyone flew it was buffered. With a menu bed in front
+of it, the first flight of a visit would open on a cold 2.5 MB download at exactly
+the moment the map is loading. So the warm, which used to fire only near the end
+of a rotation track, now has a menu case: while the menus are up it fetches the
+FLIGHT track, gated on the menu bed being 20 s buffered ahead of itself, which is
+the connection saying it has room. Save-Data still turns all of it off. Confirmed
+live: `warm: "pace-shift-skyline"` while the title screen bed played.
+
+**A skip in the menus does not write the Music track setting.** The dock's skip
+buttons skip whatever is playing. `status()` now carries which crate that came
+from, and `main.js` pins the setting only for a flight record. Without it a menu
+id lands in a setting whose list is flight ids, showing as the first flight track
+and silently coerced back to rotation on the next read.
+
+**`scripts/audio-probe.js` now asks for the flight context explicitly.** The
+player opens on the menu context, because a visit does, and the probe exists to
+measure the mix a pilot flies in. It changes no rendered sample, since an
+`OfflineAudioContext` has no media element, but the bus gain is a number that file
+publishes and it should not depend on which screen the player happens to default
+to.
+
+**`npm run music:selftest`, `scripts/music-selftest.js`.** This is a state machine
+that lives entirely inside a browser and nothing in `tests/` could see any of it.
+Check 14 taps one key and reads three numbers: it can say the bed is playing and
+cannot say WHICH bed, at WHICH level, or whether a settings write in the menus
+just cut the menu record off mid bar. Every failure this change could have had is
+a quiet one. So the real class is driven against a fake element and a fake
+context, 39 assertions, about a second, no browser.
+
+It was mutation tested rather than trusted. Six deliberate breaks, each reverted:
+menu bus equal to the flight bus, `crate()` always returning the flight crate, a
+`tick()` that never lands the swap, a menu skip that rewrites the flight
+selection, the menus warming the wrong track, and the flight bed running at the
+menu level. All six were caught. Two more were not, and the check was extended
+until they were: the old `el.loop` rule, which only differs when a pinned flight
+track is set AND the menus are up, and dropping the resume entirely, which the
+first version only half tested because it asserted the position was REMEMBERED and
+never that it was restored. There is now an end to end resume that leaves a record
+part way through, returns until the roll lands on it again, and reads the seek.
+
+**What went wrong.** A seventh mutation, deleting the `context !== 'flight'` guard
+in `setTrack`, changed nothing and was caught by nothing, because
+`loadCurrent` builds its URL from the record `applyCrate` put on the element and
+in the menus that is a menu record. The guard is kept, because it makes the
+property belong to the function rather than to a coincidence in two other methods,
+but its comment claimed to prevent a bug it does not currently prevent and now
+says what is true.
+
+**`min_music_gain` and `max_nodes` prose corrected, values untouched.**
+`min_music_gain` said the check measures level 0.5 times 0.60. It does not and now
+did not before either: the run taps a key on the TITLE screen, which is a menu, so
+what it reads is 0.5 times `MENU_BUS`, 0.10, still twice the 0.05 floor.
+`max_nodes` claimed the graph builds 59; a live run driven the way that check
+drives one reads 42, one of which is the new swap gain. The budget of 64 is what
+is asserted and neither value moved.
+
+**No `MUSIC_REV` bump, deliberately.** The rule is about a URL whose content
+changed. Two new ids are two URLs nobody holds, and bumping would throw away a
+year of correctly cached copies of the twelve that did not change. `DEPLOY.md` now
+says so, along with where the masters are: the twelve flight masters come back
+from commit `f9e0804`, and the two menu masters are not in this repository's
+history at all and would have to be supplied again.
+
+Checks run this turn: `npm run music:selftest` all passed, `npm run lint:shell`
+PASS, `npm run lint:nouns` PASS, and both encodes passed the LUFS gate in
+`scripts/music.js` (2.48 and 3.09 MB webm, 2.63 and 3.69 MB mp3, from 5.52 and
+7.06 MB masters). Driven live through `scripts/shots.js` at 400x300 on the real
+page: the title screen plays `neon-gate.webm?v=1` at gain 0.10, advancing 2.5 s of
+media in a 2.5 s window, 42 nodes; `show('flight')` swaps to
+`subway-rattle.webm?v=1` at gain 0.30 with the dock following;
+`show('results')` swaps back to a menu record at 0.10 and `resumeAt` holds a
+position for both crates. `npm run verify` not run: nothing here touches physics,
+the plant, the module ABI or the build, and check 14's inputs were measured
+directly instead.

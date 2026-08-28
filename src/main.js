@@ -477,11 +477,13 @@ export async function boot({ loading, bootStart, mapId }) {
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
   };
-  /* Rotation's first name is a random pick on the player, not TRACKS[0].
-   * Push it onto the dock before the first gesture so the title is the
-   * record that will actually play. A pinned setting still wins when
-   * applyMix runs. */
-  if (ui.settings.musicTrack === 'rotation' && typeof audio.musicStatus === 'function') {
+  /* The dock names what is playing, and what is playing on the title
+   * screen is the menu bed, whose record is a random pick on the player.
+   * Push it before the first gesture so the dock is not showing a flight
+   * track that nobody is going to hear yet. This is unconditional now:
+   * the Music track setting names a FLIGHT record, so a pinned setting is
+   * not the answer to what is playing in the menus either. */
+  if (typeof audio.musicStatus === 'function') {
     ui.setMusicNow(audio.musicStatus());
   }
   ui.onMusicSkip = (dir) => {
@@ -491,12 +493,28 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     audio.skipMusic(dir);
     const st = audio.musicStatus();
-    if (st && ui.settings.musicTrack !== 'rotation') {
+    /*
+     * A skip pins the setting only when what was skipped was a FLIGHT
+     * record. The dock's buttons skip whatever is playing, which in the
+     * menus is the two record bed, and writing one of those ids into
+     * musicTrack would leave the setting holding a value its own list
+     * does not contain, showing as the first flight track and silently
+     * coerced back to rotation on the next read.
+     */
+    if (st && st.context === 'flight' && ui.settings.musicTrack !== 'rotation') {
       ui.settings.musicTrack = st.id;
       ui.persistSettings();
     }
     if (ui.screen === 'pilot') {
       ui.renderMenu();
+    }
+  };
+  /* Which crate the bed plays, off the screen. ui.flying() is the one
+   * predicate for that question; see its comment for why paused is a
+   * flight. */
+  ui.onScreenChange = () => {
+    if (typeof audio.setMusicContext === 'function') {
+      audio.setMusicContext(ui.flying() ? 'flight' : 'menu');
     }
   };
 
@@ -3372,6 +3390,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (typeof audio.setMusicTrack === 'function') {
       audio.setMusicTrack(s.musicTrack);
+    }
+    /* Before reading the status, so the dock names the record the bed is
+     * actually on. This is also the only thing that sets the context on a
+     * page that has not changed screen since it loaded: the first gesture
+     * reaches wakeAudio, not show(). */
+    if (typeof audio.setMusicContext === 'function') {
+      audio.setMusicContext(ui.flying() ? 'flight' : 'menu');
     }
     if (typeof audio.musicStatus === 'function') {
       ui.setMusicNow(audio.musicStatus());

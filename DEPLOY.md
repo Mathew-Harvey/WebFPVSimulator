@@ -251,7 +251,7 @@ and the onrender.com addresses keep working exactly as before.
 | simulator | `index.html` | the boot script and the three icon links, now relative |
 | simulator | `src/main.js` | `/tests/lib/simmod.js` and `/dist/sim.wasm`, now resolved against the module |
 | simulator | `configs/registry.js` | a tune's `.diff`, now resolved beside `registry.js` |
-| simulator | `src/render/tracks.js` | the music crate, now resolved against the module |
+| simulator | `src/render/tracks.js` | the music crates, now resolved against the module |
 | simulator | `src/ui/ui.js` | the orbit thumbnail in the Courses reel |
 | simulator | `src/share/board.js` | `PRODUCTION_BOARD_ORIGIN` is now `https://webfpv.org/board` |
 | board | `public/index.html`, `public/bugs.html` | icons, the inbox script, the back link |
@@ -526,12 +526,33 @@ year of browsers on the old mix with no way to find out. `scripts/serve.js`
 and `tests/lib/server.js` both mirror this policy for the same directory, so
 a re-encode needs the bump locally too, which is the point.
 
+**Adding a track does not need the bump, and should not get one.** The rule
+is about a URL whose CONTENT changed. A new id is a new URL that nobody
+holds, so bumping for it would only throw away a year of correctly cached
+copies of the twelve that did not change. The menu bed arrived that way:
+two new ids, no bump.
+
+**There are two crates in that one directory.** `TRACKS` is what plays in
+flight and is what the Music track setting picks from; `MENU_TRACKS` is the
+quieter bed that plays on every screen that is not a flight. They share the
+directory, the id namespace, the encode settings and this cache rule,
+because all four of those are about bytes on a wire and the difference
+between the crates is only where they are played. What differs is the mix:
+`MENU_BUS` in `src/render/music.js` runs the menu bed 9.5 dB under the
+flight bed. One media element carries both, so the swap between them is
+faded, and while the menus are up the player warms the flight track that
+the next flight is going to ask for, which is the only reason a first
+flight does not open on a cold 2.5 MB download.
+
 **The crate is on disk in two formats and a visitor pays for one.** Every
 track is `assets/music/<id>.webm` (Opus, about 2.5 MB) and
 `assets/music/<id>.mp3` (LAME V7, about 3.1 MB), written by
 `node scripts/music.js` from masters that are not in the repository. The
 player asks `canPlayType` first and takes the WebM unless the browser cannot
 open one, which is Safari before 14.1 on the desktop and 17.4 on the phone.
+The masters for the twelve flight records are recoverable from commit
+`f9e0804`; the two menu masters are not in this repository's history at all
+and would have to be supplied again.
 Render serves `.webm` as `video/webm` off its own extension table and that
 is fine for an audio-only file; a browser that disagrees fails the load and
 `music.js` demotes the whole session to mp3 rather than going quiet.

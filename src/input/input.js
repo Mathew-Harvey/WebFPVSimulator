@@ -63,6 +63,46 @@ const DEFAULT_MAP = {
 
 export const CAL_STEPS = ['center', 'sweep', 'throttle', 'roll', 'pitch', 'yaw', 'confirm'];
 
+/*
+ * A RADIO WHOSE SWITCHES ARRIVE AS AXES HAS NOTHING TO PRESS.
+ *
+ * padMenuButtons reads buttons 0 to 3, which is right for a gamepad and for
+ * most radios in joystick mode. Some report every switch as an AXIS and
+ * expose no buttons at all: `gamepad.buttons` is empty. navRaw still moves
+ * the cursor for them, deliberately, because calibration is a menu item and
+ * would otherwise be unreachable by the only device that needs it. But
+ * nothing selects. The cursor walks the list and Enter never happens: a
+ * product that can be browsed and not used.
+ *
+ * Two answers, and the wizard is the good one.
+ *
+ *   The MENU SWITCH, assigned in the wizard like any other channel, on its
+ *   own axis. Once assigned it edge-latches exactly like a button.
+ *
+ *   Until then, a HOLD. Any axis held away from rest for SELECT_HOLD_MS
+ *   counts as one select, once, until it comes back. A brief excursion
+ *   still moves the cursor, which is what makes both gestures fit on one
+ *   stick: a flick moves, a hold presses. It is only ever armed for a pad
+ *   reporting zero buttons, so no radio that already works changes at all.
+ *
+ * Back needs no equivalent. Every screen in this shell carries a Back row,
+ * so a working select reaches it.
+ */
+export const SELECT_STEP = 'select';
+const SELECT_HOLD_MS = 700;
+
+/* The wizard's steps for a given radio. The menu switch is only asked for
+ * when the radio cannot answer any other way, because asking every pilot to
+ * assign one is friction for a problem they do not have. */
+export function calSteps(hasButtons) {
+  if (hasButtons) {
+    return CAL_STEPS;
+  }
+  const out = CAL_STEPS.slice();
+  out.splice(out.indexOf('confirm'), 0, SELECT_STEP);
+  return out;
+}
+
 /* How far a stick has to leave centre to count as a menu keypress. Shared
  * with main.js padNav, which used to spell it out four more times. */
 export const NAV_DEFLECT = 0.55;
@@ -92,6 +132,9 @@ function cloneMap(map) {
     pitch: { ...map.pitch },
     yaw: { ...map.yaw },
     throttle: { ...map.throttle },
+    /* Optional, and null for every radio that has buttons. It is not a
+     * flight channel: readGamepad never looks at it. */
+    select: map.select ? { ...map.select } : null,
     stored: Boolean(map.stored),
   };
 }
@@ -213,7 +256,9 @@ function travelCount(min, max, threshold) {
 
 function usedAxes(draft) {
   const used = new Set();
-  for (const ch of IDENT_CHANNELS) {
+  /* The menu switch is included: it is asked for last, so this is what
+   * stops it being assigned to a gimbal a pilot happens to nudge. */
+  for (const ch of IDENT_CHANNELS.concat([SELECT_STEP])) {
     const spec = draft[ch];
     if (spec && Number.isInteger(spec.axis)) {
       used.add(spec.axis);
@@ -288,6 +333,7 @@ function calTitle(c) {
     roll: 'Roll',
     pitch: 'Pitch',
     yaw: 'Yaw',
+    select: 'Menu switch',
     confirm: 'Check',
   }[c.step] || '';
 }
@@ -308,6 +354,7 @@ function calPrompt(c) {
       roll: 'Let the right stick come back to the centre.',
       pitch: 'Let the right stick come back to the centre.',
       yaw: 'Let the left stick come back to the centre.',
+      select: 'Put it back where it was.',
     }[c.step] || 'Return to rest.';
   }
   return {
@@ -315,6 +362,10 @@ function calPrompt(c) {
     roll: 'Hold the right stick fully to the right.',
     pitch: 'Pull the right stick fully back, toward you.',
     yaw: 'Hold the left stick fully to the right.',
+    /* Only ever asked of a radio reporting no buttons at all, so there is
+     * no press to describe and the pilot is choosing which switch becomes
+     * one. See SELECT_STEP. */
+    select: 'Throw the switch you want to use as Enter, and hold it.',
   }[c.step] || '';
 }
 
@@ -331,7 +382,12 @@ function calHint(c, travelled, need, gp) {
       : 'Back to rest to continue.';
   }
   if (c.step === 'confirm') {
-    return 'Enter or Save mapping keeps it. Escape cancels.';
+    return c.draft && c.draft.select
+      ? 'Enter, Save mapping, or the switch you just assigned. Escape cancels.'
+      : 'Enter or Save mapping keeps it. Escape cancels.';
+  }
+  if (c.step === 'select') {
+    return 'This radio reports no buttons, so one channel has to be the button.';
   }
   if (c.phase === 'release') {
     return 'One direction at a time. Diagonals are ignored.';
@@ -436,6 +492,11 @@ export class InputManager {
     this.lastWall = performance.now();
     this.padArmed = false; /* set once the pad's menu buttons are seen released */
     this.navRest = null;   /* axis rest values, for uncalibrated menu nav */
+    /* The hold-to-select bootstrap for a radio reporting zero buttons.
+     * See SELECT_STEP. */
+    this.holdMs = 0;
+    this.holdFired = false;
+    this.holdAt = 0;
     this.onKey = null; /* main.js hooks non stick keys here; (code, repeat) */
 
     /*
@@ -888,6 +949,20 @@ export class InputManager {
     return {
       count: pads.length,
       using,
+      /*
+       * What the shell needs to say when a radio cannot be used, rather
+       * than leaving the pilot to work it out from a cursor that moves and
+       * an Enter that does nothing. See SELECT_STEP.
+       *
+       * buttons     0 means every switch on this radio arrives as an axis.
+       * hasSelect   a menu switch has been assigned in the wizard.
+       * calibrated  the axis map is this pilot's, not the AETR guess. Until
+       *             it is, navRaw gives up and down only, so no value row
+       *             can be adjusted from the sticks.
+       */
+      buttons: selected && selected.buttons ? selected.buttons.length : 0,
+      hasSelect: Boolean(this.map && this.map.select),
+      calibrated: Boolean(this.map && this.map.stored),
     };
   }
 
@@ -901,8 +976,88 @@ export class InputManager {
    * Nothing counts until the pad has been seen with both buttons
    * released, for the same reason.
    */
+  /*
+   * Is the assigned menu switch thrown? mapCentered turns the raw axis into
+   * the same -1..1 the gimbals use, so a switch assigned by flicking it up
+   * reads positive when it is up, whichever way round the hardware sends it.
+   * NAV_DEFLECT is the threshold the cursor already uses, so a switch and a
+   * stick agree about how far is far enough.
+   */
+  selectAxisThrown(gp, spec) {
+    if (!gp || !spec || !Number.isInteger(spec.axis) || spec.axis >= gp.axes.length) {
+      return false;
+    }
+    return mapCentered(gp.axes[spec.axis], spec) >= NAV_DEFLECT;
+  }
+
+  /*
+   * The bootstrap for a radio with no buttons and no menu switch yet: any
+   * axis held away from rest counts as ONE select, once, until it comes
+   * back. See SELECT_STEP above for why this exists and why it is armed
+   * only in that case.
+   *
+   * navRest is the resting snapshot navRaw already keeps, so this and the
+   * cursor agree about where the sticks live and a stick parked off centre
+   * at page load does not press anything.
+   */
+  holdSelect(gp) {
+    /*
+     * Its own clock, rather than a frame delta threaded down from main.js
+     * through padNav. This is the MENU, not the physics path: nothing here
+     * reaches the integrator, and the alternative is a new argument on a
+     * call chain that has no delta to give it. Clamped, so a backgrounded
+     * tab coming forward does not arrive with a two second hold already
+     * banked and press whatever the cursor is on.
+     */
+    const now = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    const dtMs = this.holdAt ? Math.min(100, Math.max(0, now - this.holdAt)) : 0;
+    this.holdAt = now;
+    if (!this.navRest || this.navRest.length !== gp.axes.length) {
+      this.holdMs = 0;
+      this.holdFired = false;
+      return false;
+    }
+    let worst = 0;
+    for (let i = 0; i < gp.axes.length; i += 1) {
+      const d = Math.abs(gp.axes[i] - this.navRest[i]);
+      if (d > worst) {
+        worst = d;
+      }
+    }
+    if (worst < NAV_DEFLECT) {
+      this.holdMs = 0;
+      this.holdFired = false;
+      return false;
+    }
+    this.holdMs += dtMs;
+    if (this.holdMs < SELECT_HOLD_MS || this.holdFired) {
+      return false;
+    }
+    /* Latched until release, so a stick left leaning does not press the
+     * same row sixty times a second. */
+    this.holdFired = true;
+    return true;
+  }
+
   padMenuButtons() {
     const gp = this.firstGamepad();
+    if (gp && gp.axes && (!gp.buttons || !gp.buttons.length)) {
+      /*
+       * ZERO BUTTONS. Everything below reads buttons and would return a
+       * permanent no, which is the dead end: a cursor that walks and an
+       * Enter that never happens.
+       */
+      const spec = this.calibration && this.calibration.draft
+        ? (this.calibration.draft.select || this.map.select)
+        : this.map.select;
+      if (spec) {
+        /* Level, not an edge. The caller latches edges through padPrev,
+         * exactly as it does for a real button. */
+        return { select: this.selectAxisThrown(gp, spec), back: false };
+      }
+      return { select: this.holdSelect(gp), back: false };
+    }
     if (!gp || !gp.buttons) {
       /* Disarm as well as bail. The release guard below only runs once per
        * arming, so a pad that goes away and comes back with a latched
@@ -982,6 +1137,11 @@ export class InputManager {
    */
   startCalibration() {
     this.calResult = null;
+    const gp = this.firstGamepad();
+    /* The step list is decided once, at the start, from what this radio
+     * reports. Recomputing it per frame would let a wizard grow a step
+     * halfway through if a button happened to be read late. */
+    const steps = calSteps(Boolean(gp && gp.buttons && gp.buttons.length));
     this.calibration = {
       step: 'center',
       phase: 'hold',
@@ -991,7 +1151,10 @@ export class InputManager {
       min: null,
       max: null,
       waiting: false,
-      draft: { roll: null, pitch: null, yaw: null, throttle: null },
+      steps,
+      draft: {
+        roll: null, pitch: null, yaw: null, throttle: null, select: null,
+      },
     };
   }
 
@@ -1008,6 +1171,9 @@ export class InputManager {
     if (!c.draft.roll || !c.draft.pitch || !c.draft.yaw || !c.draft.throttle) {
       return false;
     }
+    /* select rides along in the draft and cloneMap keeps it. A radio with
+     * buttons never assigned one and carries null, which is the same as
+     * before this existed. */
     this.map = cloneMap({ ...c.draft, stored: true });
     this.saveMap();
     this.calibration = null;
@@ -1020,7 +1186,8 @@ export class InputManager {
     if (!c) {
       return null;
     }
-    const stepIndex = Math.max(0, CAL_STEPS.indexOf(c.step));
+    const steps = c.steps || CAL_STEPS;
+    const stepIndex = Math.max(0, steps.indexOf(c.step));
     const travelled = c.min && c.max ? travelCount(c.min, c.max, CAL.SWEEP_TRAVEL) : 0;
     const need = c.min ? Math.min(4, c.min.length) : 4;
     const gp = this.firstGamepad();
@@ -1036,7 +1203,10 @@ export class InputManager {
       step: c.step,
       phase: c.phase,
       stepIndex,
-      stepCount: CAL_STEPS.length,
+      stepCount: steps.length,
+      /* The list itself, so the wizard's own ladder is drawn from what this
+       * radio was actually asked, not from the constant. */
+      steps: steps.slice(),
       waiting: Boolean(c.waiting) || !gp,
       travelled,
       need,
@@ -1067,7 +1237,11 @@ export class InputManager {
       this.calSweep(c, axes, dtMs);
       return;
     }
-    if (IDENT_CHANNELS.includes(c.step)) {
+    /* The menu switch identifies exactly like a flight channel: pick the
+     * axis that moved, hold, record, wait for it to come back. It gets the
+     * same machinery rather than its own, and usedAxes keeps it off an axis
+     * a gimbal already owns. */
+    if (IDENT_CHANNELS.includes(c.step) || c.step === SELECT_STEP) {
       this.calIdentify(c, axes, dtMs);
     }
   }
@@ -1155,7 +1329,8 @@ export class InputManager {
     if (c.holdMs < CAL.RELEASE_MS) {
       return;
     }
-    const next = CAL_STEPS[CAL_STEPS.indexOf(c.step) + 1] || 'confirm';
+    const steps = c.steps || CAL_STEPS;
+    const next = steps[steps.indexOf(c.step) + 1] || 'confirm';
     c.step = next;
     c.phase = 'hold';
     c.holdMs = 0;

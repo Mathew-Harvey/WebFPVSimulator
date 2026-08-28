@@ -945,6 +945,29 @@
         background: linear-gradient(90deg, rgba(232, 168, 184, 0.12), rgba(232, 168, 184, 0) 48%);
       }
       .row-info { cursor: default; }
+      /*
+       * AMBER, which is the instrument colour, because this row is a reading
+       * off the hardware rather than a thing the product wants you to do.
+       * It is a row and not a floating panel so that it gets the cursor, the
+       * help column and Enter for free: a banner a radio pilot cannot focus
+       * would be the same joke twice. See padTroubleItem.
+       */
+      .row-warn {
+        color: var(--amber);
+        border-left-color: rgba(240, 178, 74, 0.55);
+        background: linear-gradient(90deg, rgba(240, 178, 74, 0.1), rgba(240, 178, 74, 0) 52%);
+      }
+      .row-warn::before {
+        content: "!"; flex: 0 0 auto; margin-right: 2px;
+        width: 1.25em; height: 1.25em; border-radius: 50%;
+        display: grid; place-items: center;
+        font-size: 0.7em; font-weight: 800;
+        background: var(--amber); color: #14180f;
+      }
+      .row-warn.on {
+        color: var(--amber); border-left-color: var(--amber);
+        background: linear-gradient(90deg, rgba(240, 178, 74, 0.22), rgba(240, 178, 74, 0) 52%);
+      }
       .row-grey {
         color: rgba(157, 179, 200, 0.62);
         cursor: default;

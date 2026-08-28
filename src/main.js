@@ -5423,6 +5423,11 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;
+  /* The input layer, for the same reason: the radio dead ends cannot be
+   * exercised from the shell alone, because the thing that is broken is
+   * what a gamepad reports, and headless Chromium has no gamepad. The
+   * checks drive it with a fake pad. */
+  window.__input = input;
   /* A function, not a snapshot. Every other handle here reads `view` or
    * `race` at call time; this one captured the object identity at boot, so
    * after a map swap it answered with the previous map's race. */

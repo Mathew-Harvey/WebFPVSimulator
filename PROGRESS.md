@@ -20897,3 +20897,93 @@ Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
 `npm run lint:presets` 3 of 3, and the three deliberate breaks above.
 `npm run verify` not run: nothing here touches physics, the plant, the module ABI
 or the build.
+
+---
+
+## 2026-08-28, input: a radio that can be browsed but not used
+
+Changed: a radio whose switches arrive as axes can now press things, the two
+states that leave a radio unusable say so on the title, and the calibration
+wizard can assign a menu switch.
+
+**The dead end.** `padMenuButtons` reads buttons 0 to 3, which is right for a
+gamepad and for most radios in joystick mode. Some report every switch as an
+AXIS and expose no buttons at all: `gamepad.buttons` is empty. `navRaw` still
+moves the cursor for them, deliberately, because calibration is a menu item and
+would otherwise be unreachable by the only device that needs it. But nothing
+selects. The cursor walks the list and Enter never happens.
+
+An adversarial reviewer had claimed a four axis radio "has no select and no back,
+ever", and the answer at the time was that this is half right: buttons 0, 2 and 3
+do select once the latch guard has armed. That answer was correct and it left the
+other half standing. This is the other half.
+
+**Two answers, and the wizard is the good one.** A `select` step is inserted into
+the calibration wizard, after yaw, and only for a radio reporting no buttons: it
+identifies an axis exactly like a gimbal, through the same `calIdentify`,
+`pickUnusedAxis` and `usedAxes` machinery, so the switch cannot land on an axis a
+gimbal already owns. Once assigned it edge latches like a button.
+
+Until then, a HOLD. Any axis held away from rest for 700 ms counts as one select,
+once, until it comes back. A brief excursion still moves the cursor, which is
+what lets both gestures live on one stick: a flick moves, a hold presses. It is
+armed only for a pad reporting zero buttons, so no radio that already works
+changes at all.
+
+Back needs no equivalent: every screen in this shell carries a Back row, so a
+working select reaches it.
+
+**The banner is a row, and it is row zero.** Two states leave a pilot with a
+radio they cannot use and neither said anything: a cursor that moves and an Enter
+that does nothing reads as a broken product rather than as a radio that needs a
+minute. A row rather than a floating panel gets it first in the focus order for
+free, plus the help column, the cursor, the click target and the row grammar,
+with none of them special cased, and makes Enter on it open the screen that fixes
+the thing it is complaining about. A banner nobody can focus is a banner a radio
+pilot cannot act on, which would be the same joke twice.
+
+Amber, which is the instrument colour, because it is a reading off the hardware
+rather than something the product wants you to do.
+
+**The checks, and two things they caught in themselves.** Headless Chromium has
+no gamepad, so both halves are driven synthetically: the shell with a fabricated
+`padSummary`, and the input layer with a fake pad object behind `firstGamepad`.
+`window.__input` is exposed for it, next to `window.__ui`.
+
+- The first draft measured the CREDITS screen and reported a pass. The sweep that
+  runs before it ends on credits, which pins `#credits`, and `show('title')` maps
+  a request for the title back onto a pinned screen. Every case now asserts it
+  actually landed on the title.
+- Deleting the no-buttons branch outright still PASSED, because both cases are a
+  warning row pointing at calibration and the check only looked at the class and
+  the action. It now asserts the two say different things and that the
+  no-buttons one mentions buttons.
+
+Both failure modes were then re-broken deliberately and the failures read back:
+disabling the branch reports "the no-buttons and uncalibrated cases say the same
+thing"; returning a constant false from the zero-button path reports "holding a
+stick never presses, so the pad has no Enter at all"; removing the latch reports
+"a held stick presses repeatedly rather than once".
+
+### 2026-08-28 | shell | radio dead ends
+Changed: `src/input/input.js` zero-button select path and the wizard's menu switch
+step, `src/ui/ui.js` warning row, `src/main.js` `window.__input`, and the shell
+check's two new blocks.
+Verify: 13 of 16 passing. `npm run build:wasm` CANNOT RUN IN THIS CONTAINER: no
+`emcc`, so check 1 build-clean fails on `build:wasm exited 1` and the prebuilt
+`dist/sim.wasm` is what the other checks ran against. The other two failures,
+15 world-scale (gate opening W and H 0.0000 m, grass blade min 0.0060 m, city
+handrail null m) and 16 map-isolation (P1 93 against a recorded 303, P2 913063
+against 1014037, P10 29 against 32, 101 meshes against 169), are NOT this
+change's: the whole suite was re-run with these changes stashed and returned 13
+of 16 with the same three failures and byte-identical measured values.
+Determinism is the row that matters here and it is unmoved: check 2 a=b=
+de0401cd4266, check 3 node=chrome=de0401cd4266, check 4 one distinct hash across
+30, 60, 144 and 240 Hz, and the hash is the same before and after, which is what
+a change touching no physics must do. Check 13 console-clean: errors=0 warnings=0.
+Wrong: the hold check's first draft banked its time against an invented
+timestamp rather than `performance.now()`, so the clamped delta always cleared
+the 700 ms hold and the "not yet" case fired. It drives the page's own clock now.
+
+Other checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
+`npm run link:selftest` all passed, `git diff --stat vendor/betaflight` empty.

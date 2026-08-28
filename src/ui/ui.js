@@ -53,6 +53,9 @@ const CAL_LABELS = {
   roll: 'Roll',
   pitch: 'Pitch',
   yaw: 'Yaw',
+  /* Only asked of a radio that reports no buttons. See SELECT_STEP in
+   * input.js. */
+  select: 'Menu switch',
   confirm: 'Check',
 };
 import { TRACKS, trackById, musicIds } from '../render/tracks.js';
@@ -645,6 +648,59 @@ function wrapMenu() {
   const help = el('div', 'menu-help');
   stage.append(menu, help);
   return { stage, menu, help };
+}
+
+/*
+ * THE RADIO DEAD END, SAID OUT LOUD AND MADE FIXABLE.
+ *
+ * Two states leave a pilot with a radio they cannot use, and neither of them
+ * says anything today: the cursor moves and nothing else happens, which
+ * reads as a broken product rather than as a radio that needs a minute.
+ *
+ * NO BUTTONS. Every switch on this radio arrives as an axis, so
+ * padMenuButtons has nothing to read and select is permanently false. It is
+ * the harder of the two, because the fix, calibration, is itself a menu row
+ * that has to be selected. input.js answers that with a hold, and this row
+ * is where a pilot finds out that is the gesture.
+ *
+ * NOT CALIBRATED. navRaw deliberately gives up and down only, because it
+ * cannot tell pitch from roll without a map. So the cursor moves and no
+ * value row can be adjusted: half a menu. Calibrating is the whole fix.
+ *
+ * It is a ROW, not a floating panel, and it is row zero. That gets it first
+ * in the focus order for free, gives it the help column, the cursor, the
+ * click target and the row grammar without any of them being special cased,
+ * and makes Enter on it go to the one screen that fixes the thing it is
+ * complaining about. A banner nobody can focus is a banner a radio pilot
+ * cannot act on, which would be the same joke twice.
+ */
+function padTroubleItem(info) {
+  if (!info || !info.count || info.using === 'Keyboard') {
+    return null;
+  }
+  if (!info.buttons && !info.hasSelect) {
+    return {
+      label: 'Your radio has no buttons this browser can see',
+      action: 'calibrate',
+      rowClass: 'row-warn',
+      note: 'Every switch on it is arriving as an axis, so nothing on it can press Enter yet.'
+        + ' Hold any stick away from centre for about a second and that counts as one press,'
+        + ' which is enough to get in here and fix it properly. Calibrating ends by asking you'
+        + ' to throw the switch you want as Enter, and after that it works like a button.',
+    };
+  }
+  if (!info.calibrated) {
+    return {
+      label: 'Your radio is not calibrated yet',
+      action: 'calibrate',
+      rowClass: 'row-warn',
+      note: 'Until it is, the sticks can move the cursor up and down and nothing else:'
+        + ' no left, no right, so no setting on any screen can be changed from the radio.'
+        + ' It takes about a minute, and it is the difference between flying this and'
+        + ' watching it.',
+    };
+  }
+  return null;
 }
 
 /*
@@ -2943,10 +2999,16 @@ export class Ui {
        * lap on record. Credits sits with the two choices so who made this is
        * readable before a lap is flown.
        */
+      /* Above BOTH title states, and first. A pilot on their first visit
+       * with a radio that cannot press anything is the person this row is
+       * most for, and the first-run split is the screen they are looking
+       * at. */
+      const trouble = padTroubleItem(this.padInfo);
       if (this.firstRun) {
         const seat = activeCourseSummary();
         const trackName = seat && seat.name ? seat.name : null;
         return [
+          ...(trouble ? [trouble] : []),
           {
             label: 'First flight',
             action: 'firstflight',
@@ -2992,6 +3054,7 @@ export class Ui {
        * exists to prevent.
        */
       return [
+        ...(trouble ? [trouble] : []),
         { label: 'Fly', action: 'fly', primary: true },
         {
           label: 'Race',
@@ -5899,7 +5962,11 @@ export class Ui {
      * would have run without ever appearing in the list beside it. Only the
      * wording is the UI's business. */
     this.calList.textContent = '';
-    CAL_STEPS.forEach((id, i) => {
+    /* The steps this run actually asked for, which is one longer for a
+     * radio with no buttons. Falling back to the constant keeps the list
+     * drawn if a view arrives without one. */
+    const steps = (view && view.steps && view.steps.length) ? view.steps : CAL_STEPS;
+    steps.forEach((id, i) => {
       const li = el('li', null, CAL_LABELS[id] ?? id);
       if (id === view.step) {
         li.className = 'on';

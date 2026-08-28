@@ -414,6 +414,156 @@ const BEHAVIOUR = `(() => {
     out.noTinyPopups = { error: String(e && e.message ? e.message : e) };
   }
 
+  /*
+   * THE RADIO DEAD ENDS. A pad whose switches arrive as axes reports no
+   * buttons, so padMenuButtons answers a permanent no and the cursor walks
+   * a list nothing can be selected from. The screens cannot be driven by a
+   * real radio here, headless Chromium has no gamepad, so both halves are
+   * exercised directly: the shell with a synthetic padSummary, and the
+   * input layer with a synthetic gamepad.
+   */
+  try {
+    const input = window.__input;
+    const before = ui.padInfo;
+    const rowAt0 = (info) => {
+      ui.setPadInfo(info);
+      /* The sweep above ends on credits, which pins #credits, and show()
+       * maps a request for the title back onto a pinned screen. Without
+       * this the whole block silently measured the credits screen. */
+      if (window.location.hash) {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      ui.show('title');
+      const first = ui.items()[0];
+      return {
+        onTitle: ui.screen === 'title',
+        label: first ? first.label : null,
+        action: first ? first.action : null,
+        cls: first ? first.rowClass : null,
+      };
+    };
+
+    const noButtons = rowAt0({
+      count: 1, using: 'Joystick 1, TX16S', buttons: 0, hasSelect: false, calibrated: false,
+    });
+    const uncal = rowAt0({
+      count: 1, using: 'Joystick 1, TX16S', buttons: 12, hasSelect: false, calibrated: false,
+    });
+    const fine = rowAt0({
+      count: 1, using: 'Joystick 1, TX16S', buttons: 12, hasSelect: false, calibrated: true,
+    });
+    const keyboard = rowAt0({ count: 0, using: 'Keyboard' });
+    ui.setPadInfo(before);
+    ui.show('title');
+
+    out.padBanner = {
+      /* onTitle on every one of them, so a redirect can never fake a pass
+       * by measuring a screen with no warning row on it. */
+      onTitle: [noButtons, uncal, fine, keyboard].every((r) => r && r.onTitle),
+      noButtons: Boolean(noButtons.onTitle && noButtons.cls === 'row-warn' && noButtons.action === 'calibrate'),
+      uncalibrated: Boolean(uncal.onTitle && uncal.cls === 'row-warn' && uncal.action === 'calibrate'),
+      /*
+       * The two cases must say DIFFERENT things. Both are a warning row
+       * pointing at calibration, so a check that only looked at the class
+       * and the action passed while the no-buttons branch was deleted and
+       * the uncalibrated one answered for both. A pilot whose radio reports
+       * no buttons needs to be told about the hold gesture; "not calibrated
+       * yet" does not tell them how to press the row that fixes it.
+       */
+      distinct: Boolean(noButtons.label && uncal.label && noButtons.label !== uncal.label),
+      namesTheCause: Boolean(noButtons.label && /button/i.test(noButtons.label)),
+      /* A working radio and a keyboard must NOT get a warning row: a banner
+       * that is always there is a banner nobody reads. */
+      quietWhenFine: !(fine && fine.cls === 'row-warn'),
+      quietOnKeyboard: !(keyboard && keyboard.cls === 'row-warn'),
+    };
+
+    /*
+     * The input half. A pad with no buttons must still be able to press
+     * something, or the banner is advice a pilot cannot take.
+     */
+    const fakePad = { index: 0, id: 'fake', axes: [0, 0, 0, 0], buttons: [] };
+    const realFirst = input.firstGamepad;
+    input.firstGamepad = () => fakePad;
+    const savedMap = input.map;
+    const savedRest = input.navRest;
+    try {
+      input.map = { ...savedMap, select: null };
+      input.navRest = [0, 0, 0, 0];
+      input.holdMs = 0;
+      input.holdFired = false;
+      input.holdAt = 0;
+
+      /* Centred: nothing. */
+      const atRest = input.padMenuButtons().select;
+
+      /*
+       * Held past the threshold: one press, and only one.
+       *
+       * holdSelect reads its own clock, so the bank is set up relative to
+       * performance.now() rather than to an invented timestamp. Each call
+       * below adds one clamped tick of at most 100 ms.
+       */
+      const now = () => performance.now();
+      fakePad.axes = [0, 0, 0, 0.9];
+
+      /* 100 ms banked, one tick short of nothing: well under the hold. */
+      input.holdMs = 0;
+      input.holdFired = false;
+      input.holdAt = now() - 100;
+      const early = input.padMenuButtons().select;
+
+      /* 650 ms banked plus a 100 ms tick clears the 700 ms hold. */
+      input.holdMs = 650;
+      input.holdFired = false;
+      input.holdAt = now() - 100;
+      const fired = input.padMenuButtons().select;
+
+      /* Still held. The latch must not let it press again. */
+      input.holdAt = now() - 100;
+      const again = input.padMenuButtons().select;
+
+      /* Released and held again: it presses once more, or a radio gets one
+       * press per page load. */
+      fakePad.axes = [0, 0, 0, 0];
+      input.holdAt = now();
+      input.padMenuButtons();
+      fakePad.axes = [0, 0, 0, 0.9];
+      input.holdMs = 650;
+      input.holdAt = now() - 100;
+      const rearmed = input.padMenuButtons().select;
+
+      /* An assigned menu switch behaves like a button: level, edge latched
+       * by the caller, and no hold needed. */
+      input.map = {
+        ...savedMap,
+        select: {
+          axis: 3, center: 0, pos: 1, neg: -1,
+        },
+      };
+      fakePad.axes = [0, 0, 0, 0.9];
+      const switchOn = input.padMenuButtons().select;
+      fakePad.axes = [0, 0, 0, 0];
+      const switchOff = input.padMenuButtons().select;
+
+      out.padSelect = {
+        quietAtRest: atRest === false,
+        notBeforeTheHold: early === false,
+        firesOnHold: fired === true,
+        oncePerHold: again === false,
+        rearmsAfterRelease: rearmed === true,
+        assignedSwitchOn: switchOn === true,
+        assignedSwitchOff: switchOff === false,
+      };
+    } finally {
+      input.firstGamepad = realFirst;
+      input.map = savedMap;
+      input.navRest = savedRest;
+    }
+  } catch (e) {
+    out.padBanner = { error: String(e && e.message ? e.message : e) };
+  }
+
   /* Escape on the firmware bench with unsaved edits must not discard.
    * Dirty the draft through the same setter the rows use. */
   try {
@@ -667,6 +817,60 @@ async function main() {
         `two item popups: ${b.noTinyPopups.offenders.length} row(s) still open a menu to answer`
         + ` yes or no: ${b.noTinyPopups.offenders.slice(0, 5).join(', ')}`,
       );
+    }
+
+    if (!b.padBanner || b.padBanner.error) {
+      failures.push(`radio banner: ${b.padBanner ? b.padBanner.error : 'no result'}`);
+    } else {
+      const pb = b.padBanner;
+      if (!pb.onTitle) {
+        failures.push('radio banner: one of the cases did not land on the title, so it measured nothing');
+      }
+      if (!pb.noButtons) {
+        failures.push('radio banner: a pad reporting no buttons gets no warning row on the title');
+      }
+      if (!pb.uncalibrated) {
+        failures.push('radio banner: an uncalibrated pad gets no warning row on the title');
+      }
+      if (!pb.distinct) {
+        failures.push('radio banner: the no-buttons and uncalibrated cases say the same thing');
+      }
+      if (!pb.namesTheCause) {
+        failures.push('radio banner: the no-buttons row does not mention buttons');
+      }
+      if (!pb.quietWhenFine) {
+        failures.push('radio banner: a working, calibrated pad is warned at anyway');
+      }
+      if (!pb.quietOnKeyboard) {
+        failures.push('radio banner: a keyboard-only visitor is warned about a radio');
+      }
+    }
+
+    if (!b.padSelect || b.padSelect.error) {
+      failures.push(`radio select: ${b.padSelect ? b.padSelect.error : 'no result'}`);
+    } else {
+      const ps = b.padSelect;
+      if (!ps.quietAtRest) {
+        failures.push('radio select: a pad at rest presses something');
+      }
+      if (!ps.notBeforeTheHold) {
+        failures.push('radio select: a brief stick excursion presses, so the cursor cannot move');
+      }
+      if (!ps.firesOnHold) {
+        failures.push('radio select: holding a stick never presses, so the pad has no Enter at all');
+      }
+      if (!ps.oncePerHold) {
+        failures.push('radio select: a held stick presses repeatedly rather than once');
+      }
+      if (!ps.rearmsAfterRelease) {
+        failures.push('radio select: releasing and holding again does not press, so a radio gets one press per page load');
+      }
+      if (!ps.assignedSwitchOn) {
+        failures.push('radio select: an assigned menu switch does not press');
+      }
+      if (!ps.assignedSwitchOff) {
+        failures.push('radio select: an assigned menu switch presses while it is off');
+      }
     }
 
     if (!b.discardGuard || b.discardGuard.error) {

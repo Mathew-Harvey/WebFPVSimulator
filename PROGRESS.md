@@ -21232,3 +21232,50 @@ Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
 `npm run lint:presets` 3 of 3, and the three deliberate breaks above.
 `npm run verify` not run: nothing here touches physics, the plant, the module ABI
 or the build.
+
+### 2026-08-28 | shell | end of session verification
+Changed: nothing. This entry is the verification pass over everything the session
+landed, run against the final tree rather than against any one commit.
+
+Verify: 13 of 16 passing, and the three failures are the same three, with
+byte-identical measured values, that a tree with all of this session's work
+stashed returned earlier in the session.
+
+- 1 build-clean FAIL. `npm run build:wasm` CANNOT RUN IN THIS CONTAINER: no
+  `emcc`, no `EMSDK`. Every other check ran against the committed
+  `dist/sim.wasm`, which is unchanged: nothing this session touched
+  `src/native/`, `patches/` or `vendor/betaflight`, and
+  `git diff --stat vendor/betaflight` is empty.
+- 15 world-scale FAIL: gate opening W and H 0.0000 m against 1.7476 to 1.7576,
+  grass blade min 0.0060 m against 0.02 to 0.12, city handrail null m against
+  0.8 to 1.25. Not this session's: the same four values on the stashed tree.
+- 16 map-isolation FAIL: P1 93 against a recorded 303, P2 913063 against
+  1014037, P10 29 against 32, 101 meshes against 169, and the same again after
+  the city round trip. Not this session's: the same eight values on the stashed
+  tree.
+
+The rows that matter for a session of shell work are the ones that would have
+caught it breaking something, and they are green and UNMOVED:
+
+- 2 determinism-repeat a=b=de0401cd4266.
+- 3 determinism-cross-host node=chrome=de0401cd4266.
+- 4 frame-independence, one distinct hash across 30, 60, 144 and 240 Hz.
+- The hash is the same value it was before any of this session's commits, which
+  is what a change touching no physics must do.
+- 13 console-clean errors=0 warnings=0 run=ok.
+- 5 through 12 all pass at the same measured values.
+
+Other checks run in this same pass: `npm run lint:shell` PASS at 13 screens,
+`npm run lint:fc` 30 of 30, `npm run lint:presets` 3 of 3, `npm run lint:memory`
+PASS with every world lazy and every world freed, `npm run link:selftest` all
+passed, `npm run ghost:selftest` all passed. In the board repository `npm test`
+all passed; in the landing page `npm run lint:wiki` ok.
+
+`npm run lint:catalog` FAILS, and fails identically with this session's work
+stashed: it wants `vendor/betaflight/src/main/fc/parameter_names.h`, which is not
+checked out in this container. Recorded rather than worked around.
+
+Wrong: one thing worth writing down. Undoing a two line experiment with
+`git checkout src/ui/ui.js` reverted every uncommitted change in that file, not
+the experiment. Restored from a scratch copy and the last edit re-applied by
+hand, then re-verified. A whole-file checkout is not an undo.

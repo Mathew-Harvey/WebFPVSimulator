@@ -80,6 +80,11 @@ const MIN_TAP = 44;
 const PROBE = `(() => {
   const ui = window.__ui;
   if (ui.firstRun) { ui.act('skipfirst'); }
+  /* And answer the Race or Freestyle gate, because this check is about the
+   * returning pilot's menus rather than the one question in front of them.
+   * Set rather than pressed: act() would navigate, and this walk shows every
+   * screen itself. */
+  if (!ui.mode) { ui.mode = 'race'; }
   const W = window.innerWidth;
   const H = window.innerHeight;
   const out = { coarse: matchMedia('(pointer: coarse)').matches, screens: {} };

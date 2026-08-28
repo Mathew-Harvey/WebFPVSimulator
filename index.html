@@ -709,6 +709,15 @@
       .screen-title.is-first .keep-note:not(.first-note),
       .screen-title.is-first .brand-best,
       .screen-title.is-first .wiki-teaser { display: none; }
+      /* The Race or Freestyle gate. Same swap, same reason: the storage
+         warning and the track record are about a seat, and the pilot has
+         not said yet whether they are flying it. :not(.gate-note) for the
+         reason the first note carries one, the gate note IS a keep-note. */
+      .gate-note { display: none; }
+      .screen-title.is-gate .gate-note { display: block; }
+      .screen-title.is-gate .keep-note:not(.gate-note),
+      .screen-title.is-gate .brand-sub,
+      .screen-title.is-gate .brand-best { display: none; }
       .wiki-teaser {
         display: inline-flex; align-items: center; gap: 10px;
         margin: 14px 0 0; padding: 0; border: 0; background: none;

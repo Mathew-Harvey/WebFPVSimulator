@@ -257,6 +257,119 @@ export function yieldToPaint() {
   });
 }
 
+/*
+ * WHAT THIS BROWSER CAN ACTUALLY DO, asked at the moment of failure.
+ *
+ * A boot can die for a handful of reasons and they have completely different
+ * answers. No WebGL2 is a graphics driver or a hardware acceleration switch.
+ * No WebAssembly is a locked down browser or an ancient one. A CDN that never
+ * answered is a network, a blocker or a corporate proxy. Telling a stranded
+ * visitor to "try Chrome" when their Chrome has hardware acceleration turned
+ * off is advice that wastes their time, so every line below is a thing the
+ * page checked rather than a thing it assumed.
+ *
+ * Each probe is wrapped, because a browser hostile enough to break the boot
+ * is hostile enough to throw from feature detection.
+ */
+export function probeBrowser() {
+  const out = {
+    webgl2: false, webgl1: false, wasm: false, storage: false,
+    online: true, softwareRenderer: false, renderer: '', engine: '', version: '',
+  };
+  try {
+    const c = document.createElement('canvas');
+    const gl2 = c.getContext('webgl2');
+    out.webgl2 = Boolean(gl2);
+    out.webgl1 = Boolean(gl2 || c.getContext('webgl'));
+    const gl = gl2 || c.getContext('webgl');
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      if (ext) {
+        out.renderer = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '');
+        /* SwiftShader, llvmpipe and ANGLE's software backend all mean the
+         * GPU is not being used, which on this workload is the difference
+         * between flying and a slideshow. */
+        out.softwareRenderer = /swiftshader|llvmpipe|software|basic render/i.test(out.renderer);
+      }
+      const lose = gl.getExtension('WEBGL_lose_context');
+      if (lose) {
+        lose.loseContext();
+      }
+    }
+  } catch (e) { /* Canvas or WebGL refused outright. The flags stay false. */ }
+  try {
+    out.wasm = typeof WebAssembly === 'object'
+      && typeof WebAssembly.instantiate === 'function';
+  } catch (e) { /* Same. */ }
+  try {
+    const k = 'webfpv.probe';
+    localStorage.setItem(k, '1');
+    localStorage.removeItem(k);
+    out.storage = true;
+  } catch (e) { /* Private window, or site data blocked. */ }
+  try {
+    out.online = navigator.onLine !== false;
+  } catch (e) { /* No navigator worth reading. Assume online. */ }
+  try {
+    const ua = navigator.userAgent || '';
+    /* Order matters: Edge and Opera both carry "Chrome", and every iOS
+     * browser carries "Safari" while actually being Safari's engine. */
+    const m = ua.match(/(Edg|OPR|Firefox|Chrome|Version)\/([0-9]+)/);
+    if (m) {
+      out.engine = { Edg: 'Edge', OPR: 'Opera', Version: 'Safari' }[m[1]] || m[1];
+      out.version = m[2];
+    }
+  } catch (e) { /* No user agent. The advice below still works. */ }
+  return out;
+}
+
+/*
+ * The advice, ordered by what the probe found rather than by a fixed script.
+ * Returns { why, steps }: one sentence naming the likely cause when there is
+ * one, and the things to try, most likely to fix it first.
+ */
+export function recoveryAdvice(probe, message) {
+  const steps = [];
+  let why = '';
+  const text = String(message || '');
+  const looksNetwork = /fetch|network|load|import|CDN|cdn|jsdelivr|timeout|Failed to/i.test(text);
+
+  if (!probe.wasm) {
+    why = 'This browser cannot run WebAssembly, which is what the flight controller is compiled to.';
+    steps.push('Open the simulator in a <b>current Chrome, Edge or Firefox</b>. Every browser released since about 2017 supports WebAssembly, so a browser that does not is either very old or has it switched off by policy.');
+  } else if (!probe.webgl2) {
+    why = probe.webgl1
+      ? 'This browser has WebGL 1 but not WebGL 2, and the renderer needs WebGL 2.'
+      : 'This browser is not giving the page a WebGL context at all, so nothing can be drawn.';
+    steps.push('Turn <b>hardware acceleration</b> back on. In Chrome and Edge it is Settings, System, "Use graphics acceleration when available". In Firefox it is Settings, General, Performance.');
+    steps.push('Update your <b>graphics driver</b>, then restart the browser. A blocked driver is the most common reason a working machine has no WebGL 2.');
+    steps.push('Try a different browser: <b>Chrome, Edge or Firefox</b>, all current.');
+  } else if (looksNetwork || !probe.online) {
+    why = probe.online
+      ? 'Something the page needed did not arrive. The renderer comes from a CDN, so a blocker or a work network can stop it.'
+      : 'This device looks offline.';
+    steps.push('Check the connection, then <b>reload</b>.');
+    steps.push('Turn off <b>ad blockers and script blockers</b> for this site, or allow <b>cdn.jsdelivr.net</b>. That is where the renderer is served from.');
+    steps.push('If you are on a work or school network, a proxy may be blocking the CDN. Try a <b>home network or a phone hotspot</b>.');
+  } else {
+    why = 'The page got far enough to start, then stopped. That usually means a resource went missing or an extension interfered.';
+    steps.push('<b>Reload without the cache</b>: Ctrl and Shift and R, or Cmd and Shift and R on a Mac.');
+    steps.push('Try a <b>private window</b>. If it works there, an extension is the cause.');
+    steps.push('Try <b>Chrome, Edge or Firefox</b>, current version.');
+  }
+
+  /* Conditions that do not stop the boot on their own but make it fragile,
+   * so they are worth saying once the real cause is named. */
+  if (probe.softwareRenderer) {
+    steps.push(`Your browser is drawing with the <b>CPU</b> rather than the GPU${probe.renderer ? ` (${probe.renderer})` : ''}. It may load and then run very slowly. Turning hardware acceleration on fixes this too.`);
+  }
+  if (!probe.storage) {
+    steps.push('This browser is <b>blocking site data</b>, so settings and your times cannot be saved. A private window does this. Allow site data for this page if you want anything kept.');
+  }
+  steps.push('If none of that works, the <b>Report a bug</b> link on the title screen sends the details, or open the browser console with F12 and copy what is in red.');
+  return { why, steps };
+}
+
 export class Loading {
   constructor(root) {
     this.root = root;
@@ -417,6 +530,15 @@ export class Loading {
     }
   }
 
+  /*
+   * The dead end, made an exit.
+   *
+   * This used to be a red bar, one sentence and nothing to press. A visitor
+   * whose boot died had no way to tell a blocked CDN from a missing driver,
+   * no way to retry without knowing to reload, and no idea which browser
+   * would have worked. Everything below is either something the page just
+   * measured or an action the visitor can take.
+   */
   fail(message) {
     this.failed = true;
     this.stageEl.textContent = 'Could not start';
@@ -428,6 +550,126 @@ export class Loading {
       clearInterval(this.ticker);
       this.ticker = null;
     }
+    /* The screen may have been faded out by a previous finish(). A failure
+     * has to be visible whatever the last load did. */
+    this.root.hidden = false;
+    this.root.style.opacity = '1';
+    this.visible = true;
+    this.paintHelp(message);
+  }
+
+  paintHelp(message) {
+    const help = this.root.querySelector('.loading-help');
+    if (!help) {
+      return;
+    }
+    let probe;
+    let advice;
+    try {
+      probe = probeBrowser();
+      advice = recoveryAdvice(probe, message);
+    } catch (e) {
+      /* The advice must never be the thing that fails. A visitor who got
+       * here is already having a bad time. */
+      probe = {};
+      advice = {
+        why: '',
+        steps: ['Reload the page. If it keeps failing, try a current <b>Chrome, Edge or Firefox</b>.'],
+      };
+    }
+
+    help.textContent = '';
+    const h = document.createElement('h3');
+    h.textContent = 'What to try';
+    help.append(h);
+
+    if (advice.why) {
+      const why = document.createElement('p');
+      why.className = 'loading-why';
+      why.textContent = advice.why;
+      help.append(why);
+    }
+
+    const ol = document.createElement('ol');
+    for (const step of advice.steps) {
+      const li = document.createElement('li');
+      /* The steps are authored above in this file, not user input, and the
+       * only markup in them is <b>. Built as elements rather than assigned
+       * as HTML so nothing here is an injection point if a step ever grows
+       * a value from somewhere else. */
+      for (const part of String(step).split(/(<b>.*?<\/b>)/)) {
+        if (!part) {
+          continue;
+        }
+        const bold = part.startsWith('<b>');
+        const node = bold ? document.createElement('b') : document.createTextNode(part);
+        if (bold) {
+          node.textContent = part.slice(3, -4);
+        }
+        li.append(node);
+      }
+      ol.append(li);
+    }
+    help.append(ol);
+
+    const actions = document.createElement('div');
+    actions.className = 'loading-actions';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Try again';
+    retry.addEventListener('click', () => {
+      /* A plain reload. The cache-bypassing one needs a keystroke the page
+       * cannot send, which is why it is step one in the list above. */
+      window.location.reload();
+    });
+    actions.append(retry);
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'quiet';
+    copy.textContent = 'Copy the details';
+    copy.addEventListener('click', async () => {
+      const report = [
+        `WebFPV failed to start: ${message}`,
+        `browser: ${probe.engine || 'unknown'} ${probe.version || ''}`.trim(),
+        `webgl2: ${probe.webgl2} webgl1: ${probe.webgl1} wasm: ${probe.wasm}`,
+        `storage: ${probe.storage} online: ${probe.online}`,
+        probe.renderer ? `renderer: ${probe.renderer}` : '',
+        `url: ${window.location.href}`,
+        `agent: ${navigator.userAgent}`,
+      ].filter(Boolean).join('\n');
+      try {
+        await navigator.clipboard.writeText(report);
+        copy.textContent = 'Copied';
+      } catch (e) {
+        /* Clipboard refused, which is common without a secure context. Show
+         * the text instead so it can still be selected by hand. */
+        copy.textContent = 'Select and copy';
+        const pre = document.createElement('div');
+        pre.className = 'loading-detail';
+        pre.textContent = report;
+        help.append(pre);
+      }
+    });
+    actions.append(copy);
+    help.append(actions);
+
+    const detail = document.createElement('div');
+    detail.className = 'loading-detail';
+    detail.textContent = [
+      probe.engine ? `${probe.engine} ${probe.version}` : '',
+      `WebGL2 ${probe.webgl2 ? 'yes' : 'no'}`,
+      `WebAssembly ${probe.wasm ? 'yes' : 'no'}`,
+      `site data ${probe.storage ? 'yes' : 'blocked'}`,
+    ].filter(Boolean).join('  .  ');
+    help.append(detail);
+
+    help.hidden = false;
+    /* Focus the way out, so a keyboard visitor is not left hunting for it
+     * and a screen reader lands on something actionable. */
+    try {
+      retry.focus();
+    } catch (e) { /* Not focusable yet. The button is still clickable. */ }
   }
 
   finish() {

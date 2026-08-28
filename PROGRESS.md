@@ -20649,3 +20649,65 @@ Checks run this turn: `npm run lint:memory` (PASS, after the fix above), `npm ru
 `node scripts/shots.js` to read the stalled stage text out of the live element. `npm run verify` was
 NOT run: nothing here touches physics, the plant, the module ABI or the build. The only src change
 outside the loading screen is one debug readout on `window`.
+
+---
+
+## 2026-08-28, loading: a failed boot now tells you what to do about it
+
+Changed: `fail()` in `src/ui/loading.js` went from a dead end to a recovery panel, and
+`index.html` grew the element and styles it paints into.
+
+**What it was.** A red bar, one sentence and nothing to press. Two call sites reach it,
+`boot.js:154` for anything thrown out of `start()` and `main.js:2492` for a map that will not
+load. A visitor whose boot died could not tell a blocked CDN from a missing graphics driver, had
+no way to retry without knowing to reload, and got no hint about which browser would have worked.
+It was also invisible to a screen reader.
+
+**What it is.** The page probes itself at the moment of failure and leads with the cause it
+actually found, rather than reciting a fixed script. `probeBrowser()` reads WebGL2, WebGL1,
+WebAssembly, whether site data is writable, `navigator.onLine`, the unmasked renderer string and
+the engine and version. `recoveryAdvice()` turns that into one sentence naming the likely cause
+and an ordered list of things to try, most likely first. Then a **Try again** button that takes
+focus, a **Copy the details** button that puts the probe and the user agent on the clipboard for a
+bug report, and a one line diagnostic footer. The panel is `role="alert"` with `aria-live`, so the
+failure is spoken rather than only drawn.
+
+The four routes, all exercised by forcing each failure in headless Chromium and reading the panel
+back:
+
+- **No WebAssembly** leads with WebAssembly and a current browser, because nothing else will help.
+- **No WebGL2** leads with hardware acceleration and the graphics driver, and only then suggests a
+  different browser. Telling somebody to try Chrome when their Chrome has acceleration switched
+  off wastes their time.
+- **Anything network shaped**, or `navigator.onLine` false, leads with the connection, then ad and
+  script blockers, then `cdn.jsdelivr.net` by name, then a work proxy and a hotspot. The renderer
+  is a CDN import, so this is a real and common cause.
+- **Everything else** leads with a cache bypassing reload, then a private window to rule out an
+  extension, then a different browser.
+
+Two conditions are appended when found rather than led with, because neither stops a boot on its
+own: a software renderer (the page names it, since it means the GPU is not being used and the sim
+will be slow rather than broken) and blocked site data (settings and times cannot be saved).
+
+Also in this turn, from the same question about a slow laptop:
+
+- `scripts/memory-check.js` and `npm run lint:memory`. Verify's check 16 already proves the city is
+  not fetched until chosen; this adds the other three worlds and, more importantly, proves the
+  memory comes BACK. Measured at 1280x720: field baseline 62 geometries and 6 textures; city goes
+  62 to 524 to 61, bando 62 to 69 to 61, baths 62 to 83 to 61, yard 62 to 95 to 62. Textures follow
+  the same shape. None of the four is fetched at boot.
+- `window.__gpuMemory()` in main.js, which is what that check reads.
+- The loading screen names a stage that has run longer than `STALL_MS`, 6 seconds. Calm on a healthy
+  load, and on a slow one it says "still loading the map" or "still loading the world" plus whatever
+  `detail` the caller passed. `detail` had been recorded and never painted, with a comment saying
+  five callers set it expecting a subtitle they never got.
+
+**What went wrong on the way.** The first run of `memory-check.js` reported six cross contamination
+failures, all of them the check's own bug: `performance.getEntriesByType('resource')` is cumulative
+for the life of the page, so once the city had loaded its URLs appeared in every later reading and
+"did choosing the bando pull in the city" answered yes for a page that had done nothing wrong. It
+now marks the entry count before each switch and asks only about the slice.
+
+Checks run this turn: `npm run lint:shell` (pass), `npm run lint:memory` (pass), the four forced
+failure routes read back from the live page, and `node scripts/shots.js`. `npm run verify` not run:
+nothing here touches physics, the plant, the module ABI or the build.

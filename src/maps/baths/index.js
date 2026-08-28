@@ -196,8 +196,15 @@ export async function buildMap(shell, onProgress, options) {
     attract: {
       path: attractPath(world),
       speed: 12,
-      lookAhead: 6,
-      aimDrop: 2.0,
+      /*
+       * Six metres of look ahead with two metres of drop on the end of it
+       * is eighteen degrees of nose down held for the whole loop, on top of
+       * whatever the path itself is doing. Measured at 35 percent of the
+       * loop pitched more than 25 degrees below the horizon, which is a
+       * shot of the floor of a swimming pool. Twelve and 1.2 is seven.
+       */
+      lookAhead: 12,
+      aimDrop: 1.2,
     },
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
     setNextGate() {},

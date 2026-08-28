@@ -6304,6 +6304,47 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.settings.map = id;
     return swapMap(id);
   };
+  /*
+   * The title camera's own loop, sampled off a clock rather than off the
+   * frame rate, so a check can walk a whole attract cycle in one call and
+   * ask where the shot goes and what it is pointed at.
+   *
+   * WHY THIS EXISTS. The attract camera is the only camera in the shell with
+   * nothing to stop it: the quad has colliders and the free camera has a
+   * pilot, but this one is a spline and it will fly through a wall without
+   * complaint. It was doing so in three of the four freestyle worlds, and
+   * the only evidence was a thumbnail that looked wrong.
+   * scripts/attract-check.js walks these samples through window.__hit and
+   * says so instead.
+   *
+   * A PRIVATE CAMERA AND A PRIVATE COPY OF THE SHOT. Driving the live
+   * attract camera would move the title behind whoever is looking at it and
+   * would leave its bank filter holding a timestamp from a probe. Harness
+   * only.
+   */
+  window.__attract = (count = 240) => {
+    const probe = makeAttractCamera(view);
+    const cam = new THREE.PerspectiveCamera(45, 16 / 9, 0.1, 1000);
+    const dir = new THREE.Vector3();
+    const period = probe.periodMs > 0 ? probe.periodMs : 1000;
+    const n = Math.max(8, Math.min(2000, Math.round(count)));
+    const out = [];
+    for (let i = 0; i < n; i += 1) {
+      const ms = (period * i) / n;
+      probe.update(ms, cam, {});
+      cam.getWorldDirection(dir);
+      out.push({
+        ms,
+        x: cam.position.x,
+        y: cam.position.y,
+        z: cam.position.z,
+        dx: dir.x,
+        dy: dir.y,
+        dz: dir.z,
+      });
+    }
+    return { map: view.id, kind: probe.kind, periodMs: period, samples: out };
+  };
   window.__budget = (name) => measureBudget(shell, view, { view: name });
   requestAnimationFrame(frame);
 }

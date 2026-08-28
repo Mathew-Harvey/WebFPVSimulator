@@ -200,8 +200,15 @@ export async function buildMap(shell, onProgress, options) {
     attract: {
       path: attractPath(world),
       speed: 11,
-      lookAhead: 6,
-      aimDrop: 0.8,
+      /*
+       * Twelve metres, not six. The look ahead is what the shot is POINTED
+       * at, and six metres of it in a yard this size meant the camera was
+       * always aimed at the nearest thing rather than at the works. Long
+       * enough that the frame is the plant, short enough that the corners
+       * still bank.
+       */
+      lookAhead: 12,
+      aimDrop: 1.2,
     },
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
     setNextGate() {},

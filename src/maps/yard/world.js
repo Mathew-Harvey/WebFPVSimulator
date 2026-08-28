@@ -75,49 +75,56 @@ export function buildWorld(scene, opts = {}) {
   };
 }
 
+/*
+ * The title camera's loop, and what it is for.
+ *
+ * IT IS AN ESTABLISHING SHOT, NOT A FLIGHT LINE. The old loop was the second
+ * one, and a good one: it threaded the porch posts, ran the aisle of the
+ * stable and popped up into the hay loft. It also clipped a deck rail, the
+ * top rail of the iron gate, two trees, two porch posts and the loft floor,
+ * because a camera has no colliders and nothing tells it when it is inside
+ * something. scripts/attract-check.js counts those now.
+ *
+ * So it opens where the card's poster is taken from, across the back lawn
+ * with the house, the deck and the fence line in one frame, and it keeps its
+ * beats: over the deck, round the house, down the driveway and out over the
+ * gate, back across the paddock, past the stable and the hay barn. It flies
+ * them with the clearance to fly them twice.
+ *
+ * The order below is the order the shot happens in, and the recorder starts
+ * at the first point, so the first point is the establishing frame.
+ */
 export function attractPath(world) {
   const pts = [
-    /* Title beat: backyard north of the deck, hay on the left, cream
-     * house and deck ahead. A look at the stable wall does not sell. */
-    { x: -12.4, y: 3.15, z: 22.8 },
-    { x: -8.2, y: 2.7, z: 16.4 },
-    { x: -1.6, y: 2.4, z: 6.9 },
-    { x: -1.6, y: 2.2, z: 16 },
-    { x: -10, y: 1.6, z: 12 },
-    { x: -8.4, y: 0.55, z: 6.4 },
-    { x: -3.0, y: 0.55, z: 6.4 },
-    { x: 0.6, y: 0.55, z: 6.4 },
-    { x: 8.4, y: 0.7, z: 6.4 },
-    { x: 11.4, y: 1.4, z: 6.2 },
-    { x: 11.4, y: 1.4, z: -8 },
-    { x: 11.4, y: 1.4, z: -36 },
-    { x: 13, y: 1.4, z: -36 },
-    { x: 13, y: 1.4, z: -44 },
-    { x: 13, y: 1.4, z: -38 },
-    { x: -3.6, y: 0.7, z: -38 },
-    { x: -3.6, y: 0.7, z: -34 },
-    { x: -10, y: 1.4, z: -12 },
-    { x: 0.15, y: 1.7, z: -6.6 },
-    { x: -10, y: 1.5, z: -6.6 },
-    { x: -10, y: 1.5, z: 10 },
-    { x: -31.3, y: 1.2, z: 10 },
-    { x: -31.3, y: 1.2, z: 14 },
-    { x: -31.3, y: 1.2, z: 10 },
-    { x: -18.4, y: 1.2, z: 10 },
-    { x: -18.4, y: 1.2, z: 17.3 },
-    { x: -20.2, y: 1.2, z: 17.3 },
-    { x: -20.2, y: 3.5, z: 17.3 },
-    { x: -26.5, y: 3.5, z: 17.3 },
-    { x: -18.6, y: 3.5, z: 17.3 },
-    { x: -18.6, y: 1.2, z: 17.3 },
-    { x: -18.4, y: 1.2, z: 17.3 },
-    { x: -18.4, y: 1.3, z: 27.2 },
-    { x: -22.0, y: 1.3, z: 27.2 },
-    { x: -18.4, y: 1.3, z: 27.2 },
-    { x: -12, y: 1.5, z: 16 },
-    { x: -1.6, y: 2.4, z: 16 },
-    { x: -1.6, y: 2.4, z: 6.9 },
-    { x: -8.2, y: 2.7, z: 16.4 },
+    /* Across the back lawn from the north east: house, deck, fence line. */
+    { x: 3.0, y: 3.4, z: 25.0 },
+    { x: -2.0, y: 3.2, z: 16.0 },
+    /* Over the deck, high enough to clear its rail, then round the east
+     * side of the house rather than over it. The gable peaks at 6.47 and a
+     * roof from a metre up is a roof, not a house. */
+    { x: -1.6, y: 3.6, z: 8.5 },
+    { x: 8.0, y: 5.2, z: 6.5 },
+    /* Down past the garage onto the driveway. */
+    { x: 13.0, y: 3.8, z: 0.5 },
+    { x: 13.0, y: 2.6, z: -16.0 },
+    { x: 13.0, y: 2.4, z: -32.0 },
+    /* Over the iron gate, whose top rail is at 1.52, and out. */
+    { x: 13.0, y: 2.8, z: -45.0 },
+    /* Back west across the paddock, inside the southern windbreak: those
+     * trees stand at z = -44 and their canopies are 4.16 m across. */
+    { x: 2.0, y: 4.0, z: -40.0 },
+    { x: -12.0, y: 4.4, z: -33.0 },
+    { x: -24.0, y: 4.0, z: -20.0 },
+    { x: -33.0, y: 4.6, z: -2.0 },
+    /* Round the west side of the stable, which stands 5.8, and the hay
+     * barn behind it, which stands 3.62. */
+    { x: -38.0, y: 5.2, z: 10.0 },
+    { x: -36.0, y: 6.2, z: 24.0 },
+    { x: -27.0, y: 6.6, z: 33.0 },
+    /* And back east along the top of the paddock to the vantage, east of
+     * the lone tree at (2, 28) rather than through it. */
+    { x: -14.0, y: 5.6, z: 34.0 },
+    { x: 7.0, y: 5.0, z: 32.0 },
   ];
   return pts.map((p) => {
     const floor = world.heightAt(p.x, p.z, p.y);

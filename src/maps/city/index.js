@@ -138,8 +138,18 @@ const ROOF_EYE = 19;
  * along it, so a camera rising over the middle of it passes nothing. By the
  * time the turn begins the shot is already at roof height and the turn is
  * flat. The descent at the other end is the same thing mirrored.
+ *
+ * HOW LONG THE CLIMB IS, is a question about the FRAME rather than about
+ * clearance. The camera looks lookAhead metres down the line, so on a ramp
+ * it is pointed down the ramp: 15.7 m of height over 24 m of road is a
+ * gradient of 0.65, and 0.65 plus the aim drop is forty degrees of nose
+ * down. Forty degrees at roof height is a photograph of tarmac, which is
+ * what the return leg's cards looked like and were reported as. Thirty two
+ * metres puts it near thirty, and it costs sixteen metres of the low street
+ * run, which is the part of this loop worth having. That trade is the
+ * reason this number is not larger.
  */
-const CLIMB_RUN = 24;
+const CLIMB_RUN = 32;
 /* The lowest the shot ever gets, over any surface. Only the street legs go
  * anywhere near it, and they are over a road. */
 const MIN_CLEAR = 2.6;
@@ -148,6 +158,19 @@ const MIN_CLEAR = 2.6;
  * out south of the canal. */
 const LEG_SOUTH = Z_MAX - 6;
 const LEG_NORTH = Z_MIN + 8;
+/*
+ * Where the loop is rotated to start.
+ *
+ * THE FIRST POINT IS THE FIRST FRAME OF THE CARD. The thumbnail recorder
+ * rewinds its camera clock to zero before it records, so whatever is at the
+ * head of this array is what a player sees when the clip begins, and what
+ * the still it replaces has to hand over to. Built in road order the head is
+ * LEG_SOUTH, which is the TOP of the climb: nineteen metres up, looking down
+ * the ramp at the tarmac. The best frame this town has is the street itself,
+ * so the array is rotated to open there, on the flat run a little south of
+ * the level crossing, pointed north at it.
+ */
+const OPEN_Z = 12;
 /* Plan offset of the return leg from the outbound one, and the radius of
  * the two turns that join them. The return runs over the blocks east of the
  * road rather than back along the road itself, so the two legs are two
@@ -226,7 +249,16 @@ function cityAttractPath(world) {
 
   turn(LEG_SOUTH, southX + TURN_R, 0, Math.PI);
 
-  return pts;
+  /* Rotate, do not rebuild. The loop is closed, so its start is a free
+   * choice and every other point keeps the spacing it was given. */
+  let head = 0;
+  for (let i = 1; i <= legSteps; i += 1) {
+    const z = LEG_SOUTH + (LEG_NORTH - LEG_SOUTH) * (i / legSteps);
+    if (Math.abs(z - OPEN_Z) < Math.abs(pts[head].z - OPEN_Z)) {
+      head = i;
+    }
+  }
+  return pts.slice(head).concat(pts.slice(0, head));
 }
 
 /*
@@ -1884,8 +1916,11 @@ export async function buildMap(shell, onProgress, options) {
       speed: 9,
       lookAhead: 13,
       /* Only a little down. The camera is IN the street rather than over the
-       * course, so the interest is at eye height and ahead, not below. */
-      aimDrop: 2.4,
+       * course, so the interest is at eye height and ahead, not below. 2.4
+       * over a 13 m look ahead is ten degrees of that held for the whole
+       * loop, and it lands on top of whatever the climb is already doing;
+       * 1.6 is seven. */
+      aimDrop: 1.6,
     },
     /*
      * The contact surface, and the third argument is what makes a city fly.

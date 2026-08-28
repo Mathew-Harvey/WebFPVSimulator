@@ -75,27 +75,89 @@ export function buildWorld(scene, opts = {}) {
   };
 }
 
+/*
+ * The title camera's loop, and what it is for.
+ *
+ * IT IS AN ESTABLISHING SHOT, NOT A FLIGHT LINE. The old loop opened three
+ * metres off the plaza with the entrance doors filling the frame, dropped
+ * down the line x = 0, which is the plane the BULKHEAD stands in, and left
+ * the hall by going through the north wall rather than through a door. The
+ * camera has no colliders, so none of that stopped it: it just produced a
+ * card that was the inside of a wall for a fifth of its running time.
+ * scripts/attract-check.js counts those now, and this loop reads zero.
+ *
+ * So it opens outside the south east corner, where the CIVIC BATHS frontage
+ * and the length of the hall are one frame, and every wall it crosses after
+ * that it crosses through a hole somebody put there: the entrance, the
+ * bulkhead's slot, the west door, and the two light wells in the roof.
+ *
+ * The order below is the order the shot happens in, and the recorder starts
+ * at the first point, so the first point is the establishing frame.
+ */
 export function attractPath(world) {
   const pts = [
-    { x: 0, y: 2.8, z: 16.2 },
-    { x: 0, y: 2.6, z: 12.45 },
-    { x: 0, y: 2.8, z: 7.8 },
-    { x: 0, y: 0.4, z: 0 },
-    { x: 0, y: 6.7, z: 0 },
-    { x: -7.4, y: 2.8, z: 0 },
-    { x: -11.2, y: 9.8, z: 0 },
-    { x: -20.6, y: 1.8, z: 0 },
-    { x: -23.2, y: 0.1, z: 0 },
-    { x: -28.8, y: 2.2, z: -3.8 },
-    { x: -36, y: 1.8, z: 0 },
-    { x: -39, y: 3.4, z: 0 },
-    { x: -40, y: 6.2, z: -10 },
-    { x: -11, y: 13.2, z: 0 },
-    { x: 12.6, y: 9.8, z: 3.8 },
-    { x: 16, y: -2.9, z: 0 },
-    { x: 21.3, y: 6.3, z: 0 },
-    { x: 24, y: 12, z: 0 },
-    { x: 0, y: 8, z: 22 },
+    /* Outside the fence, south east: the frontage, the sign and the hall. */
+    { x: 42, y: 13, z: 36 },
+    { x: 26, y: 10, z: 27 },
+    { x: 10, y: 6, z: 19 },
+    /* In at the entrance, which is 12.4 m wide and 5.8 m tall. */
+    { x: 2, y: 3.4, z: 14.5 },
+    { x: 2, y: 3.0, z: 10.5 },
+    /* Down onto the water line and west through the bulkhead's slot, which
+     * is the 3.4 m gap in it between 1.9 below the deck and 2.38 above. */
+    { x: 4, y: 2.4, z: 4.0 },
+    { x: 2, y: 1.3, z: 1.0 },
+    { x: -2, y: 1.0, z: 0 },
+    /* Under the backstroke bars, up the shallow end and through the timing
+     * gantry, then over the west goal rather than through its top corner:
+     * its frame tops out at 1.32 and the line used to pass 40 mm off it. */
+    { x: -8, y: 1.0, z: 0 },
+    { x: -16, y: 0.9, z: 0 },
+    { x: -22, y: 2.2, z: -2.6 },
+    /* Out at the west door and over the lido, clear of the mushroom
+     * fountain, whose cap tops out at 2.9. */
+    { x: -27, y: 2.0, z: -3.8 },
+    { x: -31, y: 2.2, z: -3.8 },
+    { x: -38, y: 4.8, z: -2.0 },
+    { x: -44, y: 5.6, z: 2.0 },
+    /*
+     * Round the outside and up over the roof, which is 16 m.
+     *
+     * THE CLIMB IS SPREAD AND IT TURNS INWARD. The first re-cut took it in
+     * one 34 degree pull heading away from the building, and a camera that
+     * points where the line goes then points at nothing: a full second of
+     * the card was blue sky and a cloud. The second spread it over four
+     * steps and still ran the first of them south down the boundary, which
+     * has a plaza on one side and a fence on the other, and that step was
+     * the same empty frame at a shallower angle. Cutting the corner is what
+     * fixed it: every step from here is aimed at the hall, so the building
+     * is in the frame the whole way up.
+     */
+    { x: -40, y: 8, z: -10 },
+    { x: -32, y: 12, z: -20 },
+    { x: -18, y: 16, z: -24 },
+    { x: -6, y: 19, z: -18 },
+    /* Back in through the west light well, beside the bar slung across it
+     * at 13.5 rather than through it. */
+    { x: -13.5, y: 18, z: -5 },
+    { x: -13.5, y: 12.5, z: -1 },
+    /* East down the hall under the roof, then down over the deep end. */
+    { x: -2, y: 11.5, z: 0 },
+    { x: 8, y: 10.5, z: 0 },
+    { x: 14, y: 6, z: 0 },
+    { x: 18, y: 1.5, z: 0 },
+    /* Up past the boards, wide of them so the tower reads as a tower. */
+    { x: 22, y: 3.0, z: 0 },
+    { x: 24, y: 6.5, z: 3.5 },
+    { x: 26, y: 9, z: 6 },
+    /* And out through the east light well, over the front, back to the
+     * vantage the loop opened on. */
+    { x: 20, y: 11, z: 7 },
+    { x: 12, y: 13, z: 2 },
+    { x: 11, y: 19, z: 1 },
+    { x: 16, y: 19, z: 16 },
+    { x: 28, y: 17, z: 26 },
+    { x: 38, y: 15, z: 33 },
   ];
   void world;
   return pts.map((p) => {

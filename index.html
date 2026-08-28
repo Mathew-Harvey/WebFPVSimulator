@@ -1937,11 +1937,35 @@
         border: 0; display: block; object-fit: cover; pointer-events: none;
         z-index: 0;
       }
+      /*
+       * The poster: the still a world wears until its clip exists.
+       *
+       * A rendered frame of the world itself, from scripts/posters.js. The
+       * URL arrives as --poster, set on the card by src/ui/ui.js, because
+       * two boxes read it: the reel paints it, and so does the wait panel,
+       * which sits over the opaque recorder iframe and would otherwise be a
+       * scrim over nothing. A background rather than an <img> so that the
+       * recorder's three `replaceChildren` calls cannot throw the picture
+       * away, and so that a missing file degrades to the dark rectangle the
+       * card always was.
+       */
+      .map-card.has-poster .map-reel {
+        background-image: var(--poster);
+        background-size: cover;
+        background-position: center;
+      }
       .map-card-still {
         position: absolute; left: 0; right: 0; top: 0; aspect-ratio: 16 / 9;
         display: flex; align-items: center; justify-content: center;
         padding: 0 18px; box-sizing: border-box; text-align: center;
         color: var(--slate); font-size: 13px; line-height: 1.5;
+        z-index: 3;
+      }
+      /* Over a poster this sentence is type on a photograph, and slate on a
+         cream frontage is not type at all. Cream with a shadow reads on
+         both, so it is set once rather than twice. */
+      .map-card.has-poster .map-card-still {
+        color: var(--cream); text-shadow: 0 1px 4px rgba(8, 12, 9, 0.9);
       }
       .map-card-still:empty { display: none; }
       /* First-time clip wait. Same copy as the boot screen: "loading"
@@ -1956,6 +1980,23 @@
         text-align: center;
         background: radial-gradient(120% 90% at 50% 42%, #1e2a20, #101610);
         pointer-events: none;
+      }
+      /*
+       * With a poster the wait is a caption on a photograph rather than a
+       * screen of its own, so the flat panel becomes a scrim over the same
+       * picture and the copy moves off the middle of it. Dark at the foot,
+       * where the type is, and thin at the top, where the world is.
+       */
+      .map-card.has-poster .map-reel-wait {
+        background:
+          linear-gradient(
+            to top,
+            rgba(9, 14, 10, 0.90) 0%,
+            rgba(9, 14, 10, 0.62) 42%,
+            rgba(9, 14, 10, 0.16) 100%
+          ),
+          var(--poster) center / cover no-repeat;
+        justify-content: flex-end;
       }
       .map-reel-wait-stage {
         font-size: 13px; letter-spacing: 0.06em; color: var(--cream);

@@ -20,6 +20,14 @@
  * screen then has one shape to report. It is loaded at boot because the title
  * screen has a world behind it.
  *
+ * `poster` is the still the world card shows while its clip is being made.
+ * A first visit to Freestyle used to be four dark rectangles with the word
+ * "loading" on them for the best part of a minute, which is the worst
+ * possible moment to tell somebody nothing about the place they are choosing.
+ * The file is generated: `npm run gen:posters`, see scripts/posters.js, which
+ * also holds the camera each one is taken from. A map with no poster falls
+ * back to the rectangle, so the field is optional rather than load bearing.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -53,6 +61,7 @@ export const MAPS = [
     mode: 'freestyle',
     note: 'A whole town. No gates, no lap, no clock. Roofs, alleys and a level crossing.',
     buildMs: MAP_BUILD_MS.city,
+    poster: 'assets/posters/city.jpg',
     load: () => import('./city/index.js'),
   },
   {
@@ -61,6 +70,7 @@ export const MAPS = [
     mode: 'freestyle',
     note: 'A cement works. Dive the stack, fly the kiln. No gates, no lap, no clock.',
     buildMs: MAP_BUILD_MS.bando,
+    poster: 'assets/posters/bando.jpg',
     load: () => import('./bando/index.js'),
   },
   {
@@ -69,6 +79,7 @@ export const MAPS = [
     mode: 'freestyle',
     note: 'A 50 m hall and a lido. Loop the bars, split-S the bulkhead. No gates, no lap, no clock.',
     buildMs: MAP_BUILD_MS.baths,
+    poster: 'assets/posters/baths.jpg',
     load: () => import('./baths/index.js'),
   },
   {
@@ -77,6 +88,7 @@ export const MAPS = [
     mode: 'freestyle',
     note: 'A 2.5 acre homestead. Deck, barn, missing fence rail. No gates, no lap, no clock.',
     buildMs: MAP_BUILD_MS.yard,
+    poster: 'assets/posters/yard.jpg',
     load: () => import('./yard/index.js'),
   },
 ];

@@ -72,34 +72,73 @@ export function buildWorld(scene, opts = {}) {
   };
 }
 
+/*
+ * The title camera's loop, and what it is for.
+ *
+ * IT IS AN ESTABLISHING SHOT, NOT A FLIGHT LINE. The two are not the same
+ * thing and this loop used to be the second one: it opened at head height in
+ * the yard with the pack hall six metres in front of it, went straight in at
+ * the north door, climbed the INSIDE of the chimney, dropped through the
+ * preheater shaft, dived into the hopper pit and finished by rocketing to
+ * 64 m. Every one of those is a lovely thing to fly and every one of them is
+ * a brown rectangle at 236 px wide. Reported as the world cards being close
+ * ups of internal walls, which is exactly what a chimney flue is.
+ *
+ * So the loop opens OUTSIDE the fence now, at the same vantage the card's
+ * poster is taken from, where the stack, the preheater and the length of the
+ * pack hall are one frame against the sunset, and flies in from there. It
+ * still goes through the hall, because a place you can fly through should
+ * show that it is one, but it goes through the door and out the far end
+ * rather than living in there. It still climbs the stack, on the outside,
+ * where the stack is a thing you can see.
+ *
+ * The order below is the order the shot happens in, and the recorder starts
+ * at the first point, so the first point is the establishing frame.
+ */
 export function attractPath(world) {
   const pts = [
-    { x: 4.6, y: 3.2, z: 18.4 },
-    { x: 0.2, y: 3.2, z: 10.5 },
-    { x: 0.2, y: 3.2, z: 4.8 },
-    { x: -14, y: 3.2, z: 0 },
-    { x: -32, y: 3.2, z: 0 },
-    { x: -46, y: 3.2, z: 0 },
-    { x: -46, y: 17.2, z: 0 },
-    { x: -46, y: 17.2, z: 2.9 },
-    { x: -46, y: 17.2, z: 0 },
-    { x: -40, y: 9.7, z: 0 },
-    { x: -18, y: 9.7, z: 0 },
-    { x: -12.4, y: 9.7, z: 4.2 },
-    { x: -12.4, y: 18.6, z: 4.4 },
-    { x: -16, y: 20.4, z: -12.4 },
-    { x: -13, y: 12.4, z: -22 },
-    { x: -13, y: 11.2, z: -32 },
-    { x: -16, y: 8.4, z: -9.2 },
-    { x: 8, y: 12.4, z: -4.4 },
-    { x: 24.8, y: 12.2, z: -4.3 },
-    { x: 30.4, y: 17.2, z: -4.3 },
-    { x: 37.6, y: 17.2, z: -4.3 },
-    { x: 38, y: 3.4, z: 0 },
-    { x: 38, y: -4.8, z: 0 },
-    { x: 22, y: 6, z: 16 },
-    { x: -18, y: 28, z: 22 },
-    { x: -46, y: 64, z: 14 },
+    /* Outside the fence, south east, the whole works in the frame. */
+    { x: 46, y: 17, z: 42 },
+    { x: 32, y: 13, z: 28 },
+    { x: 16, y: 8, z: 18 },
+    /* Down onto the yard and in at the north door, which is the twelve metre
+     * gap in the middle of the long wall. */
+    { x: 0.6, y: 4.0, z: 12 },
+    { x: 0.2, y: 3.4, z: 4.8 },
+    /* West along the pack hall, under the kiln. */
+    { x: -14, y: 3.4, z: 0 },
+    { x: -26, y: 3.4, z: 0 },
+    { x: -40, y: 4.8, z: 0 },
+    /*
+     * Turn at the stack, which the run down the hall has been pointed at
+     * since it started, and come back along the yard.
+     *
+     * TURN AT IT, DO NOT GO ROUND IT. The old line climbed the INSIDE of the
+     * flue, which is a brown tube. The first re-cut climbed the outside, the
+     * second circled it, the third went behind it; all three put a fifth of
+     * the loop on frames with nothing in them. Two reasons, and both are
+     * about this site rather than about splines. A camera that looks where
+     * the line goes cannot look at the thing it is orbiting: the thing sits
+     * 90 degrees off the heading the whole way round and the lens is 44.
+     * And the pad west and north of the works is bare ground inside a seven
+     * metre wall, so a leg that crosses it is a leg with nothing to point
+     * at. So the stack gets the approach, which is head on and fills the
+     * frame, and the loop turns there and stays on the side the buildings
+     * are.
+     */
+    { x: -44, y: 8, z: 8 },
+    /* Back east along the yard side, climbing gently, with the length of
+     * the hall to the right of the shot the whole way. */
+    { x: -34, y: 12, z: 13 },
+    { x: -16, y: 15, z: 14 },
+    { x: 2, y: 18, z: 12 },
+    { x: 20, y: 19, z: 8 },
+    /* And out past the silos, which stand 16, 22 and 28, taking the tall
+     * one close enough that it reads as a silo rather than as a mark on the
+     * horizon. */
+    { x: 30, y: 17, z: 18 },
+    { x: 44, y: 15, z: 24 },
+    { x: 52, y: 15, z: 32 },
   ];
   void world;
   return pts.map((p) => {

@@ -1159,6 +1159,40 @@ function editOwnAction(listing) {
 }
 
 /*
+ * The still a world card wears until its clip exists.
+ *
+ * A COLD BROWSER MAKES EVERY CLIP FROM SCRATCH, one world at a time and only
+ * while nobody is using the room, so a first visit to Freestyle can spend the
+ * better part of a minute with nothing to look at. It spent it as four dark
+ * rectangles with the word "loading" on them, which is the worst possible
+ * moment to say nothing at all about the places somebody is choosing between.
+ * The poster is a rendered frame of the world itself: scripts/posters.js
+ * makes it, src/maps/registry.js names it.
+ *
+ * A CUSTOM PROPERTY AND NOT AN <img>, for three reasons that all came out of
+ * trying the element first. A background is decorative by construction, so
+ * there is no alt text to invent for a picture the card already names in
+ * type underneath it. A background survives `replaceChildren`, which the
+ * recorder calls on this box in three places and which would otherwise throw
+ * the picture away every time a capture started. And a background that fails
+ * to load simply does not paint, so a missing file degrades to the dark
+ * rectangle the card always was rather than to a broken image icon: a poster
+ * is a nicety and must not be able to break the picker.
+ *
+ * The property is set on the CARD rather than the reel because two rules
+ * read it: the reel paints it, and so does the wait panel, which sits over an
+ * opaque recorder iframe and would otherwise be a scrim over nothing.
+ */
+function markPoster(card, map) {
+  if (!card || !map || !map.poster) {
+    return;
+  }
+  const href = new URL(`../../${map.poster}`, import.meta.url).href;
+  card.style.setProperty('--poster', `url("${href}")`);
+  card.classList.add('has-poster');
+}
+
+/*
  * A course card's identity, stable across the rebuilds items() does on every
  * render. The card objects themselves are made fresh each time, so the chosen
  * card is remembered by this key rather than by reference.
@@ -5459,6 +5493,7 @@ export class Ui {
       host.textContent = '';
       this.mapCards = items.map((it, i) => {
         const card = el('div', 'map-card');
+        markPoster(card, it.map);
         const shot = el('div', 'map-reel');
         const body = el('div', 'map-card-body');
         const name = el('div', 'map-card-name', it.label);

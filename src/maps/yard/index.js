@@ -197,8 +197,8 @@ export async function buildMap(shell, onProgress, options) {
     attract: {
       path: attractPath(world),
       speed: 12,
-      lookAhead: 7,
-      aimDrop: 0.6,
+      lookAhead: 11,
+      aimDrop: 0.9,
     },
     height: (x, z, fromY) => world.heightAt(x, z, fromY),
     setNextGate() {},

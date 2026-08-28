@@ -23,6 +23,7 @@
     "gen:music": "node scripts/music.js",
     "gen:icons": "node scripts/icons.js sakura . && node scripts/icons.js amber src/trackbuilder",
     "gen:og": "node scripts/og.js .",
+    "gen:posters": "node scripts/posters.js",
     "ghost:selftest": "node scripts/ghost-selftest.js",
     "contact:selftest": "node scripts/contact-selftest.js",
     "replay:selftest": "node scripts/replay-log.js --selftest",
@@ -33,6 +34,7 @@
     "lint:devices": "node scripts/device-check.js",
     "lint:arcade": "node scripts/arcade-check.js",
     "lint:responsive": "node scripts/responsive-check.js",
-    "lint:board": "node scripts/board-check.js"
+    "lint:board": "node scripts/board-check.js",
+    "lint:attract": "node scripts/attract-check.js"
   }
 }

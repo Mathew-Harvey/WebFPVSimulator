@@ -11,10 +11,11 @@
  *
  * Usage:
  *   node scripts/shots.js --out=DIR [--w=1600] [--h=900] [--url=/index.html]
+ *                         [--format=jpeg] [--quality=82]
  *                         step step step
  * Steps:
  *   wait:MS          advance wall time
- *   shot:NAME        write DIR/NAME.png
+ *   shot:NAME        write DIR/NAME.png, or DIR/NAME.jpg with --format=jpeg
  *   tap:CODE         key down then up, e.g. tap:Enter
  *   down:CODE        key down, held
  *   up:CODE          key up
@@ -68,7 +69,9 @@ import { SETTINGS_KEY } from '../src/ui/ui.js';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 async function main() {
   const args = process.argv.slice(2);
-  const opts = { out: '.loop/shots', w: 1600, h: 900, url: '/index.html' };
+  const opts = {
+    out: '.loop/shots', w: 1600, h: 900, url: '/index.html', format: 'png', quality: 82,
+  };
   const steps = [];
   for (const a of args) {
     const m = a.match(/^--([a-z]+)=(.*)$/);
@@ -173,8 +176,19 @@ async function main() {
       }, sessionId);
       console.log(`throttle ${kbps > 0 ? `${kbps} kbps, 40 ms latency` : 'off'}`);
     } else if (op === 'shot') {
-      const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
-      const path = join(outDir, `${arg}.png`);
+      /*
+       * PNG for looking at a frame, JPEG for a frame that ships. A capture
+       * that is going into the tree as art is read at 340 px wide on a card
+       * and a lossless copy of it is four times the bytes for a difference
+       * nobody can see at that size, so scripts/posters.js asks for
+       * --format=jpeg. Chromium does the encoding: this repo has no
+       * dependencies and is not about to grow one to write a JPEG.
+       */
+      const jpeg = String(opts.format) === 'jpeg';
+      const { data } = await cdp.send('Page.captureScreenshot', jpeg
+        ? { format: 'jpeg', quality: Number(opts.quality) }
+        : { format: 'png' }, sessionId);
+      const path = join(outDir, `${arg}.${jpeg ? 'jpg' : 'png'}`);
       await writeFile(path, Buffer.from(data, 'base64'));
       console.log(`shot ${path}`);
       /* Every capture records which gate the race actually wants and where

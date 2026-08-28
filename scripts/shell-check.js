@@ -87,8 +87,20 @@ const SCREENS = [
  * loaded track and the board. Reimplementing that in Node would be checking
  * a copy of the shell rather than the shell.
  */
+/*
+ * Every walk below starts PAST the Race or Freestyle gate.
+ *
+ * A fresh load opens on that gate: two rows, and the menu these checks are
+ * about is behind it. The mode is set rather than pressed, because act()
+ * would also navigate to a picker when there is nothing seated, and each
+ * walk drives its own navigation. The gate itself is checked in BEHAVIOUR,
+ * through act(), which is the way a pilot answers it.
+ */
+const PAST_GATE = "if (!ui.mode) { ui.mode = 'race'; }";
+
 const WALK = `(() => {
   const ui = window.__ui;
+  ${PAST_GATE}
   const out = {};
   const screens = ${JSON.stringify(SCREENS)};
   for (const name of screens) {
@@ -250,6 +262,7 @@ const FC_TABS = `(() => {
  */
 const IDS = `(() => {
   const ui = window.__ui;
+  ${PAST_GATE}
   const out = {};
   for (const name of ${JSON.stringify(SCREENS)}) {
     try {
@@ -759,7 +772,12 @@ const BEHAVIOUR = `(() => {
     const seen = [];
     const tryFly = (map) => {
       const before = ui.settings.map;
+      const heldMode = ui.mode;
       ui.settings.map = map;
+      /* The seat and the mode are one state now: a pilot sitting in a
+       * gateless world got there by answering Freestyle, and Fly checks
+       * that they agree before it launches anything. */
+      ui.mode = 'freestyle';
       ui.show('title');
       /* onAction is what launches. Stub it so the check does not start a
        * run it would then have to get out of. */
@@ -773,6 +791,7 @@ const BEHAVIOUR = `(() => {
       }
       const landed = ui.screen;
       ui.settings.map = before;
+      ui.mode = heldMode;
       ui.show('title');
       return { map, landed, launched };
     };
@@ -1040,6 +1059,52 @@ const BEHAVIOUR = `(() => {
     out.discardGuard = { error: String(e && e.message ? e.message : e) };
   }
 
+  /*
+   * THE GATE. A visit opens on one question, Race or Freestyle, and the
+   * menu behind it names a track or a map, never a mode: that is the whole
+   * change, and the thing that would quietly come back is a Race row and a
+   * Freestyle row reappearing on the front page beside it.
+   *
+   * Answered through act(), which is what a keypress calls, so the seat has
+   * to follow the answer as well as the flag.
+   */
+  try {
+    const held = ui.mode;
+    ui.mode = null;
+    ui.show('title');
+    const gate = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
+    /*
+     * Race is pressed for real. Freestyle is only set, because answering it
+     * can seat a world, and seating a world hands main.js a swap: the city
+     * is nineteen thousand meshes and this check has nothing to say about
+     * it. What act() does on the way is the same code either way.
+     */
+    ui.act('mode-race');
+    const landed = ui.screen;
+    const seated = ui.seatMatchesMode();
+    ui.show('title');
+    const race = ui.items().map((it) => it.label);
+    ui.mode = 'freestyle';
+    const free = ui.items().map((it) => it.label);
+    ui.mode = held;
+    ui.show('title');
+    out.modeGate = {
+      gate,
+      asksTwo: gate.includes('Race') && gate.includes('Freestyle') && !gate.includes('Fly'),
+      /* Answering it either seats something to fly or opens the picker for
+       * the thing it could not seat. Landing on a menu with neither is the
+       * failure: a Fly row over an empty seat. */
+      answered: seated || landed === 'courses',
+      landed,
+      race,
+      free,
+      raceNamesTrack: race.includes('Track') && !race.includes('Race') && !race.includes('Freestyle'),
+      freeNamesMap: free.includes('Map') && !free.includes('Race') && !free.includes('Freestyle'),
+    };
+  } catch (e) {
+    out.modeGate = { error: String(e && e.message ? e.message : e) };
+  }
+
   return JSON.stringify(out);
 })()`;
 
@@ -1050,6 +1115,7 @@ const BEHAVIOUR = `(() => {
  */
 const ESCAPE = `(() => {
   const ui = window.__ui;
+  ${PAST_GATE}
   const known = new Set(Object.keys(ui.screens).concat(['flight']));
   const out = {};
   for (const name of ${JSON.stringify(SCREENS)}) {
@@ -1260,6 +1326,24 @@ async function main() {
       }
       if (!sw.noPopup) {
         failures.push('switch row: it would still open a popup');
+      }
+    }
+
+    if (!b.modeGate || b.modeGate.error) {
+      failures.push(`the gate: ${b.modeGate ? b.modeGate.error : 'no result'}`);
+    } else {
+      const g = b.modeGate;
+      if (!g.asksTwo) {
+        failures.push(`the gate: a fresh visit opens on ${g.gate.join(', ') || 'nothing'}, not on Race or Freestyle`);
+      }
+      if (!g.answered) {
+        failures.push(`the gate: answering Race left nothing seated and stayed on ${g.landed}`);
+      }
+      if (!g.raceNamesTrack) {
+        failures.push(`the title in Race names ${g.race.join(', ')}, which is not a Track row without a mode beside it`);
+      }
+      if (!g.freeNamesMap) {
+        failures.push(`the title in Freestyle names ${g.free.join(', ')}, which is not a Map row without a mode beside it`);
       }
     }
 

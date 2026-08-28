@@ -102,6 +102,8 @@ async function drive(room) {
     await page.evaluate(`(() => {
       const ui = window.__ui;
       if (ui.firstRun) { ui.act('skipfirst'); }
+      /* Past the Race or Freestyle gate: the rooms are what this drives. */
+      if (!ui.mode) { ui.mode = 'race'; }
       window.__gaps = [];
       let last = performance.now();
       const tick = () => {

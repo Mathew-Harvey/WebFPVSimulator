@@ -21623,6 +21623,87 @@ with twelve tracks in a scrolling grid, and the standings table with its record,
 its ghost tag and the pilot's own row. `npm run verify` not run: nothing here
 touches physics, the plant, the module ABI or the build.
 
+## 2026-08-28, shell: one question first, then a menu about the place
+
+Changed: a visit opens on Race or Freestyle, and the menu behind that answer
+carries a Track row or a Map row instead of both a Race row and a Freestyle row.
+
+**The request, and what was wrong underneath it.** "The menu when i first log in
+should be 2 options race or freestyle. Then the current menu however there should
+not be a race or freestyle option in the next menu, just track for race or map
+for freestyle."
+
+The title carried Race and Freestyle side by side, each of them a location picker
+wearing a mode's name, so the same question was asked twice and a pilot who had
+decided which one they wanted still had to read the other to get past it. Worse,
+the two rows disagreed about the seat: Race named the loaded track, which is what
+Fly would launch, while Freestyle named a remembered world that was not seated and
+would not be flown. Two rows, one of them lying, and no screen anywhere that just
+asked the question.
+
+**The gate.** `Ui.mode` is 'race', 'freestyle', or null for not asked yet, and
+null is what the title draws as two rows. It is deliberately NOT in the settings
+blob and is not remembered: racing and messing about are not a preference, they
+are what this session is for, and a remembered answer would put Tuesday's choice
+in front of Wednesday's pilot as a fact rather than a question. It costs one
+keypress a visit.
+
+A link that already names what to fly answers it without asking, because that
+decision was made on another page: `?share=id` and `?ghost=id` are a race,
+`?map=` is whichever the registry says that world is. That is the builder's Fly
+this track button and every link the board hands out.
+
+**Answering it seats something.** Setting a flag would have kept the old defect
+and moved it: a Fly row over a seat that belongs to the other mode. So Race seats
+the loaded track, Freestyle seats the world the pilot last flew there, and either
+of them with nothing to seat opens its own picker, because choosing a place IS the
+question that was just asked. `seatMap` is the one implementation, and the `map:`
+rows now go through it too.
+
+**One row, and it names what Fly would launch.** Track in Race, Map in Freestyle,
+valued from the SEAT rather than from what was picked last, and reading "Choose
+one" when the seat is the other mode's. That state is reachable: answer Freestyle
+with no world of your own, then press Escape in the picker instead of choosing.
+Fly there opens the picker rather than launching whatever was still seated, which
+is the same answer the row gives, as a verb.
+
+**Escape on the title is the way back to the gate**, and the only way to change
+mode without reloading. The command bar names it "Race or Freestyle" rather than
+"Back", because Back on a front page reads like it leaves the game, and because a
+pilot looking for the other mode is looking for those two words. Not offered on
+the gate itself or on the first run split: neither has anything behind it, and a
+legend offering a key that does nothing is worse than no legend.
+
+**A dead setting, found on the way.** `freestyleMap` was written on every pick in
+the Freestyle room and had no entry in DEFAULTS, and `loadSettings` copies stored
+keys by walking DEFAULTS. So it was dropped on every reload and the row that named
+it went back to the first world in the registry however many times the pilot flew
+another. It has a default now, `''` for never chosen, which is also the signal the
+gate uses to send a first time freestyle pilot to the picker instead of seating a
+world on their behalf. Driven and confirmed: stored city, reloaded, answered
+Freestyle, landed on the title seated in the city.
+
+**What the check learned.** `shell-check.js` now walks past the gate, because the
+measurements are of the menus behind it, and asserts the gate itself through
+`act()`: a fresh visit offers Race and Freestyle and no Fly, answering one either
+seats something or opens the picker for what it could not seat, and neither title
+carries a mode row beside its Track or Map row. The launch card case pairs the
+mode with the seat it sets, which is the pairing the new Fly guard enforces, and
+that is what caught the guard the first time it ran.
+
+The title's overflow baseline was re-recorded, 25 px to 0 px, because the screen
+has one row fewer and got BETTER. That is the deliberate re-record the check asks
+for by note, not a threshold moved to make a failure go away.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:board` PASS,
+`npm run lint:devices` PASS, `npm run lint:responsive` PASS, `npm run lint:nouns`
+PASS. Also driven and looked at with `scripts/shots.js` at 1280x800, with a track
+seeded into the builder autosave so the journey is a real one: the gate, Race to a
+title reading "Track, Copper Gully", Escape back to the gate, Freestyle to the
+world picker, a world chosen, and the title reading "Map, Freestyle city" over the
+city itself. `npm run verify` not run: nothing here touches physics, the plant,
+the module ABI or the build.
+
 ## 2026-08-28, audio: a menu bed, and the flight crate stays in flight
 
 Two tracks arrived for the menus. They play on every screen that is not a flight,
@@ -21769,3 +21850,18 @@ media in a 2.5 s window, 42 nodes; `show('flight')` swaps to
 position for both crates. `npm run verify` not run: nothing here touches physics,
 the plant, the module ABI or the build, and check 14's inputs were measured
 directly instead.
+
+**Merged onto main.** `origin/main` had moved on by one commit, the Race or
+Freestyle gate, which rewrote 374 lines of `src/ui/ui.js`. The only conflict was
+this file, where both entries had been appended at the end; both are kept, in the
+order they landed. `ui.js` merged cleanly: the gate draws as the title screen in a
+two row mode rather than as a new screen, so it is a menu by `ui.flying()`, and
+`this.screen` is still written in exactly two places.
+
+Re-checked on the merged tree, not assumed: `npm run music:selftest` all passed,
+`npm run lint:shell` PASS at 151 rows across 13 screens, and the same live
+`scripts/shots.js` journey again. On the merged shell with `firstRun: true` the
+gate plays `neon-gate-take-2.webm?v=1` at gain 0.10, advancing 2.5 s of media in a
+2.5 s window over 42 nodes, warming `gypsy-breaks`; `show('flight')` swaps to
+`gypsy-breaks.webm?v=1`, the track the warm had already bought, at gain 0.30;
+`show('results')` swaps back at 0.10 with a remembered position on both crates.

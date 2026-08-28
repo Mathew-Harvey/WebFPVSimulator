@@ -215,17 +215,16 @@ const CRUMBS = {
   title: ['WebFPV'],
 };
 
-/* What the Freestyle row shows: the world the pilot last chose there, or the
- * first one if they have not been yet. A row whose value is blank on the
- * first screen a returning pilot sees is a row that looks broken. */
-function freestyleName(s) {
-  const want = s && s.freestyleMap;
-  const m = MAPS.find((x) => x.id === want && x.mode === 'freestyle');
-  if (m) {
-    return m.name;
-  }
-  const first = MAPS.find((x) => x.mode === 'freestyle');
-  return first ? first.name : 'Freestyle';
+/*
+ * The freestyle world the pilot is SEATED in, or null when the seat is a
+ * track. The Map row on the title reads this rather than the remembered id,
+ * because a row on the front page has to name what Fly would launch, and
+ * those two are not the same thing the moment somebody backs out of the
+ * world picker without choosing.
+ */
+function seatedFreestyleMap(s) {
+  const m = MAPS.find((x) => x.id === (s && s.map));
+  return m && m.mode === 'freestyle' ? m : null;
 }
 
 function hasFcDump() {
@@ -301,6 +300,20 @@ const DEFAULTS = {
    * entry must not be able to stop the page booting. A stored 'field' from
    * before the race field was removed is the track world. */
   map: 'custom',
+  /*
+   * The freestyle world the pilot last chose, or '' if they never have.
+   *
+   * It has a default because that is the only way a key survives a reload:
+   * loadSettings copies stored keys by walking DEFAULTS, so this one was
+   * written on every pick in the Freestyle room and dropped on the next
+   * boot, and the row that names it went back to the first world in the
+   * registry however many times the pilot flew another.
+   *
+   * Empty means never chosen, and that is a signal rather than an absence:
+   * the Race or Freestyle gate sends a pilot with no world of their own to
+   * the picker instead of seating one on their behalf.
+   */
+  freestyleMap: '',
   /* Which Betaflight diff the module is initialised from. A string for the
    * same reason map is: loadSettings only accepts a stored key whose typeof
    * matches the default, and an unknown id falls back to the first tune in
@@ -531,6 +544,11 @@ export function loadSettings() {
    * the track world. City is left alone. */
   if (s.map === 'field' || !MAPS.some((m) => m.id === s.map)) {
     s.map = 'custom';
+  }
+  /* The remembered freestyle world, by the same rule: a stale id, or a
+   * track id sitting in the freestyle slot, means nothing was chosen. */
+  if (!MAPS.some((m) => m.id === s.freestyleMap && m.mode === 'freestyle')) {
+    s.freestyleMap = '';
   }
   /* A profile whose pitch differs from its roll has to show three axes,
    * whatever the stored menu shape says, or the rows would be editing a
@@ -1376,6 +1394,38 @@ function locationHashScreen() {
   return h === 'credits' ? 'credits' : null;
 }
 
+/*
+ * RACE OR FREESTYLE, WHEN THE LINK ALREADY SAID.
+ *
+ * The gate is a question, and a question that has been answered must not be
+ * asked again: the builder's Fly this track button links to ?map=custom, the
+ * board's links carry ?share=id, and a chase link carries ?ghost=id. Every
+ * one of those is somebody arriving with the thing they want to fly already
+ * named, so the gate would be a screen in front of a decision they made on
+ * another page.
+ *
+ * Only the link answers it. A stored setting deliberately does not, which is
+ * the whole point of the gate: see the constructor.
+ */
+function linkedMode() {
+  let params;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch (e) {
+    /* No URL to read. The gate asks. */
+    return null;
+  }
+  if (params.get('share') || params.get('ghost')) {
+    return 'race';
+  }
+  const wanted = params.get('map');
+  const m = wanted ? MAPS.find((x) => x.id === wanted) : null;
+  if (!m) {
+    return null;
+  }
+  return m.mode === 'freestyle' ? 'freestyle' : 'race';
+}
+
 function clearLocationHash() {
   const url = new URL(window.location.href);
   if (!url.hash) {
@@ -1390,6 +1440,31 @@ export class Ui {
     this.root = root;
     this.settings = loadSettings();
     this.firstRun = detectFirstRun();
+    /*
+     * RACE OR FREESTYLE. THE FIRST QUESTION, AND THE ONLY ONE ASKED EVERY
+     * VISIT.
+     *
+     * 'race', 'freestyle', or null for "not asked yet", which is what the
+     * title screen draws as the two row gate.
+     *
+     * It is NOT in the settings blob and is deliberately not remembered.
+     * The two are not a preference, they are what this session is for: the
+     * same pilot races on Tuesday and messes about on Wednesday, and a
+     * remembered answer would put whichever they did last in front of them
+     * as a fact rather than a choice. It costs one keypress a visit and it
+     * buys a front page that is about the thing they came to do.
+     *
+     * What it buys the menu behind it is the removal of a choice that was
+     * being made twice. Race and Freestyle were two rows on the title, each
+     * naming a place, so the pilot picked a mode by picking a location and
+     * the front page carried both. With the mode already answered there is
+     * one row, and it names the track or the map, which is the only part
+     * still open.
+     *
+     * A link that names what to fly answers it without asking: see
+     * linkedMode.
+     */
+    this.mode = linkedMode();
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
@@ -1656,6 +1731,10 @@ export class Ui {
     /* First run only. Replaced by the keep note once a lap has been flown. */
     this.firstNote = el('p', 'keep-note first-note', 'A quad has no brakes and no wings. Point it where you want to go and push. Two minutes and you will be through a gate.');
     brand.append(this.firstNote);
+    /* The gate only. The storage warning and the track record belong to a
+     * seat, and the pilot has not said yet whether they are flying it. */
+    this.gateNote = el('p', 'keep-note gate-note', 'Two ways to fly. Race is a gated track against the clock, and every lap flown there goes to the public board. Freestyle is a place with no gates and nothing measured. Escape from the menu comes back here.');
+    brand.append(this.gateNote);
     this.wikiTeaser = btn('wiki-teaser', 'Simulating FPV, for nerds');
     this.wikiTeaser.setAttribute('aria-label', 'Open the FPV wiki');
     this.wikiTeaser.addEventListener('click', () => this.act('wiki'));
@@ -1676,8 +1755,12 @@ export class Ui {
     this.titleMenu.classList.add('menu-scroll');
     this.titleHelp = titleBlock.help;
     const titleFoot = el('div', 'title-foot');
+    /* Kept, because its keys and its copy change with the state the title
+     * is in: the gate has nothing behind it for Escape to reach and the
+     * menu does. See setTitleHint. */
+    this.titleHint = hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter selects. A radio banks the quad. Any switch selects.');
     titleFoot.append(
-      hintWithKeys(['↑↓', 'Enter'], 'Arrow keys move, Enter selects. A radio banks the quad. Any switch selects.'),
+      this.titleHint,
       titleBlock.stage,
     );
     copy.append(brand, titleFoot);
@@ -3286,6 +3369,40 @@ export class Ui {
           },
         ];
       }
+      /*
+       * THE GATE. TWO ROWS, AND NOTHING ELSE ON THE PAGE TO ANSWER.
+       *
+       * A pilot arriving does not open the menu wanting "Quad" or "Pilot".
+       * They want to race or they want to mess about, and until that is
+       * answered every other row on this screen is furniture. It used to be
+       * answered halfway down a list of eleven, twice: once by the Race row
+       * and once by the Freestyle row, each of which was really a location
+       * picker wearing a mode's name.
+       *
+       * So it is asked first, on its own, and the answer decides what the
+       * rest of the menu is. Escape from that menu comes back here, which is
+       * the only way to change mode and is why the answer is cheap to give.
+       *
+       * The pad trouble row still sits above it: a pilot whose radio cannot
+       * press anything needs to be told that on whatever screen they are
+       * looking at, and this is now the first one.
+       */
+      if (!this.mode) {
+        return [
+          ...(trouble ? [trouble] : []),
+          {
+            label: 'Race',
+            action: 'mode-race',
+            primary: true,
+            note: 'A gated track against the clock. Your tracks and the board\u2019s, and every time flown here goes to the leaderboard.',
+          },
+          {
+            label: 'Freestyle',
+            action: 'mode-freestyle',
+            note: 'A place with no gates. No clock, no lap, no board. Four of them, and nothing measured.',
+          },
+        ];
+      }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
       /*
@@ -3295,21 +3412,44 @@ export class Ui {
        * is a stable last row so testers can send a ticket from title.
        */
       /*
-       * RACE AND FREESTYLE, rather than Worlds and Tracks.
+       * ONE ROW FOR THE PLACE, BECAUSE THE MODE IS ALREADY ANSWERED.
        *
-       * A pilot does not decide which category of location they want, they
-       * decide whether they are racing or just flying. The two rooms are a
-       * filter on STATION COUNT, which is the predicate the renderer already
-       * uses at scene.js:5062: a designed course with no stations is
-       * freestyle, no lap and no gate HUD. Not on MAPS[].mode, which nothing
-       * but a debug hook reads, and which would file a gateless published
-       * track under Race and then promise it a clock it cannot deliver.
+       * This screen used to carry Race and Freestyle side by side, each
+       * naming a location and each really asking the same question the gate
+       * above now asks once. A pilot who had decided to race still had to
+       * read a Freestyle row to get past it, and the two rows disagreed
+       * about what the seat was: Race named the loaded track, Freestyle
+       * named a remembered world that was not seated and would not be
+       * flown.
+       *
+       * So there is one row, it belongs to the mode that was chosen, and it
+       * names WHAT FLY WOULD LAUNCH rather than what was picked last. Track
+       * in Race, Map in Freestyle, and the room behind each of them is the
+       * one it always was.
        *
        * Fly stays first and stays the primary. It is the verb, it names what
        * it will launch, and it is never on the room cycle: overshooting into
        * a launch out of an unsaved firmware edit is the failure that rule
        * exists to prevent.
        */
+      const world = seatedFreestyleMap(s);
+      const modeRow = this.mode === 'freestyle'
+        ? {
+          label: 'Map',
+          value: world ? world.name : 'Choose one',
+          action: 'freestyle',
+          note: world
+            ? `${world.note} The other places are in here too.`
+            : 'Nothing is seated yet. Four places with no gates, no clock and no lap. Pick one and fly it.',
+        }
+        : {
+          label: 'Track',
+          value: seat ? seat.name : 'Choose one',
+          action: 'courses',
+          note: seat
+            ? `${seat.name}, and every other track. Gated, against the clock, and every time flown here goes to the leaderboard.`
+            : 'No track is seated yet. Every track the board is offering, and the builder, are in here.',
+        };
       /*
        * THREE ROOMS AND A VERB, in place of twelve typographic equals.
        *
@@ -3333,18 +3473,7 @@ export class Ui {
       return [
         ...(trouble ? [trouble] : []),
         { label: 'Fly', action: 'fly', primary: true },
-        {
-          label: 'Race',
-          value: seat ? seat.name : m.name,
-          action: 'courses',
-          note: 'A gated track against the clock. Your tracks and the board\u2019s. Every time here goes to the leaderboard.',
-        },
-        {
-          label: 'Freestyle',
-          value: freestyleName(s),
-          action: 'freestyle',
-          note: 'A place with no gates. No clock, no lap, no board. Four worlds, and any track built without gates.',
-        },
+        modeRow,
         {
           label: 'Quad',
           value: tuneById(s.tune).name,
@@ -4265,7 +4394,12 @@ export class Ui {
       this.renderMapCards();
     }
     if (this.screens && this.screens.title) {
+      const gate = !this.firstRun && !this.mode;
       this.screens.title.classList.toggle('is-first', Boolean(this.firstRun));
+      /* The gate is one question, so the lines that describe a seat the
+       * pilot has not chosen to fly yet come off the screen behind it. */
+      this.screens.title.classList.toggle('is-gate', gate);
+      this.setTitleHint(gate);
     }
     const host = {
       title: this.titleMenu,
@@ -6575,6 +6709,34 @@ export class Ui {
   }
 
   /*
+   * The title's hint line, which is different on the two states this screen
+   * has. Escape is on it once there is a gate behind the menu to go back
+   * to, and is off it on the gate, where the key does nothing: a prompt for
+   * a key that is a no-op is worse than no prompt at all.
+   */
+  setTitleHint(gate) {
+    if (!this.titleHint) {
+      return;
+    }
+    const keys = this.titleHint.querySelector('.hint-keys');
+    const copy = this.titleHint.querySelector('.hint-copy');
+    if (!keys || !copy) {
+      return;
+    }
+    const want = gate ? ['↑↓', 'Enter'] : ['↑↓', 'Enter', 'Esc'];
+    const have = [...keys.children].map((k) => k.textContent);
+    if (have.length !== want.length || want.some((k, i) => have[i] !== k)) {
+      keys.textContent = '';
+      for (const k of want) {
+        keys.append(el('kbd', null, k));
+      }
+    }
+    copy.textContent = gate
+      ? 'Arrow keys move, Enter selects. A radio banks the quad. Any switch selects.'
+      : 'Arrow keys move, Enter selects, Escape goes back to Race or Freestyle. A radio banks the quad. Any switch selects.';
+  }
+
+  /*
    * The track record, and which world we are in. One call because they change
    * together: a freestyle map has no record to show and the title's subtitle
    * has to stop claiming a time trial.
@@ -7322,6 +7484,19 @@ export class Ui {
     out.push({ keys: [pad ? 'A' : 'Enter'], text: 'Choose' });
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
+    } else if (this.mode && !this.firstRun) {
+      /*
+       * The title answers Escape now: it reopens the Race or Freestyle
+       * gate, which is the only way to change mode without reloading. It is
+       * named rather than called Back, because Back on the front page reads
+       * like it leaves the game, and because a pilot looking for the other
+       * mode is looking for those two words.
+       *
+       * Not on the gate itself and not on the first run split: neither has
+       * anything behind it, and a legend offering a key that does nothing
+       * is worse than no legend.
+       */
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Race or Freestyle' });
     }
     return out;
   }
@@ -7541,6 +7716,44 @@ export class Ui {
     this.act(it.action);
   }
 
+  /*
+   * Seat a map: the one place a chosen world or track becomes the thing the
+   * next flight is in.
+   *
+   * It writes the setting, hands it to the shell, which is the side that
+   * swaps the world, and lands the pilot back where the choice was made
+   * from. The gate and both pickers go through here so none of them can
+   * leave the seat and the row that names it disagreeing.
+   */
+  seatMap(id) {
+    const m = MAPS.find((x) => x.id === id);
+    if (m && m.mode === 'freestyle') {
+      /* So the Map row names the place you were last in rather than the
+       * first in the registry, and so the gate can tell a pilot who has
+       * chosen a world from one who never has. */
+      this.settings.freestyleMap = id;
+    }
+    this.settings.map = id;
+    saveSettings(this.settings);
+    this.show(this.returnTo === 'paused' ? 'paused' : 'title');
+    if (this.onSettings) {
+      this.onSettings(this.settings);
+    }
+  }
+
+  /* Whether the seat is the kind of place the chosen mode flies in. Race
+   * needs a loaded track, freestyle needs one of the gateless worlds. A null
+   * mode is the gate itself, which has no Fly row to guard. */
+  seatMatchesMode() {
+    if (this.mode === 'freestyle') {
+      return Boolean(seatedFreestyleMap(this.settings));
+    }
+    if (this.mode === 'race') {
+      return this.settings.map === 'custom' && hasLoadedTrack();
+    }
+    return true;
+  }
+
   back() {
     if (this.dropEl) {
       this.closeDrop();
@@ -7549,7 +7762,23 @@ export class Ui {
       }
       return;
     }
-    if (this.screen === 'title' || this.screen === 'flight') {
+    if (this.screen === 'title') {
+      /* Escape from the menu is the way back to Race or Freestyle, and the
+       * only way to change mode without reloading the page, which is what
+       * makes the gate cheap to answer. The gate itself has nothing behind
+       * it, so Escape there stays the no-op the title has always been, and
+       * so does the first run split, which is a different question. */
+      if (this.mode && !this.firstRun) {
+        this.mode = null;
+        if (this.onUiSound) {
+          this.onUiSound('back');
+        }
+        this.setCursor(this.firstStop(this.items()));
+        this.renderMenu();
+      }
+      return;
+    }
+    if (this.screen === 'flight') {
       return;
     }
     if (this.onUiSound) {
@@ -7712,6 +7941,10 @@ export class Ui {
     if (action === 'firstflight' || action === 'skipfirst') {
       this.firstRun = false;
       saveSettings(this.settings);
+      /* The list under the cursor is about to be a different list: the gate,
+       * or the menu if a link already answered it. Two rows in, on a row
+       * that means something else now, is not where a pilot left it. */
+      this.setCursor(this.firstStop(this.items()));
       this.renderMenu();
       if (action === 'skipfirst') {
         return;
@@ -7844,6 +8077,53 @@ export class Ui {
       openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
       return;
     }
+    /*
+     * THE GATE'S TWO ROWS.
+     *
+     * Answering it is not only setting a flag. The seat has to agree with
+     * the answer or the Fly row on the next screen launches the other kind
+     * of thing entirely, which is the disagreement the old pair of rows
+     * lived with: a Freestyle row naming a world that was not seated, over
+     * a Fly that would have launched the track.
+     *
+     * So Race seats the loaded track, Freestyle seats the world the pilot
+     * last flew there, and either of them with nothing to seat opens its
+     * own picker, because choosing a place IS the question they have just
+     * asked and a menu row saying so would be a screen in the way.
+     */
+    if (action === 'mode-race' || action === 'mode-freestyle') {
+      this.mode = action === 'mode-race' ? 'race' : 'freestyle';
+      this.returnTo = 'title';
+      this.roomFrom = null;
+      if (this.mode === 'race') {
+        if (!hasLoadedTrack()) {
+          this.show('courses');
+          return;
+        }
+        if (this.settings.map !== 'custom') {
+          this.seatMap('custom');
+          return;
+        }
+      } else if (!seatedFreestyleMap(this.settings)) {
+        const want = MAPS.find((x) => x.id === this.settings.freestyleMap && x.mode === 'freestyle');
+        if (!want) {
+          /* A first freestyle visit chooses among the four with the cards
+           * in front of it, rather than being dropped into whichever one
+           * the registry happens to list first. */
+          this.show('freestyle');
+          return;
+        }
+        this.seatMap(want.id);
+        return;
+      }
+      /* The seat already agrees with the answer, so the gate was one
+       * keypress and the menu is behind it. Same list swap as above, so the
+       * cursor lands on Fly rather than two rows into a list that just
+       * changed underneath it. */
+      this.setCursor(this.firstStop(this.items()));
+      this.renderMenu();
+      return;
+    }
     if (action === 'howto' || action === 'pilot' || action === 'quad'
       || action === 'courses' || action === 'freestyle' || action === 'credits') {
       /*
@@ -7867,6 +8147,20 @@ export class Ui {
      * behaviour and launches directly: it has no clock, no lap, no ghost
      * and no board, so a card in front of it would be ceremony.
      */
+    /*
+     * FLY WITH NOTHING TO FLY.
+     *
+     * Reachable: answer Race, land in the track list because nothing is
+     * loaded, press Escape without choosing. The row above Fly says Choose
+     * one, and this is that row's answer given as a verb. Launching
+     * whatever happened to still be seated would be the front page saying
+     * one thing and the sim doing another.
+     */
+    if (action === 'fly' && !this.seatMatchesMode()) {
+      this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
+      this.show(this.mode === 'freestyle' ? 'freestyle' : 'courses');
+      return;
+    }
     if (action === 'fly' && seatIsRace(this.settings)) {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show('launch');
@@ -8055,20 +8349,10 @@ export class Ui {
      */
     if (action.startsWith('map:')) {
       const id = action.slice(4);
-      if (id && id !== 'custom') {
-      /* So the title's Freestyle row names the place you were last in
-       * rather than always the first in the list. */
-      this.settings.freestyleMap = id;
-    }
-    if (id === 'custom' && !hasLoadedTrack()) {
+      if (id === 'custom' && !hasLoadedTrack()) {
         return;
       }
-      this.settings.map = id;
-      saveSettings(this.settings);
-      this.show(this.returnTo === 'paused' ? 'paused' : 'title');
-      if (this.onSettings) {
-        this.onSettings(this.settings);
-      }
+      this.seatMap(id);
       return;
     }
     /* back() is the one implementation. This branch used to be a copy of

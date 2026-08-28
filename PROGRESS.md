@@ -20711,3 +20711,67 @@ now marks the entry count before each switch and asks only about the slice.
 Checks run this turn: `npm run lint:shell` (pass), `npm run lint:memory` (pass), the four forced
 failure routes read back from the live page, and `node scripts/shots.js`. `npm run verify` not run:
 nothing here touches physics, the plant, the module ABI or the build.
+
+---
+
+## 2026-08-28, shell: Race and Freestyle, and the frame around them
+
+Changed: the title splits into Race and Freestyle, a status bar and a command bar wrap every
+screen, and a row's shape now says what Enter will do.
+
+**Race and Freestyle, not Worlds and Tracks.** A pilot does not decide which category of location
+they want, they decide whether they are racing or just flying, so that is the first choice the title
+offers. The Race room holds only tracks; the four dressed worlds moved to a Freestyle room of their
+own. The split is a filter on STATION COUNT, which is the predicate `scene.js:5062` already uses (a
+designed course with no stations is freestyle, no lap and no gate HUD), and not on `MAPS[].mode`,
+which nothing but a debug hook reads and which would file a gateless published track under Race and
+then promise it a clock it cannot deliver.
+
+Freestyle deliberately has no launch card. Racing is a measured run and earns a moment to check what
+it is measured as; freestyle has no clock, no lap, no ghost and no board, so asking would be
+ceremony. It carries one readout instead: `SIM_ARCADE` is a plant flag and is not gated on race
+mode, so arcade changes a freestyle flight exactly as much as it changes a race, and nothing was
+saying so.
+
+**The frame.** One status bar with a breadcrumb and what is loaded, one command bar with the input
+legend and the screen's primary action, outside every screen so they occupy the same pixels on all
+of them. The legend prints the CURRENT device's glyphs rather than keyboard and pad at once, driven
+by `lastInput`, which handleKey and pollPad write. The bar's primary is bound to the screen's
+declared `primary: true` item and never to the focused row, because with it bound to the row, moving
+a mouse toward the button crosses every row on the way and changes what the button does before you
+reach it.
+
+The bench keeps its own chrome and drops the status bar: a breadcrumb over Betaflight yellow is
+decoration, the legend is not. The title drops it too, because a breadcrumb reading WEBFPV under a
+wordmark reading WEBFPV answers a question nobody asked, and its context chips land on the bug chip.
+
+**Row grammar.** `rowKind()` returns value, navigation, link or action, and the kind is a class so
+the signature is CSS rather than another branch. Navigation rows get a chevron, link rows an arrow
+glyph, value rows already carry their own control. Plus a `pointer: coarse` block that lifts every
+target to 44 px.
+
+**The double highlight is gone.** `.row-primary` painted a filled mint slab whether or not the
+cursor was on it, so the title showed Fly looking selected while the cursor sat three rows down on
+Track: two things looked selected and one of them answered Enter. The primary now reads as the
+primary without claiming the selection, and fills only when the cursor is actually on it.
+
+**What it cost, argued rather than hidden.** The two bars are 36 px and 44 px. Every scroller cap in
+the sheet is a hand tuned `vh` and seven say which window they were measured against, so they now
+subtract `--bars`; without that the Rates screen renders 52 px under its own bar at 1280x720. The
+check caught the cost immediately: settings, rates and pids each got 100 px worse. Two real
+recoveries followed. The bars came down from 48/52 to 36/44, and the per screen `hint` is now hidden
+because the command bar says the same thing in the same place on every screen and two legends is the
+noise the frame exists to remove. That left an 80 px net cost on the long screens and gave the title
+40 px back. The baseline is re-recorded at those numbers, deliberately: the frame is the design and
+80 px of list is what it costs. That is a trade written down, not a threshold moved to hide a
+regression. The title's own 116 px is the new Freestyle row, which is a row being added.
+
+Checks run: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30, `npm run lint:presets` 3 of 3,
+`node scripts/shots.js` on the title and the Freestyle room. `npm run verify` not run: nothing here
+touches physics, the plant, the module ABI or the build. `npm run lint:catalog` still fails
+identically with these changes stashed, wanting a vendor header not checked out in this container.
+
+**Still not built**, and named so the next person does not go looking: the launch card, one focus
+authority with roving tabindex, and stable ids on every item. The row grammar landed without them,
+which means Enter on a value row still calls `adjust(1)`. That is the reason the launch card is not
+here: five record-key rows above a green button under that rule is a trap.

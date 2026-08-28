@@ -84,6 +84,21 @@
         --mint: #7dffb4;
         --slate: #9db3c8;
         --deep: #141c16;
+        /*
+         * THE FRAME'S TWO BARS, as tokens rather than as numbers typed into
+         * seventeen places.
+         *
+         * Every scroller cap in this sheet is a hand tuned vh, and seven of
+         * them say in their own comments which window they were measured
+         * against. Adding a status bar and a command bar without telling
+         * those caps about it puts the Rates screen 52 px under its own bar
+         * at 1280x720, measured. So the caps subtract these, and a screen
+         * that hides a bar sets its own value to zero rather than fighting
+         * the cap.
+         */
+        --bar-top: 36px;
+        --bar-bot: 44px;
+        --bars: calc(var(--bar-top) + var(--bar-bot));
         --panel: #1a241c;
         --ink: rgba(12, 18, 14, 0.86);
         --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -306,7 +321,7 @@
       /* Eleven pause rows do not fit a phone held sideways. The modal list
          scrolls rather than running off the glass; thumbs already know how. */
       @media (max-height: 540px) {
-        .screen-modal .menu { max-height: 66vh; overflow-y: auto; }
+        .screen-modal .menu { max-height: calc(66vh - var(--bars)); overflow-y: auto; }
       }
 
       .banner.panel {
@@ -338,7 +353,8 @@
       .screen {
         position: absolute; inset: 0; pointer-events: none;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
-        padding: 4vh 6vw; box-sizing: border-box;
+        padding: calc(2vh + var(--bar-top)) 6vw calc(2vh + var(--bar-bot));
+        box-sizing: border-box;
         /* Enough scrim to read type over a bright valley, not enough to
            turn a warm afternoon into night. Forest-tinted, not navy. */
         background:
@@ -354,7 +370,7 @@
         justify-content: stretch;
         width: 100%;
         height: 100%;
-        padding: 4.5vh 4vw 3vh;
+        padding: 4.5vh 4vw calc(1.5vh + var(--bar-bot));
         background:
           linear-gradient(90deg, rgba(12, 18, 14, 0.78) 0%, rgba(12, 18, 14, 0.42) 26%, rgba(12, 18, 14, 0.08) 52%, rgba(12, 18, 14, 0.10) 100%),
           linear-gradient(180deg, rgba(12, 18, 14, 0.32) 0%, transparent 22%, transparent 64%, rgba(12, 18, 14, 0.38) 100%);
@@ -755,7 +771,7 @@
       .screen-title .menu { min-width: 0; width: 100%; margin-top: 0; background: rgba(16, 22, 17, 0.55); }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }
       .menu-scroll {
-        max-height: min(58vh, 34em);
+        max-height: min(calc(58vh - var(--bars)), 34em);
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: thin;
@@ -846,6 +862,75 @@
         text-transform: uppercase;
         color: #b7c4b0;
       }
+      /* ---- THE FRAME ---------------------------------------------------
+         Two bars outside every screen, in the same pixels on all of them.
+         Absolutely positioned and cleared by the screens' own padding, so a
+         bar can never render on top of a row. ------------------------------ */
+      .frame-top, .frame-bot {
+        position: absolute; left: 0; right: 0; z-index: 6;
+        display: flex; align-items: center; gap: 14px;
+        padding: 0 clamp(14px, 3vw, 34px);
+        pointer-events: none;
+      }
+      .frame-top { top: 0; height: var(--bar-top);
+        background: linear-gradient(180deg, rgba(8, 12, 9, 0.86), rgba(8, 12, 9, 0)); }
+      .frame-bot { bottom: 0; height: var(--bar-bot);
+        background: linear-gradient(0deg, rgba(8, 12, 9, 0.9), rgba(8, 12, 9, 0)); }
+      .frame-top[hidden], .frame-bot[hidden] { display: none; }
+      .frame-gap { flex: 1; }
+      .crumb {
+        display: flex; align-items: center; gap: 9px;
+        font-size: 11.5px; letter-spacing: 0.15em; text-transform: uppercase;
+      }
+      .crumb-sep { color: #4a5a52; }
+      .crumb-up { color: var(--slate); }
+      .crumb-here { color: var(--cream); }
+      .frame-context { display: flex; align-items: center; gap: 8px; }
+      .frame-chip {
+        display: flex; align-items: center; gap: 7px;
+        height: 26px; padding: 0 11px; border-radius: 3px;
+        background: rgba(20, 28, 22, 0.72);
+        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.13);
+        font-size: 12px; color: var(--slate); white-space: nowrap;
+      }
+      .frame-chip b { color: var(--cream); font-weight: 600; }
+      .frame-chip-key { color: var(--slate); }
+      .frame-legend { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; overflow: hidden; }
+      .frame-legend i {
+        display: flex; align-items: center; gap: 6px;
+        font-style: normal; font-size: 12.5px; color: var(--slate);
+      }
+      .frame-primary {
+        pointer-events: auto; font: inherit; font-size: 15px; font-weight: 700;
+        height: 36px; padding: 0 20px; border: 0; border-radius: 3px;
+        background: var(--mint); color: var(--deep); cursor: pointer;
+      }
+      .frame-primary[hidden] { display: none; }
+      .frame-primary:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+
+      /* ---- ROW GRAMMAR --------------------------------------------------
+         The kind of a row is visible before Enter is pressed. A value row
+         carries its control, a navigation row a chevron, a link row an
+         arrow. See rowKind() in src/ui/ui.js. ----------------------------- */
+      .row-nav::after {
+        content: "\203A"; margin-left: 10px; color: #55665e;
+        font-size: 19px; line-height: 1;
+      }
+      .row-nav.on::after { color: var(--sakura); }
+      .row-link::after {
+        content: "\2197"; margin-left: 10px; color: #55665e; font-size: 15px;
+      }
+      .row-link.on::after { color: var(--slate); }
+
+      /* Touch. Every target reaches 44 px on a coarse pointer, and the row
+         shrink below is removed there: on a phone the copy gets smaller, the
+         target never does. */
+      @media (pointer: coarse) {
+        .row, .drop-opt, .fc-tab { min-height: 44px; }
+        .step, .row-num { min-height: 44px; }
+        .frame-primary { height: 44px; }
+      }
+
       .row {
         display: flex; justify-content: space-between; align-items: center; gap: 16px;
         padding: 10px 22px 10px 28px; border-left: 4px solid transparent;
@@ -880,20 +965,34 @@
        * builder's own comments state is one green button per screen, so
        * there is exactly one of these in any list.
        */
+      /*
+       * TWO HIGHLIGHTS, ONE CURSOR.
+       *
+       * This used to paint a filled mint slab whether or not the cursor was
+       * on it, so the title screen showed Fly looking selected while the real
+       * cursor sat three rows down on Track. Two things looked selected and
+       * only one of them answered Enter. The primary now reads as the primary
+       * (mint type, a mint edge) without claiming the selection, and the
+       * command bar carries the filled button. Exactly one thing on any
+       * screen is filled mint, and it is never a row.
+       */
       .row-primary {
         margin: 4px 10px 8px;
         padding: 12px 18px;
         border-radius: 3px;
-        border-left: 0;
-        background: var(--mint);
-        color: var(--deep);
+        border-left: 3px solid transparent;
+        background: rgba(125, 255, 180, 0.10);
+        box-shadow: inset 0 0 0 1px rgba(125, 255, 180, 0.42);
+        color: var(--mint);
         font-weight: 700;
         letter-spacing: 0.02em;
       }
-      .row-primary .row-label { font-weight: 700; }
+      .row-primary .row-label { font-weight: 700; color: var(--mint); }
+      /* Selected, and only then, it fills. The cursor is the thing that
+         decides, which is the whole point. */
       .row-primary.on {
-        border-left: 0;
-        background: #a3ffca;
+        border-left-color: var(--sakura);
+        background: var(--mint);
         color: var(--deep);
         box-shadow: 0 0 0 2px rgba(243, 234, 212, 0.55);
       }
@@ -1017,7 +1116,7 @@
       .rates-num { color: var(--cream); }
       .rates-num-sep, .rates-num-unit { color: rgba(235, 230, 215, 0.6); font-weight: 500; }
       .rates-num[hidden], .rates-num-sep[hidden] { display: none; }
-      .screen-rates .menu-scroll { max-height: min(52vh, 30em); }
+      .screen-rates .menu-scroll { max-height: min(calc(52vh - var(--bars)), 30em); }
       /*
        * The PIDs screen wears .screen-rates as well as .screen-pids, ON
        * PURPOSE: it is the Rates screen's layout with bars where the curve
@@ -1168,7 +1267,7 @@
       }
       .drop-list {
         position: fixed; z-index: 20; pointer-events: auto;
-        max-height: min(280px, 46vh); overflow-y: auto;
+        max-height: min(280px, calc(46vh - var(--bars))); overflow-y: auto;
         padding: 6px 0; border-radius: 4px;
         background: rgba(16, 22, 17, 0.97);
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.28), 0 14px 32px rgba(0, 0, 0, 0.55);
@@ -1200,7 +1299,7 @@
           padding: 8px 14px 0; margin-top: 6px; text-align: center;
         }
         .rates-graph-wrap { height: clamp(140px, 20vh, 200px); }
-        .screen-rates .menu-scroll { max-height: 34vh; }
+        .screen-rates .menu-scroll { max-height: calc(34vh - var(--bars)); }
         /* The note moved under the list in this layout, so the hint no
            longer needs the full gap: at 900 by 760 the longest note pushed
            it three pixels below the fold. */
@@ -1216,7 +1315,7 @@
          rather than six and a half. */
       @media (max-height: 820px) {
         .rates-graph-wrap { height: clamp(118px, 16vh, 160px); }
-        .screen-rates .menu-scroll { max-height: 46vh; }
+        .screen-rates .menu-scroll { max-height: calc(46vh - var(--bars)); }
       }
       /* Shorter still, and the lede is the first thing to go: it is the one
          line here that the row notes already say in more detail. */
@@ -1229,7 +1328,11 @@
         .rates-graph-wrap { height: clamp(100px, 14vh, 140px); }
         .screen-rates .hint { margin-top: 8px; }
       }
-      .hint {
+      /* Superseded by the command bar, which says the same thing in the same
+         place on every screen. Kept in the DOM so the screens that build one
+         do not need surgery, and so a screen reader still finds the text. */
+      .hint { display: none; }
+      .hint-legacy {
         display: flex; align-items: center; gap: 12px;
         margin-top: 22px; min-height: 1.4em; max-width: 42em;
         font-size: 13px; color: rgba(235, 230, 215, 0.6); letter-spacing: 0.02em; text-align: center;
@@ -1379,7 +1482,7 @@
           width: 100%;
         }
         .screen-title .menu-scroll {
-          max-height: min(32vh, 14em);
+          max-height: min(calc(32vh - var(--bars)), 14em);
         }
         .screen-title .menu-help {
           position: absolute;
@@ -1436,7 +1539,7 @@
           font-size: clamp(28px, 8vh, 44px);
         }
         .screen-title .menu-scroll {
-          max-height: min(52vh, 11em);
+          max-height: min(calc(52vh - var(--bars)), 11em);
         }
         .screen-title .row {
           padding: 7px 18px 7px 22px;
@@ -2149,7 +2252,7 @@
       .results {
         min-width: 0; width: 100%;
         margin: 18px 0 0;
-        max-height: min(32vh, 16em);
+        max-height: min(calc(32vh - var(--bars)), 16em);
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: thin;
@@ -2231,7 +2334,7 @@
         min-width: 0; width: 100%; margin-top: 0;
         background: rgba(16, 22, 17, 0.55);
       }
-      .screen-results .menu-scroll { max-height: min(34vh, 16em); }
+      .screen-results .menu-scroll { max-height: min(calc(34vh - var(--bars)), 16em); }
       .screen-results .menu-help {
         position: absolute;
         left: 0; right: 0; bottom: 100%;

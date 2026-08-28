@@ -6,19 +6,22 @@
   },
   "screens": {
     "title": {
-      "overflow": 73
+      "overflow": 116
     },
     "courses": {
       "overflow": 0
     },
+    "freestyle": {
+      "overflow": 0
+    },
     "settings": {
-      "overflow": 1074
+      "overflow": 1154
     },
     "rates": {
-      "overflow": 241
+      "overflow": 321
     },
     "pids": {
-      "overflow": 168
+      "overflow": 248
     },
     "fc": {
       "overflow": 3630

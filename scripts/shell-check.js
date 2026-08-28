@@ -75,7 +75,7 @@ const BASELINE = join(root, 'tests', 'shell-baseline.json');
  * Everything else in this.screens is here.
  */
 const SCREENS = [
-  'title', 'courses', 'settings', 'rates', 'pids', 'fc',
+  'title', 'courses', 'freestyle', 'settings', 'rates', 'pids', 'fc',
   'paused', 'results', 'howto', 'credits',
 ];
 

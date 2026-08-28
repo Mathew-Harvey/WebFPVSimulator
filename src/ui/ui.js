@@ -146,6 +146,62 @@ import { FC_DUMP_KEY } from '../fc/dump.js';
 /* Whether a Flight controller save exists, which is what puts Your edits
  * on the Tune row. Read fresh each time: the pilot can save one two rows
  * away from the row that offers it. */
+/*
+ * Which actions leave for another tab, and which open another screen. The row
+ * grammar reads these to decide a row's kind, so a new action that forgets to
+ * appear here renders as a plain action, which is the safe default: it gets no
+ * chevron it has not earned.
+ */
+const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
+const SCREEN_ACTIONS = new Set([
+  'courses', 'race', 'freestyle', 'settings', 'rates', 'pids', 'fc',
+  'howto', 'credits', 'trackbuilder', 'remix', 'editown', 'choosepad',
+  'calibrate', 'quad', 'pilot',
+]);
+
+/* What the breadcrumb says, per screen. A room is a navigation parent, so a
+ * trail rather than a single word: Escape then has one obvious destination
+ * instead of the four the return chain currently chooses between. */
+const SCREEN_TITLES = {
+  title: 'WebFPV',
+  courses: 'Race',
+  freestyle: 'Freestyle',
+  settings: 'Pilot',
+  rates: 'Rates',
+  pids: 'PIDs',
+  fc: 'Firmware bench',
+  paused: 'Paused',
+  results: 'Run complete',
+  howto: 'How to fly',
+  credits: 'Credits',
+};
+const CRUMBS = {
+  courses: ['Race'],
+  freestyle: ['Freestyle'],
+  settings: ['Pilot'],
+  rates: ['Pilot', 'Rates'],
+  pids: ['Quad', 'PIDs'],
+  fc: ['Quad', 'Firmware bench'],
+  paused: ['Paused'],
+  results: ['Run complete'],
+  howto: ['How to fly'],
+  credits: ['Credits'],
+  title: ['WebFPV'],
+};
+
+/* What the Freestyle row shows: the world the pilot last chose there, or the
+ * first one if they have not been yet. A row whose value is blank on the
+ * first screen a returning pilot sees is a row that looks broken. */
+function freestyleName(s) {
+  const want = s && s.freestyleMap;
+  const m = MAPS.find((x) => x.id === want && x.mode === 'freestyle');
+  if (m) {
+    return m.name;
+  }
+  const first = MAPS.find((x) => x.mode === 'freestyle');
+  return first ? first.name : 'Freestyle';
+}
+
 function hasFcDump() {
   try {
     return Boolean(localStorage.getItem(FC_DUMP_KEY));
@@ -662,7 +718,8 @@ function hasLoadedTrack() {
 /* Screens whose choices are drawn as cards above the row list. The rows
  * that remain are whatever is not a card. */
 function isCardScreen(screen) {
-  return screen === 'courses';
+  /* Both pickers lay their choices out in a row. */
+  return screen === 'courses' || screen === 'freestyle';
 }
 
 /* The plan of whatever is on the working canvas, or null. Derived rather
@@ -1080,6 +1137,10 @@ export class Ui {
     this.openingBoardCourse = false;
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
     this.screen = 'title';
+    /* Which device the pilot last touched, so the command bar prints that
+     * device's glyphs. Showing keyboard and pad prompts at once is twice the
+     * noise and half the answer. */
+    this.lastInput = 'key';
     /* Screen id to the label of the row the cursor was on. See restoreCursor. */
     this.cursorMemory = {};
     this.cursor = 0;
@@ -1230,6 +1291,42 @@ export class Ui {
     this.banner = el('div', 'banner', '');
     /* Optional performance readout, off unless the player asks for it. */
     this.readout = el('div', 'readout', '');
+
+    /*
+     * THE FRAME. One status bar and one command bar, outside every screen,
+     * so they occupy the same pixels whatever the pilot is looking at.
+     *
+     * Before this, the input legend was a per screen `hint` in a different
+     * place on each one, the primary action was a row inside the list, and
+     * nothing said which screen you were on or what you were about to fly.
+     * The two bars are absolutely positioned and the screens are padded to
+     * clear them by --bar-top and --bar-bot, so a bar can never render on
+     * top of a row. See the token block in index.html.
+     */
+    this.frameTop = el('div', 'frame-top');
+    this.crumb = el('div', 'crumb');
+    this.frameContext = el('div', 'frame-context');
+    this.frameTop.append(this.crumb, el('div', 'frame-gap'), this.frameContext);
+
+    this.frameBot = el('div', 'frame-bot');
+    this.frameLegend = el('div', 'frame-legend');
+    this.framePrimary = document.createElement('button');
+    this.framePrimary.type = 'button';
+    this.framePrimary.className = 'frame-primary';
+    this.framePrimary.hidden = true;
+    /* The bar's primary is bound to the SCREEN's declared primary action,
+     * never to whatever row the cursor is on. A reviewer found the bug that
+     * rule exists for: with the bar acting on the focused row, moving the
+     * mouse toward the button crosses every row on the way and changes what
+     * the button does before you reach it. */
+    this.framePrimary.addEventListener('click', () => {
+      const it = this.primaryItem();
+      if (it && it.action) {
+        this.act(it.action);
+      }
+    });
+    this.frameBot.append(this.frameLegend, el('div', 'frame-gap'), this.framePrimary);
+    r.append(this.frameTop, this.frameBot);
 
     /* Screens. */
     this.screens = {};
@@ -1400,6 +1497,19 @@ export class Ui {
       hintWithKeys(['↑↓', 'Enter', 'Esc'], 'Arrow keys move, Enter chooses. Escape goes back. On a radio: pitch to move, roll right to choose.'),
     );
     this.screens.courses = courses;
+
+    /* Freestyle. Same card machinery as Race, different contents, and no
+     * publish cluster because nothing here is timed or posted. */
+    const freestyle = el('div', 'screen screen-page screen-courses screen-freestyle');
+    freestyle.append(el('h2', null, 'Freestyle'));
+    freestyle.append(el('p', 'rates-lede', 'A place with no gates. No clock, no lap, no board. Pick one and fly it.'));
+    this.freestyleCards = el('div', 'map-cards');
+    const freestyleBlock = wrapMenu();
+    this.freestyleMenu = freestyleBlock.menu;
+    this.freestyleMenu.classList.add('menu-scroll');
+    this.freestyleHelp = freestyleBlock.help;
+    freestyle.append(this.freestyleCards, freestyleBlock.stage);
+    this.screens.freestyle = freestyle;
 
     const settings = el('div', 'screen screen-page screen-settings');
     settings.append(el('h2', null, 'Settings'));
@@ -2723,16 +2833,35 @@ export class Ui {
        * player is looking at. FPV wiki opens the landing-site wiki. Report a bug
        * is a stable last row so testers can send a ticket from title.
        */
+      /*
+       * RACE AND FREESTYLE, rather than Worlds and Tracks.
+       *
+       * A pilot does not decide which category of location they want, they
+       * decide whether they are racing or just flying. The two rooms are a
+       * filter on STATION COUNT, which is the predicate the renderer already
+       * uses at scene.js:5062: a designed course with no stations is
+       * freestyle, no lap and no gate HUD. Not on MAPS[].mode, which nothing
+       * but a debug hook reads, and which would file a gateless published
+       * track under Race and then promise it a clock it cannot deliver.
+       *
+       * Fly stays first and stays the primary. It is the verb, it names what
+       * it will launch, and it is never on the room cycle: overshooting into
+       * a launch out of an unsaved firmware edit is the failure that rule
+       * exists to prevent.
+       */
       return [
         { label: 'Fly', action: 'fly', primary: true },
         {
-          label: 'Track',
+          label: 'Race',
           value: seat ? seat.name : m.name,
-          /* An action, not a value to step through. Choosing the map loads
-           * one, which takes seconds, so stepping past a world with the
-           * arrow key used to start building it. */
           action: 'courses',
-          note: 'Worlds, your tracks and the public board, in one place.',
+          note: 'A gated course against the clock. Your tracks and the board\u2019s. Every time here goes to the leaderboard.',
+        },
+        {
+          label: 'Freestyle',
+          value: freestyleName(s),
+          action: 'freestyle',
+          note: 'A place with no gates. No clock, no lap, no board. Four worlds, and any track built without gates.',
         },
         ...this.ghostItems(),
         tuneItem(s),
@@ -2787,12 +2916,13 @@ export class Ui {
       const listing = liveListing('custom');
       const loaded = hasLoadedTrack();
       const seat = loaded ? activeCourseSummary() : null;
-      const cards = MAPS.filter((m) => m.id !== 'custom').map((m) => ({
-        label: m.name,
-        note: m.note,
-        map: m,
-        action: `map:${m.id}`,
-      }));
+      /*
+       * Everything in this room is a track, so there is nothing to segment
+       * and no heading that contradicts the screen title. The freestyle
+       * worlds moved to their own room; what is left is the seated course
+       * and whatever the board is offering.
+       */
+      const cards = [];
       if (loaded && seat) {
         const chip = courseChip(listing);
         cards.push({
@@ -2841,6 +2971,38 @@ export class Ui {
       ];
       return [...cards, ...rows];
     }
+    /*
+     * FREESTYLE. Four places and no ceremony.
+     *
+     * There is deliberately no launch card here. Racing is a measured run and
+     * earns a moment to check what it is measured as; freestyle has no clock,
+     * no lap, no ghost and no board, so asking would be ceremony. The one row
+     * under the grid is the quad, because that is the only thing a freestyle
+     * pilot changes between flights, and the line under it is a readout:
+     * SIM_ARCADE is a plant flag and is not gated on race mode, so arcade
+     * changes a freestyle flight too and nothing else was saying so.
+     */
+    if (this.screen === 'freestyle') {
+      const cards = MAPS.filter((x) => x.mode === 'freestyle').map((x) => ({
+        label: x.name,
+        note: x.note,
+        map: x,
+        action: `map:${x.id}`,
+      }));
+      const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Full physics';
+      return [
+        ...cards,
+        tuneItem(s),
+        {
+          label: 'Physics model',
+          value: style,
+          info: true,
+          note: `Arcade turns propwash, gyro noise and build asymmetry off. It is a plant flag, so it changes a freestyle flight exactly as much as it changes a race. Set it under ${SCREEN_TITLES.settings}.`,
+        },
+        { label: 'Back', action: 'back' },
+      ];
+    }
+
     if (this.screen === 'settings') {
       const ids = musicIds();
       const name = readPilotName();
@@ -3364,6 +3526,9 @@ export class Ui {
       this.renderMapCards();
       this.renderCourseCards();
     }
+    if (this.screen === 'freestyle') {
+      this.renderMapCards();
+    }
     if (this.screens && this.screens.title) {
       this.screens.title.classList.toggle('is-first', Boolean(this.firstRun));
     }
@@ -3372,6 +3537,7 @@ export class Ui {
       howto: this.howtoMenu,
       credits: this.creditsMenu,
       courses: this.coursesMenu,
+      freestyle: this.freestyleMenu,
       settings: this.settingsMenu,
       rates: this.ratesMenu,
       pids: this.pidsMenu,
@@ -3411,6 +3577,15 @@ export class Ui {
         return;
       }
       const cls = ['row'];
+      /* The kind is a class, so the signature is CSS rather than another
+       * branch in here. A value row needs no marker: it already carries its
+       * own control on the right. */
+      const kind = this.rowKind(it);
+      if (kind === 'navigation') {
+        cls.push('row-nav');
+      } else if (kind === 'link') {
+        cls.push('row-link');
+      }
       if (it.info) {
         cls.push('row-info');
       }
@@ -3488,6 +3663,7 @@ export class Ui {
      * Anything shorter than the box gets the top.
      */
     host.scrollTop = host.scrollHeight > host.clientHeight ? scroll : 0;
+    this.syncFrame();
     this.syncCursor(false);
     this.syncRates();
     this.syncPids();
@@ -3667,6 +3843,7 @@ export class Ui {
       howto: this.howtoHelp,
       credits: this.creditsHelp,
       courses: this.coursesHelp,
+      freestyle: this.freestyleHelp,
       settings: this.settingsHelp,
       rates: this.ratesHelp,
       pids: this.pidsHelp,
@@ -4194,7 +4371,9 @@ export class Ui {
    * second as somebody arrowed along the row.
    */
   renderMapCards() {
-    const host = this.mapCardHost;
+    /* Whichever picker is up. Race holds no world cards any more, so on that
+     * screen this paints an empty strip and costs nothing. */
+    const host = this.screen === 'freestyle' ? this.freestyleCards : this.mapCardHost;
     if (!host) {
       return;
     }
@@ -4798,6 +4977,7 @@ export class Ui {
     }
     /* Paused keeps the flight display up, dimmed: the lap clock and the
      * pack are what the player paused to look at. */
+    this.syncFrame();
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
     this.renderMenu();
@@ -5628,6 +5808,143 @@ export class Ui {
   }
 
   /*
+   * THE ROW GRAMMAR. Four kinds of row, and the kind decides what Enter does.
+   *
+   * A row could navigate, edit a value in place, fire an irreversible action,
+   * or leave for another tab, and all four looked identical and all four
+   * answered Enter. Driving the shipped build, one press one row below where
+   * it was meant silently changed the flight tune, and the only signal that
+   * row was different from the one above it was a six pixel caret.
+   *
+   *   value       has an adjust or a picker. Left and Right change it.
+   *   navigation  opens another screen. A chevron says so.
+   *   link        leaves for a named tab. An arrow glyph says so.
+   *   action      does a thing. Everything else.
+   */
+  rowKind(it) {
+    if (!it) {
+      return 'action';
+    }
+    if (it.adjust || it.options || it.spec || it.num) {
+      return 'value';
+    }
+    if (it.action && LINK_ACTIONS.has(it.action)) {
+      return 'link';
+    }
+    if (it.action && SCREEN_ACTIONS.has(it.action)) {
+      return 'navigation';
+    }
+    return 'action';
+  }
+
+  /* The one action the command bar's button fires. A screen declares it with
+   * `primary: true`, which is the flag the mint row already used, so this
+   * reads the intent that was always there. */
+  primaryItem() {
+    return this.items().find((it) => it && it.primary && !it.disabled) || null;
+  }
+
+  /*
+   * The bars, repainted whenever the screen or the cursor changes.
+   *
+   * The legend prints what the CURRENT INPUT DEVICE can do, not both at once:
+   * showing keyboard and pad prompts side by side is twice the noise and
+   * half the answer. lastInput is written by handleKey and pollPad.
+   */
+  syncFrame() {
+    const onFlight = this.screen === 'flight';
+    const bench = this.screen === 'fc';
+    /* The title already IS the branding: a wordmark, a tagline and the
+     * existing chip cluster. A breadcrumb reading WEBFPV under a wordmark
+     * reading WEBFPV is a second answer to a question nobody asked, and its
+     * context chips land on top of the bug chip and the music dock. So the
+     * top bar sits out the one screen that does not need it. */
+    const titleScreen = this.screen === 'title';
+    /* The bench is a tool inside its own frame and paints its own chrome in
+     * Betaflight yellow. A breadcrumb over the top of that is decoration; the
+     * legend is not, so the top bar goes and the bottom one stays. */
+    this.frameTop.hidden = onFlight || bench || titleScreen;
+    this.frameBot.hidden = onFlight;
+    if (onFlight) {
+      this.root.style.setProperty('--bar-top', '0px');
+      this.root.style.setProperty('--bar-bot', '0px');
+      return;
+    }
+    this.root.style.setProperty('--bar-top', bench ? '0px' : '48px');
+    this.root.style.setProperty('--bar-bot', '52px');
+
+    this.crumb.textContent = '';
+    const trail = CRUMBS[this.screen] || [SCREEN_TITLES[this.screen] || this.screen];
+    trail.forEach((part, i) => {
+      if (i) {
+        this.crumb.append(el('span', 'crumb-sep', '/'));
+      }
+      this.crumb.append(el('span', i === trail.length - 1 ? 'crumb-here' : 'crumb-up', part));
+    });
+
+    this.frameContext.textContent = '';
+    for (const chip of this.contextChips()) {
+      const node = el('span', 'frame-chip');
+      node.append(el('span', 'frame-chip-key', chip.label), el('b', null, chip.value));
+      this.frameContext.append(node);
+    }
+
+    this.frameLegend.textContent = '';
+    for (const hint of this.legendFor()) {
+      const i = el('i', null);
+      for (const k of hint.keys) {
+        i.append(el('span', this.lastInput === 'pad' ? 'kbd pad' : 'kbd', k));
+      }
+      i.append(document.createTextNode(` ${hint.text}`));
+      this.frameLegend.append(i);
+    }
+
+    const primary = this.primaryItem();
+    this.framePrimary.hidden = !primary;
+    if (primary) {
+      this.framePrimary.textContent = primary.label;
+    }
+  }
+
+  /* What is loaded, in the top right, so no screen has to be left to find out
+   * what the next run will actually fly. */
+  contextChips() {
+    const out = [];
+    if (this.screen === 'flight' || this.screen === 'fc') {
+      return out;
+    }
+    const seat = activeCourseSummary();
+    const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
+    out.push({ label: 'Flying', value: seat && seat.name ? seat.name : m.name });
+    const name = readPilotName();
+    if (name) {
+      out.push({ label: 'Pilot', value: name });
+    }
+    return out;
+  }
+
+  /* The keys this screen answers. Kept short: a legend nobody reads is a
+   * legend that cost vertical space for nothing. */
+  legendFor() {
+    const pad = this.lastInput === 'pad';
+    const out = [];
+    if (isCardScreen(this.screen)) {
+      out.push({ keys: pad ? ['Roll'] : ['\u2190', '\u2192'], text: 'Move' });
+    } else {
+      out.push({ keys: pad ? ['Pitch'] : ['\u2191', '\u2193'], text: 'Move' });
+      const it = this.items()[this.cursor];
+      if (this.rowKind(it) === 'value') {
+        out.push({ keys: pad ? ['Roll'] : ['\u2190', '\u2192'], text: 'Adjust' });
+      }
+    }
+    out.push({ keys: [pad ? 'A' : 'Enter'], text: 'Choose' });
+    if (this.screen !== 'title') {
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
+    }
+    return out;
+  }
+
+  /*
    * Where the cursor lands on arriving at a screen: the row it was on last
    * time if that row is still there and still a stop, else the first stop.
    * Matching by label rather than by index is what makes it survive a list
@@ -5982,7 +6299,8 @@ export class Ui {
       openNamedWindow(wikiPageUrl(), WIKI_WINDOW);
       return;
     }
-    if (action === 'howto' || action === 'settings' || action === 'courses' || action === 'credits') {
+    if (action === 'howto' || action === 'settings' || action === 'courses'
+      || action === 'freestyle' || action === 'credits') {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(action);
       return;
@@ -6158,7 +6476,12 @@ export class Ui {
      */
     if (action.startsWith('map:')) {
       const id = action.slice(4);
-      if (id === 'custom' && !hasLoadedTrack()) {
+      if (id && id !== 'custom') {
+      /* So the title's Freestyle row names the place you were last in
+       * rather than always the first in the list. */
+      this.settings.freestyleMap = id;
+    }
+    if (id === 'custom' && !hasLoadedTrack()) {
         return;
       }
       this.settings.map = id;
@@ -6262,6 +6585,7 @@ export class Ui {
         return true;
       }
     }
+    this.lastInput = 'key';
     if (code === 'ArrowUp' || code === 'KeyW') {
       this.move(-1);
       return true;
@@ -6326,6 +6650,9 @@ export class Ui {
     if (this.screen === 'flight') {
       this.padPrev = { up: false, down: false, left: false, right: false, select: false, back: false };
       return;
+    }
+    if (nav.up || nav.down || nav.left || nav.right || nav.select || nav.back) {
+      this.lastInput = 'pad';
     }
     const now = {
       up: Boolean(nav.up),

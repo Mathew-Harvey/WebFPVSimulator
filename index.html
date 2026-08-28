@@ -1308,6 +1308,20 @@
         background: #2a2a2a; box-shadow: inset 0 0 0 1px #5a5a5a; color: #fff;
       }
       .screen-fc .row-num:focus { box-shadow: inset 0 0 0 1px var(--bf-accent); }
+      /*
+       * The bench's search field. AFTER .row-num, deliberately: it shares
+       * that class for the palette and the focus ring, and .row-num sets
+       * width: 5ch, which is right for a filter cutoff and useless for a
+       * key name. Source order is what overrides it, both being one class
+       * deep, and the first draft put these rules above it and got a five
+       * character box nobody could see what they had typed in.
+       */
+      .row-search { flex: 1 1 auto; min-width: 0; }
+      .row-textfield {
+        width: 100%; min-width: 8em; text-align: left;
+        font-variant-numeric: normal; letter-spacing: 0.01em;
+      }
+      .row-textfield::placeholder { color: #9a9a9a; opacity: 1; }
       .drop-btn {
         appearance: none; border: 0; background: transparent;
         color: var(--sakura); font: inherit; font-size: 0.86em;

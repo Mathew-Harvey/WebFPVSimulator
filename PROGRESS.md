@@ -21077,3 +21077,91 @@ Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
 `npm run lint:presets` 3 of 3, and the three deliberate breaks above.
 `npm run verify` not run: nothing here touches physics, the plant, the module ABI
 or the build, and it was run in full on the previous commit in this session.
+
+---
+
+## 2026-08-28, bench: it can be searched, and the help says something
+
+Changed: `/` searches every firmware key across every tab, a switch shows only
+what the draft has changed, and the help column stopped reading the key name back
+at the pilot.
+
+**The help column was repeating the row label.** `fieldNote()` ended in a bare
+return of `field.key`, so beside 115 typed rows the one column everybody praises
+about this product said "p_roll" next to a row labelled p_roll. The sweep now
+covers five tabs and 324 rows and reports 99 offenders when that line is put back.
+
+`src/fc/keynotes.js` holds the sentences. They live there and not in the catalog
+because the catalog is generated from vendored Betaflight source and a
+hand-written sentence would be wiped by the next `npm run gen:catalog`. Two rules,
+and the second matters more: a sentence says the CONSEQUENCE rather than the
+expansion, "how hard it corrects the error it can see right now" rather than
+"proportional gain"; and nothing claims a meaning it cannot back. Where no
+sentence has been written the fallback states only what the catalog knows, the
+range and the units, and says so. That is duller than an invented explanation and
+is exactly why it is preferred: a wrong sentence about a filter cutoff costs a
+pilot an evening.
+
+**Search is a mode, not a text box in the list.** The sidebar is 23 flat tabs with
+no grouping and no cross-tab search, so a pilot who has read a guide naming
+`failsafe_procedure` has to know which tab Betaflight files it under before they
+can find out this build does not have it. `/` turns the body into results across
+every tab, Escape leaves search before it leaves the bench, and Tab, Page and Walk
+every key are not offered while it is on, because all three are about a tab and
+search exists to make the tab not matter.
+
+Ranking, and the change the screenshot forced. The first cut ranked exact, then
+prefix, then substring, then shorter first. Driving it, `gyro` put seven bus and
+alignment keys the sim has no hardware for above `gyro_lpf1_type`, which is what
+somebody searching for gyro almost certainly wants. Live keys now sort above dead
+ones, above everything else, which is the same ordering `visibleFields` already
+applies inside a tab. The dead ones stay in the list underneath, because finding
+out a key is missing is an answer too.
+
+Capped at 60 with an honest line underneath saying how many more matched.
+Pretending the rest do not exist is the kind of lie that makes a pilot conclude a
+key is not there.
+
+**Its own control, not the typed number row's.** That one commits on blur, carries
+stepper arrows and declares a decimal input mode, all three wrong for a name being
+typed a letter at a time. `makeSearch` debounces at 120 ms, because a full
+teardown render of the bench is about 57 ms and typing `failsafe` would otherwise
+be eight renders, and it carries the caret across the rebuild by hand rather than
+letting the browser drop it to the end. Up, Down and Enter walk into the results;
+everything else is stopped from reaching the menu, because `d` is ArrowRight on
+this shell and would adjust a row mid-word.
+
+**Show only what I changed.** A pilot ten minutes into an edit had no way to see
+what Save was about to write except by walking every tab, and Save says only how
+many. Offered only when there is something to show, so it is not a permanent row
+reading Off forever.
+
+**What went wrong.** Two things, both caught by looking at the screen rather than
+at the numbers.
+
+- The search field rendered five characters wide and invisible. It shares
+  `.row-num` for the palette and the focus ring, and that rule sets `width: 5ch`,
+  which is right for a filter cutoff. My override was ABOVE it in the sheet and
+  both are one class deep, so source order gave the win to 5ch. Moved below, with
+  a comment saying why it has to stay there.
+- `modifiedKeys()` first called `cliMapCached(this.snapshot)`. That method takes
+  no argument and always parses the draft, so it was comparing the draft with
+  itself and reporting nothing modified, ever.
+
+Also: the shell check's own bench blocks left the bench on a different tab than
+they found it on, which moved the reported id count between runs for no product
+reason. They put it back now.
+
+**Deliberate breaks, read back.** Restoring `return field.key` reports "99 of 324
+rows have help that is empty or just the key name". Making the cap report its own
+truncated length as the total reports "a search matching more than it shows does
+not say so (60 rows)".
+
+Also looked at, at 1600x900 in headless Chromium: the bench, and search driven by
+real keystrokes, `/` then f, a, i, l, which reaches the field and returns
+`failsafe_procedure` among 9 matches across every tab.
+
+Checks run this turn: `npm run lint:shell` PASS, `npm run lint:fc` 30 of 30,
+`npm run lint:presets` 3 of 3, and the two deliberate breaks above.
+`npm run verify` not run: nothing here touches physics, the plant, the module ABI
+or the build.

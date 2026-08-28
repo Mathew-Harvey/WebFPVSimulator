@@ -43,6 +43,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { keyNote, hasKeyNote } from '../fc/keynotes.js';
 import { normaliseRates, RATE_DEFAULTS } from '../../configs/rates.js';
 import { TUNES, tunePath } from '../../configs/registry.js';
 import {
@@ -70,6 +71,11 @@ import {
 /* Configurator's tab list from the catalog, minus CLI: pasting a dump is
  * the one door the owner asked to keep shut. */
 const TABS_SHOWN = TABS.filter((t) => t.id !== 'cli');
+
+/* Measured, not chosen: a full teardown render of 690 rows costs about 57 ms
+ * per keystroke on this container. Sixty results is a screenful and a half
+ * and renders inside a frame. See `this.search` in the constructor. */
+const SEARCH_CAP = 60;
 
 const PID_PAGES = [
   { id: 'pid', label: 'PID Profile Settings' },
@@ -212,7 +218,13 @@ function fieldNote(field, session) {
   if (field.key.startsWith('simplified_')) {
     return 'Writes the slider, then simplified_tuning apply, then any expert lines below it. Betaflight does the math. The PIDs screen drives the same sliders with fewer steps.';
   }
-  return field.key;
+  /*
+   * This used to be `return field.key`, so the help column beside 115 typed
+   * rows read the key name back at a pilot who had just moved the cursor
+   * onto a row labelled with that key name. See src/fc/keynotes.js, which
+   * also explains why the sentences do not live in the generated catalog.
+   */
+  return keyNote(field);
 }
 
 function ratesForCompose(draft) {
@@ -243,6 +255,35 @@ export class FcSession {
      * explain what the greyed keys are.
      */
     this.walkAll = false;
+    /*
+     * SEARCH, and the reason it is a mode this screen owns rather than a
+     * text field in the list.
+     *
+     * The sidebar is 23 flat tabs with no grouping and no cross-tab search,
+     * which is a memory test: a pilot who has read a guide naming
+     * `failsafe_procedure` has to know which tab Betaflight files it under
+     * before they can go and find out that this build does not have it.
+     * Travel is one arrow press per row and there are 696 keys.
+     *
+     * A field inside the scrolling list would take the cursor with it and
+     * fight the arrow keys, which is the same mistake as putting Save in
+     * the list. This is a mode: `/` turns the whole body into results
+     * across every tab, Escape leaves it, and the arrow keys keep meaning
+     * what they meant.
+     *
+     * CAPPED, honestly. A full teardown render of 690 rows costs about
+     * 57 ms per keystroke on this container, which is a menu that feels
+     * broken. So results stop at SEARCH_CAP and the row underneath says how
+     * many more there were, rather than quietly pretending the rest do not
+     * exist.
+     */
+    this.search = null;
+    /*
+     * SHOW ONLY WHAT I CHANGED. The other half of the same problem: a pilot
+     * who has been editing for ten minutes has no way to see what they are
+     * about to save except by walking every tab.
+     */
+    this.onlyModified = false;
     this.confirm = null;
     this.presetId = '';
     this.motorDuty = [0, 0, 0, 0];
@@ -446,6 +487,71 @@ export class FcSession {
 
     const tab = TABS_SHOWN.find((t) => t.id === this.tab) ?? TABS_SHOWN[0];
     const rows = [];
+
+    /*
+     * SEARCH REPLACES THE TAB STRIP while it is on, because the whole point
+     * of it is that a pilot does not have to know which of 23 tabs
+     * Betaflight files a key under. Tab, Page and Walk every key are all
+     * about a tab, so none of them is offered here.
+     */
+    if (this.search != null) {
+      const found = this.searchHits(this.search);
+      rows.push({
+        label: 'Search',
+        key: 'fc-search',
+        note: this.search
+          ? `${found.total} key(s) match, across every tab. Escape leaves search and puts you back on ${tab.label}.`
+          : 'Type part of a key name. It looks across every tab, including the ones this build does not implement, because knowing a key is missing is an answer too. Escape leaves search.',
+        /*
+         * Its own control, not the typed number row's. That one commits on
+         * blur, carries stepper arrows and declares a decimal input mode,
+         * and all three are wrong for a name being typed a letter at a
+         * time. See makeSearch in ui.js.
+         */
+        text: { value: this.search, placeholder: 'part of a key name' },
+        onText: (v) => { this.search = String(v == null ? '' : v); },
+      });
+      if (!this.search) {
+        rows.push({
+          label: 'Nothing typed yet',
+          info: true,
+          disabled: true,
+          rowClass: 'row-grey',
+          note: 'Every key in the catalog is still here under its own tab. Escape leaves search.',
+        });
+        return rows;
+      }
+      if (!found.total) {
+        rows.push({
+          label: `No key contains "${this.search}"`,
+          info: true,
+          disabled: true,
+          rowClass: 'row-grey',
+          note: 'Not in Betaflight 4.5.1 under that spelling, and not in this build either. Betaflight renames keys between versions, so a name from an older guide may be spelled differently now.',
+        });
+        return rows;
+      }
+      for (const field of found.hits) {
+        rows.push(this.fieldItem(field, false));
+      }
+      if (found.total > found.hits.length) {
+        /*
+         * The honest line. A full teardown render of 690 rows costs about
+         * 57 ms per keystroke, so the cap is real; pretending the rest do
+         * not exist would be the kind of lie that makes a pilot conclude
+         * the key is missing.
+         */
+        rows.push({
+          label: `${found.total - found.hits.length} more not shown`,
+          info: true,
+          disabled: true,
+          rowClass: 'row-grey',
+          note: `${found.total} keys match and the first ${found.hits.length} are listed, because rendering all of them costs about 57 ms per keystroke. Type more of the name to narrow it.`,
+        });
+      }
+      return rows;
+    }
+
     rows.push({
       label: 'Tab',
       note: tab.grey ? tab.reason : 'Configurator tabs. Grey tabs can be read, not edited.',
@@ -476,6 +582,28 @@ export class FcSession {
         note: this.walkAll
           ? `Up and Down stop on all ${skipped} key(s) this build does not implement, so their reason can be read. Off makes the arrows travel only the live rows.`
           : `Up and Down skip the ${skipped} key(s) this build does not implement. Turn this on to walk them and read why each one is missing. They are still on screen either way.`,
+      });
+    }
+
+    /*
+     * SHOW ONLY WHAT I CHANGED. A pilot ten minutes into an edit had no way
+     * to see what they were about to save except by walking every tab, and
+     * Save says only how many. Offered only when there is something to
+     * show, so it is not a permanent row that reads Off forever.
+     */
+    const changedCount = this.modifiedKeys().size;
+    if (changedCount > 0 || this.onlyModified) {
+      rows.push({
+        label: 'Only what I changed',
+        sw: true,
+        on: this.onlyModified,
+        value: this.onlyModified ? 'On' : 'Off',
+        current: this.onlyModified,
+        adjust: (d) => { this.onlyModified = d > 0; },
+        flip: () => { this.onlyModified = !this.onlyModified; },
+        note: this.onlyModified
+          ? `Showing only the ${changedCount} key(s) this draft has moved off the dump it opened with. Every tab still has the rest.`
+          : `${changedCount} key(s) differ from the dump this screen opened with. Turn this on to see exactly what Save is about to write, tab by tab.`,
       });
     }
 
@@ -725,7 +853,69 @@ export class FcSession {
     return rows;
   }
 
+  /*
+   * Every key whose name matches, across every tab, ranked so an exact hit
+   * comes first and a prefix beats a substring. Betaflight key names are
+   * long and share stems, so `d_min` has to put `d_min_roll` above
+   * `simplified_d_min_ratio` or the search is worse than the tabs.
+   */
+  searchHits(query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) {
+      return { hits: [], total: 0 };
+    }
+    const scored = [];
+    for (const f of FIELDS) {
+      if (f.key.startsWith('#')) {
+        continue;
+      }
+      const k = f.key.toLowerCase();
+      const at = k.indexOf(q);
+      if (at < 0) {
+        continue;
+      }
+      /* 0 exact, 1 prefix, 2 anywhere. Then shorter first, so the plain
+       * key outranks the one with three more words on the end. */
+      const rank = k === q ? 0 : (at === 0 ? 1 : 2);
+      /*
+       * LIVE KEYS FIRST, above the rank, because a key this build does not
+       * implement cannot be changed and a key it does can. Searching `gyro`
+       * put seven bus and alignment keys the sim has no hardware for above
+       * gyro_lpf1_type, which is the one a pilot searching for gyro almost
+       * certainly wants. The dead ones stay in the list, underneath, since
+       * finding out a key is missing is an answer too. It is the same
+       * ordering visibleFields already applies inside a tab.
+       */
+      scored.push({ f, live: fieldEnabled(f) ? 0 : 1, rank, len: k.length });
+    }
+    scored.sort((a, b) => a.live - b.live || a.rank - b.rank || a.len - b.len
+      || (a.f.key < b.f.key ? -1 : 1));
+    return { hits: scored.slice(0, SEARCH_CAP).map((x) => x.f), total: scored.length };
+  }
+
+  /* Which keys the draft has moved off the snapshot it opened with. The
+   * same comparison `dirty()` makes, per key rather than in bulk. */
+  modifiedKeys() {
+    /* cliMapCached takes no argument: it always parses the draft, and its
+     * cache is keyed on the draft text. The snapshot has to go through
+     * cliMap directly or this would compare the draft with itself. */
+    const now = this.cliMapCached();
+    const was = cliMap(this.snapshot);
+    const out = new Set();
+    for (const [k, v] of now) {
+      if (String(was.get(k) ?? '') !== String(v ?? '')) {
+        out.add(k);
+      }
+    }
+    return out;
+  }
+
   visibleFields() {
+    /* Search replaces the tab entirely: the whole point is that it does not
+     * matter which tab Betaflight files a key under. */
+    if (this.search) {
+      return this.searchHits(this.search).hits;
+    }
     let list = tabFields(this.tab);
     if (this.tab === 'pid') {
       list = list.filter((f) => f.page === this.page);
@@ -754,7 +944,12 @@ export class FcSession {
     }
     const page = this.tab === 'pid' ? this.page : '';
     enabled.sort((a, b) => fieldRank(a, page) - fieldRank(b, page));
-    return enabled.concat(grey);
+    const all = enabled.concat(grey);
+    if (this.onlyModified) {
+      const changed = this.modifiedKeys();
+      return all.filter((f) => changed.has(f.key));
+    }
+    return all;
   }
 
   fieldItem(field, tabGrey) {

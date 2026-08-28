@@ -417,6 +417,117 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
+   * THE BENCH CAN BE SEARCHED, AND THE HELP SAYS SOMETHING.
+   *
+   * 696 keys across 23 flat tabs with no grouping and no cross-tab search
+   * is a memory test: a pilot who has read a guide naming a key has to know
+   * which tab Betaflight files it under before they can find it. And
+   * fieldNote() ended in a bare return of field.key, so the help column beside 115
+   * typed rows read the key name back at somebody looking at a row labelled
+   * with that key name.
+   */
+  try {
+    ui.show('fc');
+    const startTab = ui.fc.tab;
+    ui.fc.search = 'failsafe_procedure';
+    let rows = ui.items();
+    const exact = rows.find((it) => it && it.key === 'failsafe_procedure');
+    const foundAcrossTabs = Boolean(exact) && ui.fc.tab === startTab;
+
+    /* Ranking: an exact hit and a prefix hit must beat a substring. */
+    ui.fc.search = 'd_min';
+    rows = ui.items();
+    const keys = rows.filter((it) => it && it.key && it.key !== 'fc-search').map((it) => it.key);
+    const firstIsPrefix = Boolean(keys.length) && keys[0].startsWith('d_min');
+
+    /* The cap has to be honest: a search that matches more than it shows
+     * must say so, or a pilot concludes the key is not there. */
+    ui.fc.search = '_';
+    rows = ui.items();
+    const moreLine = rows.find((it) => it && /more not shown/.test(String(it.label || '')));
+    const shown = rows.filter((it) => it && it.key && it.key !== 'fc-search').length;
+
+    /* A miss says so rather than showing an empty list. */
+    ui.fc.search = 'zzzz_not_a_key';
+    rows = ui.items();
+    const missLine = rows.find((it) => it && /No key contains/.test(String(it.label || '')));
+
+    ui.fc.search = null;
+    ui.items();
+    out.benchSearch = {
+      foundAcrossTabs,
+      firstIsPrefix,
+      capped: Boolean(moreLine) && shown <= 60,
+      shown,
+      saysMiss: Boolean(missLine),
+      tabRestored: ui.fc.tab === startTab,
+    };
+  } catch (e) {
+    out.benchSearch = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * NO HELP TEXT REPEATS ITS OWN ROW LABEL. Swept over every typed row on
+   * every tab rather than spot checked, because the defect was a fallthrough
+   * that covered 115 of them at once.
+   */
+  try {
+    const offenders = [];
+    let checked = 0;
+    ui.show('fc');
+    const startTab = ui.fc.tab;
+    ui.fc.walkAll = true;
+    for (const tab of ['setup', 'configuration', 'pid', 'receiver', 'motors']) {
+      ui.fc.setTab(tab);
+      for (const it of ui.items()) {
+        if (!it || !it.key || it.key === 'fc-search') { continue; }
+        checked += 1;
+        const note = String(it.note || '').trim();
+        if (!note || note === it.key || note === it.label) {
+          offenders.push(tab + ':' + it.key);
+        }
+      }
+    }
+    ui.fc.walkAll = false;
+    ui.fc.setTab(startTab);
+    out.benchHelp = { checked, offenders };
+  } catch (e) {
+    out.benchHelp = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
+   * SHOW ONLY WHAT I CHANGED. A pilot ten minutes into an edit had no way
+   * to see what Save is about to write except by walking every tab.
+   */
+  try {
+    ui.show('fc');
+    const wasTab = ui.fc.tab;
+    ui.fc.setTab('pid');
+    const before = ui.fc.modifiedKeys().size;
+    ui.fc.setValue('p_roll', String(Number(ui.fc.cliValue('p_roll') || 0) + 3));
+    const after = ui.fc.modifiedKeys().size;
+    ui.fc.onlyModified = true;
+    const rows = ui.items().filter((it) => it && it.key && it.key !== 'fc-search');
+    const onlyTheOne = rows.length === 1 && rows[0].key === 'p_roll';
+    ui.fc.onlyModified = false;
+    ui.fc.discard();
+    const cleaned = ui.fc.modifiedKeys().size;
+    /* Put the bench back on the tab it was found on. Leaving it elsewhere
+     * changes how many rows the id sweep below counts, which made the
+     * reported total move between runs for no product reason. */
+    ui.fc.setTab(wasTab);
+    out.benchModified = {
+      startedClean: before === 0,
+      sawTheEdit: after === 1,
+      onlyTheOne,
+      rows: rows.length,
+      discardClears: cleaned === 0,
+    };
+  } catch (e) {
+    out.benchModified = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /*
    * THE LAUNCH CARD IS FOR A MEASURED RUN, and only for one.
    *
    * Freestyle has no clock, no lap, no ghost and no board, so a card asking
@@ -939,6 +1050,56 @@ async function main() {
         `two item popups: ${b.noTinyPopups.offenders.length} row(s) still open a menu to answer`
         + ` yes or no: ${b.noTinyPopups.offenders.slice(0, 5).join(', ')}`,
       );
+    }
+
+    if (!b.benchSearch || b.benchSearch.error) {
+      failures.push(`bench search: ${b.benchSearch ? b.benchSearch.error : 'no result'}`);
+    } else {
+      const bs = b.benchSearch;
+      if (!bs.foundAcrossTabs) {
+        failures.push('bench search: failsafe_procedure is not findable without knowing its tab');
+      }
+      if (!bs.firstIsPrefix) {
+        failures.push('bench search: a prefix hit does not rank above a substring hit');
+      }
+      if (!bs.capped) {
+        failures.push(`bench search: a search matching more than it shows does not say so (${bs.shown} rows)`);
+      }
+      if (!bs.saysMiss) {
+        failures.push('bench search: a search that matches nothing shows an empty list rather than saying so');
+      }
+      if (!bs.tabRestored) {
+        failures.push('bench search: leaving search moved the pilot to a different tab');
+      }
+    }
+
+    if (!b.benchHelp || b.benchHelp.error) {
+      failures.push(`bench help: ${b.benchHelp ? b.benchHelp.error : 'no result'}`);
+    } else if (b.benchHelp.offenders.length) {
+      failures.push(
+        `bench help: ${b.benchHelp.offenders.length} of ${b.benchHelp.checked} row(s) have help that is`
+        + ` empty or just the key name: ${b.benchHelp.offenders.slice(0, 5).join(', ')}`,
+      );
+    } else {
+      notes.push(`bench help: ${b.benchHelp.checked} rows across 5 tabs, none repeating its own label`);
+    }
+
+    if (!b.benchModified || b.benchModified.error) {
+      failures.push(`bench modified: ${b.benchModified ? b.benchModified.error : 'no result'}`);
+    } else {
+      const bm = b.benchModified;
+      if (!bm.startedClean) {
+        failures.push('bench modified: the draft was already dirty, so nothing was exercised');
+      }
+      if (!bm.sawTheEdit) {
+        failures.push('bench modified: an edited key is not reported as modified');
+      }
+      if (!bm.onlyTheOne) {
+        failures.push(`bench modified: show-only-modified listed ${bm.rows} rows for one edit`);
+      }
+      if (!bm.discardClears) {
+        failures.push('bench modified: discarding the draft leaves keys reported as modified');
+      }
     }
 
     if (!b.launchGate || b.launchGate.error) {

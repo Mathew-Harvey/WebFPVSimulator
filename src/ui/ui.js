@@ -786,6 +786,12 @@ function padTroubleItem(info) {
  * half. See select().
  */
 const SEGMENT_MAX = 4;
+
+/* Long enough that a fast typist does not trigger a rebuild per letter,
+ * short enough that the list feels live. A bench rebuild is about 57 ms
+ * measured on this container, so anything under about 100 would still be
+ * one render per keystroke. */
+const SEARCH_DEBOUNCE_MS = 120;
 const SEGMENT_CHARS = 24;
 
 /* Whether a choice row draws its whole set on the row, or keeps a button
@@ -4120,6 +4126,8 @@ export class Ui {
         row.append(this.makeSliderControl(it, i));
       } else if (it.num) {
         row.append(this.makeNumber(it, i));
+      } else if (it.text) {
+        row.append(this.makeSearch(it, i));
       } else if (it.sw) {
         row.append(this.makeSwitch(it, i));
       } else if (fitsAsSegments(it)) {
@@ -4461,6 +4469,103 @@ export class Ui {
    * Both segments are clickable and both are labelled, so a mouse can go
    * straight to the state it wants rather than pressing a thing to find out.
    */
+  /*
+   * A TEXT FIELD THAT FILTERS AS YOU TYPE. One row uses it, the firmware
+   * bench's search, and it is separate from the typed number row because
+   * that one commits on blur, carries stepper arrows and declares a decimal
+   * input mode: three things that are wrong for a name typed a letter at a
+   * time.
+   *
+   * DEBOUNCED, because each keystroke rebuilds the list and a full teardown
+   * render of the bench costs about 57 ms on this container. Without it,
+   * typing `failsafe` is eight renders and the field drops letters. The
+   * caret is deliberately NOT restored by the rebuild: the field is rebuilt
+   * with the same value, and refocusing it every frame is what made the
+   * first draft impossible to type into.
+   */
+  makeSearch(it, i) {
+    const wrap = el('div', 'row-control row-search');
+    const field = document.createElement('input');
+    field.className = 'row-num row-textfield';
+    field.type = 'text';
+    field.autocomplete = 'off';
+    field.spellcheck = false;
+    field.value = it.text.value || '';
+    field.placeholder = it.text.placeholder || '';
+    field.setAttribute('aria-label', it.label);
+    field.addEventListener('click', (e) => e.stopPropagation());
+    field.addEventListener('focus', () => {
+      this.closeDrop();
+      this.cursor = i;
+      this.syncCursor(false);
+    });
+    field.addEventListener('input', () => {
+      const v = field.value;
+      window.clearTimeout(this.searchTimer);
+      this.searchTimer = window.setTimeout(() => {
+        if (!it.onText) {
+          return;
+        }
+        it.onText(v);
+        /* Put the caret back exactly where it was. The rebuild replaces
+         * this node, so the position has to be carried across rather than
+         * left to the browser, which would drop it to the end. */
+        const at = field.selectionStart;
+        this.searchCaret = at;
+        this.renderMenu();
+        this.restoreSearchCaret();
+      }, SEARCH_DEBOUNCE_MS);
+    });
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        /* Up and down belong to the list, so a pilot can type a few letters
+         * and then walk into the results without reaching for the mouse. */
+        e.preventDefault();
+        e.stopPropagation();
+        field.blur();
+        this.move(e.key === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        /* Straight into the results, on the first hit. */
+        e.preventDefault();
+        e.stopPropagation();
+        field.blur();
+        this.move(1);
+        return;
+      }
+      if (e.key === 'Escape') {
+        /* Leaves the field, then a second Escape leaves search, which is
+         * the same two step contract the typed number row has. */
+        e.preventDefault();
+        e.stopPropagation();
+        field.blur();
+        return;
+      }
+      /* Everything else is typing, and must not reach the menu: `d` is
+       * ArrowRight on this shell and would adjust a row mid-word. */
+      e.stopPropagation();
+    });
+    wrap.append(field);
+    return wrap;
+  }
+
+  /* After a search rebuild, put the caret back in the freshly built field. */
+  restoreSearchCaret() {
+    const row = this.menuRows && this.menuRows[this.cursor - this.rowOffset];
+    const field = row && row.querySelector('.row-textfield');
+    if (!field) {
+      return;
+    }
+    field.focus();
+    const at = this.searchCaret == null ? field.value.length : this.searchCaret;
+    try {
+      field.setSelectionRange(at, at);
+    } catch (e) {
+      /* Some inputs refuse a range. The focus is the part that matters. */
+    }
+  }
+
   makeSwitch(it, i) {
     const wrap = el('div', 'row-control row-switch');
     wrap.setAttribute('role', 'group');
@@ -6836,6 +6941,16 @@ export class Ui {
       return;
     }
     if (this.screen === 'fc') {
+      /* Escape leaves SEARCH before it leaves the bench, for the same
+       * reason it cancels a confirm below: the nearest thing the key can
+       * undo is the thing it undoes. Leaving search puts the cursor back
+       * on the tab strip rather than wherever result 40 happened to be. */
+      if (this.fc.search != null) {
+        this.fc.search = null;
+        this.setCursor(this.firstStop(this.items(), this.rowOffset));
+        this.renderMenu();
+        return;
+      }
       /* Escape cancels a confirm before it leaves the screen, so a pilot
        * asked "restart the run?" is not thrown off the editor for
        * flinching. */
@@ -7331,6 +7446,28 @@ export class Ui {
         this.move(1);
       } else {
         this.adjust(1);
+      }
+      return true;
+    }
+    /*
+     * `/` OPENS SEARCH ON THE BENCH, which is the key every editor and
+     * every browser uses for it, and it is the one screen in the product
+     * with enough rows to need one: 696 keys across 23 flat tabs with no
+     * grouping and no cross-tab search is a memory test.
+     *
+     * Nowhere else, because nowhere else has more rows than fit on a
+     * screen and a half, and a slash that silently does nothing on nine
+     * screens is worse than no slash at all.
+     */
+    if (code === 'Slash' && this.screen === 'fc' && !this.fc.confirm) {
+      if (this.fc.search == null) {
+        this.fc.search = '';
+        this.renderMenu();
+        this.setCursor(this.firstStop(this.items(), this.rowOffset));
+        /* Straight into the field. A search you have to press Enter to
+         * start typing into is two keys for one intention. */
+        this.searchCaret = 0;
+        this.restoreSearchCaret();
       }
       return true;
     }

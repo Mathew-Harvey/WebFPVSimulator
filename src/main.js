@@ -5407,6 +5407,19 @@ export async function boot({ loading, bootStart, mapId }) {
   const renderStats = { calls: 0, triangles: 0 };
   shell.renderer.info.autoReset = false;
   window.__renderStats = () => ({ ...renderStats });
+  /*
+   * What the GPU is holding, for scripts/memory-check.js. Three.js counts
+   * live geometries and textures itself, and those two numbers are the ones
+   * that say whether a map's dispose actually gave the memory back or only
+   * stopped drawing it. A lazy load that never frees is a leak with extra
+   * steps, and on a laptop it is the difference between switching maps twice
+   * and switching maps until the tab dies.
+   */
+  window.__gpuMemory = () => ({
+    geometries: shell.renderer.info.memory.geometries,
+    textures: shell.renderer.info.memory.textures,
+    programs: shell.renderer.info.programs ? shell.renderer.info.programs.length : 0,
+  });
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
   window.__ui = ui;

@@ -20593,3 +20593,59 @@ Checks run this turn: `npm run lint:shell` (pass), `npm run lint:fc` (30 of 30 t
 pre-existing and not from this turn. `npm run verify` was NOT run: nothing here touches the physics,
 the plant, the module ABI or the build, and the one input-adjacent change is menu button handling in
 ui.js rather than anything on the simulation trace.
+
+---
+
+## 2026-08-28, memory: proving the lazy load, and a loading screen that names a stall
+
+Asked to confirm, before a merge, that only the minimum is in memory for any selection and that the
+loading screen communicates well. Both were measured rather than read.
+
+**The lazy load holds, and so does the release.** `npm run verify`'s check 16 already proves the city
+half rigorously: zero city modules requested with the field selected, a full graph after choosing it,
+`MAP_MODULE_COUNT` matching what the browser fetched. It does not cover the other three worlds, and
+nothing at all covered whether a world is FREED when it is left. Added `scripts/memory-check.js` and
+`npm run lint:memory` for those two. Measured at 1280x720, graphics pinned to low:
+
+    baseline, field selected: 62 geometries, 6 textures, 91 requests
+    none of city, bando, baths, yard fetched at boot
+      city   63 modules   geometries 62 ->  459 -> 61   textures 6 -> 47 -> 5
+      bando  13 modules   geometries 62 ->   84 -> 61   textures 6 ->  9 -> 5
+      baths  15 modules   geometries 62 ->   97 -> 61   textures 6 -> 20 -> 5
+      yard   14 modules   geometries 62 ->   94 -> 62   textures 6 ->  8 -> 6
+
+So each world arrives only when chosen, choosing one does not drag in another (the copied cel kits
+are doing their job), and `dispose()` gives the memory back rather than only stopping the draw. The
+city is the one that matters: 459 geometries and 47 textures, returned to the field's 61 and 5.
+
+`window.__gpuMemory()` is the new hook, reading three.js's own live counts. It is a debug hook beside
+`__renderStats`, not product code.
+
+**What went wrong.** The first run of the new check reported six failures, all of them the check's
+fault. `performance.getEntriesByType('resource')` is cumulative for the life of the page, so once the
+city had loaded its URLs were in every later reading, and "did choosing the bando pull in the city"
+answered yes for a page that had done nothing wrong. Every question is now asked about a slice taken
+from a mark recorded just before the switch. Worth writing down because the wrong version looked like
+a product bug and would have been reported as one.
+
+**The loading screen now names a stalled stage.** The bar was already honest: every stage's progress
+comes from something that happened, not from a timer, and there are 20 jokes on a 4.8 s rotation. But
+the stage name was computed and never displayed, and `detail` was recorded with a comment saying five
+callers set it "expecting a subtitle they never got". A stall in the CDN fetch and a stall in the
+world build were therefore indistinguishable on screen, and they have different answers.
+
+`STALL_MS` is 6000 and the slowest stage on this container, the city's world build, measures about
+three, so a healthy load never reaches it and still reads "loading" and a joke. Past six seconds the
+line becomes "still loading the map" or "still loading the world", plus the detail if a caller passed
+one. Verified in the page: with the stage clock pushed back nine seconds the element reads
+"still loading the first frame, 63 of 63 modules". The joke ticker paints it too, because a stalled
+stage is by definition one that has stopped calling `progress()`.
+
+**Not fixed, and named here rather than left silent.** The failure state is still a dead end: `fail()`
+paints "Could not start" and a message, with no retry and no reload. That is a real gap and it is its
+own change.
+
+Checks run this turn: `npm run lint:memory` (PASS, after the fix above), `npm run lint:shell` (PASS),
+`node scripts/shots.js` to read the stalled stage text out of the live element. `npm run verify` was
+NOT run: nothing here touches physics, the plant, the module ABI or the build. The only src change
+outside the loading screen is one debug readout on `window`.

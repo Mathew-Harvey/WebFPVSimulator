@@ -89,6 +89,22 @@ const STAGE_NAMES = {
 
 export const JOKE_MS = 4800;
 
+/*
+ * How long a single stage may run before the screen names it.
+ *
+ * The calm version of this screen is the right default: "loading" and a joke,
+ * because on a normal load every stage is over in well under a second and a
+ * parade of technical stage names would be noise. But a stall in the CDN
+ * fetch and a stall in the world build look identical when the only word on
+ * screen is "loading", and they have completely different answers. So the
+ * stage name arrives only when a stage has outstayed its welcome, which is
+ * exactly when a player has started to wonder.
+ *
+ * Six seconds because the slowest stage on this container, the city's world
+ * build, measures about three, so a healthy load never reaches this.
+ */
+export const STALL_MS = 6000;
+
 export const LOADING_JOKES = [
   'I complimented my quad on its propellers. It said thanks for the props.',
   'My flight controller only eats Greek food. It loves a good gyro.',
@@ -294,7 +310,12 @@ export class Loading {
     this.stageEl.textContent = 'loading';
     this.paint();
     if (!this.ticker) {
-      this.ticker = setInterval(() => this.paintJoke(), 250);
+      this.ticker = setInterval(() => {
+        /* Both, because a stalled stage is by definition one that has stopped
+         * calling progress(), so the tick is the only thing still running. */
+        this.paintStage();
+        this.paintJoke();
+      }, 250);
     }
   }
 
@@ -315,11 +336,11 @@ export class Loading {
     }
     this.frac = Math.max(0, Math.min(1, frac));
     if (detail !== undefined) {
-      /* Recorded, not painted. There is no element for it: the bar shows a
-       * stage name and a percentage, and five callers set this expecting a
-       * subtitle they never got. Kept as one line so `loading.detail = x`
-       * at the call sites stays harmless, and so the next person to want a
-       * subtitle has the value already arriving. */
+      /* Shown only once the stage has stalled, by paintStage. Five callers
+       * were already setting this and getting nothing; on a healthy load
+       * they still get nothing, which is correct, and on a slow one the
+       * value they were passing all along is what tells a player which
+       * part is slow. */
       this.detail = detail;
     }
     this.paint();
@@ -356,7 +377,33 @@ export class Loading {
     }
     const pct = (this.value() * 100).toFixed(1);
     this.bar.style.width = `${pct}%`;
+    this.paintStage();
     this.paintJoke();
+  }
+
+  /*
+   * "loading" until a stage stalls, then "still loading the map" and, if the
+   * caller supplied one, what it is working on. This is the only place the
+   * stage name and `detail` are shown, and they are shown for the one reason
+   * a player needs them: to tell a slow network from a slow machine.
+   */
+  paintStage() {
+    if (this.failed) {
+      return;
+    }
+    const stage = this.index >= 0 ? this.stages[this.index] : null;
+    const running = this.stageStartedAt ? performance.now() - this.stageStartedAt : 0;
+    let text = 'loading';
+    if (stage && running > STALL_MS) {
+      const name = (STAGE_NAMES[stage.id] || stage.id).toLowerCase();
+      text = `still loading the ${name}`;
+      if (this.detail) {
+        text += `, ${this.detail}`;
+      }
+    }
+    if (this.stageEl.textContent !== text) {
+      this.stageEl.textContent = text;
+    }
   }
 
   paintJoke() {

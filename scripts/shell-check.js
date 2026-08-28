@@ -1,0 +1,521 @@
+/*
+ * shell-check.js: the first check that can see the menu shell.
+ *
+ * WHY THIS EXISTS. Nothing in tests/ or scripts/ loaded index.html. Check 13
+ * loads tests/browser/harness.html, which is 43 lines and does not import
+ * the shell, and the only reference to src/ui/ui.js anywhere in either
+ * directory was one SETTINGS_KEY import in shots.js. So a rewrite of ui.js
+ * could break Escape on four screens, strand the cursor on the flight
+ * controller list, and leave `npm run verify` reporting exactly what it
+ * reported before. Every regression would have been found by a pilot.
+ *
+ * It is a cheap lint, not part of `npm run verify`, because verify builds
+ * the WASM module and this has nothing to say about the flight model. Same
+ * shape as lint:fc, lint:presets and lint:catalog: run it on a shell change
+ * and it answers in about a minute.
+ *
+ * WHAT IT ASSERTS, per screen:
+ *
+ *   reach   every item where isStop() is true is reachable from the first
+ *           stop by SOME key: repeated ArrowDown, or Home then PageDown.
+ *           Arrows alone is the wrong test, because arrows deliberately
+ *           step over the 542 firmware keys this build does not implement.
+ *           Reachable by some key is the property that actually matters.
+ *   help    every stop that carries a note can be reached, because the help
+ *           column is items[cursor].note and a row the cursor cannot hold
+ *           is a row whose explanation is gone. On the flight controller
+ *           that is 542 sentences, which is why the arrows skip them
+ *           instead of the list dropping them.
+ *   escape  Escape from the screen lands on a screen that exists.
+ *   fit     the menu's scrollHeight minus its clientHeight, recorded as a
+ *           budget rather than asserted at zero.
+ *
+ * THE BUDGETS ARE A BASELINE, NOT A TARGET. The title menu already overflows
+ * on a short window and the project forbids moving a threshold to make a
+ * check pass, so the recorded numbers are today's overflow. The check fails
+ * when a screen gets WORSE than its baseline, and prints a note when one
+ * gets better so the baseline can be re-recorded deliberately.
+ *
+ * Usage:
+ *   node scripts/shell-check.js               check against the baseline
+ *   node scripts/shell-check.js --record      rewrite the baseline
+ *   node scripts/shell-check.js --w=1280 --h=720
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { openPage } from '../tests/lib/page.js';
+import { SETTINGS_KEY } from '../src/ui/ui.js';
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const BASELINE = join(root, 'tests', 'shell-baseline.json');
+
+/*
+ * The screens this walks. `flight` is excluded because it has no menu at
+ * all, and calibrate and padpick are excluded because their items() returns
+ * nothing and their state machine is driven by a stick rather than a cursor.
+ * Everything else in this.screens is here.
+ */
+const SCREENS = [
+  'title', 'courses', 'settings', 'rates', 'pids', 'fc',
+  'paused', 'results', 'howto', 'credits',
+];
+
+/*
+ * Walk one screen inside the page and report what the cursor can reach.
+ *
+ * This runs in the browser because the answer depends on the live item
+ * list, which is rebuilt on every keypress and reads stored settings, the
+ * loaded track and the board. Reimplementing that in Node would be checking
+ * a copy of the shell rather than the shell.
+ */
+const WALK = `(() => {
+  const ui = window.__ui;
+  const out = {};
+  const screens = ${JSON.stringify(SCREENS)};
+  for (const name of screens) {
+    try {
+      ui.show(name);
+      /* The firmware bench travels its 542 unimplemented keys only when the
+       * pilot asks. Turn that on here, because the property under test is
+       * that every row CAN be reached, not that the default walks them. */
+      if (name === 'fc' && ui.fc) { ui.fc.walkAll = true; }
+      const items = ui.items();
+      const stops = [];
+      for (let i = 0; i < items.length; i += 1) {
+        if (ui.isStop(items[i])) { stops.push(i); }
+      }
+      if (!stops.length) {
+        out[name] = {
+          stops: 0, arrow: 0, reached: 0, unreachable: [], notesLost: 0, overflow: 0,
+        };
+        continue;
+      }
+
+      /* Walk with the same calls the keys use, so the check cannot pass
+       * against a walk the pilot does not get. */
+      const seen = new Set();
+
+      ui.setCursor(ui.firstStop(items));
+      seen.add(ui.cursor);
+      let arrow = 1;
+      for (let step = 0; step < items.length * 2; step += 1) {
+        const before = ui.cursor;
+        ui.move(1);
+        if (ui.cursor === before || seen.has(ui.cursor)) { break; }
+        seen.add(ui.cursor);
+        arrow += 1;
+      }
+
+      /* Then Home and PageDown, which land on the rows the arrows skip. */
+      ui.jumpEdge(-1);
+      seen.add(ui.cursor);
+      for (let step = 0; step < items.length + 4; step += 1) {
+        const before = ui.cursor;
+        ui.pageMove(1);
+        seen.add(ui.cursor);
+        if (ui.cursor === before) { break; }
+      }
+      ui.jumpEdge(1);
+      seen.add(ui.cursor);
+
+      /* And measure the default travel, which is the number the change
+       * exists to reduce. */
+      let arrowDefault = arrow;
+      if (name === 'fc' && ui.fc) {
+        ui.fc.walkAll = false;
+        const fresh = ui.items();
+        ui.setCursor(ui.firstStop(fresh));
+        const walked = new Set([ui.cursor]);
+        for (let step = 0; step < fresh.length * 2; step += 1) {
+          const before = ui.cursor;
+          ui.move(1);
+          if (ui.cursor === before || walked.has(ui.cursor)) { break; }
+          walked.add(ui.cursor);
+        }
+        arrowDefault = walked.size;
+        ui.fc.walkAll = true;
+      }
+
+      const unreachable = stops.filter((i) => !seen.has(i));
+      const notesLost = unreachable.filter((i) => items[i] && items[i].note).length;
+
+      const scroller = ui.root.querySelector(
+        '.screen-' + name + ' .menu-scroll, .screen-' + name + ' .menu'
+      );
+      const overflow = scroller
+        ? Math.max(0, Math.round(scroller.scrollHeight - scroller.clientHeight))
+        : 0;
+
+      out[name] = {
+        stops: stops.length,
+        arrow: arrowDefault,
+        reached: seen.size,
+        unreachable: unreachable
+          .map((i) => (items[i] && items[i].label) || ('index ' + i))
+          .slice(0, 8),
+        notesLost,
+        overflow,
+      };
+    } catch (e) {
+      out[name] = { error: String(e && e.message ? e.message : e) };
+    }
+  }
+  return JSON.stringify(out);
+})()`;
+
+/*
+ * The firmware bench, tab by tab. The headline defect was measured on the
+ * Configuration tab: 141 arrow stops and 3 things you can change. This is
+ * the assertion that the fix actually reached it, and that nothing became
+ * unreachable in the process.
+ */
+const FC_TABS = `(() => {
+  const ui = window.__ui;
+  const out = {};
+  ui.show('fc');
+  for (const id of ['setup', 'configuration', 'pid', 'receiver', 'motors']) {
+    try {
+      ui.fc.setTab(id);
+
+      ui.fc.walkAll = false;
+      let items = ui.items();
+      ui.setCursor(ui.firstStop(items));
+      const walked = new Set([ui.cursor]);
+      for (let step = 0; step < items.length * 2; step += 1) {
+        const before = ui.cursor;
+        ui.move(1);
+        if (ui.cursor === before || walked.has(ui.cursor)) { break; }
+        walked.add(ui.cursor);
+      }
+
+      ui.fc.walkAll = true;
+      items = ui.items();
+      let stops = 0;
+      for (let i = 0; i < items.length; i += 1) {
+        if (ui.isStop(items[i])) { stops += 1; }
+      }
+      ui.setCursor(ui.firstStop(items));
+      const all = new Set([ui.cursor]);
+      for (let step = 0; step < items.length * 2; step += 1) {
+        const before = ui.cursor;
+        ui.move(1);
+        if (ui.cursor === before || all.has(ui.cursor)) { break; }
+        all.add(ui.cursor);
+      }
+
+      out[id] = { stops, arrowDefault: walked.size, arrowAll: all.size };
+    } catch (e) {
+      out[id] = { error: String(e && e.message ? e.message : e) };
+    }
+  }
+  ui.fc.walkAll = false;
+  ui.fc.setTab('setup');
+  return JSON.stringify(out);
+})()`;
+
+/*
+ * Behaviours the walk cannot see, each asserted against the thing it is
+ * meant to prevent rather than against its own implementation.
+ */
+const BEHAVIOUR = `(() => {
+  const ui = window.__ui;
+  const out = {};
+
+  /* Focus memory. Settings, move down a few rows, leave, come back: the
+   * cursor belongs on the row it was on, not on row 0 of 30. */
+  try {
+    ui.show('settings');
+    ui.move(1); ui.move(1); ui.move(1);
+    const want = ui.items()[ui.cursor].label;
+    ui.show('rates');
+    ui.show('settings');
+    const got = ui.items()[ui.cursor].label;
+    out.focusMemory = { want, got, ok: want === got };
+  } catch (e) {
+    out.focusMemory = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /* A screen never visited still opens on its first stop rather than
+   * throwing or landing on a heading. */
+  try {
+    ui.cursorMemory = {};
+    ui.show('settings');
+    const it = ui.items()[ui.cursor];
+    out.freshOpen = { label: it && it.label, ok: ui.isStop(it) };
+  } catch (e) {
+    out.freshOpen = { error: String(e && e.message ? e.message : e) };
+  }
+
+  /* Escape on the firmware bench with unsaved edits must not discard.
+   * Dirty the draft through the same setter the rows use. */
+  try {
+    ui.show('fc');
+    const before = ui.fc.dirty();
+    ui.fc.setValue('p_roll', String(Number(ui.fc.cliValue('p_roll') || 0) + 3));
+    const dirty = ui.fc.dirty();
+    ui.back();
+    out.discardGuard = {
+      wasClean: before === false,
+      dirty,
+      stayed: ui.screen === 'fc',
+      panel: ui.fc.confirm === 'leave',
+      stillDirty: ui.fc.dirty(),
+    };
+    /* Put it back the way it was found. */
+    ui.fc.confirm = null;
+    ui.fc.discard();
+    ui.show('title');
+  } catch (e) {
+    out.discardGuard = { error: String(e && e.message ? e.message : e) };
+  }
+
+  return JSON.stringify(out);
+})()`;
+
+/*
+ * Escape from every screen has to land somewhere real. back() has eight
+ * branches and a four variable return chain, which is exactly the shape
+ * that strands a pilot when one of them is edited.
+ */
+const ESCAPE = `(() => {
+  const ui = window.__ui;
+  const known = new Set(Object.keys(ui.screens).concat(['flight']));
+  const out = {};
+  for (const name of ${JSON.stringify(SCREENS)}) {
+    try {
+      ui.show(name);
+      ui.back();
+      out[name] = { to: ui.screen, known: known.has(ui.screen) };
+    } catch (e) {
+      out[name] = { error: String(e && e.message ? e.message : e) };
+    }
+  }
+  return JSON.stringify(out);
+})()`;
+
+function parseArgs(argv) {
+  const opts = { w: 1600, h: 900, record: false };
+  for (const a of argv) {
+    const m = a.match(/^--([a-z]+)(?:=(.*))?$/);
+    if (!m) {
+      continue;
+    }
+    if (m[1] === 'record') {
+      opts.record = true;
+    } else if (m[2] !== undefined) {
+      opts[m[1]] = /^\d+$/.test(m[2]) ? Number(m[2]) : m[2];
+    }
+  }
+  return opts;
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  const page = await openPage({
+    root,
+    width: opts.w,
+    height: opts.h,
+    /* Pin the graphics preset for the same reason the window is pinned: a
+     * measurement taken at two different presets reports a regression that
+     * is only a setting. And skip the first run split, because this check
+     * is about the returning pilot's twelve rows. */
+    seed: [`try {
+      const k = ${JSON.stringify(SETTINGS_KEY)};
+      const s = JSON.parse(localStorage.getItem(k) || '{}');
+      s.graphics = 'low';
+      s.graphicsAuto = false;
+      localStorage.setItem(k, JSON.stringify(s));
+    } catch (e) { /* Storage refused. The run still boots. */ }`],
+  });
+
+  let failures = [];
+  const notes = [];
+  try {
+    await page.until('window.__shellReady === true', 90000);
+    await page.until('!!window.__ui', 10000);
+
+    const walk = JSON.parse(await page.evaluate(WALK));
+    const escape = JSON.parse(await page.evaluate(ESCAPE));
+    const fcTabs = JSON.parse(await page.evaluate(FC_TABS));
+    const behaviour = JSON.parse(await page.evaluate(BEHAVIOUR));
+    /* Leave the shell where it started, so a failing run does not also
+     * leave a half torn down screen behind it. */
+    await page.evaluate('window.__ui.show("title")');
+
+    const baseline = existsSync(BASELINE)
+      ? JSON.parse(await readFile(BASELINE, 'utf8'))
+      : null;
+
+    if (opts.record) {
+      const record = {};
+      for (const name of SCREENS) {
+        record[name] = { overflow: walk[name] ? walk[name].overflow ?? 0 : 0 };
+      }
+      await writeFile(
+        BASELINE,
+        `${JSON.stringify({
+          note: 'Today\'s overflow, in CSS pixels, at the window below. Not a target: a screen may already overflow. The check fails when a screen gets worse than this.',
+          window: { w: opts.w, h: opts.h },
+          screens: record,
+        }, null, 2)}\n`,
+      );
+      console.log(`recorded baseline at ${opts.w}x${opts.h}: ${BASELINE}`);
+    }
+
+    const rows = [];
+    for (const name of SCREENS) {
+      const w = walk[name];
+      const e = escape[name];
+      if (!w || w.error) {
+        failures.push(`${name}: walk failed: ${w ? w.error : 'no result'}`);
+        continue;
+      }
+      if (w.unreachable.length) {
+        failures.push(
+          `${name}: ${w.unreachable.length} stop(s) unreachable by any key: ${w.unreachable.join(', ')}`,
+        );
+      }
+      if (w.notesLost) {
+        failures.push(
+          `${name}: ${w.notesLost} unreachable row(s) carry a note, so their help can never be shown`,
+        );
+      }
+      if (!e || e.error) {
+        failures.push(`${name}: Escape failed: ${e ? e.error : 'no result'}`);
+      } else if (!e.known) {
+        failures.push(`${name}: Escape landed on unknown screen "${e.to}"`);
+      }
+
+      const base = baseline && baseline.window.w === opts.w && baseline.window.h === opts.h
+        ? (baseline.screens[name] || {}).overflow
+        : undefined;
+      if (base !== undefined && w.overflow > base) {
+        failures.push(`${name}: overflow grew from ${base} to ${w.overflow} px`);
+      } else if (base !== undefined && w.overflow < base) {
+        notes.push(`${name}: overflow improved from ${base} to ${w.overflow} px, re-record the baseline`);
+      }
+
+      rows.push(
+        `  ${name.padEnd(10)} stops ${String(w.stops).padStart(4)}` +
+        `  arrow ${String(w.arrow).padStart(4)}` +
+        `  reached ${String(w.reached).padStart(4)}` +
+        `  overflow ${String(w.overflow).padStart(4)} px` +
+        `  escape -> ${e && e.to ? e.to : '?'}`,
+      );
+    }
+
+    const b = behaviour;
+    if (!b.focusMemory || b.focusMemory.error) {
+      failures.push(`focus memory: ${b.focusMemory ? b.focusMemory.error : 'no result'}`);
+    } else if (!b.focusMemory.ok) {
+      failures.push(
+        `focus memory: left Settings on "${b.focusMemory.want}", came back on "${b.focusMemory.got}"`,
+      );
+    }
+    if (!b.freshOpen || b.freshOpen.error || !b.freshOpen.ok) {
+      failures.push(`fresh open: ${b.freshOpen && b.freshOpen.error ? b.freshOpen.error : 'did not land on a stop'}`);
+    }
+    if (!b.discardGuard || b.discardGuard.error) {
+      failures.push(`discard guard: ${b.discardGuard ? b.discardGuard.error : 'no result'}`);
+    } else {
+      const d = b.discardGuard;
+      if (!d.dirty) {
+        failures.push('discard guard: the draft did not become dirty, so the guard was not exercised');
+      }
+      if (!d.stayed) {
+        failures.push('discard guard: Escape left the firmware bench with unsaved edits');
+      }
+      if (!d.panel) {
+        failures.push('discard guard: Escape did not raise the leave panel');
+      }
+      if (!d.stillDirty) {
+        failures.push('discard guard: the draft was discarded without an answer');
+      }
+    }
+
+    console.log(`shell check at ${opts.w}x${opts.h}`);
+    console.log(rows.join('\n'));
+
+    console.log('\n  firmware bench, arrow travel per tab');
+    for (const [id, t] of Object.entries(fcTabs)) {
+      if (t.error) {
+        failures.push(`fc tab ${id}: ${t.error}`);
+        continue;
+      }
+      /* Walking every key must reach every key. This is the property the
+       * skip mechanism has to preserve and the one a naive fix breaks. */
+      if (t.arrowAll < t.stops) {
+        failures.push(
+          `fc tab ${id}: walk-every-key reaches ${t.arrowAll} of ${t.stops} stops`,
+        );
+      }
+      if (t.arrowDefault > t.stops) {
+        failures.push(`fc tab ${id}: default travel ${t.arrowDefault} exceeds ${t.stops} stops`);
+      }
+      const saved = t.stops - t.arrowDefault;
+      console.log(
+        `  ${id.padEnd(14)} stops ${String(t.stops).padStart(4)}` +
+        `  arrows stop on ${String(t.arrowDefault).padStart(4)}` +
+        `  (${saved} skipped)`,
+      );
+    }
+
+    /*
+     * The console has to be clean too: a shell that throws on a screen
+     * transition is a regression whether or not the cursor still moves.
+     *
+     * A failed network fetch is NOT that. The board is a separate service on
+     * a separate origin and the product is required to work without it, so a
+     * refused connection here is the offline path being exercised rather
+     * than a defect. It is printed, so a run that is quietly missing the
+     * board still says so, and it does not fail the check.
+     */
+    const offline = page.errors.filter((m) => /net::ERR_|Failed to load resource/.test(m));
+    const real = page.errors.filter((m) => !/net::ERR_|Failed to load resource/.test(m));
+    if (offline.length) {
+      notes.push(`${offline.length} network fetch(es) refused, the board is not running here`);
+    }
+    if (real.length) {
+      failures = failures.concat(real.map((m) => `console: ${m}`));
+    }
+  } finally {
+    await page.close();
+  }
+
+  for (const n of notes) {
+    console.log(`note: ${n}`);
+  }
+  if (failures.length) {
+    console.error(`\nFAIL, ${failures.length} problem(s):`);
+    for (const f of failures) {
+      console.error(`  ${f}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+  console.log('\nPASS');
+}
+
+main().catch((e) => {
+  console.error(e && e.stack ? e.stack : e);
+  process.exitCode = 1;
+});

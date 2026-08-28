@@ -20511,3 +20511,85 @@ What went wrong: I fixed the reported symptom without plotting the
 function I had changed. The cliff is visible in four lines of
 arithmetic and I did not look until the owner's correction sent me
 back. Measuring the endpoints of a curve is not measuring the curve.
+
+---
+
+## 2026-08-28, shell: a check that can see the menus, then the four defects it was written to catch
+
+Changed: added `scripts/shell-check.js` and `npm run lint:shell`, extracted the headless page driver
+out of `scripts/shots.js` into `tests/lib/page.js`, and fixed four navigation defects in the shell.
+
+**Why the check came first.** Nothing in `tests/` or `scripts/` loaded `index.html`. Check 13 loads
+`tests/browser/harness.html`, which is 43 lines and does not import the shell, and the only reference
+to `src/ui/ui.js` in either directory was one `SETTINGS_KEY` import in `shots.js`. A rewrite of
+`ui.js` could break Escape on four screens and leave `npm run verify` reporting exactly what it
+reported before. It is a cheap lint rather than part of verify because it has nothing to say about
+the flight model and verify builds the WASM module to say anything at all.
+
+What it asserts, per screen: every `isStop` row is reachable from the first stop by some key, every
+stop that carries a note is therefore able to show it, Escape lands on a screen that exists, and the
+menu's `scrollHeight - clientHeight` against a recorded baseline. Plus three behaviours the walk
+cannot see: focus memory across a screen change, a fresh screen opening on a stop, and Escape on a
+dirty firmware draft raising the panel instead of discarding.
+
+**The baseline is today's overflow, not a target.** `tests/shell-baseline.json` records the real
+numbers at 1600x900: title 73 px, settings 1074 px, rates 241 px, pids 168 px, fc 3630 px. The
+project forbids moving a threshold to make a check pass, so the check fails when a screen gets worse
+and prints a note when one gets better. The fc figure was re-recorded once in this turn, deliberately,
+because the new Walk-every-key row adds 32 px of list. That is a row being added, not a threshold
+being moved to hide a regression.
+
+Fixed:
+
+1. **Arrows skip the keys this build does not implement.** Configuration went from 144 arrow stops to
+   19, Setup from 32 to 7, Receiver 53 to 22, Motors 43 to 23, all measured by the check. The obvious
+   version of this fix, making the rows non-stops, is wrong: the help column is `items[cursor].note`
+   and each greyed row carries a sentence naming the missing Betaflight subsystem, so a row the cursor
+   cannot hold is a row whose explanation is gone. Skipping is therefore a property of the travel, not
+   of the row: `isSkip` in ui.js, `skip: !this.walkAll` in fc.js. PageUp, PageDown, Home, End and a
+   click all still land on them. A `Walk every key` row turns the skipping off, with the count of
+   affected keys on the tab in its own help text.
+
+2. **PageUp, PageDown, Home and End.** The shell had no key that travelled more than one row. A page
+   is measured off the live scroller rather than being a constant.
+
+3. **Focus memory per screen.** `show()` reset the cursor on every transition including a return, so
+   Settings, Rates, Escape landed twenty rows above the row just left. Stored by label rather than by
+   index, because these lists change length with the loaded track, the board and the dirty flag.
+
+4. **Escape on the firmware bench asks before discarding.** It called `discard()` unconditionally:
+   hundreds of edited keys, no question. The same shell already guards a typed bug report behind a
+   three way panel. Three answers rather than two, because "save it" is what a pilot who pressed
+   Escape by accident usually wants.
+
+Also: `.fc-bar` is sticky, so Save no longer scrolls out of reach behind 96 rows.
+
+**What went wrong on the way.** Three things, all found by running it rather than by reading it.
+
+- The first version of the skip made 8 greyed rows unreachable by any key, because PageDown samples
+  the stop list rather than enumerating it. The check caught it and the fix was the `Walk every key`
+  toggle, not a looser check.
+- `renderMenu` restores the scroller's position on every render, which is right for the same list and
+  wrong for a replaced one. A three row confirm panel inherited a 3600 px scrollTop.
+- The confirm panel then still rendered under the brand block, and measuring it in the page rather
+  than guessing showed `scrollTop` was 0 and the header simply overlaps the menu by about ten pixels.
+  That overlap is pre-existing and only shows when a real row sits against the ceiling. Fixed with 6 px
+  of top padding on the fc menu, and by keeping the exit bar up during the leave panel: it is hidden
+  during the save-run confirm on purpose, because an Exit button beside "restart the run?" is a third
+  answer nobody offered.
+
+**Deliberately not done.** Stick navigation on title, Settings, Rates and PIDs is still off, and the
+comment at ui.js:6346 gives the reason: the first two pose the airframe and Rates rides a dot along
+the curve the stick is about to fly. What changed is that `select` and `back` now work on all five of
+those screens. They come from `padMenuButtons`, which reads buttons 0 to 3 only after seeing all four
+released, so a latched arming switch cannot fire them. That closes the real defect, which was that the
+pause menu carries stick-navigable rows into screens a radio could then not leave. Full stick
+navigation there needs a channel a pilot assigns at calibration time, which is its own change.
+
+Checks run this turn: `npm run lint:shell` (pass), `npm run lint:fc` (30 of 30 traces clean),
+`npm run lint:presets` (3 of 3 clean), `node scripts/shots.js` for the firmware bench before and after.
+`npm run lint:catalog` fails identically with these changes stashed: it wants
+`vendor/betaflight/src/main/fc/parameter_names.h`, which is not checked out in this container. That is
+pre-existing and not from this turn. `npm run verify` was NOT run: nothing here touches the physics,
+the plant, the module ABI or the build, and the one input-adjacent change is menu button handling in
+ui.js rather than anything on the simulation trace.

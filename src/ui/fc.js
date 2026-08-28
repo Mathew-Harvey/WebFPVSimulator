@@ -229,6 +229,20 @@ export class FcSession {
     this.tab = 'pid';
     this.page = 'pid';
     this.runActive = false;
+    /*
+     * Walk every key, including the ones this build does not implement.
+     *
+     * Off by default, so Up and Down travel only the live rows: the
+     * Configuration tab has 141 stops and 3 things you can change, and
+     * walking the other 138 to reach Save is the defect. On, the arrows
+     * stop everywhere, which is what a pilot who has read a guide naming
+     * a key needs in order to find it and read why it is not here.
+     *
+     * It is a row rather than a hidden key because a mode nobody can see
+     * is a mode nobody uses, and because the row itself is the place to
+     * explain what the greyed keys are.
+     */
+    this.walkAll = false;
     this.confirm = null;
     this.presetId = '';
     this.motorDuty = [0, 0, 0, 0];
@@ -371,6 +385,21 @@ export class FcSession {
     return exportCli(this.draft);
   }
 
+  /* How many keys on the current tab this build does not implement. The
+   * same predicate fieldItem uses, so the count and the rows cannot drift. */
+  skippedOnTab() {
+    const tab = TABS_SHOWN.find((t) => t.id === this.tab) ?? TABS_SHOWN[0];
+    let n = 0;
+    for (const field of this.visibleFields()) {
+      const dynMinOn = field.key === 'gyro_lpf1_static_hz'
+        && Number(this.cliValue('gyro_lpf1_dyn_min_hz')) > 0;
+      if (tab.grey || !fieldEnabled(field) || dynMinOn) {
+        n += 1;
+      }
+    }
+    return n;
+  }
+
   items() {
     if (this.confirm === 'save-run') {
       return [
@@ -387,6 +416,34 @@ export class FcSession {
       ];
     }
 
+    /*
+     * Escape with unsaved edits asks first. Three rows rather than two,
+     * because "save it" is what a pilot who pressed Escape by accident
+     * usually wants and making them cancel, find Save and press again is
+     * the kind of friction that teaches people to fear the key.
+     */
+    if (this.confirm === 'leave') {
+      return [
+        {
+          label: 'Keep editing',
+          action: 'fc-keep-editing',
+          note: 'Stays here with the draft intact. Escape does the same.',
+        },
+        {
+          label: 'Save and leave',
+          action: 'fc-save-exit',
+          note: this.runActive
+            ? 'Writes the dump, then asks whether to restart the run.'
+            : 'Writes the draft through sim_init, then leaves.',
+        },
+        {
+          label: 'Discard and leave',
+          action: 'fc-discard-leave',
+          note: 'Throws the draft away and restores the dump that was live when this screen opened. This cannot be undone.',
+        },
+      ];
+    }
+
     const tab = TABS_SHOWN.find((t) => t.id === this.tab) ?? TABS_SHOWN[0];
     const rows = [];
     rows.push({
@@ -398,6 +455,27 @@ export class FcSession {
       pick: (v) => this.setTab(v),
       adjust: (d) => this.setTab(cycle(TABS_SHOWN.map((t) => t.id), this.tab, d)),
     });
+
+    /*
+     * Sits directly under Tab, because it changes what Tab lands you in.
+     * The count is the honest part: it says how many keys on THIS tab are
+     * in Betaflight 4.5.1 and not in this build, so the number a pilot
+     * sees is the number they would have had to walk.
+     */
+    const skipped = this.skippedOnTab();
+    if (skipped > 0) {
+      rows.push({
+        label: 'Walk every key',
+        value: this.walkAll ? 'On' : 'Off',
+        current: this.walkAll,
+        options: [{ value: true, label: 'On' }, { value: false, label: 'Off' }],
+        pick: (v) => { this.walkAll = Boolean(v); },
+        adjust: () => { this.walkAll = !this.walkAll; },
+        note: this.walkAll
+          ? `Up and Down stop on all ${skipped} key(s) this build does not implement, so their reason can be read. Off makes the arrows travel only the live rows.`
+          : `Up and Down skip the ${skipped} key(s) this build does not implement. Turn this on to walk them and read why each one is missing. They are still on screen either way.`,
+      });
+    }
 
     if (this.tab === 'pid') {
       const page = PID_PAGES.find((p) => p.id === this.page) ?? PID_PAGES[0];
@@ -696,6 +774,14 @@ export class FcSession {
         note,
         info: true,
         disabled: true,
+        /*
+         * The arrows step over this row, PageUp, PageDown, Home, End and a
+         * click still land on it. The note above is the whole reason it is
+         * still rendered: it says which Betaflight subsystem this build
+         * leaves out and why, and that sentence is only readable when the
+         * cursor can rest here. See isSkip in ui.js.
+         */
+        skip: !this.walkAll,
         rowClass: greyClass.trim(),
       };
     }

@@ -1,0 +1,39 @@
+{
+  "note": "Today's overflow, in CSS pixels, at the window below. Not a target: a screen may already overflow. The check fails when a screen gets worse than this.",
+  "window": {
+    "w": 1600,
+    "h": 900
+  },
+  "screens": {
+    "title": {
+      "overflow": 73
+    },
+    "courses": {
+      "overflow": 0
+    },
+    "settings": {
+      "overflow": 1074
+    },
+    "rates": {
+      "overflow": 241
+    },
+    "pids": {
+      "overflow": 168
+    },
+    "fc": {
+      "overflow": 3630
+    },
+    "paused": {
+      "overflow": 0
+    },
+    "results": {
+      "overflow": 0
+    },
+    "howto": {
+      "overflow": 0
+    },
+    "credits": {
+      "overflow": 0
+    }
+  }
+}

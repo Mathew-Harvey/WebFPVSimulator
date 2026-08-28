@@ -1080,6 +1080,8 @@ export class Ui {
     this.openingBoardCourse = false;
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
     this.screen = 'title';
+    /* Screen id to the label of the row the cursor was on. See restoreCursor. */
+    this.cursorMemory = {};
     this.cursor = 0;
     /* Which course card the player has chosen, by courseCardKey, and the
      * last one they were on. The first says whose list is showing; the
@@ -3478,7 +3480,14 @@ export class Ui {
       }
       this.menuRows.push(row);
     });
-    host.scrollTop = scroll;
+    /*
+     * Keeping the scroll position is right when the list is the same list,
+     * and wrong when it has been replaced. A confirm panel is three rows
+     * where 144 were, so a restored scrollTop of 3600 px hides all three
+     * behind the header and the pilot is asked a question they cannot read.
+     * Anything shorter than the box gets the top.
+     */
+    host.scrollTop = host.scrollHeight > host.clientHeight ? scroll : 0;
     this.syncCursor(false);
     this.syncRates();
     this.syncPids();
@@ -3602,7 +3611,14 @@ export class Ui {
       return;
     }
     const on = this.screen === 'fc';
-    const confirm = Boolean(this.fc.confirm);
+    /*
+     * The save-run confirm hides the exit bar because it is asking whether
+     * to restart a live run and an Exit button beside that question is a
+     * third answer nobody meant to offer. The leave confirm keeps it: that
+     * panel IS the leave question, and hiding the bar collapses the header
+     * height under it so the first row renders behind the brand block.
+     */
+    const confirm = this.fc.confirm === 'save-run';
     const dirty = this.fc.dirty();
     this.fcExit.hidden = !on || confirm;
     if (this.fcSaveExit) {
@@ -4744,10 +4760,26 @@ export class Ui {
         history.replaceState(null, '', url);
       }
     }
+    /*
+     * Remember where the cursor was, keyed by the screen being left.
+     *
+     * Settings, arrow down to Rates, Enter, Escape used to land on row 0 of
+     * 30, twenty rows above the row just left, because show() reset the
+     * cursor on every transition including a return. A pilot tuning rates
+     * makes that trip dozens of times in a session.
+     *
+     * The label is stored, not the index, because the index means nothing
+     * once a list changes length, and these lists do: rows appear and
+     * vanish with the loaded track, the board and the dirty flag.
+     */
+    const leaving = this.items()[this.cursor];
+    if (this.screen && leaving && leaving.label) {
+      this.cursorMemory[this.screen] = leaving.label;
+    }
     this.screen = screen;
     /* this.screen is already the new one, so items() describes where we are
      * going. Settings opens on its first real row rather than on a heading. */
-    this.cursor = this.firstStop(this.items());
+    this.cursor = this.restoreCursor();
     if (screen === 'courses') {
       this.loadBoardCourses();
     }
@@ -5540,6 +5572,48 @@ export class Ui {
     return Boolean(it) && !it.section;
   }
 
+  /*
+   * A row the ARROW KEYS step over, and nothing else does.
+   *
+   * The flight controller renders 542 keys this build does not implement,
+   * and every one of them was an arrow stop: the Configuration tab had 141
+   * stops and 3 things you could change. Making them non-stops looks like
+   * the fix and is not, because the help column is `items[cursor].note` and
+   * each of those rows carries a sentence saying which Betaflight subsystem
+   * is missing and why. A row the cursor cannot hold is a row whose
+   * explanation is gone, so that change would have deleted 542 explanations
+   * to save 138 keypresses.
+   *
+   * So skipping is a property of the TRAVEL, not of the row. Up and Down
+   * step over these; PageUp, PageDown, Home, End and a mouse click all
+   * still land on them, and the help still speaks.
+   */
+  isSkip(it) {
+    return Boolean(it) && Boolean(it.skip);
+  }
+
+  /* The rows Up and Down will actually stop on. Falls back to every stop
+   * when a screen is nothing but skipped rows, because a tab with no live
+   * key at all must still be walkable rather than inert. */
+  arrowStops(items) {
+    const walkable = [];
+    for (let i = 0; i < items.length; i += 1) {
+      if (this.isStop(items[i]) && !this.isSkip(items[i])) {
+        walkable.push(i);
+      }
+    }
+    if (walkable.length) {
+      return walkable;
+    }
+    const all = [];
+    for (let i = 0; i < items.length; i += 1) {
+      if (this.isStop(items[i])) {
+        all.push(i);
+      }
+    }
+    return all;
+  }
+
   /* The first row the cursor may land on, at or after `from`. The offset is
    * what lets a chosen course card put the cursor on its own list rather
    * than back on the first card in the strip. */
@@ -5553,6 +5627,24 @@ export class Ui {
     return i < 0 ? 0 : i;
   }
 
+  /*
+   * Where the cursor lands on arriving at a screen: the row it was on last
+   * time if that row is still there and still a stop, else the first stop.
+   * Matching by label rather than by index is what makes it survive a list
+   * that grew or shrank while the pilot was elsewhere.
+   */
+  restoreCursor() {
+    const items = this.items();
+    const want = this.cursorMemory[this.screen];
+    if (want) {
+      const i = items.findIndex((it) => it && it.label === want && this.isStop(it));
+      if (i >= 0) {
+        return i;
+      }
+    }
+    return this.firstStop(items);
+  }
+
   move(dir) {
     const items = this.items();
     const n = items.length;
@@ -5560,12 +5652,76 @@ export class Ui {
       return;
     }
     let next = (this.cursor + dir + n) % n;
-    /* Step over headings. Bounded by n so a list of nothing but headings
-     * cannot spin here. */
-    for (let guard = 0; guard < n && !this.isStop(items[next]); guard += 1) {
+    /* Step over headings and skipped rows. Bounded by n so a list of
+     * nothing but headings cannot spin here. */
+    /* A Set, because this runs inside a bounded loop over a list that is
+     * 144 rows on the flight controller and is rebuilt on every keypress. */
+    const walkable = new Set(this.arrowStops(items));
+    const stopsHere = (i) => walkable.has(i);
+    for (let guard = 0; guard < n && !stopsHere(next); guard += 1) {
       next = (next + dir + n) % n;
     }
     this.setCursor(next);
+  }
+
+  /*
+   * PageUp and PageDown. Travel by a screenful, and unlike the arrows they
+   * land on skipped rows, which is what makes a greyed firmware key
+   * readable without walking 138 of its neighbours.
+   *
+   * A page is the number of rows the scroller can show, so the movement
+   * matches what the pilot sees rather than a constant somebody picked.
+   */
+  pageMove(dir) {
+    const items = this.items();
+    const stops = [];
+    for (let i = 0; i < items.length; i += 1) {
+      if (this.isStop(items[i])) {
+        stops.push(i);
+      }
+    }
+    if (!stops.length) {
+      return;
+    }
+    const at = stops.indexOf(this.cursor);
+    const from = at < 0 ? 0 : at;
+    const next = Math.max(0, Math.min(stops.length - 1, from + dir * this.pageSize()));
+    this.setCursor(stops[next]);
+  }
+
+  /* How many rows a page is. Measured off the live scroller so a short
+   * window pages by less, and clamped so a collapsed or unmeasurable box
+   * still moves a sensible distance rather than zero. */
+  pageSize() {
+    const scroll = this.menuScrollNode();
+    const row = 44;
+    const visible = scroll && scroll.clientHeight ? Math.floor(scroll.clientHeight / row) : 0;
+    return Math.max(5, Math.min(25, visible || 10));
+  }
+
+  /* Home and End. Both land on any stop, skipped or not. */
+  jumpEdge(dir) {
+    const items = this.items();
+    const stops = [];
+    for (let i = 0; i < items.length; i += 1) {
+      if (this.isStop(items[i])) {
+        stops.push(i);
+      }
+    }
+    if (!stops.length) {
+      return;
+    }
+    this.setCursor(dir < 0 ? stops[0] : stops[stops.length - 1]);
+  }
+
+  /* The scrolling box for the screen the cursor is on, or null when the
+   * screen has none. Used only for measurement. */
+  menuScrollNode() {
+    const host = this.screens && this.screens[this.screen];
+    if (!host) {
+      return null;
+    }
+    return host.querySelector('.menu-scroll') || host.querySelector('.menu');
   }
 
   adjust(dir) {
@@ -5676,6 +5832,27 @@ export class Ui {
         this.fc.confirm = null;
         this.cursor = 0;
         this.renderMenu();
+        return;
+      }
+      /*
+       * A DRAFT IS NOT THROWN AWAY BY ONE KEY.
+       *
+       * Escape used to run fc-back, which calls discard() unconditionally:
+       * hundreds of edited firmware keys gone, no question asked. The same
+       * shell already guards a typed bug report behind a three way "Keep
+       * this report?" panel, so the protection existed and was pointed at
+       * the cheaper thing. Escape again from the panel cancels, by the
+       * branch above.
+       */
+      if (this.fc.dirty()) {
+        this.fc.confirm = 'leave';
+        this.cursor = 0;
+        this.renderMenu();
+        /* The panel replaces 144 rows with three, so the list has to go back
+         * to the top or the question is asked off screen. */
+        if (this.fcMenu) {
+          this.fcMenu.scrollTop = 0;
+        }
         return;
       }
       this.act('fc-back');
@@ -5917,6 +6094,22 @@ export class Ui {
       });
       return;
     }
+    /* The two answers to the leave panel. Keep stays on the editor with the
+     * draft intact; Discard is the old unconditional behaviour, now behind
+     * a deliberate press. */
+    if (action === 'fc-keep-editing') {
+      this.fc.confirm = null;
+      this.cursor = 0;
+      this.renderMenu();
+      return;
+    }
+    if (action === 'fc-discard-leave') {
+      this.fc.confirm = null;
+      this.fc.exitAfterSave = false;
+      this.fc.discard();
+      this.leaveFc();
+      return;
+    }
     if (action === 'fc-discard') {
       this.fc.discard();
       this.renderMenu();
@@ -6095,6 +6288,22 @@ export class Ui {
       }
       return true;
     }
+    if (code === 'PageUp') {
+      this.pageMove(-1);
+      return true;
+    }
+    if (code === 'PageDown') {
+      this.pageMove(1);
+      return true;
+    }
+    if (code === 'Home') {
+      this.jumpEdge(-1);
+      return true;
+    }
+    if (code === 'End') {
+      this.jumpEdge(1);
+      return true;
+    }
     if (code === 'Enter' || code === 'Space') {
       this.select();
       return true;
@@ -6167,8 +6376,25 @@ export class Ui {
      * a held stick does not fire an edge the moment the screen closes.
      */
     if (this.screen === 'settings' || this.screen === 'title' || this.screen === 'rates' || this.screen === 'pids' || this.screen === 'fc') {
-      if (this.screen === 'title' && now.select && !this.padPrev.select) {
+      /*
+       * The STICKS stay out, for the reasons above. The BUTTONS do not.
+       *
+       * The guard used to swallow everything except select on the title,
+       * and the pause menu is fully stick navigable and carries rows into
+       * all five of these screens. So a radio pilot could steer into
+       * Settings and then have no stick that moved the cursor and no
+       * switch that went back: a room you can enter and cannot leave.
+       *
+       * select and back come from padMenuButtons, which reads buttons 0 to
+       * 3 and only after seeing all four released, so a latched arming
+       * switch cannot fire them. They are safe on a screen where the axes
+       * are not, because they are not the axes.
+       */
+      if (now.select && !this.padPrev.select) {
         this.select();
+      }
+      if (now.back && !this.padPrev.back) {
+        this.back();
       }
       this.padPrev = now;
       return;

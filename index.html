@@ -483,7 +483,11 @@
       .screen-fc .menu-stage .menu {
         grid-column: 1; background: var(--bf-box); border-top: 0; border-radius: 0;
         box-shadow: none; min-width: 0; width: 100%; height: 100%; margin-top: 0;
-        padding: 0 0 12px;
+        /* A little air at the top. The header strip above overlaps the
+         * first row by about ten pixels, which never showed while the first
+         * row was a Tab picker under a page strip and does show the moment
+         * a confirm panel puts a real row against the ceiling. */
+        padding: 6px 0 12px;
       }
       .screen-fc .menu-scroll { max-height: none; height: 100%; scrollbar-color: #ffbb00 #2e2e2e; }
       .screen-fc .menu-help {
@@ -507,7 +511,19 @@
         letter-spacing: 0.12em; text-transform: uppercase;
         border-bottom: 1px solid #555; margin-top: 8px; pointer-events: none;
       }
-      .screen-fc .fc-bar { display: flex; gap: 8px; padding: 10px 12px 6px; flex-wrap: wrap; }
+      /*
+       * PINNED. Save was a row inside the scrolling list, so after typing a
+       * value into the last live field of the PID Profile page a pilot had
+       * to arrow back up 96 rows to reach it. The bar is built into the
+       * list so it keeps its place in the cursor order, and sticky is what
+       * keeps it on screen without moving it out of that order.
+       */
+      .screen-fc .fc-bar {
+        display: flex; gap: 8px; padding: 10px 12px 6px; flex-wrap: wrap;
+        position: sticky; top: 0; z-index: 2;
+        background: var(--bf-panel);
+        box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.55);
+      }
       .screen-fc .fc-btn {
         background: var(--bf-accent); color: var(--bf-ink); font-weight: 700; margin: 0;
         border-radius: 3px; border-left: 0; flex: 1 1 6em; justify-content: center;

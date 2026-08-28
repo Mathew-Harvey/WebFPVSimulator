@@ -55,15 +55,10 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { spawn } from 'node:child_process';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
-import { startServer } from '../tests/lib/server.js';
-import { findChrome } from '../tests/lib/browser.js';
+import { openPage, keyInfo, describe } from '../tests/lib/page.js';
 /* The storage key, from the module that owns it. ui.js is importable in
  * Node today and this line is what keeps it so: if it ever grows a browser
  * only top level import, this harness fails loudly at startup rather than
@@ -71,115 +66,6 @@ import { findChrome } from '../tests/lib/browser.js';
 import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const CACHE = process.env.SIM_CDN_CACHE || join(tmpdir(), 'webfpv-cdn');
-
-/* Virtual key codes for the keys the shell listens to. Chromium wants one
- * for a key event to look real to the page. */
-const VK = {
-  Enter: 13, Escape: 27, Space: 32, Tab: 9, Backspace: 8,
-  ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
-};
-function keyInfo(code) {
-  if (/^Key[A-Z]$/.test(code)) {
-    const ch = code.slice(3);
-    return { key: ch.toLowerCase(), code, windowsVirtualKeyCode: ch.charCodeAt(0), text: ch.toLowerCase() };
-  }
-  if (/^Digit[0-9]$/.test(code)) {
-    const d = code.slice(5);
-    return { key: d, code, windowsVirtualKeyCode: d.charCodeAt(0), text: d };
-  }
-  const named = {
-    Enter: '\r', Space: ' ', Tab: '\t',
-  };
-  return {
-    key: code === 'Space' ? ' ' : code,
-    code,
-    windowsVirtualKeyCode: VK[code] ?? 0,
-    text: named[code],
-  };
-}
-
-class Cdp {
-  constructor(ws) {
-    this.ws = ws;
-    this.nextId = 1;
-    this.pending = new Map();
-    this.listeners = [];
-    this.dead = null;
-    const fail = (e) => {
-      if (this.dead) {
-        return;
-      }
-      this.dead = e;
-      for (const { reject } of this.pending.values()) {
-        reject(e);
-      }
-      this.pending.clear();
-    };
-    ws.addEventListener('close', () => fail(new Error('Chrome closed the DevTools connection')));
-    ws.addEventListener('error', () => fail(new Error('DevTools connection errored')));
-    ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data));
-      if (msg.id && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id);
-        this.pending.delete(msg.id);
-        if (msg.error) {
-          reject(new Error(`CDP ${msg.method ?? ''} ${msg.error.message}`));
-        } else {
-          resolve(msg.result);
-        }
-      } else if (msg.method) {
-        for (const l of this.listeners) {
-          l(msg);
-        }
-      }
-    });
-  }
-
-  send(method, params = {}, sessionId) {
-    if (this.dead) {
-      return Promise.reject(this.dead);
-    }
-    const id = this.nextId;
-    this.nextId += 1;
-    const payload = { id, method, params };
-    if (sessionId) {
-      payload.sessionId = sessionId;
-    }
-    this.ws.send(JSON.stringify(payload));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-  }
-
-  onEvent(fn) {
-    this.listeners.push(fn);
-  }
-}
-
-async function cdnBytes(url) {
-  await mkdir(CACHE, { recursive: true });
-  const path = join(CACHE, createHash('sha256').update(url).digest('hex').slice(0, 32));
-  if (existsSync(path)) {
-    return readFile(path);
-  }
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`cdn fetch ${url}: ${res.status}`);
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  await writeFile(path, buf);
-  return buf;
-}
-
-function describe(obj) {
-  if (!obj) {
-    return 'unknown';
-  }
-  if (obj.type === 'string') {
-    return obj.value;
-  }
-  return obj.description ?? JSON.stringify(obj.value ?? obj);
-}
-
 async function main() {
   const args = process.argv.slice(2);
   const opts = { out: '.loop/shots', w: 1600, h: 900, url: '/index.html' };
@@ -199,169 +85,64 @@ async function main() {
   const outDir = isAbsolute(String(opts.out)) ? String(opts.out) : join(root, opts.out);
   await mkdir(outDir, { recursive: true });
 
-  const chrome = findChrome();
-  if (!chrome) {
-    throw new Error('no Chromium found');
-  }
-  const server = await startServer(root);
-  const userDataDir = await mkdtemp(join(tmpdir(), 'sim-shots-'));
-  const proc = spawn(chrome, [
-    '--headless=new',
-    '--no-sandbox',
-    '--use-angle=swiftshader',
-    '--enable-unsafe-swiftshader',
-    '--disable-dev-shm-usage',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--hide-scrollbars',
-    '--force-device-scale-factor=1',
-    `--window-size=${opts.w},${opts.h}`,
-    '--remote-debugging-port=0',
-    `--user-data-dir=${userDataDir}`,
-    'about:blank',
-  ]);
-  let stderrBuf = '';
-  const wsUrl = await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`no DevTools endpoint: ${stderrBuf.slice(-1500)}`)), 30000);
-    proc.on('error', (e) => { clearTimeout(t); reject(e); });
-    proc.stderr.on('data', (d) => {
-      stderrBuf += d.toString();
-      const m = stderrBuf.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (m) {
-        clearTimeout(t);
-        resolve(m[1]);
-      }
-    });
-  });
-
-  const ws = new WebSocket(wsUrl);
-  await new Promise((resolve, reject) => {
-    ws.addEventListener('open', resolve, { once: true });
-    ws.addEventListener('error', () => reject(new Error('DevTools websocket failed')), { once: true });
-  });
-  const cdp = new Cdp(ws);
-  const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
-  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-
-  const errors = [];
-  const warnings = [];
-  /* Kept apart from console errors. Counting a sidecar failure in the same
-   * total made "errors 0" two gates wearing one number, and D3 is about the
-   * console. */
-  const harnessFaults = [];
-  cdp.onEvent(async (msg) => {
-    if (msg.sessionId !== sessionId) {
-      return;
-    }
-    if (msg.method === 'Runtime.consoleAPICalled') {
-      const text = msg.params.args.map(describe).join(' ');
-      if (msg.params.type === 'error' || msg.params.type === 'assert') {
-        errors.push(`console.${msg.params.type}: ${text}`);
-      } else if (msg.params.type === 'warning') {
-        warnings.push(`console.warning: ${text}`);
-      }
-    } else if (msg.method === 'Runtime.exceptionThrown') {
-      const d = msg.params.exceptionDetails;
-      errors.push(`uncaught: ${d.exception ? describe(d.exception) : d.text}`);
-    } else if (msg.method === 'Log.entryAdded') {
-      const e = msg.params.entry;
-      if (e.level === 'error') {
-        errors.push(`${e.source}: ${e.text}`);
-      } else if (e.level === 'warning') {
-        warnings.push(`${e.source}: ${e.text}`);
-      }
-    } else if (msg.method === 'Fetch.requestPaused') {
-      const { requestId, request } = msg.params;
-      try {
-        const buf = await cdnBytes(request.url);
-        await cdp.send('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: 200,
-          responseHeaders: [
-            { name: 'content-type', value: 'text/javascript; charset=utf-8' },
-            { name: 'access-control-allow-origin', value: '*' },
-          ],
-          body: buf.toString('base64'),
-        }, sessionId);
-      } catch (e) {
-        errors.push(`cdn proxy failed for ${request.url}: ${e.message}`);
-        await cdp.send('Fetch.failRequest', { requestId, errorReason: 'Failed' }, sessionId).catch(() => {});
-      }
-    }
-  });
-
-  await cdp.send('Runtime.enable', {}, sessionId);
-  await cdp.send('Log.enable', {}, sessionId);
-  await cdp.send('Page.enable', {}, sessionId);
-  await cdp.send('Fetch.enable', {
-    patterns: [{ urlPattern: 'https://cdn.jsdelivr.net/*' }],
-  }, sessionId);
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: Number(opts.w), height: Number(opts.h), deviceScaleFactor: 1, mobile: false,
-  }, sessionId);
-  if (opts.touch) {
-    await cdp.send('Emulation.setTouchEmulationEnabled', {
-      enabled: true, maxTouchPoints: 5,
-    }, sessionId);
-  }
-  /* The down touch points, by id. Chromium wants every active point in
-   * every touch event, so the harness is the one that remembers them. */
-  const touches = new Map();
-  const touchPoints = () => [...touches.entries()].map(([id, p]) => ({ x: p.x, y: p.y, id }));
   /*
+   * The seeds run before the first line of the app, through the same door
+   * the pilot uses rather than a test only hook.
+   *
    * --graphics pins the quality preset, for the same reason --w and --h pin
    * the window: a cost measured at two different presets reports a
-   * regression that is only a setting.
+   * regression that is only a setting. Boot lowers a DETECTED preset to Low
+   * when the session renderer turns out to be a CPU rasteriser, and headless
+   * Chrome is always one, so without this the field's budget is measured at
+   * Low here and at High on a machine with a GPU. graphicsAuto false is the
+   * half that matters: it is what marks the value as chosen.
    *
-   * This became necessary rather than tidy. Boot lowers a DETECTED preset
-   * to Low when the session renderer turns out to be a CPU rasteriser, and
-   * headless Chrome is always one. So without this the field's budget is
-   * measured at Low here and at High on any developer machine with a GPU,
-   * and check 16 would report a different answer depending on who ran it.
-   *
-   * Seeded as a stored setting rather than through a test only hook,
-   * because "a stored choice beats detection" is the real contract and this
-   * is the same door the pilot uses. graphicsAuto false is the half that
-   * matters: it is what marks the value as chosen.
-   */
-  if (opts.graphics) {
-    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
-      source: `try {
-        const k = ${JSON.stringify(SETTINGS_KEY)};
-        const s = JSON.parse(localStorage.getItem(k) || '{}');
-        s.graphics = ${JSON.stringify(String(opts.graphics))};
-        s.graphicsAuto = false;
-        localStorage.setItem(k, JSON.stringify(s));
-      } catch (e) { /* Storage refused. The run still boots, at whatever
-                       preset detection picks. */ }`,
-    }, sessionId);
-  }
-  /*
    * --course=FILE seeds a track document as the builder's autosave and
-   * selects the custom map, before the first line of the app runs. The
-   * launch block only exists on an authored course, so without this there
-   * is no way to capture the pad shot at all, which is exactly how a camera
-   * that ended its pan inside the block reached a pilot instead of a check.
-   * Same door the builder uses, seeded the same way --graphics is.
+   * selects the custom map. The launch block only exists on an authored
+   * course, so without this there is no way to capture the pad shot at all.
    */
+  const seed = [];
+  if (opts.graphics) {
+    seed.push(`try {
+      const k = ${JSON.stringify(SETTINGS_KEY)};
+      const s = JSON.parse(localStorage.getItem(k) || '{}');
+      s.graphics = ${JSON.stringify(String(opts.graphics))};
+      s.graphicsAuto = false;
+      localStorage.setItem(k, JSON.stringify(s));
+    } catch (e) { /* Storage refused. The run still boots, at whatever
+                     preset detection picks. */ }`);
+  }
   if (opts.course) {
     const docText = await readFile(
       isAbsolute(String(opts.course)) ? String(opts.course)
         : join(root, String(opts.course)),
       'utf8',
     );
-    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
-      source: `try {
-        localStorage.setItem('webfpv.trackbuilder.autosave.v1',
-          JSON.stringify(${docText}));
-        const k = ${JSON.stringify(SETTINGS_KEY)};
-        const s = JSON.parse(localStorage.getItem(k) || '{}');
-        s.map = 'custom';
-        localStorage.setItem(k, JSON.stringify(s));
-      } catch (e) { /* Storage refused; the run boots on the default map. */ }`,
-    }, sessionId);
+    seed.push(`try {
+      localStorage.setItem('webfpv.trackbuilder.autosave.v1',
+        JSON.stringify(${docText}));
+      const k = ${JSON.stringify(SETTINGS_KEY)};
+      const s = JSON.parse(localStorage.getItem(k) || '{}');
+      s.map = 'custom';
+      localStorage.setItem(k, JSON.stringify(s));
+    } catch (e) { /* Storage refused; the run boots on the default map. */ }`);
   }
-  await cdp.send('Page.navigate', { url: `${server.origin}${opts.url}` }, sessionId);
+
+  const page = await openPage({
+    root,
+    width: opts.w,
+    height: opts.h,
+    url: opts.url,
+    touch: Boolean(opts.touch),
+    seed,
+  });
+  const {
+    cdp, sessionId, errors, warnings,
+  } = page;
+  /* Kept apart from console errors. Counting a sidecar failure in the same
+   * total made "errors 0" two gates wearing one number, and D3 is about the
+   * console. */
+  const harnessFaults = [];
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const step of steps) {
@@ -531,10 +312,7 @@ async function main() {
     console.log(`  WARN ${w}`);
   }
 
-  ws.close();
-  proc.kill('SIGKILL');
-  await server.close();
-  await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
+  await page.close();
   process.exit(errors.length || harnessFaults.length ? 1 : 0);
 }
 

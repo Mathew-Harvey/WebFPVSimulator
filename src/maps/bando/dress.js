@@ -126,8 +126,11 @@ function junkPiles(root, colliders, M) {
   slab(root, colliders, M.litter, -58.2, 0, -6, -53.4, 1.2, -1.4, { kind: 'obstacle' });
   slab(root, colliders, M.bone, -57.4, 1.2, -5.2, -54.2, 2.4, -2.2, { kind: 'obstacle' });
 
-  slab(root, colliders, M.litter, 41.2, 0, -18.4, 46.8, 0.7, -14.2, { kind: 'obstacle' });
-  slab(root, colliders, M.ochre, 42.0, 0.7, -17.6, 45.4, 1.45, -15.0, { kind: 'obstacle' });
+  /* Stood off 0.8 m further south than it was, because the bins moved out
+   * 0.6 m and this pile ended up 1.4 m from bin 1's south wall, which is
+   * the floor rather than a gap. */
+  slab(root, colliders, M.litter, 41.2, 0, -19.2, 46.8, 0.7, -15.0, { kind: 'obstacle' });
+  slab(root, colliders, M.ochre, 42.0, 0.7, -18.4, 45.4, 1.45, -15.8, { kind: 'obstacle' });
 
   slab(root, colliders, M.litter, 22.4, 0, -14.2, 25.6, 1.05, -11.8, { kind: 'obstacle' });
   slab(root, colliders, M.safety, 23.0, 1.05, -13.8, 24.8, 1.35, -12.2, { solid: false });

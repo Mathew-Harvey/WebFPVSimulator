@@ -45,7 +45,13 @@ export function buildWorld(scene, opts = {}) {
   restrictCasters(root, opts.casterMin ?? 0.5);
   const merged = mergeStatic(root, { cell: opts.mergeCell ?? 24 });
   colliders.build();
-  const leftover = leftoverScan(colliders);
+  /*
+   * LAZY. leftoverScan is an n squared pair loop over every box, and each
+   * candidate slot then runs another sweep over all of them: on this site
+   * that is 939 boxes, about 440 thousand pairs, on the critical path of
+   * every player's map load, for a number only the harness ever reads.
+   * baths already returns its audit as a function; this matches it.
+   */
 
   function heightAt(x, z, fromY) {
     let h = groundHeight(x, z);
@@ -68,7 +74,7 @@ export function buildWorld(scene, opts = {}) {
     platforms,
     spawn: L.spawn,
     merged,
-    leftover,
+    leftover: () => leftoverScan(colliders),
     heightAt,
     references,
   };

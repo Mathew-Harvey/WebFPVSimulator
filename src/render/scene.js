@@ -67,7 +67,7 @@ import {
   flagMast, flagSailProfile,
 } from '../art/banners.js';
 import {
-  assembleStartBlock, startBlockContactHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
+  assembleStartBlock, startBlockDeck, startBlockDeckHeight, START_BLOCK_WOOD, START_BLOCK_WOOD_DARK,
   START_BLOCK_FOAM, START_BLOCK_LIP,
 } from '../art/startblock.js';
 /* The club's pavilion. Both race maps get one, because a race field is a
@@ -2483,11 +2483,15 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
         stand.position.set(s.x + Math.cos(s.yaw) * off, y, s.z - Math.sin(s.yaw) * off);
         stand.rotation.y = s.yaw;
         baker.bake(stand);
+        /* Everything the 1 kHz height query needs, worked out here rather
+         * than there: the stand's own contact patch and the sine and
+         * cosine of its heading. See startBlockDeck. */
         padDecks.push({
           x: stand.position.x,
           z: stand.position.z,
-          yaw: s.yaw,
-          padSize: s.dims.padSize,
+          cos: Math.cos(s.yaw),
+          sin: Math.sin(s.yaw),
+          deck: startBlockDeck(s.dims.padSize),
         });
       }
     }
@@ -2712,8 +2716,17 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
    * corners of the hoop. Same `at` map as the frame colliders, so a
    * custom tilt cannot put a pole on the opening's centreline.
    */
-  const upX = halfW + tubeR;
+  /*
+   * mastR, not tubeR, so the post's INNER FACE lands on the clear opening
+   * rather than 11.5 mm inside it. The post is 1.6 times the frame tube and
+   * it used to be centred on the stile, which put a millimetre and a half
+   * of extra post either side of a 1.524 m MultiGP opening: a gate scored
+   * against a hole 23 mm narrower than the one the document declares. The
+   * feet, and the builder's own preview through gateSupportFeet, take the
+   * same offset.
+   */
   const mastR = tubeR * 1.6;
+  const upX = halfW + mastR;
   for (const sx of [-1, 1]) {
     const foot = at(sx * upX, -(halfH + tubeR));
     const postH = foot.y;
@@ -2732,16 +2745,31 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
         bx: sx * upX, by: postH, bz: foot.z,
         r: mastR,
       });
+    } else {
+      /* No post, so no footing. The pad used to be emitted whatever the
+       * pitch, so a gate whose hoop already reaches the grass stood on two
+       * plates with nothing on them. */
+      continue;
     }
     const pad = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.5), mats.frame);
     pad.position.set(sx * upX, 0.045, foot.z);
     pad.castShadow = true;
     g.add(pad);
+    /*
+     * The capsule HUGS the plate. r 0.16 about a 0.09 m plate stood a
+     * 0.32 m tall, 0.72 m wide invisible kerb on the grass at each foot,
+     * which is the invisible wall this project measures with
+     * scripts/collider-audit.js and refuses. r is now the plate's own half
+     * thickness and the axis is its own length, so the solid is 0.09 m
+     * tall and 0.5 m wide, exactly what is drawn. It reads narrow across
+     * the other axis, and that is the right way to be wrong here: a gap
+     * you can fly is better than a wall you cannot see.
+     */
     caps.push({
       kind: 'obstacle',
-      ax: sx * upX - 0.2, ay: 0.045, az: foot.z,
-      bx: sx * upX + 0.2, by: 0.045, bz: foot.z,
-      r: 0.16,
+      ax: sx * upX - 0.205, ay: 0.045, az: foot.z,
+      bx: sx * upX + 0.205, by: 0.045, bz: foot.z,
+      r: 0.045,
     });
   }
 
@@ -5175,11 +5203,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       for (const pad of padDecks) {
         const dx = x - pad.x;
         const dz = z - pad.z;
-        const c = Math.cos(pad.yaw);
-        const s = Math.sin(pad.yaw);
-        const across = dx * c - dz * s;
-        const along = dx * s + dz * c;
-        const deck = startBlockContactHeight(pad.padSize, across, along);
+        const across = dx * pad.cos - dz * pad.sin;
+        const along = dx * pad.sin + dz * pad.cos;
+        const deck = startBlockDeckHeight(pad.deck, across, along);
         if (deck == null) {
           continue;
         }

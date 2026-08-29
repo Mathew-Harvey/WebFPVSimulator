@@ -1164,37 +1164,34 @@ function punchWallXY(out, x0, y0, x1, y1, z0, z1, holes) {
   }
 }
 
+/*
+ * NOTHING IS PUNCHED, and this function is here to say so in the one place
+ * a reader will look for it rather than to be deleted.
+ *
+ * The rebuild that hollowed the pavilion punched all ten openings on the
+ * front elevation. openings() above draws every one of them SHUT: each
+ * window is a solid pane of CLUB.glass, each door is two leaves and a
+ * meeting stile, and the shutter is a shutter. So the fix for an invisible
+ * wall in clear air shipped ten sheets of glass a quad flew straight
+ * through, which is the same defect pointing the other way and the one
+ * this file's rule forbids: a gap you see is a gap you fly.
+ *
+ * The reported bug was never the rooms. It was that the old mass ran from
+ * the back wall to 0.45 m PAST the front face, so the strip of verandah in
+ * front of the glass, which is drawn as clear air and is the line a pilot
+ * takes through the pits, was solid. Thin walls fix that, and they fix it
+ * whether or not anything is punched. So the building is shut, its walls
+ * hug what is drawn, and its shell has a lid.
+ *
+ * A pavilion a quad can fly through would be a good thing to have, and
+ * this is where its openings would go. It needs the elevation drawn open
+ * and the rooms given inward faces, which is art rather than a bug fix:
+ * DoubleSide on the existing single boxes puts every dado and sill into z
+ * fighting with the wall it is painted on, measured on this map. Worth
+ * doing on its own, not on the way past.
+ */
 function flyableFrontHoles() {
-  const y0 = D.terraceTop;
-  const holes = [];
-  const win = (cx, w, sill, h) => {
-    holes.push({
-      x0: cx - w * 0.5,
-      x1: cx + w * 0.5,
-      y0: y0 + sill,
-      y1: y0 + sill + h,
-    });
-  };
-  const door = (cx, w, h) => {
-    holes.push({
-      x0: cx - w * 0.5,
-      x1: cx + w * 0.5,
-      y0: y0 + 0.02,
-      y1: y0 + h,
-    });
-  };
-  /* Must match openings() above. The roller shutter is not a hole. */
-  win(-19.4, 2.6, 0.95, 1.55);
-  win(-15.6, 2.6, 0.95, 1.55);
-  win(-11.8, 2.6, 0.95, 1.55);
-  door(-7.6, 1.9, 2.15);
-  win(-4.2, 2.9, 0.35, 2.55);
-  door(-0.25, 2.4, 2.45);
-  win(3.4, 2.9, 0.35, 2.55);
-  win(7.2, 1.5, 1.35, 1.05);
-  win(10.0, 1.5, 1.35, 1.05);
-  win(19.9, 1.5, 1.35, 1.05);
-  return holes;
+  return [];
 }
 
 function solids() {
@@ -1224,6 +1221,22 @@ function solids() {
    * into the next room from behind. */
   wall(D.westX1 - WALL_T, y0, D.westBack, D.westX1, D.westEave, D.midBack);
   wall(D.eastX0, y0, D.midBack, D.eastX0 + WALL_T, D.eastEave, D.eastBack);
+
+  /*
+   * THE CEILING, one slab per wing at its own eave.
+   *
+   * The mass this rebuild replaced was one filled box per wing from the
+   * terrace to the eave, and that box was the ceiling as well as the mass.
+   * Hollowing the wings deleted it and put nothing back, so between the two
+   * ridge boxes each room was open straight to the sky: measured on
+   * clubhouseSolids, a vertical ray from inside found nothing solid over 60
+   * percent of the west wing, 44 of the middle and 41 of the east. A quad
+   * that flew in a door left through the drawn roof. These three close it,
+   * and the ridge boxes sit on top of them.
+   */
+  wall(D.westX0, D.westEave - 0.24, D.westBack, D.westX1, D.westEave, 0);
+  wall(D.midX0, D.midEave - 0.24, D.midBack, D.midX1, D.midEave, 0);
+  wall(D.eastX0, D.eastEave - 0.24, D.eastBack, D.eastX1, D.eastEave, 0);
 
   wall(D.westX0, D.westEave, D.westRidgeZ - 2.0, D.westX1, D.westRidge, D.westRidgeZ + 2.0);
   wall(D.eastX0, D.eastEave, D.eastRidgeZ - 2.0, D.eastX1, D.eastRidge, D.eastRidgeZ + 2.0);

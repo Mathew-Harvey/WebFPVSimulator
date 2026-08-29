@@ -41,7 +41,9 @@ import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } fro
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
-import { RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame } from './geometry.js';
+import {
+  RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame, GATE_POST_R_SCALE,
+} from './geometry.js';
 import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
   virtualApertureDims, countElementsByType, formatElementCounts,
   GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
@@ -2646,7 +2648,7 @@ function suiteDiveSupports() {
   const d = ELEMENTS.diveGate.dims;
   const tube = FRAME_TUBE_OD;
   const centerH = d.sillH + d.clearH * 0.5;
-  const wx = (d.clearW + tube) / 2;
+  const wx = d.clearW / 2 + tube * GATE_POST_R_SCALE;
   for (const deg of [55, 90]) {
     const pitch = deg * RAD;
     const feet = gateSupportFeet(0, pitch, d.clearW, d.clearH, centerH, tube);
@@ -2683,14 +2685,42 @@ function suiteClubhouseShell() {
     !inClubBox(solids, -0.25, 2, -4));
   check('the west back wall is still solid',
     inClubBox(solids, -14, 2, -11.05));
-  check('the west social-room door is a hole',
-    !inClubBox(solids, -7.6, 1.5, -0.14));
-  check('the verandah in front of that door is clear',
-    !inClubBox(solids, -7.6, 1.5, 0.5));
+  /*
+   * THE ELEVATION IS DRAWN SHUT, so it is solid. Every window is a pane of
+   * glass and every door is two leaves in the mesh, and the rebuild that
+   * hollowed the wings punched all ten of them: a quad flew through shut
+   * glass. What the reported bug was actually about is the line below it.
+   */
+  check('the west social-room door is drawn shut, so it is a wall',
+    inClubBox(solids, -7.6, 1.5, -0.14));
+  check('an east-wing window is still glass',
+    inClubBox(solids, 7.2, 0.45 + 1.35 + 0.5, -0.14));
   check('the closed roller shutter is still a wall',
     inClubBox(solids, 16.0, 1.6, -0.14));
-  check('an east-wing window is a hole',
-    !inClubBox(solids, 7.2, 0.45 + 1.35 + 0.5, -0.14));
+  /*
+   * And the strip of verandah in front of the glass is CLEAR. The mass this
+   * shell replaced ran 0.45 m past the front face, so the line a pilot
+   * takes through the pits, drawn as open air, was an invisible wall.
+   */
+  check('the verandah in front of that door is clear',
+    !inClubBox(solids, -7.6, 1.5, 0.5));
+  check('the verandah in front of the middle glazing is clear',
+    !inClubBox(solids, -0.25, 1.5, 0.3));
+  /*
+   * And the shell has a lid. A vertical ray from inside each wing must meet
+   * something: hollowing the wings deleted the box that was also the
+   * ceiling, and a quad that flew in a door left through the drawn roof.
+   */
+  for (const [name, x, z] of [['west', -14, -5], ['mid', -0.25, -4], ['east', 14, -4]]) {
+    let roofed = false;
+    for (let y = 0.5; y < 12; y += 0.05) {
+      if (inClubBox(solids, x, y, z)) {
+        roofed = true;
+        break;
+      }
+    }
+    check(`the ${name} wing has a roof over it`, roofed);
+  }
 }
 
 function main() {

@@ -163,9 +163,18 @@ export function buildKnots(doc) {
       elementId: stacked.id,
     });
   }
-  /* A circuit closes at the first sequenced element, not at the pads.
-   * Same position and tangent so the Hermite joins without a hook. */
-  if (start && withWraps.length > 0) {
+  /*
+   * A circuit closes at the first sequenced element, not at the pads. Same
+   * position and tangent so the Hermite joins without a hook.
+   *
+   * MORE THAN ONE KNOT, because one element is not a lap. With `> 0` a
+   * track holding pads and a single gate got a closing knot that was an
+   * exact copy of the only knot it had: a zero length path, no racing line
+   * drawn at all, and a "two knots in the same place" warning pointing at
+   * one gate. That is the first thing an author sees after placing their
+   * first gate, so it has to be nothing rather than a complaint.
+   */
+  if (start && withWraps.length > 1) {
     const first = withWraps[0];
     withWraps.push({
       pos: { ...first.pos },

@@ -171,6 +171,33 @@ const FOCUS_BEAT_HZ = 6;
  */
 const FLIGHT_STEM = 0.3;
 
+/*
+ * Duck a bus, starting from where it actually IS.
+ *
+ * cancelScheduledValues followed by setValueAtTime(1) is a JUMP TO UNITY
+ * whenever a second cue arrives while the first one is still ducking: the
+ * bus is at 0.28, the schedule is cleared, and the next sample is 1. That
+ * is a step on the motors, the wind and the music, at the exact instant a
+ * cue is playing over them, and a step is a click. Two gates a tenth of a
+ * second apart put one in. It has to start from the current value.
+ *
+ * Deeper wins. If the bus is already further down than this cue asks for,
+ * the duck stays where it is and only the release is rescheduled: raising
+ * it to the shallower depth would be the same step in the other direction.
+ */
+function duckParam(g, t, depth, seconds, attack) {
+  const from = g.value;
+  if (typeof g.cancelAndHoldAtTime === 'function') {
+    g.cancelAndHoldAtTime(t);
+  } else {
+    g.cancelScheduledValues(t);
+  }
+  g.setValueAtTime(from, t);
+  const to = from < depth ? from : depth;
+  g.linearRampToValueAtTime(to, t + attack);
+  g.linearRampToValueAtTime(1, t + seconds);
+}
+
 export class MotorAudio {
   constructor() {
     this.ctx = null;
@@ -749,11 +776,7 @@ export class MotorAudio {
     if (!this.flightDuck) {
       return;
     }
-    const g = this.flightDuck.gain;
-    g.cancelScheduledValues(atTime);
-    g.setValueAtTime(1, atTime);
-    g.linearRampToValueAtTime(depth, atTime + 0.010);
-    g.linearRampToValueAtTime(1, atTime + seconds);
+    duckParam(this.flightDuck.gain, atTime, depth, seconds, 0.010);
   }
 
   /* rpm is the four motor RPM values, speed is airspeed in m/s. atTime is

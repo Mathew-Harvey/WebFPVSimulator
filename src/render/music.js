@@ -618,14 +618,22 @@ export class Music {
   }
 
   /* A cue pulls the bed down and lets it back up. Measurable by design. */
+  /* Same shape and the same reason as duckFlight in src/render/audio.js:
+   * start from where the bus is, keep the deeper of the two ducks, and
+   * never step to unity under a cue that is still sounding. */
   duckNow(atTime, depth, seconds) {
     if (!this.duck) {
       return;
     }
     const g = this.duck.gain;
-    g.cancelScheduledValues(atTime);
-    g.setValueAtTime(1, atTime);
-    g.linearRampToValueAtTime(depth, atTime + 0.012);
+    const from = g.value;
+    if (typeof g.cancelAndHoldAtTime === 'function') {
+      g.cancelAndHoldAtTime(atTime);
+    } else {
+      g.cancelScheduledValues(atTime);
+    }
+    g.setValueAtTime(from, atTime);
+    g.linearRampToValueAtTime(from < depth ? from : depth, atTime + 0.012);
     g.linearRampToValueAtTime(1, atTime + seconds);
   }
 

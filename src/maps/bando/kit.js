@@ -51,17 +51,37 @@ export const L = {
   kiln: {
     y0: 8, inner: 3.5, wall: 0.5, x0: -43.8, x1: 24,
   },
+  /*
+   * The preheater's floors are 12 m apart, not 6. Six floors each with one
+   * 1.7 m hole in a corner, and the corner alternating every floor, made
+   * the inside of this tower a stack of seven small holes on a zigzag: a
+   * pilot who wanted to leave the way they came in had no run anywhere in
+   * it long enough to carry speed. Three floors and a 2.6 m hole is the
+   * same building, read as a climb rather than as a series of dives, and
+   * it is the owner's report, "too many chimney dives, not fun".
+   */
   pre: {
-    x0: -22, x1: -10, z0: -22, z1: -7, h: 42, rise: 6,
+    x0: -22, x1: -10, z0: -22, z1: -7, h: 42, rise: 12, hole: 2.6,
   },
+  /*
+   * The bins stand 2.0 m apart, not 1.4.
+   *
+   * 1.4 is CLEAR, the floor, and this map had the gantry catwalk threaded
+   * down the middle of it: two 0.1 m handrails inside a 1.36 m deck inside
+   * a 1.4 m slot left 1.16 m, which is under CLEAR, and the map's own audit
+   * called it what it is. Four of the six death slots on this site were
+   * that one detail counted twice per gantry. Standing the outer bins
+   * 0.6 m further out makes the split a hoop with room in it and gives the
+   * catwalk 1.76 m between its rails.
+   */
   bins: {
-    cx: 38, zs: [-8.6, 0, 8.6], w: 7.2, hs: [16, 22, 28],
+    cx: 38, zs: [-9.2, 0, 9.2], w: 7.2, hs: [16, 22, 28],
   },
   gantry: {
-    x0: 28, x1: 40.6, z0: 3.62, z1: 4.98, y: 16,
+    x0: 28, x1: 40.6, z0: 3.62, z1: 5.58, y: 16,
   },
   gantrySouth: {
-    x0: 28, x1: 40.6, z0: -4.98, z1: -3.62, y: 16,
+    x0: 28, x1: 40.6, z0: -5.58, z1: -3.62, y: 16,
   },
   hopper: {
     x0: 32, x1: 44, z0: -12, z1: 12, y0: -8, y1: 0,
@@ -159,7 +179,14 @@ export function deck(root, colliders, platforms, mat, x0, z0, x1, z1, top, thick
   const za = Math.min(z0, z1);
   const zb = Math.max(z0, z1);
   slab(root, colliders, mat, xa, top - thick, za, xb, top, zb, { solid: false, receive: true });
-  colliders.addBox('wall', xa, top - thick, za, xb, top - SLAB_CLEAR, zb);
+  /* Same rule as the baths and the yard kits, which both guard this and
+   * which this one quietly stopped matching: a deck whose top is under
+   * PLATFORM_MIN is a kerb the ground already answers for, and giving it a
+   * box puts a step in front of a landing. PLATFORM_MIN was left exported
+   * here with nothing reading it, which is how the three drifted. */
+  if (top >= PLATFORM_MIN) {
+    colliders.addBox('wall', xa, top - thick, za, xb, top - SLAB_CLEAR, zb);
+  }
   platforms.push({
     x0: xa, z0: za, x1: xb, z1: zb, top, thick,
   });

@@ -2,10 +2,23 @@
  * play.js: the furniture a 5 inch actually flies.
  *
  * The empty basin was a photograph. This file is the line: start blocks,
- * a timing gantry, backstroke bars, a bulkhead slot, hanging hoops,
- * gallery bridges, a dive hoop, a sunken cage, lane poles, a lido with a
- * mushroom, a colonnade, and a drop tower. Leftover between solids is 0
- * or at least CLEAR. A gap you see is a gap you fly.
+ * a timing gantry, backstroke lines, a bulkhead slot, hanging hoops,
+ * gallery bridges, a dive hoop, a sunken cage, a lido with a mushroom, a
+ * colonnade, and a drop tower. Leftover between solids is 0 or at least
+ * CLEAR. A gap you see is a gap you fly.
+ *
+ * WHAT IS NOT HERE ANY MORE, AND WHY. The basin used to carry five free
+ * standing masses, two islands with a pole on each, two poles from the
+ * floor to head height in the middle of the deep end, and three chrome
+ * tubes across the water. None of them was a thing a municipal baths has:
+ * they were freestyle furniture, dropped in the fastest 50 m of the map.
+ * Measured over the water from y -1 to 6, the median distance to the
+ * nearest solid was 1.61 m, and a 5 inch at racing speed covers 1.61 m in
+ * a fifteenth of a second. That is the owner's report, "WAY too cluttered
+ * for a 5 inch to enjoy", stated as a number. It is 2.00 m now, and the
+ * tenth percentile is 0.55 m rather than 0.40 m. Every GATE is still here:
+ * the goal, the gantry, the bulkhead slot, all seven hoops, the cage, the
+ * island, the bridges, the tower. The civic set is untouched.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -39,9 +52,7 @@ export function buildPlay(root, colliders, platforms, M) {
   catchHoop(root, colliders, M);
   clock(root, colliders, M);
   eastHoop(root, colliders, M);
-  loopMasses(root, colliders, M);
-  lanePads(root, colliders, platforms, M);
-  lanePoles(root, colliders, M);
+  westDoorway(root, colliders, M);
   sunkenCage(root, colliders, M);
   diveHoop(root, colliders, M);
   chairs(root, colliders, platforms, M);
@@ -96,13 +107,28 @@ function island(root, colliders, platforms, M) {
   decal(root, colliders, M.lemon, x0, top, z0, x1, top + 0.05, z1);
 }
 
+/*
+ * The backstroke lines, and they stay SOLID: this map's rule is that a gap
+ * you see is a gap you fly, and a drawn bar you can pass through is the
+ * same lie the other way round.
+ *
+ * What changed is what they ARE. Three 0.4 m chrome tubes spanning the
+ * whole basin is scaffolding, and two of them hung over the middle 20 m of
+ * the water at the exact height a 5 inch crosses the pool. A backstroke
+ * line is a rope with pennants on it, it is 0.14 m of rope and not 0.4 m of
+ * tube, and it hangs five and a half metres off each wall, not over the
+ * middle. So there are two, they are ropes, and they are where a pool hangs
+ * them: beside the timing gantry at the shallow end and short of the dive
+ * pit at the deep. The 39 m between them is water with nothing over it,
+ * which is what the pilot came for. The third, a bar across the pool at
+ * 9.4 m, was not a pool fitting at all and it is gone.
+ */
 function flagBars(root, colliders, M) {
-  const r = 0.20;
+  const r = 0.07;
   const z0 = L.pool.z0 + 0.2;
   const z1 = L.pool.z1 - 0.2;
-  pipe(root, colliders, M.chrome, 'z', z0, z1, -14.6, 4.50, r);
-  pipe(root, colliders, M.coral, 'z', z0, z1, 4.2, 4.50, r);
-  pipe(root, colliders, M.lemon, 'z', z0, z1, 0.0, 9.40, r);
+  pipe(root, colliders, M.chrome, 'z', z0, z1, -19.5, 4.50, r);
+  pipe(root, colliders, M.coral, 'z', z0, z1, 19.5, 4.50, r);
 }
 
 function mouthHoop(root, colliders, M) {
@@ -170,39 +196,16 @@ function clock(root, colliders, M) {
   decal(root, colliders, M.lemon, -0.55, 12.5, 0.18, 0.55, 13.4, 0.22);
 }
 
-function lanePads(root, colliders, platforms, M) {
-  const y0 = L.pool.midY;
-  const top = 0.90;
-  for (const z of [-3.8, 3.8]) {
-    slab(root, colliders, M.tileDeep, 5.4, y0, z - 0.6, 6.6, top, z + 0.6, { kind: 'obstacle' });
-    platforms.push({
-      x0: 5.4, z0: z - 0.6, x1: 6.6, z1: z + 0.6, top, thick: top - y0,
-    });
-    decal(root, colliders, M.white, 5.4, top, z - 0.6, 6.6, top + 0.05, z + 0.6);
-    pipe(root, colliders, M.coral, 'y', top, 2.35, 6.0, z, 0.12);
-  }
-}
-
-function loopMasses(root, colliders, M) {
-  slab(root, colliders, M.chrome, -15.3, 1.50, -0.7, -13.9, 2.85, 0.7, { kind: 'obstacle' });
-  slab(root, colliders, M.coral, 3.5, 1.50, -0.7, 4.9, 2.85, 0.7, { kind: 'obstacle' });
-  slab(root, colliders, M.lemon, -0.6, 4.05, 3.0, 0.6, 5.40, 4.4, { kind: 'obstacle' });
-  slab(root, colliders, M.navy, 15.1, -3.55, -0.75, 16.5, -2.2, 0.75, { kind: 'obstacle' });
-  pipe(root, colliders, M.chrome, 'z', 3.0, 5.4, -5.0, 2.80, 0.20);
+/*
+ * The west door out of the hall, and nothing else.
+ *
+ * This used to be loopMasses, and the four blocks and the pipe it hung in
+ * the basin have gone: see the note at the top. The door stayed because it
+ * is a hole in a wall, not furniture, and it is the only way west out of
+ * the hall at deck level.
+ */
+function westDoorway(root, colliders, M) {
   portalX(root, colliders, M.lemon, L.hall.x0, 0, L.westDoor.z0, L.westDoor.y1, L.westDoor.z1, L.hall.t);
-}
-
-function lanePoles(root, colliders, M) {
-  const x = 16.0;
-  const r = 0.13;
-  const y0 = L.pool.deepY;
-  const y1 = 2.85;
-  for (const z of [-4.1, 4.1]) {
-    pipe(root, colliders, M.chrome, 'y', y0, y1, x, z, r);
-    slab(root, colliders, M.coral, x - 0.18, y1, z - 0.18, x + 0.18, y1 + 0.16, z + 0.18, {
-      kind: 'obstacle',
-    });
-  }
 }
 
 function sunkenCage(root, colliders, M) {

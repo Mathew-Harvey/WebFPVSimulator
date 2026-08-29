@@ -270,10 +270,10 @@ function reversed(tangent, from, to) {
 }
 
 function describe(doc, knot) {
-  if (knot.role === 'start') {
-    return 'The start pads';
-  }
-  if (knot.role === 'finish') {
+  /* No 'start' case: the pads are not a knot any more, and the one warning
+   * that names them names the element itself. A 'finish' knot is a copy of
+   * the first sequenced knot, so it describes itself as that. */
+  if (knot.role === 'finish' && !knot.seq) {
     return 'the finish line';
   }
   if (!knot.seq) {

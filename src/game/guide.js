@@ -62,9 +62,10 @@ export const GUIDE = {
    * paving a lane. */
   dash: 1.05,
   gap: 2.4,
-  /* Keep the paint off the PVC and off the start stands. */
+  /* Keep the paint off the PVC. The start stands had their own, larger
+   * hole while the pads were a knot on the line; the line does not go near
+   * them any more. */
   holeGate: 1.15,
-  holeStart: 1.7,
   holeFlag: 0.35,
   /* Arrow sits this far before a height decision, along the line. */
   approach: 6.8,
@@ -579,15 +580,6 @@ function lanesNext(y, current) {
   return h >= GUIDE.highM + GUIDE.highBand ? 2 : 1;
 }
 
-function firstGateY(cues) {
-  for (const c of cues) {
-    if (c.kind === 'gate') {
-      return c.y ?? 0;
-    }
-  }
-  return 0;
-}
-
 function tooCloseToFlag(x, z, holes) {
   for (const h of holes) {
     if (h.kind === 'flag' && hypot2(x - h.x, z - h.z) < GUIDE.flagArrowClear) {
@@ -625,7 +617,6 @@ function layoutArrows(samples, cues, holes) {
     return arrows;
   }
 
-  const gateY = firstGateY(cues);
   const cueS = [];
   for (const cue of cues) {
     if (cue.kind === 'flag') {
@@ -657,20 +648,23 @@ function layoutArrows(samples, cues, holes) {
     return true;
   };
 
+  /* Every cue is a gate or a flag now. The 'start' special case that used
+   * to be threaded through this loop has gone with the start knot: it made
+   * the first arrow unconditional and put it AFTER its hole, which is what
+   * an arrow leaving the grid wants. The first cue on the line is now the
+   * first gate, and `initial` already makes that one unconditional. */
   for (const row of cueS) {
-    const want = row.cue.kind === 'start' ? gateY : row.cue.y;
-    const lanes = lanesNext(want, laneState);
+    const lanes = lanesNext(row.cue.y, laneState);
     const initial = laneState == null;
     const changed = laneState != null && lanes !== laneState;
     /* Updated whether or not an arrow lands, so a rejected one is dropped
      * rather than deferred onto the next gate. */
     laneState = lanes;
-    if (!(row.cue.kind === 'start' || initial || changed)) {
+    if (!(initial || changed)) {
       continue;
     }
-    const after = row.cue.kind === 'start' || row.s < 1.6;
-    const p = pickArrowPoint(samples, row.at, holes, after);
-    tryPush(p, row.cue.kind === 'start' ? 'start' : 'gate', lanes, GUIDE.arrowClear);
+    const p = pickArrowPoint(samples, row.at, holes, row.s < 1.6);
+    tryPush(p, 'gate', lanes, GUIDE.arrowClear);
   }
 
   let next = GUIDE.longRun;
@@ -698,8 +692,6 @@ function holesFromKnots(knots) {
   for (const k of knots) {
     if (k.role === 'aperture') {
       holes.push({ x: k.x, z: k.z, r: GUIDE.holeGate, kind: 'gate' });
-    } else if (k.role === 'start') {
-      holes.push({ x: k.x, z: k.z, r: GUIDE.holeStart, kind: 'start' });
     } else if (isPeg(k)) {
       holes.push({ x: k.poleX, z: k.poleZ, r: GUIDE.holeFlag, kind: 'flag' });
     }
@@ -713,8 +705,6 @@ function cuesFromKnots(knots) {
     const y = k.y ?? 0;
     if (k.role === 'aperture') {
       cues.push({ x: k.x, z: k.z, y, kind: 'gate' });
-    } else if (k.role === 'start') {
-      cues.push({ x: k.x, z: k.z, y, kind: 'start' });
     } else if (k.role === 'marker') {
       cues.push({ x: k.x, z: k.z, y, kind: 'flag' });
     }
@@ -735,7 +725,14 @@ function finishGuide(pts, flagArcs, holes, cues) {
 
 /*
  * Knots in scene XZ:
- *   role     'start' | 'aperture' | 'marker' | 'wrap' | 'finish'
+ *   role     'aperture' | 'marker' | 'wrap' | 'finish'
+ *
+ * There is no 'start' role. src/trackbuilder/path.js stopped putting the
+ * pads on the racing line, because the pads are a place to park and not a
+ * hole, and nothing has produced one since. The branches that used to read
+ * it are gone rather than left standing: a dead branch naming a role the
+ * producer cannot emit is how the pads get put back on the line by someone
+ * fixing a missing start hole.
  *   x, z     fly point (already offset, for a marker)
  *   y        fly height, metres, used to pick one arrow or two
  *   poleX, poleZ, radius   only on markers

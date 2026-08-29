@@ -280,18 +280,29 @@ function buildKiln(root, colliders, platforms, M) {
 }
 
 function buildPreheater(root, colliders, platforms, M) {
-  const { x0, x1, z0, z1, h, rise } = L.pre;
+  const { x0, x1, z0, z1, h, rise, hole } = L.pre;
   const t = 0.4;
   const floors = [];
   for (let y = rise; y < h; y += rise) {
     floors.push(y);
   }
-  slab(root, colliders, M.boneViolet, x0, 0, z0 + t, x0 + t, h, z1 - t);
-  const eastHatch = [
+  /*
+   * THE HATCHES GO THROUGH. The east face has had three of them since the
+   * tower was built and the west face was one unbroken slab, so the only
+   * way from the top of this tower to the bottom was the stack of floor
+   * holes: a dive, and the same dive three times. The same three openings
+   * on the west face turn each of them into a LINE, in one side and out
+   * the other at 8 m, at 20 m and at 32 m, with the south slot as the
+   * fourth way through. The tower is still a climb for anyone who wants
+   * one; it is no longer the only thing it is.
+   */
+  const hatches = [
     { z0: -18.4, z1: -15.2, y0: 6.2, y1: 9.4 },
     { z0: -18.4, z1: -15.2, y0: 18.2, y1: 21.4 },
     { z0: -13.6, z1: -10.6, y0: 30.2, y1: 33.4 },
   ];
+  const eastHatch = hatches;
+  hatchWall(root, colliders, M.boneViolet, x0, 0, z0 + t, x0 + t, h, z1 - t, hatches);
   hatchWall(root, colliders, M.boneViolet, x1 - t, 0, z0 + t, x1, h, z1 - t, eastHatch);
   const ductHalf = DUCT_IN * 0.5;
   wallWithHolesX(root, colliders, M.boneViolet, x0, x1, 0, h, z0, z0 + t, [
@@ -313,7 +324,6 @@ function buildPreheater(root, colliders, platforms, M) {
 
   let flip = 0;
   for (const y of floors) {
-    const hole = 1.7;
     const hx0 = flip ? x0 + t + 0.3 : x1 - t - 0.3 - hole;
     const hz0 = flip ? z0 + t + 0.3 : z1 - t - 0.3 - hole;
     const hx1 = hx0 + hole;
@@ -348,7 +358,7 @@ function buildPreheater(root, colliders, platforms, M) {
 
   const d = 0.08;
   const skin = { solid: false, cast: false, noShadow: true };
-  slab(root, colliders, M.boneSun, x0 + t, 0.02, z0 + t, x0 + t + d, h - 0.2, z1 - t, skin);
+  hatchWall(root, colliders, M.boneSun, x0 + t, 0.02, z0 + t, x0 + t + d, h - 0.2, z1 - t, hatches, skin);
   hatchWall(root, colliders, M.boneSun, x1 - t - d, 0.02, z0 + t, x1 - t, h - 0.2, z1 - t, eastHatch, skin);
   slab(root, colliders, M.boneSun, x0 + t, 0.02, z0 + t, x1 - t, h - 0.2, z0 + t + d, skin);
   slab(root, colliders, M.boneSun, x0 + t, 0.02, z1 - t - d, southLeft, h - 0.2, z1 - t, skin);
@@ -451,9 +461,18 @@ function buildCyclones(root, colliders, platforms, M) {
   ductDress(root, colliders, M, CYC[1].cz + r, L.pre.z0, DUCT_Y, CYC[1].cx, DUCT_IN, 'z');
 }
 
+/*
+ * The high catwalk from the stack to the preheater.
+ *
+ * It was 1.22 m wide with a 0.1 m handrail down each side, which leaves
+ * 1.02 m between them: a 20 m long slot, 0.74 m tall, under CLEAR, and
+ * exactly the kind of leftover this map's own rule forbids. Two of the six
+ * death slots the audit found were this bridge, once per leg. A plant
+ * catwalk is 1.7 m wide anyway, and that leaves 1.5 m to fly.
+ */
 function buildSkybridge(root, colliders, platforms, M) {
   const y = 42;
-  const w = 1.22;
+  const w = 1.7;
   const zA = -15.55;
   const zB = zA + w;
   const xE = -22.0;
@@ -480,7 +499,13 @@ function buildBins(root, colliders, platforms, M) {
   const { cx, zs, w, hs } = L.bins;
   const R = w * 0.5;
   const t = 0.36;
-  const hatch = 1.8;
+  /*
+   * 2.4, not 1.8. The roof hatch is the top of a 16 to 28 m drum and for a
+   * pilot it is the exit: an 1.8 m square at the end of a climb, with a
+   * pole up the middle of the drum to work round on the way, is the dive
+   * this map had too many of.
+   */
+  const hatch = 2.4;
   for (let i = 0; i < zs.length; i += 1) {
     const cz = zs[i];
     const h = hs[i];
@@ -493,13 +518,43 @@ function buildBins(root, colliders, platforms, M) {
       eastHoles.push(galleryDoor);
     }
 
-    slab(root, colliders, M.silo, cx - R, 0.02, cz + R - t, cx + R, h, cz + R);
-    slab(root, colliders, M.silo, cx - R, 0.02, cz - R, cx + R, h, cz - R + t);
+    /*
+     * THE Z FACES ARE PUNCHED, so the three bins are a chain and not three
+     * tubes.
+     *
+     * Every way into a bin used to be on the east face or the roof, and
+     * every way out of one was the way you came in or a 28 m climb to the
+     * hatch. Three of the map's seven vertical tubes were these drums, and
+     * that is the owner's report: too many chimney dives. One 2.0 by 2.4 m
+     * door in each north and south face turns the row into a horizontal
+     * serpentine at 3.6 to 6.0 m: in bin 1's east door, out its north face,
+     * across the split, through bin 2, across the second split, through
+     * bin 3, out east. Same drums, same silhouette, a line through them.
+     *
+     * 3.6 to 6.0 clears the rust wrap band on bins 1 and 3, clears every
+     * bin digit plate, and stands 3.2 m over the floor slab, so the drum
+     * is still a room with a floor rather than a tunnel.
+     */
+    const sideHole = [{ x0: cx - 1.0, x1: cx + 1.0, y0: 3.6, y1: 6.0 }];
+    wallWithHolesX(root, colliders, M.silo, cx - R, cx + R, 0.02, h, cz + R - t, cz + R, sideHole);
+    wallWithHolesX(root, colliders, M.silo, cx - R, cx + R, 0.02, h, cz - R, cz - R + t, sideHole);
     slab(root, colliders, M.silo, cx - R, 0.02, cz - R + t, cx - R + t, h, cz + R - t);
     hatchWall(root, colliders, M.silo, cx + R - t, 0.02, cz - R + t, cx + R, h, cz + R - t, eastHoles);
 
     slab(root, colliders, M.bone, cx - R + t + 0.05, 0, cz - R + t + 0.05, cx + R - t - 0.05, 0.38, cz + R - t - 0.05);
-    pipe(root, colliders, M.steelDark, 'y', 0.38, h - 0.3, cx, cz, 0.22);
+    /*
+     * The discharge riser stands in the SOUTH WEST corner, not on the
+     * drum's axis. A 0.44 m pole on the centreline of a 6.5 m drum turns
+     * the one shape in this map you can actually loop inside into a thing
+     * you fly around, and it is in the way of the roof hatch, which is on
+     * the axis too. A riser down a corner is what a bin has anyway.
+     *
+     * FLUSH INTO THE CORNER, not near it. A pole standing 0.38 m off two
+     * walls is a leftover slot on both sides, which is the same defect in
+     * a smaller size: this map's rule is 0 or CLEAR and nothing between.
+     * Its box shares a face with each wall.
+     */
+    pipe(root, colliders, M.steelDark, 'y', 0.38, h - 0.3, cx - R + t + 0.22, cz - R + t + 0.22, 0.22);
 
     const hh = hatch * 0.5;
     roofRect(
@@ -514,7 +569,15 @@ function buildBins(root, colliders, platforms, M) {
     if (h > 16.5) {
       pipe(root, colliders, M.steel, 'y', 16, h + 0.15, 43.38, cz, 0.16);
     }
-    slab(root, colliders, M.ochre, cx + R, 0, cz - 1.1, cx + R + 0.55, 1.5, cz + 1.1, {
+    /*
+     * The discharge chute stands BESIDE the ground door, not across it. It
+     * was centred on cz, which is where the door is: 2.2 m of chute 1.5 m
+     * tall, flush against a doorway whose sill is 0.4 and whose head is
+     * 2.35, leaves a 1.5 by 0.85 m letterbox. Probed, a line in at 1.0 m
+     * hits the chute and a line in at 1.95 is clear. Same chute, same
+     * width, same height, moved 2.6 m north.
+     */
+    slab(root, colliders, M.ochre, cx + R, 0, cz + 1.5, cx + R + 0.55, 1.5, cz + 3.7, {
       kind: 'obstacle',
     });
     decal(root, colliders, M.rust, cx - R - 0.02, 14.4, cz - 1.7, cx - R, 17.8, cz + 1.7);

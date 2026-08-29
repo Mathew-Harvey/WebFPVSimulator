@@ -257,11 +257,25 @@ const PRESETS = {
       /*
        * minScale is the pacer floor as a CSS fraction. It must not raise
        * the buffer above pixelBudget: High used to set 1 here, so a 4K
-       * panel rendered native HalfFloat and hitching. 0.75 lets a 1080p
-       * panel drop toward 1440x810 if GPU time slips, and a 4K panel is
-       * already capped by the budget at about 1920x1080. The 1.2e6 pixel
-       * floor, not 0.75, is what stops a 1080p panel dropping toward
-       * 1440x810.
+       * panel rendered native HalfFloat and hitching.
+       *
+       * It is a COARSE floor and on most panels it is not the one that
+       * binds. On 1920x1080 the 1.2e6 absolute pixel floor binds first, at
+       * 0.761, so the buffer stops just short of 1440x810 whatever this
+       * says. The two sentences that used to be here said both of those
+       * things about the same panel and contradicted each other.
+       *
+       * WHAT THIS DOES NOT DO, and it is worth writing down because the
+       * commit that set it claimed otherwise: it does not give a 4K panel
+       * a pacing range. At 3840x2160 the budget cap puts the ceiling at
+       * 0.560 and 0.75 is above that, so the floor clamps to the ceiling
+       * and the pacer has nowhere to go. The internal pixel cap does work
+       * and 4K renders 2149x1209 rather than native, which was the hitch;
+       * the pacing on top of it is inert there. Expressing the floor in
+       * PIXELS, the way MIN_INTERNAL_PIXELS already is, would give 4K a
+       * real 0.38 to 0.56 range. That is a measured change to how every
+       * preset paces on every map, so it belongs to its own round with
+       * numbers, not to a comment.
        */
       minScale: 0.75,
       preferScale: 1,

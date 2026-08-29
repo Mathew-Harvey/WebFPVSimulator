@@ -100,21 +100,51 @@ export function startBlockLaneOffset(dims) {
 }
 
 /*
+ * The stand's contact patch, reduced to the six numbers a height query
+ * needs and nothing else.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM startBlockDims. The height query is on
+ * the PHYSICS PATH: src/main.js raises the ground plane through it on every
+ * 1 ms step and samples the slope through it five more times per pass.
+ * startBlockDims computes rise with Math.tan and slopeLen with Math.cos,
+ * and CLAUDE.md says in as many words that no JS Math.sin, Math.cos or
+ * Math.pow may appear anywhere in the physics path, because they are not
+ * specified to bit precision and vary between engines. A start block was
+ * putting Math.tan into the trajectory a thousand times a second, and the
+ * same trace on two browsers was not guaranteed to match.
+ *
+ * So the trig runs ONCE, when the stand is placed, and this is what comes
+ * out. Callers hold the result and hand it back; nothing here is
+ * recomputed per query.
+ */
+export function startBlockDeck(padSize) {
+  const d = startBlockDims(padSize);
+  return {
+    halfAcross: d.spanAcross * 0.5 + 0.04,
+    halfAlong: d.railLen * 0.5 + 0.04,
+    /* The foam top at the LOW end of the ramp, and how far it climbs. */
+    base: d.baseH + d.railT + d.foamT,
+    rise: d.rise,
+    originAlong: d.railLen * 0.5,
+    invRailLen: 1 / d.railLen,
+  };
+}
+
+/*
  * Foam-top height above the stand's own base, at a point in the stand's
  * local frame (across the start line, along toward spawn). Null if the
- * point is not on the block.
+ * point is not on the block. Arithmetic only, so it is safe at 1 kHz.
  */
-export function startBlockContactHeight(padSize, across, along) {
-  const d = startBlockDims(padSize);
-  if (Math.abs(across) > d.spanAcross * 0.5 + 0.04) {
+export function startBlockDeckHeight(deck, across, along) {
+  if ((across < 0 ? -across : across) > deck.halfAcross) {
     return null;
   }
-  if (Math.abs(along) > d.railLen * 0.5 + 0.04) {
+  if ((along < 0 ? -along : along) > deck.halfAlong) {
     return null;
   }
-  const t = (along + d.railLen / 2) / d.railLen;
-  const u = Math.max(0, Math.min(1, t));
-  return d.baseH + u * d.rise + d.railT + d.foamT;
+  const t = (along + deck.originAlong) * deck.invRailLen;
+  const u = t < 0 ? 0 : t > 1 ? 1 : t;
+  return deck.base + u * deck.rise;
 }
 
 /*

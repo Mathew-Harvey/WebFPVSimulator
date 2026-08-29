@@ -22848,3 +22848,359 @@ one `feelImpact` no longer takes on those frames.
 
 
 
+
+## 2026-08-29, the bang at the start line, and two maps that were not fun
+
+Owner's report, three things: "Launching from the blocks still makes a loud
+noise, like i'm stuck to the mesh for a moment", "the bando map has too many
+chiminy dives, not fun", and "the pool manicipal map as WAY to clutterd for a
+5 inch to enjoy". Plus: check the previous session's fixes and improve them.
+
+Everything below is measured. Where a claim has no measurement behind it,
+it says so.
+
+### 1. The bang at the start line
+
+**TWO separate defects, and 8ebd6b8 fixed neither.** That commit muted the
+crash and clip cues on the `takingOff` flag. Both defects survived it.
+
+**Defect A, the ground plane under a launch stand was a 30 to 43 degree
+fabricated ramp.** `sampleGroundNormal` took ONE forward difference over a
+35 cm stencil and called the answer a slope. A MultiGP start block is
+0.248 m across and 0.38 m along, so the stencil always steps off the block
+onto the grass, and the "slope" it reported was the block's own height
+divided by the stencil: measured, exactly (0.359, 0.861, 0.359) in Three
+world for EVERY pad yaw, a 30.5 degree plane at a fixed 45 degree world
+azimuth with nothing to do with the block's real 28 degree ramp or its
+heading, rising to 43 degrees as the craft moved. The plant then solved a
+rigid contact against it.
+
+Measured on dist/sim.wasm, driven exactly the way src/main.js drives it
+(plane raised every 1 ms, normal re-sampled every 8 steps), full throttle
+from a parked stand:
+
+| | plane tilt | peak body rate | peak lateral | rpm spread | contact | drift at 0.9 s |
+|---|---:|---:|---:|---:|---:|---:|
+| before | 43.0 deg | 422 deg/s | 3.123 m/s | 16321 | 6 ms | 2.244 m |
+| after | 0.0 deg | 32 deg/s | 0.028 m/s | 228 | 43 ms | 0.010 m |
+| flat control | 0.0 deg | 32 deg/s | 0.028 m/s | 228 | 43 ms | 0.010 m |
+
+The fix reproduces a flat plane digit for digit. And in the live shell, on
+`tracks/json/trk-0870b164.json`, same key sequence, one variable changed:
+
+- before: cues `takeoff, land, takeoff`; 142 mm of lateral squirt in x,
+  139 mm in z; tilt spiking to 12.8 then 8.7 then 7.6 degrees.
+- after: one `takeoff` cue; 4 mm of drift; tilt 0.1 degrees.
+
+That is the report, stated as numbers. "Stuck to the mesh for a moment" is
+literal: the quad was flicked off the block, re-landed, and took off again,
+and each `land` runs `sim.rest()`, which zeroes its velocity. A parallel
+measurement of the audio graph on an OfflineAudioContext put that chatter at
+-12.05 dBFS RMS, 19.1 dB over the bed and 12.5 dB over a FULL CRASH CUE, at
+0.42 peak continuously, retriggering once per frame.
+
+The fix is a MINMOD LIMITER on the slope: five taps rather than three, so
+the difference is centred, and the two one sided slopes combined so that
+opposite signs mean a ridge or a step and the honest local surface is FLAT.
+A craft on a small object sits on a local peak, and so does one on a
+clubhouse terrace, a pit table, a map platform or the city's overbridge
+deck, so this is general rather than a start block special case. A one in
+five hill still measures 11.31 degrees, exactly its own angle.
+
+Known residual, measured: at 0.6 percent of positions around a stand, where
+one stencil arm lands on the far end of the ramp and the other on grass,
+the limiter still reports up to 12.4 degrees. It was 44.9 degrees over 6.4
+percent. The residual points the way the real 28 degree ramp points rather
+than at a fabricated azimuth, and the parked and launching positions read
+exactly 0, which is why the traces above are clean. The honest close is for
+`view.height` to report WHICH surface won and to difference only bare
+terrain. That is a contract change across five map modules; not taken here.
+
+**Defect B, the launch control punch-out fired an unmuted full level crash
+cue, on the pad and on flat grass alike.** Reproduced at 8ebd6b8 in 9 of 16
+runs, more often on flat grass (6/8) than on the pad (3/8), at level 0.48 to
+0.54, which drives the crash gain to 1.90 and ducks the motors to 0.28.
+Three causes, all fixed:
+
+1. `hitSpeed` floored on the END OF FRAME total speed, which no contact in
+   the frame need ever have had. After a punch the plant stops reporting
+   contact at 22 to 36 ms at 0.43 m/s and first reaches GRAZE_SPEED_MAX at
+   about 67 ms later, so any frame longer than about 67 ms straddled both
+   and scored a 0.4 m/s contact as a 6 m/s hit. dt is capped at 100 ms, so
+   how hard a hit SOUNDED depended on the frame rate, which CLAUDE.md
+   forbids reaching the game. It is `peakGroundSpeed` alone now, sampled at
+   a step that reported contact. Verified this does not silence a real
+   arrival: a drop from 0.6, 2, 8 and 20 m at 60 and at 10 fps scores
+   identically before and after.
+2. `takingOff` was cleared thirty lines BEFORE the branch that judges the
+   frame's contact and calls `feelImpact`, in the same frame, so the mute
+   8ebd6b8 added covered every frame of a departure except the one with the
+   impulse in it. There is a wall clock `takeoffUntil` window now,
+   TAKEOFF_WINDOW_MS 250, because a flag cannot bound a window a 100 ms
+   frame steps over.
+3. The clear test was `clearance - REST_HEIGHT > 0.05`, and REST_HEIGHT is
+   the LEVEL hull's reach. A craft leaving a stand is not level: at 28
+   degrees the hull reaches 0.10 m down, so the departure was called
+   finished while the plant still reported contacts. It is a leaving test
+   now: `hits === 0 && !sawGroundHit && clearance > vHalfFrame + 0.05`.
+
+Re-measured on the working tree: 0 of 14 launch control punches fire, at
+frame lengths up to 386.6 ms, the same lengths that fired before.
+
+**Two more cue defects in the same family, found while measuring and fixed:**
+
+- The perch latch and the takeoff latch shared ONE threshold with no
+  hysteresis and no cooldown, so a thumb resting on 0.25 took off and sat
+  down on alternate frames and machine gunned the two loudest blips in the
+  mix. TAKEOFF_RELEASE 0.18 gives the latch hysteresis and
+  GROUND_CUE_GAP_MS 220 is a floor on how often the pair may SOUND
+  whatever the latch does.
+- `duckFlight` and `duckNow` did `cancelScheduledValues` then
+  `setValueAtTime(1)`, which is a JUMP TO UNITY whenever a second cue
+  arrives while the first is still ducking: a sample sized step on the
+  motors, the wind and the music, under a cue that is still sounding. They
+  start from the current value now, and the deeper of the two ducks wins.
+
+**Also fixed while in there:** the ground plane's POINT went through
+`worldPosToSim`, which undoes the spawn yaw, and its NORMAL did not.
+`threeDirToSim` is a basis permutation and cannot undo a rotation, so a
+genuine 20 degree hillside under a quarter turn spawn reached the plant as
+a 20 degree ROLL rather than a pitch. Invisible on level ground and on a
+deck, where the normal is straight up and a yaw about up is the identity,
+which is how it lasted.
+
+**And a determinism violation:** `startBlockContactHeight` called
+`startBlockDims` on every query, which computes `Math.tan` and `Math.cos`,
+and the height closure called `Math.cos(pad.yaw)` and `Math.sin(pad.yaw)`
+per pad per query. That query is `view.height`, which the ground plane is
+raised through on EVERY 1 ms step plus five more taps per normal sample.
+CLAUDE.md says in as many words that no JS Math.sin, Math.cos or Math.pow
+may appear anywhere in the physics path. `startBlockDeck` now does the trig
+once, when the stand is placed, and `startBlockDeckHeight` is arithmetic.
+
+**Left open, with the measurement, for the advisor.** The launch stand
+seeds the plant at the ramp's 28 degrees while the contact plane under it
+is level, so at GO the pitched hull is partly through the plane: measured,
+152 deg/s decaying over about 15 ms, 0.256 m/s of lateral, no cue (contact
+speed 0.25 m/s, well under GRAZE_SPEED_MAX). Making the plane the real
+28 degree ramp needs the parked plant pitched to match, and a 28 degree
+parked pose cannot perch: LAND_TILT_MAX_DEG is 25, measured against world
+up rather than against the surface. That is the shape of the physics model
+and CLAUDE.md says the advisor sees it first.
+
+**Also left open, measured, and it makes the game LOUDER rather than
+quieter:** a 13.4 m/s vertical arrival plays only the `land` blip. The
+impact branch is an `else if` on the landing branch, and with GROUND_E 0 a
+craft that settles inside one frame takes the landing branch however hard it
+arrived. Confirmed independently at 60 fps: a 20 m drop arrives at 16.16 m/s
+and perches. The fix is to judge the contact before choosing the branch. Not
+taken: the ticket is that the game is too loud.
+
+### 2. Municipal baths, too cluttered for a 5 inch
+
+Measured, not described. Every collider box dumped from the live map with
+`window.__colliderBoxes`, and the distance from each point of a 0.6 m grid
+to the nearest solid computed offline.
+
+Over the water, x -25 to 25, y -1 to 6, z -6 to 6:
+
+| | boxes | solid | p10 clearance | median | p90 |
+|---|---:|---:|---:|---:|---:|
+| before | 274 | 1.9% | 0.40 m | 1.61 m | 3.01 m |
+| after | 260 | 1.4% | 0.55 m | 2.00 m | 3.60 m |
+
+A 5 inch at racing speed covers 1.61 m in a fifteenth of a second. That is
+the report as a number.
+
+What went, and why each was furniture rather than architecture: five free
+standing masses hung in the basin at chest height (`loopMasses`), two
+islands with a pole on each in the middle of the 50 m (`lanePads`), two
+poles from the pool floor to head height in the fastest part of the deep end
+(`lanePoles`), and one of three chrome tubes across the whole basin. None of
+them is a thing a municipal baths has.
+
+The two remaining backstroke lines are now what they are: 0.14 m of ROPE
+rather than 0.4 m of scaffold tube, and they hang five and a half metres off
+each end wall where a pool hangs them, not over the middle. The 39 m between
+them is water with nothing over it. They stay SOLID: a drawn bar you can
+pass through is the same lie as an invisible wall, and this map's rule is
+that a gap you see is a gap you fly.
+
+Every gate is untouched: the goal, the timing gantry, the bulkhead slot, all
+seven hoops, the sunken cage, the island, the bridges, the tower. The civic
+set the five round design loop tuned is untouched. `leftoverDeath` and
+`leftoverOverlap` stay 0. Platforms 53 to 51.
+
+DECLINED, with the reason: the plaza railing leaves 1.15 m between the
+ground and the rail underside, inside the band this map's kit calls a quad
+eater. It is a visible fence at the map boundary with posts every 4 m, not a
+hidden slot: a pilot can see it and judge it, and the map's own audit does
+not count a gap whose lower bound is the ground. Left alone.
+
+### 3. Industrial bando, too many chimney dives
+
+The map had SEVEN forced vertical tubes: the 58 m stack, three cyclones, and
+three bins, plus the preheater's internal descent. Against those it had five
+genuinely fast horizontal lines. Four changes, all of them opening solids
+that already exist:
+
+**The three bins were sealed tubes.** In through the east door or the roof,
+out the way you came or a 28 m climb. Each north and south face now carries
+a 2.0 by 2.4 m door at y 3.6 to 6.0, so the row is a horizontal serpentine:
+probed with a swept hull, the whole 27 m from bin 1 to bin 3 at y 4.8 is
+clear, and the wall is solid 2 m either side of each door, above it and
+below it. The discharge chute stood ACROSS the ground door and choked it to
+a 1.5 by 0.85 m letterbox; it stands beside it now, same size, moved 2.6 m.
+The centre riser moved off the drum's axis into a corner, flush with both
+walls, so the one shape in this map you can loop inside is not a thing you
+fly around. The roof hatch is 2.4 m, not 1.8.
+
+**The preheater was a stack of seven small holes on a zigzag.** Floors every
+12 m rather than every 6, holes 2.6 m rather than 1.7, and the same three
+hatches the east face has punched through the WEST face, so each is a LINE:
+in one side and out the other at 8 m, at 20 m and at 32 m. Probed clear west
+to east at all three heights, and the wall is solid between them. Measured
+inside the tower: solid 8.9 to 4.3 percent, median clearance 1.02 to 1.40 m.
+
+**The bin split is 2.0 m, not 1.4.** 1.4 is CLEAR, the floor, and the gantry
+catwalk was threaded down the middle of it.
+
+**leftoverDeath 6 to 0.** The map shipped with six slots its own audit calls
+quad eaters, which is the first time this site has been clean. Four were the
+gantry rails, 1.16 m apart inside a 1.4 m gap between bins, fixed by
+standing the outer bins 0.6 m further out. Two were the skybridge, 1.02 m
+between two rails over a 20 m run 0.74 m tall, fixed by making the catwalk
+1.7 m wide, which is what a plant catwalk is. A yard junk pile moved 0.8 m
+south to keep its distance from the bin that moved.
+
+Colliders 940 to 978, platforms 163. `leftoverOverlap` 0.
+
+The leftover scan itself was running on EVERY PLAYER'S LOAD: an n squared
+pair loop over 939 boxes, about 440 thousand pairs, each candidate then
+sweeping all of them again, for a number only the harness reads. Lazy now,
+matching what baths already does.
+
+Not taken, and worth its own round: three cyclone wells with no side window,
+the hall's north window opening onto the preheater's south wall 0.4 m
+behind it, the hopper pit's west opening leading into the void under the
+ground slab, the sealed dock undercroft, and `southSlots` naming a set of
+slots that are on the stack's NORTH face.
+
+### 4. What the previous session's commits got wrong
+
+**The pavilion had no roof over 41 to 60 percent of it.** Hollowing the
+wings deleted the box that was also the ceiling and put nothing back:
+measured on `clubhouseSolids`, a vertical ray from inside found nothing
+solid over 60 percent of the west wing, 44 of the middle and 41 of the east.
+A quad that flew in a door left through the drawn roof. Three eave level
+slabs close it, and the selftest now casts that ray.
+
+**And it punched ten holes in a drawn shut elevation.** `openings()` draws
+every window as a solid pane of `CLUB.glass` and every door as two leaves
+with a meeting stile, and `flyableFrontHoles` punched all ten: ten sheets of
+glass a quad flew straight through. A hole where the drawing shows a solid
+is the same defect as a solid where the drawing shows a hole, which is the
+one that rebuild was written to fix.
+
+The reported bug was never the rooms. The old mass ran from the back wall to
+0.45 m PAST the front face, so the strip of verandah in front of the glass,
+drawn as clear air and the line a pilot takes through the pits, was solid.
+Thin walls fix that whether or not anything is punched. So the building is
+shut, its walls hug what is drawn, and its shell has a lid. Tried and
+rejected: keeping it flyable by drawing the two doors open and putting
+DoubleSide on the clubhouse material, which puts every dado and sill into z
+fighting with the wall it is painted on. A pavilion a quad can fly through
+is worth having and it is art, not a bug fix.
+
+**A course with pads and exactly one sequenced element lost its racing
+line.** The closing knot is appended when `withWraps.length > 0`, so one
+element produced two coincident knots: zero samples, no line drawn at all,
+and a "two knots in the same place" warning pointing at one gate. That is
+the first thing an author sees after placing their first gate. `> 1` now.
+
+**Dropping the pads from the knots left dead branches.** Nothing produces
+`role: 'start'` any more, and `guide.js` still had two branches on it plus a
+whole start cue path through `layoutArrows`, `warnings.js` still described
+it, and `GUIDE.holeStart` had no reader. Gone: a dead branch naming a role
+the producer cannot emit is how the pads get put back on the racing line by
+somebody fixing a missing start hole.
+
+**The dive gate's posts stood 11.5 mm inside the opening it declares.** The
+post is 1.6 times the frame tube and was centred on the STILE, so a 1.524 m
+MultiGP opening scored 23 mm narrower than the document says. It stands one
+post radius outboard now, and `gateSupportFeet` takes the same offset so the
+builder's preview is a preview of the same gate. Its foot plate's collider
+was a capsule of radius 0.16 about a 0.09 m plate: a 0.32 m tall, 0.72 m
+wide invisible kerb at each foot. It hugs the plate now. And a foot was
+emitted even when the post was skipped, so a gate whose hoop already reaches
+the grass stood on two plates with nothing on them.
+
+**`bando/kit.js` `deck()` had quietly dropped the PLATFORM_MIN guard** that
+`baths/kit.js` and `yard/kit.js` both still have, leaving PLATFORM_MIN
+exported with no reader. Same rule in all three now; four low deck boxes go.
+
+**`MAP_MODULE_COUNT` was one too high for baths and for yard** (16 and 15
+against 15 and 14 files). Only the city count is asserted, so nothing could
+notice. bando's 14 to 13, which the review queried, was correct.
+
+**The `minScale` comment said two opposite things about the same panel**,
+and the commit that set it claimed the bando map "paces the buffer" on 4K.
+Measured: at 3840x2160 the budget cap puts the ceiling at 0.560 and minScale
+0.75 is above it, so the floor clamps to the ceiling and the pacer has no
+range at all. The internal pixel cap DOES work and 4K renders 2149x1209
+rather than native, which was the hitch; the pacing on top of it is inert
+there and below 1366x768. Expressing the floor in PIXELS would give 4K a
+real 0.38 to 0.56 range. Written into the comment, not changed: that is a
+measured change to how every preset paces on every map.
+
+### Checks
+
+`node src/trackbuilder/selftest.js` 493 passed 0 failed (489 before; four new
+clubhouse checks). `node scripts/contact-selftest.js` all passed.
+`npm run lint:attract`, `lint:memory`, `lint:shell`, `lint:arcade`,
+`lint:responsive`, `lint:devices`, `lint:nouns`, `lint:fc`, `lint:presets`,
+`ghost:selftest`, `replay:selftest`, `link:selftest`, `music:selftest`,
+`test:edge` all pass.
+
+`npm run lint:catalog` fails in this container and it is environmental:
+`vendor/betaflight` is an uninitialised submodule here, so
+`parameter_names.h` is not on disk. Nothing in this change touches the
+catalog.
+
+`npm run verify` RUN, and run TWICE: once on this tree and once on a clean
+8ebd6b8 with the work stashed, because the change touches the physics path
+and a failure had to be attributed rather than assumed. 13 of 16 passing in
+BOTH runs, and every one of the sixteen gives an identical result with an
+identical reason either way. Byte for byte:
+
+- 2 determinism-repeat, 3 determinism-cross-host and 4 frame-independence
+  PASS. Those three are the ones this change could break: the ground plane
+  is raised from `view.height` on every 1 ms step, and the trig that used
+  to run there is gone.
+- 5 to 12, the whole flight model band, PASS unchanged: hover 0.2793,
+  punch-out 80.0 m, terminal 31.0 m/s, motor step 26 ms, rate tracking
+  0.25 percent off, yaw coupling -0.10 deg, sag 11.14 percent, diff 0.52
+  percent off.
+- 1 build-clean FAILS in both: `emcc not found`, no Emscripten SDK in this
+  container. Environmental.
+- 15 world-scale FAILS in both, same four reasons: gate opening W and H
+  read 0.0000 m, grass blade min 0.0060 m, city handrail null. Pre-existing
+  on this branch in this container.
+- 16 map-isolation FAILS in both, same eight reasons: P1 93 against the
+  recorded 303, P2 913063 against 1014037, P10 29 against 32, meshes 101
+  against 169, and the same four again after the round trip. Pre-existing.
+  The assertion the check is NAMED for, that the field costs the same after
+  a round trip through the city, holds exactly in both runs. That those
+  numbers are identical either way is also the evidence that the pavilion's
+  three new ceiling slabs cost nothing to draw: they are colliders.
+
+The three failures are therefore not this change's, and the checks that CAN
+see this change all pass.
+
+`scripts/audio-probe.js` with a crash cue: peak sample 0.5115, no samples at
+or over full scale, true peak -5.82 dBTP, so the duck change does not clip.
+
+Live shell, headless Chromium: baths and bando load with zero console
+errors, `leftoverDeath` 0 and `leftoverOverlap` 0 on both; the field loads
+with zero console errors; a launch from the blocks on
+`tracks/json/trk-0870b164.json` plays one `takeoff` cue and drifts 4 mm.

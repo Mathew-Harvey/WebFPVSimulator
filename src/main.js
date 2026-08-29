@@ -124,6 +124,38 @@ const REST_HEIGHT = 0.045;
  * would lift the craft off the instant it landed with any throttle held. */
 const TAKEOFF_THROTTLE = 0.25;
 /*
+ * And the throttle a pilot has to come back BELOW before the craft is
+ * allowed to think about sitting down again. One threshold for both edges
+ * is a latch with no hysteresis: a stick resting on 0.25, which is where a
+ * thumb sits while it decides, took off and sat down on alternate frames
+ * and played the two loudest blips in the mix at frame rate. That train
+ * measures 19 dB over the bed and 12 dB over a full crash cue, and it is
+ * what "a loud noise, like I am stuck to the mesh for a moment" sounds
+ * like. The gap is deliberately wide: nothing between 0.18 and 0.25 is a
+ * decision, it is a thumb.
+ */
+const TAKEOFF_RELEASE = 0.18;
+/*
+ * And a floor on how often the pair may SOUND, whatever the latch does.
+ * A genuine touch and go inside a fifth of a second does not deserve two
+ * blips, and this is the backstop that means no future path can machine
+ * gun them again. It gates the cue only: landed, takingOff and the
+ * physics are untouched by it.
+ */
+const GROUND_CUE_GAP_MS = 220;
+/*
+ * How long after a takeoff the contact cues stay muted, on the WALL clock.
+ *
+ * 8ebd6b8 muted them on the `takingOff` flag, and the flag is not a window:
+ * it is set at the top of the frame and cleared in the same frame, thirty
+ * lines before the branch that judges the frame's contact and calls
+ * feelImpact. So the guard covered every frame of a departure except the
+ * last one, which is the one with the impulse in it. A frame can be 100 ms
+ * long, so a flag cannot bound a window a frame can step over: a clock
+ * can.
+ */
+const TAKEOFF_WINDOW_MS = 250;
+/*
  * Bias subtracted from the height query's fromY, metres.
  *
  * The city's multi level height query answers "what is my floor" with a
@@ -285,8 +317,14 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
 /* field: field.js, scene.js, post.js. city: 59 vendored files plus
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
- * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 13, baths: 16, yard: 15 };
+ * cold load, because 61 sat here for a round and nothing could notice.
+ *
+ * The other three are the .js files under their own folder, cel included:
+ * bando 13, baths 15, yard 14. baths and yard each sat one too high, which
+ * is a bar that stops a stage short of full and then jumps; only the city
+ * is asserted, so nothing could notice those either. `npm run lint:memory`
+ * prints the fetched count per map beside these numbers. */
+const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 13, baths: 15, yard: 14 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -1313,6 +1351,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let clipCrashUntil = 0;
   let clipCrashKind = '';
   let clipGraceUntil = 0;
+  /* Wall clock of the last land or takeoff blip. See GROUND_CUE_GAP_MS. */
+  let groundCueAtWall = -1e9;
+  /* Wall clock the departure window closes at. See TAKEOFF_WINDOW_MS. */
+  let takeoffUntil = 0;
   const clipWatch = makeClipWatch();
   /* Turtle is a shell pose flip, not the crashflip mixer. crashflipOn
    * is true while waiting inverted or while the flip is playing, so OSD
@@ -1751,21 +1793,42 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!(scale > 0)) {
       return;
     }
+    const nowHit = performance.now();
     /*
-     * Leaving the pad is still ground contact. The plant is touching the
-     * ramp for tens of milliseconds after the perch lifts, and a punch-out
-     * closes faster than GRAZE_SPEED_MAX on those frames. That is a
-     * takeoff, not a crash. Playing the crash cue there is the loud bang
-     * at spawn the board reported: "upon spawning and attempting to take
-     * off." Spawn grace covers the other half: leftover overlap with a
-     * stand, a nearby pole, a wing you clipped through, until the hull
-     * is free.
+     * Just respawned, or just recovered: whatever the hull is overlapping is
+     * left over from being put there, whether it is the grass, a stand, a
+     * pole or a wing it was seated inside. Nothing sounds.
+     *
+     * The spawn half is gated on `landed`, matching the one the clip watch
+     * already uses, because leftover overlap is a property of SITTING in
+     * something. Ungated it swallowed half a second of genuine impacts on
+     * every restart, which on a short course is a real gate hit gone quiet.
+     * The departure itself is covered below, by kind and on a clock.
      */
-    if (takingOff || launchStaging) {
+    if ((nowHit < clipGraceUntil && landed) || nowHit < recoverGraceUntil) {
       return;
     }
-    const nowHit = performance.now();
-    if (nowHit < clipGraceUntil || nowHit < recoverGraceUntil) {
+    /*
+     * On a stand the ground plane is switched off and the module holds the
+     * pose, so any impulse at all is the constraint and not a contact.
+     */
+    if (launchStaging) {
+      return;
+    }
+    /*
+     * LEAVING THE GROUND IS STILL GROUND CONTACT, and only ground contact.
+     * The plant is touching the pad for tens of milliseconds after the
+     * perch lifts and the departure closes faster than GRAZE_SPEED_MAX on
+     * those frames: that is a takeoff, not a crash. The window is on the
+     * wall clock as well as on the flag because the flag is cleared in the
+     * same frame as the branch that calls this, thirty lines earlier.
+     *
+     * A GATE IS NOT EXEMPT. 8ebd6b8 muted every kind here, so a pilot who
+     * punched off the line and put a wing through the first gate heard
+     * nothing. The pad is a height field deck, not a collider: the bang
+     * this mutes has always been kind 'ground', so that is all it mutes.
+     */
+    if (kind === 'ground' && (takingOff || nowHit < takeoffUntil)) {
       return;
     }
     let u = scale / IMPACT_FULL;
@@ -2196,6 +2259,8 @@ export async function boot({ loading, bootStart, mapId }) {
     lastClosing = 0;
     lastUpDot = 0;
     lastHitKind = 'none';
+    groundCueAtWall = -1e9;
+    takeoffUntil = 0;
     input.keys.clear();
     input.drain();
     input.resetKeyboardSticks();
@@ -2245,7 +2310,11 @@ export async function boot({ loading, bootStart, mapId }) {
     acc = 0;
     race.recover('Crashed', nowWall);
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
-    if (typeof audio.event === 'function') {
+    /* The same departure window feelImpact reads. This cue is the loudest
+     * thing in the mix, it plays at full level with no scale, and it sat
+     * outside the one guard the launch had. A glitch crash six frames off a
+     * launch stand is a leftover overlap, not a crash. */
+    if (typeof audio.event === 'function' && nowWall >= takeoffUntil) {
       audio.event('crash');
     }
   }
@@ -2676,6 +2745,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     landed = false;
     takingOff = true;
+    takeoffUntil = performance.now() + TAKEOFF_WINDOW_MS;
     launchStaging = true;
     adoptSimClock();
     input.forcePadRest = true;
@@ -2718,6 +2788,7 @@ export async function boot({ loading, bootStart, mapId }) {
         disableLaunchStand();
         lcBoost = true;
         takingOff = true;
+        takeoffUntil = nowMs + TAKEOFF_WINDOW_MS;
         flownThisRun = true;
         racePrev.copy(shell.quad.position);
         raceHasPrev = true;
@@ -3601,6 +3672,8 @@ export async function boot({ loading, bootStart, mapId }) {
   const obsPlace = new THREE.Vector3();
   const qObs = new THREE.Quaternion();
   const groundNWorld = new THREE.Vector3(0, 1, 0);
+  /* The same normal with the spawn yaw taken out, ready for the plant. */
+  const nWorld = new THREE.Vector3(0, 1, 0);
   const camFwd = new THREE.Vector3();
   const camUp = new THREE.Vector3();
   const qShake = new THREE.Quaternion();
@@ -3648,19 +3721,60 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
+   * One axis of the slope, from the two one sided differences either side
+   * of the craft, limited so a STEP cannot be read as a RAMP.
+   *
+   * The old sampler took one forward difference over 35 cm and called the
+   * answer a slope. On terrain that is honest, because terrain over 35 cm
+   * is a slope. On a LAUNCH STAND it is not: a start block is 0.248 m
+   * across and 0.38 m along, so the stencil always steps off the block
+   * onto the grass, and the "slope" it reported was the block's own height
+   * divided by the stencil. Measured at the middle of a default stand that
+   * is a 30 degree plane, rising to 43 degrees as the craft moves, leaning
+   * toward +x and +z in WORLD space whichever way the grid points. The
+   * plant then solved a rigid contact against it: the quad was flicked
+   * 0.17 m sideways and 0.19 m upward inside six milliseconds, left the
+   * pad at 1 m/s of drift it never asked for, and the impulses that took
+   * were the bang at the start line. Muting the cue did not fix it because
+   * the cue was telling the truth: something really was hitting the hull.
+   *
+   * A craft sitting on a small object sits on a LOCAL PEAK, and the two one
+   * sided slopes there point opposite ways. That is the signature, and it
+   * is the same signature at the edge of the clubhouse terrace, on a pit
+   * table, on a map platform and on the city's overbridge deck. So the two
+   * sides are combined with a minmod limiter: opposite signs mean a ridge
+   * or a step, and the honest local surface is FLAT; matching signs mean a
+   * real slope, and the gentler of the two is taken, which is the standard
+   * conservative choice. A one in five hill still measures 11.31 degrees,
+   * exactly its own angle.
+   */
+  function limitSlope(a, b) {
+    if (a * b <= 0) {
+      return 0;
+    }
+    return (a < 0 ? -a : a) < (b < 0 ? -b : b) ? a : b;
+  }
+
+  /*
    * Terrain slope at (x, z), Three.js world space, unit, pointing up.
    * Finite differences, no trig: the physics path may not call JS Math.sin
    * or Math.cos. Sampled a few times per frame, not every 1 ms, because a
-   * 35 cm stencil barely moves in 8 ms.
+   * 35 cm stencil barely moves in 8 ms. Five taps rather than three, so
+   * the difference is centred and cannot lean toward +x and +z on ground
+   * that is level.
    */
   function sampleGroundNormal(wx, wz, fromY, out) {
     const eps = 0.35;
     const h0 = view.height(wx, wz, fromY);
-    const hx = view.height(wx + eps, wz, fromY);
-    const hz = view.height(wx, wz + eps, fromY);
-    const nx = h0 - hx;
+    const nx = limitSlope(
+      h0 - view.height(wx + eps, wz, fromY),
+      view.height(wx - eps, wz, fromY) - h0,
+    );
+    const nz = limitSlope(
+      h0 - view.height(wx, wz + eps, fromY),
+      view.height(wx, wz - eps, fromY) - h0,
+    );
     const ny = eps;
-    const nz = h0 - hz;
     const n2 = nx * nx + ny * ny + nz * nz;
     if (!(n2 > 1e-12)) {
       out.set(0, 1, 0);
@@ -3680,7 +3794,20 @@ export async function boot({ loading, bootStart, mapId }) {
     poseFromState(st, pProbe);
     const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS);
     worldPosToSim(pProbe.x, hy, pProbe.z, pSim);
-    threeDirToSim(groundNWorld.x, groundNWorld.y, groundNWorld.z, nSim);
+    /*
+     * The plane's POINT goes through worldPosToSim, which undoes the spawn
+     * yaw. Its NORMAL did not, and threeDirToSim is a basis permutation
+     * that cannot undo a rotation, so the slope arrived at the plant turned
+     * by however far the spawn faced. A 20 degree hillside under a quarter
+     * turn spawn reached the plant as a 20 degree ROLL rather than a
+     * 20 degree pitch: the craft leaned the wrong way on every slope on
+     * every map whose spawn is not aligned with the world axes. It never
+     * showed on level ground or on a deck, where the normal is straight up
+     * and a yaw about up is the identity, which is why it lasted. A
+     * direction takes no offset, so this is the rotation and nothing else.
+     */
+    nWorld.copy(groundNWorld).applyQuaternion(qSpawnInv);
+    threeDirToSim(nWorld.x, nWorld.y, nWorld.z, nSim);
     const n2 = nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z;
     if (!(n2 > 0.97) || !(n2 < 1.03)) {
       nSim.x = 0;
@@ -4305,9 +4432,12 @@ export async function boot({ loading, bootStart, mapId }) {
            * second of stick lag. */
           landed = false;
           takingOff = true;
+          takeoffUntil = nowWall + TAKEOFF_WINDOW_MS;
           flownThisRun = true;
           adoptSimClock();
-          if (typeof audio.event === 'function') {
+          if (typeof audio.event === 'function'
+            && nowWall - groundCueAtWall >= GROUND_CUE_GAP_MS) {
+            groundCueAtWall = nowWall;
             audio.event('takeoff');
           }
         }
@@ -4540,12 +4670,26 @@ export async function boot({ loading, bootStart, mapId }) {
       speedNow = speed;
       turtleOnSupport = hits > 0;
       if (takingOff) {
-        if (clearance - REST_HEIGHT > 0.05) {
+        /*
+         * A LEAVING TEST, not a height. clearance - REST_HEIGHT > 0.05
+         * assumed a level hull: REST_HEIGHT is the level craft's reach
+         * below its own centre, and a craft leaving a stand is not level.
+         * At 28 degrees the hull reaches 0.10 m down, so the old test
+         * called the departure finished while the plant was still
+         * reporting contacts, and everything downstream that trusts
+         * `takingOff` was reading a craft that had not left. vHalfFrame is
+         * this frame's own tilt aware extent, and hits and sawGroundHit
+         * are what the plant actually saw across the frame's steps.
+         */
+        if (hits === 0 && !sawGroundHit && clearance > vHalfFrame + 0.05) {
           takingOff = false;
           lcBoost = false;
         } else if (!lcBoost) {
           const thrNow = samples.length ? samples[samples.length - 1].throttle : input.channels.throttle;
-          if (thrNow <= TAKEOFF_THROTTLE && hits > 0 && canPerch(tiltDeg, speed, rate)) {
+          /* TAKEOFF_RELEASE, not TAKEOFF_THROTTLE. Coming back down to the
+           * same number that sent the craft up is what let one thumb
+           * position sit on both sides of the latch. */
+          if (thrNow <= TAKEOFF_RELEASE && hits > 0 && canPerch(tiltDeg, speed, rate)) {
             takingOff = false;
           }
         }
@@ -4566,7 +4710,9 @@ export async function boot({ loading, bootStart, mapId }) {
         stateCurr = readState();
         statePrev = stateCurr;
         acc = 0;
-        if (typeof audio.event === 'function') {
+        if (typeof audio.event === 'function'
+          && nowWall - groundCueAtWall >= GROUND_CUE_GAP_MS) {
+          groundCueAtWall = nowWall;
           audio.event('land');
         }
       } else if (
@@ -4574,7 +4720,17 @@ export async function boot({ loading, bootStart, mapId }) {
         && nowWall - groundBounceAtWall > BOUNCE_COOLDOWN_MS
       ) {
         const closing = peakGroundClosing;
-        const hitSpeed = peakGroundSpeed > speed ? peakGroundSpeed : speed;
+        /*
+         * peakGroundSpeed alone. It floored on `speed`, the END OF FRAME
+         * total speed, which no contact in the frame need ever have had: a
+         * frame that brushed the grass at 0.1 m/s and finished at 6 m/s
+         * scored a 6 m/s hit and played the crash cue for it. Worse, the
+         * frame is wall time and dt is capped at 100 ms, so how hard the
+         * hit sounded depended on the frame rate, which is the one thing
+         * CLAUDE.md says must never reach the game. Both numbers here are
+         * now sampled at a step that actually reported contact.
+         */
+        const hitSpeed = peakGroundSpeed;
         if (closing >= GRAZE_SPEED_MAX || hitSpeed >= GRAZE_SPEED_MAX) {
           bounceCount += 1;
           /* No banner. The owner's instruction: the sound is enough, and
@@ -4733,7 +4889,16 @@ export async function boot({ loading, bootStart, mapId }) {
         launchStaging,
         hold: crashed,
         poseLock,
-        spawnGrace: (nowWall < clipGraceUntil && landed) || nowWall < recoverGraceUntil,
+        /*
+         * `&& landed` used to be here, which switched the spawn grace off
+         * at the exact moment it was needed: it exists to ignore leftover
+         * overlap with a stand, a pole or a pad, and leftover overlap is
+         * what a craft LEAVING one has. The departure window is in for the
+         * same reason.
+         */
+        spawnGrace: nowWall < clipGraceUntil
+          || nowWall < recoverGraceUntil
+          || nowWall < takeoffUntil,
         takingOff,
         unresolved: leftoverOverlap,
         roofContact,

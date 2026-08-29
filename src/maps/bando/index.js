@@ -282,9 +282,14 @@ export async function buildMap(shell, onProgress, options) {
         colliders: world.colliders.stats(),
         platforms: world.platforms.length,
         ...world.merged,
-        leftoverDeath: world.leftover.death,
-        leftoverOverlap: world.leftover.overlap,
-        leftoverSamples: world.leftover.samples,
+        ...(() => {
+          const leftover = world.leftover();
+          return {
+            leftoverDeath: leftover.death,
+            leftoverOverlap: leftover.overlap,
+            leftoverSamples: leftover.samples,
+          };
+        })(),
         pipelineScale: pipeline.scale,
         pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
         pipelineCss: { x: pipeline._cssW, y: pipeline._cssH },

@@ -158,9 +158,19 @@ export function apertureFrame(yaw, pitch) {
  * the lower outer corners of the frame, so the posts stay at the sides for
  * every pitch, including a flat dive.
  */
+/*
+ * The post is 1.6 times the frame tube, so standing it on the STILE
+ * centreline puts 0.3 of a tube of post inside the clear opening on each
+ * side. It stands one post radius outboard of the opening instead, which
+ * lands its inner face on the opening's own edge. src/render/scene.js
+ * tiltedGate takes the same offset, and it has to: a preview that draws
+ * the legs somewhere else is a preview of a different gate.
+ */
+export const GATE_POST_R_SCALE = 0.8;
+
 export function gateSupportFeet(yaw, pitch, clearW, clearH, centerH, tube) {
   const f = apertureFrame(yaw, pitch);
-  const wx = (clearW + tube) / 2;
+  const wx = clearW / 2 + tube * GATE_POST_R_SCALE;
   const hy = -(clearH + tube) / 2;
   const feet = [];
   for (const s of [-1, 1]) {

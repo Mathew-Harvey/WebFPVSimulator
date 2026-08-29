@@ -2324,6 +2324,32 @@ export class Ui {
     this.bugChip.title = 'F8 also opens this.';
     this.bugChip.addEventListener('click', () => this.openBugReport());
 
+    /*
+     * PAUSE, for a pointer.
+     *
+     * A phone has had this button since the thumb sticks shipped, mounted
+     * by src/input/touchsticks.js, and a mouse has never had one: the only
+     * way out of a flight was the Escape key. That is fine if you know it
+     * and invisible if you do not, and the room a pilot wants is usually
+     * behind it, because Paused is where Quit to title lives and the title
+     * is where a map is chosen. Reported as being stuck in a freestyle map
+     * with no way back to a race one.
+     *
+     * The same two calls the Escape key and the thumb button both make, so
+     * there is one way to pause and three ways to ask for it. It hides
+     * itself when the thumb sticks are up, because that overlay brings its
+     * own and two Pause buttons in one corner is worse than none.
+     */
+    this.pauseChip = btn('bug-chip pause-chip', 'Pause');
+    this.pauseChip.title = 'Escape also pauses.';
+    this.pauseChip.addEventListener('click', () => {
+      if (this.screen !== 'flight') {
+        return;
+      }
+      this.act('pause');
+      this.show('paused');
+    });
+
     this.musicDock = el('div', 'music-dock');
     this.musicDock.setAttribute('role', 'group');
     this.musicDock.setAttribute('aria-label', 'Music');
@@ -2354,7 +2380,7 @@ export class Ui {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.banner, this.readout, this.bugChip, this.musicDock, this.nameDialog);
+    r.append(this.banner, this.readout, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
     this.syncBugChip();
   }
 
@@ -2763,6 +2789,11 @@ export class Ui {
     const hide = this.nameDialog && !this.nameDialog.hidden;
     this.bugChip.hidden = hide;
     this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
+    /* Flight only. Paused already has Resume as its first row, and every
+     * other screen has somewhere to go on it. */
+    if (this.pauseChip) {
+      this.pauseChip.hidden = hide || this.screen !== 'flight';
+    }
     this.syncMusicDock();
   }
 
@@ -7597,6 +7628,16 @@ export class Ui {
      * legend is not, so the top bar goes and the bottom one stays. */
     this.frameTop.hidden = onFlight || bench || titleScreen;
     this.frameBot.hidden = onFlight;
+    /*
+     * And the floating chips move out from under it. The bug chip is
+     * pinned to the top right and so is the bar's own context cluster, so
+     * on every screen that has a bar the chip sat on top of the one thing
+     * a pilot is most likely to want to read there: measured at 1600 and
+     * at 1280, it covered 125 px of "Flying 2022 AU Nationals". A width
+     * media query used to do this below 860 px, which is not the
+     * condition. The condition is whether the bar is there.
+     */
+    this.root.classList.toggle('bar-shown', !this.frameTop.hidden);
     if (onFlight) {
       this.root.style.setProperty('--bar-top', '0px');
       this.root.style.setProperty('--bar-bot', '0px');
@@ -7623,11 +7664,18 @@ export class Ui {
 
     this.frameLegend.textContent = '';
     for (const hint of this.legendFor()) {
-      const i = el('i', null);
+      /* A legend entry that carries an action is a BUTTON, not a label: the
+       * key it names has to be pressable by whoever is not holding a
+       * keyboard. The rest stay <i>, because a legend that looks entirely
+       * clickable and mostly is not is worse than one that is not. */
+      const i = hint.action ? btn('legend-act', '') : el('i', null);
       for (const k of hint.keys) {
         i.append(el('span', this.lastInput === 'pad' ? 'kbd pad' : 'kbd', k));
       }
       i.append(document.createTextNode(` ${hint.text}`));
+      if (hint.action) {
+        i.addEventListener('click', () => this.act(hint.action));
+      }
       this.frameLegend.append(i);
     }
 
@@ -7687,7 +7735,22 @@ export class Ui {
        * Not on the gate itself, which has nothing behind it: a legend
        * offering a key that does nothing is worse than no legend.
        */
-      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Race or Freestyle' });
+      /*
+       * AND IT IS CLICKABLE, because until now it was the key and nothing
+       * else. The row above the legend is Track in Race and Map in
+       * Freestyle and only ever lists the worlds of the mode you are in, so
+       * a pilot who answered Freestyle could reach the four places and
+       * could not reach a single race track again: the one route was this
+       * key, written here and pressable nowhere. Reported as being in a
+       * freestyle map with no way back to a race one.
+       *
+       * It goes here rather than in the menu because the menu has no room:
+       * an eleventh row put the title 25 px into overflow at 1600 by 900
+       * and `npm run lint:shell` is right to refuse it. The words are
+       * already on the screen, in the place that answers "how do I get
+       * out"; all they were missing was a hit area.
+       */
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Race or Freestyle', action: 'mode-gate' });
     }
     return out;
   }
@@ -8566,6 +8629,16 @@ export class Ui {
      * change that the Escape key told it about. */
     if (action === 'back') {
       this.back();
+      return;
+    }
+    if (action === 'mode-gate') {
+      /* Exactly what Escape from the title does, and it has to stay exactly
+       * that: the gate is the one screen with nothing behind it, so leaving
+       * mode set would show the question with a menu still under it. */
+      this.mode = null;
+      this.show('title');
+      this.setCursor(this.firstStop(this.items()));
+      this.renderMenu();
       return;
     }
     if (action === 'title' || action === 'paused') {

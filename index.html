@@ -1117,9 +1117,22 @@
       .frame-chip b { color: var(--cream); font-weight: 600; }
       .frame-chip-key { color: var(--slate); }
       .frame-legend { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; overflow: hidden; }
-      .frame-legend i {
+      .frame-legend i, .frame-legend .legend-act {
         display: flex; align-items: center; gap: 6px;
         font-style: normal; font-size: 12.5px; color: var(--slate);
+      }
+      /* The one legend entry that is a control rather than a label. It
+       * reads exactly like its neighbours until it is pointed at, because
+       * a legend where one item shouts is a legend that has stopped being
+       * a legend. See legendFor: only entries carrying an action get this. */
+      .frame-legend .legend-act {
+        pointer-events: auto; appearance: none; background: none;
+        border: 0; padding: 0; margin: 0; font-family: inherit;
+        letter-spacing: inherit; cursor: pointer;
+      }
+      .frame-legend .legend-act:hover { color: var(--sakura); }
+      .frame-legend .legend-act:focus-visible {
+        outline: 2px solid var(--cream); outline-offset: 3px;
       }
       .frame-primary {
         pointer-events: auto; font: inherit; font-size: 15px; font-weight: 700;
@@ -3127,27 +3140,46 @@
       }
 
       /*
-       * THE FLOATING CHIPS CLEAR THE STATUS BAR ON A NARROW WINDOW.
+       * THE FLOATING CHIPS CLEAR THE STATUS BAR, ON EVERY WINDOW.
        *
        * The bug chip is fixed 16 px from the top right and the status bar's
-       * context chips sit in the same corner. On a laptop there is room for
-       * both; at 390 px the chip spanned x 151 to 374 and the chips 275 to
-       * 376, which is to say almost entirely on top of each other, and what
-       * the pilot could read was neither.
+       * context chips sit in the same corner. This used to be a max-width
+       * 860 px rule, on the reading that only a phone was tight enough for
+       * them to collide. That was wrong, and the width was never the
+       * condition: the bar is 48 px tall and the chip spans 16 to 46, so
+       * they overlap at EVERY width. Measured on a laptop at 1600 and at
+       * 1280, the chip covered 125 px of "Flying 2022 AU Nationals", which
+       * is the one thing in that corner a pilot actually wants to read.
        *
        * Nothing is hidden. The bar keeps the corner, because what you are
        * flying is worth more than a button that has a row on the title and
-       * a key of its own, and the two floating chips drop below it. That
-       * costs about 36 px of a phone's height and loses no function.
+       * a key of its own, and the two floating chips drop below it.
        *
-       * It has to sit AFTER the two rules it overrides. Both are one class
-       * deep, so source order decides, and the first draft of this lived
-       * two thousand lines earlier and did nothing at all.
+       * `bar-shown` is set in ui.js beside `frameTop.hidden`, so the chips
+       * only move when there is something to move for: the title screen and
+       * a live flight have no bar and keep the chip at 16 px. Reading
+       * --bar-top alone would not do, because it stays 48 px on the title
+       * where the bar is hidden.
+       *
+       * These have to sit AFTER the rules they override. Both are one class
+       * deep, so source order decides, and the first draft of the old
+       * version of this lived two thousand lines earlier and did nothing.
        */
-      @media (max-width: 860px) {
-        .bug-chip { top: calc(var(--bar-top) + 8px); }
-        .music-dock { top: calc(var(--bar-top) + 44px); }
-      }
+      .bar-shown .bug-chip { top: calc(var(--bar-top) + 8px); }
+      .bar-shown .music-dock { top: calc(var(--bar-top) + 44px); }
+
+      /*
+       * PAUSE, under the bug chip, at the same right edge and in the same
+       * chip family. Exactly where src/input/touchsticks.js puts the one it
+       * mounts for a thumb, so the layout is one layout whichever way you
+       * are flying, and hidden when that overlay is up so there is never a
+       * pair of them. Quieter than the bug chip only in that it is shorter:
+       * this is the button that gets a pilot out of a map, so it is a real
+       * button and not a hint.
+       */
+      .pause-chip { top: 52px; }
+      .pause-chip[hidden] { display: none; }
+      .touch-fly-on .pause-chip { display: none; }
 
       .music-dock.on-flight {
         right: auto; left: 16px; top: 16px;

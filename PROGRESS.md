@@ -23262,3 +23262,90 @@ prevents an agent that does not read it. The setting does.
 No checks were run for this entry beyond the ones the change can affect:
 nothing here touches code. `git ls-files` confirms 0 PNGs tracked and 175 on
 disk, and the four cited records resolve.
+
+## 2026-08-29, the bug chip sat on the track name, and a mouse could not leave a map
+
+Two reports, both about reaching things rather than about flying.
+
+### 1. "The report a bug button covers other things the user wants to see"
+
+Measured before touching it. On the launch screen at 1600 and again at 1280,
+the chip sits at x 1361 y 16, 223 by 30, and the elements underneath it are
+the status bar's own context chip: `SPAN.frame-chip-key` reading "Flying",
+36 by 14 of overlap, and the `B` holding the track name, "2022 AU Nationals",
+125 by 14. So the one thing in that corner a pilot actually wants, WHICH
+TRACK THEY ARE ON, was the thing the button covered.
+
+There was already a rule for this and it was guarded by the wrong condition:
+
+    @media (max-width: 860px) { .bug-chip { top: calc(var(--bar-top) + 8px); } }
+
+The comment above it reasoned from a 390 px phone, where the two spans were
+"almost entirely on top of each other", and concluded the problem was narrow
+windows. Width was never the condition. `syncFrame` sets `--bar-top` to 48px
+on every screen that has a bar, and the chip spans 16 to 46, so they overlap
+at EVERY width. A laptop had it as badly as a phone; there was simply more
+empty space either side to make it look deliberate.
+
+The media query is gone. `syncFrame` toggles `bar-shown` on the root beside
+the line that sets `frameTop.hidden`, and the two floating chips key off
+that. Reading `--bar-top` alone would not do: it stays 48px on the title,
+where the bar is hidden, and the chip would drop 40 px for nothing.
+
+Measured after: 16 px on the title and in flight, where there is no bar, 56 px
+on every screen that has one, and zero overlapping elements at 1600, 1280 and
+900.
+
+### 2. "In a freestyle map the only way back to a race map is Esc"
+
+Two separate holes, and the second is the one that actually traps a pilot.
+
+**Flight had no pause a pointer could press.** `src/input/touchsticks.js:127`
+mounts a Pause button, and it mounts it only with the thumb sticks, so a
+phone has had one since they shipped and a mouse has never had one. The only
+clickable thing in flight was the bug chip, which pauses and then opens a
+form, which is not what somebody who wants to leave is asking for.
+
+There is a `pause-chip` now, in the shell, in the same chip family, at the
+same right edge and at the same 52 px the touch one uses, so the layout is
+one layout whichever way you fly. It makes the same two calls Escape and the
+thumb button make. It hides itself when `touch-fly-on` is on the root, so
+there is never a pair, and outside flight, where every screen already has
+somewhere to go.
+
+**And the title could not change mode.** This is the trap. The second row is
+Track in Race and Map in Freestyle, and each lists only the worlds of the
+mode you are in. The single route between them is `this.mode = null`, reached
+from Escape on the title and from nowhere else. So a pilot who answered
+Freestyle could reach the four places and could not reach a single race track
+again without knowing to press a key that appears in no menu.
+
+FIRST ATTEMPT, AND WHY IT WAS WRONG. An eleventh row on the title, "Race or
+Freestyle". `npm run lint:shell` failed it: "title: overflow grew from 0 to
+25 px". The row does not fit at 1600 by 900 and CLAUDE.md says never change a
+threshold to make a check pass, so the row went rather than the number. The
+check earned its keep.
+
+WHAT SHIPPED. The legend at the bottom of the title already reads
+"Esc  Race or Freestyle", in the place a pilot looks when asking how to get
+out. The words were on the screen; what they lacked was a hit area. A legend
+entry that carries an action now renders as a button instead of an `<i>`, and
+that is the only one that does: a legend where everything looks clickable and
+most of it is not would be worse than the key alone. It costs no height,
+which is why it fits where a row did not.
+
+Verified by clicking, not by reading: from Industrial bando, one click on the
+legend reopens the Race or Freestyle cards with Race on the left. From flight,
+one click on Pause reaches Paused, the chip hides itself, and the bug chip
+drops to 56 px because that screen has a bar.
+
+### Checks
+
+`lint:shell` PASS, and it is the check that caught the first attempt.
+`lint:nouns`, `lint:devices`, `lint:responsive`, `lint:arcade`,
+`lint:attract`, `lint:memory`, `lint:fc` all PASS, and
+`node src/trackbuilder/selftest.js` 493 passed 0 failed.
+
+`npm run verify` not run: nothing here touches physics, the plant, the module
+ABI or the build. It was run twice earlier today on this tree and the entry
+above records the result.

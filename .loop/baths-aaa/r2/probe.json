@@ -1,0 +1,201 @@
+{
+  "round": 2,
+  "graphics": "high",
+  "leftoverDeath": 0,
+  "leftoverOverlap": 0,
+  "leftoverSamples": [],
+  "platforms": 53,
+  "meshes": 32,
+  "triangles": 6516,
+  "pointLights": 0,
+  "casters": 50,
+  "pipelineScale": 1,
+  "colliders": {
+    "count": 270,
+    "byKind": {
+      "gate": 0,
+      "obstacle": 92,
+      "tree": 0,
+      "canopy": 0,
+      "rock": 0,
+      "cliff": 0,
+      "pole": 33,
+      "wall": 145,
+      "boom": 0,
+      "train": 0
+    },
+    "boxes": 270,
+    "capsules": 0,
+    "cellSize": 8,
+    "cells": 106,
+    "maxRadius": 0,
+    "craftRadius": 0.1735,
+    "moving": 0,
+    "queries": 0,
+    "meanCandidatesPerQuery": 0,
+    "lastCandidates": 0
+  },
+  "spawn": {
+    "x": 0,
+    "y": 0,
+    "z": 16.2,
+    "yaw": 3.141592653589793
+  },
+  "references": {
+    "poolLen": {
+      "measured": 50,
+      "unit": "m",
+      "real": "FINA 50 m course"
+    },
+    "poolWid": {
+      "measured": 12.5,
+      "unit": "m",
+      "real": "six lanes, about 12.5 m"
+    },
+    "deepEnd": {
+      "measured": 5,
+      "unit": "m",
+      "real": "dive pit 4.5 to 5.0 m"
+    },
+    "doorWidth": {
+      "measured": 12.4,
+      "unit": "m",
+      "real": "south mouth a 5 inch can leave, 8 m+"
+    },
+    "towerDecks": {
+      "measured": 1,
+      "unit": "count",
+      "real": "one 10 m board deck"
+    },
+    "galleryPieces": {
+      "measured": 4,
+      "unit": "count",
+      "real": "mouth run plus far run"
+    },
+    "colliderBoxes": {
+      "measured": 270,
+      "unit": "count",
+      "real": "authored with the mesh"
+    },
+    "teachLen": {
+      "measured": 10,
+      "unit": "m",
+      "real": "teaching pool about 10 m"
+    },
+    "bulkheadTop": {
+      "measured": 1,
+      "unit": "count",
+      "real": "one bulkhead deck"
+    }
+  },
+  "audit": {
+    "poolOk": 600,
+    "poolWrong": 0,
+    "teachOk": 120,
+    "teachWrong": 0,
+    "wellGhost": 0,
+    "galleryMiss": 0,
+    "leftoverDeath": 0,
+    "leftoverOverlap": 0,
+    "leftoverSamples": [],
+    "platforms": 53,
+    "boxes": 270
+  },
+  "expectedModules": 16,
+  "budgetEstablishing": {
+    "p1": 205,
+    "p2": 17161,
+    "p5_MB": 73.9,
+    "p5_1080": 91.6,
+    "p10_MB": 0.5,
+    "meshes": 154
+  },
+  "budgetInterior": {
+    "p1": 110,
+    "p2": 12689,
+    "p5_MB": 73.9,
+    "p5_1080": 91.6,
+    "p10_MB": 0.5,
+    "meshes": 154
+  },
+  "lines": [
+    {
+      "name": "L1_mouthS",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L1_coralHoop",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L2_poolBore",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L3_bulkhead",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L4_westDoor",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L5_teachHoop",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L6_diveHoop",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L7_hopper",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L8_westWell",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L8_eastWell",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L9_underBridge",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "L10_catchHoop",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    },
+    {
+      "name": "spawnApproach",
+      "clear": true,
+      "n": 0,
+      "hits": []
+    }
+  ]
+}

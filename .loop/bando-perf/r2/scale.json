@@ -1,0 +1,15 @@
+{
+  "graphics": "high",
+  "map": "bando",
+  "pixelBudget": 2600000,
+  "minInternalPixels": 1200000,
+  "scaleAt": {
+    "1920x1080": { "scale": 1, "rw": 1920, "rh": 1080, "pixels": 2073600 },
+    "2560x1440": { "scale": 0.8398185154477655, "rw": 2149, "rh": 1209, "pixels": 2598141 },
+    "3840x2160": { "scale": 0.5598790102985104, "rw": 2149, "rh": 1209, "pixels": 2598141 }
+  },
+  "live": {
+    "css1600": { "css": [1600, 900], "internal": [1600, 900], "scale": 1, "pixels": 1440000 },
+    "css4k": { "css": [3840, 2160], "internal": [2149, 1209], "scale": 0.5598790102985104, "pixels": 2598141 }
+  }
+}

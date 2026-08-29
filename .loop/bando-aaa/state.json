@@ -1,0 +1,8 @@
+{
+  "loop": "bando-aaa",
+  "round": 11,
+  "consecutive_accept": 2,
+  "done": true,
+  "done_condition": "Two consecutive rounds with designer, coder and FPV pilot all ACCEPT.",
+  "note": "r10 and r11 all ACCEPT with no MUST-FIX. Stop. Constitution: prompts/bando-aaa-loop.md. Evidence: .loop/bando-aaa/rN/. Do not clobber the FC configurator state.json."
+}

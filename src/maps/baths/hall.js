@@ -39,7 +39,7 @@ export function buildHall(root, colliders, platforms, M) {
   slab(root, colliders, M.cream, door, 0, z1 - t, x1 - t, h, z1);
   slab(root, colliders, M.cream, -door, doorH, z1 - t, door, h, z1);
 
-  slab(root, colliders, M.steelDark, -door, doorH - 0.28, z1 - t - 0.1, door, doorH + 0.38, z1 + 0.12, {
+  slab(root, colliders, M.steelDark, -door, doorH, z1 - t - 0.1, door, doorH + 0.38, z1 + 0.12, {
     solid: false,
   });
   slab(root, colliders, M.steelDark, -door - 0.4, 0, z1 - t - 0.1, -door, doorH, z1 + 0.12, {
@@ -70,6 +70,7 @@ export function buildHall(root, colliders, platforms, M) {
   windowBand(root, colliders, M, x0 + 2.2, z0 - 0.06, x1 - 2.2, 10.2, 13.4);
   windowBand(root, colliders, M, x0 + 2.2, z1 + 0.06, -door - 0.6, 10.2, 13.4);
   windowBand(root, colliders, M, door + 0.6, z1 + 0.06, x1 - 2.2, 10.2, 13.4);
+  westWindows(root, colliders, M, x0, z0, z1);
 
   buildGalleries(root, colliders, platforms, M);
   buildCornerTowers(root, colliders, M);
@@ -153,6 +154,17 @@ function windowBand(root, colliders, M, x0, z, x1, y0, y1) {
   }
 }
 
+function westWindows(root, colliders, M, x0, z0, z1) {
+  const x = x0 - 0.06;
+  const y0 = 10.2;
+  const y1 = 13.4;
+  const wd = L.westDoor;
+  decal(root, colliders, M.pane, x - 0.05, y0, z0 + 1.6, x, y1, wd.z0 - 0.4);
+  decal(root, colliders, M.pane, x - 0.05, y0, wd.z1 + 0.4, x, y1, z1 - 1.6);
+  decal(root, colliders, M.steelDark, x - 0.08, y0 - 0.22, z0 + 1.6, x + 0.02, y0, wd.z0 - 0.4);
+  decal(root, colliders, M.steelDark, x - 0.08, y0 - 0.22, wd.z1 + 0.4, x + 0.02, y0, z1 - 1.6);
+}
+
 function lightWells(root, colliders, M, holes, top) {
   const th = 0.22;
   for (const hole of holes) {
@@ -188,15 +200,28 @@ function civicBand(root, colliders, M, x0, x1, z0, z1, t, door) {
 }
 
 function wainscot(root, colliders, M, x0, x1, z0, z1, t, door) {
-  const y1 = 1.05;
-  const d = 0.04;
+  const y1 = 1.22;
+  const cap = 1.52;
+  const d = 0.10;
   const wd = L.westDoor;
-  decal(root, colliders, M.creamShade, x0 + t, 0.02, z0 + t, x0 + t + d, y1, wd.z0);
-  decal(root, colliders, M.creamShade, x0 + t, 0.02, wd.z1, x0 + t + d, y1, z1 - t);
-  decal(root, colliders, M.creamShade, x1 - t - d, 0.02, z0 + t, x1 - t, y1, z1 - t);
-  decal(root, colliders, M.creamShade, x0 + t, 0.02, z0 + t, x1 - t, y1, z0 + t + d);
-  decal(root, colliders, M.creamShade, x0 + t, 0.02, z1 - t - d, -door, y1, z1 - t);
-  decal(root, colliders, M.creamShade, door, 0.02, z1 - t - d, x1 - t, y1, z1 - t);
+  const dado = M.navy;
+  const sill = M.lemon;
+  decal(root, colliders, dado, x0 + t, 0.02, z0 + t, x0 + t + d, y1, wd.z0);
+  decal(root, colliders, dado, x0 + t, 0.02, wd.z1, x0 + t + d, y1, z1 - t);
+  decal(root, colliders, dado, x1 - t - d, 0.02, z0 + t, x1 - t, y1, z1 - t);
+  decal(root, colliders, dado, x0 + t, 0.02, z0 + t, x1 - t, y1, z0 + t + d);
+  decal(root, colliders, dado, x0 + t, 0.02, z1 - t - d, -door, y1, z1 - t);
+  decal(root, colliders, dado, door, 0.02, z1 - t - d, x1 - t, y1, z1 - t);
+  decal(root, colliders, sill, x0 + t, y1, z0 + t, x0 + t + d, cap, wd.z0);
+  decal(root, colliders, sill, x0 + t, y1, wd.z1, x0 + t + d, cap, z1 - t);
+  decal(root, colliders, sill, x1 - t - d, y1, z0 + t, x1 - t, cap, z1 - t);
+  decal(root, colliders, sill, x0 + t, y1, z0 + t, x1 - t, cap, z0 + t + d);
+  decal(root, colliders, sill, x0 + t, y1, z1 - t - d, -door, cap, z1 - t);
+  decal(root, colliders, sill, door, y1, z1 - t - d, x1 - t, cap, z1 - t);
+  decal(root, colliders, dado, x0 - 0.06, 0.02, z0 - 0.06, x0 + 0.02, y1, wd.z0);
+  decal(root, colliders, dado, x0 - 0.06, 0.02, wd.z1, x0 + 0.02, y1, z1 + 0.06);
+  decal(root, colliders, sill, x0 - 0.06, y1, z0 - 0.06, x0 + 0.02, cap, wd.z0);
+  decal(root, colliders, sill, x0 - 0.06, y1, wd.z1, x0 + 0.02, cap, z1 + 0.06);
 }
 
 function buildGalleries(root, colliders, platforms, M) {

@@ -1,0 +1,470 @@
+﻿{
+    "tag":  "1080-vsync",
+    "establishing":  {
+                         "view":  "establishing",
+                         "map":  "bando",
+                         "leftoverOverlap":  0,
+                         "leftoverDeath":  6,
+                         "pointLights":  0,
+                         "pipelineScale":  1,
+                         "pipelineSize":  {
+                                              "x":  1920,
+                                              "y":  1080
+                                          },
+                         "pipelineCss":  {
+                                             "x":  1920,
+                                             "y":  1080
+                                         },
+                         "canvas":  {
+                                        "w":  1920,
+                                        "h":  1080,
+                                        "cssW":  1920,
+                                        "cssH":  1080
+                                    },
+                         "dpr":  1,
+                         "scaleAt":  {
+                                         "p1080":  {
+                                                       "w":  1920,
+                                                       "h":  1080,
+                                                       "scale":  1,
+                                                       "ceil":  1,
+                                                       "floor":  0.7607257743127307,
+                                                       "rw":  1920,
+                                                       "rh":  1080,
+                                                       "pixels":  2073600,
+                                                       "budget":  2600000,
+                                                       "map":  "bando",
+                                                       "graphics":  "high"
+                                                   },
+                                         "p1440":  {
+                                                       "w":  2560,
+                                                       "h":  1440,
+                                                       "scale":  0.8398185154477655,
+                                                       "ceil":  0.8398185154477655,
+                                                       "floor":  0.75,
+                                                       "rw":  2149,
+                                                       "rh":  1209,
+                                                       "pixels":  2598141,
+                                                       "budget":  2600000,
+                                                       "map":  "bando",
+                                                       "graphics":  "high"
+                                                   },
+                                         "p4k":  {
+                                                     "w":  3840,
+                                                     "h":  2160,
+                                                     "scale":  0.5598790102985104,
+                                                     "ceil":  0.5598790102985104,
+                                                     "floor":  0.5598790102985104,
+                                                     "rw":  2149,
+                                                     "rh":  1209,
+                                                     "pixels":  2598141,
+                                                     "budget":  2600000,
+                                                     "map":  "bando",
+                                                     "graphics":  "high"
+                                                 }
+                                     },
+                         "pace":  {
+                                      "emaMs":  16.648779498217618,
+                                      "renderEma":  1.0866648043744653,
+                                      "shellEma":  0.0609344378912057,
+                                      "p95Ms":  17.199999999999818,
+                                      "dtN":  201,
+                                      "scale":  1,
+                                      "ceil":  1,
+                                      "floor":  0.7607257743127307,
+                                      "want":  1,
+                                      "cpuBound":  0,
+                                      "changes":  0,
+                                      "warm":  50,
+                                      "rw":  1920,
+                                      "rh":  1080,
+                                      "fps":  60.056584992455484,
+                                      "gpu":  {
+                                                  "name":  "AMD Radeon(TM) Graphics",
+                                                  "display":  "AMD Radeon(TM) Graphics",
+                                                  "software":  false,
+                                                  "raw":  "ANGLE (AMD, AMD Radeon(TM) Graphics (0x0000164E) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+                                              }
+                                  },
+                         "stats":  {
+                                       "calls":  172,
+                                       "triangles":  31103
+                                   },
+                         "budget":  {
+                                        "view":  "establishing",
+                                        "canvas":  {
+                                                       "w":  1920,
+                                                       "h":  1080,
+                                                       "dpr":  1
+                                                   },
+                                        "p1_calls":  172,
+                                        "p2_triangles":  31103,
+                                        "p3_fullres_passes":  3,
+                                        "p4_fullres_taps":  16,
+                                        "p4_fullres_loops":  0,
+                                        "p5_target_bytes":  91615232,
+                                        "p5_target_MB":  91.6,
+                                        "p5_target_MiB":  87.4,
+                                        "p5_target_MB_at_1080p":  91.6,
+                                        "p5_targets":  [
+                                                           {
+                                                               "label":  "2048x2048 \u003c- allocated, not bound this frame",
+                                                               "w":  2048,
+                                                               "h":  2048,
+                                                               "samples":  1,
+                                                               "bytes":  33554432,
+                                                               "scales":  false
+                                                           },
+                                                           {
+                                                               "label":  "1920x1080 \u003c- Scene",
+                                                               "w":  1920,
+                                                               "h":  1080,
+                                                               "samples":  1,
+                                                               "bytes":  24883200,
+                                                               "scales":  true
+                                                           },
+                                                           {
+                                                               "label":  "1920x1080 \u003c- ShaderMaterial",
+                                                               "w":  1920,
+                                                               "h":  1080,
+                                                               "samples":  1,
+                                                               "bytes":  16588800,
+                                                               "scales":  true
+                                                           },
+                                                           {
+                                                               "label":  "1920x1080 \u003c- ShaderMaterial",
+                                                               "w":  1920,
+                                                               "h":  1080,
+                                                               "samples":  1,
+                                                               "bytes":  8294400,
+                                                               "scales":  true
+                                                           },
+                                                           {
+                                                               "label":  "1920x1080 \u003c- the default framebuffer, rgba",
+                                                               "w":  1920,
+                                                               "h":  1080,
+                                                               "samples":  1,
+                                                               "bytes":  8294400,
+                                                               "scales":  true
+                                                           }
+                                                       ],
+                                        "p9_shadow_maps":  [
+                                                               {
+                                                                   "light":  "DirectionalLight",
+                                                                   "size":  "2048x2048",
+                                                                   "allocated":  true
+                                                               }
+                                                           ],
+                                        "p10_attribute_bytes":  1154688,
+                                        "p10_attribute_MB":  1.2,
+                                        "p10_index_bytes":  111924,
+                                        "meshes":  161,
+                                        "geometries":  118,
+                                        "p2_top_meshes":  [
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  2316,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  69.6
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  1656,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  67.5
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  1488,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  15.9
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  1320,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  71.3
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  1236,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  46.2
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  1080,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  47.9
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  852,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  40.8
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  744,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  57.9
+                                                              },
+                                                              {
+                                                                  "material":  "MeshToonMaterial",
+                                                                  "triangles":  576,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  55.1
+                                                              },
+                                                              {
+                                                                  "material":  "MeshBasicMaterial",
+                                                                  "triangles":  552,
+                                                                  "frustumCulled":  true,
+                                                                  "boundsRadius":  41.2
+                                                              }
+                                                          ],
+                                        "passes":  [
+                                                       "Scene 1920x1080",
+                                                       "ShaderMaterial 1920x1080 taps=6",
+                                                       "ShaderMaterial 1920x1080 taps=1",
+                                                       "ShaderMaterial 1920x1080 taps=9"
+                                                   ]
+                                    }
+                     },
+    "adapter":  "igpu-low-power",
+    "hall":  {
+                 "view":  "hall",
+                 "map":  "bando",
+                 "leftoverOverlap":  0,
+                 "leftoverDeath":  6,
+                 "pointLights":  0,
+                 "pipelineScale":  1,
+                 "pipelineSize":  {
+                                      "x":  1920,
+                                      "y":  1080
+                                  },
+                 "pipelineCss":  {
+                                     "x":  1920,
+                                     "y":  1080
+                                 },
+                 "canvas":  {
+                                "w":  1920,
+                                "h":  1080,
+                                "cssW":  1920,
+                                "cssH":  1080
+                            },
+                 "dpr":  1,
+                 "scaleAt":  {
+                                 "p1080":  {
+                                               "w":  1920,
+                                               "h":  1080,
+                                               "scale":  1,
+                                               "ceil":  1,
+                                               "floor":  0.7607257743127307,
+                                               "rw":  1920,
+                                               "rh":  1080,
+                                               "pixels":  2073600,
+                                               "budget":  2600000,
+                                               "map":  "bando",
+                                               "graphics":  "high"
+                                           },
+                                 "p1440":  {
+                                               "w":  2560,
+                                               "h":  1440,
+                                               "scale":  0.8398185154477655,
+                                               "ceil":  0.8398185154477655,
+                                               "floor":  0.75,
+                                               "rw":  2149,
+                                               "rh":  1209,
+                                               "pixels":  2598141,
+                                               "budget":  2600000,
+                                               "map":  "bando",
+                                               "graphics":  "high"
+                                           },
+                                 "p4k":  {
+                                             "w":  3840,
+                                             "h":  2160,
+                                             "scale":  0.5598790102985104,
+                                             "ceil":  0.5598790102985104,
+                                             "floor":  0.5598790102985104,
+                                             "rw":  2149,
+                                             "rh":  1209,
+                                             "pixels":  2598141,
+                                             "budget":  2600000,
+                                             "map":  "bando",
+                                             "graphics":  "high"
+                                         }
+                             },
+                 "pace":  {
+                              "emaMs":  16.652896261605395,
+                              "renderEma":  0.7106587132879038,
+                              "shellEma":  0.1081068292814086,
+                              "p95Ms":  17.5,
+                              "dtN":  203,
+                              "scale":  1,
+                              "ceil":  1,
+                              "floor":  0.7607257743127307,
+                              "want":  1,
+                              "cpuBound":  0,
+                              "changes":  0,
+                              "warm":  50,
+                              "rw":  1920,
+                              "rh":  1080,
+                              "fps":  60.06069814424254,
+                              "gpu":  {
+                                          "name":  "AMD Radeon(TM) Graphics",
+                                          "display":  "AMD Radeon(TM) Graphics",
+                                          "software":  false,
+                                          "raw":  "ANGLE (AMD, AMD Radeon(TM) Graphics (0x0000164E) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+                                      }
+                          },
+                 "stats":  {
+                               "calls":  105,
+                               "triangles":  27283
+                           },
+                 "budget":  {
+                                "view":  "hall",
+                                "canvas":  {
+                                               "w":  1920,
+                                               "h":  1080,
+                                               "dpr":  1
+                                           },
+                                "p1_calls":  105,
+                                "p2_triangles":  27283,
+                                "p3_fullres_passes":  3,
+                                "p4_fullres_taps":  16,
+                                "p4_fullres_loops":  0,
+                                "p5_target_bytes":  91615232,
+                                "p5_target_MB":  91.6,
+                                "p5_target_MiB":  87.4,
+                                "p5_target_MB_at_1080p":  91.6,
+                                "p5_targets":  [
+                                                   {
+                                                       "label":  "2048x2048 \u003c- allocated, not bound this frame",
+                                                       "w":  2048,
+                                                       "h":  2048,
+                                                       "samples":  1,
+                                                       "bytes":  33554432,
+                                                       "scales":  false
+                                                   },
+                                                   {
+                                                       "label":  "1920x1080 \u003c- Scene",
+                                                       "w":  1920,
+                                                       "h":  1080,
+                                                       "samples":  1,
+                                                       "bytes":  24883200,
+                                                       "scales":  true
+                                                   },
+                                                   {
+                                                       "label":  "1920x1080 \u003c- ShaderMaterial",
+                                                       "w":  1920,
+                                                       "h":  1080,
+                                                       "samples":  1,
+                                                       "bytes":  16588800,
+                                                       "scales":  true
+                                                   },
+                                                   {
+                                                       "label":  "1920x1080 \u003c- ShaderMaterial",
+                                                       "w":  1920,
+                                                       "h":  1080,
+                                                       "samples":  1,
+                                                       "bytes":  8294400,
+                                                       "scales":  true
+                                                   },
+                                                   {
+                                                       "label":  "1920x1080 \u003c- the default framebuffer, rgba",
+                                                       "w":  1920,
+                                                       "h":  1080,
+                                                       "samples":  1,
+                                                       "bytes":  8294400,
+                                                       "scales":  true
+                                                   }
+                                               ],
+                                "p9_shadow_maps":  [
+                                                       {
+                                                           "light":  "DirectionalLight",
+                                                           "size":  "2048x2048",
+                                                           "allocated":  true
+                                                       }
+                                                   ],
+                                "p10_attribute_bytes":  1154688,
+                                "p10_attribute_MB":  1.2,
+                                "p10_index_bytes":  111924,
+                                "meshes":  161,
+                                "geometries":  118,
+                                "p2_top_meshes":  [
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  2316,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  69.6
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  1656,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  67.5
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  1488,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  15.9
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  1320,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  71.3
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  1236,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  46.2
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  1080,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  47.9
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  852,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  40.8
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  744,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  57.9
+                                                      },
+                                                      {
+                                                          "material":  "MeshToonMaterial",
+                                                          "triangles":  576,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  55.1
+                                                      },
+                                                      {
+                                                          "material":  "MeshBasicMaterial",
+                                                          "triangles":  552,
+                                                          "frustumCulled":  true,
+                                                          "boundsRadius":  41.2
+                                                      }
+                                                  ],
+                                "passes":  [
+                                               "Scene 1920x1080",
+                                               "ShaderMaterial 1920x1080 taps=6",
+                                               "ShaderMaterial 1920x1080 taps=1",
+                                               "ShaderMaterial 1920x1080 taps=9"
+                                           ]
+                            }
+             },
+    "capturedAt":  "2026-08-29T10:03:33.2175059+08:00",
+    "css":  [
+                1920,
+                1080
+            ],
+    "cpu":  "AMD Ryzen 7 7800X3D"
+}

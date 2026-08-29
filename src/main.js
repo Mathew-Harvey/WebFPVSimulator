@@ -46,7 +46,8 @@
 
 import * as THREE from 'three';
 import { buildShell } from './render/shell.js';
-import { applyPixelRatio, normalizeGraphics, pixelRatioFor } from './render/quality.js';
+import { applyPixelRatio, internalScale, normalizeGraphics, pixelRatioFor, qualityFor } from './render/quality.js';
+import { createPace, PACE_COOL } from './render/pace.js';
 import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { measureBudget } from './render/budget.js';
@@ -285,7 +286,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js and references.js, 63 in all. Check 16
  * asserts the city count against what the browser actually fetched on a
  * cold load, because 61 sat here for a round and nothing could notice. */
-const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 14, baths: 16, yard: 15 };
+const MAP_MODULE_COUNT = { field: 1, city: 63, custom: 1, bando: 13, baths: 16, yard: 15 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -332,8 +333,17 @@ export async function boot({ loading, bootStart, mapId }) {
   const canvas = document.getElementById('view');
   /* The flying view wants the shortest path to the glass it can get, and
    * has nothing to read its own frames back for. See shell.js for what the
-   * compositor queue costs a pilot. */
-  const shell = buildShell(canvas, { desynchronized: true });
+   * compositor queue costs a pilot.
+   *
+   * ?gpu=low is a measurement hook: WebGL powerPreference low-power, so a
+   * dual-GPU box can bind the iGPU. The flight default stays
+   * high-performance. A dual-GPU laptop must not pick the battery chip
+   * because a debug URL was opened once; this query is not stored. */
+  const gpuQuery = new URLSearchParams(window.location.search).get('gpu');
+  const shell = buildShell(canvas, {
+    desynchronized: true,
+    powerPreference: gpuQuery === 'low' ? 'low-power' : 'high-performance',
+  });
   const input = new InputManager();
   /*
    * Sample the sticks on their own timer rather than once per rendered frame.
@@ -691,7 +701,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * throw is honest.
    */
   try {
-    view = await loadMap(shell, ui.settings.map, loading, { quality: ui.settings.graphics });
+    view = await loadMap(shell, ui.settings.map, loading, {
+      quality: ui.settings.graphics,
+      renderScale: renderScaleOf(ui.settings),
+    });
   } catch (e) {
     if (ui.settings.map === 'custom') {
       throw e;
@@ -700,7 +713,10 @@ export async function boot({ loading, bootStart, mapId }) {
     const failed = mapById(ui.settings.map).name;
     ui.settings.map = 'custom';
     ui.renderMenu();
-    view = await loadMap(shell, 'custom', loading, { quality: ui.settings.graphics });
+    view = await loadMap(shell, 'custom', loading, {
+      quality: ui.settings.graphics,
+      renderScale: renderScaleOf(ui.settings),
+    });
     /* The banner, not `notice`: that is declared with the frame loop's own
      * state further down and does not exist yet. This is the same way the
      * share adoption above reports a boot failure. */
@@ -2507,7 +2523,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     applyPixelRatio(shell, wantQ, renderScaleOf(ui.settings));
     try {
-      view = await loadMap(shell, wantId, loading, { quality: wantQ });
+      view = await loadMap(shell, wantId, loading, {
+        quality: wantQ,
+        renderScale: renderScaleOf(ui.settings),
+      });
       loading.start('frame');
       adoptLoadedView(keepPlace, stayMode, stayScreen);
     } catch (e) {
@@ -2522,7 +2541,10 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.settings.graphics = previousGraphics;
       try {
         applyPixelRatio(shell, previousGraphics, renderScaleOf(ui.settings));
-        view = await loadMap(shell, previous, loading, { quality: previousGraphics });
+        view = await loadMap(shell, previous, loading, {
+          quality: previousGraphics,
+          renderScale: renderScaleOf(ui.settings),
+        });
         loading.start('frame');
         adoptLoadedView(keepPlace, stayMode, stayScreen);
         notice = {
@@ -2732,8 +2754,17 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Render scale changes are free, no world rebuild: set the ratio and
      * walk the same guarded resize path a window resize takes, so the
      * composer and every prepass target follow in one place. */
-    if (shell.pixelRatio !== pixelRatioFor(s.graphics, renderScaleOf(s))) {
-      applyPixelRatio(shell, s.graphics, renderScaleOf(s));
+    const userScale = renderScaleOf(s);
+    const wantPr = pixelRatioFor(s.graphics, userScale);
+    const userChanged = !!(view && view.post && view.post.userScale != null
+      && view.post.userScale !== userScale);
+    if (view && view.post && view.post.userScale != null) {
+      view.post.userScale = userScale;
+    }
+    if (shell.pixelRatio !== wantPr || userChanged) {
+      if (shell.pixelRatio !== wantPr) {
+        applyPixelRatio(shell, s.graphics, userScale);
+      }
       const d = shell.resize();
       if (view && view.post && mapReady) {
         view.post.setSize(d.w, d.h);
@@ -5414,10 +5445,14 @@ export async function boot({ loading, bootStart, mapId }) {
        * pad; if it tracks the frame rate this browser is rAF-locked on
        * gamepad input whatever we ask of it. */
       const stick = input.stats();
+      const paceLine = (view && view.post && view.post.size)
+        ? `\n${view.post.size.x}x${view.post.size.y} scale ${(view.post.scale || 0).toFixed(2)}`
+        : '';
       ui.setReadout(
         `${fps.toFixed(0)} frames per second\n` +
         `${renderStats.calls} draw calls\n` +
-        `${(renderStats.triangles / 1000).toFixed(0)}k triangles\n` +
+        `${(renderStats.triangles / 1000).toFixed(0)}k triangles` +
+        `${paceLine}\n` +
         `stick ${stick.padHz} Hz pad, ${stick.sampleHz} Hz sampled, ${RC_HZ} Hz link`,
       );
     } else {
@@ -5436,6 +5471,16 @@ export async function boot({ loading, bootStart, mapId }) {
      * hardware independent. Two scalars, written not allocated: P8 forbids
      * a new object here. */
     const blockMs = performance.now() - blockStart;
+    if (view && view.post && typeof view.post.applyPace === 'function') {
+      pace.observe(dt, renderMs, blockMs, view.post);
+      if (pace.state.dirty) {
+        if (view.post.applyPace(pace.state.want)) {
+          pace.state.cool = PACE_COOL;
+          pace.state.changes += 1;
+        }
+        pace.state.dirty = 0;
+      }
+    }
     if (frames > 2) {
       if (blockMs > worstBlockMs) {
         worstBlockMs = blockMs;
@@ -5490,8 +5535,61 @@ export async function boot({ loading, bootStart, mapId }) {
   let frames = 0;
   /* Render statistics for the harness and the frame budget gate. */
   const renderStats = { calls: 0, triangles: 0 };
+  const pace = createPace();
   shell.renderer.info.autoReset = false;
   window.__renderStats = () => ({ ...renderStats });
+  window.__pace = () => ({
+    emaMs: pace.state.emaMs,
+    renderEma: pace.state.renderEma,
+    shellEma: pace.state.shellEma,
+    p95Ms: pace.p95(),
+    dtN: pace.state.dtN,
+    scale: pace.state.scaleNow,
+    ceil: pace.state.ceil,
+    floor: pace.state.floor,
+    want: pace.state.changes ? pace.state.want : pace.state.ceil,
+    cpuBound: pace.state.cpuBound,
+    changes: pace.state.changes,
+    warm: pace.state.warm,
+    rw: pace.state.rw,
+    rh: pace.state.rh,
+    fps,
+    gpu: gpuInfo ? {
+      name: gpuInfo.name,
+      display: gpuInfo.display,
+      software: gpuInfo.software,
+      raw: gpuInfo.raw,
+    } : null,
+  });
+  window.__paceReset = () => {
+    pace.resetSamples();
+    return pace.state.dtN;
+  };
+  window.__scaleAt = (w, h) => {
+    const id = view && view.id;
+    const q = qualityFor(ui.settings.graphics);
+    const mapQ = id && q[id] ? q[id] : q.bando;
+    const user = view && view.post && view.post.userScale != null
+      ? view.post.userScale
+      : renderScaleOf(ui.settings);
+    const force = view && view.post ? view.post.forceScale : null;
+    const scale = internalScale(w, h, mapQ, force, user);
+    const ceil = internalScale(w, h, mapQ, null, user);
+    const floor = internalScale(w, h, mapQ, 0, user);
+    return {
+      w,
+      h,
+      scale,
+      ceil,
+      floor,
+      rw: Math.floor(w * scale),
+      rh: Math.floor(h * scale),
+      pixels: Math.floor(w * scale) * Math.floor(h * scale),
+      budget: mapQ.pixelBudget,
+      map: id,
+      graphics: q.id,
+    };
+  };
   /*
    * What the GPU is holding, for scripts/memory-check.js. Three.js counts
    * live geometries and textures itself, and those two numbers are the ones

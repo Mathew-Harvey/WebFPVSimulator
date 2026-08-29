@@ -1,0 +1,9 @@
+{
+  "loop": "bando-perf",
+  "round": 4,
+  "consecutive_accept": 2,
+  "done": true,
+  "done_condition": "Two consecutive rounds with engineer ACCEPT, F3 held on this GPU, F4 held, art stills not sanded.",
+  "last_verdict": "r4 engineer ACCEPT. Live 1920x1080 iGPU vsync 60.06 fps, internal 1920x1080. Unlocked rAF p95 about 2 ms. Named Iris Xe laptop class remains BLOCKED WITH ARGUMENT. r1+r2 consecutive ACCEPT close the loop. 4K internal 2149x1209.",
+  "note": "Art loop closed at bando-aaa r11. Perf loop closed at r2. r3/r4 are iGPU measurements, not look BUILDs. Constitution: prompts/bando-perf-loop.md. Do not clobber bando-aaa/state.json."
+}

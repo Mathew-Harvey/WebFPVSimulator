@@ -150,16 +150,18 @@ function bulkhead(root, colliders, platforms, M) {
   const slot1 = 1.7;
   const sill = -1.9;
   const lintel = 2.38;
-  slab(root, colliders, M.creamShade, x0, y0, L.pool.z0, x1, y1, slot0);
-  slab(root, colliders, M.creamShade, x0, y0, slot1, x1, y1, L.pool.z1);
-  slab(root, colliders, M.creamShade, x0, y0, slot0, x1, sill, slot1);
-  slab(root, colliders, M.creamShade, x0, lintel, slot0, x1, y1, slot1);
+  slab(root, colliders, M.cream, x0, y0, L.pool.z0, x1, y1, slot0);
+  slab(root, colliders, M.cream, x0, y0, slot1, x1, y1, L.pool.z1);
+  slab(root, colliders, M.cream, x0, y0, slot0, x1, sill, slot1);
+  slab(root, colliders, M.cream, x0, lintel, slot0, x1, y1, slot1);
   platforms.push({
     x0, z0: L.pool.z0, x1, z1: L.pool.z1, top: y1, thick: y1 - lintel,
   });
   decal(root, colliders, M.coral, x0, y1, L.pool.z0, x1, y1 + 0.06, L.pool.z1);
   decal(root, colliders, M.lemon, x1 - 0.04, sill, slot0, x1 + 0.04, lintel, slot0 + 0.1);
   decal(root, colliders, M.lemon, x1 - 0.04, sill, slot1 - 0.1, x1 + 0.04, lintel, slot1);
+  decal(root, colliders, M.creamFlat, x0 - 0.03, sill, slot0, x0, lintel, slot1);
+  decal(root, colliders, M.creamFlat, x1, sill, slot0, x1 + 0.03, lintel, slot1);
 }
 
 function clock(root, colliders, M) {
@@ -357,6 +359,33 @@ function plazaToys(root, colliders, platforms, M) {
   slab(root, colliders, M.cream, 12.4, 3.15, 19.4, 17.6, 3.42, 19.8);
   slab(root, colliders, M.cream, 12.0, 3.15, 15.2, 12.4, 3.42, 19.8);
   slab(root, colliders, M.cream, 17.6, 3.15, 15.2, 18.0, 3.42, 19.8);
-  decal(root, colliders, M.tile, 12.0, 3.42, 15.2, 18.0, 3.48, 19.8);
-  void platforms;
+  slab(root, colliders, M.tile, 12.0, 3.42, 15.2, 18.0, 3.52, 19.8, { kind: 'obstacle' });
+  platforms.push({
+    x0: 12.0, z0: 15.2, x1: 18.0, z1: 19.8, top: 3.52, thick: 0.1,
+  });
+
+  slab(root, colliders, M.creamSun, -16.4, 0, 15.2, -13.4, 2.25, 17.5, { kind: 'obstacle' });
+  slab(root, colliders, M.creamSun, 18.0, 0, 15.2, 21.0, 2.25, 17.5, { kind: 'obstacle' });
+  decal(root, colliders, M.lemon, -16.4, 2.25, 15.2, -13.4, 2.38, 17.5);
+  decal(root, colliders, M.coral, 18.0, 2.25, 15.2, 21.0, 2.38, 17.5);
+  for (let z = 15.35; z < 17.3; z += 0.7) {
+    decal(root, colliders, M.lemon, -13.4, 0.15, z, -13.32, 2.12, z + 0.55);
+    decal(root, colliders, M.coral, 18.0, 0.15, z, 18.08, 2.12, z + 0.55);
+  }
+
+  const blocks = [-9.5, -7.0, 7.0, 9.5];
+  for (const x of blocks) {
+    slab(root, colliders, M.white, x - 0.36, 0, 18.15, x + 0.36, 0.95, 18.95, {
+      kind: 'obstacle',
+    });
+    decal(root, colliders, M.lemon, x - 0.36, 0.95, 18.15, x + 0.36, 1.08, 18.95);
+  }
+
+  for (let x = -16; x <= 16; x += 4) {
+    slab(root, colliders, M.creamSun, x - 0.12, 0, 23.88, x + 0.12, 1.35, 24.12);
+    decal(root, colliders, M.lemon, x - 0.12, 1.35, 23.88, x + 0.12, 1.48, 24.12);
+  }
+  for (let x = -16; x < 16; x += 4) {
+    pipe(root, colliders, M.chrome, 'x', x + 0.12, x + 4 - 0.12, 1.22, 24.0, 0.07);
+  }
 }

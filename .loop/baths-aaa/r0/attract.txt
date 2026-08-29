@@ -1,0 +1,2 @@
+baths: path loop, 25.9 s, through 0/320, under 5 m 4.1%, down 11.3%, sky 9.1%, nearest 2.8 m at 2, 3, 10.7
+attract: no world flies the title camera through anything solid.

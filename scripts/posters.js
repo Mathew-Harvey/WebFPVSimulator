@@ -91,7 +91,7 @@ const CAMERAS = {
    * hall behind it with its stair towers. Shot from above head height
    * because at eye level the boundary hedge takes the bottom half.
    */
-  baths: [44, 14, 38, 4, 6, 0],
+  baths: [42, 13, 36, 2, 7, 8],
   /*
    * The house across the back lawn, deck on, at about tree height. The
    * fence line and the paddock trees give it a horizon, and the sun is low

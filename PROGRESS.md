@@ -22508,3 +22508,168 @@ field) are recorded, not elevated.
 `npm run verify` not run: map authoring only, no plant, ABI, WASM or
 threshold change.
 
+## 2026-08-29, bando: perf loop round 1, bind the pixel budget
+
+The art loop closed at r11. The hitch on a real desktop was fill rate, not
+mesh count. High `minScale: 1` used to win against `pixelBudget` 2.6e6, so
+a 1440p or 4K panel rendered native CSS into HalfFloat scene targets, and
+KilnPipeline restored session devicePixelRatio on the default framebuffer.
+
+New constitution: `prompts/bando-perf-loop.md`. Evidence `.loop/bando-perf/`.
+
+Build: `internalScale` in quality.js (budget always wins, 1.2e6 pixel
+floor, High bando minScale 0.75). KilnPipeline backing store equals the
+internal buffer. `pace.js` drops scale only when rAF dt is over 18 ms and
+the GPU half is actually expensive. `__pace` / `__scaleAt` / dt ring p95.
+
+GPU dumps on an NVIDIA GeForce RTX 5080, software false, 200 samples:
+
+| window | internal | fps EMA | p95 ms | render ms | calls |
+|---|---|---:|---:|---:|---:|
+| ~1584x805 | 1584x805 | 60.0 | 17.0 | 0.78 | 172 |
+| ~1440p CSS | 2217x1172 | 60.0 | 17.3 | 0.80 | 172 |
+| ~4K CSS | 2194x1184 | 60.0 | 17.6 | 0.90 | 172 |
+
+P1 172, P2 31103, P5 91.6 MB at 1080p, PointLights 0, leftoverOverlap 0.
+Canvas width/height equals pipeline size (F2). 4K CSS is not native
+HalfFloat (F1). Hall p95 17.1 ms.
+
+Engineer first REJECT (missing dumps), then ACCEPT. MUST-FIX none. SHOULD:
+this 5080 vsync lock is not an Iris Xe fill test. MAP_MODULE_COUNT.bando
+14 to 13 to match the prefix fetch.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+`node scripts/shots.js` not run: node is not on PATH in this agent shell.
+Stills recapture is round 2.
+
+## 2026-08-29, baths: AAA loop round 0 BUILD
+
+Constitution `prompts/baths-aaa-loop.md`. r0 MEASURE leftoverOverlap 0,
+leftoverDeath 0, named lines CLEAR, attract through 0/320. Designer
+REJECT (D1, D4, D5, D7, D8). Coder ACCEPT. Pilot REJECT (L7). Consecutive
+ACCEPT 0.
+
+MUST-FIX from the union, plus SHOULDs named by two reviewers (mouth
+steel lintel, gallery/well repark):
+
+- Title park moved SW so the menu does not eat the door. Poster camera
+  in `scripts/posters.js` matches establishing `[42, 13, 36, 2, 7, 8]`.
+- Unlit `tileFlat` / `creamFlat` on basin inner walls (hopper z skipped),
+  tower shaft, bulkhead slot faces. Navy dado and lemon sill at 5 m on
+  hall inner and west outer. West clerestory panes.
+- Hopper: lemon lip on the pool-side punch, creamFlat pit lining, plant
+  well over the pit so the cellar has a sky hole.
+- Plaza set: solid tile pergola cap, navy lockers, four queue blocks,
+  fence posts with chrome rail segmented between posts so the rail does
+  not share volume with the posts. Queue centres 2.5 m apart so the gap
+  is above CLEAR.
+- Mouth steel lintel `y0` is `doorH`. `stats()` lifts leftoverDeath and
+  leftoverOverlap for the probe.
+
+Did not touch `src/render/quality.js` (bando perf loop owns High
+minScale and `internalScale`). Did not add PointLights. Did not grow
+named hoops. Catch hoop inner Y stays 1.62.
+
+r1 MEASURE is next: `node .loop/baths-aaa/r1/run-shots.mjs` and
+`node scripts/attract-check.js baths`. Leftover, lines and budgets are
+owed until that recapture.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
+## 2026-08-29, bando: perf loop round 2, confirmation then stop
+
+No BUILD. Same tree as r1. GPU Chrome, CSS 1600x900 then 3840x2160,
+High, parks from bando-aaa r11. UI hidden.
+
+| CSS | view | internal | emaMs | p95 | fps | renderEma | calls |
+|---|---|---|---:|---:|---:|---:|---:|
+| 1600x900 | establishing | 1600x900 | 16.665 | 17.2 | 60.02 | 0.68 | 172 |
+| 1600x900 | hall | 1600x900 | 16.629 | 17.2 | 60.06 | 0.38 | 105 |
+| 3840x2160 | establishing | 2149x1209 | 16.675 | 16.9 | 60.00 | 0.90 | 172 |
+| 3840x2160 | hall | 2149x1209 | 16.661 | 16.9 | 60.01 | 0.47 | 105 |
+
+RTX 5080, software false. Canvas equals pipeline. 4K is the 2.6e6 cap,
+not native HalfFloat. P1 172, P2 31103, P5 91.6 MB at 1080p, lamps 0.
+Hall `__budget` is labelled hall.
+
+Stills SHA moved (GPU vs r11 SwiftShader). Hall-west face samples held:
+(200,200) DD9652, (400,250) 7B5B64, (200,400) E8994A vs E9994A. Graffiti
+and sun pools were not sanded.
+
+Engineer ACCEPT, MUST-FIX none. Consecutive ACCEPT 2. Loop stop.
+Iris Xe fps stays BLOCKED WITH ARGUMENT: 5080 renderEma under 1 ms is
+not that machine.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+
+## 2026-08-29, baths: AAA loop round 1 MEASURE BREAK BUILD
+
+r1 MEASURE: leftoverOverlap 0, leftoverDeath 0, leftoverSamples [].
+Named __hit lines all CLEAR. Attract through 0/320. P1 establishing 205
+interior 110, P2 17017 / 12545, P5 91.6 MB at 1080p, PointLights 0,
+isolation 16, colliders 270, platforms 53, triangles 6372. Shots exit 1
+is board ERR_CONNECTION_REFUSED, not a map fail.
+
+Designer REJECT (D1, D5, D7, D8). D4 passes: pool-west bands sun tile
+and unlit cream. Coder ACCEPT, MUST-FIX none. Pilot REJECT (L7 only).
+Consecutive ACCEPT 0. Reviews in `.loop/baths-aaa/r1/`.
+
+r1 BUILD, highest cost first:
+
+- Title park is the establishing south face `(42, 13, 36) -> (2, 7, 8)`
+  so fascia and the 10 m tower sit in the world crop, not a SW side wall.
+- Plaza lockers are creamSun with lemon and coral lids, 2.25 m, so they
+  hold in shade. Queue blocks 0.95 m. Fence posts creamSun with lemon
+  caps, rail between posts at y 1.22. Plaza still looks at the pad.
+- Hall dado depth 0.10 m, lemon sill to 1.52 m. hall-close looks at the
+  south inner wall east of the door, not the bulkhead.
+- Tower park off axis so cream hall and tile share the frame with the
+  shaft.
+- Hopper look is straight east along the probe. Pit east and south walls
+  get creamFlat, lemon band at y -1.35. Punch is not moved.
+
+Did not touch quality.js, pace.js, or main.js. Did not add PointLights.
+Catch hoop inner Y stays 1.62.
+
+r2 MEASURE is next. Leftover, lines and budgets owed until recapture.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
+## 2026-08-29, bando: perf loop round 3, 7800X3D iGPU
+
+`?gpu=low` plus Chrome `--force-low-power-gpu` bound AMD Radeon
+Graphics (PCI 0x164E), software false. Named High unchanged. No plant
+or look BUILD. WebGL powerPreference alone still picked the 5080.
+
+| CSS | view | internal | emaMs | p95 | fps | renderEma |
+|---|---|---|---:|---:|---:|---:|
+| 1600x900 | establishing | 1600x900 | 16.665 | 17.1 | 60.02 | 1.12 |
+| 1600x900 | hall | 1600x900 | 16.671 | 17.4 | 60.02 | 0.49 |
+| 3840x2160 | establishing | 2149x1209 | 16.674 | 17.2 | 60.01 | 0.94 |
+| 3840x2160 | hall | 2149x1209 | 16.664 | 17.0 | 60.00 | 0.65 |
+
+Engineer ACCEPT, MUST-FIX none. F3 holds on this adapter. Named Iris
+Xe laptop class stays BLOCKED WITH ARGUMENT: this is a 7800X3D
+desktop, not a 15 W Tiger Lake board.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+
+## 2026-08-29, bando: perf loop round 4, live 1080p iGPU
+
+No BUILD. CSS 1920x1080 High on AMD Radeon Graphics (0x164E).
+
+Vsync on: establishing 1920x1080 scale 1, EMA 16.649 ms, p95 17.2 ms,
+60.06 fps, 201 samples. Hall EMA 16.653 ms, p95 17.5 ms. P1 172,
+P5 91.6 MB.
+
+Vsync off: rAF p95 2.0 ms establishing, 1.6 ms hall. Scale stayed 1.
+Do not quote unlocked renderEma (timer cannot sit in a 2 ms rAF).
+
+Engineer ACCEPT, MUST-FIX none. Named Iris Xe stays BLOCKED WITH
+ARGUMENT.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+
+

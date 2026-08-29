@@ -1,0 +1,55 @@
+﻿{
+  "graphics": "high",
+  "map": "bando",
+  "minScale": 0.75,
+  "preferScale": 1,
+  "pixelBudget": 2600000,
+  "minInternalPixels": 1200000,
+  "note": "Computed from src/render/quality.js internalScale, not PowerShell integer division.",
+  "rows": [
+    {
+      "w": 1600,
+      "h": 900,
+      "ceil": 1,
+      "floor": 0.9128709291752769,
+      "rw": 1600,
+      "rh": 900,
+      "pixels": 1440000,
+      "budget": 2600000,
+      "overBudget": false
+    },
+    {
+      "w": 1920,
+      "h": 1080,
+      "ceil": 1,
+      "floor": 0.7606388292556648,
+      "rw": 1920,
+      "rh": 1080,
+      "pixels": 2073600,
+      "budget": 2600000,
+      "overBudget": false
+    },
+    {
+      "w": 2560,
+      "h": 1440,
+      "ceil": 0.8397902847371637,
+      "floor": 0.75,
+      "rw": 2149,
+      "rh": 1209,
+      "pixels": 2598141,
+      "budget": 2600000,
+      "overBudget": false
+    },
+    {
+      "w": 3840,
+      "h": 2160,
+      "ceil": 0.5598601898247758,
+      "floor": 0.5598601898247758,
+      "rw": 2149,
+      "rh": 1209,
+      "pixels": 2598141,
+      "budget": 2600000,
+      "overBudget": false
+    }
+  ]
+}

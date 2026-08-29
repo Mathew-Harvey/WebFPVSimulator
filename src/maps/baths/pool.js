@@ -46,6 +46,7 @@ function buildBasin(root, colliders, M) {
   slab(root, colliders, M.tile, p.x0, p.shallowY - 0.4, p.z0, p.shallowX, p.shallowY, p.z1);
   slab(root, colliders, M.tile, p.shallowX, p.midY - 0.4, p.z0, p.midX, p.midY, p.z1);
   slab(root, colliders, M.tileDeep, p.midX, p.deepY - 0.4, p.z0, p.x1, p.deepY, p.z1);
+  basinLining(root, colliders, M, p);
 
   const lane = (p.z1 - p.z0) / 6;
   for (let i = 1; i < 6; i += 1) {
@@ -56,6 +57,16 @@ function buildBasin(root, colliders, M) {
   }
   decal(root, colliders, M.tileLine, p.x0 + 0.25, p.shallowY + 0.02, p.z0 + 0.25, p.x0 + 0.45, p.shallowY + 0.05, p.z1 - 0.25);
   decal(root, colliders, M.tileLine, p.x1 - 0.45, p.deepY + 0.02, p.z0 + 0.25, p.x1 - 0.25, p.deepY + 0.05, p.z1 - 0.25);
+}
+
+function basinLining(root, colliders, M, p) {
+  const d = 0.04;
+  const hop = L.hopper;
+  decal(root, colliders, M.tileFlat, p.x0, p.deepY + 0.05, p.z0, p.x0 + d, -0.08, p.z1);
+  decal(root, colliders, M.tileFlat, p.x1 - d, p.deepY + 0.05, p.z0, p.x1, -0.08, hop.z0);
+  decal(root, colliders, M.tileFlat, p.x1 - d, p.deepY + 0.05, hop.z1, p.x1, -0.08, p.z1);
+  decal(root, colliders, M.tileFlat, p.x0, p.deepY + 0.05, p.z0, p.x1, -0.08, p.z0 + d);
+  decal(root, colliders, M.tileFlat, p.x0, p.deepY + 0.05, p.z1 - d, p.x1, -0.08, p.z1);
 }
 
 function buildSteps(root, colliders, M) {
@@ -93,6 +104,9 @@ function buildTower(root, colliders, platforms, M) {
   slab(root, colliders, M.steelDark, tw.x1 - wall, 0, tw.z0, tw.x1, 10.2, tw.z1);
   slab(root, colliders, M.steelDark, tw.x0, 0, tw.z0, tw.x1 - wall, 10.2, tw.z0 + wall);
   slab(root, colliders, M.steelDark, tw.x0, 0, tw.z1 - wall, tw.x1 - wall, 10.2, tw.z1);
+  decal(root, colliders, M.creamFlat, tw.x1 - wall, 0.05, tw.z0 + wall + 0.04, tw.x1 - wall + 0.05, 10.1, tw.z1 - wall - 0.04);
+  decal(root, colliders, M.creamFlat, tw.x0 + 0.04, 0.05, tw.z0 + wall, tw.x1 - wall - 0.04, 10.1, tw.z0 + wall + 0.05);
+  decal(root, colliders, M.creamFlat, tw.x0 + 0.04, 0.05, tw.z1 - wall - 0.05, tw.x1 - wall - 0.04, 10.1, tw.z1 - wall);
 
   for (const y of tw.ys) {
     deck(root, colliders, platforms, M.steelDark, tw.boardX, tw.z0 + wall, tw.x1 - wall, tw.z1 - wall, y, tw.thick);
@@ -121,4 +135,25 @@ function buildPlantPit(root, colliders, M) {
   slab(root, colliders, M.steelDark, h.x1 - 2.2, h.y0 + 0.35, h.z1 - 2.2, h.x1 - t, lip, h.z1 - t, {
     kind: 'obstacle',
   });
+  hopperMouth(root, colliders, M, h, hop);
+}
+
+function hopperMouth(root, colliders, M, h, hop) {
+  const p = L.pool;
+  const t = 0.4;
+  const lip = h.lip;
+  const y0 = h.y0;
+  const y1 = 0;
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z0, p.x1 + 0.02, y1, hop.z0 + 0.12);
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z1 - 0.12, p.x1 + 0.02, y1, hop.z1);
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y1 - 0.12, hop.z0, p.x1 + 0.02, y1, hop.z1);
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z0, p.x1 + 0.02, y0 + 0.12, hop.z1);
+  decal(root, colliders, M.creamFlat, h.x0 + 0.42, h.y0 + 0.4, hop.z0 + 0.05, h.x0 + 0.48, -0.08, hop.z1 - 0.05);
+  decal(root, colliders, M.creamFlat, h.x1 - t - 0.05, h.y0 + 0.38, h.z0 + t, h.x1 - t, -0.04, h.z1 - t);
+  decal(root, colliders, M.creamFlat, h.x0 + t, h.y0 + 0.38, h.z0 + t, h.x1 - t, -0.04, h.z0 + t + 0.05);
+  decal(root, colliders, M.lemon, h.x1 - t - 0.06, -1.35, h.z0 + t, h.x1 - t, -1.18, h.z1 - t);
+  decal(root, colliders, M.lemon, h.x0 + t, h.y0 + 0.35, hop.z0, h.x0 + t + 0.06, lip, hop.z0 + 0.08);
+  decal(root, colliders, M.lemon, h.x0 + t, h.y0 + 0.35, hop.z1 - 0.08, h.x0 + t + 0.06, lip, hop.z1);
+  decal(root, colliders, M.lemon, h.x0 + t, 0, hop.z0, h.x0 + t + 0.06, lip, hop.z0 + 0.08);
+  decal(root, colliders, M.lemon, h.x0 + t, 0, hop.z1 - 0.08, h.x0 + t + 0.06, lip, hop.z1);
 }

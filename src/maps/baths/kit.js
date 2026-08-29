@@ -75,6 +75,7 @@ export const L = {
   wells: [
     { x0: -16, x1: -6, z0: -5.5, z1: 5.5 },
     { x0: 6, x1: 16, z0: -5.5, z1: 5.5 },
+    { x0: 26.2, x1: 30.55, z0: -11.2, z1: -5.2 },
   ],
   sw: {
     x0: -31.5, x1: -26.2, z0: 8.2, z1: 13.5, h: 20,
@@ -98,6 +99,8 @@ export function materials() {
     hillShade: cel({ color: PAL.hillShade, bands: 2, tint: t }),
     tile: cel({ color: PAL.tile, bands: 3, tint: t }),
     tileDeep: cel({ color: PAL.tileDeep, bands: 3, tint: t }),
+    tileFlat: flat({ color: PAL.tile }),
+    creamFlat: flat({ color: PAL.creamSun }),
     steelDark: cel({ color: PAL.steelDark, bands: 2, tint: t }),
     chrome: cel({ color: PAL.chrome, bands: 2, tint: t }),
     navy: cel({ color: PAL.navy, bands: 2, tint: t }),

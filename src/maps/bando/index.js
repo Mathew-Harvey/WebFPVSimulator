@@ -31,7 +31,7 @@ import { buildWorld, attractPath } from './world.js';
 import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { yieldToPaint } from '../../ui/loading.js';
-import { qualityFor } from '../../render/quality.js';
+import { qualityFor, internalScale } from '../../render/quality.js';
 
 const CAMERA_FAR = 520;
 const SUN_OFFSET = new THREE.Vector3(-72, 40, 18);
@@ -42,19 +42,24 @@ const LIGHT_ORIGIN = new THREE.Vector3(-8, 8, 0);
 class KilnPipeline extends Pipeline {
   constructor(renderer, scene, camera, opts) {
     super(renderer, scene, camera, opts);
-    this.shellPixelRatio = renderer.getPixelRatio();
+    this.mapQ = opts && opts.mapQ ? opts.mapQ : null;
+    this.userScale = opts && opts.userScale != null ? opts.userScale : 1;
+    this.forceScale = null;
+    this._cssW = 1;
+    this._cssH = 1;
     this.minScale = opts && opts.minScale != null ? opts.minScale : 1;
     this.preferScale = opts && opts.preferScale != null ? opts.preferScale : null;
   }
 
   setSize(w, h) {
-    const dpr = window.devicePixelRatio || 1;
-    let scale = this.forceScale
-      || this.preferScale
-      || (dpr < 1.5 ? 1.5 : Math.min(dpr, 2));
-    if (w * h * scale * scale > this.pixelBudget) {
-      scale = Math.max(this.minScale, Math.sqrt(this.pixelBudget / (w * h)));
-    }
+    this._cssW = w;
+    this._cssH = h;
+    const mapQ = this.mapQ || {
+      pixelBudget: this.pixelBudget,
+      minScale: this.minScale,
+      preferScale: this.preferScale,
+    };
+    const scale = internalScale(w, h, mapQ, this.forceScale, this.userScale);
     this.scale = scale;
     const rw = Math.max(2, Math.floor(w * scale));
     const rh = Math.max(2, Math.floor(h * scale));
@@ -64,17 +69,41 @@ class KilnPipeline extends Pipeline {
     this.rtA.setSize(rw, rh);
     this.rtB.setSize(rw, rh);
 
-    const texel = new THREE.Vector2(1 / rw, 1 / rh);
-    this.ink.mat.uniforms.uTexel.value.copy(texel);
-    this.fxaa.mat.uniforms.uTexel.value.copy(texel);
+    this.ink.mat.uniforms.uTexel.value.set(1 / rw, 1 / rh);
+    this.fxaa.mat.uniforms.uTexel.value.set(1 / rw, 1 / rh);
     this.ink.mat.uniforms.uNear.value = this.camera.near;
     this.ink.mat.uniforms.uFar.value = this.camera.far;
     this.ink.mat.uniforms.uThickness.value = 1.05 + 0.55 * scale;
 
-    this.renderer.setPixelRatio(this.shellPixelRatio);
-    this.renderer.setSize(w, h, false);
+    /*
+     * Backing store equals the internal buffer. CSS stretches it to the
+     * panel. Restoring session devicePixelRatio made the last FXAA pass
+     * write 2x or 4x the scene. That is the 4K hitch: the plant is cheap
+     * and the blit is not.
+     */
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(rw, rh, false);
     this.renderer.domElement.style.width = '';
     this.renderer.domElement.style.height = '';
+  }
+
+  applyPace(scale) {
+    if (!(this._cssW > 0 && this._cssH > 0)) {
+      return false;
+    }
+    const next = internalScale(
+      this._cssW,
+      this._cssH,
+      this.mapQ,
+      scale,
+      this.userScale,
+    );
+    if (Math.abs(next - this.scale) < 0.02 && this.forceScale === scale) {
+      return false;
+    }
+    this.forceScale = scale;
+    this.setSize(this._cssW, this._cssH);
+    return true;
   }
 }
 
@@ -155,6 +184,8 @@ export async function buildMap(shell, onProgress, options) {
     pixelBudget: bq.pixelBudget,
     minScale: bq.minScale,
     preferScale: bq.preferScale,
+    mapQ: bq,
+    userScale: options && options.renderScale != null ? options.renderScale : 1,
   });
   pipeline.enabled.ink = bq.ink;
   pipeline.enabled.fxaa = bq.fxaa;
@@ -256,6 +287,7 @@ export async function buildMap(shell, onProgress, options) {
         leftoverSamples: world.leftover.samples,
         pipelineScale: pipeline.scale,
         pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
+        pipelineCss: { x: pipeline._cssW, y: pipeline._cssH },
         pointLights,
         casters,
       };

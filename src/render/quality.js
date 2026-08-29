@@ -33,9 +33,11 @@
  *   pins High's draw calls, triangles and target bytes. Defaulting to
  *   Medium would silently change the product and fail that check. First
  *   run on a Steam Deck / SteamOS user agent picks Low; everyone else
- *   gets High. The player can always change it. We never auto-downgrade
- *   mid session: a hitch in FPV is less honest than a menu the pilot
- *   opened on purpose.
+ *   gets High. The player can always change it. We never auto-switch
+ *   Low / Medium / High mid session: a hitch in FPV is less honest
+ *   than a menu the pilot opened on purpose. Internal resolution may
+ *   scale to hold 60 fps. That is the Render scale slider, automatic,
+ *   and it does not change the named preset.
  *
  *   "Low, a bit less grass."
  *   Blades are not drawn at any preset. The first 184000 world draws
@@ -252,7 +254,16 @@ const PRESETS = {
       shadowMap: 2048,
       shadowHalf: 36,
       pixelBudget: 2.6e6,
-      minScale: 1,
+      /*
+       * minScale is the pacer floor as a CSS fraction. It must not raise
+       * the buffer above pixelBudget: High used to set 1 here, so a 4K
+       * panel rendered native HalfFloat and hitching. 0.75 lets a 1080p
+       * panel drop toward 1440x810 if GPU time slips, and a 4K panel is
+       * already capped by the budget at about 1920x1080. The 1.2e6 pixel
+       * floor, not 0.75, is what stops a 1080p panel dropping toward
+       * 1440x810.
+       */
+      minScale: 0.75,
       preferScale: 1,
       ink: true,
       fxaa: true,
@@ -360,4 +371,46 @@ export function applyPixelRatio(shell, id, scale = 1) {
   shell.pixelRatio = pr;
   shell.renderer.setPixelRatio(pr);
   return pr;
+}
+
+/*
+ * Internal buffer scale for a compact map pipeline.
+ *
+ * pixelBudget is a ceiling on CSS width times height times scale
+ * squared. minScale is the pacer floor as a fraction of CSS size, and
+ * it must not raise the buffer above the budget: High used to take
+ * max(minScale, budgetCap) with minScale 1, so a 3840x2160 panel
+ * rendered native HalfFloat. preferScale is the authored look.
+ * userScale is the Render scale slider. forceScale is the pacer; null
+ * means "use the authored ceiling", 0 clamps to the floor.
+ *
+ * 1,200,000 is the absolute pixel floor so a 1080p panel cannot be
+ * paced into 720p to buy a frame. That is rubric F4.
+ */
+const MIN_INTERNAL_PIXELS = 1200 * 1000;
+
+export function internalScale(w, h, mapQ, forceScale, userScale) {
+  const area = Math.max(1, w * h);
+  const prefer = (mapQ.preferScale == null ? 1 : mapQ.preferScale)
+    * (userScale == null ? 1 : userScale);
+  const budget = mapQ.pixelBudget > 0 ? mapQ.pixelBudget : area;
+  const cap = Math.sqrt(budget / area);
+  const ceil = prefer < cap ? prefer : cap;
+  if (forceScale == null) {
+    return ceil;
+  }
+  const cssFloor = mapQ.minScale == null ? 0.75 : mapQ.minScale;
+  const absFloor = Math.sqrt(MIN_INTERNAL_PIXELS / area);
+  let floor = cssFloor > absFloor ? cssFloor : absFloor;
+  if (floor > ceil) {
+    floor = ceil;
+  }
+  let s = forceScale;
+  if (s > ceil) {
+    s = ceil;
+  }
+  if (s < floor) {
+    s = floor;
+  }
+  return s;
 }

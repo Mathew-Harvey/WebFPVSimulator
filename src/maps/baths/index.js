@@ -243,10 +243,14 @@ export async function buildMap(shell, onProgress, options) {
           casters += 1;
         }
       });
+      const audit = world.audit();
       return {
         colliders: world.colliders.stats(),
         platforms: world.platforms.length,
-        audit: world.audit(),
+        audit,
+        leftoverDeath: audit.leftoverDeath,
+        leftoverOverlap: audit.leftoverOverlap,
+        leftoverSamples: audit.leftoverSamples,
         ...world.merged,
         pipelineScale: pipeline.scale,
         pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },

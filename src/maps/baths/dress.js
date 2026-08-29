@@ -26,6 +26,7 @@ import { makeSigns, sticker } from './signs.js';
 export function buildDress(root, colliders, M) {
   const S = makeSigns();
   placeSigns(root, S);
+  fasciaBoard(root, colliders, M);
   lockers(root, colliders, M);
   reception(root, colliders, M);
   galleryBenches(root, colliders, M);
@@ -36,7 +37,7 @@ export function buildDress(root, colliders, M) {
 function placeSigns(root, S) {
   const h = L.hall;
   const p = L.pool;
-  sticker(root, S.fascia, 0, 8.0, h.z1 + 0.08, 14.0, 3.0, 0);
+  sticker(root, S.fascia, 0, 7.8, h.z1 + 0.34, 14.8, 3.05, 0);
   sticker(root, S.crest, -9.4, 3.6, h.z1 + 0.06, 2.2, 2.2, 0);
   sticker(root, S.closed, 8.6, 3.15, h.z1 + 0.06, 3.6, 1.1, 0);
   sticker(root, S.noDive, p.x0 + 0.08, 1.55, 0, 3.6, 1.6, Math.PI * 0.5);
@@ -66,6 +67,17 @@ function placeSigns(root, S) {
     const z = p.z0 + lane * (i + 0.5);
     sticker(root, S.lanes[i], p.x0 - p.wall + 0.04, 0.36, z, 0.5, 0.5, Math.PI * 0.5);
   }
+}
+
+function fasciaBoard(root, colliders, M) {
+  const z0 = L.hall.z1 + 0.04;
+  const z1 = L.hall.z1 + 0.32;
+  slab(root, colliders, M.tileFlat, -7.5, 6.25, z0, 7.5, 9.35, z1, {
+    solid: false,
+    cast: false,
+  });
+  decal(root, colliders, M.lemon, -7.5, 9.35, z0, 7.5, 9.52, z1);
+  decal(root, colliders, M.coral, -7.5, 6.25, z0, 7.5, 6.42, z1);
 }
 
 function lockers(root, colliders, M) {

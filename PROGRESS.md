@@ -22672,4 +22672,117 @@ ARGUMENT.
 
 `npm run verify` not run: no plant, ABI, WASM or threshold change.
 
+## 2026-08-29, baths: AAA loop round 2 MEASURE BREAK BUILD
+
+r2 MEASURE: leftoverOverlap 0, leftoverDeath 0, leftoverSamples [].
+Named __hit lines all CLEAR. Attract through 0/320. P1 establishing 205
+interior 110, P2 17161 / 12689, P5 91.6 MB at 1080p, PointLights 0,
+isolation 16, colliders 270, platforms 53, triangles 6516. Shots exit 1
+is board ERR_CONNECTION_REFUSED, not a map fail.
+
+Designer REJECT (D1, D5, D7, D8). D4 still passes. Coder ACCEPT,
+MUST-FIX none. Pilot REJECT (L7 only). Consecutive ACCEPT 0. Reviews
+in `.loop/baths-aaa/r2/`.
+
+r2 BUILD, highest cost first:
+
+- Exterior fascia is a tileFlat slab (aqua board, lemon cap, coral
+  footer) at z hall.z1+0.04 to +0.32, y 6.25 to 9.35, solid false. The
+  CIVIC BATHS sticker sits on that face at z+0.34, bold 108px.
+- Plaza lockers stay 3.15 m creamSun with lemon and coral lids. A second
+  bank sits on the fence side at z 20.85 to 22.4. Queue centres at
+  -9.5, -7, -3, 3, 7, 9.5 so leftover stays 0 or CLEAR.
+- Hall inner walls get a creamFlat noon band from the lemon sill to
+  y 5.15, same footprints as the dado.
+- Hopper east pit wall is navy to y -1.42, lemon -1.42 to -1.22,
+  creamFlat above. Punch is not moved. Lemon lips stay decals.
+
+Did not touch quality.js, pace.js, or main.js. Did not add PointLights.
+Catch hoop inner Y stays 1.62.
+
+## 2026-08-29, baths: AAA loop round 3 MEASURE
+
+r3 MEASURE after r2 BUILD. leftoverOverlap 0, leftoverDeath 0,
+leftoverSamples []. Named __hit lines all CLEAR. Attract through
+0/320. P1 establishing 206 interior 111, P2 17425 / 12953, P5 91.6 MB
+at 1080p, PointLights 0, isolation 16, colliders 274, platforms 53,
+triangles 6732. Parks: title and establishing still (42, 13, 36) to
+(2, 7, 8). Hopper looks slightly down (24.2, -1.8, -5.22) to
+(27.2, -3.0, -5.22). Plaza (10, 4.2, 24) to (-2, 1.4, 16). hall-close
+(3.5, 2.6, 8.4) to (10, 1.4, 12.2). Pixel sample in
+`.loop/baths-aaa/r3/sample-brief.json`. Shots exit 1 is board
+ERR_CONNECTION_REFUSED.
+
+BREAK next. Consecutive ACCEPT still 0 until the three reviews.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
+## 2026-08-29, baths: AAA loop round 3 BREAK BUILD
+
+Designer ACCEPT, MUST-FIX none. D1 D5 D7 D8 closed on r3 stills. SHOULD:
+lido left wall still steel, pool-west lemon rail at camera height.
+Coder ACCEPT, MUST-FIX none. Pilot REJECT L7 only: hopper.png still a
+sealed cream face, unique_q4 76, cream 66.8%, center #e6eaf1. Consecutive
+ACCEPT 0. Reviews in `.loop/baths-aaa/r3/`.
+
+r3 BUILD, L7 first:
+
+- Removed the creamFlat curtain across the punch (it was air you could
+  see as a wall). SE steel plant mass moved to the north-east corner so
+  it is not a sealed face in the hopper look. Gap to the SW mass is 1.8 m.
+- East and south pit walls band navy to y -0.42, lemon -0.42 to -0.18,
+  creamFlat above. Lemon punch lips 0.22 m. Lemon floor edge and a navy
+  drain on the pit floor. All dress is decal.
+- Hall inner lemon chair rail at y 0.72 to 0.92, west outer noon
+  creamFlat. Drop tower inner navy dado, lemon sill, creamFlat noon.
+
+Did not touch quality.js, pace.js, or main.js. Did not add PointLights.
+Catch hoop inner Y stays 1.62. Punch is not moved.
+
+## 2026-08-29, baths: AAA loop round 4 MEASURE
+
+r4 MEASURE after r3 BUILD. leftoverOverlap 0, leftoverDeath 0,
+leftoverSamples []. Named __hit lines all CLEAR. Attract through
+0/320. P1 206 / 111, P2 17677 / 13205, P5 91.6 MB at 1080p, PointLights
+0, isolation 16, colliders 274, platforms 53, triangles 6984. Hopper
+beauty is (20.8, -1.4, -5.22) looking (26.8, -2.4, -5.22): unique_q4 79,
+cream 0.4%, lemon 10.9%, navy 21.6%, tile 66.4%, center #303c43. Overlay
+greenOv hopper-boxes 23, hopper-punch-boxes 25. Shots exit 1 is board
+ERR_CONNECTION_REFUSED.
+
+BREAK next.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
+## 2026-08-29, baths: AAA loop round 4 BREAK
+
+Designer ACCEPT, MUST-FIX none. Coder ACCEPT, MUST-FIX none. Pilot
+ACCEPT, L7 closed: hopper.png is a cellar, cream 0.4%, navy aperture,
+lemon floor and lips. Consecutive ACCEPT 1. Reviews in
+`.loop/baths-aaa/r4/`. No BUILD.
+
+## 2026-08-29, baths: AAA loop round 5 MEASURE BREAK, stop
+
+Confirmation recapture, no BUILD. leftoverOverlap 0, leftoverDeath 0,
+leftoverSamples []. Named __hit lines all CLEAR. Attract through 0/320.
+P1 206 / 111, P2 17677 / 13205, P5 91.6 MB at 1080p, PointLights 0,
+isolation 16, colliders 274, platforms 53, triangles 6984. Hopper still
+cream 0.4%, navy 21.6%, lemon 10.9%, tile 66.4%. Shots exit 1 is board
+ERR_CONNECTION_REFUSED.
+
+Designer ACCEPT. Coder ACCEPT. Pilot ACCEPT. Consecutive ACCEPT 2.
+Loop stop. Reviews in `.loop/baths-aaa/r5/`.
+
+Open SHOULDs, not stop bars: lido left wall still steel at (600,350),
+pool-west lemon on the island not the tube wall, mouth steel solid
+false, sample.mjs does not tally pool-west-boxes.png.
+
+Did not touch quality.js, pace.js, or main.js. Did not add PointLights.
+Catch hoop inner Y stays 1.62.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
 

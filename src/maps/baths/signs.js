@@ -98,10 +98,10 @@ export function makeSigns() {
     c.fillStyle = coral;
     c.fillRect(0, h - 44, w, 44);
     c.fillStyle = navy;
-    c.font = 'bold 92px Impact, Arial Black, sans-serif';
+    c.font = 'bold 108px Impact, Arial Black, sans-serif';
     c.textAlign = 'center';
-    c.letterSpacing = '8px';
-    c.fillText('CIVIC BATHS', w * 0.5, 128);
+    c.letterSpacing = '10px';
+    c.fillText('CIVIC BATHS', w * 0.5, 132);
     c.letterSpacing = '0px';
     c.font = 'bold 44px Arial, sans-serif';
     c.fillStyle = white;

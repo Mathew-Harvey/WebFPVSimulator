@@ -222,6 +222,24 @@ function wainscot(root, colliders, M, x0, x1, z0, z1, t, door) {
   decal(root, colliders, dado, x0 - 0.06, 0.02, wd.z1, x0 + 0.02, y1, z1 + 0.06);
   decal(root, colliders, sill, x0 - 0.06, y1, z0 - 0.06, x0 + 0.02, cap, wd.z0);
   decal(root, colliders, sill, x0 - 0.06, y1, wd.z1, x0 + 0.02, cap, z1 + 0.06);
+  const rail0 = 0.72;
+  const rail1 = 0.92;
+  decal(root, colliders, sill, x0 + t, rail0, z0 + t, x0 + t + d, rail1, wd.z0);
+  decal(root, colliders, sill, x0 + t, rail0, wd.z1, x0 + t + d, rail1, z1 - t);
+  decal(root, colliders, sill, x1 - t - d, rail0, z0 + t, x1 - t, rail1, z1 - t);
+  decal(root, colliders, sill, x0 + t, rail0, z0 + t, x1 - t, rail1, z0 + t + d);
+  decal(root, colliders, sill, x0 + t, rail0, z1 - t - d, -door, rail1, z1 - t);
+  decal(root, colliders, sill, door, rail0, z1 - t - d, x1 - t, rail1, z1 - t);
+  const noon = M.creamFlat;
+  const n1 = 5.15;
+  decal(root, colliders, noon, x0 + t, cap, z0 + t, x0 + t + d, n1, wd.z0);
+  decal(root, colliders, noon, x0 + t, cap, wd.z1, x0 + t + d, n1, z1 - t);
+  decal(root, colliders, noon, x1 - t - d, cap, z0 + t, x1 - t, n1, z1 - t);
+  decal(root, colliders, noon, x0 + t, cap, z0 + t, x1 - t, n1, z0 + t + d);
+  decal(root, colliders, noon, x0 + t, cap, z1 - t - d, -door, n1, z1 - t);
+  decal(root, colliders, noon, door, cap, z1 - t - d, x1 - t, n1, z1 - t);
+  decal(root, colliders, noon, x0 - 0.06, cap, z0 - 0.06, x0 + 0.02, n1, wd.z0);
+  decal(root, colliders, noon, x0 - 0.06, cap, wd.z1, x0 + 0.02, n1, z1 + 0.06);
 }
 
 function buildGalleries(root, colliders, platforms, M) {

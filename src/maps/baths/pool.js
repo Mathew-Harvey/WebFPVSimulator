@@ -132,7 +132,7 @@ function buildPlantPit(root, colliders, M) {
   slab(root, colliders, M.steelDark, h.x0 + t, h.y0 + 0.35, h.z0 + t, h.x0 + 2.2, lip, h.z0 + 2.2, {
     kind: 'obstacle',
   });
-  slab(root, colliders, M.steelDark, h.x1 - 2.2, h.y0 + 0.35, h.z1 - 2.2, h.x1 - t, lip, h.z1 - t, {
+  slab(root, colliders, M.steelDark, h.x1 - 1.15, h.y0 + 0.35, h.z0 + t, h.x1 - t, lip, h.z0 + 2.2, {
     kind: 'obstacle',
   });
   hopperMouth(root, colliders, M, h, hop);
@@ -144,16 +144,22 @@ function hopperMouth(root, colliders, M, h, hop) {
   const lip = h.lip;
   const y0 = h.y0;
   const y1 = 0;
-  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z0, p.x1 + 0.02, y1, hop.z0 + 0.12);
-  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z1 - 0.12, p.x1 + 0.02, y1, hop.z1);
-  decal(root, colliders, M.lemon, p.x1 - 0.05, y1 - 0.12, hop.z0, p.x1 + 0.02, y1, hop.z1);
-  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z0, p.x1 + 0.02, y0 + 0.12, hop.z1);
-  decal(root, colliders, M.creamFlat, h.x0 + 0.42, h.y0 + 0.4, hop.z0 + 0.05, h.x0 + 0.48, -0.08, hop.z1 - 0.05);
-  decal(root, colliders, M.creamFlat, h.x1 - t - 0.05, h.y0 + 0.38, h.z0 + t, h.x1 - t, -0.04, h.z1 - t);
-  decal(root, colliders, M.creamFlat, h.x0 + t, h.y0 + 0.38, h.z0 + t, h.x1 - t, -0.04, h.z0 + t + 0.05);
-  decal(root, colliders, M.lemon, h.x1 - t - 0.06, -1.35, h.z0 + t, h.x1 - t, -1.18, h.z1 - t);
+  const jamb = 0.22;
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z0, p.x1 + 0.02, y1, hop.z0 + jamb);
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z1 - jamb, p.x1 + 0.02, y1, hop.z1);
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y1 - jamb, hop.z0, p.x1 + 0.02, y1, hop.z1);
+  decal(root, colliders, M.lemon, p.x1 - 0.05, y0, hop.z0, p.x1 + 0.02, y0 + jamb, hop.z1);
+  decal(root, colliders, M.navy, h.x1 - t - 0.05, h.y0 + 0.38, h.z0 + t, h.x1 - t, -0.42, h.z1 - t);
+  decal(root, colliders, M.lemon, h.x1 - t - 0.06, -0.42, h.z0 + t, h.x1 - t, -0.18, h.z1 - t);
+  decal(root, colliders, M.creamFlat, h.x1 - t - 0.05, -0.18, h.z0 + t, h.x1 - t, -0.04, h.z1 - t);
+  decal(root, colliders, M.navy, h.x0 + t, h.y0 + 0.38, h.z1 - t - 0.05, h.x1 - t, -0.42, h.z1 - t);
+  decal(root, colliders, M.lemon, h.x0 + t, -0.42, h.z1 - t - 0.06, h.x1 - t, -0.18, h.z1 - t);
+  decal(root, colliders, M.creamFlat, h.x0 + t, -0.18, h.z1 - t - 0.05, h.x1 - t, -0.04, h.z1 - t);
+  decal(root, colliders, M.navy, h.x0 + t, h.y0 + 0.38, h.z0 + t, h.x1 - t, -0.42, h.z0 + t + 0.05);
   decal(root, colliders, M.lemon, h.x0 + t, h.y0 + 0.35, hop.z0, h.x0 + t + 0.06, lip, hop.z0 + 0.08);
   decal(root, colliders, M.lemon, h.x0 + t, h.y0 + 0.35, hop.z1 - 0.08, h.x0 + t + 0.06, lip, hop.z1);
   decal(root, colliders, M.lemon, h.x0 + t, 0, hop.z0, h.x0 + t + 0.06, lip, hop.z0 + 0.08);
   decal(root, colliders, M.lemon, h.x0 + t, 0, hop.z1 - 0.08, h.x0 + t + 0.06, lip, hop.z1);
+  decal(root, colliders, M.lemon, h.x0 + t, h.y0 + 0.35, h.z0 + t, h.x1 - t, h.y0 + 0.40, h.z1 - t);
+  decal(root, colliders, M.navy, h.x0 + t + 1.6, h.y0 + 0.40, hop.z0 + 0.15, h.x1 - t - 1.6, h.y0 + 0.46, hop.z1 - 0.15);
 }

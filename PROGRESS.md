@@ -23204,3 +23204,61 @@ Live shell, headless Chromium: baths and bando load with zero console
 errors, `leftoverDeath` 0 and `leftoverOverlap` 0 on both; the field loads
 with zero console errors; a launch from the blocks on
 `tracks/json/trk-0870b164.json` plays one `takeoff` cue and drifts 4 mm.
+
+## 2026-08-29, the repository's own history, and 77 MB of screenshots
+
+Not a code change. Two git defects, one of them already done and one of them
+ongoing.
+
+**THE HISTORY WAS REPLACED, NOT EXTENDED.** On 2026-08-26 an agent committed
+a fresh root, `c49b36b`, and force pushed it over `main`. `git merge-base`
+between that line and the one before it returns NOTHING: they share no
+commit. The 60 commits from 17 to 22 August stopped being reachable from any
+branch and survived only in one container's object store, four days later, by
+luck.
+
+No code was lost, and that was checked rather than assumed. Every file in the
+old tree is in the new one but `configs/crapshack.diff`, which
+`configs/precision.diff` deliberately replaced and cites as its predecessor.
+Feature by feature: the ghost drone, the PIDs screen, the virtual thumb
+sticks, the Rates screen, the share card, the one domain work, sponsor logos,
+music delivery, feather flags, and the `webfpv.settings.v3` key from "Bump the
+settings key to v3" are all present. The new tree is the larger one, 802 files
+against 544.
+
+What was lost is the record: who wrote what, when, and why, for six days of
+work. The owner has accepted that and the branches are deleted. CLAUDE.md now
+carries a Git section so the next agent to see `forced update` or an empty
+`merge-base` knows to stop rather than to merge, because merging an unrelated
+line drags every file it touches back to that line's versions.
+
+**AND 175 SCREENSHOTS WERE 77 MB OF THE 79 MB UNDER `.loop`.** Measured over
+the whole history: `assets` 80 MB, which is the music crate and has to be
+there; `.loop` 77 MB; `PROGRESS.md` 72 MB, which is this file appended to
+across 71 commits and is the price of keeping it. Inside `.loop` the split is
+175 PNGs at 77 MB against 161 JSON, 29 markdown, 25 txt and 15 scripts at
+1.7 MB together.
+
+`.gitignore` now drops `.loop/**/*.png` and the 175 tracked ones are untracked.
+They stay on disk. Nothing in `src`, `scripts`, `configs` or
+`gates.config.json` cites one; the only mentions anywhere are four in this
+file, as prose. The 233 record files stay tracked, and the four the tooling
+actually reads were checked by name after the change: `.loop/gates.sha256`,
+`.loop/state.json`, `.loop/threshold-disputes.md` and
+`.loop/evidence/r10/utt3-layout.md`, the last because `src/game/track.js` and
+`src/render/scene.js` cite it as the provenance for numbers that are in the
+code.
+
+**NOT DONE, deliberately.** The 77 MB is still in history and shrinking it
+needs `git filter-repo` and a force push over `main`, which is the exact
+operation described at the top of this entry. A 236 MB clone is worth more
+than a second replaced history. If clone time ever justifies it, it is a
+planned operation with every collaborator told first, not a tidy up.
+
+**Still owed, and only the owner can do it:** branch protection on `main`,
+Block force pushes and Restrict deletions. Nothing an agent writes down
+prevents an agent that does not read it. The setting does.
+
+No checks were run for this entry beyond the ones the change can affect:
+nothing here touches code. `git ls-files` confirms 0 PNGs tracked and 175 on
+disk, and the four cited records resolve.

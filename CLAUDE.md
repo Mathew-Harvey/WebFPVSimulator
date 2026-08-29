@@ -41,6 +41,41 @@ A browser FPV racing simulator whose only current goal is flight feel indistingu
 - Every turn that changes code appends to PROGRESS.md, including what went wrong.
 - Consult the advisor before any change that alters the physics model's shape, the module ABI, or the build. Not for filling in the next line.
 
+## Git
+
+This section exists because the repository's history was destroyed once. On
+2026-08-26 an agent committed a fresh root and force pushed it over `main`,
+so the 60 commits from 17 to 22 August stopped being reachable from any
+branch. No code was lost, because the new root was taken from a working tree
+that already held it all, and the one file that differed, `configs/crapshack.diff`,
+had been deliberately replaced by `configs/precision.diff`. What was lost was
+the record: who wrote what, when, and why. It was noticed four days later only
+because a fetch printed `forced update` and a `git merge-base` came back empty.
+
+- **`main` is append only.** Never force push it, never rewrite it, never
+  reset it backwards. If a push is rejected, merge or rebase your own work
+  onto the remote and push again. A rejected push is git protecting somebody,
+  and the answer is never `--force`.
+- **Never `git init` or create a new root in a repository that has one.** If
+  the history looks wrong, stop and say so.
+- **If `git merge-base` between two refs returns nothing, STOP.** Unrelated
+  histories mean somebody replaced the history rather than adding to it. Do
+  not merge, because merging an unrelated line drags every file it touches
+  back to that line's versions. Report it and let the owner decide.
+- **Fetch before you reason about a branch.** A remote tracking ref from a
+  container's first clone can be hours stale, and a stale ref is how a
+  destroyed history looks normal.
+- **Do not commit screenshots.** `.gitignore` drops `.loop/**/*.png` because
+  175 of them had reached 77 MB of an 79 MB directory. The loops' RECORDS are
+  the point and stay tracked: the disputes, the handovers, the state, the
+  probe JSON, and `.loop/evidence`, which `src/game/track.js` and
+  `src/render/scene.js` cite as the provenance for numbers that are in the
+  code. A picture is evidence for one round; a number in a file is evidence
+  forever.
+- Anything worth keeping is committed and pushed before the turn ends. A
+  container is reclaimed without warning and takes everything uncommitted
+  with it.
+
 ## Review
 
 - **Do not run adversarial review, multi agent review or a review workflow unless directed.** Read your own diff, run the cheap checks, and hand the work over. Fan out only when the request asks for it.

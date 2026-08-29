@@ -5046,6 +5046,21 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
 
+    /*
+     * The title camera frames itself around the menu with a LENS SHIFT, and
+     * a lens shift is state that lives on the camera rather than a value
+     * recomputed every frame. The shell has one camera, so a shift left on
+     * it would follow the pilot into flight and put the horizon off centre
+     * for the whole run. The branches above restore the flight fov the same
+     * way and for the same reason; this is the other half of it, in one
+     * place because every branch that is not the attract camera wants the
+     * offset gone. Cheap: a property read on the frames it is already off.
+     */
+    if (!(mode === 'title' && !camOverride)
+        && shell.camera.view && shell.camera.view.enabled) {
+      shell.camera.clearViewOffset();
+    }
+
     /* Harness camera. The cost ledger has to be published for three views,
      * and two of them are not views the shell puts the camera in: the
      * ledger's mid course view is a point on the racing line, and flying
@@ -6295,6 +6310,17 @@ export async function boot({ loading, bootStart, mapId }) {
     clearance: shell.camera.position.y
       - view.height(shell.camera.position.x, shell.camera.position.z,
                     shell.camera.position.y),
+    /* The title camera's lens shift, as a fraction of the frame, or null
+     * when the lens is centred. Reported here because it is the other half
+     * of where the shot is pointed: a check that reads the position alone
+     * cannot tell a centred frame from one offset by a fifth of its height,
+     * and it is the thing that has to be gone the moment the pilot flies. */
+    shift: shell.camera.view && shell.camera.view.enabled
+      ? {
+        x: shell.camera.view.offsetX / shell.camera.view.fullWidth,
+        y: shell.camera.view.offsetY / shell.camera.view.fullHeight,
+      }
+      : null,
   });
   /*
    * Set the sticks directly, bypassing the keyboard ramp.

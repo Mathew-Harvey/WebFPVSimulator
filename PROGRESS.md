@@ -22291,6 +22291,89 @@ opacity 1; 6.5 s later it is "Throttle up to take off / The green gate starts
 your lap". `npm run lint:shell` PASS. `npm run verify` not run: nothing here
 touches physics, the plant, the module ABI or the build.
 
+## 2026-08-28, title camera: the shot was framed by moving the eye, and on a phone that put it under the dirt
+
+Reported with a screenshot from a phone at `webfpv.org/sim/?map=field`: the
+opening camera is below the ground. Half the frame is a featureless pale slab
+with the treeline sitting on the line where it ends.
+
+**Reproduced, and it is worse than the screenshot looks.** `scripts/shots.js` at
+412x892 on `tracks/json/trk-0870b164.json`, reading `__camGround()` on the title
+against `__attract()`, which probes the same camera with no overlay: the shot the
+map designed sits at **y 15.62 m**, and the camera actually rendering the title
+sat at **y 2.82 m**. A 12.8 m drop. The desktop frame at 1600x900 was dropped
+too, 15.62 down to 11.62, which is why nobody had noticed: on a wide frame it
+reads as a slightly lower angle rather than as a defect.
+
+**The cause is one line of `frameOverlay` in `src/render/attract.js`.** The menu
+covers part of the frame, so the shot slides the subject into what is left. It
+did that by TRANSLATING THE EYE, by a fraction of the distance to the subject:
+`translateY(-0.16 * dist)` on a narrow frame, `-0.05` on a wide one. As an
+angle that is honest and it is why the numbers looked small: `d = 0.16 * D`
+subtends `atan(0.16)`, about 9.1 degrees, whatever `D` is. The eye displacement
+is the part that grows, and `D` is not small. `attractOrbit` frames a designed
+course from the course's own bounds, so a track covering a field is orbited from
+about 60 m out, and 16 percent of that is 10 m of camera. The map hands over a
+line or an orbit whose clearance it has computed; the camera then left it.
+
+Nothing caught it. The clearance every map derives is a property of the LINE, and
+the eye was no longer on the line. `scripts/attract-check.js`, the one check that
+asks where this camera goes, probes with `{}` and therefore no overlay, so it has
+never seen the shifted camera at all.
+
+**The fix is a lens shift instead of a move.** `setViewOffset` renders a window of
+the frustum offset from centre, the same thing a shift lens does, which is the
+screen space quantity the overlay was asking for in the first place. The eye does
+not move, so it stays on the cleared line at every aspect; the shift is the same
+fraction of the frame whether the subject is 2 m away or 80; and `attract-check`
+is now telling the truth, because there is no longer an overlay-shaped difference
+between what it probes and what is drawn.
+
+The three fractions reproduce the old framing exactly rather than retuning it.
+The old angular shift was `atan(0.16)` on a narrow frame against a 50 degree
+lens, which is `0.16 / tan(25) / 2 = 0.172` of the frame height; the same
+arithmetic on the wide frame's 44 degrees gives `0.062` of the height and
+`0.118` of the width. So this change moves the camera back where the map put it
+and leaves the composition where it was.
+
+**The bug inside the fix, kept here because it will bite the next person.**
+three.js's `setViewOffset` opens with `this.aspect = fullWidth / fullHeight`. The
+obvious call, `setViewOffset(1, 1, ox, oy, 1, 1)`, therefore reshapes the camera
+to a square, and the tell was subtle: the narrow branch stopped firing on a
+phone, because one frame of shift set `aspect` to 1 and 1 is not less than 0.95.
+The first round of screenshots was taken through that and looked plausible. The
+frame is now `aspect` by 1, which hands the aspect straight back, and the guard
+that skips a redundant call compares `view.fullWidth` as well so a resize
+rebuilds it.
+
+**The shift is state on the shared camera, so it comes off.** `main.js` clears it
+on every frame that is not the attract camera driving, next to the branches that
+restore the flight fov and for the same reason: one camera, and a lens offset
+left on it would tilt the horizon for the whole run. `__camGround()` now reports
+`shift` as a fraction of the frame, or null, because a check that reads the
+position alone cannot tell a centred frame from one offset by a fifth of its
+height.
+
+**What is NOT fixed.** The results camera at `main.js:4929` has the same
+distance-scaled translate, and it is the same defect. It is not the same size:
+`FINISH_RADIUS` is 2.35 m and `FINISH_HEIGHT` 0.88, so the narrow drop is about
+0.35 m against a floor of ground + 0.42 applied one line earlier, which brings a
+finish over flat ground to about 0.53 m of clearance and a finish on the deck to
+about 0.07 m. Marginal, not underground, and a different screen from the one
+reported. Left alone deliberately rather than folded in.
+
+Checks run: `npm run lint:attract` PASS, no world flies the title camera through
+anything solid. `npm run lint:shell` PASS. Driven with `scripts/shots.js` at
+412x892 and at 1600x900, on the built in circuit and on the city: eye 15.62 m and
+`shift {x: 0, y: 0.172}` on the phone title, 15.62 m and `{x: -0.118, y: 0.062}`
+on the desktop title, against 2.82 m and 11.62 m before; the city title now flies
+its line at 16.3 m of clearance with the quad in frame, where before it was 11.5
+and the quad was off the top. Four frames sampled across the orbit, none of them
+under the ground or filled with nothing. Shift confirmed to clear and to come
+back: null while `__setCam` holds the camera, `{x: 0, y: 0.172}` again after
+`__setCam(null)`. `npm run verify` not run: nothing here touches physics, the
+plant, the module ABI or the build.
+
 ## 2026-08-28, bando: AAA loop round 1, fuse the plant and own the corners
 
 Round 0 rejected all three: leftoverOverlap 430, leftoverDeath 255, L8 dead in

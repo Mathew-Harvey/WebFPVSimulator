@@ -32,6 +32,8 @@ export function buildDress(root, colliders, M) {
   barrels(root, colliders, M);
   junkPiles(root, colliders, M);
   hazardPoles(root, colliders, M);
+  yardFence(root, colliders, M);
+  apronJunk(root, colliders, M);
   posters(root);
   chevrons(root, colliders, M);
 }
@@ -79,20 +81,12 @@ function card(root, tex, x, y, z, w, h, yaw) {
 function deadTruck(root, colliders, M) {
   /* West of the south mouth, foreground for the spawn look. */
   slab(root, colliders, M.steelDark, -17.4, 0, 14.4, -13.6, 2.15, 17.0, { kind: 'obstacle' });
-  slab(root, colliders, M.rust, -13.6, 0.7, 14.5, -8.2, 2.05, 16.9, { kind: 'obstacle' });
-  slab(root, colliders, M.safety, -17.2, 1.15, 16.95, -14.0, 1.85, 17.12, { solid: false });
+  slab(root, colliders, M.rust, -13.6, 0, 14.4, -8.2, 2.05, 17.0, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, -17.2, 1.15, 16.95, -14.0, 1.85, 17.12, { solid: false });
   slab(root, colliders, M.glassDark, -16.9, 1.35, 14.32, -14.2, 2.05, 14.42, { solid: false });
   for (const x of [-16.6, -14.4, -12.2, -9.4]) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.28, 8), M.steelDark);
-    wheel.rotation.x = Math.PI * 0.5;
-    wheel.position.set(x, 0.42, 14.55);
-    wheel.castShadow = true;
-    root.add(wheel);
-    const wheelB = wheel.clone();
-    wheelB.position.z = 16.85;
-    root.add(wheelB);
-    slab(root, colliders, M.steelDark, x - 0.42, 0, 14.35, x + 0.42, 0.84, 14.75, { kind: 'obstacle' });
-    slab(root, colliders, M.steelDark, x - 0.42, 0, 16.65, x + 0.42, 0.84, 17.05, { kind: 'obstacle' });
+    slab(root, colliders, M.steelDark, x - 0.22, 0, 14.4, x + 0.22, 0.84, 14.62, { solid: false, cast: true });
+    slab(root, colliders, M.steelDark, x - 0.22, 0, 16.78, x + 0.22, 0.84, 17.0, { solid: false, cast: true });
   }
 }
 
@@ -100,10 +94,10 @@ function crateGrid(root, colliders, M) {
   const d = L.dock;
   const origins = [
     [d.x0 + 1.2, d.z0 + 1.6],
-    [d.x0 + 2.7, d.z0 + 1.6],
-    [d.x0 + 4.2, d.z0 + 1.6],
-    [d.x0 + 1.2, d.z0 + 3.1],
-    [d.x0 + 2.7, d.z0 + 3.1],
+    [d.x0 + 2.35, d.z0 + 1.6],
+    [d.x0 + 3.5, d.z0 + 1.6],
+    [d.x0 + 1.2, d.z0 + 2.75],
+    [d.x0 + 2.35, d.z0 + 2.75],
   ];
   const hs = [1.1, 1.55, 0.85, 1.3, 1.9];
   for (let i = 0; i < origins.length; i += 1) {
@@ -119,23 +113,15 @@ function crateGrid(root, colliders, M) {
 }
 
 function barrels(root, colliders, M) {
-  const spots = [
-    [30.2, -11.2], [31.5, -11.2], [32.8, -11.4],
-    [45.4, 10.2], [46.6, 10.4],
-  ];
-  for (const [x, z] of spots) {
-    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.4, 0.95, 8), M.rust);
-    drum.position.set(x, 0.48, z);
-    drum.castShadow = true;
-    root.add(drum);
-    slab(root, colliders, M.rust, x - 0.4, 0, z - 0.4, x + 0.4, 0.95, z + 0.4, { kind: 'obstacle' });
-  }
+  slab(root, colliders, M.rust, 30.2, 0, -13.95, 32.32, 0.95, -13.39, { kind: 'obstacle' });
+  slab(root, colliders, M.rust, 30.2, 0.95, -13.81, 31.4, 1.45, -13.53, { kind: 'obstacle' });
+  slab(root, colliders, M.rust, 45.4, 0, 10.2, 46.96, 0.95, 10.76, { kind: 'obstacle' });
 }
 
 function junkPiles(root, colliders, M) {
-  slab(root, colliders, M.litter, 8.2, 0, 8.4, 12.4, 0.85, 11.6, { kind: 'obstacle' });
-  slab(root, colliders, M.rust, 8.6, 0.85, 8.8, 11.2, 1.55, 11.1, { kind: 'obstacle' });
-  slab(root, colliders, M.steelDark, 9.4, 1.55, 9.2, 10.8, 2.15, 10.6, { kind: 'obstacle' });
+  slab(root, colliders, M.litter, 8.2, 0, 8.45, 10.0, 0.85, 11.6, { kind: 'obstacle' });
+  slab(root, colliders, M.rust, 8.6, 0.85, 8.8, 10.0, 1.55, 11.1, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, 9.4, 1.55, 9.2, 10.0, 2.15, 10.6, { kind: 'obstacle' });
 
   slab(root, colliders, M.litter, -58.2, 0, -6, -53.4, 1.2, -1.4, { kind: 'obstacle' });
   slab(root, colliders, M.bone, -57.4, 1.2, -5.2, -54.2, 2.4, -2.2, { kind: 'obstacle' });
@@ -143,28 +129,106 @@ function junkPiles(root, colliders, M) {
   slab(root, colliders, M.litter, 41.2, 0, -18.4, 46.8, 0.7, -14.2, { kind: 'obstacle' });
   slab(root, colliders, M.ochre, 42.0, 0.7, -17.6, 45.4, 1.45, -15.0, { kind: 'obstacle' });
 
-  slab(root, colliders, M.steel, 22.4, 0, -11.6, 25.6, 1.05, -9.2, { kind: 'obstacle' });
-  slab(root, colliders, M.safety, 23.0, 1.05, -11.2, 24.8, 1.35, -9.6, { solid: false });
+  slab(root, colliders, M.litter, 22.4, 0, -14.2, 25.6, 1.05, -11.8, { kind: 'obstacle' });
+  slab(root, colliders, M.safety, 23.0, 1.05, -13.8, 24.8, 1.35, -12.2, { solid: false });
 
+  slab(root, colliders, M.litter, -50.6, 0, 3.55, -46.56, 1.15, 6.4, { kind: 'obstacle' });
+  slab(root, colliders, M.rust, -49.8, 1.15, 3.55, -47.0, 2.05, 5.9, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, -49.0, 2.05, 3.9, -47.6, 2.7, 5.5, { kind: 'obstacle' });
+  slab(root, colliders, M.litter, -46.56, 0, 3.55, -45.51, 1.2, 3.87, { kind: 'obstacle' });
+  slab(root, colliders, M.litter, -46.56, 0, 4.01, -45.51, 1.2, 6.4, { kind: 'obstacle' });
+  slab(root, colliders, M.litter, -45.51, 0, 3.55, -43.28, 1.25, 6.4, { kind: 'obstacle' });
+  slab(root, colliders, M.bone, -45.2, 1.25, 3.8, -43.6, 2.2, 6.4, { kind: 'obstacle' });
+  slab(root, colliders, M.rust, -44.7, 2.2, 4.15, -43.9, 2.95, 5.55, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, -45.05, 0, 6.4, -43.9, 1.55, 7.55, { kind: 'obstacle' });
+
+  slab(root, colliders, M.steelDark, 24.1, 0, 15.0, 25.1, 1.25, 16.0, { kind: 'obstacle' });
   for (let i = 0; i < 5; i += 1) {
-    const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.22, 8), M.steelDark);
-    tire.rotation.x = Math.PI * 0.5;
-    tire.position.set(24.6, 0.22 + i * 0.24, 8.8);
-    tire.castShadow = false;
-    root.add(tire);
+    const y = i * 0.24;
+    slab(root, colliders, M.steelDark, 24.12, y, 15.02, 25.08, y + 0.22, 15.98, { solid: false, cast: false });
   }
-  slab(root, colliders, M.steelDark, 24.1, 0, 8.3, 25.1, 1.25, 9.3, { kind: 'obstacle' });
 }
 
 function hazardPoles(root, colliders, M) {
   const posts = [
-    [32.2, -12.6], [43.8, -12.6], [43.8, 12.6], [32.2, 12.6],
-    [-43.2, 4.4], [24.8, -3.4],
+    [31.92, -12.08], [44.08, -12.08], [44.08, 12.08], [31.92, 12.08],
+    [-43.2, 5.2], [29.2, -8.55],
   ];
   for (const [x, z] of posts) {
     slab(root, colliders, M.steelDark, x - 0.08, 0, z - 0.08, x + 0.08, 2.4, z + 0.08, {
       kind: 'pole',
     });
+  }
+}
+
+function yardFence(root, colliders, M) {
+  const h = 2.15;
+  const r = 0.09;
+  const southZ = 27.91;
+  const eastX = 53.91;
+  const xs = [];
+  for (let x = -58; x <= 48; x += 6) {
+    xs.push(x);
+  }
+  for (let i = 0; i < xs.length; i += 1) {
+    const x = xs[i];
+    slab(root, colliders, M.steelDark, x - r, 0, southZ - r, x + r, h, southZ + r, {
+      kind: 'pole',
+    });
+    if (i > 0) {
+      const a = xs[i - 1] + r + 0.02;
+      const b = x - r - 0.02;
+      slab(root, colliders, M.steel, a, 0.7, southZ - 0.04, b, 0.86, southZ + 0.04, {
+        kind: 'pole',
+      });
+      slab(root, colliders, M.steel, a, 1.55, southZ - 0.04, b, 1.71, southZ + 0.04, {
+        kind: 'pole',
+      });
+    }
+  }
+  const zs = [];
+  for (let z = -32; z <= 24; z += 6) {
+    zs.push(z);
+  }
+  for (let i = 0; i < zs.length; i += 1) {
+    const z = zs[i];
+    slab(root, colliders, M.steelDark, eastX - r, 0, z - r, eastX + r, h, z + r, {
+      kind: 'pole',
+    });
+    if (i > 0) {
+      const a = zs[i - 1] + r + 0.02;
+      const b = z - r - 0.02;
+      slab(root, colliders, M.steel, eastX - 0.04, 0.7, a, eastX + 0.04, 0.86, b, {
+        kind: 'pole',
+      });
+      slab(root, colliders, M.steel, eastX - 0.04, 1.55, a, eastX + 0.04, 1.71, b, {
+        kind: 'pole',
+      });
+    }
+  }
+}
+
+function apronJunk(root, colliders, M) {
+  const piles = [
+    [20.4, 20.8, 3.2, 2.4, 1.05],
+    [28.6, 22.4, 2.8, 2.2, 0.85],
+    [36.2, 19.6, 3.4, 2.6, 1.35],
+    [44.8, 22.0, 2.6, 2.0, 0.95],
+    [18.2, 22.8, 2.2, 1.8, 0.7],
+    [-48.8, 11.2, 3.0, 2.2, 1.15],
+    [-50.8, 18.6, 2.6, 2.0, 0.8],
+    [-56.2, -14.2, 2.8, 2.4, 1.0],
+  ];
+  for (let i = 0; i < piles.length; i += 1) {
+    const [x, z, w, d, h] = piles[i];
+    slab(root, colliders, i % 2 ? M.litter : M.rust, x, 0, z, x + w, h, z + d, {
+      kind: 'obstacle',
+    });
+    if (i % 3 === 0) {
+      slab(root, colliders, M.steelDark, x + 0.3, h, z + 0.3, x + w - 0.3, h + 0.55, z + d - 0.3, {
+        kind: 'obstacle',
+      });
+    }
   }
 }
 
@@ -253,6 +317,10 @@ function posters(root) {
   card(root, drone, 18.2, 3.4, 15.12, 3.6, 1.4, 0);
   card(root, skull, -21.6, 8.4, -7.08, 2.4, 2.4, Math.PI);
   card(root, condemned, -16.0, 14.2, -21.96, 5.0, 2.0, Math.PI);
+  card(root, skull, -10.54, 8.3, -13.6, 2.8, 2.8, -Math.PI * 0.5);
+  card(root, condemned, -10.54, 6.4, -13.6, 1.8, 0.7, -Math.PI * 0.5);
+  card(root, hot, -21.40, 3.4, -16.0, 3.0, 2.2, Math.PI * 0.5);
+  card(root, drone, -21.40, 3.2, -13.4, 3.4, 1.5, Math.PI * 0.5);
 }
 
 function bar(ctx, x, y, w, h) {

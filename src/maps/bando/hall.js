@@ -35,6 +35,7 @@ export function buildHall(root, colliders, platforms, M) {
 
   punchedWall(root, colliders, M.mint, x0, 0, z0, -door, h, z0 + t, [
     { x0: -22.2, x1: -19.6, y0: 9.5, y1: 12.2 },
+    { x0: -17.7, x1: -14.3, y0: 0, y1: h },
   ]);
   punchedWall(root, colliders, M.mint, door, 0, z0, x1, h, z0 + t, []);
   punchedWall(root, colliders, M.mint, x0, 0, z1 - t, -door, h, z1, []);
@@ -58,7 +59,7 @@ export function buildHall(root, colliders, platforms, M) {
     if (holes.some((hole) => a < hole.x1 && b > hole.x0)) {
       continue;
     }
-    slab(root, colliders, M.steelDark, a, h - 1.22, z0 + t, b, h - 0.48, z1 - t);
+    slab(root, colliders, M.steelDark, a, h - 1.22, z0 + t, b, h - 0.3, z1 - t);
   }
   slab(root, colliders, M.rust, -8.4, 13.4, 3.2, -7.7, 15.6, 5.8, { solid: false, cast: true });
   slab(root, colliders, M.rust, 7.7, 13.4, -5.8, 8.4, 15.6, -3.2, { solid: false, cast: true });
@@ -129,43 +130,56 @@ function rigHall(root, colliders, platforms, M, x0, x1, z0, z1, h, t, door, slot
     decal(root, colliders, M.safety, x, 0.2, z0 - 0.08, x + 0.12, h - 0.4, z0);
   }
 
-  machine(root, colliders, M, -18.4, 4.6);
-  machine(root, colliders, M, 17.6, -4.8);
+  machine(root, colliders, M, -23.3, 5.7);
+  machine(root, colliders, M, 15.0, 5.7);
 
-  const segs = [
+  const segsS = [
     [-26.2, -20.4], [-17.8, -12.2], [12.2, 17.8], [20.4, 26.2],
   ];
-  for (const [a, b] of segs) {
-    deck(root, colliders, platforms, M.steel, a, 3.05, b, 6.25, 4.5, 0.2);
-    slab(root, colliders, M.steelDark, a, 0, 3.15, a + 0.22, 4.5, 3.37);
-    slab(root, colliders, M.steelDark, b - 0.22, 0, 5.93, b, 4.5, 6.15);
-    deck(root, colliders, platforms, M.steel, a, -6.25, b, -3.05, 4.5, 0.2);
-    slab(root, colliders, M.steelDark, a, 0, -3.37, a + 0.22, 4.5, -3.15);
-    slab(root, colliders, M.steelDark, b - 0.22, 0, -6.15, b, 4.5, -5.93);
+  const segsN = [
+    [-26.2, -17.85], [-14.15, -10.4], [12.2, 17.8], [20.4, 26.2],
+  ];
+  for (const [a, b] of segsS) {
+    deck(root, colliders, platforms, M.steel, a, 3.05, b, 6.55, 4.5, 0.2);
+    slab(root, colliders, M.steelDark, a, 0, 3.15, a + 0.22, 4.3, 3.37);
+    slab(root, colliders, M.steelDark, b - 0.22, 0, 6.33, b, 4.3, 6.55);
+  }
+  for (const [a, b] of segsN) {
+    if (b - a < 1.2) {
+      continue;
+    }
+    deck(root, colliders, platforms, M.steel, a, -6.55, b, -3.05, 4.5, 0.2);
+    slab(root, colliders, M.steelDark, a, 0, -3.37, a + 0.22, 4.3, -3.15);
+    slab(root, colliders, M.steelDark, b - 0.22, 0, -6.55, b, 4.3, -6.33);
   }
 
-  for (const x of [-18, 18]) {
-    deck(root, colliders, platforms, M.steel, x - 1.15, -6.3, x + 1.15, -2.55, 9.0, 0.2);
-    deck(root, colliders, platforms, M.steel, x - 1.15, 2.55, x + 1.15, 6.3, 9.0, 0.2);
-    slab(root, colliders, M.steelDark, x - 0.18, 4.5, -6.15, x + 0.18, 9.0, -5.85);
-    slab(root, colliders, M.steelDark, x - 0.18, 4.5, 5.85, x + 0.18, 9.0, 6.15);
-  }
+  deck(root, colliders, platforms, M.steel, -23.15, -6.55, -20.85, -2.55, 9.0, 0.2);
+  deck(root, colliders, platforms, M.steel, 16.85, -6.55, 19.15, -2.55, 9.0, 0.2);
+  deck(root, colliders, platforms, M.steel, -19.15, 2.55, -16.85, 6.55, 9.0, 0.2);
+  deck(root, colliders, platforms, M.steel, 16.85, 2.55, 19.15, 6.55, 9.0, 0.2);
+  slab(root, colliders, M.steelDark, -22.18, 4.5, -6.55, -21.82, 5.98, -6.25);
+  slab(root, colliders, M.steelDark, -22.18, 6.18, -6.55, -21.82, 8.8, -6.25);
+  slab(root, colliders, M.steelDark, 17.82, 4.5, -6.55, 18.18, 5.98, -6.25);
+  slab(root, colliders, M.steelDark, 17.82, 6.18, -6.55, 18.18, 8.8, -6.25);
+  slab(root, colliders, M.steelDark, -18.18, 4.5, 6.25, -17.82, 8.8, 6.55);
+  slab(root, colliders, M.steelDark, 17.82, 4.5, 6.25, 18.18, 8.8, 6.55);
 
-  deck(root, colliders, platforms, M.bone, -26.2, -6.4, -10.4, -5.15, 6.2, 0.22);
-  deck(root, colliders, platforms, M.bone, 10.4, -6.4, 26.2, -5.15, 6.2, 0.22);
-  slab(root, colliders, M.litter, -14.8, 6.2, -6.2, -12.6, 7.15, -5.3, { kind: 'obstacle' });
-  slab(root, colliders, M.boneSun, 12.8, 6.2, -6.2, 15.0, 7.0, -5.3, { kind: 'obstacle' });
+  deck(root, colliders, platforms, M.bone, -26.2, -6.55, -17.85, -5.15, 6.2, 0.22);
+  deck(root, colliders, platforms, M.bone, -14.15, -6.55, -10.4, -5.15, 6.2, 0.22);
+  deck(root, colliders, platforms, M.bone, 10.4, -6.55, 26.2, -5.15, 6.2, 0.22);
+  slab(root, colliders, M.litter, -12.6, 6.2, -6.55, -10.5, 7.15, -5.15, { kind: 'obstacle' });
+  slab(root, colliders, M.boneSun, 12.8, 6.2, -6.55, 15.0, 7.0, -5.15, { kind: 'obstacle' });
 
   collar(root, colliders, M, x0 + t + 0.08, slotZ);
   collar(root, colliders, M, 23.4, slotZ);
 
-  slab(root, colliders, M.litter, -14.6, 0, 3.4, -10.2, 0.7, 5.8, { kind: 'obstacle' });
-  slab(root, colliders, M.rust, -13.8, 0.7, 3.8, -11.2, 1.25, 5.2, { kind: 'obstacle' });
-  slab(root, colliders, M.litter, 10.4, 0, -5.6, 14.8, 0.65, -3.2, { kind: 'obstacle' });
-  slab(root, colliders, M.steelDark, 11.2, 0.65, -5.2, 13.6, 1.2, -3.6, { kind: 'obstacle' });
+  slab(root, colliders, M.litter, -17.7, 0, 5.15, -12.64, 0.7, 6.55, { kind: 'obstacle' });
+  slab(root, colliders, M.rust, -17.2, 0.7, 5.35, -12.84, 1.25, 6.55, { kind: 'obstacle' });
+  slab(root, colliders, M.litter, 10.4, 0, -6.55, 14.8, 0.65, -5.15, { kind: 'obstacle' });
+  slab(root, colliders, M.steelDark, 11.2, 0.65, -6.55, 13.6, 1.2, -5.35, { kind: 'obstacle' });
 
-  machine(root, colliders, M, -8.2, 5.15);
-  machine(root, colliders, M, 7.8, -5.2);
+  machine(root, colliders, M, -23.3, -5.7);
+  machine(root, colliders, M, 23.3, -5.7);
 
   decal(root, colliders, M.steelDark, -door, h - 0.72, z1, door, h - 0.14, z1 + 0.2);
   decal(root, colliders, M.safety, -door, h - 0.58, z1 + 0.16, door, h - 0.28, z1 + 0.24);
@@ -174,23 +188,30 @@ function rigHall(root, colliders, platforms, M, x0, x1, z0, z1, h, t, door, slot
   decal(root, colliders, M.steelDark, 2.2, 13.0, z0 - 0.14, 5.4, 15.7, z0);
 
   frameHole(root, colliders, M, -22.2, 9.5, z0, -19.6, 12.2, z0 + t);
+  frameHole(root, colliders, M, -17.7, 0, z0, -14.3, h, z0 + t);
   frameHole(root, colliders, M, 19.6, 9.5, z1 - t, 22.2, 12.2, z1);
 }
 
 function machine(root, colliders, M, x, z) {
   slab(root, colliders, M.steelDark, x - 1.15, 0, z - 0.85, x + 1.15, 1.45, z + 0.85, { kind: 'obstacle' });
-  slab(root, colliders, M.steel, x - 0.95, 1.45, z - 0.7, x + 0.95, 2.55, z + 0.7, { kind: 'obstacle' });
-  slab(root, colliders, M.safety, x - 0.7, 1.7, z + 0.7, x + 0.7, 2.35, z + 0.82, { solid: false });
-  slab(root, colliders, M.rust, x - 0.55, 2.55, z - 0.4, x + 0.55, 2.85, z + 0.4, { kind: 'obstacle' });
+  slab(root, colliders, M.steel, x - 0.95, 1.45, z - 0.85, x + 0.95, 2.55, z + 0.85, { kind: 'obstacle' });
+  slab(root, colliders, M.safety, x - 0.7, 1.7, z + 0.85, x + 0.7, 2.35, z + 0.97, { solid: false });
+  slab(root, colliders, M.rust, x - 0.55, 2.55, z - 0.85, x + 0.55, 2.85, z + 0.85, { kind: 'obstacle' });
 }
 
 function collar(root, colliders, M, x, slotZ) {
-  const yBot = L.kiln.y0 - L.kiln.wall;
-  const yTop = L.kiln.y0 + L.kiln.inner + L.kiln.wall;
+  const y0 = L.kiln.y0;
+  const y1 = y0 + L.kiln.inner;
+  const yBot = y0 - L.kiln.wall;
+  const yTop = y1 + L.kiln.wall;
   slab(root, colliders, M.bone, x, yBot - 0.35, -slotZ - 0.55, x + 0.55, yBot, slotZ + 0.55);
   slab(root, colliders, M.bone, x, yTop, -slotZ - 0.55, x + 0.55, yTop + 0.35, slotZ + 0.55);
-  slab(root, colliders, M.rust, x, L.kiln.y0, slotZ, x + 0.55, L.kiln.y0 + L.kiln.inner, slotZ + 0.55);
-  slab(root, colliders, M.rust, x, L.kiln.y0, -slotZ - 0.55, x + 0.55, L.kiln.y0 + L.kiln.inner, -slotZ);
+  slab(root, colliders, M.bone, x, yBot, slotZ, x + 0.55, y0, slotZ + 0.55);
+  slab(root, colliders, M.bone, x, yBot, -slotZ - 0.55, x + 0.55, y0, -slotZ);
+  slab(root, colliders, M.bone, x, y1, slotZ, x + 0.55, yTop, slotZ + 0.55);
+  slab(root, colliders, M.bone, x, y1, -slotZ - 0.55, x + 0.55, yTop, -slotZ);
+  slab(root, colliders, M.rust, x, y0, slotZ, x + 0.55, y1, slotZ + 0.55);
+  slab(root, colliders, M.rust, x, y0, -slotZ - 0.55, x + 0.55, y1, -slotZ);
 }
 
 function frameHole(root, colliders, M, x0, y0, z0, x1, y1, z1) {
@@ -208,6 +229,7 @@ function lineHall(root, colliders, M, x0, x1, z0, z1, h, t, door, slotZ, slotTop
   slotWall(root, colliders, M.boneSun, x1 - t - d, x1 - t, z0 + t, z1 - t, h - 0.2, slotZ, slotTop, skin);
   punchedWall(root, colliders, M.boneSun, x0 + t, 0.02, z0 + t, -door, h - 0.2, z0 + t + d, [
     { x0: -22.2, x1: -19.6, y0: 9.5, y1: 12.2 },
+    { x0: -17.7, x1: -14.3, y0: 0, y1: h },
   ], skin);
   punchedWall(root, colliders, M.boneSun, door, 0.02, z0 + t, x1 - t, h - 0.2, z0 + t + d, [], skin);
   punchedWall(root, colliders, M.boneSun, x0 + t, 0.02, z1 - t - d, -door, h - 0.2, z1 - t, [], skin);
@@ -234,7 +256,8 @@ function skinHall(root, colliders, M, x0, x1, z0, z1, h, t, door, slotZ) {
   windowBand(root, colliders, M, door + 0.4, z1 + 0.06, 19.4, wy0, wy1);
   windowBand(root, colliders, M, 22.4, z1 + 0.06, x1 - 1.2, wy0, wy1);
   windowBand(root, colliders, M, x0 + 1.2, z0 - 0.06, -22.4, wy0, wy1);
-  windowBand(root, colliders, M, -19.4, z0 - 0.06, -door - 0.4, wy0, wy1);
+  windowBand(root, colliders, M, -19.4, z0 - 0.06, -17.85, wy0, wy1);
+  windowBand(root, colliders, M, -14.15, z0 - 0.06, -door - 0.4, wy0, wy1);
   windowBand(root, colliders, M, door + 0.4, z0 - 0.06, x1 - 1.2, wy0, wy1);
 
   decal(root, colliders, M.steelDark, x0 - 0.06, h - 0.45, z0 - 0.06, -door, h + 0.12, z0 + t);

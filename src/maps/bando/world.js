@@ -19,7 +19,7 @@
 
 import * as THREE from 'three';
 import { Colliders } from '../../game/collide.js';
-import { L, STEP, materials, mergeStatic } from './kit.js';
+import { L, STEP, CLEAR, materials, mergeStatic } from './kit.js';
 import { restrictCasters } from '../compact-perf.js';
 import { buildGround, groundHeight } from './ground.js';
 import { buildHall } from './hall.js';
@@ -45,6 +45,7 @@ export function buildWorld(scene, opts = {}) {
   restrictCasters(root, opts.casterMin ?? 0.5);
   const merged = mergeStatic(root, { cell: opts.mergeCell ?? 24 });
   colliders.build();
+  const leftover = leftoverScan(colliders);
 
   function heightAt(x, z, fromY) {
     let h = groundHeight(x, z);
@@ -67,9 +68,127 @@ export function buildWorld(scene, opts = {}) {
     platforms,
     spawn: L.spawn,
     merged,
+    leftover,
     heightAt,
     references,
   };
+}
+
+function overlapLen(a0, a1, b0, b1) {
+  return Math.min(a1, b1) - Math.max(a0, b0);
+}
+
+function occupies(ax, ay, az, bx, by, bz, isBox, k, x0, y0, z0, x1, y1, z1) {
+  if (!isBox[k]) {
+    return false;
+  }
+  return overlapLen(ax[k], bx[k], x0, x1) > 0.02
+    && overlapLen(ay[k], by[k], y0, y1) > 0.02
+    && overlapLen(az[k], bz[k], z0, z1) > 0.02;
+}
+
+function leftoverScan(colliders) {
+  const n = colliders.count;
+  const ax = colliders.fax;
+  const ay = colliders.fay;
+  const az = colliders.faz;
+  const bx = colliders.fbx;
+  const by = colliders.fby;
+  const bz = colliders.fbz;
+  const isBox = colliders.fbox;
+  let death = 0;
+  let overlap = 0;
+  const samples = [];
+  for (let i = 0; i < n; i += 1) {
+    if (!isBox[i]) {
+      continue;
+    }
+    for (let j = i + 1; j < n; j += 1) {
+      if (!isBox[j]) {
+        continue;
+      }
+      const ox = overlapLen(ax[i], bx[i], ax[j], bx[j]);
+      const oy = overlapLen(ay[i], by[i], ay[j], by[j]);
+      const oz = overlapLen(az[i], bz[i], az[j], bz[j]);
+      if (ox > 0.02 && oy > 0.02 && oz > 0.02) {
+        overlap += 1;
+        if (samples.length < 80) {
+          samples.push({
+            kind: 'overlap',
+            i,
+            j,
+            ox: Math.round(ox * 1000) / 1000,
+            oy: Math.round(oy * 1000) / 1000,
+            oz: Math.round(oz * 1000) / 1000,
+            a: [ax[i], ay[i], az[i], bx[i], by[i], bz[i]].map((n) => Math.round(n * 100) / 100),
+            b: [ax[j], ay[j], az[j], bx[j], by[j], bz[j]].map((n) => Math.round(n * 100) / 100),
+          });
+        }
+        continue;
+      }
+      const slot = (overA, overB, gap) => overA > 0.25 && overB > 0.25 && gap > 0.08 && gap < CLEAR;
+      let axis = null;
+      let gx0 = 0;
+      let gy0 = 0;
+      let gz0 = 0;
+      let gx1 = 0;
+      let gy1 = 0;
+      let gz1 = 0;
+      if (ox > 0.25 && oy > 0.25 && slot(ox, oy, -oz)) {
+        axis = 'z';
+        gx0 = Math.max(ax[i], ax[j]);
+        gx1 = Math.min(bx[i], bx[j]);
+        gy0 = Math.max(ay[i], ay[j]);
+        gy1 = Math.min(by[i], by[j]);
+        gz0 = Math.min(bz[i], bz[j]);
+        gz1 = Math.max(az[i], az[j]);
+      } else if (ox > 0.25 && oz > 0.25 && slot(ox, oz, -oy)) {
+        axis = 'y';
+        gx0 = Math.max(ax[i], ax[j]);
+        gx1 = Math.min(bx[i], bx[j]);
+        gz0 = Math.max(az[i], az[j]);
+        gz1 = Math.min(bz[i], bz[j]);
+        gy0 = Math.min(by[i], by[j]);
+        gy1 = Math.max(ay[i], ay[j]);
+      } else if (oy > 0.25 && oz > 0.25 && slot(oy, oz, -ox)) {
+        axis = 'x';
+        gy0 = Math.max(ay[i], ay[j]);
+        gy1 = Math.min(by[i], by[j]);
+        gz0 = Math.max(az[i], az[j]);
+        gz1 = Math.min(bz[i], bz[j]);
+        gx0 = Math.min(bx[i], bx[j]);
+        gx1 = Math.max(ax[i], ax[j]);
+      }
+      if (!axis) {
+        continue;
+      }
+      let filled = false;
+      for (let k = 0; k < n; k += 1) {
+        if (k === i || k === j) {
+          continue;
+        }
+        if (occupies(ax, ay, az, bx, by, bz, isBox, k, gx0, gy0, gz0, gx1, gy1, gz1)) {
+          filled = true;
+          break;
+        }
+      }
+      if (filled) {
+        continue;
+      }
+      death += 1;
+      if (samples.length < 80) {
+        samples.push({
+          kind: axis,
+          i,
+          j,
+          gap: Math.round((axis === 'x' ? -ox : axis === 'y' ? -oy : -oz) * 1000) / 1000,
+          a: [ax[i], ay[i], az[i], bx[i], by[i], bz[i]].map((n) => Math.round(n * 100) / 100),
+          b: [ax[j], ay[j], az[j], bx[j], by[j], bz[j]].map((n) => Math.round(n * 100) / 100),
+        });
+      }
+    }
+  }
+  return { death, overlap, samples };
 }
 
 /*
@@ -98,9 +217,9 @@ export function buildWorld(scene, opts = {}) {
 export function attractPath(world) {
   const pts = [
     /* Outside the fence, south east, the whole works in the frame. */
-    { x: 46, y: 17, z: 42 },
-    { x: 32, y: 13, z: 28 },
-    { x: 16, y: 8, z: 18 },
+    { x: 62, y: 24, z: 44 },
+    { x: 44, y: 18, z: 32 },
+    { x: 26, y: 12, z: 22 },
     /* Down onto the yard and in at the north door, which is the twelve metre
      * gap in the middle of the long wall. */
     { x: 0.6, y: 4.0, z: 12 },

@@ -31,10 +31,15 @@ export const STEP = 0.55;
 export const SLAB_THICK = 0.3;
 export const SLAB_CLEAR = 0.02;
 export const PLATFORM_MIN = 0.6;
+export const CLEAR = 1.4;
 
 /*
  * Plan of the plant. X along the kiln, west stack to east bins. Z across
  * the yard, south dock to north preheater. Metres, Three.js Y up.
+ *
+ * A leftover between solids is 0 (flush or a shared face) or at least
+ * CLEAR. Anything in between eats a 5 inch. The bin split is authored
+ * at CLEAR on purpose: that is the hoop, not a leftover.
  */
 export const L = {
   pack: {
@@ -47,7 +52,7 @@ export const L = {
     y0: 8, inner: 3.5, wall: 0.5, x0: -43.8, x1: 24,
   },
   pre: {
-    x0: -22, x1: -10, z0: -22, z1: -8, h: 42, rise: 6,
+    x0: -22, x1: -10, z0: -22, z1: -7, h: 42, rise: 6,
   },
   bins: {
     cx: 38, zs: [-8.6, 0, 8.6], w: 7.2, hs: [16, 22, 28],
@@ -154,9 +159,7 @@ export function deck(root, colliders, platforms, mat, x0, z0, x1, z1, top, thick
   const za = Math.min(z0, z1);
   const zb = Math.max(z0, z1);
   slab(root, colliders, mat, xa, top - thick, za, xb, top, zb, { solid: false, receive: true });
-  if (top >= PLATFORM_MIN) {
-    colliders.addBox('wall', xa, top - thick, za, xb, top - SLAB_CLEAR, zb);
-  }
+  colliders.addBox('wall', xa, top - thick, za, xb, top - SLAB_CLEAR, zb);
   platforms.push({
     x0: xa, z0: za, x1: xb, z1: zb, top, thick,
   });

@@ -84,7 +84,7 @@ const CAMERAS = {
    * frame with the sunset behind them, which is the thing the flythrough
    * spent its whole loop inside of and never once showed.
    */
-  bando: [46, 16, 42, -22, 17, 0],
+  bando: [62, 24, 44, 16, 12, 0],
   /*
    * The corner of the entrance front, so the frame carries both the thing
    * that names the place, CIVIC BATHS over the doors, and the shape of the

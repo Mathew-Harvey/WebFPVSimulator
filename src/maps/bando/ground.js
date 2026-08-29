@@ -73,8 +73,8 @@ export function buildGround(root, colliders, M) {
 
   slab(root, colliders, M.litter, -58, 0, 8, -52, 1.1, 14, { kind: 'obstacle' });
   slab(root, colliders, M.dry, -58, 1.1, 8, -52, 1.8, 14, { solid: false, cast: false });
-  slab(root, colliders, M.litter, 46, 0, -28, 52, 0.9, -22, { kind: 'obstacle' });
-  slab(root, colliders, M.dry, 46, 0.9, -28, 52, 1.6, -22, { solid: false, cast: false });
+  slab(root, colliders, M.litter, 40, 0, -34, 45, 0.9, -28, { kind: 'obstacle' });
+  slab(root, colliders, M.dry, 40, 0.9, -34, 45, 1.6, -28, { solid: false, cast: false });
 
   const mouth = L.pack.door;
   decal(root, colliders, M.bandWhite, -mouth + 0.3, 0.03, 7.2, mouth - 0.3, 0.07, 17.4);

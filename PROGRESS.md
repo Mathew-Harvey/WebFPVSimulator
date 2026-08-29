@@ -22290,3 +22290,138 @@ picker and on the launch card; on the first frame of flight it is the note at
 opacity 1; 6.5 s later it is "Throttle up to take off / The green gate starts
 your lap". `npm run lint:shell` PASS. `npm run verify` not run: nothing here
 touches physics, the plant, the module ABI or the build.
+
+## 2026-08-28, bando: AAA loop round 1, fuse the plant and own the corners
+
+Round 0 rejected all three: leftoverOverlap 430, leftoverDeath 255, L8 dead in
+the mint north wall, hopper and cyclone interiors unread, title crop missing
+the bins, AABB corners sticking out of drawn drums.
+
+Round 1 treated that as one job. Hall north wall now has a full-height plant
+door at the preheater south mouth, so L8 is a hole through the packhouse
+rather than a 1.0 m alley. Kiln, bins and cyclones are square tubes that own
+their corners the way the hall does: no cylinder overlay, no corner posts.
+Hopper stairs sit on the north wall so the west-mouth centerline is air.
+Catwalks, machines and 6.2 m ledges skip that door. Gallery pipes, hopper
+lips and bin piles moved off the split. Ladder rungs sit between the rails
+instead of through them. Stack walks deepened to 1.6 m so the slot-to-rail
+gap is CLEAR. Wires are segments between poles.
+
+Title and attract open at (62, 24, 44) looking at (16, 12, 0) so the three
+bins sit in the card. Interior lining is unlit boneSun plus a floor well,
+not PointLights.
+
+What went wrong on the way: first recapture still had L4 hitting the stairs
+on the centerline, then L8 hitting a machine parked in the plant door, then
+a 6.2 m ledge spanning the same door. Each was a leftover of putting dress
+on a line. Hopper and cyclone stills also parked in faces until the cameras
+moved out to the yard and the west mouth.
+
+Measured this round, not claimed: leftoverOverlap 7, leftoverDeath 24 (was
+430 / 255). All named `__hit` lines CLEAR. Attract `through 0/320`. P1 194,
+P2 31.2k, P5 91.6 MB at 1080p, PointLights 0. Evidence `.loop/bando-aaa/r1/`.
+Authored hoops narrower than CLEAR (L5, L10) are in
+`.loop/bando-aaa/disputes.md`, not widened. `npm run verify` not run: map
+authoring only, no plant, ABI, WASM or threshold change. `MAP_MODULE_COUNT.bando`
+stays 14.
+
+## 2026-08-28, bando: AAA loop rounds 2 to 8, stop on two consecutive ACCEPT
+
+The loop constitution is `prompts/bando-aaa-loop.md`. Stop is two consecutive
+rounds where designer, coder and FPV pilot all ACCEPT. Round 1 left leftover
+Overlap 7, leftoverDeath 24, and D4 unread interiors.
+
+Rounds 2 to 5 closed collisions and kept failing D4 on the preheater east
+face. leftoverOverlap went to 0. leftoverDeath went to 6, only the authored
+L5 1.16 m and L10 1.02 m rail pairs already in `.loop/bando-aaa/disputes.md`.
+All named `__hit` lines stayed CLEAR. Attract stayed `through 0/320`. Coder
+and pilot ACCEPTED from r2 on. Designer kept REJECT on D4: first a tan
+billboard looking up the shaft, then graffiti buried in the lining, then a
+wallpaper wash, then the underside of the 6 m floor, then a face-on mauve
+card (91% one lining, unique@step4 233 against hall-west 1901) even once the
+skull sat at look-at.
+
+What went wrong: the inner east lining was one full-height `boneSun` sheet
+over the east hatch, so from inside the opening did not exist. Cameras below
+y 6 looking up hit the deck underside. Huge ink/rust washes filled the lens
+and counted as wallpaper, not a mark on a wall.
+
+Round 6 punched that lining with the same `eastHatch` holes as the solid
+wall, moved the skull card south of the hatch onto lining, put a yellow lip
+on the opening, modest rust/ink drips, and a bone pool on the 6 m deck.
+Camera parked between floors 6 and 12 looking at the skull so hatch, floor
+and drips share the frame. Designer measured mauve 62%, unique@step4 1103.
+All three ACCEPT. Designer and pilot both named a stain on the gantry ochre
+bin faces, so that SHOULD became MUST-FIX and consecutive ACCEPT reset.
+
+Round 7 added `solid: false` rust/ink decals on the 1.4 m split faces at
+hoop height. leftover stayed 0 / 6. Colliders stayed 933 boxes. P1 197, P2
+31673, P5 91.6 MB at 1080p, PointLights 0. Isolation `MAP_MODULE_COUNT.bando`
+14. All three ACCEPT. No SHOULD named by two reviewers.
+
+Round 8 was MEASURE and BREAK with no BUILD. Same numbers. hall-west.png
+still SHA F2FF252823813B7A. All three ACCEPT, MUST-FIX none.
+
+Stop. Two consecutive all-ACCEPT (r7, r8). Evidence `.loop/bando-aaa/r2/`
+through `r8/`. Hall-west graffiti and sun pools were not sanded. L5 and L10
+were not widened. Remaining SHOULDs (cyclones-duct still, title park, truck
+wheel overhang, L4 east is a pit) are recorded, not elevated.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
+## 2026-08-29, bando: AAA loop rounds 9 to 10, SHOULD close-out then D4 recapture
+
+The loop had stopped on r7+r8 all-ACCEPT. The user asked to keep going on
+the remaining SHOULDs, then to keep going until AAA quality. That is two
+consecutive all-ACCEPT after the SHOULD close-out, not a rewrite of the
+stop rule.
+
+Round 9 built the r8 SHOULDs: cyclones-duct recapture inside the X duct
+(rust runner), stack-door junk fused around the two stack pipes, title
+park off the stack, truck wheels pulled into the cab/bed, kiln wrap
+attempt, west preheater ink. leftoverOverlap stayed 0, leftoverDeath
+stayed 6 (L5 1.16 m and L10 1.02 m only, BLOCKED WITH ARGUMENT). Coder
+and pilot ACCEPTED. Designer REJECT on D4: the west-ink recapture
+pointed at the west wall and clipped the bone floor pool from 14.6% at
+look-at E4BC7F to a 2.0% footer sliver, look-at 775A57 mauve. Hall-west
+hash moved (kiln rings and stack junk through the west look) but the
+graffiti face-core was 0 px vs r8. Consecutive ACCEPT reset.
+
+Round 10 closed that MUST-FIX. Preheater park is (-15.6, 2.5, -7.6)
+looking at (-18.8, 0.3, -18.5): look-at E4BC7F, bone 14.8%, west ink
+11.7%, safety 6.0% with yellow plate E9A400 at top-left. Kiln inner
+collars wrap floor and ceiling as unlit bandRed, solid false, so they
+read rust in the tube (rust 9.3%, ceiling y40 rust n=68, was 0). West
+yellow plate sits proud of the ink. Hopper was not punched.
+leftoverOverlap 0, leftoverDeath 6 same six hoop pairs. Attract
+through 0/320. P1 197, P2 31985, P5 91.6 MB at 1080p, PointLights 0.
+Isolation MAP_MODULE_COUNT.bando 14. Colliders 939 boxes. Hall-west
+face-core 0 px vs r9, (200,400) E9994A held.
+
+Designer, coder and FPV pilot all ACCEPT. MUST-FIX none. SHOULD none.
+Consecutive ACCEPT is 1. r11 is MEASURE and BREAK with no BUILD.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+
+## 2026-08-29, bando: AAA loop round 11, stop on two consecutive ACCEPT
+
+Round 11 was MEASURE and BREAK with no BUILD. Same map as r10. Beauty
+interiors byte-identical to r10 (hall-west SHA A526C17C0AF6A28D,
+preheater 9E0B36CC0C4E6AF1, kiln-bore EC4DDF86C88A90A8, hopper
+61AA9EFA1A027AA5, preheater-east 0DED1287D17E4F0D). title-ui.png and
+dress-truck.png hash drift is chrome and the parked craft, not the
+plant. leftoverOverlap 0, leftoverDeath 6, attract through 0/320, P1
+197, P2 31985, P5 91.6 MB at 1080p, PointLights 0. Isolation 14.
+
+Designer, coder and FPV pilot all ACCEPT. MUST-FIX none. SHOULD none.
+
+Stop. Two consecutive all-ACCEPT (r10, r11). Hall-west graffiti and sun
+pools were not sanded. L5 and L10 were not widened. Hopper was not
+punched. Remaining NITs (aerial apron from above, hopper-read ochre
+field) are recorded, not elevated.
+
+`npm run verify` not run: map authoring only, no plant, ABI, WASM or
+threshold change.
+

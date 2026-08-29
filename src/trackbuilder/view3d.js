@@ -53,7 +53,7 @@ import {
 import { sequenceNumbers } from './sequence.js';
 import { levelName } from './figures.js';
 import { travelDirection, markerPassDir } from './faces.js';
-import { apertureFrame, clamp, leftOf, normalize, scale } from './geometry.js';
+import { apertureFrame, clamp, gateSupportFeet, leftOf, normalize, scale } from './geometry.js';
 import { guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 
 /*
@@ -998,34 +998,24 @@ export class View3D {
       }
     }
 
-    /* The legs, so a tower stands on something. */
+    /* The legs, so a tower stands on something. Two vertical posts at
+     * the sides for every pitch, from the grass to the lower outer
+     * corners of the frame. A centre mast through the hole was what a
+     * custom tilt used to grow. */
     const bottom = levels[0];
-    if (bottom.sillH > 0.02 && Math.abs(el.pitch) < Math.PI / 4) {
-      const legMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
-      for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(tube, tube, bottom.sillH), legMat);
-        leg.position.set(
-          -Math.sin(el.yaw) * s * (bottom.clearW + tube) / 2,
-          Math.cos(el.yaw) * s * (bottom.clearW + tube) / 2,
-          bottom.sillH / 2,
-        );
-        this.register(leg, el);
-        group.add(leg);
+    const feet = gateSupportFeet(
+      el.yaw, el.pitch, bottom.clearW, bottom.clearH, bottom.centerH, tube,
+    );
+    const legMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
+    for (const foot of feet) {
+      const h = foot.z;
+      if (h < 0.02) {
+        continue;
       }
-    } else if (bottom.sillH > 0.02) {
-      /* A dive gate hangs off a single mast rather than two legs, because
-       * two legs under a horizontal aperture would sit inside the opening. */
-      const mast = new THREE.Mesh(
-        new THREE.BoxGeometry(tube * 1.6, tube * 1.6, bottom.centerH),
-        new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame }),
-      );
-      mast.position.set(
-        Math.cos(el.yaw) * (bottom.clearH / 2 + tube),
-        Math.sin(el.yaw) * (bottom.clearH / 2 + tube),
-        bottom.centerH / 2,
-      );
-      this.register(mast, el);
-      group.add(mast);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(tube * 1.4, tube * 1.4, h), legMat);
+      leg.position.set(foot.x, foot.y, h / 2);
+      this.register(leg, el);
+      group.add(leg);
     }
 
     this.buildHeaderFlags(group, el, selected);

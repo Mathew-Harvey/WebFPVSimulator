@@ -147,6 +147,32 @@ export function apertureFrame(yaw, pitch) {
   return { normal, widthAxis, heightAxis };
 }
 
+/*
+ * Where the two VERTICAL posts stand under a tilted frame, in the element's
+ * own document frame, origin on the plan, z up.
+ *
+ * A standing gate has two uprights at the sides of the opening. A dive gate
+ * used to grow a single mast on the centreline, offset along the heading,
+ * the moment the aperture left vertical. At a custom tilt that mast sits in
+ * the hole: the frame has rotated and the post has not. The feet here are
+ * the lower outer corners of the frame, so the posts stay at the sides for
+ * every pitch, including a flat dive.
+ */
+export function gateSupportFeet(yaw, pitch, clearW, clearH, centerH, tube) {
+  const f = apertureFrame(yaw, pitch);
+  const wx = (clearW + tube) / 2;
+  const hy = -(clearH + tube) / 2;
+  const feet = [];
+  for (const s of [-1, 1]) {
+    feet.push({
+      x: f.widthAxis.x * s * wx + f.heightAxis.x * hy,
+      y: f.widthAxis.y * s * wx + f.heightAxis.y * hy,
+      z: centerH + f.widthAxis.z * s * wx + f.heightAxis.z * hy,
+    });
+  }
+  return feet;
+}
+
 /* Ground direction of an element's yaw: the way it "faces" on the plan. */
 export function yawVector(yaw) {
   return { x: Math.cos(yaw), y: Math.sin(yaw), z: 0 };

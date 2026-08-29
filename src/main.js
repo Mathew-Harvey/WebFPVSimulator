@@ -1751,6 +1751,23 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!(scale > 0)) {
       return;
     }
+    /*
+     * Leaving the pad is still ground contact. The plant is touching the
+     * ramp for tens of milliseconds after the perch lifts, and a punch-out
+     * closes faster than GRAZE_SPEED_MAX on those frames. That is a
+     * takeoff, not a crash. Playing the crash cue there is the loud bang
+     * at spawn the board reported: "upon spawning and attempting to take
+     * off." Spawn grace covers the other half: leftover overlap with a
+     * stand, a nearby pole, a wing you clipped through, until the hull
+     * is free.
+     */
+    if (takingOff || launchStaging) {
+      return;
+    }
+    const nowHit = performance.now();
+    if (nowHit < clipGraceUntil || nowHit < recoverGraceUntil) {
+      return;
+    }
     let u = scale / IMPACT_FULL;
     if (u > 1) {
       u = 1;

@@ -10,10 +10,11 @@
  *      by its clearance radius, perpendicular to the local direction of
  *      travel, on the chosen pass side. Its tangent is the local direction,
  *      because a marker has no plane of its own to take one from.
- *   3. If START PADS are placed the line starts there along the pads'
- *      heading, and a closing knot with the same position and the same
- *      tangent is appended so the lap joins up smoothly rather than arriving
- *      at the line sideways.
+ *   3. If START PADS are placed the lap is a circuit, so a closing knot is
+ *      appended at the FIRST sequenced element, same position and tangent.
+ *      The pads are where the quad sits. They are not a hole and they do
+ *      not belong on the racing line: drawing them in, then drawing the
+ *      return to them, is the trail that looped around the grid.
  *   4. Fit a cubic Hermite between each consecutive pair, with both tangents
  *      scaled by settings.tangentScale multiplied by the straight line
  *      distance between that pair. One constant, in elements.js, tunable per
@@ -49,15 +50,15 @@ import {
 import { nearbyApertureTravel, markerPassDir } from './faces.js';
 import { wrapBetween } from './figures.js';
 import {
-  add, cross, dist, dot, length, normalize, scale, sub, yawVector,
+  add, cross, dist, dot, length, normalize, scale, sub,
 } from './geometry.js';
 
 /*
  * The knots, in order. Each carries where it is, which way the quad is going
  * through it, and enough identity for a warning to name it.
  *
- *   role   'start' | 'aperture' | 'marker' | 'finish'
- *   seq    the sequence entry that produced it, or null for start and finish
+ *   role   'aperture' | 'marker' | 'wrap' | 'finish'
+ *   seq    the sequence entry that produced it, or null for wrap and finish
  *   index  one based position in the flying order, or null
  */
 export function buildKnots(doc) {
@@ -66,10 +67,10 @@ export function buildKnots(doc) {
   /* Raw anchors first, because a marker's offset needs a direction and the
    * direction has to come from geometry that does not itself depend on the
    * offset. Same chain faces.js uses, for the same reason. */
+  /* Pads stay off this list. faces.js still reads them for auto-heading.
+   * Putting them here is what sent the Hermite, the 3D trail and the
+   * grass dashes out to the grid and back again. */
   const raw = [];
-  if (start) {
-    raw.push({ pos: { ...start.position }, seq: null, role: 'start', index: null });
-  }
   doc.sequence.forEach((s, i) => {
     const pos = entryAnchor(doc, s);
     if (!pos) {
@@ -83,9 +84,6 @@ export function buildKnots(doc) {
       index: i + 1,
     });
   });
-  if (start && raw.length > 1) {
-    raw.push({ pos: { ...start.position }, seq: null, role: 'finish', index: null });
-  }
 
   const n = raw.length;
   const knots = [];
@@ -94,20 +92,6 @@ export function buildKnots(doc) {
     const before = raw[Math.max(0, i - 1)].pos;
     const after = raw[Math.min(n - 1, i + 1)].pos;
     const chainDir = n > 1 ? normalize(sub(after, before), { x: 1, y: 0, z: 0 }) : { x: 1, y: 0, z: 0 };
-
-    if (k.role === 'start' || k.role === 'finish') {
-      /* The pads' own heading, both on the way out and on the way back in.
-       * Sharing it is what closes the lap smoothly. */
-      knots.push({
-        pos: { ...k.pos },
-        tangent: yawVector(start.yaw),
-        role: k.role,
-        seq: null,
-        index: null,
-        elementId: start.id,
-      });
-      continue;
-    }
 
     const el = elementById(doc, k.seq.elementId);
     if (!el) {
@@ -179,6 +163,20 @@ export function buildKnots(doc) {
       elementId: stacked.id,
     });
   }
+  /* A circuit closes at the first sequenced element, not at the pads.
+   * Same position and tangent so the Hermite joins without a hook. */
+  if (start && withWraps.length > 0) {
+    const first = withWraps[0];
+    withWraps.push({
+      pos: { ...first.pos },
+      tangent: { ...first.tangent },
+      role: 'finish',
+      seq: first.seq,
+      index: null,
+      elementId: first.elementId,
+      markerPos: first.markerPos ? { ...first.markerPos } : undefined,
+    });
+  }
   return withWraps;
 }
 
@@ -219,7 +217,7 @@ function hermiteD2(p0, p1, m0, m1, t) {
  *             the start in metres and radius the radius of curvature in
  *             metres, Infinity on a straight
  *   length    total arc length in metres
- *   closed    true when the lap returns to the start pads
+ *   closed    true when start pads exist, so the lap returns to the first element
  *   segments  [{ a, b, from, to }] knot pairs, for the warning pass
  */
 export function buildPath(doc) {

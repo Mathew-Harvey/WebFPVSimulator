@@ -22785,4 +22785,66 @@ Catch hoop inner Y stays 1.62.
 `npm run verify` not run: map authoring only, no plant, ABI, WASM or
 threshold change.
 
+## 2026-08-29, four board bugs: spawn bang, dive mast, clubhouse trap, pad trail
+
+Tickets: loud sound at spawn (bug-5e05b4a8), dive gate pole through the
+opening at a custom tilt (bug-09661006), cannot fly out of the building
+(bug-7c21aa01), start pads on the return flight path (bug-da716a76).
+
+Root causes, not the symptoms:
+
+1. `feelImpact` played the crash cue on the first frames of a punch-out.
+   The hull is still in ground contact, closing faster than GRAZE_SPEED_MAX.
+   Spawn grace only fed the clip watch, not the audio. Mute crash/clip
+   cues while `takingOff` or `launchStaging`, and during spawn/recover
+   grace. The takeoff blip is unchanged. A later gate hit still sounds.
+
+2. `tiltedGate()` and the builder preview used one vertical mast on the
+   centreline the moment pitch left zero. At 90 degrees that mast sits
+   behind the far rail. At a custom tilt (55 degrees on the demo, and
+   anything typed in the inspector) it sits in the hole. Two vertical
+   posts now stand at the sides, from the grass to the lower outer
+   corners of the hoop, in the world and in the builder. `gateSupportFeet`
+   is the shared geometry.
+
+3. Each clubhouse wing was one AABB from the back wall through 0.45 m
+   past the front glass, terrace to eave. The mesh paints doors and
+   windows. The collider filled the rooms and a strip of the verandah.
+   Flying through a door put the hull inside a solid with no exit.
+   Walls are now thin, the front is punched with the same openings the
+   mesh draws, the roller shutter stays shut, and there are no party
+   walls. Bando's hall mouths were already a 12 m punch; a live `__hit`
+   through them is clear. The trap on the race field was the pavilion.
+
+4. `buildKnots` put start and finish knots on the pads. The Hermite, the
+   3D trail and the grass dashes all followed that loop out to the grid
+   and back. The board's plan was already sequence-only. The racing line
+   now closes at the first sequenced element. Pads still exist for spawn
+   heading and auto-faces. A pad-heading warning still fires if the
+   grid points away from the first element.
+
+Demo lap length moved from 139.7 m to 140.05 m and tightest radius from
+2.68 m to 2.593 m because the closing segment is no longer a detour
+through the pads. schema.md quotes the new figures.
+
+`node src/trackbuilder/selftest.js`: 489 passed, 0 failed. New checks:
+dive feet at 55 and 90 degrees stay at the sides; clubhouse door,
+interior, verandah and east window are holes, shutter and back wall are
+solid; no racing-line knot sits on the pads.
+
+Live shell, custom demo course: `__hit` through the west door, the
+glass door, the east window, the verandah and the west interior is
+clear; the shutter and the back wall still hit. `__hit` through the
+55 degree dive opening is clear. Bando hall north and south mouths
+and a mid-hall point are clear.
+
+Stills: `.loop/bugfix/dive-55-through-plain.png` shows two side posts
+and an empty hoop. Title UI was hidden for that capture.
+
+Did not ear-verify the takeoff cue on a radio. The crash path is the
+one `feelImpact` no longer takes on those frames.
+
+`npm run verify` not run: no plant, ABI, WASM or threshold change.
+
+
 

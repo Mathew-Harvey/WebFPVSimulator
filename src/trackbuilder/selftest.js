@@ -32,7 +32,7 @@
 
 import {
   createTrack, createElement, deserialize, elementById, normalize,
-  roundTripsCleanly, serialize, aperturesOf, toPlain,
+  roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf,
   logoForDecal, dressOrder, LOGO_SLOTS,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
@@ -41,13 +41,13 @@ import { applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures } fro
 import { buildPath, elevationProfile, sequencedElementCount } from './path.js';
 import { collectWarnings } from './warnings.js';
 import { History } from './history.js';
-import { RAD, DEG, wrapAngle } from './geometry.js';
-import {
-  ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
+import { RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame } from './geometry.js';
+import { ELEMENTS, PALETTE_ORDER, GATE_FLAG_H, flagSideOf, flagSideSigns, elementByKey, elementHeight,
   virtualApertureDims, countElementsByType, formatElementCounts,
-  GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor,
+  GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, FRAME_TUBE_OD,
 } from './elements.js';
 import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/startblock.js';
+import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, flagMast, flagSailProfile } from '../art/banners.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
@@ -110,7 +110,8 @@ function place(doc, type, x, y, opts = {}) {
  * It is deliberately the awkward case the task names: ten sequenced entries
  * including a ladder flown at two different levels with two different faces,
  * a dive gate flown downward, and a flag turn, plus a barrier the line has to
- * miss, a label, and start pads that close the lap.
+ * miss, a label, and start pads that mark the grid. The lap closes at the
+ * first sequenced element, not at the pads.
  */
 export function demoTrack() {
   const doc = createTrack('Ladder Loop, demo');
@@ -500,10 +501,18 @@ function suitePath() {
   const doc = demoTrack();
   const path = buildPath(doc);
 
-  check('every sequence entry produced a knot, plus start and finish',
-    path.knots.length === doc.sequence.length + 2,
+  check('every sequence entry produced a knot, plus a closing knot at the first element',
+    path.knots.length === doc.sequence.length + 1,
     `${path.knots.length} knots for ${doc.sequence.length} entries`);
-  check('the lap closes at the start pads', path.closed === true);
+  check('the lap is a circuit because start pads exist', path.closed === true);
+  const pads = startPadsOf(doc);
+  check('no knot sits on the start pads',
+    pads && path.knots.every((k) => k.elementId !== pads.id
+      && Math.hypot(k.pos.x - pads.position.x, k.pos.y - pads.position.y) > 0.4),
+    path.knots.map((k) => `${k.role}:${k.elementId}`).join(','));
+  check('the closing knot is a copy of the first sequenced element',
+    path.knots[path.knots.length - 1].role === 'finish'
+    && path.knots[path.knots.length - 1].elementId === path.knots[0].elementId);
   check('the line has a sensible length', path.length > 80 && path.length < 400,
     `${path.length.toFixed(1)} m`);
   check('every sample carries an arc length that only grows',
@@ -2012,12 +2021,13 @@ function suiteSchemaDoc() {
 
   /* The numbers schema.md quotes in prose. */
   const path = buildPath(doc);
-  /* 138.9 and 2.73 until the cone's default clearance became the flag's
-   * 1.5 m. A marker's knot sits at that radius, so moving it moves the lap
-   * these two numbers measure; the tolerances are untouched. */
-  check('schema.md quotes the right lap length', Math.abs(path.length - 139.7) < 0.05, `${path.length.toFixed(2)} m`);
+  /* 140.05 and 2.593 once the pads left the racing line. Before that, 139.7
+   * and 2.68, and before the cone's default clearance became the flag's
+   * 1.5 m, 138.9 and 2.73. A marker's knot sits at that radius, so moving
+   * it moves the lap these two numbers measure; the tolerances are untouched. */
+  check('schema.md quotes the right lap length', Math.abs(path.length - 140.05) < 0.05, `${path.length.toFixed(2)} m`);
   check('schema.md quotes the right tightest radius',
-    Math.abs(path.tightest.radius - 2.68) < 0.005, `${path.tightest.radius.toFixed(3)} m`);
+    Math.abs(path.tightest.radius - 2.593) < 0.005, `${path.tightest.radius.toFixed(3)} m`);
   check('and the worked example really does raise no warnings',
     collectWarnings(doc, path).filter((w) => w.level === 'warn').length === 0);
 }
@@ -2631,6 +2641,58 @@ function suiteWaypoint() {
     course.stations.length === 2, `${course.stations.length} stations`);
 }
 
+function suiteDiveSupports() {
+  console.log('\ndive gate supports');
+  const d = ELEMENTS.diveGate.dims;
+  const tube = FRAME_TUBE_OD;
+  const centerH = d.sillH + d.clearH * 0.5;
+  const wx = (d.clearW + tube) / 2;
+  for (const deg of [55, 90]) {
+    const pitch = deg * RAD;
+    const feet = gateSupportFeet(0, pitch, d.clearW, d.clearH, centerH, tube);
+    const f = apertureFrame(0, pitch);
+    check(`a ${deg} deg dive has two support feet`, feet.length === 2);
+    const widths = feet.map((p) => p.x * f.widthAxis.x + p.y * f.widthAxis.y);
+    check(`a ${deg} deg dive keeps both posts at the sides`,
+      widths.every((w) => Math.abs(Math.abs(w) - wx) < 0.02)
+      && widths[0] * widths[1] < 0,
+      widths.map((w) => w.toFixed(3)).join(','));
+    check(`a ${deg} deg dive has no post on the opening centreline`,
+      widths.every((w) => Math.abs(w) > d.clearW * 0.4));
+  }
+}
+
+function inClubBox(solids, x, y, z) {
+  return solids.some((c) => {
+    if (!c.box) {
+      return false;
+    }
+    const [x0, y0, z0, x1, y1, z1] = c.box;
+    return x >= x0 && x <= x1 && y >= y0 && y <= y1 && z >= z0 && z <= z1;
+  });
+}
+
+function suiteClubhouseShell() {
+  console.log('\nclubhouse shell');
+  const solids = clubhouseSolids();
+  check('the verandah roof is still tagged for the clearance band',
+    solids.some((c) => c.tag === 'verandahRoof'));
+  check('a west-room interior point is not inside a wall',
+    !inClubBox(solids, -14, 2, -5));
+  check('a mid-room interior point is not inside a wall',
+    !inClubBox(solids, -0.25, 2, -4));
+  check('the west back wall is still solid',
+    inClubBox(solids, -14, 2, -11.05));
+  check('the west social-room door is a hole',
+    !inClubBox(solids, -7.6, 1.5, -0.14));
+  check('the verandah in front of that door is clear',
+    !inClubBox(solids, -7.6, 1.5, 0.5));
+  check('the closed roller shutter is still a wall',
+    inClubBox(solids, 16.0, 1.6, -0.14));
+  check('an east-wing window is a hole',
+    !inClubBox(solids, 7.2, 0.45 + 1.35 + 0.5, -0.14));
+}
+
 function main() {
   if (process.argv.includes('--emit')) {
     process.stdout.write(serialize(demoTrack()));
@@ -2658,6 +2720,8 @@ function main() {
   suiteBranding();
   suiteFlagShape();
   suiteStartBlock();
+  suiteDiveSupports();
+  suiteClubhouseShell();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;
 }

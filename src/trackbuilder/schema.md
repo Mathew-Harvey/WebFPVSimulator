@@ -440,9 +440,10 @@ cannot go stale, and any consumer can rebuild it with the rules below.
    perpendicular to the local direction of travel, on the `passSide` side. Its
    tangent is the local direction of travel, taken from the straight line
    between its neighbours, because a marker has no plane to take one from.
-3. If `startPads` is placed, a knot goes first at the pads with tangent along
-   the pads' `yaw`, and a closing knot goes last at the same position with the
-   same tangent, so the lap joins up smoothly instead of arriving sideways.
+3. If `startPads` is placed, the lap is a circuit: a closing knot is
+   appended at the first sequenced element, same position and tangent, so
+   the lap joins up smoothly. The pads are where the quad sits. They are
+   not a hole and they do not appear on the racing line.
 4. Fit a cubic Hermite between each consecutive pair. **Both** tangents on a
    segment are scaled by `settings.tangentScale` multiplied by the straight
    line distance between that pair.
@@ -554,18 +555,21 @@ awkward the schema has to express:
 * a **flag turn**, `el-7`, and a **cone**, `el-2`, each with a derived pass side
   and a clearance radius;
 * a **barrier** and a **label**, neither of which appears in `sequence`;
-* **start pads** that close the lap;
+* **start pads** that mark the grid (the lap closes at the first sequenced
+  element, not at the pads);
 * one `yawOverridden: true`, on the ladder, because the auto rule will not
   rotate a structure that is flown twice and the author chose the heading that
   splits the difference between the two passes.
 
-Create Path on this document reports a lap of **139.7 m**, a tightest radius of
-**2.68 m**, and no warnings.
+Create Path on this document reports a lap of **140.05 m**, a tightest radius of
+**2.59 m**, and no warnings.
 
 Both figures moved when the cone's default clearance went from 1.0 m to the
 flag's 1.5 m, because the knot a marker contributes sits at that radius and
-the whole lap is measured through it. The document above is the emitted
-default track, so it follows the defaults.
+the whole lap is measured through it. They moved again when the pads left
+the racing line: the lap closes at the first sequenced element, so the
+Hermite no longer detours through the grid. The document above is the
+emitted default track, so it follows the defaults.
 
 ```json
 {
@@ -915,9 +919,9 @@ default track, so it follows the defaults.
 
 ### Reading that example
 
-* `el-1` is the start pads at `(16.5, 13.5)` facing due west, `yaw` = pi. The
-  lap leaves along that heading and comes back to it, which is why the finish
-  is smooth rather than a hook.
+* `el-1` is the start pads at `(16.5, 13.5)` facing due west, `yaw` = pi. They
+  are the grid. The racing line starts at the cone and closes there; the pads
+  do not appear on it.
 * `sq-1` is the cone. No `apertureIndex`, no `entry`; it has a `passSide` of
   `"left"` and a metre of clearance, so the line is drawn a metre to the left
   of the cone in the direction of travel.

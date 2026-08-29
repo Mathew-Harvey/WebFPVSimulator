@@ -645,7 +645,7 @@ export function assembleClubhouse(THREE, mat, plaqueMat) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
 
-  const colliders = solids();
+  const colliders = clubhouseSolids();
   const decking = decks();
   /*
    * How much clear air a pilot standing on the verandah has over their head,
@@ -1089,24 +1089,143 @@ function pits(S) {
 /* ------------------------------------------------------------------ *
  * What is solid.
  *
- * Boxes for everything with a flat face, capsules for the posts, and the
- * pitched roofs approximated by two boxes each: one to the eave over the
- * whole footprint and one to the ridge over the middle of it. A single box to
- * the ridge would put two metres of solid air over the gutter line, which on
- * the field side is exactly where a pilot cutting the corner off the pavilion
- * would meet it.
+ * A HOLLOW SHELL, not a filled mass. The first version of this list was
+ * one AABB per wing from the back wall through to 0.45 m PAST the front
+ * wall, terrace to eave. That volume included the rooms, the doorways and
+ * a strip of the verandah in front of the glass. Flying through a door,
+ * which the mesh paints as open, put the hull inside a solid with no
+ * exit: every direction was a wall. That is the clubhouse trap the board
+ * reported as "can't fly out of the building" / "wall collision even in
+ * a clear path."
+ *
+ * Walls are now thin, the front is punched with the same openings the
+ * mesh draws (windows and doors; the roller shutter stays shut), and
+ * there are no party walls, so an entry on the west can leave on the
+ * east. Roofs, posts, kerbs and tables are unchanged. The verandah roof
+ * is still tagged so verandahClear is measured off the collider a craft
+ * would actually hit.
  *
  * Local frame. The caller rotates and translates, and because the yaw is
  * always a quarter turn the boxes stay axis aligned in the world.
  * ------------------------------------------------------------------ */
+const WALL_T = 0.28;
+
+export function clubhouseSolids() {
+  return solids();
+}
+
+function uniqSorted(arr) {
+  const s = arr.slice().sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i < s.length; i += 1) {
+    if (i === 0 || s[i] - s[i - 1] > 0.001) {
+      out.push(s[i]);
+    }
+  }
+  return out;
+}
+
+function punchWallXY(out, x0, y0, x1, y1, z0, z1, holes) {
+  const xs = [x0, x1];
+  const ys = [y0, y1];
+  const local = [];
+  for (const h of holes) {
+    const hx0 = Math.max(x0, Math.min(h.x0, h.x1));
+    const hx1 = Math.min(x1, Math.max(h.x0, h.x1));
+    const hy0 = Math.max(y0, Math.min(h.y0, h.y1));
+    const hy1 = Math.min(y1, Math.max(h.y0, h.y1));
+    if (hx1 - hx0 < 0.05 || hy1 - hy0 < 0.05) {
+      continue;
+    }
+    local.push({ x0: hx0, x1: hx1, y0: hy0, y1: hy1 });
+    xs.push(hx0, hx1);
+    ys.push(hy0, hy1);
+  }
+  const ux = uniqSorted(xs);
+  const uy = uniqSorted(ys);
+  const zA = Math.min(z0, z1);
+  const zB = Math.max(z0, z1);
+  for (let i = 0; i < ux.length - 1; i += 1) {
+    for (let j = 0; j < uy.length - 1; j += 1) {
+      const xa = ux[i];
+      const xb = ux[i + 1];
+      const ya = uy[j];
+      const yb = uy[j + 1];
+      if (xb - xa < 0.05 || yb - ya < 0.05) {
+        continue;
+      }
+      const mx = (xa + xb) * 0.5;
+      const my = (ya + yb) * 0.5;
+      if (local.some((h) => mx > h.x0 && mx < h.x1 && my > h.y0 && my < h.y1)) {
+        continue;
+      }
+      out.push({ kind: 'wall', box: [xa, ya, zA, xb, yb, zB] });
+    }
+  }
+}
+
+function flyableFrontHoles() {
+  const y0 = D.terraceTop;
+  const holes = [];
+  const win = (cx, w, sill, h) => {
+    holes.push({
+      x0: cx - w * 0.5,
+      x1: cx + w * 0.5,
+      y0: y0 + sill,
+      y1: y0 + sill + h,
+    });
+  };
+  const door = (cx, w, h) => {
+    holes.push({
+      x0: cx - w * 0.5,
+      x1: cx + w * 0.5,
+      y0: y0 + 0.02,
+      y1: y0 + h,
+    });
+  };
+  /* Must match openings() above. The roller shutter is not a hole. */
+  win(-19.4, 2.6, 0.95, 1.55);
+  win(-15.6, 2.6, 0.95, 1.55);
+  win(-11.8, 2.6, 0.95, 1.55);
+  door(-7.6, 1.9, 2.15);
+  win(-4.2, 2.9, 0.35, 2.55);
+  door(-0.25, 2.4, 2.45);
+  win(3.4, 2.9, 0.35, 2.55);
+  win(7.2, 1.5, 1.35, 1.05);
+  win(10.0, 1.5, 1.35, 1.05);
+  win(19.9, 1.5, 1.35, 1.05);
+  return holes;
+}
+
 function solids() {
   const out = [];
-  const wall = (x0, y0, z0, x1, y1, z1) => out.push({ kind: 'wall', box: [x0, y0, z0, x1, y1, z1] });
+  const wall = (x0, y0, z0, x1, y1, z1) => out.push({
+    kind: 'wall',
+    box: [
+      Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1),
+      Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1),
+    ],
+  });
+  const y0 = D.terraceTop;
+  const holes = flyableFrontHoles();
 
-  wall(D.westX0, D.terraceTop, D.westBack - D.overhang, D.westX1, D.westEave, D.overhang);
+  punchWallXY(out, D.westX0, y0, D.westX1, D.westEave, -WALL_T, 0, holes);
+  punchWallXY(out, D.midX0, y0, D.midX1, D.midEave, -WALL_T, 0, holes);
+  punchWallXY(out, D.eastX0, y0, D.eastX1, D.eastEave, -WALL_T, 0, holes);
+
+  wall(D.westX0, y0, D.westBack, D.westX1, D.westEave, D.westBack + WALL_T);
+  wall(D.midX0, y0, D.midBack, D.midX1, D.midEave, D.midBack + WALL_T);
+  wall(D.eastX0, y0, D.eastBack, D.eastX1, D.eastEave, D.eastBack + WALL_T);
+
+  wall(D.westX0, y0, D.westBack, D.westX0 + WALL_T, D.westEave, 0);
+  wall(D.eastX1 - WALL_T, y0, D.eastBack, D.eastX1, D.eastEave, 0);
+
+  /* The stepped backs, so the extra depth of a wing is a wall, not a hole
+   * into the next room from behind. */
+  wall(D.westX1 - WALL_T, y0, D.westBack, D.westX1, D.westEave, D.midBack);
+  wall(D.eastX0, y0, D.midBack, D.eastX0 + WALL_T, D.eastEave, D.eastBack);
+
   wall(D.westX0, D.westEave, D.westRidgeZ - 2.0, D.westX1, D.westRidge, D.westRidgeZ + 2.0);
-  wall(D.midX0, D.terraceTop, D.midBack - D.overhang, D.midX1, D.midEave, D.overhang);
-  wall(D.eastX0, D.terraceTop, D.eastBack - D.overhang, D.eastX1, D.eastEave, D.overhang);
   wall(D.eastX0, D.eastEave, D.eastRidgeZ - 2.0, D.eastX1, D.eastRidge, D.eastRidgeZ + 2.0);
   /* The two cross gables. Their ridges run ACROSS the building, so the upper
    * box follows the depth and is narrow in x, twice. */

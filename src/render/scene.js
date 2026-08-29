@@ -2614,10 +2614,11 @@ function coursePlacements(course) {
  * feet, mesh panels, a number plate. Rotating all of that about the opening
  * lays the uprights over and puts the feet in the air, and a gate whose legs
  * point sideways is not a gate somebody built, it is a gate somebody
- * knocked over. A real dive gate is a frame carried on a mast, so that is
- * what this makes: four tubes round the opening, tilted, on one vertical
- * post, with the same lit target obstacle() uses so the pilot reads it the
- * same way.
+ * knocked over. A real dive gate is a frame on two VERTICAL posts at the
+ * sides, from the grass to the lower outer corners of the tilted hoop.
+ * A single mast on the centreline sits in the hole the moment the pitch is
+ * not a right angle: the frame has rotated and the post has not. That is
+ * the pole through the middle the board reported on a custom tilt.
  *
  * The tilt is `pitch`, the angle the DIRECTION OF TRAVEL through the opening
  * dips below the horizontal, which is the same number src/game/trackdoc.js
@@ -2636,26 +2637,6 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
   const clearH = spec.clearH;
   const centreY = spec.sillH + clearH * 0.5;
   const caps = [];
-
-  /* The mast, from the grass to the middle of the opening, offset to the
-   * back of the frame so it never stands in the hole. */
-  const mastOff = clearH * 0.5 + tubeR * 3;
-  const mastR = tubeR * 1.6;
-  const mast = new THREE.Mesh(
-    new THREE.CylinderGeometry(mastR, mastR, centreY, 8),
-    mats.frame,
-  );
-  mast.position.set(0, centreY * 0.5, mastOff);
-  mast.castShadow = true;
-  outlineHull(mast, 1.06);
-  g.add(mast);
-  caps.push({ kind: 'gate', ax: 0, ay: 0, az: mastOff, bx: 0, by: centreY, bz: mastOff, r: mastR });
-
-  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.09, 0.7), mats.frame);
-  foot.position.set(0, 0.045, mastOff);
-  foot.castShadow = true;
-  g.add(foot);
-  caps.push({ kind: 'obstacle', ax: -0.3, ay: 0.045, az: mastOff, bx: 0.3, by: 0.045, bz: mastOff, r: 0.2 });
 
   /*
    * The frame and its target, built flat in a pivot and then tilted about
@@ -2724,6 +2705,44 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     const a = at(sx * (halfW + tubeR), -(halfH + tubeR));
     const b = at(sx * (halfW + tubeR), halfH + tubeR);
     caps.push({ kind: 'gate', ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, r: tubeR });
+  }
+
+  /*
+   * Two vertical posts at the SIDES, from the grass to the lower outer
+   * corners of the hoop. Same `at` map as the frame colliders, so a
+   * custom tilt cannot put a pole on the opening's centreline.
+   */
+  const upX = halfW + tubeR;
+  const mastR = tubeR * 1.6;
+  for (const sx of [-1, 1]) {
+    const foot = at(sx * upX, -(halfH + tubeR));
+    const postH = foot.y;
+    if (postH > 0.02) {
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(mastR, mastR, postH, 8),
+        mats.frame,
+      );
+      post.position.set(sx * upX, postH * 0.5, foot.z);
+      post.castShadow = true;
+      outlineHull(post, 1.06);
+      g.add(post);
+      caps.push({
+        kind: 'gate',
+        ax: sx * upX, ay: 0, az: foot.z,
+        bx: sx * upX, by: postH, bz: foot.z,
+        r: mastR,
+      });
+    }
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.5), mats.frame);
+    pad.position.set(sx * upX, 0.045, foot.z);
+    pad.castShadow = true;
+    g.add(pad);
+    caps.push({
+      kind: 'obstacle',
+      ax: sx * upX - 0.2, ay: 0.045, az: foot.z,
+      bx: sx * upX + 0.2, by: 0.045, bz: foot.z,
+      r: 0.16,
+    });
   }
 
   /* The lit target, in the pivot so it leans with the frame. Built at a sill
@@ -3839,8 +3858,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   /*
    * How high a structure stands, at the point it stands, so the title
    * screen's flythrough can clear it. Filled from each obstacle's own world
-   * bounding box rather than from its spec, because a tilted gate on a mast
-   * and a three level ladder do not report their height the same way.
+   * bounding box rather than from its spec, because a tilted dive gate on
+   * two posts and a three level ladder do not report their height the same
+   * way.
    */
   const obstacleTops = [];
 

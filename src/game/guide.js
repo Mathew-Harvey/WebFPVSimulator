@@ -698,7 +698,7 @@ function holesFromKnots(knots) {
   for (const k of knots) {
     if (k.role === 'aperture') {
       holes.push({ x: k.x, z: k.z, r: GUIDE.holeGate, kind: 'gate' });
-    } else if (k.role === 'start' || k.role === 'finish') {
+    } else if (k.role === 'start') {
       holes.push({ x: k.x, z: k.z, r: GUIDE.holeStart, kind: 'start' });
     } else if (isPeg(k)) {
       holes.push({ x: k.poleX, z: k.poleZ, r: GUIDE.holeFlag, kind: 'flag' });

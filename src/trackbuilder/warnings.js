@@ -37,7 +37,7 @@
 import { ELEMENTS, KIND, TUNING } from './elements.js';
 import { elementById, kindOf, startPadsOf } from './model.js';
 import { sequenceLabel, unsequencedElements } from './sequence.js';
-import { dist, dot, insideYawedBox, lerp, normalize, sub } from './geometry.js';
+import { dist, insideYawedBox, lerp, yawVector } from './geometry.js';
 
 function warn(code, message, extra = {}) {
   return { level: 'warn', code, message, ...extra };
@@ -113,19 +113,35 @@ export function collectWarnings(doc, path) {
       continue;
     }
     if (hasFace(a) && reversed(a.tangent, a.pos, b.pos)) {
-      out.push(warn('reversal', a.role === 'start'
-        ? `The lap sets off away from ${describe(doc, b)}. Turn the start pads, or reorder the track.`
-        : `${describe(doc, a)} faces away from ${describe(doc, b)}. The line leaves it backwards. Press X to flip the face.`, {
+      out.push(warn('reversal', `${describe(doc, a)} faces away from ${describe(doc, b)}. The line leaves it backwards. Press X to flip the face.`, {
         seqId: a.seq?.id ?? null,
         elementId: a.elementId,
       }));
     }
     if (hasFace(b) && reversed(b.tangent, a.pos, b.pos)) {
-      out.push(warn('reversal', b.role === 'finish'
-        ? `The lap comes back to the start line from in front of it, after ${describe(doc, a)}. Turn the start pads, or move the last element behind them.`
-        : `${describe(doc, b)} faces back towards ${describe(doc, a)}. The line arrives at it backwards. Press X to flip the face.`, {
+      out.push(warn('reversal', `${describe(doc, b)} faces back towards ${describe(doc, a)}. The line arrives at it backwards. Press X to flip the face.`, {
         seqId: b.seq?.id ?? null,
         elementId: b.elementId,
+      }));
+    }
+  }
+
+  const pads = startPadsOf(doc);
+  const first = path.knots[0];
+  if (pads && first && first.role !== 'finish') {
+    const heading = yawVector(pads.yaw);
+    if (reversed(heading, pads.position, first.pos)) {
+      out.push(warn('reversal', `The lap sets off away from ${describe(doc, first)}. Turn the start pads, or reorder the track.`, {
+        elementId: pads.id,
+      }));
+    }
+  }
+  if (path.closed && path.knots.length >= 2) {
+    const lastReal = path.knots[path.knots.length - 2];
+    if (first.role === 'aperture' && reversed(first.tangent, lastReal.pos, first.pos)) {
+      out.push(warn('reversal', `The lap comes back to ${describe(doc, first)} from in front of it, after ${describe(doc, lastReal)}. Flip that face, or move the last element behind it.`, {
+        seqId: first.seq?.id ?? null,
+        elementId: first.elementId,
       }));
     }
   }
@@ -230,11 +246,13 @@ const HORIZONTAL_FLOOR = 0.2;
  * worse than saying nothing. A hairpin round a marker is what the curvature
  * warning is for.
  *
- * The start pads do have a heading, which the author chose and can turn, so
- * they stay in.
+ * The start pads have a heading, which the author chose and can turn, and
+ * that is checked against the first sequenced knot separately. A finish
+ * knot is a copy of that first knot so the Hermite closes; it is not a
+ * face of its own.
  */
 function hasFace(knot) {
-  return knot.role === 'start' || knot.role === 'finish' || knot.role === 'aperture';
+  return knot.role === 'aperture';
 }
 
 function reversed(tangent, from, to) {

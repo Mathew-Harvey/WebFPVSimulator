@@ -4,9 +4,10 @@
  *
  * WHAT IS ADDED, AND WHERE.
  *
- *   工場道 (./road.js)     the works road, off ひばり台四丁目's east arm
- *   旧ひばり製作所 (./works.js)  a disused machine shop, x 20..50, z 84..113
- *   ひばり台市民プール (./pool.js)  the municipal pool, x 53..91, z 82..114
+ *   工場道 (./road.js)          the works road, off ひばり台四丁目's east arm
+ *   旧ひばり製作所 (./works.js)   a disused machine shop, x 20..50, z 82.6..113
+ *   ひばり台市民プール (./pool.js)  the municipal pool, x 53..91, z 82.6..114
+ *   ひばり台ドローン練習場 (./training.js)  the practice field, x 0..128, z 118..188
  *
  * All three stand on land the town has never built on: a survey of the built
  * world's own collider list puts nothing at all east of x = 30 past z = 78,
@@ -67,6 +68,7 @@ import { buildFallenPatches } from '../vendored/world/petals.js';
 import { buildWorksRoad } from './road.js';
 import { buildWorks, WORKS_SITE, WORKS_LANDMARK } from './works.js';
 import { buildPool, POOL_SITE, POOL_LANDMARK } from './pool.js';
+import { buildTraining, TRAINING_SITE, TRAINING_LANDMARK } from './training.js';
 import { buildBlossom } from './blossom.js';
 
 /**
@@ -212,7 +214,7 @@ export function buildPlaces(world, { petals: livePetals = true } = {}) {
   const platforms0 = world.platforms.length;
   const children0 = world.root.children.length;
 
-  const parts = [buildWorksRoad(ctx), buildWorks(ctx), buildPool(ctx)];
+  const parts = [buildWorksRoad(ctx), buildWorks(ctx), buildPool(ctx), buildTraining(ctx)];
 
   /* The one hole either place needs cut in the drawn ground. See cutGround. */
   const holes = parts.flatMap((p) => p.holes ?? []);
@@ -272,8 +274,8 @@ export function buildPlaces(world, { petals: livePetals = true } = {}) {
     references,
     blossom,
     updaters: ctx.updaters,
-    sites: { works: WORKS_SITE, pool: POOL_SITE },
-    landmarks: { works: WORKS_LANDMARK, pool: POOL_LANDMARK },
+    sites: { works: WORKS_SITE, pool: POOL_SITE, training: TRAINING_SITE },
+    landmarks: { works: WORKS_LANDMARK, pool: POOL_LANDMARK, training: TRAINING_LANDMARK },
     planting: { sakura: sakura.length, grove: grove.length, shrubs: shrubs.length, petals: petals.length },
     stats: {
       /* Measured here rather than inferred from the loading bar's world

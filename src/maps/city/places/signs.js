@@ -349,3 +349,166 @@ export const bayDigit = (n = 1) => cached(`bayDigit${n}`, () => make(256, 256, (
   flake(c, w, h, '#000000', 46, 900 + n, 1.4);
   c.globalCompositeOperation = 'source-over';
 }));
+
+/* ------------------------------------------------------------------ *
+ * ひばり台ドローン練習場: the training field.
+ *
+ * THE LETTERING IS THE FEATURE HERE, not decoration on top of one. A tower,
+ * two arches, a wall and a goalpost standing in a paddy field are five
+ * unexplained objects; the same five with 「オービット」 painted on the ground
+ * under each of them are a place that tells a pilot what it is for. So these
+ * are drawn the way a Japanese sports ground is actually marked: the term in
+ * gothic, large, over a pale painted panel on the deck, with the English
+ * under it at a third the size and a rule between. Never a billboard.
+ * ------------------------------------------------------------------ */
+
+/**
+ * A painted ground panel: the Japanese term over its English, on pale paint.
+ *
+ * 4:1, which is the proportion a word painted across a 12 m pad wants. It is
+ * opaque rather than alpha cut, and that is a draw call decision as much as a
+ * look: an opaque plate merges into the town's buckets with everything else,
+ * a transparent one holds its own bucket open for the life of the map.
+ */
+const groundPanel = (jp, en, ink, ground) => make(1024, 256, (c, w, h) => {
+  c.fillStyle = ground;
+  c.fillRect(0, 0, w, h);
+  /* A rule at each end, so the panel reads as a marking rather than as a
+   * sign that fell over. */
+  c.fillStyle = ink;
+  c.fillRect(0, 0, w, 9);
+  c.fillRect(0, h - 9, w, 9);
+  centred(c, jp, w * 0.5, h * 0.40, w * 0.80, 118, ink, 'bold', 14);
+  c.font = `600 40px ${JP}`;
+  c.fillStyle = ink;
+  c.globalAlpha = 0.62;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(en, w * 0.5, h * 0.76);
+  c.globalAlpha = 1;
+});
+
+const PAINT = '#3a4a63';
+const DECK = '#dcdae0';
+
+/** 「オービット」 under the mast. */
+export const markOrbit = () => cached('markOrbit', () => groundPanel('オービット', 'ORBIT  AND  YAW  SPINS', PAINT, DECK));
+/** 「パワーループ」 between the two arches. */
+export const markLoop = () => cached('markLoop', () => groundPanel('パワーループ', 'POWER  LOOP  —  THROUGH,  OVER,  BACK', PAINT, DECK));
+/** 「ウォールタップ」 on the apron in front of the wall. */
+export const markWall = () => cached('markWall', () => groundPanel('ウォールタップ', 'WALL  TAP', PAINT, DECK));
+/** 「スプリットS」 under the high bar. */
+export const markSplitS = () => cached('markSplitS', () => groundPanel('スプリットＳ', 'SPLIT-S  —  OVER  THE  BAR,  BACK  THROUGH  THE  GATE', PAINT, DECK));
+/** 「自由練習」 on the open ground at the far end. */
+export const markPractice = () => cached('markPractice', () => groundPanel('自由練習', 'FREE  PRACTICE', PAINT, DECK));
+
+/** The name board at the way in from the works. */
+export const fieldName = () => cached('fieldName', () => make(1024, 256, (c, w, h) => {
+  c.fillStyle = '#f6f3ea';
+  c.fillRect(0, 0, w, h);
+  c.fillStyle = hex(0x2f7f6a);
+  c.fillRect(0, 0, w, 16);
+  c.fillRect(0, h - 16, w, 16);
+  centred(c, 'ひばり台ドローン練習場', w * 0.5, h * 0.42, w * 0.88, 104, '#2a6656', 'bold', 6);
+  c.font = `600 34px ${JP}`;
+  c.fillStyle = '#8b9098';
+  c.textAlign = 'center';
+  c.fillText('HIBARIDAI  DRONE  PRACTICE  FIELD', w * 0.5, h * 0.79);
+}));
+
+/** The board beside it: what the five areas are, in the order you meet them. */
+export const fieldGuide = () => cached('fieldGuide', () => make(512, 640, (c, w, h) => {
+  c.fillStyle = '#fbf8f0';
+  c.fillRect(0, 0, w, h);
+  c.strokeStyle = '#b6b0c0';
+  c.lineWidth = 6;
+  c.strokeRect(10, 10, w - 20, h - 20);
+  c.fillStyle = hex(0x2f7f6a);
+  c.fillRect(10, 10, w - 20, 82);
+  centred(c, '練習コース案内', w / 2, 51, w - 60, 50, '#fbf8f0');
+  const rows = [
+    ['パワーループ', 'two arches, 16 m apart'],
+    ['ウォールタップ', 'a wall and a run at it'],
+    ['スプリットＳ', 'a bar at 12 m, a gate at 1.6'],
+    ['オービット', 'a 34 m mast, rings at 6, 10, 14'],
+    ['自由練習', 'open ground, nothing in it'],
+  ];
+  rows.forEach(([jp, en], i) => {
+    const y = 150 + i * 92;
+    c.fillStyle = hex(0x2f7f6a);
+    c.beginPath();
+    c.arc(48, y - 12, 13, 0, 6.3);
+    c.fill();
+    c.textAlign = 'left';
+    c.font = `bold 40px ${JP}`;
+    c.fillStyle = '#3c3a46';
+    c.fillText(jp, 78, y - 10);
+    c.font = `500 27px ${JP}`;
+    c.fillStyle = '#7a7688';
+    c.fillText(en, 78, y + 26);
+  });
+  c.textAlign = 'center';
+  c.font = `500 26px ${JP}`;
+  c.fillStyle = '#9a96a6';
+  c.fillText('野葉市 ひばり台', w / 2, h - 40);
+}));
+
+/**
+ * The banner down one face of the mast.
+ *
+ * Vertical, because a 34 m lattice has one proportion and it is not a
+ * horizontal one, and vertical is how a Japanese banner on a tall thing is
+ * set anyway.
+ */
+export const towerBanner = () => cached('towerBanner', () => make(256, 1024, (c, w, h) => {
+  c.fillStyle = '#f2efe6';
+  c.fillRect(0, 0, w, h);
+  c.fillStyle = hex(0x2f7f6a);
+  c.fillRect(0, 0, w, 18);
+  c.fillRect(0, h - 18, w, 18);
+  vertical(c, 'オービット', w / 2, 130, 132, 108, '#2a6656');
+  c.save();
+  c.translate(w * 0.5, h * 0.80);
+  c.rotate(Math.PI / 2);
+  c.font = `600 44px ${JP}`;
+  c.fillStyle = '#8b9098';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText('ORBIT  /  SPIN', 0, 0);
+  c.restore();
+}));
+
+/** The target on the tap wall: three rings and the height it is at. */
+export const wallTarget = () => cached('wallTarget', () => make(512, 512, (c, w, h) => {
+  c.clearRect(0, 0, w, h);
+  const cx = w / 2;
+  const cy = h * 0.46;
+  const rings = [[236, 'rgba(58,74,99,0.85)'], [160, 'rgba(224,69,63,0.85)'], [84, 'rgba(58,74,99,0.85)']];
+  for (const [r, col] of rings) {
+    c.strokeStyle = col;
+    c.lineWidth = 16;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, 6.3);
+    c.stroke();
+  }
+  c.fillStyle = 'rgba(224,69,63,0.9)';
+  c.beginPath();
+  c.arc(cx, cy, 26, 0, 6.3);
+  c.fill();
+  c.font = `bold 52px ${JP}`;
+  c.fillStyle = 'rgba(58,74,99,0.9)';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText('タップ', cx, h * 0.93);
+}));
+
+/** The 2 m height marks up a split-S upright, as one repeating plate. */
+export const heightMark = (n = 2) => cached(`heightMark${n}`, () => make(128, 128, (c, w, h) => {
+  c.fillStyle = n % 4 === 0 ? '#f4c033' : '#f4f2f6';
+  c.fillRect(0, 0, w, h);
+  c.font = `bold 62px ${JP}`;
+  c.fillStyle = '#3a3646';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(String(n), w / 2, h * 0.52);
+}));

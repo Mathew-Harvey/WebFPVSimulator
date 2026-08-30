@@ -23803,3 +23803,149 @@ MEASURED.
 
 `npm run verify` NOT run: nothing here touches src/native, patches,
 vendor/betaflight, the input path or the Emscripten build.
+
+## Freestyle city: ひばり台ドローン練習場, a field laid out for five skills
+
+Owner ask: expand the city with an FPV training zone. A very tall tower with
+space around it for orbits and spins, a power loop area of two arches with
+space between them, a wall tap area, a split-S area, and an open field with
+practice in it, rice paddies. Each area labelled on the ground or the
+building so a pilot can see what it is for. Same style as the town. Designed
+with the lines in mind, and self verified.
+
+WHERE. North of the works, x 0 to 128, z 118 to 188, on the far side of the
+level crossing. It is the one direction the town had nothing in, and it means
+the field is reached by flying, not by teleport: the works' north fence has a
+flattened panel at x 30 to 34, and the track's spur runs from it to the grid's
+south edge, so a pilot leaving the works through the hole somebody walked over
+is already on the track.
+
+THE LAYOUT IS A PADDY GRID, and that decision made every other one. Eight by
+five cells of 16 x 14 m, water where nothing is built and gravel where
+something is, bunds between. A grid gives a pilot a scale rule on the ground:
+every cell is the same size, so a 16 m gap looks like a 16 m gap from the air
+and an orbit radius can be read off the ground without a number. It also gives
+the five areas a reason to sit where they sit rather than being five props in
+a car park.
+
+- The MAST at x 96, z 160, 34 m to the head, on a four-cell gravel pad so
+  there is 30 m of clear air on every side. Decks at 12 and 24 m, which are
+  the heights that let a pilot fly UNDER something on an orbit rather than
+  only around it. Three painted rings at 6, 10 and 13 m radius, so an orbit
+  has a line to hold. 「オービット ORBIT」 on the ground, the banner up the
+  face a pilot arrives at.
+- The POWER LOOP arches at x 24 and x 40, 16 m apart, 5.60 m to the underside
+  and 7 m of opening. Two, because one arch is a gate and two are a loop: you
+  go through the first, over the second and back.
+- The WALL at z 152.6, 12 m long and 7 m high, target at 3.20 m with the tap
+  line painted across it, buttresses on the back so it reads as a wall and not
+  a billboard.
+- The SPLIT-S at x 24, bar at 12 m over a gate at 2.60 m, 8 m apart. Metre
+  marks up both uprights, because the whole skill is knowing your height.
+- The PRACTICE box in the south-east three cells, open water and bunds with
+  nothing in it, which is the point.
+
+WHAT WENT WRONG, in the order it was found.
+
+THE FIELD STOOD ON NOTHING. The town's terrain is one 320 x 320 m grid
+translated z -20, so it ends at z 140, and the field runs to 188. From inside
+it the ground stopped dead at the last bund with sky below the horizon.
+`buildApron` is one quad in the terrain's own material at GROUND - 0.035,
+x -150 to 270, z 128 to 300, sized so its own edge is outside High's 65 m fog
+from anywhere in the field. Its material args are byte identical to
+`street.js`'s so `cel`'s cache hands back the same material and the quad
+merges into the terrain's existing bucket: it costs no draw call, which the
+budget below confirms.
+
+THE ORBIT RINGS DREW AS SPOKES. Fourteen dozen little radial sticks pointing
+out of the mast. A chord mesh is made lying flat by `rotateX(-PI/2)`, which
+puts its long axis on +X, and a Y rotation by t sends +X to (cos t, 0, -sin t),
+which at t = -a IS the radial direction. Tangential is `-a - PI/2`.
+
+THE SPLIT-S UPRIGHTS READ AS WIRE at 0.20 m and the label read across the run
+instead of along it. 0.32 m and re-sited to the flight axis.
+
+THE MAST HEAD WAS SOLID BUT NOT LANDABLE, and the surface probe is the only
+reason that was found: a slab collides, so a quad set down on the head does
+stop, but `heightAt` went on answering with the deck 10 m below and the sim
+thought the quad was 10 m in the air. Wrong clearance, wrong camera floor.
+It is a deck now, which is the town's own rule for a roof. The tap wall's
+coping stays a slab, also the town's rule: works and pool make roofs and
+floors landable and nothing else, and 0.75 m of parapet is a ledge.
+
+THE SEAM BETWEEN PLATFORMS. `heightAt` tests a platform with strict `>` and
+`<`, so the shared edge between two rectangles belongs to neither and the
+query falls to bare ground on it. Invisible everywhere else in the town,
+because a roof is one rectangle on its own; here ninety tile edge to edge. A
+transect measured it at exactly one sample wide: x 96.00 read 0.45, x 96.01
+read 0.75. Zero area, and nothing in flight will ever land on it, but a spawn
+or a reset IS seated at an authored coordinate, and the authored coordinates
+are the seams. The mast centre is 96, 160, a corner where four meet. Fixed in
+our own code by overlapping the platform rectangles 2 mm, not by patching
+vendored `heightAt`. Nothing drawn and nothing solid moves.
+
+MEASURED.
+
+- Swept collision probe, `.loop/evidence/places-lines.js`, 54 lines: the works
+  gap to the track, both track axes, the loop through both arches both ways
+  and over the top, the wall run at the target and over it, the split-S east
+  over the bar, west back through the gate and under the bar, four quarters of
+  the 10 m ring, in under the low deck, between the two decks, over the head,
+  and both diagonals of the practice box. 54 of 54 clear.
+- And FIVE NEGATIVE CONTROLS, which the probe was worth much less without:
+  lines aimed at the wall face, an arch leg, a mast leg, the paddy water and
+  the split-S bar, failing if any comes back clear. A world where nothing was
+  solid passed all 54 of the first kind. 59 of 59 now.
+- Surfaces: mast head 34.75, decks 12.45 and 24.45, paddy water 0.57, bunds
+  and pads 0.75, track 0.77, apron 0.45, and 10 of 10 seam samples covered.
+  The HUD at y 38 over the mast reads 3.0 m above the ground, which is the
+  head fix end to end.
+- `node scripts/collider-audit.js`: phantom 2162 m3 (2182 before any of this
+  session's work), 97 boxes over five (ceiling 350), holes 15659 of 43465
+  (ceiling 20300), mean cover 0.605 (floor 0.45). Every check 15 threshold has
+  more headroom than it started the session with.
+- `window.__budget`: the crossing is 640 draw calls and 1,142,257 triangles
+  against 640 and 1,137,603 before the field. No new draw call, +4,654
+  triangles, which is the apron. In the field 238 calls low and 103 from the
+  air. Attribute memory 63.2 MB unchanged.
+- `lint:memory` PASS at 72 modules, `lint:shell` PASS, `lint:attract` PASS,
+  `lint:nouns` PASS, `lint:fc` 30 of 30, `lint:presets` 3 of 3.
+- `lint:catalog` COULD NOT RUN in this container and that is not this change:
+  `vendor/betaflight` is an uninitialised submodule here, and the lint reads
+  `src/main/fc/parameter_names.h` out of it. Nothing in this turn touches FC
+  code.
+
+NOT DONE, and written down so it is not lost. `MAP_BUILD_MS.city` stays at
+7994 with the field in it. `buildPlaces` went from 147 to 164 ms to about
+284 ms, against a world build of 6,700 to 6,800 ms, so the loading bar's
+estimate is still inside its own noise and moving it would be fitting a
+constant to one container's clock.
+
+`npm run verify` RUN, and it is the reason for the rest of this entry: 13 of
+16. Removing three of four maps touches the registry, the loading bar, the
+quality presets and the UI, which is the class of change the whole shell drive
+is for, and the owner asked for self verification.
+
+- Checks 2 to 14 PASS, determinism included: node and headless Chrome both
+  `de0401cd4266`, one hash across 30, 60, 144 and 240 Hz, console clean.
+- Check 15 world-scale FAIL, and check 16 map-isolation FAIL, and check 1
+  build-clean FAIL. ALL THREE ARE PRE-EXISTING, and that is measured, not
+  assumed: a worktree at 974f4ce, the last pushed commit and before any of
+  this session's work, was driven with the same camera and the same steps and
+  returned the same numbers to the digit. The field is 93 draw calls, 913063
+  triangles, 69.8 MB, 29 MB and 101 meshes there AND at HEAD, against recorded
+  figures of 303, 1014037, 32 and 169. Check 15's four complaints are the
+  field's gate opening W and H at 0.0000, its grass blade minimum at 0.0060 and
+  the city's handrail at null with a count of 0: all four identical at 974f4ce.
+  Check 1 is `emcc not found`, because `vendor/betaflight` is an uninitialised
+  submodule in this container and there is no emsdk. It is the same reason
+  `lint:catalog` cannot run here.
+- What check 15 measures about THIS change is inside its band on every count:
+  phantom 2162 m3 of 74013, 97 boxes over five, 15659 of 43465 under half
+  covered, mean 0.605.
+
+THOSE THRESHOLDS ARE NOT TOUCHED. A recorded figure that no longer matches the
+tree is either a regression somebody has to find or a re-measure somebody has
+to justify in writing, and neither is this turn's work: it would be a
+different change, made for its own reasons, and folding it in here would hide
+it. Written down so the next turn starts from a fact rather than a surprise.

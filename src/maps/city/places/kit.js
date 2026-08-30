@@ -166,6 +166,38 @@ export function mats() {
   M.civicAlt = cel({ color: PAL.schoolWallAlt, bands: 3, tint: T });
   M.civicBand = cel({ color: PAL.schoolWallBlue, bands: 3, tint: T });
   M.civicTrim = cel({ color: PAL.schoolTrim, bands: 3, tint: TD });
+
+  /*
+   * ---- the training field ----
+   *
+   * PADDY WATER is not the canal and not the pool. A flooded 田んぼ in spring
+   * is a shallow tray of muddy water with the sky in it and the young rice
+   * greening it, so it is `PAL.water` pulled toward the town's own grass:
+   * lighter than the canal, greener than the pool, and flat, because it takes
+   * its colour from the sky rather than from the sun.
+   *
+   * THE BUND is the earth wall round it, which is the same wet earth as
+   * `PAL.dirt` with the light gone out of it.
+   */
+  M.paddyWater = flat({ color: 0x9cc0bc });
+  M.paddyBund = cel({ color: 0xb2a48f, bands: 3, tint: 0x7a7396 });
+  /* The arch gantries. Painted steel, and pale enough that the safety yellow
+   * round the opening is the thing the eye lands on: the band is what tells a
+   * pilot where the gap is, and it cannot compete with the frame. */
+  M.archSteel = cel({ color: 0xa8b6c0, bands: 3, tint: 0x63607f });
+  /* Paint on gravel: the orbit rings, the practice box, the centre lines.
+   * `ringMid` is the 10 m ring, which is the one a pilot holds, so it is the
+   * one that is a different colour. */
+  M.ringLine = flat({ color: PAL.lineWhite });
+  M.ringMid = flat({ color: PAL.lineYellow });
+  /* The wind sock, which is the one thing a flying field has to have. */
+  M.orangeSock = flat({ color: PAL.orange });
+  /*
+   * The town's own terrain colour, byte for byte the arguments `street.js`
+   * passes, so `cel`'s cache hands back the SAME material and the training
+   * field's apron merges into the same bucket as the grid it continues.
+   */
+  M.terrain = cel({ color: 0xc4c4b6, bands: 3, tint: 0x7a7396 });
   M.tileLane = flat({ color: 0x2c4c66 });                            // the painted lane line
   /*
    * Water, indoors, seen from above, and it has to be brighter than a

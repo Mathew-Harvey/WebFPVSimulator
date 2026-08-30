@@ -316,8 +316,9 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  */
 /* field: field.js, scene.js, post.js. city: all 59 vendored files, plus
  * index.js, animation.js, bake.js, drawn.js and references.js, plus the
- * seven under places/ that build the works road, the disused works, the
- * municipal pool and the blossom that falls over them: 71 in all. It was 63 while vendored/world/petals.js sat
+ * eight under places/ that build the works road, the disused works, the
+ * municipal pool, the training field and the blossom that falls over the
+ * first three: 72 in all. It was 63 while vendored/world/petals.js sat
  * in the tree unimported, and 64 once the falling blossom was built again.
  * scan.js is ours and harness only, so it never arrives on a player's
  * load. Check 16 asserts the city count against what the browser actually
@@ -328,7 +329,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * Bardwell's yard were removed on 2026-08-30, and their three entries went
  * with them. `npm run lint:memory` prints the fetched count per map beside
  * this number. */
-const MAP_MODULE_COUNT = { field: 1, city: 71, custom: 1 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -5752,11 +5753,11 @@ export async function boot({ loading, bootStart, mapId }) {
     const id = view && view.id;
     const q = qualityFor(ui.settings.graphics);
     /* The city's block is the fallback now that it is the only freestyle
-   * world: the previous default was the bando's and the bando is gone. Any
-   * id with no block of its own is the race field, whose scale is the
-   * session's rather than a map pipeline's, so the branch is a shape the
-   * caller can rely on rather than a meaningful answer. */
-  const mapQ = id && q[id] ? q[id] : q.city;
+     * world: the previous default was the bando's and the bando is gone. Any
+     * id with no block of its own is the race field, whose scale is the
+     * session's rather than a map pipeline's, so the branch is a shape the
+     * caller can rely on rather than a meaningful answer. */
+    const mapQ = id && q[id] ? q[id] : q.city;
     const user = view && view.post && view.post.userScale != null
       ? view.post.userScale
       : renderScaleOf(ui.settings);

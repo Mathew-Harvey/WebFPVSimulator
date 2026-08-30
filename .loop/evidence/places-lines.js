@@ -78,7 +78,47 @@
     ['pool 5b  in at the gate', [59.0, 1.60, 80.5], [59.0, 1.60, 86.0]],
     ['road 1   the works road, west to east', [31.0, 1.60, 78.8], [86.0, 1.60, 78.8]],
     ['road 2   the arm to the apron', [28.0, 1.60, 70.5], [32.0, 1.60, 73.5]],
+
+    /* ---- ひばり台ドローン練習場, the training field ---- */
+    ['field 0  the works gap to the track', [32.0, 1.40, 110.0], [32.0, 1.40, 122.0]],
+    ['field 1  the track, south to north', [32.0, 1.60, 120.0], [32.0, 1.60, 186.0]],
+    ['field 2  the spine, west to east', [10.0, 1.60, 132.0], [114.0, 1.60, 132.0]],
+    ['loop 1   through both arches, east', [14.0, 2.50, 139.0], [50.0, 2.50, 139.0]],
+    ['loop 1r  through both arches, west', [50.0, 2.50, 139.0], [14.0, 2.50, 139.0]],
+    ['loop 2   over the top of both', [14.0, 10.50, 139.0], [50.0, 10.50, 139.0]],
+    ['loop 3   the second half, arch 1 back', [40.0, 2.50, 139.0], [24.0, 2.50, 139.0]],
+    ['wall 1   the run at the target', [56.0, 3.20, 128.0], [56.0, 3.20, 151.6]],
+    ['wall 2   over the top of it', [56.0, 9.00, 140.0], [56.0, 9.00, 164.0]],
+    ['splits 1 east over the bar', [10.0, 14.00, 168.0], [40.0, 14.00, 168.0]],
+    ['splits 2 west back through the gate', [40.0, 1.40, 168.0], [10.0, 1.40, 168.0]],
+    ['splits 3 under the bar, over the gate', [10.0, 7.00, 168.0], [40.0, 7.00, 168.0]],
+    ['orbit 1  the 10 m ring, first quarter', [106.0, 8.00, 160.0], [96.0, 8.00, 170.0]],
+    ['orbit 2  the 10 m ring, second', [96.0, 8.00, 170.0], [86.0, 8.00, 160.0]],
+    ['orbit 3  the 10 m ring, third', [86.0, 8.00, 160.0], [96.0, 8.00, 150.0]],
+    ['orbit 4  the 10 m ring, fourth', [96.0, 8.00, 150.0], [106.0, 8.00, 160.0]],
+    ['orbit 5  in under the low deck', [112.0, 8.00, 160.0], [98.2, 8.00, 160.0]],
+    ['orbit 6  between the two decks', [112.0, 18.00, 160.0], [80.0, 18.00, 160.0]],
+    ['orbit 7  over the head of the mast', [78.0, 39.00, 160.0], [114.0, 39.00, 160.0]],
+    ['practice 1 the box, corner to corner', [34.0, 2.00, 176.0], [78.0, 2.00, 186.0]],
+    ['practice 2 the box, the other way', [78.0, 2.00, 176.0], [34.0, 2.00, 186.0]],
   ];
+  /*
+   * NEGATIVE CONTROLS, and the probe is worth much less without them.
+   *
+   * Every line above asserts that something is CLEAR, and a world in which
+   * nothing at all was solid would pass all of them. These five say the
+   * opposite: each one is aimed squarely at a thing that has to stop a quad,
+   * and the run fails if any of them comes back clear. They are the reason
+   * the other fifty four mean anything.
+   */
+  const SOLID = [
+    ['the wall tap face', [56.0, 3.20, 148.0], [56.0, 3.20, 156.0]],
+    ['an arch leg', [24.0, 3.00, 132.0], [24.0, 3.00, 146.0]],
+    ['a mast leg', [94.5, 8.00, 152.0], [94.5, 8.00, 168.0]],
+    ['the paddy water', [56.0, 0.50, 122.0], [72.0, 0.50, 122.0]],
+    ['the split-S bar', [24.0, 12.10, 160.0], [24.0, 12.10, 176.0]],
+  ];
+
   const out = [];
   for (const [name, a, b] of LINES) {
     const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / 0.5));
@@ -97,6 +137,25 @@
       px = qx; py = qy; pz = qz;
     }
     out.push([name, bad]);
+  }
+  /* And the controls, reported as a failure when they are NOT hit. */
+  for (const [name, a, b] of SOLID) {
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / 0.5));
+    let hit = null;
+    let px = a[0]; let py = a[1]; let pz = a[2];
+    for (let i = 1; i <= n; i += 1) {
+      const t = i / n;
+      const qx = a[0] + (b[0] - a[0]) * t;
+      const qy = a[1] + (b[1] - a[1]) * t;
+      const qz = a[2] + (b[2] - a[2]) * t;
+      const h = window.__hit(px, py, pz, qx, qy, qz);
+      if (h.kind) {
+        hit = { kind: h.kind, at: [+qx.toFixed(1), +qy.toFixed(1), +qz.toFixed(1)] };
+        break;
+      }
+      px = qx; py = qy; pz = qz;
+    }
+    out.push([`CONTROL  ${name}`, hit ? null : { kind: 'NOTHING THERE', at: b }]);
   }
   return JSON.stringify(out);
 })()

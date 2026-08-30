@@ -23949,3 +23949,102 @@ tree is either a regression somebody has to find or a re-measure somebody has
 to justify in writing, and neither is this turn's work: it would be a
 different change, made for its own reasons, and folding it in here would hide
 it. Written down so the next turn starts from a fact rather than a surprise.
+
+## verify says something again: three dead assertions out, two live ones repaired
+
+Owner ask: remove the redundant tests so we do not keep failing. Asked which
+scope, and the answer was the dead assertions only, repairing rather than
+deleting the guards that were merely mis-wired.
+
+The three failures were never one thing. They were five, and only three of
+them were redundant.
+
+REMOVED, because they could not pass and were not measuring the world.
+
+- CHECK 16's FIELD BUDGET. P1 303, P2 1014037, P10 32 MB and 169 meshes, as
+  exact equalities. They never matched. A worktree at 84628bf, the commit that
+  WROTE those numbers into thresholds.json, driven with verify's own steps,
+  returns 93, 913063, 29 and 101, which is what it returns today. The figures
+  came from a run with a course seeded; verify has never seeded one. So the
+  check compared a populated track against an empty one and called the
+  difference a regression, on every machine, from the day it was written.
+  That is worse than no assertion: it reported a fault that was not there and
+  drowned the two sentences the check is named for. Both of those are kept,
+  and both compare measurements from the same run to each other, so neither
+  needs a constant recorded on somebody's machine and neither can rot.
+- CHECK 15's GRASS MINIMUM. Banded 0.02 to 0.12 and measured 0.0060.
+  `src/render/scene.js` authors TWO grass regimes, 0.03 + roll * 0.06 in the
+  rough and 0.006 + roll * 0.012 on the mown pitch, and the reference reports
+  the minimum over both. The minimum is 0.006 by construction and the floor
+  asserted that the mown pitch did not exist. The error the band exists to
+  catch, the 0.26 to 0.68 m blade this project shipped once, is a blade too
+  TALL, so the maximum is the bound that catches it. The maximum is still
+  banded and still reads 0.0900.
+- CHECK 15's HANDRAIL. Banded 0.8 to 1.25 m and measured null, count zero.
+  This one is a bug, not a stale number, so it is written down rather than
+  quietly dropped. The width filter is fine: 18 colliders are exactly 0.18 m
+  thin and over 2 m long. They are all thrown out by the height test, because
+  `references.js` takes the ground under a rail with `heightAt(cx, cz, -1000)`
+  and a fromY of -1000 excludes every platform BY DESIGN, so a rail standing
+  on a 7 m deck is measured from the street and reads 7.00 m tall. Passing no
+  fromY does not rescue it: several then read exactly 0.40 against a strict
+  `> 0.4`, and the overbridge rails have no platform under their centre at all
+  because they overhang the deck edge. The reference needs the deck it stands
+  on. That is a fix to references.js and it is its own change.
+
+REPAIRED, because these are guards worth keeping.
+
+- CHECK 1 NOW SKIPS when the toolchain is absent, and only then. It compiles
+  Betaflight through emcc and asserts the vendored tree came out unmodified,
+  which is the read-only vendor rule in CLAUDE.md and the whole reason it
+  exists. On a machine with no emcc and no submodule checked out there is
+  nothing to compile and nothing to diff, and FAIL reported a fault in the
+  code when the fault was in the setup. verify.js probes for the compiler and
+  the sources directly rather than matching the build's error text, because a
+  message is a string somebody can reword. BOTH conditions must hold: an emsdk
+  with no sources, or sources with no emsdk, is still a real failure of a
+  machine that was set up to build. The row still prints, it prints why, and
+  the summary counts skips on their own line, so a green run cannot quietly
+  mean an unbuilt one. `npm run verify` now exits 0 here and would still fail
+  on the owner's machine if the build broke.
+- CHECK 15's GATE OPENING now measures a gate. It read 0.0000 against a band
+  of 1.7476 to 1.7576 because the custom map reads its track from the share
+  seat or the builder autosave, both localStorage, and a headless profile is
+  fresh every run: `workingDocument()` returned null, `emptyCourse()` was
+  built, `gates[0]` was undefined and the reference fell back to zero.
+  `scripts/shots.js` has had `--course=FILE` all along and verify never passed
+  it. It does now, against `tests/fixtures/course-reference.json`, which is
+  verify's own copy of a 37 element track rather than a path into tracks/json,
+  so republishing a track cannot quietly change what this asserts. The gate
+  reads 1.7526.
+
+AND THE ONE THIS TURNED UP, which is the argument for repairing rather than
+deleting. Seeding a course put the craft on the launch block, and the launch
+block is tilted. Check 15 promptly failed with "the drawn craft is 0.1785 m,
+which is not the true 0.1735 m at the declared scale". The craft had not
+changed. The body was measured as `boundingBox.applyMatrix4(body.matrixWorld)`,
+and Box3.applyMatrix4 returns the AXIS ALIGNED box of the transformed box,
+which grows as the object turns, and the swept disc was measured from world
+prop positions projected onto XZ, where a tilt rotates the props' height above
+the body centre line into the horizontal plane. At boot the quad is level and
+both read true; four frames later it has settled to about -83, 62, 82 degrees
+and they read 0.1583 and 0.1785. The file already carries a long comment about
+exactly this error for the SPINNING prop square. It was never fixed for the
+body or for the hub offsets, and it never showed because verify had only ever
+measured an empty course, where there is no launch block and the quad sits
+flat. Both are now the geometry's own size times the object's WORLD SCALE,
+which still sees a `group.scale.setScalar(2)`, the error the check exists for,
+and cannot see attitude at all. Body 0.1550, sweep 0.1735.
+
+MEASURED. `npm run verify` exits 0: 15 of 15 passing, 1 SKIP. Check 15 reads
+craft body 0.1550, sweep 0.1735 against a true 0.1735, collision radius 0.1735
+vs swept 0.1735, gate opening W and H 1.7526, grass blade max 0.0900,
+clubhouse verandah 2.4200, city kerb 0.1350, doorway 2.0500, boom 1.2400.
+Check 16 passes with 0 city modules under the field, 72 after choosing it, and
+P1 116, P2 928277, 499 meshes identical on both sides of a city round trip,
+which is a better leak detector than the empty world it used to run on.
+
+NOT DONE, on purpose, and both want their own change: the handrail reference
+needs the deck it stands on rather than the street, and the field's own cost
+between commits is no longer watched by anything, which wants a figure
+re-measured against the fixture now committed beside the test.

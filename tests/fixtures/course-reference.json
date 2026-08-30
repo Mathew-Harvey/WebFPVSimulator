@@ -1,0 +1,1064 @@
+{
+  "schemaVersion": 1,
+  "id": "trk-0870b164",
+  "name": "2022 AU Nationals",
+  "createdUtc": "2026-08-17T10:25:48Z",
+  "modifiedUtc": "2026-08-17T10:25:48Z",
+  "field": {
+    "width": 128,
+    "depth": 108,
+    "gridSize": 1
+  },
+  "settings": {
+    "tangentScale": 1.1,
+    "minCurveRadius": 2.5,
+    "samplesPerSegment": 48
+  },
+  "branding": {
+    "logo": null,
+    "logoName": ""
+  },
+  "elements": [
+    {
+      "id": "el-1",
+      "type": "gate",
+      "name": "0",
+      "position": {
+        "x": 32.52,
+        "y": 21.88,
+        "z": 0
+      },
+      "yaw": -0.066501,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-2",
+      "type": "flag",
+      "name": "1",
+      "position": {
+        "x": 8.33,
+        "y": 34.79,
+        "z": 0
+      },
+      "yaw": -0.784906,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-3",
+      "type": "flag",
+      "name": "2",
+      "position": {
+        "x": 7.85,
+        "y": 56.79,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-4",
+      "type": "flag",
+      "name": "3",
+      "position": {
+        "x": 6,
+        "y": 78.79,
+        "z": 0
+      },
+      "yaw": -2.356687,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-5",
+      "type": "gate",
+      "name": "4",
+      "position": {
+        "x": 10.64,
+        "y": 78.79,
+        "z": 0
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-6",
+      "type": "gate",
+      "name": "5",
+      "position": {
+        "x": 17.04,
+        "y": 78.79,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-7",
+      "type": "diveGate",
+      "name": "6",
+      "position": {
+        "x": 29.94,
+        "y": 64.25,
+        "z": 0
+      },
+      "yaw": 0.785895,
+      "pitch": 1.314431,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 3.7756,
+        "clearW": 1.524,
+        "clearH": 1.8288,
+        "levelPitch": 1.862201
+      }
+    },
+    {
+      "id": "el-8",
+      "type": "flag",
+      "name": "7",
+      "position": {
+        "x": 30.29,
+        "y": 52.77,
+        "z": 0
+      },
+      "yaw": -0.927928,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-9",
+      "type": "gate",
+      "name": "8",
+      "position": {
+        "x": 38.1,
+        "y": 45.89,
+        "z": 0
+      },
+      "yaw": 3.141593,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-10",
+      "type": "flag",
+      "name": "9",
+      "position": {
+        "x": 45.94,
+        "y": 54.58,
+        "z": 0
+      },
+      "yaw": 0.827978,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-11",
+      "type": "gate",
+      "name": "10",
+      "position": {
+        "x": 51.31,
+        "y": 65.13,
+        "z": 0
+      },
+      "yaw": -1.110905,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-12",
+      "type": "gate",
+      "name": "11",
+      "position": {
+        "x": 39.95,
+        "y": 87.33,
+        "z": 0
+      },
+      "yaw": -1.454694,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-13",
+      "type": "gate",
+      "name": "12-13",
+      "position": {
+        "x": 52.795,
+        "y": 90.51,
+        "z": 0
+      },
+      "yaw": 2.030688,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-14",
+      "type": "flag",
+      "name": "14",
+      "position": {
+        "x": 56.26,
+        "y": 99.56,
+        "z": 0
+      },
+      "yaw": -1.928714,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-15",
+      "type": "flag",
+      "name": "15",
+      "position": {
+        "x": 62.58,
+        "y": 101.95,
+        "z": 0
+      },
+      "yaw": 2.448884,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-16",
+      "type": "diveGate",
+      "name": "16",
+      "position": {
+        "x": 71.45,
+        "y": 93.53,
+        "z": 0
+      },
+      "yaw": 1.865445,
+      "pitch": -1.045763,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 2.8156,
+        "clearW": 1.524,
+        "clearH": 1.8288,
+        "levelPitch": 1.862201
+      }
+    },
+    {
+      "id": "el-17",
+      "type": "waypoint",
+      "name": "17",
+      "position": {
+        "x": 84.5,
+        "y": 62.38,
+        "z": 0
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 1.6,
+        "poleRadius": 0.02,
+        "clearance": 0
+      }
+    },
+    {
+      "id": "el-18",
+      "type": "flag",
+      "name": "18",
+      "position": {
+        "x": 92.73,
+        "y": 70.55,
+        "z": 0
+      },
+      "yaw": 2.169411,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-19",
+      "type": "diveGate",
+      "name": "19",
+      "position": {
+        "x": 89.72,
+        "y": 72.94,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 1.570796,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 4.572,
+        "clearW": 1.524,
+        "clearH": 1.8288,
+        "levelPitch": 1.862201
+      }
+    },
+    {
+      "id": "el-20",
+      "type": "diveGate",
+      "name": "20",
+      "position": {
+        "x": 77.76,
+        "y": 60.98,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 1.570796,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 4.572,
+        "clearW": 1.524,
+        "clearH": 1.8288,
+        "levelPitch": 1.862201
+      }
+    },
+    {
+      "id": "el-21",
+      "type": "gate",
+      "name": "21",
+      "position": {
+        "x": 68.59,
+        "y": 75.28,
+        "z": 0
+      },
+      "yaw": -2.318067,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-22",
+      "type": "gate",
+      "name": "22",
+      "position": {
+        "x": 86.26,
+        "y": 93.31,
+        "z": 0
+      },
+      "yaw": -2.426534,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-23",
+      "type": "flag",
+      "name": "23",
+      "position": {
+        "x": 105.24,
+        "y": 88.49,
+        "z": 0
+      },
+      "yaw": 2.387144,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-24",
+      "type": "gate",
+      "name": "24",
+      "position": {
+        "x": 121.94,
+        "y": 77.37,
+        "z": 0
+      },
+      "yaw": 1.811322,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-25",
+      "type": "flag",
+      "name": "25",
+      "position": {
+        "x": 111.25,
+        "y": 57.17,
+        "z": 6.11
+      },
+      "yaw": 0.130128,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-26",
+      "type": "diveGate",
+      "name": "26",
+      "position": {
+        "x": 99.78,
+        "y": 45.76,
+        "z": 0
+      },
+      "yaw": -2.656484,
+      "pitch": 1.307439,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 6.6456,
+        "clearW": 1.524,
+        "clearH": 1.8288,
+        "levelPitch": 1.862201
+      }
+    },
+    {
+      "id": "el-27",
+      "type": "waypoint",
+      "name": "27",
+      "position": {
+        "x": 102.2,
+        "y": 49.11,
+        "z": 0
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 1.6,
+        "poleRadius": 0.02,
+        "clearance": 0
+      }
+    },
+    {
+      "id": "el-28",
+      "type": "gate",
+      "name": "28",
+      "position": {
+        "x": 98.81,
+        "y": 42.64,
+        "z": 0
+      },
+      "yaw": -1.086174,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-29",
+      "type": "gate",
+      "name": "29",
+      "position": {
+        "x": 96.69,
+        "y": 46.72,
+        "z": 0
+      },
+      "yaw": -1.086174,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-30",
+      "type": "flag",
+      "name": "30",
+      "position": {
+        "x": 93.71,
+        "y": 39.02,
+        "z": 0
+      },
+      "yaw": -1.184245,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 2.5,
+        "poleRadius": 0.025,
+        "clearance": 1.5
+      }
+    },
+    {
+      "id": "el-31",
+      "type": "gate",
+      "name": "31",
+      "position": {
+        "x": 98.62,
+        "y": 28.29,
+        "z": 3.49
+      },
+      "yaw": 2.701541,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-32",
+      "type": "gate",
+      "name": "32-36",
+      "position": {
+        "x": 90.57,
+        "y": 17.91,
+        "z": 0
+      },
+      "yaw": -0.066501,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-33",
+      "type": "waypoint",
+      "name": "33",
+      "position": {
+        "x": 63.3,
+        "y": 22.06,
+        "z": 2.68
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 1.6,
+        "poleRadius": 0.02,
+        "clearance": 0
+      }
+    },
+    {
+      "id": "el-34",
+      "type": "waypoint",
+      "name": "34",
+      "position": {
+        "x": 62.98,
+        "y": 17.24,
+        "z": 2.68
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 1.6,
+        "poleRadius": 0.02,
+        "clearance": 0
+      }
+    },
+    {
+      "id": "el-35",
+      "type": "waypoint",
+      "name": "35",
+      "position": {
+        "x": 90.04,
+        "y": 6,
+        "z": 0
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 1.6,
+        "poleRadius": 0.02,
+        "clearance": 0
+      }
+    },
+    {
+      "id": "el-36",
+      "type": "gate",
+      "name": "37",
+      "position": {
+        "x": 69.32,
+        "y": 19.23,
+        "z": 0
+      },
+      "yaw": -0.066501,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 1.524,
+        "clearH": 1.524,
+        "levelPitch": 1.557401
+      }
+    },
+    {
+      "id": "el-37",
+      "type": "startPads",
+      "name": "Grid",
+      "position": {
+        "x": 47.486844,
+        "y": 20.88322,
+        "z": 0
+      },
+      "yaw": 3.075092,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "pads": 4,
+        "spacing": 1.5,
+        "padSize": 0.6
+      }
+    }
+  ],
+  "sequence": [
+    {
+      "id": "sq-1",
+      "elementId": "el-1",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-2",
+      "elementId": "el-2",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-3",
+      "elementId": "el-3",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-4",
+      "elementId": "el-4",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-5",
+      "elementId": "el-5",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-6",
+      "elementId": "el-6",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": true
+    },
+    {
+      "id": "sq-7",
+      "elementId": "el-7",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-8",
+      "elementId": "el-8",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-9",
+      "elementId": "el-9",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-10",
+      "elementId": "el-10",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-11",
+      "elementId": "el-11",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-12",
+      "elementId": "el-12",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-13",
+      "elementId": "el-13",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": true
+    },
+    {
+      "id": "sq-14",
+      "elementId": "el-14",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-15",
+      "elementId": "el-15",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-16",
+      "elementId": "el-16",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-17",
+      "elementId": "el-17",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 0,
+      "overridden": false
+    },
+    {
+      "id": "sq-18",
+      "elementId": "el-18",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-19",
+      "elementId": "el-19",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-20",
+      "elementId": "el-20",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-21",
+      "elementId": "el-21",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-22",
+      "elementId": "el-22",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-23",
+      "elementId": "el-23",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-24",
+      "elementId": "el-24",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-25",
+      "elementId": "el-25",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-26",
+      "elementId": "el-26",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": true
+    },
+    {
+      "id": "sq-27",
+      "elementId": "el-27",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 0,
+      "overridden": false
+    },
+    {
+      "id": "sq-28",
+      "elementId": "el-28",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": true
+    },
+    {
+      "id": "sq-29",
+      "elementId": "el-29",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": true
+    },
+    {
+      "id": "sq-30",
+      "elementId": "el-30",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 1.5,
+      "overridden": false
+    },
+    {
+      "id": "sq-31",
+      "elementId": "el-31",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": true
+    },
+    {
+      "id": "sq-32",
+      "elementId": "el-32",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-33",
+      "elementId": "el-33",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 0,
+      "overridden": false
+    },
+    {
+      "id": "sq-34",
+      "elementId": "el-34",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 0,
+      "overridden": false
+    },
+    {
+      "id": "sq-35",
+      "elementId": "el-35",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "right",
+      "clearance": 0,
+      "overridden": false
+    },
+    {
+      "id": "sq-36",
+      "elementId": "el-32",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-37",
+      "elementId": "el-36",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    }
+  ]
+}

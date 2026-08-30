@@ -1,8 +1,19 @@
 /*
  * verify.js: the npm run verify entry point. Runs every Stage 1 check from
  * STAGE1.md, prints one table row per check with the measured value, the
- * threshold and PASS or FAIL, then exits non-zero if anything failed. A
- * check can fail, it can never crash the runner or be skipped.
+ * threshold and PASS, FAIL or SKIP, then exits non-zero if anything failed.
+ * A check can fail and it can never crash the runner.
+ *
+ * SKIP is narrow and it is loud. It means the check's TOOLCHAIN is not on
+ * this machine, which is not the same thing as the check failing, and only
+ * check 1 can reach it: emcc absent and vendor/betaflight not checked out
+ * means there is nothing to build and nothing to compare, so "FAIL, build
+ * exited 1" was reporting a broken build on a machine that never had the
+ * compiler. It named the wrong thing and it named it every run. A skipped
+ * check still prints its row, still prints WHY, and is counted separately in
+ * the summary line so a green run cannot quietly mean an unbuilt one. When
+ * emcc IS present the skip is unreachable and check 1 behaves as it always
+ * did, so this cannot hide a real build break from anybody who can build.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -22,6 +33,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,10 +79,26 @@ function runBuild() {
     encoding: 'utf8',
   });
   const spawnFault = build.error ? `verify could not run npm: ${build.error.message}\n` : '';
+  /*
+   * Is the toolchain here at all? Probed directly rather than by matching the
+   * build's error text, because a message is a string somebody can reword and
+   * this has to be exact: it decides between "your build is broken" and "you
+   * cannot build here". Both conditions have to hold. An emsdk with no
+   * vendored sources, or sources with no emsdk, is still a real failure of a
+   * machine that was set up to build.
+   */
+  const emcc = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['emcc'], {
+    encoding: 'utf8',
+  });
+  const haveEmcc = Boolean(process.env.EMSDK) || emcc.status === 0;
+  const haveSources = existsSync(join(root, 'vendor/betaflight/src/main/fc/parameter_names.h'));
   return {
     exitCode: build.status ?? 1,
     output: `${spawnFault}${build.stdout ?? ''}${build.stderr ?? ''}`,
     vendorDiff: (vendor.stdout ?? '').trim(),
+    toolchainAbsent: !haveEmcc && !haveSources
+      ? 'no emcc on PATH, EMSDK unset, and vendor/betaflight is not checked out'
+      : '',
   };
 }
 
@@ -105,7 +133,10 @@ async function main() {
 
   const build = runBuild();
   if (build.exitCode !== 0) {
-    console.log('build:wasm output (build failed, checks will report it):');
+    console.log(build.toolchainAbsent
+      /* Not "build failed". It never started. */
+      ? `build:wasm could not run (${build.toolchainAbsent}); check 1 will SKIP:`
+      : 'build:wasm output (build failed, checks will report it):');
     console.log(build.output.trim().split('\n').slice(-15).join('\n'));
     console.log('');
   }
@@ -219,6 +250,22 @@ async function main() {
          * nothing at all on a machine with a GPU, and this check would
          * answer differently depending on who ran it. */
         '--graphics=high',
+        /*
+         * A COURSE, because without one this run measured a map with nothing
+         * in it and then asserted a gate's aperture.
+         *
+         * The custom map reads a track from the share seat or the builder's
+         * autosave, both of which are localStorage, and a headless profile is
+         * fresh every time. So `workingDocument()` returned null, custom.js
+         * built `emptyCourse()`, and `gates[0]` was undefined: check 15 read
+         * the gate opening as 0.0000 against a band of 1.7476 to 1.7576 and
+         * failed on every machine since the day it was written. With this
+         * seeded it reads 1.7526.
+         *
+         * The fixture is verify's own copy and not a path into tracks/json,
+         * so republishing a track cannot quietly change what this asserts.
+         */
+        `--course=${join('tests', 'fixtures', 'course-reference.json')}`,
         'until:!!window.__boot && window.__boot().frames > 2',
         `eval:${collect}`,
         /* The race field's cost, at two parked cameras so the numbers are
@@ -267,11 +314,34 @@ async function main() {
              * first version measured 0.1754 m for a 0.155 m body: the hull,
              * not the airframe. Transforming the geometry's box keeps the
              * world scale and leaves the hull out. */
+            /*
+             * SCALE WITHOUT ROTATION, and this is the second half of the same
+             * lesson the prop comment below teaches.
+             *
+             * This used to be `boundingBox.applyMatrix4(body.matrixWorld)`,
+             * and Box3.applyMatrix4 returns the AXIS ALIGNED box of the
+             * transformed box, which GROWS as the object turns, exactly like
+             * the spinning prop square. Every craft this check ever measured
+             * was level, so it never showed: verify measured the custom map
+             * with no course seeded, and with no course there is no launch
+             * block, and with no launch block the quad sits flat. Seed a
+             * course and the quad settles onto the tilted block at roughly
+             * -83, 62, 82 degrees, the body box grows 0.1550 to 0.1583 and
+             * the swept disc 0.1735 to 0.1785, and the check reports "the
+             * drawn craft is not the true size at the declared scale" about a
+             * craft that is the right size and merely banked.
+             *
+             * The geometry's OWN box times the object's WORLD SCALE is the
+             * measurement that was wanted all along. It still sees a
+             * `group.scale.setScalar(2)`, which is the error this check
+             * exists for, and it cannot see attitude at all.
+             */
             'body.geometry.computeBoundingBox();' +
-            'const bb = body.geometry.boundingBox.clone().applyMatrix4(body.matrixWorld);' +
-            'const bs = new THREE.Vector3(); bb.getSize(bs);' +
-            'const origin = new THREE.Vector3().setFromMatrixPosition(g.matrixWorld);' +
-            'const at = new THREE.Vector3();' +
+            'const bs = new THREE.Vector3(); body.geometry.boundingBox.getSize(bs);' +
+            'const bws = new THREE.Vector3(); body.getWorldScale(bws);' +
+            'bs.set(bs.x * Math.abs(bws.x), bs.y * Math.abs(bws.y), bs.z * Math.abs(bws.z));' +
+            'const gsc = new THREE.Vector3(); g.getWorldScale(gsc);' +
+            'const gxz = Math.max(Math.abs(gsc.x), Math.abs(gsc.z));' +
             /*
              * The swept disc: how far the outside of a spinning prop reaches
              * from the craft's centre.
@@ -295,8 +365,12 @@ async function main() {
               'const rr = c.geometry.parameters.radiusTop;' +
               'if (rr < 0.05) { continue; }' +
               'c.getWorldScale(wsc);' +
-              'at.setFromMatrixPosition(c.matrixWorld).sub(origin);' +
-              'const d = Math.hypot(at.x, at.z) + rr * Math.max(Math.abs(wsc.x), Math.abs(wsc.z));' +
+              /* The hub offset in the CRAFT's frame, not the world's. A world
+               * offset projected onto XZ is a function of attitude: the props
+               * sit above the body's centre line, so a tilt rotates part of
+               * that height into the horizontal plane and the reach grows. */
+              'const at = c.position;' +
+              'const d = Math.hypot(at.x, at.z) * gxz + rr * Math.max(Math.abs(wsc.x), Math.abs(wsc.z));' +
               'if (d > maxR) { maxR = d; }' +
             '}' +
             'const th = window.__craftState().thresholds;' +
@@ -428,6 +502,7 @@ async function main() {
 
   const rows = [];
   let passing = 0;
+  let skipped = 0;
   for (const check of buildChecks()) {
     let r;
     try {
@@ -447,7 +522,9 @@ async function main() {
         };
       }
     }
-    if (r.pass) {
+    if (r.skipped) {
+      skipped += 1;
+    } else if (r.pass) {
       passing += 1;
     }
     rows.push([
@@ -455,14 +532,21 @@ async function main() {
       check.id,
       r.measured,
       check.thresholdText,
-      r.pass ? 'PASS' : 'FAIL',
-      r.reason ?? '',
+      r.skipped ? 'SKIP' : (r.pass ? 'PASS' : 'FAIL'),
+      r.skipped ? r.skipped : (r.reason ?? ''),
     ]);
   }
 
   console.log(renderTable(['#', 'check', 'measured', 'threshold', 'result', 'reason'], rows));
-  console.log(`\n${passing} of ${rows.length} checks passing`);
-  process.exit(passing === rows.length ? 0 : 1);
+  const ran = rows.length - skipped;
+  console.log(`\n${passing} of ${ran} checks passing`);
+  /* Said separately and said every time. A skipped check is not a passing
+   * one, and a summary that folded the two together would let an unbuilt
+   * machine read as a clean run. */
+  if (skipped > 0) {
+    console.log(`${skipped} check(s) COULD NOT RUN on this machine, see the SKIP rows above`);
+  }
+  process.exit(passing === ran ? 0 : 1);
 }
 
 main().catch((e) => {

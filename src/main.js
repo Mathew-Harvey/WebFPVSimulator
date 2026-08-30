@@ -2326,9 +2326,14 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A bail, in the Tony Hawk sense: the open combo is lost rather than
      * banked, and the workbook's streak multiplier goes back to one. The
      * detector's buffer goes too, or a half roll from before the crash
-     * would pair with a half roll after it into a trick nobody flew. */
-    trickDetector.reset();
-    score.crash();
+     * would pair with a half roll after it into a trick nobody flew.
+     * Guarded on the mode like the two ground paths, so a race map never
+     * touches the scorer at all rather than relying on there being nothing
+     * for it to touch. */
+    if (view.mode === 'freestyle') {
+      trickDetector.reset();
+      score.crash();
+    }
     clipCrashKind = kind;
     clipCrashUntil = nowWall + CLIP_CRASH_HOLD_MS;
     setCrashflip(false);

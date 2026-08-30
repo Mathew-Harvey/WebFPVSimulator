@@ -6698,9 +6698,7 @@ export class Ui {
     /* The score follows the OSD onto and off the screen, but only in
      * freestyle: a race has no score and an empty Score 0 over a lap timer
      * is a readout that never changes. */
-    this.scoreHud.setVisible(
-      this.osdMode === 'freestyle' && (screen === 'flight' || screen === 'paused'),
-    );
+    this.syncScoreVisible();
     this.renderMenu();
     this.syncBugChip();
     /* Last, and unconditionally. Last because a listener is entitled to
@@ -6985,6 +6983,15 @@ export class Ui {
       this.osdMode = mode;
     }
     const freestyle = this.osdMode === 'freestyle';
+    /*
+     * The score follows the MODE as well as the screen. show() decides
+     * visibility too, and on its own that is an ordering dependency: the
+     * mode changes when a map is swapped and the screen does not have to
+     * change with it. A custom track with no gates is a freestyle map by
+     * scene.js's own definition, so swapping onto one has to light the
+     * score up without waiting for the next show().
+     */
+    this.syncScoreVisible();
     const m = MAPS.find((x) => x.id === this.settings.map) ?? MAPS[0];
     const seat = this.settings.map === 'custom' ? activeCourseSummary() : null;
     const worldName = (seat && seat.name) || m.name;
@@ -7383,6 +7390,18 @@ export class Ui {
    * changes. Folding them into one call would mean handing the HUD a view
    * on frames where it has nothing to do.
    */
+  syncScoreVisible() {
+    /* setBest can be reached before build() has run in a future caller, and
+     * a missing overlay is not worth a crash on a screen change. */
+    if (!this.scoreHud) {
+      return;
+    }
+    this.scoreHud.setVisible(
+      this.osdMode === 'freestyle'
+      && (this.screen === 'flight' || this.screen === 'paused'),
+    );
+  }
+
   setScore(view) {
     this.scoreHud.update(view);
   }

@@ -24276,3 +24276,224 @@ started and abandoned without contact, and it STALLS the streak rather than
 killing it. Nothing emits it, because the detector has no concept of an
 attempt that did not complete. It would come from the same place as the
 obstacle work, since most abandoned tricks are abandoned around something.
+
+
+================================================================================
+2026-08-30  THE SCORE, SELF VERIFIED, AND THE THREE THINGS THAT WERE WRONG
+================================================================================
+
+Asked to self verify: prove it is robust, prove it works, prove it rewards
+stringing tricks together. Everything below was measured this turn, and three
+real defects came out of it. The first two were invisible to the checks that
+already existed because those checks fed the recogniser rate traces this
+project made up.
+
+--------------------------------------------------------------------------
+1. THE RECOGNISER HAD NEVER SEEN THE AIRCRAFT
+--------------------------------------------------------------------------
+
+Every recognition check drove trickdetect.js with trapezoid rate profiles
+written in the test file. That proves the grammar and proves nothing about
+whether a pilot flying the actual quad can score a point, because the rates a
+pilot makes come out of Betaflight's rate curve, the PID loop, the mixer and
+the plant, and none of those had been in the loop.
+
+`scripts/score-selftest.js` now loads dist/sim.wasm, arms it and FLIES.
+Sticks go in at 500 Hz on a grid, the module steps a millisecond at a time,
+and the detector is fed the same six numbers the shell feeds it out of the
+same state block. The stick is held until the integrated body rate reaches
+the target and then centred, which is what a pilot does with their eyes.
+Nothing is synthesised: the attitude the snap reads is the plant's own. The
+section SKIPS loudly if dist/sim.wasm is absent, because a check that quietly
+passes on no module is worse than no check.
+
+A flown roll, backflip, front flip, yaw spin, 720 roll, 180 roll, invert
+rewind and Rubik's Cube are all named correctly, and a flown three trick run
+banks 1597, the same figure the synthetic trace banks.
+
+--------------------------------------------------------------------------
+2. THE ATTITUDE SNAP ASKED THE WRONG QUESTION
+--------------------------------------------------------------------------
+
+snapTurns decided the residue class from where the craft ENDED: upright meant
+a whole number of turns, inverted meant a half. That is true for a trick begun
+the right way up and false for every trick that is not, and the middle of a
+Rubik's Cube is exactly that case. A Cube is a half roll to inverted, then a
+WHOLE flip that begins inverted and ends inverted, then a half roll home.
+
+It passed anyway, and that is the part worth writing down. The old rule read
+the flip's end attitude, decided it wanted a half turn, and then failed to
+find a candidate inside SNAP_TOLERANCE, so it fell through and returned the
+right answer. It got there by being unable to apply the wrong rule. Flown a
+little long, at 1.15 turns, it would have snapped to 1.25 and the Cube would
+have come apart into a Flip and a quarter.
+
+The invariant that actually holds is that a rotation about a horizontal body
+axis inverts the craft exactly when it covers a half-integer number of turns.
+So the class is decided by the CHANGE:
+
+    started and ended the same way up   -> a whole number of turns
+    started and ended opposite ways up  -> a half
+    ended on its side                   -> a quarter or three quarters
+    started on its side                 -> nothing reliable, take the
+                                           plain nearest quarter
+
+Each Run now records the attitude it opened at. Six new snap checks cover it,
+including snapTurns(1.15, PITCH, -1, -1) === 1, which is the case the old rule
+would have got wrong.
+
+THE TEST RIG HAD THE SAME BUG and that is why it hid. fly() reset the
+attitude to upright at the start of every move, which is false the moment a
+trick has more than one part. It now CARRIES the attitude and flips it by the
+one rule that decides it in the real world. The end to end block had a second
+copy of the rig with the same flaw; it is deleted and that block now goes
+through fly() like everything else. The real flight section is the independent
+check on both.
+
+--------------------------------------------------------------------------
+3. HARD CORNERING SCORED, AND THIS IS THE ONE THAT MATTERED
+--------------------------------------------------------------------------
+
+Flying the real aircraft through six hard corners scored TWELVE tricks: a
+1/4 Roll and a 1/2 Yaw Spin per corner, awarded to a pilot who was turning a
+corner.
+
+That is not a fault in the workbook. Its "Custom Trick Building Blocks" sheet
+prices a 1/4 Roll at 25 and a 1/2 Yaw Spin at 50 so that a JUDGE can price a
+custom trick a competitor DECLARED, and a competitor does not declare "I
+banked into a turn". Handing them out automatically was this project's
+mistake in reading the sheet.
+
+The floor is now drawn where a rotation stops being incidental:
+
+    yaw          only a WHOLE turn. Half a yaw spin is turning around to
+                 fly backwards, which every pilot does every few seconds.
+    roll, pitch  a half turn or more. You do not end up inverted by
+                 accident; you do bank to 90 degrees and pitch 90 down into
+                 a dive constantly.
+
+Quarter turns are still matched INSIDE a pattern if a trick ever calls for
+one. They are simply worth nothing alone. After the change the same six
+corners score nothing at all, and every real trick above is unaffected.
+
+A false positive is far worse than a missed trick. A detector that misses one
+disappoints a pilot once; a detector that invents one makes the whole number
+meaningless.
+
+--------------------------------------------------------------------------
+THE RATE FLOOR, SWEPT RATHER THAN GUESSED, AND LEFT ALONE
+--------------------------------------------------------------------------
+
+The corner work turned up a fair question: RATE_ON is 3.0 rad/s, 172 deg/s,
+about 48% of roll stick on Betaflight's defaults, so a deliberately SLOW roll
+scores nothing. Measured, on the real module, at 3.0, 2.2, 1.8, 1.4 and 1.0:
+
+  every setting stayed silent through ten seconds of twitchy cruising, six
+  hard corners, a punch out, and a slow circling turn at 49 deg/s;
+
+  at 1.8 and below a COORDINATED CIRCLING TURN at 109 deg/s started scoring
+  a Yaw Spin, which is a pilot being paid for flying round a park;
+
+  2.2, the last setting that survived, buys only the narrow band of rolls
+  between 126 and 172 deg/s and leaves a 16% margin against that circling
+  case, where 3.0 leaves 58%.
+
+So the floor stays at 3.0 and the sweep is written into the comment on
+RATE_ON, so the next person to reach for it knows what breaks and where. The
+circling case is now flown on every run of the self test, which is the point:
+the threshold is not defended by a comment, it is defended by a check.
+
+Stick to rate, measured through the module, for the record:
+  0.18 -> 32 deg/s   0.30 -> 75    0.40 -> 125   0.50 -> 186   1.00 -> 666
+
+--------------------------------------------------------------------------
+DOES IT REWARD STRINGING TRICKS TOGETHER? MEASURED.
+--------------------------------------------------------------------------
+
+Six tricks, same six, flown as one chain and flown apart:
+
+    gap between tricks     banked
+      4000 ms                 718
+      3500 ms                 718
+      2900 ms               4,314     x6.0
+      1200 ms               4,314     x6.0
+
+Marginal value of the Nth trick in one chain, out to fourteen:
+
+     1     50      4   1,212      8   7,904     12  18,537
+     2    201      5   2,545      9  10,370     13  28,155
+     3    452      6   4,314     10  12,632     14  31,800
+
+Every increment is positive, so there is never a reason to stop a chain
+except the risk of losing it. Eight different tricks bank 7,904 where eight
+Powerloops bank 2,418, so variety beats repetition by 3.3 times, which is the
+workbook's own repeat ladder doing its job underneath the combo. Bailing an
+eight trick chain costs the whole 7,904 and keeps nothing.
+
+Padding was checked for as an exploit and is not one: quarter rotations no
+longer score at all, and repeating a cheap trick to pump the multiplier hits
+the repeat ladder's zero on the third repeat.
+
+All four of those properties are now checks rather than paragraphs: linked
+beats unlinked by at least four times, a longer chain is always worth more
+out to fourteen, eight varied beat eight repeated by more than two and a half
+times, and a bail costs exactly what was on screen.
+
+--------------------------------------------------------------------------
+INTEGRATION, PROBED IN THE BROWSER
+--------------------------------------------------------------------------
+
+Driven through headless Chromium on the real shell:
+
+  freestyle city, in flight       score overlay shown
+  title screen                    hidden
+  a race map                      hidden
+  paused                          shown, and the total does NOT move, because
+                                  the combo is banked on the SIM clock and
+                                  the sim clock does not advance while paused
+  crash                           banked total kept at 3,112, combo lost
+  R, restart                      total back to 0 and the readout reads 0
+  console                         no errors but the board fetch, which is
+                                  not running here
+
+ONE FRAGILITY FIXED. The overlay's visibility was decided only inside
+show(), so it depended on setBest having run first: the MODE changes when a
+map is swapped and the screen does not have to change with it. Both callers
+now go through one syncScoreVisible(), which reads the current screen and the
+current mode and needs no ordering. A custom track with no gates reports
+mode 'freestyle' by scene.js's own rule, so this is not hypothetical.
+
+NOT EXERCISED, and said plainly: a gateless custom track in FLIGHT. The shell
+refuses to fly an empty canvas, which is its own correct behaviour, so that
+path could not be reached from the harness and the claim about it rests on
+reading syncScoreVisible rather than on running it.
+
+ONE GUARD ADDED. beginClipCrash called score.crash() unconditionally where
+the two ground paths were already guarded on the mode. Nothing leaked,
+because no combo can be open on a map that never lands a trick, but a scorer
+that a race map touches at all is one refactor away from a real defect.
+
+--------------------------------------------------------------------------
+MEASURED
+--------------------------------------------------------------------------
+
+`npm run score:selftest`, 108 checks, all pass:
+
+    11  the transcription against the extracted workbook
+     2  every pattern names a trick the catalogue carries
+    14  the quarter turn snap, including the case the old rule got wrong
+    29  the recogniser on flown traces
+    28  the arithmetic, including the four chaining properties
+     4  end to end on a synthetic trace
+    20  end to end ON THE REAL AIRCRAFT, of which six are false positive
+        cases that must score nothing
+
+`npm run lint:shell` PASS, 13 screens, after the ui.js change.
+`npm run lint:nouns` PASS. `npm run lint:responsive` PASS on the freestyle
+room. Recaptured at 1600x900 and 1280x720.
+
+`npm run verify` still not run and still for the same reason: no emcc in this
+container, and nothing here touches src/native, the patches, the vendor tree,
+the input path or the module ABI. The self test now loads the PREBUILT
+dist/sim.wasm, which is a different thing from building it, and it is the
+part of verify's territory that can actually see this work.

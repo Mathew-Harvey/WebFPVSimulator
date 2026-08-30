@@ -34,7 +34,7 @@
  * your option) any later version.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -53,9 +53,11 @@ import {
 } from '../src/game/tricks.js';
 import { PATTERNS, TrickDetector, snapTurns, AXIS_ROLL, AXIS_PITCH, AXIS_YAW } from '../src/game/trickdetect.js';
 import { FreestyleScore, formatScore } from '../src/game/score.js';
+import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EVIDENCE = join(HERE, '..', '.loop', 'evidence', 'freestyle-scoring', 'twp-calculator.json');
+const WASM = join(HERE, '..', 'dist', 'sim.wasm');
 
 let failures = 0;
 
@@ -187,16 +189,41 @@ console.log('\nthe patterns name real tricks');
 
 console.log('\nthe quarter turn snap');
 {
-  /* Upright at the end means a whole number of turns, whatever the
-   * integral says: an overshot 372 degree roll is a Roll. */
-  check('372 degrees ending upright is one turn', snapTurns(1.033, AXIS_ROLL, 1) === 1);
-  check('340 degrees ending upright is one turn', snapTurns(0.944, AXIS_ROLL, 1) === 1);
-  check('196 degrees ending inverted is a half', snapTurns(0.544, AXIS_ROLL, -1) === 0.5);
-  check('160 degrees ending inverted is a half', snapTurns(0.444, AXIS_ROLL, -1) === 0.5);
-  check('two turns ending upright is two', snapTurns(1.98, AXIS_PITCH, 1) === 2);
-  check('a yaw takes the plain nearest quarter', snapTurns(0.51, AXIS_YAW, 1) === 0.5);
-  check('a twitch is not a trick', snapTurns(0.08, AXIS_ROLL, 1) === 0);
-  check('the sign does not change the count', snapTurns(-1.02, AXIS_ROLL, 1) === 1);
+  /* Ending the same way up as it started means a whole number of turns,
+   * whatever the integral says: an overshot 372 degree roll is a Roll. */
+  check('372 degrees, upright to upright, is one turn',
+    snapTurns(1.033, AXIS_ROLL, 1, 1) === 1);
+  check('340 degrees, upright to upright, is one turn',
+    snapTurns(0.944, AXIS_ROLL, 1, 1) === 1);
+  check('196 degrees, upright to inverted, is a half',
+    snapTurns(0.544, AXIS_ROLL, 1, -1) === 0.5);
+  check('160 degrees, upright to inverted, is a half',
+    snapTurns(0.444, AXIS_ROLL, 1, -1) === 0.5);
+  check('two turns, upright to upright, is two',
+    snapTurns(1.98, AXIS_PITCH, 1, 1) === 2);
+  check('a yaw takes the plain nearest quarter',
+    snapTurns(0.51, AXIS_YAW, 1, 1) === 0.5);
+  check('a twitch is not a trick', snapTurns(0.08, AXIS_ROLL, 1, 1) === 0);
+  check('the sign does not change the count',
+    snapTurns(-1.02, AXIS_ROLL, 1, 1) === 1);
+
+  /*
+   * THE CASE THE END-STATE RULE GOT WRONG. The middle of a Rubik's Cube is
+   * a whole flip that BEGINS inverted and ends inverted. Read as an end
+   * state that is a half turn, which would take the Cube apart.
+   */
+  check('a whole flip flown inverted is a whole turn',
+    snapTurns(0.998, AXIS_PITCH, -1, -1) === 1);
+  check('and still is when it is flown long',
+    snapTurns(1.15, AXIS_PITCH, -1, -1) === 1);
+  check('a half flip out of inverted is a half',
+    snapTurns(0.53, AXIS_PITCH, -1, 1) === 0.5);
+  check('a quarter roll ending on its side is a quarter',
+    snapTurns(0.27, AXIS_ROLL, 1, 0) === 0.25);
+  check('three quarters ending on its side is three quarters',
+    snapTurns(0.72, AXIS_ROLL, 1, 0) === 0.75);
+  check('a rotation begun on its side takes the plain quarter',
+    snapTurns(0.51, AXIS_ROLL, 0, 1) === 0.5);
 }
 
 /*
@@ -209,19 +236,43 @@ console.log('\nthe quarter turn snap');
  * point, it makes the detector cross RATE_ON and RATE_OFF the way a real
  * flight does rather than as a step function it could never see.
  *
- * The attitude fed alongside is not integrated from the rates. It is
- * SYNTHESISED from how much of the move has been flown, because all the
- * detector reads from the quaternion is which way up the craft is, and
- * building a full attitude integrator inside the test would be testing the
- * test. A move of a whole number of turns ends upright; a half ends
- * inverted.
+ * The attitude fed alongside is not integrated from the rates, because
+ * building an attitude integrator inside the test would be testing the
+ * test. It is CARRIED: the rig holds which way up the craft is and each
+ * move flips it or does not, by the one rule that decides it in the real
+ * world, which is that a rotation about a horizontal body axis inverts the
+ * craft exactly when it covers a half-integer number of turns.
+ *
+ * That the attitude is carried rather than reset per move is the whole
+ * point. The old rig started every move upright, which is false the moment
+ * a trick has more than one part, and it hid a real defect in the snap:
+ * see the comment on snapTurns. The real flight section below is the
+ * independent check on this one, since there the attitude comes out of the
+ * plant.
  */
 const TURN = 6.283185307179586;
+
+/* Which way up a move leaves the craft, given where it started. */
+function endUpFor(curUp, axis, turns) {
+  if (axis === AXIS_YAW) {
+    return curUp;
+  }
+  const f = Math.abs(turns) % 1;
+  if (f > 0.375 && f < 0.625) {
+    return -curUp;
+  }
+  if (f < 0.125 || f > 0.875) {
+    return curUp;
+  }
+  /* A quarter or three quarters leaves it on its side. */
+  return 0;
+}
 
 function fly(moves) {
   const out = [];
   const det = new TrickDetector((t) => out.push(t));
   const RAMP = 60;
+  let curUp = 1;
 
   const push = (ms, rate, axis, upZ, speed) => {
     for (let i = 0; i < ms; i += 1) {
@@ -241,7 +292,7 @@ function fly(moves) {
 
   for (const m of moves) {
     if (m.wait !== undefined) {
-      push(m.wait, 0, AXIS_ROLL, m.upZ ?? 1, m.speed ?? 12);
+      push(m.wait, 0, AXIS_ROLL, m.upZ ?? curUp, m.speed ?? 12);
       continue;
     }
     const total = Math.abs(m.turns) * TURN;
@@ -251,20 +302,21 @@ function fly(moves) {
      * whatever is left after the two ramps have paid their half each. */
     const rampArea = peak * (RAMP / 1000);
     const holdMs = Math.max(1, Math.round(((total - rampArea) / peak) * 1000));
-    /* The attitude is stepped with the move so that the sample at the
-     * moment the run closes reads the end attitude. */
-    const endUp = Math.abs(m.turns % 1) > 0.25 && Math.abs(m.turns % 1) < 0.75 ? -1 : 1;
+    const endUp = endUpFor(curUp, m.axis, m.turns);
+    /* The run opens a few milliseconds into the ramp, so the start
+     * attitude it records is the one pushed here. */
     for (let i = 0; i < RAMP; i += 1) {
-      push(1, sign * peak * (i / RAMP), m.axis, 1, m.speed ?? 12);
+      push(1, sign * peak * (i / RAMP), m.axis, curUp, m.speed ?? 12);
     }
-    push(holdMs, sign * peak, m.axis, 0, m.speed ?? 12);
+    push(holdMs, sign * peak, m.axis, m.axis === AXIS_YAW ? curUp : 0, m.speed ?? 12);
     for (let i = RAMP; i > 0; i -= 1) {
       push(1, sign * peak * (i / RAMP), m.axis, endUp, m.speed ?? 12);
     }
     /* A beat at zero rate at the end attitude, so the run can close. */
     push(m.gap ?? 120, 0, m.axis, endUp, m.speed ?? 12);
+    curUp = endUp;
   }
-  det.flush(1);
+  det.flush(curUp);
   return out;
 }
 
@@ -287,8 +339,21 @@ console.log('\nthe recogniser, on flown traces');
     names(fly([{ axis: P, turns: 2 }])) === 'Double Flip');
   check('a lone 180 roll is a building block',
     names(fly([{ axis: R, turns: 0.5 }])) === '1/2 Roll');
-  check('a lone 90 roll is a building block',
-    names(fly([{ axis: R, turns: 0.25 }])) === '1/4 Roll');
+  /*
+   * THE CORNER TEST, in miniature. A quarter roll is a bank and a half yaw
+   * spin is turning around, and the workbook's price list for those exists
+   * for a judge pricing a DECLARED custom trick, not for a pilot flying a
+   * line. Scoring them made six hard corners on the real aircraft read as
+   * twelve tricks. See the comment on SINGLES.
+   */
+  check('a lone 90 roll is not a trick', fly([{ axis: R, turns: 0.25 }]).length === 0);
+  check('a lone 90 flip is not a trick', fly([{ axis: P, turns: 0.25 }]).length === 0);
+  check('a lone 180 yaw is not a trick', fly([{ axis: Y, turns: 0.5 }]).length === 0);
+  check('a lone 270 yaw is not a trick', fly([{ axis: Y, turns: 0.75 }]).length === 0);
+  check('but a lone 180 roll still is',
+    names(fly([{ axis: R, turns: 0.5 }])) === '1/2 Roll');
+  check('and a whole yaw spin still is',
+    names(fly([{ axis: Y, turns: 1 }])) === 'Yaw Spin');
   check('a 540 roll is a Roll and then the leftover half',
     names(fly([{ axis: R, turns: 1.5 }])) === 'Roll + 1/2 Roll');
 
@@ -530,6 +595,72 @@ console.log('\nthe arithmetic');
   check('with the combo off, the score is the sum of the tricks',
     near(sheet.total(), 50 + 50 * (1 + 50 / 10000)));
 
+  /*
+   * DOES IT ACTUALLY REWARD STRINGING TRICKS TOGETHER? That is the whole
+   * point of putting a combo layer on top of the workbook, so it is checked
+   * rather than assumed. Six tricks, flown as one chain and flown as six
+   * separate ones, and the marginal value of every trick added to a chain.
+   */
+  const chainOf = (list, gapMs) => {
+    const s = new FreestyleScore();
+    let t = 0;
+    for (const n of list) {
+      t += gapMs;
+      s.tick(t);
+      s.land({ name: n, execution: 'CLEAN', endMs: t });
+    }
+    s.tick(t + 5000);
+    return s.total();
+  };
+  const SIX = ['Roll', 'Flip', 'Yaw Spin', 'Double Roll', 'Powerloop', 'Matty Flip'];
+  const linked = chainOf(SIX, 1500);
+  const apart = chainOf(SIX, 4000);
+  check('six tricks linked beat the same six flown apart', linked > apart);
+  check('and by a lot: at least four times', linked >= apart * 4);
+  console.log(`        six linked ${formatScore(linked)} against ${formatScore(apart)} apart, `
+    + `x${(linked / apart).toFixed(1)}`);
+
+  /* Every trick added to a chain must be worth adding, or a pilot is better
+   * off stopping, which is the opposite of the intent. */
+  const POOL = ['Roll', 'Flip', 'Yaw Spin', 'Double Roll', 'Powerloop', 'Matty Flip',
+    'Split-S', 'Wall Ride', 'Knife Edge', 'Dive', 'Cradle', 'Jump Rope',
+    'Barani', 'Immelmann Turn'];
+  let monotonic = true;
+  let prevTotal = 0;
+  for (let n = 1; n <= POOL.length; n += 1) {
+    const v = chainOf(POOL.slice(0, n), 1500);
+    if (v <= prevTotal) {
+      monotonic = false;
+    }
+    prevTotal = v;
+  }
+  check('a longer chain is always worth more, out to fourteen tricks', monotonic);
+  console.log(`        fourteen linked banks ${formatScore(prevTotal)}`);
+
+  /* And padding a chain with the same cheap trick must not beat flying. */
+  const eightSame = chainOf(Array(8).fill('Powerloop'), 1500);
+  const eightVaried = chainOf(POOL.slice(0, 8), 1500);
+  check('eight different tricks beat the same trick eight times',
+    eightVaried > eightSame * 2.5);
+  console.log(`        eight varied ${formatScore(eightVaried)} against `
+    + `${formatScore(eightSame)} repeated`);
+
+  /* The gamble has to be real: the chain must be worth losing. */
+  {
+    const s = new FreestyleScore();
+    let t = 0;
+    for (const n of POOL.slice(0, 8)) {
+      t += 1500;
+      s.tick(t);
+      s.land({ name: n, execution: 'CLEAN', endMs: t });
+    }
+    const atRisk = s.view().combo.value;
+    s.crash();
+    check('bailing an eight trick chain costs the whole chain',
+      atRisk === eightVaried && s.total() === 0);
+    console.log(`        bailing there costs ${formatScore(atRisk)}`);
+  }
+
   /* The summary a results screen would print. */
   const sum = varied.summary();
   check('the summary counts every trick', sum.tricks === 4);
@@ -537,54 +668,30 @@ console.log('\nthe arithmetic');
   check('the summary leads with the biggest earner', sum.rows[0].name === 'Double Roll');
 }
 
-console.log('\nend to end');
+console.log('\nend to end, on a synthetic trace');
 {
   /*
-   * A short run flown as rates, recognised, and scored: a Rubik's Cube,
-   * a Double Roll and a Yaw Spin, linked inside the combo window.
+   * A short run flown as rates, recognised, and scored: a Rubik's Cube, a
+   * Double Roll and a Yaw Spin, linked inside the combo window. It goes
+   * through the same fly() rig as the recogniser checks above rather than a
+   * second copy of one, because the second copy was where the old attitude
+   * bug hid.
    */
+  const flown = fly([
+    { axis: R, turns: 0.5 }, { axis: P, turns: 1 }, { axis: R, turns: 0.5 },
+    { axis: R, turns: 2 },
+    { axis: Y, turns: 1 },
+  ]);
+  check('the run reads as three tricks',
+    names(flown) === "Rubik's Cube + Double Roll + Yaw Spin");
+
   const s = new FreestyleScore();
-  const flown = [];
-  const det = new TrickDetector((t) => {
+  for (const t of flown) {
     s.tick(t.endMs);
     s.land(t);
-    flown.push(t.name);
-  });
-  const RAMP = 60;
-  const push = (ms, p, q, r, upZ, speed) => {
-    for (let i = 0; i < ms; i += 1) {
-      det.step(0.001, p, q, r, 0, Math.sqrt(Math.max(0, (1 - upZ) / 2)), speed);
-    }
-  };
-  const move = (axis, turns, endUp) => {
-    const peak = 14;
-    const sign = turns < 0 ? -1 : 1;
-    const holdMs = Math.round(((Math.abs(turns) * TURN - peak * (RAMP / 1000)) / peak) * 1000);
-    const at = (rate, up) => push(1,
-      axis === AXIS_ROLL ? rate : 0,
-      axis === AXIS_PITCH ? rate : 0,
-      axis === AXIS_YAW ? rate : 0, up, 12);
-    for (let i = 0; i < RAMP; i += 1) {
-      at(sign * peak * (i / RAMP), 1);
-    }
-    for (let i = 0; i < holdMs; i += 1) {
-      at(sign * peak, 0);
-    }
-    for (let i = RAMP; i > 0; i -= 1) {
-      at(sign * peak * (i / RAMP), endUp);
-    }
-    push(150, 0, 0, 0, endUp, 12);
-  };
-  move(AXIS_ROLL, 0.5, -1);
-  move(AXIS_PITCH, 1, -1);
-  move(AXIS_ROLL, 0.5, 1);
-  move(AXIS_ROLL, 2, 1);
-  move(AXIS_YAW, 1, 1);
-  det.flush(1);
-  check('the run reads as three tricks',
-    flown.join(' + ') === "Rubik's Cube + Double Roll + Yaw Spin");
+  }
   const before = s.view();
-  check('the combo is open and worth something', before.combo && before.combo.mult === 3);
+  check('the combo is open and worth something', Boolean(before.combo) && before.combo.mult === 3);
   s.tick(s.nowMs + 4000);
   check('flying away clean banks it', s.total() > 0 && s.view().combo === null);
   /*
@@ -595,6 +702,265 @@ console.log('\nend to end');
    */
   check('and it banks 1597', s.total() === 1597);
   console.log(`        ${formatScore(s.total())} from ${flown.length} tricks`);
+}
+
+/*
+ * THE REAL AIRCRAFT.
+ *
+ * Everything above drives the recogniser with rate profiles this file made
+ * up. That proves the grammar and the arithmetic and it proves nothing at
+ * all about whether a pilot flying the actual quad can score a point,
+ * because the rates a pilot produces come out of Betaflight's rate curve,
+ * the PID loop, the mixer and the plant, and none of those has been in the
+ * loop until here.
+ *
+ * So this section loads dist/sim.wasm, arms it, and FLIES. Sticks go in at
+ * 500 Hz on a grid, the module steps a millisecond at a time, and the
+ * detector is fed the same six numbers the shell feeds it out of the same
+ * state block. The stick is held until the integrated body rate reaches the
+ * target and then centred, which is what a pilot does with their eyes.
+ * Nothing is synthesised: the attitude the snap reads is the plant's own.
+ *
+ * SKIPPED, loudly, when dist/sim.wasm is absent, because a missing module
+ * is a fault in the setup rather than in this code, and a check that
+ * quietly passes on no module is worse than no check.
+ */
+console.log('\nend to end, on the real aircraft');
+if (!existsSync(WASM)) {
+  console.log('  SKIP  dist/sim.wasm is not built, so nothing was flown');
+} else {
+  const wasm = readFileSync(WASM);
+  const diff = readFileSync(join(HERE, '..', 'configs', 'betaflight-default.diff'), 'utf8');
+
+  /* One rig per trial, so a trial cannot inherit the last one's attitude. */
+  const rig = async () => {
+    const sim = await loadSim(wasm);
+    if (sim.init(diff) !== SIM_OK) {
+      throw new Error('sim_init failed');
+    }
+    sim.reset();
+    const out = [];
+    const det = new TrickDetector((t) => out.push(t));
+    let stepIdx = 0;
+    let rcNext = 0;
+    const ms = (roll, pitch, yaw, thr) => {
+      const t = stepIdx / 1000;
+      if (t >= rcNext) {
+        sim.input(t, roll, pitch, yaw, thr);
+        rcNext += 0.002;
+      }
+      sim.step(1);
+      stepIdx += 1;
+      const st = sim.readState().state;
+      det.step(0.001, st[11], st[12], st[13], st[8], st[9],
+        Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]));
+      return st;
+    };
+    const upZ = () => {
+      const st = sim.readState().state;
+      return 1 - 2 * (st[8] * st[8] + st[9] * st[9]);
+    };
+    /* Hold the stick until the rotation is flown, then let go. */
+    /* `busy` holds the OTHER axes off centre, so a trick can be flown the
+     * way one really is, with the pilot still correcting. */
+    const rotate = (axis, turns, sign, thr = 0.5, busy = {}) => {
+      let acc = 0;
+      let n = 0;
+      while (Math.abs(acc) < Math.abs(turns) * TURN && n < 6000) {
+        const st = ms(
+          axis === 'roll' ? sign : (busy.roll ?? 0),
+          axis === 'pitch' ? sign : (busy.pitch ?? 0),
+          axis === 'yaw' ? sign : (busy.yaw ?? 0),
+          thr,
+        );
+        acc += (axis === 'roll' ? st[11] : axis === 'pitch' ? st[12] : st[13]) * 0.001;
+        n += 1;
+      }
+      return acc / TURN;
+    };
+    const hold = (n, thr = 0.5, roll = 0, pitch = 0, yaw = 0) => {
+      for (let i = 0; i < n; i += 1) {
+        ms(roll, pitch, yaw, thr);
+      }
+    };
+    const done = () => {
+      hold(700);
+      det.flush(upZ());
+      return out;
+    };
+    return { ms, rotate, hold, upZ, done, out };
+  };
+
+  const flightNames = (list) => list.map((t) => t.name).join(' + ');
+
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 1, 1);
+    check('a flown 360 roll is a Roll', flightNames(f.done()) === 'Roll');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('pitch', 1, 1);
+    check('a flown backflip is a Flip', flightNames(f.done()) === 'Flip');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('pitch', 1, -1);
+    check('a flown front flip is a Flip', flightNames(f.done()) === 'Flip');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('yaw', 1, 1);
+    check('a flown 360 yaw is a Yaw Spin', flightNames(f.done()) === 'Yaw Spin');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 2, 1);
+    check('a flown 720 roll is a Double Roll', flightNames(f.done()) === 'Double Roll');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 0.5, 1);
+    check('a flown 180 roll is a building block', flightNames(f.done()) === '1/2 Roll');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 0.5, 1);
+    f.hold(80);
+    f.rotate('roll', 0.5, -1);
+    check('a flown 180 out and back is an Invert Rewind',
+      flightNames(f.done()) === 'Invert Rewind');
+  }
+  {
+    /* The one that caught the attitude bug: the middle flip begins and ends
+     * inverted, and the craft's real quaternion says so. */
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 0.5, 1);
+    const invert = f.upZ();
+    f.hold(60);
+    f.rotate('pitch', 1, 1);
+    const stillInverted = f.upZ();
+    f.hold(60);
+    f.rotate('roll', 0.5, 1);
+    const home = f.upZ();
+    const got = f.done();
+    check('the craft really is inverted through the middle of a Cube',
+      invert < -0.8 && stillInverted < -0.8 && home > 0.8);
+    check('a flown Rubik\'s Cube is one Rubik\'s Cube',
+      flightNames(got) === "Rubik's Cube");
+    check('and it is one trick, not three', got.length === 1);
+  }
+  /*
+   * THE FALSE POSITIVE CASES. These matter more than any of the recognition
+   * checks above, because a detector that misses a trick disappoints a
+   * pilot once and a detector that invents one destroys the meaning of the
+   * whole score. Each of these is a pilot flying NORMALLY and none of them
+   * may produce a single trick.
+   */
+  {
+    const f = await rig();
+    /* Ten seconds of twitchy stick, the way a quad is actually flown. */
+    let seed = 12345;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      return (seed / 4294967296) * 2 - 1;
+    };
+    for (let k = 0; k < 10000; k += 1) {
+      f.ms(rnd() * 0.18, rnd() * 0.18, rnd() * 0.15, 0.55);
+    }
+    check('ten seconds of twitchy cruising scores nothing', f.done().length === 0);
+  }
+  {
+    const f = await rig();
+    for (let c = 0; c < 6; c += 1) {
+      f.hold(420, 0.6, 0.55, 0, 0.75);
+      f.hold(300, 0.5);
+    }
+    check('six hard corners score nothing', f.done().length === 0);
+  }
+  {
+    /*
+     * A COORDINATED CIRCLING TURN, which is the case that decides RATE_ON.
+     * Yaw held with a bank on, for one and a half full turns at about 109
+     * deg/s. That is a pilot flying around a park, not a pirouette, and at
+     * RATE_ON 1.8 or below it scores a Yaw Spin. See the sweep written up
+     * on RATE_ON in trickdetect.js.
+     */
+    const f = await rig();
+    f.hold(200);
+    let peak = 0;
+    let total = 0;
+    for (let k = 0; k < 6000; k += 1) {
+      const st = f.ms(0.14, 0.12, 0.35, 0.55);
+      const r = st[13] < 0 ? -st[13] : st[13];
+      if (r > peak) {
+        peak = r;
+      }
+      total += r * 0.001;
+    }
+    const got = f.done();
+    check('the circling turn really did cover more than a full turn',
+      total / TURN > 1.2);
+    check('and at about 100 deg/s', peak * 57.2958 > 90 && peak * 57.2958 < 130);
+    check('a coordinated circling turn scores nothing', got.length === 0);
+  }
+  {
+    const f = await rig();
+    f.hold(200);
+    f.hold(1500, 1.0);
+    f.hold(800, 0.3);
+    check('a punch out with no rotation scores nothing', f.done().length === 0);
+  }
+  {
+    /* A rotation flown with the other axes busy is still the trick. */
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 1, 1, 0.5, { yaw: -0.45 });
+    check('a roll flown with yaw mixed in is still a Roll',
+      flightNames(f.done()) === 'Roll');
+  }
+  {
+    const f = await rig();
+    f.hold(250);
+    f.rotate('yaw', 1, 1, 0.5, { roll: 0.12 });
+    check('a yaw spin flown with a roll correction is still a Yaw Spin',
+      flightNames(f.done()) === 'Yaw Spin');
+  }
+
+  {
+    /* A whole run, flown, recognised and scored end to end. */
+    const f = await rig();
+    f.hold(250);
+    f.rotate('roll', 0.5, 1);
+    f.hold(60);
+    f.rotate('pitch', 1, 1);
+    f.hold(60);
+    f.rotate('roll', 0.5, 1);
+    f.hold(200);
+    f.rotate('roll', 2, 1);
+    f.hold(200);
+    f.rotate('yaw', 1, 1);
+    const got = f.done();
+    const s = new FreestyleScore();
+    for (const t of got) {
+      s.tick(t.endMs);
+      s.land(t);
+    }
+    s.tick(s.nowMs + 4000);
+    check('a flown run of three tricks names all three',
+      flightNames(got) === "Rubik's Cube + Double Roll + Yaw Spin");
+    check('and banks the same 1597 the synthetic trace did', s.total() === 1597);
+    console.log(`        flown: ${formatScore(s.total())} from ${got.length} tricks, `
+      + `every trick CLEAN: ${got.every((t) => t.execution === 'CLEAN')}`);
+  }
 }
 
 console.log(failures === 0 ? '\nall passed' : `\n${failures} FAILED`);

@@ -81,12 +81,29 @@ export const AXIS_NAME = ['roll', 'pitch', 'yaw'];
 /*
  * Where a rotation starts and stops counting.
  *
- * RATE_ON is 3.0 rad/s, about 172 deg/s. A quad correcting its attitude in a
- * gust or being flown around a corner does not sustain that; a flip is
- * eight hundred. RATE_OFF is 1.2 rad/s with a hold, so that the brief dip
- * through the middle of a two turn flip does not saw one primitive into two.
- * These are the two numbers most likely to want moving after a pilot flies
- * it, and they are here, together, for that reason.
+ * RATE_ON is 3.0 rad/s, 172 deg/s, which on Betaflight's default rates is
+ * about 48% of roll stick and turns 360 degrees in 2.1 seconds. RATE_OFF is
+ * 1.2 rad/s with a hold, so the brief dip through the middle of a two turn
+ * flip does not saw one primitive into two.
+ *
+ * THE FLOOR WAS SWEPT ON THE REAL AIRCRAFT RATHER THAN GUESSED, and the
+ * answer was to leave it alone. Lower is tempting, because a deliberately
+ * slow roll under 172 deg/s currently scores nothing. Measured through
+ * dist/sim.wasm at 3.0, 2.2, 1.8, 1.4 and 1.0:
+ *
+ *   every setting stayed silent through ten seconds of twitchy cruising,
+ *   six hard corners, a punch out and a slow circling turn at 49 deg/s;
+ *   at 1.8 and below, a COORDINATED CIRCLING TURN at 109 deg/s started
+ *   scoring a Yaw Spin, which is a pilot being handed points for flying
+ *   round a corner;
+ *   and 2.2, the last setting that survived, buys only the narrow band of
+ *   rolls between 126 and 172 deg/s while leaving a 16% margin against
+ *   that circling case, where 3.0 leaves 58%.
+ *
+ * A false positive is far worse than a missed slow roll: a score that goes
+ * up for ordinary flying stops meaning anything. So the floor stays at 3.0,
+ * and scripts/score-selftest.js now flies the circling case every run so
+ * that anybody who lowers this finds out immediately.
  */
 const RATE_ON = 3.0;
 const RATE_OFF = 1.2;
@@ -253,29 +270,43 @@ export const PATTERNS = [
 /*
  * The fallback price list: one primitive that is part of nothing larger.
  *
- * These are the workbook's own "Custom Trick Building Blocks", which exist
- * so that a competitor who flies something the list does not name can still
- * add up the parts. Scoring a quarter roll as nothing would make the first
- * half of most runs read zero, which is the wrong lesson to teach somebody
- * learning. Highest entry that the rotation covers wins, and the remainder
- * is handed back to the buffer, so a 540 roll is a Roll and then a 1/2 Roll
- * rather than a Roll with 180 degrees thrown away.
+ * These are the workbook's own "Custom Trick Building Blocks". Highest entry
+ * that the rotation covers wins, and the remainder is handed back to the
+ * buffer, so a 540 roll is a Roll and then a 1/2 Roll rather than a Roll
+ * with 180 degrees thrown away.
+ *
+ * WHAT IS DELIBERATELY MISSING, and it is the single most important
+ * judgement call in this file. The workbook prices a 1/4 Roll at 25 and a
+ * 1/2 Yaw Spin at 50, and this table used to hand those out. Flying the real
+ * aircraft through six hard corners then scored TWELVE tricks: a quarter
+ * roll and a half yaw spin per corner, from a pilot who was turning a
+ * corner. That is not a fault in the workbook. Those blocks exist so a JUDGE
+ * can price a custom trick a competitor DECLARED, and a competitor does not
+ * declare "I banked into a turn".
+ *
+ * So the floor is drawn where a rotation stops being incidental:
+ *
+ *   yaw          only a WHOLE turn. Half a yaw spin is turning around to
+ *                fly backwards, which every pilot does every few seconds.
+ *   roll, pitch  a half turn or more. You do not end up inverted by
+ *                accident; you do bank to 90 degrees and pitch 90 down
+ *                into a dive constantly.
+ *
+ * Quarter turns are still matched INSIDE a pattern if a trick ever calls
+ * for one. They are simply not worth anything on their own. A rotation that
+ * finds no entry here is dropped rather than scored as something smaller,
+ * which is what keeps the corner silent.
  */
 const SINGLES = [
   { axis: AXIS_PITCH, turns: 2, name: 'Double Flip' },
   { axis: AXIS_PITCH, turns: 1, name: 'Flip' },
   { axis: AXIS_PITCH, turns: 0.75, name: '3/4 Flip' },
   { axis: AXIS_PITCH, turns: 0.5, name: '1/2 Flip' },
-  { axis: AXIS_PITCH, turns: 0.25, name: '1/4 Flip' },
   { axis: AXIS_ROLL, turns: 2, name: 'Double Roll' },
   { axis: AXIS_ROLL, turns: 1, name: 'Roll' },
   { axis: AXIS_ROLL, turns: 0.75, name: '3/4 Roll' },
   { axis: AXIS_ROLL, turns: 0.5, name: '1/2 Roll' },
-  { axis: AXIS_ROLL, turns: 0.25, name: '1/4 Roll' },
   { axis: AXIS_YAW, turns: 1, name: 'Yaw Spin' },
-  { axis: AXIS_YAW, turns: 0.75, name: '3/4 Yaw Spin' },
-  { axis: AXIS_YAW, turns: 0.5, name: '1/2 Yaw Spin' },
-  { axis: AXIS_YAW, turns: 0.25, name: '1/4 Yaw Spin' },
 ];
 
 /* Largest single that fits inside `turns` on this axis, or null. */
@@ -292,18 +323,57 @@ function singleFor(axis, turns) {
   return best;
 }
 
+/* Which residue class a turn count falls in: whole turns, half turns, or a
+ * quarter either way. */
+function turnClass(t) {
+  const f = t - Math.floor(t);
+  if (f < 0.125 || f > 0.875) {
+    return 'whole';
+  }
+  if (f > 0.375 && f < 0.625) {
+    return 'half';
+  }
+  return 'edge';
+}
+
 /*
- * Snap a signed turn count to a quarter, using the craft's attitude to
- * choose between the candidates a quarter apart.
+ * Snap a signed turn count to a quarter, using how the craft's attitude
+ * CHANGED across the rotation to choose between the candidates a quarter
+ * apart.
  *
- * `upZ` is the world z component of the body up axis: +1 level, -1 inverted,
+ * upZ is the world z component of the body up axis: +1 level, -1 inverted,
  * 0 on its side. For the quaternion (w, x, y, z) that is 1 - 2(x^2 + y^2),
  * one polynomial and no trigonometry.
  *
+ * IT IS THE CHANGE, NOT THE END STATE, and getting that wrong is the whole
+ * reason this comment is here. The first version asked only where the craft
+ * ended: upright meant a whole number of turns, inverted meant a half. That
+ * is true for a trick begun the right way up and false for every trick that
+ * is not, and the middle of a Rubik's Cube is exactly that case. A Cube is a
+ * half roll to inverted, then a WHOLE flip that begins inverted and ends
+ * inverted, then a half roll home. The old rule read that flip's end
+ * attitude, decided it wanted a half, and only failed to corrupt the count
+ * because the candidates it then reached for were further away than the
+ * tolerance allowed. It got the right answer by being unable to apply the
+ * wrong one, which is not the same as being right: flown a little long, at
+ * 1.15 turns, it would have snapped to 1.25 and the Cube would have come
+ * apart into a Flip and a quarter.
+ *
+ * The invariant that actually holds is that a rotation about a horizontal
+ * body axis inverts the craft if and only if it covers a half-integer
+ * number of turns. So the classes are:
+ *
+ *   started and ended the same way up   -> a whole number of turns
+ *   started and ended opposite ways up  -> a half
+ *   ended on its side                   -> a quarter or three quarters
+ *
+ * When the START attitude is itself on edge, none of that is reliable, and
+ * the plain nearest quarter is the honest answer.
+ *
  * A yaw does not change which way up the craft is, so attitude says nothing
- * about it and it takes the plain nearest quarter.
+ * about it and it always takes the plain nearest quarter.
  */
-export function snapTurns(rawTurns, axis, upZ) {
+export function snapTurns(rawTurns, axis, startUpZ, endUpZ) {
   const mag = rawTurns < 0 ? -rawTurns : rawTurns;
   if (mag < MIN_TURNS) {
     return 0;
@@ -312,22 +382,20 @@ export function snapTurns(rawTurns, axis, upZ) {
   if (axis === AXIS_YAW) {
     return nearest;
   }
-  /* Which residue class the attitude says this landed in: whole turns
-   * upright, half turns inverted, quarters on edge. */
-  const wantHalf = upZ < -0.5;
-  const wantWhole = upZ > 0.5;
-  const cls = (t) => {
-    const f = t - Math.floor(t);
-    if (f < 0.125 || f > 0.875) {
-      return 'whole';
-    }
-    if (f > 0.375 && f < 0.625) {
-      return 'half';
-    }
-    return 'edge';
-  };
-  const want = wantWhole ? 'whole' : (wantHalf ? 'half' : 'edge');
-  if (cls(nearest) === want) {
+  const sUp = startUpZ > 0.5;
+  const sDown = startUpZ < -0.5;
+  if (!sUp && !sDown) {
+    return nearest;
+  }
+  const eUp = endUpZ > 0.5;
+  const eDown = endUpZ < -0.5;
+  let want;
+  if (!eUp && !eDown) {
+    want = 'edge';
+  } else {
+    want = (sUp === eUp) ? 'whole' : 'half';
+  }
+  if (turnClass(nearest) === want) {
     return nearest;
   }
   /* Reach a quarter either side for a candidate that agrees with the
@@ -335,7 +403,7 @@ export function snapTurns(rawTurns, axis, upZ) {
   let best = nearest;
   let bestErr = Infinity;
   for (const cand of [nearest - 0.25, nearest + 0.25, nearest - 0.5, nearest + 0.5]) {
-    if (cand < MIN_TURNS || cls(cand) !== want) {
+    if (cand < MIN_TURNS || turnClass(cand) !== want) {
       continue;
     }
     const err = cand > mag ? cand - mag : mag - cand;
@@ -354,6 +422,9 @@ class Run {
     this.acc = 0;
     this.open = false;
     this.startMs = 0;
+    /* Which way up the craft was when this rotation began. snapTurns reads
+     * the CHANGE across the run, not the end state. */
+    this.startUpZ = 1;
     this.offMs = 0;
     /* Total time inside the run spent under RATE_OFF, which is how a
      * segmented rotation gives itself away. */
@@ -462,6 +533,7 @@ export class TrickDetector {
         run.offMs = 0;
         run.slowMs = 0;
         run.startMs = this.nowMs;
+        run.startUpZ = upZ;
       } else {
         return;
       }
@@ -476,6 +548,7 @@ export class TrickDetector {
         run.offMs = 0;
         run.slowMs = 0;
         run.startMs = this.nowMs;
+        run.startUpZ = upZ;
       }
       return;
     }
@@ -494,7 +567,7 @@ export class TrickDetector {
   /* Turn an accumulated run into a primitive, or throw it away. */
   closeRun(run, upZ) {
     const raw = run.acc / TURN;
-    const turns = snapTurns(raw, run.axis, upZ);
+    const turns = snapTurns(raw, run.axis, run.startUpZ, upZ);
     const open = run.open;
     run.open = false;
     const acc = run.acc;

@@ -1,6 +1,6 @@
 # Maps
 
-Three worlds, one shell. `src/render/shell.js` owns everything that outlives a
+Two kinds of world, one shell. `src/render/shell.js` owns everything that outlives a
 map: the renderer, the canvas, the camera and the airframe. A map owns its
 scene, its post chain, its colliders and its contact data, and disposes all of
 it when it is swapped out. That split is what keeps only one map's render
@@ -9,8 +9,13 @@ targets alive at a time, which is what keeps P5's 120 MB budget meaningful.
 `registry.js` is the only place a map is named, and its loaders are dynamic
 `import()`. That is not style: a static import of the city would fetch 59
 vendored files at boot for a player who only ever flies the race field.
-`tests/lib/checks.js` check 16 measures it. Industrial bando, Municipal baths and Bardwell's yard copy their cel kits
-into `src/maps/bando/cel`, `src/maps/baths/cel` and `src/maps/yard/cel` so choosing them does not fetch the city.
+`tests/lib/checks.js` check 16 measures it.
+
+There used to be three more freestyle worlds, each with its own copy of the
+city's cel kit so that choosing one fetched nothing under `src/maps/city`.
+Industrial bando, Municipal baths and Bardwell's yard were removed on
+2026-08-30 on the owner's ask: Freestyle offers the town and nothing else.
+They are in the history at 974f4ce.
 
 ## The contract a map module must satisfy
 
@@ -25,7 +30,7 @@ id.
 
 A MapInstance is:
 
-    id            'field' | 'city' | 'custom' | 'bando' | 'baths' | 'yard'
+    id            'field' | 'city' | 'custom'
     name          what the menu shows
     mode          'race' | 'freestyle'
     graphics      'low' | 'medium' | 'high'

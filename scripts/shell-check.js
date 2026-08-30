@@ -796,9 +796,11 @@ const BEHAVIOUR = `(() => {
       ui.show('title');
       return { map, landed, launched };
     };
-    /* A dressed world is freestyle by MAPS[].mode and must fly straight. */
+    /* A dressed world is freestyle by MAPS[].mode and must fly straight.
+     * There was a second call here for Industrial bando, which was removed
+     * with the other two freestyle worlds on 2026-08-30; one world is all
+     * there is to try. */
     seen.push(tryFly('city'));
-    seen.push(tryFly('bando'));
     out.launchGate = { seen };
   } catch (e) {
     out.launchGate = { error: String(e && e.message ? e.message : e) };

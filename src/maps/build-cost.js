@@ -41,10 +41,4 @@ export const MAP_BUILD_MS = {
    * have. */
   custom: 2964,
   city: 7994,
-  /* Compact cement works. Measured on the first kiln load in this session. */
-  bando: 4046,
-  /* Empty 50 m hall. Measured 369 ms world stage on this machine. */
-  baths: 370,
-  /* 2.5 acre homestead. First load estimate, replace after measurement. */
-  yard: 900,
 };

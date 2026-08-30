@@ -23754,3 +23754,52 @@ Checks this round: `lint:nouns` PASS, `lint:devices` PASS, `lint:arcade` PASS,
 `lint:responsive` PASS, `lint:shell` PASS, `lint:attract` PASS,
 `lint:memory` PASS. `npm run verify` NOT run: nothing here touches src/native,
 patches, vendor/betaflight, the input path or the Emscripten build.
+
+## Freestyle is the town, and only the town
+
+Owner ask: remove every freestyle map except the city, so that answering
+Freestyle offers the city and nothing else.
+
+WHAT WENT. `src/maps/bando`, `src/maps/baths` and `src/maps/yard`, 41 files,
+and `src/maps/compact-perf.js`, which existed only for those three and had no
+other importer. Their three posters went with them. Everything is in the
+history at 974f4ce; nothing about the city changed.
+
+WHAT ELSE HAD TO GO, and it is the part that is easy to leave behind. Three
+entries in `registry.js`, three in `MAP_BUILD_MS`, three in
+`MAP_MODULE_COUNT` and three in `MAP_MODULE_PREFIX`, and NINE preset blocks
+in `quality.js`, which is three worlds times three presets. `__scaleAt`'s
+fallback was `q.bando`, which would have been an undefined read on the first
+call for any map without a block of its own; it is `q.city` now, and the
+branch's real meaning is written down beside it. `scripts/shell-check.js`
+flew the bando in its launch gate and now flies the city once rather than
+twice. `scripts/memory-check.js`'s HEAVY list, `scripts/posters.js`'s camera
+table and `scripts/noun-lint.js`'s one ALLOWED exception all named a file
+that no longer exists. That exception is the one worth saying out loud: it
+excused "FINA 50 m course" in Municipal baths' reference table, and an
+exception that outlives the file it excuses is how a list like that stops
+meaning anything.
+
+THE COPY. The Freestyle card said "A town to fly around, and three more places
+like it" with a fact chip reading "Four places". The Map row's note said "The
+other places are in here too". None of that was true any more. The card now
+names what the town actually contains, and the seated note is the world's own
+note and nothing else.
+
+MEASURED.
+
+- `window.__maps()` returns two entries, `custom` and `city`, one of them
+  freestyle.
+- `npm run lint:shell` PASS: the freestyle screen is 4 stops (one map card,
+  Tune, the signpost and Back), every one reachable, 0 px overflow, Escape
+  returns to the title. It was 7.
+- `npm run lint:memory` PASS: one heavy world, 71 modules, none fetched at
+  boot, geometries 62 to 436 to 61 and textures 6 to 60 to 5 across a round
+  trip.
+- `npm run lint:attract` PASS, `npm run lint:nouns` PASS with zero allowed
+  exceptions, `npm run lint:responsive` PASS.
+- The city loads and is `ready`, console errors 0 beyond the board fetch this
+  container always refuses.
+
+`npm run verify` NOT run: nothing here touches src/native, patches,
+vendor/betaflight, the input path or the Emscripten build.

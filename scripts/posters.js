@@ -27,7 +27,7 @@
  * REGENERATE, DO NOT EDIT, the same rule as the icons and the share card:
  *
  *     npm run gen:posters                 # all four
- *     node scripts/posters.js bando yard  # just these
+ *     node scripts/posters.js city       # just this one
  *
  * A run takes minutes: it builds each world in headless Chromium at the
  * authored preset, one at a time.
@@ -84,21 +84,18 @@ const CAMERAS = {
    * frame with the sunset behind them, which is the thing the flythrough
    * spent its whole loop inside of and never once showed.
    */
-  bando: [62, 24, 44, 16, 12, 0],
   /*
    * The corner of the entrance front, so the frame carries both the thing
    * that names the place, CIVIC BATHS over the doors, and the shape of the
    * hall behind it with its stair towers. Shot from above head height
    * because at eye level the boundary hedge takes the bottom half.
    */
-  baths: [42, 13, 36, 2, 7, 8],
   /*
    * The house across the back lawn, deck on, at about tree height. The
    * fence line and the paddock trees give it a horizon, and the sun is low
    * enough that the deck reads as a place somebody lives rather than a
    * cream box.
    */
-  yard: [3, 3.4, 25, -2, 3.0, 6],
 };
 
 /*

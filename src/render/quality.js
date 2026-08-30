@@ -105,49 +105,6 @@ const PRESETS = {
        * drifts stay: they are static and cost three draws. */
       petals: false,
     },
-    bando: {
-      shadowMap: 0,
-      shadowHalf: 28,
-      pixelBudget: 0.9e6,
-      minScale: 0.55,
-      preferScale: 0.85,
-      ink: false,
-      fxaa: false,
-      fogNear: 28,
-      fogFar: 140,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.8,
-    },
-    baths: {
-      shadowMap: 0,
-      shadowHalf: 28,
-      pixelBudget: 0.9e6,
-      minScale: 0.55,
-      preferScale: 0.85,
-      ink: false,
-      fxaa: false,
-      fogNear: 40,
-      fogFar: 180,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.8,
-    },
-    yard: {
-      shadowMap: 0,
-      shadowHalf: 32,
-      pixelBudget: 0.9e6,
-      minScale: 0.55,
-      preferScale: 0.85,
-      ink: false,
-      fxaa: false,
-      fogNear: 36,
-      fogFar: 180,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.8,
-      foliageKeep: 0.35,
-    },
   },
   medium: {
     id: 'medium',
@@ -177,49 +134,6 @@ const PRESETS = {
       ink: true,
       fxaa: false,
       petals: true,
-    },
-    bando: {
-      shadowMap: 1024,
-      shadowHalf: 32,
-      pixelBudget: 1.55e6,
-      minScale: 0.85,
-      preferScale: 1,
-      ink: true,
-      fxaa: false,
-      fogNear: 28,
-      fogFar: 140,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.55,
-    },
-    baths: {
-      shadowMap: 1024,
-      shadowHalf: 32,
-      pixelBudget: 1.55e6,
-      minScale: 0.85,
-      preferScale: 1,
-      ink: true,
-      fxaa: false,
-      fogNear: 42,
-      fogFar: 190,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.55,
-    },
-    yard: {
-      shadowMap: 1024,
-      shadowHalf: 36,
-      pixelBudget: 1.55e6,
-      minScale: 0.85,
-      preferScale: 1,
-      ink: true,
-      fxaa: false,
-      fogNear: 36,
-      fogFar: 180,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.55,
-      foliageKeep: 0.55,
     },
   },
   high: {
@@ -255,72 +169,6 @@ const PRESETS = {
       /* The authored look. Falling blossom down the street corridor, three
        * instanced draws, driven from the fixed step count. */
       petals: true,
-    },
-    bando: {
-      shadowMap: 2048,
-      shadowHalf: 36,
-      pixelBudget: 2.6e6,
-      /*
-       * minScale is the pacer floor as a CSS fraction. It must not raise
-       * the buffer above pixelBudget: High used to set 1 here, so a 4K
-       * panel rendered native HalfFloat and hitching.
-       *
-       * It is a COARSE floor and on most panels it is not the one that
-       * binds. On 1920x1080 the 1.2e6 absolute pixel floor binds first, at
-       * 0.761, so the buffer stops just short of 1440x810 whatever this
-       * says. The two sentences that used to be here said both of those
-       * things about the same panel and contradicted each other.
-       *
-       * WHAT THIS DOES NOT DO, and it is worth writing down because the
-       * commit that set it claimed otherwise: it does not give a 4K panel
-       * a pacing range. At 3840x2160 the budget cap puts the ceiling at
-       * 0.560 and 0.75 is above that, so the floor clamps to the ceiling
-       * and the pacer has nowhere to go. The internal pixel cap does work
-       * and 4K renders 2149x1209 rather than native, which was the hitch;
-       * the pacing on top of it is inert there. Expressing the floor in
-       * PIXELS, the way MIN_INTERNAL_PIXELS already is, would give 4K a
-       * real 0.38 to 0.56 range. That is a measured change to how every
-       * preset paces on every map, so it belongs to its own round with
-       * numbers, not to a comment.
-       */
-      minScale: 0.75,
-      preferScale: 1,
-      ink: true,
-      fxaa: true,
-      fogNear: 32,
-      fogFar: 180,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.45,
-    },
-    baths: {
-      shadowMap: 2048,
-      shadowHalf: 36,
-      pixelBudget: 2.6e6,
-      minScale: 1,
-      preferScale: 1,
-      ink: true,
-      fxaa: true,
-      fogNear: 45,
-      fogFar: 200,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.45,
-    },
-    yard: {
-      shadowMap: 2048,
-      shadowHalf: 40,
-      pixelBudget: 2.6e6,
-      minScale: 1,
-      preferScale: 1,
-      ink: true,
-      fxaa: true,
-      fogNear: 40,
-      fogFar: 220,
-      lamps: 0,
-      mergeCell: Infinity,
-      casterMin: 0.45,
-      foliageKeep: 1,
     },
   },
 };

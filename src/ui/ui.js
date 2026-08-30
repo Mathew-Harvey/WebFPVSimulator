@@ -3475,8 +3475,8 @@ export class Ui {
             label: 'Freestyle',
             card: 'freestyle',
             art: 'assets/gate/freestyle.jpg',
-            blurb: 'A town to fly around, and three more places like it. Roofs, alleys and a level crossing, and nothing measured.',
-            facts: ['No gates', 'No clock', 'Four places'],
+            blurb: 'A whole town to fly around. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. Nothing measured.',
+            facts: ['No gates', 'No clock', 'One town'],
             action: 'mode-freestyle',
           },
           ...(trouble ? [trouble] : []),
@@ -3517,9 +3517,12 @@ export class Ui {
           label: 'Map',
           value: world ? world.name : 'Choose one',
           action: 'freestyle',
+          /* There is one freestyle world, so the seated note is the
+           * world's own note and nothing else. It used to promise "the
+           * other places are in here too" and there are no other places. */
           note: world
-            ? `${world.note} The other places are in here too.`
-            : 'Nothing is seated yet. Four places with no gates, no clock and no lap. Pick one and fly it.',
+            ? world.note
+            : 'Nothing is seated yet. One town, no gates, no clock and no lap. Open it and fly.',
         }
         : {
           label: 'Track',
@@ -3714,7 +3717,7 @@ export class Ui {
       return [...cards, ...rows];
     }
     /*
-     * FREESTYLE. Four places and no ceremony.
+     * FREESTYLE. One town and no ceremony.
      *
      * There is deliberately no launch card here. Racing is a measured run and
      * earns a moment to check what it is measured as; freestyle has no clock,
@@ -3733,8 +3736,8 @@ export class Ui {
       }));
       return [
         ...cards,
-        /* A DOOR, not a copy. This was one of the four screens the same
-         * Tune row was built onto, and Quad is one press away. It still
+        /* A DOOR, not a copy. This is one of the screens the same Tune
+         * row was built onto, and Quad is one press away. It still
          * NAMES the tune, because what you are about to fly is worth
          * knowing before you pick a world. */
         {
@@ -7739,8 +7742,8 @@ export class Ui {
        * AND IT IS CLICKABLE, because until now it was the key and nothing
        * else. The row above the legend is Track in Race and Map in
        * Freestyle and only ever lists the worlds of the mode you are in, so
-       * a pilot who answered Freestyle could reach the four places and
-       * could not reach a single race track again: the one route was this
+       * a pilot who answered Freestyle could reach the town and could
+       * not reach a single race track again: the one route was this
        * key, written here and pressable nowhere. Reported as being in a
        * freestyle map with no way back to a race one.
        *

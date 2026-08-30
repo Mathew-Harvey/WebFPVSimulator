@@ -55,15 +55,17 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const SKIP_DIRS = new Set(['node_modules', '.git', '.loop', 'vendor', 'dist', 'tests', 'tmp']);
 
 /*
- * The one allowed sighting, with its reason, because a blanket rule that
- * cannot be argued with gets switched off rather than obeyed.
+ * Sightings that are allowed, with their reasons, because a blanket rule
+ * that cannot be argued with gets switched off rather than obeyed.
  *
- * "50 m course" is the swimming term, long course as against short course,
- * and it is the real world reference the world-scale check measures the
- * baths pool against. Writing "50 m track" there would make it wrong.
+ * EMPTY, and it was not always. The one entry was "FINA 50 m course" in
+ * Municipal baths' reference table: the swimming term, long course as
+ * against short course, and the real world figure the world-scale check
+ * measured that pool against. That map was removed on 2026-08-30 and the
+ * exception went with it. An exception outliving the file it excuses is
+ * how a list like this stops meaning anything.
  */
 const ALLOWED = [
-  { file: 'src/maps/baths/references.js', text: 'FINA 50 m course' },
 ];
 
 const WORD = /(?<![A-Za-z0-9_])[Cc]ourses?(?![A-Za-z0-9_])/;

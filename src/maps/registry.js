@@ -11,10 +11,11 @@
  * measures that, by recording every request the page makes with a track
  * selected and asserting none of them is under src/maps/city.
  *
- * Industrial bando is the same kind of isolation: it copies the cel kit into
- * src/maps/bando/cel rather than importing the city's, so choosing that world
- * does not fetch a single city module, and choosing the city does not fetch
- * the bando. Municipal baths and Bardwell's yard copy the cel kit the same way.
+ * There used to be four freestyle worlds. Industrial bando, Municipal baths
+ * and Bardwell's yard were removed on 2026-08-30 on the owner's ask, so
+ * Freestyle offers the town and nothing else. They are in the history at
+ * 974f4ce if they are ever wanted back; what is not in the history is the
+ * time a player spends deciding between four things when they wanted one.
  *
  * The track world is loaded the same way, for symmetry and because the loading
  * screen then has one shape to report. It is loaded at boot because the title
@@ -63,33 +64,6 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.city,
     poster: 'assets/posters/city.jpg',
     load: () => import('./city/index.js'),
-  },
-  {
-    id: 'bando',
-    name: 'Industrial bando',
-    mode: 'freestyle',
-    note: 'A cement works. Dive the stack, fly the kiln. No gates, no lap, no clock.',
-    buildMs: MAP_BUILD_MS.bando,
-    poster: 'assets/posters/bando.jpg',
-    load: () => import('./bando/index.js'),
-  },
-  {
-    id: 'baths',
-    name: 'Municipal baths',
-    mode: 'freestyle',
-    note: 'A 50 m hall and a lido. Loop the bars, split-S the bulkhead. No gates, no lap, no clock.',
-    buildMs: MAP_BUILD_MS.baths,
-    poster: 'assets/posters/baths.jpg',
-    load: () => import('./baths/index.js'),
-  },
-  {
-    id: 'yard',
-    name: "Bardwell's yard",
-    mode: 'freestyle',
-    note: 'A 2.5 acre homestead. Deck, barn, missing fence rail. No gates, no lap, no clock.',
-    buildMs: MAP_BUILD_MS.yard,
-    poster: 'assets/posters/yard.jpg',
-    load: () => import('./yard/index.js'),
   },
 ];
 

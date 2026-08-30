@@ -8,7 +8,9 @@
  * six hundred lines afterwards fitting those rectangles back onto the
  * drawing. Nothing new should be authored that way. Industrial bando and
  * Municipal baths already settled the alternative and it is the one this
- * follows: a wall is one call that draws it and makes it solid in the same
+ * follows (both were freestyle maps of their own until 2026-08-30 and are in
+ * the history at 974f4ce; this file and the two beside it are where their
+ * lessons still live): a wall is one call that draws it and makes it solid in the same
  * statement, and a GAP IS THE ABSENCE OF A CALL. The fit then has nothing to
  * repair, because there is no standoff to trim.
  *

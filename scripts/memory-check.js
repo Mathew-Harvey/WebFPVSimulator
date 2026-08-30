@@ -18,7 +18,7 @@
  * WHAT THIS ADDS:
  *
  *   1. The other three maps. Check 16 covers city against field. Industrial
- *      bando, Municipal baths and Bardwell's yard each copy the cel kit into
+ *      the city is the only freestyle world now, and it copies nothing into
  *      their own directory precisely so choosing one does not drag in the
  *      city's, and nothing was measuring that.
  *   2. Release, not just laziness. After switching away, three.js's own count
@@ -30,7 +30,7 @@
  *
  * Usage:
  *   node scripts/memory-check.js
- *   node scripts/memory-check.js --map=bando     just one map
+ *   node scripts/memory-check.js --map=city      just one map
  *
  * This file is part of WebFPVSimulator.
  *
@@ -58,7 +58,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /* The four dressed worlds. `custom` is the field and is the baseline: it is
  * loaded at boot because the title screen has a world behind it. */
-const HEAVY = ['city', 'bando', 'baths', 'yard'];
+const HEAVY = ['city'];
 
 /*
  * Every URL the page has fetched, as a plain list. Resource timing is the
@@ -67,7 +67,7 @@ const HEAVY = ['city', 'bando', 'baths', 'yard'];
  *
  * It is CUMULATIVE for the life of the page, which is the trap: after the
  * city has been loaded once, its URLs are in every later reading, so a naive
- * "did choosing the bando pull in the city" test reports yes for a page that
+ * "did choosing the city pull in its graph" test reports yes for a page that
  * did nothing wrong. Every question here is therefore asked about a SLICE,
  * from a mark taken just before the switch.
  */

@@ -9,12 +9,14 @@
  * has decided what to do with the site. The demolition notice on the fence
  * says the same.
  *
- * WHY THIS AND NOT src/maps/bando REBUILT. Industrial bando is a 58 m stack
- * and a 42 m preheater on a hundred metre site, painted for a sunset ochre
- * sky it brings with it. Dropped into this town it would be four times the
- * height of anything here, out of the shadow camera, and out of the palette:
- * its own `palette.js` says in as many words that its colours exist to fight
- * this town's. So what crosses over is the VOCABULARY, not the model. Rust,
+ * WHY THIS AND NOT THE STANDALONE BANDO REBUILT. Industrial bando, which was
+ * its own freestyle map until 2026-08-30 and is in the history at 974f4ce,
+ * was a 58 m stack and a 42 m preheater on a hundred metre site, painted for
+ * a sunset ochre sky it brought with it. Dropped into this town it would be
+ * four times the height of anything here, out of the shadow camera, and out
+ * of the palette: its own `palette.js` said in as many words that its colours
+ * existed to fight this town's. So what crosses over is the VOCABULARY, not
+ * the model. Rust,
  * profiled sheet, punched openings, a landable roof, a yard with weeds
  * through the concrete, and one tall thing to fly round. Everything is drawn
  * out of the city's own PAL and stands at suburban height: the stack is

@@ -15,10 +15,11 @@
  * year, it is the reason a pool is the second thing after a bando that people
  * fly, and it is the only way this place gives a pilot something to CARVE:
  * twenty five metres of tiled floor, a shallow end, a step down, a deep end,
- * and vertical walls all the way round to ride. Municipal baths, the
- * standalone map this one is a suburb sized answer to, drains its 50 m hall
- * for exactly the same reason and says so: there is no water mesh anywhere in
- * that folder, only the white band a drained pool leaves on the tile.
+ * and vertical walls all the way round to ride. Municipal baths, the standalone
+ * map this one was a suburb sized answer to and which is in the history at
+ * 974f4ce, drained its 50 m hall for exactly the same reason and said so:
+ * there was no water mesh anywhere in that folder, only the white band a
+ * drained pool leaves on the tile.
  *
  * THE INDOOR POOL HAS WATER IN IT, and having one of each is the point. The
  * hall is open all year, so it is 25 m of water under a flat roof with a door

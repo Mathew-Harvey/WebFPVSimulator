@@ -324,12 +324,11 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * fetched on a cold load, because 61 sat here for a round and nothing
  * could notice.
  *
- * The other three are the .js files under their own folder, cel included:
- * bando 13, baths 15, yard 14. baths and yard each sat one too high, which
- * is a bar that stops a stage short of full and then jumps; only the city
- * is asserted, so nothing could notice those either. `npm run lint:memory`
- * prints the fetched count per map beside these numbers. */
-const MAP_MODULE_COUNT = { field: 1, city: 71, custom: 1, bando: 13, baths: 15, yard: 14 };
+ * There is one freestyle world now. Industrial bando, Municipal baths and
+ * Bardwell's yard were removed on 2026-08-30, and their three entries went
+ * with them. `npm run lint:memory` prints the fetched count per map beside
+ * this number. */
+const MAP_MODULE_COUNT = { field: 1, city: 71, custom: 1 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -342,9 +341,6 @@ const MAP_MODULE_PREFIX = {
   field: '/src/maps/field',
   city: '/src/maps/city/',
   custom: '/src/maps/custom',
-  bando: '/src/maps/bando/',
-  baths: '/src/maps/baths/',
-  yard: '/src/maps/yard/',
 };
 
 async function loadMap(shell, id, loading, options) {
@@ -5755,7 +5751,12 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__scaleAt = (w, h) => {
     const id = view && view.id;
     const q = qualityFor(ui.settings.graphics);
-    const mapQ = id && q[id] ? q[id] : q.bando;
+    /* The city's block is the fallback now that it is the only freestyle
+   * world: the previous default was the bando's and the bando is gone. Any
+   * id with no block of its own is the race field, whose scale is the
+   * session's rather than a map pipeline's, so the branch is a shape the
+   * caller can rely on rather than a meaningful answer. */
+  const mapQ = id && q[id] ? q[id] : q.city;
     const user = view && view.post && view.post.userScale != null
       ? view.post.userScale
       : renderScaleOf(ui.settings);

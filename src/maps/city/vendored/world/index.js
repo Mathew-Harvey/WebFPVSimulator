@@ -55,6 +55,10 @@ import { buildRokuchome } from './rokuchome.js';
 import { buildNanachome } from './nanachome.js';
 import { buildTraffic } from './traffic.js';
 import { buildDetails } from './details.js';
+/* Falling blossom, and the drifts it leaves.  Back after a round with it
+ * switched off: `quality.js` now decides whether the live field runs, so the
+ * town builds it and Low hides it. */
+import { buildPetals, buildFallenPatches } from './petals.js';
 import {
   makePole, makeWires, makeKeiTruck, makeMirror, makePostBox,
   makeShrine, makeBarrier, makeGuardrail, makeBins,
@@ -348,8 +352,10 @@ export function buildWorld(scene, { bake = true } = {}) {
    * and not inside `hills.js`, which is also where its spots come from. */
   buildCedar(ctx, cedarKept);
   buildBamboo(ctx, bambooKept);
-  /* Fallen blossom is off. A freestyle line does not want a carpet of cards
-   * in every gap, and the live field was 980 of them in the corridor. */
+  /* Fallen blossom, over every patch the districts asked for.  Each tone is
+   * one instanced mesh over the whole world, so a couple of dozen scattered
+   * drifts is three draw calls however many patches feed it. */
+  buildFallenPatches(ctx, districts.flatMap((d) => d.petals ?? []));
 
   /* The distant town, hills and far tree line are gone: on a 160 m planet
    * anything that used to sit 60-330 m away is now over the horizon or on
@@ -650,8 +656,13 @@ export function buildWorld(scene, { bake = true } = {}) {
 
   /* The cat, the planters and the kerb bikes are gone. The wall is the line. */
 
-  /* --------------------------------- petals --------------------------------- */
-  const petals = { update() {}, meshes: [] };
+  /* --------------------------------- petals ---------------------------------
+   * 980 cards drifting down the street corridor, three instanced draws, and a
+   * sideways shove every time the train goes past.  `world.update` drives it
+   * from the fixed step count (see src/maps/city/animation.js), not from frame
+   * time, and nothing in it is solid.  The graphics preset decides whether it
+   * is shown; see src/maps/city/index.js. */
+  const petals = buildPetals(ctx);
 
   /* No outer boundary any more -- the world has no edge to fall off. */
 

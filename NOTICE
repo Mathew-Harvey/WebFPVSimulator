@@ -40,12 +40,25 @@ map's palette.js instead of the city's. toon.js also exports
 releaseMaterials(), which clears the material caches on dispose. Licence
 text travels with them at src/maps/bando/cel/LICENSE.
 
-Fifty eight of the 59 city files are byte identical to upstream. The exception
-is `world/index.js`, which carries a four line change recorded in full at
-`src/maps/city/vendored/PATCH-world-index.diff`: it makes the planet bake
-optional so the city can be taken in its flat authoring. The change adds a
-parameter with the upstream behaviour as its default, so calling
-`buildWorld(scene)` still does exactly what it does upstream.
+Two of the 59 city files carry changes; the other 57 are byte identical to
+upstream.
+
+  * `world/index.js` carries the four line change recorded in full at
+    `src/maps/city/vendored/PATCH-world-index.diff`, which makes the planet
+    bake optional so the city can be taken in its flat authoring. The change
+    adds a parameter with the upstream behaviour as its default, so calling
+    `buildWorld(scene)` still does exactly what it does upstream. It also
+    carries the town thinning pass of 2026-08-26, which is a set of edits to
+    the town's own composition rather than to its interface: dressing removed,
+    planting thinned. Those are described in PROGRESS.md rather than in a diff
+    file, because a diff against upstream would be the wrong record for a
+    change to what the town contains.
+  * `core/toon.js` carries the one line change recorded at
+    `src/maps/city/vendored/PATCH-core-toon.diff`, which drops `flatShading`.
+
+The line above used to read "fifty eight of the 59 city files are byte
+identical", which stopped being true when `core/toon.js` was patched and was
+never corrected.
 
 Everywhere else our shell needs different behaviour from a vendored class, it
 subclasses or wraps it in our own GPLv3 code under `src/maps/city/` rather

@@ -1613,6 +1613,49 @@ export async function buildMap(shell, onProgress, options) {
    */
   await yieldToPaint();
   const world = buildWorld(scene, { bake: false });
+  /*
+   * THE LIVE BLOSSOM FIELD, SETTLED BEFORE ANYTHING IN THE BAKE SEES IT.
+   *
+   * 980 instanced cards drifting down the street corridor. It owns its own
+   * instance buffer and rewrites all of it every step, which makes it the one
+   * thing in this town that three separate passes below would each get wrong,
+   * so both branches are taken here rather than after them.
+   *
+   * KEPT: marked `noChunk`, because `chunkInstanced` would otherwise split the
+   * three sources into per cell copies and detach the originals, leaving 980
+   * matrix writes a step going into meshes that are no longer in the graph.
+   * The field would simply vanish, with nothing reported anywhere. `noMerge`
+   * is belt and braces, since bakeCity already skips every instanced mesh.
+   *
+   * DROPPED, on Low: taken out of the graph and freed, not hidden. Hiding it
+   * here is not enough, because `buildCullGrid` collects it into a cell and
+   * `cullTo` writes `visible` on every item of a cell that changes state, so
+   * the first time that cell came back the blossom Low had switched off would
+   * come back with it. Out of the graph it cannot be switched on by anything,
+   * the 980 matrices are not carried, and the static fallen drifts stay.
+   */
+  if (world.petals && world.petals.meshes && world.petals.meshes.length) {
+    if (q.city.petals) {
+      for (const m of world.petals.meshes) {
+        m.name = m.name || 'petalField';
+        m.userData.noChunk = true;
+        m.userData.noMerge = true;
+      }
+    } else {
+      for (const m of world.petals.meshes) {
+        m.removeFromParent();
+        /* Its own instance buffer, its own geometry and its own material.
+         * NOT the map: `petalTex()` is a module level singleton in
+         * ./vendored/core/textures.js and the static fallen drifts, which
+         * Low keeps, are still drawing with it. */
+        m.dispose();
+        m.geometry.dispose();
+        m.material.dispose();
+      }
+      world.petals.meshes = [];
+      world.petals.update = () => {};
+    }
+  }
   progress(0.86);
   await yieldToPaint();
 
@@ -1715,15 +1758,6 @@ export async function buildMap(shell, onProgress, options) {
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
   const anim = cityAnimation(world, colliders, boomIndices, trainCars);
-  if (!q.city.petals && world.petals && world.petals.meshes) {
-    /* Floating blossom is a per-frame instance update of 980 cards. Low
-     * keeps the fallen drifts (static, three draws) and drops the live
-     * field. */
-    for (const m of world.petals.meshes) {
-      m.visible = false;
-    }
-    world.petals.update = () => {};
-  }
   /* Measured AFTER cityAnimation has seated the booms at step zero, so it is
    * the extent a quad would actually meet. */
   references.crossingBoomCollider = {

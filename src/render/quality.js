@@ -99,6 +99,10 @@ const PRESETS = {
       preferScale: 0.85,
       ink: false,
       fxaa: false,
+      /* No live blossom on a handheld. The field is 980 instanced cards
+       * whose matrices are rewritten and re-uploaded every frame, and
+       * memory bandwidth is what a 4 to 15 W APU is short of. The fallen
+       * drifts stay: they are static and cost three draws. */
       petals: false,
     },
     bando: {
@@ -172,7 +176,7 @@ const PRESETS = {
       preferScale: null,
       ink: true,
       fxaa: false,
-      petals: false,
+      petals: true,
     },
     bando: {
       shadowMap: 1024,
@@ -248,7 +252,9 @@ const PRESETS = {
       preferScale: null,
       ink: true,
       fxaa: true,
-      petals: false,
+      /* The authored look. Falling blossom down the street corridor, three
+       * instanced draws, driven from the fixed step count. */
+      petals: true,
     },
     bando: {
       shadowMap: 2048,

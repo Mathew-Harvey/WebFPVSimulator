@@ -1503,6 +1503,18 @@ export function chunkInstanced(root, { cell = 40 } = {}) {
   const targets = [];
   root.updateMatrixWorld(true);
   root.traverse((o) => {
+    /*
+     * `noChunk` is set by whatever OWNS the instance buffer at runtime. The
+     * falling blossom is the case and it is not an optimisation question:
+     * `petals.js` keeps a {mesh, idx} pair for each of its 980 cards and
+     * writes `setMatrixAt(idx)` every step, so splitting the source into
+     * per cell copies and detaching it leaves 980 writes going into a mesh
+     * that is no longer in the graph. The field simply disappears, with no
+     * error anywhere. Chunking is for static sets.
+     */
+    if (o.userData && o.userData.noChunk) {
+      return;
+    }
     if (o.isInstancedMesh && o.count >= CHUNK_MIN_INSTANCES) {
       targets.push(o);
     }

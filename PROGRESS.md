@@ -23349,3 +23349,76 @@ drops to 56 px because that screen has a bar.
 `npm run verify` not run: nothing here touches physics, the plant, the module
 ABI or the build. It was run twice earlier today on this tree and the entry
 above records the result.
+
+## Freestyle city: the falling blossom comes back
+
+Owner ask: add the falling cherry blossom back to the freestyle city. It was
+removed on 2026-08-26 in the thin-the-town pass, on an owner ask at the time,
+and is wanted again.
+
+WHAT CHANGED.
+
+`vendored/world/index.js` builds it again: `buildPetals(ctx)` in place of the
+`{ update() {}, meshes: [] }` stub, and `buildFallenPatches` over
+`districts.flatMap((d) => d.petals ?? [])`. That second one matters more than
+it looks. Eight district modules have gone on pushing fallen-blossom patches
+into a `petals` array they hand back all along; nothing has collected it since
+August, so those spots were authored, returned and dropped on the floor every
+load. They are drifts again now, at no authoring cost.
+
+`quality.js`: `city.petals` is true on High and Medium, false on Low. Low's
+note already says fewer plants and cheaper post, and PROGRESS recorded "no
+live petals" as a Low characteristic when the presets were written. The live
+field is 980 instanced cards whose matrices are rewritten and re-uploaded
+every step, and bandwidth is what a handheld APU is short of. The static
+fallen drifts stay at every preset: three draws, no per frame work.
+
+`MAP_MODULE_COUNT.city` 63 to 64, measured rather than counted by hand:
+`performance.getEntriesByType('resource')` after a cold city load lists 64
+files under `/src/maps/city/`, and 0 with the race field selected, so check
+16's isolation half is unmoved. The comment above the constant was wrong in a
+second way and is fixed: it listed four of our five files and omitted
+drawn.js.
+
+THE TWO THINGS THAT WOULD HAVE BROKEN IT SILENTLY, both found by reading the
+bake rather than by flying.
+
+`chunkInstanced` splits any InstancedMesh over 200 instances into one mesh per
+cull cell and calls `removeFromParent` on the source. The petal field is three
+sources of 539, 274 and 167, so two of the three would have been split and
+detached, and `petals.js` keeps a `{ mesh, idx }` pair per card and writes
+`setMatrixAt(idx)` on it every step. The blossom would have vanished with 980
+matrix writes a step going into meshes that are not in the graph, and nothing
+anywhere would have said so. `bake.js` now skips `userData.noChunk`, and
+`city/index.js` sets it on the three sources straight after `buildWorld`.
+
+The Low branch could not be a `visible = false`, which is what it was. The
+cull grid collects every mesh into a cell and `cullTo` writes `visible` on
+every item of a cell whose state changes, so the first time the crossing's
+cell went out of range and came back, Low would have got its blossom back. The
+three sources are now removed from the graph and freed on Low instead, which
+also stops it carrying 980 matrices it will never draw. Geometry and material
+are disposed with them; the map is not, because `petalTex()` is a module level
+singleton and the fallen drifts Low keeps are still drawing with it.
+
+`NOTICE` said fifty eight of the 59 vendored city files were byte identical to
+upstream. That stopped being true when `core/toon.js` was patched, and the
+town thinning pass had since edited `world/index.js` well beyond the four line
+bake change the diff file records. Both are now written down as they are.
+
+VERIFIED, headless Chromium at 1280x720, High.
+
+- 3 meshes named `petalField`, counts 539 / 274 / 167, all parented, all
+  visible, `chunkedFrom` 23 rather than the 25 it would have been.
+- Two captures in flight at the crossing and over the roofs: blossom in the
+  air, drifts in the gutter and along the kerb line, no speckle from the ink
+  pass (the sources carry `noOutline` upstream).
+- 64 city modules fetched after choosing the city, 0 with the field selected.
+- Console errors 0 (the one line the run prints is the harness's own
+  ERR_CONNECTION_REFUSED for the CDN it fulfils locally, on every run).
+
+`npm run verify` NOT run: nothing here touches src/native, patches,
+vendor/betaflight, the input path or the Emscripten build. Petals are drawn
+only; they have no collider and are not in the physics path. They are driven
+from `world.update(dt)` where dt comes from the fixed step count in
+`city/animation.js`, not from frame time.

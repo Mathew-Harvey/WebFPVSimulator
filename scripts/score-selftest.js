@@ -789,22 +789,69 @@ console.log('\nthe lap snap');
     snapPathTurns(1.06, OB_BAR, -1, -1) === 1);
   check('and still is when the geometry stretches it to 1.3',
     snapPathTurns(1.3, OB_BAR, -1, -1) === 1);
-  check('over to under, half a turn, is half a lap',
-    snapPathTurns(0.52, OB_BAR, 1, -1) === 0.5);
+  check('over to under, well past half a turn, is half a lap',
+    snapPathTurns(0.845, OB_BAR, 1, -1) === 0.5);
   check('under to over is half a lap too',
-    snapPathTurns(0.44, OB_BAR, -1, 1) === 0.5);
+    snapPathTurns(0.610, OB_BAR, -1, 1) === 0.5);
+
   /*
-   * THE FLY-BY. A quad going straight past a rail sweeps up to half a turn
-   * of angle at that rail, and goes in under it and comes out under it.
-   * Same side means a whole number of turns, and half a turn is not one.
-   * Rejected outright rather than rounded, which is the difference between
-   * this snap and the attitude one.
+   * THE STRAIGHT LINE THEOREM, and it is the most important thing this
+   * function does. A straight line subtends STRICTLY LESS THAN half a turn
+   * about any point off it, so nothing at or under half a turn is evidence
+   * of having gone around anything at all.
+   *
+   * Every number below was MEASURED on the real aircraft by an adversarial
+   * pass that was trying to break this file, and every one of them scored a
+   * trick before the theorem was applied:
+   *
+   *   0.463  a quad falling ballistically past a railing, throttle 0.05,
+   *          with a lazy roll and pitch on the way down: scored a CLEAN
+   *          Split-S, 100 points, for falling.
+   *   0.500  a quad flying DEAD STRAIGHT and descending past a footbridge
+   *          rail at 16 m/s with zero commanded input: scored a Beginner
+   *          Matty. This was the ONLY trick twenty-one minutes of ordinary
+   *          flying around the real city ever produced, and it produced it
+   *          again and again.
+   *   0.377  a quad climbing straight past a rail: scored an Immelmann.
+   *          237 placements did it.
+   *
+   * A descending or climbing pass really does cross from over the rail to
+   * under it, so the side parity cannot save us here the way it saves us
+   * from the level fly-by. Only the angle can.
    */
+  check('a ballistic fall past a railing is not a Split-S',
+    snapPathTurns(0.463, OB_BAR, 1, -1) === 0);
+  check('a straight descending pass under a rail is not a Matty',
+    snapPathTurns(0.5, OB_BAR, 1, -1) === 0);
+  check('a straight climb past a rail is not an Immelmann',
+    snapPathTurns(0.377, OB_BAR, -1, 1) === 0);
+  check('nor is the worst of them at 0.45',
+    snapPathTurns(0.45, OB_BAR, -1, 1) === 0);
+
+  /* The level fly-by, which the side parity catches on its own. */
   check('a half turn that came out the side it went in is not a lap',
     snapPathTurns(0.5, OB_BAR, -1, -1) === 0);
   check('nor is a third of a turn', snapPathTurns(0.33, OB_BAR, 1, 1) === 0);
-  check('a pole takes the plain nearest quarter, having no sides',
+
+  /*
+   * AND NO CEILING ON A HALF LAP. The sides are topological: in over the
+   * rail and out under it means an odd number of crossings, so the answer
+   * IS a half integer and the only question is which one. The old code also
+   * demanded the reading fall within a third of a turn of 0.5, which put a
+   * ceiling on a Split-S at 0.85. Flown TIGHTER, at pitch stick 0.60 rather
+   * than 0.45, a real Split-S reads 0.933 and scored nothing at all: zero
+   * of eight rail placements. A better flown trick scoring less than a
+   * worse one is the wrong way round.
+   */
+  check('a tightly flown Split-S at 0.933 is still half a lap',
+    snapPathTurns(0.933, OB_BAR, 1, -1) === 0.5);
+  check('and one and a half laps is one and a half',
+    snapPathTurns(1.45, OB_BAR, 1, -1) === 1.5);
+
+  check('a pole takes the nearest quarter, having no sides',
     snapPathTurns(1.98, OB_POLE, 0, 0) === 2);
+  check('but a pole fly-by is still under the straight line bound',
+    snapPathTurns(0.5, OB_POLE, 0, 0) === 0);
 }
 
 /*
@@ -842,10 +889,15 @@ console.log('\nthe obstacle tricks, on constructed paths');
       this.y = 0;
       this.z = 0;
       this.upZ = 1;
+      /* Where the nose points, in world coordinates. Cruising, it points
+       * the way the craft is going. */
+      this.fx = 0;
+      this.fy = 0;
+      this.fz = -1;
     }
     feed(p, q, r) {
       this.det.step(0.001, p, q, r, 0, Math.sqrt(Math.max(0, (1 - this.upZ) / 2)),
-        12, this.x, this.y, this.z);
+        12, this.x, this.y, this.z, this.fx, this.fy, this.fz);
     }
     cruise(ms, vz) {
       for (let i = 0; i < ms; i += 1) {
@@ -883,13 +935,31 @@ console.log('\nthe obstacle tricks, on constructed paths');
         );
       }
     }
-    /* An orbit in the horizontal plane, about a vertical pole. */
-    arcPole(ob, radius, startAngle, turns, ms, rot, upZ) {
+    /*
+     * An orbit in the horizontal plane, about a vertical pole.
+     *
+     * `noseIn` is the whole difference between an Orbit and an ordinary
+     * coordinated turn that happens to go round twice: with it the object
+     * is centred on the screen, without it the object is on the beam and
+     * the pilot never sees it. The two are identical in every other number
+     * the detector reads, including the concurrent yaw.
+     */
+    arcPole(ob, radius, startAngle, turns, ms, rot, upZ, noseIn = true) {
       for (let i = 0; i < ms; i += 1) {
         const a = startAngle + (turns * TURN * i) / ms;
         this.x = ob.cx + radius * Math.cos(a);
         this.y = ob.cy;
         this.z = ob.cz + radius * Math.sin(a);
+        if (noseIn) {
+          this.fx = -Math.cos(a);
+          this.fy = 0;
+          this.fz = -Math.sin(a);
+        } else {
+          const sgn = turns < 0 ? -1 : 1;
+          this.fx = -Math.sin(a) * sgn;
+          this.fy = 0;
+          this.fz = Math.cos(a) * sgn;
+        }
         if (upZ !== undefined) {
           this.upZ = upZ;
         }
@@ -979,6 +1049,45 @@ console.log('\nthe obstacle tricks, on constructed paths');
     check('two laps of a pole with the nose tracking is an Orbit x2',
       s.finish() === 'Orbit x2');
   }
+  /*
+   * AND THE SAME TWO LAPS WITH THE NOSE ON THE FLIGHT PATH IS NOT ONE.
+   *
+   * This is an ordinary coordinated turn flown twice round, which is not a
+   * trick and which no pilot would claim. Measured on the real aircraft the
+   * pole sits 88.9 degrees off the nose the whole way, off the edge of any
+   * FPV frame, and yet it used to be named Orbit x2: the pattern inferred
+   * tracking from the concurrent yaw, and heading rotates once per lap in
+   * ANY steady circle wherever the nose points. The nose-in and nose-out
+   * flights differ by 0.00 turns of yaw to two decimals.
+   */
+  {
+    const s = new Path(poleField());
+    s.approach(POLE, 5, 0, 500, 8, true);
+    s.arcPole(POLE, 5, 0, 2, 3000, [0, 0, 2], 1, false);
+    s.cruise(900, -8);
+    /* Not NOTHING: the craft really did rotate through 720 degrees of body
+     * yaw and in open air that is two Yaw Spins, which is the honest
+     * reading of a hard flat pirouette. What it must not be is an Orbit,
+     * because the pole was never on the screen. */
+    check('the same two laps with the nose on the flight path is no Orbit',
+      !s.finish().includes('Orbit'));
+  }
+  /*
+   * A recogniser that was not told where the nose was pointing must not
+   * hand out a trick that is DEFINED by where the nose was pointing.
+   */
+  {
+    const s = new Path(poleField());
+    /* Strip the heading the way a caller that supplies none would, BEFORE
+     * anything is flown. */
+    const bare = s.det.step.bind(s.det);
+    s.det.step = (dt, p, q, r, qx, qy, sp, x, y, z) => bare(dt, p, q, r, qx, qy, sp, x, y, z);
+    s.approach(POLE, 5, 0, 500, 8, true);
+    s.arcPole(POLE, 5, 0, 2, 3000, [0, 0, 2], 1, true);
+    s.cruise(900, -8);
+    check('an orbit flown by a caller that supplies no heading is no Orbit',
+      !s.finish().includes('Orbit'));
+  }
   {
     const s = new Path(poleField());
     s.approach(POLE, 5, 0, 500, 8, true);
@@ -987,6 +1096,62 @@ console.log('\nthe obstacle tricks, on constructed paths');
     s.cruise(900, -8);
     check('the same flown inverted is a Trippy Spin x2',
       s.finish() === 'Trippy Spin x2');
+  }
+
+  /*
+   * A RAIL WITH A LAMP POST BESIDE IT, which is what a town actually looks
+   * like: 886 poles among 78 bars. The recogniser used to pick the nearest
+   * axis at each millisecond, and mid loop that is routinely the post
+   * rather than the rail, which cut the lap into pieces. Measured on the
+   * real aircraft, a Powerloop became a Flip with a post anywhere from 2 to
+   * 12 m away, and damping the choice only changed which obstacle it got
+   * stuck on. It now winds around both at once and lets the one that
+   * produced a real lap name the trick.
+   */
+  {
+    const f = new ObstacleField();
+    f.add(OB_BAR, BAR.cx, BAR.cy, BAR.cz, 1, 0, 0, 8);
+    f.add(OB_POLE, BAR.cx + 3, BAR.cy, BAR.cz + 3, 0, 1, 0, 5);
+    f.build();
+    const s = new Path(f);
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -1, 1400, [0, 1, 0], 1);
+    s.cruise(900, -8);
+    check('a Powerloop with a lamp post beside the rail is still a Powerloop',
+      s.finish() === 'Powerloop');
+  }
+  {
+    /* And with poles on both sides and at both ends. */
+    const f = new ObstacleField();
+    f.add(OB_BAR, BAR.cx, BAR.cy, BAR.cz, 1, 0, 0, 8);
+    f.add(OB_POLE, BAR.cx + 3, BAR.cy, BAR.cz + 3, 0, 1, 0, 5);
+    f.add(OB_POLE, BAR.cx - 3, BAR.cy, BAR.cz - 3, 0, 1, 0, 5);
+    f.add(OB_POLE, BAR.cx + 5, BAR.cy, BAR.cz - 2, 0, 1, 0, 5);
+    f.build();
+    const s = new Path(f);
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -1, 1400, [0, 1, 0], 1);
+    s.cruise(900, -8);
+    check('and still is with three posts around it', s.finish() === 'Powerloop');
+  }
+  /*
+   * A SHORT POST CANNOT CARRY A HALO BIGGER THAN ITSELF. Measured: a 2.6 m
+   * sign post with a flat 3 m overhang stayed "engaged" while the craft
+   * orbited 2.8 m ABOVE its top, naming an Orbit x2 around an object 78
+   * degrees below the horizon with nothing inside the loop at all.
+   */
+  {
+    const f = new ObstacleField();
+    /* A 2.6 m post standing from 0 to 2.6: centre 1.3, half 1.3. */
+    f.add(OB_POLE, 0, 1.3, 0, 0, 1, 0, 1.3);
+    f.build();
+    const short = { cx: 0, cy: 5.4, cz: 0 };
+    const s = new Path(f);
+    s.approach(short, 5, 0, 500, 8, true);
+    s.arcPole(short, 5, 0, 2, 3000, [0, 0, 2], 1, true);
+    s.cruise(900, -8);
+    check('orbiting well above the top of a short post is not an Orbit',
+      !s.finish().includes('Orbit'));
   }
 
   /*

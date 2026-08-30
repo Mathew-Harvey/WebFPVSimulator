@@ -847,9 +847,11 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Set once a frame, read 1000 times: whether this map and this moment
    * are being scored at all. */
   let scoring = false;
-  /* Scratch for the per-step world position handed to the detector. One
-   * vector, written in place, never allocated in the step loop. */
+  /* Scratch for the per-step world position and heading handed to the
+   * detector. Written in place, never allocated in the step loop. */
   const scorePos = new THREE.Vector3();
+  const scoreFwd = new THREE.Vector3();
+  const scoreQuat = new THREE.Quaternion();
   const score = new FreestyleScore();
   /*
    * The things in the world worth flying around, derived from the map's own
@@ -4682,10 +4684,21 @@ export async function boot({ loading, bootStart, mapId }) {
                * crosses the frame boundary here.
                */
               poseFromState(stNow, scorePos);
+              /*
+               * And where the nose is pointing, in the same frame. An Orbit
+               * is defined by keeping the object on the screen, and without
+               * a heading the recogniser cannot tell one from an ordinary
+               * banked turn that happens to go round twice. Both go through
+               * frame.js, so nothing new crosses the frame boundary.
+               */
+              simQuatToThree(stNow[7], stNow[8], stNow[9], stNow[10], scoreQuat);
+              scoreQuat.premultiply(qSpawn);
+              scoreFwd.set(0, 0, -1).applyQuaternion(scoreQuat);
               trickDetector.step(
                 0.001, stNow[11], stNow[12], stNow[13], stNow[8], stNow[9],
                 Math.sqrt(stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6]),
                 scorePos.x, scorePos.y, scorePos.z,
+                scoreFwd.x, scoreFwd.y, scoreFwd.z,
               );
             }
             /* The solid world, on the sim clock. stateCurr is what the

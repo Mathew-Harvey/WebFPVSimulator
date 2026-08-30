@@ -121,6 +121,10 @@ const OVERHANG = [3, 2.5];
  * stepped from one segment to the next. Comparing the LINE rather than the
  * collider is what makes a fence one obstacle.
  */
+/* How much nearer a rival axis must be before engagement moves to it. See
+ * the comment in near(). 1.75 means "within 32% of the distance". */
+const HYSTERESIS_RATIO = 1.75;
+
 const SAME_DIR_DOT = 0.985;
 const SAME_LINE_DIST = 0.75;
 
@@ -209,7 +213,67 @@ export class ObstacleField {
    * an overhang. When several qualify the nearest axis wins, because the
    * one you are looping is the one you are closest to.
    */
-  near(x, y, z) {
+  /*
+   * EVERY obstacle the craft is currently flying, nearest first, written
+   * into `out` and returning how many.
+   *
+   * near() answers "which one", and that question turned out to be
+   * unanswerable at the moment it is asked. A town has 886 poles among 78
+   * bars, so a railing almost always has a lamp post beside it, and mid
+   * powerloop the craft is routinely closer to the post than to the rail it
+   * is looping. Measured on the real aircraft, engaging the nearest axis
+   * cut the lap into pieces and a Powerloop came out as a Flip, whether or
+   * not the choice was damped with hysteresis: hysteresis only decides
+   * WHICH one you get stuck on.
+   *
+   * The recogniser therefore does not choose. It winds around all of them
+   * and lets the one that produced a real lap be the one that names a
+   * trick, which is also how a pilot would settle it: you looped whatever
+   * you actually went around.
+   */
+  nearAll(x, y, z, out, max) {
+    out.length = 0;
+    if (!this.grid) {
+      return 0;
+    }
+    const bucket = this.grid.get(
+      Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell),
+    );
+    if (!bucket) {
+      return 0;
+    }
+    for (const o of bucket) {
+      const rx = x - o.cx;
+      const ry = y - o.cy;
+      const rz = z - o.cz;
+      const along = rx * o.dx + ry * o.dy + rz * o.dz;
+      const over = OVERHANG[o.kind] < o.half ? OVERHANG[o.kind] : o.half;
+      if (along > o.half + over || along < -o.half - over) {
+        continue;
+      }
+      const px = rx - o.dx * along;
+      const py = ry - o.dy * along;
+      const pz = rz - o.dz * along;
+      const d2 = px * px + py * py + pz * pz;
+      const reach = REACH[o.kind];
+      if (d2 > reach * reach) {
+        continue;
+      }
+      /* Insertion sort by distance: the list is a handful long and the
+       * cap keeps the tail off. */
+      let at = out.length;
+      while (at > 0 && out[at - 1].d2 > d2) {
+        at -= 1;
+      }
+      out.splice(at, 0, { ob: o, d2 });
+      if (out.length > max) {
+        out.length = max;
+      }
+    }
+    return out.length;
+  }
+
+  near(x, y, z, current) {
     if (!this.grid) {
       return null;
     }
@@ -221,13 +285,23 @@ export class ObstacleField {
     }
     let best = null;
     let bestD2 = Infinity;
+    let curD2 = Infinity;
     for (const o of bucket) {
       const rx = x - o.cx;
       const ry = y - o.cy;
       const rz = z - o.cz;
       /* Distance along the axis, and the perpendicular leftover. */
       const along = rx * o.dx + ry * o.dy + rz * o.dz;
-      if (along > o.half + OVERHANG[o.kind] || along < -o.half - OVERHANG[o.kind]) {
+      /*
+       * The overhang is capped by the obstacle's OWN half length, so a
+       * short object cannot carry a halo bigger than itself. Measured: a
+       * 2.6 m sign post with a flat 3 m overhang was still "engaged" while
+       * the craft orbited 2.8 m ABOVE its top, which named an Orbit x2
+       * around an object 78 degrees below the horizon and off the screen
+       * entirely. There was nothing inside that loop.
+       */
+      const over = OVERHANG[o.kind] < o.half ? OVERHANG[o.kind] : o.half;
+      if (along > o.half + over || along < -o.half - over) {
         continue;
       }
       const px = rx - o.dx * along;
@@ -238,10 +312,35 @@ export class ObstacleField {
       if (d2 > reach * reach) {
         continue;
       }
+      if (o === current) {
+        curD2 = d2;
+      }
       if (d2 < bestD2) {
         bestD2 = d2;
         best = o;
       }
+    }
+    /*
+     * HYSTERESIS: the obstacle you are flying stays the obstacle you are
+     * flying, unless something is decisively nearer.
+     *
+     * Without this, near() hands back whichever axis is perpendicularly
+     * closest at this millisecond, and mid loop that is routinely not the
+     * one being looped. The town has 886 poles and 78 bars, so a railing
+     * almost always has a lamp post beside it. Measured on the real
+     * aircraft, the 12 m powerloop around a railing:
+     *
+     *   railing alone                     1 lap closed   -> Powerloop
+     *   railing plus one lamp post 4 m    6 laps closed  -> Flip
+     *   railing plus one lamp post 6 m    9 laps closed  -> Flip
+     *
+     * The lap was being cut into pieces by an object the pilot was not
+     * flying. A quarter is the margin: near enough to let a genuinely
+     * closer obstacle take over, far enough that a bystanding post cannot.
+     */
+    if (current && curD2 < Infinity && best !== current
+      && curD2 <= bestD2 * HYSTERESIS_RATIO) {
+      return current;
     }
     return best;
   }

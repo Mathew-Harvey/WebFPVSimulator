@@ -24708,3 +24708,264 @@ which pays for moving between them. Every lap now carries the id of the
 obstacle it was flown around, so wiring those is arithmetic rather than
 detection, and it is the next thing worth doing: it is what makes a run
 about the whole town rather than about one good rail.
+
+
+================================================================================
+2026-08-30  THE FOUR TRICKS FLY, AND THE ADVERSARIAL PASS FOUND FIVE WAYS THE
+            RECOGNISER WAS WRONG
+================================================================================
+
+The owner asked, plainly: a Split-S, an Immelmann, an Orbit, an inverted
+Orbit, are they captured? The honest answer at the time was that only the
+Powerloop had ever been FLOWN. The other seven obstacle tricks were checked
+on paths this file constructed, and a constructed path is a path chosen by
+the person writing the check.
+
+So: eleven agents. Four flew one trick each on the real module, four tried to
+refute what the first four claimed, and three audited the whole obstacle
+layer for circularity, for false positives in the real city, and for
+correctness defects in the path code.
+
+ALL FOUR TRICKS FLY. Every one was named by the recogniser from a flight
+through Betaflight's rate curve, the PID loop, the mixer and the plant, with
+the obstacle placed where a pilot would have put it and pass two verified to
+trace pass one bit for bit.
+
+  Split-S         lap 0.845 turns, over to under, concurrent roll 0.574
+                  pitch 0.580 -> Split-S, CLEAN. 17 of 33 legitimate rail
+                  placements name it. The same flight with no rail in the
+                  world names "1/2 Roll + 1/2 Flip", so the rail is doing
+                  the work rather than the rotation.
+  Immelmann Turn  lap 0.610, under to over, concurrent pitch 0.470, then the
+                  half roll -> Immelmann Turn, CLEAN. Negative controls all
+                  behave: drop the roll and it is a 1/2 Flip, fly a whole
+                  turn of pitch instead and it is a Powerloop, take the rail
+                  away and it is a Snapback.
+  Orbit x2        two laps of a lamp post with the pole 0.0 to 0.8 degrees
+                  off the nose the whole way -> Orbit x2, CLEAN, in six of
+                  six radii and rates.
+  Trippy Spin x2  the same, inverted -> Trippy Spin x2.
+
+AND ALL FOUR REFUTERS BROKE THEM. Every one found a way to score a trick
+without flying one, and the code audit returned "broken" with nine
+reproduced defects. That is the pass working. What follows is what it found
+and what was done about it. Everything below was reproduced before it was
+fixed and re-run after.
+
+--------------------------------------------------------------------------
+1. THE STRAIGHT LINE THEOREM, and it was wrong in three places at once
+--------------------------------------------------------------------------
+
+A STRAIGHT LINE SUBTENDS STRICTLY LESS THAN HALF A TURN about any point not
+on it. That is exact: as the craft runs from one end of the line to the
+other the radius vector sweeps between two anti-parallel asymptotes, and
+half a turn is the supremum it never reaches.
+
+The floor on a lap was 0.375 turns. So anything from 0.375 to 0.5, which is
+to say ANY STRAIGHT LINE PAST AN OBSTACLE, was a candidate, and the side
+parity then rounded it to a half lap. The side parity cannot save us here:
+it throws away the LEVEL fly-by, which goes in under a rail and comes out
+under it, but a DESCENDING or CLIMBING pass really does change side.
+
+  a quad falling ballistically past a railing, throttle 0.05, no thrust, its
+  path a straight vertical line spanning 0.23 m in x and 1.44 m in z over a
+  20 m descent, with a lazy 0.373 of roll and 0.372 of pitch on the way
+  down, scored a CLEAN Split-S. 24 of 56 rail placements did it. In open air
+  the same flight scores NOTHING.
+  a quad flying dead straight and descending past a footbridge rail at
+  16 m/s with zero commanded input scored a Beginner Matty. One of these
+  fired off a collider 0.05 x 0.01 x 2.2 m: one centimetre of geometry, 100
+  points.
+  a quad climbing straight past a rail scored an Immelmann Turn, in 237
+  placements.
+
+Measured, those false laps read 0.377 to 0.463 turns, all hugging the old
+floor from above. An honest flown Immelmann reads 0.610 and an honest flown
+Split-S 0.82 to 0.85, because a craft going AROUND something has to curve
+around it and curving is what buys the extra angle. The two populations do
+not overlap and the boundary between them is the theorem's own 0.5.
+
+HALF_LAP_MIN is now 0.55 and WHOLE_LAP_MIN 0.65. This is not a threshold
+moved to make a result come out. The number 0.5 is a theorem and the margin
+above it is the rate gate truncating the tail of a real lap.
+
+AND THE CEILING CAME OFF AT THE SAME TIME, which is the same idea from the
+other end. The sides are topological: in over the rail and out under it
+means an odd number of crossings, so the answer IS a half integer and the
+only question is which one. The old code also demanded the reading fall
+within a third of a turn of 0.5, which put a CEILING on a Split-S at 0.87. A
+real Split-S sits at 0.845, five thousandths of a turn off that cliff, and
+flown TIGHTER, at pitch stick 0.60 rather than 0.45, it reads 0.933 and
+scored nothing at all: zero of eight rail placements. A better flown trick
+scoring less than a worse one is the wrong way round, and it came from
+applying an accuracy tolerance to something that is not an estimate.
+
+--------------------------------------------------------------------------
+2. A TOWN IS NOT ONE OBSTACLE AT A TIME
+--------------------------------------------------------------------------
+
+near() returned whichever axis was perpendicularly closest, and mid loop
+that is routinely not the one being looped: the city has 886 poles among 78
+bars, so a railing almost always has a lamp post beside it. Measured on the
+real aircraft, the 12 m powerloop around a railing:
+
+  railing alone                     1 lap closed   -> Powerloop
+  railing + a lamp post at 4 m      6 laps closed  -> Flip
+  railing + a lamp post at 6 m      9 laps closed  -> Flip
+
+The lap was being cut into pieces by an object the pilot was not flying.
+Hysteresis was tried first and only changed WHICH obstacle it got stuck on:
+still a Flip at every distance.
+
+The recogniser no longer chooses. ObstacleField.nearAll returns everything
+within reach, nearest first, and the detector winds around all of them at
+once, up to MAX_PATH_RUNS of six, pooled so the hot path does not allocate.
+Whichever produced a real lap is the one that names the trick, which is also
+how a pilot settles it: you looped whatever you actually went around. The
+powerloop now survives a lamp post at every distance tested, one lap closed,
+Powerloop, seven of seven.
+
+--------------------------------------------------------------------------
+3. AN ORBIT HAS TO PROVE THE OBJECT WAS ON THE SCREEN
+--------------------------------------------------------------------------
+
+The pattern asked for two laps of a pole and about two turns of concurrent
+YAW, on the reasoning that holding an object centred through a full circle
+IS a 360 of yaw. That reasoning is sound and its converse, which the pattern
+relied on, is false: heading rotates once per lap in ANY steady circle,
+wherever the nose points.
+
+Measured: an ordinary coordinated turn flown twice round a lamp post, nose
+on the flight path, the pole sitting 88.9 degrees off the nose and off the
+edge of any FPV frame for the whole manoeuvre, read concurrent yaw 1.86 and
+was named Orbit x2. The nose-in and nose-out flights differ by 0.00 turns of
+yaw to two decimals.
+
+Tracking is now measured directly, as the cosine between where the craft is
+pointing and where the object is, over the lap. That needed the craft's
+HEADING, which the detector was never given, so step() now takes it and
+src/main.js supplies it through frame.js like the position. A lap flown by a
+caller that supplies no heading reports trackFrac -1 and FAILS a tracking
+test rather than passing it: a recogniser that cannot see where the nose was
+pointing must not hand out a trick that is defined by it.
+
+--------------------------------------------------------------------------
+4. INVERTED IS A PROPERTY OF THE LAP, NOT OF THE MOMENT IT CLOSED
+--------------------------------------------------------------------------
+
+Trippy Spin x2 asked whether upZ was negative. It read it at the instant
+closePath fires, which is 300 to 1500 ms AFTER the lap it describes has
+ended, and in that gap the craft can roll to anything.
+
+So an UPRIGHT orbit with a half roll on the exit was named Trippy Spin x2,
+a 500 point trick, and whether it fired was a coin toss on how long the
+pilot flew level before rolling: four of eight exit delays, and six of six
+across pole heights, radii and rates. The lap was identical in all of them.
+The bank never passed 68 degrees and the object was below the horizon
+throughout.
+
+The lap now counts how much of ITSELF was flown belly up and the pattern
+asks for four fifths of it.
+
+--------------------------------------------------------------------------
+5. TWO SMALLER ONES, BOTH REAL
+--------------------------------------------------------------------------
+
+THE REVERSAL TEST WAS COMPARING AGAINST A BACKDATED TOTAL. run.acc was
+seeded with the 800 ms of winding before the gate opened, and the reversal
+test then compared the rate against it, so a lap whose approach wound the
+other way closed on its first millisecond and reopened, over and over.
+Measured: 0.20 turns/s of prior drift, which is ordinary flying, made the
+lap thrash ninety times and lose its backdate, and a genuine Matty Flip came
+out as a bare 1/2 Flip. dirSign existed for exactly this and was SET AND
+NEVER READ: an edit that introduced it was lost when a later assertion in
+the same script aborted the write, and nothing noticed because nothing
+tested it. The audit noticed.
+
+A SHORT POST CARRIED A HALO BIGGER THAN ITSELF. OVERHANG is 3 m for a pole,
+flat, so a 2.6 m sign post stayed engaged while the craft orbited 2.8 m
+ABOVE its top: an Orbit x2 named around an object 78 degrees below the
+horizon with nothing inside the loop at all. The overhang is now capped by
+the obstacle's own half length.
+
+--------------------------------------------------------------------------
+WHAT THE CITY SWEEP SAID, WHICH IS THE REASSURING PART
+--------------------------------------------------------------------------
+
+About 6,000 flights through the real city's own 964 obstacles, with an acro
+autopilot, mapped through the exact frame.js permutation:
+
+  cruise a lamp-post street, 45 flights                        0 tricks
+  fast slalom through the same posts, 27                       0
+  along the footbridge rails, 13                               0
+  circle a block, 9 locations, nose tangent and nose-in, 198   0
+  climb a building face, 45                                    0
+  hover and drift beside a rail, 30                            0
+  climb PAST a rail from under it to over it, all 78 bars, 234 0
+  between the two rails of a balustrade, 72                    0
+  free sorties through the densest streets, 21 minutes, 24     0
+
+Twenty-one minutes of ordinary flying named nothing. The one thing that ever
+fired was Beginner Matty off a straight descending line, which is defect 1
+above and is now rejected.
+
+--------------------------------------------------------------------------
+MEASURED
+--------------------------------------------------------------------------
+
+`npm run score:selftest` is 155 checks and all pass. New this turn: the
+straight line bound with every false positive value the agents measured
+written in as a regression (0.377, 0.45, 0.463, 0.5), the tight Split-S at
+0.933 that used to be rejected, a Powerloop with a lamp post beside the rail
+and with three posts around it, an orbit with the nose on the flight path
+that must not be an Orbit, an orbit from a caller that supplies no heading
+that must not be an Orbit, and an orbit above the top of a short post.
+
+Re-run against the agents' own reproductions, after the fixes:
+  the ballistic fall past a railing        names a Split-S: false
+  the descending pass over rail #58        TRICKS: none
+  the 1 cm plate down a street             TRICKS: none
+  the upright orbit with a roll on exit    NAMED "Trippy Spin x2": false
+  the flown Split-S                        Split-S, CLEAN
+  the flown Immelmann                      Immelmann Turn, CLEAN
+  the flown Orbit                          Orbit x2, CLEAN
+  the flown Powerloop beside a lamp post   Powerloop, 7 of 7 distances
+
+`npm run lint:shell` PASS. The city still derives 964 obstacles, 886 poles
+and 78 bars. nearAll costs 480 ns against them, which at one query a
+millisecond is 0.05% of a second, up from 192 ns for the single-obstacle
+near() it replaces.
+
+`npm run verify` still not run and still for the same reason: no emcc here,
+and nothing in this change touches src/native, the patches, the vendor tree,
+the input path or the module ABI. The self test loads the prebuilt
+dist/sim.wasm and flies it, which is the part of verify's territory that can
+see this work.
+
+--------------------------------------------------------------------------
+STILL OPEN, FROM THE AUDITS, AND WORTH ITS OWN TURN
+--------------------------------------------------------------------------
+
+THE CONSTRUCTED PATH TESTS ARE STILL PARTLY CIRCULAR and the audit is right
+about it. Seven of the eight feed the pattern table its own `rot` number
+back bit for bit, so CONCURRENT_TOLERANCE is never exercised: set it to
+0.001 and they all still pass. Worse, four of them assert an attitude no
+quadrotor can hold on that path, a Maverick Loop with all three body rates
+zero while the velocity sweeps a full circle, which is a rigid body with a
+fixed thrust direction producing a rotating force. The approach is also
+shorter than PATH_LOOKBACK in every case, so the ring buffer's wraparound
+branch, the one that runs in real flight, has no coverage at all. The flown
+tests carry the weight for now; the constructed ones should be rebuilt with
+approaches longer than 800 ms and attitudes a quad could actually hold.
+
+THE IMMELMANN NEEDS A 200 MS COAST before the roll or it scores as a
+Snapback, because a rotation that closes while the lap is still open is held
+by the lap, and a bare half lap matches no single-step pattern. The
+workbook puts the roll AT THE PEAK, which is during the lap, so there should
+also be a one-step Immelmann with the roll concurrent. That pattern is the
+same shape as Split-S except from: 'under' rather than from: 'over', which
+is exactly the real difference between the two manoeuvres.
+
+AND THE IMMELMANN CANNOT TELL ITSELF FROM ITS MIRROR: the step asks for a
+pitch MAGNITUDE, so a nose-down half loop matches the same way a nose-up one
+does. It wants a direction.

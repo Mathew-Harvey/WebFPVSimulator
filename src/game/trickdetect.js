@@ -167,6 +167,63 @@ const PATH_RATE_ON = 0.35;
 const PATH_RATE_OFF = 0.12;
 const PATH_OFF_HOLD_MS = 220;
 const PATH_MIN_RADIUS = 0.45;
+
+/*
+ * The floors on a lap, and both come from the straight line theorem written
+ * out on snapPathTurns: a straight line subtends strictly less than half a
+ * turn about any point off it, so nothing at or under half a turn is
+ * evidence of having gone around anything.
+ *
+ * HALF_LAP_MIN is 0.55: above the theorem's 0.5, below the 0.61 an honest
+ * flown Immelmann reads, and well above the 0.463 the worst false positive
+ * reached. WHOLE_LAP_MIN is 0.65, unchanged in effect from the old band
+ * around a whole turn.
+ *
+ * POLE_MIN_TURNS is the same bound for an axis that has no sides to check.
+ */
+const HALF_LAP_MIN = 0.55;
+const WHOLE_LAP_MIN = 0.65;
+const POLE_MIN_TURNS = 0.55;
+
+/*
+ * How much of a lap must be flown belly up for it to count as an inverted
+ * trick. Measured: the upright orbit that was wrongly named a Trippy Spin
+ * had a lap window whose upZ never went below +0.379, so its inverted
+ * fraction is zero. A genuine inverted orbit is inverted throughout.
+ * Four fifths leaves room for the roll in and the roll out.
+ */
+const INVERTED_LAP_MIN = 0.8;
+
+/*
+ * How many obstacles may be wound around at once. Measured on the real
+ * city, the craft is inside the reach of one to four axes in ordinary
+ * flight and of six only in the densest street furniture. Nearest first, so
+ * the cap drops the ones least likely to be the one being flown.
+ */
+const MAX_PATH_RUNS = 6;
+
+/*
+ * TRACKING: how near the nose an object has to be to count as being flown
+ * AROUND rather than merely flown past, and for how much of the lap.
+ *
+ * An Orbit is defined by keeping the object centred on the screen. The
+ * first version of the pattern tried to test that with the concurrent YAW,
+ * on the reasoning that holding an object centred through a full circle is
+ * a 360 of yaw. That reasoning is sound and its converse, which the pattern
+ * actually relied on, is false: heading rotates once per lap in ANY steady
+ * circle, wherever the nose points. Measured, an ordinary coordinated turn
+ * flown twice round a lamp post with the nose on the FLIGHT PATH, the post
+ * sitting 88.9 degrees off the nose and off the edge of any FPV frame the
+ * whole way, read concurrent yaw 1.86 and was named Orbit x2. The nose-in
+ * and nose-forward flights differed by 0.00 turns of yaw to two decimals.
+ *
+ * So tracking is measured directly, as the angle between where the craft is
+ * pointing and where the object is. 0.77 is about 40 degrees, which is
+ * roughly an FPV camera's half angle: inside that the object is on the
+ * screen, outside it is not.
+ */
+const TRACK_DOT = 0.77;
+const TRACK_LAP_MIN = 0.7;
 const PATH_MIN_TURNS = 0.375;
 
 /*
@@ -407,12 +464,12 @@ export const PATTERNS = [
   },
   {
     /*
-     * Two laps of a pole with the nose tracking it, which is what makes the
-     * yaw match the lap: keeping an object centred on the screen through a
-     * full circle IS a 360 of yaw.
+     * Two laps of a pole with the object held on the screen, which is what
+     * the workbook asks for and is measured directly. It used to be
+     * inferred from the concurrent yaw, and could not be: see TRACK_DOT.
      */
     name: 'Orbit x2',
-    steps: [{ path: 'pole', turns: 2, rot: { yaw: 2 }, inverted: false }],
+    steps: [{ path: 'pole', turns: 2, track: true, inverted: false }],
   },
   {
     /* The same, inverted, with the object held at the top of the screen. */
@@ -592,49 +649,78 @@ export function snapTurns(rawTurns, axis, startUpZ, endUpZ) {
  */
 export function snapPathTurns(rawTurns, kind, startSide, endSide) {
   const mag = rawTurns < 0 ? -rawTurns : rawTurns;
-  if (mag < PATH_MIN_TURNS) {
+  if (kind !== OB_BAR || startSide === 0 || endSide === 0) {
+    /* A pole has no sides, so nothing here can be checked against them. */
+    return mag < POLE_MIN_TURNS ? 0 : Math.round(mag * 4) / 4;
+  }
+
+  /*
+   * THE STRAIGHT LINE THEOREM, which is what this whole function is for.
+   *
+   * A straight line subtends STRICTLY LESS THAN half a turn about any point
+   * not on it. That is exact, not a tuning claim: as the craft runs from one
+   * end of an infinite straight line to the other, the radius vector to a
+   * fixed point sweeps from one asymptote to the other, and those asymptotes
+   * are anti-parallel. Half a turn is the supremum and it is never reached.
+   *
+   * So any lap reading at or under half a turn is consistent with the craft
+   * having flown DEAD STRAIGHT past the obstacle, and is therefore no
+   * evidence at all of having gone around it. Going around something means
+   * curving around it, and curving is precisely what buys the extra angle.
+   *
+   * This is not a threshold moved to make a test pass. It is the reason the
+   * first version of this file was wrong, and it was wrong in three places
+   * at once, all found by flying:
+   *
+   *   a quad DESCENDING in a straight line past a footbridge rail scored a
+   *   Beginner Matty, because a descending pass really does cross from over
+   *   the rail to under it, and the old floor of 0.375 turns let the 0.5 a
+   *   straight line gives sail through;
+   *   a quad falling ballistically past a railing, throttle at 0.05, with a
+   *   lazy 0.37 of roll and pitch on the way down, scored a CLEAN Split-S;
+   *   a quad CLIMBING straight past a rail scored an Immelmann Turn.
+   *
+   * Measured on the real aircraft: those false laps read 0.377 to 0.463
+   * turns, all of them hugging the old floor from above. An honest flown
+   * Immelmann reads 0.610 and an honest flown Split-S reads 0.82 to 0.85,
+   * because the craft physically curves around the axis. The two
+   * populations do not overlap and the boundary between them is the
+   * theorem's own 0.5, with a little margin for the rate gate truncating
+   * the tail of a real lap.
+   */
+  const parityHalf = startSide !== endSide;
+  if (mag < (parityHalf ? HALF_LAP_MIN : WHOLE_LAP_MIN)) {
     return 0;
   }
-  const nearest = Math.round(mag * 4) / 4;
-  if (kind !== OB_BAR || startSide === 0 || endSide === 0) {
-    return nearest;
-  }
-  const want = startSide === endSide ? 'whole' : 'half';
-  if (turnClass(nearest) === want) {
-    return nearest;
-  }
-  let best = 0;
-  let bestErr = Infinity;
-  /* Reach further than the attitude snap does, for the same reason the
-   * tolerance is wider: a lap read at 1.3 turns has to be able to find 1. */
-  for (const cand of [
-    nearest - 0.25, nearest + 0.25, nearest - 0.5, nearest + 0.5,
-    nearest - 0.75, nearest + 0.75,
-  ]) {
-    if (cand < PATH_MIN_TURNS || turnClass(cand) !== want) {
-      continue;
-    }
-    const err = cand > mag ? cand - mag : mag - cand;
-    if (err <= PATH_SNAP_TOLERANCE && err < bestErr) {
-      bestErr = err;
-      best = cand;
-    }
-  }
+
   /*
-   * NO FALLBACK HERE, and that is the difference between this and
-   * snapTurns. Which side of a rail the craft came out on is a hard
-   * geometric fact, not an estimate of a pilot's accuracy, so a winding
-   * that contradicts it is not a sloppy trick, it is not a trick.
+   * AND NO TOLERANCE GATE ON THE HALF, which is the other half of the same
+   * idea. The sides are a topological fact: the craft went in over the rail
+   * and came out under it, so it crossed that plane an odd number of times,
+   * so the answer IS a half integer. The only question left is WHICH half
+   * integer, and the nearest one answers it.
    *
-   * This is what throws away the fly-by. A quad going straight past a rail
-   * at five metres sweeps up to half a turn of angle at the rail, fast
-   * enough to open a run, and it goes in under the rail and comes out
-   * under the rail. Same side means a whole number of turns, half a turn is
-   * not one, and nothing within reach of half a turn is. Returning zero
-   * drops it. Falling back to the nearest quarter would have paid a pilot
-   * for flying down a street.
+   * The old code demanded the reading also fall within a third of a turn of
+   * 0.5, which put a CEILING on a Split-S at 0.85. Flown tighter, at pitch
+   * stick 0.60 rather than 0.45, a real Split-S reads 0.933 and scored
+   * nothing: zero of eight rail placements. A better flown trick scoring
+   * less than a worse one is the wrong way round, and it came from applying
+   * an accuracy tolerance to something that is not an estimate.
    */
-  return best;
+  if (parityHalf) {
+    /* The nearest number of the form k + 1/2, never below a half. */
+    const halves = Math.round(mag - 0.5) + 0.5;
+    return halves < 0.5 ? 0.5 : halves;
+  }
+
+  /*
+   * An even parity is consistent with ZERO laps, so this one does keep a
+   * band: the craft came out the side it went in, which is what both a full
+   * lap and a plain fly-by look like from the sides alone. WHOLE_LAP_MIN
+   * separates them and the nearest whole turn names it.
+   */
+  const whole = Math.round(mag);
+  return whole < 1 ? 0 : whole;
 }
 
 /* One axis of rotation, accumulating. Plain fields, no allocation per step. */
@@ -727,6 +813,21 @@ class PathRun {
     this.lastSide = 0;
     this.lastMs = 0;
     this.lastRot = [0, 0, 0];
+    /*
+     * How much of the lap was flown INVERTED, as a count of samples inside
+     * the winding span. Not the attitude at the close: closePath fires when
+     * the rate filter finally decays, which is 300 to 1500 ms after the lap
+     * itself ended, and in that gap the craft can roll to anything. Reading
+     * it there made Trippy Spin x2, a 500 point trick, a coin toss on how
+     * long the pilot happened to fly level before rolling out: measured, an
+     * UPRIGHT orbit with a half roll on the exit was named Trippy Spin in
+     * four of eight exit delays, and in six of six pole heights and radii.
+     */
+    this.invSamples = 0;
+    /* Samples of the lap with the object near the nose. See TRACK_DOT. */
+    this.trackSamples = 0;
+    this.haveFwd = false;
+    this.spanSamples = 0;
     this.histWind = new Float64Array(PATH_LOOKBACK);
     this.histRot = new Float64Array(PATH_LOOKBACK * 3);
     this.histMs = new Float64Array(PATH_LOOKBACK);
@@ -811,7 +912,22 @@ export class TrickDetector {
     /* The obstacle field, or null on a map that has none. With none, this
      * is exactly the open-air recogniser it was before. */
     this.obstacles = obstacles;
-    this.path = new PathRun();
+    /*
+     * ONE LAP PER ENGAGED OBSTACLE, not one lap for the nearest.
+     *
+     * See ObstacleField.nearAll. A rail in this town almost always has a
+     * lamp post beside it, and choosing between them at the millisecond the
+     * question is asked cut real powerloops into pieces. So the recogniser
+     * winds around everything within reach at once, and whichever produced
+     * an actual lap is the one that names the trick.
+     *
+     * Bounded and pooled: at most MAX_PATH_RUNS live at a time, taken
+     * nearest first, and the objects are recycled so the hot path does not
+     * allocate.
+     */
+    this.paths = [];
+    this.pathPool = [];
+    this.engaged = [];
     /*
      * Net turns on each axis since the run began, never reset. A path run
      * reads the difference across its own window to find out what the craft
@@ -837,6 +953,10 @@ export class TrickDetector {
      * Orbit x2 scores as an Orbit and then two Yaw Spins.
      */
     this.lapWindows = [];
+    this.haveFwd = false;
+    this.fwdX = 0;
+    this.fwdY = 0;
+    this.fwdZ = 0;
     this.pending = [];
     this.nowMs = 0;
     this.lastCloseMs = -1e9;
@@ -857,7 +977,11 @@ export class TrickDetector {
     for (const r of this.runs) {
       r.reset();
     }
-    this.path.reset();
+    for (const run of this.paths) {
+      run.reset();
+      this.pathPool.push(run);
+    }
+    this.paths.length = 0;
     this.heldByPath.length = 0;
     this.lapWindows.length = 0;
     this.pending.length = 0;
@@ -888,9 +1012,18 @@ export class TrickDetector {
    *          is all the attitude this needs
    *   speed  m/s, for the stall test
    */
-  step(dt, p, q, r, qx, qy, speed, wx, wy, wz) {
+  step(dt, p, q, r, qx, qy, speed, wx, wy, wz, fx, fy, fz) {
     if (!this.enabled) {
       return;
+    }
+    /* Where the nose points, in the obstacles' own frame. Optional: without
+     * it nothing that is defined by what the pilot was looking at can be
+     * named, which is the safe way round. */
+    this.haveFwd = fx !== undefined;
+    if (this.haveFwd) {
+      this.fwdX = fx;
+      this.fwdY = fy;
+      this.fwdZ = fz;
     }
     const dtMs = dt * 1000;
     this.nowMs += dtMs;
@@ -924,31 +1057,57 @@ export class TrickDetector {
    * the angle subtended at its axis, open and close the run.
    */
   pathStep(dt, dtMs, wx, wy, wz, upZ) {
-    const run = this.path;
-    const ob = this.obstacles.near(wx, wy, wz);
-    if (!ob) {
-      if (run.open) {
-        this.closePath(upZ);
-      }
-      run.have = false;
-      run.obstacle = null;
-      run.clearHistory();
-      return;
-    }
+    const n = this.obstacles.nearAll(wx, wy, wz, this.engaged, MAX_PATH_RUNS);
     /*
-     * Leaving one collider for the next one along the SAME LINE is not
-     * leaving the obstacle. A town railing is built from collinear
-     * segments and a loop over the join is one loop.
+     * Retire any lap whose obstacle the craft has left. Leaving one
+     * collider for the next along the SAME LINE is not leaving the
+     * obstacle: a town railing is built from collinear segments and a loop
+     * over the join is one loop.
      */
-    if (run.obstacle && !sameAxis(run.obstacle, ob)) {
-      if (run.open) {
-        this.closePath(upZ);
+    for (let i = this.paths.length - 1; i >= 0; i -= 1) {
+      const run = this.paths[i];
+      let still = false;
+      for (let j = 0; j < n; j += 1) {
+        if (sameAxis(run.obstacle, this.engaged[j].ob)) {
+          still = true;
+          break;
+        }
       }
-      run.have = false;
-      run.clearHistory();
+      if (still) {
+        continue;
+      }
+      if (run.open) {
+        this.closePath(run, upZ);
+      }
+      run.reset();
+      this.paths.splice(i, 1);
+      this.pathPool.push(run);
     }
-    run.obstacle = ob;
+    /* Then wind around everything in reach, opening a lap for anything new. */
+    for (let j = 0; j < n; j += 1) {
+      const ob = this.engaged[j].ob;
+      let run = null;
+      for (const r of this.paths) {
+        if (sameAxis(r.obstacle, ob)) {
+          run = r;
+          break;
+        }
+      }
+      if (!run) {
+        if (this.paths.length >= MAX_PATH_RUNS) {
+          continue;
+        }
+        run = this.pathPool.pop() || new PathRun();
+        run.reset();
+        run.obstacle = ob;
+        this.paths.push(run);
+      }
+      this.stepOneLap(run, ob, dt, dtMs, wx, wy, wz, upZ);
+    }
+  }
 
+  /* One millisecond of winding about one obstacle's axis. */
+  stepOneLap(run, ob, dt, dtMs, wx, wy, wz, upZ) {
     /* Radius vector: the part of the offset perpendicular to the axis. */
     const rx = wx - ob.cx;
     const ry = wy - ob.cy;
@@ -1010,7 +1169,15 @@ export class TrickDetector {
          */
         run.open = true;
         run.startWind = old.wind;
-        run.acc = run.windTotal - old.wind;
+        /*
+         * ZERO, not the backdated winding. acc exists only to say which way
+         * this lap has gone SINCE it opened, and seeding it with 800 ms of
+         * approach that may have wound the other way is what made the
+         * reversal test below fire on the first millisecond of every lap.
+         * The lap's own span is startWind to lastWind and is untouched by
+         * this.
+         */
+        run.acc = 0;
         run.offMs = 0;
         run.startMs = old.ms;
         run.startSide = old.side;
@@ -1024,10 +1191,15 @@ export class TrickDetector {
         run.lastRot[1] = this.totalTurns[1];
         run.lastRot[2] = this.totalTurns[2];
         run.dirSign = run.rate > 0 ? 1 : -1;
+        run.invSamples = 0;
+        run.trackSamples = 0;
+        run.haveFwd = false;
+        run.spanSamples = 0;
       }
       return;
     }
-    /* Still winding: this is where the lap currently ends. */
+    /* Still winding: this is where the lap currently ends, and this is
+     * where which way up the craft is actually gets counted. */
     if (mag >= PATH_RATE_ON) {
       run.lastWind = run.windTotal;
       run.lastSide = side;
@@ -1035,6 +1207,24 @@ export class TrickDetector {
       run.lastRot[0] = this.totalTurns[0];
       run.lastRot[1] = this.totalTurns[1];
       run.lastRot[2] = this.totalTurns[2];
+      run.spanSamples += 1;
+      if (upZ < 0) {
+        run.invSamples += 1;
+      }
+      /*
+       * Is the object on the screen? The direction from the craft to the
+       * axis is the negated radius vector; compare it with where the nose
+       * points. No trigonometry: the dot product of two unit vectors is the
+       * cosine and a cosine is what the threshold is written in.
+       */
+      if (this.haveFwd) {
+        run.haveFwd = true;
+        const inv = -1 / nowLen;
+        const dot = cx * inv * this.fwdX + cy * inv * this.fwdY + cz * inv * this.fwdZ;
+        if (dot >= TRACK_DOT) {
+          run.trackSamples += 1;
+        }
+      }
     }
     /*
      * A reversal ends the lap: out and back is not a lap.
@@ -1046,15 +1236,29 @@ export class TrickDetector {
      * times in a row. The filter is the same one that decides whether a
      * lap is happening; it should decide which way it is going too.
      */
-    if (run.acc !== 0 && (run.acc > 0) !== (run.rate > 0) && mag >= PATH_RATE_ON) {
-      this.closePath(upZ);
+    /*
+     * A reversal ends the lap: out and back is not a lap.
+     *
+     * Against dirSign, the direction fixed when the lap opened, and on the
+     * FILTERED rate. Both matter. The raw per step angle is a ten
+     * thousandth of a turn and its sign flips on rounding whenever the
+     * craft is barely winding, which on one approach opened and closed the
+     * run sixty times in a row. And comparing against a running total that
+     * had been backdated over the approach reopened the same wound from the
+     * other side: measured, 0.2 turns/s of prior drift round the obstacle,
+     * which is ordinary flying, made the lap thrash ninety times and lose
+     * its backdate, and a genuine Matty Flip came out as a bare 1/2 Flip.
+     */
+    if (run.dirSign !== 0 && (run.dirSign > 0) !== (run.rate > 0)
+      && mag >= PATH_RATE_ON) {
+      this.closePath(run, upZ);
       return;
     }
     run.acc += dTurns;
     if (mag < PATH_RATE_OFF) {
       run.offMs += dtMs;
       if (run.offMs >= PATH_OFF_HOLD_MS) {
-        this.closePath(upZ);
+        this.closePath(run, upZ);
       }
     } else {
       run.offMs = 0;
@@ -1079,8 +1283,7 @@ export class TrickDetector {
   }
 
   /* Turn an accumulated lap into a path primitive, or throw it away. */
-  closePath(upZ) {
-    const run = this.path;
+  closePath(run, upZ) {
     const open = run.open;
     run.open = false;
     run.offMs = 0;
@@ -1120,6 +1323,17 @@ export class TrickDetector {
         run.lastRot[2] - run.startRot[2],
       ],
       upZ,
+      /* The fraction of the lap flown belly up, 0 to 1. See PathRun. */
+      invertedFrac: run.spanSamples > 0 ? run.invSamples / run.spanSamples : 0,
+      /*
+       * The fraction of the lap with the object on the screen, or -1 when
+       * the caller supplied no heading. Minus one FAILS a tracking test
+       * rather than passing it: a recogniser that cannot see where the nose
+       * was pointing must not hand out a trick that is defined by it.
+       */
+      trackFrac: run.haveFwd && run.spanSamples > 0
+        ? run.trackSamples / run.spanSamples
+        : -1,
       stallBeforeMs: this.gapStallMs,
       slowMs: 0,
       touched: this.touched,
@@ -1170,6 +1384,10 @@ export class TrickDetector {
    */
   releaseHeld() {
     if (this.heldByPath.length === 0) {
+      return;
+    }
+    /* Another lap may still be running and may still claim these. */
+    if (this.anyPathOpen()) {
       return;
     }
     let released = 0;
@@ -1262,7 +1480,7 @@ export class TrickDetector {
      * matcher name it a Flip as well and pay twice for one motion. If the
      * lap turns out to name nothing, releaseHeld hands it back.
      */
-    if (this.path.open) {
+    if (this.anyPathOpen()) {
       this.heldByPath.push(prim);
       return;
     }
@@ -1287,8 +1505,10 @@ export class TrickDetector {
     const up = upZ === undefined ? 1 : upZ;
     /* The lap first, so a rotation still open inside it is still held by
      * it and cannot be scored twice. */
-    if (this.path.open) {
-      this.closePath(up);
+    for (const run of this.paths) {
+      if (run.open) {
+        this.closePath(run, up);
+      }
     }
     for (const run of this.runs) {
       if (run.open) {
@@ -1366,7 +1586,7 @@ export class TrickDetector {
      * the rotation closes, so the bump was wiped a millisecond after it
      * happened and the trick that caused it scored CLEAN.
      */
-    if (!this.anyOpen() && !this.path.open) {
+    if (!this.anyOpen() && !this.anyPathOpen()) {
       this.touched = false;
     }
   }
@@ -1374,6 +1594,16 @@ export class TrickDetector {
   /* Is any axis mid rotation? */
   anyOpen() {
     return this.runs[0].open || this.runs[1].open || this.runs[2].open;
+  }
+
+  /* Is any lap in progress? */
+  anyPathOpen() {
+    for (const run of this.paths) {
+      if (run.open) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /* Take `count` primitives off the front and report them as one trick. */
@@ -1445,7 +1675,7 @@ export class TrickDetector {
    * else is nothing.
    */
   hold() {
-    if (this.anyOpen() || this.path.open) {
+    if (this.anyOpen() || this.anyPathOpen()) {
       return true;
     }
     let wait = -1;
@@ -1486,8 +1716,26 @@ function matchSteps(steps, prims, n) {
       if (s.from !== undefined && p.startSide !== (s.from === 'under' ? -1 : 1)) {
         return false;
       }
-      if (s.inverted !== undefined && (p.upZ < 0) !== s.inverted) {
-        return false;
+      /*
+       * Inverted is judged over the WHOLE LAP, not at the instant the run
+       * closed. A trick flown inverted is inverted while it is being flown;
+       * a lap that was belly up for a fifth of its length was an upright
+       * orbit whose pilot rolled out at the end.
+       */
+      if (s.inverted !== undefined) {
+        const frac = p.invertedFrac;
+        if (s.inverted ? frac < INVERTED_LAP_MIN : frac > 1 - INVERTED_LAP_MIN) {
+          return false;
+        }
+      }
+      if (s.track !== undefined) {
+        if (s.track) {
+          if (p.trackFrac < TRACK_LAP_MIN) {
+            return false;
+          }
+        } else if (p.trackFrac >= TRACK_LAP_MIN) {
+          return false;
+        }
       }
       if (s.rot !== undefined) {
         for (const key of Object.keys(s.rot)) {

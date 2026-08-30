@@ -89,8 +89,20 @@ import { worksName, keepOut, safetyFirst, worksNotice, bayDigit } from './signs.
  * away from the road, which is at z 78.8: the site's frontage wall is at
  * z 84.0 and everything gets further from town as z grows.
  */
-const SITE = { x0: 20.0, x1: 50.0, z0: 84.0, z1: 113.0 };
-const WALL = { at: 84.0, t: 0.30, h: 2.00 };
+const SITE = { x0: 20.0, x1: 50.0, z0: 82.6, z1: 113.0 };
+/*
+ * The frontage wall is at 82.6 and NOT at 84.0, which is where it was, and
+ * the reason is a swept collision probe rather than a picture.
+ *
+ * The office's road face is at z 85.4. With the wall at 84.0 the strip
+ * between them was 1.25 m: under the 1.4 m the gap rule allows, and a dead
+ * end for the one line that goes through the hole where the wall has fallen
+ * down. Probed, a segment in through the breach met the office's south wall
+ * a metre and a half later. Moved back to the pool compound's own fence line
+ * the alley is 2.65 m, the breach leads somewhere, and the two frontages
+ * along the works road are on the same line as each other.
+ */
+const WALL = { at: 82.6, t: 0.30, h: 2.00 };
 const GATE = { x0: 33.0, x1: 38.0 };
 /* Where the block wall has come down. Four metres of it, lying in the yard.
  * It is the cheapest way in and the one a pilot finds first, because it is
@@ -290,15 +302,15 @@ function buildBoundary(ctx, m, out) {
    * gap and spilling both ways, and every one of them solid: a pilot who
    * takes this line low has to lift over them. */
   const rubble = [
-    [22.1, 83.4, 23.9, 84.7, 0.34],
-    [23.4, 84.2, 25.3, 85.4, 0.26],
-    [24.4, 83.1, 25.5, 84.2, 0.42],
+    [22.1, 82.0, 23.9, 83.3, 0.34],
+    [23.4, 82.8, 25.3, 84.0, 0.26],
+    [24.4, 81.7, 25.5, 82.8, 0.42],
   ];
   for (const [x0, z0, x1, z1, h] of rubble) {
     slab(ctx, m.concreteDark, x0, GROUND, z0, x1, GROUND + h, z1, { name: 'worksRubble' });
   }
   patch(ctx, PAL.concreteDark, {
-    x: 23.8, y: GROUND + 0.02, z: 84.6, w: 4.6, d: 3.0, opacity: 0.28, name: 'worksDust',
+    x: 23.8, y: GROUND + 0.02, z: 83.2, w: 4.6, d: 3.0, opacity: 0.28, name: 'worksDust',
   });
 
   /* Mesh fence on the other three sides, with a flattened panel at the far
@@ -317,10 +329,18 @@ function buildBoundary(ctx, m, out) {
    * not stop at the last house. `keep: true` holds them out of the town's
    * planting thin: they are the two that frame the works from the road and
    * a hash that removed one would take the composition with it. */
-  out.sakura.push({ x: 27.6, z: 82.4, y: GROUND, scale: 1.05, seed: 9711, keep: true });
-  out.sakura.push({ x: 44.8, z: 82.4, y: GROUND, scale: 0.95, seed: 9712, lean: 0.1, keep: true });
-  out.petals.push({ x: 27.6, z: 82.9, w: 3.4, d: 2.2, y: GROUND, n: 60 });
-  out.petals.push({ x: 23.8, z: 85.2, w: 3.2, d: 2.6, y: GROUND, n: 44 });
+  /*
+   * NOT IN FRONT OF A WINDOW. The first pass stood one of these at x = 27.6,
+   * which is the centre of the office's third bay, and a cherry canopy is
+   * 2.5 m across: probed, the line through that bay met leaf collision two
+   * metres before it reached the wall. A tree that screens a pier is a tree;
+   * a tree that screens the opening the building exists for is a mistake.
+   */
+  out.sakura.push({ x: 19.4, z: 81.2, y: GROUND, scale: 1.05, seed: 9711, keep: true });
+  out.sakura.push({ x: 31.4, z: 81.2, y: GROUND, scale: 0.95, seed: 9712, lean: 0.1, keep: true });
+  out.sakura.push({ x: 45.6, z: 81.2, y: GROUND, scale: 0.9, seed: 9713, keep: true });
+  out.petals.push({ x: 31.4, z: 81.8, w: 3.4, d: 2.2, y: GROUND, n: 60 });
+  out.petals.push({ x: 23.8, z: 83.8, w: 3.2, d: 2.6, y: GROUND, n: 44 });
 }
 
 /* ------------------------------------------------------------------ *
@@ -756,7 +776,7 @@ function buildYard(ctx, m, rng, out) {
       sz: 0.7, ry: seed, name: 'worksOil',
     });
   };
-  drum(44.6, 85.4, 0.4);
+  drum(44.6, 84.4, 0.4);
   drum(21.9, 96.4, 1.1);
   /* One on its side, which is the one that reads. */
   const lying = cyl(0.29, 0.29, 0.88, 10, m.rustDeep, 46.6, GROUND + 0.29, 91.9);
@@ -773,7 +793,7 @@ function buildYard(ctx, m, rng, out) {
   /* The yard surface: three patches rather than one, so it reads as
    * concrete that has been patched and re-patched rather than as a slab. */
   patch(ctx, PAL.gravel, { x: 35.0, y: GROUND + 0.015, z: 88.5, w: 26.0, d: 8.0, opacity: 0.30, name: 'worksApron' });
-  patch(ctx, PAL.roadWorn, { x: 35.5, y: GROUND + 0.025, z: 85.6, w: 8.0, d: 2.6, opacity: 0.45, name: 'worksApron' });
+  patch(ctx, PAL.roadWorn, { x: 35.5, y: GROUND + 0.025, z: 84.2, w: 8.0, d: 2.6, opacity: 0.45, name: 'worksApron' });
   patch(ctx, PAL.dirt, { x: 45.0, y: GROUND + 0.02, z: 104.0, w: 9.0, d: 16.0, opacity: 0.35, name: 'worksBare' });
 
   /*
@@ -807,7 +827,7 @@ function buildYard(ctx, m, rng, out) {
   });
   for (let i = 0; i < 16; i += 1) {
     const x = 20.6 + rng.range(0, 28.8);
-    const z = 84.6 + rng.range(0, 27.8);
+    const z = 83.2 + rng.range(0, 29.2);
     /* Not inside the shed or the office: weeds get in through a hole in a
      * roof, they do not carpet a floor that still has a roof over most of
      * it. The two exceptions below are under the roof hole and under the
@@ -825,7 +845,7 @@ function buildYard(ctx, m, rng, out) {
 
   /* Blossom drifts in the corners the wind puts it, which on this site is
    * the inside of the frontage wall and the lee of the shed's south gable. */
-  out.petals.push({ x: 31.0, z: 84.8, w: 8.0, d: 1.6, y: GROUND, n: 70 });
+  out.petals.push({ x: 31.0, z: 83.4, w: 8.0, d: 1.6, y: GROUND, n: 70 });
   out.petals.push({ x: 32.0, z: 92.3, w: 12.0, d: 1.4, y: GROUND, n: 60 });
   out.petals.push({ x: 32.2, z: 106.9, w: 3.2, d: 2.0, y: GROUND, n: 40 });
 

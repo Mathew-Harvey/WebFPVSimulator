@@ -86,9 +86,20 @@ const SITE = { x0: 53.0, x1: 91.0, z0: 82.6, z1: 114.0 };
 const GATE = { x0: 57.0, x1: 61.0 };
 
 /* 管理棟: the changing block, with the way in cut straight through it. */
-const BLOCK = { x0: 54.6, x1: 61.4, z0: 86.8, z1: 98.2, roof: 3.80, parapet: 4.20 };
+/*
+ * 管理棟, the changing block, and its NORTH END IS AT 96.0 because of what
+ * the corridor through it opens onto.
+ *
+ * At 98.2 the corridor's far end came out 1.25 m short of the hall's west
+ * gable, which is blind at that point: a 2.2 m tunnel twelve metres long
+ * ending in a wall, and a 1.25 m slot between two buildings on top of it.
+ * Probed rather than noticed. At 96.0 the corridor puts you on the pool deck
+ * with three and a half metres of air before the hall, which is what an
+ * entrance is for.
+ */
+const BLOCK = { x0: 54.6, x1: 61.4, z0: 86.8, z1: 96.0, roof: 3.80, parapet: 4.20 };
 const CORRIDOR = { x0: 57.0, x1: 59.2, y1: 2.85 };
-const TANK = { x0: 55.4, x1: 58.6, z0: 94.6, z1: 97.4, top: 5.20 };
+const TANK = { x0: 55.4, x1: 58.6, z0: 91.6, z1: 94.4, top: 5.20 };
 
 /*
  * The lido. 25 m by 9, five lanes at 1.8, which is what a town pool actually
@@ -175,6 +186,12 @@ export function buildPool(ctx) {
    * eye as well as to the height query. Handed up to ./index.js, which owns
    * the cut, so the pool does not reach into the town's own geometry. */
   out.holes = [{ x0: LIDO.x0, x1: LIDO.x1, z0: LIDO.z0, z1: LIDO.z1 }];
+  /* And the same two rectangles as WELLS, with their floors, so a falling
+   * petal keeps going past the deck and lands on the tile. ./blossom.js. */
+  out.wells = [
+    { x0: LIDO.x0, x1: LIDO.step, z0: LIDO.z0, z1: LIDO.z1, y: GROUND - LIDO.shallow },
+    { x0: LIDO.step, x1: LIDO.x1, z0: LIDO.z0, z1: LIDO.z1, y: GROUND - LIDO.deep },
+  ];
 
   out.references.poolLidoLength = {
     measured: +(LIDO.x1 - LIDO.x0).toFixed(2),

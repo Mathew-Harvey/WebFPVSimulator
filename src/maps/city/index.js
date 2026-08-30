@@ -1705,7 +1705,10 @@ export async function buildMap(shell, onProgress, options) {
    */
   const boomIndices = findBoomBlocks(world.colliders);
 
-  const places = buildPlaces(world);
+  /* `petals` is the same preset flag the town's own field is gated on: the
+   * two places get their own field, over their own ground, for the reason in
+   * ./places/blossom.js. */
+  const places = buildPlaces(world, { petals: q.city.petals });
   progress(0.87);
   await yieldToPaint();
 
@@ -2074,6 +2077,14 @@ export async function buildMap(shell, onProgress, options) {
       ...anim.stats(),
     }),
     dispose() {
+      /* The works road's blossom owns three instanced meshes with dynamic
+       * buffers and a geometry the three share. `disposeSceneGraph` would
+       * find them anyway, since they are in this scene; this frees the shared
+       * plane once and takes them out of the graph first, which is what the
+       * town's own field gets from index.js's Low branch. */
+      if (places.blossom) {
+        places.blossom.dispose();
+      }
       scene.remove(shell.quad);
       pipeline.dispose();
       disposeSceneGraph(scene, SESSION_TEXTURES);

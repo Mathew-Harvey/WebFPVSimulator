@@ -67,6 +67,7 @@ import { buildFallenPatches } from '../vendored/world/petals.js';
 import { buildWorksRoad } from './road.js';
 import { buildWorks, WORKS_SITE, WORKS_LANDMARK } from './works.js';
 import { buildPool, POOL_SITE, POOL_LANDMARK } from './pool.js';
+import { buildBlossom } from './blossom.js';
 
 /**
  * The town's builder context, over a world that is already built.
@@ -204,7 +205,7 @@ export function cutGround(root, rects) {
   return stats;
 }
 
-export function buildPlaces(world) {
+export function buildPlaces(world, { petals: livePetals = true } = {}) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
   const ctx = placeContext(world);
   const colliders0 = world.colliders.length;
@@ -249,6 +250,19 @@ export function buildPlaces(world) {
    * feed it. */
   buildFallenPatches(ctx, petals);
 
+  /*
+   * And the blossom in the air over both of them. The town's own field is
+   * bounded to the street corridor it was authored for, so without this the
+   * eight cherries out here are trees that drop drifts and nothing falls off
+   * them. Off on Low for the same reason the town's field is off on Low: it
+   * is a per step matrix upload, and bandwidth is what a handheld is short
+   * of. The wells are the two halves of the drained lido, so a petal that
+   * reaches the deck over a 2.5 m hole keeps going.
+   */
+  const blossom = livePetals
+    ? buildBlossom(ctx, parts.flatMap((p) => p.wells ?? []))
+    : null;
+
   const references = {};
   for (const p of parts) {
     Object.assign(references, p.references ?? {});
@@ -256,6 +270,7 @@ export function buildPlaces(world) {
 
   return {
     references,
+    blossom,
     updaters: ctx.updaters,
     sites: { works: WORKS_SITE, pool: POOL_SITE },
     landmarks: { works: WORKS_LANDMARK, pool: POOL_LANDMARK },
@@ -265,6 +280,7 @@ export function buildPlaces(world) {
        * stage, which on this container swings by a second between runs on
        * the town alone. */
       ms: +((typeof performance !== 'undefined' ? performance.now() : 0) - t0).toFixed(0),
+      blossom: blossom ? blossom.count : 0,
       groundCut: cut.dropped
         ? {
           triangles: cut.dropped,

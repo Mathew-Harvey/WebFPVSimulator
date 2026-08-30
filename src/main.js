@@ -316,8 +316,8 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  */
 /* field: field.js, scene.js, post.js. city: all 59 vendored files, plus
  * index.js, animation.js, bake.js, drawn.js and references.js, plus the
- * six under places/ that build the works road, the disused works and the
- * municipal pool: 70 in all. It was 63 while vendored/world/petals.js sat
+ * seven under places/ that build the works road, the disused works, the
+ * municipal pool and the blossom that falls over them: 71 in all. It was 63 while vendored/world/petals.js sat
  * in the tree unimported, and 64 once the falling blossom was built again.
  * scan.js is ours and harness only, so it never arrives on a player's
  * load. Check 16 asserts the city count against what the browser actually
@@ -329,7 +329,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * is a bar that stops a stage short of full and then jumps; only the city
  * is asserted, so nothing could notice those either. `npm run lint:memory`
  * prints the fetched count per map beside these numbers. */
-const MAP_MODULE_COUNT = { field: 1, city: 70, custom: 1, bando: 13, baths: 15, yard: 14 };
+const MAP_MODULE_COUNT = { field: 1, city: 71, custom: 1, bando: 13, baths: 15, yard: 14 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.

@@ -23587,3 +23587,137 @@ WHAT IS NOT DONE. The live blossom field is still bounded to the street
 corridor it was authored for (x within 9.5 m of `centerX(z)`, z -30..34), so
 the cherries at the pool drop STATIC drifts and nothing falls out of the air
 out there. That is the next entry.
+
+## Freestyle city: blossom over the works road, and three lines that did not fly
+
+Follow-up on the two new places. Two things: the falling blossom did not reach
+either of them, and a swept collision probe found three lines that a
+screenshot had said were fine.
+
+THE BLOSSOM (places/blossom.js, new).
+
+The town's field is bounded and always was: `petals.js` respawns every card
+inside `centerX(z) ± 9.5` over `z -30..34` and takes its floor from
+`groundY(z)`. It is a field down the street corridor, authored for the shot at
+the level crossing. Sixty metres out at the end of the works road there are
+now nine cherries in blossom and nothing at all was falling off them.
+
+Widening the vendored one is the wrong lever: its bounds are module constants,
+its wrap is written against the street's centreline, and its 980 card count is
+sized for a corridor. So this is a second field, ours, 640 cards over
+64 by 38 by 9.4 m, which is 0.026 a cubic metre against the street's 0.119.
+Matching the street's density out here would take 2,700 cards for an effect
+nobody would read as denser, because most of it is seen against open sky at
+twenty metres rather than across a road at five. 360 was the first pass and it
+was too thin against the sky.
+
+Two things the vendored field does not need. A FLOOR THAT IS NOT A PLANE: the
+lido is a hole 2.5 m deep, and a card that respawns at `GROUND` disappears at
+the pool's rim, which is the one place in either location the blossom most
+wants to end up. `wells` is a list of rectangles with their own floor, two
+rectangle tests a card a step, so a petal falls into the bowl and lands on the
+tile. And NO TRAIN: the town's field takes a shove every time one goes past,
+and out here a gust with nothing making it is a thing that happens for no
+reason.
+
+It is off on Low, on the same `q.city.petals` flag the town's field is gated
+on, and it is `noChunk` for the same reason: `chunkInstanced` splits any
+instanced set over 200 and detaches the source, and this keeps a {mesh, idx}
+pair per card. It is one Group, and that is not tidiness. As three root
+children the three tone sets had bounding spheres either side of the 40 m cull
+cell, so they landed in different cells: measured, TWO OF THE THREE were
+switched off from the spawn while the third stayed on, which is a third of a
+blossom field and worse than none. One group is one cull decision.
+
+`updateAnim` drives it off the fixed step count, through the updater list
+`places/index.js` collects. That hook was wired empty in the last entry
+specifically so a later animated part could not be silently swallowed; this is
+the part.
+
+THE THREE LINES THAT DID NOT FLY.
+
+`.loop/evidence/places-lines.js` walks all 32 named flight lines as swept
+collisions through `window.__hit`, which is the game's own query with the
+craft's tilt aware half extent and its world quaternion, in 0.5 m steps. First
+run: 15 of 26 clear. Most of the failures were the probe's own coordinates,
+which is what a first probe is for. Three were real, and not one of them was
+visible in any of the twenty two frames captured before it.
+
+1. THE BREACH IN THE WORKS' FRONTAGE WALL ENDED ON A WALL. The office's road
+   face is at z 85.4 and the wall was at 84.0: 1.25 m between them, which is
+   under the gap rule's 1.4 and a dead end for the one line that goes through
+   the hole where the wall has fallen down. The wall moved back to z 82.6,
+   which is the pool compound's own fence line, so the alley is 2.65 m and the
+   two frontages along the works road are level with each other.
+
+2. THE POOL'S ENTRANCE CORRIDOR ENDED ON A WALL. Twelve metres of 2.2 m
+   corridor through the changing block, coming out 1.25 m short of the hall's
+   west gable, which is blind at that point. The block's north end moved to
+   z 96.0, so the corridor puts you on the deck with three and a half metres
+   of air in front of you.
+
+3. A CHERRY STOOD IN FRONT OF A WINDOW. One of the works' frontage trees was
+   at x 27.6, which is the centre of the office's third bay, and a canopy is
+   2.5 m across: the line through that bay met leaf collision two metres
+   before the wall. Moved, and a third tree added, so all three screen piers
+   rather than openings.
+
+After those three: 32 of 32 clear, including both shed lines and their
+reverses, the roof hole, the office's three first floor tunnels and its ground
+floor doorway, the four head height gates, the hall end to end both ways, the
+clerestory both ways, under the gallery, the drained bowl in six segments from
+the drop through the pull out, and the two that matter most, which are the
+works road and the junction where it leaves 四丁目's arm.
+
+THE CITY ITSELF IS UNCHANGED, AND IT IS MEASURED RATHER THAN ARGUED.
+`.loop/evidence/places-townhash.js` hashes the town's own first 14060 authored
+collider rectangles at their own indices and its first 588 platforms, off
+`window.__cityWorld()` before the fit or the bake has touched anything.
+
+    636db78, before any of this work
+      14060 colliders  hash 1215864512   588 platforms  phash 3800319032
+    with the works road, the works, the pool and the blossom
+      14875 colliders  hash 1215864512   631 platforms  phash 3800319032
+
+815 rectangles and 43 platforms appended and not one of the town's own moved.
+
+MEASURED AGAIN AFTER ALL OF IT.
+
+- Collider audit: phantom 2163 m3 of 73898 solid against 2182 of 72474 before
+  this work started; 97 boxes over 5 m past the drawing against 103; holes
+  15698 of 43365 probed against 15651 of 43217, mean cover 0.604 against
+  0.603. Every check 15 threshold has more headroom than it started with.
+- `npm run lint:memory` PASS, 71 city modules, none at boot, geometries
+  62 -> 462 -> 61 and textures 6 -> 55 -> 5 across a round trip.
+- `npm run lint:shell` PASS. `npm run lint:attract` PASS: no world flies the
+  title camera through anything solid, and the city's loop is unchanged at
+  32 s with nothing within 17 m.
+- Low: the map builds, `places.blossom` is 0, there are zero `petalField`
+  meshes in the scene, the ground cut is still 166 triangles and the static
+  drifts are still there in 188 chunks.
+- `MAP_MODULE_COUNT.city` 70 -> 71.
+
+FINDINGS RECORDED AND NOT ACTED ON.
+
+An adversarial read of this work, run before it was finished, made two claims
+worth writing down. The first is right and is fixed above (the boom assertion).
+The second is that `src/maps/city/scan.js` double counts every hull outlined
+mesh, because `outline.js` adds the shell as a CHILD of the mesh with the same
+geometry and `drawnBoxes` walks it. That is true: `portalFace` and `train`
+appear exactly twice in the holes list with identical size, position and cover.
+It is NOT acted on here. It is pre-existing, it does not breach any threshold
+(15698 against a ceiling of 20300), and the honest fix is a change to what the
+audit measures, which should be its own change with its own before and after
+rather than a line buried in a districts commit. Written down so the next
+person does not rediscover it.
+
+The same read said check 15's holes were already breached at HEAD, at 21587
+against 20300. They were, and the cause was this branch: naming the two static
+fallen blossom meshes was what fixed it, and the numbers are in the entry
+above. Two of its other claims did not survive checking: `ctx.platform` does
+exist on the vendored context, and both sites fit their free ground with about
+five metres of margin, measured through `window.__surface`.
+
+`npm run verify` NOT run: nothing here touches src/native, patches,
+vendor/betaflight, the input path or the Emscripten build. The blossom is
+drawn only, has no collider, and is driven from the fixed step count.

@@ -23721,3 +23721,36 @@ five metres of margin, measured through `window.__surface`.
 `npm run verify` NOT run: nothing here touches src/native, patches,
 vendor/betaflight, the input path or the Emscripten build. The blossom is
 drawn only, has no collider, and is driven from the fixed step count.
+
+## Freestyle city: the world card names the two places, and three small things
+
+Small pass over the two new places after the line probe.
+
+The world card's note for the freestyle city read "A whole town. No gates, no
+lap, no clock. Roofs, alleys and a level crossing." It now says the rest of
+what is in there: "and a works road out to a derelict factory and the
+municipal pool." Two locations nobody can find are two locations nobody has.
+`lint:responsive` and `lint:shell` both PASS with the longer note, so it fits
+on the small phone as well as it fits at 1600 by 900.
+
+The convex mirror at the works road's turn moved from x 34.6 to 29.6. A 0.42 m
+disc on a 2.5 m post six metres south of the works gate stands squarely in the
+middle of it from the road, which is the one view a pilot arrives at that gate
+from. Outside the turn is where a mirror belongs anyway, because what it is
+for is seeing round the corner.
+
+One more line was added to `.loop/evidence/places-lines.js` and it is the one
+that makes the fallen wall worth having: the alley between 四丁目's last house
+and the works' frontage, x 31 down to 23.8 at z 81, which is 2.75 m wide with
+the town on one side and the works on the other. 33 of 33 clear.
+
+`lint:nouns` FAILED on this branch and was right to. One of the pool's
+measured references described itself as "a municipal short course pool", and
+the project reserves "course": the player only ever sees a track. It reads
+"a town pool, 25 m end to end" now. The check earned its keep on a string
+nobody would have looked at twice.
+
+Checks this round: `lint:nouns` PASS, `lint:devices` PASS, `lint:arcade` PASS,
+`lint:responsive` PASS, `lint:shell` PASS, `lint:attract` PASS,
+`lint:memory` PASS. `npm run verify` NOT run: nothing here touches src/native,
+patches, vendor/betaflight, the input path or the Emscripten build.

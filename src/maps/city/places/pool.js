@@ -196,7 +196,7 @@ export function buildPool(ctx) {
   out.references.poolLidoLength = {
     measured: +(LIDO.x1 - LIDO.x0).toFixed(2),
     unit: 'm',
-    real: 'a municipal short course pool, 25 m',
+    real: 'a town pool, 25 m end to end',
   };
   out.references.poolLidoDeep = {
     measured: +LIDO.deep.toFixed(2),

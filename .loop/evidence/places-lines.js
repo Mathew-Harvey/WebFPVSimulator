@@ -58,6 +58,7 @@
     ['works 6a under the stair landing', [30.6, 1.80, 84.2], [30.6, 1.80, 89.0]],
     ['works 6b under the flue duct', [38.5, 1.30, 84.2], [38.5, 1.30, 91.0]],
     ['works 6c under the water tower', [46.2, 3.20, 92.0], [46.2, 3.20, 101.0]],
+    ['works 6d0 the alley behind the last house', [31.0, 1.20, 81.0], [23.8, 1.20, 81.0]],
     ['works 6d through the fallen wall', [23.8, 0.95, 80.6], [23.8, 0.95, 84.8]],
     ['works 6e in at the gate', [35.5, 1.50, 80.6], [35.5, 1.50, 87.0]],
     ['pool 1a  the bowl, shallow to deep', [62.0, 1.30, 92.0], [66.0, -0.20, 92.0]],

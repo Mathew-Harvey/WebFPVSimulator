@@ -135,7 +135,12 @@ export function buildWorksRoad(ctx) {
 
   /* The convex mirror at the turn, which is what a blind junction gets, and
    * the road name plate on the corner so the road has a name on it. */
-  ctx.add(makeMirror({ x: 34.6, z: 76.4, y: GROUND, ry: -0.9, h: 2.5, r: 0.42 }));
+  /* On the OUTSIDE of the turn, at x 29.6, and not at 34.6 where it was: a
+   * 0.42 m disc on a 2.5 m post six metres south of the works gate stands
+   * squarely in the middle of it from the road, which is the one view a pilot
+   * arrives at that gate from. Outside the turn is also where a mirror
+   * belongs, since what it is for is seeing round the corner. */
+  ctx.add(makeMirror({ x: 29.6, z: 76.6, y: GROUND, ry: -0.9, h: 2.5, r: 0.42 }));
   laneSign(ctx, {
     x: 30.2, z: 73.6, y: ctx.groundAt(30.2, 73.6), variant: 1, h: 2.1, ry: Math.PI / 2,
   });

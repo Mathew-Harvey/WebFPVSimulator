@@ -1,0 +1,28 @@
+diff --git a/src/maps/city/vendored/world/petals.js b/src/maps/city/vendored/world/petals.js
+index 4d9a1b4..e918f6f 100644
+--- a/src/maps/city/vendored/world/petals.js
++++ b/src/maps/city/vendored/world/petals.js
+@@ -42,6 +42,7 @@ export function buildPetals(ctx) {
+     inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+     inst.frustumCulled = false;
+     inst.renderOrder = 4;
++    inst.name = 'petalField';
+     inst.userData.noOutline = true;
+     ctx.add(inst);
+     meshes.push(inst);
+@@ -169,6 +170,7 @@ export function buildFallenPatches(ctx, patches) {
+     );
+     list.forEach((m, k) => inst.setMatrixAt(k, m));
+     inst.renderOrder = 2;
++    inst.name = 'fallenPetal';
+     inst.userData.noOutline = true;
+     ctx.add(inst);
+   });
+@@ -233,6 +235,7 @@ function buildFallenPetals(ctx, tex) {
+     );
+     list.forEach((m, k) => inst.setMatrixAt(k, m));
+     inst.renderOrder = 2;
++    inst.name = 'fallenPetal';
+     inst.userData.noOutline = true;
+     ctx.add(inst);
+   });

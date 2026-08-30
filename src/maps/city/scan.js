@@ -423,7 +423,12 @@ const HOLE_SAMPLES = 4;
 const HOLE_COVER = 0.5;
 /* Named the way the town names its soft furnishings. These are drawn and
  * deliberately not solid, or solid as one mass elsewhere. */
+/* `Trim` is ./places/kit.js's suffix for a mesh that is drawn and not solid.
+ * Same list, same reason as COVER_SOFT in ./index.js: paint on a wall is
+ * not a hole in the world. Case sensitive on that one token so it cannot
+ * collide with a word inside another name. */
 const HOLE_SOFT = /canopy|blossom|petal|reed|tuft|moss|leaf|flower|grass|ivy|lily|ripple|chalk|crow|cat|paper|doormat|wire|cable|rope|banner|noren|flag/i;
+const HOLE_SOFT_EXACT = /Trim/;
 
 function colliderIndex(colliders) {
   const cell = 8;
@@ -503,7 +508,7 @@ export function scanHoles(colliders, boxes, keep = 40) {
       }
     }
     const frac = inside / (HOLE_SAMPLES * HOLE_SAMPLES * HOLE_SAMPLES);
-    const isSoft = HOLE_SOFT.test(g.name || '');
+    const isSoft = HOLE_SOFT.test(g.name || '') || HOLE_SOFT_EXACT.test(g.name || '');
     if (isSoft) {
       softProbed += 1;
       if (frac < HOLE_COVER) {

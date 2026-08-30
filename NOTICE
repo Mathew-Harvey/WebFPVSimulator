@@ -40,8 +40,8 @@ map's palette.js instead of the city's. toon.js also exports
 releaseMaterials(), which clears the material caches on dispose. Licence
 text travels with them at src/maps/bando/cel/LICENSE.
 
-Two of the 59 city files carry changes; the other 57 are byte identical to
-upstream.
+Three of the 59 city files carry changes; the other 56 are byte identical
+to upstream.
 
   * `world/index.js` carries the four line change recorded in full at
     `src/maps/city/vendored/PATCH-world-index.diff`, which makes the planet
@@ -55,6 +55,13 @@ upstream.
     change to what the town contains.
   * `core/toon.js` carries the one line change recorded at
     `src/maps/city/vendored/PATCH-core-toon.diff`, which drops `flatShading`.
+  * `world/petals.js` carries the three line change recorded at
+    `src/maps/city/vendored/PATCH-world-petals.diff`, which gives its
+    instanced meshes the names `petalField` and `fallenPetal`. Every other
+    instanced set in the town is named (`sakuraCanopy0`, `groveCanopy1`,
+    `hillTuft`, `lakeReed`); these three were the exception, and two passes
+    of ours read mesh names to decide what a drawn thing means. Nothing about
+    what is drawn changes.
 
 The line above used to read "fifty eight of the 59 city files are byte
 identical", which stopped being true when `core/toon.js` was patched and was

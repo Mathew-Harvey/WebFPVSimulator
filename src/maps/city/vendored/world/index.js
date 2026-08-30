@@ -354,8 +354,24 @@ export function buildWorld(scene, { bake = true } = {}) {
   buildBamboo(ctx, bambooKept);
   /* Fallen blossom, over every patch the districts asked for.  Each tone is
    * one instanced mesh over the whole world, so a couple of dozen scattered
-   * drifts is three draw calls however many patches feed it. */
-  buildFallenPatches(ctx, districts.flatMap((d) => d.petals ?? []));
+   * drifts is three draw calls however many patches feed it.
+   *
+   * TWO SHAPES GO INTO THAT ONE ARRAY, and only one of them is the shape
+   * `buildFallenPatches` documents.  The blocks and the lanes push rectangles,
+   * `{ x, z, w, d, y, n }`, which is what it reads; `hills.js`, `kohan.js`,
+   * `lakeroad.js` and `urayama.js` push circles, `{ x, z, y, r, seed }`, with
+   * no `w` and no `d` at all.  Fed straight in, every one of those became
+   * `p.x + edge * undefined`, so a third of the world's drifts -- 1947, 2043
+   * and 1950 instances across the three tones, measured -- were placed at NaN
+   * and took their instanced mesh's bounding sphere with them.  A circle is
+   * turned into the square that contains it here, at the join, rather than by
+   * changing either side of it. */
+  buildFallenPatches(ctx, districts.flatMap((d) => d.petals ?? []).map((p) => (
+    p.w !== undefined ? p : {
+      x: p.x, z: p.z, y: p.y, w: (p.r ?? 1) * 2, d: (p.r ?? 1) * 2,
+      n: p.n ?? Math.max(20, Math.round(28 * (p.r ?? 1))),
+    }
+  )));
 
   /* The distant town, hills and far tree line are gone: on a 160 m planet
    * anything that used to sit 60-330 m away is now over the horizon or on

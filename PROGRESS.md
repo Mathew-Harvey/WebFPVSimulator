@@ -23422,3 +23422,168 @@ vendor/betaflight, the input path or the Emscripten build. Petals are drawn
 only; they have no collider and are not in the physics path. They are driven
 from `world.update(dt)` where dt comes from the fixed step count in
 `city/animation.js`, not from frame time.
+
+## Freestyle city: 工場道, the disused works and the municipal pool
+
+Owner ask: take the two freestyle maps that are the bando and the pools and
+make them LOCATIONS IN THE CITY, natural extensions of it, without changing
+the existing city, loaded the same way the city is so performance is
+preserved, redesigned to fit the city's style. Verify each addition from
+every important point of view before finishing.
+
+WHAT WAS ADDED, and none of it touches a metre of the existing town.
+
+    工場道 (places/road.js)          the works road, off 四丁目's east arm
+    旧ひばり製作所 (places/works.js)  a disused machine shop, x 20..50, z 84..113
+    ひばり台市民プール (places/pool.js) the municipal pool, x 53..91, z 82.6..114
+
+WHERE, AND WHY THERE. ひばり台四丁目 takes an arm east off its lane at z = 70
+and stops it at x = 28, and its own source says what that end is for: "the
+arm's whole job is to look like it carries on into somebody else's back land."
+This is that back land. A survey of the built town's own collider list, run
+through the shell rather than read off the source, put nothing at all east of
+x = 30 past z = 78; the hills' keep-out rectangle runs to x 88 and z 114, so
+`hillAt` is exactly zero out there and `groundY` is a flat 0.45 for every
+z past 48. Both sites are inside that. The nearest thing either of them has to
+miss is 四丁目's carport at x 26.97..29.83, z 72.22..76.98, and the road's
+apron stops at z = 73.0.
+
+NOT PORTED, REDESIGNED. Industrial bando is a 58 m stack and a 42 m preheater
+on a hundred metre site, painted for a sunset sky its own palette.js says
+exists to fight this town's. Municipal baths is a 50 m hall. Neither fits, and
+neither was copied. What crossed over is the VOCABULARY: rust, profiled sheet,
+punched openings, a landable roof, a drained tiled bowl, a hall with a door at
+each end. The works' stack is 15.5 m against the school's 10.5 and the utility
+poles' 9.2, which makes it the tallest built thing at this end of the town and
+still something a suburb could contain. Everything is drawn out of the city's
+own `PAL`; the four colours that are not in it (two rusts, a weathered sheet
+grey, a pool tile) are each derived from one that is, and the pool's buildings
+use the school's own render, band and trim.
+
+HOW THEY ARE WIRED IN, and this was the load-bearing decision. Not as entries
+in the vendored district list: /NOTICE's rule is that our shell wraps a
+vendored module rather than editing it, and `world/index.js` has been patched
+once already. They are built from `src/maps/city/index.js` straight after
+`buildWorld` returns and before anything in the bake has looked at the scene,
+through a `placeContext` that is the same shape the town hands its own
+districts. So `meshFence` round the works is the same fence as the school's
+and `poleRun` on the works road is the same lamp standard as 四丁目's, and the
+collider fit, the cover pass, the merge, the cull grid and `heightAt` all see
+the new work because it is in the same `world.root`, `world.colliders`,
+`world.platforms` and `world.cuts`.
+
+THE FIVE THINGS THAT WERE WRONG, ALL FOUND BY MEASURING.
+
+1. THE CITY DID NOT LOAD. `findBoomBlocks` asserts the two level crossing
+booms are the LAST TWO colliders, and 790 appended boxes ended that. The fix
+is not to relax the assertion, which is a true and worth-keeping fact about
+the town's own build: it is called BEFORE `buildPlaces` now, where it is
+checked against exactly what it is a statement about, and the indices it
+returns stay valid because ./places/ only ever appends.
+
+2. THE EMPTY POOL WAS SOLID. The slab fit lets a rectangle bulky enough to be
+a building reach ROOF_LIFT_MAX = 2.8 m above its authored top before the cut
+runs, so a collider on a wall plate can grow onto the roof drawn over it. The
+lido's floor slabs are 10.4 by 9.0 m and 14.6 by 9.0 m, which is bulkier than
+a house, so the fit lifted both of them off the tile they were authored on up
+to the coping and hugged the tide mark, the lane paint and the springboard on
+the way. Measured: a box x 74.00..88.60, y -2.40..0.49, z 87.60..96.60, with
+the pool it is the floor of inside it. `places/kit.js` now defaults every
+authored box to `skipFit`, which is right for a box written together with its
+mesh: the drawing and the solid are the same six numbers and there is nothing
+to repair. Phantom volume over the whole town went 2697 to 2175 m3 with that
+one default, against 2182 before any of this work.
+
+3. THE POOL WAS INVISIBLE. `ctx.cut` pulls the HEIGHT QUERY down, which is
+what makes a bowl a bowl to a quad, and it does nothing to the drawn ground:
+`street.js` lays one 320 m grid over the valley and it closed straight over
+the top of the lido. From a metre up the pool was a flat field. The town
+solved this once for the drainage channel and `landform.js` writes down why
+displacing the grid does not work, so `places/index.js` does what `cutTrench`
+does over a rectangle passed in: drop every triangle with a vertex inside.
+The grid is 2 m, so the hole measured x 62..90, z 86..98 against a basin of
+x 63.6..88.6, z 87.6..96.6, and the deck's four numbers are set by that
+measurement rather than by taste. The hall did not need a hole: a pool hall is
+a building you step up into, so its floor is raised 0.18 m and its water
+surface sits 0.05 m over the terrain.
+
+4. THE ROOF HAD DAYLIGHT THROUGH IT IN A REGULAR STRIPE. The sawtooth is six
+stepped boxes per tooth, drawn exactly as they are solid, and the step's
+thickness was 0.20 against a rise of 0.30: every joint was a 0.10 m slot open
+to the sky, eighteen of them down the shed. Thickness is the rise now, so
+consecutive steps meet on a shared face.
+
+5. TWO TREES GREW THROUGH THE SHED. Self seeded stands at z 112.1 and 112.3
+are 1.1 m off a wall, and a grove canopy is 2.5 m across: both hung inside the
+shed at four metres, in the middle of the one line the building exists for.
+Nothing self seeds in a 2.5 m alley anyway. They are outside the fence now.
+
+THE FLIGHT LINES, which are the reason for every dimension in both files.
+Industrial bando's kit wrote the lesson down three times and it is the one
+thing carried over whole: a shaft with a hole in the floor is a DIVE, and the
+owner's report on that map was "too many chimney dives, not fun". Punch the
+far face and the shape is a LINE. So the shed has a 4.4 m door in the south
+gable and a 4.4 m hole in the north; three sheets off the west flank at
+z 99.0..102.2 and three off the east flank at exactly the same z, crossing the
+first at floor level; a clerestory that is out over 3.2 m; and one roof hole,
+which is the only dive and has two ways out under it. The office is three
+1.6 m bays repeated on both faces at both levels, so it is three tunnels
+rather than a box with holes in it. The pool's hall has a 4.6 m door in each
+gable 28 m apart and a 1.5 m clerestory band that goes through BOTH long
+faces. The changing block has a 2.2 m corridor straight through its twelve
+metres. And the lido is 25 m of tiled floor with a shelf, a step and vertical
+walls, drained, with the blossom off four cherries landing in it.
+
+Bando's gap rule came over too: a leftover between two solids is 0, a shared
+face, or at least 1.4 m, never between. Every clearance in both files was
+checked against it, and the office's bays are 1.6 m rather than 1.3 for
+exactly that reason.
+
+MEASURED, all through the real shell in headless Chromium at High.
+
+- Collider audit: phantom 2175 m3 of 73843 solid, against 2182 of 72474
+  before this work; 97 boxes over 5 m past the drawing against 103 before;
+  holes 15689 of 43332 probed against 15651 of 43217, mean cover 0.603 both
+  times. Every threshold in check 15 has more headroom than it started with,
+  and not one of the worst-twenty phantoms is in either new place.
+- Frame budget, same four viewpoints before and after. At the crossing 638
+  calls and 1,123,683 triangles becomes 640 and 1,137,603; over the town 709
+  and 1,124,427 becomes 712 and 1,138,219. So the town's own frame costs two
+  or three draw calls and 1.2 percent more triangles, which is the second
+  planting merge and the town-wide transparent bucket. Standing in either new
+  place is 223 to 241 calls against the town's 640 to 712.
+- Scene totals 2078 meshes and 61.7 MB of attributes becomes 2256 and 62.9.
+  Render target bytes unchanged at 87 MB.
+- `npm run lint:memory` PASS: 70 city modules, none of them fetched at boot,
+  geometries 62 -> 440 -> 61 and textures 6 -> 52 -> 5 across a round trip, so
+  neither place leaks.
+- `buildPlaces` costs 147, 164 and 157 ms across three loads, against a world
+  build of 6709 to 6821 ms. `MAP_BUILD_MS.city` is left at 7994 deliberately:
+  it was measured on a different container and this one builds the town alone
+  in 6.7 s, so moving it by the 0.16 s this adds would be replacing somebody
+  else's measurement with a number from a machine that disagrees with it by
+  1.2 s. Written down rather than quietly changed.
+- `MAP_MODULE_COUNT.city` 64 -> 70, measured off resource timing.
+- Height queries, probed: the pool block's roof answers 3.80 from above and
+  the deck answers 0.45 from below; the shed floor answers 0.45 from 6 m and
+  the shed roof 8.05 from above; the office's first floor answers 3.75 and its
+  roof 7.05; the lido answers -0.55 on the shelf and -2.05 in the deep end.
+- Collider probes over the four volumes a line goes through: the deep half of
+  the bowl above the floor, the office's first floor between the window
+  heads, the shed's interior over the crane rail's line and the hall between
+  the doors. All four are empty.
+- Frames captured and looked at from twenty two viewpoints across five rounds:
+  the road from 四丁目's arm, both gates, the works yard, both shed lines, the
+  sawtooth from the air, the office tunnel, the empty bowl from inside and
+  above, the hall end to end, the changing block roof, the seam where the
+  ground is cut, and a plan of the whole extension.
+
+`npm run verify` NOT run: nothing here touches src/native, patches,
+vendor/betaflight, the input path or the Emscripten build. Nothing in either
+place moves, so nothing in them is a function of frame time; the update hook
+is wired to the fixed step clock anyway, and it is empty.
+
+WHAT IS NOT DONE. The live blossom field is still bounded to the street
+corridor it was authored for (x within 9.5 m of `centerX(z)`, z -30..34), so
+the cherries at the pool drop STATIC drifts and nothing falls out of the air
+out there. That is the next entry.

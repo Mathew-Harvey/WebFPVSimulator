@@ -62,6 +62,7 @@ import {
   bakeCity, buildCullGrid, chunkInstanced, thinFoliage,
 } from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
+import { buildPlaces } from './places/index.js';
 import { drawnBoxes } from './drawn.js';
 import { yieldToPaint } from '../../ui/loading.js';
 import { qualityFor } from '../../render/quality.js';
@@ -610,7 +611,11 @@ const COVER_MIN_FILL = 0.4;
  * rectangle and roof-lift would fill the opening from the floor
  * to the cap. A chain-link ring around a roof votes on every slab
  * of that block the same way. Authored posts and beams stay. */
-const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink|walkup|garageHouse/i;
+/* `Trim` is the suffix every non solid mesh in ./places/ carries: paint,
+ * glazing, cladding ribs, sign boards, weed patches. It is one word rather
+ * than a list because those two places author it, and a solid mesh there is
+ * forbidden from taking the name. See ./places/kit.js. */
+const COVER_SOFT = /canopy|tuft|moss|reed|petal|lily|ripple|windLane|chalk|doormat|paper|crow|cat|ivy|grass|blossom|leaf|flower|strippedClutter|torii|schoolLink|overbridgeCage|schoolBell|openFrame|temizuya|haiden|chainLink|walkup|garageHouse|Trim/;
 
 /*
  * One object's world extent, skipping foliage, or null if it draws nothing.
@@ -1637,7 +1642,6 @@ export async function buildMap(shell, onProgress, options) {
   if (world.petals && world.petals.meshes && world.petals.meshes.length) {
     if (q.city.petals) {
       for (const m of world.petals.meshes) {
-        m.name = m.name || 'petalField';
         m.userData.noChunk = true;
         m.userData.noMerge = true;
       }
@@ -1659,9 +1663,29 @@ export async function buildMap(shell, onProgress, options) {
   progress(0.86);
   await yieldToPaint();
 
-  const { colliders, noTop, noBottom, slabs, fit } = buildColliders(world);
   /*
-   * Find the level crossing booms NOW, before anything runs the town forward.
+   * THE TWO PLACES ON THE WORKS ROAD, and they go in HERE, between the town
+   * being built and anything looking at it.
+   *
+   * 旧ひばり製作所 and ひばり台市民プール are ours, GPLv3, under ./places/,
+   * and they are built from the host side rather than added to the vendored
+   * district list: /NOTICE's rule is that our shell wraps a vendored module
+   * rather than editing it, and the town's own `buildWorld` has been patched
+   * once already. Everything downstream sees them because they are added to
+   * the same `world.root`, the same `world.colliders` (appended, never
+   * inserted, because the crossing booms are identified by index), the same
+   * `world.platforms` and the same `world.cuts`. So the collider fit trims
+   * them, the cover pass reads them, the merge buckets them, the cull grid
+   * cells them and `world.heightAt` puts a quad on the pool block's roof and
+   * down inside the empty pool.
+   *
+   * Before `buildColliders`, which is the whole point: authored boxes that
+   * already hug their drawing want to be inspected by the fit, not held out
+   * of it. See ./places/index.js.
+   */
+  /*
+   * Find the level crossing booms NOW, before anything runs the town forward
+   * AND before anything adds a collider to it.
    *
    * They are identified by being parked below ground, and `top` is RUNTIME
    * state: the town rewrites it on every `world.update`. bake.js then runs the
@@ -1670,8 +1694,22 @@ export async function buildMap(shell, onProgress, options) {
    * 117 and 202 to 213 leaves both booms DOWN, and the identification would
    * throw. It happens to work at 120. Doing it here makes the ordering
    * irrelevant instead of lucky.
+   *
+   * IT ALSO HAS TO RUN BEFORE `buildPlaces`, and that is the newer half.
+   * `findBoomBlocks` asserts the two parked colliders are the LAST TWO in the
+   * list, which is a true and worth-keeping fact about the town's own build
+   * and stops being true the moment anything appends. Called here it is
+   * checked against exactly what it is a statement about, and the two indices
+   * it returns stay valid afterwards because ./places/ only ever appends:
+   * nothing is inserted, so nothing before them moves.
    */
   const boomIndices = findBoomBlocks(world.colliders);
+
+  const places = buildPlaces(world);
+  progress(0.87);
+  await yieldToPaint();
+
+  const { colliders, noTop, noBottom, slabs, fit } = buildColliders(world);
 
   /*
    * The train, as three moving boxes.
@@ -1736,6 +1774,10 @@ export async function buildMap(shell, onProgress, options) {
    * floats in a shared buffer and there is nothing left to measure.
    */
   const references = cityReferences(world);
+  /* The works and the pool measure their own, off what they built rather
+   * than off the tables they were built from, and hand them up. Same
+   * principle as cityReferences: a number in stats() has to be evidence. */
+  Object.assign(references, places.references);
   progress(0.91);
 
   /*
@@ -1758,6 +1800,7 @@ export async function buildMap(shell, onProgress, options) {
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
   const anim = cityAnimation(world, colliders, boomIndices, trainCars);
+  let placeStep = 0;
   /* Measured AFTER cityAnimation has seated the booms at step zero, so it is
    * the extent a quad would actually meet. */
   references.crossingBoomCollider = {
@@ -1975,7 +2018,25 @@ export async function buildMap(shell, onProgress, options) {
     updateRacingLine() { return null; },
     updateShadowFocus,
     updateWind,
-    updateAnim: anim.update,
+    /*
+     * The town's own step clock, with the two places on the works road
+     * hanging off it. Nothing in either of them animates today and the list
+     * is empty, but it is wired rather than dropped: a hook that silently
+     * swallows an animated part is only ever noticed by a pilot asking why
+     * the thing that moves does not. `anim.update` derives its dt from the
+     * fixed step count, so anything here is on the physics clock and not on
+     * frame time, which is the rule for anything a craft can hit.
+     */
+    updateAnim: places.updaters.length
+      ? (step) => {
+        const dt = Math.max(0, Math.min(0.25, (step - placeStep) * 0.001));
+        placeStep = step;
+        anim.update(step);
+        for (const fn of places.updaters) {
+          fn(dt);
+        }
+      }
+      : anim.update,
     references,
     setCullRadius,
     world,
@@ -1999,6 +2060,11 @@ export async function buildMap(shell, onProgress, options) {
       cullRadius,
       foliageKeep,
       planting: world.planting ?? null,
+      places: {
+        ...places.stats,
+        planting: places.planting,
+        sites: places.sites,
+      },
       ...thinned,
       ...baked.stats,
       ...chunked,

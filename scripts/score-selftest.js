@@ -51,9 +51,19 @@ import {
   trickNames,
   trickPoints,
 } from '../src/game/tricks.js';
-import { PATTERNS, TrickDetector, snapTurns, AXIS_ROLL, AXIS_PITCH, AXIS_YAW } from '../src/game/trickdetect.js';
+import {
+  PATTERNS, TrickDetector, snapTurns, snapPathTurns,
+  AXIS_ROLL, AXIS_PITCH, AXIS_YAW,
+} from '../src/game/trickdetect.js';
+import {
+  ObstacleField, OB_BAR, OB_POLE, deriveObstacles, sameAxis,
+} from '../src/game/obstacles.js';
 import { FreestyleScore, formatScore } from '../src/game/score.js';
 import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
+/* The one and only conversion between the plant's frame and the world's,
+ * imported rather than retyped: CLAUDE.md says it lives in one file and a
+ * test that made its own copy would be the first place the two drifted. */
+import { simPosToThree } from '../src/render/frame.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EVIDENCE = join(HERE, '..', '.loop', 'evidence', 'freestyle-scoring', 'twp-calculator.json');
@@ -704,6 +714,314 @@ console.log('\nend to end, on a synthetic trace');
   console.log(`        ${formatScore(s.total())} from ${flown.length} tricks`);
 }
 
+console.log('\nthe obstacle field');
+{
+  /* A hand built field, so near() and sameAxis can be checked exactly. */
+  const f = new ObstacleField();
+  f.add(OB_BAR, 0, 6, 0, 1, 0, 0, 8);
+  f.add(OB_POLE, 40, 5, 0, 0, 1, 0, 5);
+  f.build();
+  check('the field holds what was put in it', f.count === 2);
+  check('and knows what kind each is', f.countOf(OB_BAR) === 1 && f.countOf(OB_POLE) === 1);
+  check('a craft under the bar finds the bar',
+    f.near(0, 2, 0) === f.items[0]);
+  check('a craft beside the pole finds the pole',
+    f.near(44, 5, 0) === f.items[1]);
+  check('a craft far from both finds nothing', f.near(0, 5, 300) === null);
+  check('and one past the end of the bar finds nothing',
+    f.near(60, 6, 0) === null);
+
+  /*
+   * COLLINEAR SEGMENTS ARE ONE OBSTACLE. The town builds a railing out of
+   * an 8 m piece, a 17 m piece and another 8 m piece, and a pilot looping
+   * the join must not have the loop cut in half because engagement stepped
+   * from one collider to the next.
+   */
+  const a = { kind: OB_BAR, cx: 0, cy: 6, cz: 0, dx: 1, dy: 0, dz: 0, half: 4 };
+  const b = { kind: OB_BAR, cx: 9, cy: 6, cz: 0, dx: 1, dy: 0, dz: 0, half: 4 };
+  const c = { kind: OB_BAR, cx: 0, cy: 6, cz: 6, dx: 1, dy: 0, dz: 0, half: 4 };
+  const d = { kind: OB_BAR, cx: 0, cy: 6, cz: 0, dx: 0, dy: 0, dz: 1, half: 4 };
+  check('two rails end to end are the same line', sameAxis(a, b));
+  check('two parallel rails six metres apart are not', !sameAxis(a, c));
+  check('two rails at right angles are not', !sameAxis(a, d));
+
+  /*
+   * DERIVATION FROM COLLIDERS. The shapes below are the ones the city
+   * actually contains: a 0.16 m lamp post, a 0.1 m fence rail at 1.5 m, a
+   * building wall, a kerb, and a wall box that reaches sixty metres
+   * underground, which is what the ground clamp exists for.
+   */
+  const boxes = {
+    /* Opposite corners, minimum then maximum, the way Colliders stores a
+     * box. In order: a 0.16 m lamp post, an 18 m fence rail at 1.5 m, a
+     * building wall, a kerb, a wall box reaching sixty metres underground,
+     * and a low slab. */
+    fbox: [1, 1, 1, 1, 1, 1],
+    fax: [0, 10, 30, 50, 70, 90],
+    fay: [0, 1.5, 0, 0, -60, 0.4],
+    faz: [0, 0, 0, 0, 0, 0],
+    fbx: [0.16, 28.4, 38, 90, 70.7, 92],
+    fby: [4.2, 1.6, 9, 0.14, 0.2, 0.5],
+    fbz: [0.16, 0.1, 0.4, 6, 0.7, 3],
+  };
+  const got = deriveObstacles(boxes, () => 0);
+  check('a lamp post is a pole', got.countOf(OB_POLE) === 1);
+  check('a fence rail with daylight under it is a bar', got.countOf(OB_BAR) === 1);
+  check('a building wall, a kerb and a slab are neither', got.count === 2);
+  const buried = deriveObstacles(
+    { fbox: [1], fax: [0], fay: [-60], faz: [0], fbx: [0.7], fby: [0.2], fbz: [0.7] },
+    () => 0,
+  );
+  check('a box that reaches sixty metres underground is not a four metre pole',
+    buried.count === 0);
+  const low = deriveObstacles(
+    { fbox: [1], fax: [0], fay: [0.4], faz: [0], fbx: [8], fby: [0.5], fbz: [0.1] },
+    () => 0,
+  );
+  check('a rail too low to fly under is not a bar', low.count === 0);
+}
+
+console.log('\nthe lap snap');
+{
+  /* Same shape as the attitude snap, decided by which side of the rail the
+   * craft came out on rather than by which way up it ended. */
+  check('under to under, one turn, is a lap',
+    snapPathTurns(1.06, OB_BAR, -1, -1) === 1);
+  check('and still is when the geometry stretches it to 1.3',
+    snapPathTurns(1.3, OB_BAR, -1, -1) === 1);
+  check('over to under, half a turn, is half a lap',
+    snapPathTurns(0.52, OB_BAR, 1, -1) === 0.5);
+  check('under to over is half a lap too',
+    snapPathTurns(0.44, OB_BAR, -1, 1) === 0.5);
+  /*
+   * THE FLY-BY. A quad going straight past a rail sweeps up to half a turn
+   * of angle at that rail, and goes in under it and comes out under it.
+   * Same side means a whole number of turns, and half a turn is not one.
+   * Rejected outright rather than rounded, which is the difference between
+   * this snap and the attitude one.
+   */
+  check('a half turn that came out the side it went in is not a lap',
+    snapPathTurns(0.5, OB_BAR, -1, -1) === 0);
+  check('nor is a third of a turn', snapPathTurns(0.33, OB_BAR, 1, 1) === 0);
+  check('a pole takes the plain nearest quarter, having no sides',
+    snapPathTurns(1.98, OB_POLE, 0, 0) === 2);
+}
+
+/*
+ * THE OBSTACLE TRICKS, on constructed paths.
+ *
+ * The flights here are geometry, not physics: an arc of a given radius
+ * about a given axis, with a stated amount of rotation happening at the
+ * same time. That is deliberate. What is under test is the GRAMMAR, that a
+ * full lap from under with a flip is a Powerloop and the same lap without
+ * the flip is a Maverick Loop, and a real aircraft cannot fly those two
+ * distinctly enough to tell one test failure from one bad flight. The real
+ * aircraft flies a Powerloop further down, which is the check that the
+ * geometry here is reachable at all.
+ */
+console.log('\nthe obstacle tricks, on constructed paths');
+{
+  const BAR = { cx: 0, cy: 6, cz: 0 };
+  const POLE = { cx: 0, cy: 6, cz: 0 };
+  const barField = () => {
+    const f = new ObstacleField();
+    f.add(OB_BAR, BAR.cx, BAR.cy, BAR.cz, 1, 0, 0, 8);
+    return f.build();
+  };
+  const poleField = () => {
+    const f = new ObstacleField();
+    f.add(OB_POLE, POLE.cx, POLE.cy, POLE.cz, 0, 1, 0, 5);
+    return f.build();
+  };
+
+  class Path {
+    constructor(field) {
+      this.out = [];
+      this.det = new TrickDetector((t) => this.out.push(t), field);
+      this.x = 0;
+      this.y = 0;
+      this.z = 0;
+      this.upZ = 1;
+    }
+    feed(p, q, r) {
+      this.det.step(0.001, p, q, r, 0, Math.sqrt(Math.max(0, (1 - this.upZ) / 2)),
+        12, this.x, this.y, this.z);
+    }
+    cruise(ms, vz) {
+      for (let i = 0; i < ms; i += 1) {
+        this.z += vz * 0.001;
+        this.feed(0, 0, 0);
+      }
+    }
+    /* Fly straight to where an arc begins, so the winding sees no jump. */
+    approach(ob, radius, startAngle, ms, speed, vertical) {
+      if (vertical) {
+        this.x = ob.cx + radius * Math.cos(startAngle);
+        this.y = ob.cy;
+        this.z = ob.cz + radius * Math.sin(startAngle) + speed * (ms / 1000);
+      } else {
+        this.x = ob.cx;
+        this.y = ob.cy - radius * Math.cos(startAngle);
+        this.z = ob.cz + radius * Math.sin(startAngle) + speed * (ms / 1000);
+      }
+      this.cruise(ms, -speed);
+    }
+    /* An arc in the vertical plane, about a bar running along x. */
+    arcBar(ob, radius, startAngle, turns, ms, rot, flip) {
+      for (let i = 0; i < ms; i += 1) {
+        const a = startAngle + (turns * TURN * i) / ms;
+        this.x = ob.cx;
+        this.y = ob.cy - radius * Math.cos(a);
+        this.z = ob.cz + radius * Math.sin(a);
+        if (flip) {
+          this.upZ = Math.cos(flip * (i / ms) * TURN);
+        }
+        this.feed(
+          ((rot[0] ?? 0) * TURN) / (ms / 1000),
+          ((rot[1] ?? 0) * TURN) / (ms / 1000),
+          ((rot[2] ?? 0) * TURN) / (ms / 1000),
+        );
+      }
+    }
+    /* An orbit in the horizontal plane, about a vertical pole. */
+    arcPole(ob, radius, startAngle, turns, ms, rot, upZ) {
+      for (let i = 0; i < ms; i += 1) {
+        const a = startAngle + (turns * TURN * i) / ms;
+        this.x = ob.cx + radius * Math.cos(a);
+        this.y = ob.cy;
+        this.z = ob.cz + radius * Math.sin(a);
+        if (upZ !== undefined) {
+          this.upZ = upZ;
+        }
+        this.feed(
+          ((rot[0] ?? 0) * TURN) / (ms / 1000),
+          ((rot[1] ?? 0) * TURN) / (ms / 1000),
+          ((rot[2] ?? 0) * TURN) / (ms / 1000),
+        );
+      }
+    }
+    spin(axis, turns, ms, endUp) {
+      const rate = (turns * TURN) / (ms / 1000);
+      for (let i = 0; i < ms; i += 1) {
+        this.feed(axis === 0 ? rate : 0, axis === 1 ? rate : 0, axis === 2 ? rate : 0);
+      }
+      if (endUp !== undefined) {
+        this.upZ = endUp;
+      }
+      for (let i = 0; i < 200; i += 1) {
+        this.feed(0, 0, 0);
+      }
+    }
+    finish() {
+      this.det.flush(this.upZ);
+      return this.out.map((t) => t.name).join(' + ') || 'NOTHING';
+    }
+  }
+
+  /* Under the rail, all the way round it, flipping with the loop. */
+  {
+    const s = new Path(barField());
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -1, 1400, [0, 1, 0], 1);
+    s.cruise(900, -8);
+    check('a full lap from under, flipping, is a Powerloop', s.finish() === 'Powerloop');
+  }
+  /* The same lap flown facing forward: no flip. */
+  {
+    const s = new Path(barField());
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -1, 1400, [0, 0, 0], 0);
+    s.cruise(900, -8);
+    check('the same lap without the flip is a Maverick Loop',
+      s.finish() === 'Maverick Loop');
+  }
+  /* Over the rail, half a front flip, out underneath. */
+  {
+    const s = new Path(barField());
+    s.approach(BAR, 4, Math.PI, 500, 8, false);
+    s.arcBar(BAR, 4, Math.PI, 0.5, 800, [0, 0.5, 0], 0.5);
+    s.cruise(900, -8);
+    check('half a lap from over, half flipping, is a Matty Flip',
+      s.finish() === 'Matty Flip');
+  }
+  {
+    const s = new Path(barField());
+    s.approach(BAR, 4, Math.PI, 500, 8, false);
+    s.arcBar(BAR, 4, Math.PI, 0.5, 800, [0, 0, 0], 0);
+    s.cruise(900, -8);
+    check('the same flown flat is a Beginner Matty',
+      s.finish() === 'Beginner Matty');
+  }
+  {
+    const s = new Path(barField());
+    s.approach(BAR, 4, Math.PI, 500, 8, false);
+    s.arcBar(BAR, 4, Math.PI, 0.5, 800, [0.5, 0.5, 0], 0.5);
+    s.cruise(900, -8);
+    check('and with a roll in it is a Split-S', s.finish() === 'Split-S');
+  }
+  /* Half a loop up from under, then the roll that finishes it. */
+  {
+    const s = new Path(barField());
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -0.5, 800, [0, 0.5, 0], 0.5);
+    s.upZ = -1;
+    s.spin(0, 0.5, 250, 1);
+    s.cruise(900, -8);
+    check('half a lap from under and then a roll is an Immelmann Turn',
+      s.finish() === 'Immelmann Turn');
+  }
+  /* Two laps of a pole with the nose tracking it. */
+  {
+    const s = new Path(poleField());
+    s.approach(POLE, 5, 0, 500, 8, true);
+    s.arcPole(POLE, 5, 0, 2, 3000, [0, 0, 2], 1);
+    s.cruise(900, -8);
+    check('two laps of a pole with the nose tracking is an Orbit x2',
+      s.finish() === 'Orbit x2');
+  }
+  {
+    const s = new Path(poleField());
+    s.approach(POLE, 5, 0, 500, 8, true);
+    s.upZ = -1;
+    s.arcPole(POLE, 5, 0, 2, 3000, [0, 0, 2], -1);
+    s.cruise(900, -8);
+    check('the same flown inverted is a Trippy Spin x2',
+      s.finish() === 'Trippy Spin x2');
+  }
+
+  /*
+   * AND THE CASES THAT MUST NOT SCORE. These matter more than the eight
+   * above: an obstacle recogniser that pays out for flying past a lamp post
+   * would make the whole score meaningless in a town with 886 of them.
+   */
+  {
+    const s = new Path(barField());
+    s.x = 0;
+    s.y = BAR.cy - 5;
+    s.z = BAR.cz + 9;
+    s.cruise(300, 0);
+    s.spin(1, 1, 500, 1);
+    s.cruise(900, 0);
+    check('a plain flip beside a rail is still just a Flip', s.finish() === 'Flip');
+  }
+  {
+    const s = new Path(barField());
+    s.x = 0;
+    s.y = BAR.cy - 3;
+    s.z = BAR.cz + 40;
+    s.cruise(4000, -20);
+    check('flying straight under a rail scores nothing', s.finish() === 'NOTHING');
+  }
+  {
+    const s = new Path(poleField());
+    s.x = POLE.cx + 4;
+    s.y = POLE.cy;
+    s.z = POLE.cz + 40;
+    s.cruise(4000, -20);
+    check('flying straight past a pole scores nothing', s.finish() === 'NOTHING');
+  }
+}
+
 /*
  * THE REAL AIRCRAFT.
  *
@@ -733,16 +1051,20 @@ if (!existsSync(WASM)) {
   const diff = readFileSync(join(HERE, '..', 'configs', 'betaflight-default.diff'), 'utf8');
 
   /* One rig per trial, so a trial cannot inherit the last one's attitude. */
-  const rig = async () => {
+  const rig = async (field = null) => {
     const sim = await loadSim(wasm);
     if (sim.init(diff) !== SIM_OK) {
       throw new Error('sim_init failed');
     }
     sim.reset();
     const out = [];
-    const det = new TrickDetector((t) => out.push(t));
+    const det = new TrickDetector((t) => out.push(t), field);
+    const track = [];
     let stepIdx = 0;
     let rcNext = 0;
+    /* simPosToThree writes into anything with a set(x, y, z); a plain
+     * object saves pulling Three into a Node test. */
+    const w = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } };
     const ms = (roll, pitch, yaw, thr) => {
       const t = stepIdx / 1000;
       if (t >= rcNext) {
@@ -752,8 +1074,10 @@ if (!existsSync(WASM)) {
       sim.step(1);
       stepIdx += 1;
       const st = sim.readState().state;
+      simPosToThree(st[1], st[2], st[3], w);
+      track.push([w.x, w.y, w.z]);
       det.step(0.001, st[11], st[12], st[13], st[8], st[9],
-        Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]));
+        Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]), w.x, w.y, w.z);
       return st;
     };
     const upZ = () => {
@@ -788,7 +1112,7 @@ if (!existsSync(WASM)) {
       det.flush(upZ());
       return out;
     };
-    return { ms, rotate, hold, upZ, done, out };
+    return { ms, rotate, hold, upZ, done, out, track, state: () => sim.readState().state };
   };
 
   const flightNames = (list) => list.map((t) => t.name).join(' + ');
@@ -960,6 +1284,111 @@ if (!existsSync(WASM)) {
     check('and banks the same 1597 the synthetic trace did', s.total() === 1597);
     console.log(`        flown: ${formatScore(s.total())} from ${got.length} tricks, `
       + `every trick CLEAN: ${got.every((t) => t.execution === 'CLEAN')}`);
+  }
+
+  /*
+   * A FLOWN POWERLOOP, which is the whole point of the obstacle work.
+   *
+   * Two passes. The first flies the loop with no obstacle in the world and
+   * records where the craft went. The second puts a rail at the place a
+   * pilot would have chosen, low in the loop, since a powerloop goes under
+   * the object and over it and back under, and flies the identical inputs.
+   * The module is deterministic, so pass two traces pass one exactly; the
+   * only difference is that this time there is something to loop around.
+   *
+   * Nothing about the flight is faked. Betaflight's rate curve, the PID
+   * loop, the mixer and the plant produce the path, and the winding is
+   * measured off it.
+   */
+  const flyLoop = async (field, barY) => {
+    const f = await rig(field);
+    f.hold(250, 0.5);
+    /* Nose down under power until the craft is doing 12 m/s, which is the
+     * speed that makes a 12 m loop at this pitch rate: the loop radius is
+     * the speed over the pitch rate, and the centripetal acceleration it
+     * needs has to fit inside the airframe's 4.9 g of thrust. */
+    for (let k = 0; k < 4000; k += 1) {
+      const st = f.state();
+      if (Math.sqrt(st[4] * st[4] + st[5] * st[5] + st[6] * st[6]) >= 12) {
+        break;
+      }
+      f.ms(0, -0.30, 0, 0.80);
+    }
+    f.hold(160, 0.55, 0, 0.20, 0);
+    const mark = f.track.length;
+    let acc = 0;
+    for (let k = 0; k < 6000; k += 1) {
+      const st = f.ms(0, 0.60, 0, 1.0);
+      acc += st[12] * 0.001;
+      /* A powerloop is not finished until you are back under the object. */
+      if (Math.abs(acc) >= TURN && (barY === null || f.track[f.track.length - 1][1] < barY)) {
+        break;
+      }
+    }
+    f.hold(900, 0.5);
+    return { f, mark, pitchTurns: acc / TURN };
+  };
+  /* Winding of a path about a point in the vertical plane, in turns. */
+  const windAbout = (pts, cy, cz) => {
+    let a = 0;
+    for (let i = 1; i < pts.length; i += 1) {
+      const ay = pts[i - 1][1] - cy;
+      const az = pts[i - 1][2] - cz;
+      const by = pts[i][1] - cy;
+      const bz = pts[i][2] - cz;
+      const la = Math.sqrt(ay * ay + az * az);
+      const lb = Math.sqrt(by * by + bz * bz);
+      if (la < 0.5 || lb < 0.5) {
+        return NaN;
+      }
+      a += (ay * bz - az * by) / (la * lb);
+    }
+    return a / TURN;
+  };
+  {
+    const first = await flyLoop(null, null);
+    const pts = first.f.track.slice(first.mark);
+    let minY = 1e9;
+    let maxY = -1e9;
+    let minZ = 1e9;
+    let maxZ = -1e9;
+    let sx = 0;
+    for (const p of pts) {
+      if (p[1] < minY) { minY = p[1]; }
+      if (p[1] > maxY) { maxY = p[1]; }
+      if (p[2] < minZ) { minZ = p[2]; }
+      if (p[2] > maxZ) { maxZ = p[2]; }
+      sx += p[0];
+    }
+    check('the flown loop really is a loop, not a climb',
+      maxY - minY > 6 && maxZ - minZ > 6);
+    let best = null;
+    for (let fy = 0.05; fy <= 0.35; fy += 0.02) {
+      for (let fz = 0.1; fz <= 0.9; fz += 0.02) {
+        const cy = minY + (maxY - minY) * fy;
+        const cz = minZ + (maxZ - minZ) * fz;
+        const wv = windAbout(pts, cy, cz);
+        if (Number.isNaN(wv)) {
+          continue;
+        }
+        const err = Math.abs(Math.abs(wv) - 1);
+        if (!best || err < best.err) {
+          best = { cy, cz, w: wv, err };
+        }
+      }
+    }
+    check('and it winds a full turn about a point low inside it',
+      Boolean(best) && Math.abs(Math.abs(best.w) - 1) < 0.15);
+
+    const field = new ObstacleField();
+    field.add(OB_BAR, sx / pts.length, best.cy, best.cz, 1, 0, 0, 8);
+    field.build();
+    const second = await flyLoop(field, best.cy);
+    second.f.done();
+    check('a flown powerloop around a real rail is a Powerloop',
+      flightNames(second.f.out) === 'Powerloop');
+    console.log(`        rail at y ${best.cy.toFixed(1)} z ${best.cz.toFixed(1)}, `
+      + `path wound ${best.w.toFixed(2)} turns, pitch ${first.pitchTurns.toFixed(2)}`);
   }
 }
 

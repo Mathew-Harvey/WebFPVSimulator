@@ -60,6 +60,7 @@ import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
 import { Race } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
+import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
 import { FreestyleScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
@@ -846,10 +847,39 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Set once a frame, read 1000 times: whether this map and this moment
    * are being scored at all. */
   let scoring = false;
+  /* Scratch for the per-step world position handed to the detector. One
+   * vector, written in place, never allocated in the step loop. */
+  const scorePos = new THREE.Vector3();
   const score = new FreestyleScore();
+  /*
+   * The things in the world worth flying around, derived from the map's own
+   * colliders once when the map is built. Null on a map with none, and the
+   * detector is then exactly the open-air recogniser it was before.
+   */
+  let obstacles = null;
   const trickDetector = new TrickDetector((trick) => {
     score.land(trick);
   });
+  /*
+   * Rebuild the obstacle list for the map now loaded. Freestyle only: a
+   * race map has a course, and nothing on a course is a powerloop object.
+   * The ground query is the map's own, so a wall that reaches sixty metres
+   * underground is measured from the street rather than from its buried
+   * bottom edge.
+   */
+  function rebuildObstacles() {
+    if (!view || view.mode !== 'freestyle' || !view.colliders) {
+      obstacles = null;
+      trickDetector.obstacles = null;
+      return;
+    }
+    obstacles = deriveObstacles(view.colliders, (x, z) => view.height(x, z));
+    trickDetector.obstacles = obstacles;
+  }
+  /* The map loaded at boot never passes through the swap path above, so it
+   * gets its obstacles here. After the consts, not before: rebuildObstacles
+   * writes to trickDetector and a call any earlier is a dead zone away. */
+  rebuildObstacles();
   const racePrev = new THREE.Vector3();
   let raceHasPrev = false;
 
@@ -2576,6 +2606,9 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
     finishLoadingOnFrame = true;
+    /* The world just changed, so what is worth flying around changed with
+     * it. Once per map, never per run: it scans every collider. */
+    rebuildObstacles();
     mapReady = true;
   }
 
@@ -4642,9 +4675,17 @@ export async function boot({ loading, bootStart, mapId }) {
               /* Body rates, the two quaternion components the attitude test
                * needs, and speed. Nothing is allocated and nothing is
                * converted: the detector works in the plant's own frame. */
+              /*
+               * The last three are the craft's position in the WORLD frame,
+               * which is where the obstacles are. poseFromState is the
+               * shell's own conversion through frame.js, so nothing new
+               * crosses the frame boundary here.
+               */
+              poseFromState(stNow, scorePos);
               trickDetector.step(
                 0.001, stNow[11], stNow[12], stNow[13], stNow[8], stNow[9],
                 Math.sqrt(stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6]),
+                scorePos.x, scorePos.y, scorePos.z,
               );
             }
             /* The solid world, on the sim clock. stateCurr is what the
@@ -5949,6 +5990,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * scoring path and not a mock of it.
    */
   window.__score = () => score.summary();
+  /* What the map offered up to fly around, for the audit in
+   * scripts/obstacle-audit.js and for check 16's eyes. */
+  window.__obstacleField = () => obstacles;
+  window.__obstacles = () => (obstacles
+    ? {
+      count: obstacles.count,
+      poles: obstacles.countOf(OB_POLE),
+      bars: obstacles.countOf(OB_BAR),
+    }
+    : null);
   window.__scoreTrick = (name, execution) => {
     score.tick(simTimeMs);
     const r = score.land({ name, execution: execution || 'CLEAN', endMs: simTimeMs });

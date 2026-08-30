@@ -69,6 +69,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { OB_BAR, OB_KIND_NAME, OB_POLE, sameAxis } from './obstacles.js';
+
 /* One turn, in radians. Written out rather than 2 * Math.PI so that the
  * constant in the file is the constant in the arithmetic. */
 const TURN = 6.283185307179586;
@@ -146,6 +148,93 @@ const STALL_SPEED = 2.5;
  * the quad is where the trick happened.
  */
 const SETTLE_MS = 450;
+
+/*
+ * THE PATH SIDE: winding around an obstacle.
+ *
+ * PATH_RATE_ON is 0.35 turns per second, one full lap in under three
+ * seconds. Below that the craft is flying past an object rather than
+ * around it, and a pilot who cruises down a fence line at four metres
+ * subtends a slow drift of angle that must not read as half a powerloop.
+ * PATH_RATE_OFF is where the winding stops counting, with the same hold
+ * the rotation runs use.
+ *
+ * PATH_MIN_RADIUS guards the arithmetic rather than the game: the winding
+ * rate goes to infinity at the axis itself, so a craft that flies straight
+ * through a railing counts nothing rather than counting a spike.
+ */
+const PATH_RATE_ON = 0.35;
+const PATH_RATE_OFF = 0.12;
+const PATH_OFF_HOLD_MS = 220;
+const PATH_MIN_RADIUS = 0.45;
+const PATH_MIN_TURNS = 0.375;
+
+/*
+ * How far a lap count may sit from the whole or half turn its side parity
+ * demands. This is a THIRD of a turn where the attitude snap allows a
+ * fifth, and the difference is not slackness, it is that the two
+ * measurements are not the same kind of thing.
+ *
+ * A rotation is a closed quantity: a quad that ends level has turned a
+ * whole number of times and the only error is how well the pilot stopped.
+ * A lap is not closed. The craft enters the loop somewhere and leaves it
+ * somewhere else, and the angle between those two rays is added to or
+ * taken off the turn, so the same powerloop around the same rail measures
+ * differently depending on where along the rail's height the rail happens
+ * to be. Measured on the real aircraft, a clean powerloop reads anywhere
+ * from about 0.95 to 1.3 turns depending on where the bar sits inside the
+ * loop.
+ *
+ * 0.35 makes a full lap anything in [0.65, 1.35], which still leaves the
+ * half turn a straight fly-by sweeps out in the rejected zone, and that
+ * fly-by is the case this whole test exists to throw away.
+ */
+const PATH_SNAP_TOLERANCE = 0.35;
+
+/*
+ * HOW FAR BACK A LAP'S BEGINNING IS LOOKED FOR, in milliseconds.
+ *
+ * The winding rate ramps up: a powerloop starts as a shallow arc and only
+ * becomes a lap once the craft is committed. Measured on the real aircraft,
+ * the rate gate opens about a fifth of the way into the loop, and by then
+ * the craft has already crossed from under the rail to over it. Read
+ * naively, the lap then says it started ABOVE the bar and ended above it,
+ * which for a full powerloop still gives the right parity by luck, and for
+ * every half lap trick, an Immelmann, a Matty, a Split-S, gives the wrong
+ * one and loses the trick.
+ *
+ * So the run keeps a rolling snapshot of the last 800 ms and, when it
+ * opens, backdates itself to the oldest one: the winding, the side, the
+ * time and the rotation totals all come from there. 800 ms is comfortably
+ * longer than the ramp and comfortably shorter than a whole lap, so a lap
+ * can never backdate into the previous one.
+ *
+ * The buffer holds one entry per STEP and the shell steps at exactly 1 kHz,
+ * so entries and milliseconds are the same thing here. See sim_abi.h.
+ */
+const PATH_LOOKBACK = 800;
+
+/*
+ * How far a concurrent rotation may sit from what a pattern asks for.
+ *
+ * A powerloop's flip is not a clean 360: the craft is being flown round an
+ * object at the same time, the pilot is holding an attitude relative to it
+ * rather than counting degrees, and the plant is fighting gravity through
+ * the top. Measured, a flown powerloop's concurrent pitch reads 1.01 turns.
+ *
+ * A quarter turn is the widest this can be and still tell 0 from 0.5, which
+ * is the only distinction these patterns need: a Powerloop flips through
+ * the loop and a Maverick Loop does not, a Matty Flip half flips over the
+ * object and a Beginner Matty does not.
+ *
+ * MAGNITUDES ONLY, never signs. The sign of a lap depends on which way the
+ * obstacle's axis happens to be written down, and the sign of a rotation on
+ * which way the craft was facing when it started, so a pattern that
+ * compared them would name a trick flown left to right and refuse the same
+ * trick flown right to left. What separates these tricks is HOW MUCH the
+ * craft rotated while it went round, not which way.
+ */
+const CONCURRENT_TOLERANCE = 0.25;
 
 /*
  * Dead time inside a trick before it stops being one motion. The workbook's
@@ -256,6 +345,79 @@ export const PATTERNS = [
       { axis: 'pitch', turns: 0.5, dir: -1 },
       { axis: 'roll', turns: 0.5 },
     ],
+  },
+
+  /*
+   * THE OBSTACLE TRICKS.
+   *
+   * A `path` step matches a LAP: the craft's position winding round an
+   * obstacle's axis. `from` is which side of a bar the lap began on, under
+   * it or over it, which is a fact about geometry and not about the pilot.
+   * `rot` is how much the craft rotated on each axis WHILE it went round,
+   * in turns, as a magnitude.
+   *
+   * Those three numbers separate the whole family. Every one of these is a
+   * lap of one half or one whole turn around the same rail; what makes them
+   * different tricks is where the lap started and what the craft was doing
+   * while it flew.
+   *
+   *   under, whole lap, flipped     Powerloop
+   *   under, whole lap, upright     Maverick Loop
+   *   under, half lap, half flip    Immelmann, once the roll lands
+   *   over,  half lap, half flip    Matty Flip
+   *   over,  half lap, and a roll   Split-S
+   *   over,  half lap, upright      Beginner Matty
+   *
+   * Two step entries come first so a half lap that is followed by the roll
+   * that completes an Immelmann is not named a bare half loop first.
+   */
+  {
+    /* "Begin a Powerloop, but at the peak execute a rapid 180 Roll." Half
+     * a loop from under the object to over it, then the roll. */
+    name: 'Immelmann Turn',
+    steps: [
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0.5 } },
+      { axis: 'roll', turns: 0.5 },
+    ],
+  },
+  {
+    /* Under the object, all the way round it, flipping with the loop. */
+    name: 'Powerloop',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 } }],
+  },
+  {
+    /* The same lap flown facing forward the whole way: no flip. */
+    name: 'Maverick Loop',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0 } }],
+  },
+  {
+    /* Over the object, a 180 roll, then down the back and under it. */
+    name: 'Split-S',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0.5, pitch: 0.5 } }],
+  },
+  {
+    /* Over the object, a partial front flip, out underneath it. */
+    name: 'Matty Flip',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0, pitch: 0.5 } }],
+  },
+  {
+    /* The same, flown flat: throttle down, back out underneath. */
+    name: 'Beginner Matty',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0, pitch: 0 } }],
+  },
+  {
+    /*
+     * Two laps of a pole with the nose tracking it, which is what makes the
+     * yaw match the lap: keeping an object centred on the screen through a
+     * full circle IS a 360 of yaw.
+     */
+    name: 'Orbit x2',
+    steps: [{ path: 'pole', turns: 2, rot: { yaw: 2 }, inverted: false }],
+  },
+  {
+    /* The same, inverted, with the object held at the top of the screen. */
+    name: 'Trippy Spin x2',
+    steps: [{ path: 'pole', turns: 2, inverted: true }],
   },
 
   /* One step patterns: the named whole rotations. Everything shorter or
@@ -415,6 +577,66 @@ export function snapTurns(rawTurns, axis, startUpZ, endUpZ) {
   return best;
 }
 
+/*
+ * Snap a lap count to a quarter, the same way snapTurns does for attitude
+ * and for the same reason.
+ *
+ * For a BAR the side of the axis plays the part upZ plays for a rotation: a
+ * lap that begins under the rail and ends under it went all the way round,
+ * and one that begins under and ends over went half way. That is what
+ * separates a Powerloop from an Immelmann, and it is a fact about where the
+ * craft is rather than about how accurately the pilot flew.
+ *
+ * For a POLE there is no above or below, so an orbit takes the plain
+ * nearest quarter.
+ */
+export function snapPathTurns(rawTurns, kind, startSide, endSide) {
+  const mag = rawTurns < 0 ? -rawTurns : rawTurns;
+  if (mag < PATH_MIN_TURNS) {
+    return 0;
+  }
+  const nearest = Math.round(mag * 4) / 4;
+  if (kind !== OB_BAR || startSide === 0 || endSide === 0) {
+    return nearest;
+  }
+  const want = startSide === endSide ? 'whole' : 'half';
+  if (turnClass(nearest) === want) {
+    return nearest;
+  }
+  let best = 0;
+  let bestErr = Infinity;
+  /* Reach further than the attitude snap does, for the same reason the
+   * tolerance is wider: a lap read at 1.3 turns has to be able to find 1. */
+  for (const cand of [
+    nearest - 0.25, nearest + 0.25, nearest - 0.5, nearest + 0.5,
+    nearest - 0.75, nearest + 0.75,
+  ]) {
+    if (cand < PATH_MIN_TURNS || turnClass(cand) !== want) {
+      continue;
+    }
+    const err = cand > mag ? cand - mag : mag - cand;
+    if (err <= PATH_SNAP_TOLERANCE && err < bestErr) {
+      bestErr = err;
+      best = cand;
+    }
+  }
+  /*
+   * NO FALLBACK HERE, and that is the difference between this and
+   * snapTurns. Which side of a rail the craft came out on is a hard
+   * geometric fact, not an estimate of a pilot's accuracy, so a winding
+   * that contradicts it is not a sloppy trick, it is not a trick.
+   *
+   * This is what throws away the fly-by. A quad going straight past a rail
+   * at five metres sweeps up to half a turn of angle at the rail, fast
+   * enough to open a run, and it goes in under the rail and comes out
+   * under the rail. Same side means a whole number of turns, half a turn is
+   * not one, and nothing within reach of half a turn is. Returning zero
+   * drops it. Falling back to the nearest quarter would have paid a pilot
+   * for flying down a street.
+   */
+  return best;
+}
+
 /* One axis of rotation, accumulating. Plain fields, no allocation per step. */
 class Run {
   constructor(axis) {
@@ -440,6 +662,136 @@ class Run {
 }
 
 /*
+ * The winding of the craft's position about one obstacle axis.
+ *
+ * This is the exact translational twin of Run above. Where Run integrates a
+ * body rate into an angle and snaps it to a quarter turn, this integrates
+ * the angle the craft SUBTENDS at an axis and snaps that. Where Run reads
+ * the craft's attitude to settle whether a rotation was a half or a whole
+ * turn, this reads which SIDE of the axis the craft was on, which for a bar
+ * is above it or below it and is exactly the same kind of fact.
+ *
+ * The increment is computed without trigonometry, as the cross product of
+ * the two successive radius vectors over the product of their lengths. That
+ * is the sine of the step angle rather than the angle, and it is short by
+ * one part in six of the cube: at 1 kHz and a fast lap of two turns a
+ * second the step angle is 0.0126 rad and the shortfall is 3.3e-7 rad per
+ * step, which does not reach the fourth decimal place of a turn over a
+ * whole lap.
+ */
+class PathRun {
+  constructor() {
+    this.open = false;
+    this.acc = 0;
+    this.obstacle = null;
+    this.startMs = 0;
+    this.startSide = 0;
+    /* Net rotation on each axis when the run opened, so what the craft did
+     * WHILE looping can be read off as a difference at the close. */
+    this.startRot = [0, 0, 0];
+    this.offMs = 0;
+    /* Previous radius vector, perpendicular to the axis. */
+    this.px = 0;
+    this.py = 0;
+    this.pz = 0;
+    this.have = false;
+    /* Rate of winding, turns per second, low pass filtered so a single
+     * noisy millisecond cannot open or close a run on its own. */
+    this.rate = 0;
+    /*
+     * Winding accumulated since this obstacle was engaged, whether or not a
+     * run is open, plus the rolling snapshots a run backdates itself from.
+     * Allocated once and written in place; nothing here allocates per step.
+     */
+    this.windTotal = 0;
+    /*
+     * Where the lap began, and the last moment it was still WINDING.
+     *
+     * A lap has to be trimmed at both ends. The rate gate opens late,
+     * which the lookback fixes, and it closes late too: a low pass that
+     * has to decay below the threshold for 220 ms keeps the run open for
+     * more than a second after the craft has stopped going round, and in
+     * that second the craft drifts, so the side it is on when the run
+     * finally closes is not the side it was on when the lap ended. Read
+     * naively a clean powerloop says it started under the rail and ended
+     * over it, which is a half lap, which is not a powerloop.
+     *
+     * So the lap is the span over which the craft was ACTUALLY winding:
+     * from the backdated open to the last moment the rate was above the
+     * gate. Everything else is the approach and the exit.
+     */
+    this.startWind = 0;
+    /* Which way this lap is turning, fixed at the moment it opened. */
+    this.dirSign = 0;
+    this.lastWind = 0;
+    this.lastSide = 0;
+    this.lastMs = 0;
+    this.lastRot = [0, 0, 0];
+    this.histWind = new Float64Array(PATH_LOOKBACK);
+    this.histRot = new Float64Array(PATH_LOOKBACK * 3);
+    this.histMs = new Float64Array(PATH_LOOKBACK);
+    this.histSide = new Int8Array(PATH_LOOKBACK);
+    this.histIdx = 0;
+    this.histFill = 0;
+  }
+
+  reset() {
+    this.open = false;
+    this.acc = 0;
+    this.obstacle = null;
+    this.offMs = 0;
+    this.have = false;
+    this.rate = 0;
+    this.dirSign = 0;
+    this.clearHistory();
+  }
+
+  clearHistory() {
+    this.windTotal = 0;
+    this.histIdx = 0;
+    this.histFill = 0;
+  }
+
+  /* Record where things stand, and return the oldest record still held. */
+  snapshot(side, ms, rot) {
+    const i = this.histIdx;
+    const old = this.histFill >= PATH_LOOKBACK
+      ? {
+        wind: this.histWind[i],
+        side: this.histSide[i],
+        ms: this.histMs[i],
+        r0: this.histRot[i * 3],
+        r1: this.histRot[i * 3 + 1],
+        r2: this.histRot[i * 3 + 2],
+      }
+      : null;
+    this.histWind[i] = this.windTotal;
+    this.histSide[i] = side;
+    this.histMs[i] = ms;
+    this.histRot[i * 3] = rot[0];
+    this.histRot[i * 3 + 1] = rot[1];
+    this.histRot[i * 3 + 2] = rot[2];
+    this.histIdx = i + 1 >= PATH_LOOKBACK ? 0 : i + 1;
+    if (this.histFill < PATH_LOOKBACK) {
+      this.histFill += 1;
+    }
+    if (old) {
+      return old;
+    }
+    /* Not full yet: the oldest record is the first one written. */
+    const j = 0;
+    return {
+      wind: this.histWind[j],
+      side: this.histSide[j],
+      ms: this.histMs[j],
+      r0: this.histRot[j * 3],
+      r1: this.histRot[j * 3 + 1],
+      r2: this.histRot[j * 3 + 2],
+    };
+  }
+}
+
+/*
  * The recogniser.
  *
  * Fed one physics step at a time. Emits named tricks through `onTrick`,
@@ -453,9 +805,38 @@ class Run {
  * is a fact about the run and the scorer is told about it directly.
  */
 export class TrickDetector {
-  constructor(onTrick) {
+  constructor(onTrick, obstacles = null) {
     this.onTrick = onTrick;
     this.runs = [new Run(AXIS_ROLL), new Run(AXIS_PITCH), new Run(AXIS_YAW)];
+    /* The obstacle field, or null on a map that has none. With none, this
+     * is exactly the open-air recogniser it was before. */
+    this.obstacles = obstacles;
+    this.path = new PathRun();
+    /*
+     * Net turns on each axis since the run began, never reset. A path run
+     * reads the difference across its own window to find out what the craft
+     * was DOING while it went round, which is the only thing separating a
+     * Powerloop from a Maverick Loop: the path is identical and one of them
+     * flips.
+     */
+    this.totalTurns = [0, 0, 0];
+    /*
+     * Rotation primitives that closed while a path run was open. They are
+     * held rather than buffered, because if the loop turns out to be a
+     * Powerloop then its flip is PART of the Powerloop and scoring it again
+     * as a Flip would pay twice for one motion. If the loop names nothing,
+     * they are released into the buffer and scored on their own.
+     */
+    this.heldByPath = [];
+    /*
+     * Windows of laps that have already been NAMED, so a rotation that was
+     * part of one but had not finished when the lap closed can still be
+     * absorbed. An orbit's yaw is exactly that: the craft yaws continuously
+     * for the whole orbit and for a moment after, so the yaw run closes
+     * after the lap does and `heldByPath` never sees it. Without this an
+     * Orbit x2 scores as an Orbit and then two Yaw Spins.
+     */
+    this.lapWindows = [];
     this.pending = [];
     this.nowMs = 0;
     this.lastCloseMs = -1e9;
@@ -476,6 +857,9 @@ export class TrickDetector {
     for (const r of this.runs) {
       r.reset();
     }
+    this.path.reset();
+    this.heldByPath.length = 0;
+    this.lapWindows.length = 0;
     this.pending.length = 0;
     this.lastCloseMs = -1e9;
     this.stallMs = 0;
@@ -504,7 +888,7 @@ export class TrickDetector {
    *          is all the attitude this needs
    *   speed  m/s, for the stall test
    */
-  step(dt, p, q, r, qx, qy, speed) {
+  step(dt, p, q, r, qx, qy, speed, wx, wy, wz) {
     if (!this.enabled) {
       return;
     }
@@ -517,10 +901,289 @@ export class TrickDetector {
       this.stallMs = 0;
     }
     const upZ = 1 - 2 * (qx * qx + qy * qy);
+    this.totalTurns[AXIS_ROLL] += (p * dt) / TURN;
+    this.totalTurns[AXIS_PITCH] += (q * dt) / TURN;
+    this.totalTurns[AXIS_YAW] += (r * dt) / TURN;
+    /*
+     * THE PATH BEFORE THE ROTATIONS, because closing a path run has to be
+     * able to claim the rotation primitives that happened inside it, and a
+     * rotation that closes on the same millisecond the loop does belongs to
+     * the loop.
+     */
+    if (this.obstacles) {
+      this.pathStep(dt, dtMs, wx, wy, wz, upZ);
+    }
     this.axisStep(this.runs[AXIS_ROLL], p, dtMs, upZ);
     this.axisStep(this.runs[AXIS_PITCH], q, dtMs, upZ);
     this.axisStep(this.runs[AXIS_YAW], r, dtMs, upZ);
     this.drain(false);
+  }
+
+  /*
+   * One step of the path side: find the obstacle being flown, accumulate
+   * the angle subtended at its axis, open and close the run.
+   */
+  pathStep(dt, dtMs, wx, wy, wz, upZ) {
+    const run = this.path;
+    const ob = this.obstacles.near(wx, wy, wz);
+    if (!ob) {
+      if (run.open) {
+        this.closePath(upZ);
+      }
+      run.have = false;
+      run.obstacle = null;
+      run.clearHistory();
+      return;
+    }
+    /*
+     * Leaving one collider for the next one along the SAME LINE is not
+     * leaving the obstacle. A town railing is built from collinear
+     * segments and a loop over the join is one loop.
+     */
+    if (run.obstacle && !sameAxis(run.obstacle, ob)) {
+      if (run.open) {
+        this.closePath(upZ);
+      }
+      run.have = false;
+      run.clearHistory();
+    }
+    run.obstacle = ob;
+
+    /* Radius vector: the part of the offset perpendicular to the axis. */
+    const rx = wx - ob.cx;
+    const ry = wy - ob.cy;
+    const rz = wz - ob.cz;
+    const along = rx * ob.dx + ry * ob.dy + rz * ob.dz;
+    const cx = rx - ob.dx * along;
+    const cy = ry - ob.dy * along;
+    const cz = rz - ob.dz * along;
+    const len2 = cx * cx + cy * cy + cz * cz;
+    if (len2 < PATH_MIN_RADIUS * PATH_MIN_RADIUS) {
+      /* Too close to the axis for the angle to mean anything. Hold the run
+       * open but stop counting, so a loop that clips the rail is still one
+       * loop rather than two halves. */
+      run.have = false;
+      return;
+    }
+    if (!run.have) {
+      run.px = cx;
+      run.py = cy;
+      run.pz = cz;
+      run.have = true;
+      return;
+    }
+
+    /*
+     * The signed angle from the previous radius vector to this one, about
+     * the axis. cross(prev, now) . axis, over the product of the lengths.
+     */
+    const crx = run.py * cz - run.pz * cy;
+    const cry = run.pz * cx - run.px * cz;
+    const crz = run.px * cy - run.py * cx;
+    const signed = crx * ob.dx + cry * ob.dy + crz * ob.dz;
+    const prevLen = Math.sqrt(run.px * run.px + run.py * run.py + run.pz * run.pz);
+    const nowLen = Math.sqrt(len2);
+    run.px = cx;
+    run.py = cy;
+    run.pz = cz;
+    const dTurns = signed / (prevLen * nowLen * TURN);
+    /*
+     * A first order low pass on the winding rate. The raw per millisecond
+     * angle is tiny and noisy; what decides whether a run opens is the
+     * sustained rate, and 0.02 is about a 50 ms time constant.
+     */
+    const inst = dTurns / dt;
+    run.rate += (inst - run.rate) * 0.02;
+    const mag = run.rate < 0 ? -run.rate : run.rate;
+    const side = this.sideOf(ob, cx, cy, cz);
+    run.windTotal += dTurns;
+
+    if (!run.open) {
+      /* Keep the rolling record whether or not this becomes a lap. */
+      const old = run.snapshot(side, this.nowMs, this.totalTurns);
+      if (mag >= PATH_RATE_ON) {
+        /*
+         * BACKDATE. The lap did not begin when the winding rate crossed
+         * the gate, it began 800 ms ago when the craft committed to it,
+         * and where the craft was THEN is what decides whether this is a
+         * whole lap or a half. See PATH_LOOKBACK.
+         */
+        run.open = true;
+        run.startWind = old.wind;
+        run.acc = run.windTotal - old.wind;
+        run.offMs = 0;
+        run.startMs = old.ms;
+        run.startSide = old.side;
+        run.startRot[0] = old.r0;
+        run.startRot[1] = old.r1;
+        run.startRot[2] = old.r2;
+        run.lastWind = run.windTotal;
+        run.lastSide = side;
+        run.lastMs = this.nowMs;
+        run.lastRot[0] = this.totalTurns[0];
+        run.lastRot[1] = this.totalTurns[1];
+        run.lastRot[2] = this.totalTurns[2];
+        run.dirSign = run.rate > 0 ? 1 : -1;
+      }
+      return;
+    }
+    /* Still winding: this is where the lap currently ends. */
+    if (mag >= PATH_RATE_ON) {
+      run.lastWind = run.windTotal;
+      run.lastSide = side;
+      run.lastMs = this.nowMs;
+      run.lastRot[0] = this.totalTurns[0];
+      run.lastRot[1] = this.totalTurns[1];
+      run.lastRot[2] = this.totalTurns[2];
+    }
+    /*
+     * A reversal ends the lap: out and back is not a lap.
+     *
+     * Tested on the FILTERED rate, never on the raw per step angle. The raw
+     * angle at 1 kHz is a ten thousandth of a turn and its sign flips on
+     * arithmetic noise whenever the craft is barely winding at all, which
+     * on the approach to an obstacle closed and reopened the run sixty
+     * times in a row. The filter is the same one that decides whether a
+     * lap is happening; it should decide which way it is going too.
+     */
+    if (run.acc !== 0 && (run.acc > 0) !== (run.rate > 0) && mag >= PATH_RATE_ON) {
+      this.closePath(upZ);
+      return;
+    }
+    run.acc += dTurns;
+    if (mag < PATH_RATE_OFF) {
+      run.offMs += dtMs;
+      if (run.offMs >= PATH_OFF_HOLD_MS) {
+        this.closePath(upZ);
+      }
+    } else {
+      run.offMs = 0;
+    }
+  }
+
+  /*
+   * Which side of the axis the craft is on, as a sign.
+   *
+   * For a BAR this is above or below, and it is the path side's upZ: a lap
+   * that starts under and ends under is a whole turn, one that starts under
+   * and ends over is a half. For a POLE there is no such thing, so the
+   * snap falls back to the plain nearest quarter.
+   */
+  sideOf(ob, cx, cy, cz) {
+    void cx;
+    void cz;
+    if (ob.kind !== OB_BAR) {
+      return 0;
+    }
+    return cy > 0 ? 1 : -1;
+  }
+
+  /* Turn an accumulated lap into a path primitive, or throw it away. */
+  closePath(upZ) {
+    const run = this.path;
+    const open = run.open;
+    run.open = false;
+    run.offMs = 0;
+    /* The lap is the winding span, not the run's lifetime. */
+    const acc = run.lastWind - run.startWind;
+    run.acc = 0;
+    const ob = run.obstacle;
+    if (!open || !ob) {
+      this.releaseHeld();
+      return;
+    }
+    const mag = acc < 0 ? -acc : acc;
+    if (mag < PATH_MIN_TURNS) {
+      this.releaseHeld();
+      return;
+    }
+    const endSide = run.lastSide;
+    const turns = snapPathTurns(mag, ob.kind, run.startSide, endSide);
+    if (turns <= 0) {
+      this.releaseHeld();
+      return;
+    }
+    this.pending.push({
+      kind: 'path',
+      obstacle: OB_KIND_NAME[ob.kind],
+      obstacleId: ob.id,
+      turns,
+      dir: acc >= 0 ? 1 : -1,
+      startMs: run.startMs,
+      endMs: run.lastMs,
+      startSide: run.startSide,
+      endSide,
+      /* Net rotation while the lap was flown, per axis, in turns. */
+      rot: [
+        run.lastRot[0] - run.startRot[0],
+        run.lastRot[1] - run.startRot[1],
+        run.lastRot[2] - run.startRot[2],
+      ],
+      upZ,
+      stallBeforeMs: this.gapStallMs,
+      slowMs: 0,
+      touched: this.touched,
+      /* The rotations that happened inside this lap, kept so they can be
+       * given back if the lap names nothing. */
+      held: this.heldByPath.slice(),
+    });
+    this.heldByPath.length = 0;
+    this.gapStallMs = 0;
+    this.lastCloseMs = this.nowMs;
+    /* A finished lap must not be visible to the next one's lookback. */
+    run.clearHistory();
+    this.drain(false);
+  }
+
+  /*
+   * Does most of this rotation lie inside a lap that has already been
+   * named? Half is the bar: a rotation that merely started during a lap and
+   * ran on well past it is its own trick.
+   */
+  absorbedByLap(prim) {
+    const dur = prim.endMs - prim.startMs;
+    for (let i = this.lapWindows.length - 1; i >= 0; i -= 1) {
+      const w = this.lapWindows[i];
+      if (this.nowMs - w.e > 4000) {
+        this.lapWindows.splice(0, i + 1);
+        return false;
+      }
+      const lo = prim.startMs > w.s ? prim.startMs : w.s;
+      const hi = prim.endMs < w.e ? prim.endMs : w.e;
+      if (hi - lo > dur * 0.5) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /*
+   * A lap that named nothing hands its rotations back to the buffer, EXCEPT
+   * any that a lap which DID get named has already paid for.
+   *
+   * That exception is not a detail. A powerloop's flip spans the whole lap
+   * and finishes after it, and the winding does not stop cleanly at the
+   * bottom: the craft flies out of the loop still turning a little, which
+   * opens a second, meaningless lap. The flip ends up held by that second
+   * lap, the second lap names nothing, and the flip is handed back and
+   * scored as a Flip on top of the Powerloop that already contained it.
+   */
+  releaseHeld() {
+    if (this.heldByPath.length === 0) {
+      return;
+    }
+    let released = 0;
+    for (const prim of this.heldByPath) {
+      if (this.absorbedByLap(prim)) {
+        continue;
+      }
+      this.pending.push(prim);
+      released += 1;
+    }
+    this.heldByPath.length = 0;
+    if (released > 0) {
+      this.lastCloseMs = this.nowMs;
+    }
   }
 
   /* One axis of one step: open, accumulate, close. */
@@ -578,7 +1241,8 @@ export class TrickDetector {
     if (!open || turns <= 0) {
       return;
     }
-    this.pending.push({
+    const prim = {
+      kind: 'rot',
       axis: run.axis,
       turns,
       dir: acc >= 0 ? 1 : -1,
@@ -590,8 +1254,26 @@ export class TrickDetector {
       stallBeforeMs: this.gapStallMs,
       slowMs: slow,
       touched: this.touched,
-    });
+    };
     this.gapStallMs = 0;
+    /*
+     * A rotation that happened INSIDE a lap is held, not buffered. The flip
+     * of a Powerloop is part of the Powerloop; buffering it would let the
+     * matcher name it a Flip as well and pay twice for one motion. If the
+     * lap turns out to name nothing, releaseHeld hands it back.
+     */
+    if (this.path.open) {
+      this.heldByPath.push(prim);
+      return;
+    }
+    /*
+     * Or it belongs to a lap that has already been named. Most of a
+     * rotation lying inside a named lap means the lap paid for it.
+     */
+    if (this.absorbedByLap(prim)) {
+      return;
+    }
+    this.pending.push(prim);
     this.lastCloseMs = this.nowMs;
     this.drain(false);
   }
@@ -602,11 +1284,18 @@ export class TrickDetector {
    * to a settle timer that never expires.
    */
   flush(upZ) {
+    const up = upZ === undefined ? 1 : upZ;
+    /* The lap first, so a rotation still open inside it is still held by
+     * it and cannot be scored twice. */
+    if (this.path.open) {
+      this.closePath(up);
+    }
     for (const run of this.runs) {
       if (run.open) {
-        this.closeRun(run, upZ === undefined ? 1 : upZ);
+        this.closeRun(run, up);
       }
     }
+    this.releaseHeld();
     this.drain(true);
   }
 
@@ -628,8 +1317,25 @@ export class TrickDetector {
         this.emit(best.name, best.steps);
         continue;
       }
-      /* Nothing named it. Price the first primitive on its own, hand back
-       * whatever rotation that did not cover, and go round again. */
+      /*
+       * Nothing named it. A LAP that names nothing is dropped, but it must
+       * first hand back the rotations it was holding: a flip flown around
+       * an object that turns out not to be a Powerloop is still a Flip, and
+       * swallowing it would make flying near a railing score LESS than
+       * flying in open air.
+       */
+      if (this.pending[0].kind === 'path') {
+        const lap = this.pending.shift();
+        if (lap.held && lap.held.length > 0) {
+          const back = lap.held.filter((h) => !this.absorbedByLap(h));
+          if (back.length > 0) {
+            this.pending.unshift(...back);
+          }
+        }
+        continue;
+      }
+      /* Price the first rotation on its own, hand back whatever it did not
+       * cover, and go round again. */
       const prim = this.pending[0];
       const single = singleFor(prim.axis, prim.turns);
       if (!single) {
@@ -660,7 +1366,7 @@ export class TrickDetector {
      * the rotation closes, so the bump was wiped a millisecond after it
      * happened and the trick that caused it scored CLEAN.
      */
-    if (!this.anyOpen()) {
+    if (!this.anyOpen() && !this.path.open) {
       this.touched = false;
     }
   }
@@ -675,6 +1381,11 @@ export class TrickDetector {
     const used = this.pending.splice(0, count);
     const first = used[0];
     const last = used[used.length - 1];
+    for (const u of used) {
+      if (u.kind === 'path') {
+        this.lapWindows.push({ s: u.startMs, e: u.endMs });
+      }
+    }
     let dead = 0;
     let touched = false;
     for (let i = 0; i < used.length; i += 1) {
@@ -690,7 +1401,7 @@ export class TrickDetector {
     const execution = touched ? 'BUMP' : (dead >= SLOPPY_GAP_MS ? 'SLOPPY' : 'CLEAN');
     this.onTrick({
       name,
-      axis: AXIS_NAME[first.axis],
+      axis: first.kind === 'path' ? first.obstacle : AXIS_NAME[first.axis],
       turns: used.reduce((a, u) => a + u.turns, 0),
       startMs: first.startMs,
       endMs: last.endMs,
@@ -734,7 +1445,7 @@ export class TrickDetector {
    * else is nothing.
    */
   hold() {
-    if (this.anyOpen()) {
+    if (this.anyOpen() || this.path.open) {
       return true;
     }
     let wait = -1;
@@ -756,10 +1467,43 @@ export class TrickDetector {
 }
 
 /* Do the first `n` steps of a pattern describe the first `n` primitives? */
+const AXIS_OF_NAME = { roll: AXIS_ROLL, pitch: AXIS_PITCH, yaw: AXIS_YAW };
+
 function matchSteps(steps, prims, n) {
   for (let i = 0; i < n; i += 1) {
     const s = steps[i];
     const p = prims[i];
+    /* A lap step matches a lap and a rotation step matches a rotation.
+     * Never each other: they are different measurements of different
+     * things and a step that did not say which it wanted would match both. */
+    if (s.path !== undefined) {
+      if (p.kind !== 'path' || p.obstacle !== s.path) {
+        return false;
+      }
+      if (s.turns !== undefined && p.turns !== s.turns) {
+        return false;
+      }
+      if (s.from !== undefined && p.startSide !== (s.from === 'under' ? -1 : 1)) {
+        return false;
+      }
+      if (s.inverted !== undefined && (p.upZ < 0) !== s.inverted) {
+        return false;
+      }
+      if (s.rot !== undefined) {
+        for (const key of Object.keys(s.rot)) {
+          const got = p.rot[AXIS_OF_NAME[key]];
+          const mag = got < 0 ? -got : got;
+          const err = mag - s.rot[key];
+          if ((err < 0 ? -err : err) > CONCURRENT_TOLERANCE) {
+            return false;
+          }
+        }
+      }
+      continue;
+    }
+    if (p.kind !== 'rot') {
+      return false;
+    }
     if (s.axis !== undefined && AXIS_NAME[p.axis] !== s.axis) {
       return false;
     }

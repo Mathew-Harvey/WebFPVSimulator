@@ -24497,3 +24497,214 @@ container, and nothing here touches src/native, the patches, the vendor tree,
 the input path or the module ABI. The self test now loads the PREBUILT
 dist/sim.wasm, which is a different thing from building it, and it is the
 part of verify's territory that can actually see this work.
+
+
+================================================================================
+2026-08-30  THE OBSTACLE TRICKS: A SPLIT-S, AN IMMELMANN, A POWERLOOP, AN ORBIT
+================================================================================
+
+The owner named five tricks and asked how the system would ever capture them:
+a Split-S, an Immelmann, a Powerloop, an Orbit, and an inverted Orbit. It is
+the right question, because none of them is a rotation. A Powerloop's flip
+and a plain Flip are the SAME rotation. The difference is entirely in where
+the craft went, and until this turn the recogniser could not see where the
+craft went at all.
+
+--------------------------------------------------------------------------
+THE ANSWER: A WINDING NUMBER
+--------------------------------------------------------------------------
+
+Write the five out and one shape appears in all of them. Every one is the
+craft going AROUND A LINE.
+
+  Powerloop, Maverick Loop, Matty Flip, Beginner Matty, Split-S, Immelmann
+  wind around a HORIZONTAL line, the rail or branch or boom: under it, over
+  it, and under it again.
+
+  Orbit, Trippy Spin, Cradle, Whiplash, Jump Rope wind around a VERTICAL
+  line, the pole.
+
+So an obstacle is not a shape. It is an AXIS with a reach. And the whole
+family reduces to one measurement, the winding number of the craft's
+position about a line, which is the exact translational twin of the rotation
+counting the recogniser already did. The two halves of the file came out the
+same shape, which is how you know the abstraction was the right one:
+
+  ROTATION                             PATH
+  integrate a body rate                integrate the angle subtended at an axis
+  a run opens above a rate             a run opens above a winding rate
+  snap the turns to a quarter          snap the laps to a quarter
+  attitude at the ends settles it      which SIDE of the axis settles it
+  upright to upright is a whole turn   under to under is a whole lap
+  upright to inverted is a half        under to over is a half lap
+
+Then three numbers separate the entire bar family, and they are the three a
+judge would actually name: which side the lap began on, how far round it
+went, and how much the craft rotated WHILE it went round.
+
+  under, whole lap, flipped      Powerloop
+  under, whole lap, upright      Maverick Loop
+  under, half lap, half flip     Immelmann, once the roll lands
+  over,  half lap, half flip     Matty Flip
+  over,  half lap, and a roll    Split-S
+  over,  half lap, upright       Beginner Matty
+  pole,  two laps, yaw tracking  Orbit x2
+  pole,  two laps, inverted      Trippy Spin x2
+
+MAGNITUDES, NEVER SIGNS. The sign of a lap depends on which way the
+obstacle's axis happens to be written down and the sign of a rotation on
+which way the craft was facing, so a pattern comparing them would name a
+trick flown left to right and refuse the same trick flown right to left.
+
+--------------------------------------------------------------------------
+WHERE THE OBSTACLES COME FROM: MEASURED, NOT ASSUMED
+--------------------------------------------------------------------------
+
+The plan was to read the collider KINDS, since collide.js has gate, tree,
+pole, wall and boom. Measured first, which was worth doing: the freestyle
+city registers 17,643 colliders, every one of them a BOX, 16,978 tagged
+'wall' and 665 tagged 'obstacle', and nothing at all tagged pole, tree, boom
+or gate. The kinds describe how a hit FEELS, not what the thing is.
+
+So the classification is geometry, in src/game/obstacles.js:
+
+  a POLE is a box with a footprint under 0.9 m and 2.5 m of height. That
+  catches the town's 0.16 m lamp posts and sign posts and stops short of a
+  chimney.
+  a BAR is a box over 2 m long, under 0.8 m thick and tall, with at least
+  1.5 m of daylight beneath it. That is six airframes of clearance: tight
+  enough to be a trick, wide enough to survive.
+
+The vertical extent is CLAMPED TO THE GROUND before either test, because the
+town builds some of its walls as boxes reaching sixty metres underground and
+an unclamped height test calls those poles.
+
+On the real city that yields 964 obstacles: 886 poles and 78 bars. A town's
+worth of lamp posts and railings.
+
+COLLINEAR SEGMENTS ARE ONE OBSTACLE. The town's railings are built from an
+8.4 m piece, a 17.6 m piece and another 8.4 m piece, and a pilot looping the
+join must not have the loop cut in half because engagement stepped from one
+collider to the next. Engagement compares the LINE, not the collider.
+
+--------------------------------------------------------------------------
+FIVE BUGS, AND FOUR OF THEM WERE FOUND BY FLYING
+--------------------------------------------------------------------------
+
+1. THE LAP OPENED A FIFTH OF THE WAY IN. The winding rate ramps up: a
+   powerloop starts as a shallow arc and only becomes a lap once the craft
+   is committed. Measured on the real aircraft the gate opens about 20% in,
+   and by then the craft has already crossed from under the rail to over it.
+   Read naively the lap says it started ABOVE and ended above, which for a
+   full powerloop gives the right parity by luck and for every half lap
+   trick, an Immelmann, a Matty, a Split-S, gives the wrong one and loses
+   the trick. The run now keeps a rolling 800 ms of snapshots and backdates
+   itself to the oldest when it opens.
+
+2. AND IT CLOSED A SECOND AND A HALF LATE. The mirror image, and it took the
+   same trace to see. A low pass that has to decay below its threshold for
+   220 ms keeps the run open long after the craft has stopped going round,
+   and in that second and a half the craft drifts back up over the rail. A
+   clean powerloop then read "started under, ended over": a half lap, which
+   is not a powerloop. The lap is now the span over which the craft was
+   ACTUALLY winding, from the backdated open to the last moment the rate was
+   above the gate. Everything either side is the approach and the exit.
+
+3. THE REVERSAL TEST FIRED ON ARITHMETIC NOISE. The per millisecond angle is
+   a ten thousandth of a turn and its sign flips on rounding whenever the
+   craft is barely winding, which on the approach to a rail opened and
+   closed the run SIXTY TIMES in a row. It now tests the filtered rate
+   against the direction the lap opened in, rather than the raw step against
+   a running total that has been backdated over an approach that may have
+   wound the other way.
+
+4. A POWERLOOP SCORED AS A POWERLOOP AND THEN A FLIP. The flip spans the
+   whole lap and finishes after it, so it was still open when the lap closed
+   and was picked up by the next, meaningless lap, which named nothing and
+   handed it back. A rotation is now absorbed if most of it lies inside a lap
+   that has already been NAMED, whether it was held by that lap or not. Same
+   rule catches an orbit's yaw, which used to score Orbit x2 and then two
+   Yaw Spins.
+
+5. THE FLY-BY. A quad going straight past a rail at five metres sweeps up to
+   half a turn of angle at that rail, fast enough to open a run. It goes in
+   under the rail and comes out under the rail, and same side means a whole
+   number of turns, and half a turn is not one and nothing within reach of
+   half a turn is. So the lap snap REJECTS rather than falling back to the
+   nearest quarter, which is the one place it differs from the attitude
+   snap: which side of a rail you came out on is a hard geometric fact, not
+   an estimate of a pilot's accuracy. Falling back would have paid a pilot
+   for flying down a street past 886 lamp posts.
+
+--------------------------------------------------------------------------
+TWO NUMBERS THAT ARE NOT WHAT THEY WERE, AND WHY
+--------------------------------------------------------------------------
+
+REACH went from 9 m to 14 m for a bar. A powerloop flown at a 12 m/s entry,
+which is a slow one, traces a loop twelve metres across, so the craft reaches
+seven or eight metres from the axis at the far side. Nine cut the loop in
+half and the trick was never seen. Being generous costs nothing now that the
+snap rejects rather than rounds.
+
+THE LAP TOLERANCE is a third of a turn where the attitude tolerance is a
+fifth, and that is not slackness, it is that the two are not the same kind of
+measurement. A rotation is closed: a quad that ends level has turned a whole
+number of times. A lap is not: the craft enters somewhere and leaves
+somewhere else, and the angle between those rays is added to the turn, so the
+same powerloop around the same rail measures differently depending on where
+in the loop the rail sits. Measured, a clean one reads 0.95 to 1.3.
+
+--------------------------------------------------------------------------
+MEASURED
+--------------------------------------------------------------------------
+
+`npm run score:selftest` is 143 checks and all pass. New this turn:
+
+   14  the obstacle field: what near() finds, what it does not, that two
+       rails end to end are one line and two at right angles are not, and
+       that a lamp post derives as a pole while a wall, a kerb, a slab, a
+       rail too low to fly under and a box reaching sixty metres
+       underground all derive as nothing.
+    7  the lap snap, including the fly-by it has to reject.
+   11  the eight obstacle tricks on constructed paths, plus the three that
+       must score nothing: a plain flip beside a rail stays a Flip, flying
+       straight under a rail scores nothing, flying straight past a pole
+       scores nothing.
+    3  A FLOWN POWERLOOP. Two passes: the first flies the loop with nothing
+       in the world and records where the craft went, the second puts a rail
+       where a pilot would have put it, low in the loop, and flies the
+       identical inputs. The module is deterministic so the second traces
+       the first exactly. Betaflight's rate curve, the PID loop, the mixer
+       and the plant make the path; the winding is measured off it. It reads
+       1.06 turns about the rail with a concurrent pitch of 1.00, and it is
+       named Powerloop.
+
+The constructed paths carry the grammar and the flown loop carries the
+proof that the grammar is reachable. Both are needed: a real aircraft cannot
+fly a Powerloop and a Maverick Loop distinctly enough to tell a failed test
+from a bad flight, and a constructed path cannot tell you whether a quad can
+get there at all.
+
+COST, because this now runs at 1 kHz. The obstacle query is 192 ns against
+the city's 964 obstacles, mean bucket 13.8 and worst 78, measured in the
+browser over 40,000 calls. At one query a millisecond that is 0.02% of a
+second. `npm run lint:shell` PASS. `npm run verify` still not run and still
+for the same reason: no emcc, and nothing here touches src/native, the
+patches, the vendor tree, the input path or the module ABI.
+
+--------------------------------------------------------------------------
+WHAT IS STILL NOT CAPTURED
+--------------------------------------------------------------------------
+
+Wall tricks need a PLANE and a contact, not an axis: a Wall Tap is a
+deliberate touch and the collider pass already knows when one happened, so
+this is a matter of tagging the contact with which wall it was rather than
+new geometry. Gaps need an APERTURE, which is the one shape neither an axis
+nor a plane describes. Both want their own turn.
+
+The workbook's two obstacle tables are still read by nothing:
+REPEAT_OBSTACLE, which taxes staying on one obstacle, and OBSTACLE_BONUS,
+which pays for moving between them. Every lap now carries the id of the
+obstacle it was flown around, so wiring those is arithmetic rather than
+detection, and it is the next thing worth doing: it is what makes a run
+about the whole town rather than about one good rail.

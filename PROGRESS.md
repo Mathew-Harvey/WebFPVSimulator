@@ -24048,3 +24048,231 @@ NOT DONE, on purpose, and both want their own change: the handrail reference
 needs the deck it stands on rather than the street, and the field's own cost
 between commits is no longer watched by anything, which wants a figure
 re-measured against the fixture now committed beside the test.
+
+
+================================================================================
+2026-08-30  A SCORE FOR THE FREESTYLE CITY
+================================================================================
+
+The owner asked for a Tony Hawk's Pro Skater scoring system in Freestyle,
+attached a spreadsheet naming every trick and what it is worth, and said to
+design it, make it robust, start simple, and add iteratively. This is the
+first stage: the catalogue, a recogniser that reads tricks back out of the
+flight, the scorer, and the on screen display.
+
+WHAT THE SPREADSHEET IS. `Tyrantt_Pro_Whooper.xlsx`, The Whoop Pilots'
+freestyle scoring calculator, dated 2025-09-01. Eleven sheets. It is not a
+game design document, it is the sheet a real competition's judges fill in:
+they pick each attempted trick off a dropdown, mark how it was flown, and the
+sheet applies the penalties and totals the run. That makes it a much better
+source than anything invented here, because every number in it has already
+survived being argued about by people who fly.
+
+Extracted to `.loop/evidence/freestyle-scoring/twp-calculator.json`: 90
+outdoor tricks in ten categories, 28 building blocks, the five execution
+grades, four penalty ladders, the obstacle bonus ladder, and the streak
+formula read out of the calculator's own cell references. The workbook is NOT
+vendored: 1.4 MB of XLSX carrying three embedded images, and this project
+needs the numbers rather than the file, which is the same rule track.js
+applies to the MultiGP course PDFs. `npm run score:selftest` reads the
+evidence JSON back and asserts src/game/tricks.js still agrees with it, name
+for name and point for point, so the transcription cannot drift in silence.
+
+The workbook scores indoor and outdoor separately and the two disagree: an
+indoor Flip is 75 where an outdoor Flip is 50, because indoor tricks are
+named against a specific obstacle class and outdoor ones are not. Freestyle
+city is a town, so the OUTDOOR list is the one carried. The indoor sheet's
+obstacle classes are in the evidence JSON if a hall is ever built.
+
+NOT CARRIED, on purpose: Trick of the Week, the KWAD letter bonus and the
+map of the week multiplier. Those are the administration of a weekly online
+competition, and a simulator that doubled the score for whichever trick a
+coordinator posted on a Monday would be scoring the calendar. The tables are
+in the evidence JSON. They are the obvious shape for a daily challenge later,
+which is the only reason to say what they were.
+
+WHY IT IS NOT IN C. The request said "probably in c / wasm". It is plain
+JavaScript, and there are three reasons stacked in front of the fourth.
+
+  1. There is no emcc in this container, so a C module could be neither
+     built nor run here. Shipping a scoring system that cannot be compiled
+     until somebody else's machine sees it is not a starting point, it is a
+     handover of unverified work.
+  2. It is not physics. It reads the state block that already crosses the
+     ABI and writes nothing back into it. Putting it inside sim.wasm would
+     make an ABI change out of a game rule, and CLAUDE.md says an ABI change
+     is argued before it is made.
+  3. CLAUDE.md already says the shell is plain JavaScript.
+  4. And the work is not there. The recogniser is three multiply
+     accumulates and a compare per millisecond. The whole per step cost is
+     smaller than one collider query, and the collider queries run at 250 Hz
+     already.
+
+It is written to PORT, though, if that ever changes: flat state, fixed size
+buffers, no allocation in the hot path, no closures per step, and no
+transcendental functions anywhere. Transliterating it would be mechanical.
+
+HOW A TRICK IS RECOGNISED. src/game/trickdetect.js. Tony Hawk knows what you
+did because you pressed the button for it, and a quad has four analogue
+channels and no trick button, so the trick has to be read back out of the
+flight.
+
+Body rates are integrated per axis into a signed angle. A run opens at 3.0
+rad/s, closes at 1.2 rad/s held for 90 ms or on a sign change, and the
+accumulated angle is divided by a turn and snapped to the nearest quarter.
+The snap is settled by the craft's ATTITUDE at the moment the run closes,
+because a roll that ends upright is a whole number of turns and a roll that
+ends inverted is a half, whatever the integral says to three decimal places.
+That one rule is what makes this robust against a pilot who overshoots, which
+is every pilot: 340 degrees ending level is a Roll, and 196 degrees ending
+inverted is a half roll, and the test asserts both.
+
+That yields a PRIMITIVE. A buffer of primitives is matched against a pattern
+table, longest first, so half roll, whole flip, half roll the same way round
+is one Rubik's Cube worth 325 and not three rotations worth 200.
+
+Body rotations do not commute, so this integral is not the geometric angle
+when two axes move at once. That is not a defect: it is what the pilot's own
+gyro sees, what an OSD flip counter counts, and what a judge watching the
+video counts. A quaternion difference cannot tell a 360 roll from a 720 at
+all, because both end level. Counting is the right operation.
+
+WHAT IT RECOGNISES TODAY: the whole Open Air category that is pure air, plus
+the building blocks under it. Flip, Roll, Yaw Spin, Double Flip, Double Roll,
+Rubik's Cube, Cubik's Rube, Inverted Yaw Spin, Vanny Roll, Segmented
+Flips/Rolls, Invert Rewind, Juicy Flick, Snapback, and every quarter, half
+and three quarter rotation as a building block. Thirteen patterns and
+fourteen singles. The catalogue carries all 90; everything else in it needs
+to know about an OBSTACLE, and that is stage 2, below.
+
+THE SCORE. src/game/score.js. Two sources and the seam between them is the
+point of the file.
+
+The workbook part, exactly as published:
+
+    net = base
+        x execution      CLEAN 1, SLOPPY 0.65, BUMP 0.5, MISSED 0, CRASH 0
+        x repeat trick   0 priors 1, then 0.75, 0.5, and the third repeat 0
+        x back to back   halving per consecutive repeat
+        x streak         starts at 1, grows by the previous trick's raw
+                         score over 10000, halves its excess on a bump,
+                         returns to 1 on a crash
+
+The Tony Hawk part, which the workbook has nothing corresponding to: tricks
+CHAIN. A combo stays open while tricks keep arriving, carries a multiplier
+equal to how many are in it, and is worth nothing until it BANKS. Crash and
+the whole chain is gone. That loop, risk that compounds and then has to be
+cashed in, is the thing that makes scoring a game rather than arithmetic, and
+it is the only mechanic here the workbook does not contain. It is kept behind
+COMBO_ constants so that turning it off leaves an exact implementation of the
+competition sheet, and the self test checks that path too.
+
+What "landing" means for a quad took some thought. In Tony Hawk the combo
+banks when the wheels come down; a quad is in the air for the whole run and
+there is no wheels-down moment. The honest translation is the one a pilot
+would recognise: the combo banks when you FLY AWAY CLEAN, three seconds with
+no new trick, and it bails when you crash. A bump keeps the chain, because in
+the air a clipped branch is not a bail.
+
+The combo multiplier is capped at 12. Tony Hawk does not cap it and does not
+need to; here an uncapped count times the workbook's own streak makes the
+last trick of a long chain worth more than the rest of the run put together,
+which reads as a bug to anybody who has not read the comment.
+
+WHAT COUNTS AS A CRASH, and no new threshold was invented for it. collide.js
+already draws the line: under BOUNCE_SPEED_MAX the bounce model applies and
+`hitOutcome` calls a ground hit a bounce, at or over it `hitOutcome` calls it
+a crash. So a bounce is a BUMP and a crash bails the combo, on the project's
+own number. Obstacle contact is a bump. The clip-through catch in
+beginClipCrash is a bail.
+
+THE DISPLAY. src/ui/scorehud.js and about 100 lines of CSS. Four readouts,
+because Tony Hawk has four and each does a different job: the running total
+top left, which only ever goes up; the trick name shouted as it is
+recognised; the live combo, points and multiplier, redrawn every frame so the
+number climbs while you are still flying; and the verdict, which either banks
+in mint or BAILS in red.
+
+The fourth is the one that matters. A score that only counts up is a counter.
+A score that can be lost in front of you is a game, and the combo is drawn
+separately from the total precisely so the pilot can see how much is at risk
+before deciding to try one more thing.
+
+It lives down the left, because the flight OSD already owns the top centre
+(clock), both bottom corners (pack, speed) and the bottom centre (stick
+ghost). The left column is the only run of screen it can have without
+covering something a pilot is reading, and it is where Tony Hawk puts it.
+Nothing animates on a frame loop: every moving thing is a CSS keyframe on a
+node that removes itself.
+
+THREE THINGS THE CAPTURES FOUND, none of which any test would have.
+
+  - THE SCORE SAT ON THE MUSIC DOCK. `.music-dock.on-flight` moves the
+    dock to the top LEFT corner at 16 px, and --bar-top is zero in flight,
+    so a readout at bar-top plus 14 landed on top of it. Measured, moved to
+    bar-top plus 58, measured again: dock 16 to 46, score 58 to 112.
+  - THE NAME STACK GREW THE WRONG WAY. column-reverse put the newest name
+    furthest from the combo line it had just changed, so the eye had to
+    cross the stack to connect a trick with its number. Plain column with
+    the container anchored by its bottom edge does it, and needs no JS: the
+    box simply grows upward as rows arrive.
+  - CREAM ON A LIT ROAD IS NOT READABLE. Every other readout on this
+    overlay uses a soft drop shadow and gets away with it, because the OSD
+    sits over sky and grass. The score sits over the town at midday. Four
+    one pixel offsets give each glyph a real edge.
+
+AND ONE THE TEST FOUND, which is the argument for having written it. A quad
+that clips a branch in the MIDDLE of a flip has an empty primitive buffer,
+because the flip's primitive does not exist until the rotation closes. The
+contact flag was cleared whenever the buffer was empty, so the bump was wiped
+a millisecond after it happened and the trick that caused it scored CLEAN.
+The flag is now cleared only when the detector is genuinely idle: nothing
+buffered and nothing turning. Two checks cover it, one that the bump sticks
+and one that a bump BETWEEN tricks does not follow the pilot into the next.
+
+The other one the test found was in the test. The matcher's settle timer ran
+while the quad was mid rotation, and a 360 flip is 500 ms of rotating against
+a 450 ms timer, so the first half of every three part trick was named and
+emitted before the second part could arrive. An open rotation now holds the
+buffer outright and the timer only counts the still time after it. Segmented
+Flips/Rolls needed the same treatment from the other end: it ASKS for half a
+second of stall between its halves, which is longer than any settle window,
+so the wait is the settle plus whatever stall the next step of a reachable
+pattern wants.
+
+MEASURED. `npm run score:selftest` is 72 checks and all of them pass: 11 on
+the transcription against the evidence JSON, 2 that every pattern names a
+trick the catalogue actually carries, 8 on the quarter turn snap, 24 on
+traces flown through the real detector one millisecond at a time, 23 on the
+workbook arithmetic against totals worked out by hand in the comments, and 4
+end to end, where a rate trace reads as Rubik's Cube, Double Roll, Yaw Spin
+and banks 1597. `npm run lint:shell` PASS, 13 screens. `npm run lint:nouns` PASS.
+`npm run lint:responsive` PASS on the freestyle room, 319 frames, worst gap
+910 ms, which is the same figure it reported before this change. Captured in
+headless Chromium at 1600x900 and 1280x720: the combo line climbing through
+five tricks with SLOPPY and BUMP grades showing in their own colours, the
+bank, and the bail reading BAILED -3,067 with the banked total kept.
+
+`npm run verify` was NOT run. It builds Betaflight through emcc, there is no
+emcc in this container, and nothing in this change touches src/native, the
+patches, the vendor tree, the input path or the module ABI. What it would
+have to say about a DOM overlay and a pattern matcher is nothing. The cheap
+targeted checks above are the ones that can see this work, and they were run.
+
+STAGE 2, which is the next obvious thing and is deliberately not started.
+Everything left in the catalogue needs to know about an OBSTACLE: a Powerloop
+is a flip AROUND something, a Matty is a flip OVER something, a Wall Tap
+needs a wall, a Gap needs a gap. That wants an obstacle registry derived from
+the city's colliders at build time, clustering them into named things with a
+bounding box and a shape class (pole-like, bar-like, wall-like), plus an
+"under it, then over it" tracker per obstacle. Two of the workbook's tables
+are already in tricks.js and read by nothing, waiting for exactly that:
+REPEAT_OBSTACLE, which taxes staying on one obstacle, and OBSTACLE_BONUS,
+which pays for moving between them. That is the wiring job stage 2 becomes if
+the registry is built.
+
+Stage 3, smaller: MISSED. The workbook's fifth grade is a trick that was
+started and abandoned without contact, and it STALLS the streak rather than
+killing it. Nothing emits it, because the detector has no concept of an
+attempt that did not complete. It would come from the same place as the
+obstacle work, since most abandoned tricks are abandoned around something.

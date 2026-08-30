@@ -138,6 +138,7 @@ import {
   cameraTiltRad,
   clampCameraAngle,
 } from '../render/lens.js';
+import { ScoreHud } from './scorehud.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { mountRatesPanel } from './ratespanel.js';
@@ -1698,6 +1699,16 @@ export class Ui {
     this.osdSticks = sticks;
     this.osd.append(top, packBlock, flightBlock, sticks, this.osdLaunch, this.buildTargetLock());
     r.append(this.osd);
+
+    /*
+     * The freestyle score, in its own overlay beside the OSD rather than
+     * inside it. Two reasons, and the second is the real one: the OSD is
+     * dimmed as a whole when the run is paused, and a score that fades with
+     * the instruments is fine, but the OSD is also hidden on every screen
+     * that is not flight, and the score wants to survive into the results
+     * screen. Keeping it a sibling means each is shown on its own terms.
+     */
+    this.scoreHud = new ScoreHud(r);
 
     /* Centre banner: launch prompt, lap splits, crash notice, and the
      * stick calibration prompts, which have to read over a screen, so the
@@ -6684,6 +6695,12 @@ export class Ui {
     this.syncFrame();
     this.osd.style.display = screen === 'flight' || screen === 'paused' ? '' : 'none';
     this.osd.className = screen === 'paused' ? 'osd dim' : 'osd';
+    /* The score follows the OSD onto and off the screen, but only in
+     * freestyle: a race has no score and an empty Score 0 over a lap timer
+     * is a readout that never changes. */
+    this.scoreHud.setVisible(
+      this.osdMode === 'freestyle' && (screen === 'flight' || screen === 'paused'),
+    );
     this.renderMenu();
     this.syncBugChip();
     /* Last, and unconditionally. Last because a listener is entitled to
@@ -7357,6 +7374,29 @@ export class Ui {
         this.osdHits.className = 'osd-sub osd-hits';
       }
     }
+  }
+
+  /*
+   * The freestyle score overlay. Three calls rather than one because they
+   * run at three different rates: the view every frame, the events only
+   * when something happened, and the visibility only when the screen
+   * changes. Folding them into one call would mean handing the HUD a view
+   * on frames where it has nothing to do.
+   */
+  setScore(view) {
+    this.scoreHud.update(view);
+  }
+
+  scoreEvents(list) {
+    this.scoreHud.events(list);
+  }
+
+  showScore(on) {
+    this.scoreHud.setVisible(on);
+  }
+
+  resetScore() {
+    this.scoreHud.reset();
   }
 
   /*

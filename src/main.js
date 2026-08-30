@@ -59,6 +59,8 @@ import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
 import { Race } from './game/race.js';
+import { TrickDetector } from './game/trickdetect.js';
+import { FreestyleScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
@@ -827,6 +829,27 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The race: gate order, lap clock, best lap. On a freestyle map it is a
    * real object with no gates in it and it scores nothing. */
   let race = new Race(view.gates);
+  /*
+   * THE FREESTYLE SCORE, and it only ever runs on a freestyle map.
+   *
+   * The detector is fed one physics step at a time from inside the step
+   * loop, not once a frame, because a 360 roll at 900 deg/s is 400 ms and a
+   * frame at 30 fps would sample it eleven times: the rate integral has to
+   * see every millisecond the plant saw or the turn count is a guess. That
+   * is the only thing in the shell that runs at 1 kHz, and it is three
+   * multiply-accumulates and a compare, which is why it can.
+   *
+   * The scorer is the opposite: it is ticked once a frame, off the SIM
+   * clock rather than the wall clock, so a dropped frame cannot bank a
+   * combo early and a paused game cannot bank one at all.
+   */
+  /* Set once a frame, read 1000 times: whether this map and this moment
+   * are being scored at all. */
+  let scoring = false;
+  const score = new FreestyleScore();
+  const trickDetector = new TrickDetector((trick) => {
+    score.land(trick);
+  });
   const racePrev = new THREE.Vector3();
   let raceHasPrev = false;
 
@@ -2300,6 +2323,12 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     crashed = true;
+    /* A bail, in the Tony Hawk sense: the open combo is lost rather than
+     * banked, and the workbook's streak multiplier goes back to one. The
+     * detector's buffer goes too, or a half roll from before the crash
+     * would pair with a half roll after it into a trick nobody flew. */
+    trickDetector.reset();
+    score.crash();
     clipCrashKind = kind;
     clipCrashUntil = nowWall + CLIP_CRASH_HOLD_MS;
     setCrashflip(false);
@@ -2483,6 +2512,12 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    /* A new run scores from nothing, and the detector's clock goes back to
+     * zero with the sim clock above so the two agree about when a trick
+     * happened. */
+    score.reset();
+    trickDetector.restart();
+    ui.resetScore();
     /* A fresh run records from its own first crossing. The session book
      * keeps what earlier runs flew; only the in-flight recording dies. */
     ghostRecorder.abort();
@@ -4479,6 +4514,7 @@ export async function boot({ loading, bootStart, mapId }) {
           setCrashflip(false);
         }
       } else {
+      scoring = view.mode === 'freestyle' && !crashed;
       let peakGroundClosing = 0;
       let peakGroundSpeed = 0;
       let sawGroundHit = false;
@@ -4597,6 +4633,15 @@ export async function boot({ loading, bootStart, mapId }) {
             raiseGroundFromState(stNow);
             sim.step(1);
             stNow = readState();
+            if (scoring) {
+              /* Body rates, the two quaternion components the attitude test
+               * needs, and speed. Nothing is allocated and nothing is
+               * converted: the detector works in the plant's own frame. */
+              trickDetector.step(
+                0.001, stNow[11], stNow[12], stNow[13], stNow[8], stNow[9],
+                Math.sqrt(stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6]),
+              );
+            }
             /* The solid world, on the sim clock. stateCurr is what the
              * pass reads and writes, so it is kept level with stNow
              * across the call. */
@@ -4735,6 +4780,23 @@ export async function boot({ loading, bootStart, mapId }) {
         const hitSpeed = peakGroundSpeed;
         if (closing >= GRAZE_SPEED_MAX || hitSpeed >= GRAZE_SPEED_MAX) {
           bounceCount += 1;
+          /*
+           * The ground, for scoring, on the line collide.js has already
+           * drawn rather than a new one: under BOUNCE_SPEED_MAX the bounce
+           * model applies and hitOutcome calls it a bounce, at or over it
+           * hitOutcome calls it a crash. So a bounce is a BUMP and a crash
+           * bails the combo. No third threshold, because a third threshold
+           * is a number nobody can defend six months later.
+           */
+          if (view.mode === 'freestyle') {
+            const hard = closing >= BOUNCE_SPEED_MAX || hitSpeed >= BOUNCE_SPEED_MAX;
+            if (hard) {
+              trickDetector.reset();
+              score.crash();
+            } else {
+              trickDetector.bump();
+            }
+          }
           /* No banner. The owner's instruction: the sound is enough, and
            * so is the feel. Naming the thing you just hit on screen tells
            * a pilot what they already watched happen, and it does it over
@@ -4826,6 +4888,13 @@ export async function boot({ loading, bootStart, mapId }) {
       if (nowWall - bounceAtWall >= BOUNCE_COOLDOWN_MS || obsImpulse > lastImpulse * 1.6) {
         bounceCount += 1;
         feelImpact(obsImpulse, obsImpulseKind);
+        /* The workbook's BUMP: "complete trick, but tapped a gate, wall or
+         * the ground without disarming". Half the trick's points and half
+         * the streak, and the combo survives, because in the air a clipped
+         * branch is not a bail. */
+        if (view.mode === 'freestyle') {
+          trickDetector.bump();
+        }
         bounceAtWall = nowWall;
         view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
       }
@@ -5466,6 +5535,17 @@ export async function boot({ loading, bootStart, mapId }) {
         ghostGapMs: ghostGap && nowWall < ghostGap.untilWall ? ghostGap.deltaMs : null,
         ghostFinal: Boolean(ghostGap && ghostGap.final),
       });
+      /*
+       * The score, on the SIM clock. Ticking it on the wall clock would
+       * bank a combo through a stall in the render loop and would make the
+       * combo window shorter on a slow machine, which is exactly the class
+       * of frame-rate dependence CLAUDE.md keeps out of the game.
+       */
+      if (view.mode === 'freestyle') {
+        score.tick(simTimeMs);
+        ui.setScore(score.view());
+        ui.scoreEvents(score.drainEvents());
+      }
       const ch = input.channels;
       const vis = turtleAxes(ch.roll, ch.pitch);
       ui.setStickOverlay({
@@ -5854,6 +5934,29 @@ export async function boot({ loading, bootStart, mapId }) {
     const p = view.curve.getPointAt(u);
     const t = view.curve.getTangentAt(u);
     return { x: p.x, y: p.y, z: p.z, tx: t.x, tz: t.z, ground: view.height(p.x, p.z) };
+  };
+  /*
+   * The freestyle score. A reader and a writer, for the same reason
+   * __setRaceNext has both: a screenshot of the score overlay has to be
+   * able to put a known score on it, and every other route to one involves
+   * flying a Rubik's Cube in a headless browser on a software rasteriser.
+   * The writer goes through score.land, so what it captures is the real
+   * scoring path and not a mock of it.
+   */
+  window.__score = () => score.summary();
+  window.__scoreTrick = (name, execution) => {
+    score.tick(simTimeMs);
+    const r = score.land({ name, execution: execution || 'CLEAN', endMs: simTimeMs });
+    return { name: r.name, net: Math.round(r.net), combo: score.view().combo };
+  };
+  /* The bail, staged. There is no other way to photograph the one screen
+   * that matters most in this mode: a real bail needs a real crash, and a
+   * crash in a headless browser on a software rasteriser is a twenty step
+   * flight nobody can reproduce. Same path as the real one, no mock. */
+  window.__scoreCrash = () => {
+    trickDetector.reset();
+    score.crash();
+    return score.summary();
   };
   /* What is solid, and how well the broadphase is doing. */
   window.__colliders = () => view.colliders.stats();

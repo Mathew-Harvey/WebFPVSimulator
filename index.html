@@ -167,6 +167,134 @@
       @keyframes launch-blink {
         50% { opacity: 0.2; }
       }
+
+      /* FREESTYLE SCORE, down the left. See src/ui/scorehud.js for why it
+         is here and not anywhere else: the top centre, both bottom corners
+         and the bottom centre are already spoken for by the flight OSD.
+         Everything that moves is a keyframe on a node that removes itself,
+         so this costs no frame time when nothing has happened. */
+      .score-hud { position: absolute; inset: 0; pointer-events: none; }
+      .score-hud.is-off { display: none; }
+      /* Clear of the music dock, which moves to the top left corner on the
+         flight screen (.music-dock.on-flight) and is 30 px tall at 16 px.
+         --bar-top is zero in flight, so this offset is measured from the
+         top of the window there and from under the bar everywhere else. */
+      .score-total {
+        position: absolute; left: 22px; top: calc(var(--bar-top) + 58px);
+        text-shadow: 0 2px 6px rgba(0,0,0,0.85);
+      }
+      .score-label {
+        font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--slate); margin-bottom: 1px;
+      }
+      /* A HARD OUTLINE, NOT A GLOW. Every other readout on this overlay
+         uses a soft drop shadow, and a soft shadow works because the world
+         behind the OSD is mostly sky or grass. The score sits over the
+         town: cream on a pale road at midday, which measured as unreadable
+         in the first capture. Four one pixel offsets give the glyph an
+         edge whatever is behind it, and the blur underneath keeps it from
+         looking stencilled. */
+      .score-cut {
+        text-shadow:
+          -1px -1px 0 rgba(8, 12, 9, 0.92),  1px -1px 0 rgba(8, 12, 9, 0.92),
+          -1px  1px 0 rgba(8, 12, 9, 0.92),  1px  1px 0 rgba(8, 12, 9, 0.92),
+          0 2px 10px rgba(0, 0, 0, 0.9);
+      }
+      .score-value {
+        font-size: clamp(26px, 3.4vw, 40px); font-weight: 700;
+        line-height: 1; letter-spacing: 0.01em; color: var(--cream);
+      }
+      /* The name stack sits directly ON TOP OF the combo line and grows
+         UPWARD, which is the Tony Hawk arrangement and not a stylistic
+         choice: the newest trick has to be adjacent to the number it just
+         changed, or the eye has to cross half the screen to connect them.
+         The stack is anchored by its BOTTOM edge and laid out top down, so
+         the newest name is appended last and lands nearest the combo line,
+         and the older ones are pushed up and out. No JS: the container
+         simply grows upward as rows arrive. */
+      .score-names {
+        position: absolute; left: 22px; bottom: calc(24vh + 62px);
+        width: min(46vw, 340px);
+        display: flex; flex-direction: column;
+        align-items: flex-start; gap: 2px;
+      }
+      .score-name {
+        display: flex; align-items: baseline; gap: 8px;
+        font-size: clamp(15px, 1.85vw, 21px); font-weight: 700;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--cream);
+        white-space: nowrap;
+        animation: score-name-in 2.2s ease-out forwards;
+      }
+      .score-name.is-sloppy { color: var(--amber); }
+      .score-name.is-bump { color: var(--sakura); }
+      .score-name-points { font-size: 0.8em; color: var(--cream); opacity: 0.7; font-weight: 500; }
+      .score-name-tag {
+        font-size: 0.62em; letter-spacing: 0.14em; color: var(--slate);
+        opacity: 0.85;
+      }
+      @keyframes score-name-in {
+        0%   { opacity: 0; transform: translateX(-14px); }
+        7%   { opacity: 1; transform: translateX(0); }
+        75%  { opacity: 1; }
+        100% { opacity: 0; transform: translateY(-10px); }
+      }
+      /* The live combo. Under the names, and it is the number the pilot is
+         gambling: it reads big on purpose. */
+      .score-combo {
+        position: absolute; left: 22px; bottom: 24vh;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+      }
+      .score-combo.is-off { display: none; }
+      .score-combo-line {
+        display: flex; align-items: baseline; gap: 6px;
+        font-size: clamp(22px, 2.8vw, 34px); font-weight: 700; line-height: 1;
+        color: var(--amber);
+      }
+      .score-combo-mult { font-size: 0.82em; color: var(--mint); }
+      .score-combo-bar {
+        margin-top: 6px; height: 4px; width: clamp(90px, 12vw, 150px);
+        border-radius: 2px; background: rgba(12, 22, 34, 0.65);
+        box-shadow: inset 0 0 0 1px rgba(157, 179, 200, 0.3);
+        overflow: hidden;
+      }
+      .score-combo-fill {
+        height: 100%; width: 100%; background: var(--amber);
+        transform-origin: left center; transform: scaleX(1);
+      }
+      /* Banked or bailed. Centre screen for one beat, because it is the one
+         moment worth looking away from the quad for. */
+      .score-verdict {
+        position: absolute; left: 50%; top: 38%;
+        transform: translate(-50%, -50%);
+        font-size: clamp(30px, 4.6vw, 54px); font-weight: 700;
+        letter-spacing: 0.14em; text-transform: uppercase;
+        opacity: 0;
+      }
+      .score-verdict.is-on { animation: score-verdict 1.15s ease-out forwards; }
+      .score-verdict.is-bank { color: var(--mint); }
+      /* A saturated sakura rather than the token. --sakura is the brand's
+         blossom pink and it is a pale one by design; over a lit road it
+         read as decoration rather than as a loss. Same hue, enough
+         saturation to mean something. */
+      .score-verdict.is-bail { color: #ff7d96; }
+      @keyframes score-verdict {
+        0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.82); }
+        14%  { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+        24%  { transform: translate(-50%, -50%) scale(1); }
+        70%  { opacity: 1; }
+        100% { opacity: 0; transform: translate(-50%, -74%) scale(1); }
+      }
+      /* Phones fly with the touch sticks up and a much shorter screen, so
+         the combo climbs out of their way and the stack keeps two rows. */
+      @media (max-height: 560px) {
+        .score-combo { bottom: 34vh; }
+        .score-names { bottom: calc(34vh + 52px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .score-name, .score-verdict.is-on { animation-duration: 0.01s; }
+      }
+
       .bar {
         height: 5px; margin-top: 7px; border-radius: 3px;
         background: rgba(12, 22, 34, 0.65);

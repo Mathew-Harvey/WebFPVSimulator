@@ -1,0 +1,2003 @@
+{
+ "source": {
+  "file": "Tyrantt_Pro_Whooper.xlsx",
+  "title": "The Whoop Pilots freestyle scoring calculator",
+  "sheets_read": [
+   "Trick List - Outdoor",
+   "Info Tables",
+   "Custom Trick Building Blocks",
+   "Calculator - Outdoor (formulas)",
+   "Landing Page"
+  ],
+  "calculator_as_of": "2025-09-01 00:00:00"
+ },
+ "outdoorTricks": [
+  {
+   "n": 1,
+   "category": "Open Air Tricks",
+   "trick": "Flip",
+   "difficulty": "Beginner",
+   "points": 50,
+   "explanation": "Perform a 360\u00b0 Pitch forward or backward with a consistent motion."
+  },
+  {
+   "n": 2,
+   "category": "Open Air Tricks",
+   "trick": "Roll",
+   "difficulty": "Beginner",
+   "points": 50,
+   "explanation": "Perform a 360\u00b0 roll left or right with a smooth and continuous motion."
+  },
+  {
+   "n": 3,
+   "category": "Open Air Tricks",
+   "trick": "Yaw Spin",
+   "difficulty": "Beginner",
+   "points": 50,
+   "explanation": "Perform a continuous 360\u00b0 Yaw to either the left or right without any interruptions."
+  },
+  {
+   "n": 4,
+   "category": "Open Air Tricks",
+   "trick": "Segmented Flips/Rolls",
+   "difficulty": "Beginner",
+   "points": 75,
+   "explanation": "Begin by executing a 180\u00b0 Roll and Pitch into a stall of at least 0.5 seconds, then follow it up with another 180\u00b0 Roll and Pitch in the same direction."
+  },
+  {
+   "n": 5,
+   "category": "Open Air Tricks",
+   "trick": "Invert Rewind",
+   "difficulty": "Beginner",
+   "points": 75,
+   "explanation": "Perform a 180\u00b0 roll or flip and then immediately 180\u00b0 rewind back in the opposite direction."
+  },
+  {
+   "n": 6,
+   "category": "Open Air Tricks",
+   "trick": "Vanny Roll",
+   "difficulty": "Beginner",
+   "points": 125,
+   "explanation": "As you fly forward, make a sharp 180-degree Yaw spin, and just as you start moving backward, smoothly execute a 360-degree roll and then 180\u00b0 yaw spin in the same direction to complete the trick."
+  },
+  {
+   "n": 7,
+   "category": "Open Air Tricks",
+   "trick": "Double Flip",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Perform a 720 flip in either direction"
+  },
+  {
+   "n": 8,
+   "category": "Open Air Tricks",
+   "trick": "Double Roll",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Perform a 720 roll in either direction"
+  },
+  {
+   "n": 9,
+   "category": "Open Air Tricks",
+   "trick": "Juicy Flick",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "While flying, quickly pitch forward while applying throttle to flick yourself forward, continue pitching until you're fully inverted, then promptly perform a 180\u00b0 Roll to conclude the trick. This maneuver is most visually appealing when tracking a ground object."
+  },
+  {
+   "n": 10,
+   "category": "Open Air Tricks",
+   "trick": "Snapback",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Begin by flying your whoop beneath an object, synchronizing a subtle increase in throttle as you simultaneously pitch backward until your whoop is fully inverted. Then, swiftly execute a 180\u00b0 Roll to conclude the trick, all while maintaining tracking the object you're passing under."
+  },
+  {
+   "n": 11,
+   "category": "Open Air Tricks",
+   "trick": "Rubik's Cube",
+   "difficulty": "Intermediate",
+   "points": 325,
+   "explanation": "Perform a 180\u00b0 Roll, then smoothly transition into a 360\u00b0 flip, and wrap it up with another 180\u00b0 roll in the same direction as the first one."
+  },
+  {
+   "n": 12,
+   "category": "Open Air Tricks",
+   "trick": "Cubik's Rube",
+   "difficulty": "Intermediate",
+   "points": 325,
+   "explanation": "Perform a 180\u00b0 Flip, then smoothly transition into a 360\u00b0 Roll, and wrap it up with another 180\u00b0 Flip in the same direction as the first one."
+  },
+  {
+   "n": 13,
+   "category": "Open Air Tricks",
+   "trick": "Inverted Yaw Spin",
+   "difficulty": "Advanced",
+   "points": 400,
+   "explanation": "Perform a 180\u00b0 Pitch/Roll to invert, swiftly follow with an inverted 360\u00b0 Yaw spin, and conclude with a Flip/Roll in the same direction."
+  },
+  {
+   "n": 14,
+   "category": "Open Air Tricks",
+   "trick": "Inverted Yaw Tracking",
+   "difficulty": "Advanced",
+   "points": 425,
+   "explanation": "Begin by executing a 180\u00b0 Roll toward the object you wish to track. Immediately follow it with a Yaw spin in the opposite direction to keep the object centered on your screen. Finish the trick with a 180\u00b0 Roll."
+  },
+  {
+   "n": 15,
+   "category": "Powerloops",
+   "trick": "Powerloop",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Start by flying beneath an object and gradually increase throttle while pitching back to fly over the object until you're fully inverted. Cut the throttle while continuing to pitch back. Gradually apply throttle again and level out as you pass back under the object to complete the loop."
+  },
+  {
+   "n": 16,
+   "category": "Powerloops",
+   "trick": "Immelmann Turn",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "Begin a Powerloop, but at the peak of the loop, execute a rapid 180\u00b0 Roll to complete the trick"
+  },
+  {
+   "n": 17,
+   "category": "Powerloops",
+   "trick": "Power Split",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Initiate a Powerloop and once you pass the peak of the loop, immediately rewind into a Split S maneuver, taking you back over and then under the object."
+  },
+  {
+   "n": 18,
+   "category": "Powerloops",
+   "trick": "Power Flip",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "Initiate a Powerloop, then at the peak of the loop, perform a Flip before completing the rest of the Powerloop."
+  },
+  {
+   "n": 19,
+   "category": "Powerloops",
+   "trick": "Reversed Power Flip",
+   "difficulty": "Intermediate",
+   "points": 325,
+   "explanation": "Initiate a Powerloop, then at the peak of the loop, perform a Front Flip before completing the rest of the Powerloop."
+  },
+  {
+   "n": 20,
+   "category": "Powerloops",
+   "trick": "Power Swap",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "Perform half of a powerloop and do a 180 roll while looking at the sky. Finsih with the second half of a matty flip back under the object."
+  },
+  {
+   "n": 21,
+   "category": "Powerloops",
+   "trick": "Power Switch",
+   "difficulty": "Advanced",
+   "points": 425,
+   "explanation": "Fly under the object and begin a Powerloop. Once you pass the peak of the Powerloop, level out and immediately execute a Rewind into a Matty Flip. Finally, pass under the object to complete the trick."
+  },
+  {
+   "n": 22,
+   "category": "Powerloops",
+   "trick": "Power Roll",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "Begin a Powerloop, and at the peak of the loop, execute a Roll. Then, continue and complete the rest of the Powerloop."
+  },
+  {
+   "n": 23,
+   "category": "Powerloops",
+   "trick": "Inverted 360 Powerloop",
+   "difficulty": "Master",
+   "points": 650,
+   "explanation": "Start a Powerloop and when reaching the peak, perform a 360\u00b0 Yaw spin while inverted. Afterward, continue to complete the remaining part of the Powerloop."
+  },
+  {
+   "n": 24,
+   "category": "Powerloops",
+   "trick": "Barani",
+   "difficulty": "Master",
+   "points": 700,
+   "explanation": "Begin by flying beneath the object, then initiate a Powerloop. As you reach the peak of the Powerloop, execute a precise 180\u00b0 inverted Yaw spin. Finally, conclude the trick with a Matty Flip back under the object."
+  },
+  {
+   "n": 25,
+   "category": "Powerloops",
+   "trick": "Beginner Switch",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "This move is the entry-level version of a power switch, accomplished by executing a maverick loop, stall, and rewinding over the object with a beginner matty. Begin by flying under the object. As you pass it, gradually pitch back and increase throttle so that you pass over the top of it while facing forward and flying backward. Once you're past the object, increase throttle to come to a stall and then rewind back over the object by increasing throttle again. Finally, decrease throttle as you pass over the top of the object again, and adjust your pitch back to fly beneath the object while maintaining backward motion."
+  },
+  {
+   "n": 26,
+   "category": "Powerloops",
+   "trick": "Immelloop",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "This trick combines an Immelmann and a beginner Matty. Start by flying under an object and gradually pitch back while increasing throttle until you're fully inverted over the object. Immediately execute a 180 roll until you're upright, then promptly perform a beginner Matty by cutting throttle and gradually pitching back while reapplying throttle to fly backward and pass back under the object."
+  },
+  {
+   "n": 27,
+   "category": "Powerloops",
+   "trick": "Immelmatt",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "This trick is a combination of an Immelmann and a Matty flip. Start by flying under an object and gradually pitching back while increasing throttle until you're fully inverted over the object. Immediately perform a 180 roll until you're upright, and then promptly execute a Matty flip by cutting throttle and executing a 180\u00b0 pitch forward. Then, gradually increase throttle and adjust your pitch to level out and fly backward beneath the object."
+  },
+  {
+   "n": 28,
+   "category": "Powerloops",
+   "trick": "Rollani",
+   "difficulty": "Master",
+   "points": 800,
+   "explanation": "This trick combines a Barani with a Roll. Start by flying beneath the object and initiating a Powerloop around it. As you reach the peak of the Powerloop, execute a 180\u00b0 inverted Yaw spin immediately followed by a 360\u00b0 roll. Finally, conclude the trick with a Matty Flip back under the object."
+  },
+  {
+   "n": 29,
+   "category": "Powerloops",
+   "trick": "Flipani",
+   "difficulty": "Master",
+   "points": 850,
+   "explanation": "This trick combines a Barani with a Flip. Start by flying beneath the object and initiating a Powerloop around it. As you reach the peak of the Powerloop, execute a 180\u00b0 inverted Yaw spin immediately followed by a 360\u00b0 front Flip. Finally, conclude the trick with a Matty Flip back under the object."
+  },
+  {
+   "n": 30,
+   "category": "Maverick Loops",
+   "trick": "Maverick Loop",
+   "difficulty": "Beginner",
+   "points": 100,
+   "explanation": "Fly beneath the object, apply throttle, and gradually pitch backward. Pass over the object while gradually reducing throttle, then pass back under the object, all while maintaining a forward-looking orientation throughout the maneuver."
+  },
+  {
+   "n": 31,
+   "category": "Maverick Loops",
+   "trick": "Mavvy Roll",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "Perform a Maverick loop, and at the peak of the loop, execute a 360\u00b0 roll. Finish the loop to complete the trick."
+  },
+  {
+   "n": 32,
+   "category": "Maverick Loops",
+   "trick": "Half Mavvy",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "Execute a Maverick loop and swiftly transition into a Half Matty to go back under the object."
+  },
+  {
+   "n": 33,
+   "category": "Maverick Loops",
+   "trick": "Mavik's Loop",
+   "difficulty": "Advanced",
+   "points": 475,
+   "explanation": "Perform a Maverick loop, and at the peak, execute a 180\u00b0 Pitch down Rubik's Cube, then continue and complete the loop."
+  },
+  {
+   "n": 34,
+   "category": "Maverick Loops",
+   "trick": "Mavani",
+   "difficulty": "Advanced",
+   "points": 500,
+   "explanation": "Perform a Maverick loop, and at the peak of the loop, execute a 180\u00b0 Pitch down to invert. Follow this with a 180\u00b0 Yaw spin, and finish with a Matty flip back under the object."
+  },
+  {
+   "n": 35,
+   "category": "Maverick Loops",
+   "trick": "Donkey Loop",
+   "difficulty": "Master",
+   "points": 600,
+   "explanation": "Perform a Maverick loop and during the loop, execute a 180\u00b0 Pitch down to invert. Follow this with a 360\u00b0 Yaw spin, and finally, complete the loop to conclude the trick."
+  },
+  {
+   "n": 36,
+   "category": "Maverick Loops",
+   "trick": "Mavvelmann",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "This trick shares similarities with performing an Immelmann, but with a maverick motion instead. Start by flying under an object and gradually pitching back while increasing throttle so that you're always looking forward as you fly around and above the object with backward motion. When you're above the object, execute a quick 180\u00b0 pitch down flick motion so that you're upside down. Finally, complete the trick by promptly performing a 180 roll to level out and fly away"
+  },
+  {
+   "n": 37,
+   "category": "Matty Flips",
+   "trick": "Beginner Matty",
+   "difficulty": "Beginner",
+   "points": 100,
+   "explanation": "Start by flying over an object. Gradually decrease the throttle and adjust your pitch to fly beneath the object while maintaining backward motion. After passing under the object, ascend back up and over it to successfully complete the loop."
+  },
+  {
+   "n": 38,
+   "category": "Matty Flips",
+   "trick": "Matty Flip",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Begin by flying over an object and executing a partial front flip over it while attempting to keep the object in your view as you descend. Gradually increase throttle and adjust your pitch to angle your whoop to level out and fly backwards beneath the object."
+  },
+  {
+   "n": 39,
+   "category": "Matty Flips",
+   "trick": "Matty Twister",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "Start by flying over an object, then pitch down and perform a 360\u00b0 roll and immediately follow this with a Matty flip in one fluid motion and complete the trick by passing under the object."
+  },
+  {
+   "n": 40,
+   "category": "Matty Flips",
+   "trick": "Half Matty",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "As you approach an object, execute a 180\u00b0 roll and smoothly transitioning into the second half of a Matty flip so that you're flying backwards beneath the object. To make the trick more visually appealing, include a half-second stall after completing the roll."
+  },
+  {
+   "n": 41,
+   "category": "Matty Flips",
+   "trick": "540 Half Matty",
+   "difficulty": "Advanced",
+   "points": 425,
+   "explanation": "Execute a precise 540\u00b0 roll, which is equivalent to 1.5 full rotations, and immediately follow it with the second half of a Matty flip."
+  },
+  {
+   "n": 42,
+   "category": "Matty Flips",
+   "trick": "Matty 360",
+   "difficulty": "Advanced",
+   "points": 425,
+   "explanation": "AKA Helter Skelter. Perform a Matty flip and immediately incorporate a 360\u00b0 yaw spin before passing under the object."
+  },
+  {
+   "n": 43,
+   "category": "Matty Flips",
+   "trick": "Forani",
+   "difficulty": "Advanced",
+   "points": 475,
+   "explanation": "As you approach an object, initiate a Juicy Flick and swiftly transition into a 180\u00b0 inverted yaw spin, and complete the sequence with the second half of a Matty Flip while passing under the object."
+  },
+  {
+   "n": 44,
+   "category": "Matty Flips",
+   "trick": "Anti Matty",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "This trick resembles a Matty Flip but is performed with a backflip instead. Begin by flying over an object and cutting throttle while executing a full backflip, overflipping by 15-30\u00b0 to align yourself to fly backward under the object. Gradually increase your throttle while pitching forward to level out while passing back under the object."
+  },
+  {
+   "n": 45,
+   "category": "Matty Flips",
+   "trick": "Power Matty",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "This trick is a Matty Flip with an additional flip at the start of the trick. Begin by flying over an object and cut throttle while performing a 540\u00b0 flip (1.5x flips). Then, gradually increase your throttle and continue pitching forward to level out while passing back under the object again."
+  },
+  {
+   "n": 46,
+   "category": "Matty Flips",
+   "trick": "Matty Roll",
+   "difficulty": "Advanced",
+   "points": 425,
+   "explanation": "This trick combines a Matty flip with a roll. Begin by flying over an object and cut your throttle while performing a 270\u00b0 pitch forward flip so that you're looking towards the sky. Immediately execute a 360\u00b0 roll before gradually reapplying throttle and continuing to pitch forward to level out as you pass back under the object."
+  },
+  {
+   "n": 47,
+   "category": "SplitS",
+   "trick": "Split-S",
+   "difficulty": "Beginner",
+   "points": 100,
+   "explanation": "Begin by flying over an object, perform a 180\u00b0 roll, then dive down the back of the object. Gradually pitch back, apply throttle to level out, and complete the trick by passing under the object."
+  },
+  {
+   "n": 48,
+   "category": "SplitS",
+   "trick": "540 Split S",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "Execute a 540\u00b0 roll, or 1.5 full rotations, and then dive down the back of the object. Gradually pitch back, apply throttle to level out, and complete the trick by passing under the object."
+  },
+  {
+   "n": 49,
+   "category": "SplitS",
+   "trick": "Split-Back",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Begin by flying over an object and performing a 180\u00b0 roll as you pass over it. Immediately execute a backflip, and then gradually pitch back while applying throttle, and fly under the object to finish the trick."
+  },
+  {
+   "n": 50,
+   "category": "SplitS",
+   "trick": "Split Yaw",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Begin by flying forward towards an object and perform a Split S as you fly over it. While descending, incorporate a 180\u00b0 yaw spin and conclude the trick by smoothly transitioning into backward flight, passing beneath the object you were approaching."
+  },
+  {
+   "n": 51,
+   "category": "SplitS",
+   "trick": "Split Stall Matty Rewind",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "Approach an object, perform a 180\u00b0 roll, and slightly pitch back to orient yourself looking down upon reaching the object. then quickly add throttle to stall, and smoothly rewind into a Matty flip to finish under the object."
+  },
+  {
+   "n": 52,
+   "category": "Pole Dancing",
+   "trick": "Orbit x2",
+   "difficulty": "Beginner",
+   "points": 75,
+   "explanation": "To perform this trick, first, fly towards a pole-like object. As you approach it, execute a yaw spin while passing by the object. Then, transition into a circular flight path around the object. Your objective is to keep the object centered on your screen for two complete rotations or orbits. You'll achieve this by coordinating a balance of yaw, roll, and pitch."
+  },
+  {
+   "n": 53,
+   "category": "Pole Dancing",
+   "trick": "Cradle",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Start by flying past an object, then pitch backward to track and ensure it remains in your view. As you pick up backward momentum, level out by pitching forward again and continue flying backward until you have completely cleared the object, ensuring that you keep it in view at all times."
+  },
+  {
+   "n": 54,
+   "category": "Pole Dancing",
+   "trick": "Side-Lock Rewind",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Start by flying past an object, then roll your aircraft 90\u00b0 towards the object while pitching back to keep it in view. Maintain the pitch back until you reach a stall point, then give a throttle blip to rewind back in the direction you came from. Finally, roll away from the object to level out and continue flying backward or away from it"
+  },
+  {
+   "n": 55,
+   "category": "Pole Dancing",
+   "trick": "Whiplash",
+   "difficulty": "Beginner",
+   "points": 175,
+   "explanation": "Similar to a Cradle, fly towards an object and look back to keep the object in view while simultaneously rolling towards the object and pitching forward until you level out. Keep the object in view at all times."
+  },
+  {
+   "n": 56,
+   "category": "Pole Dancing",
+   "trick": "Pole Dance",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "Fly toward an object, and in one seamless motion, perform two consecutive whiplashes back-to-back."
+  },
+  {
+   "n": 57,
+   "category": "Pole Dancing",
+   "trick": "Trippy Spin x2",
+   "difficulty": "Advanced",
+   "points": 500,
+   "explanation": "Start by performing a Cradle. Once inverted with the object at the top of the screen, execute a coordinated roll and yaw to keep the object at the top of the screen as you orbit around it. If you initiated the Cradle from the right side of the object, roll to the right while yawing to the left, and vice versa when starting from the left side of the object. Keep the object in the top center of the screen as you orbit"
+  },
+  {
+   "n": 58,
+   "category": "Pole Dancing",
+   "trick": "Trippy Switch",
+   "difficulty": "Advanced",
+   "points": 550,
+   "explanation": "Begin with a Trippy Spin. After one inverted orbit, initiate a switch by gradually increasing the roll in the same direction as your current roll, turning slightly away from the object. Then, add a throttle blip and switch the coordination of yaw and roll to the opposite direction. Finish the trick with one more Trippy Spin in the opposite direction to complete the sequence."
+  },
+  {
+   "n": 59,
+   "category": "Pole Dancing",
+   "trick": "Double Rolling Trippy Spin",
+   "difficulty": "Master",
+   "points": 750,
+   "explanation": "Perform a Trippy Spin and execute rolls by incorporating small roll blips while orbiting the object. Apply a bit of throttle every time you're upright during the roll. The goal is to maintain a consistent rolling speed, enabling you to perform nonstop rolls throughout the orbit around the object."
+  },
+  {
+   "n": 60,
+   "category": "Jump Roping",
+   "trick": "Jump Rope",
+   "difficulty": "Beginner",
+   "points": 100,
+   "explanation": "As you approach an object, initiate a 90\u00b0 yaw spin while applying throttle with a slight roll toward the object to fly over it. At the peak of the jump, gradually reduce the throttle and add a small roll in the opposite direction to descend down the other side of the object. Finish the sequence by performing another Jump Rope maneuver."
+  },
+  {
+   "n": 61,
+   "category": "Jump Roping",
+   "trick": "Cinnamon Roll",
+   "difficulty": "Beginner",
+   "points": 175,
+   "explanation": "Fly toward an object and combine a Jump Rope with a slow 360\u00b0 yaw spin. Time it so that you finish the spin as you pass back under the object, completing the jump. Imagine it as if you're orbiting an invisible pole between two elevations."
+  },
+  {
+   "n": 62,
+   "category": "Jump Roping",
+   "trick": "Burrito Roll",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "Begin with one Jump Rope, then, as you initiate the start of another Jump Rope, but before you cross over the object, do a roll in the opposite direction and rewind back down the same side and finished by going under the object."
+  },
+  {
+   "n": 63,
+   "category": "Jump Roping",
+   "trick": "Side Loop",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Approach the object, initiate a 90\u00b0 Yaw spin as you pass beneath it, then gradually increase throttle and roll toward the object to fly over it while inverted. Cut the throttle while maintaining the roll. Gradually reintroduce throttle and level out as you pass back under the object to complete the loop."
+  },
+  {
+   "n": 64,
+   "category": "Jump Roping",
+   "trick": "Double Dutch",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Execute a Jump Rope maneuver and, at the peak of the jump, perform a 360\u00b0 roll in the opposite direction. Conclude the trick by completing the Jump."
+  },
+  {
+   "n": 65,
+   "category": "Rewinds",
+   "trick": "Flip Stall Rewind",
+   "difficulty": "Novice",
+   "points": 275,
+   "explanation": "Start by flying low to the ground as you approach an object. When you're close to it, quickly apply throttle while pitching back, ascending skyward toward the top of the object. Cut the throttle just before reaching the top, then execute a flip as you stall. After the flip, rewind back down and fly backward away from the object to complete the trick."
+  },
+  {
+   "n": 66,
+   "category": "Rewinds",
+   "trick": "360 Stall Rewind",
+   "difficulty": "Novice",
+   "points": 275,
+   "explanation": "Start by flying low to the ground as you approach an object. When you're close to it, quickly apply throttle while pitching back, ascending skyward toward the top of the object. Cut the throttle just before reaching the top, then execute a 360\u00b0 roll as you stall. After the roll, rewind back down and fly backward away from the object to complete the trick."
+  },
+  {
+   "n": 67,
+   "category": "Rewinds",
+   "trick": "Matty Stall Rewind",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "Begin by flying past an object, applying a bit of throttle to ascend halfway up the object. Cut the throttle just before stalling and initiate a segmented front flip. Conclude the trick by executing a Matty motion, flying backward past the same object."
+  },
+  {
+   "n": 68,
+   "category": "Rewinds",
+   "trick": "Half Matty Stall Rewind",
+   "difficulty": "Intermediate",
+   "points": 375,
+   "explanation": "Begin by flying toward an object and execute a 180\u00b0 yaw spin as you pass the object. After clearing the object, add a small amount of throttle and perform a Half Matty to rewind back past the object."
+  },
+  {
+   "n": 69,
+   "category": "Rewinds",
+   "trick": "540 Half Matty Stall Rewind",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "Begin by flying toward an object and execute a 180\u00b0 yaw spin as you pass the object. After clearing the object, add a small amount of throttle and perform a 540 Half Matty to rewind back past the object."
+  },
+  {
+   "n": 70,
+   "category": "Rewinds",
+   "trick": "Stall Rewind",
+   "difficulty": "Beginner",
+   "points": 75,
+   "explanation": "Begin by ascending towards an object standing at least 10ft tall, then cut your throttle to stall just before reaching the object. Descend back down and gradually boost your throttle, retracing your initial path downward. Your flight path should resemble an exponential curve."
+  },
+  {
+   "n": 71,
+   "category": "Wall Tricks",
+   "trick": "Dive",
+   "difficulty": "Beginner",
+   "points": 100,
+   "explanation": "Begin by flying towards an object or building, and increase throttle to gain elevation. Once you've reached your desired height, preferably 40ft or more (12m+), cut the throttle and pitch down to start the dive. Then, pitch back to level out as you approach the ground. The closer you are to an object during the dive, the more visually appealing the trick becomes."
+  },
+  {
+   "n": 72,
+   "category": "Wall Tricks",
+   "trick": "Wall Ride",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Begin by flying towards a wall. As you're just a few inches away from the wall, perform a 90\u00b0 roll away from it, and immediately cut the throttle to glide smoothly alongside the wall. Then, roll to level out and conclude the trick."
+  },
+  {
+   "n": 73,
+   "category": "Wall Tricks",
+   "trick": "Wall Tap",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Begin by flying toward a wall and execute a 90\u00b0 pitch back while simultaneously cutting the throttle. Gently tap the wall, and then perform a 90\u00b0 pitch forward to level out and fly away."
+  },
+  {
+   "n": 74,
+   "category": "Wall Tricks",
+   "trick": "Roll Tap",
+   "difficulty": "Novice",
+   "points": 250,
+   "explanation": "Fly your whoop next to a wall and initiate a 270\u00b0 roll towards the wall, executing a wall tap as you go. Complete the roll to finish the trick."
+  },
+  {
+   "n": 75,
+   "category": "Wall Tricks",
+   "trick": "Loop Tap",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "To begin, fly towards an object at an angle of 45\u00b0 or less. Apply a bit of throttle and simultaneously perform a 90\u00b0 Roll and a 45\u00b0 pitch back, enabling you to execute a Wall tap while facing backward. Immediately follow this with a 180\u00b0 Pitch back and smoothly roll your whoop to fly away from the wall, completing the trick."
+  },
+  {
+   "n": 76,
+   "category": "Wall Tricks",
+   "trick": "Ceiling Tap",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Begin by applying throttle to ascend towards a ceiling. Cut the throttle when you have enough upward momentum to reach the ceiling and execute a 180\u00b0 pitch back to tap the ceiling, then level out to complete the trick."
+  },
+  {
+   "n": 77,
+   "category": "Wall Tricks",
+   "trick": "Reverse Wall Ride",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Approach a wall as if you were preparing for a wall ride. At the beginning of the maneuver, quickly switch directions to face backward by executing either a 180\u00b0 yaw spin or a combination of a 180\u00b0 Roll and a 180\u00b0 Flip. To conclude the trick, smoothly roll toward the wall to level out."
+  },
+  {
+   "n": 78,
+   "category": "Wall Tricks",
+   "trick": "Downtown Tap",
+   "difficulty": "Intermediate",
+   "points": 350,
+   "explanation": "Begin by flying toward an object. As you approach it, execute a simultaneous 180\u00b0 roll and 90\u00b0 pitch back maneuver. This will reorient your whoop so that you're looking downward and away from the object as you tap the object. After executing the tap, smoothly perform a front flip, and then swiftly fly away to conclude the trick."
+  },
+  {
+   "n": 79,
+   "category": "Wall Tricks",
+   "trick": "Maverick Tap Rewind",
+   "difficulty": "Advanced",
+   "points": 500,
+   "explanation": "aka: Bruce Lee. Begin by flying under an object and execute a Maverick Loop. As you're about to reach the object at the top of the loop, pitch down 90\u00b0 so that you tap the object with the bottom of your whoop. Without delay, execute a Matty Flip and rewind back under the object to complete the trick."
+  },
+  {
+   "n": 80,
+   "category": "Wall Tricks",
+   "trick": "Power Switch Tap",
+   "difficulty": "Advanced",
+   "points": 550,
+   "explanation": "aka: Jackie Chan. Start by flying beneath an object and initiate a powerloop. When you reach the peak of the loop, pitch back to look downward and tap the object with the bottom of your whoop. Without delay, perform a Matty flip to rewind back under the object and finish the trick."
+  },
+  {
+   "n": 81,
+   "category": "Gaps",
+   "trick": "Knife Edge",
+   "difficulty": "Beginner",
+   "points": 150,
+   "explanation": "Approach an object or gap that's roughly 2-4 times the size of your whoop. Execute a precise 90\u00b0 roll just before flying through the gap. Then, roll in the opposite direction to level out and successfully finish the trick."
+  },
+  {
+   "n": 82,
+   "category": "Gaps",
+   "trick": "Reverse Knife Edge",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Begin by flying towards an object or gap that's approximately 2-4 times the size of your whoop. Execute a simultaneous 90\u00b0 roll and a 180\u00b0 pitch maneuver before navigating backward through the gap. Finally, roll to level out and successfully finish the trick."
+  },
+  {
+   "n": 83,
+   "category": "Gaps",
+   "trick": "Ninja Star",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "As you approach an object or gap that's roughly 2-3 times the size of your whoop, execute a 90\u00b0 roll immediately followed by a 360\u00b0 yaw spin while passing through the object. To level out and complete the trick, execute another roll."
+  },
+  {
+   "n": 84,
+   "category": "Other Tricks",
+   "trick": "Facepunch",
+   "difficulty": "Beginner",
+   "points": 100,
+   "explanation": "Fly straight into your face! (TWP is not responsible for any injuries caused by this trick)"
+  },
+  {
+   "n": 85,
+   "category": "Other Tricks",
+   "trick": "Slide Disarm",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Begin by flying fast and closely to the ground to gain momentum. Then, disarm the whoop to initiate a slide across the ground or object's surface. Before coming to a complete stop, rearm the whoop and proceed to fly away, successfully completing the trick."
+  },
+  {
+   "n": 86,
+   "category": "Other Tricks",
+   "trick": "Perch",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Land upright on top of an object at least 15ft high, disarm, and then rearm and fly away."
+  },
+  {
+   "n": 87,
+   "category": "Other Tricks",
+   "trick": "Eject Roll",
+   "difficulty": "Novice",
+   "points": 200,
+   "explanation": "Begin by flying towards an object and ascend in front of it. At the peak of your ascent, perform a throttle blip and execute a 180\u00b0 pitch down and perform a 360\u00b0 Roll as you dive back down. Fly away to successfully finish the trick."
+  },
+  {
+   "n": 88,
+   "category": "Other Tricks",
+   "trick": "Blindflip",
+   "difficulty": "Intermediate",
+   "points": 300,
+   "explanation": "Approach an object, and just before reaching it, execute a 180\u00b0 yaw spin and immediately increase throttle and gradually pitch back to initiate a \"blind\" powerloop over the object. Conclude the trick by passing under the object to complete the maneuver."
+  },
+  {
+   "n": 89,
+   "category": "Other Tricks",
+   "trick": "True Barani",
+   "difficulty": "Intermediate",
+   "points": 375,
+   "explanation": "Begin by flying over an object and initiate a juicy flick. Follow it up with a 180\u00b0 inverted yaw spin, and then execute the second half of a powerloop while passing under the object to successfully complete the maneuver."
+  },
+  {
+   "n": 90,
+   "category": "Other Tricks",
+   "trick": "Stellar Eject Roll",
+   "difficulty": "Advanced",
+   "points": 450,
+   "explanation": "To perform this trick, initiate an eject roll and conclude the 360\u00b0 roll with a Matty flip motion. After the flip, fly away backward from the object to complete the maneuver."
+  }
+ ],
+ "buildingBlocks": [
+  {
+   "trick": "1/4 Flip",
+   "points": 25
+  },
+  {
+   "trick": "1/2 Flip",
+   "points": 50
+  },
+  {
+   "trick": "3/4 Flip",
+   "points": 75
+  },
+  {
+   "trick": "1 Flip",
+   "points": 100
+  },
+  {
+   "trick": "1/4 Roll",
+   "points": 25
+  },
+  {
+   "trick": "1/2 Roll",
+   "points": 50
+  },
+  {
+   "trick": "3/4 Roll",
+   "points": 75
+  },
+  {
+   "trick": "1 Roll",
+   "points": 100
+  },
+  {
+   "trick": "1/4 Yaw Spin",
+   "points": 25
+  },
+  {
+   "trick": "1/2 Yaw Spin",
+   "points": 50
+  },
+  {
+   "trick": "3/4 Yaw Spin",
+   "points": 75
+  },
+  {
+   "trick": "1 Yaw Spin",
+   "points": 100
+  },
+  {
+   "trick": "1/4 powerloop",
+   "points": 25
+  },
+  {
+   "trick": "1/2 Power Loop",
+   "points": 100
+  },
+  {
+   "trick": "3/4 Power Loop",
+   "points": 150
+  },
+  {
+   "trick": "1/2 Maverick",
+   "points": 50
+  },
+  {
+   "trick": "Split-S",
+   "points": 100
+  },
+  {
+   "trick": "1/4 Matty Flip",
+   "points": 25
+  },
+  {
+   "trick": "1/2 Matty Flip",
+   "points": 100
+  },
+  {
+   "trick": "1/2 Trippy Spin",
+   "points": 50
+  },
+  {
+   "trick": "1 Trippy Spin",
+   "points": 100
+  },
+  {
+   "trick": "Rewind",
+   "points": 100
+  },
+  {
+   "trick": "Dive",
+   "points": 100
+  },
+  {
+   "trick": "Eject",
+   "points": 100
+  },
+  {
+   "trick": "Juicy Flick",
+   "points": 200
+  },
+  {
+   "trick": "Wall Tap",
+   "points": 150
+  },
+  {
+   "trick": "1/4 Jump Rope",
+   "points": 25
+  },
+  {
+   "trick": "1/2 Jump Rope",
+   "points": 50
+  }
+ ],
+ "backToBackPenalty": [
+  [
+   1.0,
+   1.0
+  ],
+  [
+   2.0,
+   0.5
+  ],
+  [
+   3.0,
+   0.25
+  ],
+  [
+   4.0,
+   0.125
+  ],
+  [
+   5.0,
+   0.0625
+  ],
+  [
+   6.0,
+   0.03125
+  ],
+  [
+   7.0,
+   0.015625
+  ],
+  [
+   8.0,
+   0.0078125
+  ],
+  [
+   9.0,
+   0.00390625
+  ],
+  [
+   10.0,
+   0.001953125
+  ],
+  [
+   11.0,
+   0.0009765625
+  ],
+  [
+   12.0,
+   0.00048828125
+  ],
+  [
+   13.0,
+   0.000244140625
+  ],
+  [
+   14.0,
+   0.0001220703125
+  ],
+  [
+   15.0,
+   6.103515625e-05
+  ],
+  [
+   16.0,
+   3.051757813e-05
+  ],
+  [
+   17.0,
+   1.525878906e-05
+  ],
+  [
+   18.0,
+   7.629394531e-06
+  ],
+  [
+   19.0,
+   3.814697266e-06
+  ],
+  [
+   20.0,
+   1.907348633e-06
+  ],
+  [
+   21.0,
+   9.536743164e-07
+  ],
+  [
+   22.0,
+   4.768371582e-07
+  ],
+  [
+   23.0,
+   2.384185791e-07
+  ],
+  [
+   24.0,
+   1.192092896e-07
+  ],
+  [
+   25.0,
+   5.960464478e-08
+  ],
+  [
+   26.0,
+   2.980232239e-08
+  ],
+  [
+   27.0,
+   1.490116119e-08
+  ],
+  [
+   28.0,
+   7.450580597e-09
+  ],
+  [
+   29.0,
+   3.725290298e-09
+  ],
+  [
+   30.0,
+   1.862645149e-09
+  ],
+  [
+   31.0,
+   9.313225746e-10
+  ],
+  [
+   32.0,
+   4.656612873e-10
+  ],
+  [
+   33.0,
+   2.328306437e-10
+  ],
+  [
+   34.0,
+   1.164153218e-10
+  ],
+  [
+   35.0,
+   0
+  ],
+  [
+   36.0,
+   0
+  ],
+  [
+   37.0,
+   0
+  ],
+  [
+   38.0,
+   0
+  ],
+  [
+   39.0,
+   0
+  ],
+  [
+   40.0,
+   0
+  ],
+  [
+   41.0,
+   0
+  ],
+  [
+   42.0,
+   0
+  ],
+  [
+   43.0,
+   0
+  ],
+  [
+   44.0,
+   0
+  ],
+  [
+   45.0,
+   0
+  ],
+  [
+   46.0,
+   0
+  ],
+  [
+   47.0,
+   0
+  ],
+  [
+   48.0,
+   0
+  ],
+  [
+   49.0,
+   0
+  ],
+  [
+   50.0,
+   0
+  ],
+  [
+   51.0,
+   0
+  ]
+ ],
+ "repeatTrickPenalty": [
+  [
+   0.0,
+   1.0
+  ],
+  [
+   1.0,
+   0.75
+  ],
+  [
+   2.0,
+   0.5
+  ],
+  [
+   3.0,
+   0.0
+  ],
+  [
+   4.0,
+   0.0
+  ],
+  [
+   5.0,
+   0.0
+  ],
+  [
+   6.0,
+   0.0
+  ],
+  [
+   7.0,
+   0.0
+  ],
+  [
+   8.0,
+   0.0
+  ],
+  [
+   9.0,
+   0.0
+  ],
+  [
+   10.0,
+   0.0
+  ],
+  [
+   11.0,
+   0.0
+  ],
+  [
+   12.0,
+   0.0
+  ],
+  [
+   13.0,
+   0.0
+  ],
+  [
+   14.0,
+   0.0
+  ],
+  [
+   15.0,
+   0.0
+  ],
+  [
+   16.0,
+   0.0
+  ],
+  [
+   17.0,
+   0.0
+  ],
+  [
+   18.0,
+   0.0
+  ],
+  [
+   19.0,
+   0.0
+  ],
+  [
+   20.0,
+   0.0
+  ],
+  [
+   21.0,
+   0.0
+  ],
+  [
+   22.0,
+   0.0
+  ],
+  [
+   23.0,
+   0.0
+  ],
+  [
+   24.0,
+   0.0
+  ],
+  [
+   25.0,
+   0.0
+  ],
+  [
+   26.0,
+   0.0
+  ],
+  [
+   27.0,
+   0.0
+  ],
+  [
+   28.0,
+   0.0
+  ],
+  [
+   29.0,
+   0.0
+  ],
+  [
+   30.0,
+   0.0
+  ],
+  [
+   31.0,
+   0.0
+  ],
+  [
+   32.0,
+   0.0
+  ],
+  [
+   33.0,
+   0.0
+  ],
+  [
+   34.0,
+   0.0
+  ],
+  [
+   35.0,
+   0.0
+  ],
+  [
+   36.0,
+   0.0
+  ],
+  [
+   37.0,
+   0.0
+  ],
+  [
+   38.0,
+   0.0
+  ],
+  [
+   39.0,
+   0.0
+  ],
+  [
+   40.0,
+   0.0
+  ],
+  [
+   41.0,
+   0.0
+  ],
+  [
+   42.0,
+   0.0
+  ],
+  [
+   43.0,
+   0.0
+  ],
+  [
+   44.0,
+   0.0
+  ],
+  [
+   45.0,
+   0.0
+  ],
+  [
+   46.0,
+   0.0
+  ],
+  [
+   47.0,
+   0.0
+  ],
+  [
+   48.0,
+   0.0
+  ],
+  [
+   49.0,
+   0.0
+  ],
+  [
+   50.0,
+   0.0
+  ]
+ ],
+ "repeatObstaclePenalty": [
+  [
+   0.0,
+   1.0
+  ],
+  [
+   1.0,
+   1.0
+  ],
+  [
+   2.0,
+   1.0
+  ],
+  [
+   3.0,
+   1.0
+  ],
+  [
+   4.0,
+   0.66
+  ],
+  [
+   5.0,
+   0.33
+  ],
+  [
+   6.0,
+   0.0
+  ],
+  [
+   7.0,
+   0.0
+  ],
+  [
+   8.0,
+   0.0
+  ],
+  [
+   9.0,
+   0.0
+  ],
+  [
+   10.0,
+   0.0
+  ],
+  [
+   11.0,
+   0.0
+  ],
+  [
+   12.0,
+   0.0
+  ],
+  [
+   13.0,
+   0.0
+  ],
+  [
+   14.0,
+   0.0
+  ],
+  [
+   15.0,
+   0.0
+  ],
+  [
+   16.0,
+   0.0
+  ],
+  [
+   17.0,
+   0.0
+  ],
+  [
+   18.0,
+   0.0
+  ],
+  [
+   19.0,
+   0.0
+  ],
+  [
+   20.0,
+   0.0
+  ],
+  [
+   21.0,
+   0.0
+  ],
+  [
+   22.0,
+   0.0
+  ],
+  [
+   23.0,
+   0.0
+  ],
+  [
+   24.0,
+   0.0
+  ],
+  [
+   25.0,
+   0.0
+  ],
+  [
+   26.0,
+   0.0
+  ],
+  [
+   27.0,
+   0.0
+  ],
+  [
+   28.0,
+   0.0
+  ],
+  [
+   29.0,
+   0.0
+  ],
+  [
+   30.0,
+   0.0
+  ],
+  [
+   31.0,
+   0.0
+  ],
+  [
+   32.0,
+   0.0
+  ],
+  [
+   33.0,
+   0.0
+  ],
+  [
+   34.0,
+   0.0
+  ],
+  [
+   35.0,
+   0.0
+  ],
+  [
+   36.0,
+   0.0
+  ],
+  [
+   37.0,
+   0.0
+  ],
+  [
+   38.0,
+   0.0
+  ],
+  [
+   39.0,
+   0.0
+  ],
+  [
+   40.0,
+   0.0
+  ],
+  [
+   41.0,
+   0.0
+  ],
+  [
+   42.0,
+   0.0
+  ],
+  [
+   43.0,
+   0.0
+  ],
+  [
+   44.0,
+   0.0
+  ],
+  [
+   45.0,
+   0.0
+  ],
+  [
+   46.0,
+   0.0
+  ],
+  [
+   47.0,
+   0.0
+  ],
+  [
+   48.0,
+   0.0
+  ],
+  [
+   49.0,
+   0.0
+  ],
+  [
+   50.0,
+   0.0
+  ]
+ ],
+ "obstacleBonus": [
+  {
+   "uniqueObstacles": 0.0,
+   "switches": 0.0,
+   "multiplier": 1.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 3.0,
+   "multiplier": 1.05
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 6.0,
+   "multiplier": 1.1
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 9.0,
+   "multiplier": 1.2
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 12.0,
+   "multiplier": 1.35
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 15.0,
+   "multiplier": 1.5
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 18.0,
+   "multiplier": 1.7
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 21.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 22.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 23.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 24.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 25.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 26.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 27.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 28.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 29.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 30.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 31.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 32.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 33.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 34.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 35.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 36.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 37.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 38.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 39.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 40.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 41.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 42.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 43.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 44.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 45.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 46.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 47.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 48.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 49.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 50.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 51.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 52.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 53.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 54.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 55.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 56.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 57.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 58.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 59.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 60.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 61.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 62.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 63.0,
+   "multiplier": 2.0
+  },
+  {
+   "uniqueObstacles": 1.0,
+   "switches": 64.0,
+   "multiplier": 2.0
+  }
+ ],
+ "trickExecution": [
+  {
+   "execution": "CLEAN",
+   "pointAdj": 1.0,
+   "streakNote": null,
+   "explanation": null
+  },
+  {
+   "execution": "SLOPPY",
+   "pointAdj": 0.65,
+   "streakNote": "Reduces Trick Score -35%",
+   "explanation": "Lack CLM, too segmented, etc."
+  },
+  {
+   "execution": "MISSED",
+   "pointAdj": 0.0,
+   "streakNote": "0% Trick, Stalls Streak",
+   "explanation": "Gate or step missed in completing a trick and does not result in accidental completion of another trick (if so, input the accidental executed trick)"
+  },
+  {
+   "execution": "BUMP",
+   "pointAdj": 0.5,
+   "streakNote": "Reduces Streak -50%",
+   "explanation": "Complete trick, but tapped a gate, wall, or ground without disarming.  If a bump occurs while failing to complete a trick, input as \"Trick: between tricks\", \"Execution: Bump\""
+  },
+  {
+   "execution": "CRASH",
+   "pointAdj": 0.0,
+   "streakNote": "Kills Streak -100%",
+   "explanation": "Incomplete trick or crash and disarm"
+  },
+  {
+   "execution": "CLEAN",
+   "pointAdj": 1.0,
+   "streakNote": null,
+   "explanation": null
+  },
+  {
+   "execution": "BUMP",
+   "pointAdj": 0.5,
+   "streakNote": "Reduces Streak by 50%",
+   "explanation": null
+  },
+  {
+   "execution": "GROUND TAP",
+   "pointAdj": 0.5,
+   "streakNote": "Reduces Streak by 50%",
+   "explanation": null
+  },
+  {
+   "execution": "FAIL",
+   "pointAdj": 0.0,
+   "streakNote": "Kills Streak",
+   "explanation": null
+  },
+  {
+   "execution": "SLOPPY",
+   "pointAdj": 0.65,
+   "streakNote": "Trick Point Reduction",
+   "explanation": null
+  },
+  {
+   "execution": "MISSED TARGET",
+   "pointAdj": null,
+   "streakNote": null,
+   "explanation": null
+  }
+ ],
+ "trickOfWeekMultiplier": [
+  [
+   0.0,
+   1.0
+  ],
+  [
+   1.0,
+   2.0
+  ],
+  [
+   2.0,
+   1.5
+  ],
+  [
+   3.0,
+   1.0
+  ],
+  [
+   4.0,
+   0.0
+  ],
+  [
+   5.0,
+   0.0
+  ],
+  [
+   6.0,
+   0.0
+  ],
+  [
+   7.0,
+   0.0
+  ],
+  [
+   8.0,
+   0.0
+  ],
+  [
+   9.0,
+   0.0
+  ],
+  [
+   10.0,
+   0.0
+  ],
+  [
+   11.0,
+   0.0
+  ],
+  [
+   12.0,
+   0.0
+  ],
+  [
+   13.0,
+   0.0
+  ],
+  [
+   14.0,
+   0.0
+  ],
+  [
+   15.0,
+   0.0
+  ],
+  [
+   16.0,
+   0.0
+  ],
+  [
+   17.0,
+   0.0
+  ],
+  [
+   18.0,
+   0.0
+  ],
+  [
+   19.0,
+   0.0
+  ],
+  [
+   20.0,
+   0.0
+  ],
+  [
+   21.0,
+   0.0
+  ],
+  [
+   22.0,
+   0.0
+  ],
+  [
+   23.0,
+   0.0
+  ],
+  [
+   24.0,
+   0.0
+  ],
+  [
+   25.0,
+   0.0
+  ],
+  [
+   26.0,
+   0.0
+  ],
+  [
+   27.0,
+   0.0
+  ],
+  [
+   28.0,
+   0.0
+  ],
+  [
+   29.0,
+   0.0
+  ],
+  [
+   30.0,
+   0.0
+  ],
+  [
+   31.0,
+   0.0
+  ],
+  [
+   32.0,
+   0.0
+  ],
+  [
+   33.0,
+   0.0
+  ],
+  [
+   34.0,
+   0.0
+  ],
+  [
+   35.0,
+   0.0
+  ],
+  [
+   36.0,
+   0.0
+  ],
+  [
+   37.0,
+   0.0
+  ],
+  [
+   38.0,
+   0.0
+  ],
+  [
+   39.0,
+   0.0
+  ],
+  [
+   40.0,
+   0.0
+  ],
+  [
+   41.0,
+   0.0
+  ],
+  [
+   42.0,
+   0.0
+  ],
+  [
+   43.0,
+   0.0
+  ],
+  [
+   44.0,
+   0.0
+  ],
+  [
+   45.0,
+   0.0
+  ],
+  [
+   46.0,
+   0.0
+  ],
+  [
+   47.0,
+   0.0
+  ],
+  [
+   48.0,
+   0.0
+  ],
+  [
+   49.0,
+   0.0
+  ],
+  [
+   50.0,
+   0.0
+  ]
+ ],
+ "kwad": {
+  "bonusPerTrick": 250.0,
+  "completedBonus": 2000.0
+ }
+}

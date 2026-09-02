@@ -61,13 +61,16 @@ import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.j
 import { Race } from './game/race.js';
 import { TrickDetector } from './game/trickdetect.js';
 import { deriveObstacles, OB_BAR, OB_POLE } from './game/obstacles.js';
-import { FreestyleScore } from './game/score.js';
+import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
-import { adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument, fetchTrackTimes, postTime } from './share/board.js';
+import {
+  adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
+  fetchTrackTimes, postFreestyleRun, postTime,
+} from './share/board.js';
 import { hasFlyableTrack, inspectCourse, publishCurrentCourse, pushOwnedListing, seatedCourseKey, suggestRemixName, syncOwnedIdentity } from './share/listing.js';
 import { nameRules, readPilotName, writePilotName } from './share/pilot.js';
 import {
@@ -1684,6 +1687,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * frame. Starts level. */
   let vHalfFrame = craftVerticalHalf(0);
   let airtimeMs = 0;
+  /* The freestyle run's clock, as the OSD reads it. Written once a frame
+   * from score.view() just above setOsd, so the readout is this frame's
+   * rather than the previous one's. */
+  let scoreState = 'ready';
+  let scoreRemainMs = 0;
   let fps = 0;
   let camTilt = ui.settings.cameraAngle;
   let runVoltage = ui.settings.packVoltage;
@@ -2302,6 +2310,10 @@ export async function boot({ loading, bootStart, mapId }) {
     let steps = Math.floor(acc / MS_PER_STEP);
     acc -= steps * MS_PER_STEP;
     simTimeMs += steps * MS_PER_STEP;
+    /* Upside down waiting to be turtled over is time passing, and the
+     * recogniser has to agree with the sim clock about how much. See
+     * TrickDetector.idle. */
+    trickDetector.idle(steps * MS_PER_STEP);
     adoptSimClock();
     if (turtleResumeGate) {
       /* Touch overlay is hidden on pause, so poll falls through to
@@ -3314,6 +3326,69 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /*
+   * Put the finished freestyle run on the board.
+   *
+   * Deliberately UNLIKE submitBoardTime in one place: an arcade run is
+   * posted, and labelled. A lap flown on the arcade model is a different
+   * aircraft on the same track and mixing the two into one ranking makes
+   * the ranking meaningless, which is why arcade laps stay off. A freestyle
+   * run is not ranked against a track: the board carries the model on every
+   * row and gives a reader a filter, so an arcade run can be on the board
+   * and be honestly what it is. Refusing it instead would mean a pilot who
+   * flies the friendlier machine has no board at all.
+   */
+  async function submitFreestyleRun() {
+    const summary = score.summary();
+    if (!summary.tricks || !(summary.total > 0)) {
+      notice = { text: 'A run with no tricks in it is not a score.', untilMs: performance.now() + 2800 };
+      return;
+    }
+    /*
+     * The harness can land a named trick straight into the scorer, which is
+     * the only way to photograph this overlay. A run that used it is not a
+     * flown run and must not reach a public table as if it were.
+     */
+    if (summary.assisted) {
+      notice = { text: 'That run used the harness hooks, so it is not a flown score.', untilMs: performance.now() + 3200 };
+      return;
+    }
+    let name = readPilotName();
+    if (!name) {
+      name = await ui.askName({
+        title: 'Your name',
+        detail: 'A run on the public board needs a name. It stays in this browser.',
+      });
+    }
+    if (!name) {
+      return;
+    }
+    try {
+      const posted = await postFreestyleRun({
+        name,
+        map: view.id,
+        style: runStyle === 'arcade' ? 'arcade' : 'expert',
+        summary,
+      });
+      /* The board keeps one run per pilot and only their best, so a worse
+       * run is a 200 with improved false rather than an error. Saying
+       * "posted" for a score that is not up there would be a lie the pilot
+       * would only find by opening the board. */
+      notice = posted.improved === false
+        ? {
+          text: `Your ${formatScore(posted.score)} still stands. Only your best run is kept.`,
+          untilMs: performance.now() + 3600,
+        }
+        : {
+          text: `Posted ${name}, ${formatScore(summary.total)}.${posted.rank != null ? ` Rank ${posted.rank}.` : ''}`,
+          untilMs: performance.now() + 3600,
+        };
+      ui.markRunPosted(posted);
+    } catch (e) {
+      notice = { text: `Could not post that run.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };
+    }
+  }
+
   async function submitCoursePublish() {
     const listing = inspectCourse();
     if (!listing || !listing.doc) {
@@ -3696,6 +3771,8 @@ export async function boot({ loading, bootStart, mapId }) {
       })();
     } else if (action === 'posttime') {
       submitBoardTime();
+    } else if (action === 'postrun') {
+      submitFreestyleRun();
     } else if (action === 'publishcourse') {
       submitCoursePublish();
     }
@@ -5089,6 +5166,21 @@ export async function boot({ loading, bootStart, mapId }) {
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
       simTimeMs += steps * MS_PER_STEP;
+      /*
+       * THE TWO CLOCKS HAVE TO STAY LEVEL.
+       *
+       * simTimeMs advances here and the recogniser is not stepped, because
+       * a quad sitting on the grass must not score a Yaw Spin off the gyro
+       * noise. But the SCORER is ticked on simTimeMs and measures its combo
+       * window from a trick's endMs, which is on the recogniser's clock, so
+       * letting the two drift apart meant that after three seconds on the
+       * ground every combo banked on the very next tick at a multiplier of
+       * one. Every run starts landed, so every run started with them apart.
+       *
+       * idle() advances the clock and the stall counter and reads no motion
+       * at all, which is the truth about a craft that is not moving.
+       */
+      trickDetector.idle(steps * MS_PER_STEP);
       adoptSimClock();
       statePrev = stateCurr;
     }
@@ -5815,11 +5907,58 @@ export async function boot({ loading, bootStart, mapId }) {
        * overbridge. A pilot reading "3 m" over a roof they are about to land
        * on needs it to mean three metres over that roof.
        */
+      /*
+       * The score, on the SIM clock. Ticking it on the wall clock would
+       * bank a combo through a stall in the render loop and would make the
+       * combo window shorter on a slow machine, which is exactly the class
+       * of frame-rate dependence CLAUDE.md keeps out of the game.
+       */
+      if (view.mode === 'freestyle') {
+        const wasOver = score.over();
+        score.tick(simTimeMs);
+        const scoreView = score.view();
+        scoreState = scoreView.state;
+        scoreRemainMs = scoreView.remainMs;
+        ui.setScore(scoreView);
+        ui.scoreEvents(score.drainEvents());
+        /*
+         * THE HORN.
+         *
+         * A freestyle run is two minutes and it now ENDS, which is the whole
+         * reason a freestyle score can be posted at all: before this the
+         * total climbed from the moment the world loaded until something
+         * reset it, so the top of any board would have been whoever left the
+         * tab open longest.
+         *
+         * It goes to the same results screen a race ends on. The screen
+         * already knew a freestyle run has no lap and no track to publish;
+         * it now knows what a run IS, and carries a row to post it.
+         *
+         * Read off score.over() rather than off the drained event, because
+         * the events are the HUD's and draining them here to look for one
+         * would take it off the overlay that is meant to show it.
+         */
+        if (!wasOver && score.over()) {
+          mode = 'results';
+          setCrashflip(false);
+          turtleRecover = false;
+          turtleOnSupport = false;
+          setTurtleParkMotors(false);
+          poseLock = false;
+          ui.showFreestyleResults(score.summary());
+        }
+      }
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
         mode: view.mode,
         lapMs: race.freestyle ? airtimeMs : race.currentLapMs(simNow),
+        /* The freestyle clock is the RUN's, counting down, and it is the
+         * only clock on the screen: see setOsd. Read straight off the
+         * scorer, which is the thing that decides when the run ends, rather
+         * than off a second copy that could disagree with it. */
+        runState: scoreState,
+        runRemainMs: scoreRemainMs,
         gate: race.next + 1,
         gateCount: race.gates.length,
         gateCue: nextGt && nextGt.cue ? nextGt.cue : '',
@@ -5850,17 +5989,6 @@ export async function boot({ loading, bootStart, mapId }) {
         ghostGapMs: ghostGap && nowWall < ghostGap.untilWall ? ghostGap.deltaMs : null,
         ghostFinal: Boolean(ghostGap && ghostGap.final),
       });
-      /*
-       * The score, on the SIM clock. Ticking it on the wall clock would
-       * bank a combo through a stall in the render loop and would make the
-       * combo window shorter on a slow machine, which is exactly the class
-       * of frame-rate dependence CLAUDE.md keeps out of the game.
-       */
-      if (view.mode === 'freestyle') {
-        score.tick(simTimeMs);
-        ui.setScore(score.view());
-        ui.scoreEvents(score.drainEvents());
-      }
       const ch = input.channels;
       const vis = turtleAxes(ch.roll, ch.pitch);
       ui.setStickOverlay({
@@ -5983,10 +6111,10 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (!flownThisRun) {
       ui.setBanner(ui.settings.launchControl
         ? (race.freestyle
-          ? 'L for launch control, or throttle up\nNo gates, no clock. Go and find a line.'
+          ? 'L for launch control, or throttle up\nTwo minutes. The clock starts on your first trick.'
           : 'L for launch control, or throttle up\nThe green gate starts your lap')
         : (race.freestyle
-          ? 'Throttle up to take off\nNo gates, no clock. Go and find a line.'
+          ? 'Throttle up to take off\nTwo minutes. The clock starts on your first trick.'
           : 'Throttle up to take off\nThe green gate starts your lap'));
     } else if (guidedText) {
       ui.setBanner(guidedText);
@@ -6289,8 +6417,29 @@ export async function boot({ loading, bootStart, mapId }) {
     : null);
   window.__scoreTrick = (name, execution) => {
     score.tick(simTimeMs);
-    const r = score.land({ name, execution: execution || 'CLEAN', endMs: simTimeMs });
-    return { name: r.name, net: Math.round(r.net), combo: score.view().combo };
+    /*
+     * MARKED, because this is not flying.
+     *
+     * The run summary carries the flag out to the results screen and the
+     * post path refuses it there, so a screenshot rig cannot put a
+     * fabricated score on a public table. It is on the TRICK rather than
+     * on the scorer so that score.js needs no knowledge of a harness: it
+     * simply records that something it was handed said it was staged.
+     */
+    const r = score.land({
+      name, execution: execution || 'CLEAN', endMs: simTimeMs, assisted: true,
+    });
+    return r && { name: r.name, net: Math.round(r.net), combo: score.view().combo };
+  };
+  /* The horn, staged, for the same reason the bail is: a real one is two
+   * minutes of flying that a headless browser on a software rasteriser
+   * cannot be asked for. Same path as the real one, no mock. */
+  window.__scoreFinish = () => {
+    score.finish();
+    const summary = score.summary();
+    mode = 'results';
+    ui.showFreestyleResults(summary);
+    return summary;
   };
   /* The bail, staged. There is no other way to photograph the one screen
    * that matters most in this mode: a real bail needs a real crash, and a

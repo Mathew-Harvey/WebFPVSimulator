@@ -213,6 +213,12 @@
         font-size: clamp(26px, 3.4vw, 40px); font-weight: 700;
         line-height: 1; letter-spacing: 0.01em; color: var(--cream);
       }
+      /* THE LAST TEN SECONDS of a freestyle run, on the OSD's own clock.
+         Amber rather than red because nothing has gone wrong: the run is
+         ending, and this is the window a pilot spends deciding whether to
+         try the big line. It is the only thing on the flight overlay that
+         changes colour without something having happened. */
+      .osd-timer.is-late { color: var(--amber); }
       /* The name stack sits directly ON TOP OF the combo line and grows
          UPWARD, which is the Tony Hawk arrangement and not a stylistic
          choice: the newest trick has to be adjacent to the number it just

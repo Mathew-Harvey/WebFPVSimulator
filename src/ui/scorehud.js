@@ -78,6 +78,7 @@ const NAME_STACK_MAX = 6;
  * a fast chain does not become a wall of text. Must match the CSS. */
 const NAME_LIFE_MS = 2200;
 
+
 export class ScoreHud {
   constructor(root) {
     this.root = el('div', 'score-hud is-off');
@@ -86,6 +87,17 @@ export class ScoreHud {
     this.totalBox.append(el('div', 'score-label', 'Score'));
     this.totalValue = el('div', 'score-value score-cut', '0');
     this.totalBox.append(this.totalValue);
+    /*
+     * NO CLOCK HERE, deliberately.
+     *
+     * A run is two minutes now and it needs a clock, and this looked like
+     * the place for one: it is where the score is. It is not. Freestyle
+     * already draws a clock in the OSD's top centre slot, where the lap
+     * clock lives and where a pilot's eye already goes for one, and a
+     * second clock beside the score is two answers to the same question.
+     * See setOsd in src/ui/ui.js, which counts the run down in that slot
+     * and used to count an airtime up in it.
+     */
 
     /* The trick names, newest at the bottom so the eye does not have to
      * track upward to find the thing that just happened. */
@@ -156,6 +168,7 @@ export class ScoreHud {
       this.shownTotal = view.total;
       this.totalValue.textContent = formatScore(view.total);
     }
+
     const c = view.combo;
     if (!c) {
       if (this.comboBox.className !== 'score-combo is-off') {

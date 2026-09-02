@@ -475,6 +475,58 @@ export async function publishTrack({
   return readJson(res);
 }
 
+/*
+ * Put a finished freestyle run on the board.
+ *
+ * The board keeps ONE row per pilot per map and only their best, so posting
+ * a worse run is not an error: it answers 200 with `improved: false` and the
+ * standing row, and the caller tells the pilot they did not beat themselves
+ * rather than congratulating them on a score that is not up there. A better
+ * run answers 201.
+ *
+ * Nothing here is verified by the board and nothing should pretend it is:
+ * the board would have to be a second copy of the recogniser and the
+ * catalogue to recompute a score, and it deliberately imports neither. It
+ * bounds the claim instead. See inspectRun in the board's src/validate.js.
+ */
+export async function postFreestyleRun({ name, map, style, summary, origin }) {
+  const board = trimOrigin(origin || boardOrigin());
+  const res = await fetch(`${board}/api/runs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      map,
+      style,
+      score: summary.total,
+      durationMs: summary.durationMs,
+      tricks: summary.tricks,
+      unique: summary.unique,
+      bestCombo: summary.bestCombo,
+      bestTrick: summary.bestTrick,
+      crashes: summary.crashes,
+      signature: summary.signature,
+    }),
+  });
+  return readJson(res);
+}
+
+/* The freestyle board, best first. Same standing as fetchTrackList: a board
+ * that is down means an empty list, never a broken menu. */
+export async function fetchFreestyleRuns(map, origin = boardOrigin()) {
+  const board = trimOrigin(origin);
+  const res = await boardGet(`${board}/api/runs${map ? `?map=${encodeURIComponent(map)}` : ''}`);
+  const body = await readJson(res);
+  const runs = body && Array.isArray(body.runs) ? body.runs : [];
+  return runs.map((r) => ({
+    name: String(r.name || ''),
+    score: Number(r.score) || 0,
+    style: String(r.style || ''),
+    tricks: Number(r.tricks) || 0,
+    signature: String(r.signature || ''),
+  })).filter((r) => r.name && r.score > 0);
+}
+
 export async function postTime({ trackId, name, lapMs, ghost, origin }) {
   const board = trimOrigin(origin || boardOrigin());
   const res = await fetch(`${board}/api/tracks/${encodeURIComponent(trackId)}/times`, {

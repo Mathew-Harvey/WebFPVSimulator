@@ -25454,3 +25454,192 @@ Chromium through the whole shell, CLAUDE.md reserves it for physics, plant,
 ABI and build changes, and none of this touches any of those. The shell wiring
 that follows in the next entry is the part that will want a look at the real
 page.
+
+
+## 2026-09-02, the run, the board, the tags, and the picker that asked nothing
+
+The second half of the same request. The first entry covered the recogniser
+and the scorer; this is the shell, the public board, and the two smaller asks.
+
+### A freestyle run is two minutes and it ends
+
+`score.finish()` was dead code and there was no run, so the total climbed from
+the moment the world loaded until something reset it. The top of any board
+would have been whoever left the tab open longest. A run is now two minutes of
+SIMULATED time, the length of a real freestyle heat, and the clock starts on
+the first trick rather than on the spawn so a pilot who wants to look around
+first is not spending their run to do it.
+
+At the horn the shell goes to the same results screen a race ends on. That
+screen already knew a freestyle run has no lap and no track to publish; it now
+knows what a run IS. The headline is the score, the meta line is what made it
+up, and the rows are the run's own tally biggest earner first, which is the one
+sentence a freestyle scorer can say that a pilot cares about. Six rows, not
+ten, because the menu stands over the bottom of that screen and a seventh was
+drawn underneath it; the note says how many are not shown.
+
+### One clock, not two
+
+The run clock went in the score HUD first, under the total. That was wrong and
+looking at the real screen is what showed it: freestyle already draws a clock
+in the OSD's top centre slot, counting an AIRTIME up, and a run counting down
+beside the score is two answers to the same question. The OSD's slot is where a
+pilot's eye already goes for a clock, so the run went there and the airtime
+came out. The last ten seconds are amber, which is the only thing on the flight
+overlay that changes colour without something having happened, and it earns
+that: those ten seconds are the window a pilot spends deciding whether to try
+the big line.
+
+Three pieces of copy were left promising "no clock": the title chip, the gate
+card's facts, and the takeoff hint. All three were true until today.
+
+### Posting a run, and what the board can honestly say about it
+
+`POST /api/runs`, with the bug route's flood gate copied onto it including the
+two halves rule so an invalid post does not spend the allowance. It is the
+board's first public write with no owner and no edit key, and what actually
+stops it being used to fill a table is not the gate: a pilot holds ONE row per
+map, replaced only by a better run, matched case insensitively. A leaderboard
+is a list of who is good, not a log of who pressed the button.
+
+The board cannot recompute a score. Doing that would mean importing the
+recogniser, the catalogue and the plant into a service that deliberately
+imports none of them. So `inspectRun` bounds the claim and checks it against
+itself, exactly as `inspectGhost` does for a recorded lap: a run that says it
+landed four tricks and scored a billion is refused, not because the board knows
+what those four tricks were, but because no four tricks can be worth that under
+a rule the board can state in one line. `maxPlausibleScore` is derived rather
+than picked: the dearest trick is 850, the streak reaches at most 1 + n*0.085
+after n tricks, the combo multiplier caps at twelve, and nothing else in the
+scorer multiplies. Every real run measured while this was written came in three
+orders of magnitude under it. Nothing in the code or the copy says a score was
+verified, because none of them are.
+
+ARCADE RUNS ARE POSTED, and this is deliberately unlike the racing board,
+which refuses them. A lap flown on the arcade model is a different aircraft on
+the same track and mixing the two into one ranking makes the ranking
+meaningless. A freestyle run is not ranked against a track: the board carries
+the model on every row and gives a reader a filter, so an arcade run can be on
+the board and be honestly what it is. Refusing it would mean a pilot who flies
+the friendlier machine has no board at all.
+
+A run that used `window.__scoreTrick` is marked `assisted` on the trick, the
+scorer records it, the summary carries it out, and both the results row and the
+post path refuse it. A screenshot rig must not be able to put a fabricated
+score on a public table.
+
+### Two boards on one page
+
+A lap and a freestyle run share a pilot and nothing else. They are two plates
+under the masthead, each carrying its own accent: mint is a lap record, amber
+is a score, and a reader knows which board they are on before they have read a
+word. Amber was the one colour in the palette nothing on that page had claimed,
+and it happens to be the colour of a phosphor display, which is the whole trick
+behind the arcade table.
+
+The freestyle table is an `ol` and not a `table`, because the bare `table`,
+`th` and `td` rules on that page are global and would have put sakura headers
+and a mint first place on the one board whose point is that it is neither.
+Rank, name, a dot leader, a score, fixed pitch and upper case, on a ground
+carrying a two pixel scanline gradient UNDER the type rather than over it, so
+nothing is harder to read than it would be without it. The second line of each
+row is prose in the page's own voice, because "31 tricks, best chain 9,100" is
+a sentence about a run and not a readout, and putting it in the cabinet's face
+too would make the row shout twice.
+
+The view lives in `?view=` and not in the hash. `route()` owns the hash and
+`clearHash()` wipes it whole, so a `#freestyle` tab would be thrown away by
+Escape and by the sheet's Close button. It is bound BEFORE the first fetch,
+because `start()` returns early on an empty board and an empty board is the one
+a new feature launches on.
+
+### Tags, and where they had to go
+
+Nine of them, a closed vocabulary, offered as toggles in the publish dialog.
+Free text would have given the board "race", "racing", "Race Track" and
+"racetrack" as four tags and no filter at all.
+
+They travel in the publish ENVELOPE beside the author, never inside the
+document, and that is what makes this a small change rather than a deploy
+dance. Inside the document they would need a `schemaVersion` bump, which needs
+DEPLOY.md's rule that the board ships before the simulator, which means a
+simulator deployed first publishes tracks the board refuses with a message
+about a version number rather than about anything the author did. They would
+also have to be kept out of `layoutHash` by hand, and `layoutHash` getting that
+wrong silently clears every republished track's posted times. In the envelope
+none of that is true: an old builder sends none and gets an empty list, a new
+builder sends tags to an old board and they are ignored, and nobody's lap times
+move. The board's own selftest pins it: retagging a track keeps its times.
+
+The board refuses an unknown tag rather than dropping it, because a builder
+that offered one and a board that ignored it would disagree silently and the
+author would never learn their tag did not stick. The bind remembers what was
+last published, so a second publish pre-ticks rather than untagging.
+
+The filter is AND and not OR: a reader who ticks two boxes wants a track that
+is both, and OR would hand back MORE results than one box alone, which reads as
+the filter not working. Counts are measured against what the other filters
+leave standing, so a tag that would lead nowhere is greyed rather than hidden,
+and the empty state names WHICH filter emptied the list, because there are
+three of them now.
+
+### The picker that asked a question with one answer
+
+Answering Freestyle opened a room whose only content was one card naming the
+only place the pilot could possibly be going. Three of the four freestyle
+worlds went on 2026-08-30 and the picker stayed. The gate now seats what is
+remembered, or the only world when nothing is, and the picker comes back the
+moment there is a real choice.
+
+The ROOM survives, and that is not sentiment: it is the only place a freestyle
+pilot can reach the physics model row, and `scripts/arcade-check.js` exists
+precisely because that row was once unreachable. `scripts/responsive-check.js`
+also drives it by name. What is left in it is the quad and the physics model,
+so the title's row is labelled for the room rather than for a choice that no
+longer exists, and shell-check's gate assertion learned the new label. What it
+asserts, that the title names the place once and does not re-ask the mode
+question, is unchanged.
+
+### Checks
+
+Run in this turn, all passing: `npm run score:selftest` (189), `npm run
+lint:nouns`, `npm run lint:boot` (9 of 9), `npm run lint:shell`, `npm run
+lint:arcade`, `npm run lint:presets`, `node scripts/board-check.js` against a
+real board, and the LeaderBoard repository's own `npm test`, `npm run
+lint:licence` and `npm run lint:nouns`.
+
+`npm run lint:responsive` failed once with a 1468 ms frame gap in the freestyle
+room and passed on the next run with the same code. It is a wall clock check on
+a container that was also running a headless Chromium and a board server, and
+the gap it reports moves between runs; it is recorded here rather than dressed
+up as clean.
+
+`npm run lint:catalog` cannot run in this container at all: `vendor/betaflight`
+is an uninitialised submodule and the check reads
+`vendor/betaflight/src/main/fc/parameter_names.h`. Nothing in this work touches
+the catalog or the firmware.
+
+`npm run verify` was NOT run. It drives headless Chromium through the whole
+shell, CLAUDE.md reserves it for physics, plant, ABI and build changes, and
+none of this is any of those: the plant, `src/native`, the patches and the
+build are untouched. What was done instead is the real shell, driven through
+`tests/lib/page.js` and `scripts/shots.js`, and the things it proved are worth
+naming because none of them are visible to a unit test:
+
+- answering Freestyle lands on the title with the town seated and no screen in
+  between, and `performance.getEntriesByType` reports ZERO requests under
+  `src/maps/city` before the answer and twenty eight after, so the lazy load
+  contract `tests/lib/checks.js` polices is intact;
+- the run clock counts down in flight and the scorer's `durationMs` advances
+  with it;
+- the horn puts the results screen up with the score, the meta line and the
+  trick rows, and the Post row is correctly disabled with the harness note on
+  a staged run;
+- the publish dialog carries the nine tags, and a track published from the
+  real builder reaches a real board carrying exactly the two that were ticked;
+- posting a run from the simulator's own client to a real board ranks it,
+  refuses a worse one from the same pilot under a different capitalisation,
+  takes a better one, and refuses an absurd score.
+
+The board page was served and looked at at 1440, 900 and 430 px, on a seeded
+board and on an empty one, with no console errors.

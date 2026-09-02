@@ -139,6 +139,7 @@ import {
   clampCameraAngle,
 } from '../render/lens.js';
 import { ScoreHud } from './scorehud.js';
+import { formatScore } from '../game/score.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
 import { mountRatesPanel } from './ratespanel.js';
@@ -575,6 +576,23 @@ function saveSettings(s) {
   } catch (e) {
     /* private mode: settings simply do not persist */
   }
+}
+
+/*
+ * m:ss, for the freestyle run clock. Whole seconds, rounded UP so the
+ * readout reaches 0:00 exactly when the run ends rather than sitting on it
+ * for a second first, and no hundredths: this is written every frame and a
+ * hundredths readout is sixty style invalidations a second for a number
+ * nobody reads at that resolution, and it jitters under the eye.
+ *
+ * Not formatTime, which is the LAP clock's shape and prints hundredths
+ * because a lap is won and lost in them. A run is not.
+ */
+export function formatRunClock(ms) {
+  const left = Math.ceil((ms > 0 ? ms : 0) / 1000);
+  const m = Math.floor(left / 60);
+  const sec = left - m * 60;
+  return `${m}:${sec < 10 ? '0' : ''}${sec}`;
 }
 
 export function formatTime(ms) {
@@ -1640,6 +1658,10 @@ export class Ui {
     this.onUiSound = null;   /* (kind) => void: 'move', 'adjust', 'select', 'back' */
     this.share = null;       /* published course this run is flying, or null */
     this.timePosted = null;  /* last successful post on the results screen */
+    /* The freestyle run the results screen is showing, and whether it has
+     * been sent. Both cleared by resetScore, which every restart calls. */
+    this.freestyleRun = null;
+    this.runPosted = null;
     this.resultsFastest = null;
     this.resultsDocId = null;
     this.coursePublished = null;
@@ -3519,8 +3541,8 @@ export class Ui {
             label: 'Freestyle',
             card: 'freestyle',
             art: 'assets/gate/freestyle.jpg',
-            blurb: 'A whole town to fly around. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. Nothing measured.',
-            facts: ['No gates', 'No clock', 'One town'],
+            blurb: 'A whole town to fly around. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. Two minutes, and every trick you land is scored.',
+            facts: ['No gates', 'Two minutes', 'One town'],
             action: 'mode-freestyle',
           },
           ...(trouble ? [trouble] : []),
@@ -4243,7 +4265,50 @@ export class Ui {
        * of noise rather than one useful disabled row. Freestyle is the same
        * for the same reason: no lap, nothing to upload.
        */
-      if (this.osdMode === 'freestyle' || !listing) {
+      if (this.osdMode === 'freestyle') {
+        /*
+         * A FREESTYLE RUN HAS SOMETHING TO POST NOW, which it never did
+         * before: two minutes, a number at the end of it, and a board with
+         * a table waiting for it. The five track actions still mean nothing
+         * here, because there is no track, so the run keeps four rows.
+         *
+         * A run of nothing is not a score. The row says so rather than
+         * being offered and refused by the board, which is the difference
+         * between a menu that knows what it is doing and one that finds out.
+         */
+        const run = this.freestyleRun;
+        const nothing = !run || !(run.total > 0) || !(run.tricks > 0);
+        return [
+          { label: 'Fly again', action: 'restart', primary: true },
+          this.runPosted
+            ? {
+              label: this.runPosted.improved === false ? 'Your best still stands' : 'Run posted',
+              action: 'postrun',
+              disabled: true,
+              note: this.runPosted.improved === false
+                ? `The board already holds a better run of yours, ${formatScore(this.runPosted.score)}. Only your best is kept.`
+                : `That run is on the freestyle board.${this.runPosted.rank != null ? ` Rank ${this.runPosted.rank}.` : ''}`,
+            }
+            : {
+              label: 'Post this run',
+              action: 'postrun',
+              disabled: nothing || Boolean(run && run.assisted),
+              note: nothing
+                ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
+                : (run && run.assisted
+                  ? 'This run used the harness hooks, so it is not a flown score and the board will not take it.'
+                  : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`),
+            },
+          {
+            label: 'Open the board',
+            action: 'leaderboard',
+            note: 'The public freestyle table, and every published track beside it.',
+          },
+          feelItem(),
+          { label: 'Back to title', action: 'title' },
+        ];
+      }
+      if (!listing) {
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           feelItem(),
@@ -7049,7 +7114,10 @@ export class Ui {
     }
     this.titleBest.textContent = '';
     if (freestyle) {
-      this.titleBest.textContent = 'No gates, no clock, no lap';
+      /* It had "no clock, no lap" on it, which was true of freestyle until
+       * a run became two minutes with a score at the end. There is still no
+       * lap and there are still no gates. */
+      this.titleBest.textContent = 'No gates, no lap, two minutes';
       this.osdBest.textContent = '';
       return;
     }
@@ -7355,9 +7423,19 @@ export class Ui {
    * would be reporting three things that are not true. What it shows instead
    * is what a freestyle pilot actually reads.
    *
-   *   AIRTIME, not a lap. Freestyle is flown in packs, and how long you have
-   *   been up is the number that decides when to come home. It is paired with
-   *   the pack bar, which is the other half of the same decision.
+   *   THE RUN CLOCK, not a lap and no longer an airtime. It was an airtime,
+   *   counting up, on the reasoning that freestyle is flown in packs and how
+   *   long you have been up decides when to come home. That was right while
+   *   nothing was being measured. A freestyle run is two minutes now, with a
+   *   score at the end of it that goes on a public board, so the number a
+   *   pilot needs is how much of it is LEFT: the last twenty seconds are when
+   *   they decide whether to try the big line, and they cannot decide that
+   *   without knowing they are the last twenty seconds.
+   *
+   *   It is in the lap clock's slot, top centre, rather than beside the
+   *   score. That is where a pilot already looks for a clock, and it means
+   *   there is exactly ONE clock on the screen: an airtime counting up
+   *   beside a run counting down is two answers to the same question.
    *   ALTITUDE ABOVE THE GROUND UNDER THE CRAFT. This one is not optional in
    *   a city. Cross one street and the surface under you moves seven metres,
    *   from the road to the overbridge deck; a height measured from the spawn,
@@ -7435,14 +7513,30 @@ export class Ui {
     }
   }
 
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
     const running = lapMs != null && Number.isFinite(lapMs);
-    Ui.text(this.osdClockLabel, freestyle ? 'Airtime' : 'Lap');
-    Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
-    Ui.klass(this.osdTimer, running ? 'osd-timer' : 'osd-timer waiting');
+    if (freestyle) {
+      /*
+       * The run has not started until the first trick, so the clock says so
+       * rather than showing two minutes that are not counting. Dimmed by
+       * the same `waiting` class the lap clock uses before the first gate,
+       * which is the same state for the same reason.
+       */
+      const ready = runState !== 'flying' && runState !== 'over';
+      const left = Number.isFinite(runRemainMs) ? runRemainMs : 0;
+      Ui.text(this.osdClockLabel, 'Run');
+      Ui.text(this.osdTimer, ready ? '2:00' : formatRunClock(left));
+      Ui.klass(this.osdTimer, ready
+        ? 'osd-timer waiting'
+        : (left <= 10_000 ? 'osd-timer is-late' : 'osd-timer'));
+    } else {
+      Ui.text(this.osdClockLabel, 'Lap');
+      Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
+      Ui.klass(this.osdTimer, running ? 'osd-timer' : 'osd-timer waiting');
+    }
     if (freestyle) {
       Ui.text(this.osdGate, '');
     } else if (gateCue) {
@@ -7545,6 +7639,95 @@ export class Ui {
 
   resetScore() {
     this.scoreHud.reset();
+    /* A new run has nothing posted and nothing to post. Without this a
+     * pilot who flew a second run saw the first one's "Run posted" row. */
+    this.freestyleRun = null;
+    this.runPosted = null;
+  }
+
+  /* The freestyle board's answer, so the results row can say what happened
+   * rather than staying on the verb. */
+  markRunPosted(posted) {
+    this.runPosted = posted || { ok: true };
+    if (this.screen === 'results') {
+      this.renderMenu();
+    }
+  }
+
+  /*
+   * THE HORN. A freestyle run ends the way a race does, on the results
+   * screen, and it reuses that screen rather than growing a second one:
+   * the shape is the same, a headline number and a list of what made it up,
+   * and the screen already knows how to handle a freestyle run's menu.
+   *
+   * What it does NOT reuse is the lap machinery. A run has no laps, so the
+   * rows are the tricks the pilot actually landed, biggest earner first,
+   * which is the one sentence a freestyle scorer can say that a pilot
+   * cares about: you flew nine flips and they were worth this much.
+   */
+  showFreestyleResults(summary) {
+    this.freestyleRun = summary;
+    this.runPosted = null;
+    this.resultsBody.textContent = '';
+    this.resultsNote.textContent = '';
+    const screen = this.screens.results;
+    const clean = summary.crashes === 0 && summary.tricks > 0;
+    screen.classList.toggle('is-record', clean);
+    screen.classList.toggle('is-empty', !summary.tricks);
+    screen.classList.remove('is-in');
+    void screen.offsetWidth;
+    screen.classList.add('is-in');
+
+    this.resultsKicker.textContent = 'Freestyle city';
+    this.resultsHead.textContent = summary.tricks
+      ? (clean ? 'Clean run' : 'Run complete')
+      : 'Run ended';
+    this.resultsHeroCap.textContent = 'Score';
+    this.resultsHeroTime.textContent = formatScore(summary.total);
+    /* A town has no plan drawing, and an empty blueprint plate beside a
+     * freestyle score is a picture of nothing. */
+    this.resultsPlan.planData = null;
+    this.resultsPlanWrap.hidden = true;
+    if (!summary.tricks) {
+      this.resultsHeroMeta.textContent = '';
+      this.resultsHeroMeta.className = 'results-hero-meta';
+      this.resultsBody.append(el('p', 'results-empty', 'Two minutes and nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'));
+    } else {
+      const parts = [
+        `${summary.tricks} tricks, ${summary.unique} of them different`,
+        summary.bestCombo > 0 ? `best chain ${formatScore(summary.bestCombo)}` : '',
+        summary.bonus > 0 ? `variety bonus ${formatScore(summary.bonus)}` : '',
+        summary.crashes === 0 ? 'no crashes' : `${summary.crashes} crash${summary.crashes === 1 ? '' : 'es'}`,
+      ].filter(Boolean);
+      this.resultsHeroMeta.textContent = parts.join('  ·  ');
+      this.resultsHeroMeta.className = clean ? 'results-hero-meta gain' : 'results-hero-meta';
+      /* The rows are the run's own tally, biggest earner first, and the bar
+       * is that trick's share of the trick score. Same idiom the lap rows
+       * use, which is why they can share the stylesheet. */
+      const top = summary.rows.length ? summary.rows[0].points : 0;
+      /* SIX, because the menu stands over the bottom of this screen and a
+       * seventh row is drawn underneath it. The note below says how many
+       * are not shown, so nothing is hidden without saying so. */
+      for (const row of summary.rows.slice(0, 6)) {
+        const line = el('div', `result-row${row === summary.rows[0] ? ' fastest' : ''}`);
+        const main = el('div', 'result-main');
+        main.append(el('span', 'result-label', row.count > 1 ? `${row.name} x${row.count}` : row.name));
+        main.append(el('span', 'result-time', formatScore(row.points)));
+        line.append(main);
+        if (top > 0) {
+          const bar = el('div', 'result-bar');
+          const fill = el('div', 'result-bar-fill');
+          fill.style.width = `${Math.max(4, Math.round((row.points / top) * 100))}%`;
+          bar.append(fill);
+          line.append(bar);
+        }
+        this.resultsBody.append(line);
+      }
+      if (summary.rows.length > 6) {
+        this.resultsNote.textContent = `And ${summary.rows.length - 6} more kinds of trick.`;
+      }
+    }
+    this.show('results');
   }
 
   /*

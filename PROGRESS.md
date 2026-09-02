@@ -25866,3 +25866,136 @@ worse than no diagnostic.
 `npm run score:selftest` (193), `npm run lint:nouns`, `npm run lint:boot`
 (9 of 9) and `npm run lint:shell` all pass. `npm run verify` was not run:
 nothing here touches the plant, `src/native`, the patches or the build.
+
+
+## 2026-09-02, a correction, and the powerloop actually works now
+
+### First, the correction. The last two entries measured the wrong map.
+
+Both concluded the town's obstacle field was empty or barless. Both were
+measured on a probe that waited for `window.__ui.settings.map === 'city'` and
+then slept. That setting flips the instant the seat is written; the world
+takes another twenty to sixty seconds to build on a software rasteriser. So
+every number in those entries was read off the TRACK field, which is the race
+map, and whose colliders really are capsule trees, canopy blobs, rocks and
+posts. That is where "2064 colliders, 32 boxes, tree 382, canopy 1530" came
+from, and it is why "the town has nothing to powerloop" looked true.
+
+Waiting on `window.__map().ready` instead:
+
+    authored 15124  ->  built 17643 boxes  ->  886 poles, 78 bars
+
+Which are, to the digit, the numbers `obstacles.js` has always cited in its
+own comment. The town was fine the whole time. A graphics preset was suspected
+too, and cleared: low and high build the identical set.
+
+The lesson is cheap to write and was expensive to learn: a probe that waits on
+a SETTING rather than on the thing the setting causes is not measuring what it
+says it is. The `skipFit` path, chased on the strength of those numbers, is
+not implicated in anything.
+
+The capsule branch added to `deriveObstacles` in the previous entry stays.
+It was written for the wrong reason and it is still correct: the field map's
+trees and posts really are capsules, a capsule really is the segment an
+Obstacle wants, and the branch derives 126 poles there. It is simply not what
+was wrong with the town.
+
+### What was actually wrong: the rail is crowded out, and then evicted
+
+With the field measured properly, a geometrically clean powerloop flown around
+eight real city bars named `Powerloop` FOUR times, and a Split-S named twice
+in eight. Two causes, both in `pathStep`.
+
+**MAX_PATH_RUNS was 6.** Its comment said "the craft is inside the reach of
+one to four axes in ordinary flight and of six only in the densest street
+furniture". Re-measured standing four metres under each of forty real bars,
+which is exactly where a powerloop passes:
+
+    1 1 1 2 2 2 3 4 4 4 4 4 5 5 6 6 6 6 6 6 6 9 10 11 12 12 14 16 16
+    17 18 18 18 20 23 23 23 29 29 30
+
+Nineteen of forty are over the cap and the worst is thirty. With 886 poles
+against 78 bars, a railing is nearly always ringed by fence posts nearer than
+itself, so nearest-first kept six things the pilot was flying past and dropped
+the one thing they were flying around. Two of the forty bars were not engaged
+at all. It is now 32, which covers every case measured; the cost is one
+`stepOneLap` per axis per millisecond, a cross product, a dot product and two
+square roots, which at thirty two axes is about a thousand flops against the
+plant's own thousands.
+
+**An open lap was retired when its obstacle left the nearest N.** This is the
+worse of the two and it is backwards for the trick it matters most to. A
+powerloop is flown UNDER a rail, and the bottom of the loop is where the craft
+is nearest the ground and therefore nearest every kerb and bollard. So the
+rail fell out of the nearest six precisely halfway round, the run was closed
+on the spot, and the half lap that came out named a `Flip`. A lap you have
+started is now yours until it ends: open runs are stepped whether or not their
+obstacle is still in reach, using the obstacle they already hold, and they end
+when the winding stops or reverses, which is the run's own business. A
+`stepped` flag stops a run being wound twice in one millisecond, which would
+double every increment and read one lap as two.
+
+### And a fence has two rails
+
+Both fixes in, eight of eight powerloops named, but two named twice and one
+three times. A fence has a top rail and a bottom rail and a powerloop through
+it winds around both; both laps are real, both are around a genuine bar, and
+both named a Powerloop. `sameMotionLap` is the path side's twin of
+`absorbedByLap`: two laps covering the same milliseconds are one motion, and
+the one kept is the one with the most winding, which is the axis the craft
+actually went round rather than the one it clipped the edge of.
+
+### Measured on the real town, after
+
+    Powerloop   8 of 8   (was 4 of 8, and two of those were paid twice)
+    Orbit x2   10 of 10
+    Split-S     3 of 8   (was 2 of 8)
+
+### The Split-S is still marginal, and the floor is left alone on purpose
+
+The failing laps are on the right bar, over to under, with roll 0.5 and pitch
+0.5 concurrent, which is the pattern exactly. They read 0.50 turns and
+`HALF_LAP_MIN` is 0.55.
+
+The straight line theorem cannot separate the two populations AT the half
+turn. A straight line's supremum is half a turn and it never reaches it, but a
+PERFECT half loop centred on the axis sweeps EXACTLY half a turn, so the
+honest loop and the dishonest fly-by meet at the same number from opposite
+sides. Measured on real city bars, a clean Split-S reads 0.50 to 0.612
+depending only on where the craft entered, so the floor is a coin toss on
+entry geometry and the tighter and better centred the loop, the more likely it
+is to be thrown away. That is the same "a better flown trick scoring less than
+a worse one" failure `snapPathTurns` already records once.
+
+The radius is the quantity that should decide it. Going around something means
+staying at roughly one distance from it: measured on twelve real bars, a flown
+half loop breathes 1.41 to 1.59, max over min. Going past something means the
+distance has a sharp minimum and grows at both ends.
+
+The floor was lowered to 0.45 with a radius gate behind it, and then put back.
+The three flights the gate would have to reject were measured on the REAL
+AIRCRAFT and are not constructed: a ballistic fall past a railing at 0.463, a
+straight descending pass at 0.500, a straight climb at 0.377. Their radius
+ratios have never been measured, and a constructed straight pass does not
+reproduce them because the rate gate throws it out before it becomes a lap at
+all. Setting the threshold without those numbers would be picking one to make
+a check pass and then editing the checks that measured those flights to suit
+it, which is the one thing CLAUDE.md names outright.
+
+So `radiusRatio` is tracked and carried out on every path primitive, and
+nothing reads it. Fly the three cases on the real aircraft, read it off, and
+if the populations separate the floor comes down in one line with the evidence
+beside it.
+
+### Checks
+
+`npm run score:selftest` (195, including two new ones that pin a powerloop
+against a dozen nearer posts and a three rail fence against double payment),
+`npm run lint:nouns`, `npm run lint:boot`, `npm run lint:presets`, `npm run
+lint:shell`, `npm run lint:arcade` and `node scripts/board-check.js` all pass.
+`npm run lint:responsive` passes with one 1547 ms frame gap, the same wall
+clock flake this container has produced all session.
+
+`npm run verify` was not run: nothing here touches the plant, `src/native`,
+the patches or the build. The evidence that matters is the real town, driven
+through `tests/lib/page.js` and waiting on `__map().ready` this time.

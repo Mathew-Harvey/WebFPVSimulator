@@ -1434,6 +1434,68 @@ console.log('\nthe obstacle tricks, on constructed paths');
   }
 
   /*
+   * A RAIL IN A CROWD, which is what a town actually looks like.
+   *
+   * Measured standing four metres under each of forty real city bars, which
+   * is exactly where a powerloop passes, the number of obstacles within
+   * reach runs 1, 1, 1, 2 ... 23, 23, 29, 29, 30. Nineteen of the forty are
+   * over the old cap of six. The town has 886 poles against 78 bars, so a
+   * railing is nearly always ringed by fence posts and lamp posts NEARER
+   * than it is, and nearest-first then keeps the six things the pilot is
+   * flying past and drops the one thing they are flying around.
+   *
+   * Worse, an OPEN lap was retired the moment its obstacle fell out of the
+   * nearest six, and the bottom of a powerloop is exactly where the craft
+   * is nearest the ground and therefore nearest every kerb and bollard. So
+   * the rail dropped out halfway through the loop and the half lap that came
+   * out named a Flip. Measured on the real town before the fix, eight clean
+   * powerloops around real bars named Powerloop four times; after it, eight
+   * times out of eight.
+   */
+  {
+    const f = new ObstacleField();
+    f.add(OB_BAR, BAR.cx, BAR.cy, BAR.cz, 1, 0, 0, 8);
+    /* Twelve posts in a ring inside the loop's radius, all nearer to the
+     * bottom of the loop than the bar is. */
+    for (let i = 0; i < 12; i += 1) {
+      const a = (i / 12) * TURN;
+      f.add(OB_POLE, BAR.cx + Math.cos(a) * 2.2, BAR.cy - 4,
+        BAR.cz + Math.sin(a) * 2.2, 0, 1, 0, 3);
+    }
+    f.build();
+    const s = new Path(f);
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -1, 1400, [0, 1, 0], 1);
+    s.cruise(900, -8);
+    check('a powerloop survives a dozen posts nearer than the rail',
+      s.finish() === 'Powerloop');
+  }
+
+  /*
+   * A FENCE HAS TWO RAILS, and one powerloop goes round both.
+   *
+   * Both laps are real and both are around a genuine bar, so both named a
+   * Powerloop and the pilot was paid twice for one loop. Measured on the
+   * real town, two of eight clean powerloops came out as
+   * "Powerloop + Powerloop" and one as three of them. Two laps covering the
+   * same milliseconds are one motion; the one with the most winding is the
+   * axis the craft actually went round. See sameMotionLap.
+   */
+  {
+    const f = new ObstacleField();
+    f.add(OB_BAR, BAR.cx, BAR.cy, BAR.cz, 1, 0, 0, 8);
+    f.add(OB_BAR, BAR.cx, BAR.cy - 1.1, BAR.cz, 1, 0, 0, 8);
+    f.add(OB_BAR, BAR.cx, BAR.cy + 1.1, BAR.cz, 1, 0, 0, 8);
+    f.build();
+    const s = new Path(f);
+    s.approach(BAR, 4, 0, 500, 8, false);
+    s.arcBar(BAR, 4, 0, -1, 1400, [0, 1, 0], 1);
+    s.cruise(900, -8);
+    check('a fence with three rails is still one Powerloop',
+      s.finish() === 'Powerloop');
+  }
+
+  /*
    * A RAIL WITH A LAMP POST BESIDE IT, which is what a town actually looks
    * like: 886 poles among 78 bars. The recogniser used to pick the nearest
    * axis at each millisecond, and mid loop that is routinely the post

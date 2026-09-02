@@ -190,6 +190,44 @@ const PATH_MIN_RADIUS = 0.45;
  * POLE_MIN_TURNS is the same bound for an axis that has no sides to check.
  */
 const HALF_LAP_MIN = 0.55;
+
+/*
+ * THE HALF LAP IS STILL MARGINAL AND THIS IS THE INSTRUMENT, NOT THE FIX.
+ *
+ * The straight line theorem cannot separate the two populations AT the half
+ * turn, and the floor above pretends it can. A straight line's supremum is
+ * half a turn and it never reaches it, but a PERFECT half loop centred on
+ * the axis sweeps EXACTLY half a turn, so the honest loop and the dishonest
+ * fly-by meet at the same number from opposite sides. Measured on real city
+ * bars, a clean Split-S reads anywhere from 0.50 to 0.612 turns depending
+ * only on where the craft entered the loop, so a tightly flown, well centred
+ * one is thrown away and a loose one is kept. That is the same "a better
+ * flown trick scoring less than a worse one" failure snapPathTurns already
+ * records once.
+ *
+ * The radius is the quantity that should decide it. Going AROUND something
+ * means staying at roughly one distance from it: measured on twelve real
+ * city bars, a flown half loop breathes between 1.41 and 1.59, max over
+ * min. Going PAST something means the distance has a sharp minimum at the
+ * closest approach and grows at both ends, which is the theorem's own fact
+ * said in a quantity that does not run out at a half turn.
+ *
+ * SO WHY IS THE FLOOR STILL 0.55. Because lowering it means the ratio has
+ * to carry the weight instead, and the three flights it would have to
+ * reject were measured on the REAL AIRCRAFT, not constructed: a ballistic
+ * fall past a railing at 0.463, a straight descending pass at 0.500, a
+ * straight climb at 0.377. Their radius ratios have not been measured. A
+ * constructed straight pass does not reproduce them, because the rate gate
+ * throws it out before it becomes a lap at all, so the number cannot be
+ * had from a rig. Setting the threshold without it would be picking a
+ * number to make a check pass, and then editing the checks that measured
+ * those flights to accommodate it.
+ *
+ * The ratio is therefore TRACKED and carried out on every lap, and nothing
+ * reads it yet. Fly the three cases on the real aircraft, read
+ * `radiusRatio` off the primitive, and if the populations separate the
+ * floor can come down to 0.45 in one line with the evidence beside it.
+ */
 const WHOLE_LAP_MIN = 0.65;
 const POLE_MIN_TURNS = 0.55;
 
@@ -254,12 +292,32 @@ const INVERTED_MIN = 0.8;
 const LAP_TRUNCATION = 0.25;
 
 /*
- * How many obstacles may be wound around at once. Measured on the real
- * city, the craft is inside the reach of one to four axes in ordinary
- * flight and of six only in the densest street furniture. Nearest first, so
- * the cap drops the ones least likely to be the one being flown.
+ * How many obstacles may be wound around at once.
+ *
+ * IT WAS SIX, and the comment under it said "the craft is inside the reach
+ * of one to four axes in ordinary flight and of six only in the densest
+ * street furniture". Re-measured on the town that exists now, standing four
+ * metres under each of forty real bars, which is exactly where a powerloop
+ * passes:
+ *
+ *   obstacles within reach   1 1 1 2 2 2 3 4 4 4 4 4 5 5 6 6 6 6 6 6 6
+ *                            9 10 11 12 12 14 16 16 17 18 18 18 20 23
+ *                            23 23 29 29 30
+ *
+ * Nineteen of the forty are over the old cap and the worst is thirty. The
+ * town has 886 poles against 78 bars, so a railing is nearly always
+ * surrounded by fence posts, lamp posts and tree trunks that are NEARER
+ * than it is. Nearest first then drops the one thing in reach that a
+ * Powerloop, a Matty Flip or a Split-S can be flown around, and keeps six
+ * poles the pilot is flying past.
+ *
+ * Thirty two covers every case measured. The cost is one stepOneLap per
+ * engaged axis per millisecond, which is a cross product, a dot product and
+ * two square roots: at thirty two axes that is about a thousand flops per
+ * millisecond, against the plant's own thousands. It is not the reason this
+ * was six.
  */
-const MAX_PATH_RUNS = 6;
+const MAX_PATH_RUNS = 32;
 
 /*
  * TRACKING: how near the nose an object has to be to count as being flown
@@ -917,6 +975,17 @@ class PathRun {
   constructor() {
     this.open = false;
     this.acc = 0;
+    /* Set once per step by pathStep, so a run cannot be wound twice in one
+     * millisecond: once as an open run and once as an engaged obstacle.
+     * Winding it twice would double every increment and read one lap as
+     * two. See pathStep. */
+    this.stepped = false;
+    /*
+     * THE RADIUS BAND over the lap window, which is what tells a loop from
+     * a fly-by when the angle cannot. See LAP_RADIUS_RATIO.
+     */
+    this.minR = 0;
+    this.maxR = 0;
     this.obstacle = null;
     this.startMs = 0;
     this.startSide = 0;
@@ -1268,13 +1337,29 @@ export class TrickDetector {
   pathStep(dt, dtMs, wx, wy, wz, upZ) {
     const n = this.obstacles.nearAll(wx, wy, wz, this.engaged, MAX_PATH_RUNS);
     /*
-     * Retire any lap whose obstacle the craft has left. Leaving one
-     * collider for the next along the SAME LINE is not leaving the
-     * obstacle: a town railing is built from collinear segments and a loop
-     * over the join is one loop.
+     * A LAP YOU HAVE STARTED IS YOURS UNTIL IT ENDS.
+     *
+     * This used to retire any run whose obstacle had fallen out of the
+     * nearest N, open or not, which is exactly backwards for the trick it
+     * matters most to. A Powerloop is flown UNDER a rail and round it, and
+     * the bottom of that loop is the moment the craft is nearest the
+     * ground and therefore nearest every kerb, post and bollard around it.
+     * So the rail dropped out of the nearest six precisely halfway through
+     * the lap, the run was closed on the spot, and the half lap that came
+     * out named a Flip or nothing at all. Measured before this change, a
+     * geometrically clean powerloop flown around forty real city bars named
+     * Powerloop four times in eight; a Split-S named twice in eight.
+     *
+     * An open run is therefore stepped whether or not its obstacle is still
+     * in reach, using the obstacle it already holds. It ends when the
+     * winding stops or reverses, which is the run's own business, not when
+     * a lamp post gets nearer.
      */
     for (let i = this.paths.length - 1; i >= 0; i -= 1) {
       const run = this.paths[i];
+      if (run.open) {
+        continue;
+      }
       let still = false;
       for (let j = 0; j < n; j += 1) {
         if (sameAxis(run.obstacle, this.engaged[j].ob)) {
@@ -1285,12 +1370,24 @@ export class TrickDetector {
       if (still) {
         continue;
       }
-      if (run.open) {
-        this.closePath(run, upZ);
-      }
       run.reset();
       this.paths.splice(i, 1);
       this.pathPool.push(run);
+    }
+    /*
+     * Step every OPEN run first, so an obstacle the craft has flown past
+     * still gets its millisecond. `stepped` marks the ones done here so the
+     * engaged pass below does not wind them twice, which would double every
+     * increment and turn one lap into two.
+     */
+    for (const run of this.paths) {
+      run.stepped = false;
+    }
+    for (const run of this.paths) {
+      if (run.open) {
+        run.stepped = true;
+        this.stepOneLap(run, run.obstacle, dt, dtMs, wx, wy, wz, upZ);
+      }
     }
     /* Then wind around everything in reach, opening a lap for anything new. */
     for (let j = 0; j < n; j += 1) {
@@ -1302,6 +1399,9 @@ export class TrickDetector {
           break;
         }
       }
+      if (run && run.stepped) {
+        continue;
+      }
       if (!run) {
         if (this.paths.length >= MAX_PATH_RUNS) {
           continue;
@@ -1311,6 +1411,7 @@ export class TrickDetector {
         run.obstacle = ob;
         this.paths.push(run);
       }
+      run.stepped = true;
       this.stepOneLap(run, ob, dt, dtMs, wx, wy, wz, upZ);
     }
   }
@@ -1404,6 +1505,8 @@ export class TrickDetector {
         run.trackSamples = 0;
         run.haveFwd = false;
         run.spanSamples = 0;
+        run.minR = nowLen;
+        run.maxR = nowLen;
       }
       return;
     }
@@ -1417,6 +1520,12 @@ export class TrickDetector {
       run.lastRot[1] = this.totalTurns[1];
       run.lastRot[2] = this.totalTurns[2];
       run.spanSamples += 1;
+      if (nowLen < run.minR) {
+        run.minR = nowLen;
+      }
+      if (nowLen > run.maxR) {
+        run.maxR = nowLen;
+      }
       if (upZ < 0) {
         run.invSamples += 1;
       }
@@ -1515,6 +1624,29 @@ export class TrickDetector {
       this.releaseHeld();
       return;
     }
+    /*
+     * ONE MOTION IS ONE TRICK, even when it went round two things.
+     *
+     * A fence has a top rail and a bottom rail, a footbridge has a handrail
+     * over its parapet, and a powerloop through either winds around BOTH.
+     * Both laps are real, both are around a genuine bar, and both name a
+     * Powerloop, so the pilot was paid twice for one loop. Measured on the
+     * real town: of eight clean powerloops flown around real city bars, two
+     * came out as "Powerloop + Powerloop" and one as three of them.
+     *
+     * Two laps that cover the same milliseconds are the same motion. The
+     * one kept is the one with the most winding, which is the axis the
+     * craft actually went round rather than the one it clipped the edge of.
+     * This is the path side's twin of absorbedByLap, which does the same
+     * job for a rotation that happened inside a lap.
+     */
+    const overlapping = this.sameMotionLap(run.startMs, run.lastMs, mag);
+    if (overlapping === 'drop') {
+      this.heldByPath.length = 0;
+      this.gapStallMs = 0;
+      run.clearHistory();
+      return;
+    }
     this.pending.push({
       kind: 'path',
       obstacle: OB_KIND_NAME[ob.kind],
@@ -1535,6 +1667,13 @@ export class TrickDetector {
       upZ,
       /* The fraction of the lap flown belly up, 0 to 1. See PathRun. */
       invertedFrac: run.spanSamples > 0 ? run.invSamples / run.spanSamples : 0,
+      /* How much the distance to the axis breathed across the lap, max over
+       * min. Nothing reads it yet; it is the measurement the half lap floor
+       * needs before it can come down. See HALF_LAP_MIN. */
+      radiusRatio: run.minR > 1e-6 ? run.maxR / run.minR : 1,
+      /* The unsnapped sweep, kept so two laps of the same motion can be
+       * compared before either has been named. See sameMotionLap. */
+      rawTurns: mag,
       /*
        * The fraction of the lap with the object on the screen, or -1 when
        * the caller supplied no heading. Minus one FAILS a tracking test
@@ -1557,6 +1696,41 @@ export class TrickDetector {
     /* A finished lap must not be visible to the next one's lookback. */
     run.clearHistory();
     this.drain(false);
+  }
+
+  /*
+   * Is a lap covering these milliseconds already buffered, and is it the
+   * better reading of the same motion?
+   *
+   * Returns 'drop' when the incoming lap should be thrown away, and null
+   * when it should be kept. When the incoming one is the better reading,
+   * the buffered one is removed here so the caller can push in its place.
+   * "Most of" is half the shorter span, the same bar absorbedByLap uses,
+   * because the two questions are the same question about different kinds
+   * of thing.
+   */
+  sameMotionLap(startMs, endMs, mag) {
+    for (let i = 0; i < this.pending.length; i += 1) {
+      const held = this.pending[i];
+      if (held.kind !== 'path') {
+        continue;
+      }
+      const lo = startMs > held.startMs ? startMs : held.startMs;
+      const hi = endMs < held.endMs ? endMs : held.endMs;
+      const shorter = Math.min(endMs - startMs, held.endMs - held.startMs);
+      if (hi - lo <= shorter * 0.5) {
+        continue;
+      }
+      /* The bigger sweep is the axis the craft went round. A tie keeps the
+       * one already buffered, so the answer does not depend on which run
+       * happened to close first. */
+      if (mag > held.rawTurns) {
+        this.pending.splice(i, 1);
+        return null;
+      }
+      return 'drop';
+    }
+    return null;
   }
 
   /*

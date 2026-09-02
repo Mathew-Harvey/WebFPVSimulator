@@ -25794,3 +25794,75 @@ run: this touches neither the plant, `src/native`, the patches nor the build.
 The evidence that matters here is the measurement in the real town, above,
 which no unit test in this repository can see, because every check builds its
 own constructed field rather than reading the city's.
+
+
+## 2026-09-02, the training area's bars never reach the collider set
+
+The owner said the new freestyle training area has bars to loop and Matty
+flip, which contradicted the previous entry's conclusion that the town has
+nothing to powerloop. It does not contradict it. Both are true, and the gap
+between them is the finding.
+
+`buildTraining` is called unconditionally (`places/index.js:217`) and the
+Split-S bar is authored correctly and solidly:
+
+    slab(ctx, m.metal, s.x - 0.11, GROUND + s.bar, s.z0,
+                       s.x + 0.11, GROUND + s.bar + 0.22, s.z1,
+         { name: 'trainingSplitBar' });
+
+That is 0.22 m square in section, 8 m long, at 12 m, with its own comment
+saying "Solid, because a drawn bar you can pass through is the same lie as an
+invisible wall, only the other way round". It is exactly the shape
+`deriveObstacles` is looking for and it would pass every bar test.
+
+It is not in the built collider set. Measured on the real town, every box in
+the world, all 32 of them, is the station and overbridge structure around
+z = -50 plus a pad at x = -150. Nothing at y = 12. Nothing anywhere in the
+training site's range of x 0..128, z 118..188. And the kind tally has no
+`gate`, no `obstacle` and no `boom`, though the town has a level crossing
+whose two booms `findBoomBlocks` asserts the existence of.
+
+    window.__colliderShapes()
+      total 2064 | boxes 32 | capsules 2032
+      byKind { tree 382, canopy 1530, rock 44, wall 85, pole 23 }
+      pole shaped 126 | bar shaped 0
+
+Some of the places layer does arrive: there is a run of 20.5 m wall capsules
+on a diagonal from (62, 251) to (127, 14), which is the works road, and it
+passes through the training site. So `buildPlaces` runs and its colliders are
+not lost wholesale. The training area's own furniture is.
+
+This is NOT a recogniser problem and it is not the obstacle derivation's
+problem. The derivation is now correct and this entry's census proves it
+against the real world rather than against a constructed rig. Chasing it
+further means reading `buildColliders` and what it does with a `world.colliders`
+entry carrying `skipFit: true`, which every `slab` sets by default, and that
+is a change to the town's collider pass rather than to the freestyle scoring
+system this round of work is about. It is written down here, with the
+measurement, so the next person starts from the evidence instead of from the
+symptom.
+
+### A census that tells the truth
+
+`window.__colliderShapes()` is new, and it is the tool the previous entry
+needed and did not have: of everything solid in this world, how much of it is
+a shape the recogniser can fly around, and for the near misses, which test
+threw them out and on what number. `__colliderBoxes` beside it answers "is the
+collider where the drawing is", which is a question about a picture; this
+answers a question about a population.
+
+Its first draft was wrong and said so loudly, which is the point of writing
+the numbers down. It took a box's thickness as the smaller of its footprint
+and its height, so a 16 by 11 m overbridge deck 0.3 m thick measured as
+"0.24 m thick" and it reported SIX bars in a town that has none. A box is a
+bar only if it is thin in both of the two directions that are not its length.
+Corrected, the census now agrees with `deriveObstacles` exactly, 126 pole
+shaped to 126 poles and 0 bar shaped to 0 bars, which is the property that
+makes it worth keeping: a diagnostic that flatters the thing it measures is
+worse than no diagnostic.
+
+### Checks
+
+`npm run score:selftest` (193), `npm run lint:nouns`, `npm run lint:boot`
+(9 of 9) and `npm run lint:shell` all pass. `npm run verify` was not run:
+nothing here touches the plant, `src/native`, the patches or the build.

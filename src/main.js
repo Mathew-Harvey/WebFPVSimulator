@@ -6498,6 +6498,120 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     return out;
   };
+  /*
+   * A SHAPE CENSUS OF THE WHOLE COLLIDER SET, and the near misses.
+   *
+   * `__colliderBoxes` above answers "is the collider where the drawing is",
+   * which is a question about a picture. This answers a different one that
+   * is just as invisible from the outside: of everything solid in this
+   * world, how much of it is a shape the freestyle recogniser can fly
+   * AROUND, and for the things that nearly are, which test threw them out.
+   *
+   * It exists because the obstacle field was empty in the real town for a
+   * long time and no check could see it: every self-test builds its own
+   * constructed field of one bar and one pole, so the derivation was proved
+   * against a world that is not this one. See PROGRESS.md, 2026-09-02.
+   *
+   * `near` is the near misses: a capsule or box that failed exactly one of
+   * the pole or bar tests, with the test that rejected it and the number it
+   * was judged on, so "the town has no bars" can be told apart from "the
+   * town's bars are half a metre too thick".
+   */
+  window.__colliderShapes = (opts = {}) => {
+    const c = view.colliders;
+    const out = {
+      total: 0, boxes: 0, capsules: 0, byKind: {}, poles: 0, bars: 0, near: [], barList: [],
+    };
+    if (!c || !c.fbox) {
+      return out;
+    }
+    const KIND = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole', 'wall', 'boom', 'train'];
+    const limit = opts.near ?? 12;
+    for (let i = 0; i < c.fbox.length; i += 1) {
+      out.total += 1;
+      const kind = KIND[c.fkind[i]] ?? String(c.fkind[i]);
+      out.byKind[kind] = (out.byKind[kind] ?? 0) + 1;
+      const box = Boolean(c.fbox[i]);
+      out[box ? 'boxes' : 'capsules'] += 1;
+      const cx = (c.fax[i] + c.fbx[i]) * 0.5;
+      const cz = (c.faz[i] + c.fbz[i]) * 0.5;
+      let len;
+      let thick;
+      let upright;
+      let lowY;
+      if (box) {
+        /*
+         * MIRRORS deriveObstacles' box branch exactly, and the first draft
+         * did not: it took the thickness as the smaller of the footprint
+         * and the height, which called a 16 by 11 metre overbridge deck
+         * 0.24 m thick and reported six bars in a town that has none. A
+         * diagnostic that flatters the thing it is measuring is worse than
+         * no diagnostic. A box is a bar only if it is thin in BOTH of the
+         * two directions that are not its length.
+         */
+        const w = Math.abs(c.fbx[i] - c.fax[i]);
+        const d = Math.abs(c.fbz[i] - c.faz[i]);
+        const h = Math.abs(c.fby[i] - c.fay[i]);
+        const foot = w > d ? w : d;
+        const thin = w > d ? d : w;
+        lowY = Math.min(c.fay[i], c.fby[i]);
+        if (h >= foot) {
+          len = h;
+          thick = foot;
+          upright = 1;
+        } else {
+          len = foot;
+          /* Both cross sections, not the smaller of them. */
+          thick = thin > h ? thin : h;
+          upright = 0;
+        }
+      } else {
+        const ex = c.fbx[i] - c.fax[i];
+        const ey = c.fby[i] - c.fay[i];
+        const ez = c.fbz[i] - c.faz[i];
+        len = Math.sqrt(ex * ex + ey * ey + ez * ez);
+        thick = c.fr[i] * 2;
+        upright = len > 1e-6 ? Math.abs(ey / len) : 1;
+        lowY = Math.min(c.fay[i], c.fby[i]) - c.fr[i];
+      }
+      const clear = lowY - view.height(cx, cz);
+      /* The same tests deriveObstacles applies, restated here so a near
+       * miss can name the one that failed. They are deliberately a copy:
+       * this is a diagnostic and it must be able to disagree. */
+      const poleShaped = upright >= 0.9 && thick <= 0.9 && len >= 2.5;
+      const barShaped = upright <= 0.1 && thick <= 0.8 && len >= 2 && clear >= 1.5;
+      if (poleShaped) {
+        out.poles += 1;
+      } else if (barShaped) {
+        out.bars += 1;
+        if (out.barList.length < limit) {
+          out.barList.push({
+            kind,
+            box,
+            at: [+cx.toFixed(1), +lowY.toFixed(1), +cz.toFixed(1)],
+            len: +len.toFixed(2),
+            thick: +thick.toFixed(2),
+            clear: +clear.toFixed(2),
+            a: [+c.fax[i].toFixed(1), +c.fay[i].toFixed(1), +c.faz[i].toFixed(1)],
+            b: [+c.fbx[i].toFixed(1), +c.fby[i].toFixed(1), +c.fbz[i].toFixed(1)],
+            r: +c.fr[i].toFixed(2),
+          });
+        }
+      } else if (out.near.length < limit && upright <= 0.3 && len >= 2) {
+        /* Horizontal and long, so it wanted to be a bar. Say why it is not. */
+        out.near.push({
+          kind,
+          box,
+          at: [+cx.toFixed(1), +lowY.toFixed(1), +cz.toFixed(1)],
+          len: +len.toFixed(2),
+          thick: +thick.toFixed(2),
+          clear: +clear.toFixed(2),
+          failed: thick > 0.8 ? 'too thick' : (clear < 1.5 ? 'no daylight under it' : 'too short'),
+        });
+      }
+    }
+    return out;
+  };
   /* How many cel materials the per frame clock walk touches. Check 16
    * asserts this returns to its boot value after a map round trip, which is
    * the measurement that catches a dead uniform kept alive forever. */

@@ -5001,9 +5001,44 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * 144 m across at 2048, which is 7.0 cm per texel: crisp enough for
    * contact shadows where the pilot is looking, instead of mush over
    * 1.7 km. This comment said 58 m until a reviewer read the constant. */
+  /*
+   * The shadow camera's own texel, in world metres. The orthographic camera
+   * spans 2 * shadowHalf metres across shadowMap texels, so this is how far
+   * the focus point can move without the depth map's sampling grid moving
+   * under the world.
+   */
+  const shadowTexel = q.field.shadowMap > 0
+    ? (2 * (q.field.shadowHalf || 72)) / q.field.shadowMap
+    : 0;
+  const shadowFocus = new THREE.Vector3();
+
   function updateShadowFocus(target) {
-    sun.position.copy(target).addScaledVector(SUN_DIR, 130);
-    sun.target.position.copy(target);
+    /*
+     * SNAPPED TO THE SHADOW MAP'S OWN TEXEL GRID.
+     *
+     * This used to copy the craft position exactly, so the depth map's
+     * sampling grid slid continuously under a static world and every shadow
+     * edge in frame crawled as the quad moved: the gate feet, the tree
+     * canopies, the clubhouse verandah. The city's own updateShadowFocus has
+     * snapped to a 0.5 m grid since it was written, and says why in a
+     * comment; this is the same idea sized to this map's texel rather than
+     * to a round number, because the field's camera is 144 m across and its
+     * texel is 7 cm on High and 14 cm on Medium.
+     *
+     * Snapping to the texel and not to a fixed grid is what keeps the fix
+     * correct when the preset changes the map size underneath it.
+     */
+    if (shadowTexel > 0) {
+      shadowFocus.set(
+        Math.round(target.x / shadowTexel) * shadowTexel,
+        Math.round(target.y / shadowTexel) * shadowTexel,
+        Math.round(target.z / shadowTexel) * shadowTexel,
+      );
+    } else {
+      shadowFocus.copy(target);
+    }
+    sun.position.copy(shadowFocus).addScaledVector(SUN_DIR, 130);
+    sun.target.position.copy(shadowFocus);
     sun.target.updateMatrixWorld();
   }
 

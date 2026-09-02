@@ -638,6 +638,25 @@ export function buildComposer(renderer, scene, camera, quality) {
     const p = renderer.getPixelRatio();
     const bw = Math.max(1, Math.floor(width * p));
     const bh = Math.max(1, Math.floor(height * p));
+    /*
+     * THE PIXEL RATIO HAS TO BE SET BEFORE THE SIZE, OR THE SLIDER ONLY
+     * MOVES HALF THE CHAIN.
+     *
+     * EffectComposer multiplies width and height by the pixel ratio it
+     * captured at construction, not by the renderer's current one. So after
+     * the Render scale slider lowers the ratio, composer.setSize alone left
+     * both HalfFloat composer targets, the colour pass, the eight tap
+     * outline pass and the grade pass at the size they booted at: measured,
+     * a slider at 55 percent shrank the canvas to 880 by 495 and left four
+     * passes at 1600 by 900, and P5 fell only from 90.2 to 78.1 MB. The
+     * outline was then reading an 880 by 495 geometry buffer while drawing
+     * into 1600 by 900, which is what made the ink go blocky rather than
+     * simply softer.
+     *
+     * One line, and it is the difference between a setting that works and a
+     * setting that only appears to.
+     */
+    composer.setPixelRatio(p);
     composer.setSize(width, height);
     if (normalTarget) {
       normalTarget.setSize(bw, bh);

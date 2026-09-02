@@ -24969,3 +24969,267 @@ is exactly the real difference between the two manoeuvres.
 AND THE IMMELMANN CANNOT TELL ITSELF FROM ITS MIRROR: the step asks for a
 pitch MAGNITUDE, so a nose-down half loop matches the same way a nose-up one
 does. It wants a direction.
+
+
+================================================================================
+2026-09-02  THE REVIEW'S FINDINGS, FIXED, AND TWO CHECKS THAT WOULD HAVE CAUGHT
+            THEM
+================================================================================
+
+Owner ask: work through the review in the landing repo's docs/review-2026-09.md,
+fix the issues, run the tests, add tests that do something useful.
+
+Everything below is in this repository. The landing page and the board are
+their own commits.
+
+--------------------------------------------------------------------------
+BOOT: THE FLIGHT CONTROLLER NO LONGER WAITS FOR A SLEEPING BOARD
+--------------------------------------------------------------------------
+
+main.js awaited adoptShareFromLocation() and adoptMostFlownTrack() before
+loading.start('sim'), so dist/sim.wasm was not requested until both board
+round trips came back: measured at 1519 ms against a warm LOCAL board. Render's
+free tier sleeps after fifteen minutes and takes about a minute to wake, and
+DEPLOY.md says "The simulator is unaffected, because a static site does not
+sleep". This code is what made that untrue.
+
+Three changes, and they are separable.
+
+  1. The wasm fetch starts BEFORE the board is asked. Its progress callback
+     is gated on the sim stage actually being live, because loading.progress
+     starts a stage that is not current, and an ungated callback would put
+     "Flight controller" on screen while the board was the holdup. That is
+     the same lie moved one stage along.
+  2. Every board READ carries a deadline. board.js had one 4 s timeout, on
+     the /api/tracks list inside adoptMostFlownTrack, and fetchTrackDocument
+     had none at all, which is the one every Fly link from the board goes
+     through. There is now one boardGet with a shared 8 s deadline and a
+     message that names the board rather than leaking DOMException's "signal
+     is aborted without reason". The cold-boot listing keeps its shorter 4 s:
+     a visitor who did not ask for a course should not wait the full eight to
+     learn the board is asleep.
+     Writes are deliberately NOT deadlined. Abandoning a publish or a posted
+     lap after eight seconds does not undo it at the far end, so the pilot
+     would be told it failed while the board stored it.
+  3. The board wait is a NAMED loading stage. It was reported as "Renderer",
+     which sends a player to look at the CDN.
+
+--------------------------------------------------------------------------
+RENDERING: THE TWO RESOLUTION LEVERS, AND A BUDGET THE FIELD NEVER HAD
+--------------------------------------------------------------------------
+
+THE RENDER SCALE SLIDER ONLY MOVED HALF THE CHAIN. post.js setSize called
+composer.setSize without composer.setPixelRatio, and EffectComposer multiplies
+by the ratio it captured at construction. So the slider shrank the canvas and
+the prepass and left both HalfFloat composer targets, the colour pass, the
+eight tap outline and the grade pass at boot size: measured, a slider at 55
+percent gave an 880x495 canvas with four passes still at 1600x900, and P5 fell
+only 90.2 to 78.1 MB. The outline was reading an 880x495 geometry buffer while
+drawing into 1600x900, which is why the ink went blocky rather than softer.
+One line.
+
+THE FIELD HAD NO PIXEL BUDGET. pixelRatioFor was min(dpr, cap) times the
+scales, and only the city block of quality.js carried a pixelBudget. A 1440x900
+laptop at DPR 2, which is the "strong laptop iGPU" High names, rendered 5.2 Mpx
+through three full resolution passes.
+
+The first attempt floored the clamp at 1 so it only removed supersampling, on
+the reasoning that a DPR 1 monitor shows every pixel it is given. The new check
+refused it: at the measured 39 bytes a pixel, a 1440p monitor came to 162 MB of
+render targets and a 4K one to 343 MB, against the 120 MB ceiling this project
+spent a whole low spec loop getting under. A budget that exempts the two
+largest screens is not a budget, and the city has clamped those same screens
+all along.
+
+So the budgets are 1920x1080 = 2,073,600 on High and Medium, and 1080p times
+0.85 squared on Low, which is that preset's own authored ratio. The rule is
+that no screen renders more pixels than the screen the 120 MB ceiling was
+measured on. A 1080p monitor at DPR 1 sits exactly on it and is untouched, so
+the authored frame, every capture and every existing budget check are
+unchanged. What moves is the 1440x900 DPR 2 laptop (5.2 Mpx to 2.07), the
+1440p monitor (3.7) and the 4K one (8.3).
+
+DETECTION GAVE HIGH TO THE MACHINE MEDIUM IS WRITTEN FOR.
+detectDefaultGraphics returned Low for a Steam Deck, a phone and an iPad and
+High for everything else, while quality.js's own header says Medium is for
+"UHD 620 / Iris Plus / MX350". gpuinfo.js now has isIntegratedGpu, a name test
+over the renderer string, and boot lowers a DETECTED High to Medium on a hit.
+It is the same branch that already lowers a detected preset to Low on a
+software rasteriser, one step smaller. Apple Silicon is deliberately not
+matched: an M series GPU holds the authored look. The patterns are anchored so
+"Radeon RX 7900" and "Arc A770" do not match the integrated parts they share a
+word with, and fifteen real renderer strings pin that.
+
+THE PACER IS STILL DEAD and is written down rather than fixed: nothing in src
+implements applyPace since the compact maps were removed, so pace.js never
+runs. The claim in quality.js's header that internal resolution scales
+automatically is corrected to say what actually happens. Wiring applyPace into
+both pipelines is its own change.
+
+--------------------------------------------------------------------------
+THE FRAME LOOP, AND A FAULT THAT USED TO FREEZE THE PICTURE IN SILENCE
+--------------------------------------------------------------------------
+
+frame() scheduled the next frame first, on purpose, so a slow frame does not
+stop the loop. That also meant a THROWN frame did not stop it: readState throws
+on any non-OK state code, sim_set_pose throws from the turtle and clip-crash
+paths, and a height query on a half disposed map throws. The loop kept running,
+every frame threw at the same line, and the pilot saw the last drawn frame
+forever with a stale OSD and no word about why.
+
+The body is now frameBody() and frame() wraps it once. The first fault gets a
+banner in the language of the thing the pilot can do about it, and lands in
+window.__frameFault where the F8 bug report can carry it off the machine.
+reset() clears the flag, so taking the offer the banner makes re-arms it.
+
+DOM WRITES PER FRAME: 17 MEASURED, NOW ONLY WHAT CHANGED. setOsd assigned
+textContent and className to about a dozen nodes every flight frame regardless
+of whether the value had moved, setBanner wrote three properties, and
+syncAngleMode wrote the Settings craft caption from the frame loop on every
+screen. Assigning the string a node already holds still replaces its Text child
+and still invalidates style, on an overlay composited above the WebGL canvas,
+which is the arrangement an integrated GPU pays for most. scorehud.js has
+guarded its writes since it was written and says why; Ui.text, Ui.klass and
+Ui.bar are that guard, in the file that needed it more.
+
+RESIZE IS APPLIED ONCE A FRAME. Every resize event called post.setSize, which
+reallocates both composer targets, the normal target and the bloom ladder, so a
+window drag was a storm of GPU allocations. A flag is set and the work happens
+at the top of the frame. The same place now re-reads the pixel ratio, which was
+fixed at boot: browser zoom and moving a window between a 2x panel and a 1x
+monitor both change it, and it now also depends on the window's area through
+the field budget.
+
+--------------------------------------------------------------------------
+THE FIRST SIXTY SECONDS
+--------------------------------------------------------------------------
+
+ENTER ON THE LAUNCH CARD OPENED A DROPDOWN. The card says "Enter flies it",
+the Fly row is marked primary, and restoreCursor went to the first stop, which
+is Radio link. So a pilot who read the card and pressed Enter got a list of
+ELRS packet rates. restoreCursor now prefers the row marked primary when
+nothing is remembered for that screen, which is right on all four screens that
+have one: Fly on the title and the launch card, Fly this track on standings,
+Resume on pause. Someone who walked down to Radio link last time still lands
+where they left off. Confirmed in the harness: the launch card opens on
+{"label":"Fly","action":"launch-go"} and Enter reaches flight.
+
+THE INTRO PLAYED IN SLOW MOTION ON A SLOW MACHINE. INTRO_STEP_MAX was 33 ms, so
+a machine at 25 fps gave 33 of every 40 ms to a 4.0 s shot and took 4.8 s over
+it; measured here at about 9 fps it ran at 0.3x. It is 100 now, matching the
+physics accumulator: a hitch stretches the shot by its own length and no more,
+and a slow but steady machine plays it at the authored speed in fewer frames.
+
+TAKEOFF DURING THE INTRO FLEW A CAMERA THE PILOT WAS NOT IN. Throttle skipped
+the orbit and the approach but still played the 1 s zoom, and the takeoff branch
+waits for nothing, so a pilot who throttled up on the pad flew for a second
+from a third person dolly with their own props across the frame: measured
+airborne at 2.87 m mid zoom. The moment the aircraft leaves the ground the shot
+ends.
+
+RESTART RUN REPLAYED THE PAD SHOT AND R DID NOT. Same intention, four seconds
+through the menu and nothing through the key, and the menu is the only one of
+the two a phone has. Restart now behaves like R. Fly keeps the shot: that one
+is the first meeting.
+
+A HIDDEN TAB NOW PAUSES. The handler only muted the mix, so alt-tabbing mid lap
+returned to a live FPV view and a quad resuming at speed with 100 ms of stick
+history behind it, while the lap clock kept the time honestly.
+
+--------------------------------------------------------------------------
+LOOK, AND WHAT THE SETTINGS PROMISED
+--------------------------------------------------------------------------
+
+- The target chevron sat on the stick gimbals. AIM_MARGIN_BOTTOM was sized for
+  the corner instruments, but the keyboard stick ghost is about 124 px tall at
+  the bottom centre and the touch layout moves the corner blocks there too. A
+  gate below the frame is the normal case after takeoff. There are two margins
+  now and the frame picks the one it is showing.
+- The field's shadow camera followed the craft exactly, so every static shadow
+  edge crawled: the city has snapped to a grid since it was written and says
+  why. The field now snaps to its own texel, which is 7 cm on High and 14 cm on
+  Medium, so the fix stays correct when the preset changes the map size.
+- Medium and Low promised "thinned planting" on a map with no planting lever.
+  Measured, the field draws 949,309 triangles on High and 949,296 on Medium,
+  134 meshes on all three presets; only the city has foliageKeep. The notes now
+  say the town.
+- The launch card hid the world. worldLive listed every screen except the one
+  between the title and the flight, so a pilot went world, flat black, world.
+- One polite live region, fed by setBanner and guarded so it does not speak
+  sixty times a second. The only aria-live node in the shell was the music
+  dock's track title.
+- The command bar told touch users to press arrow keys and Enter. lastInput
+  starts at 'none' rather than 'key' so a phone can be told apart from a
+  keyboard, and there is a third voice.
+- maximum-scale=1 blocked pinch zoom on every menu and has been ignored by iOS
+  Safari since iOS 10. Dropped; .screen carries touch-action: manipulation,
+  which stops the double tap and keeps the pinch.
+- .hint said it was kept in the DOM "so a screen reader still finds the text"
+  above a display:none rule, which removes it from the accessibility tree. The
+  comment is corrected and .sr-only is the pattern for text that is meant to be
+  heard.
+- Calibration step labels were cream at 0.38 alpha, 3.1 to 1. Now 0.55, 5.0 to
+  1. Every other token was already AAA on every house background.
+- The OSD altitude and __craftState().groundClearance queried the height field
+  without SURFACE_BIAS, which every contact query in the file uses, so under the
+  overbridge deck the readout could pick the deck and print a negative number.
+- The dead boot() call at the foot of main.js threw on every load and appended
+  a failure banner that Ui.build wiped a microtask later. Deleted.
+- README said 13 checks with 12 passing, and listed M, C and V, which are bound
+  to nothing.
+
+--------------------------------------------------------------------------
+TWO NEW CHECKS, AND WHAT THEY CATCH
+--------------------------------------------------------------------------
+
+npm run lint:quality, scripts/quality-check.js. 56 assertions. The presets
+against the machines they name: every preset has a field pixel budget; no
+screen in a table of seven real configurations exceeds the 120 MB render target
+ceiling; nothing at or below 1080p at DPR 1 is clamped at all; the Render scale
+slider still multiplies through; a Settings note may not promise a lever the
+map lacks; and fifteen real GPU renderer strings, eight integrated and seven
+not, pin the detection.
+
+npm run lint:boot, scripts/boot-check.js. 9 assertions. The wasm is requested
+above the first board call; the sim stage is not announced while the board is
+the holdup; the board wait is a named stage; every board read goes through the
+deadline and no write does; a thrown frame is caught; and main.js has no second
+entry point. The strongest one does not read source at all: it starts a server
+that accepts the connection and never answers, which is what a sleeping Render
+service does, and calls fetchTrackDocument for real. It gave up after 8005 ms.
+
+BOTH WERE MUTATION TESTED, which is the only evidence a check is worth having.
+Removing the field budget fails 4 assertions. Putting the misleading planting
+note back fails 1. Widening the GPU pattern to any Radeon fails 1. Moving the
+wasm fetch back below the board fails 1. Unwrapping the frame body fails 1.
+Reverting the document fetch to a bare fetch fails 2.
+
+That last one taught this file something. The first version of the deadline
+test HUNG when the timeout was removed, because waiting forever is precisely
+the defect under test. A check that hangs on the regression it exists to catch
+is not a check, so the call is raced against a deadline of its own and reports
+"still waiting after 12000 ms, so the read has no deadline".
+
+--------------------------------------------------------------------------
+MEASURED THIS TURN
+--------------------------------------------------------------------------
+
+PASS: lint:shell, lint:nouns, lint:memory, lint:fc (30 of 30 traces),
+lint:presets (3 of 3), lint:devices, lint:arcade, lint:board, lint:attract,
+lint:responsive, lint:quality (56 of 56), lint:boot (9 of 9),
+score:selftest, ghost:selftest, contact:selftest, link:selftest,
+music:selftest, test:edge, replay:selftest.
+
+lint:catalog FAILS, and it failed identically on a clean tree before any of
+this: it reads vendor/betaflight/src/main/fc/parameter_names.h and the
+submodule is not checked out in this container. Environment, not code.
+
+npm run verify was NOT run. It compiles Betaflight through emcc, there is no
+emcc here, and nothing in this change touches src/native, the patches, the
+vendor tree, the input path or the module ABI. The cheap checks above are the
+ones that can see this work.
+
+Driven in headless Chromium at 1280x720: boot to title with 0 console errors,
+loading timings three 106.6, board 9.2, sim 23.4, module 125, world 2068.5,
+frame 982.9; the launch card opening on Fly with the field alive behind it;
+Enter reaching flight with mode=flight.

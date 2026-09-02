@@ -207,10 +207,25 @@ const INTRO_APPROACH = 800;
 const INTRO_ZOOM = 1000;
 const INTRO_FLY = INTRO_ORBIT + INTRO_APPROACH;
 const INTRO_TOTAL = INTRO_FLY + INTRO_ZOOM;
-/* Hitch frames are capped at 100 ms in the loop. Adding that whole cap
- * to the intro clock burns the pad shot before a single exterior frame
- * is shown. A real frame is about 16 ms; 33 ms is 30 fps. */
-const INTRO_STEP_MAX = 33;
+/*
+ * Hitch frames are capped at 100 ms in the loop. Adding that whole cap to the
+ * intro clock burns the pad shot before a single exterior frame is shown.
+ *
+ * IT WAS 33, WHICH IS 30 FPS, AND THAT CAPPED THE STEADY STATE TOO.
+ *
+ * A cap on the step is a cap on how fast the shot can play, so a machine
+ * running at 25 fps gave 33 of every 40 ms to a 4.0 s shot and took 4.8 s
+ * over it; at 20 fps, 6.1 s; measured on this container at about 9 fps the
+ * intro ran at 0.3 times speed. That is every run start and every Restart
+ * run, on exactly the ordinary laptop this project is for, and the pilot
+ * reads it as the simulator being slow before they have touched a stick.
+ *
+ * 100 matches the physics accumulator's own cap, which is the right shape:
+ * a hitch stretches the shot by its own length and no more, and a slow but
+ * steady machine plays the shot at the speed it was authored at, in fewer
+ * frames. The comment above is why the number is not simply Infinity.
+ */
+const INTRO_STEP_MAX = 100;
 /* Orbit starts on a three-quarter behind the right shoulder and walks
  * 300 degrees, which lands dead astern. Approach then closes from that
  * same point. Radii are world metres, outside the 0.2 m near plane. */
@@ -447,6 +462,27 @@ export async function boot({ loading, bootStart, mapId }) {
      * machine back up if it turns out to have had a GPU all along. */
     ui.persistSettings();
     ui.renderMenu();
+  } else if (gpuInfo.integrated && ui.settings.graphicsAuto && ui.settings.graphics === 'high') {
+    /*
+     * THE SAME BRANCH, ONE STEP SMALLER, FOR THE MACHINE MEDIUM IS NAMED
+     * FOR.
+     *
+     * detectDefaultGraphics runs before any context exists and can only read
+     * the user agent, which names a Steam Deck, a phone and nothing else.
+     * So every laptop booted into High, including the UHD 620 and Iris class
+     * parts that quality.js explicitly describes as Medium's target. This is
+     * the first line that has the renderer's name, which is the only way to
+     * tell an integrated chip from a discrete one, and it is the line the
+     * software test above already stands on.
+     *
+     * Medium and not Low: an iGPU draws perfectly well, it is short of fill
+     * rate and memory bandwidth, and Medium is where the shadows come down
+     * to 1024 and the bloom pass goes away. Apple Silicon is deliberately
+     * not matched, per the note on INTEGRATED_RE.
+     */
+    ui.settings.graphics = 'medium';
+    ui.persistSettings();
+    ui.renderMenu();
   }
   let showcase = null;
   /*
@@ -466,10 +502,46 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.renderMenu();
   }
   /*
+   * THE FLIGHT CONTROLLER'S BYTES ARE ASKED FOR BEFORE THE BOARD IS, AND
+   * THIS IS THE ONE PLACE THE TWO OVERLAP.
+   *
+   * dist/sim.wasm depends on nothing: not the URL, not the board, not the
+   * settings. The board fetch below depends on the network reaching another
+   * host that may be asleep. They used to run in series, so the wasm request
+   * did not leave the browser until both board round trips had come back:
+   * measured 1519 ms on a local board, and a cold Render service takes about
+   * a minute to wake. Starting it here costs nothing and takes those round
+   * trips off the critical path.
+   *
+   * The progress callback is deliberately gated. loading.progress(id) starts
+   * that stage if it is not the current one, so an ungated callback would
+   * flip the screen to "Flight controller" while it is really waiting on the
+   * board, which is the same lie in a new place. Instead the last reading is
+   * held and replayed when the sim stage genuinely begins.
+   */
+  let simProgress = null;
+  let simStageLive = false;
+  const simBytes = fetchBytes(WASM_URL, (f, got, total) => {
+    simProgress = [f, `${(got / 1024).toFixed(0)} of ${(total / 1024).toFixed(0)} kB`];
+    if (simStageLive) {
+      loading.progress('sim', simProgress[0], simProgress[1]);
+    }
+  });
+  /* A rejection here is handled at the await below, in the stage that owns
+   * it. Without this the failure is unhandled for as long as the board takes,
+   * and the console gets a promise rejection warning before the screen gets
+   * its honest message. */
+  simBytes.catch(() => {});
+  /*
    * A published course arrives as ?share=id. Fetch it before the world is
    * built so the custom map reads the document the board sent, not the
    * draft sitting in the builder's autosave.
+   *
+   * This is a named stage because it is a network wait on a service that
+   * sleeps, and a player who is told "Renderer" while the board wakes up
+   * will go looking for the wrong problem.
    */
+  loading.start('board');
   try {
     const fromUrl = await adoptShareFromLocation();
     if (fromUrl) {
@@ -485,6 +557,10 @@ export async function boot({ loading, bootStart, mapId }) {
   } catch (e) {
     ui.setBanner(`Could not open that published track.\n${e.message ?? e}`, true);
   }
+  /* Done either way: a board that was down is a board that has finished
+   * being asked. Without this the stage records no duration and the bar
+   * keeps its weight without ever filling it. */
+  loading.done('board');
   /*
    * A board chase link arrives as ?ghost=tm-xxxxxxxx beside the ?share=.
    * The id is only held here; the fetch happens once the course is loaded
@@ -516,8 +592,43 @@ export async function boot({ loading, bootStart, mapId }) {
   })();
 
   let view = null;
+  /*
+   * RESIZE IS APPLIED ONCE A FRAME, NOT ONCE AN EVENT.
+   *
+   * post.setSize reallocates both composer targets, the normal target and
+   * every pass including the bloom ladder. Dragging a window edge fires tens
+   * of resize events a second, so the old handler turned a drag into a storm
+   * of GPU allocations, with the previous set of targets still alive until
+   * the collector got to them. Setting a flag and doing the work at the top
+   * of the frame collapses a drag into one resize per frame, which is the
+   * most a screen can show anyway.
+   */
+  let resizeDirty = false;
   window.addEventListener('resize', () => {
+    resizeDirty = true;
+  });
+  function applyResizeIfDirty() {
+    if (!resizeDirty) {
+      return;
+    }
+    resizeDirty = false;
     const d = shell.resize();
+    /*
+     * The pixel ratio is re-read here, which it never used to be.
+     *
+     * pixelRatioFor was evaluated at boot, on a preset change and on a
+     * settings write, and nowhere else. Browser zoom fires resize and
+     * changes devicePixelRatio, so Ctrl-plus left the canvas rendering at
+     * the old ratio in fewer CSS pixels, which is a blurry upscale; dragging
+     * a window from a 2x laptop panel to a 1x monitor kept rendering four
+     * times the pixels the monitor could show. It also matters more now that
+     * the ratio depends on the window's area through the field's pixel
+     * budget, which by definition changes when the window does.
+     */
+    const wantPr = pixelRatioFor(ui.settings.graphics, renderScaleOf(ui.settings));
+    if (Math.abs(wantPr - shell.pixelRatio) > 0.001) {
+      applyPixelRatio(shell, ui.settings.graphics, renderScaleOf(ui.settings));
+    }
     /* mapReady as well as view: a swap disposes the old pipeline before it
      * builds the new one, and a resize landing in that window used to call
      * setSize on render targets that had already been freed. mapReady is
@@ -525,7 +636,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view && view.post && mapReady) {
       view.post.setSize(d.w, d.h);
     }
-  });
+  }
   const audio = new MotorAudio();
   audio.music.onChange = (st) => {
     ui.setMusicNow(st);
@@ -572,9 +683,12 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   loading.start('sim');
-  const sim = await loadSim(await fetchBytes(WASM_URL, (f, got, total) => {
-    loading.progress('sim', f, `${(got / 1024).toFixed(0)} of ${(total / 1024).toFixed(0)} kB`);
-  }));
+  simStageLive = true;
+  if (simProgress) {
+    /* Whatever arrived while the board was being asked. Usually all of it. */
+    loading.progress('sim', simProgress[0], simProgress[1]);
+  }
+  const sim = await loadSim(await simBytes);
   if (typeof sim.e.sim_deflect !== 'function') {
     throw new Error('sim.wasm does not export sim_deflect');
   }
@@ -2522,7 +2636,16 @@ export async function boot({ loading, bootStart, mapId }) {
     return Math.atan2(-upAxis.x, -upAxis.z);
   }
 
+  /* The first fault the frame loop threw, or null. See the frame boundary
+   * for what it is for; it lives here so that reset(), which clears it, is
+   * not reaching forward into a dead zone. */
+  let frameFault = null;
+
   function reset() {
+    /* A reset is the pilot taking the offer the fault banner made, so the
+     * next fault is a new one and deserves to be reported in its turn. See
+     * the frame boundary. */
+    frameFault = null;
     /* The pack charge a run flies on is fixed when the run starts. It is
      * a setting, and settings are reachable from the pause menu, so
      * without this a player could change packs mid run and have the lap
@@ -3475,7 +3598,21 @@ export async function boot({ loading, bootStart, mapId }) {
         reset();
         mode = 'flight';
         ui.show('flight');
-        introMs = 0;
+        /*
+         * THE PAD SHOT IS AN INTRODUCTION, AND A RESTART IS NOT A FIRST
+         * MEETING.
+         *
+         * R already restarts without it: input.onKey calls reset() and
+         * leaves introMs at -1. Restart run from the pause menu played the
+         * whole orbit, approach and zoom, so the same intention cost four
+         * seconds through the menu and nothing through the key, and the
+         * menu is the only one of the two a phone has. A racer restarts
+         * dozens of times an hour.
+         *
+         * `fly` keeps the shot: that one IS the first meeting, and it is
+         * where the pilot sees the aircraft they are about to be inside of.
+         */
+        introMs = action === 'restart' ? -1 : 0;
       });
       return;
     }
@@ -4266,7 +4403,29 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const AIM_MARGIN = 54;
   const AIM_MARGIN_TOP = 100;
+  /*
+   * 108 CLEARS THE CORNER BLOCKS AND NOTHING ELSE, WHICH IS WHY THE CHEVRON
+   * KEPT LANDING ON THE STICKS.
+   *
+   * The bottom band belongs to whichever readout is in it, and that is not
+   * always the two corner instruments this number was sized for. The
+   * keyboard stick ghost sits centred at the bottom and stands about 124 px
+   * tall: an 18 px offset, a plate that clamps between 64 and 88 px, a
+   * caption margin and 10 px of type. On a touch layout the corner blocks
+   * themselves move to the bottom centre. A gate below the frame is the
+   * normal case straight after takeoff and in every climb, so the chevron
+   * and its range were being drawn over the roll and pitch gimbal, and over
+   * the speed readout on a phone, exactly when the pilot was reading both.
+   *
+   * So the margin is what is actually down there, measured the same way in
+   * both cases rather than assumed.
+   */
   const AIM_MARGIN_BOTTOM = 108;
+  /* With the stick ghost or the touch layout up. Measured against the CSS in
+   * index.html: 18 px from the bottom, an 88 px plate at its clamp ceiling,
+   * a 6 px caption gap and 10 px of caption, plus the same 8 px of air the
+   * 108 above leaves over an instrument. */
+  const AIM_MARGIN_BOTTOM_STICKS = 130;
   const AIM_RELEASE = 6;
   const AIM_FADE = 13;
   /* The bracket stands this much outside the opening, so it frames the gate
@@ -4340,7 +4499,14 @@ export async function boot({ loading, bootStart, mapId }) {
     const minX = AIM_MARGIN;
     const maxX = vw - AIM_MARGIN;
     const minY = AIM_MARGIN_TOP;
-    const maxY = vh - AIM_MARGIN_BOTTOM;
+    /* Whichever of the two the frame is currently showing. isTouchPrimary
+     * moves the corner blocks to the bottom centre; the keyboard ghost puts
+     * the gimbals there. Either way the bottom band is taller than the
+     * corner instruments alone. */
+    const bottomBand = (input.isKeyboardPrimary() || input.isTouchPrimary())
+      ? AIM_MARGIN_BOTTOM_STICKS
+      : AIM_MARGIN_BOTTOM;
+    const maxY = vh - bottomBand;
     const edge = behind || sx < minX || sx > maxX || sy < minY || sy > maxY;
     /* A flag or cone already carries its own light. The in-frame bracket
      * was sized to the scoring square, which is the gate box the owner
@@ -4398,8 +4564,55 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Wall time of the last frame the cap let through. */
   let capLastDraw = -1e9;
 
+  /*
+   * ONE FAULT USED TO FREEZE THE PICTURE AND SAY NOTHING.
+   *
+   * The next frame is scheduled first, on purpose, so a slow frame does not
+   * stop the loop. That also meant a THROWN frame did not stop it: readState
+   * throws on any non-OK state code, sim_set_pose throws from the turtle and
+   * clip-crash paths, and a height query on a half disposed map throws. The
+   * loop kept running, every frame threw at the same line, and what the
+   * pilot saw was the last drawn frame, forever, with a stale OSD and no
+   * word about why.
+   *
+   * So the body is separated from the scheduling and wrapped once. The first
+   * fault is reported to the pilot in the language of the thing they can do
+   * about it, and stored where the F8 bug report can find it. The loop keeps
+   * running afterwards because the camera, the menus and the report form all
+   * live in it; what stops is the pretence that the flight is still valid.
+   *
+   * The flag itself is declared beside reset(), which clears it, because a
+   * `let` here would be in its temporal dead zone for every line of boot
+   * above this one and reset() is reachable from several of them.
+   */
   function frame(nowWall) {
     requestAnimationFrame(frame);
+    try {
+      frameBody(nowWall);
+    } catch (e) {
+      if (!frameFault) {
+        frameFault = e;
+        const message = (e && e.message) ? e.message : String(e);
+        /* Recorded for the bug report, which is the one path that carries a
+         * fault off this machine. */
+        window.__frameFault = { message, stack: e && e.stack ? String(e.stack) : '', atMs: Math.round(performance.now()) };
+        console.error('frame fault', e);
+        try {
+          ui.setBanner(`The simulator hit a fault and stopped flying.\nPress R to reset, or F8 to report it.\n${message}`, true);
+        } catch (inner) {
+          /* The shell itself is the thing that broke. Nothing left to say
+           * it with. */
+        }
+      }
+      /* Keep wall time moving, or the frame after a reset steps the physics
+       * by however long the pilot spent reading the banner. */
+      prevWall = nowWall;
+    }
+  }
+
+  function frameBody(nowWall) {
+    /* Once a frame, whatever the window did since the last one. */
+    applyResizeIfDirty();
     if (!mapReady) {
       /* Mid swap. Swallow the elapsed time rather than handing it to the
        * accumulator on the far side, or the first frame of the new map steps
@@ -5133,7 +5346,18 @@ export async function boot({ loading, bootStart, mapId }) {
      * GPUs drop a context that leaves the document.
      */
     const freezeWorld = Boolean(ui.reelFreezeWorld);
-    const attractOn = !freezeWorld && mode === 'title' && ui.screen === 'title';
+    /*
+     * The attract shot runs behind the launch card too.
+     *
+     * worldLive listed title, courses, flight, paused and results, so the
+     * one screen between the title and the flight was the one screen with
+     * the canvas hidden: a pilot went from a world, to a flat dark panel,
+     * to the same world again, and the card in the middle read as a load
+     * rather than as a step. The title already proves a panel can sit over
+     * a live field, and this card has less on it than the title does.
+     */
+    const attractOn = !freezeWorld && mode === 'title'
+      && (ui.screen === 'title' || ui.screen === 'launch');
     const studioOn = ui.screen === 'quad';
     const worldLive = !freezeWorld && (
       Boolean(finishLoadingOnFrame)
@@ -5284,6 +5508,24 @@ export async function boot({ loading, bootStart, mapId }) {
          * the shot entirely. */
         if (input.channels.throttle > TAKEOFF_THROTTLE && introMs < INTRO_FLY) {
           introMs = INTRO_FLY;
+        }
+        /*
+         * ONCE THE QUAD HAS ACTUALLY LEFT THE GROUND, THE SHOT IS OVER.
+         *
+         * Throttle skipped the orbit and the approach, but it still played
+         * the 1 s zoom, and the takeoff branch does not wait for anything.
+         * So a pilot who throttled up on the pad flew for a second from a
+         * third person camera that was still dollying in: measured airborne
+         * at 2.87 m with the airframe and both prop discs across the bottom
+         * half of the frame. They are flying a quad they cannot see out of,
+         * at the one moment they most need to.
+         *
+         * The rule is the pilot's own: the moment the aircraft is off the
+         * ground, the goggles are on. A pilot who leaves the throttle down
+         * still gets the whole shot.
+         */
+        if (!landed && introMs >= INTRO_FLY) {
+          introMs = -1;
         }
         introMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
       }
@@ -5576,7 +5818,13 @@ export async function boot({ loading, bootStart, mapId }) {
         volts: st[18],
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - PACK_EMPTY_V) / (PACK_FULL_V - PACK_EMPTY_V),
-        altitude: p.y - view.height(p.x, p.z, p.y),
+        /* The same biased fromY every contact query in this file uses, and
+         * for the same reason: the city's height walker takes any platform
+         * within a step of fromY as the floor, so an unbiased query from the
+         * craft's own height finds the deck the quad is UNDER rather than
+         * the road it is over, and the readout prints a negative altitude
+         * under the overbridge. See SURFACE_BIAS. */
+        altitude: p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS),
         speedKph: speed * 3.6,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
@@ -5853,6 +6101,24 @@ export async function boot({ loading, bootStart, mapId }) {
     audioRpm[2] = 0;
     audioRpm[3] = 0;
     audio.update(audioRpm, 0);
+    /*
+     * A HIDDEN TAB PAUSES, THE WAY EVERY OTHER GAME DOES.
+     *
+     * Muting the mix was the whole handler. Nothing exploded without this,
+     * because rAF stops while hidden and the accumulator caps the return at
+     * 100 ms, but the pilot who alt-tabbed mid lap came back to a live FPV
+     * view and a quad that resumed at speed in the same frame the window
+     * did, with the last 100 ms of stick history behind it. The lap clock
+     * kept the time honestly, which made it worse: the run was still
+     * running and they were not flying it.
+     *
+     * These are the two calls Escape makes, and nothing else, so a return
+     * lands on the pause menu the pilot already knows how to leave.
+     */
+    if (mode === 'flight' && ui.screen === 'flight') {
+      ui.act('pause');
+      ui.show('paused');
+    }
   });
   let firstFrameMs = -1;
   let frames = 0;
@@ -6178,7 +6444,10 @@ export async function boot({ loading, bootStart, mapId }) {
     bounceSpeedMax: BOUNCE_SPEED_MAX,
     bounceCount,
     propPlaneMaxUpDot: PROP_PLANE_MAX_UP_DOT,
-    groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y),
+    /* Biased like the OSD's altitude and like every contact query. A
+     * harness reading this against a flight is reading the same number the
+     * pilot is. */
+    groundClearance: shell.quad.position.y - view.height(shell.quad.position.x, shell.quad.position.z, shell.quad.position.y - SURFACE_BIAS),
     fpvY: lastFpvY,
     camFloor: lastCamFloor,
     camClear: lastCamClear,
@@ -6890,11 +7159,23 @@ export async function boot({ loading, bootStart, mapId }) {
   requestAnimationFrame(frame);
 }
 
-boot().catch((e) => {
-  const p = document.createElement('div');
-  p.className = 'banner';
-  p.style.opacity = '1';
-  p.textContent = `The simulator could not start.\n${e.message}`;
-  uiRoot.append(p);
-});
+/*
+ * There is no boot() call here, and there has not been a working one for a
+ * long time.
+ *
+ * This file used to end with `boot().catch(...)`, called with no argument.
+ * boot() destructures its argument, so that threw a TypeError on every
+ * single load, and the catch appended a banner reading "The simulator could
+ * not start." to #ui. Nobody ever saw it, because boot.js calls
+ * main.boot({...}) a moment later and Ui.build() clears #ui before the next
+ * paint. A load that failed every time and was hidden by the timing of an
+ * unrelated line is worse than one that fails visibly: any change to how the
+ * Ui handles its root would have put a false failure banner on the front
+ * page.
+ *
+ * boot.js owns the entry point. It passes the loading screen, the boot
+ * timestamp and the map id, and it routes a rejection to loading.fail(),
+ * which is the screen that can actually say what went wrong and what to do
+ * about it.
+ */
 

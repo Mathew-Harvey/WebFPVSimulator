@@ -17,6 +17,8 @@
     "lint:presets": "node scripts/preset-lint.js",
     "lint:catalog": "node scripts/fc-catalog-lint.js",
     "lint:shell": "node scripts/shell-check.js",
+    "lint:quality": "node scripts/quality-check.js",
+    "lint:boot": "node scripts/boot-check.js",
     "lint:memory": "node scripts/memory-check.js",
     "lint:fc": "node scripts/fc-trace.js",
     "gen:catalog": "node scripts/fc-catalog-gen.js",

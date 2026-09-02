@@ -116,7 +116,7 @@ async function start() {
   }
   const worldMs = MAP_BUILD_MS[mapId] ?? MAP_BUILD_MS.custom;
 
-  loading.run(planStages(['three', 'sim', 'module', 'world', 'frame'], worldMs));
+  loading.run(planStages(['three', 'board', 'sim', 'module', 'world', 'frame'], worldMs));
 
   /*
    * NO BYTE PROGRESS ON THIS STAGE, AND THAT IS A MEASUREMENT, NOT AN

@@ -1524,8 +1524,15 @@ export class Ui {
     this.screen = 'title';
     /* Which device the pilot last touched, so the command bar prints that
      * device's glyphs. Showing keyboard and pad prompts at once is twice the
-     * noise and half the answer. */
-    this.lastInput = 'key';
+     * noise and half the answer.
+     *
+     * 'none' until something is pressed, and that is not a nicety: it used
+     * to start at 'key', so a phone, which never sends a key, was
+     * indistinguishable from a keyboard and got told to press Enter. The
+     * legend reads this to choose a third voice on a touch screen that has
+     * not heard from a keyboard or a pad. Everywhere else treats it exactly
+     * as it treated 'key'. */
+    this.lastInput = 'none';
     /* Screen id to the label of the row the cursor was on. See restoreCursor. */
     this.cursorMemory = {};
     /* The id of the row the cursor is on. The durable half of the cursor:
@@ -1714,6 +1721,25 @@ export class Ui {
      * stick calibration prompts, which have to read over a screen, so the
      * banner is appended after the screens rather than before. */
     this.banner = el('div', 'banner', '');
+    /*
+     * THE ONE THING THAT SPEAKS.
+     *
+     * Every word this shell says in flight was written into an ordinary div:
+     * the banner, the gate cue, the lap time, the results. The only
+     * aria-live node in the file was the music dock's track title, so a
+     * screen reader user heard the song change and not that the lap had
+     * finished. This is one polite region, off screen, fed by setBanner and
+     * by showResults, and it is deliberately the only one: two live regions
+     * competing is worse than none, because the second interrupts the first.
+     *
+     * Off screen with a clip rather than display:none, because display:none
+     * takes a node out of the accessibility tree entirely, which is the
+     * mistake the legacy .hint rule makes and this one must not repeat.
+     */
+    this.announcer = el('div', 'sr-only', '');
+    this.announcer.setAttribute('aria-live', 'polite');
+    this.announcer.setAttribute('aria-atomic', 'true');
+    this.announcer.setAttribute('role', 'status');
     /* Optional performance readout, off unless the player asks for it. */
     this.readout = el('div', 'readout', '');
 
@@ -2391,7 +2417,7 @@ export class Ui {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.banner, this.readout, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
+    r.append(this.announcer, this.banner, this.readout, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
     this.syncBugChip();
   }
 
@@ -6923,9 +6949,10 @@ export class Ui {
   }
 
   setCraftCaption(text) {
-    if (this.craftCaption) {
-      this.craftCaption.textContent = text;
-    }
+    /* main.js calls syncAngleMode from the frame loop, on every screen, so
+     * this wrote into the Settings caption sixty times a second while the
+     * pilot was looking at something else. */
+    Ui.text(this.craftCaption, text);
   }
 
   isModal() {
@@ -7179,9 +7206,21 @@ export class Ui {
   }
 
   setBanner(text, panelled = false) {
-    this.banner.textContent = text || '';
-    this.banner.style.opacity = text ? '1' : '0';
-    this.banner.className = panelled ? 'banner panel' : 'banner';
+    /* Called from the frame loop as well as from events, so it is guarded
+     * like the OSD. */
+    const want = text || '';
+    Ui.text(this.banner, want);
+    const opacity = want ? '1' : '0';
+    if (this.banner.__wfOpacity !== opacity) {
+      this.banner.__wfOpacity = opacity;
+      this.banner.style.opacity = opacity;
+    }
+    Ui.klass(this.banner, panelled ? 'banner panel' : 'banner');
+    /* The announcer is the one place a screen reader hears a banner at all;
+     * see mountAnnouncer. Only real text, and only when it changes. */
+    if (want) {
+      this.announce(want);
+    }
   }
 
   /*
@@ -7306,62 +7345,130 @@ export class Ui {
    *   Speed, pack and throttle are the same in both, because they are
    *   properties of the machine and not of the game around it.
    */
+  /*
+   * Say something once, to whoever is listening. The guard is the point: a
+   * live region re-reads its contents when they change, and setBanner runs
+   * on the frame loop, so an unguarded write would speak the same sentence
+   * sixty times a second.
+   */
+  announce(text) {
+    const want = text == null ? '' : String(text);
+    if (!this.announcer || this.announcer.__wfSaid === want) {
+      return;
+    }
+    this.announcer.__wfSaid = want;
+    this.announcer.textContent = want;
+  }
+
+  /*
+   * WRITE ONLY WHAT CHANGED.
+   *
+   * These three exist because setOsd runs on every flight frame and used to
+   * assign textContent and className to about a dozen nodes whether or not
+   * the value had moved. Assigning the string a node already holds still
+   * replaces its Text child and still invalidates style, and this overlay is
+   * composited above the WebGL canvas, which is the arrangement an
+   * integrated GPU pays for most. Measured with a MutationObserver: 17
+   * records per frame in flight, 3 per frame sitting on the title.
+   *
+   * scorehud.js has done it this way since it was written and says why at
+   * the top of the file. This is the same guard, in the file that needed it
+   * more. The last value is cached on the node itself so nothing has to keep
+   * a map in step with a DOM that screens rebuild.
+   */
+  static text(el, value) {
+    if (!el) {
+      return;
+    }
+    const v = value == null ? '' : String(value);
+    if (el.__wfText !== v) {
+      el.__wfText = v;
+      el.textContent = v;
+    }
+  }
+
+  static klass(el, value) {
+    if (!el) {
+      return;
+    }
+    const v = value == null ? '' : String(value);
+    if (el.__wfClass !== v) {
+      el.__wfClass = v;
+      el.className = v;
+    }
+  }
+
+  /* Bars are a width in per cent. Rounded to one decimal before the compare,
+   * because a battery that drains by a ten thousandth of a per cent per frame
+   * would otherwise defeat the guard entirely while moving nothing a pilot
+   * can see. */
+  static bar(el, frac) {
+    if (!el) {
+      return;
+    }
+    const pct = Math.round(Math.max(0, Math.min(1, frac)) * 1000) / 10;
+    if (el.__wfBar !== pct) {
+      el.__wfBar = pct;
+      el.style.width = `${pct}%`;
+    }
+  }
+
   setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
     const running = lapMs != null && Number.isFinite(lapMs);
-    this.osdClockLabel.textContent = freestyle ? 'Airtime' : 'Lap';
-    this.osdTimer.textContent = running ? formatTime(lapMs) : '0.00';
-    this.osdTimer.className = running ? 'osd-timer' : 'osd-timer waiting';
+    Ui.text(this.osdClockLabel, freestyle ? 'Airtime' : 'Lap');
+    Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
+    Ui.klass(this.osdTimer, running ? 'osd-timer' : 'osd-timer waiting');
     if (freestyle) {
-      this.osdGate.textContent = '';
+      Ui.text(this.osdGate, '');
     } else if (gateCue) {
-      this.osdGate.textContent = `Gate ${gate} of ${gateCount}, ${gateCue}`;
+      Ui.text(this.osdGate, `Gate ${gate} of ${gateCount}, ${gateCue}`);
     } else {
-      this.osdGate.textContent = `Gate ${gate} of ${gateCount}`;
+      Ui.text(this.osdGate, `Gate ${gate} of ${gateCount}`);
     }
-    this.osdPack.textContent = `${volts.toFixed(1)} volts`;
-    this.osdLast.textContent = !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '';
+    Ui.text(this.osdPack, `${volts.toFixed(1)} volts`);
+    Ui.text(this.osdLast, !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '');
     if (this.osdGhost) {
       if (ghostGapMs == null || freestyle) {
-        this.osdGhost.className = 'osd-ghost is-off';
-        this.osdGhost.textContent = '';
+        Ui.klass(this.osdGhost, 'osd-ghost is-off');
+        Ui.text(this.osdGhost, '');
       } else {
         /* Negative is you ahead of the ghost. The sign is spelled out so
          * the readout cannot be mistaken for a lap time. */
         const ahead = ghostGapMs <= 0;
         const gap = `${ahead ? '-' : '+'}${(Math.abs(ghostGapMs) / 1000).toFixed(2)}`;
-        this.osdGhost.textContent = `${ghostFinal ? 'Ghost lap' : 'Ghost'} ${gap}`;
-        this.osdGhost.className = `osd-ghost ${ahead ? 'ahead' : 'behind'}`;
+        Ui.text(this.osdGhost, `${ghostFinal ? 'Ghost lap' : 'Ghost'} ${gap}`);
+        Ui.klass(this.osdGhost, `osd-ghost ${ahead ? 'ahead' : 'behind'}`);
       }
     }
-    this.osdPackBar.style.width = `${Math.max(0, Math.min(1, packFrac)) * 100}%`;
-    this.osdSpeed.textContent = `${speedKph.toFixed(0)} km/h`;
+    Ui.bar(this.osdPackBar, packFrac);
+    Ui.text(this.osdSpeed, `${speedKph.toFixed(0)} km/h`);
     if (this.osdFlight) {
-      this.osdFlight.textContent = flightMode === 'turtle'
+      Ui.text(this.osdFlight, flightMode === 'turtle'
         ? 'Turtle'
         : (launchState === 1 || launchState === 2
           ? 'Launch'
-          : (flightMode === 'angle' ? 'Angle' : 'Acro'));
+          : (flightMode === 'angle' ? 'Angle' : 'Acro')));
     }
     if (this.osdLaunch) {
       const on = launchState > 0;
-      this.osdLaunch.className = 'osd-launch'
+      Ui.klass(this.osdLaunch, 'osd-launch'
         + (on ? '' : ' is-off')
         + (launchState === 2 ? ' is-hot' : '')
-        + (launchState === 3 ? ' is-go' : '');
+        + (launchState === 3 ? ' is-go' : ''));
       if (!on) {
-        this.osdLaunch.textContent = '';
+        Ui.text(this.osdLaunch, '');
       } else if (launchState === 3) {
-        this.osdLaunch.textContent = 'GO';
+        Ui.text(this.osdLaunch, 'GO');
       } else {
         const deg = Math.round(launchPitch || 0);
-        this.osdLaunch.textContent = deg > 2 ? `LAUNCH ${deg}` : 'LAUNCH';
+        Ui.text(this.osdLaunch, deg > 2 ? `LAUNCH ${deg}` : 'LAUNCH');
       }
     }
-    this.osdAlt.textContent = `${altitude.toFixed(1)} m above the ground`;
-    this.osdThrBar.style.width = `${Math.max(0, Math.min(1, throttle)) * 100}%`;
+    Ui.text(this.osdAlt, `${altitude.toFixed(1)} m above the ground`);
+    Ui.bar(this.osdThrBar, throttle);
     if (this.osdHits) {
       /*
        * IT COUNTS UP NOW, AND IT COSTS NOTHING.
@@ -7428,7 +7535,7 @@ export class Ui {
     if (!this.osdSticks) {
       return;
     }
-    this.osdSticks.className = show ? 'osd-sticks' : 'osd-sticks is-off';
+    Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
     if (!show) {
       return;
     }
@@ -7769,6 +7876,30 @@ export class Ui {
    * legend that cost vertical space for nothing. */
   legendFor() {
     const pad = this.lastInput === 'pad';
+    /*
+     * A THIRD VOICE, FOR THE PHONE.
+     *
+     * The bar had exactly two: a pad voice and a keyboard voice, chosen by
+     * whichever spoke last. A phone has neither, so a touch visitor was
+     * told to press arrow keys and Enter on a screen with no keys, on the
+     * first thing they see. The shell already knows it is on a touch screen,
+     * because that is what mounts the thumb sticks.
+     *
+     * lastInput still wins when it is set: someone with a keyboard attached
+     * to a tablet gets the keyboard's words the moment they use it.
+     */
+    const touch = this.lastInput === 'none'
+      && typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
+    if (touch) {
+      const out = [];
+      out.push({ keys: [], text: this.cardScreen() ? 'Tap a card' : 'Tap a row' });
+      if (this.screen !== 'title') {
+        out.push({ keys: [], text: 'Back', action: 'back' });
+      } else if (this.mode) {
+        out.push({ keys: [], text: 'Race or Freestyle', action: 'mode-gate' });
+      }
+      return out;
+    }
     const out = [];
     if (this.cardScreen()) {
       /* Pitch, not roll. pollPad walks a card screen with the pitch axis and
@@ -7831,6 +7962,25 @@ export class Ui {
       if (i >= 0) {
         return i;
       }
+    }
+    /*
+     * A FIRST VISIT OPENS ON THE ROW THE SCREEN EXISTS FOR.
+     *
+     * `primary` already marks that row on the four screens that have one:
+     * Fly on the title and on the launch card, Fly this track on standings,
+     * Resume on pause. Without this the cursor went to the first stop, and
+     * on the launch card the first stop is Radio link, which is a dropdown.
+     * So a pilot who read "Enter flies it" on the card, pressed Enter, and
+     * got a list of ELRS packet rates was doing exactly what the screen told
+     * them to. The rows above the primary one are settings for the run; the
+     * primary one is the run.
+     *
+     * Only when nothing is remembered. Someone who walked down to Radio link
+     * last time and came back still lands where they left off.
+     */
+    const p = items.findIndex((it) => it && it.primary && this.isStop(it));
+    if (p >= 0) {
+      return p;
     }
     return this.firstStop(items);
   }

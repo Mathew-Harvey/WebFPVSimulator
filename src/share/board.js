@@ -210,6 +210,57 @@ async function readJson(res) {
 }
 
 /*
+ * Every READ of the board carries a deadline, and this is the only place
+ * that number lives.
+ *
+ * The board is a Render web service on the free tier, so it sleeps after
+ * fifteen minutes of quiet and takes about a minute to wake. DEPLOY.md says
+ * the simulator is unaffected because a static site does not sleep, and that
+ * was only true while nothing on the boot path talked to the board. It does:
+ * a cold visit asks for the most flown track, and every Fly link asks for a
+ * document. Without a deadline a board that accepts the connection and then
+ * thinks about it for a minute holds the whole boot, under a loading label
+ * that blames something else.
+ *
+ * A read that times out is the same event as a board that is down, which
+ * every caller here already treats as "no community courses today". The one
+ * exception is a Fly link, where the pilot asked for a specific course by
+ * name: main.js turns that rejection into a banner rather than a silent
+ * empty menu.
+ *
+ * Writes are deliberately NOT given a deadline. Abandoning a publish or a
+ * posted lap time after eight seconds does not undo it at the far end, so
+ * the pilot would be told it failed while the board stored it.
+ */
+export const BOARD_READ_TIMEOUT_MS = 8000;
+
+function readSignal(ms = BOARD_READ_TIMEOUT_MS) {
+  /* AbortSignal.timeout is the whole implementation on any browser that can
+   * run this simulator. The guard is for Node, where the harness imports
+   * this module to check the URLs it builds. */
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  return undefined;
+}
+
+/* A GET of the board with the deadline above, and a message that names the
+ * board rather than leaking DOMException's "signal is aborted without
+ * reason". */
+async function boardGet(url, ms = BOARD_READ_TIMEOUT_MS) {
+  try {
+    return await fetch(url, { signal: readSignal(ms) });
+  } catch (e) {
+    if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+      const err = new Error(`The board did not answer within ${Math.round(ms / 1000)} s.`);
+      err.timeout = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+/*
  * Every published course, with the plan the board already drew for its own
  * cards. This is what lets the Courses screen show the board's courses in
  * the same grid as the worlds instead of sending the player to another tab:
@@ -223,7 +274,7 @@ async function readJson(res) {
  */
 export async function fetchTrackList(origin = boardOrigin()) {
   const board = trimOrigin(origin);
-  const res = await fetch(`${board}/api/tracks`);
+  const res = await boardGet(`${board}/api/tracks`);
   const body = await readJson(res);
   const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
   return tracks.map((t) => ({
@@ -298,9 +349,13 @@ export async function adoptMostFlownTrack() {
     return null;
   }
   try {
-    const signal = AbortSignal.timeout(4000);
     const origin = boardOrigin();
-    const res = await fetch(`${trimOrigin(origin)}/api/tracks`, { signal });
+    /* Shorter than the shared deadline on purpose: this one runs on a cold
+     * boot with nothing seated, and a visitor who did not ask for any
+     * particular course should not wait the full eight seconds to find out
+     * the board is asleep. A Fly link, which DID name a course, gets the
+     * full deadline through fetchTrackDocument. */
+    const res = await boardGet(`${trimOrigin(origin)}/api/tracks`, 4000);
     const body = await readJson(res);
     const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
     const list = tracks.map((t) => ({
@@ -335,7 +390,7 @@ export async function adoptMostFlownTrack() {
 }
 
 export async function fetchTrackDocument(id, origin = boardOrigin()) {
-  const res = await fetch(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(id)}/document`);
+  const res = await boardGet(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(id)}/document`);
   return readJson(res);
 }
 
@@ -372,7 +427,7 @@ export async function postTime({ trackId, name, lapMs, ghost, origin }) {
  * picker, never a broken menu, so callers treat rejection as "no times".
  */
 export async function fetchTrackTimes(trackId, origin = boardOrigin()) {
-  const res = await fetch(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(trackId)}`);
+  const res = await boardGet(`${trimOrigin(origin)}/api/tracks/${encodeURIComponent(trackId)}`);
   const body = await readJson(res);
   const times = body && Array.isArray(body.times) ? body.times : [];
   return times.map((t) => ({
@@ -387,7 +442,7 @@ export async function fetchTrackTimes(trackId, origin = boardOrigin()) {
  * still base64; src/share/ghostdata.js decodes it. */
 export async function fetchGhost(trackId, timeId, origin = boardOrigin()) {
   const board = trimOrigin(origin || boardOrigin());
-  const res = await fetch(
+  const res = await boardGet(
     `${board}/api/tracks/${encodeURIComponent(trackId)}/times/${encodeURIComponent(timeId)}/ghost`,
   );
   return readJson(res);

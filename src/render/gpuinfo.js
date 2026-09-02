@@ -39,6 +39,58 @@
 
 const SOFTWARE_RE = /swiftshader|llvmpipe|softpipe|lavapipe|microsoft basic render|gdi generic|mesa offscreen|software rasterizer|cpu raster/i;
 
+/*
+ * Integrated graphics, by name, because the name is the only thing a browser
+ * will tell us about the chip.
+ *
+ * quality.js says in its own header that Medium is sized for "a 2020-era
+ * laptop iGPU (UHD 620 / Iris Plus / MX350)" and High for "a 2021-era PC or
+ * a strong laptop iGPU". Detection did not read the chip at all: it returned
+ * Low for a Steam Deck, a phone and an iPad, and High for literally
+ * everything else, so the machine Medium was written for booted into High.
+ *
+ * WHAT IS AND IS NOT MATCHED. Intel's integrated parts through UHD, Iris and
+ * the Arc-branded Xe iGPUs; AMD's, which report as plain "Radeon Graphics",
+ * "Vega N" or an APU model; and the mobile parts, Mali, Adreno, PowerVR,
+ * Videocore. Apple Silicon is NOT here: an M series GPU holds the authored
+ * look and the header says so. Discrete parts are not here either, and the
+ * patterns are anchored so that "Radeon RX 7900" and "Arc A770" do not match
+ * the integrated ones they share a word with.
+ *
+ * A name test is a heuristic and it will be wrong about something. That is
+ * why it only ever lowers a DETECTED preset, never a chosen one, and why it
+ * lowers to Medium rather than Low: Medium is a real preset with shadows and
+ * ink, not a fallback, and the pilot who disagrees changes one row in
+ * Settings.
+ */
+const INTEGRATED_RE = new RegExp([
+  /* Intel: HD Graphics 4000, UHD Graphics 620, Iris Plus, Iris Xe. */
+  'intel\\b[^,)]*\\b(hd|uhd|iris|xe)\\b',
+  '\\b(hd|uhd) graphics\\b',
+  '\\biris\\b',
+  /* AMD integrated: bare "Radeon Graphics", Vega 3 to 11, Radeon RX Vega N. */
+  '\\bradeon\\s*(\\(tm\\)\\s*)?graphics\\b',
+  '\\bvega\\b\\s*\\d',
+  /* Phones, tablets and handheld SoCs. */
+  '\\bmali\\b',
+  '\\badreno\\b',
+  '\\bpowervr\\b',
+  '\\bvideocore\\b',
+].join('|'), 'i');
+
+/*
+ * True when the renderer string names a chip that shares system memory with
+ * the CPU. Exported so the shell can lower a detected preset, and so a test
+ * can pin the list against real strings.
+ */
+export function isIntegratedGpu(raw) {
+  const s = String(raw || '');
+  if (!s || SOFTWARE_RE.test(s)) {
+    return false;
+  }
+  return INTEGRATED_RE.test(s);
+}
+
 function glOf(renderer) {
   if (!renderer) {
     return null;
@@ -139,6 +191,7 @@ export function readGpuInfo(renderer) {
   const gl = glOf(renderer);
   const info = {
     raw: '',
+    integrated: false,
     vendor: '',
     name: '',
     display: 'Unknown',
@@ -183,6 +236,10 @@ export function readGpuInfo(renderer) {
   const name = tidyGpuName(raw) || tidyGpuName(vendor);
   info.name = name;
   info.software = isSoftware(raw) || isSoftware(name);
+  /* Reported alongside `software` rather than folded into it: an iGPU is a
+   * real GPU that draws, it is simply short of fill rate and memory
+   * bandwidth, so the shell lowers it a step instead of all the way. */
+  info.integrated = !info.software && (isIntegratedGpu(raw) || isIntegratedGpu(name));
   info.hidden = !info.software && looksGeneric(name, raw);
   if (info.software) {
     info.display = name ? `Software (${name})` : 'Software';

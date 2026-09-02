@@ -73,6 +73,11 @@
  */
 export const MEASURED_MS = {
   three: 73,
+  /* The board's own round trip on a warm local service. A sleeping Render
+   * instance takes about a minute, which is exactly why this stage has a
+   * name: the weight is what a healthy load costs, and the elapsed readout
+   * beside the name is what carries an unhealthy one. */
+  board: 60,
   sim: 22,
   module: 29,
   world: 2964,
@@ -81,6 +86,7 @@ export const MEASURED_MS = {
 
 const STAGE_NAMES = {
   three: 'Renderer',
+  board: 'Board',
   sim: 'Flight controller',
   module: 'Map',
   world: 'World',

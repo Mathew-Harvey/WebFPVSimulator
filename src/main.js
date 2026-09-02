@@ -3338,6 +3338,33 @@ export async function boot({ loading, bootStart, mapId }) {
    * and be honestly what it is. Refusing it instead would mean a pilot who
    * flies the friendlier machine has no board at all.
    */
+  /*
+   * Put the results screen up on a run that has ended. ONE function, called
+   * by the clock running out and by the harness hook, so a screenshot of
+   * this screen is a screenshot of the path a pilot takes rather than of a
+   * second copy of it that could drift.
+   *
+   * The turtle teardown is the race path's, verbatim and for the same
+   * reason: a run can end while the craft is upside down waiting to be
+   * flipped, and leaving that state armed behind a menu is how the next
+   * run starts with the motors parked.
+   */
+  function endFreestyleRun() {
+    mode = 'results';
+    if (turtleWait || turtleFlip.active) {
+      if (turtleWait && !turtleFlip.active) {
+        beginTurtleFlip();
+      }
+      finishTurtleFlip();
+    }
+    setCrashflip(false);
+    turtleRecover = false;
+    turtleOnSupport = false;
+    setTurtleParkMotors(false);
+    poseLock = false;
+    ui.showFreestyleResults(score.summary());
+  }
+
   async function submitFreestyleRun() {
     const summary = score.summary();
     if (!summary.tricks || !(summary.total > 0)) {
@@ -5939,13 +5966,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * would take it off the overlay that is meant to show it.
          */
         if (!wasOver && score.over()) {
-          mode = 'results';
-          setCrashflip(false);
-          turtleRecover = false;
-          turtleOnSupport = false;
-          setTurtleParkMotors(false);
-          poseLock = false;
-          ui.showFreestyleResults(score.summary());
+          endFreestyleRun();
         }
       }
       const p = shell.quad.position;
@@ -6436,10 +6457,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * cannot be asked for. Same path as the real one, no mock. */
   window.__scoreFinish = () => {
     score.finish();
-    const summary = score.summary();
-    mode = 'results';
-    ui.showFreestyleResults(summary);
-    return summary;
+    endFreestyleRun();
+    return score.summary();
   };
   /* The bail, staged. There is no other way to photograph the one screen
    * that matters most in this mode: a real bail needs a real crash, and a

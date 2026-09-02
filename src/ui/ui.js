@@ -589,6 +589,12 @@ function saveSettings(s) {
  * because a lap is won and lost in them. A run is not.
  */
 export function formatRunClock(ms) {
+  /* An untimed run reports Infinity, which is not a clock. Nothing in the
+   * shell builds one, only the self-test does, but a readout that can print
+   * "Infinity:NaN" is one refactor away from being seen. */
+  if (!Number.isFinite(ms)) {
+    return '--:--';
+  }
   const left = Math.ceil((ms > 0 ? ms : 0) / 1000);
   const m = Math.floor(left / 60);
   const sec = left - m * 60;
@@ -7705,10 +7711,15 @@ export class Ui {
        * is that trick's share of the trick score. Same idiom the lap rows
        * use, which is why they can share the stylesheet. */
       const top = summary.rows.length ? summary.rows[0].points : 0;
-      /* SIX, because the menu stands over the bottom of this screen and a
-       * seventh row is drawn underneath it. The note below says how many
-       * are not shown, so nothing is hidden without saying so. */
-      for (const row of summary.rows.slice(0, 6)) {
+      /*
+       * TEN, and the container scrolls, so this is a choice rather than a
+       * fit. A run can name twenty five kinds of trick and the tail of that
+       * list is quarter rolls worth three points each: what a pilot reads a
+       * results screen for is what EARNED, and a top ten is the shape that
+       * answers it. The note below says how many are not shown, so nothing
+       * is hidden without saying so.
+       */
+      for (const row of summary.rows.slice(0, 10)) {
         const line = el('div', `result-row${row === summary.rows[0] ? ' fastest' : ''}`);
         const main = el('div', 'result-main');
         main.append(el('span', 'result-label', row.count > 1 ? `${row.name} x${row.count}` : row.name));
@@ -7723,8 +7734,11 @@ export class Ui {
         }
         this.resultsBody.append(line);
       }
-      if (summary.rows.length > 6) {
-        this.resultsNote.textContent = `And ${summary.rows.length - 6} more kinds of trick.`;
+      const hidden = summary.rows.length - 10;
+      if (hidden > 0) {
+        this.resultsNote.textContent = hidden === 1
+          ? 'And one more kind of trick, further down the list.'
+          : `And ${hidden} more kinds of trick, further down the list.`;
       }
     }
     this.show('results');

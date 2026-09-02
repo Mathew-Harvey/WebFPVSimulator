@@ -78,7 +78,6 @@ const NAME_STACK_MAX = 6;
  * a fast chain does not become a wall of text. Must match the CSS. */
 const NAME_LIFE_MS = 2200;
 
-
 export class ScoreHud {
   constructor(root) {
     this.root = el('div', 'score-hud is-off');
@@ -168,7 +167,6 @@ export class ScoreHud {
       this.shownTotal = view.total;
       this.totalValue.textContent = formatScore(view.total);
     }
-
     const c = view.combo;
     if (!c) {
       if (this.comboBox.className !== 'score-combo is-off') {

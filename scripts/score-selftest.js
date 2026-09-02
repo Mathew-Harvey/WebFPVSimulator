@@ -889,6 +889,49 @@ console.log('\nthe run, and the two workbook tables that used to be dead');
   check('a run that never left one obstacle earns no bonus and pays the ladder',
     still.bonus === 0 && still.total() < moved.total());
 
+  /*
+   * A RUN THAT NEVER STARTS NEVER ENDS, and that is the rule that keeps
+   * free flight in a mode that now has a clock in it. The clock starts on
+   * the first trick, so a pilot pottering round the town who lands nothing
+   * is never kicked to a results screen, and a pilot who lands one flip has
+   * started a run and is told so.
+   */
+  const idle = new FreestyleScore();
+  idle.tick(0);
+  idle.tick(RUN_MS * 3);
+  check('a run nobody started is still not over three runs later',
+    !idle.over() && idle.summary().durationMs === 0);
+
+  /* The horn is idempotent. tick() runs every frame and finish() is
+   * reachable from the harness, so paying the variety bonus twice was one
+   * missing guard away. */
+  const twice = new FreestyleScore();
+  for (let i = 0; i < 12; i += 1) {
+    twice.tick(i * 400);
+    twice.land({ name: TRICKS[i].name, execution: 'CLEAN', endMs: i * 400, obstacle: i });
+  }
+  const first = twice.finish();
+  check('finishing twice pays the variety bonus once',
+    twice.finish() === first && twice.bonus > 0);
+  twice.tick(RUN_MS * 3);
+  check('and ticking a finished run changes nothing', twice.total() === first);
+
+  /* The chain tops out, banks itself, and the next trick opens a new one
+   * rather than being lost. */
+  const capped = new FreestyleScore();
+  let banks = 0;
+  for (let i = 0; i < 14; i += 1) {
+    capped.tick(i * 200);
+    capped.land({ name: TRICKS[i].name, execution: 'CLEAN', endMs: i * 200 });
+    for (const e of capped.drainEvents() || []) {
+      if (e.kind === 'bank') {
+        banks += 1;
+      }
+    }
+  }
+  check('a chain banks once at the cap and the next trick opens another',
+    banks === 1 && capped.view().combo.names.length === 2);
+
   /* A run that used the debug hooks is marked, so a board can refuse it. */
   const staged = new FreestyleScore();
   staged.tick(0);

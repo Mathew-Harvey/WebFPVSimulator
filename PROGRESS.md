@@ -25602,7 +25602,7 @@ question, is unchanged.
 
 ### Checks
 
-Run in this turn, all passing: `npm run score:selftest` (189), `npm run
+Run in this turn, all passing: `npm run score:selftest` (193), `npm run
 lint:nouns`, `npm run lint:boot` (9 of 9), `npm run lint:shell`, `npm run
 lint:arcade`, `npm run lint:presets`, `node scripts/board-check.js` against a
 real board, and the LeaderBoard repository's own `npm test`, `npm run
@@ -25643,3 +25643,41 @@ naming because none of them are visible to a unit test:
 
 The board page was served and looked at at 1440, 900 and 430 px, on a seeded
 board and on an empty one, with no console errors.
+
+
+### The self verification pass, and what it turned up
+
+Reading the diff and driving the real screens found four things that no check
+would have:
+
+The run clock went in the wrong place. It is now the OSD's, and the airtime it
+replaced is gone. Two clocks answering the same question is the kind of thing
+that only looks wrong in a screenshot.
+
+The horn's teardown was a COPY of the race path's, and the harness hook was a
+second copy of the horn, so the screenshot rig was exercising neither. They are
+one function now, `endFreestyleRun`, and `window.__scoreFinish` calls it, which
+is what proved the turtle teardown at the horn does not throw.
+
+The results rows were capped at six on the theory that the menu covered them.
+It does not: the container scrolls, which is the race screen's own behaviour.
+Ten, and the note that says how many are further down had "1 more kinds of
+trick" in it.
+
+`formatRunClock` printed "Infinity:NaN" for an untimed run. Nothing in the
+shell builds one, only the self-test does, but a readout one refactor away from
+being seen is worth a guard.
+
+Four scorer edges are now pinned in the self-test rather than probed and
+forgotten: a run nobody started is still not over three runs later, which is
+the rule that keeps free flight in a mode that has a clock in it; finishing
+twice pays the variety bonus once; ticking a finished run changes nothing; and
+a chain that tops out banks itself and the next trick opens another rather than
+being lost.
+
+The board page was driven through its own interactions with no console or page
+errors: the switch writes `?view=`, the tag filter is AND (race gives 3 of 9,
+race and beginner gives 1), the author filter narrows to 2, the `/` shortcut
+focuses the search on the tracks view and correctly does nothing on the
+freestyle one, and a track sheet opens over the freestyle board and closes back
+onto it with the view intact.

@@ -2344,12 +2344,34 @@ export function clipWatchTick(watch, sample, dtMs) {
   }
 
   const soft = clipWatchSoft(sample);
-  /* Centre on or inside the face. Hull overlap with the centre still
-   * outside is a bounce leftover, not a stuck crash. */
+  /*
+   * Centre INSIDE the face. Hull overlap with the centre still outside is
+   * a bounce leftover, not a stuck crash.
+   *
+   * This used to read `>= 0`, which is not that test and never was. The
+   * signed reading only exists on the landed branch: a FLYING craft is
+   * handed obsInterior, which starts at 0 and is only ever raised, so
+   * "centre outside" arrives here as exactly 0 and `>= 0` accepted it.
+   * The guard the comment describes therefore did not exist, and the rule
+   * reduced to "still overlapping for 350 ms without moving 40 cm", which
+   * is the definition of a wall ride.
+   *
+   * Measured on the town's training wall, flown at it head on through
+   * Betaflight and the plant: SIX approaches from 4.0 to 11.3 m/s, six
+   * crashes, every one of them clipCrashKind 'stuck', none of them a Wall
+   * Tap. That is the owner's "the wall tap ended in a crash rather than a
+   * tap", and it is not a recogniser fault at all: the run was already
+   * over before the recogniser was asked.
+   *
+   * CLIP_CENTER_EPS rather than a bare 0, to match the insideMs
+   * accumulator three lines up and to keep float noise on a resting
+   * contact out of it. A craft actually buried still trips this, and
+   * still trips insideMs and buriedMs besides.
+   */
   const stuckCandidate = !soft
     && sample.unresolved
     && !sample.roofContact
-    && sample.interiorDepth >= 0;
+    && sample.interiorDepth > CLIP_CENTER_EPS;
   if (stuckCandidate) {
     if (!watch.haveAnchor) {
       watch.ax = sample.x;

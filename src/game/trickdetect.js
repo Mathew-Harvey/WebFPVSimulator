@@ -180,10 +180,85 @@ const SETTLE_MS = 450;
  * rate goes to infinity at the axis itself, so a craft that flies straight
  * through a railing counts nothing rather than counting a spike.
  */
-const PATH_RATE_ON = 0.35;
+/*
+ * THE RATE GATE WAS IN THE WRONG UNIT, AND IT MADE THE ORBIT IMPOSSIBLE.
+ *
+ * Angular rate is tangential speed OVER RADIUS, so a threshold written in
+ * turns per second says "the wider the circle, the faster you must fly".
+ * That is backwards: a wide orbit is the harder trick, not the lesser one.
+ * At 0.35 turns/s a lap had to close in 2.9 seconds, which a powerloop does
+ * and NO ORBIT EVER DOES. Measured, two laps of a pole: 5.0 s named Orbit
+ * x2 ten times out of ten, 7.0 s named NOTHING ten times out of ten, at
+ * every radius from 3 to 12 m and with up to 50 degrees of nose wander. The
+ * cutoff sat exactly on 0.35 turns/s and had nothing to do with how well
+ * the orbit was flown. That is the owner's "orbits and trippy spin are not
+ * picking up at all", and it was never a tolerance problem.
+ *
+ * So the opening test is now the two questions separately. PATH_RATE_ON is
+ * only "is this going round at all", low enough for a 12 second lap, and
+ * PATH_TANGENT_ON is the one with the physics in it: metres per second
+ * around the axis, which a craft hovering beside a post and drifting cannot
+ * reach and a craft flying round it always can, at any radius.
+ *
+ * The floors that actually keep a fly past out are the WINDING TOTALS, not
+ * this: a straight line subtends strictly less than half a turn about any
+ * point off it, and POLE_MIN_TURNS, HALF_LAP_MIN and WHOLE_LAP_MIN are all
+ * above that. The rate gate never was the discriminator. It was only ever
+ * a proxy, and the proxy was wrong.
+ */
+const PATH_RATE_ON = 0.08;
+const PATH_TANGENT_ON = 2.5;
+/*
+ * GOING ROUND IT versus GOING AT IT, and this is the test that tells them
+ * apart at any radius.
+ *
+ * Angular rate cannot: it is high on a close fly past and low on a wide
+ * orbit, which is the wrong way round twice over. But a craft CIRCLING
+ * holds its distance to the axis and a craft arriving or leaving does not,
+ * so compare the speed around the axis with the speed towards or away from
+ * it. On a lap the radius barely breathes and the ratio is enormous; on a
+ * departure the motion is nearly all radial and the ratio collapses.
+ *
+ * This is what stops a slow drift away from a rail carrying the lap's high
+ * water mark out with it. Measured on a flown loop around a real rail: the
+ * loop wound 1.06 turns from under and back to under, and without this the
+ * winding kept creeping forward as the craft flew off, reaching 1.111
+ * turns with the far side of the rail underneath it. Start side under, end
+ * side over, which is a HALF lap, which is not a whole one, and the flown
+ * Powerloop came out as a bare Flip.
+ */
+const PATH_TANGENT_RATIO = 1.0;
+/*
+ * PATH_RATE_OFF is a floor under "still going round", and it has to sit
+ * below the slowest orbit anybody flies and above nothing at all. A two lap
+ * orbit taking forty seconds still winds at 0.05 turns/s. It is NOT the
+ * reversal test any more, so it does not have to be brave: PATH_REVERSE_TURNS
+ * ends an out and back, and this only ends a lap the craft has simply
+ * stopped flying.
+ *
+ * The hold stays at the 220 ms the rotation runs use. It was briefly 700,
+ * which is long enough for the lap to close AFTER the rotations inside it
+ * have already settled and been matched on their own: an Immelmann came out
+ * as its own half loop, unnamed, plus a Juicy Flick.
+ */
 const PATH_RATE_OFF = 0.12;
 const PATH_OFF_HOLD_MS = 220;
 const PATH_MIN_RADIUS = 0.45;
+/*
+ * A REVERSAL IS MEASURED IN TURNS, NOT IN AN INSTANT.
+ *
+ * Out and back is not a lap and must end one. The old test compared the
+ * filtered rate's SIGN against the lap's, which is a fair test at 0.35
+ * turns/s and a coin toss at 0.08: a human holds nothing steady, and the
+ * top of a real powerloop is a float where the craft is barely winding at
+ * all and the sign is whatever the last wobble said. Accumulated backward
+ * winding does not care about wobble, because a wobble cancels itself and
+ * a genuine reversal does not. 0.12 turns is 43 degrees of going back the
+ * way you came.
+ */
+const PATH_REVERSE_TURNS = 0.08;
+/* A lap cannot run forever: past this it is drift, not a trick. */
+const PATH_MAX_MS = 20000;
 
 /*
  * The floors on a lap, and both come from the straight line theorem written
@@ -1419,6 +1494,21 @@ class PathRun {
   constructor() {
     this.open = false;
     this.acc = 0;
+    /* Winding gone back the way the lap came, since the last forward
+     * progress. See PATH_REVERSE_TURNS. */
+    this.backWind = 0;
+    /*
+     * The last millisecond this run was winding at all, as against lastMs
+     * which is the high water mark of the WINDING. They are different
+     * questions and were briefly the same field: how far round the craft
+     * got is lastMs, how long the lap occupied is this. Absorption asks
+     * the second one, so answering it with the first left the pitch of an
+     * Immelmann outside its own lap and the trick came out a Juicy Flick.
+     */
+    this.tailMs = 0;
+    /* When the gate actually opened, as against startMs which is backdated
+     * over the approach. Diagnostics only. */
+    this.openMs = 0;
     /* Set once per step by pathStep, so a run cannot be wound twice in one
      * millisecond: once as an open run and once as an engaged obstacle.
      * Winding it twice would double every increment and read one lap as
@@ -1970,13 +2060,19 @@ export class TrickDetector {
     const inst = dTurns / dt;
     run.rate += (inst - run.rate) * 0.02;
     const mag = run.rate < 0 ? -run.rate : run.rate;
+    /* Metres per second around the axis, against metres per second towards
+     * or away from it. See PATH_TANGENT_RATIO. */
+    const tangent = mag * TURN * nowLen;
+    const radial = (nowLen - prevLen) / dt;
+    const circling = tangent >= PATH_TANGENT_ON
+      && tangent >= (radial < 0 ? -radial : radial) * PATH_TANGENT_RATIO;
     const side = this.sideOf(ob, cx, cy, cz);
     run.windTotal += dTurns;
 
     if (!run.open) {
       /* Keep the rolling record whether or not this becomes a lap. */
       const old = run.snapshot(side, this.nowMs, this.totalTurns);
-      if (mag >= PATH_RATE_ON) {
+      if (mag >= PATH_RATE_ON && circling) {
         /*
          * BACKDATE. The lap did not begin when the winding rate crossed
          * the gate, it began 800 ms ago when the craft committed to it,
@@ -2007,6 +2103,9 @@ export class TrickDetector {
         run.lastRot[1] = this.totalTurns[1];
         run.lastRot[2] = this.totalTurns[2];
         run.dirSign = run.rate > 0 ? 1 : -1;
+        run.backWind = 0;
+        run.tailMs = this.nowMs;
+        run.openMs = this.nowMs;
         run.invSamples = 0;
         run.trackSamples = 0;
         run.haveFwd = false;
@@ -2016,15 +2115,49 @@ export class TrickDetector {
       }
       return;
     }
-    /* Still winding: this is where the lap currently ends, and this is
-     * where which way up the craft is actually gets counted. */
-    if (mag >= PATH_RATE_ON) {
-      run.lastWind = run.windTotal;
-      run.lastSide = side;
-      run.lastMs = this.nowMs;
-      run.lastRot[0] = this.totalTurns[0];
-      run.lastRot[1] = this.totalTurns[1];
-      run.lastRot[2] = this.totalTurns[2];
+    /*
+     * Still going ROUND: this is where the lap currently ends, and this is
+     * where which way up the craft is actually gets counted.
+     *
+     * `circling` is the half of this that matters, and it has to be here
+     * as well as on the opening gate. Measured on the flown loop, a real
+     * one round a real rail: the craft leaves at 14.5 m/s of radius
+     * against 7.3 m/s around the axis, which is a departure by any reading
+     * and still winds at 0.1 turns/s because a straight line subtends
+     * angle. Counted, that creeping tail took the lap from 1.008 turns
+     * ending UNDER the rail to 1.111 ending OVER it, which is a half lap,
+     * and a flown Powerloop came out as a bare Flip. A slow orbit and this
+     * departure are indistinguishable by rate alone: 0.17 turns/s and 8
+     * m/s around the axis either way. They are never indistinguishable by
+     * whether the radius is holding.
+     */
+    if (mag >= PATH_RATE_ON && circling) {
+      /*
+       * THE LAP ENDS AT ITS HIGH WATER MARK, not wherever the craft
+       * happened to be standing when the run closed.
+       *
+       * This used to assign unconditionally, which quietly subtracts the
+       * exit from the trick. A craft leaving a rail winds BACKWARDS for a
+       * moment before the reversal test fires, and every millisecond of
+       * that came off the lap: measured on the selftest's Matty Flip, a
+       * genuine 0.625 turn half lap was recorded as 0.504 and refused by
+       * HALF_LAP_MIN, which is 0.55. The trick was flown, the winding was
+       * there, and the recogniser gave part of it back before looking.
+       *
+       * Compared on the SIGNED span rather than the sign of one
+       * millisecond's angle, which at 1 kHz is a ten thousandth of a turn
+       * and flips on arithmetic noise.
+       */
+      run.tailMs = this.nowMs;
+      if ((run.windTotal - run.startWind) * run.dirSign
+        > (run.lastWind - run.startWind) * run.dirSign) {
+        run.lastWind = run.windTotal;
+        run.lastSide = side;
+        run.lastMs = this.nowMs;
+        run.lastRot[0] = this.totalTurns[0];
+        run.lastRot[1] = this.totalTurns[1];
+        run.lastRot[2] = this.totalTurns[2];
+      }
       run.spanSamples += 1;
       if (nowLen < run.minR) {
         run.minR = nowLen;
@@ -2073,12 +2206,26 @@ export class TrickDetector {
      * which is ordinary flying, made the lap thrash ninety times and lose
      * its backdate, and a genuine Matty Flip came out as a bare 1/2 Flip.
      */
-    if (run.dirSign !== 0 && (run.dirSign > 0) !== (run.rate > 0)
-      && mag >= PATH_RATE_ON) {
+    if (run.dirSign !== 0) {
+      const back = dTurns * run.dirSign;
+      if (back < 0) {
+        run.backWind -= back;
+      } else if (run.backWind > 0) {
+        run.backWind -= back;
+        if (run.backWind < 0) {
+          run.backWind = 0;
+        }
+      }
+      if (run.backWind >= PATH_REVERSE_TURNS) {
+        this.closePath(run, upZ);
+        return;
+      }
+    }
+    run.acc += dTurns;
+    if (this.nowMs - run.startMs >= PATH_MAX_MS) {
       this.closePath(run, upZ);
       return;
     }
-    run.acc += dTurns;
     if (mag < PATH_RATE_OFF) {
       run.offMs += dtMs;
       if (run.offMs >= PATH_OFF_HOLD_MS) {
@@ -2146,7 +2293,9 @@ export class TrickDetector {
      * This is the path side's twin of absorbedByLap, which does the same
      * job for a rotation that happened inside a lap.
      */
-    const overlapping = this.sameMotionLap(run.startMs, run.lastMs, mag);
+    /* How long the lap OCCUPIED, which is at least how far round it got. */
+    const endMs = run.tailMs > run.lastMs ? run.tailMs : run.lastMs;
+    const overlapping = this.sameMotionLap(run.startMs, endMs, mag);
     if (overlapping === 'drop') {
       this.heldByPath.length = 0;
       this.gapStallMs = 0;
@@ -2161,7 +2310,7 @@ export class TrickDetector {
       turns,
       dir: acc >= 0 ? 1 : -1,
       startMs: run.startMs,
-      endMs: run.lastMs,
+      endMs,
       startSide: run.startSide,
       endSide,
       /* Net rotation while the lap was flown, per axis, in turns. */
@@ -2875,8 +3024,37 @@ function nearTurns(got, want, slack) {
  * The slack this pattern needs to describe these primitives, or -1 if it
  * cannot at any cost. Zero means flown exactly as written.
  */
+/*
+ * WHICH ROTATION CAUGHT THE CONTACT IS NOT SOMETHING A PILOT DECIDES.
+ *
+ * A Wall Tap is pitch back, touch, pitch forward, and the pattern asks for
+ * the tap on the second rotation because a contact BETWEEN two runs is read
+ * when the later one closes. That is right for a tap the pilot places at
+ * the top of the manoeuvre and wrong for one the drift places early:
+ * measured on the town's training wall, flown at it, the craft was still
+ * closing while it pitched back and touched at 3.7 m/s DURING the first
+ * quarter turn. The two rotations were both there, the tap was there, the
+ * speed was inside GRAZE_SPEED_MAX, and the trick named nothing, because
+ * the tap was on step 0 and the pattern wanted it on step 1.
+ *
+ * So a pattern that asks for a tap asks the TRICK for it, not one step of
+ * it. A step that wants a tap is satisfied by a tap anywhere inside the
+ * same trick. A step that refuses one (tap: false) still refuses it on
+ * itself, because that is a different claim and no pattern makes it yet.
+ */
+function tapAnywhere(prims, n) {
+  for (let i = 0; i < n; i += 1) {
+    if (prims[i] && prims[i].tapped) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function matchSteps(steps, prims, n) {
   let slack = 0;
+  /* One reading for the whole trick. See tapAnywhere. */
+  const anyTap = tapAnywhere(prims, n);
   /* Charge a step's looseness, and give up once the budget is gone. */
   const spend = (cost) => {
     if (cost < 0) {
@@ -2930,7 +3108,8 @@ function matchSteps(steps, prims, n) {
           return -1;
         }
       }
-      if (s.tap !== undefined && Boolean(p.tapped) !== s.tap) {
+      if (s.tap !== undefined
+        && (s.tap ? !anyTap : Boolean(p.tapped) !== s.tap)) {
         return -1;
       }
       if (s.rot !== undefined) {
@@ -3004,7 +3183,8 @@ function matchSteps(steps, prims, n) {
      * the thing or it did not, and a wall trick that did not touch the wall
      * is the trick MISSED rather than the trick flown badly.
      */
-    if (s.tap !== undefined && Boolean(p.tapped) !== s.tap) {
+    if (s.tap !== undefined
+      && (s.tap ? !anyTap : Boolean(p.tapped) !== s.tap)) {
       return -1;
     }
     /*

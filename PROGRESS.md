@@ -26220,3 +26220,137 @@ the wall ride numbers above. `npm run verify` was not run: this touches
 neither the plant, `src/native`, the patches nor the build. `gapAt` is new
 code in `src/game/collide.js`, but it is a read only query on the built grid
 and nothing in the collision path calls it.
+
+## 2026-09-02 The tricks that would not fire, measured on the real aircraft
+
+The owner's report: "The power loop, split s, orbits, trippy spin matty flip
+and variations are all not picking up reliably at all ... the wall tap ended
+in a crash, rather than a tap ... consider a human flying not a perfect
+robot."
+
+### What was actually wrong, and why no check had caught it
+
+Every trick in this repository had been "verified" against a CONSTRUCTED
+flight: an exact circle, a constant turn rate, a nose pointed by arithmetic.
+Those flights pass things a flown one does not. The reason nothing better
+existed turned out to be a bug of its own:
+
+**window.__stick was flying in ANGLE MODE.** wantAngleMode() sent it down the
+keyboard branch, and angle mode holds the craft to about thirty degrees of
+bank. A probe asking for full back stick for three seconds swept eighty three
+degrees of pitch and flew away in a climb. Nothing that could actually fly the
+aircraft could get into acro, so no check had ever flown a Powerloop, and the
+whole catalogue rested on paths drawn by arithmetic. __stick is a proportional
+channel, not a key, so it now flies whichever mode the setting says. A pilot on
+a radio is unaffected.
+
+With that fixed, four separate faults fell out, each measured.
+
+### 1. The orbit could not open a lap, at any radius, however well flown
+
+PATH_RATE_ON was 0.35 turns per second, so a lap had to close in 2.9 seconds.
+A powerloop does. NO ORBIT EVER DOES. Measured, two laps of a pole:
+
+  5.0 s  ->  Orbit x2, ten times out of ten
+  7.0 s  ->  NOTHING, ten times out of ten
+
+at every radius from 3 to 12 m and with up to fifty degrees of nose wander.
+The cutoff sat exactly on 0.35 turns/s and had nothing to do with how well
+the orbit was flown.
+
+The unit was the mistake. Angular rate is tangential speed OVER RADIUS, so a
+threshold in turns per second says "the wider the circle, the faster you must
+fly", which is backwards twice over: a wide orbit is the harder trick, and a
+close fly past has the higher angular rate. The gate is now two questions:
+PATH_RATE_ON at 0.08 for "is it going round at all", and the one with the
+physics in it, PATH_TANGENT_RATIO, comparing metres per second AROUND the axis
+against metres per second TOWARDS OR AWAY FROM it. A craft circling holds its
+distance; a craft arriving or leaving does not. That test is radius free,
+which is the whole point.
+
+After: Orbit x2 and Trippy Spin x2 at every radius 3 to 12 m, every duration
+3 to 12 s for two laps, and every nose wander to fifty degrees. Ten out of ten
+each. Powerloop unchanged where it already worked and now also correct at a
+2 m radius, which used to read 3/4 Flip.
+
+### 2. A lap gave back part of the trick before looking at it
+
+lastWind was assigned unconditionally, so the moment a craft began to leave, the
+winding it lost came straight off the lap. The selftest's Matty Flip is a
+genuine 0.625 turn half lap and was recorded as 0.504, refused by HALF_LAP_MIN
+of 0.55. A lap now ends at its HIGH WATER MARK. How long the lap occupied is a
+different question from how far round it got, so tailMs answers the first and
+lastMs the second; absorption asks the first.
+
+### 3. The wall tap ended in a crash because the wall ride was impossible
+
+Flown head on at the town's training wall through Betaflight and the plant,
+SIX approaches from 4.0 to 11.3 m/s, SIX crashes, every one clipCrashKind
+'stuck', none of them a Wall Tap. The run was over before the recogniser was
+asked. Two causes:
+
+  - clipWatchTick's stuck gate read `interiorDepth >= 0`, which is not the
+    test its own comment describes. The signed reading only exists on the
+    landed branch; a FLYING craft is handed obsInterior, which starts at 0 and
+    is only ever raised, so "centre outside" arrives as exactly 0 and `>= 0`
+    accepts it. The rule reduced to "still overlapping for 350 ms without
+    moving 40 cm", which is the definition of a wall ride.
+
+  - The tap was keyed off the solver's dv, and on a vertical face that is not
+    the same question: a 4.0 m/s approach resolved to 0.09 m/s and a 9.7 m/s
+    approach to nothing at all, because the sweep clamps the travel at the
+    face. GRAZE_SPEED_MAX of 4 was therefore separating nothing from nothing.
+    The recogniser is now told on CONTACT, with the CLOSING SPEED, which is
+    the number that constant was written about. The bounce cue still runs off
+    the impulse, because that is what the pilot hears and feels.
+
+After, same six approaches: no crash, no reset, and bumps reporting 2.84 m/s
+for a gentle approach and 11.89 for a hard one, so a tap and a smack are told
+apart for the first time.
+
+### 4. Which rotation catches the contact is not something a pilot decides
+
+A Wall Tap is pitch back, touch, pitch forward, and the pattern asked for the
+tap on the second rotation because a contact BETWEEN two runs is read when the
+later one closes. Flown, the craft was still closing while it pitched back and
+touched at 3.7 m/s DURING the first quarter turn. Both rotations were there,
+the tap was there, the speed was inside GRAZE_SPEED_MAX, and the trick named
+nothing. A pattern that asks for a tap now asks the TRICK for it, not one step
+of it.
+
+### Verified this turn
+
+  - npm run score:selftest, all passed. It was 207 passes and green before this
+    work and is green after, having gone through 5 failures and 1 while the
+    changes were argued out. The five were mine and every one is named above.
+  - npm run contact:selftest, lint:shell, lint:quality, lint:nouns,
+    lint:presets: pass.
+  - lint:catalog could NOT be run: vendor/betaflight is not checked out in this
+    container, so fc-valuetable cannot read parameter_names.h. Nothing in this
+    change touches the catalog or the firmware tables.
+  - npm run verify was NOT run. It was not asked for and nothing here touches
+    physics, the module ABI or the build. The contact pass change is guarded by
+    contact:selftest, which was run.
+  - Flown in the real town, in freestyle, on the real aircraft: a Wall Tap at
+    the training wall scores "Wall Tap: CLEAN", and an approach that does not
+    reach the wall correctly scores nothing.
+
+### Instruments added, because the absence of them is why this took so long
+
+window.__trickDetector(), so a probe can watch what the recogniser DOES rather
+than only what it says. Attitude, velocity and body rates on __craftState(), so
+a stick script can fly on feedback instead of a stopwatch. __contacts(), which
+tells "never swept the wall" from "swept it and took the buried branch".
+TRICK_TRACE in score-selftest.js, which prints every lap and, at level 2, every
+hundred milliseconds of one.
+
+### Still open, and honestly not fixed
+
+The flown loop rig can name a Powerloop, but I could not hand fly a reliable
+powerloop, split-S or orbit at the training field's arches inside this session:
+the stick scripts I wrote flew backwards as often as round. Everything above
+about those tricks is measured either on the recogniser directly with
+human shaped inputs (oval paths, offset centres, a floating apex, hesitation
+mid rotation, nose wander) or on the one flown loop the selftest already had.
+A rig that flies the park's own elements is the next thing this needs, and it
+is now possible, because acro is reachable from a script for the first time.

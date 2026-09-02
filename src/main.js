@@ -1680,6 +1680,36 @@ export async function boot({ loading, bootStart, mapId }) {
   let obsRoof = false;
   let obsImpulse = 0;
   let obsImpulseKind = '';
+  /*
+   * THE HULL MET A SOLID, and how fast it was closing when it did.
+   *
+   * obsImpulse is what the SOLVER changed, and on a vertical face that is
+   * not the same question. Measured on the training wall, flown into it
+   * head on: a 4.0 m/s approach resolved to a dv of 0.09 m/s and a 9.7
+   * m/s approach to nothing at all, because the sweep clamps the travel
+   * at the face and there is little normal velocity left by the time
+   * sim_contact_at runs. A tap keyed off that number is a tap that never
+   * happens, which is why no wall trick in the catalogue could fire.
+   *
+   * obsTouched is set by the sweep itself, so it is true whenever the hull
+   * actually reached a solid, and obsClosing is the approach speed along
+   * the face normal, which is the number GRAZE_SPEED_MAX was written
+   * about: a deliberate tap is slow, a smack is not.
+   */
+  let obsTouched = false;
+  let obsClosing = 0;
+  /* Its own cooldown, so the recogniser's window is not shared with the
+   * audio cue's and one cannot swallow the other. */
+  let trickTouchAtWall = -1e9;
+  /*
+   * WHICH BRANCH OF THE CONTACT PASS A HIT TOOK. Three integers on a path
+   * that only runs when something was actually touched. They exist because
+   * a craft flown into the training wall at 11 m/s stopped dead and the
+   * game saw nothing at all: no bounce, no impulse, no bump, no crash, and
+   * therefore no Wall Tap. Telling "never swept the wall" from "swept it
+   * and took the buried branch" needs the counters, not a guess.
+   */
+  const passStats = { buried: 0, sepFail: 0, resolved: 0, dvZero: 0, kind: '', code: -1, e: 0, mu: 0 };
   let obsHasPrev = false;
   /* The last impulse announced, so a harder hit inside the cooldown is
    * still heard: a graze followed by the wall behind it is two events. */
@@ -2418,6 +2448,8 @@ export async function boot({ loading, bootStart, mapId }) {
     poseLock = false;
     obsHasPrev = false;
     obsContact = false;
+    obsTouched = false;
+    obsClosing = 0;
     obsLeftover = false;
     obsInterior = 0;
     obsRoof = false;
@@ -2909,6 +2941,24 @@ export async function boot({ loading, bootStart, mapId }) {
      * forcing angle because a key is a bang-bang input and acro on one is
      * a crash generator. */
     if (input.isTouchPrimary()) {
+      return ui.settings.flightMode === 'angle';
+    }
+    /*
+     * THE HARNESS OVERRIDE IS A GIMBAL, NOT A KEY.
+     *
+     * window.__stick writes a proportional channel straight into the poll
+     * ladder, so it can hold a rate the way a radio does and the reason
+     * keys force angle does not apply to it. It was landing on the
+     * keyboard branch anyway, and ANGLE MODE CANNOT LOOP: the craft is
+     * held to about thirty degrees of bank, so every probe that tried to
+     * fly a Powerloop swept eighty three degrees of pitch in three seconds
+     * of full back stick and flew away in a climb. That is why no check in
+     * this repository had ever flown one of these tricks: every "verified"
+     * loop was a path drawn by arithmetic and fed to the recogniser
+     * directly, because the only thing that could actually FLY was locked
+     * out of acro. A pilot on a radio is unaffected either way.
+     */
+    if (input.harnessChannels) {
       return ui.settings.flightMode === 'angle';
     }
     return input.isKeyboardPrimary() || ui.settings.flightMode === 'angle';
@@ -4211,6 +4261,7 @@ export async function boot({ loading, bootStart, mapId }) {
       vsx, vsy, vsz,
       rSim.x, rSim.y, rSim.z,
     );
+    passStats.code = code;
     if (code !== SIM_OK) {
       return 0;
     }
@@ -4340,6 +4391,12 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       lastHitKind = col.kindName(k);
       lastClosing = speedNow * col.hitNormalDot;
+      obsTouched = true;
+      if (lastClosing > obsClosing) {
+        obsClosing = lastClosing;
+      } else if (-lastClosing > obsClosing) {
+        obsClosing = -lastClosing;
+      }
       lastUpDot = Math.abs(nx * upAxis.x + ny * upAxis.y + nz * upAxis.z);
 
       const ht = col.hitT < 0 ? 0 : col.hitT > 1 ? 1 : col.hitT;
@@ -4349,7 +4406,9 @@ export async function boot({ loading, bootStart, mapId }) {
 
       /* Buried: no approach left to solve, just get out. */
       if (col.hitT <= 1e-6 && col.hitPen > 0.05) {
+        passStats.buried += 1;
         if (!separateAt(nx, ny, nz, cx, cy, cz)) {
+          passStats.sepFail += 1;
           break;
         }
         poseFromState(stateCurr, obsFrom);
@@ -4408,8 +4467,13 @@ export async function boot({ loading, bootStart, mapId }) {
 
       const dv = resolveContactAt(nx, ny, nz, cx, cy, cz, mat.e, mat.mu, vsx, vsy, vsz);
       if (dv <= 0) {
+        passStats.dvZero += 1;
+        passStats.kind = lastHitKind;
+        passStats.e = mat.e;
+        passStats.mu = mat.mu;
         break;
       }
+      passStats.resolved += 1;
       obsResolved = true;
       obsContact = true;
       if (dv > obsImpulse) {
@@ -5279,8 +5343,26 @@ export async function boot({ loading, bootStart, mapId }) {
     let interiorDepth = obsInterior;
     let roofContact = obsRoof;
     const frameContact = obsContact;
+    const frameTouched = obsTouched;
+    const frameClosing = obsClosing;
     if (obsRoof) {
       turtleOnSupport = true;
+    }
+    /*
+     * THE RECOGNISER IS TOLD ON CONTACT, not on impulse.
+     *
+     * Separate from the bounce cue below, which stays on obsImpulse
+     * because that is what the pilot hears and feels and changing it would
+     * change the feel. A Wall Tap, Wall Ride, Loop Tap and Downtown Tap
+     * all need to know the hull touched something; whether the solver had
+     * any normal velocity left to solve is not their business. Classified
+     * on the closing speed, so GRAZE_SPEED_MAX still separates the
+     * deliberate touch from the smack it was written to separate it from.
+     */
+    if (view.mode === 'freestyle' && frameTouched
+      && nowWall - trickTouchAtWall >= BOUNCE_COOLDOWN_MS) {
+      trickTouchAtWall = nowWall;
+      trickDetector.bump(frameClosing);
     }
     if (obsImpulse > 0) {
       /* One cue per frame at the hardest impulse the pass applied, not one
@@ -5295,15 +5377,6 @@ export async function boot({ loading, bootStart, mapId }) {
          * the ground without disarming". Half the trick's points and half
          * the streak, and the combo survives, because in the air a clipped
          * branch is not a bail. */
-        if (view.mode === 'freestyle') {
-          /*
-           * The impulse decides whether this was a deliberate tap or a
-           * smack. A wall trick is flown gently into the wall on purpose,
-           * and the recogniser must be able to tell the two apart or every
-           * crash offers itself as a Ceiling Tap. See TrickDetector.bump.
-           */
-          trickDetector.bump(obsImpulse);
-        }
         bounceAtWall = nowWall;
         view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
       }
@@ -5312,6 +5385,8 @@ export async function boot({ loading, bootStart, mapId }) {
       lastImpulse = 0;
     }
     obsContact = false;
+    obsTouched = false;
+    obsClosing = 0;
     obsLeftover = false;
     obsInterior = 0;
     obsRoof = false;
@@ -6462,6 +6537,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * scoring path and not a mock of it.
    */
   window.__score = () => score.summary();
+  /*
+   * The recogniser itself, so a probe can watch what it does rather than
+   * only what it says. Every "verified" trick in this repo's history was
+   * checked against a CONSTRUCTED flight: an exact circle, a constant turn
+   * rate, a nose pointed by arithmetic. Those flights pass things a flown
+   * one does not, and the gap is where the owner's "not picking up at all"
+   * lives. A probe holding this can patch closePath and read the laps a
+   * REAL stick input produced. Harness only; nothing in the shell reads it.
+   */
+  window.__trickDetector = () => trickDetector;
   /* What the map offered up to fly around, for the audit in
    * scripts/obstacle-audit.js and for check 16's eyes. */
   window.__obstacleField = () => obstacles;
@@ -6518,6 +6603,24 @@ export async function boot({ loading, bootStart, mapId }) {
     return view.colliders.gapAt(x, y, z, r);
   };
   /* What is solid, and how well the broadphase is doing. */
+  /*
+   * THE CONTACT COUNTERS, so a probe can tell a wall it touched from a wall
+   * it stopped short of. The owner's report is that a wall tap "ended in a
+   * crash rather than a tap", and the two halves of that are answered by
+   * different numbers: bounces says the contact pass saw the wall at all,
+   * lastImpulse says how hard, and GRAZE_SPEED_MAX is the line between a
+   * tap and a smack. Nothing in the shell reads it.
+   */
+  window.__contacts = () => ({
+    ...passStats,
+    interior: obsInterior,
+    leftover: obsLeftover,
+    roof: obsRoof,
+    bounces: bounceCount,
+    lastImpulse,
+    grazeMax: GRAZE_SPEED_MAX,
+    bounceMax: BOUNCE_SPEED_MAX,
+  });
   window.__colliders = () => view.colliders.stats();
   /*
    * Every solid box within `r` of a point, as plain numbers. Harness only,
@@ -6773,6 +6876,34 @@ export async function boot({ loading, bootStart, mapId }) {
      * capture can tell a stick that reached the plant from one that only
      * reached the menu. */
     pitchDeg: stateCurr ? pitchNoseDownDeg(stateCurr) : 0,
+    /*
+     * ATTITUDE, VELOCITY AND BODY RATES, so a probe can fly the aircraft on
+     * feedback rather than on a stopwatch. A trick is a shape the craft
+     * makes, and a stick script that cannot see which way up it is has to
+     * guess how long to hold the stick. Every guess is a different loop, so
+     * a check built on one measures the guess. Same numbers the recogniser
+     * is fed at src/main.js's trickDetector.step call, and the same
+     * conversion: sim quaternion, spawn premultiplied, in three.js space.
+     */
+    up: stateCurr ? (() => {
+      simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], scoreQuat);
+      scoreQuat.premultiply(qSpawn);
+      scoreFwd.set(0, 1, 0).applyQuaternion(scoreQuat);
+      return { x: scoreFwd.x, y: scoreFwd.y, z: scoreFwd.z };
+    })() : null,
+    fwd: stateCurr ? (() => {
+      simQuatToThree(stateCurr[7], stateCurr[8], stateCurr[9], stateCurr[10], scoreQuat);
+      scoreQuat.premultiply(qSpawn);
+      scoreFwd.set(0, 0, -1).applyQuaternion(scoreQuat);
+      return { x: scoreFwd.x, y: scoreFwd.y, z: scoreFwd.z };
+    })() : null,
+    speed: stateCurr
+      ? Math.sqrt(stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5]
+        + stateCurr[6] * stateCurr[6])
+      : 0,
+    rates: stateCurr
+      ? { p: stateCurr[11], q: stateCurr[12], r: stateCurr[13] }
+      : null,
     descentRate: lastDescent,
     tiltDeg: lastTiltDeg,
     lastHitKind,

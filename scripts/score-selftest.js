@@ -2015,6 +2015,38 @@ if (!existsSync(WASM)) {
     }
     return a / TURN;
   };
+  if (process.env.TRICK_TRACE === '2') {
+    const proto = TrickDetector.prototype;
+    const so = proto.stepOneLap;
+    proto.stepOneLap = function traceStep(run, ob, dt, dtMs, wx, wy, wz, upZ) {
+      const r = so.call(this, run, ob, dt, dtMs, wx, wy, wz, upZ);
+      if (run.open && this.nowMs % 100 === 0) {
+        const rx = wx - ob.cx; const ry = wy - ob.cy; const rz = wz - ob.cz;
+        const al = rx * ob.dx + ry * ob.dy + rz * ob.dz;
+        const cx = rx - ob.dx * al; const cy = ry - ob.dy * al; const cz = rz - ob.dz * al;
+        const len = Math.sqrt(cx * cx + cy * cy + cz * cz);
+        const mag = Math.abs(run.rate);
+        console.log('    [step]', this.nowMs, 'r', len.toFixed(1), 'rate', run.rate.toFixed(3),
+          'tang', (mag * Math.PI * 2 * len).toFixed(1), 'side', cy > 0 ? 1 : -1,
+          'wind', (this.nowMs ? (run.windTotal - run.startWind).toFixed(3) : 0));
+      }
+      return r;
+    };
+  }
+  if (process.env.TRICK_TRACE) {
+    const proto = TrickDetector.prototype;
+    const cp = proto.closePath;
+    proto.closePath = function trace(r, u) {
+      if (r.open && r.obstacle) {
+        const n = (v) => (typeof v === 'number' ? v.toFixed(3) : '-');
+        console.log('    [lap] raw', n(r.lastWind - r.startWind),
+          'side', r.startSide, '->', r.lastSide, 'ms', r.startMs, '->', r.lastMs,
+          'tail', r.tailMs ?? '-', 'open', r.openMs ?? '-',
+          'back', n(r.backWind), 'minR', n(r.minR), 'maxR', n(r.maxR));
+      }
+      return cp.call(this, r, u);
+    };
+  }
   {
     const first = await flyLoop(null, null);
     const pts = first.f.track.slice(first.mark);
@@ -2055,10 +2087,12 @@ if (!existsSync(WASM)) {
     field.build();
     const second = await flyLoop(field, best.cy);
     second.f.done();
+    const flownNames = flightNames(second.f.out);
     check('a flown powerloop around a real rail is a Powerloop',
-      flightNames(second.f.out) === 'Powerloop');
+      flownNames === 'Powerloop');
     console.log(`        rail at y ${best.cy.toFixed(1)} z ${best.cz.toFixed(1)}, `
-      + `path wound ${best.w.toFixed(2)} turns, pitch ${first.pitchTurns.toFixed(2)}`);
+      + `path wound ${best.w.toFixed(2)} turns, pitch ${first.pitchTurns.toFixed(2)}`
+      + `, named "${flownNames || 'nothing'}"`);
   }
 }
 

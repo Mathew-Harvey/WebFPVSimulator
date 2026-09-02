@@ -70,6 +70,14 @@
  */
 
 import { OB_BAR, OB_KIND_NAME, OB_POLE, sameAxis } from './obstacles.js';
+/*
+ * The catalogue, for its PRICES ONLY, and only where two patterns of the
+ * same length both describe the motion in the buffer. Nothing here repeats
+ * a number the catalogue holds: bestMatch asks it which of two names is
+ * worth more, and singleFor asks nothing at all. The split the header
+ * describes, this file names a trick and tricks.js prices it, is intact.
+ */
+import { trickPoints } from './tricks.js';
 
 /* One turn, in radians. Written out rather than 2 * Math.PI so that the
  * constant in the file is the constant in the arithmetic. */
@@ -186,13 +194,53 @@ const WHOLE_LAP_MIN = 0.65;
 const POLE_MIN_TURNS = 0.55;
 
 /*
- * How much of a lap must be flown belly up for it to count as an inverted
- * trick. Measured: the upright orbit that was wrongly named a Trippy Spin
- * had a lap window whose upZ never went below +0.379, so its inverted
- * fraction is zero. A genuine inverted orbit is inverted throughout.
- * Four fifths leaves room for the roll in and the roll out.
+ * How much of a motion must be flown belly up for it to count as an
+ * inverted trick.
+ *
+ * ONE BAR FOR BOTH KINDS, laps and rotations alike, because the question is
+ * the same question: was the craft on its back while it did this, or did it
+ * merely pass through inverted on the way somewhere. Measured: the upright
+ * orbit that was wrongly named a Trippy Spin had a lap window whose upZ
+ * never went below +0.379, so its inverted fraction is zero. A genuine
+ * inverted orbit is inverted throughout. Four fifths leaves room for the
+ * roll in and the roll out.
+ *
+ * A rotation carries no roll in and no roll out, because the roll that
+ * put the craft on its back is a run on a DIFFERENT axis and closed before
+ * this one opened. So four fifths is if anything generous for a yaw spin,
+ * and the slack it leaves is for a pilot who is still settling the roll
+ * as the yaw begins.
  */
-const INVERTED_LAP_MIN = 0.8;
+const INVERTED_MIN = 0.8;
+
+/*
+ * HOW SHORT A LAP READS, and this is the number that made Orbit x2 and
+ * Trippy Spin x2 unreachable in flight.
+ *
+ * A rotation is a closed quantity and a lap is not: the winding rate gate
+ * opens a fifth of the way into the loop and shuts before the craft has
+ * finished coming out of it, so a lap always reads SHORT by whatever the
+ * gate truncated, and how much depends on the radius and on where the
+ * craft entered. Measured on the constructed two lap orbits in
+ * scripts/score-selftest.js, a commanded 2.00 turns reads:
+ *
+ *   radius 1.5 m   1.772 turns    snapped 1.75
+ *   radius 2.5 m   1.802 turns    snapped 1.75
+ *   radius 3.5 m   1.875 turns    snapped 2.00
+ *   radius 5.0 m   1.904 turns    snapped 2.00
+ *
+ * The pattern demanded EXACTLY 2, so the same trick round the same post
+ * scored 500 points or nothing at all depending on how close the pilot
+ * flew, and three or four laps scored nothing at all because nothing names
+ * a 3. That is not a tuning problem, it is an equality test applied to a
+ * measurement that is systematically biased low.
+ *
+ * So a pole pattern asks for a lap count as a FLOOR, `turnsAtLeast`, and
+ * this is how far under the floor a lap may read and still count. A quarter
+ * turn is the snap resolution, so it is the smallest step that can mean
+ * anything, and it covers every reading above.
+ */
+const LAP_TRUNCATION = 0.25;
 
 /*
  * How many obstacles may be wound around at once. Measured on the real
@@ -316,6 +364,12 @@ const SLOPPY_GAP_MS = 600;
  *   axisIn    a set it must be one of, when the trick allows either
  *   axisAs    it must be the same axis as the step at this index
  *   turns     the exact snapped turn count
+ *   turnsAtLeast  a FLOOR on the snapped count instead of an exact reading,
+ *             slackened by LAP_TRUNCATION. Poles only, and the comment on
+ *             that constant is why
+ *   inverted  true if the motion must have been flown belly up, false if it
+ *             must not have been. Judged over the whole motion, not at its
+ *             end: see INVERTED_MIN
  *   sameAs    same direction as the step at this index
  *   oppTo     opposite direction to the step at this index
  *   dir       an absolute direction, +1 or -1, in the body-rate sign
@@ -343,16 +397,6 @@ export const PATTERNS = [
       { axis: 'pitch', turns: 0.5 },
       { axis: 'roll', turns: 1 },
       { axis: 'pitch', turns: 0.5, sameAs: 0 },
-    ],
-  },
-  {
-    /* "180 Pitch/Roll to invert, an inverted 360 Yaw spin, then a Flip/Roll
-     * in the same direction." Either axis, but the same one both times. */
-    name: 'Inverted Yaw Spin',
-    steps: [
-      { axisIn: ['roll', 'pitch'], turns: 0.5 },
-      { axis: 'yaw', turns: 1 },
-      { axisAs: 0, turns: 0.5, sameAs: 0 },
     ],
   },
   {
@@ -462,6 +506,18 @@ export const PATTERNS = [
     name: 'Beginner Matty',
     steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0, pitch: 0 } }],
   },
+  /*
+   * THE POLE TRICKS, and they are the one family that asks for a lap count
+   * as a FLOOR rather than as an exact reading. See LAP_TRUNCATION for the
+   * measurement that settled it. A bar pattern still says `turns`, because
+   * a bar has sides and its parity is a topological fact rather than an
+   * estimate; a pole has neither.
+   *
+   * They are TIERED, so a pilot who flies four laps is not worse off than
+   * one who flies two, and one who flies one is not worse off than one who
+   * flies none. bestMatch picks the highest priced pattern that matches, so
+   * the order they are written in here decides nothing.
+   */
   {
     /*
      * Two laps of a pole with the object held on the screen, which is what
@@ -469,12 +525,29 @@ export const PATTERNS = [
      * inferred from the concurrent yaw, and could not be: see TRACK_DOT.
      */
     name: 'Orbit x2',
-    steps: [{ path: 'pole', turns: 2, track: true, inverted: false }],
+    steps: [{ path: 'pole', turnsAtLeast: 2, track: true, inverted: false }],
   },
   {
     /* The same, inverted, with the object held at the top of the screen. */
     name: 'Trippy Spin x2',
-    steps: [{ path: 'pole', turns: 2, inverted: true }],
+    steps: [{ path: 'pole', turnsAtLeast: 2, inverted: true }],
+  },
+  {
+    /*
+     * ONE inverted lap, which the workbook prices as a building block
+     * rather than as a trick: "1 Trippy Spin", 100 points, a fifth of the
+     * pair. Without it a pilot who came out of an inverted orbit after one
+     * revolution scored nothing at all for it, which is the same complaint
+     * the whole building block table exists to answer.
+     *
+     * There is deliberately no upright twin. The workbook has no block for
+     * a single orbit, and it is right not to: one nose-in circle round a
+     * post IS a 360 of yaw, and the yaw run releaseHeld hands back already
+     * names it a Yaw Spin at 50. Naming it twice would pay twice for one
+     * motion.
+     */
+    name: '1 Trippy Spin',
+    steps: [{ path: 'pole', turnsAtLeast: 1, inverted: true }],
   },
 
   /* One step patterns: the named whole rotations. Everything shorter or
@@ -484,6 +557,40 @@ export const PATTERNS = [
   { name: 'Flip', steps: [{ axis: 'pitch', turns: 1 }] },
   { name: 'Roll', steps: [{ axis: 'roll', turns: 1 }] },
   { name: 'Yaw Spin', steps: [{ axis: 'yaw', turns: 1 }] },
+  /*
+   * THE SAME 360 OF YAW, FLOWN ON ITS BACK, and it is worth eight times as
+   * much: 400 against 50.
+   *
+   * That is not the catalogue being generous. A yaw spin the right way up
+   * is one stick held over while the quad holds itself level. Inverted,
+   * gravity pulls the craft the way the throttle pushes it, so the pilot is
+   * flying the altitude by hand on pitch and roll for the whole revolution
+   * while the horizon turns underneath them. It is a different trick that
+   * happens to be the same rotation.
+   *
+   * THIS USED TO BE A THREE STEP PATTERN and it is now one, which is the
+   * same correction TRACK_DOT records for the Orbit. The workbook writes
+   * the trick as "180 Pitch/Roll to invert, an inverted 360 Yaw spin, then
+   * a Flip/Roll in the same direction", and the pattern followed it
+   * literally: half a roll, a yaw, half a roll back the SAME way. So it
+   * asked the entry and the exit to prove the craft was upside down,
+   * because at the time nothing measured whether it actually was. A pilot
+   * who rolled in one way and out the other, which is the ordinary way to
+   * do it, scored 50 for a Yaw Spin.
+   *
+   * A rotation now carries the fraction of itself flown belly up, the same
+   * way a lap has since INVERTED_MIN was written, so the craft's own
+   * attitude answers the question and the entry and the exit are free to be
+   * whatever the pilot flew. They are still paid for: a half roll either
+   * side is a building block worth 50 each, exactly as it is anywhere else.
+   *
+   * NO `inverted: false` ON THE UPRIGHT ONE, because it does not need it.
+   * Both patterns are one step long and both match an inverted spin, and
+   * bestMatch takes the higher priced of two matches of equal length. An
+   * ordinary yaw spin has an inverted fraction near zero and never reaches
+   * this one at all.
+   */
+  { name: 'Inverted Yaw Spin', steps: [{ axis: 'yaw', turns: 1, inverted: true }] },
 ];
 
 /*
@@ -525,11 +632,26 @@ const SINGLES = [
   { axis: AXIS_ROLL, turns: 1, name: 'Roll' },
   { axis: AXIS_ROLL, turns: 0.75, name: '3/4 Roll' },
   { axis: AXIS_ROLL, turns: 0.5, name: '1/2 Roll' },
-  { axis: AXIS_YAW, turns: 1, name: 'Yaw Spin' },
+  /*
+   * `inverted` names what the same block is called when it was flown belly
+   * up, and only yaw has one, because only yaw has a catalogue entry that
+   * is the same rotation on its back. Without it a 720 of inverted yaw fell
+   * through here and came out as two upright Yaw Spins at 50 apiece, which
+   * is a pilot being paid a fifth of the price for flying the harder thing
+   * twice. The pattern only reaches a whole turn; this reaches every
+   * multiple of one.
+   */
+  { axis: AXIS_YAW, turns: 1, name: 'Yaw Spin', inverted: 'Inverted Yaw Spin' },
 ];
 
-/* Largest single that fits inside `turns` on this axis, or null. */
-function singleFor(axis, turns) {
+/*
+ * Largest single that fits inside this rotation, or null. Takes the whole
+ * primitive rather than an axis and a count, because which block a rotation
+ * is depends on which way up it was flown as well as on how far it went.
+ */
+function singleFor(prim) {
+  const axis = prim.axis;
+  const turns = prim.turns;
   let best = null;
   for (const s of SINGLES) {
     if (s.axis !== axis || s.turns > turns + 1e-9) {
@@ -538,6 +660,12 @@ function singleFor(axis, turns) {
     if (!best || s.turns > best.turns) {
       best = s;
     }
+  }
+  if (!best) {
+    return null;
+  }
+  if (best.inverted && (prim.invertedFrac ?? 0) >= INVERTED_MIN) {
+    return { axis: best.axis, turns: best.turns, name: best.inverted };
   }
   return best;
 }
@@ -737,6 +865,36 @@ class Run {
     /* Total time inside the run spent under RATE_OFF, which is how a
      * segmented rotation gives itself away. */
     this.slowMs = 0;
+    /*
+     * How much of the rotation was flown belly up. Steps, not milliseconds,
+     * and the two are the same thing here because the shell steps at
+     * exactly 1 kHz: see sim_abi.h. This is the exact twin of PathRun's own
+     * pair and exists for the same reason, which is that whether a trick
+     * was flown inverted is a fact about the WHOLE motion and not about the
+     * instant it happened to end. startUpZ and the closing upZ answer a
+     * different question, which is how many quarter turns the integral is
+     * allowed to be, and snapTurns is welcome to them.
+     */
+    this.invSamples = 0;
+    this.spanSamples = 0;
+  }
+
+  /* Note this step's attitude against the rotation now running. */
+  sample(upZ) {
+    this.spanSamples += 1;
+    if (upZ < 0) {
+      this.invSamples += 1;
+    }
+  }
+
+  /* Start counting again, for a run that has just opened. */
+  clearSamples() {
+    this.invSamples = 0;
+    this.spanSamples = 0;
+  }
+
+  invertedFrac() {
+    return this.spanSamples > 0 ? this.invSamples / this.spanSamples : 0;
   }
 
   reset() {
@@ -744,6 +902,7 @@ class Run {
     this.open = false;
     this.offMs = 0;
     this.slowMs = 0;
+    this.clearSamples();
   }
 }
 
@@ -953,6 +1112,9 @@ export class TrickDetector {
      * Orbit x2 scores as an Orbit and then two Yaw Spins.
      */
     this.lapWindows = [];
+    /* The distinct obstacles this run has flown around, in the order they
+     * were first used. See groupOf. */
+    this.groups = [];
     this.haveFwd = false;
     this.fwdX = 0;
     this.fwdY = 0;
@@ -984,6 +1146,7 @@ export class TrickDetector {
     this.paths.length = 0;
     this.heldByPath.length = 0;
     this.lapWindows.length = 0;
+    this.groups.length = 0;
     this.pending.length = 0;
     this.lastCloseMs = -1e9;
     this.stallMs = 0;
@@ -1001,6 +1164,63 @@ export class TrickDetector {
   /* The craft touched something without ending the run. */
   bump() {
     this.touched = true;
+  }
+
+  /*
+   * A step in which the craft was NOT being flown: sitting on the ground,
+   * or upside down waiting to be turtled over.
+   *
+   * THE TWO CLOCKS HAVE TO STAY LEVEL AND THEY DID NOT. The shell advances
+   * simTimeMs on every physics step, but it only feeds this detector on the
+   * steps where the craft is airborne, so nowMs fell behind simTimeMs by
+   * however long the pilot spent on the ground. Every run starts landed, so
+   * every run started with the two clocks already apart. The scorer is
+   * ticked on simTimeMs and compares it against a combo window measured
+   * from a trick's endMs, which is on THIS clock: after more than the combo
+   * window's three seconds on the ground, every combo therefore banked on
+   * the very next tick, at a multiplier of one, and the chain a pilot
+   * thought they were building never existed.
+   *
+   * Advancing the clock here rather than feeding the detector the landed
+   * steps is the deliberate half of the choice. Feeding it would let a
+   * quad sitting on the grass score a Yaw Spin off the gyro noise. This
+   * advances the clock and the stall counter, which is the truth about a
+   * craft that is not moving, and reads no motion at all.
+   */
+  idle(dtMs) {
+    if (!this.enabled) {
+      return;
+    }
+    this.nowMs += dtMs;
+    this.stallMs += dtMs;
+    this.gapStallMs += dtMs;
+    /* Whatever was in the air a moment ago can be named now. Nothing new
+     * will arrive to lengthen it: the craft is on the ground. */
+    this.drain(false);
+  }
+
+  /*
+   * Which THING was flown around, as a small integer that survives a
+   * railing being built out of six collinear boxes.
+   *
+   * The scorer needs this to charge for staying on one obstacle and to pay
+   * for moving between them, and the collider id will not do: obstacles.js
+   * carries sameAxis precisely because a town railing is a run of separate
+   * boxes on one line, and a pilot who powerloops the near end and then the
+   * far end has not moved to a new obstacle. Ids would say they had, and
+   * would hand out the variety bonus for standing still.
+   *
+   * A run touches a handful of obstacles, so the list stays short and the
+   * scan stays cheap. It is cleared with everything else on reset.
+   */
+  groupOf(ob) {
+    for (let i = 0; i < this.groups.length; i += 1) {
+      if (sameAxis(this.groups[i], ob)) {
+        return i;
+      }
+    }
+    this.groups.push(ob);
+    return this.groups.length - 1;
   }
 
   /*
@@ -1310,6 +1530,7 @@ export class TrickDetector {
       kind: 'path',
       obstacle: OB_KIND_NAME[ob.kind],
       obstacleId: ob.id,
+      obstacleGroup: this.groupOf(ob),
       turns,
       dir: acc >= 0 ? 1 : -1,
       startMs: run.startMs,
@@ -1415,6 +1636,9 @@ export class TrickDetector {
         run.slowMs = 0;
         run.startMs = this.nowMs;
         run.startUpZ = upZ;
+        /* Zero, not one: this step falls through to the accumulate below
+         * and is counted there, the same step that first goes into acc. */
+        run.clearSamples();
       } else {
         return;
       }
@@ -1430,9 +1654,14 @@ export class TrickDetector {
         run.slowMs = 0;
         run.startMs = this.nowMs;
         run.startUpZ = upZ;
+        /* This branch returns rather than falling through, and it has
+         * already put this step into acc, so it counts the step itself. */
+        run.clearSamples();
+        run.sample(upZ);
       }
       return;
     }
+    run.sample(upZ);
     run.acc += rate * (dtMs / 1000);
     if (mag < RATE_OFF) {
       run.offMs += dtMs;
@@ -1456,6 +1685,8 @@ export class TrickDetector {
     run.offMs = 0;
     const slow = run.slowMs;
     run.slowMs = 0;
+    const frac = run.invertedFrac();
+    run.clearSamples();
     if (!open || turns <= 0) {
       return;
     }
@@ -1472,6 +1703,8 @@ export class TrickDetector {
       stallBeforeMs: this.gapStallMs,
       slowMs: slow,
       touched: this.touched,
+      /* The fraction of the rotation flown belly up, 0 to 1. See Run. */
+      invertedFrac: frac,
     };
     this.gapStallMs = 0;
     /*
@@ -1534,7 +1767,9 @@ export class TrickDetector {
       }
       const best = this.bestMatch();
       if (best) {
-        this.emit(best.name, best.steps);
+        if (this.emit(best.name, best.steps)) {
+          this.dropAbsorbed();
+        }
         continue;
       }
       /*
@@ -1557,7 +1792,7 @@ export class TrickDetector {
       /* Price the first rotation on its own, hand back whatever it did not
        * cover, and go round again. */
       const prim = this.pending[0];
-      const single = singleFor(prim.axis, prim.turns);
+      const single = singleFor(prim);
       if (!single) {
         this.pending.shift();
         continue;
@@ -1565,7 +1800,17 @@ export class TrickDetector {
       const rest = prim.turns - single.turns;
       this.emit(single.name, 1);
       if (rest >= 0.25 - 1e-9) {
+        /*
+         * `kind` was missing here and its absence was silent. matchSteps
+         * rejects anything whose kind is not 'rot' before it looks at
+         * anything else, so the remainder of a long rotation could never
+         * take part in a pattern: a 540 roll's trailing half roll could not
+         * become the first step of a Rubik's Cube. It still reached the
+         * singles table, which does not ask, so the half roll was scored
+         * and nothing looked wrong.
+         */
         this.pending.unshift({
+          kind: 'rot',
           axis: prim.axis,
           turns: rest,
           dir: prim.dir,
@@ -1574,6 +1819,7 @@ export class TrickDetector {
           stallBeforeMs: 0,
           slowMs: 0,
           touched: prim.touched,
+          invertedFrac: prim.invertedFrac,
         });
       }
     }
@@ -1606,14 +1852,20 @@ export class TrickDetector {
     return false;
   }
 
-  /* Take `count` primitives off the front and report them as one trick. */
+  /*
+   * Take `count` primitives off the front and report them as one trick.
+   * Answers whether any of them was a LAP, because a lap that has just been
+   * paid for changes what the rest of the buffer is worth. See dropAbsorbed.
+   */
   emit(name, count) {
     const used = this.pending.splice(0, count);
     const first = used[0];
     const last = used[used.length - 1];
+    let namedLap = false;
     for (const u of used) {
       if (u.kind === 'path') {
         this.lapWindows.push({ s: u.startMs, e: u.endMs });
+        namedLap = true;
       }
     }
     let dead = 0;
@@ -1629,6 +1881,15 @@ export class TrickDetector {
       }
     }
     const execution = touched ? 'BUMP' : (dead >= SLOPPY_GAP_MS ? 'SLOPPY' : 'CLEAN');
+    /* The first lap in the trick names the obstacle. A trick with no lap in
+     * it was flown in open air and names none. */
+    let obstacleGroup = null;
+    for (const u of used) {
+      if (u.kind === 'path') {
+        obstacleGroup = u.obstacleGroup;
+        break;
+      }
+    }
     this.onTrick({
       name,
       axis: first.kind === 'path' ? first.obstacle : AXIS_NAME[first.axis],
@@ -1637,10 +1898,76 @@ export class TrickDetector {
       endMs: last.endMs,
       execution,
       primitives: used.length,
+      /*
+       * WHICH THING IT WAS FLOWN AROUND, or null for open air, which is
+       * what the workbook's two obstacle tables have been waiting for. It
+       * was computed in closePath and thrown away here, one function short
+       * of the only reader that wants it. See groupOf.
+       */
+      obstacle: obstacleGroup,
     });
+    return namedLap;
   }
 
-  /* The longest pattern that matches the front of the buffer, or null. */
+  /*
+   * Throw away rotations still in the buffer that the lap just named has
+   * already paid for.
+   *
+   * THE ORDERING BUG THIS FIXES, because absorbedByLap was already the
+   * right idea and was simply being asked too early. An orbit's yaw runs
+   * for the whole lap and a moment past the end of it, so the yaw run
+   * closes while a second, meaningless lap has already opened behind it.
+   * That makes the yaw HELD by the second lap; the second lap names
+   * nothing; releaseHeld then asks absorbedByLap whether the first lap
+   * paid for it, and the answer is no, because the first lap is still
+   * sitting in `pending` unnamed. Nothing had put its window in
+   * lapWindows yet.
+   *
+   * Measured on the constructed orbits in scripts/score-selftest.js: two
+   * laps of a pole at a radius of 1.5 m scored Orbit x2 AND two Yaw Spins,
+   * one motion paid for twice, while the same flight at 2.5 m scored the
+   * Orbit alone. Whether a pilot was paid twice therefore depended on how
+   * close to the post they flew, which is the kind of thing nobody would
+   * ever report as a bug because it looks like generosity.
+   *
+   * So the question is asked again at the only moment the answer can have
+   * changed, which is the moment a lap is actually named.
+   */
+  dropAbsorbed() {
+    if (this.pending.length === 0) {
+      return;
+    }
+    let write = 0;
+    for (let i = 0; i < this.pending.length; i += 1) {
+      const prim = this.pending[i];
+      if (prim.kind === 'rot' && this.absorbedByLap(prim)) {
+        continue;
+      }
+      this.pending[write] = prim;
+      write += 1;
+    }
+    this.pending.length = write;
+  }
+
+  /*
+   * The longest pattern that matches the front of the buffer, or null. Ties
+   * on length go to the higher priced trick.
+   *
+   * THE TIE BREAK IS NEW AND THE COMMENT ON PATTERNS ALWAYS PROMISED IT.
+   * The old loop kept the first match of the longest length, so which of
+   * two equally long patterns won was decided by which happened to be
+   * typed first. It made no difference for as long as no two patterns of
+   * the same length could describe the same motion, which was true until
+   * the pole tricks became tiers: two laps of a pole flown inverted
+   * matches both Trippy Spin x2 and 1 Trippy Spin, and an inverted yaw spin
+   * matches both Inverted Yaw Spin and Yaw Spin.
+   *
+   * Asking the CATALOGUE rather than carrying a priority here keeps the
+   * split this file is built on: the pattern names the trick and
+   * src/game/tricks.js prices it. A tier therefore cannot be got wrong by
+   * being written in the wrong place in the list, and the list stays a list
+   * of shapes rather than a ranking.
+   */
   bestMatch() {
     let best = null;
     for (const pat of PATTERNS) {
@@ -1651,8 +1978,9 @@ export class TrickDetector {
       if (!matchSteps(pat.steps, this.pending, n)) {
         continue;
       }
-      if (!best || n > best.steps) {
-        best = { name: pat.name, steps: n };
+      const points = trickPoints(pat.name);
+      if (!best || n > best.steps || (n === best.steps && points > best.points)) {
+        best = { name: pat.name, steps: n, points };
       }
     }
     return best;
@@ -1713,6 +2041,11 @@ function matchSteps(steps, prims, n) {
       if (s.turns !== undefined && p.turns !== s.turns) {
         return false;
       }
+      /* A floor rather than a reading, slackened by how short a lap is
+       * known to measure. See LAP_TRUNCATION, which is the whole argument. */
+      if (s.turnsAtLeast !== undefined && p.turns < s.turnsAtLeast - LAP_TRUNCATION) {
+        return false;
+      }
       if (s.from !== undefined && p.startSide !== (s.from === 'under' ? -1 : 1)) {
         return false;
       }
@@ -1724,7 +2057,7 @@ function matchSteps(steps, prims, n) {
        */
       if (s.inverted !== undefined) {
         const frac = p.invertedFrac;
-        if (s.inverted ? frac < INVERTED_LAP_MIN : frac > 1 - INVERTED_LAP_MIN) {
+        if (s.inverted ? frac < INVERTED_MIN : frac > 1 - INVERTED_MIN) {
           return false;
         }
       }
@@ -1763,6 +2096,21 @@ function matchSteps(steps, prims, n) {
     }
     if (s.turns !== undefined && p.turns !== s.turns) {
       return false;
+    }
+    /*
+     * Which way up, judged over the whole rotation and by exactly the bar a
+     * lap is judged by. A primitive from before this field existed, and the
+     * remainder a long rotation hands back, carry no fraction at all; the
+     * `?? 0` reads that as upright, which fails an `inverted: true` step
+     * rather than passing it. Same rule as trackFrac's minus one: a
+     * recogniser that cannot see the attitude must not hand out a trick
+     * that is defined by it.
+     */
+    if (s.inverted !== undefined) {
+      const frac = p.invertedFrac ?? 0;
+      if (s.inverted ? frac < INVERTED_MIN : frac > 1 - INVERTED_MIN) {
+        return false;
+      }
     }
     if (s.dir !== undefined && p.dir !== s.dir) {
       return false;

@@ -58,7 +58,7 @@ import {
 import {
   ObstacleField, OB_BAR, OB_POLE, deriveObstacles, sameAxis,
 } from '../src/game/obstacles.js';
-import { FreestyleScore, formatScore } from '../src/game/score.js';
+import { FreestyleScore, formatScore, RUN_MS } from '../src/game/score.js';
 import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
 /* The one and only conversion between the plant's frame and the world's,
  * imported rather than retyped: CLAUDE.md says it lives in one file and a
@@ -375,10 +375,44 @@ console.log('\nthe recogniser, on flown traces');
     names(fly([
       { axis: P, turns: 0.5 }, { axis: R, turns: 1 }, { axis: P, turns: 0.5 },
     ])) === "Cubik's Rube");
-  check('half roll, whole yaw, half roll is an Inverted Yaw Spin',
+  /*
+   * THE INVERTED YAW SPIN, WHICH IS NOW THE YAW AND NOT THE SANDWICH.
+   *
+   * This used to assert the whole three move sequence came out as one
+   * trick, because the pattern was three steps and inferred the inversion
+   * from the half roll on either side of it. It now measures the craft's
+   * attitude through the yaw itself, so the yaw alone is the trick and the
+   * two halves are the building blocks they are anywhere else. The four
+   * checks below are the reason that is better, not merely different: the
+   * old pattern needed both halves flown the SAME way round, and half of
+   * all pilots roll back out the way they came.
+   */
+  check('a yaw spin flown belly up is an Inverted Yaw Spin',
     names(fly([
       { axis: R, turns: 0.5 }, { axis: Y, turns: 1 }, { axis: R, turns: 0.5 },
-    ])) === 'Inverted Yaw Spin');
+    ])) === '1/2 Roll + Inverted Yaw Spin + 1/2 Roll');
+  check('and it still is when the pilot rolls back out the way they came',
+    names(fly([
+      { axis: R, turns: 0.5 }, { axis: Y, turns: 1 }, { axis: R, turns: -0.5 },
+    ])) === '1/2 Roll + Inverted Yaw Spin + 1/2 Roll');
+  check('and it still is when they got there on pitch rather than roll',
+    names(fly([
+      { axis: P, turns: 0.5 }, { axis: Y, turns: 1 }, { axis: P, turns: 0.5 },
+    ])) === '1/2 Flip + Inverted Yaw Spin + 1/2 Flip');
+  /* The building block table knows about it too, so a 720 on the back is
+   * two of the trick rather than two of the fifty point one. */
+  check('720 of yaw on the back is two Inverted Yaw Spins',
+    names(fly([
+      { axis: R, turns: 0.5 }, { axis: Y, turns: 2 }, { axis: R, turns: 0.5 },
+    ])) === '1/2 Roll + Inverted Yaw Spin + Inverted Yaw Spin + 1/2 Roll');
+  /* And the thing it must never become. Turning a corner on the back is
+   * still turning a corner: half a yaw spin buys nothing, upright or not. */
+  check('half a yaw spin on the back is still nothing',
+    names(fly([
+      { axis: R, turns: 0.5 }, { axis: Y, turns: 0.5 }, { axis: R, turns: 0.5 },
+    ])) === '1/2 Roll + 1/2 Roll');
+  check('and the same 360 flown the right way up is the fifty point one',
+    names(fly([{ axis: Y, turns: 1 }])) === 'Yaw Spin');
   check('half yaw, whole roll, half yaw is a Vanny Roll',
     names(fly([
       { axis: Y, turns: 0.5 }, { axis: R, turns: 1 }, { axis: Y, turns: 0.5 },
@@ -531,7 +565,18 @@ console.log('\nthe arithmetic');
   check('the streak grows by the previous raw over 10000',
     near(four.tricks[1].streak, 1 + 50 / 10000));
   four.tick(9000);
-  check('four rolls in a row bank 301', four.total() === 301);
+  /*
+   * 225, and it was 301 until the combo multiplier stopped counting tricks
+   * that scored nothing.
+   *
+   * The four nets are 50, 18.84, 6.29 and 0: the fourth identical roll is
+   * worth exactly nothing, which the check three lines up asserts on
+   * purpose. It used to buy a whole point of multiplier anyway, so the
+   * chain paid 4 x 75.13 rather than 3 x 75.13. Nothing about the workbook
+   * changed here. What changed is that the chain is now bought with points.
+   */
+  check('four rolls in a row bank 225, the fourth having bought nothing',
+    four.total() === 225);
 
   /*
    * The same four rotations, but flown as four different tricks. No repeat
@@ -588,13 +633,87 @@ console.log('\nthe arithmetic');
   bailed.land({ name: 'Flip', execution: 'CLEAN', endMs: 1000 });
   check('the streak is back to one after a crash', bailed.streak === 1);
 
-  /* The combo multiplier is the length of the chain, capped. */
+  /*
+   * THE CAP, AND THE CHAIN CASHING ITSELF IN WHEN IT REACHES THE CAP.
+   *
+   * This used to fly twenty Flips and assert the multiplier reached 12. It
+   * cannot any more and it should never have been able to: the fourth
+   * identical Flip is worth nothing, so nineteen of those twenty tricks
+   * bought no multiplier at all. The test was measuring the bug.
+   *
+   * Twenty DIFFERENT tricks is the honest version. The twelfth scoring
+   * trick tops the multiplier out, and the chain banks itself there rather
+   * than running on: past the cap another trick in the chain is worth
+   * exactly what it would be worth in a fresh chain and is at risk on top,
+   * so continuing is strictly worse. Before this a run of forty tricks
+   * landed under three seconds apart never banked at all and the Score
+   * readout said nought for the whole two minutes.
+   */
   const long = new FreestyleScore();
+  const longBanks = [];
   for (let i = 0; i < 20; i += 1) {
     long.tick(i * 100);
-    long.land({ name: 'Flip', execution: 'CLEAN', endMs: i * 100 });
+    long.land({ name: TRICKS[i].name, execution: 'CLEAN', endMs: i * 100 });
+    for (const e of long.drainEvents() || []) {
+      if (e.kind === 'bank') {
+        longBanks.push(e);
+      }
+    }
   }
-  check('the combo multiplier caps at 12', long.view().combo.mult === 12);
+  check('the combo multiplier caps at 12', longBanks.length === 1 && longBanks[0].mult === 12);
+  check('and the chain banks itself the moment it tops out',
+    longBanks[0].names.length === 12 && long.view().combo.names.length === 8);
+  /* Twenty of the SAME trick tops nothing out, because sixteen of them are
+   * worth nothing and nothing is what they buy. */
+  const same = new FreestyleScore();
+  for (let i = 0; i < 20; i += 1) {
+    same.tick(i * 100);
+    same.land({ name: 'Flip', execution: 'CLEAN', endMs: i * 100 });
+  }
+  check('twenty of one trick reaches a multiplier of three, not twelve',
+    same.view().combo.mult === 3);
+  /* The measured exploit, and what it costs now. Three master tricks
+   * chained bank 7,601. The same three with nine repeated half rolls after
+   * them used to bank 31,515, a 4.15x score for ninety three points of
+   * flying, six of those nine tricks being worth literally zero. */
+  const bankOf = (list) => {
+    const s = new FreestyleScore();
+    list.forEach((n, i) => {
+      s.tick(i * 500);
+      s.land({ name: n, execution: 'CLEAN', endMs: i * 500 });
+    });
+    s.tick(list.length * 500 + 9000);
+    return s.total();
+  };
+  const masters = ['Rollani', 'Flipani', 'Barani'];
+  check('three master tricks chained bank 7,601', bankOf(masters) === 7601);
+  check('and padding them with nine worthless half rolls no longer pays for nine',
+    bankOf([...masters, ...Array(9).fill('1/2 Roll')])
+    === bankOf([...masters, ...Array(3).fill('1/2 Roll')]));
+  /*
+   * AND THE REASON THAT IS ENOUGH, rather than banning filler outright.
+   *
+   * Three of those half rolls do score, and in a chain they do buy
+   * multiplier, which is Tony Hawk's own rule and the one mechanic in
+   * score.js the owner asked for by name. What matters is that it is never
+   * the winning move. Measured on this rig:
+   *
+   *   three masters                     7,601
+   *   three masters and three fillers  15,758
+   *   six masters                      30,818
+   *   twelve varied real tricks       112,769
+   *   twelve fillers and nothing else     225
+   *
+   * Filling a chain roughly doubles it and flying real tricks instead
+   * multiplies it, so a pilot chasing the top of a board flies tricks. On
+   * its own, filler is worth less than a single Flip.
+   */
+  const sixMasters = ['Rollani', 'Flipani', 'Barani', 'Inverted 360 Powerloop',
+    'Donkey Loop', 'Double Rolling Trippy Spin'];
+  check('flying three more real tricks always beats padding with three fillers',
+    bankOf(sixMasters) > bankOf([...masters, ...Array(3).fill('1/2 Roll')]));
+  check('and filler on its own is worth less than one Flip',
+    bankOf(Array(12).fill('1/2 Roll')) < 300);
 
   /* With the combo layer off this is the competition sheet, exactly. */
   const sheet = new FreestyleScore({ comboEnabled: false });
@@ -676,6 +795,106 @@ console.log('\nthe arithmetic');
   check('the summary counts every trick', sum.tricks === 4);
   check('the summary counts unique tricks', sum.unique === 4);
   check('the summary leads with the biggest earner', sum.rows[0].name === 'Double Roll');
+  check('and names the one trick the run is remembered by',
+    sum.signature === 'Double Roll');
+}
+
+console.log('\nthe run, and the two workbook tables that used to be dead');
+{
+  /*
+   * THE RUN CLOCK. Before it there was no run: the total climbed from the
+   * moment the world loaded until something reset it, so the top of any
+   * board would have been whoever left the tab open longest.
+   */
+  const s = new FreestyleScore();
+  s.tick(5000);
+  check('a run that nobody has started has not started',
+    s.view().state === 'ready' && s.view().remainMs === RUN_MS);
+  s.land({ name: 'Flip', execution: 'CLEAN', endMs: 5000 });
+  s.tick(6000);
+  check('the clock starts on the first trick, not when the world loaded',
+    s.view().state === 'flying' && s.view().remainMs === RUN_MS - 1000);
+  s.tick(5000 + RUN_MS - 1);
+  check('and it runs for the whole two minutes', !s.over());
+  s.tick(5000 + RUN_MS);
+  check('then the run is over', s.over() && s.view().remainMs === 0);
+  check('and the run knows how long it lasted', s.summary().durationMs === RUN_MS);
+  /* Nothing lands in a finished run. The recogniser keeps going for a
+   * moment after the horn, because a trick that was in the air when it
+   * sounded still has to close, and that trick is not in this run. */
+  const after = s.total();
+  s.land({ name: 'Rollani', execution: 'CLEAN', endMs: 5000 + RUN_MS + 10 });
+  check('and nothing lands in it afterwards', s.total() === after);
+
+  /* The horn banks what is open rather than bailing it. */
+  const open = new FreestyleScore();
+  open.tick(0);
+  open.land({ name: 'Flip', execution: 'CLEAN', endMs: 0 });
+  open.land({ name: 'Roll', execution: 'CLEAN', endMs: 400 });
+  check('a chain open at the horn is banked, not lost', open.total() === 0
+    && open.tick(RUN_MS) === undefined && open.total() > 0);
+
+  /*
+   * REPEAT_OBSTACLE. Transcribed with the rest of the workbook and read by
+   * nothing until now. It is what stops a pilot sitting on one lamp post
+   * and orbiting it until the battery runs out.
+   */
+  const post = new FreestyleScore();
+  for (let i = 0; i < 8; i += 1) {
+    post.tick(i * 400);
+    post.land({ name: 'Powerloop', execution: 'CLEAN', endMs: i * 400, obstacle: 7 });
+  }
+  check('staying on one obstacle costs the ladder in the workbook',
+    post.tricks.map((t) => t.obstacle).join() === '1,1,1,1,0.66,0.33,0,0');
+  /* Open air names no obstacle, so a flip flown between two powerloops on
+   * the same rail does not move the pilot off that rail. */
+  const between = new FreestyleScore();
+  const seq = [7, null, 7, null, 7, null, 7, null, 7];
+  seq.forEach((ob, i) => {
+    between.tick(i * 400);
+    between.land({
+      name: TRICKS[i].name, execution: 'CLEAN', endMs: i * 400, obstacle: ob,
+    });
+  });
+  check('and an open air trick in between does not reset the count',
+    between.tricks[8].obstacle === 0.66 && between.obstacleSwitches === 0);
+
+  /*
+   * OBSTACLE_BONUS, the workbook's one reward, and the other half of the
+   * same idea: a run that moves around is worth more than a run that does
+   * not. It is a run level number, so it lands at the horn.
+   */
+  const moved = new FreestyleScore();
+  for (let i = 0; i < 12; i += 1) {
+    moved.tick(i * 400);
+    moved.land({ name: TRICKS[i].name, execution: 'CLEAN', endMs: i * 400, obstacle: i });
+  }
+  const before = moved.total();
+  moved.finish();
+  check('eleven moves between obstacles counts eleven switches',
+    moved.obstacleSwitches === 11);
+  /* Twelve switches reaches the 1.35 row of OBSTACLE_BONUS, and the trick
+   * score it is a percentage of is 1,914, so the bonus is 383. It is added
+   * to the banked total rather than multiplied into it: the chain of twelve
+   * had already banked 22,968 on its own, and paying the variety bonus on
+   * the combo multiplier as well would have made it 8,033. */
+  check('and the variety bonus lands at the horn, not per trick',
+    before === 22968 && moved.bonus === 383 && moved.total() === 23351);
+  const still = new FreestyleScore();
+  for (let i = 0; i < 12; i += 1) {
+    still.tick(i * 400);
+    still.land({ name: TRICKS[i].name, execution: 'CLEAN', endMs: i * 400, obstacle: 3 });
+  }
+  still.finish();
+  check('a run that never left one obstacle earns no bonus and pays the ladder',
+    still.bonus === 0 && still.total() < moved.total());
+
+  /* A run that used the debug hooks is marked, so a board can refuse it. */
+  const staged = new FreestyleScore();
+  staged.tick(0);
+  staged.land({ name: 'Flip', execution: 'CLEAN', endMs: 0, assisted: true });
+  check('a staged trick marks the whole run', staged.summary().assisted === true);
+  check('and a flown one does not', still.summary().assisted === false);
 }
 
 console.log('\nend to end, on a synthetic trace');
@@ -1096,6 +1315,79 @@ console.log('\nthe obstacle tricks, on constructed paths');
     s.cruise(900, -8);
     check('the same flown inverted is a Trippy Spin x2',
       s.finish() === 'Trippy Spin x2');
+  }
+
+  /*
+   * THE ORBIT SWEEP, and it is here because the two checks above passed for
+   * years while the trick was unreachable in flight.
+   *
+   * They fly a commanded 2.000 laps at a radius of 5 m, and that one flight
+   * happens to land on a lap reading of 1.904 turns, which the quarter snap
+   * rounds to exactly 2. The pattern demanded exactly 2. Every neighbouring
+   * flight missed: three laps read 2.904 and snapped to 3, a two lap orbit
+   * at 1.5 m read 1.772 and snapped to 1.75, and none of the three named
+   * anything. So the tests said the Orbit worked and the game said it did
+   * not, and both were telling the truth about different flights.
+   *
+   * A lap count is a floor now, not a reading. What follows is the sweep
+   * the old pattern would have failed, so the next person to tighten this
+   * has to break something visible rather than something nobody flies.
+   */
+  {
+    const orbit = (turns, radius, upZ) => {
+      const s = new Path(poleField());
+      s.approach(POLE, radius, 0, 400, 8, true);
+      if (upZ < 0) {
+        s.upZ = -1;
+      }
+      s.arcPole(POLE, radius, 0, turns, Math.round(1500 * turns), [0, 0, turns], upZ);
+      s.cruise(700, -8);
+      return s.finish();
+    };
+    /* Every lap count from two upward, at one radius. */
+    const counts = [1.75, 2, 2.25, 2.5, 3, 4, 5];
+    check('an Orbit x2 is an Orbit x2 at every lap count from two up',
+      counts.every((t) => orbit(t, 5, 1) === 'Orbit x2'));
+    /* Every radius a pilot would actually fly, at one lap count. Twelve
+     * metres is REACH for a pole in src/game/obstacles.js, so beyond that
+     * the post is not being orbited, it is being flown near. */
+    const radii = [1, 1.5, 2, 2.5, 3.5, 5, 8];
+    check('and at every radius from one metre out to the reach of a pole',
+      radii.every((r) => orbit(2, r, 1) === 'Orbit x2'));
+    /* ONE trick, not a trick and its own yaw. At 1.5 m the lap used to
+     * close a moment before the yaw did, which left the yaw held by a
+     * second meaningless lap and released after the Orbit had been named,
+     * so the same motion was paid for twice. See dropAbsorbed. */
+    check('and it is one trick, never an Orbit and two Yaw Spins as well',
+      radii.every((r) => orbit(2, r, 1).indexOf('+') === -1));
+    check('a Trippy Spin x2 holds up across the same sweep',
+      counts.every((t) => orbit(t, 5, -1) === 'Trippy Spin x2')
+      && radii.slice(1).every((r) => orbit(2, r, -1) === 'Trippy Spin x2'));
+    /*
+     * ONE inverted lap is the workbook's own building block at 100 points,
+     * a fifth of the pair. Before it existed a pilot who came out after one
+     * revolution was paid for a Yaw Spin, at 50, for flying upside down
+     * round a post.
+     */
+    check('one inverted lap is the 1 Trippy Spin block',
+      [0.75, 1, 1.25, 1.5].every((t) => orbit(t, 5, -1) === '1 Trippy Spin'));
+    /* And the floor holds underneath it. Half a lap is what a straight
+     * line subtends, so it is no evidence of having gone round anything. */
+    check('and half a lap on the back is still nothing',
+      orbit(0.5, 5, -1) === 'NOTHING');
+    /* The upright twin deliberately does not exist: one nose-in circle IS
+     * a 360 of yaw, and the yaw is already named. */
+    check('one upright lap is the Yaw Spin it is and nothing more',
+      orbit(1, 5, 1) === 'Yaw Spin');
+    /* The guard that all of this could have broken. */
+    check('and none of it names an Orbit with the nose on the flight path',
+      [1, 2, 3, 4].every((t) => {
+        const s = new Path(poleField());
+        s.approach(POLE, 5, 0, 400, 8, true);
+        s.arcPole(POLE, 5, 0, t, Math.round(1500 * t), [0, 0, t], 1, false);
+        s.cruise(700, -8);
+        return !s.finish().includes('Orbit') && !s.finish().includes('Trippy');
+      }));
   }
 
   /*

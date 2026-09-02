@@ -25260,3 +25260,197 @@ person shot of the aircraft.
 Both mistakes are the same mistake: asserting a state from a proxy for it
 rather than from the state. Written down because the first version passed
 every check in the repository.
+
+
+## 2026-09-02, the freestyle recogniser, the scorer, and the run
+
+Six things were asked for: make the freestyle scoring much more robust, add a
+freestyle leaderboard to the board page in a 1990s arcade idiom and separate
+the racing tracks from it, tag and filter tracks, score an Inverted Yaw Spin,
+fix the Orbit and the Trippy Spin, and drop the freestyle map selector now
+that the town is the only freestyle world. This entry covers the first pass:
+the recogniser and the scorer.
+
+### The Orbit and the Trippy Spin did not work, and the reason was an equality
+
+`snapPathTurns` for a pole returns the nearest QUARTER of a turn, and the two
+pole patterns demanded `turns === 2` exactly. A lap is not a closed quantity:
+the winding rate gate opens a fifth of the way into the loop and shuts before
+the craft is out of it, so a lap always reads SHORT, and how short depends on
+the radius and on where the craft entered. Measured on the constructed rig, a
+commanded 2.00 lap orbit reads
+
+    radius 1.5 m   1.772 turns    snapped 1.75    scored nothing
+    radius 2.5 m   1.802 turns    snapped 1.75    scored nothing
+    radius 3.5 m   1.875 turns    snapped 2.00    scored
+    radius 5.0 m   1.904 turns    snapped 2.00    scored
+
+so the same trick round the same post paid 500 points or nothing depending on
+how close the pilot flew, and three or four laps paid nothing at all because
+no pattern names a 3. The self-test had two checks on this and both passed for
+months, because they fly exactly 2.000 laps at exactly 5 m, which is the one
+flight that happens to land on the answer.
+
+The fix is `turnsAtLeast` on a pole step, a floor rather than a reading,
+slackened by a new `LAP_TRUNCATION` of a quarter turn, which is the snap
+resolution and covers every reading above. `PATH_SNAP_TOLERANCE` was already
+in the file at 0.35 and read by nothing: it is the ghost of the version that
+knew this. It is now gone, replaced by the constant that is actually used.
+
+The pole patterns are tiers, so four laps is not worse than two and one is not
+worse than none:
+
+    Orbit x2        two or more laps, upright, tracking
+    Trippy Spin x2  two or more laps, inverted
+    1 Trippy Spin   one lap, inverted, the workbook's own building block
+
+There is deliberately no upright single. The workbook has no block for one
+orbit and it is right not to: one nose-in circle round a post IS a 360 of yaw,
+and the yaw the lap releases is already named a Yaw Spin at 50. Naming it
+twice would pay twice for one motion.
+
+The sweep the old pattern would have failed is now in the self-test: every lap
+count from 1.75 to 5 at one radius, every radius from 1 m to 8 m at one lap
+count, upright and inverted, plus the guard flights (nose on the flight path,
+no heading supplied, a straight fly-by) that must still name nothing.
+
+### And a second bug underneath it: the same motion paid for twice
+
+Once the Orbit started naming, a two lap orbit at 1.5 m scored `Orbit x2` AND
+two `Yaw Spin`s. `absorbedByLap` and `lapWindows` exist to stop exactly this
+and were being asked too early. An orbit's yaw runs for the whole lap and a
+moment past it, so the yaw run closes while a second, meaningless lap has
+already opened behind it; the yaw is HELD by that second lap; the second lap
+names nothing; `releaseHeld` then asks whether the first lap paid for the yaw
+and the answer is no, because the first lap is still sitting in `pending`
+unnamed and nothing had put its window in `lapWindows` yet.
+
+`dropAbsorbed` asks the question again at the only moment the answer can have
+changed, which is the moment a lap is actually named. Whether a pilot was paid
+twice used to depend on how close to the post they flew, which is the kind of
+thing nobody reports because it looks like generosity.
+
+### The Inverted Yaw Spin is now measured rather than inferred
+
+There was a pattern for it, three steps: half a roll, a yaw, half a roll back
+the SAME way. It asked the entry and the exit to prove the craft was upside
+down, because nothing measured whether it was. A pilot who rolled in one way
+and out the other, which is the ordinary way to do it, scored 50 for a Yaw
+Spin instead of 400.
+
+A rotation now carries the fraction of itself flown belly up, exactly as a lap
+has since `INVERTED_LAP_MIN` was written. That constant is renamed
+`INVERTED_MIN` because it is now one bar for both kinds and the question is
+the same question. The pattern is one step and the entry and the exit are free
+to be whatever the pilot flew; they are still paid for, as the building blocks
+they are anywhere else. The building block table learned about it too, so 720
+of yaw on the back is two Inverted Yaw Spins rather than two of the fifty
+point one.
+
+### Three defects in the scorer, all of them measured
+
+**The two clocks were not level.** `simTimeMs` advances on every physics step,
+but the detector is only fed on the steps where the craft is airborne. Every
+run starts landed, so every run started with the clocks already apart, and the
+scorer compares `simTimeMs` against a combo window measured from a trick's
+`endMs`, which is on the detector's clock. After more than the window's three
+seconds on the ground, every combo banked on the very next tick at a
+multiplier of one. The chain a pilot thought they were building did not exist.
+`TrickDetector.idle(dtMs)` advances the clock and the stall counter on the
+steps the craft is not being flown, and reads no motion at all: feeding the
+detector those steps instead would let a quad sitting on the grass score a Yaw
+Spin off the gyro noise.
+
+**A trick worth nothing bought a whole point of combo multiplier.** The
+multiplier was the chain's LENGTH and `land` pushes a name whatever it was
+worth. Measured: three master tricks chained bank 7,601; the same three with
+nine repeated half rolls after them banked 31,515, a 4.15x score for ninety
+three points of flying, six of those nine tricks being worth literally zero.
+The multiplier now counts the tricks that scored. The name still goes up on
+the HUD, because a pilot has to see the repeat penalty happening, and a
+worthless trick no longer holds the window open either.
+
+Filler that DOES score still buys multiplier, which is Tony Hawk's own rule
+and the one mechanic in `score.js` the owner asked for by name. It is never
+the winning move, and the self-test now pins the curve:
+
+    three masters                     7,601
+    three masters and three fillers  15,758
+    six masters                      30,818
+    twelve varied real tricks       112,769
+    twelve fillers and nothing else     225
+
+**A run could be one combo that never banked.** Forty tricks landed 2.9 s
+apart never banked at all: the multiplier sat pinned at twelve for thirty
+seven of them and the Score readout said nought for two minutes. Past the cap
+another trick in the chain is worth exactly what it would be worth in a fresh
+chain and is at risk on top, so continuing is strictly worse than banking and
+starting again. The chain now cashes itself in when the multiplier tops out.
+
+### There was no run, so there could be no leaderboard
+
+`score.finish()` was dead code. The total climbed from the moment the world
+loaded until something reset it, so the top of any board would have been
+whoever left the tab open longest. A run is now two minutes of SIMULATED time,
+which is the length of a real freestyle heat and what the workbook's own
+calculator is laid out to hold, and the clock starts on the first trick rather
+than on the spawn, so a pilot who wants to look around first is not spending
+their run to do it.
+
+### The two workbook tables that nothing read
+
+`REPEAT_OBSTACLE` and `OBSTACLE_BONUS` were transcribed with the rest of the
+workbook and read by nothing outside the self-test. The recogniser knew which
+thing a lap went around, put `obstacleId` on the path primitive, and then
+`emit` threw it away one function before the only reader that wanted it.
+
+It is now carried out as a group index rather than a collider id, because
+`obstacles.js` carries `sameAxis` precisely for the case of a town railing
+built out of six collinear boxes: ids would say a pilot who looped the near
+end and then the far end had moved to a new obstacle, and would hand out the
+variety bonus for standing still. The penalty is indexed by priors, the
+convention `repeatTrickFactor` already uses, so the first trick on a post is
+free and the seventh in a row is worth nothing. The bonus is a run level
+number and lands at the horn, added to the banked total rather than multiplied
+into it: multiplying would have the variety bonus scaling the combo
+multiplier, so a pilot with a twelve chain would be paid twelve times as much
+for moving around as a pilot with a one chain, which is not what a bonus for
+moving around means.
+
+Together these close the most obvious way to farm this scorer, which was to
+sit on one lamp post and orbit it until the battery ran out.
+
+### One finding acted on and one declined
+
+A `bestMatch` tie break by catalogue price was added, because the comment on
+`PATTERNS` has always promised it and the code did not do it: the old loop
+kept the FIRST match of the longest length, so which of two equally long
+patterns won was decided by typing order. It made no difference until the pole
+tricks became tiers and the inverted yaw spin became one step. Asking the
+catalogue rather than carrying a priority in the recogniser keeps the split the
+file is built on.
+
+The `drain` remainder was missing its `kind`, and its absence was silent:
+`matchSteps` rejects anything whose kind is not `rot` before it looks at
+anything else, so the remainder of a long rotation could never take part in a
+pattern, only in the singles table. A 540 roll's trailing half roll could not
+become the first step of a Rubik's Cube. Fixed.
+
+DECLINED: flying into a wall at any speed still only BUMPs, so a pilot can
+bounce off a building at 30 m/s mid chain and keep it. Making that a bail
+needs a speed or impulse threshold on obstacle contact, and `collide.js` says
+in as many words that every hit is a bounce and there is no wreck, while the
+ground path's comment says a third threshold is "a number nobody can defend
+six months later". The ground already bails at `BOUNCE_SPEED_MAX` on a line
+`collide.js` had already drawn. Inventing a second line for walls is a game
+design decision for the owner, not a bug fix, and it is written down here so
+it is not rediscovered as a surprise.
+
+### Checks
+
+`npm run score:selftest` passes, 186 of 186, including the new sweeps.
+`npm run lint:nouns` passes. `npm run verify` was NOT run: it drives headless
+Chromium through the whole shell, CLAUDE.md reserves it for physics, plant,
+ABI and build changes, and none of this touches any of those. The shell wiring
+that follows in the next entry is the part that will want a look at the real
+page.

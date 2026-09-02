@@ -283,6 +283,18 @@ const RC_HZ = 250;
  */
 const SIM_HZ = 1000;
 const MS_PER_STEP = 1000 / SIM_HZ;
+/*
+ * How near a wall a Wall Ride is flown, in metres.
+ *
+ * The workbook says "just a few inches away from the wall", which is a
+ * five inch quad's own width. Two metres is the radius the proximity query
+ * is asked with, not the distance a trick demands: the query answers "is
+ * anything within two metres", the pattern asks for a great deal closer,
+ * and the gap between them is what stops the query missing a wall the craft
+ * is about to be beside. See TrickDetector.near.
+ */
+const WALL_NEAR_M = 2.0;
+
 /* Pack nominal, for the charge bar: 6S between empty and full. */
 /* The 6 is PLANT.cells in src/native/plant.c, restated here because the ABI
  * does not report it. These are the HUD gauge's ends only: the physics reads
@@ -5946,6 +5958,24 @@ export async function boot({ loading, bootStart, mapId }) {
        * combo window shorter on a slow machine, which is exactly the class
        * of frame-rate dependence CLAUDE.md keeps out of the game.
        */
+      /*
+       * HOW NEAR THE CRAFT IS TO SOMETHING SOLID, once a frame.
+       *
+       * A Wall Ride never touches the wall, so no contact fires and the
+       * recogniser cannot tell it from banking round a corner. This is the
+       * one thing that separates them, and it is affordable because it is a
+       * SINGLE broadphase query per frame with an inflated radius, using
+       * the same swept test the contact pass already makes sixty times a
+       * second. A query per physics step would be sixty times the work for
+       * an answer that does not change that fast.
+       *
+       * A miss means nothing solid within WALL_NEAR_M, which the detector
+       * reads as open sky.
+       */
+      if (view.mode === 'freestyle' && view.colliders) {
+        const q = shell.quad.position;
+        trickDetector.near(view.colliders.gapAt(q.x, q.y, q.z, WALL_NEAR_M));
+      }
       if (view.mode === 'freestyle') {
         const wasOver = score.over();
         score.tick(simTimeMs);
@@ -6474,6 +6504,18 @@ export async function boot({ loading, bootStart, mapId }) {
     trickDetector.reset();
     score.crash();
     return score.summary();
+  };
+  /*
+   * The gap to the nearest solid at a point, in metres, by exactly the
+   * query the freestyle recogniser is fed. Harness only, and it exists
+   * because "a Wall Ride was flown near a wall" is a claim about a number
+   * nothing else in the shell reports. See WALL_NEAR_M.
+   */
+  window.__nearSolid = (x, y, z, r = WALL_NEAR_M) => {
+    if (!view.colliders) {
+      return null;
+    }
+    return view.colliders.gapAt(x, y, z, r);
   };
   /* What is solid, and how well the broadphase is doing. */
   window.__colliders = () => view.colliders.stats();

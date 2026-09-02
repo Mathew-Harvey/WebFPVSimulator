@@ -864,6 +864,33 @@ export const PATTERNS = [
     ],
   },
   {
+    /*
+     * "a 90 yaw spin while applying throttle with a slight roll toward the
+     * object to fly over it. At the peak, reduce throttle and add a small
+     * roll the other way to descend down the other side."
+     *
+     * Over the top and down, entered sideways. The quarter yaw is what
+     * separates it from a Maverick Loop, which is the same lap flown facing
+     * along it, and the workbook names that yaw first for the same reason.
+     * The rolls are small and are not asked for: "slight" and "small" are
+     * not a turn count.
+     */
+    name: 'Jump Rope',
+    steps: [
+      { axis: 'yaw', turns: 0.25 },
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 0 } },
+    ],
+  },
+  {
+    /* "combine a Jump Rope with a slow 360 yaw spin, timed to finish as you
+     * pass back under the object." */
+    name: 'Cinnamon Roll',
+    steps: [
+      { axis: 'yaw', turns: 0.25 },
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, yaw: 1 } },
+    ],
+  },
+  {
     /* "a 90 Yaw spin as you pass beneath it, then roll toward the object to
      * fly over it while inverted": a powerloop flown on roll, not pitch. */
     name: 'Side Loop',
@@ -919,14 +946,69 @@ export const PATTERNS = [
      * the same axis, which is a shape ordinary flying does not make. */
     name: 'Wall Tap',
     steps: [
-      { axis: 'pitch', turns: 0.25, tap: true },
-      { axis: 'pitch', turns: 0.25, oppTo: 0 },
+      { axis: 'pitch', turns: 0.25 },
+      { axis: 'pitch', turns: 0.25, oppTo: 0, tap: true },
     ],
   },
   {
     /* "a 270 roll towards the wall, executing a wall tap as you go." */
     name: 'Roll Tap',
     steps: [{ axis: 'roll', turns: 0.75, tap: true }],
+  },
+  {
+    /*
+     * "a 90 Roll and a 45 pitch back, enabling a Wall tap while facing
+     * backward. Immediately a 180 Pitch back."
+     *
+     * The pitch CONTINUES the same way after the tap, and that one word is
+     * what separates it from a Wall Tap, which pitches back the other way
+     * to level out. Same opening quarter, same contact, opposite intent.
+     * The simultaneous roll the workbook also describes is not asked for:
+     * two runs started together close in whichever order they finish, so a
+     * pattern that demanded it would match on some flights and not others.
+     */
+    name: 'Loop Tap',
+    steps: [
+      { axis: 'pitch', turns: 0.25 },
+      { axis: 'pitch', turns: 0.5, sameAs: 0, tap: true },
+    ],
+  },
+  {
+    /* "you're looking downward and away from the object as you tap it.
+     * After the tap, smoothly perform a front flip." A whole flip out
+     * rather than the Loop Tap's half. */
+    name: 'Downtown Tap',
+    steps: [
+      { axis: 'pitch', turns: 0.25 },
+      { axis: 'pitch', turns: 1, sameAs: 0, tap: true },
+    ],
+  },
+  {
+    /*
+     * "just a few inches away from the wall, a 90 roll AWAY from it, cut
+     * the throttle to glide alongside, then roll to level out."
+     *
+     * NOTHING IS TOUCHED, which is why this needed `gapAt`. A quarter roll
+     * out and a quarter roll back is also what banking round a corner looks
+     * like; the wall is the whole trick and until the recogniser could
+     * measure a distance it could not see it. A metre is generous against
+     * the workbook's "few inches" and tight enough that open air fails it.
+     */
+    name: 'Wall Ride',
+    steps: [
+      { axis: 'roll', turns: 0.25, nearMax: 1.0 },
+      { axis: 'roll', turns: 0.25, oppTo: 0, nearMax: 1.0, gapMs: 1600 },
+    ],
+  },
+  {
+    /* "approach a wall as if for a wall ride, then quickly switch to face
+     * backward with a 180 yaw spin. Conclude by rolling toward the wall to
+     * level out." */
+    name: 'Reverse Wall Ride',
+    steps: [
+      { axis: 'yaw', turns: 0.5, nearMax: 1.0 },
+      { axis: 'roll', turns: 0.25, nearMax: 1.0, gapMs: 1600 },
+    ],
   },
   {
     /*
@@ -1552,6 +1634,9 @@ export class TrickDetector {
     /* When the last contact was, so a rotation can record that it happened
      * during one. Negative infinity is "never touched anything". */
     this.tapAtMs = -1e9;
+    /* The nearest solid seen since the last rotation closed, in metres.
+     * Infinity is open sky. See near(). */
+    this.nearest = Infinity;
     this.enabled = true;
   }
 
@@ -1576,6 +1661,7 @@ export class TrickDetector {
     this.gapStallMs = 0;
     this.touched = false;
     this.tapAtMs = -1e9;
+    this.nearest = Infinity;
   }
 
   /* A new run: forget the buffers and put the clock back to zero, so the
@@ -1605,6 +1691,30 @@ export class TrickDetector {
    * the bump, because the contact it is being charged for is the trick. A
    * pattern that does not ask is unaffected and still pays. See emit.
    */
+  /*
+   * How near the craft is to something solid, in metres, once a frame.
+   *
+   * The Wall Tricks that do NOT touch the wall need this and nothing else
+   * can give it to them. A Wall Ride is "a 90 degree roll away from the
+   * wall a few inches from it, glide alongside, roll back", and its
+   * rotation signature, a quarter roll out and a quarter roll back, is also
+   * what banking round a corner looks like. The wall is the whole trick and
+   * the recogniser could not see it.
+   *
+   * FRAME RATE, NOT STEP RATE, and that is the reason this is affordable.
+   * "Was the craft close to something while it did this" is a coarse
+   * question and a broadphase query per millisecond would be sixty times
+   * the work for an answer that does not change that fast. The shell asks
+   * once a frame with an inflated radius, which is a query it already makes
+   * every frame for contact, and the detector only records the smallest
+   * answer it saw during a run.
+   */
+  near(metres) {
+    if (metres < this.nearest) {
+      this.nearest = metres;
+    }
+  }
+
   bump(impulse) {
     this.touched = true;
     /*
@@ -2251,6 +2361,10 @@ export class TrickDetector {
     run.slowMs = 0;
     const frac = run.invertedFrac();
     run.clearSamples();
+    /* Read before the reset below, so the primitive carries the closest
+     * approach during ITS OWN run rather than the whole flight's. */
+    const nearest = this.nearest;
+    this.nearest = Infinity;
     if (!open || turns <= 0) {
       return;
     }
@@ -2278,8 +2392,22 @@ export class TrickDetector {
        * the rotation rather than as an element between two of them, which
        * is also what makes it robust to the order the two arrive in.
        */
+      /*
+       * A TAP ATTACHES TO THE ROTATION THAT FOLLOWS IT, NOT THE ONE BEFORE.
+       *
+       * This is read when the run CLOSES, so a contact that happens after
+       * that moment can never reach back to it however wide the window is.
+       * A wall tap is pitch back, touch, pitch forward, and the touch lands
+       * between the two: it is the SECOND rotation that carries it. So a
+       * pattern asks for the tap on the step after the contact, which reads
+       * oddly until you notice it is also how a pilot describes it. The
+       * window reaching backwards is for a contact DURING the rotation,
+       * which is the Roll Tap and the Ceiling Tap.
+       */
       tapped: this.tapAtMs >= run.startMs - TAP_WINDOW_MS
         && this.tapAtMs <= this.nowMs + TAP_WINDOW_MS,
+      /* The nearest solid while this rotation was running. See near(). */
+      nearest,
     };
     this.gapStallMs = 0;
     /*
@@ -2342,7 +2470,7 @@ export class TrickDetector {
       }
       const best = this.bestMatch();
       if (best) {
-        if (this.emit(best.name, best.steps, best.slack, best.wantedTap)) {
+        if (this.emit(best.name, best.steps, best.slack, best.wantedTap, best.pattern)) {
           this.dropAbsorbed();
         }
         continue;
@@ -2432,7 +2560,7 @@ export class TrickDetector {
    * Answers whether any of them was a LAP, because a lap that has just been
    * paid for changes what the rest of the buffer is worth. See dropAbsorbed.
    */
-  emit(name, count, slack = 0, wantedTap = false) {
+  emit(name, count, slack = 0, wantedTap = false, steps = null) {
     const used = this.pending.splice(0, count);
     const first = used[0];
     const last = used[used.length - 1];
@@ -2449,10 +2577,19 @@ export class TrickDetector {
       touched = touched || used[i].touched;
       dead += used[i].slowMs;
       if (i > 0) {
-        /* The gap between two primitives of one trick, minus any stall the
-         * pattern asked for. A pattern that wants a stall does not get
-         * charged for it: see SLOPPY_GAP_MS. */
-        dead += used[i].startMs - used[i - 1].endMs - used[i].stallBeforeMs;
+        /*
+         * The gap between two primitives of one trick, minus any pause the
+         * pattern ASKED for. A pattern that wants a stall does not get
+         * charged for it, and neither does one that wants a glide: a Wall
+         * Ride cuts the throttle and rides alongside the wall between its
+         * two rolls, and grading that SLOPPY would be fining the pilot for
+         * the part of the trick the trick is named after.
+         */
+        const asked = steps && steps[i]
+          ? Math.max(steps[i].stallMs ?? 0, steps[i].gapMs ?? 0)
+          : 0;
+        dead += used[i].startMs - used[i - 1].endMs
+          - Math.max(used[i].stallBeforeMs, asked);
       }
     }
     /*
@@ -2582,7 +2719,12 @@ export class TrickDetector {
         || (n === best.steps && slack < best.slack)
         || (n === best.steps && slack === best.slack && points > best.points)) {
         best = {
-          name: pat.name, steps: n, points, slack, wantedTap: patternWantsTap(pat),
+          name: pat.name,
+          steps: n,
+          points,
+          slack,
+          wantedTap: patternWantsTap(pat),
+          pattern: pat.steps,
         };
       }
     }
@@ -2618,7 +2760,14 @@ export class TrickDetector {
         continue;
       }
       const next = pat.steps[this.pending.length];
-      const w = SETTLE_MS + (next.stallMs ?? 0);
+      /*
+       * `gapMs` is a pause the trick is FLOWN with, as opposed to `stallMs`
+       * which is a pause the craft is nearly stationary for. A Wall Ride
+       * cuts the throttle and glides alongside the wall between its two
+       * quarter rolls, at speed, and the buffer used to throw the first
+       * roll away after the settle window and name nothing at all.
+       */
+      const w = SETTLE_MS + Math.max(next.stallMs ?? 0, next.gapMs ?? 0);
       if (w > wait) {
         wait = w;
       }
@@ -2856,6 +3005,14 @@ function matchSteps(steps, prims, n) {
      * is the trick MISSED rather than the trick flown badly.
      */
     if (s.tap !== undefined && Boolean(p.tapped) !== s.tap) {
+      return -1;
+    }
+    /*
+     * Flown close to something, without necessarily touching it. No slack:
+     * a wall ride flown ten metres off the wall is not a sloppy wall ride,
+     * it is a roll.
+     */
+    if (s.nearMax !== undefined && !((p.nearest ?? Infinity) <= s.nearMax)) {
       return -1;
     }
   }

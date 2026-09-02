@@ -1108,6 +1108,74 @@ export class Colliders {
   }
 
   /*
+   * THE GAP TO THE NEAREST SOLID at a point, in metres, or Infinity if
+   * nothing is within `maxR`.
+   *
+   * `hit()` cannot answer this and it was tried: it is a SWEPT test that
+   * reports the first thing the travel touches, so a stationary query
+   * returns a hit with `hitPen` of zero and the caller reads the query
+   * radius back as the distance. Measured against the training field's
+   * wall, a point 0.1 m off its face came back as 2.0 m and a point 0.3 m
+   * off it came back as nothing at all. A proximity test needs a distance,
+   * and a distance is a different question from an intersection.
+   *
+   * Wall Ride and Reverse Wall Ride are the reason it exists: neither
+   * touches the wall, so no contact fires, and their rotation signature, a
+   * quarter roll out and a quarter roll back, is also what banking round a
+   * corner looks like. The wall is the whole trick.
+   *
+   * Exact for both primitives and allocation free. A capsule's gap is the
+   * length of the perpendicular from its axis less its radius; a box's is
+   * the length of the componentwise outside vector, which is zero inside
+   * it. The broadphase walk is the same grid `hit()` uses.
+   */
+  gapAt(px, py, pz, maxR) {
+    if (!this.built) {
+      return Infinity;
+    }
+    this.queryId += 1;
+    const id = this.queryId;
+    const pad = maxR + this.maxR;
+    const cx0 = clampCell(Math.floor((px - pad) / CELL));
+    const cx1 = clampCell(Math.floor((px + pad) / CELL));
+    const cz0 = clampCell(Math.floor((pz - pad) / CELL));
+    const cz1 = clampCell(Math.floor((pz + pad) / CELL));
+    let best = Infinity;
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          const i = bucket[bi];
+          if (this.stamp[i] === id) {
+            continue;
+          }
+          this.stamp[i] = id;
+          let gap;
+          if (this.fbox[i]) {
+            /* Outside vector, componentwise. Zero on every axis means the
+             * point is inside the box, which is a gap of zero. */
+            const ox = Math.max(this.fax[i] - px, 0, px - this.fbx[i]);
+            const oy = Math.max(this.fay[i] - py, 0, py - this.fby[i]);
+            const oz = Math.max(this.faz[i] - pz, 0, pz - this.fbz[i]);
+            gap = Math.sqrt(ox * ox + oy * oy + oz * oz);
+          } else {
+            this.axisToPoint(i, px, py, pz);
+            const d = Math.sqrt(this.nx * this.nx + this.ny * this.ny + this.nz * this.nz);
+            gap = d - this.fr[i];
+          }
+          if (gap < best) {
+            best = gap < 0 ? 0 : gap;
+          }
+        }
+      }
+    }
+    return best <= maxR ? best : Infinity;
+  }
+
+  /*
    * Compute the vector from capsule i's axis to the point (cx, cy, cz),
    * into this.nx/ny/nz. This is the contact normal direction when the point
    * is a contact. Allocation free; scalar fields, not an object.

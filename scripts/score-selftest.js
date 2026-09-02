@@ -1471,6 +1471,77 @@ console.log('\nthe obstacle tricks, on constructed paths');
   }
 
   /*
+   * THE WALL TRICKS, where the thing that makes the trick is not a rotation.
+   *
+   * Four of them come down to two questions the rotations cannot answer: did
+   * the craft TOUCH the wall, and if it did not, was it CLOSE to one. A Wall
+   * Tap is a quarter pitch out and back with a contact in the middle; a Wall
+   * Ride is a quarter roll out and back with no contact at all, which is
+   * also exactly what banking round a corner looks like. Without the tap and
+   * the gap, one of them is unnameable and the other fires all over town.
+   */
+  {
+    const bare = new ObstacleField();
+    bare.build();
+    /* A wall tap: pitch back a quarter, touch, pitch forward a quarter. */
+    const tapped = new Path(bare);
+    tapped.spin(1, 0.25, 260);
+    tapped.det.bump(1.0);
+    tapped.cruise(120, -8);
+    tapped.spin(1, -0.25, 260);
+    tapped.cruise(700, -8);
+    check('a quarter pitch out, a gentle touch, and back is a Wall Tap',
+      tapped.finish() === 'Wall Tap');
+    /* The same shape with no contact is two quarter turns and nothing: a
+     * quarter is under the SINGLES floor on purpose. */
+    const untouched = new Path(bare);
+    untouched.spin(1, 0.25, 260);
+    untouched.cruise(120, -8);
+    untouched.spin(1, -0.25, 260);
+    untouched.cruise(700, -8);
+    check('and the same shape untouched is not a Wall Tap',
+      untouched.finish() === 'NOTHING');
+    /*
+     * A HARD hit is not a tap. Without this every smack into a building
+     * offered itself as a 300 point Ceiling Tap, so the gentleness is the
+     * whole guard: GRAZE_SPEED_MAX, borrowed from collide.js rather than
+     * redrawn.
+     */
+    const smacked = new Path(bare);
+    smacked.spin(1, 0.25, 260);
+    smacked.det.bump(30.0);
+    smacked.cruise(120, -8);
+    smacked.spin(1, -0.25, 260);
+    smacked.cruise(700, -8);
+    check('but a 30 m/s smack is not a gentle tap',
+      smacked.finish() === 'NOTHING');
+    /*
+     * A wall ride: a quarter roll away from the wall, a GLIDE alongside it,
+     * and a quarter roll back, all within a metre of something solid. The
+     * glide is why the second step carries `gapMs`: the buffer used to drop
+     * the first roll after the settle window and name nothing.
+     */
+    const ride = (gap) => {
+      const s2 = new Path(bare);
+      const near = () => s2.det.near(gap);
+      near();
+      s2.spin(0, 0.25, 260);
+      for (let i = 0; i < 900; i += 1) {
+        near();
+        s2.feed(0, 0, 0);
+      }
+      near();
+      s2.spin(0, -0.25, 260);
+      s2.cruise(700, -8);
+      return s2.finish();
+    };
+    check('a quarter roll, a glide and a roll back beside a wall is a Wall Ride',
+      ride(0.4) === 'Wall Ride');
+    check('and the same six metres off the wall is nothing at all',
+      ride(6.0) === 'NOTHING');
+  }
+
+  /*
    * A RAIL IN A CROWD, which is what a town actually looks like.
    *
    * Measured standing four metres under each of forty real city bars, which

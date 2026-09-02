@@ -399,6 +399,8 @@ export const markLoop = () => cached('markLoop', () => groundPanel('パワール
 export const markWall = () => cached('markWall', () => groundPanel('ウォールタップ', 'WALL  TAP', PAINT, DECK));
 /** 「スプリットS」 under the high bar. */
 export const markSplitS = () => cached('markSplitS', () => groundPanel('スプリットＳ', 'SPLIT-S  —  OVER  THE  BAR,  BACK  THROUGH  THE  GATE', PAINT, DECK));
+/** 「なわとび」 under the low rail. */
+export const markJump = () => cached('markJump', () => groundPanel('なわとび', 'JUMP  ROPE  \u2014  OVER,  BACK,  AND  UNDER', PAINT, DECK));
 /** 「自由練習」 on the open ground at the far end. */
 export const markPractice = () => cached('markPractice', () => groundPanel('自由練習', 'FREE  PRACTICE', PAINT, DECK));
 

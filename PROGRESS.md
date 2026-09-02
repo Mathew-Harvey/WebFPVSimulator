@@ -26118,3 +26118,105 @@ entered on.
 
 `npm run verify` was not run: nothing here touches the plant, `src/native`,
 the patches or the build.
+
+
+## 2026-09-02, a rail to skip, and the four wall tricks
+
+### The town had nothing to jump over, so the field grew a rail
+
+The previous entry ended by saying coverage is bounded by the map as much as
+by the pattern list, and the Jump Rope was the case in point: the trick is
+flown over and under a low bar and the town does not contain one.
+
+なわとび is a sixth station in the practice field, on cells (4,0) and (5,0),
+which the grid's own `pick` already joins into one continuous pad. A 30 m rail
+at 2.60 m to the underside, 0.22 m square, on two uprights and no leg in the
+middle, because a leg halfway along is the one thing a pilot hopping down the
+rail cannot see coming.
+
+The two numbers are the design. THIRTY METRES because a jump rope is not one
+hop, it is a sequence, and thirty metres is four or five at freestyle speed;
+six hop ticks at five metre spacing are painted on both sides, because a
+rhythm needs a beat and a bare rail gives none. TWO POINT SIX METRES because
+three tricks are flown here and they want opposite things: a Jump Rope goes
+over, so the rail wants to be low enough to pop rather than climb, while a
+Side Loop and a Cinnamon Roll pass UNDER it, so there has to be daylight
+beneath. `BAR_CLEAR_MIN` is 1.5 m and a five inch is 0.25 m across, so 2.60 m
+is ten airframes of gap.
+
+Verified in the real town: the rail derives as a BAR at (81, 3.16, 125),
+along x, 30 m long, with the underside 2.60 m over the ground. The field went
+from 886 poles and 78 bars to 888 and 79, the two extra poles being the
+uprights. Flown over it, a hop entered on a quarter yaw names Jump Rope CLEAN,
+the same hop with a 360 of yaw through it names Cinnamon Roll CLEAN, and the
+same hop with NO lead yaw correctly names Maverick Loop, which is what it is.
+
+### The four wall tricks needed a distance, and `hit()` cannot give one
+
+Two of them are contact and two are not, and the two that are not were the
+problem. A Wall Ride is "a 90 degree roll away from the wall a few inches from
+it, glide alongside, roll back", and that rotation signature is also what
+banking round a corner looks like. The wall is the whole trick.
+
+`Colliders.gapAt(x, y, z, maxR)` is the answer: the distance to the nearest
+solid, exact for both primitives, allocation free, on the same broadphase grid
+`hit()` walks. A capsule's gap is the perpendicular from its axis less its
+radius; a box's is the length of the componentwise outside vector.
+
+`hit()` was tried first and cannot do it, which is worth writing down because
+it looks like it should. It is a swept INTERSECTION test: a stationary query
+returns a hit with `hitPen` of zero, so the caller reads the query radius back
+as the distance. Measured against the practice field's wall, a point 0.1 m off
+its face came back as 2.0 m and a point 0.3 m off it came back as nothing at
+all. With `gapAt` the same points read 0.0999 and 0.2999, and past 2 m it is
+open sky.
+
+It is asked ONCE A FRAME, not once a step. "Was the craft close to something
+while it did this" is a coarse question and a broadphase query per millisecond
+would be sixty times the work for an answer that does not change that fast.
+
+So: Wall Ride and Reverse Wall Ride ask `nearMax`, Loop Tap and Downtown Tap
+ask `tap`. Measured on the practice field's own wall, a quarter roll, a glide
+and a roll back at 0.5 m names Wall Ride CLEAN, and the identical flight six
+metres off the wall names nothing at all.
+
+### Two things the wall tricks taught the matcher
+
+**A TAP ATTACHES TO THE ROTATION THAT FOLLOWS IT.** `tapped` is read when a
+run CLOSES, so a contact after that moment can never reach back to it however
+wide the window. A wall tap is pitch back, touch, pitch forward, and the touch
+lands between the two, so it is the SECOND rotation that carries it. Three
+patterns asked on the wrong step and named nothing until this was understood.
+The window reaching backwards is for a contact DURING a rotation, which is the
+Roll Tap and the Ceiling Tap.
+
+**A PATTERN MAY ASK FOR A PAUSE IT IS FLOWN WITH.** `stallMs` is a pause the
+craft is nearly stationary for; a Wall Ride cuts the throttle and glides
+alongside the wall AT SPEED between its two rolls. The buffer used to drop the
+first roll after the settle window and name nothing, and `emit` then graded
+what did match SLOPPY for the dead time. `gapMs` says how long a trick's own
+pause may be, `hold` waits for it, and `emit` does not charge for it, which is
+the same rule the tap already follows: a trick is not fined for the part it is
+named after.
+
+### Where the catalogue stands
+
+Twenty one of 90 reachable two entries ago, 57 last entry, 63 now. The 27 left
+are in `.loop/evidence/freestyle-scoring/DETECTION.md` with what each needs.
+Four of them are ambiguous with a trick already implemented and are left out
+on purpose; the rest want a primitive that does not exist, or are long
+sequences of primitives that all do.
+
+### Checks
+
+`npm run score:selftest` (211, including a Wall Tap that touches, the same
+shape untouched, a 30 m/s smack that is not a tap, and a Wall Ride at 0.4 m
+against the same flight at 6 m), `npm run lint:nouns`, `npm run lint:boot`,
+`npm run lint:presets`, `npm run lint:shell` and `npm run lint:quality`
+(56 of 56) all pass.
+
+The practice field was flown in the real town for the jump rope numbers and
+the wall ride numbers above. `npm run verify` was not run: this touches
+neither the plant, `src/native`, the patches nor the build. `gapAt` is new
+code in `src/game/collide.js`, but it is a read only query on the built grid
+and nothing in the collision path calls it.

@@ -86,7 +86,7 @@ import {
   GROUND, mats, slab, decal, deck, post, board, patch,
 } from './kit.js';
 import {
-  markOrbit, markLoop, markWall, markSplitS, markPractice,
+  markOrbit, markLoop, markWall, markSplitS, markJump, markPractice,
   fieldName, fieldGuide, towerBanner, wallTarget, heightMark,
 } from './signs.js';
 
@@ -138,6 +138,8 @@ const cellZ0 = (j) => GZ0 + j * CD;
  */
 const PADS = {
   '2,0': 'entrance',
+  '4,0': 'jump',
+  '5,0': 'jump',
   '1,1': 'loop',
   '2,1': 'loop',
   '3,2': 'wall',
@@ -186,6 +188,37 @@ const WALL = { x0: 50.0, x1: 62.0, z: 152.6, t: 0.55, h: 7.00, target: 3.20 };
  * out, and the uprights are the thing that says how high the bar is.
  */
 const SPLITS = { x: 24.0, z0: 164.0, z1: 172.0, bar: 12.00, gate: 2.60, gateHalf: 1.60, post: 0.32 };
+/*
+ * なわとび: a low rail you hop, and the only element here you go OVER rather
+ * than through.
+ *
+ * WHY IT IS LONG AND LOW. A jump rope is not one hop, it is a sequence: over
+ * the rail, down the far side, back over it, and on down its length, which is
+ * the same shape as a skipping rope and is where the trick gets its name. So
+ * the rail is 30 m, which is four or five hops at freestyle speed, and the
+ * pad is two cells so there is landing room on both sides of it rather than
+ * water. Everything else in this field is a thing you fly THROUGH or AROUND
+ * and it is placed to give the approach clear air; this one is placed to give
+ * the run ALONG it clear air, which is why it sits on the south edge with the
+ * open apron in front and nothing behind it until the loop's arches.
+ *
+ * WHY 2.60 m TO THE UNDERSIDE. Three tricks are flown here and they want
+ * opposite things. A Jump Rope goes over, so the rail wants to be low enough
+ * to pop rather than climb. A Side Loop and a Cinnamon Roll pass UNDER it, so
+ * there has to be daylight beneath: `BAR_CLEAR_MIN` in src/game/obstacles.js
+ * is 1.5 m and a five inch is 0.25 m across, so 2.60 m to the underside is
+ * ten airframes of gap, which is flyable at speed without being a hole you
+ * have to aim at. The rail itself is 0.22 m square, the same section as the
+ * Split-S bar, which is the thinnest thing in this field that still reads as
+ * solid from twenty metres.
+ *
+ * The uprights stand OUTSIDE the run, one at each end and none in the middle,
+ * because a leg halfway along would be the one thing a pilot hopping down the
+ * rail cannot see coming.
+ */
+const JUMP = {
+  z: 125.0, x0: 66.0, x1: 96.0, bar: 2.60, t: 0.22, post: 0.26,
+};
 /* The mast, on the grid intersection at the middle of its four cells. */
 const TOWER = { x: 96.0, z: 160.0, half: 1.50, h: 34.00, decks: [12.0, 24.0], leg: 0.16 };
 const RINGS = [6.0, 10.0, 13.0];
@@ -199,6 +232,7 @@ export function buildTraining(ctx) {
   buildGrid(ctx, m, rng);
   buildEntrance(ctx, m, out);
   buildLoop(ctx, m);
+  buildJumpRope(ctx, m);
   buildWall(ctx, m);
   buildSplitS(ctx, m);
   buildTower(ctx, m);
@@ -223,6 +257,11 @@ export function buildTraining(ctx) {
     measured: +SPLITS.bar.toFixed(2),
     unit: 'm',
     real: 'enough height to finish a split-S, 10 m and up',
+  };
+  out.references.trainingJumpRail = {
+    measured: +JUMP.bar.toFixed(2),
+    unit: 'm',
+    real: 'low enough to hop and high enough to fly under, 2 to 3.5 m',
   };
   out.references.trainingWallTap = {
     measured: +WALL.target.toFixed(2),
@@ -515,6 +554,55 @@ function arch(ctx, m, x, z, half, head, leg) {
   }
   decal(ctx, m.yellow, x - leg / 2 - 0.03, GROUND + head - 0.10, z - half + 0.60,
     x + leg / 2 + 0.03, GROUND + head, z + half - 0.60, { name: 'trainingArchBand' });
+}
+
+/* ------------------------------------------------------------------ *
+ * なわとび: the low rail, and the length of it.
+ * ------------------------------------------------------------------ */
+
+function buildJumpRope(ctx, m) {
+  const j = JUMP;
+  const y = GROUND + j.bar;
+  /* The two uprights, at the ends and nowhere else. Each stands on the same
+   * concrete pad every other upright in this field stands on, so the base of
+   * a thing is the same shape wherever you meet it. */
+  for (const x of [j.x0, j.x1]) {
+    post(ctx, m.archSteel, x, j.z, GROUND, y + j.t + 0.40, j.post / 2,
+      { name: 'trainingJumpPost' });
+    slab(ctx, m.concreteMid, x - 0.45, GROUND, j.z - 0.45, x + 0.45, GROUND + 0.26, j.z + 0.45,
+      { name: 'trainingJumpBase' });
+  }
+  /*
+   * The rail. Solid, for the same reason the Split-S bar is: a drawn bar you
+   * can pass through is the same lie as an invisible wall, only the other way
+   * round. It is what src/game/obstacles.js derives a BAR from, and every
+   * powerloop, matty and jump rope in the recogniser needs one to exist.
+   */
+  slab(ctx, m.archSteel, j.x0, y, j.z - j.t / 2, j.x1, y + j.t, j.z + j.t / 2,
+    { name: 'trainingJumpRail' });
+  /* The band along the top of it, on the edge the pilot has to clear. The
+   * arches use the same yellow on the edge you have to miss. */
+  decal(ctx, m.yellow, j.x0, y + j.t, j.z - j.t / 2 - 0.03, j.x1, y + j.t + 0.03,
+    j.z + j.t / 2 + 0.03, { name: 'trainingJumpBand' });
+
+  mark(ctx, markJump(), (j.x0 + j.x1) / 2, j.z + 4.6, 12.0);
+  /*
+   * THE HOP MARKS, which are what make this element teachable rather than
+   * just present. A jump rope is a rhythm, and a pilot cannot find a rhythm
+   * against a bare 30 m rail because there is nothing to say whether this hop
+   * landed where the last one did. Six ticks at five metre spacing, painted
+   * on both sides, are the beat: cross on a tick, land on the next.
+   */
+  for (let x = j.x0 + 5.0; x <= j.x1 - 4.0; x += 5.0) {
+    for (const side of [-1, 1]) {
+      decal(ctx, m.lineWhite, x - 0.08, PAINT_Y - 0.02, j.z + side * 2.2 - 0.55,
+        x + 0.08, PAINT_Y, j.z + side * 2.2 + 0.55, { name: 'trainingLine' });
+    }
+  }
+  /* The rail's own line on the ground, so its axis is a thing you can see
+   * from the approach rather than a shadow. */
+  decal(ctx, m.lineWhite, j.x0 - 4.0, PAINT_Y - 0.02, j.z - 0.07,
+    j.x1 + 4.0, PAINT_Y, j.z + 0.07, { name: 'trainingLine' });
 }
 
 /* ------------------------------------------------------------------ *

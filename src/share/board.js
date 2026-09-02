@@ -288,6 +288,10 @@ export async function fetchTrackList(origin = boardOrigin()) {
     times: Number(t.times) || 0,
     publishedUtc: t.publishedUtc ? String(t.publishedUtc) : '',
     plan: t.plan || null,
+    /* What the author says it is for. Kept raw rather than through
+     * usableTags, because the Race room prints these and a tag from a newer
+     * board should show under its own id rather than disappear. */
+    tags: Array.isArray(t.tags) ? t.tags.map((x) => String(x)) : [],
     board,
   })).filter((t) => t.id);
 }
@@ -394,7 +398,57 @@ export async function fetchTrackDocument(id, origin = boardOrigin()) {
   return readJson(res);
 }
 
-export async function publishTrack({ author, document, editKey, origin }) {
+/*
+ * THE TAG VOCABULARY, MIRRORED.
+ *
+ * The board's src/validate.js holds the copy of record: it decides which
+ * ids are legal and it refuses an unknown one rather than dropping it, so a
+ * builder that offered a tag the board did not know would tell an author
+ * their track was tagged when it was not. This copy exists so the builder
+ * can OFFER the list without a round trip, in exactly the way
+ * src/share/pilot.js mirrors the board's NAME_RE. Two repos, so change both.
+ *
+ * `label` is what a person reads; `id` is what travels and never changes.
+ * The board page renders the labels the board itself serves, so a relabel
+ * there does not need this file at all; adding or retiring an id does.
+ */
+export const TRACK_TAGS = [
+  { id: 'race', label: 'Race track', note: 'Built to be raced against a clock.' },
+  { id: 'skills', label: 'Skills practice', note: 'Built to practise one thing until it is easy.' },
+  { id: 'experiment', label: 'Experiment', note: 'Built to find out whether something works.' },
+  { id: 'freestyle', label: 'Freestyle', note: 'Gates as furniture rather than as a track to be raced.' },
+  { id: 'beginner', label: 'Beginner', note: 'Wide gates, gentle lines, nothing that punishes a miss.' },
+  { id: 'technical', label: 'Technical', note: 'Tight, quick and unforgiving.' },
+  { id: 'micro', label: 'Micro', note: 'Small enough for a room or a garden.' },
+  { id: 'big', label: 'Big field', note: 'Wants the whole field and a lot of speed.' },
+  { id: 'showcase', label: 'Showcase', note: 'Built to be looked at.' },
+];
+
+/* MIRRORS TAGS_MAX in the board's src/validate.js. Past five a tag stops
+ * narrowing anything, because a track wearing every tag answers every
+ * filter, which is the same as wearing none. */
+export const TRACK_TAGS_MAX = 5;
+
+export function tagLabel(id) {
+  const found = TRACK_TAGS.find((t) => t.id === id);
+  return found ? found.label : String(id);
+}
+
+/* Keep only ids this build knows, in the vocabulary's own order, capped.
+ * A track that came back from a newer board wearing a tag this build has
+ * never heard of keeps it on the board and simply does not draw it here,
+ * which is the safe way round: dropping it on a republish would silently
+ * untag somebody's track. */
+export function usableTags(list) {
+  const want = Array.isArray(list) ? list.map((t) => String(t)) : [];
+  return TRACK_TAGS.filter((t) => want.includes(t.id))
+    .map((t) => t.id)
+    .slice(0, TRACK_TAGS_MAX);
+}
+
+export async function publishTrack({
+  author, document, editKey, origin, tags,
+}) {
   const board = trimOrigin(origin || boardOrigin());
   const res = await fetch(`${board}/api/tracks`, {
     method: 'POST',
@@ -403,6 +457,19 @@ export async function publishTrack({ author, document, editKey, origin }) {
       author,
       document,
       editKey: editKey || undefined,
+      /*
+       * TAGS RIDE IN THE ENVELOPE, BESIDE THE AUTHOR, NOT INSIDE THE
+       * DOCUMENT. The author already travels this way and for the same
+       * reason: neither is part of the layout. A tag inside the document
+       * would need a schemaVersion bump, which needs the board deployed
+       * before the simulator, and it would have to be kept out of the
+       * layout hash by hand, where getting it wrong silently clears every
+       * republished track's posted times.
+       *
+       * Omitted rather than sent empty when there are none, so a board
+       * from before tags sees exactly the request it has always seen.
+       */
+      tags: tags && tags.length ? tags : undefined,
     }),
   });
   return readJson(res);

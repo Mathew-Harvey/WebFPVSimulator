@@ -1992,7 +1992,14 @@ export class Ui {
      * publish cluster because nothing here is timed or posted. */
     const freestyle = el('div', 'screen screen-page screen-courses screen-freestyle');
     freestyle.append(el('h2', null, 'Freestyle'));
-    freestyle.append(el('p', 'rates-lede', 'A place with no gates. No clock, no lap, no board. Pick one and fly it.'));
+    /*
+     * The lede used to end "Pick one and fly it", which was the instruction
+     * for a screen that offered four worlds, and it said "no board", which
+     * stopped being true when the freestyle high score table went up. Both
+     * are fixed here rather than in a card: this is the room's own sentence
+     * about what freestyle IS.
+     */
+    freestyle.append(el('p', 'rates-lede', 'A whole town and no gates. A run is two minutes, every trick you land is scored off a real judging sheet, and what you finish with goes to the high score board. This is where the machine you fly it on lives.'));
     this.freestyleCards = el('div', 'map-cards');
     const freestyleBlock = wrapMenu();
     this.freestyleMenu = freestyleBlock.menu;
@@ -3551,15 +3558,19 @@ export class Ui {
       const world = seatedFreestyleMap(s);
       const modeRow = this.mode === 'freestyle'
         ? {
-          label: 'Map',
-          value: world ? world.name : 'Choose one',
+          label: 'The town',
+          value: world ? world.name : 'Not loaded',
           action: 'freestyle',
-          /* There is one freestyle world, so the seated note is the
-           * world's own note and nothing else. It used to promise "the
-           * other places are in here too" and there are no other places. */
+          /*
+           * Labelled for the ROOM rather than for the choice, because there
+           * is no longer a choice: the gate seats the only freestyle world
+           * and this row is the door to the quad and the physics model. It
+           * used to read "Map: Choose one", which sent a pilot into a
+           * picker with one option in it.
+           */
           note: world
-            ? world.note
-            : 'Nothing is seated yet. One town, no gates, no clock and no lap. Open it and fly.',
+            ? `${world.note} Your quad and the physics model are in here.`
+            : 'One town, no gates. Open it and fly.',
         }
         : {
           label: 'Track',
@@ -3765,12 +3776,23 @@ export class Ui {
      * changes a freestyle flight too and nothing else was saying so.
      */
     if (this.screen === 'freestyle') {
-      const cards = MAPS.filter((x) => x.mode === 'freestyle').map((x) => ({
+      /*
+       * THE CARDS ONLY EXIST IF THERE IS A CHOICE.
+       *
+       * With one freestyle world this room drew one card, and a grid of one
+       * card is not a picker, it is a picture of the place the pilot is
+       * already seated in. The gate seats it directly now, so what is left
+       * here is what a freestyle pilot actually comes looking for: the quad
+       * and the physics model. The card machinery stays because the day a
+       * second world lands it is a registry entry and nothing else.
+       */
+      const worlds = MAPS.filter((x) => x.mode === 'freestyle');
+      const cards = worlds.length > 1 ? worlds.map((x) => ({
         label: x.name,
         note: x.note,
         map: x,
         action: `map:${x.id}`,
-      }));
+      })) : [];
       return [
         ...cards,
         /* A DOOR, not a copy. This is one of the screens the same Tune
@@ -8584,11 +8606,29 @@ export class Ui {
           return;
         }
       } else if (!seatedFreestyleMap(this.settings)) {
-        const want = MAPS.find((x) => x.id === this.settings.freestyleMap && x.mode === 'freestyle');
+        /*
+         * NO PICKER WHEN THERE IS NOTHING TO PICK.
+         *
+         * This used to open the Freestyle room so a first visit could choose
+         * among four worlds with the cards in front of it. Three of those
+         * worlds were removed on 2026-08-30 and the picker stayed, so
+         * answering "Freestyle" put a screen in front of a pilot whose only
+         * content was one card saying the name of the only place they could
+         * possibly be going. That is a question with one answer, and a
+         * question with one answer is a keypress somebody has to make.
+         *
+         * The remembered world is still consulted FIRST, and the picker
+         * still comes back the moment there is a real choice, which is why
+         * this is written as "what is remembered, or the only one" rather
+         * than as the id of the town. A second freestyle world costs the
+         * registry entry and this branch and nothing else.
+         */
+        const remembered = MAPS.find(
+          (x) => x.id === this.settings.freestyleMap && x.mode === 'freestyle',
+        );
+        const worlds = MAPS.filter((x) => x.mode === 'freestyle');
+        const want = remembered || (worlds.length === 1 ? worlds[0] : null);
         if (!want) {
-          /* A first freestyle visit chooses among the four with the cards
-           * in front of it, rather than being dropped into whichever one
-           * the registry happens to list first. */
           this.show('freestyle');
           return;
         }

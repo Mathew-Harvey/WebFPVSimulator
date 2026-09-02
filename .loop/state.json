@@ -443,11 +443,11 @@
       },
       {
         "id": "P4",
-        "reason": "hover 26.3% (band 0.17,0.22); 80% climb in 578 ms (band 150,400)"
+        "reason": "hover 27.9% (band 0.17,0.22); 80% climb in 638 ms (band 150,400)"
       },
       {
         "id": "P5",
-        "reason": "0 to 100 in 0.73 s (band 1.3,1.9)"
+        "reason": "0 to 100 in 0.78 s (band 1.3,1.9)"
       },
       {
         "id": "P6",

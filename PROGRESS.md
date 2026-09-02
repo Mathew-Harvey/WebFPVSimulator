@@ -25448,7 +25448,7 @@ it is not rediscovered as a surprise.
 
 ### Checks
 
-`npm run score:selftest` passes, 186 of 186, including the new sweeps.
+`npm run score:selftest` passes, 189 of 189, including the new sweeps.
 `npm run lint:nouns` passes. `npm run verify` was NOT run: it drives headless
 Chromium through the whole shell, CLAUDE.md reserves it for physics, plant,
 ABI and build changes, and none of this touches any of those. The shell wiring

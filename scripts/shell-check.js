@@ -1115,7 +1115,19 @@ const BEHAVIOUR = `(() => {
       race,
       free,
       raceNamesTrack: race.includes('Track') && !race.includes('Race') && !race.includes('Freestyle'),
-      freeNamesMap: free.includes('Map') && !free.includes('Race') && !free.includes('Freestyle'),
+      /*
+       * "The town", and it used to be "Map".
+       *
+       * What this assertion is FOR is unchanged: after the gate has been
+       * answered, the title carries one row for the PLACE and does not ask
+       * the mode question a second time. The label moved because the room
+       * behind it stopped being a map picker. There is one freestyle world,
+       * the gate seats it directly now, and a row reading "Map" pointing at
+       * a room with no maps in it is the same mismatch this check exists to
+       * catch, just spelled differently. See act('mode-freestyle') and the
+       * freestyle branch of items() in src/ui/ui.js.
+       */
+      freeNamesMap: free.includes('The town') && !free.includes('Race') && !free.includes('Freestyle'),
     };
   } catch (e) {
     out.modeGate = { error: String(e && e.message ? e.message : e) };
@@ -1364,7 +1376,7 @@ async function main() {
         failures.push(`the title in Race names ${g.race.join(', ')}, which is not a Track row without a mode beside it`);
       }
       if (!g.freeNamesMap) {
-        failures.push(`the title in Freestyle names ${g.free.join(', ')}, which is not a Map row without a mode beside it`);
+        failures.push(`the title in Freestyle names ${g.free.join(', ')}, which is not a The town row without a mode beside it`);
       }
     }
 

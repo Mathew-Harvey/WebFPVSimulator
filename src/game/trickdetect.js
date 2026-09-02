@@ -239,6 +239,17 @@ const INVERTED_MIN = 0.8;
  * this is how far under the floor a lap may read and still count. A quarter
  * turn is the snap resolution, so it is the smallest step that can mean
  * anything, and it covers every reading above.
+ *
+ * A BAR still asks for an exact `turns` and is right to. Its parity is a
+ * topological fact rather than an estimate: the craft went in over the rail
+ * and came out under it, so it crossed that plane an odd number of times,
+ * so the answer IS a half integer and the nearest one names it. See
+ * snapPathTurns, which argues this at length. A pole has no sides and so
+ * has no parity to lean on, which is why it is the one that needs a floor.
+ *
+ * This replaces PATH_SNAP_TOLERANCE, which sat here at 0.35 and was read by
+ * nothing: it is the ghost of the version that knew a lap was not a closed
+ * quantity, left behind when the bar snap moved to parity.
  */
 const LAP_TRUNCATION = 0.25;
 
@@ -273,28 +284,6 @@ const MAX_PATH_RUNS = 6;
 const TRACK_DOT = 0.77;
 const TRACK_LAP_MIN = 0.7;
 const PATH_MIN_TURNS = 0.375;
-
-/*
- * How far a lap count may sit from the whole or half turn its side parity
- * demands. This is a THIRD of a turn where the attitude snap allows a
- * fifth, and the difference is not slackness, it is that the two
- * measurements are not the same kind of thing.
- *
- * A rotation is a closed quantity: a quad that ends level has turned a
- * whole number of times and the only error is how well the pilot stopped.
- * A lap is not closed. The craft enters the loop somewhere and leaves it
- * somewhere else, and the angle between those two rays is added to or
- * taken off the turn, so the same powerloop around the same rail measures
- * differently depending on where along the rail's height the rail happens
- * to be. Measured on the real aircraft, a clean powerloop reads anywhere
- * from about 0.95 to 1.3 turns depending on where the bar sits inside the
- * loop.
- *
- * 0.35 makes a full lap anything in [0.65, 1.35], which still leaves the
- * half turn a straight fly-by sweeps out in the rejected zone, and that
- * fly-by is the case this whole test exists to throw away.
- */
-const PATH_SNAP_TOLERANCE = 0.35;
 
 /*
  * HOW FAR BACK A LAP'S BEGINNING IS LOOKED FOR, in milliseconds.

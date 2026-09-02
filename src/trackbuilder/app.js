@@ -55,7 +55,10 @@ import { View2D } from './view2d.js';
 import { View3D } from './view3d.js';
 import { Panels } from './ui.js';
 import { RAD } from './geometry.js';
-import { boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation } from '../share/board.js';
+import {
+  boardOrigin, boardPageUrl, publishTrack, setBoardOrigin, adoptShareFromLocation,
+  TRACK_TAGS, TRACK_TAGS_MAX, tagLabel, usableTags,
+} from '../share/board.js';
 import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
@@ -68,6 +71,7 @@ import {
   forkDocument,
   inspectCourse,
   isEmptyCanvas,
+  publishedTags,
   rememberPublish,
   suggestRemixName,
   syncOwnedName,
@@ -860,6 +864,69 @@ export class App {
     nameHelp.textContent = nameRules();
     body.append(nameHelp);
 
+    /*
+     * WHAT THE TRACK IS FOR, which is the one thing about a published track
+     * that nothing else on the board can work out.
+     *
+     * A gate count says how big it is and a plan drawing says what shape it
+     * is, and neither says whether it was built to be raced, to practise
+     * one thing, or to find out whether an idea works. That is the question
+     * a visitor scrolling a board is actually asking, and only the author
+     * can answer it.
+     *
+     * A CLOSED LIST OF BUTTONS, not a text field. Free text would give the
+     * board "race", "racing", "Race Track" and "racetrack" as four separate
+     * tags and no filter at all. The vocabulary is mirrored from the board
+     * in src/share/board.js, and the board refuses an id it does not know
+     * rather than dropping it, so a stale builder is told rather than
+     * quietly ignored.
+     *
+     * Seeded from the BIND rather than from the document, because tags are
+     * not in the document: see rememberPublish in src/share/listing.js.
+     */
+    const chosen = new Set(usableTags(publishedTags(this.doc.id)));
+    const tagField = document.createElement('div');
+    tagField.className = 'tb-field';
+    const tagLabelEl = document.createElement('label');
+    tagLabelEl.className = 'tb-field-label';
+    tagLabelEl.textContent = 'What it is for';
+    const tagRow = document.createElement('div');
+    tagRow.className = 'tb-tags';
+    const tagHelp = document.createElement('p');
+    tagHelp.className = 'tb-help';
+    const sayTags = () => {
+      tagHelp.textContent = chosen.size
+        ? `${[...chosen].map(tagLabel).join(', ')}. People filter the board by these.`
+        : `Optional, and up to ${TRACK_TAGS_MAX}. People filter the board by these, so a track with none is harder to find.`;
+    };
+    for (const tag of TRACK_TAGS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tb-tag';
+      btn.textContent = tag.label;
+      btn.title = tag.note;
+      btn.setAttribute('aria-pressed', chosen.has(tag.id) ? 'true' : 'false');
+      btn.addEventListener('click', () => {
+        if (chosen.has(tag.id)) {
+          chosen.delete(tag.id);
+        } else if (chosen.size >= TRACK_TAGS_MAX) {
+          /* Refused rather than silently swapping one out, because a
+           * control that quietly drops the thing you ticked first is worse
+           * than one that says no. */
+          tagHelp.textContent = `That is ${TRACK_TAGS_MAX} already. Untick one to add another.`;
+          return;
+        } else {
+          chosen.add(tag.id);
+        }
+        btn.setAttribute('aria-pressed', chosen.has(tag.id) ? 'true' : 'false');
+        sayTags();
+      });
+      tagRow.append(btn);
+    }
+    sayTags();
+    tagField.append(tagLabelEl, tagRow);
+    body.append(tagField, tagHelp);
+
     const boardField = document.createElement('div');
     boardField.className = 'tb-field';
     const boardLabel = document.createElement('label');
@@ -893,14 +960,19 @@ export class App {
       const origin = setBoardOrigin(boardInput.value) || boardOrigin();
       send.disabled = true;
       status.textContent = 'Sending the track, logos included.';
+      const tags = usableTags([...chosen]);
       const sendDoc = async (doc) => {
         const posted = await publishTrack({
           author,
           document: toPlain(doc),
           editKey: readEditKey(doc.id),
           origin,
+          tags,
         });
-        rememberPublish(toPlain(doc), posted, origin, author);
+        /* The bind is where the tags live on this side, so a second publish
+         * pre-ticks what the board is already showing rather than untagging
+         * the track. See rememberPublish. */
+        rememberPublish(toPlain(doc), posted, origin, author, { tags });
         writeAutosave(doc);
         return posted;
       };

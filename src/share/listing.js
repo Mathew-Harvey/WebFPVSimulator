@@ -385,6 +385,22 @@ export function rememberPublish(doc, posted, origin, author, extra = {}) {
     author: author || prev.author || '',
     nameOnBoard: (posted && posted.name) || plain.name || '',
     layoutFingerprint: layoutFingerprint(plain),
+    /*
+     * WHAT THE BOARD IS CURRENTLY SHOWING THIS TRACK AS.
+     *
+     * Tags are not in the document, deliberately: they travel in the
+     * publish envelope beside the author so they cannot reach the layout
+     * hash and clear somebody's times. That means the document cannot
+     * remember them either, so the bind does, and the publish dialog reads
+     * them back to pre-tick what was last sent. Without this a second
+     * publish would silently untag a track, because an omitted list is how
+     * a builder from before tags speaks and the board leaves those alone.
+     *
+     * `extra.tags` undefined means the caller did not send any, which is
+     * different from sending none: the first keeps what was there and the
+     * second is a deliberate clearing.
+     */
+    tags: Array.isArray(extra.tags) ? extra.tags.slice() : (prev.tags || []),
     owned: true,
     sourceId: prev.sourceId || '',
     sourceName: prev.sourceName || '',
@@ -400,6 +416,15 @@ export function rememberPublish(doc, posted, origin, author, extra = {}) {
     });
   }
   return id;
+}
+
+/*
+ * The tags this track was last published under, or an empty list. The bind
+ * is the only place they live on this side: see rememberPublish.
+ */
+export function publishedTags(id) {
+  const bind = id ? readBind(id) : null;
+  return bind && Array.isArray(bind.tags) ? bind.tags.slice() : [];
 }
 
 export async function syncOwnedName(doc, origin) {

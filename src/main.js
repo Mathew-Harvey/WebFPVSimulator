@@ -5453,6 +5453,32 @@ export async function boot({ loading, bootStart, mapId }) {
       finishCamMs = -1;
     }
 
+    /*
+     * ONCE THE QUAD HAS ACTUALLY LEFT THE GROUND, THE PAD SHOT IS OVER.
+     *
+     * Throttle skipped the orbit and the approach, but it still played the
+     * 1 s zoom, and the takeoff branch waits for nothing. So a pilot who
+     * throttled up on the pad flew from a third person camera that was
+     * still dollying in: measured airborne at 2.87 m with the airframe and
+     * both prop discs across the bottom half of the frame. They are flying
+     * a quad they cannot see out of, at the one moment they most need to.
+     *
+     * The test is `landed` rather than a phase of the shot, and that matters:
+     * the throttle skip needs the stick to cross TAKEOFF_THROTTLE, and a
+     * quad can leave the ground on a stick that never does. A capture found
+     * exactly that, flying the whole orbit at 13.7 m. Airborne is airborne.
+     *
+     * It sits ABOVE the camera chain, not inside the intro's own branch,
+     * because ending the shot has to release the camera in the same frame.
+     * Inside the branch the next line adds dt and the shot came back to
+     * life at 99 ms, which is how this ended up being written twice.
+     *
+     * A pilot who leaves the throttle down still gets the whole shot.
+     */
+    if (introMs >= 0 && mode === 'flight' && !landed) {
+      introMs = -1;
+    }
+
     if (mode === 'title') {
       if (worldLive && !camOverride) {
         shell.quad.visible = true;
@@ -5508,24 +5534,6 @@ export async function boot({ loading, bootStart, mapId }) {
          * the shot entirely. */
         if (input.channels.throttle > TAKEOFF_THROTTLE && introMs < INTRO_FLY) {
           introMs = INTRO_FLY;
-        }
-        /*
-         * ONCE THE QUAD HAS ACTUALLY LEFT THE GROUND, THE SHOT IS OVER.
-         *
-         * Throttle skipped the orbit and the approach, but it still played
-         * the 1 s zoom, and the takeoff branch does not wait for anything.
-         * So a pilot who throttled up on the pad flew for a second from a
-         * third person camera that was still dollying in: measured airborne
-         * at 2.87 m with the airframe and both prop discs across the bottom
-         * half of the frame. They are flying a quad they cannot see out of,
-         * at the one moment they most need to.
-         *
-         * The rule is the pilot's own: the moment the aircraft is off the
-         * ground, the goggles are on. A pilot who leaves the throttle down
-         * still gets the whole shot.
-         */
-        if (!landed && introMs >= INTRO_FLY) {
-          introMs = -1;
         }
         introMs += dt > INTRO_STEP_MAX ? INTRO_STEP_MAX : dt;
       }

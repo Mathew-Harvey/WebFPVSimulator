@@ -25233,3 +25233,30 @@ Driven in headless Chromium at 1280x720: boot to title with 0 console errors,
 loading timings three 106.6, board 9.2, sim 23.4, module 125, world 2068.5,
 frame 982.9; the launch card opening on Fly with the field alive behind it;
 Enter reaching flight with mode=flight.
+
+--------------------------------------------------------------------------
+2026-09-02, correction: the pad shot ended on a phase, not on the aircraft
+--------------------------------------------------------------------------
+
+The takeoff fix above was written twice, and the first version was wrong in
+two ways that a capture found and no reading would have.
+
+It read `if (!landed && introMs >= INTRO_FLY) introMs = -1`, on the assumption
+that a pilot who takes off has already crossed TAKEOFF_THROTTLE and so has
+already skipped the shot to INTRO_FLY. A quad can leave the ground on a stick
+that never crosses it: driven from the keyboard, the capture flew the entire
+orbit at 13.7 m with the airframe and both prop discs across the frame, which
+is the exact picture the change exists to prevent. The test is `landed`.
+
+And it sat INSIDE the intro's own branch, one line above `introMs += dt`, so
+setting -1 was undone by the very next statement and the shot came back to
+life at 99 ms. It is now above the camera chain, where ending the shot also
+releases the camera in the same frame rather than the next one.
+
+Measured after the correction, same steps: intro -1, landed false, 14.44 m,
+and the capture is an FPV frame of sky and treeline rather than a third
+person shot of the aircraft.
+
+Both mistakes are the same mistake: asserting a state from a proxy for it
+rather than from the state. Written down because the first version passed
+every check in the repository.

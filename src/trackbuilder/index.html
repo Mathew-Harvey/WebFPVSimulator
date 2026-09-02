@@ -43,6 +43,31 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="icon" href="favicon.ico" sizes="32x32" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <!--
+      A SHARED BUILDER LINK RENDERS A CARD, LIKE THE OTHER FOUR PAGES.
+
+      This head had a title, the icons and a theme colour and nothing else:
+      no description, no canonical, no og, so a pasted link rendered as bare
+      text while the simulator, the landing page, the wiki and the board all
+      rendered a picture. The image is the simulator's own card, because the
+      thing a builder link leads to is a course flown in that simulator.
+    -->
+    <meta name="description" content="Draw an FPV race track gate by gate, fly it in the browser, and publish it to the public board. No install, no account." />
+    <link rel="canonical" href="https://webfpv.org/sim/src/trackbuilder/index.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="WebFPV" />
+    <meta property="og:url" content="https://webfpv.org/sim/src/trackbuilder/index.html" />
+    <meta property="og:title" content="WebFPV track builder" />
+    <meta property="og:description" content="Draw a race track gate by gate, fly it in the browser, and publish it to the public board." />
+    <meta property="og:image" content="https://webfpv.org/sim/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The WebFPV simulator: a lit start gate on mown grass, a five inch quad parked beside it." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="WebFPV track builder" />
+    <meta name="twitter:description" content="Draw a race track gate by gate, fly it in the browser, and publish it to the public board." />
+    <meta name="twitter:image" content="https://webfpv.org/sim/og.png" />
     <meta name="theme-color" content="#0f150f" />
     <!--
       THE STYLES ARE INLINE, like the simulator's own index.html, and for one

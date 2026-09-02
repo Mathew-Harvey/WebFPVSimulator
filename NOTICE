@@ -72,3 +72,30 @@ patch rather than a merge.
     Licence     GPLv3
     Vendored as a git submodule at vendor/betaflight, unmodified; every
     change is a patch file in patches/ applied at build time.
+
+## Music, and an open question
+
+    Files       assets/music/, fourteen titles as mp3 and webm
+    Named in    src/render/tracks.js
+    Licence     NOT RECORDED. This entry exists to say so.
+
+The music is served with a year long immutable cache and played on the menus
+and in flight, so it is redistributed with the repository like any other file
+in it. The repository is GPLv3. That makes the terms these recordings arrived
+under a thing this file has to state, and nobody wrote them down: tracks.js
+records an id and a display name per title and nothing else, the PROGRESS.md
+entry that introduced them ("recorded tracks replace the generated bed",
+2026-08-19) names no composer, and there is no other record in the tree.
+
+Only the owner can close this, because only the owner knows where they came
+from. Whichever it is, the answer belongs here:
+
+  - the owner's own recordings, in which case say so and they are covered by
+    the project's own GPLv3 grant;
+  - a library or a generator, in which case name it and quote the licence
+    that permits redistribution;
+  - anything that does NOT permit redistribution, in which case the files
+    come out of the repository and the crate loads from somewhere else.
+
+Recorded rather than quietly left, because a silent gap in a licence file is
+the kind of thing that is discovered by somebody else.

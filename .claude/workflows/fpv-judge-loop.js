@@ -1,3 +1,22 @@
+/*
+ * fpv-judge-loop.js: a workflow script, not part of the shipped simulator.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 export const meta = {
   name: 'fpv-judge-loop',
   description: 'Judge the simulator as an FPV pilot of 10 years (physics and control realism) and as a designer (visual), then synthesise a prioritised change list',

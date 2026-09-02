@@ -424,6 +424,43 @@ console.log('\nthe recogniser, on flown traces');
   check('a half flip nose up then a half roll is a Snapback',
     names(fly([{ axis: P, turns: -0.5 }, { axis: R, turns: 0.5 }])) === 'Snapback');
 
+  /*
+   * TOLERANCE, WHICH IS THE OTHER HALF OF RECOGNISING A TRICK.
+   *
+   * Nobody flies a trick to the quarter turn. A 450 degree roll is a Roll
+   * the pilot held a beat past level, and it used to come out as a Roll and
+   * a 1/4 Roll, or as nothing at all when it sat inside a longer pattern.
+   * It is now named and graded SLOPPY, which is the workbook's own word for
+   * a trick that was completed and was not clean, and costs 35%.
+   */
+  const graded = (list) => fly(list).map((t) => `${t.name}:${t.execution}`).join(' + ');
+  check('a 360 roll flown exactly is a CLEAN Roll',
+    graded([{ axis: R, turns: 1 }]) === 'Roll:CLEAN');
+  check('a 450 roll is still a Roll, graded SLOPPY',
+    graded([{ axis: R, turns: 1.25 }]) === 'Roll:SLOPPY');
+  /* And the rule that keeps that honest: you cannot complete a trick by
+   * doing less of it. Three quarters of a roll is the building block the
+   * workbook prices at 75, and three quarters of a yaw spin is a pilot
+   * turning a corner, which the SINGLES floor exists to keep silent. */
+  check('but a 270 roll is the 3/4 Roll block and not a sloppy Roll',
+    names(fly([{ axis: R, turns: 0.75 }])) === '3/4 Roll');
+  check('and a 270 yaw is still nothing at all',
+    fly([{ axis: Y, turns: 0.75 }]).length === 0);
+  /* A three step trick whose middle flip ran long is still that trick. */
+  check("a Rubik's Cube with an overcooked flip is still a Rubik's Cube",
+    graded([
+      { axis: R, turns: 0.5 }, { axis: P, turns: 1.25 }, { axis: R, turns: 0.5 },
+    ]) === "Rubik's Cube:SLOPPY");
+  /*
+   * WHAT NEVER GETS SLACK. Segmented Flips/Rolls and Invert Rewind are the
+   * same two half turns and differ only in whether the second went back the
+   * other way, so a direction that slackened would turn one into the other.
+   */
+  check('a rewind is never a sloppy Segmented Flips/Rolls',
+    names(fly([{ axis: R, turns: 0.5 }, { axis: R, turns: -0.5 }])) === 'Invert Rewind');
+  check('and a roll is never a sloppy flip',
+    names(fly([{ axis: R, turns: 1.25 }])) === 'Roll');
+
   /* The stall is the trick. Same two halves, the same way round, with and
    * without half a second of stall between them. */
   const segmented = fly([

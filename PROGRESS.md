@@ -25999,3 +25999,122 @@ clock flake this container has produced all session.
 `npm run verify` was not run: nothing here touches the plant, `src/native`,
 the patches or the build. The evidence that matters is the real town, driven
 through `tests/lib/page.js` and waiting on `__map().ready` this time.
+
+
+## 2026-09-02, the Tricktionary, and a recogniser that forgives
+
+The owner sent the source workbook back and asked how each trick would be
+detected, rock solid but flexible enough to score an imperfect one. Both
+halves of that turned out to be the same problem.
+
+### The definitions were never in the repository
+
+`src/game/tricks.js` carries the 90 names and their prices and says outright
+that the explanations are "a paragraph each" and are not carried. So every
+pattern in the recogniser was written from the NAME of a trick. The
+workbook's Outdoor Tricktionary has the paragraph for all of them, and it is
+now `.loop/evidence/freestyle-scoring/tricktionary-outdoor.json`, checked
+against the catalogue: 90 of 90 have a description and not one price
+disagrees. The sheet spells eight of them differently (Mattyflip,
+PowerSplit, Immelman Turn); the catalogue's spelling wins and the aliases
+are recorded beside them.
+
+Reading the paragraphs is what made the rest of this cheap, because they say
+the same thing over and over: "Initiate a Powerloop, then at the peak of the
+loop, perform a Flip". Every loop family trick is ONE lap around a bar
+carrying a concurrent rotation, and what separates them is which rotation and
+how much. The recogniser has measured that rotation on all three axes since
+laps were added, and threw it away on everything except the Powerloop and the
+Maverick Loop.
+
+Twenty one of 90 were reachable. Fifty seven are now.
+
+### Tolerance, which is the flexible half
+
+`matchSteps` tested `p.turns !== s.turns` and gave up. So a 360 roll that came
+out at 450 because the pilot held the stick a beat too long was not a Roll, it
+was a Roll and a 1/4 Roll, and a Rubik's Cube whose middle flip overshot was
+three building blocks. The pilot flew the trick and was told they flew parts.
+
+The workbook already has the answer and it is not a wider threshold. It grades
+every trick CLEAN, SLOPPY, BUMP, MISSED or CRASH, and SLOPPY is "complete
+trick, lacks constant loop motion, execution is too segmented" at 35% off. A
+trick flown a quarter turn out is exactly that. So a step may match loosely at
+a cost of one slack point, two at most per trick, and any slack at all grades
+it SLOPPY. Nothing was widened. A cheaper grade was opened underneath.
+
+THE SLACK IS ASYMMETRIC and that is what keeps it honest: you cannot complete
+a trick by doing LESS of it. Over is the trick flown long. Under is a
+different, smaller thing the workbook already prices: three quarters of a roll
+is a `3/4 Roll` at 75, and three quarters of a yaw spin is a pilot turning a
+corner, which the whole SINGLES floor exists to keep silent. The self-test
+pins both directions.
+
+And five things never slacken, because slackening them turns one trick into
+another: the axis, the three direction tests, the kind, the side a lap started
+from, and the tap. Segmented Flips/Rolls and Invert Rewind are the same two
+half turns and differ only in whether the second went back the other way.
+
+Measured on real city bars: a powerloop flown at 1.35 turns of pitch names
+Powerloop SLOPPY, one at 1.2 pitch and 1.2 roll names Power Roll CLEAN, and
+one at 1.7 names Power Flip SLOPPY, which is the honest reading of a flip that
+went most of the way round twice.
+
+### The tap, where contact is the trick and not a fine
+
+Ten catalogue tricks are about touching the object on purpose, and the
+recogniser had one word for contact: BUMP, "tapped a gate, wall or the ground
+without disarming", half the points. Every one of them would have been fined
+for succeeding.
+
+A contact now records two things. `touched` still grades BUMP. `tapAtMs`
+records a GENTLE one, and a pattern can ask for it; a pattern that asks is not
+also charged, because the contact it would be charged for is the trick.
+Gentleness is `GRAZE_SPEED_MAX`, borrowed from collide.js rather than redrawn,
+because that file already decides at 4 m/s that a contact is a graze and a
+third threshold on the same question is the thing its own comment warns
+about.
+
+The tap is an ATTRIBUTE of a rotation or a lap, not an element between them.
+A wall tap is pitch back, touch, pitch forward, and the touch happens while a
+rotation is open and closes after it, so as a sequence element it would
+arrive in the wrong place. On the motion it is robust to the order.
+
+### What was left out on purpose
+
+Four wall tricks (Wall Ride, Loop Tap, Reverse Wall Ride, Downtown Tap) are
+each a quarter turn plus a contact, which is also what happens every time a
+pilot clips something while turning a corner. Four more are indistinguishable
+from a trick already implemented: 540 Split S from 540 Half Matty, Power Swap
+from Immelmatt, Reversed Power Flip from Power Flip, which differ only in the
+sign of a rotation that `CONCURRENT_TOLERANCE` deliberately compares by
+magnitude. Adding either group would mean one trick firing on the other's
+flight, which is worse than neither firing.
+
+The rest, and what each would need, is written down in
+`.loop/evidence/freestyle-scoring/DETECTION.md`: the six measurements the
+recogniser has, the six pole tricks that need tracking on a PARTIAL lap
+(`trackFrac` exists and is only asked for on whole orbits, so this is the
+cheapest group left), and the ones that need a primitive that does not exist
+at all: altitude for a Dive, an aperture for the Gaps, arm state for Slide
+Disarm and Perch.
+
+And the thing that is not a recogniser problem: the town has no obstacle a
+Jump Rope is flown over. Coverage of the catalogue is bounded by the map as
+much as by the pattern list.
+
+### Checks
+
+`npm run score:selftest` (203, including the tolerance pins in both
+directions), `npm run lint:nouns`, `npm run lint:boot`, `npm run lint:presets`,
+`npm run lint:shell` and `node scripts/board-check.js` all pass.
+
+Flown against the real town rather than a rig: eight loop variants around six
+real city bars each, naming Powerloop, Power Flip, Power Roll, Inverted 360
+Powerloop, Maverick Loop, Mavvy Roll and Donkey Loop CLEAN six times out of
+six apiece. The eighth flew a Mavvy Roll and was named one, which is correct:
+Side Loop has the same lap signature and is separated only by the yaw it is
+entered on.
+
+`npm run verify` was not run: nothing here touches the plant, `src/native`,
+the patches or the build.

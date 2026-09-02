@@ -71,6 +71,15 @@
 
 import { OB_BAR, OB_KIND_NAME, OB_POLE, sameAxis } from './obstacles.js';
 /*
+ * The line between a graze and a real hit, borrowed rather than redrawn.
+ * collide.js already decides at 4 m/s of velocity change that a contact is
+ * a graze, and a DELIBERATE tap is exactly a graze: the workbook says
+ * "gently tap the wall". Inventing a second number here would be the third
+ * threshold on the same question that the ground path's own comment warns
+ * about, and nobody would be able to defend it six months later.
+ */
+import { GRAZE_SPEED_MAX } from './collide.js';
+/*
  * The catalogue, for its PRICES ONLY, and only where two patterns of the
  * same length both describe the motion in the buffer. Nothing here repeats
  * a number the catalogue holds: bestMatch asks it which of two names is
@@ -389,6 +398,19 @@ const PATH_LOOKBACK = 800;
 const CONCURRENT_TOLERANCE = 0.25;
 
 /*
+ * How near a rotation a contact has to be to be part of it.
+ *
+ * A wall tap is flown as one motion: pitch back, touch, pitch forward. The
+ * touch can land a little before the rotation the pattern hangs it on
+ * opens, because the craft is already moving toward the wall, or a little
+ * after it closes, because the rotation finished and the craft coasted the
+ * last few centimetres. A fifth of a second either side covers both and is
+ * well under the settle window, so a tap cannot reach across a gap into the
+ * next trick.
+ */
+const TAP_WINDOW_MS = 200;
+
+/*
  * Dead time inside a trick before it stops being one motion. The workbook's
  * word for that is SLOPPY and it costs 35%: "lacks constant loop motion,
  * execution is too segmented". A pattern step that ASKS for a stall does not
@@ -595,6 +617,346 @@ export const PATTERNS = [
      */
     name: '1 Trippy Spin',
     steps: [{ path: 'pole', turnsAtLeast: 1, inverted: true }],
+  },
+
+  /* ---------------------------------------------------------------- *
+   * THE LOOP FAMILIES, transcribed from the Tricktionary.
+   *
+   * Every one of these is the same shape: a lap around a bar with a
+   * concurrent rotation, and what separates them is WHICH rotation and how
+   * much. The workbook says so in as many words. "Initiate a Powerloop,
+   * then at the peak of the loop, perform a Flip" is a full lap from under
+   * carrying two flips instead of one; "at the peak of the loop, execute a
+   * Roll" is the same lap carrying a flip and a roll. The recogniser
+   * already measures the net rotation across a lap on all three axes and
+   * threw it away on everything but the Powerloop and the Maverick Loop.
+   *
+   * The definitions are in .loop/evidence/freestyle-scoring/
+   * tricktionary-outdoor.json, which is the copy of record for what a
+   * trick IS the way src/game/tricks.js is for what it is worth. A pattern
+   * here that disagrees with the paragraph there is the pattern that is
+   * wrong.
+   *
+   * NOTHING HERE CONSTRAINS AN AXIS IT DOES NOT NAME, and that is
+   * deliberate. A Powerloop asks for a flip and says nothing about roll, so
+   * a Power Roll matches BOTH; bestMatch then takes the dearer of two equal
+   * length, equally clean readings, which is the Power Roll, because the
+   * pilot did roll. Adding `roll: 0` to the Powerloop would instead throw
+   * the trick away on a wobble.
+   * ---------------------------------------------------------------- */
+
+  /* Powerloops: a whole lap from under, flipping with the loop. */
+  {
+    /* "at the peak of the loop, perform a Flip": the loop's own flip and
+     * one more. */
+    name: 'Power Flip',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 2 } }],
+  },
+  {
+    /* "at the peak of the loop, execute a Roll". */
+    name: 'Power Roll',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, roll: 1 } }],
+  },
+  {
+    /* "when reaching the peak, perform a 360 Yaw spin while inverted". */
+    name: 'Inverted 360 Powerloop',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, yaw: 1 } }],
+  },
+  {
+    /* "just before reaching it, execute a 180 yaw spin and immediately
+     * pitch back to initiate a blind powerloop over the object". */
+    name: 'Blindflip',
+    steps: [
+      { axis: 'yaw', turns: 0.5 },
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 } },
+    ],
+  },
+  {
+    /* "once you pass the peak of the loop, immediately rewind into a Split
+     * S, taking you back over and then under the object": two laps. */
+    name: 'Power Split',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 } },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0.5, pitch: 0.5 } },
+    ],
+  },
+  {
+    /* "as you reach the peak, execute a precise 180 inverted Yaw spin.
+     * Conclude with a Matty Flip back under the object." */
+    name: 'Barani',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, yaw: 0.5 } },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* A Barani with a roll between the yaw and the Matty. */
+    name: 'Rollani',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, yaw: 0.5 } },
+      { axis: 'roll', turns: 1 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* A Barani with a flip between the yaw and the Matty. */
+    name: 'Flipani',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, yaw: 0.5 } },
+      { axis: 'pitch', turns: 1 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+
+  /* Maverick loops: the same lap flown facing forward, so no flip. */
+  {
+    /* "at the peak of the loop, execute a 360 roll". */
+    name: 'Mavvy Roll',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 1 } }],
+  },
+  {
+    /* "execute a 180 Pitch down to invert. Follow this with a 360 Yaw
+     * spin, and finally complete the loop." */
+    name: 'Donkey Loop',
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0.5, yaw: 1 } }],
+  },
+  {
+    /* "a 180 Pitch down to invert. Follow with a 180 Yaw spin, and finish
+     * with a Matty flip back under the object." */
+    name: 'Mavani',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 0.5, yaw: 0.5 } },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* "a maverick motion... when above the object, a quick 180 pitch down
+     * flick so that you're upside down, then a 180 roll to level out." */
+    name: 'Mavvelmann',
+    steps: [
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0 } },
+      { axis: 'pitch', turns: 0.5 },
+      { axis: 'roll', turns: 0.5 },
+    ],
+  },
+
+  /* Immelmanns: half a loop from under, then a half roll to level out. */
+  {
+    /* "...then promptly perform a beginner Matty." */
+    name: 'Immelloop',
+    steps: [
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0.5 } },
+      { axis: 'roll', turns: 0.5 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0 } },
+    ],
+  },
+  {
+    /* "...and then promptly execute a Matty flip." */
+    name: 'Immelmatt',
+    steps: [
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0.5 } },
+      { axis: 'roll', turns: 0.5 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+
+  /* Matty flips: half a lap from over, out underneath. */
+  {
+    /* "a full backflip, overflipping by 15 to 30 degrees". */
+    name: 'Anti Matty',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 1 } }],
+  },
+  {
+    /* "a 540 flip, 1.5x flips". */
+    name: 'Power Matty',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 1.5 } }],
+  },
+  {
+    /* "a 270 pitch forward so you're looking at the sky, then a 360 roll". */
+    name: 'Matty Roll',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.75, roll: 1 } }],
+  },
+  {
+    /* "a Matty flip and immediately a 360 yaw spin before passing under". */
+    name: 'Matty 360',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5, yaw: 1 } }],
+  },
+  {
+    /* "pitch down and perform a 360 roll, immediately followed by a Matty
+     * flip in one fluid motion." */
+    name: 'Matty Twister',
+    steps: [
+      { axis: 'roll', turns: 1 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* "a 180 roll, smoothly transitioning into the second half of a Matty
+     * flip", with an optional half second stall the pattern does not
+     * demand because the workbook offers it as decoration. */
+    name: 'Half Matty',
+    steps: [
+      { axis: 'roll', turns: 0.5 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* The same entered off a 540 roll. Longer than Half Matty by nothing,
+     * so the roll's own turn count is what separates them. */
+    name: '540 Half Matty',
+    steps: [
+      { axis: 'roll', turns: 1.5 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+
+  /* Splits: over the object, a half roll, and down the back of it. */
+  {
+    /* "while descending, incorporate a 180 yaw spin". */
+    name: 'Split Yaw',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0.5, pitch: 0.5, yaw: 0.5 } }],
+  },
+  {
+    /* "a 180 roll as you pass over it, immediately a backflip". */
+    name: 'Split-Back',
+    steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0.5, pitch: 1 } }],
+  },
+
+  {
+    /* "a 180 Roll toward the object you wish to track, then a Yaw spin in
+     * the OPPOSITE direction to keep it centred, then a 180 Roll." The
+     * opposite direction is the trick: rolling and yawing the same way
+     * sweeps the object off the screen rather than holding it. */
+    name: 'Inverted Yaw Tracking',
+    steps: [
+      { axis: 'roll', turns: 0.5 },
+      { axis: 'yaw', turns: 1, oppTo: 0, inverted: true },
+      { axis: 'roll', turns: 0.5 },
+    ],
+  },
+  {
+    /* "at the peak of your ascent, a throttle blip, a 180 pitch down and a
+     * 360 Roll as you dive back down." */
+    name: 'Eject Roll',
+    steps: [
+      { axis: 'pitch', turns: 0.5 },
+      { axis: 'roll', turns: 1 },
+    ],
+  },
+  {
+    /* "an eject roll, concluding the 360 roll with a Matty flip motion." */
+    name: 'Stellar Eject Roll',
+    steps: [
+      { axis: 'pitch', turns: 0.5 },
+      { axis: 'roll', turns: 1 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* "a juicy flick, then a 180 inverted yaw spin, then the second half of
+     * a powerloop while passing under the object." */
+    name: 'True Barani',
+    steps: [
+      { axis: 'pitch', turns: 0.5, dir: 1 },
+      { axis: 'roll', turns: 0.5 },
+      { axis: 'yaw', turns: 0.5, inverted: true },
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* "a 90 Yaw spin as you pass beneath it, then roll toward the object to
+     * fly over it while inverted": a powerloop flown on roll, not pitch. */
+    name: 'Side Loop',
+    steps: [
+      { axis: 'yaw', turns: 0.25 },
+      { path: 'bar', turns: 1, from: 'under', rot: { roll: 1, pitch: 0 } },
+    ],
+  },
+  {
+    /* "a Maverick loop, swiftly transitioning into a Half Matty to go back
+     * under the object." */
+    name: 'Half Mavvy',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 0 } },
+      { axis: 'roll', turns: 0.5 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /*
+     * "cut the throttle just before reaching the top, then execute a flip
+     * as you stall."
+     *
+     * The stall is what makes this a 275 point trick rather than a 50 point
+     * Flip, and it is a real one: `stallBeforeMs` only accrues below
+     * STALL_SPEED, so the craft has to be nearly stationary, not merely
+     * pausing between tricks.
+     */
+    name: 'Flip Stall Rewind',
+    steps: [{ axis: 'pitch', turns: 1, stallMs: 400 }],
+  },
+  {
+    /* The same, rolling. */
+    name: '360 Stall Rewind',
+    steps: [{ axis: 'roll', turns: 1, stallMs: 400 }],
+  },
+
+  /* ---------------------------------------------------------------- *
+   * WALL TRICKS, where the contact IS the trick.
+   *
+   * Only the ones whose shape is distinctive enough to be safe. Wall Ride
+   * is "a 90 degree roll away from the wall and a 90 degree roll back",
+   * which is also what banking round a corner looks like; Loop Tap,
+   * Reverse Wall Ride and Downtown Tap are each a quarter turn plus a
+   * contact, and a quarter turn plus a contact is what happens every time
+   * a pilot clips something while turning. They are left out on purpose
+   * rather than added and then quietly firing all over the town. See the
+   * design note in PROGRESS.md.
+   * ---------------------------------------------------------------- */
+  {
+    /* "a 90 pitch back while cutting the throttle. Gently tap the wall,
+     * then a 90 pitch forward to level out and fly away." Out and back on
+     * the same axis, which is a shape ordinary flying does not make. */
+    name: 'Wall Tap',
+    steps: [
+      { axis: 'pitch', turns: 0.25, tap: true },
+      { axis: 'pitch', turns: 0.25, oppTo: 0 },
+    ],
+  },
+  {
+    /* "a 270 roll towards the wall, executing a wall tap as you go." */
+    name: 'Roll Tap',
+    steps: [{ axis: 'roll', turns: 0.75, tap: true }],
+  },
+  {
+    /*
+     * "a 180 pitch back to tap the ceiling, then level out."
+     *
+     * `dir: -1` is the nose going UP, in the body rate convention of
+     * sim_abi.h where +q pitches the nose down. Without it any half flip
+     * that brushed anything was a 300 point Ceiling Tap, and a half flip
+     * near a wall is not rare.
+     */
+    name: 'Ceiling Tap',
+    steps: [{ axis: 'pitch', turns: 0.5, dir: -1, tap: true }],
+  },
+  {
+    /* "a Maverick Loop. As you reach the object at the top of the loop,
+     * pitch down 90 so that you tap it. Then a Matty Flip back under." */
+    name: 'Maverick Tap Rewind',
+    steps: [
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0 }, tap: true },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
+  },
+  {
+    /* "a powerloop. At the peak, pitch back to look downward and tap the
+     * object. Then a Matty flip to rewind back under." */
+    name: 'Power Switch Tap',
+    steps: [
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 }, tap: true },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+    ],
   },
 
   /* One step patterns: the named whole rotations. Everything shorter or
@@ -1187,6 +1549,9 @@ export class TrickDetector {
     /* A contact seen since the current pending group started, so a trick
      * flown into a wall is marked BUMP rather than CLEAN. */
     this.touched = false;
+    /* When the last contact was, so a rotation can record that it happened
+     * during one. Negative infinity is "never touched anything". */
+    this.tapAtMs = -1e9;
     this.enabled = true;
   }
 
@@ -1210,6 +1575,7 @@ export class TrickDetector {
     this.stallMs = 0;
     this.gapStallMs = 0;
     this.touched = false;
+    this.tapAtMs = -1e9;
   }
 
   /* A new run: forget the buffers and put the clock back to zero, so the
@@ -1219,9 +1585,39 @@ export class TrickDetector {
     this.nowMs = 0;
   }
 
-  /* The craft touched something without ending the run. */
-  bump() {
+  /*
+   * The craft touched something without ending the run.
+   *
+   * TWO THINGS COME OUT OF ONE CONTACT, and they pull opposite ways.
+   *
+   * The workbook's BUMP is "complete trick, but tapped a gate, wall or the
+   * ground without disarming", and it costs half the points. That is an
+   * ACCIDENT: the pilot clipped something on the way past.
+   *
+   * But a whole family of tricks is the contact. Wall Tap, Roll Tap, Loop
+   * Tap, Ceiling Tap, Downtown Tap, Maverick Tap Rewind and Power Switch
+   * Tap are ten tricks in the catalogue whose entire point is to touch the
+   * object deliberately, and under the old code every one of them would
+   * have been charged half its points for succeeding.
+   *
+   * So a contact records BOTH: `touched`, which still grades a trick BUMP,
+   * and `tapAtMs`, which a pattern can ASK for. A pattern that asks clears
+   * the bump, because the contact it is being charged for is the trick. A
+   * pattern that does not ask is unaffected and still pays. See emit.
+   */
+  bump(impulse) {
     this.touched = true;
+    /*
+     * Only a GENTLE contact is a tap. A wall trick is flown at walking pace
+     * into the wall and a crash is not, so without this every hard smack
+     * would offer itself as a 300 point Ceiling Tap. An impulse the caller
+     * did not measure is treated as gentle, which keeps the old one
+     * argument callers working and is the safe way round for a grade that
+     * only ever REMOVES the bump penalty.
+     */
+    if (impulse === undefined || impulse <= GRAZE_SPEED_MAX) {
+      this.tapAtMs = this.nowMs;
+    }
   }
 
   /*
@@ -1674,6 +2070,11 @@ export class TrickDetector {
       /* The unsnapped sweep, kept so two laps of the same motion can be
        * compared before either has been named. See sameMotionLap. */
       rawTurns: mag,
+      /* A gentle contact during the lap or just either side of it, so
+       * Maverick Tap Rewind and Power Switch Tap can ask for the tap at the
+       * top of the loop. Same field and same window a rotation carries. */
+      tapped: this.tapAtMs >= run.startMs - TAP_WINDOW_MS
+        && this.tapAtMs <= run.lastMs + TAP_WINDOW_MS,
       /*
        * The fraction of the lap with the object on the screen, or -1 when
        * the caller supplied no heading. Minus one FAILS a tracking test
@@ -1868,6 +2269,17 @@ export class TrickDetector {
       touched: this.touched,
       /* The fraction of the rotation flown belly up, 0 to 1. See Run. */
       invertedFrac: frac,
+      /*
+       * Did the craft touch something while this rotation was running, or
+       * in the moment either side of it? A wall tap is a 90 degree pitch
+       * back, a touch, and a 90 degree pitch forward, and the touch does
+       * not land in the middle of the buffer: it happens while a rotation
+       * is open and the rotation closes afterwards. So it is recorded ON
+       * the rotation rather than as an element between two of them, which
+       * is also what makes it robust to the order the two arrive in.
+       */
+      tapped: this.tapAtMs >= run.startMs - TAP_WINDOW_MS
+        && this.tapAtMs <= this.nowMs + TAP_WINDOW_MS,
     };
     this.gapStallMs = 0;
     /*
@@ -1930,7 +2342,7 @@ export class TrickDetector {
       }
       const best = this.bestMatch();
       if (best) {
-        if (this.emit(best.name, best.steps)) {
+        if (this.emit(best.name, best.steps, best.slack, best.wantedTap)) {
           this.dropAbsorbed();
         }
         continue;
@@ -2020,7 +2432,7 @@ export class TrickDetector {
    * Answers whether any of them was a LAP, because a lap that has just been
    * paid for changes what the rest of the buffer is worth. See dropAbsorbed.
    */
-  emit(name, count) {
+  emit(name, count, slack = 0, wantedTap = false) {
     const used = this.pending.splice(0, count);
     const first = used[0];
     const last = used[used.length - 1];
@@ -2043,7 +2455,22 @@ export class TrickDetector {
         dead += used[i].startMs - used[i - 1].endMs - used[i].stallBeforeMs;
       }
     }
-    const execution = touched ? 'BUMP' : (dead >= SLOPPY_GAP_MS ? 'SLOPPY' : 'CLEAN');
+    /*
+     * The workbook's grade. A trick that needed slack to be recognised at
+     * all is by definition "completed, execution too segmented", which is
+     * what SLOPPY means and what it costs 35% for. See matchSteps: this is
+     * the whole reason a near miss can be named rather than refused.
+     *
+     * `wanted` is a pattern that ASKED to touch something. The whole Wall
+     * Tricks family is contact on purpose, and charging a Wall Tap half its
+     * points for tapping the wall would be the recogniser fining a pilot
+     * for succeeding. An unasked-for contact still costs, which is the
+     * workbook's BUMP and is unchanged.
+     */
+    const wanted = wantedTap;
+    const execution = (touched && !wanted)
+      ? 'BUMP'
+      : ((dead >= SLOPPY_GAP_MS || slack > 0) ? 'SLOPPY' : 'CLEAN');
     /* The first lap in the trick names the obstacle. A trick with no lap in
      * it was flown in open air and names none. */
     let obstacleGroup = null;
@@ -2138,12 +2565,25 @@ export class TrickDetector {
       if (n > this.pending.length) {
         continue;
       }
-      if (!matchSteps(pat.steps, this.pending, n)) {
+      const slack = matchSteps(pat.steps, this.pending, n);
+      if (slack < 0) {
         continue;
       }
       const points = trickPoints(pat.name);
-      if (!best || n > best.steps || (n === best.steps && points > best.points)) {
-        best = { name: pat.name, steps: n, points };
+      /*
+       * Longest first, then the CLEANEST reading of it, then the dearest.
+       * Slack before price matters: two patterns can now both describe one
+       * flight, one of them exactly and one of them by spending slack, and
+       * the exact one is what the pilot flew. Without this a dearer trick
+       * would buy its way in on tolerance.
+       */
+      if (!best
+        || n > best.steps
+        || (n === best.steps && slack < best.slack)
+        || (n === best.steps && slack === best.slack && points > best.points)) {
+        best = {
+          name: pat.name, steps: n, points, slack, wantedTap: patternWantsTap(pat),
+        };
       }
     }
     return best;
@@ -2174,7 +2614,7 @@ export class TrickDetector {
       if (pat.steps.length <= this.pending.length) {
         continue;
       }
-      if (!matchSteps(pat.steps, this.pending, this.pending.length)) {
+      if (matchSteps(pat.steps, this.pending, this.pending.length) < 0) {
         continue;
       }
       const next = pat.steps[this.pending.length];
@@ -2190,7 +2630,112 @@ export class TrickDetector {
 /* Do the first `n` steps of a pattern describe the first `n` primitives? */
 const AXIS_OF_NAME = { roll: AXIS_ROLL, pitch: AXIS_PITCH, yaw: AXIS_YAW };
 
+/* Does this pattern touch something on purpose? See emit: a trick that
+ * asked to tap is not also fined for tapping. */
+function patternWantsTap(pat) {
+  return pat.steps.some((step) => step.tap === true);
+}
+
+/*
+ * HOW FAR OUT A TRICK MAY BE AND STILL BE THAT TRICK.
+ *
+ * Everything above this line reads a flight and turns it into quarter turns
+ * and laps. This is the other half of the job and it was missing: deciding
+ * whether what the pilot flew IS the trick, when nobody flies a trick to the
+ * quarter turn.
+ *
+ * The old matcher tested `p.turns !== s.turns` and gave up. So a 360 roll
+ * that came out at 450 because the pilot held the stick a beat too long was
+ * not a Roll, it was a Roll and a 1/4 Roll, and a Rubik's Cube whose middle
+ * flip overshot was three building blocks. The pilot flew the trick and was
+ * told they flew parts.
+ *
+ * THE WORKBOOK ALREADY HAS THE ANSWER AND IT IS NOT A WIDER THRESHOLD. It
+ * grades every trick CLEAN, SLOPPY, BUMP, MISSED or CRASH, and SLOPPY costs
+ * 35% for a trick that was completed but "lacks constant loop motion,
+ * execution is too segmented". A trick flown a quarter turn out is exactly
+ * that: completed, and not clean. So a step may match LOOSELY at a cost of
+ * one slack point, the trick is still named, and any slack at all grades it
+ * SLOPPY. Nothing is widened; a second, cheaper grade is opened underneath.
+ *
+ * WHAT NEVER GETS SLACK, and this is what keeps it honest:
+ *
+ *   the axis     a roll is not a flip, at any tolerance
+ *   the direction  sameAs, oppTo and dir are what separate a Rubik's Cube
+ *                from a rewind and an Invert Rewind from Segmented Flips.
+ *                A trick defined by going back the other way cannot be
+ *                allowed to match going the same way, however sloppily
+ *   which kind   a lap is not a rotation
+ *
+ * Only MAGNITUDES are slackened: how far it turned, how much it turned
+ * while it did, how upside down it was, how long it stalled.
+ */
+const SLACK_TURNS = 0.25;
+const SLACK_ROT = 0.25;
+const SLACK_STALL = 0.6;
+const SLACK_INVERTED = 0.2;
+/*
+ * Two slack points, not one and not four. One would refuse a Rubik's Cube
+ * whose entry AND exit rolls were both a shade long, which is one mistake
+ * made twice rather than two mistakes. Four would let a three step pattern
+ * match a flight that missed on every step, which is not that trick flown
+ * badly, it is a different trick.
+ */
+const SLACK_MAX = 2;
+
+/*
+ * Which way up, as a slack cost. Exact inside INVERTED_MIN, and a further
+ * SLACK_INVERTED beyond it at a cost, so a pilot who rolled out of an
+ * inverted trick a little early still flew the inverted trick.
+ */
+function nearInverted(frac, want) {
+  const held = want ? frac : 1 - frac;
+  if (held >= INVERTED_MIN) {
+    return 0;
+  }
+  return held >= INVERTED_MIN - SLACK_INVERTED ? 1 : -1;
+}
+
+/*
+ * A turn count against what the pattern asked for, as a slack cost.
+ *
+ * ASYMMETRIC ON PURPOSE, and this is the rule that keeps the tolerance
+ * honest: you cannot complete a trick by doing LESS of it.
+ *
+ * Over is the trick flown long. A 450 degree roll is a Roll the pilot held
+ * a beat past level, and refusing it was the whole complaint: it used to
+ * come out as a Roll and a 1/4 Roll, or as nothing at all inside a longer
+ * pattern.
+ *
+ * Under is a different, smaller thing, and the workbook already prices it.
+ * Three quarters of a yaw spin is not a sloppy Yaw Spin, it is a pilot
+ * turning a corner, which is what every pilot does every few seconds and
+ * what the whole SINGLES floor exists to keep silent. Three quarters of a
+ * roll is a 3/4 Roll at 75 points, which is a real entry in the building
+ * blocks. Slackening downward would swallow both.
+ */
+function nearTurns(got, want, slack) {
+  const over = got - want;
+  if (over <= 1e-9 && over >= -1e-9) {
+    return 0;
+  }
+  return over > 0 && over <= slack + 1e-9 ? 1 : -1;
+}
+
+/*
+ * The slack this pattern needs to describe these primitives, or -1 if it
+ * cannot at any cost. Zero means flown exactly as written.
+ */
 function matchSteps(steps, prims, n) {
+  let slack = 0;
+  /* Charge a step's looseness, and give up once the budget is gone. */
+  const spend = (cost) => {
+    if (cost < 0) {
+      return false;
+    }
+    slack += cost;
+    return slack <= SLACK_MAX;
+  };
   for (let i = 0; i < n; i += 1) {
     const s = steps[i];
     const p = prims[i];
@@ -2198,19 +2743,25 @@ function matchSteps(steps, prims, n) {
      * Never each other: they are different measurements of different
      * things and a step that did not say which it wanted would match both. */
     if (s.path !== undefined) {
+      /* A lap is not a rotation. No slack: they are different measurements
+       * of different things and a step that matched both would name a trick
+       * off the wrong evidence. */
       if (p.kind !== 'path' || p.obstacle !== s.path) {
-        return false;
+        return -1;
       }
-      if (s.turns !== undefined && p.turns !== s.turns) {
-        return false;
+      if (s.turns !== undefined && !spend(nearTurns(p.turns, s.turns, SLACK_TURNS))) {
+        return -1;
       }
       /* A floor rather than a reading, slackened by how short a lap is
        * known to measure. See LAP_TRUNCATION, which is the whole argument. */
       if (s.turnsAtLeast !== undefined && p.turns < s.turnsAtLeast - LAP_TRUNCATION) {
-        return false;
+        return -1;
       }
+      /* Which side it went in from is topological, not a reading: over a
+       * rail and under it are not a quarter turn apart, they are different
+       * facts. No slack. */
       if (s.from !== undefined && p.startSide !== (s.from === 'under' ? -1 : 1)) {
-        return false;
+        return -1;
       }
       /*
        * Inverted is judged over the WHOLE LAP, not at the instant the run
@@ -2218,47 +2769,52 @@ function matchSteps(steps, prims, n) {
        * a lap that was belly up for a fifth of its length was an upright
        * orbit whose pilot rolled out at the end.
        */
-      if (s.inverted !== undefined) {
-        const frac = p.invertedFrac;
-        if (s.inverted ? frac < INVERTED_MIN : frac > 1 - INVERTED_MIN) {
-          return false;
-        }
+      if (s.inverted !== undefined && !spend(nearInverted(p.invertedFrac, s.inverted))) {
+        return -1;
       }
       if (s.track !== undefined) {
         if (s.track) {
           if (p.trackFrac < TRACK_LAP_MIN) {
-            return false;
+            return -1;
           }
         } else if (p.trackFrac >= TRACK_LAP_MIN) {
-          return false;
+          return -1;
         }
+      }
+      if (s.tap !== undefined && Boolean(p.tapped) !== s.tap) {
+        return -1;
       }
       if (s.rot !== undefined) {
         for (const key of Object.keys(s.rot)) {
           const got = p.rot[AXIS_OF_NAME[key]];
           const mag = got < 0 ? -got : got;
-          const err = mag - s.rot[key];
-          if ((err < 0 ? -err : err) > CONCURRENT_TOLERANCE) {
-            return false;
+          /* Exact inside CONCURRENT_TOLERANCE, which is already a quarter
+           * turn and is argued where it is declared, and a further quarter
+           * beyond that at a cost. */
+          const err = mag > s.rot[key] ? mag - s.rot[key] : s.rot[key] - mag;
+          if (err > CONCURRENT_TOLERANCE
+            && !spend(err <= CONCURRENT_TOLERANCE + SLACK_ROT ? 1 : -1)) {
+            return -1;
           }
         }
       }
       continue;
     }
     if (p.kind !== 'rot') {
-      return false;
+      return -1;
     }
+    /* THE AXIS NEVER GETS SLACK. A roll is not a flip. */
     if (s.axis !== undefined && AXIS_NAME[p.axis] !== s.axis) {
-      return false;
+      return -1;
     }
     if (s.axisIn !== undefined && !s.axisIn.includes(AXIS_NAME[p.axis])) {
-      return false;
+      return -1;
     }
     if (s.axisAs !== undefined && p.axis !== prims[s.axisAs].axis) {
-      return false;
+      return -1;
     }
-    if (s.turns !== undefined && p.turns !== s.turns) {
-      return false;
+    if (s.turns !== undefined && !spend(nearTurns(p.turns, s.turns, SLACK_TURNS))) {
+      return -1;
     }
     /*
      * Which way up, judged over the whole rotation and by exactly the bar a
@@ -2269,24 +2825,39 @@ function matchSteps(steps, prims, n) {
      * recogniser that cannot see the attitude must not hand out a trick
      * that is defined by it.
      */
-    if (s.inverted !== undefined) {
-      const frac = p.invertedFrac ?? 0;
-      if (s.inverted ? frac < INVERTED_MIN : frac > 1 - INVERTED_MIN) {
-        return false;
-      }
+    if (s.inverted !== undefined && !spend(nearInverted(p.invertedFrac ?? 0, s.inverted))) {
+      return -1;
     }
+    /*
+     * THE DIRECTIONS NEVER GET SLACK EITHER. sameAs and oppTo are what
+     * separate a Rubik's Cube from a rewind and Segmented Flips/Rolls from
+     * an Invert Rewind: the two are the same two half turns and differ only
+     * in whether the second went back the other way. A trick defined by
+     * going back cannot be allowed to match going on, at any tolerance.
+     */
     if (s.dir !== undefined && p.dir !== s.dir) {
-      return false;
+      return -1;
     }
     if (s.sameAs !== undefined && p.dir !== prims[s.sameAs].dir) {
-      return false;
+      return -1;
     }
     if (s.oppTo !== undefined && p.dir === prims[s.oppTo].dir) {
-      return false;
+      return -1;
     }
-    if (s.stallMs !== undefined && p.stallBeforeMs < s.stallMs) {
-      return false;
+    /* A stall the pattern asked for. Six tenths of it is still a pause the
+     * eye reads as one, and the trick is named SLOPPY for being brisk. */
+    if (s.stallMs !== undefined && p.stallBeforeMs < s.stallMs
+      && !spend(p.stallBeforeMs >= s.stallMs * SLACK_STALL ? 1 : -1)) {
+      return -1;
+    }
+    /*
+     * A contact the pattern asked for. No slack: either the craft touched
+     * the thing or it did not, and a wall trick that did not touch the wall
+     * is the trick MISSED rather than the trick flown badly.
+     */
+    if (s.tap !== undefined && Boolean(p.tapped) !== s.tap) {
+      return -1;
     }
   }
-  return true;
+  return slack;
 }

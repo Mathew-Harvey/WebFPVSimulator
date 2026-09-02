@@ -5284,7 +5284,13 @@ export async function boot({ loading, bootStart, mapId }) {
          * the streak, and the combo survives, because in the air a clipped
          * branch is not a bail. */
         if (view.mode === 'freestyle') {
-          trickDetector.bump();
+          /*
+           * The impulse decides whether this was a deliberate tap or a
+           * smack. A wall trick is flown gently into the wall on purpose,
+           * and the recogniser must be able to tell the two apart or every
+           * crash offers itself as a Ceiling Tap. See TrickDetector.bump.
+           */
+          trickDetector.bump(obsImpulse);
         }
         bounceAtWall = nowWall;
         view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());

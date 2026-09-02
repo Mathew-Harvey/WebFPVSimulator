@@ -63,6 +63,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { KINDS } from './collide.js';
+
 /* A vertical line: orbits, pole dancing, jump rope. */
 export const OB_POLE = 0;
 /* A horizontal line: powerloops, mattys, split-S, immelmanns. */
@@ -78,6 +80,18 @@ export const OB_KIND_NAME = ['pole', 'bar'];
  * pilot's eyeline to be worth flying around, and because at 2 m the net
  * fills with bollards and fence posts, of which the town has hundreds.
  */
+/*
+ * How near vertical a capsule has to be to count as a pole, and how near
+ * horizontal to count as a bar, as a cosine against the world up axis.
+ *
+ * 0.9 is about 26 degrees off. A lamp post leans a little and a tree trunk
+ * leans a lot more than a lamp post; past this it is a fallen thing, and
+ * flying round a fallen thing is a bar trick, not a pole one. The bar test
+ * is the same number from the other end, so a capsule at 45 degrees is
+ * neither, which is the honest answer for a diagonal brace.
+ */
+const UPRIGHT_MIN = 0.9;
+
 const POLE_FOOT_MAX = 0.9;
 const POLE_HEIGHT_MIN = 2.5;
 
@@ -379,6 +393,20 @@ export function sameAxis(a, b) {
  * Boxes only, because that is what a map is made of; a capsule map would
  * want its own clause and nothing has one yet.
  */
+/*
+ * The collider kinds this refuses to look at, by name in
+ * src/game/collide.js's KINDS.
+ *
+ * `canopy` is the leafy part of a tree and there are 1530 of them in the
+ * town against 382 trunks. They are capsules like everything else and a
+ * small one passes the pole test on shape alone, so without this the field
+ * fills up with foliage: the nearest six axes to a craft flying down a
+ * street would be four bushes, and the one lamp post the pilot is actually
+ * orbiting would not make the cut. A canopy is a thing you crash into, not
+ * a thing you fly around.
+ */
+const SKIP_KINDS = new Set(['canopy']);
+
 export function deriveObstacles(colliders, groundAt) {
   const field = new ObstacleField();
   if (!colliders || !colliders.fbox) {
@@ -387,6 +415,72 @@ export function deriveObstacles(colliders, groundAt) {
   const n = colliders.fbox.length;
   for (let i = 0; i < n; i += 1) {
     if (!colliders.fbox[i]) {
+      /*
+       * A CAPSULE, WHICH IS ALREADY THE SHAPE THIS FILE WANTS.
+       *
+       * This branch is new and its absence is why no obstacle trick has
+       * scored in the town for as long as the town has been made of
+       * capsules. collide.js says it in its own header: "ONE PRIMITIVE.
+       * Every solid thing in this world is a capsule." The city has 2064
+       * colliders and 2032 of them are capsules; the 32 boxes that are left
+       * are not pole shaped or bar shaped, so deriveObstacles returned an
+       * EMPTY field and the recogniser had nothing to wind around. Measured
+       * on the real town: count 0, poles 0, bars 0.
+       *
+       * The comment this file was written under says "Of those 17,643
+       * boxes, 1,587 are pole shaped and 311 are bar shaped", so the town
+       * really was boxes once. It moved to capsules and this did not.
+       *
+       * A capsule is a segment from a to b plus a radius, which is a line
+       * with a thickness, which is exactly what an Obstacle is. So there is
+       * no shape to infer here the way there is for a box: the axis IS
+       * b - a, the length IS the segment, and the thickness IS the radius.
+       * That makes this branch both simpler and more truthful than the box
+       * one below it.
+       */
+      const ax = colliders.fax[i];
+      const ay = colliders.fay[i];
+      const az = colliders.faz[i];
+      const bx = colliders.fbx[i];
+      const by = colliders.fby[i];
+      const bz = colliders.fbz[i];
+      const ex = bx - ax;
+      const ey = by - ay;
+      const ez = bz - az;
+      const len = Math.sqrt(ex * ex + ey * ey + ez * ez);
+      if (len < 1e-6 || SKIP_KINDS.has(KINDS[colliders.fkind[i]])) {
+        continue;
+      }
+      const ux = ex / len;
+      const uy = ey / len;
+      const uz = ez / len;
+      const cx = (ax + bx) * 0.5;
+      const cy = (ay + by) * 0.5;
+      const cz = (az + bz) * 0.5;
+      /* The thickness across the axis is the diameter, which is what the
+       * box path calls a footprint. Same number, same test. */
+      const thick = colliders.fr[i] * 2;
+      const upright = uy < 0 ? -uy : uy;
+
+      /* A pole: near vertical, thin, and tall enough to be worth going
+       * round. UPRIGHT_MIN is a cosine, so it is a direct test on the
+       * axis rather than on a bounding box's proportions. */
+      if (upright >= UPRIGHT_MIN && thick <= POLE_FOOT_MAX && len >= POLE_HEIGHT_MIN) {
+        field.add(OB_POLE, cx, cy, cz, 0, 1, 0, len * 0.5);
+        continue;
+      }
+
+      /* A bar: near horizontal, thin, long, and with daylight underneath.
+       * The clearance is measured at the LOWER end, because a capsule that
+       * slopes has one end nearer the ground and that end is the one a quad
+       * has to fit under. */
+      if (upright <= 1 - UPRIGHT_MIN && thick <= BAR_THICK_MAX && len >= BAR_LEN_MIN) {
+        const lowY = (ay < by ? ay : by) - colliders.fr[i];
+        const ground = groundAt ? groundAt(cx, cz) : 0;
+        if (lowY - ground >= BAR_CLEAR_MIN) {
+          field.add(OB_BAR, cx, cy, cz, ux, uy, uz, len * 0.5);
+        }
+      }
       continue;
     }
     const x0 = colliders.fax[i];

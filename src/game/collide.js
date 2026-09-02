@@ -154,7 +154,9 @@ export function craftVerticalHalf(sinTilt) {
 /* `train` is the only MOVING solid in either world and it is a hard kind on
  * purpose: the city's three car set crosses the town at 23.5 m/s, and there
  * is no speed at which meeting it is a graze. */
-const KINDS = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole', 'wall', 'boom', 'train'];
+/* Exported so src/game/obstacles.js can name a kind rather than keeping a
+ * second copy of this list. `fkind` is an index into it. */
+export const KINDS = ['gate', 'obstacle', 'tree', 'canopy', 'rock', 'cliff', 'pole', 'wall', 'boom', 'train'];
 
 /*
  * The broadphase cell, in metres. The world is about 1700 m across and the

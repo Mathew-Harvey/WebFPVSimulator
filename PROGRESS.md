@@ -25681,3 +25681,116 @@ race and beginner gives 1), the author filter narrows to 2, the `/` shortcut
 focuses the search on the tracks view and correctly does nothing on the
 freestyle one, and a track sheet opens over the freestyle board and closes back
 onto it with the view intact.
+
+
+## 2026-09-02, why no obstacle trick has ever scored in the town
+
+The owner reported that the Powerloop, the Split-S and the Orbit still do not
+register. Those three are not a random selection: they are the only tricks
+that need the OBSTACLE FIELD. Flips and rolls do not. So the first thing to
+measure was the field itself, in the real town, rather than in the constructed
+rig every check uses.
+
+    window.__obstacles()  ->  { count: 0, poles: 0, bars: 0 }
+
+The field is EMPTY. Every path trick in the catalogue has been unscoreable in
+the actual game for as long as this has been true: Powerloop, Maverick Loop,
+Split-S, Matty Flip, Beginner Matty, Orbit x2, Trippy Spin x2. The work on
+2026-09-02 that made the Orbit's lap count a floor instead of an equality was
+real and necessary, and it was fixing the SECOND thing wrong with a trick that
+had nothing to wind around in the first place.
+
+### The cause is drift between two files that were both right when written
+
+`deriveObstacles` reads boxes. Its own comment records the world it was
+written against: "Of those 17,643 boxes, 1,587 are pole shaped and 311 are bar
+shaped." `collide.js` now opens with "ONE PRIMITIVE. Every solid thing in this
+world is a capsule."
+
+    window.__colliders()  ->  count 2064, boxes 32, capsules 2032
+                              tree 382, canopy 1530, rock 44, pole 23, wall 85
+
+The town moved to capsules and the obstacle derivation did not. The 32 boxes
+that remain are walls, and a wall is correctly not a pole or a bar. So the
+loop ran 2064 times and added nothing.
+
+### The fix, and why it makes the file simpler rather than more complicated
+
+A capsule is a segment from a to b plus a radius, which is a line with a
+thickness, which is exactly what an `Obstacle` already is. There is no shape
+to infer the way there is for a box: the axis IS b minus a, the length IS the
+segment, the thickness IS the radius. `UPRIGHT_MIN` is a cosine against world
+up, so near vertical is a pole and near horizontal is a bar, and a capsule at
+forty five degrees is neither, which is the honest answer for a diagonal
+brace.
+
+`canopy` is skipped by kind. There are 1530 of them against 382 trunks, they
+are capsules like everything else, and a small one passes the pole test on
+shape alone. Without the skip the nearest six axes to a craft flying down a
+street would be four bushes and the lamp post the pilot is actually orbiting
+would not make the cut. A canopy is a thing you crash into, not a thing you
+fly around.
+
+`KINDS` is now exported from `collide.js` rather than copied here, because a
+second copy of that list is a second thing to forget.
+
+    after:  window.__obstacles()  ->  { count: 126, poles: 126, bars: 0 }
+
+Measured end to end in the real town: a two lap orbit flown around six real
+city poles, through the real derived field, names `Orbit x2` on six of six.
+
+### THE TOWN HAS NOTHING TO POWERLOOP, and that is a content gap
+
+126 poles and ZERO bars, and the zero is correct. The town's capsules are
+trees, canopy, rocks and posts, all vertical. Its boxes are 85 walls, and a
+sampled wall is 16 m long, 3.8 m tall and 0.28 m thick standing at y = 0.45,
+so it has no daylight underneath it. There is no horizontal collider with a
+gap under it anywhere in the town.
+
+Powerloop, Maverick Loop, Matty Flip and Beginner Matty are all "under and
+around a horizontal bar" tricks. No recogniser can name them in a world that
+contains no bar. The fix for those is in the CITY, not in this file: the
+railings, the footbridge rail, the level crossing booms and the balcony rails
+need to exist as thin horizontal colliders with clearance under them. That is
+written down here rather than papered over, because a detector change would
+only have moved the failure somewhere harder to find.
+
+### AND A SPLIT-S IS NOT AN OBSTACLE TRICK
+
+Measured on the flown rig: a Split-S in open air, a half roll then half a loop
+pulled through, scores `1/2 Roll + 1/2 Flip`. The catalogue's Split-S is
+reachable ONLY as a half lap over a bar, so in a town with no bars it can
+never be named at all, and even in a town with bars a pilot who flies one in
+open air is told they flew two building blocks.
+
+That is a modelling mistake rather than a bug. A Powerloop genuinely needs
+something to loop around: that is what the trick IS. A Split-S does not, and
+neither does an Immelmann. They became obstacle tricks because the path side
+was the machinery available when they were added. The same rig shows the
+recogniser already names the mirror image of this shape in open air, a half
+loop then a half roll, as a Snapback or a Juicy Flick, so the vocabulary is
+half there already.
+
+Left for the owner to decide, because it is a design call and not a defect:
+whether the open air Split-S and Immelmann should be named, and whether the
+town should grow bars. Both are recorded here so neither is rediscovered.
+
+### One rough edge, not hidden
+
+One of the six real pole orbits came out as `Yaw Spin + Yaw Spin + Orbit x2`.
+That is the double payment case `dropAbsorbed` was written for, arriving from
+the other direction: a NEIGHBOURING pole opened a lap that named nothing and
+released the orbit's yaw into the buffer before the real lap was named, so
+there was no named window to absorb it against yet. It was invisible while the
+field was empty and it is visible now that a street has six posts in reach.
+It needs the release to be deferred until every open lap has had its chance,
+which is a bigger change to `releaseHeld` than this entry's fix.
+
+### Checks
+
+`npm run score:selftest` (193), `npm run lint:nouns`, `npm run lint:boot`
+(9 of 9) and `node scripts/board-check.js` all pass. `npm run verify` was NOT
+run: this touches neither the plant, `src/native`, the patches nor the build.
+The evidence that matters here is the measurement in the real town, above,
+which no unit test in this repository can see, because every check builds its
+own constructed field rather than reading the city's.

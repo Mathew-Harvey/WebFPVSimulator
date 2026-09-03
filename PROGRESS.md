@@ -26971,3 +26971,115 @@ the Powerloop, Orbit x2, Wall Tap, Split-S and Roll films all render, the page
 reports zero errors, and the Freestyle screen's row reads "Trick list = 64
 tricks". Flown: eleven of thirteen manoeuvres named, the Cinnamon Roll now
 reaching Donkey Loop rather than Mavvy Roll.
+
+## 2026-09-03 Solid, measured: nothing is ever paid more than it was worth
+
+The instruction was to dig into the recogniser until the scoring is reliable.
+The way that was done was to stop looking for bugs by reading and start
+MEASURING the property that actually matters.
+
+### The property
+
+`score-selftest.js` is 207 hand written cases: this exact flight names this
+exact trick. That catches a broken rule and CANNOT catch an unstable one,
+because a rule that is right where it was written and wrong a fifteenth of a
+turn either side passes every single check.
+
+`scripts/trick-sweep.js` (`npm run trick:sweep`) flies each trick and then
+perturbs it across the range a human varies in: bank angle 0 to 60 degrees,
+turn error as a fraction of the lap, and drift on the axes the pattern does not
+name. Every sample lands in one of four buckets, and they are NOT equal:
+
+    SILENT  nothing named. The scorer told the truth: what was flown was not
+            clean enough to name.
+    UNDER   something cheaper, usually a real component of the trick. The
+            pilot is short changed. Nothing false is on a board.
+    OVER    something DEARER. This is the bug, and the only one the sweep
+            fails on. A pilot who flew a Cinnamon Roll and was paid 600 for a
+            Donkey Loop has been lied to, the leaderboard has a number nobody
+            earned, and they have been taught the wrong thing about their own
+            flying.
+
+### And it flies with an attitude, which is the other reason it exists
+
+The recogniser resolves a lap's rotation from the nose AND the up axis, so the
+loop's own turn can be told from the bank it was flown at. score-selftest
+passes no up axis, so ALL 207 of its checks run the raw fallback and NOT ONE of
+them ever touched debankLap. The change that stopped a banked Powerloop being
+named a Donkey Loop had no offline coverage whatever until this file.
+
+The sweep's flights therefore carry a real orthonormal frame and DERIVE the
+body rates from how it turns, the way a gyro does, rather than being handed
+rates that agree with a path by construction.
+
+### What it found in the recogniser
+
+**The loop family was wrong past 45 degrees of bank.** Picking the single
+largest alignment component meant that past 45 the biggest share is the UP
+axis, so the loop's turn was called a yaw, pitch came out zero, and a swept
+Powerloop was named a Maverick Loop, which is the trick for a lap flown WITHOUT
+a flip. Fifteen percent of Powerloops. The lap's axis either lies along the
+NOSE, in which case going round is a roll, or across it, in which case it is a
+flip; bank only decides how the across the nose turn is SHARED between the wing
+and the up axis, and sharing is not a different trick. The perpendicular pair
+is now compared as one quantity against the nose, and a rail's across the nose
+turn always lands on pitch. A POST keeps all three, because a nose tangent
+orbit of a vertical post really is a yaw.
+
+**A 450 point trick was completely unreachable.** An absolute floor on the
+alignment refused to de-bank any lap carrying a roll: while the craft rolls,
+the rail's direction sweeps between the wing and the up axis, so the MEAN
+perpendicular alignment comes out about 0.64 even though the rail is plainly
+nowhere near the nose. The floor of 0.72 refused, the raw reading stood, the
+pitch read 0.56 against the 1 the pattern wants, and a Power Roll came out as a
+bare Roll worth 50 on EVERY sample. The question was never "how aligned" but
+"which of the two", so it is answered by comparing them, with a small absolute
+floor left for a craft that is tumbling and where neither owns it.
+
+### What it found in the sweep itself, which is the point of having one
+
+Three of the sweep's own flights were wrong, and each looked like a recogniser
+bug until it was chased:
+
+  - The run in and run out flew along the TANGENT, and a tangent line still
+    winds: 14 m of it past a rail 3.2 m away subtends a fifth of a turn at
+    each end, so a lap asked for as 1.12 turns measured 1.47, crossed to the
+    far side of the rail, and was correctly read as a lap and a HALF. A pilot
+    departs; the entry and exit carry an outward component now.
+  - The turn error was a flat number of turns, so a twelfth of a turn was a
+    twelfth of a Powerloop and a QUARTER of a Matty Flip. It asked a half lap
+    to survive winding 0.38 turns, which is less than a craft flying dead
+    straight past the rail subtends, and the recogniser was right to refuse
+    every one.
+  - An added rotation was smeared across the whole lap. The workbook says "at
+    the peak of the loop, perform a Flip", and it has to: spread a whole roll
+    evenly over a whole lap and the loop's turn is shared with a body frame
+    that is itself rolling, so the pitch integral averages to nothing. A
+    Cinnamon Roll's spin is the exception and IS spread, which is exactly why
+    its lap reads pitch 0 and roll 0.
+
+### Where it stands, 740 samples over fifteen trick families
+
+    Powerloop                 100%          Orbit x2               100%
+    roll loop family          100%          Trippy Spin x2         100%
+    Power Roll                100%          Roll                   100%
+    Mavvy Roll                100%          Flip                   100%
+    Side Loop                 100%          Yaw Spin               100%
+    Matty Flip                 80%          Double Roll            100%
+    Inverted 360 Powerloop     40%          Cinnamon Roll           33%
+    a bare half lap from under   0%, silent on all 105, which is correct
+
+NOTHING, ANYWHERE, WAS EVER PAID MORE THAN IT WAS WORTH.
+
+The Matty Flip's misses are all at a twelfth under, where the lap winds 0.44
+turns and the straight line theorem says that is not evidence of having gone
+round anything. The Inverted 360 Powerloop and the Cinnamon Roll are reachable
+and never over-claim; both lose their dearer reading at bank, to a cheaper
+name, and both are worth another pass.
+
+Flown in the town alongside this: eleven of thirteen manoeuvres named.
+
+### Checks
+
+score:selftest (207), contact:selftest, trick:sweep (740 samples), lint:shell,
+lint:quality, lint:nouns, lint:presets, lint:arcade and lint:board all pass.

@@ -208,7 +208,7 @@ function flyLap(opts = {}) {
   const {
     turns = 1, from = 'under', bankDeg = 0, noseAlong = false,
     addRoll = 0, addYaw = 0, radius = 3.2, secs = 2.4, pole = false,
-    track = false, inverted = false, drift = 0,
+    track = false, inverted = false, drift = 0, beforeYaw = 0, yawSpread = false,
   } = opts;
   const axis = pole ? V(0, 1, 0) : V(1, 0, 0);
   const f = new Flight(pole ? poleField() : barField(axis));
@@ -275,13 +275,40 @@ function flyLap(opts = {}) {
     const u = i / 900;
     f.go(add(start, mul(inDir, -14 * (1 - u))), tan0, upOf(ph0, 0));
   }
+  /*
+   * The quarter yaw that OPENS the Jump Roping family, flown on the way in
+   * so it is adjacent to the lap. Twelve patterns in the catalogue are
+   * [rotation, lap] and every one of them is cheap; the one step laps they
+   * sit beside are dear, so if the opening rotation does not survive to the
+   * matcher the pilot is paid for the wrong and dearer trick.
+   */
+  if (beforeYaw) {
+    let n = tan0;
+    let up = upOf(ph0, 0);
+    const N0 = 420;
+    for (let i = 0; i < N0; i += 1) {
+      const d = (TURN * beforeYaw) / N0;
+      n = norm(rot(n, up, d));
+      up = norm(sub(up, mul(n, dot(n, up))));
+      f.go(start, n, up);
+    }
+    for (let i = 0; i < 160; i += 1) { f.go(start, n, up); }
+  }
   for (let i = 0; i <= N; i += 1) {
     const u = i / N;
     const ph = ph0 + dir * TURN * turns * u;
     let n = noseOf(ph);
     let up = upOf(ph, u);
     if (addYaw) {
-      const spin = dir * TURN * addYaw * window(u);
+      /*
+       * A Cinnamon Roll's spin is SPREAD, not placed. The workbook says "a
+       * slow 360 yaw spin, timed to finish as you pass back under the
+       * object", and that is why its lap reads pitch 0 and roll 0: with the
+       * nose sweeping the whole way round, the loop's own turn is shared
+       * across the body axes and averages to nothing on both of them, which
+       * leaves the yaw as the only thing the lap carries.
+       */
+      const spin = dir * TURN * addYaw * (yawSpread ? u : window(u));
       n = rot(n, up, spin);
       up = norm(sub(up, mul(n, dot(n, up))));
     }
@@ -506,6 +533,20 @@ async function main() {
     ['Inverted 360 Powerloop', () => sweepLap('Inverted 360 Powerloop', {
       turns: 1, from: 'under', addYaw: 1,
     }, { drifts: [0, 0.08] })],
+    /*
+     * THE JUMP ROPING FAMILY, which is where an over-claim would cost most.
+     * Every one is [quarter yaw, lap] and every one is cheap: Cinnamon Roll
+     * is 175 and Side Loop 200, sitting beside one step laps worth 250 and
+     * 600. If the opening quarter yaw does not reach the matcher next to the
+     * lap, the two step pattern is unreachable and the dear one step pattern
+     * takes the flight.
+     */
+    ['Side Loop', () => sweepLap('Side Loop', {
+      turns: 1, from: 'under', noseAlong: true, beforeYaw: 0.25,
+    }, { banks: [0, 20, 40], drifts: [0] })],
+    ['Cinnamon Roll', () => sweepLap('Cinnamon Roll', {
+      turns: 1, from: 'under', addYaw: 1, yawSpread: true, beforeYaw: 0.25,
+    }, { banks: [0, 20, 40], drifts: [0] })],
     ['Mavvy Roll', () => sweepLap('Mavvy Roll', {
       turns: 1, from: 'under', noseAlong: true,
     }, { drifts: [0, 0.08] })],

@@ -27185,3 +27185,97 @@ score:selftest (207), contact:selftest, trick:sweep (about 700 samples over
 fourteen families), lint:shell, lint:quality, lint:nouns, lint:presets,
 lint:arcade and lint:board all pass. Flown in the town: ten to eleven of
 thirteen manoeuvres named, varying by run.
+
+## 2026-09-03: the whole catalogue flown, and a Maverick Loop stops paying 250
+
+The sweep had been flying 14 hand written cases. It now flies EVERY scoreable
+pattern from the pattern's own steps, which took the coverage from 14 families
+to 47 and immediately found five over-claims. Three were the rig, two were the
+catalogue, and telling them apart took a new flag rather than another round of
+reading the recogniser.
+
+`--show=<name>` flies one pattern and prints what the detector measured: the
+lap's turns, its de-banked rot vector, the spin about the obstacle axis, the
+alignment and the ownership pair. Three times this session a sweep result that
+looked like a scorer bug turned out to be the rig flying the wrong shape, and
+each time it cost a round of reading `trickdetect.js` before anybody checked
+the flight. The measured vector settles it in one command.
+
+### The catalogue bug: a Maverick Loop was worth 250
+
+`Maverick Loop` was `rot { pitch: 0 }` with roll unnamed. `Mavvy Roll` was
+`rot { pitch: 0, roll: 1 }`. Flown, both produced `rot [1.00, 0, 0]`, from
+identical plans: byte identical motions under two names, and the matcher takes
+the dearer on a tie, so EVERY Maverick Loop was paid 250 instead of 100.
+
+A lap is always a rotation about something, because flying a powered circle
+points the thrust at the middle of it. A Powerloop spends that turn on pitch
+because the nose follows the path. A Maverick spends it on ROLL because the
+nose lies along the rail instead. There is no third option for a powered lap,
+so a Maverick Loop already HAS roll 1 and naming it changes no flight, it only
+stops the pattern describing its own dearer sibling as well. `Mavvy Roll` is
+then the loop's own roll and one more, which is 2, written exactly the way
+`Power Flip` is written as pitch 2 for "the loop's own flip and one more".
+
+`Mavvelmann`'s first step got the same half roll for the same reason.
+
+### The one that corrected me back
+
+Having proved a lap must rotate, the obvious next move was to give `Jump Rope`
+and `Beginner Matty` the same base roll, since both are written flat. That was
+wrong, and the comment already in the file said why: the workbook's jump rope
+is "a slight roll toward the object" and then "a small roll the other way to
+descend down the other side". The two rolls oppose and the net really is zero.
+
+A lap only has to rotate while it is POWERED. Over the top with the throttle
+reduced, gravity supplies the centripetal force and the craft can go round with
+no net rotation at all. So `rot { pitch: 0, roll: 0 }` is a real shape and the
+catalogue was right; what is true is that this rig cannot fly a ballistic arc,
+which is a limit of the rig and is now reported as one rather than patched out
+of the catalogue. Both patterns were put back.
+
+### Three rig bugs, all sign or plan
+
+- `addPitch` was applied about `+wing`, which runs against the way the tangent
+  already turns through a loop. Every other user of `addPitch` flies a lap whose
+  own pitch is zero, so the sign never showed until a `Power Flip` asked for the
+  loop's flip AND one more: the two cancelled, the lap measured `rot [0,0,0]`
+  and was named a Maverick Loop. 100 points for a 350 point trick.
+- `addRoll` had the same sign fault, exposed the same way once `Mavvy Roll`
+  became roll 2. It measured a bare 3/4 roll.
+- The planner decided where a lap's own turn went by looking at ROLL, which got
+  `Mavvy Roll` wrong because roll 2 is not near turns 1. The rule that covers
+  the whole catalogue is pitch against turns: a nose that follows the path all
+  the way round a whole lap has pitched a whole turn, so `pitch == turns` is a
+  Powerloop, LESS than that is the Maverick family (the nose cannot be following
+  the path, so it lies along the rail and the lap's turn is a roll), and more is
+  a Powerloop with extra on top. That one line also fixed `Split-S`, which was
+  being flown nose along because its roll of 0.5 coincided with its half lap.
+
+### Where it stands
+
+Both sweeps end on "nothing was ever paid more than it was worth". 47 patterns
+flown, 26 named on every sample, zero over-claims anywhere, at three banks and
+three turn errors each. Everything still missing is SILENT or UNDER, which is
+the scorer declining to guess rather than lying: a pilot is never paid for a
+trick they did not fly.
+
+The hand written `Mavvy Roll` case was flying a bare nose along lap and calling
+it a Mavvy Roll. It only ever passed because the two patterns were identical and
+the dearer won, so the corrected case flies the added roll and the accept list
+for the plain roll lap came down from `['Mavvy Roll', 'Maverick Loop']` to
+`Maverick Loop` alone.
+
+Still open: 17 patterns the planner cannot fly (8 two lap, 7 needing a contact,
+2 ballistic), `Donkey Loop` under-claiming when a 360 yaw inside the lap makes
+the winding integral over-read, and the 34 m mast still only being an obstacle
+above y=34.7.
+
+Checks run this turn: `node scripts/trick-sweep.js --all` (47 patterns, zero
+over-claims), `node scripts/trick-sweep.js` (hand written cases, zero
+over-claims), `npm run lint:fc` PASS, `npm run lint:presets` PASS.
+`npm run lint:catalog` COULD NOT RUN: `vendor/betaflight` is an uninitialised
+submodule in this container, so the firmware parameter tables it reads are
+absent. It lints the flight controller catalogue, which this change does not
+touch. `npm run verify` was not run: this turn changes the trick catalogue and
+the sweep rig, not physics, the plant, the module ABI or the build.

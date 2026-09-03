@@ -689,9 +689,22 @@ export const PATTERNS = [
     steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1 } }],
   },
   {
-    /* The same lap flown facing forward the whole way: no flip. */
+    /*
+     * The same lap flown facing forward the whole way: no flip.
+     *
+     * THE ROLL IS THE LAP'S OWN AND HAS TO BE NAMED. Flying a circle
+     * points the thrust at the middle of it, so a lap is always a rotation
+     * about something: a Powerloop spends it on pitch because the nose
+     * follows the path, and a Maverick spends it on ROLL because the nose
+     * lies along the rail instead. There is no third option, and a lap
+     * with rot { pitch: 0 } and nothing else said was not describing a
+     * Maverick, it was describing every Maverick AND every Mavvy Roll,
+     * because a Mavvy Roll's roll of 1 is exactly what the bare lap
+     * already has. The dearer name won, so every Maverick Loop was paid
+     * 250 instead of 100. See PROGRESS.md, 2026-09-03.
+     */
     name: 'Maverick Loop',
-    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0 } }],
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 1 } }],
   },
   {
     /* Over the object, a 180 roll, then down the back and under it. */
@@ -843,9 +856,14 @@ export const PATTERNS = [
 
   /* Maverick loops: the same lap flown facing forward, so no flip. */
   {
-    /* "at the peak of the loop, execute a 360 roll". */
+    /*
+     * "at the peak of the loop, execute a 360 roll": the loop's own roll
+     * and one more, which is 2. This reads oddly beside the workbook's
+     * "360 roll" until you notice Power Flip is written the same way, as
+     * pitch 2 for "the loop's own flip and one more".
+     */
     name: 'Mavvy Roll',
-    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 1 } }],
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 2 } }],
   },
   {
     /* "execute a 180 Pitch down to invert. Follow this with a 360 Yaw
@@ -867,7 +885,7 @@ export const PATTERNS = [
      * flick so that you're upside down, then a 180 roll to level out." */
     name: 'Mavvelmann',
     steps: [
-      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0 } },
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0, roll: 0.5 } },
       { axis: 'pitch', turns: 0.5 },
       { axis: 'roll', turns: 0.5 },
     ],

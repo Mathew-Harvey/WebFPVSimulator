@@ -1698,6 +1698,9 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let obsTouched = false;
   let obsClosing = 0;
+  /* Harness: skip the draw so a probe can fly at frame rate rather than at
+   * the town's draw rate. See window.__drawOff. */
+  let harnessNoDraw = false;
   /* Its own cooldown, so the recogniser's window is not shared with the
    * audio cue's and one cannot swallow the other. */
   let trickTouchAtWall = -1e9;
@@ -5920,7 +5923,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * 60 Hz display and drawing every other frame.
      */
     const capHz = Number(ui.settings.fpsCap) || 0;
-    let drawThis = true;
+    let drawThis = !harnessNoDraw;
     if (capHz > 0 && worldLive) {
       if (nowWall - capLastDraw < 1000 / capHz - 1.0) {
         drawThis = false;
@@ -6611,6 +6614,23 @@ export async function boot({ loading, bootStart, mapId }) {
    * lastImpulse says how hard, and GRAZE_SPEED_MAX is the line between a
    * tap and a smack. Nothing in the shell reads it.
    */
+  /*
+   * DRAW NOTHING, FLY EVERYTHING. Harness only.
+   *
+   * The town costs about two hundred milliseconds a frame under
+   * swiftshader, so a probe driving the sticks from requestAnimationFrame
+   * moves them FIVE TIMES A SECOND. Nothing can be flown at five hertz: a
+   * tracker measured eighteen metres off a straight line it had six seconds
+   * to fly, and every trick built on that measurement was measuring the
+   * probe. Skipping the draw leaves the frame loop, the accumulator, the
+   * fixed timestep and the interpolation exactly as they were, which is the
+   * same promise the fps cap already makes one branch below, and hands the
+   * probe back a control rate a radio would recognise.
+   */
+  window.__drawOff = (on = true) => {
+    harnessNoDraw = Boolean(on);
+    return harnessNoDraw;
+  };
   window.__contacts = () => ({
     ...passStats,
     interior: obsInterior,
@@ -6901,6 +6921,21 @@ export async function boot({ loading, bootStart, mapId }) {
       ? Math.sqrt(stateCurr[4] * stateCurr[4] + stateCurr[5] * stateCurr[5]
         + stateCurr[6] * stateCurr[6])
       : 0,
+    /*
+     * World velocity, so a guidance law can close a loop on where the craft
+     * is GOING as well as where it is.
+     *
+     * The plant's velocity is already in the world frame, so the axis
+     * permutation and the spawn rotation are the whole conversion, the same
+     * pair poseFromState uses minus the offset. Turning it by the craft's
+     * attitude as well was tried and is wrong: it doubled the tracking
+     * error on a straight line and quadrupled it on a circle.
+     */
+    vel: stateCurr ? (() => {
+      simPosToThree(stateCurr[4], stateCurr[5], stateCurr[6], scoreFwd);
+      scoreFwd.applyQuaternion(qSpawn);
+      return { x: scoreFwd.x, y: scoreFwd.y, z: scoreFwd.z };
+    })() : null,
     rates: stateCurr
       ? { p: stateCurr[11], q: stateCurr[12], r: stateCurr[13] }
       : null,

@@ -250,6 +250,13 @@ export async function makeRig(opts) {
 
   const tricks = [];
   const det = new TrickDetector((t) => tricks.push(t), field);
+  /* The world, as the recogniser asks about it: one distance query. See
+   * TrickDetector.solids. */
+  if (colliders) {
+    det.solids = {
+      gapAt: (x, y, z, r) => colliders.gapAt(x, y, z, r),
+    };
+  }
 
   /* ---- the frame seam, exactly as the shell draws it ---- */
   const sc = scratch();

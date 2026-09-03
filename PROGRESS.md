@@ -28050,3 +28050,143 @@ is the rebuild above rather than a number.
 `npm run verify` was not run and `npm run build:wasm` cannot run here: no
 emsdk and no node_modules. Nothing under src/native/ or patches/ changed, so
 dist/sim.wasm is byte for byte the committed one.
+
+## 2026-09-03: the path, measured from the path
+
+The prompt in `prompts/wall-tap-scoring-fix.md` asks for the path measurement
+to be rebuilt: to stop measuring an obstacle trick as the winding of the
+craft's position about a line derived from the colliders, and to measure the
+turning of the flight PATH instead, from the craft's own trajectory and its
+own frame. `PathTrack` in `src/game/trickdetect.js` is that measurement. It
+is computed on every step and read by nothing but `scripts/path-check.js`.
+
+### Why it is not yet what names a trick
+
+Deliberately, and the order is the point. Every previous round of this
+recogniser has been a measurement that looked right in a constructed flight
+and was wrong in the air, and the last one shipped a Powerloop reading minus
+three and three quarter turns for four days behind forty seven green sweep
+patterns. So the measurement is proven on the real aircraft first, beside the
+one it replaces, and nothing is allowed to depend on it until it is.
+
+### What it measures, and what that buys
+
+Per step, from the craft alone: the turning of the flight path as a VECTOR,
+whose length is how far the path turned and whose direction is the axis it
+turned about; the craft's own rotation about that axis, about its own
+velocity, and about world up; how the axis lay against the nose; the nose
+against the direction of travel; and where the middle of the turn was.
+
+THE ANGULAR VELOCITY IS TAKEN FROM THE FRAME, NOT FROM THE GYRO. For an
+orthonormal frame, omega is half the sum of e cross e-dot, which uses only
+the observed rotation of the body axes the caller already passes. There is no
+convention to agree with the renderer and so none to get wrong, which given
+that this session began by finding a contact normal that had been reversed
+for four days is not a small thing.
+
+Measured on the real aircraft, and these four are the argument:
+
+    Powerloop           turns 1.11  horizontal  loop 1.06  on PITCH  object inside
+    the same circle,
+    nose along the rail turns 1.02  horizontal  loop 1.06  on ROLL   object inside
+    Orbit x2            turns 2.05  VERTICAL    loop 2.22  track 0.87 object inside
+    360 flip, level     no path turn at all
+    Juicy Flick, level  no path turn at all
+
+The first two are the whole of what de-banking was invented to recover from
+the body integrals, and here it is one comparison with no convention in it: a
+Powerloop and a Maverick Loop are the same circle flown with the nose in
+different places, and the turn's own axis lies across the nose in one and
+along it in the other.
+
+The last two are the property the winding could never have. A craft flying
+dead past a rail subtends up to half a turn about it, which is exactly where
+a real half loop lands; the file's own comment above HALF_LAP_MIN spends a
+page on the two populations meeting at the same number from opposite sides
+and concludes that the floor is a coin toss on entry geometry. The turning of
+the PATH is not a quantity a straight line has any of, so they stop
+overlapping.
+
+And the thing flown around no longer has to be a pole or a bar. It is found
+by asking the colliders one distance question at the middle of the turn, so a
+wall, a roof edge or a building corner answers as well as a rail does. Two
+laps flown round nothing report nothing inside them, which is the half of
+that test that can be controlled rather than hoped for.
+
+Frame independence, measured: the same Powerloop at spawn yaw 0, 90 and 180
+measures 1.12, 1.12 and 1.11 turns, all on pitch, a spread of 0.01.
+
+### The finding that changes the plan
+
+The half loop family does NOT yet measure as the prompt assumed, and the
+reason is worth writing down because it is an argument against part of the
+design rather than a bug in it.
+
+Flown on the real aircraft with the sticks, a Matty Flip's path is not a
+half turn in a vertical plane. The craft yaws through the dive: measured,
+0.09 to 0.40 turns about world up depending on where the segmentation falls,
+and the raw path turning comes out 0.47 about an axis that is sometimes
+horizontal and sometimes vertical, at a measured radius of 1.5 m, and does
+not find the rail inside it. The SAME flight measured as winding about the
+rail's own axis is a clean half lap and names Matty Flip, because projecting
+onto a known axis throws the pilot's heading wander away.
+
+So for that family the derived axis is doing real work that the path's own
+axis cannot do yet. The rebuild needs the object's AXIS and not merely its
+presence: find the solid at the middle of the turn, take its direction, and
+project the turning onto it. That keeps everything above, since a wall or a
+roof edge has a direction as readily as a rail does, and it is a smaller
+change than the one this entry did not make.
+
+### The segmentation constant, measured rather than picked
+
+`PATH_TURN_REVERSE` decides when a figure has ended by turning back on
+itself. The winding side asks for 0.08 of a turn; the path's own turning is
+not smooth in the same way, because a real figure is flown with the sticks.
+Measured at three values against the two cases that pull opposite ways:
+
+    0.10   a flown Matty Flip comes apart into 0.31 and 0.53
+    0.12   the Matty is one turn of 0.47, and an orbit still separates from
+           the arcs it flew in and out on
+    0.14   the Matty holds, but an orbit MERGES with its entry arc and its
+           measured centre is dragged three metres off the post
+
+0.12, and the failures either side of it are what says so.
+
+Two other constants came out of the same kind of measurement. Accumulating
+only while the turning rate is above the OPENING gate cut a commanded whole
+loop to 1.17 turns and put its centre out among samples whose own radius was
+fifty metres, so the accumulation runs to the OFF gate instead, which is the
+hysteresis every other run in this file already has. And the radius is taken
+off the filtered rate rather than off one millisecond's turning, because a
+thousandth of a turn is a small number to divide by: with the raw one, a loop
+commanded at 3.4 m reported 5.0 m and put its own centre a metre and a half
+off the rail.
+
+### Checks
+
+    node scripts/path-check.js         9 passed, 0 failed    (new)
+    node scripts/orbit-check.js        8 passed, 0 failed
+    node scripts/wall-check.js         45 passed, 0 failed
+    node scripts/frame-check.js        33 passed, 0 failed
+    node src/trackbuilder/selftest.js  495 passed, 0 failed
+    npm run score:selftest             206 passed, 1 failed  (unchanged)
+    npm run trick:sweep -- --all       47 flown, no over-claims
+
+Nothing regressed, because nothing yet depends on the new measurement. That
+is the whole of why it was landed this way.
+
+### What is left, precisely
+
+1. Give the turn the OBJECT'S axis, per the finding above, and re-measure the
+   half loop family against it.
+2. Then rewrite the path steps of the pattern table in the new vocabulary,
+   family by family, running `path-check` and the negatives after each.
+3. Then delete `PathRun`, `stepOneLap`, `debankLap`, `snapPathTurns` and
+   `sideOf`, and reduce `deriveObstacles` to the scorer's obstacle identity,
+   which is all it is needed for once a trick no longer requires a derived
+   axis to exist.
+4. `score:selftest`'s constructed path cases pass no up axis, so they cannot
+   exercise any of this. They want replacing with replayed fixtures from the
+   Node rig, which is what the prompt asks for and what the rig now makes
+   possible.

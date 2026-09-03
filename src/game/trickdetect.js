@@ -1860,6 +1860,304 @@ class PathRun {
  * craft touched something while doing it. CRASH is not decided here; a crash
  * is a fact about the run and the scorer is told about it directly.
  */
+
+/* ---------------------------------------------------------------- *
+ * THE PATH, MEASURED FROM THE PATH.
+ *
+ * Everything above this line that concerns an obstacle measures a LAP as the
+ * winding of the craft's position about a line derived from the colliders.
+ * That has been the shape of the path side since it was written, and four
+ * rounds of this log have now found faults that all trace back to it rather
+ * than to any threshold:
+ *
+ *   a trick can only exist where the derivation found an axis, so a Split-S
+ *   over a wall, a roof edge or a building corner is unnameable, and the
+ *   catalogue's own open air blocks, Split-S at 100 and the quarter, half
+ *   and three quarter Power Loops, are unreachable by construction;
+ *   the lap's concurrent rotation is a BODY integral that has to be repaired
+ *   afterwards by de-banking, with a sign convention measured per lap,
+ *   because body axes tumble with the craft;
+ *   and the straight line theorem, which is what refuses a fly past, runs
+ *   out exactly where it is needed: a straight line subtends a supremum of
+ *   half a turn about a point off it, and a perfect half loop sweeps exactly
+ *   half a turn, so the honest trick and the dishonest fly past meet at the
+ *   same number from opposite sides. The file says so itself, at length,
+ *   above HALF_LAP_MIN.
+ *
+ * This measures the PATH instead, and the last of those three is the reason
+ * it is worth the rewrite. The turning of the flight path is not a quantity
+ * a straight line has any of: a craft flying dead past an object turns
+ * through nothing at all, whatever the object subtends, while a half loop
+ * turns through exactly half a turn wherever it is flown and whatever is or
+ * is not inside it. The two populations stop overlapping, so the floors stop
+ * being a coin toss.
+ *
+ * WHAT IS MEASURED, and all of it from the craft's own trajectory and its
+ * own frame, with no derived geometry in it:
+ *
+ *   turns     how far the flight path turned, from the integral of the
+ *             tangent's own rotation
+ *   axis      which way that turning pointed: horizontal is a loop in a
+ *             vertical plane, vertical is an orbit in a horizontal one
+ *   loop      the craft's rotation ABOUT the path's own turning axis, which
+ *             is what a Powerloop has one of and a Maverick Loop none of,
+ *             and which is bank independent because the axis is the path's
+ *             and not the body's
+ *   rollT     the craft's rotation about its own VELOCITY, which is the half
+ *             roll of a Split-S, an Immelmann and a Juicy Flick
+ *   spin      the craft's rotation about world up, which is the yaw of a
+ *             Cinnamon Roll or an Inverted 360 Powerloop
+ *   loopOn    whether the turning axis lies along the nose or across it,
+ *             which is the whole of the difference between the Powerloop
+ *             family and the Maverick family
+ *   forward   the mean of nose against direction of travel: a Matty Flip
+ *             comes out backwards and a Split-S comes out forwards
+ *   object    whether anything solid is inside the circle the craft flew
+ *
+ * NO TRIGONOMETRY, the same rule the rest of the file keeps: cross products,
+ * dot products and square roots only, so the same recording names the same
+ * tricks in Node and in a browser.
+ *
+ * THE ANGULAR VELOCITY IS TAKEN FROM THE FRAME, NOT FROM THE GYRO, and that
+ * is deliberate. The body rates arrive in Betaflight's own sign convention
+ * and the body axes arrive in the renderer's, and the one thing this file
+ * has been bitten by more than any other is a sign that was assumed to
+ * relate the two. For an orthonormal frame the angular velocity is
+ * one half the sum of e cross e-dot over the three axes, which uses only the
+ * OBSERVED rotation of the frame the caller already passes. It needs no
+ * convention to be agreed, so there is none to get wrong.
+ * ---------------------------------------------------------------- */
+
+/*
+ * Where the path's turning starts and stops counting, in turns per second.
+ *
+ * What refuses ordinary flying is the TOTAL turning at the close, not this;
+ * this only has to keep the APPROACH out of the figure. Measured on the real
+ * aircraft, a powerloop turns at about 0.34 turns/s at a radius of 3 to 5 m
+ * and an orbit of a wide circle at 0.14 at 6 to 14 m, while the run in to
+ * either curves through thirty degrees over a couple of seconds at a radius
+ * of thirty metres and more. Counting that ramp put the turn's beginning up
+ * the approach instead of at the figure, and the side tests then read the
+ * entry of a loop as being on the wrong side of the loop's own middle.
+ *
+ * OFF sits well below ON, which is the way round every other run in this
+ * file has it and the way round the old path gate did not.
+ */
+const PATH_TURN_ON = 0.10;
+const PATH_TURN_OFF = 0.04;
+const PATH_TURN_HOLD_MS = 220;
+/* Below this the direction of travel is noise and the tangent means nothing:
+ * a hovering craft's velocity points wherever the last millisecond of drift
+ * did. The turning is held rather than counted while it is slower. */
+const PATH_MIN_SPEED = 1.5;
+/* A turn wider than this is a heading correction on a cruise, not a figure
+ * flown around anything. Sixty metres is four times the widest powerloop the
+ * log has measured and wider than any orbit the town has room for. */
+const PATH_MAX_RADIUS = 16;
+/*
+ * HOW FAR INSIDE THE FIGURE A SOLID HAS TO BE to count as the thing that was
+ * flown around, as a fraction of the radius the figure was flown at.
+ *
+ * A solid out at the rim is something the craft flew PAST on its way round,
+ * not the thing it went around. Measured on the real aircraft: a powerloop
+ * commanded at 3.4 m around a rail put its own centre 1.5 m from that rail
+ * at a measured radius of 5.0, which is 0.30 of the radius; an orbit of a
+ * post at 6 m put its centre on the post exactly, 0.00. The entry and exit
+ * arcs of the same flights, which are turns the craft made in open air on
+ * its way in and out, found nothing within a whole radius at all.
+ */
+const OBJECT_INSIDE = 0.6;
+/*
+ * How far the path may turn BACK on itself before the figure is over.
+ *
+ * The winding side asks for 0.08 of a turn and is right to: winding about a
+ * fixed axis is a smooth quantity and going back round is unambiguous. The
+ * PATH's own turning is not smooth in the same way, because a real figure is
+ * flown with the sticks and the tangent wobbles as the craft is corrected
+ * through it.
+ *
+ * MEASURED AT THREE VALUES against the two cases that pull opposite ways,
+ * rather than picked to make either pass:
+ *
+ *   0.10   a flown Matty Flip still comes apart, 0.31 then 0.53
+ *   0.12   the Matty is one turn of 0.47, and an orbit still separates from
+ *          the arcs it flew in and out on
+ *   0.14   the Matty holds, but an orbit MERGES with its entry arc and the
+ *          measured centre is dragged three metres off the post
+ *
+ * So 0.12, and the two failures either side of it are what says so.
+ */
+const PATH_TURN_REVERSE = 0.12;
+
+/*
+ * THE PATH'S OWN TURNING, accumulated as a vector.
+ *
+ * One of these per detector, not one per obstacle: the path is the craft's
+ * and there is only one of it. That alone removes a family of faults the log
+ * records, because there is no longer a set of candidate axes to choose
+ * between, nothing to wind twice, and no way for a fence's second rail to be
+ * paid for the same loop.
+ */
+class PathTrack {
+  constructor() {
+    this.open = false;
+    /* The integral of the tangent's rotation. Its length is how far the path
+     * turned and its direction is the axis it turned about. */
+    this.tx = 0;
+    this.ty = 0;
+    this.tz = 0;
+    /* The integral of the craft's own angular velocity, so the rotation
+     * about any fixed axis is one dot product at the close. */
+    this.wx = 0;
+    this.wy = 0;
+    this.wz = 0;
+    /* Rotation about the craft's own velocity, which has to be accumulated
+     * per sample because the velocity is what moves. */
+    this.rollT = 0;
+    /* How the turning axis lay against the nose, weighted by how much
+     * turning each sample carried, so a sample that turned through nothing
+     * cannot vote. */
+    this.alongNose = 0;
+    this.acrossNose = 0;
+    this.alignW = 0;
+    /* The nose against the direction of travel, and the belly against the
+     * sky, both over the turning window. */
+    this.fwdSum = 0;
+    this.invSamples = 0;
+    this.spanSamples = 0;
+    /* Where the centre of the turn is, as a mean weighted the same way. */
+    this.cx = 0;
+    this.cy = 0;
+    this.cz = 0;
+    this.minR = 0;
+    this.maxR = 0;
+    /* The radius the turn was actually flown at, weighted the same way the
+     * centre is: the instantaneous curvature of a sample that turned through
+     * nothing is enormous and says nothing about the figure. */
+    this.rSum = 0;
+    /* The object on the screen, for an orbit. */
+    this.trackSamples = 0;
+    /* Backward turning since the last forward progress, which is what ends
+     * an out and back. */
+    this.back = 0;
+    this.dir = 0;
+    this.rate = 0;
+    this.offMs = 0;
+    this.startMs = 0;
+    this.openMs = 0;
+    this.tailMs = 0;
+    this.startStallMs = 0;
+    /* Where the craft entered and left the turn, so which side of the
+     * turn's own centre each end was on can be read off. */
+    this.p0x = 0;
+    this.p0y = 0;
+    this.p0z = 0;
+    this.p1x = 0;
+    this.p1y = 0;
+    this.p1z = 0;
+    /* Previous sample: position, tangent and the three body axes. */
+    this.have = false;
+    this.px = 0;
+    this.py = 0;
+    this.pz = 0;
+    this.htx = 0;
+    this.hty = 0;
+    this.htz = 0;
+    this.haveT = false;
+    this.efx = 0;
+    this.efy = 0;
+    this.efz = 0;
+    this.eux = 0;
+    this.euy = 0;
+    this.euz = 0;
+    this.erx = 0;
+    this.ery = 0;
+    this.erz = 0;
+    this.haveE = false;
+    /* A short rolling record, so a turn can be backdated to where the craft
+     * committed to it rather than to where the filter noticed. */
+    this.histX = new Float64Array(PATH_LOOKBACK);
+    this.histY = new Float64Array(PATH_LOOKBACK);
+    this.histZ = new Float64Array(PATH_LOOKBACK);
+    this.histMs = new Float64Array(PATH_LOOKBACK);
+    this.histIdx = 0;
+    this.histFill = 0;
+  }
+
+  reset() {
+    this.open = false;
+    this.have = false;
+    this.haveT = false;
+    this.haveE = false;
+    this.rate = 0;
+    this.offMs = 0;
+    this.dir = 0;
+    this.histIdx = 0;
+    this.histFill = 0;
+  }
+
+  /*
+   * Start a turn.
+   *
+   * THE TIME IS BACKDATED AND THE PLACE IS NOT, and they are different
+   * questions. startMs reaches back so a rotation flown into the turn is
+   * still contiguous with it, which is what the step gap is measured
+   * against. But WHERE the craft was 800 ms ago is somewhere up the
+   * approach, and using it for the side tests read the entry of a whole
+   * loop as being on the wrong side of the loop's own middle. The turn
+   * begins where it begins.
+   */
+  openAt(nowMs, stallMs) {
+    const j = this.histFill >= PATH_LOOKBACK ? this.histIdx : 0;
+    this.open = true;
+    this.startMs = this.histFill > 0 ? this.histMs[j] : nowMs;
+    this.p0x = this.px;
+    this.p0y = this.py;
+    this.p0z = this.pz;
+    this.openMs = nowMs;
+    this.tailMs = nowMs;
+    this.startStallMs = stallMs;
+    this.tx = 0;
+    this.ty = 0;
+    this.tz = 0;
+    this.wx = 0;
+    this.wy = 0;
+    this.wz = 0;
+    this.rollT = 0;
+    this.alongNose = 0;
+    this.acrossNose = 0;
+    this.alignW = 0;
+    this.fwdSum = 0;
+    this.invSamples = 0;
+    this.spanSamples = 0;
+    this.trackSamples = 0;
+    this.cx = 0;
+    this.cy = 0;
+    this.cz = 0;
+    this.minR = Infinity;
+    this.maxR = 0;
+    this.rSum = 0;
+    this.back = 0;
+    this.dir = 0;
+  }
+
+  snapshot(x, y, z, ms) {
+    const i = this.histIdx;
+    this.histX[i] = x;
+    this.histY[i] = y;
+    this.histZ[i] = z;
+    this.histMs[i] = ms;
+    this.histIdx = i + 1 >= PATH_LOOKBACK ? 0 : i + 1;
+    if (this.histFill < PATH_LOOKBACK) {
+      this.histFill += 1;
+    }
+  }
+
+  turns() {
+    return Math.sqrt(this.tx * this.tx + this.ty * this.ty + this.tz * this.tz) / TURN;
+  }
+}
+
 export class TrickDetector {
   constructor(onTrick, obstacles = null) {
     this.onTrick = onTrick;
@@ -1883,6 +2181,23 @@ export class TrickDetector {
     this.paths = [];
     this.pathPool = [];
     this.engaged = [];
+    /*
+     * THE PATH, measured from the path. One of them, because the craft has
+     * one trajectory. See PathTrack.
+     */
+    this.track = new PathTrack();
+    /*
+     * HOW THE RECOGNISER ASKS THE WORLD A QUESTION, and the only way it
+     * does. One method, gapAt(x, y, z, maxR), which is the distance to the
+     * nearest solid or Infinity if there is none within maxR: exactly what
+     * src/game/collide.js already answers for the wall tricks. The shell and
+     * the rigs supply it; a caller that does not is simply flying in open
+     * air as far as this file is concerned, which is the safe way round.
+     */
+    this.solids = null;
+    /* The last turn it closed, as plain numbers, for a rig to read. Nothing
+     * in the matcher looks at this yet. */
+    this.lastTurn = null;
     /*
      * Net turns on each axis since the run began, never reset. A path run
      * reads the difference across its own window to find out what the craft
@@ -1947,6 +2262,7 @@ export class TrickDetector {
       this.pathPool.push(run);
     }
     this.paths.length = 0;
+    this.track.reset();
     this.heldByPath.length = 0;
     this.lapWindows.length = 0;
     this.groups.length = 0;
@@ -2179,6 +2495,7 @@ export class TrickDetector {
      * rotation that closes on the same millisecond the loop does belongs to
      * the loop.
      */
+    this.trackStep(dt, dtMs, wx, wy, wz, upZ);
     if (this.obstacles) {
       this.pathStep(dt, dtMs, wx, wy, wz, upZ);
     }
@@ -2186,6 +2503,341 @@ export class TrickDetector {
     this.axisStep(this.runs[AXIS_PITCH], q, dtMs, upZ);
     this.axisStep(this.runs[AXIS_YAW], r, dtMs, upZ);
     this.drain(false);
+  }
+
+  /*
+   * ONE STEP OF THE PATH'S OWN TURNING.
+   *
+   * Everything here comes from the craft: where it is, which way it is
+   * going, and how its own frame is rotating. Nothing is derived from the
+   * world, so a loop flown around a wall, a roof edge or nothing at all is
+   * measured exactly as one flown around a rail.
+   */
+  trackStep(dt, dtMs, wx, wy, wz, upZ) {
+    const tr = this.track;
+    /* The nose and the up axis are what make the measurement possible: they
+     * carry the craft's own frame, which is where the rotation comes from.
+     * Without them there is nothing to measure and nothing is claimed, which
+     * is the safe way round. */
+    if (!this.haveUp) {
+      tr.have = false;
+      tr.haveT = false;
+      tr.haveE = false;
+      return;
+    }
+    if (!tr.have) {
+      tr.px = wx;
+      tr.py = wy;
+      tr.pz = wz;
+      tr.have = true;
+      tr.snapshot(wx, wy, wz, this.nowMs);
+      return;
+    }
+    const vx = (wx - tr.px) / dt;
+    const vy = (wy - tr.py) / dt;
+    const vz = (wz - tr.pz) / dt;
+    tr.px = wx;
+    tr.py = wy;
+    tr.pz = wz;
+    const sp = Math.sqrt(vx * vx + vy * vy + vz * vz);
+
+    /*
+     * THE FRAME'S OWN ANGULAR VELOCITY, from the frame.
+     *
+     * omega = half the sum over the body axes of e cross e-dot. It needs no
+     * agreement about what the sign of a gyro channel means, which is the
+     * one thing this file has been caught by repeatedly.
+     */
+    let ox = 0;
+    let oy = 0;
+    let oz = 0;
+    if (tr.haveE && dt > 0) {
+      const k = 0.5 / dt;
+      ox = k * ((tr.efy * this.fwdZ - tr.efz * this.fwdY)
+        + (tr.euy * this.upZ3 - tr.euz * this.upY)
+        + (tr.ery * this.rgtZ - tr.erz * this.rgtY));
+      oy = k * ((tr.efz * this.fwdX - tr.efx * this.fwdZ)
+        + (tr.euz * this.upX - tr.eux * this.upZ3)
+        + (tr.erz * this.rgtX - tr.erx * this.rgtZ));
+      oz = k * ((tr.efx * this.fwdY - tr.efy * this.fwdX)
+        + (tr.eux * this.upY - tr.euy * this.upX)
+        + (tr.erx * this.rgtY - tr.ery * this.rgtX));
+    }
+    tr.efx = this.fwdX;
+    tr.efy = this.fwdY;
+    tr.efz = this.fwdZ;
+    tr.eux = this.upX;
+    tr.euy = this.upY;
+    tr.euz = this.upZ3;
+    tr.erx = this.rgtX;
+    tr.ery = this.rgtY;
+    tr.erz = this.rgtZ;
+    tr.haveE = true;
+
+    /* Too slow for a direction of travel to mean anything. Hold the turn
+     * open but stop counting, the same way a lap holds through the top of a
+     * loop where the craft is barely moving. */
+    if (sp < PATH_MIN_SPEED) {
+      tr.haveT = false;
+      if (!tr.open) {
+        tr.snapshot(wx, wy, wz, this.nowMs);
+      }
+      return;
+    }
+    const tx = vx / sp;
+    const ty = vy / sp;
+    const tz = vz / sp;
+    if (!tr.haveT) {
+      tr.htx = tx;
+      tr.hty = ty;
+      tr.htz = tz;
+      tr.haveT = true;
+      if (!tr.open) {
+        tr.snapshot(wx, wy, wz, this.nowMs);
+      }
+      return;
+    }
+
+    /* How far the tangent turned, as a vector: its length is the angle and
+     * its direction is the axis. */
+    const dx = tr.hty * tz - tr.htz * ty;
+    const dy = tr.htz * tx - tr.htx * tz;
+    const dz = tr.htx * ty - tr.hty * tx;
+    tr.htx = tx;
+    tr.hty = ty;
+    tr.htz = tz;
+    const dmag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const rate = dmag / dt / TURN;
+    tr.rate += (rate - tr.rate) * 0.02;
+    /*
+     * THE RADIUS COMES OFF THE FILTERED RATE, not off one millisecond's own
+     * turning. A thousandth of a turn is a small number to divide by, so the
+     * per sample radius is enormously noisy, and it is used for two things
+     * that noise ruins: where the middle of the figure is, and how wide the
+     * figure was. Measured with the raw number, a loop commanded at 3.4 m
+     * reported a mean radius of 5.0 m and put its own centre a metre and a
+     * half off the rail it was flown around. The filtered rate is the same
+     * quantity with fifty milliseconds of smoothing on it, which is what the
+     * gate already trusts.
+     */
+    const radius = tr.rate > 1e-9 ? sp / (tr.rate * TURN) : Infinity;
+    /*
+     * HYSTERESIS, AND THE RIGHT WAY ROUND. Opening takes the ON gate;
+     * carrying on takes the OFF gate, which is well below it. Gating the
+     * ACCUMULATION on the opening threshold instead is the same mistake the
+     * old path side made with its two constants, arrived at from the other
+     * direction: a real figure is not flown at a constant rate, so a dive
+     * that eases through the bottom of its own arc dropped under the opening
+     * gate and the turn came apart. Measured before this, a flown Matty Flip
+     * split into a 0.32 and a 0.58 where one half turn had been flown.
+     */
+    const opening = tr.rate >= PATH_TURN_ON && radius <= PATH_MAX_RADIUS;
+    const circling = tr.open
+      ? tr.rate >= PATH_TURN_OFF && radius <= PATH_MAX_RADIUS
+      : opening;
+
+    if (!tr.open) {
+      tr.snapshot(wx, wy, wz, this.nowMs);
+      if (opening) {
+        tr.openAt(this.nowMs, this.gapStallMs);
+      }
+      return;
+    }
+
+    /*
+     * ONLY WHILE IT IS ACTUALLY TURNING, and this is the difference between
+     * a measurement and a running total.
+     *
+     * Counting every sample once the turn is open banks the entry ramp, the
+     * exit and every heading correction in between, all of which curve a
+     * little. Measured before this gate: a commanded whole loop read 1.17
+     * turns and a commanded half read 0.73, and the weighted centre came out
+     * of samples whose own radius was fifty metres and more, which put the
+     * turn's middle nowhere near the middle of the turn and made the side
+     * tests read backwards. The samples that turned through nothing have
+     * nothing to say about how far round the craft went or about where the
+     * middle was.
+     */
+    if (!circling) {
+      if (tr.rate < PATH_TURN_OFF) {
+        tr.offMs += dtMs;
+      }
+      if (tr.back / TURN >= PATH_TURN_REVERSE
+        || tr.offMs >= PATH_TURN_HOLD_MS
+        || this.nowMs - tr.startMs >= PATH_MAX_MS) {
+        this.closeTrack();
+      }
+      return;
+    }
+    tr.offMs = 0;
+    /* Accumulate. Weighted by how far this sample actually turned, so a
+     * sample that turned through nothing cannot vote on the axis. */
+    tr.tx += dx;
+    tr.ty += dy;
+    tr.tz += dz;
+    tr.wx += ox * dt;
+    tr.wy += oy * dt;
+    tr.wz += oz * dt;
+    tr.rollT += (ox * tx + oy * ty + oz * tz) * dt / TURN;
+    tr.spanSamples += 1;
+    tr.fwdSum += this.fwdX * tx + this.fwdY * ty + this.fwdZ * tz;
+    if (upZ < 0) {
+      tr.invSamples += 1;
+    }
+    if (dmag > 1e-12) {
+      const inv = 1 / dmag;
+      const nx = dx * inv;
+      const ny = dy * inv;
+      const nz = dz * inv;
+      const nose = nx * this.fwdX + ny * this.fwdY + nz * this.fwdZ;
+      const an = nose < 0 ? -nose : nose;
+      let across = 1 - an * an;
+      across = across > 0 ? Math.sqrt(across) : 0;
+      tr.alongNose += an * dmag;
+      tr.acrossNose += across * dmag;
+      tr.alignW += dmag;
+      /* Toward the centre of this sample's own turn: the turning axis
+       * crossed into the direction of travel. */
+      const ix = ny * tz - nz * ty;
+      const iy = nz * tx - nx * tz;
+      const iz = nx * ty - ny * tx;
+      const cxs = wx + ix * radius;
+      const cys = wy + iy * radius;
+      const czs = wz + iz * radius;
+      tr.cx += cxs * dmag;
+      tr.cy += cys * dmag;
+      tr.cz += czs * dmag;
+      tr.rSum += radius * dmag;
+      if (radius < tr.minR) {
+        tr.minR = radius;
+      }
+      if (radius > tr.maxR) {
+        tr.maxR = radius;
+      }
+      /* Is the middle of the turn on the screen? The same lens the orbit
+       * has always been judged by. */
+      if (this.haveFwd) {
+        const tox = cxs - wx;
+        const toy = cys - wy;
+        const toz = czs - wz;
+        const tl = Math.sqrt(tox * tox + toy * toy + toz * toz);
+        if (tl > 1e-9) {
+          const d2 = (tox * this.fwdX + toy * this.fwdY + toz * this.fwdZ) / tl;
+          if (d2 >= TRACK_DOT) {
+            tr.trackSamples += 1;
+          }
+        }
+      }
+      /* Out and back is not a turn. Measured against the turning already
+       * banked, so a wobble cancels itself and a real reversal does not. */
+      const tl2 = Math.sqrt(tr.tx * tr.tx + tr.ty * tr.ty + tr.tz * tr.tz);
+      if (tl2 > 1e-9) {
+        const along = (dx * tr.tx + dy * tr.ty + dz * tr.tz) / tl2;
+        if (along < 0) {
+          tr.back -= along;
+        } else if (tr.back > 0) {
+          tr.back -= along;
+          if (tr.back < 0) {
+            tr.back = 0;
+          }
+        }
+      }
+    }
+    tr.tailMs = this.nowMs;
+    tr.p1x = wx;
+    tr.p1y = wy;
+    tr.p1z = wz;
+    if (tr.back / TURN >= PATH_TURN_REVERSE
+      || this.nowMs - tr.startMs >= PATH_MAX_MS) {
+      this.closeTrack();
+    }
+  }
+
+  /*
+   * Turn the accumulated turning into the numbers a pattern is written in.
+   * Nothing reads them yet; the rigs do, so the measurement can be checked
+   * against known flights before anything depends on it.
+   */
+  closeTrack() {
+    const tr = this.track;
+    if (!tr.open) {
+      return null;
+    }
+    tr.open = false;
+    tr.offMs = 0;
+    const mag = Math.sqrt(tr.tx * tr.tx + tr.ty * tr.ty + tr.tz * tr.tz);
+    tr.rate = 0;
+    if (!(mag > 1e-9) || tr.alignW <= 0 || tr.spanSamples <= 0) {
+      return null;
+    }
+    const inv = 1 / mag;
+    const ax = tr.tx * inv;
+    const ay = tr.ty * inv;
+    const az = tr.tz * inv;
+    const wInv = 1 / tr.alignW;
+    const cx = tr.cx * wInv;
+    const cy = tr.cy * wInv;
+    const cz = tr.cz * wInv;
+    /* The rotation about the turn's own axis, and about world up. Both are
+     * one dot product because the axes are fixed over the turn. */
+    const loop = (tr.wx * ax + tr.wy * ay + tr.wz * az) / TURN;
+    const spin = tr.wy / TURN;
+    const along = tr.alongNose * wInv;
+    const across = tr.acrossNose * wInv;
+    const meanR = tr.rSum * wInv;
+    let solidGap = Infinity;
+    if (this.solids && typeof this.solids.gapAt === 'function' && meanR > 1e-6) {
+      solidGap = this.solids.gapAt(cx, cy, cz, meanR);
+    }
+    const solidInside = solidGap < meanR * OBJECT_INSIDE;
+    const out = {
+      turns: mag / TURN,
+      /* A loop in a vertical plane turns about a HORIZONTAL axis, and an
+       * orbit about a vertical one. The bar is generous because a loop flown
+       * with the nose wandering tilts its own axis. */
+      axis: (ay < 0 ? -ay : ay) >= 0.7 ? 'vertical' : 'horizontal',
+      axisY: ay,
+      loop,
+      rollT: tr.rollT,
+      spin,
+      /* Along the nose is a lap flown on ROLL, the Maverick family; across
+       * it is a lap flown on PITCH, the Powerloop family. */
+      loopOn: along >= across ? 'roll' : 'pitch',
+      loopOwn: along >= across ? along : across,
+      forward: tr.fwdSum / tr.spanSamples,
+      invertedFrac: tr.invSamples / tr.spanSamples,
+      trackFrac: this.haveFwd ? tr.trackSamples / tr.spanSamples : -1,
+      /* Which side of the turn's own centre each end was on. This is what
+       * replaces a bar's under and over, and it needs no bar. */
+      startBelow: tr.p0y < cy,
+      endBelow: tr.p1y < cy,
+      centre: [cx, cy, cz],
+      minR: tr.minR === Infinity ? 0 : tr.minR,
+      maxR: tr.maxR,
+      radius: meanR,
+      /*
+       * IS ANYTHING SOLID INSIDE THE CIRCLE THE CRAFT FLEW?
+       *
+       * This is all that is left of needing the world, and it is a question
+       * about the flight rather than about a catalogue of axes: not "was
+       * there a bar of the right shape in the right place", which is what
+       * derived obstacles could answer and nothing else, but "did the craft
+       * go around something". A wall, a roof edge, a building corner, a tree
+       * and a rail all answer it the same way, and open air answers no.
+       *
+       * Half the flown radius, because a solid out at the rim is a thing the
+       * craft flew PAST on its way round, not the thing it went around.
+       */
+      object: solidInside ? 'inside' : 'none',
+      solidGap: solidGap,
+      radiusRatio: tr.minR > 1e-6 && tr.minR !== Infinity ? tr.maxR / tr.minR : 1,
+      startMs: tr.startMs,
+      openMs: tr.openMs,
+      endMs: tr.tailMs,
+      stallBeforeMs: tr.startStallMs,
+    };
+    this.lastTurn = out;
+    return out;
   }
 
   /*
@@ -3222,6 +3874,9 @@ export class TrickDetector {
    */
   flush(upZ) {
     const up = upZ === undefined ? 1 : upZ;
+    /* The path's own turn first: it is the outermost thing in flight and
+     * anything still open inside it belongs to it. */
+    this.closeTrack();
     /* The lap first, so a rotation still open inside it is still held by
      * it and cannot be scored twice. */
     for (const run of this.paths) {

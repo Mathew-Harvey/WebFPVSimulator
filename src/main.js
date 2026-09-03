@@ -1015,6 +1015,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     obstacles = deriveObstacles(view.colliders, (x, z, fromY) => view.height(x, z, fromY));
     trickDetector.obstacles = obstacles;
+    /* And the world itself, as one distance query. The recogniser measures
+     * the craft's own path and asks this only whether anything solid was
+     * inside the circle it flew, which is a question a wall, a roof edge or
+     * a tree can answer as well as a rail can. See TrickDetector.solids. */
+    trickDetector.solids = view.colliders
+      ? { gapAt: (x, y, z, r) => view.colliders.gapAt(x, y, z, r) }
+      : null;
   }
   /* The map loaded at boot never passes through the swap path above, so it
    * gets its obstacles here. After the consts, not before: rebuildObstacles

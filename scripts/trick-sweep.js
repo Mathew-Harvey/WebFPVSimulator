@@ -56,6 +56,7 @@
  * exactly the mistake this is meant to be able to catch.
  */
 
+import { writeFileSync } from 'node:fs';
 import { PATTERNS, TrickDetector } from '../src/game/trickdetect.js';
 import { trickByName } from '../src/game/tricks.js';
 import { ObstacleField, OB_BAR, OB_POLE } from '../src/game/obstacles.js';
@@ -89,6 +90,30 @@ function rot(v, k, t) {
 const STEP = 0.001;
 
 const DEBUG = process.argv.includes('--debug');
+
+/* Copied into the generated file, which needs its own header like every
+ * other file here. */
+const LICENCE = `/*
+ * proven.js: which tricks the sweep has actually landed.
+ *
+ * Copyright (C) 2026 Mathew Harvey
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+`;
 
 class Flight {
   constructor(field) {
@@ -995,6 +1020,7 @@ function sweepEverything() {
   const rows = [];
   let skipped = 0;
   const skipWhy = new Map();
+  const skips = [];
   for (const pat of PATTERNS) {
     if (seen.has(pat.name) || BLOCK.test(pat.name)) { continue; }
     seen.add(pat.name);
@@ -1003,6 +1029,7 @@ function sweepEverything() {
     if (why) {
       skipped += 1;
       skipWhy.set(why, (skipWhy.get(why) || 0) + 1);
+      skips.push({ name: pat.name, why });
       continue;
     }
     const samples = [];
@@ -1013,19 +1040,75 @@ function sweepEverything() {
     }
     rows.push({ name: pat.name, res: classify(pat.name, samples) });
   }
-  return { rows, skipped, skipWhy };
+  return { rows, skipped, skipWhy, skips };
+}
+
+/*
+ * WRITE DOWN WHAT WAS PROVEN, so the trick list can cite it.
+ *
+ * The list used to show all sixty four tricks with a price and a film and
+ * nothing else, which tells a pilot that a trick they have never once been
+ * able to land is as available as a Powerloop. The sweep is the only thing
+ * that knows the difference, so it says so in a file rather than in a
+ * console run nobody keeps: a picture is evidence for one round, a number
+ * in a file is evidence forever.
+ *
+ * NOT FLOWN IS NOT THE SAME AS NOT SCOREABLE and the file keeps them apart.
+ * The rig has no wall, so it cannot fly a Wall Ride; a pilot can. It cannot
+ * fly a ballistic arc, so it cannot fly a Jump Rope; a pilot can. What the
+ * rig cannot demonstrate it says nothing about, rather than marking it bad.
+ */
+function writeProven(out) {
+  const { rows, skips } = out;
+  const q = (n) => `'${n.replace(/'/g, "\\'")}'`;
+  const flown = rows.map((r) => `  ${q(r.name)}: `
+    + `{ runs: ${r.res.total}, landed: ${r.res.correct} },`).join('\n');
+  const notFlown = skips.map((k) => `  ${q(k.name)}: ${q(k.why)},`).join('\n');
+  const body = `${LICENCE}
+/*
+ * GENERATED FILE. Do not edit by hand.
+ *
+ * Written by \`node scripts/trick-sweep.js --all --write\`, which flies every
+ * scoreable pattern from the pattern's own steps at three banks and three
+ * turn errors and records what the recogniser called each flight. Rerun it
+ * after any change to the catalogue or the recogniser, and commit the
+ * result: the trick list reads it to tell a pilot which tricks are known to
+ * score rather than presenting all of them as equally available.
+ *
+ * LANDED is the number of those flights the recogniser named correctly.
+ * runs === landed means it named the trick on every sample.
+ *
+ * NOT_FLOWN is what the RIG cannot fly, which is not a statement about
+ * whether a pilot can score it. The rig has no wall and cannot fly a
+ * ballistic arc; a pilot has both. These are absences of evidence and the
+ * list says so in those words.
+ */
+
+export const PROVEN = {
+${flown}
+};
+
+export const NOT_FLOWN = {
+${notFlown}
+};
+`;
+  const path = new URL('../src/game/proven.js', import.meta.url);
+  writeFileSync(path, body);
+  console.log(`\nwrote src/game/proven.js: ${rows.length} flown, ${skips.length} not flown.`);
 }
 
 async function main() {
   const only = (process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '';
   const showing = (process.argv.find((a) => a.startsWith('--show=')) || '').split('=')[1] || '';
+  const writing = process.argv.includes('--write');
   if (showing) {
     const bank = Number((process.argv.find((a) => a.startsWith('--bank=')) || '=0').split('=')[1]);
     for (const nm of showing.split(',')) { show(nm.trim(), { bankDeg: bank }); }
     return;
   }
   if (process.argv.includes('--all')) {
-    const { rows, skipped, skipWhy } = sweepEverything();
+    const swept = sweepEverything();
+    const { rows, skipped, skipWhy } = swept;
     let over = 0;
     let named = 0;
     const misses = [];
@@ -1048,6 +1131,12 @@ async function main() {
     console.log(over === 0
       ? `\nAll ${rows.length} flown: nothing was ever paid more than it was worth.`
       : `\n${over} samples were paid MORE than the trick they flew.`);
+    /* Only from a clean sweep. Evidence written out of a run that told a lie
+     * somewhere is not evidence. */
+    if (writing && over === 0) { writeProven(swept); }
+    if (writing && over !== 0) {
+      console.log('NOT written: a sweep with an over-claim in it is not evidence.');
+    }
     process.exit(over === 0 ? 0 : 1);
   }
   console.log('trick-sweep: the same shape, perturbed the way a human varies it.');

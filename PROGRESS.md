@@ -27466,3 +27466,56 @@ scripts/trick-sweep.js`, `npm run lint:fc` PASS, `npm run lint:presets` PASS.
 `npm run lint:catalog` COULD NOT RUN, `vendor/betaflight` is an uninitialised
 submodule here and it lints the firmware parameter catalogue, which this change
 does not touch. `npm run verify` not run: no physics, plant, ABI or build change.
+
+## 2026-09-03: the trick list shows only what is known to score
+
+The list showed all sixty four patterns that carry a name and a price, each
+with a film and no caveat, which promises a pilot sixty four tricks the town
+will pay for. It will not. Three of them the recogniser has never once named in
+testing and seventeen more the rig cannot even fly, so a pilot could pick a 375
+point trick off a menu, fly it, get nothing, and conclude the scoring is broken
+rather than that the trick was never really there.
+
+The gate is evidence now. `scripts/trick-sweep.js --all --write`, wired as
+`npm run trick:proven`, writes `src/game/proven.js` with what each pattern
+scored out of how many flights, and the list admits a trick on having been
+scored at least once. 44 of 64 qualify: 39 that scored on every flight, marked
+Reliable, and 5 that scored on some, marked Fussy, because "scores every time"
+and "scores when it is flown cleanly" are different promises and a pilot who
+has just missed one twice deserves to know which they were sold. The detail
+panel says the count outright: "Scored on all 9 test flights, across three bank
+angles and three degrees of overshoot."
+
+The file is written ONLY from a sweep with no over-claim in it. Evidence taken
+out of a run that told a lie somewhere is not evidence.
+
+The list repairs itself. Teach the rig to fly a wall and the wall tricks
+reappear on the next generation, with no hand maintained list to fall out of
+date. The cost is that a trick the rig cannot fly is hidden even though a pilot
+may well be able to score it, and that is the right way round: a missing trick
+is a pleasant surprise when it scores, a listed one that never pays is a broken
+promise.
+
+### The door had never opened
+
+Driving the real shell to check the change found that pressing Enter on the
+Trick list row did nothing at all. The screen was built, the row was on the
+Freestyle menu with `action: 'tricks'`, the breadcrumb knew it and
+SCREEN_ACTIONS listed it, so every part that ANNOUNCES the room existed. The
+part that walks into it is a hand written list of screen names in `act`, and
+the new screen was never added to it, so the action fell through every branch
+and the pilot stayed where they were. The whole feature was unreachable.
+
+It looked fine because `window.__ui.show('tricks')` renders it perfectly, which
+is how it had been checked. Only pressing the key a pilot presses showed that
+nothing happened. Enter opens it now and Escape comes back to Freestyle, both
+confirmed in headless Chromium rather than by reading the code.
+
+Checks run this turn: the shell driven in headless Chromium via
+`node scripts/shots.js`, confirming 44 rows, 39 Reliable and 5 Fussy, the meta
+line reading "100 points, Block, Building Blocks, Reliable", the evidence
+sentence in the panel, and the Enter and Escape path in and out of the screen.
+`node scripts/trick-sweep.js --all --write` regenerated the evidence from a
+clean sweep. `npm run lint:fc` PASS, `npm run lint:presets` PASS.
+`npm run lint:catalog` COULD NOT RUN: `vendor/betaflight` is an uninitialised
+submodule here. `npm run verify` not run: no physics, plant, ABI or build change.

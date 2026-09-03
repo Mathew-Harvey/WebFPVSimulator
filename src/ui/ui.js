@@ -98,6 +98,7 @@ import {
   boardPageUrl, fetchTrackList, fetchTrackTimes, pickFeaturedTracks, wikiPageUrl,
 } from '../share/board.js';
 import { PATTERNS } from '../game/trickdetect.js';
+import { PROVEN } from '../game/proven.js';
 import { trickByName } from '../game/tricks.js';
 import { TrickFilmPlayer, filmFor, VIEW_LABEL } from './trickfilm.js';
 import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js';
@@ -751,6 +752,32 @@ function scoreableTricks() {
     if (!t || t.points == null) {
       continue;
     }
+    /*
+     * ONLY WHAT IS KNOWN TO SCORE.
+     *
+     * The list showed all sixty four patterns that carry a name and a price,
+     * which promises a pilot sixty four tricks the town will pay for. It
+     * will not. Some of them the recogniser has never once named, and a
+     * trick you cannot land is worse than one that is missing: the pilot
+     * flies it, gets nothing, and concludes the scoring is broken rather
+     * than that the trick was never really there.
+     *
+     * So the gate is evidence. src/game/proven.js is written by the sweep,
+     * which flies every pattern from its own steps and records what came
+     * back, and a trick earns its place here by having been scored at least
+     * once. That also means the list REPAIRS ITSELF: teach the rig to fly a
+     * wall and the wall tricks reappear on the next generation, with no
+     * hand maintained list to fall out of date.
+     *
+     * The cost is that a trick the rig cannot fly is hidden even though a
+     * pilot may well be able to score it, which is the right way round. A
+     * missing trick is a pleasant surprise when it scores. A listed one
+     * that never pays is a broken promise.
+     */
+    const ev = PROVEN[pat.name];
+    if (!ev || ev.landed <= 0) {
+      continue;
+    }
     seen.add(pat.name);
     out.push({
       name: pat.name,
@@ -758,6 +785,8 @@ function scoreableTricks() {
       category: t.category || 'Other',
       difficulty: t.difficulty || '',
       steps: pat.steps,
+      /* How reliably the sweep landed it. See trickStatus. */
+      proven: ev,
     });
   }
   /* Grouped the way the workbook groups them, and cheapest first inside a
@@ -766,6 +795,29 @@ function scoreableTricks() {
     ? a.points - b.points
     : a.category.localeCompare(b.category)));
   return out;
+}
+
+/*
+ * How reliably it scores, in a sentence, for a trick that is already known
+ * to score at all: scoreableTricks does not list one that is not.
+ *
+ * The distinction still earns its place because "scores every time" and
+ * "scores when it is flown cleanly" are different promises, and a pilot who
+ * has just missed one twice deserves to know which they were sold.
+ */
+function trickStatus(t) {
+  if (t.proven.landed >= t.proven.runs) {
+    return {
+      tag: 'Reliable',
+      line: `Scored on all ${t.proven.runs} test flights, across three bank`
+        + ' angles and three degrees of overshoot.',
+    };
+  }
+  return {
+    tag: 'Fussy',
+    line: `Scored on ${t.proven.landed} of ${t.proven.runs} test flights, so`
+      + ' it wants flying cleanly to register.',
+  };
 }
 
 function countScoreableTricks() {
@@ -2020,7 +2072,7 @@ export class Ui {
      */
     const tricks = el('div', 'screen screen-page screen-tricks');
     tricks.append(el('h2', null, 'Trick list'));
-    tricks.append(el('p', 'rates-lede', 'Everything the town will score, what it pays, and what it looks like. Pick a trick and watch it: the picture is drawn from the same definition the scorer matches against, so what you see is exactly what it is waiting for. Points are before the combo, which multiplies them.'));
+    tricks.append(el('p', 'rates-lede', 'Every trick the scorer is known to name, what it pays, and what it looks like. Pick one and watch it: the picture is drawn from the same definition the scorer matches against, so what you see is exactly what it is waiting for. Each one has been flown and scored in testing, which is what earns it a place here. Points are before the combo, which multiplies them.'));
     const trickStage = el('div', 'trick-stage');
     this.trickCanvas = el('canvas', 'trick-film');
     const trickSide = el('div', 'trick-side');
@@ -3903,7 +3955,8 @@ export class Ui {
       return this.trickRows().map((t) => ({
         label: t.name,
         value: `${formatScore(t.points)}`,
-        note: `${t.difficulty}. ${t.how} Seen ${VIEW_LABEL[t.view].replace('seen ', '')}.`,
+        note: `${t.status.tag}. ${t.difficulty}. ${t.how}`
+          + ` Seen ${VIEW_LABEL[t.view].replace('seen ', '')}.`,
         action: 'noop',
       }));
     }
@@ -3949,7 +4002,7 @@ export class Ui {
           label: 'Trick list',
           value: `${countScoreableTricks()} tricks`,
           action: 'tricks',
-          note: 'Everything the town will score, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
+          note: 'Every trick the scorer is known to name, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
         },
         /* A DOOR, not a copy. This is one of the screens the same Tune
          * row was built onto, and Quad is one press away. It still
@@ -6095,7 +6148,9 @@ export class Ui {
     if (!this.trickList) {
       this.trickList = scoreableTricks().map((t) => {
         const film = filmFor(t.steps);
-        return { ...t, film, how: film.caption, view: film.view };
+        return {
+          ...t, film, how: film.caption, view: film.view, status: trickStatus(t),
+        };
       });
     }
     return this.trickList;
@@ -6117,8 +6172,9 @@ export class Ui {
     }
     this.trickShown = t.name;
     Ui.text(this.trickName, t.name);
-    Ui.text(this.trickMeta, `${formatScore(t.points)} points \u00b7 ${t.difficulty} \u00b7 ${t.category}`);
-    Ui.text(this.trickHow, t.how);
+    Ui.text(this.trickMeta, `${formatScore(t.points)} points \u00b7 ${t.difficulty}`
+      + ` \u00b7 ${t.category} \u00b7 ${t.status.tag}`);
+    Ui.text(this.trickHow, `${t.how} ${t.status.line}`);
     /* Which way the camera faces, because a roll seen from the side is a
      * craft that does not appear to move at all and the reader has to know
      * they are being shown the one angle it reads from. */
@@ -9050,8 +9106,23 @@ export class Ui {
       this.renderMenu();
       return;
     }
+    /*
+     * `tricks` BELONGS HERE and was missing, so the Trick list door did
+     * nothing. The screen was built, the row was on the Freestyle menu with
+     * action 'tricks', and SCREEN_ACTIONS listed it, so every part that
+     * announces the room existed; this is the one that walks into it, and
+     * it is a hand written list of screen names that the new screen was
+     * never added to. Pressing Enter on the row left the pilot exactly
+     * where they were, which is the whole feature unreachable.
+     *
+     * Found by driving the real shell rather than by reading: window.__ui
+     * .show('tricks') rendered the screen perfectly, which is what made it
+     * look fine, and only pressing the key a pilot presses showed that
+     * nothing happened.
+     */
     if (action === 'howto' || action === 'pilot' || action === 'quad'
-      || action === 'courses' || action === 'freestyle' || action === 'credits') {
+      || action === 'courses' || action === 'freestyle' || action === 'credits'
+      || action === 'tricks') {
       /*
        * A room opened FROM another room remembers which, so Back is the way
        * you came rather than a jump to the title. Only from a real room,

@@ -257,5 +257,60 @@ for (const cse of CASES) {
   );
 }
 
+/*
+ * AND ORDINARY FLYING STILL SCORES NOTHING.
+ *
+ * This is the check that guards the off gate coming down. A lower gate holds
+ * a lap open longer, and the thing that must not follow is a lap opening on
+ * a craft that is merely flying PAST a post. The winding totals are what
+ * refuse a fly past, not the rate gate, which is the argument the recogniser
+ * has made since its first version; these two cases are that argument
+ * measured on the real aircraft down a street of eight posts.
+ *
+ * A false positive is far worse than a missed trick: a score that goes up
+ * for ordinary flying stops meaning anything.
+ */
+{
+  const street = [];
+  for (let i = 0; i < 8; i += 1) {
+    street.push({
+      kind: 'box',
+      material: 'wall',
+      x0: 10 + i * 8 - 0.16,
+      y0: 0,
+      z0: -0.16,
+      x1: 10 + i * 8 + 0.16,
+      y1: 6,
+      z1: 0.16,
+    });
+  }
+  const town = buildWorld(street, deriveObstacles, 0);
+  const runs = [
+    ['a straight run down a street of posts at 12 m/s', -4, 12, 6.5],
+    ['the same flown closer to them, at 9 m/s', -2.5, 9, 9.0],
+  ];
+  for (const [label, z, speed, secs] of runs) {
+    /* eslint-disable-next-line no-await-in-loop */
+    const rig = await makeRig({
+      wasmBytes,
+      diffText,
+      colliders: town.colliders,
+      field: town.field,
+      spawn: V(0, 0, -14),
+      spawnYaw: Math.PI,
+      groundY: 0,
+    });
+    rig.hold(200, 0, 0, 0, 0.5);
+    rig.settle(V(4, 4, z), Math.atan2(1, 0), 2.0);
+    rig.fly(rampPath(V(4, 4, z), V(78, 4, z), secs, speed), { heading: Math.atan2(1, 0) });
+    const got = rig.done(900).map((t) => t.name);
+    check(
+      `${label}: nothing`,
+      got.length === 0,
+      got.length ? `named ${got.join(' + ')}` : 'silent, as it must be',
+    );
+  }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

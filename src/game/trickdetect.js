@@ -771,9 +771,37 @@ export const PATTERNS = [
     steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 1 } }],
   },
   {
-    /* Over the object, a 180 roll, then down the back and under it. */
+    /* Over the object, a 180 roll, then down the back and under it, with
+     * the roll falling inside the lap's own window. */
     name: 'Split-S',
     steps: [{ path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0.5, pitch: 0.5 } }],
+  },
+  {
+    /*
+     * THE SAME TRICK WITH THE ROLL FLOWN FIRST, which is how the
+     * Tricktionary writes it and how a pilot flies it: "Begin by flying over
+     * an object, perform a 180 roll, then dive down the back of the object."
+     * The roll comes BEFORE the dive, so it closes as its own primitive and
+     * the lap that follows carries no roll at all.
+     *
+     * Without this the shape was unreachable as a Split-S and landed on Half
+     * Matty instead, which is the same two primitives and is priced at 350
+     * against this trick's 100. Reported from real play as "a Split-S wasn't
+     * registered", and it was worse than not registered: it was paid three
+     * and a half times over as something else.
+     *
+     * What separates the two is the one thing the Tricktionary writes down
+     * between them, which is that a Half Matty holds a stall: "To make the
+     * trick more visually appealing, include a half-second stall after
+     * completing the roll." Its own pattern asks for that now. A dive flown
+     * straight out of the roll is this trick; one flown after a pause is
+     * that one, and the pause is measured rather than assumed.
+     */
+    name: 'Split-S',
+    steps: [
+      { axis: 'roll', turns: 0.5 },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { roll: 0, pitch: 0.5 } },
+    ],
   },
   {
     /* Over the object, a partial front flip, out underneath it. */
@@ -1057,10 +1085,28 @@ export const PATTERNS = [
     /* "a 180 roll, smoothly transitioning into the second half of a Matty
      * flip", with an optional half second stall the pattern does not
      * demand because the workbook offers it as decoration. */
+    /*
+     * THE STALL IS ASKED FOR NOW, and it is the whole of what separates this
+     * from a Split-S. The Tricktionary gives the two almost the same words,
+     * a 180 roll and then out from over the object flying backwards
+     * underneath it, and differs on exactly two things: WHERE the roll
+     * happens, "as you approach an object" here against "flying over an
+     * object" there, which the recogniser cannot see because a rotation
+     * carries no position; and the stall, which it can.
+     *
+     * It used to be left out as decoration, on the grounds that the workbook
+     * offers it rather than demands it. That made this pattern and a Split-S
+     * the same two primitives, and since bestMatch takes the dearer of two
+     * equally clean readings, every Split-S a pilot flew was paid 350 as a
+     * Half Matty instead of 100. A trick nobody flew being paid for is the
+     * one thing the sweep exists to refuse, and it was happening in the air
+     * where the sweep could not see it, because the sweep flies each pattern
+     * from its own steps and never flies a Split-S at a Half Matty.
+     */
     name: 'Half Matty',
     steps: [
       { axis: 'roll', turns: 0.5 },
-      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
+      { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 }, stallMs: 400 },
     ],
   },
   {
@@ -4828,6 +4874,18 @@ function matchSteps(steps, prims, n) {
       }
       if (s.tap !== undefined
         && (s.tap ? !anyTap : Boolean(p.tapped) !== s.tap)) {
+        return -1;
+      }
+      /*
+       * A pause before the lap, which a rotation step has always been able
+       * to ask for and a path step could not. It is what tells a Half Matty
+       * from a Split-S: both are a 180 roll and then a half loop out from
+       * over the object, and the only thing the Tricktionary writes down
+       * between them is that a Half Matty holds a half second stall after
+       * the roll. Same slack as the rotation side.
+       */
+      if (s.stallMs !== undefined && p.stallBeforeMs < s.stallMs
+        && !spend(p.stallBeforeMs >= s.stallMs * SLACK_STALL ? 1 : -1)) {
         return -1;
       }
       if (s.rot !== undefined) {

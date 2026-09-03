@@ -122,7 +122,35 @@ const BAR_CLEAR_MIN = 1.5;
  * on. A quad flying straight past a rail at five metres subtends half a
  * turn and is thrown away, because it came out on the side it went in.
  */
-const REACH = [12, 14];
+/*
+ * A POLE'S REACH IS NOT A BAR'S, and it was, which is why an orbit of the
+ * training park's own mast stopped registering as soon as a pilot flew the
+ * outer ring.
+ *
+ * Fourteen metres was measured for a BAR, from a powerloop: "a powerloop
+ * flown on the real aircraft at a 12 m/s entry traces a loop about twelve
+ * metres across". An ORBIT is a much bigger figure than a powerloop, and the
+ * park says so on the ground: the mast "carries three painted rings at 6, 10
+ * and 14 m" precisely so a pilot can see the radius they are flying. Twelve
+ * metres of reach cannot cover a fourteen metre ring, and it is worse than
+ * that, because the mast is four legs standing 1.5 m off the centre those
+ * rings are drawn around, so the distance from a leg runs from 11.9 to 16.1
+ * m on a 14 m orbit and the engagement flickers.
+ *
+ * Measured on the real aircraft, two tracked laps of the mast:
+ *
+ *    6 m   Orbit x2      10 m   Orbit x2      12 m   Orbit x2
+ *   14 m   Orbit x2      16 m   NOTHING       18 m   NOTHING
+ *
+ * So a pilot flying the ring the park paints for them was on the edge of the
+ * cliff, and one flying a little wider than the paint fell off it. Eighteen
+ * covers the outer ring from any leg with room for a pilot who flies wide,
+ * and it costs nothing in false positives: what refuses a fly past is the
+ * WINDING TOTALS, which this file and trickdetect.js have both said from
+ * their first versions, and the reach only decides whether the winding is
+ * counted at all. scripts/orbit-check.js flies the negatives.
+ */
+const REACH = [18, 14];
 /* How far past the end of the axis still counts, so a loop around the end
  * of a rail is still that rail. */
 const OVERHANG = [3, 2.5];

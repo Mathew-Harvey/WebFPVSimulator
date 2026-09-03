@@ -259,6 +259,31 @@ for (const cse of CASES) {
 }
 
 /*
+ * AND AT EVERY RADIUS THE PARK PAINTS, PLUS THE ONES A PILOT DRIFTS TO.
+ *
+ * The mast carries three painted rings at 6, 10 and 14 m, put there so a
+ * pilot can SEE the radius they are flying. A pole's reach was 12 m and
+ * measured from a leg standing 1.5 m off the centre those rings are drawn
+ * around, so the outer ring sat on the edge of the cliff and anything wider
+ * fell off it: measured, 14 m named Orbit x2 and 16 m named nothing at all.
+ * A pilot flying the circle the ground tells them to fly was one metre from
+ * scoring nothing, which is the report.
+ */
+{
+  for (const [radius, secs] of [[6, 5], [10, 7], [14, 9], [18, 11]]) {
+    /* eslint-disable-next-line no-await-in-loop */
+    const got = await orbit({
+      radius, secs, laps: 2, alt: 12,
+    });
+    check(
+      `two laps at ${radius} m, which the park paints or a pilot drifts to`,
+      got.tricks.includes('Orbit x2'),
+      `named ${got.tricks.join(' + ') || 'nothing'}`,
+    );
+  }
+}
+
+/*
  * ONE LAP IS A YAW SPIN, TWO ARE AN ORBIT, AND A LAP WITH THE NOSE
  * ELSEWHERE IS NEITHER.
  *

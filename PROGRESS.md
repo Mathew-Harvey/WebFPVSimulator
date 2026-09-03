@@ -28595,3 +28595,100 @@ here, and the check that would catch its absence is the one above.
     npm run contact:selftest           all 72 passed
     npm run score:selftest             206 passed, 1 failed  (unchanged)
     npm run trick:sweep -- --all       47 flown, no over-claims
+
+## 2026-09-03: the orbit tower, and a Split-S paid as something else
+
+Reported from real play after the previous round: the orbit still does not
+register on the training park's tower, a Matty Flip was named a Split-S, and
+a Split-S was not named at all.
+
+### The tower: a pole's reach was smaller than the ring the park paints
+
+The mast is the one element the whole practice field is laid out around, and
+the ground under it "carries three painted rings at 6, 10 and 14 m" so a
+pilot can SEE the radius they are flying. A pole's reach was 12 m, and it is
+measured from a LEG standing 1.5 m off the centre those rings are drawn
+around, so on a 14 m orbit the distance from a leg runs 11.9 to 16.1 m and
+the engagement flickers in and out.
+
+Flown on the real aircraft, two tracked laps of the mast:
+
+     6 m   Orbit x2       12 m   Orbit x2
+    10 m   Orbit x2       14 m   Orbit x2
+    16 m   NOTHING        18 m   NOTHING       20 m   NOTHING
+
+So the outer ring the park paints sat one metre from the cliff, and a pilot
+flying a little wider than the paint, which is what flying a big orbit means,
+got nothing at all. That is the report.
+
+Fourteen metres was measured for a BAR, from a powerloop tracing "a loop
+about twelve metres across". An orbit is a much bigger figure than a
+powerloop and the park says so on the ground. A pole's reach is 18 m now,
+which covers the outer ring from any leg with room for a pilot who flies
+wide. It costs nothing in false positives, because what refuses a fly past is
+the WINDING TOTALS, which both files have said since their first versions;
+the reach only decides whether the winding is counted at all. Measured after:
+Orbit x2 at 6, 10, 12, 14, 16, 18 and 20 m.
+
+### The Matty and the Split-S were two halves of one collision
+
+Driving the real pattern table with fabricated primitives, which tests the
+matcher without any flying in the way:
+
+    lap from over, pitch 0.5, NO roll           -> Matty Flip
+    lap from over, pitch 0.5, roll 0.15         -> Matty Flip
+    lap from over, pitch 0.5, roll 0.30         -> Split-S
+    lap from over, pitch 0.5, roll 0.50         -> Split-S
+    a 180 ROLL and THEN the dive                -> HALF MATTY
+
+The last line is the whole of "a Split-S wasn't registered", and it is worse
+than not registering. The Tricktionary writes a Split-S as "Begin by flying
+over an object, PERFORM A 180 ROLL, THEN dive down the back of the object",
+so the roll comes BEFORE the dive and closes as its own primitive, leaving a
+lap with no roll in it at all. The only pattern of that shape was Half Matty,
+which is the same two primitives and is priced at 350 against a Split-S's
+100. So every Split-S a pilot flew was paid three and a half times over as a
+different trick. The sweep could not see it, because the sweep flies each
+pattern from its own steps and never flies a Split-S at a Half Matty.
+
+The recogniser's Split-S asked for the roll CONCURRENT with the lap, which is
+a real shape, and it is the one that steals a Matty: a Matty Flip flown with
+more than a quarter turn of incidental roll lands on it. Measured on a
+cleanly flown Matty in the shell, the lap's own roll is 0.05, so the quarter
+turn boundary is nowhere near a good Matty; the reported one was flown with
+real roll in it, which is genuinely between the two tricks.
+
+### What was changed
+
+Split-S is now BOTH shapes: the concurrent roll it had, and the two step form
+the Tricktionary describes, a 180 roll and then the half lap out from over.
+
+Half Matty asks for its stall. That is the one thing the Tricktionary writes
+down between the two, "To make the trick more visually appealing, include a
+half-second stall after completing the roll", and it was left out as
+decoration. The other difference, WHERE the roll happens, "as you approach an
+object" against "flying over an object", is not something the recogniser can
+see, because a rotation primitive carries no position.
+
+A path step can ask for a stall now, which a rotation step always could.
+
+Measured after, on the same fabricated shapes:
+
+    a 180 ROLL and THEN the dive                -> Split-S
+    a 180 ROLL, a STALL, then the dive          -> Half Matty
+
+### Checks
+
+    node scripts/orbit-check.js        17 passed, 0 failed  (4 new radii)
+    node scripts/path-check.js         12 passed, 0 failed
+    node scripts/frame-check.js        34 passed, 0 failed
+    node scripts/wall-check.js         45 passed, 0 failed
+    node src/trackbuilder/selftest.js  495 passed, 0 failed
+    npm run contact:selftest           all 72 passed
+    npm run score:selftest             206 passed, 1 failed  (unchanged)
+    npm run trick:sweep -- --all       47 flown, no over-claims
+
+The negatives matter most for a change that widens a reach, and they hold: a
+straight run down a street of posts still names nothing at 12 and 9 m/s, and
+seven rolls flown down that same street are still all named at three
+spacings.

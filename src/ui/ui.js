@@ -97,6 +97,9 @@ import {
 import {
   boardPageUrl, fetchTrackList, fetchTrackTimes, pickFeaturedTracks, wikiPageUrl,
 } from '../share/board.js';
+import { PATTERNS } from '../game/trickdetect.js';
+import { trickByName } from '../game/tricks.js';
+import { TrickFilmPlayer, filmFor, VIEW_LABEL } from './trickfilm.js';
 import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js';
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
@@ -162,7 +165,7 @@ import { FC_DUMP_KEY } from '../fc/dump.js';
 const LINK_ACTIONS = new Set(['leaderboard', 'wiki']);
 const SCREEN_ACTIONS = new Set([
   'courses', 'race', 'freestyle', 'pilot', 'quad', 'launch', 'standings', 'rates', 'pids', 'fc',
-  'howto', 'credits', 'trackbuilder', 'remix', 'editown', 'choosepad',
+  'howto', 'tricks', 'credits', 'trackbuilder', 'remix', 'editown', 'choosepad',
   'calibrate',
 ]);
 
@@ -198,6 +201,7 @@ const SCREEN_TITLES = {
   paused: 'Paused',
   results: 'Run complete',
   howto: 'How to fly',
+  tricks: 'Trick list',
   credits: 'Credits',
 };
 const CRUMBS = {
@@ -213,6 +217,7 @@ const CRUMBS = {
   paused: ['Paused'],
   results: ['Run complete'],
   howto: ['How to fly'],
+  tricks: ['Freestyle', 'Trick list'],
   credits: ['Credits'],
   title: ['WebFPV'],
 };
@@ -722,6 +727,51 @@ function wordmark() {
  */
 
 /* A menu plus a side column for its note, so the note cannot resize the rows. */
+
+/*
+ * THE LIST IS THE CATALOGUE'S, NOT A WRITTEN ONE.
+ *
+ * One row per PATTERN the recogniser matches, so nothing can be advertised
+ * that the game will not score and nothing scoreable can be left out. The
+ * building blocks (a bare quarter roll and its family) are deliberately
+ * skipped: they are what a trick is MADE of and the workbook prices them as
+ * consolation rather than as things to go and fly, and a list opening with
+ * eleven fragments buries the tricks underneath them.
+ */
+const BLOCK_NAME = /^(1\/4|1\/2|3\/4|1) (Flip|Roll|Yaw)/;
+
+function scoreableTricks() {
+  const seen = new Set();
+  const out = [];
+  for (const pat of PATTERNS) {
+    if (seen.has(pat.name) || BLOCK_NAME.test(pat.name)) {
+      continue;
+    }
+    const t = trickByName(pat.name);
+    if (!t || t.points == null) {
+      continue;
+    }
+    seen.add(pat.name);
+    out.push({
+      name: pat.name,
+      points: t.points,
+      category: t.category || 'Other',
+      difficulty: t.difficulty || '',
+      steps: pat.steps,
+    });
+  }
+  /* Grouped the way the workbook groups them, and cheapest first inside a
+   * group, so the list reads as a ladder rather than as an index. */
+  out.sort((a, b) => (a.category === b.category
+    ? a.points - b.points
+    : a.category.localeCompare(b.category)));
+  return out;
+}
+
+function countScoreableTricks() {
+  return scoreableTricks().length;
+}
+
 function wrapMenu() {
   const stage = el('div', 'menu-stage');
   const menu = el('div', 'menu');
@@ -1957,6 +2007,38 @@ export class Ui {
     this.screens.howto = howto;
     this.howtoSource = touchWanted() ? 'touch' : 'keyboard';
     this.renderHowto();
+
+    /*
+     * THE TRICK LIST, and it is the catalogue's own list rather than a
+     * written one.
+     *
+     * Every row here is a PATTERN the recogniser actually matches, priced by
+     * the workbook, described from its own steps and animated from them too.
+     * Nothing on this screen is typed out by hand, so a trick cannot be
+     * advertised that the game will not score, and a film cannot show a
+     * shape the scorer does not want. See src/ui/trickfilm.js.
+     */
+    const tricks = el('div', 'screen screen-page screen-tricks');
+    tricks.append(el('h2', null, 'Trick list'));
+    tricks.append(el('p', 'rates-lede', 'Everything the town will score, what it pays, and what it looks like. Pick a trick and watch it: the picture is drawn from the same definition the scorer matches against, so what you see is exactly what it is waiting for. Points are before the combo, which multiplies them.'));
+    const trickStage = el('div', 'trick-stage');
+    this.trickCanvas = el('canvas', 'trick-film');
+    const trickSide = el('div', 'trick-side');
+    this.trickName = el('div', 'trick-name', '');
+    this.trickMeta = el('div', 'trick-meta', '');
+    this.trickHow = el('p', 'trick-how', '');
+    this.trickView = el('div', 'trick-view', '');
+    trickSide.append(this.trickName, this.trickMeta, this.trickHow, this.trickView);
+    trickStage.append(this.trickCanvas, trickSide);
+    tricks.append(trickStage);
+    const trickBlock = wrapMenu();
+    this.trickMenu = trickBlock.menu;
+    this.trickMenu.classList.add('menu-scroll');
+    this.trickHelp = trickBlock.help;
+    tricks.append(trickBlock.stage, hintWithKeys(['Esc'], 'Goes back. Arrow keys move through the list.'));
+    this.screens.tricks = tricks;
+    this.trickPlayer = new TrickFilmPlayer(this.trickCanvas);
+    this.trickShown = '';
 
     const credits = el('div', 'screen screen-page screen-credits');
     credits.append(el('h2', null, 'Credits'));
@@ -3817,6 +3899,14 @@ export class Ui {
      * SIM_ARCADE is a plant flag and is not gated on race mode, so arcade
      * changes a freestyle flight too and nothing else was saying so.
      */
+    if (this.screen === 'tricks') {
+      return this.trickRows().map((t) => ({
+        label: t.name,
+        value: `${formatScore(t.points)}`,
+        note: `${t.difficulty}. ${t.how} Seen ${VIEW_LABEL[t.view].replace('seen ', '')}.`,
+        action: 'noop',
+      }));
+    }
     if (this.screen === 'freestyle') {
       /*
        * THE CARDS ONLY EXIST IF THERE IS A CHOICE.
@@ -3849,6 +3939,18 @@ export class Ui {
           (id) => (id === 'free' ? 'Free flight' : 'Scored run'),
           (id) => { s.freestyleRun = id; },
         ),
+        /*
+         * WHAT THERE IS TO FLY, before flying it. A pilot who does not know
+         * a Powerloop is a thing cannot fly one on purpose, and the town
+         * gives no clue: it is a town. This is the only place the catalogue
+         * is visible from, and it is a door rather than a copy of it.
+         */
+        {
+          label: 'Trick list',
+          value: `${countScoreableTricks()} tricks`,
+          action: 'tricks',
+          note: 'Everything the town will score, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
+        },
         /* A DOOR, not a copy. This is one of the screens the same Tune
          * row was built onto, and Quad is one press away. It still
          * NAMES the tune, because what you are about to fly is worth
@@ -4671,6 +4773,9 @@ export class Ui {
     if (this.screen === 'freestyle') {
       this.renderMapCards();
     }
+    if (this.screen === 'tricks') {
+      this.renderTricks();
+    }
     if (this.screen === 'title') {
       this.renderTitleCards();
     }
@@ -4685,6 +4790,7 @@ export class Ui {
     const host = {
       title: this.titleMenu,
       howto: this.howtoMenu,
+      tricks: this.trickMenu,
       credits: this.creditsMenu,
       courses: this.coursesMenu,
       freestyle: this.freestyleMenu,
@@ -5037,6 +5143,7 @@ export class Ui {
     return {
       title: this.titleHelp,
       howto: this.howtoHelp,
+      tricks: this.trickHelp,
       credits: this.creditsHelp,
       courses: this.coursesHelp,
       freestyle: this.freestyleHelp,
@@ -5978,6 +6085,48 @@ export class Ui {
     this.markCards();
   }
 
+
+  /*
+   * The rows, with each trick's film built once and kept. A film is a handful
+   * of closures over numbers; building sixty of them costs nothing and
+   * rebuilding one per keypress would.
+   */
+  trickRows() {
+    if (!this.trickList) {
+      this.trickList = scoreableTricks().map((t) => {
+        const film = filmFor(t.steps);
+        return { ...t, film, how: film.caption, view: film.view };
+      });
+    }
+    return this.trickList;
+  }
+
+  /*
+   * Show whichever trick the cursor is on. Guarded on the NAME having
+   * changed, because this runs on every menu render and restarting an
+   * animation that is already playing is a visible stutter.
+   */
+  renderTricks() {
+    const rows = this.trickRows();
+    if (!rows.length || !this.trickPlayer) {
+      return;
+    }
+    const t = rows[Math.max(0, Math.min(rows.length - 1, this.cursor))] || rows[0];
+    if (t.name === this.trickShown) {
+      return;
+    }
+    this.trickShown = t.name;
+    Ui.text(this.trickName, t.name);
+    Ui.text(this.trickMeta, `${formatScore(t.points)} points \u00b7 ${t.difficulty} \u00b7 ${t.category}`);
+    Ui.text(this.trickHow, t.how);
+    /* Which way the camera faces, because a roll seen from the side is a
+     * craft that does not appear to move at all and the reader has to know
+     * they are being shown the one angle it reads from. */
+    const view = VIEW_LABEL[t.view].replace('seen ', '');
+    Ui.text(this.trickView, `Seen ${view}. The pink nose is the front of the quad, and the faded copies are where it was.`);
+    this.trickPlayer.show(t.film);
+  }
+
   renderMapCards() {
     /* Whichever picker is up. Race holds no world cards any more, so on that
      * screen this paints an empty strip and costs nothing. */
@@ -6834,6 +6983,17 @@ export class Ui {
     }
     if (screen === 'howto') {
       this.renderHowto();
+    }
+    /* The film is the only thing in this shell that asks for frames outside
+     * flight, so it runs on exactly one screen and stops the moment that
+     * screen is left. */
+    if (this.trickPlayer) {
+      if (screen === 'tricks') {
+        this.trickShown = '';
+        this.renderTricks();
+      } else {
+        this.trickPlayer.stop();
+      }
     }
     if (screen === 'credits') {
       const url = new URL(window.location.href);

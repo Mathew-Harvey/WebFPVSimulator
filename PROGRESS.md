@@ -26873,3 +26873,101 @@ And a note on method, because it cost real time twice. Waiting on a background
 run with `until ! pgrep -f "park-fly.js --reps"` DEADLOCKS: the waiter's own
 command line contains the pattern, so pgrep matches the waiter and it waits on
 itself. Six of them piled up behind a run that had already finished.
+
+## 2026-09-03 A review of the surgery, and the trick list
+
+### The review found a real one, and it was in this turn's own work
+
+Three reviewers went over the recogniser surgery with distinct lenses and one
+skeptic per finding. The one that survived matters:
+
+**insertPending sorted a lap in front of the rotation that opened it.** A lap's
+startMs is BACKDATED by up to PATH_LOOKBACK, because where the craft was before
+the winding gate opened is what decides whether the lap is a whole one or a
+half. Ordering the buffer on it reaches back past the rotation that set the
+trick up: a Jump Rope's quarter yaw is flown, the lap begins, and the lap sorts
+ahead of the yaw. Every one of the twelve [rotation, lap] patterns would have
+been unreachable again, which is the exact fault buffering in flight order was
+added to fix.
+
+Ordering on the GATE instead was tried and broke the orbit sweep: a yaw spin
+that runs the whole way round an orbit begins before the winding gate opens, so
+it sorted ahead of its own lap and the sweep scored an Orbit x2 AND the two yaw
+spins inside it, paid twice for one motion.
+
+The key that works is "when was this FINISHED BEING SET UP": a lap's gate, and
+a rotation's END. That is exactly what a pattern asks, because [rotation, lap]
+means the rotation was finished before the lap began.
+
+The reviewer also found that releaseHeld and drain's handback bypass
+insertPending. Both were tried through it and both are WRONG through it, for
+the same reason and now with a comment saying so: a lap that has just declined
+to pay for its rotations is handing them back to be reconsidered AFTER it, and
+sorting them into the middle of the buffer by when they were flown puts them
+alongside the lap that just let them go.
+
+### The trick list
+
+A pilot who does not know a Powerloop is a thing cannot fly one on purpose, and
+the town gives no clue: it is a town. So the Freestyle screen now has a door to
+a Trick list, and it is the CATALOGUE'S list rather than a written one.
+
+One row per PATTERN the recogniser actually matches, 64 of them, priced by the
+workbook, grouped the way the workbook groups them and cheapest first inside a
+group so it reads as a ladder rather than an index. The bare quarter roll and
+its family are skipped: they are what a trick is MADE of, the workbook prices
+them as consolation rather than as things to go and fly, and a list opening
+with eleven fragments buries the tricks underneath them.
+
+Each row carries a sentence saying what to do and a film showing it, and
+NEITHER IS WRITTEN DOWN. Both are generated from the pattern's own steps, so a
+trick cannot be advertised that the game will not score and a film cannot show
+a shape the scorer does not want. Change a pattern and its picture changes with
+it. If a film looks wrong, the pattern is wrong: this is a second pair of eyes
+on the catalogue as much as it is a teaching aid. It is the same rule the
+landing page's wiki keeps, where a figure computes rather than illustrates.
+
+WHICH WAY THE CAMERA FACES is decided by the trick. A rotation is only legible
+from the one direction its axis points at you: roll turns about the nose so it
+reads from behind, pitch about the wing so it reads from the side, yaw about
+the up axis so it reads from above. A lap around a rail is flown in the plane
+across the rail, which is the side view; a lap around a post is the view from
+above. When a trick has both, the lap wins, because the lap is the bigger shape
+and the rotation inside it still reads. The caption says which view it is,
+because a reader has to know they are being shown the one angle it works from.
+
+WHERE THE NOSE POINTS is part of the trick, not decoration. An Orbit is a
+circle flown with the object HELD ON THE SCREEN and an ordinary turn that
+happens to go round twice is not one; the recogniser tells them apart with
+TRACK_DOT, so the film points the nose at the post for a lap the pattern marks
+`track` and along the path for every other. Beyond that the glyph carries only
+the rotation the PILOT added on top of the loop's own turn, which is what a
+lap's rot means: holding a circle already turns the craft once per lap, so a
+Powerloop asking for one flip is asking for the loop and nothing more.
+
+CEL SHADED, like the town. Flat colour, hard two pixel ink, and the sky is two
+flat bands rather than a wash because a gradient is the one thing a cel shaded
+frame does not have. The materials are the training park's: an amber rail seen
+end on, a concrete post, a concrete wall standing on the ground with the
+sakura target band the park paints at tap height.
+
+PERFORMANCE. One canvas, one requestAnimationFrame, and it runs only while its
+screen is up: show() starts it and leaving the screen stops it, so this is the
+only thing in the shell that asks for frames outside flight and it asks for
+none the rest of the time. The backing store is capped at 2x. Nothing is
+allocated in the draw loop, and the films are built once and kept, because a
+film is a handful of closures over numbers and rebuilding one per keypress
+would cost more than holding sixty.
+
+REDUCED MOTION is honoured and nothing that carries meaning is hidden: the film
+does not animate and draws its key frames side by side instead, so the shape of
+the trick is still there to be read.
+
+### Checks
+
+score:selftest (207), contact:selftest, lint:shell, lint:quality, lint:nouns,
+lint:presets, lint:arcade and lint:board all pass. Photographed at 1280x800:
+the Powerloop, Orbit x2, Wall Tap, Split-S and Roll films all render, the page
+reports zero errors, and the Freestyle screen's row reads "Trick list = 64
+tricks". Flown: eleven of thirteen manoeuvres named, the Cinnamon Roll now
+reaching Donkey Loop rather than Mavvy Roll.

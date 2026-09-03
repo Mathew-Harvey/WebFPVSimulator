@@ -2457,6 +2457,9 @@ export class TrickDetector {
       turns,
       dir: acc >= 0 ? 1 : -1,
       startMs: run.startMs,
+      /* When the winding actually started, as against the backdated start
+       * the lap's SIDES are read from. See insertPending. */
+      orderMs: run.openMs,
       endMs,
       startSide: run.startSide,
       endSide,
@@ -2665,6 +2668,16 @@ export class TrickDetector {
       if (this.absorbedByLap(prim)) {
         continue;
       }
+      /*
+       * ON THE END, deliberately, and not in flight order.
+       *
+       * These are rotations a lap was holding and has just declined to pay
+       * for, so they are being reconsidered AFTER it. Sorting them back into
+       * the middle of the buffer by when they were flown puts them alongside
+       * the lap that just let them go, and the orbit sweep then scored an
+       * Orbit x2 AND the two yaw spins inside it: paid twice for one motion,
+       * which is the whole thing heldByPath exists to prevent.
+       */
       this.pending.push(prim);
       released += 1;
     }
@@ -2817,7 +2830,9 @@ export class TrickDetector {
      * IN FLIGHT ORDER, not closure order. A lap opens before the rotation
      * inside it and closes after, so pushing on close puts the lap AFTER
      * primitives that happened later, and every pattern is a sequence.
+     * A rotation is ordered on when it FINISHED. See insertPending.
      */
+    prim.orderMs = prim.endMs;
     this.insertPending(prim);
     this.lastCloseMs = this.nowMs;
     this.drain(false);
@@ -2878,6 +2893,12 @@ export class TrickDetector {
         if (lap.held && lap.held.length > 0) {
           const back = lap.held.filter((h) => !this.absorbedByLap(h));
           if (back.length > 0) {
+            /* ONTO THE FRONT, deliberately. A lap that named nothing is
+             * gone and the rotations it was holding are the next thing to
+             * be considered, ahead of anything buffered behind it. Sorting
+             * them back by when they were flown put them alongside laps
+             * that had already been dropped and the orbit sweep scored an
+             * Orbit x2 AND the two yaw spins inside it. */
             this.pending.unshift(...back);
           }
         }
@@ -2942,10 +2963,29 @@ export class TrickDetector {
    * it must, on the same 50% bar absorbedByLap uses for a lap already named,
    * because they are the same question about a lap at two different moments.
    */
-  /* Buffer a primitive where it belongs in the flight, by when it began. */
+  /*
+   * Buffer a primitive where it belongs in the flight.
+   *
+   * ON orderMs, NOT startMs. A lap's startMs is BACKDATED by up to
+   * PATH_LOOKBACK, because where the craft was before the winding gate
+   * opened is what decides whether the lap is a whole one or a half. Sorting
+   * on it puts the lap in front of the rotation that OPENED the trick: a
+   * Jump Rope's quarter yaw is flown, then the lap begins, and the lap's
+   * backdated start reaches back past the yaw and sorts ahead of it. Every
+   * one of the twelve [rotation, lap] patterns would be unreachable again,
+   * which is the exact fault buffering in flight order was added to fix.
+   *
+   * The key is therefore "when was this FINISHED BEING SET UP": a lap's
+   * gate, and a rotation's END. That is exactly the question a pattern asks,
+   * because [rotation, lap] means the rotation was FINISHED before the lap
+   * began. Ordering rotations by their start instead put a yaw spin that
+   * runs the whole way round an orbit ahead of the orbit, and the orbit
+   * sweep scored an Orbit x2 AND the two yaw spins inside it.
+   */
   insertPending(prim) {
+    const key = prim.orderMs ?? prim.startMs;
     let at = this.pending.length;
-    while (at > 0 && this.pending[at - 1].startMs > prim.startMs) {
+    while (at > 0 && (this.pending[at - 1].orderMs ?? this.pending[at - 1].startMs) > key) {
       at -= 1;
     }
     this.pending.splice(at, 0, prim);

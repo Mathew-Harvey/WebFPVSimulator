@@ -27675,3 +27675,63 @@ which is defensible for a frame against concrete, so the more likely cause is
 the separation pass rather than the friction, and changing a contact constant on
 a hunch is the wrong way to find out. It wants its own turn with the clip watch
 and passStats.sepFail in front of it.
+
+## 2026-09-03: the wall tap and the scoring misses, investigated and written up as a prompt
+
+Two reports from real play, investigated without changing code: wall taps
+stick to the wall and do not bounce off, and the scorer misses orbits,
+inverted orbits, Split-S, powerloops and Matty flips and mislabels Juicy
+Flicks. The write up is `prompts/wall-tap-scoring-fix.md`, a prompt for the
+session that fixes them. Nothing else in the tree changed this turn.
+
+### The wall tap: the contact normal reaches the plant reversed
+
+`resolveContactAt` in `src/main.js` converts the contact normal, the patch
+arm and the moving surface velocity with `threeDirToSim`, which is the axis
+permutation in `frame.js` and nothing else. `worldPosToSim` and
+`raiseGroundFromState` apply `qSpawnInv` first, and the ground path carries
+a comment describing exactly this class of bug; the obstacle path never got
+the same fix. The city spawns at yaw pi, so every vertical face in the town
+hands `sim_contact_at` a normal pointing INTO the wall. `contact_impulse`
+then reads an approach as separating and applies nothing, and reads a
+departure as an approach and pushes the craft back in, while the sweep parks
+the hull 8 mm off the face each pass and drops the tangential travel. That is
+the 4.0 m/s approach resolving to 0.09 m/s and the 9.7 m/s approach to
+nothing, the six `stuck` crashes at the training wall, the Wall Tap being
+re keyed to the sweep, and the craft sticking after a tap. The race field
+never showed it because its spawn yaw is 0. Two secondary faults sit behind
+it: the pass breaks out and discards the slide whenever the plant declines
+an impulse, and `hit()` reports no penetration for a box face when the centre
+is outside, so separation is a flat 8 mm. Not fixed here; the prompt says
+how, and how to prove it on the real shell, which is the only place it can
+be seen: `contact:selftest` passed 72 of 72 with the bug present.
+
+### The scorer: the measurement layer, not the catalogue
+
+The catalogue, the prices and the workbook arithmetic are right. A lap only
+exists as winding about a derived pole or bar axis, so the 34 m mast, every
+wall and every roof are invisible to it; the open air Split-S and half
+powerloop blocks the sheet prices are unreachable; the lap's rotation is a
+body frame integral repaired by de banking with a sign convention measured
+per lap; Juicy Flick, Snapback, Immelmann and Split-S differ by path and are
+told apart by rotation; and the evidence is synthetic or non deterministic,
+with no recording of a flight that did not score. The prompt asks for a
+deterministic stick recorder and a replay in the real shell first, then a
+path primitive measured from the trajectory in one frame, with objects looked
+up in the full collider set, keeping the catalogue, the scorer, the pattern
+language and the open air rotation counting.
+
+### The history was replaced a second time
+
+`git fetch` printed `forced update` on main. The line ending at 20277e5 (root
+84628bf, 26 to 29 August, 70 commits, including the contact rebuild and the
+wall tap work of 27 August) is reachable from no remote branch, and
+`git merge-base 20277e5 7530969` is empty. main is a fresh root at 17071e8
+(30 August) whose tree carried every file of the old tip plus the places
+work, so no code was lost, only the record, exactly as on 26 August. This
+container's stale local `main` still holds the old line. Nothing was merged,
+per the rule in CLAUDE.md; the owner decides what to do with it.
+
+### Checks
+
+None run: no code changed. `npm run verify` not run for the same reason.

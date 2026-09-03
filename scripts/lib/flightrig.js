@@ -346,14 +346,14 @@ export async function makeRig(opts) {
     const q = attitudeWorld(st);
     const up = qRot(q, V(0, 1, 0));
     const vh = craftVerticalHalf(Math.sqrt(Math.max(0, 1 - up.y * up.y)));
-    /* collide.js wants the attitude as three.js (x, y, z, w). */
-    const aq = [-st[9], st[10], -st[8], st[7]];
+    /* collide.js and contactPatch both want the WORLD attitude as three.js
+     * orders it, (x, y, z, w), which is the shell's qObs: the plant
+     * quaternion through simQuatToThree and then premultiplied by qSpawn. */
     const qw = qMul(qSpawn, [st[7], -st[9], st[10], -st[8]]);
     const aqx = qw[1];
     const aqy = qw[2];
     const aqz = qw[3];
     const aqw = qw[0];
-    void aq;
 
     let a = from;
     let b = to;

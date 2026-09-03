@@ -26515,3 +26515,90 @@ tricks.
 six that are not are named above. `npm run lint:catalog` still cannot run
 here: `vendor/betaflight` is not checked out in this container. `npm run
 verify` was not run and was not asked for.
+
+### Second round on the park, with repeats
+
+Running the rig once tells you almost nothing: the flights vary, so a single
+pass reports a different set of names each time and it is impossible to tell
+a fix from a coin. `--reps=N` flies each manoeuvre N times and reports the
+hit rate, and that is what the numbers below are.
+
+Two more faults were the game rather than the rig:
+
+**`gapStallMs` never reset on motion.** It meant "how much of this run has
+been spent stopped" rather than "was the craft stopped when this began", so a
+pilot who hovered on the pad, flew for half a minute and then landed a clean
+Flip was handed a Flip Stall Rewind, a different trick at a different price.
+Reproduced every single time in the town. Both readers want the contiguous
+stall: a Stall Rewind is stop and then rotate, and a Segmented Flip's pause is
+contiguous with the rotation after it too.
+
+**A lap flown belly up drove itself into a spin.** A positive yaw stick turns
+the world heading the OTHER way when the craft's up axis points at the ground,
+so the rig's heading loop was pushing the wrong way for the whole inverted
+half. Measured: 5.86 turns of yaw in under two seconds and a trick that came
+out as eighteen consecutive Yaw Spins. Heading control is also off entirely
+while inverted now, unless the manoeuvre is one that genuinely wants the nose
+held there, because through the inverted half of a Powerloop it was injecting
+a whole turn of yaw the lap never asked for and the trick came out a Donkey
+Loop.
+
+And one was the harness, which is worth writing down because it was producing
+most of what looked like flakiness: **arming the probe reset only the PROBE.**
+The recogniser kept whatever it was holding from the flight before, including
+open laps around obstacles the craft had since been teleported away from. So a
+manoeuvre's result depended on what had been flown before it.
+
+The rig's own mistakes, for the next person: a half lap takes half of `secs`,
+not all of it, and the number has a FLOOR as well as a ceiling, because below
+about three seconds a whole turn there is under a g of centripetal, the craft
+never inverts, and the catalogue rightly calls the result a Beginner Matty. A
+rate command does not stop when the stick centres, so holding to a whole turn
+comes out at 1.25. The exit must fly out the way the lap ENDED, not the way it
+began, or a half lap curls back round the rail and finishes the circle. And a
+loop around a rail 3.2 m off the ground has to have its centre raised, or the
+bottom of the circle is in the grass.
+
+Where it stands, flown in the town, in acro, at 60 Hz, two repeats each:
+
+    Powerloop, tight            PASS  2/2
+    Powerloop, wide and slow    PASS  2/2
+    Roll loop around the arch   PASS  2/2
+    Orbit x2 around a post      PASS  2/2
+    Immelmann Turn              PASS  2/2
+    Roll                        PASS  2/2
+    Flip                        PASS  2/2
+    Yaw Spin                    PASS  2/2
+    Jump Rope rail lap          FLAKY 1/2
+    1 Trippy Spin               FLAKY 1/2
+    Wall Tap                    FAIL  0/2
+    Matty Flip                  FAIL  0/2
+    Cinnamon Roll               FAIL  0/2
+
+An earlier three repeat run of a slightly different rig had nine at 3/3, the
+jump rope and the Immelmann among them, so the two FLAKY rows are genuinely
+marginal rather than broken: the jump rope is a very tight loop close to the
+ground and the trippy spin is a ballistic inverted arc, and both sit near a
+threshold rather than over one.
+
+NOT FIXED, and each with what is known about it:
+
+  - **Wall Tap.** The craft reaches the wall and the two quarter turns
+    happen, but the pairing does not survive: either the approach balances
+    against the face and holds station a tenth of a metre off it, so the
+    contact never happens at all, or the quarters run past a quarter and the
+    pair comes out a Double Flip. It is a tuning problem in the rig's stick
+    script, not a refusal by the recogniser, which named a Wall Tap CLEAN
+    from a flown approach earlier in this work.
+  - **Matty Flip.** A Matty Flip is ENTERED INVERTED: half a lap from over
+    means the wanted force points down at the start, so the craft is on its
+    back before the trick begins and a run in that arrives the right way up
+    spends the first third of the lap rolling over instead of flying it.
+    Starting the arc early enough to be established fixes the attitude and
+    overshoots the winding, so the lap reads 1.5 turns instead of half of
+    one. The right answer is an entry that inverts BEFORE the arc rather
+    than a longer arc.
+  - **Cinnamon Roll** wants a whole turn of yaw inside a lap and comes out a
+    Mavvy Roll, which is the same lap read as carrying a roll instead. The
+    yaw the rig injects is not landing as yaw.
+  - **The 34 m mast** is still not an obstacle below y 34.7.

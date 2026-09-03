@@ -417,6 +417,18 @@ window.__settle = async (p, heading, secs = 1.6) => {
  * only as a name. */
 window.__armProbe = () => {
   const d = window.__trickDetector();
+  /*
+   * A CLEAN RECOGNISER FOR EVERY MANOEUVRE.
+   *
+   * Arming the probe only reset the PROBE. The detector kept whatever it
+   * was holding from the flight before: open laps around obstacles the
+   * craft had been teleported away from, buffered primitives waiting to
+   * settle, a stall clock. So a manoeuvre's result depended on what had
+   * been flown before it, and the same script named a Powerloop on one run
+   * and a Donkey Loop on the next with nothing changed between them. That
+   * is the flakiness, and most of it was the harness.
+   */
+  d.restart();
   window.__probe = { laps: [], tricks: [], pend: [], bumps: [] };
   if (!d.__patched) {
     d.__patched = true;
@@ -470,11 +482,20 @@ function lapPlan(ob, opts = {}) {
   const {
     radius = 3.4, secs = 3.0, turns = -1, ph0 = -Math.PI / 2,
     noseAlong = false, yawRate = 0, runUp = 14, after = null, afterTurns = 0.5,
+    liftY = 0,
   } = opts;
   return `
     const OB = ${JSON.stringify(ob)};
     const [e1, e2] = window.__basis(OB.axis);
-    const c = V(OB.x, OB.y, OB.z);
+    /*
+     * The loop's centre need not be the rail. A rail low enough that a lap
+     * around it puts the bottom of the circle in the grass is flown with
+     * the centre RAISED, which is what a pilot does at the jump rope: the
+     * rail sits at 3.2 m, and a 2.1 m circle on it bottoms out at 1.1 m,
+     * which with two metres of tracking error is the ground. The lap still
+     * encloses the rail as long as the lift is inside the radius.
+     */
+    const c = V(OB.x, OB.y + ${liftY}, OB.z);
     const R = ${radius};
     const lap = window.__circle(c, e1, e2, R, ${secs}, ${ph0}, ${turns});
     /*
@@ -683,7 +704,7 @@ const MANOEUVRES = [
      * first attempt came back BUMP with the craft's rotation scrambled. */
     name: 'Jump Rope rail lap',
     want: 'Powerloop',
-    body: lapPlan(PARK.jump, { radius: 2.1, secs: 2.0, turns: -1 }),
+    body: lapPlan(PARK.jump, { radius: 2.9, secs: 2.4, turns: -1, liftY: 1.3 }),
   },
   {
     name: 'Orbit x2',
@@ -736,7 +757,8 @@ const MANOEUVRES = [
        * touched: near is not tapped. A pilot tapping a wall flies at the
        * wall.
        */
-      await window.__fly(window.__line(from, V(W.x, W.target, W.faceZ + 0.22), 2.6),
+      /* Aim THROUGH the face, not up to it: near is not tapped. */
+      await window.__fly(window.__line(from, V(W.x, W.target, W.faceZ + 0.45), 2.6),
         { heading: Math.atan2(0, 1) });
       /*
        * A quarter back, touch, a quarter forward: the trick as written, and
@@ -745,17 +767,25 @@ const MANOEUVRES = [
        * stop at a quarter, not somewhere past it.
        */
       const TURN = Math.PI * 2;
-      await window.__stickHold([0, 0.32, 0, 0.6], 900, (c, t, a) => -a.q >= TURN * 0.24);
-      await window.__stickHold([0, 0, 0, 0.6], 260);
-      await window.__stickHold([0, -0.32, 0, 0.64], 900, (c, t, a) => a.q >= TURN * 0.24);
       /*
-       * LEVEL IT ON THE STICKS FIRST. Handing a craft that is a quarter
-       * turn out of level straight to the tracker makes the tracker right
-       * it, and it rights it fast enough that the recogniser reads another
-       * whole rotation: the tap kept coming out a Double Flip.
+       * A quarter is a QUARTER. Held on a rate stick the craft carries on
+       * past it, and two quarters that each ran to a half came out a Double
+       * Flip. Each one is now stopped by flying the attitude back to level
+       * on the sticks before the next is asked for.
        */
-      await window.__stickHold((c) => [0, cl(c.fwd.y * 2.2, -0.4, 0.4), 0, 0.55], 700,
-        (c) => Math.abs(c.fwd.y) < 0.08 && c.up.y > 0.9);
+      /*
+       * Two quarters, sharply, with nothing between them. A levelling pass
+       * in the middle was tried and it ATE the second quarter: the pitch
+       * back and the levelling that followed cancelled to one primitive and
+       * the trick came out as a single quarter turn.
+       */
+      await window.__stickHold([0, 0.34, 0, 0.6], 800, (c, t, a) => -a.q >= TURN * 0.25);
+      await window.__stickHold([0, 0, 0, 0.6], 200);
+      await window.__stickHold([0, -0.34, 0, 0.66], 800, (c, t, a) => a.q >= TURN * 0.25);
+      await window.__stickHold(
+        (c) => [0, cl(c.fwd.y * 2.4, -0.45, 0.45), 0, 0.58], 700,
+        (c) => Math.abs(c.fwd.y) < 0.08 && c.up.y > 0.9,
+      );
       await window.__fly(window.__on(V(0, 0.15, -1), 12, 2.8), { heading: Math.atan2(0, -1) });
       window.__stick(0, 0, 0, 0);
       await new Promise((z) => setTimeout(z, 900));
@@ -808,10 +838,31 @@ const MANOEUVRES = [
      * below about 3 s a whole turn the aircraft flies the shape without
      * ever going over and the catalogue rightly calls it a Beginner Matty.
      */
+    /*
+     * ON THE LOOP ARCH, not the Split-S bar. The Split-S bar sits at 12.6 m
+     * with its two posts at the ends of it, and a half lap flown there
+     * never wound more than a tenth of a turn however it was tuned. The
+     * arch is the element a pilot would use for this anyway, and it is the
+     * one every other lap here is flown around.
+     */
+    /*
+     * A MATTY FLIP IS ENTERED INVERTED, which is the whole reason it kept
+     * coming out a Beginner Matty. Half a lap from OVER means the wanted
+     * force points DOWN at the start, so the craft is on its back before
+     * the trick begins, and a run in that arrives the right way up spends
+     * the first third of the lap rolling over instead of flying it.
+     *
+     * So the arc starts a fifth of a turn early. The pilot sets up ON the
+     * circle, which is what setting up is, and the scored half then happens
+     * with the aircraft already where it needs to be. The extra winding
+     * still reads as a half lap because the SIDES decide that, and this
+     * starts and ends on opposite sides of the rail.
+     */
     name: 'Matty Flip',
     want: 'Matty Flip',
-    body: lapPlan(PARK.splitBar, {
-      radius: 3.0, secs: 2.6, turns: -0.5, ph0: Math.PI / 2, runUp: 16,
+    body: lapPlan(PARK.arch, {
+      radius: 3.2, secs: 2.9, turns: -0.62, ph0: Math.PI / 2 + Math.PI * 0.22,
+      runUp: 15,
     }),
   },
   {

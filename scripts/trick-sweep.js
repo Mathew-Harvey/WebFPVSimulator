@@ -526,6 +526,10 @@ function directions(steps) {
   const dirs = steps.map(() => 1);
   for (let i = 0; i < steps.length; i += 1) {
     const s = steps[i];
+    /* An explicit direction, which is the whole difference between a
+     * Snapback and a Juicy Flick: same two rotations, opposite first pitch.
+     * Ignoring it flew the Juicy Flick and read the miss as a scorer fault. */
+    if (s.dir !== undefined) { dirs[i] = s.dir; }
     if (s.oppTo !== undefined) { dirs[i] = -dirs[s.oppTo]; }
     if (s.sameAs !== undefined) { dirs[i] = dirs[s.sameAs]; }
   }
@@ -672,7 +676,29 @@ function flyPattern(steps, opts = {}) {
     settle(1500);
     for (let i = 0; i < steps.length; i += 1) {
       const st = steps[i];
+      /* The stall is the trick. Hover, and then rotate WITHOUT flying on
+       * at cruise, because a Stall Rewind is flown with the throttle cut. */
       if (st.stallMs) { hover(Math.round(st.stallMs * 1.4)); }
+      const drift = st.stallMs ? 0 : 1;
+      /*
+       * Belly up before a step that asks for it. An Inverted Yaw Spin is a
+       * Yaw Spin flown upside down and is worth 400 against 50, so a rig
+       * that flew it the right way up was reading a 350 point gap as a
+       * scorer miss. The half roll that gets there is flown, not teleported,
+       * so it shows up as its own primitive, which is honest: that is what
+       * a pilot does.
+       */
+      if (st.inverted && up.y > 0) {
+        const R = 420;
+        for (let i = 0; i < R; i += 1) {
+          const d = TURN * 0.5 / R;
+          n = norm(rot(n, n, 0));
+          up = norm(rot(up, n, d));
+          pos = add(pos, mul(fly, 12 * STEP));
+          f.go(pos, n, up);
+        }
+        settle(260);
+      }
       const name = axisOf(st, steps);
       const t = (st.turns ?? 1) * (1 + de) * dirs[i];
       const ms = Math.round(Math.max(420, Math.abs(t) * 780));
@@ -681,7 +707,7 @@ function flyPattern(steps, opts = {}) {
         const d = (TURN * t) / ms;
         n = norm(rot(n, axis, d));
         up = norm(rot(up, axis, d));
-        pos = add(pos, mul(fly, 12 * STEP));
+        pos = add(pos, mul(fly, 12 * STEP * drift));
         f.go(pos, n, up);
       }
       if (i < steps.length - 1) { settle(180); }
@@ -734,8 +760,10 @@ function show(name, opts = {}) {
       console.log(`  LAP    turns ${fmt(pr.turns)} dir ${pr.dir} from ${pr.startSide}`
         + ` rot ${fmt(pr.rot)} spin ${fmt(pr.spin)} align ${fmt(pr.align)} own ${fmt(pr.own)}`);
     } else {
-      console.log(`  ROT    ${pr.axis !== undefined ? `axis ${pr.axis} ` : ''}`
-        + `${fmt(pr.turns ?? pr.amount ?? 0)} ${JSON.stringify(Object.keys(pr))}`);
+      const ax = ['roll', 'pitch', 'yaw'][pr.axis] || `axis ${pr.axis}`;
+      console.log(`  ROT    ${ax} ${fmt(pr.turns ?? 0)} dir ${pr.dir}`
+        + ` stallBefore ${pr.stallBeforeMs ?? 0} slow ${pr.slowMs ?? 0}`
+        + ` invFrac ${fmt(pr.invertedFrac ?? 0)} tapped ${pr.tapped}`);
     }
   }
   console.log(`  named  ${f.names.length ? f.names.join(', ') : '(nothing)'}`);

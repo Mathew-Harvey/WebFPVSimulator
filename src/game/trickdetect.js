@@ -2294,6 +2294,8 @@ export class TrickDetector {
         run.backWind = 0;
         run.tailMs = this.nowMs;
         run.openMs = this.nowMs;
+        /* Latched at open, for the reason a rotation's is. See axisStep. */
+        run.startStallMs = this.gapStallMs;
         run.startAxis = run.axisAcc;
         run.lastAxis = run.axisAcc;
         run.alignSum[0] = 0;
@@ -2550,7 +2552,7 @@ export class TrickDetector {
       trackFrac: run.haveFwd && run.spanSamples > 0
         ? run.trackSamples / run.spanSamples
         : -1,
-      stallBeforeMs: this.gapStallMs,
+      stallBeforeMs: run.startStallMs ?? 0,
       slowMs: 0,
       touched: this.touched,
       /* The rotations that happened inside this lap, kept so they can be
@@ -2837,6 +2839,16 @@ export class TrickDetector {
         run.slowMs = 0;
         run.startMs = this.nowMs;
         run.startUpZ = upZ;
+        /*
+         * LATCHED AT OPEN, not read at close. gapStallMs resets the moment
+         * the craft moves, which is right, but the primitive was reading it
+         * when it CLOSED: by then the rotation itself had been flown, the
+         * counter was back to zero, and stallBeforeMs was always 0, so
+         * Flip Stall Rewind and 360 Stall Rewind could never fire at all.
+         * The stall that makes a Stall Rewind is the one the trick starts
+         * from, so it is taken when the run opens and carried to the prim.
+         */
+        run.startStallMs = this.gapStallMs;
         /* Zero, not one: this step falls through to the accumulate below
          * and is counted there, the same step that first goes into acc. */
         run.clearSamples();
@@ -2855,6 +2867,16 @@ export class TrickDetector {
         run.slowMs = 0;
         run.startMs = this.nowMs;
         run.startUpZ = upZ;
+        /*
+         * LATCHED AT OPEN, not read at close. gapStallMs resets the moment
+         * the craft moves, which is right, but the primitive was reading it
+         * when it CLOSED: by then the rotation itself had been flown, the
+         * counter was back to zero, and stallBeforeMs was always 0, so
+         * Flip Stall Rewind and 360 Stall Rewind could never fire at all.
+         * The stall that makes a Stall Rewind is the one the trick starts
+         * from, so it is taken when the run opens and carried to the prim.
+         */
+        run.startStallMs = this.gapStallMs;
         /* This branch returns rather than falling through, and it has
          * already put this step into acc, so it counts the step itself. */
         run.clearSamples();
@@ -2904,8 +2926,9 @@ export class TrickDetector {
       endMs: this.nowMs,
       /* Time stalled between the previous primitive and this one, which the
        * Segmented pattern asks about. The rotation's own duration is not
-       * stall time, so the gap counter is cleared here and not before. */
-      stallBeforeMs: this.gapStallMs,
+       * stall time, so this is the value LATCHED WHEN THE RUN OPENED rather
+       * than the counter now: see axisStep. */
+      stallBeforeMs: run.startStallMs ?? 0,
       slowMs: slow,
       touched: this.touched,
       /* The fraction of the rotation flown belly up, 0 to 1. See Run. */

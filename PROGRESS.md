@@ -27317,3 +27317,38 @@ paid more than it was worth.
 `Half Mavvy` and `Maverick Tap Rewind` both cite "a Maverick loop" in their own
 comments, so their lap steps carry the base roll too. A compound has no business
 being looser than the pattern it quotes.
+
+### stallBeforeMs was always zero, so three tricks could never fire
+
+Making `gapStallMs` reset the moment the craft moves was right, and it stopped a
+pilot who hovered on the pad and later landed a clean Flip being handed a Flip
+Stall Rewind. It also broke the three tricks that legitimately want a stall,
+because the primitive READ the counter when it closed rather than when it
+opened: by then the rotation itself had been flown, the counter was back to
+zero, and `stallBeforeMs` was 0 on every primitive the recogniser ever built.
+`Flip Stall Rewind`, `360 Stall Rewind` and `Segmented Flips/Rolls` were
+unreachable, which is 625 points of catalogue that could not be scored.
+
+The stall that makes a Stall Rewind is the one the trick STARTS from, so it is
+latched when the run opens and carried to the primitive. Both rotation open
+sites and the lap's do it. Measured after: `stallBefore 561` and `701` where
+there had been 0, and all three name.
+
+That is the second scorer bug this session that only showed once the rig could
+fly the shape, and the first one this session's own earlier fix introduced.
+
+Two more rig gaps closed alongside it:
+
+- `directions()` ignored an explicit `dir` on a step. That is the entire
+  difference between a Snapback and a Juicy Flick, which are the same two
+  rotations with the first pitch reversed, so the rig flew the Juicy Flick and
+  the sweep read a Snapback miss as a scorer fault. Both name now.
+- A step asking `inverted: true` was flown the right way up, so an Inverted Yaw
+  Spin measured `invFrac 0.00` and named a 50 point Yaw Spin against its own
+  400. The rig rolls belly up first, flown rather than teleported, so the half
+  roll appears as its own primitive the way a pilot's would.
+- A Stall Rewind is flown with the throttle cut, so the rig no longer carries on
+  at 12 m/s through a rotation that asked for a stall.
+
+36 of 47 name on every sample, up from 31. Still zero over-claims, on both
+sweeps.

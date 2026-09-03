@@ -322,6 +322,51 @@ function clampRadius(v) {
 }
 
 /*
+ * HOW DEEP THE HULL IS INTO A FACE IT HAS NOT PUT ITS CENTRE THROUGH.
+ *
+ * (ox, oy, oz) is the componentwise vector from the box to the contact
+ * point, which is zero on an axis the point lies within and the overhang
+ * on an axis it does not. (rx, ry, rz) are the query ellipsoid's semi-axes.
+ * The ellipsoid touches when sum((o_a / r_a)^2) <= 1, so along the overhang
+ * direction its own radius is
+ *
+ *     r_along = 1 / sqrt(sum((o_hat_a / r_a)^2))
+ *
+ * and the overlap is r_along minus the distance, which is the same shape as
+ * the capsule branch's `reach - dist` and is exact rather than a bound.
+ *
+ * IT EXISTS BECAUSE A WALL REPORTED NO PENETRATION AT ALL. hit() only wrote
+ * hitPen for a box when the CONTACT POINT was inside it, which for an
+ * ordinary wall contact it never is: the craft's centre stays outside the
+ * masonry while its prop discs overlap. So contactSeparation() fell through
+ * to a flat 8 mm for every face in the world, and a hull that arrived with
+ * real overlap, which is what a rotation into a surface produces, was moved
+ * 8 mm and asked again, and again, once per pass. Reporting the overlap
+ * resolves it in one step, which is what the field was always for.
+ *
+ * Allocation free, and returns 0 when the ellipsoid does not reach.
+ */
+function ellipsoidPen(ox, oy, oz, rx, ry, rz) {
+  const d2 = ox * ox + oy * oy + oz * oz;
+  if (!(d2 > 1e-18)) {
+    return 0;
+  }
+  const dist = Math.sqrt(d2);
+  const ux = ox / dist;
+  const uy = oy / dist;
+  const uz = oz / dist;
+  const ax = rx > 1e-9 ? ux / rx : 0;
+  const ay = ry > 1e-9 ? uy / ry : 0;
+  const az = rz > 1e-9 ? uz / rz : 0;
+  const q = ax * ax + ay * ay + az * az;
+  if (!(q > 1e-18)) {
+    return 0;
+  }
+  const along = 1 / Math.sqrt(q);
+  return along > dist ? along - dist : 0;
+}
+
+/*
  * Support of the four prop discs along a world direction n. Motors sit at
  * (±ARM, 0, ±ARM) in the body XZ plane. A thin disc of radius PROP in that
  * plane supports PROP * |n × up| along n. Check 15 still publishes
@@ -516,6 +561,11 @@ export class Colliders {
     this.hitIndex = -1;
     this.hitKind = -1;
     this.hitT = -1;
+    /* How far the query ellipsoid overlaps the solid, in world metres, with
+     * the craft's CENTRE still outside it. hitPen is the other question,
+     * which is how far the centre itself is through a face. A surface bounce
+     * has an overlap and no penetration; a tunnelled hull has both. */
+    this.hitOverlap = 0;
     /*
      * How square the contact was: the absolute cosine between the direction of
      * travel and the contact normal, 0 for a pure graze along a surface and 1
@@ -1274,6 +1324,7 @@ export class Colliders {
     this.hitNy = 0;
     this.hitNz = 0;
     this.hitPen = 0;
+    this.hitOverlap = 0;
     this.hitMoving = -1;
     if (!this.built) {
       return -1;
@@ -1472,6 +1523,38 @@ export class Colliders {
       this.hitKind = this.movingKind[bestMoving];
       this.hitT = bestT;
       this.hitMoving = bestMoving;
+      /*
+       * A MOVING BOX REPORTED NO DEPTH OF ANY KIND, and the consequence was
+       * written down and left: a craft inside a train car took a full
+       * impulse on each of the pass's four retries, because the shell's
+       * buried branch can only fire on a number this branch never wrote.
+       * The overlap is the same ellipsoid question as a static face, and a
+       * centre through the car's side is the same nearest-face exit.
+       */
+      if (nx === 0 && ny === 0 && nz === 0) {
+        const dx0 = cxp + hx;
+        const dx1 = hx - cxp;
+        const dy0 = cyp + hy;
+        const dy1 = hy - cyp;
+        const dz0 = czp + hz;
+        const dz1 = hz - czp;
+        let best = dx0;
+        let rAxis = crx;
+        if (dx1 < best) { best = dx1; rAxis = crx; }
+        if (dy0 < best) { best = dy0; rAxis = vh; }
+        if (dy1 < best) { best = dy1; rAxis = vh; }
+        if (dz0 < best) { best = dz0; rAxis = crz; }
+        if (dz1 < best) { best = dz1; rAxis = crz; }
+        this.hitPen = best + rAxis;
+        if (this.hitPen > 8) {
+          this.hitPen = 8;
+        }
+      } else {
+        this.hitOverlap = ellipsoidPen(nx, ny, nz, crx, vh, crz);
+        if (this.hitOverlap > 8) {
+          this.hitOverlap = 8;
+        }
+      }
       this.finishHitNormal(nx, ny, nz, rdx, rdy, rdz);
       return this.hitKind;
     }
@@ -1501,6 +1584,7 @@ export class Colliders {
     let ny;
     let nz;
     this.hitPen = 0;
+    this.hitOverlap = 0;
     if (this.fbox[bestI]) {
       nx = cxp < this.fax[bestI] ? cxp - this.fax[bestI] : cxp > this.fbx[bestI] ? cxp - this.fbx[bestI] : 0;
       ny = cyp < this.fay[bestI] ? cyp - this.fay[bestI] : cyp > this.fby[bestI] ? cyp - this.fby[bestI] : 0;
@@ -1556,6 +1640,19 @@ export class Colliders {
         if (this.hitPen > 8) {
           this.hitPen = 8;
         }
+      } else {
+        /* The centre is outside the face and the hull still overlaps it.
+         * That is the ordinary wall contact, and it used to report nothing.
+         * Reported as hitOverlap rather than as hitPen, because the two
+         * answer different questions and one caller tells them apart: the
+         * shell's buried branch means "the CENTRE is through the face, there
+         * is no approach left to solve, just get out", and a hull overlap
+         * with the centre outside is a contact that still has an impulse
+         * owing. See ellipsoidPen. */
+        this.hitOverlap = ellipsoidPen(nx, ny, nz, crx, vh, crz);
+        if (this.hitOverlap > 8) {
+          this.hitOverlap = 8;
+        }
       }
     } else {
       this.axisToPoint(bestI, cxp, cyp, czp);
@@ -1577,6 +1674,11 @@ export class Colliders {
         if (this.hitPen > 8) {
           this.hitPen = 8;
         }
+        /* A capsule's hitPen has always BEEN the hull overlap: it is the
+         * reach less the distance to the axis, not a depth of the centre.
+         * Reported under both names so a caller that wants the overlap can
+         * ask for it by name whatever primitive it hit. */
+        this.hitOverlap = this.hitPen;
       }
     }
     this.finishHitNormal(nx, ny, nz, d1x, d1y, d1z);

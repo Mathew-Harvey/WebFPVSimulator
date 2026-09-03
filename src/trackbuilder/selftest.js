@@ -1883,20 +1883,62 @@ function suiteClipCatch() {
   check('a centimetre inside a post past epsilon is a crash',
     tickClip(thin, clipSample({ interiorDepth: CLIP_CENTER_EPS + 0.002 }), CLIP_CONFIRM_MS + 16) === 'inside');
 
+  /*
+   * THE STUCK GATE ASKS ABOUT THE CENTRE, and these two cases are how that
+   * is stated. They used to assert the opposite and had been failing since
+   * the rule changed under them.
+   *
+   * The old rule was "still overlapping for 350 ms without moving 40 cm",
+   * with no test on how deep. That is the definition of a WALL RIDE, and it
+   * fired on one: flown head on at the town's training wall through
+   * Betaflight and the plant, six approaches from 4.0 to 11.3 m/s produced
+   * six crashes, every one of them clipCrashKind 'stuck' and not one of them
+   * a Wall Tap. So the gate gained the depth test its own comment had always
+   * described, and these two cases were left behind asserting the version
+   * that caused it.
+   *
+   * Restated: leftover overlap alone is a bounce that has not finished, and
+   * the craft flies out of it. A CENTRE through the face that is going
+   * nowhere is the crash.
+   */
   const jammed = makeClipWatch();
-  check('leftover overlap that is not travelling is stuck',
+  check('leftover overlap alone is not stuck, however long it lasts',
     tickClip(jammed, clipSample({
       unresolved: true,
       x: 0,
       y: 1,
       z: 0,
-    }), STUCK_UNRESOLVED_MS) === 'stuck');
+    }), STUCK_UNRESOLVED_MS * 3) === null);
+
+  /*
+   * AND THE CENTRE INSIDE IS A CRASH, NAMED 'inside' RATHER THAN 'stuck'.
+   *
+   * Worth writing down, because it means the 'stuck' branch is now
+   * unreachable. Both gates want the same thing, `unresolved` with the
+   * centre past CLIP_CENTER_EPS, and both reset together the moment the
+   * craft is no longer inside; but inside confirms after CLIP_CONFIRM_MS
+   * and stuck after STUCK_UNRESOLVED_MS, and 180 is less than 350, so any
+   * run long enough to be stuck was called inside a fifth of a second
+   * earlier. That is the right answer either way, since 'inside' names the
+   * cause more precisely, and the branch is left where it is rather than
+   * deleted on a test's say so. See PROGRESS.md.
+   */
+  const jammedIn = makeClipWatch();
+  check('but a centre through the face that is going nowhere is a crash',
+    tickClip(jammedIn, clipSample({
+      unresolved: true,
+      interiorDepth: CLIP_CENTER_EPS + 0.004,
+      x: 0,
+      y: 1,
+      z: 0,
+    }), STUCK_UNRESOLVED_MS) === 'inside');
 
   const jitter = makeClipWatch();
   let jitterHit = null;
   for (let t = 0, n = 0; t < STUCK_UNRESOLVED_MS + 16; t += 16, n += 1) {
     jitterHit = clipWatchTick(jitter, clipSample({
       unresolved: true,
+      interiorDepth: CLIP_CENTER_EPS + 0.004,
       x: (n % 2) * 0.04,
       y: 1,
       z: 0,
@@ -1905,8 +1947,24 @@ function suiteClipCatch() {
       break;
     }
   }
-  check('centimetre jitter in a corner is stuck',
-    jitterHit === 'stuck', jitterHit);
+  check('centimetre jitter with the centre inside is a crash',
+    jitterHit === 'inside', jitterHit);
+
+  const jitterOut = makeClipWatch();
+  let jitterOutHit = null;
+  for (let t = 0, n = 0; t < STUCK_UNRESOLVED_MS * 2; t += 16, n += 1) {
+    jitterOutHit = clipWatchTick(jitterOut, clipSample({
+      unresolved: true,
+      x: (n % 2) * 0.04,
+      y: 1,
+      z: 0,
+    }), 16);
+    if (jitterOutHit) {
+      break;
+    }
+  }
+  check('and the same jitter with the centre outside is a pilot on a wall',
+    jitterOutHit === null, jitterOutHit);
 
   const buried = makeClipWatch();
   check('22 cm under the terrain for the bury window is a crash',

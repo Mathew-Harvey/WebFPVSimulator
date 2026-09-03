@@ -27735,3 +27735,163 @@ per the rule in CLAUDE.md; the owner decides what to do with it.
 ### Checks
 
 None run: no code changed. `npm run verify` not run for the same reason.
+
+## 2026-09-03: the wall tap, and the direction that never carried the spawn rotation
+
+The owner's report was "wall taps stick to the wall and don't bounce off".
+The last entry in this file left it open with the right instinct, that the
+separation pass was a likelier suspect than the friction, and with the right
+rule, that changing a contact constant on a hunch is the wrong way to find
+out. It was neither. The contact NORMAL reached the plant in the wrong frame.
+
+### What it was
+
+`worldPosToSim` turns a world POSITION into a plant one by undoing the spawn
+rotation and then changing basis. The contact pass turned a world DIRECTION
+into a plant one with `threeDirToSim`, which is the basis change and nothing
+else, and a permutation cannot undo a rotation. So the face normal, the
+four-disc impulse arm and a moving surface's velocity all arrived at the
+plant turned by however far the map's spawn happened to face.
+
+Measured through the real conversion chain, a craft flying at 10 m/s square
+into a wall, with the normal the plant was handed beside the plant's own
+velocity:
+
+    spawn yaw    0 deg    n . v  -10.0   approaching, the impulse is applied
+    spawn yaw   90 deg    n . v   -0.0   PERPENDICULAR, a head on hit reads
+                                         as a graze along the face
+    spawn yaw  180 deg    n . v  +10.0   REVERSED, contact_impulse sees a
+                                         craft leaving and declines it
+
+The freestyle city spawns at yaw pi. So every vertical face in the town was
+the third row: `contact_impulse` returns without an impulse when vn >= 0 and
+there is no penetration to push out of, and the shell passes pen = 0 always.
+No restitution, no friction, no separation. The quarter turn case is worse in
+its way, because it is silent: a head on arrival resolves as a graze.
+
+It is invisible on a floor, which is why it lasted. A yaw about world up
+leaves a vertical normal exactly where it was, so the ground model, the roof
+test, the pad and the whole race field read straight, and only a vertical
+face shows it. `raiseGroundFromState` had carried the fix for the ground
+plane since 30 August with a comment describing this exact class of bug; the
+obstacle path never got it.
+
+Every number this file has recorded about the wall follows from it: the 4.0
+m/s approach that resolved to a dv of 0.09 and the 9.7 m/s that resolved to
+nothing; the six head on approaches at the training wall that were six
+`stuck` crashes; the Wall Tap having to be re-keyed off the sweep's own
+`obsTouched` because no impulse ever arrived; and the craft sitting on the
+wall.
+
+### What was changed
+
+- `worldDirToSim` in src/main.js: undo the spawn rotation, then the basis
+  change. Every direction the shell hands the plant goes through it, the
+  ground normal included, so there is one door.
+- The contact pass no longer throws the frame's slide away when the plant
+  declines an impulse. A declined contact is the ordinary state of a hull
+  sliding ALONG a face, where the normal component is spent and the
+  tangential one is not, and `break`ing there skipped the one thing left to
+  do. A refusal from the MODULE still ends the pass.
+- `hit()` reports `hitOverlap`, the depth of the query ellipsoid into a
+  solid its CENTRE is still outside of. It only ever wrote `hitPen`, which
+  for a box means the centre is through the face, and an ordinary wall
+  contact never is: so `contactSeparation` fell through to a flat 8 mm for
+  every face in the world. Moving boxes reported neither, which is the train
+  case this file recorded as found and not fixed on 27 August.
+- The recogniser's tap cooldown moved from the wall clock to the sim clock.
+  It decides whether a contact reaches the scorer, so it is a game rule.
+
+### What it is worth, measured
+
+`scripts/wall-check.js`, new, flies the real plant at a real wall at three
+speeds and four spawn yaws and asserts the contact, the rebound and the
+exit. 45 checks, all passing. Every contact is inbound at every yaw, where
+before the fix a yaw of pi would have reported every one of them outbound.
+A wall returns 0.242 to 0.252 m/s at 3 and 6 m/s across every yaw, against
+the 0.15 * 1.7 = 0.255 the restitution law predicts, and the four yaws agree
+on the rebound to within a few percent.
+
+`scripts/frame-check.js`, new, is the check that would have caught it: the
+contact invariant at five spawn yaws, the round trip, the position and
+direction paths agreeing, and a lint that refuses a call to the bare
+permutation anywhere in src/main.js outside `worldDirToSim`. 33 checks. It
+caught a fourth call site while it was being written, the moving surface
+velocity, which had been missed by hand.
+
+`npm run park:fly`, the real shell in a real browser, went from 6 elements
+wrong to 4 with no change to the recogniser at all: Jump Rope and Immelmann
+Turn now score where they did not. That rig varies run to run and one run is
+not evidence, but the direction of it is.
+
+`scripts/lib/flightrig.js`, new, is what made the two checks above possible:
+the real plant, the real colliders, the real recogniser, the same frame seam,
+on the sim clock with no browser and no wall clock in it, so the same flight
+gives the same answer every time.
+
+### What is NOT fixed, and the numbers
+
+A quad that meets a wall NOSE FIRST at walking pace still ends up pressed
+against it. The leading prop discs sit below the centre of mass once the
+craft has pitched into its own approach, so the impulse pitches it further
+nose down: measured on a 3 m/s arrival, 2 degrees down to 28 in seven tenths
+of a second and on to vertical, at which point the thrust axis points at the
+wall and the craft holds itself there, taking a contact every pass and
+sitting about 7 cm off the face. Seven centimetres is exactly the reach a
+craft in that attitude presents, because with the thrust axis normal to the
+wall the four prop discs are edge on and the query radius collapses from
+0.141 m to the blade alone.
+
+That is the tumble a real quad does when it clips a wall with its lower edge,
+and it is the state `clipWatchTick`'s thrash detector was written for. The
+trick itself is flown base first precisely so the thrust points away from the
+wall, and park-fly's Wall Tap case, which flies that shape in the real shell,
+passes.
+
+### OPEN QUESTION for the owner
+
+A wall gives back the same 0.25 m/s however hard you hit it. `CONTACT_E_KNEE`
+is 1.7 m/s and a wall's restitution is 0.15, so the separation speed
+saturates at 0.255 m/s at any approach above 1.7 and stays there. Measured:
+0.248 m/s off a 2.89 m/s arrival, 0.242 off a 5.77 m/s one. Whether a quarter
+of a metre a second is the right thing for concrete to give back is a
+question with two of your own reports on either side of it: the knee was set
+after "hitting a wall fast bottom-side-down bounces far more than a real quad
+would", and the low speed floor under it was refused three times because a
+light tap welding on was the first half of this same ticket. It is recorded
+rather than moved.
+
+### Two stale checks, restated
+
+`node src/trackbuilder/selftest.js` had been 491 of 493 since 2 September.
+The two failures were clip watch cases asserting the OLD stuck rule, the one
+that read "still overlapping for 350 ms without moving 40 cm" with no test on
+how deep, which is the definition of a wall ride and fired on one. They now
+assert the rule that holds: leftover overlap alone is a bounce you fly out
+of, and a centre through the face that is going nowhere is the crash. 495 of
+495.
+
+Writing them up found something else. The `stuck` branch is now unreachable:
+`inside` and `stuck` want the same state, they reset together, and inside
+confirms at 180 ms where stuck wants 350, so anything long enough to be stuck
+was called inside a fifth of a second earlier. It is left in place rather
+than deleted on a test's say so.
+
+### Checks run this turn
+
+    node scripts/frame-check.js        33 passed, 0 failed   (new)
+    node scripts/wall-check.js         45 passed, 0 failed   (new)
+    node src/trackbuilder/selftest.js  495 passed, 0 failed  (was 491 of 493)
+    npm run contact:selftest           all 72 passed         (unchanged)
+    npm run score:selftest             206 passed, 1 failed  (unchanged, and
+                                       the failure is the recogniser's, not
+                                       this change's: "the same lap without
+                                       the flip is a Maverick Loop")
+    npm run park:fly                   10 of 14, from 8 of 14
+
+`npm run verify` was NOT run and `npm run build:wasm` cannot run here: there
+is no emsdk in this container and no node_modules at all. Nothing under
+src/native/ or patches/ was touched, so dist/sim.wasm is byte for byte the
+one that was already committed and the determinism trace cannot have moved.
+Verify's replay never raises a ground plane and never calls a contact entry
+point, by design, so it could not see this change either way.

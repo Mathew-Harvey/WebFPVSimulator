@@ -21,6 +21,8 @@
     "lint:boot": "node scripts/boot-check.js",
     "lint:memory": "node scripts/memory-check.js",
     "lint:fc": "node scripts/fc-trace.js",
+    "lint:frame": "node scripts/frame-check.js",
+    "check:wall": "node scripts/wall-check.js",
     "gen:catalog": "node scripts/fc-catalog-gen.js",
     "gen:music": "node scripts/music.js",
     "gen:icons": "node scripts/icons.js sakura . && node scripts/icons.js amber src/trackbuilder",

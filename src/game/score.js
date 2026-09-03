@@ -607,6 +607,10 @@ export class FreestyleScore {
         ? 0
         : Math.max(0, (this.state === RUN_OVER ? this.endedMs : this.nowMs) - this.startedMs),
       assisted: this.assisted,
+      /* Free flight has no clock and no board. Carried on the summary so
+       * the OSD and the results card do not each have to go and ask the
+       * settings what kind of run this was. */
+      timed: this.timed,
       rows,
     };
   }

@@ -981,7 +981,12 @@ export async function boot({ loading, bootStart, mapId }) {
   const scorePos = new THREE.Vector3();
   const scoreFwd = new THREE.Vector3();
   const scoreQuat = new THREE.Quaternion();
-  const score = new FreestyleScore();
+  /*
+   * The run's shape is the pilot's choice, made on the Freestyle screen and
+   * re-read every time a run starts: 'scored' is two minutes and a board,
+   * 'free' is neither. See DEFAULTS.freestyleRun in src/ui/ui.js.
+   */
+  const score = new FreestyleScore({ timed: ui.settings.freestyleRun !== 'free' });
   /*
    * The things in the world worth flying around, derived from the map's own
    * colliders once when the map is built. Null on a map with none, and the
@@ -2734,6 +2739,13 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A new run scores from nothing, and the detector's clock goes back to
      * zero with the sim clock above so the two agree about when a trick
      * happened. */
+    /*
+     * RE-READ EVERY RUN, not once at boot. A pilot switches between a
+     * scored run and free flight from the Freestyle screen and then presses
+     * fly, and a shape decided at construction would have kept whichever
+     * one happened to be stored when the page loaded.
+     */
+    score.timed = ui.settings.freestyleRun !== 'free';
     score.reset();
     trickDetector.restart();
     ui.resetScore();
@@ -3449,6 +3461,19 @@ export async function boot({ loading, bootStart, mapId }) {
 
   async function submitFreestyleRun() {
     const summary = score.summary();
+    /*
+     * FREE FLIGHT IS NOT A SCORE. It has no clock, so there is nothing for
+     * a board to compare it against: a pilot could sit in the town for an
+     * hour and out-total any two minute run ever flown. Refused here rather
+     * than hidden, so a pilot who meant to post learns why in one sentence.
+     */
+    if (summary.timed === false) {
+      notice = {
+        text: 'Free flight has no clock, so it has no place on the board. Switch Run to Scored on the Freestyle screen.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     if (!summary.tricks || !(summary.total > 0)) {
       notice = { text: 'A run with no tricks in it is not a score.', untilMs: performance.now() + 2800 };
       return;
@@ -6110,6 +6135,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * scorer, which is the thing that decides when the run ends, rather
          * than off a second copy that could disagree with it. */
         runState: scoreState,
+        runTimed: score.timed,
         runRemainMs: scoreRemainMs,
         gate: race.next + 1,
         gateCount: race.gates.length,

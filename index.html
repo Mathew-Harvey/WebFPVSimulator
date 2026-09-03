@@ -309,6 +309,193 @@
       @media (prefers-reduced-motion: reduce) {
         .score-name, .score-verdict.is-on { animation-duration: 0.01s; }
       }
+      /* ------------------------------------------------------------------
+         THE ANIME LAYER.
+
+         The town is cel shaded and the score was not: flat type fading in
+         and out over a world drawn with hard ink lines. This is the same
+         readout wearing the same clothes as the place it sits in.
+
+         CEL SHADING IS A RULE, not a mood. Flat colour, hard edges, no
+         blur, no soft glow, no gradient that is not a stack of hard stops.
+         Every ray fan below is a repeating-conic-gradient whose stops sit
+         on top of each other, so it renders as solid wedges rather than as
+         a smear, which is exactly what an ink burst is.
+
+         AND IT STILL ASKS FOR NO FRAMES. Every moving thing here is a
+         keyframe on a node that removes itself when the animation ends, the
+         rule scorehud.js opens with. A rAF driven overlay competing with a
+         1 kHz simulation is how a smooth sim gets a stutter nobody can find.
+         ------------------------------------------------------------------ */
+
+      /* The ray fan behind a trick name. Sixteen hard wedges in a ring,
+         punched hollow in the middle so the type stays readable through it,
+         and drawn TWICE: an ink fan and, inside it, the colour. Cel shading
+         is a fill with a line round it, and over a pale sky the line is the
+         half that makes the fill visible at all.
+
+         The row is the thing it belongs to, so the row is what it is
+         positioned against: the first version resolved against the whole
+         overlay and threw its rays into empty sky halfway up the screen. */
+      .score-name { position: relative; }
+      /* The rays go behind the type by DOM ORDER, not by a negative
+         z-index. z-index -1 on the burst took the whole row down with it,
+         behind the world canvas, and the trick name vanished: a positioned
+         child asking to paint below its parent's box asks to paint below
+         everything the parent sits on. Positioning the spans instead puts
+         them in the same group as the burst, where the one appended last
+         wins, which is exactly what is wanted. */
+      .score-name > span { position: relative; }
+      .score-burst {
+        position: absolute; left: -34px; top: 50%;
+        width: 200px; height: 200px; margin-top: -100px;
+        pointer-events: none;
+        background: repeating-conic-gradient(#0b1116 0deg 8.4deg, transparent 8.4deg 22.5deg);
+        -webkit-mask-image: radial-gradient(closest-side, transparent 0 30%, #000 33% 74%, transparent 78%);
+        mask-image: radial-gradient(closest-side, transparent 0 30%, #000 33% 74%, transparent 78%);
+        opacity: 0;
+        animation: score-burst 480ms cubic-bezier(0.16, 0.9, 0.3, 1) forwards;
+      }
+      .score-burst::before {
+        content: ''; position: absolute; inset: 0;
+        background: repeating-conic-gradient(var(--burst, var(--cream)) 0deg 6.2deg, transparent 6.2deg 22.5deg);
+        -webkit-mask-image: radial-gradient(closest-side, transparent 0 32%, #000 35% 71%, transparent 75%);
+        mask-image: radial-gradient(closest-side, transparent 0 32%, #000 35% 71%, transparent 75%);
+      }
+      @keyframes score-burst {
+        0%   { opacity: 0.95; transform: scale(0.25) rotate(-9deg); }
+        60%  { opacity: 0.35; }
+        100% { opacity: 0; transform: scale(1.25) rotate(5deg); }
+      }
+
+      /* The name slams in. Overshoot, a touch of shear, and a hard stop:
+         an anime title card lands, it does not arrive. */
+      .score-hud .score-name { animation: score-name-slam 2.2s cubic-bezier(0.14, 1, 0.3, 1) forwards; }
+      @keyframes score-name-slam {
+        0%   { opacity: 0; transform: translateX(-42px) skewX(-16deg) scale(1.38); }
+        9%   { opacity: 1; transform: translateX(3px) skewX(4deg) scale(0.96); }
+        15%  { transform: translateX(0) skewX(0) scale(1); }
+        76%  { opacity: 1; transform: translateX(0); }
+        100% { opacity: 0; transform: translateY(-14px); }
+      }
+      /* The points on a name pop a beat after the name, so the eye reads
+         the trick and then the number rather than both at once. */
+      .score-name-points { animation: score-pop 620ms cubic-bezier(0.1, 1.5, 0.4, 1) 90ms backwards; }
+      @keyframes score-pop {
+        0%   { transform: scale(2.1); opacity: 0; }
+        30%  { opacity: 1; }
+        100% { transform: scale(1); opacity: 0.7; }
+      }
+
+      /* THE COMBO TIER. The number is the thing at risk, so as the chain
+         grows it gets louder in three ways at once: colour, weight and a
+         chevron that only appears when there is something to lose. */
+      .score-combo-line { transition: color 140ms linear; }
+      .score-combo.tier-2 .score-combo-line { color: var(--amber); }
+      .score-combo.tier-3 .score-combo-line { color: #ffc46b; }
+      .score-combo.tier-4 .score-combo-line { color: #ff9f5a; }
+      .score-combo.tier-5 .score-combo-line { color: #ff7d96; }
+      .score-combo.tier-3 .score-combo-line,
+      .score-combo.tier-4 .score-combo-line,
+      .score-combo.tier-5 .score-combo-line { animation: score-throb 620ms ease-in-out infinite alternate; }
+      @keyframes score-throb {
+        from { transform: scale(1); }
+        to   { transform: scale(1.045); }
+      }
+      /* The tier badge: an English word for what it is and a Japanese one
+         for where it is. The town is a Japanese one and reads its own
+         signage; this is the score speaking the same language. */
+      .score-tier {
+        display: inline-flex; align-items: baseline; gap: 6px;
+        margin-left: 10px; padding: 2px 8px;
+        font-size: 0.44em; font-weight: 700; letter-spacing: 0.18em;
+        text-transform: uppercase; white-space: nowrap;
+        /* INHERITS the tier's colour and paints itself with it, so the
+           badge is a solid chip of whatever the number has just become and
+           the words are punched out of it. Setting a colour here instead
+           was dark ink on a dark chip and read as a black bar. */
+        background: currentColor;
+        box-shadow: 0 0 0 2px rgba(8, 12, 9, 0.9);
+        animation: score-tier-in 420ms cubic-bezier(0.1, 1.4, 0.4, 1);
+      }
+      .score-tier > span { color: #0b1116; }
+      .score-tier .score-tier-jp { letter-spacing: 0.05em; opacity: 0.72; }
+      @keyframes score-tier-in {
+        0%   { transform: scale(0.4) rotate(-8deg); opacity: 0; }
+        60%  { transform: scale(1.12) rotate(2deg); opacity: 1; }
+        100% { transform: scale(1) rotate(0); }
+      }
+
+      /* BANKED. A hard ring, not a bloom: one 3 px stroke expanding once.
+         Cel shading has no falloff, so neither does this. */
+      .score-ring {
+        position: absolute; left: 50%; top: 38%;
+        width: 90px; height: 90px; margin: -45px 0 0 -45px;
+        border: 3px solid var(--mint); border-radius: 50%;
+        opacity: 0; pointer-events: none;
+        animation: score-ring 620ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+      .score-ring.is-bail { border-color: #ff7d96; }
+      .score-ring.is-late { animation-delay: 110ms; }
+      @keyframes score-ring {
+        0%   { opacity: 0.9; transform: scale(0.35); border-width: 5px; }
+        100% { opacity: 0; transform: scale(3.4); border-width: 1px; }
+      }
+      /* The verdict itself lands harder than it used to, and a bail SHAKES:
+         losing a chain should feel like a hit, not like a fade. */
+      .score-verdict.is-bank { animation: score-verdict-bank 1.15s cubic-bezier(0.1, 1.3, 0.3, 1) forwards; }
+      @keyframes score-verdict-bank {
+        0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5) rotate(-5deg); }
+        12%  { opacity: 1; transform: translate(-50%, -50%) scale(1.22) rotate(2deg); }
+        22%  { transform: translate(-50%, -50%) scale(1) rotate(0); }
+        68%  { opacity: 1; }
+        100% { opacity: 0; transform: translate(-50%, -96%) scale(1); }
+      }
+      .score-verdict.is-bail { animation: score-verdict-bail 1.15s ease-out forwards; }
+      @keyframes score-verdict-bail {
+        0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.5) skewX(-14deg); }
+        8%   { opacity: 1; transform: translate(-52%, -50%) scale(1) skewX(0); }
+        13%  { transform: translate(-48%, -50%); }
+        18%  { transform: translate(-51%, -50%); }
+        23%  { transform: translate(-50%, -50%); }
+        70%  { opacity: 1; }
+        100% { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+      }
+
+      /* SPEED LINES down both edges, and ONLY while a chain is worth
+         something. Two flat strips of hard vertical stripes, so the frame
+         gets busier exactly as the pilot has more to lose. Nothing here
+         reads a value: it is a class the combo tier already computes. */
+      .score-lines {
+        position: absolute; inset: 0; pointer-events: none; opacity: 0;
+        transition: opacity 220ms linear;
+        background:
+          repeating-linear-gradient(90deg, var(--cream) 0 2px, transparent 2px 13px) left  / 11vw 100% no-repeat,
+          repeating-linear-gradient(90deg, var(--cream) 0 2px, transparent 2px 13px) right / 11vw 100% no-repeat;
+        -webkit-mask-image: linear-gradient(90deg, #000 0, transparent 12vw, transparent calc(100% - 12vw), #000 100%);
+        mask-image: linear-gradient(90deg, #000 0, transparent 12vw, transparent calc(100% - 12vw), #000 100%);
+      }
+      .score-hud.tier-3 .score-lines { opacity: 0.16; }
+      .score-hud.tier-4 .score-lines { opacity: 0.24; }
+      .score-hud.tier-5 .score-lines { opacity: 0.34; animation: score-lines 900ms steps(2) infinite; }
+      @keyframes score-lines {
+        from { transform: translateX(0); }
+        to   { transform: translateX(6px); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .score-name, .score-verdict.is-on { animation-duration: 0.01s; }
+        /* NOTHING THAT CARRIES MEANING IS HIDDEN. The tier colour, the
+           badge and the score all stay; what goes is the movement, which is
+           the same contract the rest of this overlay keeps. */
+        .score-hud .score-name, .score-verdict.is-bank, .score-verdict.is-bail,
+        .score-name-points, .score-tier { animation-duration: 0.01s; }
+        .score-burst, .score-ring { display: none; }
+        .score-combo.tier-3 .score-combo-line,
+        .score-combo.tier-4 .score-combo-line,
+        .score-combo.tier-5 .score-combo-line { animation: none; }
+        .score-hud.tier-5 .score-lines { animation: none; }
+      }
 
       .bar {
         height: 5px; margin-top: 7px; border-radius: 3px;

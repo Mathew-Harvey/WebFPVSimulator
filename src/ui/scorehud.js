@@ -78,6 +78,61 @@ const NAME_STACK_MAX = 6;
  * a fast chain does not become a wall of text. Must match the CSS. */
 const NAME_LIFE_MS = 2200;
 
+/*
+ * THE COMBO TIERS, and what each one is called.
+ *
+ * A multiplier is a number and a number is not a feeling. Tony Hawk never
+ * shouted the multiplier at you, it shouted a WORD, and the word is what
+ * tells a pilot they are into something worth not binning. The threshold is
+ * the multiplier the scorer already computes, so this adds no state and no
+ * second opinion about how well the run is going.
+ *
+ * The Japanese half is not decoration. The town is a Japanese one, it reads
+ * its own signage, and the score is the only thing on screen that was
+ * speaking a different language from the place it sits in. Each is the
+ * ordinary spoken word a person would actually use, not a translation of
+ * the English one.
+ */
+const TIERS = [
+  { at: 2, en: 'Nice', jp: 'いいね' },
+  { at: 3, en: 'Sweet', jp: 'すごい' },
+  { at: 4, en: 'Wild', jp: 'やばい' },
+  { at: 5, en: 'Perfect', jp: '最高' },
+];
+
+function tierFor(mult) {
+  let hit = null;
+  for (const t of TIERS) {
+    if (mult >= t.at) {
+      hit = t;
+    }
+  }
+  return hit;
+}
+
+/*
+ * A ray fan, thrown behind a trick name and thrown away again.
+ *
+ * One node, one keyframe, self removing: the rule this file opens with. The
+ * colour follows the execution, so a bumped trick bursts in the same pink
+ * its name is written in and the pilot never has to read the tag to know
+ * something was clipped.
+ */
+function burst(host, colour) {
+  const n = el('div', 'score-burst');
+  if (colour) {
+    n.style.setProperty('--burst', colour);
+  }
+  host.append(n);
+  const drop = () => {
+    if (n.parentNode === host) {
+      host.removeChild(n);
+    }
+  };
+  n.addEventListener('animationend', drop, { once: true });
+  setTimeout(drop, 900);
+}
+
 export class ScoreHud {
   constructor(root) {
     this.root = el('div', 'score-hud is-off');
@@ -112,16 +167,30 @@ export class ScoreHud {
     bar.append(this.comboBar);
     this.comboBox.append(line, bar);
 
+    /* The tier badge lives on the combo line, beside the number it is
+     * describing, because it is a word for that number and nothing else. */
+    this.tier = el('span', 'score-tier');
+    this.tier.hidden = true;
+    this.tierEn = el('span', 'score-tier-en');
+    this.tierJp = el('span', 'score-tier-jp');
+    this.tier.append(this.tierEn, this.tierJp);
+    line.append(this.tier);
+
     /* Banked and bailed both land here, in the middle of the screen, because
      * that is the one moment the pilot should look away from the quad. */
     this.verdict = el('div', 'score-verdict score-cut');
 
-    this.root.append(this.totalBox, this.names, this.comboBox, this.verdict);
+    /* Speed lines down both edges, driven entirely by a class on the root.
+     * Behind everything, so it can never sit over a number. */
+    this.lines = el('div', 'score-lines');
+
+    this.root.append(this.lines, this.totalBox, this.names, this.comboBox, this.verdict);
     root.append(this.root);
 
     this.shownTotal = -1;
     this.shownPoints = -1;
     this.shownMult = -1;
+    this.shownTier = -1;
     this.visible = false;
   }
 
@@ -130,10 +199,17 @@ export class ScoreHud {
       return;
     }
     this.visible = on;
-    this.root.className = on ? 'score-hud' : 'score-hud is-off';
+    this.root.className = on ? this.rootClass() : `${this.rootClass()} is-off`;
     if (!on) {
       this.clearTransient();
     }
+  }
+
+  /* The root carries the combo tier, because the speed lines are drawn from
+   * it and they belong to the whole frame rather than to the combo box. */
+  rootClass() {
+    const t = this.shownMult >= 5 ? 5 : (this.shownMult >= 4 ? 4 : (this.shownMult >= 3 ? 3 : 0));
+    return t ? `score-hud tier-${t}` : 'score-hud';
   }
 
   /* Wipe the names, the combo line and any verdict, leaving the total. Used
@@ -145,6 +221,11 @@ export class ScoreHud {
     this.verdict.textContent = '';
     this.shownPoints = -1;
     this.shownMult = -1;
+    this.shownTier = -1;
+    this.tier.hidden = true;
+    if (this.visible) {
+      this.root.className = 'score-hud';
+    }
   }
 
   reset() {
@@ -186,6 +267,28 @@ export class ScoreHud {
     if (c.mult !== this.shownMult) {
       this.shownMult = c.mult;
       this.comboMult.textContent = c.mult > 1 ? ` x ${c.mult}` : '';
+      /* Tier: the colour of the number, the badge beside it and the speed
+       * lines down the frame are one decision made once, here. */
+      const t = tierFor(c.mult);
+      const step = t ? t.at : 0;
+      if (step !== this.shownTier) {
+        this.shownTier = step;
+        this.comboBox.className = step ? `score-combo tier-${step}` : 'score-combo';
+        if (t) {
+          this.tier.hidden = false;
+          this.tierEn.textContent = t.en;
+          this.tierJp.textContent = t.jp;
+          /* Restart the badge's landing animation on each new tier. */
+          this.tier.style.animation = 'none';
+          void this.tier.offsetWidth;
+          this.tier.style.animation = '';
+        } else {
+          this.tier.hidden = true;
+        }
+        if (this.visible) {
+          this.root.className = this.rootClass();
+        }
+      }
     }
     /* The bar is a transform, not a width: a width change relayouts the
      * whole overlay every frame and a transform does not. */
@@ -202,8 +305,10 @@ export class ScoreHud {
         this.pushName(e.name, e.points, e.execution);
       } else if (e.kind === 'bank') {
         this.showVerdict(`+${formatScore(e.points)}`, 'is-bank');
+        this.ring('');
       } else if (e.kind === 'bail') {
         this.showVerdict(e.points > 0 ? `Bailed  -${formatScore(e.points)}` : 'Bailed', 'is-bail');
+        this.ring('is-bail');
         this.names.textContent = '';
       }
     }
@@ -224,6 +329,12 @@ export class ScoreHud {
     } else if (execution === 'BUMP') {
       row.classList.add('is-bump');
     }
+    /* The ink burst goes on the ROW, so it travels with the name up the
+     * stack and cannot be left behind pointing at nothing, and it goes on
+     * FIRST so the type is painted over it. See .score-name > span. */
+    burst(row, execution === 'BUMP'
+      ? '#ff7d96'
+      : (execution === 'SLOPPY' ? 'var(--amber)' : 'var(--cream)'));
     row.append(el('span', 'score-name-text', name));
     row.append(el('span', 'score-name-points', formatScore(points)));
     if (execution !== 'CLEAN') {
@@ -243,6 +354,25 @@ export class ScoreHud {
     };
     row.addEventListener('animationend', drop, { once: true });
     setTimeout(drop, NAME_LIFE_MS + 400);
+  }
+
+  /*
+   * A hard ring, once, on a bank or a bail. Two of them a hundred
+   * milliseconds apart, because one ring reads as a circle and two read as
+   * an impact, which is the whole grammar of the thing being borrowed.
+   */
+  ring(cls) {
+    for (const late of ['', 'is-late']) {
+      const n = el('div', `score-ring ${cls} ${late}`.trim());
+      this.root.append(n);
+      const drop = () => {
+        if (n.parentNode === this.root) {
+          this.root.removeChild(n);
+        }
+      };
+      n.addEventListener('animationend', drop, { once: true });
+      setTimeout(drop, 1200);
+    }
   }
 
   showVerdict(text, cls) {

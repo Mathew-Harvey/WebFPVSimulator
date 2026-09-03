@@ -368,6 +368,17 @@ const DEFAULTS = {
   /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
+  /*
+   * FREESTYLE IS TWO DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
+   *
+   * A scored run is two minutes with a board at the end of it, which is a
+   * competition and is the right shape for one. Learning a Powerloop is
+   * not: it is forty attempts, and a clock that keeps ending the session
+   * turns practice into an interruption. 'free' takes the clock and the
+   * board away and leaves the scoring on, so a pilot can still see whether
+   * the thing they just flew counted.
+   */
+  freestyleRun: 'scored',
   flightStyle: 'expert',
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
@@ -477,6 +488,9 @@ export function loadSettings() {
     if (typeof stored[k] === typeof DEFAULTS[k]) {
       s[k] = stored[k];
     }
+  }
+  if (s.freestyleRun !== 'free') {
+    s.freestyleRun = 'scored';
   }
   if (s.flightMode !== 'angle') {
     s.flightMode = 'acro';
@@ -3823,6 +3837,18 @@ export class Ui {
       })) : [];
       return [
         ...cards,
+        /*
+         * FIRST, because it is the only choice on this screen that changes
+         * what the next two minutes ARE.
+         */
+        choice(
+          'Run',
+          'Scored run: two minutes on the clock, and what you finish with goes to the high score board. Free flight: no clock and no board, the run never ends and nothing is posted, but tricks are still named and still scored so you can see what counted. Free flight is the one to learn a Powerloop in.',
+          ['scored', 'free'],
+          s.freestyleRun === 'free' ? 'free' : 'scored',
+          (id) => (id === 'free' ? 'Free flight' : 'Scored run'),
+          (id) => { s.freestyleRun = id; },
+        ),
         /* A DOOR, not a copy. This is one of the screens the same Tune
          * row was built onto, and Quad is one press away. It still
          * NAMES the tune, because what you are about to fly is worth
@@ -3931,7 +3957,7 @@ export class Ui {
         { label: 'Flight', section: true },
         choice(
           'Flight mode',
-          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Keyboard flight always uses Angle. A radio uses this setting.',
+          'Acro: sticks are rates, hands off holds attitude. Angle: sticks are tilt, hands off levels. Racing on a keyboard always uses Angle. Freestyle uses this setting whatever you fly with, because Angle holds the craft to about thirty degrees of bank and no trick in the book can be flown in it.',
           FLIGHT_MODES,
           s.flightMode === 'angle' ? 'angle' : 'acro',
           (id) => (id === 'angle' ? 'Angle' : 'Acro'),
@@ -4298,12 +4324,22 @@ export class Ui {
             : {
               label: 'Post this run',
               action: 'postrun',
-              disabled: nothing || Boolean(run && run.assisted),
+              /*
+               * FREE FLIGHT IS REFUSED HERE, on the row, rather than by a
+               * notice when the row is pressed. The shell's notice banner
+               * only draws in flight, so a refusal raised from the results
+               * screen is a press that does nothing at all. A row that says
+               * why it is off is the same answer given before it is needed.
+               */
+              disabled: nothing || Boolean(run && run.assisted)
+                || (run && run.timed === false),
               note: nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
-                : (run && run.assisted
-                  ? 'This run used the harness hooks, so it is not a flown score and the board will not take it.'
-                  : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`),
+                : (run && run.timed === false
+                  ? 'Free flight has no clock, so there is nothing for a board to compare it against. Switch Run to Scored on the Freestyle screen and fly it again.'
+                  : (run && run.assisted
+                    ? 'This run used the harness hooks, so it is not a flown score and the board will not take it.'
+                    : `${formatScore(run.total)} from ${run.tricks} tricks. One entry per pilot on the board, and only your best.`)),
             },
           {
             label: 'Open the board',
@@ -7519,7 +7555,7 @@ export class Ui {
     }
   }
 
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs, runTimed }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -7531,13 +7567,23 @@ export class Ui {
        * the same `waiting` class the lap clock uses before the first gate,
        * which is the same state for the same reason.
        */
-      const ready = runState !== 'flying' && runState !== 'over';
-      const left = Number.isFinite(runRemainMs) ? runRemainMs : 0;
-      Ui.text(this.osdClockLabel, 'Run');
-      Ui.text(this.osdTimer, ready ? '2:00' : formatRunClock(left));
-      Ui.klass(this.osdTimer, ready
-        ? 'osd-timer waiting'
-        : (left <= 10_000 ? 'osd-timer is-late' : 'osd-timer'));
+      if (runTimed === false) {
+        /*
+         * FREE FLIGHT HAS NO CLOCK, and the slot is not left empty: a blank
+         * where a number belongs reads as a fault. It says what it is.
+         */
+        Ui.text(this.osdClockLabel, 'Run');
+        Ui.text(this.osdTimer, 'Free');
+        Ui.klass(this.osdTimer, 'osd-timer waiting');
+      } else {
+        const ready = runState !== 'flying' && runState !== 'over';
+        const left = Number.isFinite(runRemainMs) ? runRemainMs : 0;
+        Ui.text(this.osdClockLabel, 'Run');
+        Ui.text(this.osdTimer, ready ? '2:00' : formatRunClock(left));
+        Ui.klass(this.osdTimer, ready
+          ? 'osd-timer waiting'
+          : (left <= 10_000 ? 'osd-timer is-late' : 'osd-timer'));
+      }
     } else {
       Ui.text(this.osdClockLabel, 'Lap');
       Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
@@ -7684,7 +7730,9 @@ export class Ui {
     void screen.offsetWidth;
     screen.classList.add('is-in');
 
-    this.resultsKicker.textContent = 'Freestyle city';
+    this.resultsKicker.textContent = summary.timed === false
+      ? 'Freestyle city, free flight'
+      : 'Freestyle city';
     this.resultsHead.textContent = summary.tricks
       ? (clean ? 'Clean run' : 'Run complete')
       : 'Run ended';
@@ -7697,7 +7745,9 @@ export class Ui {
     if (!summary.tricks) {
       this.resultsHeroMeta.textContent = '';
       this.resultsHeroMeta.className = 'results-hero-meta';
-      this.resultsBody.append(el('p', 'results-empty', 'Two minutes and nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'));
+      this.resultsBody.append(el('p', 'results-empty', summary.timed === false
+        ? 'Nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'
+        : 'Two minutes and nothing the recogniser could name. A trick is a whole rotation about one axis, or a lap around something: a flip, a roll, a 360 of yaw, a powerloop under a rail. Turning a corner is not a trick and is deliberately worth nothing.'));
     } else {
       const parts = [
         `${summary.tricks} tricks, ${summary.unique} of them different`,

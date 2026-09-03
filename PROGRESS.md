@@ -26354,3 +26354,164 @@ human shaped inputs (oval paths, offset centres, a floating apex, hesitation
 mid rotation, nose wander) or on the one flown loop the selftest already had.
 A rig that flies the park's own elements is the next thing this needs, and it
 is now possible, because acro is reachable from a script for the first time.
+
+## 2026-09-03 A rig that flies the park, a run you can choose, and a score worth watching
+
+Three things asked for: build a rig that flies the park elements and loop on
+the scoring until it is reliable, offer a free flight as well as a scored run,
+and make the scoring look like the cel shaded town it sits in.
+
+### The rig
+
+`scripts/park-fly.js`, run with `npm run park:fly`, `--tune` for calibration
+and `--only=name` for one manoeuvre. A geometric guidance law drives the real
+plant: the wanted acceleration becomes a thrust direction, the angle between
+that and the craft's own up axis becomes a roll and a pitch, and throttle is
+the part of the wanted force that lies along the thrust axis. Where the nose
+points decides which body axis a lap is flown on, so one controller produces
+both a Powerloop and a roll loop by TURNING THE AIRCRAFT, the way a pilot does.
+
+Four things had to be found before it could fly at all, and each was a
+measurement, not a guess.
+
+**The attitude loop asked for full stick at nine degrees of error.** That is
+the better part of eight hundred degrees a second. Measured, 220 ms into a
+straight line the craft was already upside down. An angle now becomes a rate,
+and the rate a fraction of the 12 to 13 rad/s full deflection was measured to
+buy.
+
+**The run in stopped dead** and the lap then wanted nine metres a second on
+its first millisecond. Entries are velocity matched now, and the entry
+DIRECTION is taken from the path itself rather than placed by hand, which had
+put it on the wrong side: the craft arrived at six metres a second into a lap
+asking for six the other way.
+
+**The town draws at about five frames a second under swiftshader**, so a probe
+steering from requestAnimationFrame moved the sticks five times a second.
+Nothing flies at five hertz. `window.__drawOff` skips only the draw, which is
+the promise the fps cap already makes one branch below, and the pilot went
+from 5 Hz to 60.
+
+**And `window.__stick` was flying in ANGLE MODE**, which holds the craft to
+about thirty degrees of bank. That is why no check in this repository had ever
+flown a trick: the only thing that could FLY was locked out of acro.
+
+Calibration, flown, worst distance from the path asked for. Before, then after:
+
+    hold a point       0.34 m  ->  0.40 m
+    straight line     18.0  m  ->  0.52 m over 24 m
+    flat circle       16.8  m  ->  0.74 m at 8 m radius
+    vertical circle    5.4  m  ->  1.34 m at 4 m radius, which is a loop
+
+### What the park says when you fly it
+
+Flown in the town, in acro, at 60 Hz, the catalogue names: **Powerloop**
+tight and wide, a **roll loop** as Mavvy Roll, the **jump rope rail** as a
+Powerloop, **Orbit x2**, a **Wall Tap**, **Roll** and **Yaw Spin**. Seven of
+thirteen manoeuvres in the rig's list at the time of writing. The other six
+are named below and are not finished.
+
+Three real faults came out of flying rather than reasoning:
+
+**TRACK_DOT was 0.77**, written down as "roughly an FPV camera's half angle".
+It is not: a 150 degree diagonal lens sees about sixty degrees either side of
+the nose. Flown, an orbit tracked to 1.2 m of a 5.5 m circle held the post
+between 37 and 45 degrees off the nose for two whole laps, which is an orbit
+by any reading, and scored nothing. 0.55 is the lens. The false positive the
+guard exists for had the post 88.9 degrees off the nose and is nowhere near
+the new line.
+
+**INVERTED_MIN was 0.8 and the physics does not allow it.** A craft is
+inverted when its thrust points below the horizon, which needs a downward
+acceleration greater than gravity, so an inverted lap is a fall and cannot
+begin or end inverted. Flown at 1.3 g one came out 0.61 belly up. Two whole
+inverted laps are not a tuning problem: at that rate they cost about eighty
+metres of altitude and the park is thirty four metres tall. 0.55 now, which
+is above every upright pole lap measured, all of which read 0.00.
+
+**The 34 m mast is not an obstacle.** It reaches the field only as a 3 m stub
+centred at y 36.2, so everything a pilot can actually reach is invisible to
+the recogniser: orbit the park's one landmark and score nothing. NOT FIXED.
+The rig orbits the Split-S post instead, which spans y 0.7 to 12.9. The fix
+belongs in deriveObstacles and is the next thing this needs.
+
+### Still not right, honestly
+
+Six of the thirteen do not name what they should, and the causes are mixed:
+
+  - **Wall Tap** is FLAKY, not broken. The same script named it CLEAN on one
+    run and Flip on the next. Flakiness is the thing the owner is complaining
+    about and it is not fixed.
+  - **1 Trippy Spin** flies belly up for 0.61 to 0.70 of the lap and still
+    names nothing even with INVERTED_MIN at 0.55, so something else refuses
+    it. Not diagnosed.
+  - **Matty Flip**, **Immelmann Turn** and **Cinnamon Roll** are the rig
+    flying them badly rather than the game refusing them: path errors of 3 to
+    9 m, and exits that rotate more than the trick did.
+  - **Flip** still reads Flip Stall Rewind, which may be correct: the scorer
+    thinks there was a stall before it and the rig has not proved otherwise.
+
+### Free flight
+
+`DEFAULTS.freestyleRun`, first row on the Freestyle screen. A scored run is
+two minutes and a board. Free flight has neither: the clock reads "Free", the
+run never ends, and posting is refused in one sentence rather than hidden,
+because a pilot who sat in the town for an hour would out-total every two
+minute run ever flown. Tricks are still named and still scored, so the pilot
+can see what counted, which is the whole point of the mode: learning a
+Powerloop is forty attempts and a clock that keeps ending the session turns
+practice into an interruption.
+
+Verified in the browser: the Freestyle screen's first row reads
+"Run = Scored run"; free flight reports `timed=false` and the OSD clock reads
+"Free" before and after a trick; a scored run reports `timed=true` and "2:00".
+
+The refusal moved onto the results row rather than being raised as a notice,
+and the check is why: the probe read the shell's banner after pressing Post
+and found it EMPTY. The notice banner only draws in flight, so a refusal
+raised from the results screen was a press that did nothing at all. The row
+is disabled with its reason on it now, the same way an assisted run is
+refused, which is the same answer given before it is needed rather than
+after. That path was not re-photographed.
+
+### The anime layer
+
+The town is cel shaded and the score was not. Flat colour, hard edges, no
+blur, no soft glow: every ray fan is a repeating conic gradient whose stops
+sit on top of each other, so it renders as solid wedges, which is what an ink
+burst is. And it still asks for no frames: everything that moves is a keyframe
+on a node that removes itself, the rule scorehud.js opens with.
+
+  - a trick name SLAMS in with overshoot and shear, over an ink burst drawn
+    twice, once in black and once in the execution's colour, because over a
+    pale sky the outline is the half that makes the fill visible;
+  - the points pop a beat after the name, so the eye reads the trick and then
+    the number;
+  - the combo takes a TIER at x2, x3, x4 and x5: the number changes colour,
+    throbs, and grows a badge naming what it has become in English and in
+    Japanese, because the town is a Japanese one and reads its own signage
+    and the score was the only thing on screen speaking another language;
+  - speed lines come down both edges from x3, getting stronger with the tier,
+    so the frame gets busier exactly as the pilot has more to lose;
+  - banking and bailing each throw two hard rings a hundred milliseconds
+    apart, because one ring reads as a circle and two read as an impact.
+
+Two mistakes worth recording. The tier badge painted itself with
+`background: currentColor` AND set a colour, so it was dark ink on a dark chip
+and read as a black bar; it inherits the tier colour now. And the ink burst
+was pushed behind the type with `z-index: -1`, which took the whole row down
+with it, behind the world canvas, and the trick name vanished: a positioned
+child asking to paint below its parent's box asks to paint below everything
+the parent sits on. DOM order does the job instead.
+
+Photographed at 1280x720 over the town: the name, the burst, the tier badge
+and the speed lines all render, and the results card reads 6,982 from six
+tricks.
+
+### Checks
+
+`npm run score:selftest` all passed. `npm run lint:shell` PASS.
+`npm run park:fly` flies and reports per manoeuvre; it is not green and the
+six that are not are named above. `npm run lint:catalog` still cannot run
+here: `vendor/betaflight` is not checked out in this container. `npm run
+verify` was not run and was not asked for.

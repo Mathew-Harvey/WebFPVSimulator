@@ -2215,9 +2215,27 @@ export class TrickDetector {
         run.offMs = 0;
         run.startMs = old.ms;
         run.startSide = old.side;
-        run.startRot[0] = old.r0;
-        run.startRot[1] = old.r1;
-        run.startRot[2] = old.r2;
+        /*
+         * THE ROTATION WINDOW IS NOT THE WINDING WINDOW.
+         *
+         * startWind and startSide are backdated because the winding rate
+         * ramps and where the craft WAS decides whether this is a whole lap
+         * or a half; that is what PATH_LOOKBACK was argued for. The
+         * ROTATION has no such need, and taking it from the same backdated
+         * sample gave the lap 800 ms of whatever the pilot did before it: a
+         * yaw spin flown to line up on a rail was swallowed into the lap and
+         * turned a plain Powerloop into an Inverted 360 Powerloop, a 650
+         * point Master trick nobody flew. How much of that 800 ms existed at
+         * all depended on approach speed, so the same trick read differently
+         * from a fast entry and a slow one.
+         *
+         * From the gate, then, which is where the winding actually starts
+         * now that PATH_RATE_ON is 0.08 rather than 0.35, and which is the
+         * same instant startAxis is taken from so the two agree.
+         */
+        run.startRot[0] = this.totalTurns[0];
+        run.startRot[1] = this.totalTurns[1];
+        run.startRot[2] = this.totalTurns[2];
         run.lastWind = run.windTotal;
         run.lastSide = side;
         run.lastMs = this.nowMs;
@@ -2431,7 +2449,7 @@ export class TrickDetector {
       run.clearHistory();
       return;
     }
-    this.pending.push({
+    this.insertPending({
       kind: 'path',
       obstacle: OB_KIND_NAME[ob.kind],
       obstacleId: ob.id,
@@ -2446,6 +2464,14 @@ export class TrickDetector {
        * loop's own turn put back on one axis rather than smeared across
        * two by the bank the pilot happened to fly at. See debankLap. */
       rot: this.debankLap(run),
+      /* What the de-banking saw: the loop's own turn about the obstacle's
+       * axis, and how that axis lay in the body. Diagnostics for the rig;
+       * nothing in the matcher reads them. */
+      spin: run.alignN > 0 ? run.lastAxis - run.startAxis : 0,
+      align: run.alignN > 0
+        ? [run.alignSum[0] / run.alignN, run.alignSum[1] / run.alignN,
+          run.alignSum[2] / run.alignN]
+        : null,
       upZ,
       /* The fraction of the lap flown belly up, 0 to 1. See PathRun. */
       invertedFrac: run.spanSamples > 0 ? run.invSamples / run.spanSamples : 0,
@@ -3215,6 +3241,28 @@ function patternWantsTap(pat) {
  */
 const SLACK_TURNS = 0.25;
 const SLACK_ROT = 0.25;
+/*
+ * The widest a rot reading may miss its target and still be that trick.
+ *
+ * The targets are half a turn apart, so a band of a quarter each way makes the
+ * classes TILE: every reading names at most one of them, and a reading exactly
+ * between two names neither. The old band was a quarter free plus a quarter of
+ * slack, half a turn wide, exactly the spacing, so every reading matched at
+ * least two classes and the tie went to whichever cost more.
+ *
+ * A tenth narrower was tried, to leave dead ground between the classes rather
+ * than have them meet. It refused honest flying: a loop that over-rotates by
+ * half a turn should be refused, and one that misses by a fifth should not,
+ * and there is no room for both inside a spacing of a half.
+ */
+const ROT_BAND = CONCURRENT_TOLERANCE;
+/*
+ * How long a pattern's steps may be apart and still be one trick, over and
+ * above any pause the pattern asked for. 800 ms is comfortably longer than
+ * the untidiest continuous sequence measured and comfortably shorter than
+ * the second or two between two tricks a pilot flew as two tricks.
+ */
+const STEP_GAP_MAX = 800;
 const SLACK_STALL = 0.6;
 const SLACK_INVERTED = 0.2;
 /*
@@ -3311,6 +3359,33 @@ function matchSteps(steps, prims, n) {
   for (let i = 0; i < n; i += 1) {
     const s = steps[i];
     const p = prims[i];
+    /*
+     * ONE TRICK IS ONE MOTION, and a pattern with more steps in it used to
+     * beat a shorter one no matter how far apart they were flown.
+     *
+     * Length wins ties before slack does, and nothing bounded the gap
+     * between a pattern's steps, so the most ordinary rail sequence there
+     * is, a Powerloop and then a Matty Flip rewind under the same rail a
+     * second or two later, matched Barani at two steps and beat Powerloop
+     * at one. The pilot was paid 700 for a Master trick nobody flew.
+     *
+     * emit already computes exactly this quantity to GRADE on. Refusing is
+     * the right answer rather than grading it SLOPPY: two tricks with a
+     * pause between them are two tricks, not one untidy one, and the pilot
+     * should be paid for both.
+     *
+     * A pattern that ASKS for a pause is not charged for it, which is what
+     * lets a Wall Ride glide between its two rolls and a Segmented Flip
+     * stop between its halves.
+     */
+    if (i > 0) {
+      const asked = Math.max(s.stallMs ?? 0, s.gapMs ?? 0);
+      const gap = p.startMs - prims[i - 1].endMs
+        - Math.max(p.stallBeforeMs ?? 0, asked);
+      if (gap > STEP_GAP_MAX) {
+        return -1;
+      }
+    }
     /* A lap step matches a lap and a rotation step matches a rotation.
      * Never each other: they are different measurements of different
      * things and a step that did not say which it wanted would match both. */
@@ -3361,12 +3436,26 @@ function matchSteps(steps, prims, n) {
         for (const key of Object.keys(s.rot)) {
           const got = p.rot[AXIS_OF_NAME[key]];
           const mag = got < 0 ? -got : got;
-          /* Exact inside CONCURRENT_TOLERANCE, which is already a quarter
-           * turn and is argued where it is declared, and a further quarter
-           * beyond that at a cost. */
+          /*
+           * A DEAD BAND BETWEEN THE CLASSES, because there has to be one.
+           *
+           * The loop family's rot targets are spaced HALF A TURN apart, and
+           * the old accept band was a quarter free plus a quarter of slack:
+           * a half turn wide, exactly the spacing. So adjacent tricks always
+           * overlapped, every reading matched at least two of them, and the
+           * tie was broken on PRICE. A five hundredth of a turn turned a 200
+           * point Novice trick into a 600 point Master one, and it moved in
+           * the direction that pays more.
+           *
+           * Exact inside half the tolerance, one slack point out to
+           * ROT_BAND, and REFUSED beyond it. Refusing is the right answer in
+           * the strip between two family members: a lap that is genuinely
+           * halfway between two tricks is not either of them, and naming
+           * nothing is honest where naming the dearer one is not.
+           */
           const err = mag > s.rot[key] ? mag - s.rot[key] : s.rot[key] - mag;
-          if (err > CONCURRENT_TOLERANCE
-            && !spend(err <= CONCURRENT_TOLERANCE + SLACK_ROT ? 1 : -1)) {
+          if (err > CONCURRENT_TOLERANCE * 0.5
+            && !spend(err <= ROT_BAND ? 1 : -1)) {
             return -1;
           }
         }

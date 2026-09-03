@@ -444,11 +444,15 @@ window.__armProbe = () => {
       }
       return cp(r, u);
     };
-    const pp = d.pending.push.bind(d.pending);
-    d.pending.push = (x) => {
+    /* Primitives buffer through insertPending now, in flight order, so the
+     * probe has to watch THAT rather than Array.push. */
+    const pp = d.insertPending.bind(d);
+    d.insertPending = (x) => {
       window.__probe.pend.push(x.kind === 'path'
         ? { k: 'path', ob: x.obstacle, t: x.turns, raw: +x.rawTurns.toFixed(2),
-          rot: x.rot.map((v) => +v.toFixed(2)), trk: +x.trackFrac.toFixed(2),
+          rot: x.rot.map((v) => +v.toFixed(2)), spin: +(x.spin || 0).toFixed(2),
+          align: x.align ? x.align.map((v) => +v.toFixed(2)) : null,
+          trk: +x.trackFrac.toFixed(2),
           inv: +x.invertedFrac.toFixed(2), tap: !!x.tapped }
         : { k: x.axis, t: x.turns, dir: x.dir, tap: !!x.tapped,
           near: x.nearest == null ? null : +x.nearest.toFixed(1) });
@@ -458,6 +462,11 @@ window.__armProbe = () => {
     d.bump = (i) => {
       window.__probe.bumps.push(i === undefined ? 'ground' : +(+i).toFixed(1));
       return bp(i);
+    };
+    const hp = d.heldByPath.push.bind(d.heldByPath);
+    d.heldByPath.push = (x) => {
+      window.__probe.pend.push({ HELD: x.axis, t: x.turns, ms: x.startMs + '-' + x.endMs });
+      return hp(x);
     };
     const sink = d.onTrick;
     d.onTrick = (t) => { window.__probe.tricks.push(t.name + ':' + t.execution); return sink(t); };
@@ -683,7 +692,11 @@ const MANOEUVRES = [
   {
     name: 'Powerloop',
     want: 'Powerloop',
-    body: lapPlan(PARK.arch, { radius: 3.4, secs: 2.4, turns: -1 }),
+    /* 2.4 s was too fast for the tracker to hold: it over-rotated to two
+     * whole turns of pitch, the lap's own rotation measured 1.5, and the
+     * recogniser refused it, which is the right answer to a loop flown one
+     * and a half times round. */
+    body: lapPlan(PARK.arch, { radius: 3.4, secs: 2.9, turns: -1 }),
   },
   {
     name: 'Powerloop (wide, slow)',

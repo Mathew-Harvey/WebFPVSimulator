@@ -27083,3 +27083,88 @@ Flown in the town alongside this: eleven of thirteen manoeuvres named.
 
 score:selftest (207), contact:selftest, trick:sweep (740 samples), lint:shell,
 lint:quality, lint:nouns, lint:presets, lint:arcade and lint:board all pass.
+
+## 2026-09-03 The sweep, continued: what it found and what it could not fly
+
+Four more faults, all found by the sweep and none of them visible to any hand
+written check.
+
+**The loop's own turn is the WINDING.** A craft holding a circle points its
+thrust at the middle of it, so its attitude turns exactly as far as its path
+does. The integral about the rail's axis is not quite that: anything else the
+pilot does with a component along that axis lands in it too. A 360 yaw spin
+inside a loop flown with bank is exactly that, because the craft's up axis is
+tilted towards the rail, and at 30 degrees the reading collapsed from 0.97 to
+0.38 and an Inverted 360 Powerloop went unnamed at every bank past 20.
+
+**Ownership is decided PER SAMPLE.** Averaging the signed alignments cannot
+tell a craft ROLLING about its nose from one YAWING through the lap: in both,
+the wing and the up axis sweep and both averages collapse. But a roll keeps the
+rail permanently ACROSS the nose so its per sample perpendicular magnitude
+stays at one, while a yaw swings the rail between the nose and the wing and
+both readings fall to about the same middling value. On the average alone a
+Cinnamon Roll, whose lap is DEFINED by having no flip in it, was handed the
+loop's whole turn as pitch and came out an Inverted 360 Powerloop: 650 points
+for a 175 point trick.
+
+That also makes an absolute floor safe where an earlier one was not. 0.9 per
+sample is a rail lying within 26 degrees of square to the nose for the whole
+lap, which is what flying a loop on the pitch axis means; a yawing craft reads
+0.83, a rail 56 degrees off the nose, which is not square to anything. THE
+QUANTITY WAS THE EARLIER MISTAKE, NOT THE IDEA OF A FLOOR.
+
+**Two review findings** went in alongside. `insideOpenLap` measured an open lap
+from its BACKDATED start, so a rotation flown up to 800 ms before the lap began
+was still claimed and destroyed, which is the entry rotation the twelve
+[rotation, lap] patterns are built on; it runs from the gate now, the same
+reach `insertPending` already refuses to sort on. And a held rotation never
+carried an `orderMs` at all, so anything coming back through `releaseHeld` or
+the drain handback sat in a sorted buffer with no key.
+
+### Where the sweep stands
+
+    Powerloop                 100%   Orbit x2               100%
+    roll loop family          100%   Trippy Spin x2         100%
+    Power Roll                100%   Roll                   100%
+    Mavvy Roll                100%   Flip                   100%
+    Side Loop                 100%   Yaw Spin               100%
+    Matty Flip                 80%   Double Roll            100%
+    Inverted 360 Powerloop     64%   Cinnamon Roll           33%
+    a bare half lap from under, silent on all 105, which is correct
+
+Nothing, anywhere, is ever paid more than it was worth. The Matty Flip's only
+miss is at a twelfth under, where the lap winds 0.44 turns and the straight
+line theorem says that is not evidence of having gone round anything. The other
+two lose their dearer reading to a CHEAPER name, which short changes a pilot
+and puts nothing false on a board.
+
+### What the sweep could NOT fly, which is worth saying plainly
+
+A genuine **Donkey Loop**. It is the pair that would cost most to confuse, 600
+against a Cinnamon Roll's 175, and the rig flying in the town has been seen to
+swap them. The workbook's Donkey Loop is "a 180 pitch down to invert, then a
+360 yaw spin, then complete the loop", so its lap carries HALF a flip. Flown as
+a whole pitch loop with a 360 yaw in it, which is what a tangent nose gives, it
+is not a Donkey Loop at all: it is an Inverted 360 Powerloop, pitch 1 and yaw
+1, and the recogniser named it one and was right to. Half a flip across a WHOLE
+lap needs the nose to leave the tangent and come back, and the sweep cannot fly
+that yet. Until it can, that pair is unverified in the direction that matters.
+
+The rig in the town still flies its Cinnamon Roll manoeuvre as something nearer
+a Donkey Loop and is named accordingly. That is the rig, not the scorer: the
+sweep flies a correct Cinnamon Roll and it never over-claims.
+
+### And three faults were in the sweep itself, which is the point of having one
+
+A tangent run out still winds, so a lap asked for as 1.12 turns measured 1.47
+and crossed to the far side of the rail. A flat turn error is a twelfth of a
+Powerloop and a QUARTER of a Matty Flip. And an added rotation happens at the
+peak of the loop rather than smeared across it, which the workbook says in as
+many words and which the arithmetic requires.
+
+### Checks
+
+score:selftest (207), contact:selftest, trick:sweep (about 700 samples over
+fourteen families), lint:shell, lint:quality, lint:nouns, lint:presets,
+lint:arcade and lint:board all pass. Flown in the town: ten to eleven of
+thirteen manoeuvres named, varying by run.

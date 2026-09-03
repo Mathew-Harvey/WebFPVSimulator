@@ -542,6 +542,20 @@ async function main() {
      * lap, the two step pattern is unreachable and the dear one step pattern
      * takes the flight.
      */
+    /*
+     * NOT YET SWEPT: a genuine Donkey Loop, which is the pair that would
+     * cost most to confuse at 600 against a Cinnamon Roll's 175, and which
+     * the rig flying in the town has been seen to swap.
+     *
+     * The attempt is recorded because the reason it was dropped matters. The
+     * workbook's Donkey Loop is "a 180 pitch down to invert, then a 360 yaw
+     * spin, then complete the loop", so its lap carries HALF a flip. Flown
+     * here as a whole pitch loop with a 360 yaw in it, which is what a
+     * tangent nose gives, it is not a Donkey Loop at all: it is an Inverted
+     * 360 Powerloop, pitch 1 and yaw 1, and the recogniser named it one and
+     * was right to. Half a flip across a WHOLE lap needs the nose to leave
+     * the tangent and come back, and this file cannot fly that yet.
+     */
     ['Side Loop', () => sweepLap('Side Loop', {
       turns: 1, from: 'under', noseAlong: true, beforeYaw: 0.25,
     }, { banks: [0, 20, 40], drifts: [0] })],

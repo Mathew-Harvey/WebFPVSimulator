@@ -529,13 +529,13 @@ function lapPlan(ob, opts = {}) {
       : Math.atan2(dir.x, dir.z);
     await window.__settle(from, head, 1.8);
     window.__armProbe();
-    await window.__fly(window.__ramp(from, start, ${runUp} * 1.9 / Math.max(2, vEnt), vEnt),
-      { heading: head });
     /*
-     * The stick that OPENS the trick, flown immediately before the lap.
-     * Twelve patterns are [rotation, lap], and the rotation has to be
-     * adjacent: matchSteps refuses a gap wider than STEP_GAP_MAX, because
-     * two tricks with a pause between them are two tricks.
+     * The stick that OPENS the trick, flown BEFORE the run in rather than at
+     * the lap's start point. Twelve patterns are [rotation, lap] and the
+     * rotation has to reach the matcher as its own primitive: flown at the
+     * start point it was inside the lap's open window and was held by it,
+     * because the winding gate opens at 0.08 turns per second and that is a
+     * long way out. A pilot yaws to line up and THEN flies at the rail.
      */
     if (${JSON.stringify(before)}) {
       const TURN3 = Math.PI * 2;
@@ -544,8 +544,13 @@ function lapPlan(ob, opts = {}) {
         (cc, tt, aa) => Math.abs(aa.r) >= wantB * 0.7);
       await window.__stickHold([0, 0, -0.4, 0.55], 260,
         (cc) => !cc.rates || Math.abs(cc.rates.r) < 1.5);
+      await window.__fly(window.__hold3(from, 0.5), {});
     }
-    const r = await window.__fly(lap, { heading: head, yawRate: ${yawRate} });
+    await window.__fly(window.__ramp(from, start, ${runUp} * 1.9 / Math.max(2, vEnt), vEnt),
+      { heading: head });
+    const r = await window.__fly(lap, ${yawRate}
+      ? { yawRate: ${yawRate} }
+      : { heading: head });
     /* The stick that finishes the trick, where the trick has one: an
      * Immelmann is half a loop and then the roll out of it. */
     if (${JSON.stringify(after)}) {
@@ -962,11 +967,21 @@ const MANOEUVRES = [
     name: 'Cinnamon Roll',
     want: 'Cinnamon Roll',
     body: lapPlan(PARK.arch, {
-      /* Nose ALONG the rail, so the loop's own turn lands on roll and the
-       * lap's pitch is zero, which is what Cinnamon Roll asks for; the yaw
-       * stick then supplies the 360 it wants; and the quarter yaw that opens
-       * the trick is flown immediately before the lap so it is adjacent. */
-      radius: 3.4, secs: 3.0, turns: -1, yawRate: 0.30, noseAlong: true,
+      /*
+       * NOSE ACROSS, and the 360 SPREAD through the lap. Flown nose along
+       * the rail with a spin on top this is a Side Loop with a spin, not a
+       * Cinnamon Roll, and it read as one. The workbook is explicit: "a slow
+       * 360 yaw spin, timed to finish as you pass back under the object",
+       * and that is exactly why its lap carries neither a flip nor a roll.
+       * With the nose sweeping the whole way round, the loop's own turn is
+       * shared across the body axes and averages to nothing on both of them,
+       * which leaves the yaw as the only thing the lap carries.
+       */
+      /* 0.26 of stick gave 0.79 of a turn over the lap and the trick wants a
+       * whole one: short of that the nose never sweeps far enough to leave
+       * the loop's turn unowned, pitch keeps it, and the lap reads as a
+       * plain Powerloop. */
+      radius: 3.4, secs: 3.0, turns: -1, yawRate: 0.34, noseAlong: false,
       before: 'yaw', beforeTurns: 0.25,
     }),
   },

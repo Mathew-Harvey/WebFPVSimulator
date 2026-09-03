@@ -27641,3 +27641,37 @@ Both sweeps end on "nothing was ever paid more than it was worth", 36 of 47
 named. The synthetic count is down from 38 because Split-S and Power Roll now
 partly go silent, which is a miss and not a lie, and the real shell is what the
 pilot flies.
+
+### A Split-S case for the rig, and what it says
+
+The owner reported Split-S not registering and the park rig had no case for it,
+which is why nothing caught it. There is one now, flown at the same arch and on
+the same dive as the Matty Flip beside it, with the half roll that names it.
+
+It does not pass yet, and the reason is the flying rather than the scorer. The
+roll takes about 800 ms, which at 11 m/s is nearly nine metres, so flown on the
+doorstep it carried the craft past the rail before the dive began and the dive
+circle no longer enclosed it: no wrap, no lap, three loose rotations. Moved onto
+the run in the lap forms, but the roll then finishes BEFORE the lap opens
+instead of inside it, and the dive overshoots to 0.77 of pitch against the 0.5 a
+Split-S asks for, which lands nearer Anti Matty and Half Matty than Split-S.
+
+That is a sloppy manoeuvre being named as the sloppy manoeuvre it was, not a
+recogniser fault, and the Matty Flip at the same station on the same dive passes
+every run. The case is kept failing rather than deleted, because a gap that is
+written down is worth more than a green suite.
+
+### Honest state
+
+`npm run park:fly` is 10 of 14 with the new case, from 6 of 13 when this
+started. It VARIES run to run, because it flies real sticks through the real
+plant: Jump Rope and 1 Trippy Spin have each passed and failed across otherwise
+identical runs, and a Wall Tap came back once as a Wall Tap and once as a Wall
+Tap plus a Ceiling Tap. A single green run is not evidence and should not be
+quoted as one.
+
+Not fixed: the craft sticking to a wall after a tap. Wall friction is mu 0.42,
+which is defensible for a frame against concrete, so the more likely cause is
+the separation pass rather than the friction, and changing a contact constant on
+a hunch is the wrong way to find out. It wants its own turn with the clip watch
+and passStats.sepFail in front of it.

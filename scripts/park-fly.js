@@ -953,6 +953,53 @@ const MANOEUVRES = [
     `,
   },
   {
+    /*
+     * A Split-S is a Matty Flip with the half roll that names it flown
+     * first: over the object, roll inverted, then pull through and out
+     * underneath. It is the same station and the same dive as the Matty
+     * Flip above, so anything that breaks one should break both, which is
+     * the point of having it here: the owner reported Split-S not
+     * registering in the practice field and the rig had no case for it.
+     */
+    name: 'Split-S',
+    want: 'Split-S',
+    body: `
+      const TURN = Math.PI * 2;
+      const A = ${JSON.stringify(PARK.arch)};
+      const over = V(A.x - 14, A.y + 3.6, A.z);
+      const at = V(A.x + 2.2, A.y + 3.6, A.z);
+      const head = Math.atan2(1, 0);
+      await window.__settle(over, head, 1.8);
+      window.__armProbe();
+      /*
+       * THE ROLL IS FLOWN ON THE RUN IN, not on the doorstep. It takes
+       * about 800 ms, which at 11 m/s is nearly nine metres, so rolling
+       * after arriving carried the craft that far past the rail before the
+       * dive began and the dive circle no longer enclosed it: no wrap, no
+       * lap, and three loose rotations where a Split-S had been flown. The
+       * ramp therefore stops nine metres short and the roll covers the
+       * rest, so the dive still starts just past the rail where the Matty
+       * Flip's arithmetic says it has to.
+       */
+      const mid = V(A.x - 6.6, A.y + 3.6, A.z);
+      await window.__fly(window.__ramp(over, mid, 1.5, 11), { heading: head });
+      await window.__stickHold([0.85, 0, 0, 0.52], 620,
+        (c, t, a) => Math.abs(a.p) >= TURN * 0.46);
+      await window.__stickHold([-0.3, 0, 0, 0.55], 180,
+        (c) => !c.rates || Math.abs(c.rates.p) < 2.4);
+      /* Then the same dive the Matty Flip flies. */
+      await window.__stickHold([0, -0.62, 0, 0.50], 1700,
+        (c, t, a) => a.q >= TURN * 0.44);
+      await window.__stickHold([0, 0.22, 0, 0.6], 340,
+        (c) => !c.rates || Math.abs(c.rates.q) < 2.4);
+      await window.__fly(window.__on(V(1, 0.1, 0), 12, 2.2), { heading: head });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { probe: window.__probe };
+    `,
+  },
+  {
     /* Half a lap up from under, then the half roll that finishes it, which
      * is an Immelmann Turn. Flying the half lap and NOT rolling out leaves
      * the craft inverted, and righting it is a rotation of its own that the

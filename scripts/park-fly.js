@@ -868,19 +868,49 @@ const MANOEUVRES = [
       const TURN = Math.PI * 2;
       const A = ${JSON.stringify(PARK.arch)};
       /* The rail runs along z, so the approach is along x, above it. */
-      const over = V(A.x - 13, A.y + 3.4, A.z);
-      const at = V(A.x - 1.5, A.y + 3.4, A.z);
+      /*
+       * The dive begins just PAST the rail, not short of it. A Matty Flip
+       * goes OVER the object and comes back UNDER it, so the curve has to
+       * enclose the rail: started a metre and a half before it the craft
+       * carved down the near face and never went round anything, and the
+       * lap never formed.
+       */
+      /*
+       * THE DIVE CIRCLE HAS TO CONTAIN THE RAIL, and that is arithmetic, not
+       * taste. A dive of radius r = v / omega curves about a centre r below
+       * the entry, and the lap only winds past half a turn if the rail lies
+       * INSIDE that circle: a straight line subtends strictly less than half
+       * a turn about any point off it, which is exactly why HALF_LAP_MIN is
+       * where it is and why it must not be moved.
+       *
+       * At 8 m/s and full back stick the radius is about a metre, so entering
+       * 3.2 m above and 2 m across put the rail nearly 3 m from a 1 m circle:
+       * outside it, no wrap, and the lap wound 0.47 to 0.55, which the
+       * recogniser was right to refuse as a fly past. Entering 2.5 m above
+       * and 1.5 m across with a 3 m radius puts the rail 1.6 m from the
+       * centre, well inside.
+       */
+      const over = V(A.x - 14, A.y + 3.6, A.z);
+      const at = V(A.x + 2.2, A.y + 3.6, A.z);
       const head = Math.atan2(1, 0);
       await window.__settle(over, head, 1.8);
       window.__armProbe();
+      /* SLOWER MAKES IT TIGHTER. The dive's radius is speed over turn rate,
+       * and the lap only winds a half turn if the curve comes back UNDER the
+       * rail: at 11 m/s it carved down the far side and away, winding half of
+       * what was needed. */
       await window.__fly(window.__ramp(over, at, 2.1, 11), { heading: head });
       /* Nose DOWN and hold: pitch stick negative pitches the nose down, and
        * the craft carves down past the near face of the rail and back under
        * it. Half a turn of pitch, braked so it does not become a whole one. */
-      await window.__stickHold([0, -0.62, 0, 0.52], 1400,
-        (c, t, a) => a.q >= TURN * 0.34);
-      await window.__stickHold([0, 0.4, 0, 0.6], 500,
-        (c) => !c.rates || Math.abs(c.rates.q) < 1.5);
+      /* A 3 m radius at 8 m/s is 2.7 rad/s, which is about a fifth of the
+       * 12.8 rad/s full deflection was measured to buy. */
+      await window.__stickHold([0, -0.62, 0, 0.50], 1700,
+        (c, t, a) => a.q >= TURN * 0.44);
+      /* Braked gently and briefly: a hard brake splits the pitch into two
+       * primitives and the pair reads as two half flips rather than one. */
+      await window.__stickHold([0, 0.22, 0, 0.6], 340,
+        (c) => !c.rates || Math.abs(c.rates.q) < 2.4);
       await window.__fly(window.__on(V(1, 0.1, 0), 12, 2.2), { heading: head });
       window.__stick(0, 0, 0, 0);
       await new Promise((z) => setTimeout(z, 900));

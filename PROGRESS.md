@@ -26602,3 +26602,132 @@ NOT FIXED, and each with what is known about it:
     Mavvy Roll, which is the same lap read as carrying a roll instead. The
     yaw the rig injects is not landing as yaw.
   - **The 34 m mast** is still not an obstacle below y 34.7.
+
+## 2026-09-03 Fanned out an audit of the measurement chain, and fixed the Wall Tap
+
+Forty minutes, agents fanned out over the recogniser with the brief "all tricks
+should be perfectly measurable". The machine here has four cores, so the
+workflow's concurrency cap is TWO, and the first attempt (eleven auditors at
+high effort, three skeptics each) was never going to land inside the time. It
+was stopped and re-sized to six auditors with one skeptic. Two auditors
+returned before the clock ran out; four did not. What follows is what came
+back, and it is the most valuable thing in this entry: SEVEN findings, all of
+them about why a flown trick is not measurable, none of them yet fixed.
+
+### The lap's rotation is measured in the wrong frame, and that is first order
+
+`closePath` builds `rot` as `lastRot - startRot`, where `totalTurns[k]` is the
+plain time integral of the BODY rate about body axis k. Body axes tumble with
+the craft, so this is not "turns about each axis": it is the projection of the
+craft's real rotation onto a frame that is itself rotating.
+
+For the loop family the leakage has a closed form. Let phi be the craft's roll
+about its own nose axis, measured from wings parallel to the rail. The nose is
+tangent through the loop, so the rail axis sits at angle phi in the body y/z
+plane, and the gyro sees q = Omega cos(phi), r = Omega sin(phi). So
+
+    rot = [0, cos(phi), sin(phi)],   rot_pitch^2 + rot_yaw^2 = 1
+
+A Powerloop flown with 45 degrees of bank, which is ordinary when the rail sits
+diagonal to the approach, reads rot [0, 0.71, 0.71]. Powerloop spends one slack
+on a pitch error of 0.29; Donkey Loop spends one on yaw and nothing on pitch;
+equal length, equal slack, and Donkey Loop is worth 600 against Powerloop's
+200, so the dearer name wins. THE PILOT NEVER TOUCHED THE YAW STICK AND THE
+CRAFT NEVER CHANGED HEADING IN ANY WORLD SENSE. Past about 41 degrees of bank a
+Powerloop is a Donkey Loop.
+
+This is exactly the flakiness flown in the park, and it is not holonomy in the
+subtle second order sense: it is a DC term with a formula.
+
+The fix the auditor proposes, and it is the right one: stop resolving a lap's
+concurrent rotation in the body frame and resolve it in a frame fixed to the
+LAP. main.js already builds `scoreQuat`, the body to world rotation in the
+obstacles' own frame, at the step() call site; carry it (or the three world
+frame body axis vectors) into step() and integrate there.
+
+### Six more, in the auditor's own order of severity
+
+  2. **The rotation window and the winding window are the same window, and
+     should not be.** `rot` covers the lap PLUS a fixed 800 ms of whatever came
+     before it, and how much of that 800 ms exists depends on approach speed
+     and on when the gate happened to open. A pilot who yaw spins to line up on
+     a rail and then flies a plain Powerloop has the line up spin swallowed
+     into the lap's rotation. Keep the backdate for startWind and startSide,
+     which is what it was argued for; take startRot from where the winding
+     actually starts.
+
+  3. **The rot accept band is exactly as wide as the spacing between the loop
+     family classes**, so adjacent tricks always overlap and PRICE decides. A
+     five hundredth of a turn turns a 200 point Novice trick into a 600 point
+     Master one, and it moves in the direction that pays more. Either set
+     SLACK_ROT to 0 so the classes partition cleanly, or snap each component to
+     the nearest quarter and REFUSE a lap sitting on a boundary. Refusing is
+     right there: a lap that is genuinely between two tricks is not either.
+
+  4. **Every [rotation, lap] pattern is unreachable whenever any path run is
+     open, and the primitive is then DESTROYED.** `closeRun` diverts a rotation
+     that closes while `anyPathOpen()` into `heldByPath`; `closePath` copies
+     that onto the lap as `held`; and when the lap IS named, `emit` splices the
+     lap out and never looks at `held`, so the rotation is silently discarded.
+     A path run opens on any flypast of a post at flying speed, and the town
+     has 886 poles with up to 32 runs live at once, so whether a pattern's
+     entry rotation reaches the buffer at all is decided by whether an
+     unrelated post happened to be in reach that millisecond. Twelve patterns
+     are gated on this, Jump Rope, Cinnamon Roll and Side Loop among them.
+     THIS IS WHY THE CINNAMON ROLL COMES OUT A MAVVY ROLL.
+
+  5. **A pattern that omits a rot axis can never win a tie against its own
+     superset.** Sweeping the drift plane with the matcher's own rules, a
+     Powerloop with pitch exactly 1.0 is named Powerloop on 100% of the plane
+     while roll and yaw drift stay under 0.6 turns, on 86% at 0.8, and on only
+     46% at 1.5. And it fails abruptly: at |yaw| 0.75 the name becomes Inverted
+     360 Powerloop, a 650 point Master trick, at zero slack, for a pilot who
+     never touched yaw.
+
+  6. **The lap families tile the axis with no dead band.** A flown Matty Flip
+     has exactly one correct window and it is a quarter turn wide on roll.
+     Over a modest drift square of +/- 0.4 turns the correct name comes out on
+     62% of it. Accept at zero slack within half the tolerance, charge one
+     point out to the full tolerance, and refuse beyond, so the strip between
+     two family members names NOTHING rather than being handed to the
+     neighbour.
+
+  7. **Length beats cleanliness absolutely and nothing bounds the gap between
+     a pattern's steps**, so two tricks flown seconds apart merge into one
+     dearer name. A Powerloop and then a Matty Flip rewind under the same rail
+     a second later is matched as a Barani and paid 700 for a Master trick
+     nobody flew. `emit` already computes the dead time between steps; the fix
+     is to REJECT on it rather than only grade on it.
+
+### What was fixed, flown
+
+**A quarter turn now stops at a quarter.** The stick is a RATE, so releasing it
+leaves the craft turning: held to a quarter it arrived at a third, and two of
+those came out a Double Flip. The rig brakes with opposite stick, the way a
+pilot does. **The Wall Tap now names Wall Tap CLEAN.**
+
+**The Matty's dive circle now contains the rail.** A dive of radius v/omega
+curves about a centre r below the entry, and the lap only winds past half a
+turn if the rail is INSIDE that circle. At 8 m/s and full back stick the radius
+is about a metre, so entering 3.2 m above and 2 m across left the rail nearly
+3 m outside a 1 m circle, and the lap wound 0.47 to 0.55.
+
+HALF_LAP_MIN WAS NOT MOVED, and this is worth being explicit about. The
+recogniser was RIGHT to refuse those laps: a straight line subtends strictly
+less than half a turn about any point off it, so a lap at or under half a turn
+is exactly what flying dead straight past the rail gives. The rig was flying a
+fly past and calling it a trick. The lap forms now and comes out **Anti Matty
+CLEAN**, which is the real catalogue entry for the same shape flown round the
+other way, so the manoeuvre is MEASURED and it is the rig's dive direction that
+is mirrored.
+
+Flown, one repeat each: eleven of thirteen named, including the Wall Tap. The
+two that are not are the Cinnamon Roll, whose cause is finding 4 above, and the
+Trippy Spin, which flakes.
+
+### Checks
+
+score:selftest and contact:selftest pass. park:fly flies and reports. The four
+auditors that did not return are the pattern matcher, the obstacle derivation,
+determinism, and unreachable patterns; the mast is still not an obstacle below
+y 34.7.

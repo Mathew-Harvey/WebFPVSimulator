@@ -259,6 +259,13 @@ const PATH_MIN_RADIUS = 0.45;
 const PATH_REVERSE_TURNS = 0.08;
 /* A lap cannot run forever: past this it is drift, not a trick. */
 const PATH_MAX_MS = 20000;
+/*
+ * How squarely the lap's axis has to lie along ONE body axis before the
+ * loop's turn can be attributed to it. 0.72 is a little inside 45 degrees,
+ * which is the angle at which two body axes are equally entitled to it: past
+ * that there is no answer to give and the raw reading is the honest one.
+ */
+const DEBANK_MIN_ALIGN = 0.72;
 
 /*
  * The floors on a lap, and both come from the straight line theorem written
@@ -1531,6 +1538,21 @@ class PathRun {
      * progress. See PATH_REVERSE_TURNS. */
     this.backWind = 0;
     /*
+     * THE LOOP'S OWN TURN, and how the lap's axis lies in the body.
+     *
+     * axisAcc integrates the craft's rotation about the OBSTACLE'S axis,
+     * which is the rotation the loop itself performs and is the same number
+     * whatever bank the pilot flew it at. alignSum accumulates how the
+     * obstacle's axis sits along the nose, the wing and the up axis, so the
+     * loop's turn can be taken back out of the body integrals and what is
+     * left is what the pilot ADDED. See the de-banking in closePath.
+     */
+    this.axisAcc = 0;
+    this.startAxis = 0;
+    this.lastAxis = 0;
+    this.alignSum = [0, 0, 0];
+    this.alignN = 0;
+    /*
      * The last millisecond this run was winding at all, as against lastMs
      * which is the high water mark of the WINDING. They are different
      * questions and were briefly the same field: how far round the craft
@@ -1611,6 +1633,7 @@ class PathRun {
     /* Samples of the lap with the object near the nose. See TRACK_DOT. */
     this.trackSamples = 0;
     this.haveFwd = false;
+    this.haveUp = false;
     this.spanSamples = 0;
     this.histWind = new Float64Array(PATH_LOOKBACK);
     this.histRot = new Float64Array(PATH_LOOKBACK * 3);
@@ -1741,6 +1764,7 @@ export class TrickDetector {
      * were first used. See groupOf. */
     this.groups = [];
     this.haveFwd = false;
+    this.haveUp = false;
     this.fwdX = 0;
     this.fwdY = 0;
     this.fwdZ = 0;
@@ -1918,8 +1942,14 @@ export class TrickDetector {
    *   qx qy  the x and y components of the body to world quaternion, which
    *          is all the attitude this needs
    *   speed  m/s, for the stall test
+   *   fx..   where the nose points, in the obstacles' own frame
+   *   ux..   where the craft's UP points, same frame. Optional, and what it
+   *          buys is the only thing that makes a lap's rotation measurable:
+   *          with the nose and the up axis the lap axis can be resolved into
+   *          the body, and the loop's own turn separated from the pilot's.
+   *          See the de-banking in closePath.
    */
-  step(dt, p, q, r, qx, qy, speed, wx, wy, wz, fx, fy, fz) {
+  step(dt, p, q, r, qx, qy, speed, wx, wy, wz, fx, fy, fz, ux, uy, uz) {
     if (!this.enabled) {
       return;
     }
@@ -1931,6 +1961,24 @@ export class TrickDetector {
       this.fwdX = fx;
       this.fwdY = fy;
       this.fwdZ = fz;
+    }
+    /*
+     * The three body axes, in the world. roll turns about the nose, pitch
+     * about the right wing and yaw about the up axis, and right is the
+     * cross of the other two. Only the ALIGNMENTS matter downstream and a
+     * consistent sign error in `right` cancels between them, so the handed
+     * ness of this cross does not have to be argued: what must be right is
+     * that p, q and r go with the nose, the wing and the up axis, and they
+     * do. See axisStep, which is fed p, q, r in that order.
+     */
+    this.haveUp = ux !== undefined && this.haveFwd;
+    if (this.haveUp) {
+      this.upX = ux;
+      this.upY = uy;
+      this.upZ3 = uz;
+      this.rgtX = fy * uz - fz * uy;
+      this.rgtY = fz * ux - fx * uz;
+      this.rgtZ = fx * uy - fy * ux;
     }
     const dtMs = dt * 1000;
     this.nowMs += dtMs;
@@ -1957,6 +2005,10 @@ export class TrickDetector {
       this.gapStallMs = 0;
     }
     const upZ = 1 - 2 * (qx * qx + qy * qy);
+    /* This step's rates, so a lap can resolve them onto its own axis. */
+    this.pNow = p;
+    this.qNow = q;
+    this.rNow = r;
     this.totalTurns[AXIS_ROLL] += (p * dt) / TURN;
     this.totalTurns[AXIS_PITCH] += (q * dt) / TURN;
     this.totalTurns[AXIS_YAW] += (r * dt) / TURN;
@@ -2117,6 +2169,27 @@ export class TrickDetector {
       && tangent >= (radial < 0 ? -radial : radial) * PATH_TANGENT_RATIO;
     const side = this.sideOf(ob, cx, cy, cz);
     run.windTotal += dTurns;
+    /*
+     * THE LOOP'S OWN TURN, integrated about the OBSTACLE'S axis.
+     *
+     * The lap axis resolved into the body gives the direction cosines
+     * against the nose, the wing and the up axis, and the craft's rotation
+     * about that axis is the body rates dotted with them. That number is
+     * the same whatever bank the lap was flown at, which the body integrals
+     * emphatically are not. See the de-banking in closePath.
+     */
+    if (this.haveUp) {
+      const ar = ob.dx * this.fwdX + ob.dy * this.fwdY + ob.dz * this.fwdZ;
+      const ap = ob.dx * this.rgtX + ob.dy * this.rgtY + ob.dz * this.rgtZ;
+      const ay = ob.dx * this.upX + ob.dy * this.upY + ob.dz * this.upZ3;
+      run.axisAcc += ((this.pNow * ar + this.qNow * ap + this.rNow * ay) * dt) / TURN;
+      if (run.open && circling) {
+        run.alignSum[AXIS_ROLL] += ar;
+        run.alignSum[AXIS_PITCH] += ap;
+        run.alignSum[AXIS_YAW] += ay;
+        run.alignN += 1;
+      }
+    }
 
     if (!run.open) {
       /* Keep the rolling record whether or not this becomes a lap. */
@@ -2155,6 +2228,12 @@ export class TrickDetector {
         run.backWind = 0;
         run.tailMs = this.nowMs;
         run.openMs = this.nowMs;
+        run.startAxis = run.axisAcc;
+        run.lastAxis = run.axisAcc;
+        run.alignSum[0] = 0;
+        run.alignSum[1] = 0;
+        run.alignSum[2] = 0;
+        run.alignN = 0;
         run.invSamples = 0;
         run.trackSamples = 0;
         run.haveFwd = false;
@@ -2206,6 +2285,7 @@ export class TrickDetector {
         run.lastRot[0] = this.totalTurns[0];
         run.lastRot[1] = this.totalTurns[1];
         run.lastRot[2] = this.totalTurns[2];
+        run.lastAxis = run.axisAcc;
       }
       run.spanSamples += 1;
       if (nowLen < run.minR) {
@@ -2362,12 +2442,10 @@ export class TrickDetector {
       endMs,
       startSide: run.startSide,
       endSide,
-      /* Net rotation while the lap was flown, per axis, in turns. */
-      rot: [
-        run.lastRot[0] - run.startRot[0],
-        run.lastRot[1] - run.startRot[1],
-        run.lastRot[2] - run.startRot[2],
-      ],
+      /* Net rotation while the lap was flown, per axis, in turns, with the
+       * loop's own turn put back on one axis rather than smeared across
+       * two by the bank the pilot happened to fly at. See debankLap. */
+      rot: this.debankLap(run),
       upZ,
       /* The fraction of the lap flown belly up, 0 to 1. See PathRun. */
       invertedFrac: run.spanSamples > 0 ? run.invSamples / run.spanSamples : 0,
@@ -2405,6 +2483,79 @@ export class TrickDetector {
     /* A finished lap must not be visible to the next one's lookback. */
     run.clearHistory();
     this.drain(false);
+  }
+
+  /*
+   * THE LOOP'S TURN BELONGS TO THE LOOP, NOT TO THE BANK IT WAS FLOWN AT.
+   *
+   * A lap's concurrent rotation used to be the plain time integral of the
+   * BODY rates. Body axes tumble with the craft, so that is not "turns about
+   * each axis": it is the craft's real rotation projected onto a frame that
+   * is itself rotating, and for the loop family the error is not a subtle
+   * second order term, it is a first order one with a closed form.
+   *
+   * Fly a Powerloop. The nose stays tangent, so the rail's axis is
+   * perpendicular to the nose, but it sits at the BANK ANGLE phi in the
+   * plane of the wing and the up axis. The gyro therefore reads
+   *
+   *     q = Omega cos(phi),   r = Omega sin(phi)
+   *
+   * and the integral comes out rot = [0, cos(phi), sin(phi)], whose pitch
+   * and yaw always square to one. At 45 degrees of bank, which is ordinary
+   * when the rail sits diagonal to the approach, that is [0, 0.71, 0.71]:
+   * Powerloop pays one slack for a pitch error of 0.29, Donkey Loop pays one
+   * for a yaw error of 0.29, they tie on length and slack, and Donkey Loop
+   * is worth 600 against Powerloop's 200 so the dearer name wins. The pilot
+   * never touched the yaw stick and the craft never changed heading in any
+   * world sense. Past about 41 degrees of bank a Powerloop WAS a Donkey Loop.
+   *
+   * So the loop's own turn is measured where it actually happens, about the
+   * OBSTACLE'S axis, which is bank independent; the body integrals have that
+   * turn subtracted out, leaving what the PILOT added; and the loop's turn is
+   * then put back on whichever body axis its axis most lies along. A lap
+   * flown nose across the rail lands it on pitch, which is a Powerloop; nose
+   * along the rail lands it on roll, which is the Mavvy family; and a genuine
+   * yaw spin inside the loop survives in the residual, which is what makes a
+   * real Donkey Loop still a Donkey Loop.
+   *
+   * Falls back to the raw body integral when the caller supplied no up axis,
+   * which is every test written before this existed and the safe way round.
+   */
+  debankLap(run) {
+    const raw = [
+      run.lastRot[0] - run.startRot[0],
+      run.lastRot[1] - run.startRot[1],
+      run.lastRot[2] - run.startRot[2],
+    ];
+    if (!this.haveUp || run.alignN <= 0) {
+      return raw;
+    }
+    const align = [
+      run.alignSum[0] / run.alignN,
+      run.alignSum[1] / run.alignN,
+      run.alignSum[2] / run.alignN,
+    ];
+    const spin = run.lastAxis - run.startAxis;
+    let best = 0;
+    for (let k = 1; k < 3; k += 1) {
+      if (Math.abs(align[k]) > Math.abs(align[best])) {
+        best = k;
+      }
+    }
+    /*
+     * Too square to the lap's axis to say which body axis it went round, so
+     * nothing can be de-banked and the raw reading is the honest answer.
+     */
+    if (Math.abs(align[best]) < DEBANK_MIN_ALIGN) {
+      return raw;
+    }
+    const out = [
+      raw[0] - spin * align[0],
+      raw[1] - spin * align[1],
+      raw[2] - spin * align[2],
+    ];
+    out[best] += spin * (align[best] < 0 ? -1 : 1);
+    return out;
   }
 
   /*
@@ -2613,8 +2764,19 @@ export class TrickDetector {
      * of a Powerloop is part of the Powerloop; buffering it would let the
      * matcher name it a Flip as well and pay twice for one motion. If the
      * lap turns out to name nothing, releaseHeld hands it back.
+     *
+     * INSIDE, though, not merely AT THE SAME TIME AS. This used to hold any
+     * rotation that closed while ANY path run was open, and a path run opens
+     * on any flypast of a post at flying speed: the town has 886 poles and
+     * up to MAX_PATH_RUNS of them can be live at once. So a Jump Rope's
+     * opening quarter yaw, flown well before the lap began, was diverted
+     * into heldByPath because some unrelated lamp post happened to be in
+     * reach that millisecond, and when the lap WAS named, emit dropped the
+     * lap and the rotation with it. Twelve patterns are [rotation, lap] and
+     * every one of them was unreachable whenever that happened, which is
+     * why a Cinnamon Roll came out a Mavvy Roll.
      */
-    if (this.anyPathOpen()) {
+    if (this.insideOpenLap(prim)) {
       this.heldByPath.push(prim);
       return;
     }
@@ -2625,7 +2787,12 @@ export class TrickDetector {
     if (this.absorbedByLap(prim)) {
       return;
     }
-    this.pending.push(prim);
+    /*
+     * IN FLIGHT ORDER, not closure order. A lap opens before the rotation
+     * inside it and closes after, so pushing on close puts the lap AFTER
+     * primitives that happened later, and every pattern is a sequence.
+     */
+    this.insertPending(prim);
     this.lastCloseMs = this.nowMs;
     this.drain(false);
   }
@@ -2744,6 +2911,35 @@ export class TrickDetector {
   }
 
   /* Is any lap in progress? */
+  /*
+   * Does this rotation lie inside a lap that is still being flown? Most of
+   * it must, on the same 50% bar absorbedByLap uses for a lap already named,
+   * because they are the same question about a lap at two different moments.
+   */
+  /* Buffer a primitive where it belongs in the flight, by when it began. */
+  insertPending(prim) {
+    let at = this.pending.length;
+    while (at > 0 && this.pending[at - 1].startMs > prim.startMs) {
+      at -= 1;
+    }
+    this.pending.splice(at, 0, prim);
+  }
+
+  insideOpenLap(prim) {
+    const dur = prim.endMs - prim.startMs;
+    for (const run of this.paths) {
+      if (!run.open) {
+        continue;
+      }
+      const lo = prim.startMs > run.startMs ? prim.startMs : run.startMs;
+      const hi = prim.endMs < this.nowMs ? prim.endMs : this.nowMs;
+      if (hi - lo > dur * 0.5) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   anyPathOpen() {
     for (const run of this.paths) {
       if (run.open) {

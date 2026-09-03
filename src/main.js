@@ -980,6 +980,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * detector. Written in place, never allocated in the step loop. */
   const scorePos = new THREE.Vector3();
   const scoreFwd = new THREE.Vector3();
+  /* The craft's own up axis, in the obstacles' frame. With the nose it gives
+   * the recogniser the whole body frame, which is what lets a lap tell the
+   * loop's own turn from the bank it was flown at. See debankLap. */
+  const scoreUp = new THREE.Vector3();
   const scoreQuat = new THREE.Quaternion();
   /*
    * The run's shape is the pilot's choice, made on the Freestyle screen and
@@ -5132,11 +5136,13 @@ export async function boot({ loading, bootStart, mapId }) {
               simQuatToThree(stNow[7], stNow[8], stNow[9], stNow[10], scoreQuat);
               scoreQuat.premultiply(qSpawn);
               scoreFwd.set(0, 0, -1).applyQuaternion(scoreQuat);
+              scoreUp.set(0, 1, 0).applyQuaternion(scoreQuat);
               trickDetector.step(
                 0.001, stNow[11], stNow[12], stNow[13], stNow[8], stNow[9],
                 Math.sqrt(stNow[4] * stNow[4] + stNow[5] * stNow[5] + stNow[6] * stNow[6]),
                 scorePos.x, scorePos.y, scorePos.z,
                 scoreFwd.x, scoreFwd.y, scoreFwd.z,
+                scoreUp.x, scoreUp.y, scoreUp.z,
               );
             }
             /* The solid world, on the sim clock. stateCurr is what the

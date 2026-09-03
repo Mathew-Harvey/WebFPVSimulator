@@ -1939,6 +1939,22 @@ export class TrickDetector {
       this.gapStallMs += dtMs;
     } else {
       this.stallMs = 0;
+      /*
+       * THE STALL THAT COUNTS IS THE ONE THE TRICK STARTS FROM.
+       *
+       * gapStallMs used to accumulate every stalled millisecond since the
+       * last primitive closed and never reset on motion, so it meant "how
+       * much of this run has been spent stopped" rather than "was the craft
+       * stopped when this began". A pilot who hovered on the pad, flew for
+       * half a minute and then landed a clean Flip was handed a Flip Stall
+       * Rewind, which is a different trick at a different price, and it was
+       * reproduced every single time in the town.
+       *
+       * Both readers want the contiguous one. A Stall Rewind is stop and
+       * then rotate. Segmented Flips are rotate, PAUSE, rotate, and the
+       * pause is contiguous with the rotation that follows it too.
+       */
+      this.gapStallMs = 0;
     }
     const upZ = 1 - 2 * (qx * qx + qy * qy);
     this.totalTurns[AXIS_ROLL] += (p * dt) / TURN;

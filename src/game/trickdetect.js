@@ -1055,7 +1055,7 @@ export const PATTERNS = [
      * under the object." */
     name: 'Half Mavvy',
     steps: [
-      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 0 } },
+      { path: 'bar', turns: 1, from: 'under', rot: { pitch: 0, roll: 1 } },
       { axis: 'roll', turns: 0.5 },
       { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
     ],
@@ -1178,7 +1178,7 @@ export const PATTERNS = [
      * pitch down 90 so that you tap it. Then a Matty Flip back under." */
     name: 'Maverick Tap Rewind',
     steps: [
-      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0 }, tap: true },
+      { path: 'bar', turns: 0.5, from: 'under', rot: { pitch: 0, roll: 0.5 }, tap: true },
       { path: 'bar', turns: 0.5, from: 'over', rot: { pitch: 0.5 } },
     ],
   },

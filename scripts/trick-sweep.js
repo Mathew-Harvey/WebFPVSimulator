@@ -218,7 +218,7 @@ const poleField = () => {
  */
 function flyLap(opts = {}) {
   const {
-    turns = 1, from = 'under', bankDeg = 0, noseAlong = false,
+    turns = 1, from = 'under', bankDeg = 0, noseAlong = false, beforeSteps = [],
     addRoll = 0, addYaw = 0, addPitch = 0, radius = 3.2, secs = 2.4, pole = false,
     track = false, inverted = false, drift = 0, beforeYaw = 0, yawSpread = false,
     afterSteps = [],
@@ -287,9 +287,61 @@ function flyLap(opts = {}) {
   const window = (u) => Math.max(0, Math.min(1, (u - 0.32) / 0.36));
   const outAt = (ph) => norm(sub(at(ph), c));
   const inDir = norm(add(tangentAt(ph0), mul(outAt(ph0), -1.1)));
-  for (let i = 0; i < 900; i += 1) {
-    const u = i / 900;
-    f.go(add(start, mul(inDir, -14 * (1 - u))), tan0, upOf(ph0, 0));
+  /*
+   * The steps that come BEFORE the lap, on any axis, flown ON THE WAY IN.
+   *
+   * beforeYaw below handles the quarter yaw that opens the Jump Roping
+   * family and nothing else, so a Matty Twister's opening 360 roll and a
+   * Half Matty's half roll were never flown at all: the rig flew the lap
+   * alone, the lap named Matty Flip, and a 350 point trick read as a 200
+   * point one. That looked like a scorer under-claim until somebody asked
+   * what had actually been flown.
+   *
+   * On the move, not on the spot. Flown stationary they were flown, but a
+   * second of hover ahead of a 360 roll is a stall, and a Matty Twister
+   * came back named 360 Stall Rewind with no lap at all. A pilot rolls on
+   * the run in.
+   */
+  {
+    const each = beforeSteps.map((st) => Math.round(Math.max(380, Math.abs(st.turns) * 720)));
+    const gap = 200;
+    const total = each.reduce((a, b) => a + b + gap, 0);
+    const V = 13;
+    /*
+     * ROTATE ON THE LAST OF THE APPROACH, arriving as the lap opens.
+     *
+     * Flown as a separate run up before the ordinary 900 ms straight in,
+     * every one of these ended more than a second before the lap and the
+     * matcher's contiguity rule threw the pair apart: a Half Matty came
+     * back as "1/2 Roll, Matty Flip", two names and two small prices where
+     * one 350 point trick had been flown. The rule is right and the flying
+     * was wrong. A pilot rolls while closing on the object, so the straight
+     * run establishes the speed first and the roll finishes on the doorstep.
+     */
+    let back = 14 + V * (total / 1000);
+    for (let i = 0; i < 900; i += 1) {
+      back -= V * STEP;
+      f.go(add(start, mul(inDir, -back)), tan0, upOf(ph0, 0));
+    }
+    let bn = tan0;
+    let bu = upOf(ph0, 0);
+    const step = () => {
+      back = Math.max(0, back - V * STEP);
+      f.go(add(start, mul(inDir, -back)), bn, bu);
+    };
+    for (let k = 0; k < beforeSteps.length; k += 1) {
+      const st = beforeSteps[k];
+      for (let i = 0; i < each[k]; i += 1) {
+        const axis = st.axis === 'roll' ? bn : (st.axis === 'yaw' ? bu : cross(bn, bu));
+        const d = (TURN * st.turns) / each[k];
+        bn = norm(rot(bn, axis, d));
+        bu = norm(rot(bu, axis, d));
+        step();
+      }
+      /* Long enough for the rotation to close, short enough to stay
+       * adjacent to what follows it. */
+      for (let i = 0; i < gap; i += 1) { step(); }
+    }
   }
   /*
    * The quarter yaw that OPENS the Jump Roping family, flown on the way in
@@ -310,6 +362,7 @@ function flyLap(opts = {}) {
     }
     for (let i = 0; i < 160; i += 1) { f.go(start, n, up); }
   }
+
   for (let i = 0; i <= N; i += 1) {
     const u = i / N;
     const ph = ph0 + dir * TURN * turns * u;
@@ -369,6 +422,22 @@ function flyLap(opts = {}) {
    * are a sequence, so a sweep that only ever flies the lap can never reach
    * any of them.
    */
+  /*
+   * FLY CLEAR BEFORE ROTATING. The exit used to run along tanEnd + 1.1 out,
+   * which still carries a tangential component, so the craft went on winding
+   * about the rail while it rolled: the lap stayed open, the roll landed
+   * inside it and was held as part of it, and an Immelmann Turn measured a
+   * lap of rot [0.50, 0.50, 0] and named a bare 1/2 Roll. A pilot leaving an
+   * Immelmann flies AWAY from the object, so the exit is radial and the lap
+   * is given the time it needs to close before the next step starts.
+   */
+  if (afterSteps.length) {
+    const away = norm(outAt(phEnd));
+    for (let i = 0; i < 420; i += 1) {
+      ep = add(ep, mul(away, 13 * STEP));
+      f.go(ep, en, eu);
+    }
+  }
   for (const st of afterSteps) {
     const ms = Math.round(Math.max(380, Math.abs(st.turns) * 720));
     for (let i = 0; i < ms; i += 1) {
@@ -627,9 +696,15 @@ function flyPattern(steps, opts = {}) {
     turns: plan.turns * (1 + de),
     bankDeg,
     drift,
-    beforeYaw: beforeRot.length && axisOf(beforeRot[0], steps) === 'yaw'
+    beforeYaw: beforeRot.length === 1 && axisOf(beforeRot[0], steps) === 'yaw'
       ? (beforeRot[0].turns ?? 0.25)
       : 0,
+    beforeSteps: beforeRot.length === 1 && axisOf(beforeRot[0], steps) === 'yaw'
+      ? []
+      : beforeRot.map((st, j) => ({
+        axis: axisOf(st, steps),
+        turns: (st.turns ?? 1) * dirs[j],
+      })),
     afterSteps: steps.slice(lapAt + 1).map((st, j) => ({
       axis: axisOf(st, steps),
       turns: (st.turns ?? 1) * dirs[lapAt + 1 + j],

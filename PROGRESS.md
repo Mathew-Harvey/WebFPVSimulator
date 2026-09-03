@@ -27279,3 +27279,41 @@ submodule in this container, so the firmware parameter tables it reads are
 absent. It lints the flight controller catalogue, which this change does not
 touch. `npm run verify` was not run: this turn changes the trick catalogue and
 the sweep rig, not physics, the plant, the module ABI or the build.
+
+### The rotation next to a lap was never being flown
+
+Five patterns were under-claiming to the bare lap inside them, and all five
+were the rig rather than the scorer.
+
+A preceding rotation only ever reached the air if it was a YAW: `beforeYaw`
+exists for the quarter yaw that opens the Jump Roping family, and anything
+else in that slot was dropped on the floor. A Matty Twister's opening 360 roll
+and a Half Matty's half roll were simply never flown, so the rig flew a bare
+half lap, the scorer correctly named it Matty Flip, and a 350 point trick read
+as 200.
+
+A following rotation was flown, but along `tanEnd + 1.1 out`, which still
+carries a tangential component: the craft went on winding about the rail while
+it rolled, so the lap never closed, the roll landed inside it and was held as
+part of it, and an Immelmann Turn measured a lap of `rot [0.50, 0.50, 0]` and
+named a bare 1/2 Roll. The exit is radial now, with time for the lap to close,
+which is what a pilot leaving an Immelmann does anyway.
+
+Getting the run up rotation into the air then took two more goes, both of them
+the flying and not the scorer:
+
+- Flown stationary at the lap's start point it registered as a STALL, and a
+  Matty Twister came back "360 Stall Rewind" with no lap at all.
+- Flown on the move but as a separate run up before the ordinary 900 ms
+  straight in, it ended more than a second before the lap opened and the
+  matcher's contiguity rule split the pair: "1/2 Roll, Matty Flip", two names
+  and two small prices where one trick had been flown. The rule is right. The
+  straight run establishes speed first now and the rotation finishes on the
+  doorstep, which is how the trick is actually flown.
+
+31 of 47 now name on every sample, up from 26, and still nothing anywhere is
+paid more than it was worth.
+
+`Half Mavvy` and `Maverick Tap Rewind` both cite "a Maverick loop" in their own
+comments, so their lap steps carry the base roll too. A compound has no business
+being looser than the pattern it quotes.

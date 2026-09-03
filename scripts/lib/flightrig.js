@@ -63,6 +63,17 @@ import { TrickDetector } from '../../src/game/trickdetect.js';
 const SPAWN_ALT = 0.045;
 const OBSTACLE_STEP = 4;
 const BOUNCE_COOLDOWN_MS = 180;
+/*
+ * THE RADIO'S OWN RATE, and it has to be the shell's.
+ *
+ * Betaflight derives its feedforward gain and its RC smoothing cutoffs from
+ * the interval it MEASURES between frames, so a rig that talks to it at a
+ * different rate is flying a differently tuned aircraft. The shell runs at
+ * RC_HZ = 250, a 4 ms period; the first version of this file used 2 ms
+ * because that is what scripts/score-selftest.js uses, and a rig whose
+ * answers are meant to transfer to the shell cannot afford the difference.
+ */
+const RC_PERIOD = 1 / 250;
 const G = 9.81;
 export const TURN = 6.283185307179586;
 
@@ -468,7 +479,7 @@ export async function makeRig(opts) {
     const t = stepIdx / 1000;
     if (t >= rcNext) {
       sim.input(t, sticks[0], sticks[1], sticks[2], sticks[3]);
-      rcNext += 0.002;
+      rcNext += RC_PERIOD;
     }
     raiseGround();
     sim.step(1);

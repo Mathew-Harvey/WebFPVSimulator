@@ -28190,3 +28190,109 @@ is the whole of why it was landed this way.
    exercise any of this. They want replacing with replayed fixtures from the
    Node rig, which is what the prompt asks for and what the rig now makes
    possible.
+
+## 2026-09-03: what an adversarial review of this session's own diff found
+
+Four independent readers over the two-part fix, each finding verified or
+refuted by a second reader who was told to default to refuting. Nineteen
+candidates. Recorded here whether acted on or not, per CLAUDE.md.
+
+### The two that mattered most: the new checks could not fail
+
+`scripts/wall-check.js` and `scripts/frame-check.js` were the headline
+evidence for the contact fix, and NEITHER of them bound the shell.
+
+frame-check asserts its algebra about a RESTATEMENT of the seam, written
+inside the check, because `src/main.js` cannot be imported into Node: it
+pulls in three.js and a document. So deleting the one line that undoes the
+spawn rotation inside the shell's own helper left all thirty three checks
+green. wall-check flies the RIG's contact pass, which is a port with its own
+copy of the same helper, so the same mutation left forty five green with the
+printed table byte for byte identical.
+
+That is the "a check that cannot fail is worse than no check" rule, and it
+was mine. frame-check now asserts that `worldDirToSim`'s own body applies
+`qSpawnInv` before the permutation, and the mutation was performed to
+confirm it: 33 passed, 1 failed. It is a lint on the source and says so in
+its own comment; the behavioural half is the rig, and the shell's own is
+`window.__contacts()` reporting `outbound` on a real flight, which park-fly
+could assert and does not yet.
+
+### Three defects in the new code, fixed
+
+The moving-box buried branch, new this session, computed a depth and pointed
+it nowhere: `nx`, `ny` and `nz` stay zero when the centre is inside a car, so
+`finishHitNormal` falls back to the reverse of the travel and the shell would
+have pushed the craft a metre and a half back ALONG the train rather than out
+through its side. It writes the nearest face's normal now, as the static
+branch always has.
+
+`finishHitNormal`'s flip guard read only `hitPen`. `hitOverlap` is a depth
+the caller pushes the hull along that same normal by, so a flipped normal
+drives the craft into the face rather than off it. The guard considers both.
+
+`scripts/lib/flightrig.js` ran its radio at 500 Hz where the shell runs at
+250. Betaflight derives its feedforward gain and its RC smoothing cutoffs
+from the interval it MEASURES between frames, so the rig was flying a
+differently tuned aircraft from the one the shell flies. It is 250 now, and
+the change moved two path-check readings enough to need restating, which is
+the finding proving itself.
+
+### One assertion that was nearly free, replaced by one that is not
+
+"the hull stays out of the wall" asserted `deepest < FACE_X`, which is about
+the CENTRE. The centre sits 0.141 m behind the leading prop discs on an axis
+aligned face, so a craft whose centre stops on the plane has fourteen
+centimetres of itself in the masonry. It asserts the hull now, against a
+bound taken off the contact cadence rather than out of the air: the pass runs
+every 4 ms of sim time and the plant integrates freely between two of them,
+so two passes' travel plus the 8 mm separation is what a hull can be inside a
+face for. Measured, worst of four spawn yaws:
+
+    3 m/s    19 mm inside    against 32 mm the cadence allows
+    6 m/s    11 mm           against 56 mm
+    9 m/s    77 mm           against 80 mm
+
+The 9 m/s row is the honest cost of a 4 ms cadence at racing speed, and
+tightening it is a question about OBSTACLE_STEP rather than about the check.
+
+### The blocker that did not reproduce
+
+The scoring reader called `PATH_RATE_OFF` at 0.04 a blocker: a run held open
+longer than the gap between city lamp posts, so `anyPathOpen()` never falls,
+held rotations are never released and a roll flown while cruising stops being
+named. They reproduced it by feeding the detector positions directly.
+
+Flown on the REAL aircraft it does not reproduce. Down a street of six posts
+26 m apart and 6 m off the line, at 14 m/s, with three clean 360 rolls, the
+named list is BYTE IDENTICAL at the old 0.12 and the new 0.04, two of three
+rolls named in both. The likely reason is that a real flight past a post has
+large radial speed, so `circling` is false and the lap never advances
+whatever the rate gate says; a straight line fed in as positions does not
+have the same property. Recorded rather than dismissed: it was tested.
+
+### Findings noted and NOT acted on
+
+- `wall-check` exits 0 when `dist/sim.wasm` is absent, having flown nothing.
+  Left: it prints a loud SKIP and it is the pattern every other selftest here
+  uses, and making it fail would redden a clean checkout.
+- Two of the four rewritten clip-watch cases pass unchanged when the gate
+  they document is reverted. Two of them do fail, which is what the pair is
+  for.
+- `orbit-check` prints a path error and never asserts on it, so the inverted
+  case scores off a flight 10 m from its own circle. The inverted lap is
+  flown as a fall and no tracker holds it; the trick it names already
+  requires the inversion it is being credited for.
+- THREE FRAME RATE DEPENDENCIES IN SCORING INPUTS, none introduced here and
+  none fixed: `lastClosing` multiplies `hitNormalDot` by a `speedNow` taken
+  from the END of the previous frame; the ground contact scoring branch is
+  still gated on the wall clock while `dt` is capped at 100 ms; and
+  `trickDetector.near()` is sampled once per RENDERED frame from the
+  interpolated render pose, and `nearest` is a running minimum. The tap
+  cooldown was moved to the sim clock this session for exactly this reason
+  and these three are the rest of the same job.
+- The `PATH_MIN_RADIUS` early return in `stepOneLap` skips both close tests,
+  so a run whose craft comes to rest inside 0.45 m of an axis never ends.
+  Pre-existing.
+- The rig taps the recogniser once per 4 ms contact pass where the shell ORs
+  the frame's contacts and taps once per rendered frame.

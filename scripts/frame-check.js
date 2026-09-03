@@ -243,7 +243,16 @@ for (const [yawName, yaw] of YAWS) {
  * the bare permutation anywhere else in main.js is the bug being written
  * again, and it is cheap to refuse.
  */
-const mainSrc = readFileSync(join(root, 'src', 'main.js'), 'utf8');
+const mainSrcRaw = readFileSync(join(root, 'src', 'main.js'), 'utf8');
+/*
+ * COMMENTS DO NOT COUNT. The scan below is a grep, and this file is written
+ * in a house style that explains a fault by naming the function that caused
+ * it, so the word it is looking for appears in prose all over the shell. A
+ * lint that fires on its own documentation is a lint people turn off.
+ */
+const mainSrc = mainSrcRaw
+  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+  .replace(/\/\/[^\n]*/g, '');
 const lines = mainSrc.split('\n');
 const callSites = [];
 for (let i = 0; i < lines.length; i += 1) {
@@ -262,6 +271,30 @@ check(
   helperAt < 0
     ? 'worldDirToSim not found in src/main.js'
     : `${callSites.length} call site(s), ${strays.length} outside the helper${strays.length ? ` at line ${strays.join(', ')}` : ''}`,
+);
+
+/*
+ * AND THE HELPER ITSELF HAS TO UNDO THE SPAWN ROTATION, which is the whole
+ * of the fix and the one thing everything above this line could not see.
+ *
+ * The algebra at the top of this file is asserted about a RESTATEMENT of the
+ * seam, written here, because src/main.js cannot be imported into Node: it
+ * pulls in three.js and a document. So deleting the one line that de-rotates
+ * inside the shell's own helper would leave every one of those checks green,
+ * which is a check that cannot fail, which is worse than no check. This is
+ * the assertion that binds them to the shell. It is a lint on the source and
+ * says so; the behavioural half is scripts/wall-check.js flying the rig's
+ * copy of the same seam, and the shell's own is window.__contacts() reporting
+ * `outbound` on a real flight.
+ */
+const helperBody = helperAt >= 0 ? lines.slice(helperAt, helperAt + 8).join('\n') : '';
+check(
+  'and worldDirToSim undoes the spawn rotation before the permutation',
+  /applyQuaternion\s*\(\s*qSpawnInv\s*\)/.test(helperBody)
+    && /\bthreeDirToSim\s*\(/.test(helperBody),
+  helperAt < 0
+    ? 'worldDirToSim not found'
+    : `body: ${helperBody.split('\n').map((l) => l.trim()).filter(Boolean).join(' ')}`.slice(0, 160),
 );
 
 /* And the import must still exist, so the lint above cannot pass by the

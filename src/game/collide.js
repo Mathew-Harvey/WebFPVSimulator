@@ -1277,8 +1277,14 @@ export class Colliders {
       const along = d1x * nx + d1y * ny + d1z * nz;
       this.hitNormalDot = along < 0 ? -along / tl : along / tl;
       /* A buried centre already has an outward nearest-face. Flipping that
-       * to oppose travel pushes the hull deeper and is the pose glitch. */
-      if (along > 0 && this.hitPen <= 0) {
+       * to oppose travel pushes the hull deeper and is the pose glitch.
+       *
+       * hitOverlap counts here for the same reason hitPen does. It is a
+       * depth the caller will push the hull along this normal by, and a
+       * depth applied along a flipped normal drives the craft INTO the face
+       * rather than off it. The guard only knew about the centre-inside
+       * depth because that was the only one this file reported. */
+      if (along > 0 && this.hitPen <= 0 && this.hitOverlap <= 0) {
         nx = -nx;
         ny = -ny;
         nz = -nz;
@@ -1516,9 +1522,9 @@ export class Colliders {
       const cxp = rpx + rdx * bestT;
       const cyp = rpy + rdy * bestT;
       const czp = rpz + rdz * bestT;
-      const nx = cxp < -hx ? cxp + hx : cxp > hx ? cxp - hx : 0;
-      const ny = cyp < -hy ? cyp + hy : cyp > hy ? cyp - hy : 0;
-      const nz = czp < -hz ? czp + hz : czp > hz ? czp - hz : 0;
+      let nx = cxp < -hx ? cxp + hx : cxp > hx ? cxp - hx : 0;
+      let ny = cyp < -hy ? cyp + hy : cyp > hy ? cyp - hy : 0;
+      let nz = czp < -hz ? czp + hz : czp > hz ? czp - hz : 0;
       this.hitIndex = -1;
       this.hitKind = this.movingKind[bestMoving];
       this.hitT = bestT;
@@ -1538,13 +1544,25 @@ export class Colliders {
         const dy1 = hy - cyp;
         const dz0 = czp + hz;
         const dz1 = hz - czp;
+        /*
+         * AND THE WAY OUT, which the first version of this block computed a
+         * depth for and then did not point anywhere. A depth with no normal
+         * is worse than neither: finishHitNormal falls back to the reverse
+         * of the travel when it is handed a zero vector, so the shell would
+         * have pushed the craft a metre and a half back along the car rather
+         * than out through its side. The nearest face is both the distance
+         * and the direction, exactly as the static branch has it.
+         */
         let best = dx0;
         let rAxis = crx;
-        if (dx1 < best) { best = dx1; rAxis = crx; }
-        if (dy0 < best) { best = dy0; rAxis = vh; }
-        if (dy1 < best) { best = dy1; rAxis = vh; }
-        if (dz0 < best) { best = dz0; rAxis = crz; }
-        if (dz1 < best) { best = dz1; rAxis = crz; }
+        nx = -1;
+        ny = 0;
+        nz = 0;
+        if (dx1 < best) { best = dx1; rAxis = crx; nx = 1; ny = 0; nz = 0; }
+        if (dy0 < best) { best = dy0; rAxis = vh; nx = 0; ny = -1; nz = 0; }
+        if (dy1 < best) { best = dy1; rAxis = vh; nx = 0; ny = 1; nz = 0; }
+        if (dz0 < best) { best = dz0; rAxis = crz; nx = 0; ny = 0; nz = -1; }
+        if (dz1 < best) { best = dz1; rAxis = crz; nx = 0; ny = 0; nz = 1; }
         this.hitPen = best + rAxis;
         if (this.hitPen > 8) {
           this.hitPen = 8;

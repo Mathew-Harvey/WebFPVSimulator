@@ -24,12 +24,14 @@
  *   four days. Measured against the PATH's own axis it is one comparison and
  *   there is no convention in it.
  *
- *   A flip flown in level flight turns the path through NOTHING. The old
- *   winding cannot say that: a craft flying dead past a rail subtends up to
- *   half a turn about it, which is exactly where a real half loop lands, and
- *   the file's own comment above HALF_LAP_MIN spends a page on the two
- *   populations meeting at the same number from opposite sides. Path turning
- *   separates them completely.
+ *   A flip and a flick flown in the air enclose NOTHING. The path does turn
+ *   through them, because a quad flipping is a quad falling and a falling
+ *   craft's path curves, but the curve has nothing in the middle of it and
+ *   its radius is a metre where a loop's is five. The old winding cannot
+ *   say either thing: a craft flying dead past a rail subtends up to half a
+ *   turn about it, which is exactly where a real half loop lands, and the
+ *   file's own comment above HALF_LAP_MIN spends a page on the two
+ *   populations meeting at the same number from opposite sides.
  *
  *   The thing flown around does not have to be a pole or a bar. It is found
  *   by asking the colliders one distance question at the middle of the turn,
@@ -271,8 +273,8 @@ async function loop({ noseAlong = false, secs = 2.9, yaw = Math.PI } = {}) {
   r.done(700);
   const rows = takeTurns(0.3);
   check(
-    'a 360 flip in level flight turns the PATH through nothing',
-    rows.length === 0,
+    'a 360 flip in the air encloses NOTHING, so it can be no lap',
+    rows.every((t) => t.object === 'none'),
     rows.length ? rows.map(describe).join('; ') : 'no path turn over a third of a turn',
   );
 }
@@ -286,8 +288,8 @@ async function loop({ noseAlong = false, secs = 2.9, yaw = Math.PI } = {}) {
   r.done(700);
   const rows = takeTurns(0.3);
   check(
-    'and so does a Juicy Flick, which is a half pitch and a half roll',
-    rows.length === 0,
+    'and neither does a Juicy Flick, which is a half pitch and a half roll',
+    rows.every((t) => t.object === 'none'),
     rows.length ? rows.map(describe).join('; ') : 'no path turn over a third of a turn',
   );
 }

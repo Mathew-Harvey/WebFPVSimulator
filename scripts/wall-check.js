@@ -60,7 +60,12 @@ import {
   makeRig, buildWorld, V, linePath, rampPath, sub, len, cl,
 } from './lib/flightrig.js';
 import { deriveObstacles } from '../src/game/obstacles.js';
-import { CRAFT_ARM, CRAFT_PROP_R } from '../src/game/collide.js';
+import { CRAFT_ARM, CRAFT_PROP_R, BOUNCE_SEPARATION } from '../src/game/collide.js';
+
+/* The shell's obstacle contact cadence, in milliseconds of SIM time. The
+ * plant integrates freely between two passes, which is what bounds how far
+ * a hull can get inside a face before it is pulled out. */
+const OBSTACLE_STEP_MS = 4;
 
 /*
  * What a wall actually meets. CRAFT_R is the swept DIAGONAL, centre to a
@@ -335,10 +340,38 @@ for (const r of results.filter((x) => x.speed >= 9)) {
  * 3. THE HULL NEVER GETS INSIDE THE MASONRY.
  */
 for (const r of results) {
+  /*
+   * THE HULL, NOT THE CENTRE. Asserting the centre stayed outside the face
+   * is nearly free: the centre is 0.141 m behind the leading prop discs on
+   * an axis aligned face, so a craft whose centre stops on the plane has
+   * fourteen centimetres of itself in the masonry.
+   *
+   * WHAT IS ALLOWED COMES OFF THE CONTACT CADENCE rather than out of the
+   * air. The pass runs every OBSTACLE_STEP of SIM time and the plant
+   * integrates freely between two of them, so a hull can be inside a face
+   * for as long as it takes the next pass to arrive: two passes' travel at
+   * the approach speed, plus the 8 mm the pass then places it clear by.
+   *
+   * Measured on this tree, worst of the four spawn yaws at each speed:
+   *
+   *   3 m/s    19 mm of hull inside the face, against 32 mm allowed
+   *   6 m/s    11 mm                          against 56 mm
+   *   9 m/s    77 mm                          against 80 mm
+   *
+   * The 9 m/s row is the honest cost of a 4 ms cadence at racing speed and
+   * it is written down rather than legislated away: a pilot who meets a wall
+   * at nine metres a second sees the hull touch the masonry for four
+   * milliseconds. Tightening it is a question about OBSTACLE_STEP, not about
+   * this check.
+   */
+  const slop = r.speed * (OBSTACLE_STEP_MS / 1000) * 2 + BOUNCE_SEPARATION;
   check(
     `yaw ${r.yawName} deg at ${r.speed} m/s: the hull stays out of the wall`,
-    r.deepest < FACE_X,
-    `deepest centre x ${r.deepest.toFixed(3)}, face at ${FACE_X}`,
+    r.deepest <= FACE_X - SQUARE_REACH + slop,
+    `deepest centre x ${r.deepest.toFixed(3)}; the hull reaches `
+    + `${(r.deepest + SQUARE_REACH).toFixed(3)} against a face at ${FACE_X}, `
+    + `${Math.max(0, (r.deepest + SQUARE_REACH - FACE_X) * 1000).toFixed(0)} mm inside `
+    + `against ${(slop * 1000).toFixed(0)} mm the cadence allows`,
   );
 }
 
@@ -390,10 +423,14 @@ for (const speed of SPEEDS) {
 
 /* The numbers, for the record. A threshold argued in PROGRESS.md needs the
  * measurement beside it. */
-console.log('\n  approach and rebound, per spawn yaw:');
+console.log('\n  approach and rebound, per spawn yaw. The exit column is ASSERTED');
+console.log('  only at 9 m/s; below that the craft ends up pinned by its own thrust');
+console.log('  after a nose first arrival, which is recorded above and is a pilot');
+console.log('  outcome rather than a contact one:');
 for (const r of results) {
   console.log(
-    `    yaw ${r.yawName.padStart(3)} deg  in ${r.approach.toFixed(2)} m/s  `
+    `    ${r.speed >= 9 ? 'exit asserted ' : 'exit recorded '}`
+    + `yaw ${r.yawName.padStart(3)} deg  in ${r.approach.toFixed(2)} m/s  `
     + `peak out ${r.peakOut.toFixed(3)} m/s  furthest ${r.maxGap.toFixed(3)} m  `
     + `flew out to ${r.exitGap.toFixed(2)} m  `
     + `contacts ${r.stats.contacts} (${r.stats.resolved} solved, `

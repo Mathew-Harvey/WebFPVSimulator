@@ -1968,6 +1968,30 @@ const PATH_MAX_RADIUS = 16;
  */
 const OBJECT_INSIDE = 0.6;
 /*
+ * AND HOW NEAR THE CRAFT ITSELF HAS TO PASS for a figure to be ABOUT a solid
+ * it did not enclose, in metres.
+ *
+ * Two different questions, and one bar cannot answer both. A Powerloop and
+ * an orbit ENCLOSE the thing they are flown around: it sits at the middle of
+ * the circle, and a fraction of the radius is the right test. A half figure
+ * does not enclose anything. A Matty Flip is a tight dive flown PAST a rail
+ * and back under it, so the rail is nowhere near the middle of the craft's
+ * own curvature, which is a metre or so, and asking there finds nothing.
+ * What makes it a Matty Flip rather than a dive is that the craft went over
+ * the rail and came back under it, which is the SIDE CHANGE, and the rail
+ * only has to have been close enough to be the thing that happened.
+ *
+ * Three metres is about ten airframes and comfortably tighter than the old
+ * winding's REACH of twelve, which had to be generous because the winding
+ * total was doing all of the discriminating. Here the side change and the
+ * turning about the object's own axis do it.
+ */
+const OBJECT_NEAR = 3.0;
+/* How long an approach's closest pass stays relevant to the figure that
+ * follows it. A second is about the time between flying over a rail and
+ * having committed to the dive around it. */
+const PATH_PRE_MS = 1000;
+/*
  * How far the path may turn BACK on itself before the figure is over.
  *
  * The winding side asks for 0.08 of a turn and is right to: winding about a
@@ -2035,6 +2059,33 @@ class PathTrack {
      * centre is: the instantaneous curvature of a sample that turned through
      * nothing is enormous and says nothing about the figure. */
     this.rSum = 0;
+    /*
+     * THE CLOSEST THE CRAFT CAME TO ANYTHING SOLID during the figure, and
+     * where it was when it did.
+     *
+     * The turn's own middle is not always near the thing the figure is
+     * about. A Matty Flip's dive is a tight arc flown PAST a rail and back
+     * under it, so the rail is nowhere near the centre of the craft's own
+     * curvature, and asking there finds nothing. The craft itself goes
+     * within a metre of the rail, which is the whole point of the trick, so
+     * that is where to ask.
+     */
+    this.nearGap = Infinity;
+    this.nearX = 0;
+    this.nearY = 0;
+    this.nearZ = 0;
+    /*
+     * And the same over the second BEFORE the figure opened, because a half
+     * figure is set up by the pass that precedes it. A Matty Flip goes over
+     * the rail and THEN dives, so the closest the craft ever comes to the
+     * thing the trick is named for happens before the turning gate opens,
+     * and a figure that only looked at its own window found nothing.
+     */
+    this.preGap = Infinity;
+    this.preX = 0;
+    this.preY = 0;
+    this.preZ = 0;
+    this.preMs = -1e9;
     /* The object on the screen, for an orbit. */
     this.trackSamples = 0;
     /* Backward turning since the last forward progress, which is what ends
@@ -2137,6 +2188,11 @@ class PathTrack {
     this.minR = Infinity;
     this.maxR = 0;
     this.rSum = 0;
+    /* Seeded from the approach, not from nothing. See preGap. */
+    this.nearGap = this.preGap;
+    this.nearX = this.preX;
+    this.nearY = this.preY;
+    this.nearZ = this.preZ;
     this.back = 0;
     this.dir = 0;
   }
@@ -2638,6 +2694,22 @@ export class TrickDetector {
 
     if (!tr.open) {
       tr.snapshot(wx, wy, wz, this.nowMs);
+      /* The approach's own closest pass, kept for a second so a figure can
+       * inherit it. See PathTrack.preGap. */
+      if (this.solids && typeof this.solids.gapAt === 'function'
+        && (this.nowMs & 15) === 0) {
+        if (this.nowMs - tr.preMs > PATH_PRE_MS) {
+          tr.preGap = Infinity;
+        }
+        const g = this.solids.gapAt(wx, wy, wz, PATH_MAX_RADIUS);
+        if (g < tr.preGap) {
+          tr.preGap = g;
+          tr.preX = wx;
+          tr.preY = wy;
+          tr.preZ = wz;
+          tr.preMs = this.nowMs;
+        }
+      }
       if (opening) {
         tr.openAt(this.nowMs, this.gapStallMs);
       }
@@ -2743,6 +2815,23 @@ export class TrickDetector {
         }
       }
     }
+    /*
+     * How close anything solid came, sampled rather than asked every
+     * millisecond: a broadphase query per step would be sixty times the work
+     * for an answer that does not change that fast, which is the same
+     * argument the shell's own `near` call makes. Every sixteenth step is
+     * about a centimetre of travel at racing speed.
+     */
+    if (this.solids && typeof this.solids.gapAt === 'function'
+      && (tr.spanSamples & 15) === 0) {
+      const g = this.solids.gapAt(wx, wy, wz, PATH_MAX_RADIUS);
+      if (g < tr.nearGap) {
+        tr.nearGap = g;
+        tr.nearX = wx;
+        tr.nearY = wy;
+        tr.nearZ = wz;
+      }
+    }
     tr.tailMs = this.nowMs;
     tr.p1x = wx;
     tr.p1y = wy;
@@ -2785,11 +2874,118 @@ export class TrickDetector {
     const along = tr.alongNose * wInv;
     const across = tr.acrossNose * wInv;
     const meanR = tr.rSum * wInv;
+    /*
+     * WHERE TO ASK. Two points, because one is not enough for both shapes a
+     * figure comes in.
+     *
+     * A WHOLE turn's own middle is a good estimate and the thing flown around
+     * is at it. A HALF turn's is not: the centre is estimated from the
+     * curvature of a path the pilot flew with the sticks, and over half a
+     * figure the errors do not cancel. But a half figure has something the
+     * whole one has not, which is that its two ENDS straddle the object: over
+     * the rail at one end and under it at the other, so the middle of the
+     * chord between them sits on the thing. Measured on a flown Matty Flip,
+     * the estimated centre missed the rail by more than the turn's own
+     * radius while the chord's middle was within a few tenths of it.
+     *
+     * So ask at the centre, and if nothing is there ask at the chord. Two
+     * queries per closed figure, which is a handful a minute.
+     */
+    const mx = (tr.p0x + tr.p1x) * 0.5;
+    const my = (tr.p0y + tr.p1y) * 0.5;
+    const mz = (tr.p0z + tr.p1z) * 0.5;
     let solidGap = Infinity;
+    let nearestUsed = false;
+    let probeX = cx;
+    let probeY = cy;
+    let probeZ = cz;
     if (this.solids && typeof this.solids.gapAt === 'function' && meanR > 1e-6) {
       solidGap = this.solids.gapAt(cx, cy, cz, meanR);
+      if (!(solidGap < meanR * OBJECT_INSIDE)) {
+        const chord = this.solids.gapAt(mx, my, mz, meanR);
+        if (chord < solidGap) {
+          solidGap = chord;
+          probeX = mx;
+          probeY = my;
+          probeZ = mz;
+        }
+      }
+      /*
+       * And failing both, where the CRAFT came closest to anything. That is
+       * the honest place to look for the thing a figure was about when the
+       * figure is not centred on it, which a half loop flown with the sticks
+       * is not: the dive is a tight arc past the rail rather than a circle
+       * round it.
+       */
+      if (!(solidGap < meanR * OBJECT_INSIDE) && Number.isFinite(tr.nearGap)) {
+        solidGap = tr.nearGap;
+        probeX = tr.nearX;
+        probeY = tr.nearY;
+        probeZ = tr.nearZ;
+        nearestUsed = true;
+      }
     }
-    const solidInside = solidGap < meanR * OBJECT_INSIDE;
+    const enclosed = !nearestUsed && solidGap < meanR * OBJECT_INSIDE;
+    const engaged = enclosed || solidGap <= OBJECT_NEAR;
+    const solidInside = engaged;
+
+    /*
+     * THE OBJECT'S OWN AXIS, and what it is for.
+     *
+     * The turning of the path is the right quantity in open air and it is
+     * the wrong one around a rail, and the reason is measured. Flown with the
+     * sticks, a Matty Flip's path does not stay in one plane: the craft yaws
+     * through the dive, so |T| comes out anywhere between a third and three
+     * quarters of a turn about an axis that is sometimes horizontal and
+     * sometimes vertical. The SAME flight, measured as turning about the
+     * rail's own direction, is a clean half. Heading wander is turning about
+     * world up, and a rail is horizontal, so projecting onto the rail throws
+     * exactly the wander away and keeps exactly the figure.
+     *
+     * This is what the winding did, and it is why the winding worked for that
+     * family when the raw path turning does not. What is different, and what
+     * makes it worth having, is that the axis comes from the SOLID rather
+     * than from a derived catalogue of poles and bars: a wall, a coping, a
+     * parapet or a roof edge has a direction as readily as a rail does, so a
+     * Split-S over a roof is now the same measurement as a Split-S over a
+     * railing, which it never was.
+     */
+    let objAxis = null;
+    if (solidInside && this.solids && typeof this.solids.axisAt === 'function') {
+      objAxis = this.solids.axisAt(probeX, probeY, probeZ, meanR);
+    }
+    let turnsAbout = null;
+    let loopAbout = null;
+    let objectAxis = null;
+    let startBelow = tr.p0y < cy;
+    let endBelow = tr.p1y < cy;
+    if (objAxis) {
+      const adx = objAxis.dx;
+      const ady = objAxis.dy;
+      const adz = objAxis.dz;
+      turnsAbout = (tr.tx * adx + tr.ty * ady + tr.tz * adz) / TURN;
+      loopAbout = (tr.wx * adx + tr.wy * ady + tr.wz * adz) / TURN;
+      const upright = ady < 0 ? -ady : ady;
+      objectAxis = upright >= 0.7 ? 'vertical' : 'horizontal';
+      if (objectAxis === 'horizontal') {
+        /*
+         * OVER IT OR UNDER IT, measured against the object rather than
+         * against the middle of the turn. For a half figure the two ends are
+         * genuinely on opposite sides of the thing, and which side is a fact
+         * about the geometry rather than an estimate: the perpendicular from
+         * the object's own line to each end, and whether it points up.
+         */
+        const side = (qx, qy, qz) => {
+          const rx = qx - objAxis.cx;
+          const ry = qy - objAxis.cy;
+          const rz = qz - objAxis.cz;
+          const al = rx * adx + ry * ady + rz * adz;
+          return ry - ady * al < 0;
+        };
+        startBelow = side(tr.p0x, tr.p0y, tr.p0z);
+        endBelow = side(tr.p1x, tr.p1y, tr.p1z);
+      }
+    }
     const out = {
       turns: mag / TURN,
       /* A loop in a vertical plane turns about a HORIZONTAL axis, and an
@@ -2807,10 +3003,18 @@ export class TrickDetector {
       forward: tr.fwdSum / tr.spanSamples,
       invertedFrac: tr.invSamples / tr.spanSamples,
       trackFrac: this.haveFwd ? tr.trackSamples / tr.spanSamples : -1,
-      /* Which side of the turn's own centre each end was on. This is what
-       * replaces a bar's under and over, and it needs no bar. */
-      startBelow: tr.p0y < cy,
-      endBelow: tr.p1y < cy,
+      /* Which side each end was on: of the OBJECT when there is one and its
+       * direction is horizontal, and of the turn's own middle otherwise. */
+      startBelow,
+      endBelow,
+      /*
+       * The same turning and the same rotation, projected onto the object's
+       * own direction. Null in open air, where there is nothing to project
+       * onto and the raw numbers are the honest ones.
+       */
+      turnsAbout,
+      loopAbout,
+      objectAxis,
       centre: [cx, cy, cz],
       minR: tr.minR === Infinity ? 0 : tr.minR,
       maxR: tr.maxR,
@@ -2828,7 +3032,14 @@ export class TrickDetector {
        * Half the flown radius, because a solid out at the rim is a thing the
        * craft flew PAST on its way round, not the thing it went around.
        */
-      object: solidInside ? 'inside' : 'none',
+      /*
+       * `inside` is the thing the figure went round, `engaged` is the thing
+       * it was flown over and under without enclosing, and `none` is open
+       * air. A pattern that wants a loop asks for inside; a pattern that
+       * wants a half figure over something asks for engaged and for the
+       * sides to have changed, which together are what over-and-under means.
+       */
+      object: enclosed ? 'inside' : (engaged ? 'engaged' : 'none'),
       solidGap: solidGap,
       radiusRatio: tr.minR > 1e-6 && tr.minR !== Infinity ? tr.maxR / tr.minR : 1,
       startMs: tr.startMs,

@@ -323,5 +323,80 @@ async function loop({ noseAlong = false, secs = 2.9, yaw = Math.PI } = {}) {
   );
 }
 
+/*
+ * 5. AND THE TURNING PROJECTED ONTO THE OBJECT'S OWN AXIS.
+ *
+ * The raw turning of the path is the right quantity in open air and the
+ * wrong one around a rail, because a figure flown with the sticks does not
+ * stay in one plane: the craft yaws through it, and heading wander is
+ * turning about world up. A rail is horizontal, so projecting onto the rail
+ * keeps the figure and throws the wander away. That is what the winding did
+ * and why it worked for the half figures when raw path turning does not.
+ *
+ * What is different, and what makes it worth having, is where the axis comes
+ * from. The winding could only ever use an axis that src/game/obstacles.js
+ * had already classified as a pole or a bar, which is why the training
+ * park's own mast was invisible until this session and why a Split-S over a
+ * wall or a roof edge could not be named at any tolerance. This axis comes
+ * from the nearest SOLID, so anything with a direction answers.
+ */
+{
+  const pl = await loop({ noseAlong: false });
+  check(
+    'a Powerloop turns once about the RAIL\'s own axis, and ends the side it began',
+    pl.length === 1 && pl[0].objectAxis === 'horizontal'
+      && Math.abs(Math.abs(pl[0].turnsAbout) - 1) < 0.3
+      && pl[0].startBelow === pl[0].endBelow,
+    pl.length
+      ? `about ${pl[0].turnsAbout === null ? 'nothing' : pl[0].turnsAbout.toFixed(2)} turns, `
+        + `axis ${pl[0].objectAxis}, `
+        + `${pl[0].startBelow ? 'under' : 'over'} to ${pl[0].endBelow ? 'under' : 'over'}`
+      : 'no turn was measured',
+  );
+}
+{
+  /* Half a figure entered from OVER the rail: it must come out UNDER it,
+   * which is the fact that separates the Matty family from the Immelmann
+   * family and is a statement about geometry rather than about the pilot. */
+  const r = await rig(-20);
+  const lap = circlePath(BAR, V(0, -1, 0), V(0, 0, -1), 3.4, 2.9, Math.PI, -0.5);
+  const d0 = lap(0);
+  const vEnt = len(d0.v);
+  const start = sub(d0.p, mul(norm(d0.v), 12));
+  const head = Math.atan2(0, -1);
+  r.settle(start, head, 2.0);
+  r.fly(rampPath(start, d0.p, (12 * 1.9) / Math.max(2, vEnt), vEnt), { heading: head });
+  r.fly(lap, { heading: head });
+  r.hold(700, 0, 0, 0, 0.45);
+  r.done(700);
+  const rows = takeTurns(0.3);
+  const over = rows.find((t) => t.object !== 'none' && !t.startBelow && t.endBelow);
+  check(
+    'half a figure from OVER the rail comes out UNDER it, about the rail\'s axis',
+    Boolean(over) && Math.abs(Math.abs(over.turnsAbout) - 0.5) < 0.25,
+    over
+      ? `about ${over.turnsAbout.toFixed(2)} turns, over to under, object ${over.object}`
+      : `no turn went over the rail and back under it: ${rows.map((t) => `${t.turns.toFixed(2)} ${t.startBelow ? 'U' : 'O'}->${t.endBelow ? 'U' : 'O'} ${t.object}`).join('; ') || 'nothing measured'}`,
+  );
+}
+{
+  /* And in open air there is no axis to project onto, so nothing is
+   * claimed. A figure with no object is not a lap around anything. */
+  const r = await rig(-60);
+  r.settle(V(0, 14, -50), Math.atan2(0, 1), 2.0);
+  r.fly(rampPath(V(0, 14, -50), V(0, 14, -36), 2.2, 13), { heading: Math.atan2(0, 1) });
+  r.stickUntil([0, 0.85, 0, 0.42], 1400, (c, i, a) => -a.q >= TURN * 0.84);
+  r.fly(linePath(r.craft().p, V(0, 14, -10), 2.4), { heading: Math.atan2(0, 1) });
+  r.done(700);
+  const rows = takeTurns(0.3);
+  check(
+    'and a figure flown in open air has no object axis to be about',
+    rows.every((t) => t.object === 'none' && t.turnsAbout === null),
+    rows.length
+      ? rows.map((t) => `object ${t.object}, about ${t.turnsAbout === null ? 'nothing' : t.turnsAbout.toFixed(2)}`).join('; ')
+      : 'no turn measured',
+  );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

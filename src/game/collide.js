@@ -585,6 +585,16 @@ export class Colliders {
     this.nx = 0;
     this.ny = 0;
     this.nz = 0;
+    /* Scratch for axisAt: the nearest solid's own direction and the point on
+     * its centre line nearest the query. Same rule, same reason. */
+    this.axisFound = false;
+    this.axisGap = Infinity;
+    this.axisDx = 0;
+    this.axisDy = 0;
+    this.axisDz = 0;
+    this.axisCx = 0;
+    this.axisCy = 0;
+    this.axisCz = 0;
     /*
      * MOVING boxes, outside the broadphase entirely.
      *
@@ -1223,6 +1233,138 @@ export class Colliders {
       }
     }
     return best <= maxR ? best : Infinity;
+  }
+
+  /*
+   * THE NEAREST SOLID'S OWN DIRECTION, and where its middle is.
+   *
+   * gapAt answers "is there something there", which is enough to say a trick
+   * had an object in it. It is not enough to say WHAT the craft did around
+   * that object, and the reason is measured rather than argued: flown with
+   * the sticks, a Matty Flip's path does not stay in one plane. The craft
+   * yaws through the dive, so the raw turning of its path is not the half
+   * turn a judge sees, while the SAME flight measured as winding about the
+   * rail's own axis is a clean half lap. Projecting onto the object's
+   * direction is what throws the heading wander away, because heading wander
+   * is turning about world up and a rail is horizontal.
+   *
+   * So this reports, for the nearest solid within maxR: how far away it is,
+   * which way it runs, and the point on its own centre line nearest the
+   * query. A capsule runs along its segment, which is what a capsule IS. A
+   * box runs along its longest dimension, which for a rail, a coping, a
+   * parapet or a roof edge is the edge a pilot loops around, and for a post
+   * is the post.
+   *
+   * Written into fields rather than returned as an object, the way
+   * axisToPoint is, because this file allocates nothing that a query path
+   * can reach. Returns whether anything was found.
+   */
+  axisAt(px, py, pz, maxR) {
+    this.axisFound = false;
+    this.axisGap = Infinity;
+    if (!this.built) {
+      return false;
+    }
+    this.queryId += 1;
+    const id = this.queryId;
+    const pad = maxR + this.maxR;
+    const cx0 = clampCell(Math.floor((px - pad) / CELL));
+    const cx1 = clampCell(Math.floor((px + pad) / CELL));
+    const cz0 = clampCell(Math.floor((pz - pad) / CELL));
+    const cz1 = clampCell(Math.floor((pz + pad) / CELL));
+    let best = Infinity;
+    let bestI = -1;
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          const i = bucket[bi];
+          if (this.stamp[i] === id) {
+            continue;
+          }
+          this.stamp[i] = id;
+          let gap;
+          if (this.fbox[i]) {
+            const ox = Math.max(this.fax[i] - px, 0, px - this.fbx[i]);
+            const oy = Math.max(this.fay[i] - py, 0, py - this.fby[i]);
+            const oz = Math.max(this.faz[i] - pz, 0, pz - this.fbz[i]);
+            gap = Math.sqrt(ox * ox + oy * oy + oz * oz);
+          } else {
+            this.axisToPoint(i, px, py, pz);
+            const d = Math.sqrt(this.nx * this.nx + this.ny * this.ny + this.nz * this.nz);
+            gap = d - this.fr[i];
+          }
+          if (gap < best) {
+            best = gap < 0 ? 0 : gap;
+            bestI = i;
+          }
+        }
+      }
+    }
+    if (bestI < 0 || best > maxR) {
+      return false;
+    }
+    this.axisFound = true;
+    this.axisGap = best;
+    if (this.fbox[bestI]) {
+      /* The longest dimension is the direction; the centre line runs through
+       * the box along it, and the nearest point on that line is the query's
+       * own coordinate clamped to the box's extent. */
+      const w = this.fbx[bestI] - this.fax[bestI];
+      const h = this.fby[bestI] - this.fay[bestI];
+      const d = this.fbz[bestI] - this.faz[bestI];
+      const mx = (this.fax[bestI] + this.fbx[bestI]) * 0.5;
+      const my = (this.fay[bestI] + this.fby[bestI]) * 0.5;
+      const mz = (this.faz[bestI] + this.fbz[bestI]) * 0.5;
+      if (w >= h && w >= d) {
+        this.axisDx = 1;
+        this.axisDy = 0;
+        this.axisDz = 0;
+        this.axisCx = px < this.fax[bestI] ? this.fax[bestI]
+          : (px > this.fbx[bestI] ? this.fbx[bestI] : px);
+        this.axisCy = my;
+        this.axisCz = mz;
+      } else if (h >= w && h >= d) {
+        this.axisDx = 0;
+        this.axisDy = 1;
+        this.axisDz = 0;
+        this.axisCx = mx;
+        this.axisCy = py < this.fay[bestI] ? this.fay[bestI]
+          : (py > this.fby[bestI] ? this.fby[bestI] : py);
+        this.axisCz = mz;
+      } else {
+        this.axisDx = 0;
+        this.axisDy = 0;
+        this.axisDz = 1;
+        this.axisCx = mx;
+        this.axisCy = my;
+        this.axisCz = pz < this.faz[bestI] ? this.faz[bestI]
+          : (pz > this.fbz[bestI] ? this.fbz[bestI] : pz);
+      }
+      return true;
+    }
+    const ex = this.fbx[bestI] - this.fax[bestI];
+    const ey = this.fby[bestI] - this.fay[bestI];
+    const ez = this.fbz[bestI] - this.faz[bestI];
+    const el = Math.sqrt(ex * ex + ey * ey + ez * ez);
+    if (!(el > 1e-9)) {
+      /* A sphere has no direction. Say so rather than inventing one. */
+      this.axisFound = false;
+      return false;
+    }
+    this.axisDx = ex / el;
+    this.axisDy = ey / el;
+    this.axisDz = ez / el;
+    let u = ((px - this.fax[bestI]) * ex + (py - this.fay[bestI]) * ey
+      + (pz - this.faz[bestI]) * ez) / (el * el);
+    u = clamp01(u);
+    this.axisCx = this.fax[bestI] + ex * u;
+    this.axisCy = this.fay[bestI] + ey * u;
+    this.axisCz = this.faz[bestI] + ez * u;
+    return true;
   }
 
   /*

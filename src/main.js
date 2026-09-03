@@ -1020,7 +1020,24 @@ export async function boot({ loading, bootStart, mapId }) {
      * inside the circle it flew, which is a question a wall, a roof edge or
      * a tree can answer as well as a rail can. See TrickDetector.solids. */
     trickDetector.solids = view.colliders
-      ? { gapAt: (x, y, z, r) => view.colliders.gapAt(x, y, z, r) }
+      ? {
+        gapAt: (x, y, z, r) => view.colliders.gapAt(x, y, z, r),
+        /* The nearest solid's own direction, and the point on its centre
+         * line nearest the query. A rail, a coping, a parapet and a roof
+         * edge all have one, which is what lets a figure flown over any of
+         * them be the same measurement. See TrickDetector.closeTrack. */
+        axisAt: (x, y, z, r) => (view.colliders.axisAt(x, y, z, r)
+          ? {
+            gap: view.colliders.axisGap,
+            dx: view.colliders.axisDx,
+            dy: view.colliders.axisDy,
+            dz: view.colliders.axisDz,
+            cx: view.colliders.axisCx,
+            cy: view.colliders.axisCy,
+            cz: view.colliders.axisCz,
+          }
+          : null),
+      }
       : null;
   }
   /* The map loaded at boot never passes through the swap path above, so it

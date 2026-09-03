@@ -266,6 +266,19 @@ export async function makeRig(opts) {
   if (colliders) {
     det.solids = {
       gapAt: (x, y, z, r) => colliders.gapAt(x, y, z, r),
+      /* The nearest solid's own direction, and the point on its centre
+       * line nearest the query. See TrickDetector.closeTrack. */
+      axisAt: (x, y, z, r) => (colliders.axisAt(x, y, z, r)
+        ? {
+          gap: colliders.axisGap,
+          dx: colliders.axisDx,
+          dy: colliders.axisDy,
+          dz: colliders.axisDz,
+          cx: colliders.axisCx,
+          cy: colliders.axisCy,
+          cz: colliders.axisCz,
+        }
+        : null),
     };
   }
 

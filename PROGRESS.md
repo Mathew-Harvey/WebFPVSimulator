@@ -28296,3 +28296,105 @@ have the same property. Recorded rather than dismissed: it was tested.
   Pre-existing.
 - The rig taps the recogniser once per 4 ms contact pass where the shell ORs
   the frame's contacts and taps once per rendered frame.
+
+## 2026-09-03: the turn gets the object's axis
+
+The entry above ended with a finding rather than a fix: the raw turning of
+the path is the right quantity in open air and the wrong one around a rail,
+because a figure flown with the sticks does not stay in one plane. The craft
+yaws through it, heading wander is turning about world up, and a rail is
+horizontal, so projecting the turning onto the RAIL throws the wander away
+and keeps the figure. That is what the winding always did and why it worked
+for the half figures when raw path turning does not.
+
+### Where the axis comes from, which is the whole point
+
+`Colliders.axisAt(x, y, z, maxR)`, new: the nearest solid's own direction and
+the point on its centre line nearest the query. A capsule runs along its
+segment, which is what a capsule is. A box runs along its longest dimension,
+which for a rail, a coping, a parapet or a roof edge is the edge a pilot
+loops around, and for a post is the post. Verified on all three:
+
+    a rail capsule    axis (1.00, 0.00, 0.00)
+    a post box        axis (0.00, 1.00, 0.00)
+    a wall slab       axis (0.00, 0.00, 1.00), its longest dimension
+    open air          nothing, said rather than invented
+
+The winding could only ever use an axis that `deriveObstacles` had already
+classified as a pole or a bar. That is why the training park's own mast was
+invisible until this session, and why a Split-S over a wall or a roof edge
+could not be named at any tolerance however it was flown. This axis comes
+from the SOLID, so anything with a direction answers.
+
+### Where the object is looked for, which took three tries
+
+The figure's own middle is the obvious place and it is only right for a
+WHOLE figure. Measured:
+
+    a Powerloop        the rail is 1.5 m from the turn's estimated centre,
+                       at a measured radius of 5.0: found
+    an orbit           the post is 0.0 m from it: found
+    a half figure      the estimated centre misses by more than the turn's
+                       own radius: not found
+
+A half figure has something a whole one has not, which is that its two ends
+straddle the object, so the middle of the chord between them sits on the
+thing. And a half figure flown with the sticks is a tight dive PAST the
+object rather than a circle around it, so the third place to look is where
+the craft itself came closest, including the second BEFORE the figure opened,
+because a Matty Flip goes over the rail and THEN dives and the closest pass
+happens on the way in.
+
+So three probes, in that order, and two different answers rather than one:
+`inside` is the thing the figure went round, and `engaged` is the thing it
+was flown over and under without enclosing. A pattern that wants a loop will
+ask for the first; a pattern that wants a half figure will ask for the second
+and for the sides to have changed, which together are what over-and-under
+means.
+
+### Measured, on the real aircraft
+
+    Powerloop          about -1.11 turns of the RAIL's axis, horizontal,
+                       under to under, object inside
+    Maverick Loop      about -1.02, horizontal, under to under, inside,
+                       and still separated from the Powerloop on loopOn
+    half from OVER     about -0.47, OVER to UNDER, object inside
+    Orbit x2           about -2.10 of the POST's axis, vertical, inside,
+                       the post on the nose for 0.88 of it
+    flip in open air   no object, and no axis to be about
+    Juicy Flick        the same
+
+The sides now read against the OBJECT rather than against the middle of the
+craft's own curvature, which is what makes over-and-under a fact about the
+geometry rather than an estimate. `scripts/path-check.js` is 12 checks now
+and asserts all of it, including that open air claims nothing.
+
+### What is still not measurable, and it is the rig rather than the recogniser
+
+The flown Matty Flip and Split-S cases in the Node rig do not fly the trick.
+Instrumented: on the Matty case the craft never comes within 4.03 m of the
+rail, passing 4.2 m above it and diving away downstream. park-fly's own
+comments record the same fight in the browser at length, and its numbers are
+tuned to a 60 Hz pilot where this rig is a 250 Hz one. So that family cannot
+be validated here yet, and the right next step is a rig case that actually
+flies the shape rather than a change to the measurement.
+
+Note that the RC rate mattered: the rig was talking to Betaflight at 500 Hz
+against the shell's 250, which the review caught, and fixing it changed the
+flights enough to need two path-check readings restated.
+
+### Checks
+
+    node scripts/path-check.js         12 passed, 0 failed
+    node scripts/frame-check.js        34 passed, 0 failed
+    node scripts/wall-check.js         45 passed, 0 failed
+    node scripts/orbit-check.js        8 passed, 0 failed
+    node src/trackbuilder/selftest.js  495 passed, 0 failed
+    npm run contact:selftest           all 72 passed
+    npm run score:selftest             206 passed, 1 failed  (unchanged)
+    npm run trick:sweep -- --all       47 flown, no over-claims
+
+Still nothing depends on the new measurement: the pattern table reads the
+winding. What has changed is that the measurement now has the one quantity
+the half figures need, so the pattern rewrite has something to be written
+against.

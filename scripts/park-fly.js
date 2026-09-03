@@ -451,6 +451,8 @@ window.__armProbe = () => {
       window.__probe.pend.push(x.kind === 'path'
         ? { k: 'path', ob: x.obstacle, t: x.turns, raw: +x.rawTurns.toFixed(2),
           rot: x.rot.map((v) => +v.toFixed(2)), spin: +(x.spin || 0).toFixed(2),
+          body: x.bodyRot ? x.bodyRot.map((v) => +v.toFixed(2)) : null,
+          res: x.resid ? x.resid.map((v) => +v.toFixed(2)) : null,
           align: x.align ? x.align.map((v) => +v.toFixed(2)) : null,
           trk: +x.trackFrac.toFixed(2),
           inv: +x.invertedFrac.toFixed(2), tap: !!x.tapped }

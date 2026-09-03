@@ -27519,3 +27519,80 @@ sentence in the panel, and the Enter and Escape path in and out of the screen.
 clean sweep. `npm run lint:fc` PASS, `npm run lint:presets` PASS.
 `npm run lint:catalog` COULD NOT RUN: `vendor/betaflight` is an uninitialised
 submodule here. `npm run verify` not run: no physics, plant, ABI or build change.
+
+## 2026-09-03: five bugs from real play, and the one the sweep could never see
+
+Reported from flying the practice field: no trick list in the UI, orbits and
+power loops and trippy spin not registering, the wall tap not registering and
+the craft sticking to the wall, a crash or a bottom plate scrape scored as a
+wall tap, and Split-S not registering.
+
+### The lap subtraction was backwards in the real shell, and only there
+
+A Powerloop flown round the practice rail measured `rot [0, -3.76, 0]` where a
+powerloop is one flip. Its RAW body integral was `[-0.02, -1.24, 0]`, a clean
+single flip, so the body rates were right and the recogniser's arithmetic on
+top of them was not.
+
+The residual takes the lap's own turn off the body integrals per sample, and it
+did it with the GEOMETRIC winding: a cross product on positions in the
+renderer's Y up frame. The body rates are Betaflight's, in the Z up right handed
+frame CLAUDE.md pins the physics to. The two disagree about sign, so the
+subtraction ADDED the lap's own turn instead of removing it and every bar loop
+read about three times its true rotation.
+
+`scripts/trick-sweep.js` could never have caught this. It builds its attitudes
+out of the same position maths the winding uses, so both halves were wrong the
+same way and cancelled: 47 patterns, zero over-claims, and a Powerloop that a
+pilot could not score. Only the rig that flies the REAL shell with REAL stick
+inputs showed it.
+
+The sign is not assumed now. A lap is dominated by its own turn, which is what
+makes it a lap, so the sign the body saw it going and the sign the geometry saw
+it going are one event seen twice and their product is the relation between the
+frames. It is measured per lap and is therefore right in either frame.
+
+An intermediate version projected away ALL rotation about the rail rather than
+just the lap's own, which is convention free but wrong for a different reason: a
+Power Flip's added flip is about the rail too, so it was deleted and a 350 point
+trick came out a 200 point Powerloop. What comes out is the lap's own turn and
+nothing else.
+
+### A lap counted itself in two different units
+
+The lap's own turn went back onto the body axis as the RAW winding while the
+lap's `turns` was the SNAPPED count, so a powerloop that wound 1.34 turns said
+`turns 1` and `pitch 1.34` in the same primitive. Powerloop asks for pitch 1,
+0.34 is outside the band, and nothing written in whole turns could ever have
+matched. It goes back in snapped units now, the same units the pattern is
+matched against.
+
+### The ground is not a tappable surface
+
+Every tap trick in the catalogue taps a structure: a wall, a ceiling, the
+underside of a bar. None tap the floor. The ground contact path called
+`trickDetector.bump()` with no impulse, which `bump` reads as gentle, so setting
+the quad down or scuffing the bottom plate set a tap, the tap attached to the
+next rotation, and a pitch back and forward after a scrape came out a Wall Tap.
+It is still a BUMP, because clipping the ground should still cost the grade. It
+is simply not a tap.
+
+### The trick list was behind a door named after a place
+
+It was a row inside The town, one door further in than anybody looks, so the
+report was "there is no UI element". There was one. It is on the first screen a
+freestyle pilot sees now, and it stays inside The town as well, beside the run
+settings it belongs with.
+
+### Where it stands
+
+`npm run park:fly`, which flies the real city with real stick inputs, went from
+7 park elements wrong to 4. Powerloop, Maverick Loop and Immelmann Turn now
+score where they did not; Matty Flip and Orbit and Wall Tap still do.
+`trick-sweep --all` holds at zero over-claims with 38 of 47 named.
+
+Still wrong, and being worked: Cinnamon Roll comes out a Donkey Loop, which is
+175 paid as 600 and is an OVER-CLAIM in the real shell that the synthetic sweep
+does not reproduce; the wide slow Powerloop; the Jump Rope rail lap; and the
+craft sticking to the wall after a tap. The park rig also varies run to run,
+so a single green run is not evidence on its own.

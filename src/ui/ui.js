@@ -3810,6 +3810,24 @@ export class Ui {
         ...(trouble ? [trouble] : []),
         flyRow,
         modeRow,
+        /*
+         * THE TRICK LIST BELONGS ON THE FIRST SCREEN A FREESTYLE PILOT SEES.
+         *
+         * It was a row inside The town, which is one door further in than
+         * anybody looks, and the report from real play was simply "I can't
+         * see the catalogue of tricks, there is no UI element". There was
+         * one; it was behind a door labelled with the name of a place, and
+         * a pilot looking for a list of tricks has no reason to open a room
+         * called The town to find it. It stays in there as well, because
+         * that is where the run settings are and it belongs beside them,
+         * but the way IN to the game now offers it directly.
+         */
+        ...(this.mode === 'freestyle' ? [{
+          label: 'Trick list',
+          value: `${countScoreableTricks()} tricks`,
+          action: 'tricks',
+          note: 'Every trick the scorer is known to name, what each one pays, and a picture of it being flown. Worth a minute before your first run.',
+        }] : []),
         {
           label: 'Quad',
           value: tuneById(s.tune).name,

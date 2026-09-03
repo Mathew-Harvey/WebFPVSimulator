@@ -5297,7 +5297,8 @@ export async function boot({ loading, bootStart, mapId }) {
               trickDetector.reset();
               score.crash();
             } else {
-              trickDetector.bump();
+              /* NOT TAPPABLE: this is the ground. See TrickDetector.bump. */
+              trickDetector.bump(undefined, false);
             }
           }
           /* No banner. The owner's instruction: the sound is enough, and

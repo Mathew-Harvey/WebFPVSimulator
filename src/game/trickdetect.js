@@ -1637,7 +1637,7 @@ class PathRun {
      * built from, so taking it off each body rate before integrating leaves
      * the pilot's rotation and nothing else, however the craft tumbles.
      */
-    this.resid = [0, 0, 0];
+    this.windProj = [0, 0, 0];
     /*
      * The same alignments as MAGNITUDES, which is what decides ownership.
      * Averaging the signed components cannot tell a craft rolling about its
@@ -1959,9 +1959,22 @@ export class TrickDetector {
     }
   }
 
-  bump(impulse) {
+  bump(impulse, tappable = true) {
     this.touched = true;
     /*
+     * THE GROUND IS NOT A TAPPABLE SURFACE.
+     *
+     * Every tap trick in the catalogue taps a STRUCTURE: a wall, a ceiling,
+     * the underside of a bar, the side of a building. None of them tap the
+     * floor. The ground contact path in main.js called this with no impulse
+     * at all, which the rule below reads as gentle, so setting the quad
+     * down or scuffing the bottom plate on a landing set a tap, the tap
+     * attached itself to the next rotation the pilot flew, and a pitch back
+     * and forward after a scrape came out a Wall Tap. Reported from real
+     * play: "crashing or bottom plate hitting the floor is scored as a wall
+     * tap". It is still a BUMP, because clipping the ground should still
+     * cost the grade; it is simply not a tap.
+     *
      * Only a GENTLE contact is a tap. A wall trick is flown at walking pace
      * into the wall and a crash is not, so without this every hard smack
      * would offer itself as a 300 point Ceiling Tap. An impulse the caller
@@ -1969,7 +1982,7 @@ export class TrickDetector {
      * argument callers working and is the safe way round for a grade that
      * only ever REMOVES the bump penalty.
      */
-    if (impulse === undefined || impulse <= GRAZE_SPEED_MAX) {
+    if (tappable && (impulse === undefined || impulse <= GRAZE_SPEED_MAX)) {
       this.tapAtMs = this.nowMs;
     }
   }
@@ -2281,10 +2294,32 @@ export class TrickDetector {
       const ay = ob.dx * this.upX + ob.dy * this.upY + ob.dz * this.upZ3;
       run.axisAcc += ((this.pNow * ar + this.qNow * ap + this.rNow * ay) * dt) / TURN;
       if (run.open) {
-        /* See PathRun.resid: the lap's own turn removed as it happens. */
-        run.resid[AXIS_ROLL] += (this.pNow * dt) / TURN - dTurns * ar;
-        run.resid[AXIS_PITCH] += (this.qNow * dt) / TURN - dTurns * ap;
-        run.resid[AXIS_YAW] += (this.rNow * dt) / TURN - dTurns * ay;
+        /*
+         * THE SUBTRACTION HAPPENS ENTIRELY IN THE BODY RATE DOMAIN.
+         *
+         * What is being removed is the craft's rotation ABOUT the rail, and
+         * the honest measure of that is the body rates projected onto the
+         * rail, which is the same quantity axisAcc is built from. Taking
+         * the projection off each rate leaves the rotation perpendicular to
+         * the rail, which is the pilot's, and it needs no two conventions
+         * to agree with each other.
+         *
+         * It was written with the GEOMETRIC winding, `dTurns * ar` and so
+         * on, and that was wrong in a way no constructed flight could show.
+         * The winding is a cross product on positions in the renderer's
+         * Y up frame; the body rates are Betaflight's, in the Z up right
+         * handed frame CLAUDE.md pins the physics to. The two disagree
+         * about sign, so the subtraction ADDED the lap's own turn instead
+         * of removing it and every bar loop read about three times its real
+         * rotation. Measured on the real town: a Powerloop whose raw body
+         * integral was a clean -1.24 of pitch came out of the residual at
+         * -2.40 and was named a 3/4 Flip. The sweep never caught it because
+         * the sweep builds its attitudes out of the same position maths the
+         * winding uses, so both were wrong the same way and cancelled.
+         */
+        run.windProj[AXIS_ROLL] += dTurns * ar;
+        run.windProj[AXIS_PITCH] += dTurns * ap;
+        run.windProj[AXIS_YAW] += dTurns * ay;
       }
       if (run.open && circling) {
         run.alignSum[AXIS_ROLL] += ar;
@@ -2342,9 +2377,9 @@ export class TrickDetector {
         run.startRot[1] = this.totalTurns[1];
         run.startRot[2] = this.totalTurns[2];
         /* From the gate too, so the residual spans the same window. */
-        run.resid[0] = 0;
-        run.resid[1] = 0;
-        run.resid[2] = 0;
+        run.windProj[0] = 0;
+        run.windProj[1] = 0;
+        run.windProj[2] = 0;
         run.lastWind = run.windTotal;
         run.lastSide = side;
         run.lastMs = this.nowMs;
@@ -2579,11 +2614,13 @@ export class TrickDetector {
       /* Net rotation while the lap was flown, per axis, in turns, with the
        * loop's own turn put back on one axis rather than smeared across
        * two by the bank the pilot happened to fly at. See debankLap. */
-      rot: this.debankLap(run),
+      rot: this.debankLap(run, turns),
       /* What the de-banking saw: the loop's own turn about the obstacle's
        * axis, and how that axis lay in the body. Diagnostics for the rig;
        * nothing in the matcher reads them. */
       spin: run.alignN > 0 ? run.lastAxis - run.startAxis : 0,
+      bodyRot: run.lastRaw ? run.lastRaw.slice() : null,
+      resid: run.lastResid ? run.lastResid.slice() : null,
       align: run.alignN > 0
         ? [run.alignSum[0] / run.alignN, run.alignSum[1] / run.alignN,
           run.alignSum[2] / run.alignN]
@@ -2664,12 +2701,27 @@ export class TrickDetector {
    * Falls back to the raw body integral when the caller supplied no up axis,
    * which is every test written before this existed and the safe way round.
    */
-  debankLap(run) {
+  /*
+   * `snapped` is the lap's turn count AFTER snapping, which is the number
+   * the pattern's `turns` is matched against. The lap's own rotation goes
+   * back onto the owning body axis in THOSE units, not in the raw winding.
+   *
+   * A powerloop round the practice rail wound 1.34 turns, snapped to 1, and
+   * had 1.34 of pitch put back on it, so the same primitive said turns 1 and
+   * pitch 1.34 in one breath. Powerloop asks for pitch 1, 0.34 is outside
+   * the band, and a 200 point trick came out a 50 point 3/4 Flip. Nothing
+   * written in whole turns could ever have matched, because the two halves
+   * of one primitive were being counted in different units.
+   */
+  debankLap(run, snapped) {
     const raw = [
       run.lastRot[0] - run.startRot[0],
       run.lastRot[1] - run.startRot[1],
       run.lastRot[2] - run.startRot[2],
     ];
+    /* Diagnostics for the rigs: what the body integrals said before any of
+     * this, beside what the per sample residual said. Nothing reads them. */
+    run.lastRaw = raw;
     if (!this.haveUp || run.alignN <= 0) {
       return raw;
     }
@@ -2697,9 +2749,29 @@ export class TrickDetector {
      */
     const measured = run.lastAxis - run.startAxis;
     const wound = run.lastWind - run.startWind;
+    /*
+     * WHICH WAY THE TWO CONVENTIONS RUN, read off this lap rather than
+     * assumed. The winding is a cross product on positions in the
+     * renderer's Y up frame; the body rates are Betaflight's, in the Z up
+     * right handed frame the physics is pinned to. Whether those two agree
+     * about sign is a property of the frames, not of the trick, but hard
+     * coding it got it right for constructed flights and BACKWARDS for the
+     * real shell, where the subtraction then added the lap's own turn
+     * instead of removing it: every bar loop read about three times its
+     * true rotation and a Powerloop came out a 3/4 Flip.
+     *
+     * A lap is dominated by its own turn, which is what makes it a lap, so
+     * the sign the body saw it going and the sign the geometry saw it going
+     * are one event seen twice, and their product IS the relation between
+     * the frames. Measured, never assumed, and so right in either.
+     */
+    const conv = measured === 0 || wound === 0
+      ? 0
+      : (measured < 0 ? -1 : 1) * (wound < 0 ? -1 : 1);
+    const size = snapped === undefined || snapped <= 0 ? Math.abs(wound) : snapped;
     const spin = measured === 0
       ? 0
-      : Math.abs(wound) * (measured < 0 ? -1 : 1);
+      : size * (measured < 0 ? -1 : 1);
     /*
      * ROLL OR NOT ROLL, and for a rail that is the whole question.
      *
@@ -2775,12 +2847,24 @@ export class TrickDetector {
       return raw;
     }
     /*
-     * The pilot's rotation, already separated from the loop's own turn one
-     * sample at a time. This used to be raw minus spin times the MEAN
-     * alignment, which is the same quantity only while the body axes hold
-     * still through the lap. See PathRun.resid.
+     * The pilot's rotation: the body integrals with the LAP'S OWN turn
+     * taken out one sample at a time, put into the body rates' own sign by
+     * conv. This used to be raw minus spin times the MEAN alignment, which
+     * is the same quantity only while the body axes hold still through the
+     * lap. See PathRun.windProj.
+     *
+     * Only the lap's own turn comes out, not everything the craft did about
+     * the rail. A Power Flip's added flip is about the rail too, so a
+     * residual built by projecting ALL rotation about the axis away deleted
+     * it: the lap measured a body rotation of 2 turns about the rail, kept
+     * none of it, and a 350 point trick came out a 200 point Powerloop.
      */
-    const out = [run.resid[0], run.resid[1], run.resid[2]];
+    const out = [
+      raw[0] - conv * run.windProj[0],
+      raw[1] - conv * run.windProj[1],
+      raw[2] - conv * run.windProj[2],
+    ];
+    run.lastResid = out.slice();
     /* The sign follows whichever component actually carries the turn, which
      * for a banked rail lap is the larger half of the perpendicular pair. */
     const signOf = best === AXIS_PITCH && bar

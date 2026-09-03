@@ -1588,6 +1588,25 @@ class PathRun {
     this.lastAxis = 0;
     this.alignSum = [0, 0, 0];
     /*
+     * THE PILOT'S ROTATION, with the lap's own taken out AS IT HAPPENS.
+     *
+     * The body integrals over a lap are the pilot's rotation and the loop's
+     * own turn added together, and separating them by subtracting a lump at
+     * the end only works while the body axes hold roughly still: it uses the
+     * MEAN direction of the rail in the body, and a mean is only the thing
+     * itself when the thing does not move. Put a 360 yaw inside the lap and
+     * the rail sweeps the whole way round the body, the mean collapses
+     * toward nothing, and a Donkey Loop's lap read rot [0, -0.15, -1.23]
+     * where [1, 0.5, 1] had been flown.
+     *
+     * Subtracting it per sample has no such assumption. At every step the
+     * lap's own angular velocity is the winding rate about the rail times
+     * the rail's direction in the body, which is exactly what axisAcc is
+     * built from, so taking it off each body rate before integrating leaves
+     * the pilot's rotation and nothing else, however the craft tumbles.
+     */
+    this.resid = [0, 0, 0];
+    /*
      * The same alignments as MAGNITUDES, which is what decides ownership.
      * Averaging the signed components cannot tell a craft rolling about its
      * nose from one yawing through the lap: both average towards nothing.
@@ -2229,6 +2248,12 @@ export class TrickDetector {
       const ap = ob.dx * this.rgtX + ob.dy * this.rgtY + ob.dz * this.rgtZ;
       const ay = ob.dx * this.upX + ob.dy * this.upY + ob.dz * this.upZ3;
       run.axisAcc += ((this.pNow * ar + this.qNow * ap + this.rNow * ay) * dt) / TURN;
+      if (run.open) {
+        /* See PathRun.resid: the lap's own turn removed as it happens. */
+        run.resid[AXIS_ROLL] += (this.pNow * dt) / TURN - dTurns * ar;
+        run.resid[AXIS_PITCH] += (this.qNow * dt) / TURN - dTurns * ap;
+        run.resid[AXIS_YAW] += (this.rNow * dt) / TURN - dTurns * ay;
+      }
       if (run.open && circling) {
         run.alignSum[AXIS_ROLL] += ar;
         run.alignSum[AXIS_PITCH] += ap;
@@ -2284,6 +2309,10 @@ export class TrickDetector {
         run.startRot[0] = this.totalTurns[0];
         run.startRot[1] = this.totalTurns[1];
         run.startRot[2] = this.totalTurns[2];
+        /* From the gate too, so the residual spans the same window. */
+        run.resid[0] = 0;
+        run.resid[1] = 0;
+        run.resid[2] = 0;
         run.lastWind = run.windTotal;
         run.lastSide = side;
         run.lastMs = this.nowMs;
@@ -2713,11 +2742,13 @@ export class TrickDetector {
     if (owned < DEBANK_MIN_OWN || owned < other * DEBANK_MARGIN) {
       return raw;
     }
-    const out = [
-      raw[0] - spin * align[0],
-      raw[1] - spin * align[1],
-      raw[2] - spin * align[2],
-    ];
+    /*
+     * The pilot's rotation, already separated from the loop's own turn one
+     * sample at a time. This used to be raw minus spin times the MEAN
+     * alignment, which is the same quantity only while the body axes hold
+     * still through the lap. See PathRun.resid.
+     */
+    const out = [run.resid[0], run.resid[1], run.resid[2]];
     /* The sign follows whichever component actually carries the turn, which
      * for a banked rail lap is the larger half of the perpendicular pair. */
     const signOf = best === AXIS_PITCH && bar

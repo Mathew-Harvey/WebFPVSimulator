@@ -27352,3 +27352,50 @@ Two more rig gaps closed alongside it:
 
 36 of 47 name on every sample, up from 31. Still zero over-claims, on both
 sweeps.
+
+### The lap's own turn is taken out per sample now, not as a lump at the end
+
+Separating the pilot's rotation from the loop's own by subtracting a lump at
+the end uses the MEAN direction of the rail in the body, and a mean is only the
+thing itself while the thing holds still. Put a 360 yaw inside a lap and the
+rail sweeps the whole way round the body, the mean collapses toward nothing,
+and the subtraction stops meaning anything.
+
+At every sample the lap's own angular velocity is the winding rate about the
+rail times the rail's direction in the body, which is exactly what `axisAcc` is
+already built from. Taking that off each body rate BEFORE integrating leaves
+the pilot's rotation and nothing else, however the craft tumbles, and it makes
+no assumption about the mean at all. `PathRun.resid` accumulates it and
+`debankLap` returns it, with the loop's own turn put back on the owning axis as
+before.
+
+Measured after, no change to anything that already worked: Powerloop
+`[0, 1.01, 0]`, Power Flip `[0, 2.01, 0]`, Power Roll `[1.00, 1.01, 0]`,
+Maverick Loop `[1.09, -0.08, 0.16]`, Cinnamon Roll `[0, -0.01, -0.99]`. Matty
+360 went from 67% to naming on every sample. 37 of 47 now, and both sweeps
+still end on nothing ever being paid more than it was worth.
+
+`DEBANK_MIN_OWN` was tried at 0.5 and PUT BACK to 0.9. The argument for lowering
+it was real: the floor was there to certify a subtraction that used the mean
+alignment, and the residual does not use the mean, so the floor's only remaining
+job is rejecting noise, which the margin test already does. But it did not fix
+the trick it was lowered for, and a threshold moved for a reason that turns out
+not to hold is a threshold moved to make a number look better. Donkey Loop went
+from naming "Yaw Spin, 1/2 Roll" to naming "Maverick Loop", 50 points of
+under-claim traded for 100, with the 600 point trick still unreached.
+
+### Why Donkey Loop is still wrong, which is not the same as not knowing why
+
+With the residual exact, a Donkey Loop's lap measures `rot [-1.09, -0.08, -1.00]`
+against the `{ pitch: 0.5, yaw: 1 }` it asks for. The roll and the yaw are right.
+The half flip is not there, and it is not there because it was never flown as a
+half flip in the body: a pilot inverting during a Maverick loop commands pitch
+about a wing that is itself rolling a whole turn through the lap, so the
+rotation smears between the body pitch and yaw axes and the pitch integral comes
+out near zero. The recogniser is reporting what happened. The catalogue is
+describing the trick the way a pilot says it.
+
+The fix is a lap's rotation resolved in a frame carried ALONG the lap rather
+than in the instantaneous body frame, which is a bigger change than the
+residual and wants its own turn. Left open deliberately rather than papered
+over, and it costs one under-claim, never an over-claim.

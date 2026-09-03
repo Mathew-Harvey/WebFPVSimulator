@@ -2565,17 +2565,50 @@ export class TrickDetector {
       run.alignSum[2] / run.alignN,
     ];
     const spin = run.lastAxis - run.startAxis;
-    let best = 0;
-    for (let k = 1; k < 3; k += 1) {
-      if (Math.abs(align[k]) > Math.abs(align[best])) {
-        best = k;
-      }
+    /*
+     * ROLL OR NOT ROLL, and for a rail that is the whole question.
+     *
+     * The lap's axis either lies along the NOSE, in which case going round
+     * is a roll, or across it, in which case going round is a flip. Bank
+     * only decides how that across-the-nose turn is SHARED between the wing
+     * and the up axis, and sharing is not a different trick: a Powerloop
+     * flown with fifty degrees of bank is a Powerloop flown untidily.
+     *
+     * Picking the single largest component got that wrong in the one place
+     * it matters. Past 45 degrees the biggest share is the up axis, so the
+     * loop's turn was called a YAW, the pitch came out zero, and a swept
+     * Powerloop was named a Maverick Loop, which is the trick for a lap
+     * flown WITHOUT a flip. Measured over a sweep of bank, turn error and
+     * drift: fifteen percent of Powerloops named as something else.
+     *
+     * So the perpendicular pair is compared as ONE quantity against the
+     * nose, and a rail's across-the-nose turn always lands on pitch. A POST
+     * keeps all three, because a nose-tangent orbit of a vertical post
+     * really is a yaw and calling it a flip would be the same mistake the
+     * other way up.
+     */
+    const perp = Math.sqrt(align[AXIS_PITCH] * align[AXIS_PITCH]
+      + align[AXIS_YAW] * align[AXIS_YAW]);
+    const bar = run.obstacle && run.obstacle.kind === OB_BAR;
+    let best;
+    let owned;
+    if (Math.abs(align[AXIS_ROLL]) >= perp) {
+      best = AXIS_ROLL;
+      owned = Math.abs(align[AXIS_ROLL]);
+    } else if (bar) {
+      best = AXIS_PITCH;
+      owned = perp;
+    } else {
+      best = Math.abs(align[AXIS_PITCH]) >= Math.abs(align[AXIS_YAW])
+        ? AXIS_PITCH
+        : AXIS_YAW;
+      owned = Math.abs(align[best]);
     }
     /*
-     * Too square to the lap's axis to say which body axis it went round, so
+     * Too square to the lap's axis to say which way round it went, so
      * nothing can be de-banked and the raw reading is the honest answer.
      */
-    if (Math.abs(align[best]) < DEBANK_MIN_ALIGN) {
+    if (owned < DEBANK_MIN_ALIGN) {
       return raw;
     }
     const out = [
@@ -2583,7 +2616,13 @@ export class TrickDetector {
       raw[1] - spin * align[1],
       raw[2] - spin * align[2],
     ];
-    out[best] += spin * (align[best] < 0 ? -1 : 1);
+    /* The sign follows whichever component actually carries the turn, which
+     * for a banked rail lap is the larger half of the perpendicular pair. */
+    const signOf = best === AXIS_PITCH && bar
+      && Math.abs(align[AXIS_YAW]) > Math.abs(align[AXIS_PITCH])
+      ? align[AXIS_YAW]
+      : align[best];
+    out[best] += spin * (signOf < 0 ? -1 : 1);
     return out;
   }
 

@@ -779,9 +779,10 @@ const MANOEUVRES = [
        * back and the levelling that followed cancelled to one primitive and
        * the trick came out as a single quarter turn.
        */
-      await window.__stickHold([0, 0.34, 0, 0.6], 800, (c, t, a) => -a.q >= TURN * 0.25);
-      await window.__stickHold([0, 0, 0, 0.6], 200);
-      await window.__stickHold([0, -0.34, 0, 0.66], 800, (c, t, a) => a.q >= TURN * 0.25);
+      /* Nose up a quarter, touch, nose down a quarter, each one braked so it
+       * stops where it was asked to. See window.__quarter. */
+      await window.__quarter(1);
+      await window.__quarter(-1);
       await window.__stickHold(
         (c) => [0, cl(c.fwd.y * 2.4, -0.45, 0.45), 0, 0.58], 700,
         (c) => Math.abs(c.fwd.y) < 0.08 && c.up.y > 0.9,
@@ -846,24 +847,46 @@ const MANOEUVRES = [
      * one every other lap here is flown around.
      */
     /*
-     * A MATTY FLIP IS ENTERED INVERTED, which is the whole reason it kept
-     * coming out a Beginner Matty. Half a lap from OVER means the wanted
-     * force points DOWN at the start, so the craft is on its back before
-     * the trick begins, and a run in that arrives the right way up spends
-     * the first third of the lap rolling over instead of flying it.
+     * A MATTY FLIP IS ENTERED INVERTED, and that is why tracking it round a
+     * circle from a level approach never worked. Half a lap from OVER means
+     * the wanted force points DOWN at the start, so the craft is on its back
+     * before the trick begins; a tracker handed a level run in spends the
+     * first third of the arc rolling over instead of flying it, and the lap
+     * comes out flat, which the catalogue rightly calls a Beginner Matty.
+     * Starting the arc early enough to fix the attitude just adds winding:
+     * the half lap measured 1.5 turns.
      *
-     * So the arc starts a fifth of a turn early. The pilot sets up ON the
-     * circle, which is what setting up is, and the scored half then happens
-     * with the aircraft already where it needs to be. The extra winding
-     * still reads as a half lap because the SIDES decide that, and this
-     * starts and ends on opposite sides of the rail.
+     * So it is FLOWN, not tracked. Over the rail with speed on, then a held
+     * nose down stick that dives around the front of it and back underneath,
+     * which is the manoeuvre as a pilot describes it and as the workbook
+     * writes it. The trajectory is then whatever the plant does with a held
+     * stick, which is the whole point of having a plant.
      */
     name: 'Matty Flip',
     want: 'Matty Flip',
-    body: lapPlan(PARK.arch, {
-      radius: 3.2, secs: 2.9, turns: -0.62, ph0: Math.PI / 2 + Math.PI * 0.22,
-      runUp: 15,
-    }),
+    body: `
+      const TURN = Math.PI * 2;
+      const A = ${JSON.stringify(PARK.arch)};
+      /* The rail runs along z, so the approach is along x, above it. */
+      const over = V(A.x - 13, A.y + 3.4, A.z);
+      const at = V(A.x - 1.5, A.y + 3.4, A.z);
+      const head = Math.atan2(1, 0);
+      await window.__settle(over, head, 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(over, at, 2.1, 11), { heading: head });
+      /* Nose DOWN and hold: pitch stick negative pitches the nose down, and
+       * the craft carves down past the near face of the rail and back under
+       * it. Half a turn of pitch, braked so it does not become a whole one. */
+      await window.__stickHold([0, -0.62, 0, 0.52], 1400,
+        (c, t, a) => a.q >= TURN * 0.34);
+      await window.__stickHold([0, 0.4, 0, 0.6], 500,
+        (c) => !c.rates || Math.abs(c.rates.q) < 1.5);
+      await window.__fly(window.__on(V(1, 0.1, 0), 12, 2.2), { heading: head });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { probe: window.__probe };
+    `,
   },
   {
     /* Half a lap up from under, then the half roll that finishes it, which
@@ -962,6 +985,26 @@ const MANOEUVRES = [
 /* A plain stick hold, for the manoeuvres that are a rotation rather than a
  * path. Integrates the body rates so "a quarter turn" is a measurement. */
 const STICK_HOLD = `
+/*
+ * A QUARTER TURN THAT STOPS AT A QUARTER.
+ *
+ * The stick is a RATE, so releasing it leaves the craft still turning: held
+ * to a quarter it arrives at a third, and two of those in a row came out a
+ * Double Flip, which is a different trick at a different price. A pilot
+ * stops a rotation by putting in the opposite stick, and so does this.
+ */
+window.__quarter = async (sign, turns = 0.25) => {
+  const TURN = Math.PI * 2;
+  const acc = { q: 0 };
+  await window.__stickHold([0, sign * 0.55, 0, 0.58], 900,
+    (c, t, a) => { acc.q = a.q; return Math.abs(a.q) >= TURN * turns * 0.62; });
+  /* Brake until the rate is nearly nothing, then let the coast finish it. */
+  await window.__stickHold([0, -sign * 0.5, 0, 0.6], 500,
+    (c) => !c.rates || Math.abs(c.rates.q) < 1.2);
+  await window.__stickHold([0, 0, 0, 0.58], 120);
+  return acc.q;
+};
+
 window.__stickHold = (sticks, ms, done) => new Promise((res) => {
   const t0 = performance.now();
   let lastT = t0;

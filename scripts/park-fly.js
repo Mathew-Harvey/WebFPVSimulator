@@ -88,13 +88,27 @@ const PARK = {
    * rail height in training.js: the collider is fatter than the paint. */
   jump: { x: 81.0, y: 3.2, z: 125.0, axis: 'x', span: 15.0 },
   /*
-   * A post to go round. NOT the mast: the 34 m tower reaches the obstacle
-   * field only as a 3 m stub centred at y 36.2, so everything a pilot can
-   * reach is invisible to the recogniser. See PROGRESS. This is the
-   * Split-S station's near post, which spans y 0.7 to 12.9 and is the
-   * tallest thing in the park a lap can actually be flown around.
+   * A post to go round: the Split-S station's near post, which spans y 0.7
+   * to 12.9.
+   *
+   * It used to be the only thing in the park a lap could be flown around,
+   * because the 34 m mast reached the obstacle field only as a 3 m stub at
+   * y 36.2. That was the height clamp in deriveObstacles asking the shell
+   * for the ground WITHOUT a hint and being told the height of the mast's
+   * own head deck, so each leg's bottom was clamped above its own top and
+   * every one of them was dropped. Fixed on 2026-09-03; the mast is four
+   * poles now and the cases below fly it.
    */
   post: { x: 24.0, y: 6.8, z: 164.0 },
+  /*
+   * THE MAST, and the rings the park paints on the ground under it.
+   *
+   * The whole element is built around a pilot being able to SEE the radius
+   * they are flying: "the ground under it carries three painted rings at 6,
+   * 10 and 14 m". Those three numbers are the cases, because a pilot flying
+   * the circle the paint tells them to fly is the report.
+   */
+  mast: { x: 96.0, y: 12.0, z: 160.0, rings: [6, 10, 14] },
 };
 
 /* ------------------------------------------------------------------ *
@@ -774,6 +788,165 @@ const MANOEUVRES = [
       const inside = dots.filter((d) => d >= 0.77).length / Math.max(1, dots.length);
       return { worstErr: r.worstErr, probe: window.__probe,
         noseOnPost: +inside.toFixed(2), dots: dots.filter((_, i) => i % 6 === 0) };
+    `,
+  },
+  {
+    /* The park's own painted ring at 6 m. See PARK.mast. */
+    name: 'Orbit x2 (mast, 6 m ring)',
+    want: 'Orbit x2',
+    body: `
+      const T = ${JSON.stringify(PARK.mast)};
+      const c = V(T.x, T.y, T.z);
+      const R = 6;
+      const lap = window.__circle(c, V(1, 0, 0), V(0, 0, 1), R, 5.0, 0, 2);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 11));
+      const look = (t, s) => Math.atan2(T.x - s.worldX, T.z - s.worldZ);
+      await window.__settle(from, look(0, { worldX: from.x, worldZ: from.z }), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 11 * 1.9 / Math.max(2, vEnt), vEnt),
+        { heading: look });
+      const r = await window.__fly(lap, { heading: look, ky: 3.0, yawMax: 0.85 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe,
+        obstacles: window.__obstacles() };
+    `,
+  },
+  {
+    /* The park's own painted ring at 10 m. See PARK.mast. */
+    name: 'Orbit x2 (mast, 10 m ring)',
+    want: 'Orbit x2',
+    body: `
+      const T = ${JSON.stringify(PARK.mast)};
+      const c = V(T.x, T.y, T.z);
+      const R = 10;
+      const lap = window.__circle(c, V(1, 0, 0), V(0, 0, 1), R, 7.0, 0, 2);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 11));
+      const look = (t, s) => Math.atan2(T.x - s.worldX, T.z - s.worldZ);
+      await window.__settle(from, look(0, { worldX: from.x, worldZ: from.z }), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 11 * 1.9 / Math.max(2, vEnt), vEnt),
+        { heading: look });
+      const r = await window.__fly(lap, { heading: look, ky: 3.0, yawMax: 0.85 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe,
+        obstacles: window.__obstacles() };
+    `,
+  },
+  {
+    /* The park's own painted ring at 14 m. See PARK.mast. */
+    name: 'Orbit x2 (mast, 14 m ring)',
+    want: 'Orbit x2',
+    body: `
+      const T = ${JSON.stringify(PARK.mast)};
+      const c = V(T.x, T.y, T.z);
+      const R = 14;
+      const lap = window.__circle(c, V(1, 0, 0), V(0, 0, 1), R, 9.0, 0, 2);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 11));
+      const look = (t, s) => Math.atan2(T.x - s.worldX, T.z - s.worldZ);
+      await window.__settle(from, look(0, { worldX: from.x, worldZ: from.z }), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 11 * 1.9 / Math.max(2, vEnt), vEnt),
+        { heading: look });
+      const r = await window.__fly(lap, { heading: look, ky: 3.0, yawMax: 0.85 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe,
+        obstacles: window.__obstacles() };
+    `,
+  },
+  {
+    /*
+     * ONE lap, nose on the mast. There is deliberately no pattern for a
+     * single upright orbit: the workbook has no block for one, and one
+     * nose-in circle round a post IS a 360 of yaw, which the yaw run already
+     * names. This case exists to SHOW a pilot what that costs, not to assert
+     * a name.
+     */
+    name: 'Orbit, ONE lap only',
+    want: 'Yaw Spin',
+    body: `
+      const T = ${JSON.stringify(PARK.mast)};
+      const c = V(T.x, T.y, T.z);
+      const lap = window.__circle(c, V(1, 0, 0), V(0, 0, 1), 6, 5.0, 0, 1);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 11));
+      const look = (t, s) => Math.atan2(T.x - s.worldX, T.z - s.worldZ);
+      await window.__settle(from, look(0, { worldX: from.x, worldZ: from.z }), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 11 * 1.9 / Math.max(2, vEnt), vEnt), { heading: look });
+      const r = await window.__fly(lap, { heading: look, ky: 3.0, yawMax: 0.85 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe };
+    `,
+  },
+  {
+    /*
+     * TWO laps with the nose on the FLIGHT PATH rather than on the mast,
+     * which is a coordinated turn flown twice round. The Orbit is defined by
+     * keeping the object on the screen and the recogniser measures that
+     * directly, so it names nothing, and that is asserted rather than
+     * observed: it is the false positive the tracking test exists to refuse,
+     * and it is what a pilot who does not know the trick flies.
+     */
+    name: 'Orbit, nose NOT on the mast',
+    want: 'NOTHING',
+    body: `
+      const T = ${JSON.stringify(PARK.mast)};
+      const c = V(T.x, T.y, T.z);
+      const lap = window.__circle(c, V(1, 0, 0), V(0, 0, 1), 6, 5.0, 0, 2);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 11));
+      const ahead = (t, s) => Math.atan2(s.vel ? s.vel.x : 1, s.vel ? s.vel.z : 0);
+      await window.__settle(from, ahead(0, {}), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 11 * 1.9 / Math.max(2, vEnt), vEnt), { heading: ahead });
+      const r = await window.__fly(lap, { heading: ahead, ky: 3.0, yawMax: 0.85 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe };
+    `,
+  },
+  {
+    /* One lap of the mast flown belly up, which is what the catalogue calls
+     * a 1 Trippy Spin and prices at a hundred. */
+    name: '1 Trippy Spin (mast)',
+    want: '1 Trippy Spin',
+    body: `
+      const T = ${JSON.stringify(PARK.mast)};
+      const c = V(T.x, 24, T.z);
+      const flat = window.__circle(c, V(1, 0, 0), V(0, 0, 1), 5.0, 2.3, 0, 1);
+      const lap = window.__drop(flat, 11.4);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 12));
+      const look = (t, s) => Math.atan2(T.x - s.worldX, T.z - s.worldZ);
+      await window.__settle(from, look(0, { worldX: from.x, worldZ: from.z }), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 12 * 1.9 / Math.max(2, vEnt), vEnt), { heading: look });
+      let inv = 0; let n = 0;
+      const r = await window.__fly(lap, { heading: look, ky: 1.6, yawMax: 0.5, invertOk: true,
+        watch: (cc) => { n += 1; if (cc.up.y < 0) { inv += 1; } } });
+      await window.__fly(window.__on(V(1, 0.3, 0), 10, 1.8), { heading: 0 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe, invertedFrac: +(inv / Math.max(1, n)).toFixed(2) };
     `,
   },
   {

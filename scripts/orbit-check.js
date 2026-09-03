@@ -258,6 +258,37 @@ for (const cse of CASES) {
 }
 
 /*
+ * ONE LAP IS A YAW SPIN, TWO ARE AN ORBIT, AND A LAP WITH THE NOSE
+ * ELSEWHERE IS NEITHER.
+ *
+ * The pattern table had no entry for a single upright orbit, on the stated
+ * grounds that one nose-in circle round a post IS a 360 of yaw and the yaw
+ * run already names it. The conclusion is right; the premise was never
+ * measured and is false. A rotation run opens at 172 deg/s and an orbit
+ * yaws at a turn per lap, so a five second lap yaws at 72: the run never
+ * opens, nothing is held, nothing is handed back, and the pilot gets
+ * neither the orbit nor the yaw spin. That is "orbits do not register".
+ */
+{
+  const one = await orbit({
+    radius: 6, secs: 5.0, laps: 1, alt: 8,
+  });
+  check(
+    'one tracked lap of the mast is the 360 of yaw it is, and scores',
+    one.tricks.includes('Yaw Spin'),
+    `named ${one.tricks.join(' + ') || 'nothing'}`,
+  );
+  const two = await orbit({
+    radius: 6, secs: 5.0, laps: 2, alt: 8,
+  });
+  check(
+    'and two laps are still an Orbit x2, not a Yaw Spin',
+    two.tricks.includes('Orbit x2') && !two.tricks.includes('Yaw Spin'),
+    `named ${two.tricks.join(' + ') || 'nothing'}`,
+  );
+}
+
+/*
  * AND ORDINARY FLYING STILL SCORES NOTHING.
  *
  * This is the check that guards the off gate coming down. A lower gate holds

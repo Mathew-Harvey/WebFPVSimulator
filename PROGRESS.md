@@ -28398,3 +28398,102 @@ Still nothing depends on the new measurement: the pattern table reads the
 winding. What has changed is that the measurement now has the one quantity
 the half figures need, so the pattern rewrite has something to be written
 against.
+
+## 2026-09-03: orbits still did not register, and this is why
+
+Reported again after the mast fix landed. So the first thing was to stop
+trusting the Node rig, which passed, and ask the REAL shell.
+
+### The mast fix worked. That was not the bug.
+
+`npm run park:fly` with three new cases at the park's own painted rings, the
+three radii the ground under the mast is marked with:
+
+    Orbit x2 (mast, 6 m ring)     Orbit x2:CLEAN     PASS
+    Orbit x2 (mast, 10 m ring)    Orbit x2:CLEAN     PASS
+    Orbit x2 (mast, 14 m ring)    Orbit x2:CLEAN     PASS
+
+So the mast is an obstacle and an orbit of it scores. The stale comment in
+park-fly saying the tower reaches the field only as a 3 m stub is gone.
+
+### ONE lap scored nothing at all, and that is the report
+
+    Orbit, ONE lap only        NOTHING
+    Orbit, nose NOT on mast    NOTHING
+
+The second is correct and is the false positive the tracking test exists to
+refuse: a coordinated turn flown twice round a post with the nose on the
+flight path is not an Orbit, and the recogniser measures that directly.
+
+The first is the bug. Flown in the shell, one lap of the mast at 6 m in five
+seconds closes at 1.25 turns with the mast on the nose for 0.81 of it, which
+is an orbit by any reading, and it named NOTHING.
+
+There is no pattern for a single upright orbit, and the argument for that was
+written into this file next to the one for the inverted single lap:
+
+  "There is deliberately no upright twin. The workbook has no block for a
+  single orbit, and it is right not to: one nose-in circle round a post IS a
+  360 of yaw, and the yaw run releaseHeld hands back already names it a Yaw
+  Spin at 50. Naming it twice would pay twice for one motion."
+
+The conclusion is right. The premise is false, and it is the half that was
+never measured. A rotation run opens at RATE_ON, 3.0 rad/s or 172 deg/s, and
+that floor was swept on the real aircraft and is defended at length: below it
+a coordinated circling turn starts scoring a Yaw Spin. An ORBIT yaws at one
+turn per lap, so a five second lap yaws at 72 deg/s and a ten second lap at
+36. The yaw run never opens on any orbit slower than about two seconds a lap,
+which is every orbit anybody flies. Nothing was held, so nothing was handed
+back, and the pilot got neither the orbit nor the yaw spin.
+
+### What was changed, and nothing was invented
+
+One tracked upright lap of a pole now names `Yaw Spin`, which is what this
+file already said it is, at the price the argument above quotes. Yaw Spin is
+in the catalogue at 50; no entry was added and no number was made up.
+
+Two laps still name `Orbit x2`: both patterns are one step long, both match,
+and bestMatch takes the dearer of two equally clean readings, which is 75
+against 50. A lap flown with the nose anywhere but on the object still names
+nothing, because `track` is not slackened.
+
+### Measured, in the real shell
+
+    Orbit, ONE lap only            Yaw Spin:CLEAN         (was NOTHING)
+    Orbit, nose NOT on the mast    NOTHING                asserted now
+    1 Trippy Spin (mast)           1 Trippy Spin:BUMP     the inverted orbit
+                                                          of the mast, which
+                                                          could not exist
+                                                          before the mast did
+
+`npm run park:fly` is 16 of 20 right, from 10 of 14 before this session's
+work began. The four still wrong are the ones that were already wrong: the
+wide slow Powerloop, the 1 Trippy Spin at the Split-S post, the Split-S, and
+the Cinnamon Roll.
+
+`npm run trick:sweep -- --all` still ends on "nothing was ever paid more than
+it was worth", which is the property that matters for a change that makes
+MORE things scoreable.
+
+### A question for the owner
+
+A pilot who flies one orbit will see "Yaw Spin" on the HUD. That is honest,
+it is what the motion is, and it is what the catalogue prices. Whether it
+should instead read as an orbit is a question about the trick list rather
+than about the recogniser: the workbook has `Orbit x2` at 75 and no single,
+where it has `1 Trippy Spin` at 100 as a building block beside `Trippy Spin
+x2` at 500. If a house block for one upright orbit is wanted, that is a line
+in tricks.js and a name, and it is the owner's to choose rather than mine to
+invent.
+
+### Checks
+
+    node scripts/orbit-check.js        10 passed, 0 failed  (2 new)
+    node scripts/path-check.js         12 passed, 0 failed
+    node scripts/frame-check.js        34 passed, 0 failed
+    node scripts/wall-check.js         45 passed, 0 failed
+    node src/trackbuilder/selftest.js  495 passed, 0 failed
+    npm run contact:selftest           all 72 passed
+    npm run score:selftest             206 passed, 1 failed  (unchanged)
+    npm run trick:sweep -- --all       47 flown, no over-claims
+    npm run park:fly                   16 of 20

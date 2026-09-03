@@ -818,15 +818,44 @@ export const PATTERNS = [
      * pair. Without it a pilot who came out of an inverted orbit after one
      * revolution scored nothing at all for it, which is the same complaint
      * the whole building block table exists to answer.
-     *
-     * There is deliberately no upright twin. The workbook has no block for
-     * a single orbit, and it is right not to: one nose-in circle round a
-     * post IS a 360 of yaw, and the yaw run releaseHeld hands back already
-     * names it a Yaw Spin at 50. Naming it twice would pay twice for one
-     * motion.
      */
     name: '1 Trippy Spin',
     steps: [{ path: 'pole', turnsAtLeast: 1, inverted: true }],
+  },
+  {
+    /*
+     * AND THE UPRIGHT TWIN, WHICH IS A YAW SPIN, and its absence is why a
+     * pilot flying an orbit was reporting that orbits did not register.
+     *
+     * There used to be no pattern for one upright lap, and the argument for
+     * that was written down here: "one nose-in circle round a post IS a 360
+     * of yaw, and the yaw run releaseHeld hands back already names it a Yaw
+     * Spin at 50. Naming it twice would pay twice for one motion." The
+     * conclusion is right and the premise is false, and the premise is the
+     * half that was never measured.
+     *
+     * A rotation run opens at RATE_ON, which is 3.0 rad/s or 172 deg/s, and
+     * that floor was swept on the real aircraft and is defended at length
+     * above: below it a coordinated turn starts scoring a Yaw Spin. An
+     * ORBIT yaws at a turn per lap, so a five second lap yaws at 72 deg/s
+     * and a ten second lap at 36. The yaw run therefore never opens on any
+     * orbit slower than about two seconds a lap, which is every orbit a
+     * pilot actually flies. Nothing was held, so nothing was handed back,
+     * and the pilot got neither the orbit nor the yaw spin.
+     *
+     * Measured in the real shell, one tracked lap of the training park's
+     * mast at 6 m in five seconds: the lap closes at 1.25 turns with the
+     * mast on the nose for 0.81 of it, and the run names NOTHING.
+     *
+     * So it is named what this file already said it is. Nothing is invented:
+     * Yaw Spin is in the catalogue at 50, which is the price the argument
+     * above quotes. Two laps still name Orbit x2, because bestMatch takes
+     * the dearer of two equally clean readings and 75 beats 50, and a lap
+     * flown with the nose anywhere but on the object still names nothing,
+     * because `track` is not slackened.
+     */
+    name: 'Yaw Spin',
+    steps: [{ path: 'pole', turnsAtLeast: 1, track: true, inverted: false }],
   },
 
   /* ---------------------------------------------------------------- *

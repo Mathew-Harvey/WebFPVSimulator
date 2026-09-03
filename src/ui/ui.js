@@ -299,6 +299,48 @@ export const FPS_CAPS = [0, 90, 60, 30];
 /* Expert is the full model and the default; arcade switches the
  * imperfection terms off in the module via sim_set_flight_style. */
 export const FLIGHT_STYLES = ['expert', 'arcade'];
+/*
+ * WHAT A FREESTYLE FLIGHT IS. Three positions on one row, because they are
+ * three answers to the same question and a pilot only ever wants one.
+ *
+ *   'off'     Nothing is SHOWN. No overlay, no trick names, no run clock
+ *             and no board, and the clock slot carries the airtime
+ *             instead. THE DEFAULT.
+ *   'free'    The overlay is on, with no clock and no board. The run never
+ *             ends and nothing is posted, but a trick is named when it
+ *             lands.
+ *   'scored'  The overlay is on, two minutes on the clock, and the total
+ *             goes to the board.
+ *
+ * Off is a DISPLAY decision. The recogniser and the scorer go on running
+ * underneath it, because they are the thing being developed and stopping
+ * them would stop them being exercised. What off removes is a number on
+ * the screen that the pilot has not asked to be judged by.
+ *
+ * See DEFAULTS.freestyleScoring for why off is the default.
+ */
+export const FREESTYLE_SCORING = ['off', 'free', 'scored'];
+const FREESTYLE_SCORING_LABEL = { off: 'Off', free: 'Free flight', scored: 'Scored run' };
+
+/*
+ * THE WARNING, and it comes FIRST when scoring is on, because a row wearing
+ * row-warn owes the pilot the reason before it offers them anything. The
+ * argument for it is at DEFAULTS.freestyleScoring.
+ */
+const SCORING_WARNING = 'This is an unfinished feature and it is still being built.'
+  + ' The recogniser misses tricks it should name and puts the wrong name on some of'
+  + ' the ones it catches, so read it as a work in progress rather than as a verdict'
+  + ' on your flying.';
+
+const SCORING_HOW = 'Off: no overlay, no names and no run clock, just the town and the quad.'
+  + ' Free flight: tricks are named and scored as you land them, with no clock and no'
+  + ' board, and the run never ends. That is the one to learn a Powerloop in.'
+  + ' Scored run: two minutes on the clock, and what you finish with goes to the high'
+  + ' score board.';
+
+function scoringNote(mode) {
+  return mode === 'off' ? SCORING_HOW : `${SCORING_WARNING} ${SCORING_HOW}`;
+}
 
 const DEFAULTS = {
   /* Which world. 'custom' is a track from the board or the builder, and
@@ -375,7 +417,8 @@ const DEFAULTS = {
    * Keyboard flight always raises angle, regardless of this value. */
   flightMode: 'acro',
   /*
-   * FREESTYLE IS TWO DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
+   * FREESTYLE IS THREE DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
+   * See FREESTYLE_SCORING above for what each value does.
    *
    * A scored run is two minutes with a board at the end of it, which is a
    * competition and is the right shape for one. Learning a Powerloop is
@@ -383,8 +426,26 @@ const DEFAULTS = {
    * turns practice into an interruption. 'free' takes the clock and the
    * board away and leaves the scoring on, so a pilot can still see whether
    * the thing they just flew counted.
+   *
+   * AND 'off' IS THE DEFAULT, WHICH IS THE POINT OF THIS FIELD. The trick
+   * recogniser is not finished, and the whole of what this field does is
+   * decide whether a pilot is shown its answers. It still misses shapes it should name and
+   * still names some of them wrong, and a wrong name is worse than no name:
+   * a pilot flying a Split-S and being paid for a Half Matty learns the
+   * wrong thing about their own flying, and one that lands a clean orbit
+   * and is told it was nothing concludes the orbit was bad. Freestyle's
+   * job today is flight feel, so what a pilot gets without asking is a town
+   * and a quad, and the scorer is a thing you switch on knowing what it is.
+   *
+   * The key is deliberately NOT the old 'freestyleRun'. Settings are saved
+   * whole, so every returning pilot has that key holding the old default of
+   * 'scored' whether or not they ever chose it, and reading it would mean
+   * this default reached nobody who had ever opened the page. A new key has
+   * no stored value for anyone, so the default applies once and the pilot's
+   * own choice persists after that. It also ends a real ambiguity: Ui's own
+   * `this.freestyleRun` is the last run's SUMMARY, not a mode.
    */
-  freestyleRun: 'scored',
+  freestyleScoring: 'off',
   flightStyle: 'expert',
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
@@ -495,9 +556,6 @@ export function loadSettings() {
       s[k] = stored[k];
     }
   }
-  if (s.freestyleRun !== 'free') {
-    s.freestyleRun = 'scored';
-  }
   if (s.flightMode !== 'angle') {
     s.flightMode = 'acro';
   }
@@ -524,6 +582,7 @@ export function loadSettings() {
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
     ['ghost', ['off', 'best', 'previous']],
+    ['freestyleScoring', FREESTYLE_SCORING],
   ]) {
     if (!allowed.includes(s[key])) {
       s[key] = DEFAULTS[key];
@@ -2175,7 +2234,12 @@ export class Ui {
      * are fixed here rather than in a card: this is the room's own sentence
      * about what freestyle IS.
      */
-    freestyle.append(el('p', 'rates-lede', 'A whole town and no gates. A run is two minutes, every trick you land is scored off a real judging sheet, and what you finish with goes to the high score board. This is where the machine you fly it on lives.'));
+    /* The lede promised a scored run, and scoring is no longer what a pilot
+     * gets without asking for it. A front page that describes the thing
+     * behind the door has to describe the door that is actually open: the
+     * town and the quad, with the scoring named as a switch rather than as
+     * the point. See DEFAULTS.freestyleScoring. */
+    freestyle.append(el('p', 'rates-lede', 'A whole town and no gates. Fly it, and this is where the machine you fly it on lives. Scoring is off until you switch it on, because the part that names what you flew is still being built.'));
     this.freestyleCards = el('div', 'map-cards');
     const freestyleBlock = wrapMenu();
     this.freestyleMenu = freestyleBlock.menu;
@@ -3695,8 +3759,12 @@ export class Ui {
             label: 'Freestyle',
             card: 'freestyle',
             art: 'assets/gate/freestyle.jpg',
-            blurb: 'A whole town to fly around. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. Two minutes, and every trick you land is scored.',
-            facts: ['No gates', 'Two minutes', 'One town'],
+            /* No clock and no score in either line, because neither is on
+             * until a pilot asks for them. The card that answers the mode
+             * question has to describe what answering it gets you. See
+             * DEFAULTS.freestyleScoring. */
+            blurb: 'A whole town to fly around. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. No clock, no gates, and scoring is a switch inside.',
+            facts: ['No gates', 'No clock', 'One town'],
             action: 'mode-freestyle',
           },
           ...(trouble ? [trouble] : []),
@@ -4001,15 +4069,27 @@ export class Ui {
         /*
          * FIRST, because it is the only choice on this screen that changes
          * what the next two minutes ARE.
+         *
+         * AND IT WEARS THE WARNING WHEN IT IS SWITCHED ON. row-warn is the
+         * amber instrument colour the file already uses for a row that is
+         * telling a pilot something about the state of the machine rather
+         * than offering them something (see padTroubleItem), and an
+         * unfinished scorer is exactly that. It is on the ROW rather than
+         * in a popup because a popup is dismissed once and then the pilot
+         * flies for an hour: this stays amber for as long as the thing it
+         * is warning about is on, and goes quiet the moment it is off.
          */
-        choice(
-          'Run',
-          'Scored run: two minutes on the clock, and what you finish with goes to the high score board. Free flight: no clock and no board, the run never ends and nothing is posted, but tricks are still named and still scored so you can see what counted. Free flight is the one to learn a Powerloop in.',
-          ['scored', 'free'],
-          s.freestyleRun === 'free' ? 'free' : 'scored',
-          (id) => (id === 'free' ? 'Free flight' : 'Scored run'),
-          (id) => { s.freestyleRun = id; },
-        ),
+        {
+          ...choice(
+            'Scoring',
+            scoringNote(s.freestyleScoring),
+            FREESTYLE_SCORING,
+            s.freestyleScoring,
+            (id) => FREESTYLE_SCORING_LABEL[id],
+            (id) => { s.freestyleScoring = id; },
+          ),
+          rowClass: s.freestyleScoring === 'off' ? undefined : 'row-warn',
+        },
         /*
          * WHAT THERE IS TO FLY, before flying it. A pilot who does not know
          * a Powerloop is a thing cannot fly one on purpose, and the town
@@ -7789,7 +7869,7 @@ export class Ui {
     }
   }
 
-  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs, runTimed }) {
+  setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs, runTimed, runScored }) {
     const freestyle = mode === 'freestyle';
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
@@ -7801,7 +7881,18 @@ export class Ui {
        * the same `waiting` class the lap clock uses before the first gate,
        * which is the same state for the same reason.
        */
-      if (runTimed === false) {
+      if (runScored === false) {
+        /*
+         * SCORING OFF MEANS THERE IS NO RUN, so the slot goes back to the
+         * airtime it carried before a run was a thing that ends: the sim
+         * clock since this flight began, which is what a pilot flying a
+         * pack wants beside the pack bar. See the note above about this
+         * slot having counted an airtime up in it.
+         */
+        Ui.text(this.osdClockLabel, 'Air');
+        Ui.text(this.osdTimer, running ? formatTime(lapMs) : '0.00');
+        Ui.klass(this.osdTimer, running ? 'osd-timer' : 'osd-timer waiting');
+      } else if (runTimed === false) {
         /*
          * FREE FLIGHT HAS NO CLOCK, and the slot is not left empty: a blank
          * where a number belongs reads as a fault. It says what it is.
@@ -7905,8 +7996,12 @@ export class Ui {
     if (!this.scoreHud) {
       return;
     }
+    /* Scoring switched off means there is no overlay at all, not an empty
+     * one: a zero sitting on the screen for a run that is not being scored
+     * is a readout that cannot ever change, which reads as a fault. */
     this.scoreHud.setVisible(
       this.osdMode === 'freestyle'
+      && this.settings.freestyleScoring !== 'off'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );
   }

@@ -28692,3 +28692,136 @@ The negatives matter most for a change that widens a reach, and they hold: a
 straight run down a street of posts still names nothing at 12 and 9 m/s, and
 seven rolls flown down that same street are still all named at three
 spacings.
+
+## 2026-09-03: freestyle stops scoring you unless you ask
+
+The owner: "The default freestyle mode should be not scored, but there should
+be an option to turn scoring on, but the user should be warned this is an
+incomplete feature being developed."
+
+### Why the default was wrong
+
+The whole of this session was spent finding out that the recogniser gets
+things wrong on real flights. An orbit round the training park's own mast was
+not an obstacle at all. A street of posts silenced the scorer for a whole run.
+A real Split-S was paid as a Half Matty, which is a 250 point over-claim on a
+move a pilot flew correctly. Each was found by flying, none by a check.
+
+A wrong name is worse than no name. A pilot told their Split-S was a Half
+Matty learns the wrong thing about their own flying, and one who lands a
+clean orbit and is told it was nothing concludes the orbit was bad. That is
+the argument for the default, and it is stronger than the argument for
+showing a number: freestyle's job today is flight feel.
+
+### What was changed
+
+One row, three positions, on the Freestyle screen. It replaces the two
+position Run row, which offered a scored run and a free flight and scored
+both of them.
+
+    Off           no overlay, no names, no run clock, no board.  THE DEFAULT
+    Free flight   the overlay, with no clock and no board
+    Scored run    the overlay, two minutes, and the board
+
+Off is a DISPLAY decision and nothing else. This was the correction the owner
+made mid-turn, and it is the better change: I had gated the detector feed and
+the per frame scorer tick as well, which stops the thing being developed from
+being exercised on real flights and puts two code paths in the air where one
+would do. The recogniser and the scorer run exactly as before. What off
+removes is a number on the screen the pilot has not asked to be judged by.
+Only 'scored' sets score.timed, so off and free alike leave the run with no
+end, which is what already kept a free flight from reaching the results
+screen.
+
+### The warning, in three places, none of them a popup
+
+A popup is dismissed once and then the pilot flies for an hour.
+
+- The ROW wears `row-warn` whenever scoring is on. That is the amber
+  instrument colour the menus already use for a row reporting the state of
+  the machine rather than offering something, and the "!" badge comes with
+  it. Off, the row is ordinary and carries no amber at all.
+- The NOTE leads with the warning when scoring is on, and does not carry it
+  when it is off.
+- The SCORE OVERLAY says "in development" beside the word SCORE, small and
+  amber, so a pilot who switched it on an hour ago is still being told.
+
+### The copy that promised what the default no longer gives
+
+Two pieces of front page copy still described a scored run as what freestyle
+IS, which is exactly the mismatch shell-check's own comment complains about
+when a row's label stops matching the room behind it.
+
+The Freestyle screen's lede said "A run is two minutes, every trick you land
+is scored off a real judging sheet". The mode gate's Freestyle card said "Two
+minutes, and every trick you land is scored", with facts reading Two minutes.
+Both now describe the town and name scoring as a switch, and the card's facts
+read No gates, No clock, One town.
+
+### The setting is a new key, deliberately
+
+`freestyleRun` became `freestyleScoring`. Settings are saved WHOLE, so every
+returning pilot has `freestyleRun: 'scored'` in localStorage whether or not
+they ever chose it: it was the old default. Reading that key would have meant
+this new default reached nobody who had ever opened the page. A new key has no
+stored value for anyone, so the default applies once and a pilot's own choice
+persists after that, with no migration branch to get wrong. It also ends a
+real ambiguity, because `Ui`'s own `this.freestyleRun` is the last run's
+SUMMARY and not a mode. The old key is dropped from storage on the next save,
+because loadSettings walks DEFAULTS.
+
+Validation moved onto the existing list table rather than staying a bespoke
+`if`, so an edited localStorage value falls back to the default like every
+other list setting.
+
+### The clock slot with scoring off
+
+It reads the AIRTIME, labelled Air: the sim clock since this flight began,
+which is what a pilot flying a pack wants beside the pack bar. That is what
+the slot carried before a run was a thing that ends, and setOsd's own comment
+says so. Leaving it on "Run / Free" would have been a lie, because free
+flight is now a SCORING mode.
+
+### Checks
+
+    npm run lint:shell        PASS   (freestyle 5 stops, 0 px overflow)
+    npm run lint:nouns        PASS
+    npm run lint:boot         9 of 9 clean
+    npm run lint:responsive   PASS
+    npm run lint:quality      56 of 56 clean
+    npm run lint:attract      PASS
+    npm run score:selftest    206 passed, 1 failed  (unchanged, pre-existing)
+
+Driven in the real shell, reading the real rows and the real DOM:
+
+    default stored               off
+    row                          "Scoring", value "Off", options Off / Free flight / Scored run
+    off      rowClass none,      note has no warning,  .score-hud is-off
+    free     rowClass row-warn,  note leads "This is an unfinished feature",  hud shown
+    scored   rowClass row-warn,  note leads "This is an unfinished feature",  hud shown
+    badge    "in development", 0 px wide when off, visible when on
+
+And setOsd, called with the exact payload src/main.js builds for a freestyle
+frame:
+
+    off      Air  1:23.25      (the airtime, from lapMs)
+    free     Run  Free
+    scored   Run  0:37
+    race     Lap  12.34        (untouched)
+
+Screenshots through scripts/shots.js confirmed all three: the amber row and
+its note, the neutral Off row, and the overlay's "SCORE IN DEVELOPMENT".
+
+### What was NOT done
+
+I did not fly the town end to end. The first city build in this container did
+not come up inside 90 s and then inside 480 s of waiting, and the run was
+stopped; the second build in the same session came up fine, so it is a cold
+build cost rather than a fault. The flight path this change touches is one
+conjunction in setOsd and one in syncScoreVisible, and both were exercised
+directly against the real shell with the real payload, which is why the table
+above reports what it does and not "flown".
+
+`npm run verify` was not run. This turn changes no physics, no plant, no
+module ABI and no build: it is a setting, a menu row, two strings and a class
+on a div.

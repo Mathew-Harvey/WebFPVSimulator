@@ -988,9 +988,21 @@ export async function boot({ loading, bootStart, mapId }) {
   /*
    * The run's shape is the pilot's choice, made on the Freestyle screen and
    * re-read every time a run starts: 'scored' is two minutes and a board,
-   * 'free' is neither. See DEFAULTS.freestyleRun in src/ui/ui.js.
+   * 'free' is neither, and 'off' shows the pilot none of it. See
+   * DEFAULTS.freestyleScoring in src/ui/ui.js for why off is the default.
+   *
+   * OFF IS A DISPLAY DECISION AND NOTHING ELSE. The recogniser still runs
+   * and the scorer still keeps its total: what off removes is the overlay
+   * and the clock, so the pilot is not shown a number from a system that
+   * is still being built. Keeping the engine running is the cheaper change
+   * by far, it keeps one code path in the air instead of two, and it means
+   * the thing being developed goes on being exercised on real flights.
+   * Only 'scored' puts a clock on the run, so 'off' and 'free' alike leave
+   * score.timed false and the run never ends.
    */
-  const score = new FreestyleScore({ timed: ui.settings.freestyleRun !== 'free' });
+  const scoredRun = () => ui.settings.freestyleScoring === 'scored';
+  const scoringWanted = () => ui.settings.freestyleScoring !== 'off';
+  const score = new FreestyleScore({ timed: scoredRun() });
   /*
    * The things in the world worth flying around, derived from the map's own
    * colliders once when the map is built. Null on a map with none, and the
@@ -2811,7 +2823,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * fly, and a shape decided at construction would have kept whichever
      * one happened to be stored when the page loaded.
      */
-    score.timed = ui.settings.freestyleRun !== 'free';
+    score.timed = scoredRun();
     score.reset();
     trickDetector.restart();
     ui.resetScore();
@@ -6345,9 +6357,11 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The freestyle clock is the RUN's, counting down, and it is the
          * only clock on the screen: see setOsd. Read straight off the
          * scorer, which is the thing that decides when the run ends, rather
-         * than off a second copy that could disagree with it. */
+         * than off a second copy that could disagree with it. With scoring
+         * off there is no run, and the slot carries the airtime instead. */
         runState: scoreState,
         runTimed: score.timed,
+        runScored: scoringWanted(),
         runRemainMs: scoreRemainMs,
         gate: race.next + 1,
         gateCount: race.gates.length,

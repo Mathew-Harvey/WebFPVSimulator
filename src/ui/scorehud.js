@@ -138,7 +138,23 @@ export class ScoreHud {
     this.root = el('div', 'score-hud is-off');
 
     this.totalBox = el('div', 'score-total');
-    this.totalBox.append(el('div', 'score-label', 'Score'));
+    /*
+     * THE LABEL CARRIES THE WARNING, because the Freestyle screen's warning
+     * is read once and then the pilot flies for an hour.
+     *
+     * The recogniser is not finished: it misses shapes it should name and
+     * puts the wrong name on some it catches. A pilot who is told a Split-S
+     * was a Half Matty learns the wrong thing about their own flying, and
+     * the only defence against that is for the overlay saying it to admit
+     * what it is, in the one place the pilot is already looking. It is a
+     * word beside the label rather than a banner, because a banner over the
+     * town would be worse than the thing it is apologising for, and it sits
+     * next to "SCORE" so it reads as a qualifier on the number rather than
+     * as an event that just happened.
+     */
+    const label = el('div', 'score-label', 'Score');
+    label.append(el('span', 'score-beta', 'in development'));
+    this.totalBox.append(label);
     this.totalValue = el('div', 'score-value score-cut', '0');
     this.totalBox.append(this.totalValue);
     /*

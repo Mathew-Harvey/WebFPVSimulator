@@ -196,6 +196,16 @@
         font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
         color: var(--slate); margin-bottom: 1px;
       }
+      /* The scorer admits what it is, beside the word it qualifies. Amber
+         is the instrument colour this overlay and the menus both use for a
+         reading about the state of the machine rather than about the
+         flying, and it is a shade smaller and a shade dimmer than the label
+         so it reads as a footnote and never competes with the number.
+         See the comment on totalBox in src/ui/scorehud.js. */
+      .score-beta {
+        margin-left: 6px; font-size: 9px; letter-spacing: 0.1em;
+        color: var(--amber); opacity: 0.8;
+      }
       /* A HARD OUTLINE, NOT A GLOW. Every other readout on this overlay
          uses a soft drop shadow, and a soft shadow works because the world
          behind the OSD is mostly sky or grass. The score sits over the

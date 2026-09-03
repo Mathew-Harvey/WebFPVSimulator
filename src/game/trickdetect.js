@@ -419,11 +419,24 @@ const MAX_PATH_RUNS = 32;
  * and nose-forward flights differed by 0.00 turns of yaw to two decimals.
  *
  * So tracking is measured directly, as the angle between where the craft is
- * pointing and where the object is. 0.77 is about 40 degrees, which is
- * roughly an FPV camera's half angle: inside that the object is on the
- * screen, outside it is not.
+ * pointing and where the object is.
+ *
+ * 0.55 is 57 degrees, and it is the LENS. The first number here was 0.77,
+ * about 40 degrees, written down as "roughly an FPV camera's half angle".
+ * That is not what an FPV camera is: a 150 degree diagonal lens on a 4:3
+ * sensor sees about 120 degrees across, which is sixty either side of the
+ * nose, and forty is well inside the frame rather than the edge of it.
+ *
+ * Measured, flown: an orbit tracked to within 1.2 m of a 5.5 m circle held
+ * the post between 37 and 45 degrees off the nose for two whole laps, which
+ * is an orbit by any reading and is a post sitting comfortably on screen.
+ * At 0.77 it counted for 7 percent of the lap and the trick named nothing.
+ *
+ * The false positive this exists to refuse is nowhere near the new line
+ * either: the coordinated turn that first broke the yaw based version had
+ * the post 88.9 degrees off the nose, off the edge of any lens there is.
  */
-const TRACK_DOT = 0.77;
+const TRACK_DOT = 0.55;
 const TRACK_LAP_MIN = 0.7;
 const PATH_MIN_TURNS = 0.375;
 

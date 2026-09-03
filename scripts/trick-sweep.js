@@ -100,7 +100,8 @@ class Flight {
         console.log('    prim', x.kind === 'path'
           ? `lap ${x.obstacle} turns=${x.turns} raw=${x.rawTurns.toFixed(3)} `
             + `sides ${x.startSide}->${x.endSide} rot=[${x.rot.map((v) => v.toFixed(2))}] `
-            + `spin=${(x.spin || 0).toFixed(2)} align=[${(x.align || []).map((v) => v.toFixed(2))}]`
+            + `spin=${(x.spin || 0).toFixed(2)} align=[${(x.align || []).map((v) => v.toFixed(2))}] `
+            + `own=[${(x.own || []).map((v) => v.toFixed(2))}]`
           : `rot axis=${x.axis} turns=${x.turns} dir=${x.dir}`);
         return push(x);
       };

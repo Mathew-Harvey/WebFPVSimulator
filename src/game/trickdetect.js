@@ -263,14 +263,26 @@ const PATH_MAX_MS = 20000;
  * Whether the lap's axis lies clearly enough along ONE body axis for the
  * loop's own turn to be attributed to it.
  *
- * DEBANK_MIN_OWN is the floor below which nothing owns it at all, which is a
- * craft tumbling rather than looping. DEBANK_MARGIN is how far ahead the
- * winner has to be of the other candidate: at a margin of one they would be
- * equally entitled and there is no answer to give, so 1.5 asks for a clear
- * one. The comparison is what matters here and an absolute threshold is not:
- * see debankLap for the 450 point trick an absolute one threw away.
+ * DEBANK_MIN_OWN is measured PER SAMPLE, and that is what makes an absolute
+ * number safe here. 0.9 is a rail lying within 26 degrees of square to the
+ * nose for the whole lap, which is what flying a loop on the pitch axis
+ * means. A craft rolling about its nose keeps the rail permanently across it
+ * and reads 1.0 the whole way round; a craft YAWING through the lap swings
+ * the rail between the nose and the wing and reads about 0.83, which is a
+ * rail sitting 56 degrees from the nose on average and is not square to
+ * anything.
+ *
+ * An earlier version put a floor of 0.72 on the SIGNED AVERAGE instead, and
+ * that is a different quantity: a roll makes the signed components average
+ * towards nothing while the per sample magnitude stays at one, so the floor
+ * threw away a 450 point Power Roll on every sample of the sweep. The
+ * quantity was the mistake, not the idea of a floor.
+ *
+ * DEBANK_MARGIN is how far ahead the winner has to be of the other
+ * candidate: at a margin of one they would be equally entitled and there is
+ * no answer to give, so 1.5 asks for a clear one.
  */
-const DEBANK_MIN_OWN = 0.35;
+const DEBANK_MIN_OWN = 0.9;
 const DEBANK_MARGIN = 1.5;
 
 /*
@@ -1557,6 +1569,16 @@ class PathRun {
     this.startAxis = 0;
     this.lastAxis = 0;
     this.alignSum = [0, 0, 0];
+    /*
+     * The same alignments as MAGNITUDES, which is what decides ownership.
+     * Averaging the signed components cannot tell a craft rolling about its
+     * nose from one yawing through the lap: both average towards nothing.
+     * Per sample, a roll keeps the rail permanently across the nose and a
+     * yaw swings it between the nose and the wing, and that difference
+     * survives the average. See debankLap.
+     */
+    this.magRoll = 0;
+    this.magPerp = 0;
     this.alignN = 0;
     /*
      * The last millisecond this run was winding at all, as against lastMs
@@ -2193,6 +2215,8 @@ export class TrickDetector {
         run.alignSum[AXIS_ROLL] += ar;
         run.alignSum[AXIS_PITCH] += ap;
         run.alignSum[AXIS_YAW] += ay;
+        run.magRoll += ar < 0 ? -ar : ar;
+        run.magPerp += Math.sqrt(ap * ap + ay * ay);
         run.alignN += 1;
       }
     }
@@ -2257,6 +2281,8 @@ export class TrickDetector {
         run.alignSum[0] = 0;
         run.alignSum[1] = 0;
         run.alignSum[2] = 0;
+        run.magRoll = 0;
+        run.magPerp = 0;
         run.alignN = 0;
         run.invSamples = 0;
         run.trackSamples = 0;
@@ -2481,6 +2507,7 @@ export class TrickDetector {
         ? [run.alignSum[0] / run.alignN, run.alignSum[1] / run.alignN,
           run.alignSum[2] / run.alignN]
         : null,
+      own: run.alignN > 0 ? [run.magRoll / run.alignN, run.magPerp / run.alignN] : null,
       upZ,
       /* The fraction of the lap flown belly up, 0 to 1. See PathRun. */
       invertedFrac: run.spanSamples > 0 ? run.invSamples / run.spanSamples : 0,
@@ -2570,7 +2597,28 @@ export class TrickDetector {
       run.alignSum[1] / run.alignN,
       run.alignSum[2] / run.alignN,
     ];
-    const spin = run.lastAxis - run.startAxis;
+    /*
+     * THE LOOP'S OWN TURN IS HOW FAR ROUND IT WENT.
+     *
+     * A craft holding a circle points its thrust at the middle of it, so its
+     * attitude turns exactly as far as its path does: the WINDING is the
+     * loop's own rotation. The integral about the rail's axis is not, quite,
+     * because anything else the pilot does that has a component along that
+     * axis lands in it too. A 360 yaw spin inside a loop flown with bank is
+     * exactly that: the craft's up axis is tilted towards the rail, so the
+     * spin subtracts from the measured rotation about it, and at 30 degrees
+     * the reading collapsed from 0.97 to 0.38 and an Inverted 360 Powerloop
+     * went unnamed at every bank past 20.
+     *
+     * Taking the winding leaves that added rotation in the RESIDUAL, which
+     * is where the pilot put it. The measured integral still supplies the
+     * SIGN, because the winding has none of its own.
+     */
+    const measured = run.lastAxis - run.startAxis;
+    const wound = run.lastWind - run.startWind;
+    const spin = measured === 0
+      ? 0
+      : Math.abs(wound) * (measured < 0 ? -1 : 1);
     /*
      * ROLL OR NOT ROLL, and for a rail that is the whole question.
      *
@@ -2593,14 +2641,28 @@ export class TrickDetector {
      * really is a yaw and calling it a flip would be the same mistake the
      * other way up.
      */
-    const perp = Math.sqrt(align[AXIS_PITCH] * align[AXIS_PITCH]
-      + align[AXIS_YAW] * align[AXIS_YAW]);
+    /*
+     * OWNERSHIP IS DECIDED PER SAMPLE, not on the average.
+     *
+     * Averaging the signed components cannot tell a craft ROLLING about its
+     * nose from one YAWING through the lap: in both the wing and the up
+     * axis sweep and both averages collapse. But a roll keeps the rail
+     * permanently ACROSS the nose, so its per sample perpendicular
+     * magnitude stays at one, while a yaw swings the rail between the nose
+     * and the wing so both readings fall to about the same middling value.
+     *
+     * On the average alone a Cinnamon Roll, whose lap is defined by having
+     * NO flip in it, was handed the loop's whole turn as pitch and came out
+     * an Inverted 360 Powerloop: 650 points for a 175 point trick.
+     */
+    const roll = run.magRoll / run.alignN;
+    const perp = run.magPerp / run.alignN;
     const bar = run.obstacle && run.obstacle.kind === OB_BAR;
     let best;
     let owned;
-    if (Math.abs(align[AXIS_ROLL]) >= perp) {
+    if (roll >= perp) {
       best = AXIS_ROLL;
-      owned = Math.abs(align[AXIS_ROLL]);
+      owned = roll;
     } else if (bar) {
       best = AXIS_PITCH;
       owned = perp;
@@ -2608,7 +2670,7 @@ export class TrickDetector {
       best = Math.abs(align[AXIS_PITCH]) >= Math.abs(align[AXIS_YAW])
         ? AXIS_PITCH
         : AXIS_YAW;
-      owned = Math.abs(align[best]);
+      owned = perp;
     }
     /*
      * DECLINE ONLY WHEN IT IS GENUINELY AMBIGUOUS, which is when the two
@@ -2627,7 +2689,7 @@ export class TrickDetector {
      * is answered by comparing them. A small absolute floor stays for the
      * case where the craft is tumbling and NEITHER owns it.
      */
-    const other = best === AXIS_ROLL ? perp : Math.abs(align[AXIS_ROLL]);
+    const other = best === AXIS_ROLL ? perp : roll;
     if (owned < DEBANK_MIN_OWN || owned < other * DEBANK_MARGIN) {
       return raw;
     }
@@ -2855,6 +2917,18 @@ export class TrickDetector {
         && this.tapAtMs <= this.nowMs + TAP_WINDOW_MS,
       /* The nearest solid while this rotation was running. See near(). */
       nearest,
+      /*
+       * IN FLIGHT ORDER, not closure order: a lap opens before the rotation
+       * inside it and closes after, so buffering on close puts the lap after
+       * primitives that happened later and every pattern is a sequence. A
+       * rotation is ordered on when it FINISHED. See insertPending.
+       *
+       * Set HERE rather than at the one call that buffers it, because a
+       * rotation that gets held and comes back through releaseHeld or the
+       * drain handback never passes that call, and used to sit in the buffer
+       * with no key at all while everything around it had one.
+       */
+      orderMs: this.nowMs,
     };
     this.gapStallMs = 0;
     /*
@@ -2885,13 +2959,6 @@ export class TrickDetector {
     if (this.absorbedByLap(prim)) {
       return;
     }
-    /*
-     * IN FLIGHT ORDER, not closure order. A lap opens before the rotation
-     * inside it and closes after, so pushing on close puts the lap AFTER
-     * primitives that happened later, and every pattern is a sequence.
-     * A rotation is ordered on when it FINISHED. See insertPending.
-     */
-    prim.orderMs = prim.endMs;
     this.insertPending(prim);
     this.lastCloseMs = this.nowMs;
     this.drain(false);
@@ -3056,7 +3123,18 @@ export class TrickDetector {
       if (!run.open) {
         continue;
       }
-      const lo = prim.startMs > run.startMs ? prim.startMs : run.startMs;
+      /*
+       * FROM THE GATE, not from the backdate.
+       *
+       * run.startMs is backdated by up to PATH_LOOKBACK because where the
+       * craft WAS decides whether the lap is a whole one or a half. The lap
+       * does not CONTAIN that 800 ms, and claiming a rotation flown in it
+       * destroys exactly the entry rotation the twelve [rotation, lap]
+       * patterns are built on: the same reach insertPending refuses to sort
+       * on, for the same reason.
+       */
+      const from = run.openMs || run.startMs;
+      const lo = prim.startMs > from ? prim.startMs : from;
       const hi = prim.endMs < this.nowMs ? prim.endMs : this.nowMs;
       if (hi - lo > dur * 0.5) {
         return true;

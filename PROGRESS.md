@@ -27596,3 +27596,48 @@ Still wrong, and being worked: Cinnamon Roll comes out a Donkey Loop, which is
 does not reproduce; the wide slow Powerloop; the Jump Rope rail lap; and the
 craft sticking to the wall after a tap. The park rig also varies run to run,
 so a single green run is not evidence on its own.
+
+### A rail was assumed to mean pitch, and that manufactured flips
+
+`debankLap` chose which body axis carries a lap's own turn with a three way:
+roll if the rail lies along the nose, else PITCH if the obstacle is a bar, else
+the larger of pitch and yaw. The bar shortcut is wrong. A lap flown with the
+nose sweeping the whole way round puts the rail on the craft's UP axis, not
+across its wing, and forcing the turn onto pitch there invents a flip nobody
+flew: a Cinnamon Roll at 45 degrees of bank has the rail 0.71 along its up axis
+and 0.01 across its wing, and came out an Inverted 360 Powerloop. 650 points for
+a 175 point trick, in the real town.
+
+A banked Powerloop is not the counterexample it looks like: its roll makes the
+yaw component average away, so the rail still sits on pitch at 0.64 against a
+yaw of 0 and the comparison picks pitch for it exactly as the shortcut did. So
+the shortcut bought nothing and cost the one case it got wrong.
+
+Two patterns were also leaving an axis unsaid that is part of what they ARE.
+`Donkey Loop` sits in the Maverick section, so its lap is carried on roll and it
+always has a whole turn of it; unsaid, it matched any lap with half a flip and a
+spin however flown, and paid 600 for a Cinnamon Roll with a roll of 0.13.
+`Inverted 360 Powerloop` is a powerloop with a spin at the peak, so its roll is
+zero by construction. Naming those costs a real one nothing, because a real one
+has them.
+
+With the ownership fixed, DEBANK_MIN_OWN comes down from 0.9 to 0.5, which it
+could not before. The floor exists to reject an answer drawn from noise, and the
+margin test handles a genuine tie; at 0.9 it was refusing real readings and
+falling back to the raw body integral, which is how Donkey Loop and Inverted 360
+lost their laps. It was tried at 0.5 twice before and put back twice, both times
+because Cinnamon Roll over-claimed. That over-claim was the bar shortcut, not
+the floor, and with the shortcut gone both sweeps are clean at 0.5.
+
+### Where it stands
+
+`npm run park:fly` on the real city: 11 of 13 elements right, from 6 right when
+this started. Powerloop, Maverick Loop, Jump Rope, Immelmann Turn and 1 Trippy
+Spin all score where they did not, and Cinnamon Roll no longer pays out as a
+Donkey Loop. Still wrong: the wide slow Powerloop, and Cinnamon Roll itself,
+which now under-claims rather than lying.
+
+Both sweeps end on "nothing was ever paid more than it was worth", 36 of 47
+named. The synthetic count is down from 38 because Split-S and Power Roll now
+partly go silent, which is a miss and not a lie, and the real shell is what the
+pilot flies.

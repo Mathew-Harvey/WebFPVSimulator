@@ -314,7 +314,7 @@ const PATH_MAX_MS = 20000;
  * to cover for it. Until there is one the floor stays where the evidence
  * puts it.
  */
-const DEBANK_MIN_OWN = 0.9;
+const DEBANK_MIN_OWN = 0.5;
 const DEBANK_MARGIN = 1.5;
 
 /*
@@ -837,8 +837,16 @@ export const PATTERNS = [
   },
   {
     /* "when reaching the peak, perform a 360 Yaw spin while inverted". */
+    /*
+     * ROLL 0 IS PART OF THE DESCRIPTION, not an omission. This is a
+     * POWERLOOP with a spin at the peak, so the nose follows the path and
+     * the lap's turn is a flip: there is no roll in it. Left unsaid, the
+     * pattern matched any lap carrying a flip and a spin whatever else was
+     * in it, and a Cinnamon Roll flown at 45 degrees of bank came out an
+     * Inverted 360 Powerloop, 650 points for a 175 point trick.
+     */
     name: 'Inverted 360 Powerloop',
-    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, yaw: 1 } }],
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 1, roll: 0, yaw: 1 } }],
   },
   {
     /* "just before reaching it, execute a 180 yaw spin and immediately
@@ -900,8 +908,19 @@ export const PATTERNS = [
   {
     /* "execute a 180 Pitch down to invert. Follow this with a 360 Yaw
      * spin, and finally complete the loop." */
+    /*
+     * THE BASE ROLL HAS TO BE NAMED, like every other Maverick's.
+     *
+     * This sits in the Maverick section, "the same lap flown facing
+     * forward", so its lap is carried on ROLL and a Donkey Loop always has
+     * a whole turn of it. Leaving that unsaid made the pattern match any
+     * lap with half a flip and a spin in it, however it was flown, and in
+     * the real town a Cinnamon Roll came out a Donkey Loop: 600 points for
+     * a 175 point trick, on a flight with a roll of 0.13. Naming the roll
+     * costs a real Donkey Loop nothing, because a real one has it.
+     */
     name: 'Donkey Loop',
-    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0.5, yaw: 1 } }],
+    steps: [{ path: 'bar', turns: 1, from: 'under', rot: { pitch: 0.5, roll: 1, yaw: 1 } }],
   },
   {
     /* "a 180 Pitch down to invert. Follow with a 180 Yaw spin, and finish
@@ -2810,16 +2829,28 @@ export class TrickDetector {
      */
     const roll = run.magRoll / run.alignN;
     const perp = run.magPerp / run.alignN;
-    const bar = run.obstacle && run.obstacle.kind === OB_BAR;
+
     let best;
     let owned;
     if (roll >= perp) {
       best = AXIS_ROLL;
       owned = roll;
-    } else if (bar) {
-      best = AXIS_PITCH;
-      owned = perp;
     } else {
+      /*
+       * PITCH OR YAW IS ALSO A QUESTION, and a rail used to be assumed to
+       * answer it with pitch. It does not. A lap flown with the nose
+       * sweeping the whole way round puts the rail on the craft's UP axis,
+       * not across its wing, and forcing the loop's turn onto pitch there
+       * manufactures a flip that was never flown: a Cinnamon Roll at 45
+       * degrees of bank has the rail 0.71 along its up axis and 0.01 across
+       * its wing, and came out an Inverted 360 Powerloop, 650 points for a
+       * 175 point trick.
+       *
+       * A banked Powerloop is not the counterexample it looks like. Its
+       * roll makes the yaw component average away, so the rail still sits
+       * on pitch at 0.64 against a yaw of 0, and the comparison picks pitch
+       * for it just as the old shortcut did.
+       */
       best = Math.abs(align[AXIS_PITCH]) >= Math.abs(align[AXIS_YAW])
         ? AXIS_PITCH
         : AXIS_YAW;
@@ -2867,10 +2898,10 @@ export class TrickDetector {
     run.lastResid = out.slice();
     /* The sign follows whichever component actually carries the turn, which
      * for a banked rail lap is the larger half of the perpendicular pair. */
-    const signOf = best === AXIS_PITCH && bar
-      && Math.abs(align[AXIS_YAW]) > Math.abs(align[AXIS_PITCH])
-      ? align[AXIS_YAW]
-      : align[best];
+    /* The winning axis carries the turn, so its own sign carries it too:
+     * the bar special case that used to reach across to yaw here is gone,
+     * because best already IS yaw whenever yaw is the larger half. */
+    const signOf = align[best];
     out[best] += spin * (signOf < 0 ? -1 : 1);
     return out;
   }

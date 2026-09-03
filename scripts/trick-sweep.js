@@ -88,10 +88,31 @@ function rot(v, k, t) {
 
 const STEP = 0.001;
 
+const DEBUG = process.argv.includes('--debug');
+
 class Flight {
   constructor(field) {
     this.out = [];
     this.det = new TrickDetector((t) => this.out.push(t), field);
+    if (DEBUG) {
+      const push = this.det.insertPending.bind(this.det);
+      this.det.insertPending = (x) => {
+        console.log('    prim', x.kind === 'path'
+          ? `lap ${x.obstacle} turns=${x.turns} raw=${x.rawTurns.toFixed(3)} `
+            + `sides ${x.startSide}->${x.endSide} rot=[${x.rot.map((v) => v.toFixed(2))}] `
+            + `spin=${(x.spin || 0).toFixed(2)} align=[${(x.align || []).map((v) => v.toFixed(2))}]`
+          : `rot axis=${x.axis} turns=${x.turns} dir=${x.dir}`);
+        return push(x);
+      };
+      const cp = this.det.closePath.bind(this.det);
+      this.det.closePath = (r, u) => {
+        if (r.open && r.obstacle) {
+          console.log('    closePath raw=', (r.lastWind - r.startWind).toFixed(3),
+            'sides', r.startSide, '->', r.lastSide);
+        }
+        return cp(r, u);
+      };
+    }
     this.prev = null;
     this.pos = V(0, 0, 0);
     this.speed = 12;
@@ -223,9 +244,23 @@ function flyLap(opts = {}) {
     return out;
   };
 
+  /*
+   * IN AND OUT ALONG A DEPARTING LINE, not along the tangent.
+   *
+   * A tangent line still winds: run 14 m of it past a rail 3.2 m away and it
+   * subtends a fifth of a turn at each end, so a lap asked for as one turn
+   * measured 1.23 and one asked for as 1.12 measured 1.47, crossed to the
+   * far side of the rail and was correctly read as a lap and a HALF. That
+   * was the sweep flying something it had not asked for, not the recogniser
+   * misreading it. A pilot entering and leaving a loop moves AWAY from the
+   * thing, so the run in and the run out carry an outward component and the
+   * winding stops where the manoeuvre does.
+   */
+  const outAt = (ph) => norm(sub(at(ph), c));
+  const inDir = norm(add(tangentAt(ph0), mul(outAt(ph0), -1.1)));
   for (let i = 0; i < 900; i += 1) {
     const u = i / 900;
-    f.go(add(start, mul(tan0, -14 * (1 - u))), tan0, upOf(ph0, 0));
+    f.go(add(start, mul(inDir, -14 * (1 - u))), tan0, upOf(ph0, 0));
   }
   for (let i = 0; i <= N; i += 1) {
     const u = i / N;
@@ -248,8 +283,9 @@ function flyLap(opts = {}) {
   }
   const phEnd = ph0 + dir * TURN * turns;
   const tanEnd = tangentAt(phEnd);
+  const outDir = norm(add(tanEnd, mul(outAt(phEnd), 1.1)));
   for (let i = 0; i < 1200; i += 1) {
-    f.go(add(at(phEnd), mul(tanEnd, 12 * STEP * i)), tanEnd, upOf(phEnd, 1));
+    f.go(add(at(phEnd), mul(outDir, 12 * STEP * i)), tanEnd, upOf(phEnd, 1));
   }
   return f.finish();
 }
@@ -302,8 +338,18 @@ function sweepLap(want, base, dims) {
   for (const bankDeg of dims.banks ?? BANKS) {
     for (const de of dims.turnErr ?? TURN_ERR) {
       for (const drift of dims.drifts ?? DRIFTS) {
+        /*
+         * The turn error is a FRACTION of the lap, not a fixed number of
+         * turns. A twelfth of a turn is a twelfth of a Powerloop and a
+         * QUARTER of a Matty Flip, and no pilot misses a half lap by a
+         * quarter of it. Applied flat, the sweep was asking a half lap to
+         * survive winding 0.38 turns, which is less than the half turn a
+         * craft flying DEAD STRAIGHT past the rail subtends, and the
+         * recogniser was right to refuse every one of them.
+         */
+        const base0 = base.turns ?? 1;
         const names = flyLap({
-          ...base, bankDeg, drift, turns: (base.turns ?? 1) + de,
+          ...base, bankDeg, drift, turns: base0 * (1 + de),
         });
         rows.push({ bankDeg, de, drift, names });
       }
@@ -343,11 +389,23 @@ function classify(want, rows) {
   let under = 0;
   const over = new Map();
   const light = new Map();
+  const byBank = new Map();
+  const byErr = new Map();
+  const note = (r, ok) => {
+    for (const [m, k] of [[byBank, r.bankDeg], [byErr, r.de]]) {
+      const c = m.get(k) || { n: 0, ok: 0 };
+      c.n += 1;
+      if (ok) { c.ok += 1; }
+      m.set(k, c);
+    }
+  };
   for (const r of rows) {
     if (wants.some((w) => r.names.includes(w))) {
       correct += 1;
+      note(r, true);
       continue;
     }
+    note(r, false);
     /* Nothing but building blocks is silence: a bare half roll is the
      * catalogue admitting it saw a fragment, not naming a trick. */
     const real = r.names.filter((n) => !/^(1\/4|1\/2|3\/4|1) (Flip|Roll|Yaw)/.test(n));
@@ -365,7 +423,7 @@ function classify(want, rows) {
     if (bucket === light) { under += 1; }
   }
   return {
-    total: rows.length, correct, silent, under, over, light, target,
+    total: rows.length, correct, silent, under, over, light, target, byBank, byErr,
   };
 }
 
@@ -381,6 +439,19 @@ function report(label, res) {
   }
   for (const [name, i] of [...res.light.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 2)) {
     console.log(`        under    "${name}" ${i.paid} vs ${res.target}, ${i.n} times`);
+  }
+  /* WHERE it misses matters as much as how often: a trick that is named at
+   * every bank and misses only at the extremes of turn error is solid, and
+   * one that misses scattered through the middle is not. */
+  if (res.byBank && res.correct < res.total) {
+    const cells = [...res.byBank.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([b, v]) => `${b}deg ${Math.round((v.ok / v.n) * 100)}%`);
+    console.log(`        by bank  ${cells.join('  ')}`);
+    const errs = [...res.byErr.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([e, v]) => `${e > 0 ? '+' : ''}${e} ${Math.round((v.ok / v.n) * 100)}%`);
+    console.log(`        by turn  ${errs.join('  ')}`);
   }
   return overN;
 }

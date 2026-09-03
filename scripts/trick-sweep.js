@@ -239,6 +239,27 @@ function flyLap(opts = {}) {
   const start = at(ph0);
   const tan0 = tangentAt(ph0);
   const noseOf = (ph) => (noseAlong ? axis : tangentAt(ph));
+  /*
+   * Which way an added rotation has to turn, decided ONCE at the entry.
+   *
+   * An added rotation has to turn the same way the loop's own turn already
+   * appears on that body axis, or the two cancel: a Power Flip asking for
+   * the loop's flip and one more measured rot [0,0,0] and was named a
+   * Maverick Loop, 100 for a 350 point trick. Hard coding it as -dir fixed
+   * that and broke Split-Back, which enters from OVER, where the up vector
+   * and so the wing are flipped: the same -dir that added on one side
+   * subtracted on the other. How the loop's own turn lands on an axis is
+   * just how the rail lies against that axis, so that is what decides it.
+   *
+   * Computed per sample instead it flips every time the rail crosses the
+   * wing, which for a half lap from over is the middle of the manoeuvre, so
+   * the added flip reversed halfway and the residual came out -0.89 where
+   * +0.5 had been asked for. Near zero means the rail lies along the axis,
+   * the lap is carried on the other one, and the added rotation is
+   * independent of it: -dir is as good as anything there.
+   */
+  const sgnOf = (proj) => (Math.abs(proj) < 0.2 ? -dir : (proj >= 0 ? 1 : -1));
+  const sgnR = sgnOf(dot(axis, noseOf(ph0)));
   const upOf = (ph, u) => {
     /* Wings level with the loop means the top points at the middle of it. */
     const inward = norm(sub(c, at(ph)));
@@ -256,10 +277,11 @@ function flyLap(opts = {}) {
      * and no flip, which is a different and cheaper trick. Confined to the
      * middle of the lap it comes out as the workbook prices it.
      */
-    /* Negative for the same reason addPitch is: see below. A Mavvy Roll
-     * asks for the lap's own roll and one more, and flown the other way
-     * the two cancelled and it measured a bare 3/4 roll. */
-    if (addRoll) { out = rot(out, n, -dir * TURN * addRoll * window(u)); }
+    /* Derived the same way addPitch's is, off how the rail lies against the
+     * nose rather than against the wing. A Mavvy Roll asks for the lap's own
+     * roll and one more, and signed the other way the two cancelled and it
+     * measured a bare 3/4 roll. */
+    if (addRoll) { out = rot(out, n, sgnR * TURN * addRoll * winRoll(u)); }
     if (addYaw) {
       /* A yaw spin turns the whole frame about the craft's own up axis,
        * which moves the NOSE, so it is applied to both. */
@@ -285,6 +307,36 @@ function flyLap(opts = {}) {
   /* Zero until the loop is a third in, one by two thirds through: the
    * "at the peak of the loop" the workbook keeps describing. */
   const window = (u) => Math.max(0, Math.min(1, (u - 0.32) / 0.36));
+  /*
+   * ONE AT A TIME WHEN THERE ARE TWO. A Split-Back is a half lap carrying
+   * half a roll and half an added flip, and flown over the same window they
+   * fight: the roll puts the craft belly up halfway through, the wing flips
+   * with it, and the rest of the added flip counts backwards. The lap
+   * measured pitch -0.01 where half a flip had been flown on top of half a
+   * lap, which reads as a scorer miss and is not one.
+   *
+   * The workbook describes them in sequence, "a 180 pitch down to invert,
+   * follow with", and a pilot flies them that way because they fight in the
+   * air too. So when a lap carries both, the roll happens and then the
+   * flip, in two windows that do not overlap.
+   */
+  const span = (a, b) => (u) => Math.max(0, Math.min(1, (u - a) / (b - a)));
+  const active = [addRoll !== 0, addPitch !== 0, addYaw !== 0];
+  const nAdded = active.filter(Boolean).length;
+  let slot = 0;
+  /* Each added rotation gets its own stretch of the lap when there is more
+   * than one, in the catalogue's own order: roll, then pitch, then yaw. */
+  const slotFor = (on) => {
+    if (!on || nAdded < 2) { return window; }
+    const k = slot;
+    slot += 1;
+    const w = 0.62 / nAdded;
+    const a = 0.18 + k * (w + 0.06);
+    return span(a, a + w);
+  };
+  const winRoll = slotFor(active[0]);
+  const winPitch = slotFor(active[1]);
+  const winYaw = slotFor(active[2]);
   const outAt = (ph) => norm(sub(at(ph), c));
   const inDir = norm(add(tangentAt(ph0), mul(outAt(ph0), -1.1)));
   /*
@@ -331,11 +383,22 @@ function flyLap(opts = {}) {
     };
     for (let k = 0; k < beforeSteps.length; k += 1) {
       const st = beforeSteps[k];
+      /* Belly up first if the step asks for it: True Barani's yaw is an
+       * INVERTED 180, worth its place in a 375 point trick, and flown the
+       * right way up it is a plain 50 point Yaw Spin. */
+      if (st.inverted && bu.y > 0) {
+        const R = 420;
+        for (let i = 0; i < R; i += 1) {
+          bu = norm(rot(bu, bn, TURN * 0.5 / R));
+          step();
+        }
+        for (let i = 0; i < 200; i += 1) { step(); }
+      }
       for (let i = 0; i < each[k]; i += 1) {
-        const axis = st.axis === 'roll' ? bn : (st.axis === 'yaw' ? bu : cross(bn, bu));
+        const ax = st.axis === 'roll' ? bn : (st.axis === 'yaw' ? bu : cross(bn, bu));
         const d = (TURN * st.turns) / each[k];
-        bn = norm(rot(bn, axis, d));
-        bu = norm(rot(bu, axis, d));
+        bn = norm(rot(bn, ax, d));
+        bu = norm(rot(bu, ax, d));
         step();
       }
       /* Long enough for the rotation to close, short enough to stay
@@ -363,6 +426,7 @@ function flyLap(opts = {}) {
     for (let i = 0; i < 160; i += 1) { f.go(start, n, up); }
   }
 
+  const sgnP = sgnOf(dot(axis, norm(cross(noseOf(ph0), upOf(ph0, 0)))));
   for (let i = 0; i <= N; i += 1) {
     const u = i / N;
     const ph = ph0 + dir * TURN * turns * u;
@@ -377,14 +441,24 @@ function flyLap(opts = {}) {
        */
       const wing = norm(cross(n, up));
       /*
-       * NEGATIVE, because a rotation about +wing runs against the way the
-       * tangent already turns through the loop. Every other user of
-       * addPitch flies a lap whose own pitch is zero, so the sign never
-       * showed until a Power Flip asked for the loop's flip AND one more
-       * and the two cancelled to nothing: the lap measured rot [0,0,0] and
-       * was named a Maverick Loop, 100 points for a 350 point trick.
+       * THE SIGN IS DERIVED, NOT GUESSED.
+       *
+       * An added flip has to turn the SAME way the loop's own turn already
+       * appears on that body axis, or the two cancel: a Power Flip asking
+       * for the loop's flip and one more measured rot [0,0,0] and was named
+       * a Maverick Loop, 100 points for a 350 point trick. Hard coding the
+       * sign as -dir fixed that one and broke Split-Back, which is flown
+       * from OVER: the up vector flips with the entry side, so the wing
+       * flips with it, and the same -dir that added on one side subtracted
+       * on the other. Split-Back measured pitch -0.01 where it had flown
+       * half a flip on top of half a lap.
+       *
+       * How the loop's own turn lands on the wing is just how the rail lies
+       * against the wing, so that is what decides it. Near zero means the
+       * rail is along the nose, the lap is carried on roll, and the added
+       * flip is independent of it: -dir is as good as anything there.
        */
-      const d = -dir * TURN * addPitch * window(u);
+      const d = sgnP * TURN * addPitch * winPitch(u);
       n = norm(rot(n, wing, d));
       up = norm(rot(up, wing, d));
     }
@@ -397,7 +471,7 @@ function flyLap(opts = {}) {
        * across the body axes and averages to nothing on both of them, which
        * leaves the yaw as the only thing the lap carries.
        */
-      const spin = dir * TURN * addYaw * (yawSpread ? u : window(u));
+      const spin = dir * TURN * addYaw * (yawSpread ? u : winYaw(u));
       n = rot(n, up, spin);
       up = norm(sub(up, mul(n, dot(n, up))));
     }

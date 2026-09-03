@@ -27399,3 +27399,70 @@ The fix is a lap's rotation resolved in a frame carried ALONG the lap rather
 than in the instantaneous body frame, which is a bigger change than the
 residual and wants its own turn. Left open deliberately rather than papered
 over, and it costs one under-claim, never an over-claim.
+
+### Two added rotations over the same window fight each other
+
+A Split-Back is half a lap carrying half a roll and half an added flip, and the
+rig flew both over the same stretch of the lap. They fight: the roll puts the
+craft belly up halfway through, the wing flips with it, and the rest of the
+added flip counts backwards. The lap measured pitch -0.01 where half a flip had
+been flown on top of half a lap, which reads as a scorer miss and is not one.
+
+The workbook describes them in sequence, "a 180 pitch down to invert, follow
+with", and a pilot flies them that way because they fight in the air too. So a
+lap carrying more than one added rotation now flies them in slots that do not
+overlap, in the catalogue's order: roll, then pitch, then yaw.
+
+That fixed Split-Back and Matty Roll, and it fixed DONKEY LOOP, which had been
+0% on both sweeps all session and is now 100% on the hand written one. The half
+flip that would not show up as pitch was not a frame of reference problem after
+all, or not only that: the added flip and the added 360 yaw were being flown on
+top of each other and cancelling. The frame carried along the lap is still the
+better description and is still worth doing, but it was not what was wrong here.
+
+The sign of an added rotation is derived rather than hard coded now. It has to
+turn the same way the loop's own turn already appears on that body axis or the
+two cancel, and hard coding it as -dir was right from UNDER and wrong from OVER,
+where the up vector and so the wing are flipped. How the loop's own turn lands
+on an axis is just how the rail lies against that axis, so that decides it,
+taken once at the entry: computed per sample it flips every time the rail
+crosses the wing, which for a half lap from over is the middle of the manoeuvre.
+
+`inverted` is honoured on a run up step as well as on a pure rotation, for True
+Barani's inverted 180 yaw.
+
+### DEBANK_MIN_OWN, tried at 0.5 a second time and put back a second time
+
+The argument for lowering it got stronger, not weaker: the residual takes the
+loop's turn off per sample and never touches the mean alignment, so the mean's
+only job is saying which axis the turn goes back on, which is a comparison, and
+a floor near one refuses real readings. An Inverted 360 Powerloop owns 0.87 and
+a Split Yaw 0.89, both plain wins over their other candidate, and at 0.9 both
+fall back to the raw body integral.
+
+At 0.5 the sweep names 41 of 47 rather than 39. One of the four it gains is paid
+for by a Cinnamon Roll that OVER-CLAIMS on a third of its samples: its ownership
+pair is 0.64 against 0.63, a tie its margin test refuses at bank 0 and lets
+through at other banks, and a dearer trick nobody flew comes out the far side.
+
+Four more tricks named is not worth one trick lied about, so it stays at 0.9 and
+the reasoning is written next to it. What this is actually waiting on is an
+ownership test that can tell a genuine tie from a clear win without an absolute
+floor covering for it.
+
+### Where it stands
+
+39 of 47 flyable patterns name on every sample, up from 20 when the full
+catalogue sweep was first written this session. Both sweeps end on "nothing was
+ever paid more than it was worth", at three banks and three turn errors each,
+and the hand written sweep at seven banks and five turn errors.
+
+Open: 8 patterns needing two sequenced laps and 7 needing a wall and a collider,
+which the planner declines rather than pretending to fly; True Barani; the
+partial rows above; and the 34 m mast, still only an obstacle above y=34.7.
+
+Checks run this turn: `node scripts/trick-sweep.js --all`, `node
+scripts/trick-sweep.js`, `npm run lint:fc` PASS, `npm run lint:presets` PASS.
+`npm run lint:catalog` COULD NOT RUN, `vendor/betaflight` is an uninitialised
+submodule here and it lints the firmware parameter catalogue, which this change
+does not touch. `npm run verify` not run: no physics, plant, ABI or build change.

@@ -282,6 +282,38 @@ const PATH_MAX_MS = 20000;
  * candidate: at a margin of one they would be equally entitled and there is
  * no answer to give, so 1.5 asks for a clear one.
  */
+/*
+ * A FLOOR THAT REJECTS NOISE, NOT ONE THAT CERTIFIES A SUBTRACTION.
+ *
+ * At 0.9 this was doing a job it no longer has. While the loop's own turn
+ * was taken off as a lump scaled by the MEAN alignment, a high mean was
+ * what made the subtraction valid at all, so the floor had to be near one.
+ * PathRun.resid takes it off per sample and never touches the mean, so the
+ * mean's only remaining job is saying WHICH body axis the turn goes back
+ * on, and that is a comparison between two candidates, which the margin
+ * test makes. What is left for a floor is refusing an answer drawn from
+ * noise.
+ *
+ * 0.9 refused real readings. An Inverted 360 Powerloop owns 0.87 and a
+ * Split Yaw 0.89, both of them plain wins over their other candidate, and
+ * both fell back to the raw body integral: 650 and 300 points that could
+ * not be scored. Half is the point where the winning axis carries more of
+ * the rail's direction than everything else put together, which is a
+ * statement about the reading rather than about any one trick.
+ *
+ * AND IT STAYS AT 0.9 ANYWAY, because the argument above is sound and the
+ * measurement still says no. At 0.5 the sweep names 41 of 47 rather than
+ * 37, and one of the four it gains is paid for by a Cinnamon Roll that
+ * over-claims on a third of its samples: its ownership pair is 0.64 against
+ * 0.63, a tie its margin test refuses at bank 0 and lets through at other
+ * banks, and what comes out the far side is a dearer trick nobody flew.
+ * Four more tricks named is not worth one trick lied about.
+ *
+ * What this is really waiting on is a better ownership test, one that can
+ * tell a genuine tie from a clear win without leaning on an absolute floor
+ * to cover for it. Until there is one the floor stays where the evidence
+ * puts it.
+ */
 const DEBANK_MIN_OWN = 0.9;
 const DEBANK_MARGIN = 1.5;
 

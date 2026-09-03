@@ -28497,3 +28497,101 @@ invent.
     npm run score:selftest             206 passed, 1 failed  (unchanged)
     npm run trick:sweep -- --all       47 flown, no over-claims
     npm run park:fly                   16 of 20
+
+## 2026-09-03: the blocker was real, and the reason I missed it is worth more than the fix
+
+The adversarial review's first pass called `PATH_RATE_OFF` at 0.04 a blocker:
+a lap held open longer than the gap between city lamp posts, so held
+rotations are never released and a roll flown while cruising stops being
+named. I tested it on the real aircraft, got a byte-identical named list at
+the old gate and the new, and wrote it down as "not reproduced".
+
+That was wrong, and the verify pass found out why in one sentence: EVERY
+HARNESS IN THIS REPOSITORY ENDS ON `flush()`, WHICH CLOSES THE OPEN LAPS
+FIRST AND THEREFORE ALWAYS RELEASES. `src/main.js` has no `flush` call at
+all. So my test ended by doing the one thing that hides the bug, and the
+shell is the one place it bites.
+
+### Reproduced, without the flush
+
+Driving the real detector and a real obstacle field at 1 kHz, no plant
+needed because the path side reads position: forty posts 26 m apart and 6 m
+off the line, flown straight at 15 m/s for sixty seconds with a clean 360
+roll every eight.
+
+    named 0: NOTHING
+    pending 4, held 3, a lap open for 59,988 of 60,000 ms
+
+Seven rolls flown, none named, none scored. Putting the gate back to 0.12
+names all seven, which is the attribution the reviewer measured and I now
+have myself.
+
+### The cause is not the constant
+
+`hold()` and `releaseHeld()` both blocked on ANY open path run. A path run
+opens on any fly past of a post at flying speed, because `circling` only asks
+that the craft is going round faster than it is going away, and it then takes
+over a second to decay past the off gate. Posts 26 m apart at 15 m/s are 1.7
+seconds apart, so the runs OVERLAP and there is never a moment with none
+open. The buffer is therefore never drained.
+
+The reviewer is right that this is not strictly new either. At tighter
+spacing the old 0.12 gate already produced continuous coverage and the same
+starvation; lowering it widened the failing band from about eighteen metres
+of spacing to about twenty seven, which is exactly where ordinary street
+furniture sits. So the constant made a latent fault reachable rather than
+creating one, and reverting it would have hidden the fault again while
+taking the wide slow orbit back out with it.
+
+### What was changed
+
+Both gates ask PER ROTATION whether an open lap could still pay for THAT
+rotation, on the same fifty percent overlap bar `insideOpenLap` and
+`absorbedByLap` already use. A rotation that is already closed cannot gain
+overlap with a lap that opened after it ended, so such a lap can never claim
+it and has no business holding it. `releaseHeld` keeps the ones a live lap
+might still want and hands back the rest instead of returning early on the
+whole buffer.
+
+Measured after, same street, no flush:
+
+    posts 15 m apart    7 of 7 rolls named
+    posts 18 m apart    7 of 7
+    posts 20 m apart    7 of 7
+    posts 26 m apart    7 of 7
+    posts 40 m apart    7 of 7
+
+`scripts/orbit-check.js` carries it now, at three spacings, and DELIBERATELY
+DOES NOT FLUSH. That is the point of the case: a check that ends differently
+from the shell cannot see what the shell does.
+
+### The other confirmed finding was already fixed
+
+`finishHitNormal`'s flip guard reading only `hitPen` was confirmed by
+execution and had already been fixed in 242032d by adding `hitOverlap` to
+the guard. The verifier corrected one overstatement in the original report:
+the chain does not end in a crash, because the next attempt in the same pass
+sees the centre inside the box, reports a real `hitPen` and the buried branch
+lifts the craft clear. What it actually costs is a 0.13 m placement into the
+deck followed by a 0.27 m ejection, which is a visible pop, plus a restitution
+kick in the wrong direction.
+
+### The lesson, which is the part to keep
+
+Nineteen candidate findings, two confirmed, and the one that mattered was
+confirmed only on the second pass because the first pass's evidence and mine
+were both taken through a harness that does not end the way the shell ends.
+A rig is a model of the shell and every difference between them is somewhere
+a bug can live. `flush()` having no caller in `src/` is now written down
+here, and the check that would catch its absence is the one above.
+
+### Checks
+
+    node scripts/orbit-check.js        13 passed, 0 failed  (3 new)
+    node scripts/path-check.js         12 passed, 0 failed
+    node scripts/frame-check.js        34 passed, 0 failed
+    node scripts/wall-check.js         45 passed, 0 failed
+    node src/trackbuilder/selftest.js  495 passed, 0 failed
+    npm run contact:selftest           all 72 passed
+    npm run score:selftest             206 passed, 1 failed  (unchanged)
+    npm run trick:sweep -- --all       47 flown, no over-claims

@@ -3902,12 +3902,18 @@ export class TrickDetector {
     if (this.heldByPath.length === 0) {
       return;
     }
-    /* Another lap may still be running and may still claim these. */
-    if (this.anyPathOpen()) {
-      return;
-    }
     let released = 0;
+    const keep = [];
     for (const prim of this.heldByPath) {
+      /* Another lap may still be running and may still claim THIS one. Asked
+       * per rotation rather than of the whole buffer: a lap that opened
+       * after a rotation ended can never contain it, and holding everything
+       * because something somewhere is open is what stranded a street's
+       * worth of rolls. See pathCouldClaim. */
+      if (this.pathCouldClaim(prim)) {
+        keep.push(prim);
+        continue;
+      }
       if (this.absorbedByLap(prim)) {
         continue;
       }
@@ -3925,6 +3931,9 @@ export class TrickDetector {
       released += 1;
     }
     this.heldByPath.length = 0;
+    for (const prim of keep) {
+      this.heldByPath.push(prim);
+    }
     if (released > 0) {
       this.lastCloseMs = this.nowMs;
     }
@@ -4318,6 +4327,48 @@ export class TrickDetector {
   }
 
   /*
+   * COULD ANY LAP STILL IN THE AIR PAY FOR THIS ROTATION? Which is a
+   * different question from whether any lap is in the air at all, and
+   * confusing the two silences the scorer in an ordinary street.
+   *
+   * A lap claims a rotation by containing most of it: insideOpenLap and
+   * absorbedByLap both ask for half of the rotation's own duration to lie
+   * inside the lap's window, and this asks the same of a lap that has not
+   * closed yet. A rotation that is already CLOSED cannot gain overlap with a
+   * lap that opened after it ended, so a lap opening later can never claim
+   * it and has no business holding it.
+   *
+   * MEASURED, and this is the bug it fixes. A path run opens on any fly past
+   * of a post at flying speed, because circling only asks that the craft is
+   * going round faster than it is going away, and it then takes over a
+   * second to decay past the off gate. Posts 26 m apart flown at 15 m/s are
+   * 1.7 s apart, so the runs OVERLAP and there is never a moment with none
+   * open. Driven down forty such posts for sixty seconds with a clean 360
+   * roll every eight, the detector named NOTHING: four rotations stranded in
+   * pending, three in heldByPath, and a lap open for 59,988 of 60,000
+   * milliseconds. Every one of those rolls is a trick the pilot flew.
+   *
+   * It hid because every harness in this repository ends on flush(), which
+   * closes the open laps first and therefore always releases. src/main.js
+   * has no flush call at all, so the shell is the one place it bites.
+   */
+  pathCouldClaim(prim) {
+    const dur = prim.endMs - prim.startMs;
+    for (const run of this.paths) {
+      if (!run.open) {
+        continue;
+      }
+      const from = run.openMs || run.startMs;
+      const lo = prim.startMs > from ? prim.startMs : from;
+      const hi = prim.endMs < this.nowMs ? prim.endMs : this.nowMs;
+      if (hi - lo > dur * 0.5) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /*
    * Take `count` primitives off the front and report them as one trick.
    * Answers whether any of them was a LAP, because a lap that has just been
    * paid for changes what the rest of the buffer is worth. See dropAbsorbed.
@@ -4510,7 +4561,12 @@ export class TrickDetector {
    * else is nothing.
    */
   hold() {
-    if (this.anyOpen() || this.anyPathOpen()) {
+    if (this.anyOpen()) {
+      return true;
+    }
+    /* A lap that could still pay for what is buffered holds it; one that
+     * merely happens to be open does not. See pathCouldClaim. */
+    if (this.pending.length > 0 && this.pathCouldClaim(this.pending[this.pending.length - 1])) {
       return true;
     }
     let wait = -1;

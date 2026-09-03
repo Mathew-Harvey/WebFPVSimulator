@@ -57,7 +57,8 @@ import {
   makeRig, buildWorld, V, sub, mul, norm, len, rampPath, circlePath, dropPath,
 } from './lib/flightrig.js';
 import { Colliders } from '../src/game/collide.js';
-import { deriveObstacles, OB_POLE } from '../src/game/obstacles.js';
+import { deriveObstacles, ObstacleField, OB_POLE } from '../src/game/obstacles.js';
+import { TrickDetector } from '../src/game/trickdetect.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const WASM = join(root, 'dist', 'sim.wasm');
@@ -339,6 +340,63 @@ for (const cse of CASES) {
       `${label}: nothing`,
       got.length === 0,
       got.length ? `named ${got.join(' + ')}` : 'silent, as it must be',
+    );
+  }
+}
+
+/*
+ * AND THE SCORER IS NOT SILENCED BY THE STREET IT IS FLOWN DOWN.
+ *
+ * The negatives above ask that a fly past names nothing. This asks the
+ * opposite and harder thing: that a trick flown WHILE flying past names
+ * something. A path run opens on any pass of a post at flying speed and
+ * takes over a second to decay, so on an ordinary street the runs overlap
+ * and there is never a moment with none open. `hold()` and `releaseHeld()`
+ * used to block on ANY open lap, so the buffer was never drained: measured,
+ * sixty seconds down forty posts with a clean 360 roll every eight named
+ * NOTHING, with four rotations stranded in pending and three held.
+ *
+ * It hid because every harness here ends on flush(), which closes the laps
+ * first and therefore always releases. src/main.js has no flush call, so the
+ * shell was the one place it bit. THIS SECTION DOES NOT FLUSH, on purpose.
+ *
+ * No plant: the path side reads position, so this is the real detector and
+ * the real obstacle field driven at 1 kHz down a straight line.
+ */
+{
+  const TURN_R = Math.PI * 2;
+  const street = (spacing) => {
+    const f = new ObstacleField();
+    for (let i = 0; i < 80; i += 1) {
+      f.add(OB_POLE, i * spacing, 6, 6, 0, 1, 0, 6);
+    }
+    return f.build();
+  };
+  for (const spacing of [15, 20, 26]) {
+    const named = [];
+    const det = new TrickDetector((t) => named.push(t.name), street(spacing));
+    let phi = 0;
+    let x = 0;
+    const speed = 15;
+    for (let ms = 0; ms < 60000; ms += 1) {
+      const t = ms / 1000;
+      /* A clean 360 roll every eight seconds, taking about a second. */
+      const rolling = t > 4 && (t % 8) < 1.05;
+      const p = rolling ? TURN_R / 1.05 : 0;
+      phi += p * 0.001;
+      x += speed * 0.001;
+      det.step(
+        0.001, p, 0, 0, Math.sin(phi / 2), 0, speed,
+        x, 6, 0,
+        1, 0, 0,
+        0, Math.cos(phi), Math.sin(phi),
+      );
+    }
+    /* Deliberately no flush. */
+    check(
+      `seven rolls flown down a street of posts ${spacing} m apart are named`,
+      named.filter((n) => n === 'Roll').length === 7,
+      `named ${named.length}: ${named.join(' + ') || 'NOTHING'}`,
     );
   }
 }

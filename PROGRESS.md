@@ -26731,3 +26731,145 @@ score:selftest and contact:selftest pass. park:fly flies and reports. The four
 auditors that did not return are the pattern matcher, the obstacle derivation,
 determinism, and unreachable patterns; the mast is still not an obstacle below
 y 34.7.
+
+## 2026-09-03 The seven audit fixes, applied
+
+All seven findings from the fan-out are now fixed. Five are in the recogniser
+and two of those change what a lap MEANS, so they are worth reading before
+touching this file again.
+
+### 1. A lap's rotation is measured in the lap's frame, not the craft's
+
+`rot` was the plain time integral of the BODY rates. Body axes tumble with the
+craft, so that is the craft's real rotation projected onto a frame that is
+itself rotating, and for the loop family the error is first order with a closed
+form. With phi the bank, the nose tangent through the loop, the gyro reads
+
+    q = Omega cos(phi),  r = Omega sin(phi),  so rot = [0, cos(phi), sin(phi)]
+
+whose pitch and yaw always square to one. At 45 degrees of bank, ordinary when
+the rail sits diagonal to the approach, that is [0, 0.71, 0.71]: Powerloop pays
+one slack for a pitch error of 0.29, Donkey Loop pays one for a yaw error of
+0.29, they tie on length and slack, and Donkey Loop is worth 600 against 200 so
+the dearer name wins. The pilot never touched the yaw stick.
+
+The loop's own turn is now integrated about the OBSTACLE'S axis, which is bank
+independent; subtracted out of the body integrals so what is left is what the
+PILOT added; and put back on whichever body axis the lap axis most lies along.
+Nose across the rail lands it on pitch, which is a Powerloop; nose along lands
+it on roll, which is the Mavvy family; a genuine yaw spin survives in the
+residual. Inside 45 degrees of square there is no answer to give and the raw
+reading stands. `step()` gains the craft's up axis; callers that pass none get
+the old reading, which is every test written before this.
+
+Verified in flight: on a clean unbanked loop the de-banking reports
+`align [0.01, -1, 0]` and correctly changes nothing.
+
+### 2. Entry rotations were being destroyed
+
+A rotation was held by a lap merely for closing at the same time as one, not
+for being INSIDE it. A path run opens on any flypast of a post at flying speed
+and the town has 886 poles with up to 32 runs live at once, so a Jump Rope's
+opening quarter yaw was diverted into `heldByPath` because an unrelated lamp
+post happened to be in reach that millisecond; and when the lap WAS named,
+`emit` dropped the lap and the rotation with it. Twelve patterns are
+[rotation, lap] and every one was unreachable whenever that happened.
+
+Holding now needs the same 50% overlap `absorbedByLap` uses, and primitives
+buffer in FLIGHT order rather than closure order, because a lap opens before
+the rotation inside it and closes after.
+
+### 3. The rotation window is not the winding window
+
+`startWind` and `startSide` are backdated because the winding rate ramps and
+where the craft WAS decides whether a lap is whole or half. The ROTATION has no
+such need, and taking it from the same backdated sample gave every lap 800 ms
+of whatever came before it: a yaw spin flown to line up on a rail was swallowed
+and turned a plain Powerloop into an Inverted 360 Powerloop. How much of that
+800 ms existed depended on approach speed, so the same trick read differently
+from a fast entry and a slow one.
+
+### 4. The rot classes now tile instead of overlapping
+
+The loop family's targets are half a turn apart and the accept band was a
+quarter free plus a quarter of slack: half a turn wide, exactly the spacing. So
+adjacent tricks always overlapped, every reading matched at least two, and the
+tie went to PRICE. A five hundredth of a turn turned a 200 point Novice trick
+into a 600 point Master one, always in the direction that pays more. A quarter
+each way makes the classes tile: every reading names at most one.
+
+A tenth narrower was tried, to leave dead ground BETWEEN the classes as the
+auditor proposed. It refused honest flying. A loop that over-rotates by half a
+turn should be refused and one that misses by a fifth should not, and there is
+no room for both inside a spacing of a half.
+
+### 5. A pattern's steps have to be one motion
+
+Length beat cleanliness absolutely and nothing bounded the gap between steps,
+so a Powerloop and a Matty Flip rewind under the same rail a second later
+matched Barani at two steps and beat Powerloop at one: 700 points for a Master
+trick nobody flew. `emit` already computed that gap in order to GRADE on it; it
+is grounds for refusal now, because two tricks with a pause between them are
+two tricks and the pilot should be paid for both. A pattern that asks for a
+pause is not charged for it, which is what lets a Wall Ride glide between its
+rolls.
+
+### 6 and 7 were subsumed
+
+The superset finding (a pattern omitting an axis can never beat its own
+superset) and the dead band finding are both the same mechanism as 4. With the
+band at a quarter, a yaw drift of 0.75 against a target of 1 is an error of
+0.25 and is now REFUSED rather than accepted free, which is the exact case the
+auditor demonstrated.
+
+### What the rig says
+
+Flown in the town, in acro, at 60 Hz. The Matty Flip is named for the first
+time, and it took the frame fix to do it. Two rig faults were found on the way
+and neither was the game: the tight Powerloop was over-rotating to two whole
+turns of pitch with the lap measuring 1.5, and the recogniser was right to
+refuse a loop flown one and a half times round; and the same was true of the
+jump rope rail lap.
+
+HALF_LAP_MIN was not moved at any point. A straight line subtends strictly less
+than half a turn about any point off it, so the laps it refused really were fly
+pasts.
+
+Two repeats each, in the town, in acro, at 60 Hz. Before this turn, then after:
+
+    Powerloop tight            PASS 2/2   ->  PASS 2/2
+    Powerloop wide and slow    PASS 2/2   ->  PASS 2/2
+    Roll loop around the arch  PASS 2/2   ->  PASS 2/2
+    Orbit x2 around a post     PASS 2/2   ->  PASS 2/2
+    Immelmann Turn             PASS 2/2   ->  PASS 2/2
+    Roll                       PASS 2/2   ->  PASS 2/2
+    Flip                       PASS 2/2   ->  PASS 2/2
+    Yaw Spin                   PASS 2/2   ->  PASS 2/2
+    Wall Tap                   FAIL 0/2   ->  PASS 2/2
+    Matty Flip                 FAIL 0/2   ->  PASS 2/2
+    1 Trippy Spin              FLAKY 1/2  ->  PASS 2/2
+    Jump Rope rail lap         FLAKY 1/2  ->  FLAKY 1/2
+    Cinnamon Roll              FAIL 0/2   ->  FAIL 0/2
+
+Eleven of thirteen now land every time, against eight before.
+
+STILL NOT RIGHT, and what is known:
+
+  - **Cinnamon Roll** wants a quarter yaw and then a lap carrying a whole turn
+    of yaw with no pitch. Flying it nose along the rail with the entry yaw
+    adjacent gets it as far as a Donkey Loop, which is the same lap read as
+    carrying half a pitch turn as well. The rig's yaw is not landing cleanly
+    as yaw through a roll loop, and that is worth a measurement rather than
+    another guess at the stick.
+  - **Jump Rope rail lap** is a 2.9 m loop around a rail 3.2 m off the ground
+    with the centre lifted 1.3 m, which leaves very little room, and the runs
+    that fail are the ones that clip: they come back BUMP with the craft
+    spinning. It is marginal geometry more than marginal measurement.
+  - **The 34 m mast** still reaches the obstacle field only as a 3 m stub at
+    y 36.2. The auditor covering deriveObstacles did not return before the
+    clock ran out.
+
+And a note on method, because it cost real time twice. Waiting on a background
+run with `until ! pgrep -f "park-fly.js --reps"` DEADLOCKS: the waiter's own
+command line contains the pattern, so pgrep matches the waiter and it waits on
+itself. Six of them piled up behind a run that had already finished.

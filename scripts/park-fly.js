@@ -491,7 +491,7 @@ function lapPlan(ob, opts = {}) {
   const {
     radius = 3.4, secs = 3.0, turns = -1, ph0 = -Math.PI / 2,
     noseAlong = false, yawRate = 0, runUp = 14, after = null, afterTurns = 0.5,
-    liftY = 0,
+    liftY = 0, before = null, beforeTurns = 0.25,
   } = opts;
   return `
     const OB = ${JSON.stringify(ob)};
@@ -531,6 +531,20 @@ function lapPlan(ob, opts = {}) {
     window.__armProbe();
     await window.__fly(window.__ramp(from, start, ${runUp} * 1.9 / Math.max(2, vEnt), vEnt),
       { heading: head });
+    /*
+     * The stick that OPENS the trick, flown immediately before the lap.
+     * Twelve patterns are [rotation, lap], and the rotation has to be
+     * adjacent: matchSteps refuses a gap wider than STEP_GAP_MAX, because
+     * two tricks with a pause between them are two tricks.
+     */
+    if (${JSON.stringify(before)}) {
+      const TURN3 = Math.PI * 2;
+      const wantB = TURN3 * ${beforeTurns};
+      await window.__stickHold([0, 0, 0.75, 0.52], 700,
+        (cc, tt, aa) => Math.abs(aa.r) >= wantB * 0.7);
+      await window.__stickHold([0, 0, -0.4, 0.55], 260,
+        (cc) => !cc.rates || Math.abs(cc.rates.r) < 1.5);
+    }
     const r = await window.__fly(lap, { heading: head, yawRate: ${yawRate} });
     /* The stick that finishes the trick, where the trick has one: an
      * Immelmann is half a loop and then the roll out of it. */
@@ -948,7 +962,12 @@ const MANOEUVRES = [
     name: 'Cinnamon Roll',
     want: 'Cinnamon Roll',
     body: lapPlan(PARK.arch, {
-      radius: 3.4, secs: 2.6, turns: -1, yawRate: 0.34,
+      /* Nose ALONG the rail, so the loop's own turn lands on roll and the
+       * lap's pitch is zero, which is what Cinnamon Roll asks for; the yaw
+       * stick then supplies the 360 it wants; and the quarter yaw that opens
+       * the trick is flown immediately before the lap so it is adjacent. */
+      radius: 3.4, secs: 3.0, turns: -1, yawRate: 0.30, noseAlong: true,
+      before: 'yaw', beforeTurns: 0.25,
     }),
   },
   {

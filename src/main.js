@@ -89,7 +89,7 @@ import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } 
 import { cliMap, composeConfig, FC_DUMP_KEY, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
-import { loadSim, simErrorName, SIM_OK } from '../tests/lib/simmod.js';
+import { loadSim, simErrorName, SIM_OK, SIM_ERR_BAD_ARG } from '../tests/lib/simmod.js';
 
 /*
  * The module's bytes, resolved against this file rather than the site root.
@@ -1013,7 +1013,7 @@ export async function boot({ loading, bootStart, mapId }) {
       trickDetector.obstacles = null;
       return;
     }
-    obstacles = deriveObstacles(view.colliders, (x, z) => view.height(x, z));
+    obstacles = deriveObstacles(view.colliders, (x, z, fromY) => view.height(x, z, fromY));
     trickDetector.obstacles = obstacles;
   }
   /* The map loaded at boot never passes through the swap path above, so it
@@ -4321,8 +4321,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * direction takes no offset, so this is the rotation and nothing else.
      *
      * It goes through worldDirToSim now, with every other direction the
-     * shell converts. This was the first of the three and stayed the only
-     * one for four days.
+     * shell converts. There are four of them: this one, the contact normal,
+     * the contact patch arm and a moving collider's surface velocity. This
+     * was the first to be fixed and stayed the only one for four days.
      */
     worldDirToSim(groundNWorld.x, groundNWorld.y, groundNWorld.z, nSim);
     const n2 = nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z;
@@ -4393,9 +4394,21 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function resolveContactAt(nx, ny, nz, cx, cy, cz, e, mu, vsx, vsy, vsz) {
     const sep = contactSeparation();
+    /*
+     * WRITTEN FIRST, because the caller branches on it and it used to
+     * survive the call that failed to set it. passStats.code is assigned in
+     * one place, after the module returns, and the degenerate-normal path
+     * below returns 0 without ever reaching it: the caller then read a code
+     * left over from an EARLIER contact, on an earlier collider, possibly in
+     * an earlier frame, and decided from it whether this pass had merely
+     * found a resting contact or had been refused outright. Seeding it here
+     * makes the field mean "what happened to THIS contact".
+     */
+    passStats.code = SIM_OK;
     worldDirToSim(nx, ny, nz, nSim);
     const nlen = Math.sqrt(nSim.x * nSim.x + nSim.y * nSim.y + nSim.z * nSim.z);
     if (!(nlen > 1e-9)) {
+      passStats.code = SIM_ERR_BAD_ARG;
       return 0;
     }
     const inv = 1 / nlen;
@@ -6966,7 +6979,11 @@ export async function boot({ loading, bootStart, mapId }) {
         upright = len > 1e-6 ? Math.abs(ey / len) : 1;
         lowY = Math.min(c.fay[i], c.fby[i]) - c.fr[i];
       }
-      const clear = lowY - view.height(cx, cz);
+      /* Below the collider's own base, the same question deriveObstacles
+       * asks and for the same reason: the unhinted height is the top of
+       * whatever is stacked over the point, so under a deck it reports a
+       * support as having negative daylight beneath it. */
+      const clear = lowY - view.height(cx, cz, lowY);
       /* The same tests deriveObstacles applies, restated here so a near
        * miss can name the one that failed. They are deliberately a copy:
        * this is a diagnostic and it must be able to disagree. */

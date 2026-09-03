@@ -241,7 +241,39 @@ const PATH_TANGENT_RATIO = 1.0;
  * have already settled and been matched on their own: an Immelmann came out
  * as its own half loop, unnamed, plus a Juicy Flick.
  */
-const PATH_RATE_OFF = 0.12;
+/*
+ * AND IT HAS TO SIT BELOW PATH_RATE_ON, WHICH IT DID NOT.
+ *
+ * It was 0.12 against an ON gate of 0.08, so the pair was INVERTED: a lap
+ * could open at a winding rate the very next millisecond was entitled to
+ * close it. Every other run in this file has the hysteresis the right way
+ * round, RATE_ON 3.0 against RATE_OFF 1.2, and the comment above this one
+ * has said all along that the off gate "has to sit below the slowest orbit
+ * anybody flies" and that "a two lap orbit taking forty seconds still winds
+ * at 0.05 turns/s". 0.12 is not below 0.05. When PATH_RATE_ON came down from
+ * 0.35 to 0.08 to make the orbit reachable at all, this half of the pair was
+ * left where it was.
+ *
+ * What it costs is the WIDE SLOW orbit, which is the harder trick and the
+ * one a pilot is proud of. Measured on the real aircraft round the training
+ * park's mast, two laps at 8 m:
+ *
+ *   5.0 s a lap   winds 0.20 turns/s   one run of 2.41 turns   Orbit x2
+ *   7.0 s a lap   winds 0.14 turns/s   THIRTEEN fragments, the
+ *                                      longest 1.00 turns       nothing
+ *
+ * At 7 s the rate sits 19 percent over the off gate, so an ordinary wobble
+ * dips under it, the 220 ms hold expires and the lap closes; the next one
+ * opens immediately and closes again. The fragments in that trace are 220
+ * samples long, which is the hold exactly.
+ *
+ * 0.04 is half the ON gate, below the 0.05 the comment above cites for a
+ * forty second orbit, and above nothing at all. Nothing else loosens: what
+ * keeps a fly past out is the WINDING TOTALS, which this file has said from
+ * the first version, and `circling` still has to hold for a millisecond to
+ * be counted at all.
+ */
+const PATH_RATE_OFF = 0.04;
 const PATH_OFF_HOLD_MS = 220;
 const PATH_MIN_RADIUS = 0.45;
 /*
@@ -3353,8 +3385,27 @@ export class TrickDetector {
        * on, for the same reason.
        */
       const from = run.openMs || run.startMs;
+      /*
+       * AND UP TO WHERE THE WINDING GOT, not up to now.
+       *
+       * A run stays open for as long as it takes the rate filter to decay
+       * past the off gate and hold there, which is a fifth of a second at
+       * least and can be a great deal longer on a slow lap. The craft has
+       * stopped going round well before that. Measuring the claim against
+       * `nowMs` therefore lets a lap that has finished winding reach forward
+       * and swallow the rotation flown AFTER it, which is exactly the shape
+       * of an Immelmann Turn: half a loop from under, and then the half roll
+       * that finishes it. The roll went into heldByPath, the two step
+       * pattern had only the lap in front of it, and a 250 point trick came
+       * out as a bare half loop.
+       *
+       * tailMs is the last millisecond this run was actually winding, and
+       * the file already keeps it apart from lastMs for the neighbouring
+       * reason. It is the honest upper bound for "inside this lap".
+       */
+      const until = run.tailMs > from ? run.tailMs : this.nowMs;
       const lo = prim.startMs > from ? prim.startMs : from;
-      const hi = prim.endMs < this.nowMs ? prim.endMs : this.nowMs;
+      const hi = prim.endMs < until ? prim.endMs : until;
       if (hi - lo > dur * 0.5) {
         return true;
       }

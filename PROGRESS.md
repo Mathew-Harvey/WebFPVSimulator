@@ -27895,3 +27895,158 @@ src/native/ or patches/ was touched, so dist/sim.wasm is byte for byte the
 one that was already committed and the determinism trace cannot have moved.
 Verify's replay never raises a ground plane and never calls a contact entry
 point, by design, so it could not see this change either way.
+
+## 2026-09-03: the orbits, and the two reasons a pilot could not score one
+
+The owner's second report was that the scorer misses orbits, inverted orbits,
+Split-S, power loops and Matty flips. Two of those causes are now found and
+fixed, and neither of them was in the pattern table, which is where four
+previous rounds went looking.
+
+### The training park's mast was not an obstacle, and nor was anything under a roof
+
+A trick that needs an object can only be named if the object survives
+`deriveObstacles`. That function clamps a collider's bottom to the ground
+before measuring its height, so that the town's walls, which are authored
+reaching sixty metres underground, are not counted as sixty metre poles. It
+asked the shell for that ground with `view.height(x, z)` and no hint.
+
+`view.height` answers with the highest LANDABLE SURFACE at a point, because
+that is what a craft sets down on: a deck, a roof, a bridge. Asked without a
+hint it returns the top of the stack. So under anything with a deck on it the
+clamp lifted a support's bottom ABOVE ITS OWN TOP, `h` came out negative, and
+the `h <= 0` guard skipped it.
+
+Measured on the real town through `window.__surface`:
+
+    view.height(94.5, 161.5)        34.75    the mast's own head deck
+    view.height(94.5, 161.5, 0.5)    0.75    the pad the mast stands on
+
+The orbit mast is four 0.32 m legs from y 0.45 to y 34.45 with its head deck
+at 34.75 directly over them, so all four legs came out at h = -0.30 and
+vanished. The only obstacle within ten metres of the mast was the 2.9 m light
+pole ABOVE the head, at y 36.2. That is exactly what `scripts/park-fly.js`
+recorded in a comment months ago, "the 34 m tower reaches the obstacle field
+only as a 3 m stub centred at y 36.2", without knowing why.
+
+The park was laid out around that mast. Its header says so: "ORBIT wants ONE
+tall thing and NOTHING NEAR IT... the mast is 34 m, its section is a constant
+3.0 m so the radius means the same at every height, the nearest solid in any
+direction is 26 m, and the ground under it carries three painted rings at 6,
+10 and 14 m". A pilot flying the circle the paint tells them to fly was
+orbiting nothing the recogniser could see.
+
+It asks for the surface under the collider's OWN base now, which is the
+question the clamp always meant. Measured on the real town, before and after:
+
+    obstacles   967 -> 1118        poles 888 -> 1036      bars 79 -> 82
+
+So 151 things a pilot can fly around were being erased, every one of them a
+support under a deck, a roof, a bridge or a canopy.
+
+### The path hysteresis was inverted, so a slow orbit came apart
+
+`PATH_RATE_OFF` was 0.12 against a `PATH_RATE_ON` of 0.08. The pair is
+backwards: a lap could open at a winding rate that the very next millisecond
+was entitled to close it. Every other run in the file has it the right way
+round, `RATE_ON` 3.0 against `RATE_OFF` 1.2, and the comment above the
+constant has said all along that it "has to sit below the slowest orbit
+anybody flies" and that "a two lap orbit taking forty seconds still winds at
+0.05 turns/s". 0.12 is not below 0.05. When `PATH_RATE_ON` came down from
+0.35 to 0.08 to make the orbit reachable at all, this half of the pair was
+left where it was.
+
+What it cost is the WIDE SLOW orbit, which is the harder trick. Flown on the
+real aircraft round the mast, two laps at 8 m:
+
+    5.0 s a lap   0.20 turns/s   one run of 2.41 turns          Orbit x2
+    7.0 s a lap   0.14 turns/s   THIRTEEN fragments, longest    nothing
+                                 1.00 turns
+
+At 7 s the rate sits 19 percent over the off gate, so an ordinary wobble dips
+under it, the 220 ms hold expires and the lap closes; the next opens and
+closes again. The fragments in that trace are 220 samples long, which is the
+hold exactly. It is 0.04 now, half the on gate and below the 0.05 the comment
+cites. Nothing else loosens: what keeps a fly past out is the WINDING TOTALS,
+which this file has said since its first version, and `circling` still has to
+hold for a millisecond to be counted at all.
+
+### And a lap stopped reaching past its own end
+
+Lowering the off gate exposed a second thing, and it cost a constructed
+Immelmann Turn in `score:selftest` the moment the change landed. A run stays
+open until the rate filter decays past the off gate and HOLDS there, which is
+a fifth of a second at least and longer on a slow lap; the craft stopped
+going round well before that. `insideOpenLap` measured its claim against
+`nowMs`, so a lap that had finished winding reached forward and swallowed the
+rotation flown AFTER it. That is the shape of an Immelmann exactly: half a
+loop from under, then the half roll that finishes it. The roll went into
+`heldByPath`, the two step pattern had only the lap in front of it, and a 250
+point trick came out a bare half loop.
+
+It is bounded by `run.tailMs` now, the last millisecond the run was actually
+winding. The file already kept `tailMs` apart from `lastMs` for the
+neighbouring reason, so the vocabulary was there.
+
+### What it is worth, measured
+
+`scripts/orbit-check.js`, new: the derivation on its own, then three orbits
+flown on the real aircraft round a real mast, then the same orbit at three
+spawn yaws. 6 checks, all passing. Flown:
+
+    two laps at 6 m in 5.0 s              Orbit x2         (scored before? no
+                                                            obstacle existed)
+    two laps at 8 m in 7.0 s              Orbit x2         (was: nothing)
+    one lap belly up at 5 m               1 Trippy Spin    (was: nothing)
+    the 6 m orbit at yaw 0, 90 and 180    Orbit x2 in all three
+
+`npm run trick:sweep --all` still ends on "nothing was ever paid more than it
+was worth", 47 patterns. That property is the one that matters for a change
+that makes MORE things scoreable, and it holds.
+
+`npm run park:fly` holds at 10 of 14, unchanged from after the contact fix,
+so nothing regressed in the real shell.
+
+### Still open, and honestly
+
+The report named five things. Two of the five have root causes fixed here:
+orbits and inverted orbits. Powerloops were fixed by the contact change in
+the entry above, and hold. Split-S and Matty Flip in the park rig are still
+what they were, and the wide slow Powerloop and Cinnamon Roll still fail
+there.
+
+The larger claim in `prompts/wall-tap-scoring-fix.md`, that the whole path
+measurement should be rebuilt to work from the craft's own trajectory rather
+than from winding about a derived axis, is NOT done. It is still the right
+diagnosis for the rest: a Split-S over a wall or a roof edge has no bar to
+wind around and cannot be named at any tolerance, the open air Split-S and
+half powerloop blocks the workbook prices are still unreachable, and Juicy
+Flick, Snapback, Immelmann and Split-S are still separated by the sign of a
+pitch rather than by what the PATH did. What has changed is that there is now
+a deterministic rig to build it against: `scripts/lib/flightrig.js` flies the
+real plant through the real colliders and feeds the real recogniser with no
+browser and no wall clock in it, so a fixture replays to the same answer
+every time, which is the thing every previous harness could not do.
+
+`score:selftest` is 206 of 207, and the one failure is the same one it
+started the day with: "the same lap without the flip is a Maverick Loop".
+That case is constructed and passes the detector NO UP AXIS, so `debankLap`
+never runs and the lap's own roll is never put back; the Maverick pattern
+has asked for `roll: 1` since the 250-point fix on 3 September. It cannot
+pass until the constructed rig supplies an up axis, and the honest fix for it
+is the rebuild above rather than a number.
+
+### Checks run this turn
+
+    node scripts/orbit-check.js        6 passed, 0 failed    (new)
+    node scripts/frame-check.js        33 passed, 0 failed
+    node scripts/wall-check.js         45 passed, 0 failed
+    node src/trackbuilder/selftest.js  495 passed, 0 failed
+    npm run contact:selftest           all 72 passed
+    npm run score:selftest             206 passed, 1 failed  (unchanged)
+    npm run trick:sweep -- --all       47 flown, no over-claims
+    npm run park:fly                   10 of 14, unchanged
+
+`npm run verify` was not run and `npm run build:wasm` cannot run here: no
+emsdk and no node_modules. Nothing under src/native/ or patches/ changed, so
+dist/sim.wasm is byte for byte the committed one.

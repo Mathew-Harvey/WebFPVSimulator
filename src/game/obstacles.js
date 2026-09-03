@@ -386,9 +386,33 @@ export function sameAxis(a, b) {
 /*
  * Read a built Colliders and pick the obstacles out of it.
  *
- * `groundAt(x, z)` returns the world height under a point, which decides
- * whether a bar has daylight beneath it. Passing null skips that test,
- * which is what the self test does when it builds a field by hand.
+ * `groundAt(x, z, fromY)` returns the world height under a point, which
+ * decides whether a bar has daylight beneath it. Passing null skips that
+ * test, which is what the self test does when it builds a field by hand.
+ *
+ * THE THIRD ARGUMENT IS NOT OPTIONAL DECORATION, and leaving it off deleted
+ * the training park's mast.
+ *
+ * The shell's height function answers with the highest LANDABLE SURFACE at a
+ * point, because that is what a craft sets down on: a deck, a roof, a
+ * bridge. Asked without a hint it returns the top of the stack. The clamp
+ * below uses it to hold a collider's bottom at ground level, so that the
+ * town's walls, which are authored reaching sixty metres underground, are
+ * not measured as sixty metre poles.
+ *
+ * Put those together under anything with a deck on it and the clamp lifts a
+ * support's bottom ABOVE ITS OWN TOP. Measured on the real town: the orbit
+ * mast is four 0.32 m legs running from y 0.45 to y 34.45, with the mast
+ * head deck at y 34.75 directly over them. window.__surface(94.5, 161.5)
+ * returns 34.75 and the same query hinted at the leg's own base returns
+ * 0.75, so h came out -0.30, the `h <= 0` guard skipped every leg, and the
+ * only obstacle within ten metres of the mast was the 2.9 m light pole
+ * ABOVE the head at y 36.2. The park's headline orbit object, the one thing
+ * the whole field was laid out around, could not be flown around at all,
+ * and neither could any column under any roof, bridge or canopy in the town.
+ *
+ * So the question asked here is "what is under THIS collider's base", which
+ * is the question the clamp always meant.
  *
  * Boxes only, because that is what a map is made of; a capsule map would
  * want its own clause and nothing has one yet.
@@ -476,7 +500,7 @@ export function deriveObstacles(colliders, groundAt) {
        * has to fit under. */
       if (upright <= 1 - UPRIGHT_MIN && thick <= BAR_THICK_MAX && len >= BAR_LEN_MIN) {
         const lowY = (ay < by ? ay : by) - colliders.fr[i];
-        const ground = groundAt ? groundAt(cx, cz) : 0;
+        const ground = groundAt ? groundAt(cx, cz, lowY) : 0;
         if (lowY - ground >= BAR_CLEAR_MIN) {
           field.add(OB_BAR, cx, cy, cz, ux, uy, uz, len * 0.5);
         }
@@ -496,7 +520,9 @@ export function deriveObstacles(colliders, groundAt) {
      * some of its walls as boxes that reach sixty metres underground, and
      * an unclamped height test calls those poles.
      */
-    const ground = groundAt ? groundAt(cx, cz) : 0;
+    /* Below the collider's OWN base, not the top of whatever is stacked
+     * over it. See the header. */
+    const ground = groundAt ? groundAt(cx, cz, colliders.fay[i]) : 0;
     const y0 = Math.max(colliders.fay[i], ground);
     const y1 = colliders.fby[i];
     const h = y1 - y0;

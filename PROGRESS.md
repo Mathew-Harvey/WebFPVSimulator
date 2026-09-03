@@ -27138,17 +27138,34 @@ line theorem says that is not evidence of having gone round anything. The other
 two lose their dearer reading to a CHEAPER name, which short changes a pilot
 and puts nothing false on a board.
 
-### What the sweep could NOT fly, which is worth saying plainly
+### The pair that costs most to confuse, settled
 
-A genuine **Donkey Loop**. It is the pair that would cost most to confuse, 600
-against a Cinnamon Roll's 175, and the rig flying in the town has been seen to
-swap them. The workbook's Donkey Loop is "a 180 pitch down to invert, then a
-360 yaw spin, then complete the loop", so its lap carries HALF a flip. Flown as
-a whole pitch loop with a 360 yaw in it, which is what a tangent nose gives, it
-is not a Donkey Loop at all: it is an Inverted 360 Powerloop, pitch 1 and yaw
-1, and the recogniser named it one and was right to. Half a flip across a WHOLE
-lap needs the nose to leave the tangent and come back, and the sweep cannot fly
-that yet. Until it can, that pair is unverified in the direction that matters.
+600 against 175, and the rig flying in the town has been seen to swap them. The
+workbook settles it, and it settles it by WHICH LOOP EACH IS BUILT ON:
+
+  Donkey Loop            "Perform a MAVERICK loop and during the loop,
+                          execute a 180 Pitch down to invert. Follow this
+                          with a 360 Yaw spin, and finally complete the loop."
+  Inverted 360 Powerloop "Start a POWERLOOP and when reaching the peak,
+                          perform a 360 Yaw spin while inverted."
+
+A Maverick loop is the lap flown nose ALONG the rail, so its own turn is a
+ROLL; a Powerloop's is a flip. Both patterns are therefore correctly specified
+and genuinely distinguishable, and the first attempt to sweep a Donkey Loop
+flew it on a pitch loop, which is not a Donkey Loop at all but an Inverted 360
+Powerloop. The recogniser named it one and was right to.
+
+Flown properly it is UNDER-claimed rather than named, and that is worth
+keeping. The body frame reading comes out [0, 0.13, 0.80]: the loop's own roll
+has been scrambled to nothing by the two rotations on top of it, and the added
+flip reads a tenth of a turn rather than a half. The per sample ownership is
+0.78 against the 0.9 floor, so the de-banking declines, and declining is right:
+with three rotations interacting there is no clean axis to give the loop's turn
+to. It names Maverick Loop, 100 against 600, WHICH IS A MISS AND NOT A LIE.
+
+Naming it would need a lap's rotation resolved in a frame carried along the
+LAP rather than in the craft, which is a bigger change than anything done here
+and is the next thing this needs.
 
 The rig in the town still flies its Cinnamon Roll manoeuvre as something nearer
 a Donkey Loop and is named accordingly. That is the rig, not the scorer: the

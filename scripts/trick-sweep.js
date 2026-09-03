@@ -208,7 +208,7 @@ const poleField = () => {
 function flyLap(opts = {}) {
   const {
     turns = 1, from = 'under', bankDeg = 0, noseAlong = false,
-    addRoll = 0, addYaw = 0, radius = 3.2, secs = 2.4, pole = false,
+    addRoll = 0, addYaw = 0, addPitch = 0, radius = 3.2, secs = 2.4, pole = false,
     track = false, inverted = false, drift = 0, beforeYaw = 0, yawSpread = false,
   } = opts;
   const axis = pole ? V(0, 1, 0) : V(1, 0, 0);
@@ -300,6 +300,18 @@ function flyLap(opts = {}) {
     const ph = ph0 + dir * TURN * turns * u;
     let n = noseOf(ph);
     let up = upOf(ph, u);
+    if (addPitch) {
+      /*
+       * A pitch the pilot ADDS on top of the lap, about the craft's own
+       * wing. The workbook's Donkey Loop is "a Maverick loop, and during
+       * the loop a 180 pitch down to invert": the lap itself is flown on
+       * ROLL with the nose along the rail, and the flip is extra.
+       */
+      const wing = norm(cross(n, up));
+      const d = dir * TURN * addPitch * window(u);
+      n = norm(rot(n, wing, d));
+      up = norm(rot(up, wing, d));
+    }
     if (addYaw) {
       /*
        * A Cinnamon Roll's spin is SPREAD, not placed. The workbook says "a
@@ -543,18 +555,40 @@ async function main() {
      * takes the flight.
      */
     /*
-     * NOT YET SWEPT: a genuine Donkey Loop, which is the pair that would
-     * cost most to confuse at 600 against a Cinnamon Roll's 175, and which
-     * the rig flying in the town has been seen to swap.
+     * BOTH WAYS ROUND THE PAIR THAT COSTS MOST TO CONFUSE, 600 against 175.
      *
-     * The attempt is recorded because the reason it was dropped matters. The
-     * workbook's Donkey Loop is "a 180 pitch down to invert, then a 360 yaw
-     * spin, then complete the loop", so its lap carries HALF a flip. Flown
-     * here as a whole pitch loop with a 360 yaw in it, which is what a
-     * tangent nose gives, it is not a Donkey Loop at all: it is an Inverted
-     * 360 Powerloop, pitch 1 and yaw 1, and the recogniser named it one and
-     * was right to. Half a flip across a WHOLE lap needs the nose to leave
-     * the tangent and come back, and this file cannot fly that yet.
+     * The workbook is what separates them, and it separates them by which
+     * loop they are built on. A Donkey Loop is "a MAVERICK loop, and during
+     * the loop a 180 pitch down to invert, then a 360 yaw spin, then
+     * complete the loop": the lap is flown nose along the rail so the loop
+     * itself is a ROLL, and the flip and the spin are added on top. An
+     * Inverted 360 Powerloop is "start a POWERLOOP, and at the peak a 360
+     * yaw spin while inverted": the lap is a flip.
+     *
+     * An earlier attempt flew the Donkey Loop on a pitch loop, which is not
+     * a Donkey Loop at all but an Inverted 360 Powerloop, and the recogniser
+     * named it one and was right to.
+     */
+    ['Donkey Loop', () => sweepLap('Donkey Loop', {
+      turns: 1, from: 'under', noseAlong: true, addPitch: 0.5, addYaw: 1,
+    }, { banks: [0, 20, 40], drifts: [0] })],
+    /*
+     * The Donkey Loop is UNDER-claimed rather than named, and the reason is
+     * worth keeping. Flown as the workbook writes it, a roll loop carrying
+     * both a 180 pitch and a 360 yaw, the body frame reading comes out
+     * [0, 0.13, 0.80]: the loop's own roll has been scrambled to nothing by
+     * the two rotations on top of it, and the added flip reads a tenth of a
+     * turn rather than a half. The per sample ownership is 0.78 against the
+     * 0.9 floor, so the de-banking declines, and declining is right: with
+     * three rotations interacting there is no clean axis to give the loop's
+     * turn to.
+     *
+     * It names Maverick Loop, 100 against 600. That is a MISS and not a lie,
+     * which is the bar this file actually holds the scorer to, and it is the
+     * honest answer for a trick whose three rotations the body frame cannot
+     * separate. Naming it would need the lap's rotation resolved in a frame
+     * carried along the lap rather than in the craft, which is a bigger
+     * change than anything here and is the next thing this needs.
      */
     ['Side Loop', () => sweepLap('Side Loop', {
       turns: 1, from: 'under', noseAlong: true, beforeYaw: 0.25,

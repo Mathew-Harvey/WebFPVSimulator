@@ -195,6 +195,46 @@ window.__ramp = (a, b, secs, vEnd) => {
   return fn;
 };
 
+/*
+ * ADD A FALL TO A PATH.
+ *
+ * A craft is inverted when its thrust points DOWNWARD, and thrust points
+ * downward only when the wanted force does, which needs a downward
+ * acceleration greater than gravity. That is the whole physics of an
+ * inverted orbit and it is expensive: at 1.3 g, two laps of a post cost
+ * about eighty metres of altitude, and the training park is thirty four
+ * metres tall. One lap in under two seconds fits; two do not, and no amount
+ * of tuning will make them.
+ */
+window.__drop = (path, g2) => {
+  const fn = (t) => {
+    const d = path(t);
+    return {
+      p: V(d.p.x, d.p.y - 0.5 * g2 * t * t, d.p.z),
+      v: V(d.v.x, d.v.y - g2 * t, d.v.z),
+      a: V(d.a.x, d.a.y - g2, d.a.z),
+      done: d.done,
+    };
+  };
+  fn.total = path.total;
+  return fn;
+};
+
+/*
+ * FLY ON FROM WHERE THE CRAFT ACTUALLY IS.
+ *
+ * An exit written as a line between two constants starts wherever the
+ * manoeuvre was SUPPOSED to end, and the tracker then hauls the craft to
+ * that point: a jump the recogniser reads as rotation, which is where the
+ * spurious Invert Rewinds and Snapbacks after every trick came from. The
+ * exit is part of the flight and has to begin at the aircraft.
+ */
+window.__on = (dir, metres, secs) => {
+  const c = window.__craftState();
+  const here = V(c.worldX, c.worldY, c.worldZ);
+  return window.__line(here, add(here, mul(norm(dir), metres)), secs);
+};
+
 /* Hold a point. */
 window.__hold3 = (p, secs) => {
   const fn = () => ({ p, v: V(0, 0, 0), a: V(0, 0, 0), done: false });
@@ -249,10 +289,17 @@ window.__fly = (path, opts = {}) => new Promise((res) => {
     const KD = opts.kd ?? 4.5;
     const aCmd = add(d.a, add(mul(ep, KP), mul(ev, KD)));
     const f = V(aCmd.x, aCmd.y + G, aCmd.z);
+    /*
+     * Belly up. The guidance law aims the THRUST axis at the wanted force,
+     * so asking for the opposite aims the craft's back at it and the same
+     * path is flown inverted. Throttle then has to be negated too, which is
+     * what "keeping it pinned" on the stick actually is.
+     */
+    const fWant = opts.invert ? mul(f, -1) : f;
     const b3 = V(c.up.x, c.up.y, c.up.z);
     const fwd = norm(V(c.fwd.x, c.fwd.y, c.fwd.z));
     const right = norm(cross(fwd, b3));
-    const err = cross(b3, norm(f));
+    const err = cross(b3, norm(fWant));
     /*
      * ATTITUDE, IN REAL UNITS.
      *
@@ -304,7 +351,7 @@ window.__fly = (path, opts = {}) => new Promise((res) => {
     /* Throttle: the part of the wanted force that lies along the thrust
      * axis, mapped through a square law, with an integrator taking up
      * whatever the real hover number turns out to be. */
-    const along = dot(f, b3);
+    const along = opts.invert ? -dot(f, b3) : dot(f, b3);
     /* Anti windup: an integrator is for trimming a steady error, not for
      * arguing with a transient. While the craft is more than a couple of
      * metres off the path the proportional term owns the problem. */
@@ -400,7 +447,7 @@ const PRELUDE = 'const { V, add, sub, mul, dot, cross, len, norm, cl } = window.
 function lapPlan(ob, opts = {}) {
   const {
     radius = 3.4, secs = 3.0, turns = -1, ph0 = -Math.PI / 2,
-    noseAlong = false, yawRate = 0, runUp = 14,
+    noseAlong = false, yawRate = 0, runUp = 14, after = null, afterTurns = 0.5,
   } = opts;
   return `
     const OB = ${JSON.stringify(ob)};
@@ -433,10 +480,21 @@ function lapPlan(ob, opts = {}) {
     await window.__fly(window.__ramp(from, start, ${runUp} * 1.9 / Math.max(2, vEnt), vEnt),
       { heading: head });
     const r = await window.__fly(lap, { heading: head, yawRate: ${yawRate} });
-    /* Fly out the way the lap was going, so the exit is a departure and not
-     * a stall on the spot. */
-    const dEnd = lap(lap.total);
-    await window.__fly(window.__line(dEnd.p, add(dEnd.p, mul(dir, 9)), 1.6), { heading: head });
+    /* The stick that finishes the trick, where the trick has one: an
+     * Immelmann is half a loop and then the roll out of it. */
+    if (${JSON.stringify(after)}) {
+      const TURN2 = Math.PI * 2;
+      const want = TURN2 * ${afterTurns};
+      await window.__stickHold(
+        ${JSON.stringify(after)} === 'roll' ? [0.9, 0, 0, 0.5] : [0, 0.9, 0, 0.5],
+        900,
+        (cc, tt, aa) => (${JSON.stringify(after)} === 'roll'
+          ? Math.abs(aa.p) >= want : Math.abs(aa.q) >= want),
+      );
+    }
+    /* Fly out the way the lap was going, from where the craft is, so the
+     * exit is a departure and not a haul back to a point on paper. */
+    await window.__fly(window.__on(dir, 11, 1.9), { heading: head });
     window.__stick(0, 0, 0, 0);
     await new Promise((z) => setTimeout(z, 900));
     window.__flush();
@@ -647,15 +705,150 @@ const MANOEUVRES = [
        * touched: near is not tapped. A pilot tapping a wall flies at the
        * wall.
        */
-      await window.__fly(window.__line(from, V(W.x, W.target, W.faceZ + 0.30), 2.3),
+      await window.__fly(window.__line(from, V(W.x, W.target, W.faceZ + 0.22), 2.6),
         { heading: Math.atan2(0, 1) });
-      /* A quarter back, touch, a quarter forward: the trick as written. */
+      /*
+       * A quarter back, touch, a quarter forward: the trick as written, and
+       * flown GENTLY. At 0.6 of stick the second quarter kept going and
+       * came out a whole Flip, which is a different trick; the hold has to
+       * stop at a quarter, not somewhere past it.
+       */
       const TURN = Math.PI * 2;
-      await window.__stickHold([0, 0.6, 0, 0.62], 800, (c, t, a) => -a.q >= TURN * 0.25);
-      await window.__stickHold([0, 0, 0, 0.62], 200);
-      await window.__stickHold([0, -0.6, 0, 0.66], 800, (c, t, a) => a.q >= TURN * 0.25);
-      await window.__fly(window.__hold3(V(W.x, W.target + 2, W.faceZ - 4), 1.4),
-        { heading: Math.atan2(0, 1) });
+      await window.__stickHold([0, 0.34, 0, 0.6], 900, (c, t, a) => -a.q >= TURN * 0.24);
+      await window.__stickHold([0, 0, 0, 0.6], 240);
+      await window.__stickHold([0, -0.34, 0, 0.64], 900, (c, t, a) => a.q >= TURN * 0.24);
+      await window.__stickHold([0, 0, 0, 0.5], 300);
+      await window.__fly(window.__on(V(0, 0.2, -1), 12, 2.6), { heading: Math.atan2(0, -1) });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { probe: window.__probe };
+    `,
+  },
+  {
+    /* Two inverted laps of the post. Same circle as the Orbit, flown belly
+     * up, which the catalogue prices five times higher. */
+    name: '1 Trippy Spin',
+    want: '1 Trippy Spin',
+    body: `
+      const T = ${JSON.stringify(PARK.post)};
+      const c = V(T.x, 24, T.z);
+      const R = 5.0;
+      const flat = window.__circle(c, V(1, 0, 0), V(0, 0, 1), R, 1.9, 0, 1);
+      /* 1.3 g of fall, which is what puts the thrust axis under the horizon
+       * and the craft on its back. It costs about twenty metres. */
+      const lap = window.__drop(flat, 12.75);
+      const d0 = lap(0);
+      const vEnt = len(d0.v);
+      const from = sub(d0.p, mul(norm(d0.v), 12));
+      const look = (t, st) => Math.atan2(T.x - st.worldX, T.z - st.worldZ);
+      await window.__settle(from, look(0, { worldX: from.x, worldZ: from.z }), 1.8);
+      window.__armProbe();
+      await window.__fly(window.__ramp(from, d0.p, 12 * 1.9 / Math.max(2, vEnt), vEnt),
+        { heading: look });
+      let inv = 0; let n = 0;
+      const r = await window.__fly(lap, {
+        heading: look, ky: 3.0, yawMax: 0.85,
+        watch: (cc) => { n += 1; if (cc.up.y < 0) { inv += 1; } },
+      });
+      await window.__fly(window.__on(V(1, 0.3, 0), 10, 1.8), { heading: 0 });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { worstErr: r.worstErr, probe: window.__probe,
+        invertedFrac: +(inv / Math.max(1, n)).toFixed(2) };
+    `,
+  },
+  {
+    name: 'Matty Flip',
+    want: 'Matty Flip',
+    body: lapPlan(PARK.splitBar, {
+      radius: 3.4, secs: 2.3, turns: -0.5, ph0: Math.PI / 2, runUp: 16,
+    }),
+  },
+  {
+    /* Half a lap up from under, then the half roll that finishes it, which
+     * is an Immelmann Turn. Flying the half lap and NOT rolling out leaves
+     * the craft inverted, and righting it is a rotation of its own that the
+     * catalogue reads as part of whatever comes next. */
+    name: 'Immelmann Turn',
+    want: 'Immelmann Turn',
+    body: lapPlan(PARK.splitBar, {
+      radius: 3.2, secs: 2.1, turns: -0.5, ph0: -Math.PI / 2, runUp: 15,
+      after: 'roll', afterTurns: 0.5,
+    }),
+  },
+  {
+    /* A lap of the arch with a whole yaw turn inside it. */
+    name: 'Cinnamon Roll',
+    want: 'Cinnamon Roll',
+    body: lapPlan(PARK.arch, {
+      radius: 3.8, secs: 3.4, turns: -1, yawRate: 0.42,
+    }),
+  },
+  {
+    /* The plain rotations, flown on the sticks the way a pilot does them,
+     * away from anything that could turn one into a lap. */
+    /*
+     * FLOWN WITH SPEED ON. A rotation out of a dead hover is a Stall
+     * Rewind and the catalogue is right to name it one: the first version
+     * of this hovered first and was duly told it had flown a 360 Stall
+     * Rewind. A plain Roll is a roll while going somewhere.
+     */
+    name: 'Roll',
+    want: 'Roll',
+    body: `
+      const TURN = Math.PI * 2;
+      const a = V(56, 14, 132); const b = V(96, 14, 132);
+      await window.__settle(a, Math.atan2(1, 0), 1.6);
+      window.__armProbe();
+      /* Four seconds of flying before the stick goes in. gapStallMs only
+       * accrues below 2.5 m/s, but it accrues from the hover this run
+       * started in, and a rotation with a stall on the books in front of it
+       * is a Stall Rewind, which is a different trick at a different price. */
+      await window.__fly(window.__ramp(a, V(64, 14, 132), 2.2, 13), { heading: Math.atan2(1, 0) });
+      await window.__fly(window.__line(V(64, 14, 132), V(70, 14, 132), 1.0), { heading: Math.atan2(1, 0) });
+      await window.__stickHold([0.85, 0, 0, 0.42], 1200, (c, t, a2) => a2.p >= TURN);
+      await window.__fly(window.__on(V(1, 0, 0), 18, 2.4), { heading: Math.atan2(1, 0) });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { probe: window.__probe };
+    `,
+  },
+  {
+    name: 'Flip',
+    want: 'Flip',
+    body: `
+      const TURN = Math.PI * 2;
+      const a = V(56, 14, 132); const b = V(96, 14, 132);
+      await window.__settle(a, Math.atan2(1, 0), 1.6);
+      window.__armProbe();
+      /* Four seconds of flying before the stick goes in. gapStallMs only
+       * accrues below 2.5 m/s, but it accrues from the hover this run
+       * started in, and a rotation with a stall on the books in front of it
+       * is a Stall Rewind, which is a different trick at a different price. */
+      await window.__fly(window.__ramp(a, V(64, 14, 132), 2.2, 13), { heading: Math.atan2(1, 0) });
+      await window.__fly(window.__line(V(64, 14, 132), V(70, 14, 132), 1.0), { heading: Math.atan2(1, 0) });
+      await window.__stickHold([0, 0.85, 0, 0.42], 1200, (c, t, a2) => -a2.q >= TURN);
+      await window.__fly(window.__on(V(1, 0, 0), 18, 2.4), { heading: Math.atan2(1, 0) });
+      window.__stick(0, 0, 0, 0);
+      await new Promise((z) => setTimeout(z, 900));
+      window.__flush();
+      return { probe: window.__probe };
+    `,
+  },
+  {
+    name: 'Yaw Spin',
+    want: 'Yaw Spin',
+    body: `
+      const TURN = Math.PI * 2;
+      await window.__settle(V(56, 14, 132), Math.atan2(1, 0), 1.6);
+      window.__armProbe();
+      await window.__fly(window.__ramp(V(56, 14, 132), V(70, 14, 132), 2.2, 12),
+        { heading: Math.atan2(1, 0) });
+      await window.__stickHold([0, 0, 0.9, 0.42], 2600, (c, t, a) => Math.abs(a.r) >= TURN);
+      await window.__fly(window.__on(V(1, 0, 0), 16, 2.4), { heading: null });
       window.__stick(0, 0, 0, 0);
       await new Promise((z) => setTimeout(z, 900));
       window.__flush();
@@ -744,7 +937,26 @@ async function main() {
         if (hz > best) { best = hz; }
       }
       return +best.toFixed(1);`);
-    console.log(`park-fly: city loaded, draw off, pilot running at ${fps} Hz\n`);
+    /*
+     * ACRO OR NOTHING. Angle mode holds the craft to about thirty degrees
+     * of bank, so every trick in the catalogue is out of reach in it and a
+     * rig that has silently fallen into angle is measuring its own harness.
+     * Checked once here and again on the first flight, because the mode is
+     * recomputed every frame from the input source.
+     */
+    const mode = await ev(`
+      window.__placeCraft(24, 12, 130);
+      window.__stick(0, 0, 0, 0.4);
+      await new Promise((r) => setTimeout(r, 400));
+      const m = window.__flightMode();
+      window.__stick(0, 0, 0, 0);
+      return m;`);
+    console.log(`park-fly: city loaded, draw off, pilot running at ${fps} Hz in ${mode}\n`);
+    if (mode !== 'acro') {
+      console.log('  STOP: the plant is in ANGLE mode. Angle cannot loop, roll or invert,');
+      console.log('  so nothing below would mean anything. Fix wantAngleMode first.');
+      throw new Error('the rig is not in acro');
+    }
     if (fps < 25) {
       console.log('  WARNING: under 25 Hz the pilot cannot fly and nothing below means anything.');
     }
@@ -782,6 +994,9 @@ async function main() {
           console.log(`     laps ${laps.length > 260 ? `${laps.slice(0, 260)}...` : laps}`);
           console.log(`     pend ${pend.length > 300 ? `${pend.slice(0, 300)}...` : pend}`);
           if (r.worstErr != null) { console.log(`     path error worst ${r.worstErr} m`); }
+          if (r.invertedFrac != null) {
+            console.log(`     flown belly up for ${r.invertedFrac} of the lap`);
+          }
           if (r.noseOnPost != null) {
             console.log(`     nose within 40 deg of the post ${r.noseOnPost} of the lap`);
             console.log(`     nose dot ${JSON.stringify(r.dots)}`);
@@ -793,7 +1008,9 @@ async function main() {
         if (!ok) { failures += 1; }
         console.log(`     ${ok ? 'PASS' : 'FAIL'}  worst ${lastErr} m, allowed ${m.tune}\n`);
       } else {
-        const hit = got.filter((g) => g.includes(m.want)).length;
+        /* The NAME, exactly. A substring test passed "Flip Stall Rewind"
+         * as a Flip, which is a different trick with a different price. */
+        const hit = got.filter((g) => g.split(' + ').includes(m.want)).length;
         const verdict = hit === got.length ? 'PASS' : (hit > 0 ? 'FLAKY' : 'FAIL');
         if (verdict !== 'PASS') { failures += 1; }
         console.log(`     ${verdict}  ${hit}/${got.length}\n`);

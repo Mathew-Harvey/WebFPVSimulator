@@ -333,7 +333,27 @@ const POLE_MIN_TURNS = 0.55;
  * and the slack it leaves is for a pilot who is still settling the roll
  * as the yaw begins.
  */
-const INVERTED_MIN = 0.8;
+/*
+ * HOW MUCH OF A LAP HAS TO BE FLOWN BELLY UP, and 0.8 is more than the
+ * physics allows.
+ *
+ * A quadcopter is inverted exactly when its thrust axis points below the
+ * horizon, and thrust points down only when the WANTED force does, which
+ * needs a downward acceleration greater than gravity. So an inverted lap is
+ * a fall, it is expensive in altitude, and it cannot begin or end inverted:
+ * the craft has to roll in and roll out, and those ends are upright.
+ *
+ * Flown, in the town, a genuine inverted lap of a post at 1.3 g of fall
+ * came out 0.61 belly up and named nothing. Two whole inverted laps are not
+ * a tuning problem at all: at that rate they cost about eighty metres of
+ * altitude and the training park is thirty four metres tall.
+ *
+ * 0.55 is above every UPRIGHT pole lap measured, which read 0.00, and this
+ * is only ever asked of a pole: the bar families tell over from under with
+ * the lap's own sides instead, which is just as well, because a Powerloop
+ * is inverted across the top of itself and measured as high as 0.51.
+ */
+const INVERTED_MIN = 0.55;
 
 /*
  * HOW SHORT A LAP READS, and this is the number that made Orbit x2 and

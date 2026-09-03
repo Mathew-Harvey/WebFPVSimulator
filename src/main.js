@@ -2964,6 +2964,23 @@ export async function boot({ loading, bootStart, mapId }) {
     if (input.harnessChannels) {
       return ui.settings.flightMode === 'angle';
     }
+    /*
+     * FREESTYLE IS THE TRICK MODE, AND NO TRICK IS POSSIBLE IN ANGLE.
+     *
+     * Angle holds the craft to about thirty degrees of bank, so a pilot in
+     * it cannot fly a Powerloop, a Split-S, a Matty Flip, an Orbit, a roll
+     * or a flip: the entire catalogue is out of reach. Forcing it on the
+     * keyboard therefore does not make freestyle safer for a key pilot, it
+     * makes freestyle pointless for them, and a scoring system nobody on a
+     * keyboard can score in is not a scoring system.
+     *
+     * So in freestyle the SETTING decides, on a keyboard as much as on a
+     * radio. Racing keeps the guard, where holding a line matters more than
+     * inverting and a key is a bang bang input.
+     */
+    if (view && view.mode === 'freestyle') {
+      return ui.settings.flightMode === 'angle';
+    }
     return input.isKeyboardPrimary() || ui.settings.flightMode === 'angle';
   }
 
@@ -6631,6 +6648,9 @@ export async function boot({ loading, bootStart, mapId }) {
     harnessNoDraw = Boolean(on);
     return harnessNoDraw;
   };
+  /* Which control mode the plant is actually in. A rig that thinks it is
+   * flying acro and is not measures nothing: angle cannot loop. */
+  window.__flightMode = () => (angleModeOn ? 'angle' : 'acro');
   window.__contacts = () => ({
     ...passStats,
     interior: obsInterior,

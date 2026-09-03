@@ -233,7 +233,17 @@ function flyLap(opts = {}) {
     const n = noseOf(ph);
     base = norm(sub(base, mul(n, dot(n, base))));
     let out = rot(base, n, bankDeg * DEG);
-    if (addRoll) { out = rot(out, n, dir * TURN * addRoll * u); }
+    /*
+     * THE ADDED ROTATION HAPPENS AT A POINT IN THE LOOP, not smeared across
+     * all of it. The workbook says so in as many words: "at the peak of the
+     * loop, perform a Flip". It also has to, arithmetically. Spread a whole
+     * roll evenly over a whole lap and the loop's own turn is shared with a
+     * body frame that is itself rolling, so the pitch integral averages to
+     * NOTHING and a Power Roll reads as a Mavvy Roll: the lap with a roll
+     * and no flip, which is a different and cheaper trick. Confined to the
+     * middle of the lap it comes out as the workbook prices it.
+     */
+    if (addRoll) { out = rot(out, n, dir * TURN * addRoll * window(u)); }
     if (addYaw) {
       /* A yaw spin turns the whole frame about the craft's own up axis,
        * which moves the NOSE, so it is applied to both. */
@@ -256,6 +266,9 @@ function flyLap(opts = {}) {
    * thing, so the run in and the run out carry an outward component and the
    * winding stops where the manoeuvre does.
    */
+  /* Zero until the loop is a third in, one by two thirds through: the
+   * "at the peak of the loop" the workbook keeps describing. */
+  const window = (u) => Math.max(0, Math.min(1, (u - 0.32) / 0.36));
   const outAt = (ph) => norm(sub(at(ph), c));
   const inDir = norm(add(tangentAt(ph0), mul(outAt(ph0), -1.1)));
   for (let i = 0; i < 900; i += 1) {
@@ -268,7 +281,7 @@ function flyLap(opts = {}) {
     let n = noseOf(ph);
     let up = upOf(ph, u);
     if (addYaw) {
-      const spin = dir * TURN * addYaw * u;
+      const spin = dir * TURN * addYaw * window(u);
       n = rot(n, up, spin);
       up = norm(sub(up, mul(n, dot(n, up))));
     }
@@ -480,6 +493,22 @@ async function main() {
      * answer is silence rather than some other trick's name.
      */
     ['half lap from under', () => sweepLap('(nothing)', { turns: 0.5, from: 'under' }, {})],
+    /*
+     * THE CONFUSABLE NEIGHBOURS, swept both ways. A Powerloop must never be
+     * named one of these and each of these must be named itself, because
+     * they sit half a turn apart on one axis and the dearer one used to win
+     * a tie on price. Power Roll is 450 and Inverted 360 Powerloop is 650
+     * against a Powerloop's 200, so this is where an over-claim would show.
+     */
+    ['Power Roll', () => sweepLap('Power Roll', {
+      turns: 1, from: 'under', addRoll: 1,
+    }, { drifts: [0, 0.08] })],
+    ['Inverted 360 Powerloop', () => sweepLap('Inverted 360 Powerloop', {
+      turns: 1, from: 'under', addYaw: 1,
+    }, { drifts: [0, 0.08] })],
+    ['Mavvy Roll', () => sweepLap('Mavvy Roll', {
+      turns: 1, from: 'under', noseAlong: true,
+    }, { drifts: [0, 0.08] })],
     ['Orbit x2', () => sweepLap('Orbit x2', {
       turns: 2, pole: true, track: true, radius: 6, secs: 3,
     }, { banks: [0], drifts: [0, 0.08] })],

@@ -260,12 +260,18 @@ const PATH_REVERSE_TURNS = 0.08;
 /* A lap cannot run forever: past this it is drift, not a trick. */
 const PATH_MAX_MS = 20000;
 /*
- * How squarely the lap's axis has to lie along ONE body axis before the
- * loop's turn can be attributed to it. 0.72 is a little inside 45 degrees,
- * which is the angle at which two body axes are equally entitled to it: past
- * that there is no answer to give and the raw reading is the honest one.
+ * Whether the lap's axis lies clearly enough along ONE body axis for the
+ * loop's own turn to be attributed to it.
+ *
+ * DEBANK_MIN_OWN is the floor below which nothing owns it at all, which is a
+ * craft tumbling rather than looping. DEBANK_MARGIN is how far ahead the
+ * winner has to be of the other candidate: at a margin of one they would be
+ * equally entitled and there is no answer to give, so 1.5 asks for a clear
+ * one. The comparison is what matters here and an absolute threshold is not:
+ * see debankLap for the 450 point trick an absolute one threw away.
  */
-const DEBANK_MIN_ALIGN = 0.72;
+const DEBANK_MIN_OWN = 0.35;
+const DEBANK_MARGIN = 1.5;
 
 /*
  * The floors on a lap, and both come from the straight line theorem written
@@ -2605,10 +2611,24 @@ export class TrickDetector {
       owned = Math.abs(align[best]);
     }
     /*
-     * Too square to the lap's axis to say which way round it went, so
-     * nothing can be de-banked and the raw reading is the honest answer.
+     * DECLINE ONLY WHEN IT IS GENUINELY AMBIGUOUS, which is when the two
+     * candidates are close, not when the winner is merely small.
+     *
+     * An absolute floor got this wrong for any lap carrying a roll. A Power
+     * Roll is a Powerloop with a roll at the peak of it, and while the craft
+     * is rolling the rail's direction sweeps between the wing and the up
+     * axis, so the MEAN perpendicular alignment across the lap comes out
+     * about 0.64 even though the rail is plainly nowhere near the nose. The
+     * floor of 0.72 refused it, the raw reading stood, the pitch read 0.56
+     * against the 1 the pattern wants, and a 450 point Power Roll came out
+     * as a bare Roll worth 50, on every sample of the sweep.
+     *
+     * The question was never "how aligned", it is "which of the two", so it
+     * is answered by comparing them. A small absolute floor stays for the
+     * case where the craft is tumbling and NEITHER owns it.
      */
-    if (owned < DEBANK_MIN_ALIGN) {
+    const other = best === AXIS_ROLL ? perp : Math.abs(align[AXIS_ROLL]);
+    if (owned < DEBANK_MIN_OWN || owned < other * DEBANK_MARGIN) {
       return raw;
     }
     const out = [

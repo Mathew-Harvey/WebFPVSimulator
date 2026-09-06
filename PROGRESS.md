@@ -29821,3 +29821,26 @@ Here: `lint:shell`, `lint:boot`, `lint:nouns`, `lint:frame`, `lint:quality`,
 `node src/trackbuilder/selftest.js` 495 of 495. `npm run verify` was NOT run:
 nothing in this turn touches the physics, the plant, the module ABI or the
 build.
+
+## npm run verify, before main
+
+Run this turn because the branch was about to be pushed to `main` and the
+owner asked for no bugs, not because anything here touched the physics.
+
+16 of 16. It took two runs and the first one is worth recording: check 1
+failed with `emcc not found`, which is this container and not the code. The
+emsdk from earlier in the session was still in the scratchpad, so the second
+run had a compiler and check 1 came back `build exit 0, vendor diff empty,
+abi 1, init OK`. The rebuilt module is byte identical to the committed one:
+`git status` is clean after it.
+
+The three that matter for a branch that added a second airframe to the plant
+are 2, 3 and 4. `de0401cd4266` twice in process, the same hash in Node and in
+headless Chrome, and one distinct hash across 30, 60, 144 and 240 Hz. A
+runtime selectable plant cost nothing.
+
+The five inch's own numbers are where they were: hover 0.2793, punch out
+80.0 m, terminal 31.0 m/s, motor step 26 ms, rate tracking 0.25 percent off,
+yaw coupling -0.10 deg, sag 11.14 percent, diff passthrough 0.52 percent off.
+Check 15 still measures a 1.7526 m gate at gate scale 1.15 on the field,
+which is gateScaleFor doing what it says.

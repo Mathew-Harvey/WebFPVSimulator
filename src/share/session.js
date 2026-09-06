@@ -33,7 +33,83 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+/*
+ * THE ACTIVE CLASS, AND IT IS ONE ANSWER IN ONE PLACE.
+ *
+ * A pilot flies a five inch on a sixty metre field or a 65 mm whoop in a
+ * RaceGOW room, and that choice governs everything downstream of it: which
+ * track the shell loads behind the title, which canvas the builder opens,
+ * which tracks the board offers. The alternative, threading a class argument
+ * through the nine modules that read a seat, was tried on paper and it is
+ * nine places for the answer to be different.
+ *
+ * The seated AIRCRAFT is the copy of record, because that is the thing a
+ * pilot chooses; the class is read off it. It lives in the shell's settings
+ * because the shell owns settings, and this module reads that key rather
+ * than importing the shell, which would be a cycle and would pull the whole
+ * user interface into the builder.
+ *
+ * This file still imports nothing. See the note under readJson.
+ */
+const SETTINGS_KEY = 'webfpv.settings.v3';
+const WHOOP_AIRFRAME_ID = 'whoop65';
+
+export function activeTrackClass() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) {
+      return 'full';
+    }
+    const s = JSON.parse(raw);
+    return s && s.airframe === WHOOP_AIRFRAME_ID ? 'micro' : 'full';
+  } catch (e) {
+    /* Private mode, or a blob that is not JSON. The field is what this
+     * simulator has always been. */
+    return 'full';
+  }
+}
+
+/*
+ * Move the whole experience to a class, by seating the aircraft that flies
+ * it. Returns true when the setting was written.
+ *
+ * It writes the AIRFRAME and marks the question answered, and nothing else.
+ * The tune, the pack, the rates and the camera belong to the shell, which
+ * reseats any of them still belonging to the other aircraft the next time it
+ * loads its settings: see reseatIfForeign in src/ui/ui.js. Doing it here
+ * would mean this module knowing the airframe table, and the builder pulling
+ * it in to draw a toggle.
+ */
+export function setActiveTrackClass(cls) {
+  const want = cls === 'micro' ? WHOOP_AIRFRAME_ID : '5inch';
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const s = raw ? JSON.parse(raw) : {};
+    const next = (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
+    next.airframe = want;
+    next.airframeAsked = true;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/*
+ * The share seat, one per class.
+ *
+ * A pilot holding a published room and a published field track is holding
+ * two different things, and the shell reads whichever the seated aircraft
+ * flies. The five inch keeps the original key, so a pilot who has been here
+ * before still holds what they were holding.
+ */
 const IMPORT_KEY = 'webfpv.share.import.v1';
+const IMPORT_KEY_MICRO = 'webfpv.share.import.micro.v1';
+
+function importKey(cls) {
+  return (cls ?? activeTrackClass()) === 'micro' ? IMPORT_KEY_MICRO : IMPORT_KEY;
+}
+
 const EDIT_KEY = 'webfpv.share.editkeys.v1';
 const BIND_KEY = 'webfpv.share.bind.v1';
 const PENDING_KEY = 'webfpv.share.pending.v1';
@@ -64,8 +140,11 @@ export function writeJson(key, value) {
   }
 }
 
-export function readShareImport() {
-  const raw = readJson(IMPORT_KEY, null);
+/* `cls` is for the two callers that need to look at the other class's seat,
+ * chiefly the builder deciding what to open. Everything else wants the seat
+ * for the aircraft that is actually seated, which is the default. */
+export function readShareImport(cls) {
+  const raw = readJson(importKey(cls), null);
   if (!raw || typeof raw !== 'object' || !raw.document || !raw.id) {
     return null;
   }
@@ -92,7 +171,11 @@ export function writeShareImport(payload) {
   if (!payload || !payload.document || !payload.id) {
     return false;
   }
-  return writeJson(IMPORT_KEY, {
+  /* The seat the DOCUMENT belongs in, not the one currently seated: a pilot
+   * on a five inch who opens a room from the board is holding a room, and it
+   * has to be there when they change aircraft. */
+  const cls = payload.document.trackClass === 'micro' ? 'micro' : 'full';
+  return writeJson(importKey(cls), {
     id: String(payload.id),
     name: String(payload.name || payload.document.name || 'Untitled track'),
     author: String(payload.author || ''),
@@ -102,9 +185,9 @@ export function writeShareImport(payload) {
   });
 }
 
-export function clearShareImport() {
+export function clearShareImport(cls) {
   try {
-    localStorage.removeItem(IMPORT_KEY);
+    localStorage.removeItem(importKey(cls));
   } catch (e) {
     /* nothing to do about it */
   }

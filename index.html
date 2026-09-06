@@ -782,6 +782,18 @@
         overflow-y: auto;
         overscroll-behavior: contain;
       }
+      /* One line under a screen's title, saying what the screen is showing
+         when the screen is showing a filtered view of something. Slate,
+         because it recedes: it is context, not an instruction. */
+      .screen-lede {
+        margin: -6px 0 14px;
+        color: var(--slate);
+        font-size: 13.5px;
+        line-height: 1.5;
+        max-width: 34em;
+        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+      }
+      .screen-lede:empty { display: none; }
       /*
        * The pause menu is a modal, not a page, and it had neither a
        * scroller of its own above 540 px of height nor a height cap. At

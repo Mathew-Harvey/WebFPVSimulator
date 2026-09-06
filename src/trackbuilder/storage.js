@@ -37,12 +37,33 @@ import { countElementsByType, formatElementCounts } from './elements.js';
 import { normalize, serialize, toPlain, touch } from './model.js';
 
 const LIBRARY_KEY = 'webfpv.trackbuilder.library.v1';
+
+/*
+ * THE CANVAS, ONE PER CLASS.
+ *
+ * The autosave is the track the builder has open and the track the shell
+ * flies, and a pilot who builds a RaceGOW room and then goes back to a five
+ * inch is not holding the room any more. Two seats, so switching aircraft
+ * switches which track the whole product is holding and switching back gives
+ * it straight back.
+ *
+ * The five inch keeps the original key, so every pilot who has been here
+ * before opens the builder on the track they left in it. The library is NOT
+ * split: a saved track carries its own class and a Load list showing both is
+ * a list of everything this browser has ever built, which is what a library
+ * is for.
+ */
 const AUTOSAVE_KEY = 'webfpv.trackbuilder.autosave.v1';
+const AUTOSAVE_KEY_MICRO = 'webfpv.trackbuilder.autosave.micro.v1';
+
+function autosaveKey(cls) {
+  return (cls ?? activeTrackClass()) === 'micro' ? AUTOSAVE_KEY_MICRO : AUTOSAVE_KEY;
+}
 
 /* readJson and writeJson come from src/share/session.js, which had the same
  * two functions byte for byte. Private mode and the quota are handled there:
  * a failed write returns false and the caller tells the user. */
-import { readJson, writeJson } from '../share/session.js';
+import { activeTrackClass, readJson, writeJson } from '../share/session.js';
 
 /* ------------------------------------------------------------------ */
 /* The library                                                         */
@@ -103,21 +124,24 @@ export function trackExists(id) {
 /* Autosave                                                            */
 /* ------------------------------------------------------------------ */
 
+/* Into the seat the DOCUMENT belongs in, read off the document, so an
+ * autosave cannot land in the other class's chair. */
 export function writeAutosave(doc) {
-  return writeJson(AUTOSAVE_KEY, toPlain(doc));
+  const cls = doc && doc.trackClass === 'micro' ? 'micro' : 'full';
+  return writeJson(autosaveKey(cls), toPlain(doc));
 }
 
-export function readAutosave() {
-  const raw = readJson(AUTOSAVE_KEY, null);
+export function readAutosave(cls) {
+  const raw = readJson(autosaveKey(cls), null);
   if (!raw) {
     return null;
   }
   return normalize(raw);
 }
 
-export function clearAutosave() {
+export function clearAutosave(cls) {
   try {
-    localStorage.removeItem(AUTOSAVE_KEY);
+    localStorage.removeItem(autosaveKey(cls));
   } catch (e) {
     /* nothing to do about it */
   }

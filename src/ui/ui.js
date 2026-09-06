@@ -685,6 +685,23 @@ export function loadSettings() {
   if (!MAPS.some((m) => m.id === s.freestyleMap && m.mode === 'freestyle')) {
     s.freestyleMap = '';
   }
+  /*
+   * ANYTHING STILL BELONGING TO THE OTHER AIRCRAFT.
+   *
+   * The seated airframe can be moved from outside this file: the track
+   * builder's class toggle writes it, and so does a link. Those writers know
+   * which aircraft is wanted and deliberately do not know its tune, its pack,
+   * its rates or its camera, because knowing would mean the builder pulling
+   * the whole shell in to draw a two button toggle.
+   *
+   * So the reconciliation is here, on the way in, and it is the SAME rule
+   * seatAirframe applies: a setting still holding the other aircraft's stock
+   * value is moved, and a setting the pilot has changed is left alone. A
+   * whoop on 85 degrees at 30 degrees of tilt with a 6S tune was the state
+   * the first version of the shots harness produced, and it is a state a
+   * pilot could reach too.
+   */
+  reseatIfForeign(s);
   /* A profile whose pitch differs from its roll has to show three axes,
    * whatever the stored menu shape says, or the rows would be editing a
    * pitch the pilot cannot see. */
@@ -736,6 +753,40 @@ function saveSettings(s) {
  * pilot who has set their own rates keeps them across a change and one who
  * has not gets the new machine's factory numbers instead of the old one's.
  */
+/*
+ * Move any setting that still belongs to the OTHER aircraft, and leave every
+ * setting the pilot has actually chosen.
+ *
+ * The test for "not chosen" is the same one seatAirframe uses for rates:
+ * does it still hold the other machine's stock value. A pilot who set 100
+ * degrees of lens on a five inch keeps it on a whoop, because 100 is neither
+ * aircraft's default and is therefore theirs. A pilot who never touched it
+ * gets the whoop's 115.
+ */
+function reseatIfForeign(s) {
+  const a = airframeById(s.airframe);
+  const other = AIRFRAMES.find((x) => x.id !== a.id);
+  if (!tuneChoices(a.id).includes(s.tune)) {
+    s.tune = a.defaultTune;
+  }
+  if (!a.packVoltages.includes(s.packVoltage)) {
+    s.packVoltage = a.packVoltages[0];
+  }
+  if (!other) {
+    return s;
+  }
+  if (ratesMatch(s.rates, other.rates)) {
+    s.rates = normaliseRates({ ...s.rates, ...structuredCloneRates(a.rates) });
+  }
+  if (s.cameraFov === other.cameraFov) {
+    s.cameraFov = a.cameraFov;
+  }
+  if (s.cameraAngle === clampCameraAngle(other.cameraAngle)) {
+    s.cameraAngle = clampCameraAngle(a.cameraAngle);
+  }
+  return s;
+}
+
 /* Exported for scripts/shots.js, which has to seed the answer a pilot gives
  * on the choice screen. A seed that wrote only the airframe would leave the
  * rates and the camera belonging to the other aircraft, and every capture
@@ -2464,6 +2515,20 @@ export class Ui {
      */
     const courses = el('div', 'screen screen-page screen-maps screen-courses');
     courses.append(el('h2', null, 'Tracks'));
+    /*
+     * WHICH AIRCRAFT THIS LIST IS FOR, said out loud.
+     *
+     * The list is filtered to the seated machine, because a RaceGOW room and
+     * a MultiGP field are not alternatives to each other: one of them puts a
+     * five inch in a living room. But a filtered list with nothing saying it
+     * is filtered reads as tracks having disappeared, and the fix somebody
+     * reaches for then is republishing them.
+     *
+     * The line names the aircraft and says where the switch is, which is the
+     * Quad room, one row from here on the title.
+     */
+    this.coursesLede = el('p', 'screen-lede', '');
+    courses.append(this.coursesLede);
     /*
      * NO WORLD STRIP HERE, and the label is the reason.
      *
@@ -4251,6 +4316,11 @@ export class Ui {
      * New button, which is where it belongs.
      */
     if (this.screen === 'courses') {
+      if (this.coursesLede) {
+        const af = airframeById(this.settings.airframe);
+        this.coursesLede.textContent = `Tracks for the ${af.name.toLowerCase()}.`
+          + ' Change the aircraft under Quad to see the other kind.';
+      }
       const listing = liveListing('custom');
       const loaded = hasLoadedTrack();
       const seat = loaded ? activeCourseSummary() : null;
@@ -6782,7 +6852,22 @@ export class Ui {
             return null;
           }
         })();
-        const rest = list.filter((t) => t.id !== seatId);
+        /*
+         * ONLY THE TRACKS THIS AIRCRAFT FLIES.
+         *
+         * A RaceGOW room is 28 inch gates in a five by six metre room and a
+         * MultiGP track is 5 ft gates over sixty metres, and the seated
+         * aircraft decides which of those a pilot is here for. Offering both
+         * is offering a five inch pilot a list where half the entries put
+         * them in a living room the moment they press Fly.
+         *
+         * The board says the class on every listing. One published before
+         * there were two is a field track, which is what it is, so the
+         * default here has to be 'full' rather than "show it anyway".
+         */
+        const want = airframeById(this.settings.airframe).trackClass;
+        const rest = list.filter((t) => t.id !== seatId
+          && (t.trackClass === 'micro' ? 'micro' : 'full') === want);
         /*
          * EVERY TRACK, not five.
          *
@@ -6801,8 +6886,14 @@ export class Ui {
         if (this.boardCourses.length) {
           this.boardNote.textContent = '';
         } else if (list.length) {
-          /* The only listing is the track already on a card above. */
-          this.boardNote.textContent = '';
+          /* Say WHICH list came back empty. "Nothing here" in front of a
+           * pilot who can see the board has tracks on it reads as broken;
+           * "none for this aircraft" is a fact they can act on. */
+          const other = list.some((t) => (t.trackClass === 'micro' ? 'micro' : 'full') !== want);
+          const name = airframeById(this.settings.airframe).name.toLowerCase();
+          this.boardNote.textContent = other
+            ? `No ${name} tracks on the board yet. Build one and publish it, or change aircraft.`
+            : '';
         } else {
           this.boardNote.textContent = 'No published tracks on the board yet. Build one and publish it.';
         }
@@ -9452,7 +9543,7 @@ export class Ui {
      * share.board is the board origin when a published course is loaded,
      * otherwise the default board. */
     if (action === 'leaderboard') {
-      openNamedWindow(boardPageUrl(this.share && this.share.board), BOARD_WINDOW);
+      openNamedWindow(boardPageUrl(this.share && this.share.board, this.settings.airframe), BOARD_WINDOW);
       return;
     }
     if (action === 'reportbug') {
@@ -9573,7 +9664,7 @@ export class Ui {
      * the track it is showing is the subject. */
     if (action === 'card-board' && this.screen === 'standings') {
       if (this.standingsFor) {
-        openNamedWindow(boardPageUrl(this.standingsFor.board), BOARD_WINDOW);
+        openNamedWindow(boardPageUrl(this.standingsFor.board, this.settings.airframe), BOARD_WINDOW);
       }
       return;
     }
@@ -9590,7 +9681,7 @@ export class Ui {
         return;
       }
       if (action === 'card-board') {
-        openNamedWindow(boardPageUrl(card.course.track.board), BOARD_WINDOW);
+        openNamedWindow(boardPageUrl(card.course.track.board, this.settings.airframe), BOARD_WINDOW);
         return;
       }
       this.openInBuilder(card);

@@ -29844,3 +29844,128 @@ The five inch's own numbers are where they were: hover 0.2793, punch out
 yaw coupling -0.10 deg, sag 11.14 percent, diff passthrough 0.52 percent off.
 Check 15 still measures a 1.7526 m gate at gate scale 1.15 on the field,
 which is gateScaleFor doing what it says.
+
+## The class governs the whole product
+
+Three asks, and the second one is the shape of all three: the aircraft is not
+a setting inside the experience, it IS the experience, and everything has to
+follow it.
+
+### One answer, in one place
+
+The alternative was threading a class argument through the nine modules that
+read a seat, and it was tried on paper: nine places for the answer to be
+different. So the SEATED AIRCRAFT is the copy of record, in the shell's
+settings where settings live, and `activeTrackClass()` in
+`src/share/session.js` reads the class off it. That module still imports
+nothing, which is what lets the builder use it without pulling the shell in.
+
+`setActiveTrackClass(cls)` writes the airframe and marks the question
+answered, and deliberately nothing else. The tune, the pack, the rates and the
+camera belong to the shell, and `reseatIfForeign` in `loadSettings` moves any
+of them still holding the OTHER aircraft's stock value the next time the shell
+loads. That is the same rule `seatAirframe` already applied to rates, extended
+to the camera, and it also fixes the half state the first version of the shots
+harness produced: a whoop on an 85 degree lens at 30 degrees of tilt with a 6S
+tune.
+
+### Two canvases and two share seats
+
+The five inch keeps the original keys, so a pilot who has been here before
+opens on the track they left. The micro class gets
+`webfpv.trackbuilder.autosave.micro.v1` and `webfpv.share.import.micro.v1`.
+
+Writes go into the seat the DOCUMENT belongs in, read off the document, so an
+autosave cannot land in the other class's chair and a room opened from the
+board while seated on a five inch is there when the pilot changes aircraft.
+Reads with no argument take the ACTIVE class, which is what makes every
+existing caller follow the aircraft with no change: `workingDocument`,
+`seatedCourseKey`, `inspectCourse`, the orbit cache, all of them.
+
+The library is NOT split. A saved track carries its own class and a Load list
+showing both is a list of everything this browser has built, which is what a
+library is for.
+
+### The builder toggle
+
+Two segments, first control on the bar, louder than everything beside it,
+because it is the only one that changes what all the others do. It was a read
+only line in a side panel and an author who opened the wrong builder found out
+several gates in.
+
+Switching puts the current canvas away, seats the aircraft, and opens whatever
+was left in the other one. Nothing is converted, and that is deliberate: a 5 ft
+gate scaled to 28 inches is a MultiGP gate somebody shrank, not a RaceGOW
+gate, and a room's layout stretched over sixty metres is a track nobody
+designed. Verified in the browser: a room with six elements, to the five inch
+builder, name a draft there, back to the whoop and the room is intact, back to
+the five inch and the draft is intact.
+
+One bug on the way. `readAutosave` returns `{ doc, repairs }`, not a document.
+Every other caller in this project reads `.doc` off it and the first version of
+`setTrackClass` did not, which threw inside `loadDocument` on the first press.
+
+The bar needed the room. The file zone stopped shrinking, because it is all
+buttons whose labels cannot be cut and the middle zone beside it scrolls by
+design; the name field became the thing that gives; the listing chip moved
+next to Publish, which is the button it describes; and the wrap breakpoint went
+from 1180 to 1330.
+
+### The world behind the title
+
+Two faults, both only visible in a picture.
+
+`attractOrbit` floors its orbit radius at 16 m and its eye at 3.4 m, which are
+a sixty metre field's numbers. On a RaceGOW track that put the title screen's
+camera four metres outside a five by six metre room and a metre above its
+ceiling, looking at the outside of a closed box. It has a room branch now:
+2.1 m of radius, which still leaves 0.4 m of floor behind the lens on the short
+axis, an eye under 1.5 m so the orbit passes under the 2.4 m ceiling and over
+the 1.88 m top of a triple stack, and an aim around half a metre, between a
+ground gate's centre and rule 5's stack gate.
+
+And a hundred and ten trees were standing around the living room. The treeline
+loop was gated on `indoor` in W5; the SECOND scatter right under it, the bush
+behind the bush from 150 to 600 m, was not. Unlit at that range they came out
+as faint outlines through the room's own dim light, which is why they read as
+a rendering artefact rather than as trees.
+
+### Only the tracks this aircraft flies
+
+The board list in the Tracks room is filtered to the seated class, and the
+screen says so in a line under its title, because a filtered list with nothing
+saying it is filtered reads as tracks having disappeared and the fix somebody
+reaches for then is republishing them. The empty case names the aircraft too.
+
+### The board's aircraft switch
+
+Promoted from a select in the toolbar to a two segment switch under the board
+switch, same shape and one step down in weight, and there is no "anything": a
+track here is one of two things and offering a whoop pilot a five inch track
+is offering them one that changes their aircraft the moment they press Fly.
+
+It is remembered, it is in `?craft=`, and every board link the simulator and
+the builder build now carries the pilot's own aircraft. Clear the filters does
+NOT clear it, because it is the choice the board is being read under rather
+than one of the filters narrowing it, and the empty state says which board you
+are on.
+
+### What was run
+
+`npm run verify` 16 of 16 with the emsdk on the path, run because this turn
+moved a lot of the shell: check 13 is console clean and check 16 is map
+isolation, and both are worth having after a change that rebuilds the world on
+an aircraft change. Determinism unchanged, the module byte identical.
+
+Also `check:clip`, `check:path`, `check:orbit`, `check:wall` 45 of 45,
+`lint:shell`, `lint:boot`, `lint:nouns`, `lint:presets`, `lint:fc`,
+`lint:frame`, `lint:quality`, `lint:responsive`, `micro:check`,
+`ghost:selftest` and the builder self test 495 of 495. On the board,
+`npm test`, `lint:licence` 17 of 17 and `lint:nouns`, plus a live server with
+three tracks published across both classes, driven in headless Chromium: the
+switch counts 2 and 1, each side shows only its own, and `?craft=whoop65`
+lands on the whoop board.
+
+Flown end to end in the shell: seated on a whoop the world is Living room 1 at
+115 degrees; switching to the five inch rebuilds the field, says Choose one,
+and drops to 85; switching back brings the room and the lens straight back.

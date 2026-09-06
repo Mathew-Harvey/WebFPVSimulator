@@ -287,7 +287,17 @@
         box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
       }
       .tb-zone { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
-      .tb-zone-file { flex: 0 1 auto; }
+      /* The file zone shrinks, and what shrinks INSIDE it is the name field:
+         everything else in it is a button whose label cannot be cut. */
+      /* The file zone does NOT shrink. It is all buttons whose labels cannot
+         be cut, and the middle zone beside it scrolls by design, so the
+         middle zone is where the bar should give. Left shrinkable, the two
+         zones compressed proportionally and Load went under the file zone's
+         own edge, which has no mask and no scroll. */
+      .tb-zone-file { flex: 0 0 auto; overflow: visible; }
+      .tb-zone-file .tb-bargroup,
+      .tb-zone-file .tb-more,
+      .tb-zone-file .tb-title { flex: 0 0 auto; }
       /*
        * The middle zone scrolls rather than clipping. `overflow: hidden` on a
        * row that is allowed to run out of space cuts the last button through
@@ -372,6 +382,41 @@
        * the six things you can press. It is sunk now, and it lights up when
        * it has the caret.
        */
+      /* ---------------------------------------------------------------
+         THE CLASS TOGGLE. Two segments, the whole bar's first control, and
+         deliberately louder than every button beside it: it is the only one
+         that changes what all the others do. Sakura fill on the chosen half,
+         which is this project's chrome and is what a chosen thing looks like
+         everywhere else in it.
+         --------------------------------------------------------------- */
+      .tb-class {
+        display: inline-flex;
+        border: 1px solid rgba(232, 168, 184, 0.45);
+        border-radius: 6px;
+        overflow: hidden;
+        flex: 0 0 auto;
+      }
+      .tb-class-btn {
+        appearance: none;
+        border: 0;
+        margin: 0;
+        padding: 7px 14px 8px;
+        background: transparent;
+        color: var(--slate);
+        font: 700 12px/1 var(--ui);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: color 120ms ease, background-color 120ms ease;
+      }
+      .tb-class-btn + .tb-class-btn { border-left: 1px solid rgba(232, 168, 184, 0.28); }
+      .tb-class-btn:hover { color: var(--cream); background: rgba(232, 168, 184, 0.12); }
+      .tb-class-btn.on {
+        color: var(--deep);
+        background: var(--sakura);
+      }
+      .tb-class-btn:focus-visible { outline: 2px solid var(--sakura); outline-offset: -2px; }
+
       .tb-name {
         background: var(--sunk);
         border: 1px solid var(--edge);
@@ -379,7 +424,13 @@
         color: var(--cream);
         font: inherit;
         padding: var(--s2) var(--s3);
-        min-width: 180px;
+        /* SHRINKABLE, and 180 was a floor rather than a size. An input is
+           the one control on this bar that still works at half its width,
+           and it is the one that should give up space when the bar is
+           tight: holding it at 180 made the file zone push Load out of its
+           own scroll mask instead. A track name is short. */
+        flex: 0 1 180px;
+        min-width: 96px;
         transition: border-color var(--quick), background var(--quick);
       }
       .tb-name:hover { border-color: rgba(243, 234, 212, 0.3); }
@@ -1144,7 +1195,13 @@
        * cannot share a row, so they take two, and the drawing keeps the
        * space instead of the chrome.
        */
-      @media (max-width: 1180px) {
+      /* 1180 until the class toggle joined the bar, which is 150 px the file
+         zone did not want before. The middle zone scrolls rather than
+         clipping, so nothing was unreachable at 1500, but Redo and Sponsor
+         logos were sliding under the mask on a perfectly ordinary window.
+         Giving that zone its own row sooner is the mechanism this bar
+         already had for exactly this. */
+      @media (max-width: 1330px) {
         #tb-topbar { flex-wrap: wrap; gap: var(--s3) var(--s4); }
         .tb-zone-edit { flex: 1 0 100%; order: 3; justify-content: flex-start; }
         .tb-zone-out { margin-left: auto; }

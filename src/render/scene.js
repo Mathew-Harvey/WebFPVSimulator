@@ -3646,14 +3646,34 @@ function attractPath(curve, tops, height) {
  */
 function attractOrbit(course, gates, tops, heightFn) {
   const spawn = course.spawn || { x: 0, z: 0 };
+  /*
+   * INDOORS THE CAMERA HAS TO BE IN THE ROOM.
+   *
+   * The floors below are a sixty metre field's: sixteen metres of orbit
+   * radius and three and a half metres of eye. On a RaceGOW track that put
+   * the title screen's camera four metres outside a five by six metre room
+   * and a metre above its ceiling, looking at the outside of a closed box.
+   * The whole point of the class is that a whoop pilot's world is the inside
+   * of that room.
+   *
+   * The three numbers are the room's, from src/trackbuilder/racegow.js. The
+   * radius has to keep the camera off the walls: the track sits about the
+   * middle of a 5 by 6 m floor, so 2.1 m from its centre still leaves 0.4 m
+   * of floor behind the lens on the short axis. The eye stays under 1.5 m,
+   * above every ground gate at 0.356 and below both the 2.4 m ceiling and
+   * the 1.88 m top of a triple stack, so the orbit passes under the joists
+   * and over the track. The aim is around half a metre, between a ground
+   * gate's centre and rule 5's stack gate at 1.067, keeping both in frame.
+   */
+  const room = course && course.trackClass === 'micro';
   if (!course.structures.length && !gates.length) {
     return {
       x: spawn.x,
       y: heightFn(spawn.x, spawn.z),
       z: spawn.z,
-      radius: 9,
-      eye: 2.4,
-      aim: 0.85,
+      radius: room ? 1.6 : 9,
+      eye: room ? 1.05 : 2.4,
+      aim: room ? 0.5 : 0.85,
       path: null,
     };
   }
@@ -3684,13 +3704,19 @@ function attractOrbit(course, gates, tops, heightFn) {
     top = Math.max(top, t.top);
   }
   const span = Math.hypot((maxX - minX) * 0.5, (maxZ - minZ) * 0.5);
-  const rise = Math.max(1.6, top - ground);
+  const rise = Math.max(room ? 0.5 : 1.6, top - ground);
   /* Radius floors at 16 m so a single stack is not a tight fidget around
    * its own frame, and caps at 80 m so a pitch-filling layout still reads
    * as a course rather than as a smudge on the horizon. */
-  const radius = Math.min(80, Math.max(16, span * 1.4 + 4, rise * 1.1 + 8));
-  const eye = Math.max(3.4, rise * 0.38 + span * 0.12 + 2.0);
-  const aim = Math.max(0.7, Math.min(rise * 0.35, eye - 1.4));
+  const radius = room
+    ? Math.min(2.1, Math.max(1.55, span * 1.25 + 0.5))
+    : Math.min(80, Math.max(16, span * 1.4 + 4, rise * 1.1 + 8));
+  const eye = room
+    ? Math.min(1.5, Math.max(0.95, rise * 0.5 + 0.6))
+    : Math.max(3.4, rise * 0.38 + span * 0.12 + 2.0);
+  const aim = room
+    ? Math.min(eye - 0.2, Math.max(0.35, rise * 0.4))
+    : Math.max(0.7, Math.min(rise * 0.35, eye - 1.4));
   return {
     x: cx,
     y: ground,
@@ -4841,7 +4867,11 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * layers of it going back. These are what the eye reads as depth once the
    * front row stops.
    */
-  for (let i = 0; i < 110; i += 1) {
+  /* Indoors this one has to be skipped too, and missing it is why a living
+   * room had a hundred and ten trees standing round it at 150 to 600 m,
+   * unlit and faint, reading as outlines through the room's own dim light.
+   * The front row above was gated and this one was not. */
+  for (let i = 0; indoor ? false : i < 110; i += 1) {
     const a = rng() * Math.PI * 2;
     const rad = 150 + rng() * 450;
     const x = Math.cos(a) * rad;

@@ -184,11 +184,20 @@ function usableBoardOrigin(origin) {
  * this page. `boardPageUrl(null)` also does not use a default argument,
  * because only undefined does, and Choose new map passes share.board,
  * which is null when nothing from the board is loaded. */
-export function boardPageUrl(origin) {
+/*
+ * `craft` carries the pilot's aircraft over to the board, which is a primary
+ * choice there rather than a filter: a whoop pilot pressing this link should
+ * land on the whoop board, not on a list of tracks that would change their
+ * aircraft the moment they pressed Fly. The board takes either the class or
+ * the airframe id, so whichever the caller holds is fine. Omitted entirely
+ * when nothing is passed, so a link built without one leaves the board on
+ * whatever the visitor chose last.
+ */
+export function boardPageUrl(origin, craft) {
   const base = usableBoardOrigin(origin)
     || usableBoardOrigin(boardOrigin())
     || defaultBoardOrigin();
-  return `${base}/`;
+  return craft ? `${base}/?craft=${encodeURIComponent(craft)}` : `${base}/`;
 }
 
 async function readJson(res) {
@@ -292,6 +301,12 @@ export async function fetchTrackList(origin = boardOrigin()) {
      * usableTags, because the Race room prints these and a tag from a newer
      * board should show under its own id rather than disappear. */
     tags: Array.isArray(t.tags) ? t.tags.map((x) => String(x)) : [],
+    /* Which aircraft flies it: 'micro' is a RaceGOW room and everything else
+     * is the sixty metre field, which is what every track published before
+     * there were two classes is. The board derives it from the stored
+     * document, so an older board that does not send it leaves every listing
+     * reading as the field, correctly. */
+    trackClass: t.trackClass === 'micro' ? 'micro' : 'full',
     board,
   })).filter((t) => t.id);
 }

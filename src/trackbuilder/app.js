@@ -62,7 +62,8 @@ import {
 import { BOARD_WINDOW, SIM_WINDOW, claimWindowName } from '../share/windows.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import {
-  clearShareImport, readBuilderIntent, readEditKey, readShareImport, takeBuilderIntent,
+  clearShareImport, readBuilderIntent, readEditKey, readShareImport,
+  setActiveTrackClass, takeBuilderIntent,
 } from '../share/session.js';
 import {
   bindOwnedCanvas,
@@ -1066,7 +1067,9 @@ export class App {
         this.updateTopBar();
         const open = document.createElement('a');
         open.className = 'tb-btn tb-primary';
-        open.href = boardPageUrl(origin);
+        /* The builder's class goes with the link, so an author on the
+         * whoop builder lands on the whoop board. */
+        open.href = boardPageUrl(origin, trackClassOf(this.doc) === 'micro' ? 'whoop65' : '5inch');
         /* The board's own tab, reused if it is already open. No rel here:
          * noopener would send this to a fresh tab every time. */
         open.target = BOARD_WINDOW;
@@ -1382,6 +1385,39 @@ export class App {
 
   /* ---------------- chrome ---------------- */
 
+  /*
+   * MOVE THE WHOLE PRODUCT TO A CLASS.
+   *
+   * Nothing is converted and nothing is lost. Each class has its own canvas,
+   * so this puts the current one away, seats the aircraft that flies the
+   * other, and opens whatever was left there, or a blank track of that class
+   * on a first visit.
+   *
+   * Converting was the alternative and it is worse in both directions: a 5 ft
+   * gate scaled to 28 inches is not a RaceGOW gate, it is a MultiGP gate
+   * somebody shrank, and a room's layout stretched onto sixty metres is a
+   * track nobody designed. Two canvases is what an author actually has.
+   */
+  setTrackClass(cls) {
+    const want = cls === 'micro' ? 'micro' : 'full';
+    if (trackClassOf(this.doc) === want) {
+      return;
+    }
+    /* The canvas being left is written NOW rather than on the debounce, so
+     * the last few seconds of editing are still there on the way back. */
+    this.autosaver.flush();
+    setActiveTrackClass(want);
+    /* readAutosave hands back { doc, repairs }, not a document: every other
+     * caller in this project reads `.doc` off it and the first version of
+     * this one did not, which threw inside loadDocument on the first press
+     * of the toggle. */
+    const held = readAutosave(want);
+    const doc = (held && held.doc) || createTrack(undefined, want);
+    this.loadDocument(doc, held && held.doc
+      ? `Back on the ${want === 'micro' ? 'whoop' : 'five inch'} builder, holding "${doc.name}".`
+      : `A new ${want === 'micro' ? 'whoop track, in a five by six metre room' : 'five inch track, on a sixty metre field'}.`);
+  }
+
   buildTopBar() {
     const bar = this.nodes.topbar;
     bar.textContent = '';
@@ -1490,12 +1526,51 @@ export class App {
       }
     });
 
+    /*
+     * THE CLASS TOGGLE, AND IT IS THE FIRST THING ON THE BAR.
+     *
+     * These are two different tools. A five inch builder is 5 ft gates on a
+     * sixty metre field with a grid in metres; a whoop builder is 28 inch
+     * gates out of 26.7 mm PVC on a five by six metre floor with a grid in
+     * inches, a different palette, different presets and RaceGOW's own rules
+     * checking the layout. Everything on this page changes with it, so it
+     * cannot be a line of read only text in a side panel where it was: an
+     * author who opened the wrong one found out several gates in.
+     *
+     * It is also the SAME switch the simulator's aircraft choice is, and
+     * pressing it here seats that aircraft. That is the whole point: one
+     * answer governs the builder, the world behind the title, the track the
+     * shell flies and the tracks the board offers.
+     *
+     * Each class keeps its own canvas, so this never destroys work: the
+     * track you were building is still there when you come back. See
+     * autosaveKey in storage.js.
+     */
+    this.classToggle = document.createElement('div');
+    this.classToggle.className = 'tb-class';
+    this.classToggle.setAttribute('role', 'group');
+    this.classToggle.setAttribute('aria-label', 'Which builder');
+    this.classBtns = new Map();
+    for (const [cls, label, hint] of [
+      ['full', '5 inch', 'MultiGP gates on a sixty metre field'],
+      ['micro', 'Whoop', 'RaceGOW gates in a five by six metre room'],
+    ]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tb-class-btn';
+      b.textContent = label;
+      b.title = hint;
+      b.addEventListener('click', () => this.setTrackClass(cls));
+      this.classBtns.set(cls, b);
+      this.classToggle.append(b);
+    }
+
     const zoneFile = document.createElement('div');
     zoneFile.className = 'tb-zone tb-zone-file';
     zoneFile.append(
       Object.assign(document.createElement('span'), { className: 'tb-title', textContent: 'Track Builder' }),
+      this.classToggle,
       name,
-      this.listingChip,
       group(
         btn('New', () => this.newTrack(), 'Start a blank track'),
         btn('Save', () => this.save(), 'Control S'),
@@ -1518,7 +1593,11 @@ export class App {
 
     const zoneOut = document.createElement('div');
     zoneOut.className = 'tb-zone tb-zone-out';
-    zoneOut.append(this.publishBtn, this.flyBtn, back);
+    /* The listing chip moved here from beside the track name. It says
+     * whether this track is on the board, which is the question the button
+     * next to it answers, and the file zone needed the 130 px once the class
+     * toggle joined it. */
+    zoneOut.append(this.listingChip, this.publishBtn, this.flyBtn, back);
 
     bar.append(zoneFile, zoneEdit, zoneOut, file);
     this.updateTopBar();
@@ -1534,6 +1613,13 @@ export class App {
     this.redoBtn.title = this.history.canRedo() ? `Redo ${this.history.redoLabel()}` : 'Nothing to redo';
     this.mode2d.classList.toggle('on', this.mode === '2d');
     this.mode3d.classList.toggle('on', this.mode === '3d');
+    if (this.classBtns) {
+      const cls = trackClassOf(this.doc);
+      for (const [id, b] of this.classBtns) {
+        b.classList.toggle('on', id === cls);
+        b.setAttribute('aria-pressed', id === cls ? 'true' : 'false');
+      }
+    }
     this.pathBtn.classList.toggle('on', this.pathVisible);
     if (this.listingChip && this.publishBtn) {
       const listing = this.listingOfCanvas();

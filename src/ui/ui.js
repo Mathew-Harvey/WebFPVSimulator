@@ -1875,9 +1875,18 @@ function craftSvg(a) {
     }
   }
   if (ducted) {
-    /* The canopy, forward, which is the only thing that says which way it
-     * is pointing. -z is the nose in the craft frame and on this drawing. */
-    parts.push(`<circle cx="${c}" cy="${c - 4}" r="9" fill="currentColor" fill-opacity="0.55"/>`);
+    /*
+     * The stack and the camera, which are the only things that say which way
+     * it is pointing. There is no canopy: an Air65 II is sold bare, the board
+     * IS the top of the aircraft, and the camera standing at the front of it
+     * is the tallest thing on the machine. See src/render/whoopcraft.js,
+     * which draws the same two parts in the same order. -z is the nose in
+     * the craft frame and on this drawing.
+     */
+    parts.push(`<rect x="${c - 9}" y="${c - 9}" width="18" height="18" rx="2"`
+      + ' fill="currentColor" fill-opacity="0.42"/>');
+    parts.push(`<rect x="${c - 7}" y="${c - 17}" width="14" height="11" rx="2"`
+      + ' fill="currentColor" fill-opacity="0.72"/>');
   }
   return `<svg viewBox="0 0 ${VB} ${VB}" role="img" aria-hidden="true"`
     + ' preserveAspectRatio="xMidYMid meet" class="craft-plan">'

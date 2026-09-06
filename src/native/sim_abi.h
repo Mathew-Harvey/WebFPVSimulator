@@ -325,6 +325,32 @@ int sim_set_launch_stand(int on, double px, double py, double pz,
  */
 int sim_set_flight_style(int arcade);
 
+/*
+ * Choose the airframe: 0 is the five inch this project was built around and
+ * is the default, 1 is a 65 mm 1S brushless whoop. Returns SIM_ERR_BAD_ARG
+ * for anything else.
+ *
+ * Additive ABI change, version unchanged: no existing entry point moved or
+ * changed meaning, and a replay that never calls this is bit identical to
+ * one from before it existed. That last clause is MEASURED rather than
+ * asserted, because selecting a plant at runtime costs the compiler its
+ * constant folding of the parameter block; the build's -fno-fast-math and
+ * -ffp-contract=off make a folded expression and a computed one the same
+ * IEEE double, and the five inch's trace hash is checked unchanged across
+ * the change. See PROGRESS.md.
+ *
+ * A MODE, not state: it survives sim_reset and sim_init, exactly as the
+ * flight style does. Changing it swaps the plant's mass, inertia, motors,
+ * rotors, pack, drag, duct terms, collision hull and camera position in one
+ * step, so a host should do it between runs and then sim_reset.
+ */
+#define SIM_AIRFRAME_5IN_ID 0
+#define SIM_AIRFRAME_WHOOP65_ID 1
+int sim_set_airframe(int id);
+
+/* Which airframe is in force. */
+int sim_airframe(void);
+
 /* Number of doubles sim_state writes. SIM_STATE_DOUBLES for this version. */
 int sim_state_size(void);
 

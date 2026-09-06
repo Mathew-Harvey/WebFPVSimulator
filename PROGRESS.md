@@ -28825,3 +28825,230 @@ above reports what it does and not "flown".
 `npm run verify` was not run. This turn changes no physics, no plant, no
 module ABI and no build: it is a setting, a menu row, two strings and a class
 on a div.
+
+---
+
+## 2026-09-06, whoop stage W1 and W2: a second airframe, and its tunes
+
+The owner asked for a 65 mm whoop alongside the 5 inch, a RaceGOW style
+micro track builder, and a menu that chooses between them. This entry covers
+the first two stages: the plant and the tunes.
+
+### What RaceGOW actually is, because the brief assumed otherwise
+
+Researched from racegow.com, its four Google Docs, the RaceGOW5 leaderboards
+and the official build videos. It is NOT a heat based race league with
+marshals, transponders and cut lines. It is an asynchronous, at home, video
+verified TIME TRIAL series, the whoop sized version of MultiGP's Universal
+Time Trial: eight tracks a season, one every fortnight, each published as a
+dimensioned spec that every pilot builds at home out of 3/4 inch PVC and
+flies alone. The metric is the fastest THREE CONSECUTIVE LAPS, always
+starting and finishing on one designated start/finish gate. There are no
+penalties and no gate miss rules; enforcement is an honour system with a
+zero tolerance policy and a YouTube link.
+
+The geometry, which is what a builder needs:
+
+  pipe                3/4 inch SCH40, OD 26.7 mm, white
+  20 sections         each 673 to 692 mm (26.5 to 27.25 inch)
+  fittings            4 elbow, 6 tee, 2 to 6 four way, 2 to 4 five way
+  gate opening        610 mm (24 in) minimum, 711 mm (28 in) maximum,
+                      and every gate on a track must be the same size
+  adjacent gates      762 mm centre to centre nominal, 686 minimum,
+                      838 maximum, and the rule applies to side by side
+                      AND to vertically stacked
+  ground gate         centre 508 mm or lower, so a full size gate sits at
+                      most 152 mm off the floor
+  stack, 2nd gate     centre 1067 mm minimum
+  stack, 3rd gate     centre 1753 mm minimum
+  whole track         inside 1.22 by 1.83 m (4 by 6 ft)
+  elements            start/finish gate (drawn green), single gate, side by
+                      side gates, double and triple stacks, elevated gate,
+                      horizontal or cube gate, vertical pole, horizontal pole
+
+Real times, computed from the RaceGOW5 sheets (161 to 365 entries a track):
+elite three lap times run 6.78 s to 21.80 s depending on the track, fastest
+per lap 2.26 s, median per lap 5.87 s. Those are the numbers the whoop's
+speed has to be able to produce.
+
+### The whoop, and the two published figures that do not survive arithmetic
+
+Modelled on the BetaFPV Air65 II Champion, which is what a RaceGOW field
+mostly flies. Two corrections worth recording because both are repeated
+everywhere:
+
+  * "6.3:1 thrust to weight" is the DRY 16.6 g. The recommended LAVA II 1S
+    280 mAh is 6.8 g, so the flying figure is 4.7:1 fresh and about 3.8 late.
+    A whoop is a light machine, not an overpowered one.
+  * "Whoop motors are far quicker than a 5 inch's." They are not. j R / ke^2
+    for a 0702 is 25 to 40 ms against a 2207's 36. The rotor inertia is three
+    orders smaller and the resistance is 25 times larger and ke is 22 times
+    smaller, and the two cancel. What actually makes a whoop crisp is ANGULAR
+    ACCELERATION: 2 T arm / Ixx is 2121 rad/s^2 measured here against the 5
+    inch's 653. Three times, on a third of the rate.
+
+Also, and this one is not folklore, it is literature: the figure of merit of
+a 31 mm three blade at Re near 10,700 is 0.33, not the 0.52 of a 5 inch
+triblade. Bohorquez 2007 measured 0.42 for the best single rotor he built at
+Re 27,000 to 43,700; Harris NASA/CR-20205001147 puts Re 1e4 in 0.30 to 0.40.
+kq is enforced through the same momentum theory identity the 5 inch uses.
+
+### The mechanism: an airframe TABLE, and the five inch is bit identical
+
+`PLANT` was a const global. It is now `PLANT_TABLE[SIM_AIRFRAME_COUNT]` with
+a `const PlantParams *PLANT_P` selecting one, and `sim_set_airframe(int)` is
+an additive ABI entry point on the exact template `sim_set_flight_style`
+set: a MODE, not state, surviving reset and init, defaulting to 0.
+
+Four options were considered (a const table with an index, a mutable PLANT
+copied at init, two separate wasm builds, and the airframe carried in the
+Betaflight diff). The table was chosen because it needs no ABI version bump,
+no `tests/` edit and no build change. Its one real risk is that indexing
+costs the compiler its constant folding of the parameter block.
+
+THAT RISK DID NOT MATERIALISE AND THE REASON IS THE BUILD'S OWN FLAGS. With
+`-fno-fast-math` and `-ffp-contract=off` the compiler may neither reassociate
+nor contract, so a folded expression and a computed one are the same IEEE
+double, and wasm has no excess precision to lose. Measured rather than
+assumed: the baseline replay trace hash is identical before and after, at all
+four of check 4's render rates, and the 5 inch's hover throttle
+(0.2789999842643738), punch height (80.02533350994806 m), terminal velocity
+(31.010392473266936 m/s) and motor time constant (0.025 s) are identical to
+every digit. `scripts/whoop-gates.js` gate W14 asserts that fingerprint on
+every run so a later change cannot quietly move it.
+
+Moved into `PlantParams` at the same time, because they are airframe data:
+the motor spin table, the motor positions, the two cant tables, the
+collision hull half extents, the contact patch radius, the impulse arm
+clamp, the camera position and `PLANT_TORQUE_IND` (which is the figure of
+merit and therefore a rotor property). `sim.c`'s `CONTACT_CORNER` can no
+longer be a static initialiser and is rebuilt by `contact_build_corners()`
+on init and on airframe change, in exactly its old order.
+
+`bf_glue.c` case 12 had a literal 0.0635 with a comment warning that if the
+rotor ever changed size the figure of merit would go wrong quietly. The
+rotor changed size. It reads `PLANT.prop_r` now; against the old literal a
+whoop would have reported 0.0121 instead of 0.330 and the P5 gate would have
+failed a correct airframe.
+
+### Three new physics terms, all of them the identity on an open rotor
+
+  * `k_duct` 1.10, the shroud's static thrust augmentation. The ideal duct of
+    momentum theory is 2^(1/3) = 1.26 and a 3 percent tip gap gives most of
+    it back.
+  * `duct_fade` 1.0, the edgewise speed at which half the augmentation is
+    gone, measured in the rotor's own induced velocity so it scales with
+    thrust. This is the term that makes a whoop hang beautifully and then
+    feel like it is wading as soon as it is moving.
+  * `k_duct_lip` 0.10, the lip suction moment coefficient in M = Cm q A D. A
+    shroud in edgewise flow carries a suction peak on its UPWIND lip, which
+    is an upward force ahead of the centre and therefore a nose up moment.
+    Every ducted machine from the X-22A to a whoop pitches up into the wind.
+
+The 5 inch's values are 1.0, 0 and 0, so the multiply is by exactly 1.0 and
+the branches are never taken. That is what keeps its trace identical.
+
+Also raised for the whoop: `k_rotor_drag` 1.00 against the 5 inch's 0.43842.
+A shroud captures the whole stream tube instead of a contracted one, so the
+momentum drag rho A v_i V_perp is paid in full, and the ducted fan literature
+puts ram drag at 80 to 95 percent of total drag below ten knots. This term,
+not the body drag, is why whoops are slow.
+
+### The tunes are BetaFPV's, downloaded
+
+`configs/whoop-champion.diff`, `whoop-racing.diff` and `whoop-freestyle.diff`
+are translated from BetaFPV's own published CLI files for the three Air65 II
+variants (support.betafpv.com article 54654422544409, attachments
+58300183112217, 58300189265433 and 58300171193113), which are Betaflight
+2026.6.0-alpha on a BETAFPVG473_V2.
+
+TWO TRAPS IN THAT TRANSLATION, both recorded in the files:
+
+  1. The D term keys INVERTED between 4.5 and 4.6. In 4.5.1 `d_roll` is the
+     ceiling and `d_min_roll` the floor; in 4.6+ `d_roll` is the floor and
+     `d_max_roll` the ceiling. Copying the dump straight across would have
+     set the ceiling to the floor and deleted the whole D boost band on all
+     three tunes. `simplified_d_max_gain` is likewise 4.5.1's
+     `simplified_dmax_gain`.
+  2. `yaw_motors_reversed = ON` in every factory dump is NOT copied. The
+     Air65 II is built props out; this plant has one spin table and it is
+     props in. Carrying the ON with a props in plant negates the yaw mixer
+     column against a rotation that did not change, which turns the yaw loop
+     into positive feedback.
+
+What the factory tunes actually look like, against the folklore that whoops
+run high P and low D: the Champion runs roll P33 D21 F40 against Betaflight
+4.5.1's 5 inch default of P45 D40 F120, because
+`simplified_master_multiplier` is 75. All three run `d_max_gain` 20 against
+a default of 37, `throttle_boost` 0 against 5, and a TPA breakpoint of 1180
+to 1240 against 1350. That last one is the clearest "because it is 1S"
+decision in the corpus: the pack sags 4.2 V to 3.35 V under a punch, a 20
+percent collapse where a 6S race pack loses 8, so the gains have to come off
+a fifth of the way up the stick.
+
+`npm run lint:presets` is clean on all six tunes.
+
+### The whoop's own gates, and why they are not in tests/
+
+Six of the sixteen checks in `tests/thresholds.json` are fitted to the 5 inch
+and a whoop fails them by being a whoop: hover 0.20 to 0.30, a 55 to 85 m
+punch, 30 to 40 m/s terminal, a 10 to 30 ms motor, the yaw coupling band
+derived from the 5 inch's own cant table, and the 0.15 m craft body in check
+15. `tests/` is the harness's and must not be edited to make a new airframe
+fit, so the whoop gets `scripts/whoop-gates.js`, run with
+`npm run whoop:gates`, costing about a second.
+
+Every band names a source outside this repository. Measured this turn, 19 of
+19 pass:
+
+  W1  figure of merit        0.3300              band 0.30 to 0.40
+  W2  hover throttle         0.324 of stick      band 0.27 to 0.36
+  W3  thrust to weight       4.83 : 1            band 4.0 to 5.4
+  W4  full throttle rpm      75751               band 68000 to 80000
+  W5  punch sag, sustained   3.346 V a cell      band 3.00 to 3.45
+  W6  punch current          15.52 A pack        band 10 to 22
+  W7  motor time constant    0.0380 s            band 0.015 to 0.045
+  W8  roll authority         2121 rad/s^2        band 1400 to 2600
+  W9  terminal velocity      12.13 m/s           band 7 to 14
+  W10 top speed              16.42 m/s           band 8 to 20
+  W11 duct fade              0.669 left          band 0.35 to 0.75
+  W12 pitch up at speed      6.17 pct authority  band 2 to 20
+  W13 lap scale, 24 m        2.45 s              band 1.6 to 6.0
+  W14 five inch unmoved      identical           exact
+
+### What went wrong on the way
+
+  * The first W11 inferred the duct fade from a climb rate after a full
+    throttle dive. At full throttle the craft climbs at 8 m/s and pitches to
+    55 degrees, so nearly all of its airspeed goes THROUGH the disc rather
+    than across it: the model faded almost not at all, correctly, and the
+    gate read -6.309. Correct physics, useless measurement. `plant.c` now
+    carries `PLANT_DBG_DUCT`, `PLANT_DBG_VPERP` and `PLANT_DBG_PITCH_UP` on
+    the same pattern as the three propwash taps, and the gate reads the
+    plant at a level 8.3 m/s pass instead of inferring it from a trajectory.
+    The gate now also checks the operating point it measured at.
+  * The first W5 gated on the MINIMUM pack voltage in a punch and read
+    2.729 V. That is the 2 to 3 ms transient the 5 inch's plant.c already
+    records at length: no winding inductance, no ESC current ceiling, and
+    the rotor's own time constant filters it out completely before it
+    reaches thrust. The gate measures the SUSTAINED sag now, on the same
+    reasoning W6 already used, and PRINTS the transient so it cannot hide.
+  * The whoop tunes failed `lint:presets` with three unrecognised keys, which
+    is how the 4.5 to 4.6 D term inversion was caught. The lint earned its
+    keep.
+
+### Open, for a human
+
+  * Hover pack current is 1.13 A on the whoop, which implies a 15 minute
+    hover on a 280 mAh pack against a measured 3:00. The 5 inch has the same
+    error in the same direction. The missing term is motor no load current,
+    the iron and bearing and windage losses, which this plant models for
+    neither airframe. It is not a feel defect and endurance is not simulated
+    (the shell sets pack charge, it does not drain it), but it means any
+    future flight time feature has to fix the plant first, for BOTH
+    airframes, in one change.
+  * Only the Champion is modelled in the plant. The Racing and Freestyle
+    differ in the real world by a few percent of top end and a different feel
+    at the bottom of the stick, and here that difference is carried by the
+    tune rather than by a second and third set of motor constants. Honest
+    simplification, written down rather than hidden.

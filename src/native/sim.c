@@ -52,8 +52,10 @@ static long long g_last_input_us = -1;
 static int g_stand_on = 0;
 static double g_stand_hinge[3];
 /* Underside of the parked pose, metres below the CG. Matches REST_HEIGHT
- * in the shell so the hinge sits on the foam, not in the air above it. */
-static const double STAND_HINGE_Z = -0.045;
+ * in the shell so the hinge sits on the foam, not in the air above it.
+ * Per airframe since the whoop landed: a 23 mm thick machine does not park
+ * 45 mm off the deck. */
+#define STAND_HINGE_Z (-PLANT.hull_hz_down)
 
 /*
  * Ground plane, plant frame. Off unless the shell raises it, so a harness
@@ -67,17 +69,24 @@ static const double STAND_HINGE_Z = -0.045;
  */
 static int g_ground_on = 0;
 static double g_ground_n[3] = { 0.0, 0.0, 1.0 };
-static double g_ground_d = STAND_HINGE_Z;
+/* Seeded to the five inch's parked height and re-seated by
+ * sim_set_airframe, because a static initialiser cannot read PLANT. A host
+ * that raises its own ground plane overwrites this on the first call
+ * anyway; it matters only to a host that never does. */
+static double g_ground_d = -0.045;
 static double g_ground_mu = 1.40;
 static double g_ground_e = 0.0;
 static int g_ground_hits = 0;
 static int g_ground_projected = 0;
 static int g_ground_near = 0;
 
-#define CONTACT_HX 0.094
-#define CONTACT_HY 0.094
-#define CONTACT_HZ_DOWN 0.045
-#define CONTACT_HZ_UP 0.038
+/* The hull half extents are the airframe's now. The five inch's are the
+ * numbers that used to be here; the whoop's are a third of them, which is
+ * why they could not stay a #define. */
+#define CONTACT_HX (PLANT.hull_hx)
+#define CONTACT_HY (PLANT.hull_hy)
+#define CONTACT_HZ_DOWN (PLANT.hull_hz_down)
+#define CONTACT_HZ_UP (PLANT.hull_hz_up)
 #define CONTACT_CORNERS 8
 #define CONTACT_ITERS 4
 #define CONTACT_SLOP 0.002
@@ -141,20 +150,20 @@ static int g_ground_near = 0;
  * drag the whole of that patch. Half the motor offset is the honest
  * lever for a four-arm footprint.
  */
-#define CONTACT_PATCH_R 0.060
+#define CONTACT_PATCH_R (PLANT.contact_patch_r)
 /*
  * Largest impulse arm a caller may hand sim_contact_at, metres. The
  * craft sweeps 0.1735 m to a blade tip, so anything past that is not a
  * point on this airframe and must not become a moment.
  */
-#define CONTACT_ARM_MAX 0.20
+#define CONTACT_ARM_MAX (PLANT.contact_arm_max)
 /* Lens glass, plant body metres. Mount is 0.080 forward and 0.018 up;
  * herocraft.js puts the glass another 0.024 past the mount. The hull
  * OBB stops at 0.094, so a nose-down arrival used to park the lens
  * under the plane. Projection samples this point too. */
-#define CAMERA_BODY_X 0.104
-#define CAMERA_BODY_Y 0.0
-#define CAMERA_BODY_Z 0.018
+#define CAMERA_BODY_X (PLANT.camera_x)
+#define CAMERA_BODY_Y (PLANT.camera_y)
+#define CAMERA_BODY_Z (PLANT.camera_z)
 #define CONTACT_INVERT_UPZ -0.50
 /* Halo invert-stop is props-down only. A roll or flip that is only
  * partly inverted can put a corner in the 8 mm slab with the CG still
@@ -173,16 +182,28 @@ static int g_ground_near = 0;
  * inverted flip in free air ran invert-stop and froze the craft. */
 #define CONTACT_PEN_NONE (-1.0e9)
 
-static const double CONTACT_CORNER[CONTACT_CORNERS][3] = {
-  { -CONTACT_HX, -CONTACT_HY, -CONTACT_HZ_DOWN },
-  {  CONTACT_HX, -CONTACT_HY, -CONTACT_HZ_DOWN },
-  { -CONTACT_HX,  CONTACT_HY, -CONTACT_HZ_DOWN },
-  {  CONTACT_HX,  CONTACT_HY, -CONTACT_HZ_DOWN },
-  { -CONTACT_HX, -CONTACT_HY,  CONTACT_HZ_UP },
-  {  CONTACT_HX, -CONTACT_HY,  CONTACT_HZ_UP },
-  { -CONTACT_HX,  CONTACT_HY,  CONTACT_HZ_UP },
-  {  CONTACT_HX,  CONTACT_HY,  CONTACT_HZ_UP },
-};
+/*
+ * The eight hull corners, rebuilt whenever the airframe changes rather than
+ * written as an initialiser, because the half extents are no longer
+ * compile time constants. Order is EXACTLY the order the initialiser had:
+ * the contact solver iterates it and the projection reports "worst corner"
+ * by index, so a reordering would silently change which corner wins a tie.
+ */
+static double CONTACT_CORNER[CONTACT_CORNERS][3];
+
+static void contact_build_corners(void) {
+  const double hx = CONTACT_HX, hy = CONTACT_HY;
+  const double dn = -CONTACT_HZ_DOWN, up = CONTACT_HZ_UP;
+  const double src[CONTACT_CORNERS][3] = {
+    { -hx, -hy, dn }, { hx, -hy, dn }, { -hx, hy, dn }, { hx, hy, dn },
+    { -hx, -hy, up }, { hx, -hy, up }, { -hx, hy, up }, { hx, hy, up },
+  };
+  for (int c = 0; c < CONTACT_CORNERS; c += 1) {
+    for (int a = 0; a < 3; a += 1) {
+      CONTACT_CORNER[c][a] = src[c][a];
+    }
+  }
+}
 
 SIM_EXPORT int sim_abi_version(void) { return SIM_ABI_VERSION; }
 
@@ -217,6 +238,7 @@ SIM_EXPORT int sim_init(const unsigned char *diff_utf8, int len) {
     S.cell_voltage_oc = 4.2;
   }
   g_initialised = 1;
+  contact_build_corners();
   reset_dynamics();
   return SIM_OK;
 }
@@ -1142,6 +1164,35 @@ SIM_EXPORT int sim_set_flight_style(int arcade) {
   SIM_ARCADE = arcade ? 1 : 0;
   return SIM_OK;
 }
+
+/*
+ * The airframe. A MODE, not dynamic state, in exactly the sense
+ * sim_set_flight_style above is one: it survives sim_reset and sim_init, the
+ * shell owns asserting it, and the default is the five inch so a host that
+ * never calls this gets the machine this project was built around.
+ *
+ * Everything that has to move with it moves here rather than being tested
+ * for on the hot path: the plant's parameter pointer, the hull corners, and
+ * the parked height the ground plane defaults to.
+ */
+SIM_EXPORT int sim_set_airframe(int id) {
+  if (id < 0 || id >= SIM_AIRFRAME_COUNT) {
+    return SIM_ERR_BAD_ARG;
+  }
+  if (id == plant_airframe()) {
+    return SIM_OK;
+  }
+  plant_set_airframe(id);
+  contact_build_corners();
+  /* Only if the host has not raised its own plane. A shell that has already
+   * called sim_set_ground owns that number and must not have it taken back. */
+  if (!g_ground_on) {
+    g_ground_d = STAND_HINGE_Z;
+  }
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_airframe(void) { return plant_airframe(); }
 
 SIM_EXPORT int sim_set_launch_control(int on) {
   bridge_set_launch_control(on);

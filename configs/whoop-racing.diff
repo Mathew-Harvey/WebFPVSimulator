@@ -1,0 +1,204 @@
+# diff
+# Betaflight / SITL (SITL) 4.5.1
+#
+# AIR65 II RACING. BetaFPV's own factory tune for the Air65 II Racing, the
+# 30000 kV variant on the same GF1207 three blade. Brass bushings instead of
+# the Champion's dual ball bearings and the heavier Air65 II frame, so 17.7 g
+# dry against 16.6, and a motor that trades top end for throttle response.
+#
+# PROVENANCE. Taken from "A65 II R_0702_Racing_GF 1207_2026_6_0
+# 20260520.txt", the CLI BetaFPV publishes for this aircraft at
+# support.betafpv.com/hc/en-us/articles/54654422544409 (attachment
+# 58300189265433). Betaflight 2026.6.0-alpha on a BETAFPVG473_V2 board;
+# every PID, filter, TPA and idle value below is copied from it verbatim.
+#
+# AGAINST THE CHAMPION: every gain is higher, because
+# simplified_master_multiplier is 85 rather than 75, and D is relatively
+# higher still (simplified_d_gain 105 against 95) while I is lower (80
+# against 95). That is the shape of a tune for a motor with less authority:
+# more damping, less integral, and the TPA breakpoint 30 counts further up
+# the stick at 1210 because a 30000 kV motor sags a little less.
+#
+# WHAT A WHOOP TUNE LOOKS LIKE, because it is not what the folklore says.
+# The received wisdom is that whoops run high P and low D. This one runs
+# roll P33 D21 F40 against Betaflight 4.5.1's 5 inch default of P45 D40
+# F120: P, D AND feedforward are all well below stock, because
+# simplified_master_multiplier is 75. A 23 g machine with three times a
+# 5 inch's angular acceleration does not need the gain. What IS whoop
+# specific is the shape:
+#
+#   * D is 68 percent of P against the 5 inch default's 89. There is almost
+#     no propwash to damp and the rotor inertia is a millionth of a 5 inch's.
+#   * d_max_gain is 20 against a default of 37, and d_max sits at about 110
+#     percent of D. The D boost band is deliberately narrow.
+#   * tpa_breakpoint is 1210 against a default of 1350. THIS is the clearest
+#     "because it is 1S" decision in the whole file. The pack sags 4.2 V to
+#     3.2 V under a punch, a 23 percent collapse where a 6S race pack loses
+#     8, so the gains have to start coming off a fifth of the way up the
+#     stick instead of two thirds.
+#   * throttle_boost is 0. Every BetaFPV whoop dump sets it there; the 4.5.1
+#     default is 5.
+#   * dyn_idle_min_rpm 30, which is 3000 rpm, against a hover of 34,480.
+#
+# NO RATES, following configs/registry.js. BetaFPV ships this aircraft on
+# ACTUAL rates with srate 58 / 58 / 50, which is 580 deg/s on roll and pitch
+# and 500 on yaw: a RACING whoop flies SLOWER rates than a 5 inch freestyle
+# quad, because the track is three metres wide. Those are the numbers the
+# shell's whoop default carries; see configs/rates.js. To fly them exactly,
+# set 580 max and 0 expo in Settings.
+#
+# This file is part of WebFPVSimulator.
+#
+# WebFPVSimulator is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or (at
+# your option) any later version.
+#
+# WebFPVSimulator is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY, without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+
+batch start
+
+board_name SITL
+
+# ---- airframe, read by the plant and by the RPM filter ----
+#
+# 30000 kV is the plate. The PLANT does not change between the three
+# variants: src/native/plant.c models the Champion, and the difference the
+# other two make in the real world is a few percent of top end and a
+# different feel at the bottom of the stick, which is carried here by the
+# tune rather than by a second set of motor constants. That is an honest
+# simplification and it is written down rather than hidden: see PROGRESS.md.
+# 12 poles is a 9N12P 0702.
+set motor_kv = 30000
+set motor_poles = 12
+# 1S LiHV: 4.40 V charged, 3.45 V warning, 3.00 V empty. The Champion's own
+# battery profile.
+set vbat_max_cell_voltage = 440
+set vbat_warning_cell_voltage = 345
+set vbat_min_cell_voltage = 300
+set battery_capacity = 300
+set small_angle = 180
+
+# ---- master, from the factory dump ----
+set gyro_lpf1_static_hz = 0
+set gyro_lpf1_dyn_min_hz = 0
+set gyro_lpf1_dyn_max_hz = 550
+set gyro_lpf2_static_hz = 600
+set gyro_lpf1_type = PT1
+set gyro_lpf2_type = PT1
+set gyro_notch1_hz = 0
+set gyro_notch1_cutoff = 0
+set gyro_notch2_hz = 0
+set gyro_notch2_cutoff = 0
+set dyn_notch_count = 1
+set dyn_notch_q = 400
+set dyn_notch_min_hz = 110
+set dyn_notch_max_hz = 500
+set simplified_gyro_filter = ON
+set simplified_gyro_filter_multiplier = 120
+set dshot_bidir = ON
+set motor_pwm_protocol = DSHOT300
+set mixer_type = LEGACY
+set yaw_spin_recovery = AUTO
+#
+# yaw_motors_reversed stays OFF, and the factory dump has it ON.
+#
+# That is not a tuning choice, it is a wiring one, and copying it here would
+# be a bug. The Air65 II is built props out, so its ESC outputs run the
+# opposite way round from a props in machine and the firmware is told to
+# flip the yaw mixer column to match. This simulator's plant has ONE spin
+# table, PLANT_SPIN in src/native/plant.c, and it is props in. Carrying the
+# factory ON with a props in plant negates the yaw column against a rotation
+# that did not change, which turns the yaw loop into positive feedback: the
+# nose runs away from any yaw input instead of following it. The comment at
+# PLANT_SPIN traces the whole sign chain and this is the link it warns about.
+set yaw_motors_reversed = OFF
+
+# ---- THE 4.6 D TERM KEYS ARE INVERTED AGAINST 4.5, AND THAT IS A TRAP ----
+#
+# BetaFPV's dump is Betaflight 2026.6.0. Somewhere between 4.5 and 4.6 the
+# D term pair changed which end of the range each key names:
+#
+#   4.5.1   d_roll     is the D CEILING, d_min_roll is the FLOOR
+#   4.6+    d_roll     is the D FLOOR,   d_max_roll is the CEILING
+#
+# The vendored 4.5.1 tree is the authority for the first line
+# (vendor/betaflight/src/main/cli/settings.c:1159 and :1191, where d_roll
+# writes pid[PID_ROLL].D and d_min_roll writes d_min[FD_ROLL]). The factory
+# dump carries BOTH d_roll and d_max_roll, which 4.5 has no name for, so the
+# translation swaps them. Copying the dump's d_roll straight across would
+# have set the CEILING to the FLOOR and quietly deleted the whole D boost
+# band on every one of these three tunes.
+#
+# Two more names moved with it: 4.6's simplified_d_max_gain is 4.5.1's
+# simplified_dmax_gain (fc/parameter_names.h:116), and 4.5.1's d_max_gain
+# writes the field called d_min_gain (settings.c:1194), which is the boost
+# gain rather than a ceiling and needed no translation.
+
+# ---- profile 0, from the factory dump ----
+profile 0
+
+set profile_name = GF 1207
+set p_roll = 38
+set i_roll = 54
+set d_roll = 29
+set f_roll = 45
+set p_pitch = 39
+set i_pitch = 57
+set d_pitch = 31
+set f_pitch = 47
+set p_yaw = 38
+set i_yaw = 54
+set d_yaw = 0
+set f_yaw = 45
+set d_min_roll = 26
+set d_min_pitch = 28
+set d_min_yaw = 0
+set d_max_gain = 20
+set anti_gravity_gain = 60
+set throttle_boost = 0
+set feedforward_jitter_factor = 5
+set dyn_idle_min_rpm = 30
+set tpa_mode = D
+set tpa_rate = 60
+set tpa_breakpoint = 1210
+set auto_profile_cell_count = 1
+set simplified_master_multiplier = 85
+set simplified_i_gain = 80
+set simplified_d_gain = 105
+set simplified_dmax_gain = 25
+set simplified_feedforward_gain = 45
+set simplified_pitch_d_gain = 95
+
+# ---- what the factory dump does NOT carry, and is left at 4.5.1 default ----
+#
+# iterm_relax RP / SETPOINT / cutoff 15, pidsum limits 500 and 400,
+# anti_gravity_cutoff_hz 5, thrust_linear 0, vbat_sag_compensation 0, and
+# the whole D term filter block. A Betaflight diff prints only what differs
+# from default, so every one of those is BetaFPV agreeing with Betaflight,
+# and this file agrees with both by staying quiet.
+#
+# vbat_sag_compensation is the one worth naming. It is 0 here because the
+# factory dump leaves it at 0, and on 1S that is a real choice rather than
+# an oversight: with 100 the D term is scaled up as the pack sags, which on
+# a whoop is most of the throttle range and most of the flight. BetaFPV's
+# Meteor65 Pro DOES ship 100. Both aircraft are theirs, so this is a genuine
+# split in their own line, and the Champion's answer is the one this file
+# carries because this file is the Champion's tune.
+
+# ---- what is left out on purpose ----
+#
+#   align_board_yaw -135, acc_calibration, vbat_scale 113, ibata_offset:
+#     properties of one physical board's mounting and its shunt, meaningless
+#     against a simulated gyro and a solved pack.
+#   the OSD block, vtxtable, vtx_*, vcd_video_system, beacon, aux, craft_name:
+#     nothing in this simulator renders an OSD or a video transmitter.
+#   dshot_bitbang AUTO: an MCU peripheral choice.
+#   the throttle curve keys, which belong to
+#     the rate profile and therefore to the pilot, same rule as rates.

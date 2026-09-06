@@ -83,7 +83,63 @@ typedef struct {
                       * with (1 - axial speed / pitch speed). The name is
                       * historical, from when this was a thrust loss
                       * coefficient; plant.c says so at the constant. */
+  double torque_ind; /* induced share of shaft torque at hover, which IS the
+                      * figure of merit kq was derived through. Was the file
+                      * scope PLANT_TORQUE_IND; it is a property of the rotor
+                      * and moves with the airframe. */
+  /*
+   * THE DUCT. Three numbers, and all three are 1, 0 and 0 on an open rotor,
+   * which is what makes the five inch's arithmetic bit identical after this
+   * struct grew: x * 1.0 is x and x + 0.0 is x in IEEE 754.
+   */
+  double k_duct;      /* static thrust augmentation from the shroud. 1.0 is an
+                       * open rotor. A moulded whoop duct with a 3 percent tip
+                       * gap earns about 1.10; the ideal duct of momentum
+                       * theory would be 1.26 and no real one is close. */
+  double duct_fade;   /* edgewise air speed, as a multiple of the rotor's own
+                       * induced velocity, at which HALF the augmentation is
+                       * gone. A duct works by removing wake contraction, and
+                       * a duct flying sideways stops being able to. 0 disables
+                       * the fade, which is what an open rotor wants. */
+  double k_duct_lip;  /* duct lip suction moment coefficient. A shroud in
+                       * edgewise flow carries a large suction peak on its
+                       * UPWIND lip, which is an upward force ahead of the
+                       * centre and therefore a nose up moment. This is the
+                       * defining ducted fan handling characteristic and an
+                       * open rotor has none of it, so 0. */
+  /* Motor geometry and build tolerance, per airframe. These were four file
+   * scope tables in plant.c and are fields now for the same reason the rest
+   * of this struct is: a second airframe has its own. */
+  double spin[SIM_MOTOR_COUNT];         /* +1 counter clockwise seen from above */
+  double pos_x[SIM_MOTOR_COUNT];
+  double pos_y[SIM_MOTOR_COUNT];
+  double pos_z[SIM_MOTOR_COUNT];        /* rotor disc height above the CG */
+  double cant_radial_deg[SIM_MOTOR_COUNT];
+  double cant_tangent_deg[SIM_MOTOR_COUNT];
+  /*
+   * The collision hull, which sim.c used to #define. A whoop is a third of
+   * the five inch in every direction, so a shared hull would have it
+   * touching a floor a centimetre before it reached one.
+   */
+  double hull_hx;       /* half extent, body x */
+  double hull_hy;       /* half extent, body y */
+  double hull_hz_down;  /* CG to the surface it parks on */
+  double hull_hz_up;    /* CG to the top of the stack, what an inverted craft rests on */
+  double contact_patch_r; /* resting spin friction lever, metres */
+  double contact_arm_max; /* largest impulse arm a caller may hand sim_contact_at */
+  double camera_x;      /* lens glass in the body frame */
+  double camera_y;
+  double camera_z;
 } PlantParams;
+
+/*
+ * The airframes, in the order sim_set_airframe indexes them. 0 is the five
+ * inch this project was built around and is the default, so a host that
+ * never calls sim_set_airframe gets exactly the machine it always had.
+ */
+#define SIM_AIRFRAME_5IN 0
+#define SIM_AIRFRAME_WHOOP65 1
+#define SIM_AIRFRAME_COUNT 2
 
 typedef struct {
   /* rigid body, world frame */
@@ -107,7 +163,26 @@ typedef struct {
   long long step_index; /* completed 1 ms steps since reset */
 } SimState;
 
-extern const PlantParams PLANT;
+/*
+ * The airframe in force, as a pointer into a const table in plant.c.
+ *
+ * PLANT was a const global and every read of it constant folded at -O2.
+ * Selecting an airframe at runtime costs that folding, and the reason that
+ * is safe rather than merely probable is the build's own flags: with
+ * -fno-fast-math and -ffp-contract=off the compiler may neither reassociate
+ * nor contract, so a folded expression and a computed one are the SAME IEEE
+ * double, and wasm has no excess precision to lose either. The five inch's
+ * trace is measured bit identical across this change, not assumed; see
+ * PROGRESS.md.
+ */
+extern const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT];
+extern const PlantParams *PLANT_P;
+#define PLANT (*PLANT_P)
+
+/* Select the airframe. Out of range is ignored. Clears the cached thrust
+ * axes, which are built from the airframe's own cant table. */
+void plant_set_airframe(int id);
+int plant_airframe(void);
 
 /*
  * Flight style, set by sim_set_flight_style: 0 expert, 1 arcade. Owned by
@@ -118,17 +193,13 @@ extern const PlantParams PLANT;
  */
 extern int SIM_ARCADE;
 
-/* Motor spin direction about body z, +1 CCW seen from above, -1 CW.
- * Betaflight props-in (normal): RR and FL clockwise, FR and RL counter
- * clockwise. */
-extern const double PLANT_SPIN[SIM_MOTOR_COUNT];
-
-/* Motor position in the body frame, Betaflight order. z is the height of the
- * rotor disc above the centre of gravity and is what turns rotor drag into a
- * nose up pitching moment at speed; see plant.c. */
-extern const double PLANT_POS_X[SIM_MOTOR_COUNT];
-extern const double PLANT_POS_Y[SIM_MOTOR_COUNT];
-extern const double PLANT_POS_Z[SIM_MOTOR_COUNT];
+/* Motor spin direction, position and cant moved INTO PlantParams when the
+ * second airframe landed: they are airframe data and a whoop's are its own.
+ * The names below are the shorthand plant.c reads them through. */
+#define PLANT_SPIN (PLANT.spin)
+#define PLANT_POS_X (PLANT.pos_x)
+#define PLANT_POS_Y (PLANT.pos_y)
+#define PLANT_POS_Z (PLANT.pos_z)
 
 void plant_reset(SimState *s);
 

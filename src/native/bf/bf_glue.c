@@ -88,6 +88,9 @@ extern uint16_t sim_bf_sag_cell_cv;
 extern double PLANT_DBG_WASH_DEPTH;
 extern double PLANT_DBG_WASH_RATIO;
 extern double PLANT_DBG_VA;
+extern double PLANT_DBG_DUCT;
+extern double PLANT_DBG_VPERP;
+extern double PLANT_DBG_PITCH_UP;
 #include "bf_settings.h"
 
 /* Externs Betaflight expects from files we do not compile. gyro itself is
@@ -585,11 +588,13 @@ double sim_bf_debug(int what) {
   case 10: return PLANT.kt;
   case 11: return PLANT.kq;
   case 12: {
-    /* 0.0635 is PLANT.prop_r in src/native/plant.c. Restated rather than
-     * imported because PLANT is that file's own struct and this is a debug
-     * slot, not the physics; if the rotor ever changes size, this figure of
-     * merit goes wrong quietly. */
-    const double area = 3.14159265358979 * 0.0635 * 0.0635;
+    /* The rotor radius is READ from the airframe now. It used to be the
+     * literal 0.0635 with a comment saying that if the rotor ever changed
+     * size this figure of merit would go wrong quietly. The rotor changed
+     * size: a 65 mm whoop's is 0.0155, and against the old literal it would
+     * have reported a figure of merit of 0.0121 instead of 0.330 and the
+     * gate would have failed a correct airframe. */
+    const double area = 3.14159265358979 * PLANT.prop_r * PLANT.prop_r;
     const double ideal = sim_sqrt_pub(PLANT.kt * PLANT.kt * PLANT.kt) / sim_sqrt_pub(2.0 * PLANT.rho * area);
     return ideal / PLANT.kq;
   }
@@ -634,6 +639,30 @@ double sim_bf_debug(int what) {
   case 47: return PLANT_DBG_WASH_RATIO;
   case 48: return PLANT_DBG_VA;
   case 49: return g_crashflip;
+  /* Airframe identity and the plant constants a whoop check needs, so
+   * scripts/gates.js and scripts/whoop-gates.js measure what is compiled in
+   * rather than a number typed a second time in JavaScript. */
+  case 50: return (double)plant_airframe();
+  case 51: return PLANT.mass_kg;
+  case 52: return PLANT.prop_r;
+  case 53: return PLANT.arm_x;
+  case 54: return PLANT.cells;
+  case 55: return PLANT.inertia[0];
+  case 56: return PLANT.inertia[1];
+  case 57: return PLANT.inertia[2];
+  case 58: return PLANT.k_duct;
+  case 59: return PLANT.k_duct_lip;
+  case 60: return PLANT.j_rotor;
+  case 61: return PLANT.r_motor;
+  case 62: return PLANT.ke;
+  case 63: return PLANT.r_cell;
+  case 64: return PLANT.k_rotor_drag;
+  case 65: return PLANT.hull_hx;
+  case 66: return PLANT.hull_hz_down;
+  case 67: return PLANT.hull_hz_up;
+  case 68: return PLANT_DBG_DUCT;
+  case 69: return PLANT_DBG_VPERP;
+  case 70: return PLANT_DBG_PITCH_UP;
   default: return 0.0;
   }
 }

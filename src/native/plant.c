@@ -136,7 +136,14 @@
  * 9e-6 reads about 29 ms on check 8 against a 30 ms ceiling, which is not
  * margin worth having; 8.0e-6 is inside the real range and leaves some.
  */
-const PlantParams PLANT = {
+const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
+/* ---------------------------------------------------------------------
+ * SIM_AIRFRAME_5IN. The machine STAGE1.md describes and every threshold in
+ * tests/ was measured against. Nothing in this entry moved when the table
+ * grew around it: the values below are byte for byte the ones that were in
+ * the single const PLANT before, and the trace hash is measured identical.
+ * ------------------------------------------------------------------- */
+[SIM_AIRFRAME_5IN] = {
   /*
    * 0.71, in two owner steps from 0.65, off a board report that asked for
    * the race tune "with more gravity or a heavier quad": 0.68 flew, the
@@ -233,7 +240,250 @@ const PlantParams PLANT = {
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
                          * 4.3 inch pitch / 2 pi. Axial speed at which thrust
                          * crosses zero is w times this. */
+  .torque_ind = 0.520,  /* was #define PLANT_TORQUE_IND, same number, same
+                         * meaning: the figure of merit kq was derived
+                         * through, which IS the induced share of shaft
+                         * torque at hover. It is a rotor property, so it
+                         * belongs to the airframe. */
+  /* An open rotor has no duct, so the three duct terms are the identity. */
+  .k_duct = 1.0,
+  .duct_fade = 0.0,
+  .k_duct_lip = 0.0,
+  .spin = { -1.0, 1.0, 1.0, -1.0 },
+  .pos_x = { -0.0777817459305202, 0.0777817459305202,
+             -0.0777817459305202, 0.0777817459305202 },
+  .pos_y = { -0.0777817459305202, -0.0777817459305202,
+             0.0777817459305202, 0.0777817459305202 },
+  .pos_z = { 0.020, 0.020, 0.020, 0.020 },
+  .cant_radial_deg = { 1.4, 0.85, 1.15, 0.6 },
+  .cant_tangent_deg = { -0.9, 1.4, 0.6, -1.2 },
+  .hull_hx = 0.094,
+  .hull_hy = 0.094,
+  .hull_hz_down = 0.045,
+  .hull_hz_up = 0.038,
+  .contact_patch_r = 0.060,
+  .contact_arm_max = 0.20,
+  .camera_x = 0.104,
+  .camera_y = 0.0,
+  .camera_z = 0.018,
+},
+
+/* ---------------------------------------------------------------------
+ * SIM_AIRFRAME_WHOOP65: a 65 mm 1S brushless whoop, modelled on the BetaFPV
+ * Air65 II Champion, which is what a RaceGOW field mostly flies.
+ *
+ * EVERY NUMBER HERE IS DERIVED OR CITED, and the two that the marketing copy
+ * gets wrong are corrected rather than copied.
+ *
+ * MASS. BetaFPV quotes 16.6 g for the Champion. That is DRY: the spec table
+ * lists no battery and the recommended pack, a LAVA II 1S 280 mAh, is 6.8 g.
+ * All up is therefore 23.4 g, and the published "6.3:1 thrust to weight" is
+ * the dry figure. Against a flying quad it is 4.7:1 fresh and about 3.8:1 on
+ * a tired pack, which is what the thrust budget below actually delivers.
+ * A whoop is not an overpowered machine; it is a LIGHT one, and that is a
+ * different feeling entirely.
+ *
+ * INERTIA. Estimated, not published, from point masses: four 1.55 g motors
+ * with props at 23 mm on each axis, the frame and its four ducts as a ring
+ * at 28 mm, the 6.8 g pack as a 43 x 20 x 6 mm slab at the CG, and 5 g of
+ * FC, canopy and camera near the middle. That gives Ixx 5.3e-6 and Iyy
+ * 6.2e-6; the values below carry a little more for the parts the estimate
+ * does not enumerate. Izz is held near Ixx + Iyy, the perpendicular axis
+ * result for a near flat body, times the 0.93 the five inch's own tensor
+ * shows. The pitch to roll split is much wider than the five inch's 8
+ * percent because the pack is a far larger share of a 23 g machine.
+ *
+ * WHY THE WHOOP IS CRISP, and it is not the motors. Roll authority is
+ * 2 T_max arm / Ixx = 2 x 0.270 x 0.0230 / 6.0e-6 = 2070 rad/s squared,
+ * against the five inch's 2 x 14.7 x 0.0778 / 0.0035 = 653. Three times the
+ * angular acceleration on a third of the rate. The rotor time constant goes
+ * the OTHER way: j R / ke^2 is 26 ms here against the five inch's 36 ms
+ * measured at the same operating point, so the motors are comparable and
+ * the frame is what changed.
+ *
+ * kt from the thrust target: 74,750 rpm at full throttle on a fresh cell,
+ * 4.7:1 on 23.4 g, is 0.2696 N a rotor at 7828 rad/s, so kt = 4.400e-9.
+ * Hover then sits at 3611 rad/s, 34,480 rpm, which is where a 0702 on 1S
+ * measures.
+ *
+ * kq through the SAME momentum theory identity the five inch uses,
+ * kq = kt^1.5 / (FM sqrt(2 rho A)), with FM = 0.330. That is far below the
+ * five inch's 0.520 and it is not pessimism: a 31 mm three blade at 34,000
+ * rpm runs at a chord Reynolds number near 10,700, where the blade section's
+ * lift to drag ratio collapses from 60 to about 20 and profile drag eats the
+ * disc. Bohorquez measured 0.42 for the best single rotor he built at Re
+ * 27,000 to 43,700, and Harris's low Reynolds compilation puts a rotor at
+ * Re 10^4 in the 0.30 to 0.40 band. 0.330 is the middle of that band and it
+ * is what makes a whoop's yaw authority feel the way it does, because prop
+ * drag is the only currency yaw is paid in.
+ *
+ * THE ELECTRICAL SET IS SOLVED, not typed, exactly as the five inch's was:
+ * two equilibria, full throttle and hover, in the two unknowns ke and
+ * r_motor, with r_cell pinned at the 55 mOhm a real 1S 280 mAh whoop pack
+ * measures. Hover duty was targeted at 0.30, the middle of the 27 to 36
+ * percent a modern 1S brushless whoop shows. It lands:
+ *
+ *   full throttle   7828 rad/s, 4.42 A a motor, 17.7 A pack, 3.23 V
+ *   hover           3611 rad/s, 0.94 A a motor, duty 0.300, 4.14 V
+ *
+ * The sag is the story. 4.2 V open circuit falls to 3.23 V under a punch,
+ * a 23 percent collapse, where the five inch's 6S race pack loses 8. That
+ * single number is most of why a whoop feels like a whoop: every hard input
+ * costs you the top of the throttle, and the tune has to be built around it
+ * (see the TPA breakpoint in configs/whoop-*.diff, which BetaFPV drops from
+ * 1350 to 1180 for exactly this reason).
+ *
+ * ke is 2.8515e-4, which is a 33,489 kV motor against a 36,000 kV plate.
+ * Same story as the five inch's 1507 against 1900: nameplate kV is measured
+ * unloaded and the loaded constant is better. Seven percent here rather than
+ * twenty because a 0702 saturates less than a 2207 does.
+ *
+ * j_rotor is a 0702 bell plus a 1.5 g moulded three blade, estimated at
+ * 1.8e-8 with about 35 percent of uncertainty. It is three orders of
+ * magnitude under the five inch's 8e-6, which is what people expect, and it
+ * does NOT make the motor three orders quicker, because r_motor is 25 times
+ * larger and ke is 22 times smaller. That cancellation is the whole
+ * correction to the folklore.
+ *
+ * DRAG. cda_front and cda_side are the solid airframe only, 9.3e-4 m^2 of
+ * frontal silhouette at a bluff body Cd of 0.9, because the ducts' own drag
+ * is momentum drag and is charged through k_rotor_drag below. cda_plan is
+ * the 2.2e-3 m^2 plan silhouette at Cd 1.15, which is what stops a flat fall
+ * at about 10 m/s instead of 40.
+ *
+ * k_rotor_drag is 1.00 against the five inch's 0.43842, and that is the
+ * duct. The five inch's figure came from a published TOTAL linear drag fit
+ * for an open rotor. A shroud captures the whole stream tube instead of a
+ * contracted one, so the momentum drag rho A v_i V_perp is paid in full, and
+ * the ducted fan literature puts ram drag at 80 to 95 percent of total drag
+ * below ten knots. 1.00 is the momentum coefficient with nothing added.
+ * This term, not the body drag, is why whoops are slow.
+ *
+ * SOURCES. betafpv.com Air65 II and 0702 (2026) product pages for mass,
+ * geometry, ESC and pack; Gemfan for the 1207 3 blade; Pereira 2008
+ * (Maryland) for shrouded rotor momentum theory and duct augmentation;
+ * Harris NASA/CR-20205001147 and Bohorquez 2007 for low Reynolds figure of
+ * merit; Graf/Fleming 2005 and Akturk & Camci for the lip suction moment;
+ * He & Leang 2020 for ground effect. Full citations in PROGRESS.md.
+ * ------------------------------------------------------------------- */
+[SIM_AIRFRAME_WHOOP65] = {
+  .mass_kg = 0.0234,
+  .inertia = { 6.0e-6, 7.4e-6, 1.25e-5 },
+  .gravity = 9.80665,
+  .arm_x = 0.0229809704566899, /* 0.065 / (2 sqrt 2), a 65 mm wheelbase */
+  .arm_y = 0.0229809704566899,
+  .kt = 4.400e-9,
+  .kq = 2.057e-11,  /* figure of merit 0.330, see the note above */
+  .ke = 2.8515e-4,  /* loaded torque constant, 33489 kV */
+  .r_motor = 0.2252,
+  .j_rotor = 1.8e-8,
+  .cells = 1.0,
+  .r_cell = 0.055,  /* 55 mOhm: cell 42, BT2.0 connector 8, wire 5 */
+  .cda_plan = 0.00253,
+  .cda_front = 0.00084,
+  .cda_side = 0.00092,
+  /*
+   * Cross flow side lift. A whoop has almost no fuselage and almost no pack
+   * silhouette, so the slender body side force that lets a five inch turn on
+   * a breath of rudder is nearly absent here. Scaled from the five inch by
+   * the ratio of side areas, which is about a sixteenth.
+   */
+  .k_body_lift = 0.00065,
+  .rho = 1.225,
+  /*
+   * Propwash. A whoop makes very little of it: the wake is slow and fat, the
+   * disc loading is a tenth of a five inch's, and the duct keeps the
+   * recirculation tidy rather than letting it flap. Held at a third of the
+   * five inch's amplitude, which is a FEEL constant and the same rule
+   * applies: it moves when a pilot says so, not otherwise.
+   */
+  .k_propwash = 0.05,
+  .prop_r = 0.0155,  /* 31 mm Gemfan 1207 three blade */
+  .k_rotor_drag = 1.00,
+  /*
+   * Prop pitch radius. The GF1207 is a 0.7 inch pitch prop, 17.78 mm, over
+   * 2 pi. A whoop prop is very low pitch, which is why the thrust falls away
+   * so fast in a climb and why a whoop cannot chase its own wake upward the
+   * way a 4.3 inch pitch five inch can.
+   */
+  .k_inflow = 0.00283,
+  .torque_ind = 0.330,
+  /*
+   * THE DUCT. 1.10 of static augmentation is the low end of the published
+   * range and it is where a real whoop sits: the ideal duct of momentum
+   * theory, with an exit area equal to the disc and no losses, is 2^(1/3) =
+   * 1.26, and every real one gives most of that back to a tip gap. This
+   * duct's is about 3 percent of the throat diameter, which is large.
+   *
+   * duct_fade 1.0 means half the augmentation is gone by the time the
+   * edgewise air speed reaches the rotor's own induced velocity, about
+   * 5.6 m/s in a hover. That is the behaviour whoop pilots describe without
+   * naming: it hangs beautifully and then feels like it is wading as soon as
+   * it is moving. A duct works by suppressing wake contraction and a duct
+   * flying sideways cannot.
+   *
+   * k_duct_lip 0.10 is the suction moment coefficient in M = Cm q A D. At
+   * 10 m/s that is 1.4e-4 N m a rotor, 5.7e-4 across four, which against
+   * Iyy is 77 rad/s squared of nose up: a real trim a pilot holds forward
+   * stick against, and the reason a whoop pitches up and slows when it is
+   * pushed. Measured ducted fan peaks are near 0.13 at ninety degrees of
+   * rotor angle of attack; this is applied scaled by the in plane speed the
+   * rotor actually sees, so it is zero in a hover by construction and the
+   * hover, punch and sag figures cannot move.
+   */
+  .k_duct = 1.10,
+  .duct_fade = 1.0,
+  .k_duct_lip = 0.10,
+  .spin = { -1.0, 1.0, 1.0, -1.0 },
+  .pos_x = { -0.0229809704566899, 0.0229809704566899,
+             -0.0229809704566899, 0.0229809704566899 },
+  .pos_y = { -0.0229809704566899, -0.0229809704566899,
+             0.0229809704566899, 0.0229809704566899 },
+  /*
+   * The rotor discs sit 6 mm above the CG. A whoop's prop is level with the
+   * top of the duct and the CG is a couple of millimetres under it, held
+   * down by the pack. Small, but it is the same mechanism as the five
+   * inch's 20 mm and it works with the lip moment rather than instead of it.
+   */
+  .pos_z = { 0.006, 0.006, 0.006, 0.006 },
+  /*
+   * Build tolerance. An injection moulded one piece frame holds its motor
+   * mounts far better than a bolted carbon one does, so both sets are a
+   * third of the five inch's, and the radial set is solved the same way to
+   * cancel the tangential set's lateral force at hover: with tangential
+   * (-0.3, 0.47, 0.2, -0.4) the roll column sum is -0.37 and the lateral
+   * pair is (0.37, 0.17) in the same units, so radial (0.47, 0.28, 0.38,
+   * 0.20) removes it. The mechanism is the five inch's and so is the
+   * reasoning; only the magnitudes are a moulded frame's.
+   */
+  .cant_radial_deg = { 0.47, 0.28, 0.38, 0.20 },
+  .cant_tangent_deg = { -0.3, 0.47, 0.2, -0.4 },
+  /*
+   * The hull. 38 mm of half extent is the 23 mm motor offset plus the duct
+   * wall, which is what a whoop actually presents to a wall: it hits duct
+   * first, always, which is the whole design. 10 mm down is the duct
+   * underside it parks on and 18 mm up is the top of the canopy. The camera
+   * glass sits at the front of the Air II canopy, 24 mm forward and 12 mm up.
+   */
+  .hull_hx = 0.038,
+  .hull_hy = 0.038,
+  .hull_hz_down = 0.010,
+  .hull_hz_up = 0.018,
+  .contact_patch_r = 0.0115,
+  .contact_arm_max = 0.045,
+  .camera_x = 0.024,
+  .camera_y = 0.0,
+  .camera_z = 0.012,
+},
 };
+
+/*
+ * The airframe in force. Airframe 0 until a host says otherwise, which is
+ * the whole of the compatibility promise: the harness never calls
+ * sim_set_airframe, so it flies the five inch it always flew.
+ */
+const PlantParams *PLANT_P = &PLANT_TABLE[SIM_AIRFRAME_5IN];
+static int g_airframe = SIM_AIRFRAME_5IN;
 
 /* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left,
  * spin +1 is counter clockwise seen from above. Betaflight props-in
@@ -246,7 +496,8 @@ const PlantParams PLANT = {
  * reaction is nose right, matching the negative setpoint. Getting any
  * single link of that chain backwards turns the yaw loop into positive
  * feedback; the diagnosis is recorded in PROGRESS.md. */
-const double PLANT_SPIN[SIM_MOTOR_COUNT] = { -1.0, 1.0, 1.0, -1.0 };
+/* The values are now .spin in the table above; the sign chain the comment
+ * traces is unchanged and every airframe in the table shares it. */
 
 /*
  * THE MOTOR THRUST AXES ARE NOT PARALLEL, AND THAT IS WHY A ROLL YAWS.
@@ -310,15 +561,16 @@ const double PLANT_SPIN[SIM_MOTOR_COUNT] = { -1.0, 1.0, 1.0, -1.0 };
  * The threshold is not touched; see PROGRESS.md for what the measured
  * coupling is and why it is smaller than the floor.
  */
-static const double PLANT_CANT_RADIAL_DEG[SIM_MOTOR_COUNT] = { 1.4, 0.85, 1.15, 0.6 };
-static const double PLANT_CANT_TANGENT_DEG[SIM_MOTOR_COUNT] = { -0.9, 1.4, 0.6, -1.2 };
+/* The values are now .cant_radial_deg and .cant_tangent_deg in the table
+ * above, per airframe, because a moulded 23 g frame does not hold its
+ * motor mounts to the same tolerance a bolted carbon one does. */
 
 /*
  * Unit thrust axes in the body frame, built from the cant table at first use.
  * Small angles, so the axis is (radial * rhat + tangent * that + zhat)
  * normalised; sim_sqrt is the only libm call and it is ours.
  */
-static double PLANT_AXIS[SIM_MOTOR_COUNT][3];
+static double PLANT_AXIS[SIM_AIRFRAME_COUNT][SIM_MOTOR_COUNT][3];
 static int plant_axis_ready = 0;
 
 /* The arcade airframe's axes: four thrust lines exactly vertical, the
@@ -328,33 +580,50 @@ static const double PLANT_AXIS_FLAT[SIM_MOTOR_COUNT][3] = {
   { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 }, { 0.0, 0.0, 1.0 },
 };
 
+/*
+ * Every airframe's axes are built in one pass at first use rather than the
+ * selected one's on demand, so the arithmetic does not depend on which
+ * airframe a run happened to touch first. A cache whose CONTENTS depend on
+ * call order is exactly the kind of thing that stops a replay reproducing,
+ * and it is cheap to refuse to have one.
+ */
 static void plant_build_axes(void) {
   const double deg = 0.017453292519943295;
-  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-    const double x = PLANT_POS_X[m];
-    const double y = PLANT_POS_Y[m];
-    const double len = sim_sqrt(x * x + y * y);
-    const double rx = x / len;
-    const double ry = y / len;
-    /* Counter clockwise tangential direction, spin independent. */
-    const double tx = -ry;
-    const double ty = rx;
-    const double er = PLANT_CANT_RADIAL_DEG[m] * deg;
-    const double et = PLANT_CANT_TANGENT_DEG[m] * deg;
-    double vx = er * rx + et * tx;
-    double vy = er * ry + et * ty;
-    double vz = 1.0;
-    const double n = sim_sqrt(vx * vx + vy * vy + vz * vz);
-    PLANT_AXIS[m][0] = vx / n;
-    PLANT_AXIS[m][1] = vy / n;
-    PLANT_AXIS[m][2] = vz / n;
+  for (int a = 0; a < SIM_AIRFRAME_COUNT; a += 1) {
+    const PlantParams *P = &PLANT_TABLE[a];
+    for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+      const double x = P->pos_x[m];
+      const double y = P->pos_y[m];
+      const double len = sim_sqrt(x * x + y * y);
+      const double rx = x / len;
+      const double ry = y / len;
+      /* Counter clockwise tangential direction, spin independent. */
+      const double tx = -ry;
+      const double ty = rx;
+      const double er = P->cant_radial_deg[m] * deg;
+      const double et = P->cant_tangent_deg[m] * deg;
+      double vx = er * rx + et * tx;
+      double vy = er * ry + et * ty;
+      double vz = 1.0;
+      const double n = sim_sqrt(vx * vx + vy * vy + vz * vz);
+      PLANT_AXIS[a][m][0] = vx / n;
+      PLANT_AXIS[a][m][1] = vy / n;
+      PLANT_AXIS[a][m][2] = vz / n;
+    }
   }
   plant_axis_ready = 1;
 }
-const double PLANT_POS_X[SIM_MOTOR_COUNT] = { -0.0777817459305202, 0.0777817459305202,
-                                              -0.0777817459305202, 0.0777817459305202 };
-const double PLANT_POS_Y[SIM_MOTOR_COUNT] = { -0.0777817459305202, -0.0777817459305202,
-                                              0.0777817459305202, 0.0777817459305202 };
+
+void plant_set_airframe(int id) {
+  if (id < 0 || id >= SIM_AIRFRAME_COUNT) {
+    return;
+  }
+  g_airframe = id;
+  PLANT_P = &PLANT_TABLE[id];
+}
+
+int plant_airframe(void) { return g_airframe; }
+/* .pos_x and .pos_y live in the table above. */
 
 /*
  * THE ROTOR DISCS ARE ABOVE THE CENTRE OF GRAVITY, AND THAT IS WHY A QUAD
@@ -381,7 +650,8 @@ const double PLANT_POS_Y[SIM_MOTOR_COUNT] = { -0.0777817459305202, -0.0777817459
  * same plate. Disc minus CG is therefore about 20 mm, and it is the same for
  * all four because they are on one plate.
  */
-const double PLANT_POS_Z[SIM_MOTOR_COUNT] = { 0.020, 0.020, 0.020, 0.020 };
+/* .pos_z lives in the table above: 0.020 on the five inch, 0.006 on the
+ * whoop, which is a machine 23 mm thick from duct floor to canopy. */
 
 /*
  * Descent aerodynamics. mu is the axial advance ratio, va / pitch_speed, and
@@ -444,7 +714,8 @@ const double PLANT_POS_Z[SIM_MOTOR_COUNT] = { 0.020, 0.020, 0.020, 0.020 };
  * costs a little truth at one edge and stops a model term from rewriting
  * the calibrated envelope.
  */
-#define PLANT_TORQUE_IND 0.520
+/* PLANT_TORQUE_IND is .torque_ind in the airframe table now: it IS the
+ * figure of merit kq was derived through, so it moves with the rotor. */
 #define PLANT_TORQUE_QMIN 0.90
 #define PLANT_TORQUE_QMAX 1.60
 
@@ -500,6 +771,14 @@ double sim_sqrt_pub(double x) { return sim_sqrt(x); }
 double PLANT_DBG_WASH_DEPTH;
 double PLANT_DBG_WASH_RATIO;
 double PLANT_DBG_VA;
+/* Duct taps, for the same reason: the duct terms are the whoop's whole
+ * character and a gate that INFERS them from a trajectory measures the
+ * pilot's flying, not the model. Motor 0's applied augmentation factor and
+ * the in plane air speed it saw, plus the total nose up couple the rotor
+ * plane and the lips produce between them, in newton metres. */
+double PLANT_DBG_DUCT;
+double PLANT_DBG_VPERP;
+double PLANT_DBG_PITCH_UP;
 
 /*
  * PROPWASH, WHICH DID NOT EXIST AND IS MOST OF WHAT RIPPING FEELS LIKE.
@@ -674,7 +953,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
    * state asymmetry, chosen once per step so the branch cost is one load.
    * The wash and vibration CHANNELS still advance every step below, so
    * flipping the style between runs cannot move any other run's trace. */
-  const double (*AXIS)[3] = SIM_ARCADE ? PLANT_AXIS_FLAT : PLANT_AXIS;
+  const double (*AXIS)[3] = SIM_ARCADE ? PLANT_AXIS_FLAT : PLANT_AXIS[g_airframe];
   double thrust[SIM_MOTOR_COUNT];
   double stator_torque[3] = { 0.0, 0.0, 0.0 }; /* reaction on the frame */
   double h_prop[3] = { 0.0, 0.0, 0.0 };        /* net prop angular momentum */
@@ -806,11 +1085,15 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * not tidy, and the alternative is an iteration the fixed step cannot
      * afford.
      */
+    /* In plane air speed at this rotor. Hoisted out of the translational
+     * lift block below because the duct fade reads the same number, and two
+     * places computing the same square root is how they drift apart. */
+    const double vx_r = v_body[0] - r * PLANT_POS_Y[m];
+    const double vy_r = v_body[1] + r * PLANT_POS_X[m];
+    const double vperp_m = sim_sqrt(vx_r * vx_r + vy_r * vy_r);
     double axial_gain = 0.0;
     {
-      const double vx_r = v_body[0] - r * PLANT_POS_Y[m];
-      const double vy_r = v_body[1] + r * PLANT_POS_X[m];
-      const double vperp = sim_sqrt(vx_r * vx_r + vy_r * vy_r);
+      const double vperp = vperp_m;
       const double t_ideal = PLANT.kt * w * w;
       if (vperp > 1e-6 && t_ideal > 1e-6) {
         const double vh = sim_sqrt(t_ideal / (2.0 * PLANT.rho * 3.14159265358979323846 *
@@ -906,6 +1189,47 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       }
     }
     /*
+     * THE DUCT, AND WHY IT STOPS WORKING THE MOMENT YOU GO ANYWHERE.
+     *
+     * A shroud round a rotor removes the wake contraction a free rotor
+     * suffers: the slipstream leaves at the duct's exit area instead of
+     * squeezing to half the disc, so for the same shaft power the rotor
+     * moves more air more slowly and makes more thrust. The ideal result
+     * for an exit area equal to the disc is 2^(1/3), about 1.26, and no
+     * real duct is close, because a tip gap lets the pressure difference
+     * short circuit round the blade. This whoop's gap is about three
+     * percent of the throat, which is large, and 1.10 is what that earns.
+     *
+     * The fade is the important half. A duct only removes contraction while
+     * the flow it is shaping goes THROUGH it. Fly sideways and the stream
+     * tube leaves through the wall instead of the exit, the lip separates,
+     * and the augmentation goes with it. duct_fade is where half of it has
+     * gone, measured in the rotor's own induced velocity so it scales with
+     * thrust rather than being a fixed speed: on this whoop that is about
+     * 5.6 m/s in a hover. It is the single most characteristic thing about
+     * flying a whoop. It hangs in the air beautifully and then feels like it
+     * is wading the instant it is moving, and this is the term that does it.
+     *
+     * The five inch's k_duct is 1.0 and its duct_fade is 0, so the branch is
+     * not taken and the multiply below is by exactly 1.0, which in IEEE 754
+     * is the identity. That is what keeps its trace bit identical.
+     */
+    double duct = PLANT.k_duct;
+    if (PLANT.duct_fade > 0.0) {
+      const double t_ideal = PLANT.kt * w * w;
+      if (t_ideal > 1e-6) {
+        const double vh = sim_sqrt(t_ideal / (2.0 * PLANT.rho * 3.14159265358979323846 *
+                                              PLANT.prop_r * PLANT.prop_r));
+        const double xr = vperp_m / (PLANT.duct_fade * vh);
+        duct = 1.0 + (PLANT.k_duct - 1.0) / (1.0 + xr * xr);
+      }
+    }
+    axial *= duct;
+    if (m == 0) {
+      PLANT_DBG_DUCT = duct;
+      PLANT_DBG_VPERP = vperp_m;
+    }
+    /*
      * Prop drag torque, profile part plus induced part. See the block at
      * PLANT_TORQUE_IND: exactly kq w^2 in the hover, follows the flow
      * everywhere else, clamped so the calibrated envelope stays put. The
@@ -919,7 +1243,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * not accelerate it. */
     const double q_sign = (w_rel < 0.0 ? -1.0 : 1.0);
     const double qb_mag = PLANT.kq * w_rel * w_rel;
-    double q_mag = (1.0 - PLANT_TORQUE_IND) * qb_mag;
+    double q_mag = (1.0 - PLANT.torque_ind) * qb_mag;
     {
       const double t_load = PLANT.kt * w * w * axial;
       if (t_load > 1e-6) {
@@ -1112,7 +1436,45 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     rotor_drag_tau[0] += -PLANT_POS_Z[m] * fy;
     rotor_drag_tau[1] += PLANT_POS_Z[m] * fx;
     rotor_drag_tau[2] += PLANT_POS_X[m] * fy - PLANT_POS_Y[m] * fx;
+    /*
+     * DUCT LIP SUCTION, WHICH IS WHY A DUCTED MACHINE PITCHES UP.
+     *
+     * A shroud in edgewise flow does not meet the air symmetrically. The
+     * upwind lip turns the stream sharply into the throat and carries a
+     * large suction peak doing it; the downwind lip is in separated wake and
+     * carries almost nothing. The result is an upward force AHEAD of the
+     * duct's centre, which is a nose up moment, and it is the single best
+     * known handling characteristic of ducted fan aircraft: every one of
+     * them, from the X-22A to a tiny whoop, pitches up into the wind and has
+     * to be trimmed out of it.
+     *
+     * M = Cm q A D, the standard form, with q the free stream dynamic
+     * pressure at this rotor, A the disc area and D the duct diameter. The
+     * in plane speed the rotor actually sees is used rather than the craft's
+     * airspeed, so a hover is exactly zero by construction and the hover,
+     * punch, sag and rate checks cannot move; a yaw rate also feeds it,
+     * which is right, because a yawing duct really does see edgewise flow.
+     *
+     * Sign: the moment tips the duct axis toward the free stream. With the
+     * unit in plane direction u the upward force acts at +u, so
+     * tau = r x F gives tau_x = +M u_y and tau_y = -M u_x. In this frame a
+     * negative pitch torque is nose UP (a positive rotation about +y tips
+     * the nose toward -z), so flying forward gives nose up, and sliding left
+     * rolls away from the slide. Both are what a ducted machine does.
+     *
+     * The five inch's k_duct_lip is 0, so the branch is never taken.
+     */
+    if (PLANT.k_duct_lip > 0.0) {
+      const double m_lip = PLANT.k_duct_lip * 0.5 * PLANT.rho * vperp * vperp *
+                           disc_area * (2.0 * PLANT.prop_r);
+      rotor_drag_tau[0] += m_lip * (vy / vperp);
+      rotor_drag_tau[1] -= m_lip * (vx / vperp);
+    }
   }
+
+  /* Nose up is a NEGATIVE pitch torque in this frame, so the tap is negated
+   * to read as "how hard the air is lifting the nose". */
+  PLANT_DBG_PITCH_UP = -rotor_drag_tau[1];
 
   /* 4. Body torques: thrust moments, stator reaction, gyroscopic term.
    *

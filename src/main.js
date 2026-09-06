@@ -4130,7 +4130,15 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function padNav() {
     const btn = input.padMenuButtons();
-    if (input.map.stored) {
+    /*
+     * mapUsable rather than map.stored. A pilot who never opened the wizard
+     * because their radio was already in AETR order got up and down only,
+     * which is half a menu, and a red row on the front page telling them so.
+     * input.js can tell a real radio's parked throttle from a wrong guess,
+     * so a guess that is behaving like a radio drives the cursor the same
+     * way a wizard mapping does. See noteThrottleParked.
+     */
+    if (input.mapUsable()) {
       const c = input.channels;
       return {
         up: c.pitch > NAV_DEFLECT,

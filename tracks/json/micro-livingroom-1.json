@@ -6,8 +6,8 @@
   "modifiedUtc": "2026-09-06T06:53:09Z",
   "trackClass": "micro",
   "field": {
-    "width": 5,
-    "depth": 6,
+    "width": 10,
+    "depth": 12,
     "gridSize": 0.0254
   },
   "settings": {
@@ -24,8 +24,8 @@
       "type": "startPads",
       "name": "",
       "position": {
-        "x": 2.5,
-        "y": 1.45,
+        "x": 5,
+        "y": 4.45,
         "z": 0
       },
       "yaw": 1.570796,
@@ -42,8 +42,8 @@
       "type": "gate",
       "name": "",
       "position": {
-        "x": 2.5,
-        "y": 2.4,
+        "x": 5,
+        "y": 5.4,
         "z": 0
       },
       "yaw": 1.570796,
@@ -62,8 +62,8 @@
       "type": "gate",
       "name": "",
       "position": {
-        "x": 2.12,
-        "y": 3.2,
+        "x": 4.62,
+        "y": 6.2,
         "z": 0
       },
       "yaw": 1.570796,
@@ -82,8 +82,8 @@
       "type": "pole",
       "name": "",
       "position": {
-        "x": 2.5,
-        "y": 3.85,
+        "x": 5,
+        "y": 6.85,
         "z": 0
       },
       "yaw": 0,
@@ -100,8 +100,8 @@
       "type": "gate",
       "name": "",
       "position": {
-        "x": 2.88,
-        "y": 3.2,
+        "x": 5.38,
+        "y": 6.2,
         "z": 0
       },
       "yaw": 1.570796,
@@ -120,8 +120,8 @@
       "type": "tower",
       "name": "",
       "position": {
-        "x": 2.5,
-        "y": 3.2,
+        "x": 5,
+        "y": 6.2,
         "z": 0
       },
       "yaw": 1.570796,

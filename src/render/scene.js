@@ -51,7 +51,8 @@ import { SESSION_TEXTURES } from './session-textures.js';
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
 import { builtObstacle, BUILT_FRAME_TUBE_OD, GATE_SCALE } from '../game/track.js';
-import { PIPE_OD as RACEGOW_PIPE_OD, GATE_OPENING_MAX as RACEGOW_GATE_OPENING_MAX } from '../trackbuilder/racegow.js';
+import { PIPE_OD as RACEGOW_PIPE_OD, GATE_OPENING_MAX as RACEGOW_GATE_OPENING_MAX,
+  ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
 import { qualityFor } from './quality.js';
 /* The shape of the built in circuit, shared with the map screen's thumbnail
  * so the picture of the course and the course cannot drift apart. */
@@ -148,23 +149,21 @@ const HORIZON = 0xf2e3cb;
  * panelled basement, a black ribbed rubber horse stall mat on the floor,
  * exposed joists overhead and one warm bulb.
  *
- * 5 by 6 m holds a 28 inch track with 1.4 m of run off on the short sides,
- * which is what the rules mean by "you will need some additional space
- * around the outside of that to fly the tracks optimally". 2.4 m is a
- * standard domestic ceiling and it is a REAL constraint rather than a
- * decoration: a triple stack's top opening is centred at 1.88 m and an
- * elevated gate's reaches 2.13, so a pilot flying over the top of the course
- * is genuinely close to the joists. src/trackbuilder/warnings.js warns an
- * author whose track goes through it.
+ * THE THREE DIMENSIONS ARE NOT WRITTEN HERE ANY MORE. They were, as a
+ * second copy of src/trackbuilder/racegow.js's, and a second copy of a
+ * number is a number that will disagree with itself: the builder drew its
+ * field from one pair and the renderer built its walls from another, so
+ * resizing the room in the obvious place would have left the walls where
+ * they were and the track hanging outside them. They are imported now.
  *
  * The floor is the darkest thing in the picture on purpose. RaceGOW pilots
  * write about this: white pipe on a white floor is unflyable, and the
  * organiser's mat is what makes a white gate read.
  */
 const ROOM = {
-  width: 5.0,
-  depth: 6.0,
-  height: 2.4,
+  width: ROOM_WIDTH,
+  depth: ROOM_DEPTH,
+  height: ROOM_HEIGHT,
   /* What the fog and the background are: the air of an unlit basement. */
   air: 0x14100c,
   /* The mat, and the concrete under it where the mat does not reach. */
@@ -2542,6 +2541,52 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       markerHosts.set(s.id, host);
       continue;
     }
+    /*
+     * THE VERTICAL POLE, WHICH WAS NEITHER DRAWN NOR SOLID.
+     *
+     * RaceGOW's own element: a bare length of 3/4 inch pipe stood on end and
+     * flown around, drawn as a red dot in plan on every official diagram. It
+     * is a MARKER in the builder, like a flag and a cone, and this loop had
+     * a branch for each of those and none for this one. So a pole reached
+     * the world as nothing at all: no mesh, so the pilot could not see the
+     * thing they were supposed to fly around, and no collider, so they flew
+     * through where it should have been. Reported as flying through the
+     * poles, and the demo room track has one in it.
+     *
+     * A pipe and a foot, because that is the whole object. The colour is the
+     * diagrams' red rather than the frame's white, which is what tells a
+     * pilot at a glance that this one is to be passed rather than entered.
+     */
+    if (s.type === 'pole') {
+      const r = Math.max(0.004, s.dims.poleRadius);
+      const h = Math.max(0.1, s.dims.height);
+      const pipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(r, r, h, 10),
+        celMaterial({ color: 0xc0392b, rim: 0.22 }),
+      );
+      pipe.position.set(s.x, y + h * 0.5, s.z);
+      pipe.castShadow = true;
+      outlineHull(pipe, 1.06);
+      baker.bake(pipe);
+      /* A stub foot, the same shape a gate upright stands on: one pipe
+       * thick and four across, so it reads as standing rather than as
+       * growing out of the floor. */
+      const foot = new THREE.Mesh(
+        new THREE.BoxGeometry(r * 4, r * 1.6, r * 4),
+        celMaterial({ color: 0xc0392b, rim: 0.18 }),
+      );
+      foot.position.set(s.x, y + r * 0.8, s.z);
+      foot.castShadow = true;
+      baker.bake(foot);
+      /* Solid for its whole length. 'pole' is a kind the collision set
+       * already names, and it is the honest one: this is a pole. */
+      colliders.add('pole', s.x, y, s.z, s.x, y + h, s.z, r);
+      const host = new THREE.Group();
+      host.position.set(s.x, y, s.z);
+      scene.add(host);
+      markerHosts.set(s.id, host);
+      continue;
+    }
     if (s.type === 'flag') {
       /*
        * The course marker flag the field already draws, at the author's
@@ -3656,24 +3701,34 @@ function attractOrbit(course, gates, tops, heightFn) {
    * The whole point of the class is that a whoop pilot's world is the inside
    * of that room.
    *
-   * The three numbers are the room's, from src/trackbuilder/racegow.js. The
-   * radius has to keep the camera off the walls: the track sits about the
-   * middle of a 5 by 6 m floor, so 2.1 m from its centre still leaves 0.4 m
-   * of floor behind the lens on the short axis. The eye stays under 1.5 m,
-   * above every ground gate at 0.356 and below both the 2.4 m ceiling and
-   * the 1.88 m top of a triple stack, so the orbit passes under the joists
-   * and over the track. The aim is around half a metre, between a ground
-   * gate's centre and rule 5's stack gate at 1.067, keeping both in frame.
+   * The three numbers are the room's and they are DERIVED FROM IT rather
+   * than typed, because the room grew from 5 by 6 by 2.4 m to 10 by 12 by 4
+   * and a typed 2.1 m orbit in a 10 m hall is a camera fidgeting around one
+   * gate with the whole room behind it.
+   *
+   * The radius has to keep the camera off the walls, so it caps at half the
+   * SHORT side less an arm's length of floor behind the lens. The eye stays
+   * under two thirds of the ceiling, which is above every ground gate at
+   * 0.356 and above the 2.13 m an Elevated Gate reaches, so the orbit passes
+   * over the track and under the joists at any ceiling height. The aim is
+   * low, between a ground gate's centre and rule 5's stack gate at 1.067,
+   * so both are in frame.
    */
+  const ROOM_ORBIT_MAX = ROOM_WIDTH * 0.5 - 0.8;
+  const ROOM_EYE_MAX = ROOM_HEIGHT * 0.66;
   const room = course && course.trackClass === 'micro';
   if (!course.structures.length && !gates.length) {
     return {
       x: spawn.x,
       y: heightFn(spawn.x, spawn.z),
       z: spawn.z,
-      radius: room ? 1.6 : 9,
-      eye: room ? 1.05 : 2.4,
-      aim: room ? 0.5 : 0.85,
+      /* An empty room has one thing in it, the aircraft, so this frames the
+       * AIRCRAFT and lets the room be the backdrop. Far enough back that the
+       * walls and the floor read, close enough that a 65 mm machine is not a
+       * speck. */
+      radius: room ? 2.4 : 9,
+      eye: room ? 1.5 : 2.4,
+      aim: room ? 0.7 : 0.85,
       path: null,
     };
   }
@@ -3709,13 +3764,13 @@ function attractOrbit(course, gates, tops, heightFn) {
    * its own frame, and caps at 80 m so a pitch-filling layout still reads
    * as a course rather than as a smudge on the horizon. */
   const radius = room
-    ? Math.min(2.1, Math.max(1.55, span * 1.25 + 0.5))
+    ? Math.min(ROOM_ORBIT_MAX, Math.max(1.8, span * 1.35 + 0.8))
     : Math.min(80, Math.max(16, span * 1.4 + 4, rise * 1.1 + 8));
   const eye = room
-    ? Math.min(1.5, Math.max(0.95, rise * 0.5 + 0.6))
+    ? Math.min(ROOM_EYE_MAX, Math.max(1.1, rise * 0.6 + 0.7))
     : Math.max(3.4, rise * 0.38 + span * 0.12 + 2.0);
   const aim = room
-    ? Math.min(eye - 0.2, Math.max(0.35, rise * 0.4))
+    ? Math.min(eye - 0.3, Math.max(0.35, rise * 0.4))
     : Math.max(0.7, Math.min(rise * 0.35, eye - 1.4));
   return {
     x: cx,
@@ -3898,11 +3953,29 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * is not there.
    */
   if (indoor) {
-    const bulb = new THREE.PointLight(0xffd9a0, 26, 18, 1.7);
-    bulb.position.set(0, ROOM.height - 0.25, 0);
-    bulb.castShadow = false;
-    scene.add(bulb);
-    scene.add(new THREE.HemisphereLight(0xc9d6e8, 0x2a2420, 0.34));
+    /*
+     * TWO LAMPS, BECAUSE THE ROOM IS A HALL NOW.
+     *
+     * One bulb over the middle was right for 5 by 6 by 2.4 m. At 10 by 12 by
+     * 4 the same lamp is 3.75 m up instead of 2.15 and the far corner is
+     * 8.6 m from it, so with a 1.7 decay the corners fell to about a tenth
+     * of the middle: a black room with a lit patch in it.
+     *
+     * The intensity is scaled by that decay rather than guessed. The floor
+     * directly under a lamp used to see 26 / 2.15^1.7; keeping that at
+     * 3.75 m needs (3.75 / 2.15)^1.7 = 2.6 times as much, so a single lamp
+     * would want 67. Two lamps down the long axis each carry a bit over half
+     * of it and their pools overlap in the middle, which is what a two lamp
+     * shed actually looks like. The hemisphere comes up with them, because
+     * it is the only thing lighting the corners at all.
+     */
+    for (const lz of [-ROOM.depth * 0.25, ROOM.depth * 0.25]) {
+      const bulb = new THREE.PointLight(0xffd9a0, 42, ROOM.depth * 2.5, 1.7);
+      bulb.position.set(0, ROOM.height - 0.25, lz);
+      bulb.castShadow = false;
+      scene.add(bulb);
+    }
+    scene.add(new THREE.HemisphereLight(0xc9d6e8, 0x2a2420, 0.42));
   }
 
   const sun = new THREE.DirectionalLight(0xffe9c4, indoor ? 0.16 : 1.45);
@@ -4089,9 +4162,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         w.x + w.w * 0.5, y0 + H, w.z + w.d * 0.5);
     }
 
-    /* The ceiling, with joists across it. The joists are what tell a pilot
-     * how high they are when they are near it, which on a 2.4 m ceiling
-     * over a 2.13 m elevated gate is a thing they need to know. */
+    /* The ceiling, with purlins across it. They are what tell a pilot how
+     * high they are when they are near it, and they are the one part of the
+     * roof that reads as structure rather than as a lid. */
     const ceil = new THREE.Mesh(
       new THREE.BoxGeometry(ROOM.width + T * 2, T, ROOM.depth + T * 2), ceilMat,
     );
@@ -4099,10 +4172,20 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     scene.add(ceil);
     colliders.addBox('wall',
       -halfW - T, y0 + H, -halfD - T, halfW + T, y0 + H + T, halfD + T);
-    for (let i = 0; i < 7; i += 1) {
-      const jz = -halfD + (i + 0.5) * (ROOM.depth / 7);
-      const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, 0.075, 0.045), joistMat);
-      joist.position.set(0, y0 + H - 0.038, jz);
+    /*
+     * COUNTED FROM THE ROOM, at a fixed spacing, rather than a fixed seven.
+     * Seven across 6 m is 860 mm, which is a domestic rafter; seven across
+     * 12 m is 1.7 m and reads as a ladder rather than a roof. And they are
+     * deeper now because they span 10 m instead of 5: a 75 mm joist over a
+     * 10 m clear span is a thing that would be on the floor.
+     */
+    const purlinPitch = 0.9;
+    const purlins = Math.max(3, Math.round(ROOM.depth / purlinPitch));
+    const purlinD = ROOM.width > 7 ? 0.14 : 0.075;
+    for (let i = 0; i < purlins; i += 1) {
+      const jz = -halfD + (i + 0.5) * (ROOM.depth / purlins);
+      const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, purlinD, 0.055), joistMat);
+      joist.position.set(0, y0 + H - purlinD * 0.5, jz);
       scene.add(joist);
     }
   }

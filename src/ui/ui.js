@@ -577,6 +577,11 @@ function detectFirstRun() {
   }
 }
 
+/* The whoop's id, and the throttle cap it used to ship with. See the
+ * migration in loadSettings. */
+const WHOOP_ID = 'whoop65';
+const SUPERSEDED_WHOOP_CAP = 65;
+
 export function loadSettings() {
   let stored = {};
   try {
@@ -670,6 +675,25 @@ export function loadSettings() {
     s.touchRatesOffered = true;
   } else {
     s.rates = normaliseRates(legacy || s.rates);
+  }
+  /*
+   * THE WHOOP'S SHIPPED THROTTLE CAP MOVED FROM 65 TO 75, and a stored 65
+   * has to move with it.
+   *
+   * reseatIfForeign below will not do this and should not: its rule is "is
+   * this still the OTHER aircraft's stock value", which is what protects a
+   * number the pilot actually chose. 65 is neither aircraft's value now, so
+   * that rule reads it as the pilot's and keeps it, and every pilot who flew
+   * the whoop before today would be stuck on the old default with no sign
+   * that a new one exists.
+   *
+   * So it is named explicitly: this ONE superseded default, on the ONE
+   * aircraft that shipped it, moves once. A pilot who genuinely wants 65
+   * still has it on the menu, one row away, and it will stay after they
+   * choose it because the next build's list will not name it here.
+   */
+  if (s.airframe === WHOOP_ID && s.rates && s.rates.throttleCap === SUPERSEDED_WHOOP_CAP) {
+    s.rates = { ...s.rates, throttleCap: airframeById(WHOOP_ID).rates.throttleCap };
   }
   /* The PID adjustment, clamped onto what the firmware and the menu will
    * take. An unknown tune id, an out-of-range slider or a half-complete
@@ -1185,15 +1209,38 @@ function padTroubleItem(info) {
         + ' to throw the switch you want as Enter, and after that it works like a button.',
     };
   }
-  if (!info.calibrated) {
+  /*
+   * A GUESS THAT IS WORKING IS NOT A PROBLEM, AND THIS USED TO SAY IT WAS.
+   *
+   * The test was `map.stored`, which records whether somebody has been
+   * through the wizard. It is not a fact about the mapping. A pilot with a
+   * transmitter in AETR joystick mode, which is what this page's own advice
+   * tells them to set, plugs it in, flies the quad correctly with the built
+   * in guess, and never opens the wizard because nothing is wrong. They got
+   * a red row at the top of the front page, on every visit, telling them
+   * their radio was not calibrated. Reported as a bug, and it was one: the
+   * row was reporting on a flag rather than on the radio.
+   *
+   * info.mapUsable is the observation instead, and it is about the machine:
+   * a real throttle is parked off centre because it has no centring spring.
+   * See noteThrottleParked in src/input/input.js. When it is true the guess
+   * has been seen behaving like a radio, the menus let the sticks move left
+   * and right, and there is nothing left to warn about.
+   *
+   * When it is false the warning is EARNED and says what was observed, not
+   * what a flag holds: a spring centred axis where the throttle should be is
+   * a gamepad or a radio in some other order, and that pilot is about to
+   * take off at half power on a stick that springs back.
+   */
+  if (!info.calibrated && !info.mapUsable) {
     return {
-      label: 'Your radio is not calibrated yet',
+      label: 'This browser is guessing your stick order',
       action: 'calibrate',
       rowClass: 'row-warn',
-      note: 'Until it is, the sticks can move the cursor up and down and nothing else:'
-        + ' no left, no right, so no setting on any screen can be changed from the radio.'
-        + ' It takes about a minute, and it is the difference between flying this and'
-        + ' watching it.',
+      note: 'The axis it thinks is your throttle is sitting at the middle, and a real'
+        + ' throttle rests at one end because it has no centring spring. So the guess is'
+        + ' probably wrong, and a wrong guess means taking off at half power on a stick'
+        + ' that springs back. Calibrating takes about a minute and fixes it for good.',
     };
   }
   return null;

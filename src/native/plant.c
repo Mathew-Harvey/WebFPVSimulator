@@ -237,6 +237,19 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .k_propwash = 0.15,
   .prop_r = 0.0635,
   .k_rotor_drag = 0.43842,
+  /*
+   * ZERO, AND THAT IS NOT AN OMISSION.
+   *
+   * cda_plan above is 0.0225, and it is not a silhouette calculation: it was
+   * FITTED against this airframe's measured props level descent terminal of
+   * 20.7 m/s, which is a measurement of the whole machine falling, discs
+   * included. Adding a separate disc term here would charge the four rotors
+   * twice and move a number the calibration rests on. The whoop's cda_plan
+   * was derived the other way, from a silhouette with the duct throats
+   * counted as holes, so its rotors are genuinely missing and are charged
+   * there. See the block at k_rotor_axial in the descent branch.
+   */
+  .k_rotor_axial = 0.0,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
                          * 4.3 inch pitch / 2 pi. Axial speed at which thrust
                          * crosses zero is w times this. */
@@ -400,6 +413,38 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .k_propwash = 0.05,
   .prop_r = 0.0155,  /* 31 mm Gemfan 1207 three blade */
   .k_rotor_drag = 1.00,
+  /*
+   * 1.10, AND IT IS WHY THE WHOOP STOPPED FALLING LIKE A BRICK.
+   *
+   * Measured on the build before this one: chop the throttle and this
+   * aircraft settled at 11.7 m/s of descent, which over a room's ceiling
+   * height is a fifth of a second from the joists to the floor. Reported by
+   * the owner as "it sinks fast", and it was the model rather than the tune.
+   *
+   * The cause is in cda_plan's own derivation above: 2.2e-3 m^2 of PLAN
+   * SILHOUETTE, which counts the four duct throats as holes. Looking down at
+   * a whoop they are holes. Falling through the air they are not: each one
+   * has a three blade rotor in it at a fully stalled angle of attack, inside
+   * a shroud, and a stalled disc is the least hole shaped thing on the
+   * aircraft. The four discs are 3.02e-3 m^2, MORE than the whole solid
+   * silhouette, and they were contributing nothing.
+   *
+   * It cannot go into cda_plan, and that is the reason this is a separate
+   * number rather than a bigger one up there. Body drag is symmetric in the
+   * axial speed, so a cda_plan large enough to fix the descent would take
+   * the same force off every climb, where the ducts are working propulsors
+   * with a fast downward stream through them and are not bluff at all. The
+   * measured cost would have been most of the climb rate. So this term is
+   * DESCENT ONLY by construction and is exactly zero at and above a hover.
+   *
+   * 1.10 on disc area is the middle of the published band for a rotor in the
+   * windmill brake state, where the wake has broken down and the disc acts
+   * as a bluff plate rather than as a propulsor: 1.0 to 1.4 depending on
+   * blade solidity, and a shroud sits at the upper end of its own. The
+   * result is 5.85e-3 m^2 of total plan drag area against 2.53e-3, and a
+   * chopped throttle terminal of 8.0 m/s instead of 11.7.
+   */
+  .k_rotor_axial = 1.10,
   /*
    * Prop pitch radius. The GF1207 is a 0.7 inch pitch prop, 17.78 mm, over
    * 2 pi. A whoop prop is very low pitch, which is why the thrust falls away
@@ -1470,6 +1515,68 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       rotor_drag_tau[0] += m_lip * (vy / vperp);
       rotor_drag_tau[1] -= m_lip * (vx / vperp);
     }
+  }
+
+  /*
+   * 3c. THE DESCENT HALF OF THE ROTOR'S DRAG, WHICH 3b DOES NOT COVER.
+   *
+   * 3b is the H force and it says so at length: only the IN PLANE component
+   * matters, so a climb or a dive through the disc is untouched. That is the
+   * right shape for an open rotor's edgewise drag and it was fitted as one.
+   * What it leaves out is what the disc does to air coming at it ALONG the
+   * shaft, and for a ducted whoop that is the difference between a controlled
+   * sink and a stone.
+   *
+   * A rotor in its own wake past the point where the wake breaks down is not
+   * a propulsor any more. The blades are stalled, the flow through the disc
+   * is reversed, and the thing acts as a bluff plate of roughly its own disc
+   * area. plant.c already models the THRUST half of that, in the vortex ring
+   * branch above, which rolls thrust down to PLANT_VRS_FLOOR. It never
+   * modelled the DRAG half, so a rotor deep in the broken wake produced a
+   * reduced thrust and no resistance at all, and a whoop, whose four discs
+   * are larger than its entire solid plan silhouette, fell as if it had no
+   * rotors on it.
+   *
+   * DESCENT ONLY, and the ramp is the same criterion the wash uses: nothing
+   * below a quarter of the rotors' own induced velocity, where the wake is
+   * still healthy and the disc is still a propulsor, rising to all of it by
+   * the point the descent matches the induced velocity and the wake is gone.
+   * At and above a hover it is exactly zero, which is what keeps every hover,
+   * punch, climb and rate figure in the calibrated set where it was.
+   *
+   * ONE FORCE ON THE AIRCRAFT, not four on the rotors, and deliberately: a
+   * roll rate moves the four discs vertically at different speeds, so a per
+   * rotor version would add an aerodynamic rate damping term that nobody has
+   * measured. This is a pure force through the CG with no moment, which is
+   * the smallest honest version of the effect.
+   *
+   * The five inch's k_rotor_axial is 0 and the branch is never entered, so
+   * its trace is bit identical. See the note on that field.
+   */
+  if (PLANT.k_rotor_axial > 0.0 && v_body[2] < 0.0) {
+    const double sink = -v_body[2];
+    const double disc_all = 4.0 * disc_area;
+    const double t_all = thrust[0] + thrust[1] + thrust[2] + thrust[3];
+    /* The four discs' induced velocity, from the thrust they are actually
+     * making. Falls to zero with the throttle, which is exactly when the
+     * brake should be fully in. */
+    const double vh_all = sim_sqrt(t_all / (2.0 * PLANT.rho * disc_all));
+    const double onset = 0.25 * vh_all;
+    const double span = 0.75 * vh_all;
+    double brake;
+    if (sink <= onset) {
+      brake = 0.0;
+    } else if (span < 1e-9) {
+      /* No thrust, so no induced velocity to be measured against and no
+       * healthy wake to protect: the discs are plates. */
+      brake = 1.0;
+    } else {
+      brake = (sink - onset) / span;
+      if (brake > 1.0) {
+        brake = 1.0;
+      }
+    }
+    f_body[2] += brake * 0.5 * PLANT.rho * PLANT.k_rotor_axial * disc_all * sink * sink;
   }
 
   /* Nose up is a NEGATIVE pitch torque in this frame, so the tap is negated

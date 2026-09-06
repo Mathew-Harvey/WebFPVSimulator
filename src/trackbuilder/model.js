@@ -752,6 +752,41 @@ export function normalize(raw) {
     });
   }
 
+  /*
+   * A MICRO DOCUMENT FOLLOWS THE ROOM, AND KEEPS ITS LAYOUT WHILE IT DOES.
+   *
+   * The room is one place, src/trackbuilder/racegow.js, and it changed size:
+   * 5 by 6 m became 10 by 12. Every micro document written before that
+   * carries the old field, and a document's field is not decoration. It is
+   * the frame the builder draws, the boundary its warnings test against, and
+   * the ORIGIN: trackdoc.js maps a stored position to the world as
+   * `x - field.width / 2`, so the field is what centres a track in the room.
+   *
+   * Leaving the old field alone would put a 5 by 6 boundary inside 10 by 12
+   * walls in the builder while the game centred the track anyway. Growing it
+   * without moving anything would shove the whole layout 2.5 m left and 3 m
+   * back, because every position is measured from a corner that just moved.
+   * So both happen together: the field becomes the room's and every element
+   * shifts by half the growth, which is exactly the offset that leaves the
+   * track where its author put it relative to the middle of the floor.
+   *
+   * Silent, with no repair note. The author did nothing wrong and their
+   * track has not been damaged; the room grew underneath it.
+   */
+  if (doc.trackClass === 'micro') {
+    const T = tuningFor('micro');
+    const dx = (T.fieldWidth - doc.field.width) * 0.5;
+    const dy = (T.fieldDepth - doc.field.depth) * 0.5;
+    if (dx !== 0 || dy !== 0) {
+      for (const el of doc.elements) {
+        el.position.x += dx;
+        el.position.y += dy;
+      }
+      doc.field.width = T.fieldWidth;
+      doc.field.depth = T.fieldDepth;
+    }
+  }
+
   return { doc, repairs };
 }
 

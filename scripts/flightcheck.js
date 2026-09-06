@@ -142,20 +142,47 @@ hold(bench, 3000, { throttle: 0 });
 const benchState = bench.readState().state;
 const rpmFull = (benchState[ST.RPM0] + benchState[ST.RPM0 + 1]
   + benchState[ST.RPM0 + 2] + benchState[ST.RPM0 + 3]) / 4;
-/* kt from plant.c. Thrust is kt * omega^2 per motor. */
-const KT = 1.98e-6;
+/*
+ * kt from plant.c. Thrust is kt * omega^2 per motor, and IT IS PER
+ * AIRFRAME. This was the five inch's constant, hardcoded, and --airframe
+ * did not reach it: the whoop's static thrust to weight came out at
+ * 2110 : 1, which is 4.69 times the 450 that separates the two constants.
+ * The plant was right the whole time and its own measurement tool was
+ * reporting nonsense about it, with 'MORE THAN DOUBLE THE SPEC' next to it,
+ * which is exactly the kind of false alarm that hides a real one.
+ */
+const KT = WHOOP ? 4.400e-9 : 1.98e-6;
 const wFull = rpmFull * Math.PI / 30;
 const thrustFull = 4 * KT * wFull * wFull;
 const twr = thrustFull / (MASS * G);
-row('static thrust to weight', `${twr.toFixed(2)} : 1`, '4.5 : 1',
-  twr > 5.5 ? 'MORE THAN DOUBLE THE SPEC' : '');
+/*
+ * And the DECLARED figure is per airframe too. STAGE1.md's 4.5 : 1 is the
+ * five inch's reference; plant.c derives the whoop's as 4.7 : 1 fresh from
+ * a 16.6 g dry mass plus a 6.8 g pack, and says so at length. Comparing a
+ * whoop against the five inch's spec is a check that cannot pass.
+ */
+const TWR_DECLARED = WHOOP ? '4.7 : 1' : '4.5 : 1';
+const TWR_ALARM = WHOOP ? 6.0 : 5.5;
+row('static thrust to weight', `${twr.toFixed(2)} : 1`, TWR_DECLARED,
+  twr > TWR_ALARM ? 'MORE THAN DOUBLE THE SPEC' : '');
 row('full throttle RPM, per motor', `${rpmFull.toFixed(0)}`, '', '');
 row('pack under full load', `${benchState[ST.V].toFixed(1)} V, ${benchState[ST.I].toFixed(0)} A`, '', '');
 
 /* ---- hover ---- */
 const hover = await hoverThrottle();
-row('hover throttle', hover.toFixed(3), '0.20 to 0.30 (check 5)',
-  hover < 0.24 ? 'bottom of the band' : '');
+/*
+ * The hover band is the five inch's too. A whoop hovers HIGHER on the stick
+ * because it has less thrust to weight, and plant.c's electrical solve
+ * targeted 0.30 of duty deliberately, in the middle of the 27 to 36 percent
+ * a real 1S brushless whoop shows. So the band it is judged against is that
+ * one, not check 5's.
+ */
+const HOVER_BAND = WHOOP ? [0.27, 0.36] : [0.20, 0.30];
+const HOVER_LABEL = WHOOP
+  ? '0.27 to 0.36 (a 1S whoop)'
+  : '0.20 to 0.30 (check 5)';
+row('hover throttle', hover.toFixed(3), HOVER_LABEL,
+  hover < HOVER_BAND[0] ? 'below the band' : (hover > HOVER_BAND[1] ? 'above the band' : ''));
 row('stick above hover', `${((1 - hover) * 100).toFixed(0)} percent of travel`, '', '');
 
 /* ---- climb authority, which is what a throttle stick actually buys ---- */

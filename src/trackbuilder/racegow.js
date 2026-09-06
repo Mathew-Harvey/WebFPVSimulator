@@ -158,16 +158,34 @@ export function envelopeFor(opening) {
  * the outside of that to fly the tracks optimally". A metre and a bit on
  * every side of the envelope is what the organiser's own footage shows.
  *
- * 5 by 6 m is a two car garage or a large living room, which is where these
- * are actually flown, and it holds a 28 inch track with 1.4 m of run off on
- * the short sides and 1.9 m on the long ones. The ceiling is 2.4 m, which is
- * a standard domestic one and is the real constraint on the vertical: a
+ * IT WAS 5 BY 6 BY 2.4 M, A DOMESTIC ROOM, AND IT IS NOW A HALL. The owner
+ * flew it and asked for twice the room and a higher ceiling, which is a
+ * judgement about how a whoop reads on screen rather than about RaceGOW: at
+ * 5 by 6 the aircraft is never more than two and a half metres from a wall,
+ * so almost every input is a correction and the pilot spends the lap
+ * defending the boundary instead of flying the track. RaceGOW itself does
+ * not specify the room, only the envelope and that pilots "will need some
+ * additional space around the outside of that", so a bigger space is inside
+ * the spec rather than a departure from it: the RaceGOW3 Track 7 leaderboard
+ * carries the note "Can we quit with the tracks that go out of the bounds on
+ * all 4 sides?", which is a field complaining about too little run off, not
+ * too much.
+ *
+ * 10 by 12 m with a 4 m ceiling is a sports hall, a shed or a warehouse bay,
+ * which is where organised whoop racing is actually flown once it leaves the
+ * living room. It holds a 28 inch track with 4.3 m of run off on the short
+ * sides and 4.9 m on the long ones.
+ *
+ * The ceiling matters more than the floor and that is why it moved too. A
  * triple stack's top gate centre is at 1.88 m and the Elevated Gate rule
- * pushes an opening to 2.13 m, so a room ceiling is genuinely in play.
+ * pushes an opening to 2.13 m, so a 2.4 m domestic ceiling left 270 mm of
+ * air over the tallest legal element: a pilot who ballooned over an elevated
+ * gate hit the joists. At 4 m there is nearly 1.9 m of it, which is room to
+ * make the mistake and recover from it.
  */
-export const ROOM_WIDTH = 5.0;
-export const ROOM_DEPTH = 6.0;
-export const ROOM_HEIGHT = 2.4;
+export const ROOM_WIDTH = 10.0;
+export const ROOM_DEPTH = 12.0;
+export const ROOM_HEIGHT = 4.0;
 
 /*
  * The grid. One inch, because every dimension RaceGOW publishes is a whole

@@ -419,15 +419,18 @@ export function pitchMatchesRoll(r) {
  * it. It was already compiled; nothing had ever switched it on.
  */
 /*
- * 65 is on this list because an airframe seats it, and the rule everywhere
- * else in this project is that a seeded value has to be one the pilot could
- * have chosen themselves. A 23 g whoop on a 1S pack has about eight to one
- * of thrust to weight and holds a hover at 28 percent of stick, so full
- * travel is four fifths of a stick nobody uses and a handful of one they do.
- * Betaflight takes any integer here; the list is this menu's granularity,
- * and one extra stop is cheaper than a seeded value the menu cannot show.
+ * 75 and 65 are both on this list because an airframe has seated each of
+ * them, and the rule everywhere else in this project is that a seeded value
+ * has to be one the pilot could have chosen themselves. A 23 g whoop on a 1S
+ * pack has four and a half to one of thrust to weight and holds a hover at
+ * under a third of the stick, so full travel is two thirds of a stick nobody
+ * uses and a handful of one they do. 65 was the first answer to that and 75
+ * is the owner's, flown; 65 stays on the list because a pilot who liked it
+ * has to be able to get back to it. Betaflight takes any integer here; the
+ * list is this menu's granularity, and two extra stops are cheaper than a
+ * seeded value the menu cannot show.
  */
-export const THROTTLE_CAP_CHOICES = [100, 90, 80, 70, 65, 60, 50, 40];
+export const THROTTLE_CAP_CHOICES = [100, 90, 80, 75, 70, 65, 60, 50, 40];
 
 function nearest(choices, value) {
   let best = choices[0];
@@ -553,15 +556,20 @@ export function ratesSummary(r) {
  * is the plant drifting under it since the table was first taken; nothing
  * reads these but the menu, and a table half of one vintage and half of
  * another is worse than one taken in a single run.
+ *
+ * The 75 row was taken in the same way when 75 joined the list. Both columns
+ * were re-read on the build that added the descent rotor drag, and neither
+ * moved: that term is exactly zero at and above a hover, and a hover is the
+ * only thing this table measures.
  */
 const HOVER_STICK_PERCENT = {
   '5inch': new Map([
-    [100, 26.5], [90, 28.9], [80, 31.8], [70, 35.6], [65, 38.0],
-    [60, 40.8], [50, 47.9], [40, 58.6],
+    [100, 26.5], [90, 28.9], [80, 31.8], [75, 33.6], [70, 35.6],
+    [65, 38.0], [60, 40.8], [50, 47.9], [40, 58.6],
   ]),
   whoop65: new Map([
-    [100, 32.3], [90, 35.4], [80, 39.2], [70, 44.0], [65, 46.9],
-    [60, 50.5], [50, 59.5], [40, 73.2],
+    [100, 32.3], [90, 35.4], [80, 39.2], [75, 41.3], [70, 44.0],
+    [65, 46.9], [60, 50.5], [50, 59.5], [40, 73.2],
   ]),
 };
 

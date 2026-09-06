@@ -141,26 +141,36 @@ export const AIRFRAMES = [
       pitch: { rcRate: 7, srate: 58, expo: 0 },
       yaw: { rcRate: 7, srate: 50, expo: 0 },
       /*
-       * SIXTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
+       * SEVENTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
        *
-       * A 23 g aircraft with eight to one of thrust to weight holds a hover
-       * at 28 percent of stick and hits a 2.4 m ceiling from the floor in
-       * well under a second at full throttle. Left uncapped the top third of
-       * the stick is unusable and the bottom third is where all the flying
-       * happens, which is the definition of twitchy.
+       * A 23 g aircraft with four and a half to one of thrust to weight
+       * holds a hover at 32.3 percent of stick uncapped and climbs at
+       * 13.2 m/s at full throttle, which is a room's ceiling in a fifth of a
+       * second. Left uncapped the top two thirds of the stick are unusable
+       * and the bottom third is where all the flying happens, which is the
+       * definition of twitchy.
        *
        * Betaflight's SCALE limit redistributes the WHOLE travel under the
        * cap rather than clipping the top off it, so nothing is lost: full
-       * stick commands 65 percent, hover moves up to about 43 percent of
-       * stick, and the resolution a pilot actually uses roughly doubles.
-       * That is the whole reason it is SCALE and not OFF, and the Rates
-       * screen says so in the same words.
+       * stick commands 75 percent, hover moves up to 41.3 percent of stick
+       * (measured, see HOVER_STICK_PERCENT in configs/rates.js), and every
+       * millimetre of stick is worth three quarters as much throttle. That
+       * is the whole reason it is SCALE and not OFF, and the Rates screen
+       * says so in the same words.
        *
-       * The five inch keeps 100 because it does not have the problem: 8.4 to
+       * IT WAS 65 AND THE OWNER FLEW IT TO 75. That is a feel judgement and
+       * the pilot's to make, so it is recorded rather than argued with. What
+       * it trades: hover comes down the stick from 46.9 percent to 41.3, so
+       * there is more travel below hover and less above it, and full stick
+       * buys 11.2 m/s of climb instead of 9.8. Finer at the top, coarser at
+       * the bottom, and 65 is still on the list in configs/rates.js for
+       * anybody who wants it back.
+       *
+       * The five inch keeps 100 because it does not have the problem: 8.2 to
        * 1 on a 710 g airframe over a sixty metre field is a throttle a pilot
        * uses all of.
        */
-      throttleCap: 65,
+      throttleCap: 75,
     },
     /*
      * The Air II canopy takes a C03 on a 15 to 45 degree adjustable mount, so

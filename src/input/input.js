@@ -13,7 +13,10 @@
  *      one named deflection per channel with a return to rest between
  *      each, then a live check before anything is saved. Until calibrated
  *      a common AETR guess is used for flight, and menu navigation falls
- *      back to any axis at all, so the wizard is always reachable.
+ *      back to any axis at all, so the wizard is always reachable. The
+ *      guess is not treated as broken on principle: a radio's throttle is
+ *      parked off centre because it has no centring spring, and a guess
+ *      seen doing that is trusted for the menus too. See mapUsable.
  *   2. Keyboard: WASD plus arrows mimic a Mode 2 radio. A/D are yaw,
  *      arrows are the right stick: up arrow pushes the stick forward
  *      (nose down), left and right arrows roll. Rate limited so it is
@@ -492,6 +495,10 @@ export class InputManager {
     this.lastWall = performance.now();
     this.padArmed = false; /* set once the pad's menu buttons are seen released */
     this.navRest = null;   /* axis rest values, for uncalibrated menu nav */
+    /* Whether the axis the AETR guess calls the throttle has ever been seen
+     * parked away from centre. See mapUsable. Reset with the pad, because it
+     * is a fact about one radio and not about this browser. */
+    this.mapSeenParked = false;
     /* The hold-to-select bootstrap for a radio reporting zero buttons.
      * See SELECT_STEP. */
     this.holdMs = 0;
@@ -610,6 +617,58 @@ export class InputManager {
     }
   }
 
+  /*
+   * IS THE BUILT IN GUESS ACTUALLY THIS RADIO'S STICK ORDER?
+   *
+   * DEFAULT_MAP is not a placeholder, it is AETR: the order every real
+   * transmitter in joystick mode reports, and the order this page's own
+   * advice tells a pilot to put their radio in. A pilot with such a radio
+   * plugs it in, the sticks fly the quad correctly, and they never open the
+   * wizard because nothing is wrong. The shell called that pilot's radio
+   * "not calibrated yet" on the front page, in red, forever. Reported as a
+   * bug, and it is one: the claim was about a FLAG, `map.stored`, which
+   * records whether somebody has been through the wizard, not whether the
+   * mapping is right.
+   *
+   * There is a cheap observation that tells the two apart, and it is the
+   * throttle. A THROTTLE DOES NOT SPRING BACK. On a Mode 2 transmitter the
+   * left gimbal has no vertical centring spring, so a parked radio leaves
+   * that axis sitting at one end, and the axis DEFAULT_MAP calls the
+   * throttle reads near -1 with nobody touching it. Every other axis on the
+   * machine is spring centred and reads about zero. So if the guessed
+   * throttle axis is parked off centre, the guess is describing a real
+   * throttle and the mapping is behaving like a radio's.
+   *
+   * If it is NOT, the guess is wrong in the way that matters most: a
+   * gamepad, where axis 2 is half of the right stick, would have "throttle"
+   * spring centred at half power. That pilot does need the wizard and is
+   * told so.
+   *
+   * Sticky, because a pilot who moves the throttle through centre has not
+   * suddenly acquired a different radio, and a warning that blinks is worse
+   * than either answer.
+   */
+  noteThrottleParked(gp) {
+    if (this.mapSeenParked || this.map.stored) {
+      return;
+    }
+    const spec = this.map.throttle;
+    if (!gp || !spec || !Number.isInteger(spec.axis) || spec.axis >= gp.axes.length) {
+      return;
+    }
+    if (Math.abs(gp.axes[spec.axis]) > 0.35) {
+      this.mapSeenParked = true;
+    }
+  }
+
+  /* Can the mapping be trusted for more than flying: a pilot's own map
+   * always, and the AETR guess once it has behaved like a radio. This is
+   * what decides whether the menus let the sticks move left and right, and
+   * whether the front page says anything at all. */
+  mapUsable() {
+    return Boolean(this.map.stored || this.mapSeenParked);
+  }
+
   firstGamepad() {
     const pads = listGamepads();
     if (!pads.length) {
@@ -652,6 +711,10 @@ export class InputManager {
     savePadChoice(choice);
     this.navRest = null;
     this.padArmed = false;
+    /* A different radio has to earn it again: see noteThrottleParked. It is
+     * a fact about the machine that is plugged in, and this is the line
+     * where that machine changes. */
+    this.mapSeenParked = false;
   }
 
   seedPadRoster() {
@@ -963,6 +1026,9 @@ export class InputManager {
       buttons: selected && selected.buttons ? selected.buttons.length : 0,
       hasSelect: Boolean(this.map && this.map.select),
       calibrated: Boolean(this.map && this.map.stored),
+      /* mapUsable  the mapping is this pilot's, or the AETR guess has been
+       *            seen behaving like a radio. See mapUsable. */
+      mapUsable: this.mapUsable(),
     };
   }
 
@@ -1553,7 +1619,8 @@ export class InputManager {
       this.source = 'the calibration wizard';
     } else if (gp) {
       next = this.readGamepad(gp);
-      this.source = this.map.stored ? 'a radio' : 'a radio that is not calibrated yet';
+      this.noteThrottleParked(gp);
+      this.source = this.mapUsable() ? 'a radio' : 'a radio whose stick order is a guess';
       /* Keyboard still works while a pad is plugged in: any held stick
        * key overrides that channel. */
       const kb = this.readKeyboard(dtMs, false);

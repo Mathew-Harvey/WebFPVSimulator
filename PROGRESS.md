@@ -30171,3 +30171,228 @@ course and one CSS rule.
 re-record the baseline". That note is from the earlier Quad screen work, it
 is a note and not a failure, and re-recording rewrites every screen's
 numbers, so it is left for a turn that is about the baseline.
+
+## Five from the owner: a hall, 75 percent, the model, the poles, the nag
+
+Flown, and five things came back. Four of them were bugs and one was a
+number.
+
+### 1. The room is a hall now
+
+5 by 6 by 2.4 m became 10 by 12 by 4.0. The owner asked for twice the room
+and a higher ceiling, and picked the shape: double each side, four times the
+floor, and a warehouse ceiling rather than a domestic one.
+
+RaceGOW does not specify a room. It specifies an envelope, 1.42 by 2.13 m at
+28 inch gates, and says pilots "will need some additional space around the
+outside of that to fly the tracks optimally". At 5 by 6 the aircraft was
+never more than two and a half metres from a wall, so almost every input was
+a correction. At 10 by 12 the envelope has 4.3 m of run off on the short
+sides and 4.9 on the long ones. The ceiling matters more than the floor: an
+Elevated Gate's opening reaches 2.13 m and a 2.4 m ceiling left 270 mm over
+the tallest legal element, so ballooning over one hit the joists. There is
+1.9 m of it now.
+
+**The dimensions were written down twice.** `src/trackbuilder/racegow.js`
+had them and `src/render/scene.js` had a second copy, so resizing the room
+in the obvious place would have moved the builder's field and left the walls
+where they were, with the track hanging outside them. scene.js imports them.
+
+**Every micro document follows the room, and keeps its layout.** A
+document's field is the ORIGIN: `trackdoc.js` maps a stored position as
+`x - field.width / 2`. Growing the field without moving anything would have
+shoved every track 2.5 m left and 3 m back. `normalize()` does both together
+now: the field becomes the room's and every element shifts by half the
+growth, which is the offset that leaves a track where its author put it
+relative to the middle of the floor. Silently, with no repair note, because
+the author did nothing wrong. `tracks/json/micro-livingroom-1.json` was run
+through it and rewritten, and `micro:check` still flies it in 0.55 s laps,
+which is the proof the migration is a translation and not a redesign.
+
+Three things were sized for the old room and were derived from it instead:
+the title camera's orbit (a typed 2.1 m radius in a 10 m hall is a fidget
+around one gate), the ceiling purlins (seven across 6 m is a domestic
+rafter, seven across 12 m is a ladder, and a 75 mm joist over a 10 m clear
+span is a thing that would be on the floor), and the lighting. One bulb over
+the middle went from 2.15 m up to 3.75 and the far corner from 4 m away to
+8.6, so with a 1.7 decay the corners fell to about a tenth of the middle.
+Two lamps down the long axis at 42 each, scaled by that decay rather than
+guessed, and the hemisphere up from 0.34 to 0.42.
+
+### 2. The whoop's throttle cap is 75
+
+Was 65. The owner flew it and asked for 75, and that is a feel judgement and
+theirs to make. What it trades, measured on this build with
+`node scripts/flightcheck.js --airframe=whoop65`: hover comes down the stick
+from 46.9 percent of travel to 41.3, so there is more travel below hover and
+less above it, and full stick buys 11.2 m/s of climb instead of 9.8. Finer
+at the top, coarser at the bottom. 65 stays on the menu.
+
+75 is on `THROTTLE_CAP_CHOICES` because a seeded value has to be one a pilot
+could have chosen themselves, and both columns of `HOVER_STICK_PERCENT` got
+a measured 75 row rather than a computed one.
+
+**A stored 65 moves to 75 once.** `reseatIfForeign` will not do it and
+should not: its rule is "is this still the OTHER aircraft's stock value",
+which is what protects a number a pilot chose, and 65 is neither aircraft's
+value now. So `loadSettings` names that one superseded default explicitly
+and moves it once. Without it every pilot who flew the whoop before today
+would sit on the old cap with no sign a new one exists.
+
+### 3. The flight model: two findings, one fixed
+
+**The whoop's own measurement tool was lying about it.**
+`scripts/flightcheck.js` hardcoded `KT = 1.98e-6`, the five inch's thrust
+constant, and `--airframe` never reached it. The whoop's static thrust to
+weight was printed as 2110 : 1, which is 4.69 times the 450 that separates
+the two constants, with MORE THAN DOUBLE THE SPEC written next to it. The
+declared column and the hover band were the five inch's too. The plant was
+right the whole time. It reads 4.67 : 1 against a declared 4.7 now, and
+hover 0.323 inside a 1S whoop's 0.27 to 0.36. This is the kind of false
+alarm that hides a real one, which is exactly what it was doing.
+
+**It sank at 11.7 m/s with the throttle chopped, and that was a modelling
+gap.** Over a room's ceiling that is a fifth of a second from the joists to
+the floor. The cause is in `cda_plan`'s own derivation: 2.2e-3 m^2 of plan
+SILHOUETTE, which counts the four duct throats as holes. Looking down at a
+whoop they are holes. Falling through the air they are not: each has a three
+blade rotor in it at a fully stalled angle of attack inside a shroud, and
+the four discs are 3.02e-3 m^2, MORE than the whole solid silhouette. They
+were contributing nothing.
+
+`k_rotor_axial` is the fix and it is a new plant field rather than a bigger
+`cda_plan`, for a reason that decided the shape: body drag is symmetric in
+the axial speed, so a `cda_plan` large enough to fix the descent would take
+the same force off every climb, where the ducts are working propulsors with
+a fast downward stream through them and are not bluff at all. It would have
+cost most of the climb rate. So the term is DESCENT ONLY by construction,
+ramped on the same criterion the wash uses (nothing below a quarter of the
+rotors' own induced velocity, all of it by the point the descent matches it),
+and applied as one force through the CG rather than four at the rotors, so
+it adds no rate damping nobody has measured.
+
+1.10 on disc area is the middle of the published band for a rotor in the
+windmill brake state. Measured, before and after, on the same build:
+
+```
+ stick   before   after
+  0.10    -11.7    -7.8
+  0.20     -9.9    -6.7
+  0.30     -1.3    -1.3      unchanged, below the onset
+  0.40     +3.5    +3.5      every climb row identical
+  1.00    +13.2   +13.2
+hover      0.323   0.323
+```
+
+The stick positions that hold the aircraft inside plus or minus 8 m/s went
+from three to five, which is the throttle sensitivity complaint answered
+from the other end.
+
+**The five inch's `k_rotor_axial` is 0.0, and that is not an omission.** Its
+`cda_plan` of 0.0225 was FITTED against a measured props level descent
+terminal of 20.7 m/s, which is a measurement of the whole machine falling,
+discs included. A separate disc term would charge its four rotors twice and
+move a number the calibration rests on. The whoop's was derived the other
+way, from a silhouette, so its rotors are genuinely missing.
+
+### OPEN QUESTION: there is no ground effect anywhere
+
+`plant.c` cites He and Leang 2020 for ground effect in its whoop source
+list. No ground effect term exists in the model. `grep` for it across
+`src/native/` returns nothing.
+
+For a five inch on a sixty metre field this barely matters: the effect is
+inside about two rotor radii, 127 mm, and a five inch spends almost none of
+its life there. For a whoop in a room it is most of the feel. A 15.5 mm
+rotor's ground effect band is 31 mm, and a whoop hovering low, crossing a
+gate's bottom bar, or settling onto the mat is inside it constantly. Its
+absence is why low, slow whoop flying has no cushion under it.
+
+Not implemented this turn, deliberately. It changes the hover for BOTH
+aircraft and it changes it near the ground, which is where check 5 and the
+contact checks live, and one well verified physics change is worth more than
+two rushed ones. It is the next thing to do to the whoop and it should be
+done with its own verify run.
+
+### 4. A vertical pole was neither drawn nor solid
+
+`courseProps` in `src/render/scene.js` has a branch for `s.kind === 'obstacle'`,
+one for `s.type === 'cone'`, one for `'flag'` and one for `'startPads'`. It
+had none for `'pole'`. RaceGOW's Vertical Pole is a MARKER in the builder,
+like a flag and a cone, so it reached the world as nothing at all: no mesh,
+so the pilot could not see the thing they were meant to fly around, and no
+collider, so they flew through where it should have been. Reported as flying
+through the poles, and the demo room track has one in it.
+
+A pipe and a stub foot, in the diagrams' red rather than the frame's white,
+so it reads as an element to pass rather than one to enter. `window.__colliders()`
+in the demo room now reports `pole: 1` where it reported none.
+
+The gates themselves were never the problem: `obstacle()` pushes capsules
+for both uprights, every cross member and both feet, at the RaceGOW pipe
+radius, on the micro path as well as the full one.
+
+### 5. The calibrate nag was a false alarm, and it earned its reputation
+
+"Your radio is not calibrated yet", in red, at the top of the front page, on
+every visit. The owner: "my controller is calibrated already", and asked
+about it, said they had never opened the wizard because the sticks simply
+worked.
+
+The test was `map.stored`, which records whether somebody has been through
+the calibration wizard. It is not a fact about the mapping. `DEFAULT_MAP` is
+not a placeholder, it is AETR: the order every real transmitter in joystick
+mode reports, and the order this page's own Before you fly advice tells a
+pilot to set. Such a pilot flies correctly with the guess and never needs
+the wizard, and was told on every visit that their radio was broken.
+
+There is a cheap observation that tells the two apart and it is the
+throttle: A THROTTLE DOES NOT SPRING BACK. On a Mode 2 transmitter the left
+gimbal has no vertical centring spring, so a parked radio leaves that axis
+at one end and the axis `DEFAULT_MAP` calls the throttle reads near -1 with
+nobody touching it, while every other axis on the machine reads about zero.
+`noteThrottleParked` watches for it, sticky, reset when the pad changes.
+
+Two things follow from it. The row only appears when the guess is NOT
+behaving like a radio, and then it says what was observed rather than what a
+flag holds: a spring centred axis where the throttle should be is a gamepad
+or a radio in another order, and that pilot really is about to take off at
+half power on a stick that springs back. And `padNav` in `main.js` now lets
+a proven guess drive the menus left and right, which is the limitation the
+old row was complaining about: up and down only was half a menu, and it was
+being enforced on pilots whose mapping was correct.
+
+### What was run
+
+`npm run verify` **16 of 16**, run because this changes the plant. Trace
+hash `de0401cd4266`, twice in process, the same in Node and in headless
+Chrome, one hash across four frame rates. Check 5 hover 0.2793, check 6
+punch 80.0 m, check 7 terminal 31.0 m/s, check 8 motor step 26 ms, check 9
+671.7 deg/s against 670 configured, check 11 sag 11.14 percent, check 12
+ratio 1.2472 against 1.2537, check 13 console clean, check 15 world scale
+1.0000.
+
+**The hash did not change, and that is the result, not a broken check.** The
+baseline flies the five inch, `k_rotor_axial` is 0.0 on that airframe, and
+the branch is guarded on it being positive so the arithmetic is never even
+executed. `whoop:gates` W14 five-inch-unmoved confirms it from the other
+side and by a different route: identical, hover 0.279000, punch 80.025 m,
+terminal 31.010 m/s, tau 0.025.
+
+`whoop:gates` **19 of 19**, including W9 terminal-velocity 7.98 m/s inside
+its existing 7 to 14 band, which was NOT widened: the band already
+anticipated a lower figure than the 11.7 the old model produced.
+
+Also `build:wasm` exit 0 with `git diff --stat vendor/betaflight` empty,
+`micro:check`, the track builder self test 495 of 495, `lint:presets` 6 of
+6, `lint:shell`, `lint:board`, `lint:fc` 30 of 30, `lint:catalog`,
+`lint:quality` 56 of 56, `lint:boot` 9 of 9, `lint:nouns`, `lint:attract`,
+`lint:responsive`, `lint:devices`, and `scripts/shots.js` over the title in
+the new room, the builder at 10 by 12, and a flight from the start pad.
+
+Flight feel is not verifiable here. The harness is green and the room, the
+cap and the descent are awaiting the owner's judgement.
+
+`lint:shell` still prints "quad: overflow improved from 55 to 10 px,
+re-record the baseline". Same note as the last two turns, still a note and
+not a failure, still left for a turn that is about the baseline.

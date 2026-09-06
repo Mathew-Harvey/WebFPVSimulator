@@ -77,6 +77,12 @@ typedef struct {
                       * velocity is computed over. */
   double k_rotor_drag; /* rotor drag (H force) scale, dimensionless O(1).
                       * See plant.c: H = k rho A v_i v_perp per rotor. */
+  double k_rotor_axial; /* drag coefficient of ONE STALLED ROTOR DISC in a
+                      * descent, on disc area, dimensionless O(1). Zero for
+                      * an airframe whose cda_plan was fitted against a
+                      * measured descent and therefore already carries it.
+                      * See plant.c: this is the descent only half of the
+                      * rotor's drag and it never acts in a climb. */
   double k_inflow;   /* prop pitch radius, metres per radian: the prop's
                       * geometric pitch over 2 pi. A rotor at omega has a
                       * pitch speed of omega times this, and thrust scales

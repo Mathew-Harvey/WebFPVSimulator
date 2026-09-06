@@ -51,6 +51,7 @@ import { SESSION_TEXTURES } from './session-textures.js';
  * published figures and converts from feet exactly once. No dimension in
  * this file is typed twice. */
 import { builtObstacle, BUILT_FRAME_TUBE_OD, GATE_SCALE } from '../game/track.js';
+import { PIPE_OD as RACEGOW_PIPE_OD, GATE_OPENING_MAX as RACEGOW_GATE_OPENING_MAX } from '../trackbuilder/racegow.js';
 import { qualityFor } from './quality.js';
 /* The shape of the built in circuit, shared with the map screen's thumbnail
  * so the picture of the course and the course cannot drift apart. */
@@ -136,6 +137,46 @@ function makeBaker() {
 
 const SUN_DIR = new THREE.Vector3(0.60, 0.50, 0.62).normalize();
 const HORIZON = 0xf2e3cb;
+
+/*
+ * THE ROOM a micro track is flown in.
+ *
+ * RaceGOW does not specify one, and a simulator has to: the whole point of
+ * the format is that everybody builds the same track in a different living
+ * room, so the room is the one part of the picture that is ours to choose.
+ * These are the organiser's own, from the RaceGOW build videos: a wood
+ * panelled basement, a black ribbed rubber horse stall mat on the floor,
+ * exposed joists overhead and one warm bulb.
+ *
+ * 5 by 6 m holds a 28 inch track with 1.4 m of run off on the short sides,
+ * which is what the rules mean by "you will need some additional space
+ * around the outside of that to fly the tracks optimally". 2.4 m is a
+ * standard domestic ceiling and it is a REAL constraint rather than a
+ * decoration: a triple stack's top opening is centred at 1.88 m and an
+ * elevated gate's reaches 2.13, so a pilot flying over the top of the course
+ * is genuinely close to the joists. src/trackbuilder/warnings.js warns an
+ * author whose track goes through it.
+ *
+ * The floor is the darkest thing in the picture on purpose. RaceGOW pilots
+ * write about this: white pipe on a white floor is unflyable, and the
+ * organiser's mat is what makes a white gate read.
+ */
+const ROOM = {
+  width: 5.0,
+  depth: 6.0,
+  height: 2.4,
+  /* What the fog and the background are: the air of an unlit basement. */
+  air: 0x14100c,
+  /* The mat, and the concrete under it where the mat does not reach. */
+  floor: 0x1c1c1e,
+  floorEdge: 0x3a352e,
+  /* Pine board walls and the OSB ceiling between the joists. */
+  wall: 0x6b5335,
+  wallLow: 0x4a3a26,
+  ceiling: 0x3d3128,
+  joist: 0x59462e,
+  skirt: 0x2a2118,
+};
 /* Zenith blue. Measured at 0x2e6bb8 the sky's linear luminance was 0.248
  * and the lit meadow's was 0.257, so sky and ground occupied ONE value
  * band and separated by hue alone. Blue carries little luminance, so the
@@ -923,7 +964,25 @@ function pitchSurface(pitch, course) {
 }
 
 /* Terrain height, shared by the mesh and by anything placed on it. */
-function makeHeightField(samples, pitch, pad) {
+function makeHeightField(samples, pitch, pad, indoor = false) {
+  /*
+   * A FLOOR IS FLAT, and that is the whole of the indoor case.
+   *
+   * The outdoor height field is a paddock: fractal ground, a corridor
+   * flattened along the racing line with a 70 m shoulder, and a levelled
+   * pitch fading over 40 m outside the boundary. Every one of those numbers
+   * is tens of metres, so on a 5 by 6 m room the field resolves to one or
+   * two vertices and the "flat corridor" is the only thing in reach: the
+   * result was a floor that tilted under the mat, so the mat sank into the
+   * ground on one side and floated on the other.
+   *
+   * The honest answer is that a living room floor is level, so indoors this
+   * returns zero and every other term is skipped. It also makes the terrain
+   * under the mat free rather than a fbm evaluation per query.
+   */
+  if (indoor) {
+    return () => 0;
+  }
   return (x, z) => {
     const base = (fbm(x * 0.0022, z * 0.0022) - 0.5) * 34;
     const detail = (fbm(x * 0.011, z * 0.011) - 0.5) * 4.5;
@@ -1582,7 +1641,7 @@ const WRONG_COLOUR = 0xff5a5a;
  * the obstacle's own local frame and returns them, along with which
  * opening ended up carrying the glow.
  */
-function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWanted) {
+function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWanted, micro = false) {
   /*
    * The aperture markers. Square now, because the opening is square, and
    * built as one merged geometry per obstacle so a stacked obstacle still
@@ -1637,7 +1696,23 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
      * instead of 5, so a gate right in front of the camera reads chunkier. A
      * target you cannot see until 7 m is not a target, so that is the trade.
      */
-    const bar = 0.16;
+    /*
+     * ON A MICRO TRACK THE WHOLE DERIVATION ABOVE IS ABOUT A DIFFERENT
+     * PROBLEM, and running it unchanged deletes the gate.
+     *
+     * Every number in it is legibility at COMMIT RANGE: 0.16 m is the
+     * smallest bar that survives being looked at from 20 to 30 m on a
+     * 900 px frame. A RaceGOW room is 5 by 6 m and the far wall is closer
+     * than the near end of that range: commit range here is 2 to 4 m, where
+     * 0.16 m is not a thin marker, it is 45 px. And four 0.16 m bars inside
+     * a 0.711 m opening leave a 0.39 m hole, which is 30 percent of the
+     * opening's area gone.
+     *
+     * 0.030 m is 3 px at 3 m on the same 900 px frame, which is the same
+     * legibility answer computed at the distance this track is actually
+     * flown at, and it costs 8 percent of the opening rather than 70.
+     */
+    const bar = micro ? 0.030 : 0.16;
     const halfW = clearW * 0.5;
     const halfH = clearH * 0.5;
     /* Four thin bars just inside the frame, so the lit line the pilot aims
@@ -1652,7 +1727,10 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
       const geo = new THREE.BoxGeometry(sw, sh, bar);
       geo.translate(px, py, 0);
       outlineGeos.push(geo);
-      const hg = new THREE.BoxGeometry(sw * 1.06 + 0.05, sh * 1.06 + 0.05, bar * 0.7);
+      /* The halo's 5 cm is additive, so on a 0.711 m opening it was a 7
+       * percent fringe becoming a 10 percent one. Scaled with the bar. */
+      const grow = micro ? 0.009 : 0.05;
+      const hg = new THREE.BoxGeometry(sw * 1.06 + grow, sh * 1.06 + grow, bar * 0.7);
       hg.translate(px, py, 0);
       haloGeos.push(hg);
     }
@@ -1676,7 +1754,22 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
    * and unlit and unfogged so distance cannot take the target away from the
    * pilot. uGain is driven per frame: bright and pulsing on the gate the
    * race wants next, nearly off on the rest. */
-  const glowSize = Math.max(clearW, clearH) * 2.6;
+  /*
+   * 2.6 TIMES THE OPENING IS A FIELD'S NUMBER AND IT IS A ROOM'S PROBLEM.
+   *
+   * The glow is how a racer finds the next gate from across a 60 m field, so
+   * it is deliberately much bigger than the hole and deliberately bright:
+   * distance must not take the target away from the pilot. In a 5 by 6 m
+   * room nothing is ever more than about 7 m away, the whole scene is lit by
+   * one bulb, and 2.6 times a 0.711 m opening additively blended over a dark
+   * mat is a 1.8 m green lantern that is the brightest thing in the picture
+   * by an order of magnitude. It stops being a target and becomes the wall.
+   *
+   * 1.5 keeps it clearly larger than the hole, which is what makes it read
+   * as light around a gate rather than as a pane in one, at a size the room
+   * can hold. The gain is turned down with it, at the call sites.
+   */
+  const glowSize = Math.max(clearW, clearH) * (micro ? 1.5 : 2.6);
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(glowSize, glowSize),
     new THREE.ShaderMaterial({
@@ -1692,6 +1785,19 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
         /* Half the clear opening as a fraction of the plane, so the lit
          * band lands on the frame whatever size the opening is. */
         uEdge: { value: (clearW * 0.5) / glowSize },
+        /*
+         * How much of the wash goes ACROSS the opening, and it is zero in a
+         * room. The comment on the term below says what it is for: it is
+         * what still reads at fifty metres, when the band around a 1.7526 m
+         * hole has shrunk to a few pixels and a filled square has not. A
+         * RaceGOW track is 1.42 by 2.13 m in a 5 by 6 m room, so the
+         * furthest a pilot is ever from the next gate is about four metres
+         * and the band is never less than a fifth of the screen. The wash
+         * buys nothing there and costs the one thing a room cannot spare:
+         * on a field the view through the gate is sky, and in a room it is
+         * the next three gates.
+         */
+        uFill: { value: micro ? 0.0 : 0.16 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -1706,6 +1812,7 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
         uniform vec3 uBack;
         uniform float uGain;
         uniform float uEdge;
+        uniform float uFill;
         void main() {
           /* A square band, because the opening is square. The Chebyshev
            * distance is the square's own radius. */
@@ -1716,7 +1823,7 @@ function apertureMarkers(group, sills, clearW, clearH, stack, isStart, primaryWa
            * transparent pane (gateCue) is what you aim at up close; this
            * is what still reads at fifty metres. Green from the entry
            * face, red from the other, so a reverse approach is obvious. */
-          float fill = smoothstep(uEdge, 0.0, r) * 0.16;
+          float fill = smoothstep(uEdge, 0.0, r) * uFill;
           vec3 col = gl_FrontFacing ? uFront : uBack;
           gl_FragColor = vec4(col * (band + fill) * uGain, 1.0);
         }
@@ -2207,19 +2314,26 @@ function gateBanner(index, outerW, headerMat, substrate) {
  * the first station's plate; this is how the pilot sees that the hole they
  * are flying at is gate 5 and the one above it is gate 6.
  */
-function openingBadge(n) {
+function openingBadge(n, scale = 1) {
+  /*
+   * The badge is sized in METRES, so on a RaceGOW stack a 0.30 m disc hung
+   * beside a 0.711 m opening covered half the hole next to it. `scale` is
+   * the ratio of the openings, applied to the disc, the glyphs and the
+   * standoff at the call site together, because a badge that shrinks and
+   * keeps its 0.22 m gap is a disc floating in the air beside a gate.
+   */
   const mats = sharedObstacleMats();
   const group = new THREE.Group();
-  const r = 0.15;
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.04, 16), mats.hem);
+  const r = 0.15 * scale;
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.04 * scale, 16), mats.hem);
   disc.rotation.x = Math.PI * 0.5;
   group.add(disc);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.14, r * 1.14, 0.03, 16), mats.number);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.14, r * 1.14, 0.03 * scale, 16), mats.number);
   rim.rotation.x = Math.PI * 0.5;
   group.add(rim);
   const glyphs = String(Math.max(0, Math.round(n))).split('').map((d) => DIGITS[Number(d)]);
-  const dot = 0.028;
-  const step = 0.034;
+  const dot = 0.028 * scale;
+  const step = 0.034 * scale;
   const glyphW = 4;
   const originX = -((glyphs.length * glyphW - 1) - 1) * 0.5;
   for (let gi = 0; gi < glyphs.length; gi += 1) {
@@ -2634,9 +2748,10 @@ function coursePlacements(course) {
  * from the base, z through the opening.
  */
 function tiltedGate(spec, index, isStart, pitch, opts = {}) {
+  const micro = Boolean(opts.micro);
   const g = new THREE.Group();
   const mats = sharedObstacleMats();
-  const tubeR = BUILT_FRAME_TUBE_OD * 0.5;
+  const tubeR = (micro ? RACEGOW_PIPE_OD : BUILT_FRAME_TUBE_OD) * 0.5;
   const clearW = spec.clearW;
   const clearH = spec.clearH;
   const centreY = spec.sillH + clearH * 0.5;
@@ -2848,7 +2963,13 @@ function obstacle(spec, index, isStart, opts = {}) {
   const kindName = spec.kindName ?? 'standardGate';
   const g = new THREE.Group();
   const mats = sharedObstacleMats();
-  const tubeR = BUILT_FRAME_TUBE_OD * 0.5;
+  /*
+   * A RACEGOW GATE IS FOUR LENGTHS OF PIPE AND FOUR FITTINGS, and that is
+   * the whole object. 3/4 inch schedule 40, which RaceGOW names twice in
+   * its own rules, rather than the 1 inch a MultiGP gate is welded from.
+   */
+  const micro = Boolean(opts.micro);
+  const tubeR = (micro ? RACEGOW_PIPE_OD : BUILT_FRAME_TUBE_OD) * 0.5;
   const clearW = spec.clearW;
   const clearH = spec.clearH;
   const stack = spec.stack ?? 1;
@@ -2892,13 +3013,31 @@ function obstacle(spec, index, isStart, opts = {}) {
     g.add(post);
     caps.push({ kind: 'gate', ax: sx * upX, ay: 0, az: 0, bx: sx * upX, by: upTop, bz: 0, r: tubeR });
 
-    /* A foot, so it looks like it is standing on the grass rather than
-     * growing out of it. */
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.62), mats.frame);
-    foot.position.set(sx * upX, 0.04, 0);
+    /*
+     * A foot, so it looks like it is standing on the grass rather than
+     * growing out of it.
+     *
+     * A MultiGP gate's is a 0.34 by 0.62 m weighted base, and on a RaceGOW
+     * gate that base would be LONGER THAN THE OPENING IS WIDE. It also
+     * would not be there: a RaceGOW gate has a bar along the ground, which
+     * rule 2 requires, and the corners are 3 way fittings with short stub
+     * feet lying flat. So the micro foot is a stub: one pipe diameter thick
+     * and two long, in line with the frame, which is exactly what is in
+     * every photograph of one.
+     */
+    const footW = micro ? tubeR * 2 : 0.34;
+    const footH = micro ? tubeR * 1.6 : 0.08;
+    const footD = micro ? tubeR * 4 : 0.62;
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(footW, footH, footD), mats.frame);
+    foot.position.set(sx * upX, footH * 0.5, 0);
     foot.castShadow = true;
     g.add(foot);
-    caps.push({ kind: 'obstacle', ax: sx * upX, ay: 0.04, az: -0.31, bx: sx * upX, by: 0.04, bz: 0.31, r: 0.17 });
+    caps.push({
+      kind: 'obstacle',
+      ax: sx * upX, ay: footH * 0.5, az: -footD * 0.5,
+      bx: sx * upX, by: footH * 0.5, bz: footD * 0.5,
+      r: footW * 0.5,
+    });
   }
 
   /* Cross members. One above every opening, and one below the lowest
@@ -2935,12 +3074,25 @@ function obstacle(spec, index, isStart, opts = {}) {
    * their collider sits entirely outboard of the clear span. The print is
    * the same one the track builder draws on its own preview.
    */
+  /*
+   * NOTHING IS PRINTED ON A RACEGOW GATE, and it is not a scale problem, it
+   * is a fact about the object.
+   *
+   * The sleeve is 0.42 m wide. A RaceGOW opening is 0.711 m. Two of them
+   * plus the frame make an object 1.42 m across with a 0.711 m hole in it,
+   * which is to say a gate whose printing is twice the size of the gate.
+   * But the reason not to draw them is simpler than that: there is nothing
+   * to print on. A RaceGOW gate is bare white PVC, and sponsors in that
+   * world are banners on the wall of the room, which is not part of the
+   * track. The header banner goes for the same reason, and it is 0.58 m
+   * tall, which is most of the opening again.
+   */
   const panelW = 0.42;
   const kit = opts.kit;
   const substrate = isStart ? mats.panelStart : mats.panelRace;
   const panelBottom = sills[0];
   const panelH = topSurface - panelBottom;
-  for (const sx of [-1, 1]) {
+  for (const sx of (micro ? [] : [-1, 1])) {
     const cx = sx * (upX + tubeR + panelW * 0.5);
     /* Mirrored on the far leg, so the chequer column runs down the OUTSIDE
      * of the gate on both sides rather than down the outside of one and the
@@ -2955,18 +3107,33 @@ function obstacle(spec, index, isStart, opts = {}) {
     ));
   }
 
-  /* The header banner, spanning the whole structure. */
-  const outerW = 2 * (upX + tubeR + panelW);
-  const plateGroup = gateBanner(index, outerW, kit.header, substrate);
-  const plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
-  plateGroup.position.set(0, plateY, 0);
-  g.add(plateGroup);
-  caps.push(...panelCaps(
-    'obstacle', 0, plateY, plateGroup.userData.halfW, plateGroup.userData.r, 'x',
-  ));
+  /*
+   * The header banner, spanning the whole structure. Not on a RaceGOW gate:
+   * see the note at panelW.
+   *
+   * plateY and the plate's own half width are still DEFINED without it,
+   * because the header flags and the reported top of the structure are
+   * measured from them, and a gate that reports no top is a gate the attract
+   * camera cannot frame and the guide paint cannot clear. On a micro gate
+   * they collapse to the top of the uprights and the opening's own half
+   * width, which is exactly what the structure is.
+   */
+  const outerW = 2 * (upX + tubeR + (micro ? 0 : panelW));
+  let plateY = upTop + tubeR;
+  let plateHalfW = outerW * 0.5;
+  let plateR = tubeR;
+  if (!micro) {
+    const plateGroup = gateBanner(index, outerW, kit.header, substrate);
+    plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
+    plateHalfW = plateGroup.userData.halfW;
+    plateR = plateGroup.userData.r;
+    plateGroup.position.set(0, plateY, 0);
+    g.add(plateGroup);
+    caps.push(...panelCaps('obstacle', 0, plateY, plateHalfW, plateR, 'x'));
+  }
 
   /* The lit target, shared with the tilted gate builder. */
-  const marks = apertureMarkers(g, sills, clearW, clearH, stack, isStart, opts.primary);
+  const marks = apertureMarkers(g, sills, clearW, clearH, stack, isStart, opts.primary, micro);
   const { ring, halo, glow, cue, ringColor, primary } = marks;
 
   /*
@@ -3000,10 +3167,10 @@ function obstacle(spec, index, isStart, opts = {}) {
     });
   }
 
-  const headerTop = plateY + plateGroup.userData.r;
+  const headerTop = plateY + plateR;
   const flags = attachHeaderFlags(g, opts, {
     headerTop,
-    halfW: plateGroup.userData.halfW,
+    halfW: plateHalfW,
   });
   caps.push(...flags.colliders);
 
@@ -3660,16 +3827,59 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   renderer.shadowMap.enabled = q.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+  /*
+   * INDOORS.
+   *
+   * A RaceGOW track is flown in somebody's living room, and the organiser's
+   * own footage is a wood panelled basement with a rubber mat on the floor
+   * and one warm bulb over it. Everything this function builds around a
+   * course, the treeline, the fence, the clubhouse, the car park, the
+   * flowers, the bush horizon, the clouds, the sky and the sun, is a paddock
+   * in the Perth bush, and none of it is within a hundred metres of a 5 by
+   * 6 m room. So they are all gated on ONE flag rather than on nine guesses,
+   * and a room is built instead: four walls, a ceiling, and a bulb.
+   */
+  const indoor = Boolean(course && course.trackClass === 'micro');
+
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(HORIZON);
-  scene.fog = new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR);
-  const sky = skyDome();
-  sky.layers.set(1);
-  scene.add(sky);
+  /*
+   * A room's background is the room. FOG_NEAR and FOG_FAR are 60 and 520 m,
+   * which on a 5 m room means nothing is ever fogged at all, so indoors the
+   * fog is short and dark instead: it is what makes the far wall recede and
+   * it is doing the job the sky dome does outdoors.
+   */
+  scene.background = new THREE.Color(indoor ? ROOM.air : HORIZON);
+  scene.fog = indoor
+    ? new THREE.Fog(ROOM.air, 3.5, 14)
+    : new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR);
+  if (!indoor) {
+    const sky = skyDome();
+    sky.layers.set(1);
+    scene.add(sky);
+  }
 
   const rng = makeRng(20260811);
 
-  const sun = new THREE.DirectionalLight(0xffe9c4, 1.45);
+  /*
+   * THE BULB.
+   *
+   * One warm incandescent over the middle of the room, which is what every
+   * RaceGOW build video is lit by, plus a dim cool bounce so the undersides
+   * of the ducts are not black. The sun is still built, because the shadow
+   * camera and half the material setup below read it, but indoors it is
+   * turned down to nothing and pointed straight down so what casts shadows
+   * is the bulb's own falloff rather than a directional key from a sky that
+   * is not there.
+   */
+  if (indoor) {
+    const bulb = new THREE.PointLight(0xffd9a0, 26, 18, 1.7);
+    bulb.position.set(0, ROOM.height - 0.25, 0);
+    bulb.castShadow = false;
+    scene.add(bulb);
+    scene.add(new THREE.HemisphereLight(0xc9d6e8, 0x2a2420, 0.34));
+  }
+
+  const sun = new THREE.DirectionalLight(0xffe9c4, indoor ? 0.16 : 1.45);
   sun.position.copy(SUN_DIR).multiplyScalar(120);
   sun.castShadow = q.shadows;
   const shadowMap = q.field.shadowMap || 2048;
@@ -3686,8 +3896,10 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   scene.add(sun);
   scene.add(sun.target);
   /* Sky above, warm grass bounce below: this is what keeps shadowed faces
-   * from going dead grey. */
-  scene.add(new THREE.HemisphereLight(0x8fb8e8, 0x4a6b34, 0.42));
+   * from going dead grey. Indoors the pair above does that job instead. */
+  if (!indoor) {
+    scene.add(new THREE.HemisphereLight(0x8fb8e8, 0x4a6b34, 0.42));
+  }
 
   /*
    * The curve is the spine of the world: the terrain flattens a corridor
@@ -3716,18 +3928,32 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    */
   const clubSite = clubhouseSite(pitch);
   const clubPad = clubhousePad(clubSite);
-  const height = makeHeightField(samples, pitch, clubPad);
+  const height = makeHeightField(samples, pitch, clubPad, indoor);
 
   const ground = terrain(height, samples, pitch);
   scene.add(ground);
-  if (pitch) {
+
+  /*
+   * The pitch: a painted, mown, striped rectangle of grass with touchlines
+   * on it, laid over the terrain. Indoors the floor is a rubber mat on a
+   * concrete slab and there is nothing about a pitch that is true of it, so
+   * the room's own floor is what gets laid instead. See the room block.
+   *
+   * This is the plane the first indoor build was fighting: the mat went down
+   * at 8 mm and the pitch sat on top of it at 20, so a RaceGOW room had a
+   * mown lawn in it, correctly, from a rule about a different sport.
+   */
+  if (pitch && !indoor) {
     scene.add(pitchSurface(pitch, course));
   }
   const occluders = [];
   /* Walks the world rng so the valley does not move. No mesh. */
   const grass = grassField(samples, rng, pitch);
   const noInkBaker = makeBaker();
-  noInkBaker.bake(clouds(rng));
+  /* Clouds, indoors, would be through the ceiling. */
+  if (!indoor) {
+    noInkBaker.bake(clouds(rng));
+  }
   /* Layer 0, not the no ink layer. Clouds used to write no depth into the
    * outline prepass, so the ink pass drew mountain silhouettes ACROSS the
    * cloud that the colour pass had correctly hidden: a two pixel ink line
@@ -3746,6 +3972,114 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * shared buffer. A collider has to be recorded where the geometry is made.
    */
   const colliders = new Colliders();
+  /*
+   * THE ROOM. Four walls, a ceiling, a skirting board and a mat.
+   *
+   * Built AFTER the terrain and on top of it rather than instead of it,
+   * because the terrain is what src/main.js reads the ground height off and
+   * what the craft rests on, and a micro course's corridor is flattened to
+   * level by the same height field every other course uses. So the floor
+   * here is a mat laid on that terrain, one millimetre up, and the terrain
+   * underneath it is never seen.
+   *
+   * The walls are SOLID: they go into the collider set as boxes, so a whoop
+   * that overshoots hits the wall and bounces, which is what happens in the
+   * room this is a picture of. Without them a pilot who missed a gate would
+   * fly out over an invisible paddock, and the one thing every RaceGOW
+   * pilot's footage has in it is a wall.
+   */
+  if (indoor) {
+    const halfW = ROOM.width * 0.5;
+    const halfD = ROOM.depth * 0.5;
+    const H = ROOM.height;
+    const T = 0.10; /* wall thickness, so a corner reads as a corner */
+    const y0 = height(0, 0);
+
+    const wallMat = celMaterial({ color: ROOM.wall, rim: 0.16, spec: 0.06 });
+    const wallLowMat = celMaterial({ color: ROOM.wallLow, rim: 0.12, spec: 0.04 });
+    const ceilMat = celMaterial({ color: ROOM.ceiling, rim: 0.10, spec: 0.03 });
+    const joistMat = celMaterial({ color: ROOM.joist, rim: 0.14, spec: 0.05 });
+    const skirtMat = celMaterial({ color: ROOM.skirt, rim: 0.18, spec: 0.10 });
+    const matMat = celMaterial({ color: ROOM.floor, rim: 0.10, spec: 0.05 });
+    const edgeMat = celMaterial({ color: ROOM.floorEdge, rim: 0.08, spec: 0.03 });
+
+    /*
+     * The mat, and a border of bare concrete round it, so the floor has two
+     * tones and the eye can read distance across it. The concrete runs a
+     * long way past the walls: the terrain under it is a paddock this room
+     * is standing on and nothing should ever see a blade of it, and a floor
+     * that stops at the skirting shows one through the gap at every corner.
+     *
+     * 4 mm and 8 mm above the terrain, which is dead level indoors, so the
+     * two planes cannot z fight each other or the ground.
+     */
+    const concrete = new THREE.Mesh(
+      new THREE.PlaneGeometry(ROOM.width + 24, ROOM.depth + 24), edgeMat,
+    );
+    concrete.rotation.x = -Math.PI * 0.5;
+    concrete.position.set(0, y0 + 0.004, 0);
+    concrete.receiveShadow = false;
+    scene.add(concrete);
+    /*
+     * THE MAT IS THE DARKEST THING IN THE ROOM AND THAT IS THE POINT.
+     * RaceGOW pilots write about it: white pipe on a white floor is
+     * unflyable. The organiser's own is a black ribbed rubber horse stall
+     * mat, and it is what makes a bare PVC gate read at all.
+     */
+    const mat = new THREE.Mesh(
+      new THREE.PlaneGeometry(ROOM.width - 0.4, ROOM.depth - 0.4), matMat,
+    );
+    mat.rotation.x = -Math.PI * 0.5;
+    mat.position.set(0, y0 + 0.008, 0);
+    scene.add(mat);
+
+    /* Four walls. Each is a box from the floor to the ceiling, drawn from
+     * the inside, with a darker band below skirting height because that is
+     * what a panelled wall looks like and because it gives a pilot a
+     * horizon to fly against. */
+    const wallSpecs = [
+      { x: 0, z: -halfD - T * 0.5, w: ROOM.width + T * 2, d: T },
+      { x: 0, z: halfD + T * 0.5, w: ROOM.width + T * 2, d: T },
+      { x: -halfW - T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
+      { x: halfW + T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
+    ];
+    for (const w of wallSpecs) {
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(w.w, H - 0.9, w.d), wallMat);
+      upper.position.set(w.x, y0 + 0.9 + (H - 0.9) * 0.5, w.z);
+      scene.add(upper);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(w.w, 0.82, w.d), wallLowMat);
+      lower.position.set(w.x, y0 + 0.41, w.z);
+      scene.add(lower);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(w.w, 0.08, w.d + 0.02), skirtMat);
+      skirt.position.set(w.x, y0 + 0.04, w.z);
+      scene.add(skirt);
+      /*
+       * ONE box per wall, spanning the whole height, and the visible split
+       * into three pieces is paint. A collider per painted piece would be
+       * three boxes where a craft can only ever touch one of them.
+       */
+      colliders.addBox('wall',
+        w.x - w.w * 0.5, y0, w.z - w.d * 0.5,
+        w.x + w.w * 0.5, y0 + H, w.z + w.d * 0.5);
+    }
+
+    /* The ceiling, with joists across it. The joists are what tell a pilot
+     * how high they are when they are near it, which on a 2.4 m ceiling
+     * over a 2.13 m elevated gate is a thing they need to know. */
+    const ceil = new THREE.Mesh(
+      new THREE.BoxGeometry(ROOM.width + T * 2, T, ROOM.depth + T * 2), ceilMat,
+    );
+    ceil.position.set(0, y0 + H + T * 0.5, 0);
+    scene.add(ceil);
+    colliders.addBox('wall',
+      -halfW - T, y0 + H, -halfD - T, halfW + T, y0 + H + T, halfD + T);
+    for (let i = 0; i < 7; i += 1) {
+      const jz = -halfD + (i + 0.5) * (ROOM.depth / 7);
+      const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, 0.075, 0.045), joistMat);
+      joist.position.set(0, y0 + H - 0.038, jz);
+      scene.add(joist);
+    }
+  }
   /* Hoisted above the obstacles so their static parts can bake into the same
    * buckets as the scenery. It is flushed once, far below. */
   const baker = makeBaker();
@@ -3892,6 +4226,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    */
   const obstacleTops = [];
 
+  /* A RaceGOW room's furniture is not a MultiGP field's. See obstacle(). */
+  const micro = Boolean(course && course.trackClass === 'micro');
+
   for (let i = 0; i < placements.length; i += 1) {
     const st = placements[i];
     const flyOrder = st.plateIndex;
@@ -3902,8 +4239,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     const made = st.virtual
       ? virtualGate(st.spec.clearW, st.spec.clearH, st.marker)
       : (Math.abs(st.pitch) > 1e-6
-        ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit: dress })
+        ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit: dress, micro })
         : obstacle(st.spec, flyOrder, st.isStart, {
+          micro,
           primary: st.primary,
           kit: dress,
           flagSigns: st.flagSigns,
@@ -3950,8 +4288,11 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         if (!ap) {
           continue;
         }
-        const badge = openingBadge(station.flyOrder + 1);
-        badge.position.set(st.spec.clearW * 0.5 + 0.22, ap.centreY, 0);
+        /* A RaceGOW opening is 0.711 m against MultiGP's 1.752 at gate
+         * scale, so the badge is drawn at that ratio and stood off by it. */
+        const badgeScale = micro ? 0.41 : 1;
+        const badge = openingBadge(station.flyOrder + 1, badgeScale);
+        badge.position.set(st.spec.clearW * 0.5 + 0.22 * badgeScale, ap.centreY, 0);
         g.add(badge);
       }
     }
@@ -4046,6 +4387,15 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
         ringColor: made.ringColor,
         glowMat: made.glowMat,
         glowMesh: made.glowMesh,
+        /*
+         * How hard the target glow is driven on this gate. One indoors,
+         * because an additive glow is a fraction of the LIGHT ALREADY IN
+         * THE SCENE, and the scene is a dark basement with one bulb rather
+         * than a field under a midday sun. Same pane, same colour, a third
+         * of the gain: it still reads as the brightest thing on the track,
+         * without being the brightest thing in the room by ten times.
+         */
+        glowGain: micro ? 0.34 : 1,
         cueGroup: made.cueGroup,
         fillMat: made.fillMat,
         /*
@@ -4199,7 +4549,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     gt.glowMat.uniforms.uFront.value.set(gt.ringColor);
     gt.glowMat.uniforms.uBack.value.set(gt.ringColor);
     gt.haloMat.opacity = 0.34;
-    gt.glowMat.uniforms.uGain.value = 0.08;
+    gt.glowMat.uniforms.uGain.value = 0.08 * (gt.glowGain ?? 1);
     if (gt.cueGroup) {
       gt.cueGroup.visible = Boolean(gt.virtual) && tier !== 'dark';
     }
@@ -4234,7 +4584,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
      * to obscure the gate's own dressing, a flag gate read as a glowing
      * box with the pennant washed out. The edge band stays legible at
      * 0.55; what goes is the interior bloom that painted over the frame. */
-    target.glowMat.uniforms.uGain.value = 0.55;
+    target.glowMat.uniforms.uGain.value = 0.55 * (target.glowGain ?? 1);
     /* A stacked figure shares one glow across its openings. Put that
      * glow, and the pane, on the hole this station names. */
     if (target.trackGlow && target.aperture) {
@@ -4440,7 +4790,9 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
     return { px, pz, nx, nz };
   }
 
-  for (let i = 0; i < 420; i += 1) {
+  /* The treeline. A living room has no bush around it, so on a micro track
+   * the loop simply does not run: no trees, no rocks, no occluders. */
+  for (let i = 0; indoor ? false : i < 420; i += 1) {
     const u = rng();
     const along = rng();
     const outRoll = rng();
@@ -4517,7 +4869,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * THE FENCE on the paddock boundary. Waist high chain link, which is what
    * both of the club's photographs show closing the ground off from the bush.
    */
-  {
+  if (!indoor) {
     const postMat = celMaterial({ color: 0x9aa1a8, rim: 0.2 });
     const meshTex = chainLinkTexture();
     const meshMat = celMaterial({
@@ -4563,7 +4915,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   const clubY = height(clubSite.x, clubSite.z);
   const clubDecks = [];
   let clubVerandahClear = 0;
-  {
+  if (!indoor) {
     const clubMat = celMaterial({
       color: 0xffffff, rim: 0.2, cloudShadow: 0.3, key: 'clubhouse',
     });
@@ -4709,7 +5061,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * nothing and they are the difference between a green field and a
    * meadow, because they give the ground a second colour at a second
    * scale. */
-  {
+  if (!indoor) {
     const N = 2600;
     const pos = new Float32Array(N * 4 * 3);
     const col = new Float32Array(N * 4 * 3);
@@ -4921,7 +5273,8 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    */
   const HORIZON_TONE = [0x6f8352, 0x86956d, 0x9ba58b];
   const horizonMats = HORIZON_TONE.map((hex) => new THREE.MeshBasicMaterial({ color: hex, fog: false }));
-  for (let ring = 0; ring < HORIZON_DIST.length; ring += 1) {
+  /* Indoors there is no horizon, there is a wall four metres away. */
+  for (let ring = 0; !indoor && ring < HORIZON_DIST.length; ring += 1) {
     const dist = HORIZON_DIST[ring];
     /* Enough of them that the ring closes at this radius: a gap in a treeline
      * a kilometre out reads as a hole in the world. */
@@ -5060,7 +5413,7 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
        * rest 0.55 peak 0.73 against the old 0.95 to 1.25, halo 0.40 to
        * 0.62, pane 0.12 to 0.20, a transparency gradient rather than a
        * floodlight, and the flag above the header stays visible. */
-      gt.glowMat.uniforms.uGain.value = 0.55 + 0.18 * pulse;
+      gt.glowMat.uniforms.uGain.value = (0.55 + 0.18 * pulse) * (gt.glowGain ?? 1);
       if (gt.glowMat.uniforms.uCelTime) {
         gt.glowMat.uniforms.uCelTime.value = t;
       }
@@ -5137,12 +5490,31 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       aimDrop: 2.6,
     };
 
+  /* The first gate's built aperture, and what it is a copy of, read once so
+   * the three references below cannot disagree about which sport they quote
+   * or about which gate they measured. */
+  const gateRef = (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture;
+  const microCourse = Boolean(course && course.trackClass === 'micro');
+  const gateOpening = microCourse ? RACEGOW_GATE_OPENING_MAX : 1.524 * GATE_SCALE;
+  const gateReal = microCourse
+    ? `${RACEGOW_GATE_OPENING_MAX.toFixed(4)}, RaceGOW 28 inch opening, built one to one`
+    : `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}`;
+
   return {
     id: course ? 'custom' : 'field',
     name: course ? course.name : 'Track',
     /* A designed course with no stations is freestyle: no lap, no gate
      * HUD. The built in field always has a circuit, so it stays a race. */
     mode: course && !(course.stations && course.stations.length) ? 'freestyle' : 'race',
+    /*
+     * 'full' is a sixty metre field flown on a 5 inch; 'micro' is a RaceGOW
+     * room flown on a 65 mm whoop. The shell reads it to size the scoring
+     * volume: src/game/race.js's full sized 0.5 m box is wider than the gap
+     * RaceGOW leaves between two adjacent gates, so on a micro track two
+     * gates in a legal side by side pair would share one scoring volume.
+     * The built in field has no document, so it is full sized.
+     */
+    trackClass: (course && course.trackClass) || 'full',
     scene, gates, curve, colliders, spawn, attract,
     /* Anything the reader could not honour, for the shell to show once. */
     notes: course ? course.warnings : [],
@@ -5159,10 +5531,19 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
       /* 1.524 is MultiGP's published 5 ft opening; the course is BUILT at
        * GATE_SCALE times that, which src/game/track.js declares and explains.
        * The reference states the built figure because that is the hole the
-       * pilot flies and the one a scale check has to band. */
-      gateOpeningW: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.clearW, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
-      gateOpeningH: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.clearH, unit: 'm', real: `${(1.524 * GATE_SCALE).toFixed(4)}, MultiGP standard gate 1.524 at gate scale ${GATE_SCALE}` },
-      gateApertureCentreY: { measured: (gates[0] ?? { aperture: { clearW: 0, clearH: 0, centreY: 0 } }).aperture.centreY, unit: 'm', real: '0.762, half the opening' },
+       * pilot flies and the one a scale check has to band.
+       *
+       * A RaceGOW gate is a different citation and a different scale: 28
+       * inches of clear opening, the maximum the rules allow, built one to
+       * one because gateScaleFor gives a micro track no departure at all.
+       * The reference follows, or a check reading it in a room would be
+       * banding the hole a whoop flies against a hole from another sport.
+       * The centre is half the opening on both, for different reasons: a
+       * MultiGP gate stands on the ground and RaceGOW rule 2 puts a bar on
+       * the floor. */
+      gateOpeningW: { measured: gateRef.clearW, unit: 'm', real: gateReal },
+      gateOpeningH: { measured: gateRef.clearH, unit: 'm', real: gateReal },
+      gateApertureCentreY: { measured: gateRef.centreY, unit: 'm', real: `${(gateOpening * 0.5).toFixed(4)}, half the opening` },
       grassBladeHeight: { measured: grass.bladeHeightRange, unit: 'm', real: '0.03 to 0.09, mown' },
       /*
        * The clubhouse's verandah, measured as the gap a pilot actually has:

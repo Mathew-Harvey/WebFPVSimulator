@@ -733,7 +733,12 @@ function saveSettings(s) {
  * pilot who has set their own rates keeps them across a change and one who
  * has not gets the new machine's factory numbers instead of the old one's.
  */
-function seatAirframe(s, id) {
+/* Exported for scripts/shots.js, which has to seed the answer a pilot gives
+ * on the choice screen. A seed that wrote only the airframe would leave the
+ * rates and the camera belonging to the other aircraft, and every capture
+ * past that point would be a photograph of a state the shell never puts a
+ * pilot in. One function, so the seed cannot drift from the answer. */
+export function seatAirframe(s, id) {
   const from = airframeById(s.airframe);
   const to = airframeById(id);
   s.airframe = to.id;
@@ -7837,7 +7842,15 @@ export class Ui {
    * may have moved during the run, and the hero line needs the old
    * figure to say whether this lap beat it.
    */
-  showResults(log, best, recordAtStart, ghostNote = null) {
+  /*
+   * opts carries what the shell knows and this screen cannot work out:
+   * `threeMs`, the fastest three CONSECUTIVE clean laps, which
+   * src/game/race.js computes from its own log because a void in the middle
+   * breaks a run and the clean list has already forgotten where it was; and
+   * `trackClass`, because which of the two metrics is the headline is a
+   * property of the track, not of the run.
+   */
+  showResults(log, best, recordAtStart, ghostNote = null, opts = {}) {
     this.resultsBody.textContent = '';
     this.resultsNote.textContent = '';
     const clean = log.filter((l) => Number.isFinite(l.ms)).map((l) => l.ms);
@@ -7864,9 +7877,40 @@ export class Ui {
       this.resultsHead.textContent = isRecord
         ? 'New track record'
         : (matched ? 'Matched the record' : 'Run complete');
-      this.resultsHeroCap.textContent = clean.length === 1 ? 'Lap time' : 'Best lap';
-      this.resultsHeroTime.textContent = formatTime(fastest);
-      if (isRecord && hadRecord) {
+      /*
+       * RACEGOW IS SCORED ON THREE CONSECUTIVE LAPS, so on a micro track
+       * that total is the headline and the best single lap moves to the
+       * line under it. Everywhere else the best lap keeps the top line,
+       * which is what MultiGP's time trial is scored on.
+       *
+       * The record machinery stays on the single lap in both cases. A track
+       * record here, on the board, and in the pending time written below is
+       * one lap, and the three lap total has nothing to be compared against
+       * yet, so promoting it to the hero without keeping the lap's record
+       * line would trade a headline for the most useful sentence on the
+       * screen. It does not: the record line moves down with the lap.
+       */
+      const three = Number.isFinite(opts.threeMs) ? opts.threeMs : null;
+      const threeUp = opts.trackClass === 'micro' && three != null;
+      this.resultsHeroCap.textContent = threeUp
+        ? 'Best three laps'
+        : (clean.length === 1 ? 'Lap time' : 'Best lap');
+      this.resultsHeroTime.textContent = formatTime(threeUp ? three : fastest);
+      if (threeUp) {
+        /* Three consecutive is what the run is scored on, so the lap that
+         * carries the record is named here rather than left to the rows. */
+        const lapWord = clean.length === 1 ? 'Lap' : 'Best lap';
+        if (isRecord) {
+          this.resultsHeroMeta.textContent = `${lapWord} ${formatTime(fastest)}, a track record`;
+          this.resultsHeroMeta.className = 'results-hero-meta gain';
+        } else if (matched) {
+          this.resultsHeroMeta.textContent = `${lapWord} ${formatTime(fastest)}, equals the record`;
+          this.resultsHeroMeta.className = 'results-hero-meta gain';
+        } else {
+          this.resultsHeroMeta.textContent = `${lapWord} ${formatTime(fastest)}, ${formatDelta(fastest - best)} off ${formatTime(best)}`;
+          this.resultsHeroMeta.className = 'results-hero-meta off';
+        }
+      } else if (isRecord && hadRecord) {
         this.resultsHeroMeta.textContent = `${formatDelta(fastest - recordAtStart)}  previous ${formatTime(recordAtStart)}`;
         this.resultsHeroMeta.className = 'results-hero-meta gain';
       } else if (isRecord) {
@@ -7905,14 +7949,43 @@ export class Ui {
       }
       this.resultsBody.append(row);
     });
-    if (clean.length > 1) {
-      const total = clean.reduce((a, b) => a + b, 0);
+    /*
+     * The two footing rows, and they are ONE row whenever they are one
+     * number. A clean run of exactly three laps has a total that IS the
+     * fastest three consecutive, and printing it twice under two labels
+     * reads as two measurements that happen to agree rather than as one
+     * measurement. So the total row takes the three lap name in that case,
+     * and the separate row only appears when a longer or a voided run
+     * really does make them different figures.
+     */
+    const total = clean.length > 1 ? clean.reduce((a, b) => a + b, 0) : null;
+    const three = Number.isFinite(opts.threeMs) ? opts.threeMs : null;
+    const totalRow = (label, ms) => {
       const row = el('div', 'result-row total');
       const main = el('div', 'result-main');
-      main.append(el('span', 'result-label', clean.length === log.length ? 'Total' : 'Clean laps total'));
-      main.append(el('span', 'result-time', formatTime(total)));
+      main.append(el('span', 'result-label', label));
+      main.append(el('span', 'result-time', formatTime(ms)));
       row.append(main);
       this.resultsBody.append(row);
+    };
+    if (total != null) {
+      /* Renamed only on the track that is SCORED on it. A clean three lap
+       * run on the field has the same arithmetic, but MultiGP's time trial
+       * is scored on one lap, so calling its total by RaceGOW's name would
+       * put a rule on the screen that does not apply to the run. */
+      totalRow(
+        opts.trackClass === 'micro' && three != null && three === total
+          ? 'Best three consecutive'
+          : (clean.length === log.length ? 'Total' : 'Clean laps total'),
+        total,
+      );
+    }
+    /* Named on every track that managed three in a row, because it is the
+     * RaceGOW metric and a five inch pilot flying a longer run has every
+     * reason to want it too. On a micro track it is also the hero above, and
+     * having it in the rows is what makes them add up to the headline. */
+    if (three != null && three !== total) {
+      totalRow('Best three consecutive', three);
     }
     /* How the run went against the ghost that was being chased, one line,
      * written by the shell because only it knows who the ghost was. */

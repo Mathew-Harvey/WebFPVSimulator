@@ -804,8 +804,8 @@ export class Panels {
       const line = el('p', 'tb-help');
       line.append(el('strong', null, micro ? 'RaceGOW micro' : 'Full size'));
       line.append(document.createTextNode(micro
-        ? ' \u2014 a 65 mm whoop in a room. Gates 24 to 28 in, adjacent gates 30 in centre to centre, the whole track inside 4 by 6 ft. Grid is one inch.'
-        : ' \u2014 a 5 inch quad on a field. MultiGP gate sizes, grid in metres.'));
+        ? ': a 65 mm whoop in a room. Gates 24 to 28 in, adjacent gates 30 in centre to centre, and the whole track inside 4 by 6 ft at the smallest gate, scaled up with them. Grid is one inch.'
+        : ': a 5 inch quad on a field. MultiGP gate sizes, grid in metres.'));
       host.append(line);
     }
     host.append(el('h3', null, 'Field'));

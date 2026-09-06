@@ -62,7 +62,7 @@ import {
 } from '../trackbuilder/model.js';
 import { buildPath } from '../trackbuilder/path.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
-import { GATE_SCALE } from './track.js';
+import { gateScaleFor } from './track.js';
 import { startBlockLaneOffset, startBlockDims } from '../art/startblock.js';
 import { guideFromKnots } from './guide.js';
 
@@ -128,21 +128,28 @@ function toScene(field, p) {
  * Every length in an obstacle, through the game's declared departure from
  * the published dimensions.
  *
- * GATE_SCALE IS APPLIED HERE, and that is a decision worth stating. A
- * document holds MultiGP's own figures; the race field builds every obstacle
- * 15 percent larger, which src/game/track.js declares and explains as a
- * playability choice made with the rulebook still on the page. If a custom
- * course did not get the same treatment, the identical 5 ft gate would be a
- * different size on the two maps and a pilot's eye would have to relearn the
- * world every time they changed track. Positions are NOT scaled: the layout
- * is the author's and moving their gates is not a scale, it is a redesign.
+ * THE OBSTACLE SCALE IS APPLIED HERE, and that is a decision worth stating.
+ * A document holds MultiGP's own figures; the race field builds every
+ * obstacle 15 percent larger, which src/game/track.js declares and explains
+ * as a playability choice made with the rulebook still on the page. If a
+ * custom course did not get the same treatment, the identical 5 ft gate
+ * would be a different size on the two maps and a pilot's eye would have to
+ * relearn the world every time they changed track. Positions are NOT scaled:
+ * the layout is the author's and moving their gates is not a scale, it is a
+ * redesign.
+ *
+ * A MICRO TRACK IS BUILT AT ONE TO ONE. gateScaleFor is the whole rule and
+ * src/game/track.js carries the argument: the 15 percent was asked for
+ * against a five inch on a sixty metre field, a RaceGOW gate is already half
+ * again as generous against a whoop, and growing one inside a room that did
+ * not grow makes the room smaller and the builder's own warnings wrong.
  */
-function builtDims(dims) {
+function builtDims(dims, scale) {
   return {
-    clearW: dims.clearW * GATE_SCALE,
-    clearH: dims.clearH * GATE_SCALE,
-    sillH: dims.sillH * GATE_SCALE,
-    levelPitch: dims.levelPitch * GATE_SCALE,
+    clearW: dims.clearW * scale,
+    clearH: dims.clearH * scale,
+    sillH: dims.sillH * scale,
+    levelPitch: dims.levelPitch * scale,
     stack: Math.max(1, Math.round(dims.levels)),
   };
 }
@@ -206,6 +213,9 @@ export function courseFromDocument(raw) {
    * course object that did not carry it would make every one of those guess.
    */
   const cls = trackClassOf(doc);
+  /* How much larger than the author's figures this track is built. One on a
+   * RaceGOW room, 15 percent on the field. See gateScaleFor. */
+  const gateScale = gateScaleFor(cls);
   const warnings = [...repairs];
 
   /* One structure per element. Markers stand on the field; flags and cones
@@ -244,7 +254,7 @@ export function courseFromDocument(raw) {
       /* Tilt of the aperture plane, radians, straight from the document.
        * Zero for everything that is not an aperture. */
       pitch: kind === KIND.APERTURE ? el.pitch : 0,
-      dims: kind === KIND.APERTURE ? builtDims(el.dims) : { ...el.dims },
+      dims: kind === KIND.APERTURE ? builtDims(el.dims, gateScale) : { ...el.dims },
     };
     if (def.flagSide) {
       s.flagSigns = flagSideSigns(flagSideOf(el));
@@ -260,8 +270,8 @@ export function courseFromDocument(raw) {
       /* The author's mast, through the same obstacle scale every other
        * length on the structure goes through, so the flag grows with the
        * gate it stands on rather than shrinking against it. */
-      s.flagH = gateFlagHeight(el.dims) * GATE_SCALE;
-      s.flagPoleR = GATE_FLAG_POLE_R * GATE_SCALE;
+      s.flagH = gateFlagHeight(el.dims) * gateScale;
+      s.flagPoleR = GATE_FLAG_POLE_R * gateScale;
     }
     /* Null for anything that carries no printed vinyl. */
     s.dress = dress.has(el.id) ? dress.get(el.id) : null;
@@ -397,9 +407,9 @@ export function courseFromDocument(raw) {
       z: pos.z,
       baseY: el.position.z,
       /* Height of THIS opening's centre above the structure's base, built. */
-      centreY: ap.centerH * GATE_SCALE,
-      clearW: ap.clearW * GATE_SCALE,
-      clearH: ap.clearH * GATE_SCALE,
+      centreY: ap.centerH * gateScale,
+      clearW: ap.clearW * gateScale,
+      clearH: ap.clearH * gateScale,
       yaw,
       pitch: tilt,
       name: structure.name,
@@ -468,7 +478,7 @@ export function courseFromDocument(raw) {
    * cubic through gate-normal tangents does not. Scene XZ, so the renderer
    * never has to know a document existed.
    */
-  const guide = guideFromKnots(sceneKnots(path.knots, field));
+  const guide = guideFromKnots(sceneKnots(path.knots, field), cls);
 
   if (!stations.length) {
     warnings.push('This track has nothing to fly through, so there is no lap to time.');

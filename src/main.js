@@ -960,7 +960,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
   /* The race: gate order, lap clock, best lap. On a freestyle map it is a
    * real object with no gates in it and it scores nothing. */
-  let race = new Race(view.gates);
+  let race = new Race(view.gates, view.trackClass ?? 'full');
   /*
    * THE FREESTYLE SCORE, and it only ever runs on a freestyle map.
    *
@@ -2882,7 +2882,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function adoptLoadedView(keepPlace, stayMode, stayScreen) {
     attractCam = makeAttractCamera(view);
     if (!keepPlace) {
-      race = new Race(view.gates);
+      race = new Race(view.gates, view.trackClass ?? 'full');
       race.setRecordKey(recordKey());
       ui.setBest(race.bestMs, view.mode);
       adoptSpawn();
@@ -5878,7 +5878,13 @@ export async function boot({ loading, bootStart, mapId }) {
           setTurtleParkMotors(false);
           poseLock = false;
           ui.setBest(race.bestMs, view.mode);
-          ui.showResults(race.log, race.bestMs, race.recordAtStart, ghostResultNote());
+          ui.showResults(race.log, race.bestMs, race.recordAtStart, ghostResultNote(), {
+            /* Read from the race rather than recomputed on the screen: a run
+             * of three has to be three CLEAN laps in a row, and only the
+             * race's log still knows where the voids were. */
+            threeMs: race.bestThreeMs ? race.bestThreeMs() : null,
+            trackClass: view.trackClass ?? 'full',
+          });
         }
       }
       racePrev.copy(pCurr);

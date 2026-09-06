@@ -70,6 +70,108 @@ const BARRIER_W = 4;
 const BARRIER_D = 1;
 const PAD_ROW = 4.5;       /* four stands at 1.5 m spacing */
 
+/*
+ * THE SIX ABOVE ARE FALLBACKS NOW, AND A PLAN FROM EITHER PRODUCER READS
+ * NONE OF THEM.
+ *
+ * Each one used to be the size EVERY mark of its type was drawn at,
+ * whatever the document said, and that was fine for exactly as long as
+ * every track was a MultiGP one. On a 5 by 6 m room a gate held at 1.524 m
+ * drew a bar 30 percent of the way across the plate, where the 0.711 m gate
+ * it stands for is 14 percent of it, and the start line held at 4.5 m ran
+ * two thirds of the way across the room. Measured on
+ * tracks/json/micro-livingroom-1.json in a board tile: the gate bar was
+ * 44.9 px on a 147 px plate and is 20.9 px now.
+ *
+ * The document has carried the real numbers all along, dims.clearW on a
+ * gate and dims.pads with dims.spacing on the start, in exactly the way it
+ * carries a barrier's width and a stack's level count, both of which this
+ * drawer already reads. The gate opening was simply missed. So the plan
+ * payload carries it, the drawer reads it, and these six are what a plan
+ * built by something with no dimensions at all falls back to.
+ *
+ * BOTH PRODUCERS HAVE TO EMIT IT or the pair stops drawing the same
+ * picture: planFromDocument in the simulator's src/share/plan.js, and the
+ * board's own copy in src/validate.js.
+ *
+ * DIVE_W IS THE ONE OF THE SIX THAT REAL DOCUMENTS DISAGREE WITH, and it is
+ * worth writing down because it means this change is not invisible on full
+ * sized tracks. 2.13 is a 7 ft dive gate, which is what MultiGP publishes,
+ * but not one dive gate under tracks/ is built at 7 ft: all fourteen of
+ * them, across eleven documents, carry a 1.524 m opening like every other
+ * aperture on those tracks, and the plan has been drawing each of them 40
+ * percent oversize. Reading the document shrinks them to the size they are.
+ * Measured: on the board's track sheet, the widest a plan is drawn here,
+ * the square goes from 9.35 px to 7.0 px; at every smaller size both the
+ * old number and the new one sit on the 3.5 px floor below and nothing
+ * moves at all. Every other mark on those eleven tracks, at four card
+ * sizes, with and without the scale bar, is drawn by the identical calls
+ * with the identical arguments.
+ */
+
+/*
+ * THE MICRO TWINS: the sizes that are not on a mark to be read.
+ *
+ * A plan carries its track class, 'full' or 'micro', the same way the
+ * object src/game/trackdoc.js builds for the game carries it and for the
+ * same reason, that almost everything downstream of a document is a length.
+ * Everything below is a length that could not be read off a mark, either
+ * because the document does not hold it or because reading it would change
+ * what a full sized track has always looked like.
+ */
+
+/* The marker symbol, which is a symbol rather than a measurement at both
+ * ends. 0.18 m is a road cone's base radius, 7 inches, so a full sized plan
+ * draws a cone life size and draws a flag at the same size even though a
+ * flag's pole is 25 mm, because 25 mm on a sixty metre field is nothing.
+ * The twin is the same rule at the other end: the indoor marker cone the
+ * element library carries is 100 mm tall on a 60 mm base, so this is that
+ * base, life size again. Left at 0.18 a cone on a 5 m room draws 360 mm
+ * across, six times the cone, and a room's turn markers come out half the
+ * width of its gates. */
+const MARKER_R = 0.18;
+const MICRO_MARKER_R = 0.030;
+
+/* The gate fallback, for the never reached case above. A RaceGOW gate is
+ * 28 inches of clear opening, 0.711 m: the maximum the rules allow, what a
+ * 3/4 inch pipe cut at 26.5 to 27.25 inches assembles to, and what the shop
+ * that sells the parts cuts them at. The horizontal gate is the same square
+ * laid flat, which is why one number serves here where the full sized pair
+ * needs two. */
+const MICRO_GATE_W = 0.711;
+
+/* The start line fallback. RaceGOW has no heats: every pilot flies alone at
+ * home and the whole series is an asynchronous time trial, so a micro start
+ * is ONE stand and the line is as long as that stand, 100 mm. Four stands
+ * at 1.5 m spacing is a MultiGP grid and nothing else. */
+const MICRO_PAD_ROW = 0.10;
+
+/* The barrier fallback. A living room's furniture rather than a crowd
+ * barrier: a sofa is about 1.8 by 0.85 m and is the commonest obstacle on a
+ * RaceGOW track by a wide margin. Kept beside the full sized pair so that a
+ * plan with no dimensions on the mark draws something the right size for
+ * its class rather than a four metre wall across a five metre room. */
+const MICRO_BARRIER_W = 1.8;
+const MICRO_BARRIER_D = 0.85;
+
+/* The room a micro plan falls back to when it carries no field at all, the
+ * twin of the 60 by 40 in fit(). RaceGOW's own envelope is 1.42 by 2.13 m
+ * at the 28 inch gate everyone builds, and the rules ask for "additional
+ * space around the outside of that to fly the tracks optimally"; 5 by 6 m
+ * is a two car garage or a large living room, which is where these are
+ * actually flown. Derived in src/trackbuilder/racegow.js, copied here
+ * because a drawer shared with the board cannot import the builder. */
+const MICRO_FIELD_W = 5;
+const MICRO_FIELD_D = 6;
+
+/* 'full' unless the plan says otherwise, so every plan already stored, and
+ * every plan from a producer that has not learned the field yet, stays the
+ * MultiGP field it has always been. Same default trackClassOf applies in
+ * the builder and courseFromDocument applies in the game. */
+function isMicro(plan) {
+  return Boolean(plan) && plan.trackClass === 'micro';
+}
+
 const LEVELS = {
   gate: 1,
   flaggedGate: 1,
@@ -79,8 +181,33 @@ const LEVELS = {
   tower: 2,
 };
 
-const GRID_STEPS = [1, 2, 5, 10, 25, 50, 100];
-const BAR_STEPS = [5, 10, 20, 25, 50, 100];
+/*
+ * The ladders the grid and the scale bar choose a step from, and the three
+ * small ones at the front of each are new.
+ *
+ * pick() below walks the list and takes the FIRST step that is at least
+ * minPx apart on screen, so a ladder starting at 1 m cannot draw a finer
+ * grid than one metre however close in the drawing is. On a 5 by 6 m room
+ * that put a grid five squares across on the whole field, and the bar,
+ * whose ladder started at 5 m, either drew a rule as long as the room or
+ * was dropped by the "longer than 42 percent of the card" test below and
+ * drew nothing, so a room's plan carried no scale at all.
+ *
+ * THIS IS NOT A MICRO TWIN, it is a longer ladder, and every track gets it.
+ * A step is only reached once it is at least 9 px (grid) or 44 px (bar) on
+ * screen, so 0.5 m of grid needs 18 px per metre and a 2 m bar needs 22. A
+ * 60 by 40 field is drawn between 3.4 and 8.1 px per metre everywhere in
+ * this project, the widest being the board's track sheet, so on one of
+ * those none of the six new steps can be reached and the MultiGP picture is
+ * unchanged. A full sized track on a SMALL authored field can reach them:
+ * 20 by 14 m in that same track sheet is 23 px per metre and now draws a
+ * 0.5 m grid and a 2 m bar where it drew 1 m and 5 m. That is the chooser's
+ * own rule working further down rather than a new rule, and it is the right
+ * answer, but it is a change, and it is written here because "a big field
+ * can never reach the small steps" is the obvious claim and it is false.
+ */
+const GRID_STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100];
+const BAR_STEPS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
 
 function pick(steps, minPx, perMetre) {
   for (const step of steps) {
@@ -95,8 +222,15 @@ function pick(steps, minPx, perMetre) {
  * fit keeps the field's own proportions and centres it in whatever box
  * the card gives it. */
 function fit(plan, w, h, pad) {
-  const fw = Math.max(1, Number(plan && plan.width) || 60);
-  const fd = Math.max(1, Number(plan && plan.depth) || 40);
+  /* A plan with no field of its own still has to be drawn on something, and
+   * which something depends on the class: a MultiGP field is 60 by 40 and a
+   * RaceGOW room is 5 by 6. Falling through to 60 by 40 on a micro plan
+   * would draw a room at a twelfth of its own size, which is the same error
+   * the gates had. Neither producer emits a plan without a field, so this
+   * is the last line rather than the usual one. */
+  const small = isMicro(plan);
+  const fw = Math.max(1, Number(plan && plan.width) || (small ? MICRO_FIELD_W : 60));
+  const fd = Math.max(1, Number(plan && plan.depth) || (small ? MICRO_FIELD_D : 40));
   const s = Math.min((w - pad * 2) / fw, (h - pad * 2) / fd);
   return {
     s,
@@ -161,9 +295,31 @@ function grid(ctx, box) {
  * stack gets a deeper bar and, where there is room, one arc per level, so
  * a ladder is not a gate even in a thumbnail.
  */
-function aperture(ctx, s, levels) {
-  const half = Math.max(3.2, (GATE_W * 0.5) * s);
-  const depth = Math.max(1.8, GATE_D * s) * (levels > 1 ? 1.8 : 1);
+/* The clear opening a mark is drawn at: the document's own number when the
+ * plan carries one, which is every plan either producer builds, and the
+ * class's standard gate when it does not. */
+function openingOf(mark, fallback) {
+  const w = Number(mark.clearW);
+  return Number.isFinite(w) && w > 0 ? w : fallback;
+}
+
+function aperture(ctx, s, levels, openW) {
+  const half = Math.max(3.2, (openW * 0.5) * s);
+  /*
+   * THE FRAME DEPTH IS A PROPORTION OF THE OPENING AND HAS TO BE.
+   *
+   * GATE_D is not a frame. A MultiGP gate is built out of 1 inch tube and a
+   * RaceGOW one out of 26.7 mm pipe, and both are invisible at any scale a
+   * plan is ever drawn at, so 0.36 m is a drawing thickness rather than a
+   * measurement: it is 0.236 of a 5 ft opening, and that is the aspect that
+   * makes a bar read as a bar rather than as a post or a blob. Held at 0.36
+   * on a 0.711 m opening it is half the opening, so a RaceGOW gate draws as
+   * a square block and a room of them reads as a scatter of dice. Written
+   * as GATE_D times the ratio, not as a ratio of its own, so that a 5 ft
+   * opening gives back exactly 0.36: the ratio is exactly 1 there and the
+   * multiply is exact.
+   */
+  const depth = Math.max(1.8, GATE_D * (openW / GATE_W) * s) * (levels > 1 ? 1.8 : 1);
   ctx.beginPath();
   ctx.rect(-depth * 0.5, -half, depth, half * 2);
   ctx.fillStyle = C.gate;
@@ -172,7 +328,9 @@ function aperture(ctx, s, levels) {
     ctx.strokeStyle = C.gate;
     ctx.lineWidth = 1;
     for (let i = 1; i < levels; i += 1) {
-      const r = depth * 0.5 + i * Math.max(2.5, s * 0.22);
+      /* The arcs annotate the bar and have to sit inside it, so their
+       * spacing follows the opening exactly the way the depth does. */
+      const r = depth * 0.5 + i * Math.max(2.5, s * 0.22 * (openW / GATE_W));
       ctx.beginPath();
       ctx.arc(0, 0, r, -0.9, 0.9);
       ctx.stroke();
@@ -180,8 +338,8 @@ function aperture(ctx, s, levels) {
   }
 }
 
-function diveGate(ctx, s) {
-  const half = Math.max(3.5, (DIVE_W * 0.5) * s);
+function diveGate(ctx, s, openW) {
+  const half = Math.max(3.5, (openW * 0.5) * s);
   ctx.beginPath();
   ctx.rect(-half, -half, half * 2, half * 2);
   ctx.fillStyle = C.diveFill;
@@ -200,9 +358,9 @@ function diveGate(ctx, s) {
  * board a quarter turn out of the one the builder and the simulator draw:
  * scene.js lays the collider along (cos yaw, -sin yaw) and view2d.js gives
  * boxCorners the width as its along-yaw argument. */
-function barrier(ctx, s, dims) {
-  const w = Math.max(4, (dims && dims.w > 0 ? dims.w : BARRIER_W) * s);
-  const h = Math.max(2, (dims && dims.d > 0 ? dims.d : BARRIER_D) * s);
+function barrier(ctx, s, dims, small) {
+  const w = Math.max(4, (dims && dims.w > 0 ? dims.w : (small ? MICRO_BARRIER_W : BARRIER_W)) * s);
+  const h = Math.max(2, (dims && dims.d > 0 ? dims.d : (small ? MICRO_BARRIER_D : BARRIER_D)) * s);
   ctx.beginPath();
   ctx.rect(-w * 0.5, -h * 0.5, w, h);
   ctx.fillStyle = C.barrier;
@@ -212,8 +370,8 @@ function barrier(ctx, s, dims) {
   ctx.stroke();
 }
 
-function marker(ctx, s, cone) {
-  const r = Math.max(1.6, s * 0.18);
+function marker(ctx, s, cone, small) {
+  const r = Math.max(1.6, s * (small ? MICRO_MARKER_R : MARKER_R));
   ctx.beginPath();
   if (cone) {
     ctx.moveTo(0, -r * 1.3);
@@ -227,18 +385,51 @@ function marker(ctx, s, cone) {
   ctx.fill();
 }
 
-/* The start line, and which way the pack faces. Local +x is the launch
- * heading, so the chevron points down the first straight. */
-function startPads(ctx, s) {
-  const half = Math.max(5, (PAD_ROW * 0.5) * s);
+/*
+ * How long the start line is, in metres: the span from the first stand to
+ * the last, never shorter than one stand, because a lone stand is still a
+ * mark on the ground. Read off the document rather than assumed, for the
+ * same reason a gate's opening is. The constants are what a plan with no
+ * dimensions on the mark falls back to.
+ */
+function padRow(mark, small) {
+  const pads = Number(mark.pads);
+  const spacing = Number(mark.spacing);
+  const size = Number(mark.padSize);
+  if (Number.isFinite(pads) && pads > 0 && Number.isFinite(spacing) && spacing >= 0) {
+    return Math.max((pads - 1) * spacing, Number.isFinite(size) && size > 0 ? size : 0);
+  }
+  return small ? MICRO_PAD_ROW : PAD_ROW;
+}
+
+/*
+ * The start line, and which way the pack faces. Local +x is the launch
+ * heading, so the chevron points down the first straight.
+ *
+ * THE LINE IS AS LONG AS THE ROW OF STANDS. Four MultiGP stands at 1.5 m
+ * spacing span 4.5 m, which is where PAD_ROW came from; a RaceGOW start is
+ * ONE stand, because there are no heats and every pilot flies alone at
+ * home, so its line is the stand itself. Held at 4.5 m the start line on a
+ * RaceGOW room ran two thirds of the way across it with a metre and a half
+ * of chevron on the end, which is most of a drawing spent on the one mark
+ * nobody flies through.
+ *
+ * The chevron follows the line rather than the field, at the proportion the
+ * full sized pair already encodes: 1.9 m of tip and 1.2 m of wing on a
+ * 4.5 m line. Written as a ratio to PAD_ROW so a MultiGP grid gives back
+ * exactly 1.9 and 1.2.
+ */
+function startPads(ctx, s, row) {
+  const half = Math.max(5, (row * 0.5) * s);
   ctx.strokeStyle = C.start;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(0, -half);
   ctx.lineTo(0, half);
   ctx.stroke();
-  const tip = Math.max(6, s * 1.9);
-  const wing = Math.max(4, s * 1.2);
+  const k = row / PAD_ROW;
+  const tip = Math.max(6, s * 1.9 * k);
+  const wing = Math.max(4, s * 1.2 * k);
   ctx.beginPath();
   ctx.moveTo(tip, 0);
   ctx.lineTo(tip - wing, -wing * 0.78);
@@ -382,6 +573,9 @@ export function drawPlan(canvas, plan, options = {}) {
     return true;
   }
   raceLine(ctx, box, plan.path);
+  /* Read once. Only the three sizes that are not on a mark need it: the
+   * marker symbol, and the two fallbacks nothing reaches. */
+  const small = isMicro(plan);
   const marks = [...(plan.marks || [])].sort((a, b) => order(a.type) - order(b.type));
   for (const mark of marks) {
     const type = String(mark.type || '');
@@ -403,17 +597,19 @@ export function drawPlan(canvas, plan, options = {}) {
       ctx.globalAlpha = 0.38;
     }
     if (type === 'startPads') {
-      startPads(ctx, box.s);
+      startPads(ctx, box.s, padRow(mark, small));
     } else if (type === 'barrier') {
-      barrier(ctx, box.s, mark);
+      barrier(ctx, box.s, mark, small);
     } else if (type === 'flag' || type === 'cone') {
-      marker(ctx, box.s, type === 'cone');
+      marker(ctx, box.s, type === 'cone', small);
     } else if (type === 'diveGate') {
-      diveGate(ctx, box.s);
+      diveGate(ctx, box.s, openingOf(mark, small ? MICRO_GATE_W : DIVE_W));
     } else {
-      /* The authored level count when the plan carries one, the type
-       * default when it is an older stored plan that does not. */
-      aperture(ctx, box.s, mark.levels > 0 ? mark.levels : LEVELS[type]);
+      /* The authored level count and the authored opening when the plan
+       * carries them, the type default and the class's standard gate when
+       * it is an older stored plan that does not. */
+      aperture(ctx, box.s, mark.levels > 0 ? mark.levels : LEVELS[type],
+        openingOf(mark, small ? MICRO_GATE_W : GATE_W));
     }
     ctx.restore();
   }
@@ -432,6 +628,19 @@ export function drawPlan(canvas, plan, options = {}) {
  * runs on the working canvas, which has never been published and so has no
  * stored plan. They must produce the same keys, or a course would change
  * shape the moment it went on the board.
+ *
+ * THE TWO ARE OUT OF STEP BY FIVE KEYS AS OF THIS TURN, and deliberately.
+ * This copy emits trackClass, clearW, pads, spacing and padSize; the
+ * board's does not emit any of them yet. Nothing is drawn wrongly by that,
+ * because the drawer falls back to the full sized constants for exactly
+ * these fields and every track the board holds is a full sized one: it
+ * refuses anything but schemaVersion 1 and 2, and a micro track is
+ * schemaVersion 3, so no room can reach it. The board's own store rebuilds
+ * a plan from the document on every list rather than reading the stored
+ * one, so the day validate.js learns schemaVersion 3 it can emit these five
+ * in the same commit and every track already published picks them up with
+ * no migration. That is the change to make there, and it is the same five
+ * lines as below.
  */
 const PLAN_SKIP = new Set(['label', 'waypoint']);
 const PLAN_APERTURE = new Set([
@@ -447,6 +656,12 @@ export function planFromDocument(doc) {
     return null;
   }
   const field = isObject(doc.field) ? doc.field : {};
+  /* Anything that is not the word 'micro' is the field this builder has
+   * always drawn, which is how trackClassOf defaults it in the builder and
+   * courseFromDocument defaults it in the game. A document written before
+   * there were two classes has no such key and is a MultiGP field, which is
+   * what it was. */
+  const small = doc.trackClass === 'micro';
   const byId = new Map();
   const sequenced = new Set();
   for (const step of doc.sequence || []) {
@@ -469,6 +684,22 @@ export function planFromDocument(doc) {
     const levels = Number(item.dims && item.dims.levels);
     const barrierW = Number(item.dims && item.dims.width);
     const barrierD = Number(item.dims && item.dims.depth);
+    /*
+     * THE GATE'S OWN OPENING, which is the fourth number of the family the
+     * three above belong to and the one that was missing. A gate is 1.524 m
+     * on a MultiGP field and 0.711 on a RaceGOW one, and an author can type
+     * any width into either, so a drawer that assumes one draws every track
+     * that is not that one wrongly. On a room it drew every gate at a third
+     * of the width of the room.
+     */
+    const clearW = Number(item.dims && item.dims.clearW);
+    /* And the start line's length, which is a row rather than one number:
+     * how many stands, how far apart, and how big one is. Four at 1.5 m is
+     * a MultiGP grid; a RaceGOW start is a single 100 mm stand, because
+     * there are no heats. */
+    const pads = Number(item.dims && item.dims.pads);
+    const spacing = Number(item.dims && item.dims.spacing);
+    const padSize = Number(item.dims && item.dims.padSize);
     marks.push({
       type,
       x: Number(item.position.x) || 0,
@@ -478,6 +709,10 @@ export function planFromDocument(doc) {
       levels: Number.isFinite(levels) && levels > 0 ? levels : undefined,
       w: Number.isFinite(barrierW) && barrierW > 0 ? barrierW : undefined,
       d: Number.isFinite(barrierD) && barrierD > 0 ? barrierD : undefined,
+      clearW: Number.isFinite(clearW) && clearW > 0 ? clearW : undefined,
+      pads: Number.isFinite(pads) && pads > 0 ? pads : undefined,
+      spacing: Number.isFinite(spacing) && spacing >= 0 ? spacing : undefined,
+      padSize: Number.isFinite(padSize) && padSize > 0 ? padSize : undefined,
     });
   }
   const path = [];
@@ -508,8 +743,12 @@ export function planFromDocument(doc) {
     }
   }
   return {
-    width: Number(field.width) || 60,
-    depth: Number(field.depth) || 40,
+    /* The class travels with the plan for the same reason it travels with
+     * the course: the drawer has three sizes it cannot read off a mark, and
+     * without this it would have to guess them from the field. */
+    trackClass: small ? 'micro' : 'full',
+    width: Number(field.width) || (small ? MICRO_FIELD_W : 60),
+    depth: Number(field.depth) || (small ? MICRO_FIELD_D : 40),
     marks,
     path,
     numbers,

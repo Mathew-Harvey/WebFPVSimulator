@@ -63,7 +63,8 @@ import { openPage, keyInfo, describe } from '../tests/lib/page.js';
  * Node today and this line is what keeps it so: if it ever grows a browser
  * only top level import, this harness fails loudly at startup rather than
  * quietly seeding a key nothing reads. */
-import { SETTINGS_KEY } from '../src/ui/ui.js';
+import { SETTINGS_KEY, seatAirframe } from '../src/ui/ui.js';
+import { airframeById } from '../configs/airframes.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 async function main() {
@@ -126,6 +127,28 @@ async function main() {
       s.map = 'custom';
       localStorage.setItem(k, JSON.stringify(s));
     } catch (e) { /* Storage refused; the run boots on the default map. */ }`);
+  }
+  /*
+   * --airframe picks the aircraft and, by answering the question, stops the
+   * shell asking it. The choice screen is modal on a first run, so without
+   * this a capture of anything past it photographs the question instead. It
+   * seeds the same two keys the pilot's own answer writes.
+   */
+  if (opts.airframe) {
+    /* Seated through the shell's own function, starting from the aircraft
+     * the shell starts on, so the seed carries the tune, the pack, the rates
+     * and the camera the answer would have carried. */
+    const seated = seatAirframe(
+      { airframe: '5inch', rates: airframeById('5inch').rates },
+      String(opts.airframe),
+    );
+    seed.push(`try {
+      const k = ${JSON.stringify(SETTINGS_KEY)};
+      const s = JSON.parse(localStorage.getItem(k) || '{}');
+      Object.assign(s, ${JSON.stringify(seated)});
+      s.airframeAsked = true;
+      localStorage.setItem(k, JSON.stringify(s));
+    } catch (e) { /* Storage refused; the run boots on the default aircraft. */ }`);
   }
 
   const page = await openPage({

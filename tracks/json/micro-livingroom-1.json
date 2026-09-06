@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 3,
+  "id": "trk-28ffc84d",
+  "name": "Living room 1",
+  "createdUtc": "2026-09-06T06:53:09Z",
+  "modifiedUtc": "2026-09-06T06:53:09Z",
+  "trackClass": "micro",
+  "field": {
+    "width": 5,
+    "depth": 6,
+    "gridSize": 0.0254
+  },
+  "settings": {
+    "tangentScale": 1.1,
+    "minCurveRadius": 0.45,
+    "samplesPerSegment": 48
+  },
+  "branding": {
+    "logos": []
+  },
+  "elements": [
+    {
+      "id": "el-1",
+      "type": "startPads",
+      "name": "",
+      "position": {
+        "x": 2.5,
+        "y": 1.45,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "pads": 1,
+        "spacing": 0.3,
+        "padSize": 0.1
+      }
+    },
+    {
+      "id": "el-2",
+      "type": "gate",
+      "name": "",
+      "position": {
+        "x": 2.5,
+        "y": 2.4,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 0.7112,
+        "clearH": 0.7112,
+        "levelPitch": 0.762
+      }
+    },
+    {
+      "id": "el-3",
+      "type": "gate",
+      "name": "",
+      "position": {
+        "x": 2.12,
+        "y": 3.2,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 0.7112,
+        "clearH": 0.7112,
+        "levelPitch": 0.762
+      }
+    },
+    {
+      "id": "el-4",
+      "type": "pole",
+      "name": "",
+      "position": {
+        "x": 2.5,
+        "y": 3.85,
+        "z": 0
+      },
+      "yaw": 0,
+      "pitch": 0,
+      "yawOverridden": false,
+      "dims": {
+        "height": 1.5,
+        "poleRadius": 0.013335,
+        "clearance": 0.3556
+      }
+    },
+    {
+      "id": "el-5",
+      "type": "gate",
+      "name": "",
+      "position": {
+        "x": 2.88,
+        "y": 3.2,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 0,
+        "clearW": 0.7112,
+        "clearH": 0.7112,
+        "levelPitch": 0.762
+      }
+    },
+    {
+      "id": "el-6",
+      "type": "tower",
+      "name": "",
+      "position": {
+        "x": 2.5,
+        "y": 3.2,
+        "z": 0
+      },
+      "yaw": 1.570796,
+      "pitch": 0,
+      "yawOverridden": true,
+      "dims": {
+        "levels": 1,
+        "sillH": 1.4224,
+        "clearW": 0.7112,
+        "clearH": 0.7112,
+        "levelPitch": 0.762
+      }
+    }
+  ],
+  "sequence": [
+    {
+      "id": "sq-1",
+      "elementId": "el-2",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-2",
+      "elementId": "el-3",
+      "apertureIndex": 0,
+      "entry": 1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-3",
+      "elementId": "el-4",
+      "apertureIndex": null,
+      "entry": null,
+      "passSide": "left",
+      "clearance": 0.3556,
+      "overridden": false
+    },
+    {
+      "id": "sq-4",
+      "elementId": "el-5",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    },
+    {
+      "id": "sq-5",
+      "elementId": "el-6",
+      "apertureIndex": 0,
+      "entry": -1,
+      "passSide": null,
+      "clearance": null,
+      "overridden": false
+    }
+  ]
+}

@@ -70,11 +70,36 @@ import { fastestLap, fastestThreeConsecutive } from './track.js';
  * flying past the gate to one side can clip it.
  */
 const PASS_DEPTH = 0.5;
+/*
+ * The same, on a micro track, and half a metre there is not a little, it is
+ * most of a lap.
+ *
+ * A RaceGOW gate is 0.711 m square out of 26.7 mm pipe, and the adjacent
+ * gate rule puts the next one 0.762 m away centre to centre. A 0.5 m depth
+ * either side is a ONE METRE deep box round a 0.711 m hole, so the scoring
+ * volumes of two gates in a legal side by side pair OVERLAP, and a pass
+ * through one would credit the other.
+ *
+ * 0.045 is the frame's own thickness plus a little, on the same reasoning
+ * the full sized figure gives: the pipe is 26.7 mm, so a path through the
+ * visible opening intersects the box, and two gates 0.762 m apart keep
+ * 0.672 m of clear air between their boxes.
+ */
+const PASS_DEPTH_MICRO = 0.045;
 /* Keep the scoring hole a fingernail inside the PVC so a pass credited
  * here is a pass that did not have to tunnel the tube. Collision already
  * owns a real clip. This is not the craft radius: folding that in stole
  * 35 cm off a 1.75 m opening and made a clean edge line miss. */
 const PASS_MARGIN = 0.02;
+/*
+ * 2 cm is a hundredth of a 1.75 m opening and it is a THIRTY FIFTH of a
+ * 0.711 m one, which is a different rule about a different aircraft. The
+ * fingernail this is meant to be is a fingernail of the PIPE, and the pipe
+ * is 26.7 mm rather than 33, so 8 mm is the same proportion of the same
+ * object. A whoop that shaves the tube by 8 mm has already hit it, and
+ * collision owns that.
+ */
+const PASS_MARGIN_MICRO = 0.008;
 
 const DEFAULT_KEY = 'webfpv.bestLapMs';
 
@@ -123,7 +148,18 @@ export class Race {
    * as flown runs 0, 7, 6, ... 1, 0. The gates are stored in that flying
    * order, and each heading is flipped so local +z is the direction of
    * travel. */
-  constructor(gates) {
+  constructor(gates, trackClass = 'full') {
+    /*
+     * The track class, and it reaches here for one reason: the scoring
+     * volume. Everything else about a race is class free, because a lap is a
+     * lap and three consecutive is three consecutive whatever size the
+     * aircraft is. But the box a pass is measured against is a LENGTH, and
+     * the full sized one is wider than the gap RaceGOW leaves between two
+     * gates.
+     */
+    this.micro = trackClass === 'micro';
+    this.passDepth = this.micro ? PASS_DEPTH_MICRO : PASS_DEPTH;
+    this.passMargin = this.micro ? PASS_MARGIN_MICRO : PASS_MARGIN;
     /*
      * A map with no gates is a freestyle map, and it is not an error.
      *
@@ -388,7 +424,7 @@ export class Race {
     if (!clip(a.y, dy, -halfH, halfH)) {
       return -1;
     }
-    if (!clip(a.z, dz, -PASS_DEPTH, PASS_DEPTH)) {
+    if (!clip(a.z, dz, -this.passDepth, this.passDepth)) {
       return -1;
     }
     /* Prefer the midplane if the clipped segment actually crosses it, so a
@@ -427,8 +463,8 @@ export class Race {
       const ap = g.apertures[k];
       const a = this.local(g, ap.centreY, prev.x, prev.y, prev.z);
       const b = this.local(g, ap.centreY, curr.x, curr.y, curr.z);
-      const halfW = ap.clearW * 0.5 - PASS_MARGIN;
-      const halfH = ap.clearH * 0.5 - PASS_MARGIN;
+      const halfW = ap.clearW * 0.5 - this.passMargin;
+      const halfH = ap.clearH * 0.5 - this.passMargin;
       const tk = this.openingHits(a, b, halfW, halfH);
       if (tk < 0) {
         continue;

@@ -98,6 +98,35 @@ export { FRAME_TUBE_OD };
  */
 export const GATE_SCALE = 1.15;
 
+/*
+ * AND IT IS THE SIXTY METRE FIELD'S NUMBER, so a RaceGOW room does not get
+ * it. The paragraph above is the whole argument for why: the owner asked for
+ * a bigger gate against MultiGP's rulebook, and the ratio it was judged on
+ * was gate widths to the aircraft, 1.7526 m of opening against a 0.347 m
+ * five inch, which is 5.05.
+ *
+ * A RaceGOW gate is 0.7112 m and a 65 mm whoop is 0.096 m across, which is
+ * already 7.41 gate widths, half again as generous as the field the 15
+ * percent was asked for. Applying it anyway makes 8.52, and it costs three
+ * things that matter more than a hole nobody was struggling to hit.
+ *
+ * It stops being RaceGOW. The rules are published in inches and the whole
+ * point of the class is that a track flown here is the track built at home:
+ * a 28 inch gate flown as 32.2 is a different gate.
+ *
+ * It desynchronises the builder from the world. Every RaceGOW warning in
+ * src/trackbuilder/warnings.js is computed on the document's own metres, so
+ * an author who clears rule 3's spacing and fits RaceGOW's 1.42 by 2.13 m
+ * envelope on the plan flies a track that does neither.
+ *
+ * And the room does not scale with it. The 60 by 40 field has no walls, so
+ * 15 percent of gate costs nothing there; a 5 by 6 m room has four, and a
+ * gate grown 15 percent inside a room that did not grow is a smaller room.
+ */
+export function gateScaleFor(cls) {
+  return cls === 'micro' ? 1 : GATE_SCALE;
+}
+
 /* The frame tube as BUILT, which is the one the scene draws and the one a
  * collider follows. */
 export const BUILT_FRAME_TUBE_OD = FRAME_TUBE_OD * GATE_SCALE;

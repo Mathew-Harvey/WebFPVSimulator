@@ -54,8 +54,23 @@ export const START_BLOCK_LIP = 0xd2601f;
  * the third person camera that disappears into the grass, so the default
  * is a touch larger with the same proportions.
  */
+/*
+ * THE FLOOR CAME DOWN FROM 0.4 TO 0.15 FOR THE WHOOP.
+ *
+ * 0.4 is not a mesh safety limit, it is the note above this: a stand at real
+ * timber sizes disappears into the grass at the third person camera, so the
+ * smallest one ever DRAWN was kept legible. That reasoning is about a 60 m
+ * field and a camera four metres behind a quad that sweeps 0.35 m.
+ *
+ * A RaceGOW start pad is 0.10 m, which under the old floor came out at 0.4
+ * and therefore 0.152 m of rail: a launch stand twice as long as the whole
+ * aircraft, on a floor where the camera is two hundred millimetres away.
+ * The legibility argument runs the other way at that distance. 0.15 lets a
+ * 0.10 m pad ask for what it is, about 63 mm of rail, which is a real foam
+ * launch pad and is the same size as the machine standing on it.
+ */
 export function startBlockDims(padSize) {
-  const k = Math.max(0.4, (Number(padSize) > 0 ? padSize : 0.6) / 0.6);
+  const k = Math.max(0.15, (Number(padSize) > 0 ? padSize : 0.6) / 0.6);
   const railLen = 0.38 * k;
   const tilt = 28 * Math.PI / 180;
   const railW = 0.056 * k;

@@ -760,6 +760,14 @@ export function toPlain(doc) {
     name: doc.name,
     createdUtc: doc.createdUtc,
     modifiedUtc: doc.modifiedUtc,
+    /* WRITTEN, not derived. It was missing from the first version of this
+     * and the failure was invisible in every unit test and obvious the
+     * moment a micro track was flown: the document round tripped, the
+     * builder kept drawing a room because it held the live object, and the
+     * GAME read the saved file, found no class, defaulted to full, and put a
+     * RaceGOW course on a sixty metre paddock. A field that is not written
+     * is a field that does not exist. */
+    trackClass: trackClassOf(doc),
     field: {
       width: num(doc.field.width),
       depth: num(doc.field.depth),

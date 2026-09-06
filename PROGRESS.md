@@ -29365,3 +29365,269 @@ Clean this turn: check:clip 495 of 495, check:path, check:orbit, lint:shell,
 lint:boot, lint:responsive, lint:presets, lint:fc, lint:nouns. `npm run
 verify` was NOT run: nothing in this turn touched the physics, the module or
 the build, and the wasm is byte identical to the one W1 built.
+
+## W5: the ground paint learns the track class
+
+`src/game/guide.js` derives the marks that show a pilot the racing line, and
+every length in it was metres of paint on a 60 by 40 m field. On a RaceGOW
+room the module did not draw a wrong looking line, it drew almost nothing.
+Measured on a six element micro track built through the real builder, lap
+7.64 m: the full sized table gave 23 samples, ZERO dashes, ZERO arrows and
+eight triangles. The micro table gives 97 samples, 10 dashes, three arrows
+that read low, GO UP at the Elevated Gate and low again, one flag wrap and
+52 triangles.
+
+Same shape as `TUNING.micro` in `src/trackbuilder/elements.js`: every full
+sized constant keeps its value and its comment, a `GUIDE.micro` block sits
+beside them, and `guideFor(cls)` is one lookup. The class comes in as an
+argument from `courseFromDocument`, where `cls` already was, and from the
+builder's two previews, which read `trackClassOf(this.host.doc)` the way
+they already do for element dims. It is then STAMPED ON THE GUIDE OBJECT as
+`trackClass`, so `tessellateGuide` sizes a triangle from the paint it was
+handed rather than from a second argument a caller could get wrong.
+
+### Two kinds of length, and they do not scale the same way
+
+Worth writing down once because it is the whole argument of the micro block.
+
+A length ACROSS the line is read through the camera. A micro pilot flies at
+a ground gate's 0.356 m opening centre where a full sized one flies at
+0.762 m, so a mark a little under half as wide subtends the same angle and
+the paint looks the same in the goggles. dashW, arcW, arrowW, arrowShaft and
+pairGap are all that.
+
+A length ALONG the line cannot use that ratio, because the lap did not scale
+with the gates. 570 m became 7 m, a factor of eighty, while the gate only
+halved. A RaceGOW track is packed: six or seven elements inside 1.42 by
+2.13 m, so a leg is about a metre. Every along the line number is derived
+from that instead, from the 0.762 m nominal gate spacing, the one metre leg
+and the 7 m lap.
+
+Three places where that split mattered:
+
+  1. THE GATE KEEP OUT IS NOT THE FULL SIZED RULE SCALED. Full sized, 1.15 m
+     clears the whole footprint: half a 1.524 m opening plus its 33 mm tube
+     plus a 5 inch quad's 0.347 m width, and a 570 m lap can afford 2.3 m of
+     that at each of a dozen gates. The same rule on a whoop gate is 0.48 m,
+     and six or seven of those on a 7 m lap removes more line than the lap
+     has. Derived from the structure instead: RaceGOW rule 2 puts a 26.7 mm
+     pipe flat on the floor across the line at every opening, so the paint
+     stops half a pipe plus one whoop width short of it, 0.11 m.
+
+  2. THE ARROW IS SIZED BY THE LEG, NOT BY THE GATE, and it is the one place
+     the micro paint deliberately drops a full sized proportion. The full
+     sized pair spans its gate: 0.98 m of centres plus 0.52 m of width is
+     1.50 m across a 1.524 m opening. Holding that gives an 0.89 m arrow,
+     and the shortest leg the line can have is 0.762 m, so it would not fit
+     between two gates at all. 0.36 m, half a gate opening, leaves 0.09 m of
+     clear line at each end of that shortest leg.
+
+  3. THE FILLER ARROW SHOULD ALMOST NEVER FIRE. `longRun` is 70 m full
+     sized, an eighth of a lap on a field where a pilot really can be on a
+     stretch with nothing to aim at. In a 5 by 6 m room the next gate is a
+     metre ahead and the far wall is 2.5 m away. Scaling by the lap gives
+     0.86 m, a filler on every leg, drowning the height cues that are the
+     only thing an arrow says here. Half a lap, 3.5 m, and `arrowClearRun`
+     is 2.13 m, the depth of the whole course.
+
+`highM`, the go up threshold, is the one the recon called worst and it is
+the one number RaceGOW decides outright. A ground gate centres at 0.356 m
+because rule 2 puts the bar on the floor; the second gate of a stack is at
+least 1.067 m by rule 5. The threshold has to sit between those two, and
+0.711 m is their midpoint to within a millimetre and is also exactly one
+gate opening, which is the height a pilot has climbed leaving the bottom of
+a stack for the top. `highBand` is 0.30, which leaves 0.055 m of margin at
+BOTH ends. The full sized 2.0 m is above every height a micro track can
+build, so every arrow said stay low, always, including the one under the
+Elevated Gate.
+
+### Nine literals promoted, and one of them was a live bug
+
+Nine lengths were bare literals inside functions rather than entries in
+GUIDE, and the recon's list did not have them because they are not visible
+from the top of the file. They are named now, at their existing values, so
+the full sized path is untouched, and they have micro twins. One was not
+cosmetic: `layoutDashes` discarded any run shorter than 0.28 m, and a micro
+dash is 0.25 m, so even with everything else scaled the dashes would have
+been built and then thrown away. It is `dashMin`, and the micro twin is four
+fifths of a sample, which is the relation the full sized number has to its
+own sample. The others are `weld`, `tailMin`, `pegRadius`, `approachStep`,
+`pastCue`, `startAhead`, `startS`, `runRetry`, `arrowNotch` and
+`markerClearance`.
+
+`wrapSpan` gets no twin and must never get one. 120 degrees of a circle is
+120 degrees of a circle whatever the circle is.
+
+### Proof the full sized path did not move
+
+`git show HEAD:src/game/guide.js` imported beside the new one and run on the
+demo track through both entry points: knots identical, guide identical
+(samples, dashes, arrows, flagArcs, length), tessellation identical, the
+`guideFromPolyline` route the built in lemniscate uses identical, and no
+full sized constant changed value.
+
+Clean this turn: `node src/trackbuilder/selftest.js` 495 of 495,
+`npm run check:path` 12 of 12, `npm run lint:nouns`, `node --check` on
+guide.js, trackdoc.js, view2d.js and view3d.js. `npm run verify` was NOT
+run: this turn touches no physics, no plant, no module ABI and no build, and
+the checks that can see ground paint are the builder self test and the two
+above, all of which were run.
+
+## W5: the room, and a whoop flying in it
+
+The track class reached the world this turn. `src/render/scene.js` builds a
+room instead of a field when `course.trackClass` is `micro`: no sky, no
+clouds, no hemisphere dome, no treeline, no fence, no clubhouse, no flowers,
+no horizon and no mown pitch, and in their place a 5 by 6 m floor with a
+2.4 m ceiling on seven joists, four walls with a skirting, a dark rubber mat
+under the track, and one warm bulb. The sun drops to 0.16 and a
+`HemisphereLight` at 0.34 stands in for the bounce a room has and a field
+does not. `makeHeightField` returns a flat zero indoors: the outdoor field's
+terms are tens of metres wide and tilted a 5 m floor visibly.
+
+Two things went wrong there and are worth keeping.
+
+The mown pitch plane sits at y 0.020 and the mat at y 0.008, so green grass
+showed through the middle of the room until the pitch was gated with
+everything else. And `toPlain()` did not write `trackClass`, so the builder
+kept drawing a room from the live object while the game read the saved file,
+found no class, and put a RaceGOW course on a 60 m paddock. Both were only
+visible in a screenshot, which is the argument for taking them.
+
+### The gate scale is the field's number and a room does not get it
+
+`src/game/track.js` builds every obstacle 15 percent over the rulebook,
+because the owner asked for it twice and the file records that. Reading the
+first gate of the demo track out of the built world showed 0.81788 m, which
+is 28 inches times 1.15. That is not a RaceGOW gate, and it costs three
+things: the class stops being a copy of the sport it names, every RaceGOW
+warning in `src/trackbuilder/warnings.js` is computed on the document's own
+metres so an author who clears rule 3 and fits the 1.42 by 2.13 m envelope
+flies a track that does neither, and the room does not grow with the gate,
+so 15 percent of gate is 15 percent less room.
+
+The ratio the 15 percent was judged on is gate widths to the aircraft:
+1.7526 m against a 0.347 m five inch is 5.05. A RaceGOW gate against a
+whoop is 0.7112 against 0.096, which is 7.41 already, half again as generous
+as the field the departure was asked for. So `gateScaleFor(cls)` returns 1
+on a micro track and `GATE_SCALE` everywhere else, and `courseFromDocument`
+reads it once. Measured after: micro gates 0.7112 by 0.7112 centred at
+0.3556, which is rule 2 putting the bar on the floor; the 2022 AU Nationals
+layout still 1.7526 centred at 0.8763, unchanged.
+
+The reference block the page publishes followed, or a scale check reading it
+in a room would band the hole a whoop flies against a hole from another
+sport. While moving it, `gateApertureCentreY` turned out to have been
+quoting a stale literal, `0.762, half the opening`, next to a measured
+0.8763: half of the PUBLISHED opening beside the BUILT centre. It is derived
+now and reads 0.8763 on the field and 0.3556 in a room. `tests/lib/checks.js`
+check 15 bands the measured number and does not parse that string, so this
+is a correction to the report rather than a change to a check.
+
+### The target glow, measured rather than guessed
+
+The additive glow across the next gate is 2.6 openings wide and drives to
+0.55, because it is how a racer finds a gate from across a 60 m field.
+Indoors it was already cut to 1.5 openings and a third of the gain in an
+earlier round. Flown, it still blanketed the frame, so the frame was
+sampled rather than argued about: at 0.4 m from a micro gate the glow pixels
+read 77,118,66, and the FULL SIZED game at the same distance in gate widths,
+1.0 m from a 1.7526 m gate, reads 72,143,78. The room is already the dimmer
+of the two. The coverage is not a fault either: at 1.3 m a 0.7112 m gate
+subtends 30 degrees because the gate really is a metre away, which is what a
+RaceGOW track is.
+
+What was wrong is the wash ACROSS the opening. Its own comment says what it
+is for, being what still reads at fifty metres when the band around the hole
+has shrunk to a few pixels. There are no fifty metres in a 5 by 6 m room:
+the furthest a pilot is ever from the next gate is about four metres and the
+band is never less than a fifth of the screen. So the wash is a new `uFill`
+uniform, 0.16 on a field and 0 in a room, and the pilot can see through the
+gate again. On a field the view through a gate is sky; in a room it is the
+next three gates, which is the whole reason it matters here and not there.
+
+### Three consecutive laps
+
+RaceGOW is scored on three consecutive laps and `race.bestThreeMs()` has
+computed it since W4 without anywhere to put it. On a micro track it is the
+hero on the results screen now, with the best single lap on the line under
+it; everywhere else the best lap keeps the top line, which is what MultiGP's
+time trial is scored on.
+
+The record machinery stays on the single lap in both cases. A track record
+here, on the board and in the pending time is one lap, and the three lap
+total has nothing to compare against yet, so the record line moves down with
+the lap rather than being dropped.
+
+The two footing rows are ONE row whenever they are one number: a clean run
+of exactly three laps has a total that IS the fastest three consecutive, and
+printing it twice under two labels reads as two measurements that agree
+rather than as one measurement. The rename only happens on the track that is
+scored on it, so a clean three lap run on the field still says Total. Checked
+all four cases in the browser: micro clean three gives one row named Best
+three consecutive; micro with a void gives Clean laps total 28.64 and Best
+three consecutive 21.22; full sized clean three gives Total 2:19.59 and
+nothing else, byte for byte what it gave before; full sized with a void gains
+the three lap row as new information.
+
+### The plan drawer, both copies
+
+`src/share/plan.js` and the board's `public/plan.js` drew every gate at a
+hardcoded 1.524 m and every start line at 4.5 m, which on a 5 by 6 m room is
+a gate a third of the width of the room and a start line two thirds of the
+way across it. The document has carried the real numbers all along, so the
+drawer reads them: `clearW` off the mark, and `pads` with `spacing` and
+`padSize` for the start row. `GATE_D` is a drawing thickness rather than a
+frame, 0.236 of a 5 ft opening, so it scales as a ratio to `GATE_W`, which
+gives back exactly 0.36 on a 5 ft gate because the ratio is exactly 1.
+
+The two files' 581 line drawing core is byte identical, confirmed by diffing
+`const C = {` to the end of `drawPlan`: the only differences are the two
+comment words, courses against tracks, that already differed.
+
+DIVE_W IS THE ONE THAT REAL DOCUMENTS DISAGREE WITH. 2.13 m is MultiGP's
+7 ft dive gate, but not one of the 14 dive gates under `tracks/` is built at
+7 ft: all of them, across 6 documents, carry the same 1.524 m opening as
+every other aperture, so the plan has been drawing each 40 percent oversize.
+Reading the document shrinks them to the size they are. Every full sized
+document was drawn old and new with a recording canvas and the calls
+compared: at the three sizes a plan is actually drawn at in this project,
+the board's 147 by 110 track sheet, the 236 by 133 course card and the 416 by
+234 results panel, NOTHING differs at all, 0 of 343 to 559 calls, because the
+square sits on its 3.5 px floor at all three. At 640 by 400 and above, which
+nothing here draws, 2 calls per dive gate change and nothing else does: a
+rect and its centre dot. Every other mark on every full sized track is drawn
+by identical calls with identical arguments.
+
+### The capture harness
+
+`scripts/shots.js` gained `--airframe=ID`, because the aircraft question is
+modal on a first run and a capture of anything past it photographs the
+question. It seeds through the shell's own `seatAirframe`, now exported for
+it: a seed that wrote only the airframe left the rates and the camera
+belonging to the other aircraft, and the first version of this flag did
+exactly that, so a whoop was photographed through a five inch's 85 degree
+lens at its 30 degree tilt.
+
+### What was run
+
+Clean this turn: `check:clip`, `check:path`, `check:orbit`, `lint:shell`,
+`lint:boot`, `lint:nouns`, `lint:presets`, `lint:fc`, `lint:frame`,
+`lint:quality`, `lint:responsive`, `check:wall` 45 of 45,
+`contact:selftest`, `ghost:selftest`, `node src/trackbuilder/selftest.js`
+495 of 495, and `npm run whoop:gates` 19 of 19. On the board,
+`npm test`, `lint:licence` 17 of 17 and `lint:nouns`.
+
+`npm run score:selftest` reports 1 FAILED, "the same lap without the flip is
+a Maverick Loop". IT IS NOT THIS BRANCH'S. It was reproduced in a detached
+worktree at this branch's HEAD and again at `origin/main`, and fails
+identically in both. Nothing this feature touches is in the trick detector's
+path. It is recorded here and left alone rather than fixed inside a whoop
+turn.
+
+`npm run verify` was NOT run. Nothing this turn touches the physics, the
+plant, the module ABI or the build: the wasm is byte identical to the one W1
+built, and the changes are the scene graph, the course reader, the results
+screen and a drawing shared with the board. What can see them was run
+instead, and the flown evidence is screenshots of the real shell driven
+through the real menu.

@@ -1167,7 +1167,10 @@ export class View2D {
    * which side of a flag the quad goes.
    */
   drawGuidePaint(ctx, path) {
-    const tris = tessellateGuide(guideFromKnots(knotsFromPath(path)));
+    /* Same class the 3D preview and the race field read, for the same
+     * reason: a whoop track's paint is sized against a 0.711 m gate. */
+    const cls = trackClassOf(this.host.doc);
+    const tris = tessellateGuide(guideFromKnots(knotsFromPath(path, cls), cls));
     if (tris.length < 3) {
       return;
     }

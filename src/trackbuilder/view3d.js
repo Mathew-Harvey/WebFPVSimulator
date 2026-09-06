@@ -1298,7 +1298,11 @@ export class View3D {
   }
 
   buildGuideMarks(path) {
-    const tris = tessellateGuide(guideFromKnots(knotsFromPath(path)));
+    /* The class sizes every length in the paint, and the preview has to
+     * paint what the race field will paint or an author is editing a
+     * different track from the one they fly. */
+    const cls = trackClassOf(this.host.doc);
+    const tris = tessellateGuide(guideFromKnots(knotsFromPath(path, cls), cls));
     if (tris.length < 3) {
       return new THREE.Group();
     }

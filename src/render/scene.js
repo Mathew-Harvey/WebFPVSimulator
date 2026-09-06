@@ -2911,8 +2911,19 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
        * plates with nothing on them. */
       continue;
     }
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.5), mats.frame);
-    pad.position.set(sx * upX, 0.045, foot.z);
+    /*
+     * The pad is a MultiGP footing, 0.5 m square and 90 mm thick, and on a
+     * RaceGOW dive gate it was that size too: a 41 cm wide, 4.5 cm radius
+     * kerb at each leg of a 71 cm gate, invisible to nobody and solid to a
+     * whoop. Scaled by the tube, the way the standing gate's stub foot is,
+     * so the five inch's pad is exactly the size it has always been (k is 1
+     * against its own tube) and the whoop's is a foot a whoop could trip on.
+     */
+    const padK = tubeR / (BUILT_FRAME_TUBE_OD * 0.5);
+    const padW = 0.5 * padK;
+    const padH = 0.09 * padK;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(padW, padH, padW), mats.frame);
+    pad.position.set(sx * upX, padH * 0.5, foot.z);
     pad.castShadow = true;
     g.add(pad);
     /*
@@ -2927,19 +2938,25 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
      */
     caps.push({
       kind: 'obstacle',
-      ax: sx * upX - 0.205, ay: 0.045, az: foot.z,
-      bx: sx * upX + 0.205, by: 0.045, bz: foot.z,
-      r: 0.045,
+      ax: sx * upX - (padW * 0.5 - padH * 0.5), ay: padH * 0.5, az: foot.z,
+      bx: sx * upX + (padW * 0.5 - padH * 0.5), by: padH * 0.5, bz: foot.z,
+      r: padH * 0.5,
     });
   }
 
   /* The lit target, in the pivot so it leans with the frame. Built at a sill
    * of zero because the pivot already sits at the opening's centre. */
-  const marks = apertureMarkers(pivot, [-clearH * 0.5], clearW, clearH, 1, isStart, 0);
+  const marks = apertureMarkers(pivot, [-clearH * 0.5], clearW, clearH, 1, isStart, 0, micro);
 
   /* The header rides on the leaning frame, above the opening in the frame's
-   * own plane, so a pilot approaching from above reads it square on. */
-  if (index > 0) {
+   * own plane, so a pilot approaching from above reads it square on.
+   *
+   * NOT ON A RACEGOW GATE. A Horizontal Gate is four lengths of 3/4 inch
+   * pipe and nothing else, exactly as the standing one is; the printed
+   * MultiGP header was being hung on it because this builder never asked
+   * which class it was building for, and the lit target came out at the
+   * field's 0.16 m bar on a 0.711 m opening for the same reason. */
+  if (index > 0 && !micro) {
     const plate = gateBanner(
       index,
       clearW + 4 * tubeR,
@@ -2956,7 +2973,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     /* The highest structure on this obstacle, in its own frame. The banner
      * rides on the pivot, so its height above the opening's centre is
      * foreshortened by the tilt. */
-    top: centreY + (halfH + tubeR * 3 + GATE_BANNER_H + 0.03) * Math.cos(pitch),
+    top: centreY + (halfH + tubeR * 3 + (micro ? 0 : GATE_BANNER_H + 0.03)) * Math.cos(pitch),
     /* The whole leaning frame stays live rather than baking, because its
      * parts sit inside a pivot whose rotation the baker would have to flatten
      * and the lit target has to keep its per obstacle materials anyway. A

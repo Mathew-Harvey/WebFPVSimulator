@@ -739,6 +739,15 @@ export class App {
      * arrives rather than once at boot. A RaceGOW room and a sixty metre
      * field are not made of the same parts. */
     this.panels.buildPalette(trackClassOf(this.doc));
+    /*
+     * THE DOCUMENT GOVERNS THE CLASS, not only the toggle. A room opened from
+     * the library, from a board link or as a remix on a five inch builder
+     * drew the whoop palette and filed its autosave in the whoop seat, but
+     * left the shell seated on the five inch, so Fly this track opened a
+     * simulator reading the five inch's seat and the room was not in it.
+     * Loading a document of the other class IS choosing that class.
+     */
+    setActiveTrackClass(trackClassOf(this.doc));
     upgradeStackedFigures(this.doc);
     applyAutoFaces(this.doc);
     this.selection.clear();
@@ -1415,7 +1424,7 @@ export class App {
     const doc = (held && held.doc) || createTrack(undefined, want);
     this.loadDocument(doc, held && held.doc
       ? `Back on the ${want === 'micro' ? 'whoop' : 'five inch'} builder, holding "${doc.name}".`
-      : `A new ${want === 'micro' ? 'whoop track, in a five by six metre room' : 'five inch track, on a sixty metre field'}.`);
+      : `A new ${want === 'micro' ? 'whoop track, in a ten by twelve metre hall' : 'five inch track, on a sixty metre field'}.`);
   }
 
   buildTopBar() {
@@ -1553,7 +1562,7 @@ export class App {
     this.classBtns = new Map();
     for (const [cls, label, hint] of [
       ['full', '5 inch', 'MultiGP gates on a sixty metre field'],
-      ['micro', 'Whoop', 'RaceGOW gates in a five by six metre room'],
+      ['micro', 'Whoop', 'RaceGOW gates in a ten by twelve metre hall'],
     ]) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -1828,7 +1837,7 @@ export class App {
         return;
       }
 
-      const def = elementByKey(e.key);
+      const def = elementByKey(e.key, trackClassOf(this.doc));
       if (def) {
         this.arm(def.id);
       }

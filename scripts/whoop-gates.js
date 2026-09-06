@@ -265,8 +265,12 @@ async function main() {
     }, t);
     const mass = sim.e.sim_bf_debug(51);
     const kt = sim.e.sim_bf_debug(10);
+    /* Static duct augmentation, 1.10 on this airframe: plant.c multiplies
+     * the thrust by it, so a figure without it is ten percent under what
+     * the plant actually makes. */
+    const duct = sim.e.sim_bf_debug(58) || 1;
     const w = fullRpm / RPM;
-    band('W3 thrust-to-weight', (4 * kt * w * w) / (mass * G), (v) => v.toFixed(2));
+    band('W3 thrust-to-weight', (4 * kt * w * w * duct) / (mass * G), (v) => v.toFixed(2));
   }
   band('W4 full-throttle-rpm', fullRpm, (v) => v.toFixed(0));
   /*

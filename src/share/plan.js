@@ -161,8 +161,8 @@ const MICRO_BARRIER_D = 0.85;
  * is a two car garage or a large living room, which is where these are
  * actually flown. Derived in src/trackbuilder/racegow.js, copied here
  * because a drawer shared with the board cannot import the builder. */
-const MICRO_FIELD_W = 5;
-const MICRO_FIELD_D = 6;
+const MICRO_FIELD_W = 10;
+const MICRO_FIELD_D = 12;
 
 /*
  * A MICRO PLAN IS DRAWN ON THE TRACK, NOT ON THE ROOM, and this is the
@@ -632,11 +632,25 @@ function scaleBar(ctx, box, w, h) {
 
 /* Obstacles first, then markers, then the gates and the start, so the
  * things a pilot actually flies through are never underneath a flag. */
+/*
+ * A horizontal pole is a bar on two legs and draws as the barrier it is; a
+ * pole is a marker and draws as the dot RaceGOW's own diagrams use. Both
+ * used to fall through to the aperture case and draw as gates, so a board
+ * tile showed a room with two more gates than the track had.
+ */
+function isBarrier(type) {
+  return type === 'barrier' || type === 'horizontalPole';
+}
+
+function isMarker(type) {
+  return type === 'flag' || type === 'cone' || type === 'pole';
+}
+
 function order(type) {
-  if (type === 'barrier') {
+  if (isBarrier(type)) {
     return 0;
   }
-  if (type === 'flag' || type === 'cone') {
+  if (isMarker(type)) {
     return 1;
   }
   if (type === 'startPads') {
@@ -697,9 +711,9 @@ export function drawPlan(canvas, plan, options = {}) {
     }
     if (type === 'startPads') {
       startPads(ctx, box.s, padRow(mark, small));
-    } else if (type === 'barrier') {
+    } else if (isBarrier(type)) {
       barrier(ctx, box.s, mark, small);
-    } else if (type === 'flag' || type === 'cone') {
+    } else if (isMarker(type)) {
       marker(ctx, box.s, type === 'cone', small);
     } else if (type === 'diveGate') {
       diveGate(ctx, box.s, openingOf(mark, small ? MICRO_GATE_W : DIVE_W));

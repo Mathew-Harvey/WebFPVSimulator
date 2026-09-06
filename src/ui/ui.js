@@ -156,7 +156,10 @@ import { touchWanted } from '../input/touchsticks.js';
 import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
 } from './fc.js';
-import { FC_DUMP_KEY } from '../fc/dump.js';
+import { FC_DUMP_KEY, FC_DUMP_AIRFRAME_KEY } from '../fc/dump.js';
+/* Only writeAutosave, and only to re-home a document whose seat is about to
+ * stop being the active one. See seatCraftForCourse. */
+import { writeAutosave } from '../trackbuilder/storage.js';
 
 /* Whether a Flight controller save exists, which is what puts Your edits
  * on the Tune row. Read fresh each time: the pilot can save one two rows
@@ -239,9 +242,21 @@ function seatedFreestyleMap(s) {
   return m && m.mode === 'freestyle' ? m : null;
 }
 
-function hasFcDump() {
+/*
+ * Whether there is a saved Flight controller dump FOR THIS AIRCRAFT. A dump
+ * is the whole of one machine's configuration, a 6S 2207's or a 1S 0702's,
+ * and offering the five inch's as "Your edits" on the whoop was handing a
+ * 23 g machine a tune built for thirty times its mass. The dump is stamped
+ * with the aircraft it was saved on (src/fc/dump.js); one saved before the
+ * stamp existed is the five inch's, because that is all there was.
+ */
+function hasFcDump(airframe = AIRFRAME_IDS[0]) {
   try {
-    return Boolean(localStorage.getItem(FC_DUMP_KEY));
+    if (!localStorage.getItem(FC_DUMP_KEY)) {
+      return false;
+    }
+    const stamped = localStorage.getItem(FC_DUMP_AIRFRAME_KEY) || AIRFRAME_IDS[0];
+    return stamped === airframe;
   } catch (e) {
     return false;
   }
@@ -259,7 +274,7 @@ function hasFcDump() {
  * `this` to read a setting off. loadSettings passes the stored airframe.
  */
 function tuneChoices(airframe = AIRFRAME_IDS[0]) {
-  return [...tunesFor(airframe).map((t) => t.id), ...(hasFcDump() ? [CUSTOM_TUNE.id] : [])];
+  return [...tunesFor(airframe).map((t) => t.id), ...(hasFcDump(airframe) ? [CUSTOM_TUNE.id] : [])];
 }
 
 /* Step through a list with wraparound. Every value row on every screen
@@ -2102,9 +2117,17 @@ export class Ui {
      */
     const linkedAf = linkedCraft();
     if (linkedAf) {
-      this.settings.airframe = linkedAf;
-      this.settings.airframeAsked = true;
+      /*
+       * seatAirframe alone, and NOT an assignment to settings.airframe first.
+       * It used to be both, and the assignment defeated the seat: seatAirframe
+       * reads the aircraft it is moving FROM off settings.airframe to decide
+       * whether the rates and the throttle cap are still that machine's stock
+       * ones, and with the destination already written in, from and to were
+       * the same aircraft. A ?craft=whoop65 link on a five inch profile flew
+       * the whoop on 670 degree rates with no cap until the next reload.
+       */
       seatAirframe(this.settings, linkedAf);
+      this.settings.airframeAsked = true;
       saveSettings(this.settings);
     }
     /*
@@ -7963,14 +7986,48 @@ export class Ui {
     if (this.settings.map !== 'custom') {
       return null;
     }
-    let cls = null;
+    let seat = null;
     try {
-      const seat = activeCourseSummary();
-      cls = seat && seat.doc ? trackClassOf(seat.doc) : null;
+      seat = activeCourseSummary();
     } catch (e) {
       /* No readable course is not a reason to move a pilot's aircraft. */
       return null;
     }
+    if (!seat || !seat.doc) {
+      return null;
+    }
+    /*
+     * RE-HOME IT FIRST. The seats are one per class and this document is
+     * about to stop being in the active one: the moment the aircraft moves,
+     * every read goes to the other class's seat, and a document left behind
+     * in this one is a track the pilot pressed Fly on and never saw again.
+     * writeAutosave files by the DOCUMENT's class, so this is the one line
+     * that carries it across. A share seat is already keyed by the document
+     * and needs nothing.
+     */
+    if (!seat.shareId) {
+      try {
+        writeAutosave(seat.doc);
+      } catch (e) {
+        /* Storage refused; the seat it is in still reads. */
+      }
+    }
+    return this.seatCraftForDoc(seat.doc);
+  }
+
+  /*
+   * Seat the aircraft a DOCUMENT is built for, if it is not already seated.
+   * Returns the airframe it moved to, or null if nothing moved.
+   *
+   * The boot path calls this with a document that arrived by link, before
+   * anything reads a seat, because the seats are one per class: a five inch
+   * profile that follows a Fly link to a room writes the room into the whoop
+   * seat and then reads the five inch's, and the track it was sent to is
+   * nowhere. Seating the aircraft the document is for is what makes the two
+   * reads the same read.
+   */
+  seatCraftForDoc(doc) {
+    const cls = doc ? trackClassOf(doc) : null;
     if (!cls) {
       return null;
     }
@@ -7983,6 +8040,7 @@ export class Ui {
       return null;
     }
     seatAirframe(this.settings, want.id);
+    this.settings.airframeAsked = true;
     this.writeSettings();
     return want;
   }
@@ -8314,7 +8372,10 @@ export class Ui {
      * RaceGOW metric and a five inch pilot flying a longer run has every
      * reason to want it too. On a micro track it is also the hero above, and
      * having it in the rows is what makes them add up to the headline. */
-    if (three != null && three !== total) {
+    /* A room's row. main.js hands the figure over for every class, because
+     * the race computes it for every class, but the sixty metre field is
+     * scored on one lap and its sheet must not grow a RaceGOW row. */
+    if (opts.trackClass === 'micro' && three != null && three !== total) {
       totalRow('Best three consecutive', three);
     }
     /* How the run went against the ghost that was being chased, one line,

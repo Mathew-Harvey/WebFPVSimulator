@@ -88,7 +88,7 @@ import { airframeById, simIdFor } from '../configs/airframes.js';
 import { buildWhoopCraft } from './render/whoopcraft.js';
 import { normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
-import { cliMap, composeConfig, FC_DUMP_KEY, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, tuneBody } from './fc/dump.js';
+import { cliMap, composeConfig, FC_DUMP_KEY, FC_DUMP_AIRFRAME_KEY, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, tuneBody } from './fc/dump.js';
 import { GATE_SCALE } from './game/track.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK, SIM_ERR_BAD_ARG } from '../tests/lib/simmod.js';
@@ -562,6 +562,19 @@ export async function boot({ loading, bootStart, mapId }) {
   try {
     const fromUrl = await adoptShareFromLocation();
     if (fromUrl) {
+      /*
+       * THE AIRCRAFT THE LINKED TRACK IS FOR, before anything reads a seat.
+       *
+       * The seats are one per class. adoptShareFromLocation files the
+       * document by ITS class, so a five inch profile following the board's
+       * Fly link to a room wrote the room into the whoop seat and then, with
+       * the five inch still seated, read the five inch's seat: the pilot
+       * landed on their old field with the track they were sent to nowhere.
+       * Seating the aircraft the document is built for makes the write and
+       * the read the same seat. applySettings runs once below and swaps the
+       * plant to match, the same path an aircraft change from the menu takes.
+       */
+      ui.seatCraftForDoc(fromUrl.document);
       ui.settings.map = 'custom';
       ui.renderMenu();
     } else if (ui.settings.map !== 'city' && !hasFlyableTrack()) {
@@ -770,6 +783,9 @@ export async function boot({ loading, bootStart, mapId }) {
   function writeFcDump(body) {
     try {
       localStorage.setItem(FC_DUMP_KEY, body);
+      /* Stamped with the aircraft it came off, so the Tune row offers it on
+       * that aircraft only. See FC_DUMP_AIRFRAME_KEY. */
+      localStorage.setItem(FC_DUMP_AIRFRAME_KEY, ui.settings.airframe);
       return true;
     } catch (e) {
       return false;

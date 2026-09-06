@@ -43,6 +43,15 @@ export const RATES_DUMP = 'use-dump';
  * dump can never smuggle a rate profile past the Rates screen.
  */
 export const FC_DUMP_KEY = 'webfpv.fc.v1';
+/*
+ * WHICH AIRCRAFT THE DUMP WAS SAVED ON, beside it. A dump is one machine's
+ * whole configuration and it was being offered as "Your edits" on both
+ * aircraft, so a 6S five inch dump could be loaded onto a 1S whoop. Written
+ * by the shell with the dump; read by the Tune row to decide whether to
+ * offer it. Absent means the five inch, which is every dump saved before
+ * there was a second aircraft.
+ */
+export const FC_DUMP_AIRFRAME_KEY = 'webfpv.fc.airframe.v1';
 
 /*
  * Keys the pilot owns. Switching a registry tune must not overwrite them,

@@ -30396,3 +30396,119 @@ cap and the descent are awaiting the owner's judgement.
 `lint:shell` still prints "quad: overflow improved from 55 to 10 px,
 re-record the baseline". Same note as the last two turns, still a note and
 not a failure, still left for a turn that is about the baseline.
+
+## A review of the day's twelve commits, and what it found
+
+The owner: "find all commits pushed today, investigate and bug find, and fix
+bugs". Twelve commits on the simulator and three on the board, 0ce378e to
+0b0f36f, about 9,700 lines. Read as diffs, area by area, native first.
+
+### Fixed
+
+**A Fly link to a room, on a five inch profile, opened nothing.** The seats
+are one per class and `adoptShareFromLocation` files a document by ITS
+class, so the room went into the whoop seat and the boot then read the five
+inch's. The pilot landed on their old field with the track they were sent to
+nowhere. `Ui.seatCraftForDoc` seats the aircraft a document is built for,
+and the boot calls it before anything reads a seat. `seatCraftForCourse`
+uses it too, and re-homes an autosaved document into its own class's seat
+first, because moving the aircraft is what makes the seat it was in stop
+being read. The board's Fly link now carries `craft=` and its remix link
+`class=`, so the world is right from the first frame instead of swapping
+under the title. Probed in the live shell: `seatCraftForDoc({trackClass:
+'micro'})` moved the setting, the run airframe and the module together.
+
+**The builder did not switch the active class when it loaded a document.**
+A room opened from the library, a board link or a remix on a five inch
+builder drew the whoop palette and filed its autosave in the whoop seat, but
+left the shell on the five inch, so Fly this track opened a simulator reading
+the other seat. `loadDocument` calls `setActiveTrackClass` now: loading a
+document of the other class is choosing that class.
+
+**The Pole's hotkey never worked.** The palette said P, the key handler
+answers P as the racing line toggle first, so pressing it hid the line. The
+pole is U. And `elementByKey` searched BOTH palettes, micro first, so on a
+five inch track Z armed a horizontal pole and U a RaceGOW pole, neither on
+that track's palette. It takes the class now.
+
+**A RaceGOW dive gate was built as a MultiGP one.** `tiltedGate` never
+received the class: full sized target bars (0.16 m on a 0.711 m opening), a
+printed MultiGP header hung on the leaning frame, and two 0.5 by 0.09 m
+footings with 41 cm capsules at the legs of a 71 cm gate, which a whoop can
+hit. Markers take the class, the banner is skipped, the pads scale by the
+tube so the five inch's are the size they always were (k is 1) and the
+collider is the same formula as before at that size.
+
+**The board thumbnail drew a pole and a horizontal pole as gates.** Both
+fell through `drawPlan`'s chain to the aperture case. A pole is a marker and
+draws as RaceGOW's own red dot; a horizontal pole is a bar on two legs and
+draws as the barrier it is. Both copies of plan.js, identically. The micro
+field fallback in both was still 5 by 6.
+
+**A ?craft= link seated the aircraft without moving anything with it.** The
+constructor assigned `settings.airframe` and THEN called `seatAirframe`,
+which reads the aircraft it is moving FROM off that field: from and to were
+the same machine, so a whoop link on a five inch profile flew 670 degree
+rates with no throttle cap until the next reload reseated it.
+
+**The saved FC dump was offered on both aircraft.** "Your edits" is one
+machine's entire configuration and had no airframe on it, so a 6S five inch
+dump was a tune choice on a 1S whoop. It is stamped with the aircraft it was
+saved on (`FC_DUMP_AIRFRAME_KEY`), a dump without a stamp is the five inch's,
+and the Tune row offers it on that aircraft only. `loadSettings` already
+validated the tune against the aircraft's list, so a whoop profile holding
+'custom' with a five inch dump lands on the whoop's default.
+
+**The five inch's results sheet grew a RaceGOW row.** main.js hands the
+three lap figure over for every class, and the second total row was gated
+on the figure existing rather than on the class. Gated on the class.
+
+**Two static thrust readouts were ten percent under the plant.** plant.c
+multiplies every rotor's thrust by the airframe's duct augmentation, 1.10 on
+the whoop, and `flightcheck.js` and W3 in `whoop-gates.js` computed kt times
+omega squared without it. Both read k_duct off the compiled constants now.
+W3 reads 5.31 : 1 inside its 4.0 to 5.4 band; flightcheck 5.14 : 1 on the
+bench.
+
+**Stale copy from the old room.** The builder's class toggle and its switch
+message said five by six; the RaceGOW ceiling warning said 2.4 m. The
+warning reads ROOM_HEIGHT.
+
+### Looked at and left alone, with the reason
+
+`sim_set_airframe` and the ground plane: `sim_init` clears `g_ground_on`
+and leaves `g_ground_d` wherever the host last put it, but a plane that is
+off is not read, and the next `sim_set_ground` writes it. Not a bug.
+
+`disposeTree` in `swapCraft` disposes the old craft's materials and
+geometries. `celMaterial` builds a fresh material per call and only the ramp
+texture is shared, and `material.dispose()` does not dispose a texture. Not
+a bug.
+
+The board ranks a room's times by lap, not by the three lap total, while
+printing both. RaceGOW scores the three; the simulator's own standings rank
+by lap too. Consistent with itself, so a design question and not a defect.
+
+`normaliseThreeMs` refuses a three lap total under three times the lap. That
+is the right inequality: three consecutive laps cannot beat three of the
+best one.
+
+### OPEN QUESTION: the whoop's static thrust against BetaFPV's figure
+
+With the duct counted, the plant makes 5.14 : 1 on the bench and 5.31 : 1 at
+the peak of a punch. plant.c derived kt for 4.7 : 1 and BetaFPV's 6.3 : 1
+dry is a bench figure of the whole ducted unit, so the duct is being counted
+twice by about ten percent. W2 hover at 0.323 of stick sits inside the 0.27
+to 0.36 a real 1S whoop shows, so the envelope is not wrong, but kt could
+come down by the duct's static factor and the hover would rise a few points
+of stick toward the middle of that band. Not touched: it is a retune, it
+needs its own verify run, and the owner has just flown the throttle to 75.
+
+### What was run
+
+Builder self test 495 of 495, `micro:check`, the board's `npm test`,
+`lint:board`, `lint:boot` 9 of 9, `whoop:gates` 19 of 19 with W3 5.31 : 1,
+W9 7.98 m/s and W14 identical, `lint:shell` PASS, and two `shots.js` probes:
+`seatCraftForDoc` in the live shell, and the builder's palette showing U Pole
+with U arming the pole and P toggling the line. `npm run verify` was NOT run:
+no plant, ABI or build change in this turn.

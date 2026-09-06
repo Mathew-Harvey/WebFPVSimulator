@@ -428,7 +428,7 @@ function collectRaceGowWarnings(doc, out) {
        * track nobody can build in the room this class assumes. */
       if (sill + el.dims.clearH > ROOM_HEIGHT) {
         out.push(warn('rg-ceiling',
-          `${label(el)} reaches ${inches(sill + el.dims.clearH)}, through a 2.4 m ceiling. RaceGOW tracks are flown indoors.`,
+          `${label(el)} reaches ${inches(sill + el.dims.clearH)}, through the ${ROOM_HEIGHT.toFixed(1)} m ceiling. RaceGOW tracks are flown indoors.`,
           { elementId: el.id }));
       }
     }

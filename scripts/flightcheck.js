@@ -152,8 +152,16 @@ const rpmFull = (benchState[ST.RPM0] + benchState[ST.RPM0 + 1]
  * which is exactly the kind of false alarm that hides a real one.
  */
 const KT = WHOOP ? 4.400e-9 : 1.98e-6;
+/*
+ * AND THE DUCT. plant.c multiplies every rotor's thrust by the airframe's
+ * static duct augmentation, k_duct, which is 1.0 on the open five inch and
+ * 1.10 on the shrouded whoop, so kt times omega squared is the whoop's
+ * thrust to within ten percent and not the whoop's thrust. Read off the
+ * compiled constants rather than typed, the same way whoop-gates reads it.
+ */
+const DUCT = typeof bench.e.sim_bf_debug === 'function' ? (bench.e.sim_bf_debug(58) || 1) : 1;
 const wFull = rpmFull * Math.PI / 30;
-const thrustFull = 4 * KT * wFull * wFull;
+const thrustFull = 4 * KT * wFull * wFull * DUCT;
 const twr = thrustFull / (MASS * G);
 /*
  * And the DECLARED figure is per airframe too. STAGE1.md's 4.5 : 1 is the

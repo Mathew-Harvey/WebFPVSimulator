@@ -638,7 +638,11 @@ export const ELEMENTS = {
   pole: {
     id: 'pole',
     label: 'Pole',
-    key: 'P',
+    /* U for upright, not P. P has been the racing line toggle since before
+     * this element existed and the key handler answers it first, so a pole
+     * on P was a hotkey the palette advertised and the keyboard never
+     * delivered: pressing it hid the line. */
+    key: 'U',
     group: 'track',
     kind: KIND.MARKER,
     note: 'A bare upright pipe, flown around on one side. The pass side is a virtual gate, the same as a flag.',
@@ -1116,14 +1120,19 @@ export function formatElementCounts(rows) {
   }).join(', ');
 }
 
-/* Look up an element definition by the hotkey the user pressed. Returns
- * undefined for a key that is not a palette key. */
-export function elementByKey(letter) {
+/*
+ * Look up an element definition by the hotkey the user pressed. Returns
+ * undefined for a key that is not on THIS CLASS'S palette.
+ *
+ * It used to search the micro palette and then the full one, so on a five
+ * inch track Z armed a horizontal pole and U a RaceGOW pole, neither of which
+ * is on that track's palette, and each of them landed at the five inch's
+ * default size on a field the class never meant them for. A hotkey arms what
+ * the palette shows.
+ */
+export function elementByKey(letter, cls = TRACK_CLASS_DEFAULT) {
   const up = String(letter || '').toUpperCase();
-  /* Both palettes: a hotkey has to work whichever class is open, and the
-   * two lists share most of their keys. Micro first so its own keys win on
-   * a micro track; the overlap is identical elements anyway. */
-  return [...paletteItems('micro'), ...paletteItems('full')].find((d) => d.key === up);
+  return paletteItems(cls).find((d) => d.key === up);
 }
 
 /*

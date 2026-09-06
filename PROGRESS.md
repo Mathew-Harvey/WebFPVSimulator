@@ -29631,3 +29631,112 @@ built, and the changes are the scene graph, the course reader, the results
 screen and a drawing shared with the board. What can see them was run
 instead, and the flown evidence is screenshots of the real shell driven
 through the real menu.
+
+## The model is the aircraft, and three bugs the drawing found
+
+The owner sent a photograph of an Air65 II and said the model should look
+like that rather than like what was there. It should, and rebuilding it
+against the photograph found three real faults, two of them nothing to do
+with looks.
+
+### No canopy
+
+The model wore a sakura dome over the electronics. That is the Meteor's
+shape, not this one: an Air65 II is sold BARE, the AIO board is the top of
+the aircraft, and the only tall thing on it is the camera. The dome was also
+a third of the machine in one flat colour, so at any distance the whoop read
+as a pink blob on four black cans.
+
+Replaced with what is actually there: a board on four standoffs, the VTX
+above it, the MCU, the ESC FETs and the bulk capacitor standing proud on it,
+the pack lead over the front edge, and a C03 in its cage at the front. The
+tub is the light cool grey the moulding is rather than carbon, and the duct
+is a short shroud with an OPEN exit under a raised bumper hoop on posts,
+which is the strongest line in the real silhouette and the thing that stops
+four ducts reading as four cans. The project's palette still lands, on the
+parts that carry it: sakura is one trim line on the camera cage, mint is the
+lamps.
+
+### THE BLADES WERE NEVER LAID FLAT
+
+`whoopBlade` extrudes its outline in the shape's own XY plane, so the raw
+geometry stands on edge. `herocraft.js` rotates its own blade flat one line
+after building it, with a comment; `whoopcraft.js` never did. Every prop on
+this aircraft has been three fins hanging 14 mm straight down out of the hub
+since W3.
+
+It was invisible for exactly as long as the ducts were closed cans, and it
+appeared the instant the exit was opened: four sets of three white cones
+under the aircraft. Worth recording because the fix was one line and the
+reason it survived a whole stage is that the bug was inside the part of the
+model nothing could see into.
+
+### The skirt was attached to a floor that no longer exists
+
+Opening the duct exit left the belly skirt hanging eight millimetres below
+the aircraft in clear air. It is the two moulded straps a real whoop holds
+its cell with now, and the cell's printed band moved to the side of the
+wrapper, where it is a label rather than a cream slab as wide as the machine.
+
+### The choice card followed
+
+`craftSvg` drew a dot for the canopy. It draws the stack and the camera now,
+in the same order the model does.
+
+## The track decides the aircraft
+
+A five inch flying a RaceGOW room was reachable and it was not refused: pick
+the whoop once, build a room, switch back to the five inch, fly. Measured:
+a 347 mm quad at the start line of a track whose gates are 711 mm, in a room
+it crosses in a quarter of a second at its own top speed, with the gates and
+the walls both built for something a fifth of its size. Nothing threw, which
+is why it survived.
+
+A track's class is not a preference, it is what the track IS. So the fly
+action seats the aircraft the track was built for, both ways, before the
+pre-flight card is shown. Verified in the shell: a five inch opening the
+demo room comes out on the whoop with the Champion tune and a 115 degree
+lens; a whoop opening the 2022 AU Nationals layout comes out on the five
+inch with the Betaflight default. The swap is silent and reversible, because
+the pre-flight card carries a Quad row.
+
+## An obstacle cannot be a step
+
+`createSequenceEntry` would build a sequence entry for a barrier, and now
+also for a micro horizontal pole, both of which `normalize` drops on the way
+back in. The entry survived until the document was written and read once and
+then vanished, taking the author's flying order with it. It refuses now, at
+the moment the caller asks. Pre-existing for the barrier; the horizontal pole
+is new, which is how it was found.
+
+## npm run micro:check
+
+New, `scripts/micro-check.js`, and cheap. Two halves.
+
+The pipeline: every element the micro palette offers is placed, sequenced,
+written, read back, warned about, turned into a course and drawn as a plan,
+and the full sized class goes through the same pass in the same run, because
+half of what the file is for is proving the micro work did not move the
+field. The failure mode of a threading bug across nine modules is not an
+exception, it is a full sized default arriving somewhere quiet, and that
+looks like a room with 5 ft gates in it and no error anywhere.
+
+The race: the demo room is flown through the real Race object, gate by gate,
+in the 5 mm steps a whoop at 5 m/s produces at 1 kHz. Three laps close and
+the fastest three consecutive is the sum of the three that were flown.
+
+One thing the first version of that walker got wrong is kept in a comment
+there: approaching each gate in a straight line from the last one's centre
+does not work, because the demo's fifth station is a tower directly above
+its fourth, so the line runs parallel to both planes and crosses neither. It
+reported two missed gates a lap and both were the harness. Approach along
+each gate's own travel axis, which is what a pilot does and what tryPass
+reads.
+
+Clean this turn: `check:clip`, `check:path`, `check:orbit`, `lint:shell`,
+`lint:boot`, `lint:nouns`, `lint:presets`, `lint:fc`, `lint:frame`,
+`lint:quality`, `lint:responsive`, `micro:check`, `ghost:selftest`,
+`node src/trackbuilder/selftest.js` 495 of 495 and `npm run whoop:gates` 19
+of 19. `npm run verify` was NOT run: no physics, no plant, no module ABI and
+no build were touched, and the model, the seating rule and the sequence
+refusal are all above the simulation.

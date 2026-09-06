@@ -61,6 +61,9 @@ const CAL_LABELS = {
 import { MENU_TRACKS, trackById, musicIds } from '../render/tracks.js';
 import { CUSTOM_TUNE, TUNES, tuneById, tunesFor } from '../../configs/registry.js';
 import { AIRFRAMES, AIRFRAME_IDS, airframeById } from '../../configs/airframes.js';
+/* One function, for the one question this file asks the builder: which class
+ * is the track a pilot is about to fly. */
+import { trackClassOf } from '../trackbuilder/elements.js';
 import {
   RATE_DEFAULTS,
   RATE_FIELDS,
@@ -7744,6 +7747,41 @@ export class Ui {
    * things behave differently there and nowhere else on this screen: the
    * two choices are cards, the left and right arrows move between them,
    * and a radio's sticks walk them instead of posing the airframe. */
+  /*
+   * Seat the aircraft the loaded track was built for, if it is not already
+   * seated. Returns the airframe it moved to, or null if nothing moved.
+   *
+   * Only for the custom map: the built in field and the town have no
+   * document and no class, and they are the five inch's.
+   */
+  seatCraftForCourse() {
+    if (this.settings.map !== 'custom') {
+      return null;
+    }
+    let cls = null;
+    try {
+      const seat = activeCourseSummary();
+      cls = seat && seat.doc ? trackClassOf(seat.doc) : null;
+    } catch (e) {
+      /* No readable course is not a reason to move a pilot's aircraft. */
+      return null;
+    }
+    if (!cls) {
+      return null;
+    }
+    const have = airframeById(this.settings.airframe);
+    if (have.trackClass === cls) {
+      return null;
+    }
+    const want = AIRFRAMES.find((a) => a.trackClass === cls);
+    if (!want || want.id === have.id) {
+      return null;
+    }
+    seatAirframe(this.settings, want.id);
+    this.writeSettings();
+    return want;
+  }
+
   onGate() {
     return this.screen === 'title' && (this.craftGate || !this.mode);
   }
@@ -9694,6 +9732,27 @@ export class Ui {
      * whatever happened to still be seated would be the front page saying
      * one thing and the sim doing another.
      */
+    /*
+     * THE TRACK DECIDES THE AIRCRAFT, and it decides it here, on the way to
+     * the pre-flight card rather than after the world is built.
+     *
+     * A track's class is not a preference, it is what the track IS: a
+     * RaceGOW course is 1.42 by 2.13 m of 28 inch gates in a five metre
+     * room, and a MultiGP one is a dozen 5 ft gates over sixty metres. Left
+     * to the seated aircraft, a pilot who answered "five inch" once and
+     * then opened a living room got a 347 mm quad doing 40 m/s in a room it
+     * crosses in a quarter of a second, with the gates and the walls both
+     * built for something a fifth of its size. Nothing crashed, which is
+     * why it survived: it just was not the track.
+     *
+     * So the swap is silent and reversible. The pre-flight card carries a
+     * Quad row, so a pilot who genuinely wants a five inch in a living room
+     * is one click from it, and the card's own note says which machine the
+     * run will be filed under.
+     */
+    if (action === 'fly') {
+      this.seatCraftForCourse();
+    }
     if (action === 'fly' && !this.seatMatchesMode()) {
       this.returnTo = this.screen === 'paused' ? 'paused' : 'title';
       this.show(this.mode === 'freestyle' ? 'freestyle' : 'courses');

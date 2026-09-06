@@ -354,6 +354,17 @@ export function createSequenceEntry(doc, elementId, apertureIndex = 0) {
   if (!el) {
     throw new Error(`no such element: ${elementId}`);
   }
+  /*
+   * AN OBSTACLE CANNOT BE A STEP, and this refuses one rather than making an
+   * entry the next reload will delete. normalize keeps only sequenceable
+   * elements, so a step on a barrier or a horizontal pole survived until the
+   * document was written and read back and then silently vanished, taking
+   * the author's flying order with it. Refusing here means the caller finds
+   * out at the moment it asks.
+   */
+  if (!isSequenceable(el)) {
+    throw new Error(`${el.type} is not something a lap can pass through or round`);
+  }
   const def = ELEMENTS[el.type];
   const entry = {
     id: newSequenceId(doc),

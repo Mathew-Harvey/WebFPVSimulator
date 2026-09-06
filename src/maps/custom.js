@@ -44,7 +44,8 @@ import { buildFieldScene } from '../render/scene.js';
 import { attachComposer } from './field.js';
 import { courseFromDocument } from '../game/trackdoc.js';
 import { readAutosave } from '../trackbuilder/storage.js';
-import { courseSeatKey, readShareImport } from '../share/session.js';
+import { activeTrackClass, courseSeatKey, readShareImport } from '../share/session.js';
+import { tuningFor } from '../trackbuilder/elements.js';
 import { qualityFor } from '../render/quality.js';
 
 /*
@@ -85,21 +86,41 @@ export async function buildMap(shell, onProgress, options) {
   return attachComposer(shell, map, q);
 }
 
-/* A course with nothing in it, so the world still builds and the shell still
- * has one shape of map object to work with. */
+/*
+ * A course with nothing in it, so the world still builds and the shell still
+ * has one shape of map object to work with.
+ *
+ * IT STILL HAS A CLASS. An empty course is the FIRST thing a new visitor
+ * sees, because nobody has built anything yet, and it was the one place the
+ * class did not reach: hard coded to a sixty metre field, so a pilot who
+ * chose the whoop on the front page got the sixty metre paddock behind it
+ * with a 65 mm aircraft in the middle of it. Reported in exactly those
+ * words. buildFieldScene reads trackClass to decide between a paddock and a
+ * room, and attractOrbit reads it again to keep the title camera inside the
+ * room, so those two lines are the whole of the fix.
+ *
+ * The class comes from the seated aircraft rather than from a document,
+ * because there is no document. That is what activeTrackClass is for.
+ */
 function emptyCourse() {
+  const cls = activeTrackClass();
+  const T = tuningFor(cls);
+  const micro = cls === 'micro';
   return {
     id: 'custom',
     name: 'No track yet',
     documentId: null,
-    field: { width: 60, depth: 40 },
+    trackClass: cls,
+    field: { width: T.fieldWidth, depth: T.fieldDepth },
     structures: [],
     stations: [],
     spawn: { x: 0, z: 0, yaw: 0 },
     line: [],
     samples: [{ x: 0, z: 0 }],
     guide: { samples: [], dashes: [], arrows: [], flagArcs: [], length: 0 },
-    warnings: ['Nothing has been built yet. Open the track builder from the title screen, place some gates, then come back.'],
+    warnings: [micro
+      ? 'Nothing has been built yet. Open the whoop track builder from the title screen, place some gates in the room, then come back.'
+      : 'Nothing has been built yet. Open the track builder from the title screen, place some gates, then come back.'],
     lapLength: 0,
     closed: false,
   };

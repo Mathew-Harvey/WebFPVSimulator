@@ -30,7 +30,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { readShareImport } from './session.js';
+import { activeTrackClass, readShareImport } from './session.js';
 import { readAutosave } from '../trackbuilder/storage.js';
 
 /*
@@ -117,7 +117,10 @@ export function clipKeyForMap(mapId) {
     } catch (e) {
       /* Private mode, or a corrupt seat: treat as empty. */
     }
-    return `${clipPrefix()}:custom:empty`;
+    /* Tagged with the class for the same reason courseSeatKey is: an empty
+     * room and an empty field are two different worlds and their attract
+     * clips are two different clips. */
+    return `${clipPrefix()}:custom:empty:${activeTrackClass()}`;
   }
   return `${clipPrefix()}:${mapId}`;
 }

@@ -1125,6 +1125,28 @@ const BEHAVIOUR = `(() => {
      * the whole reason the aircraft is reachable at all. */
     ui.back();
     const backToCraft = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
+    /*
+     * THE WHOOP IS NOT ASKED THE MODE QUESTION.
+     *
+     * Freestyle is one place, a town about five hundred metres across laid
+     * out for a five inch at forty metres a second, and a 65 mm whoop in it
+     * is the same mismatch as a five inch in a living room. So on a whoop
+     * the gate has one answer and is skipped: the aircraft lands straight on
+     * the menu, and Escape from the menu walks back to the aircraft rather
+     * than stopping at a question with one card on it.
+     *
+     * The seat moves too. A pilot who was in the town and swapped aircraft
+     * would otherwise be in race with the town still seated, which is the
+     * whoop in the five inch's world drawn behind the title.
+     */
+    ui.act('craft-whoop65');
+    const whoopMode = ui.mode;
+    const whoopMap = ui.settings.map;
+    const whoopGate = ui.onGate();
+    const whoopMenu = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
+    const whoopCards = ui.items().filter((it) => it.card).length;
+    ui.back();
+    const whoopBack = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
     ui.act('craft-5inch');
     /*
      * Race is pressed for real. Freestyle is only set, because answering it
@@ -1158,6 +1180,14 @@ const BEHAVIOUR = `(() => {
       /* And Escape walks back up to it. */
       escapeToCraft: backToCraft.length === 2 && !backToCraft.includes('Race')
         && backToCraft.join() === craftGateLabels.join(),
+      whoopMenu,
+      whoopBack,
+      /* Straight to the menu: no gate, no cards, no Freestyle anywhere on
+       * it, and the seat is a track rather than a world. */
+      whoopSkipsMode: whoopMode === 'race' && whoopMap === 'custom' && !whoopGate
+        && whoopCards === 0 && !whoopMenu.includes('Freestyle'),
+      /* And Escape from that menu is the aircraft, one level not two. */
+      whoopBackToCraft: whoopBack.join() === craftGateLabels.join(),
       asksTwo: gate.includes('Race') && gate.includes('Freestyle') && !gate.includes('Fly'),
       /* Two cards drawn, both with a picture, and neither of them a row:
        * the whole point of the screen is that it is not a menu. */
@@ -1425,6 +1455,12 @@ async function main() {
       }
       if (!g.escapeToCraft) {
         failures.push(`the gate: Escape from Race or Freestyle reached ${g.backToCraft.join(', ') || 'nothing'}, not the aircraft`);
+      }
+      if (!g.whoopSkipsMode) {
+        failures.push(`the gate: the whoop landed on ${g.whoopMenu.join(', ') || 'nothing'}, not on a menu with no Freestyle on it`);
+      }
+      if (!g.whoopBackToCraft) {
+        failures.push(`the gate: Escape from the whoop's menu reached ${g.whoopBack.join(', ') || 'nothing'}, not the aircraft`);
       }
       if (!g.asksTwo) {
         failures.push(`the second gate opens on ${g.gate.join(', ') || 'nothing'}, not on Race or Freestyle`);

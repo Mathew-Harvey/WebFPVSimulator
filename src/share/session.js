@@ -164,7 +164,19 @@ export function courseSeatKey(share, doc) {
   if (doc && (doc.id || doc.modifiedUtc)) {
     return `local:${doc.id || 'draft'}:${doc.modifiedUtc || ''}`;
   }
-  return 'custom:empty';
+  /*
+   * NOTHING SEATED, AND EVEN THAT HAS A CLASS.
+   *
+   * This is the key the shell compares the built world against, so a value
+   * that is the same on both aircraft says "the world already matches" when
+   * a pilot swaps from the five inch to the whoop with neither seat filled.
+   * That is a new visitor, which is most of them, and it left the whoop
+   * standing in the sixty metre paddock because the empty custom map is
+   * built once and never rebuilt. See emptyCourse in src/maps/custom.js,
+   * which is the other half: it is what makes the two empties different
+   * worlds in the first place.
+   */
+  return `custom:empty:${activeTrackClass()}`;
 }
 
 export function writeShareImport(payload) {

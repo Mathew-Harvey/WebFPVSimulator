@@ -30073,3 +30073,101 @@ Also `check:clip`, `check:path`, `check:orbit`, `check:wall` 45 of 45,
 `lint:shell`, `lint:boot`, `lint:nouns`, `lint:presets`, `lint:fc`,
 `lint:frame`, `lint:quality`, `lint:responsive`, `micro:check`,
 `whoop:gates` 19 of 19 and the builder self test 495 of 495.
+
+## Freestyle is not offered on a whoop
+
+The owner: "hide freestyle on the whoop".
+
+Freestyle is one place, a town about five hundred metres across laid out for
+a five inch at forty metres a second. A 65 mm whoop doing five in it is the
+same mismatch as a five inch in a living room, which is the mismatch the
+whole class split exists to remove, so the card was offering a pilot a place
+they would turn round and leave.
+
+One predicate, `freestyleOffered(airframeId)` in `src/ui/ui.js`, and it reads
+`trackClass` rather than the airframe id, so an indoor freestyle space one
+day is a change to that one function.
+
+The mode question is not asked rather than asked with one card on it. A gate
+that draws a single answer is not a question. `syncMode()` answers it: mode
+becomes race whenever a whoop is seated and the aircraft gate is not open,
+and it is called from the three places the seated aircraft can change, which
+are the constructor, the aircraft gate's own answer, and `writeSettings`,
+which is what every settings row funnels through and therefore what the Quad
+screen's Aircraft row runs.
+
+**The seat moves with the mode.** A mode on its own is a word. A pilot who
+swapped to the whoop from inside the town would have been in race with the
+town still seated, which is the whoop in the five inch's world, drawn behind
+the title, and is exactly what this is here to stop. `settings.map` goes to
+custom with the mode. `freestyleMap` is left alone, so swapping back to the
+five inch puts them in the town they left. That also repairs the state in
+storage for anybody who flew the town on a whoop before today.
+
+**Escape walks two levels instead of three.** The menu backs out to the
+aircraft directly, because there is no mode gate to stop at. It clears the
+mode on that step, which is what lets `syncMode` leave the mode alone while
+the aircraft gate is open: without that, answering the gate with the five
+inch would have skipped their mode gate. The title's one Escape hint is
+named for where it lands, so it reads Aircraft on a whoop and Race or
+Freestyle on a five inch, and the clickable version of that hint lands in
+the same place as the key.
+
+The cursor lands on the first row of whatever the answer opened instead of
+staying on the index of the card that was pressed. The whoop is the second
+card and the menu's second row is Track, so choosing an aircraft put the
+cursor on Track with the Fly button under it reading as something else's.
+`back()` already made that call for the same reason.
+
+### Two things found while looking at the frames
+
+**A whoop with no track stood in the paddock.** `emptyCourse()` in
+`src/maps/custom.js` was hard coded to a sixty metre field, and an empty
+course is the FIRST thing a new visitor sees, because nobody has built
+anything yet. `buildFieldScene` decides between a paddock and a room on
+`course.trackClass` and `attractOrbit` reads it again to keep the title
+camera inside the room, so the empty course carries the seated aircraft's
+class now and both follow.
+
+That alone did not fix it. The shell only rebuilds the custom world when the
+seat key changes, and `courseSeatKey(null, null)` returned `custom:empty` on
+both aircraft, so a swap with neither seat filled said the world already
+matched. The empty key carries the class. `clipKeyForMap` had the same
+untagged empty and got the same treatment, because an empty room and an
+empty field are two different attract clips.
+
+**The front page drew two sentences on top of each other.** The row note
+grows upward out of flow from the menu's top edge, and the title fades the
+keep note out under it. The wiki teaser is the third block of copy in that
+column and was never in the handoff, so from the moment the cursor moved off
+Fly, "2022 AU Nationals, and every other track" printed through "Simulating
+FPV, for nerds". Pre-existing and on both aircraft: reproduced on the five
+inch on the 2022 AU Nationals layout before touching anything. Same fade as
+its two neighbours now, with pointer-events, because unlike the notes it is
+a button and an invisible button is worse than a hidden one.
+
+### What was run
+
+`npm run lint:shell` PASS, and its gate probe now walks the whoop leg too:
+answering the aircraft with the whoop lands on a menu with no cards, no
+Freestyle and a custom seat, and Escape from that menu reaches the aircraft
+rather than a one card question. Without that leg the check could not see
+any of this.
+
+`micro:check`, `lint:boot` 9 of 9, `lint:nouns`, `lint:arcade`,
+`lint:attract`, `lint:responsive`, `lint:board` and `check:orbit` 17 of 17.
+
+`node scripts/shots.js` three times: the aircraft gate to the whoop menu to
+Escape and back, on an empty seat and on Living room 1, and the five inch
+with the 2022 AU Nationals layout to reproduce the overlap and to show it
+gone. Console clean apart from the refused board fetches, which is this
+container.
+
+`npm run verify` was NOT run. Nothing here touches the physics, the plant,
+the module ABI or the build: it is the shell's navigation, one map's empty
+course and one CSS rule.
+
+`lint:shell` still prints "quad: overflow improved from 55 to 10 px,
+re-record the baseline". That note is from the earlier Quad screen work, it
+is a note and not a failure, and re-recording rewrites every screen's
+numbers, so it is left for a turn that is about the baseline.

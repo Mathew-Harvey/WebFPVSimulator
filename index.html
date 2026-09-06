@@ -1439,6 +1439,26 @@
       .screen-title.has-help .first-note {
         opacity: 0;
       }
+      /*
+       * AND THE TEASER, which is the third block of copy in this column and
+       * was left out of the handoff above. The note grows upward out of
+       * flow from the menu's top edge and lands exactly on it, so the front
+       * page drew two sentences on top of each other the moment the cursor
+       * moved off Fly: "2022 AU Nationals, and every other track" printed
+       * through "Simulating FPV, for nerds". Same transition as its two
+       * neighbours so the three fade as one block.
+       *
+       * pointer-events with the opacity, because unlike the notes this one
+       * is a BUTTON, and a button that is invisible but still clickable is
+       * worse than one that is not there.
+       */
+      .screen-title .wiki-teaser {
+        transition: opacity 140ms ease;
+      }
+      .screen-title.has-help .wiki-teaser {
+        opacity: 0;
+        pointer-events: none;
+      }
       .craft-showcase {
         grid-column: 1;
         justify-self: end;

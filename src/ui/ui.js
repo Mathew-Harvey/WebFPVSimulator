@@ -1854,6 +1854,25 @@ function locationHashScreen() {
 }
 
 /*
+ * WHETHER FREESTYLE IS OFFERED AT ALL, and on a whoop it is not.
+ *
+ * Freestyle is one place, a town: roofs, alleys, a level crossing and a works
+ * road, laid out for a five inch at forty metres a second and about five
+ * hundred metres across. A 65 mm whoop doing five is as wrong in it as a five
+ * inch is in a living room, and that is the mismatch this whole class split
+ * exists to remove. Offering the card anyway would be offering a pilot a
+ * place they will turn round and leave.
+ *
+ * So on a whoop the mode question has one answer and is not asked: the title
+ * goes aircraft, then straight to the menu, and Escape from the menu goes
+ * straight back to the aircraft. When there is an indoor freestyle space to
+ * fly, this is the one function that has to change.
+ */
+function freestyleOffered(airframeId) {
+  return airframeById(airframeId).trackClass !== 'micro';
+}
+
+/*
  * RACE OR FREESTYLE, WHEN THE LINK ALREADY SAID.
  *
  * The gate is a question, and a question that has been answered must not be
@@ -2056,6 +2075,10 @@ export class Ui {
      * the seated aircraft is a real answer rather than a default.
      */
     this.craftGate = !linkedAf;
+    /* A link that names the whoop has answered the mode question too. */
+    if (this.syncMode()) {
+      saveSettings(this.settings);
+    }
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
@@ -4169,7 +4192,7 @@ export class Ui {
             action: 'mode-freestyle',
           },
           ...(trouble ? [trouble] : []),
-        ];
+        ].filter((it) => it.action !== 'mode-freestyle' || freestyleOffered(this.settings.airframe));
       }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
@@ -6433,6 +6456,9 @@ export class Ui {
   /* Store, redraw, tell the shell. The three things every row that changes
    * a setting does, in one place. */
   writeSettings() {
+    /* The Aircraft row comes through here, so this is where a pilot who
+     * swaps to the whoop from inside the town stops being in freestyle. */
+    this.syncMode();
     saveSettings(this.settings);
     this.renderMenu();
     if (this.onUiSound) {
@@ -7914,6 +7940,56 @@ export class Ui {
     return want;
   }
 
+  /*
+   * Keep the mode legal for the seated aircraft.
+   *
+   * On a whoop the Race or Freestyle question has one answer, so it is
+   * answered rather than asked: see freestyleOffered. That covers both a
+   * leftover 'freestyle' from a five inch and a mode that was never set,
+   * because a gate with one card on it is not a question either.
+   *
+   * The aircraft gate is the one place this must not run. There the mode is
+   * deliberately blank and the pilot is one press from changing which
+   * aircraft is seated, so answering the next question on their behalf
+   * before they have answered this one is how a five inch pilot would end
+   * up skipping the Race or Freestyle gate on the way back in.
+   *
+   * The SEAT moves with the mode, because a mode on its own is a word: a
+   * pilot who swaps to the whoop from inside the town would otherwise be in
+   * race with the town still seated, which is the whoop in the five inch's
+   * five hundred metre world, drawn behind the title, and is the exact thing
+   * this is here to stop. It is also the state every pilot who flew the town
+   * on a whoop before this already has in storage, so the boot call has to
+   * repair it and not only the swap. freestyleMap is left alone, so swapping
+   * back to the five inch puts them in the town they left.
+   *
+   * Returns whether it changed anything, because two of the three callers
+   * store the settings themselves and one of them stores them once.
+   */
+  syncMode() {
+    if (this.craftGate || freestyleOffered(this.settings.airframe)) {
+      return false;
+    }
+    let moved = false;
+    if (this.mode !== 'race') {
+      this.mode = 'race';
+      moved = true;
+    }
+    if (this.settings.map !== 'custom') {
+      this.settings.map = 'custom';
+      moved = true;
+    }
+    return moved;
+  }
+
+  /* What the title's one Escape hint is named for: the screen it lands on.
+   * A whoop has no Race or Freestyle gate, so on a whoop it lands on the
+   * aircraft and says so. Naming the destination rather than saying Back is
+   * deliberate, see legendFor. */
+  modeGateLabel() {
+    return freestyleOffered(this.settings.airframe) ? 'Race or Freestyle' : 'Aircraft';
+  }
+
   onGate() {
     return this.screen === 'title' && (this.craftGate || !this.mode);
   }
@@ -9105,7 +9181,7 @@ export class Ui {
       if (this.screen !== 'title') {
         out.push({ keys: [], text: 'Back', action: 'back' });
       } else if (this.mode) {
-        out.push({ keys: [], text: 'Race or Freestyle', action: 'mode-gate' });
+        out.push({ keys: [], text: this.modeGateLabel(), action: 'mode-gate' });
       }
       return out;
     }
@@ -9152,7 +9228,7 @@ export class Ui {
        * already on the screen, in the place that answers "how do I get
        * out"; all they were missing was a hit area.
        */
-      out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Race or Freestyle', action: 'mode-gate' });
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.modeGateLabel(), action: 'mode-gate' });
     }
     return out;
   }
@@ -9464,11 +9540,18 @@ export class Ui {
        * last step is what makes the whoop findable: without it the only way
        * to reach the other half of the product was three rows deep under
        * Quad, and a pilot who did not know it was there never went looking.
+       *
+       * Two levels on a whoop, because there is no Race or Freestyle gate to
+       * stop at: see freestyleOffered. The menu backs straight out to the
+       * aircraft. Clearing the mode on that step is what lets syncMode leave
+       * it alone while the aircraft gate is open, so a pilot who answers the
+       * gate with the five inch gets their mode gate back.
        */
-      if (this.mode) {
+      if (this.mode && freestyleOffered(this.settings.airframe)) {
         this.mode = null;
       } else if (!this.craftGate) {
         this.craftGate = true;
+        this.mode = null;
       } else {
         return;
       }
@@ -9798,14 +9881,28 @@ export class Ui {
       if (AIRFRAME_IDS.includes(id)) {
         seatAirframe(this.settings, id);
         this.settings.airframeAsked = true;
-        saveSettings(this.settings);
         this.craftGate = false;
+        /* On a whoop this answers the mode gate as well, so the pilot goes
+         * aircraft then straight to the menu. Before the store rather than
+         * after it, so the seat it moves is stored with the aircraft that
+         * moved it. */
+        this.syncMode();
+        saveSettings(this.settings);
         /* The shell has to hear this before anything is flown: it is the
          * call that swaps the plant in the compiled module and reloads the
          * tune. main.js applies it between runs, which the title is. */
         if (this.onSettings) {
           this.onSettings(this.settings);
         }
+        /*
+         * The cursor lands on the first row of whatever the answer opened,
+         * rather than staying on the index of the card that was pressed.
+         * The whoop is the second card, so on a whoop, which skips the mode
+         * gate, that index was the menu's second row: choosing an aircraft
+         * put the cursor on Track and the Fly button under it read as
+         * something else's. Same call back() makes for the same reason.
+         */
+        this.setCursor(this.titleStop());
         this.renderMenu();
       }
       return;
@@ -10142,6 +10239,11 @@ export class Ui {
        * that: the gate is the one screen with nothing behind it, so leaving
        * mode set would show the question with a menu still under it. */
       this.mode = null;
+      if (!freestyleOffered(this.settings.airframe)) {
+        /* On a whoop there is no mode gate behind the menu, so this row is
+         * the aircraft's and lands one level further out. */
+        this.craftGate = true;
+      }
       this.show('title');
       this.setCursor(this.titleStop());
       this.renderMenu();

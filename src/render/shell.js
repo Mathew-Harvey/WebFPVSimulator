@@ -211,7 +211,7 @@ export function buildShell(canvas, opts) {
   camera.layers.enable(1);
   camera.layers.enable(2);
 
-  const craft = buildCraft();
+  let craft = buildCraft(opts.airframe);
 
   function resize() {
     /*
@@ -233,7 +233,7 @@ export function buildShell(canvas, opts) {
   }
   resize();
 
-  return {
+  const api = {
     renderer,
     camera,
     canvas,
@@ -244,5 +244,67 @@ export function buildShell(canvas, opts) {
     cameraMount: craft.cameraMount,
     propSpin: craft.propSpin,
     resize,
+    swapCraft,
   };
+
+  /*
+   * Build a different aircraft and put it where the last one was.
+   *
+   * The craft is SESSION LIVED and the maps are not: the shell builds one at
+   * boot and re-parents it into whichever map's scene is active, which is
+   * what src/render/craft.js's header is about. So swapping the aircraft has
+   * to keep that property. The new group goes into the old one's parent at
+   * the old one's pose, the old one is detached and its geometry released,
+   * and every reference the shell publishes is re-seated in one place so a
+   * caller holding shell.discs cannot end up animating a disposed rotor.
+   *
+   * Called between runs only. src/main.js applies the airframe on the same
+   * rule it applies pack charge and flight style: mid lap it would be
+   * changing the aircraft under the pilot.
+   */
+  function swapCraft(airframeId) {
+    const old = craft;
+    const parent = old.group.parent;
+    const next = buildCraft(airframeId);
+    next.group.position.copy(old.group.position);
+    next.group.quaternion.copy(old.group.quaternion);
+    next.group.visible = old.group.visible;
+    if (parent) {
+      parent.add(next.group);
+      parent.remove(old.group);
+    }
+    disposeTree(old.group);
+    craft = next;
+    api.quad = next.group;
+    api.discs = next.discs;
+    api.blades = next.blades;
+    api.cameraMount = next.cameraMount;
+    api.propSpin = next.propSpin;
+    return next;
+  }
+
+  return api;
+}
+
+/*
+ * Release a craft's geometry and materials. Not shared with anything: every
+ * mesh in a craft is built for that craft, and the cel materials are made per
+ * build. A boot that never swaps aircraft never calls this.
+ */
+function disposeTree(root) {
+  root.traverse((o) => {
+    if (o.geometry) {
+      o.geometry.dispose();
+    }
+    const m = o.material;
+    if (Array.isArray(m)) {
+      for (const one of m) {
+        if (one && one.dispose) {
+          one.dispose();
+        }
+      }
+    } else if (m && m.dispose) {
+      m.dispose();
+    }
+  });
 }

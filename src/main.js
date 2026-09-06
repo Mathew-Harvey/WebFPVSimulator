@@ -65,7 +65,7 @@ import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -84,6 +84,8 @@ import { createShowcase } from './render/showcase.js';
 import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
+import { airframeById, simIdFor } from '../configs/airframes.js';
+import { buildWhoopCraft } from './render/whoopcraft.js';
 import { normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, FC_DUMP_KEY, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, tuneBody } from './fc/dump.js';
@@ -1472,7 +1474,17 @@ export async function boot({ loading, bootStart, mapId }) {
       h = ((h * 33) ^ configText.charCodeAt(i)) >>> 0;
     }
     const style = runStyle === 'arcade' ? '.arcade' : '';
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}`;
+    /*
+     * The AIRFRAME is in the key, and it has to be: a whoop lap and a five
+     * inch lap on the same track are not the same record, they are not
+     * within a factor of three of each other, and the config hash above
+     * cannot tell them apart because the tune is a different FILE, not a
+     * different plant. The five inch's suffix is EMPTY so every record ever
+     * set stays exactly where it is, which is the same trick the flight
+     * style uses one line up and for the same reason.
+     */
+    const craft = runAirframe === '5inch' ? '' : `.${runAirframe}`;
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -1823,6 +1835,19 @@ export async function boot({ loading, bootStart, mapId }) {
    * runs, same rule as the pack voltage, so a mid run settings visit
    * cannot change the physics under a lap in progress. */
   let runStyle = ui.settings.flightStyle === 'arcade' ? 'arcade' : 'expert';
+  /*
+   * The aircraft the RUN is on, which starts as the one buildShell drew and
+   * NOT as the stored setting. That is deliberate: applySettings below is
+   * called once at boot, sees the two disagree, and does the swap through
+   * the one code path that swaps an aircraft, instead of boot having a
+   * second path of its own that would drift from it. A five inch pilot's
+   * boot is unchanged; a whoop pilot's boot builds one craft it throws away,
+   * which is a few hundred triangles once.
+   */
+  let runAirframe = '5inch';
+  /* Which aircraft the Settings studio last built, so it is rebuilt when
+   * the aircraft changes rather than posing the old one. */
+  let showcaseCraft = '5inch';
   let notice = null; /* { text, untilMs } for one off shell messages */
   /* The seated world's own note, waiting for a flight to be said over. See
    * showCourseNotes. */
@@ -3212,6 +3237,38 @@ export async function boot({ loading, bootStart, mapId }) {
     return (Number(s.renderScale) || 100) / 100;
   }
 
+  /*
+   * Everything the shell derived from the OLD plant, re-derived. Four things
+   * and they have to move together, which is why this is one function rather
+   * than four lines at the call site:
+   *
+   *   the collision dimensions, which src/game/collide.js publishes as live
+   *     module bindings so every importer follows without knowing;
+   *   the drawn model, which is a different builder entirely for a whoop;
+   *   the ground plane the module holds, because a 23 mm thick machine does
+   *     not park 45 mm off the deck; and
+   *   the record key, because a whoop lap and a five inch lap on the same
+   *     track are not the same record.
+   *
+   * Between runs only. Every collision query in flight reads the dimensions
+   * and swapping them mid lap would move the hull under a craft that is
+   * already resolving a contact.
+   */
+  function syncCraftScale() {
+    setCraftAirframe(airframeById(runAirframe).dims);
+    if (typeof shell.swapCraft === 'function') {
+      shell.swapCraft(runAirframe);
+    }
+    /*
+     * The ground plane needs nothing here. raiseGroundFromState re-raises it
+     * from the craft's own pose every step it matters, and the parked height
+     * it lands at is the module's own STAND_HINGE_Z, which
+     * sim_set_airframe already moved. This paragraph exists because the
+     * first version of this function called a raiseGround() that does not
+     * exist: the shell does not hold a ground plane, it asserts one.
+     */
+  }
+
   function applySettings(s) {
     camTilt = clampCameraAngle(s.cameraAngle);
     s.cameraAngle = camTilt;
@@ -3254,6 +3311,33 @@ export async function boot({ loading, bootStart, mapId }) {
       runStyle = s.flightStyle === 'arcade' ? 'arcade' : 'expert';
       if (typeof sim.e.sim_set_flight_style === 'function') {
         sim.e.sim_set_flight_style(runStyle === 'arcade' ? 1 : 0);
+      }
+      /*
+       * THE AIRFRAME, on the same between-runs rule and for a stronger
+       * version of the same reason. Pack charge and flight style change what
+       * a run measures; the airframe changes the ENTIRE PLANT, the mass, the
+       * inertia, the motors, the rotors, the pack and the collision hull, so
+       * applying it mid lap would be swapping the aircraft under the pilot.
+       *
+       * Guarded because an older dist/sim.wasm predates the export, same as
+       * the flight style above. On such a build the shell simply flies the
+       * five inch, which is what that build has.
+       */
+      const wantCraft = airframeById(s.airframe).id;
+      if (wantCraft !== runAirframe) {
+        runAirframe = wantCraft;
+        if (typeof sim.e.sim_set_airframe === 'function') {
+          sim.e.sim_set_airframe(simIdFor(runAirframe));
+        }
+        /*
+         * The plant changed under a module that is already initialised, so
+         * everything the shell derived from the OLD plant has to follow: the
+         * craft's own dimensions, its collision hull, its model and the
+         * ground plane it sits on. syncCraftScale does all four and is
+         * called here rather than left to worldMatchesSettings because the
+         * craft is session lived and the world is not.
+         */
+        syncCraftScale();
       }
     }
     race.setRecordKey(recordKey());
@@ -6216,8 +6300,25 @@ export async function boot({ loading, bootStart, mapId }) {
      * uses the world craft instead.
      */
     if (studioOn) {
+      /* The seated aircraft's own model and its own framing. A 65 mm whoop
+       * in a stage composed for a 5 inch is a speck; showcase.js scales the
+       * whole stage by the sweep ratio. Rebuilt when the aircraft changes,
+       * which is why the id is remembered rather than the object alone. */
+      if (showcase && showcaseCraft !== runAirframe) {
+        try {
+          showcase.dispose();
+        } catch (e) {
+          /* Already gone. */
+        }
+        showcase = null;
+      }
       if (!showcase) {
-        showcase = createShowcase(ui.craftCanvas);
+        const af = airframeById(runAirframe);
+        showcaseCraft = runAirframe;
+        showcase = createShowcase(ui.craftCanvas, {
+          sweep: af.dims.arm + af.dims.propR,
+          build: af.id === 'whoop65' ? buildWhoopCraft : undefined,
+        });
         if (showcase.failed) {
           ui.setCraftCaption('The 3D preview could not start.');
         }
@@ -6757,6 +6858,21 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The cost ledger. Measured on demand from the harness, never per
    * frame. __setCam parks the camera for a named view; __setCam(null)
    * gives it back to the shell. */
+  /*
+   * The seated aircraft, as four independent answers rather than one, so a
+   * harness can catch the case where the shell and the module disagree about
+   * what is flying. That is the failure this feature is most likely to have:
+   * the setting says whoop, the model draws a whoop, and the plant is still
+   * integrating a 710 gram quad.
+   */
+  window.__craft = () => ({
+    setting: ui.settings.airframe,
+    run: runAirframe,
+    module: typeof sim.e.sim_airframe === 'function' ? sim.e.sim_airframe() : -1,
+    sweepM: CRAFT_R,
+    massKg: typeof sim.e.sim_bf_debug === 'function' ? sim.e.sim_bf_debug(51) : 0,
+    drawn: shell.quad.name,
+  });
   window.__setCam = (a, b, c, d, e, f) => {
     camOverride = a == null ? null : [a, b, c, d, e, f];
   };

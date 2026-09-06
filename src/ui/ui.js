@@ -59,7 +59,8 @@ const CAL_LABELS = {
   confirm: 'Check',
 };
 import { MENU_TRACKS, trackById, musicIds } from '../render/tracks.js';
-import { CUSTOM_TUNE, TUNES, tuneById } from '../../configs/registry.js';
+import { CUSTOM_TUNE, TUNES, tuneById, tunesFor } from '../../configs/registry.js';
+import { AIRFRAMES, AIRFRAME_IDS, airframeById } from '../../configs/airframes.js';
 import {
   RATE_DEFAULTS,
   RATE_FIELDS,
@@ -244,8 +245,18 @@ function hasFcDump() {
 }
 
 /* The tune ids the row can offer right now. */
-function tuneChoices() {
-  return [...TUNES.map((t) => t.id), ...(hasFcDump() ? [CUSTOM_TUNE.id] : [])];
+/*
+ * The tunes on offer. Airframe aware since the whoop landed: a 6S 5 inch
+ * race tune loaded onto a 1S whoop is not a different feel, it is an
+ * oscillation, because the whoop's PIDs are a third of the five inch's for
+ * the same reason its angular acceleration is three times higher.
+ *
+ * The argument is optional and defaults to the five inch, because this is
+ * called from module scope in the settings allow list where there is no
+ * `this` to read a setting off. loadSettings passes the stored airframe.
+ */
+function tuneChoices(airframe = AIRFRAME_IDS[0]) {
+  return [...tunesFor(airframe).map((t) => t.id), ...(hasFcDump() ? [CUSTOM_TUNE.id] : [])];
 }
 
 /* Step through a list with wraparound. Every value row on every screen
@@ -369,6 +380,27 @@ const DEFAULTS = {
    * matches the default, and an unknown id falls back to the first tune in
    * configs/registry.js rather than throwing. */
   tune: 'betaflight-default',
+  /*
+   * WHICH AIRCRAFT. A plant, not a tune: mass, inertia, motors, rotors,
+   * pack, drag and ducts, selected in the compiled module by
+   * sim_set_airframe. configs/airframes.js is the list.
+   *
+   * '5inch' stays the default and the first row, so a returning pilot's
+   * records, tune, rates and camera all still mean exactly what they did.
+   * An unknown id falls back to it rather than throwing, same rule as map
+   * and tune, because a stale localStorage entry must not stop the page
+   * booting.
+   */
+  airframe: '5inch',
+  /*
+   * Whether the aircraft question has been asked. It is asked ONCE, on a
+   * first run, and never again: unlike Race or Freestyle, which is what
+   * this session is for and is asked every visit, the aircraft is a
+   * PREFERENCE. A pilot who bought this to fly a whoop should not have to
+   * say so twice, and the Quad screen carries the row for every later
+   * change.
+   */
+  airframeAsked: false,
   /*
    * The whole rate profile, owned by the pilot rather than by the tune: a
    * rates type and three firmware fields per axis, plus Betaflight's
@@ -571,8 +603,17 @@ export function loadSettings() {
    * list and was chosen against a different camera model, so it goes back to
    * the default rather than being snapped to the nearest survivor.
    */
+  /*
+   * The airframe is validated FIRST and on its own, because the tune list
+   * below depends on it. A stored airframe the build no longer offers has to
+   * become the five inch before the tune is checked, or a pilot on a removed
+   * airframe would keep a tune no airframe can load.
+   */
+  if (!AIRFRAME_IDS.includes(s.airframe)) {
+    s.airframe = DEFAULTS.airframe;
+  }
   for (const [key, allowed] of [
-    ['tune', tuneChoices()],
+    ['tune', tuneChoices(s.airframe)],
     ['link', Object.keys(LINK_PRESETS)],
     ['cameraFov', CAMERA_FOVS],
     ['renderScale', RENDER_SCALES],
@@ -585,7 +626,17 @@ export function loadSettings() {
     ['freestyleScoring', FREESTYLE_SCORING],
   ]) {
     if (!allowed.includes(s[key])) {
-      s[key] = DEFAULTS[key];
+      /* The tune's fallback is the AIRFRAME's default tune, not the blob's:
+       * a whoop whose stored tune has gone must land on a whoop tune. */
+      s[key] = key === 'tune' ? airframeById(s.airframe).defaultTune : DEFAULTS[key];
+    }
+  }
+  /* Pack charge is per airframe too: 6S LiPo runs 4.20 to 3.50 and 1S LiHV
+   * runs 4.35 to 3.60, and a stored 3.50 on a whoop is a cell nobody flies. */
+  {
+    const af = airframeById(s.airframe);
+    if (!af.packVoltages.includes(s.packVoltage)) {
+      s.packVoltage = af.packVoltages[0];
     }
   }
   /* Angle is a range, not a list: a stored 40 from the old six-step menu
@@ -655,6 +706,77 @@ function saveSettings(s) {
   } catch (e) {
     /* private mode: settings simply do not persist */
   }
+}
+
+/*
+ * Move the settings blob onto an airframe: the things that BELONG TO THE
+ * MACHINE and cannot survive a change of it.
+ *
+ * The rule this follows is the one the Quad screen's own comment states: a
+ * setting lives with the machine if it stops meaning anything when the
+ * machine changes. Four do.
+ *
+ *   tune         a Betaflight diff for a 1S 23 gram quad on a 710 gram 6S
+ *                one is not a different feel, it is an oscillation.
+ *   rates        BetaFPV ship 580 deg/s on a racing whoop against
+ *                Betaflight's 670 for a 5 inch, and a track three metres
+ *                wide is why.
+ *   packVoltage  6S LiPo is 4.20 to 3.50 and 1S LiHV is 4.35 to 3.60. A
+ *                stored 3.50 on a whoop is a cell nobody flies.
+ *   camera       fov and tilt, which ui.js already keeps in Quad rather
+ *                than Pilot precisely because they are bolted to the
+ *                airframe.
+ *
+ * Rates are the one that could be argued the other way, and configs/rates.js
+ * says outright that rates are the PILOT'S. They still are: this reseeds
+ * them only when they are still the previous airframe's stock profile, so a
+ * pilot who has set their own rates keeps them across a change and one who
+ * has not gets the new machine's factory numbers instead of the old one's.
+ */
+function seatAirframe(s, id) {
+  const from = airframeById(s.airframe);
+  const to = airframeById(id);
+  s.airframe = to.id;
+  if (!tuneChoices(to.id).includes(s.tune)) {
+    s.tune = to.defaultTune;
+  }
+  if (!to.packVoltages.includes(s.packVoltage)) {
+    s.packVoltage = to.packVoltages[0];
+  }
+  if (ratesMatch(s.rates, from.rates)) {
+    s.rates = normaliseRates({ ...s.rates, ...structuredCloneRates(to.rates) });
+  }
+  s.cameraFov = to.cameraFov;
+  s.cameraAngle = clampCameraAngle(to.cameraAngle);
+  return s;
+}
+
+/* A rate profile object from an airframe row, deep enough that normaliseRates
+ * cannot write through into the registry's own literal. */
+function structuredCloneRates(r) {
+  return {
+    type: r.type,
+    roll: { ...r.roll },
+    pitch: { ...r.pitch },
+    yaw: { ...r.yaw },
+  };
+}
+
+/* Is this profile still the airframe's stock one? Type and the three axes;
+ * the throttle cap and curve are the pilot's on any airframe and are not
+ * compared. */
+function ratesMatch(have, want) {
+  if (!have || have.type !== want.type) {
+    return false;
+  }
+  for (const axis of ['roll', 'pitch', 'yaw']) {
+    const a = have[axis];
+    const b = want[axis];
+    if (!a || a.rcRate !== b.rcRate || a.srate !== b.srate || a.expo !== b.expo) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /*
@@ -1517,10 +1639,35 @@ function tuneItem(s, midRun) {
   return choice(
     'Tune',
     `${tuneById(s.tune).note} PIDs, filters and feedforward. Your rates are kept.${midRun ? MID_RUN_WARNING : ''}`,
-    tuneChoices(),
+    tuneChoices(s.airframe),
     s.tune,
     (id) => tuneById(id).name,
     (id) => { s.tune = id; },
+  );
+}
+
+/*
+ * The aircraft row: the top of the Quad screen and the only way to change
+ * the answer the first run gate asked.
+ *
+ * It carries the loudest note on the screen because it is the loudest
+ * change on the screen. Everything else here adjusts one machine; this one
+ * swaps the machine, and it takes the tune, the pack charge and the camera
+ * with it because none of those means anything on the other aircraft. It
+ * also changes what a track IS: a whoop flies a 1.22 by 1.83 m RaceGOW room
+ * and a five inch flies a sixty metre field, so the seated track goes with
+ * it too.
+ */
+function craftItem(s, midRun) {
+  const af = airframeById(s.airframe);
+  const other = AIRFRAMES.find((a) => a.id !== s.airframe) || af;
+  return choice(
+    'Aircraft',
+    `${af.blurb} Changing it loads that machine's tune, its pack and its camera, and switches the track builder between a ${other.trackClass === 'micro' ? 'sixty metre field and a living room' : 'living room and a sixty metre field'}. Your own rates are kept unless they are still the stock ones.${midRun ? MID_RUN_WARNING : ''}`,
+    AIRFRAME_IDS,
+    s.airframe,
+    (id) => airframeById(id).name,
+    (id) => { seatAirframe(s, id); },
   );
 }
 
@@ -1665,6 +1812,94 @@ function linkedMode() {
   return m.mode === 'freestyle' ? 'freestyle' : 'race';
 }
 
+/*
+ * The two aircraft in plan, drawn TO ONE SCALE.
+ *
+ * The viewBox is 300 mm across for both, so the five inch fills it and the
+ * whoop sits in the middle of it at a bit over a fifth of the width, which
+ * is exactly the relationship the two machines have on a bench. That is the
+ * single most useful thing a card can tell somebody who has flown one and
+ * not the other, and it is the one thing two cropped photographs cannot say.
+ *
+ * The five inch is an X: four arms out to four open discs, which is what you
+ * see when you look at one. The whoop is a tub: four rings joined by webs,
+ * with no arm visible anywhere, because there are none. The silhouettes are
+ * the difference between the two designs and they are drawn rather than
+ * described.
+ *
+ * Numbers are millimetres and come from configs/airframes.js, so a change to
+ * an airframe's dimensions redraws its card.
+ */
+function craftSvg(a) {
+  const VB = 300;           /* viewBox side, millimetres */
+  const c = VB / 2;
+  const arm = a.dims.arm * 1000;
+  const prop = a.dims.propR * 1000;
+  const off = arm / Math.SQRT2;
+  const motors = [[off, off], [off, -off], [-off, off], [-off, -off]];
+  const ducted = a.trackClass === 'micro';
+  const parts = [];
+  if (ducted) {
+    /* The tub: the webs first so the rings sit on top of them. */
+    parts.push(`<rect x="${c - off}" y="${c - off}" width="${off * 2}" height="${off * 2}"`
+      + ` rx="${prop * 0.35}" fill="none" stroke="currentColor" stroke-width="${prop * 0.42}"`
+      + ' stroke-opacity="0.30"/>');
+    parts.push(`<line x1="${c - off}" y1="${c - off}" x2="${c + off}" y2="${c + off}"`
+      + ` stroke="currentColor" stroke-width="${prop * 0.34}" stroke-opacity="0.24"/>`);
+    parts.push(`<line x1="${c - off}" y1="${c + off}" x2="${c + off}" y2="${c - off}"`
+      + ` stroke="currentColor" stroke-width="${prop * 0.34}" stroke-opacity="0.24"/>`);
+  } else {
+    for (const [mx, mz] of motors) {
+      parts.push(`<line x1="${c}" y1="${c}" x2="${c + mx}" y2="${c + mz}"`
+        + ` stroke="currentColor" stroke-width="${prop * 0.20}" stroke-opacity="0.55"/>`);
+    }
+    parts.push(`<rect x="${c - 22}" y="${c - 38}" width="44" height="76" rx="10"`
+      + ' fill="currentColor" fill-opacity="0.30"/>');
+  }
+  for (const [mx, mz] of motors) {
+    if (ducted) {
+      /* The duct wall, then the bore, so a ring reads as a ring. */
+      parts.push(`<circle cx="${c + mx}" cy="${c + mz}" r="${prop + 1.6}"`
+        + ' fill="currentColor" fill-opacity="0.34"/>');
+      parts.push(`<circle cx="${c + mx}" cy="${c + mz}" r="${prop}"`
+        + ' fill="none" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.85"/>');
+    } else {
+      parts.push(`<circle cx="${c + mx}" cy="${c + mz}" r="${prop}"`
+        + ' fill="currentColor" fill-opacity="0.16"'
+        + ' stroke="currentColor" stroke-width="1.4" stroke-opacity="0.8"/>');
+    }
+  }
+  if (ducted) {
+    /* The canopy, forward, which is the only thing that says which way it
+     * is pointing. -z is the nose in the craft frame and on this drawing. */
+    parts.push(`<circle cx="${c}" cy="${c - 4}" r="9" fill="currentColor" fill-opacity="0.55"/>`);
+  }
+  return `<svg viewBox="0 0 ${VB} ${VB}" role="img" aria-hidden="true"`
+    + ' preserveAspectRatio="xMidYMid meet" class="craft-plan">'
+    + parts.join('') + '</svg>';
+}
+
+/*
+ * The aircraft, when a link names it. Same rule as linkedMode: somebody
+ * arriving from the builder or the board with a whoop track in hand has
+ * already answered the question, so asking it would be a screen in front of
+ * a decision they made on another page.
+ *
+ * Returns an airframe id or null. Unknown values are null rather than a
+ * fallback, because "the link said something I do not understand" and "the
+ * link said nothing" should both end up asking.
+ */
+function linkedCraft() {
+  let params;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch (e) {
+    return null;
+  }
+  const wanted = params.get('craft');
+  return AIRFRAME_IDS.includes(wanted) ? wanted : null;
+}
+
 function clearLocationHash() {
   const url = new URL(window.location.href);
   if (!url.hash) {
@@ -1704,6 +1939,28 @@ export class Ui {
      * linkedMode.
      */
     this.mode = linkedMode();
+    /*
+     * WHICH AIRCRAFT, ASKED ONCE.
+     *
+     * True while the airframe gate is open, which is a first run that has
+     * never answered and that no link has answered for it. It sits IN FRONT
+     * of the Race or Freestyle gate, because the two questions are not the
+     * same shape and putting a third card beside Race and Freestyle would
+     * pretend they were: Race on a whoop and Race on a five inch are both
+     * real answers.
+     *
+     * Unlike this.mode it IS remembered, in settings.airframeAsked, because
+     * the aircraft is a preference rather than a statement about today. The
+     * Quad screen carries the row for every later change.
+     */
+    const linkedAf = linkedCraft();
+    if (linkedAf) {
+      this.settings.airframe = linkedAf;
+      this.settings.airframeAsked = true;
+      seatAirframe(this.settings, linkedAf);
+      saveSettings(this.settings);
+    }
+    this.craftGate = this.firstRun && !this.settings.airframeAsked;
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
@@ -3745,6 +4002,30 @@ export class Ui {
        * cards, and every word of it is already on the card in a place that
        * says which of the two it belongs to.
        */
+      /*
+       * THE AIRCRAFT GATE, IN FRONT OF THE MODE GATE.
+       *
+       * Asked once on a first run. Two cards rather than a row because the
+       * two machines are not two words, they are two different games: one
+       * is flown across a forty metre field at forty metres a second and the
+       * other is flown round a living room. A sentence does not carry that
+       * and a card can.
+       *
+       * It is deliberately NOT a third card beside Race and Freestyle. Those
+       * two answer "what is this session for" and the aircraft answers "what
+       * am I flying", and Race on a whoop is a real and common answer to
+       * both.
+       */
+      if (this.craftGate) {
+        return AIRFRAMES.map((a) => ({
+          label: a.name,
+          card: `craft-${a.id}`,
+          svg: craftSvg(a),
+          blurb: a.blurb,
+          facts: a.facts,
+          action: `craft-${a.id}`,
+        }));
+      }
       if (!this.mode) {
         return [
           {
@@ -4163,7 +4444,19 @@ export class Ui {
        */
       const midRun = this.returnTo === 'paused';
       return [
-        { label: 'The tune', section: true },
+        /*
+         * Aircraft sits under the tune's own heading rather than under one
+         * of its own, and the heading is renamed to cover both. Two reasons,
+         * and the second is the real one. A machine and its tune are one
+         * subject: the tune list below is the aircraft's, so a heading that
+         * separated them would be drawing a line where the data does not
+         * have one. And scripts/shell-check.js records this screen's
+         * overflow and fails when it grows, which a heading of its own did:
+         * 55 px to 135. The row is what the pilot needs; the heading was
+         * decoration, and decoration is what gives way.
+         */
+        { label: 'The machine', section: true },
+        craftItem(s, midRun),
         tuneItem(s, midRun),
         pidsItem(s, midRun),
         {
@@ -4223,16 +4516,28 @@ export class Ui {
           (v) => { s.launchControl = Boolean(v); },
         ),
         /*
-         * A SIGNPOST, not a copy. Rates are the pilot's, and configs/registry.js
+         * A SIGNPOST, not a copy. Rates are the pilot's, and configs/rates.js
          * says so in capitals: no tune here sets rates. Putting the real row
          * here would be the four-copies-of-Tune problem starting again, so
          * this row says where they are and what they are, and goes there.
+         *
+         * It stays, and one thing about it changed when the Aircraft row
+         * landed above: "stay put when you switch tunes" was the whole of
+         * the claim and is now only half of it. Rates are still the pilot's,
+         * but changing the AIRCRAFT reseeds them if they are still the
+         * outgoing machine's stock profile, because BetaFPV ship 580 deg/s
+         * on a racing whoop against Betaflight's 670 for a five inch. The
+         * note says both.
+         *
+         * scripts/shell-check.js also walks freestyle to Quad to Rates and
+         * back twice and asserts it lands where it started, so this row is
+         * load bearing navigation as well as a signpost.
          */
         {
           label: 'Rates',
           value: ratesSummary(s.rates),
           action: 'rates',
-          note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. This row goes there.${midRun ? MID_RUN_WARNING : ''}`,
+          note: `Not the machine's. Rates are yours, so they live under ${SCREEN_TITLES.pilot} and stay put when you switch tunes. Changing the aircraft reseeds them only if you are still on stock rates. This row goes there.${midRun ? MID_RUN_WARNING : ''}`,
         },
         { label: 'Back', action: 'back' },
       ];
@@ -6203,13 +6508,32 @@ export class Ui {
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', it.label);
         const art = el('div', 'gate-card-art');
-        const img = el('img', 'gate-card-shot');
-        img.src = it.art;
-        /* The name is right underneath it, so the picture is decoration to
-         * anything reading the page aloud. */
-        img.alt = '';
-        img.decoding = 'async';
-        art.append(img);
+        if (it.svg) {
+          /*
+           * A DRAWING, NOT A PHOTOGRAPH, and only the aircraft cards use it.
+           *
+           * Race and Freestyle are photographs because they are answering
+           * "what is this place like", and a picture of a town is the only
+           * honest answer to that. The aircraft cards are answering "how big
+           * is this thing", and the two aircraft are 220 mm and 65 mm across.
+           * A photograph of each, cropped to the same card, throws away the
+           * one fact the pilot most needs, because both fill the frame.
+           *
+           * So both are drawn to ONE scale in one viewBox, plan view, and
+           * the whoop is a third the size of the five inch on the card
+           * because it is a third the size in the world. See craftSvg.
+           */
+          art.classList.add('gate-card-art-drawn');
+          art.innerHTML = it.svg;
+        } else {
+          const img = el('img', 'gate-card-shot');
+          img.src = it.art;
+          /* The name is right underneath it, so the picture is decoration to
+           * anything reading the page aloud. */
+          img.alt = '';
+          img.decoding = 'async';
+          art.append(img);
+        }
         const body = el('div', 'gate-card-body');
         const name = el('div', 'gate-card-name', it.label);
         const blurb = el('p', 'gate-card-blurb', it.blurb);
@@ -7407,7 +7731,7 @@ export class Ui {
    * two choices are cards, the left and right arrows move between them,
    * and a radio's sticks walk them instead of posing the airframe. */
   onGate() {
-    return this.screen === 'title' && !this.mode;
+    return this.screen === 'title' && (this.craftGate || !this.mode);
   }
 
   /* Every screen that draws some of its choices as cards. */
@@ -9168,6 +9492,28 @@ export class Ui {
      * own picker, because choosing a place IS the question they have just
      * asked and a menu row saying so would be a screen in the way.
      */
+    /*
+     * Answering the aircraft gate. It writes the choice, remembers that it
+     * was asked, and falls through to the mode gate rather than launching
+     * anything: the pilot has said what they are flying, not what for.
+     */
+    if (action.startsWith('craft-')) {
+      const id = action.slice('craft-'.length);
+      if (AIRFRAME_IDS.includes(id)) {
+        seatAirframe(this.settings, id);
+        this.settings.airframeAsked = true;
+        saveSettings(this.settings);
+        this.craftGate = false;
+        /* The shell has to hear this before anything is flown: it is the
+         * call that swaps the plant in the compiled module and reloads the
+         * tune. main.js applies it between runs, which the title is. */
+        if (this.onSettings) {
+          this.onSettings(this.settings);
+        }
+        this.renderMenu();
+      }
+      return;
+    }
     if (action === 'mode-race' || action === 'mode-freestyle') {
       this.mode = action === 'mode-race' ? 'race' : 'freestyle';
       this.returnTo = 'title';

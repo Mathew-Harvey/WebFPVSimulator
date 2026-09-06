@@ -29052,3 +29052,159 @@ Every band names a source outside this repository. Measured this turn, 19 of
     at the bottom of the stick, and here that difference is carried by the
     tune rather than by a second and third set of motor constants. Honest
     simplification, written down rather than hidden.
+
+---
+
+## 2026-09-06, whoop stage W3: the choice, and the machine on screen
+
+### The gate
+
+Asked ONCE, on a first run, in front of the Race or Freestyle gate rather
+than beside it. The two questions are not the same shape: Race or Freestyle
+is what this session is for and is deliberately never remembered, and the
+aircraft is a preference. Race on a whoop is a real and common answer to
+both, so a third card beside Race and Freestyle would have pretended they
+were one question.
+
+`settings.airframe` and `settings.airframeAsked` in the blob, the row on
+Quad for every later change, and `?craft=whoop65` answers it without asking,
+exactly as `?map=` and `?share=` already answer the mode gate.
+
+The cards are a DRAWING, not a photograph, and that is the one interesting
+decision on this screen. Race and Freestyle are photographs because they
+answer "what is this place like". The aircraft cards answer "how big is this
+thing", and two photographs cropped to the same card both fill the frame and
+throw that away. So both machines are drawn in plan in ONE 300 mm viewBox:
+the five inch fills it, the whoop sits in the middle at a fifth of the
+width, which is the relationship they have on a bench. The five inch is an X
+with four open discs and the whoop is four rings joined by webs with no arm
+anywhere, because that is the difference between the two designs.
+
+### What travels with the machine
+
+`seatAirframe` in src/ui/ui.js, and the rule it follows is the one the Quad
+screen's own comment already stated: a setting lives with the machine if it
+stops meaning anything when the machine changes. Four do.
+
+  tune         a 6S five inch race tune on a 1S 23 gram quad is not a
+               different feel, it is an oscillation. The Tune row offers
+               only the seated airframe's tunes now, through tunesFor().
+  packVoltage  6S LiPo is 4.20 to 3.50, 1S LiHV is 4.35 to 3.60.
+  camera       fov and tilt, which ui.js already kept in Quad rather than
+               Pilot precisely because they are bolted to the airframe. The
+               whoop gets 115 degrees, the widest stop lens.js offers, and
+               the reason is the ROOM rather than the lens: a RaceGOW track
+               is 1.22 by 1.83 m and the next gate is regularly to one side.
+  rates        the argued one. configs/rates.js says rates are the PILOT'S
+               and they still are, so they are reseeded ONLY when they are
+               still the outgoing machine's stock profile. BetaFPV ship 580
+               deg/s on a racing whoop against Betaflight's 670 for a five
+               inch, so a pilot who has never touched rates should get the
+               new machine's factory numbers rather than the old one's.
+
+`recordKey()` in main.js gains the airframe, with an EMPTY suffix for the
+five inch so every record ever set stays exactly where it is. That is the
+same trick the flight style uses one line above it. A whoop lap and a five
+inch lap on the same track are not within a factor of three of each other
+and the config hash cannot tell them apart, because the tune is a different
+FILE rather than a different plant.
+
+### The craft dimensions are live module bindings now
+
+`CRAFT_ARM`, `CRAFT_PROP_R`, `CRAFT_R`, `CRAFT_V_HALF` and the four world
+scaled versions in src/game/collide.js went from `const` to `let`, with a
+`setCraftAirframe(dims)` that re-seats them. An ES module's exported binding
+is LIVE, so every importer follows without learning that there is more than
+one aircraft. The five inch's numbers are the initial values, so a page that
+never calls it measures what it always measured.
+
+`CRAFT_DIMS` in src/render/craft.js could not follow, because a frozen
+object literal captures the values at import time. It is a `craftDims()`
+function now. The old constant stays, as the five inch's numbers, because
+tests/lib/checks.js imports it by that name and tests/ is not this side's to
+edit; it is correct for the aircraft the checks fly, which is the default.
+
+### The model
+
+`src/render/whoopcraft.js`, its own file rather than a flag in herocraft.js,
+because the two aircraft do not share a silhouette. A five inch is four arms
+and four open discs and what you see is the X. A whoop is a moulded tub with
+four holes in it and there is no arm anywhere on it. A parameterised builder
+would have had two of everything and belonged to neither machine.
+
+Real dimensions: 65 mm wheelbase, 33 mm duct bore round a 31 mm Gemfan 1207
+three blade with a 1 mm tip gap, an Air II canopy with the C03 at the front,
+a LAVA II 1S under the tub, a whip antenna. The duct is a lathe with a
+rounded inlet lip, a straight throat and an exit flare, and the lip is the
+one the physics cares about: plant.c's `k_duct_lip` models the suction peak
+it carries in edgewise flow.
+
+`shell.swapCraft(id)` rebuilds it in place, keeping the pose and the parent,
+disposing the old geometry and re-seating every reference the shell
+publishes. The craft is session lived and the maps are not, which is what
+src/render/craft.js's header is about, and swapping had to keep that.
+
+`createShowcase(canvas, opts)` scales its whole stage by the sweep ratio.
+Every number in that file, the camera distance, the shadow catcher, the wash
+disc, the near and far planes, was composed against a machine that sweeps
+0.1735 m; a whoop sweeps 0.048 and at the same distance was a speck in an
+empty stage, which is what the first capture of one looked like.
+
+### What went wrong on the way
+
+  * `scripts/shell-check.js` failed: the Quad screen's recorded overflow grew
+    from 55 px to 135 when the Aircraft row and its section heading landed.
+    Folding it under the tune's heading, renamed to "The machine", got it to
+    100. Removing the Rates SIGNPOST row got it to 56 and broke the
+    room-return test, which walks freestyle to Quad to Rates and back twice
+    and asserts it lands where it started: that row is load bearing
+    navigation as well as a pointer, and it went back.
+
+    The fix is neither of those and it is not re-recording the baseline. The
+    shared `.menu-scroll` cap is min(58vh - bars, 34em), about 520 px on a
+    900 px window, and this screen draws that list BESIDE a square airframe
+    pose capped at 414 px in a grid column of its own. The list was stopping
+    a hundred pixels short of the picture next to it and scrolling for want
+    of space nothing else wanted. `.screen-quad .menu-scroll` is 68vh now
+    and the recorded overflow went from 55 to 10, which the check reports as
+    an improvement. `tests/shell-baseline.json` was NOT touched.
+
+  * The Rates signpost's note said "stay put when you switch tunes", which
+    was the whole of the claim and is now half of it. It says both now.
+
+  * The first whoop model drew its webs at the ducts' mid height, which is
+    INSIDE the ducts, so from every angle a pilot sees it from it read as
+    four separate cans standing near each other. They are at the lip now,
+    with diagonals through the middle and a skirt underneath, which is what
+    makes four holes read as holes in one part.
+
+  * The first canopy was 23 mm across and 12.5 mm tall sitting on top of the
+    duct lips: on a 65 mm aircraft that is a third of the machine in one
+    solid colour and it read as a balloon tied to a quad. It is 18 mm and
+    9 mm now, sitting down between the front ducts, with a real visor band.
+
+  * The tub was drawn at the five inch's carbon value, 0x1c241e. On a machine
+    where the ducts ARE most of the silhouette that came out as a black blob
+    with a pink canopy floating in it. A whoop frame is moulded
+    polypropylene, not carbon plate, so it is three stops lighter now.
+
+### Verified this turn
+
+`window.__craft()` is a new debug hook reporting the setting, the run's
+latched airframe, the MODULE's airframe, the sweep radius and the mass the
+plant is integrating, as independent answers. The failure this feature is
+most likely to have is the shell and the module disagreeing about what is
+flying, and one number cannot catch that. Driven through the real page:
+
+  {"setting":"whoop65","run":"whoop65","module":1,"sweepM":0.048,
+   "massKg":0.0234,"drawn":"craft"}
+
+and after the gate, with nothing but two keypresses: airframe whoop65, tune
+whoop-champion, rates srate 58, pack 4.35, fov 115.
+
+Clean this turn: lint:presets, lint:fc, lint:catalog, check:clip,
+lint:shell, lint:boot, lint:nouns, lint:responsive, lint:frame, lint:arcade,
+lint:quality, check:path, check:orbit, and whoop:gates 19 of 19.
+`npm run verify` was NOT run: it is expensive and this turn changed no
+physics, the module is byte identical to the one W1 built, and check 15's
+craft bands are the five inch's, which is still the default aircraft.

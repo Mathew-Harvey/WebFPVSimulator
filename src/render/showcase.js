@@ -29,7 +29,26 @@ import { createCraftPose, damp } from './craftpose.js';
 import { disposeSceneGraph } from './shell.js';
 import { SESSION_TEXTURES } from './session-textures.js';
 
-export function createShowcase(canvas) {
+/*
+ * The showcase frames the airframe by its SWEEP, not by a fixed distance.
+ *
+ * Every number in this file, the camera distance, the shadow catcher, the
+ * prop wash disc, the near and far planes and the look at point, was chosen
+ * against a 5 inch that sweeps 0.1735 m to a blade tip. A 65 mm whoop sweeps
+ * 0.048, a third and a bit of that, so at the same distance it is a speck in
+ * the middle of a big empty stage, which is exactly what the first capture
+ * of one looked like.
+ *
+ * So the whole stage is scaled by the ratio. That is better than moving the
+ * camera in, because the shadow catcher and the wash disc have to shrink
+ * with the aircraft too, and one scalar keeps every proportion the shot was
+ * composed at.
+ */
+const SHOWCASE_REF_SWEEP = 0.1735;
+
+export function createShowcase(canvas, opts = {}) {
+  const sweep = opts.sweep && opts.sweep > 0 ? opts.sweep : SHOWCASE_REF_SWEEP;
+  const k = sweep / SHOWCASE_REF_SWEEP;
   let renderer = null;
   try {
     renderer = new THREE.WebGLRenderer({
@@ -61,8 +80,8 @@ export function createShowcase(canvas) {
   }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(28, 1, 0.04, 4);
-  const look = new THREE.Vector3(0, 0.01, 0.02);
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.04 * k, 4 * k);
+  const look = new THREE.Vector3(0, 0.01 * k, 0.02 * k);
 
   const hemi = new THREE.HemisphereLight(0xf0e6d0, 0x2a3828, 0.82);
   scene.add(hemi);
@@ -73,7 +92,7 @@ export function createShowcase(canvas) {
   scene.add(sun);
 
   const catcher = new THREE.Mesh(
-    new THREE.CircleGeometry(0.22, 16),
+    new THREE.CircleGeometry(0.22 * k, 16),
     new THREE.MeshBasicMaterial({
       color: 0x0e140f,
       transparent: true,
@@ -83,7 +102,7 @@ export function createShowcase(canvas) {
     }),
   );
   catcher.rotation.x = -Math.PI / 2;
-  catcher.position.y = -0.064;
+  catcher.position.y = -0.064 * k;
   scene.add(catcher);
 
   const washMat = new THREE.MeshBasicMaterial({
@@ -93,12 +112,12 @@ export function createShowcase(canvas) {
     depthWrite: false,
     fog: false,
   });
-  const wash = new THREE.Mesh(new THREE.CircleGeometry(0.12, 16), washMat);
+  const wash = new THREE.Mesh(new THREE.CircleGeometry(0.12 * k, 16), washMat);
   wash.rotation.x = -Math.PI / 2;
-  wash.position.y = -0.052;
+  wash.position.y = -0.052 * k;
   scene.add(wash);
 
-  const hero = buildHeroCraft({ fog: false, lite: true });
+  const hero = (opts.build || buildHeroCraft)({ fog: false, lite: true });
   const pose = new THREE.Group();
   pose.add(hero.group);
   scene.add(pose);
@@ -107,7 +126,7 @@ export function createShowcase(canvas) {
   const state = {
     az: Math.PI - 0.62,
     el: 0.34,
-    dist: 1.32,
+    dist: 1.32 * k,
     dragAz: 0,
     dragging: false,
     lastX: 0,

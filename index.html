@@ -1174,6 +1174,22 @@
       }
       .gate-card-race .gate-card-fact { color: var(--mint); }
       .gate-card-freestyle .gate-card-fact { color: var(--slate); }
+      /*
+       * The aircraft cards, whose art is a drawing rather than a photograph.
+       * Both machines are drawn in one 300 mm viewBox so the whoop is a fifth
+       * of the width of the five inch on the card, because it is a fifth of
+       * the width of it on a bench. See craftSvg in src/ui/ui.js.
+       */
+      .gate-card-art-drawn {
+        display: grid; place-items: center;
+        background:
+          radial-gradient(120% 90% at 50% 30%, rgba(232, 168, 184, 0.10), transparent 70%),
+          #141c16;
+      }
+      .craft-plan { width: 82%; height: 82%; color: var(--cream); }
+      .gate-card-craft-5inch .gate-card-fact { color: var(--sakura); }
+      .gate-card-craft-whoop65 .gate-card-fact { color: var(--mint); }
+      .gate-card-craft-whoop65 .craft-plan { color: var(--mint); }
 
       .wiki-teaser {
         display: inline-flex; align-items: center; gap: 10px;
@@ -1257,6 +1273,27 @@
        * a short one.
        */
       .screen-quad .craft-showcase-frame { max-height: min(46vh, 420px); }
+      /*
+       * THE QUAD LIST GETS THE ROOM THE COLUMN ALREADY HAS.
+       *
+       * The shared cap is min(58vh - bars, 34em), which on a 900 px window
+       * is about 520 px. This screen draws that list BESIDE a square
+       * airframe pose capped at 46vh, roughly 414 px, in a grid column of
+       * its own, so the list was stopping 100 px short of the picture next
+       * to it and scrolling for want of space nothing else wanted.
+       *
+       * The Aircraft row is what made anybody measure it: scripts/shell-check.js
+       * records this screen's overflow and fails when it grows, and one more
+       * row grew it by 45 px. The answer is not to take a control away and it
+       * is not to re-record the baseline. It is that a three column screen
+       * whose tallest element is 414 px should not cap its list at a height
+       * that makes it scroll while the column beside it has slack.
+       *
+       * 68vh is still under the picture plus the heading, the lede and the
+       * hint line on every window this screen draws three columns on, which
+       * is 1281 px wide and up.
+       */
+      .screen-quad .menu-scroll { max-height: min(calc(68vh - var(--bars)), 40em); }
       /*
        * The quad room on a laptop. Found by measuring the Rates screen
        * beside it: below about 1100 px the three columns cannot fit their

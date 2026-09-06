@@ -81,9 +81,24 @@ import { simLenToWorld } from '../render/frame.js';
  * model and the renderer use, so the three cannot disagree again.
  * tests/lib/checks.js check 15 asserts it against the drawn geometry.
  */
-export const CRAFT_ARM = 0.110;      /* motor centre to airframe centre */
-export const CRAFT_PROP_R = 0.0635;  /* half of five inches */
-export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
+/*
+ * THESE ARE `let`, AND THAT IS LOAD BEARING RATHER THAN SLOPPY.
+ *
+ * There are two airframes now and their dimensions differ by a factor of
+ * three, so a craft radius fixed at module load would score a 65 mm whoop
+ * against a 220 mm sweep. An ES module's exported binding is LIVE: an
+ * importer that wrote `import { CRAFT_R } from './collide.js'` sees the
+ * value this file currently holds, not the value it held when the import
+ * was evaluated. So `setCraftAirframe` below re-seats every one of these and
+ * main.js, craft.js, race.js and the checks all follow without any of them
+ * learning that there is more than one aircraft.
+ *
+ * The five inch's numbers are the initial values, so a page that never calls
+ * setCraftAirframe measures exactly what it always measured.
+ */
+export let CRAFT_ARM = 0.110;      /* motor centre to airframe centre */
+export let CRAFT_PROP_R = 0.0635;  /* half of five inches */
+export let CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
 /* Per-axis motor offset: the X sits on the diagonals, so a motor is
  * CRAFT_ARM / sqrt(2) along body x and along body z. The axis-aligned
  * half-width of one prop disc is this plus CRAFT_PROP_R, 0.1413 m, which
@@ -105,9 +120,9 @@ export const CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
  * src/render/craft.js draws a real 5 inch machine from them and plant.c flies
  * one. Only the query is scaled.
  */
-export const CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
-export const CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
-export const CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
+export let CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
+export let CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
+export let CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
 
 /*
  * The craft's vertical semi-extent in level flight, about its own origin.
@@ -123,8 +138,32 @@ export const CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
  * the prop plane. vHalf still grows from that floor toward CRAFT_R as the
  * craft banks, because a banked X does present a blade tip to the ground.
  */
-export const CRAFT_V_HALF = 0.040;
-export const CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
+export let CRAFT_V_HALF = 0.040;
+export let CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
+
+/*
+ * Seat an airframe's dimensions. Called by the shell when the aircraft
+ * changes, between runs only, because every collision query in flight reads
+ * these and changing them mid lap would move the hull under a craft that is
+ * already resolving a contact.
+ *
+ * configs/airframes.js owns the numbers; this function owns the derivation,
+ * so the sweep radius stays "arm plus blade" for every aircraft rather than
+ * being typed twice.
+ */
+export function setCraftAirframe(dims) {
+  if (!dims) {
+    return;
+  }
+  CRAFT_ARM = dims.arm;
+  CRAFT_PROP_R = dims.propR;
+  CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
+  CRAFT_V_HALF = dims.vHalf;
+  CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
+  CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
+  CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
+  CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
+}
 
 /* The vertical semi-axis at a given tilt of the prop plane from level, in
  * WORLD metres, because that is the space every caller sweeps it through.

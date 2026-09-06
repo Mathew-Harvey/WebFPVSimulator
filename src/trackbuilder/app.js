@@ -30,7 +30,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, elementByKey } from './elements.js';
+import { ELEMENTS, KIND, elementByKey, trackClassOf } from './elements.js';
 import {
   createTrack, createElement, deepClone, deserialize, duplicateTrack,
   elementById, kindOf, isSequenceable, normalize, startPadsOf, touch,
@@ -79,6 +79,57 @@ import {
   pushOwnedListing,
 } from '../share/listing.js';
 
+/*
+ * WHICH KIND OF TRACK A NEW ONE IS.
+ *
+ * A track class is a property of the track, so it has to be decided when a
+ * NEW one is made, and the honest source for that decision is which aircraft
+ * the pilot has seated: a 65 mm whoop flies a RaceGOW room and a 5 inch
+ * flies a sixty metre field.
+ *
+ * Three sources, in order:
+ *
+ *   ?class=micro   an explicit answer in the URL, which is what the
+ *                  simulator's Create a track button carries.
+ *   the settings   the shell's own blob, read as a STRING KEY rather than by
+ *                  importing anything from it. The builder does not import a
+ *                  line of the simulator (see schema.md) and this keeps that
+ *                  true: the coupling is one localStorage key and one field
+ *                  name, both named here, and a change to either shows up as
+ *                  the builder defaulting to a field, which is the safe way
+ *                  round.
+ *   'full'         nobody said, so it is the track this tool has always made.
+ *
+ * Note what is NOT here: an existing document's own class always wins, and
+ * this function is never consulted for one. Opening a RaceGOW track on a 5
+ * inch shows you a RaceGOW track.
+ */
+const SHELL_SETTINGS_KEY = 'webfpv.settings.v3';
+const WHOOP_AIRFRAME_ID = 'whoop65';
+
+export function newTrackClass() {
+  try {
+    const wanted = new URLSearchParams(window.location.search).get('class');
+    if (wanted === 'micro' || wanted === 'full') {
+      return wanted;
+    }
+  } catch (e) {
+    /* No URL to read. Fall through. */
+  }
+  try {
+    const raw = localStorage.getItem(SHELL_SETTINGS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && s.airframe === WHOOP_AIRFRAME_ID) {
+        return 'micro';
+      }
+    }
+  } catch (e) {
+    /* Private mode, or a blob that is not JSON. Fall through. */
+  }
+  return 'full';
+}
+
 export class App {
   constructor(nodes) {
     /* The builder is the simulator's tab, not a tab of its own: the shell
@@ -87,7 +138,7 @@ export class App {
      * this tab rather than opening a second simulator beside it. */
     claimWindowName(SIM_WINDOW);
     this.nodes = nodes;
-    this.doc = createTrack();
+    this.doc = createTrack(undefined, newTrackClass());
     this.selection = new Set();
     this.armed = null;
     /* Which of the course's logos an armed ground decal will wear. Set only
@@ -106,6 +157,11 @@ export class App {
     this.panels = new Panels(this, nodes);
 
     this.restore();
+    /* The palette is the RESTORED document's class, not the default. Panels
+     * builds one in its constructor because it must have something before a
+     * document exists, and restore() runs after that, so a reopened RaceGOW
+     * session was coming back with a field's tools over a room. */
+    this.panels.buildPalette(trackClassOf(this.doc));
     this.buildTopBar();
     this.bindKeys();
     this.bindResize();
@@ -124,7 +180,7 @@ export class App {
      * the autosave must not come back as the canvas they asked to leave. */
     const intent = readBuilderIntent();
     if (intent && intent.kind === 'new') {
-      this.doc = createTrack();
+      this.doc = createTrack(undefined, newTrackClass());
       return;
     }
     const saved = readAutosave();
@@ -140,7 +196,7 @@ export class App {
       }
       return;
     }
-    this.doc = createTrack();
+    this.doc = createTrack(undefined, newTrackClass());
   }
 
   async adoptIncomingShare() {
@@ -148,7 +204,7 @@ export class App {
       const intent = takeBuilderIntent();
       if (intent && intent.kind === 'new') {
         clearShareImport();
-        this.loadDocument(createTrack(), 'New map.');
+        this.loadDocument(createTrack(undefined, newTrackClass()), 'New map.');
         return;
       }
       let share = readShareImport();
@@ -678,6 +734,10 @@ export class App {
 
   loadDocument(doc, message) {
     this.doc = doc;
+    /* The palette is the track class's, so it is rebuilt whenever a document
+     * arrives rather than once at boot. A RaceGOW room and a sixty metre
+     * field are not made of the same parts. */
+    this.panels.buildPalette(trackClassOf(this.doc));
     upgradeStackedFigures(this.doc);
     applyAutoFaces(this.doc);
     this.selection.clear();
@@ -697,7 +757,7 @@ export class App {
 
   newTrack() {
     this.confirm('Start a new track?', 'Anything unsaved in the current one is gone.', () => {
-      this.loadDocument(createTrack(), 'New track.');
+      this.loadDocument(createTrack(undefined, newTrackClass()), 'New track.');
     });
   }
 
@@ -738,7 +798,7 @@ export class App {
   removeCurrent() {
     this.confirm(`Delete "${this.doc.name}"?`, 'It is removed from the saved list. This cannot be undone.', () => {
       deleteTrack(this.doc.id);
-      this.loadDocument(createTrack(), 'Deleted.');
+      this.loadDocument(createTrack(undefined, newTrackClass()), 'Deleted.');
     });
   }
 

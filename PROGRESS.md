@@ -29208,3 +29208,160 @@ lint:quality, check:path, check:orbit, and whoop:gates 19 of 19.
 `npm run verify` was NOT run: it is expensive and this turn changed no
 physics, the module is byte identical to the one W1 built, and check 15's
 craft bands are the five inch's, which is still the default aircraft.
+
+---
+
+## 2026-09-06, whoop stage W4: the RaceGOW micro track builder
+
+### The spec is a file
+
+`src/trackbuilder/racegow.js` holds RaceGOW's published rules as numbers,
+each quoted in a comment beside the constant it fixes. Pipe: 3/4 inch
+schedule 40, OD 26.7 mm, sections cut 673 to 692 mm. Gates: 610 to 711 mm of
+clear opening, every gate on a track the same size. Adjacent gates 686 to
+838 mm centre to centre, nominally 762, stacked or side by side. A ground
+gate's centre at 508 mm or lower. The second gate of a stack at 1067 mm or
+more, the third at 1753. Poles 356 mm from a gate and 914 from each other.
+The Elevated Gate's sill at 1422. The whole course inside 1.22 by 1.83 m at
+the minimum gate size, scaled with the gates.
+
+The room is the one number RaceGOW does not publish and a simulator has to.
+5 by 6 m with a 2.4 m ceiling: a two car garage or a large living room,
+which holds a 28 inch track with 1.4 m of run off on the short sides.
+
+### The class
+
+`trackClass`, in the document, 'full' or 'micro', defaulting to 'full' on
+read so every track ever written stays what it was. SCHEMA_VERSION 2 to 3.
+A version 2 reader meeting a version 3 micro document reads it best effort,
+drops the field and draws a RaceGOW course as a full sized one, which is a
+picture that is wrong rather than a crash: that is what this schema says it
+does, and it is why the version went up rather than the field being smuggled
+in at 2.
+
+A NEW track's class comes from the aircraft: `?class=micro` in the builder's
+URL, else the shell's own settings blob read as a string key. The builder
+does not import a line of the simulator (schema.md) and that stays true; the
+coupling is one localStorage key and one field name, both named in one
+function, and a change to either shows up as the builder defaulting to a
+field, which is the safe way round. An existing document's own class always
+wins: opening a RaceGOW track on a 5 inch shows you a RaceGOW track.
+
+### What the class changes
+
+Every element gets a `microDims` block beside its `dims`, and `createElement`
+takes the track's. A gate dropped on a room is 711 mm across; one dropped on
+a field is 1524. The tower becomes RaceGOW's Elevated Gate at a 1422 mm
+sill and ONE opening rather than two, because a second at 56 plus 30 inches
+would put its top through a 2.4 m ceiling. The dive gate becomes the
+Horizontal Gate at 900 mm rather than 15 ft. The start pads become ONE pad,
+which is not a scaled down grid, it is the format: RaceGOW has no heats,
+every pilot flies alone at home.
+
+Two new element types. `pole` is RaceGOW's Vertical Pole, and it is a MARKER,
+which is this builder's word for "passed on one side, and the pass side is a
+virtual gate" - exactly what a pole is, so the existing scoring, racing line
+and warnings all work on one without a line of new code. `horizontalPole` is
+an OBSTACLE with a `defaultZ` of 950 mm, so it is a bar in the air rather
+than a wall on the floor.
+
+The micro palette is its own list rather than the full one with two entries
+appended, because a palette is a statement about what this kind of track is
+made of: a RaceGOW course has no flagged gates and no MultiGP dive gate.
+
+Two gate presets, RaceGOW 28 in and 24 in, and the level pitch a preset
+applies is the SPACING RULE rather than the frame's own geometry. At a 28
+inch opening the frame's pitch would be 29.05 inches, legal by rule 3 but
+leaving the stack half an inch of margin on rule 5; at 24 inches it would be
+25.05, which BREAKS rule 3. Keeping the nominal 30 is right at either size.
+
+The tuning block gains a micro twin for every length: the room, a one inch
+grid, a 0.45 m curvature warning (the same reasoning as the full sized 2.5,
+a fifth of the speed and a twentieth of the radius), 0.25 m of boundary
+slack, 0.10 m of barrier clearance and a 0.84 m stack wrap.
+
+### The rules are checked
+
+`collectRaceGowWarnings` in warnings.js, on a micro track only. Opening
+range, one gate size, the two stack heights, the ground gate centre, the
+ceiling, the pole clearances and the envelope. These are not the tool's
+opinion about what flies well, which is what every other warning in that
+file is: they are somebody else's published rules, and a track that breaks
+one is a track whose time would not be accepted. Messages carry inches AND
+millimetres, because an author checking their build against a YouTube video
+needs the inches.
+
+### Four scale bugs the pictures caught
+
+  1. THE MARKER VIRTUAL GATE, which the recon had already ranked as the
+     worst. `MARKER_GATE_MIN_W` is 3.0 m: a scoring square wider than half
+     the room, around a pole 27 mm thick. Micro constants sized against
+     RaceGOW's own 14 inch pole rule rather than by dividing the full sized
+     ones, and they are separate constants rather than a ratio applied to
+     whatever clearance an element declares, because deriving them would
+     change the square on every full sized track whose author edited a
+     clearance, and some of those are published with times on them.
+
+  2. THE SEQUENCE ENTRY'S CLEARANCE READ THE TYPE, NOT THE ELEMENT.
+     `createSequenceEntry` took `def.dims.clearance`, so a RaceGOW pole with
+     its own 14 inch clearance got a sequence entry carrying the five inch
+     flag's 1.5 m. It reads the placed element's own now, with the type as
+     the fallback, which also fixes a smaller pre-existing bug: an author who
+     widened a flag's clearance and then added a second pass through it got
+     the factory number back.
+
+  3. RULE 3 WAS CHECKED IN TWO DIMENSIONS AND FAILED RACEGOW'S OWN TRACK 8.
+     That track has an Elevated Gate "centered between the Side by Side
+     gates and on the same plane", so in plan it is 15 inches from each of
+     them, which a flat distance reads as an illegal pair. In space it is 58
+     inches away because its centre is 56 inches up. The rule says "center to
+     center of the gates" and a centre has three coordinates.
+
+     The same check was also flagging any pair outside the band inside some
+     adjacency radius, which flags a track for having two gates 1.1 m apart.
+     Two gates 1.1 m apart are not badly spaced adjacent gates, they are two
+     gates. The only way a track can break rule 3 is by putting a pair
+     CLOSER than 27 inches. The upper half is a note, in the window where a
+     pair is nearly a pair.
+
+  4. THE GATES WERE DRAWN AS MULTIGP BANNER BOARDS. A 0.42 m printed sleeve
+     down each upright, on a 0.711 m opening, covers three fifths of the
+     hole. A RaceGOW gate is four lengths of bare white PVC and four
+     fittings and there is nothing to print on; sponsors in that world are
+     banners on the wall of the room, which is not part of the track. No
+     dress on a micro aperture, and the tube is 3/4 inch rather than 1 inch.
+
+Also: the 3D flying order numbers are drawn at a WORLD size of 1.1 m, so on a
+RaceGOW room the course disappeared behind its own labels. Scaled, with
+every standoff scaled with them, because a number that shrinks but keeps a
+0.7 m gap is a number floating away from what it names.
+
+### What is NOT built, and why
+
+RaceGOW's diagrams draw SIDE BY SIDE GATES as one element and this builder
+does not have one. It would need a lateral offset inside an aperture
+structure, and every opening this builder has ever had is offset
+VERTICALLY: apertureLevels, apertureCenter, entryAnchor, the 2D plan, the 3D
+frames and the sequence editor all read a level's sill and centre height and
+nothing else. What a side by side actually is, physically, is two gates 30
+inches apart that share a vertical pipe, and the thing that makes it a
+RaceGOW side by side rather than two gates near each other is rule 3, which
+IS checked. The tool holds the rule; the author places the second gate. A
+compound placement would go in app.js's place path beside the auto
+sequencing it already does for a stack.
+
+### Measured this turn
+
+A five element RaceGOW shaped course built through the real builder in
+headless Chromium: start/finish gate, a side by side pair at 762 mm, an
+elevated gate centred above them at a 1422 mm sill, and a pole. Lap length
+6.8 m, which is the right order: RaceGOW5's leaderboards give a fastest
+single lap of 2.26 s and a median of 5.87 s, and a whoop covers 6.8 m in
+about 2 s flat out. The warnings that fired were the four real ones about
+the flying order and one note saying the course is 3 cm over the published
+envelope, which it was.
+
+Clean this turn: check:clip 495 of 495, check:path, check:orbit, lint:shell,
+lint:boot, lint:responsive, lint:presets, lint:fc, lint:nouns. `npm run
+verify` was NOT run: nothing in this turn touched the physics, the module or
+the build, and the wasm is byte identical to the one W1 built.

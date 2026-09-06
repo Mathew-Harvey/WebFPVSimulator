@@ -38,7 +38,11 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, TUNING, apertureLevels, elementHeight, normalizeFlagSide } from './elements.js';
+import {
+  ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, apertureLevels,
+  defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide,
+  trackClassOf, tuningFor,
+} from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
 
 /*
@@ -58,7 +62,17 @@ import { apertureFrame, wrapAngle } from './geometry.js';
  * `branding.logo` into the list as the first logo. It is a one way upgrade,
  * which is what a schema version is for.
  */
-export const SCHEMA_VERSION = 2;
+/*
+ * 3 since the micro class landed. A version 2 document has no `trackClass`
+ * and normalize defaults it to 'full', which is what every one of them is,
+ * so nothing that exists changes meaning. A version 2 READER meeting a
+ * version 3 micro document reads it best effort, drops the field it does not
+ * know, and draws a RaceGOW course as a full sized one, which is a picture
+ * that is wrong rather than a crash: that is the documented behaviour of
+ * this schema and the reason the version went up rather than the field being
+ * smuggled in at 2.
+ */
+export const SCHEMA_VERSION = 3;
 
 /*
  * ONE MARK, as a data URL, and the cap on it. The list they live in, and the
@@ -233,23 +247,37 @@ function nowUtc() {
 /* Creation                                                            */
 /* ------------------------------------------------------------------ */
 
-export function createTrack(name = 'Untitled track') {
+export function createTrack(name, cls = TRACK_CLASS_DEFAULT) {
+  /* Defaulted here rather than in the signature so a caller that only wants
+   * to name the class can pass undefined for the name, which every one of
+   * app.js's six call sites does. */
+  name = name ?? 'Untitled track';
   const stamp = nowUtc();
+  const T = tuningFor(cls);
   return {
     schemaVersion: SCHEMA_VERSION,
     id: newTrackId(),
     name,
     createdUtc: stamp,
     modifiedUtc: stamp,
+    /*
+     * WHAT KIND OF TRACK THIS IS, and it is a property of the track rather
+     * than of the pilot. 'full' is the sixty metre field flown on a 5 inch;
+     * 'micro' is a RaceGOW room flown on a 65 mm whoop. The two are
+     * different objects: different element sizes, a different field, a
+     * different grid, different warnings and a lap that is three seconds
+     * rather than thirty.
+     */
+    trackClass: TRACK_CLASSES.includes(cls) ? cls : TRACK_CLASS_DEFAULT,
     field: {
-      width: TUNING.fieldWidth,
-      depth: TUNING.fieldDepth,
-      gridSize: TUNING.gridSize,
+      width: T.fieldWidth,
+      depth: T.fieldDepth,
+      gridSize: T.gridSize,
     },
     settings: {
-      tangentScale: TUNING.tangentScale,
-      minCurveRadius: TUNING.minCurveRadius,
-      samplesPerSegment: TUNING.samplesPerSegment,
+      tangentScale: T.tangentScale,
+      minCurveRadius: T.minCurveRadius,
+      samplesPerSegment: T.samplesPerSegment,
     },
     /*
      * What the course is dressed in: up to five sponsors' logos, in the
@@ -273,15 +301,26 @@ export function createElement(doc, type, position, yaw = 0) {
   if (!def) {
     throw new Error(`unknown element type: ${type}`);
   }
+  /* The dimensions, the tilt and the starting height all come from the
+   * TRACK'S class, so a gate dropped on a RaceGOW room is 711 mm across and
+   * one dropped on a field is 1524. Copied out of elements.js rather than
+   * referenced, because the document has to stay readable on its own and
+   * because editing a default must not silently resize a track somebody
+   * already flew. */
+  const cls = trackClassOf(doc);
   const el = {
     id: newElementId(doc),
     type,
     name: '',
-    position: { x: num(position.x), y: num(position.y), z: num(position.z ?? 0) },
+    position: {
+      x: num(position.x),
+      y: num(position.y),
+      z: num(position.z ?? defaultZ(type, cls)),
+    },
     yaw: num(yaw),
-    pitch: num(def.pitch ?? 0),
+    pitch: num(defaultPitch(type, cls)),
     yawOverridden: false,
-    dims: { ...def.dims },
+    dims: defaultDims(type, cls),
   };
   if (def.kind === KIND.ANNOTATION) {
     el.text = 'Label';
@@ -330,7 +369,23 @@ export function createSequenceEntry(doc, elementId, apertureIndex = 0) {
      * results panel warns about any that survive. */
     entry: def.kind === KIND.APERTURE ? 0 : null,
     passSide: def.kind === KIND.MARKER ? 'left' : null,
-    clearance: def.kind === KIND.MARKER ? num(def.dims.clearance) : null,
+    /*
+     * FROM THE PLACED ELEMENT, not from the type's default, and the micro
+     * class is what made this matter.
+     *
+     * A pole on a RaceGOW track carries a clearance of 14 inches, which is
+     * the distance the diagrams dimension between a pole and a gate. Read
+     * off the TYPE it was 1.5 m, the five inch flag's, which on a five metre
+     * room is a scoring square wider than the course. It was also already
+     * wrong in the small way: an author who widened a flag's clearance and
+     * then added a second pass through it got the factory number back.
+     *
+     * The type stays as the fallback for an element whose dims have somehow
+     * lost the field.
+     */
+    clearance: def.kind === KIND.MARKER
+      ? num(el?.dims?.clearance ?? def.dims.clearance)
+      : null,
     overridden: false,
   };
   return entry;
@@ -477,10 +532,17 @@ export function normalize(raw) {
     name: str(src.name, 'Untitled track'),
     createdUtc: str(src.createdUtc, base.createdUtc),
     modifiedUtc: str(src.modifiedUtc, base.modifiedUtc),
+    /* Defaulted to 'full' rather than repaired, because a document without
+     * one is a document written before micro tracks existed and every one of
+     * those IS full sized. A repair note here would cry wolf on every track
+     * in the repository. */
+    trackClass: TRACK_CLASSES.includes(src.trackClass) ? src.trackClass : TRACK_CLASS_DEFAULT,
     field: {
       width: Math.max(5, num(src.field?.width, base.field.width)),
       depth: Math.max(5, num(src.field?.depth, base.field.depth)),
-      gridSize: Math.max(0.1, num(src.field?.gridSize, base.field.gridSize)),
+      /* 0.005 rather than 0.1: a RaceGOW grid is one inch, 0.0254, and a
+       * floor of a tenth of a metre is a MultiGP field's assumption. */
+      gridSize: Math.max(0.005, num(src.field?.gridSize, base.field.gridSize)),
     },
     settings: {
       tangentScale: Math.max(0.01, num(src.settings?.tangentScale, base.settings.tangentScale)),
@@ -661,7 +723,11 @@ export function normalize(raw) {
     let clearance = null;
     if (def.kind === KIND.MARKER) {
       passSide = rawSeq.passSide === 'right' ? 'right' : 'left';
-      clearance = Math.max(0, num(rawSeq.clearance, def.dims.clearance));
+      /* Same rule as createSequenceEntry: the element's own, then the
+       * type's. A document that stores a clearance keeps it either way; this
+       * is only the fallback for one that does not. */
+      const owner = doc.elements.find((e) => e.id === elementId);
+      clearance = Math.max(0, num(rawSeq.clearance, owner?.dims?.clearance ?? def.dims.clearance));
     }
 
     doc.sequence.push({

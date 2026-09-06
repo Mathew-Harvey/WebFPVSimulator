@@ -33,7 +33,7 @@
 import {
   createTrack, createElement, deserialize, elementById, normalize,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf,
-  logoForDecal, dressOrder, LOGO_SLOTS,
+  logoForDecal, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection } from './faces.js';
 import { addToSequence, addNextLevel, sequenceLabel, faceLabel } from './sequence.js';
@@ -2170,7 +2170,12 @@ function suiteBranding() {
     && migrated.doc.branding.logos[0].image === png(120)
     && migrated.doc.branding.logos[0].name === 'acme.png');
   check('and the migration is silent', migrated.repairs.length === 0, migrated.repairs.join('; '));
-  check('the document is written as version 2', toPlain(migrated.doc).schemaVersion === 2);
+  /* Against SCHEMA_VERSION rather than a literal. The claim this check is
+   * making is "normalize writes the CURRENT version", and it was written as
+   * a literal 2, so it failed the day the version became 3 for the micro
+   * track class while the behaviour it tests was unchanged. */
+  check(`the document is written as version ${SCHEMA_VERSION}`,
+    toPlain(migrated.doc).schemaVersion === SCHEMA_VERSION);
   check('and the old spelling is not written back',
     !('logo' in toPlain(migrated.doc).branding));
 

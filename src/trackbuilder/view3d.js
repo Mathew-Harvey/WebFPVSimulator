@@ -46,7 +46,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, trackClassOf, virtualApertureDims } from './elements.js';
+import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logosOf, logoForDecal, dressOrder,
 } from './model.js';
@@ -838,10 +839,18 @@ export class View3D {
      * number in the top hole: centre plus half a 5 ft opening is the
      * middle of the level above. A stack flown low then high has to show
      * 2 in the bottom and 7 in the top, not both in the top. */
+    /*
+     * The flying-order numbers are drawn at a WORLD size, so on a RaceGOW
+     * room they were 1.1 m tall over a 0.71 m gate: the whole course
+     * disappeared behind its own labels. One scale, applied to the height
+     * and to every standoff, because a number that shrinks but keeps a 0.7 m
+     * gap is a number floating in the air away from what it names.
+     */
+    const k = trackClassOf(this.host.doc) === 'micro' ? 0.30 : 1;
     for (const n of numbers) {
       let label = String(n.number);
-      let worldH = 1.1;
-      const spritePos = { x: 0, y: 0, z: 1.6 };
+      let worldH = 1.1 * k;
+      const spritePos = { x: 0, y: 0, z: 1.6 * k };
       if (def.kind === KIND.APERTURE) {
         const levels = aperturesOf(el);
         const ap = levels[Math.min(n.apertureIndex ?? 0, levels.length - 1)];
@@ -849,17 +858,17 @@ export class View3D {
           const f = apertureFrame(el.yaw, el.pitch);
           const same = numbers.filter((x) => (x.apertureIndex ?? 0) === (n.apertureIndex ?? 0));
           const slot = Math.max(0, same.findIndex((x) => x.seq === n.seq));
-          const along = 0.55 + slot * 0.4;
+          const along = (0.55 + slot * 0.4) * k;
           spritePos.x = f.normal.x * along;
           spritePos.y = f.normal.y * along;
           spritePos.z = ap.centerH + f.normal.z * along;
           label = `${n.number}  ${levelName(el, n.apertureIndex)}`;
-          worldH = 0.85;
+          worldH = 0.85 * k;
         } else {
-          spritePos.z = ap.centerH + ap.clearH / 2 + 0.7;
+          spritePos.z = ap.centerH + ap.clearH / 2 + 0.7 * k;
         }
       } else {
-        spritePos.z = (def.kind === KIND.MARKER ? el.dims.height : 1.0) + 0.7;
+        spritePos.z = (def.kind === KIND.MARKER ? el.dims.height : 1.0 * k) + 0.7 * k;
       }
       const sprite = textSprite(label, worldH, '#101a26', selected ? '#ffd45c' : '#f7e8cd');
       sprite.position.set(spritePos.x, spritePos.y, spritePos.z);
@@ -871,7 +880,13 @@ export class View3D {
   buildAperture(group, el, numbers, selected) {
     const mat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.frame });
     const levels = aperturesOf(el);
-    const tube = FRAME_TUBE_OD;
+    /*
+     * The pipe. 1 inch schedule 40 on a MultiGP field, 3/4 inch on a
+     * RaceGOW one, which is what RaceGOW's rules name twice and what every
+     * one of their build videos is filmed around.
+     */
+    const micro = trackClassOf(this.host.doc) === 'micro';
+    const tube = micro ? RACEGOW_PIPE_OD : FRAME_TUBE_OD;
     const f = apertureFrame(el.yaw, el.pitch);
     const basis = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(f.widthAxis.x, f.widthAxis.y, f.widthAxis.z),
@@ -929,7 +944,20 @@ export class View3D {
      * sleeve and no top rail to hang a header from, which is what
      * src/render/scene.js builds too.
      */
-    if (Math.abs(el.pitch) < Math.PI / 6) {
+    /*
+     * NO PRINTED DRESS ON A RACEGOW GATE, and it is not a scale problem, it
+     * is a fact about the object.
+     *
+     * A MultiGP gate is a printed sleeve down each upright and a header
+     * banner over the top rail, and that is what a sponsor's mark goes on.
+     * A RaceGOW gate is four lengths of bare white PVC and four fittings;
+     * there is nothing to print on. Sponsors in that world are banners on
+     * the wall of the room, which is not part of the track.
+     *
+     * The scale is the other half of it: the sleeve is 0.42 m wide, which on
+     * a 0.711 m opening would cover three fifths of the hole.
+     */
+    if (Math.abs(el.pitch) < Math.PI / 6 && !micro) {
       const kit = this.dressFor(el);
       const top = levels[levels.length - 1];
       const bottom = levels[0];
@@ -1169,7 +1197,7 @@ export class View3D {
       if (!dir) {
         continue;
       }
-      const dims = virtualApertureDims(el, seq);
+      const dims = virtualApertureDims(el, seq, trackClassOf(this.host.doc));
       const u = normalize({ x: dir.x, y: dir.y, z: 0 }, { x: 1, y: 0, z: 0 });
       /* Which way off the pole the pass is, shared with path.js so the
        * preview and the racing line agree, all the way round a turned

@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, flagLeanSign, flagSideOf, flagSideSigns, gateFlagHeight, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
@@ -75,7 +75,18 @@ import { guideFromKnots } from './guide.js';
  * its only use, which reads as though 2.5 m were the parking distance when
  * the quad has always been parked at 7.5.
  */
+/*
+ * How far behind the first gate a quad is parked when the track has no start
+ * pads, in metres.
+ *
+ * 7.5 is a five inch's: far enough back to be lined up and rolling by the
+ * gate. On a RaceGOW course the whole track fits in 1.42 by 2.13 m and the
+ * room is 5 by 6, so 7.5 m behind the first gate is outside the building.
+ * 1.2 is the same idea at the same scale: about two gate widths, which on a
+ * whoop at 4 m/s is a second of run up.
+ */
 const SPAWN_BACK = 7.5;
+const SPAWN_BACK_MICRO = 1.2;
 
 /*
  * The direction of travel through a gate is MINUS its plane normal, which is
@@ -188,6 +199,13 @@ export function courseFromDocument(raw) {
   upgradeStackedFigures(doc);
   plantImportedHeights(doc);
   const field = doc.field;
+  /*
+   * The track class travels with the course into the game, because almost
+   * everything downstream of here is a length: the gate meshes, the pass
+   * volumes, the spawn setback, the guide paint and the camera framing. A
+   * course object that did not carry it would make every one of those guess.
+   */
+  const cls = trackClassOf(doc);
   const warnings = [...repairs];
 
   /* One structure per element. Markers stand on the field; flags and cones
@@ -285,7 +303,7 @@ export function courseFromDocument(raw) {
       if (clearance < 0.05) {
         continue;
       }
-      const dims = virtualApertureDims(el, knot.seq);
+      const dims = virtualApertureDims(el, knot.seq, cls);
       const t = knot.tangent;
       const travel = { x: t.x, y: t.z, z: -t.y };
       const heading = headingForTravel(travel.x, travel.z);
@@ -426,9 +444,10 @@ export function courseFromDocument(raw) {
     };
   } else if (stations.length) {
     const first = stations[0];
+    const back = cls === 'micro' ? SPAWN_BACK_MICRO : SPAWN_BACK;
     spawn = {
-      x: first.x + Math.sin(first.yaw) * SPAWN_BACK,
-      z: first.z + Math.cos(first.yaw) * SPAWN_BACK,
+      x: first.x + Math.sin(first.yaw) * back,
+      z: first.z + Math.cos(first.yaw) * back,
       yaw: first.yaw,
     };
     warnings.push('No start pads in the track, so the quad is parked behind the first gate.');
@@ -470,6 +489,12 @@ export function courseFromDocument(raw) {
     /* The marks painted on the grass, in scene metres. See groundDecals. */
     decals: groundDecals(doc, field),
     field: { width: field.width, depth: field.depth },
+    /*
+     * 'full' is a sixty metre field flown on a 5 inch; 'micro' is a RaceGOW
+     * room flown on a 65 mm whoop. Everything the renderer, the race timer
+     * and the guide paint do with a length has to read this.
+     */
+    trackClass: cls,
     structures,
     stations,
     spawn,

@@ -33,7 +33,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, FRAME_TUBE_OD, flagLeanSign, flagSideOf, flagSideSigns, virtualApertureDims } from './elements.js';
+import { ELEMENTS, KIND, FRAME_TUBE_OD, flagLeanSign, flagSideOf, flagSideSigns, trackClassOf, virtualApertureDims } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, apertureCenter, logoForDecal,
 } from './model.js';
@@ -926,7 +926,7 @@ export class View2D {
     const ang = Math.atan2(-u.y, u.x);
 
     if ((seq.clearance ?? 0) >= 0.05) {
-      const dims = virtualApertureDims(el, seq);
+      const dims = virtualApertureDims(el, seq, trackClassOf(this.host.doc));
       /* The virtual gate, in plan: a green bar the width of the scoring
        * square, sitting on the pass side. A vertical square collapses to a
        * bar the same way a real gate does. Its centre is `outward` past the

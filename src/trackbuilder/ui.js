@@ -32,8 +32,9 @@
 
 import {
   ELEMENTS, KIND, PATH_TOGGLE, paletteItems, FLAG_SIDES, flagSideOf, countElementsByType,
-  GATE_PRESETS, applyGatePreset, matchingGatePreset, levelPitchFor, apertureLevels,
-  elementHeight,
+  GATE_PRESETS, MICRO_GATE_PRESETS, gatePresetsFor,
+  applyGatePreset, matchingGatePreset, levelPitchFor, apertureLevels,
+  elementHeight, TRACK_CLASS_DEFAULT, trackClassOf,
 } from './elements.js';
 import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal,
@@ -233,9 +234,16 @@ export class Panels {
 
   /* ---------------- palette ---------------- */
 
-  buildPalette() {
+  /*
+   * Rebuilt when the track class changes, not only at construction, because
+   * a RaceGOW room and a sixty metre field are not made of the same parts: a
+   * micro track has poles and horizontal poles and no flagged gates or
+   * MultiGP dive gate. app.js calls it after restore and on every load.
+   */
+  buildPalette(cls = TRACK_CLASS_DEFAULT) {
     const host = this.nodes.palette;
     host.textContent = '';
+    this.paletteClass = cls;
     this.paletteButtons = new Map();
 
     const track = el('div', 'tb-group');
@@ -243,7 +251,7 @@ export class Panels {
     const extra = el('div', 'tb-group');
     extra.append(el('h3', null, 'Extra'));
 
-    for (const def of paletteItems()) {
+    for (const def of paletteItems(cls)) {
       const b = el('button', 'tb-tool');
       b.type = 'button';
       b.title = def.note;
@@ -646,7 +654,9 @@ export class Panels {
     const current = all ? matchingGatePreset(first.dims) : null;
     host.append(el('h3', null, elements.length > 1 ? `Opening size, ${elements.length} gates` : 'Opening size'));
     const grid = el('div', 'tb-fig-grid');
-    for (const preset of GATE_PRESETS) {
+    /* The class's own presets: MultiGP's four on a field, RaceGOW's two
+     * legal sizes in a room. */
+    for (const preset of gatePresetsFor(this.paletteClass ?? TRACK_CLASS_DEFAULT)) {
       const b = el('button', current && current.id === preset.id ? 'tb-fig-card on' : 'tb-fig-card');
       b.type = 'button';
       b.title = preset.hint;
@@ -777,6 +787,27 @@ export class Panels {
 
   renderFieldSettings(host, doc) {
     host.append(el('p', 'tb-help', 'Nothing selected. Click an element to edit it, or drag a box on empty ground to select several.'));
+    /*
+     * WHAT KIND OF TRACK THIS IS, said out loud, because everything else on
+     * this screen is a consequence of it: the palette, the gate sizes, the
+     * grid, the warnings and the field. An author who opened the wrong one
+     * should find out here rather than by wondering where the flags went.
+     *
+     * It is READ ONLY on purpose. Changing a track's class after it has
+     * elements on it would leave a room full of 5 ft gates or a field of
+     * 28 in ones, and neither is a track anybody meant to build. The class
+     * is chosen when the track is made, from the aircraft that is seated.
+     */
+    {
+      const micro = trackClassOf(doc) === 'micro';
+      host.append(el('h3', null, 'Track'));
+      const line = el('p', 'tb-help');
+      line.append(el('strong', null, micro ? 'RaceGOW micro' : 'Full size'));
+      line.append(document.createTextNode(micro
+        ? ' \u2014 a 65 mm whoop in a room. Gates 24 to 28 in, adjacent gates 30 in centre to centre, the whole track inside 4 by 6 ft. Grid is one inch.'
+        : ' \u2014 a 5 inch quad on a field. MultiGP gate sizes, grid in metres.'));
+      host.append(line);
+    }
     host.append(el('h3', null, 'Field'));
     const grid = el('div', 'tb-grid3');
     grid.append(
@@ -786,9 +817,18 @@ export class Panels {
       this.field('field-d', 'Depth', doc.field.depth, (val) => {
         this.host.edit('field', (d) => { d.field.depth = Math.max(5, val); });
       }, { suffix: 'm', step: 1 }),
+      /*
+       * A tenth of a metre was the floor and half a metre was the step, both
+       * of which are a MultiGP field's. A RaceGOW grid is ONE INCH, 0.0254,
+       * because every dimension their rules publish is a whole number of
+       * inches and a metric grid would put none of them on a line. The floor
+       * has to come down for that to be typeable at all.
+       */
       this.field('field-g', 'Grid', doc.field.gridSize, (val) => {
-        this.host.edit('field', (d) => { d.field.gridSize = Math.max(0.1, val); });
-      }, { suffix: 'm', step: 0.5 }),
+        this.host.edit('field', (d) => { d.field.gridSize = Math.max(0.005, val); });
+      }, trackClassOf(doc) === 'micro'
+        ? { suffix: 'm', step: 0.0254, places: 4 }
+        : { suffix: 'm', step: 0.5 }),
     );
     host.append(grid);
 

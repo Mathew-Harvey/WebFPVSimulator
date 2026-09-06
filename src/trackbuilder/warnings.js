@@ -34,7 +34,12 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, TUNING } from './elements.js';
+import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor } from './elements.js';
+import {
+  GATE_OPENING_MIN, GATE_OPENING_MAX, GATE_SPACING_MIN, GATE_SPACING_MAX,
+  GROUND_GATE_CENTRE_MAX, STACK2_CENTRE_MIN, STACK3_CENTRE_MIN,
+  POLE_FROM_GATE_MIN, POLE_FROM_POLE_MIN, ROOM_HEIGHT, envelopeFor, inches,
+} from './racegow.js';
 import { elementById, kindOf, startPadsOf } from './model.js';
 import { sequenceLabel, unsequencedElements } from './sequence.js';
 import { dist, insideYawedBox, lerp, yawVector } from './geometry.js';
@@ -53,6 +58,9 @@ function note(code, message, extra = {}) {
  */
 export function collectWarnings(doc, path) {
   const out = [];
+  if (trackClassOf(doc) === 'micro') {
+    collectRaceGowWarnings(doc, out);
+  }
 
   /* -------- the course itself, no line needed -------- */
 
@@ -171,8 +179,12 @@ export function collectWarnings(doc, path) {
   /* -------- barriers -------- */
 
   const barriers = doc.elements.filter((e) => kindOf(e) === KIND.OBSTACLE);
+  /* The clearance a barrier gets is the TRACK CLASS'S: the line is a
+   * centreline and the machine that flies it is 0.35 m wide or 0.096 m
+   * wide. */
+  const barrierPad = tuningFor(trackClassOf(doc)).barrierClearance;
   for (const bar of barriers) {
-    const hit = firstBarrierHit(path, bar);
+    const hit = firstBarrierHit(path, bar, barrierPad);
     if (hit) {
       out.push(warn('barrier', `The line passes through ${bar.name || ELEMENTS[bar.type].label} at ${hit.s.toFixed(1)} m along the lap.`, {
         elementId: bar.id,
@@ -184,7 +196,7 @@ export function collectWarnings(doc, path) {
 
   /* -------- the field, and the ground -------- */
 
-  const slack = TUNING.boundarySlack;
+  const slack = tuningFor(trackClassOf(doc)).boundarySlack;
   let outside = null;
   let under = null;
   for (const smp of path.samples) {
@@ -289,12 +301,11 @@ function describe(doc, knot) {
  * because a barrier can be thinner than the sample spacing and a test that
  * only looks at the samples would let the line pass clean through a fence.
  */
-function firstBarrierHit(path, bar) {
+function firstBarrierHit(path, bar, pad) {
   const halfW = bar.dims.width / 2;
   const halfD = bar.dims.depth / 2;
   const minZ = bar.position.z;
   const maxZ = bar.position.z + bar.dims.height;
-  const pad = TUNING.barrierClearance;
   const sub4 = 4;
   /*
    * Stop one short and test the last sample on its own. The loop used to run
@@ -318,6 +329,236 @@ function firstBarrierHit(path, bar) {
     return { s: last.s, pos: last.pos };
   }
   return null;
+}
+
+/*
+ * THE RACEGOW RULES, on a micro track only.
+ *
+ * These are not the tool's opinion about what flies well, which is what
+ * every other warning in this file is. They are somebody else's PUBLISHED
+ * RULES, quoted in src/trackbuilder/racegow.js, and a track that breaks one
+ * of them is a track whose time would not be accepted. So they are warnings
+ * rather than refusals, exactly like the rest of this file, but the message
+ * says which rule and what the number should be, because an author checking
+ * their build against a YouTube video needs the inches as well as the
+ * millimetres.
+ *
+ * The one rule this cannot check is the one about the flying: "you cannot
+ * intentionally fly through any gates in the opposite direction to shorten
+ * your line". That is a property of a run, not of a track.
+ */
+function collectRaceGowWarnings(doc, out) {
+  const gates = [];
+  const poles = [];
+  for (const el of doc.elements) {
+    const def = ELEMENTS[el.type];
+    if (!def) {
+      continue;
+    }
+    if (def.kind === KIND.APERTURE) {
+      gates.push(el);
+    } else if (def.kind === KIND.MARKER && el.type !== 'waypoint') {
+      poles.push(el);
+    }
+  }
+
+  /* Rule 1 and the season doc's minimum: 24 to 28 inches of clear opening. */
+  for (const el of gates) {
+    const w = el.dims.clearW;
+    const h = el.dims.clearH;
+    const big = Math.max(w, h);
+    const small = Math.min(w, h);
+    if (big > GATE_OPENING_MAX + 1e-6) {
+      out.push(warn('rg-opening-max',
+        `${label(el)} opens ${inches(big)}. A RaceGOW gate fits inside a 28 in square.`,
+        { elementId: el.id }));
+    } else if (small < GATE_OPENING_MIN - 1e-6) {
+      out.push(warn('rg-opening-min',
+        `${label(el)} opens ${inches(small)}. RaceGOW's minimum gate is 24 in.`,
+        { elementId: el.id }));
+    }
+  }
+
+  /*
+   * "No maximum size but all your gates must be the same size. You must
+   * scale the entire track up equally based on your gate size." Checked
+   * against the FIRST gate rather than against a constant, because the rule
+   * is uniformity, not a particular size.
+   */
+  if (gates.length > 1) {
+    const ref = gates[0];
+    const odd = gates.filter((el) => Math.abs(el.dims.clearW - ref.dims.clearW) > 0.002
+      || Math.abs(el.dims.clearH - ref.dims.clearH) > 0.002);
+    if (odd.length) {
+      out.push(warn('rg-opening-mixed',
+        `${odd.length === 1 ? label(odd[0]) : `${odd.length} gates`} ${odd.length === 1 ? 'is' : 'are'} a different size from ${label(ref)}. Every gate on a RaceGOW track is the same size.`,
+        { elementId: odd[0].id }));
+    }
+  }
+
+  /*
+   * Rule 4 and rule 5, the heights, per opening. A stack's own levels are
+   * the commonest place these are broken, and they are broken by the level
+   * pitch rather than by the sill, so the message names the pitch.
+   */
+  for (const el of gates) {
+    const levels = Math.max(1, Math.round(el.dims.levels ?? 1));
+    for (let i = 0; i < levels; i += 1) {
+      const sill = el.position.z + el.dims.sillH + i * (el.dims.levelPitch ?? 0);
+      const centre = sill + el.dims.clearH / 2;
+      if (i === 0 && el.dims.sillH < 0.001 && el.position.z < 0.001) {
+        if (centre > GROUND_GATE_CENTRE_MAX + 1e-6) {
+          out.push(warn('rg-ground-centre',
+            `${label(el)} has its bottom opening's centre at ${inches(centre)}. A gate on the ground has its centre at 20 in or lower.`,
+            { elementId: el.id }));
+        }
+      }
+      if (i === 1 && centre < STACK2_CENTRE_MIN - 1e-6) {
+        out.push(warn('rg-stack2',
+          `${label(el)}'s second opening is centred at ${inches(centre)}. The top gate of a two high stack must be at least 42 in up.`,
+          { elementId: el.id }));
+      }
+      if (i === 2 && centre < STACK3_CENTRE_MIN - 1e-6) {
+        out.push(warn('rg-stack3',
+          `${label(el)}'s third opening is centred at ${inches(centre)}. A third gate must be at least 69 in up.`,
+          { elementId: el.id }));
+      }
+      /* Not a RaceGOW rule: a ceiling. These are flown indoors and a
+       * domestic one is 2.4 m, so an opening whose top is through it is a
+       * track nobody can build in the room this class assumes. */
+      if (sill + el.dims.clearH > ROOM_HEIGHT) {
+        out.push(warn('rg-ceiling',
+          `${label(el)} reaches ${inches(sill + el.dims.clearH)}, through a 2.4 m ceiling. RaceGOW tracks are flown indoors.`,
+          { elementId: el.id }));
+      }
+    }
+    /* Rule 3 applies to a stack's own levels as well as to neighbours. */
+    const pitch = el.dims.levelPitch ?? 0;
+    if (levels > 1 && (pitch < GATE_SPACING_MIN - 1e-6 || pitch > GATE_SPACING_MAX + 1e-6)) {
+      out.push(warn('rg-stack-pitch',
+        `${label(el)} stacks its openings ${inches(pitch)} apart. Adjacent gates are 27 to 33 in centre to centre, stacked or side by side.`,
+        { elementId: el.id }));
+    }
+  }
+
+  /*
+   * Rule 3 between NEIGHBOURING structures, which is what a side by side
+   * pair is, and getting the reading of it right matters more than the
+   * arithmetic does.
+   *
+   * "All adjacent gates must be between 27 and 33 inches from center to
+   * center." A first attempt tested every pair inside some adjacency radius
+   * and flagged anything outside the band, which flags a course for having
+   * two gates 1.1 m apart. But two gates 1.1 m apart are not adjacent gates
+   * that are spaced wrongly, they are two gates. The rule constrains pairs
+   * that ARE adjacent, and the only way a track can break it is by putting a
+   * pair CLOSER than 27 inches, because at that point they are unavoidably
+   * adjacent and unavoidably out of band.
+   *
+   * The upper half of the band is still worth saying, as a NOTE rather than
+   * a warning, in the window where a pair is nearly a pair: an author who
+   * meant a side by side and typed 36 inches wants to know. Past that the
+   * tool says nothing, because there is nothing to say.
+   */
+  for (let i = 0; i < gates.length; i += 1) {
+    for (let j = i + 1; j < gates.length; j += 1) {
+      const a = gates[i];
+      const b = gates[j];
+      /*
+       * CENTRE TO CENTRE IN THREE DIMENSIONS, and a two dimensional version
+       * of this got RaceGOW's own Track 8 wrong.
+       *
+       * That track has an Elevated Gate "centered between the Side by Side
+       * gates and on the same plane", so in plan it sits 15 inches from each
+       * of them, which a flat distance reads as an illegal pair. In space it
+       * is 58 inches away, because its centre is 56 inches up. Rule 3 says
+       * "center to center of the gates" and a centre has three coordinates.
+       */
+      const d = Math.hypot(
+        a.position.x - b.position.x,
+        a.position.y - b.position.y,
+        centreOf(a) - centreOf(b),
+      );
+      if (d < 1e-6) {
+        continue;
+      }
+      if (d < GATE_SPACING_MIN - 1e-6) {
+        out.push(warn('rg-spacing',
+          `${label(a)} and ${label(b)} are ${inches(d)} apart. Two gates that close are adjacent, and adjacent gates are 27 to 33 in centre to centre.`,
+          { elementId: a.id }));
+      } else if (d > GATE_SPACING_MAX + 1e-6 && d < GATE_SPACING_MAX * 1.25) {
+        out.push(note('rg-spacing-near',
+          `${label(a)} and ${label(b)} are ${inches(d)} apart. If they are meant to be a side by side pair, adjacent gates are 27 to 33 in centre to centre, nominally 30.`,
+          { elementId: a.id }));
+      }
+    }
+  }
+
+  /* The pole clearances the Track6 diagram dimensions three times. */
+  for (const p of poles) {
+    for (const g of gates) {
+      const d = Math.hypot(p.position.x - g.position.x, p.position.y - g.position.y);
+      if (d < POLE_FROM_GATE_MIN - 1e-6) {
+        out.push(warn('rg-pole-gate',
+          `${label(p)} is ${inches(d)} from ${label(g)}. A pole sits at least 14 in from the centre of a gate.`,
+          { elementId: p.id }));
+      }
+    }
+  }
+  for (let i = 0; i < poles.length; i += 1) {
+    for (let j = i + 1; j < poles.length; j += 1) {
+      const d = Math.hypot(poles[i].position.x - poles[j].position.x,
+        poles[i].position.y - poles[j].position.y);
+      if (d < POLE_FROM_POLE_MIN - 1e-6) {
+        out.push(warn('rg-pole-pole',
+          `${label(poles[i])} and ${label(poles[j])} are ${inches(d)} apart. Two poles sit at least 36 in apart.`,
+          { elementId: poles[i].id }));
+      }
+    }
+  }
+
+  /*
+   * The envelope. "All RaceGOW tracks will fit in a 4' x 6' rectangle (if
+   * you are using the minimum gate size of 24")", scaled with the gates,
+   * measured as the bounding box of everything that is part of the course.
+   * A NOTE rather than a warning when it is close, because the envelope is
+   * a design guide for a track author rather than a rule a run is judged
+   * against, and because the room is deliberately bigger than it.
+   */
+  if (gates.length) {
+    const opening = Math.max(...gates.map((g) => Math.max(g.dims.clearW, g.dims.clearH)));
+    const env = envelopeFor(opening);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const el of [...gates, ...poles]) {
+      minX = Math.min(minX, el.position.x);
+      maxX = Math.max(maxX, el.position.x);
+      minY = Math.min(minY, el.position.y);
+      maxY = Math.max(maxY, el.position.y);
+    }
+    const w = maxX - minX + opening;
+    const d = maxY - minY + opening;
+    const fits = (w <= env.width + 0.02 && d <= env.depth + 0.02)
+      || (d <= env.width + 0.02 && w <= env.depth + 0.02);
+    if (!fits) {
+      out.push(note('rg-envelope',
+        `The track spans ${w.toFixed(2)} by ${d.toFixed(2)} m. A RaceGOW track fits ${env.width.toFixed(2)} by ${env.depth.toFixed(2)} m at this gate size.`));
+    }
+  }
+}
+
+/* The height of an aperture element's LOWEST opening's centre, which is what
+ * rule 3 measures between. A stack's own levels are checked separately. */
+function centreOf(el) {
+  return el.position.z + (el.dims.sillH ?? 0) + (el.dims.clearH ?? 0) / 2;
+}
+
+/* An element's own name if it has one, its type's label if not. The rule
+ * messages read as sentences and "Gate 3" reads better than an id. */
+function label(el) {
+  return el.name || (ELEMENTS[el.type]?.label ?? el.type);
 }
 
 /* Warnings first, notes after, and inside each group the order they were

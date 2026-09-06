@@ -192,12 +192,21 @@ export function writePendingTime(payload) {
   if (!payload || !payload.trackId || !Number.isFinite(payload.lapMs)) {
     return false;
   }
-  /* trackId and lapMs only. There used to be a `name` here holding the
-   * COURSE name, written by every caller and read by none, sitting one
-   * field away from the pilot name it reads like. */
+  /*
+   * trackId, lapMs, and the three lap total when the run had one. There used
+   * to be a `name` here holding the TRACK name, written by every caller and
+   * read by none, sitting one field away from the pilot name it reads like.
+   *
+   * threeMs is the fastest three CONSECUTIVE clean laps of that run, which is
+   * what RaceGOW scores, and it is optional in exactly the way the board
+   * treats it: absent when the run never put three together, and absent on
+   * every run flown on the sixty metre field, which is scored on one lap.
+   */
+  const three = Number(payload.threeMs);
   return writeJson(PENDING_KEY, {
     trackId: String(payload.trackId),
     lapMs: Math.round(payload.lapMs),
+    threeMs: Number.isFinite(three) && three > 0 ? Math.round(three) : null,
   });
 }
 

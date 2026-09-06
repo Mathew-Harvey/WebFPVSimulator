@@ -29740,3 +29740,84 @@ Clean this turn: `check:clip`, `check:path`, `check:orbit`, `lint:shell`,
 of 19. `npm run verify` was NOT run: no physics, no plant, no module ABI and
 no build were touched, and the model, the seating rule and the sequence
 refusal are all above the simulation.
+
+## W6: the board learns the class
+
+A track on the board is one of two things now, and it is not a preference:
+the simulator seats the aircraft from the track, so the class and the
+aircraft are one question.
+
+### No column for it
+
+`schemaVersion` 3 is accepted and adds `trackClass` and nothing else, so a
+version 1 or 2 track keeps its times across a republish and every track
+already stored reads as the sixty metre field it was built on. A version the
+board has not been taught is still refused, which is the part of that check
+worth keeping.
+
+The class is DERIVED from the stored document on every list rather than kept
+in a column, because the board already rebuilds every plan from the document
+on every list for the same reason: one copy of the truth and no migration to
+get wrong. The only schema change is a nullable `three_ms` on `times`.
+
+### Three consecutive laps, bounded by the run's own arithmetic
+
+RaceGOW scores three consecutive where MultiGP's time trial scores one, so a
+time carries both and a room's sheet grows a Three laps column. It appears on
+rooms only, and only once a pilot has actually put three together: a column
+of empty cells is worse than no column.
+
+`normaliseThreeMs` bounds it against the lap it arrived with rather than
+against a constant. Three laps cannot be faster than three of the run's best
+lap, and the posted lap IS the best lap, so anything under three times it is
+a claim the run's own numbers contradict. It is optional at every step and
+never an error, because absent, null and unusable all mean the same thing and
+refusing a post over it would lose a good lap.
+
+The number travels with the lap through `writePendingTime`, so an upload from
+a later visit carries what the run it came from actually did rather than
+whatever race object happens to be alive.
+
+### A micro plan is drawn on the track, not on the room
+
+The 2022 AU Nationals layout spans 6 to 122 m of a 128 m field, so fitting
+the field fits the track. A RaceGOW track is 1.42 by 2.13 m in the MIDDLE of
+a 5 by 6 m room with the run off the rules ask for all round it, and fitting
+that drew the demo track at 15 percent of the width of its own thumbnail.
+Honest, and useless: a tile a reader cannot tell from the next one is not
+doing the job a tile is for.
+
+So a micro plan fits the marks plus 0.45 m of floor, never smaller than the
+envelope, never larger than the room and never off the edge of it. The window
+enters the box as `x0`/`y0`, which are zero on every field plan, which is why
+the two mapping lines read as the two they replaced.
+
+Re-measured with the recording canvas over all eleven documents at four card
+sizes with and without the scale bar: the same 30 drawings differ as before
+this change, all of them the dive gate's rect and its centre dot at 640 px
+and above, which nothing in this project draws. The window change moved
+nothing on a field.
+
+### The Micro tag is printed as Small field
+
+The `micro` tag id means a FIVE INCH track with a small footprint and has
+meant that since before there was a micro class. Beside a "65 mm whoop"
+filter on the same page, a tag labelled "Micro" is two different things one
+word apart. The id cannot move without stranding the tracks that carry it;
+the label is what the board and the builder print, and it can. Both copies
+renamed in the same turn.
+
+### What was run
+
+On the board: `npm test`, `lint:licence` 17 of 17 and `lint:nouns`, plus a
+live server on a file store with the demo room and the 2022 AU Nationals
+layout published and four times posted, driven in headless Chromium. The
+listing carries the class, the sheet prints the Three laps column with one
+empty cell where a run never managed three, and the Flown on filter cuts two
+tracks to one.
+
+Here: `lint:shell`, `lint:boot`, `lint:nouns`, `lint:frame`, `lint:quality`,
+`lint:responsive`, `check:clip`, `micro:check` and
+`node src/trackbuilder/selftest.js` 495 of 495. `npm run verify` was NOT run:
+nothing in this turn touches the physics, the plant, the module ABI or the
+build.

@@ -164,6 +164,84 @@ const MICRO_BARRIER_D = 0.85;
 const MICRO_FIELD_W = 5;
 const MICRO_FIELD_D = 6;
 
+/*
+ * A MICRO PLAN IS DRAWN ON THE TRACK, NOT ON THE ROOM, and this is the
+ * window it uses.
+ *
+ * The two classes put their track in the room differently and it is not a
+ * matter of taste. A MultiGP course uses the whole field: the 2022 AU
+ * Nationals layout spans 6 to 122 m of a 128 m field, so fitting the field
+ * fits the track. A RaceGOW track is 1.42 by 2.13 m in the MIDDLE of a
+ * five by six metre room, with a metre and a half of run off on every side
+ * that the rules ask for and nobody flies through. Fitting the room drew the
+ * demo track at 15 percent of the width of its own thumbnail: honest, and
+ * useless, because a tile a reader cannot tell from the next one is not
+ * doing the job a tile is for.
+ *
+ * So a micro plan fits the marks plus MICRO_MARGIN of floor, never smaller
+ * than the envelope, never larger than the room, and never off the edge of
+ * it. The scale bar and the size chip still say how big the thing is.
+ *
+ * 0.45 m of margin is a gate opening and a bit: enough floor that the
+ * outermost gate is not against the frame, less than a leg, so the drawing
+ * does not fill up with room.
+ */
+const MICRO_MARGIN = 0.45;
+const MICRO_MIN_W = 1.42;
+const MICRO_MIN_D = 2.13;
+
+/* Where the drawn marks and the flown line actually are, or null when there
+ * is nothing to measure. */
+function extent(plan) {
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  const eat = (p) => {
+    const x = Number(p && p.x);
+    const y = Number(p && p.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return;
+    }
+    if (x < x0) { x0 = x; }
+    if (y < y0) { y0 = y; }
+    if (x > x1) { x1 = x; }
+    if (y > y1) { y1 = y; }
+  };
+  for (const m of (plan && plan.marks) || []) {
+    eat(m);
+  }
+  for (const p of (plan && plan.path) || []) {
+    eat(p);
+  }
+  return Number.isFinite(x0) ? { x0, y0, x1, y1 } : null;
+}
+
+/*
+ * Grow a span to at least `min`, about its own centre, then slide it back
+ * inside [0, room] without changing its length. Written once because the
+ * two axes want exactly the same thing and getting one of them subtly
+ * different is how a drawing ends up off centre in one direction only.
+ */
+function window1d(lo, hi, min, room) {
+  let a = lo;
+  let b = hi;
+  if (b - a < min) {
+    const mid = (a + b) / 2;
+    a = mid - min / 2;
+    b = mid + min / 2;
+  }
+  if (b - a >= room) {
+    return { a: 0, len: room };
+  }
+  if (a < 0) {
+    b -= a;
+    a = 0;
+  }
+  if (b > room) {
+    a -= b - room;
+    b = room;
+  }
+  return { a: Math.max(0, a), len: b - a };
+}
+
 /* 'full' unless the plan says otherwise, so every plan already stored, and
  * every plan from a producer that has not learned the field yet, stays the
  * MultiGP field it has always been. Same default trackClassOf applies in
@@ -229,13 +307,30 @@ function fit(plan, w, h, pad) {
    * the gates had. Neither producer emits a plan without a field, so this
    * is the last line rather than the usual one. */
   const small = isMicro(plan);
-  const fw = Math.max(1, Number(plan && plan.width) || (small ? MICRO_FIELD_W : 60));
-  const fd = Math.max(1, Number(plan && plan.depth) || (small ? MICRO_FIELD_D : 40));
+  const roomW = Math.max(1, Number(plan && plan.width) || (small ? MICRO_FIELD_W : 60));
+  const roomD = Math.max(1, Number(plan && plan.depth) || (small ? MICRO_FIELD_D : 40));
+  /* The world coordinate at the plate's left and bottom edges. Zero on a
+   * field, because the whole field is the picture. See MICRO_MARGIN. */
+  let x0 = 0;
+  let y0 = 0;
+  let fw = roomW;
+  let fd = roomD;
+  const bounds = small ? extent(plan) : null;
+  if (bounds) {
+    const across = window1d(bounds.x0 - MICRO_MARGIN, bounds.x1 + MICRO_MARGIN, MICRO_MIN_W, roomW);
+    const along = window1d(bounds.y0 - MICRO_MARGIN, bounds.y1 + MICRO_MARGIN, MICRO_MIN_D, roomD);
+    x0 = across.a;
+    y0 = along.a;
+    fw = across.len;
+    fd = along.len;
+  }
   const s = Math.min((w - pad * 2) / fw, (h - pad * 2) / fd);
   return {
     s,
     fw,
     fd,
+    x0,
+    y0,
     ox: (w - fw * s) / 2,
     oy: (h - fd * s) / 2,
   };
@@ -441,8 +536,12 @@ function startPads(ctx, s, row) {
 
 function toScreen(box, x, y) {
   return {
-    x: box.ox + (Number(x) || 0) * box.s,
-    y: box.oy + (box.fd - (Number(y) || 0)) * box.s,
+    /* x0 and y0 are the world coordinate at the plate's left and bottom, so
+     * a plan drawn on a window rather than on the whole field lands in the
+     * right place. Zero on every field plan, which is why this reads as the
+     * old two lines there. */
+    x: box.ox + ((Number(x) || 0) - (box.x0 || 0)) * box.s,
+    y: box.oy + (box.fd - ((Number(y) || 0) - (box.y0 || 0))) * box.s,
   };
 }
 

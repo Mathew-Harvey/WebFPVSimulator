@@ -11,7 +11,7 @@
  *   Update listing POST {board}/api/tracks   same, with the edit key from
  *                  the browser that first published. A name-only update
  *                  keeps the times. A layout change clears them.
- *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs, ghost? }
+ *   Post a time    POST {board}/api/tracks/{id}/times   { name, lapMs, threeMs?, ghost? }
  *                  ghost is the base64 lap recording from
  *                  src/share/ghostdata.js, sent when the lap was recorded
  *                  in this session, so the board can hand it to a chaser.
@@ -419,7 +419,12 @@ export const TRACK_TAGS = [
   { id: 'freestyle', label: 'Freestyle', note: 'Gates as furniture rather than as a track to be raced.' },
   { id: 'beginner', label: 'Beginner', note: 'Wide gates, gentle lines, nothing that punishes a miss.' },
   { id: 'technical', label: 'Technical', note: 'Tight, quick and unforgiving.' },
-  { id: 'micro', label: 'Micro', note: 'Small enough for a room or a garden.' },
+  /* "Small field", not "Micro", and the id stays `micro` because published
+   * tracks carry it. It means a FIVE INCH track with a small footprint and
+   * has meant that since before there was a micro track class; beside a 65
+   * mm whoop, a tag labelled "Micro" is two different things one word apart.
+   * The board's src/validate.js carries the same rename. */
+  { id: 'micro', label: 'Small field', note: 'A five inch track that fits a small field or a garden.' },
   { id: 'big', label: 'Big field', note: 'Wants the whole field and a lot of speed.' },
   { id: 'showcase', label: 'Showcase', note: 'Built to be looked at.' },
 ];
@@ -527,14 +532,30 @@ export async function fetchFreestyleRuns(map, origin = boardOrigin()) {
   })).filter((r) => r.name && r.score > 0);
 }
 
-export async function postTime({ trackId, name, lapMs, ghost, origin }) {
+export async function postTime({
+  trackId, name, lapMs, threeMs, ghost, origin,
+}) {
   const board = trimOrigin(origin || boardOrigin());
+  /*
+   * ghost and threeMs only when there is one of each: an absent key is what
+   * an older board expects, and an explicit null would be a third shape for
+   * no gain. threeMs is the fastest three CONSECUTIVE clean laps, which is
+   * what RaceGOW scores and what a room's sheet prints beside the lap; a
+   * board that has not learned the key ignores it and stores the lap, which
+   * is the whole reason it is a separate optional field rather than a
+   * different route.
+   */
+  const body = { name, lapMs };
+  if (Number.isFinite(threeMs) && threeMs > 0) {
+    body.threeMs = Math.round(threeMs);
+  }
+  if (ghost) {
+    body.ghost = ghost;
+  }
   const res = await fetch(`${board}/api/tracks/${encodeURIComponent(trackId)}/times`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    /* ghost only when there is one: an absent key is what an older board
-     * expects, and an explicit null would be a third shape for no gain. */
-    body: JSON.stringify(ghost ? { name, lapMs, ghost } : { name, lapMs }),
+    body: JSON.stringify(body),
   });
   return readJson(res);
 }

@@ -3541,6 +3541,17 @@ export async function boot({ loading, bootStart, mapId }) {
     const fastest = fromRun != null
       ? fromRun
       : (pending && pending.trackId === trackId ? pending.lapMs : null);
+    /*
+     * The RaceGOW metric travels with the lap, from whichever of the two the
+     * lap itself came from, so an upload from a later visit carries what the
+     * run it came from actually did. Null on the sixty metre field, which is
+     * scored on one lap and always will be.
+     */
+    const threeFrom = view.trackClass === 'micro'
+      ? (fromRun != null
+        ? (race.bestThreeMs ? race.bestThreeMs() : null)
+        : (pending && pending.trackId === trackId ? pending.threeMs : null))
+      : null;
     if (fastest == null) {
       notice = { text: 'No clean lap to upload.', untilMs: performance.now() + 2800 };
       return;
@@ -3565,6 +3576,7 @@ export async function boot({ loading, bootStart, mapId }) {
         trackId,
         name,
         lapMs: Math.round(fastest),
+        threeMs: threeFrom,
         ghost,
         origin: listing.board,
       });
@@ -3755,7 +3767,11 @@ export async function boot({ loading, bootStart, mapId }) {
        * up used to attach A's lap to B, because resultsFastest is a bare
        * number with no course attached to it. */
       if (ui.resultsFastest != null && ui.resultsDocId != null && ui.resultsDocId === listing.doc.id) {
-        writePendingTime({ trackId: result.posted.id, lapMs: ui.resultsFastest });
+        writePendingTime({
+          trackId: result.posted.id,
+          lapMs: ui.resultsFastest,
+          threeMs: view.trackClass === 'micro' && race.bestThreeMs ? race.bestThreeMs() : null,
+        });
       }
     } catch (e) {
       notice = { text: `Could not publish that track.\n${e.message ?? e}`, untilMs: performance.now() + 3600 };

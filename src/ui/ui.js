@@ -8075,7 +8075,14 @@ export class Ui {
         const listing = inspectCourse();
         this.resultsDocId = listing && listing.doc ? listing.doc.id : null;
         if (listing && listing.canPostTime && listing.shareId) {
-          writePendingTime({ trackId: listing.shareId, lapMs: fastest });
+          writePendingTime({
+            trackId: listing.shareId,
+            lapMs: fastest,
+            /* Carried with the lap, because the upload can happen on a later
+             * visit and by then the race is gone. Null on the field, which
+             * is scored on one lap and always will be. */
+            threeMs: opts.trackClass === 'micro' ? opts.threeMs : null,
+          });
         }
       } catch (e) {
         /* Keep the results screen even if storage is unavailable. */

@@ -1254,6 +1254,23 @@ SIM_EXPORT int sim_step(int n) {
         duty[m] = g_override[m];
       }
     }
+    /*
+     * Where the floor is, for the plant's ground effect. The same plane the
+     * contact solver below resolves against, measured to the CG along its
+     * normal; negative when no plane has been raised, which switches the
+     * term off. Computed here rather than in the plant because the plane is
+     * this file's, and handed over as two numbers rather than a callback so
+     * plant_step stays a pure function of its state.
+     */
+    if (g_ground_on) {
+      S.ground_h = g_ground_n[0] * S.pos[0] + g_ground_n[1] * S.pos[1]
+        + g_ground_n[2] * S.pos[2] - g_ground_d;
+      S.ground_n[0] = g_ground_n[0];
+      S.ground_n[1] = g_ground_n[1];
+      S.ground_n[2] = g_ground_n[2];
+    } else {
+      S.ground_h = -1.0;
+    }
     plant_step(&S, duty);
     ground_apply();
     stand_apply();

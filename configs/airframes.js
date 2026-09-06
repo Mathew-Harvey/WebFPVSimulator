@@ -143,16 +143,15 @@ export const AIRFRAMES = [
       /*
        * SEVENTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
        *
-       * A 23 g aircraft with four and a half to one of thrust to weight
-       * holds a hover at 32.3 percent of stick uncapped and climbs at
-       * 13.2 m/s at full throttle, which is a room's ceiling in a fifth of a
-       * second. Left uncapped the top two thirds of the stick are unusable
+       * A 23 g aircraft with 4.7 to one of thrust to weight holds a hover
+       * at 33.6 percent of stick uncapped and climbs at 12.9 m/s at full
+       * throttle, which is a room's ceiling in a fifth of a second. Left uncapped the top two thirds of the stick are unusable
        * and the bottom third is where all the flying happens, which is the
        * definition of twitchy.
        *
        * Betaflight's SCALE limit redistributes the WHOLE travel under the
        * cap rather than clipping the top off it, so nothing is lost: full
-       * stick commands 75 percent, hover moves up to 41.3 percent of stick
+       * stick commands 75 percent, hover moves up to 43.1 percent of stick
        * (measured, see HOVER_STICK_PERCENT in configs/rates.js), and every
        * millimetre of stick is worth three quarters as much throttle. That
        * is the whole reason it is SCALE and not OFF, and the Rates screen
@@ -160,9 +159,9 @@ export const AIRFRAMES = [
        *
        * IT WAS 65 AND THE OWNER FLEW IT TO 75. That is a feel judgement and
        * the pilot's to make, so it is recorded rather than argued with. What
-       * it trades: hover comes down the stick from 46.9 percent to 41.3, so
+       * it trades: hover comes down the stick from 49.0 percent to 43.1, so
        * there is more travel below hover and less above it, and full stick
-       * buys 11.2 m/s of climb instead of 9.8. Finer at the top, coarser at
+       * buys 10.9 m/s of climb instead of 9.4. Finer at the top, coarser at
        * the bottom, and 65 is still on the list in configs/rates.js for
        * anybody who wants it back.
        *

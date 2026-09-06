@@ -250,6 +250,16 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
    * there. See the block at k_rotor_axial in the descent branch.
    */
   .k_rotor_axial = 0.0,
+  /*
+   * NO GROUND EFFECT ON THE FIVE INCH, YET, and the reason is the envelope
+   * rather than the physics. A five inch has one, inside about four rotor
+   * radii, 25 cm, which it passes through for a second on the way up and a
+   * second on the way down. Checks 5 through 12 and the baseline trace were
+   * measured without it, and a term that changes the first second of every
+   * flight changes the trace. It belongs on this airframe too, in a turn
+   * that is about it and carries its own verify run. See the whoop's.
+   */
+  .k_ground = 0.0,
   .k_inflow = 0.017382, /* repurposed: prop pitch radius, metres per radian.
                          * 4.3 inch pitch / 2 pi. Axial speed at which thrust
                          * crosses zero is w times this. */
@@ -385,11 +395,57 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .gravity = 9.80665,
   .arm_x = 0.0229809704566899, /* 0.065 / (2 sqrt 2), a 65 mm wheelbase */
   .arm_y = 0.0229809704566899,
-  .kt = 4.400e-9,
-  .kq = 2.057e-11,  /* figure of merit 0.330, see the note above */
-  .ke = 2.8515e-4,  /* loaded torque constant, 33489 kV */
-  .r_motor = 0.2252,
-  .j_rotor = 1.8e-8,
+  /*
+   * THE DUCT WAS BEING COUNTED TWICE, and these four numbers are the re-solve.
+   *
+   * kt was derived for 4.7 : 1 at 7828 rad/s as a bare rotor constant, and
+   * then k_duct below multiplied every rotor's thrust by 1.10 on top of it,
+   * so the plant made 5.14 : 1 on the bench and 5.31 at the peak of a punch.
+   * BetaFPV's 6.3 : 1 dry, 4.7 all up, is a bench figure of the WHOLE ducted
+   * unit, so the duct is inside it already. kt is now the bare rotor's share
+   * of that figure, 4.400e-9 / 1.10, and kt times k_duct is the 4.400e-9 the
+   * derivation above arrives at: full throttle is still 7828 rad/s and 4.70
+   * to one, and the hover is still 3611 rad/s, both WITH the duct.
+   *
+   * kq follows kt through the same momentum theory identity, at a figure of
+   * merit of 0.310 rather than 0.330, and the reason is the motor rather
+   * than the rotor. At 4.7 to one the rotor makes 13 percent less torque at
+   * the same 7828 rad/s, so the two equilibria below have less current to
+   * absorb the same voltage headroom with, and at 0.330 the solve put it
+   * into winding resistance: r_motor 0.27 ohm, and W7's motor time constant
+   * on the ceiling of its band at 45 ms, a slower motor than the one the
+   * folklore is wrong about. 0.310 is inside the 0.30 to 0.40 Harris puts a
+   * rotor at Re 1e4 in, and it is toward the bottom of it, which is where a
+   * 31 mm three blade at 34,000 rpm actually sits. kt^1.5 / (FM sqrt(2 rho
+   * A)) = 1.8977e-11.
+   *
+   * ke and r_motor are the two equilibria solved again against the plant's
+   * actual torque model, induced part and clamp included, with r_cell held
+   * at 55 mOhm: full throttle at 7828 rad/s and duty 1, hover at 3611 rad/s
+   * and duty 0.30. That lands 4.31 A a motor, 17.2 A pack and 3.25 V under
+   * a punch on the bench, 0.92 A a motor at the hover, and ke a 33,778 kV
+   * motor against the 36,000 kV plate, 6 percent under it, which is the
+   * argument the old set made. The solver is a dozen lines of Python and it
+   * is recorded in PROGRESS.md.
+   */
+  .kt = 4.000e-9,
+  .kq = 1.8977e-11, /* figure of merit 0.310 of the bare rotor, see above */
+  .ke = 2.82708e-4, /* loaded torque constant, 33778 kV */
+  .r_motor = 0.2410,
+  /*
+   * 1.5e-8, down from the 1.8e-8 first estimated "with about 35 percent of
+   * uncertainty", and this is the estimate done again rather than a fit.
+   * The 0702 bell is about 0.8 g of steel and magnets at 3.5 mm of radius,
+   * which is 0.5 m r^2 = 4.9e-9. A GF1207 three blade is 0.3 g, not the
+   * 1.5 g the first note assumed, and most of that is hub: a thin blade of
+   * 15.5 mm would be m R^2 / 3 = 2.4e-8 if the mass were spread along it,
+   * and a hub heavy moulding is well under half of that, about 1.0e-8.
+   * Together, 1.5e-8. It matters because the re-solve for 4.7 to one makes
+   * 13 percent less torque at the same speed and the motor's time constant
+   * went from 26 ms to 41 on the old inertia; this puts it back near where
+   * the folklore correction above says a 0702 sits.
+   */
+  .j_rotor = 1.5e-8,
   .cells = 1.0,
   .r_cell = 0.055,  /* 55 mOhm: cell 42, BT2.0 connector 8, wire 5 */
   .cda_plan = 0.00253,
@@ -446,13 +502,40 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
    */
   .k_rotor_axial = 1.10,
   /*
+   * GROUND EFFECT, WHICH A WHOOP LIVES IN.
+   *
+   * plant.c cited He and Leang 2020 for it in the source list above and had
+   * no term for it anywhere, found in the day's review. A five inch is out
+   * of ground effect a second after it leaves the stand; a whoop in a room
+   * skims the mat, crosses a gate's bottom bar at 30 mm and settles onto
+   * the floor a dozen times a flight, and without this term the floor gave
+   * it nothing back. The cushion a whoop pilot feels under a low hover is
+   * this.
+   *
+   * The form is Cheeseman and Bennett's, T / T_oge = 1 / (1 - (R / 4 h)^2),
+   * which is the image rotor of momentum theory and the one every small
+   * multirotor study starts from. R is NOT the 15.5 mm prop: the four discs
+   * of a 65 mm whoop sit 46 mm apart on a machine 72 mm across, their wakes
+   * merge into one before they reach a floor a few centimetres down, and He
+   * and Leang's measurement on small quadrotors is that the effect reaches
+   * further than the single disc form predicts for exactly that reason. So
+   * the discs are taken as one of four times the area, R = 2 r, 31 mm. That
+   * is an assumption, and it is the one number here that is not derived.
+   *
+   * What it does: the rotor disc parks 16 mm off the floor, half of R, for
+   * a factor of 1.33; at 50 mm it is 1.025 and at 80 mm it is one percent.
+   * Clamped at half a radius, where the formula has its pole, so a rotor
+   * pushed into the floor by a contact cannot ask for infinite thrust.
+   */
+  .k_ground = 1.0,
+  /*
    * Prop pitch radius. The GF1207 is a 0.7 inch pitch prop, 17.78 mm, over
    * 2 pi. A whoop prop is very low pitch, which is why the thrust falls away
    * so fast in a climb and why a whoop cannot chase its own wake upward the
    * way a 4.3 inch pitch five inch can.
    */
   .k_inflow = 0.00283,
-  .torque_ind = 0.330,
+  .torque_ind = 0.310, /* the figure of merit above, and the same number */
   /*
    * THE DUCT. 1.10 of static augmentation is the low end of the published
    * range and it is where a real whoop sits: the ideal duct of momentum
@@ -903,6 +986,11 @@ void plant_reset(SimState *s) {
   s->wash_seed = 0x9E3779B9u;
   s->pack_current = 0.0;
   s->vbat_load = s->cell_voltage_oc * PLANT.cells;
+  /* No floor until the host raises one. See ground_h in sim_internal.h. */
+  s->ground_h = -1.0;
+  s->ground_n[0] = 0.0;
+  s->ground_n[1] = 0.0;
+  s->ground_n[2] = 1.0;
   s->step_index = 0;
 }
 
@@ -1270,6 +1358,34 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
       }
     }
     axial *= duct;
+    /*
+     * GROUND EFFECT, per rotor, on the same factor the duct goes through so
+     * the torque load below sees it too: a rotor in ground effect makes its
+     * extra thrust at the same shaft speed and draws the same current, which
+     * is what the Cheeseman and Bennett image says and what a bench shows.
+     *
+     * The rotor's own height above the plane, not the CG's: a banked whoop
+     * has one duct nearer the mat than the other and the near one gets the
+     * cushion, which is a rolling moment away from the floor and part of why
+     * a low hover feels planted. The offset is rotated by the attitude and
+     * projected on the plane's normal. Off entirely when the host has
+     * raised no plane, and on the five inch, whose k_ground is zero.
+     */
+    if (PLANT.k_ground > 0.0 && s->ground_h >= 0.0) {
+      const double off_b[3] = { PLANT_POS_X[m], PLANT_POS_Y[m], PLANT_POS_Z[m] };
+      double off_w[3];
+      quat_rotate(s->quat, off_b, off_w);
+      const double h = s->ground_h
+        + s->ground_n[0] * off_w[0] + s->ground_n[1] * off_w[1] + s->ground_n[2] * off_w[2];
+      const double r_eff = 2.0 * PLANT.prop_r;
+      /* Half a radius is the pole of the form; a rotor lower than that is
+       * one a contact has pushed into the floor and it gets the parked
+       * figure rather than a larger one. */
+      const double hh = (h < 0.5 * r_eff) ? 0.5 * r_eff : h;
+      const double x = r_eff / (4.0 * hh);
+      const double ige = 1.0 / (1.0 - PLANT.k_ground * x * x);
+      axial *= ige;
+    }
     if (m == 0) {
       PLANT_DBG_DUCT = duct;
       PLANT_DBG_VPERP = vperp_m;

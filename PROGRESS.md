@@ -30512,3 +30512,146 @@ W9 7.98 m/s and W14 identical, `lint:shell` PASS, and two `shots.js` probes:
 `seatCraftForDoc` in the live shell, and the builder's palette showing U Pole
 with U arming the pole and P toggling the line. `npm run verify` was NOT run:
 no plant, ABI or build change in this turn.
+
+## The whoop makes 4.7 to one, with the duct counted, and the floor pushes back
+
+The owner: "fix the whoop thrust to match betaflight's 4.7 and verify, review
+and fix whoop flight feel".
+
+### The thrust
+
+The duct was being counted twice. kt was derived for 4.7 : 1 at 7828 rad/s
+as a bare rotor constant and k_duct then multiplied every rotor's thrust by
+1.10 on top of it, so the plant made 5.14 : 1 on the bench and 5.31 at the
+peak of a punch. BetaFPV's 6.3 : 1 dry, 4.7 all up, is a bench figure of the
+whole ducted unit, so the duct is inside it already.
+
+kt is now the bare rotor's share of that figure, 4.400e-9 / 1.10 =
+4.000e-9, so kt times k_duct is the 4.400e-9 the derivation arrives at:
+full throttle is still 7828 rad/s and 4.70 to one, hover is still
+3611 rad/s, both WITH the duct. kq follows through the same momentum theory
+identity, and the electrical set was solved again against the plant's own
+torque model, induced part and clamp included, with r_cell held at 55 mOhm.
+
+**The re-solve has a trade in it and the record should say where it went.**
+At 4.7 : 1 the rotor makes 13 percent less torque at the same speed, so the
+two equilibria have less current to absorb the same voltage headroom with,
+and at the old figure of merit of 0.330 the solve put it into winding
+resistance: r_motor 0.27 ohm and W7's motor time constant on the ceiling of
+its band at 45 ms, a slower motor and the wrong direction for feel. Two
+inputs moved, each inside its own stated range:
+
+- The figure of merit, 0.330 to 0.310. Harris puts a rotor at Re 1e4 in
+  0.30 to 0.40 and a 31 mm three blade at 34,000 rpm sits toward the bottom
+  of it. This alone brought r_motor to 0.241 and W7 to 41 ms.
+- The rotor inertia, 1.8e-8 to 1.5e-8, which the first note gave "with
+  about 35 percent of uncertainty". Done again from parts rather than
+  fitted: a 0702 bell of about 0.8 g at 3.5 mm radius is 4.9e-9; a GF1207
+  is 0.3 g and not the 1.5 g the note assumed, a thin blade of 15.5 mm
+  would be m R^2 / 3 = 2.4e-8 if the mass were spread along it and a hub
+  heavy moulding is well under half of that. Together about 1.5e-8. W7
+  reads 33 ms, where the plant's own folklore correction says a 0702 sits.
+
+The solver, mirroring plant.c's steady state (pack solve, induced torque,
+clamp), for the record:
+
+```
+kt = 4.000e-9   kq = kt^1.5 / (0.31 sqrt(2 rho A)) = 1.8977e-11
+full throttle: d = 1, w = 7828 rad/s, q = 1.148e-3 N m
+hover:         d = 0.30, w = 3611 rad/s, q = 2.44e-4 N m
+i = q / ke ; V = 4.2 - 4 d i r_cell ; d V - ke w = r_motor i
+ke = 2.82708e-4 (33,778 kV, 6 percent under the 36,000 plate)
+r_motor = 0.2410 ohm
+bench: 4.31 A a motor, 17.2 A pack, 3.25 V under a punch
+```
+
+### Ground effect, which the day's review found missing
+
+plant.c cited He and Leang 2020 for it in its source list and had no term
+for it anywhere. A five inch is out of ground effect a second after it
+leaves the stand; a whoop in a room skims the mat, crosses a gate's bottom
+bar at 30 mm and settles onto the floor a dozen times a flight, and the
+floor gave it nothing back.
+
+Cheeseman and Bennett's form, T / T_oge = 1 / (1 - (R / 4h)^2), per rotor
+on the rotor's own height above the host's ground plane, so a banked whoop
+gets the cushion on the low duct and a rolling moment away from the floor.
+R is the four discs merged into one, 2 r = 31 mm, which is an ASSUMPTION
+and the one number here that is not derived: the discs sit 46 mm apart on a
+machine 72 mm across and their wakes merge before they reach a floor a few
+centimetres down, which is the mechanism He and Leang measure as the effect
+reaching further on a small multirotor than the single disc form predicts.
+Clamped at half a radius, the form's pole, so a contact cannot ask for
+infinite thrust. Applied on the same factor the duct goes through, so the
+torque load sees it: a rotor in ground effect makes its extra thrust at the
+same shaft speed.
+
+The floor reaches the plant as two numbers written by sim.c before every
+step from the same plane the contact solver resolves against: the CG's
+height along the normal and the normal. Negative when no plane is raised,
+which is every harness replay, and the term is off.
+
+**The five inch's k_ground is zero**, and the reason is the envelope rather
+than the physics. It has one, inside about 25 cm, for a second on the way
+up and a second on the way down. Checks 5 through 12 and the baseline trace
+were measured without it, and a term that changes the first second of every
+flight changes the trace. It belongs on that airframe too, in a turn that is
+about it and carries its own verify run.
+
+Probed directly, holding a fixed duty that just carries the weight in free
+air, raising a floor under the craft at speed, and reading the change in
+vertical acceleration over the next 4 ms:
+
+```
+rotor  25 mm off the floor   +11.3 percent thrust
+       30 mm                  +7.5
+       40 mm                  +4.0
+       50 mm                  +2.5      (the form predicts 2.5)
+       80 mm                  +1.0
+      120 mm                  +0.4
+      300 mm                  +0.1
+```
+
+The 16 and 20 mm rows of the same probe read +1300 percent and are NOT the
+aero term, which is clamped at 1.33: they are the hull touching the plane
+after 400 ms of drift, a contact impulse. Recorded so nobody reads them as
+the cushion.
+
+### What moved for the pilot
+
+Less thrust is a hover higher on the stick, about a point and a half at
+every cap: 43.1 percent of travel at the shipped 75 instead of 41.3, 33.6
+uncapped instead of 32.3. HOVER_STICK_PERCENT's whoop column was re-read in
+full. Full stick climbs 12.9 m/s uncapped instead of 13.2. The idle sink of
+7.8 m/s and every climb row's shape are as they were.
+
+### Two readouts corrected
+
+`flightcheck.js` typed the whoop's kt as 4.400e-9, which is the old number,
+and printed 5.25 : 1 for a plant making 4.78. It reads slot 10 off the
+module now, the way it reads k_duct. And the row is labelled "thrust to
+weight, climbing", because the override holds full duty on a craft that is
+free to climb and a climbing rotor unloads: rpm sits a percent over the
+derivation's and the figure with it. W3 in whoop-gates reads 4.94 for the
+same reason, at the peak of a punch, inside its 4.0 to 5.4 band.
+
+### What was run
+
+`npm run verify` **16 of 16**, hash `de0401cd4266` unchanged: the baseline
+flies the five inch, whose kt, kq, ke, r_motor, j_rotor and k_ground did not
+move, and the five inch's flightcheck is identical to the digit (8.18 : 1,
+25614 rpm, 23.2 V 135 A, hover 0.265, every climb row). Check 5 0.2793,
+6 80.0 m, 7 31.0 m/s, 8 26 ms, 9 671.7, 11 11.14 percent, 12 1.2472.
+
+`whoop:gates` **19 of 19**: W1 0.310, W2 0.338 of stick, W3 4.94, W4 76642
+rpm, W5 3.384 V, W6 14.84 A, W7 0.0330 s, W8 1974 rad/s^2, W9 7.98 m/s, W10
+16.28 m/s, W11 0.640, W12 6.66 percent, W13 2.53 s, W14 identical.
+
+`build:wasm` exit 0 with the vendor diff empty, twice over (three builds
+this turn, the last is the one measured). `lint:presets` 6 of 6,
+`lint:shell` PASS, `flightcheck.js --airframe=whoop65` for the hover column,
+and the ground effect probe above.
+
+Flight feel is not verifiable here. The harness is green, the thrust is
+BetaFPV's, the motor is back where the plant argues it belongs, and the
+floor is awaiting the owner's judgement.

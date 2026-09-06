@@ -567,9 +567,12 @@ const HOVER_STICK_PERCENT = {
     [100, 26.5], [90, 28.9], [80, 31.8], [75, 33.6], [70, 35.6],
     [65, 38.0], [60, 40.8], [50, 47.9], [40, 58.6],
   ]),
+  /* Re-read after the whoop's thrust was brought down to BetaFPV's 4.7 to
+   * one with the duct counted: less thrust is a hover higher on the stick,
+   * about a point and a half at every cap. */
   whoop65: new Map([
-    [100, 32.3], [90, 35.4], [80, 39.2], [75, 41.3], [70, 44.0],
-    [65, 46.9], [60, 50.5], [50, 59.5], [40, 73.2],
+    [100, 33.6], [90, 36.9], [80, 40.8], [75, 43.1], [70, 45.9],
+    [65, 49.0], [60, 52.7], [50, 62.2], [40, 76.5],
   ]),
 };
 

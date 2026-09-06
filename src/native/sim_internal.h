@@ -77,6 +77,10 @@ typedef struct {
                       * velocity is computed over. */
   double k_rotor_drag; /* rotor drag (H force) scale, dimensionless O(1).
                       * See plant.c: H = k rho A v_i v_perp per rotor. */
+  double k_ground;   /* ground effect strength, 0 for none, 1 for the
+                      * Cheeseman and Bennett form on the four discs' merged
+                      * radius. See plant.c: zero on the five inch, whose
+                      * calibrated envelope was measured without it. */
   double k_rotor_axial; /* drag coefficient of ONE STALLED ROTOR DISC in a
                       * descent, on disc area, dimensionless O(1). Zero for
                       * an airframe whose cda_plan was fitted against a
@@ -161,6 +165,17 @@ typedef struct {
   unsigned int wash_seed;
   double wash_fast[SIM_MOTOR_COUNT];
   double wash_slow[SIM_MOTOR_COUNT];
+  /*
+   * The ground, as the plant sees it: the CG's height above the host's
+   * ground plane along the plane's normal, metres, and the normal itself in
+   * the plant's world frame. ground_h is negative when the host has raised no
+   * plane, which is every harness run and the reason the term it feeds is
+   * off by default. Written by sim.c before every step from the same plane
+   * the contact solver uses, so the air and the floor agree about where the
+   * floor is.
+   */
+  double ground_h;
+  double ground_n[3];
   /* battery */
   double cell_voltage_oc; /* open circuit per cell, volts */
   double pack_current;    /* total draw last step, amps */

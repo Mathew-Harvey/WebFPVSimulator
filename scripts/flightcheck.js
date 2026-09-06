@@ -151,7 +151,9 @@ const rpmFull = (benchState[ST.RPM0] + benchState[ST.RPM0 + 1]
  * reporting nonsense about it, with 'MORE THAN DOUBLE THE SPEC' next to it,
  * which is exactly the kind of false alarm that hides a real one.
  */
-const KT = WHOOP ? 4.400e-9 : 1.98e-6;
+/* READ, NOT TYPED, since the whoop's kt moved and this line did not: it
+ * printed 5.25 : 1 for a plant making 4.78. Slot 10 is PLANT.kt. */
+const KT = typeof bench.e.sim_bf_debug === 'function' ? bench.e.sim_bf_debug(10) : (WHOOP ? 4.000e-9 : 1.98e-6);
 /*
  * AND THE DUCT. plant.c multiplies every rotor's thrust by the airframe's
  * static duct augmentation, k_duct, which is 1.0 on the open five inch and
@@ -171,7 +173,11 @@ const twr = thrustFull / (MASS * G);
  */
 const TWR_DECLARED = WHOOP ? '4.7 : 1' : '4.5 : 1';
 const TWR_ALARM = WHOOP ? 6.0 : 5.5;
-row('static thrust to weight', `${twr.toFixed(2)} : 1`, TWR_DECLARED,
+/* Not static, and the label says so: the override holds full duty on a
+ * craft that is free to climb, and a climbing rotor unloads, so the rpm
+ * here sits a percent or two over the derivation's and the figure with it.
+ * The static value is the derivation's, kt times k_duct at the solved rpm. */
+row('thrust to weight, climbing', `${twr.toFixed(2)} : 1`, TWR_DECLARED,
   twr > TWR_ALARM ? 'MORE THAN DOUBLE THE SPEC' : '');
 row('full throttle RPM, per motor', `${rpmFull.toFixed(0)}`, '', '');
 row('pack under full load', `${benchState[ST.V].toFixed(1)} V, ${benchState[ST.I].toFixed(0)} A`, '', '');

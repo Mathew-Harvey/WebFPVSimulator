@@ -565,7 +565,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.settings.map = 'custom';
       ui.renderMenu();
     } else if (ui.settings.map !== 'city' && !hasFlyableTrack()) {
-      const featured = await adoptMostFlownTrack();
+      const featured = await adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass);
       if (featured) {
         ui.settings.map = 'custom';
         ui.renderMenu();
@@ -3338,6 +3338,36 @@ export async function boot({ loading, bootStart, mapId }) {
          * craft is session lived and the world is not.
          */
         syncCraftScale();
+        /*
+         * AND THE TRACK, because the seats are one per class and the new one
+         * may be empty. A pilot who chooses the whoop having never built a
+         * room used to get the whoop hovering in an empty paddock: the world
+         * is the seated track, and there wasn't one.
+         *
+         * So the same cold start adopt the boot does runs again for the class
+         * being moved to, which fetches the most flown ROOM off the board and
+         * seats it. It is deliberately fire and forget: the swap must not
+         * wait on a network, the world below rebuilds from what is seated
+         * now, and syncWorld runs again when the fetch lands. A board that is
+         * down or has no track of this class leaves the pilot exactly where
+         * this used to leave everyone, which is the honest fallback.
+         */
+        const wantCls = airframeById(runAirframe).trackClass;
+        if (s.map !== 'city' && !hasFlyableTrack()) {
+          adoptMostFlownTrack(wantCls).then((got) => {
+            if (!got) {
+              return;
+            }
+            ui.settings.map = 'custom';
+            ui.renderMenu();
+            if (!worldMatchesSettings()) {
+              syncWorld();
+            }
+          }).catch(() => {
+            /* A board that is down is not an error a pilot changing aircraft
+             * needs to hear about. */
+          });
+        }
       }
     }
     race.setRecordKey(recordKey());

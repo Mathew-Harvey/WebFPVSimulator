@@ -66,6 +66,8 @@ export const AIRFRAMES = [
       roll: { rcRate: 7, srate: 67, expo: 0 },
       pitch: { rcRate: 7, srate: 67, expo: 0 },
       yaw: { rcRate: 7, srate: 67, expo: 0 },
+      /* The whole stick. See the whoop's, which does not get one. */
+      throttleCap: 100,
     },
     /*
      * The camera the airframe carries, seeded onto the pilot's settings when
@@ -138,6 +140,27 @@ export const AIRFRAMES = [
       roll: { rcRate: 7, srate: 58, expo: 0 },
       pitch: { rcRate: 7, srate: 58, expo: 0 },
       yaw: { rcRate: 7, srate: 50, expo: 0 },
+      /*
+       * SIXTY FIVE PERCENT, AND IT IS A SCALE RATHER THAN A CLIP.
+       *
+       * A 23 g aircraft with eight to one of thrust to weight holds a hover
+       * at 28 percent of stick and hits a 2.4 m ceiling from the floor in
+       * well under a second at full throttle. Left uncapped the top third of
+       * the stick is unusable and the bottom third is where all the flying
+       * happens, which is the definition of twitchy.
+       *
+       * Betaflight's SCALE limit redistributes the WHOLE travel under the
+       * cap rather than clipping the top off it, so nothing is lost: full
+       * stick commands 65 percent, hover moves up to about 43 percent of
+       * stick, and the resolution a pilot actually uses roughly doubles.
+       * That is the whole reason it is SCALE and not OFF, and the Rates
+       * screen says so in the same words.
+       *
+       * The five inch keeps 100 because it does not have the problem: 8.4 to
+       * 1 on a 710 g airframe over a sixty metre field is a throttle a pilot
+       * uses all of.
+       */
+      throttleCap: 65,
     },
     /*
      * The Air II canopy takes a C03 on a 15 to 45 degree adjustable mount, so

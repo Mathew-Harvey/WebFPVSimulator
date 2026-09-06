@@ -363,7 +363,22 @@ export function pickMostFlownTrack(tracks) {
  * is already seated, including a Fly this track link, is left alone.
  * A board that is down or empty returns null and the world still boots.
  */
-export async function adoptMostFlownTrack() {
+export async function adoptMostFlownTrack(cls) {
+  /*
+   * FOR THIS AIRCRAFT, and that is the whole change here.
+   *
+   * The seats are one per class, so a whoop pilot with nothing seated has to
+   * be handed the most flown ROOM: handing them the most flown track on the
+   * board hands them a sixty metre field, which is the aircraft's own share
+   * seat filled with something it cannot fly. And a whoop pilot with an
+   * empty seat is the common case, because the board's five inch half is
+   * years older than its whoop half.
+   *
+   * readShareImport with no argument reads the ACTIVE class's seat, which is
+   * the one being filled, so the "already seated, leave it alone" rule below
+   * is per class too.
+   */
+  const want = cls === 'micro' ? 'micro' : 'full';
   if (readShareImport()) {
     return null;
   }
@@ -384,8 +399,9 @@ export async function adoptMostFlownTrack() {
       gates: Number(t.gates) || 0,
       times: Number(t.times) || 0,
       publishedUtc: t.publishedUtc ? String(t.publishedUtc) : '',
+      trackClass: t.trackClass === 'micro' ? 'micro' : 'full',
       board: trimOrigin(origin),
-    })).filter((t) => t.id);
+    })).filter((t) => t.id && t.trackClass === want);
     const top = pickMostFlownTrack(list);
     if (!top) {
       return null;

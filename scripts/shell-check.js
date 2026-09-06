@@ -900,6 +900,17 @@ const BEHAVIOUR = `(() => {
   try {
     const input = window.__input;
     const before = ui.padInfo;
+    /*
+     * The title has three states and only the last of them has rows: the
+     * aircraft gate, the mode gate, then the menu. This block is about a
+     * warning ROW, so both gates are closed for the length of it and put
+     * back afterwards. Without this every case here read a gate card and
+     * reported no banner.
+     */
+    const heldCraftGate = ui.craftGate;
+    const heldMode = ui.mode;
+    ui.craftGate = false;
+    ui.mode = ui.mode || 'race';
     const rowAt0 = (info) => {
       ui.setPadInfo(info);
       /* The sweep above ends on credits, which pins #credits, and show()
@@ -929,6 +940,8 @@ const BEHAVIOUR = `(() => {
     });
     const keyboard = rowAt0({ count: 0, using: 'Keyboard' });
     ui.setPadInfo(before);
+    ui.craftGate = heldCraftGate;
+    ui.mode = heldMode;
     ui.show('title');
 
     out.padBanner = {
@@ -1063,10 +1076,21 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
-   * THE GATE. A visit opens on one question, Race or Freestyle, drawn as two
-   * cards, and the menu behind it names a track or a map, never a mode. Two
-   * things would quietly come back: a Race row and a Freestyle row on the
-   * front page, or the cards turning back into plain rows.
+   * THE GATE, AND THERE ARE TWO OF THEM.
+   *
+   * A visit opens on the aircraft, five inch or whoop, and answering that
+   * opens the second question, Race or Freestyle. Both are two cards rather
+   * than rows, both carry art, and the menu behind them names a track or a
+   * map and never a mode. Three things would quietly come back: a Race row
+   * and a Freestyle row on the front page, the cards turning back into plain
+   * rows, or the aircraft question sliding back under Quad where a pilot had
+   * to already know it was there.
+   *
+   * ART IS EITHER A PHOTOGRAPH OR A DRAWING. The mode cards are photographs
+   * of the two places; the aircraft cards are drawn to one scale in one
+   * viewBox, because the point of those two is the size difference and a
+   * photograph of each cropped to the same card throws that away. So the
+   * detector counts both, and "no art" is still the failure it was.
    *
    * Answered through act(), which is what a keypress calls, so the seat has
    * to follow the answer as well as the flag.
@@ -1074,14 +1098,34 @@ const BEHAVIOUR = `(() => {
   try {
     const held = ui.mode;
     const heldFirst = ui.firstRun;
+    const heldCraft = ui.craftGate;
+    const artOf = () => [
+      ...[...ui.root.querySelectorAll('.screen-title .gate-card-shot')]
+        .map((n) => n.getAttribute('src')),
+      ...[...ui.root.querySelectorAll('.screen-title .gate-card-art-drawn svg')]
+        .map(() => 'drawn'),
+    ];
     ui.firstRun = false;
+    /* The root: the aircraft, before anything else. */
+    ui.craftGate = true;
     ui.mode = null;
     ui.show('title');
+    const craftItems = ui.items().filter((it) => ui.isStop(it));
+    const craftGateLabels = craftItems.map((it) => it.label);
+    const craftDrawn = ui.root.querySelectorAll('.screen-title .gate-card').length;
+    const craftArt = artOf();
+    /* Answering it opens the mode question rather than launching anything. */
+    ui.act('craft-5inch');
+    const afterCraft = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
     const gateItems = ui.items().filter((it) => ui.isStop(it));
     const gate = gateItems.map((it) => it.label);
     const drawn = ui.root.querySelectorAll('.screen-title .gate-card').length;
-    const art = [...ui.root.querySelectorAll('.screen-title .gate-card-shot')]
-      .map((n) => n.getAttribute('src'));
+    const art = artOf();
+    /* And Escape from the mode question goes back to the aircraft, which is
+     * the whole reason the aircraft is reachable at all. */
+    ui.back();
+    const backToCraft = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
+    ui.act('craft-5inch');
     /*
      * Race is pressed for real. Freestyle is only set, because answering it
      * can seat a world, and seating a world hands main.js a swap: the city
@@ -1097,11 +1141,23 @@ const BEHAVIOUR = `(() => {
     const free = ui.items().map((it) => it.label);
     ui.mode = held;
     ui.firstRun = heldFirst;
+    ui.craftGate = heldCraft;
     ui.show('title');
     out.modeGate = {
       gate,
       drawn,
       art,
+      craftGateLabels,
+      backToCraft,
+      /* The root asks the aircraft, as two cards with art, and answering it
+       * lands on the mode question rather than on a menu. */
+      craftFirst: craftDrawn === 2 && craftArt.length === 2 && craftArt.every(Boolean)
+        && craftGateLabels.length === 2 && !craftGateLabels.includes('Race')
+        && craftItems.filter((it) => !it.card).length === 0,
+      craftOpensMode: afterCraft.includes('Race') && afterCraft.includes('Freestyle'),
+      /* And Escape walks back up to it. */
+      escapeToCraft: backToCraft.length === 2 && !backToCraft.includes('Race')
+        && backToCraft.join() === craftGateLabels.join(),
       asksTwo: gate.includes('Race') && gate.includes('Freestyle') && !gate.includes('Fly'),
       /* Two cards drawn, both with a picture, and neither of them a row:
        * the whole point of the screen is that it is not a menu. */
@@ -1361,8 +1417,17 @@ async function main() {
       failures.push(`the gate: ${b.modeGate ? b.modeGate.error : 'no result'}`);
     } else {
       const g = b.modeGate;
+      if (!g.craftFirst) {
+        failures.push(`the gate: the root asks ${g.craftGateLabels.join(', ') || 'nothing'}, which is not two aircraft cards with art`);
+      }
+      if (!g.craftOpensMode) {
+        failures.push('the gate: answering the aircraft did not open Race or Freestyle');
+      }
+      if (!g.escapeToCraft) {
+        failures.push(`the gate: Escape from Race or Freestyle reached ${g.backToCraft.join(', ') || 'nothing'}, not the aircraft`);
+      }
       if (!g.asksTwo) {
-        failures.push(`the gate: a fresh visit opens on ${g.gate.join(', ') || 'nothing'}, not on Race or Freestyle`);
+        failures.push(`the second gate opens on ${g.gate.join(', ') || 'nothing'}, not on Race or Freestyle`);
       }
       if (!g.asCards) {
         failures.push(

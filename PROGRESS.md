@@ -29969,3 +29969,107 @@ lands on the whoop board.
 Flown end to end in the shell: seated on a whoop the world is Living room 1 at
 115 degrees; switching to the five inch rebuilds the field, says Choose one,
 and drops to 85; switching back brings the room and the lens straight back.
+
+## Three from the owner: the cap, the root menu, and what a whoop opens on
+
+### Sixty five percent, and it is a SCALE not a clip
+
+"It's an absolute handful otherwise", and the numbers say why. A 23 g
+aircraft with about eight to one holds a hover at 32.3 percent of stick
+travel and reaches a 2.4 m ceiling from the floor in well under a second at
+full throttle, so the top two thirds of the stick is unusable and everything
+a pilot does happens in the bottom third.
+
+Betaflight's `throttle_limit_type = SCALE` redistributes the WHOLE travel
+under the cap rather than clipping the top off it, which is what "resolution
+distributed evenly" asks for and what the Rates screen already says in those
+words. It was compiled in and nothing had ever switched it on for this
+airframe. Measured after: hover moves from 32.3 to 46.9 percent of stick,
+and full stick still climbs at 9.8 m/s, which is plenty in a 2.4 m room.
+
+Three consequences worth writing down.
+
+`THROTTLE_CAP_CHOICES` gained 65. The rule elsewhere in this project is that
+a seeded value has to be one the pilot could have chosen themselves, and 65
+was not on the menu. Betaflight takes any integer; the list is this menu's
+granularity, and one extra stop is cheaper than a seeded value the menu
+cannot show.
+
+The cap moves with the AIRCRAFT and not with the rates. `configs/rates.js`
+keeps the throttle limit outside the rates system on purpose, so it survives
+a rate type change; that also means `structuredCloneRates` does not carry it.
+It follows the camera's rule instead: moved only when it still holds the
+other machine's value, so a pilot who set 80 keeps 80.
+
+`HOVER_STICK_PERCENT` is one column per aircraft now. It is a MEASURED table,
+and hover lands in a different place on a 1S 280 mAh pack than on a 6S one:
+32.3 against 26.5 uncapped, 46.9 against 38.0 at this cap. `flightcheck.js`
+takes `--airframe=whoop65` and seats the whoop's plant with the Champion
+tune to produce it. The five inch column was re-recorded in the same run and
+moved by 0.2 to 0.6 of a point from the stored figures, which is the plant
+drifting under it since the table was first taken; nothing but the menu reads
+these, and a table half of one vintage and half of another is worse than one
+taken in a single run.
+
+### The aircraft is the root menu
+
+It was a first run question. Answer it once and it never came back, and the
+only way to reach the other half of the product after that was three rows
+deep under Quad, which is a thing a pilot has to already know exists.
+
+The title has three levels now: the aircraft, then Race or Freestyle, then
+the menu. Escape walks all of them and stops at the aircraft, which is the
+root. The cursor opens on the aircraft that is SEATED, so two presses of
+Enter from a cold start put a returning pilot back where they were, and the
+hint line names what Escape reaches at each level.
+
+`airframeAsked` still exists and still matters: it is what lets a link
+carrying `?craft=` skip the question, which is how the board and the builder
+hand their own answer over.
+
+### What a whoop opens on
+
+Choosing the whoop with nothing seated gave a whoop hovering in an empty
+paddock, because the world IS the seated track and there wasn't one.
+
+Two faults behind that. `adoptMostFlownTrack` picked from the whole board
+rather than from the class being filled, so a whoop pilot would have been
+handed a sixty metre field; it takes a class now and filters on the
+`trackClass` the board sends. And it only ever ran at BOOT, so changing
+aircraft later left the new seat empty with nothing to fill it. The same
+adopt runs on the swap now, fire and forget: the aircraft change must not
+wait on a network, the world rebuilds from whatever is seated at the time,
+and `syncWorld` runs again when the fetch lands. A board that is down, or
+one with no track of that class, leaves the pilot where this used to leave
+everyone.
+
+Flown against a local board with one room and one field track published: a
+cold boot on the five inch adopts the 2022 AU Nationals layout, choosing the
+whoop adopts Living room 1 and the throttle cap becomes 65, and the world
+behind the title is the room.
+
+### Two checks were asserting the old shape
+
+`lint:boot` looked for the literal `await adoptMostFlownTrack()` and the call
+now takes an argument. The assertion is about ORDER, so it matches the open
+paren.
+
+`lint:shell` failed eight ways, all one cause: its gate probe and its radio
+banner probe both assumed the title's first state was Race or Freestyle. The
+gate probe now walks BOTH gates and asserts the new shape as well as the old
+one, including that Escape from the mode question reaches the aircraft, and
+its art detector counts a drawn card as art, because the aircraft cards are
+drawn to one scale in one viewBox rather than photographed. The banner probe
+closes both gates for the length of the block and puts them back.
+
+### What was run
+
+`npm run verify` 16 of 16, run because the rates go into the config text and
+the module re-inits on them. `de0401cd4266` twice in process, the same hash
+in Node and headless Chrome, one hash across four frame rates, hover 0.2793,
+and console clean.
+
+Also `check:clip`, `check:path`, `check:orbit`, `check:wall` 45 of 45,
+`lint:shell`, `lint:boot`, `lint:nouns`, `lint:presets`, `lint:fc`,
+`lint:frame`, `lint:quality`, `lint:responsive`, `micro:check`,
+`whoop:gates` 19 of 19 and the builder self test 495 of 495.

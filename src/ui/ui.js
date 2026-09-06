@@ -778,6 +778,9 @@ function reseatIfForeign(s) {
   if (ratesMatch(s.rates, other.rates)) {
     s.rates = normaliseRates({ ...s.rates, ...structuredCloneRates(a.rates) });
   }
+  if (s.rates && s.rates.throttleCap === other.rates.throttleCap) {
+    s.rates = normaliseRates({ ...s.rates, throttleCap: a.rates.throttleCap });
+  }
   if (s.cameraFov === other.cameraFov) {
     s.cameraFov = a.cameraFov;
   }
@@ -804,6 +807,17 @@ export function seatAirframe(s, id) {
   }
   if (ratesMatch(s.rates, from.rates)) {
     s.rates = normaliseRates({ ...s.rates, ...structuredCloneRates(to.rates) });
+  }
+  /*
+   * The throttle limit moves on its own test, not with the rates, because it
+   * is not part of a rate profile: configs/rates.js keeps it outside the
+   * system on purpose so it survives a type change. It is the aircraft's
+   * though, and a whoop wants 65 where a five inch wants the whole stick, so
+   * it follows the same "still the other machine's" rule the camera does. A
+   * pilot who set 80 keeps 80.
+   */
+  if (s.rates && s.rates.throttleCap === from.rates.throttleCap) {
+    s.rates = { ...s.rates, throttleCap: to.rates.throttleCap };
   }
   s.cameraFov = to.cameraFov;
   s.cameraAngle = clampCameraAngle(to.cameraAngle);
@@ -2008,18 +2022,17 @@ export class Ui {
      */
     this.mode = linkedMode();
     /*
-     * WHICH AIRCRAFT, ASKED ONCE.
+     * WHICH AIRCRAFT.
      *
-     * True while the airframe gate is open, which is a first run that has
-     * never answered and that no link has answered for it. It sits IN FRONT
-     * of the Race or Freestyle gate, because the two questions are not the
-     * same shape and putting a third card beside Race and Freestyle would
-     * pretend they were: Race on a whoop and Race on a five inch are both
-     * real answers.
+     * It sits IN FRONT of the Race or Freestyle gate, because the two
+     * questions are not the same shape and putting a third card beside Race
+     * and Freestyle would pretend they were: Race on a whoop and Race on a
+     * five inch are both real answers.
      *
-     * Unlike this.mode it IS remembered, in settings.airframeAsked, because
-     * the aircraft is a preference rather than a statement about today. The
-     * Quad screen carries the row for every later change.
+     * The answer IS remembered, in settings.airframe, because the aircraft
+     * is a preference rather than a statement about today. What is not
+     * remembered is that the question was asked: it is the root of the menu
+     * now and it opens every visit. See craftGate below.
      */
     const linkedAf = linkedCraft();
     if (linkedAf) {
@@ -2028,7 +2041,21 @@ export class Ui {
       seatAirframe(this.settings, linkedAf);
       saveSettings(this.settings);
     }
-    this.craftGate = this.firstRun && !this.settings.airframeAsked;
+    /*
+     * THE AIRCRAFT IS THE ROOT MENU, every visit and not only the first.
+     *
+     * It used to be a first run question: answer it once and it never came
+     * back, and the only way to change aircraft after that was three rows
+     * deep under Quad. That made the whoop half of this product something a
+     * pilot had to already know existed. It is not a setting inside the
+     * experience, it IS the experience, so it is the first thing the title
+     * asks and the thing Escape backs out to.
+     *
+     * airframeAsked still matters: it is what lets a LINK carrying ?craft=
+     * skip straight past this, and it is what the choice screen writes so
+     * the seated aircraft is a real answer rather than a default.
+     */
+    this.craftGate = !linkedAf;
     /* Set while a guided first flight is in the air. main.js reads it. */
     this.guided = false;
     this.boardCourses = [];
@@ -2064,6 +2091,17 @@ export class Ui {
      * See syncCursor and restoreFocusRow. */
     this.focusId = null;
     this.cursor = 0;
+    /*
+     * On the aircraft gate the cursor starts on the aircraft that is SEATED,
+     * so a returning whoop pilot sees their own answer under the cursor and
+     * two presses of Enter from a cold start put them back where they were.
+     * renderMenu only re-picks when the cursor has fallen off the list, and
+     * zero is a valid row here, so the first paint has to be told.
+     */
+    if (this.craftGate) {
+      const at = AIRFRAMES.findIndex((a) => a.id === this.settings.airframe);
+      this.cursor = at >= 0 ? at : 0;
+    }
     /* Which course card the player has chosen, by courseCardKey, and the
      * last one they were on. The first says whose list is showing; the
      * second is where Back to the list puts the cursor. */
@@ -5043,7 +5081,7 @@ export class Ui {
        */
       const r = s.rates;
       const split = Boolean(s.ratesSplitPitch);
-      const hover = hoverStickPercent(r.throttleCap);
+      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe);
       const tilt = Math.sin(cameraTiltRad(s.cameraAngle));
       const noteFor = (axis, key) => {
         const spec = rateField(r.type, key);
@@ -5356,7 +5394,10 @@ export class Ui {
     let fcBar = null;
     const items = this.items();
     if (this.cursor >= items.length || !this.isStop(items[this.cursor])) {
-      this.cursor = this.firstStop(items);
+      /* titleStop rather than firstStop, so the first paint of the aircraft
+       * gate puts the cursor on the aircraft that is seated. Everywhere else
+       * the two are the same call. */
+      this.cursor = this.titleStop();
     }
     const scroll = host.scrollTop;
     host.textContent = '';
@@ -5539,7 +5580,7 @@ export class Ui {
         ? 'Arrow keys move, left and right change a value, Enter types one. Escape leaves a field, then goes back. A change reaches the quad at once, and puts it back on the start line.'
         : 'Arrow keys move, left and right change a value, Enter types one. Escape leaves a field, then goes back. Changes are stored and reach the quad at once.';
     }
-    this.ratesPanel.paint(this.settings.rates, this.ratesStick);
+    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe);
   }
 
   /* The live sticks, from the frame loop. Only while the screen is up: the
@@ -6357,7 +6398,7 @@ export class Ui {
     const before = it.num.cli;
     it.set(next);
     try {
-      this.ratesPanel.paint(this.settings.rates, this.ratesStick);
+      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe);
     } finally {
       it.set(before);
     }
@@ -7888,6 +7929,26 @@ export class Ui {
    * to, and is off it on the gate, where the key does nothing: a prompt for
    * a key that is a no-op is worse than no prompt at all.
    */
+  /*
+   * Where the cursor lands when the title's cursor is reset.
+   *
+   * On the aircraft gate it lands on the aircraft that is SEATED, so a
+   * returning whoop pilot sees their own answer under the cursor rather than
+   * the five inch card, and pressing Enter twice from a cold start keeps
+   * them where they were. Everywhere else it is the first row that can be
+   * chosen, which is what it has always been.
+   */
+  titleStop() {
+    const items = this.items();
+    if (this.screen === 'title' && this.craftGate) {
+      const at = items.findIndex((it) => it.action === `craft-${this.settings.airframe}`);
+      if (at >= 0) {
+        return at;
+      }
+    }
+    return this.firstStop(items);
+  }
+
   setTitleHint(gate) {
     if (!this.titleHint) {
       return;
@@ -7897,7 +7958,11 @@ export class Ui {
     if (!keys || !copy) {
       return;
     }
-    const want = gate ? ['←→', 'Enter'] : ['↑↓', 'Enter', 'Esc'];
+    /* The aircraft gate is the root: nothing behind it, so no Escape key on
+     * the line. The mode gate and the menu both have somewhere to go back
+     * to, and the copy below names which. */
+    const root = gate && this.craftGate;
+    const want = root ? ['←→', 'Enter'] : (gate ? ['←→', 'Enter', 'Esc'] : ['↑↓', 'Enter', 'Esc']);
     const have = [...keys.children].map((k) => k.textContent);
     if (have.length !== want.length || want.some((k, i) => have[i] !== k)) {
       keys.textContent = '';
@@ -7905,9 +7970,13 @@ export class Ui {
         keys.append(el('kbd', null, k));
       }
     }
-    copy.textContent = gate
-      ? 'Left and right choose, Enter opens it. On a radio: pitch to move, roll right to choose.'
-      : 'Arrow keys move, Enter selects, Escape goes back to Race or Freestyle. A radio banks the quad. Any switch selects.';
+    if (root) {
+      copy.textContent = 'Left and right choose, Enter opens it. On a radio: pitch to move, roll right to choose.';
+    } else if (gate) {
+      copy.textContent = 'Left and right choose, Enter opens it, Escape goes back to the aircraft. On a radio: pitch to move, roll right to choose.';
+    } else {
+      copy.textContent = 'Arrow keys move, Enter selects, Escape goes back to Race or Freestyle. A radio banks the quad. Any switch selects.';
+    }
   }
 
   /*
@@ -9387,18 +9456,27 @@ export class Ui {
       return;
     }
     if (this.screen === 'title') {
-      /* Escape from the menu is the way back to Race or Freestyle, and the
-       * only way to change mode without reloading the page, which is what
-       * makes the gate cheap to answer. The gate itself has nothing behind
-       * it, so Escape there stays the no-op the title has always been. */
+      /*
+       * THREE LEVELS, AND ESCAPE WALKS ALL OF THEM.
+       *
+       * The menu backs out to Race or Freestyle, and Race or Freestyle backs
+       * out to the aircraft, which is the root and where Escape stops. That
+       * last step is what makes the whoop findable: without it the only way
+       * to reach the other half of the product was three rows deep under
+       * Quad, and a pilot who did not know it was there never went looking.
+       */
       if (this.mode) {
         this.mode = null;
-        if (this.onUiSound) {
-          this.onUiSound('back');
-        }
-        this.setCursor(this.firstStop(this.items()));
-        this.renderMenu();
+      } else if (!this.craftGate) {
+        this.craftGate = true;
+      } else {
+        return;
       }
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      this.setCursor(this.titleStop());
+      this.renderMenu();
       return;
     }
     if (this.screen === 'flight') {
@@ -9779,7 +9857,7 @@ export class Ui {
        * keypress and the menu is behind it. Same list swap as above, so the
        * cursor lands on Fly rather than two rows into a list that just
        * changed underneath it. */
-      this.setCursor(this.firstStop(this.items()));
+      this.setCursor(this.titleStop());
       this.renderMenu();
       return;
     }
@@ -10065,7 +10143,7 @@ export class Ui {
        * mode set would show the question with a menu still under it. */
       this.mode = null;
       this.show('title');
-      this.setCursor(this.firstStop(this.items()));
+      this.setCursor(this.titleStop());
       this.renderMenu();
       return;
     }

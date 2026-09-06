@@ -418,7 +418,16 @@ export function pitchMatchesRoll(r) {
  * behaviour is missing, compile more of Betaflight rather than approximate
  * it. It was already compiled; nothing had ever switched it on.
  */
-export const THROTTLE_CAP_CHOICES = [100, 90, 80, 70, 60, 50, 40];
+/*
+ * 65 is on this list because an airframe seats it, and the rule everywhere
+ * else in this project is that a seeded value has to be one the pilot could
+ * have chosen themselves. A 23 g whoop on a 1S pack has about eight to one
+ * of thrust to weight and holds a hover at 28 percent of stick, so full
+ * travel is four fifths of a stick nobody uses and a handful of one they do.
+ * Betaflight takes any integer here; the list is this menu's granularity,
+ * and one extra stop is cheaper than a seeded value the menu cannot show.
+ */
+export const THROTTLE_CAP_CHOICES = [100, 90, 80, 70, 65, 60, 50, 40];
 
 function nearest(choices, value) {
   let best = choices[0];
@@ -531,10 +540,37 @@ export function ratesSummary(r) {
  * plant changes. It is in the menu because "60 percent" means nothing to a
  * pilot and "hover near a third of the stick" means everything.
  */
-const HOVER_STICK_PERCENT = new Map([
-  [100, 26.2], [90, 28.6], [80, 31.6], [70, 35.4], [60, 40.4], [50, 47.4], [40, 58.0],
-]);
+/*
+ * ONE COLUMN PER AIRCRAFT, because hover does not land in the same place on
+ * the stick on both. A 23 g whoop hovers at 32.3 percent of travel uncapped
+ * where a 710 g five inch hovers at 26.5, and the gap widens under a cap:
+ * the sag and the motor loading that make this a measurement rather than an
+ * algebraic hover-over-cap are different on a 1S 280 mAh pack and a 6S one.
+ *
+ * Re-recorded in full on 2026-09-06 with `node scripts/flightcheck.js` and
+ * `node scripts/flightcheck.js --airframe=whoop65`. The five inch column
+ * moved by 0.2 to 0.6 of a point from the figures stored before that, which
+ * is the plant drifting under it since the table was first taken; nothing
+ * reads these but the menu, and a table half of one vintage and half of
+ * another is worse than one taken in a single run.
+ */
+const HOVER_STICK_PERCENT = {
+  '5inch': new Map([
+    [100, 26.5], [90, 28.9], [80, 31.8], [70, 35.6], [65, 38.0],
+    [60, 40.8], [50, 47.9], [40, 58.6],
+  ]),
+  whoop65: new Map([
+    [100, 32.3], [90, 35.4], [80, 39.2], [70, 44.0], [65, 46.9],
+    [60, 50.5], [50, 59.5], [40, 73.2],
+  ]),
+};
 
-export function hoverStickPercent(cap) {
-  return HOVER_STICK_PERCENT.get(nearest(THROTTLE_CAP_CHOICES, cap)) ?? 26.2;
+/*
+ * Where hover sits on the stick, as a percentage of travel, for this cap on
+ * this aircraft. The airframe is optional and defaults to the five inch,
+ * which is what every caller meant when there was one aircraft.
+ */
+export function hoverStickPercent(cap, airframe = '5inch') {
+  const table = HOVER_STICK_PERCENT[airframe] ?? HOVER_STICK_PERCENT['5inch'];
+  return table.get(nearest(THROTTLE_CAP_CHOICES, cap)) ?? table.get(100);
 }

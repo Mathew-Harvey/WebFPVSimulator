@@ -70,7 +70,10 @@ const loadingSrc = await readFile(join(root, 'src/ui/loading.js'), 'utf8');
 {
   const simFetch = mainSrc.indexOf('const simBytes = fetchBytes(WASM_URL');
   const shareAdopt = mainSrc.indexOf('await adoptShareFromLocation()');
-  const flownAdopt = mainSrc.indexOf('await adoptMostFlownTrack()');
+  /* The open paren, not the empty pair: the call takes the seated class as
+   * an argument now, and an assertion about ORDER should not break on an
+   * argument list. */
+  const flownAdopt = mainSrc.indexOf('await adoptMostFlownTrack(');
   check(
     'the flight controller is requested before the board',
     simFetch > 0 && shareAdopt > simFetch && flownAdopt > simFetch,

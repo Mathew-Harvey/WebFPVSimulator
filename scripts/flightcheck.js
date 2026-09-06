@@ -37,16 +37,51 @@ import { THROTTLE_CAP_CHOICES } from '../configs/rates.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = 9.80665;
-const MASS = 0.71;
+
+/*
+ * WHICH AIRCRAFT. `--airframe=whoop65` measures the whoop's plant with the
+ * whoop's own tune; anything else is the five inch, which is what this
+ * script measured when there was only one of them.
+ *
+ * It matters most for the throttle cap table at the bottom. That table is
+ * read straight into the menu by configs/rates.js, and hover lands in a
+ * different place on the stick on a 23 g aircraft with eight to one than it
+ * does on a 710 g one with eight and a half: same ratio, different sag,
+ * different motor loading, and the cap's effect is measured rather than
+ * derived for exactly that reason.
+ */
+const AIRFRAME = process.argv.slice(2)
+  .find((a) => a.startsWith('--airframe='))?.slice('--airframe='.length) ?? '5inch';
+const WHOOP = AIRFRAME === 'whoop65';
+const SIM_AIRFRAME_WHOOP65 = 1;
+const MASS = WHOOP ? 0.0234 : 0.71;
 
 /* State indices, sim_abi.h. */
 const ST = { T: 0, Z: 3, VX: 4, VZ: 6, P: 11, RPM0: 14, V: 18, I: 19 };
 
 const wasm = await readFile(join(root, 'dist/sim.wasm'));
-const config = await readFile(join(root, 'tests/fixtures/config-baseline.diff'), 'utf8');
+/* The five inch's baseline is the fixture the whole verify suite is built
+ * on; the whoop's is BetaFPV's own Champion tune, which is what the shell
+ * seats with that airframe. Measuring a whoop through a 6S freestyle tune
+ * would be measuring nothing anyone flies. */
+const config = await readFile(
+  join(root, WHOOP ? 'configs/whoop-champion.diff' : 'tests/fixtures/config-baseline.diff'),
+  'utf8',
+);
+/* A 1S pack, fresh, against a 6S one. */
+const CELL_V = 4.2;
 
-async function fresh(cellV = 4.2) {
+async function fresh(cellV = CELL_V) {
   const sim = await loadSim(wasm);
+  /* Airframe BEFORE init, the order the shell uses: it is a mode that
+   * survives init, and setting it first means the hull corners and the
+   * parked ground height are the new airframe's from the first step. */
+  if (WHOOP) {
+    const rc = sim.e.sim_set_airframe(SIM_AIRFRAME_WHOOP65);
+    if (rc !== SIM_OK) {
+      throw new Error(`sim_set_airframe returned ${rc}`);
+    }
+  }
   if (sim.init(config) !== SIM_OK) {
     throw new Error('sim_init failed');
   }
@@ -177,11 +212,20 @@ for (const cap of THROTTLE_CAP_CHOICES) {
   const lines = `\nrateprofile 0\nset throttle_limit_type = ${cap < 100 ? 'SCALE' : 'OFF'}\nset throttle_limit_percent = ${cap}\n`;
   const capped = async () => {
     const sim = await loadSim(wasm);
+    /* Same order as fresh(): the airframe is a mode and it goes on before
+     * init. Without it the cap table below was the five inch's whatever
+     * --airframe said. */
+    if (WHOOP) {
+      const rc = sim.e.sim_set_airframe(SIM_AIRFRAME_WHOOP65);
+      if (rc !== SIM_OK) {
+        throw new Error(`sim_set_airframe returned ${rc}`);
+      }
+    }
     if (sim.init(config + lines) !== SIM_OK) {
       throw new Error('sim_init failed with the cap lines');
     }
     sim.reset();
-    sim.setCellVoltage(4.2);
+    sim.setCellVoltage(CELL_V);
     return sim;
   };
   let lo = 0;

@@ -344,7 +344,12 @@ export function mountRatesPanel() {
    * half-typed number laid over the top: the picture follows the keystroke,
    * and the quad follows the commit.
    */
-  function paint(rates, next) {
+  /* `airframe` is only for the hover readout, which is a measured table with
+   * one column per aircraft: hover lands at 32 percent of a whoop's stick and
+   * 26 of a five inch's, and further apart than that under a cap. Optional,
+   * defaulting to the five inch, which is what this panel meant when there
+   * was one aircraft. */
+  function paint(rates, next, airframe) {
     const r = normaliseRates(rates || {});
     curves = ratesCurves(r);
     if (next) {
@@ -378,7 +383,7 @@ export function mountRatesPanel() {
       });
     }
     if (hoverDd) {
-      hoverDd.textContent = `${hoverStickPercent(r.throttleCap).toFixed(1)}% stick`;
+      hoverDd.textContent = `${hoverStickPercent(r.throttleCap, airframe).toFixed(1)}% stick`;
     }
     canvas.setAttribute('aria-label', describe(curves));
     draw();

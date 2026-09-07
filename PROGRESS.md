@@ -30824,3 +30824,142 @@ the plant, the module, the ABI or the build. `dist/sim.wasm` is untouched.
 The PID probe that produced the table above is
 `scratchpad/pid-probe.mjs`, kept out of the repository because it composes a
 config and reads it back, which `lint:fc` already does for the shipped tunes.
+
+## The four hunts report, and a rule about asking before a verification run
+
+The owner asked two things. Update the coding instructions so that a turn
+always asks whether to run a verification pass and at what scale, because the
+pilot can fly the build and learn in one minute what no headless check can
+see. And say plainly whether the empty menu is fixed, so they can go and fly
+it.
+
+### The rule
+
+`CLAUDE.md` gains it under Working rules, next to the rule about `npm run
+verify` that it modifies. The scales are named so the question is answerable
+in one word: none, cheap, shots, verify, fly it. The point of writing the
+last one down is that handing the build to the pilot is a real option and
+often the best one, and a turn that quietly picks `cheap` because the cheap
+checks were green has answered a question it was not asked. The board
+repository gets the same rule with its own scales, because its whole job is
+what a visitor sees and `npm test` cannot see any of it.
+
+### The four hunts
+
+Four lines were sent at the empty menu from independent angles, then each
+surviving finding was handed to a refuter told to break it. Nine agents. The
+verdicts, all of them, as the Review section requires.
+
+**Confirmed, and already fixed at f7003b3.** The is-gate predicate in
+`renderMenu`. Three of the four lines arrived at it separately and the
+refuter could not break it. The measurement that settles it: on
+`?map=custom` with the owner's own track the shell reports `mode: 'race',
+craftGate: true, onGate: true`, so the old `!this.mode` was false while the
+gate was genuinely open. Two agents reproduced the owner's screenshot
+pixel for pixel by neutering only the one thing the fix changed, leaving
+items, cursor and the rows filter alone. Boot had finished in every
+reproduction, `#loading` computed opacity 0, so the bar in the bottom left
+was never the loading bar. It is the empty `.menu` plate at x 64, y 811,
+576 by 24, with its sakura top line.
+
+**Refuted: the material lifetime hypothesis for the GL errors.** The claim
+was that a material disposed by `disposeSceneGraph` and reused from the
+`SHARED` singleton leaves a dangling `WebGLProgram`, which is the
+`glGetProgramiv` error. It does not, in three r160. `onMaterialDispose`
+calls `properties.remove(material)` and `releaseProgram` splices the program
+out of the cache before `destroy()`, so nothing still points at a destroyed
+program and the next render simply relinks. Two agents built the exact shape
+in the same headless Chromium and ANGLE SwiftShader the harness uses, six
+worlds including a double dispose and a compile-then-dispose-before-first-use,
+and got `gl.getError() === 0` at every stage with program ids stepping
+cleanly. `compileAsync`, the one r160 path that could spin on a disposed
+material and emit that exact error, appears nowhere in `src/`.
+
+**Refuted: the pole element.** The pole branch in `courseProps` is healthy.
+`window.__colliders()` reports `pole: 2` of 29 on the owner's remixed track,
+9 menu rows once the gate is answered, 0 console errors, and the same at
+high graphics. Stripping the pole's dims to force a NaN cylinder is repaired
+upstream by `normalize`. The refuter was right to strike the earlier
+finding's "decisive control", which was a misreading: `?map=city` with no
+course also showing zero rows is the aircraft gate behaving normally, not a
+reproduction.
+
+**Refuted: the loading screen.** `#loading` is `position: fixed; inset: 0`
+with two opaque gradient stops, so if it were up the world and the brand
+block could not be in the owner's screenshot. Forcing it visible gives a
+blank green-black frame. Its track measures 420 by 5 dead centre, not
+576 by 24 bottom left.
+
+### What the hunts found that was not the bug
+
+Six real defects, none of them the reported one, none of them fixed this
+turn. They are written down here rather than acted on because the owner is
+about to fly the build to check the menu fix, and changing six more things
+underneath that flight would make its result mean nothing. They are the
+next turn's work if the owner wants them.
+
+1. `src/render/scene.js:5434` captures `const quad = shell.quad` at build
+   time, but boot always builds a five inch and `applySettings` swaps to the
+   whoop afterwards, so on a whoop the map holds the dead five inch group.
+   `dispose()` does `scene.remove(quad)` on that stale reference, the live
+   craft stays a child of the scene, and `disposeSceneGraph` disposes every
+   craft geometry and cel material, violating the invariant its own header
+   at `shell.js:55` states. Measured with a `gl.deleteBuffer` hook over three
+   forced rebuilds: 320 buffers deleted on the first, 119 and 117 after,
+   the extra 203 being the whoop craft. Nothing visibly breaks because three
+   re-uploads, so this is churn. Fix is one line, read `shell.quad` at
+   dispose time instead of capturing it. High confidence, measured.
+2. `ghostRig` is parented into the map's scene at `main.js:1435` and never
+   removed, so `disposeSceneGraph` frees its geometries, its two materials,
+   its `SpriteMaterial` and its name-tag `CanvasTexture`, which is not in
+   `SESSION_TEXTURES`. The authors handled the parenting hazard at
+   `main.js:1431` and not the disposal one. Same fix site as 1. Read from
+   the code, not reproduced: it needs a recorded ghost at presence above
+   zero followed by a map swap. Medium confidence.
+3. `celMaterial` never overrides `customProgramCacheKey`, whose r160 default
+   is `onBeforeCompile.toString()`. That string is identical for every
+   `celMaterial` because the closure body text does not change with the
+   captured options, so two materials differing only in `cloth` or `rim`
+   collide in the program cache and whichever links first decides whether
+   the cloth code exists at all. `printed` at `scene.js:1520` and
+   `sailMaterial` at `scene.js:3560` are exactly such a pair, so whether a
+   flag waves depends on link order. High confidence, three measurements.
+4. `virtualGate` splits its marker art on `marker.type === 'cone'` alone, so
+   a vertical pole that is the next station wears the feather-flag mast from
+   `banners.js:527`: a green core about twice the pipe's radius that goes
+   straight to 0.62 h then arcs 100 degrees over the top, with a sail glow
+   hanging off it. Screenshot taken on a micro track whose first sequenced
+   element is a pole. This one the owner will see, on the tracks they are
+   building right now. Fix is a pole case building the core and halo as the
+   cylinder `courseProps` already draws at `scene.js:2560`, no sail.
+   High confidence.
+5. `index.html:1117` scopes the empty-menu hide to `.screen-title.is-gate`,
+   so any zero-row title paints the meaningless plate. Dropping the
+   qualifier makes the class of bug fixed at f7003b3 invisible rather than
+   ugly, which is worth having as a second line of defence.
+6. `SHARED` at `scene.js:1413` is a module singleton that world `dispose()`
+   disposes and nothing ever resets, so every world after the first is built
+   from disposed materials. Per the refutation above this is a recompile and
+   re-upload cost, not a crash, but the singleton's lifetime and the world's
+   lifetime disagree and one of them is wrong. `SHARED = null` in `dispose()`.
+
+### The GL errors are still unexplained, and that is recorded as unexplained
+
+The owner's console had `glGetProgramiv: Program object expected` twelve
+times. The one mechanism anybody proposed for it has been disproved above,
+in the same rasteriser the harness uses. No run by any of the nine agents,
+on any track, at any graphics level, with or without a pole, produced a
+single GL error. The empty menu is fully explained without any GL fault, so
+these are not evidence for it. Chasing them further needs the full
+unfiltered console with whatever uncaught error and stack the paste cut off,
+which is a thing to ask the owner for rather than guess at.
+
+### What was run
+
+Nothing in `src/` changed this turn, so nothing in `src/` was checked. The
+change is `CLAUDE.md` in both repositories and this entry. The evidence for
+the fix being a fix is f7003b3's own checks, quoted in the entry above, plus
+the nine agents summarised here, six of which drove the real shell through
+headless Chromium on the owner's own track.
+
+`npm run verify` was NOT run and is not warranted: no source file changed.

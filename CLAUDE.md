@@ -35,6 +35,19 @@ A browser FPV racing simulator whose only current goal is flight feel indistingu
 ## Working rules
 
 - **Do not run `npm run verify` unless asked.** It is expensive: it drives headless Chromium through the whole shell and takes minutes of wall clock. Run it when the change is to physics, the plant, the module ABI or the build, or when the request says to.
+- **Always ask, before the turn ends, whether to run a verification pass and at what scale.** The pilot can fly the
+  build and learn in one minute what no headless check can see, so whether to spend that minute is their call and not an
+  assumption. Ask on every turn that changed code, including the turns where the cheap checks already came back green,
+  because a green check is evidence about the thing it can see and nothing else. Offer the scale plainly and let them
+  pick one:
+  - **none.** The change is documentation, a comment, or a rename with a lint behind it, and there is nothing to fly.
+  - **cheap.** The targeted lints named below, seconds of wall clock, no browser.
+  - **shots.** `node scripts/shots.js` drives headless Chromium through the real flow and leaves pictures. Minutes.
+    This is the right answer for anything the pilot would notice on screen.
+  - **verify.** `npm run verify`, the whole suite. Physics, the plant, the module ABI or the build.
+  - **fly it.** Hand it over and let the pilot fly. Say what to look for and what would count as wrong.
+  The point of asking is that the last one is a real option, and it is often the best one. Do not run the expensive
+  scales on a guess, and do not skip the question because the answer seems obvious.
 - Never report a check as passing without having run it in the same turn. That rule is unchanged by the one above: if verify was not run, say so, say why, and say what was done instead. A check that was not run is not evidence, and neither is a green check that cannot see the thing that changed. Check 13 loads only `tests/browser/harness.html`, so it says nothing about any other page.
 - Prefer the cheap targeted check to the full suite: `npm run lint:fc`, `npm run lint:presets`, `npm run lint:catalog`, `node scripts/shots.js` for anything visual, and a direct fetch for anything about a served file.
 - Never change a threshold to make a check pass. Argue in PROGRESS.md instead.

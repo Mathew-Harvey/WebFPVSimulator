@@ -31821,3 +31821,185 @@ FPVBean}`, the world built with no frame fault.
 
 Not run: `npm run verify`. Nothing in the physics path, the plant, the ABI
 or the build changed.
+
+## The whoop's gyro was reading a five inch's vibration, and the review that found it
+
+The owner: review the flight model and characteristics for bugs and issues,
+something is not right.
+
+Nothing in the plant had changed since the whoop last flew ok except the
+hull's half extents and the contact arm cap, so the review was of the whole
+model rather than of a diff: the whoop entry in `plant.c` and the whole of
+`plant_step`, the contact solver in `sim.c`, the seam in `bf_glue.c`, the
+three BetaFPV tunes and the airframe's shell entry. Alongside the reading, a
+probe drove the module through what a pilot meets on a RaceGOW track, with
+the shell's own configuration (Freestyle tune, master 150, ACTUAL 58/58/50,
+throttle SCALE 75, a mat at the parked height): hover, roll steps at three
+stick positions, the hover stick against height, lift off, a chopped
+throttle, gentle descents, forward flight in angle mode, yaw steps, a punch,
+a braking flare, a fall at zero throttle and the craft on its back. The two
+review agents that were launched first both died on a session rate limit
+before reporting, so this was done by hand.
+
+### What was wrong, and is fixed
+
+**The gyro vibration was scaled against the five inch's rotor speed.**
+`bf_glue.c` adds vibration to the gyro reading as (w / w_ref)^2, imbalance
+force going as speed squared, and w_ref was a single define: 2700 rad/s, the
+five inch's full throttle. The whoop hovers at 3611 rad/s and punches at
+7828, so its gyro carried 1.8 times the five inch's FULL THROTTLE vibration
+in a hover and 8.4 times it on the power. Measured, filtered roll gyro
+against the body truth, RMS over a second:
+
+| | five inch | whoop before | whoop after |
+|---|---|---|---|
+| hover | 0.23 deg/s | 3.66 deg/s | 0.62 deg/s |
+| 55 percent | 0.61 | 5.63 | 0.81 |
+| full throttle | 1.36 | 11.30 | 1.60 |
+
+Peaks of 32 deg/s. The motor command jittered plus or minus 105 on a hover
+value of 653 (16 percent; the five inch's jitters under one), and the
+controller reacting to it shook the airframe at 1.1 deg/s RMS in the hover
+and 3.9 on a punch. That is a twitchy, nervous whoop, and it was never
+calibrated: it was flying the five inch's figure at three times the rotor
+speed. `vib_ref_w` is a `PlantParams` field now, 2700 for the five inch (the
+same double in the same arithmetic, so its trace is bit identical) and 7830
+for the whoop, its own full throttle speed rounded the way 2723 is rounded
+to 2700. At full throttle the whoop now reads the 2.0 deg/s of hump and 1.0
+of line the five inch reads at its own, the level a pilot set as subtle and
+asked to move only upward. After the fix the body shakes at 0.22 deg/s in
+the hover and the motor jitter is plus or minus 19.
+
+Two things in the same block were written for the five inch and broke on
+the whoop. The once per revolution line was integrated with one conditional
+wrap, "the step advance is at most 2.8 rad": the whoop advances up to 7.9
+and the phase grew without bound. It is a loop now, which on the five inch
+runs the once it always did. And the line's frequency, 130 to 433 Hz on the
+five inch, "fits under Nyquist with room to spare"; the whoop's runs 575 Hz
+in a hover and 1246 at full throttle, and a 1 kHz gyro cannot carry either.
+What it carried was the alias, a tone sliding DOWN the spectrum as the
+throttle went up, which the RPM filter, aimed at the true frequency and
+clamped to 480 Hz, could never reach, and which landed in the D term's band
+on the power. A line above Nyquist is not injected now. The hump and the
+floor still stand.
+
+**Ground effect charged the motor for thrust it makes for free.** The
+comment on the term said a rotor in ground effect "draws the same current",
+and the code applied the factor to the same `axial` the induced torque is
+computed from, so the load went as the factor to the three halves: 18
+percent more torque at the parked height, the motor slowed, the cushion came
+out a quarter weaker than the 1.33 the comment promised, and the pack
+current ROSE on the floor where a bench shows it falling. The torque is
+charged for the out of ground effect thrust now, which is the momentum
+theory answer: the image raises thrust by the factor it lowers the induced
+velocity, so T v_i does not move. Measured after, hover trims: at 6 cm the
+whoop needs 3 percent less stick and draws 1.07 A; at 50 cm, 1.16 A.
+
+**Ground effect on a rotor blowing at the ceiling.** The factor was applied
+by height alone, so a whoop on its back on the mat with the throttle up was
+pinned a third harder than its own thrust pinned it. The augmentation is
+scaled by the cosine between the rotor axis and the plane's normal now:
+exact level, nothing at ninety degrees, nothing inverted. The cosine is an
+assumption about how the image weakens with tilt and the comment says so.
+
+None of the three touches the five inch: `k_ground` is zero there, so the
+new `axial_oge` is the same double as `axial`, and verify's determinism hash
+is unchanged.
+
+### Observed and left alone
+
+- **A full yaw stick lifts the whoop.** 0.23 m over a 0.8 s snap at 500
+  deg/s; a half stick yaw does nothing. The mechanism is Betaflight's own:
+  the LEGACY mixer with airmode pushes the throttle up when the yaw demand
+  would take a motor under idle, and thrust goes as speed squared, so the
+  split pair makes more thrust than the pair they replace. The whoop's yaw
+  authority is the rotor inertia reaction, j dw/dt through the stator, and
+  the motors saturate for the first 30 ms of a snap at 2047, thrust to
+  weight 1.43 for that instant, and a 0.17 m/s climb that nothing damps.
+  On the five inch with the default tune the same snap balloons 6.6 m at
+  thrust to weight 3.3, because its yaw authority is prop drag alone and
+  the motors sit split at 8 and 85 percent for 200 ms while the rate
+  builds. Both are the compiled firmware doing what it does; whether a real
+  whoop climbs that much on a snap is a thing to ask the pilot, and it is
+  not changed here.
+- **Angle mode reaches 17 degrees at half stick, not 30.** Betaflight 4.5
+  scales the level mode target by the ACTUAL rate curve, so half stick is
+  162 of 580 deg/s and 28 percent of the 60 degree limit. That is the
+  firmware; the shell flies acro and only the gates and the probe use it.
+- **The ring state onset keys on axial inflow alone**, so a nose up flare
+  at 6 m/s reads as vortex ring state though the disc is moving edgewise.
+  `plant.c` records this as a known seam of the five inch's calibration;
+  the whoop inherits it and it is not disturbed.
+- The whoop still reads 0.62 deg/s in a hover against the five inch's 0.23,
+  because it hovers at 46 percent of its full speed where the five inch
+  hovers at 33. That is the same rule applied to a different aircraft.
+
+### What the probe says the whoop does now
+
+Hover at 43.8 percent of stick, attitude steady to a hundredth of a degree
+over five seconds. Roll steps at a quarter, half and full stick: setpoints
+49, 162 and 580 deg/s, peaks 52, 164 and 583, rise to ninety percent in 26,
+30 and 36 ms, and 3 deg/s of reversal when the stick centres. Lift off on a
+slow ramp at 42.8 percent, four tenths under the hover; the cushion takes
+the hover stick from 40.1 percent on the mat to 44.5 at half a metre. A
+chopped throttle from a metre reaches the mat in 428 ms at 3.65 m/s and
+stays down, level. Forward at 17 degrees, 3.3 m/s and three tenths of a
+percent more stick to hold height, the duct at 1.077 of 1.10. A punch of
+400 ms climbs 4.7 m and sags the cell to 3.33 V. On its back with the
+throttle at half it stays on its back. Idle holds 3577 rpm at zero throttle.
+
+### What went wrong on the way
+
+The first probe fed the throttle ramp through a second RC stream at the same
+timestamps and the seg's zero won every fourth sample, so lift off read 52
+percent; the hover trim bisected on a single vertical speed sample and
+stopped at the bottom of a bounce, and later stopped on the cushion, where
+any stick between the parked and the free hover holds a still craft. Three
+trims were written before one held the height it was asked for. And the
+whoop gates were once launched while verify's first check was rewriting
+`dist/sim.wasm`, which produced an empty log and exit 254; rerun on the
+finished module they pass. Recorded so the next reader of that exit code
+knows what it was.
+
+### RUN LOG
+
+`npm run build:wasm` exit 0, one pre-existing pointer type warning at
+`plant.c:1132`, `git diff --stat vendor/betaflight` empty. `npm run verify`
+on the final tree, 16 of 16:
+
+| # | check | result |
+|---|---|---|
+| 1 | build-clean | build exit 0, vendor diff empty, abi 1, init OK |
+| 2 | determinism-repeat | a=de0401cd4266 b=de0401cd4266 |
+| 3 | determinism-cross-host | node=de0401cd4266 chrome=de0401cd4266 |
+| 4 | frame-independence | 1 distinct hash across 4 rates |
+| 5 | hover-throttle | 0.2793 |
+| 6 | punch-out | 80.0 m |
+| 7 | terminal-velocity | 31.0 m/s |
+| 8 | motor-step-response | 26 ms |
+| 9 | rate-tracking | 671.7 deg/s vs 670 (0.25 percent off) |
+| 10 | yaw-coupling | -0.10 deg |
+| 11 | battery-sag | 11.14 percent lower (26157 vs 23242 RPM) |
+| 12 | diff-passthrough | ratio 1.2472 vs 1.2537 (0.52 percent off) |
+| 13 | console-clean | errors=0 warnings=0 |
+| 14 | audio-bed | ctx running, media advancing |
+| 15 | world-scale | craft sweep 0.1735 m, gate opening 1.7526 m |
+| 16 | map-isolation | field cost unchanged after a city round trip |
+
+Every hash is the one the tree had before this change, so the five inch did
+not move. Verify was also run on the intermediate tree with only the gyro
+fix, 16 of 16 with the same hashes.
+
+`npm run whoop:gates`, 19 of 19: W1 0.3100, W2 0.338, W3 5.13 : 1, W4
+78103 rpm, W6 16.08 A, W5 3.316 V, W7 0.0340 s, W8 2050 rad/s^2, W9 7.98
+m/s, W10 16.39 m/s, W11 0.641, W12 6.42 percent, W13 2.51 s, W14 identical.
+W3, W4 and W6 moved up from 4.94, 76642 and 14.84 with the noise gone: the
+jitter had been costing the punch two percent of its peak speed.
+
+`micro:check`, `lint:fc`, `lint:presets`, `lint:catalog`, `lint:shell`,
+`lint:nouns`, `lint:quality`, `lint:boot`, `lint:devices`, `check:path`,
+`lint:memory`, `check:wall` 45 of 45, all green on the final tree.
+
+Not flown. The gyro figures are a bench, the probe is a script, and the
+thing that was reported is a feel. What to fly and what would count as
+wrong is in the handover.

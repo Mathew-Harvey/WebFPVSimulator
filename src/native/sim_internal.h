@@ -137,6 +137,10 @@ typedef struct {
   double hull_hz_up;    /* CG to the top of the stack, what an inverted craft rests on */
   double contact_patch_r; /* resting spin friction lever, metres */
   double contact_arm_max; /* largest impulse arm a caller may hand sim_contact_at */
+  double vib_ref_w;     /* rotor speed, rad/s, at which the bridge's gyro
+                         * vibration injection reads its full amplitude. This
+                         * airframe's own full throttle speed; bf_glue.c says
+                         * why it cannot be one number for both. */
   double camera_x;      /* lens glass in the body frame */
   double camera_y;
   double camera_z;

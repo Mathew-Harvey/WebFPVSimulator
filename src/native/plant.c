@@ -286,6 +286,10 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .hull_hz_up = 0.038,
   .contact_patch_r = 0.060,
   .contact_arm_max = 0.20,
+  /* The bridge's GYRO_VIB_REF_W, unchanged: 2700 is the full throttle speed
+   * the injection was calibrated against, and the five inch's trace is bit
+   * identical with the same divisor in the same place. */
+  .vib_ref_w = 2700.0,
   .camera_x = 0.104,
   .camera_y = 0.0,
   .camera_z = 0.018,
@@ -613,6 +617,31 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .hull_hz_up = 0.018,
   .contact_patch_r = 0.0115,
   .contact_arm_max = 0.060,
+  /*
+   * THE GYRO WAS READING A FIVE INCH'S VIBRATION AT A WHOOP'S ROTOR SPEED.
+   *
+   * bf_glue.c scales the vibration it adds to the gyro as (w / w_ref)^2,
+   * because imbalance force goes as rotor speed squared, and w_ref was one
+   * number for every airframe: 2700 rad/s, the five inch's full throttle.
+   * This aircraft hovers at 3611 and punches at 7828, so its gyro carried
+   * 1.8 times the five inch's full throttle vibration in a HOVER and 8.4
+   * times it on the power. Measured on the build before this change, the
+   * filtered roll gyro against the body truth: 3.66 deg/s RMS in the hover
+   * against the five inch's 0.23, and 11.30 at full throttle against 1.36,
+   * with 32 deg/s peaks; the motor command jittered 16 percent of its
+   * hover value where the five inch's jitters under one. The controller
+   * reacts to what its gyro says, so the airframe shook at 1.1 deg/s RMS
+   * in a hover and 3.9 on a punch, which is where a twitchy, nervous whoop
+   * came from. The whoop was never calibrated against that figure; it was
+   * flying the five inch's calibration at three times the rotor speed.
+   *
+   * This is the whoop's own full throttle speed, rounded the way the five
+   * inch's 2723 is rounded to 2700, so at full throttle it reads the same
+   * 2.0 deg/s of hump and 1.0 of line the five inch reads at its own. That
+   * is the level a pilot set as subtle and asked to move only upward, and
+   * the same rule applies here: it moves when a whoop pilot says so.
+   */
+  .vib_ref_w = 7830.0,
   .camera_x = 0.024,
   .camera_y = 0.0,
   .camera_z = 0.012,
@@ -1373,10 +1402,23 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     }
     axial *= duct;
     /*
-     * GROUND EFFECT, per rotor, on the same factor the duct goes through so
-     * the torque load below sees it too: a rotor in ground effect makes its
-     * extra thrust at the same shaft speed and draws the same current, which
-     * is what the Cheeseman and Bennett image says and what a bench shows.
+     * The thrust factor the TORQUE below is charged for, taken before the
+     * ground effect goes on. A rotor in ground effect makes its extra thrust
+     * at the same shaft speed and draws the same current: the image rotor
+     * raises the thrust by the same factor it lowers the induced velocity,
+     * so T v_i, the induced power, does not move. Charging the torque for
+     * the augmented thrust (which this did, for the whole of the term's
+     * first week) made the induced load go as the factor to the three
+     * halves, 18 percent more torque at the parked height, so the motor
+     * slowed, the cushion came out a quarter weaker than the number above
+     * says, and the pack current ROSE on the floor where a bench shows it
+     * falling. The five inch's k_ground is zero, so for it the two factors
+     * are the same double and its trace is bit identical.
+     */
+    const double axial_oge = axial;
+    /*
+     * GROUND EFFECT, per rotor, on the thrust only. See axial_oge above for
+     * why the torque load does not see it.
      *
      * The rotor's own height above the plane, not the CG's: a banked whoop
      * has one duct nearer the mat than the other and the near one gets the
@@ -1384,21 +1426,40 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
      * a low hover feels planted. The offset is rotated by the attitude and
      * projected on the plane's normal. Off entirely when the host has
      * raised no plane, and on the five inch, whose k_ground is zero.
+     *
+     * AND ONLY FOR A ROTOR WHOSE WAKE REACHES THE FLOOR. The image rotor is
+     * the wake stagnating against the plane, so it exists for a disc whose
+     * thrust axis points away from the floor and not for one that points at
+     * it: a whoop on its back with the throttle up is blowing its wake at
+     * the ceiling, and the first version handed that rotor the full parked
+     * factor too, pinning an inverted craft to the mat a third harder than
+     * its own thrust did. The augmentation is scaled by the cosine between
+     * the rotor axis and the plane's normal, which is exact level, nothing
+     * at ninety degrees and nothing inverted, and continuous between. The
+     * cosine is an assumption about how the image weakens with tilt, not a
+     * derivation, and it is written down as one.
      */
     if (PLANT.k_ground > 0.0 && s->ground_h >= 0.0) {
-      const double off_b[3] = { PLANT_POS_X[m], PLANT_POS_Y[m], PLANT_POS_Z[m] };
-      double off_w[3];
-      quat_rotate(s->quat, off_b, off_w);
-      const double h = s->ground_h
-        + s->ground_n[0] * off_w[0] + s->ground_n[1] * off_w[1] + s->ground_n[2] * off_w[2];
-      const double r_eff = 2.0 * PLANT.prop_r;
-      /* Half a radius is the pole of the form; a rotor lower than that is
-       * one a contact has pushed into the floor and it gets the parked
-       * figure rather than a larger one. */
-      const double hh = (h < 0.5 * r_eff) ? 0.5 * r_eff : h;
-      const double x = r_eff / (4.0 * hh);
-      const double ige = 1.0 / (1.0 - PLANT.k_ground * x * x);
-      axial *= ige;
+      const double up_b[3] = { 0.0, 0.0, 1.0 };
+      double up_w[3];
+      quat_rotate(s->quat, up_b, up_w);
+      const double facing = s->ground_n[0] * up_w[0] + s->ground_n[1] * up_w[1]
+        + s->ground_n[2] * up_w[2];
+      if (facing > 0.0) {
+        const double off_b[3] = { PLANT_POS_X[m], PLANT_POS_Y[m], PLANT_POS_Z[m] };
+        double off_w[3];
+        quat_rotate(s->quat, off_b, off_w);
+        const double h = s->ground_h
+          + s->ground_n[0] * off_w[0] + s->ground_n[1] * off_w[1] + s->ground_n[2] * off_w[2];
+        const double r_eff = 2.0 * PLANT.prop_r;
+        /* Half a radius is the pole of the form; a rotor lower than that is
+         * one a contact has pushed into the floor and it gets the parked
+         * figure rather than a larger one. */
+        const double hh = (h < 0.5 * r_eff) ? 0.5 * r_eff : h;
+        const double x = r_eff / (4.0 * hh);
+        const double ige = 1.0 / (1.0 - PLANT.k_ground * x * x);
+        axial *= 1.0 + (ige - 1.0) * facing;
+      }
     }
     if (m == 0) {
       PLANT_DBG_DUCT = duct;
@@ -1420,7 +1481,7 @@ void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
     const double qb_mag = PLANT.kq * w_rel * w_rel;
     double q_mag = (1.0 - PLANT.torque_ind) * qb_mag;
     {
-      const double t_load = PLANT.kt * w * w * axial;
+      const double t_load = PLANT.kt * w * w * axial_oge;
       if (t_load > 1e-6) {
         const double vh2 = t_load / (2.0 * PLANT.rho * 3.14159265358979323846 *
                                      PLANT.prop_r * PLANT.prop_r);

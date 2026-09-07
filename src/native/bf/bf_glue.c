@@ -211,7 +211,14 @@ static float g_gyro_dps[XYZ_AXIS_COUNT];
 #define GYRO_VIB_RMS 0.340474
 #define GYRO_VIB_FULL_DPS 2.0
 #define GYRO_VIB_LINE_DPS 1.0
-#define GYRO_VIB_REF_W 2700.0
+/*
+ * GYRO_VIB_REF_W, 2700.0, used to be defined here. It is PLANT.vib_ref_w
+ * now, per airframe, because the whoop hovers above the speed this number
+ * named as full throttle and its gyro was carrying up to eight times the
+ * vibration the five inch's ever does. plant.c's whoop entry has the
+ * measurements. The five inch's value is the same 2700.0 in the same
+ * arithmetic, so its trace does not move.
+ */
 #define GYRO_VIB_YAW_SHARE 0.6
 #define GYRO_VIB_LINE_YAW_SHARE 0.5
 #define GYRO_NOISE_FLOOR_DPS 0.30
@@ -245,7 +252,7 @@ static void sim_gyro_add_vibration(const SimState *s) {
     w_sum += s->motor_omega[m];
   }
   const double w_mean = w_sum * 0.25;
-  const double ratio = w_mean / GYRO_VIB_REF_W;
+  const double ratio = w_mean / PLANT.vib_ref_w;
   const double amp = GYRO_VIB_FULL_DPS * ratio * ratio;
   for (int a = 0; a < XYZ_AXIS_COUNT; a += 1) {
     /* Run the channel every step regardless of throttle, so spooling up does
@@ -269,14 +276,33 @@ static void sim_gyro_add_vibration(const SimState *s) {
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     const double w = s->motor_omega[m];
     double p = g_vib_phase[m] + w * SIM_DT;
-    /* One conditional wrap is enough: the step advance is at most 2.8 rad. */
-    if (p > TWO_PI) {
+    /* A loop, not one conditional subtraction: the five inch advances at
+     * most 2.8 rad a step and one wrap was enough, but the whoop advances
+     * up to 7.9 and a single subtraction let the phase grow without bound.
+     * On the five inch the loop runs exactly the once it always did. */
+    while (p > TWO_PI) {
       p -= TWO_PI;
     }
     g_vib_phase[m] = p;
-    const double r = w / GYRO_VIB_REF_W;
+    const double r = w / PLANT.vib_ref_w;
     const double a_line = GYRO_VIB_LINE_DPS * r * r * GYRO_VIB_IMBALANCE[m];
     if (a_line < 1e-4 || SIM_ARCADE) {
+      continue;
+    }
+    /*
+     * A line above the loop's Nyquist is not injected. The five inch's
+     * fundamental tops out at 433 Hz and the paragraph above was written
+     * for it; a whoop's runs 575 Hz in the hover and 1246 at full throttle,
+     * and a 1 kHz gyro cannot carry either. What it would carry is the
+     * alias, a tone that slides DOWN the spectrum as the throttle goes up,
+     * which the RPM filter, aimed at the true frequency and clamped to
+     * 480 Hz, can never reach, and which lands in the D term's band on the
+     * power. The line exists to give that filter the thing it hunts, and
+     * above Nyquist it cannot, so it is left out rather than folded. The
+     * hump and the floor still stand, and the phase above still integrates,
+     * so a rotor slowing back under the limit picks its line up in step.
+     */
+    if (w * (0.5 / 3.14159265358979323846) > 0.5 * SIM_STEP_HZ) {
       continue;
     }
     /* sin_approx wraps to -PI..PI itself and is Betaflight's own compiled

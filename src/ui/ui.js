@@ -109,6 +109,7 @@ import { BOARD_WINDOW, WIKI_WINDOW, openNamedWindow } from '../share/windows.js'
 import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
+import { presetsForClass, presetById } from '../trackbuilder/presets.js';
 import { drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
@@ -117,6 +118,7 @@ import {
   writeBuilderIntent,
   writePendingTime,
   clearShareImport,
+  writeShareImport,
 } from '../share/session.js';
 import {
   clipKeyForMap,
@@ -1772,9 +1774,10 @@ function courseCardKey(card) {
   if (!card || !card.course) {
     return null;
   }
-  return card.course.kind === 'board'
-    ? `board:${card.course.track.id}`
-    : 'current';
+  if (card.course.kind === 'board' || card.course.kind === 'stock') {
+    return `${card.course.kind}:${card.course.track.id}`;
+  }
+  return 'current';
 }
 
 /*
@@ -1798,6 +1801,7 @@ function courseCardKey(card) {
  */
 function courseCardRows(subject) {
   const board = subject.course.kind === 'board';
+  const stock = subject.course.kind === 'stock';
   const name = subject.label;
   const rows = [
     /* The list says whose it is. The chosen card is marked as well, but a
@@ -1814,7 +1818,7 @@ function courseCardRows(subject) {
     {
       label: 'Open in the track builder',
       action: 'card-builder',
-      note: board
+      note: board || stock
         ? `Open ${name} in the builder without flying it. Somebody else's track opens as a copy under your own name.`
         : `Open ${name} in the builder. Nothing is flown.`,
     },
@@ -4564,6 +4568,41 @@ export class Ui {
           action: 'map:custom',
         });
       }
+      /*
+       * THE TRACKS THAT SHIP WITH THE SIMULATOR, for this aircraft.
+       *
+       * They lived only in the builder's Load dialog, which is a room a
+       * pilot who just wants to fly never enters, so the RaceGOW5 set was
+       * "not available in the track selection at all" in the owner's
+       * words. Between the seated course and the board, because they are
+       * neither: not yours, and not on the board until somebody publishes
+       * a copy. Choosing one seats it the way a board track is seated, in
+       * the share seat rather than over the pilot's own autosave, so the
+       * track they were building is still there afterwards.
+       */
+      const seatedStock = this.share && this.share.stock ? this.share.id : null;
+      for (const d of presetsForClass(airframeById(this.settings.airframe).trackClass)) {
+        if (d.id === seatedStock) {
+          continue;
+        }
+        const by = d.credit && d.credit.designer ? d.credit.designer : '';
+        cards.push({
+          label: d.name,
+          note: `${by ? `By ${by}. ` : ''}Ships with the simulator. Choosing it loads the track and flies it here.`,
+          course: {
+            kind: 'stock',
+            track: {
+              id: d.id,
+              name: d.name,
+              author: by,
+              gates: Array.isArray(d.sequence) ? d.sequence.length : 0,
+              plan: planFromDocument(d),
+              board: '',
+            },
+          },
+          action: `stock:${d.id}`,
+        });
+      }
       for (const t of this.boardCourses || []) {
         cards.push({
           label: t.name,
@@ -7014,7 +7053,8 @@ export class Ui {
         const i = k + offset;
         const card = el('div', 'map-card course-card');
         const shot = el('div', 'map-reel');
-        const plan = it.course.kind === 'board'
+        const listed = it.course.kind === 'board' || it.course.kind === 'stock';
+        const plan = listed
           ? it.course.track.plan
           : currentPlan();
         const canvas = planCanvas(plan, `Plan of ${it.label}`);
@@ -7022,7 +7062,7 @@ export class Ui {
         const body = el('div', 'map-card-body');
         const name = el('div', 'map-card-name', it.label);
         const meta = el('div', 'map-card-meta', '');
-        if (it.course.kind === 'board') {
+        if (listed) {
           const t = it.course.track;
           const bits = [t.author ? `by ${t.author}` : '', `${t.gates} gate${t.gates === 1 ? '' : 's'}`];
           if (t.recordMs != null) {
@@ -7039,6 +7079,8 @@ export class Ui {
         if (it.course.chip) {
           chip.textContent = it.course.chip.label;
           chip.classList.add(`tone-${it.course.chip.tone}`);
+        } else if (it.course.kind === 'stock') {
+          chip.textContent = 'Shipped';
         } else {
           chip.textContent = 'On the board';
           chip.classList.add('tone-live');
@@ -7936,6 +7978,13 @@ export class Ui {
       }
       window.location.href = 'src/trackbuilder/index.html';
     };
+    if (card.course.kind === 'stock') {
+      /* Seat it, so liveListing reads a stock seat with canRemix set and
+       * go() writes the remix intent the builder forks a copy from. */
+      this.seatStock(card.course.track.id);
+      go();
+      return;
+    }
     if (card.course.kind !== 'board') {
       go();
       return;
@@ -7962,6 +8011,35 @@ export class Ui {
       this.openingBoardCourse = false;
       this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
     });
+  }
+
+  /*
+   * Seat a track that ships with the simulator, the way a board track is
+   * seated once fetched: in the share seat for the document's class, with
+   * the designer as author and no board. The preset's own id is the seat
+   * id, so the local record key is share:<preset id> and stable, and the
+   * document is a fresh copy from presets.js so nothing downstream can
+   * write into the module's constant.
+   */
+  seatStock(id) {
+    const doc = presetById(id);
+    if (!doc) {
+      return false;
+    }
+    const share = {
+      id: doc.id,
+      name: doc.name,
+      author: doc.credit && doc.credit.designer ? doc.credit.designer : '',
+      board: '',
+      document: doc,
+      stock: true,
+    };
+    if (!writeShareImport(share)) {
+      this.boardNote.textContent = 'This browser would not store that track.';
+      return false;
+    }
+    this.setShare(share);
+    return true;
   }
 
   openBoardCourse(id, then = null) {
@@ -10085,6 +10163,13 @@ export class Ui {
     /* A published course, chosen from the grid rather than from another tab. */
     if (action.startsWith('board:')) {
       this.openBoardCourse(action.slice('board:'.length));
+      return;
+    }
+    /* A shipped course. No fetch, so no loading state: seat it and fly. */
+    if (action.startsWith('stock:')) {
+      if (this.seatStock(action.slice('stock:'.length))) {
+        this.act('map:custom');
+      }
       return;
     }
     if (action === 'wiki') {

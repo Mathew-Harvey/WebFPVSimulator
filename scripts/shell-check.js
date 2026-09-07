@@ -1174,6 +1174,36 @@ const BEHAVIOUR = `(() => {
     const whoopGate = ui.onGate();
     const whoopMenu = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
     const whoopCards = ui.items().filter((it) => it.card).length;
+    /*
+     * The Track room lists the tracks that ship with the simulator for
+     * this aircraft, and choosing one seats it. The RaceGOW5 set lived
+     * only in the builder's Load dialog once, a room a pilot who just
+     * wants to fly never enters, and was reported as not available in
+     * the track selection at all. No comment here may contain a backtick:
+     * this body is a template literal.
+     */
+    ui.show('courses');
+    const stockCards = ui.items().filter((it) => it.course && it.course.kind === 'stock');
+    const stockNames = stockCards.map((it) => it.label);
+    ui.act('stock:racegow5-track1');
+    const seatedMap = ui.settings.map;
+    /*
+     * Seating leaves the Track room for the map, so come back to it
+     * before counting: the seated track moves to the top card and the
+     * five others stay listed beneath it.
+     */
+    ui.show('courses');
+    const stockSeat = {
+      count: stockCards.length,
+      names: stockNames,
+      map: seatedMap,
+      shareId: ui.share ? ui.share.id : null,
+      shareStock: Boolean(ui.share && ui.share.stock),
+      shareAuthor: ui.share ? ui.share.author : null,
+      listedAfter: ui.items().filter((it) => it.course && it.course.kind === 'stock').length,
+    };
+    ui.setShare(null);
+    ui.show('title');
     ui.back();
     const whoopBack = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
     ui.act('craft-5inch');
@@ -1194,6 +1224,7 @@ const BEHAVIOUR = `(() => {
     ui.firstRun = heldFirst;
     ui.craftGate = heldCraft;
     ui.show('title');
+    out.stockSeat = stockSeat;
     out.modeGate = {
       gate,
       drawn,
@@ -1477,6 +1508,23 @@ async function main() {
       }
     }
 
+    const st = b.stockSeat;
+    if (!st) {
+      failures.push('the Track room: the stock seat probe returned nothing');
+    } else {
+      if (st.count !== 6) {
+        failures.push(`the Track room lists ${st.count} shipped track(s) on the whoop, not 6: ${(st.names || []).join(', ') || 'none'}`);
+      }
+      if (st.map !== 'custom' || st.shareId !== 'racegow5-track1' || !st.shareStock) {
+        failures.push(`choosing a shipped track seated map ${st.map}, share ${st.shareId}, stock ${st.shareStock}`);
+      }
+      if (st.shareAuthor !== 'Skittles') {
+        failures.push(`the shipped seat names ${st.shareAuthor} rather than its designer`);
+      }
+      if (st.listedAfter !== 5) {
+        failures.push(`with one shipped track seated the room lists ${st.listedAfter} others, not 5`);
+      }
+    }
     if (!b.modeGate || b.modeGate.error) {
       failures.push(`the gate: ${b.modeGate ? b.modeGate.error : 'no result'}`);
     } else {

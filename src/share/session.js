@@ -193,6 +193,12 @@ export function writeShareImport(payload) {
     author: String(payload.author || ''),
     board: String(payload.board || ''),
     document: payload.document,
+    /* A track that ships with the simulator, seated from the Track room
+     * rather than fetched from the board. inspectCourse reads it: such a
+     * seat is not published, cannot take a time, and opens in the builder
+     * as a copy. Written as a boolean so a stale seat cannot smuggle
+     * anything else in under the name. */
+    stock: Boolean(payload.stock),
     importedUtc: new Date().toISOString(),
   });
 }

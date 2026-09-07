@@ -31765,3 +31765,59 @@ heights.
 
 Tracks 3 and 5 are still absent. The layouts are the renders' inventory at
 the rulebook's spacing, which is the most that one isometric image can give.
+
+## The shipped tracks were in the builder's Load dialog and nowhere else
+
+The owner: the new tracks are not available in the track selection at all
+for whoops.
+
+They were not. The six RaceGOW5 documents were listed by
+`listTracks` in `src/trackbuilder/storage.js`, which feeds the builder's
+Load dialog, and by nothing else. The shell's Track room, the screen a
+pilot who wants to fly a track actually opens, lists two things: the course
+in the seat and the courses fetched from the board. A track that ships
+with the simulator is neither, so it never appeared. Six tracks were built,
+credited, linted and flown, and the one room that matters could not see
+them.
+
+### The fix
+
+The Track room now has a third source. `buildItems` for the courses screen
+walks `presetsForClass` for the current aircraft's class and puts a card
+per preset between the seated course and the board's cards, with the
+designer's name, the gate count and a plan drawn from the document. Its
+chip says Shipped. Choosing one calls `seatStock`, which writes the preset
+into the share seat for its class, marked `stock: true`, and then presses
+`map:custom` exactly as a board track does once fetched. The share seat and
+not the autosave, because the autosave is the pilot's own draft and a
+shipped track must not overwrite it.
+
+`inspectCourse` in `src/share/listing.js` gained a kind, `stock`: not
+published, no time can be posted, and `canRemix` set, so that "Open in the
+track builder" from the card goes through the existing remix intent and
+the builder forks a `trk-` copy, which is the only thing the board will
+accept. The record key is `share:<preset id>`, stable across sessions, so
+local laps on a shipped track accumulate under one name. `writeShareImport`
+stores the flag as a boolean so a stale seat cannot carry anything else in
+under it.
+
+`courseCardKey` keys the card by kind and id so a shipped card and a board
+card with the same id cannot collide, and the card drawer treats a shipped
+card as a listed one for its plan and byline.
+
+### What was run
+
+`lint:shell` gained a probe: the courses screen lists six shipped cards for
+the whoop, choosing Track 1 seats `racegow5-track1` with `stock` set and
+Skittles as author and lands on the custom map, and the room re-shown
+lists the other five beneath it. The first run of that probe failed at 0
+others, because seating leaves the Track room for the map and the count
+was taken before coming back. The probe now re-shows the room first. Then
+`lint:shell`, `micro:check`, `lint:nouns`, `lint:quality`, `lint:boot`,
+`lint:devices`, `check:path`, `lint:memory`, `lint:fc`, `lint:presets`,
+`lint:catalog`, all green. Driven in the real shell before the probe was
+written: six Shipped cards, Track 7 seated as `{racegow5-track7, stock,
+FPVBean}`, the world built with no frame fault.
+
+Not run: `npm run verify`. Nothing in the physics path, the plant, the ABI
+or the build changed.

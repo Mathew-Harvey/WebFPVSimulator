@@ -160,6 +160,38 @@ export function inspectCourse(parts = {}) {
   const bindFor = parts.bindFor || readBind;
   const currentName = pick(parts, 'pilotName', () => readPilotName());
 
+  if (share && share.document && share.stock) {
+    /*
+     * SHIPPED WITH THE SIMULATOR. Seated from the Track room, not fetched
+     * from the board, and it behaves like a remix in waiting: nothing is
+     * published, no time can be posted against it, and the builder opens
+     * it as a COPY under a new id, because the board only accepts trk-
+     * ids and a copy is the only thing that can be published. The record
+     * key is share:<preset id>, which is stable, so local laps on a
+     * shipped track accumulate against one name.
+     */
+    const doc = share.document;
+    return summaryOf(doc, {
+      kind: 'stock',
+      published: false,
+      owned: false,
+      remix: false,
+      shareId: null,
+      board: '',
+      author: share.author || '',
+      name: share.name || doc.name,
+      canPostTime: false,
+      canPublishNew: false,
+      canUpdateListing: false,
+      layoutDrift: false,
+      nameDrift: false,
+      authorDrift: false,
+      canRemix: true,
+      sourceName: share.name || doc.name,
+      sourceAuthor: share.author || '',
+    });
+  }
+
   if (share && share.document) {
     const doc = share.document;
     const id = share.id || doc.id;
@@ -331,6 +363,14 @@ export function courseChip(listing) {
       label: 'On the board',
       tone: 'live',
       note: `Published${by}. Fly it and upload a time, or edit a copy under your own name.`,
+    };
+  }
+  if (listing.kind === 'stock') {
+    const by = listing.author ? ` by ${listing.author}` : '';
+    return {
+      label: 'Shipped with the simulator',
+      tone: 'none',
+      note: `Ships with the simulator${by}. Fly it here, or open a copy in the builder to make it yours and publish it.`,
     };
   }
   if (listing.kind === 'remix') {

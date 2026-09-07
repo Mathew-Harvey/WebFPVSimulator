@@ -829,8 +829,29 @@ export class App {
       name.textContent = t.name;
       const meta = document.createElement('div');
       meta.className = 'tb-load-meta';
-      meta.textContent = `${t.mix}, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
+      meta.textContent = t.preset
+        ? `${t.mix}, ${t.sequence} in the order`
+        : `${t.mix}, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
       name.append(meta);
+      /*
+       * WHOSE TRACK THIS IS, on the row, for a shipped one.
+       *
+       * A pilot's own tracks need no byline. A track that came from
+       * somewhere else does, and it names the DESIGNER rather than the
+       * series or whoever imported it, because those are three different
+       * people and only one of them drew the layout. textContent, never
+       * innerHTML: a credit is data and one day it may not be ours.
+       */
+      if (t.preset && t.credit) {
+        const by = document.createElement('div');
+        by.className = 'tb-load-meta';
+        const bits = [];
+        if (t.credit.designer) bits.push(`by ${t.credit.designer}`);
+        if (t.credit.series) bits.push(t.credit.series);
+        if (t.credit.sponsor) bits.push(`sponsored by ${t.credit.sponsor}`);
+        by.textContent = bits.join(', ');
+        name.append(by);
+      }
       const open = document.createElement('button');
       open.type = 'button';
       open.className = 'tb-btn';
@@ -842,16 +863,23 @@ export class App {
           this.loadDocument(found.doc, `Opened "${found.doc.name}".`);
         }
       });
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'tb-btn tb-danger';
-      del.textContent = 'Delete';
-      del.addEventListener('click', () => {
-        deleteTrack(t.id);
-        this.closeModal();
-        this.openLoad();
-      });
-      row.append(name, open, del);
+      /* No Delete on a shipped track. There is nothing to delete: it is
+       * not in the library until the pilot saves their own copy, and a
+       * button that does nothing is worse than no button. */
+      if (t.preset) {
+        row.append(name, open);
+      } else {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'tb-btn tb-danger';
+        del.textContent = 'Delete';
+        del.addEventListener('click', () => {
+          deleteTrack(t.id);
+          this.closeModal();
+          this.openLoad();
+        });
+        row.append(name, open, del);
+      }
       body.append(row);
     }
     this.modal('Saved tracks', body);

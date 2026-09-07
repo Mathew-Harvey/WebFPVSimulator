@@ -247,6 +247,39 @@ function nowUtc() {
 /* Creation                                                            */
 /* ------------------------------------------------------------------ */
 
+/*
+ * WHO MADE THE TRACK, AND WHERE IT CAME FROM.
+ *
+ * Optional, and absent on everything a pilot builds themselves: their own
+ * tracks are theirs and the board already knows whose seat published them.
+ * It exists for tracks that came from SOMEWHERE ELSE, where the person who
+ * brought a layout over is not the person who designed it. The RaceGOW5
+ * set is exactly that case: eight tracks by seven different designers,
+ * published as one series, and crediting the series to whoever imported
+ * them would misstate seven people's work.
+ *
+ * Every field is a plain string and every one is optional. Nothing here is
+ * trusted or rendered as markup: `designer` and the rest are drawn as text.
+ */
+function creditOf(src) {
+  const c = src && typeof src === 'object' ? src : null;
+  if (!c) {
+    return null;
+  }
+  const s = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 120) : '');
+  const out = {
+    designer: s(c.designer),
+    series: s(c.series),
+    sponsor: s(c.sponsor),
+    source: s(c.source),
+    broughtOverBy: s(c.broughtOverBy),
+    note: s(c.note),
+  };
+  /* An object with nothing in it is worse than no object: it would put an
+   * empty byline on a card. */
+  return Object.values(out).some(Boolean) ? out : null;
+}
+
 export function createTrack(name, cls = TRACK_CLASS_DEFAULT) {
   /* Defaulted here rather than in the signature so a caller that only wants
    * to name the class can pass undefined for the name, which every one of
@@ -285,6 +318,8 @@ export function createTrack(name, cls = TRACK_CLASS_DEFAULT) {
      * track costs nothing until somebody uploads something.
      */
     branding: { logos: [] },
+    /* A track a pilot builds is their own and carries no byline. */
+    credit: null,
     elements: [],
     sequence: [],
   };
@@ -561,6 +596,8 @@ export function normalize(raw) {
       samplesPerSegment: int(src.settings?.samplesPerSegment, base.settings.samplesPerSegment, 4, 512),
     },
     branding: { logos: [] },
+    /* Null for anything a pilot built. See creditOf. */
+    credit: creditOf(src.credit),
     elements: [],
     sequence: [],
   };

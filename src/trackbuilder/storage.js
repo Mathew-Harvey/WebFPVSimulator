@@ -64,6 +64,7 @@ function autosaveKey(cls) {
  * two functions byte for byte. Private mode and the quota are handled there:
  * a failed write returns false and the caller tells the user. */
 import { activeTrackClass, readJson, writeJson } from '../share/session.js';
+import { presetsForClass, presetById, isPresetId } from './presets.js';
 
 /* ------------------------------------------------------------------ */
 /* The library                                                         */
@@ -78,18 +79,36 @@ function readLibrary() {
  * documents: the Load dialog only needs a name and a size. */
 export function listTracks() {
   const lib = readLibrary();
-  return Object.values(lib)
-    .map((raw) => {
-      const { doc } = normalize(raw);
-      return {
-        id: doc.id,
-        name: doc.name,
-        modifiedUtc: doc.modifiedUtc,
-        mix: formatElementCounts(countElementsByType(doc.elements)),
-        sequence: doc.sequence.length,
-      };
-    })
+  const summarise = (raw, preset) => {
+    const { doc } = normalize(raw);
+    return {
+      id: doc.id,
+      name: doc.name,
+      modifiedUtc: doc.modifiedUtc,
+      mix: formatElementCounts(countElementsByType(doc.elements)),
+      sequence: doc.sequence.length,
+      preset,
+      credit: doc.credit,
+    };
+  };
+  const mine = Object.values(lib)
+    .map((raw) => summarise(raw, false))
     .sort((a, b) => String(b.modifiedUtc).localeCompare(String(a.modifiedUtc)));
+  /*
+   * The shipped set, after the pilot's own and only for the class they are
+   * building in, because a whoop author has no use for a 60 m field's
+   * layouts and the other way round.
+   *
+   * A saved track SHADOWS a preset of the same id: opening one and saving
+   * it makes it the pilot's, and from then on theirs is the one that
+   * opens. That is the whole of the copy on write, and it needs no flag in
+   * storage because the library is checked first.
+   */
+  const shadowed = new Set(mine.map((t) => t.id));
+  const stock = presetsForClass(activeTrackClass())
+    .filter((d) => !shadowed.has(d.id))
+    .map((d) => summarise(d, true));
+  return [...mine, ...stock];
 }
 
 export function saveTrack(doc) {
@@ -102,7 +121,10 @@ export function saveTrack(doc) {
 export function loadTrack(id) {
   const lib = readLibrary();
   if (!lib[id]) {
-    return null;
+    /* Not saved. It may still be one of the shipped tracks, and a preset
+     * the pilot has never touched has to open the same way theirs does. */
+    const stock = presetById(id);
+    return stock ? normalize(stock) : null;
   }
   return normalize(lib[id]);
 }
@@ -113,11 +135,15 @@ export function deleteTrack(id) {
     return false;
   }
   delete lib[id];
-  return writeJson(LIBRARY_KEY, lib);
+  const ok = writeJson(LIBRARY_KEY, lib);
+  /* Deleting a pilot's copy of a shipped track puts the shipped one back
+   * rather than leaving a hole. Nothing shipped can be deleted, because
+   * nothing shipped is in the library to delete. */
+  return ok;
 }
 
 export function trackExists(id) {
-  return Boolean(readLibrary()[id]);
+  return Boolean(readLibrary()[id]) || isPresetId(id);
 }
 
 /* ------------------------------------------------------------------ */

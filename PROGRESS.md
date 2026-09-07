@@ -31281,3 +31281,111 @@ a different designer on every track. Track1 and Track2 Skittles, Track3 "the
 Lego Dans", Track4 SanderPuh, Track5 Cumber and Hotspur, Track6 MrE, Track7
 FPVBean, Track8 AyyyKayyy. Crediting all eight to one person would misstate
 eight real people's work on a public board.
+
+## Six of the eight RaceGOW5 tracks, reconstructed, each credited to its designer
+
+The owner asked for the eight tracks at racegow.com/tracks in the whoop
+library, credited to andAgainFPV. Six are in. Two things about that sentence
+changed on the way, both of them on purpose, and both agreed with the owner
+before any of this was written.
+
+### Where the layouts came from, and what they are not
+
+The site publishes each track as ONE isometric render and nothing else: no
+gate list, no dimensions, no room size, no per track page, no download. Those
+renders are served from lh3.googleusercontent.com and return 403 to every
+request from this container, with a referer, with a browser user agent and
+without, so the first attempt at this failed outright and was reported as
+blocked rather than guessed at. The owner pasted the diagrams in.
+
+Six arrived: Tracks 1, 2, 4, 6, 7 and 8. Tracks 3 and 5 did not, and are not
+in the set. A render gives topology: which structures there are, roughly
+where they sit relative to each other, which one carries the green start
+banner, and which way the arrow points. It does not give a position in
+metres. So the topology is read from the official diagrams and every SPACING
+comes from RaceGOW's own published rulebook, which src/trackbuilder/racegow.js
+already holds: 28 in openings, 30 in nominal centres, 14 in from a pole to a
+gate, 36 in between poles. That is the most defensible reading available and
+it is still a reading. `presets.js` says so at the top, twice, because a
+pilot who has flown the real thing will find these close in shape and wrong
+in detail.
+
+### Credit goes to the designer, one per track
+
+The request was to credit the set to andAgainFPV. The site names a different
+designer on every track: Skittles on 1 and 2, the Lego Dans on 3, SanderPuh
+on 4, Cumber and Hotspur on 5, MrE on 6, FPVBean on 7, AyyyKayyy on 8.
+Crediting seven people's work to one importer would misstate it, on a public
+board, so the owner was asked and chose per track designer with RaceGOW and
+andAgainFPV recorded as the series and the source.
+
+That needed a schema field. Documents gain an optional `credit`, six plain
+strings, null on anything a pilot builds themselves, because their own tracks
+are theirs and the board already knows whose seat published them. The Load
+dialog draws it as textContent and never as markup: a credit is data, and one
+day it may not be ours.
+
+### There was no library to add them to
+
+`listTracks()` read localStorage and nothing else, so "the track library" was
+whatever the pilot had saved. `tracks/json/` is fixtures for scripts, not a
+shipped set. So presets are new: `src/trackbuilder/presets.js` holds the six
+documents and is their only copy, `listTracks()` appends the ones matching the
+class being built, `loadTrack()` falls back to them, and a saved track shadows
+a preset of the same id, which is the whole of the copy on write. A shipped
+track has no Delete button because there is nothing to delete: it is not in
+the library until the pilot saves their own.
+
+The generated `tracks/json/racegow5-*.json` files were written first and then
+deleted. Two copies of the same six documents is exactly the drift this
+repository keeps finding, and the module is the one that has to exist.
+
+### Fitting them to the kit, which took four passes
+
+Every layout was validated against the builder's own `normalize`,
+`collectWarnings`, `courseFromDocument` and `planFromDocument` and tuned until
+it broke no rule. The bands are exact and worth writing down, because two
+passes were wasted guessing at them: gates are clean at 686 to 838 mm centre
+to centre or at 1048 mm and beyond, and the space between those two is a note
+asking whether a side by side pair was meant.
+
+```
+                repairs  RaceGOW rule broken   envelope        stations  lap
+Track 1  Skittles     0         none           1.47 x 1.97 m      4      4.11 m
+Track 2  Skittles     0         none           within             4      6.85 m
+Track 4  SanderPuh    0         none           1.47 x 1.83 m      4      4.01 m
+Track 6  MrE          0         none           within             5      7.23 m
+Track 7  FPVBean      0         none           1.39 x 2.17 m      5      5.47 m
+Track 8  AyyyKayyy    0         none           1.51 x 2.03 m      5      4.83 m
+```
+
+The envelope notes are arithmetic, not sloppiness, and `micro-check.js` says
+so where it allows them. Two gates side by side at RaceGOW's own nominal 30 in
+centres span 30 + 28 = 58 in, which is 1.47 m, and RaceGOW's own envelope at
+that gate size is 1.42 m. The two published rules do not fit each other.
+tracks/json/micro-livingroom-1.json, which shipped months ago, trips the same
+note at the same 1.47 m. The check allows that one note and fails on anything
+else.
+
+### What was run
+
+`micro:check`, which now validates every preset: no repairs, a named
+designer, no RaceGOW rule broken, a course, a room, at least three stations,
+a plan, and unique ids. Builder self test 495 of 495. `lint:shell`,
+`lint:nouns`, `lint:quality` 56 of 56, `lint:memory`, `lint:boot`,
+`lint:devices`, `check:path`.
+
+Track 1 was flown in the real shell on the whoop, reaching `mode: flight`
+with no frame fault and no console error, and Tracks 4, 7 and 8 were drawn
+and photographed for the owner to check against the diagrams they have.
+
+`npm run verify` was NOT run and is not warranted: this is document data, a
+schema field and a Load dialog. `dist/sim.wasm` is untouched and nothing here
+reaches the plant.
+
+### Still open
+
+Tracks 3 and 5, which need their diagrams. And the reconstructions themselves
+want a pilot's eye against the real renders: the shapes are the diagrams' but
+the metres are the rulebook's, and only somebody who has flown RaceGOW can say
+how close that lands.

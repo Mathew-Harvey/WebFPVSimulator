@@ -53,6 +53,7 @@ import { planFromDocument } from '../src/share/plan.js';
 import { Race } from '../src/game/race.js';
 import { GATE_SCALE } from '../src/game/track.js';
 import { GATE_OPENING_MAX } from '../src/trackbuilder/racegow.js';
+import { PRESETS } from '../src/trackbuilder/presets.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -233,9 +234,57 @@ function raceDemo() {
     + `  best ${(best / 1000).toFixed(2)}  three ${(three / 1000).toFixed(2)}`);
 }
 
+/*
+ * THE SHIPPED TRACKS, every one of them, every time.
+ *
+ * src/trackbuilder/presets.js is the only copy of the RaceGOW5 set and the
+ * builder offers it in the Load dialog, so a preset that stops normalising
+ * or stops producing a course is a track a pilot opens to an error. None of
+ * them is reachable from any other check: the demo room is a file, and the
+ * presets are a module.
+ *
+ * The envelope note is allowed and the reason is arithmetic rather than
+ * indulgence. Two gates side by side at RaceGOW's own nominal 30 in centres
+ * span 30 + 28 = 58 in, which is 1.47 m, and RaceGOW's own envelope at that
+ * gate size is 1.42 m. The two published rules do not fit each other, and
+ * tracks/json/micro-livingroom-1.json trips the same note at the same
+ * 1.47 m. Anything that is not that note is a real finding and fails here.
+ */
+function presetSet() {
+  console.log('\n--- the shipped tracks ---');
+  check('there are presets at all', PRESETS.length > 0, PRESETS.length);
+  for (const raw of PRESETS) {
+    const { doc, repairs } = normalize(raw);
+    check(`${raw.name} needs no repair`, repairs.length === 0,
+      repairs.map((r) => r.text ?? r).join('; '));
+    check(`${raw.name} names a designer`,
+      Boolean(doc.credit && doc.credit.designer), JSON.stringify(doc.credit));
+    const warns = collectWarnings(doc).map((w) => w.text ?? w.message ?? '');
+    const hard = warns.filter((t) => !t.includes('A RaceGOW track fits'));
+    check(`${raw.name} breaks no RaceGOW rule`, hard.length === 0, hard.join('; '));
+    let course = null;
+    try {
+      course = courseFromDocument(doc);
+    } catch (e) {
+      course = null;
+      check(`${raw.name} builds a course`, false, e.message);
+    }
+    if (course) {
+      check(`${raw.name} is a room`, course.trackClass === 'micro', course.trackClass);
+      check(`${raw.name} has a lap to fly`, course.stations.length >= 3,
+        `${course.stations.length} station(s)`);
+      check(`${raw.name} plans`, Boolean(planFromDocument(doc)), 'planFromDocument');
+    }
+  }
+  /* Two ids the same would make one of them unreachable through loadTrack. */
+  const ids = PRESETS.map((d) => d.id);
+  check('every preset id is unique', new Set(ids).size === ids.length, ids.join(', '));
+}
+
 pipeline('micro');
 pipeline('full');
 raceDemo();
+presetSet();
 
 console.log(`\n${fails ? `${fails} FAILED` : 'the micro class builds, reads, warns, draws and races'}`);
 process.exit(fails ? 1 : 0);

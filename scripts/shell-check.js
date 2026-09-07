@@ -1139,6 +1139,35 @@ const BEHAVIOUR = `(() => {
      * would otherwise be in race with the town still seated, which is the
      * whoop in the five inch's world drawn behind the title.
      */
+    /*
+     * THE AIRCRAFT GATE WITH THE MODE ALREADY ANSWERED, which is the case
+     * this probe could not see and which shipped broken.
+     *
+     * Everything above nulls the mode before opening the craft gate, so it
+     * only ever tested the one arrangement where both gates are unanswered.
+     * The real one is the other way round: the builder's Fly this track
+     * link carries map=custom, which linkedMode reads as race, and on a
+     * whoop syncMode answers the mode itself. renderMenu dressed the
+     * screen from the mode alone rather than from onGate(), so in that
+     * arrangement the two aircraft cards were built and then left invisible
+     * by CSS, with the menu's own copy showing behind them and no way to
+     * fly. A probe that always nulls the mode is a probe that cannot fail.
+     */
+    ui.craftGate = true;
+    ui.mode = 'race';
+    ui.show('title');
+    ui.renderMenu();
+    const modeSetGate = {
+      isGate: ui.root.querySelector('.screen-title').classList.contains('is-gate'),
+      drawn: ui.root.querySelectorAll('.screen-title .gate-card').length,
+      visible: [...ui.root.querySelectorAll('.screen-title .gate-card')]
+        .filter((c) => c.getBoundingClientRect().width > 0).length,
+      keepNote: [...ui.root.querySelectorAll('.screen-title .keep-note')]
+        .filter((n) => n.getBoundingClientRect().height > 0).length,
+    };
+    ui.mode = null;
+    ui.show('title');
+
     ui.act('craft-whoop65');
     const whoopMode = ui.mode;
     const whoopMap = ui.settings.map;
@@ -1180,6 +1209,11 @@ const BEHAVIOUR = `(() => {
       /* And Escape walks back up to it. */
       escapeToCraft: backToCraft.length === 2 && !backToCraft.includes('Race')
         && backToCraft.join() === craftGateLabels.join(),
+      modeSetGate,
+      /* Two cards, laid out and visible, and the menu's own copy off the
+       * screen, when the mode is answered and the aircraft is not. */
+      gateWithMode: modeSetGate.isGate && modeSetGate.drawn === 2
+        && modeSetGate.visible === 2 && modeSetGate.keepNote === 0,
       whoopMenu,
       whoopBack,
       /* Straight to the menu: no gate, no cards, no Freestyle anywhere on
@@ -1455,6 +1489,9 @@ async function main() {
       }
       if (!g.escapeToCraft) {
         failures.push(`the gate: Escape from Race or Freestyle reached ${g.backToCraft.join(', ') || 'nothing'}, not the aircraft`);
+      }
+      if (!g.gateWithMode) {
+        failures.push(`the gate: with the mode already answered the aircraft gate drew ${g.modeSetGate.drawn} card(s), ${g.modeSetGate.visible} of them visible, is-gate ${g.modeSetGate.isGate}, ${g.modeSetGate.keepNote} menu note(s) still showing`);
       }
       if (!g.whoopSkipsMode) {
         failures.push(`the gate: the whoop landed on ${g.whoopMenu.join(', ') || 'nothing'}, not on a menu with no Freestyle on it`);

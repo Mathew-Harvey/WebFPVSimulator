@@ -30655,3 +30655,172 @@ and the ground effect probe above.
 Flight feel is not verifiable here. The harness is green, the thrust is
 BetaFPV's, the motor is back where the plant argues it belongs, and the
 floor is awaiting the owner's judgement.
+
+## The whoop defaults to the Freestyle tune at 150, and the front page works again
+
+Two things this turn: the owner's defaults, and a bug they hit while flying
+that made the front page unusable.
+
+### The bug: an empty front page, and no way to fly
+
+Reported as "i edited a whoop track, added a gate and [vertical pole], then
+went to fly it and the menu is not populated and i can't fly it", with a
+screenshot of the title screen showing the world built and rendering, the
+brand block drawn, and nothing else: no menu rows, no aircraft cards, and a
+blank box where they should be.
+
+**One line.** `renderMenu` decided how to dress the title from `!this.mode`:
+
+```
+const gate = !this.mode;
+this.screens.title.classList.toggle('is-gate', gate);
+```
+
+There are TWO gates now, the aircraft and then Race or Freestyle, and that
+test only ever saw the second one. So whenever the mode was already answered
+while the AIRCRAFT gate was still open, `is-gate` never went on the screen,
+and with it went four rules in index.html: the one that lays the two cards
+out, the ones that take the keep note, the wiki teaser and the best lap chip
+off a screen that is asking one question, and the one that hides an empty
+menu panel. The cards were built and left invisible; the row list was empty
+because at that gate every item IS a card. What the pilot got was a blank
+box, two paragraphs belonging to a seat they had not chosen, and no way in.
+
+Both routes to it are ordinary, which is why it was reported the day it
+shipped:
+
+- The track builder's Fly this track link is `?map=custom`, and `linkedMode`
+  reads a named map as an answered mode. Every pilot arriving from the
+  builder hit it, on either aircraft.
+- On a whoop `syncMode` answers the mode itself, so every whoop pilot hit it
+  from any link at all.
+
+`onGate()` has been the one definition since the aircraft gate landed,
+`this.screen === 'title' && (this.craftGate || !this.mode)`, and it is what
+`cardScreen` and the key handling use. This line disagreeing with them is
+what let the screen be a gate for one half of the code and a menu for the
+other. It uses `onGate()` now.
+
+The same proxy was wrong in the legend, twice: it offered `Esc Race or
+Freestyle` on the aircraft gate, where Escape does nothing, which is the joke
+the block above it says it is avoiding. Both branches test the gate now.
+
+**The check could not have caught it, and that is fixed too.** The gate probe
+in `scripts/shell-check.js` opens the craft gate like this:
+
+```
+ui.craftGate = true;
+ui.mode = null;      <- and here is why it always passed
+```
+
+It only ever tested the arrangement where BOTH gates are unanswered, which is
+the one arrangement that works. The probe now also opens the aircraft gate
+with the mode already answered and asserts the four things that were wrong:
+`is-gate` on, two cards drawn, two cards VISIBLE, and no menu copy showing.
+Run against the old line it fails with
+
+```
+the gate: with the mode already answered the aircraft gate drew 2 card(s),
+0 of them visible, is-gate false, 1 menu note(s) still showing
+```
+
+which is the bug in one sentence.
+
+The pole and the flag in the report were a red herring and are recorded as
+such: a micro track carrying either, or a remixed triple stack with both,
+goes through normalize, buildPath, collectWarnings, courseFromDocument and
+planFromDocument clean in Node, and through the real shell clean in headless
+Chromium. The `GL_INVALID_VALUE: glGetProgramiv` lines in their console are
+not reproducible here on a software rasteriser and are not what stopped the
+menu: the menu is DOM, and a dead GL program cannot empty it.
+
+### The defaults
+
+The owner: "make the whoop default to the air freestyle whoop with pids at
+150% master slider and field of view at 95".
+
+**The tune** is `whoop-freestyle`, BetaFPV's Air65 II Freestyle preset, the
+highest gains of the three they ship: 49 / 79 / 35 on roll against the
+Champion's 33 / 57 / 21. It is NOT the tune the plant is modelled on, and
+that is written down at the airframe: plant.c models the Champion's 0702 at
+36,000 kV on a GF1207 and BetaFPV wrote this preset for the 25,000 kV variant
+on a bigger GF1219S. A tune is a Betaflight configuration and the plant is a
+separate thing, so there is nothing inconsistent about it, it is what a pilot
+who flashes the Freestyle preset onto a Champion gets, but the gains are
+aimed at a motor with less authority than this one has.
+`scripts/whoop-gates.js` still measures the Champion, which is right: the
+gates are about the plant.
+
+**The PIDs** are 150 percent on the master slider, keyed to the airframe's
+default tune rather than to the aircraft. It is Betaflight's own simplified
+tuning, not a second PID model: `configs/pids.js` emits
+`set simplified_master_multiplier = 150` and `simplified_tuning apply` after
+the tune and the firmware re-derives everything. Measured on this build
+against the freestyle tune as shipped, by composing the config and reading
+the values back out of the module:
+
+```
+p_roll  49 -> 74   i_roll  79 -> 118   d_min_roll 35 -> 54   f_roll 35 -> 54
+p_pitch 56 -> 85   i_pitch 91 -> 137   d_min_pitch 44 -> 67  f_pitch 41 -> 61
+p_yaw   49 -> 74   i_yaw   79 -> 118                          f_yaw  35 -> 54
+```
+
+1.5 across the board including yaw, because Betaflight 4.5's
+`simplified_pids_mode` defaults to RPY and none of the whoop tunes change it.
+Keyed to the default tune because the Champion ships its own master at 75 and
+the Racing at 85: 150 on top of either is a number nobody picked.
+
+**The lens** is 95 degrees, down from 115. The old argument was about the
+ROOM rather than the lens, and it was true of a 5 by 6 m room: the aircraft
+is inside a 1.42 by 2.13 m track the whole lap and an 85 degree picture shows
+a wall. The room is 10 by 12 now, four times the floor, and the walls are
+metres further out. What 115 costs is the gate: a fisheye pushes everything
+toward the centre, so a 0.711 m opening at three metres reads smaller than
+the eye expects and picking a line through a stack is harder than it should
+be.
+
+**Two mechanisms, because a default nobody receives is not a default.**
+
+`seedAirframePids` lays the PID adjustment down ONCE per tune, ever, recorded
+in a new `pidsSeeded` map on the settings. Once matters: a seed conditional
+only on "the pilot has no entry" would come back the next time the page
+loaded after they pressed Reset to stock on it, which is the shell
+overruling them.
+
+`SUPERSEDED_WHOOP` is the throttle cap migration from the previous turn,
+generalised. `reseatIfForeign` will not move any of these and should not, its
+rule is "is this still the OTHER aircraft's stock value" and none of them is
+the five inch's, so it reads a superseded default as the pilot's own. Each
+entry moves once, only from the exact figure that shipped, and only on the
+whoop.
+
+Measured on a stubbed localStorage, all four cases:
+
+```
+old whoop profile   tune whoop-champion  fov 115  cap 65   no pids
+  after loadSettings   whoop-freestyle    95      75       master 150, seeded
+pilot chose racing and 105                whoop-racing, 105, no seed
+pilot set their own master 110            kept at 110
+a five inch profile                       karate-race, 85, cap 100, no pids
+```
+
+### What was run
+
+`lint:shell` PASS, with the new probe, and FAILING as quoted above when the
+old line is put back, which is the only evidence that matters for a check.
+Builder self test 495 of 495, `micro:check`, `lint:presets` 6 of 6,
+`lint:boot` 9 of 9, `lint:devices`, `lint:nouns`.
+
+`scripts/shots.js` over the whole flow on both aircraft: cold load on
+`?map=custom` with a remixed micro triple stack carrying an added gate and an
+added pole, asserting the aircraft gate draws two VISIBLE cards, then
+answering it, then launching, and reaching `flying: true` with no frame
+fault. The five inch run picking the whoop lands tune `whoop-freestyle`,
+`cameraFov` 95 and master 150 on the way.
+
+`npm run verify` was NOT run and does not need to be: nothing here touches
+the plant, the module, the ABI or the build. `dist/sim.wasm` is untouched.
+
+The PID probe that produced the table above is
+`scratchpad/pid-probe.mjs`, kept out of the repository because it composes a
+config and reads it back, which `lint:fc` already does for the shipped tunes.

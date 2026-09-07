@@ -121,11 +121,65 @@ export const AIRFRAMES = [
      */
     packVoltages: [4.35, 4.0, 3.6],
     packLabels: { 4.35: 'Charged', 4.0: 'Half', 3.6: 'Nearly empty' },
-    defaultTune: 'whoop-champion',
+    /*
+     * THE FREESTYLE TUNE, and it is the owner's choice flown rather than a
+     * derivation. BetaFPV ship three for the Air65 II and this is the one
+     * with the highest gains of the three: 49 / 79 / 35 on roll against the
+     * Champion's 33 / 57 / 21, and the only one they ship on Betaflight
+     * rates rather than Actual.
+     *
+     * IT IS NOT THE TUNE THE PLANT IS MODELLED ON, and that is worth saying
+     * once. plant.c models the Champion's 0702 at 36,000 kV on a GF1207;
+     * BetaFPV wrote this tune for the 25,000 kV variant on the bigger
+     * GF1219S. A tune is a Betaflight configuration, PIDs and filters and
+     * feedforward, and the plant is a separate thing, so there is nothing
+     * inconsistent about flying one on the other: it is what a pilot who
+     * flashes the Freestyle preset onto a Champion gets. It does mean the
+     * gains are aimed at a motor with less authority than this one has,
+     * which is part of why the master below is where it is.
+     *
+     * scripts/whoop-gates.js still measures the Champion. That is right:
+     * the gates are about the PLANT, and the plant is the Champion's.
+     */
+    defaultTune: 'whoop-freestyle',
+    /*
+     * AND THE PID ADJUSTMENT THAT COMES WITH IT, 150 percent on the master
+     * slider, which is the owner's number flown.
+     *
+     * It is Betaflight's own simplified tuning, not a second PID model:
+     * configs/pids.js emits `set simplified_master_multiplier = 150` and
+     * `simplified_tuning apply` after the tune, exactly as Configurator
+     * does, and the firmware re-derives P, I, D and feedforward from the
+     * tune's own slider set. Measured on this build, against the freestyle
+     * tune as shipped: p_roll 49 to 74, i_roll 79 to 118, d_min_roll 35 to
+     * 54, f_roll 35 to 54, and the same 1.5 on pitch and yaw, because
+     * Betaflight 4.5's simplified_pids_mode defaults to RPY and none of the
+     * whoop tunes change it.
+     *
+     * KEYED TO THE DEFAULT TUNE, not to the aircraft. The Champion ships
+     * its own master at 75 and the Racing at 85, both of which are figures
+     * BetaFPV chose for those tunes; 150 on top of one of those would be a
+     * number nobody picked. A pilot who moves to another whoop tune gets
+     * that tune as its author shipped it, and their own adjustment if they
+     * have made one.
+     *
+     * It is a SEED, so it only ever lands on a profile that has not
+     * adjusted this tune. See seedAirframePids in src/ui/ui.js.
+     */
+    defaultPids: { master: 150 },
     /*
      * BetaFPV's own rate profile for the Air65 II Champion and Racing:
      * ACTUAL, srate 58 / 58 / 50, expo 0, which is 580 deg/s on roll and
      * pitch and 500 on yaw.
+     *
+     * KEPT WHEN THE DEFAULT TUNE MOVED TO FREESTYLE, deliberately. Rates
+     * are the pilot's in this project and a tune never sets them: the Rates
+     * row says so in capitals and configs/rates.js strips every rate key
+     * out of a tune on the way in. BetaFPV's Freestyle preset does carry
+     * its own, on Betaflight rates rather than Actual, and adopting them
+     * would be this file quietly changing a pilot's stick authority because
+     * a PID preset changed. If they are wanted they are three rows on the
+     * Rates screen.
      *
      * A RACING whoop flies SLOWER rates than a 5 inch freestyle quad, and
      * that surprises people. The reason is the track: a RaceGOW course fits
@@ -177,13 +231,24 @@ export const AIRFRAMES = [
      * track is flown slowly enough that a steep camera would put the next
      * gate off the top of the picture.
      *
-     * 115 is the widest stop src/render/lens.js offers and it is the right
-     * one here for a reason that is about the ROOM rather than about the
-     * lens. A RaceGOW track is 1.22 by 1.83 m and the aircraft is inside it
-     * the whole lap, so the next gate is regularly to one side rather than
-     * ahead. A 85 degree picture in a living room shows a wall.
+     * 95, AND IT WAS 115 UNTIL THE ROOM GREW.
+     *
+     * The old argument was about the ROOM rather than the lens: a RaceGOW
+     * track is 1.42 by 2.13 m, the aircraft is inside it the whole lap, the
+     * next gate is regularly to one side rather than ahead, and in a 5 by
+     * 6 m room an 85 degree picture shows a wall. That was true of a 5 by
+     * 6 m room. The room is 10 by 12 now, four times the floor, and the
+     * walls are metres further out: the reason for the widest stop on the
+     * list went with them.
+     *
+     * What 115 costs is the gate. A fisheye pushes everything toward the
+     * centre of the frame, so a 0.711 m opening at three metres reads
+     * smaller and closer to every other thing in the picture, and picking
+     * a line through a stack is harder than it should be. 95 is a real FPV
+     * camera's field, it is what most pilots fly, and it puts the gate back
+     * at the size the eye expects. The owner flew both.
      */
-    cameraFov: 115,
+    cameraFov: 95,
     cameraAngle: 25,
     /*
      * 0.0325 is half of the 65 mm wheelbase, which for a whoop is measured

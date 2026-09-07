@@ -447,6 +447,17 @@ const DEFAULTS = {
    */
   pids: {},
   /*
+   * Which airframe PID seeds have already been laid down, by tune id. An
+   * airframe may ship a starting PID adjustment for its default tune (see
+   * defaultPids in configs/airframes.js), and a seed that is only ever
+   * conditional on "the pilot has no entry" would come BACK the next time
+   * the page loaded after they pressed Reset to stock on it. This is what
+   * makes it a one shot: the seed lands once per tune, ever, and after that
+   * the adjustment is the pilot's whether they kept it, moved it or threw
+   * it away.
+   */
+  pidsSeeded: {},
+  /*
    * Whether the flight feel question has been offered. It offers itself
    * exactly once, after the first finished race, and never again: the
    * moment the dialog opens this flips and is saved, whatever the pilot
@@ -595,7 +606,30 @@ function detectFirstRun() {
 /* The whoop's id, and the throttle cap it used to ship with. See the
  * migration in loadSettings. */
 const WHOOP_ID = 'whoop65';
-const SUPERSEDED_WHOOP_CAP = 65;
+/*
+ * THE WHOOP'S SHIPPED DEFAULTS THAT HAVE BEEN SUPERSEDED, and the value
+ * each one used to hold.
+ *
+ * reseatIfForeign will not move any of these and should not: its rule is
+ * "is this still the OTHER aircraft's stock value", which is what protects a
+ * number the pilot actually chose, and none of these is the five inch's. So
+ * that rule reads a superseded default as the pilot's own and keeps it, and
+ * every pilot who flew the whoop before the change would sit on the old
+ * value with no sign that a new one exists.
+ *
+ * Each entry moves ONCE, only from the exact figure that shipped, and only
+ * on the whoop. A pilot who genuinely wants the old value still has it on
+ * the menu one row away, and it stays after they choose it, because the
+ * next build's table will not name it here.
+ */
+const SUPERSEDED_WHOOP = {
+  /* 65 percent, before the owner flew it to 75. */
+  throttleCap: 65,
+  /* The Champion preset, before the owner flew the Freestyle one. */
+  tune: 'whoop-champion',
+  /* 115 degrees, chosen for a 5 by 6 m room. The room is 10 by 12 now. */
+  cameraFov: 115,
+};
 
 export function loadSettings() {
   let stored = {};
@@ -707,13 +741,28 @@ export function loadSettings() {
    * still has it on the menu, one row away, and it will stay after they
    * choose it because the next build's list will not name it here.
    */
-  if (s.airframe === WHOOP_ID && s.rates && s.rates.throttleCap === SUPERSEDED_WHOOP_CAP) {
-    s.rates = { ...s.rates, throttleCap: airframeById(WHOOP_ID).rates.throttleCap };
+  if (s.airframe === WHOOP_ID) {
+    const af = airframeById(WHOOP_ID);
+    if (s.rates && s.rates.throttleCap === SUPERSEDED_WHOOP.throttleCap) {
+      s.rates = { ...s.rates, throttleCap: af.rates.throttleCap };
+    }
+    if (s.tune === SUPERSEDED_WHOOP.tune) {
+      s.tune = af.defaultTune;
+    }
+    if (s.cameraFov === SUPERSEDED_WHOOP.cameraFov) {
+      s.cameraFov = af.cameraFov;
+    }
   }
   /* The PID adjustment, clamped onto what the firmware and the menu will
    * take. An unknown tune id, an out-of-range slider or a half-complete
    * expert table cannot survive a localStorage edit into the emitter. */
   s.pids = normalisePids(s.pids);
+  /*
+   * The seated aircraft's starting PID adjustment, after normalisePids so it
+   * is not stripped as an unknown entry, and after the tune is final so it
+   * lands on the tune it was chosen against. One shot: see seedAirframePids.
+   */
+  seedAirframePids(s, s.airframe);
   /* The race field is gone. A stored 'field', or an id no map has, flies
    * the track world. City is left alone. */
   if (s.map === 'field' || !MAPS.some((m) => m.id === s.map)) {
@@ -860,11 +909,53 @@ export function seatAirframe(s, id) {
   }
   s.cameraFov = to.cameraFov;
   s.cameraAngle = clampCameraAngle(to.cameraAngle);
+  /* And the aircraft's starting PID adjustment, if it ships one and this
+   * profile has never been offered it. The tune moved to the new aircraft's
+   * default a few lines up, which is the tune the seed is keyed to. */
+  seedAirframePids(s, to.id);
   return s;
 }
 
 /* A rate profile object from an airframe row, deep enough that normaliseRates
  * cannot write through into the registry's own literal. */
+/*
+ * Lay down an airframe's starting PID adjustment for its default tune, once.
+ *
+ * The whoop ships one: BetaFPV's Freestyle preset with the master slider at
+ * 150 percent, which is the owner's setting flown. It is a SEED and not a
+ * setting, so it lands on a profile that has never had an adjustment for
+ * that tune and never lands twice; see pidsSeeded above for why once
+ * matters.
+ *
+ * Keyed to the airframe's DEFAULT TUNE rather than to the airframe, because
+ * that is what the number was chosen against. The other two whoop tunes
+ * ship their own master, 75 and 85, and 150 on top of either of those is a
+ * figure nobody picked.
+ */
+function seedAirframePids(s, id) {
+  const af = airframeById(id);
+  const tune = af.defaultTune;
+  if (!af.defaultPids || !tune) {
+    return s;
+  }
+  if (!s.pids || typeof s.pids !== 'object') {
+    s.pids = {};
+  }
+  if (!s.pidsSeeded || typeof s.pidsSeeded !== 'object') {
+    s.pidsSeeded = {};
+  }
+  if (s.pidsSeeded[tune]) {
+    return s;
+  }
+  /* Marked either way. A pilot who has already adjusted this tune owns it,
+   * and the seed must not arrive later if they reset it. */
+  s.pidsSeeded = { ...s.pidsSeeded, [tune]: true };
+  if (!s.pids[tune]) {
+    s.pids = { ...s.pids, [tune]: { sliders: { ...af.defaultPids } } };
+  }
+  return s;
+}
+
 function structuredCloneRates(r) {
   return {
     type: r.type,
@@ -5454,7 +5545,34 @@ export class Ui {
       this.renderTitleCards();
     }
     if (this.screens && this.screens.title) {
-      const gate = !this.mode;
+      /*
+       * onGate(), NOT `!this.mode`, and this line was the whole of a bug
+       * that made the front page unusable.
+       *
+       * There are TWO gates now, the aircraft and then Race or Freestyle,
+       * and `!this.mode` only ever saw the second one. So whenever the mode
+       * was already answered while the AIRCRAFT gate was still open, the
+       * title dressed itself as the menu: `is-gate` never went on, and with
+       * it went the rule that lays the two cards out
+       * (`.screen-title.is-gate .gate-cards`), the rules that take the keep
+       * note, the wiki teaser and the best-lap chip off a screen that is
+       * asking one question, and the rule that hides an empty menu panel.
+       * The pilot got a blank box where the aircraft should be, two
+       * paragraphs that belong to a seat they had not chosen, and no way to
+       * fly. Reported as "the menu is not populated and i can't fly it".
+       *
+       * Both routes to it are ordinary. The track builder's Fly this track
+       * link is `?map=custom`, which linkedMode reads as race, so every
+       * pilot arriving from the builder hit it. And on a whoop syncMode
+       * answers the mode itself, so every whoop pilot hit it from any link.
+       *
+       * onGate() is the one definition, `this.screen === 'title' &&
+       * (this.craftGate || !this.mode)`, and it is what cardScreen and the
+       * key handling have always used. This line disagreeing with them is
+       * what let the screen be a gate for one half of the code and a menu
+       * for the other.
+       */
+      const gate = this.onGate();
       this.screens.title.classList.toggle('is-first', Boolean(this.firstRun));
       /* The gate is one question, so the lines that describe a seat the
        * pilot has not chosen to fly yet come off the screen behind it. */
@@ -9288,7 +9406,7 @@ export class Ui {
       out.push({ keys: [], text: this.cardScreen() ? 'Tap a card' : 'Tap a row' });
       if (this.screen !== 'title') {
         out.push({ keys: [], text: 'Back', action: 'back' });
-      } else if (this.mode) {
+      } else if (this.mode && !this.craftGate) {
         out.push({ keys: [], text: this.modeGateLabel(), action: 'mode-gate' });
       }
       return out;
@@ -9310,7 +9428,13 @@ export class Ui {
     out.push({ keys: [pad ? 'A' : 'Enter'], text: 'Choose' });
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
-    } else if (this.mode) {
+    } else if (this.mode && !this.craftGate) {
+      /* NOT ON THE AIRCRAFT GATE. That gate is the root and Escape does
+       * nothing there, so offering the key is the joke the block below
+       * says it is avoiding. `this.mode` was the proxy for "past the
+       * gates" and it stopped being one when a second gate landed in
+       * front of it: a whoop answers the mode by itself and a link that
+       * names the map answers it for everyone. */
       /*
        * The title answers Escape now: it reopens the Race or Freestyle
        * gate, which is the only way to change mode without reloading. It is

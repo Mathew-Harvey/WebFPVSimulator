@@ -1111,10 +1111,16 @@
         margin: auto 0 0;
         pointer-events: auto;
       }
-      /* The gate has no rows unless a radio is in trouble, and an empty
-         menu still paints its plate and its sakura top line: a bar under
-         the two cards that means nothing. */
-      .screen-title.is-gate .menu:empty { display: none; }
+      /* An empty menu still paints its plate and its sakura top line, so
+         a title screen with no rows shows a bar that means nothing. The
+         gate is where that normally happens, because it has no rows unless
+         a radio is in trouble, and this rule used to be scoped to it. That
+         scope is what turned a wrong is-gate into the empty front page the
+         owner reported: the cards were hidden by their own rule and this
+         one did not fire, so a bare strip was the whole menu. Unscoped, an
+         empty menu is invisible in EVERY title state, whatever answered
+         which question, and the class of bug is ugly rather than fatal. */
+      .screen-title .menu:empty { display: none; }
       /* The foot keeps its own auto margin in every other state, where it
          is what pins the menu to the bottom. Here the cards are that block,
          so the foot gives the space up rather than splitting it. */

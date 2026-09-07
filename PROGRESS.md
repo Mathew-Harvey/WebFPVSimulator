@@ -30963,3 +30963,217 @@ the nine agents summarised here, six of which drove the real shell through
 headless Chromium on the owner's own track.
 
 `npm run verify` was NOT run and is not warranted: no source file changed.
+
+## The six defects, and the four more that verifying them turned up
+
+The owner said fix the six. Six were fixed, then seven agents were sent to
+break the fixes, and they found four more, three of which are the same defect
+as one of the six standing in the branch next door. Ten fixed. Every finding
+is below, acted on or declined with the reason, as the Review section asks.
+
+### The six
+
+**1 and 2, the craft and the ghost, are one bug in two objects.** The field
+map captured `shell.quad` at BUILD time. Boot always builds a five inch and
+`applySettings` swaps to the whoop afterwards, after `loadMap` has captured,
+so a whoop pilot's map held the dead five inch group: `scene.remove` was a
+no-op and `disposeSceneGraph` walked the aircraft they were flying. The ghost
+had no capture to go stale, it was simply never detached at all.
+
+Measured, with the fix reverted and with it in place, twice by two agents
+working independently:
+
+```
+craft, whoop, three forced rebuilds
+  buffer deletes   320, 119, 117   ->   117, 119, 117
+  craft geometries dead   52/52    ->     0/52
+  craft materials  dead   33/33    ->     0/33
+  five inch, same probe    0/43    ->     0/43   (never affected)
+ghost, real ghost on screen, real map swap
+  dispose events     45 -> 0, and 90 after two swaps -> 0
+  name tag texture  1/1 -> 0/1
+  renderer geometries with the ghost detached  218 -> 259, a difference of 41,
+  which is the ghost's geometry count
+```
+
+It is a ONE SHOT bug for the craft, which the original finding did not say:
+`buildFieldScene` re-captures correctly from the first rebuild on, so only
+the first map change after boot damages it. It is per swap for the ghost.
+Nothing visibly broke in either case because three re-uploads what it finds
+missing. The argument for fixing it is that it was relying on three being
+forgiving, which is exactly what `disposeSceneGraph`'s own header says it
+must not do.
+
+The register lives in the shell now: `keepAcrossMaps` and
+`evictSessionRoots`, with the craft read at call time rather than held in the
+Set, because putting it in the Set would pin the boot-time five inch forever
+and reintroduce the defect one level down. There is a comment saying so.
+
+**3, the program cache key.** three r160 keys a program on
+`onBeforeCompile.toString()`, and every `celMaterial` shares one closure, so
+everything the closure bakes into the shader SOURCE is invisible to the
+cache. `cloth` is the only such option. Measured on the field:
+
+```
+sail draws using a program that declares aCloth   0 of 55  ->  55 of 55
+plain cel materials sharing key AND parameter signature with a sail   4 -> 0
+field program count                               50 -> 52
+cel programs carrying cloth                        1 -> 2
+```
+
+So the flags did not wave. At all. A refuter took the time lapse the first
+verifier said was impossible and settled it directly: five frames 600 ms
+apart at one camera, sail crop changing by 31.6, 39.9, 9.1 and 15.1 percent
+in the fixed build and BYTE IDENTICAL in the broken one, with the ground, sky
+and tree crops byte identical in both.
+
+The key is derived from the injected strings themselves rather than named
+`cel` and `cel-cloth`, because a hand written name puts the condition in
+three places that nothing couples, and this bug would then come back
+camouflaged behind a file that looks like it has a considered cache key. 678
+characters against three's own 2361, and the observable partition measures
+identical: 48 materials on one key, 2 on the other, no overlap.
+
+**4, the pole overlay.** `virtualGate` split its art on `type === 'cone'`
+alone, so a pole got `flagMastGeometry`, a feather banner that runs straight
+to 0.80 of its height then arcs a hundred degrees over. On a 1.5 m mast the
+lit tip stood 352 mm sideways from the axis of a 26.7 mm pipe. Measured:
+79 px of green whose centre wandered 62.5 px from base to tip, 1273 px of red
+pipe left uncovered beside it. After: 22 px wide, centre spread 0.0 px,
+0 exposed pipe pixels, lateral offset between overlay and pipe 0.0 px, and
+one draw call and 364 triangles cheaper because the sail is gone.
+
+**5, the empty menu plate.** The hide was scoped to `is-gate`. Measured in
+the owner's exact broken shape, `is-gate` off with zero rows: the plate went
+from `display: block` at 576 by 24 px to `display: none` at 0 by 0. `:empty`
+really does match, `childNodes` is 0, so the rule is not a placebo.
+
+**6, the shared material memo.** Field to city to field, comparing the
+obstacle materials' identity across the trip: before, `sameObjects 1, fresh
+0`, so the second world was built from the material the first world's dispose
+had disposed. After, `sameObjects 0, fresh 1`.
+
+### The four that verifying found
+
+**7, the flag has the same drift the pole had.** `courseProps` draws the mast
+at `max(0.5, height)`, `virtualGate` lit it at `max(0.4, height)`. A flag
+authored at 0.2 m was drawn 0.5 m and lit 0.432 m, so 100 mm of drawn mast
+stood above its own highlight, and because `flagMast` scales its arc with the
+height the two curves bent apart as well.
+
+**8, the cone is worse, and it is on a track that ships.** `courseProps` drew
+it with NO clamps at all while `virtualGate` lit it at `max(0.4, h)` and
+`max(0.05, r)`. A 0.1 m cone was lit as a 0.408 m one: four times its own
+height, photographed.
+
+So the pole's one-branch fix became `markerBuild`, which all three marker
+types and both call sites go through. Fixing one branch of three is how this
+defect comes back. Measured after, each authored at 0.2 m:
+
+```
+        drawn        lit before   lit after
+pole    0.2          0.408        0 to 0.204
+cone    0.2          0.408        0 to 0.204
+flag    0.5, floored 0.432        0 to 0.516
+```
+
+**9, a NaN the refactor introduced.** Routing the pole through a shared
+helper deleted a load-bearing `??`: the marker payload built when a station
+has no structure carries no `poleRadius`, and `Math.max(0.004, undefined)` is
+NaN, which makes a NaN cylinder. Not reachable today, because trackdoc
+guarantees a structure, but the old code's `?? 0.02` was holding that door
+shut and the refactor let it go. `markerBuild` carries the defaults now.
+
+**10, three comments that claimed more than was true.** All mine, all
+written this turn, all corrected: that the parent chain walk was "measured"
+saving a nested craft, when no map nests one and the measurement was a
+hand-built probe; that `evictSessionRoots`' return value was "for the
+harness", when nothing reads it; and that the two extra programs are both the
+cloth variant, when only one is. A wrong number in a comment is the thing
+this project keeps saying it will not have.
+
+### Declined, with reasons
+
+- **The ink prepass and the shadow pass now disagree with the colour pass for
+  the flag sail.** Real, and a direct consequence of fix 3: `post.js` overrides
+  the scene with a plain ShaderMaterial that has no cloth code, and three's
+  depth material does not carry `onBeforeCompile`, so both still rasterise the
+  sail at the rest pose. Before, all three passes agreed because none of them
+  waved. Bounded by `FLAG_SAIL_CLOTH`, 85 mm. Not fixed: the alternative is to
+  put cloth into the outline pass and the depth material, which is a real
+  change to `post.js`, and the visible artefact, a stale ink line at the rest
+  silhouette, was hunted for at the camera that would show it and was not
+  there. Recorded in `celmat.js` next to the key.
+- **`src/maps/city/bake.js:427`'s guard is dead.** `typeof
+  m.customProgramCacheKey !== 'function'` can never fire, because the
+  prototype always has one; it wants `hasOwnProperty`. Declined because it is
+  a no-op today: every material in `src/` with its own `onBeforeCompile` now
+  also has its own key, so the corrected guard would still never fire.
+  Changing what the city's bake shares has more risk than a no-op is worth.
+- **The cone and flag branches sinking below the floor.** Fixed as part of 7
+  and 8 rather than declined: both now use 0.51 and 0.53 like the pole.
+- **`markerH` still carries the flag's 0.4 m floor** into `setNextGate`'s aim
+  reticle for every marker type. Deliberate, and left alone: a reticle that
+  collapses onto the ground over a tiny marker is worse than one that floats.
+  Separate question from what is DRAWN, which is what these fixes are about.
+- **`signs.js` keeps a module-level texture cache that survives the city's
+  dispose.** Not a defect: its own header says the cache is deliberately never
+  cleared and that re-entering the city re-uploads rather than re-draws.
+
+### The gaps, which are real and are the next thing
+
+Nothing in the repository checks any of this. `lint:memory` passes
+identically with every one of these fixes reverted, because it never seats an
+airframe, so it boots the five inch, the one aircraft the craft defect could
+not touch. No check anywhere puts a ghost on screen. Offering either as
+evidence for these fixes would be the green check that cannot see the thing
+that changed, so neither is offered. The fixes are evidenced by the
+before-and-after probes quoted above and nothing else.
+
+Two checks would lock all of it in and neither is large: seat the whoop in
+`memory-check` and assert the craft's geometry count does not drop across a
+swap, and arm a ghost through `__ghostLoad` and assert the same. They are not
+written. That is the honest state.
+
+### What went wrong along the way
+
+Three of the seven verification lanes never ran: their worktrees failed to
+create. Those three were the empty menu plate, the shared memo and the
+integration sweep, so all three were done by hand instead, which is why 5 and
+6 above quote my own numbers rather than an agent's.
+
+The four lanes that did run were all handed worktrees checked out at the
+commit rather than carrying the working tree, so every one of them opened on
+the OLD code and had to reconstruct the fixes by copying files across. All
+four noticed and said so. The fixes were committed locally after that so the
+refuters would read the real thing.
+
+The reviewers' worktrees were left inside the repository and `lint:nouns`
+scans them, so the checkout's own lint went red for a reason that had nothing
+to do with any code. Removed.
+
+I nearly read a `lint:memory` number as evidence: the city peak moved from
+477 to 478 geometries with the fixes in. Six runs later that number had been
+466, 478, 482, 490, 522 and 524 on the same two trees. The peak is noise. The
+figure that means something is the third one, what comes back after leaving,
+and it was 61 geometries and 5 textures in every run on both trees.
+
+### What was run
+
+`lint:shell` PASS, `micro:check` PASS, `lint:quality` 56 of 56,
+`lint:memory` PASS, `lint:frame` 34 of 34, `lint:nouns` PASS, `check:orbit`
+17 of 17, `check:path` 12 of 12, `lint:presets` 6 of 6, `lint:boot` 9 of 9,
+`lint:devices` PASS, builder self test 495 of 495, `lint:responsive` PASS,
+all in the same turn as the final code.
+
+`src/share/orbit.html` driven directly, because it calls `view.dispose()` and
+is the only consumer of the changed path outside `main.js`: error null, ready
+true, 16 frames recorded, no frame fault, and the field renders.
+
+An integration sweep by hand: whoop, micro track, custom to city to custom,
+then into flight, `__frameFault` null at every step and the room drawn
+correctly on the far side. Plus the 16 flag field on the five inch, clean.
+
+`npm run verify` was NOT run and is not warranted: nothing here touches
+physics, the plant, the module ABI or the build, and `dist/sim.wasm` is
+untouched.

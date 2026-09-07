@@ -233,6 +233,91 @@ export function buildShell(canvas, opts) {
   }
   resize();
 
+  /*
+   * ROOTS THAT OUTLIVE A MAP.
+   *
+   * The craft is session lived and the maps are not: the shell builds it
+   * once and re-parents it into whichever map's scene is active. A map's
+   * dispose has to hand it back before disposeSceneGraph runs, or the walk
+   * frees the geometry and the cel materials of the aircraft the pilot is
+   * still flying. disposeSceneGraph's own header states that invariant.
+   *
+   * The field map used to keep it by capturing shell.quad at BUILD time,
+   * which is wrong twice over. Boot always builds a five inch and
+   * applySettings swaps to the whoop afterwards, AFTER loadMap has already
+   * captured, so on a whoop the map held the dead five inch group: its
+   * scene.remove was a no-op and the live craft was disposed with the
+   * world. Measured with a deleteBuffer hook over three forced rebuilds,
+   * that cost 320 buffer deletes on the first and 119 and 117 after, the
+   * extra 203 being the whoop. Nothing visibly broke because three
+   * re-uploads whatever it finds missing, which is most of why it survived.
+   *
+   * And the craft was never the only one. main.js parents the ghost rig
+   * into the same scene whenever a ghost is on screen and nothing ever
+   * detaches it, so its geometry, its two materials, its sprite material
+   * and its name tag canvas were freed on every map swap. The tag texture
+   * is not in SESSION_TEXTURES, so that one is a live object being freed,
+   * not merely a re-upload.
+   *
+   * So the register lives here rather than in each map. Anything session
+   * lived says so once with keepAcrossMaps, a map's dispose calls
+   * evictSessionRoots, and no map has to know what the list is. The craft
+   * is always in it and is read at call time, never captured, because
+   * swapCraft replaces craft.group and the register has to follow.
+   *
+   * DO NOT "tidy" this by calling keepAcrossMaps(craft.group) once at boot.
+   * The Set would pin the boot-time five inch for the life of the session
+   * and every aircraft swap after it would go unprotected, which is the
+   * exact defect this replaced, moved one level down.
+   */
+  const sessionRoots = new Set();
+
+  function keepAcrossMaps(group) {
+    if (group) {
+      sessionRoots.add(group);
+    }
+    return group;
+  }
+
+  /*
+   * Detach every session lived root from this scene, so that what is left
+   * is the map's and dies with it. Walks up the parent chain rather than
+   * testing parent === scene, because a root re-parented under a group
+   * inside the map is just as reachable from the dispose walk and just as
+   * dead afterwards. No map nests the craft today, so this is insurance
+   * rather than a fix for a live case: both maps add it at depth one. A
+   * probe that nested it by hand two deep confirmed the walk still saves
+   * it where the old scene.remove(quad), which only unlinks direct
+   * children, would have let it be disposed.
+   *
+   * The null guard is not decoration. Without it the walk runs p up to
+   * null, `p === scene` is null === null, and every unparented root is
+   * "removed": harmless, because three's removeFromParent is a no-op
+   * without a parent, but the count returned would be a lie.
+   *
+   * Returns how many were detached. Nothing reads it today.
+   */
+  function evictSessionRoots(scene) {
+    if (!scene) {
+      return 0;
+    }
+    let removed = 0;
+    for (const root of [craft.group, ...sessionRoots]) {
+      if (!root) {
+        continue;
+      }
+      let p = root.parent;
+      while (p && p !== scene) {
+        p = p.parent;
+      }
+      if (p === scene) {
+        root.removeFromParent();
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
   const api = {
     renderer,
     camera,
@@ -245,6 +330,8 @@ export function buildShell(canvas, opts) {
     propSpin: craft.propSpin,
     resize,
     swapCraft,
+    keepAcrossMaps,
+    evictSessionRoots,
   };
 
   /*

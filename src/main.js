@@ -1098,6 +1098,16 @@ export async function boot({ loading, bootStart, mapId }) {
   const ghostRecorder = new GhostRecorder();
   const ghostBook = new GhostBook();
   const ghostRig = buildGhostCraft();
+  /*
+   * Session lived, like the craft. It is parented into whichever scene
+   * holds the hero craft, below, and nothing used to take it out again, so
+   * every map swap ran disposeSceneGraph over its geometry, its body and
+   * disc materials, its sprite material and its name tag CanvasTexture,
+   * which is not in SESSION_TEXTURES. Re-parenting it on the next frame
+   * does not undo a free. Saying so here means each map's dispose hands it
+   * back without having to know it exists.
+   */
+  shell.keepAcrossMaps(ghostRig.group);
   const ghostSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
   let ghostLap = null; /* the lap being chased, armed at each lap start */
   let ghostChased = null; /* the lap the last FINISHED lap was chased against */

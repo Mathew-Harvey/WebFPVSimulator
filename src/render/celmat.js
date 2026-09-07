@@ -269,6 +269,11 @@ export function celMaterial(opts = {}) {
   const specColor = new THREE.Color(opts.specColor ?? 0xffffff);
   const cloud = opts.cloudShadow ?? 0;
   const cloth = opts.cloth ?? 0;
+  /* The two injections cloth decides, named once. See the cache key below:
+   * these strings ARE the key, so the condition cannot be changed in one
+   * place and forgotten in the other. */
+  const clothDecl = cloth > 0 ? 'attribute vec2 aCloth;' : '';
+  const clothBody = cloth > 0 ? CLOTH_CHUNK : '';
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uCloth = { value: cloth };
     shader.uniforms.uRimColor = { value: rimColor };
@@ -295,12 +300,12 @@ export function celMaterial(opts = {}) {
          varying vec3 vCelWorld;
          uniform float uCelTime;
          uniform float uCloth;
-         ${cloth > 0 ? 'attribute vec2 aCloth;' : ''}`,
+         ${clothDecl}`,
       )
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-         ${cloth > 0 ? CLOTH_CHUNK : ''}
+         ${clothBody}
          vCelWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
       );
 
@@ -333,6 +338,59 @@ ${RIM_CHUNK}
          }`,
       );
   };
+  /*
+   * THE PROGRAM CACHE KEY, WHICH THREE CANNOT WORK OUT ON ITS OWN.
+   *
+   * r160's default Material.customProgramCacheKey returns
+   * onBeforeCompile.toString(), and WebGLPrograms.getProgramCacheKey pushes
+   * that string into the key. Every celMaterial's onBeforeCompile is this
+   * one closure, so its SOURCE TEXT is byte identical no matter what the
+   * closure captured. Anything the closure bakes into the generated shader
+   * is therefore invisible to the cache, and two materials differing only
+   * there are handed each other's already linked program.
+   *
+   * cloth is the only option that does that: it decides whether the vertex
+   * shader declares aCloth and injects CLOTH_CHUNK. Everything else, the
+   * rim, the spec, the cloud shadow, the colour, arrives as a uniform, and
+   * uniforms are per material and not per program.
+   *
+   * So scene.js's `printed` and its `sailMaterial` differ only in rim and
+   * cloth, both invisible, and both carry a map on FrontSide with fog: to
+   * three they were the same program. Whichever linked first decided
+   * whether the cloth code existed at all, which is a field whose flags
+   * wave or do not wave depending on the order the world was built in.
+   *
+   * THE KEY IS THE INJECTED SOURCE ITSELF, not a name for it. A hand
+   * written 'cel' and 'cel-cloth' works today and is the bug waiting to
+   * come back: the condition would then live in three places that nothing
+   * couples, so a later edit to either ternary, or a second option that
+   * varies the source, would leave the key stale. And it would come back
+   * camouflaged, because the file would look like it had a considered
+   * cache key. Deriving it from clothDecl and clothBody means the key
+   * cannot disagree with the shader by construction.
+   *
+   * Still far shorter than what three did by default, which was the whole
+   * closure source: 2361 characters, identical for every cel material.
+   * Not the options object either, because that would split the cache by
+   * colour and buy a compile per gate for a uniform.
+   *
+   * Measured on the field, before and after: sail draws using a program
+   * that declares aCloth went from 0 of 55 to 55 of 55, so before this the
+   * flags did not wave at all. The field's program count went 50 to 52,
+   * and cel programs carrying cloth went 1 to 2. Only ONE of the two extra
+   * programs is the cloth variant; the other is a non-cloth cel program
+   * that used to be sharing with it. Both are the point.
+   *
+   * KNOWN, and not fixed here: the sail now moves in the colour pass only.
+   * post.js's outline prepass overrides the whole scene with a plain
+   * ShaderMaterial that has no cloth code, and three's depth material does
+   * not carry onBeforeCompile either, so the ink and the shadow are still
+   * rasterised at the rest pose. Before this the three passes agreed
+   * because none of them waved. The disagreement is bounded by
+   * FLAG_SAIL_CLOTH, 85 mm. Looked for and not found: a stale ink line at
+   * the rest silhouette, absent at the camera it was hunted from.
+   */
+  mat.customProgramCacheKey = () => `cel${clothDecl}${clothBody}`;
   mat.userData.cel = true;
   /* Stable identity for the scenery merger: two materials built from the
    * same options are interchangeable, so their meshes can share one draw.

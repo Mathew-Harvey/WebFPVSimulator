@@ -2005,12 +2005,75 @@ function markerGlowMaterial() {
   });
 }
 
+/*
+ * A MARKER'S BUILT SIZE, FROM WHATEVER THE DOCUMENT SAYS.
+ *
+ * Two call sites need this and they sit 500 lines apart: courseProps draws
+ * the flag, the cone and the pole, and virtualGate lights whichever of them
+ * is the next station. They used to clamp separately and differently, and
+ * every one of the three disagreed:
+ *
+ *   pole  drawn max(0.1, h)   lit max(0.4, h)   authored at 0.2 m: lit 0.435 m
+ *   flag  drawn max(0.5, h)   lit max(0.4, h)   authored at 0.2 m: lit 0.100 m short
+ *   cone  drawn h, unclamped  lit max(0.4, h)   SHIPPED at 0.1 m: lit 0.408 m
+ *
+ * All three measured in the real shell. The cone is the worst and it is on
+ * a track that ships: a 100 mm nub wearing a 408 mm lit cone, four times
+ * its own height. The pole's version was found first and fixed alone, and
+ * fixing one branch of three is how the same defect comes back, so the
+ * helper covers all three. It returns the numbers the DRAWN object is
+ * built from, and virtualGate lights exactly those.
+ *
+ * The clamps are each call site's own, kept verbatim rather than
+ * harmonised, because they describe three different objects: a pipe can be
+ * short, a banner mast cannot be shorter than its own sail, and a cone is
+ * whatever the author said. The defaults exist only for the marker payload
+ * virtualGate is handed when a station has no structure, which trackdoc
+ * does not currently produce; before this helper that path relied on a ??
+ * inside virtualGate, and routing through here without one would have made
+ * Math.max(0.004, undefined) into a NaN radius and a NaN cylinder.
+ */
+function markerBuild(type, dims) {
+  const d = dims || {};
+  if (type === 'pole') {
+    return {
+      r: Math.max(0.004, d.poleRadius ?? 0.02),
+      h: Math.max(0.1, d.height ?? 1.5),
+    };
+  }
+  if (type === 'cone') {
+    return {
+      r: d.baseRadius ?? 0.18,
+      h: d.height ?? 0.45,
+    };
+  }
+  return {
+    r: Math.max(0.008, d.poleRadius ?? 0.018),
+    h: Math.max(0.5, d.height ?? FLAG_H),
+  };
+}
+
 function virtualGate(clearW, clearH, marker = {}) {
   const g = new THREE.Group();
   const isCone = marker.type === 'cone';
+  const isPole = marker.type === 'pole';
+  /*
+   * flagH is the SCORING height, not the mesh's. It keeps its 0.4 m floor
+   * because it is returned as markerH and read by setNextGate for
+   * aim.centre and aim.clearH, where a floor under a tiny marker is
+   * wanted: the reticle should not collapse onto the ground.
+   *
+   * built is the MESH's, and it is the same call courseProps makes, so
+   * whatever is lit is exactly the size of the thing that was drawn.
+   * Keeping these two apart is the whole of the fix: they were one number
+   * before, so every marker under the flag's floor was lit at the wrong
+   * size, and the pole was lit as a bent banner as well.
+   */
   const flagH = Math.max(0.4, marker.height ?? clearH);
-  const poleR = Math.max(0.008, marker.poleRadius ?? 0.02);
-  const coneR = Math.max(0.05, marker.baseRadius ?? 0.18);
+  const built = markerBuild(
+    marker.type,
+    { height: marker.height ?? clearH, poleRadius: marker.poleRadius, baseRadius: marker.baseRadius },
+  );
   const markerYaw = marker.yaw ?? 0;
 
   const ringMat = new THREE.MeshBasicMaterial({
@@ -2043,22 +2106,73 @@ function virtualGate(clearW, clearH, marker = {}) {
   let core;
   let halo;
   if (isCone) {
-    core = new THREE.Mesh(new THREE.ConeGeometry(coneR * 1.08, flagH * 1.02, 10), ringMat);
-    core.position.y = flagH * 0.5;
-    halo = new THREE.Mesh(new THREE.ConeGeometry(coneR * 1.45, flagH * 1.06, 10), haloMat);
-    halo.position.y = flagH * 0.5;
+    /* The drawn cone's own radius and height, and 0.51/0.53 rather than a
+     * half, for the same two reasons as the pole below: a cone authored at
+     * 0.1 m was being lit at 0.408 m, and a symmetric half sinks a
+     * hundredth of the height under the floor. */
+    core = new THREE.Mesh(new THREE.ConeGeometry(built.r * 1.08, built.h * 1.02, 10), ringMat);
+    core.position.y = built.h * 0.51;
+    halo = new THREE.Mesh(new THREE.ConeGeometry(built.r * 1.45, built.h * 1.06, 10), haloMat);
+    halo.position.y = built.h * 0.53;
+  } else if (isPole) {
+    /*
+     * A RaceGOW vertical pole is a straight length of pipe, and this
+     * branch used to be the flag's: the lit overlay was flagMastGeometry,
+     * a feather banner profile that runs straight to 0.80 of its height
+     * and then arcs a hundred degrees over to the apex, with a sail glow
+     * hanging off it. On a 1.5 m mast that arc puts the lit tip 352 mm
+     * sideways from the axis of a 26.7 mm pipe. So the pilot was shown a
+     * green mast bending away over the top of a straight red pole, and the
+     * thing they were being asked to fly around was not the shape that was
+     * lit: measured on the old code, 79 px of green whose centre wandered
+     * 62 px from base to tip, with 1273 px of red pipe left standing
+     * beside it, uncovered.
+     *
+     * THE PIPE'S OWN SIZE, not the flag's, from the shared markerBuild
+     * above, so the cylinder is exactly as long as the object under it
+     * whatever the author typed.
+     *
+     * The radius multiples are the flag's, kept, because a 13 mm pipe
+     * needs the overlay several times its own width before it reads at
+     * racing speed. The pipe carries a 1.06 inverted hull from
+     * courseProps, so the core at 2.2 clears the outline rather than
+     * fighting it: 15 mm of daylight, measured.
+     *
+     * openEnded, and 0.51 and 0.53 rather than the cone's half. The core
+     * then spans 0 to 1.02 h against a pipe of 0 to h: flush with the
+     * floor and proud only at the top, where a symmetric half would put a
+     * lit cap under the floor. Open because a closed cylinder's bottom
+     * face would be exactly coplanar with that floor, and 20 of its 80
+     * triangles would be caps nobody can see from outside.
+     */
+    core = new THREE.Mesh(
+      new THREE.CylinderGeometry(built.r * 2.2, built.r * 2.2, built.h * 1.02, 10, 1, true),
+      ringMat,
+    );
+    core.position.y = built.h * 0.51;
+    halo = new THREE.Mesh(
+      new THREE.CylinderGeometry(built.r * 4.6, built.r * 4.6, built.h * 1.06, 10, 1, true),
+      haloMat,
+    );
+    halo.position.y = built.h * 0.53;
   } else {
-    core = new THREE.Mesh(flagMastGeometry(poleR * 2.2, flagH), ringMat);
-    halo = new THREE.Mesh(flagMastGeometry(poleR * 4.6, flagH), haloMat);
+    /* The banner's mast, at the mast's own built length. It was lit at the
+     * 0.4 m floor while courseProps drew it at 0.5 m, so a flag authored
+     * short stood 100 mm above its own highlight, and because flagMast
+     * scales its arc with the height the two curves bent apart as well. */
+    core = new THREE.Mesh(flagMastGeometry(built.r * 2.2, built.h), ringMat);
+    halo = new THREE.Mesh(flagMastGeometry(built.r * 4.6, built.h), haloMat);
   }
   core.layers.set(1);
   halo.layers.set(1);
   holder.add(core);
   holder.add(halo);
 
+  /* The sail is the flag's alone. A cone has no cloth on it and neither
+   * does a length of pipe. */
   let sailGlow = null;
-  if (!isCone) {
-    sailGlow = new THREE.Mesh(flagSailGeometry(poleR, flagH), glowMat);
+  if (!isCone && !isPole) {
+    sailGlow = new THREE.Mesh(flagSailGeometry(built.r, built.h), glowMat);
     sailGlow.layers.set(1);
     holder.add(sailGlow);
   }
@@ -2525,8 +2639,7 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       continue;
     }
     if (s.type === 'cone') {
-      const r = s.dims.baseRadius;
-      const h = s.dims.height;
+      const { r, h } = markerBuild('cone', s.dims);
       const cone = new THREE.Mesh(
         new THREE.ConeGeometry(r, h, 10),
         celMaterial({ color: 0xd2601f, rim: 0.24 }),
@@ -2558,8 +2671,7 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
      * pilot at a glance that this one is to be passed rather than entered.
      */
     if (s.type === 'pole') {
-      const r = Math.max(0.004, s.dims.poleRadius);
-      const h = Math.max(0.1, s.dims.height);
+      const { r, h } = markerBuild('pole', s.dims);
       const pipe = new THREE.Mesh(
         new THREE.CylinderGeometry(r, r, h, 10),
         celMaterial({ color: 0xc0392b, rim: 0.22 }),
@@ -2596,10 +2708,10 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
        * who set a flag to 2.5 m got a 1.6 m one and the collider they were
        * warned about was not the object they could see.
        */
+      const built = markerBuild('flag', s.dims);
       const made = bannerFlag(
         kit, () => 0.5, height, s.x, s.z, markerIndex,
-        Math.max(0.5, s.dims.height), Math.max(0.008, s.dims.poleRadius),
-        s.baseY,
+        built.h, built.r, s.baseY,
       );
       markerIndex += 1;
       made.group.rotation.y = s.yaw;
@@ -5430,10 +5542,10 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
   baker.flush(scene, 0);
 
   /* The craft is the session's, built once in src/render/shell.js and
-   * re-parented into whichever map is active. */
-  const quad = shell.quad;
-  const discs = shell.discs;
-  scene.add(quad);
+   * re-parented into whichever map is active. Read through the shell every
+   * time and never captured: swapCraft replaces the group between runs, so
+   * a local taken here is the aircraft the pilot USED to be flying. */
+  scene.add(shell.quad);
 
   /*
    * COMPILE EVERY SHADER NOW, RATHER THAN THE FIRST TIME SOMETHING IS LOOKED
@@ -5764,8 +5876,23 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
      * them. Present so the shell has one call shape. */
     updateAnim: () => {},
     dispose() {
-      scene.remove(quad);
+      /* The craft and the ghost rig are the session's, not this world's.
+       * The shell keeps that register, so this does not have to name them
+       * and cannot fall behind an aircraft swap. */
+      shell.evictSessionRoots(scene);
       disposeSceneGraph(scene, SESSION_TEXTURES);
+      /*
+       * And the obstacle materials are THIS world's, whatever the memo
+       * says. disposeSceneGraph has just disposed them, because the baked
+       * meshes holding them are in this graph, so leaving the memo set
+       * would build every world after the first out of disposed materials.
+       * three re-initialises one on next use, so the cost is a recompile
+       * and a re-upload rather than a crash, but a singleton whose lifetime
+       * disagrees with the world's is a bug waiting for a renderer that is
+       * less forgiving. Cleared here, next to the dispose that empties it,
+       * so the two can never drift apart.
+       */
+      SHARED = null;
     },
   };
 }

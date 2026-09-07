@@ -2085,7 +2085,11 @@ export async function buildMap(shell, onProgress, options) {
       if (places.blossom) {
         places.blossom.dispose();
       }
-      scene.remove(shell.quad);
+      /* The craft and the ghost rig are the session's. This read the
+       * shell live and so never had the field's stale-capture bug, but it
+       * named only the craft, and the ghost rig is parented into this same
+       * scene whenever one is on screen. The shell keeps the register. */
+      shell.evictSessionRoots(scene);
       pipeline.dispose();
       disposeSceneGraph(scene, SESSION_TEXTURES);
     },

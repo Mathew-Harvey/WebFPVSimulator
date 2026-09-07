@@ -65,6 +65,7 @@ function autosaveKey(cls) {
  * a failed write returns false and the caller tells the user. */
 import { activeTrackClass, readJson, writeJson } from '../share/session.js';
 import { presetsForClass, presetById, isPresetId } from './presets.js';
+import { duplicateTrack } from './model.js';
 
 /* ------------------------------------------------------------------ */
 /* The library                                                         */
@@ -77,7 +78,7 @@ function readLibrary() {
 
 /* Every saved track, newest change first, as summaries rather than whole
  * documents: the Load dialog only needs a name and a size. */
-export function listTracks() {
+export function listTracks(cls = activeTrackClass()) {
   const lib = readLibrary();
   const summarise = (raw, preset) => {
     const { doc } = normalize(raw);
@@ -95,19 +96,18 @@ export function listTracks() {
     .map((raw) => summarise(raw, false))
     .sort((a, b) => String(b.modifiedUtc).localeCompare(String(a.modifiedUtc)));
   /*
-   * The shipped set, after the pilot's own and only for the class they are
-   * building in, because a whoop author has no use for a 60 m field's
-   * layouts and the other way round.
+   * The shipped set, after the pilot's own and only for the class being
+   * built, because a whoop author has no use for a 60 m field's layouts
+   * and the other way round. The class is the DOCUMENT's, passed in by the
+   * builder, not the shell's seat: a hand typed ?class=micro on a browser
+   * seated in the five inch is building a room and wants room presets.
    *
-   * A saved track SHADOWS a preset of the same id: opening one and saving
-   * it makes it the pilot's, and from then on theirs is the one that
-   * opens. That is the whole of the copy on write, and it needs no flag in
-   * storage because the library is checked first.
+   * A preset never enters the library under its own id. loadTrack hands
+   * back a COPY with a fresh trk- id, so the copy saves, exports and
+   * publishes like any other track and the shipped one stays pristine
+   * beside it. That is the whole of the copy on write.
    */
-  const shadowed = new Set(mine.map((t) => t.id));
-  const stock = presetsForClass(activeTrackClass())
-    .filter((d) => !shadowed.has(d.id))
-    .map((d) => summarise(d, true));
+  const stock = presetsForClass(cls).map((d) => summarise(d, true));
   return [...mine, ...stock];
 }
 
@@ -121,10 +121,17 @@ export function saveTrack(doc) {
 export function loadTrack(id) {
   const lib = readLibrary();
   if (!lib[id]) {
-    /* Not saved. It may still be one of the shipped tracks, and a preset
-     * the pilot has never touched has to open the same way theirs does. */
+    /*
+     * Not saved. It may still be one of the shipped tracks, and a preset
+     * opens as a COPY with its own trk- id and the same name. It used to
+     * open under the preset's id, and that copy could be saved but never
+     * published: the board's validator only accepts trk- and eight hex,
+     * so Put on the board answered "That track has no usable id." Found
+     * by running the board's own validate.js over all six. The copy keeps
+     * the credit, because saving a layout does not make it yours.
+     */
     const stock = presetById(id);
-    return stock ? normalize(stock) : null;
+    return stock ? normalize(duplicateTrack(stock, stock.name)) : null;
   }
   return normalize(lib[id]);
 }
@@ -135,11 +142,9 @@ export function deleteTrack(id) {
     return false;
   }
   delete lib[id];
-  const ok = writeJson(LIBRARY_KEY, lib);
-  /* Deleting a pilot's copy of a shipped track puts the shipped one back
-   * rather than leaving a hole. Nothing shipped can be deleted, because
-   * nothing shipped is in the library to delete. */
-  return ok;
+  /* Nothing shipped can be deleted, because nothing shipped is ever in the
+   * library: a preset opens as a copy under a new id. */
+  return writeJson(LIBRARY_KEY, lib);
 }
 
 export function trackExists(id) {

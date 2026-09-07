@@ -2080,6 +2080,8 @@ function craftSvg(a) {
   const c = VB / 2;
   const arm = a.dims.arm * 1000;
   const prop = a.dims.propR * 1000;
+  /* The outside of a duct is the hull, not the blade plus a guess at a wall. */
+  const hull = (a.dims.hullR ?? a.dims.propR) * 1000;
   const off = arm / Math.SQRT2;
   const motors = [[off, off], [off, -off], [-off, off], [-off, -off]];
   const ducted = a.trackClass === 'micro';
@@ -2104,7 +2106,7 @@ function craftSvg(a) {
   for (const [mx, mz] of motors) {
     if (ducted) {
       /* The duct wall, then the bore, so a ring reads as a ring. */
-      parts.push(`<circle cx="${c + mx}" cy="${c + mz}" r="${prop + 1.6}"`
+      parts.push(`<circle cx="${c + mx}" cy="${c + mz}" r="${hull}"`
         + ' fill="currentColor" fill-opacity="0.34"/>');
       parts.push(`<circle cx="${c + mx}" cy="${c + mz}" r="${prop}"`
         + ' fill="none" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.85"/>');

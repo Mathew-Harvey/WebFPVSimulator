@@ -35,7 +35,7 @@ import { SESSION_TEXTURES } from './session-textures.js';
  * Every number in this file, the camera distance, the shadow catcher, the
  * prop wash disc, the near and far planes and the look at point, was chosen
  * against a 5 inch that sweeps 0.1735 m to a blade tip. A 65 mm whoop sweeps
- * 0.048, a third and a bit of that, so at the same distance it is a speck in
+ * 0.0506 to its duct, under a third of that, so at the same distance it is a speck in
  * the middle of a big empty stage, which is exactly what the first capture
  * of one looked like.
  *

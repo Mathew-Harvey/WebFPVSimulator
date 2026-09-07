@@ -309,9 +309,10 @@ export const AIRFRAMES = [
        * 0.072, which was smaller than the props the aircraft carries: two
        * ducts at 0.0181 about motors 0.0230 off each axis span 0.0822, so
        * the old body dimension described something 10 mm narrower than the
-       * thing it was naming. Nothing drew from it, because whoopcraft.js
-       * models the ducts directly, but craftDims() reports it and a scale
-       * check reads that.
+       * thing it was naming. Nothing draws from it, because whoopcraft.js
+       * models the ducts directly, but whoopcraft builds a hidden
+       * measurement box from these for tests/verify.js check 15, which
+       * reads that box and nothing else.
        */
       bodyLength: 0.0826,
       bodyWidth: 0.0826,

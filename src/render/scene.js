@@ -2699,11 +2699,16 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
        * whoop skimming the floor at the base of a pole went through it the
        * same way it used to go through the pole itself. Small, because the
        * foot is only 21 mm tall, but it is the same defect and the fix is
-       * one line. The capsule radius inscribes the box at its flats rather
-       * than circumscribing it, so the corners stay soft and nothing is
-       * solid where nothing is drawn.
+       * one line.
+       *
+       * A BOX, because the foot is a box and the collider set has one. This
+       * was a capsule for a day, and a capsule has hemispherical ends: it
+       * was solid to 48 mm up the axis and 44 mm at the pipe's surface over
+       * a foot drawn 21 mm tall, stopping a whoop 9 to 22 mm short of the
+       * pipe on a low pass, and it missed the box's own corners. Measured,
+       * both ways. The box is exact and adds nothing to maxRadius.
        */
-      colliders.add('pole', s.x, y, s.z, s.x, y + r * 1.6, s.z, r * 2);
+      colliders.addBox('pole', s.x - r * 2, y, s.z - r * 2, s.x + r * 2, y + r * 1.6, s.z + r * 2);
       const host = new THREE.Group();
       host.position.set(s.x, y, s.z);
       scene.add(host);

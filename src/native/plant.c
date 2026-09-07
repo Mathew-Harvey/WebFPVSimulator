@@ -587,18 +587,32 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .cant_radial_deg = { 0.47, 0.28, 0.38, 0.20 },
   .cant_tangent_deg = { -0.3, 0.47, 0.2, -0.4 },
   /*
-   * The hull. 38 mm of half extent is the 23 mm motor offset plus the duct
-   * wall, which is what a whoop actually presents to a wall: it hits duct
-   * first, always, which is the whole design. 10 mm down is the duct
-   * underside it parks on and 18 mm up is the top of the canopy. The camera
-   * glass sits at the front of the Air II canopy, 24 mm forward and 12 mm up.
+   * The hull. 41 mm of half extent is the 23 mm motor offset plus the
+   * 18.1 mm DUCT, which is what a whoop actually presents to a wall: it
+   * hits duct first, always, which is the whole design. This said 38 for
+   * the whole of the whoop's first week, and 38 minus 23 is the 15.5 mm
+   * BLADE, not the duct: the comment named the right thing and the number
+   * was the wrong one, the same slip src/game/collide.js made and fixed
+   * the same day. Now the JS collider and the plant's corners agree to the
+   * tenth of a millimetre, 41.08 against 41, where before the collider
+   * reported a touch 3 mm outside the hull the plant resolved it against.
+   * 10 mm down is the duct underside it parks on and 18 mm up is the top
+   * of the canopy. The camera glass sits at the front of the Air II canopy,
+   * 24 mm forward and 12 mm up.
+   *
+   * contact_arm_max used to be 0.045, which is SHORT of this hull's own
+   * corner: a one duct hit on the diagonal reaches sqrt(0.0506^2 + 0.018^2)
+   * which is 0.0537, and sim.c rescales any arm past the cap, so the one
+   * hit sim_abi.h says gives a full moment arrived 11 percent short. 0.060
+   * is the five inch's margin, 12 percent over its true maximum, applied
+   * here.
    */
-  .hull_hx = 0.038,
-  .hull_hy = 0.038,
+  .hull_hx = 0.041,
+  .hull_hy = 0.041,
   .hull_hz_down = 0.010,
   .hull_hz_up = 0.018,
   .contact_patch_r = 0.0115,
-  .contact_arm_max = 0.045,
+  .contact_arm_max = 0.060,
   .camera_x = 0.024,
   .camera_y = 0.0,
   .camera_z = 0.012,

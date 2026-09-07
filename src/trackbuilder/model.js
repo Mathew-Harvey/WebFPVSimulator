@@ -873,6 +873,18 @@ export function toPlain(doc) {
         .slice(0, LOGO_SLOTS)
         .map((l, i) => ({ id: str(l.id, `logo-${i + 1}`), image: l.image, name: str(l.name, '') })),
     },
+    /*
+     * WRITTEN, for the same reason trackClass is. This function is a
+     * whitelist, and credit was added to normalize and to createTrack and
+     * not here, so every save, every export and every publish to the board
+     * dropped the designer's name on the floor: a pilot who opened a
+     * RaceGOW5 track and saved it had a copy credited to nobody, and one
+     * who published it put it on the public board that way. Found by
+     * driving the builder, saving a preset, and reading the library back.
+     * Filtered through creditOf on the way out as on the way in, so a hand
+     * edit between a normalize and a save cannot write anything else.
+     */
+    credit: creditOf(doc.credit),
     elements: doc.elements.map((el) => {
       const def = ELEMENTS[el.type];
       const out = {

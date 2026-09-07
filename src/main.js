@@ -6402,7 +6402,7 @@ export async function boot({ loading, bootStart, mapId }) {
         const af = airframeById(runAirframe);
         showcaseCraft = runAirframe;
         showcase = createShowcase(ui.craftCanvas, {
-          sweep: af.dims.arm + af.dims.propR,
+          sweep: af.dims.arm + (af.dims.hullR ?? af.dims.propR),
           build: af.id === 'whoop65' ? buildWhoopCraft : undefined,
         });
         if (showcase.failed) {

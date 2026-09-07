@@ -42,6 +42,13 @@
  * reading available, and it is still a reading. A pilot who has flown the
  * real thing will find these close in shape and wrong in detail.
  *
+ * THE INVENTORY IS THE RENDER'S. Each track carries exactly the structures
+ * its render shows and no more: Track 7 lost a gate that was never there,
+ * Track 8 got back the tall pole that was, Track 6 became four gates and
+ * two poles with one gate turned across the run. Poles come in two heights
+ * because the renders draw two, one about a gate high and one full height,
+ * and a pole the wrong height is as wrong as a pole in the wrong place.
+ *
  * EVERY GATE FACES ALONG AN AXIS. The angle between any two gates is a
  * multiple of 90 degrees, because a RaceGOW kit is straight pipe and right
  * angle fittings and there is no diagonal fitting. A pass here built three
@@ -65,10 +72,8 @@
  * merely has the right count of gates and one that is the right shape. The
  * long horizontal rails: several of these tracks are built around a bar at
  * knee or head height that a pilot goes over or under, and the first pass
- * had none of them. The leaning start gate: on Tracks 2, 4 and 8 the green
- * gate is pitched over rather than upright, which changes the line into it.
- * And Track 7 is built around a box, two gates facing across two others,
- * rather than a row.
+ * had none of them. And Track 7 is built around the Cube Gate, a square
+ * opening laid flat, rather than a row.
  *
  * Tracks 3 and 5 are absent because their diagrams were not to hand.
  *
@@ -207,15 +212,15 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "",
         "position": {
-          "x": 5,
+          "x": 4.24,
           "y": 6.16,
-          "z": 1.55
+          "z": 1.1
         },
         "yaw": 1.5707963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 1.45,
+          "width": 0.76,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -366,7 +371,7 @@ export const PRESETS = [
       },
       {
         "id": "el-5",
-        "type": "tower",
+        "type": "gate",
         "name": "",
         "position": {
           "x": 5.42,
@@ -378,7 +383,7 @@ export const PRESETS = [
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 1.4224,
+          "sillH": 0,
           "clearW": 0.7111999999999999,
           "clearH": 0.7111999999999999,
           "levelPitch": 0.762
@@ -386,6 +391,24 @@ export const PRESETS = [
       },
       {
         "id": "el-6",
+        "type": "horizontalPole",
+        "name": "",
+        "position": {
+          "x": 4.92,
+          "y": 6.8,
+          "z": 1.45
+        },
+        "yaw": 0,
+        "pitch": 0,
+        "yawOverridden": true,
+        "dims": {
+          "width": 1,
+          "depth": 0.02667,
+          "height": 0.02667
+        }
+      },
+      {
+        "id": "el-7",
         "type": "pole",
         "name": "",
         "position": {
@@ -433,7 +456,7 @@ export const PRESETS = [
       },
       {
         "id": "sq-4",
-        "elementId": "el-6",
+        "elementId": "el-7",
         "apertureIndex": null,
         "entry": null,
         "passSide": "right",
@@ -657,8 +680,8 @@ export const PRESETS = [
         "type": "startPads",
         "name": "",
         "position": {
-          "x": 4.7,
-          "y": 4.8,
+          "x": 4.62,
+          "y": 4.82,
           "z": 0
         },
         "yaw": 1.5707963267948966,
@@ -675,8 +698,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "",
         "position": {
-          "x": 4.7,
-          "y": 5.38,
+          "x": 4.62,
+          "y": 5.4,
           "z": 0
         },
         "yaw": 1.5707963267948966,
@@ -692,19 +715,19 @@ export const PRESETS = [
       },
       {
         "id": "el-3",
-        "type": "tower",
+        "type": "gate",
         "name": "",
         "position": {
-          "x": 5.32,
-          "y": 6.02,
+          "x": 5.4,
+          "y": 5.4,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
+        "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 1.4224,
+          "sillH": 0,
           "clearW": 0.7111999999999999,
           "clearH": 0.7111999999999999,
           "levelPitch": 0.762
@@ -715,8 +738,8 @@ export const PRESETS = [
         "type": "gate",
         "name": "",
         "position": {
-          "x": 4.7,
-          "y": 6.66,
+          "x": 5.4,
+          "y": 6.16,
           "z": 0
         },
         "yaw": 1.5707963267948966,
@@ -735,8 +758,8 @@ export const PRESETS = [
         "type": "pole",
         "name": "",
         "position": {
-          "x": 5.34,
-          "y": 6.66,
+          "x": 5.47,
+          "y": 6.9,
           "z": 0
         },
         "yaw": 1.5707963267948966,
@@ -753,35 +776,37 @@ export const PRESETS = [
         "type": "pole",
         "name": "",
         "position": {
-          "x": 5.34,
-          "y": 5.38,
+          "x": 4.55,
+          "y": 6.9,
           "z": 0
         },
         "yaw": 1.5707963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.5,
+          "height": 0.71,
           "poleRadius": 0.013335,
           "clearance": 0.35559999999999997
         }
       },
       {
         "id": "el-7",
-        "type": "horizontalPole",
+        "type": "gate",
         "name": "",
         "position": {
-          "x": 4.7,
-          "y": 6.02,
-          "z": 1.55
+          "x": 4.62,
+          "y": 6.16,
+          "z": 0
         },
         "yaw": 1.5707963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 1.45,
-          "depth": 0.02667,
-          "height": 0.02667
+          "levels": 1,
+          "sillH": 0,
+          "clearW": 0.7111999999999999,
+          "clearH": 0.7111999999999999,
+          "levelPitch": 0.762
         }
       }
     ],
@@ -808,7 +833,7 @@ export const PRESETS = [
         "id": "sq-3",
         "elementId": "el-4",
         "apertureIndex": 0,
-        "entry": -1,
+        "entry": 1,
         "passSide": null,
         "clearance": null,
         "overridden": false
@@ -827,8 +852,17 @@ export const PRESETS = [
         "elementId": "el-6",
         "apertureIndex": null,
         "entry": null,
-        "passSide": "right",
+        "passSide": "left",
         "clearance": 0.35559999999999997,
+        "overridden": false
+      },
+      {
+        "id": "sq-6",
+        "elementId": "el-7",
+        "apertureIndex": 0,
+        "entry": -1,
+        "passSide": null,
+        "clearance": null,
         "overridden": false
       }
     ]
@@ -959,38 +993,18 @@ export const PRESETS = [
       },
       {
         "id": "el-6",
-        "type": "gate",
-        "name": "",
-        "position": {
-          "x": 4.66,
-          "y": 7.02,
-          "z": 0
-        },
-        "yaw": 1.5707963267948966,
-        "pitch": 0,
-        "yawOverridden": true,
-        "dims": {
-          "levels": 1,
-          "sillH": 0,
-          "clearW": 0.7111999999999999,
-          "clearH": 0.7111999999999999,
-          "levelPitch": 0.762
-        }
-      },
-      {
-        "id": "el-7",
         "type": "horizontalPole",
         "name": "",
         "position": {
           "x": 5.38,
-          "y": 6.66,
+          "y": 7.3,
           "z": 0.9
         },
         "yaw": 0,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 1.45,
+          "width": 1,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -1029,15 +1043,6 @@ export const PRESETS = [
         "elementId": "el-5",
         "apertureIndex": 0,
         "entry": 1,
-        "passSide": null,
-        "clearance": null,
-        "overridden": false
-      },
-      {
-        "id": "sq-5",
-        "elementId": "el-6",
-        "apertureIndex": 0,
-        "entry": -1,
         "passSide": null,
         "clearance": null,
         "overridden": false
@@ -1115,7 +1120,7 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "",
         "position": {
-          "x": 5.26,
+          "x": 5.02,
           "y": 5.62,
           "z": 0.55
         },
@@ -1123,7 +1128,7 @@ export const PRESETS = [
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 1.45,
+          "width": 1.1,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -1141,7 +1146,7 @@ export const PRESETS = [
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.5,
+          "height": 0.71,
           "poleRadius": 0.013335,
           "clearance": 0.35559999999999997
         }
@@ -1159,7 +1164,7 @@ export const PRESETS = [
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "height": 1.5,
+          "height": 0.71,
           "poleRadius": 0.013335,
           "clearance": 0.35559999999999997
         }
@@ -1186,18 +1191,36 @@ export const PRESETS = [
       },
       {
         "id": "el-7",
-        "type": "horizontalPole",
+        "type": "pole",
         "name": "",
         "position": {
-          "x": 4.84,
-          "y": 6.74,
-          "z": 1.6
+          "x": 5.44,
+          "y": 7.16,
+          "z": 0
         },
         "yaw": 1.5707963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
-          "width": 1.45,
+          "height": 1.5,
+          "poleRadius": 0.013335,
+          "clearance": 0.35559999999999997
+        }
+      },
+      {
+        "id": "el-8",
+        "type": "horizontalPole",
+        "name": "",
+        "position": {
+          "x": 5.14,
+          "y": 6.95,
+          "z": 1.45
+        },
+        "yaw": 0,
+        "pitch": 0,
+        "yawOverridden": true,
+        "dims": {
+          "width": 0.6,
           "depth": 0.02667,
           "height": 0.02667
         }
@@ -1238,6 +1261,15 @@ export const PRESETS = [
         "entry": 1,
         "passSide": null,
         "clearance": null,
+        "overridden": false
+      },
+      {
+        "id": "sq-5",
+        "elementId": "el-7",
+        "apertureIndex": null,
+        "entry": null,
+        "passSide": "left",
+        "clearance": 0.35559999999999997,
         "overridden": false
       }
     ]

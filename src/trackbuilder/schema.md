@@ -101,6 +101,7 @@ the file.
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
 | `branding` | object | The sponsors' logos the course is dressed in. Optional; see below. |
+| `credit` | object or null | Who designed the layout and where it came from, for a track that came from somewhere else: `designer`, `series`, `sponsor`, `source`, `broughtOverBy`, `note`, all optional strings. `null` on anything a pilot builds. Written by `toPlain`, kept by `duplicateTrack`, drawn only as text. |
 | `elements` | array | Everything standing on the field, in no particular order. |
 | `sequence` | array | The flying order. THIS is the course. |
 

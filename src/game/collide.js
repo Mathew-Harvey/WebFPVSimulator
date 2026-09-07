@@ -118,8 +118,9 @@ export let CRAFT_HULL_R = 0.0635;
 export let CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
 /* Per-axis motor offset: the X sits on the diagonals, so a motor is
  * CRAFT_ARM / sqrt(2) along body x and along body z. The axis-aligned
- * half-width of one prop disc is this plus CRAFT_PROP_R, 0.1413 m, which
- * is what a wall actually meets when the quad is square to it. */
+ * half-width of the hull is this plus CRAFT_HULL_R, 0.1413 m on the five
+ * inch where the hull is the blade, which is what a wall actually meets
+ * when the quad is square to it. */
 
 /*
  * The same airframe, in the world's metres rather than its own.
@@ -178,6 +179,11 @@ export function setCraftAirframe(dims) {
    * That is the five inch, and it is the safe reading for anything added
    * later without thinking about it. */
   CRAFT_HULL_R = dims.hullR ?? dims.propR;
+  if (CRAFT_HULL_R < CRAFT_PROP_R) {
+    /* A hull inside the blade sweeps less than the aircraft, which is the
+     * defect this field was added to end. Loud rather than silent. */
+    throw new Error(`collide: hullR ${CRAFT_HULL_R} is inside propR ${CRAFT_PROP_R}`);
+  }
   CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
   CRAFT_V_HALF = dims.vHalf;
   CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
@@ -564,9 +570,10 @@ export function contactPatch(nx, ny, nz, qx, qy, qz, qw, out) {
     sumZ /= n;
   }
 
-  /* Out to the blade, in the plane of the discs. A disc meeting the face
-   * edge on reaches a full prop radius; one lying flat against it reaches
-   * nothing, because the contact is already the disc itself. */
+  /* Out to the hull, in the plane of the discs: the blade tip on a naked
+   * airframe, the duct rim on a whoop. A disc meeting the face edge on
+   * reaches a full hull radius; one lying flat against it reaches nothing,
+   * because the contact is already the disc itself. */
   const du = dx * ux + dy * uy + dz * uz;
   const px = dx - du * ux;
   const py = dy - du * uy;

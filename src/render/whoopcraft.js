@@ -82,6 +82,11 @@ const DUCT_BORE = 0.0165;    /* 33 mm bore, so a 1 mm tip gap */
 /* The moulded PP wall, thin and it shows. Whatever is left between the bore
  * and the hull the collider sweeps, so the two cannot disagree. */
 const DUCT_WALL = WHOOP_DIMS.hullR - DUCT_BORE;
+if (!(DUCT_WALL > 0)) {
+  /* A hull inside its own bore is a duct turned inside out, and the lathe
+   * below would draw it that way without a word. */
+  throw new Error('whoopcraft: hullR must exceed DUCT_BORE');
+}
 const DUCT_TOP = 0.0055;     /* duct lip above the CG */
 const ROTOR_Y = 0.0035;      /* the disc sits just under the lip */
 /* Where the cell's top face is, which is what the belly straps lie on. The
@@ -269,7 +274,13 @@ export function buildWhoopCraft(opts = {}) {
    * length. A whoop is as wide as it is long because the ducts define both.
    */
   if (opts.measure) {
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.028, 0.072), frame);
+    /* From the dims, not typed: this stayed 0.072 for a day after the dims
+     * moved to the real 0.0826 frame, which is exactly the drift check 15
+     * exists to catch and could not, because it reads THIS box. */
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(WHOOP_DIMS.bodyWidth, WHOOP_DIMS.bodyHeight, WHOOP_DIMS.bodyLength),
+      frame,
+    );
     body.visible = false;
     body.castShadow = false;
     group.add(body);

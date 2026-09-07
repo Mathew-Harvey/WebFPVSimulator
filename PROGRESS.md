@@ -31596,3 +31596,172 @@ warning.
 Tracks 3 and 5 are still absent, and the open questions stand: rail heights,
 whether Track 1's rear pair is really side by side, and whether Track 6's
 tall rear structure is an elevated gate or a full height one.
+
+## Every track to its render, and a sweep that found seven more bugs
+
+The owner: ensure all created tracks are perfect, fix them if need be, and
+sweep for bugs and fix them also.
+
+"Perfect" against a render can only mean four things that are checkable, so
+those are what was done. Every element the render shows is present, of the
+right type, at the right heading, and nothing else is. Every RaceGOW rule
+passes, nine of them now. Every track flies in the real shell without a
+fault. And the mechanism that ships them has been driven end to end and
+its bugs fixed.
+
+### The tracks
+
+Each render was inventoried pipe by pipe against the axis rule, and each
+document rebuilt to that inventory and nothing more. Track 7 lost a gate
+that was never in its render. Track 8 got back the tall pole that was.
+Track 6 became four gates and two poles, with one gate turned across the
+run, which is what its render shows in the middle. Poles now come in two
+heights, one gate high and full height, because the renders draw two and a
+pole the wrong height is as wrong as a pole in the wrong place. The
+generator refuses any pitch but 0 and a dive gate's right angle, so the
+earlier invention cannot recur by accident.
+
+```
+                   gates  stack  dive  poles         rails  kit rules  envelope
+Track 1  Skittles    2      1     0    1 tall          1     clean     1.47 x 1.97
+Track 2  Skittles    3      0     0    1 tall          2     clean     1.51 x 2.21
+Track 4  SanderPuh   3      0     0    1 tall          1     clean     1.47 x 1.83
+Track 6  MrE         4      0     0    1 tall 1 short  0     clean     1.63 x 2.21
+Track 7  FPVBean     2      0     1    1 tall          1     clean     within
+Track 8  AyyyKayyy   2      0     0    1 tall 2 short  2     clean     1.77 x 2.25
+```
+
+All six drawn in the real shell on the whoop: gate counts 4, 4, 4, 6, 4, 5,
+no frame fault, no console error.
+
+### The sweep, and what it found
+
+Two independent reviewers, one over the builder and presets, one over the
+collision hull. Every finding is below, fixed or declined with the reason.
+
+**Fixed: `toPlain` dropped the credit.** Found by driving the builder,
+opening a preset, saving it and reading the library back: the saved copy
+had no credit. `toPlain` is a whitelist with a fixed key order, and credit
+was added to `normalize` and `createTrack` and not to it, so every save,
+export and publish to the board stripped the designer. `toPlain`'s own
+header says a field that is not written is a field that does not exist.
+Now written, through `creditOf` on the way out as on the way in, and
+`micro-check` reads every preset back through the write path.
+
+**Fixed: a saved copy of a preset could not be published.** The board's
+validator accepts only `trk-` and eight hex, and a copy saved under
+`racegow5-track1` was refused with "That track has no usable id." Run
+against the board's own `validate.js`: all six refused as shipped, all six
+accepted as copies. A preset now opens as a COPY with a fresh `trk-` id and
+the same name and credit, so the copy saves, exports and publishes like any
+track and the shipped one stays pristine beside it. That also removes the
+case where the first pilot to publish an unchanged preset claims its id on
+the public board for everybody else. The shadowing logic in `listTracks`
+went with it: a copy never has the preset's id, so there is nothing to
+shadow.
+
+**Fixed: the Load dialog listed presets for the seat, not the document.**
+`listTracks` read `activeTrackClass()`, the shell's setting, so a hand typed
+`?class=micro` on a browser seated in the five inch showed "Nothing saved
+yet" and no room presets. The builder now passes the document's own class.
+Driven: five inch seated, `?class=micro`, six rows. Only reachable by a
+typed URL, and the comment in `app.js` claiming the simulator's own links
+carry `?class=` was false and is corrected.
+
+**Fixed: the pole foot was a phantom.** The foot capsule's hemispherical
+ends made it solid to 48 mm up the axis and 44 mm at the pipe's surface,
+over a foot drawn 21 mm tall. Measured: it stopped a whoop 9 to 22 mm short
+of the pipe on a low pass, and missed the box's own corners. It is a box
+now, which is what is drawn and what the collider set already had.
+`maxRadius` fell from 0.0267 back to the pipe's 0.0133. Re-measured: at
+10 mm and 25 mm the foot registers at 67.5 mm, which is hull plus half the
+foot; at 60 mm it is the pipe alone at 52.5 to 55. At 45 mm, with the hull's
+underside 6 mm above the foot's top, contact is 57.5 to 60 against the
+pipe's 54.4: 3 to 5 mm of the box primitive's own conservatism at a corner,
+which the city's walls have always had, and not the 13 mm phantom.
+
+**Fixed: the plant's own hull was the blade.** `plant.c` carries a hull for
+contact resolution, `hull_hx = hull_hy = 0.038`, under a comment that says
+"the 23 mm motor offset plus the duct wall". 38 minus 23 is 15.5, the BLADE.
+The comment named the right thing and the number was the wrong one, the same
+slip the collider had. So the JS collider reported a touch at 41.1 mm and the
+plant resolved it against corners at 38: a 3 mm disagreement on every whoop
+contact. Now 0.041, and the two agree to a tenth of a millimetre. And
+`contact_arm_max` was 0.045, short of that hull's own corner at 0.0537, so
+`sim.c` rescaled every one duct hit 11 percent short of the arm `sim_abi.h`
+promises. Now 0.060, the five inch's margin. This is the one physics side
+change in the sweep, and verify was run for it.
+
+**Fixed: the drawn measurement box was stale.** `whoopcraft.js` built the
+hidden box check 15 reads at 0.072 by 0.028 by 0.072 after the dims moved to
+the real 0.0826. It is built from the dims now, so it cannot drift again.
+The comment in `airframes.js` claiming `craftDims()` reads it was false:
+`craftDims` and `CRAFT_DIMS` have no importer anywhere, and `verify.js`
+reads the box directly. Corrected.
+
+**Fixed, cosmetic:** the showcase framed the whoop by arm plus blade, 0.048,
+so its stage was 5 percent small. The airframe card drew the duct at blade
+plus 1.6 mm, 17.1, where the hull is 18.1. Both read `hullR` now.
+
+**Fixed, guards:** `whoopcraft` throws if `hullR` is inside the duct bore,
+because the lathe would otherwise draw the duct inside out silently;
+`setCraftAirframe` throws if a hull is inside its own blade, because that is
+the defect the field exists to end. Two comments in `collide.js` that still
+said blade where the hull is meant are corrected. `presets.js`'s header
+claimed leaning start gates and a box of four gates, both contradicted by
+the data; deleted. The square headings warning now names the remedy, the
+Yaw field. `schema.md` documents `credit`.
+
+### Declined, with reasons
+
+- **Check 15 on the whoop measures the blade.** `verify.js` finds the sweep
+  by scanning direct child cylinders above 0.05 m, which drops every whoop
+  cylinder, and the duct is a lathe merged into the tub. If check 15 were
+  ever run on the whoop it would read 0.048 against a hull of 0.0506 and
+  fail by 2.6 mm. It runs on the five inch only, so it does not fire. Left
+  alone: the fix is a hidden measurement cylinder per motor and a rewrite
+  of the finder, which is test side work for a check that is not run on
+  this aircraft, and it is written down here so it is not a surprise.
+- **Square headings fires on auto faced gates on a diagonal path.** Three
+  palette gates dropped on a diagonal, never rotated by hand, get yaws of
+  33.7 and minus 146 from `applyAutoFaces` and trip the rule. That is the
+  rule working: they ARE off square. The remedy is now in the message.
+  Naming unnamed gates by sequence position would help and is not done.
+- **`trackExists` has no callers.** Dead before this session, dead after.
+- **The bar's Delete on an opened, unsaved document toasts "Deleted" after
+  a no-op.** Pre-existing for any unsaved document; opening a preset makes
+  it the common case. Not changed.
+
+### What went wrong while fixing it
+
+The first fix script wrote `storage.js` and `app.js` and then died on an
+assertion, leaving nine fixes unapplied and `app.js` with a duplicate
+import. The second added `import { duplicateTrack, trackClassOf } from
+'./model.js'` to `storage.js`, but `trackClassOf` is `elements.js`'s and
+`storage.js` did not even use it. That one line broke every script that
+loads the shell: `lint:shell`, `lint:devices`, `lint:memory`,
+`lint:responsive`, the builder self test, and verify's checks 14 to 16, all
+at once, all with the same stack. Checks 1 to 13 passed on that tree with
+the determinism hash unchanged, which is worth having: the plant change is
+bit identical on the free flight trace regardless. Both trees are recorded
+here because a green run on the second tree is only evidence if the first
+one's red is explained.
+
+### What was run
+
+On the repaired tree: `npm run verify`, for the plant change, 16 of 16 with
+the determinism hashes unchanged at `de0401cd4266` on repeat, cross host and
+frame independence. `micro:check` with the new write path check,
+`check:wall` 45 of 45, `lint:shell`, `lint:nouns`, `lint:quality` 56 of 56,
+`lint:boot`, `lint:devices`, `check:path`, `lint:memory`, `lint:responsive`,
+builder self test 495 of 495.
+
+Driven in the real builder page: Load lists six credited presets with Open
+only; open one, save, reopen: the copy has a `trk-` id, a date, a Delete,
+and its byline; the raw preset is refused by the board's validator and the
+copy accepted, six of six. Driven in the real shell: all six tracks to the
+title screen with the right gate counts, the pole's foot re-measured at five
+heights.
+
+Tracks 3 and 5 are still absent. The layouts are the renders' inventory at
+the rulebook's spacing, which is the most that one isometric image can give.

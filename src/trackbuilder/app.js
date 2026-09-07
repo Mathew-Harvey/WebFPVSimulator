@@ -90,8 +90,8 @@ import {
  *
  * Three sources, in order:
  *
- *   ?class=micro   an explicit answer in the URL, which is what the
- *                  simulator's Create a track button carries.
+ *   ?class=micro   an explicit answer in the URL. None of the simulator's
+ *                  own links carry one; this is for a hand typed address.
  *   the settings   the shell's own blob, read as a STRING KEY rather than by
  *                  importing anything from it. The builder does not import a
  *                  line of the simulator (see schema.md) and this keeps that
@@ -813,7 +813,7 @@ export class App {
   }
 
   openLoad() {
-    const tracks = listTracks();
+    const tracks = listTracks(trackClassOf(this.doc));
     const body = document.createElement('div');
     if (!tracks.length) {
       const p = document.createElement('p');
@@ -834,15 +834,17 @@ export class App {
         : `${t.mix}, ${t.sequence} in the order, changed ${t.modifiedUtc}`;
       name.append(meta);
       /*
-       * WHOSE TRACK THIS IS, on the row, for a shipped one.
+       * WHOSE TRACK THIS IS, on the row.
        *
-       * A pilot's own tracks need no byline. A track that came from
-       * somewhere else does, and it names the DESIGNER rather than the
-       * series or whoever imported it, because those are three different
-       * people and only one of them drew the layout. textContent, never
-       * innerHTML: a credit is data and one day it may not be ours.
+       * A pilot's own tracks carry no credit and get no byline. A track
+       * that came from somewhere else does, and keeps it when the pilot
+       * saves their own copy, because saving a layout does not make it
+       * yours: the DESIGNER is named rather than the series or whoever
+       * imported it, because those are three different people and only one
+       * of them drew it. textContent, never innerHTML: a credit is data and
+       * one day it may not be ours.
        */
-      if (t.preset && t.credit) {
+      if (t.credit) {
         const by = document.createElement('div');
         by.className = 'tb-load-meta';
         const bits = [];

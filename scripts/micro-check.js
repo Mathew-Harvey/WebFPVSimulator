@@ -257,6 +257,11 @@ function presetSet() {
     const { doc, repairs } = normalize(raw);
     check(`${raw.name} needs no repair`, repairs.length === 0,
       repairs.map((r) => r.text ?? r).join('; '));
+    /* toPlain is a whitelist. credit was added to normalize and not to it,
+     * and every save, export and publish dropped the designer for a day.
+     * This reads the document back through the write path. */
+    check(`${raw.name} keeps its designer through a write`,
+      Boolean(normalize(toPlain(doc)).doc?.credit?.designer), JSON.stringify(toPlain(doc).credit));
     check(`${raw.name} names a designer`,
       Boolean(doc.credit && doc.credit.designer), JSON.stringify(doc.credit));
     const warns = collectWarnings(doc).map((w) => w.text ?? w.message ?? '');

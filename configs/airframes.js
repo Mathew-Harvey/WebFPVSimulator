@@ -95,6 +95,15 @@ export const AIRFRAMES = [
     dims: {
       arm: 0.110,
       propR: 0.0635,
+      /*
+       * The outermost radius about a motor that this aircraft presents to
+       * the world, which is what src/game/collide.js sweeps. On a naked
+       * five inch that IS the blade, so the two are the same number, and
+       * saying so here rather than defaulting it keeps the collider from
+       * silently inheriting the prop radius on an airframe where the prop
+       * is not the outside. See the whoop below, where it is not.
+       */
+      hullR: 0.0635,
       /* Vertical semi extent in level flight. The drawn stack runs from the
        * body's underside at -0.017 to the prop discs at +0.034. */
       vHalf: 0.040,
@@ -270,9 +279,42 @@ export const AIRFRAMES = [
     dims: {
       arm: 0.0325,
       propR: 0.0155,
+      /*
+       * THE DUCT, WHICH IS THE OUTSIDE OF THIS AIRCRAFT, AND THE PROP IS NOT.
+       *
+       * 0.0181 is src/render/whoopcraft.js's DUCT_BORE plus DUCT_WALL, the
+       * 33 mm bore that gives a 31 mm prop its 1 mm tip gap plus the 1.6 mm
+       * moulded wall. whoopcraft derives its wall from THIS number now, so
+       * the drawn duct and the swept hull cannot disagree.
+       *
+       * The comment two paragraphs down has said since the whoop landed
+       * that it presents its ducts to everything it hits, always, because
+       * they are the outermost thing on it in every direction, and that
+       * this is the entire point of the design. The collider did not
+       * implement it: collide.js derived the whole sweep from propR, so the
+       * hull it swept was the bare blade at 0.0155 and the machine was
+       * 5.2 mm narrower to the world than it was on screen. Measured
+       * against a RaceGOW pole, contact happened at 50 to 52.5 mm where the
+       * drawn ducts were already 2.6 mm inside it on each side.
+       *
+       * Axis aligned this gives 2 * (0.0325 / sqrt(2) + 0.0181) = 82.2 mm,
+       * against BetaFPV's published 82.6 by 82.6 mm for the Air65 frame.
+       * That is the number to check this against, not the 65 mm wheelbase,
+       * which is a motor spacing and not a size.
+       */
+      hullR: 0.0181,
       vHalf: 0.018,
-      bodyLength: 0.072,
-      bodyWidth: 0.072,
+      /*
+       * The FRAME, 82.6 mm square, from BetaFPV's own figure. These were
+       * 0.072, which was smaller than the props the aircraft carries: two
+       * ducts at 0.0181 about motors 0.0230 off each axis span 0.0822, so
+       * the old body dimension described something 10 mm narrower than the
+       * thing it was naming. Nothing drew from it, because whoopcraft.js
+       * models the ducts directly, but craftDims() reports it and a scale
+       * check reads that.
+       */
+      bodyLength: 0.0826,
+      bodyWidth: 0.0826,
       bodyHeight: 0.028,
     },
   },

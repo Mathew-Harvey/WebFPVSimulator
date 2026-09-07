@@ -2693,6 +2693,17 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       /* Solid for its whole length. 'pole' is a kind the collision set
        * already names, and it is the honest one: this is a pole. */
       colliders.add('pole', s.x, y, s.z, s.x, y + h, s.z, r);
+      /*
+       * AND THE FOOT, which was drawn and was not solid. It is four pipes
+       * across, so it stands 13 mm proud of the pipe on every side, and a
+       * whoop skimming the floor at the base of a pole went through it the
+       * same way it used to go through the pole itself. Small, because the
+       * foot is only 21 mm tall, but it is the same defect and the fix is
+       * one line. The capsule radius inscribes the box at its flats rather
+       * than circumscribing it, so the corners stay soft and nothing is
+       * solid where nothing is drawn.
+       */
+      colliders.add('pole', s.x, y, s.z, s.x, y + r * 1.6, s.z, r * 2);
       const host = new THREE.Group();
       host.position.set(s.x, y, s.z);
       scene.add(host);

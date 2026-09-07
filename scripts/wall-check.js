@@ -60,7 +60,7 @@ import {
   makeRig, buildWorld, V, linePath, rampPath, sub, len, cl,
 } from './lib/flightrig.js';
 import { deriveObstacles } from '../src/game/obstacles.js';
-import { CRAFT_ARM, CRAFT_PROP_R, BOUNCE_SEPARATION } from '../src/game/collide.js';
+import { CRAFT_ARM, CRAFT_HULL_R, BOUNCE_SEPARATION } from '../src/game/collide.js';
 
 /* The shell's obstacle contact cadence, in milliseconds of SIM time. The
  * plant integrates freely between two passes, which is what bounds how far
@@ -74,7 +74,7 @@ const OBSTACLE_STEP_MS = 4;
  * axial offset plus a blade, which is 0.141 m on this 220 mm airframe.
  * collide.js says the same thing in its own header and the query uses it.
  */
-const SQUARE_REACH = CRAFT_ARM * Math.SQRT1_2 + CRAFT_PROP_R;
+const SQUARE_REACH = CRAFT_ARM * Math.SQRT1_2 + CRAFT_HULL_R;
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const WASM = join(root, 'dist', 'sim.wasm');

@@ -31177,3 +31177,107 @@ correctly on the far side. Plus the 16 flag field on the five inch, clean.
 `npm run verify` was NOT run and is not warranted: nothing here touches
 physics, the plant, the module ABI or the build, and `dist/sim.wasm` is
 untouched.
+
+## The whoop was 5 mm narrower to the world than it was on screen
+
+The owner flew it, said it flies fine, and said the collisions were still
+rough: check the poles, and check the whoop body size. Both were real and
+they were the same bug.
+
+### The poles were already solid, and that was worth measuring first
+
+Swept across the demo room's pole with `window.__hit`, the pipe registered
+contact at 50 to 52.5 mm, which is the craft's 38.5 mm half width plus the
+pole's 13.335 mm radius. So the collider from the earlier fix was working.
+Reporting that without measuring it would have been a guess.
+
+### The body size was wrong, and it is why contact felt late
+
+`src/render/whoopcraft.js` draws the ducts at `DUCT_BORE + DUCT_WALL`,
+0.0181, giving a span of 82.2 mm against BetaFPV's published 82.6 mm for the
+Air65 frame. `src/game/collide.js` derived its whole sweep from `propR`,
+0.0155, the bare blade inside that duct. So the machine the world could hit
+was 77.0 mm across while the machine on screen was 82.2 mm: 2.6 mm narrower
+on every side, in every horizontal direction. A pilot threading a 0.711 m
+gate or passing a 26.7 mm pole watched the ducts overlap the thing and felt
+nothing.
+
+`configs/airframes.js` has said since the whoop landed that it "presents its
+ducts to everything it hits, always, because they are the outermost thing on
+it in every direction. That is the entire point of the design." The collider
+did not implement the sentence.
+
+So `dims` gains `hullR`, the outermost radius about a motor, and collide.js
+sweeps that instead of the blade. `CRAFT_PROP_R` stays the blade, because
+herocraft.js draws the disc from it and it is an aerodynamic number rather
+than a size. The five inch names `hullR` equal to its `propR`, because a
+naked five inch really is widest at the blade, and an airframe that omits it
+falls back to `propR`, which is the safe reading.
+
+`bodyLength` and `bodyWidth` were 0.072, which is narrower than the props the
+aircraft carries: two ducts at 0.0181 about motors 0.0230 off each axis span
+0.0822. Nothing drew from them, because whoopcraft models the ducts directly,
+but `craftDims()` reports them to a scale check. Now 0.0826, the real frame.
+
+whoopcraft.js had typed `ARM` and `PROP_R` a second time, under a comment
+saying the three copies must not drift. It derives all three from
+`airframeById('whoop65').dims` now, including the duct wall as
+`hullR - DUCT_BORE`, so the drawn duct and the swept hull are the same
+surface by construction rather than by agreement.
+
+### And the pole's foot was drawn but not solid
+
+The stub foot is four pipes across, so it stands 13 mm proud of the pipe on
+every side, and a whoop skimming the floor at the base of a pole went through
+it exactly the way it used to go through the pole. Same defect, one line. The
+capsule inscribes the box at its flats, so nothing is solid where nothing is
+drawn.
+
+### Measured, before and after
+
+```
+craft sweep radius        0.0480  ->  0.0506   (0.0325 + 0.0181)
+axis aligned span         77.0mm  ->  82.2mm   (real frame 82.6 mm)
+pole contact, pipe        50.0 to 52.5 mm  ->  52.5 to 55.0 mm
+pole contact, at the foot        no foot     ->  67.5 to 70.0 mm
+five inch sweep radius    0.1735  ->  0.1735   (unchanged, as intended)
+```
+
+Predicted 41.08 + 13.335 = 54.4 mm at the pipe and 41.08 + 26.67 = 67.8 mm
+at the foot. Both measured bands bracket the prediction.
+
+### What was run
+
+`npm run verify`, because this changes the shape the plant resolves contacts
+against and check 15 is the scale check. 16 of 16 passing. The determinism
+hashes are still `de0401cd4266` on all three of repeat, cross host and frame
+independence, so the flight model is bit identical and this is confined to
+the contact query. Check 15 reads collision radius 0.1735 against a swept
+0.1735, which is the five inch, unchanged.
+
+`check:wall` 45 of 45, which is the check that reads the collision reach
+directly and now reads it from the hull. `micro:check`, `lint:memory`,
+`lint:shell`, `lint:quality` 56 of 56.
+
+The pole bands above were measured through `window.__hit` in the real shell,
+on the shipped demo room track, before and after.
+
+### Not done: the RaceGOW tracks
+
+The owner asked for the eight tracks at racegow.com/tracks to be added to the
+whoop library, credited to andAgainFPV. They are not added, because the
+layouts cannot be obtained from here and inventing them would be worse than
+not having them.
+
+The page carries no gate list, no element list, no dimensions, no room size
+and no per track pages, PDFs or downloads: its only representation of each
+track is one diagram image. Those images are served from
+lh3.googleusercontent.com and return 403 to every request from this
+container, with a referer, with a browser user agent and without. The one
+third party write up found, levelupfpv.com's Track 1 piece, is also 403.
+
+Also worth the owner's attention before anything is credited: the page names
+a different designer on every track. Track1 and Track2 Skittles, Track3 "the
+Lego Dans", Track4 SanderPuh, Track5 Cumber and Hotspur, Track6 MrE, Track7
+FPVBean, Track8 AyyyKayyy. Crediting all eight to one person would misstate
+eight real people's work on a public board.

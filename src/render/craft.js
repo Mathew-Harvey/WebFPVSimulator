@@ -30,7 +30,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { CRAFT_ARM, CRAFT_PROP_R } from '../game/collide.js';
+import { CRAFT_ARM, CRAFT_PROP_R, CRAFT_HULL_R } from '../game/collide.js';
 import { buildHeroCraft } from './herocraft.js';
 import { buildWhoopCraft } from './whoopcraft.js';
 import { airframeById } from '../../configs/airframes.js';
@@ -58,8 +58,13 @@ export function craftDims() {
      * CRAFT_ARM / sqrt(2). */
     motorArm: CRAFT_ARM / Math.SQRT2,
     propRadius: CRAFT_PROP_R,
+    /* The outermost radius about a motor, which is the blade on a naked
+     * airframe and the duct on a ducted one. The sweep is derived from it
+     * rather than from the blade, so a scale check reads the hull the
+     * collider actually sweeps. */
+    hullRadius: CRAFT_HULL_R,
     motorDiagonal: CRAFT_ARM * 2,
-    sweepRadius: CRAFT_ARM + CRAFT_PROP_R,
+    sweepRadius: CRAFT_ARM + CRAFT_HULL_R,
   };
 }
 
@@ -74,6 +79,7 @@ export const CRAFT_DIMS = {
   bodyHeight: 0.034,
   motorArm: 0.110 / Math.SQRT2,
   propRadius: 0.0635,
+  hullRadius: 0.0635,
   motorDiagonal: 0.220,
   sweepRadius: 0.1735,
 };

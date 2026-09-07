@@ -98,7 +98,24 @@ import { simLenToWorld } from '../render/frame.js';
  */
 export let CRAFT_ARM = 0.110;      /* motor centre to airframe centre */
 export let CRAFT_PROP_R = 0.0635;  /* half of five inches */
-export let CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
+/*
+ * THE HULL, WHICH IS NOT ALWAYS THE PROP.
+ *
+ * Everything below sweeps the outermost thing the aircraft presents about
+ * each motor. On a naked five inch that is the blade, so hull and prop are
+ * one number and nothing here changed. On a DUCTED machine it is the duct,
+ * which stands proud of the blade it encloses, and using the prop instead
+ * swept a hull smaller than the aircraft on screen: on the 65 mm whoop, a
+ * 0.0155 blade where the drawn duct is 0.0181, so the machine was 5.2 mm
+ * narrower to the world than it looked, in every horizontal direction. A
+ * pilot threading a 0.711 m gate or passing a 26.7 mm pole saw the ducts
+ * overlap and felt nothing.
+ *
+ * CRAFT_PROP_R stays the BLADE, because src/render/herocraft.js draws the
+ * disc from it and it is an aerodynamic number, not a size.
+ */
+export let CRAFT_HULL_R = 0.0635;
+export let CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
 /* Per-axis motor offset: the X sits on the diagonals, so a motor is
  * CRAFT_ARM / sqrt(2) along body x and along body z. The axis-aligned
  * half-width of one prop disc is this plus CRAFT_PROP_R, 0.1413 m, which
@@ -122,7 +139,7 @@ export let CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
  */
 export let CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
 export let CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
-export let CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
+export let CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
 
 /*
  * The craft's vertical semi-extent in level flight, about its own origin.
@@ -157,11 +174,15 @@ export function setCraftAirframe(dims) {
   }
   CRAFT_ARM = dims.arm;
   CRAFT_PROP_R = dims.propR;
-  CRAFT_R = CRAFT_ARM + CRAFT_PROP_R;
+  /* An airframe that does not name a hull is one whose prop is its hull.
+   * That is the five inch, and it is the safe reading for anything added
+   * later without thinking about it. */
+  CRAFT_HULL_R = dims.hullR ?? dims.propR;
+  CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
   CRAFT_V_HALF = dims.vHalf;
   CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
   CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
-  CRAFT_WORLD_PROP = simLenToWorld(CRAFT_PROP_R);
+  CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
   CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
 }
 
@@ -351,8 +372,8 @@ function segmentHitsAabb(x0, y0, z0, x1, y1, z1, ax, ay, az, bx, by, bz) {
 }
 
 function clampRadius(v) {
-  if (v < CRAFT_WORLD_PROP) {
-    return CRAFT_WORLD_PROP;
+  if (v < CRAFT_WORLD_HULL) {
+    return CRAFT_WORLD_HULL;
   }
   if (v > CRAFT_WORLD_R) {
     return CRAFT_WORLD_R;
@@ -428,7 +449,7 @@ function discSupport(nx, ny, nz, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz) {
   if (s2 < 0) {
     s2 = 0;
   }
-  return motor + CRAFT_WORLD_PROP * Math.sqrt(s2);
+  return motor + CRAFT_WORLD_HULL * Math.sqrt(s2);
 }
 
 /*
@@ -552,7 +573,7 @@ export function contactPatch(nx, ny, nz, qx, qy, qz, qw, out) {
   const pz = dz - du * uz;
   const p2 = px * px + py * py + pz * pz;
   if (p2 > 1e-12) {
-    const inv = CRAFT_WORLD_PROP / Math.sqrt(p2);
+    const inv = CRAFT_WORLD_HULL / Math.sqrt(p2);
     sumX += px * inv;
     sumY += py * inv;
     sumZ += pz * inv;

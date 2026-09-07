@@ -59,6 +59,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial, outlineHull } from './celmat.js';
 import { WORLD_SCALE } from './frame.js';
 import { PROP_SPIN } from './herocraft.js';
+import { airframeById } from '../../configs/airframes.js';
 
 /*
  * Every dimension in metres, from the aircraft. Named rather than inlined
@@ -66,11 +67,21 @@ import { PROP_SPIN } from './herocraft.js';
  * something, and because configs/airframes.js and src/game/collide.js quote
  * the same two numbers and the three must not drift.
  */
-const ARM = 0.0325;          /* motor centre from airframe centre */
+/*
+ * DERIVED, NOT TYPED. The paragraph above says these three must not drift
+ * from configs/airframes.js and src/game/collide.js, and typing them twice
+ * is how they would. airframes.js owns them; collide.js derives the sweep
+ * from the same hullR this derives the duct's outer wall from, so the
+ * drawn duct and the swept hull are the same surface by construction.
+ */
+const WHOOP_DIMS = airframeById('whoop65').dims;
+const ARM = WHOOP_DIMS.arm;  /* motor centre from airframe centre */
 const MOTOR_ARM = ARM / Math.SQRT2; /* per axis, the motors sit on the diagonals */
-const PROP_R = 0.0155;       /* 31 mm Gemfan 1207 three blade */
+const PROP_R = WHOOP_DIMS.propR; /* 31 mm Gemfan 1207 three blade */
 const DUCT_BORE = 0.0165;    /* 33 mm bore, so a 1 mm tip gap */
-const DUCT_WALL = 0.0016;    /* the moulded PP wall, thin and it shows */
+/* The moulded PP wall, thin and it shows. Whatever is left between the bore
+ * and the hull the collider sweeps, so the two cannot disagree. */
+const DUCT_WALL = WHOOP_DIMS.hullR - DUCT_BORE;
 const DUCT_TOP = 0.0055;     /* duct lip above the CG */
 const ROTOR_Y = 0.0035;      /* the disc sits just under the lip */
 /* Where the cell's top face is, which is what the belly straps lie on. The

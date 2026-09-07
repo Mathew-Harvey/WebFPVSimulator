@@ -288,6 +288,11 @@ export const RULES = [
     detail: `At least ${inches(POLE_FROM_GATE_MIN)} from the centre of a gate and ${inches(POLE_FROM_POLE_MIN)} from another pole.`,
   },
   {
+    id: 'square-headings',
+    title: 'Gate headings',
+    detail: 'Every gate faces along one of the two track axes: the angle between any two gates is a multiple of 90 degrees. A kit of straight pipe and right angle fittings does not build a track on the diagonal.',
+  },
+  {
     id: 'envelope',
     title: 'The envelope',
     detail: `The whole track fits a ${inches(ENVELOPE_W_AT_MIN)} by ${inches(ENVELOPE_D_AT_MIN)} rectangle at the minimum gate size, scaled with the gates.`,

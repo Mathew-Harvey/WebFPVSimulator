@@ -42,7 +42,7 @@ import {
 } from './racegow.js';
 import { elementById, kindOf, startPadsOf } from './model.js';
 import { sequenceLabel, unsequencedElements } from './sequence.js';
-import { dist, insideYawedBox, lerp, yawVector } from './geometry.js';
+import { dist, insideYawedBox, lerp, wrapAngle, yawVector } from './geometry.js';
 
 function warn(code, message, extra = {}) {
   return { level: 'warn', code, message, ...extra };
@@ -359,6 +359,38 @@ function collectRaceGowWarnings(doc, out) {
       gates.push(el);
     } else if (def.kind === KIND.MARKER && el.type !== 'waypoint') {
       poles.push(el);
+    }
+  }
+
+  /*
+   * EVERY GATE FACES ALONG AN AXIS, so the angle between any two of them is
+   * a multiple of 90 degrees.
+   *
+   * A RaceGOW track is a kit of straight pipe and right angle fittings.
+   * There is no diagonal fitting, so there is no diagonal gate: the whole
+   * build sits on a rectangular grid and the only headings available are
+   * the four square ones.
+   *
+   * Nothing here checked it, and that is why this exists. The RaceGOW5
+   * reconstructions were built with gates 26 degrees off the axis, from an
+   * isometric render misread, and every rule in this file passed them.
+   * Measured against the first gate rather than against the world, because
+   * a track is allowed to sit at any angle in the room: it is the angle
+   * BETWEEN gates that is square, not the angle to the wall.
+   */
+  if (gates.length > 1) {
+    const base = gates[0].yaw;
+    for (const el of gates.slice(1)) {
+      /* Fold into the first quadrant: a gate flown from the other side is
+       * the same wall, so 180 degrees is square and so is 90. */
+      const off = Math.abs(wrapAngle(el.yaw - base));
+      const q = Math.PI / 2;
+      const skew = Math.abs(off - Math.round(off / q) * q);
+      if (skew > 0.02) {
+        out.push(warn('rg-square-headings',
+          `${label(el)} is ${(skew * 180 / Math.PI).toFixed(1)} deg off square from ${label(gates[0])}. Every gate faces along one of the two track axes.`,
+          { elementId: el.id }));
+      }
     }
   }
 

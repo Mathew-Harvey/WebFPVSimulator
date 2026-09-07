@@ -31508,3 +31508,91 @@ Tracks 3 and 5 are still absent, and the remaining questions from the last
 entry stand: rail heights, whether Track 1's rear pair is really side by
 side, and whether Track 6's tall rear structure is an elevated gate or a
 full height one.
+
+## The angle between two gates is a multiple of 90 degrees, and it is a rule now
+
+The owner: the angle between any gate is always a multiple of 90 degrees.
+Your tracks are bad.
+
+Both true. A RaceGOW kit is straight pipe and right angle fittings. There is
+no diagonal fitting, so there is no diagonal gate, and the whole build sits
+on a rectangular grid with four headings available. The pass before this put
+gates 26 degrees off the axis on Tracks 2, 4 and 8 and called it a fix for
+the leaning gates it had itself invented the pass before that.
+
+### Why nothing caught it, twice
+
+`racegow.js` carried eight rules: opening range, one gate size, adjacent
+spacing, ground gate centres, second and third of a stack, pole clearance,
+and the envelope. Not one of them was about which way a gate faces, and not
+one was about pitch either until the last entry. So a track could be built
+entirely out of diagonal gates leaning at arbitrary angles and every check in
+this repository would pass it, which is exactly what happened.
+
+There are nine rules now. `square-headings` is written down beside the other
+eight, and `warnings.js` enforces it: it folds each gate's heading against
+the FIRST gate's, because a track may sit at any angle in a room, and it is
+the angle BETWEEN gates that is square rather than the angle to a wall.
+Ninety degrees and a hundred and eighty are both square, because a gate flown
+from the other side is the same wall.
+
+Proof it works, taken before the tracks were fixed rather than after:
+
+```
+Track 1  square
+Track 2  Gate is 25.8 deg off square from Gate | Tower is 25.8 deg off square
+Track 4  Gate is 25.8 deg off square from Gate | Gate is 25.8 deg off square
+Track 6  square
+Track 7  square
+Track 8  Gate is 25.8 deg off square from Gate
+```
+
+Three tracks, exactly the three that were broken. And `micro:check` fails on
+it with no new code, because its filter already treats anything that is not
+the envelope note as a real finding: running the OLD committed presets
+against the new rule gives `3 FAILED`.
+
+### What the renders were actually showing
+
+A gate seen near edge on in an isometric render is not a gate on the
+diagonal. It is a gate at a RIGHT ANGLE to the run. Tracks 2, 4 and 8 all
+show their green gate that way, so all three are Ls: in through a gate facing
+across the course, then a quarter turn and away up the corridor. That reading
+costs nothing extra and is the only one the kit can build.
+
+```
+                headings relative to the first gate   pitches
+Track 1         0, 0, 0                               all 0
+Track 2         0, 90, 90                             all 0
+Track 4         0, 90, 90                             all 0
+Track 6         0, 0, 0                               all 0
+Track 7         0, 0, 0, 0                            0, 0, 1.57, 0
+Track 8         0, 90                                 all 0
+```
+
+Every kit rule now passes on all six. The only note any of them trips is the
+envelope arithmetic argued two entries above, which the shipped demo room
+trips as well.
+
+### What went wrong while fixing it
+
+`git checkout -- src/trackbuilder/presets.js` was used to undo a deliberate
+one character edit that had been made to prove the new rule fires. It undid
+the regenerated presets with it, silently, and the next `micro:check` reported
+three failures that looked like the fix had not worked. It had; the file had
+been rolled back to the committed bad version. Nothing was lost because the
+generator is deterministic and the layouts live in the scratchpad, but
+checkout is not an undo for a file with unrelated uncommitted work in it, and
+using it as one wasted a cycle and briefly told a lie about the result.
+
+### What was run
+
+`micro:check`, builder self test 495 of 495, `lint:shell`, `lint:nouns`,
+`lint:quality`, `lint:boot`, `lint:devices`, `check:path`, `lint:memory`.
+Tracks 2, 4, 7 and 8 drawn in the real shell on the whoop, console clean.
+`npm run verify` NOT run and not warranted: document data, one rule and one
+warning.
+
+Tracks 3 and 5 are still absent, and the open questions stand: rail heights,
+whether Track 1's rear pair is really side by side, and whether Track 6's
+tall rear structure is an elevated gate or a full height one.

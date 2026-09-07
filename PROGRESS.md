@@ -31445,3 +31445,66 @@ Tracks 3 and 5 are still absent.
 `lint:nouns`, `lint:quality`, `lint:boot`, `check:path`. All four rebuilt
 tracks drawn in the real shell on the whoop with no console error and no
 frame fault. `npm run verify` NOT run and not warranted: document data.
+
+## A gate stands up or it lies flat, and the last pass invented a third thing
+
+The owner: gates are always straight up and down, with the exception of the
+occasional dive gate that is level to the floor.
+
+That is exactly what `elements.js` has always said, and reading it back
+settles it in two lines: `gate`, `tower` and `doubleStack` all report
+`defaultPitch` 0.0000 for the micro class, and `diveGate` reports 1.5708.
+Its own note calls it the RaceGOW Horizontal Gate, "also called a Cube
+Gate: the same square opening laid flat", at 900 mm for a whoop. Two
+numbers, and they are the whole vocabulary.
+
+The pass before this put leaning gates at 0.34, 0.38 and 0.40 rad on Tracks
+2, 4 and 8, and wrote a PROGRESS entry congratulating itself for spotting a
+lean the first pass had missed. There is no lean. **A vertical gate turned in
+YAW draws as a parallelogram in an isometric render and looks like it leans.**
+The renders were being read as elevation drawings when they are projections,
+and the mistake was then written up as a discovery, which is worse than
+making it.
+
+### What changed
+
+Every invented pitch is gone. The apparent lean became yaw, about 26 degrees
+off the corridor, which is what the render was actually showing: a gate at a
+different heading, standing straight up.
+
+Track 7's box is now a `diveGate`. Its render is a cube, and the rules' own
+name for the horizontal gate is the Cube Gate, so the box is the element
+rather than four gates arranged into one. Its lap went 5.47 to 6.53 m, which
+is the vertical leg through the flat opening arriving.
+
+Across all six, every element now reports one of exactly two pitches:
+
+```
+  14 x  gate            pitch 0.0000
+   9 x  pole            pitch 0.0000
+   7 x  horizontalPole  pitch 0.0000
+   6 x  startPads       pitch 0.0000
+   2 x  tower           pitch 0.0000
+   1 x  doubleStack     pitch 0.0000
+   1 x  diveGate        pitch 1.5708
+```
+
+### And a check, because nothing was looking
+
+`micro-check.js` now fails any preset carrying a pitch that is neither zero
+nor a dive gate's right angle. The invented leans passed every check in the
+repository, because no check had an opinion about what a gate may do. It has
+one now. That is the difference between the owner catching this and the
+repository catching the next one.
+
+### What was run
+
+`micro:check` including the new pitch rule, six of six passing on it. Builder
+self test 495 of 495. Tracks 2, 4, 7 and 8 drawn in the real shell on the
+whoop, console clean. `npm run verify` NOT run and not warranted: document
+data and one check.
+
+Tracks 3 and 5 are still absent, and the remaining questions from the last
+entry stand: rail heights, whether Track 1's rear pair is really side by
+side, and whether Track 6's tall rear structure is an elevated gate or a
+full height one.

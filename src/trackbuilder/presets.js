@@ -42,6 +42,15 @@
  * reading available, and it is still a reading. A pilot who has flown the
  * real thing will find these close in shape and wrong in detail.
  *
+ * A GATE STANDS UP OR IT LIES FLAT. Every RaceGOW aperture is vertical
+ * except the Horizontal Gate, which the rules also call a Cube Gate: the
+ * same square opening laid flat, at 900 mm for a whoop, flown down
+ * through. A pass over these tracks invented leaning gates at 0.34 to 0.40
+ * rad, which was an isometric render read wrong: a vertical gate turned in
+ * YAW draws as a parallelogram and looks like it leans. The lean is now
+ * yaw, where it belonged, and micro-check fails on any pitch that is
+ * neither 0 nor a dive gate's right angle.
+ *
  * A SECOND READING PUT THREE THINGS BACK that the first one missed, and
  * they are named here because they are the difference between a layout that
  * merely has the right count of gates and one that is the right shape. The
@@ -279,7 +288,7 @@ export const PRESETS = [
           "y": 4.9,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
+        "yaw": 1.1207963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
@@ -297,8 +306,8 @@ export const PRESETS = [
           "y": 5.48,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
-        "pitch": 0.34,
+        "yaw": 1.1207963267948966,
+        "pitch": 0,
         "yawOverridden": true,
         "dims": {
           "levels": 1,
@@ -461,7 +470,7 @@ export const PRESETS = [
           "y": 4.6,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
+        "yaw": 1.1207963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
@@ -479,8 +488,8 @@ export const PRESETS = [
           "y": 5.2,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
-        "pitch": 0.38,
+        "yaw": 1.1207963267948966,
+        "pitch": 0,
         "yawOverridden": true,
         "dims": {
           "levels": 1,
@@ -921,19 +930,19 @@ export const PRESETS = [
       },
       {
         "id": "el-5",
-        "type": "gate",
+        "type": "diveGate",
         "name": "",
         "position": {
-          "x": 5.34,
+          "x": 5.38,
           "y": 6.66,
           "z": 0
         },
-        "yaw": 0,
-        "pitch": 0,
+        "yaw": 1.5707963267948966,
+        "pitch": 1.5707963267948966,
         "yawOverridden": true,
         "dims": {
           "levels": 1,
-          "sillH": 0,
+          "sillH": 0.9,
           "clearW": 0.7111999999999999,
           "clearH": 0.7111999999999999,
           "levelPitch": 0.762
@@ -964,9 +973,9 @@ export const PRESETS = [
         "type": "horizontalPole",
         "name": "",
         "position": {
-          "x": 5,
+          "x": 5.38,
           "y": 6.66,
-          "z": 1.55
+          "z": 0.9
         },
         "yaw": 0,
         "pitch": 0,
@@ -1063,7 +1072,7 @@ export const PRESETS = [
           "y": 5.06,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
+        "yaw": 1.1207963267948966,
         "pitch": 0,
         "yawOverridden": true,
         "dims": {
@@ -1081,8 +1090,8 @@ export const PRESETS = [
           "y": 5.64,
           "z": 0
         },
-        "yaw": 1.5707963267948966,
-        "pitch": 0.4,
+        "yaw": 1.1207963267948966,
+        "pitch": 0,
         "yawOverridden": true,
         "dims": {
           "levels": 1,

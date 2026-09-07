@@ -262,6 +262,29 @@ function presetSet() {
     const warns = collectWarnings(doc).map((w) => w.text ?? w.message ?? '');
     const hard = warns.filter((t) => !t.includes('A RaceGOW track fits'));
     check(`${raw.name} breaks no RaceGOW rule`, hard.length === 0, hard.join('; '));
+    /*
+     * A GATE STANDS UP OR IT LIES FLAT, and there is nothing in between.
+     *
+     * Every RaceGOW aperture is vertical except the Horizontal Gate, which
+     * the rules also call a Cube Gate: the same square opening laid flat,
+     * at 900 mm for a whoop, flown down through. elements.js carries
+     * pitch 0 for gate, tower and doubleStack and PI/2 for diveGate, and
+     * those two numbers are the whole vocabulary.
+     *
+     * This exists because a pass over these tracks invented leaning gates
+     * at 0.34 to 0.40 rad, from reading an isometric render wrong: a
+     * vertical gate turned in yaw draws as a parallelogram and looks like
+     * it leans. Nothing caught it, because nothing was looking. Now
+     * something is.
+     */
+    const tilts = doc.elements
+      .filter((e) => Math.abs(e.pitch) > 1e-6)
+      .map((e) => `${e.type} at ${e.pitch.toFixed(4)}`);
+    const flatOnly = doc.elements.every(
+      (e) => Math.abs(e.pitch) < 1e-6
+        || (e.type === 'diveGate' && Math.abs(e.pitch - Math.PI / 2) < 1e-6),
+    );
+    check(`${raw.name} stands its gates up or lays them flat`, flatOnly, tilts.join('; '));
     let course = null;
     try {
       course = courseFromDocument(doc);

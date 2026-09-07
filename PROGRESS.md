@@ -31389,3 +31389,59 @@ Tracks 3 and 5, which need their diagrams. And the reconstructions themselves
 want a pilot's eye against the real renders: the shapes are the diagrams' but
 the metres are the rulebook's, and only somebody who has flown RaceGOW can say
 how close that lands.
+
+## A review of the six reconstructions, which were not right
+
+The owner said they were not sure the tracks were correct. They were not.
+The review found three faults, all systematic, all mine, and all of them
+things the diagrams show plainly and the first pass did not look for.
+
+`tracks/plan.mjs --doc` is the tool that made it obvious. Six plan views next
+to six renders, and the first thing every plan said was that all six tracks
+were the same track: a column of gates at one yaw with a pole beside it.
+
+### What was wrong
+
+**No horizontal rails anywhere.** The palette has `horizontalPole`, "a single
+bar across the track on two legs, solid, fly over it or under it", and the
+first pass used it zero times. The diagrams are built around them: Track 8
+has a long low bar running the length of the track and a second one overhead,
+Track 4 has one running from the double gate down to the start, Track 2 has
+one at knee height on the step up. A bar you fly over is not decoration, it
+is the line, and leaving it out changes what the track asks of a pilot.
+
+**No tilt anywhere.** On Tracks 2, 4 and 8 the green start gate is pitched
+over rather than standing upright, which is the first thing the eye reads in
+those renders. The document has carried `pitch` all along and scene.js has
+drawn a `tiltedGate` for it all along. The first pass put six upright gates
+in and never asked.
+
+**Track 7 is a box and was built as a row.** Its render is two gates facing
+across two others, making a cube the line goes through and around. It was
+built as four gates in a column with one turned sideways.
+
+### What was done
+
+All six rebuilt with the rails, the tilts and the box, revalidated, and
+redrawn. Structure counts went 5, 5, 5, 6, 6, 6 to 6, 6, 6, 7, 7, 8, which is
+the rails arriving. Every one still needs no repair and still breaks no
+RaceGOW rule, and the only note any of them trips is the envelope arithmetic
+already argued above. The tilt is confirmed to survive `normalize` and reach
+the course as a tilted station, and the rails reach it at their own z.
+
+### What is still a reading, and it is worth being blunt
+
+The shapes are closer. The metres are still the rulebook's rather than the
+render's, and no amount of care changes what one isometric image can tell
+you. A pilot who has flown RaceGOW5 is the only instrument that will settle
+whether Track 4's rail is at the right height or whether Track 1's rear pair
+really sit side by side. That is asked for rather than assumed.
+
+Tracks 3 and 5 are still absent.
+
+### What was run
+
+`micro:check` over every preset, builder self test 495 of 495, `lint:shell`,
+`lint:nouns`, `lint:quality`, `lint:boot`, `check:path`. All four rebuilt
+tracks drawn in the real shell on the whoop with no console error and no
+frame fault. `npm run verify` NOT run and not warranted: document data.

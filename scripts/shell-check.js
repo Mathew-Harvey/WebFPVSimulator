@@ -88,16 +88,18 @@ const SCREENS = [
  * a copy of the shell rather than the shell.
  */
 /*
- * Every walk below starts PAST the Race or Freestyle gate.
+ * Every walk below starts PAST the gate.
  *
- * A fresh load opens on that gate: two cards, and the menu these checks are
- * about is behind it. The mode is set rather than pressed, because act()
- * would also navigate to a picker when there is nothing seated, and each
- * walk drives its own navigation. The first run flag goes with it, so the
- * primary row is Fly rather than the guided First flight. The gate itself is
- * checked in BEHAVIOUR, through act(), which is the way a pilot answers it.
+ * A fresh load opens on it: three cards, and the menu these checks are about
+ * is behind them. BOTH halves are answered here, the mode and the aircraft,
+ * because the gate is up while either is open. They are set rather than
+ * pressed, because act() would also navigate to a picker when there is
+ * nothing seated, and each walk drives its own navigation. The first run
+ * flag goes with them, so the primary row is Fly rather than the guided
+ * First flight. The gate itself is checked in BEHAVIOUR, through act(),
+ * which is the way a pilot answers it.
  */
-const PAST_GATE = "ui.firstRun = false; if (!ui.mode) { ui.mode = 'race'; }";
+const PAST_GATE = "ui.firstRun = false; ui.craftGate = false; if (!ui.mode) { ui.mode = 'race'; }";
 
 const WALK = `(() => {
   const ui = window.__ui;
@@ -901,11 +903,10 @@ const BEHAVIOUR = `(() => {
     const input = window.__input;
     const before = ui.padInfo;
     /*
-     * The title has three states and only the last of them has rows: the
-     * aircraft gate, the mode gate, then the menu. This block is about a
-     * warning ROW, so both gates are closed for the length of it and put
-     * back afterwards. Without this every case here read a gate card and
-     * reported no banner.
+     * The title has two states and only the second has rows: the gate, then
+     * the menu. This block is about a warning ROW, so both halves of the
+     * gate are answered for the length of it and put back afterwards.
+     * Without this every case here read a gate card and reported no banner.
      */
     const heldCraftGate = ui.craftGate;
     const heldMode = ui.mode;
@@ -1076,21 +1077,24 @@ const BEHAVIOUR = `(() => {
   }
 
   /*
-   * THE GATE, AND THERE ARE TWO OF THEM.
+   * THE GATE IS ONE SCREEN, THREE CARDS, AND ONE PRESS.
    *
-   * A visit opens on the aircraft, five inch or whoop, and answering that
-   * opens the second question, Race or Freestyle. Both are two cards rather
-   * than rows, both carry art, and the menu behind them names a track or a
-   * map and never a mode. Three things would quietly come back: a Race row
-   * and a Freestyle row on the front page, the cards turning back into plain
-   * rows, or the aircraft question sliding back under Quad where a pilot had
-   * to already know it was there.
+   * A visit opens on what to fly: five inch racing, whoop racing, freestyle.
+   * Answering any of them seats an aircraft AND a mode and lands on the menu
+   * behind, and the menu names a track or a map and never a mode. It used to
+   * be two screens in a row, the second of which was skipped on the whoop,
+   * so a pilot pressed twice and what the second press asked depended on
+   * what the first one answered. Four things would quietly come back: a Race
+   * row and a Freestyle row on the front page, the cards turning back into
+   * plain rows, the aircraft question sliding back under Quad where a pilot
+   * had to already know it was there, or the one gate splitting into two.
    *
-   * ART IS EITHER A PHOTOGRAPH OR A DRAWING. The mode cards are photographs
-   * of the two places; the aircraft cards are drawn to one scale in one
-   * viewBox, because the point of those two is the size difference and a
-   * photograph of each cropped to the same card throws that away. So the
-   * detector counts both, and "no art" is still the failure it was.
+   * EVERY CARD CARRIES A PHOTOGRAPH AND A DRAWING. The photograph is the
+   * place, which is the thing a sentence is worst at. The drawing is the
+   * aircraft in plan, and all three are drawn in one viewBox, so the whoop's
+   * mark is a fifth of the width of the five inch's: that is the one fact
+   * three cropped photographs cannot carry. So the detector counts both, and
+   * a card missing either is the failure.
    *
    * Answered through act(), which is what a keypress calls, so the seat has
    * to follow the answer as well as the flag.
@@ -1099,81 +1103,57 @@ const BEHAVIOUR = `(() => {
     const held = ui.mode;
     const heldFirst = ui.firstRun;
     const heldCraft = ui.craftGate;
-    const artOf = () => [
-      ...[...ui.root.querySelectorAll('.screen-title .gate-card-shot')]
-        .map((n) => n.getAttribute('src')),
-      ...[...ui.root.querySelectorAll('.screen-title .gate-card-art-drawn svg')]
-        .map(() => 'drawn'),
-    ];
+    const cardsOf = () => [...ui.root.querySelectorAll('.screen-title .gate-card')].map((c) => ({
+      shot: c.querySelector('.gate-card-shot')
+        ? c.querySelector('.gate-card-shot').getAttribute('src') : null,
+      drawn: Boolean(c.querySelector('.gate-card-mark svg')),
+      wide: c.getBoundingClientRect().width > 0,
+    }));
     ui.firstRun = false;
-    /* The root: the aircraft, before anything else. */
+    /* The root, with neither half answered. */
     ui.craftGate = true;
     ui.mode = null;
     ui.show('title');
-    const craftItems = ui.items().filter((it) => ui.isStop(it));
-    const craftGateLabels = craftItems.map((it) => it.label);
-    const craftDrawn = ui.root.querySelectorAll('.screen-title .gate-card').length;
-    const craftArt = artOf();
-    /* Answering it opens the mode question rather than launching anything. */
-    ui.act('craft-5inch');
-    const afterCraft = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
     const gateItems = ui.items().filter((it) => ui.isStop(it));
     const gate = gateItems.map((it) => it.label);
-    const drawn = ui.root.querySelectorAll('.screen-title .gate-card').length;
-    const art = artOf();
-    /* And Escape from the mode question goes back to the aircraft, which is
-     * the whole reason the aircraft is reachable at all. */
-    ui.back();
-    const backToCraft = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
+    const cards = cardsOf();
     /*
-     * THE WHOOP IS NOT ASKED THE MODE QUESTION.
-     *
-     * Freestyle is one place, a town about five hundred metres across laid
-     * out for a five inch at forty metres a second, and a 65 mm whoop in it
-     * is the same mismatch as a five inch in a living room. So on a whoop
-     * the gate has one answer and is skipped: the aircraft lands straight on
-     * the menu, and Escape from the menu walks back to the aircraft rather
-     * than stopping at a question with one card on it.
-     *
-     * The seat moves too. A pilot who was in the town and swapped aircraft
-     * would otherwise be in race with the town still seated, which is the
-     * whoop in the five inch's world drawn behind the title.
+     * THE GATE WITH THE MODE ALREADY ANSWERED, which is the case that
+     * shipped broken once and which a probe that always nulls the mode
+     * cannot see. The builder's Fly this track link carries map=custom,
+     * which linkedMode reads as race, and renderMenu once dressed the
+     * screen from the mode alone rather than from onGate(), so the cards
+     * were built and then left invisible by CSS with the menu's own copy
+     * showing behind them and no way to fly.
      */
-    /*
-     * THE AIRCRAFT GATE WITH THE MODE ALREADY ANSWERED, which is the case
-     * this probe could not see and which shipped broken.
-     *
-     * Everything above nulls the mode before opening the craft gate, so it
-     * only ever tested the one arrangement where both gates are unanswered.
-     * The real one is the other way round: the builder's Fly this track
-     * link carries map=custom, which linkedMode reads as race, and on a
-     * whoop syncMode answers the mode itself. renderMenu dressed the
-     * screen from the mode alone rather than from onGate(), so in that
-     * arrangement the two aircraft cards were built and then left invisible
-     * by CSS, with the menu's own copy showing behind them and no way to
-     * fly. A probe that always nulls the mode is a probe that cannot fail.
-     */
-    ui.craftGate = true;
     ui.mode = 'race';
     ui.show('title');
     ui.renderMenu();
     const modeSetGate = {
       isGate: ui.root.querySelector('.screen-title').classList.contains('is-gate'),
-      drawn: ui.root.querySelectorAll('.screen-title .gate-card').length,
-      visible: [...ui.root.querySelectorAll('.screen-title .gate-card')]
-        .filter((c) => c.getBoundingClientRect().width > 0).length,
+      cards: cardsOf(),
       keepNote: [...ui.root.querySelectorAll('.screen-title .keep-note')]
         .filter((n) => n.getBoundingClientRect().height > 0).length,
     };
+    ui.craftGate = true;
     ui.mode = null;
     ui.show('title');
 
-    ui.act('craft-whoop65');
-    const whoopMode = ui.mode;
-    const whoopMap = ui.settings.map;
-    const whoopGate = ui.onGate();
-    const whoopMenu = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
-    const whoopCards = ui.items().filter((it) => it.card).length;
+    /*
+     * ONE PRESS SEATS BOTH HALVES. The whoop card is pressed for real, and
+     * it has to leave the gate, seat the whoop, and set race: the aircraft
+     * is what makes the seat readable, so a card that moved the mode and
+     * not the machine would send a whoop pilot to the five inch's track.
+     */
+    ui.act('way-race-whoop65');
+    const whoop = {
+      craft: ui.settings.airframe,
+      mode: ui.mode,
+      map: ui.settings.map,
+      gate: ui.onGate(),
+      menu: ui.items().filter((it) => ui.isStop(it)).map((it) => it.label),
+      cards: ui.items().filter((it) => it.card).length,
+    };
     /*
      * The Track room lists the tracks that ship with the simulator for
      * this aircraft, and choosing one seats it. The RaceGOW5 set lived
@@ -1204,18 +1184,22 @@ const BEHAVIOUR = `(() => {
     };
     ui.setShare(null);
     ui.show('title');
+    /* And Escape from the menu is the gate, one level, on the whoop as on
+     * anything else. It used to be two levels on one aircraft and one on
+     * the other, which is the thing that made Escape unpredictable. */
     ui.back();
-    const whoopBack = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
-    ui.act('craft-5inch');
+    const backFromWhoop = ui.items().filter((it) => ui.isStop(it)).map((it) => it.label);
     /*
-     * Race is pressed for real. Freestyle is only set, because answering it
-     * can seat a world, and seating a world hands main.js a swap: the city
-     * is nineteen thousand meshes and this check has nothing to say about
-     * it. What act() does on the way is the same code either way.
+     * Race is pressed for real on the five inch too. Freestyle is only set,
+     * because answering it can seat a world, and seating a world hands
+     * main.js a swap: the city is nineteen thousand meshes and this check
+     * has nothing to say about it. What act() does on the way is the same
+     * code either way.
      */
-    ui.act('mode-race');
+    ui.act('way-race-5inch');
     const landed = ui.screen;
     const seated = ui.seatMatchesMode();
+    const fiveCraft = ui.settings.airframe;
     ui.show('title');
     const race = ui.items().map((it) => it.label);
     ui.mode = 'freestyle';
@@ -1227,42 +1211,33 @@ const BEHAVIOUR = `(() => {
     out.stockSeat = stockSeat;
     out.modeGate = {
       gate,
-      drawn,
-      art,
-      craftGateLabels,
-      backToCraft,
-      /* The root asks the aircraft, as two cards with art, and answering it
-       * lands on the mode question rather than on a menu. */
-      craftFirst: craftDrawn === 2 && craftArt.length === 2 && craftArt.every(Boolean)
-        && craftGateLabels.length === 2 && !craftGateLabels.includes('Race')
-        && craftItems.filter((it) => !it.card).length === 0,
-      craftOpensMode: afterCraft.includes('Race') && afterCraft.includes('Freestyle'),
-      /* And Escape walks back up to it. */
-      escapeToCraft: backToCraft.length === 2 && !backToCraft.includes('Race')
-        && backToCraft.join() === craftGateLabels.join(),
-      modeSetGate,
-      /* Two cards, laid out and visible, and the menu's own copy off the
-       * screen, when the mode is answered and the aircraft is not. */
-      gateWithMode: modeSetGate.isGate && modeSetGate.drawn === 2
-        && modeSetGate.visible === 2 && modeSetGate.keepNote === 0,
-      whoopMenu,
-      whoopBack,
-      /* Straight to the menu: no gate, no cards, no Freestyle anywhere on
-       * it, and the seat is a track rather than a world. */
-      whoopSkipsMode: whoopMode === 'race' && whoopMap === 'custom' && !whoopGate
-        && whoopCards === 0 && !whoopMenu.includes('Freestyle'),
-      /* And Escape from that menu is the aircraft, one level not two. */
-      whoopBackToCraft: whoopBack.join() === craftGateLabels.join(),
-      asksTwo: gate.includes('Race') && gate.includes('Freestyle') && !gate.includes('Fly'),
-      /* Two cards drawn, both with a picture, and neither of them a row:
-       * the whole point of the screen is that it is not a menu. */
-      asCards: drawn === 2 && art.length === 2 && art.every(Boolean)
+      cards,
+      backFromWhoop,
+      whoop,
+      /* Three cards, every one of them with a photograph AND a plan drawing,
+       * and not a row among them: the whole point of the screen is that it
+       * is not a menu. */
+      asksThree: gate.length === 3 && gate.join() === 'Five inch racing,Whoop racing,Freestyle'
         && gateItems.filter((it) => !it.card).length === 0,
+      asCards: cards.length === 3 && cards.every((c) => c.shot && c.drawn),
+      modeSetGate,
+      /* Three cards, laid out and visible, and the menu's own copy off the
+       * screen, when the mode is answered and the aircraft is not. */
+      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === 3
+        && modeSetGate.cards.every((c) => c.wide) && modeSetGate.keepNote === 0,
+      /* One press: the whoop is seated, the mode is race, the seat is a
+       * track rather than a world, the gate is gone and no Freestyle row
+       * turned up on the menu behind it. */
+      onePress: whoop.craft === 'whoop65' && whoop.mode === 'race' && whoop.map === 'custom'
+        && !whoop.gate && whoop.cards === 0 && !whoop.menu.includes('Freestyle'),
+      escapeToGate: backFromWhoop.join() === gate.join(),
       /* Answering it either seats something to fly or opens the picker for
        * the thing it could not seat. Landing on a menu with neither is the
-       * failure: a Fly row over an empty seat. */
+       * failure: a Fly row over an empty seat. And the five inch card seats
+       * the five inch, which is the other half of the same press. */
       answered: seated || landed === 'courses',
       landed,
+      fiveCraft,
       race,
       free,
       raceNamesTrack: race.includes('Track') && !race.includes('Race') && !race.includes('Freestyle'),
@@ -1275,8 +1250,8 @@ const BEHAVIOUR = `(() => {
        * behind it stopped being a map picker. There is one freestyle world,
        * the gate seats it directly now, and a row reading "Map" pointing at
        * a room with no maps in it is the same mismatch this check exists to
-       * catch, just spelled differently. See act('mode-freestyle') and the
-       * freestyle branch of items() in src/ui/ui.js.
+       * catch, just spelled differently. See the WAYS branch of act() and
+       * the freestyle branch of items() in src/ui/ui.js.
        */
       freeNamesMap: free.includes('The town') && !free.includes('Race') && !free.includes('Freestyle'),
     };
@@ -1529,34 +1504,28 @@ async function main() {
       failures.push(`the gate: ${b.modeGate ? b.modeGate.error : 'no result'}`);
     } else {
       const g = b.modeGate;
-      if (!g.craftFirst) {
-        failures.push(`the gate: the root asks ${g.craftGateLabels.join(', ') || 'nothing'}, which is not two aircraft cards with art`);
-      }
-      if (!g.craftOpensMode) {
-        failures.push('the gate: answering the aircraft did not open Race or Freestyle');
-      }
-      if (!g.escapeToCraft) {
-        failures.push(`the gate: Escape from Race or Freestyle reached ${g.backToCraft.join(', ') || 'nothing'}, not the aircraft`);
-      }
-      if (!g.gateWithMode) {
-        failures.push(`the gate: with the mode already answered the aircraft gate drew ${g.modeSetGate.drawn} card(s), ${g.modeSetGate.visible} of them visible, is-gate ${g.modeSetGate.isGate}, ${g.modeSetGate.keepNote} menu note(s) still showing`);
-      }
-      if (!g.whoopSkipsMode) {
-        failures.push(`the gate: the whoop landed on ${g.whoopMenu.join(', ') || 'nothing'}, not on a menu with no Freestyle on it`);
-      }
-      if (!g.whoopBackToCraft) {
-        failures.push(`the gate: Escape from the whoop's menu reached ${g.whoopBack.join(', ') || 'nothing'}, not the aircraft`);
-      }
-      if (!g.asksTwo) {
-        failures.push(`the second gate opens on ${g.gate.join(', ') || 'nothing'}, not on Race or Freestyle`);
+      if (!g.asksThree) {
+        failures.push(`the gate opens on ${g.gate.join(', ') || 'nothing'}, not on the three ways in`);
       }
       if (!g.asCards) {
         failures.push(
-          `the gate: ${g.drawn} card(s) drawn with art ${JSON.stringify(g.art)}, so the question is a menu again`,
+          `the gate: ${g.cards.length} card(s) drawn as ${JSON.stringify(g.cards)}, so a card is a row again or has lost its picture or its plan`,
         );
       }
+      if (!g.gateWithMode) {
+        failures.push(`the gate: with the mode already answered it drew ${g.modeSetGate.cards.length} card(s), ${g.modeSetGate.cards.filter((c) => c.wide).length} of them visible, is-gate ${g.modeSetGate.isGate}, ${g.modeSetGate.keepNote} menu note(s) still showing`);
+      }
+      if (!g.onePress) {
+        failures.push(`the gate: one press of Whoop racing seated ${g.whoop.craft} in ${g.whoop.mode} on ${g.whoop.map}, gate ${g.whoop.gate}, and landed on ${g.whoop.menu.join(', ') || 'nothing'}`);
+      }
+      if (!g.escapeToGate) {
+        failures.push(`the gate: Escape from the menu reached ${g.backFromWhoop.join(', ') || 'nothing'}, not the three cards`);
+      }
       if (!g.answered) {
-        failures.push(`the gate: answering Race left nothing seated and stayed on ${g.landed}`);
+        failures.push(`the gate: answering Five inch racing left nothing seated and stayed on ${g.landed}`);
+      }
+      if (g.fiveCraft !== '5inch') {
+        failures.push(`the gate: the five inch card seated ${g.fiveCraft}, so a card moves the mode and not the machine`);
       }
       if (!g.raceNamesTrack) {
         failures.push(`the title in Race names ${g.race.join(', ')}, which is not a Track row without a mode beside it`);

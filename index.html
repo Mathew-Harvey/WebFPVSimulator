@@ -1065,11 +1065,11 @@
       .screen-title.is-first .keep-note:not(.first-note),
       .screen-title.is-first .brand-best,
       .screen-title.is-first .wiki-teaser { display: none; }
-      /* The Race or Freestyle gate. Everything about a seat comes off the
-         screen, because the pilot has not said yet whether they are flying
-         it, and everything about the product comes off too: the gate is one
-         question and the two cards under it are the whole answer. The Beta
-         line stays, because a pilot about to meet a bug should be told
+      /* The gate. Everything about a seat comes off the screen, because
+         the pilot has not said yet whether they are flying it, and
+         everything about the product comes off too: the gate is one
+         question and the three cards under it are the whole answer. The
+         Beta line stays, because a pilot about to meet a bug should be told
          before the lap and not after it. */
       .screen-title.is-gate .keep-note,
       .screen-title.is-gate .brand-sub,
@@ -1092,10 +1092,12 @@
        */
       .gate-cards { display: none; }
       /* The menu column is 36em of the window; the gate is the page, so it
-         takes the width back. The world behind it still shows around and
-         under the cards. */
+         takes the width back. 64em was two cards' worth and left three of
+         them huddled in the left two thirds of a wide screen, so it is the
+         width three want. The world behind it still shows around and under
+         them. */
       .screen-title.is-gate .title-copy {
-        width: min(64em, 92vw);
+        width: min(78em, 94vw);
         justify-content: flex-start;
       }
       .screen-title.is-gate .gate-cards {
@@ -1165,6 +1167,9 @@
         position: absolute; inset: 0;
         background: linear-gradient(180deg, rgba(12, 18, 14, 0) 52%, rgba(16, 22, 17, 0.85) 100%);
       }
+      /* Above the gradient the rule before this one lays over the picture,
+         which is the only reason this needs a stacking order at all. */
+      .gate-card-mark { z-index: 1; }
       .gate-card-body {
         display: flex; flex-direction: column; gap: 7px;
         padding: 12px 16px 15px;
@@ -1190,24 +1195,33 @@
         margin-top: 2px;
         font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
       }
-      .gate-card-race .gate-card-fact { color: var(--mint); }
-      .gate-card-freestyle .gate-card-fact { color: var(--slate); }
+      .gate-card-race-5inch .gate-card-fact,
+      .gate-card-race-whoop65 .gate-card-fact { color: var(--mint); }
+      .gate-card-freestyle-5inch .gate-card-fact { color: var(--slate); }
       /*
-       * The aircraft cards, whose art is a drawing rather than a photograph.
-       * Both machines are drawn in one 300 mm viewBox so the whoop is a fifth
-       * of the width of the five inch on the card, because it is a fifth of
-       * the width of it on a bench. See craftSvg in src/ui/ui.js.
+       * The plan drawing over the corner of each photograph.
+       *
+       * Both machines are drawn in one 300 mm viewBox, so the whoop's mark
+       * is a fifth of the width of the five inch's because it is a fifth of
+       * the width of it on a bench. The BOX is the same size on all three
+       * cards for exactly that reason: scale it to the drawing and the one
+       * fact it is here to carry is the fact it throws away. See craftSvg in
+       * src/ui/ui.js.
        */
-      .gate-card-art-drawn {
+      .gate-card-mark {
+        position: absolute;
+        left: 10px; bottom: 8px;
+        width: clamp(52px, 5.2vw, 76px);
+        height: clamp(52px, 5.2vw, 76px);
         display: grid; place-items: center;
-        background:
-          radial-gradient(120% 90% at 50% 30%, rgba(232, 168, 184, 0.10), transparent 70%),
-          #141c16;
+        pointer-events: none;
+        /* Over a lit field and over a dark room, so it carries its own
+           ground rather than trusting whatever is behind it. */
+        border-radius: 3px;
+        background: radial-gradient(closest-side, rgba(12, 18, 14, 0.72), rgba(12, 18, 14, 0.18));
       }
-      .craft-plan { width: 82%; height: 82%; color: var(--cream); }
-      .gate-card-craft-5inch .gate-card-fact { color: var(--sakura); }
-      .gate-card-craft-whoop65 .gate-card-fact { color: var(--mint); }
-      .gate-card-craft-whoop65 .craft-plan { color: var(--mint); }
+      .craft-plan { width: 100%; height: 100%; color: var(--cream); }
+      .gate-card-race-whoop65 .craft-plan { color: var(--mint); }
 
       .wiki-teaser {
         display: inline-flex; align-items: center; gap: 10px;
@@ -2484,6 +2498,9 @@
           justify-content: center;
         }
         .gate-card-blurb { font-size: 12.5px; line-height: 1.5; }
+        /* The art is a third of the card's width here, so the mark comes
+           down with it. Same box on all three, as ever. */
+        .gate-card-mark { width: 42px; height: 42px; left: 7px; bottom: 6px; }
         .screen-maps .menu-stage {
           display: block;
           position: relative;
@@ -2558,6 +2575,7 @@
         .gate-card-body { padding: 8px 12px 10px; gap: 4px; }
         .gate-card-blurb { display: none; }
         .gate-card-name { font-size: clamp(17px, 4.4vh, 22px); }
+        .gate-card-mark { width: 38px; height: 38px; left: 6px; bottom: 5px; }
       }
 
       /* The map screen. One card per world, each playing a short flight

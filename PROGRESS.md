@@ -32003,3 +32003,107 @@ jitter had been costing the punch two percent of its peak speed.
 Not flown. The gyro figures are a bench, the probe is a script, and the
 thing that was reported is a feel. What to fly and what would count as
 wrong is in the handover.
+
+## Three ways in, on one screen, because two questions in a row is one too many
+
+The owner opened the simulator and reported the front door: "when i click
+into the sim, currently i see 5 inch and whoop, then i click into 5 inch and
+get freestyle. What i want is to see 3 options when click fly, 5 inch
+racing, whoop racing and freestyle."
+
+That is exactly what the screen did. Two gates in a row, the aircraft and
+then Race or Freestyle, with the second one skipped on the whoop because a
+65 mm machine has nowhere to freestyle. So a pilot pressed twice, and what
+the second press asked depended on what the first one answered: choosing the
+five inch produced a question the whoop had not been asked. The two screens
+were argued for at the time, and the argument is in the git history: a third
+card beside Race and Freestyle would pretend that racing on a whoop was not
+a real answer.
+
+It is answered by racing on a whoop being one of the three cards. Between
+the two questions there are exactly three legal answers, because the whoop
+has no freestyle: five inch racing, whoop racing, and freestyle, which is
+the five inch. Three answers do not need two screens.
+
+**The change.** `WAYS` in `src/ui/ui.js` is the table, three rows, each with
+an airframe, a mode, a label, a picture and its words. `items()` returns the
+three cards while `onGate()` is true; `act()` has one branch that seats the
+aircraft, sets the mode and then does what answering the mode always did,
+which is seat what is about to be flown or open the one room that can seat
+it. The two flags are unchanged, `craftGate` and `mode`, and they are now
+two halves of one question: the gate is up while either is open, which is
+what `onGate()` already said. Escape from the menu is one level and lands on
+the same three cards whatever is seated, where it used to be two levels on
+the five inch and one on the whoop.
+
+**A bug found on the way in.** `seatAirframe` is the deliberate swap and it
+takes the camera with it: `cameraFov` and `cameraAngle` are written
+unconditionally. The gate answers on every visit, so pressing the card for
+the aircraft you already fly wrote that aircraft's stock camera over the
+pilot's own, and a pilot who had set 45 degrees of tilt on the Quad screen
+got 20 back every time they opened the simulator. The old aircraft gate
+called it unconditionally too, so this is older than the three cards. The
+new handler seats only when the aircraft actually moves, which is the whole
+fix: with from and to the same aircraft, the tune, pack, rates and PID seed
+lines are all no-ops and the two camera lines were the only thing happening.
+
+**The picture, and the drawing over it.** Each card carries a photograph of
+the PLACE, which is what a card is for and what a sentence is worst at, and
+the aircraft in plan over the corner of it, drawn in the one 300 mm viewBox
+`craftSvg` has always used. That is why the whoop's mark is a fifth of the
+width of the five inch's: three cropped photographs cannot say how big the
+machine is, because whatever is in front of the lens fills the frame. The
+old aircraft gate wrote that argument down and it survives here rather than
+being deleted with the screen.
+
+`assets/gate/whoop.jpg` is new: the room's own lit start gate at two and a
+half metres with the track running away to the right, the same composition
+as `race.jpg` at a fifth of the scale, from `tracks/json/micro-livingroom-1.json`
+with `--airframe=whoop65`. It is `scripts/gatecards.js` output, and that
+file gained the shot and a fix: `.gate-cards` was not in its HIDE list, so
+the first regeneration after the title grew cards photographed the cards
+themselves, three of them, each wearing the picture the run was supposed to
+be replacing. The capture is in the scratch directory and was thrown away.
+
+`race.jpg` and `freestyle.jpg` are untouched. The freestyle shot could not
+be regenerated here at all: the town is nineteen thousand meshes and this
+container's software rasteriser does not finish building it inside the 20 s
+`until:` deadline in `scripts/shots.js`, so `npm run gen:gatecards` fails on
+that shot. The whoop card was therefore generated with the same parameters
+by calling `scripts/shots.js` directly. Anyone with a GPU can run the whole
+generator; nothing about the file it writes depends on which route was used.
+
+**What the checks cover, and what they do not.**
+
+`npm run lint:shell` PASS. Its gate probe was rewritten with the screen: it
+now asserts three cards, each with BOTH a photograph and a plan drawing, no
+rows among them; that one press of Whoop racing seats the whoop, sets race,
+seats a track and leaves the gate; that the five inch card seats the five
+inch; that Escape from the menu returns to those same three cards; and that
+the cards are still laid out and visible when a link has answered the mode
+and not the aircraft, which is the arrangement that shipped broken once.
+
+`PAST_GATE` in that file was wrong and is fixed. It answered the mode only,
+so every walk behind it was still standing on the aircraft gate: the title
+was measured as two cards rather than as its nine rows. With `craftGate`
+cleared as well the walk sees the menu, which is what it is for. That is
+also why the run reports the Quad screen's overflow improving from 55 px to
+10 px: the walk is in a different state by the time it gets there. The
+baseline is NOT re-recorded. It is an improvement rather than a regression,
+the check passes either way, and re-recording would bake this container's
+numbers for every screen into a file the owner's machine has to agree with.
+
+`lint:devices` PASS, every row and note reachable on phone and tablet, five
+sizes. `lint:responsive` PASS. `lint:arcade` PASS. `lint:boot` 9 of 9.
+`lint:nouns` PASS. `scripts/shots.js` at 1600x900, 390x844 and 844x390: the
+three cards lay out at all three, side by side on a desktop and a landscape
+phone, stacked as rows in portrait, with the plan marks scaled down to suit.
+The gate's own width went from 64em to 78em, which was two cards' worth and
+left three of them huddled in the left two thirds of a wide screen.
+
+`npm run verify` was NOT run. Nothing here is physics, the plant, the module
+ABI or the build: it is one screen of the shell, its stylesheet, one probe
+and one picture. `npm run gen:gatecards` was not run to completion, for the
+reason above.
+
+Not flown. What to fly and what would count as wrong is in the handover.

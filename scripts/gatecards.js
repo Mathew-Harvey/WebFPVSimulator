@@ -1,9 +1,9 @@
 /*
- * gatecards.js: the two pictures on the front door, drawn by the game.
+ * gatecards.js: the three pictures on the front door, drawn by the game.
  *
- * The first screen asks one question, Race or Freestyle, and it asks it with
- * two pictures rather than two words, because the difference between them is
- * a difference between PLACES and a sentence is a poor way to describe a
+ * The first screen asks one question, what to fly, and it asks it with three
+ * pictures rather than three words, because the difference between them is a
+ * difference between PLACES and a sentence is a poor way to describe a
  * place. See PROGRESS.md for the argument.
  *
  * WHY THEY ARE FILES AND NOT LIVE. The shell already records a short clip of
@@ -28,6 +28,14 @@
  * tracks/json/trk-0870b164.json, the 2022 AU Nationals layout, because a
  * real published course is the honest thing to photograph and it is already
  * in the repository.
+ *
+ * Whoop is the same shot at a fifth of the size: the room's own lit start
+ * gate at two and a half metres, left of centre, with the rest of the track
+ * running away to the right and the skirting board and the wall behind it,
+ * because "indoors" is the whole claim that card makes. The track is
+ * tracks/json/micro-livingroom-1.json, which ships with the simulator, and
+ * the aircraft has to be the whoop: a micro track is seated per class, so
+ * without --airframe the capture would open on the five inch's field.
  *
  * Freestyle is the town from twelve metres up: roofs, wires, sakura and the
  * street running into the haze, with no gate anywhere in it. The camera is
@@ -83,6 +91,15 @@ const HIDE = [
   '.menu-stage', '.hint', '.lede', '.title-foot', '.bug-chip', '.brand',
   '.brand-best', '.keep-note', '.first-note', '.gate-note', '.beta-note',
   '.wiki-teaser', '.craft-showcase', '.frame-top', '.frame-bot', '.music-dock',
+  /*
+   * AND THE CARDS THEMSELVES, which was missing and is why this list is
+   * being read again. A capture run seeds a track and an aircraft into
+   * storage, but the gate reads the URL rather than storage, so it is up:
+   * the first regeneration after the title grew cards photographed the
+   * cards, three of them, each wearing the picture this run was supposed
+   * to be replacing.
+   */
+  '.gate-cards',
 ];
 
 const hide = `${JSON.stringify(HIDE)}.forEach((s) => document.querySelectorAll(s)`
@@ -97,6 +114,19 @@ const SHOTS = [
     /* Behind the start gate and a little to its right, so the gate is left
      * of centre and the course leaves the frame rather than stopping in it. */
     cam: [-21.5, 2.4, 36.6, -40, 1.6, 28],
+    anim: null,
+  },
+  {
+    name: 'whoop',
+    args: [
+      '--course=tracks/json/micro-livingroom-1.json',
+      '--airframe=whoop65',
+    ],
+    /* Behind and to the right of the start gate, which stands at z = 0.6 in
+     * a track that runs to z = -1.38. High enough to put the floor under the
+     * whole of it and low enough that the wall and the skirting are still in
+     * frame, which is what says room rather than field. */
+    cam: [1.6, 1.15, 2.4, -0.05, 0.35, -0.5],
     anim: null,
   },
   {

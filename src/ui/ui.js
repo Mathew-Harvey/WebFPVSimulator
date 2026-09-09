@@ -391,8 +391,8 @@ const DEFAULTS = {
    * registry however many times the pilot flew another.
    *
    * Empty means never chosen, and that is a signal rather than an absence:
-   * the Race or Freestyle gate sends a pilot with no world of their own to
-   * the picker instead of seating one on their behalf.
+   * the gate sends a pilot with no world of their own to the picker instead
+   * of seating one on their behalf.
    */
   freestyleMap: '',
   /* Which Betaflight diff the module is initialised from. A string for the
@@ -413,12 +413,14 @@ const DEFAULTS = {
    */
   airframe: '5inch',
   /*
-   * Whether the aircraft question has been asked. It is asked ONCE, on a
-   * first run, and never again: unlike Race or Freestyle, which is what
-   * this session is for and is asked every visit, the aircraft is a
-   * PREFERENCE. A pilot who bought this to fly a whoop should not have to
-   * say so twice, and the Quad screen carries the row for every later
-   * change.
+   * Whether the aircraft question has ever been ANSWERED, which is not the
+   * same as whether it is asked. The gate offers all three ways in on every
+   * visit, so the question is on screen every time; this flag is what makes
+   * the seated aircraft a real answer rather than a default, and it is what
+   * a link carrying ?craft= writes so that it can skip the gate. Unlike the
+   * mode, which is what this session is for and is never remembered, the
+   * aircraft is a PREFERENCE: the seated one is what the cursor opens on,
+   * and the Quad screen carries the row for every later change.
    */
   airframeAsked: false,
   /*
@@ -2140,6 +2142,87 @@ function craftSvg(a) {
 }
 
 /*
+ * THE THREE WAYS IN, and they are the whole of the front door.
+ *
+ * This used to be two questions in a row. Which aircraft, five inch or
+ * whoop, and then race or freestyle, and the second one was skipped on the
+ * whoop because a 65 mm machine has nowhere to freestyle. So a pilot who
+ * came to fly pressed twice, and what the second press asked depended on
+ * what the first one answered: choosing the five inch produced a question
+ * the whoop had not been asked. The owner reported exactly that, and it is
+ * the report this table answers.
+ *
+ * Between the two questions there are three legal answers and no more. The
+ * whoop has no freestyle, so the pairs are five inch racing, whoop racing,
+ * and freestyle, which is the five inch. One screen, three cards, one press.
+ * The objection the old aircraft gate wrote down was that a third card
+ * beside Race and Freestyle would pretend racing on a whoop was not a real
+ * answer; it is answered by racing on a whoop being one of the three cards
+ * rather than by asking twice.
+ *
+ * A card carries both halves of the answer, so act() seats the aircraft and
+ * sets the mode in one go. The AIRCRAFT is remembered in settings and the
+ * MODE deliberately is not, which is unchanged: what the cursor opens on is
+ * the seated aircraft's card, and every visit still passes through here.
+ *
+ * The pictures are frames of the real renderer, shipped as files by
+ * scripts/gatecards.js, because the screen a first visit opens on has to
+ * paint before anything has been flown and with no network. The plan
+ * drawing over each one is craftSvg, and the two machines are drawn to ONE
+ * scale in one viewBox, so the whoop is a fifth of the width of the five
+ * inch on its card because it is a fifth of the width of it on a bench. A
+ * photograph of a room and a photograph of a field cannot say that: they
+ * are both a picture that fills a card.
+ */
+const WAYS = [
+  {
+    id: 'race-5inch',
+    airframe: '5inch',
+    mode: 'race',
+    label: 'Five inch racing',
+    art: 'assets/gate/race.jpg',
+    blurb: 'A gated track on a sixty metre field, against the clock. A 710 gram 6S quad at forty metres a second, and every lap you finish goes to the public leaderboard.',
+    facts: ['6S', '220 mm', 'The board'],
+  },
+  {
+    id: 'race-whoop65',
+    airframe: 'whoop65',
+    mode: 'race',
+    label: 'Whoop racing',
+    art: 'assets/gate/whoop.jpg',
+    blurb: 'The same clock, indoors. A 23 gram 1S ducted whoop through a track that fits in a living room, on gates a fifth the size and three times the angular acceleration.',
+    facts: ['1S', '65 mm', 'Indoors'],
+  },
+  {
+    id: 'freestyle-5inch',
+    airframe: '5inch',
+    mode: 'freestyle',
+    label: 'Freestyle',
+    art: 'assets/gate/freestyle.jpg',
+    /* No clock and no score in the line, because neither is on until a
+     * pilot asks for them. See DEFAULTS.freestyleScoring. The aircraft is
+     * named because this card seats one: the town is five hundred metres
+     * across and it is the five inch's. */
+    blurb: 'A whole town to fly around on the five inch. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. No clock, no gates, and scoring is a switch inside.',
+    /* The mode's three, not the machine's, and the machine is on the card
+     * anyway: the plan mark over the picture is the five inch's. Three
+     * words that fit one line on a landscape phone, where the blurb is
+     * hidden and these are the whole of the card. */
+    facts: ['No gates', 'No clock', 'One town'],
+  },
+].map((w) => ({ ...w, action: `way-${w.id}` }));
+
+/* The way that is seated right now, which is what the gate's cursor opens
+ * on and what a menu that has been backed out of returns to. The mode is
+ * only set once the gate has been answered, so before that the racing card
+ * of the seated aircraft is the standing answer. */
+function seatedWay(settings, mode) {
+  return WAYS.find((w) => w.airframe === settings.airframe && w.mode === (mode || 'race'))
+    || WAYS.find((w) => w.airframe === settings.airframe)
+    || WAYS[0];
+}
+
+/*
  * The aircraft, when a link names it. Same rule as linkedMode: somebody
  * arriving from the builder or the board with a whoop track in hand has
  * already answered the question, so asking it would be a screen in front of
@@ -2175,11 +2258,12 @@ export class Ui {
     this.settings = loadSettings();
     this.firstRun = detectFirstRun();
     /*
-     * RACE OR FREESTYLE. THE FIRST QUESTION, AND THE ONLY ONE ASKED EVERY
-     * VISIT.
+     * WHAT THIS SESSION IS FOR, which is half of the one question the front
+     * door asks. The other half is which aircraft, below, and one card on
+     * the gate answers both: see WAYS.
      *
-     * 'race', 'freestyle', or null for "not asked yet", which is what the
-     * title screen draws as the two row gate.
+     * 'race', 'freestyle', or null for "not asked yet", which is one of the
+     * two ways the gate is up.
      *
      * It is NOT in the settings blob and is deliberately not remembered.
      * The two are not a preference, they are what this session is for: the
@@ -2196,21 +2280,23 @@ export class Ui {
      * still open.
      *
      * A link that names what to fly answers it without asking: see
-     * linkedMode.
+     * linkedMode. The gate is up while EITHER half is unanswered, which is
+     * what onGate() says, so a link has to answer both to skip it.
      */
     this.mode = linkedMode();
     /*
-     * WHICH AIRCRAFT.
+     * WHICH AIRCRAFT, the other half.
      *
-     * It sits IN FRONT of the Race or Freestyle gate, because the two
-     * questions are not the same shape and putting a third card beside Race
-     * and Freestyle would pretend they were: Race on a whoop and Race on a
-     * five inch are both real answers.
+     * It used to be a gate of its own IN FRONT of Race or Freestyle, on the
+     * argument that the two questions are not the same shape. They are not,
+     * but between them they have three legal answers, and asking twice for
+     * three answers cost a press and made what the second screen asked
+     * depend on what the first one answered. One gate, three cards: WAYS.
      *
      * The answer IS remembered, in settings.airframe, because the aircraft
      * is a preference rather than a statement about today. What is not
-     * remembered is that the question was asked: it is the root of the menu
-     * now and it opens every visit. See craftGate below.
+     * remembered is that the question was asked: the gate is the root of the
+     * menu and it opens every visit. See craftGate below.
      */
     const linkedAf = linkedCraft();
     if (linkedAf) {
@@ -2228,21 +2314,26 @@ export class Ui {
       saveSettings(this.settings);
     }
     /*
-     * THE AIRCRAFT IS THE ROOT MENU, every visit and not only the first.
+     * THE GATE IS THE ROOT MENU, every visit and not only the first.
      *
-     * It used to be a first run question: answer it once and it never came
-     * back, and the only way to change aircraft after that was three rows
-     * deep under Quad. That made the whoop half of this product something a
-     * pilot had to already know existed. It is not a setting inside the
-     * experience, it IS the experience, so it is the first thing the title
-     * asks and the thing Escape backs out to.
+     * The aircraft used to be a first run question: answer it once and it
+     * never came back, and the only way to change aircraft after that was
+     * three rows deep under Quad. That made the whoop half of this product
+     * something a pilot had to already know existed. It is not a setting
+     * inside the experience, it IS the experience, so it is on the first
+     * thing the title asks and on the thing Escape backs out to.
+     *
+     * This flag is the aircraft's half of "has the gate been answered". It
+     * is false when a link named the aircraft, and the gate still opens
+     * unless the mode is answered too, which is what onGate() decides.
      *
      * airframeAsked still matters: it is what lets a LINK carrying ?craft=
      * skip straight past this, and it is what the choice screen writes so
      * the seated aircraft is a real answer rather than a default.
      */
     this.craftGate = !linkedAf;
-    /* A link that names the whoop has answered the mode question too. */
+    /* A link that names the whoop has answered the mode question too, so
+     * that pair of link parameters is still one press from the air. */
     if (this.syncMode()) {
       saveSettings(this.settings);
     }
@@ -2282,14 +2373,14 @@ export class Ui {
     this.focusId = null;
     this.cursor = 0;
     /*
-     * On the aircraft gate the cursor starts on the aircraft that is SEATED,
-     * so a returning whoop pilot sees their own answer under the cursor and
-     * two presses of Enter from a cold start put them back where they were.
+     * On the gate the cursor starts on the card that is SEATED, so a
+     * returning whoop pilot sees their own answer under the cursor and two
+     * presses of Enter from a cold start put them back where they were.
      * renderMenu only re-picks when the cursor has fallen off the list, and
      * zero is a valid row here, so the first paint has to be told.
      */
-    if (this.craftGate) {
-      const at = AIRFRAMES.findIndex((a) => a.id === this.settings.airframe);
+    if (this.craftGate || !this.mode) {
+      const at = WAYS.findIndex((w) => w.id === seatedWay(this.settings, this.mode).id);
       this.cursor = at >= 0 ? at : 0;
     }
     /* Which course card the player has chosen, by courseCardKey, and the
@@ -4279,87 +4370,46 @@ export class Ui {
        */
       const trouble = padTroubleItem(this.padInfo);
       /*
-       * THE GATE. TWO PICTURES, AND NOTHING ELSE ON THE PAGE TO ANSWER.
+       * THE GATE. THREE PICTURES, AND NOTHING ELSE ON THE PAGE TO ANSWER.
        *
        * A pilot arriving does not open a menu wanting "Quad" or "Pilot".
-       * They want to race or they want to mess about, and until that is
-       * answered every other row on this screen is furniture. It used to be
-       * answered halfway down a list of eleven, twice: once by the Race row
-       * and once by the Freestyle row, each of which was really a location
-       * picker wearing a mode's name. Before that there was a first run
-       * split in front of it, so a new pilot answered two questions to
-       * reach a third.
+       * They want to race or they want to mess about, on one machine or the
+       * other, and until that is answered every other row on this screen is
+       * furniture. It used to be answered halfway down a list of eleven,
+       * twice: once by the Race row and once by the Freestyle row, each of
+       * which was really a location picker wearing a mode's name. Then it
+       * was two card screens in a row. Now it is one, and WAYS is where the
+       * three cards and the argument for them live.
        *
-       * WHY CARDS AND NOT ROWS. The difference between these two is a
+       * WHY CARDS AND NOT ROWS. The difference between these three is a
        * difference between PLACES, and a place is the thing a sentence is
-       * worst at. Two menu rows reading "Race" and "Freestyle" ask somebody
-       * who has never flown either to choose between two words. The picker
-       * screens learned this already, which is why the worlds are cards
-       * there; this is the same lesson one screen earlier, where it matters
-       * most because it is the first thing anybody sees.
+       * worst at. Three menu rows ask somebody who has never flown any of
+       * them to choose between words. The picker screens learned this
+       * already, which is why the worlds are cards there; this is the same
+       * lesson one screen earlier, where it matters most because it is the
+       * first thing anybody sees.
        *
-       * The pictures are frames of the real renderer, shipped as files by
-       * scripts/gatecards.js. They cannot be the shell's own recorded clips:
-       * those are recorded from the world the pilot is in, so the world
-       * nobody has visited yet, which is exactly the one this screen has to
-       * show, never has one.
-       *
-       * Neither card is `primary`. The bottom bar's button paints the
-       * primary item, and a bar reading "Race" under a card reading "Race"
-       * is the same choice drawn twice.
+       * None of the three is `primary`. The bottom bar's button paints the
+       * primary item, and a bar reading "Freestyle" under a card reading
+       * "Freestyle" is the same choice drawn twice.
        *
        * No `note` either: the help column would print it floating over the
        * cards, and every word of it is already on the card in a place that
-       * says which of the two it belongs to.
+       * says which of the three it belongs to.
        */
-      /*
-       * THE AIRCRAFT GATE, IN FRONT OF THE MODE GATE.
-       *
-       * Asked once on a first run. Two cards rather than a row because the
-       * two machines are not two words, they are two different games: one
-       * is flown across a forty metre field at forty metres a second and the
-       * other is flown round a living room. A sentence does not carry that
-       * and a card can.
-       *
-       * It is deliberately NOT a third card beside Race and Freestyle. Those
-       * two answer "what is this session for" and the aircraft answers "what
-       * am I flying", and Race on a whoop is a real and common answer to
-       * both.
-       */
-      if (this.craftGate) {
-        return AIRFRAMES.map((a) => ({
-          label: a.name,
-          card: `craft-${a.id}`,
-          svg: craftSvg(a),
-          blurb: a.blurb,
-          facts: a.facts,
-          action: `craft-${a.id}`,
-        }));
-      }
-      if (!this.mode) {
+      if (this.onGate()) {
         return [
-          {
-            label: 'Race',
-            card: 'race',
-            art: 'assets/gate/race.jpg',
-            blurb: 'A gated track against the clock. Yours and the board\u2019s, flown gate by gate, and every lap you finish goes to the public leaderboard.',
-            facts: ['Gates', 'A lap clock', 'The board'],
-            action: 'mode-race',
-          },
-          {
-            label: 'Freestyle',
-            card: 'freestyle',
-            art: 'assets/gate/freestyle.jpg',
-            /* No clock and no score in either line, because neither is on
-             * until a pilot asks for them. The card that answers the mode
-             * question has to describe what answering it gets you. See
-             * DEFAULTS.freestyleScoring. */
-            blurb: 'A whole town to fly around. Roofs, alleys, a level crossing, a works, a municipal pool and a training field. No clock, no gates, and scoring is a switch inside.',
-            facts: ['No gates', 'No clock', 'One town'],
-            action: 'mode-freestyle',
-          },
+          ...WAYS.map((w) => ({
+            label: w.label,
+            card: w.id,
+            art: w.art,
+            svg: craftSvg(airframeById(w.airframe)),
+            blurb: w.blurb,
+            facts: w.facts,
+            action: w.action,
+          })),
           ...(trouble ? [trouble] : []),
-        ].filter((it) => it.action !== 'mode-freestyle' || freestyleOffered(this.settings.airframe));
+        ];
       }
       const m = MAPS.find((x) => x.id === s.map) ?? MAPS[0];
       const seat = m.id === 'custom' ? activeCourseSummary() : null;
@@ -5590,9 +5640,9 @@ export class Ui {
        * onGate(), NOT `!this.mode`, and this line was the whole of a bug
        * that made the front page unusable.
        *
-       * There are TWO gates now, the aircraft and then Race or Freestyle,
-       * and `!this.mode` only ever saw the second one. So whenever the mode
-       * was already answered while the AIRCRAFT gate was still open, the
+       * The gate has two halves, the aircraft and the mode, and
+       * `!this.mode` only ever saw one of them. So whenever the mode
+       * was already answered while the aircraft still was not, the
        * title dressed itself as the menu: `is-gate` never went on, and with
        * it went the rule that lays the two cards out
        * (`.screen-title.is-gate .gate-cards`), the rules that take the keep
@@ -6865,7 +6915,7 @@ export class Ui {
   }
 
   /*
-   * The gate's two cards.
+   * The gate's three cards.
    *
    * Built from the same items() the rows come from, so there is one list and
    * one cursor over the whole screen, and rebuilt only when the set of cards
@@ -6891,24 +6941,7 @@ export class Ui {
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', it.label);
         const art = el('div', 'gate-card-art');
-        if (it.svg) {
-          /*
-           * A DRAWING, NOT A PHOTOGRAPH, and only the aircraft cards use it.
-           *
-           * Race and Freestyle are photographs because they are answering
-           * "what is this place like", and a picture of a town is the only
-           * honest answer to that. The aircraft cards are answering "how big
-           * is this thing", and the two aircraft are 220 mm and 65 mm across.
-           * A photograph of each, cropped to the same card, throws away the
-           * one fact the pilot most needs, because both fill the frame.
-           *
-           * So both are drawn to ONE scale in one viewBox, plan view, and
-           * the whoop is a third the size of the five inch on the card
-           * because it is a third the size in the world. See craftSvg.
-           */
-          art.classList.add('gate-card-art-drawn');
-          art.innerHTML = it.svg;
-        } else {
+        if (it.art) {
           const img = el('img', 'gate-card-shot');
           img.src = it.art;
           /* The name is right underneath it, so the picture is decoration to
@@ -6916,6 +6949,27 @@ export class Ui {
           img.alt = '';
           img.decoding = 'async';
           art.append(img);
+        }
+        if (it.svg) {
+          /*
+           * A DRAWING OVER THE PHOTOGRAPH, and the two say different things.
+           *
+           * The photograph answers "what is this place like", and a picture
+           * of a town, a field or a room is the only honest answer to that.
+           * It cannot answer "how big is the thing I am flying", because
+           * whatever is in front of the lens fills the frame: the five inch
+           * and the whoop are 220 mm and 65 mm across and both would be a
+           * quad on a card.
+           *
+           * So the plan is drawn over the corner of each, and BOTH ARE DRAWN
+           * TO ONE SCALE in one viewBox, which is why the whoop's mark is a
+           * fifth of the width of the five inch's. That relationship is the
+           * single most useful thing these cards can tell somebody who has
+           * flown one and not the other. See craftSvg.
+           */
+          const mark = el('div', 'gate-card-mark');
+          mark.innerHTML = it.svg;
+          art.append(mark);
         }
         const body = el('div', 'gate-card-body');
         const name = el('div', 'gate-card-name', it.label);
@@ -8169,9 +8223,9 @@ export class Ui {
     return this.screen !== 'flight';
   }
 
-  /* The title while the Race or Freestyle question is still open. Three
+  /* The title while the question of what to fly is still open. Three
    * things behave differently there and nowhere else on this screen: the
-   * two choices are cards, the left and right arrows move between them,
+   * three choices are cards, the left and right arrows move between them,
    * and a radio's sticks walk them instead of posing the airframe. */
   /*
    * Seat the aircraft the loaded track was built for, if it is not already
@@ -8246,16 +8300,16 @@ export class Ui {
   /*
    * Keep the mode legal for the seated aircraft.
    *
-   * On a whoop the Race or Freestyle question has one answer, so it is
-   * answered rather than asked: see freestyleOffered. That covers both a
-   * leftover 'freestyle' from a five inch and a mode that was never set,
-   * because a gate with one card on it is not a question either.
+   * A whoop has nowhere to freestyle, so on one the mode is not a question:
+   * see freestyleOffered. That covers a leftover 'freestyle' from the five
+   * inch and a mode that was never set, and it is what makes a ?craft=whoop65
+   * link one press from the air rather than a card away from it.
    *
-   * The aircraft gate is the one place this must not run. There the mode is
-   * deliberately blank and the pilot is one press from changing which
-   * aircraft is seated, so answering the next question on their behalf
-   * before they have answered this one is how a five inch pilot would end
-   * up skipping the Race or Freestyle gate on the way back in.
+   * The gate is the one place this must not run, and craftGate is the half
+   * of it that says so. There the mode is deliberately blank and the pilot
+   * is one press from seating the OTHER aircraft, so answering the mode on
+   * a whoop's behalf while the cards are up would close the gate under a
+   * pilot who was about to choose the five inch.
    *
    * The SEAT moves with the mode, because a mode on its own is a word: a
    * pilot who swaps to the whoop from inside the town would otherwise be in
@@ -8286,11 +8340,11 @@ export class Ui {
   }
 
   /* What the title's one Escape hint is named for: the screen it lands on.
-   * A whoop has no Race or Freestyle gate, so on a whoop it lands on the
-   * aircraft and says so. Naming the destination rather than saying Back is
-   * deliberate, see legendFor. */
-  modeGateLabel() {
-    return freestyleOffered(this.settings.airframe) ? 'Race or Freestyle' : 'Aircraft';
+   * One name now, because there is one gate whatever is seated. Naming the
+   * destination rather than saying Back is deliberate, see legendFor, and
+   * "what to fly" is what the three cards between them ask. */
+  gateLabel() {
+    return 'What to fly';
   }
 
   onGate() {
@@ -8311,16 +8365,20 @@ export class Ui {
   /*
    * Where the cursor lands when the title's cursor is reset.
    *
-   * On the aircraft gate it lands on the aircraft that is SEATED, so a
-   * returning whoop pilot sees their own answer under the cursor rather than
-   * the five inch card, and pressing Enter twice from a cold start keeps
-   * them where they were. Everywhere else it is the first row that can be
-   * chosen, which is what it has always been.
+   * On the gate it lands on the card that is SEATED, so a returning whoop
+   * pilot sees their own answer under the cursor rather than the five inch,
+   * and pressing Enter twice from a cold start keeps them where they were.
+   * The aircraft is what is remembered, so before the mode is answered the
+   * standing answer is that machine's racing card: see seatedWay.
+   * Everywhere else it is the first row that can be chosen, which is what it
+   * has always been.
    */
   titleStop() {
     const items = this.items();
-    if (this.screen === 'title' && this.craftGate) {
-      const at = items.findIndex((it) => it.action === `craft-${this.settings.airframe}`);
+    if (this.onGate()) {
+      const at = items.findIndex(
+        (it) => it.action === seatedWay(this.settings, this.mode).action,
+      );
       if (at >= 0) {
         return at;
       }
@@ -8337,11 +8395,10 @@ export class Ui {
     if (!keys || !copy) {
       return;
     }
-    /* The aircraft gate is the root: nothing behind it, so no Escape key on
-     * the line. The mode gate and the menu both have somewhere to go back
-     * to, and the copy below names which. */
-    const root = gate && this.craftGate;
-    const want = root ? ['←→', 'Enter'] : (gate ? ['←→', 'Enter', 'Esc'] : ['↑↓', 'Enter', 'Esc']);
+    /* The gate is the root: nothing behind it, so no Escape key on the
+     * line. The menu behind it has somewhere to go back to, and the copy
+     * below names it. */
+    const want = gate ? ['←→', 'Enter'] : ['↑↓', 'Enter', 'Esc'];
     const have = [...keys.children].map((k) => k.textContent);
     if (have.length !== want.length || want.some((k, i) => have[i] !== k)) {
       keys.textContent = '';
@@ -8349,12 +8406,10 @@ export class Ui {
         keys.append(el('kbd', null, k));
       }
     }
-    if (root) {
+    if (gate) {
       copy.textContent = 'Left and right choose, Enter opens it. On a radio: pitch to move, roll right to choose.';
-    } else if (gate) {
-      copy.textContent = 'Left and right choose, Enter opens it, Escape goes back to the aircraft. On a radio: pitch to move, roll right to choose.';
     } else {
-      copy.textContent = 'Arrow keys move, Enter selects, Escape goes back to Race or Freestyle. A radio banks the quad. Any switch selects.';
+      copy.textContent = 'Arrow keys move, Enter selects, Escape goes back to what to fly. A radio banks the quad. Any switch selects.';
     }
   }
 
@@ -9486,8 +9541,8 @@ export class Ui {
       out.push({ keys: [], text: this.cardScreen() ? 'Tap a card' : 'Tap a row' });
       if (this.screen !== 'title') {
         out.push({ keys: [], text: 'Back', action: 'back' });
-      } else if (this.mode && !this.craftGate) {
-        out.push({ keys: [], text: this.modeGateLabel(), action: 'mode-gate' });
+      } else if (!this.onGate()) {
+        out.push({ keys: [], text: this.gateLabel(), action: 'mode-gate' });
       }
       return out;
     }
@@ -9508,19 +9563,19 @@ export class Ui {
     out.push({ keys: [pad ? 'A' : 'Enter'], text: 'Choose' });
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
-    } else if (this.mode && !this.craftGate) {
-      /* NOT ON THE AIRCRAFT GATE. That gate is the root and Escape does
-       * nothing there, so offering the key is the joke the block below
-       * says it is avoiding. `this.mode` was the proxy for "past the
-       * gates" and it stopped being one when a second gate landed in
-       * front of it: a whoop answers the mode by itself and a link that
-       * names the map answers it for everyone. */
+    } else if (!this.onGate()) {
+      /* NOT ON THE GATE. The gate is the root and Escape does nothing
+       * there, so offering the key is the joke the block below says it is
+       * avoiding. onGate() is the one definition of "is the gate up", and
+       * this asks it rather than reading the two flags itself: `this.mode`
+       * alone was the proxy once and it stopped being one the moment a
+       * link could answer the mode without answering the aircraft. */
       /*
-       * The title answers Escape now: it reopens the Race or Freestyle
-       * gate, which is the only way to change mode without reloading. It is
-       * named rather than called Back, because Back on the front page reads
-       * like it leaves the game, and because a pilot looking for the other
-       * mode is looking for those two words.
+       * The title answers Escape now: it reopens the gate, which is the
+       * only way to change mode or aircraft without reloading. It is named
+       * rather than called Back, because Back on the front page reads like
+       * it leaves the game, and because a pilot looking for the other mode
+       * or the other machine is looking for the screen that offers both.
        *
        * Not on the gate itself, which has nothing behind it: a legend
        * offering a key that does nothing is worse than no legend.
@@ -9540,7 +9595,7 @@ export class Ui {
        * already on the screen, in the place that answers "how do I get
        * out"; all they were missing was a hit area.
        */
-      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.modeGateLabel(), action: 'mode-gate' });
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.gateLabel(), action: 'mode-gate' });
     }
     return out;
   }
@@ -9845,28 +9900,22 @@ export class Ui {
     }
     if (this.screen === 'title') {
       /*
-       * THREE LEVELS, AND ESCAPE WALKS ALL OF THEM.
+       * TWO LEVELS, AND ESCAPE WALKS BOTH.
        *
-       * The menu backs out to Race or Freestyle, and Race or Freestyle backs
-       * out to the aircraft, which is the root and where Escape stops. That
-       * last step is what makes the whoop findable: without it the only way
-       * to reach the other half of the product was three rows deep under
-       * Quad, and a pilot who did not know it was there never went looking.
+       * The menu backs out to the gate, and the gate is the root, where
+       * Escape stops. It used to be three, because the gate was two screens
+       * and a whoop skipped the second one, so how far Escape went depended
+       * on what was seated. One screen, one step, whatever is flying.
        *
-       * Two levels on a whoop, because there is no Race or Freestyle gate to
-       * stop at: see freestyleOffered. The menu backs straight out to the
-       * aircraft. Clearing the mode on that step is what lets syncMode leave
-       * it alone while the aircraft gate is open, so a pilot who answers the
-       * gate with the five inch gets their mode gate back.
+       * BOTH halves are cleared, because both are what the gate asks. The
+       * mode going null is also what lets syncMode leave it alone while the
+       * gate is open: see the comment there.
        */
-      if (this.mode && freestyleOffered(this.settings.airframe)) {
-        this.mode = null;
-      } else if (!this.craftGate) {
-        this.craftGate = true;
-        this.mode = null;
-      } else {
+      if (this.onGate()) {
         return;
       }
+      this.craftGate = true;
+      this.mode = null;
       if (this.onUiSound) {
         this.onUiSound('back');
       }
@@ -10191,46 +10240,49 @@ export class Ui {
      * asked and a menu row saying so would be a screen in the way.
      */
     /*
-     * Answering the aircraft gate. It writes the choice, remembers that it
-     * was asked, and falls through to the mode gate rather than launching
-     * anything: the pilot has said what they are flying, not what for.
+     * ANSWERING THE GATE, WHICH IS ONE PRESS AND BOTH HALVES OF THE ANSWER.
+     *
+     * It seats the aircraft, sets the mode, and then does exactly what
+     * answering the mode always did: seat what is going to be flown, or
+     * open the one room that can seat it. The two used to be two branches
+     * for two screens; a card carries both now, so this is one.
+     *
+     * The aircraft is seated BEFORE anything reads a seat. hasLoadedTrack
+     * and activeCourseSummary read the seat of the class that is current,
+     * one per class, so asking them first would ask about the machine the
+     * pilot has just stopped flying.
      */
-    if (action.startsWith('craft-')) {
-      const id = action.slice('craft-'.length);
-      if (AIRFRAME_IDS.includes(id)) {
-        seatAirframe(this.settings, id);
-        this.settings.airframeAsked = true;
-        this.craftGate = false;
-        /* On a whoop this answers the mode gate as well, so the pilot goes
-         * aircraft then straight to the menu. Before the store rather than
-         * after it, so the seat it moves is stored with the aircraft that
-         * moved it. */
-        this.syncMode();
-        saveSettings(this.settings);
-        /* The shell has to hear this before anything is flown: it is the
-         * call that swaps the plant in the compiled module and reloads the
-         * tune. main.js applies it between runs, which the title is. */
-        if (this.onSettings) {
-          this.onSettings(this.settings);
-        }
-        /*
-         * The cursor lands on the first row of whatever the answer opened,
-         * rather than staying on the index of the card that was pressed.
-         * The whoop is the second card, so on a whoop, which skips the mode
-         * gate, that index was the menu's second row: choosing an aircraft
-         * put the cursor on Track and the Fly button under it read as
-         * something else's. Same call back() makes for the same reason.
-         */
-        this.setCursor(this.titleStop());
-        this.renderMenu();
+    const way = WAYS.find((w) => w.action === action);
+    if (way) {
+      /*
+       * ONLY IF IT MOVED, and this guard is a bug fix rather than a tidy.
+       *
+       * seatAirframe is the deliberate swap: it takes the tune, the pack,
+       * the stock rates and THE CAMERA with it, and the camera lines are
+       * unconditional, so calling it with the aircraft that is already
+       * seated writes that aircraft's stock cameraFov and cameraAngle over
+       * the pilot's own. The gate is answered on every visit, so a pilot who
+       * had set 45 degrees of tilt on the Quad screen got it reset to the
+       * stock 20 every time they opened the simulator. The old aircraft gate
+       * called it unconditionally too, so this is older than the three
+       * cards; it is fixed here because this is the line that does it.
+       */
+      if (way.airframe !== this.settings.airframe) {
+        seatAirframe(this.settings, way.airframe);
       }
-      return;
-    }
-    if (action === 'mode-race' || action === 'mode-freestyle') {
-      this.mode = action === 'mode-race' ? 'race' : 'freestyle';
+      this.settings.airframeAsked = true;
+      this.craftGate = false;
+      this.mode = way.mode;
+      saveSettings(this.settings);
+      /* The shell has to hear this before anything is flown: it is the
+       * call that swaps the plant in the compiled module and reloads the
+       * tune. main.js applies it between runs, which the title is. */
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
       this.returnTo = 'title';
       this.roomFrom = null;
-      if (this.mode === 'race') {
+      if (way.mode === 'race') {
         if (!hasLoadedTrack()) {
           this.show('courses');
           return;
@@ -10269,10 +10321,15 @@ export class Ui {
         this.seatMap(want.id);
         return;
       }
-      /* The seat already agrees with the answer, so the gate was one
-       * keypress and the menu is behind it. Same list swap as above, so the
-       * cursor lands on Fly rather than two rows into a list that just
-       * changed underneath it. */
+      /*
+       * The seat already agrees with the answer, so the gate was one
+       * keypress and the menu is behind it. The cursor lands on the first
+       * row of what the answer opened rather than staying on the index of
+       * the card that was pressed: the third card is the third row, so
+       * choosing Freestyle would otherwise put the cursor on the menu's
+       * third row and the Fly button under it would read as something
+       * else's. Same call back() makes for the same reason.
+       */
       this.setCursor(this.titleStop());
       this.renderMenu();
       return;
@@ -10556,13 +10613,10 @@ export class Ui {
     if (action === 'mode-gate') {
       /* Exactly what Escape from the title does, and it has to stay exactly
        * that: the gate is the one screen with nothing behind it, so leaving
-       * mode set would show the question with a menu still under it. */
+       * either half answered would show the question with a menu still
+       * under it. Both halves, because the one gate asks both. */
       this.mode = null;
-      if (!freestyleOffered(this.settings.airframe)) {
-        /* On a whoop there is no mode gate behind the menu, so this row is
-         * the aircraft's and lands one level further out. */
-        this.craftGate = true;
-      }
+      this.craftGate = true;
       this.show('title');
       this.setCursor(this.titleStop());
       this.renderMenu();

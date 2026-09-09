@@ -25,6 +25,7 @@
  */
 
 import { buildFieldScene } from '../render/scene.js';
+import { yieldToPaint } from '../ui/loading.js';
 import { buildComposer } from '../render/post.js';
 import { qualityFor } from '../render/quality.js';
 
@@ -52,8 +53,25 @@ export function attachComposer(shell, map, q) {
   return map;
 }
 
+/*
+ * Report a phase AND give the loading screen a frame to draw it in.
+ *
+ * buildFieldScene awaits whatever its progress callback returns, so this is
+ * where the map decides that a report is worth a paint. It is: without it
+ * the seven phases inside the build all land in one blocked run of the main
+ * thread and the bar shows none of them. Two frames and a task is the
+ * shortest sequence that guarantees the pixels are actually on screen; see
+ * yieldToPaint in src/ui/loading.js for why one is not enough.
+ */
+function reporter(progress) {
+  return async (f) => {
+    progress(f);
+    await yieldToPaint();
+  };
+}
+
 export async function buildMap(shell, onProgress, options) {
   const progress = onProgress ?? (() => {});
   const q = qualityFor(options && options.quality);
-  return attachComposer(shell, buildFieldScene(shell, progress, null, q), q);
+  return attachComposer(shell, await buildFieldScene(shell, reporter(progress), null, q), q);
 }

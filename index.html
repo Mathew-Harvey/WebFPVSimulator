@@ -3520,15 +3520,74 @@
         font-style: normal; color: #ff8f8f;
       }
       .loading-track {
-        width: min(420px, 68vw); height: 5px; border-radius: 3px;
-        margin-top: 28px;
+        position: relative;
+        width: min(420px, 68vw); height: 6px; border-radius: 3px;
+        margin-top: 26px;
         background: rgba(16, 22, 17, 0.8);
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.28);
         overflow: hidden;
       }
+      /*
+       * TRANSFORM, NOT WIDTH, AND IT IS THE WHOLE FIX.
+       *
+       * Building a world is seconds of synchronous work on the main thread:
+       * about nineteen thousand meshes for the town, every sign and fascia
+       * painted with Canvas2D as it goes. While that runs, nothing driven
+       * from JavaScript moves and neither does a width transition, because
+       * width is layout and layout is the main thread's. So the bar sat at
+       * the end of the last cheap stage, and then jumped to full when the
+       * thread came back. Reported, in those words: fifteen percent for a
+       * while and then straight to a hundred.
+       *
+       * A transform transition is composited. It keeps running through a
+       * blocked main thread, which is exactly the window where a loading
+       * screen has to prove it is alive. See aim() in src/ui/loading.js for
+       * what it is aimed at and why it never reaches the end of a stage it
+       * cannot measure.
+       */
       .loading-fill {
-        height: 100%; width: 0%; background: var(--sakura);
-        transition: width 0.15s linear;
+        position: absolute; inset: 0;
+        transform: scaleX(0);
+        transform-origin: left center;
+        background: var(--sakura);
+        transition: transform 0.18s linear;
+        will-change: transform;
+      }
+      /*
+       * The sweep. It says nothing about progress and is not pretending to:
+       * it says the page is still alive, which during a blocked second is
+       * the only true thing there is to say. Same argument, same mechanism
+       * and same reason as the landing page's boot sweep.
+       */
+      .loading-sweep {
+        position: absolute; inset: 0;
+        background: linear-gradient(90deg,
+          transparent, rgba(243, 234, 212, 0.55), transparent);
+        transform: translateX(-100%);
+        animation: loading-sweep 1.35s linear infinite;
+        will-change: transform;
+      }
+      @keyframes loading-sweep { to { transform: translateX(100%); } }
+      /*
+       * What is happening, how far through the load it is, and how long it
+       * has taken. The step count is what gives the wait a shape: a stage
+       * that outstays its slot is still one of six, and the next one is
+       * still coming. The seconds stop counting while the thread is blocked
+       * and catch up when it returns, which is honest and is why the bar
+       * and the sweep are the ones carrying that window.
+       */
+      .loading-meta {
+        margin-top: 12px;
+        display: flex; gap: 10px; align-items: baseline;
+        font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+        color: rgba(157, 179, 200, 0.75);
+      }
+      .loading-meta .loading-elapsed { color: rgba(157, 179, 200, 0.5); }
+      @media (prefers-reduced-motion: reduce) {
+        /* The sweep is decoration and goes. The fill is not: it is the one
+           thing on this screen carrying how far through the load we are, so
+           it keeps its transition. */
+        .loading-sweep { animation: none; opacity: 0; }
       }
 
       .name-dialog {
@@ -3794,7 +3853,8 @@
     <div id="loading">
       <div class="loading-stage">loading</div>
       <div class="loading-joke">"I complimented my quad on its propellers. It said thanks for the props."</div>
-      <div class="loading-track"><div class="loading-fill"></div></div>
+      <div class="loading-track"><div class="loading-fill"></div><div class="loading-sweep"></div></div>
+      <div class="loading-meta"><span class="loading-step"></span><span class="loading-elapsed"></span></div>
       <!-- Empty until something fails. See fail() in src/ui/loading.js: a
            boot that dies used to leave a red bar, a sentence and no way
            out, which is a dead end on the one screen a stranded visitor is

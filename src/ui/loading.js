@@ -93,6 +93,95 @@ const STAGE_NAMES = {
   frame: 'First frame',
 };
 
+/*
+ * WHAT IS HAPPENING, IN WORDS, AND IT IS ON SCREEN THE WHOLE TIME NOW.
+ *
+ * This screen used to say "loading" and nothing else until a stage had
+ * outstayed STALL_MS, on the argument that a parade of stage names is noise
+ * on a load where every stage is over in under a second. That argument was
+ * right about a healthy load and wrong about the one the owner reported: the
+ * world stage is most of the bar and most of the wall clock, and through all
+ * of it the screen said one unchanging word.
+ *
+ * A line that CHANGES five times is the cheapest proof a page can offer that
+ * it is getting somewhere, and the change lands at the moment the previous
+ * thing finished, which is precisely the information a waiting visitor
+ * wants. The stall behaviour is unchanged and sits on top: once a stage
+ * outstays its welcome the line says so, and adds the detail the caller
+ * passed, which is what separates a slow network from a slow machine.
+ *
+ * Present participles, because they name work in progress rather than a
+ * component: "Building the world" is a thing happening to you, "World" is a
+ * label on a box.
+ */
+const STAGE_DOING = {
+  three: 'Loading the renderer',
+  board: 'Asking the leaderboard',
+  sim: 'Starting the flight controller',
+  module: 'Loading the map',
+  world: 'Building the world',
+  frame: 'Drawing the first frame',
+};
+
+/*
+ * How much of a stage's slot the bar may cover before the stage actually
+ * reports anything.
+ *
+ * The bar is aimed at this fraction of the slot over the stage's MEASURED
+ * duration, with an easing that covers most of the distance early and then
+ * creeps. Two properties matter and both are deliberate. It never reaches
+ * the end of a slot on the estimate alone, so a stage that overruns leaves a
+ * bar still moving inside its own territory rather than a bar sitting on the
+ * next stage's doorstep. And a real event always wins: progress() and done()
+ * re-aim it forward the moment they arrive.
+ *
+ * 0.86 rather than something nearer 1 because the last tenth of a slot is
+ * where a long stage lives, and a bar with nowhere left to go is the thing
+ * this whole file exists to avoid.
+ */
+const CREEP_TO = 0.86;
+
+/*
+ * And how long the creep takes, as a multiple of the measured duration.
+ *
+ * MUCH longer than the measurement, and the asymmetry is the point. A creep
+ * that is too slow costs a jump at the end, at the moment the screen is
+ * about to fade out anyway. A creep that is too fast costs a bar parked
+ * against the top of its slot with the load still running, which is the
+ * exact complaint this file is answering, moved higher up the track.
+ *
+ * At 3.5 the bar is about three fifths of the way through a stage's slot
+ * when that stage was expected to finish, and still moving at three times
+ * its estimate. Measured against the town on this container's software
+ * rasteriser, which takes about twice its recorded build time: the bar
+ * moves for the whole of it.
+ */
+const CREEP_FACTOR = 3.5;
+
+/*
+ * The easing. Fast out of the gate, then progressively slower, so the bar
+ * spends its time where the stage does. A linear creep to the same place
+ * looks confident for a second and then wrong for five.
+ */
+const CREEP_EASE = 'cubic-bezier(0.2, 0.4, 0.3, 1)';
+
+/*
+ * THE FLOOR UNDER A STAGE'S SHARE OF THE BAR.
+ *
+ * The weights are measured durations and the town's build is nine seconds of
+ * the ten, so on that map the world stage owns 94 percent of the bar and the
+ * four stages before it share the first six. Honest, and useless: four
+ * things really did happen in the first second and the bar could not show
+ * any of them, so the load began with a bar that appeared not to move.
+ *
+ * Every stage gets at least this much of the track, and the rest is shared
+ * out by measurement as before. It is a floor on the DRAWING, not a guess
+ * about the timing: the bar stops being linear in seconds and starts being
+ * legible in stages, which is the trade this screen wants. Six stages at
+ * five percent is thirty, so the world still owns most of what is left.
+ */
+const MIN_SHARE = 0.05;
+
 export const JOKE_MS = 4800;
 
 /*
@@ -151,8 +240,11 @@ export function planStages(ids, worldMs) {
     ms: id === 'world' ? (worldMs ?? MEASURED_MS.world) : MEASURED_MS[id],
   }));
   const total = stages.reduce((a, s) => a + s.ms, 0);
+  /* The floor first, then the measurement over what is left. See MIN_SHARE. */
+  const floor = Math.min(MIN_SHARE, 1 / (stages.length || 1));
+  const room = 1 - floor * stages.length;
   for (const s of stages) {
-    s.weight = s.ms / total;
+    s.weight = floor + (total > 0 ? (s.ms / total) * room : room / stages.length);
   }
   return stages;
 }
@@ -380,8 +472,16 @@ export class Loading {
   constructor(root) {
     this.root = root;
     this.bar = root.querySelector('.loading-fill');
+    this.sweepEl = root.querySelector('.loading-sweep');
     this.stageEl = root.querySelector('.loading-stage');
     this.jokeEl = root.querySelector('.loading-joke');
+    this.stepEl = root.querySelector('.loading-step');
+    this.elapsedEl = root.querySelector('.loading-elapsed');
+    /* Where the bar has been TOLD to go, which is not where it is: the
+     * transition between the two is the whole point, and it runs on the
+     * compositor. Kept so the bar can never be aimed backwards, which is
+     * the one thing a progress bar must never do. */
+    this.aimed = 0;
     this.stages = [];
     this.index = -1;
     this.frac = 0;
@@ -427,13 +527,28 @@ export class Loading {
     this.jokeEl.classList.remove('is-error');
     this.visible = true;
     this.stageEl.textContent = 'loading';
+    /* Back to nothing, with no transition, or the new load's first aim is a
+     * five second slide back from wherever the last one finished. */
+    this.aimed = 0;
+    this.bar.style.transition = 'none';
+    this.bar.style.transform = 'scaleX(0)';
+    /* Read it back, which forces the style to be applied before the next
+     * line makes it transitionable again. Without this the browser coalesces
+     * the two and the reset never happens. */
+    void this.bar.offsetWidth;
+    if (this.sweepEl) {
+      this.sweepEl.style.display = '';
+    }
     this.paint();
     if (!this.ticker) {
       this.ticker = setInterval(() => {
-        /* Both, because a stalled stage is by definition one that has stopped
-         * calling progress(), so the tick is the only thing still running. */
+        /* All of them, because a stalled stage is by definition one that has
+         * stopped calling progress(), so the tick is the only thing still
+         * running. */
         this.paintStage();
         this.paintJoke();
+        this.paintMeta();
+        this.creepOn();
       }, 250);
     }
   }
@@ -447,6 +562,19 @@ export class Loading {
     this.frac = 0;
     this.stageStartedAt = performance.now();
     this.paint();
+    /*
+     * And set the bar creeping across the slot this stage has just been
+     * given, over the time the stage is expected to take.
+     *
+     * This is the half of the bar the main thread cannot draw. Every stage
+     * that reports from inside itself, the two fetches and the module count,
+     * will overtake this within a frame or two and the creep is invisible.
+     * The world stage does not: it is one call into a synchronous builder
+     * and it reports once, at the end. That is the stage a visitor sits
+     * through, and it is the stage this is for.
+     */
+    const stage = this.stages[i];
+    this.aim(this.base(i) + stage.weight * CREEP_TO, stage.ms * CREEP_FACTOR, CREEP_EASE);
   }
 
   progress(id, frac, detail) {
@@ -476,35 +604,197 @@ export class Loading {
     this.paint();
   }
 
+  /*
+   * KEEP GOING WHEN THE ESTIMATE RUNS OUT.
+   *
+   * A transition arrives. That is the one thing a transition does that an
+   * asymptote does not, and a stage that outlives its estimate would
+   * otherwise leave the bar parked at the top of its own slot with the load
+   * still running, which is the failure this whole file is about, just later
+   * and higher up the track.
+   *
+   * So once the aim has had its time, aim again at HALF the distance left to
+   * the end of the slot, over three seconds. Each chain halves the remainder,
+   * so the bar always moves and never reaches the next stage's territory.
+   *
+   * This runs on the ticker, so it only fires when the main thread is free.
+   * Inside one long synchronous block nothing here runs and the transition
+   * already in flight is what is moving: that is why its duration is a
+   * multiple of the measurement rather than the measurement itself.
+   */
+  creepOn() {
+    if (this.failed || this.index < 0 || !this.stages.length) {
+      return;
+    }
+    const stage = this.stages[this.index];
+    const running = this.stageStartedAt ? performance.now() - this.stageStartedAt : 0;
+    const creepEnd = this.base(this.index) + stage.weight * CREEP_TO;
+    /*
+     * RE-ARM. A real report that overtook the creep also ended it, because a
+     * transition has one target and that report is now it. Without this the
+     * bar stops dead after the last thing a stage had to say, which on a
+     * world build is four fifths of the way through the longest wait on the
+     * screen.
+     */
+    if (this.aimed < creepEnd - 0.001) {
+      const left = Math.max(600, stage.ms * CREEP_FACTOR - running);
+      this.aim(creepEnd, left, CREEP_EASE);
+      return;
+    }
+    if (running < stage.ms * CREEP_FACTOR) {
+      return;
+    }
+    /* Past the estimate altogether: halve what is left of the slot, every
+     * time, so the bar always moves and never reaches the next stage. */
+    const end = this.base(this.index) + stage.weight;
+    const left = end - this.aimed;
+    /* Under a thousandth of the track is a pixel on a 420 px bar, and
+     * re-aiming at it every quarter second is a transition that restarts
+     * more often than it moves. */
+    if (left < 0.001) {
+      return;
+    }
+    this.aim(this.aimed + left * 0.5, 3000, 'cubic-bezier(0.2, 0.6, 0.3, 1)');
+  }
+
+  /* Where this stage's slot starts: every earlier stage's weight. */
+  base(i) {
+    let v = 0;
+    for (let k = 0; k < i && k < this.stages.length; k += 1) {
+      v += this.stages[k].weight;
+    }
+    return v;
+  }
+
   /* Fraction of the whole bar: every completed stage's weight, plus this
    * stage's weight times how far into it we are. */
   value() {
-    let v = 0;
-    for (let i = 0; i < this.stages.length; i += 1) {
-      if (i < this.index) {
-        v += this.stages[i].weight;
-      } else if (i === this.index) {
-        v += this.stages[i].weight * this.frac;
-      }
+    if (this.index < 0) {
+      return 0;
     }
-    return v;
+    const stage = this.stages[this.index];
+    return this.base(this.index) + (stage ? stage.weight * this.frac : 0);
+  }
+
+  /*
+   * What the bar is SHOWING right now, which is not what it was last aimed
+   * at: the whole point of this screen is the distance between the two.
+   *
+   * Stale while the main thread is blocked, because this is the main
+   * thread's copy of a composited animation, and that is fine: nothing calls
+   * it during a block, because nothing runs during a block.
+   */
+  current() {
+    try {
+      const m = new DOMMatrix(getComputedStyle(this.bar).transform);
+      return Math.max(0, Math.min(1, m.a));
+    } catch (e) {
+      /* No DOMMatrix, or a transform this cannot parse. The last aim is the
+       * best answer available and it is never behind the truth by much. */
+      return this.aimed;
+    }
+  }
+
+  /*
+   * Point the bar at a value and give it a time to get there. Returns
+   * whether it took.
+   *
+   * FORWARD ONLY, AND AGAINST WHAT IS DRAWN rather than against the last
+   * aim. That distinction is the bug this comment is here to stop coming
+   * back: the creep is aimed at the far end of a stage's slot, so comparing
+   * against the aim meant every real report for the rest of that stage was
+   * dropped as "behind", and a screen that had measured four honest phases
+   * of a world build drew none of them. Compared against the position, a
+   * report that is ahead of the creep overtakes it and a report that is
+   * behind is correctly ignored.
+   *
+   * The value is a scale, not a width. See the stylesheet: the transition
+   * has to be composited or it stops with the main thread, and the main
+   * thread is what this screen is waiting for.
+   */
+  aim(to, ms, ease = 'linear') {
+    const want = Math.max(0, Math.min(1, to));
+    if (want <= this.current()) {
+      return false;
+    }
+    this.aimed = want;
+    this.bar.style.transition = `transform ${Math.max(0, Math.round(ms))}ms ${ease}`;
+    this.bar.style.transform = `scaleX(${want.toFixed(4)})`;
+    /*
+     * AND START IT NOW, IN THIS TASK.
+     *
+     * A transition does not begin when the style is set, it begins at the
+     * next style recalc, and the next style recalc is a rendering step the
+     * main thread has to run. Set an aim and then block for four seconds
+     * building a world and the transition has still not started when the
+     * block begins, so there is nothing for the compositor to carry through
+     * it: measured, and it is exactly the window this screen exists for.
+     *
+     * Reading a computed style forces the recalc here instead, so the
+     * animation is handed to the compositor before the caller gets the
+     * thread back. One forced recalc per aim, a handful per load.
+     */
+    void getComputedStyle(this.bar).transform;
+    return true;
   }
 
   paint() {
     if (!this.visible) {
       return;
     }
-    const pct = (this.value() * 100).toFixed(1);
-    this.bar.style.width = `${pct}%`;
+    /*
+     * A REAL EVENT ALWAYS WINS, and it wins by being ahead.
+     *
+     * Everything the loader actually knows arrives here: bytes read, modules
+     * counted, a stage finished. If that is further along than the estimate
+     * has crept to, the bar is re-aimed at it over a fifth of a second, and
+     * a fast stage simply overtakes its own creep. If it is behind, aim()
+     * drops it and the creep carries on, because a stage reporting 0.3 while
+     * the estimate has reached 0.5 has not told us anything new.
+     */
+    this.aim(this.value(), 200, 'linear');
     this.paintStage();
     this.paintJoke();
+    this.paintMeta();
   }
 
   /*
-   * "loading" until a stage stalls, then "still loading the map" and, if the
-   * caller supplied one, what it is working on. This is the only place the
-   * stage name and `detail` are shown, and they are shown for the one reason
-   * a player needs them: to tell a slow network from a slow machine.
+   * Which stage of how many, and how long the load has taken.
+   *
+   * The step count is what gives the wait a shape: a stage that outstays its
+   * slot is still one of six with more to come, which a bar alone cannot
+   * say. The seconds stop while the main thread is blocked and catch up when
+   * it returns; that window is what the bar's creep and the sweep are for,
+   * and a frozen clock next to a moving bar is the honest picture of a
+   * thread that is busy rather than gone.
+   */
+  paintMeta() {
+    if (!this.stepEl || !this.elapsedEl) {
+      return;
+    }
+    const step = this.index >= 0 && this.stages.length
+      ? `Step ${this.index + 1} of ${this.stages.length}`
+      : '';
+    if (this.stepEl.textContent !== step) {
+      this.stepEl.textContent = step;
+    }
+    const secs = this.startedAt ? Math.floor((performance.now() - this.startedAt) / 1000) : 0;
+    /* Nothing at all for the first couple of seconds. A healthy load is over
+     * in about three, and a stopwatch on a screen that is about to vanish
+     * reads as a warning about a wait that never happened. */
+    const text = secs >= 2 ? `${secs}s` : '';
+    if (this.elapsedEl.textContent !== text) {
+      this.elapsedEl.textContent = text;
+    }
+  }
+
+  /*
+   * What is being done, named, for the whole of the load. See STAGE_DOING.
+   *
+   * Once a stage outstays STALL_MS the line says so and adds the detail the
+   * caller passed, which is the one thing that separates a slow network from
+   * a slow machine: "still loading the map, 31 of 72 modules" is a
+   * diagnosis, and a bar cannot make one.
    */
   paintStage() {
     if (this.failed) {
@@ -519,6 +809,8 @@ export class Loading {
       if (this.detail) {
         text += `, ${this.detail}`;
       }
+    } else if (stage) {
+      text = STAGE_DOING[stage.id] || `Loading the ${(STAGE_NAMES[stage.id] || stage.id).toLowerCase()}`;
     }
     if (this.stageEl.textContent !== text) {
       this.stageEl.textContent = text;
@@ -550,8 +842,16 @@ export class Loading {
     this.stageEl.textContent = 'Could not start';
     this.jokeEl.textContent = message;
     this.jokeEl.classList.add('is-error');
-    this.bar.style.width = '100%';
+    /* Full, red, and STILL: a sweep under a dead end is a page pretending to
+     * work on something. transition none as well as the aim, because the
+     * creep it interrupts would otherwise take five seconds to arrive. */
+    this.aimed = 0;
+    this.bar.style.transition = 'none';
+    this.bar.style.transform = 'scaleX(1)';
     this.bar.style.background = '#e8503a';
+    if (this.sweepEl) {
+      this.sweepEl.style.display = 'none';
+    }
     if (this.ticker) {
       clearInterval(this.ticker);
       this.ticker = null;
@@ -682,6 +982,11 @@ export class Loading {
     this.frac = 1;
     this.index = this.stages.length - 1;
     this.paint();
+    /* All the way, quickly. paint() aims at value(), which is 1 here, but
+     * only if the last stage was planned; a load that finished early leaves
+     * the creep somewhere short and the screen fades out over a bar that
+     * never arrived. */
+    this.aim(1, 180, 'linear');
     if (this.ticker) {
       clearInterval(this.ticker);
       this.ticker = null;

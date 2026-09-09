@@ -39,6 +39,7 @@
  */
 
 import { buildFieldScene } from '../render/scene.js';
+import { yieldToPaint } from '../ui/loading.js';
 /* The composer wrap and its dispose live with the field map, which is the
  * same world this one dresses with a designed course. */
 import { attachComposer } from './field.js';
@@ -67,6 +68,23 @@ export function workingDocument() {
   }
 }
 
+/*
+ * Report a phase AND give the loading screen a frame to draw it in.
+ *
+ * buildFieldScene awaits whatever its progress callback returns, so this is
+ * where the map decides that a report is worth a paint. It is: without it
+ * the seven phases inside the build all land in one blocked run of the main
+ * thread and the bar shows none of them. Two frames and a task is the
+ * shortest sequence that guarantees the pixels are actually on screen; see
+ * yieldToPaint in src/ui/loading.js for why one is not enough.
+ */
+function reporter(progress) {
+  return async (f) => {
+    progress(f);
+    await yieldToPaint();
+  };
+}
+
 export async function buildMap(shell, onProgress, options) {
   const progress = onProgress ?? (() => {});
   const opts = options || {};
@@ -75,7 +93,7 @@ export async function buildMap(shell, onProgress, options) {
   const share = injected ? null : readShareImport();
   const doc = injected ? opts.document : workingDocument();
   const course = doc ? courseFromDocument(doc) : emptyCourse();
-  const map = buildFieldScene(shell, progress, course, q);
+  const map = await buildFieldScene(shell, reporter(progress), course, q);
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }
     : null;

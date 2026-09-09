@@ -32107,3 +32107,106 @@ and one picture. `npm run gen:gatecards` was not run to completion, for the
 reason above.
 
 Not flown. What to fly and what would count as wrong is in the handover.
+
+## The bar sat at fifteen percent and then jumped, on both pages
+
+Reported: "the loading bar for every screen the user has to wait for (loading
+the landing page and loading the sim), the bar sits at 15% for a while then
+straight to 100%. this is crap."
+
+It was, and the cause was the same on both pages with two different shapes.
+
+**Why it sat.** The stages before the world are the two fetches, the board
+and the module graph, and on a warm load they are 184 ms of a 3.6 second
+boot. Their weights are measured, so they are five percent of the bar, and
+the bar reached that in the first fraction of a second. Then `buildMap` was
+called, the world stage began, and the only thing it ever said was
+`progress(1)` at the very end: `buildFieldScene` reported once, from the
+bottom of a 1500 line function. So the bar had nothing to draw for the whole
+of the longest stage, and then drew all of it at once.
+
+**Why nothing could have drawn it anyway.** `.loading-fill` was a width, and
+width is layout, and layout is the main thread's. Building a world is seconds
+of synchronous main thread work: nothing driven from JavaScript moves during
+it and neither does a width transition. Even an honest number would have
+frozen in exactly the window where a visitor needs to see movement.
+
+**What it is now.**
+
+The fill is a `transform: scaleX()` with a transition, so it is composited
+and keeps moving through a blocked main thread. A sweep runs over the track
+as an infinite CSS animation, declared in the stylesheet, so it is on the
+compositor from the first frame and says the page is alive when nothing else
+can. The stage line names what is happening for the whole load rather than
+saying "loading" until STALL_MS, because a line that changes five times is
+the cheapest proof a page can offer that it is getting somewhere; the stall
+behaviour sits on top of it unchanged. Under the bar, which step of how many
+and how long it has taken.
+
+`buildFieldScene` is async and reports four phases as it finishes whole
+things: ground and sky and grass, the gates, the treeline, and everything in
+the graph before the shader compile. Its progress callback may return a
+promise and it awaits it, so the map modules hand back `yieldToPaint` and
+every report is both a number and a frame. Four rather than seven, because
+each yield costs two frames and a moving bar is not worth a quarter of a
+second on the build. The city already reported its phases and still does.
+
+Between reports the bar creeps: on a stage's start it is aimed at 86 percent
+of that stage's slot over three and a half times the stage's measured
+duration, with a decelerating ease. The asymmetry is deliberate. Too slow
+costs a jump at the end, when the screen is about to fade out anyway; too
+fast costs a bar parked against the top of its slot with the load still
+running, which is the original complaint moved higher up the track. If a
+stage outlives even that, `creepOn` halves what is left of the slot every
+quarter second, so the bar always moves and never reaches the next stage.
+
+Every stage also gets a floor of five percent of the track, because on the
+town the measured weights give the world 94 percent and the four stages
+before it share six, so four things really happened in the first second and
+the bar could not show any of them.
+
+**Two bugs found while building it, both in the new code, both worth writing
+down because they are the kind that look fine.**
+
+The aim compared against the last AIM rather than against what is drawn. The
+creep is aimed at the far end of a slot, so every real report for the rest of
+that stage was dropped as "behind" and the four honest phases of the world
+build drew nothing. It compares against the live transform now, so a report
+ahead of the creep overtakes it and one behind it is correctly ignored.
+Measured before and after: the bar now steps at 0.362 and 0.639, which are
+`report(0.2)` and `report(0.64)` exactly.
+
+And a transition does not start when the style is set, it starts at the next
+style recalc, which is a rendering step the main thread has to run. Aim and
+then block and the transition has still not started when the block begins, so
+there is nothing for the compositor to carry through it. Both screens force
+the recalc with a computed style read in the same task as the aim.
+
+**The landing page.** Same diagnosis, cruder original: a 220 ms interval
+writing 18, 44, 70, 96 percent and four workshop jokes on the same timer, so
+the screen said "Balancing props" while the module graph was arriving.
+BOOT_PHASES is five real phases announced by the code about to do the work,
+the same transform bar and the same forced recalc, and the closing steps are
+paced one per frame so an announcement is composited before the block it
+names. Its README has the argument.
+
+**What was checked.** `lint:shell` PASS, which drives the real shell and now
+walks an async `buildFieldScene`. `lint:boot` 9 of 9, `lint:devices` PASS,
+`lint:responsive` PASS, `lint:arcade` PASS, `lint:nouns` PASS. On the landing
+page, `page-lint` 17 of 17, `noun-lint` and `lint:wiki` clean. The bar was
+watched through real loads in headless Chromium by sampling the live
+transform every 120 ms, which is where both bugs above were caught.
+
+**What could NOT be checked here, and it matters.** Whether the composited
+animation really keeps moving through a blocked main thread. This container
+has no GPU: the software rasteriser saturates the main thread for the whole
+load, `getComputedStyle` returns the main thread's stale copy of a composited
+animation, and `Page.captureScreenshot` cannot be served while the thread is
+blocked, so every capture arrives after the block has ended. The mechanism is
+the one the landing page's sweep has used since it was written, and that was
+measured; this change extends it rather than assuming it. It wants a pilot on
+a real machine, and the thing to watch is the bar during "Building the world".
+
+`npm run verify` was NOT run. Nothing here is physics, the plant, the module
+ABI or the build: `buildFieldScene` became async and gained four report
+points, and the rest is a loading screen.

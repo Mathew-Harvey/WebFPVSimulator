@@ -4041,11 +4041,40 @@ function clouds(rng) {
  * the point of flying your own track is to fly it in this world rather than
  * in a grey box.
  */
-export function buildFieldScene(shell, onProgress, course = null, quality = null) {
+/*
+ * ASYNC, AND THE AWAITS INSIDE IT ARE THE LOADING SCREEN'S ONLY CHANCE TO
+ * DRAW THIS STAGE.
+ *
+ * Building a field is a second or three of straight line construction, and
+ * it used to report exactly once, at the end. So the loading bar sat where
+ * the last cheap stage left it for the whole of the build and then jumped,
+ * which is what the owner reported and is all a bar driven by one call at
+ * the end can ever do.
+ *
+ * `onProgress` may now return a promise, and where it does, this awaits it.
+ * The map modules hand back one that yields to paint, so every report below
+ * is both a number and a frame: the browser composites the bar before the
+ * next few hundred milliseconds of building begin. A caller that returns
+ * nothing is unchanged and pays nothing, which is what the harness and the
+ * shot scripts do.
+ *
+ * The fractions are eyeballed against the section boundaries rather than
+ * measured per phase, and they are deliberately conservative: a bar that
+ * reaches 0.8 and waits is better than one that reaches 0.95 and waits. The
+ * phases are where they are because those are the points at which this
+ * function has finished a whole thing.
+ */
+export async function buildFieldScene(shell, onProgress, course = null, quality = null) {
   const q = quality && quality.field ? quality : qualityFor(quality);
   const renderer = shell.renderer;
   const camera = shell.camera;
   const progress = onProgress ?? (() => {});
+  const report = async (f) => {
+    const r = progress(f);
+    if (r && typeof r.then === 'function') {
+      await r;
+    }
+  };
   /* PCF soft, not PCF, when High or Medium ask for it. The field's shadow
    * map covers 144 m at 2048, so the softer filter is what keeps a tree's
    * cast edge from reading as a staircase. The city sets its own. Low
@@ -4215,6 +4244,8 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * merges every bucket, so after the flush a tree is anonymous floats in a
    * shared buffer. A collider has to be recorded where the geometry is made.
    */
+  /* The ground, the sky, the cloud and the grass are in. */
+  await report(0.2);
   const colliders = new Colliders();
   /*
    * THE ROOM. Four walls, a ceiling, a skirting board and a mat.
@@ -4712,6 +4743,8 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * frame ever moves an upright, this throws on load instead of quietly
    * shipping a barn door, which is what the old 3.5 m torus was.
    */
+  /* The gates are built. */
+  await report(0.4);
   for (const gt of gates) {
     if (gt.virtual) {
       continue;
@@ -5170,6 +5203,8 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * prepass. See src/art/clubhouse.js for why it is authored in vertex
    * colours rather than in eight materials.
    */
+  /* The treeline and the site's perimeter are planted. */
+  await report(0.64);
   const clubY = height(clubSite.x, clubSite.z);
   const clubDecks = [];
   let clubVerandahClear = 0;
@@ -5595,6 +5630,10 @@ export function buildFieldScene(shell, onProgress, course = null, quality = null
    * turn a bookkeeping question into the actual leak the check is looking
    * for. Only materials that reached the scene graph are compiled here.
    */
+  /* Everything is in the graph. What is left is the shader compile, which is
+   * the most expensive single thing in this function on a cold cache and has
+   * no inside to report from. */
+  await report(0.86);
   renderer.compile(scene, camera);
   progress(1);
 

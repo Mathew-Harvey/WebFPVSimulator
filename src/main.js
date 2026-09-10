@@ -3115,6 +3115,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * makes freestyle pointless for them, and a scoring system nobody on a
      * keyboard can score in is not a scoring system.
      *
+     * IT IS NOT GATED ON freestyleScoring AND MUST NOT BE. The scorer was
+     * how the case got made, but the case does not rest on it: a pilot who
+     * wants to fly a flip in the town wants to fly a flip whether or not
+     * anything is naming it, and scoring is off by default, so gating this
+     * would lock every keyboard pilot out of every trick unless they first
+     * switched on a feature the product tells them is unfinished. That is
+     * the opposite trade. Racing keeps the guard.
+     *
      * So in freestyle the SETTING decides, on a keyboard as much as on a
      * radio. Racing keeps the guard, where holding a line matters more than
      * inverting and a key is a bang bang input.
@@ -6700,13 +6708,34 @@ export async function boot({ loading, bootStart, mapId }) {
           : `LAUNCH ${deg}\nCentre the stick, then punch`)
         : 'LAUNCH CONTROL\nPitch forward, then centre the stick');
     } else if (!flownThisRun) {
-      ui.setBanner(ui.settings.launchControl
-        ? (race.freestyle
-          ? 'L for launch control, or throttle up\nTwo minutes. The clock starts on your first trick.'
-          : 'L for launch control, or throttle up\nThe green gate starts your lap')
-        : (race.freestyle
-          ? 'Throttle up to take off\nTwo minutes. The clock starts on your first trick.'
-          : 'Throttle up to take off\nThe green gate starts your lap'));
+      /*
+       * THE SECOND LINE IS A PROMISE ABOUT WHAT STARTS, and in freestyle it
+       * was the SCORED run's promise whatever the pilot had set Scoring to.
+       *
+       * A pilot with scoring off was told, in amber across the middle of the
+       * town, that they had two minutes and that the clock started on their
+       * first trick. Nothing else agreed with it: the OSD slot beside it read
+       * Air and counted an airtime up, no overlay ever appeared, and the run
+       * never ended. It is the one sentence a freestyle pilot reads before
+       * they fly, so as far as the seat was concerned the scorer was on and
+       * the Scoring row was a lie. See DEFAULTS.freestyleScoring in
+       * src/ui/ui.js for why off is what a pilot gets without asking.
+       *
+       * OFF PROMISES NOTHING, because nothing starts: the line is dropped and
+       * the banner is the takeoff prompt on its own. Free flight has no clock
+       * and no end either, so it says what it does have rather than borrowing
+       * the scored run's sentence. Only a scored run gets the two minutes.
+       */
+      const start = ui.settings.launchControl
+        ? 'L for launch control, or throttle up'
+        : 'Throttle up to take off';
+      let second = '\nThe green gate starts your lap';
+      if (race.freestyle) {
+        second = scoredRun()
+          ? '\nTwo minutes. The clock starts on your first trick.'
+          : (scoringWanted() ? '\nNo clock and no gates. A trick is named as you land it.' : '');
+      }
+      ui.setBanner(`${start}${second}`);
     } else if (guidedText) {
       ui.setBanner(guidedText);
     } else if (lapFlash) {

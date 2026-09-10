@@ -32210,3 +32210,198 @@ a real machine, and the thing to watch is the bar during "Building the world".
 `npm run verify` was NOT run. Nothing here is physics, the plant, the module
 ABI or the build: `buildFieldScene` became async and gained four report
 points, and the rest is a loading screen.
+
+## The scorer was switched off and the product kept saying it was on
+
+Reported: "when i go into the freestyle map, the scoring system should be
+turned off by default. Currently its turned on."
+
+`DEFAULTS.freestyleScoring` has been `'off'` since 2026-09-03 and the overlay's
+gate is airtight, so the first job was to find out what a pilot was actually
+looking at. A fresh profile in headless Chromium, driven through the gate's
+Freestyle card and into the town, answered it in one screenshot: the score
+overlay was hidden and the OSD slot correctly read **Air** with an airtime
+counting up, and across the middle of the frame, in amber, the pre takeoff
+banner said **"Two minutes. The clock starts on your first trick."**
+
+That is the scoring system turned on, as far as the seat is concerned. It is
+the one sentence a freestyle pilot reads before they fly, it promised a clock
+that did not exist, and it contradicted the readout eighty pixels above it.
+
+**Four surfaces were saying the scored run's sentence whatever the row said.**
+All four branched on the MODE being freestyle and none of them read the
+setting.
+
+- `src/main.js`, the pre takeoff banner. Off now drops the second line
+  entirely, because with scoring off nothing starts and a banner that
+  promises nothing is the honest one. Free flight has no clock either, so it
+  says what it does have. Only a scored run gets the two minutes.
+- `src/ui/ui.js` `setBest`, the title's record line: "No gates, no lap, two
+  minutes". This is the FIRST screen after choosing Freestyle, so it was
+  reaching a pilot even earlier than the banner. Off and free flight read
+  "No gates, no lap, no clock".
+- `src/ui/ui.js` `setBest`, the strapline, which said "free flight". That is
+  the on screen LABEL of the middle Scoring position, so the title named a
+  mode the pilot had not picked in the same words the Scoring row uses to
+  name the one they had. It reads "no gates" now, which is true in all three
+  positions and is the Freestyle room's own first sentence about the place.
+- The Freestyle room's lede asserted "Scoring is off until you switch it on",
+  which is the inverse defect: correct at the default and wrong the moment a
+  pilot switches it on, because the string is built once in the constructor.
+  It now says the switch starts off, which is a fact about the default rather
+  than a claim about the current state.
+
+`setBest` is the only writer of those two lines and only `src/main.js` calls
+it, on a map load or the end of a run, so changing Scoring and backing out to
+the title would have left the previous position's sentence up. `refreshBest`
+redraws it from `lastBestMs`, and `writeSettings` and `pick` both call it.
+That also closes a gap the review found on its own: nothing that wrote
+`freestyleScoring` ever called `syncScoreVisible`, so the overlay's visibility
+was stale until the next screen change. It is re-gated on every settings
+commit now.
+
+**And the thing that actually turned it on: a radio's roll stick.**
+
+The keyboard's Left and Right MOVE the cursor on a card screen rather than
+adjusting the row under it, and the comment giving the reason says "Nothing on
+them has a value to adjust". That stopped being true when the Freestyle room
+grew a Scoring row and a Physics model row. `padMenu` never had that rule. So:
+with one freestyle world the room draws no cards, Scoring is its first row,
+the cursor opens on it, and `cycle()` wraps. One nudge of roll LEFT, which is
+BACK on every other row in the product and which the hint under the screen
+tells a radio pilot to use, took `'off'` the long way round to `'scored'` and
+`writeSettings` saved it. An unfinished scorer switched on, a two minute clock
+and a public board, for a pilot who thought they had pressed Escape.
+
+`padMenu` gets the keyboard's rule: `rollAdjusts` is false on a card screen,
+so roll right chooses and roll left goes back, which is what the hint
+promises. A segmented row is still reachable from a radio, because select
+cycles it. `courses` is unaffected: it carries no value rows at all, so
+`rollAdjusts` was already false there.
+
+**A one time reset, because the fix does not reach the pilot on its own.**
+Nothing in the blob can tell a stick's accidental write from a deliberate one,
+so anybody carrying `'free'` or `'scored'` today may never have asked for it,
+and the argument at `DEFAULTS.freestyleScoring` reached none of them.
+`loadSettings` puts the value back to the default ONCE, guarded by a
+`scoringReset` flag that rides in the same blob, so the first save after that
+load records that it has run and a pilot who switches scoring back on the same
+minute keeps it forever after. Same shape as `SUPERSEDED_WHOOP`: it moves
+once, and it is not a policy.
+
+**And the first press in the room was doing it too.**
+
+Same room, same reason the sticks bit: with one world there are no cards, so
+Scoring is `items[0]` and `restoreCursor` opens the cursor on it. A segmented
+row cycles on Enter, which is a deliberate and well argued behaviour, so the
+first affirmative press in the room, Enter on a keyboard or roll right on a
+radio, stepped Scoring from off to Free flight. A pilot who opened The town to
+change the tune switched the scorer on with the press they used to walk in.
+
+The segmented branch's argument is about VISIBILITY, that every choice is on
+screen so a press moves between things the pilot can already see. That holds
+for three equivalent answers. It does not hold for a row that switches on a
+feature the row itself then paints amber and whose note calls it unfinished.
+So the row carries `pickOnly` now and select opens its list instead of
+stepping it. It stays reachable from a radio, because roll right opens the
+list, pitch walks it and roll right again confirms. What is gone is the single
+press that wrote a value nobody read out.
+
+**Findings that were raised and declined.**
+
+- *`cycle()` wraps, so one press in the wrong direction lands on the loudest
+  position rather than stepping one.* True, and it is what turned the stick
+  bug from "the trick names came on" into "a timed, posted, scored run".
+  Declined because the Scoring row lives only on a card screen, where neither
+  the keyboard nor, now, the sticks adjust anything, so the wrap is
+  unreachable from that row. `cycle`'s own comment argues for wrapping and
+  that argument still holds everywhere it is reachable. Revisit if a Scoring
+  row is ever added to a screen whose Left and Right adjust.
+- *The title's "Trick list / N tricks" row is unconditional in freestyle and
+  its note says what each trick pays.* Declined: it is a catalogue door the
+  pilot chooses to open, it makes no claim that a run is being scored, and it
+  was deliberately promoted to the title after a play report.
+- *`Ui.showScore(on)` bypasses the settings gate and has no callers anywhere
+  in the three repositories.* Left alone this turn because it is dead and
+  deleting it is not this report's change, but it is the one function in the
+  file that can put the overlay on screen with the setting off. Worth removing.
+- *The board's empty state says "Open the town, fly for two minutes, and put
+  your name at the top of an empty board", and its Fly link sets no scoring.*
+  That is the INVERSE of this report and it lives in the board's repository,
+  so it is not fixed here. It is the same commit's unfinished work.
+
+- *`wantAngleMode`'s freestyle branch drops the keyboard's forced angle mode
+  and is not gated on `freestyleScoring`, and its comment gives the scorer as
+  the entire reason, so a keyboard pilot entering the town flies acro with
+  scoring off.* The observation is right and the proposed gate is wrong. The
+  case does not rest on the scorer: angle holds the craft to about thirty
+  degrees of bank, so a pilot who wants to fly a flip in the town wants acro
+  whether or not anything is naming it, and scoring is off by default, so
+  gating this would lock every keyboard pilot out of every trick unless they
+  first switched on a feature the product tells them is unfinished. The
+  behaviour stays. What was wrong was the writing: `DEFAULTS.flightMode` said
+  "Keyboard flight always raises angle, regardless of this value", which
+  stopped being true when the town arrived, and the branch in `src/main.js`
+  now says outright that it must not be gated and why. If the owner wants the
+  trade the other way it is a decision about what freestyle IS, not a bug fix.
+- *A gateless custom course is freestyle to the renderer and race to the
+  menus, so `freestyleScoring` governs its overlay while no screen on that
+  path can reach the switch.* Real, and out of this report's scope. It cannot
+  bite today because the one time reset puts everybody on off; it bites the
+  first time somebody switches scoring on and then flies a published course
+  with no gates. The two halves have to stop disagreeing about what freestyle
+  means, and that is its own change.
+- *The pause menu carries no Scoring row, so a pilot who finds the scorer on
+  mid flight cannot switch it off without quitting to the title.* Declined as
+  written, because adding the row is the thing that would break: `score.timed`
+  is re-read only at a run's start, so a Scoring row on the pause menu would
+  light the overlay on a run whose clock never starts. If it is ever added,
+  `resume` has to re-read `scoredRun()` or refuse the change mid run the way
+  pack charge and flight model already do.
+
+**Two deploy findings, neither of them code, both worth acting on.**
+
+The live simulator was checked against the repository rather than assumed:
+`https://webfpv.org/sim/src/ui/ui.js` is byte identical to `origin/main`, so
+the pilot IS running this code and nothing was stale. But two cache settings
+are wrong in a way that matters for whether a fix reaches anybody.
+
+`render.yaml`'s whole headers block is inert on the live service: the origin
+answers `public, max-age=0, s-maxage=300` for both `/*` and the music crate,
+which are Render's stock defaults, so neither declared policy exists. The
+music crate pays a revalidation round trip per track per visit on a two to
+five megabyte file, which is the exact cost the comment there says it exists
+to avoid, and `MUSIC_REV` is currently load bearing for nothing. Re-sync the
+blueprint on the Render service, or set the two rules by hand.
+
+Worse, Cloudflare's zone Browser Cache TTL rewrites every `.js` on the zone
+from `max-age=0` to `max-age=14400`, while `index.html` and `dist/sim.wasm`
+come through untouched. That is the mixed module graph `render.yaml`'s comment
+was written to prevent, happening at the edge: for four hours after a deploy a
+returning pilot can hold a fresh `index.html` against a stale `src/ui/ui.js`.
+The remedy is Caching, Configuration, Browser Cache TTL set to "Respect
+Existing Headers", which is a setting rather than a cache rule and so does not
+flatten the three origin policies DEPLOY.md is protecting.
+
+**What was checked.** The bugs were found and the fixes watched in headless
+Chromium against a fresh profile, driving the real gate, the real room and a
+real flight in the town, and reading the banner, the OSD slot, the title lines
+and the overlay's class in all three Scoring positions. Measured after the fix:
+off gives "Throttle up to take off" alone over an Air clock, free flight gives
+"No clock and no gates. A trick is named as you land it.", and only scored
+gives the two minutes. The title reads "No gates, no lap, no clock" for off
+and free and "two minutes" for scored, and the strapline reads "no gates" in
+all three. On the sticks, roll left on the Scoring row now leaves the room and
+writes nothing, and roll right opens the list instead of stepping it.
+
+`lint:shell` PASS, which drives the real shell and walks all thirteen screens
+including the one whose select behaviour changed. `lint:nouns` PASS.
+`lint:responsive` PASS, 0 gaps over 500 ms in the Freestyle room.
+`node --check` on both changed files. `lint:shell` also notes that the Quad
+screen's overflow improved from 55 to 10 px and wants its baseline re-recorded;
+that is not this change and the baseline was deliberately left alone.
+
+`npm run verify` was NOT run and would say nothing about any of this: no
+physics, no plant, no module ABI and no build was touched. The stick path has
+no automated check anywhere in the repository, which is why a keyboard rule
+and a stick rule were allowed to disagree for as long as they did.

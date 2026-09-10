@@ -478,8 +478,16 @@ const DEFAULTS = {
    * never touched, and this flag is what keeps all of it to one offer.
    */
   touchRatesOffered: false,
-  /* Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
-   * Keyboard flight always raises angle, regardless of this value. */
+  /*
+   * Betaflight ANGLE_MODE. 'acro' is the default and the radio default.
+   *
+   * Keyboard flight raises angle over this value ON A RACE TRACK, where
+   * holding a line matters more than inverting and a key is a bang bang
+   * input. It does NOT in freestyle, where angle holds the craft to about
+   * thirty degrees of bank and puts the whole trick catalogue out of reach:
+   * see wantAngleMode in src/main.js. This comment used to say "always",
+   * which stopped being true when the town arrived.
+   */
   flightMode: 'acro',
   /*
    * FREESTYLE IS THREE DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
@@ -511,6 +519,11 @@ const DEFAULTS = {
    * `this.freestyleRun` is the last run's SUMMARY, not a mode.
    */
   freestyleScoring: 'off',
+  /*
+   * WHETHER THE ONE TIME SCORING RESET HAS RUN. See the block in
+   * loadSettings that reads it, which is the whole of what it is for.
+   */
+  scoringReset: false,
   flightStyle: 'expert',
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
@@ -799,6 +812,33 @@ export function loadSettings() {
    * pitch the pilot cannot see. */
   if (!pitchMatchesRoll(s.rates)) {
     s.ratesSplitPitch = true;
+  }
+  /*
+   * THE ONE TIME SCORING RESET, and it is here because of a bug rather than
+   * because of a change of mind.
+   *
+   * The radio's roll stick used to adjust the row under the cursor on a card
+   * screen, which the keyboard's own arrows deliberately do not do. With one
+   * freestyle world the Freestyle room draws no cards, so Scoring is its
+   * first row and the cursor opens on it, and cycle() wraps: one nudge of
+   * roll left, the gesture that means BACK on every other row in the
+   * product, took the default 'off' the long way round to 'scored' and
+   * saved it. See padMenu, where that is fixed.
+   *
+   * Nothing in the blob can tell that write apart from a deliberate one, so
+   * a pilot carrying 'free' or 'scored' today may never have asked for it,
+   * and the argument at DEFAULTS.freestyleScoring reached none of them. The
+   * value goes back to the default ONCE.
+   *
+   * It moves once and it is not a policy: the flag rides in the same blob,
+   * so the first save after this load records that it has run, and a pilot
+   * who switches scoring back on the same minute keeps it forever after. A
+   * pilot who saves nothing at all is a pilot whose value is already the
+   * default, so re-running costs them nothing either.
+   */
+  if (!s.scoringReset) {
+    s.freestyleScoring = DEFAULTS.freestyleScoring;
+    s.scoringReset = true;
   }
   /* First run, or an older save from before this key existed: pick Low
    * on a Deck so the page is flyable, High everywhere else so the
@@ -2897,7 +2937,7 @@ export class Ui {
      * behind the door has to describe the door that is actually open: the
      * town and the quad, with the scoring named as a switch rather than as
      * the point. See DEFAULTS.freestyleScoring. */
-    freestyle.append(el('p', 'rates-lede', 'A whole town and no gates. Fly it, and this is where the machine you fly it on lives. Scoring is off until you switch it on, because the part that names what you flew is still being built.'));
+    freestyle.append(el('p', 'rates-lede', 'A whole town and no gates. Fly it, and this is where the machine you fly it on lives. Scoring is the switch below and it starts off, because the part that names what you flew is still being built.'));
     this.freestyleCards = el('div', 'map-cards');
     const freestyleBlock = wrapMenu();
     this.freestyleMenu = freestyleBlock.menu;
@@ -4770,6 +4810,10 @@ export class Ui {
             (id) => { s.freestyleScoring = id; },
           ),
           rowClass: s.freestyleScoring === 'off' ? undefined : 'row-warn',
+          /* Enter opens the list rather than stepping it: this row is the
+           * first thing the cursor lands on in this room, and switching an
+           * unfinished feature on is a pick, not a nudge. See select(). */
+          pickOnly: true,
         },
         /*
          * WHAT THERE IS TO FLY, before flying it. A pilot who does not know
@@ -6740,6 +6784,9 @@ export class Ui {
     this.syncMode();
     saveSettings(this.settings);
     this.renderMenu();
+    /* The title's freestyle line and the score overlay both read a setting
+     * this row may have just changed. See refreshBest. */
+    this.refreshBest();
     if (this.onUiSound) {
       this.onUiSound('adjust');
     }
@@ -6873,6 +6920,8 @@ export class Ui {
     it.pick(value);
     saveSettings(this.settings);
     this.renderMenu();
+    /* Same reason as writeSettings: see refreshBest. */
+    this.refreshBest();
     if (this.onUiSound) {
       this.onUiSound('adjust');
     }
@@ -8422,6 +8471,8 @@ export class Ui {
     if (mode) {
       this.osdMode = mode;
     }
+    /* Held so refreshBest can redraw the line without a record in hand. */
+    this.lastBestMs = ms;
     const freestyle = this.osdMode === 'freestyle';
     /*
      * The score follows the MODE as well as the screen. show() decides
@@ -8436,14 +8487,37 @@ export class Ui {
     const seat = this.settings.map === 'custom' ? activeCourseSummary() : null;
     const worldName = (seat && seat.name) || m.name;
     if (this.brandSub) {
-      this.brandSub.textContent = freestyle ? `${worldName}, free flight` : `${worldName}, time trial`;
+      /*
+       * "no gates" rather than "free flight", which was the strapline and
+       * was also the on-screen LABEL of the middle Scoring position: see
+       * FREESTYLE_SCORING_LABEL. So the title named a scoring mode the
+       * pilot had not picked, in the same words the Scoring row uses to
+       * name the one they had, and the two surfaces disagreed using one
+       * vocabulary. No gates is true in all three positions and is the
+       * Freestyle room's own first sentence about the place.
+       */
+      this.brandSub.textContent = freestyle ? `${worldName}, no gates` : `${worldName}, time trial`;
     }
     this.titleBest.textContent = '';
     if (freestyle) {
-      /* It had "no clock, no lap" on it, which was true of freestyle until
+      /*
+       * It had "no clock, no lap" on it, which was true of freestyle until
        * a run became two minutes with a score at the end. There is still no
-       * lap and there are still no gates. */
-      this.titleBest.textContent = 'No gates, no lap, two minutes';
+       * lap and there are still no gates.
+       *
+       * AND THE TWO MINUTES ARE THE SCORED RUN'S, so they are said only
+       * when the pilot has asked for a scored run. This is the first line
+       * on the first screen after choosing Freestyle, and with Scoring at
+       * its default it was telling a pilot they had a two minute clock
+       * while nothing else in the product agreed: no overlay, an OSD slot
+       * reading Air, and a run that never ends. Off and free flight have
+       * no clock, so they say so. See DEFAULTS.freestyleScoring, and the
+       * pre takeoff banner in src/main.js, which is the same sentence in
+       * the same trap.
+       */
+      this.titleBest.textContent = this.settings.freestyleScoring === 'scored'
+        ? 'No gates, no lap, two minutes'
+        : 'No gates, no lap, no clock';
       this.osdBest.textContent = '';
       return;
     }
@@ -8453,6 +8527,24 @@ export class Ui {
       this.titleBest.textContent = 'No lap recorded yet';
     }
     this.osdBest.textContent = ms != null ? `Record ${formatTime(ms)}` : 'No record yet';
+  }
+
+  /*
+   * REDRAW THE TITLE'S RECORD LINE FROM STATE THAT IS ALREADY HERE.
+   *
+   * setBest writes three things a settings change can invalidate: the
+   * freestyle line, which now names the Scoring position, the strapline,
+   * and the overlay's visibility. Only src/main.js calls it, and only on a
+   * map load or the end of a run, so a pilot who changed Scoring in the
+   * Freestyle room and backed out to the title read the PREVIOUS position's
+   * sentence until the next world loaded. Every settings commit goes
+   * through writeSettings or pick, so both call this.
+   */
+  refreshBest() {
+    if (!this.titleBest) {
+      return;
+    }
+    this.setBest(this.lastBestMs ?? null);
   }
 
   resultsCourseName() {
@@ -9779,7 +9871,25 @@ export class Ui {
      * there is nothing to open and stepping it is what Left and Right are
      * already for.
      */
-    if (it.options && it.options.length && !fitsAsSegments(it)) {
+    /*
+     * `pickOnly` OPTS A ROW OUT OF STEPPING ON ENTER, however short its list.
+     *
+     * The segmented branch below argues that stepping is safe because every
+     * choice is on screen. That is an argument about VISIBILITY and it holds
+     * for a row where the three positions are three equivalent answers. It
+     * does not hold for a row that switches an unfinished feature on: the
+     * Freestyle room draws no cards while there is one world, so Scoring is
+     * its first row and the cursor OPENS on it, and the first affirmative
+     * press in the room, Enter on a keyboard or roll right on a radio, was
+     * stepping it from off to Free flight. A pilot who has not asked for the
+     * scorer should not get it from the press they used to walk into a room.
+     * See DEFAULTS.freestyleScoring.
+     *
+     * The list still opens, so the row stays reachable from a radio: roll
+     * right opens it, pitch walks it, roll right again confirms. What is
+     * gone is the one press that wrote a value nobody read out.
+     */
+    if (it.options && it.options.length && (it.pickOnly || !fitsAsSegments(it))) {
       this.openDropForCursor();
       return;
     }
@@ -10895,7 +11005,34 @@ export class Ui {
       return;
     }
     const it = this.items()[this.cursor];
-    const rollAdjusts = Boolean(it && it.adjust);
+    /*
+     * THE KEYBOARD'S RULE, WHICH THE STICKS DID NOT HAVE.
+     *
+     * Left and Right on a card screen MOVE the cursor, they do not adjust
+     * the row under it: the cards lie in a row and that is what a player
+     * reaches for. See the arrow keys above, whose reason for it was that
+     * nothing on a card screen has a value to adjust. That stopped being
+     * true when the Freestyle room grew a Scoring row and a Physics model
+     * row, and with one freestyle world the room draws no cards at all, so
+     * Scoring is the FIRST row and the cursor opens on it.
+     *
+     * On the sticks that made roll LEFT, which everywhere else in the
+     * product is BACK, step Scoring backwards instead. cycle() wraps, so
+     * one nudge of the gesture a radio pilot uses to leave a room took the
+     * default 'off' the long way round to 'scored', and writeSettings
+     * saved it: an unfinished scorer switched on, a two minute clock and a
+     * public board, for a pilot who thought they had pressed Escape and
+     * has no memory of asking for any of it. Roll right was the same bug
+     * one position milder, and the hint under the screen tells a radio
+     * pilot to roll. See DEFAULTS.freestyleScoring for why off is what a
+     * pilot gets without asking.
+     *
+     * So the sticks get the keyboard's rule. On a card screen roll right
+     * chooses and roll left goes back, which is what the hint promises,
+     * and a segmented row is still reachable from a radio because select
+     * cycles it: see the segmented branch in select().
+     */
+    const rollAdjusts = Boolean(it && it.adjust) && !this.cardScreen();
     if (this.dropEl) {
       if (now.up && !this.padPrev.up) {
         this.moveDrop(-1);

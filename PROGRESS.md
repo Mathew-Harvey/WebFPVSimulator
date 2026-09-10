@@ -32405,3 +32405,22 @@ that is not this change and the baseline was deliberately left alone.
 physics, no plant, no module ABI and no build was touched. The stick path has
 no automated check anywhere in the repository, which is why a keyboard rule
 and a stick rule were allowed to disagree for as long as they did.
+
+**The review, and its tally.** Five dimensions were hunted in parallel and
+every finding was put to an adversarial verifier told to refute it: the
+overlay's visibility, settings persistence, every other freestyle facing
+surface, every entry path into the town, and the deployment. Sixteen findings
+raised, five confirmed, eleven refuted. The refutations are worth reading
+before trusting the numbers: most of the eleven were refuted as ALREADY FIXED,
+because the hunt ran against the committed file while the fixes were being
+written, so a verifier walking the working tree found the guard already there.
+Two were refuted on their merits, the stale browser tab and the Cloudflare
+cache as causes of this report, both of which they falsified against the live
+origin rather than by argument. The one confirmed finding NOT fixed here is
+the gateless custom course above, declined with its reason.
+
+The overlay itself came out clean under all of it, which is worth writing
+down: `syncScoreVisible`, `ScoreHud.setVisible` and `.score-hud.is-off` were
+walked line by line and driven against a DOM stub, and no path shows the
+overlay while the setting is off. Every bug in this entry was a sentence, a
+stick or a stored value, and none of them was the gate.

@@ -214,28 +214,45 @@ export function makeAutosaver(delayMs = 700) {
 /* Files                                                               */
 /* ------------------------------------------------------------------ */
 
-/* A filename that is recognisably the track and is safe on every platform. */
-export function exportFilename(doc) {
-  const slug = String(doc.name || 'track')
+/* The track's name, reduced to something safe on every platform. One rule,
+ * used by both filenames below and matched by scripts/trackgif.js, so a track
+ * exported by the button and by the script lands on the same name. */
+function slugOf(doc) {
+  return String(doc.name || 'track')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60) || 'track';
-  return `${slug}.track.json`;
 }
 
-export function downloadTrack(doc) {
-  const blob = new Blob([serialize(doc)], { type: 'application/json' });
+/* A filename that is recognisably the track and is safe on every platform. */
+export function exportFilename(doc) {
+  return `${slugOf(doc)}.track.json`;
+}
+
+export function animationFilename(doc) {
+  return `${slugOf(doc)}.gif`;
+}
+
+/* Hand the browser some bytes as a file. Shared because the track document
+ * and the animation want exactly the same dance and only differ in what is
+ * in the blob. */
+export function downloadBlob(data, filename, type) {
+  const blob = new Blob([data], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = exportFilename(doc);
+  a.download = filename;
   document.body.append(a);
   a.click();
   a.remove();
   /* Revoked on the next turn of the loop: revoking synchronously has raced
    * the download in more than one browser. */
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadTrack(doc) {
+  downloadBlob(serialize(doc), exportFilename(doc), 'application/json');
 }
 
 export function readFileText(file) {

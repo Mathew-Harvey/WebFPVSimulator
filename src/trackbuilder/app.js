@@ -47,8 +47,8 @@ import { buildPath } from './path.js';
 import { collectWarnings, sortWarnings } from './warnings.js';
 import { History } from './history.js';
 import {
-  deleteTrack, downloadTrack, listTracks, loadTrack, makeAutosaver,
-  readAutosave, readFileText, saveTrack, writeAutosave,
+  animationFilename, deleteTrack, downloadBlob, downloadTrack, listTracks,
+  loadTrack, makeAutosaver, readAutosave, readFileText, saveTrack, writeAutosave,
 } from './storage.js';
 import { normaliseLogo, drawBannerPreview, drawGroundPreview } from './logo.js';
 import { View2D } from './view2d.js';
@@ -893,6 +893,67 @@ export class App {
   }
 
   /*
+   * A looping animation of one lap, as a file the pilot can post.
+   *
+   * The render is minutes of work on a slow machine and seconds on a fast
+   * one, so it is behind its own button inside a modal rather than on the
+   * menu item: pressing Export animation should open something that explains
+   * what is about to happen, not lock the page up for a minute.
+   *
+   * Three.js and the exporter are imported here and not at the top of the
+   * file, the same way view3d.js loads Three, so a pilot who never asks for
+   * an animation never pays for the code or for the CDN being up.
+   */
+  async exportAnimation() {
+    if (this.nameInput && this.nameInput.value) {
+      this.doc.name = this.nameInput.value.trim() || 'Untitled track';
+    }
+    /* One element is not a lap, which is the same rule the racing line
+     * itself applies, so the refusal says the same thing. */
+    if (this.doc.sequence.length < 2) {
+      this.toast('An animation needs at least two elements in the flying order.');
+      return;
+    }
+
+    const body = document.createElement('div');
+    const help = document.createElement('p');
+    help.className = 'tb-help';
+    help.textContent = 'One lap of the racing line, 512 by 512, twelve seconds, looping. '
+      + 'It comes out around 2 MB, which posts anywhere. Rendering takes a minute or so '
+      + 'and this tab has to stay open while it does.';
+    const status = document.createElement('p');
+    status.className = 'tb-help';
+    body.append(help, status);
+
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'tb-btn tb-primary';
+    go.textContent = 'Render the animation';
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      status.textContent = 'Loading the renderer.';
+      try {
+        const { exportTrackGif } = await import('./animate.js');
+        const bytes = await exportTrackGif(this.doc, {
+          onProgress: (done, total) => {
+            status.textContent = `Frame ${done} of ${total}.`;
+          },
+        });
+        downloadBlob(bytes, animationFilename(this.doc), 'image/gif');
+        const mb = (bytes.length / 1e6).toFixed(2);
+        status.textContent = `Done. ${mb} MB, saved as ${animationFilename(this.doc)}.`;
+        go.textContent = 'Render it again';
+        go.disabled = false;
+      } catch (e) {
+        status.textContent = e && e.message ? e.message : String(e);
+        go.disabled = false;
+      }
+    });
+    body.append(go);
+    this.modal('Export animation', body);
+  }
+
+  /*
    * Put this course on the public board. The document goes as it is, logo
    * included, so every gate and every flag on the board copy wears the
    * same print the author sees here.
@@ -1553,6 +1614,7 @@ export class App {
       ['Duplicate', () => this.duplicate(), 'Copy this track under a new name', ''],
       ['Import', () => file.click(), 'Read a .json track file', ''],
       ['Export', () => this.exportFile(), 'Write a .json track file', ''],
+      ['Export animation', () => this.exportAnimation(), 'Write a looping .gif of one lap', ''],
       ['Delete', () => this.confirmRemove(), 'Remove this track from this browser', 'tb-danger'],
     ]) {
       const b = btn(label, () => { this.closeMore(); fn(); }, title, `tb-more-item ${cls}`.trim());

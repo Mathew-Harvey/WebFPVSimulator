@@ -32424,3 +32424,135 @@ down: `syncScoreVisible`, `ScoreHud.setVisible` and `.score-hud.is-off` were
 walked line by line and driven against a DOM stub, and no path shows the
 overlay while the setting is off. Every bug in this entry was a sentence, a
 stick or a stored value, and none of them was the gate.
+
+## Round 29: a track can leave the builder as a looping animation
+
+**What was built.** The track builder exports a GIF of one lap: the track as
+grey PVC pipe and joint scaffolding on a black floor under one key light, a
+glowing ribbon flying the racing line, and one translucent green pane on the
+gate being flown toward. It is on the More menu as Export animation, and
+`node scripts/trackgif.js <track.json>` reaches the same code through headless
+Chromium. `TRACKGIF-PLAN.md` is the spec it was built to and every section of
+it was followed except where this entry says otherwise.
+
+Five files are new: `src/trackbuilder/gif.js`, `scripts/gif-selftest.js`,
+`src/trackbuilder/stage.js`, `src/trackbuilder/animate.js`,
+`src/trackbuilder/animate.html` and `scripts/trackgif.js`. `path.js`,
+`storage.js`, `app.js` and `package.json` changed.
+
+**The measurement that matters.** Living room 1, 512 by 512, 300 frames,
+12.0 seconds, **1.73 MB in 28 seconds**, against a 4 MB budget. The same
+document through the builder's own button produced the same 1.73 MB, which is
+the check that both routes are one code path rather than two.
+
+**Why the stage is bespoke.** The plan's own section 3 argued this at length
+after an earlier round had settled on `buildFieldScene`. `scene.js` does have
+pipe with a moulded fitting at every corner and a dark branch for a micro
+track, but that branch is a ROOM, pine board walls and an OSB ceiling with
+joists, built unconditionally with no way to ask for the object without the
+room; and `scene.js` exports four functions, none of which is a gate builder.
+So the pipe is rebuilt here from `apertureFrame`, `apertureCorners`,
+`apertureCenter` and `aperturesOf`, which is the builder's own maths, and the
+pipe therefore stands exactly where the builder says the gate is.
+
+**What went wrong, in the order it was found.**
+
+The median cut in the encoder chose its split where half the pixels had been
+passed and did not clamp that below the end of the box. A bin holding more
+than half the box sends the cut past the last valid position, so the right
+hand box came back empty and the left hand box came back unchanged: the loop
+raised the box count without dividing anything. An eighteen colour input came
+out with two colours and 254 empty slots. That is exactly the shape of this
+animation, a saturated ribbon against a dark room, so it would have shipped
+looking like a poster. Found by a PSNR assertion, then given a named
+regression guard, and the guard was confirmed by putting the bug back and
+watching it fail.
+
+The nearest colour lookup cache was coarser than the histogram that built the
+palette. On a dark radial light pool, the floor this animation stands on, a
+five bit cache used seven of the palette's twelve gradient entries and scored
+35.5 dB; six bits uses all twelve and scores 49.7 dB. It costs bytes, 2575
+against 4082 on that tile, and that is the right way round because banding in
+the pool was the one quality risk the budget left open. The rule left behind
+is that the cache must never be coarser than the histogram.
+
+A first attempt at the justification for that cache width was WRONG and is
+recorded here because it was nearly left in the source. The 28.4 dB figure
+that prompted it was caused by the median cut bug, not by the cache, and the
+comment claiming otherwise was replaced with the gradient measurement above
+once both were tested separately. A measured number attached to the wrong
+cause is worse than no number.
+
+The light pool was painted by multiplying a packed RGB integer by 0.45.
+`0x303030 * 0.45` is `0x15af49`, a bright green, and the first render put a
+green field under the entire track. Channels scale separately or not at all.
+
+The pool was sized against the floor plane, which is deliberately enormous so
+its edge is never in shot, so a one and a half metre track sat in an eight
+metre halo. It is sized against the track now.
+
+The name read upside down. Type lying on the ground has the tops of its
+letters pointing AWAY from the reader, not towards them.
+
+The camera fitted a bounding sphere round a bounding box round a wide flat
+track plus a name plane lying beyond it, and the shot came out mostly empty
+floor. It projects the real vertices onto the camera's own right and up axes
+now, which is exact, and the margin came down from 25 percent to 6.
+
+**The one deliberate lie, declared.** A full class course is 120 m across, so
+its 33.4 mm pipe works out at 0.13 of a pixel at 512 square: every gate on the
+first full class export was invisible and the animation was a red line over an
+empty floor. The DRAWN pipe radius now has a floor of 1.7 pixels. On a whoop
+track that changes nothing at all, because 26.7 mm of pipe in a living room is
+already about five pixels and Living room 1 renders byte identical either way.
+On the 54 element 2025 WA States it is an exaggeration of thirteen times.
+Every position, opening and span still comes from the document, so only the
+thickness is affected, and `view3d.js` has the same kind of concession for the
+same reason. Anyone who wants a full class course drawn honestly should render
+it larger than 512.
+
+**The loop was checked, not assumed.** The ribbon crosses the seam without a
+jump. The pane changing gate at the seam is a mean absolute pixel change of
+2.334, which sits mid range among the lap's four other gate changes at 0.962,
+1.353, 3.268 and 3.277, so the loop point is no more abrupt than any other
+moment in the lap.
+
+**One thing the reference does that this does not.** Track 8's stage has 22
+percent of its pixels below luminance 12 and 73 percent below 40. This has
+0.5 and 94. The floor is genuinely black at the corners, minimum luminance 1,
+but the camera frames the track tightly and the pool fills most of a tight
+frame, where the reference is a wider shot with more black around it. Three
+settings of pool radius, pool brightness and hemisphere intensity were swept
+and none of them moved the under-12 figure, because the cause is the framing
+and not the lighting. Left as it is: it reads as a dark stage, and chasing the
+histogram would mean pulling the camera back off the thing being shown.
+
+**Racing line, and an open question for the owner.** `buildKnots` and
+`buildPath` take `closeLoop`, off by default, which stands in for the presence
+of start pads in the closure test and nowhere else. Every existing caller
+passes nothing and behaves exactly as before. The export passes it, because a
+RaceGOW lap starts and finishes on one designated gate, the first one flown,
+and that is true whether or not the author placed pads.
+
+The open question, flagged in the plan and not acted on: by that same rule a
+micro track built WITHOUT start pads currently gets a racing line short by its
+whole return leg. Measured on Living room 1 with its pads removed, the line is
+5 knots over 5.134 m with a 1.632 m hole between the last gate and the first,
+where the padded document gives 6 knots over 7.154 m. If the first gate is
+always the start and the finish then the builder is wrong there too, not just
+the export, and `length` is not a lap. It was not changed here because it
+changes what every existing padless micro track draws and warns about, and
+that is the owner's call rather than this change's.
+
+**Checks.** `npm run gif:selftest` 38 passed 0 failed, which decodes what the
+encoder writes with an LZW decoder written from the specification rather than
+from the encoder. `npm run check:clip` 495 passed, `npm run check:path` 12
+passed, `npm run lint:presets` 6 of 6 clean, `npm run lint:quality` 56 of 56
+clean. Rendered and looked at: Living room 1 at 24 and at 300 frames, and the
+54 element 2025 WA States. The builder's button was driven headlessly through
+its real DOM path, More then Export animation then Render, and produced
+`living-room-1.gif` at 1.73 MB with no page errors.
+
+`npm run verify` was NOT run and says nothing about any of this: no physics,
+no plant, no module ABI and no build was touched. No review workflow was run,
+because none was asked for.

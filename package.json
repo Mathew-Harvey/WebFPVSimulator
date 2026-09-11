@@ -34,6 +34,7 @@
     "gen:og": "node scripts/og.js .",
     "gen:posters": "node scripts/posters.js",
     "gen:gatecards": "node scripts/gatecards.js",
+    "gif:selftest": "node scripts/gif-selftest.js",
     "ghost:selftest": "node scripts/ghost-selftest.js",
     "contact:selftest": "node scripts/contact-selftest.js",
     "score:selftest": "node scripts/score-selftest.js",

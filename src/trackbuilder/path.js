@@ -60,8 +60,16 @@ import {
  *   role   'aperture' | 'marker' | 'wrap' | 'finish'
  *   seq    the sequence entry that produced it, or null for wrap and finish
  *   index  one based position in the flying order, or null
+ *
+ * closeLoop asks for the closing knot whether or not the track has start
+ * pads. The builder never passes it, so what an author sees is unchanged.
+ * The animation export does, because a RaceGOW lap starts and finishes on
+ * one designated gate, the first one flown, and that is true of a track
+ * whose author has not placed pads. Without it the exported line stops at
+ * the last gate and the animation cannot loop: on the shipped Living room 1,
+ * dropping the pads loses the whole return leg, 5.134 m of a 7.154 m lap.
  */
-export function buildKnots(doc) {
+export function buildKnots(doc, { closeLoop = false } = {}) {
   const start = startPadsOf(doc);
 
   /* Raw anchors first, because a marker's offset needs a direction and the
@@ -174,7 +182,7 @@ export function buildKnots(doc) {
    * one gate. That is the first thing an author sees after placing their
    * first gate, so it has to be nothing rather than a complaint.
    */
-  if (start && withWraps.length > 1) {
+  if ((start || closeLoop) && withWraps.length > 1) {
     const first = withWraps[0];
     withWraps.push({
       pos: { ...first.pos },
@@ -226,11 +234,15 @@ function hermiteD2(p0, p1, m0, m1, t) {
  *             the start in metres and radius the radius of curvature in
  *             metres, Infinity on a straight
  *   length    total arc length in metres
- *   closed    true when start pads exist, so the lap returns to the first element
+ *   closed    true when the lap returns to the first element, which is when
+ *             start pads exist or the caller asked for closeLoop
  *   segments  [{ a, b, from, to }] knot pairs, for the warning pass
+ *
+ * closeLoop is passed straight to buildKnots and explained there. It is off
+ * by default, so every existing caller gets exactly what it got before.
  */
-export function buildPath(doc) {
-  const knots = buildKnots(doc);
+export function buildPath(doc, { closeLoop = false } = {}) {
+  const knots = buildKnots(doc, { closeLoop });
   const per = Math.max(4, Math.round(doc.settings.samplesPerSegment));
   const kScale = doc.settings.tangentScale;
   const samples = [];
@@ -286,7 +298,7 @@ export function buildPath(doc) {
     samples,
     segments,
     length: s,
-    closed: Boolean(start) && doc.sequence.length > 0,
+    closed: (Boolean(start) || closeLoop) && doc.sequence.length > 0,
     tightest,
   };
 }

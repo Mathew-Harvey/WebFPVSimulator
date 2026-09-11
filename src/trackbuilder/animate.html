@@ -1,0 +1,89 @@
+<!doctype html>
+<!--
+  animate.html: a page whose only job is to let scripts/trackgif.js reach
+  exportTrackGif in a real WebGL context.
+
+  The builder never loads this. It imports animate.js directly, because it
+  already has a page, an import map and a Three.js module loaded. This file
+  exists because Node cannot resolve the bare three specifier and cannot run
+  WebGL, so the headless harness needs somewhere to stand.
+
+  The import map is the builder's own, pinned to the same version, because an
+  animation rendered against a different Three than the builder previews with
+  would be a picture of a different track.
+
+  This file is part of WebFPVSimulator.
+
+  WebFPVSimulator is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or (at
+  your option) any later version.
+
+  WebFPVSimulator is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY, without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WebFPV, track animation</title>
+    <style>
+      html, body { margin: 0; background: #000; color: #dcd6ca;
+        font: 14px system-ui, sans-serif; }
+      p { padding: 12px; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <p id="status">Ready.</p>
+    <script type="module">
+      import { exportTrackGif } from './animate.js';
+
+      const status = document.getElementById('status');
+
+      /*
+       * Base64 rather than the bytes themselves, because the only way back to
+       * the script is a DevTools evaluate that returns a JSON value, and a
+       * quarter of a million element array costs more to serialise than the
+       * file does to encode.
+       */
+      function base64(bytes) {
+        let s = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return btoa(s);
+      }
+
+      window.__exportTrackGif = async (doc, opts) => {
+        try {
+          const bytes = await exportTrackGif(doc, {
+            ...(opts || {}),
+            onProgress: (done, total) => {
+              status.textContent = `Frame ${done} of ${total}.`;
+              window.__gifProgress = { done, total };
+            },
+          });
+          status.textContent = `Done, ${bytes.length} bytes.`;
+          return { ok: true, base64: base64(bytes), bytes: bytes.length };
+        } catch (e) {
+          status.textContent = `Failed: ${e && e.message ? e.message : e}`;
+          return { ok: false, error: String((e && e.message) || e) };
+        }
+      };
+
+      window.__animateReady = true;
+    </script>
+  </body>
+</html>

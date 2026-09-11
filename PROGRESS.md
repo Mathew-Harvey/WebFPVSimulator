@@ -32634,3 +32634,62 @@ owner called trash, and replacing them with a Track 8 built from the
 animation is the next job. The 27 inch pipe length is the key that was
 missing: with `racegow.js`'s 30 inch nominal centres it makes the track a
 lattice to count rather than a projection to solve.
+
+## Round 31: the two supplied tracks were not built, and why
+
+The owner supplied RaceGOW5 Track 8 and Track 5 as animations and asked for
+those two to be the only whoop tracks in the builder, matching the GIF
+exactly, to be self verified and pushed. **Nothing was shipped and no preset
+moved.** `TRACK-FROM-ANIMATION.md` carries the full findings; this is the
+short account and the reason.
+
+**What came out solid.** The flying order, from clustering the green panel
+across every frame and ordering the runs: Track 8 is 16 distinct openings in
+34 passes, Track 5 is 14 in 22. Both sequences are written down. The 27 inch
+pipe the owner supplied does make the track a lattice, and the extraction
+confirms it: fittings found by eroding the plate, spans found by testing which
+pairs are joined by unbroken pipe, and every span landing in one of three
+mutually perpendicular families. **Every cycle in both graphs closes as
+exactly one unit**, which is the lattice hypothesis passing a test it could
+have failed, with no camera involved.
+
+**What defeated it.** The camera is perspective, confirmed rather than
+assumed: a vertical pole with three collinear points shows image spans of 98
+and 138 px, and the vertical vanishing point resolves that 1.41 ratio to a
+world length ratio of 1.080, so both spans are one unit. But the camera fit
+does not converge. Track 8's three vanishing point pairs disagree by 15
+percent on focal length, Track 5's A family puts its vanishing point inside
+the image, and a least squares fit over camera plus per structure offsets
+settles at 24.5 px rms on Track 8 and 44.1 px on Track 5 with the focal
+escaping to an orthographic limit. On a 1024 px frame of a living room that is
+several inches to a foot of position error. Separately, image lengths within
+one axis vary by up to 4.9 times, which perspective cannot explain over this
+scene, so some runs carry couplings the erosion misses. Restricting to
+fitting-to-fitting spans, in case free pipe ends were the contaminant, leaves
+the spread unchanged.
+
+**A misreading corrected.** Round 29 read the green quad in these animations
+as a gate highlight following a continuous racing line. It is not: it is the
+opening being flown through, drawn filled, with a directional arrow into it.
+That wrong reading survived a whole round and was caught only by looking at
+one frame at full size. It did not reach any code.
+
+**Why nothing shipped.** Removing five presets and leaving the sixth, itself
+one of the reconstructions the owner called trash, is worse than leaving all
+six: `micro:check` validates each and the whoop picker reads
+`presetsForClass('micro')`, so a picker holding one bad track is no better
+than one holding six. And building the two tracks from the topology with
+positions guessed to look right would reproduce precisely what `presets.js`
+admits about the existing set in its own header, "close in shape and wrong in
+detail". The instruction was to push once happy. I am not happy with a layout
+I cannot verify, so it stayed out of the repository.
+
+**What finishes it.** The Track Diagram cards, which `racegow.js` already
+cites in the RaceGOW build videos and which carry the dimensions. Failing
+that, a second camera angle turns an inverse problem into a stereo one. The
+one tractable piece without new input is finding the missing couplings by
+measuring pipe width along each span rather than thresholding the whole plate
+at one percentile.
+
+**Checks.** No source file changed, so nothing was run beyond the analysis
+itself. `npm run verify` was not run and says nothing here.

@@ -43,15 +43,28 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { KIND } from './elements.js';
+import { KIND, trackClassOf, tuningFor } from './elements.js';
 import {
-  elementById, kindOf, entryAnchor, elementNormal, startPadsOf,
+  apertureCenter, aperturesOf, elementById, kindOf, entryAnchor, elementNormal, startPadsOf,
 } from './model.js';
 import { nearbyApertureTravel, markerPassDir } from './faces.js';
 import { wrapBetween } from './figures.js';
 import {
-  add, cross, dist, dot, length, normalize, scale, sub,
+  add, apertureFrame, cross, dist, dot, length, normalize, scale, sub,
 } from './geometry.js';
+
+/*
+ * How many steering knots the avoidance pass below may insert before it
+ * gives up. A track that still crosses a gate after this many dodges is
+ * telling the author something the line cannot fix, and an unbounded loop
+ * on a document somebody is typing into is worse than a wrong line.
+ */
+const DODGE_LIMIT = 12;
+
+/* Samples per segment when LOOKING for a crossing. Coarser than the drawing
+ * pass on purpose: this runs on every edit and a gate is never so thin that
+ * 24 samples step over it. */
+const DODGE_PROBE = 24;
 
 /*
  * The knots, in order. Each carries where it is, which way the quad is going
@@ -161,7 +174,7 @@ export function buildKnots(doc, { closeLoop = false } = {}) {
     if (!stacked || !a.seq || !b.seq) {
       continue;
     }
-    const wrap = wrapBetween(stacked, a.seq, b.seq);
+    const wrap = wrapBetween(stacked, a.seq, b.seq, trackClassOf(doc));
     withWraps.push({
       pos: wrap.pos,
       tangent: wrap.tangent,
@@ -194,7 +207,136 @@ export function buildKnots(doc, { closeLoop = false } = {}) {
       markerPos: first.markerPos ? { ...first.markerPos } : undefined,
     });
   }
-  return withWraps;
+  /* Last, because the closing leg back to the first gate has to be checked
+   * for a gate in the way exactly like every other leg. */
+  return avoidForeignApertures(doc, withWraps);
+}
+
+/*
+ * NOT FLYING THROUGH A GATE THE QUAD WAS NOT SENT THROUGH.
+ *
+ * The Hermite between two knots is fitted from those two knots and nothing
+ * else, so it has never known that a third gate is standing in the way. On
+ * the tracks that ship, five of seventeen fly the line clean through an
+ * opening that is not the one being scored, which is not a thing a pilot
+ * would ever do: you go round.
+ *
+ * The fix is the mechanism the stack wrap already uses. Find where the curve
+ * crosses a foreign opening, and put a steering knot at that crossing pushed
+ * just outside the frame, so the curve is forced past the gate instead of
+ * through it. It carries no sequence entry, exactly like a stack wrap, so
+ * nothing downstream counts it as a station.
+ *
+ * It escapes across the NEARER edge, which is the smaller correction and the
+ * one a pilot would take, and it clears by the same margin the warning pass
+ * gives a barrier, because the line is a centreline and a quad is not a
+ * point.
+ */
+function apertureRects(doc) {
+  const out = [];
+  for (const el of doc.elements) {
+    if (kindOf(el) !== KIND.APERTURE) {
+      continue;
+    }
+    for (const ap of aperturesOf(el)) {
+      out.push({
+        key: `${el.id}#${ap.index}`,
+        c: apertureCenter(el, ap.index),
+        f: apertureFrame(el.yaw, el.pitch),
+        hw: ap.clearW / 2,
+        hh: ap.clearH / 2,
+      });
+    }
+  }
+  return out;
+}
+
+/* Which opening, if any, this knot is standing in. */
+function keyOf(knot) {
+  return knot && knot.seq ? `${knot.seq.elementId}#${knot.seq.apertureIndex ?? 0}` : null;
+}
+
+function firstCrossing(a, b, rects, kScale, clear) {
+  const span = dist(a.pos, b.pos);
+  if (span < 1e-6) {
+    return null;
+  }
+  const m0 = scale(a.tangent, span * kScale);
+  const m1 = scale(b.tangent, span * kScale);
+  const mine = new Set([keyOf(a), keyOf(b)].filter(Boolean));
+  let prev = hermite(a.pos, b.pos, m0, m1, 0);
+  for (let i = 1; i <= DODGE_PROBE; i += 1) {
+    const t = i / DODGE_PROBE;
+    const p = hermite(a.pos, b.pos, m0, m1, t);
+    for (const r of rects) {
+      if (mine.has(r.key)) {
+        continue;
+      }
+      const d0 = dot(sub(prev, r.c), r.f.normal);
+      const d1 = dot(sub(p, r.c), r.f.normal);
+      if (d0 === d1 || (d0 > 0) === (d1 > 0)) {
+        continue;
+      }
+      const s = d0 / (d0 - d1);
+      const x = add(prev, scale(sub(p, prev), s));
+      const rel = sub(x, r.c);
+      const u = dot(rel, r.f.widthAxis);
+      const v = dot(rel, r.f.heightAxis);
+      if (Math.abs(u) > r.hw || Math.abs(v) > r.hh) {
+        continue;
+      }
+      /* Inside the opening. Escape across whichever edge is nearer, which
+       * is the smaller correction of the two available. */
+      const outU = r.hw - Math.abs(u);
+      const outV = r.hh - Math.abs(v);
+      const axis = outU <= outV ? r.f.widthAxis : r.f.heightAxis;
+      const sign = (outU <= outV ? u : v) >= 0 ? 1 : -1;
+      const push = (outU <= outV ? outU : outV) + clear;
+      const tAt = (i - 1 + s) / DODGE_PROBE;
+      return {
+        pos: add(x, scale(axis, sign * push)),
+        tangent: normalize(hermiteD1(a.pos, b.pos, m0, m1, tAt), a.tangent),
+        through: r.key,
+      };
+    }
+    prev = p;
+  }
+  return null;
+}
+
+function avoidForeignApertures(doc, knots) {
+  const rects = apertureRects(doc);
+  if (rects.length < 2 || knots.length < 2) {
+    return knots;
+  }
+  const kScale = doc.settings.tangentScale;
+  /* The same clearance the warning pass gives a barrier, which is class
+   * aware: 0.35 m on a field, 0.10 m in a RaceGOW room. */
+  const clear = tuningFor(trackClassOf(doc)).barrierClearance;
+  const out = knots.slice();
+  for (let guard = 0; guard < DODGE_LIMIT; guard += 1) {
+    let inserted = false;
+    for (let i = 0; i < out.length - 1; i += 1) {
+      const hit = firstCrossing(out[i], out[i + 1], rects, kScale, clear);
+      if (!hit) {
+        continue;
+      }
+      out.splice(i + 1, 0, {
+        pos: hit.pos,
+        tangent: hit.tangent,
+        role: 'wrap',
+        seq: null,
+        index: null,
+        elementId: null,
+      });
+      inserted = true;
+      break;
+    }
+    if (!inserted) {
+      return out;
+    }
+  }
+  return out;
 }
 
 /* Cubic Hermite basis, and its first two derivatives. */

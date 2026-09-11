@@ -32556,3 +32556,81 @@ its real DOM path, More then Export animation then Render, and produced
 `npm run verify` was NOT run and says nothing about any of this: no physics,
 no plant, no module ABI and no build was touched. No review workflow was run,
 because none was asked for.
+
+## Round 30: two bugs in the racing line, both reported by a pilot
+
+**What was wrong, in the pilot's words.** The exported animation showed a whoop
+going "way wide" round a triple gate stack when a real pilot hugs the frame,
+and the line flew "back through a gate that isn't the current target gate" to
+get to another one. Both turned out to be in `path.js`, which is the BUILDER'S
+racing line, not the export. The animation was only the first thing that drew
+it large enough to notice.
+
+**The stack wrap used the wrong class's number, and the right one was already
+there.** `figures.js` read `TUNING.stackWrap` directly. That constant is 2.6 m
+and its own comment says it is "sized from the 5 ft opening plus its sleeves
+plus a body length", which is a MultiGP field. `TUNING.micro.stackWrap` has
+been 0.84 m since the micro class was added and nothing ever read it, because
+`wrapBetween` took no track class and `tuningFor` was never called. So every
+whoop stack in the builder stepped 2.6 m off a structure whose openings are
+1.07 m apart.
+
+Measured on a three level ladder in a RaceGOW room, before and after:
+
+| | before | after |
+|---|---|---|
+| lap length | 15.610 m | 7.338 m |
+| chord between stack passes | 2.628 m | 0.922 m |
+| sideways bulge off the chord | 0.508 m | 0.172 m |
+
+A full class track is untouched, which was checked rather than assumed: the
+same shape built at class `full` still gives 2.714 m chords and 0.517 m bulge.
+Passing the class through is the whole fix. `tuningFor` already knew.
+
+**Flying through a gate it was not sent through.** The Hermite between two
+knots is fitted from those two knots and knows nothing about a third gate
+standing in the way, so there was no avoidance of any kind anywhere in the
+file. Measured across everything that ships, presets and `tracks/json` alike,
+**five of seventeen tracks flew the line clean through an opening that was not
+the one being scored**: RaceGOW5 Track 8, 2022 MultiGP GQ, WCMRC Round 5, FAI
+Turkiye 2024, and ROX Open 2023 with three of them.
+
+The fix reuses the mechanism the stack wrap already established. Find where
+the curve crosses a foreign opening, and insert a steering knot at that
+crossing pushed just outside the frame, so the curve is forced past the gate
+instead of through it. It escapes across the NEARER edge, which is the smaller
+correction and the one a pilot would take, and clears by `barrierClearance`,
+the same margin the warning pass gives a barrier and itself class aware at
+0.35 m on a field and 0.10 m in a room. The knot carries no sequence entry,
+exactly like a stack wrap, so nothing downstream counts it as a station.
+
+After: **0 of 17**. The dodge count is 1, 1, 1, 1 and 3 on the five that were
+broken and **0 on the twelve that were not**, so every track that was already
+clean has a line identical to the one it had. That is structural rather than
+lucky: with nothing to avoid the pass returns the knots it was given.
+
+Two bounds are in the file with their reasons. `DODGE_LIMIT` is 12, because an
+unbounded loop on a document somebody is typing into is worse than a wrong
+line. `DODGE_PROBE` is 24 samples per segment for the SEARCH, coarser than the
+drawing pass, because this runs on every edit and no gate is thin enough to
+step over at that density.
+
+**What this changes for existing tracks.** Every micro track's line moves,
+because the stack wrap was wrong for all of them. Five tracks gain a dodge.
+That is the point of the change, but it is worth saying plainly: a time set
+against the old line was set against a different line.
+
+**Checks.** `npm run check:clip` 495 passed, `npm run check:path` 12 passed,
+`npm run micro:check` 107 passed 0 failed, `npm run lint:presets` 6 of 6
+clean, `npm run gif:selftest` 38 passed. The before and after numbers above
+were measured with a probe that builds a three level ladder in a room and
+counts crossings against every opening in the document.
+
+`npm run verify` was NOT run and says nothing about any of this: no physics,
+no plant, no module ABI and no build was touched.
+
+**Still open.** The RaceGOW5 whoop presets are still the reconstructions the
+owner called trash, and replacing them with a Track 8 built from the
+animation is the next job. The 27 inch pipe length is the key that was
+missing: with `racegow.js`'s 30 inch nominal centres it makes the track a
+lattice to count rather than a projection to solve.

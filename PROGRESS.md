@@ -34481,3 +34481,62 @@ needs the board deployed with the route above. Publishing the three
 presets needs neither, but doing it before the removal would put two
 `RaceGOW5 Track 1` cards on a public board with no way to take either
 down, so it waits for the same deploy.
+
+## Round 56: both branches land on main, and the whoop side is four rooms
+
+Round 55 ended with the code done and the live board untouched, because
+removing a track needs `BOARD_ADMIN_TOKEN` and the route to spend it on
+was still only on a branch. The owner set the token, gave the word, and
+this round is the landing.
+
+**The merge collided on PROGRESS.md and nowhere else.** Main had moved one
+commit ahead while Round 55 was being written, and both sides had called
+their entry Round 54. Main's reached main first, so main's keeps the
+number and this branch's became Round 55. Nothing else overlapped: main's
+round is `index.html`, `ui.js`, `touchsticks.js`, `render.yaml` and
+`DEPLOY.md`, and this branch's is the trackbuilder's stage and animate
+plus `scripts/boardpresets.js`. The board's branch fast forwarded with no
+conflict at all. The cheap checks were run again AFTER the merge, because
+a merge that compiles is not a merge that works: `lint:presets` 6 of 6,
+`check:clip` 522 passed, `gif:selftest` 38 passed, `lint:nouns` PASS.
+
+**The board went first, the way DEPLOY.md says.** Render picked up main on
+its own. The route was confirmed live by the thing it is supposed to do
+when it is not given the token: `403`, "Removing a track from this board
+needs the board's own token." That is a better liveness check than a 200,
+because a 404 would have meant the old build and a 200 would have meant
+the gate was not there.
+
+**What the live board looks like now.** 32 tracks, 28 of them field and 4
+of them rooms. Every room carries an animation and no field track does,
+which is the rule in `inspectGif` holding on real data rather than in a
+test. `trk-3ed40007`, the hand published RaceGOW5 Track 1, is gone and
+reported 0 times as it went. The three shipped tracks are up as
+`trk-d1111a66`, `trk-c4d6dae3` and `trk-ac684a39`, all credited to
+andAgainFPV and tagged race and small field. Whoop Triple Stack kept its
+4 times and gained the 28 kB animation it predated.
+
+**The count that proves nothing was lost.** The board totalled 132 posted
+times in the picture that started this work, and it totals 132 now. Mat's
+copy had none on it, so the removal cost nobody a lap.
+
+**The live bytes were checked, not assumed.** Each card was pulled back
+down from the board and a frame rendered locally: Track 8 and Track 1 both
+come back uncaptioned and filling the frame, which is the `nameplate:
+false` path arriving on the real service rather than in a local store.
+
+**What went wrong, and it was a false alarm.** The simulator looked
+half deployed for several minutes: `stage.js` served the new build and
+`animate.js` served the old one. Both were in the same commit, so that
+could not be true. It was Cloudflare: `cf-cache-status: HIT` with `age:
+244` against `s-maxage=300`, so the edge was holding a copy four minutes
+old. The same URL with a query string came back new. Worth knowing next
+time a deploy looks partial, and worth knowing that the browser side of
+that header is `max-age=14400`, so a pilot who opened the builder this
+morning can run this morning's modules for four hours. It costs nothing
+here: the only thing the stale module changes is whether a card published
+from that browser has a name laid in its floor.
+
+`npm run verify` was NOT run. This round is a merge, two deploys and four
+HTTP calls, and none of it reaches `src/native`, the patches, the WASM
+build or the input path.

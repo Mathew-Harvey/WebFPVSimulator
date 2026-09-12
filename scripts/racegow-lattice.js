@@ -301,6 +301,101 @@ export const TRACKS = [
     start: { at: [-1.6, 1.5], yaw: 0 },
     lap: 'A+ B+ R S C- T D+ Z P V F+ W Y X',
   },
+  {
+    id: 'racegow5-track2',
+    name: 'RaceGOW5 Track 2',
+    credit: {
+      designer: 'Skittles',
+      series: 'RaceGOW5',
+      source: 'racegow.com/tracks, the official Track 2 animation',
+      broughtOverBy: 'andAgainFPV',
+    },
+    origin: [152, 251],
+    /*
+     * Read off the RaceGOW5 Track 2 animation, 120 frames, every frame. A
+     * 3 by 1 unit lattice carrying three structures in a line along x, and
+     * an eight pass lap that scores every opening once and repeats none.
+     *
+     * At x 0 a goalpost across y, seen almost exactly edge on, which is the
+     * start gate. A ground bar runs from its far foot to x 1, where a
+     * second goalpost stands along x with its right leg carried up to two
+     * units. A second ground bar runs on to x 3, where the frame stands
+     * across y: two rungs, at one unit and at two, the far leg carried up
+     * to three units as the tall pole, and the top rung carried out one
+     * unit past the near leg as an overhang.
+     *
+     * THE CAMERA. Twelve fittings, 6.4 px rms reprojection. The integrality
+     * check that settles it is step 4b's: six feet unproject on to the
+     * floor within 0.08 of a whole unit and nine fitting heights within
+     * 0.05, so the lattice is not a fit, it is a count.
+     *
+     * THREE OF THE EIGHT OPENINGS ARE GAPS AND NOT GATES, marked
+     * `unbuilt`: D over the frame's top rung, E under the overhang, and G
+     * over the middle goalpost's bar. Each has a bar on one side and a
+     * carried up leg on the other and nothing else, so building any of
+     * them as a four sided square would put pipe in the air the reference
+     * does not have. Checked by projecting every pipe this file builds
+     * back on to the plate: all thirteen land on white PVC at full length,
+     * and the twelve members the reading denies come back dark. See
+     * TRACK-FROM-GIF.md step 8b.
+     *
+     * TWO PANELS ARE DRAWN WIDER THAN ONE SQUARE and one taller. D is lit
+     * across the whole two unit top rung, E and F across their whole two
+     * unit bays. The line is the only evidence for which square is the
+     * gate, so the flown path was reconstructed in three dimensions: every
+     * frame's trail head gives a ray, the eight passes give anchors on
+     * their own planes, and a constant pace prior fixes the depth. E is
+     * crossed at 1.46 units up, so it is the upper square. D is crossed at
+     * y 0.08, which is on the lattice line itself; it is built on the pole
+     * side because that is the side with a bar below it and a pole beside
+     * it, and because the other choice would put D and E on one line and
+     * make the dive between them the needle step 9 warns about.
+     *
+     * F IS THE TALL POLE'S OWN PANEL and not a gap. It is the only pane
+     * with a pole on one side and nothing on any other, which is the pole
+     * rule drawn: past this, on this side, at any height. The pole marker's
+     * scoring square lands at y 1.46 and 1.5 units up against a measured
+     * crossing of y 1.66 and 1.47, which is the check that it is read
+     * right.
+     */
+    squares: {
+      A: { name: 'Start gate', axis: 'x', at: [0, -0.5], sill: 0 },
+      H: { name: 'Under the middle bar', axis: 'y', at: [1.5, 0], sill: 0 },
+      G: { name: 'Over the middle bar', axis: 'y', at: [1.5, 0], sill: 1, unbuilt: true },
+      B: { name: 'Frame, bottom', axis: 'x', at: [3, -0.5], sill: 0 },
+      C: { name: 'Frame, middle', axis: 'x', at: [3, -0.5], sill: 1 },
+      D: { name: 'Over the top rung', axis: 'x', at: [3, -0.5], sill: 2, unbuilt: true },
+      E: { name: 'Under the overhang', axis: 'x', at: [3, 0.5], sill: 1, unbuilt: true },
+    },
+    poles: {
+      F: { name: 'Tall pole', at: [3, -1], height: 3, side: [0, -1], beside: 'B' },
+    },
+    posts: [
+      { name: 'Middle post', at: [2, 0], height: 2 },
+    ],
+    rails: [
+      { name: 'Ground bar, start gate to the middle', from: [0, 0, 0], to: [1, 0, 0] },
+      { name: 'Ground bar, the middle to the frame', from: [2, 0, 0], to: [3, 0, 0] },
+    ],
+    waypoints: {
+      J: { name: 'Out past the frame', at: [3.4, -0.4], z: 0.5, heading: [1, 0] },
+      K: { name: 'Back to the middle opening', at: [3.45, -0.65], z: 1.3, heading: [-1, 0] },
+      L: { name: 'Round behind the frame', at: [1.95, -1.15], z: 1.9, heading: [0, -1] },
+      M: { name: 'Back along the far side', at: [2.6, -1.75], z: 2.25, heading: [1, 0] },
+      N: { name: 'Round the top of the pole', at: [3.65, -1.1], z: 2.6, heading: [0, 1] },
+      O: { name: 'Down off the top rung', at: [2.15, 0.45], z: 1.9, heading: [0, 1] },
+      Q: { name: 'Round the outside', at: [3.88, -0.5], z: 1.42, heading: [0, -1] },
+      R: { name: 'Back across the middle', at: [1.85, -1.4], z: 1.5, heading: [-0.4, 1] },
+      S: { name: 'Down in front', at: [1.35, 0.55], z: 1.4, heading: [0, 1] },
+      T: { name: 'Back up to the low gate', at: [1.55, 0.45], z: 0.75, heading: [0, -1] },
+      U: { name: 'Out to the far side', at: [0.9, -1.3], z: 0.3, heading: [-1, -0.6] },
+      V: { name: 'Round the far end', at: [0.1, -1.76], z: 0.4, heading: [-1, 0] },
+      W: { name: 'Back on to the start gate', at: [-0.75, -1.1], z: 0.6, heading: [0, 1] },
+      X: { name: 'Line up', at: [-0.5, -0.72], z: 0.53, heading: [1, 0] },
+    },
+    start: { at: [-0.8, -0.5], yaw: 0 },
+    lap: 'A+ B+ J K C- L M N D- O E+ Q F R G+ S T H- U V W X',
+  },
 ];
 
 /*

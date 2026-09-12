@@ -445,12 +445,14 @@ function presetSet() {
   check('every preset id is unique', new Set(ids).size === ids.length, ids.join(', '));
 
   /*
-   * THE WHOOP SHIPS THESE TWO TRACKS AND NOTHING ELSE.
+   * THE WHOOP SHIPS THESE TRACKS AND NOTHING ELSE.
    *
-   * The owner supplied two RaceGOW5 animations and asked for those two to
-   * be the only whoop tracks in the product. Six reconstructions were here
-   * before them. The set is named here rather than counted, because "two
-   * of something" would pass with the wrong two.
+   * The owner supplies one RaceGOW5 animation at a time and asked for the
+   * tracks read off them to be the only whoop tracks in the product. Six
+   * reconstructions were here before them. The set is named here rather
+   * than counted, because "four of something" would pass with the wrong
+   * four, and the list grows only when an animation is read and its spec
+   * goes into scripts/racegow-lattice.js.
    *
    * WHERE AN ENTRY HERE SHOWS UP, which is no longer the Track room. That
    * room lists the board and this browser's library, and nothing else; a
@@ -460,9 +462,9 @@ function presetSet() {
    * builder and an extra track to publish, not an extra card in the
    * picker. shell-check pins that.
    */
-  const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1'];
+  const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1', 'racegow5-track2'];
   const micro = presetsForClass('micro').map((d) => d.id);
-  check('the whoop ships exactly the two supplied tracks',
+  check('the whoop ships exactly the supplied tracks',
     micro.length === want.length && want.every((id) => micro.includes(id)),
     micro.join(', ') || 'none');
 

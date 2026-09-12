@@ -3,7 +3,7 @@
 RaceGOW publishes each of its tracks as one looping animation of one lap.
 This is how that animation becomes a playable track in this simulator, end
 to end, with the traps named. It was written after Tracks 8 and 5 were built
-this way, and refined on Track 1. All three are in
+this way, refined on Track 1, and given step 4c by Track 2. All four are in
 `src/trackbuilder/presets.js` now.
 
 It replaces two earlier documents. `TRACK-FROM-ANIMATION.md` concluded the
@@ -121,6 +121,36 @@ camera residual never came below 14 px.
 Do this before hunting for couplings. A bar that reads as two units will
 show up as a foot at 2.0 rather than 1.0, and you will have measured it
 instead of squinting at a texture band.
+
+## Step 4c, the handedness, which is the one that ruins everything silently
+
+A camera fitted to correspondences is free to choose either handedness, and
+least squares will happily pick the one where your lattice's y axis runs
+opposite to the document's. Everything stays self consistent: the residual
+is fine, the integrality check passes, the crossings come out clean, the
+panes fit. The track is simply its own MIRROR IMAGE, every turn reversed,
+and nothing inside the reading can tell.
+
+It was found on Track 2 at step 10, by the exported caption reading
+backwards, after the whole spec had been written.
+
+The check is one line and it costs nothing, so do it here, before anything
+is written down. The camera's image right crossed with its image up must
+point BACK at the eye:
+
+```python
+right = R[0]              # camera x axis in world coordinates
+up = -R[1]                # image y is down, so up is minus it
+forward = -R[2]           # visible points have Pc.z of one sign, this is the other
+assert np.dot(np.cross(right, up), forward) < 0
+```
+
+If it comes out positive the fit is a left handed frame. The same thing
+shows up as a NEGATIVE focal length out of the fitter. The repair is to
+negate one axis of the lattice everywhere: the spec's coordinates, the
+signs of travel through every square on that axis, every waypoint's
+position and heading, the pole sides, and the origin. Negate y rather than
+x, so the chain still runs along positive x and the prose still reads.
 
 ## Step 5, every pane to a square
 

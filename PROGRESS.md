@@ -34718,3 +34718,103 @@ check and a comment. It does not reach `src/native`, the patches,
 `vendor/betaflight`, the WASM build or the input path. Cheap checks run in
 this round: `lint:shell` PASS, `lint:presets` 6 of 6, `micro:check` clean,
 `lint:nouns` PASS, `lint:boot` 9 of 9, `lint:quality` 56 of 56.
+
+## Round 59: RaceGOW5 Track 2 is read off its animation
+
+The owner supplied the official Track 2 animation, 120 frames, and asked
+for the track in the game's menu and on the board. It is by Skittles, who
+also designed Track 1. `TRACK-FROM-GIF.md` is the method and this round
+followed it end to end; what is below is what the frames said and the one
+new trap.
+
+**The structure.** A 3 by 1 unit lattice, three structures strung along x
+on two ground bars. At x 0 a goalpost across y, standing almost exactly
+edge on to the camera, which is the start gate: its opening reads as a 55
+pixel sliver and the two uprights look like one pipe forking. At x 1 to 2 a
+second goalpost along x with its right leg carried up to two units. At x 3
+the frame across y: rungs at one unit and two, the far leg carried on to
+three units as the tall pole, and the top rung carried one unit out past
+the near leg as an overhang.
+
+**The camera settled at 6.4 px rms over twelve fittings**, between Track 8's
+3.6 and Track 1's 14. The test that actually settled it is step 4b's
+integrality, as the doc says it would be: six feet unproject on to the floor
+within 0.076 of a whole unit and nine fitting heights within 0.05. The two
+that miss by more, a pole top at 2.968 and another at 1.930, are the rounded
+end caps of a pipe, where the skeleton stops half a pipe short of the real
+end. That is not a fit, it is a count, and it cannot be argued with.
+
+**Eight passes over eight openings, and no opening flown twice.** The
+shortest lap of the four by pass count and the second shortest by distance.
+The order came straight out of the green runs and needed no interpretation:
+A the start gate, then B and C up the frame, D over its top rung, E back
+through the overhang bay, F past the tall pole, then G and H down the middle
+goalpost. Three of the eight are gaps and not gates.
+
+**Two panels are drawn wider than one square and one taller**, which is the
+case `TRACK-FROM-GIF.md` says the line is the only evidence for. So the
+flown line was reconstructed in three dimensions rather than guessed at:
+every frame's trail head gives a ray from the fitted camera, the eight
+passes give anchors on their own planes, and a constant pace prior fixes the
+depth along each ray. The result tracks the red trail everywhere, and it
+answered all three. E is crossed 1.46 units up, so the upper square. F's
+crossing at y 1.66 and z 1.47 lands on the pole marker's own scoring square,
+which is where it should land if F is the pole rule and nowhere near it if F
+is a floating gap.
+
+**D was the one the numbers would not settle.** Its panel spans the whole
+two unit top rung and the line crosses at y 0.08, which is the lattice line
+itself, inside the measurement error either way. It is built on the pole
+side for two reasons that are not the number: that side has a bar below it
+and a pole beside it, which is exactly the gap pattern the doc names, and
+the other side would put D and E on one line and make the dive between them
+the needle step 9 warns about. Written down here because it was a judgement
+and not a reading.
+
+**The new trap, and it cost the most: THE LATTICE CAME OUT MIRRORED.** A
+camera fitted to correspondences is free to choose either handedness, and
+the least squares fit chose the one where the reading's own y axis ran
+opposite to the document's. Every number was self consistent, every check
+passed, the crossings were clean, and the track was its own mirror image:
+every turn reversed. Nothing in the reading catches this, because the
+reading is internally consistent either way.
+
+What caught it was step 10, the export laid over the reference, on the first
+look: the exported caption read backwards. The tell in the numbers, once
+looked for, is that the fitted focal length came out NEGATIVE and the
+camera's image right cross image up gave forward rather than backward, which
+is a left handed image frame. The cheap check is one line, and it is now in
+`TRACK-FROM-GIF.md` as step 4c: cross the camera's right with its up and it
+must point back at the eye. Do it before writing any spec.
+
+After negating y in the spec and in the measured path, the export lands on
+the reference plate pipe for pipe.
+
+**Step 8b came back clean.** Thirteen pipes the reading claims all score
+1.00 bright along their whole length, and twelve it denies come back dark.
+One denial read 0.94 at first and was the false pass the doc warns about:
+a ground bar between the start gate's two feet projects along the near
+upright, so it reads bright while lying on top of another pipe. Drawn on
+the plate it is obviously not there, and the tight radius sampling dropped
+it to 0.61 as well.
+
+**Waypoints: thirteen, and tuned against the measurement rather than by
+eye.** Dropping any one of them makes the built line fit the measured path
+worse, which is the argument for each of them. The built line sits 0.137
+units, about 10 cm, from the measured line on average, and the worst
+disagreement is the half unit at D that was chosen above.
+
+The tightest radius came out at 0.045 m first, and that was the hairpin
+trap: G to H is out and back at the same plan position, and D to E had its
+apex waypoint on E's own line. Separating both, per step 9, took it to
+0.082 m, which is where Track 8 (0.085) and Track 1 (0.088) sit. Track 5
+ships at 0.015. No threshold was moved.
+
+`npm run verify` was NOT run. This round is a track spec, generated data
+and one check's named set. It does not reach `src/native`, the patches,
+`vendor/betaflight`, the WASM build or the input path. Cheap checks run in
+this round: `micro:check` clean including the four new Track 2 assertions,
+`lint:presets` 6 of 6, `lint:nouns` PASS, `check:clip` 522 of 522,
+`lint:shell` PASS, `lint:board` PASS. Beyond those, the step 8 crossing
+walk, the step 8b projection, and the step 10 export laid over the
+reference, all in this round.

@@ -104,9 +104,28 @@ export const AIRFRAMES = [
        * is not the outside. See the whoop below, where it is not.
        */
       hullR: 0.0635,
-      /* Vertical semi extent in level flight. The drawn stack runs from the
-       * body's underside at -0.017 to the prop discs at +0.034. */
-      vHalf: 0.040,
+      /*
+       * HOW FAR THE HULL REACHES BELOW AND ABOVE THE CG, level, in metres.
+       *
+       * These are `hull_hz_down` and `hull_hz_up` from src/native/plant.c,
+       * which is the copy of record for them: the plant rests this craft on a
+       * ground plane with exactly these extents, so the collider that sweeps
+       * it past a kerb has to be the same machine or the two disagree about
+       * where the bottom of the quad is. Measured off dist/sim.wasm, a five
+       * inch dropped on a floor first contacts at a CG height of 45.1 mm and
+       * settles at 43.1 mm, which is what hull_hz_down 0.045 means.
+       *
+       * This was ONE number, `vHalf: 0.040`, used the same both ways, and its
+       * comment explained it as covering the drawn stack, the body's underside
+       * at -0.017 and the prop discs at +0.034, with half a centimetre over
+       * the prop plane. Covering the larger extent and mirroring it is only
+       * harmless on a craft that is about as deep below as it is tall above.
+       * See the whoop, which is not: it is 18 mm of canopy over 10 mm of duct,
+       * so mirroring the canopy gave it 18 mm of hull under a machine that has
+       * 10, and a pilot skimming a 26.7 mm RaceGOW pipe felt 8 mm of nothing.
+       */
+      vHalfDown: 0.045,
+      vHalfUp: 0.038,
       bodyLength: 0.155,
       bodyWidth: 0.088,
       bodyHeight: 0.034,
@@ -289,7 +308,17 @@ export const AIRFRAMES = [
        * which is a motor spacing and not a size.
        */
       hullR: 0.0181,
-      vHalf: 0.018,
+      /*
+       * plant.c's hull_hz_down and hull_hz_up for this airframe, and the
+       * reason the pair exists: 10 mm of duct below the CG, 18 mm of canopy
+       * and camera above it. The single `vHalf` this replaces was 0.018, the
+       * canopy, because a symmetric extent has to cover the larger, and that
+       * put 18 mm of collider under an aircraft whose lowest part is 10 mm
+       * down. Measured off dist/sim.wasm, a whoop dropped on a floor first
+       * contacts at a CG height of 10.9 mm and settles at 8.8 mm.
+       */
+      vHalfDown: 0.010,
+      vHalfUp: 0.018,
       /*
        * The FRAME, 82.6 mm square, from BetaFPV's own figure. These were
        * 0.072, which was smaller than the props the aircraft carries: two

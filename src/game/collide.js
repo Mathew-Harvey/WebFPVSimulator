@@ -165,13 +165,37 @@ export let CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
  * CRAFT_R in every horizontal direction treated the empty air between the
  * arms as carbon, so a doorway and a shopfront both felt 3 cm fatter than
  * the airframe on screen, and the whole machine read as a ball.
- * Vertically the drawn stack runs from the body's underside at -0.017 to
- * the prop discs at +0.034, so 0.040 covers it with half a centimetre over
- * the prop plane. vHalf still grows from that floor toward CRAFT_R as the
- * craft banks, because a banked X does present a blade tip to the ground.
+ * Vertically the hull is NOT symmetric about the CG and this used to pretend
+ * it was. It was one number, `vHalf`, chosen to cover whichever extent was
+ * larger and then mirrored, which costs nothing on a craft that is about as
+ * deep below as it is tall above and a great deal on one that is not. The
+ * whoop is 18 mm of canopy over 10 mm of duct, so mirroring the canopy hung
+ * 8 mm of collider under a machine that has nothing there, which is 30
+ * percent of a RaceGOW pipe's diameter and is what the pilot reported as a
+ * large hit box below the whoop.
+ *
+ * So the hull is a span, [-CRAFT_V_DOWN, +CRAFT_V_UP] about the CG, and it is
+ * carried as the equivalent OFFSET CENTRE and HALF HEIGHT because that is
+ * what an ellipsoid sweep takes. The extents themselves are plant.c's
+ * hull_hz_down and hull_hz_up by way of configs/airframes.js, so the collider
+ * and the plant that rests the craft on the ground now describe the same
+ * machine instead of each carrying its own opinion of where its bottom is.
+ *
+ * The half height still grows toward CRAFT_R as the craft banks, because a
+ * banked X does present a blade tip to the ground. The offset does not need
+ * to: it is a BODY frame offset along the craft's own up axis, so it leans
+ * with the craft and goes to nothing in the vertical at knife edge on its
+ * own, which is right, a quad on its side is symmetric about its centre.
  */
-export let CRAFT_V_HALF = 0.040;
+export let CRAFT_V_DOWN = 0.045;
+export let CRAFT_V_UP = 0.038;
+export let CRAFT_V_HALF = (CRAFT_V_DOWN + CRAFT_V_UP) * 0.5;
+/* Body frame, along the craft's own up axis: where the hull's geometric
+ * centre sits relative to the CG. Negative on the five inch, which hangs
+ * below its centre; positive on the whoop, which stands above it. */
+export let CRAFT_V_OFF = (CRAFT_V_UP - CRAFT_V_DOWN) * 0.5;
 export let CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
+export let CRAFT_WORLD_V_OFF = simLenToWorld(CRAFT_V_OFF);
 
 /*
  * Seat an airframe's dimensions. Called by the shell when the aircraft
@@ -199,17 +223,34 @@ export function setCraftAirframe(dims) {
     throw new Error(`collide: hullR ${CRAFT_HULL_R} is inside propR ${CRAFT_PROP_R}`);
   }
   CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
-  CRAFT_V_HALF = dims.vHalf;
+  /* An airframe that names only the old symmetric `vHalf` is read as being
+   * that deep both ways, which is exactly what it used to mean. Nothing in
+   * the repository does any more; this is here so a config written against
+   * the old field cannot silently seat a hull of zero. */
+  CRAFT_V_DOWN = dims.vHalfDown ?? dims.vHalf;
+  CRAFT_V_UP = dims.vHalfUp ?? dims.vHalf;
+  if (!(CRAFT_V_DOWN > 0) || !(CRAFT_V_UP > 0)) {
+    throw new Error(`collide: airframe has no vertical extents (${CRAFT_V_DOWN}, ${CRAFT_V_UP})`);
+  }
+  CRAFT_V_HALF = (CRAFT_V_DOWN + CRAFT_V_UP) * 0.5;
+  CRAFT_V_OFF = (CRAFT_V_UP - CRAFT_V_DOWN) * 0.5;
   CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
   CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
   CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
   CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
+  CRAFT_WORLD_V_OFF = simLenToWorld(CRAFT_V_OFF);
 }
 
 /* The vertical semi-axis at a given tilt of the prop plane from level, in
  * WORLD metres, because that is the space every caller sweeps it through.
  * sinTilt is sqrt(1 - upY^2), symmetric in upY so an inverted craft is as
- * thin as an upright one. */
+ * thin as an upright one.
+ *
+ * This is the half height of the hull SPAN, so it is only half the story:
+ * the span is centred at craftVerticalOffset() along the craft's own up
+ * axis, not on the CG. A caller that sweeps this without that offset is
+ * sweeping a craft that is symmetric about its centre, which neither of
+ * these aircraft is. */
 export function craftVerticalHalf(sinTilt) {
   let s = sinTilt;
   if (s < 0) {
@@ -219,6 +260,21 @@ export function craftVerticalHalf(sinTilt) {
     s = 1;
   }
   return CRAFT_WORLD_V_HALF + (CRAFT_WORLD_R - CRAFT_WORLD_V_HALF) * s;
+}
+
+/*
+ * Where that span's centre sits, in WORLD metres, measured along the craft's
+ * own up axis. Pair it with craftVerticalHalf: together they are the hull.
+ *
+ * It is a BODY frame quantity and the collision query applies it along the
+ * body up axis, so it needs no tilt argument. Level it is a vertical shift;
+ * banked it leans with the craft and its vertical part falls away by the
+ * cosine on its own; inverted it changes sign, which is correct, because an
+ * inverted five inch hangs its 45 mm of hull upward and shows its 38 mm of
+ * prop plane to the ground.
+ */
+export function craftVerticalOffset() {
+  return CRAFT_WORLD_V_OFF;
 }
 
 /*
@@ -1544,7 +1600,8 @@ export class Colliders {
    * decided from the reported collider's kind and normal, the craft flew on
    * through the tree.
    */
-  hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R, aqX = 0, aqY = 0, aqZ = 0, aqW = 1) {
+  hit(px, py, pz, qx, qy, qz, vh = CRAFT_WORLD_R, aqX = 0, aqY = 0, aqZ = 0, aqW = 1,
+    vOff = 0) {
     this.hitIndex = -1;
     this.hitKind = -1;
     this.hitNormalDot = 0;
@@ -1576,21 +1633,14 @@ export class Colliders {
     }
     this.queryId += 1;
     const id = this.queryId;
-    const pad = CRAFT_WORLD_R + this.maxR;
-    const cx0 = clampCell(Math.floor((Math.min(px, qx) - pad) / CELL));
-    const cx1 = clampCell(Math.floor((Math.max(px, qx) + pad) / CELL));
-    const cz0 = clampCell(Math.floor((Math.min(pz, qz) - pad) / CELL));
-    const cz1 = clampCell(Math.floor((Math.max(pz, qz) + pad) / CELL));
-    let candidates = 0;
-
-    /* The travel segment, as d1 = q - p. */
-    const d1x = qx - px;
-    const d1y = qy - py;
-    const d1z = qz - pz;
-    const a = d1x * d1x + d1y * d1y + d1z * d1z;
 
     /* Body axes from the world quaternion. Identity is a level quad
-     * pointing world -Z, motors on the diagonals of XZ. */
+     * pointing world -Z, motors on the diagonals of XZ.
+     *
+     * These are derived BEFORE the broadphase bounds because the hull's
+     * centre is not the craft's centre and the offset between them is along
+     * the body up axis, so the segment this query actually sweeps is not
+     * known until the axes are. The block moved up, nothing in it changed. */
     const qxx = aqX * aqX;
     const qyy = aqY * aqY;
     const qzz = aqZ * aqZ;
@@ -1611,6 +1661,51 @@ export class Colliders {
     const ezz = 1 - 2 * (qxx + qyy);
     const crx = clampRadius(discSupport(1, 0, 0, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz));
     const crz = clampRadius(discSupport(0, 0, 1, exx, exy, exz, ezx, ezy, ezz, ux, uy, uz));
+
+    /*
+     * THE HULL'S CENTRE, WHICH IS NOT THE CRAFT'S CENTRE.
+     *
+     * vOff is how far along the craft's own up axis the swept ellipsoid sits
+     * relative to the CG the caller hands us, so the whole segment shifts by
+     * vOff times the body up axis and every test below runs on the hull
+     * rather than on the origin the state block happens to use.
+     *
+     * The caller is not troubled by this and does not have to unwind it. A
+     * constant translation of both endpoints leaves the travel direction and
+     * its length alone, so hitT is the SAME parameter on the caller's own
+     * segment that it always was, and interpolating the craft's centre at
+     * that t still lands on the pose at first contact. The normal, the
+     * penetration and the overlap are world quantities and do not care which
+     * point on the rigid body we called the origin.
+     *
+     * interiorOfHit and crossedHit are NOT offset and that is deliberate, not
+     * an omission. Both answer questions about the CRAFT'S CENTRE: is the
+     * centre inside a solid, did the centre go in one face and out the far
+     * one. That is the clip watch's own rule, the one CLIP_CENTER_EPS is
+     * named for, and shifting them to the hull's centroid would quietly
+     * change what "buried" and "punched through" mean.
+     */
+    if (vOff !== 0) {
+      px += ux * vOff;
+      py += uy * vOff;
+      pz += uz * vOff;
+      qx += ux * vOff;
+      qy += uy * vOff;
+      qz += uz * vOff;
+    }
+
+    const pad = CRAFT_WORLD_R + this.maxR;
+    const cx0 = clampCell(Math.floor((Math.min(px, qx) - pad) / CELL));
+    const cx1 = clampCell(Math.floor((Math.max(px, qx) + pad) / CELL));
+    const cz0 = clampCell(Math.floor((Math.min(pz, qz) - pad) / CELL));
+    const cz1 = clampCell(Math.floor((Math.max(pz, qz) + pad) / CELL));
+    let candidates = 0;
+
+    /* The travel segment, as d1 = q - p. */
+    const d1x = qx - px;
+    const d1y = qy - py;
+    const d1z = qz - pz;
+    const a = d1x * d1x + d1y * d1y + d1z * d1z;
 
     let bestT = Infinity;
     let bestI = -1;

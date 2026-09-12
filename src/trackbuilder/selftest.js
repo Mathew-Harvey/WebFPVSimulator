@@ -67,9 +67,9 @@ import {
   makeClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_CONFIRM_MS, CLIP_DEEP,
   STUCK_UNRESOLVED_MS, STUCK_TRAVEL_MAX, BURIED_DEPTH, BURIED_CONFIRM_MS,
   CLIP_CRASH_HOLD_MS, BOUNCE_SEPARATION, CLIP_SPAWN_GRACE_MS,
-  setCraftAirframe, dirtClearance,
+  setCraftAirframe, dirtClearance, craftVerticalOffset, craftVerticalHalf,
 } from '../game/collide.js';
-import { airframeById } from '../../configs/airframes.js';
+import { AIRFRAMES, airframeById } from '../../configs/airframes.js';
 import { inspectCourse, layoutFingerprint, suggestRemixName } from '../share/listing.js';
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
@@ -1723,6 +1723,76 @@ function suiteClipCatch() {
     box.interiorOfHit(3, 1, 1) < -0.99 && box.interiorOfHit(3, 1, 1) > -1.01);
   check('a hull-overlap centre 5 cm outside is still outside',
     box.interiorOfHit(2.05, 1, 1) < -0.04);
+
+  /*
+   * THE HULL IS A SPAN, NOT A RADIUS, and each airframe's is its own.
+   *
+   * The swept ellipsoid used to be centred on the CG with one semi-axis used
+   * both ways, chosen to cover whichever extent was larger. On the five inch
+   * that is nearly true, 45 mm of hull below and 38 mm of prop plane above.
+   * On the whoop it is not: 10 mm of duct below and 18 mm of canopy above, so
+   * mirroring the canopy hung 8 mm of collider under a machine with nothing
+   * there, which is 30 percent of a RaceGOW pipe and is what the pilot
+   * reported as a large hit box below the whoop.
+   *
+   * These walk a level craft onto a slab and read off where it first touches,
+   * which is the reach itself, and they pin it against the SPAN THE AIRFRAME
+   * DECLARES rather than against a number typed here, so an airframe added
+   * later is measured against its own figures. The declared spans in turn are
+   * plant.c's hull_hz_down and hull_hz_up, which is what makes the collider
+   * and the plant the same machine.
+   */
+  function reachRig() {
+    const c = new Colliders();
+    c.addBox('wall', -5, -1, -5, 5, 0, 5);   /* a floor slab, top at y = 0 */
+    c.addBox('wall', -5, 1, -5, 5, 3, 5);    /* a ceiling slab, bottom at y = 1 */
+    c.build();
+    return c;
+  }
+  /* qw = 1 is level, qx = 1 is a half turn about x, which is inverted. */
+  function firstTouch(c, from, to, inverted) {
+    const vh = craftVerticalHalf(0);
+    const vo = craftVerticalOffset();
+    const qx = inverted ? 1 : 0;
+    const qw = inverted ? 0 : 1;
+    const n = 20000;
+    for (let i = 0; i <= n; i += 1) {
+      const y = from + (to - from) * (i / n);
+      if (c.hit(0, y, 0, 0, y, 0, vh, qx, 0, 0, qw, vo) >= 0) {
+        return y;
+      }
+    }
+    return null;
+  }
+  const fiveBefore = airframeById('5inch').dims;
+  for (const frame of AIRFRAMES) {
+    setCraftAirframe(frame.dims);
+    const rig = reachRig();
+    const down = firstTouch(rig, 0.30, 0.0, false);
+    const up = 1 - firstTouch(rig, 0.70, 1.0, false);
+    const invDown = firstTouch(rig, 0.30, 0.0, true);
+    const invUp = 1 - firstTouch(rig, 0.70, 1.0, true);
+    const d = frame.dims.vHalfDown;
+    const u = frame.dims.vHalfUp;
+    check(`${frame.id}: the hull reaches exactly its declared ${d} m below`,
+      Math.abs(down - d) < 1e-3, down);
+    check(`${frame.id}: the hull reaches exactly its declared ${u} m above`,
+      Math.abs(up - u) < 1e-3, up);
+    check(`${frame.id}: inverted, the span turns over with the craft`,
+      Math.abs(invDown - u) < 1e-3 && Math.abs(invUp - d) < 1e-3,
+      `${invDown} below, ${invUp} above`);
+  }
+  /* The whoop's is the one the report was about, named rather than left to
+   * the loop, because the defect was specifically that its floor reach was
+   * its CANOPY height. */
+  setCraftAirframe(airframeById('whoop65').dims);
+  const whoopRig = reachRig();
+  const whoopDown = firstTouch(whoopRig, 0.30, 0.0, false);
+  check('a whoop no longer carries its canopy height under its ducts',
+    whoopDown < 0.014, whoopDown);
+  check('and its ducts are 10 mm down, which is what the plant rests it on',
+    Math.abs(whoopDown - 0.010) < 1e-3, whoopDown);
+  setCraftAirframe(fiveBefore);
 
   const post = new Colliders();
   post.addPost('pole', 0, 0, 0, 2, 0.05);

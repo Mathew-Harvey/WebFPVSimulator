@@ -54,7 +54,7 @@
 import { loadSim, SIM_OK } from '../../tests/lib/simmod.js';
 import { simPosToThree, threePosToSim, threeDirToSim } from '../../src/render/frame.js';
 import {
-  Colliders, contactPatch, contactMaterial, craftVerticalHalf,
+  Colliders, contactPatch, contactMaterial, craftVerticalHalf, craftVerticalOffset,
   GROUND_MU, GROUND_E, GRAZE_SPEED_MAX, BOUNCE_SEPARATION,
 } from '../../src/game/collide.js';
 import { TrickDetector } from '../../src/game/trickdetect.js';
@@ -389,7 +389,8 @@ export async function makeRig(opts) {
     let a = from;
     let b = to;
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const k = colliders.hit(a.x, a.y, a.z, b.x, b.y, b.z, vh, aqx, aqy, aqz, aqw);
+      const k = colliders.hit(a.x, a.y, a.z, b.x, b.y, b.z, vh, aqx, aqy, aqz, aqw,
+        craftVerticalOffset());
       if (k < 0) {
         if (attempt > 0 && (b.x !== a.x || b.y !== a.y || b.z !== a.z)) {
           const ps = worldPosToSim(b);

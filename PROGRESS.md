@@ -33801,7 +33801,87 @@ photographed, where the cards draw the open lattice; and the room itself,
 where the goalpost stands with the pole free beside it. `npm run verify` was
 not run: no physics, plant, ABI or build changed.
 
-## Round 47: a whoop parks 10 mm off the floor, not 45
+## Round 47: the hull is a span, not a radius
+
+**The report.** "The hit the ground proximity feels wrong, like its got a large
+hit box below the whoop... is this a left over from the 5 inch model?"
+
+Yes, and not where it looked. The answer took measuring rather than reading.
+
+**The plant is innocent, and that had to be established first.** `plant.c`
+carries `hull_hz_down` and `hull_hz_up` per airframe, 0.045 and 0.038 on the
+five inch, 0.010 and 0.018 on the whoop, and `sim_set_airframe` rebuilds the
+contact corners from them. Ground effect scales off the whoop's own prop
+radius. Dropped on a floor at world y = 0 and measured off `dist/sim.wasm`,
+the five inch first contacts at a CG height of 45.1 mm and settles at 43.1,
+the whoop first contacts at 10.9 and settles at 8.8. The floor is honest.
+
+**The leftover is in the shell, and it is an ASSUMPTION rather than a
+number.** `configs/airframes.js` gave each airframe one `vHalf`, and
+`craftVerticalHalf` used it as the vertical semi-axis of the swept ellipsoid,
+the same both ways about the CG. Both airframes had set it to cover whichever
+extent was LARGER, and on both that is the top: the five inch's prop discs at
++0.034 gave 0.040, the whoop's canopy at +0.018 gave 0.018.
+
+Mirroring the larger extent costs nothing on a craft that is about as deep
+below as it is tall above, and the five inch is nearly that. The whoop is not:
+18 mm of canopy over 10 mm of duct. So the whoop swept 18 mm of collider under
+a machine whose lowest part is 10 mm down, 8 mm of nothing, which is 30
+percent of a RaceGOW pipe's 26.7 mm diameter. That is the hit box the pilot
+felt, and the reason it is a five inch leftover is that the code has always
+MEANT "how far down does this reach" and only got away with one number because
+it was written for an aircraft whose largest extent happens to be close to its
+downward one.
+
+**The fix.** The hull is a span, `[-vHalfDown, +vHalfUp]`, and those two are
+`plant.c`'s `hull_hz_down` and `hull_hz_up` by way of `configs/airframes.js`,
+so the collider and the plant that rests the craft on the ground finally
+describe the same machine. collide.js carries the equivalent half height and
+OFFSET CENTRE, because an ellipsoid sweep takes those, and `Colliders.hit`
+gained a `vOff` argument that shifts the query segment along the craft's own
+up axis.
+
+The offset is a BODY frame quantity and needs no tilt argument: it leans with
+the craft, its vertical part falls away by the cosine on its own, and it
+changes sign when inverted, which is right, because an inverted five inch
+hangs its 45 mm of hull upward and shows its 38 mm of prop plane to the
+ground. The self test pins the inverted case for both airframes.
+
+**Why the caller does not have to unwind the offset.** A constant translation
+of both endpoints leaves the travel direction and length alone, so `hitT` is
+the same parameter on the caller's own segment it always was, and
+interpolating the craft's centre at that t still lands on the pose at first
+contact. Normal, penetration and overlap are world quantities. Nothing
+downstream of `hit()` changed.
+
+**One deliberate exception, written down so it is not tidied away later.**
+`interiorOfHit` and `crossedHit` are NOT offset. Both answer questions about
+the craft's CENTRE, is the centre inside a solid and did the centre go in one
+face and out the far one, which is the clip watch's own rule and what
+`CLIP_CENTER_EPS` is named for. Shifting them would quietly redefine "buried"
+and "punched through".
+
+**Not breaking the five inch was the explicit instruction, so it was
+measured.** `check:wall`, `check:path`, `check:orbit`, `contact:selftest` and
+`check:clip` were captured BEFORE the change and diffed after. `check:path`,
+`check:orbit` and `contact:selftest` came back byte identical. `check:clip`
+kept all its existing cases. `check:wall` still passes 45 of 45, and its
+per-case contact counts moved, which is expected and is the change working:
+the five inch's hull went from a symmetric 40 mm to the plant's real 45 down
+and 38 up, so it meets a wall 5 mm sooner underneath and 2 mm later on top.
+Every contact still resolves and nothing goes outbound. A swept-hull probe
+reads the reach straight off a slab: five inch 45.0 below and 38.0 above,
+whoop 10.0 below and 18.0 above, each matching its own declared span.
+
+**Checks, run this turn.** `check:wall` 45 of 45, `check:path` 12 of 12,
+`check:orbit` 17 of 17, `contact:selftest` clean, `check:clip` 515 of 515,
+`micro:check` clean, `whoop:gates` 19 of 19, `lint:shell` PASS,
+`lint:quality` 56 of 56, `lint:frame` 34 of 34. The eight new hull cases were
+run against a symmetric hull to prove they bite: 7 failed. `npm run verify`
+was NOT run. This is the shell's collision geometry, not the plant, not the
+ABI and not the build, and the plant's own extents are unchanged; what the
+change does is make the shell agree with them. Nothing has been flown.
+## Round 48: a whoop parks 10 mm off the floor, not 45
 
 **The report.** "The whoop still feels like it hits the ground too soon,
 then when it resets it lifts up off the ground a little."
@@ -33828,20 +33908,27 @@ build a parked whoop read `above: 0.0397`. After the fix it reads `0.0088`,
 and a whoop flown to 3.8 m and dropped on zero throttle settles at exactly
 `0.010`. The five inch reads `0.045` before and after, to the digit.
 
-**The fix.** `restH` per airframe in configs/airframes.js, snapshotted from
-plant.c the way `arm` already is, and `seatRestHeight` puts it into both
-shell numbers from `syncCraftScale`, which is where the collision
+**The fix.** The per airframe figure in configs/airframes.js, snapshotted
+from plant.c the way `arm` already is, and `seatRestHeight` puts it into
+both shell numbers from `syncCraftScale`, which is where the collision
 dimensions and the drawn model are already seated, between runs only. The
 comment in that function had said since the whoop landed that "a 23 mm thick
 machine does not park 45 mm off the deck"; it was right, and nothing acted
 on it.
 
 **The gate that will catch it next time.** `whoop:gates` W15 rests the REAL
-module on a plane raised exactly `restH` under the origin and reads where
+module on a plane raised exactly `vHalfDown` under the origin and reads where
 the craft settles: minus 2.00 mm on both airframes, which is sim.c's
 `CONTACT_SLOP`, the band the contact model parks a hull on. It was run
 against the old number to prove it bites: the whoop reads minus 37.00 mm,
 the 35 mm float plus the slop.
+
+**It landed on the same number as Round 47.** That round replaced `vHalf`
+with `vHalfDown` and `vHalfUp`, the plant's own `hull_hz_down` and
+`hull_hz_up`, for the collider's sake, while this one added `restH` for the
+floor's sake. They are the same snapshot of the same line of plant.c, so the
+merge kept one name: the shell seats its ground frame from `vHalfDown`, and
+there is one figure per aircraft rather than two that could drift apart.
 
 **Checks, run this turn.** `npm run verify`, 15 of 15, because this changes
 what the shell hands the plant: the determinism hashes are identical either

@@ -65,7 +65,7 @@ import { FreestyleScore, formatScore } from './game/score.js';
 import { GhostBook, GhostLap, GhostRecorder } from './game/ghost.js';
 import { buildGhostCraft } from './render/ghostcraft.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, craftVerticalHalf, craftVerticalOffset, contactMaterial, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_CLEARANCE, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, BOUNCE_SEPARATION, SURFACE_SPEED_MAX, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, makeClipWatch, resetClipWatch, clipWatchTick, CLIP_CENTER_EPS, CLIP_DEEP, CLIP_CRASH_HOLD_MS, CLIP_SPAWN_GRACE_MS, contactPatch } from './game/collide.js';
 import { Ui, formatTime } from './ui/ui.js';
 import {
   adoptMostFlownTrack, adoptShareFromLocation, boardPageUrl, fetchGhost, fetchTrackDocument,
@@ -136,9 +136,9 @@ const WASM_URL = new URL('../dist/sim.wasm', import.meta.url).href;
  * too soon, then lifts off the ground a little when it resets" the owner
  * flew.
  *
- * configs/airframes.js carries the figure per airframe, snapshotted from
- * plant.c, and `npm run whoop:gates` rests the real module on a plane to
- * prove the two agree. Seated by syncCraftScale, between runs only, with
+ * configs/airframes.js carries the figure per airframe as `vHalfDown`,
+ * snapshotted from plant.c, and `npm run whoop:gates` rests the real
+ * module on a plane to prove the two agree. Seated by syncCraftScale, between runs only, with
  * the collision dimensions and the drawn model: these two are a FRAME, and
  * moving one mid lap would move the floor under a craft that is flying.
  */
@@ -149,7 +149,7 @@ let SPAWN_ALT = 0.045;
 let REST_HEIGHT = 0.045;
 /* One seat for both, so they cannot drift apart. */
 function seatRestHeight(dims) {
-  const h = dims && Number.isFinite(dims.restH) ? dims.restH : 0.045;
+  const h = dims && Number.isFinite(dims.vHalfDown) ? dims.vHalfDown : 0.045;
   SPAWN_ALT = h;
   REST_HEIGHT = h;
 }
@@ -2334,6 +2334,7 @@ export async function boot({ loading, bootStart, mapId }) {
       pProbe.x, pProbe.y, pProbe.z,
       vHalfFrame,
       qCollide.x, qCollide.y, qCollide.z, qCollide.w,
+      craftVerticalOffset(),
     );
     if (k >= 0 && view.colliders.hitNy > 0.5) {
       turtleOnSupport = true;
@@ -2754,6 +2755,7 @@ export async function boot({ loading, bootStart, mapId }) {
       x, y, z, x, y, z,
       craftVerticalHalf(0),
       0, 0, 0, 1,
+      craftVerticalOffset(),
     ) < 0;
   }
 
@@ -4799,6 +4801,7 @@ export async function boot({ loading, bootStart, mapId }) {
         obsFrom.x, obsFrom.y, obsFrom.z,
         obsTo.x, obsTo.y, obsTo.z,
         vh, qObs.x, qObs.y, qObs.z, qObs.w,
+        craftVerticalOffset(),
       );
       if (k < 0) {
         clean = true;
@@ -4980,6 +4983,7 @@ export async function boot({ loading, bootStart, mapId }) {
         obsPrev.x, obsPrev.y, obsPrev.z,
         obsPrev.x, obsPrev.y, obsPrev.z,
         vh, qObs.x, qObs.y, qObs.z, qObs.w,
+        craftVerticalOffset(),
       ) >= 0;
     }
     if (obsLeftover) {
@@ -5882,6 +5886,7 @@ export async function boot({ loading, bootStart, mapId }) {
         pCurr.x, pCurr.y, pCurr.z,
         craftVerticalHalf(0),
         qPrev.x, qPrev.y, qPrev.z, qPrev.w,
+        craftVerticalOffset(),
       );
       if (rest >= 0) {
         leftoverOverlap = true;
@@ -8154,6 +8159,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const k = view.colliders.hit(
       px, py, pz, qx, qy, qz, vh,
       qCollide.x, qCollide.y, qCollide.z, qCollide.w,
+      craftVerticalOffset(),
     );
     return {
       kind: k < 0 ? null : view.colliders.kindName(k),

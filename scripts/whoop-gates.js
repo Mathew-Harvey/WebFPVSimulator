@@ -514,7 +514,7 @@ async function main() {
   /*
    * ---- W15 the parked height, both airframes ----
    *
-   * configs/airframes.js carries `restH` per aircraft, a snapshot of
+   * configs/airframes.js carries `vHalfDown` per aircraft, a snapshot of
    * plant.c's `hull_hz_down`, and src/main.js builds the whole ground frame
    * on it: the plane goes that far under the plant's origin, the craft
    * spawns there, and "is this the ground" is asked against it. A snapshot
@@ -524,7 +524,7 @@ async function main() {
    * sat 35 mm off the deck after every reset.
    *
    * So do not compare numbers, REST THE MODULE. Raise a plane exactly
-   * restH under the origin, drop the craft on it with no throttle, and see
+   * vHalfDown under the origin, drop the craft on it with no throttle, and see
    * where it settles. If the snapshot is right the craft ends at z = 0,
    * where the shell draws it parked.
    */
@@ -536,7 +536,7 @@ async function main() {
       const id = af.sim === 'whoop65' || af.id === 'whoop65' ? AF_WHOOP : AF_5IN;
       const cfg = id === AF_WHOOP ? whoopCfg : fiveCfg;
       const sim = await fresh(wasm, cfg, id, id === AF_WHOOP ? 4.2 : 4.0);
-      const rest = af.dims.restH;
+      const rest = af.dims.vHalfDown;
       const rc = sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, -rest, 0.8, 0.2);
       if (rc !== SIM_OK) {
         throw new Error(`sim_set_ground returned ${rc}`);
@@ -556,7 +556,7 @@ async function main() {
       fly(sim, [{ ms: 2000, thr: 0 }], (t, st) => { z = st[ST.PZ]; });
       report(`W15 parked-${af.id}`, Math.abs(z + SLOP) < 0.0005,
         `${(z * 1000).toFixed(2)} mm from the parked origin`,
-        `restH ${(rest * 1000).toFixed(0)} mm, resting on the ${(SLOP * 1000).toFixed(0)} mm slop`);
+        `vHalfDown ${(rest * 1000).toFixed(0)} mm, resting on the ${(SLOP * 1000).toFixed(0)} mm slop`);
     }
   }
 

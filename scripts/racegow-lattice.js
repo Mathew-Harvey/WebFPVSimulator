@@ -396,6 +396,112 @@ export const TRACKS = [
     start: { at: [-0.8, -0.5], yaw: 0 },
     lap: 'A+ B+ J K C- L M N D- O E+ Q F R G+ S T H- U V W X',
   },
+  {
+    id: 'racegow5-track3',
+    name: 'RaceGOW5 Track 3',
+    credit: {
+      designer: 'the Lego Dans',
+      series: 'RaceGOW5',
+      source: 'racegow.com/tracks, the official Track 3 animation',
+      broughtOverBy: 'andAgainFPV',
+    },
+    origin: [240, 261],
+    /*
+     * Read off the RaceGOW5 Track 3 animation, 168 frames, every frame. The
+     * biggest of the four: a 3 by 2 unit lattice, fifteen passes over twelve
+     * openings, and a lap of 38.7 units.
+     *
+     * Three structures. A goalpost across x at y 0, one unit wide and one
+     * high, joined by a ground bar to the tower at x 0. The tower is a frame
+     * across y: a leg at y -1 two units high, a leg at y -2 one unit high,
+     * a rung at one unit running the whole two units, a rung at two units
+     * over the near bay only, and the near leg carried up to three units as
+     * the tall pole. From the tower's far foot a long rail runs three units
+     * back along x at one unit up, on a leg at every node.
+     *
+     * THE CAMERA. Fifteen fittings, 4.7 px rms. Step 4b's integrality is
+     * what settles it: eight feet unproject on to the floor within 0.09 of
+     * a whole unit and eleven fitting heights within 0.05. The twelfth, the
+     * tall pole's tip at 2.925, is the end cap of a pipe and is three.
+     *
+     * STEP 4c PAID FOR ITSELF ON ITS FIRST USE. The first fit came back left
+     * handed, which is the mirror trap Track 2 found at step 10 after the
+     * whole spec was written. Here it was one line and one minute: the y
+     * axis was negated before anything was written down.
+     *
+     * FOUR OF THE TWELVE OPENINGS ARE GAPS AND NOT GATES, marked `unbuilt`:
+     * C and K over the long rail, L round its far end, and G over the
+     * tower's far shoulder. None of them has a frame of its own in the
+     * reference and building one would put pipe in the air the picture does
+     * not have.
+     *
+     * THREE PANELS ARE DRAWN WIDER THAN ONE SQUARE. K is lit across the
+     * whole three unit rail, C across the same face and one unit past its
+     * end, and G across the tower's whole upper face. The line is the only
+     * evidence for which square is the gate, so it was reconstructed in
+     * three dimensions: every frame's trail head gives a ray, the twelve
+     * unambiguous passes give anchors on their own planes, and a constant
+     * pace prior fixes the depth. The pass frames were then iterated against
+     * the reconstruction until each one sat on its own plane, which moved
+     * two of them by a frame or two and left the rest alone.
+     *
+     * That reading says C is crossed over the rail's middle bay, K over its
+     * right bay, and G over the tower's far shoulder. It also says the big
+     * panel is flown TWICE, and the second crossing is one unit past the end
+     * of the rail at floor level, which is L: the quad goes round the end
+     * rather than through it, and the illustrator lit the whole plane
+     * because that is what the rule allows.
+     */
+    squares: {
+      A: { name: 'Goalpost', axis: 'y', at: [-1.5, 0], sill: 0 },
+      I: { name: 'Tower, near bay, low', axis: 'x', at: [0, -0.5], sill: 0 },
+      H: { name: 'Tower, near bay, mid', axis: 'x', at: [0, -0.5], sill: 1 },
+      E: { name: 'Tower, far bay, low', axis: 'x', at: [0, -1.5], sill: 0 },
+      G: { name: 'Over the tower shoulder', axis: 'x', at: [0, -1.5], sill: 2, unbuilt: true },
+      J: { name: 'Under the rail, right', axis: 'y', at: [-0.5, -2], sill: 0 },
+      K: { name: 'Over the rail, right', axis: 'y', at: [-0.5, -2], sill: 1, unbuilt: true },
+      B: { name: 'Under the rail, middle', axis: 'y', at: [-1.5, -2], sill: 0 },
+      C: { name: 'Over the rail, middle', axis: 'y', at: [-1.5, -2], sill: 1, unbuilt: true },
+      D: { name: 'Under the rail, left', axis: 'y', at: [-2.5, -2], sill: 0 },
+      L: { name: 'Round the end of the rail', axis: 'y', at: [-3.5, -2], sill: 0, unbuilt: true },
+    },
+    poles: {
+      P: { name: 'Tall pole', at: [0, 0], height: 3, side: [0, 1], beside: 'I' },
+    },
+    posts: [],
+    rails: [
+      { name: 'Ground bar, goalpost to the tower', from: [-1, 0, 0], to: [0, 0, 0] },
+    ],
+    /*
+     * Fifteen passes leave the alphabet too short, so a waypoint takes a two
+     * character key here rather than steal a letter from an opening. The
+     * openings keep the single letters they were read under.
+     */
+    waypoints: {
+      Wa: { name: 'Out over the rail', at: [-1.75, -2.46], z: 1.01, heading: [-1, 0.3] },
+      Wb: { name: 'Back across the rail', at: [-2.33, -1.63], z: 1.19, heading: [-1, 0] },
+      Wc: { name: 'Round the rail end', at: [-3.16, -2.35], z: 0.42, heading: [-1, 0] },
+      Wd: { name: 'Down the long side', at: [-0.8, -1.33], z: 0.43, heading: [1, 0] },
+      We: { name: 'Out past the tower', at: [0.69, -1.12], z: 0.8, heading: [0, 1] },
+      Wf: { name: 'Up the outside', at: [0.46, 0.52], z: 1.65, heading: [-1, 1] },
+      Wg: { name: 'Round behind the tower', at: [-0.5, 0.38], z: 2.48, heading: [0, -1] },
+      Wh: { name: 'Across the back', at: [-0.55, -1.05], z: 2.52, heading: [0, -1] },
+      Wi: { name: 'Back over the tower', at: [0.35, -1.15], z: 1.85, heading: [0, 1] },
+      Wj: { name: 'Round the pole again', at: [-0.55, 0.53], z: 1.57, heading: [0, 1] },
+      Wk: { name: 'Down the tower face', at: [0.14, -0.57], z: 1.52, heading: [0, -1] },
+      Wt: { name: 'Down the near face', at: [0.46, -0.41], z: 0.64, heading: [0, -1] },
+      Wl: { name: 'Down to the low bay', at: [-0.1, -1.73], z: 1.39, heading: [0, -1] },
+      Wm: { name: 'Round the near post', at: [-0.44, -0.51], z: 0.27, heading: [0, 1] },
+      Wn: { name: 'Round the right end', at: [0.23, -2.6], z: 0.47, heading: [-1, 0] },
+      Wo: { name: 'Back down the long side', at: [-1.97, -1.34], z: 0.54, heading: [-1, 0] },
+      Wp: { name: 'Round the left end', at: [-1.85, -2.68], z: 1.13, heading: [1, 0] },
+      Wq: { name: 'Home along the top', at: [-0.96, -1.88], z: 1.58, heading: [0, 1] },
+      Wr: { name: 'Past the goalpost', at: [-0.74, 0.07], z: 1.37, heading: [0, 1] },
+      Ws: { name: 'Round on to the goalpost', at: [-1.28, 0.52], z: 0.79, heading: [-1, -0.3] },
+    },
+    start: { at: [-1.5, 0.8], yaw: -Math.PI / 2 },
+    lap: 'A- B- Wa C+ Wb D- Wc L+ Wd E+ We Wf P Wg Wh G+ Wi H- Wj P Wk Wt Wl E+ Wm I+ Wn J+ Wo D- Wp K+ Wq Wr Ws',
+  },
 ];
 
 /*

@@ -450,8 +450,8 @@ function presetSet() {
    * The owner supplies one RaceGOW5 animation at a time and asked for the
    * tracks read off them to be the only whoop tracks in the product. Six
    * reconstructions were here before them. The set is named here rather
-   * than counted, because "four of something" would pass with the wrong
-   * four, and the list grows only when an animation is read and its spec
+   * than counted, because "five of something" would pass with the wrong
+   * five, and the list grows only when an animation is read and its spec
    * goes into scripts/racegow-lattice.js.
    *
    * WHERE AN ENTRY HERE SHOWS UP, which is no longer the Track room. That
@@ -462,7 +462,8 @@ function presetSet() {
    * builder and an extra track to publish, not an extra card in the
    * picker. shell-check pins that.
    */
-  const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1', 'racegow5-track2'];
+  const want = ['racegow5-track8', 'racegow5-track5', 'racegow5-track1', 'racegow5-track2',
+    'racegow5-track3'];
   const micro = presetsForClass('micro').map((d) => d.id);
   check('the whoop ships exactly the supplied tracks',
     micro.length === want.length && want.every((id) => micro.includes(id)),

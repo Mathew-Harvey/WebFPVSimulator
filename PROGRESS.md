@@ -34818,3 +34818,88 @@ this round: `micro:check` clean including the four new Track 2 assertions,
 `lint:shell` PASS, `lint:board` PASS. Beyond those, the step 8 crossing
 walk, the step 8b projection, and the step 10 export laid over the
 reference, all in this round.
+
+## Round 60: RaceGOW5 Track 3, and the mirror check earns its place
+
+The owner supplied another animation and asked for the same thing. The file
+was named `6.gif` and the caption rendered into every frame says "RaceGOW 5
+Track 3", so it was built as Track 3 and the owner confirmed it. The
+designer is the Lego Dans. It is the biggest of the five: 168 frames, a 3 by
+2 unit lattice, fifteen passes over twelve openings, and a lap of 30.9 m.
+
+**The structure.** A goalpost across x at y 0, joined by a ground bar to a
+tower at x 0. The tower is a frame across y: a leg at y -1 two units high, a
+leg at y -2 one unit high, a rung at one unit spanning both bays, a rung at
+two units over the near bay only, and the near leg carried up to three units
+as the tall pole. From the tower's far foot a long rail runs three units
+back along x at one unit up, on a leg at every node.
+
+**The camera settled at 4.7 px rms over fifteen fittings**, the best of the
+four. Step 4b again: eight feet within 0.09 of a whole unit and eleven
+heights within 0.05, with the tall pole's tip at 2.925 because a pipe's end
+cap is not its end.
+
+**STEP 4c EARNED ITS PLACE ON ITS FIRST USE.** The check added last round
+after Track 2's mirror cost a whole spec fired immediately: the first fit
+came back left handed, focal length negative, right cross up pointing
+forward. One line, one minute, y negated before anything was written down.
+Last round the same fault was found at step 10 with the spec already
+finished.
+
+**Three panels are drawn wider than one square**, which is more than any
+track so far: K across the whole three unit rail, C across that same face
+and one unit past its end, and G across the tower's whole upper face. The
+line was reconstructed in three dimensions to settle them, and this time the
+pass frames were ITERATED against the reconstruction rather than taken from
+the run ends and trusted: fit, find each pass's actual crossing of its own
+plane, re-seat the anchor, repeat. It converged in two rounds and moved two
+passes by a frame or two.
+
+**The reading that took the longest was C, and it is worth writing down why.**
+Its panel and the panel two passes later have the same bounding box, so they
+read as one opening flown twice, which they are. But the two crossings are
+nowhere near each other: one over the rail's middle bay at 1.3 units up, and
+one a unit past the end of the rail at 0.3 units up. That is what a panel
+lit across a whole plane means. The quad goes THROUGH the rail the first
+time and ROUND its end the second, and both are the same rule. So the spec
+carries two squares for one panel, C and L, and L is a gap with nothing but
+the rail's last leg beside it.
+
+Two things wasted time and are worth naming. The mask picked up a green
+region that looked like a permanent arrow on the plate; it is not, it is the
+big panel showing through in a third of the frames, and the plate's median
+kept it. And the first pane fit put C on a rectangle whose bottom edge
+sloped, which is not a rectangle: the panel is CLIPPED BY THE IMAGE EDGE at
+the bottom left, and a hull corner on the image border is not a corner.
+
+**Step 8b is clean.** Nineteen distinct pipes the spec builds, every one
+bright along its whole length, and ten the reading denies all dark, the
+highest at 0.39 from a line that runs along a real pipe in projection. The
+export laid over the plate lands pipe for pipe; the only red the plate does
+not carry is the ground bar under each sill-zero opening, which is the known
+difference written up in TRACK-FROM-GIF.md.
+
+**A new check, because this track needed it: how close the line comes to
+the pipe.** Step 8 walks the crossings, which catches a pass at the wrong
+height, and it does not catch a line that shaves an upright between passes.
+Track 3's first build came within 0.4 cm of the goalpost's head bar on the
+way home, which is through it. The other three shipped tracks keep 15 to
+18 cm. So the waypoint tuning now optimises three things against each other,
+measured not guessed: distance from the reconstructed line, the tightest
+radius, and the closest approach to any pipe the spec builds. Coordinate
+descent over twenty waypoints took the fit from 0.129 to 0.092 units, the
+clearance from 0.4 cm to 9.9 cm, and the tightest radius from 0.029 to
+0.035 m. Track 5 ships at 0.015 m, so that is in family. No threshold moved.
+
+Twenty waypoints is more than the alphabet leaves after twelve openings and
+a pole, so waypoints take two character keys on this track. The openings
+keep the single letters they were read under.
+
+`npm run verify` was NOT run. This round is a track spec, generated data and
+one check's named set. It does not reach `src/native`, the patches,
+`vendor/betaflight`, the WASM build or the input path. Cheap checks run in
+this round: `micro:check` 124 passes and no failures including the thirteen
+new Track 3 assertions, `lint:presets` 6 of 6, `lint:nouns` PASS,
+`check:clip` 522 of 522, `lint:board` PASS. Beyond those, the step 8
+crossing walk, the new clearance walk, the step 8b projection and the step
+10 export over the reference, all in this round.

@@ -124,7 +124,7 @@ export function mountTouchSticks({ onPause } = {}) {
   const right = makePlate('roll · pitch');
   right.zone.classList.add('touch-zone-right');
 
-  const pause = el('button', 'bug-chip touch-pause', 'Pause');
+  const pause = el('button', 'corner-chip touch-pause', 'Pause');
   pause.type = 'button';
   pause.addEventListener('click', () => {
     if (onPause) {

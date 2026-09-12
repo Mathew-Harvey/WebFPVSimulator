@@ -588,7 +588,6 @@ const DEFAULTS = {
    * falls back to rotation. */
   musicTrack: 'rotation',
   focusTone: false,
-  readout: false,
   /*
    * The radio between the sticks and the flight controller. 'perfect' is
    * the behaviour this shell has always had, an exact packet grid with no
@@ -1565,8 +1564,7 @@ function choice(label, note, choices, current, format, set) {
  *
  * This used to be choice() over [true, false], which meant a two item popup
  * opened for every on and off in the product: Sound, Launch control, Flight
- * log, Performance readout, Binaural tone, and every feature row on the
- * bench. Twelve of them. A popup is the control for "which of these many",
+ * log, Binaural tone, and every feature row on the bench. Twelve of them. A popup is the control for "which of these many",
  * and a popup listing On and Off asks a pilot to travel to a menu to answer
  * a question the row itself could have answered in place.
  *
@@ -2683,8 +2681,6 @@ export class Ui {
     this.announcer.setAttribute('aria-live', 'polite');
     this.announcer.setAttribute('aria-atomic', 'true');
     this.announcer.setAttribute('role', 'status');
-    /* Optional performance readout, off unless the player asks for it. */
-    this.readout = el('div', 'readout', '');
 
     /*
      * THE FRAME. One status bar and one command bar, outside every screen,
@@ -3358,10 +3354,6 @@ export class Ui {
     this.nameDialog.setAttribute('aria-modal', 'true');
     this.nameDialog.setAttribute('role', 'dialog');
 
-    this.bugChip = btn('bug-chip', 'Report bug, give feedback');
-    this.bugChip.title = 'F8 also opens this.';
-    this.bugChip.addEventListener('click', () => this.openBugReport());
-
     /*
      * PAUSE, for a pointer.
      *
@@ -3378,7 +3370,7 @@ export class Ui {
      * itself when the thumb sticks are up, because that overlay brings its
      * own and two Pause buttons in one corner is worse than none.
      */
-    this.pauseChip = btn('bug-chip pause-chip', 'Pause');
+    this.pauseChip = btn('corner-chip pause-chip', 'Pause');
     this.pauseChip.title = 'Escape also pauses.';
     this.pauseChip.addEventListener('click', () => {
       if (this.screen !== 'flight') {
@@ -3418,8 +3410,8 @@ export class Ui {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.announcer, this.banner, this.readout, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
-    this.syncBugChip();
+    r.append(this.announcer, this.banner, this.pauseChip, this.musicDock, this.nameDialog);
+    this.syncChips();
   }
 
   setShare(share) {
@@ -3816,21 +3808,26 @@ export class Ui {
     if (done) {
       done(value);
     }
-    this.syncBugChip();
+    this.syncChips();
     this.renderMenu();
   }
 
-  syncBugChip() {
-    if (!this.bugChip) {
-      return;
-    }
-    const hide = this.nameDialog && !this.nameDialog.hidden;
-    this.bugChip.hidden = hide;
-    this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
+  /*
+   * The chips that float over the world rather than living on a screen.
+   *
+   * There were two. The other was Report bug, give feedback, in the top
+   * right corner of every screen including the first one a visitor sees,
+   * and the owner asked for that corner back. The form it opened is still
+   * here, on F8 and on the pause menu's own row, so what went is the
+   * button and not the feature.
+   */
+  syncChips() {
     /* Flight only. Paused already has Resume as its first row, and every
      * other screen has somewhere to go on it. */
     if (this.pauseChip) {
+      const hide = this.nameDialog && !this.nameDialog.hidden;
       this.pauseChip.hidden = hide || this.screen !== 'flight';
+      this.pauseChip.classList.toggle('on-flight', this.screen === 'flight');
     }
     this.syncMusicDock();
   }
@@ -4023,7 +4020,7 @@ export class Ui {
     this.nameDialog.textContent = '';
     this.nameDialog.append(box);
     this.nameDialog.hidden = false;
-    this.syncBugChip();
+    this.syncChips();
 
     /* Same in-flight guard the feel dialog carries: a ticket that is still
      * POSTing must not lose its dialog to Escape, the backdrop or Cancel,
@@ -4297,7 +4294,7 @@ export class Ui {
     this.nameDialog.textContent = '';
     this.nameDialog.append(box);
     this.nameDialog.hidden = false;
-    this.syncBugChip();
+    this.syncChips();
 
     /*
      * While the POST is in flight, nothing may close the dialog. Escape or
@@ -4661,11 +4658,29 @@ export class Ui {
           action: 'credits',
           note: 'Who made this, who flew it, and whose work it stands on.',
         },
-        {
-          label: 'Report bug, give feedback',
-          action: 'reportbug',
-          note: 'A bug ticket or flight feel feedback, both land on the board. The map, graphics and browser go with it. F8 does the same, including from flight.',
-        },
+        /*
+         * THE WAY BACK TO THE GATE, AND IT IS A ROW NOW.
+         *
+         * It was the Escape key and a line of legend text at the foot of
+         * the screen. The text was a hit area, which nobody could tell by
+         * looking at it: it sits in the row that reads "Move  Choose  Esc",
+         * which is a key legend everywhere else in the shell, so a pilot
+         * who had answered the gate had one visible route back and it was a
+         * key. Reported as exactly that.
+         *
+         * It goes last, under Credits, because it is the only row that
+         * leaves this screen upwards rather than opening something on it.
+         * There was no room for an eleventh row here and there still is
+         * not: this one is affordable because Report bug, give feedback
+         * left the list at the same time. That form is on F8 and on the
+         * pause menu's own row now.
+         *
+         * Named for where it lands rather than called Back, for the reason
+         * legendFor gives: Back on the front page reads like it leaves the
+         * game, and a pilot looking for the other mode or the other machine
+         * is looking for the screen that offers both.
+         */
+        { label: this.gateLabel(), action: 'mode-gate', note: 'The three cards: five inch racing, whoop racing or freestyle. Changing your mind about any of it starts here.' },
       ];
     }
     if (this.screen === 'howto') {
@@ -5118,12 +5133,6 @@ export class Ui {
           (n) => (n === 0 ? 'Uncapped' : `${n} fps`),
           (n) => { s.fpsCap = n; },
         ),
-        toggle(
-          'Performance readout',
-          'Frame rate and draw counts, for tuning your machine.',
-          s.readout,
-          (v) => { s.readout = v; },
-        ),
         { label: 'Sound', section: true },
         toggle('Sound', 'All sound: motors, wind, music and cues.', s.sound, (v) => { s.sound = v; }),
         stepper('Volume', 'Overall level. Zero to ten.', `${s.volume}`, (d) => {
@@ -5336,6 +5345,21 @@ export class Ui {
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
         feelItem(),
+        /*
+         * THE BUG FORM'S ONE ROW, and it moved here from the title.
+         *
+         * It was a floating chip in the top right corner of every screen
+         * and a row on the front page, and the owner asked for both to go.
+         * F8 still opens it, and F8 is not an answer on a phone, so it
+         * keeps a row: this one, beside the flight feel form it is the
+         * sibling of, on the screen a pilot is already looking at when
+         * something has just gone wrong.
+         */
+        {
+          label: 'Report bug, give feedback',
+          action: 'reportbug',
+          note: 'A bug ticket or flight feel feedback, both land on the board. The map, graphics and browser go with it. F8 does the same, including from flight.',
+        },
         { label: 'Elsewhere', section: true },
         {
           label: 'Quad',
@@ -8114,7 +8138,7 @@ export class Ui {
      * is a readout that never changes. */
     this.syncScoreVisible();
     this.renderMenu();
-    this.syncBugChip();
+    this.syncChips();
     /* Last, and unconditionally. Last because a listener is entitled to
      * read a settled screen; unconditionally because show() is also how
      * a screen is re-entered, and the shell side of this is idempotent by
@@ -9505,18 +9529,6 @@ export class Ui {
     }
   }
 
-  setReadout(lines) {
-    /*
-     * 'block', not ''. The stylesheet's own rule for .readout is
-     * `display: none`, so clearing the inline style hands the element back
-     * to that rule and it stays hidden. The setting has therefore never
-     * shown anything since the rule was written: the text was being
-     * computed and written every frame into an element nobody could see.
-     */
-    this.readout.style.display = this.settings.readout ? 'block' : 'none';
-    this.readout.textContent = this.settings.readout ? lines : '';
-  }
-
   /* Cursor movement and selection, shared by keyboard and sticks. Each
    * lands a small click through onUiSound, and the sound is made HERE, in
    * the one place each gesture funnels through, so the keyboard, the
@@ -9744,9 +9756,9 @@ export class Ui {
       out.push({ keys: [], text: this.cardScreen() ? 'Tap a card' : 'Tap a row' });
       if (this.screen !== 'title') {
         out.push({ keys: [], text: 'Back', action: 'back' });
-      } else if (!this.onGate()) {
-        out.push({ keys: [], text: this.gateLabel(), action: 'mode-gate' });
       }
+      /* The title's own way out is the last row of its menu now, where a
+       * thumb can find it without reading the legend. See titleItems. */
       return out;
     }
     const out = [];
@@ -9768,37 +9780,29 @@ export class Ui {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back' });
     } else if (!this.onGate()) {
       /* NOT ON THE GATE. The gate is the root and Escape does nothing
-       * there, so offering the key is the joke the block below says it is
-       * avoiding. onGate() is the one definition of "is the gate up", and
-       * this asks it rather than reading the two flags itself: `this.mode`
-       * alone was the proxy once and it stopped being one the moment a
-       * link could answer the mode without answering the aircraft. */
+       * there, so offering the key is a joke. onGate() is the one
+       * definition of "is the gate up", and this asks it rather than
+       * reading the two flags itself: `this.mode` alone was the proxy once
+       * and it stopped being one the moment a link could answer the mode
+       * without answering the aircraft. */
       /*
-       * The title answers Escape now: it reopens the gate, which is the
-       * only way to change mode or aircraft without reloading. It is named
+       * The title answers Escape: it reopens the gate, which is the only
+       * way to change mode or aircraft without reloading. It is named
        * rather than called Back, because Back on the front page reads like
        * it leaves the game, and because a pilot looking for the other mode
        * or the other machine is looking for the screen that offers both.
        *
-       * Not on the gate itself, which has nothing behind it: a legend
-       * offering a key that does nothing is worse than no legend.
+       * THIS IS THE KEY HINT AND NOTHING ELSE NOW. It was a hit area as
+       * well, because for a while it was the only route: the menu had no
+       * room for an eleventh row and a pilot who answered Freestyle could
+       * reach the town and could not reach a race track again. A clickable
+       * word in the row that reads "Move  Choose  Esc" is a key legend
+       * everywhere else in the shell, so nobody could tell it was a
+       * button, which is how it was reported a second time. The route is
+       * the last row of the menu now and this is back to being what it
+       * looks like.
        */
-      /*
-       * AND IT IS CLICKABLE, because until now it was the key and nothing
-       * else. The row above the legend is Track in Race and Map in
-       * Freestyle and only ever lists the worlds of the mode you are in, so
-       * a pilot who answered Freestyle could reach the town and could
-       * not reach a single race track again: the one route was this
-       * key, written here and pressable nowhere. Reported as being in a
-       * freestyle map with no way back to a race one.
-       *
-       * It goes here rather than in the menu because the menu has no room:
-       * an eleventh row put the title 25 px into overflow at 1600 by 900
-       * and `npm run lint:shell` is right to refuse it. The words are
-       * already on the screen, in the place that answers "how do I get
-       * out"; all they were missing was a hit area.
-       */
-      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.gateLabel(), action: 'mode-gate' });
+      out.push({ keys: [pad ? 'B' : 'Esc'], text: this.gateLabel() });
     }
     return out;
   }
@@ -10871,12 +10875,6 @@ export class Ui {
       || code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD';
     if (repeat && !nav) {
       return this.screen !== 'flight';
-    }
-    if (code === 'F3') {
-      this.settings.readout = !this.settings.readout;
-      saveSettings(this.settings);
-      this.setReadout('');
-      return true;
     }
     if (code === 'F8') {
       this.openBugReport();

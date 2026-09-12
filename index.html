@@ -605,12 +605,10 @@
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.55);
       }
       .touch-nub { width: 24px; height: 24px; }
-      /* Under the bug chip, same right edge: the two chips a pilot needs in
-         flight on glass, stacked where the right thumb flicks up to. The
-         two-class selector is load-bearing: .bug-chip sets top 16px LATER
-         in this sheet, and a bare .touch-pause lost to it and stacked the
-         two chips on the same pixels. */
-      .touch-fly .touch-pause { top: 52px; }
+      /* The thumb sticks' own Pause, in the corner the floating chips use.
+         The two-class selector is load-bearing: .corner-chip sets top 16px
+         LATER in this sheet, and a bare .touch-pause lost to it. */
+      .touch-fly .touch-pause { top: 16px; }
       /* The rotate hint, only while the sticks are up and the phone is
          tall. It does not block anything: the sticks still work, the hint
          just says why everything is cramped. */
@@ -698,13 +696,6 @@
         letter-spacing: 0.04em; color: var(--amber); opacity: 0;
         transition: opacity 0.18s ease; text-shadow: 0 3px 10px rgba(0,0,0,0.9);
         max-width: min(92vw, 22em);
-      }
-
-      .readout {
-        position: absolute; right: 16px; top: 14px; display: none;
-        font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: var(--slate); white-space: pre; text-align: right;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
       }
 
       /* Screens. */
@@ -3657,7 +3648,12 @@
         background: var(--mint); border-color: var(--mint);
         color: var(--deep); font-weight: 600;
       }
-      .bug-chip {
+      /* THE ONE FLOATING CHIP, and it used to be two.
+         Report bug, give feedback sat here on every screen, including the
+         first one a visitor sees, and the owner asked for the corner back.
+         Pause is what is left, so this is no longer the bug chip's class
+         and is not named after it. */
+      .corner-chip {
         position: absolute; top: 16px; right: 16px; z-index: 7;
         pointer-events: auto;
         appearance: none; border: 1px solid rgba(232, 168, 184, 0.45);
@@ -3667,21 +3663,22 @@
         box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
       }
       /* Live flight: same corner, a shade quieter so the FPV frame still
-         reads, still a real button. Click pauses, then opens the form. */
-      .bug-chip.on-flight {
+         reads, still a real button. */
+      .corner-chip.on-flight {
         background: rgba(16, 22, 17, 0.55);
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
       }
-      .bug-chip:hover { border-color: var(--sakura); color: var(--sakura); }
-      .bug-chip[hidden] { display: none; }
+      .corner-chip:hover { border-color: var(--sakura); color: var(--sakura); }
+      .corner-chip[hidden] { display: none; }
 
-      /* Music skip. Tiny, out of the FPV instruments. Menus park it under
-         the bug chip at the top right, over the open world rather than
-         over the list. Flight puts it top left, away from the timer, the
-         pack, and the bug chip. Buttons never take focus, so a click
-         cannot steal Space from throttle. */
+      /* Music skip. Tiny, out of the FPV instruments. Menus park it at the
+         top right, over the open world rather than over the list; it had
+         the second slot there while the bug chip had the first, and it has
+         the corner now. Flight puts it top left, away from the timer, the
+         pack, and Pause. Buttons never take focus, so a click cannot steal
+         Space from throttle. */
       .music-dock {
-        position: absolute; right: 16px; top: 52px; z-index: 6;
+        position: absolute; right: 16px; top: 16px; z-index: 6;
         display: flex; align-items: center; gap: 4px;
         pointer-events: auto;
         padding: 3px 6px 3px 3px; border-radius: 4px;
@@ -3716,8 +3713,8 @@
        * deep, so source order decides, and the first draft of the old
        * version of this lived two thousand lines earlier and did nothing.
        */
-      .bar-shown .bug-chip { top: calc(var(--bar-top) + 8px); }
-      .bar-shown .music-dock { top: calc(var(--bar-top) + 44px); }
+      .bar-shown .corner-chip { top: calc(var(--bar-top) + 8px); }
+      .bar-shown .music-dock { top: calc(var(--bar-top) + 8px); }
 
       /*
        * PAUSE, under the bug chip, at the same right edge and in the same
@@ -3728,7 +3725,7 @@
        * this is the button that gets a pilot out of a map, so it is a real
        * button and not a hint.
        */
-      .pause-chip { top: 52px; }
+      .pause-chip { top: 16px; }
       .pause-chip[hidden] { display: none; }
       .touch-fly-on .pause-chip { display: none; }
 

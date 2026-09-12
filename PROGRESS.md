@@ -34123,3 +34123,86 @@ patches, the WASM build or the input path: the changes are a GIF encoder's
 frame size, a track document's dimensions and some labels. The determinism
 trace cannot see any of it, and a green run of it would be evidence about
 something else. Say so rather than imply otherwise.
+
+## Round 51: the way back is a row, and the corner is clear
+
+**The ask, in the owner's words.** "this page for all 3 game types should
+have a back button, currently the only can be done with esc key" and "also
+remove the bug report, the osd of the stick hz etc". The picture was the
+title with a way answered: the three cards gone, the menu up, and the top
+right corner holding a bug chip and a performance readout.
+
+### The way back
+
+Answering the gate puts the menu up and leaves the gate behind it. The only
+route back was the Escape key, written into the legend at the foot of the
+screen as "Esc  What to fly".
+
+That line WAS a hit area. Round 39 made it clickable for exactly this
+complaint and recorded why it went there rather than in the menu: "the menu
+has no room, an eleventh row put the title 25 px into overflow at 1600 by
+900 and `npm run lint:shell` is right to refuse it". The fix was right about
+the route and wrong about the affordance. That line sits in the row that
+reads "Move  Choose  Esc", which is a key legend on every other screen in
+the shell, so nothing about it says button, and it was reported a second
+time as a screen with no way back.
+
+So it is the last row of the menu now, under Credits, on all three ways in:
+nine rows on either racing card, ten on Freestyle where the Trick list row
+is. It is still named "What to fly" rather than "Back", for Round 39's own
+reason: Back on the front page reads like it leaves the game, and a pilot
+looking for the other mode or the other machine is looking for the screen
+that offers both. The legend keeps the key and loses the hit area, so it is
+what it looks like again.
+
+The eleventh row problem did not go away. It was paid for, below.
+
+### The corner
+
+**The bug chip.** A floating button in the top right of every screen,
+including the first thing a visitor sees. Gone, with its row on the title.
+The FORM is not gone: F8 still opens it, and it has a row on the pause menu
+now, beside Flight feel, which is the form it is a sibling of and the screen
+a pilot is already looking at when something has just gone wrong. A row and
+not only a key, because a phone has no F8. That row is what paid for the
+Back row on the title.
+
+`.bug-chip` was the class for the chip base and was worn by three buttons,
+only one of which was the bug chip. It is `.corner-chip` now. Pause and the
+thumb sticks' Pause both move up into the 16 px slot the bug chip had, and
+so does the music dock on menus, which had the second slot because the chip
+had the first.
+
+**The performance readout.** Frame rate, draw calls, triangles, the render
+scale and "stick 0 Hz pad, 16 Hz sampled, 250 Hz link", top right, behind a
+Settings switch and an undocumented F3. All of it removed: the element, the
+stylesheet rule, the switch, the key and the per frame string building in
+main.js.
+
+Every number is still measured. `fps` and `renderStats` are live in the
+frame body, `input.stats()` answers the stick rate, `window.__renderStats`
+and the debug snapshot still carry them, and `scripts/quality-check.js` and
+`scripts/device-check.js` read the same figures out of a real browser. That
+is where a performance number belongs: in a check that can fail, not in a
+corner a pilot reads while flying. A note in main.js says so where the
+block used to be.
+
+**Checks, run this turn.** `lint:shell` PASS, which is the one that matters
+here: it walks every screen, counts the stops and measures the overflow, and
+the title is 9 stops at 0 px on the race way. It also reported Quad improved
+from 55 px to 10 and Pilot from 658 to 613, because the Performance readout
+switch left the Graphics list, so `tests/shell-baseline.json` was re-recorded
+with `--record`. That is tightening a baseline the check had gone under, not
+moving a threshold to pass.
+
+Then `lint:boot` 9 of 9, `lint:quality` 56 of 56, `lint:responsive` PASS,
+`lint:attract` PASS, `lint:board` PASS. `node scripts/shots.js` drove the
+real shell through all three cards and photographed each title: Five inch
+racing and Whoop racing both end "Credits | What to fly", Freestyle ends
+"Credits | What to fly" with Trick list above, and the corner is empty but
+for the music dock. The pause menu was read back out of the live `ui` and
+carries "Report bug, give feedback" between Flight feel and Elsewhere.
+
+`npm run verify` was NOT run. This is menu rows, a stylesheet class and a
+deleted overlay: it does not touch `src/native`, the patches, the WASM build
+or the input path, so the determinism trace cannot see it.

@@ -3542,7 +3542,6 @@ export async function boot({ loading, bootStart, mapId }) {
     audio.setLevel(s.volume / 10);
     audio.setEnabled(s.sound);
     applyMix(s);
-    ui.setReadout('');
     syncAngleMode();
   }
 
@@ -6825,30 +6824,23 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.paintRates({ roll: ch.roll, pitch: ch.pitch, yaw: ch.yaw });
     }
 
-    if (ui.settings.readout) {
-      /* Performance only. The setting promises frame rate and draw
-       * counts, so anything else here is developer output that the
-       * player did not ask for. */
-      /* Performance, plus the stick rate, because the stick rate is a
-       * performance number the pilot can feel and the frame rate is not the
-       * same thing any more. padHz is how often the browser refreshes the
-       * pad; if it tracks the frame rate this browser is rAF-locked on
-       * gamepad input whatever we ask of it. */
-      const stick = input.stats();
-      const paceLine = (view && view.post && view.post.size)
-        ? `\n${view.post.size.x}x${view.post.size.y} scale ${(view.post.scale || 0).toFixed(2)}`
-        : '';
-      ui.setReadout(
-        `${fps.toFixed(0)} frames per second\n` +
-        `${renderStats.calls} draw calls\n` +
-        `${(renderStats.triangles / 1000).toFixed(0)}k triangles` +
-        `${paceLine}\n` +
-        `stick ${stick.padHz} Hz pad, ${stick.sampleHz} Hz sampled, ${RC_HZ} Hz link`,
-      );
-    } else {
-      ui.setReadout('');
-    }
-
+    /*
+     * THE PERFORMANCE READOUT IS GONE, and this note is here because the
+     * numbers are not.
+     *
+     * Frame rate, draw calls, triangles, the render scale and the stick
+     * rate used to print in the top right corner behind a Settings switch
+     * and an F3 key. They were developer output on a page whose first
+     * screen is three pictures and a question, and the owner asked for
+     * that corner back.
+     *
+     * Every one of those numbers is still measured and still reachable.
+     * `fps` and `renderStats` are live in this scope, `input.stats()`
+     * answers the stick rate, and scripts/quality-check.js and
+     * scripts/device-check.js read the same figures out of a real browser,
+     * which is where a performance number belongs: in a check that can
+     * fail, not in a corner nobody reads while flying.
+     */
     window.__shellReady = true;
     window.__mode = mode;
     window.__screen = ui.screen;

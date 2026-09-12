@@ -63,11 +63,13 @@ import { buildPalette, GifEncoder } from './gif.js';
  * one. The cap is what keeps that affordable: see LAP_FRAMES_MAX.
  *
  * A card stays small because of the delay and the frame size, which are the
- * two numbers still here. Measured on the tracks this board carries, at one
- * pace: 33 kB for a three gate room and 1.02 MB for the 24 element RaceGOW5
- * Track 8, against a board that refuses anything over 1.8 MB. What costs is
- * how much of the frame moves, so a busy track costs more than a bare one,
- * and dropping the nameplate let the track fill the frame.
+ * two numbers still here. Measured at one pace on the two ends of what this
+ * board carries: RaceGOW5 Track 1 is 14.4 m of lap, 64 frames and 148 kB,
+ * and RaceGOW5 Track 8 is 43.9 m, 196 frames and 774 kB, against a board
+ * that refuses anything over 1.8 MB. The longest clip the cap allows, 600
+ * frames, is three times Track 8 and would still come in under it. What
+ * costs is how much of the frame moves, so a busy track costs more than a
+ * bare one, and dropping the nameplate let the track fill the frame.
  *
  * NO NAMEPLATE. The stage lays the track's name in the floor, because a GIF
  * pasted into a chat travels alone and has to say what it is of. A card does

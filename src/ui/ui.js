@@ -110,7 +110,7 @@ import { BUG_KINDS, submitBug } from '../share/bugs.js';
 import { nameRules, readPilotName, writePilotName } from '../share/pilot.js';
 import { courseChip, hasFlyableTrack, inspectCourse, isEmptyCanvas } from '../share/listing.js';
 import { presetsForClass, presetById } from '../trackbuilder/presets.js';
-import { drawIso, drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
+import { isoLapMs, drawIso, drawPlan, fieldSize, planCanvas, planFromDocument } from '../share/plan.js';
 import { activeCourseSummary } from '../share/summary.js';
 import {
   readPendingTime,
@@ -198,16 +198,19 @@ const REEL_QUIET_MS = 900;
 /*
  * THE COURSE CARDS FLY THEIR OWN LAP.
  *
- * One lap in twelve seconds, which is the animation exporter's own figure:
- * 300 frames at 25 fps. A card and an exported GIF of one track then move
- * at the same speed as well as being drawn from the same angle.
+ * ONE PACE, NOT ONE DURATION, and that is the whole of what changed here.
+ * It was twelve seconds a lap for every card, the exporter's old figure, so
+ * a 41 m course went round three times as fast as a 13 m one and a row of
+ * cards had no common speed to read. isoLapMs in src/share/plan.js gives
+ * each track its own length of lap at one steady speed, which is the
+ * animation exporter's rule and RaceGOW's own: see LAP_SPEED in
+ * src/trackbuilder/stage.js.
  *
  * Repainted twenty times a second rather than every frame. Each card is a
  * few dozen strokes on a 150 px canvas, but there are several of them and
  * they are painted over a world that is also being rendered, and nothing
  * about a travelling ribbon needs 60 Hz.
  */
-const COURSE_LAP_MS = 12000;
 const COURSE_PLAN_MS = 50;
 
 const ROOM_PARENTS = new Set(['courses', 'freestyle', 'launch', 'quad', 'pilot']);
@@ -7294,9 +7297,13 @@ export class Ui {
      * exported GIF of one track are the same object.
      */
     this.stopCoursePlans();
-    const paint = (options) => {
+    /* Each card is asked for the phase of ITS OWN lap: a long course and a
+     * short one share a speed, not a duration, so their ribbons are at
+     * different points of their own laps at the same moment. */
+    const paint = (ms) => {
       for (const c of this.courseCards || []) {
-        drawIso(c.canvas, c.canvas.planData, options);
+        const plan = c.canvas.planData;
+        drawIso(c.canvas, plan, ms == null ? {} : { phase: (ms / isoLapMs(plan)) % 1 });
       }
     };
     /* A pilot who has asked for less motion gets the structure and no lap,
@@ -7305,7 +7312,7 @@ export class Ui {
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false;
     if (reduced) {
-      requestAnimationFrame(() => paint({}));
+      requestAnimationFrame(() => paint(null));
       return;
     }
     const began = performance.now();
@@ -7321,7 +7328,7 @@ export class Ui {
         return;
       }
       last = now;
-      paint({ phase: ((now - began) / COURSE_LAP_MS) % 1 });
+      paint(now - began);
     };
     this.coursePlanFrame = requestAnimationFrame(tick);
   }

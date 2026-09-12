@@ -37,7 +37,8 @@
  */
 
 import { buildPath } from './path.js';
-import { buildStage } from './stage.js';
+import { trackClassOf } from './elements.js';
+import { buildStage, lapFrames } from './stage.js';
 import { buildPalette, GifEncoder } from './gif.js';
 
 /* One frame in sixteen is enough to see every colour the animation uses,
@@ -73,7 +74,7 @@ function flipRows(src, dst, size) {
  * itself. It is how an export is laid over a reference picture.
  */
 export async function exportTrackGif(doc, {
-  size = 512, frames = 300, delayCs = 4, onProgress = null, camera = null,
+  size = 512, frames = null, delayCs = 4, onProgress = null, camera = null,
 } = {}) {
   const THREE = await import('three');
 
@@ -88,6 +89,18 @@ export async function exportTrackGif(doc, {
       'This track has no lap to animate yet. Sequence at least two elements, then try again.',
     );
   }
+
+  /*
+   * HOW LONG THE LOOP IS, and it comes from the LAP rather than from a
+   * constant. Every track used to take the same twelve seconds, so a long
+   * course flew fast and a short one crawled. The quad now covers the same
+   * ground per second whatever it is flying, which is what RaceGOW's own
+   * animations do: see LAP_SPEED in stage.js. A caller that names `frames`
+   * still gets exactly those, which is what --frames is for.
+   */
+  const shots = frames == null
+    ? lapFrames(path.length, trackClassOf(doc), delayCs)
+    : frames;
 
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -123,11 +136,11 @@ export async function exportTrackGif(doc, {
 
     const raw = new Uint8Array(size * size * 4);
     const rgba = new Uint8Array(size * size * 4);
-    const total = frames + Math.ceil(frames / PALETTE_STRIDE);
+    const total = shots + Math.ceil(shots / PALETTE_STRIDE);
     let done = 0;
 
     const shoot = (i) => {
-      stage.setFrame(i, frames);
+      stage.setFrame(i, shots);
       renderer.setRenderTarget(target);
       renderer.render(stage.scene, stage.camera);
       renderer.readRenderTargetPixels(target, 0, 0, size, size, raw);
@@ -137,7 +150,7 @@ export async function exportTrackGif(doc, {
 
     /* Pass one: a sample of the animation, kept, to choose the palette. */
     const sample = [];
-    for (let i = 0; i < frames; i += PALETTE_STRIDE) {
+    for (let i = 0; i < shots; i += PALETTE_STRIDE) {
       shoot(i);
       sample.push(rgba.slice());
       done += 1;
@@ -153,7 +166,7 @@ export async function exportTrackGif(doc, {
 
     /* Pass two: every frame, straight into the encoder. */
     const gif = new GifEncoder({ width: size, height: size, palette, loop: 0 });
-    for (let i = 0; i < frames; i += 1) {
+    for (let i = 0; i < shots; i += 1) {
       shoot(i);
       gif.addFrame(rgba, delayCs);
       done += 1;

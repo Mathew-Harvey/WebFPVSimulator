@@ -241,8 +241,15 @@ camera fitted in step 4 converts straight into those seven numbers: the eye
 is its position in lattice units times 27 inches plus the origin, and the
 field of view is `2 * atan(512 / f)` in degrees.
 
-Render at `--frames 24` first. A full 300 frame render is minutes on a
-software rasteriser and a smoke render catches a broken scene in seconds.
+Render at `--frames 24` first. A full render is minutes on a software
+rasteriser and a smoke render catches a broken scene in seconds.
+
+The loop's length is the LAP's: the quad flies one steady pace whatever the
+track, 3.73 m/s on a whoop, which is what RaceGOW's own three animations
+average, so a 41 m course is an eleven second clip and a 13 m one is under
+four. `--frames` overrides it. Before this the exporter gave every track the
+same twelve seconds, so the line moved three times as fast on a busy track
+as on a short one, which is exactly what it looks like.
 
 ## A scored opening is not always a gate
 

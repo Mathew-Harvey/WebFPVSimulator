@@ -939,6 +939,21 @@ const ISO_AZIMUTH_OFF = -55 * (Math.PI / 180);
  * in src/trackbuilder/stage.js for why a long tail hides the track it is
  * flying through, which a 150 px card suffers from worse than a GIF. */
 const ISO_TAIL = 0.09;
+/*
+ * THE PACE, and it is a speed rather than a duration, the exporter's own:
+ * see LAP_SPEED in src/trackbuilder/stage.js, which holds the measurement
+ * these two numbers come from. Metres a second, by class.
+ *
+ * The card used to fly every lap in twelve seconds, which is the exporter's
+ * old figure, so a 41 m course moved three times as fast as a 13 m one and
+ * the row of cards had no common pace at all. Now they all move at the same
+ * speed and a longer course simply takes longer to go round.
+ */
+const ISO_SPEED = { micro: 3.73, full: 12.7 };
+/* A lap must not be so brief that it reads as a flicker or so long that a
+ * card looks still. The exporter clamps its frame count the same way. */
+const ISO_LAP_MS_MIN = 2000;
+const ISO_LAP_MS_MAX = 24000;
 const ISO_ELEVATION = 40 * (Math.PI / 180);
 /* How far outside the track the ground plate reaches, in metres, per class. */
 const ISO_GROUND_PAD = { micro: 0.5, full: 6 };
@@ -1221,6 +1236,31 @@ function isoSlice(lap, from, to) {
     prev = i;
   }
   return out;
+}
+
+/*
+ * HOW LONG ONE LAP OF THIS PLAN TAKES, in milliseconds, at the pace above.
+ * The caller drives the phase; this is the only place that decides how fast
+ * a track goes round, so every card in a row moves at one speed and so does
+ * the GIF of any of them.
+ */
+/* How long the card's own lap is, in metres. The drawer's curve, not the
+ * builder's racing line: a card rounds the corners with a Catmull-Rom and
+ * says so, so this is the distance the ribbon actually travels. */
+export function isoLapLength(plan) {
+  const lap = isoLap(plan);
+  return lap && lap.total > 0 ? lap.total : 0;
+}
+
+export function isoLapMs(plan) {
+  const lap = isoLap(plan);
+  const small = String(plan && plan.trackClass) === 'micro';
+  const speed = small ? ISO_SPEED.micro : ISO_SPEED.full;
+  if (!lap || !(lap.total > 0) || !(speed > 0)) {
+    return ISO_LAP_MS_MAX;
+  }
+  const ms = (lap.total / speed) * 1000;
+  return Math.max(ISO_LAP_MS_MIN, Math.min(ISO_LAP_MS_MAX, ms));
 }
 
 /*

@@ -34025,3 +34025,56 @@ hashes unchanged at `de0401cd4266`, `check:craft` 20 of 20, `check:clip` 522
 of 522, `whoop:gates` 21 of 21, `micro:check`, `lint:quality` 56 of 56. The
 whoop was photographed in the Quad room after the hoop moved: four ducts with
 their bumper rings still reading as rings, flush with the duct wall.
+
+## Round 50: the line flies at one pace, whatever the track
+
+**The report.** "The pace of the pathing line needs to be consistent. At the
+moment if there are many gates the pathing moves very fast, if a few gates
+slow. Make it a consistent steady pace. This needs to happen at the gif
+generate stage."
+
+**It was a DURATION where it should have been a SPEED.** The exporter's
+default was 300 frames at 25 fps, twelve seconds, for every track; the course
+card was given the same twelve seconds in Round 41 so the two would agree. So
+the quad's speed was the lap divided by twelve, and the three shipped tracks
+came out at 2.72, 2.42 and 1.03 metres a second on the cards. Track 8 moved
+two and a half times as fast as Track 1, which is the report, measured.
+
+**RaceGOW's own animations answered it.** The three official files are 288,
+192 and 96 frames, every one at 42 ms, which is 12, 8 and 4 seconds for laps
+of 41.47, 34.63 and 13.38 m: 3.46, 4.33 and 3.35 m/s, one pace per track
+quantised into whole four second blocks. Over the three, 89.48 m in 24.0 s,
+which is **3.73 m/s**, and that is the number now in `LAP_SPEED`.
+
+The five inch's is that scaled by the ratio of the two aircraft's swept
+radii, 0.1735 over 0.0506, because a machine three and a half times the size
+covers three and a half times the ground to read as the same pace. It comes
+out at 12.7 m/s, which is inside the 12 to 15 m/s a five inch actually laps a
+400 m course at. That agreement is a check on the reasoning, not the
+reasoning.
+
+**What changed.** `lapFrames` in `src/trackbuilder/stage.js` is the rule:
+length over speed, in frames, clamped to between 48 and 600 so a two gate
+room is not a flicker and a 400 m course is not half a minute nobody can
+post. `exportTrackGif` takes `frames: null` now and asks it; `--frames` still
+wins, which is what the smoke render uses. `scripts/trackgif.js` works the
+same number out before it starts so the terminal says "41.5 m of lap, 11.1 s
+at 3.73 m/s" rather than spending two minutes first. The card asks
+`isoLapMs` in `src/share/plan.js`, which holds the same two speeds with the
+same note, and each card is now given the phase of ITS OWN lap rather than
+one clock for the row.
+
+**The tail is still a fraction of the lap**, 0.09, and that is deliberate:
+it is the share of the course the ribbon covers, which is what was looked at
+and approved two rounds ago. At one speed it also means the ribbon lingers
+for a fixed time on a given track and a shorter streak on a shorter one.
+
+**Checks, run this turn.** `micro:check` gained six: every shipped track's
+card speed and export speed against the one figure, to 0.02 and 0.05 m/s.
+Run against the old flat twelve seconds they read 2.718, 2.422 and 1.034 m/s
+and all three failed, which is the proof they bite. Then `gif:selftest` 38 of
+38, `check:clip` 522 of 522, `lint:presets` 6 of 6, `lint:shell` PASS. And
+the three animations were rendered again at the new pace: Track 1 is 90
+frames and 3.6 s, Track 5 is 232 and 9.3 s, Track 8 is 278 and 11.1 s, all
+three at 3.73 m/s, against RaceGOW's own 4, 8 and 12. `npm run verify` was
+not run: nothing here touches physics, the plant, the ABI or the build.

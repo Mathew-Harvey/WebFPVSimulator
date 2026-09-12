@@ -3355,6 +3355,26 @@ export class Ui {
     this.nameDialog.setAttribute('role', 'dialog');
 
     /*
+     * REPORT BUG, AND WHERE IT IS NOT.
+     *
+     * This chip was removed whole and that went too far. The ask was about
+     * one screen: the picture that came with it was the title with the
+     * three cards on it, and a floating button over the first thing a
+     * visitor sees is what was wrong with it. Everywhere else it is the
+     * only thing on screen that says how to tell somebody a thing is
+     * broken, and taking it off every screen left F8, which a phone does
+     * not have.
+     *
+     * So it is back, and it is hidden on the title. The title is the one
+     * screen whose whole job is a first impression, it is the screen the
+     * report was about, and it is one press from any screen that has the
+     * chip on it.
+     */
+    this.bugChip = btn('corner-chip', 'Report bug, give feedback');
+    this.bugChip.title = 'F8 also opens this.';
+    this.bugChip.addEventListener('click', () => this.openBugReport());
+
+    /*
      * PAUSE, for a pointer.
      *
      * A phone has had this button since the thumb sticks shipped, mounted
@@ -3437,7 +3457,7 @@ export class Ui {
       s.style.display = 'none';
       r.append(s);
     }
-    r.append(this.announcer, this.banner, this.pauseChip, this.musicDock, this.nameDialog);
+    r.append(this.announcer, this.banner, this.bugChip, this.pauseChip, this.musicDock, this.nameDialog);
     this.syncChips();
   }
 
@@ -3840,21 +3860,33 @@ export class Ui {
   }
 
   /*
-   * The chips that float over the world rather than living on a screen.
+   * The chips that float over the world rather than living on a screen,
+   * and the dock that stacks under them.
    *
-   * There were two. The other was Report bug, give feedback, in the top
-   * right corner of every screen including the first one a visitor sees,
-   * and the owner asked for that corner back. The form it opened is still
-   * here, on F8 and on the pause menu's own row, so what went is the
-   * button and not the feature.
+   * Report bug is on every screen but the title. See the comment where it
+   * is built: the corner over the three cards is a first impression and
+   * the corner over everything else is the only visible way to say that
+   * something is broken.
    */
   syncChips() {
+    const dialog = this.nameDialog && !this.nameDialog.hidden;
+    const bug = this.bugChip && !dialog && this.screen !== 'title';
+    if (this.bugChip) {
+      this.bugChip.hidden = !bug;
+      this.bugChip.classList.toggle('on-flight', this.screen === 'flight');
+    }
     /* Flight only. Paused already has Resume as its first row, and every
      * other screen has somewhere to go on it. */
     if (this.pauseChip) {
-      const hide = this.nameDialog && !this.nameDialog.hidden;
-      this.pauseChip.hidden = hide || this.screen !== 'flight';
+      this.pauseChip.hidden = dialog || this.screen !== 'flight';
       this.pauseChip.classList.toggle('on-flight', this.screen === 'flight');
+    }
+    /* The dock takes the second slot when there is a chip in the first and
+     * the corner when there is not, which is the title. Written as a class
+     * rather than as a top in pixels here, so the status bar's own offset
+     * stays in the stylesheet with the rest of the stacking. */
+    if (this.musicDock) {
+      this.musicDock.classList.toggle('under-chip', Boolean(bug));
     }
     this.syncMusicDock();
   }
@@ -4737,8 +4769,8 @@ export class Ui {
          * leaves this screen upwards rather than opening something on it.
          * There was no room for an eleventh row here and there still is
          * not: this one is affordable because Report bug, give feedback
-         * left the list at the same time. That form is on F8 and on the
-         * pause menu's own row now.
+         * left the list at the same time. That form is the floating chip
+         * again, on every screen except this one, and on F8.
          *
          * Named for where it lands rather than called Back, for the reason
          * legendFor gives: Back on the front page reads like it leaves the
@@ -5410,21 +5442,6 @@ export class Ui {
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
         feelItem(),
-        /*
-         * THE BUG FORM'S ONE ROW, and it moved here from the title.
-         *
-         * It was a floating chip in the top right corner of every screen
-         * and a row on the front page, and the owner asked for both to go.
-         * F8 still opens it, and F8 is not an answer on a phone, so it
-         * keeps a row: this one, beside the flight feel form it is the
-         * sibling of, on the screen a pilot is already looking at when
-         * something has just gone wrong.
-         */
-        {
-          label: 'Report bug, give feedback',
-          action: 'reportbug',
-          note: 'A bug ticket or flight feel feedback, both land on the board. The map, graphics and browser go with it. F8 does the same, including from flight.',
-        },
         { label: 'Elsewhere', section: true },
         {
           label: 'Quad',

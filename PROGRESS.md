@@ -34263,3 +34263,61 @@ Then `lint:shell` PASS, `lint:boot` 9 of 9, `lint:responsive` PASS,
 `npm run verify` was NOT run. A click handler on an overlay button and one
 settings number cannot reach `src/native`, the patches, the WASM build or
 the input path.
+
+## Round 53: the bug chip is back, on every screen but the title
+
+**The report.** "the report bug button is not accessable now", with a
+picture of two unstyled buttons stacked at the top left of a flight.
+
+**The picture was a stale cache, and the complaint was right anyway.**
+Those two buttons are the shell's own chips with no stylesheet rule behind
+them: Round 51 renamed `.bug-chip` to `.corner-chip` and the browser in
+that screenshot was holding the new `index.html`, which carries the styles,
+next to a cached `src/ui/ui.js` from before the rename, which still asked
+for `.bug-chip`. A rule that does not exist leaves `position: absolute`
+off, so both chips fell into document flow at the top left. A hard reload
+is the whole fix on a page that was open across the deploy; `render.yaml`
+already serves the tree `no-cache` for exactly this class of failure, and
+the comment there says so.
+
+That is why the picture showed a button this tree does not contain. The
+complaint under it is about this tree: Round 51 removed the chip from every
+screen, and what was left was F8, which a phone does not have, and a row on
+the pause menu, which needs a flight to reach.
+
+**Too far, and by one screen.** The ask that started it came with a picture
+of the title with the three cards on it, and what was wrong was a floating
+button over the first thing a visitor sees. Everywhere else the chip is the
+only thing on screen that says how to tell somebody a thing is broken.
+
+So it is back, and `syncChips` hides it on the title. One condition, one
+screen, and the screen it hides on is one press from every screen it shows
+on. The pause menu's row goes with it, because a row under a chip that says
+the same thing on the same screen is the same choice drawn twice.
+
+**The stack, restored.** Report bug in the first slot, Pause in the second
+and only in flight, the thumb sticks' Pause in the second on glass, and the
+music dock under whichever of those is there. The dock is the new part:
+`syncChips` puts `under-chip` on it when the bug chip is up, so it takes
+the second slot on every screen and the corner on the title, where there is
+nothing above it. Written as a class rather than a top in pixels, so the
+status bar's own offset stays in the stylesheet with the rest of the
+stacking.
+
+The title keeps its "What to fly" row. Round 51 paid for it by removing the
+Report bug row from that menu, and that payment stands: the form is a chip
+again, not a row, and the eleventh row the title cannot afford is still
+unspent.
+
+**Checks, run this turn.** The real shell through `scripts/shots.js`, read
+back out of the DOM: on the gate and on the title the chip is hidden and
+the dock sits at 16; on Tracks the chip is at the bar's own offset with the
+dock 36 px under it; forced to flight, the chip is at 16 on the right, Pause
+at 52 under it and the dock is top left at 16, which is where all three were
+before Round 51. `lint:shell` PASS with the title at 9 stops and 0 px and
+the pause menu back to 11 stops, `lint:boot` 9 of 9, `lint:quality` 56 of
+56.
+
+`npm run verify` was NOT run: a hidden attribute, a class toggle and four
+stylesheet rules cannot reach `src/native`, the patches, the WASM build or
+the input path.

@@ -605,10 +605,12 @@
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.55);
       }
       .touch-nub { width: 24px; height: 24px; }
-      /* The thumb sticks' own Pause, in the corner the floating chips use.
-         The two-class selector is load-bearing: .corner-chip sets top 16px
-         LATER in this sheet, and a bare .touch-pause lost to it. */
-      .touch-fly .touch-pause { top: 16px; }
+      /* Under the bug chip, same right edge: the two chips a pilot needs in
+         flight on glass, stacked where the right thumb flicks up to. The
+         two-class selector is load-bearing: .corner-chip sets top 16px
+         LATER in this sheet, and a bare .touch-pause lost to it and stacked
+         the two chips on the same pixels. */
+      .touch-fly .touch-pause { top: 52px; }
       /* The rotate hint, only while the sticks are up and the phone is
          tall. It does not block anything: the sticks still work, the hint
          just says why everything is cramped. */
@@ -3648,11 +3650,10 @@
         background: var(--mint); border-color: var(--mint);
         color: var(--deep); font-weight: 600;
       }
-      /* THE ONE FLOATING CHIP, and it used to be two.
-         Report bug, give feedback sat here on every screen, including the
-         first one a visitor sees, and the owner asked for the corner back.
-         Pause is what is left, so this is no longer the bug chip's class
-         and is not named after it. */
+      /* THE FLOATING CHIPS. Report bug in the first slot on every screen
+         but the title, Pause in the second and only in flight. The class is
+         named for the corner rather than for the bug chip because three
+         buttons wear it and only one of them is that. */
       .corner-chip {
         position: absolute; top: 16px; right: 16px; z-index: 7;
         pointer-events: auto;
@@ -3677,6 +3678,9 @@
          the corner now. Flight puts it top left, away from the timer, the
          pack, and Pause. Buttons never take focus, so a click cannot steal
          Space from throttle. */
+      /* The corner when nothing is above it, the second slot when the bug
+         chip is. syncChips sets the class, because which screen carries the
+         chip is a fact about the shell and not about the stylesheet. */
       .music-dock {
         position: absolute; right: 16px; top: 16px; z-index: 6;
         display: flex; align-items: center; gap: 4px;
@@ -3715,6 +3719,8 @@
        */
       .bar-shown .corner-chip { top: calc(var(--bar-top) + 8px); }
       .bar-shown .music-dock { top: calc(var(--bar-top) + 8px); }
+      .music-dock.under-chip { top: 52px; }
+      .bar-shown .music-dock.under-chip { top: calc(var(--bar-top) + 44px); }
 
       /*
        * PAUSE, under the bug chip, at the same right edge and in the same
@@ -3725,7 +3731,7 @@
        * this is the button that gets a pilot out of a map, so it is a real
        * button and not a hint.
        */
-      .pause-chip { top: 16px; }
+      .pause-chip { top: 52px; }
       .pause-chip[hidden] { display: none; }
       .touch-fly-on .pause-chip { display: none; }
 

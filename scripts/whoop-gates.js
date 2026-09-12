@@ -511,6 +511,55 @@ async function main() {
       `hover ${h5.toFixed(6)} punch ${(z1 - z0).toFixed(3)} m terminal ${term.toFixed(3)} m/s tau ${tau5}`);
   }
 
+  /*
+   * ---- W15 the parked height, both airframes ----
+   *
+   * configs/airframes.js carries `restH` per aircraft, a snapshot of
+   * plant.c's `hull_hz_down`, and src/main.js builds the whole ground frame
+   * on it: the plane goes that far under the plant's origin, the craft
+   * spawns there, and "is this the ground" is asked against it. A snapshot
+   * that drifts from the plant puts the aircraft in the air or in the
+   * floor, which is the defect this gate was written for: the shell used
+   * the five inch's 45 mm for the whoop, which parks 10 mm up, so a whoop
+   * sat 35 mm off the deck after every reset.
+   *
+   * So do not compare numbers, REST THE MODULE. Raise a plane exactly
+   * restH under the origin, drop the craft on it with no throttle, and see
+   * where it settles. If the snapshot is right the craft ends at z = 0,
+   * where the shell draws it parked.
+   */
+  {
+    /* sim.c's CONTACT_SLOP: the band the contact model parks a hull on. */
+    const SLOP = 0.002;
+    const { AIRFRAMES } = await import('../configs/airframes.js');
+    for (const af of AIRFRAMES) {
+      const id = af.sim === 'whoop65' || af.id === 'whoop65' ? AF_WHOOP : AF_5IN;
+      const cfg = id === AF_WHOOP ? whoopCfg : fiveCfg;
+      const sim = await fresh(wasm, cfg, id, id === AF_WHOOP ? 4.2 : 4.0);
+      const rest = af.dims.restH;
+      const rc = sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, -rest, 0.8, 0.2);
+      if (rc !== SIM_OK) {
+        throw new Error(`sim_set_ground returned ${rc}`);
+      }
+      /* Two seconds of nothing: gravity, the plane, and whatever settling
+       * the contact model does. A craft that starts on its own parked
+       * height has nowhere to go but the slop.
+       *
+       * IT SETTLES TWO MILLIMETRES LOW, and that is the contact model
+       * rather than the snapshot: sim.c parks the deepest hull point on
+       * CONTACT_SLOP, 0.002, and pushes out only what is deeper. Both
+       * airframes measure exactly that, which is the point: what is being
+       * asserted is that the craft rests where the shell draws it parked,
+       * to within the model's own tolerance. Feed the five inch's 45 mm to
+       * the whoop and this reads 37 mm low. */
+      let z = 0;
+      fly(sim, [{ ms: 2000, thr: 0 }], (t, st) => { z = st[ST.PZ]; });
+      report(`W15 parked-${af.id}`, Math.abs(z + SLOP) < 0.0005,
+        `${(z * 1000).toFixed(2)} mm from the parked origin`,
+        `restH ${(rest * 1000).toFixed(0)} mm, resting on the ${(SLOP * 1000).toFixed(0)} mm slop`);
+    }
+  }
+
   /* ---- print ---- */
   let fails = 0;
   const w = Math.max(...results.map((r) => r.id.length));

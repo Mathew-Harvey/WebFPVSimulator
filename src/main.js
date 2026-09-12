@@ -121,12 +121,38 @@ const WASM_URL = new URL('../dist/sim.wasm', import.meta.url).href;
  * where the parked render has always shown the craft: resting on the
  * ground.
  */
-const SPAWN_ALT = 0.045;
-/* The craft rests with its underside on the ground, not its centre: body
- * underside is 0.017 m below centre and grass carries the frame a little
- * above the soil. Identical to SPAWN_ALT so the parked pose, the spawn
- * state and a landing all agree about where the ground holds the craft. */
-const REST_HEIGHT = 0.045;
+/*
+ * AND IT IS THE AIRCRAFT'S OWN NUMBER, not a constant.
+ *
+ * It was 0.045 for everything, which is the five inch's: plant.c's
+ * `hull_hz_down` for that machine, the distance from its centre to the
+ * surface it parks on. A 65 mm whoop parks 10 mm off the floor. With the
+ * five inch's figure the shell put the ground plane 45 mm under the
+ * whoop's centre, so the plant rested it 35 mm in the air after every
+ * reset, drew it parked there, and called it grounded while it still had
+ * 45 mm of clear floor beneath it. Measured through window.__ground on the
+ * shipped build: a parked whoop sat 39.7 mm above the floor under it. That
+ * is more than the machine's own height, and it is the "hits the ground
+ * too soon, then lifts off the ground a little when it resets" the owner
+ * flew.
+ *
+ * configs/airframes.js carries the figure per airframe, snapshotted from
+ * plant.c, and `npm run whoop:gates` rests the real module on a plane to
+ * prove the two agree. Seated by syncCraftScale, between runs only, with
+ * the collision dimensions and the drawn model: these two are a FRAME, and
+ * moving one mid lap would move the floor under a craft that is flying.
+ */
+let SPAWN_ALT = 0.045;
+/* The craft rests with its underside on the ground, not its centre.
+ * Identical to SPAWN_ALT so the parked pose, the spawn state and a landing
+ * all agree about where the ground holds the craft. */
+let REST_HEIGHT = 0.045;
+/* One seat for both, so they cannot drift apart. */
+function seatRestHeight(dims) {
+  const h = dims && Number.isFinite(dims.restH) ? dims.restH : 0.045;
+  SPAWN_ALT = h;
+  REST_HEIGHT = h;
+}
 /* Raising the throttle this far off the ground is a deliberate takeoff. The
  * launch latch uses 0.05, which is right for arming a run from rest but
  * would lift the craft off the instant it landed with any throttle held. */
@@ -3290,16 +3316,26 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function syncCraftScale() {
     setCraftAirframe(airframeById(runAirframe).dims);
+    /* Where this aircraft's centre sits when it is parked, which is where
+     * the shell puts the ground plane, the spawn and the landed test. See
+     * SPAWN_ALT at the top of this file. */
+    seatRestHeight(airframeById(runAirframe).dims);
     if (typeof shell.swapCraft === 'function') {
       shell.swapCraft(runAirframe);
     }
     /*
-     * The ground plane needs nothing here. raiseGroundFromState re-raises it
-     * from the craft's own pose every step it matters, and the parked height
-     * it lands at is the module's own STAND_HINGE_Z, which
-     * sim_set_airframe already moved. This paragraph exists because the
-     * first version of this function called a raiseGround() that does not
-     * exist: the shell does not hold a ground plane, it asserts one.
+     * The ground PLANE needs no raising here: raiseGroundFromState asserts
+     * it from the craft's own pose every step it matters, and the shell
+     * does not hold one. This paragraph exists because the first version of
+     * this function called a raiseGround() that does not exist.
+     *
+     * Where that plane goes under the craft is another matter, and it is
+     * the line above. worldPosToSim puts the surface at sim z minus
+     * SPAWN_ALT, so SPAWN_ALT IS how far the plant's origin stands off the
+     * floor, and it has to be this aircraft's parked height or the plant
+     * rests the craft in the air. That was the bug: "a 23 mm thick machine
+     * does not park 45 mm off the deck" was written here, correctly, while
+     * both numbers stayed the five inch's.
      */
   }
 
@@ -6987,6 +7023,22 @@ export async function boot({ loading, bootStart, mapId }) {
     sweepM: CRAFT_R,
     massKg: typeof sim.e.sim_bf_debug === 'function' ? sim.e.sim_bf_debug(51) : 0,
     drawn: shell.quad.name,
+  });
+  /*
+   * WHERE THE CRAFT IS AGAINST THE FLOOR UNDER IT, which is the one thing
+   * a screenshot argues about and a number settles. The pilot's report
+   * that a whoop "hits the ground too soon, then lifts off the ground a
+   * little when it resets" is a claim about these five numbers, and there
+   * was no way to read them. Harness only.
+   */
+  window.__ground = () => ({
+    y: pCurr.y,
+    surf: view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS),
+    above: pCurr.y - view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS),
+    clearance: lastClearance,
+    landed,
+    rest: REST_HEIGHT,
+    hits: lastGroundHits,
   });
   window.__setCam = (a, b, c, d, e, f) => {
     camOverride = a == null ? null : [a, b, c, d, e, f];

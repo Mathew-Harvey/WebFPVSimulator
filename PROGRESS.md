@@ -33800,3 +33800,60 @@ on white PVC except the floor bars named above; the Tracks room
 photographed, where the cards draw the open lattice; and the room itself,
 where the goalpost stands with the pole free beside it. `npm run verify` was
 not run: no physics, plant, ABI or build changed.
+
+## Round 47: a whoop parks 10 mm off the floor, not 45
+
+**The report.** "The whoop still feels like it hits the ground too soon,
+then when it resets it lifts up off the ground a little."
+
+**Both halves are one number.** `SPAWN_ALT` and `REST_HEIGHT` in
+src/main.js were 0.045 m, typed once, for every aircraft. That is the five
+inch's figure: plant.c's `hull_hz_down`, the distance from its centre to the
+surface it parks on. A 65 mm whoop parks 10 mm off the floor.
+
+The shell builds its whole ground frame on that number. `worldPosToSim` puts
+the surface at sim z minus `SPAWN_ALT`, so it is how far the plant's origin
+stands off the floor; the craft spawns at that origin; the parked pose is
+drawn there; and "is this height the ground" is asked against `REST_HEIGHT`
+on every frame. With the five inch's figure under a whoop, the plant was
+handed a plane 45 mm below a machine that reaches 10 mm down, so it rested
+the craft 35 mm in the air, drew it parked there, and called it grounded
+while it still had 45 mm of clear floor beneath it. On a machine 23 mm thick
+that is more than its own height in both directions.
+
+**Measured, not reasoned.** There was no way to read any of it, so
+`window.__ground()` now reports the craft's height, the surface under it,
+the gap, the clearance, the landed latch and the rest height. On the shipped
+build a parked whoop read `above: 0.0397`. After the fix it reads `0.0088`,
+and a whoop flown to 3.8 m and dropped on zero throttle settles at exactly
+`0.010`. The five inch reads `0.045` before and after, to the digit.
+
+**The fix.** `restH` per airframe in configs/airframes.js, snapshotted from
+plant.c the way `arm` already is, and `seatRestHeight` puts it into both
+shell numbers from `syncCraftScale`, which is where the collision
+dimensions and the drawn model are already seated, between runs only. The
+comment in that function had said since the whoop landed that "a 23 mm thick
+machine does not park 45 mm off the deck"; it was right, and nothing acted
+on it.
+
+**The gate that will catch it next time.** `whoop:gates` W15 rests the REAL
+module on a plane raised exactly `restH` under the origin and reads where
+the craft settles: minus 2.00 mm on both airframes, which is sim.c's
+`CONTACT_SLOP`, the band the contact model parks a hull on. It was run
+against the old number to prove it bites: the whoop reads minus 37.00 mm,
+the 35 mm float plus the slop.
+
+**Checks, run this turn.** `npm run verify`, 15 of 15, because this changes
+what the shell hands the plant: the determinism hashes are identical either
+side (`de0401cd4266`), which is the five inch's trace unmoved. Then
+`whoop:gates` 21 of 21 including the new one, `micro:check`, `check:clip`
+507 of 507, `lint:presets` 6 of 6, `lint:shell` PASS, `lint:boot` 9 of 9,
+`lint:quality` 56 of 56, `lint:fc` 30 of 30.
+
+**Left alone, and written down.** `TURTLE_CLEARANCE` is 0.15 m and
+`TURTLE_LIFT` is 0.18 m, both flat full sized lengths, so a whoop is
+"seated" for turtle purposes 15 cm off the floor and hops 18 cm mid flip.
+Round 44 declined the first for being unable to cause the fault it was
+looking at, and the same holds here: turtle needs truly inverted, slow and
+still, so neither can make a whoop hit the ground early or park in the air.
+They are the next thing in this area to measure, not to guess at.

@@ -107,6 +107,21 @@ export const AIRFRAMES = [
       /* Vertical semi extent in level flight. The drawn stack runs from the
        * body's underside at -0.017 to the prop discs at +0.034. */
       vHalf: 0.040,
+      /*
+       * HOW HIGH THE CENTRE SITS WHEN THE CRAFT IS PARKED, which is the
+       * plant's own `hull_hz_down`: the distance from the CG to the
+       * surface it rests on. src/native/plant.c is the copy of record and
+       * this is a snapshot of it, the same arrangement as `arm` above, and
+       * `npm run whoop:gates` rests the real module on a plane and fails if
+       * the two ever disagree by a millimetre.
+       *
+       * The shell needs it because it is the only thing that knows where
+       * the WORLD floor is: it raises the ground plane under the craft,
+       * parks the craft on it between runs, and asks "is this height the
+       * ground" on every frame. All three were the number below, typed
+       * once, on every aircraft. See SPAWN_ALT in src/main.js.
+       */
+      restH: 0.045,
       bodyLength: 0.155,
       bodyWidth: 0.088,
       bodyHeight: 0.034,
@@ -290,6 +305,14 @@ export const AIRFRAMES = [
        */
       hullR: 0.0181,
       vHalf: 0.018,
+      /*
+       * 10 mm, the ducts' underside, from plant.c's `hull_hz_down` for this
+       * airframe. The shell used the five inch's 45 mm for both, so a whoop
+       * was parked 35 mm in the air after every reset and was called
+       * grounded while it still had 45 mm of clear floor under it, which is
+       * most of a gate's bottom third on a machine 23 mm thick.
+       */
+      restH: 0.010,
       /*
        * The FRAME, 82.6 mm square, from BetaFPV's own figure. These were
        * 0.072, which was smaller than the props the aircraft carries: two

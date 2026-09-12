@@ -34206,3 +34206,60 @@ carries "Report bug, give feedback" between Flight feel and Elsewhere.
 `npm run verify` was NOT run. This is menu rows, a stylesheet class and a
 deleted overlay: it does not touch `src/native`, the patches, the WASM build
 or the input path, so the determinism trace cannot see it.
+
+## Round 52: the name in the music dock is the mute
+
+**The ask.** "if i click on the music selector, in the middle it mutes, if
+i click on the cevron / arrow it goes to the next track."
+
+The dock was already the shape of that control: a chevron, a thing, a
+chevron. Both chevrons were wired and the thing in the middle was a `div`
+with the track's name in it and no behaviour at all, which is the one
+arrangement nobody expects, because every media widget anybody has used
+puts skip on the arrows and the state of the sound in the middle.
+
+**What it writes.** `settings.musicLevel = 0`, and back. Zero IS the off
+state already and has been since the dock was built: the Music stepper
+under Pilot prints Off at zero, `applyMix` stops the bed at zero, and
+`syncMusicDock` has dimmed the dock on `musicLevel <= 0` all along. So
+nothing new is stored and there is no second flag to disagree with the
+first. `onSettings` is what actually stops the sound, because applyMix in
+main.js reads the level off the settings object; without that call the dock
+would dim and the bed would play on.
+
+The level it restores is the one it muted, held for the visit. A pilot who
+mutes, closes the tab and comes back gets the default rather than their own
+number. The alternative was a settings key whose whole job is to remember a
+number the pilot can see and set in one press on the row it came from, and
+that is not worth a key.
+
+**A button, and it has to stop looking like one.** `btn` rather than a div
+with a listener, so the cursor, the hit box and the role are not three
+things written by hand. `tabIndex` is minus one, matching the two skips
+beside it: these are pointer affordances floating over the world, and a
+menu whose arrow keys wander into the corner of the screen is worse than a
+dock nobody can tab to. The keyboard's route to the same setting is the
+Music row under Pilot, which is where it has always been.
+
+`aria-live` stays on it and the text stays the track's name, so the name is
+still what is announced when the bed moves on, and the click's meaning goes
+in the `title` attribute, which the name needed anyway because it
+ellipsises at 11 em. The toggle itself announces "Music muted" or "Music on".
+
+**The muted look is a line through the name.** The dock was already going
+to half opacity, and half opacity is not a state, it is a dim screen. A
+rule through the word is legible to somebody who cannot tell 0.5 from 1.0,
+and it is the mark every mute in the world uses on a speaker.
+
+**Checks, run this turn.** The real shell, through `scripts/shots.js`: the
+middle is a BUTTON, its title reads "Click to mute" and then "Click to
+unmute", `is-muted` goes on and off with it, and `webfpv.settings.v3` in
+localStorage reads 5, then 0, then 5 again. The chevrons still skip, Neon
+Gate to Neon Gate Take 2 and back, and the level stays at 5 while they do.
+Both states were photographed at 3x to read the line through the name.
+Then `lint:shell` PASS, `lint:boot` 9 of 9, `lint:responsive` PASS,
+`lint:quality` 56 of 56.
+
+`npm run verify` was NOT run. A click handler on an overlay button and one
+settings number cannot reach `src/native`, the patches, the WASM build or
+the input path.

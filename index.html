@@ -3742,10 +3742,22 @@
         font: 700 16px/1 var(--ui-font); cursor: pointer;
       }
       .music-skip:hover { background: rgba(232, 168, 184, 0.32); color: var(--sakura); }
+      /* The name is the mute, so it is a button and has to stop looking
+         like one: no border, no fill, the dock's own ground. The padding
+         is what makes it a hit box rather than a line of text, and it is
+         the only thing here that is not what a div would have given. */
       .music-title {
+        appearance: none; border: 0; background: none; border-radius: 3px;
         max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        font-size: 11px; letter-spacing: 0.04em; color: var(--cream);
+        padding: 4px 6px; cursor: pointer;
+        font: 11px/1.2 var(--ui-font); letter-spacing: 0.04em; color: var(--cream);
       }
+      .music-title:hover { background: rgba(232, 168, 184, 0.14); color: var(--sakura); }
+      /* Muted. The dock is already at half opacity, so the line through the
+         name is what says this is a state and not a dim screen: a reader
+         who cannot see the difference between 0.5 and 1.0 can see a rule
+         through a word. */
+      .music-dock.is-muted .music-title { text-decoration: line-through; }
       @media (max-width: 520px) {
         .music-title { max-width: 6.5em; font-size: 10px; }
       }

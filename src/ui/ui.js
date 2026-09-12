@@ -3389,12 +3389,39 @@ export class Ui {
     this.musicNext = btn('music-skip', '›');
     this.musicNext.setAttribute('aria-label', 'Next track');
     this.musicNext.tabIndex = -1;
-    this.musicTitle = el('div', 'music-title', this.musicNow.name);
+    /*
+     * THE NAME IS THE MUTE, because the dock is already the shape of the
+     * control: a chevron, a thing, a chevron. Every media widget anybody
+     * has used puts skip on the arrows and the state of the sound in the
+     * middle, and this one had the arrows wired and a label in the middle
+     * that did nothing. Asked for as "if i click on the music selector, in
+     * the middle it mutes".
+     *
+     * A button rather than a div with a listener, so it has the cursor,
+     * the hit box and the role without any of the three being written by
+     * hand. tabIndex -1 like the two skips beside it: these are pointer
+     * affordances over the world, and a menu whose arrow keys wander into
+     * the corner of the screen is worse than a dock nobody can tab to. The
+     * keyboard's route to the same setting is the Music row under Pilot.
+     *
+     * aria-live stays on it and the text stays the track's name, so the
+     * name is still what is announced when the bed moves on. What the
+     * click does is in the title attribute, which the name needed anyway
+     * because it ellipsises at 11em.
+     */
+    this.musicTitle = btn('music-title', this.musicNow.name);
     this.musicTitle.setAttribute('aria-live', 'polite');
+    this.musicTitle.tabIndex = -1;
     this.musicDock.append(this.musicPrev, this.musicTitle, this.musicNext);
     const keepFocusOff = (e) => e.preventDefault();
     this.musicPrev.addEventListener('mousedown', keepFocusOff);
     this.musicNext.addEventListener('mousedown', keepFocusOff);
+    this.musicTitle.addEventListener('mousedown', keepFocusOff);
+    this.musicTitle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleMusicMute();
+    });
     this.musicPrev.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -3851,6 +3878,42 @@ export class Ui {
     }
   }
 
+  /*
+   * Mute, and back to where it was.
+   *
+   * Zero IS the off state already: the Music stepper under Pilot prints
+   * Off at zero, applyMix stops the bed at zero, and the dock has dimmed
+   * itself on `musicLevel <= 0` since it was built. So this writes the one
+   * number rather than inventing a second flag that could disagree with it.
+   *
+   * The level it restores is the one it muted, held for this visit only. A
+   * pilot who mutes, closes the tab and comes back gets the default rather
+   * than their own number, because the alternative is a settings key whose
+   * whole job is to remember a number the pilot can see and set in one
+   * press on the row it came from.
+   *
+   * onSettings is what actually stops the sound: applyMix in main.js reads
+   * the level and the enable off the settings object. Without it the dock
+   * would dim and the bed would play on.
+   */
+  toggleMusicMute() {
+    const s = this.settings;
+    if (s.musicLevel > 0) {
+      this.musicLevelWas = s.musicLevel;
+      s.musicLevel = 0;
+    } else {
+      s.musicLevel = this.musicLevelWas || DEFAULTS.musicLevel;
+    }
+    saveSettings(s);
+    if (this.onSettings) {
+      this.onSettings(s);
+    }
+    this.syncMusicDock();
+    /* The Music row prints Off or a number, and it is one screen away. */
+    this.renderMenu();
+    this.announce(s.musicLevel > 0 ? 'Music on' : 'Music muted');
+  }
+
   setMusicNow(st) {
     if (!st) {
       return;
@@ -3870,10 +3933,12 @@ export class Ui {
       || !this.settings.sound;
     this.musicDock.hidden = hide;
     this.musicDock.classList.toggle('on-flight', this.flying());
-    this.musicDock.classList.toggle('is-muted', this.settings.musicLevel <= 0);
+    const muted = this.settings.musicLevel <= 0;
+    this.musicDock.classList.toggle('is-muted', muted);
     const name = (this.musicNow && this.musicNow.name) || MENU_TRACKS[0].name;
     this.musicTitle.textContent = name;
-    this.musicTitle.title = name;
+    /* The name, because it ellipsises, and then what the click does. */
+    this.musicTitle.title = muted ? `${name}. Click to unmute.` : `${name}. Click to mute.`;
   }
 
   bugSnapshot() {

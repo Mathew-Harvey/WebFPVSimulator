@@ -34321,3 +34321,66 @@ the pause menu back to 11 stops, `lint:boot` 9 of 9, `lint:quality` 56 of
 `npm run verify` was NOT run: a hidden attribute, a class toggle and four
 stylesheet rules cannot reach `src/native`, the patches, the WASM build or
 the input path.
+
+## Round 54: the rename is reverted, and the reason is measured
+
+**The report.** "when i'm racing the buttons are also not good, same as the
+previous screen. Also the clicking on the music button doesn't mute it."
+
+Both are the same fault and it is not in this tree. Round 53 called it a
+stale cache and left it there. That was right and not enough, because the
+same pilot hit it again on the next screen, so this round went and measured
+where the staleness comes from and then removed the thing that turns it into
+a broken screen.
+
+**What is actually served.** The deploy is current: `webfpv.org/sim/` hands
+out the new `index.html` and the new `src/ui/ui.js`, with `toggleMusicMute`
+and the `mode-gate` row both in it. What differs is how long a browser is
+told to keep each one.
+
+```
+origin  index.html    public, max-age=0,     s-maxage=300
+origin  src/ui/ui.js  public, max-age=0,     s-maxage=300
+domain  index.html    public, max-age=0,     s-maxage=300
+domain  src/ui/ui.js  public, max-age=14400, s-maxage=300
+```
+
+The Render origin revalidates both. Through the domain the script is given
+four hours and the page is not, so a returning pilot gets this deploy's
+stylesheet against the last deploy's script. `render.yaml` asks for
+`no-cache` on everything and has a comment explaining why; that header does
+not reach the browser, and the comment now says so. Cloudflare's Browser
+Cache TTL is the setting, and DEPLOY.md carries the measurement under "The
+browser cache TTL in front".
+
+That also explains the mute. `toggleMusicMute` is four hours in the future
+for that browser, so the middle of the dock is still an inert `div` there.
+The wiring in this tree is sound and was checked again: `toggleMusicMute`
+writes `musicLevel`, calls `onSettings`, which is `applySettings` in
+main.js, which calls `applyMix`, which sets `mixArg.music` and
+`audio.setMusicEnabled(level > 0)`.
+
+**The class name goes back.** Round 51 renamed `.bug-chip` to
+`.corner-chip` because three buttons wear the class and only one of them is
+the bug chip. That is a better name and it is not worth what it costs here.
+A class name is the contract across the one seam a four hour script cache
+can split: the sheet arrives with `.corner-chip` and the cached script asks
+for `.bug-chip`, the rule does not exist, `position: absolute` never
+applies, and three chips fall into document flow at the top left of a live
+race. It is `.bug-chip` again in all five files, with the reason written
+where the rule is so the next person to be annoyed by the name reads the
+price first.
+
+This does not fix that pilot's browser, which needs a hard reload or four
+hours. It stops the next rename from doing it to anybody.
+
+**Checks, run this turn.** `lint:shell` PASS, title 9 stops 0 px, paused 11
+stops 0 px. `lint:boot` 9 of 9, `lint:quality` 56 of 56. Through
+`scripts/shots.js`, read out of the live DOM: the chip computes to
+`position: absolute; top: 16px; right: 16px`, the title hides it with the
+dock at 16, and a forced flight puts the bug chip at 16 on the right, Pause
+at 52 under it and the dock at 16 on the left.
+
+`npm run verify` was NOT run. A class name, a stylesheet comment and two
+documentation files cannot reach `src/native`, the patches, the WASM build
+or the input path.

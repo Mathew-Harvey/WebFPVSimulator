@@ -3370,7 +3370,7 @@ export class Ui {
      * report was about, and it is one press from any screen that has the
      * chip on it.
      */
-    this.bugChip = btn('corner-chip', 'Report bug, give feedback');
+    this.bugChip = btn('bug-chip', 'Report bug, give feedback');
     this.bugChip.title = 'F8 also opens this.';
     this.bugChip.addEventListener('click', () => this.openBugReport());
 
@@ -3390,7 +3390,7 @@ export class Ui {
      * itself when the thumb sticks are up, because that overlay brings its
      * own and two Pause buttons in one corner is worse than none.
      */
-    this.pauseChip = btn('corner-chip pause-chip', 'Pause');
+    this.pauseChip = btn('bug-chip pause-chip', 'Pause');
     this.pauseChip.title = 'Escape also pauses.';
     this.pauseChip.addEventListener('click', () => {
       if (this.screen !== 'flight') {
@@ -3862,6 +3862,10 @@ export class Ui {
   /*
    * The chips that float over the world rather than living on a screen,
    * and the dock that stacks under them.
+   *
+   * `bug-chip` is the class all three wear and it is a bad name for a base
+   * that Pause also uses. It stays anyway: see the stylesheet, where the
+   * rule is, for what renaming it cost.
    *
    * Report bug is on every screen but the title. See the comment where it
    * is built: the corner over the three cards is a first impression and

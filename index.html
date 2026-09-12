@@ -607,9 +607,9 @@
       .touch-nub { width: 24px; height: 24px; }
       /* Under the bug chip, same right edge: the two chips a pilot needs in
          flight on glass, stacked where the right thumb flicks up to. The
-         two-class selector is load-bearing: .corner-chip sets top 16px
-         LATER in this sheet, and a bare .touch-pause lost to it and stacked
-         the two chips on the same pixels. */
+         two-class selector is load-bearing: .bug-chip sets top 16px LATER
+         in this sheet, and a bare .touch-pause lost to it and stacked the
+         two chips on the same pixels. */
       .touch-fly .touch-pause { top: 52px; }
       /* The rotate hint, only while the sticks are up and the phone is
          tall. It does not block anything: the sticks still work, the hint
@@ -3650,11 +3650,27 @@
         background: var(--mint); border-color: var(--mint);
         color: var(--deep); font-weight: 600;
       }
-      /* THE FLOATING CHIPS. Report bug in the first slot on every screen
-         but the title, Pause in the second and only in flight. The class is
-         named for the corner rather than for the bug chip because three
-         buttons wear it and only one of them is that. */
-      .corner-chip {
+      /*
+         THE FLOATING CHIPS. Report bug in the first slot on every screen
+         but the title, Pause in the second and only in flight.
+
+         THE NAME IS WRONG AND IT STAYS. Three buttons wear this class and
+         only one of them is the bug chip, so it was renamed to
+         .corner-chip, and that rename broke the shell twice for a live
+         pilot. Behind Cloudflare, webfpv.org serves this file with
+         max-age=0 and src/ui/ui.js with max-age=14400: the stylesheet
+         updates on the next request and the script is four hours behind
+         it. A class name is the contract between the two halves, so a
+         renamed one leaves every chip in the old script with no rule at
+         all, which drops three absolutely positioned buttons into document
+         flow at the top left of a race.
+
+         The whole JS graph is cached together, so it stays consistent with
+         itself; HTML and CSS against JS is the one seam that can split. Do
+         not rename a class the shell writes from script unless the browser
+         cache TTL on that host has been fixed first.
+      */
+      .bug-chip {
         position: absolute; top: 16px; right: 16px; z-index: 7;
         pointer-events: auto;
         appearance: none; border: 1px solid rgba(232, 168, 184, 0.45);
@@ -3665,12 +3681,12 @@
       }
       /* Live flight: same corner, a shade quieter so the FPV frame still
          reads, still a real button. */
-      .corner-chip.on-flight {
+      .bug-chip.on-flight {
         background: rgba(16, 22, 17, 0.55);
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
       }
-      .corner-chip:hover { border-color: var(--sakura); color: var(--sakura); }
-      .corner-chip[hidden] { display: none; }
+      .bug-chip:hover { border-color: var(--sakura); color: var(--sakura); }
+      .bug-chip[hidden] { display: none; }
 
       /* Music skip. Tiny, out of the FPV instruments. Menus park it at the
          top right, over the open world rather than over the list; it had
@@ -3717,7 +3733,7 @@
        * deep, so source order decides, and the first draft of the old
        * version of this lived two thousand lines earlier and did nothing.
        */
-      .bar-shown .corner-chip { top: calc(var(--bar-top) + 8px); }
+      .bar-shown .bug-chip { top: calc(var(--bar-top) + 8px); }
       .bar-shown .music-dock { top: calc(var(--bar-top) + 8px); }
       .music-dock.under-chip { top: 52px; }
       .bar-shown .music-dock.under-chip { top: calc(var(--bar-top) + 44px); }

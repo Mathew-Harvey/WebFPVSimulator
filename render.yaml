@@ -52,6 +52,13 @@ services:
       # failure looks like a physics bug, not a caching bug. no-cache still
       # lets the CDN answer with a 304 off its ETag, so a warm visitor pays a
       # round trip and no bytes.
+      #
+      # THIS IS NOT WHAT A BROWSER ON webfpv.org GETS, and the difference has
+      # already broken a live session twice. The origin answers max-age=0 for
+      # every file; through the domain, src/ui/ui.js comes back max-age=14400
+      # while index.html stays at 0, so the sheet is current and the script is
+      # four hours old. Cloudflare's Browser Cache TTL is the setting. See the
+      # measurements under "The browser cache TTL in front" in DEPLOY.md.
       - path: /*
         name: Cache-Control
         value: no-cache

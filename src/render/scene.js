@@ -3040,17 +3040,27 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
       continue;
     }
     /*
-     * The pad is a MultiGP footing, 0.5 m square and 90 mm thick, and on a
-     * RaceGOW dive gate it was that size too: a 41 cm wide, 4.5 cm radius
-     * kerb at each leg of a 71 cm gate, invisible to nobody and solid to a
-     * whoop. Scaled by the tube, the way the standing gate's stub foot is,
-     * so the five inch's pad is exactly the size it has always been (k is 1
-     * against its own tube) and the whoop's is a foot a whoop could trip on.
+     * The pad is a MultiGP footing, 0.5 m square and 90 mm thick. A RaceGOW
+     * dive gate has no such thing: a Horizontal Gate is four lengths of
+     * 3/4 inch pipe on legs, and each leg stands on the same 3 way fitting
+     * and stub that every standing gate stands on. So on a micro track the
+     * leg gets that stub, the same three numbers the standing gate's foot
+     * uses above, and the two structures stand on the same foot because on
+     * a real track they are the same fitting.
+     *
+     * SCALING THE MULTIGP PAD BY THE TUBE WAS NOT ENOUGH, and this is the
+     * second go at it. The tube ratio is 0.69, so the plate came out 347 mm
+     * square and 62 mm thick under a 659 mm opening: half the width of the
+     * hole it stood beside, the largest object on the track, and the thing
+     * a pilot saw first when they flew the room. Measured off the rendered
+     * scene rather than guessed, by raycasting the floor under a built
+     * Track 8.
      */
     const padK = tubeR / (BUILT_FRAME_TUBE_OD * 0.5);
-    const padW = 0.5 * padK;
-    const padH = 0.09 * padK;
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(padW, padH, padW), mats.frame);
+    const padW = micro ? tubeR * 2 : 0.5 * padK;
+    const padH = micro ? tubeR * 1.6 : 0.09 * padK;
+    const padD = micro ? tubeR * 4 : padW;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(padW, padH, padD), mats.frame);
     pad.position.set(sx * upX, padH * 0.5, foot.z);
     pad.castShadow = true;
     g.add(pad);
@@ -3064,7 +3074,15 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
      * the other axis, and that is the right way to be wrong here: a gap
      * you can fly is better than a wall you cannot see.
      */
-    caps.push({
+    caps.push(micro ? {
+      /* The stub's own axis, which runs along the gate's normal, with the
+       * radius its own half width. The same solid the standing gate's foot
+       * gets, for the same fitting. */
+      kind: 'obstacle',
+      ax: sx * upX, ay: padH * 0.5, az: foot.z - padD * 0.5,
+      bx: sx * upX, by: padH * 0.5, bz: foot.z + padD * 0.5,
+      r: padW * 0.5,
+    } : {
       kind: 'obstacle',
       ax: sx * upX - (padW * 0.5 - padH * 0.5), ay: padH * 0.5, az: foot.z,
       bx: sx * upX + (padW * 0.5 - padH * 0.5), by: padH * 0.5, bz: foot.z,

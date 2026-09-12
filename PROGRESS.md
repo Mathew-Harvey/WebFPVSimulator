@@ -32944,3 +32944,48 @@ every other upright. Something in the scene is being built at full size on a
 micro course. It is not the gate feet, which honour the class, and not the
 pole feet, which are 53 mm and red. It is outside what was asked for here
 and it is written down rather than guessed at.
+
+## Round 36: the two slabs were the dive gate's MultiGP footings
+
+Round 35 left two cream slabs on Track 8 written down and unattributed. They
+are the leg pads of the Horizontal Gate, and this is how they were found,
+because reading the file did not do it.
+
+**Finding it.** Four wrong guesses first: the gate feet, the pole feet, the
+start block and the rail, each ruled out by arithmetic against the numbers
+in the code. Then the live scene was asked instead. Traversing it found no
+floor level mesh of that size, because the baker merges every static part
+into a handful of meshes and a merged gate's bounding box is two metres
+tall. Scanning vertices near the floor found the aperture rings' bottom
+bars, not the slab. What worked was a raycast: drop a ray down over the
+suspect square metre, keep the highest surface under it, and report its
+material and height. That came back as a horizontal face at 62 mm in the
+frame colour, 347 mm across. Removing one element at a time from the track
+and re-rendering then named the owner: with the dive gate gone, the slabs
+went with it.
+
+**What it was.** `tiltedGate` stands its two legs on a MultiGP footing, 0.5
+m square and 90 mm thick, scaled by the ratio of the drawn tube to the
+field's tube. That ratio is 0.69 on a RaceGOW track, so the plate came out
+347 mm square and 62 mm thick under a 659 mm opening. The scaling was a
+previous attempt at exactly this bug and it was not enough: 347 mm is half
+the width of the hole it stands beside, and it was the largest object on
+the track and the first thing a pilot saw.
+
+**The fix.** A Horizontal Gate is four lengths of 3/4 inch pipe on legs and
+each leg stands on the same 3 way fitting and stub every standing gate
+stands on, so the micro leg now gets that stub: 27 by 21 by 53 mm, the same
+three numbers the standing gate's foot already used. The two structures
+stand on the same foot because on a real track they are the same fitting.
+The collider follows the geometry: the stub's own axis with its own half
+width, which is the shape the standing gate's foot already had. The full
+sized pad and its capsule are untouched, and the branch is explicit rather
+than derived so that a five inch course cannot move by accident.
+
+**Checks, run this turn.** `micro:check`, `check:clip` 495 of 495,
+`check:path` 12 of 12. `scripts/collider-audit.js` ran clean and its output
+under `dist` was deleted rather than committed. The fix was photographed
+through the real renderer at the same camera as the defect: the slabs are
+gone, the legs stand on stubs, and the pole's own red foot is visible beside
+them where the slab used to hide it. `npm run verify` was not run: no
+physics, plant, ABI or build changed.

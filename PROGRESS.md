@@ -32989,3 +32989,61 @@ through the real renderer at the same camera as the defect: the slabs are
 gone, the legs stand on stubs, and the pole's own red foot is visible beside
 them where the slab used to hide it. `npm run verify` was not run: no
 physics, plant, ABI or build changed.
+
+## Round 37: RaceGOW5 Track 1, and what it taught the method
+
+The owner supplied a third animation as a test of the written method. It is
+Track 1, 96 frames, the shortest of the three: three frames, one pole, six
+passes. It is built and shipped, and the method document is better for it.
+
+**The reading.** A 2 by 2 unit lattice. Three goalposts: one across x at the
+far side carrying the pole, one across y at the right with two openings
+stacked, one across y at the front. Two ground bars join them. The lap is
+six passes: the front gate out to +x, the right frame's lower opening, its
+upper opening coming back, over the far bar, the gap beside the pole, and
+under the far bar, closing on the front gate.
+
+**The camera residual turned out to be a weak test, and that is the finding
+worth keeping.** The fit would not come below 14 px however the unit counts
+were permuted, and on Tracks 8 and 5 the same method reached 3.6 and 5.5.
+The difference is which points were fed to it: a fitting blob's centroid is
+the centre of a moulding, and a foot's is dragged sideways by its stubs, so
+the correspondence carries a systematic 10 px error that no camera can
+absorb. Chasing it cost most of the round, through a search over 128 unit
+count assignments, a fit seeded from the three vanishing points, and a fit
+to the pane corners instead, all of which stalled at the same place.
+
+What settled it was measuring rather than fitting. With the camera from the
+vanishing points, unprojecting each foot onto the ground plane put all six
+within 0.13 of an integer, and intersecting each top fitting's ray with the
+vertical through its own foot put all nine heights within 0.07. That is the
+lattice confirmed, and the camera residual is irrelevant to it. The document
+now says so, as step 4b.
+
+**Two of six directions were read backwards** by the arrowhead method,
+because the nearest red pixel to a pane can belong to a loop rather than to
+the part going through the hole. Occlusion fixed it: the trail is drawn over
+the pole in the frames where the gap pane is lit, so the quad is on the
+camera's side, so that pass goes away from the camera. Chaining the
+alternation, a plane can only be crossed in alternating directions, forced
+the rest. Both cues are now in the document.
+
+**Every frame on this track is a goalpost**, two uprights and a top bar with
+bare floor between the feet, and the pass over a bar is open above. This
+builder has no such element: a scored opening is a four sided frame. So each
+ships with a bottom bar it does not have, and the pass over the far bar
+ships inside a frame that does not exist. The alternative was to score
+nothing there, which is the worse lie, and it is the same choice Track 8
+already made for its rail. Written down in the spec and here rather than
+absorbed quietly.
+
+**The pin caught the new track**, which is what it is for: `micro:check`
+names the shipped set and failed until Track 1 was added to it deliberately.
+
+**Checks, run this turn.** `micro:check` with the pin updated to three,
+`check:clip` 495 of 495, `check:path` 12 of 12, `lint:presets` 6 of 6, and
+`lint:shell` passes, which matters because it asserts the shipped count and
+that count changed. The built track was exported and its plate compared with
+the reference: three structures in the right places at the right sizes, with
+the extra frame named above. `npm run verify` was not run: no physics,
+plant, ABI or build changed.

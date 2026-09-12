@@ -3,7 +3,8 @@
 RaceGOW publishes each of its tracks as one looping animation of one lap.
 This is how that animation becomes a playable track in this simulator, end
 to end, with the traps named. It was written after Tracks 8 and 5 were built
-this way, and both are in `src/trackbuilder/presets.js` now.
+this way, and refined on Track 1. All three are in
+`src/trackbuilder/presets.js` now.
 
 It replaces two earlier documents. `TRACK-FROM-ANIMATION.md` concluded the
 job could not be done from a render, which was true of the method it tried
@@ -101,6 +102,26 @@ back and recount. An earlier attempt that fitted the camera and the span
 lengths together instead ran the focal length to ten million and reported 24
 px, which is several inches of position error across a living room.
 
+## Step 4b, the check that actually settles it
+
+The camera residual is a weak test, because the fitting blobs you fed it are
+the centres of mouldings rather than the pipe axes, and a foot's blob is
+pulled sideways by its stubs. On Track 1 that floor was 14 px and no
+assignment did better, while the reading was in fact exactly right.
+
+The strong test is INTEGRALITY. With the camera from the three vanishing
+points, unproject every foot onto the ground plane and print the positions
+in units of one known bar. They should all land on integers. Then, for each
+upright, intersect its top fitting's ray with the vertical line through its
+own foot and print the height in the same units. Those should be integers
+too. On Track 1 the six feet came out within 0.13 of an integer and the nine
+tops within 0.07, which settles the lattice beyond argument even though the
+camera residual never came below 14 px.
+
+Do this before hunting for couplings. A bar that reads as two units will
+show up as a foot at 2.0 rather than 1.0, and you will have measured it
+instead of squinting at a texture band.
+
 ## Step 5, every pane to a square
 
 Enumerate every lattice rectangle the track could plausibly contain, one
@@ -121,10 +142,21 @@ the pane's centre, and walk back along the trail to get the direction of
 travel at that point. Sign it against the pane's outward normal projected
 into the image.
 
+**That method lies whenever the quad loops.** The nearest red pixel can be a
+part of the loop rather than the part going through the hole, and on Track 1
+it got two of six backwards. Two better cues, in order:
+
+- **Occlusion.** Where the trail crosses a pipe, look at which is drawn on
+  top. The trail over the pipe means the quad is on the camera's side of it.
+  That one cue fixed the whole of Track 1's back half: the trail is drawn
+  over the pole at the frame where the gap pane lights, so the quad is in
+  front, so the gap is flown away from the camera.
+- **Alternation.** Consecutive passes through the same plane must alternate
+  sign, because the quad has to come back to cross again. Chain that through
+  the lap and most signs are forced by the one or two you are sure of.
+
 Where the arrow is short or nearly edge on, crop the frames either side at
-full size and look. Roughly one pass in six needed the look on these two
-tracks, and one of them was read the wrong way from a contact sheet that was
-too small to show the chevron.
+full size and look. Roughly one pass in six needed the look.
 
 ## Step 7, write the spec
 
@@ -185,6 +217,18 @@ field of view is `2 * atan(512 / f)` in degrees.
 
 Render at `--frames 24` first. A full 300 frame render is minutes on a
 software rasteriser and a smoke render catches a broken scene in seconds.
+
+## What the builder cannot draw
+
+A scored opening is a four sided frame in this tool, and some of these
+tracks are not built that way. Track 1's three frames are goalposts, two
+uprights and a top bar with bare floor between the feet, and the pass over
+a bar is open to the sky. Shipping those as gates adds a bottom bar to each
+and a whole frame above the bar that the real track does not have. The
+alternative is to make the pass a waypoint, which scores nothing, and a lap
+that does not score the openings the animation counts is the worse lie. So
+gates it is, and the deviation goes in the spec's comment and in
+PROGRESS.md rather than being quietly absorbed.
 
 ## What this does not answer
 

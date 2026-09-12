@@ -139,6 +139,20 @@ export let CRAFT_R = CRAFT_ARM + CRAFT_HULL_R;
  * one. Only the query is scaled.
  */
 export let CRAFT_WORLD_R = simLenToWorld(CRAFT_R);
+/*
+ * The five inch's swept radius, frozen HERE, on the line after it is first
+ * computed and before setCraftAirframe can ever run.
+ *
+ * One thing downstream needs it: the dirt band, which is a length about the
+ * aircraft expressed as a multiple of this radius so that the five inch keeps
+ * the exact band it was tuned with. Reading CRAFT_WORLD_R at that point
+ * instead would work today and silently stop working the moment somebody
+ * seats an airframe earlier, so it is taken while the answer is not in doubt.
+ * If the defaults above ever stop being the five inch, this moves with them
+ * and the band it anchors moves too, which is the whole reason it is spelled
+ * out next to them rather than two thousand lines away.
+ */
+const FIVE_INCH_WORLD_R = CRAFT_WORLD_R;
 export let CRAFT_WORLD_ARM_AXIS = simLenToWorld(CRAFT_ARM * Math.SQRT1_2);
 export let CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
 
@@ -2170,28 +2184,99 @@ export function hitOutcome(kindName, closing, _upDot = 0) {
 /*
  * A pass through a gate is a flown opening, not a tumble on the dirt
  * and not a clip through the terrain. Inverted in the air still scores
- * (people punch gates inverted). Inverted, a few centimetres off the
- * grass, or a belly slide through the hole, does not: that is the
- * crash that used to walk through the timing gate and throw the
- * results screen. A bounce can drop the plant hit flag for a frame,
- * so dirt is judged by clearance, not by hits or attitude.
+ * (people punch gates inverted). A craft on its side or upside down ON
+ * THE DECK does not: that is the crash that used to walk through the
+ * timing gate and throw the results screen.
+ *
+ * TOUCHING THE FLOOR DOES NOT COST YOU THE GATE. The owner's words:
+ * "its ok to bounce of the floor through a gate". Height alone used to
+ * be the whole decision here, and it refused a pass flown anywhere
+ * inside the band whatever the craft was doing, which meant a skip off
+ * the floor and out through the hole, the most ordinary thing there is
+ * on a whoop track, was silently not a gate. So the band no longer
+ * refuses anything on its own. It says the craft is ON THE DECK, and
+ * the attitude says whether being there is flight or an accident.
+ *
+ * That reverses what this comment used to argue, which was that an
+ * upright slide is the same class of accident as an inverted one and
+ * so attitude should not be read at all. It is not the same class any
+ * more, by the owner's ruling, and DIRT_UPZ has gone from a dead
+ * constant back to the decision.
+ *
+ * The cost of the ruling, written down rather than hidden: props up
+ * and moving is a bounce, a skip and a skid all at once, because
+ * nothing here can tell them apart, so an upright skid through a hole
+ * now counts as a pass. A tumble, a craft on its side and a turtle
+ * still do not, and neither does anything under the terrain.
  *
  * heightAt(x, z, y) is the surface under that sample, same contract as
  * view.height. margin is how far below that surface counts as buried.
  */
+/*
+ * Upright enough, on the deck, to be bouncing rather than crashing.
+ *
+ * This is the body up axis' world up component, so 1 is level, 0 is on its
+ * side and -1 is inverted; 0.50 is 60 degrees of tilt. A quad skipping off
+ * the floor and back out through a gate is nowhere near it, and a quad on
+ * its side or upside down on the floor is well past it. It is the number
+ * this file already carried for exactly this judgement, unused while the
+ * clearance band was deciding on its own.
+ */
 export const DIRT_UPZ = 0.50;
-export const DIRT_CLEARANCE = 0.22;
+/*
+ * THE DIRT BAND IS A LENGTH ABOUT THE AIRCRAFT, NOT A LENGTH ABOUT THE WORLD.
+ *
+ * 0.22 m is the five inch's band and it stays exactly the five inch's band:
+ * DIRT_SPAN is that number over FIVE_INCH_WORLD_R, so on the field the
+ * arithmetic reduces to the constant it replaced and no lap time moves.
+ *
+ * It was a flat 0.22 m for every aircraft, and on the RaceGOW class it was
+ * three and a half times too big. A whoop gate's bottom bar is ON THE FLOOR
+ * and its opening is 0.711 m, so a flat band called the bottom 31 percent of
+ * every hole on the track dirt, and a whoop threading the low line through a
+ * gate, which is the line a whoop is FOR, was refused the pass. Refused
+ * silently: no flash, no gate tone, no mark on the OSD, because a refusal
+ * here is indistinguishable from never having flown the gate. The pilot's
+ * report was that whoop gates sometimes do not register, and this is the
+ * whole of it. The start gate is a ground gate too, so on a low launch the
+ * same band could decline to start the lap at all.
+ *
+ * What the band means is that the craft cannot be flying clean this close to
+ * the surface, and that is a claim about the MACHINE, which is why it now
+ * scales with one. A quad banked hard presents its swept radius below its own
+ * centre, so a centre inside that radius is a hull in the ground whatever the
+ * attitude, and the band is that radius with clear air over it: 1.27 of it,
+ * which is what 0.22 m was for the five inch and what this says in general.
+ *
+ * On the 65 mm whoop it comes out at 0.064 m. Level, that is a duct 4.6 cm off
+ * the floor, which is a pass; on its side at the same height the duct is
+ * 1.4 cm in the floor, which is the accident the band is for, and the band has
+ * to cover the worse of the two because shouldScorePass is not given the
+ * attitude. 91 percent of a RaceGOW opening now scores where 69 did.
+ */
+const DIRT_SPAN = 0.22 / FIVE_INCH_WORLD_R;
 export const BURIED_MARGIN = 0.10;
 
+/* The band for the airframe currently seated, in WORLD metres, because the
+ * clearance every caller measures is a world height above a world surface. */
+export function dirtClearance() {
+  return CRAFT_WORLD_R * DIRT_SPAN;
+}
+
 export function upsetOnDirt(upz, clearance, inContact) {
-  /* A path this close to the dirt is a crash, not a flown opening.
-   * Attitude and the plant hit flag are not required: a bounce can
-   * drop hits for a frame, and an upright slide is the same class of
-   * accident as an inverted one. upz is kept so callers and tests can
-   * still name a tumble; the clearance band is the decision. */
-  void upz;
+  /* The plant hit flag is still not read: a bounce can drop it for a
+   * frame, so a craft that is plainly on the floor reads as airborne on
+   * exactly the frame it touches. Clearance is the honest contact test
+   * and it is all this uses. */
   void inContact;
-  return clearance < DIRT_CLEARANCE;
+  if (clearance >= dirtClearance()) {
+    /* Off the deck. Whatever the attitude, this is flight, which is why
+     * an inverted punch through a gate still scores. */
+    return false;
+  }
+  /* On the deck. Props up is a bounce and it flies; on its side or
+   * upside down is the accident this whole predicate exists for. */
+  return upz < DIRT_UPZ;
 }
 
 export function shouldScorePass(prev, curr, opts) {

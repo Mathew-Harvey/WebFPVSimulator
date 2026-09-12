@@ -33582,7 +33582,148 @@ seconds apart, where the same short segment is in a different place on all
 three cards. `npm run verify` was not run: no physics, plant, ABI or build
 changed.
 
-## Round 44: an opening can be a gap in the lattice instead of a gate
+## Round 44: a whoop gate's bottom third was not a gate
+
+**The report.** "The whoop gates sometimes don't register that I've passed
+through them."
+
+**What it was, exactly.** Not the scoring volume, which is correct. The shell
+does not hand every flown segment to the race: it asks
+`shouldScorePass` in `src/game/collide.js` first, and that predicate refuses a
+pass flown too close to the floor, because a belly slide through a hole used
+to walk the timing gate and throw the results screen. The band it refused
+inside was `DIRT_CLEARANCE`, a flat 0.22 m, and 0.22 m is a five inch's
+number: that machine's swept radius is 0.1735 m, so a centre inside 0.22 m of
+the dirt is a quad with carbon in the ground in some attitude.
+
+A RaceGOW gate's bottom bar is ON THE FLOOR, rule 2, and its opening is
+0.711 m. So the same flat band declared the bottom 31 percent of every hole on
+a whoop track to be dirt. Flying the low line through a gate, which is the
+line a whoop is for, was refused. Measured rather than reasoned: at a centre
+height of 0.05, 0.10, 0.15, 0.20 and 0.219 m in a 0.711 m opening, the real
+`Race` scored nothing; from 0.25 m up it scored every time.
+
+Refused SILENTLY, which is why it reads as flakiness rather than a rule. There
+is no flash, no gate tone and no OSD mark on a refusal, because a refused pass
+is indistinguishable from a gate that was never flown. And the start gate is a
+ground gate too, so a low launch could decline to start the lap at all.
+
+**The fix.** The band is a length about the aircraft, so it is measured in the
+aircraft. `DIRT_SPAN` is 0.22 m over the five inch's own swept radius, frozen
+at module load as `FIVE_INCH_WORLD_R` on the line after that radius is first
+computed, and `dirtClearance()` returns `CRAFT_WORLD_R * DIRT_SPAN` for
+whatever `setCraftAirframe` has seated. The five inch's band is therefore
+exactly 0.22 m still, asserted to 1e-12, and no lap time on the field moves.
+The 65 mm whoop gets 0.0642 m.
+
+**Why 0.0642 m is the right number and not zero.** The band has to cover the
+worse of two attitudes, because `shouldScorePass` is deliberately not given
+the attitude: the comment above `upsetOnDirt` argues that case and it is
+still right, since a bounce drops the plant hit flag for a frame and an
+upright slide is the same accident as an inverted one. Level at 0.0642 m a
+whoop's ducts are 4.6 cm off the floor, which is a pass anybody would call a
+pass. On its side at the same height the ducts are 1.4 cm INTO the floor,
+which is the accident. So the band is the swept radius with clear air over it,
+1.27 of it, which is what 0.22 m always was for the five inch. A whoop at rest
+(centre 0.018 m) and a whoop belly sliding at 0.04 m are both still refused.
+
+**Why no check caught it, which is the part worth keeping.** `micro:check`
+flies the demo room through the real `Race`, gate by gate, and has done since
+the micro class landed. It passed a hardcoded `true` for `allow` and it flew
+each gate dead through its centre. Both halves stepped over this: the shell's
+predicate was never called, and 0.356 m is above a 0.22 m band anyway. A check
+that flies the happy centre with the gatekeeper switched off is evidence about
+the geometry and nothing else.
+
+So `micro:check` now seats the whoop, calls the real `shouldScorePass` with
+the same options object `src/main.js` builds, and flies a quarter of the way
+up each opening, offset along the gate's own in plane up axis so a dive gate
+is offset ACROSS its hole rather than under it. `check:clip` gained seven
+cases: the five inch band pinned at exactly 0.22, the whoop's own band, the
+low line scoring, and a whoop at rest and belly sliding still refused. Both
+were run against the old flat band to prove they bite: `check:clip` failed 4,
+and `micro:check` failed every gate of all sixty hops and closed no lap.
+
+**Checks, run this turn.** `check:clip` 503 of 503, `micro:check` clean,
+`whoop:gates` 19 of 19, `lint:shell` PASS, `lint:quality` 56 of 56,
+`lint:presets` 6 of 6. `npm run verify` was NOT run: nothing here touches
+physics, the plant, the module ABI or the build, this is game logic
+downstream of the simulation. Nothing was flown, either, and the checks above
+say the predicate now admits the low line, not that the gates feel right to a
+pilot. That is the pass to ask for.
+
+**Declined, and written down because it is adjacent.** `TURTLE_CLEARANCE` is
+0.15 m and is the same kind of flat full sized length applied to a whoop,
+which would call a whoop 12 cm off the floor "seated". It cannot cause a
+missed gate (entering turtle needs truly inverted, seated AND still) so it is
+out of scope for this report, and it is left alone rather than changed on a
+guess.
+
+## Round 45: touching the floor does not cost you the gate
+
+**The ruling.** The owner, on reading Round 44 before flying it: "its ok to
+bounce of the floor through a gate."
+
+That is a rule change, not a number change, and Round 44 had only moved the
+number. The band was still the whole decision, so a whoop that actually
+TOUCHED DOWN inside a hole and carried on out of it was still refused, at any
+band. A skip off the floor and out through a gate is the most ordinary thing
+there is on a whoop track, and it was silently not a gate.
+
+**What it is now.** The band no longer refuses anything on its own. It says
+the craft is ON THE DECK, and `DIRT_UPZ` says whether being there is flight or
+an accident:
+
+- Off the deck, any attitude: a pass. An inverted punch through a gate still
+  scores, which it always did and which is the right answer.
+- On the deck, props up: a pass. This is the bounce.
+- On the deck, on its side or upside down: refused. This is the tumble, the
+  turtle, and the crash that used to walk through the timing gate and throw
+  the results screen, which is what the predicate was written for.
+- Under the terrain by more than `BURIED_MARGIN`: refused, unchanged.
+
+`DIRT_UPZ` is 0.50, the body up axis' world up component, so 60 degrees of
+tilt. It has been in the file the whole time and was DEAD: `upsetOnDirt` voided
+it and the comment above it argued that it should be voided, on the grounds
+that "an upright slide is the same class of accident as an inverted one". The
+owner has overruled that premise, so the constant goes back to being the
+decision and the comment now records the reversal rather than the old argument.
+
+**The cost of the ruling, written down rather than hidden.** Nothing in
+`shouldScorePass` can tell a bounce from a skip from a skid: props up and
+moving is all three. So an upright skid through a hole now counts as a pass.
+That is the honest consequence of the rule as given, and it is the owner's
+call to make. Separating them would need a speed threshold, which is a tuned
+number nobody asked for, and the accidents that actually matter, a tumble, a
+craft on its side, a turtle and anything under the terrain, are all still
+refused on a signal that is not speed.
+
+**Round 44's work is not wasted by this, it is what makes it safe.** The band
+is now read as "some part of the airframe is at or in the ground", which is
+definitionally a length about the aircraft, so scaling it to the seated
+airframe matters MORE under this rule than under the old one. On a flat 0.22 m
+band a whoop 20 cm up and banked would have been called a tumble on the deck
+while it was three gate heights clear of the floor.
+
+**Four checks asserted the opposite and were flipped.** One of them was
+called "an upright bounce frame with no hit flag still does not score", which
+is the owner's case by name. They are changed because the RULE changed by
+instruction, not to make anything pass, and the band is still pinned to the
+millimetre: the 0.219 and 0.221 pair now runs at upz 0.2, on the side of the
+rule where the band is still the decision, and a third case pins that the same
+0.219 upright is a pass. `micro:check` gained the end to end version on the
+demo room's own timing gate: one parabola that puts the quad on the floor at
+the gate plane, flown twice, props up and on its side, scoring once.
+
+**Checks, run this turn.** `check:clip` 507 of 507, `micro:check` clean,
+`whoop:gates` 19 of 19, `lint:shell` PASS, `lint:quality` 56 of 56,
+`lint:presets` 6 of 6. Both new checks were run against the old height only
+rule to prove they bite: `check:clip` failed 5 and `micro:check` failed the
+bounce while still passing the tumble, which is the discrimination the pair is
+for. `npm run verify` was NOT run: this is game logic downstream of the
+simulation, no physics, plant, ABI or build. Nothing has been flown yet. The
+owner said they would fly it, and this round is what they asked for first.
+## Round 46: an opening can be a gap in the lattice instead of a gate
 
 **The report.** "You've boxed in the pole on top of gate (flag on top of
 gate) on track 1 (and maybe other tracks), don't do this, fix the tracks to

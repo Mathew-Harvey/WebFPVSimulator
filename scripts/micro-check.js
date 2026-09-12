@@ -51,6 +51,8 @@ import { collectWarnings } from '../src/trackbuilder/warnings.js';
 import { courseFromDocument } from '../src/game/trackdoc.js';
 import { planFromDocument } from '../src/share/plan.js';
 import { Race } from '../src/game/race.js';
+import { setCraftAirframe, shouldScorePass, dirtClearance } from '../src/game/collide.js';
+import { airframeById } from '../configs/airframes.js';
 import { GATE_SCALE } from '../src/game/track.js';
 import { GATE_OPENING_MAX } from '../src/trackbuilder/racegow.js';
 import { PRESETS, presetsForClass } from '../src/trackbuilder/presets.js';
@@ -189,16 +191,47 @@ function raceDemo() {
   const STEP = 0.005;
   let simMs = 0;
   const missed = [];
+  /*
+   * THE WHOOP IS SEATED AND THE SHELL'S OWN PASS PREDICATE IS RUN.
+   *
+   * This loop used to hand race.update a hardcoded `true` for `allow` and fly
+   * every gate dead through its centre, and both halves of that hid a real
+   * bug for as long as the micro class has existed. The shell does not pass
+   * `true`: it passes shouldScorePass, which refuses a pass flown too close to
+   * the floor, and that band was a flat 0.22 m measured on a five inch. A
+   * RaceGOW gate's bottom bar is ON THE FLOOR, so the band covered the bottom
+   * 31 percent of every opening on the track and a whoop flown low through a
+   * gate was refused with nothing on screen to say why. Flying the centre at
+   * 0.356 m stepped straight over it.
+   *
+   * So the line is a QUARTER OF THE WAY UP each opening, offset along the
+   * gate's own in-plane up axis so a dive gate is offset across its hole
+   * rather than under it, and the floor is the room's at y = 0. That is the
+   * line a whoop actually flies, and it is the one that was not scoring.
+   */
+  const floor = () => 0;
+  const fiveDims = airframeById('5inch').dims;
+  setCraftAirframe(airframeById('whoop65').dims);
+  const band = dirtClearance();
+  check('the whoop band is under a tenth of a RaceGOW opening',
+    band / GATE_OPENING_MAX < 0.10, `${band.toFixed(4)} m`);
+  let lowest = Infinity;
   for (let hop = 0; hop < 60 && race.lap < 3; hop += 1) {
     const target = race.gates[race.next];
     const ap = target.apertures[0];
     const cy = (target.y ?? 0) + ap.centreY;
     const az = target.az;
+    const ay = target.ay;
+    /* A quarter of the opening below its centre, in the opening's own plane. */
+    const drop = ap.clearH * 0.25;
+    const cx = target.x - ay.x * drop;
+    const cyy = cy - ay.y * drop;
+    const cz = target.z - ay.z * drop;
     const from = {
-      x: target.x - az.x * 0.30, y: cy - az.y * 0.30, z: target.z - az.z * 0.30,
+      x: cx - az.x * 0.30, y: cyy - az.y * 0.30, z: cz - az.z * 0.30,
     };
     const to = {
-      x: target.x + az.x * 0.25, y: cy + az.y * 0.25, z: target.z + az.z * 0.25,
+      x: cx + az.x * 0.25, y: cyy + az.y * 0.25, z: cz + az.z * 0.25,
     };
     const total = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
     const steps = Math.max(2, Math.ceil(total / STEP));
@@ -212,15 +245,76 @@ function raceDemo() {
         y: from.y + (to.y - from.y) * t,
         z: from.z + (to.z - from.z) * t,
       };
+      if (curr.y < lowest) {
+        lowest = curr.y;
+      }
       simMs += 1;
-      race.update(prev, curr, simMs, simMs, true);
+      /* The shell's call, argument for argument: src/main.js builds this
+       * exact options object from the frame's clearance and the terrain. */
+      const allow = shouldScorePass(prev, curr, {
+        upz: 1, clearance: curr.y, hits: 0, heightAt: floor,
+      });
+      race.update(prev, curr, simMs, simMs, allow);
       prev = curr;
     }
     if (race.next === before && race.lap === lapBefore) {
       missed.push(`${before} (${target.kindName})`);
     }
   }
+  setCraftAirframe(fiveDims);
+  check('the low line really is inside the band a five inch would have refused',
+    lowest < 0.22, `${lowest.toFixed(3)} m at its lowest`);
   check('every gate in the flying order scores', missed.length === 0, missed.join(', '));
+
+  /*
+   * THE BOUNCE, on the demo room's own timing gate.
+   *
+   * The owner's ruling is that "its ok to bounce of the floor through a gate",
+   * so the low line above is not the whole of it: a whoop that actually TOUCHES
+   * down inside the hole and carries on out of it has flown the gate. The line
+   * here is a parabola that puts the quad on the floor at the gate plane, which
+   * is the shape a skip off the boards has, and it is flown twice: props up,
+   * which is the bounce, and on its side, which is the tumble the predicate
+   * still exists to refuse. One scores and one does not, from the same path.
+   */
+  function bounceThroughTiming(upz) {
+    const bounced = new Race(gates, course.trackClass);
+    bounced.setRecordKey('micro-check.not.a.record');
+    bounced.reset();
+    const g = bounced.gates[bounced.next];
+    const az = g.az;
+    let prev = null;
+    let scored = false;
+    let simB = 0;
+    for (let step = 0; step <= 16; step += 1) {
+      /* Along the gate's own travel axis, INCREASING: local +z is the
+       * direction of travel and openingHits refuses a reverse pass. */
+      const along = -0.8 + step * 0.1;
+      /* On the floor at the plane, rising either side of it. The whoop's own
+       * resting height is 0.018 m, its canopy half, so that is the floor. */
+      const lift = 0.018 + 0.9 * along * along;
+      const curr = {
+        x: g.x + az.x * along, y: (g.y ?? 0) + lift, z: g.z + az.z * along,
+      };
+      if (prev) {
+        simB += 1;
+        const allow = shouldScorePass(prev, curr, {
+          upz, clearance: curr.y, hits: 1, heightAt: floor,
+        });
+        if (bounced.update(prev, curr, simB, simB, allow).passed != null) {
+          scored = true;
+        }
+      }
+      prev = curr;
+    }
+    return scored;
+  }
+  setCraftAirframe(airframeById('whoop65').dims);
+  check('a whoop that bounces off the floor through the gate still flew it',
+    bounceThroughTiming(1) === true);
+  check('the same path on its side is a tumble and does not score',
+    bounceThroughTiming(0.1) === false);
+  setCraftAirframe(fiveDims);
   check('three laps close', race.lap === 3, race.lap);
   const clean = race.log.filter((l) => l.ms != null);
   check('three clean laps are logged', clean.length === 3, clean.length);

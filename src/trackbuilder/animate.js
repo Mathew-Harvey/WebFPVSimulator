@@ -37,7 +37,8 @@
  */
 
 import { buildPath } from './path.js';
-import { buildStage } from './stage.js';
+import { trackClassOf } from './elements.js';
+import { buildStage, lapFrames } from './stage.js';
 import { buildPalette, GifEncoder } from './gif.js';
 
 /*
@@ -52,17 +53,23 @@ import { buildPalette, GifEncoder } from './gif.js';
  * either letterboxes or loses the top of the track to a crop, and the tile
  * is 16 by 10 because the cards were that shape long before this existed.
  *
- * SIXTY FRAMES AT SIX CENTISECONDS is one lap in three and a half seconds
- * at about sixteen a second. The chat share is three hundred frames at four,
- * which is twelve seconds and smooth; a card is a thumbnail in a grid of
- * thumbnails, and three seconds is how long anybody looks at one. The pair
- * of numbers is what keeps a card small: measured on the tracks this board
- * carries, 20 kB for a three gate room and 385 kB for the 24 element
- * RaceGOW5 Track 8, against a board that refuses anything over 1.8 MB. What
+ * SIX CENTISECONDS A FRAME is about sixteen a second, which is as coarse as
+ * a moving thumbnail can be without stepping. HOW MANY frames is not a
+ * number here any more, and that is the one thing that changed: it was a
+ * flat 60, three and a half seconds a lap whatever the lap, so a 41 m course
+ * went round three times as fast as a 13 m one and a grid of cards had no
+ * common pace to read. exportTrackGif asks the lap instead, at the one speed
+ * LAP_SPEED holds, so a long course is a longer clip rather than a faster
+ * one. The cap is what keeps that affordable: see LAP_FRAMES_MAX.
+ *
+ * A card stays small because of the delay and the frame size, which are the
+ * two numbers still here. Measured at one pace on the two ends of what this
+ * board carries: RaceGOW5 Track 1 is 14.4 m of lap, 64 frames and 148 kB,
+ * and RaceGOW5 Track 8 is 43.9 m, 196 frames and 774 kB, against a board
+ * that refuses anything over 1.8 MB. The longest clip the cap allows, 600
+ * frames, is three times Track 8 and would still come in under it. What
  * costs is how much of the frame moves, so a busy track costs more than a
- * bare one and dropping the nameplate below cost another quarter again by
- * letting the track fill the frame. Neither is a number to tune: the cap is
- * two orders of magnitude away and the picture is the point.
+ * bare one, and dropping the nameplate let the track fill the frame.
  *
  * NO NAMEPLATE. The stage lays the track's name in the floor, because a GIF
  * pasted into a chat travels alone and has to say what it is of. A card does
@@ -72,7 +79,7 @@ import { buildPalette, GifEncoder } from './gif.js';
  * track and the board gets to write the caption.
  */
 export const CARD_GIF = {
-  width: 384, height: 240, frames: 60, delayCs: 6, nameplate: false,
+  width: 384, height: 240, delayCs: 6, nameplate: false,
 };
 
 /* One frame in sixteen is enough to see every colour the animation uses,
@@ -117,7 +124,7 @@ function flipRows(src, dst, width, height) {
  */
 export async function exportTrackGif(doc, {
   size = 512, width = size, height = size,
-  frames = 300, delayCs = 4, onProgress = null, camera = null, nameplate = true,
+  frames = null, delayCs = 4, onProgress = null, camera = null, nameplate = true,
 } = {}) {
   const THREE = await import('three');
 
@@ -132,6 +139,18 @@ export async function exportTrackGif(doc, {
       'This track has no lap to animate yet. Sequence at least two elements, then try again.',
     );
   }
+
+  /*
+   * HOW LONG THE LOOP IS, and it comes from the LAP rather than from a
+   * constant. Every track used to take the same twelve seconds, so a long
+   * course flew fast and a short one crawled. The quad now covers the same
+   * ground per second whatever it is flying, which is what RaceGOW's own
+   * animations do: see LAP_SPEED in stage.js. A caller that names `frames`
+   * still gets exactly those, which is what --frames is for.
+   */
+  const shots = frames == null
+    ? lapFrames(path.length, trackClassOf(doc), delayCs)
+    : frames;
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -169,11 +188,11 @@ export async function exportTrackGif(doc, {
 
     const raw = new Uint8Array(width * height * 4);
     const rgba = new Uint8Array(width * height * 4);
-    const total = frames + Math.ceil(frames / PALETTE_STRIDE);
+    const total = shots + Math.ceil(shots / PALETTE_STRIDE);
     let done = 0;
 
     const shoot = (i) => {
-      stage.setFrame(i, frames);
+      stage.setFrame(i, shots);
       renderer.setRenderTarget(target);
       renderer.render(stage.scene, stage.camera);
       renderer.readRenderTargetPixels(target, 0, 0, width, height, raw);
@@ -183,7 +202,7 @@ export async function exportTrackGif(doc, {
 
     /* Pass one: a sample of the animation, kept, to choose the palette. */
     const sample = [];
-    for (let i = 0; i < frames; i += PALETTE_STRIDE) {
+    for (let i = 0; i < shots; i += PALETTE_STRIDE) {
       shoot(i);
       sample.push(rgba.slice());
       done += 1;
@@ -199,7 +218,7 @@ export async function exportTrackGif(doc, {
 
     /* Pass two: every frame, straight into the encoder. */
     const gif = new GifEncoder({ width, height, palette, loop: 0 });
-    for (let i = 0; i < frames; i += 1) {
+    for (let i = 0; i < shots; i += 1) {
       shoot(i);
       gif.addFrame(rgba, delayCs);
       done += 1;

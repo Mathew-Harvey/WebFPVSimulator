@@ -99,6 +99,54 @@ const AIM_HEIGHT = 0.35;
  * disappears and one thicker than a gate opening hides the gate.
  */
 const TAIL_FRACTION = 0.09;
+
+/*
+ * THE PACE OF THE LAP IS A SPEED, NOT A DURATION.
+ *
+ * It was 300 frames at 25 fps for every track, twelve seconds whatever the
+ * lap, so the quad's speed was the lap's length divided by twelve: Track 8
+ * is 41.5 m and flew at 3.5 m/s, Track 1 is 13.4 m and crawled at 1.1 m/s.
+ * The pilot's report is exactly that. "If there are many gates the pathing
+ * moves very fast, if a few gates slow."
+ *
+ * RaceGOW'S OWN ANIMATIONS ARE THE ANSWER AND THEY WERE MEASURED. The three
+ * official files are 288, 192 and 96 frames, all at 42 ms, which is 12, 8
+ * and 4 seconds for laps of 41.47, 34.63 and 13.38 m. That is 3.46, 4.33
+ * and 3.35 m/s, one pace picked per track and quantised to whole four
+ * second blocks: 89.48 m over 24.0 s, 3.73 m/s.
+ *
+ * The five inch's figure is that speed scaled by the ratio of the two
+ * aircraft's swept radii, 0.1735 over 0.0506, because a machine three and a
+ * half times the size has to cover three and a half times the ground to
+ * read as the same pace to an eye. It comes out at 12.7 m/s, which is
+ * inside the 12 to 15 m/s a five inch actually laps a 400 m course at, and
+ * that agreement is the check on the reasoning rather than the reasoning
+ * itself.
+ *
+ * src/share/plan.js carries the same two numbers for the course card, with
+ * the same note, so a card and a GIF of one track still move together.
+ */
+export const LAP_SPEED = { micro: 3.73, full: 12.7 };
+/*
+ * And the loop's own bounds, in frames. A two gate room is four metres of
+ * lap and would be a one second GIF that reads as a flicker; a 400 m
+ * MultiGP course is half a minute, which is not a thing anybody shares. So
+ * the pace holds between them and the ends are clamped, and --frames is
+ * still there for a smoke render or a smaller file.
+ */
+const LAP_FRAMES_MIN = 48;
+const LAP_FRAMES_MAX = 600;
+
+/* How many frames one lap of this track is, at this frame delay. */
+export function lapFrames(lengthM, cls, delayCs) {
+  const speed = LAP_SPEED[cls === 'micro' ? 'micro' : 'full'];
+  const fps = 100 / (delayCs > 0 ? delayCs : 4);
+  const want = Math.round((lengthM / speed) * fps);
+  if (!Number.isFinite(want)) {
+    return LAP_FRAMES_MIN;
+  }
+  return Math.max(LAP_FRAMES_MIN, Math.min(LAP_FRAMES_MAX, want));
+}
 const RIBBON_R_PER_METRE = 0.004;
 const RIBBON_R_MIN = 0.012;
 const RIBBON_R_MAX = 0.12;

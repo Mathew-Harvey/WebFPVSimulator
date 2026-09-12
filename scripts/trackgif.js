@@ -41,6 +41,9 @@ import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { openPage } from '../tests/lib/page.js';
+import { buildPath } from '../src/trackbuilder/path.js';
+import { lapFrames } from '../src/trackbuilder/stage.js';
+import { trackClassOf } from '../src/trackbuilder/elements.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -57,7 +60,10 @@ function usage() {
   console.log('                     grid is 16 by 10, and that is what --shape 384x240 is');
   console.log('                     for. The field of view is vertical, so a wider frame');
   console.log('                     sees more of the sides and the same amount of sky.');
-  console.log('  --frames <n>       frames in the loop, default 300');
+  console.log('  --frames <n>       frames in the loop. The default is the LAP: the quad');
+  console.log('                     flies at one steady pace whatever the track, so a long');
+  console.log('                     course is a longer loop rather than a faster one. See');
+  console.log('                     LAP_SPEED in src/trackbuilder/stage.js.');
   console.log('  --delay <cs>       centiseconds per frame, default 4, which is 25 fps');
   console.log('  --camera <ex,ey,ez,ax,ay,az,fov>');
   console.log('                     shoot from a fixed eye at a fixed aim, document metres,');
@@ -65,7 +71,7 @@ function usage() {
   console.log('                     the track. For laying an export over a reference picture.');
   console.log('');
   console.log('  --frames 24 is the smoke setting. Chromium here runs on a software');
-  console.log('  rasteriser, so a full 300 frame render takes minutes, not seconds.');
+  console.log('  rasteriser, so a few hundred frames takes minutes, not seconds.');
 }
 
 /* Seven numbers: the eye, the aim, the vertical field of view. */
@@ -82,8 +88,10 @@ function parseCamera(text) {
 }
 
 function parseArgs(argv) {
+  /* frames stays null unless the caller names one: null means the lap
+   * decides, at the steady pace stage.js holds. */
   const opts = {
-    size: 512, width: 0, height: 0, frames: 300, delay: 4, out: null, input: null, camera: null,
+    size: 512, width: 0, height: 0, frames: null, delay: 4, out: null, input: null, camera: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -125,7 +133,7 @@ function parseArgs(argv) {
       throw new Error('--shape wants each edge between 16 and 2048');
     }
   }
-  if (!Number.isFinite(opts.frames) || opts.frames < 2 || opts.frames > 2000) {
+  if (opts.frames != null && (!Number.isFinite(opts.frames) || opts.frames < 2 || opts.frames > 2000)) {
     throw new Error('--frames must be between 2 and 2000');
   }
   if (!Number.isFinite(opts.delay) || opts.delay < 2 || opts.delay > 200) {
@@ -164,8 +172,23 @@ async function main() {
   const doc = JSON.parse(await readFile(opts.input, 'utf8'));
   const out = opts.out || join(dirname(opts.input), `${slugOf(doc.name)}.gif`);
 
+  /*
+   * THE LOOP IS AS LONG AS THE LAP. The quad flies one steady pace whatever
+   * the track, so the frame count is the lap's length divided by that pace:
+   * see LAP_SPEED in src/trackbuilder/stage.js. Worked out HERE as well as
+   * in the page so the terminal can say how long the animation will be
+   * before it spends two minutes rendering it. --frames still wins.
+   */
+  const lap = buildPath(doc, { closeLoop: true });
+  const frames = opts.frames == null
+    ? lapFrames(lap.length, trackClassOf(doc), opts.delay)
+    : opts.frames;
+  const seconds = (frames * opts.delay) / 100;
+
   console.log(`trackgif: "${doc.name}" from ${basename(opts.input)}`);
-  console.log(`  ${opts.width} by ${opts.height}, ${opts.frames} frames at ${opts.delay} cs`);
+  console.log(`  ${opts.width} by ${opts.height}, ${frames} frames at ${opts.delay} cs`);
+  console.log(`  ${lap.length.toFixed(1)} m of lap, ${seconds.toFixed(1)} s at `
+    + `${(lap.length / seconds).toFixed(2)} m/s${opts.frames == null ? '' : ', --frames given'}`);
 
   const started = Date.now();
   const page = await openPage({
@@ -189,7 +212,7 @@ async function main() {
       `window.__exportTrackGif(${JSON.stringify(doc)}, ${JSON.stringify({
         width: opts.width,
         height: opts.height,
-        frames: opts.frames,
+        frames,
         delayCs: opts.delay,
         camera: opts.camera,
       })})`,
@@ -230,8 +253,8 @@ async function main() {
         console.log(`  OVER BUDGET. ${mb.toFixed(2)} MB is above the 4 MB this was built to`);
         console.log('  fit, which is where it stops posting anywhere without being');
         console.log('  re-encoded by somebody else. The lever is --frames: half of them');
-        console.log('  at twice the delay is the same twelve seconds at half the size.');
-        console.log(`  Try: node scripts/trackgif.js ${opts.input} --frames ${Math.round(opts.frames / 2)} --delay ${opts.delay * 2}`);
+        console.log('  at twice the delay is the same seconds at half the size.');
+        console.log(`  Try: node scripts/trackgif.js ${opts.input} --frames ${Math.round(frames / 2)} --delay ${opts.delay * 2}`);
       }
     }
   } finally {

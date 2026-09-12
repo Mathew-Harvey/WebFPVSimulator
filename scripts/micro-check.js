@@ -49,7 +49,9 @@ import {
 } from '../src/trackbuilder/elements.js';
 import { collectWarnings } from '../src/trackbuilder/warnings.js';
 import { courseFromDocument } from '../src/game/trackdoc.js';
-import { planFromDocument } from '../src/share/plan.js';
+import { planFromDocument, isoLapMs, isoLapLength } from '../src/share/plan.js';
+import { lapFrames, LAP_SPEED } from '../src/trackbuilder/stage.js';
+import { buildPath } from '../src/trackbuilder/path.js';
 import { Race } from '../src/game/race.js';
 import { setCraftAirframe, shouldScorePass, dirtClearance } from '../src/game/collide.js';
 import { airframeById } from '../configs/airframes.js';
@@ -417,6 +419,25 @@ function presetSet() {
       check(`${raw.name} has a lap to fly`, course.stations.length >= 3,
         `${course.stations.length} station(s)`);
       check(`${raw.name} plans`, Boolean(planFromDocument(doc)), 'planFromDocument');
+    /*
+     * ONE PACE FOR EVERY TRACK, on the card and in the export alike.
+     *
+     * Both used to take twelve seconds a lap whatever the lap was, so a
+     * 41 m course went round three times as fast as a 13 m one and the
+     * pilot's report was that the line moves fast on a busy track and
+     * crawls on a short one. The card asks isoLapMs and the exporter asks
+     * lapFrames, and both are a LENGTH over a SPEED now, so what is
+     * asserted here is the speed itself: metres of lap per second, the
+     * same number on every shipped track, on both drawings.
+     */
+    const plan = planFromDocument(doc);
+    const cardSpeed = (isoLapLength(plan) / isoLapMs(plan)) * 1000;
+    const lapPath = buildPath(doc, { closeLoop: true });
+    const gifSpeed = lapPath.length / ((lapFrames(lapPath.length, trackClassOf(doc), 4) * 4) / 100);
+    check(`${raw.name} flies its card at the one pace`,
+      Math.abs(cardSpeed - LAP_SPEED.micro) < 0.02, `${cardSpeed.toFixed(3)} m/s`);
+    check(`${raw.name} exports at the same pace`,
+      Math.abs(gifSpeed - LAP_SPEED.micro) < 0.05, `${gifSpeed.toFixed(3)} m/s`);
     }
   }
   /* Two ids the same would make one of them unreachable through loadTrack. */

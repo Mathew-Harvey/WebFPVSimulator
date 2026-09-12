@@ -32886,3 +32886,61 @@ function so the comparison builds the same text the script writes.
 `gif:selftest` 38 of 38. The import guard was checked directly: importing
 the generator builds two documents and writes nothing. `npm run verify` was
 not run, and `lint:shell` was run last round and is untouched by this one.
+
+## Round 35: no paint and no numbers in a room, and one document instead of three
+
+Three cleanups the owner asked for after flying the two tracks.
+
+**The floor paint is off on the whoop.** `guideFromKnots` is athletics
+dressing for a 60 m field, where the next gate can be 30 m away and a dashed
+line and an arrow are how a pilot finds it. A RaceGOW track is under three
+metres end to end and the whole course is in shot from anywhere on it, so
+the marks were clutter under the gates, and no real living room has paint on
+the carpet. `courseFromDocument` now returns a null guide for a micro track,
+which is upstream of every reader, so the race field, the share tile and
+anything else looking at a course sees the same absence. The builder's own
+3D preview was painting the same marks and now does not, because its stated
+contract is to paint what the race field paints.
+
+**The gate numbers are off on the whoop.** A numbered plate is for a field
+holding fifteen gates a pilot tells apart at fifty metres, and the badge is
+how a stacked frame says which of its holes is gate 5. A RaceGOW frame is a
+27 inch square at arm's length and the real thing carries no numbers. The
+printed header plate was already suppressed on micro for the same reason, so
+this is the last of it: the scored list the badges iterate is empty on a
+micro course.
+
+**One document where there were three.** `TRACK-FROM-GIF.md` is now the
+whole method for turning a supplied RaceGOW animation into a track: what the
+green panel and the red trail mean, how to coalesce the frames, the three
+composites, the flying order, fitting a camera to the lattice and what
+residual to expect, matching every pane to a square, reading the direction
+of each pass, writing the spec, reading the plane crossings rather than the
+plan view, where waypoints go and the hairpin trap, and how to export and
+compare. `TRACK-FROM-ANIMATION.md` is deleted: it concluded the job could
+not be done from a render, which was true of the method it tried and false
+of the one that worked, and a document that says a shipped thing is
+impossible is worse than no document. `TRACKGIF-PLAN.md` is deleted too: it
+was the build spec for the exporter, the exporter shipped, and a spec for
+finished code invites somebody to build it twice. Nothing referenced either
+file. The README now points at the survivor.
+
+PROGRESS.md keeps its earlier rounds unedited, including the wrong readings
+in rounds 29 and 31. It is a log of what happened and not an instruction, and
+the repository's own rule is that the record is the point.
+
+**Checks, run this turn.** `micro:check`, `check:clip` 495 of 495 and
+`check:path` 12 of 12 after the renderer change. Both changes were also
+photographed through the real renderer with `scripts/shots.js`: a whoop
+course now renders with bare floor under it, and Track 8 renders with no
+badge on any of its twelve openings. A node assertion confirms the guide is
+null for a micro course and still 1710 samples for the 2022 AU Nationals
+layout, so nothing moved on the field. `npm run verify` was not run: no
+physics, plant, ABI or build changed.
+
+**Found while verifying, not fixed.** Two cream slabs about 0.3 by 0.6 m
+stand under two uprights of Track 8, next to the correct 27 mm stub feet on
+every other upright. Something in the scene is being built at full size on a
+micro course. It is not the gate feet, which honour the class, and not the
+pole feet, which are 53 mm and red. It is outside what was asked for here
+and it is written down rather than guessed at.

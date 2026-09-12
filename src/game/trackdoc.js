@@ -479,8 +479,17 @@ export function courseFromDocument(raw) {
    * paint has to hug flags on the pass side the way a racer does, and the
    * cubic through gate-normal tangents does not. Scene XZ, so the renderer
    * never has to know a document existed.
+   *
+   * NOT IN A ROOM. The paint is athletics dressing for a 60 m field, where
+   * the next gate can be 30 m away and a dashed line and an arrow are how a
+   * pilot finds it. A RaceGOW track is three metres end to end and the whole
+   * course is in shot from anywhere on it, so the marks are clutter under
+   * the gates rather than help, and no real RaceGOW living room has paint on
+   * the carpet. The owner asked for them off on the whoop, and they are off
+   * here rather than in the renderer so that the plan, the share tile and
+   * anything else reading a course sees the same absence.
    */
-  const guide = guideFromKnots(sceneKnots(path.knots, field), cls);
+  const guide = cls === 'micro' ? null : guideFromKnots(sceneKnots(path.knots, field), cls);
 
   if (!stations.length) {
     warnings.push('This track has nothing to fly through, so there is no lap to time.');

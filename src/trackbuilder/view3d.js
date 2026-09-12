@@ -1302,6 +1302,15 @@ export class View3D {
      * paint what the race field will paint or an author is editing a
      * different track from the one they fly. */
     const cls = trackClassOf(this.host.doc);
+    /*
+     * And a room gets no paint at all, which is that same contract: the
+     * race field stopped painting a micro course in
+     * src/game/trackdoc.js, so a preview that still painted one would be
+     * showing the author marks nobody flying it will ever see.
+     */
+    if (cls === 'micro') {
+      return new THREE.Group();
+    }
     const tris = tessellateGuide(guideFromKnots(knotsFromPath(path, cls), cls));
     if (tris.length < 3) {
       return new THREE.Group();

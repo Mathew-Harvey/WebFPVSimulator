@@ -4561,7 +4561,19 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
         + ((st.structure && st.structure.baseY != null) ? st.structure.baseY : st.baseY);
       made.setPole(cs * dx - sn * dz, sn * dx + cs * dz, poleY - y, yaw);
     }
-    const scored = st.stations.filter((s) => s.apertureIndex != null);
+    /*
+     * NUMBERS ON THE HOLES, AND NOT ON A WHOOP TRACK.
+     *
+     * A MultiGP gate carries a numbered plate because a 60 m field holds
+     * fifteen gates a pilot has to tell apart at fifty metres, and the badge
+     * is how a stacked frame says which of its holes is gate 5. A RaceGOW
+     * frame is a 27 inch square at arm's length in a living room: the pilot
+     * can see the whole course at once, the real thing has no numbers on it,
+     * and a disc hung beside a 0.711 m opening is furniture in the hole.
+     * The owner asked for them off on the whoop. The header plate was
+     * already off there for the same reason, so this is the last of it.
+     */
+    const scored = micro ? [] : st.stations.filter((s) => s.apertureIndex != null);
     if (scored.length > 1) {
       /* One number per hole that is a gate, so a spiral reads 4 then 5 then
        * 6 instead of one plate on a three hole frame. Matches the OSD. */
@@ -4573,11 +4585,8 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
         if (!ap) {
           continue;
         }
-        /* A RaceGOW opening is 0.711 m against MultiGP's 1.752 at gate
-         * scale, so the badge is drawn at that ratio and stood off by it. */
-        const badgeScale = micro ? 0.41 : 1;
-        const badge = openingBadge(station.flyOrder + 1, badgeScale);
-        badge.position.set(st.spec.clearW * 0.5 + 0.22 * badgeScale, ap.centreY, 0);
+        const badge = openingBadge(station.flyOrder + 1);
+        badge.position.set(st.spec.clearW * 0.5 + 0.22, ap.centreY, 0);
         g.add(badge);
       }
     }

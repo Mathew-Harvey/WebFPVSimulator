@@ -424,6 +424,48 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://www.webfpv.org/
 # 301 https://webfpv.org/
 ```
 
+### The browser cache TTL in front, which is not what render.yaml asks for
+
+`render.yaml` asks for `Cache-Control: no-cache` on `/*`, and the comment
+beside it gives the reason: nothing in this tree is content hashed, so a
+browser holding half of one deploy and half of another is holding a program
+that was never written. That header is not what a browser ends up with.
+
+Measured on 2026-09-12:
+
+```bash
+# The Render origin, both files the same and both revalidated.
+curl -sI https://webfpvsimulator.onrender.com/index.html      | grep -i cache-control
+curl -sI https://webfpvsimulator.onrender.com/src/ui/ui.js    | grep -i cache-control
+# cache-control: public, max-age=0, s-maxage=300
+# cache-control: public, max-age=0, s-maxage=300
+
+# The same two files through the domain. The page revalidates. The script
+# does not, for four hours.
+curl -sI https://webfpv.org/sim/                              | grep -i cache-control
+curl -sI https://webfpv.org/sim/src/ui/ui.js                  | grep -i cache-control
+# cache-control: public, max-age=0, s-maxage=300
+# cache-control: public, max-age=14400, s-maxage=300
+```
+
+Something between the origin and the browser raises `max-age` for the script
+and leaves it alone for the page, and the thing between them is Cloudflare.
+Its Browser Cache TTL, or a cache rule matching static extensions, is the
+setting to look at.
+
+WHAT IT COSTS. The whole module graph is cached together, so the JavaScript
+stays consistent with itself. The seam that splits is HTML and CSS, which
+update on the next request, against the script, which is up to four hours
+behind. A class name is a contract across exactly that seam: rename one and
+every element the old script builds loses its rule, which on 2026-09-12 put
+three absolutely positioned chips into document flow at the top left of a
+live race. `.bug-chip` in `index.html` carries the long version of this
+note, because that is the class it happened to.
+
+Until the TTL is fixed: a deploy that changes a class name, an id the
+stylesheet matches, or anything else the script and the sheet have to agree
+on, needs a hard reload to be safe, and returning pilots will not do one.
+
 Then in a browser, in this order:
 
 1. `https://webfpv.org/` and click **Fly now**. The address bar should read

@@ -88,7 +88,7 @@ const QUALITY = 82;
  * too, which og.js does not need to do because it only ever captures the
  * title, and this captures the title with a full menu on it. */
 const HIDE = [
-  '.menu-stage', '.hint', '.lede', '.title-foot', '.corner-chip', '.brand',
+  '.menu-stage', '.hint', '.lede', '.title-foot', '.bug-chip', '.brand',
   '.brand-best', '.keep-note', '.first-note', '.gate-note', '.beta-note',
   '.wiki-teaser', '.craft-showcase', '.frame-top', '.frame-bot', '.music-dock',
   /*

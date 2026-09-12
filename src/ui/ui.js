@@ -4710,7 +4710,7 @@ export class Ui {
         cards.push({
           label: seat.name,
           note: `${chip.note} ${seat.gates} gate${seat.gates === 1 ? '' : 's'}.`,
-          course: { kind: 'current', seat, chip },
+          course: { kind: 'current', seat },
           action: 'map:custom',
         });
       }
@@ -7246,19 +7246,19 @@ export class Ui {
             .filter(Boolean)
             .join('  ');
         }
-        const chip = el('div', 'course-chip', '');
-        if (it.course.chip) {
-          chip.textContent = it.course.chip.label;
-          chip.classList.add(`tone-${it.course.chip.tone}`);
-        } else if (it.course.kind === 'stock') {
-          chip.textContent = 'Shipped';
-        } else {
-          chip.textContent = 'On the board';
-          chip.classList.add('tone-live');
-        }
+        /*
+         * NO BADGE OVER THE PICTURE. Shipped, on the board and not on the
+         * board were three words laid over the one thing the card is for,
+         * and a pilot choosing a course is choosing a course rather than a
+         * provenance. Where the track came from is still said, in the note
+         * beside the list once a card is chosen, which is where a question
+         * about it gets asked. courseChip still decides that wording, so
+         * the builder, the board and this room cannot describe one course
+         * two ways.
+         */
         const tag = el('div', 'map-card-tag', '');
         body.append(name, tag);
-        card.append(shot, chip, body, meta);
+        card.append(shot, body, meta);
         card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
         card.addEventListener('click', () => {
           this.cursor = i;

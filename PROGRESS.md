@@ -33508,3 +33508,34 @@ the Track room where this lives. The motion was verified rather than
 eyeballed: the card's own canvas was read back twice a second apart through
 the real shell and the pixels differ. `npm run verify` was not run: no
 physics, plant, ABI or build changed.
+
+## Round 42: the badge comes off the card
+
+**The ask.** Remove the shipped / on the board pill, just show the track.
+
+**What it was.** Every course card carried a `.course-chip` in its top left
+corner: SHIPPED on the three that come with the simulator, ON THE BOARD or
+NOT ON THE BOARD on anything published or not. It sat over the corner of the
+picture, which after Rounds 40 and 41 is a moving three quarter view of the
+lap, so the one word was covering the one thing the card is for.
+
+**Why it goes rather than moves.** A pilot in the Tracks room is choosing a
+course, not auditing where it came from. Provenance is still on the screen,
+in the note beside the list once a card is under the cursor: "By AyyyKayyy.
+Ships with the simulator. Choosing it loads the track and flies it here."
+That is where the question gets asked, and answering it there costs nothing
+and covers nothing.
+
+**`courseChip` stays.** The builder's Load dialog and the board still label a
+listing with it, and it is still the source of the sentence in the note, so
+the three places cannot describe one course two ways. What went is the
+element on the card, its three style rules in `index.html`, and the now
+unread `chip` field on the seated course's item, which nothing else looked
+at once the element was gone.
+
+**Checks, run this turn.** `micro:check`, `lint:presets` 6 of 6, `check:clip`
+495 of 495, `check:path` 12 of 12 and `lint:shell`, which drives the Tracks
+room. The room was then photographed on the whoop: three cards, no chip
+element in the document at all, and each card reading name, author and gate
+count under a lap that is still animating. `npm run verify` was not run: no
+physics, plant, ABI or build changed.

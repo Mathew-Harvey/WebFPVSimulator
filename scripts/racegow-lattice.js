@@ -380,14 +380,26 @@ export function buildAll() {
   return TRACKS.map(buildTrack);
 }
 
-const docs = buildAll();
-const body = docs
-  .map((d) => JSON.stringify(d, null, 2).split('\n').map((line) => `  ${line}`).join('\n'))
-  .join(',\n');
-const out = `${HEADER}export const PRESETS = [\n${body},\n];\n${FOOTER}`;
-const target = join(root, 'src/trackbuilder/presets.js');
-writeFileSync(target, out);
-for (const d of docs) {
-  console.log(`${d.id}: ${d.elements.length} elements, ${d.sequence.length} passes`);
+/* The exact text of presets.js for a given set of documents. Exported so a
+ * check can build it and compare, which is how micro-check proves that the
+ * shipped file is this script's output and holds nothing else. */
+export function renderPresets(docs) {
+  const body = docs
+    .map((d) => JSON.stringify(d, null, 2).split('\n').map((line) => `  ${line}`).join('\n'))
+    .join(',\n');
+  return `${HEADER}export const PRESETS = [\n${body},\n];\n${FOOTER}`;
 }
-console.log(`wrote ${target}`);
+
+export const PRESETS_PATH = join(root, 'src/trackbuilder/presets.js');
+
+/* Only when run as a script. Importing this file must not write to the
+ * source tree: micro-check imports it to compare, and a check that
+ * rewrites the thing it is checking proves nothing. */
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const docs = buildAll();
+  writeFileSync(PRESETS_PATH, renderPresets(docs));
+  for (const d of docs) {
+    console.log(`${d.id}: ${d.elements.length} elements, ${d.sequence.length} passes`);
+  }
+  console.log(`wrote ${PRESETS_PATH}`);
+}

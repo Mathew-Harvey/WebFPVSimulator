@@ -32847,3 +32847,42 @@ poles.
 **Checks, run this turn.** `micro:check` passes, `lint:presets` 6 of 6,
 `check:path` 12 of 12, and `lint:shell` was run because this round changed
 it. `npm run verify` was not run: no physics, plant, ABI or build changed.
+
+## Round 34: the shipped whoop set is pinned to two, by name
+
+The owner asked for a guarantee rather than a look, so the invariant is now
+a check instead of a promise.
+
+**Where a whoop track can come from, all four.** The Track room builds its
+cards from four sources and only one of them ships: the seated course, the
+shipped set from `presetsForClass`, the board's published courses fetched at
+runtime, and the pilot's own library in local storage. `tracks/json` is not
+one of them. Nothing under `src` reads that directory at runtime, so
+`micro-livingroom-1.json` is a fixture for `micro-check` and `gatecards` and
+never appears in the picker. It stays where it is, because removing it
+breaks the three lap race the checks fly.
+
+So the only whoop tracks this repository puts in front of a pilot are the
+two in `presets.js`, and the card in the owner's screenshot that is neither
+of them is their own seated track: the board note underneath it says there
+are no whoop tracks on the board yet, which is the room telling us the card
+came from the seat rather than the board.
+
+**Two new assertions in `micro:check`.** The first names the two ids and
+fails on anything else, rather than counting to two, because a count passes
+with the wrong two. The second rebuilds `presets.js` from the lattice specs
+and compares the text byte for byte, which catches an edit made by hand to
+a generated file, an entry added to the file without a spec, and a spec
+changed without regenerating.
+
+**`racegow-lattice.js` only writes when it is run.** The write used to
+happen at import, so a check that imported it to compare would have
+rewritten the file it was checking and then found it identical. It is
+guarded on `process.argv[1]` now, and the render is its own exported
+function so the comparison builds the same text the script writes.
+
+**Checks, run this turn.** `micro:check` including both new assertions,
+`check:path` 12 of 12, `check:clip` 495 of 495, `lint:presets` 6 of 6 and
+`gif:selftest` 38 of 38. The import guard was checked directly: importing
+the generator builds two documents and writes nothing. `npm run verify` was
+not run, and `lint:shell` was run last round and is untouched by this one.

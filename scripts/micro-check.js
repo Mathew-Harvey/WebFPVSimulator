@@ -53,7 +53,8 @@ import { planFromDocument } from '../src/share/plan.js';
 import { Race } from '../src/game/race.js';
 import { GATE_SCALE } from '../src/game/track.js';
 import { GATE_OPENING_MAX } from '../src/trackbuilder/racegow.js';
-import { PRESETS } from '../src/trackbuilder/presets.js';
+import { PRESETS, presetsForClass } from '../src/trackbuilder/presets.js';
+import { buildAll, renderPresets, PRESETS_PATH } from './racegow-lattice.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -307,6 +308,36 @@ function presetSet() {
   /* Two ids the same would make one of them unreachable through loadTrack. */
   const ids = PRESETS.map((d) => d.id);
   check('every preset id is unique', new Set(ids).size === ids.length, ids.join(', '));
+
+  /*
+   * THE WHOOP SHIPS THESE TWO TRACKS AND NOTHING ELSE.
+   *
+   * The owner supplied two RaceGOW5 animations and asked for those two to
+   * be the only whoop tracks in the product. Six reconstructions were here
+   * before them and the Track room reads presetsForClass, so an extra
+   * entry in this file is an extra track in the picker. The set is named
+   * here rather than counted, because "two of something" would pass with
+   * the wrong two.
+   */
+  const want = ['racegow5-track8', 'racegow5-track5'];
+  const micro = presetsForClass('micro').map((d) => d.id);
+  check('the whoop ships exactly the two supplied tracks',
+    micro.length === want.length && want.every((id) => micro.includes(id)),
+    micro.join(', ') || 'none');
+
+  /*
+   * AND THE FILE IS THE GENERATOR'S OUTPUT, byte for byte.
+   *
+   * presets.js is written by scripts/racegow-lattice.js from the lattice
+   * specs. Rebuilding it here and comparing catches an edit made to the
+   * generated file by hand, which would be lost on the next run, and
+   * catches a track added to one of the two and not the other.
+   */
+  const rebuilt = renderPresets(buildAll());
+  const onDisk = readFileSync(PRESETS_PATH, 'utf8');
+  check('presets.js is what the lattice script writes',
+    rebuilt === onDisk,
+    rebuilt === onDisk ? '' : 'run node scripts/racegow-lattice.js');
 }
 
 pipeline('micro');

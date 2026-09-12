@@ -34583,6 +34583,21 @@ it is the share of the course the ribbon covers, which is what was looked at
 and approved two rounds ago. At one speed it also means the ribbon lingers
 for a fixed time on a given track and a shorter streak on a shorter one.
 
+**And the board card, which arrived in the same hour.** Another session
+landed `CARD_GIF` while this was being written: 384 by 240, no nameplate,
+and 60 frames, which is three and a half seconds a lap whatever the lap.
+That is the same fault in a new place, so the frame count came out of it
+and the lap decides there too. Measured on the two ends of what the board
+carries: RaceGOW5 Track 1 is 64 frames and 148 kB, RaceGOW5 Track 8 is 196
+frames and 774 kB, against a board that refuses anything over 1.8 MB, and
+the longest clip the 600 frame cap allows is three times Track 8 and still
+comes in under it.
+
+**The three animations, rendered again on the merged tree**, where the
+lattice is 28 inches rather than 27 and every lap is a little longer:
+Track 1 is 14.4 m, 3.8 s and 0.41 MB; Track 5 is 36.9 m, 9.9 s and 1.23 MB;
+Track 8 is 43.9 m, 11.8 s and 2.33 MB. All three at 3.73 m/s.
+
 **Checks, run this turn.** `micro:check` gained six: every shipped track's
 card speed and export speed against the one figure, to 0.02 and 0.05 m/s.
 Run against the old flat twelve seconds they read 2.718, 2.422 and 1.034 m/s

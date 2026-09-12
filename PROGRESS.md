@@ -33658,3 +33658,68 @@ which would call a whoop 12 cm off the floor "seated". It cannot cause a
 missed gate (entering turtle needs truly inverted, seated AND still) so it is
 out of scope for this report, and it is left alone rather than changed on a
 guess.
+
+## Round 45: touching the floor does not cost you the gate
+
+**The ruling.** The owner, on reading Round 44 before flying it: "its ok to
+bounce of the floor through a gate."
+
+That is a rule change, not a number change, and Round 44 had only moved the
+number. The band was still the whole decision, so a whoop that actually
+TOUCHED DOWN inside a hole and carried on out of it was still refused, at any
+band. A skip off the floor and out through a gate is the most ordinary thing
+there is on a whoop track, and it was silently not a gate.
+
+**What it is now.** The band no longer refuses anything on its own. It says
+the craft is ON THE DECK, and `DIRT_UPZ` says whether being there is flight or
+an accident:
+
+- Off the deck, any attitude: a pass. An inverted punch through a gate still
+  scores, which it always did and which is the right answer.
+- On the deck, props up: a pass. This is the bounce.
+- On the deck, on its side or upside down: refused. This is the tumble, the
+  turtle, and the crash that used to walk through the timing gate and throw
+  the results screen, which is what the predicate was written for.
+- Under the terrain by more than `BURIED_MARGIN`: refused, unchanged.
+
+`DIRT_UPZ` is 0.50, the body up axis' world up component, so 60 degrees of
+tilt. It has been in the file the whole time and was DEAD: `upsetOnDirt` voided
+it and the comment above it argued that it should be voided, on the grounds
+that "an upright slide is the same class of accident as an inverted one". The
+owner has overruled that premise, so the constant goes back to being the
+decision and the comment now records the reversal rather than the old argument.
+
+**The cost of the ruling, written down rather than hidden.** Nothing in
+`shouldScorePass` can tell a bounce from a skip from a skid: props up and
+moving is all three. So an upright skid through a hole now counts as a pass.
+That is the honest consequence of the rule as given, and it is the owner's
+call to make. Separating them would need a speed threshold, which is a tuned
+number nobody asked for, and the accidents that actually matter, a tumble, a
+craft on its side, a turtle and anything under the terrain, are all still
+refused on a signal that is not speed.
+
+**Round 44's work is not wasted by this, it is what makes it safe.** The band
+is now read as "some part of the airframe is at or in the ground", which is
+definitionally a length about the aircraft, so scaling it to the seated
+airframe matters MORE under this rule than under the old one. On a flat 0.22 m
+band a whoop 20 cm up and banked would have been called a tumble on the deck
+while it was three gate heights clear of the floor.
+
+**Four checks asserted the opposite and were flipped.** One of them was
+called "an upright bounce frame with no hit flag still does not score", which
+is the owner's case by name. They are changed because the RULE changed by
+instruction, not to make anything pass, and the band is still pinned to the
+millimetre: the 0.219 and 0.221 pair now runs at upz 0.2, on the side of the
+rule where the band is still the decision, and a third case pins that the same
+0.219 upright is a pass. `micro:check` gained the end to end version on the
+demo room's own timing gate: one parabola that puts the quad on the floor at
+the gate plane, flown twice, props up and on its side, scoring once.
+
+**Checks, run this turn.** `check:clip` 507 of 507, `micro:check` clean,
+`whoop:gates` 19 of 19, `lint:shell` PASS, `lint:quality` 56 of 56,
+`lint:presets` 6 of 6. Both new checks were run against the old height only
+rule to prove they bite: `check:clip` failed 5 and `micro:check` failed the
+bounce while still passing the tumble, which is the discrimination the pair is
+for. `npm run verify` was NOT run: this is game logic downstream of the
+simulation, no physics, plant, ABI or build. Nothing has been flown yet. The
+owner said they would fly it, and this round is what they asked for first.

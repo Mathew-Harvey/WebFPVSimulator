@@ -265,6 +265,56 @@ function raceDemo() {
   check('the low line really is inside the band a five inch would have refused',
     lowest < 0.22, `${lowest.toFixed(3)} m at its lowest`);
   check('every gate in the flying order scores', missed.length === 0, missed.join(', '));
+
+  /*
+   * THE BOUNCE, on the demo room's own timing gate.
+   *
+   * The owner's ruling is that "its ok to bounce of the floor through a gate",
+   * so the low line above is not the whole of it: a whoop that actually TOUCHES
+   * down inside the hole and carries on out of it has flown the gate. The line
+   * here is a parabola that puts the quad on the floor at the gate plane, which
+   * is the shape a skip off the boards has, and it is flown twice: props up,
+   * which is the bounce, and on its side, which is the tumble the predicate
+   * still exists to refuse. One scores and one does not, from the same path.
+   */
+  function bounceThroughTiming(upz) {
+    const bounced = new Race(gates, course.trackClass);
+    bounced.setRecordKey('micro-check.not.a.record');
+    bounced.reset();
+    const g = bounced.gates[bounced.next];
+    const az = g.az;
+    let prev = null;
+    let scored = false;
+    let simB = 0;
+    for (let step = 0; step <= 16; step += 1) {
+      /* Along the gate's own travel axis, INCREASING: local +z is the
+       * direction of travel and openingHits refuses a reverse pass. */
+      const along = -0.8 + step * 0.1;
+      /* On the floor at the plane, rising either side of it. The whoop's own
+       * resting height is 0.018 m, its canopy half, so that is the floor. */
+      const lift = 0.018 + 0.9 * along * along;
+      const curr = {
+        x: g.x + az.x * along, y: (g.y ?? 0) + lift, z: g.z + az.z * along,
+      };
+      if (prev) {
+        simB += 1;
+        const allow = shouldScorePass(prev, curr, {
+          upz, clearance: curr.y, hits: 1, heightAt: floor,
+        });
+        if (bounced.update(prev, curr, simB, simB, allow).passed != null) {
+          scored = true;
+        }
+      }
+      prev = curr;
+    }
+    return scored;
+  }
+  setCraftAirframe(airframeById('whoop65').dims);
+  check('a whoop that bounces off the floor through the gate still flew it',
+    bounceThroughTiming(1) === true);
+  check('the same path on its side is a tumble and does not score',
+    bounceThroughTiming(0.1) === false);
+  setCraftAirframe(fiveDims);
   check('three laps close', race.lap === 3, race.lap);
   const clean = race.log.filter((l) => l.ms != null);
   check('three clean laps are logged', clean.length === 3, clean.length);

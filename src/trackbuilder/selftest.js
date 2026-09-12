@@ -1490,21 +1490,38 @@ function suiteCrashRule() {
     shouldScorePass({ x: 0, y: 0.10, z: 1.2 }, { x: 0, y: 0.06, z: -1.2 }, {
       upz: 0.35, clearance: 0.06, hits: 1, heightAt: flat,
     }) === false);
-  check('an upright belly slide through the hole does not score',
+  /*
+   * THESE TWO USED TO ASSERT THE OPPOSITE, and the second used to be called
+   * "an upright bounce frame with no hit flag still does not score", which is
+   * the owner's case by name: "its ok to bounce of the floor through a gate".
+   * Props up on the deck is flight, with or without the hit flag, which a
+   * bounce drops for a frame anyway.
+   */
+  check('an upright touch on the floor through the hole scores',
     shouldScorePass({ x: 0, y: 0.05, z: 1.2 }, { x: 0, y: 0.045, z: -1.2 }, {
       upz: 1, clearance: 0.045, hits: 1, heightAt: flat,
-    }) === false);
-  check('an upright bounce frame with no hit flag still does not score',
+    }) === true);
+  check('an upright bounce frame with no hit flag scores too',
     shouldScorePass({ x: 0, y: 0.05, z: 1.2 }, { x: 0, y: 0.045, z: -1.2 }, {
       upz: 1, clearance: 0.045, hits: 0, heightAt: flat,
+    }) === true);
+  /* The band is still pinned to the millimetre, on the side of it where it
+   * is still the decision: a craft ON ITS SIDE, in and just out of the dirt. */
+  check('on its side just inside the dirt band does not score',
+    shouldScorePass(airPass.prev, airPass.curr, {
+      upz: 0.2, clearance: 0.219, hits: 0, heightAt: flat,
     }) === false);
-  check('clearance just under the dirt band does not score',
+  check('on its side just clear of the dirt band scores',
+    shouldScorePass(airPass.prev, airPass.curr, {
+      upz: 0.2, clearance: 0.221, hits: 0, heightAt: flat,
+    }) === true);
+  check('upright just inside the dirt band scores, because it is a bounce',
     shouldScorePass(airPass.prev, airPass.curr, {
       upz: 1, clearance: 0.219, hits: 0, heightAt: flat,
-    }) === false);
-  check('clearance just above the dirt band still scores',
+    }) === true);
+  check('exactly at the tilt limit on the deck is still flight',
     shouldScorePass(airPass.prev, airPass.curr, {
-      upz: 1, clearance: 0.221, hits: 0, heightAt: flat,
+      upz: 0.5, clearance: 0.10, hits: 1, heightAt: flat,
     }) === true);
   check('falling through the opening into the dirt does not score',
     shouldScorePass({ x: 0, y: 0.9, z: 1.2 }, { x: 0, y: -2, z: -1.2 }, {
@@ -1551,14 +1568,26 @@ function suiteCrashRule() {
       upz: 1, clearance: 0.15, hits: 0, heightAt: flat,
     }) === true);
   /* And the accidents the band exists to refuse are still refused. */
-  check('a whoop sitting on the floor still does not score',
-    shouldScorePass({ x: 0, y: 0.018, z: 0.6 }, { x: 0, y: 0.018, z: -0.6 }, {
-      upz: 1, clearance: 0.018, hits: 0, heightAt: flat,
+  /* The owner's case, on the aircraft it was reported on: a whoop skipping off
+   * the floor and out through a ground gate is a pass. */
+  check('a whoop bouncing off the floor through a gate scores',
+    shouldScorePass({ x: 0, y: 0.03, z: 0.6 }, { x: 0, y: 0.018, z: -0.6 }, {
+      upz: 1, clearance: 0.018, hits: 1, heightAt: flat,
+    }) === true);
+  /* And the accidents the predicate exists for are still refused, on a band
+   * a whoop's own size rather than a five inch's. */
+  check('a whoop on its side on the floor still does not score',
+    shouldScorePass({ x: 0, y: 0.03, z: 0.6 }, { x: 0, y: 0.02, z: -0.6 }, {
+      upz: 0.1, clearance: 0.02, hits: 1, heightAt: flat,
     }) === false);
-  check('a whoop belly sliding through the hole still does not score',
+  check('a whoop inverted on the floor still does not score',
     shouldScorePass({ x: 0, y: 0.05, z: 0.6 }, { x: 0, y: 0.04, z: -0.6 }, {
       upz: -1, clearance: 0.04, hits: 1, heightAt: flat,
     }) === false);
+  check('a whoop on its side just clear of its own band still scores',
+    shouldScorePass({ x: 0, y: 0.09, z: 0.6 }, { x: 0, y: 0.09, z: -0.6 }, {
+      upz: 0.1, clearance: 0.09, hits: 0, heightAt: flat,
+    }) === true);
   setCraftAirframe(fiveDims);
   check('the five inch is seated again for everything below',
     Math.abs(dirtClearance() - 0.22) < 1e-12, dirtClearance());

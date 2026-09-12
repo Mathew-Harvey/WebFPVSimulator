@@ -2184,14 +2184,43 @@ export function hitOutcome(kindName, closing, _upDot = 0) {
 /*
  * A pass through a gate is a flown opening, not a tumble on the dirt
  * and not a clip through the terrain. Inverted in the air still scores
- * (people punch gates inverted). Inverted, a few centimetres off the
- * grass, or a belly slide through the hole, does not: that is the
- * crash that used to walk through the timing gate and throw the
- * results screen. A bounce can drop the plant hit flag for a frame,
- * so dirt is judged by clearance, not by hits or attitude.
+ * (people punch gates inverted). A craft on its side or upside down ON
+ * THE DECK does not: that is the crash that used to walk through the
+ * timing gate and throw the results screen.
+ *
+ * TOUCHING THE FLOOR DOES NOT COST YOU THE GATE. The owner's words:
+ * "its ok to bounce of the floor through a gate". Height alone used to
+ * be the whole decision here, and it refused a pass flown anywhere
+ * inside the band whatever the craft was doing, which meant a skip off
+ * the floor and out through the hole, the most ordinary thing there is
+ * on a whoop track, was silently not a gate. So the band no longer
+ * refuses anything on its own. It says the craft is ON THE DECK, and
+ * the attitude says whether being there is flight or an accident.
+ *
+ * That reverses what this comment used to argue, which was that an
+ * upright slide is the same class of accident as an inverted one and
+ * so attitude should not be read at all. It is not the same class any
+ * more, by the owner's ruling, and DIRT_UPZ has gone from a dead
+ * constant back to the decision.
+ *
+ * The cost of the ruling, written down rather than hidden: props up
+ * and moving is a bounce, a skip and a skid all at once, because
+ * nothing here can tell them apart, so an upright skid through a hole
+ * now counts as a pass. A tumble, a craft on its side and a turtle
+ * still do not, and neither does anything under the terrain.
  *
  * heightAt(x, z, y) is the surface under that sample, same contract as
  * view.height. margin is how far below that surface counts as buried.
+ */
+/*
+ * Upright enough, on the deck, to be bouncing rather than crashing.
+ *
+ * This is the body up axis' world up component, so 1 is level, 0 is on its
+ * side and -1 is inverted; 0.50 is 60 degrees of tilt. A quad skipping off
+ * the floor and back out through a gate is nowhere near it, and a quad on
+ * its side or upside down on the floor is well past it. It is the number
+ * this file already carried for exactly this judgement, unused while the
+ * clearance band was deciding on its own.
  */
 export const DIRT_UPZ = 0.50;
 /*
@@ -2235,14 +2264,19 @@ export function dirtClearance() {
 }
 
 export function upsetOnDirt(upz, clearance, inContact) {
-  /* A path this close to the dirt is a crash, not a flown opening.
-   * Attitude and the plant hit flag are not required: a bounce can
-   * drop hits for a frame, and an upright slide is the same class of
-   * accident as an inverted one. upz is kept so callers and tests can
-   * still name a tumble; the clearance band is the decision. */
-  void upz;
+  /* The plant hit flag is still not read: a bounce can drop it for a
+   * frame, so a craft that is plainly on the floor reads as airborne on
+   * exactly the frame it touches. Clearance is the honest contact test
+   * and it is all this uses. */
   void inContact;
-  return clearance < dirtClearance();
+  if (clearance >= dirtClearance()) {
+    /* Off the deck. Whatever the attitude, this is flight, which is why
+     * an inverted punch through a gate still scores. */
+    return false;
+  }
+  /* On the deck. Props up is a bounce and it flies; on its side or
+   * upside down is the accident this whole predicate exists for. */
+  return upz < DIRT_UPZ;
 }
 
 export function shouldScorePass(prev, curr, opts) {
